@@ -4,25 +4,22 @@ use maplit::btreeset;
 
 use crate::engine::Command;
 use crate::engine::Engine;
+use crate::entry::RaftEntry;
 use crate::raft_state::LogStateReader;
 use crate::EffectiveMembership;
 use crate::Entry;
-use crate::EntryPayload;
 use crate::Membership;
 use crate::MembershipState;
 use crate::MetricsChangeFlags;
 
 crate::declare_raft_types!(
-    pub(crate) Foo: D=(), R=(), NodeId=u64, Node = ()
+    pub(crate) Foo: D=(), R=(), NodeId=u64, Node = (), Entry = Entry<Foo>
 );
 
 use crate::testing::log_id;
 
 fn blank(term: u64, index: u64) -> Entry<Foo> {
-    Entry {
-        log_id: log_id(term, index),
-        payload: EntryPayload::<Foo>::Blank,
-    }
+    crate::Entry::new_blank(log_id(term, index))
 }
 
 fn m01() -> Membership<u64, ()> {

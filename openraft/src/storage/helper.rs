@@ -7,10 +7,10 @@ use tokio::time::Instant;
 
 use crate::defensive::check_range_matches_entries;
 use crate::engine::LogIdList;
+use crate::entry::RaftPayload;
+use crate::log_id::RaftLogId;
 use crate::utime::UTime;
 use crate::EffectiveMembership;
-use crate::Entry;
-use crate::EntryPayload;
 use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::MembershipState;
@@ -97,7 +97,7 @@ where
 
         let entries = self.get_log_entries(log_index..=log_index).await?;
 
-        Ok(entries[0].log_id)
+        Ok(*entries[0].get_log_id())
     }
 
     /// Returns the last 2 membership config found in log or state machine.
@@ -169,8 +169,8 @@ where
             let entries = self.sto.try_get_log_entries(step_start..end).await?;
 
             for ent in entries.iter().rev() {
-                if let EntryPayload::Membership(ref mem) = ent.payload {
-                    let em = StoredMembership::new(Some(ent.log_id), mem.clone());
+                if let Some(mem) = ent.get_membership() {
+                    let em = StoredMembership::new(Some(*ent.get_log_id()), mem.clone());
                     res.insert(0, em);
                     if res.len() == 2 {
                         return Ok(res);
@@ -187,7 +187,7 @@ where
     /// Try to get an log entry.
     ///
     /// It does not return an error if the log entry at `log_index` is not found.
-    pub async fn try_get_log_entry(&mut self, log_index: u64) -> Result<Option<Entry<C>>, StorageError<C::NodeId>> {
+    pub async fn try_get_log_entry(&mut self, log_index: u64) -> Result<Option<C::Entry>, StorageError<C::NodeId>> {
         let mut res = self.sto.try_get_log_entries(log_index..(log_index + 1)).await?;
         Ok(res.pop())
     }
@@ -199,10 +199,10 @@ where
     pub async fn get_log_entries<RB: RangeBounds<u64> + Clone + Debug + Send + Sync>(
         &mut self,
         range: RB,
-    ) -> Result<Vec<Entry<C>>, StorageError<C::NodeId>> {
+    ) -> Result<Vec<C::Entry>, StorageError<C::NodeId>> {
         let res = self.sto.try_get_log_entries(range.clone()).await?;
 
-        check_range_matches_entries(range, &res)?;
+        check_range_matches_entries::<C, _>(range, &res)?;
 
         Ok(res)
     }

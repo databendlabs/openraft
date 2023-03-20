@@ -273,7 +273,7 @@ where
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[error("error occur on remote peer {target}: {source}")]
-pub struct RemoteError<NID: NodeId, N: Node, T: std::error::Error> {
+pub struct RemoteError<NID: NodeId, N: Node, T: Error> {
     #[cfg_attr(feature = "serde", serde(bound = ""))]
     pub target: NID,
     #[cfg_attr(feature = "serde", serde(bound = ""))]
@@ -281,7 +281,7 @@ pub struct RemoteError<NID: NodeId, N: Node, T: std::error::Error> {
     pub source: T,
 }
 
-impl<NID: NodeId, N: Node, T: std::error::Error> RemoteError<NID, N, T> {
+impl<NID: NodeId, N: Node, T: Error> RemoteError<NID, N, T> {
     pub fn new(target: NID, e: T) -> Self {
         Self {
             target,

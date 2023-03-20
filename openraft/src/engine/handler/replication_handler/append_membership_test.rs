@@ -20,7 +20,7 @@ use crate::MetricsChangeFlags;
 use crate::Vote;
 
 crate::declare_raft_types!(
-    pub(crate) Foo: D=(), R=(), NodeId=u64, Node=()
+    pub(crate) Foo: D=(), R=(), NodeId=u64, Node=(), Entry = crate::Entry<Foo>
 );
 
 use crate::testing::log_id;

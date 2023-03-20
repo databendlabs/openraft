@@ -44,13 +44,13 @@ impl RaftNetworkFactory<ExampleTypeConfig> for ExampleNetwork {
 
 pub struct ExampleNetworkConnection {
     addr: String,
-    client: Option<toy_rpc::client::Client<AckModeNone>>,
+    client: Option<Client<AckModeNone>>,
     target: ExampleNodeId,
 }
 impl ExampleNetworkConnection {
     async fn c<E: std::error::Error + DeserializeOwned>(
         &mut self,
-    ) -> Result<&toy_rpc::client::Client<AckModeNone>, RPCError<ExampleNodeId, ExampleNode, E>> {
+    ) -> Result<&Client<AckModeNone>, RPCError<ExampleNodeId, ExampleNode, E>> {
         if self.client.is_none() {
             self.client = Client::dial_websocket(&self.addr).await.ok();
         }

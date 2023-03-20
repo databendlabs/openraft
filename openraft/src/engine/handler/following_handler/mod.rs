@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use crate::display_ext::DisplaySlice;
 use crate::engine::engine_impl::EngineOutput;
 use crate::engine::handler::log_handler::LogHandler;
 use crate::engine::handler::server_state_handler::ServerStateHandler;
@@ -54,11 +55,11 @@ where
         leader_committed: Option<LogId<NID>>,
     ) -> AppendEntriesResponse<NID>
     where
-        Ent: RaftEntry<NID, N> + MessageSummary<Ent> + 'a,
+        Ent: RaftEntry<NID, N> + 'a,
     {
         tracing::debug!(
             prev_log_id = display(prev_log_id.summary()),
-            entries = display(entries.summary()),
+            entries = display(DisplaySlice::<_>(entries)),
             leader_committed = display(leader_committed.summary()),
             "append-entries request"
         );
@@ -82,7 +83,7 @@ where
 
         tracing::debug!(
             committed = display(self.state.committed().summary()),
-            entries = display(entries.summary()),
+            entries = display(DisplaySlice::<_>(entries)),
             "prev_log_id matches, skip matching entries",
         );
 

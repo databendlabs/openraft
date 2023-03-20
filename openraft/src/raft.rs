@@ -25,8 +25,11 @@ use crate::core::SnapshotResult;
 use crate::core::SnapshotState;
 use crate::core::Tick;
 use crate::core::TickHandle;
+use crate::display_ext::DisplaySlice;
 use crate::engine::Engine;
 use crate::engine::EngineConfig;
+use crate::entry::FromAppData;
+use crate::entry::RaftEntry;
 use crate::error::CheckIsLeaderError;
 use crate::error::ClientWriteError;
 use crate::error::Fatal;
@@ -43,7 +46,6 @@ use crate::replication::ReplicationSessionId;
 use crate::AppData;
 use crate::AppDataResponse;
 use crate::ChangeMembers;
-use crate::Entry;
 use crate::LogId;
 use crate::Membership;
 use crate::MessageSummary;
@@ -88,6 +90,9 @@ pub trait RaftTypeConfig:
 
     /// Raft application level node data
     type Node: Node;
+
+    /// Raft log entry, which can be built from an AppData.
+    type Entry: RaftEntry<Self::NodeId, Self::Node> + FromAppData<Self::D>;
 }
 
 /// Define types for a Raft type configuration.
@@ -1020,7 +1025,7 @@ pub struct AppendEntriesRequest<C: RaftTypeConfig> {
     ///
     /// This may be empty when the leader is sending heartbeats. Entries
     /// are batched for efficiency.
-    pub entries: Vec<Entry<C>>,
+    pub entries: Vec<C::Entry>,
 
     /// The leader's committed log id.
     pub leader_commit: Option<LogId<C::NodeId>>,
@@ -1046,7 +1051,7 @@ impl<C: RaftTypeConfig> MessageSummary<AppendEntriesRequest<C>> for AppendEntrie
             self.vote,
             self.prev_log_id.summary(),
             self.leader_commit.summary(),
-            self.entries.as_slice().summary()
+            DisplaySlice::<_>(self.entries.as_slice())
         )
     }
 }

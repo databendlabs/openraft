@@ -16,7 +16,7 @@ repository    = { workspace = true }
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-openraft = { path= "../openraft", version = "0.8.3", features=["serde"] }
+openraft = { path= "../openraft", version = "0.8.4", features=["serde"] }
 
 rocksdb = "0.20.1"
 byteorder = "1.4.3"
@@ -29,3 +29,5 @@ tracing = "0.1.29"
 async-trait = { version = "0.1.36" }
 tempfile = { version = "3.4.0" }
 
+[package.metadata.docs.rs]
+all-features = true

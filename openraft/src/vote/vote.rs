@@ -21,7 +21,7 @@ impl<NID: NodeId> PartialOrd for Vote<NID> {
     #[inline]
     fn partial_cmp(&self, other: &Vote<NID>) -> Option<Ordering> {
         match PartialOrd::partial_cmp(&self.leader_id, &other.leader_id) {
-            Option::Some(Ordering::Equal) => PartialOrd::partial_cmp(&self.committed, &other.committed),
+            Some(Ordering::Equal) => PartialOrd::partial_cmp(&self.committed, &other.committed),
             None => {
                 // If two leader_id are not comparable, they won't both be granted(committed).
                 // Therefore use `committed` to determine greatness to minimize election conflict.

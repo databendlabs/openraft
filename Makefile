@@ -1,4 +1,6 @@
-all: test lint fmt defensive_test send_delay_test doc
+all: test defensive_test send_delay_test check_all
+
+check_all: lint fmt doc unused_dep typos
 
 defensive_test:
 	OPENRAFT_STORE_DEFENSIVE=on cargo test
@@ -52,6 +54,9 @@ lint:
 	# https://github.com/rust-lang/rust/issues/72686#issuecomment-635539688
 	# Thus we only check unused deps for lib
 	RUSTFLAGS=-Wunused-crate-dependencies cargo clippy --lib -- -D warnings
+
+unused_dep:
+	cargo machete
 
 typos:
 	# cargo install typos-cli

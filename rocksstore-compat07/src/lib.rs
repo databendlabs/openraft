@@ -1,4 +1,5 @@
 #![deny(unused_crate_dependencies)]
+#![deny(unused_qualifications)]
 
 //! This is an example implementation of the [`RaftStorage`] trait for an application that
 //! needs to upgrade from openraft v0.7 to v0.8.
@@ -63,7 +64,7 @@ pub type RocksNodeId = u64;
 
 openraft::declare_raft_types!(
     /// Declare the type configuration for `MemStore`.
-    pub Config: D = RocksRequest, R = RocksResponse, NodeId = RocksNodeId, Node = EmptyNode
+    pub Config: D = RocksRequest, R = RocksResponse, NodeId = RocksNodeId, Node = EmptyNode, Entry = Entry<Config>
 );
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -122,7 +123,7 @@ impl From<&RocksStateMachine> for SerializableRocksStateMachine {
 #[derive(Debug, Clone)]
 pub struct RocksStateMachine {
     /// Application data.
-    pub db: Arc<rocksdb::DB>,
+    pub db: Arc<DB>,
 }
 
 fn sm_r_err<E: Error + 'static>(e: E) -> StorageError<RocksNodeId> {
@@ -185,7 +186,7 @@ impl RocksStateMachine {
             .map_err(sm_w_err)
     }
 
-    fn from_serializable(sm: SerializableRocksStateMachine, db: Arc<rocksdb::DB>) -> StorageResult<Self> {
+    fn from_serializable(sm: SerializableRocksStateMachine, db: Arc<DB>) -> StorageResult<Self> {
         let r = Self { db };
 
         let cf = r.cf_sm_data();
@@ -202,7 +203,7 @@ impl RocksStateMachine {
         Ok(r)
     }
 
-    fn new(db: Arc<rocksdb::DB>) -> RocksStateMachine {
+    fn new(db: Arc<DB>) -> RocksStateMachine {
         Self { db }
     }
 
@@ -223,7 +224,7 @@ impl RocksStateMachine {
 
 #[derive(Debug)]
 pub struct RocksStore {
-    db: Arc<rocksdb::DB>,
+    db: Arc<DB>,
 
     /// The Raft state machine.
     pub state_machine: RwLock<RocksStateMachine>,
@@ -511,7 +512,7 @@ impl RaftStorage<Config> for Arc<RocksStore> {
     }
 
     #[tracing::instrument(level = "trace", skip(self, entries))]
-    async fn append_to_log(&mut self, entries: &[&Entry<Config>]) -> StorageResult<()> {
+    async fn append_to_log(&mut self, entries: &[Entry<Config>]) -> StorageResult<()> {
         for entry in entries {
             let id = id_to_bin(entry.log_id.index);
             assert_eq!(bin_to_id(&id), entry.log_id.index);
@@ -564,7 +565,7 @@ impl RaftStorage<Config> for Arc<RocksStore> {
     #[tracing::instrument(level = "trace", skip(self, entries))]
     async fn apply_to_state_machine(
         &mut self,
-        entries: &[&Entry<Config>],
+        entries: &[Entry<Config>],
     ) -> Result<Vec<RocksResponse>, StorageError<RocksNodeId>> {
         let mut res = Vec::with_capacity(entries.len());
 

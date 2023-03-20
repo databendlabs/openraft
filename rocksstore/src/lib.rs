@@ -1,4 +1,5 @@
 #![deny(unused_crate_dependencies)]
+#![deny(unused_qualifications)]
 
 #[cfg(test)] mod test;
 
@@ -44,7 +45,7 @@ pub type RocksNodeId = u64;
 
 openraft::declare_raft_types!(
     /// Declare the type configuration for `MemStore`.
-    pub Config: D = RocksRequest, R = RocksResponse, NodeId = RocksNodeId, Node = BasicNode
+    pub Config: D = RocksRequest, R = RocksResponse, NodeId = RocksNodeId, Node = BasicNode, Entry = Entry<Config>
 );
 
 /**
@@ -122,7 +123,7 @@ impl From<&RocksStateMachine> for SerializableRocksStateMachine {
 #[derive(Debug, Clone)]
 pub struct RocksStateMachine {
     /// Application data.
-    pub db: Arc<rocksdb::DB>,
+    pub db: Arc<DB>,
 }
 
 fn sm_r_err<E: Error + 'static>(e: E) -> StorageError<RocksNodeId> {
@@ -176,7 +177,7 @@ impl RocksStateMachine {
             .map_err(sm_w_err)
     }
 
-    fn from_serializable(sm: SerializableRocksStateMachine, db: Arc<rocksdb::DB>) -> StorageResult<Self> {
+    fn from_serializable(sm: SerializableRocksStateMachine, db: Arc<DB>) -> StorageResult<Self> {
         let r = Self { db };
 
         for (key, value) in sm.data {
@@ -192,7 +193,7 @@ impl RocksStateMachine {
         Ok(r)
     }
 
-    fn new(db: Arc<rocksdb::DB>) -> RocksStateMachine {
+    fn new(db: Arc<DB>) -> RocksStateMachine {
         Self { db }
     }
 
@@ -213,7 +214,7 @@ impl RocksStateMachine {
 
 #[derive(Debug)]
 pub struct RocksStore {
-    db: Arc<rocksdb::DB>,
+    db: Arc<DB>,
 
     /// The Raft state machine.
     pub state_machine: RwLock<RocksStateMachine>,
@@ -459,7 +460,7 @@ impl RaftStorage<Config> for Arc<RocksStore> {
     }
 
     #[tracing::instrument(level = "trace", skip(self, entries))]
-    async fn append_to_log(&mut self, entries: &[&Entry<Config>]) -> StorageResult<()> {
+    async fn append_to_log(&mut self, entries: &[Entry<Config>]) -> StorageResult<()> {
         for entry in entries {
             let id = id_to_bin(entry.log_id.index);
             assert_eq!(bin_to_id(&id), entry.log_id.index);
@@ -512,7 +513,7 @@ impl RaftStorage<Config> for Arc<RocksStore> {
     #[tracing::instrument(level = "trace", skip(self, entries))]
     async fn apply_to_state_machine(
         &mut self,
-        entries: &[&Entry<Config>],
+        entries: &[Entry<Config>],
     ) -> Result<Vec<RocksResponse>, StorageError<RocksNodeId>> {
         let mut res = Vec::with_capacity(entries.len());
 

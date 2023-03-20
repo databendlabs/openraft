@@ -74,7 +74,6 @@ use std::fmt::Debug;
 
 use crate::compat::Compat;
 use crate::compat::Upgrade;
-use crate::EmptyNode;
 
 impl Upgrade<crate::LogId<u64>> for or07::LogId {
     fn upgrade(self) -> crate::LogId<u64> {
@@ -175,7 +174,7 @@ pub struct Membership {
 }
 
 impl Upgrade<crate::Membership<u64, crate::EmptyNode>> for Membership {
-    fn upgrade(self) -> crate::Membership<u64, EmptyNode> {
+    fn upgrade(self) -> crate::Membership<u64, crate::EmptyNode> {
         if let Some(ns) = self.nodes {
             crate::Membership::new(self.configs, ns)
         } else {
@@ -201,7 +200,7 @@ pub struct StoredMembership {
 }
 
 impl Upgrade<crate::StoredMembership<u64, crate::EmptyNode>> for StoredMembership {
-    fn upgrade(self) -> crate::StoredMembership<u64, EmptyNode> {
+    fn upgrade(self) -> crate::StoredMembership<u64, crate::EmptyNode> {
         crate::StoredMembership::new(self.log_id.map(|lid| lid.upgrade()), self.membership.upgrade())
     }
 }
@@ -261,6 +260,8 @@ pub mod testing {
 
     use crate::compat;
     use crate::compat::compat07;
+    use crate::entry::RaftPayload;
+    use crate::log_id::RaftLogId;
 
     /// Build a v0.7 `RaftStorage` implementation for compatibility test.
     #[async_trait::async_trait]
@@ -278,6 +279,7 @@ pub mod testing {
 
     /// A test suite that ensures data written by an older version `RaftStorage` implementation can
     /// be read correctly by a newer version `RaftStorage` implementation.
+    #[allow(unused_qualifications)]
     pub struct Suite07<B07, BLatest>
     where
         B07: compat07::testing::StoreBuilder07,
@@ -287,6 +289,7 @@ pub mod testing {
         pub builder_latest: BLatest,
     }
 
+    #[allow(unused_qualifications)]
     impl<B07, BLatest> Suite07<B07, BLatest>
     where
         B07: compat07::testing::StoreBuilder07,
@@ -400,14 +403,14 @@ pub mod testing {
                 ];
 
                 assert_eq!(3, got.len());
-                assert_eq!(want[0].log_id, got[0].log_id);
-                assert_eq!(want[1].log_id, got[1].log_id);
-                assert_eq!(want[2].log_id, got[2].log_id);
+                assert_eq!(want[0].log_id, *got[0].get_log_id());
+                assert_eq!(want[1].log_id, *got[1].get_log_id());
+                assert_eq!(want[2].log_id, *got[2].get_log_id());
 
-                assert!(matches!(got[0].payload, crate::EntryPayload::Blank));
-                if let crate::EntryPayload::Membership(m) = &got[1].payload {
+                assert!(got[0].is_blank());
+                if let Some(m) = got[1].get_membership() {
                     assert_eq!(
-                        &crate::Membership::new(
+                        &crate::Membership::<u64, crate::EmptyNode>::new(
                             vec![btreeset! {1,2}],
                             btreemap! {1=> crate::EmptyNode{}, 2=>crate::EmptyNode{}},
                         ),
@@ -417,10 +420,11 @@ pub mod testing {
                     unreachable!("expect Membership");
                 }
 
-                let s = serde_json::to_string(&got[2].payload)?;
-                let want = serde_json::to_string(&crate::EntryPayload::<BLatest::C>::Normal(
-                    self.builder_latest.sample_app_data(),
-                ))?;
+                let s = serde_json::to_string(&got[2])?;
+                let want = serde_json::to_string(&crate::Entry::<BLatest::C> {
+                    log_id: crate::LogId::new(crate::CommittedLeaderId::new(1, 0), 7),
+                    payload: crate::EntryPayload::Normal(self.builder_latest.sample_app_data()),
+                })?;
                 assert_eq!(want, s);
             }
 
@@ -463,11 +467,11 @@ pub mod testing {
                 }];
 
                 assert_eq!(1, got.len());
-                assert_eq!(want[0].log_id, got[0].log_id);
+                assert_eq!(want[0].log_id, *got[0].get_log_id());
 
-                if let crate::EntryPayload::Membership(m) = &got[0].payload {
+                if let Some(m) = got[0].get_membership() {
                     assert_eq!(
-                        &crate::Membership::new(
+                        &crate::Membership::<u64, crate::EmptyNode>::new(
                             vec![btreeset! {1,2}],
                             btreemap! {1=> crate::EmptyNode{}, 2=>crate::EmptyNode{}},
                         ),
@@ -671,7 +675,7 @@ mod tests {
     }
 
     crate::declare_raft_types!(
-        pub TestingConfig: D = u64, R = u64, NodeId = u64, Node = crate::EmptyNode
+        pub TestingConfig: D = u64, R = u64, NodeId = u64, Node = crate::EmptyNode, Entry = crate::Entry<TestingConfig>
     );
 
     #[test]

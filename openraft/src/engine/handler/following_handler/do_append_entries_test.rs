@@ -14,7 +14,7 @@ use crate::MembershipState;
 use crate::MetricsChangeFlags;
 
 crate::declare_raft_types!(
-    pub(crate) Foo: D=(), R=(), NodeId=u64, Node = ()
+    pub(crate) Foo: D=(), R=(), NodeId=u64, Node = (), Entry = Entry<Foo>
 );
 
 use crate::testing::log_id;
@@ -158,7 +158,7 @@ fn test_follower_do_append_entries_one_membership_entry() -> anyhow::Result<()> 
             blank(3, 3), // ignored
             blank(3, 3), // ignored
             blank(3, 4),
-            Entry {
+            Entry::<Foo> {
                 log_id: log_id(3, 5),
                 payload: EntryPayload::<Foo>::Membership(m34()),
             },
@@ -223,20 +223,20 @@ fn test_follower_do_append_entries_three_membership_entries() -> anyhow::Result<
 
     eng.following_handler().do_append_entries(
         &[
-            Entry {
+            Entry::<Foo> {
                 log_id: log_id(3, 4),
                 payload: EntryPayload::<Foo>::Membership(m01()),
             }, // ignored
             blank(3, 4),
-            Entry {
+            Entry::<Foo> {
                 log_id: log_id(3, 5),
                 payload: EntryPayload::<Foo>::Membership(m01()),
             },
-            Entry {
+            Entry::<Foo> {
                 log_id: log_id(4, 6),
                 payload: EntryPayload::<Foo>::Membership(m34()),
             },
-            Entry {
+            Entry::<Foo> {
                 log_id: log_id(4, 7),
                 payload: EntryPayload::<Foo>::Membership(m45()),
             },

@@ -14,7 +14,7 @@ license       = { workspace = true }
 repository    = { workspace = true }
 
 [dependencies]
-openraft = { path= "../openraft", version = "0.8.3", features=["serde"] }
+openraft = { path= "../openraft", version = "0.8.4", features=["serde"] }
 
 sled = "0.34.7"
 byteorder = "1.4.3"
@@ -26,3 +26,6 @@ tracing = "0.1.29"
 [dev-dependencies]
 tempfile = { version = "3.4.0" }
 async-trait = { version = "0.1.36" }
+
+[package.metadata.docs.rs]
+all-features = true
