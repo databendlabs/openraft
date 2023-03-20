@@ -42,7 +42,6 @@ serde_json         = { workspace = true }
 
 
 [features]
-docinclude = [] # Used only for activating `doc(include="...")` on nightly.
 
 # Enables benchmarks in unittest.
 #
@@ -82,4 +81,6 @@ compat-07-testing = ["dep:tempfile", "anyhow", "dep:serde_json"]
 # default = ["single-term-leader"]
 
 [package.metadata.docs.rs]
-features = ["docinclude"] # Activate `docinclude` during docs.rs build.
+
+# Enalbe this flag to show all types/mods, including the feature enabled ones on docs.rs
+all-features = true
