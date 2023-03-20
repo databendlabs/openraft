@@ -1,6 +1,5 @@
 use std::fmt;
 use std::fmt::Debug;
-use std::fmt::Formatter;
 
 use crate::log_id::RaftLogId;
 use crate::LogId;
@@ -31,7 +30,7 @@ where C: RaftTypeConfig
 impl<C> Debug for Entry<C>
 where C: RaftTypeConfig
 {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Entry").field("log_id", &self.log_id).field("payload", &self.payload).finish()
     }
 }
@@ -68,7 +67,7 @@ where C: RaftTypeConfig
 impl<C> fmt::Display for Entry<C>
 where C: RaftTypeConfig
 {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}:{}", self.log_id, self.payload.summary())
     }
 }
@@ -123,11 +122,11 @@ where C: RaftTypeConfig
     }
 }
 
-impl<C> FromAppData<C::D> for crate::entry::Entry<C>
+impl<C> FromAppData<C::D> for Entry<C>
 where C: RaftTypeConfig
 {
     fn from_app_data(d: C::D) -> Self {
-        crate::entry::Entry {
+        Entry {
             log_id: LogId::default(),
             payload: EntryPayload::Normal(d),
         }

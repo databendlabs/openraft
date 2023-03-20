@@ -74,7 +74,7 @@ pub type MemNodeId = u64;
 
 openraft::declare_raft_types!(
     /// Declare the type configuration for `MemStore`.
-    pub Config: D = ClientRequest, R = ClientResponse, NodeId = MemNodeId, Node = (), Entry = openraft::Entry<Config>
+    pub Config: D = ClientRequest, R = ClientResponse, NodeId = MemNodeId, Node = (), Entry = Entry<Config>
 );
 
 /// The application snapshot type which the `MemStore` works with.

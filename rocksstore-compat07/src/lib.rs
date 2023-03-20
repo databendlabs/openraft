@@ -64,7 +64,7 @@ pub type RocksNodeId = u64;
 
 openraft::declare_raft_types!(
     /// Declare the type configuration for `MemStore`.
-    pub Config: D = RocksRequest, R = RocksResponse, NodeId = RocksNodeId, Node = EmptyNode, Entry = openraft::Entry<Config>
+    pub Config: D = RocksRequest, R = RocksResponse, NodeId = RocksNodeId, Node = EmptyNode, Entry = Entry<Config>
 );
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
