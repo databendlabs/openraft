@@ -68,6 +68,7 @@ where
     // --
     // -- volatile fields: they are not persisted.
     // --
+    /// The state of a Raft node, such as Leader or Follower.
     pub server_state: ServerState,
 
     /// The log id upto which the next time it purges.

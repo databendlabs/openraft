@@ -5,6 +5,8 @@ use std::fmt::Formatter;
 use std::ops::Deref;
 use std::ops::DerefMut;
 
+// TODO: add doc when these validation APIs are stable.
+#[doc(hidden)]
 #[macro_export]
 macro_rules! less {
     ($a: expr, $b: expr) => {{
@@ -25,6 +27,7 @@ macro_rules! less {
     }};
 }
 
+#[doc(hidden)]
 #[macro_export]
 macro_rules! less_equal {
     ($a: expr, $b: expr) => {{
@@ -45,6 +48,7 @@ macro_rules! less_equal {
     }};
 }
 
+#[doc(hidden)]
 #[macro_export]
 macro_rules! equal {
     ($a: expr, $b: expr) => {{

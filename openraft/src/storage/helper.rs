@@ -20,7 +20,7 @@ use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::StoredMembership;
 
-/// StorageHelper provides additional methods to access a RaftStorage implementation.
+/// StorageHelper provides additional methods to access a [`RaftStorage`] implementation.
 pub struct StorageHelper<'a, C, Sto>
 where
     C: RaftTypeConfig,
@@ -35,6 +35,8 @@ where
     C: RaftTypeConfig,
     Sto: RaftStorage<C>,
 {
+    /// Creates a new `StorageHelper` that provides additional functions based on the underlying
+    ///  [`RaftStorage`] implementation.
     pub fn new(sto: &'a mut Sto) -> Self {
         Self {
             sto,

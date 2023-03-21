@@ -4,6 +4,8 @@ use std::collections::BTreeSet;
 use crate::Node;
 use crate::NodeId;
 
+/// Defines various actions to change the membership, including adding or removing learners or
+/// voters.
 #[derive(Debug, Clone)]
 #[derive(PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]

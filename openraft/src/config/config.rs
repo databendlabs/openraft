@@ -227,6 +227,9 @@ impl Config {
         }
     }
 
+    /// Build a `Config` instance from a series of command line arguments.
+    ///
+    /// The first element in `args` must be the application name.
     pub fn build(args: &[&str]) -> Result<Config, ConfigError> {
         let config = <Self as Parser>::parse_from(args);
         config.validate()

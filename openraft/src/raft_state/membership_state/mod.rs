@@ -198,10 +198,19 @@ where
         self.effective = e
     }
 
+    /// Returns a reference to the last committed membership config.
+    ///
+    /// A committed membership config may or may not be the same as the effective one.
     pub fn committed(&self) -> &Arc<EffectiveMembership<NID, N>> {
         &self.committed
     }
 
+    /// Returns a reference to the presently effective membership config.
+    ///
+    /// In openraft the last seen membership config, whether committed or not, is the effective
+    /// one.
+    ///
+    /// A committed membership config may or may not be the same as the effective one.
     pub fn effective(&self) -> &Arc<EffectiveMembership<NID, N>> {
         &self.effective
     }
