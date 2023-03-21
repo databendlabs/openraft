@@ -48,3 +48,11 @@ pub(crate) use command::SendResult;
 pub(crate) use engine_impl::Engine;
 pub(crate) use engine_impl::EngineConfig;
 pub use log_id_list::LogIdList;
+
+use crate::RaftTypeConfig;
+
+/// A type alias that use `C: RaftTypeConfig` as generic parameter and is used internally with a
+/// shorter name for convenience.
+#[allow(dead_code)]
+pub(crate) type CEngine<C> =
+    Engine<<C as RaftTypeConfig>::NodeId, <C as RaftTypeConfig>::Node, <C as RaftTypeConfig>::Entry>;

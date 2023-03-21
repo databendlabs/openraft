@@ -5,10 +5,13 @@ use pretty_assertions::assert_eq;
 use tokio::time::Instant;
 
 use crate::core::ServerState;
+use crate::engine::testing::UTCfg;
+use crate::engine::CEngine;
 use crate::engine::Command;
 use crate::engine::Engine;
 use crate::raft::AppendEntriesResponse;
 use crate::raft_state::LogStateReader;
+use crate::testing::log_id;
 use crate::utime::UTime;
 use crate::EffectiveMembership;
 use crate::Entry;
@@ -18,16 +21,10 @@ use crate::MembershipState;
 use crate::MetricsChangeFlags;
 use crate::Vote;
 
-crate::declare_raft_types!(
-    pub(crate) Foo: D=(), R=(), NodeId=u64, Node=(), Entry = Entry<Foo>
-);
-
-use crate::testing::log_id;
-
-fn blank(term: u64, index: u64) -> Entry<Foo> {
+fn blank(term: u64, index: u64) -> Entry<UTCfg> {
     Entry {
         log_id: log_id(term, index),
-        payload: EntryPayload::<Foo>::Blank,
+        payload: EntryPayload::<UTCfg>::Blank,
     }
 }
 
@@ -43,7 +40,7 @@ fn m34() -> Membership<u64, ()> {
     Membership::<u64, ()>::new(vec![btreeset! {3,4}], None)
 }
 
-fn eng() -> Engine<u64, ()> {
+fn eng() -> CEngine<UTCfg> {
     let mut eng = Engine::default();
     eng.state.enable_validate = false; // Disable validation for incomplete state
 
@@ -64,7 +61,7 @@ fn eng() -> Engine<u64, ()> {
 fn test_handle_append_entries_req_vote_is_rejected() -> anyhow::Result<()> {
     let mut eng = eng();
 
-    let resp = eng.handle_append_entries_req(&Vote::new(1, 1), None, &Vec::<Entry<Foo>>::new(), None);
+    let resp = eng.handle_append_entries_req(&Vote::new(1, 1), None, &Vec::<Entry<UTCfg>>::new(), None);
 
     assert_eq!(AppendEntriesResponse::HigherVote(Vote::new(2, 1)), resp);
     assert_eq!(
@@ -110,7 +107,7 @@ fn test_handle_append_entries_req_prev_log_id_is_applied() -> anyhow::Result<()>
     let resp = eng.handle_append_entries_req(
         &Vote::new_committed(2, 1),
         Some(log_id(0, 0)),
-        &Vec::<Entry<Foo>>::new(),
+        &Vec::<Entry<UTCfg>>::new(),
         None,
     );
 
@@ -160,7 +157,7 @@ fn test_handle_append_entries_req_prev_log_id_conflict() -> anyhow::Result<()> {
     let resp = eng.handle_append_entries_req(
         &Vote::new_committed(2, 1),
         Some(log_id(2, 2)),
-        &Vec::<Entry<Foo>>::new(),
+        &Vec::<Entry<UTCfg>>::new(),
         None,
     );
 

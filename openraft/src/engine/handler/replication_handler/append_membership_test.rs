@@ -4,12 +4,15 @@ use maplit::btreeset;
 use tokio::time::Instant;
 
 use crate::core::ServerState;
+use crate::engine::testing::UTCfg;
+use crate::engine::CEngine;
 use crate::engine::Command;
 use crate::engine::Engine;
 use crate::engine::LogIdList;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::Inflight;
 use crate::progress::Progress;
+use crate::testing::log_id;
 use crate::utime::UTime;
 use crate::CommittedLeaderId;
 use crate::EffectiveMembership;
@@ -18,12 +21,6 @@ use crate::Membership;
 use crate::MembershipState;
 use crate::MetricsChangeFlags;
 use crate::Vote;
-
-crate::declare_raft_types!(
-    pub(crate) Foo: D=(), R=(), NodeId=u64, Node=(), Entry = crate::Entry<Foo>
-);
-
-use crate::testing::log_id;
 
 fn m01() -> Membership<u64, ()> {
     Membership::<u64, ()>::new(vec![btreeset! {0,1}], None)
@@ -45,7 +42,7 @@ fn m4_356() -> Membership<u64, ()> {
     Membership::<u64, ()>::new(vec![btreeset! {4}], Some(btreeset! {3,5,6}))
 }
 
-fn eng() -> Engine<u64, ()> {
+fn eng() -> CEngine<UTCfg> {
     let mut eng = Engine::default();
     eng.config.id = 2;
     eng.state.membership_state = MembershipState::new(

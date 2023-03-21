@@ -64,12 +64,12 @@ pub mod testing;
 pub mod timer;
 pub mod versioned;
 
+pub(crate) mod engine;
 pub(crate) mod log_id_range;
 pub(crate) mod utime;
 pub(crate) mod validate;
 
 mod display_ext;
-mod engine;
 mod internal_server_state;
 mod leader;
 mod raft_state;

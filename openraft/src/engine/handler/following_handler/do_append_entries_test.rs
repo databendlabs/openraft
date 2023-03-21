@@ -3,26 +3,23 @@ use std::sync::Arc;
 use maplit::btreeset;
 
 use crate::core::ServerState;
+use crate::engine::testing::UTCfg;
 use crate::engine::Command;
 use crate::engine::Engine;
 use crate::raft_state::LogStateReader;
+use crate::testing::log_id;
 use crate::EffectiveMembership;
 use crate::Entry;
 use crate::EntryPayload;
 use crate::Membership;
 use crate::MembershipState;
 use crate::MetricsChangeFlags;
+use crate::RaftTypeConfig;
 
-crate::declare_raft_types!(
-    pub(crate) Foo: D=(), R=(), NodeId=u64, Node = (), Entry = Entry<Foo>
-);
-
-use crate::testing::log_id;
-
-fn blank(term: u64, index: u64) -> Entry<Foo> {
+fn blank(term: u64, index: u64) -> Entry<UTCfg> {
     Entry {
         log_id: log_id(term, index),
-        payload: EntryPayload::<Foo>::Blank,
+        payload: EntryPayload::<UTCfg>::Blank,
     }
 }
 
@@ -42,7 +39,7 @@ fn m45() -> Membership<u64, ()> {
     Membership::new(vec![btreeset! {4,5}], None)
 }
 
-fn eng() -> Engine<u64, ()> {
+fn eng() -> Engine<u64, (), <UTCfg as RaftTypeConfig>::Entry> {
     let mut eng = Engine::default();
     eng.state.enable_validate = false; // Disable validation for incomplete state
 
@@ -62,7 +59,7 @@ fn test_follower_do_append_entries_empty() -> anyhow::Result<()> {
     let mut eng = eng();
 
     // Neither of these two will update anything.
-    eng.following_handler().do_append_entries(&Vec::<Entry<Foo>>::new(), 0);
+    eng.following_handler().do_append_entries(&Vec::<Entry<UTCfg>>::new(), 0);
     eng.following_handler().do_append_entries(&[blank(3, 4)], 1);
 
     assert_eq!(
@@ -158,9 +155,9 @@ fn test_follower_do_append_entries_one_membership_entry() -> anyhow::Result<()> 
             blank(3, 3), // ignored
             blank(3, 3), // ignored
             blank(3, 4),
-            Entry::<Foo> {
+            Entry::<UTCfg> {
                 log_id: log_id(3, 5),
-                payload: EntryPayload::<Foo>::Membership(m34()),
+                payload: EntryPayload::<UTCfg>::Membership(m34()),
             },
         ],
         3,
@@ -223,22 +220,22 @@ fn test_follower_do_append_entries_three_membership_entries() -> anyhow::Result<
 
     eng.following_handler().do_append_entries(
         &[
-            Entry::<Foo> {
+            Entry::<UTCfg> {
                 log_id: log_id(3, 4),
-                payload: EntryPayload::<Foo>::Membership(m01()),
+                payload: EntryPayload::<UTCfg>::Membership(m01()),
             }, // ignored
             blank(3, 4),
-            Entry::<Foo> {
+            Entry::<UTCfg> {
                 log_id: log_id(3, 5),
-                payload: EntryPayload::<Foo>::Membership(m01()),
+                payload: EntryPayload::<UTCfg>::Membership(m01()),
             },
-            Entry::<Foo> {
+            Entry::<UTCfg> {
                 log_id: log_id(4, 6),
-                payload: EntryPayload::<Foo>::Membership(m34()),
+                payload: EntryPayload::<UTCfg>::Membership(m34()),
             },
-            Entry::<Foo> {
+            Entry::<UTCfg> {
                 log_id: log_id(4, 7),
-                payload: EntryPayload::<Foo>::Membership(m45()),
+                payload: EntryPayload::<UTCfg>::Membership(m45()),
             },
         ],
         1,

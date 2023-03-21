@@ -1,6 +1,8 @@
 use maplit::btreeset;
 use pretty_assertions::assert_eq;
 
+use crate::engine::testing::UTCfg;
+use crate::engine::CEngine;
 use crate::engine::Engine;
 use crate::testing::log_id;
 use crate::Membership;
@@ -16,8 +18,8 @@ fn m1234() -> Membership<u64, ()> {
     Membership::<u64, ()>::new(vec![btreeset! {1,2,3,4}], None)
 }
 
-fn eng() -> Engine<u64, ()> {
-    let mut eng = Engine::<u64, ()> { ..Default::default() };
+fn eng() -> CEngine<UTCfg> {
+    let mut eng = Engine::default();
     eng.state.enable_validate = false; // Disable validation for incomplete state
 
     eng.state.snapshot_meta = SnapshotMeta {

@@ -1,3 +1,5 @@
+use std::marker::PhantomData;
+
 use crate::engine::engine_impl::EngineOutput;
 use crate::engine::handler::replication_handler::ReplicationHandler;
 use crate::engine::handler::replication_handler::SendNone;
@@ -19,21 +21,24 @@ use crate::RaftState;
 /// - Append new logs;
 /// - Change membership;
 /// - etc
-pub(crate) struct LeaderHandler<'x, NID, N>
+pub(crate) struct LeaderHandler<'x, NID, N, Ent>
 where
     NID: NodeId,
     N: Node,
+    Ent: RaftEntry<NID, N>,
 {
     pub(crate) config: &'x mut EngineConfig<NID>,
     pub(crate) leader: &'x mut Leader<NID, LeaderQuorumSet<NID>>,
     pub(crate) state: &'x mut RaftState<NID, N>,
     pub(crate) output: &'x mut EngineOutput<NID, N>,
+    pub(crate) _p: PhantomData<Ent>,
 }
 
-impl<'x, NID, N> LeaderHandler<'x, NID, N>
+impl<'x, NID, N, Ent> LeaderHandler<'x, NID, N, Ent>
 where
     NID: NodeId,
     N: Node,
+    Ent: RaftEntry<NID, N>,
 {
     /// Append new log entries by a leader.
     ///
@@ -46,7 +51,7 @@ where
     /// TODO(xp): metrics flag needs to be dealt with.
     /// TODO(xp): if vote indicates this node is not the leader, refuse append
     #[tracing::instrument(level = "debug", skip(self, entries))]
-    pub(crate) fn leader_append_entries<'a, Ent: RaftEntry<NID, N> + 'a>(&mut self, entries: &mut [Ent]) {
+    pub(crate) fn leader_append_entries(&mut self, entries: &mut [Ent]) {
         let l = entries.len();
         if l == 0 {
             return;

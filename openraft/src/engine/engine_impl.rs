@@ -1,3 +1,4 @@
+use std::marker::PhantomData;
 use std::time::Duration;
 
 use tokio::time::Instant;
@@ -124,10 +125,11 @@ where
 /// TODO: make the fields private
 #[derive(Debug, Default)]
 #[derive(PartialEq, Eq)]
-pub(crate) struct Engine<NID, N>
+pub(crate) struct Engine<NID, N, Ent>
 where
     NID: NodeId,
     N: Node,
+    Ent: RaftEntry<NID, N>,
 {
     pub(crate) config: EngineConfig<NID>,
 
@@ -148,12 +150,15 @@ where
 
     /// Output entry for the runtime.
     pub(crate) output: EngineOutput<NID, N>,
+
+    _p: PhantomData<Ent>,
 }
 
-impl<NID, N> Engine<NID, N>
+impl<NID, N, Ent> Engine<NID, N, Ent>
 where
     N: Node,
     NID: NodeId,
+    Ent: RaftEntry<NID, N>,
 {
     pub(crate) fn new(init_state: RaftState<NID, N>, config: EngineConfig<NID>) -> Self {
         let now = Instant::now();
@@ -164,6 +169,7 @@ where
             timer: time_state::TimeState::new(now),
             internal_server_state: InternalServerState::default(),
             output: EngineOutput::default(),
+            _p: PhantomData::default(),
         }
     }
 
@@ -215,10 +221,7 @@ where
     /// follower. This step is not confined by the consensus protocol and has to be dealt with
     /// differently.
     #[tracing::instrument(level = "debug", skip(self, entries))]
-    pub(crate) fn initialize<Ent: RaftEntry<NID, N>>(
-        &mut self,
-        entries: &mut [Ent],
-    ) -> Result<(), InitializeError<NID, N>> {
+    pub(crate) fn initialize(&mut self, entries: &mut [Ent]) -> Result<(), InitializeError<NID, N>> {
         let l = entries.len();
         debug_assert_eq!(1, l);
 
@@ -287,7 +290,7 @@ where
     pub(crate) fn get_leader_handler_or_reject<T, E>(
         &mut self,
         tx: Option<RaftRespTx<T, E>>,
-    ) -> Option<(LeaderHandler<NID, N>, Option<RaftRespTx<T, E>>)>
+    ) -> Option<(LeaderHandler<NID, N, Ent>, Option<RaftRespTx<T, E>>)>
     where
         E: From<ForwardToLeader<NID, N>>,
     {
@@ -446,16 +449,13 @@ where
     ///
     /// Also clean conflicting entries and update membership state.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn handle_append_entries_req<'a, Ent>(
+    pub(crate) fn handle_append_entries_req(
         &mut self,
         vote: &Vote<NID>,
         prev_log_id: Option<LogId<NID>>,
         entries: &[Ent],
         leader_committed: Option<LogId<NID>>,
-    ) -> AppendEntriesResponse<NID>
-    where
-        Ent: RaftEntry<NID, N> + 'a,
-    {
+    ) -> AppendEntriesResponse<NID> {
         tracing::debug!(
             vote = display(vote),
             prev_log_id = display(prev_log_id.summary()),
@@ -532,10 +532,11 @@ where
 }
 
 /// Supporting util
-impl<NID, N> Engine<NID, N>
+impl<NID, N, Ent> Engine<NID, N, Ent>
 where
     N: Node,
     NID: NodeId,
+    Ent: RaftEntry<NID, N>,
 {
     /// Vote is granted by a quorum, leader established.
     #[tracing::instrument(level = "debug", skip_all)]
@@ -640,7 +641,7 @@ where
         }
     }
 
-    pub(crate) fn leader_handler(&mut self) -> Result<LeaderHandler<NID, N>, ForwardToLeader<NID, N>> {
+    pub(crate) fn leader_handler(&mut self) -> Result<LeaderHandler<NID, N, Ent>, ForwardToLeader<NID, N>> {
         let leader = match self.internal_server_state.leading_mut() {
             None => {
                 tracing::debug!("this node is NOT a leader: {:?}", self.state.server_state);
@@ -658,6 +659,7 @@ where
             leader,
             state: &mut self.state,
             output: &mut self.output,
+            _p: PhantomData::default(),
         })
     }
 
@@ -677,13 +679,14 @@ where
         }
     }
 
-    pub(crate) fn following_handler(&mut self) -> FollowingHandler<NID, N> {
+    pub(crate) fn following_handler(&mut self) -> FollowingHandler<NID, N, Ent> {
         debug_assert!(self.internal_server_state.is_following());
 
         FollowingHandler {
             config: &mut self.config,
             state: &mut self.state,
             output: &mut self.output,
+            _p: PhantomData::default(),
         }
     }
 

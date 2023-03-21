@@ -6,21 +6,18 @@ use maplit::btreeset;
 #[allow(unused_imports)] use pretty_assertions::assert_str_eq;
 use tokio::time::Instant;
 
+use crate::engine::testing::UTCfg;
+use crate::engine::CEngine;
 use crate::engine::Command;
 use crate::engine::Engine;
 use crate::progress::Inflight;
 use crate::progress::Progress;
+use crate::testing::log_id;
 use crate::utime::UTime;
 use crate::EffectiveMembership;
 use crate::Membership;
 use crate::MembershipState;
 use crate::Vote;
-
-crate::declare_raft_types!(
-    pub(crate) Foo: D=(), R=(), NodeId=u64, Node=(), Entry = crate::Entry<Foo>
-);
-
-use crate::testing::log_id;
 
 fn m01() -> Membership<u64, ()> {
     Membership::<u64, ()>::new(vec![btreeset! {0,1}], None)
@@ -30,7 +27,7 @@ fn m23() -> Membership<u64, ()> {
     Membership::<u64, ()>::new(vec![btreeset! {2,3}], None)
 }
 
-fn eng() -> Engine<u64, ()> {
+fn eng() -> CEngine<UTCfg> {
     let mut eng = Engine::default();
     eng.state.enable_validate = false; // Disable validation for incomplete state
 
