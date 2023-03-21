@@ -1,4 +1,3 @@
-use std::future::Future;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -13,13 +12,9 @@ use crate::MemStore;
 struct MemBuilder {}
 #[async_trait]
 impl StoreBuilder<Config, Arc<MemStore>> for MemBuilder {
-    async fn run_test<Fun, Ret, Res>(&self, t: Fun) -> Result<Ret, StorageError<MemNodeId>>
-    where
-        Res: Future<Output = Result<Ret, StorageError<MemNodeId>>> + Send,
-        Fun: Fn(Arc<MemStore>) -> Res + Sync + Send,
-    {
+    async fn build(&self) -> Result<((), Arc<MemStore>), StorageError<MemNodeId>> {
         let store = MemStore::new_async().await;
-        t(store).await
+        Ok(((), store))
     }
 }
 

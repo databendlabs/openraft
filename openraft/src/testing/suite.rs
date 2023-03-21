@@ -46,32 +46,35 @@ macro_rules! btreeset {
 /// Test suite to ensure a `RaftStore` impl works as expected.
 ///
 /// Usage:
-pub struct Suite<C, S, B>
+pub struct Suite<C, S, B, G>
 where
     C: RaftTypeConfig,
     C::D: AppData + Debug,
     C::R: AppDataResponse + Debug,
     S: RaftStorage<C>,
-    B: StoreBuilder<C, S>,
+    B: StoreBuilder<C, S, G>,
+    G: Send + Sync,
 {
     c: PhantomData<C>,
     p: PhantomData<S>,
     f: PhantomData<B>,
+    g: PhantomData<G>,
 }
 
-impl<C, S, B> Suite<C, S, B>
+impl<C, S, B, G> Suite<C, S, B, G>
 where
     C: RaftTypeConfig,
     C::D: AppData + Debug,
     C::R: AppDataResponse + Debug,
     C::NodeId: From<u64>,
     S: RaftStorage<C>,
-    B: StoreBuilder<C, S>,
+    B: StoreBuilder<C, S, G>,
+    G: Send + Sync,
 {
     pub fn test_all(builder: B) -> Result<(), StorageError<C::NodeId>> {
         Suite::test_store(&builder)?;
 
-        let df_builder = DefensiveStoreBuilder::<C, S, B> {
+        let df_builder = DefensiveStoreBuilder::<C, S, B, _> {
             base_builder: builder,
 
             s: Default::default(),
@@ -83,33 +86,33 @@ where
     }
 
     pub fn test_store(builder: &B) -> Result<(), StorageError<C::NodeId>> {
-        run_fut(builder.run_test(Self::last_membership_in_log_initial))?;
-        run_fut(builder.run_test(Self::last_membership_in_log))?;
-        run_fut(builder.run_test(Self::last_membership_in_log_multi_step))?;
-        run_fut(builder.run_test(Self::get_membership_initial))?;
-        run_fut(builder.run_test(Self::get_membership_from_log_and_empty_sm))?;
-        run_fut(builder.run_test(Self::get_membership_from_log_and_sm))?;
-        run_fut(builder.run_test(Self::get_initial_state_without_init))?;
-        run_fut(builder.run_test(Self::get_initial_state_membership_from_log_and_sm))?;
-        run_fut(builder.run_test(Self::get_initial_state_with_state))?;
-        run_fut(builder.run_test(Self::get_initial_state_last_log_gt_sm))?;
-        run_fut(builder.run_test(Self::get_initial_state_last_log_lt_sm))?;
-        run_fut(builder.run_test(Self::get_initial_state_log_ids))?;
-        run_fut(builder.run_test(Self::save_vote))?;
-        run_fut(builder.run_test(Self::get_log_entries))?;
-        run_fut(builder.run_test(Self::try_get_log_entry))?;
-        run_fut(builder.run_test(Self::initial_logs))?;
-        run_fut(builder.run_test(Self::get_log_state))?;
-        run_fut(builder.run_test(Self::get_log_id))?;
-        run_fut(builder.run_test(Self::last_id_in_log))?;
-        run_fut(builder.run_test(Self::last_applied_state))?;
-        run_fut(builder.run_test(Self::purge_logs_upto_0))?;
-        run_fut(builder.run_test(Self::purge_logs_upto_5))?;
-        run_fut(builder.run_test(Self::purge_logs_upto_20))?;
-        run_fut(builder.run_test(Self::delete_logs_since_11))?;
-        run_fut(builder.run_test(Self::delete_logs_since_0))?;
-        run_fut(builder.run_test(Self::append_to_log))?;
-        run_fut(builder.run_test(Self::snapshot_meta))?;
+        run_fut(run_test(builder, Self::last_membership_in_log_initial))?;
+        run_fut(run_test(builder, Self::last_membership_in_log))?;
+        run_fut(run_test(builder, Self::last_membership_in_log_multi_step))?;
+        run_fut(run_test(builder, Self::get_membership_initial))?;
+        run_fut(run_test(builder, Self::get_membership_from_log_and_empty_sm))?;
+        run_fut(run_test(builder, Self::get_membership_from_log_and_sm))?;
+        run_fut(run_test(builder, Self::get_initial_state_without_init))?;
+        run_fut(run_test(builder, Self::get_initial_state_membership_from_log_and_sm))?;
+        run_fut(run_test(builder, Self::get_initial_state_with_state))?;
+        run_fut(run_test(builder, Self::get_initial_state_last_log_gt_sm))?;
+        run_fut(run_test(builder, Self::get_initial_state_last_log_lt_sm))?;
+        run_fut(run_test(builder, Self::get_initial_state_log_ids))?;
+        run_fut(run_test(builder, Self::save_vote))?;
+        run_fut(run_test(builder, Self::get_log_entries))?;
+        run_fut(run_test(builder, Self::try_get_log_entry))?;
+        run_fut(run_test(builder, Self::initial_logs))?;
+        run_fut(run_test(builder, Self::get_log_state))?;
+        run_fut(run_test(builder, Self::get_log_id))?;
+        run_fut(run_test(builder, Self::last_id_in_log))?;
+        run_fut(run_test(builder, Self::last_applied_state))?;
+        run_fut(run_test(builder, Self::purge_logs_upto_0))?;
+        run_fut(run_test(builder, Self::purge_logs_upto_5))?;
+        run_fut(run_test(builder, Self::purge_logs_upto_20))?;
+        run_fut(run_test(builder, Self::delete_logs_since_11))?;
+        run_fut(run_test(builder, Self::delete_logs_since_0))?;
+        run_fut(run_test(builder, Self::append_to_log))?;
+        run_fut(run_test(builder, Self::snapshot_meta))?;
 
         // run_fut(Suite::apply_single(builder))?;
         // run_fut(Suite::apply_multi(builder))?;
@@ -1035,31 +1038,32 @@ where
 // Defensive test:
 // If a RaftStore impl support defensive check, enable it and check if it returns errors when
 // abnormal input is seen. A RaftStore with defensive check is able to expose bugs in raft core.
-impl<C, S, B> Suite<C, S, B>
+impl<C, S, B, G> Suite<C, S, B, G>
 where
     C: RaftTypeConfig,
     C::D: AppData + Debug,
     C::R: AppDataResponse + Debug,
     C::NodeId: From<u64>,
     S: RaftStorage<C>,
-    B: StoreBuilder<C, S>,
+    B: StoreBuilder<C, S, G>,
+    G: Send + Sync,
 {
     pub fn test_store_defensive(builder: &B) -> Result<(), StorageError<C::NodeId>> {
-        run_fut(builder.run_test(Self::df_get_membership_config_dirty_log))?;
-        run_fut(builder.run_test(Self::df_get_initial_state_dirty_log))?;
-        run_fut(builder.run_test(Self::df_save_vote_ascending))?;
-        run_fut(builder.run_test(Self::df_get_log_entries))?;
-        run_fut(builder.run_test(Self::df_append_to_log_nonempty_input))?;
-        run_fut(builder.run_test(Self::df_append_to_log_nonconsecutive_input))?;
-        run_fut(builder.run_test(Self::df_append_to_log_eq_last_plus_one))?;
-        run_fut(builder.run_test(Self::df_append_to_log_eq_last_applied_plus_one))?;
-        run_fut(builder.run_test(Self::df_append_to_log_gt_last_log_id))?;
-        run_fut(builder.run_test(Self::df_append_to_log_gt_last_applied_id))?;
-        run_fut(builder.run_test(Self::df_apply_nonempty_input))?;
-        run_fut(builder.run_test(Self::df_apply_index_eq_last_applied_plus_one))?;
-        run_fut(builder.run_test(Self::df_apply_gt_last_applied_id))?;
-        run_fut(builder.run_test(Self::df_purge_applied_le_last_applied))?;
-        run_fut(builder.run_test(Self::df_delete_conflict_gt_last_applied))?;
+        run_fut(run_test(builder, Self::df_get_membership_config_dirty_log))?;
+        run_fut(run_test(builder, Self::df_get_initial_state_dirty_log))?;
+        run_fut(run_test(builder, Self::df_save_vote_ascending))?;
+        run_fut(run_test(builder, Self::df_get_log_entries))?;
+        run_fut(run_test(builder, Self::df_append_to_log_nonempty_input))?;
+        run_fut(run_test(builder, Self::df_append_to_log_nonconsecutive_input))?;
+        run_fut(run_test(builder, Self::df_append_to_log_eq_last_plus_one))?;
+        run_fut(run_test(builder, Self::df_append_to_log_eq_last_applied_plus_one))?;
+        run_fut(run_test(builder, Self::df_append_to_log_gt_last_log_id))?;
+        run_fut(run_test(builder, Self::df_append_to_log_gt_last_applied_id))?;
+        run_fut(run_test(builder, Self::df_apply_nonempty_input))?;
+        run_fut(run_test(builder, Self::df_apply_index_eq_last_applied_plus_one))?;
+        run_fut(run_test(builder, Self::df_apply_gt_last_applied_id))?;
+        run_fut(run_test(builder, Self::df_purge_applied_le_last_applied))?;
+        run_fut(run_test(builder, Self::df_delete_conflict_gt_last_applied))?;
 
         Ok(())
     }
@@ -1533,4 +1537,17 @@ where
     let rt = tokio::runtime::Runtime::new().unwrap();
     rt.block_on(f)?;
     Ok(())
+}
+
+/// Build a `RaftStorage` implementation and run a test on it.
+async fn run_test<C, S, G, B, TestFn, Ret, Fu>(builder: &B, test_fn: TestFn) -> Result<Ret, StorageError<C::NodeId>>
+where
+    C: RaftTypeConfig,
+    S: RaftStorage<C>,
+    B: StoreBuilder<C, S, G>,
+    Fu: Future<Output = Result<Ret, StorageError<C::NodeId>>> + Send,
+    TestFn: Fn(S) -> Fu + Sync + Send,
+{
+    let (_g, store) = builder.build().await?;
+    test_fn(store).await
 }
