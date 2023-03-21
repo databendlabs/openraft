@@ -82,5 +82,5 @@ compat-07-testing = ["dep:tempfile", "anyhow", "dep:serde_json"]
 
 [package.metadata.docs.rs]
 
-# Enalbe this flag to show all types/mods, including the feature enabled ones on docs.rs
+# Enable this flag to show all types/mods, including the feature enabled ones on docs.rs
 all-features = true

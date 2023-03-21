@@ -43,5 +43,6 @@ where
 ///
 /// A concrete Entry should implement this trait to let openraft create an entry when needed.
 pub trait FromAppData<T> {
+    /// Build a raft log entry from app data.
     fn from_app_data(t: T) -> Self;
 }

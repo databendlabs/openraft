@@ -4,6 +4,8 @@
 #![cfg_attr(feature = "bench", feature(test))]
 #![allow(clippy::bool_assert_comparison, clippy::type_complexity)]
 #![deny(unused_qualifications)]
+// TODO: Enable this when doc is complete
+// #![warn(missing_docs)]
 
 //! # Feature flags
 //!

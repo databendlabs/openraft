@@ -2,6 +2,7 @@
 #[derive(Debug, thiserror::Error)]
 #[derive(PartialEq, Eq)]
 pub enum ConfigError {
+    /// The min election timeout is not smaller than the max election timeout.
     #[error("election timeout: min({min}) must be < max({max})")]
     ElectionTimeout { min: u64, max: u64 },
 

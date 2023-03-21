@@ -17,11 +17,17 @@ use crate::MessageSummary;
 use crate::NodeId;
 
 /// The identity of a raft log.
-/// A term, node_id and an index identifies an log globally.
+///
+/// The log id serves as unique identifier for a log entry across the system. It is composed of two
+/// parts: a leader id, which refers to the leader that proposed this log, and an integer index.
 #[derive(Debug, Default, Copy, Clone, PartialOrd, Ord, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct LogId<NID: NodeId> {
+    /// The id of the leader that proposed this log
     pub leader_id: CommittedLeaderId<NID>,
+    /// The index of a log in the storage.
+    ///
+    /// Log index is a consecutive integer.
     pub index: u64,
 }
 
@@ -48,6 +54,7 @@ impl<NID: NodeId> MessageSummary<LogId<NID>> for LogId<NID> {
 }
 
 impl<NID: NodeId> LogId<NID> {
+    /// Creates a log id proposed by a committed leader with `leader_id` at the given index.
     pub fn new(leader_id: CommittedLeaderId<NID>, index: u64) -> Self {
         if leader_id.term == 0 || index == 0 {
             assert_eq!(
@@ -66,6 +73,7 @@ impl<NID: NodeId> LogId<NID> {
         LogId { leader_id, index }
     }
 
+    /// Returns the leader id that proposed this log.
     pub fn committed_leader_id(&self) -> &CommittedLeaderId<NID> {
         &self.leader_id
     }
