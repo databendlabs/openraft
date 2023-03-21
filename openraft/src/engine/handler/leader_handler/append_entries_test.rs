@@ -6,11 +6,14 @@ use maplit::btreeset;
 #[allow(unused_imports)] use pretty_assertions::assert_str_eq;
 use tokio::time::Instant;
 
+use crate::engine::testing::UTCfg;
+use crate::engine::CEngine;
 use crate::engine::Command;
 use crate::engine::Engine;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::Inflight;
 use crate::raft_state::LogStateReader;
+use crate::testing::log_id;
 use crate::utime::UTime;
 use crate::vote::CommittedLeaderId;
 use crate::EffectiveMembership;
@@ -23,16 +26,10 @@ use crate::MetricsChangeFlags;
 use crate::ServerState;
 use crate::Vote;
 
-crate::declare_raft_types!(
-    pub(crate) Foo: D=(), R=(), NodeId=u64, Node=(), Entry = Entry<Foo>
-);
-
-use crate::testing::log_id;
-
-fn blank(term: u64, index: u64) -> Entry<Foo> {
+fn blank(term: u64, index: u64) -> Entry<UTCfg> {
     Entry {
         log_id: log_id(term, index),
-        payload: EntryPayload::<Foo>::Blank,
+        payload: EntryPayload::<UTCfg>::Blank,
     }
 }
 
@@ -61,7 +58,7 @@ fn m34() -> Membership<u64, ()> {
     Membership::<u64, ()>::new(vec![btreeset! {3,4}], None)
 }
 
-fn eng() -> Engine<u64, ()> {
+fn eng() -> CEngine<UTCfg> {
     let mut eng = Engine::default();
     eng.state.enable_validate = false; // Disable validation for incomplete state
 
@@ -84,7 +81,7 @@ fn test_leader_append_entries_empty() -> anyhow::Result<()> {
     let mut eng = eng();
     eng.vote_handler().become_leading();
 
-    eng.leader_handler()?.leader_append_entries(&mut Vec::<Entry<Foo>>::new());
+    eng.leader_handler()?.leader_append_entries(&mut Vec::<Entry<UTCfg>>::new());
 
     assert_eq!(
         &[

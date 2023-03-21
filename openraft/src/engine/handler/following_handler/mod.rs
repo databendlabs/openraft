@@ -1,3 +1,4 @@
+use std::marker::PhantomData;
 use std::sync::Arc;
 
 use crate::display_ext::DisplaySlice;
@@ -29,34 +30,34 @@ use crate::StoredMembership;
 /// Receive replication request and deal with them.
 ///
 /// It mainly implements the logic of a follower/learner
-pub(crate) struct FollowingHandler<'x, NID, N>
+pub(crate) struct FollowingHandler<'x, NID, N, Ent>
 where
     NID: NodeId,
     N: Node,
+    Ent: RaftEntry<NID, N>,
 {
     pub(crate) config: &'x mut EngineConfig<NID>,
     pub(crate) state: &'x mut RaftState<NID, N>,
     pub(crate) output: &'x mut EngineOutput<NID, N>,
+    pub(crate) _p: PhantomData<Ent>,
 }
 
-impl<'x, NID, N> FollowingHandler<'x, NID, N>
+impl<'x, NID, N, Ent> FollowingHandler<'x, NID, N, Ent>
 where
     NID: NodeId,
     N: Node,
+    Ent: RaftEntry<NID, N>,
 {
     /// Append entries to follower/learner.
     ///
     /// Also clean conflicting entries and update membership state.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn append_entries<'a, Ent>(
+    pub(crate) fn append_entries(
         &mut self,
         prev_log_id: Option<LogId<NID>>,
         entries: &[Ent],
         leader_committed: Option<LogId<NID>>,
-    ) -> AppendEntriesResponse<NID>
-    where
-        Ent: RaftEntry<NID, N> + 'a,
-    {
+    ) -> AppendEntriesResponse<NID> {
         tracing::debug!(
             prev_log_id = display(prev_log_id.summary()),
             entries = display(DisplaySlice::<_>(entries)),
@@ -115,7 +116,7 @@ where
     ///
     /// Membership config changes are also detected and applied here.
     #[tracing::instrument(level = "debug", skip(self, entries))]
-    fn do_append_entries<'a, Ent: RaftEntry<NID, N> + 'a>(&mut self, entries: &[Ent], since: usize) {
+    fn do_append_entries(&mut self, entries: &[Ent], since: usize) {
         let l = entries.len();
         if since == l {
             return;
@@ -137,7 +138,7 @@ where
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    fn commit_entries<'a, Ent: RaftEntry<NID, N> + 'a>(
+    fn commit_entries(
         &mut self,
         leader_committed: Option<LogId<NID>>,
         prev_log_id: Option<LogId<NID>>,
@@ -197,8 +198,8 @@ where
 
     /// Append membership log if membership config entries are found, after appending entries to
     /// log.
-    fn append_membership<'a, Ent>(&mut self, entries: impl DoubleEndedIterator<Item = &'a Ent>)
-    where Ent: RaftEntry<NID, N> + 'a {
+    fn append_membership<'a>(&mut self, entries: impl DoubleEndedIterator<Item = &'a Ent>)
+    where Ent: 'a {
         let memberships = Self::last_two_memberships(entries);
         if memberships.is_empty() {
             return;
@@ -352,9 +353,8 @@ where
     ///
     /// A follower/learner reverts the effective membership to the previous one,
     /// when conflicting logs are found.
-    fn last_two_memberships<'a, Ent: RaftEntry<NID, N> + 'a>(
-        entries: impl DoubleEndedIterator<Item = &'a Ent>,
-    ) -> Vec<StoredMembership<NID, N>> {
+    fn last_two_memberships<'a>(entries: impl DoubleEndedIterator<Item = &'a Ent>) -> Vec<StoredMembership<NID, N>>
+    where Ent: 'a {
         let mut memberships = vec![];
 
         // Find the last 2 membership config entries: the committed and the effective.

@@ -142,7 +142,7 @@ pub struct RaftCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<
     /// The `RaftStorage` implementation.
     pub(crate) storage: S,
 
-    pub(crate) engine: Engine<C::NodeId, C::Node>,
+    pub(crate) engine: Engine<C::NodeId, C::Node, C::Entry>,
 
     pub(crate) leader_data: Option<LeaderData<C, S::SnapshotData>>,
 

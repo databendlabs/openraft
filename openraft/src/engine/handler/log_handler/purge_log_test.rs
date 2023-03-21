@@ -1,11 +1,13 @@
+use crate::engine::testing::UTCfg;
+use crate::engine::CEngine;
 use crate::engine::Command;
 use crate::engine::Engine;
 use crate::engine::LogIdList;
 use crate::raft_state::LogStateReader;
 use crate::testing::log_id;
 
-fn eng() -> Engine<u64, ()> {
-    let mut eng = Engine::<u64, ()>::default();
+fn eng() -> CEngine<UTCfg> {
+    let mut eng = Engine::default();
     eng.state.enable_validate = false; // Disable validation for incomplete state
 
     eng.state.log_ids = LogIdList::new(vec![log_id(2, 2), log_id(4, 4), log_id(4, 6)]);

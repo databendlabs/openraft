@@ -3,18 +3,15 @@ use std::sync::Arc;
 use maplit::btreeset;
 
 use crate::core::ServerState;
+use crate::engine::testing::UTCfg;
+use crate::engine::CEngine;
 use crate::engine::Command;
 use crate::engine::Engine;
+use crate::testing::log_id;
 use crate::EffectiveMembership;
 use crate::Membership;
 use crate::MembershipState;
 use crate::MetricsChangeFlags;
-
-crate::declare_raft_types!(
-    pub(crate) Foo: D=(), R=(), NodeId=u64, Node=(), Entry = crate::Entry<Foo>
-);
-
-use crate::testing::log_id;
 
 fn m01() -> Membership<u64, ()> {
     Membership::<u64, ()>::new(vec![btreeset! {0,1}], None)
@@ -28,7 +25,7 @@ fn m34() -> Membership<u64, ()> {
     Membership::<u64, ()>::new(vec![btreeset! {3,4}], None)
 }
 
-fn eng() -> Engine<u64, ()> {
+fn eng() -> CEngine<UTCfg> {
     let mut eng = Engine::default();
     eng.config.id = 2;
     eng.state.membership_state = MembershipState::new(

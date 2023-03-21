@@ -4,6 +4,8 @@ use maplit::btreeset;
 use pretty_assertions::assert_eq;
 use tokio::time::Instant;
 
+use crate::engine::testing::UTCfg;
+use crate::engine::CEngine;
 use crate::engine::Command;
 use crate::engine::Engine;
 use crate::testing::log_id;
@@ -22,7 +24,7 @@ fn m123() -> Membership<u64, ()> {
     Membership::<u64, ()>::new(vec![btreeset! {1,2,3}], None)
 }
 
-fn eng() -> Engine<u64, ()> {
+fn eng() -> CEngine<UTCfg> {
     let mut eng = Engine::default();
     eng.state.enable_validate = false; // Disable validation for incomplete state
 

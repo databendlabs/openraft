@@ -2,23 +2,20 @@ use std::sync::Arc;
 
 use maplit::btreeset;
 
+use crate::engine::testing::UTCfg;
+use crate::engine::CEngine;
 use crate::engine::Command;
 use crate::engine::Engine;
 use crate::entry::RaftEntry;
 use crate::raft_state::LogStateReader;
+use crate::testing::log_id;
 use crate::EffectiveMembership;
 use crate::Entry;
 use crate::Membership;
 use crate::MembershipState;
 use crate::MetricsChangeFlags;
 
-crate::declare_raft_types!(
-    pub(crate) Foo: D=(), R=(), NodeId=u64, Node = (), Entry = Entry<Foo>
-);
-
-use crate::testing::log_id;
-
-fn blank(term: u64, index: u64) -> Entry<Foo> {
+fn blank(term: u64, index: u64) -> Entry<UTCfg> {
     crate::Entry::new_blank(log_id(term, index))
 }
 
@@ -30,7 +27,7 @@ fn m23() -> Membership<u64, ()> {
     Membership::new(vec![btreeset! {2,3}], None)
 }
 
-fn eng() -> Engine<u64, ()> {
+fn eng() -> CEngine<UTCfg> {
     let mut eng = Engine::default();
     eng.state.enable_validate = false; // Disable validation for incomplete state
 
@@ -46,7 +43,7 @@ fn eng() -> Engine<u64, ()> {
 fn test_follower_commit_entries_empty() -> anyhow::Result<()> {
     let mut eng = eng();
 
-    eng.following_handler().commit_entries(None, None, &Vec::<Entry<Foo>>::new());
+    eng.following_handler().commit_entries(None, None, &Vec::<Entry<UTCfg>>::new());
 
     assert_eq!(Some(&log_id(1, 1)), eng.state.committed());
     assert_eq!(
