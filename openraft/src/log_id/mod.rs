@@ -1,3 +1,6 @@
+//! This mod defines the identity of a raft log and provides supporting utilities to work with log
+//! id related types.
+
 mod log_id_option_ext;
 mod log_index_option_ext;
 mod raft_log_id;
