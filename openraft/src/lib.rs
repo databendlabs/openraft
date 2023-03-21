@@ -53,6 +53,7 @@ mod vote;
 
 pub mod entry;
 pub mod error;
+pub mod log_id;
 pub mod metrics;
 pub mod network;
 pub mod raft;
@@ -61,7 +62,6 @@ pub mod testing;
 pub mod timer;
 pub mod versioned;
 
-pub(crate) mod log_id;
 pub(crate) mod log_id_range;
 pub(crate) mod utime;
 pub(crate) mod validate;
@@ -92,6 +92,7 @@ pub use crate::entry::EntryPayload;
 pub use crate::log_id::LogId;
 pub use crate::log_id::LogIdOptionExt;
 pub use crate::log_id::LogIndexOptionExt;
+pub use crate::log_id::RaftLogId;
 pub use crate::membership::EffectiveMembership;
 pub use crate::membership::Membership;
 pub use crate::membership::StoredMembership;
