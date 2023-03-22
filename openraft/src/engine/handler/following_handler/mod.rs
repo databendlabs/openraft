@@ -96,14 +96,10 @@ where
             // Raft requires log ids are in total order by (term,index).
             // Otherwise the log id with max index makes committed entry invisible in election.
             self.truncate_logs(entries[since].get_log_id().index);
-            self.do_append_entries(entries, since);
         }
 
+        self.do_append_entries(entries, since);
         self.commit_entries(leader_committed, prev_log_id, entries);
-
-        if l > 0 {
-            self.output.push_command(Command::MoveInputCursorBy { n: l });
-        }
 
         AppendEntriesResponse::Success
     }
@@ -118,6 +114,11 @@ where
     #[tracing::instrument(level = "debug", skip(self, entries))]
     fn do_append_entries(&mut self, entries: &[Ent], since: usize) {
         let l = entries.len();
+
+        if l > 0 {
+            self.output.push_command(Command::AppendInputEntries { range: since..l });
+        }
+
         if since == l {
             return;
         }
@@ -132,8 +133,6 @@ where
         debug_assert!(Some(entries[0].get_log_id()) > self.state.log_ids.last());
 
         self.state.extend_log_ids(entries);
-        self.output.push_command(Command::AppendInputEntries { range: since..l });
-
         self.append_membership(entries.iter());
     }
 

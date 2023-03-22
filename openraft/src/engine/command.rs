@@ -37,6 +37,9 @@ where
     QuitLeader,
 
     /// Append a `range` of entries in the input buffer.
+    ///
+    /// This command consumes the input.
+    /// Thus The entries before `range.start` will be discarded.
     AppendInputEntries { range: Range<usize> },
 
     /// Append a blank log.
@@ -92,9 +95,6 @@ where
     //          `target` can also be the leader id.
     /// As the state of replication to `target` is updated, the metrics should be updated.
     UpdateProgressMetrics { target: NID, matching: LogId<NID> },
-
-    /// Move the cursor pointing to an entry in the input buffer.
-    MoveInputCursorBy { n: usize },
 
     /// Save vote to storage
     SaveVote { vote: Vote<NID> },
@@ -159,7 +159,11 @@ where
         match &self {
             Command::BecomeLeader { .. } => flags.set_cluster_changed(),
             Command::QuitLeader => flags.set_cluster_changed(),
-            Command::AppendInputEntries { .. } => flags.set_data_changed(),
+            Command::AppendInputEntries { range } => {
+                if range.end > range.start {
+                    flags.set_data_changed()
+                }
+            }
             Command::AppendBlankLog { .. } => flags.set_data_changed(),
             Command::ReplicateCommitted { .. } => {}
             Command::LeaderCommit { .. } => flags.set_data_changed(),
@@ -168,7 +172,6 @@ where
             Command::UpdateMembership { .. } => flags.set_cluster_changed(),
             Command::RebuildReplicationStreams { .. } => flags.set_replication_changed(),
             Command::UpdateProgressMetrics { .. } => flags.set_replication_changed(),
-            Command::MoveInputCursorBy { .. } => {}
             Command::SaveVote { .. } => flags.set_data_changed(),
             Command::SendVote { .. } => {}
             Command::PurgeLog { .. } => flags.set_data_changed(),

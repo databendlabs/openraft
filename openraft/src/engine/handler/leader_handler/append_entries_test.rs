@@ -166,7 +166,6 @@ fn test_leader_append_entries_normal() -> anyhow::Result<()> {
                 target: 3,
                 req: Inflight::logs(None, Some(log_id(3, 6))).with_id(1),
             },
-            Command::MoveInputCursorBy { n: 3 },
         ],
         eng.output.commands
     );
@@ -227,7 +226,6 @@ fn test_leader_append_entries_fast_commit() -> anyhow::Result<()> {
                 already_committed: Some(log_id(0, 0)),
                 upto: LogId::new(CommittedLeaderId::new(3, 1), 6)
             },
-            Command::MoveInputCursorBy { n: 3 },
         ],
         eng.output.commands
     );
@@ -328,7 +326,6 @@ fn test_leader_append_entries_fast_commit_upto_membership_entry() -> anyhow::Res
                 target: 4,
                 req: Inflight::logs(None, Some(log_id(3, 6))).with_id(1),
             },
-            Command::MoveInputCursorBy { n: 3 },
         ],
         eng.output.commands
     );
@@ -425,7 +422,6 @@ fn test_leader_append_entries_fast_commit_membership_no_voter_change() -> anyhow
                 already_committed: Some(LogId::new(CommittedLeaderId::new(3, 1), 4)),
                 upto: LogId::new(CommittedLeaderId::new(3, 1), 6)
             },
-            Command::MoveInputCursorBy { n: 3 },
         ],
         eng.output.commands
     );
@@ -507,7 +503,6 @@ fn test_leader_append_entries_fast_commit_if_membership_voter_change_to_1() -> a
                 already_committed: Some(log_id(0, 0)),
                 upto: LogId::new(CommittedLeaderId::new(3, 1), 6)
             },
-            Command::MoveInputCursorBy { n: 3 },
         ],
         eng.output.commands
     );

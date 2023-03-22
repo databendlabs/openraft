@@ -246,8 +246,6 @@ where
 
         self.server_state_handler().update_server_state_if_changed();
 
-        self.output.push_command(Command::MoveInputCursorBy { n: l });
-
         // With the new config, start to elect to become leader
         self.elect();
 
