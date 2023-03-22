@@ -58,7 +58,6 @@ fn eng() -> Engine<u64, (), <UTCfg as RaftTypeConfig>::Entry> {
 fn test_follower_do_append_entries_empty() -> anyhow::Result<()> {
     let mut eng = eng();
 
-    // Neither of these two will update anything.
     eng.following_handler().do_append_entries(&Vec::<Entry<UTCfg>>::new(), 0);
     eng.following_handler().do_append_entries(&[blank(3, 4)], 1);
 
@@ -88,7 +87,13 @@ fn test_follower_do_append_entries_empty() -> anyhow::Result<()> {
         eng.output.metrics_flags
     );
 
-    assert_eq!(0, eng.output.commands.len());
+    assert_eq!(
+        vec![
+            //
+            Command::AppendInputEntries { range: 1..1 },
+        ],
+        eng.output.commands
+    );
 
     Ok(())
 }

@@ -259,7 +259,6 @@ fn test_handle_append_entries_req_prev_log_id_is_committed() -> anyhow::Result<(
                 already_committed: Some(log_id(0, 0)),
                 upto: log_id(1, 1)
             },
-            Command::MoveInputCursorBy { n: 2 },
         ],
         eng.output.commands
     );
@@ -384,7 +383,6 @@ fn test_handle_append_entries_req_entries_conflict() -> anyhow::Result<()> {
                 already_committed: Some(log_id(0, 0)),
                 upto: log_id(3, 3)
             },
-            Command::MoveInputCursorBy { n: 2 },
         ],
         eng.output.commands
     );

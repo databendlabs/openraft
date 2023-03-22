@@ -1296,7 +1296,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime<C> for RaftCore<C, N, S> {
     async fn run_command<'e>(
         &mut self,
-        input_ref_entries: &'e [C::Entry],
+        input_entries: &'e [C::Entry],
         cur: &mut usize,
         cmd: Command<C::NodeId, C::Node>,
     ) -> Result<(), StorageError<C::NodeId>> {
@@ -1319,15 +1319,21 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
                 self.leader_data = None;
             }
             Command::AppendInputEntries { range } => {
-                let entry_refs = &input_ref_entries[range.clone()];
-                self.storage.append_to_log(entry_refs).await?
+                let entries = &input_entries[range.clone()];
+
+                // AppendInputEntries implies to consume the input.
+                // The entries before `range.start` are discarded.
+                *cur += range.end;
+
+                if !entries.is_empty() {
+                    self.storage.append_to_log(entries).await?
+                }
             }
             Command::AppendBlankLog { log_id } => {
                 let ent = C::Entry::new_blank(log_id);
                 let entry_refs = vec![ent];
                 self.storage.append_to_log(&entry_refs).await?
             }
-            Command::MoveInputCursorBy { n } => *cur += n,
             Command::SaveVote { vote } => {
                 self.storage.save_vote(&vote).await?;
             }

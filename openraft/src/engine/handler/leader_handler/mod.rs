@@ -113,8 +113,6 @@ where
 
         rh.update_local_progress(last_log_id);
         rh.initiate_replication(SendNone::False);
-
-        self.output.push_command(Command::MoveInputCursorBy { n: l });
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
