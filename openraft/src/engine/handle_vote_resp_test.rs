@@ -68,7 +68,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
             eng.output.metrics_flags
         );
 
-        assert_eq!(0, eng.output.commands.len());
+        assert_eq!(0, eng.output.take_commands().len());
     }
 
     tracing::info!("--- recv a smaller vote. vote_granted==false always; keep trying in candidate state");
@@ -105,7 +105,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
             eng.output.metrics_flags
         );
 
-        assert!(eng.output.commands.is_empty());
+        assert!(eng.output.take_commands().is_empty());
     }
 
     // TODO: when seeing a higher vote, keep trying until a majority of higher votes are seen.
@@ -141,7 +141,10 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
             eng.output.metrics_flags
         );
 
-        assert_eq!(vec![Command::SaveVote { vote: Vote::new(3, 2) },], eng.output.commands);
+        assert_eq!(
+            vec![Command::SaveVote { vote: Vote::new(3, 2) },],
+            eng.output.take_commands()
+        );
     }
 
     tracing::info!("--- equal vote, rejected by higher last_log_id. keep trying in candidate state");
@@ -178,7 +181,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
             eng.output.metrics_flags
         );
 
-        assert!(eng.output.commands.is_empty());
+        assert!(eng.output.take_commands().is_empty());
     }
 
     tracing::info!("--- equal vote, granted, but not constitute a quorum. nothing to do");
@@ -215,7 +218,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
             eng.output.metrics_flags
         );
 
-        assert_eq!(0, eng.output.commands.len());
+        assert_eq!(0, eng.output.take_commands().len());
     }
 
     tracing::info!("--- equal vote, granted, constitute a quorum. become leader");
@@ -272,7 +275,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
                     req: Inflight::logs(None, Some(log_id(2, 1))).with_id(1),
                 },
             ],
-            eng.output.commands
+            eng.output.take_commands()
         );
     }
 

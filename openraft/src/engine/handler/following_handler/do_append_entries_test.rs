@@ -92,7 +92,7 @@ fn test_follower_do_append_entries_empty() -> anyhow::Result<()> {
             //
             Command::AppendInputEntries { range: 1..1 },
         ],
-        eng.output.commands
+        eng.output.take_commands()
     );
 
     Ok(())
@@ -140,7 +140,7 @@ fn test_follower_do_append_entries_no_membership_entries() -> anyhow::Result<()>
     assert_eq!(
         vec![Command::AppendInputEntries { range: 1..2 }, //
             ],
-        eng.output.commands
+        eng.output.take_commands()
     );
 
     Ok(())
@@ -208,7 +208,7 @@ fn test_follower_do_append_entries_one_membership_entry() -> anyhow::Result<()> 
                 membership: Arc::new(EffectiveMembership::new(Some(log_id(3, 5)), m34())),
             },
         ],
-        eng.output.commands
+        eng.output.take_commands()
     );
 
     Ok(())
@@ -287,7 +287,7 @@ fn test_follower_do_append_entries_three_membership_entries() -> anyhow::Result<
                 membership: Arc::new(EffectiveMembership::new(Some(log_id(4, 7)), m45())),
             },
         ],
-        eng.output.commands
+        eng.output.take_commands()
     );
 
     Ok(())

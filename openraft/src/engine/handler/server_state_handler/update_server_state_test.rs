@@ -48,7 +48,7 @@ fn test_update_server_state_if_changed() -> anyhow::Result<()> {
     {
         assert_eq!(ServerState::Leader, ssh.state.server_state);
 
-        ssh.output.commands = vec![];
+        ssh.output.clear_commands();
         ssh.state.vote = UTime::new(Instant::now(), Vote::new(2, 100));
         ssh.update_server_state_if_changed();
 
@@ -58,7 +58,7 @@ fn test_update_server_state_if_changed() -> anyhow::Result<()> {
                 //
                 Command::QuitLeader,
             ],
-            ssh.output.commands
+            ssh.output.take_commands()
         );
     }
 

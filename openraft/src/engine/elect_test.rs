@@ -91,7 +91,7 @@ fn test_elect() -> anyhow::Result<()> {
                     },
                 },
             ],
-            eng.output.commands
+            eng.output.take_commands()
         );
     }
 
@@ -154,7 +154,7 @@ fn test_elect() -> anyhow::Result<()> {
                     },
                 },
             ],
-            eng.output.commands
+            eng.output.take_commands()
         );
     }
 
@@ -189,7 +189,7 @@ fn test_elect() -> anyhow::Result<()> {
             vec![Command::SaveVote { vote: Vote::new(1, 1) }, Command::SendVote {
                 vote_req: VoteRequest::new(Vote::new(1, 1), Some(log_id(1, 1)))
             },],
-            eng.output.commands
+            eng.output.take_commands()
         );
     }
     Ok(())

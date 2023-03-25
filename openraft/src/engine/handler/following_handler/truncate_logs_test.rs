@@ -80,7 +80,7 @@ fn test_truncate_logs_since_3() -> anyhow::Result<()> {
                 membership: Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01()))
             },
         ],
-        eng.output.commands
+        eng.output.take_commands()
     );
 
     Ok(())
@@ -113,7 +113,7 @@ fn test_truncate_logs_since_4() -> anyhow::Result<()> {
 
     assert_eq!(
         vec![Command::DeleteConflictLog { since: log_id(4, 4) }],
-        eng.output.commands
+        eng.output.take_commands()
     );
 
     Ok(())
@@ -138,7 +138,7 @@ fn test_truncate_logs_since_5() -> anyhow::Result<()> {
 
     assert_eq!(
         vec![Command::DeleteConflictLog { since: log_id(4, 5) }],
-        eng.output.commands
+        eng.output.take_commands()
     );
 
     Ok(())
@@ -166,7 +166,7 @@ fn test_truncate_logs_since_6() -> anyhow::Result<()> {
 
     assert_eq!(
         vec![Command::DeleteConflictLog { since: log_id(4, 6) }],
-        eng.output.commands
+        eng.output.take_commands()
     );
 
     Ok(())
@@ -192,7 +192,7 @@ fn test_truncate_logs_since_7() -> anyhow::Result<()> {
         eng.output.metrics_flags
     );
 
-    assert!(eng.output.commands.is_empty());
+    assert!(eng.output.take_commands().is_empty());
 
     Ok(())
 }
@@ -217,7 +217,7 @@ fn test_truncate_logs_since_8() -> anyhow::Result<()> {
         eng.output.metrics_flags
     );
 
-    assert!(eng.output.commands.is_empty());
+    assert!(eng.output.take_commands().is_empty());
 
     Ok(())
 }
@@ -252,7 +252,7 @@ fn test_truncate_logs_revert_effective_membership() -> anyhow::Result<()> {
                 membership: Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m01()))
             },
         ],
-        eng.output.commands
+        eng.output.take_commands()
     );
 
     Ok(())

@@ -67,7 +67,7 @@ fn test_update_committed_membership_at_index_4() -> anyhow::Result<()> {
         vec![Command::UpdateMembership {
             membership: Arc::new(EffectiveMembership::new(Some(log_id(3, 4)), m34())),
         },],
-        eng.output.commands
+        eng.output.take_commands()
     );
 
     Ok(())
