@@ -108,7 +108,7 @@ fn test_leader_append_entries_empty() -> anyhow::Result<()> {
         eng.output.metrics_flags
     );
 
-    assert_eq!(0, eng.output.commands.len());
+    assert_eq!(0, eng.output.take_commands().len());
 
     Ok(())
 }
@@ -167,7 +167,7 @@ fn test_leader_append_entries_normal() -> anyhow::Result<()> {
                 req: Inflight::logs(None, Some(log_id(3, 6))).with_id(1),
             },
         ],
-        eng.output.commands
+        eng.output.take_commands()
     );
 
     Ok(())
@@ -181,7 +181,7 @@ fn test_leader_append_entries_fast_commit() -> anyhow::Result<()> {
         .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m1())));
     eng.vote_handler().become_leading();
 
-    eng.output.commands = vec![];
+    eng.output.clear_commands();
     eng.output.metrics_flags.reset();
 
     // log id will be assigned by eng.
@@ -227,7 +227,7 @@ fn test_leader_append_entries_fast_commit() -> anyhow::Result<()> {
                 upto: LogId::new(CommittedLeaderId::new(3, 1), 6)
             },
         ],
-        eng.output.commands
+        eng.output.take_commands()
     );
 
     assert_eq!(
@@ -327,7 +327,7 @@ fn test_leader_append_entries_fast_commit_upto_membership_entry() -> anyhow::Res
                 req: Inflight::logs(None, Some(log_id(3, 6))).with_id(1),
             },
         ],
-        eng.output.commands
+        eng.output.take_commands()
     );
 
     Ok(())
@@ -343,7 +343,7 @@ fn test_leader_append_entries_fast_commit_membership_no_voter_change() -> anyhow
     eng.vote_handler().become_leading();
     eng.state.server_state = eng.calc_server_state();
 
-    eng.output.commands = vec![];
+    eng.output.clear_commands();
     eng.output.metrics_flags.reset();
 
     // log id will be assigned by eng.
@@ -423,7 +423,7 @@ fn test_leader_append_entries_fast_commit_membership_no_voter_change() -> anyhow
                 upto: LogId::new(CommittedLeaderId::new(3, 1), 6)
             },
         ],
-        eng.output.commands
+        eng.output.take_commands()
     );
 
     Ok(())
@@ -441,7 +441,7 @@ fn test_leader_append_entries_fast_commit_if_membership_voter_change_to_1() -> a
     eng.vote_handler().become_leading();
     eng.state.server_state = eng.calc_server_state();
 
-    eng.output.commands = vec![];
+    eng.output.clear_commands();
     eng.output.metrics_flags.reset();
 
     // log id will be assigned by eng.
@@ -504,7 +504,7 @@ fn test_leader_append_entries_fast_commit_if_membership_voter_change_to_1() -> a
                 upto: LogId::new(CommittedLeaderId::new(3, 1), 6)
             },
         ],
-        eng.output.commands
+        eng.output.take_commands()
     );
 
     assert_eq!(

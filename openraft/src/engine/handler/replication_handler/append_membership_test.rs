@@ -97,7 +97,7 @@ fn test_leader_append_membership_for_leader() -> anyhow::Result<()> {
                                                                                             * won't be removed */
             }
         ],
-        eng.output.commands
+        eng.output.take_commands()
     );
 
     assert!(

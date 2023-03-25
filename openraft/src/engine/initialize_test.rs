@@ -106,7 +106,7 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
                     },
                 },
             ],
-            eng.output.commands
+            eng.output.take_commands()
         );
     }
     Ok(())
@@ -173,7 +173,7 @@ fn test_initialize() -> anyhow::Result<()> {
                     },
                 },
             ],
-            eng.output.commands
+            eng.output.take_commands()
         );
     }
 

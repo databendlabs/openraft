@@ -69,7 +69,7 @@ fn test_startup_as_leader() -> anyhow::Result<()> {
                 })]
             }
         ],
-        eng.output.commands
+        eng.output.take_commands()
     );
 
     Ok(())
@@ -98,7 +98,7 @@ fn test_startup_candidate_becomes_follower() -> anyhow::Result<()> {
         eng.output.metrics_flags
     );
 
-    assert_eq!(0, eng.output.commands.len());
+    assert_eq!(0, eng.output.take_commands().len());
 
     Ok(())
 }
@@ -123,7 +123,7 @@ fn test_startup_as_follower() -> anyhow::Result<()> {
         eng.output.metrics_flags
     );
 
-    assert_eq!(0, eng.output.commands.len());
+    assert_eq!(0, eng.output.take_commands().len());
 
     Ok(())
 }
@@ -149,7 +149,7 @@ fn test_startup_as_learner() -> anyhow::Result<()> {
         eng.output.metrics_flags
     );
 
-    assert_eq!(0, eng.output.commands.len());
+    assert_eq!(0, eng.output.take_commands().len());
 
     Ok(())
 }

@@ -63,7 +63,7 @@ fn test_follower_commit_entries_empty() -> anyhow::Result<()> {
         eng.output.metrics_flags
     );
 
-    assert_eq!(0, eng.output.commands.len());
+    assert_eq!(0, eng.output.take_commands().len());
 
     Ok(())
 }
@@ -92,7 +92,7 @@ fn test_follower_commit_entries_no_update() -> anyhow::Result<()> {
         eng.output.metrics_flags
     );
 
-    assert_eq!(0, eng.output.commands.len());
+    assert_eq!(0, eng.output.take_commands().len());
 
     Ok(())
 }
@@ -128,7 +128,7 @@ fn test_follower_commit_entries_lt_last_entry() -> anyhow::Result<()> {
                 upto: log_id(2, 3)
             }, //
         ],
-        eng.output.commands
+        eng.output.take_commands()
     );
 
     Ok(())
@@ -165,7 +165,7 @@ fn test_follower_commit_entries_gt_last_entry() -> anyhow::Result<()> {
                 upto: log_id(2, 3)
             }, //
         ],
-        eng.output.commands
+        eng.output.take_commands()
     );
 
     Ok(())

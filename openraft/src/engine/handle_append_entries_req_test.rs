@@ -92,7 +92,7 @@ fn test_handle_append_entries_req_vote_is_rejected() -> anyhow::Result<()> {
         eng.output.metrics_flags
     );
 
-    assert_eq!(0, eng.output.commands.len());
+    assert_eq!(0, eng.output.take_commands().len());
 
     Ok(())
 }
@@ -144,7 +144,7 @@ fn test_handle_append_entries_req_prev_log_id_is_applied() -> anyhow::Result<()>
         vec![Command::SaveVote {
             vote: Vote::new_committed(2, 1)
         },],
-        eng.output.commands
+        eng.output.take_commands()
     );
 
     Ok(())
@@ -199,7 +199,7 @@ fn test_handle_append_entries_req_prev_log_id_conflict() -> anyhow::Result<()> {
                 membership: Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01()))
             },
         ],
-        eng.output.commands
+        eng.output.take_commands()
     );
 
     Ok(())
@@ -260,7 +260,7 @@ fn test_handle_append_entries_req_prev_log_id_is_committed() -> anyhow::Result<(
                 upto: log_id(1, 1)
             },
         ],
-        eng.output.commands
+        eng.output.take_commands()
     );
 
     Ok(())
@@ -312,7 +312,7 @@ fn test_handle_append_entries_req_prev_log_id_not_exists() -> anyhow::Result<()>
         vec![Command::SaveVote {
             vote: Vote::new_committed(2, 1)
         },],
-        eng.output.commands
+        eng.output.take_commands()
     );
 
     Ok(())
@@ -384,7 +384,7 @@ fn test_handle_append_entries_req_entries_conflict() -> anyhow::Result<()> {
                 upto: log_id(3, 3)
             },
         ],
-        eng.output.commands
+        eng.output.take_commands()
     );
 
     Ok(())

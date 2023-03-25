@@ -64,15 +64,15 @@ fn test_leader_send_heartbeat() -> anyhow::Result<()> {
                     req: Inflight::logs(None, Some(log_id(2, 3))).with_id(1),
                 },
             ],
-            eng.output.commands
+            eng.output.take_commands()
         );
     }
 
     // No RPC will be sent if there are inflight RPC
     {
-        eng.output.commands = vec![];
+        eng.output.clear_commands();
         eng.leader_handler()?.send_heartbeat();
-        assert!(eng.output.commands.is_empty());
+        assert!(eng.output.take_commands().is_empty());
     }
 
     // No data to send, sending a heartbeat is to send empty RPC:
@@ -81,7 +81,7 @@ fn test_leader_send_heartbeat() -> anyhow::Result<()> {
         let _ = l.leader.progress.update_with(&2, |ent| ent.update_matching(Some(log_id(2, 3))));
         let _ = l.leader.progress.update_with(&3, |ent| ent.update_matching(Some(log_id(2, 3))));
     }
-    eng.output.commands = vec![];
+    eng.output.clear_commands();
     eng.leader_handler()?.send_heartbeat();
     assert_eq!(
         vec![
@@ -94,7 +94,7 @@ fn test_leader_send_heartbeat() -> anyhow::Result<()> {
                 req: Inflight::logs(Some(log_id(2, 3)), Some(log_id(2, 3))).with_id(1),
             },
         ],
-        eng.output.commands
+        eng.output.take_commands()
     );
 
     Ok(())

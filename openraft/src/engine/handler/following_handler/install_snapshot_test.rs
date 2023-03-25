@@ -84,7 +84,7 @@ fn test_install_snapshot_lt_last_snapshot() -> anyhow::Result<()> {
                 snapshot_id: "1-2-3-4".to_string(),
             }
         }],
-        eng.output.commands
+        eng.output.take_commands()
     );
 
     Ok(())
@@ -130,7 +130,7 @@ fn test_install_snapshot_lt_committed() -> anyhow::Result<()> {
                 snapshot_id: "1-2-3-4".to_string(),
             }
         }],
-        eng.output.commands
+        eng.output.take_commands()
     );
 
     Ok(())
@@ -186,7 +186,7 @@ fn test_install_snapshot_not_conflict() -> anyhow::Result<()> {
             },
             Command::PurgeLog { upto: log_id(4, 6) },
         ],
-        eng.output.commands
+        eng.output.take_commands()
     );
 
     Ok(())
@@ -266,7 +266,7 @@ fn test_install_snapshot_conflict() -> anyhow::Result<()> {
             },
             Command::PurgeLog { upto: log_id(5, 6) },
         ],
-        eng.output.commands
+        eng.output.take_commands()
     );
 
     Ok(())
@@ -326,7 +326,7 @@ fn test_install_snapshot_advance_last_log_id() -> anyhow::Result<()> {
             },
             Command::PurgeLog { upto: log_id(100, 100) },
         ],
-        eng.output.commands
+        eng.output.take_commands()
     );
 
     Ok(())

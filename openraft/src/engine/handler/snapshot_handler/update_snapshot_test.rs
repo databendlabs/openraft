@@ -61,7 +61,7 @@ fn test_update_snapshot_no_update() -> anyhow::Result<()> {
         eng.output.metrics_flags
     );
 
-    assert_eq!(0, eng.output.commands.len());
+    assert_eq!(0, eng.output.take_commands().len());
 
     Ok(())
 }
@@ -97,7 +97,7 @@ fn test_update_snapshot_updated() -> anyhow::Result<()> {
         eng.output.metrics_flags
     );
 
-    assert_eq!(0, eng.output.commands.len());
+    assert_eq!(0, eng.output.take_commands().len());
 
     Ok(())
 }

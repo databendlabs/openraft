@@ -1,6 +1,5 @@
 use std::collections::BTreeMap;
 use std::fmt::Display;
-use std::mem::swap;
 use std::pin::Pin;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -827,17 +826,15 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         input_entries: &'e [C::Entry],
     ) -> Result<(), StorageError<C::NodeId>> {
         if tracing::enabled!(Level::DEBUG) {
-            tracing::debug!("commands: start...");
-            for c in self.engine.output.commands.iter() {
-                tracing::debug!("commands: {:?}", c);
+            tracing::debug!("queued commands: start...");
+            for c in self.engine.output.iter_commands() {
+                tracing::debug!("queued commands: {:?}", c);
             }
-            tracing::debug!("commands: end...");
+            tracing::debug!("queued commands: end...");
         }
 
         let mut curr = 0;
-        let mut commands = vec![];
-        swap(&mut self.engine.output.commands, &mut commands);
-        for cmd in commands {
+        while let Some(cmd) = self.engine.output.pop_command() {
             tracing::debug!("run command: {:?}", cmd);
             self.run_command(input_entries, &mut curr, cmd).await?;
         }

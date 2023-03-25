@@ -88,21 +88,21 @@ fn test_update_matching() -> anyhow::Result<()> {
                     matching: log_id(1, 2),
                 },
             ],
-            rh.output.commands
+            rh.output.take_commands()
         );
     }
 
     // progress: None, (2,1), (1,2); quorum-ed: (1,2), not at leader vote, not committed
     {
-        rh.output.commands = vec![];
+        rh.output.clear_commands();
         rh.update_matching(2, inflight_id_2, Some(log_id(2, 1)));
         assert_eq!(None, rh.state.committed());
-        assert_eq!(0, rh.output.commands.len());
+        assert_eq!(0, rh.output.take_commands().len());
     }
 
     // progress: None, (2,1), (2,3); committed: (2,1)
     {
-        rh.output.commands = vec![];
+        rh.output.clear_commands();
         rh.update_matching(3, inflight_id_3, Some(log_id(2, 3)));
         assert_eq!(Some(&log_id(2, 1)), rh.state.committed());
         assert_eq!(
@@ -119,13 +119,13 @@ fn test_update_matching() -> anyhow::Result<()> {
                     upto: log_id(2, 1)
                 }
             ],
-            rh.output.commands
+            rh.output.take_commands()
         );
     }
 
     // progress: (2,4), (2,1), (2,3); committed: (1,3)
     {
-        rh.output.commands = vec![];
+        rh.output.clear_commands();
         rh.update_matching(1, inflight_id_1, Some(log_id(2, 4)));
         assert_eq!(Some(&log_id(2, 3)), rh.state.committed());
         assert_eq!(
@@ -142,7 +142,7 @@ fn test_update_matching() -> anyhow::Result<()> {
                     upto: log_id(2, 3)
                 }
             ],
-            rh.output.commands
+            rh.output.take_commands()
         );
     }
 

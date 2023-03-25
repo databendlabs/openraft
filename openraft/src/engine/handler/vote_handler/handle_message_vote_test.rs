@@ -50,7 +50,7 @@ fn test_handle_message_vote_reject_smaller_vote() -> anyhow::Result<()> {
 
     assert_eq!(ServerState::Follower, eng.state.server_state);
 
-    assert_eq!(0, eng.output.commands.len());
+    assert_eq!(0, eng.output.take_commands().len());
 
     assert_eq!(
         MetricsChangeFlags {
@@ -93,7 +93,7 @@ fn test_handle_message_vote_committed_vote() -> anyhow::Result<()> {
         vec![Command::SaveVote {
             vote: Vote::new_committed(3, 2)
         },],
-        eng.output.commands
+        eng.output.take_commands()
     );
 
     Ok(())
@@ -126,7 +126,7 @@ fn test_handle_message_vote_granted_equal_vote() -> anyhow::Result<()> {
     );
 
     assert_eq!(Some(now), eng.state.vote_last_modified());
-    assert!(eng.output.commands.is_empty());
+    assert!(eng.output.take_commands().is_empty());
     Ok(())
 }
 
@@ -154,7 +154,10 @@ fn test_handle_message_vote_granted_greater_vote() -> anyhow::Result<()> {
         eng.output.metrics_flags
     );
 
-    assert_eq!(vec![Command::SaveVote { vote: Vote::new(3, 1) },], eng.output.commands);
+    assert_eq!(
+        vec![Command::SaveVote { vote: Vote::new(3, 1) },],
+        eng.output.take_commands()
+    );
     Ok(())
 }
 
@@ -170,7 +173,7 @@ fn test_handle_message_vote_granted_follower_learner_does_not_emit_update_server
         eng.config.id = 100; // make it a non-voter
         eng.vote_handler().become_following();
         eng.state.server_state = st;
-        eng.output.commands = vec![];
+        eng.output.clear_commands();
 
         let resp = eng.vote_handler().handle_message_vote(&Vote::new(3, 1));
 
@@ -182,7 +185,7 @@ fn test_handle_message_vote_granted_follower_learner_does_not_emit_update_server
                 //
                 Command::SaveVote { vote: Vote::new(3, 1) },
             ],
-            eng.output.commands
+            eng.output.take_commands()
         );
     }
     // Follower
@@ -193,7 +196,7 @@ fn test_handle_message_vote_granted_follower_learner_does_not_emit_update_server
         eng.config.id = 0; // make it a voter
         eng.vote_handler().become_following();
         eng.state.server_state = st;
-        eng.output.commands = vec![];
+        eng.output.clear_commands();
 
         let resp = eng.vote_handler().handle_message_vote(&Vote::new(3, 1));
 
@@ -205,7 +208,7 @@ fn test_handle_message_vote_granted_follower_learner_does_not_emit_update_server
                 //
                 Command::SaveVote { vote: Vote::new(3, 1) },
             ],
-            eng.output.commands
+            eng.output.take_commands()
         );
     }
     Ok(())
