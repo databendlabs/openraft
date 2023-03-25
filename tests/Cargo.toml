@@ -37,4 +37,5 @@ tracing-subscriber = { workspace = true }
 
 [features]
 
+bt = ["openraft/bt"]
 single-term-leader = ["openraft/single-term-leader"]
