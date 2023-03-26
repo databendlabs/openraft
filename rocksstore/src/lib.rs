@@ -22,7 +22,6 @@ use openraft::AnyError;
 use openraft::BasicNode;
 use openraft::Entry;
 use openraft::EntryPayload;
-use openraft::ErrorSubject;
 use openraft::ErrorVerb;
 use openraft::LogId;
 use openraft::RaftLogReader;
@@ -127,10 +126,10 @@ pub struct RocksStateMachine {
 }
 
 fn sm_r_err<E: Error + 'static>(e: E) -> StorageError<RocksNodeId> {
-    StorageIOError::new(ErrorSubject::StateMachine, ErrorVerb::Read, AnyError::new(&e)).into()
+    StorageIOError::read_state_machine(&e).into()
 }
 fn sm_w_err<E: Error + 'static>(e: E) -> StorageError<RocksNodeId> {
-    StorageIOError::new(ErrorSubject::StateMachine, ErrorVerb::Write, AnyError::new(&e)).into()
+    StorageIOError::write_state_machine(&e).into()
 }
 
 impl RocksStateMachine {
@@ -200,7 +199,7 @@ impl RocksStateMachine {
     fn insert(&self, key: String, value: String) -> StorageResult<()> {
         self.db
             .put_cf(self.cf_sm_data(), key.as_bytes(), value.as_bytes())
-            .map_err(|e| StorageIOError::new(ErrorSubject::Store, ErrorVerb::Write, AnyError::new(&e)).into())
+            .map_err(|e| StorageIOError::write(&e).into())
     }
 
     pub fn get(&self, key: &str) -> StorageResult<Option<String>> {
@@ -208,7 +207,7 @@ impl RocksStateMachine {
         self.db
             .get_cf(self.cf_sm_data(), key)
             .map(|value| value.map(|v| String::from_utf8(v).expect("invalid data")))
-            .map_err(|e| StorageIOError::new(ErrorSubject::Store, ErrorVerb::Read, AnyError::new(&e)).into())
+            .map_err(|e| StorageIOError::read(&e).into())
     }
 }
 
@@ -407,8 +406,7 @@ impl RaftSnapshotBuilder<Config, Cursor<Vec<u8>>> for Arc<RocksStore> {
         {
             // Serialize the data of the state machine.
             let state_machine = SerializableRocksStateMachine::from(&*self.state_machine.read().await);
-            data = serde_json::to_vec(&state_machine)
-                .map_err(|e| StorageIOError::new(ErrorSubject::StateMachine, ErrorVerb::Read, AnyError::new(&e)))?;
+            data = serde_json::to_vec(&state_machine).map_err(|e| StorageIOError::read_state_machine(&e))?;
 
             last_applied_log = state_machine.last_applied_log;
             last_membership = state_machine.last_membership;
@@ -468,10 +466,9 @@ impl RaftStorage<Config> for Arc<RocksStore> {
                 .put_cf(
                     self.cf_logs(),
                     id,
-                    serde_json::to_vec(entry)
-                        .map_err(|e| StorageIOError::new(ErrorSubject::Logs, ErrorVerb::Write, AnyError::new(&e)))?,
+                    serde_json::to_vec(entry).map_err(|e| StorageIOError::write_logs(&e))?,
                 )
-                .map_err(|e| StorageIOError::new(ErrorSubject::Logs, ErrorVerb::Write, AnyError::new(&e)))?;
+                .map_err(|e| StorageIOError::write_logs(&e))?;
         }
         Ok(())
     }
@@ -484,7 +481,7 @@ impl RaftStorage<Config> for Arc<RocksStore> {
         let to = id_to_bin(0xff_ff_ff_ff_ff_ff_ff_ff);
         self.db
             .delete_range_cf(self.cf_logs(), &from, &to)
-            .map_err(|e| StorageIOError::new(ErrorSubject::Logs, ErrorVerb::Write, AnyError::new(&e)).into())
+            .map_err(|e| StorageIOError::write_logs(&e).into())
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
@@ -497,7 +494,7 @@ impl RaftStorage<Config> for Arc<RocksStore> {
         let to = id_to_bin(log_id.index + 1);
         self.db
             .delete_range_cf(self.cf_logs(), &from, &to)
-            .map_err(|e| StorageIOError::new(ErrorSubject::Logs, ErrorVerb::Write, AnyError::new(&e)).into())
+            .map_err(|e| StorageIOError::write_logs(&e).into())
     }
 
     async fn last_applied_state(
@@ -540,9 +537,7 @@ impl RaftStorage<Config> for Arc<RocksStore> {
                 }
             };
         }
-        self.db
-            .flush_wal(true)
-            .map_err(|e| StorageIOError::new(ErrorSubject::Logs, ErrorVerb::Write, AnyError::new(&e)))?;
+        self.db.flush_wal(true).map_err(|e| StorageIOError::write_logs(&e))?;
         Ok(res)
     }
 
@@ -570,13 +565,7 @@ impl RaftStorage<Config> for Arc<RocksStore> {
         // Update the state machine.
         {
             let updated_state_machine: SerializableRocksStateMachine = serde_json::from_slice(&new_snapshot.data)
-                .map_err(|e| {
-                    StorageIOError::new(
-                        ErrorSubject::Snapshot(new_snapshot.meta.signature()),
-                        ErrorVerb::Read,
-                        AnyError::new(&e),
-                    )
-                })?;
+                .map_err(|e| StorageIOError::read_snapshot(new_snapshot.meta.signature(), &e))?;
             let mut state_machine = self.state_machine.write().await;
             *state_machine = RocksStateMachine::from_serializable(updated_state_machine, self.db.clone())?;
         }
@@ -634,6 +623,6 @@ impl RocksStore {
 
 fn read_logs_err(e: impl Error + 'static) -> StorageError<RocksNodeId> {
     StorageError::IO {
-        source: StorageIOError::new(ErrorSubject::Logs, ErrorVerb::Read, AnyError::new(&e)),
+        source: StorageIOError::read_logs(&e),
     }
 }

@@ -117,10 +117,10 @@ pub struct ExampleStateMachine {
 }
 
 fn sm_r_err<E: Error + 'static>(e: E) -> StorageError<ExampleNodeId> {
-    StorageIOError::new(ErrorSubject::StateMachine, ErrorVerb::Read, AnyError::new(&e)).into()
+    StorageIOError::read_state_machine(&e).into()
 }
 fn sm_w_err<E: Error + 'static>(e: E) -> StorageError<ExampleNodeId> {
-    StorageIOError::new(ErrorSubject::StateMachine, ErrorVerb::Write, AnyError::new(&e)).into()
+    StorageIOError::write(&e).into()
 }
 
 impl ExampleStateMachine {
@@ -183,14 +183,14 @@ impl ExampleStateMachine {
     fn insert(&self, key: String, value: String) -> StorageResult<()> {
         self.db
             .put_cf(self.db.cf_handle("data").unwrap(), key.as_bytes(), value.as_bytes())
-            .map_err(|e| StorageIOError::new(ErrorSubject::Store, ErrorVerb::Write, AnyError::new(&e)).into())
+            .map_err(|e| StorageIOError::write(&e).into())
     }
     pub fn get(&self, key: &str) -> StorageResult<Option<String>> {
         let key = key.as_bytes();
         self.db
             .get_cf(self.db.cf_handle("data").unwrap(), key)
             .map(|value| value.map(|value| String::from_utf8(value.to_vec()).expect("invalid data")))
-            .map_err(|e| StorageIOError::new(ErrorSubject::Store, ErrorVerb::Read, AnyError::new(&e)).into())
+            .map_err(|e| StorageIOError::read(&e).into())
     }
 }
 
@@ -237,7 +237,7 @@ impl ExampleStore {
         Ok(self
             .db
             .get_cf(self.store(), b"last_purged_log_id")
-            .map_err(|e| StorageIOError::new(ErrorSubject::Store, ErrorVerb::Read, AnyError::new(&e)))?
+            .map_err(|e| StorageIOError::read(&e))?
             .and_then(|v| serde_json::from_slice(&v).ok()))
     }
 
@@ -248,7 +248,7 @@ impl ExampleStore {
                 b"last_purged_log_id",
                 serde_json::to_vec(&log_id).unwrap().as_slice(),
             )
-            .map_err(|e| StorageIOError::new(ErrorSubject::Store, ErrorVerb::Write, AnyError::new(&e)))?;
+            .map_err(|e| StorageIOError::write(&e))?;
 
         self.flush(ErrorSubject::Store, ErrorVerb::Write)?;
         Ok(())
@@ -258,7 +258,7 @@ impl ExampleStore {
         Ok(self
             .db
             .get_cf(self.store(), b"snapshot_index")
-            .map_err(|e| StorageIOError::new(ErrorSubject::Store, ErrorVerb::Read, AnyError::new(&e)))?
+            .map_err(|e| StorageIOError::read(&e))?
             .and_then(|v| serde_json::from_slice(&v).ok())
             .unwrap_or(0))
     }
@@ -271,7 +271,7 @@ impl ExampleStore {
                 serde_json::to_vec(&snapshot_index).unwrap().as_slice(),
             )
             .map_err(|e| StorageError::IO {
-                source: StorageIOError::new(ErrorSubject::Store, ErrorVerb::Write, AnyError::new(&e)),
+                source: StorageIOError::write(&e),
             })?;
         self.flush(ErrorSubject::Store, ErrorVerb::Write)?;
         Ok(())
@@ -281,7 +281,7 @@ impl ExampleStore {
         self.db
             .put_cf(self.store(), b"vote", serde_json::to_vec(vote).unwrap())
             .map_err(|e| StorageError::IO {
-                source: StorageIOError::new(ErrorSubject::Vote, ErrorVerb::Write, AnyError::new(&e)),
+                source: StorageIOError::write_vote(&e),
             })?;
 
         self.flush(ErrorSubject::Vote, ErrorVerb::Write)?;
@@ -293,7 +293,7 @@ impl ExampleStore {
             .db
             .get_cf(self.store(), b"vote")
             .map_err(|e| StorageError::IO {
-                source: StorageIOError::new(ErrorSubject::Vote, ErrorVerb::Write, AnyError::new(&e)),
+                source: StorageIOError::write_vote(&e),
             })?
             .and_then(|v| serde_json::from_slice(&v).ok()))
     }
@@ -303,7 +303,7 @@ impl ExampleStore {
             .db
             .get_cf(self.store(), b"snapshot")
             .map_err(|e| StorageError::IO {
-                source: StorageIOError::new(ErrorSubject::Store, ErrorVerb::Read, AnyError::new(&e)),
+                source: StorageIOError::read(&e),
             })?
             .and_then(|v| serde_json::from_slice(&v).ok()))
     }
@@ -312,11 +312,7 @@ impl ExampleStore {
         self.db
             .put_cf(self.store(), b"snapshot", serde_json::to_vec(&snap).unwrap().as_slice())
             .map_err(|e| StorageError::IO {
-                source: StorageIOError::new(
-                    ErrorSubject::Snapshot(snap.meta.signature()),
-                    ErrorVerb::Write,
-                    AnyError::new(&e),
-                ),
+                source: StorageIOError::write_snapshot(snap.meta.signature(), &e),
             })?;
         self.flush(ErrorSubject::Snapshot(snap.meta.signature()), ErrorVerb::Write)?;
         Ok(())
@@ -357,7 +353,7 @@ impl RaftLogReader<ExampleTypeConfig> for Arc<ExampleStore> {
             .map(|res| {
                 let (id, val) = res.unwrap();
                 let entry: StorageResult<Entry<_>> = serde_json::from_slice(&val).map_err(|e| StorageError::IO {
-                    source: StorageIOError::new(ErrorSubject::Logs, ErrorVerb::Read, AnyError::new(&e)),
+                    source: StorageIOError::read_logs(&e),
                 });
                 let id = bin_to_id(&id);
 
@@ -383,8 +379,7 @@ impl RaftSnapshotBuilder<ExampleTypeConfig, Cursor<Vec<u8>>> for Arc<ExampleStor
         {
             // Serialize the data of the state machine.
             let state_machine = SerializableExampleStateMachine::from(&*self.state_machine.read().await);
-            data = serde_json::to_vec(&state_machine)
-                .map_err(|e| StorageIOError::new(ErrorSubject::StateMachine, ErrorVerb::Read, AnyError::new(&e)))?;
+            data = serde_json::to_vec(&state_machine).map_err(|e| StorageIOError::read_state_machine(&e))?;
 
             last_applied_log = state_machine.last_applied_log;
             last_membership = state_machine.last_membership;
@@ -444,10 +439,9 @@ impl RaftStorage<ExampleTypeConfig> for Arc<ExampleStore> {
                 .put_cf(
                     self.logs(),
                     id,
-                    serde_json::to_vec(entry)
-                        .map_err(|e| StorageIOError::new(ErrorSubject::Logs, ErrorVerb::Write, AnyError::new(&e)))?,
+                    serde_json::to_vec(entry).map_err(|e| StorageIOError::write_logs(&e))?,
                 )
-                .map_err(|e| StorageIOError::new(ErrorSubject::Logs, ErrorVerb::Write, AnyError::new(&e)))?;
+                .map_err(|e| StorageIOError::write_logs(&e))?;
         }
 
         Ok(())
@@ -459,9 +453,7 @@ impl RaftStorage<ExampleTypeConfig> for Arc<ExampleStore> {
 
         let from = id_to_bin(log_id.index);
         let to = id_to_bin(0xff_ff_ff_ff_ff_ff_ff_ff);
-        self.db
-            .delete_range_cf(self.logs(), &from, &to)
-            .map_err(|e| StorageIOError::new(ErrorSubject::Logs, ErrorVerb::Write, AnyError::new(&e)).into())
+        self.db.delete_range_cf(self.logs(), &from, &to).map_err(|e| StorageIOError::write_logs(&e).into())
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
@@ -471,9 +463,7 @@ impl RaftStorage<ExampleTypeConfig> for Arc<ExampleStore> {
         self.set_last_purged_(log_id)?;
         let from = id_to_bin(0);
         let to = id_to_bin(log_id.index + 1);
-        self.db
-            .delete_range_cf(self.logs(), &from, &to)
-            .map_err(|e| StorageIOError::new(ErrorSubject::Logs, ErrorVerb::Write, AnyError::new(&e)).into())
+        self.db.delete_range_cf(self.logs(), &from, &to).map_err(|e| StorageIOError::write_logs(&e).into())
     }
 
     async fn last_applied_state(
@@ -552,13 +542,7 @@ impl RaftStorage<ExampleTypeConfig> for Arc<ExampleStore> {
         // Update the state machine.
         {
             let updated_state_machine: SerializableExampleStateMachine = serde_json::from_slice(&new_snapshot.data)
-                .map_err(|e| {
-                    StorageIOError::new(
-                        ErrorSubject::Snapshot(new_snapshot.meta.signature()),
-                        ErrorVerb::Read,
-                        AnyError::new(&e),
-                    )
-                })?;
+                .map_err(|e| StorageIOError::read_snapshot(new_snapshot.meta.signature(), &e))?;
             let mut state_machine = self.state_machine.write().await;
             *state_machine = ExampleStateMachine::from_serializable(updated_state_machine, self.db.clone())?;
         }

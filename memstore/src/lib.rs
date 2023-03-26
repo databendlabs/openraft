@@ -16,11 +16,8 @@ use openraft::storage::LogState;
 use openraft::storage::RaftLogReader;
 use openraft::storage::RaftSnapshotBuilder;
 use openraft::storage::Snapshot;
-use openraft::AnyError;
 use openraft::Entry;
 use openraft::EntryPayload;
-use openraft::ErrorSubject;
-use openraft::ErrorVerb;
 use openraft::LogId;
 use openraft::RaftStorage;
 use openraft::RaftStorageDebug;
@@ -197,8 +194,7 @@ impl RaftSnapshotBuilder<Config, Cursor<Vec<u8>>> for Arc<MemStore> {
         {
             // Serialize the data of the state machine.
             let sm = self.sm.read().await;
-            data = serde_json::to_vec(&*sm)
-                .map_err(|e| StorageIOError::new(ErrorSubject::StateMachine, ErrorVerb::Read, AnyError::new(&e)))?;
+            data = serde_json::to_vec(&*sm).map_err(|e| StorageIOError::read_state_machine(&e))?;
 
             last_applied_log = sm.last_applied_log;
             last_membership = sm.last_membership.clone();
@@ -380,13 +376,8 @@ impl RaftStorage<Config> for Arc<MemStore> {
 
         // Update the state machine.
         {
-            let new_sm: MemStoreStateMachine = serde_json::from_slice(&new_snapshot.data).map_err(|e| {
-                StorageIOError::new(
-                    ErrorSubject::Snapshot(new_snapshot.meta.signature()),
-                    ErrorVerb::Read,
-                    AnyError::new(&e),
-                )
-            })?;
+            let new_sm: MemStoreStateMachine = serde_json::from_slice(&new_snapshot.data)
+                .map_err(|e| StorageIOError::read_snapshot(new_snapshot.meta.signature(), &e))?;
             let mut sm = self.sm.write().await;
             *sm = new_sm;
         }
