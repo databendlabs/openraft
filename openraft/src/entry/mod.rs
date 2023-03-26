@@ -16,7 +16,6 @@ pub use traits::RaftEntry;
 pub use traits::RaftPayload;
 
 /// A Raft log entry.
-#[derive(Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct Entry<C>
 where C: RaftTypeConfig
@@ -25,6 +24,19 @@ where C: RaftTypeConfig
 
     /// This entry's payload.
     pub payload: EntryPayload<C>,
+}
+
+impl<C> Clone for Entry<C>
+where
+    C: RaftTypeConfig,
+    C::D: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            log_id: self.log_id,
+            payload: self.payload.clone(),
+        }
+    }
 }
 
 impl<C> Debug for Entry<C>

@@ -51,7 +51,7 @@ async fn append_conflicts() -> Result<()> {
         leader_commit: Some(LogId::new(CommittedLeaderId::new(1, 0), 2)),
     };
 
-    let resp = r0.append_entries(req.clone()).await?;
+    let resp = r0.append_entries(req).await?;
 
     assert!(resp.is_success());
     assert!(!resp.is_conflict());
@@ -65,7 +65,7 @@ async fn append_conflicts() -> Result<()> {
         leader_commit: Some(LogId::new(CommittedLeaderId::new(1, 0), 2)),
     };
 
-    let resp = r0.append_entries(req.clone()).await?;
+    let resp = r0.append_entries(req).await?;
     assert!(resp.is_success());
     assert!(!resp.is_conflict());
 
@@ -78,7 +78,7 @@ async fn append_conflicts() -> Result<()> {
         leader_commit: Some(LogId::new(CommittedLeaderId::new(1, 0), 2)),
     };
 
-    let resp = r0.append_entries(req.clone()).await?;
+    let resp = r0.append_entries(req).await?;
     assert!(resp.is_success());
     assert!(!resp.is_conflict());
 
@@ -86,7 +86,7 @@ async fn append_conflicts() -> Result<()> {
 
     tracing::info!("--- case 0: prev_log_id.index == 0, ");
 
-    let req = AppendEntriesRequest {
+    let req = || AppendEntriesRequest {
         vote: Vote::new_committed(1, 2),
         prev_log_id: Some(LogId::new(CommittedLeaderId::new(0, 0), 0)),
         entries: vec![blank(1, 1), blank(1, 2), blank(1, 3), blank(1, 4)],
@@ -94,7 +94,7 @@ async fn append_conflicts() -> Result<()> {
         leader_commit: Some(LogId::new(CommittedLeaderId::new(1, 0), 2)),
     };
 
-    let resp = r0.append_entries(req.clone()).await?;
+    let resp = r0.append_entries(req()).await?;
     assert!(resp.is_success());
     assert!(!resp.is_conflict());
 
@@ -102,7 +102,7 @@ async fn append_conflicts() -> Result<()> {
 
     tracing::info!("--- case 0: prev_log_id.index == 0, last_log_id mismatch");
 
-    let resp = r0.append_entries(req.clone()).await?;
+    let resp = r0.append_entries(req()).await?;
     assert!(resp.is_success());
     assert!(!resp.is_conflict());
 
