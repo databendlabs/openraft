@@ -59,10 +59,6 @@ use crate::StorageError;
 pub(crate) trait RaftRuntime<C: RaftTypeConfig> {
     /// Run a command produced by the engine.
     ///
-    /// A command consumes zero or more input entries.
-    /// `curr` points to next non consumed entry in the `input_entries`.
-    /// It's the command's duty to decide move `curr` forward.
-    ///
     /// TODO(xp): remove this method. The API should run all commands in one shot.
     ///           E.g. `run_engine_commands(input_entries, commands)`.
     ///           But it relates to the different behaviors of server states.
@@ -71,10 +67,5 @@ pub(crate) trait RaftRuntime<C: RaftTypeConfig> {
     /// every command.           This can be done after moving all raft-algorithm logic into
     /// Engine.           Then a Runtime do not need to differentiate states such as LeaderState
     /// or FollowerState and all           command execution can be implemented in one method.
-    async fn run_command<'e>(
-        &mut self,
-        input_entries: &'e [C::Entry],
-        curr: &mut usize,
-        cmd: Command<C::NodeId, C::Node>,
-    ) -> Result<(), StorageError<C::NodeId>>;
+    async fn run_command<'e>(&mut self, cmd: Command<C::NodeId, C::Node>) -> Result<(), StorageError<C::NodeId>>;
 }

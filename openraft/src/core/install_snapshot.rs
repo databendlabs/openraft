@@ -35,7 +35,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         tracing::debug!(req = display(req.summary()));
 
         let res = self.engine.vote_handler().handle_message_vote(&req.vote);
-        self.run_engine_commands(&[]).await?;
+        self.run_engine_commands().await?;
         if res.is_err() {
             tracing::info!(
                 my_vote = display(self.engine.state.vote_ref()),
@@ -177,7 +177,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         self.received_snapshot.insert(meta.snapshot_id.clone(), snapshot_data);
 
         self.engine.following_handler().install_snapshot(meta);
-        self.run_engine_commands(&[]).await?;
+        self.run_engine_commands().await?;
 
         Ok(())
     }
