@@ -234,12 +234,66 @@ where NID: NodeId
 impl<NID> StorageIOError<NID>
 where NID: NodeId
 {
-    pub fn new(subject: ErrorSubject<NID>, verb: ErrorVerb, source: AnyError) -> Self {
+    pub fn new(subject: ErrorSubject<NID>, verb: ErrorVerb, source: impl Into<AnyError>) -> Self {
         Self {
             subject,
             verb,
-            source,
+            source: source.into(),
             backtrace: anyerror::backtrace_str(),
         }
+    }
+
+    pub fn write_log_entry(log_id: LogId<NID>, source: impl Into<AnyError>) -> Self {
+        Self::new(ErrorSubject::Log(log_id), ErrorVerb::Write, source)
+    }
+
+    pub fn read_log_entry(log_id: LogId<NID>, source: impl Into<AnyError>) -> Self {
+        Self::new(ErrorSubject::Log(log_id), ErrorVerb::Read, source)
+    }
+
+    pub fn write_logs(source: impl Into<AnyError>) -> Self {
+        Self::new(ErrorSubject::Logs, ErrorVerb::Write, source)
+    }
+
+    pub fn read_logs(source: impl Into<AnyError>) -> Self {
+        Self::new(ErrorSubject::Logs, ErrorVerb::Read, source)
+    }
+
+    pub fn write_vote(source: impl Into<AnyError>) -> Self {
+        Self::new(ErrorSubject::Vote, ErrorVerb::Write, source)
+    }
+
+    pub fn read_vote(source: impl Into<AnyError>) -> Self {
+        Self::new(ErrorSubject::Vote, ErrorVerb::Read, source)
+    }
+
+    pub fn apply(log_id: LogId<NID>, source: impl Into<AnyError>) -> Self {
+        Self::new(ErrorSubject::Apply(log_id), ErrorVerb::Write, source)
+    }
+
+    pub fn write_state_machine(source: impl Into<AnyError>) -> Self {
+        Self::new(ErrorSubject::StateMachine, ErrorVerb::Write, source)
+    }
+
+    pub fn read_state_machine(source: impl Into<AnyError>) -> Self {
+        Self::new(ErrorSubject::StateMachine, ErrorVerb::Read, source)
+    }
+
+    pub fn write_snapshot(signature: SnapshotSignature<NID>, source: impl Into<AnyError>) -> Self {
+        Self::new(ErrorSubject::Snapshot(signature), ErrorVerb::Write, source)
+    }
+
+    pub fn read_snapshot(signature: SnapshotSignature<NID>, source: impl Into<AnyError>) -> Self {
+        Self::new(ErrorSubject::Snapshot(signature), ErrorVerb::Read, source)
+    }
+
+    /// General read error
+    pub fn read(source: impl Into<AnyError>) -> Self {
+        Self::new(ErrorSubject::Store, ErrorVerb::Read, source)
+    }
+
+    /// General write error
+    pub fn write(source: impl Into<AnyError>) -> Self {
+        Self::new(ErrorSubject::Store, ErrorVerb::Write, source)
     }
 }

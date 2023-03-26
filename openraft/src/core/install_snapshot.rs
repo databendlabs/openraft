@@ -1,4 +1,3 @@
-use anyerror::AnyError;
 use tokio::io::AsyncWriteExt;
 
 use crate::core::streaming_state::StreamingState;
@@ -8,8 +7,6 @@ use crate::error::SnapshotMismatch;
 use crate::raft::InstallSnapshotRequest;
 use crate::raft::InstallSnapshotResponse;
 use crate::raft::InstallSnapshotTx;
-use crate::ErrorSubject;
-use crate::ErrorVerb;
 use crate::MessageSummary;
 use crate::RaftNetworkFactory;
 use crate::RaftStorage;
@@ -166,11 +163,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         let mut snapshot_data = streaming.snapshot_data;
 
         snapshot_data.as_mut().shutdown().await.map_err(|e| StorageError::IO {
-            source: StorageIOError::new(
-                ErrorSubject::Snapshot(meta.signature()),
-                ErrorVerb::Write,
-                AnyError::new(&e),
-            ),
+            source: StorageIOError::write_snapshot(meta.signature(), &e),
         })?;
 
         // Buffer the snapshot data, let Engine decide to install it or to cancel it.

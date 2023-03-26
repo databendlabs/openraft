@@ -8,12 +8,9 @@ use std::sync::Mutex;
 use openraft::async_trait::async_trait;
 use openraft::storage::LogState;
 use openraft::storage::Snapshot;
-use openraft::AnyError;
 use openraft::BasicNode;
 use openraft::Entry;
 use openraft::EntryPayload;
-use openraft::ErrorSubject;
-use openraft::ErrorVerb;
 use openraft::LogId;
 use openraft::RaftLogReader;
 use openraft::RaftSnapshotBuilder;
@@ -138,8 +135,7 @@ impl RaftSnapshotBuilder<ExampleTypeConfig, Cursor<Vec<u8>>> for Arc<ExampleStor
         {
             // Serialize the data of the state machine.
             let state_machine = self.state_machine.read().await;
-            data = serde_json::to_vec(&*state_machine)
-                .map_err(|e| StorageIOError::new(ErrorSubject::StateMachine, ErrorVerb::Read, AnyError::new(&e)))?;
+            data = serde_json::to_vec(&*state_machine).map_err(|e| StorageIOError::read_state_machine(&e))?;
 
             last_applied_log = state_machine.last_applied_log;
             last_membership = state_machine.last_membership.clone();
@@ -308,14 +304,8 @@ impl RaftStorage<ExampleTypeConfig> for Arc<ExampleStore> {
 
         // Update the state machine.
         {
-            let updated_state_machine: ExampleStateMachine =
-                serde_json::from_slice(&new_snapshot.data).map_err(|e| {
-                    StorageIOError::new(
-                        ErrorSubject::Snapshot(new_snapshot.meta.signature()),
-                        ErrorVerb::Read,
-                        AnyError::new(&e),
-                    )
-                })?;
+            let updated_state_machine: ExampleStateMachine = serde_json::from_slice(&new_snapshot.data)
+                .map_err(|e| StorageIOError::read_snapshot(new_snapshot.meta.signature(), &e))?;
             let mut state_machine = self.state_machine.write().await;
             *state_machine = updated_state_machine;
         }

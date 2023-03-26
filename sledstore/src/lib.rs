@@ -21,9 +21,8 @@ use openraft::AnyError;
 use openraft::BasicNode;
 use openraft::Entry;
 use openraft::EntryPayload;
-use openraft::ErrorSubject;
-use openraft::ErrorVerb;
 use openraft::LogId;
+use openraft::RaftLogId;
 use openraft::RaftLogReader;
 use openraft::RaftSnapshotBuilder;
 use openraft::RaftStorage;
@@ -118,90 +117,96 @@ impl From<&ExampleStateMachine> for SerializableExampleStateMachine {
     }
 }
 
-fn sm_r_err<E: Error + 'static>(e: E) -> StorageError<ExampleNodeId> {
-    StorageIOError::new(ErrorSubject::StateMachine, ErrorVerb::Read, AnyError::new(&e)).into()
+fn read_sm_err<E: Error + 'static>(e: E) -> StorageIOError<ExampleNodeId> {
+    StorageIOError::read_state_machine(&e)
 }
-fn sm_w_err<E: Error + 'static>(e: E) -> StorageError<ExampleNodeId> {
-    StorageIOError::new(ErrorSubject::StateMachine, ErrorVerb::Write, AnyError::new(&e)).into()
+fn write_sm_err<E: Error + 'static>(e: E) -> StorageIOError<ExampleNodeId> {
+    StorageIOError::write_state_machine(&e)
 }
-fn s_r_err<E: Error + 'static>(e: E) -> StorageError<ExampleNodeId> {
-    StorageIOError::new(ErrorSubject::Store, ErrorVerb::Read, AnyError::new(&e)).into()
+fn read_snap_err<E: Error + 'static>(e: E) -> StorageIOError<ExampleNodeId> {
+    StorageIOError::read(&e)
 }
-fn s_w_err<E: Error + 'static>(e: E) -> StorageError<ExampleNodeId> {
-    StorageIOError::new(ErrorSubject::Store, ErrorVerb::Write, AnyError::new(&e)).into()
+fn write_snap_err<E: Error + 'static>(e: E) -> StorageIOError<ExampleNodeId> {
+    StorageIOError::write(&e)
 }
-fn v_r_err<E: Error + 'static>(e: E) -> StorageError<ExampleNodeId> {
-    StorageIOError::new(ErrorSubject::Vote, ErrorVerb::Read, AnyError::new(&e)).into()
+fn read_vote_err<E: Error + 'static>(e: E) -> StorageIOError<ExampleNodeId> {
+    StorageIOError::read_vote(&e)
 }
-fn v_w_err<E: Error + 'static>(e: E) -> StorageError<ExampleNodeId> {
-    StorageIOError::new(ErrorSubject::Vote, ErrorVerb::Write, AnyError::new(&e)).into()
+fn write_vote_err<E: Error + 'static>(e: E) -> StorageIOError<ExampleNodeId> {
+    StorageIOError::write_vote(&e)
 }
-fn l_r_err<E: Error + 'static>(e: E) -> StorageError<ExampleNodeId> {
-    StorageIOError::new(ErrorSubject::Logs, ErrorVerb::Read, AnyError::new(&e)).into()
+fn read_logs_err<E: Error + 'static>(e: E) -> StorageIOError<ExampleNodeId> {
+    StorageIOError::read_logs(&e)
 }
-fn l_w_err<E: Error + 'static>(e: E) -> StorageError<ExampleNodeId> {
-    StorageIOError::new(ErrorSubject::Logs, ErrorVerb::Write, AnyError::new(&e)).into()
+fn write_logs_err<E: Error + 'static>(e: E) -> StorageIOError<ExampleNodeId> {
+    StorageIOError::write_logs(&e)
 }
-fn m_r_err<E: Error + 'static>(e: E) -> StorageError<ExampleNodeId> {
-    StorageIOError::new(ErrorSubject::Store, ErrorVerb::Read, AnyError::new(&e)).into()
+fn read_err<E: Error + 'static>(e: E) -> StorageIOError<ExampleNodeId> {
+    StorageIOError::read(&e)
 }
-fn m_w_err<E: Error + 'static>(e: E) -> StorageError<ExampleNodeId> {
-    StorageIOError::new(ErrorSubject::Store, ErrorVerb::Write, AnyError::new(&e)).into()
-}
-fn t_err<E: Error + 'static>(e: E) -> StorageError<ExampleNodeId> {
-    StorageIOError::new(ErrorSubject::Store, ErrorVerb::Write, AnyError::new(&e)).into()
+fn write_err<E: Error + 'static>(e: E) -> StorageIOError<ExampleNodeId> {
+    StorageIOError::write(&e)
 }
 
-fn ct_err<E: Error + 'static>(e: E) -> sled::transaction::ConflictableTransactionError<AnyError> {
+fn conflictable_txn_err<E: Error + 'static>(e: E) -> sled::transaction::ConflictableTransactionError<AnyError> {
     sled::transaction::ConflictableTransactionError::Abort(AnyError::new(&e))
 }
 
 impl ExampleStateMachine {
     fn get_last_membership(&self) -> StorageResult<StoredMembership<ExampleNodeId, BasicNode>> {
         let state_machine = state_machine(&self.db);
-        state_machine.get(b"last_membership").map_err(m_r_err).and_then(|value| {
-            value
-                .map(|v| serde_json::from_slice(&v).map_err(sm_r_err))
-                .unwrap_or_else(|| Ok(StoredMembership::default()))
-        })
+        let ivec = state_machine.get(b"last_membership").map_err(read_sm_err)?;
+
+        let m = if let Some(ivec) = ivec {
+            serde_json::from_slice(&ivec).map_err(read_sm_err)?
+        } else {
+            StoredMembership::default()
+        };
+
+        Ok(m)
     }
     async fn set_last_membership(&self, membership: StoredMembership<ExampleNodeId, BasicNode>) -> StorageResult<()> {
-        let value = serde_json::to_vec(&membership).map_err(sm_w_err)?;
+        let value = serde_json::to_vec(&membership).map_err(write_sm_err)?;
         let state_machine = state_machine(&self.db);
-        state_machine.insert(b"last_membership", value).map_err(m_w_err)?;
+        state_machine.insert(b"last_membership", value).map_err(write_err)?;
 
-        state_machine.flush_async().await.map_err(m_w_err).map(|_| ())
+        state_machine.flush_async().await.map_err(write_err)?;
+        Ok(())
     }
     fn set_last_membership_tx(
         &self,
         tx_state_machine: &sled::transaction::TransactionalTree,
         membership: StoredMembership<ExampleNodeId, BasicNode>,
     ) -> Result<(), sled::transaction::ConflictableTransactionError<AnyError>> {
-        let value = serde_json::to_vec(&membership).map_err(ct_err)?;
-        tx_state_machine.insert(b"last_membership", value).map_err(ct_err)?;
+        let value = serde_json::to_vec(&membership).map_err(conflictable_txn_err)?;
+        tx_state_machine.insert(b"last_membership", value).map_err(conflictable_txn_err)?;
         Ok(())
     }
     fn get_last_applied_log(&self) -> StorageResult<Option<LogId<ExampleNodeId>>> {
         let state_machine = state_machine(&self.db);
-        state_machine
-            .get(b"last_applied_log")
-            .map_err(l_r_err)
-            .and_then(|value| value.map(|v| serde_json::from_slice(&v).map_err(sm_r_err)).transpose())
+        let ivec = state_machine.get(b"last_applied_log").map_err(read_logs_err)?;
+        let last_applied = if let Some(ivec) = ivec {
+            serde_json::from_slice(&ivec).map_err(read_sm_err)?
+        } else {
+            None
+        };
+        Ok(last_applied)
     }
     async fn set_last_applied_log(&self, log_id: LogId<ExampleNodeId>) -> StorageResult<()> {
-        let value = serde_json::to_vec(&log_id).map_err(sm_w_err)?;
+        let value = serde_json::to_vec(&log_id).map_err(write_sm_err)?;
         let state_machine = state_machine(&self.db);
-        state_machine.insert(b"last_applied_log", value).map_err(l_r_err)?;
+        state_machine.insert(b"last_applied_log", value).map_err(read_logs_err)?;
 
-        state_machine.flush_async().await.map_err(l_r_err).map(|_| ())
+        state_machine.flush_async().await.map_err(read_logs_err)?;
+        Ok(())
     }
     fn set_last_applied_log_tx(
         &self,
         tx_state_machine: &sled::transaction::TransactionalTree,
         log_id: LogId<ExampleNodeId>,
     ) -> Result<(), sled::transaction::ConflictableTransactionError<AnyError>> {
-        let value = serde_json::to_vec(&log_id).map_err(ct_err)?;
-        tx_state_machine.insert(b"last_applied_log", value).map_err(ct_err)?;
+        let value = serde_json::to_vec(&log_id).map_err(conflictable_txn_err)?;
+        tx_state_machine.insert(b"last_applied_log", value).map_err(conflictable_txn_err)?;
         Ok(())
     }
     async fn from_serializable(sm: SerializableExampleStateMachine, db: Arc<sled::Db>) -> StorageResult<Self> {
@@ -210,8 +215,8 @@ impl ExampleStateMachine {
         for (key, value) in sm.data {
             batch.insert(key.as_bytes(), value.as_bytes())
         }
-        data_tree.apply_batch(batch).map_err(sm_w_err)?;
-        data_tree.flush_async().await.map_err(s_w_err)?;
+        data_tree.apply_batch(batch).map_err(write_sm_err)?;
+        data_tree.flush_async().await.map_err(write_snap_err)?;
 
         let r = Self { db };
         if let Some(log_id) = sm.last_applied_log {
@@ -231,7 +236,7 @@ impl ExampleStateMachine {
         key: String,
         value: String,
     ) -> Result<(), sled::transaction::ConflictableTransactionError<AnyError>> {
-        tx_data_tree.insert(key.as_bytes(), value.as_bytes()).map_err(ct_err)?;
+        tx_data_tree.insert(key.as_bytes(), value.as_bytes()).map_err(conflictable_txn_err)?;
         Ok(())
     }
     pub fn get(&self, key: &str) -> StorageResult<Option<String>> {
@@ -240,7 +245,7 @@ impl ExampleStateMachine {
         data_tree
             .get(key)
             .map(|value| value.map(|value| String::from_utf8(value.to_vec()).expect("invalid data")))
-            .map_err(|e| StorageIOError::new(ErrorSubject::Store, ErrorVerb::Read, AnyError::new(&e)).into())
+            .map_err(|e| StorageIOError::read(&e).into())
     }
     pub fn get_all(&self) -> StorageResult<Vec<String>> {
         let data_tree = data(&self.db);
@@ -285,61 +290,79 @@ fn bin_to_id(buf: &[u8]) -> u64 {
 impl SledStore {
     fn get_last_purged_(&self) -> StorageResult<Option<LogId<u64>>> {
         let store_tree = store(&self.db);
-        let val = store_tree
-            .get(b"last_purged_log_id")
-            .map_err(|e| StorageIOError::new(ErrorSubject::Store, ErrorVerb::Read, AnyError::new(&e)))?
-            .and_then(|v| serde_json::from_slice(&v).ok());
+        let val = store_tree.get(b"last_purged_log_id").map_err(read_err)?;
 
-        Ok(val)
+        if let Some(v) = val {
+            let val = serde_json::from_slice(&v).map_err(read_err)?;
+            Ok(Some(val))
+        } else {
+            Ok(None)
+        }
     }
 
     async fn set_last_purged_(&self, log_id: LogId<u64>) -> StorageResult<()> {
         let store_tree = store(&self.db);
         let val = serde_json::to_vec(&log_id).unwrap();
-        store_tree.insert(b"last_purged_log_id", val.as_slice()).map_err(s_w_err)?;
+        store_tree.insert(b"last_purged_log_id", val.as_slice()).map_err(write_snap_err)?;
 
-        store_tree.flush_async().await.map_err(s_w_err).map(|_| ())
+        store_tree.flush_async().await.map_err(write_snap_err)?;
+        Ok(())
     }
 
     fn get_snapshot_index_(&self) -> StorageResult<u64> {
         let store_tree = store(&self.db);
-        let val = store_tree
-            .get(b"snapshot_index")
-            .map_err(s_r_err)?
-            .and_then(|v| serde_json::from_slice(&v).ok())
-            .unwrap_or(0);
+        let ivec = store_tree.get(b"snapshot_index").map_err(read_snap_err)?;
 
-        Ok(val)
+        if let Some(v) = ivec {
+            let val = serde_json::from_slice(&v).map_err(read_err)?;
+            Ok(val)
+        } else {
+            Ok(0)
+        }
     }
 
     async fn set_snapshot_index_(&self, snapshot_index: u64) -> StorageResult<()> {
         let store_tree = store(&self.db);
         let val = serde_json::to_vec(&snapshot_index).unwrap();
-        store_tree.insert(b"snapshot_index", val.as_slice()).map_err(s_w_err)?;
+        store_tree.insert(b"snapshot_index", val.as_slice()).map_err(write_snap_err)?;
 
-        store_tree.flush_async().await.map_err(s_w_err).map(|_| ())
+        store_tree.flush_async().await.map_err(write_snap_err)?;
+        Ok(())
     }
 
-    async fn set_vote_(&self, vote: &Vote<ExampleNodeId>) -> StorageResult<()> {
+    async fn set_vote_(&self, vote: &Vote<ExampleNodeId>) -> Result<(), StorageError<ExampleNodeId>> {
         let store_tree = store(&self.db);
         let val = serde_json::to_vec(vote).unwrap();
-        store_tree.insert(b"vote", val).map_err(v_w_err).map(|_| ())?;
+        store_tree.insert(b"vote", val).map_err(write_vote_err)?;
 
-        store_tree.flush_async().await.map_err(v_w_err).map(|_| ())
+        store_tree.flush_async().await.map_err(write_vote_err)?;
+
+        Ok(())
     }
 
     fn get_vote_(&self) -> StorageResult<Option<Vote<ExampleNodeId>>> {
         let store_tree = store(&self.db);
-        let val = store_tree.get(b"vote").map_err(v_r_err)?.and_then(|v| serde_json::from_slice(&v).ok());
+        let val = store_tree.get(b"vote").map_err(read_vote_err)?;
+        let ivec = if let Some(t) = val {
+            t
+        } else {
+            return Ok(None);
+        };
 
-        Ok(val)
+        let v = serde_json::from_slice(&ivec).map_err(read_vote_err)?;
+        Ok(Some(v))
     }
 
     fn get_current_snapshot_(&self) -> StorageResult<Option<ExampleSnapshot>> {
         let store_tree = store(&self.db);
-        let val = store_tree.get(b"snapshot").map_err(s_r_err)?.and_then(|v| serde_json::from_slice(&v).ok());
+        let ivec = store_tree.get(b"snapshot").map_err(read_snap_err)?;
 
-        Ok(val)
+        if let Some(ivec) = ivec {
+            let snap = serde_json::from_slice(&ivec).map_err(read_snap_err)?;
+            Ok(Some(snap))
+        } else {
+            Ok(None)
+        }
     }
 
     async fn set_current_snapshot_(&self, snap: ExampleSnapshot) -> StorageResult<()> {
@@ -347,24 +370,13 @@ impl SledStore {
         let val = serde_json::to_vec(&snap).unwrap();
         let meta = snap.meta.clone();
         store_tree.insert(b"snapshot", val.as_slice()).map_err(|e| StorageError::IO {
-            source: StorageIOError::new(
-                ErrorSubject::Snapshot(snap.meta.signature()),
-                ErrorVerb::Write,
-                AnyError::new(&e),
-            ),
+            source: StorageIOError::write_snapshot(snap.meta.signature(), &e),
         })?;
 
         store_tree
             .flush_async()
             .await
-            .map_err(|e| {
-                StorageIOError::new(
-                    ErrorSubject::Snapshot(meta.signature()),
-                    ErrorVerb::Write,
-                    AnyError::new(&e),
-                )
-                .into()
-            })
+            .map_err(|e| StorageIOError::write_snapshot(meta.signature(), &e).into())
             .map(|_| ())
     }
 }
@@ -372,27 +384,25 @@ impl SledStore {
 #[async_trait]
 impl RaftLogReader<ExampleTypeConfig> for Arc<SledStore> {
     async fn get_log_state(&mut self) -> StorageResult<LogState<ExampleTypeConfig>> {
-        let last_purged_log_id = self.get_last_purged_()?;
+        let last_purged = self.get_last_purged_()?;
 
         let logs_tree = logs(&self.db);
-        let last_res = logs_tree.last();
-        if last_res.is_err() {
+        let last_ivec_kv = logs_tree.last().map_err(read_logs_err)?;
+        let (_, ent_ivec) = if let Some(last) = last_ivec_kv {
+            last
+        } else {
             return Ok(LogState {
-                last_purged_log_id,
-                last_log_id: last_purged_log_id,
+                last_purged_log_id: last_purged,
+                last_log_id: last_purged,
             });
-        }
-
-        let last = last_res
-            .unwrap()
-            .and_then(|(_, ent)| Some(serde_json::from_slice::<Entry<ExampleTypeConfig>>(&ent).ok()?.log_id));
-
-        let last_log_id = match last {
-            None => last_purged_log_id,
-            Some(x) => Some(x),
         };
+
+        let last_ent = serde_json::from_slice::<Entry<ExampleTypeConfig>>(&ent_ivec).map_err(read_logs_err)?;
+        let last_log_id = Some(*last_ent.get_log_id());
+
+        let last_log_id = std::cmp::max(last_log_id, last_purged);
         Ok(LogState {
-            last_purged_log_id,
+            last_purged_log_id: last_purged,
             last_log_id,
         })
     }
@@ -415,7 +425,7 @@ impl RaftLogReader<ExampleTypeConfig> for Arc<SledStore> {
                 let id = el.0;
                 let val = el.1;
                 let entry: StorageResult<Entry<_>> = serde_json::from_slice(&val).map_err(|e| StorageError::IO {
-                    source: StorageIOError::new(ErrorSubject::Logs, ErrorVerb::Read, AnyError::new(&e)),
+                    source: StorageIOError::read_logs(&e),
                 });
                 let id = bin_to_id(&id);
 
@@ -442,8 +452,7 @@ impl RaftSnapshotBuilder<ExampleTypeConfig, Cursor<Vec<u8>>> for Arc<SledStore> 
         {
             // Serialize the data of the state machine.
             let state_machine = SerializableExampleStateMachine::from(&*self.state_machine.read().await);
-            data = serde_json::to_vec(&state_machine)
-                .map_err(|e| StorageIOError::new(ErrorSubject::StateMachine, ErrorVerb::Read, AnyError::new(&e)))?;
+            data = serde_json::to_vec(&state_machine).map_err(|e| StorageIOError::read_state_machine(&e))?;
 
             last_applied_log = state_machine.last_applied_log;
             last_membership = state_machine.last_membership;
@@ -505,12 +514,13 @@ impl RaftStorage<ExampleTypeConfig> for Arc<SledStore> {
         for entry in entries {
             let id = id_to_bin(entry.log_id.index);
             assert_eq!(bin_to_id(&id), entry.log_id.index);
-            let value = serde_json::to_vec(entry).map_err(l_w_err)?;
+            let value = serde_json::to_vec(entry).map_err(write_logs_err)?;
             batch.insert(id.as_slice(), value);
         }
-        logs_tree.apply_batch(batch).map_err(l_w_err)?;
+        logs_tree.apply_batch(batch).map_err(write_logs_err)?;
 
-        logs_tree.flush_async().await.map_err(l_w_err).map(|_| ())
+        logs_tree.flush_async().await.map_err(write_logs_err)?;
+        Ok(())
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
@@ -526,8 +536,9 @@ impl RaftStorage<ExampleTypeConfig> for Arc<SledStore> {
             let entry = entry_res.expect("Read db entry failed");
             batch_del.remove(entry.0);
         }
-        logs_tree.apply_batch(batch_del).map_err(l_w_err)?;
-        logs_tree.flush_async().await.map_err(l_w_err).map(|_| ())
+        logs_tree.apply_batch(batch_del).map_err(write_logs_err)?;
+        logs_tree.flush_async().await.map_err(write_logs_err)?;
+        Ok(())
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
@@ -544,9 +555,10 @@ impl RaftStorage<ExampleTypeConfig> for Arc<SledStore> {
             let entry = entry_res.expect("Read db entry failed");
             batch_del.remove(entry.0);
         }
-        logs_tree.apply_batch(batch_del).map_err(l_w_err)?;
+        logs_tree.apply_batch(batch_del).map_err(write_logs_err)?;
 
-        logs_tree.flush_async().await.map_err(l_w_err).map(|_| ())
+        logs_tree.flush_async().await.map_err(write_logs_err)?;
+        Ok(())
     }
 
     async fn last_applied_state(
@@ -595,12 +607,9 @@ impl RaftStorage<ExampleTypeConfig> for Arc<SledStore> {
             }
             Ok(res)
         });
-        let result_vec = trans_res.map_err(t_err)?;
+        let result_vec = trans_res.map_err(|e| StorageIOError::write(&e))?;
 
-        self.db
-            .flush_async()
-            .await
-            .map_err(|e| StorageIOError::new(ErrorSubject::Logs, ErrorVerb::Write, AnyError::new(&e)))?;
+        self.db.flush_async().await.map_err(|e| StorageIOError::write_logs(&e))?;
         Ok(result_vec)
     }
 
@@ -632,13 +641,7 @@ impl RaftStorage<ExampleTypeConfig> for Arc<SledStore> {
         // Update the state machine.
         {
             let updated_state_machine: SerializableExampleStateMachine = serde_json::from_slice(&new_snapshot.data)
-                .map_err(|e| {
-                    StorageIOError::new(
-                        ErrorSubject::Snapshot(new_snapshot.meta.signature()),
-                        ErrorVerb::Read,
-                        AnyError::new(&e),
-                    )
-                })?;
+                .map_err(|e| StorageIOError::read_snapshot(new_snapshot.meta.signature(), &e))?;
             let mut state_machine = self.state_machine.write().await;
             *state_machine = ExampleStateMachine::from_serializable(updated_state_machine, self.db.clone()).await?;
         }
