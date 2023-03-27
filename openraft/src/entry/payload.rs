@@ -7,7 +7,7 @@ use crate::MessageSummary;
 use crate::RaftTypeConfig;
 
 /// Log entry payload variants.
-#[derive(Clone, PartialEq)]
+#[derive(PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub enum EntryPayload<C: RaftTypeConfig> {
     /// An empty payload committed by a new cluster leader.
@@ -17,6 +17,20 @@ pub enum EntryPayload<C: RaftTypeConfig> {
 
     /// A change-membership log entry.
     Membership(Membership<C::NodeId, C::Node>),
+}
+
+impl<C> Clone for EntryPayload<C>
+where
+    C: RaftTypeConfig,
+    C::D: Clone,
+{
+    fn clone(&self) -> Self {
+        match self {
+            EntryPayload::Blank => EntryPayload::Blank,
+            EntryPayload::Normal(n) => EntryPayload::Normal(n.clone()),
+            EntryPayload::Membership(m) => EntryPayload::Membership(m.clone()),
+        }
+    }
 }
 
 impl<C: RaftTypeConfig> fmt::Debug for EntryPayload<C> {

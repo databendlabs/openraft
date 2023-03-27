@@ -164,9 +164,9 @@ impl<T> OptionalSerde for T {}
 /// ## Note
 ///
 /// The trait is automatically implemented for all types which satisfy its supertraits.
-pub trait AppData: Clone + Send + Sync + 'static + OptionalSerde {}
+pub trait AppData: Send + Sync + 'static + OptionalSerde {}
 
-impl<T> AppData for T where T: Clone + Send + Sync + 'static + OptionalSerde {}
+impl<T> AppData for T where T: Send + Sync + 'static + OptionalSerde {}
 
 /// A trait defining application specific response data.
 ///

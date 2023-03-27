@@ -114,7 +114,7 @@ async fn initialization() -> anyhow::Result<()> {
 
     for i in [0, 1, 2] {
         let mut sto = router.get_storage_handle(&1)?;
-        let first = StorageHelper::new(&mut sto).get_log_entries(0..2).await?.first().cloned();
+        let first = StorageHelper::new(&mut sto).get_log_entries(0..2).await?.into_iter().next();
 
         tracing::info!("--- check membership is replicated: id: {}, first log: {:?}", i, first);
         let mem = match first.unwrap().payload {
