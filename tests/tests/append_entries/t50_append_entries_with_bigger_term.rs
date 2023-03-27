@@ -13,15 +13,18 @@ use openraft::Vote;
 use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
 
-/// append-entries should update hard state when adding new logs with bigger term
+/// append-entries should update the vote when adding new logs with greater vote.
 ///
-/// - bring up a learner and send to it append_entries request. Check the hard state updated.
+/// - Bring up a learner and send to it append_entries request.
+///
+/// Check the vote updated.
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn append_entries_with_bigger_term() -> Result<()> {
     // Setup test dependencies.
     let config = Arc::new(
         Config {
             enable_heartbeat: false,
+            enable_elect: false,
             ..Default::default()
         }
         .validate()?,
