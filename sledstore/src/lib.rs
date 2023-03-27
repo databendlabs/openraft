@@ -508,13 +508,14 @@ impl RaftStorage<ExampleTypeConfig> for Arc<SledStore> {
     }
 
     #[tracing::instrument(level = "trace", skip(self, entries))]
-    async fn append_to_log(&mut self, entries: &[Entry<ExampleTypeConfig>]) -> StorageResult<()> {
+    async fn append_to_log<I>(&mut self, entries: I) -> StorageResult<()>
+    where I: IntoIterator<Item = Entry<ExampleTypeConfig>> + Send {
         let logs_tree = logs(&self.db);
         let mut batch = sled::Batch::default();
         for entry in entries {
             let id = id_to_bin(entry.log_id.index);
             assert_eq!(bin_to_id(&id), entry.log_id.index);
-            let value = serde_json::to_vec(entry).map_err(write_logs_err)?;
+            let value = serde_json::to_vec(&entry).map_err(write_logs_err)?;
             batch.insert(id.as_slice(), value);
         }
         logs_tree.apply_batch(batch).map_err(write_logs_err)?;

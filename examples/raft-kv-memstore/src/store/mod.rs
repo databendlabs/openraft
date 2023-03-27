@@ -194,10 +194,11 @@ impl RaftStorage<ExampleTypeConfig> for Arc<ExampleStore> {
     }
 
     #[tracing::instrument(level = "trace", skip(self, entries))]
-    async fn append_to_log(&mut self, entries: &[Entry<ExampleTypeConfig>]) -> Result<(), StorageError<ExampleNodeId>> {
+    async fn append_to_log<I>(&mut self, entries: I) -> Result<(), StorageError<ExampleNodeId>>
+    where I: IntoIterator<Item = Entry<ExampleTypeConfig>> + Send {
         let mut log = self.log.write().await;
         for entry in entries {
-            log.insert(entry.log_id.index, (*entry).clone());
+            log.insert(entry.log_id.index, entry);
         }
         Ok(())
     }

@@ -40,7 +40,7 @@ async fn elect_compare_last_log() -> Result<()> {
     {
         sto0.save_vote(&Vote::new(10, 0)).await?;
 
-        sto0.append_to_log(&[
+        sto0.append_to_log([
             //
             blank(0, 0),
             Entry::new_membership(log_id(2, 0, 1), Membership::new(vec![btreeset! {0,1}], None)),
@@ -52,7 +52,7 @@ async fn elect_compare_last_log() -> Result<()> {
     {
         sto1.save_vote(&Vote::new(10, 0)).await?;
 
-        sto1.append_to_log(&[
+        sto1.append_to_log([
             blank(0, 0),
             Entry::new_membership(log_id(1, 0, 1), Membership::new(vec![btreeset! {0,1}], None)),
             blank(1, 2),

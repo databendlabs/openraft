@@ -315,11 +315,12 @@ impl RaftStorage<Config> for Arc<MemStore> {
     }
 
     #[tracing::instrument(level = "trace", skip(self, entries))]
-    async fn append_to_log(&mut self, entries: &[Entry<Config>]) -> Result<(), StorageError<MemNodeId>> {
+    async fn append_to_log<I>(&mut self, entries: I) -> Result<(), StorageError<MemNodeId>>
+    where I: IntoIterator<Item = Entry<Config>> + Send {
         let mut log = self.log.write().await;
         for entry in entries {
             let s =
-                serde_json::to_string(entry).map_err(|e| StorageIOError::write_log_entry(*entry.get_log_id(), &e))?;
+                serde_json::to_string(&entry).map_err(|e| StorageIOError::write_log_entry(*entry.get_log_id(), &e))?;
             log.insert(entry.log_id.index, s);
         }
         Ok(())

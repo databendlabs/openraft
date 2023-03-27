@@ -197,14 +197,25 @@ where
         self.inner().purge_logs_upto(log_id).await
     }
 
-    #[tracing::instrument(level = "trace", skip(self, entries), fields(entries=display(DisplaySlice::<_>(entries))))]
-    async fn append_to_log(&mut self, entries: &[C::Entry]) -> Result<(), StorageError<C::NodeId>> {
-        self.defensive_nonempty_input(entries).await?;
-        self.defensive_consecutive_input(entries).await?;
-        self.defensive_append_log_index_is_last_plus_one(entries).await?;
-        self.defensive_append_log_id_gt_last(entries).await?;
+    #[tracing::instrument(level = "trace", skip(self, entries))]
+    async fn append_to_log<I>(&mut self, entries: I) -> Result<(), StorageError<C::NodeId>>
+    where I: IntoIterator<Item = C::Entry> + Send {
+        if self.is_defensive() {
+            let entries_vec = entries.into_iter().collect::<Vec<_>>();
+            tracing::debug!(
+                "Defensive check: append_to_log: entries={}",
+                DisplaySlice::<_>(&entries_vec)
+            );
 
-        self.inner().append_to_log(entries).await
+            self.defensive_nonempty_input(&entries_vec).await?;
+            self.defensive_consecutive_input(&entries_vec).await?;
+            self.defensive_append_log_index_is_last_plus_one(&entries_vec).await?;
+            self.defensive_append_log_id_gt_last(&entries_vec).await?;
+
+            self.inner().append_to_log(entries_vec).await
+        } else {
+            self.inner().append_to_log(entries).await
+        }
     }
 
     #[tracing::instrument(level = "trace", skip(self, entries), fields(entries=display(DisplaySlice::<_>(entries))))]

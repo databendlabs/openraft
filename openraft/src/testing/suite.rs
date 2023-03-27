@@ -145,7 +145,7 @@ where
 
         tracing::info!("--- membership presents in log, smaller than last_applied, read from log");
         {
-            store.append_to_log(&[membership_ent::<C>(1, 1, btreeset! {1,2,3})]).await?;
+            store.append_to_log([membership_ent::<C>(1, 1, btreeset! {1,2,3})]).await?;
 
             let mem = StorageHelper::new(&mut store).last_membership_in_log(0).await?;
             assert_eq!(1, mem.len());
@@ -164,7 +164,7 @@ where
         tracing::info!("--- membership presents in log and > sm.last_applied, read 2 membership entries from log");
         {
             store
-                .append_to_log(&[
+                .append_to_log([
                     blank_ent::<C>(1, 2),
                     membership_ent::<C>(1, 3, btreeset! {7,8,9}),
                     blank_ent::<C>(1, 4),
@@ -189,7 +189,7 @@ where
 
         tracing::info!("--- 3 memberships in log, only return the last 2 of them");
         {
-            store.append_to_log(&[membership_ent::<C>(1, 5, btreeset! {10,11})]).await?;
+            store.append_to_log([membership_ent::<C>(1, 5, btreeset! {10,11})]).await?;
 
             let mems = StorageHelper::new(&mut store).last_membership_in_log(0).await?;
             assert_eq!(2, mems.len());
@@ -208,7 +208,7 @@ where
         tracing::info!("--- find membership log entry backwards, multiple steps");
         {
             store
-                .append_to_log(&[
+                .append_to_log([
                     //
                     membership_ent::<C>(1, 1, btreeset! {1,2,3}),
                     membership_ent::<C>(1, 2, btreeset! {3,4,5}),
@@ -216,10 +216,10 @@ where
                 .await?;
 
             for i in 3..100 {
-                store.append_to_log(&[blank_ent::<C>(1, i)]).await?;
+                store.append_to_log([blank_ent::<C>(1, i)]).await?;
             }
 
-            store.append_to_log(&[membership_ent::<C>(1, 100, btreeset! {5,6,7})]).await?;
+            store.append_to_log([membership_ent::<C>(1, 100, btreeset! {5,6,7})]).await?;
 
             let mems = StorageHelper::new(&mut store).last_membership_in_log(0).await?;
             assert_eq!(2, mems.len());
@@ -247,7 +247,7 @@ where
         {
             // There is an empty membership config in an empty state machine.
 
-            store.append_to_log(&[membership_ent::<C>(1, 1, btreeset! {1,2,3})]).await?;
+            store.append_to_log([membership_ent::<C>(1, 1, btreeset! {1,2,3})]).await?;
 
             let mem_state = StorageHelper::new(&mut store).get_membership().await?;
 
@@ -282,7 +282,7 @@ where
 
         tracing::info!("--- membership presents in log, but smaller than last_applied, read from state machine");
         {
-            store.append_to_log(&[membership_ent::<C>(1, 1, btreeset! {1,2,3})]).await?;
+            store.append_to_log([membership_ent::<C>(1, 1, btreeset! {1,2,3})]).await?;
 
             let mem_state = StorageHelper::new(&mut store).get_membership().await?;
 
@@ -298,7 +298,7 @@ where
 
         tracing::info!("--- membership presents in log and > sm.last_applied, read from log");
         {
-            store.append_to_log(&[blank_ent::<C>(1, 2), membership_ent::<C>(1, 3, btreeset! {7,8,9})]).await?;
+            store.append_to_log([blank_ent::<C>(1, 2), membership_ent::<C>(1, 3, btreeset! {7,8,9})]).await?;
 
             let mem_state = StorageHelper::new(&mut store).get_membership().await?;
 
@@ -314,7 +314,7 @@ where
 
         tracing::info!("--- two membership present in log and > sm.last_applied, read 2 from log");
         {
-            store.append_to_log(&[blank_ent::<C>(1, 4), membership_ent::<C>(1, 5, btreeset! {10,11})]).await?;
+            store.append_to_log([blank_ent::<C>(1, 4), membership_ent::<C>(1, 5, btreeset! {10,11})]).await?;
 
             let mem_state = StorageHelper::new(&mut store).get_membership().await?;
 
@@ -343,7 +343,7 @@ where
     pub async fn get_initial_state_with_state(mut store: S) -> Result<(), StorageError<C::NodeId>> {
         Self::default_vote(&mut store).await?;
 
-        store.append_to_log(&[blank_ent::<C>(0, 0), blank_ent::<C>(1, 1), blank_ent::<C>(3, 2)]).await?;
+        store.append_to_log([blank_ent::<C>(0, 0), blank_ent::<C>(1, 1), blank_ent::<C>(3, 2)]).await?;
 
         store.apply_to_state_machine(&[blank_ent::<C>(3, 1)]).await?;
 
@@ -390,7 +390,7 @@ where
 
         tracing::info!("--- membership presents in log, but smaller than last_applied, read from state machine");
         {
-            store.append_to_log(&[membership_ent::<C>(1, 1, btreeset! {1,2,3})]).await?;
+            store.append_to_log([membership_ent::<C>(1, 1, btreeset! {1,2,3})]).await?;
 
             let initial = StorageHelper::new(&mut store).get_initial_state().await?;
 
@@ -402,7 +402,7 @@ where
 
         tracing::info!("--- membership presents in log and > sm.last_applied, read from log");
         {
-            store.append_to_log(&[membership_ent::<C>(1, 3, btreeset! {1,2,3})]).await?;
+            store.append_to_log([membership_ent::<C>(1, 3, btreeset! {1,2,3})]).await?;
 
             let initial = StorageHelper::new(&mut store).get_initial_state().await?;
 
@@ -418,7 +418,7 @@ where
     pub async fn get_initial_state_last_log_gt_sm(mut store: S) -> Result<(), StorageError<C::NodeId>> {
         Self::default_vote(&mut store).await?;
 
-        store.append_to_log(&[blank_ent::<C>(0, 0), blank_ent::<C>(2, 1)]).await?;
+        store.append_to_log([blank_ent::<C>(0, 0), blank_ent::<C>(2, 1)]).await?;
 
         store.apply_to_state_machine(&[blank_ent::<C>(1, 1), blank_ent::<C>(1, 2)]).await?;
 
@@ -435,7 +435,7 @@ where
     pub async fn get_initial_state_last_log_lt_sm(mut store: S) -> Result<(), StorageError<C::NodeId>> {
         Self::default_vote(&mut store).await?;
 
-        store.append_to_log(&[blank_ent::<C>(1, 2)]).await?;
+        store.append_to_log([blank_ent::<C>(1, 2)]).await?;
 
         store.apply_to_state_machine(&[blank_ent::<C>(3, 1)]).await?;
 
@@ -468,7 +468,7 @@ where
 
         tracing::info!("--- log terms: [0], last_purged_log_id is None, expect [(0,0)]");
         {
-            store.append_to_log(&[blank_ent::<C>(0, 0)]).await?;
+            store.append_to_log([blank_ent::<C>(0, 0)]).await?;
 
             let initial = StorageHelper::new(&mut store).get_initial_state().await?;
             assert_eq!(vec![log_id(0, 0, 0)], initial.log_ids.key_log_ids());
@@ -476,7 +476,7 @@ where
 
         tracing::info!("--- log terms: [0,1,1,2], last_purged_log_id is None, expect [(0,0),(1,1),(2,3)]");
         {
-            store.append_to_log(&[blank_ent::<C>(1, 1), blank_ent::<C>(1, 2), blank_ent::<C>(2, 3)]).await?;
+            store.append_to_log([blank_ent::<C>(1, 1), blank_ent::<C>(1, 2), blank_ent::<C>(2, 3)]).await?;
 
             let initial = StorageHelper::new(&mut store).get_initial_state().await?;
             assert_eq!(
@@ -489,7 +489,7 @@ where
             "--- log terms: [0,1,1,2,2,3,3], last_purged_log_id is None, expect [(0,0),(1,1),(2,3),(3,5),(3,6)]"
         );
         {
-            store.append_to_log(&[blank_ent::<C>(2, 4), blank_ent::<C>(3, 5), blank_ent::<C>(3, 6)]).await?;
+            store.append_to_log([blank_ent::<C>(2, 4), blank_ent::<C>(3, 5), blank_ent::<C>(3, 6)]).await?;
 
             let initial = StorageHelper::new(&mut store).get_initial_state().await?;
             assert_eq!(
@@ -632,7 +632,7 @@ where
 
         tracing::info!("--- only logs");
         {
-            store.append_to_log(&[blank_ent::<C>(0, 0), blank_ent::<C>(1, 1), blank_ent::<C>(1, 2)]).await?;
+            store.append_to_log([blank_ent::<C>(0, 0), blank_ent::<C>(1, 1), blank_ent::<C>(1, 2)]).await?;
 
             let st = store.get_log_state().await?;
             assert_eq!(None, st.last_purged_log_id);
@@ -698,7 +698,7 @@ where
 
         tracing::info!("--- only logs");
         {
-            store.append_to_log(&[blank_ent::<C>(0, 0), blank_ent::<C>(1, 1), blank_ent::<C>(1, 2)]).await?;
+            store.append_to_log([blank_ent::<C>(0, 0), blank_ent::<C>(1, 1), blank_ent::<C>(1, 2)]).await?;
 
             let last_log_id = store.get_log_state().await?.last_log_id;
             assert_eq!(Some(log_id(1, 2)), last_log_id);
@@ -862,7 +862,7 @@ where
 
         store.purge_logs_upto(log_id(0, 0)).await?;
 
-        store.append_to_log(&[blank_ent::<C>(2, 10)]).await?;
+        store.append_to_log([blank_ent::<C>(2, 10)]).await?;
 
         let l = store.try_get_log_entries(0..).await?.len();
         let last = store.try_get_log_entries(0..).await?.into_iter().last().unwrap();
@@ -1025,10 +1025,10 @@ where
     // }
 
     pub async fn feed_10_logs_vote_self(sto: &mut S) -> Result<(), StorageError<C::NodeId>> {
-        sto.append_to_log(&[blank_ent::<C>(0, 0)]).await?;
+        sto.append_to_log([blank_ent::<C>(0, 0)]).await?;
 
         for i in 1..=10 {
-            sto.append_to_log(&[blank_ent::<C>(1, i)]).await?;
+            sto.append_to_log([blank_ent::<C>(1, i)]).await?;
         }
 
         Self::default_vote(sto).await?;
@@ -1080,7 +1080,7 @@ where
         tracing::info!("--- dirty log: log.index > last_applied.index && log < last_applied");
         {
             store
-                .append_to_log(&[
+                .append_to_log([
                     blank_ent::<C>(0, 0),
                     blank_ent::<C>(1, 1),
                     blank_ent::<C>(1, 2),
@@ -1124,7 +1124,7 @@ where
         tracing::info!("--- dirty log: log.index > last_applied.index && log < last_applied");
         {
             store
-                .append_to_log(&[
+                .append_to_log([
                     blank_ent::<C>(0, 0),
                     blank_ent::<C>(1, 1),
                     blank_ent::<C>(1, 2),
@@ -1274,7 +1274,7 @@ where
     }
 
     pub async fn df_append_to_log_nonempty_input(mut store: S) -> Result<(), StorageError<C::NodeId>> {
-        let res = store.append_to_log(Vec::<C::Entry>::new().as_slice()).await;
+        let res = store.append_to_log(Vec::<C::Entry>::new()).await;
 
         let e = res.unwrap_err().into_defensive().unwrap();
         assert_eq!(ErrorSubject::Logs, e.subject);
@@ -1284,7 +1284,7 @@ where
     }
 
     pub async fn df_append_to_log_nonconsecutive_input(mut store: S) -> Result<(), StorageError<C::NodeId>> {
-        let res = store.append_to_log(&[blank_ent::<C>(1, 1), blank_ent::<C>(1, 3)]).await;
+        let res = store.append_to_log([blank_ent::<C>(1, 1), blank_ent::<C>(1, 3)]).await;
 
         let e = res.unwrap_err().into_defensive().unwrap();
         assert_eq!(ErrorSubject::Logs, e.subject);
@@ -1304,11 +1304,11 @@ where
         tracing::info!("-- nonconsecutive log");
         tracing::info!("-- overlapping log");
 
-        store.append_to_log(&[blank_ent::<C>(0, 0), blank_ent::<C>(1, 1), blank_ent::<C>(1, 2)]).await?;
+        store.append_to_log([blank_ent::<C>(0, 0), blank_ent::<C>(1, 1), blank_ent::<C>(1, 2)]).await?;
 
         store.apply_to_state_machine(&[blank_ent::<C>(0, 0), blank_ent::<C>(1, 1)]).await?;
 
-        let res = store.append_to_log(&[blank_ent::<C>(3, 4)]).await;
+        let res = store.append_to_log([blank_ent::<C>(3, 4)]).await;
 
         let e = res.unwrap_err().into_defensive().unwrap();
         assert_eq!(ErrorSubject::Log(log_id(3, 4)), e.subject);
@@ -1332,13 +1332,13 @@ where
         tracing::info!("-- nonconsecutive log");
         tracing::info!("-- overlapping log");
 
-        store.append_to_log(&[blank_ent::<C>(0, 0), blank_ent::<C>(1, 1), blank_ent::<C>(1, 2)]).await?;
+        store.append_to_log([blank_ent::<C>(0, 0), blank_ent::<C>(1, 1), blank_ent::<C>(1, 2)]).await?;
 
         store
             .apply_to_state_machine(&[blank_ent::<C>(0, 0), blank_ent::<C>(1, 1), blank_ent::<C>(1, 2)])
             .await?;
 
-        let res = store.append_to_log(&[blank_ent::<C>(1, 4)]).await;
+        let res = store.append_to_log([blank_ent::<C>(1, 4)]).await;
 
         let e = res.unwrap_err().into_defensive().unwrap();
         assert_eq!(ErrorSubject::Log(log_id(1, 4)), e.subject);
@@ -1357,9 +1357,9 @@ where
         // last_log: 2,2
         // append_to_log: 1,3: index == last + 1 but term is lower
 
-        store.append_to_log(&[blank_ent::<C>(0, 0), blank_ent::<C>(2, 1), blank_ent::<C>(2, 2)]).await?;
+        store.append_to_log([blank_ent::<C>(0, 0), blank_ent::<C>(2, 1), blank_ent::<C>(2, 2)]).await?;
 
-        let res = store.append_to_log(&[blank_ent::<C>(1, 3)]).await;
+        let res = store.append_to_log([blank_ent::<C>(1, 3)]).await;
 
         let e = res.unwrap_err().into_defensive().unwrap();
         assert_eq!(ErrorSubject::Log(log_id(1, 3)), e.subject);
@@ -1379,7 +1379,7 @@ where
         // last_applied: 2,2
         // append_to_log: 1,3: index == last + 1 but term is lower
 
-        store.append_to_log(&[blank_ent::<C>(0, 0), blank_ent::<C>(2, 1), blank_ent::<C>(2, 2)]).await?;
+        store.append_to_log([blank_ent::<C>(0, 0), blank_ent::<C>(2, 1), blank_ent::<C>(2, 2)]).await?;
 
         store
             .apply_to_state_machine(&[blank_ent::<C>(0, 0), blank_ent::<C>(2, 1), blank_ent::<C>(2, 2)])
@@ -1387,7 +1387,7 @@ where
 
         store.purge_logs_upto(log_id(2, 2)).await?;
 
-        let res = store.append_to_log(&[blank_ent::<C>(1, 3)]).await;
+        let res = store.append_to_log([blank_ent::<C>(1, 3)]).await;
 
         let e = res.unwrap_err().into_defensive().unwrap();
         assert_eq!(ErrorSubject::Log(log_id(1, 3)), e.subject);

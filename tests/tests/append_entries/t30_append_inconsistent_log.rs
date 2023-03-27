@@ -56,9 +56,9 @@ async fn append_inconsistent_log() -> Result<()> {
     r2.shutdown().await?;
 
     for i in log_index + 1..=100 {
-        sto0.append_to_log(&[blank(2, i)]).await?;
+        sto0.append_to_log([blank(2, i)]).await?;
 
-        sto2.append_to_log(&[blank(3, i)]).await?;
+        sto2.append_to_log([blank(3, i)]).await?;
     }
 
     sto0.save_vote(&Vote::new(2, 0)).await?;

@@ -458,7 +458,8 @@ impl RaftStorage<Config> for Arc<RocksStore> {
     }
 
     #[tracing::instrument(level = "trace", skip(self, entries))]
-    async fn append_to_log(&mut self, entries: &[Entry<Config>]) -> StorageResult<()> {
+    async fn append_to_log<I>(&mut self, entries: I) -> StorageResult<()>
+    where I: IntoIterator<Item = Entry<Config>> + Send {
         for entry in entries {
             let id = id_to_bin(entry.log_id.index);
             assert_eq!(bin_to_id(&id), entry.log_id.index);
@@ -466,7 +467,7 @@ impl RaftStorage<Config> for Arc<RocksStore> {
                 .put_cf(
                     self.cf_logs(),
                     id,
-                    serde_json::to_vec(entry).map_err(|e| StorageIOError::write_logs(&e))?,
+                    serde_json::to_vec(&entry).map_err(|e| StorageIOError::write_logs(&e))?,
                 )
                 .map_err(|e| StorageIOError::write_logs(&e))?;
         }
