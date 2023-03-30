@@ -74,7 +74,7 @@ category_display = {
     "improve":     "Improved",
     "dep":         "Dependency",
     "fixbug":      "Fixed",
-    "fixdoc":      "Fixed",
+    "fixdoc":      "DocFixed",
 
 }
 
