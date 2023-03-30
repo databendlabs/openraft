@@ -58,7 +58,7 @@ async fn snapshot_delete_conflicting_logs() -> Result<()> {
 
         // When the node starts, it will become candidate and increment its vote to (5,0)
         sto0.save_vote(&Vote::new(4, 0)).await?;
-        sto0.append_to_log(&[
+        sto0.append_to_log([
             // manually insert the initializing log
             membership_ent(0, 0, 0, vec![btreeset! {0}]),
         ])

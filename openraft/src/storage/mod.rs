@@ -219,7 +219,8 @@ where C: RaftTypeConfig
     ///
     /// - There must not be a **hole** in logs. Because Raft only examine the last log id to ensure
     ///   correctness.
-    async fn append_to_log(&mut self, entries: &[C::Entry]) -> Result<(), StorageError<C::NodeId>>;
+    async fn append_to_log<I>(&mut self, entries: I) -> Result<(), StorageError<C::NodeId>>
+    where I: IntoIterator<Item = C::Entry> + Send;
 
     /// Delete conflict log entries since `log_id`, inclusive.
     ///

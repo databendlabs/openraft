@@ -1330,17 +1330,21 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
                 // The entries before `range.start` are discarded.
                 self.input_entries.drain(..range.start);
 
-                let entries = self.input_entries.drain(..(range.end - range.start)).collect::<Vec<_>>();
-                tracing::debug!("AppendInputEntries: {}", DisplaySlice::<_>(&entries));
+                if range.end > range.start {
+                    tracing::debug!(
+                        "AppendInputEntries: {},..,{}",
+                        self.input_entries.get(0).unwrap(),
+                        self.input_entries.get(range.end - range.start - 1).unwrap()
+                    );
+                    let entries = self.input_entries.drain(..(range.end - range.start));
 
-                if !entries.is_empty() {
-                    self.storage.append_to_log(&entries).await?
+                    self.storage.append_to_log(entries).await?
                 }
             }
             Command::AppendBlankLog { log_id } => {
                 let ent = C::Entry::new_blank(log_id);
-                let entry_refs = vec![ent];
-                self.storage.append_to_log(&entry_refs).await?
+                let entries = [ent];
+                self.storage.append_to_log(entries).await?
             }
             Command::SaveVote { vote } => {
                 self.storage.save_vote(&vote).await?;
