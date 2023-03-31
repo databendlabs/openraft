@@ -51,20 +51,22 @@ categories = {
         'docs:':         typs['doc'],
         'fix:':          typs['fixbug'],
         'Fix:':          typs['fixbug'],
-        'fixup:':          typs['fixbug'],
+        'fixup:':        typs['fixbug'],
 
         'test:':         typs['test'],
         'build(deps):':  typs['dep'],
         'Build(deps):':  typs['dep'],
 
-        'Update:':  typs['other'],
-        'update:':  typs['other'],
-        'turn:':  typs['other'],
-        'replace:': typs['refactor'],
-        'format:': typs['refactor'],
-        'use:': typs['refactor'],
-        'Create:': typs['other'],
-        'BumpVer:': typs['other'],
+        'Update:':       typs['other'],
+        'update:':       typs['other'],
+        'turn:':         typs['other'],
+        'replace:':      typs['refactor'],
+        'format:':       typs['refactor'],
+        'use:':          typs['refactor'],
+        'Create:':       typs['other'],
+        'BumpVer:':      typs['other'],
+        'Chore:':        typs['other'],
+        'chore:':        typs['other'],
 }
 
 category_display = {

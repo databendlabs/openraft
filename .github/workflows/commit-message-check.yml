@@ -21,7 +21,7 @@ jobs:
           excludeDescription: 'true' # optional: this excludes the description body of a pull request
           excludeTitle: 'true' # optional: this excludes the title of a pull request
           accessToken: ${{ secrets.GITHUB_TOKEN }}
-          pattern: '^(DataChange:|Change:|Feature:|Improve:|Dep:|Doc:|Test:|CI:|Refactor:|Fix:|Fixdoc:|Fixup:|Merge|BumpVer:|Build\(deps\):) .+$'
+          pattern: '^(DataChange:|Change:|Feature:|Improve:|Dep:|Doc:|Test:|CI:|Refactor:|Fix:|Fixdoc:|Fixup:|Merge|BumpVer:|Chore:|Build\(deps\):) .+$'
           flags: 'gm'
           error: |
             Subject line has to contain a commit type, e.g.: "Change: blabla" or a merge commit e.g.: "Merge xxx".
@@ -39,4 +39,5 @@ jobs:
               Fixdoc        - fix doc
               Fixup         - minor change: e.g., fix sth mentioned in a review.
               BumpVer       - Bump to a new version.
+              Chore         - Nothing important.
               Build(deps)   - bot: dependabot.
