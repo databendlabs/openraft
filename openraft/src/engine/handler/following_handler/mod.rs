@@ -162,9 +162,6 @@ where
                 upto: committed.unwrap(),
             });
         }
-
-        // TODO(5): follower has not yet commit the membership_state.
-        //          For now it is OK. But it should be done here.
     }
 
     /// Delete log entries since log index `since`, inclusive, when the log at `since` is found
