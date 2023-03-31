@@ -162,9 +162,11 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
         let mut snapshot_data = streaming.snapshot_data;
 
-        snapshot_data.as_mut().shutdown().await.map_err(|e| StorageError::IO {
-            source: StorageIOError::write_snapshot(meta.signature(), &e),
-        })?;
+        snapshot_data
+            .as_mut()
+            .shutdown()
+            .await
+            .map_err(|e| StorageIOError::write_snapshot(meta.signature(), &e))?;
 
         // Buffer the snapshot data, let Engine decide to install it or to cancel it.
         self.received_snapshot.insert(meta.snapshot_id.clone(), snapshot_data);
