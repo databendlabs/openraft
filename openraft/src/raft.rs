@@ -894,6 +894,8 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStor
         i: u64,
     },
 
+    // /// Logs that are submitted to append has been persisted to disk.
+    // LogPersisted {},
     /// Update the `matched` log id of a replication target.
     /// Sent by a replication task `ReplicationCore`.
     UpdateReplicationProgress {
@@ -901,6 +903,8 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStor
         target: C::NodeId,
 
         /// The id of the subject that submit this replication action.
+        ///
+        /// It is only used for debugging purpose.
         id: u64,
 
         /// Either the last log id that has been successfully replicated to the target,
