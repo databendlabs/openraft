@@ -1,9 +1,9 @@
 use std::ops::Deref;
 
-use crate::engine::engine_impl::EngineOutput;
 use crate::engine::handler::log_handler::LogHandler;
 use crate::engine::Command;
 use crate::engine::EngineConfig;
+use crate::engine::EngineOutput;
 use crate::internal_server_state::LeaderQuorumSet;
 use crate::leader::Leader;
 use crate::progress::entry::ProgressEntry;

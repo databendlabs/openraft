@@ -2,12 +2,12 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 
 use crate::display_ext::DisplaySlice;
-use crate::engine::engine_impl::EngineOutput;
 use crate::engine::handler::log_handler::LogHandler;
 use crate::engine::handler::server_state_handler::ServerStateHandler;
 use crate::engine::handler::snapshot_handler::SnapshotHandler;
 use crate::engine::Command;
 use crate::engine::EngineConfig;
+use crate::engine::EngineOutput;
 use crate::entry::RaftEntry;
 use crate::raft::AppendEntriesResponse;
 use crate::raft_state::LogStateReader;

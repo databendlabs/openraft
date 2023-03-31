@@ -1,6 +1,6 @@
-use crate::engine::engine_impl::EngineOutput;
 use crate::engine::Command;
 use crate::engine::EngineConfig;
+use crate::engine::EngineOutput;
 use crate::raft_state::LogStateReader;
 use crate::summary::MessageSummary;
 use crate::LogId;

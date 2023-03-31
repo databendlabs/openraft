@@ -1,4 +1,3 @@
-use std::collections::VecDeque;
 use std::marker::PhantomData;
 use std::time::Duration;
 
@@ -6,6 +5,7 @@ use tokio::time::Instant;
 
 use crate::core::ServerState;
 use crate::display_ext::DisplaySlice;
+use crate::engine::engine_config::EngineConfig;
 use crate::engine::handler::following_handler::FollowingHandler;
 use crate::engine::handler::leader_handler::LeaderHandler;
 use crate::engine::handler::log_handler::LogHandler;
@@ -17,6 +17,7 @@ use crate::engine::handler::vote_handler::VoteHandler;
 use crate::engine::time_state;
 use crate::engine::time_state::TimeState;
 use crate::engine::Command;
+use crate::engine::EngineOutput;
 use crate::entry::RaftEntry;
 use crate::error::ForwardToLeader;
 use crate::error::InitializeError;
@@ -33,117 +34,11 @@ use crate::raft_state::LogStateReader;
 use crate::raft_state::RaftState;
 use crate::summary::MessageSummary;
 use crate::validate::Valid;
-use crate::Config;
 use crate::LogId;
 use crate::Membership;
-use crate::MetricsChangeFlags;
 use crate::NodeId;
 use crate::SnapshotMeta;
 use crate::Vote;
-
-/// Config for Engine
-#[derive(Clone, Debug)]
-#[derive(PartialEq, Eq)]
-pub(crate) struct EngineConfig<NID: NodeId> {
-    /// The id of this node.
-    pub(crate) id: NID,
-
-    /// The maximum number of applied logs to keep before purging.
-    pub(crate) max_in_snapshot_log_to_keep: u64,
-
-    /// The minimal number of applied logs to purge in a batch.
-    pub(crate) purge_batch_size: u64,
-
-    /// The maximum number of entries per payload allowed to be transmitted during replication
-    pub(crate) max_payload_entries: u64,
-
-    pub(crate) timer_config: time_state::Config,
-}
-
-impl<NID: NodeId> Default for EngineConfig<NID> {
-    fn default() -> Self {
-        Self {
-            id: NID::default(),
-            max_in_snapshot_log_to_keep: 1000,
-            purge_batch_size: 256,
-            max_payload_entries: 300,
-            timer_config: time_state::Config::default(),
-        }
-    }
-}
-
-impl<NID: NodeId> EngineConfig<NID> {
-    pub(crate) fn new(id: NID, config: &Config) -> Self {
-        let election_timeout = Duration::from_millis(config.new_rand_election_timeout());
-        Self {
-            id,
-            max_in_snapshot_log_to_keep: config.max_in_snapshot_log_to_keep,
-            purge_batch_size: config.purge_batch_size,
-            max_payload_entries: config.max_payload_entries,
-            timer_config: time_state::Config {
-                election_timeout,
-                smaller_log_timeout: Duration::from_millis(config.election_timeout_max * 2),
-                leader_lease: Duration::from_millis(config.election_timeout_max),
-            },
-        }
-    }
-}
-
-/// The entry of output from Engine to the runtime.
-#[derive(Debug, Default)]
-#[derive(PartialEq, Eq)]
-pub(crate) struct EngineOutput<NID, N>
-where
-    NID: NodeId,
-    N: Node,
-{
-    /// Tracks what kind of metrics changed
-    pub(crate) metrics_flags: MetricsChangeFlags,
-
-    /// Command queue that need to be executed by `RaftRuntime`.
-    pub(crate) commands: VecDeque<Command<NID, N>>,
-}
-
-impl<NID, N> EngineOutput<NID, N>
-where
-    NID: NodeId,
-    N: Node,
-{
-    pub(crate) fn new(command_buffer_size: usize) -> Self {
-        Self {
-            metrics_flags: MetricsChangeFlags::default(),
-            commands: VecDeque::with_capacity(command_buffer_size),
-        }
-    }
-
-    /// Push a command to the queue.
-    pub(crate) fn push_command(&mut self, cmd: Command<NID, N>) {
-        cmd.update_metrics_flags(&mut self.metrics_flags);
-        self.commands.push_back(cmd)
-    }
-
-    /// Pop the first command to run from the queue.
-    pub(crate) fn pop_command(&mut self) -> Option<Command<NID, N>> {
-        self.commands.pop_front()
-    }
-
-    /// Iterate all queued commands.
-    pub(crate) fn iter_commands(&self) -> impl Iterator<Item = &Command<NID, N>> {
-        self.commands.iter()
-    }
-
-    /// Take all queued commands and clear the queue.
-    #[cfg(test)]
-    pub(crate) fn take_commands(&mut self) -> Vec<Command<NID, N>> {
-        self.commands.drain(..).collect()
-    }
-
-    /// Clear all queued commands.
-    #[cfg(test)]
-    pub(crate) fn clear_commands(&mut self) {
-        self.commands.clear()
-    }
-}
 
 /// Raft protocol algorithm.
 ///
