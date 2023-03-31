@@ -1,6 +1,6 @@
-use crate::engine::engine_impl::EngineOutput;
 use crate::engine::Command;
 use crate::engine::EngineConfig;
+use crate::engine::EngineOutput;
 use crate::Node;
 use crate::NodeId;
 use crate::RaftState;

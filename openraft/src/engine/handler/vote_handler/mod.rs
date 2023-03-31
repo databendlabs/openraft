@@ -1,8 +1,8 @@
-use crate::engine::engine_impl::EngineOutput;
 use crate::engine::handler::server_state_handler::ServerStateHandler;
 use crate::engine::time_state::TimeState;
 use crate::engine::Command;
 use crate::engine::EngineConfig;
+use crate::engine::EngineOutput;
 use crate::error::RejectVoteRequest;
 use crate::internal_server_state::InternalServerState;
 use crate::leader::Leader;

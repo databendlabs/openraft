@@ -28,9 +28,13 @@
 //! ```
 
 mod command;
+mod engine_config;
 mod engine_impl;
-pub(crate) mod handler;
+mod engine_output;
 mod log_id_list;
+
+pub(crate) mod handler;
+pub(crate) mod time_state;
 
 #[cfg(test)] mod elect_test;
 #[cfg(test)] mod handle_append_entries_req_test;
@@ -40,13 +44,13 @@ mod log_id_list;
 #[cfg(test)] mod log_id_list_test;
 #[cfg(test)] mod startup_test;
 #[cfg(test)] mod testing;
-pub(crate) mod time_state;
 #[cfg(test)] mod update_progress_test;
 
 pub(crate) use command::Command;
 pub(crate) use command::SendResult;
+pub(crate) use engine_config::EngineConfig;
 pub(crate) use engine_impl::Engine;
-pub(crate) use engine_impl::EngineConfig;
+pub(crate) use engine_output::EngineOutput;
 pub use log_id_list::LogIdList;
 
 use crate::RaftTypeConfig;
