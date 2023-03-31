@@ -147,7 +147,7 @@ jobs:
             tests/_log/
 
 
-  stores-test:
+  stores:
     runs-on: ubuntu-latest
 
     strategy:
@@ -271,8 +271,8 @@ jobs:
       - name: clippy
         shell: bash
         run: |
-          cargo clippy --workspace --all-targets                -- -D warnings
-          cargo clippy --workspace --all-targets --all-features -- -D warnings
+          cargo clippy --no-deps --workspace --all-targets                -- -D warnings
+          cargo clippy --no-deps --workspace --all-targets --all-features -- -D warnings
 
 
       - name: Build-doc
@@ -290,7 +290,7 @@ jobs:
         run: cargo audit --db ./target/advisory-db
 
 
-  examples-test:
+  examples:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -310,56 +310,47 @@ jobs:
         with:
           toolchain: "${{ matrix.toolchain }}"
           override: true
+          components: rustfmt, clippy
+
+
+      # Run the following steps in the exmple dir in order to reuse the `./target` dir.
 
 
       - name: Test examples/${{ matrix.example }}
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --manifest-path examples/${{ matrix.example }}/Cargo.toml
+        shell: bash
+        run: |
+          cd examples/${{ matrix.example }}
+          cargo test
         env:
           RUST_LOG: debug
 
 
       - name: Test demo script of examples/${{ matrix.example }}
+        # The script is not meant for testing. Just to ensure it works but do not
+        # rely on it.
+        if: ${{ matrix.toolchain == 'nightly' }}
+
         shell: bash
         run: |
           cd examples/${{ matrix.example }}
           ./test-cluster.sh
 
 
-  # clippy produce different result with stable and nightly.
-  # Only run clippy with nightly
-  examples-lint:
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        toolchain:
-          - "nightly"
-        example:
-          - "raft-kv-memstore"
-          - "raft-kv-rocksdb"
-
-    steps:
-      - uses: actions/checkout@v2
-
-
-      - uses: actions-rs/toolchain@v1.0.6
-        with:
-          toolchain: "${{ matrix.toolchain }}"
-          override: true
-          components: rustfmt, clippy
-
-
       - name: Format
-        uses: actions-rs/cargo@v1
-        with:
-          command: fmt
-          args: --manifest-path examples/${{ matrix.example }}/Cargo.toml --all -- --check
+        # clippy/format produces different result with stable and nightly. Only with nightly.
+        if: ${{ matrix.toolchain == 'nightly' }}
+
+        shell: bash
+        run: |
+          cd examples/${{ matrix.example }}
+          cargo fmt --all -- --check
 
 
       - name: Clippy
+        # clippy/format produces different result with stable and nightly. Only with nightly.
+        if: ${{ matrix.toolchain == 'nightly' }}
+
         shell: bash
         run: |
-          cargo clippy --manifest-path examples/${{ matrix.example }}/Cargo.toml --all-targets -- -D warnings
+          cd examples/${{ matrix.example }}
+          cargo clippy --no-deps --all-targets -- -D warnings

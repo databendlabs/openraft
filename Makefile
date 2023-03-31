@@ -50,14 +50,14 @@ lint:
 	cargo fmt
 	cargo fmt --manifest-path examples/raft-kv-memstore/Cargo.toml
 	cargo fmt --manifest-path examples/raft-kv-rocksdb/Cargo.toml
-	cargo clippy --all-targets -- -D warnings
-	cargo clippy --manifest-path examples/raft-kv-memstore/Cargo.toml --all-targets -- -D warnings
-	cargo clippy --manifest-path examples/raft-kv-rocksdb/Cargo.toml  --all-targets -- -D warnings
+	cargo clippy --no-deps --all-targets -- -D warnings
+	cargo clippy --no-deps --manifest-path examples/raft-kv-memstore/Cargo.toml --all-targets -- -D warnings
+	cargo clippy --no-deps --manifest-path examples/raft-kv-rocksdb/Cargo.toml  --all-targets -- -D warnings
 	# Bug: clippy --all-targets reports false warning about unused dep in
 	# `[dev-dependencies]`:
 	# https://github.com/rust-lang/rust/issues/72686#issuecomment-635539688
 	# Thus we only check unused deps for lib
-	RUSTFLAGS=-Wunused-crate-dependencies cargo clippy --lib -- -D warnings
+	RUSTFLAGS=-Wunused-crate-dependencies cargo clippy --no-deps  --lib -- -D warnings
 
 unused_dep:
 	cargo machete
