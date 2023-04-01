@@ -35,12 +35,12 @@ async fn single_restart() -> anyhow::Result<()> {
 
     tracing::info!("--- stop and restart node 0");
     {
-        let (node, sto) = router.remove_node(0).unwrap();
+        let (node, sto, sm) = router.remove_node(0).unwrap();
         node.shutdown().await?;
 
         tracing::info!("--- restart node 0");
 
-        router.new_raft_node_with_sto(0, sto).await;
+        router.new_raft_node_with_sto(0, sto, sm).await;
     }
 
     tracing::info!("--- write to 1 log after restart");

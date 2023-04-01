@@ -1,17 +1,15 @@
 use std::sync::Arc;
 
-use openraft::Config;
-
-use crate::ExampleNodeId;
-use crate::ExampleRaft;
-use crate::ExampleStore;
+use crate::NodeId;
+use crate::Raft;
+use crate::Store;
 
 // Representation of an application state. This struct can be shared around to share
 // instances of raft, store and more.
-pub struct ExampleApp {
-    pub id: ExampleNodeId,
+pub struct App {
+    pub id: NodeId,
     pub addr: String,
-    pub raft: ExampleRaft,
-    pub store: Arc<ExampleStore>,
-    pub config: Arc<Config>,
+    pub raft: Raft,
+    pub store: Arc<Store>,
+    pub config: Arc<openraft::Config>,
 }

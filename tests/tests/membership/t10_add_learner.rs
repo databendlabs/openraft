@@ -6,6 +6,7 @@ use maplit::btreeset;
 use openraft::error::ChangeMembershipError;
 use openraft::error::ClientWriteError;
 use openraft::error::InProgress;
+use openraft::storage::RaftLogReaderExt;
 use openraft::CommittedLeaderId;
 use openraft::Config;
 use openraft::LogId;
@@ -65,9 +66,9 @@ async fn add_learner_basic() -> Result<()> {
 
         tracing::info!("--- add_learner blocks until the replication catches up");
         {
-            let mut sto1 = router.get_storage_handle(&1)?;
+            let (mut sto1, _sm1) = router.get_storage_handle(&1)?;
 
-            let logs = StorageHelper::new(&mut sto1).get_log_entries(..).await?;
+            let logs = sto1.get_log_entries(..).await?;
 
             assert_eq!(log_index, logs[logs.len() - 1].log_id.index);
             // 0-th log
@@ -252,8 +253,8 @@ async fn check_learner_after_leader_transferred() -> Result<()> {
 
     tracing::info!("--- check new cluster membership");
     {
-        let mut sto1 = router.get_storage_handle(&1)?;
-        let m = StorageHelper::new(&mut sto1).get_membership().await?;
+        let (mut sto1, mut sm1) = router.get_storage_handle(&1)?;
+        let m = StorageHelper::new(&mut sto1, &mut sm1).get_membership().await?;
 
         // new membership is applied, thus get_membership() only returns one entry.
 

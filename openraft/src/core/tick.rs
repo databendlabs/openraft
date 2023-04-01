@@ -14,20 +14,20 @@ use tracing::Level;
 use tracing::Span;
 
 use crate::raft::RaftMsg;
+use crate::storage::RaftLogStorage;
 use crate::RaftNetworkFactory;
-use crate::RaftStorage;
 use crate::RaftTypeConfig;
 
 /// Emit RaftMsg::Tick event at regular `interval`.
-pub(crate) struct Tick<C, N, S>
+pub(crate) struct Tick<C, N, LS>
 where
     C: RaftTypeConfig,
     N: RaftNetworkFactory<C>,
-    S: RaftStorage<C>,
+    LS: RaftLogStorage<C>,
 {
     interval: Duration,
 
-    tx: mpsc::UnboundedSender<RaftMsg<C, N, S>>,
+    tx: mpsc::UnboundedSender<RaftMsg<C, N, LS>>,
 
     /// Emit event or not
     enabled: Arc<AtomicBool>,
@@ -38,13 +38,13 @@ pub(crate) struct TickHandle {
     join_handle: JoinHandle<()>,
 }
 
-impl<C, N, S> Tick<C, N, S>
+impl<C, N, LS> Tick<C, N, LS>
 where
     C: RaftTypeConfig,
     N: RaftNetworkFactory<C>,
-    S: RaftStorage<C>,
+    LS: RaftLogStorage<C>,
 {
-    pub(crate) fn spawn(interval: Duration, tx: mpsc::UnboundedSender<RaftMsg<C, N, S>>, enabled: bool) -> TickHandle {
+    pub(crate) fn spawn(interval: Duration, tx: mpsc::UnboundedSender<RaftMsg<C, N, LS>>, enabled: bool) -> TickHandle {
         let enabled = Arc::new(AtomicBool::from(enabled));
         let this = Self {
             interval,

@@ -3,6 +3,7 @@
 use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::fmt::Display;
+use std::marker::PhantomData;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
@@ -43,6 +44,8 @@ use crate::metrics::Wait;
 use crate::node::Node;
 use crate::replication::ReplicationResult;
 use crate::replication::ReplicationSessionId;
+use crate::storage::RaftLogStorage;
+use crate::storage::RaftStateMachine;
 use crate::AppData;
 use crate::AppDataResponse;
 use crate::ChangeMembers;
@@ -52,7 +55,6 @@ use crate::MessageSummary;
 use crate::NodeId;
 use crate::RaftNetworkFactory;
 use crate::RaftState;
-use crate::RaftStorage;
 use crate::SnapshotMeta;
 use crate::StorageHelper;
 use crate::Vote;
@@ -138,18 +140,21 @@ where NID: NodeId
     Done(Result<(), Fatal<NID>>),
 }
 
-struct RaftInner<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> {
+struct RaftInner<C, N, LS>
+where
+    C: RaftTypeConfig,
+    N: RaftNetworkFactory<C>,
+    LS: RaftLogStorage<C>,
+{
     id: C::NodeId,
     config: Arc<Config>,
     runtime_config: Arc<RuntimeConfig>,
     tick_handle: TickHandle,
-    tx_api: mpsc::UnboundedSender<RaftMsg<C, N, S>>,
+    tx_api: mpsc::UnboundedSender<RaftMsg<C, N, LS>>,
     rx_metrics: watch::Receiver<RaftMetrics<C::NodeId, C::Node>>,
     // TODO(xp): it does not need to be a async mutex.
     #[allow(clippy::type_complexity)]
     tx_shutdown: Mutex<Option<oneshot::Sender<()>>>,
-    marker_n: std::marker::PhantomData<N>,
-    marker_s: std::marker::PhantomData<S>,
     core_state: Mutex<CoreState<C::NodeId>>,
 }
 
@@ -176,11 +181,24 @@ struct RaftInner<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>>
 /// application needs to shutdown the Raft node for any reason, calling `shutdown` will do the
 /// trick.
 #[derive(Clone)]
-pub struct Raft<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> {
-    inner: Arc<RaftInner<C, N, S>>,
+pub struct Raft<C, N, LS, SM>
+where
+    C: RaftTypeConfig,
+    N: RaftNetworkFactory<C>,
+    LS: RaftLogStorage<C>,
+    SM: RaftStateMachine<C>,
+{
+    inner: Arc<RaftInner<C, N, LS>>,
+    _p: PhantomData<SM>,
 }
 
-impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, S> {
+impl<C, N, LS, SM> Raft<C, N, LS, SM>
+where
+    C: RaftTypeConfig,
+    N: RaftNetworkFactory<C>,
+    LS: RaftLogStorage<C>,
+    SM: RaftStateMachine<C>,
+{
     /// Create and spawn a new Raft task.
     ///
     /// ### `id`
@@ -200,8 +218,14 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
     /// ### `storage`
     /// An implementation of the `RaftStorage` trait which will be used by Raft for data storage.
     /// See the docs on the `RaftStorage` trait for more details.
-    #[tracing::instrument(level="debug", skip(config, network, storage), fields(cluster=%config.cluster_name))]
-    pub async fn new(id: C::NodeId, config: Arc<Config>, network: N, mut storage: S) -> Result<Self, Fatal<C::NodeId>> {
+    #[tracing::instrument(level="debug", skip_all, fields(cluster=%config.cluster_name))]
+    pub async fn new(
+        id: C::NodeId,
+        config: Arc<Config>,
+        network: N,
+        mut log_store: LS,
+        mut state_machine: SM,
+    ) -> Result<Self, Fatal<C::NodeId>> {
         let (tx_api, rx_api) = mpsc::unbounded_channel();
         let (tx_metrics, rx_metrics) = watch::channel(RaftMetrics::new_initial(id));
         let (tx_shutdown, rx_shutdown) = oneshot::channel();
@@ -225,12 +249,12 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
         let eng_config = EngineConfig::new(id, config.as_ref());
 
         let state = {
-            let mut helper = StorageHelper::new(&mut storage);
+            let mut helper = StorageHelper::new(&mut log_store, &mut state_machine);
             helper.get_initial_state().await?
         };
 
         // TODO(xp): this is not necessary.
-        storage.save_vote(state.vote_ref()).await?;
+        log_store.save_vote(state.vote_ref()).await?;
 
         let engine = Engine::new(state, eng_config);
 
@@ -239,7 +263,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
             config: config.clone(),
             runtime_config: runtime_config.clone(),
             network,
-            storage,
+            log_store,
+            state_machine,
 
             engine,
             leader_data: None,
@@ -265,12 +290,13 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
             tx_api,
             rx_metrics,
             tx_shutdown: Mutex::new(Some(tx_shutdown)),
-            marker_n: std::marker::PhantomData,
-            marker_s: std::marker::PhantomData,
             core_state: Mutex::new(CoreState::Running(core_handle)),
         };
 
-        Ok(Self { inner: Arc::new(inner) })
+        Ok(Self {
+            inner: Arc::new(inner),
+            _p: Default::default(),
+        })
     }
 
     /// Enable or disable raft internal ticker.
@@ -637,7 +663,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
     #[tracing::instrument(level = "debug", skip(self, mes, rx))]
     pub(crate) async fn call_core<T, E>(
         &self,
-        mes: RaftMsg<C, N, S>,
+        mes: RaftMsg<C, N, LS>,
         rx: oneshot::Receiver<Result<T, E>>,
     ) -> Result<T, RaftError<C::NodeId, E>>
     where
@@ -741,7 +767,10 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
     ///
     /// If the API channel is already closed (Raft is in shutdown), then the request functor is
     /// destroyed right away and not called at all.
-    pub fn external_request<F: FnOnce(&RaftState<C::NodeId, C::Node>, &mut S, &mut N) + Send + 'static>(&self, req: F) {
+    pub fn external_request<F: FnOnce(&RaftState<C::NodeId, C::Node>, &mut LS, &mut N) + Send + 'static>(
+        &self,
+        req: F,
+    ) {
         let _ignore_error = self.inner.tx_api.send(RaftMsg::ExternalRequest { req: Box::new(req) });
     }
 
@@ -813,7 +842,12 @@ pub(crate) type ClientWriteTx<C> =
     ResultSender<ClientWriteResponse<C>, ClientWriteError<<C as RaftTypeConfig>::NodeId, <C as RaftTypeConfig>::Node>>;
 
 /// A message coming from the Raft API.
-pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> {
+pub(crate) enum RaftMsg<C, N, LS>
+where
+    C: RaftTypeConfig,
+    N: RaftNetworkFactory<C>,
+    LS: RaftLogStorage<C>,
+{
     AppendEntries {
         rpc: AppendEntriesRequest<C>,
         tx: AppendEntriesTx<C::NodeId>,
@@ -879,7 +913,7 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStor
 
     ExternalRequest {
         #[allow(clippy::type_complexity)]
-        req: Box<dyn FnOnce(&RaftState<C::NodeId, C::Node>, &mut S, &mut N) + Send + 'static>,
+        req: Box<dyn FnOnce(&RaftState<C::NodeId, C::Node>, &mut LS, &mut N) + Send + 'static>,
     },
 
     ExternalCommand {
@@ -935,11 +969,11 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStor
     ReplicationFatal,
 }
 
-impl<C, N, S> MessageSummary<RaftMsg<C, N, S>> for RaftMsg<C, N, S>
+impl<C, N, LS> MessageSummary<RaftMsg<C, N, LS>> for RaftMsg<C, N, LS>
 where
     C: RaftTypeConfig,
     N: RaftNetworkFactory<C>,
-    S: RaftStorage<C>,
+    LS: RaftLogStorage<C>,
 {
     fn summary(&self) -> String {
         match self {

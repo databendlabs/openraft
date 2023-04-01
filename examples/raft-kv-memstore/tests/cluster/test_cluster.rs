@@ -9,7 +9,7 @@ use maplit::btreeset;
 use openraft::BasicNode;
 use raft_kv_memstore::client::ExampleClient;
 use raft_kv_memstore::start_example_raft_node;
-use raft_kv_memstore::store::ExampleRequest;
+use raft_kv_memstore::store::Request;
 use tokio::runtime::Runtime;
 use tracing_subscriber::EnvFilter;
 
@@ -170,7 +170,7 @@ async fn test_cluster() -> anyhow::Result<()> {
 
     println!("=== write `foo=bar`");
     let _x = client
-        .write(&ExampleRequest::Set {
+        .write(&Request::Set {
             key: "foo".to_string(),
             value: "bar".to_string(),
         })
@@ -200,7 +200,7 @@ async fn test_cluster() -> anyhow::Result<()> {
 
     println!("=== read `foo` on node 2");
     let _x = client2
-        .write(&ExampleRequest::Set {
+        .write(&Request::Set {
             key: "foo".to_string(),
             value: "wow".to_string(),
         })
@@ -253,7 +253,7 @@ async fn test_cluster() -> anyhow::Result<()> {
 
     println!("=== write `foo=zoo` to node-3");
     let _x = client3
-        .write(&ExampleRequest::Set {
+        .write(&Request::Set {
             key: "foo".to_string(),
             value: "zoo".to_string(),
         })

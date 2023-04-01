@@ -6,6 +6,9 @@ use anyhow::Result;
 use maplit::btreeset;
 use openraft::raft::AppendEntriesRequest;
 use openraft::raft::InstallSnapshotRequest;
+use openraft::storage::RaftLogStorage;
+use openraft::storage::RaftStateMachine;
+use openraft::testing;
 use openraft::CommittedLeaderId;
 use openraft::Config;
 use openraft::Entry;
@@ -16,7 +19,6 @@ use openraft::RaftLogReader;
 use openraft::RaftNetwork;
 use openraft::RaftNetworkFactory;
 use openraft::RaftSnapshotBuilder;
-use openraft::RaftStorage;
 use openraft::ServerState;
 use openraft::SnapshotPolicy;
 use openraft::StorageHelper;
@@ -54,18 +56,18 @@ async fn snapshot_delete_conflicting_logs() -> Result<()> {
 
     tracing::info!("--- manually init node-0 with a higher vote, in order to override conflict log on learner later");
     {
-        let mut sto0 = router.new_store();
+        let (mut sto0, sm0) = router.new_store();
 
         // When the node starts, it will become candidate and increment its vote to (5,0)
         sto0.save_vote(&Vote::new(4, 0)).await?;
-        sto0.append_to_log([
+        testing::blocking_append(&mut sto0, [
             // manually insert the initializing log
             membership_ent(0, 0, 0, vec![btreeset! {0}]),
         ])
         .await?;
         log_index = 1;
 
-        router.new_raft_node_with_sto(0, sto0).await;
+        router.new_raft_node_with_sto(0, sto0, sm0).await;
 
         router.wait(&0, timeout()).state(ServerState::Leader, "init node-0 server-state").await?;
         router.wait(&0, timeout()).log(Some(log_index), "init node-0 log").await?;
@@ -118,8 +120,8 @@ async fn snapshot_delete_conflicting_logs() -> Result<()> {
 
         tracing::info!("--- check that learner membership is affected");
         {
-            let mut sto1 = router.get_storage_handle(&1)?;
-            let m = StorageHelper::new(&mut sto1).get_membership().await?;
+            let (mut sto1, mut sm1) = router.get_storage_handle(&1)?;
+            let m = StorageHelper::new(&mut sto1, &mut sm1).get_membership().await?;
 
             tracing::info!("got membership of node-1: {:?}", m);
             assert_eq!(
@@ -135,10 +137,10 @@ async fn snapshot_delete_conflicting_logs() -> Result<()> {
 
     tracing::info!("--- manually build and install snapshot to node-1");
     {
-        let mut sto0 = router.get_storage_handle(&0)?;
+        let (mut sto0, mut sm0) = router.get_storage_handle(&0)?;
 
         let snap = {
-            let mut b = sto0.get_snapshot_builder().await;
+            let mut b = sm0.get_snapshot_builder().await;
             b.build_snapshot().await?
         };
 
@@ -162,9 +164,9 @@ async fn snapshot_delete_conflicting_logs() -> Result<()> {
 
     tracing::info!("--- check that learner membership is affected, conflict log are deleted");
     {
-        let mut sto1 = router.get_storage_handle(&1)?;
+        let (mut sto1, mut sm1) = router.get_storage_handle(&1)?;
 
-        let m = StorageHelper::new(&mut sto1).get_membership().await?;
+        let m = StorageHelper::new(&mut sto1, &mut sm1).get_membership().await?;
 
         tracing::info!("got membership of node-1: {:?}", m);
         assert_eq!(

@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
+use openraft::storage::RaftLogReaderExt;
 use openraft::CommittedLeaderId;
 use openraft::Config;
 use openraft::LogId;
@@ -47,7 +48,7 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
 
     let mut log_index = router.new_cluster(btreeset! {0,1}, btreeset! {}).await?;
 
-    let mut sto0 = router.get_storage_handle(&0)?;
+    let (mut sto0, mut sm0) = router.get_storage_handle(&0)?;
 
     tracing::info!("--- send just enough logs to trigger snapshot");
     {
@@ -72,10 +73,10 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
             .await?;
 
         {
-            let logs = StorageHelper::new(&mut sto0).get_log_entries(..).await?;
+            let logs = sto0.get_log_entries(..).await?;
             assert_eq!(3, logs.len(), "only one applied log is kept");
         }
-        let m = StorageHelper::new(&mut sto0).get_membership().await?;
+        let m = StorageHelper::new(&mut sto0, &mut sm0).get_membership().await?;
 
         assert_eq!(
             &Membership::new(vec![btreeset! {0,1}], None),
@@ -108,10 +109,10 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
     tracing::info!("--- check membership");
     {
         {
-            let logs = StorageHelper::new(&mut sto0).get_log_entries(..).await?;
+            let logs = sto0.get_log_entries(..).await?;
             assert_eq!(3, logs.len(), "only one applied log");
         }
-        let m = StorageHelper::new(&mut sto0).get_membership().await?;
+        let m = StorageHelper::new(&mut sto0, &mut sm0).get_membership().await?;
 
         assert_eq!(
             &Membership::new(vec![btreeset! {0,1}], None),

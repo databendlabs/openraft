@@ -85,7 +85,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
     {
         tracing::info!("--- create learner");
         router.new_raft_node(1).await;
-        let mut sto = router.get_storage_handle(&1)?;
+        let (mut sto, mut sm) = router.get_storage_handle(&1)?;
 
         tracing::info!("--- add a membership config log to the learner");
         {
@@ -102,7 +102,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
 
             tracing::info!("--- check that learner membership is affected");
             {
-                let m = StorageHelper::new(&mut sto).get_membership().await?;
+                let m = StorageHelper::new(&mut sto, &mut sm).get_membership().await?;
 
                 assert_eq!(&EffectiveMembership::default(), m.committed().as_ref());
                 assert_eq!(
@@ -143,7 +143,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
                 )
                 .await?;
 
-            let m = StorageHelper::new(&mut sto).get_membership().await?;
+            let m = StorageHelper::new(&mut sto, &mut sm).get_membership().await?;
 
             assert_eq!(
                 &Membership::new(vec![btreeset! {0}], Some(btreeset! {1})),
