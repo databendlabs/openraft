@@ -1,9 +1,9 @@
 use std::fmt::Debug;
-use std::ops::Range;
 use std::sync::Arc;
 
 use tokio::sync::oneshot;
 
+use crate::entry::RaftEntry;
 use crate::error::Infallible;
 use crate::error::InitializeError;
 use crate::error::InstallSnapshotError;
@@ -23,11 +23,11 @@ use crate::Vote;
 
 /// Commands to send to `RaftRuntime` to execute, to update the application state.
 #[derive(Debug)]
-#[derive(PartialEq, Eq)]
-pub(crate) enum Command<NID, N>
+pub(crate) enum Command<NID, N, Ent>
 where
-    N: Node,
     NID: NodeId,
+    N: Node,
+    Ent: RaftEntry<NID, N>,
 {
     /// Becomes a leader, i.e., its `vote` is granted by a quorum.
     /// The runtime initializes leader data when receives this command.
@@ -36,11 +36,11 @@ where
     /// No longer a leader. Clean up leader's data.
     QuitLeader,
 
-    /// Append a `range` of entries in the input buffer.
-    ///
-    /// This command consumes the input.
-    /// Thus The entries before `range.start` will be discarded.
-    AppendInputEntries { range: Range<usize> },
+    /// Append one entry.
+    AppendEntry { entry: Ent },
+
+    /// Append a `range` of entries.
+    AppendInputEntries { entries: Vec<Ent> },
 
     /// Append a blank log.
     ///
@@ -149,20 +149,59 @@ where
     BuildSnapshot {},
 }
 
-impl<NID, N> Command<NID, N>
+/// For unit testing
+impl<NID, N, Ent> PartialEq for Command<NID, N, Ent>
 where
-    N: Node,
     NID: NodeId,
+    N: Node,
+    Ent: RaftEntry<NID, N> + PartialEq,
+{
+    #[rustfmt::skip]
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Command::BecomeLeader,                                Command::BecomeLeader)                                                        => true,
+            (Command::QuitLeader,                                  Command::QuitLeader)                                                          => true,
+            (Command::AppendEntry { entry },                       Command::AppendEntry { entry: b }, )                                          => entry == b,
+            (Command::AppendInputEntries { entries },              Command::AppendInputEntries { entries: b }, )                                 => entries == b,
+            (Command::AppendBlankLog { log_id },                   Command::AppendBlankLog { log_id: b }, )                                      => log_id == b,
+            (Command::ReplicateCommitted { committed },            Command::ReplicateCommitted { committed: b }, )                               => committed == b,
+            (Command::LeaderCommit { already_committed, upto, },   Command::LeaderCommit { already_committed: b_committed, upto: b_upto, }, )    => already_committed == b_committed && upto == b_upto,
+            (Command::FollowerCommit { already_committed, upto, }, Command::FollowerCommit { already_committed: b_committed, upto: b_upto, }, )  => already_committed == b_committed && upto == b_upto,
+            (Command::Replicate { target, req },                   Command::Replicate { target: b_target, req: other_req, }, )                   => target == b_target && req == other_req,
+            (Command::UpdateMembership { membership },             Command::UpdateMembership { membership: b }, )                                => membership == b,
+            (Command::RebuildReplicationStreams { targets },       Command::RebuildReplicationStreams { targets: b }, )                          => targets == b,
+            (Command::UpdateProgressMetrics { target, matching },  Command::UpdateProgressMetrics { target: b_target, matching: b_matching, }, ) => target == b_target && matching == b_matching,
+            (Command::SaveVote { vote },                           Command::SaveVote { vote: b })                                                => vote == b,
+            (Command::SendVote { vote_req },                       Command::SendVote { vote_req: b }, )                                          => vote_req == b,
+            (Command::PurgeLog { upto },                           Command::PurgeLog { upto: b })                                                => upto == b,
+            (Command::DeleteConflictLog { since },                 Command::DeleteConflictLog { since: b }, )                                    => since == b,
+            (Command::InstallSnapshot { snapshot_meta },           Command::InstallSnapshot { snapshot_meta: b }, )                              => snapshot_meta == b,
+            (Command::CancelSnapshot { snapshot_meta },            Command::CancelSnapshot { snapshot_meta: b }, )                               => snapshot_meta == b,
+            (Command::SendVoteResult { send },                     Command::SendVoteResult { send: b })                                          => send == b,
+            (Command::SendAppendEntriesResult { send },            Command::SendAppendEntriesResult { send: b })                                 => send == b,
+            (Command::SendInstallSnapshotResult { send },          Command::SendInstallSnapshotResult { send: b })                               => send == b,
+            (Command::SendInitializeResult { send },               Command::SendInitializeResult { send: b })                                    => send == b,
+            (Command::BuildSnapshot {},                            Command::BuildSnapshot {})                                                    => true,
+            _ => false,
+        }
+    }
+}
+
+impl<NID, N, Ent> Command<NID, N, Ent>
+where
+    NID: NodeId,
+    N: Node,
+    Ent: RaftEntry<NID, N>,
 {
     /// Update the flag of the metrics that needs to be updated when this command is executed.
     pub(crate) fn update_metrics_flags(&self, flags: &mut MetricsChangeFlags) {
         match &self {
             Command::BecomeLeader { .. } => flags.set_cluster_changed(),
             Command::QuitLeader => flags.set_cluster_changed(),
-            Command::AppendInputEntries { range } => {
-                if range.end > range.start {
-                    flags.set_data_changed()
-                }
+            Command::AppendEntry { .. } => flags.set_data_changed(),
+            Command::AppendInputEntries { entries } => {
+                debug_assert!(!entries.is_empty());
+                flags.set_data_changed()
             }
             Command::AppendBlankLog { .. } => flags.set_data_changed(),
             Command::ReplicateCommitted { .. } => {}

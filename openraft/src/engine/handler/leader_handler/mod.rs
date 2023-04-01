@@ -1,5 +1,3 @@
-use std::marker::PhantomData;
-
 use crate::engine::handler::replication_handler::ReplicationHandler;
 use crate::engine::handler::replication_handler::SendNone;
 use crate::engine::Command;
@@ -30,8 +28,7 @@ where
     pub(crate) config: &'x mut EngineConfig<NID>,
     pub(crate) leader: &'x mut Leader<NID, LeaderQuorumSet<NID>>,
     pub(crate) state: &'x mut RaftState<NID, N>,
-    pub(crate) output: &'x mut EngineOutput<NID, N>,
-    pub(crate) _p: PhantomData<Ent>,
+    pub(crate) output: &'x mut EngineOutput<NID, N, Ent>,
 }
 
 impl<'x, NID, N, Ent> LeaderHandler<'x, NID, N, Ent>
@@ -51,16 +48,33 @@ where
     /// TODO(xp): metrics flag needs to be dealt with.
     /// TODO(xp): if vote indicates this node is not the leader, refuse append
     #[tracing::instrument(level = "debug", skip(self, entries))]
-    pub(crate) fn leader_append_entries(&mut self, entries: &mut [Ent]) {
+    pub(crate) fn leader_append_entries(&mut self, mut entries: Vec<Ent>) {
         let l = entries.len();
         if l == 0 {
             return;
         }
 
-        self.state.assign_log_ids(entries.iter_mut());
-        self.state.extend_log_ids_from_same_leader(entries);
+        self.state.assign_log_ids(&mut entries);
+        self.state.extend_log_ids_from_same_leader(&entries);
 
-        self.output.push_command(Command::AppendInputEntries { range: 0..l });
+        let last_log_id = {
+            // Safe unwrap(): entries.len() > 0
+            let last = entries.last().unwrap();
+            Some(*last.get_log_id())
+        };
+
+        let mut membership_entry = None;
+        for entry in entries.iter() {
+            if let Some(m) = entry.get_membership() {
+                debug_assert!(
+                    membership_entry.is_none(),
+                    "only one membership entry is allowed in a batch"
+                );
+                membership_entry = Some((*entry.get_log_id(), m.clone()));
+            }
+        }
+
+        self.output.push_command(Command::AppendInputEntries { entries });
 
         // Fast commit:
         // If the cluster has only one voter, then an entry will be committed as soon as it is
@@ -91,25 +105,15 @@ where
 
         let mut rh = self.replication_handler();
 
-        for entry in entries.iter() {
-            if let Some(m) = entry.get_membership() {
-                let log_index = entry.get_log_id().index;
-
-                if log_index > 0 {
-                    let prev_log_id = rh.state.get_log_id(log_index - 1);
-                    rh.update_local_progress(prev_log_id);
-                }
-
-                // since this entry, the condition to commit has been changed.
-                rh.append_membership(entry.get_log_id(), m);
+        if let Some((log_id, m)) = membership_entry {
+            if log_id.index > 0 {
+                let prev_log_id = rh.state.get_log_id(log_id.index - 1);
+                rh.update_local_progress(prev_log_id);
             }
-        }
 
-        let last_log_id = {
-            // Safe unwrap(): entries.len() > 0
-            let last = entries.last().unwrap();
-            Some(*last.get_log_id())
-        };
+            // since this entry, the condition to commit has been changed.
+            rh.append_membership(&log_id, &m);
+        }
 
         rh.update_local_progress(last_log_id);
         rh.initiate_replication(SendNone::False);
@@ -121,7 +125,7 @@ where
         rh.initiate_replication(SendNone::True);
     }
 
-    pub(crate) fn replication_handler(&mut self) -> ReplicationHandler<NID, N> {
+    pub(crate) fn replication_handler(&mut self) -> ReplicationHandler<NID, N, Ent> {
         ReplicationHandler {
             config: self.config,
             leader: self.leader,

@@ -9,6 +9,7 @@ use crate::engine::testing::UTCfg;
 use crate::engine::CEngine;
 use crate::engine::Command;
 use crate::engine::Engine;
+use crate::entry::RaftEntry;
 use crate::raft::AppendEntriesResponse;
 use crate::raft_state::LogStateReader;
 use crate::testing::log_id;
@@ -61,7 +62,7 @@ fn eng() -> CEngine<UTCfg> {
 fn test_handle_append_entries_req_vote_is_rejected() -> anyhow::Result<()> {
     let mut eng = eng();
 
-    let resp = eng.handle_append_entries_req(&Vote::new(1, 1), None, &Vec::<Entry<UTCfg>>::new(), None);
+    let resp = eng.handle_append_entries_req(&Vote::new(1, 1), None, Vec::<Entry<UTCfg>>::new(), None);
 
     assert_eq!(AppendEntriesResponse::HigherVote(Vote::new(2, 1)), resp);
     assert_eq!(
@@ -107,7 +108,7 @@ fn test_handle_append_entries_req_prev_log_id_is_applied() -> anyhow::Result<()>
     let resp = eng.handle_append_entries_req(
         &Vote::new_committed(2, 1),
         Some(log_id(0, 0)),
-        &Vec::<Entry<UTCfg>>::new(),
+        Vec::<Entry<UTCfg>>::new(),
         None,
     );
 
@@ -157,7 +158,7 @@ fn test_handle_append_entries_req_prev_log_id_conflict() -> anyhow::Result<()> {
     let resp = eng.handle_append_entries_req(
         &Vote::new_committed(2, 1),
         Some(log_id(2, 2)),
-        &Vec::<Entry<UTCfg>>::new(),
+        Vec::<Entry<UTCfg>>::new(),
         None,
     );
 
@@ -212,7 +213,7 @@ fn test_handle_append_entries_req_prev_log_id_is_committed() -> anyhow::Result<(
     let resp = eng.handle_append_entries_req(
         &Vote::new_committed(2, 1),
         Some(log_id(0, 0)),
-        &[blank(1, 1), blank(2, 2)],
+        vec![blank(1, 1), blank(2, 2)],
         Some(log_id(1, 1)),
     );
 
@@ -254,7 +255,9 @@ fn test_handle_append_entries_req_prev_log_id_is_committed() -> anyhow::Result<(
             Command::UpdateMembership {
                 membership: Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01()))
             },
-            Command::AppendInputEntries { range: 1..2 },
+            Command::AppendInputEntries {
+                entries: vec![blank(2, 2)]
+            },
             Command::FollowerCommit {
                 already_committed: Some(log_id(0, 0)),
                 upto: log_id(1, 1)
@@ -275,7 +278,7 @@ fn test_handle_append_entries_req_prev_log_id_not_exists() -> anyhow::Result<()>
     let resp = eng.handle_append_entries_req(
         &Vote::new_committed(2, 1),
         Some(log_id(2, 4)),
-        &[blank(1, 1), blank(2, 2)],
+        vec![blank(1, 1), blank(2, 2)],
         Some(log_id(1, 1)),
     );
 
@@ -330,10 +333,7 @@ fn test_handle_append_entries_req_entries_conflict() -> anyhow::Result<()> {
     let resp = eng.handle_append_entries_req(
         &Vote::new_committed(2, 1),
         Some(log_id(1, 1)),
-        &[blank(1, 2), Entry {
-            log_id: log_id(3, 3),
-            payload: EntryPayload::Membership(m34()),
-        }],
+        vec![blank(1, 2), Entry::new_membership(log_id(3, 3), m34())],
         Some(log_id(4, 4)),
     );
 
@@ -375,9 +375,11 @@ fn test_handle_append_entries_req_entries_conflict() -> anyhow::Result<()> {
             Command::UpdateMembership {
                 membership: Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01()))
             },
-            Command::AppendInputEntries { range: 1..2 },
             Command::UpdateMembership {
                 membership: Arc::new(EffectiveMembership::new(Some(log_id(3, 3)), m34()))
+            },
+            Command::AppendInputEntries {
+                entries: vec![Entry::new_membership(log_id(3, 3), m34())]
             },
             Command::FollowerCommit {
                 already_committed: Some(log_id(0, 0)),

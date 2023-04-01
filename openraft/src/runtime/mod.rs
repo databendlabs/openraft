@@ -67,5 +67,8 @@ pub(crate) trait RaftRuntime<C: RaftTypeConfig> {
     /// every command.           This can be done after moving all raft-algorithm logic into
     /// Engine.           Then a Runtime do not need to differentiate states such as LeaderState
     /// or FollowerState and all           command execution can be implemented in one method.
-    async fn run_command<'e>(&mut self, cmd: Command<C::NodeId, C::Node>) -> Result<(), StorageError<C::NodeId>>;
+    async fn run_command<'e>(
+        &mut self,
+        cmd: Command<C::NodeId, C::Node, C::Entry>,
+    ) -> Result<(), StorageError<C::NodeId>>;
 }

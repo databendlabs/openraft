@@ -1,6 +1,7 @@
 use crate::engine::Command;
 use crate::engine::EngineConfig;
 use crate::engine::EngineOutput;
+use crate::entry::RaftEntry;
 use crate::Node;
 use crate::NodeId;
 use crate::RaftState;
@@ -9,20 +10,22 @@ use crate::ServerState;
 #[cfg(test)] mod update_server_state_test;
 
 /// Handle raft server-state related operations
-pub(crate) struct ServerStateHandler<'st, NID, N>
+pub(crate) struct ServerStateHandler<'st, NID, N, Ent>
 where
     NID: NodeId,
     N: Node,
+    Ent: RaftEntry<NID, N>,
 {
     pub(crate) config: &'st EngineConfig<NID>,
     pub(crate) state: &'st mut RaftState<NID, N>,
-    pub(crate) output: &'st mut EngineOutput<NID, N>,
+    pub(crate) output: &'st mut EngineOutput<NID, N, Ent>,
 }
 
-impl<'st, NID, N> ServerStateHandler<'st, NID, N>
+impl<'st, NID, N, Ent> ServerStateHandler<'st, NID, N, Ent>
 where
     NID: NodeId,
     N: Node,
+    Ent: RaftEntry<NID, N>,
 {
     /// Re-calculate the server-state, if it changed, update the `server_state` field and dispatch
     /// commands to inform a runtime.

@@ -1,5 +1,4 @@
 use std::collections::BTreeMap;
-use std::collections::VecDeque;
 use std::fmt::Display;
 use std::pin::Pin;
 use std::sync::atomic::Ordering;
@@ -141,12 +140,6 @@ pub struct RaftCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<
 
     /// The `RaftStorage` implementation.
     pub(crate) storage: S,
-
-    /// The application input entries to be appended to RaftStorage.
-    ///
-    /// These entries comes from user calls to `RaftCore::client_write` for a leader, or
-    /// `RaftCore::append_entries` for a follower or learner.
-    pub(crate) input_entries: VecDeque<C::Entry>,
 
     pub(crate) engine: Engine<C::NodeId, C::Node, C::Entry>,
 
@@ -408,19 +401,18 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             return false;
         };
 
-        let mut entries = [entry];
+        let entries = vec![entry];
         // TODO: it should returns membership config error etc. currently this is done by the
         //       caller.
-        lh.leader_append_entries(&mut entries);
+        lh.leader_append_entries(entries);
+        let index = lh.state.last_log_id().unwrap().index;
 
         // Install callback channels.
         if let Some(tx) = tx {
             if let Some(l) = &mut self.leader_data {
-                l.client_resp_channels.insert(entries[0].get_log_id().index, tx);
+                l.client_resp_channels.insert(index, tx);
             }
         }
-
-        self.input_entries.extend(entries);
 
         true
     }
@@ -530,13 +522,11 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     ) {
         let membership = Membership::from(member_nodes);
 
-        let mut entries = [C::Entry::new_membership(LogId::default(), membership)];
-        let res = self.engine.initialize(&mut entries);
+        let entry = C::Entry::new_membership(LogId::default(), membership);
+        let res = self.engine.initialize(entry);
         self.engine.output.push_command(Command::SendInitializeResult {
             send: SendResult::new(res, tx),
         });
-
-        self.input_entries.extend(entries);
     }
 
     pub(crate) async fn handle_building_snapshot_result(
@@ -958,16 +948,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     ) {
         tracing::debug!(req = display(req.summary()), func = func_name!());
 
-        let resp = self.engine.handle_append_entries_req(&req.vote, req.prev_log_id, &req.entries, req.leader_commit);
-        if resp.is_success() {
-            tracing::debug!(
-                entries = display(DisplaySlice::<_>(&req.entries)),
-                "append entries to input buffer"
-            );
-            self.input_entries.extend(req.entries);
-        } else {
-            tracing::debug!("Engine does not consume input entries");
-        }
+        let resp = self.engine.handle_append_entries_req(&req.vote, req.prev_log_id, req.entries, req.leader_commit);
 
         self.engine.output.push_command(Command::SendAppendEntriesResult {
             send: SendResult::new(Ok(resp), tx),
@@ -1271,7 +1252,10 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
 #[async_trait::async_trait]
 impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime<C> for RaftCore<C, N, S> {
-    async fn run_command<'e>(&mut self, cmd: Command<C::NodeId, C::Node>) -> Result<(), StorageError<C::NodeId>> {
+    async fn run_command<'e>(
+        &mut self,
+        cmd: Command<C::NodeId, C::Node, C::Entry>,
+    ) -> Result<(), StorageError<C::NodeId>> {
         match cmd {
             Command::BecomeLeader => {
                 debug_assert!(self.leader_data.is_none(), "can not become leader twice");
@@ -1290,21 +1274,13 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
                 }
                 self.leader_data = None;
             }
-            Command::AppendInputEntries { range } => {
-                // AppendInputEntries implies to consume the input.
-                // The entries before `range.start` are discarded.
-                self.input_entries.drain(..range.start);
-
-                if range.end > range.start {
-                    tracing::debug!(
-                        "AppendInputEntries: {},..,{}",
-                        self.input_entries.get(0).unwrap(),
-                        self.input_entries.get(range.end - range.start - 1).unwrap()
-                    );
-                    let entries = self.input_entries.drain(..(range.end - range.start));
-
-                    self.storage.append_to_log(entries).await?
-                }
+            Command::AppendEntry { entry } => {
+                tracing::debug!("AppendEntry: {}", &entry);
+                self.storage.append_to_log([entry]).await?
+            }
+            Command::AppendInputEntries { entries } => {
+                tracing::debug!("AppendInputEntries: {}", DisplaySlice::<_>(&entries),);
+                self.storage.append_to_log(entries).await?
             }
             Command::AppendBlankLog { log_id } => {
                 let ent = C::Entry::new_blank(log_id);

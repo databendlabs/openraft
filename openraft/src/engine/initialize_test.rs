@@ -42,7 +42,7 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
     };
 
     let m1 = || Membership::<u64, ()>::new(vec![btreeset! {1}], None);
-    let mut entries = [Entry::<Config>::new_membership(LogId::default(), m1())];
+    let entry = Entry::<Config>::new_membership(LogId::default(), m1());
 
     tracing::info!("--- ok: init empty node 1 with membership(1,2)");
     tracing::info!("--- expect OK result, check output commands and state changes");
@@ -50,7 +50,7 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
         let mut eng = eng();
         eng.config.id = 1;
 
-        eng.initialize(&mut entries)?;
+        eng.initialize(entry)?;
 
         assert_eq!(Some(log_id0), eng.state.get_log_id(0));
         assert_eq!(Some(log_id(1, 1)), eng.state.get_log_id(1));
@@ -71,7 +71,9 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
 
         assert_eq!(
             vec![
-                Command::AppendInputEntries { range: 0..1 },
+                Command::AppendEntry {
+                    entry: Entry::<Config>::new_membership(LogId::default(), m1())
+                },
                 Command::UpdateMembership {
                     membership: eng.state.membership_state.effective().clone()
                 },
@@ -128,7 +130,7 @@ fn test_initialize() -> anyhow::Result<()> {
     };
 
     let m12 = || Membership::<u64, ()>::new(vec![btreeset! {1,2}], None);
-    let mut entries = [Entry::<Config>::new_membership(LogId::default(), m12())];
+    let entry = || Entry::<Config>::new_membership(LogId::default(), m12());
 
     tracing::info!("--- ok: init empty node 1 with membership(1,2)");
     tracing::info!("--- expect OK result, check output commands and state changes");
@@ -136,7 +138,7 @@ fn test_initialize() -> anyhow::Result<()> {
         let mut eng = eng();
         eng.config.id = 1;
 
-        eng.initialize(&mut entries)?;
+        eng.initialize(entry())?;
 
         assert_eq!(Some(log_id0), eng.state.get_log_id(0));
         assert_eq!(None, eng.state.get_log_id(1));
@@ -155,7 +157,9 @@ fn test_initialize() -> anyhow::Result<()> {
 
         assert_eq!(
             vec![
-                Command::AppendInputEntries { range: 0..1 },
+                Command::AppendEntry {
+                    entry: Entry::new_membership(LogId::default(), m12())
+                },
                 Command::UpdateMembership {
                     membership: eng.state.membership_state.effective().clone()
                 },
@@ -187,7 +191,7 @@ fn test_initialize() -> anyhow::Result<()> {
                 last_log_id: Some(log_id0),
                 vote: Vote::default(),
             })),
-            eng.initialize(&mut entries)
+            eng.initialize(entry())
         );
     }
 
@@ -201,7 +205,7 @@ fn test_initialize() -> anyhow::Result<()> {
                 last_log_id: None,
                 vote: Vote::new(0, 1),
             })),
-            eng.initialize(&mut entries)
+            eng.initialize(entry())
         );
     }
 
@@ -214,7 +218,7 @@ fn test_initialize() -> anyhow::Result<()> {
                 node_id: 0,
                 membership: m12()
             })),
-            eng.initialize(&mut entries)
+            eng.initialize(entry())
         );
     }
 

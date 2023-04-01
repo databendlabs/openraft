@@ -1,7 +1,6 @@
 //! Public Raft interface and data types.
 
 use std::collections::BTreeMap;
-use std::collections::VecDeque;
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::sync::atomic::Ordering;
@@ -243,7 +242,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
             storage,
 
             engine,
-            input_entries: VecDeque::with_capacity(4096),
             leader_data: None,
 
             snapshot_state: SnapshotState::None,

@@ -260,7 +260,7 @@ where
 
     pub(crate) fn assign_log_ids<'a, Ent: RaftEntry<NID, N> + 'a>(
         &mut self,
-        entries: impl Iterator<Item = &'a mut Ent>,
+        entries: impl IntoIterator<Item = &'a mut Ent>,
     ) {
         let mut log_id = LogId::new(
             self.vote_ref().committed_leader_id().unwrap(),

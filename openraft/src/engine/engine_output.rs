@@ -1,29 +1,31 @@
 use std::collections::VecDeque;
 
 use crate::engine::Command;
+use crate::entry::RaftEntry;
 use crate::MetricsChangeFlags;
 use crate::Node;
 use crate::NodeId;
 
 /// The entry of output from Engine to the runtime.
 #[derive(Debug, Default)]
-#[derive(PartialEq, Eq)]
-pub(crate) struct EngineOutput<NID, N>
+pub(crate) struct EngineOutput<NID, N, Ent>
 where
     NID: NodeId,
     N: Node,
+    Ent: RaftEntry<NID, N>,
 {
     /// Tracks what kind of metrics changed
     pub(crate) metrics_flags: MetricsChangeFlags,
 
     /// Command queue that need to be executed by `RaftRuntime`.
-    pub(crate) commands: VecDeque<Command<NID, N>>,
+    pub(crate) commands: VecDeque<Command<NID, N, Ent>>,
 }
 
-impl<NID, N> EngineOutput<NID, N>
+impl<NID, N, Ent> EngineOutput<NID, N, Ent>
 where
     NID: NodeId,
     N: Node,
+    Ent: RaftEntry<NID, N>,
 {
     pub(crate) fn new(command_buffer_size: usize) -> Self {
         Self {
@@ -33,24 +35,24 @@ where
     }
 
     /// Push a command to the queue.
-    pub(crate) fn push_command(&mut self, cmd: Command<NID, N>) {
+    pub(crate) fn push_command(&mut self, cmd: Command<NID, N, Ent>) {
         cmd.update_metrics_flags(&mut self.metrics_flags);
         self.commands.push_back(cmd)
     }
 
     /// Pop the first command to run from the queue.
-    pub(crate) fn pop_command(&mut self) -> Option<Command<NID, N>> {
+    pub(crate) fn pop_command(&mut self) -> Option<Command<NID, N, Ent>> {
         self.commands.pop_front()
     }
 
     /// Iterate all queued commands.
-    pub(crate) fn iter_commands(&self) -> impl Iterator<Item = &Command<NID, N>> {
+    pub(crate) fn iter_commands(&self) -> impl Iterator<Item = &Command<NID, N, Ent>> {
         self.commands.iter()
     }
 
     /// Take all queued commands and clear the queue.
     #[cfg(test)]
-    pub(crate) fn take_commands(&mut self) -> Vec<Command<NID, N>> {
+    pub(crate) fn take_commands(&mut self) -> Vec<Command<NID, N, Ent>> {
         self.commands.drain(..).collect()
     }
 

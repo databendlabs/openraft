@@ -2,11 +2,13 @@ use crate::RaftTypeConfig;
 
 /// Req for test
 #[derive(Clone)]
+#[derive(PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub(crate) struct Req {}
 
 /// Resp for test
 #[derive(Clone)]
+#[derive(PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub(crate) struct Resp {}
 
