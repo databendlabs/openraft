@@ -5,6 +5,8 @@ use std::time::Duration;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::raft::AppendEntriesRequest;
+use openraft::storage::RaftLogReaderExt;
+use openraft::testing;
 use openraft::CommittedLeaderId;
 use openraft::Config;
 use openraft::Entry;
@@ -13,10 +15,8 @@ use openraft::LogId;
 use openraft::Membership;
 use openraft::RaftNetwork;
 use openraft::RaftNetworkFactory;
-use openraft::RaftStorage;
 use openraft::ServerState;
 use openraft::SnapshotPolicy;
-use openraft::StorageHelper;
 use openraft::Vote;
 
 use crate::fixtures::blank;
@@ -93,14 +93,14 @@ async fn compaction() -> Result<()> {
         .await?;
 
     // Add a new node and assert that it received the same snapshot.
-    let mut sto1 = router.new_store();
-    sto1.append_to_log([blank(0, 0), Entry {
+    let (mut sto1, sm1) = router.new_store();
+    testing::blocking_append(&mut sto1, [blank(0, 0), Entry {
         log_id: LogId::new(CommittedLeaderId::new(1, 0), 1),
         payload: EntryPayload::Membership(Membership::new(vec![btreeset! {0}], None)),
     }])
     .await?;
 
-    router.new_raft_node_with_sto(1, sto1.clone()).await;
+    router.new_raft_node_with_sto(1, sto1.clone(), sm1.clone()).await;
     router.add_learner(0, 1).await.expect("failed to add new node as learner");
     log_index += 1; // add_learner log
 
@@ -114,8 +114,8 @@ async fn compaction() -> Result<()> {
 
     tracing::info!("--- logs should be deleted after installing snapshot; left only the last one");
     {
-        let mut sto = router.get_storage_handle(&1)?;
-        let logs = StorageHelper::new(&mut sto).get_log_entries(..).await?;
+        let (mut sto, _sm) = router.get_storage_handle(&1)?;
+        let logs = sto.get_log_entries(..).await?;
         assert_eq!(2, logs.len());
         assert_eq!(LogId::new(CommittedLeaderId::new(1, 0), log_index - 1), logs[0].log_id)
     }

@@ -26,7 +26,7 @@ async fn shutdown() -> Result<()> {
     tracing::info!("--- performing node shutdowns");
     {
         for i in [0, 1, 2] {
-            let (node, _) = router.remove_node(i).unwrap();
+            let (node, _, _) = router.remove_node(i).unwrap();
             node.shutdown().await?;
             let m = node.metrics();
             assert_eq!(ServerState::Shutdown, m.borrow().state, "shutdown node-{}", i);

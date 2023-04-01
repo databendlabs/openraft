@@ -32,6 +32,8 @@ use crate::raft::AppendEntriesResponse;
 use crate::raft::InstallSnapshotRequest;
 use crate::raft::RaftMsg;
 use crate::storage::RaftLogReader;
+use crate::storage::RaftLogStorage;
+use crate::storage::RaftStateMachine;
 use crate::storage::Snapshot;
 use crate::ErrorSubject;
 use crate::ErrorVerb;
@@ -42,7 +44,6 @@ use crate::NodeId;
 use crate::RPCTypes;
 use crate::RaftNetwork;
 use crate::RaftNetworkFactory;
-use crate::RaftStorage;
 use crate::RaftTypeConfig;
 use crate::ToStorageResult;
 
@@ -65,7 +66,13 @@ where
 /// NOTE: we do not stack replication requests to targets because this could result in
 /// out-of-order delivery. We always buffer until we receive a success response, then send the
 /// next payload from the buffer.
-pub(crate) struct ReplicationCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> {
+pub(crate) struct ReplicationCore<C, N, LS, SM>
+where
+    C: RaftTypeConfig,
+    N: RaftNetworkFactory<C>,
+    LS: RaftLogStorage<C>,
+    SM: RaftStateMachine<C>,
+{
     /// The ID of the target Raft node which replication events are to be sent to.
     target: C::NodeId,
 
@@ -74,16 +81,16 @@ pub(crate) struct ReplicationCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S
 
     /// A channel for sending events to the RaftCore.
     #[allow(clippy::type_complexity)]
-    tx_raft_core: mpsc::UnboundedSender<RaftMsg<C, N, S>>,
+    tx_raft_core: mpsc::UnboundedSender<RaftMsg<C, N, LS>>,
 
     /// A channel for receiving events from the RaftCore.
-    rx_repl: mpsc::UnboundedReceiver<Replicate<C::NodeId, C::Node, S::SnapshotData>>,
+    rx_repl: mpsc::UnboundedReceiver<Replicate<C::NodeId, C::Node, SM::SnapshotData>>,
 
     /// The `RaftNetwork` interface.
     network: N::Network,
 
     /// The `RaftLogReader` of a `RaftStorage` interface.
-    log_reader: S::LogReader,
+    log_reader: LS::LogReader,
 
     /// The Raft's runtime config.
     config: Arc<Config>,
@@ -95,10 +102,16 @@ pub(crate) struct ReplicationCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S
     matching: Option<LogId<C::NodeId>>,
 
     /// Next replication action to run.
-    next_action: Option<Data<C::NodeId, C::Node, S::SnapshotData>>,
+    next_action: Option<Data<C::NodeId, C::Node, SM::SnapshotData>>,
 }
 
-impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> ReplicationCore<C, N, S> {
+impl<C, N, LS, SM> ReplicationCore<C, N, LS, SM>
+where
+    C: RaftTypeConfig,
+    N: RaftNetworkFactory<C>,
+    LS: RaftLogStorage<C>,
+    SM: RaftStateMachine<C>,
+{
     /// Spawn a new replication task for the target node.
     #[tracing::instrument(level = "trace", skip_all,fields(target=display(target), session_id=display(session_id)))]
     #[allow(clippy::type_complexity)]
@@ -110,10 +123,10 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
         committed: Option<LogId<C::NodeId>>,
         matching: Option<LogId<C::NodeId>>,
         network: N::Network,
-        log_reader: S::LogReader,
-        tx_raft_core: mpsc::UnboundedSender<RaftMsg<C, N, S>>,
+        log_reader: LS::LogReader,
+        tx_raft_core: mpsc::UnboundedSender<RaftMsg<C, N, LS>>,
         span: tracing::Span,
-    ) -> ReplicationHandle<C::NodeId, C::Node, S::SnapshotData> {
+    ) -> ReplicationHandle<C::NodeId, C::Node, SM::SnapshotData> {
         tracing::debug!(
             session_id = display(&session_id),
             target = display(&target),
@@ -405,7 +418,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
-    pub fn process_event(&mut self, event: Replicate<C::NodeId, C::Node, S::SnapshotData>) {
+    pub fn process_event(&mut self, event: Replicate<C::NodeId, C::Node, SM::SnapshotData>) {
         tracing::debug!(event=%event.summary(), "process_event");
 
         match event {
@@ -431,6 +444,104 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
                 debug_assert!(self.next_action.is_none(),);
                 self.next_action = Some(d);
             }
+        }
+    }
+
+    #[tracing::instrument(level = "trace", skip(self, snapshot))]
+    async fn stream_snapshot(
+        &mut self,
+        id: u64,
+        mut snapshot: Snapshot<C::NodeId, C::Node, SM::SnapshotData>,
+    ) -> Result<(), ReplicationError<C::NodeId, C::Node>> {
+        tracing::debug!(id = display(id), snapshot = debug(&snapshot.meta), "stream_snapshot",);
+
+        let err_x = || (ErrorSubject::Snapshot(snapshot.meta.signature()), ErrorVerb::Read);
+
+        let mut offset = 0;
+        let end = snapshot.snapshot.seek(SeekFrom::End(0)).await.sto_res(err_x)?;
+        let mut buf = Vec::with_capacity(self.config.snapshot_max_chunk_size as usize);
+
+        loop {
+            // Build the RPC.
+            snapshot.snapshot.seek(SeekFrom::Start(offset)).await.sto_res(err_x)?;
+            let n_read = snapshot.snapshot.read_buf(&mut buf).await.sto_res(err_x)?;
+
+            let done = (offset + n_read as u64) == end;
+            let req = InstallSnapshotRequest {
+                vote: self.session_id.vote,
+                meta: snapshot.meta.clone(),
+                offset,
+                data: Vec::from(&buf[..n_read]),
+                done,
+            };
+            buf.clear();
+
+            // Send the RPC over to the target.
+            tracing::debug!(
+                snapshot_size = req.data.len(),
+                req.offset,
+                end,
+                req.done,
+                "sending snapshot chunk"
+            );
+
+            let snap_timeout = if done {
+                self.config.install_snapshot_timeout()
+            } else {
+                self.config.send_snapshot_timeout()
+            };
+
+            let res = timeout(snap_timeout, self.network.send_install_snapshot(req)).await;
+
+            let res = match res {
+                Ok(outer_res) => match outer_res {
+                    Ok(res) => res,
+                    Err(err) => {
+                        tracing::warn!(error=%err, "error sending InstallSnapshot RPC to target");
+
+                        // Sleep a short time otherwise in test environment it is a dead-loop that
+                        // never yields. Because network implementation does
+                        // not yield.
+                        sleep(Duration::from_millis(10)).await;
+                        continue;
+                    }
+                },
+                Err(err) => {
+                    tracing::warn!(error=%err, "timeout while sending InstallSnapshot RPC to target");
+
+                    // Sleep a short time otherwise in test environment it is a dead-loop that never
+                    // yields. Because network implementation does not yield.
+                    sleep(Duration::from_millis(10)).await;
+                    continue;
+                }
+            };
+
+            // Handle response conditions.
+            if res.vote > self.session_id.vote {
+                return Err(ReplicationError::HigherVote(HigherVote {
+                    higher: res.vote,
+                    mine: self.session_id.vote,
+                }));
+            }
+
+            // If we just sent the final chunk of the snapshot, then transition to lagging state.
+            if done {
+                tracing::debug!(
+                    "done install snapshot: snapshot last_log_id: {:?}, matching: {}",
+                    snapshot.meta.last_log_id,
+                    self.matching.summary(),
+                );
+
+                self.update_matching(id, snapshot.meta.last_log_id);
+
+                return Ok(());
+            }
+
+            // Everything is good, so update offset for sending the next chunk.
+            offset += n_read as u64;
+
+            // Check raft channel to ensure we are staying up-to-date, then loop.
+            self.try_drain_events().await?;
         }
     }
 }
@@ -574,106 +685,6 @@ where
             Replicate::Data(d) => {
                 format!("Replicate::Data({})", d.summary())
             }
-        }
-    }
-}
-
-impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> ReplicationCore<C, N, S> {
-    #[tracing::instrument(level = "trace", skip(self, snapshot))]
-    async fn stream_snapshot(
-        &mut self,
-        id: u64,
-        mut snapshot: Snapshot<C::NodeId, C::Node, S::SnapshotData>,
-    ) -> Result<(), ReplicationError<C::NodeId, C::Node>> {
-        tracing::debug!(id = display(id), snapshot = debug(&snapshot.meta), "stream_snapshot",);
-
-        let err_x = || (ErrorSubject::Snapshot(snapshot.meta.signature()), ErrorVerb::Read);
-
-        let mut offset = 0;
-        let end = snapshot.snapshot.seek(SeekFrom::End(0)).await.sto_res(err_x)?;
-        let mut buf = Vec::with_capacity(self.config.snapshot_max_chunk_size as usize);
-
-        loop {
-            // Build the RPC.
-            snapshot.snapshot.seek(SeekFrom::Start(offset)).await.sto_res(err_x)?;
-            let n_read = snapshot.snapshot.read_buf(&mut buf).await.sto_res(err_x)?;
-
-            let done = (offset + n_read as u64) == end;
-            let req = InstallSnapshotRequest {
-                vote: self.session_id.vote,
-                meta: snapshot.meta.clone(),
-                offset,
-                data: Vec::from(&buf[..n_read]),
-                done,
-            };
-            buf.clear();
-
-            // Send the RPC over to the target.
-            tracing::debug!(
-                snapshot_size = req.data.len(),
-                req.offset,
-                end,
-                req.done,
-                "sending snapshot chunk"
-            );
-
-            let snap_timeout = if done {
-                self.config.install_snapshot_timeout()
-            } else {
-                self.config.send_snapshot_timeout()
-            };
-
-            let res = timeout(snap_timeout, self.network.send_install_snapshot(req)).await;
-
-            let res = match res {
-                Ok(outer_res) => match outer_res {
-                    Ok(res) => res,
-                    Err(err) => {
-                        tracing::warn!(error=%err, "error sending InstallSnapshot RPC to target");
-
-                        // Sleep a short time otherwise in test environment it is a dead-loop that
-                        // never yields. Because network implementation does
-                        // not yield.
-                        sleep(Duration::from_millis(10)).await;
-                        continue;
-                    }
-                },
-                Err(err) => {
-                    tracing::warn!(error=%err, "timeout while sending InstallSnapshot RPC to target");
-
-                    // Sleep a short time otherwise in test environment it is a dead-loop that never
-                    // yields. Because network implementation does not yield.
-                    sleep(Duration::from_millis(10)).await;
-                    continue;
-                }
-            };
-
-            // Handle response conditions.
-            if res.vote > self.session_id.vote {
-                return Err(ReplicationError::HigherVote(HigherVote {
-                    higher: res.vote,
-                    mine: self.session_id.vote,
-                }));
-            }
-
-            // If we just sent the final chunk of the snapshot, then transition to lagging state.
-            if done {
-                tracing::debug!(
-                    "done install snapshot: snapshot last_log_id: {:?}, matching: {}",
-                    snapshot.meta.last_log_id,
-                    self.matching.summary(),
-                );
-
-                self.update_matching(id, snapshot.meta.last_log_id);
-
-                return Ok(());
-            }
-
-            // Everything is good, so update offset for sending the next chunk.
-            offset += n_read as u64;
-
-            // Check raft channel to ensure we are staying up-to-date, then loop.
-            self.try_drain_events().await?;
         }
     }
 }

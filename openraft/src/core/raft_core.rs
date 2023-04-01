@@ -4,6 +4,7 @@ use std::pin::Pin;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
+use anyerror::AnyError;
 use futures::future::abortable;
 use futures::future::select;
 use futures::future::Either;
@@ -81,25 +82,42 @@ use crate::replication::ReplicationHandle;
 use crate::replication::ReplicationResult;
 use crate::replication::ReplicationSessionId;
 use crate::runtime::RaftRuntime;
+use crate::storage::LogFlushed;
+use crate::storage::RaftLogReaderExt;
+use crate::storage::RaftLogStorage;
 use crate::storage::RaftSnapshotBuilder;
+use crate::storage::RaftStateMachine;
 use crate::versioned::Updatable;
 use crate::versioned::Versioned;
 use crate::ChangeMembers;
 use crate::LogId;
 use crate::Membership;
 use crate::MessageSummary;
+use crate::Node;
+use crate::NodeId;
 use crate::RPCTypes;
 use crate::RaftNetwork;
 use crate::RaftNetworkFactory;
-use crate::RaftStorage;
 use crate::RaftTypeConfig;
 use crate::SnapshotId;
 use crate::SnapshotSegmentId;
 use crate::StorageError;
-use crate::StorageHelper;
 use crate::StorageIOError;
 use crate::Update;
 use crate::Vote;
+
+/// A temp struct to hold the data for a node that is being applied.
+#[derive(Debug)]
+pub(crate) struct ApplyingEntry<NID: NodeId, N: Node> {
+    log_id: LogId<NID>,
+    membership: Option<Membership<NID, N>>,
+}
+
+impl<NID: NodeId, N: Node> ApplyingEntry<NID, N> {
+    fn new(log_id: LogId<NID>, membership: Option<Membership<NID, N>>) -> Self {
+        Self { log_id, membership }
+    }
+}
 
 /// Data for a Leader.
 ///
@@ -136,7 +154,13 @@ where SD: AsyncRead + AsyncSeek + Send + Unpin + 'static
 }
 
 /// The core type implementing the Raft protocol.
-pub struct RaftCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> {
+pub struct RaftCore<C, N, LS, SM>
+where
+    C: RaftTypeConfig,
+    N: RaftNetworkFactory<C>,
+    LS: RaftLogStorage<C>,
+    SM: RaftStateMachine<C>,
+{
     /// This node's ID.
     pub(crate) id: C::NodeId,
 
@@ -148,28 +172,37 @@ pub struct RaftCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<
     /// The `RaftNetworkFactory` implementation.
     pub(crate) network: N,
 
-    /// The `RaftStorage` implementation.
-    pub(crate) storage: S,
+    /// The [`RaftLogStorage`] implementation.
+    pub(crate) log_store: LS,
+
+    /// The [`RaftStateMachine`] implementation.
+    pub(crate) state_machine: SM,
 
     pub(crate) engine: Engine<C::NodeId, C::Node, C::Entry>,
 
-    pub(crate) leader_data: Option<LeaderData<C, S::SnapshotData>>,
+    pub(crate) leader_data: Option<LeaderData<C, SM::SnapshotData>>,
 
     /// The node's current snapshot state.
-    pub(crate) snapshot_state: snapshot_state::State<S::SnapshotData>,
+    pub(crate) snapshot_state: snapshot_state::State<SM::SnapshotData>,
 
     /// Received snapshot that are ready to install.
-    pub(crate) received_snapshot: BTreeMap<SnapshotId, Box<S::SnapshotData>>,
+    pub(crate) received_snapshot: BTreeMap<SnapshotId, Box<SM::SnapshotData>>,
 
-    pub(crate) tx_api: mpsc::UnboundedSender<RaftMsg<C, N, S>>,
-    pub(crate) rx_api: mpsc::UnboundedReceiver<RaftMsg<C, N, S>>,
+    pub(crate) tx_api: mpsc::UnboundedSender<RaftMsg<C, N, LS>>,
+    pub(crate) rx_api: mpsc::UnboundedReceiver<RaftMsg<C, N, LS>>,
 
     pub(crate) tx_metrics: watch::Sender<RaftMetrics<C::NodeId, C::Node>>,
 
     pub(crate) span: Span,
 }
 
-impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C, N, S> {
+impl<C, N, LS, SM> RaftCore<C, N, LS, SM>
+where
+    C: RaftTypeConfig,
+    N: RaftNetworkFactory<C>,
+    LS: RaftLogStorage<C>,
+    SM: RaftStateMachine<C>,
+{
     /// The main loop of the Raft protocol.
     pub(crate) async fn main(mut self, rx_shutdown: oneshot::Receiver<()>) -> Result<(), Fatal<C::NodeId>> {
         let span = tracing::span!(parent: &self.span, Level::DEBUG, "main");
@@ -203,7 +236,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
         self.engine.startup();
         // It may not finish running all of the commands, if there is a command waiting for a callback.
-        // TODO: this can be moved into runtime_loop()
         self.run_engine_commands().await?;
 
         // Initialize metrics.
@@ -596,7 +628,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 return Ok(());
             }
 
-            let snapshot_data = self.storage.begin_receiving_snapshot().await?;
+            let snapshot_data = self.state_machine.begin_receiving_snapshot().await?;
             self.snapshot_state.streaming = Some(Streaming::new(req.meta.snapshot_id.clone(), snapshot_data));
         }
 
@@ -686,7 +718,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
         // At this point, we are clear to begin a new snapshot building process.
 
-        let mut builder = self.storage.get_snapshot_builder().await;
+        let mut builder = self.state_machine.get_snapshot_builder().await;
         let (fu, abort_handle) = abortable(async move { builder.build_snapshot().await });
         let tx_api = self.tx_api.clone();
 
@@ -740,7 +772,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
-    pub fn current_leader(&self) -> Option<C::NodeId> {
+    pub(crate) fn current_leader(&self) -> Option<C::NodeId> {
         tracing::debug!(
             self_id = display(self.id),
             vote = display(self.engine.state.vote_ref().summary()),
@@ -775,6 +807,27 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         self.engine.state.membership_state.effective().get_node(&leader_id).cloned()
     }
 
+    /// A temp wrapper to make non-blocking `append_to_log` a blocking.
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub(crate) async fn append_to_log<I>(
+        &mut self,
+        entries: I,
+        last_log_id: LogId<C::NodeId>,
+    ) -> Result<(), StorageError<C::NodeId>>
+    where
+        I: IntoIterator<Item = C::Entry> + Send,
+    {
+        tracing::debug!("append_to_log");
+
+        let (tx, rx) = oneshot::channel();
+        let callback = LogFlushed::new(Some(last_log_id), tx);
+        self.log_store.append(entries, callback).await?;
+        rx.await
+            .map_err(|e| StorageIOError::write_logs(AnyError::error(e)))?
+            .map_err(|e| StorageIOError::write_logs(AnyError::error(e)))?;
+        Ok(())
+    }
+
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) async fn apply_to_state_machine(
         &mut self,
@@ -796,31 +849,38 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             return Ok(());
         }
 
-        let entries = StorageHelper::new(&mut self.storage).get_log_entries(since..end).await?;
+        let entries = self.log_store.get_log_entries(since..end).await?;
         tracing::debug!(
             entries = display(DisplaySlice::<_>(entries.as_slice())),
             "about to apply"
         );
 
+        // Fake complain: avoid using `collect()` when not needed
+        #[allow(clippy::needless_collect)]
+        let applying_entries = entries
+            .iter()
+            .map(|e| ApplyingEntry::new(*e.get_log_id(), e.get_membership().cloned()))
+            .collect::<Vec<_>>();
+
         // TODO: prepare response before apply_to_state_machine,
         //       so that an Entry does not need to be Clone,
         //       and no references will be used by apply_to_state_machine
-        let apply_results = self.storage.apply_to_state_machine(&entries).await?;
 
-        let last_applied = entries[entries.len() - 1].get_log_id();
+        let last_applied = *entries[entries.len() - 1].get_log_id();
+        let apply_results = self.state_machine.apply(entries).await?;
+
         tracing::debug!(last_applied = display(last_applied), "update last_applied");
 
         if let Some(l) = &mut self.leader_data {
             let mut results = apply_results.into_iter();
+            let mut applying_entries = applying_entries.into_iter();
 
             for log_index in since..end {
+                let ent = applying_entries.next().unwrap();
+                let apply_res = results.next().unwrap();
                 let tx = l.client_resp_channels.remove(&log_index);
 
-                let i = log_index - since;
-                let entry = &entries[i as usize];
-                let apply_res = results.next().unwrap();
-
-                Self::send_response(entry, apply_res, tx);
+                Self::send_response(ent, apply_res, tx);
             }
         }
 
@@ -830,18 +890,18 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
     /// Send result of applying a log entry to its client.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(super) fn send_response(entry: &C::Entry, resp: C::R, tx: Option<ClientWriteTx<C>>) {
-        tracing::debug!(entry = display(entry), "send_response");
+    pub(super) fn send_response(entry: ApplyingEntry<C::NodeId, C::Node>, resp: C::R, tx: Option<ClientWriteTx<C>>) {
+        tracing::debug!(entry = debug(&entry), "send_response");
 
         let tx = match tx {
             None => return,
             Some(x) => x,
         };
 
-        let membership = entry.get_membership().cloned();
+        let membership = entry.membership;
 
         let res = Ok(ClientWriteResponse {
-            log_id: *entry.get_log_id(),
+            log_id: entry.log_id,
             data: resp,
             membership,
         });
@@ -860,7 +920,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         &mut self,
         target: C::NodeId,
         progress_entry: ProgressEntry<C::NodeId>,
-    ) -> ReplicationHandle<C::NodeId, C::Node, S::SnapshotData> {
+    ) -> ReplicationHandle<C::NodeId, C::Node, SM::SnapshotData> {
         // Safe unwrap(): target must be in membership
         let target_node = self.engine.state.membership_state.effective().get_node(&target).unwrap();
 
@@ -869,14 +929,14 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
         let session_id = ReplicationSessionId::new(*self.engine.state.vote_ref(), *membership_log_id);
 
-        ReplicationCore::<C, N, S>::spawn(
+        ReplicationCore::<C, N, LS, SM>::spawn(
             target,
             session_id,
             self.config.clone(),
             self.engine.state.committed().copied(),
             progress_entry.matching,
             network,
-            self.storage.get_log_reader().await,
+            self.log_store.get_log_reader().await,
             self.tx_api.clone(),
             tracing::span!(parent: &self.span, Level::DEBUG, "replication", id=display(self.id), target=display(target)),
         )
@@ -911,9 +971,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             unreachable!("it has to be a leader!!!");
         };
     }
-}
 
-impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C, N, S> {
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) async fn run_engine_commands(&mut self) -> Result<(), StorageError<C::NodeId>> {
         if tracing::enabled!(Level::DEBUG) {
@@ -938,7 +996,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         loop {
             self.flush_metrics();
 
-            let msg_res: Result<RaftMsg<C, N, S>, &str> = {
+            let msg_res: Result<RaftMsg<C, N, LS>, &str> = {
                 let recv = self.rx_api.recv();
                 pin_mut!(recv);
 
@@ -1059,7 +1117,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
     // TODO: Make this method non-async. It does not need to run any async command in it.
     #[tracing::instrument(level = "debug", skip(self, msg), fields(state = debug(self.engine.state.server_state), id=display(self.id)))]
-    pub(crate) async fn handle_api_msg(&mut self, msg: RaftMsg<C, N, S>) -> Result<(), Fatal<C::NodeId>> {
+    pub(crate) async fn handle_api_msg(&mut self, msg: RaftMsg<C, N, LS>) -> Result<(), Fatal<C::NodeId>> {
         tracing::debug!("recv from rx_api: {}", msg.summary());
 
         match msg {
@@ -1113,7 +1171,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 self.change_membership(changes, retain, tx);
             }
             RaftMsg::ExternalRequest { req } => {
-                req(&self.engine.state, &mut self.storage, &mut self.network);
+                req(&self.engine.state, &mut self.log_store, &mut self.network);
             }
             RaftMsg::ExternalCommand { cmd } => {
                 match cmd {
@@ -1353,7 +1411,13 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 }
 
 #[async_trait::async_trait]
-impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime<C> for RaftCore<C, N, S> {
+impl<C, N, LS, SM> RaftRuntime<C> for RaftCore<C, N, LS, SM>
+where
+    C: RaftTypeConfig,
+    N: RaftNetworkFactory<C>,
+    LS: RaftLogStorage<C>,
+    SM: RaftStateMachine<C>,
+{
     async fn run_command<'e>(
         &mut self,
         cmd: Command<C::NodeId, C::Node, C::Entry>,
@@ -1377,24 +1441,26 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
                 self.leader_data = None;
             }
             Command::AppendEntry { entry } => {
+                let log_id = *entry.get_log_id();
                 tracing::debug!("AppendEntry: {}", &entry);
-                self.storage.append_to_log([entry]).await?
+                self.append_to_log([entry], log_id).await?
             }
             Command::AppendInputEntries { entries } => {
+                let last_log_id = *entries.last().unwrap().get_log_id();
                 tracing::debug!("AppendInputEntries: {}", DisplaySlice::<_>(&entries),);
-                self.storage.append_to_log(entries).await?
+                self.append_to_log(entries, last_log_id).await?
             }
             Command::AppendBlankLog { log_id } => {
                 let ent = C::Entry::new_blank(log_id);
                 let entries = [ent];
-                self.storage.append_to_log(entries).await?
+                self.append_to_log(entries, log_id).await?
             }
             Command::SaveVote { vote } => {
-                self.storage.save_vote(&vote).await?;
+                self.log_store.save_vote(&vote).await?;
             }
-            Command::PurgeLog { upto } => self.storage.purge_logs_upto(upto).await?,
+            Command::PurgeLog { upto } => self.log_store.purge(upto).await?,
             Command::DeleteConflictLog { since } => {
-                self.storage.delete_conflict_logs_since(since).await?;
+                self.log_store.truncate(since).await?;
             }
             // TODO(2): Engine initiate a snapshot building
             Command::BuildSnapshot { .. } => {}
@@ -1434,7 +1500,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
                             let _ = node.tx_repl.send(Replicate::logs(id, log_id_range));
                         }
                         Inflight::Snapshot { id, last_log_id } => {
-                            let snapshot = self.storage.get_current_snapshot().await?;
+                            let snapshot = self.state_machine.get_current_snapshot().await?;
                             tracing::debug!("snapshot: {}", snapshot.as_ref().map(|x| &x.meta).summary());
 
                             if let Some(snapshot) = snapshot {
@@ -1474,7 +1540,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
                 let data = self.received_snapshot.remove(&snapshot_meta.snapshot_id).unwrap();
 
                 tracing::info!("Start to install_snapshot, meta: {:?}", snapshot_meta);
-                self.storage.install_snapshot(&snapshot_meta, data).await?;
+                self.state_machine.install_snapshot(&snapshot_meta, data).await?;
                 tracing::info!("Done install_snapshot, meta: {:?}", snapshot_meta);
             }
             Command::Respond { resp: send } => {

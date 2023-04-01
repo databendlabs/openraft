@@ -9,8 +9,8 @@ use maplit::btreemap;
 use maplit::btreeset;
 use raft_kv_rocksdb::client::ExampleClient;
 use raft_kv_rocksdb::start_example_raft_node;
-use raft_kv_rocksdb::store::ExampleRequest;
-use raft_kv_rocksdb::ExampleNode;
+use raft_kv_rocksdb::store::Request;
+use raft_kv_rocksdb::Node;
 use tracing_subscriber::EnvFilter;
 
 pub fn log_panic(panic: &PanicInfo) {
@@ -126,9 +126,9 @@ async fn test_cluster() -> Result<(), Box<dyn std::error::Error>> {
         x.membership_config.nodes().map(|(nid, node)| (*nid, node.clone())).collect::<BTreeMap<_, _>>();
     assert_eq!(
         btreemap! {
-            1 => ExampleNode{rpc_addr: get_rpc_addr(1), api_addr: get_addr(1)},
-            2 => ExampleNode{rpc_addr: get_rpc_addr(2), api_addr: get_addr(2)},
-            3 => ExampleNode{rpc_addr: get_rpc_addr(3), api_addr: get_addr(3)},
+            1 => Node{rpc_addr: get_rpc_addr(1), api_addr: get_addr(1)},
+            2 => Node{rpc_addr: get_rpc_addr(2), api_addr: get_addr(2)},
+            3 => Node{rpc_addr: get_rpc_addr(3), api_addr: get_addr(3)},
         },
         nodes_in_cluster
     );
@@ -164,7 +164,7 @@ async fn test_cluster() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("=== write `foo=bar`");
     let _x = leader
-        .write(&ExampleRequest::Set {
+        .write(&Request::Set {
             key: "foo".to_string(),
             value: "bar".to_string(),
         })
@@ -194,7 +194,7 @@ async fn test_cluster() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("=== read `foo` on node 2");
     let _x = client2
-        .write(&ExampleRequest::Set {
+        .write(&Request::Set {
             key: "foo".to_string(),
             value: "wow".to_string(),
         })
@@ -227,7 +227,7 @@ async fn test_cluster() -> Result<(), Box<dyn std::error::Error>> {
     match x {
         Err(e) => {
             let s = e.to_string();
-            let expect_err:String = "error occur on remote peer 2: has to forward request to: Some(1), Some(ExampleNode { rpc_addr: \"127.0.0.1:22001\", api_addr: \"127.0.0.1:21001\" })".to_string();
+            let expect_err:String = "error occur on remote peer 2: has to forward request to: Some(1), Some(Node { rpc_addr: \"127.0.0.1:22001\", api_addr: \"127.0.0.1:21001\" })".to_string();
 
             assert_eq!(s, expect_err);
         }

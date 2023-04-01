@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use openraft::storage::Adaptor;
 use openraft::testing::StoreBuilder;
 use openraft::testing::Suite;
 use openraft::StorageError;
@@ -11,10 +12,13 @@ use crate::MemStore;
 
 struct MemBuilder {}
 #[async_trait]
-impl StoreBuilder<Config, Arc<MemStore>> for MemBuilder {
-    async fn build(&self) -> Result<((), Arc<MemStore>), StorageError<MemNodeId>> {
+impl StoreBuilder<Config, Adaptor<Config, Arc<MemStore>>, Adaptor<Config, Arc<MemStore>>> for MemBuilder {
+    async fn build(
+        &self,
+    ) -> Result<((), Adaptor<Config, Arc<MemStore>>, Adaptor<Config, Arc<MemStore>>), StorageError<MemNodeId>> {
         let store = MemStore::new_async().await;
-        Ok(((), store))
+        let (log_store, sm) = Adaptor::new(store);
+        Ok(((), log_store, sm))
     }
 }
 

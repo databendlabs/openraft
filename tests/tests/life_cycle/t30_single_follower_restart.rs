@@ -2,8 +2,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use maplit::btreeset;
+use openraft::storage::RaftLogStorage;
 use openraft::Config;
-use openraft::RaftStorage;
 use openraft::ServerState;
 use openraft::Vote;
 
@@ -39,7 +39,7 @@ async fn single_follower_restart() -> anyhow::Result<()> {
 
     tracing::info!("--- stop and restart node-0");
     {
-        let (node, mut sto) = router.remove_node(0).unwrap();
+        let (node, mut sto, sm) = router.remove_node(0).unwrap();
         node.shutdown().await?;
         let v = sto.read_vote().await?.unwrap_or_default();
 
@@ -48,7 +48,7 @@ async fn single_follower_restart() -> anyhow::Result<()> {
 
         tracing::info!("--- restart node-0");
 
-        router.new_raft_node_with_sto(0, sto).await;
+        router.new_raft_node_with_sto(0, sto, sm).await;
         router
             .wait(&0, Some(Duration::from_millis(1_000)))
             .state(ServerState::Leader, "single node restarted an became leader quickly")

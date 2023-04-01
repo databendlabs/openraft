@@ -110,10 +110,11 @@ async fn snapshot_chunk_size() -> Result<()> {
 
         // after add_learner, log_index + 1,
         // leader has only log_index log in snapshot, cause it has compacted before add_learner
-        let mut store = router.get_storage_handle(&0)?;
+        let (mut store, mut sm) = router.get_storage_handle(&0)?;
         router
             .assert_storage_state_with_sto(
                 &mut store,
+                &mut sm,
                 &0,
                 1,
                 log_index,
@@ -125,10 +126,11 @@ async fn snapshot_chunk_size() -> Result<()> {
 
         // learner has log_index + 1 log in snapshot, cause it do compact after add_learner,
         // so learner's snapshot include add_learner log
-        let mut store = router.get_storage_handle(&1)?;
+        let (mut store, mut sm) = router.get_storage_handle(&1)?;
         router
             .assert_storage_state_with_sto(
                 &mut store,
+                &mut sm,
                 &1,
                 1,
                 log_index,

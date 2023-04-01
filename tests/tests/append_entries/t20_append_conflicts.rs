@@ -4,14 +4,14 @@ use std::time::Duration;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::raft::AppendEntriesRequest;
+use openraft::storage::RaftLogReaderExt;
+use openraft::storage::RaftLogStorage;
 use openraft::CommittedLeaderId;
 use openraft::Config;
 use openraft::Entry;
 use openraft::LogId;
-use openraft::RaftStorage;
 use openraft::RaftTypeConfig;
 use openraft::ServerState;
-use openraft::StorageHelper;
 use openraft::Vote;
 
 use crate::fixtures::blank;
@@ -39,7 +39,7 @@ async fn append_conflicts() -> Result<()> {
     router.wait_for_log(&btreeset![0], None, timeout(), "empty").await?;
     router.wait_for_state(&btreeset![0], ServerState::Learner, timeout(), "empty").await?;
 
-    let (r0, mut sto0) = router.remove_node(0).unwrap();
+    let (r0, mut sto0, _sm0) = router.remove_node(0).unwrap();
     check_logs(&mut sto0, vec![]).await?;
 
     tracing::info!("--- case 0: prev_log_id == None, no logs");
@@ -217,12 +217,12 @@ async fn append_conflicts() -> Result<()> {
 }
 
 /// To check if logs is as expected.
-async fn check_logs<C, Sto>(sto: &mut Sto, terms: Vec<u64>) -> Result<()>
+async fn check_logs<C, LS>(log_store: &mut LS, terms: Vec<u64>) -> Result<()>
 where
     C: RaftTypeConfig,
-    Sto: RaftStorage<C>,
+    LS: RaftLogStorage<C>,
 {
-    let logs = StorageHelper::new(sto).get_log_entries(..).await?;
+    let logs = log_store.get_log_entries(..).await?;
     let skip = 0;
     let want: Vec<Entry<openraft_memstore::Config>> = terms
         .iter()

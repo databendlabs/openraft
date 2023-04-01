@@ -1,4 +1,7 @@
 pub mod api;
 pub mod management;
 pub mod raft;
-pub mod raft_network_impl;
+mod raft_network_impl;
+
+pub use raft_network_impl::Network;
+pub use raft_network_impl::NetworkConnection;

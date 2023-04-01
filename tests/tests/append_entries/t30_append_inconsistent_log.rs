@@ -3,10 +3,11 @@ use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
+use openraft::storage::RaftLogReaderExt;
+use openraft::storage::RaftLogStorage;
+use openraft::testing;
 use openraft::Config;
-use openraft::RaftStorage;
 use openraft::ServerState;
-use openraft::StorageHelper;
 use openraft::Vote;
 
 use crate::fixtures::blank;
@@ -47,18 +48,18 @@ async fn append_inconsistent_log() -> Result<()> {
 
     tracing::info!("--- remove all nodes and fake the logs");
 
-    let (r0, mut sto0) = router.remove_node(0).unwrap();
-    let (r1, sto1) = router.remove_node(1).unwrap();
-    let (r2, mut sto2) = router.remove_node(2).unwrap();
+    let (r0, mut sto0, sm0) = router.remove_node(0).unwrap();
+    let (r1, sto1, sm1) = router.remove_node(1).unwrap();
+    let (r2, mut sto2, sm2) = router.remove_node(2).unwrap();
 
     r0.shutdown().await?;
     r1.shutdown().await?;
     r2.shutdown().await?;
 
     for i in log_index + 1..=100 {
-        sto0.append_to_log([blank(2, i)]).await?;
+        testing::blocking_append(&mut sto0, [blank(2, i)]).await?;
 
-        sto2.append_to_log([blank(3, i)]).await?;
+        testing::blocking_append(&mut sto2, [blank(3, i)]).await?;
     }
 
     sto0.save_vote(&Vote::new(2, 0)).await?;
@@ -68,14 +69,14 @@ async fn append_inconsistent_log() -> Result<()> {
 
     tracing::info!("--- restart node 1 and isolate. To let node-2 to become leader, node-1 should not vote for node-0");
     {
-        router.new_raft_node_with_sto(1, sto1.clone()).await;
+        router.new_raft_node_with_sto(1, sto1.clone(), sm1.clone()).await;
         router.isolate_node(1);
     }
 
     tracing::info!("--- restart node 0 and 2");
     {
-        router.new_raft_node_with_sto(0, sto0.clone()).await;
-        router.new_raft_node_with_sto(2, sto2.clone()).await;
+        router.new_raft_node_with_sto(0, sto0.clone(), sm0.clone()).await;
+        router.new_raft_node_with_sto(2, sto2.clone(), sm2.clone()).await;
     }
 
     // leader appends at least one blank log. There may be more than one transient leaders
@@ -108,7 +109,7 @@ async fn append_inconsistent_log() -> Result<()> {
         .log_at_least(Some(log_index), "sync log to node 0")
         .await?;
 
-    let logs = StorageHelper::new(&mut sto0).get_log_entries(60..=60).await?;
+    let logs = sto0.get_log_entries(60..=60).await?;
     assert_eq!(
         3,
         logs.first().unwrap().log_id.leader_id.term,
