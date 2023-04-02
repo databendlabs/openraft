@@ -1,6 +1,7 @@
 use std::marker::PhantomData;
 use std::sync::Arc;
 
+use crate::display_ext::DisplayOption;
 use crate::display_ext::DisplaySlice;
 use crate::engine::handler::log_handler::LogHandler;
 use crate::engine::handler::server_state_handler::ServerStateHandler;
@@ -88,6 +89,8 @@ where
             "prev_log_id matches, skip matching entries",
         );
 
+        let last_log_id = entries.last().map(|x| *x.get_log_id());
+
         let l = entries.len();
         let since = self.state.first_conflicting_index(entries);
         if since < l {
@@ -99,9 +102,24 @@ where
         }
 
         self.do_append_entries(entries, since);
-        self.commit_entries(leader_committed, prev_log_id, entries);
+
+        let committed = Self::max_committed(leader_committed, prev_log_id, last_log_id);
+        self.commit_entries(committed);
 
         AppendEntriesResponse::Success
+    }
+
+    /// Extract the max log id from an AppendEntries request that can be committed by this
+    /// follower.
+    ///
+    /// A follower can only commit the entries that are replicated by the leader.
+    fn max_committed(
+        leader_committed: Option<LogId<NID>>,
+        prev_log_id: Option<LogId<NID>>,
+        last_entry_log_id: Option<LogId<NID>>,
+    ) -> Option<LogId<NID>> {
+        let last = std::cmp::max(last_entry_log_id, prev_log_id);
+        std::cmp::min(leader_committed, last)
     }
 
     /// Follower/Learner appends `entries[since..]`.
@@ -137,23 +155,8 @@ where
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    fn commit_entries(
-        &mut self,
-        leader_committed: Option<LogId<NID>>,
-        prev_log_id: Option<LogId<NID>>,
-        entries: &[Ent],
-    ) {
-        tracing::debug!(
-            leader_committed = display(leader_committed.summary()),
-            prev_log_id = display(prev_log_id.summary()),
-        );
-
-        // Committed index can not > last_log_id.index
-        let last = entries.last().map(|x| *x.get_log_id());
-        let last = std::cmp::max(last, prev_log_id);
-        let committed = std::cmp::min(leader_committed, last);
-
-        tracing::debug!(committed = display(committed.summary()), "update committed");
+    fn commit_entries(&mut self, committed: Option<LogId<NID>>) {
+        tracing::debug!(committed = display(DisplayOption(&committed)), "{}", func_name!());
 
         if let Some(prev_committed) = self.state.update_committed(&committed) {
             self.output.push_command(Command::FollowerCommit {
