@@ -10,6 +10,7 @@ use crate::engine::testing::UTCfg;
 use crate::engine::CEngine;
 use crate::engine::Command;
 use crate::engine::Engine;
+use crate::entry::RaftEntry;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::Inflight;
 use crate::raft_state::LogStateReader;
@@ -81,7 +82,7 @@ fn test_leader_append_entries_empty() -> anyhow::Result<()> {
     let mut eng = eng();
     eng.vote_handler().become_leading();
 
-    eng.leader_handler()?.leader_append_entries(&mut Vec::<Entry<UTCfg>>::new());
+    eng.leader_handler()?.leader_append_entries(Vec::<Entry<UTCfg>>::new());
 
     assert_eq!(
         &[
@@ -119,7 +120,7 @@ fn test_leader_append_entries_normal() -> anyhow::Result<()> {
     eng.vote_handler().become_leading();
 
     // log id will be assigned by eng.
-    eng.leader_handler()?.leader_append_entries(&mut [
+    eng.leader_handler()?.leader_append_entries(vec![
         blank(1, 1), //
         blank(1, 1),
         blank(1, 1),
@@ -157,7 +158,13 @@ fn test_leader_append_entries_normal() -> anyhow::Result<()> {
 
     assert_eq!(
         vec![
-            Command::AppendInputEntries { range: 0..3 },
+            Command::AppendInputEntries {
+                entries: vec![
+                    blank(3, 4), //
+                    blank(3, 5),
+                    blank(3, 6),
+                ]
+            },
             Command::Replicate {
                 target: 2,
                 req: Inflight::logs(None, Some(log_id(3, 6))).with_id(1),
@@ -185,7 +192,7 @@ fn test_leader_append_entries_fast_commit() -> anyhow::Result<()> {
     eng.output.metrics_flags.reset();
 
     // log id will be assigned by eng.
-    eng.leader_handler()?.leader_append_entries(&mut [
+    eng.leader_handler()?.leader_append_entries(vec![
         blank(1, 1), //
         blank(1, 1),
         blank(1, 1),
@@ -218,7 +225,13 @@ fn test_leader_append_entries_fast_commit() -> anyhow::Result<()> {
 
     assert_eq!(
         vec![
-            Command::AppendInputEntries { range: 0..3 },
+            Command::AppendInputEntries {
+                entries: vec![
+                    blank(3, 4), //
+                    blank(3, 5),
+                    blank(3, 6),
+                ]
+            },
             Command::ReplicateCommitted {
                 committed: Some(log_id(3, 6))
             },
@@ -254,12 +267,9 @@ fn test_leader_append_entries_fast_commit_upto_membership_entry() -> anyhow::Res
     eng.vote_handler().become_leading();
 
     // log id will be assigned by eng.
-    eng.leader_handler()?.leader_append_entries(&mut [
+    eng.leader_handler()?.leader_append_entries(vec![
         blank(1, 1), //
-        Entry {
-            log_id: log_id(1, 1),
-            payload: EntryPayload::Membership(m34()),
-        },
+        Entry::new_membership(log_id(1, 1), m34()),
         blank(1, 1),
     ]);
 
@@ -301,7 +311,13 @@ fn test_leader_append_entries_fast_commit_upto_membership_entry() -> anyhow::Res
 
     assert_eq!(
         vec![
-            Command::AppendInputEntries { range: 0..3 },
+            Command::AppendInputEntries {
+                entries: vec![
+                    blank(3, 4), //
+                    Entry::new_membership(log_id(3, 5), m34()),
+                    blank(3, 6),
+                ]
+            },
             Command::ReplicateCommitted {
                 committed: Some(log_id(3, 4))
             },
@@ -347,12 +363,9 @@ fn test_leader_append_entries_fast_commit_membership_no_voter_change() -> anyhow
     eng.output.metrics_flags.reset();
 
     // log id will be assigned by eng.
-    eng.leader_handler()?.leader_append_entries(&mut [
+    eng.leader_handler()?.leader_append_entries(vec![
         blank(1, 1), //
-        Entry {
-            log_id: log_id(1, 1),
-            payload: EntryPayload::Membership(m1_2()),
-        },
+        Entry::new_membership(log_id(1, 1), m1_2()),
         blank(1, 1),
     ]);
 
@@ -392,7 +405,13 @@ fn test_leader_append_entries_fast_commit_membership_no_voter_change() -> anyhow
 
     assert_eq!(
         vec![
-            Command::AppendInputEntries { range: 0..3 },
+            Command::AppendInputEntries {
+                entries: vec![
+                    blank(3, 4), //
+                    Entry::new_membership(log_id(3, 5), m1_2()),
+                    blank(3, 6),
+                ]
+            },
             // first commit upto the membership entry(exclusive).
             Command::ReplicateCommitted {
                 committed: Some(log_id(3, 4))
@@ -445,12 +464,9 @@ fn test_leader_append_entries_fast_commit_if_membership_voter_change_to_1() -> a
     eng.output.metrics_flags.reset();
 
     // log id will be assigned by eng.
-    eng.leader_handler()?.leader_append_entries(&mut [
+    eng.leader_handler()?.leader_append_entries(vec![
         blank(1, 1), //
-        Entry {
-            log_id: log_id(1, 1),
-            payload: EntryPayload::Membership(m1_2()),
-        },
+        Entry::new_membership(log_id(1, 1), m1_2()),
         blank(1, 1),
     ]);
 
@@ -481,7 +497,13 @@ fn test_leader_append_entries_fast_commit_if_membership_voter_change_to_1() -> a
 
     assert_eq!(
         vec![
-            Command::AppendInputEntries { range: 0..3 },
+            Command::AppendInputEntries {
+                entries: vec![
+                    blank(3, 4), //
+                    Entry::new_membership(log_id(3, 5), m1_2()),
+                    blank(3, 6),
+                ]
+            },
             Command::UpdateMembership {
                 membership: Arc::new(EffectiveMembership::new(
                     Some(LogId::new(CommittedLeaderId::new(3, 1), 5)),

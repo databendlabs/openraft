@@ -1,4 +1,3 @@
-use std::marker::PhantomData;
 use std::time::Duration;
 
 use tokio::time::Instant;
@@ -50,7 +49,6 @@ use crate::Vote;
 /// but none of the application specific data.
 /// TODO: make the fields private
 #[derive(Debug, Default)]
-#[derive(PartialEq, Eq)]
 pub(crate) struct Engine<NID, N, Ent>
 where
     NID: NodeId,
@@ -75,9 +73,7 @@ where
     pub(crate) internal_server_state: InternalServerState<NID>,
 
     /// Output entry for the runtime.
-    pub(crate) output: EngineOutput<NID, N>,
-
-    _p: PhantomData<Ent>,
+    pub(crate) output: EngineOutput<NID, N, Ent>,
 }
 
 impl<NID, N, Ent> Engine<NID, N, Ent>
@@ -95,7 +91,6 @@ where
             timer: time_state::TimeState::new(now),
             internal_server_state: InternalServerState::default(),
             output: EngineOutput::new(4096),
-            _p: PhantomData::default(),
         }
     }
 
@@ -146,28 +141,23 @@ where
     /// Appending the very first log is slightly different from appending log by a leader or
     /// follower. This step is not confined by the consensus protocol and has to be dealt with
     /// differently.
-    #[tracing::instrument(level = "debug", skip(self, entries))]
-    pub(crate) fn initialize(&mut self, entries: &mut [Ent]) -> Result<(), InitializeError<NID, N>> {
-        let l = entries.len();
-        debug_assert_eq!(1, l);
-
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub(crate) fn initialize(&mut self, mut entry: Ent) -> Result<(), InitializeError<NID, N>> {
         self.check_initialize()?;
 
-        self.state.assign_log_ids(entries.iter_mut());
-        self.state.extend_log_ids_from_same_leader(entries);
+        self.state.assign_log_ids([&mut entry]);
+        let log_id = *entry.get_log_id();
+        self.state.extend_log_ids_from_same_leader(&[log_id]);
 
-        self.output.push_command(Command::AppendInputEntries { range: 0..l });
-
-        let entry = &mut entries[0];
         let m = entry.get_membership().expect("the only log entry for initializing has to be membership log");
         self.check_members_contain_me(m)?;
 
-        let log_id = entry.get_log_id();
         tracing::debug!("update effective membership: log_id:{} {}", log_id, m.summary());
 
-        let em = EffectiveMembership::new_arc(Some(*log_id), m.clone());
+        let em = EffectiveMembership::new_arc(Some(log_id), m.clone());
         self.state.membership_state.append(em.clone());
 
+        self.output.push_command(Command::AppendEntry { entry });
         self.output.push_command(Command::UpdateMembership { membership: em });
 
         self.server_state_handler().update_server_state_if_changed();
@@ -377,13 +367,13 @@ where
         &mut self,
         vote: &Vote<NID>,
         prev_log_id: Option<LogId<NID>>,
-        entries: &[Ent],
+        entries: Vec<Ent>,
         leader_committed: Option<LogId<NID>>,
     ) -> AppendEntriesResponse<NID> {
         tracing::debug!(
             vote = display(vote),
             prev_log_id = display(prev_log_id.summary()),
-            entries = display(DisplaySlice::<_>(entries)),
+            entries = display(DisplaySlice::<_>(&entries)),
             leader_committed = display(leader_committed.summary()),
             "append-entries request"
         );
@@ -540,7 +530,7 @@ where
 
     // --- handlers ---
 
-    pub(crate) fn vote_handler(&mut self) -> VoteHandler<NID, N> {
+    pub(crate) fn vote_handler(&mut self) -> VoteHandler<NID, N, Ent> {
         VoteHandler {
             config: &self.config,
             state: &mut self.state,
@@ -550,7 +540,7 @@ where
         }
     }
 
-    pub(crate) fn log_handler(&mut self) -> LogHandler<NID, N> {
+    pub(crate) fn log_handler(&mut self) -> LogHandler<NID, N, Ent> {
         LogHandler {
             config: &mut self.config,
             state: &mut self.state,
@@ -558,7 +548,7 @@ where
         }
     }
 
-    pub(crate) fn snapshot_handler(&mut self) -> SnapshotHandler<NID, N> {
+    pub(crate) fn snapshot_handler(&mut self) -> SnapshotHandler<NID, N, Ent> {
         SnapshotHandler {
             state: &mut self.state,
             output: &mut self.output,
@@ -583,11 +573,10 @@ where
             leader,
             state: &mut self.state,
             output: &mut self.output,
-            _p: PhantomData::default(),
         })
     }
 
-    pub(crate) fn replication_handler(&mut self) -> ReplicationHandler<NID, N> {
+    pub(crate) fn replication_handler(&mut self) -> ReplicationHandler<NID, N, Ent> {
         let leader = match self.internal_server_state.leading_mut() {
             None => {
                 unreachable!("There is no leader, can not handle replication");
@@ -610,11 +599,10 @@ where
             config: &mut self.config,
             state: &mut self.state,
             output: &mut self.output,
-            _p: PhantomData::default(),
         }
     }
 
-    pub(crate) fn server_state_handler(&mut self) -> ServerStateHandler<NID, N> {
+    pub(crate) fn server_state_handler(&mut self) -> ServerStateHandler<NID, N, Ent> {
         ServerStateHandler {
             config: &self.config,
             state: &mut self.state,

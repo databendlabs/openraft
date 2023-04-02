@@ -6,6 +6,7 @@ use crate::core::ServerState;
 use crate::engine::testing::UTCfg;
 use crate::engine::Command;
 use crate::engine::Engine;
+use crate::entry::RaftEntry;
 use crate::raft_state::LogStateReader;
 use crate::testing::log_id;
 use crate::EffectiveMembership;
@@ -58,8 +59,8 @@ fn eng() -> Engine<u64, (), <UTCfg as RaftTypeConfig>::Entry> {
 fn test_follower_do_append_entries_empty() -> anyhow::Result<()> {
     let mut eng = eng();
 
-    eng.following_handler().do_append_entries(&Vec::<Entry<UTCfg>>::new(), 0);
-    eng.following_handler().do_append_entries(&[blank(3, 4)], 1);
+    eng.following_handler().do_append_entries(Vec::<Entry<UTCfg>>::new(), 0);
+    eng.following_handler().do_append_entries(vec![blank(3, 4)], 1);
 
     assert_eq!(
         &[
@@ -87,13 +88,7 @@ fn test_follower_do_append_entries_empty() -> anyhow::Result<()> {
         eng.output.metrics_flags
     );
 
-    assert_eq!(
-        vec![
-            //
-            Command::AppendInputEntries { range: 1..1 },
-        ],
-        eng.output.take_commands()
-    );
+    assert_eq!(0, eng.output.take_commands().len());
 
     Ok(())
 }
@@ -103,7 +98,7 @@ fn test_follower_do_append_entries_no_membership_entries() -> anyhow::Result<()>
     let mut eng = eng();
 
     eng.following_handler().do_append_entries(
-        &[
+        vec![
             blank(100, 100), // just be ignored
             blank(3, 4),
         ],
@@ -138,8 +133,12 @@ fn test_follower_do_append_entries_no_membership_entries() -> anyhow::Result<()>
     );
 
     assert_eq!(
-        vec![Command::AppendInputEntries { range: 1..2 }, //
-            ],
+        vec![
+            //
+            Command::AppendInputEntries {
+                entries: vec![blank(3, 4)]
+            },
+        ],
         eng.output.take_commands()
     );
 
@@ -155,7 +154,7 @@ fn test_follower_do_append_entries_one_membership_entry() -> anyhow::Result<()> 
     eng.config.id = 2; // make it a member, the become learner
 
     eng.following_handler().do_append_entries(
-        &[
+        vec![
             blank(3, 3), // ignored
             blank(3, 3), // ignored
             blank(3, 3), // ignored
@@ -203,9 +202,18 @@ fn test_follower_do_append_entries_one_membership_entry() -> anyhow::Result<()> 
 
     assert_eq!(
         vec![
-            Command::AppendInputEntries { range: 3..5 }, //
             Command::UpdateMembership {
                 membership: Arc::new(EffectiveMembership::new(Some(log_id(3, 5)), m34())),
+            },
+            Command::AppendInputEntries {
+                entries: vec![
+                    //
+                    blank(3, 4),
+                    Entry::<UTCfg> {
+                        log_id: log_id(3, 5),
+                        payload: EntryPayload::<UTCfg>::Membership(m34()),
+                    },
+                ]
             },
         ],
         eng.output.take_commands()
@@ -224,24 +232,12 @@ fn test_follower_do_append_entries_three_membership_entries() -> anyhow::Result<
     eng.state.server_state = eng.calc_server_state();
 
     eng.following_handler().do_append_entries(
-        &[
-            Entry::<UTCfg> {
-                log_id: log_id(3, 4),
-                payload: EntryPayload::<UTCfg>::Membership(m01()),
-            }, // ignored
+        vec![
+            Entry::<UTCfg>::new_membership(log_id(3, 4), m01()), // ignored
             blank(3, 4),
-            Entry::<UTCfg> {
-                log_id: log_id(3, 5),
-                payload: EntryPayload::<UTCfg>::Membership(m01()),
-            },
-            Entry::<UTCfg> {
-                log_id: log_id(4, 6),
-                payload: EntryPayload::<UTCfg>::Membership(m34()),
-            },
-            Entry::<UTCfg> {
-                log_id: log_id(4, 7),
-                payload: EntryPayload::<UTCfg>::Membership(m45()),
-            },
+            Entry::<UTCfg>::new_membership(log_id(3, 5), m01()),
+            Entry::<UTCfg>::new_membership(log_id(4, 6), m34()),
+            Entry::<UTCfg>::new_membership(log_id(4, 7), m45()),
         ],
         1,
     );
@@ -282,9 +278,16 @@ fn test_follower_do_append_entries_three_membership_entries() -> anyhow::Result<
 
     assert_eq!(
         vec![
-            Command::AppendInputEntries { range: 1..5 }, //
             Command::UpdateMembership {
                 membership: Arc::new(EffectiveMembership::new(Some(log_id(4, 7)), m45())),
+            },
+            Command::AppendInputEntries {
+                entries: vec![
+                    blank(3, 4),
+                    Entry::<UTCfg>::new_membership(log_id(3, 5), m01()),
+                    Entry::<UTCfg>::new_membership(log_id(4, 6), m34()),
+                    Entry::<UTCfg>::new_membership(log_id(4, 7), m45()),
+                ]
             },
         ],
         eng.output.take_commands()

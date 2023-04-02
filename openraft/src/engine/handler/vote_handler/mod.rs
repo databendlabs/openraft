@@ -3,6 +3,7 @@ use crate::engine::time_state::TimeState;
 use crate::engine::Command;
 use crate::engine::EngineConfig;
 use crate::engine::EngineOutput;
+use crate::entry::RaftEntry;
 use crate::error::RejectVoteRequest;
 use crate::internal_server_state::InternalServerState;
 use crate::leader::Leader;
@@ -20,22 +21,24 @@ use crate::Vote;
 ///
 /// A `vote` defines the state of a openraft node.
 /// See [`RaftState::calc_server_state`] .
-pub(crate) struct VoteHandler<'st, NID, N>
+pub(crate) struct VoteHandler<'st, NID, N, Ent>
 where
     NID: NodeId,
     N: Node,
+    Ent: RaftEntry<NID, N>,
 {
     pub(crate) config: &'st EngineConfig<NID>,
     pub(crate) state: &'st mut RaftState<NID, N>,
     pub(crate) timer: &'st mut TimeState,
-    pub(crate) output: &'st mut EngineOutput<NID, N>,
+    pub(crate) output: &'st mut EngineOutput<NID, N, Ent>,
     pub(crate) internal_server_state: &'st mut InternalServerState<NID>,
 }
 
-impl<'st, NID, N> VoteHandler<'st, NID, N>
+impl<'st, NID, N, Ent> VoteHandler<'st, NID, N, Ent>
 where
     NID: NodeId,
     N: Node,
+    Ent: RaftEntry<NID, N>,
 {
     /// Mark the vote as committed, i.e., being granted and saved by a quorum.
     ///
@@ -161,7 +164,7 @@ where
         self.server_state_handler().update_server_state_if_changed();
     }
 
-    pub(crate) fn server_state_handler(&mut self) -> ServerStateHandler<NID, N> {
+    pub(crate) fn server_state_handler(&mut self) -> ServerStateHandler<NID, N, Ent> {
         ServerStateHandler {
             config: self.config,
             state: self.state,

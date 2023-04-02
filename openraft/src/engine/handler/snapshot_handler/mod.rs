@@ -1,4 +1,5 @@
 use crate::engine::EngineOutput;
+use crate::entry::RaftEntry;
 use crate::raft_state::LogStateReader;
 use crate::summary::MessageSummary;
 use crate::Node;
@@ -9,19 +10,21 @@ use crate::SnapshotMeta;
 #[cfg(test)] mod update_snapshot_test;
 
 /// Handle raft vote related operations
-pub(crate) struct SnapshotHandler<'st, 'out, NID, N>
+pub(crate) struct SnapshotHandler<'st, 'out, NID, N, Ent>
 where
     NID: NodeId,
     N: Node,
+    Ent: RaftEntry<NID, N>,
 {
     pub(crate) state: &'st mut RaftState<NID, N>,
-    pub(crate) output: &'out mut EngineOutput<NID, N>,
+    pub(crate) output: &'out mut EngineOutput<NID, N, Ent>,
 }
 
-impl<'st, 'out, NID, N> SnapshotHandler<'st, 'out, NID, N>
+impl<'st, 'out, NID, N, Ent> SnapshotHandler<'st, 'out, NID, N, Ent>
 where
     NID: NodeId,
     N: Node,
+    Ent: RaftEntry<NID, N>,
 {
     /// Update engine state when a new snapshot is built or installed.
     ///

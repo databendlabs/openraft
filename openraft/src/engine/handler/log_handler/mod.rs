@@ -1,6 +1,7 @@
 use crate::engine::Command;
 use crate::engine::EngineConfig;
 use crate::engine::EngineOutput;
+use crate::entry::RaftEntry;
 use crate::raft_state::LogStateReader;
 use crate::summary::MessageSummary;
 use crate::LogId;
@@ -13,20 +14,22 @@ use crate::RaftState;
 #[cfg(test)] mod purge_log_test;
 
 /// Handle raft vote related operations
-pub(crate) struct LogHandler<'x, NID, N>
+pub(crate) struct LogHandler<'x, NID, N, Ent>
 where
     NID: NodeId,
     N: Node,
+    Ent: RaftEntry<NID, N>,
 {
     pub(crate) config: &'x mut EngineConfig<NID>,
     pub(crate) state: &'x mut RaftState<NID, N>,
-    pub(crate) output: &'x mut EngineOutput<NID, N>,
+    pub(crate) output: &'x mut EngineOutput<NID, N, Ent>,
 }
 
-impl<'x, NID, N> LogHandler<'x, NID, N>
+impl<'x, NID, N, Ent> LogHandler<'x, NID, N, Ent>
 where
     NID: NodeId,
     N: Node,
+    Ent: RaftEntry<NID, N>,
 {
     /// Purge log entries upto `RaftState.purge_upto()`, inclusive.
     #[tracing::instrument(level = "debug", skip_all)]

@@ -1,4 +1,3 @@
-use std::marker::PhantomData;
 use std::sync::Arc;
 
 use crate::display_ext::DisplayOption;
@@ -39,8 +38,7 @@ where
 {
     pub(crate) config: &'x mut EngineConfig<NID>,
     pub(crate) state: &'x mut RaftState<NID, N>,
-    pub(crate) output: &'x mut EngineOutput<NID, N>,
-    pub(crate) _p: PhantomData<Ent>,
+    pub(crate) output: &'x mut EngineOutput<NID, N, Ent>,
 }
 
 impl<'x, NID, N, Ent> FollowingHandler<'x, NID, N, Ent>
@@ -56,12 +54,12 @@ where
     pub(crate) fn append_entries(
         &mut self,
         prev_log_id: Option<LogId<NID>>,
-        entries: &[Ent],
+        entries: Vec<Ent>,
         leader_committed: Option<LogId<NID>>,
     ) -> AppendEntriesResponse<NID> {
         tracing::debug!(
             prev_log_id = display(prev_log_id.summary()),
-            entries = display(DisplaySlice::<_>(entries)),
+            entries = display(DisplaySlice::<_>(&entries)),
             leader_committed = display(leader_committed.summary()),
             "append-entries request"
         );
@@ -85,14 +83,14 @@ where
 
         tracing::debug!(
             committed = display(self.state.committed().summary()),
-            entries = display(DisplaySlice::<_>(entries)),
+            entries = display(DisplaySlice::<_>(&entries)),
             "prev_log_id matches, skip matching entries",
         );
 
         let last_log_id = entries.last().map(|x| *x.get_log_id());
 
         let l = entries.len();
-        let since = self.state.first_conflicting_index(entries);
+        let since = self.state.first_conflicting_index(&entries);
         if since < l {
             // Before appending, if an entry overrides an conflicting one,
             // the entries after it has to be deleted first.
@@ -130,18 +128,14 @@ where
     ///
     /// Membership config changes are also detected and applied here.
     #[tracing::instrument(level = "debug", skip(self, entries))]
-    fn do_append_entries(&mut self, entries: &[Ent], since: usize) {
+    fn do_append_entries(&mut self, mut entries: Vec<Ent>, since: usize) {
         let l = entries.len();
-
-        if l > 0 {
-            self.output.push_command(Command::AppendInputEntries { range: since..l });
-        }
 
         if since == l {
             return;
         }
 
-        let entries = &entries[since..];
+        let entries = entries.split_off(since);
 
         debug_assert_eq!(
             entries[0].get_log_id().index,
@@ -150,8 +144,10 @@ where
 
         debug_assert!(Some(entries[0].get_log_id()) > self.state.log_ids.last());
 
-        self.state.extend_log_ids(entries);
+        self.state.extend_log_ids(&entries);
         self.append_membership(entries.iter());
+
+        self.output.push_command(Command::AppendInputEntries { entries });
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
@@ -369,7 +365,7 @@ where
         memberships
     }
 
-    fn log_handler(&mut self) -> LogHandler<NID, N> {
+    fn log_handler(&mut self) -> LogHandler<NID, N, Ent> {
         LogHandler {
             config: self.config,
             state: self.state,
@@ -377,14 +373,14 @@ where
         }
     }
 
-    fn snapshot_handler(&mut self) -> SnapshotHandler<NID, N> {
+    fn snapshot_handler(&mut self) -> SnapshotHandler<NID, N, Ent> {
         SnapshotHandler {
             state: self.state,
             output: self.output,
         }
     }
 
-    fn server_state_handler(&mut self) -> ServerStateHandler<NID, N> {
+    fn server_state_handler(&mut self) -> ServerStateHandler<NID, N, Ent> {
         ServerStateHandler {
             config: self.config,
             state: self.state,

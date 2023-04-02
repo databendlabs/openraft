@@ -4,6 +4,7 @@ use crate::engine::handler::log_handler::LogHandler;
 use crate::engine::Command;
 use crate::engine::EngineConfig;
 use crate::engine::EngineOutput;
+use crate::entry::RaftEntry;
 use crate::internal_server_state::LeaderQuorumSet;
 use crate::leader::Leader;
 use crate::progress::entry::ProgressEntry;
@@ -32,15 +33,16 @@ use crate::ServerState;
 /// - Tracking replication progress and commit;
 /// - Purging in-snapshot logs;
 /// - etc
-pub(crate) struct ReplicationHandler<'x, NID, N>
+pub(crate) struct ReplicationHandler<'x, NID, N, Ent>
 where
     NID: NodeId,
     N: Node,
+    Ent: RaftEntry<NID, N>,
 {
     pub(crate) config: &'x mut EngineConfig<NID>,
     pub(crate) leader: &'x mut Leader<NID, LeaderQuorumSet<NID>>,
     pub(crate) state: &'x mut RaftState<NID, N>,
-    pub(crate) output: &'x mut EngineOutput<NID, N>,
+    pub(crate) output: &'x mut EngineOutput<NID, N, Ent>,
 }
 
 /// An option about whether to send an RPC to follower/learner even when there is no data to send.
@@ -53,10 +55,11 @@ pub(crate) enum SendNone {
     True,
 }
 
-impl<'x, NID, N> ReplicationHandler<'x, NID, N>
+impl<'x, NID, N, Ent> ReplicationHandler<'x, NID, N, Ent>
 where
     NID: NodeId,
     N: Node,
+    Ent: RaftEntry<NID, N>,
 {
     /// Append a blank log.
     ///
@@ -325,7 +328,7 @@ where
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn send_to_target(output: &mut EngineOutput<NID, N>, target: &NID, inflight: &Inflight<NID>) {
+    pub(crate) fn send_to_target(output: &mut EngineOutput<NID, N, Ent>, target: &NID, inflight: &Inflight<NID>) {
         output.push_command(Command::Replicate {
             target: *target,
             req: *inflight,
@@ -399,7 +402,7 @@ where
         }
     }
 
-    pub(crate) fn log_handler(&mut self) -> LogHandler<NID, N> {
+    pub(crate) fn log_handler(&mut self) -> LogHandler<NID, N, Ent> {
         LogHandler {
             config: self.config,
             state: self.state,
