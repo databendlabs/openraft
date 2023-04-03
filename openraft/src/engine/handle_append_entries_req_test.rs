@@ -278,7 +278,7 @@ fn test_handle_append_entries_req_prev_log_id_not_exists() -> anyhow::Result<()>
     let resp = eng.handle_append_entries_req(
         &Vote::new_committed(2, 1),
         Some(log_id(2, 4)),
-        vec![blank(1, 1), blank(2, 2)],
+        vec![blank(2, 5), blank(2, 6)],
         Some(log_id(1, 1)),
     );
 
