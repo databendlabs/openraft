@@ -16,7 +16,6 @@ use crate::testing::log_id;
 use crate::utime::UTime;
 use crate::EffectiveMembership;
 use crate::Membership;
-use crate::MetricsChangeFlags;
 use crate::Vote;
 
 fn m01() -> Membership<u64, ()> {
@@ -63,15 +62,6 @@ fn test_handle_vote_req_rejected_by_leader_lease() -> anyhow::Result<()> {
     assert!(eng.internal_server_state.is_leading());
 
     assert_eq!(ServerState::Candidate, eng.state.server_state);
-    assert_eq!(
-        MetricsChangeFlags {
-            replication: false,
-            local_data: false,
-            cluster: false,
-        },
-        eng.output.metrics_flags
-    );
-
     assert_eq!(0, eng.output.take_commands().len());
 
     Ok(())
@@ -99,15 +89,6 @@ fn test_handle_vote_req_reject_smaller_vote() -> anyhow::Result<()> {
     assert!(eng.internal_server_state.is_leading());
 
     assert_eq!(ServerState::Candidate, eng.state.server_state);
-    assert_eq!(
-        MetricsChangeFlags {
-            replication: false,
-            local_data: false,
-            cluster: false,
-        },
-        eng.output.metrics_flags
-    );
-
     assert_eq!(0, eng.output.take_commands().len());
 
     Ok(())
@@ -136,15 +117,6 @@ fn test_handle_vote_req_reject_smaller_last_log_id() -> anyhow::Result<()> {
     assert!(eng.internal_server_state.is_leading());
 
     assert_eq!(ServerState::Candidate, eng.state.server_state);
-    assert_eq!(
-        MetricsChangeFlags {
-            replication: false,
-            local_data: false,
-            cluster: false,
-        },
-        eng.output.metrics_flags
-    );
-
     assert_eq!(0, eng.output.take_commands().len());
     Ok(())
 }
@@ -178,15 +150,6 @@ fn test_handle_vote_req_granted_equal_vote_and_last_log_id() -> anyhow::Result<(
     assert!(eng.internal_server_state.is_following());
 
     assert_eq!(ServerState::Follower, eng.state.server_state);
-    assert_eq!(
-        MetricsChangeFlags {
-            replication: false,
-            local_data: false,
-            cluster: false,
-        },
-        eng.output.metrics_flags
-    );
-
     assert!(eng.output.take_commands().is_empty());
     Ok(())
 }
@@ -221,15 +184,6 @@ fn test_handle_vote_req_granted_greater_vote() -> anyhow::Result<()> {
     assert!(eng.internal_server_state.is_following());
 
     assert_eq!(ServerState::Follower, eng.state.server_state);
-    assert_eq!(
-        MetricsChangeFlags {
-            replication: false,
-            local_data: true,
-            cluster: false,
-        },
-        eng.output.metrics_flags
-    );
-
     assert_eq!(
         vec![Command::SaveVote { vote: Vote::new(3, 1) },],
         eng.output.take_commands()

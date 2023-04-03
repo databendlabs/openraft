@@ -15,7 +15,6 @@ use crate::testing::log_id;
 use crate::utime::UTime;
 use crate::EffectiveMembership;
 use crate::Membership;
-use crate::MetricsChangeFlags;
 use crate::Vote;
 
 fn m01() -> Membership<u64, ()> {
@@ -52,15 +51,6 @@ fn test_handle_message_vote_reject_smaller_vote() -> anyhow::Result<()> {
 
     assert_eq!(0, eng.output.take_commands().len());
 
-    assert_eq!(
-        MetricsChangeFlags {
-            replication: false,
-            local_data: false,
-            cluster: false,
-        },
-        eng.output.metrics_flags
-    );
-
     Ok(())
 }
 
@@ -79,14 +69,6 @@ fn test_handle_message_vote_committed_vote() -> anyhow::Result<()> {
     assert!(eng.internal_server_state.is_following());
 
     assert_eq!(ServerState::Follower, eng.state.server_state);
-    assert_eq!(
-        MetricsChangeFlags {
-            replication: false,
-            local_data: true,
-            cluster: false,
-        },
-        eng.output.metrics_flags
-    );
 
     assert_eq!(Some(now), eng.state.vote_last_modified());
     assert_eq!(
@@ -116,15 +98,6 @@ fn test_handle_message_vote_granted_equal_vote() -> anyhow::Result<()> {
     assert!(eng.internal_server_state.is_following());
 
     assert_eq!(ServerState::Follower, eng.state.server_state);
-    assert_eq!(
-        MetricsChangeFlags {
-            replication: false,
-            local_data: false,
-            cluster: false,
-        },
-        eng.output.metrics_flags
-    );
-
     assert_eq!(Some(now), eng.state.vote_last_modified());
     assert!(eng.output.take_commands().is_empty());
     Ok(())
@@ -145,15 +118,6 @@ fn test_handle_message_vote_granted_greater_vote() -> anyhow::Result<()> {
     assert!(eng.internal_server_state.is_following());
 
     assert_eq!(ServerState::Follower, eng.state.server_state);
-    assert_eq!(
-        MetricsChangeFlags {
-            replication: false,
-            local_data: true,
-            cluster: false,
-        },
-        eng.output.metrics_flags
-    );
-
     assert_eq!(
         vec![Command::SaveVote { vote: Vote::new(3, 1) },],
         eng.output.take_commands()

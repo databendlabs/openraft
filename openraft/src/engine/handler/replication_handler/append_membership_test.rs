@@ -19,7 +19,6 @@ use crate::EffectiveMembership;
 use crate::LogId;
 use crate::Membership;
 use crate::MembershipState;
-use crate::MetricsChangeFlags;
 use crate::Vote;
 
 fn m01() -> Membership<u64, ()> {
@@ -75,15 +74,6 @@ fn test_leader_append_membership_for_leader() -> anyhow::Result<()> {
         ServerState::Leader,
         eng.state.server_state,
         "Leader wont be affected by membership change"
-    );
-
-    assert_eq!(
-        MetricsChangeFlags {
-            replication: true,
-            local_data: false,
-            cluster: true,
-        },
-        eng.output.metrics_flags
     );
 
     assert_eq!(

@@ -12,7 +12,6 @@ use crate::testing::log_id;
 use crate::EffectiveMembership;
 use crate::Membership;
 use crate::MembershipState;
-use crate::MetricsChangeFlags;
 use crate::ServerState;
 
 fn m01() -> Membership<u64, ()> {
@@ -56,14 +55,6 @@ fn test_truncate_logs_since_3() -> anyhow::Result<()> {
     assert_eq!(Some(&log_id(2, 2)), eng.state.last_log_id());
     assert_eq!(&[log_id(2, 2)], eng.state.log_ids.key_log_ids());
     assert_eq!(
-        MetricsChangeFlags {
-            replication: false,
-            local_data: true,
-            cluster: true,
-        },
-        eng.output.metrics_flags
-    );
-    assert_eq!(
         MembershipState::new(
             Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01())),
             Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01())),
@@ -95,14 +86,6 @@ fn test_truncate_logs_since_4() -> anyhow::Result<()> {
     assert_eq!(Some(&log_id(2, 3)), eng.state.last_log_id());
     assert_eq!(&[log_id(2, 2), log_id(2, 3)], eng.state.log_ids.key_log_ids());
     assert_eq!(
-        MetricsChangeFlags {
-            replication: false,
-            local_data: true,
-            cluster: false,
-        },
-        eng.output.metrics_flags
-    );
-    assert_eq!(
         MembershipState::new(
             Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01())),
             Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23())),
@@ -128,15 +111,6 @@ fn test_truncate_logs_since_5() -> anyhow::Result<()> {
     assert_eq!(Some(&log_id(4, 4)), eng.state.last_log_id());
     assert_eq!(&[log_id(2, 2), log_id(4, 4)], eng.state.log_ids.key_log_ids());
     assert_eq!(
-        MetricsChangeFlags {
-            replication: false,
-            local_data: true,
-            cluster: false,
-        },
-        eng.output.metrics_flags
-    );
-
-    assert_eq!(
         vec![Command::DeleteConflictLog { since: log_id(4, 5) }],
         eng.output.take_commands()
     );
@@ -156,15 +130,6 @@ fn test_truncate_logs_since_6() -> anyhow::Result<()> {
         eng.state.log_ids.key_log_ids()
     );
     assert_eq!(
-        MetricsChangeFlags {
-            replication: false,
-            local_data: true,
-            cluster: false,
-        },
-        eng.output.metrics_flags
-    );
-
-    assert_eq!(
         vec![Command::DeleteConflictLog { since: log_id(4, 6) }],
         eng.output.take_commands()
     );
@@ -183,15 +148,6 @@ fn test_truncate_logs_since_7() -> anyhow::Result<()> {
         &[log_id(2, 2), log_id(4, 4), log_id(4, 6)],
         eng.state.log_ids.key_log_ids()
     );
-    assert_eq!(
-        MetricsChangeFlags {
-            replication: false,
-            local_data: false,
-            cluster: false,
-        },
-        eng.output.metrics_flags
-    );
-
     assert!(eng.output.take_commands().is_empty());
 
     Ok(())
@@ -208,15 +164,6 @@ fn test_truncate_logs_since_8() -> anyhow::Result<()> {
         &[log_id(2, 2), log_id(4, 4), log_id(4, 6)],
         eng.state.log_ids.key_log_ids()
     );
-    assert_eq!(
-        MetricsChangeFlags {
-            replication: false,
-            local_data: false,
-            cluster: false,
-        },
-        eng.output.metrics_flags
-    );
-
     assert!(eng.output.take_commands().is_empty());
 
     Ok(())
@@ -235,15 +182,6 @@ fn test_truncate_logs_revert_effective_membership() -> anyhow::Result<()> {
 
     assert_eq!(Some(&log_id(2, 3)), eng.state.last_log_id());
     assert_eq!(&[log_id(2, 2), log_id(2, 3)], eng.state.log_ids.key_log_ids());
-    assert_eq!(
-        MetricsChangeFlags {
-            replication: false,
-            local_data: true,
-            cluster: true,
-        },
-        eng.output.metrics_flags
-    );
-
     assert_eq!(
         vec![
             //

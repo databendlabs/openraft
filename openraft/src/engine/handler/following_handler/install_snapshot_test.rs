@@ -12,7 +12,6 @@ use crate::raft_state::LogStateReader;
 use crate::testing::log_id;
 use crate::EffectiveMembership;
 use crate::Membership;
-use crate::MetricsChangeFlags;
 use crate::SnapshotMeta;
 use crate::StoredMembership;
 use crate::Vote;
@@ -68,16 +67,6 @@ fn test_install_snapshot_lt_last_snapshot() -> anyhow::Result<()> {
         },
         eng.state.snapshot_meta
     );
-
-    assert_eq!(
-        MetricsChangeFlags {
-            replication: false,
-            local_data: false,
-            cluster: false,
-        },
-        eng.output.metrics_flags
-    );
-
     assert_eq!(
         vec![Command::CancelSnapshot {
             snapshot_meta: SnapshotMeta {
@@ -114,16 +103,6 @@ fn test_install_snapshot_lt_committed() -> anyhow::Result<()> {
         },
         eng.state.snapshot_meta
     );
-
-    assert_eq!(
-        MetricsChangeFlags {
-            replication: false,
-            local_data: false,
-            cluster: false,
-        },
-        eng.output.metrics_flags
-    );
-
     assert_eq!(
         vec![Command::CancelSnapshot {
             snapshot_meta: SnapshotMeta {
@@ -163,16 +142,6 @@ fn test_install_snapshot_not_conflict() -> anyhow::Result<()> {
         &Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m1234())),
         eng.state.membership_state.committed()
     );
-
-    assert_eq!(
-        MetricsChangeFlags {
-            replication: false,
-            local_data: true,
-            cluster: true,
-        },
-        eng.output.metrics_flags
-    );
-
     assert_eq!(
         vec![
             Command::UpdateMembership {
@@ -243,16 +212,6 @@ fn test_install_snapshot_conflict() -> anyhow::Result<()> {
         &Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m1234())),
         eng.state.membership_state.committed()
     );
-
-    assert_eq!(
-        MetricsChangeFlags {
-            replication: false,
-            local_data: true,
-            cluster: true,
-        },
-        eng.output.metrics_flags
-    );
-
     assert_eq!(
         vec![
             Command::DeleteConflictLog { since: log_id(2, 4) },
@@ -304,16 +263,6 @@ fn test_install_snapshot_advance_last_log_id() -> anyhow::Result<()> {
         &Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m1234())),
         eng.state.membership_state.effective()
     );
-
-    assert_eq!(
-        MetricsChangeFlags {
-            replication: false,
-            local_data: true,
-            cluster: true,
-        },
-        eng.output.metrics_flags
-    );
-
     assert_eq!(
         vec![
             Command::UpdateMembership {

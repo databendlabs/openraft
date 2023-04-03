@@ -23,7 +23,6 @@ use crate::Entry;
 use crate::LogId;
 use crate::Membership;
 use crate::MembershipState;
-use crate::MetricsChangeFlags;
 use crate::ServerState;
 use crate::Vote;
 
@@ -92,16 +91,6 @@ fn test_leader_append_entries_empty() -> anyhow::Result<()> {
         ),
         eng.state.membership_state
     );
-
-    assert_eq!(
-        MetricsChangeFlags {
-            replication: false,
-            local_data: false,
-            cluster: false,
-        },
-        eng.output.metrics_flags
-    );
-
     assert_eq!(0, eng.output.take_commands().len());
 
     Ok(())
@@ -139,16 +128,6 @@ fn test_leader_append_entries_normal() -> anyhow::Result<()> {
         ),
         eng.state.membership_state
     );
-
-    assert_eq!(
-        MetricsChangeFlags {
-            replication: false,
-            local_data: true,
-            cluster: false,
-        },
-        eng.output.metrics_flags
-    );
-
     assert_eq!(
         vec![
             Command::AppendInputEntries {
@@ -235,16 +214,6 @@ fn test_leader_append_entries_fast_commit() -> anyhow::Result<()> {
         ],
         eng.output.take_commands()
     );
-
-    assert_eq!(
-        MetricsChangeFlags {
-            replication: false,
-            local_data: true,
-            cluster: false,
-        },
-        eng.output.metrics_flags
-    );
-
     Ok(())
 }
 
@@ -291,15 +260,6 @@ fn test_leader_append_entries_fast_commit_upto_membership_entry() -> anyhow::Res
     assert_eq!(
         Some(&LogId::new(CommittedLeaderId::new(3, 1), 4)),
         eng.state.committed()
-    );
-
-    assert_eq!(
-        MetricsChangeFlags {
-            replication: true,
-            local_data: true,
-            cluster: true,
-        },
-        eng.output.metrics_flags
     );
 
     assert_eq!(
@@ -385,15 +345,6 @@ fn test_leader_append_entries_fast_commit_membership_no_voter_change() -> anyhow
     assert_eq!(
         Some(&LogId::new(CommittedLeaderId::new(3, 1), 6)),
         eng.state.committed()
-    );
-
-    assert_eq!(
-        MetricsChangeFlags {
-            replication: true,
-            local_data: true,
-            cluster: true,
-        },
-        eng.output.metrics_flags
     );
 
     assert_eq!(
@@ -520,15 +471,6 @@ fn test_leader_append_entries_fast_commit_if_membership_voter_change_to_1() -> a
             },
         ],
         eng.output.take_commands()
-    );
-
-    assert_eq!(
-        MetricsChangeFlags {
-            replication: true,
-            local_data: true,
-            cluster: true,
-        },
-        eng.output.metrics_flags
     );
 
     Ok(())
