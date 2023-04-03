@@ -3,6 +3,7 @@ use std::sync::Arc;
 use maplit::btreeset;
 
 use crate::core::ServerState;
+use crate::engine::testing::blank_ent;
 use crate::engine::testing::UTCfg;
 use crate::engine::Command;
 use crate::engine::Engine;
@@ -16,13 +17,6 @@ use crate::Membership;
 use crate::MembershipState;
 use crate::MetricsChangeFlags;
 use crate::RaftTypeConfig;
-
-fn blank(term: u64, index: u64) -> Entry<UTCfg> {
-    Entry {
-        log_id: log_id(term, index),
-        payload: EntryPayload::<UTCfg>::Blank,
-    }
-}
 
 fn m01() -> Membership<u64, ()> {
     Membership::new(vec![btreeset! {0,1}], None)
@@ -60,7 +54,7 @@ fn test_follower_do_append_entries_empty() -> anyhow::Result<()> {
     let mut eng = eng();
 
     eng.following_handler().do_append_entries(Vec::<Entry<UTCfg>>::new(), 0);
-    eng.following_handler().do_append_entries(vec![blank(3, 4)], 1);
+    eng.following_handler().do_append_entries(vec![blank_ent(3, 4)], 1);
 
     assert_eq!(
         &[
@@ -99,8 +93,8 @@ fn test_follower_do_append_entries_no_membership_entries() -> anyhow::Result<()>
 
     eng.following_handler().do_append_entries(
         vec![
-            blank(100, 100), // just be ignored
-            blank(3, 4),
+            blank_ent(100, 100), // just be ignored
+            blank_ent(3, 4),
         ],
         1,
     );
@@ -136,7 +130,7 @@ fn test_follower_do_append_entries_no_membership_entries() -> anyhow::Result<()>
         vec![
             //
             Command::AppendInputEntries {
-                entries: vec![blank(3, 4)]
+                entries: vec![blank_ent(3, 4)]
             },
         ],
         eng.output.take_commands()
@@ -155,10 +149,10 @@ fn test_follower_do_append_entries_one_membership_entry() -> anyhow::Result<()> 
 
     eng.following_handler().do_append_entries(
         vec![
-            blank(3, 3), // ignored
-            blank(3, 3), // ignored
-            blank(3, 3), // ignored
-            blank(3, 4),
+            blank_ent(3, 3), // ignored
+            blank_ent(3, 3), // ignored
+            blank_ent(3, 3), // ignored
+            blank_ent(3, 4),
             Entry::<UTCfg> {
                 log_id: log_id(3, 5),
                 payload: EntryPayload::<UTCfg>::Membership(m34()),
@@ -208,7 +202,7 @@ fn test_follower_do_append_entries_one_membership_entry() -> anyhow::Result<()> 
             Command::AppendInputEntries {
                 entries: vec![
                     //
-                    blank(3, 4),
+                    blank_ent(3, 4),
                     Entry::<UTCfg> {
                         log_id: log_id(3, 5),
                         payload: EntryPayload::<UTCfg>::Membership(m34()),
@@ -234,7 +228,7 @@ fn test_follower_do_append_entries_three_membership_entries() -> anyhow::Result<
     eng.following_handler().do_append_entries(
         vec![
             Entry::<UTCfg>::new_membership(log_id(3, 4), m01()), // ignored
-            blank(3, 4),
+            blank_ent(3, 4),
             Entry::<UTCfg>::new_membership(log_id(3, 5), m01()),
             Entry::<UTCfg>::new_membership(log_id(4, 6), m34()),
             Entry::<UTCfg>::new_membership(log_id(4, 7), m45()),
@@ -283,7 +277,7 @@ fn test_follower_do_append_entries_three_membership_entries() -> anyhow::Result<
             },
             Command::AppendInputEntries {
                 entries: vec![
-                    blank(3, 4),
+                    blank_ent(3, 4),
                     Entry::<UTCfg>::new_membership(log_id(3, 5), m01()),
                     Entry::<UTCfg>::new_membership(log_id(4, 6), m34()),
                     Entry::<UTCfg>::new_membership(log_id(4, 7), m45()),

@@ -2,24 +2,16 @@ use std::sync::Arc;
 
 use maplit::btreeset;
 
+use crate::engine::testing::blank_ent;
 use crate::engine::testing::UTCfg;
 use crate::engine::Engine;
 use crate::raft_state::LogStateReader;
 use crate::testing::log_id;
 use crate::EffectiveMembership;
-use crate::Entry;
-use crate::EntryPayload;
 use crate::Membership;
 use crate::MembershipState;
 use crate::RaftTypeConfig;
 use crate::Vote;
-
-fn blank(term: u64, index: u64) -> Entry<UTCfg> {
-    Entry {
-        log_id: log_id(term, index),
-        payload: EntryPayload::<UTCfg>::Blank,
-    }
-}
 
 fn m01() -> Membership<u64, ()> {
     Membership::new(vec![btreeset! {0,1}], None)
@@ -53,8 +45,8 @@ fn test_follower_append_entries_update_accepted() -> anyhow::Result<()> {
         Some(log_id(2, 3)),
         vec![
             //
-            blank(3, 4),
-            blank(3, 5),
+            blank_ent(3, 4),
+            blank_ent(3, 5),
         ],
         None,
     );
@@ -76,7 +68,7 @@ fn test_follower_append_entries_update_accepted() -> anyhow::Result<()> {
         Some(log_id(2, 3)),
         vec![
             //
-            blank(3, 4),
+            blank_ent(3, 4),
         ],
         None,
     );
