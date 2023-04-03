@@ -1,3 +1,5 @@
+use crate::entry::RaftEntry;
+use crate::testing::log_id;
 use crate::RaftTypeConfig;
 
 /// Req for test
@@ -27,4 +29,8 @@ impl RaftTypeConfig for UTCfg {
     type NodeId = u64;
     type Node = ();
     type Entry = crate::Entry<UTCfg>;
+}
+
+pub(crate) fn blank_ent(term: u64, index: u64) -> crate::Entry<UTCfg> {
+    crate::Entry::<UTCfg>::new_blank(log_id(term, index))
 }

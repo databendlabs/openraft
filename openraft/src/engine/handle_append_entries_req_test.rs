@@ -5,6 +5,7 @@ use pretty_assertions::assert_eq;
 use tokio::time::Instant;
 
 use crate::core::ServerState;
+use crate::engine::testing::blank_ent;
 use crate::engine::testing::UTCfg;
 use crate::engine::CEngine;
 use crate::engine::Command;
@@ -16,18 +17,10 @@ use crate::testing::log_id;
 use crate::utime::UTime;
 use crate::EffectiveMembership;
 use crate::Entry;
-use crate::EntryPayload;
 use crate::Membership;
 use crate::MembershipState;
 use crate::MetricsChangeFlags;
 use crate::Vote;
-
-fn blank(term: u64, index: u64) -> Entry<UTCfg> {
-    Entry {
-        log_id: log_id(term, index),
-        payload: EntryPayload::<UTCfg>::Blank,
-    }
-}
 
 fn m01() -> Membership<u64, ()> {
     Membership::<u64, ()>::new(vec![btreeset! {0,1}], None)
@@ -213,7 +206,7 @@ fn test_handle_append_entries_req_prev_log_id_is_committed() -> anyhow::Result<(
     let resp = eng.handle_append_entries_req(
         &Vote::new_committed(2, 1),
         Some(log_id(0, 0)),
-        vec![blank(1, 1), blank(2, 2)],
+        vec![blank_ent(1, 1), blank_ent(2, 2)],
         Some(log_id(1, 1)),
     );
 
@@ -256,7 +249,7 @@ fn test_handle_append_entries_req_prev_log_id_is_committed() -> anyhow::Result<(
                 membership: Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01()))
             },
             Command::AppendInputEntries {
-                entries: vec![blank(2, 2)]
+                entries: vec![blank_ent(2, 2)]
             },
             Command::FollowerCommit {
                 already_committed: Some(log_id(0, 0)),
@@ -278,7 +271,7 @@ fn test_handle_append_entries_req_prev_log_id_not_exists() -> anyhow::Result<()>
     let resp = eng.handle_append_entries_req(
         &Vote::new_committed(2, 1),
         Some(log_id(2, 4)),
-        vec![blank(2, 5), blank(2, 6)],
+        vec![blank_ent(2, 5), blank_ent(2, 6)],
         Some(log_id(1, 1)),
     );
 
@@ -333,7 +326,7 @@ fn test_handle_append_entries_req_entries_conflict() -> anyhow::Result<()> {
     let resp = eng.handle_append_entries_req(
         &Vote::new_committed(2, 1),
         Some(log_id(1, 1)),
-        vec![blank(1, 2), Entry::new_membership(log_id(3, 3), m34())],
+        vec![blank_ent(1, 2), Entry::new_membership(log_id(3, 3), m34())],
         Some(log_id(4, 4)),
     );
 
