@@ -15,6 +15,7 @@ use crate::Membership;
 use crate::MetricsChangeFlags;
 use crate::SnapshotMeta;
 use crate::StoredMembership;
+use crate::Vote;
 
 fn m12() -> Membership<u64, ()> {
     Membership::<u64, ()>::new(vec![btreeset! {1,2}], None)
@@ -28,6 +29,7 @@ fn eng() -> CEngine<UTCfg> {
     let mut eng = Engine::default();
     eng.state.enable_validate = false; // Disable validation for incomplete state
 
+    eng.state.vote.update(*eng.timer.now(), Vote::new_committed(2, 1));
     eng.state.committed = Some(log_id(4, 5));
     eng.state.log_ids = LogIdList::new(vec![
         //
@@ -200,6 +202,7 @@ fn test_install_snapshot_conflict() -> anyhow::Result<()> {
         let mut eng = CEngine::<UTCfg>::default();
         eng.state.enable_validate = false; // Disable validation for incomplete state
 
+        eng.state.vote.update(*eng.timer.now(), Vote::new_committed(2, 1));
         eng.state.committed = Some(log_id(2, 3));
         eng.state.log_ids = LogIdList::new(vec![
             //
@@ -328,6 +331,22 @@ fn test_install_snapshot_advance_last_log_id() -> anyhow::Result<()> {
         ],
         eng.output.take_commands()
     );
+
+    Ok(())
+}
+
+#[test]
+fn test_install_snapshot_update_accepted() -> anyhow::Result<()> {
+    // Snapshot will be installed and `accepted` should be updated.
+    let mut eng = eng();
+
+    eng.following_handler().install_snapshot(SnapshotMeta {
+        last_log_id: Some(log_id(100, 100)),
+        last_membership: StoredMembership::new(Some(log_id(1, 1)), m1234()),
+        snapshot_id: "1-2-3-4".to_string(),
+    });
+
+    assert_eq!(Some(&log_id(100, 100)), eng.state.accepted());
 
     Ok(())
 }

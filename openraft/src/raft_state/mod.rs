@@ -19,17 +19,20 @@ use crate::ServerState;
 use crate::SnapshotMeta;
 use crate::Vote;
 
+mod accepted;
 mod log_state_reader;
 mod membership_state;
 mod vote_state_reader;
 
 #[cfg(test)]
 mod tests {
+    mod accepted_test;
     mod forward_to_leader_test;
     mod log_state_reader_test;
     mod validate_test;
 }
 
+pub(crate) use accepted::Accepted;
 pub(crate) use log_state_reader::LogStateReader;
 pub use membership_state::MembershipState;
 pub(crate) use vote_state_reader::VoteStateReader;
@@ -70,6 +73,8 @@ where
     // --
     /// The state of a Raft node, such as Leader or Follower.
     pub server_state: ServerState,
+
+    pub(crate) accepted: Accepted<NID>,
 
     /// The log id upto which the next time it purges.
     ///
@@ -164,6 +169,30 @@ where
     /// Return the last updated time of the vote.
     pub fn vote_last_modified(&self) -> Option<Instant> {
         self.vote.utime()
+    }
+
+    /// Return the accepted last log id of the current leader.
+    pub(crate) fn accepted(&self) -> Option<&LogId<NID>> {
+        self.accepted.last_accepted_log_id(self.vote_ref().leader_id())
+    }
+
+    /// Update the accepted log id for the current leader.
+    pub(crate) fn update_accepted(&mut self, accepted: Option<LogId<NID>>) {
+        debug_assert!(
+            self.vote_ref().is_committed(),
+            "vote must be committed: {}",
+            self.vote_ref()
+        );
+        debug_assert!(
+            self.vote_ref().leader_id() >= self.accepted.leader_id(),
+            "vote.leader_id: {} must be >= accepted.leader_id: {}",
+            self.vote_ref().leader_id(),
+            self.accepted.leader_id()
+        );
+
+        if accepted.as_ref() > self.accepted.last_accepted_log_id(self.vote_ref().leader_id()) {
+            self.accepted = Accepted::new(*self.vote_ref().leader_id(), accepted);
+        }
     }
 
     /// Append a list of `log_id`.

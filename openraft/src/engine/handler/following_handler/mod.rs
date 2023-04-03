@@ -21,6 +21,7 @@ use crate::RaftState;
 use crate::SnapshotMeta;
 use crate::StoredMembership;
 
+#[cfg(test)] mod append_entries_test;
 #[cfg(test)] mod commit_entries_test;
 #[cfg(test)] mod do_append_entries_test;
 #[cfg(test)] mod install_snapshot_test;
@@ -69,6 +70,10 @@ where
             "local state"
         );
 
+        if let Some(x) = entries.first() {
+            debug_assert!(x.get_log_id().index == prev_log_id.next_index());
+        }
+
         if let Some(ref prev) = prev_log_id {
             if !self.state.has_log_id(prev) {
                 let local = self.state.get_log_id(prev.index);
@@ -89,6 +94,8 @@ where
 
         let last_log_id = entries.last().map(|x| *x.get_log_id());
 
+        self.state.update_accepted(std::cmp::max(prev_log_id, last_log_id));
+
         let l = entries.len();
         let since = self.state.first_conflicting_index(&entries);
         if since < l {
@@ -101,23 +108,9 @@ where
 
         self.do_append_entries(entries, since);
 
-        let committed = Self::max_committed(leader_committed, prev_log_id, last_log_id);
-        self.commit_entries(committed);
+        self.commit_entries(leader_committed);
 
         AppendEntriesResponse::Success
-    }
-
-    /// Extract the max log id from an AppendEntries request that can be committed by this
-    /// follower.
-    ///
-    /// A follower can only commit the entries that are replicated by the leader.
-    fn max_committed(
-        leader_committed: Option<LogId<NID>>,
-        prev_log_id: Option<LogId<NID>>,
-        last_entry_log_id: Option<LogId<NID>>,
-    ) -> Option<LogId<NID>> {
-        let last = std::cmp::max(last_entry_log_id, prev_log_id);
-        std::cmp::min(leader_committed, last)
     }
 
     /// Follower/Learner appends `entries[since..]`.
@@ -151,8 +144,17 @@ where
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    fn commit_entries(&mut self, committed: Option<LogId<NID>>) {
-        tracing::debug!(committed = display(DisplayOption(&committed)), "{}", func_name!());
+    fn commit_entries(&mut self, leader_committed: Option<LogId<NID>>) {
+        let accepted = self.state.accepted().copied();
+        let committed = std::cmp::min(accepted, leader_committed);
+
+        tracing::debug!(
+            leader_committed = display(DisplayOption(&leader_committed)),
+            accepted = display(DisplayOption(&accepted)),
+            committed = display(DisplayOption(&committed)),
+            "{}",
+            func_name!()
+        );
 
         if let Some(prev_committed) = self.state.update_committed(&committed) {
             self.output.push_command(Command::FollowerCommit {
@@ -319,6 +321,7 @@ where
             }
         }
 
+        self.state.update_accepted(Some(snap_last_log_id));
         self.state.committed = Some(snap_last_log_id);
         self.update_committed_membership(EffectiveMembership::new_from_stored_membership(
             meta.last_membership.clone(),
