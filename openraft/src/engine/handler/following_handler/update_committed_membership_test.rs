@@ -11,7 +11,6 @@ use crate::testing::log_id;
 use crate::EffectiveMembership;
 use crate::Membership;
 use crate::MembershipState;
-use crate::MetricsChangeFlags;
 
 fn m01() -> Membership<u64, ()> {
     Membership::<u64, ()>::new(vec![btreeset! {0,1}], None)
@@ -53,16 +52,6 @@ fn test_update_committed_membership_at_index_4() -> anyhow::Result<()> {
         eng.state.membership_state
     );
     assert_eq!(ServerState::Learner, eng.state.server_state);
-
-    assert_eq!(
-        MetricsChangeFlags {
-            replication: false,
-            local_data: false,
-            cluster: true,
-        },
-        eng.output.metrics_flags
-    );
-
     assert_eq!(
         vec![Command::UpdateMembership {
             membership: Arc::new(EffectiveMembership::new(Some(log_id(3, 4)), m34())),

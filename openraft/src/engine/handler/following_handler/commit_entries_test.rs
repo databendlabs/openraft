@@ -12,7 +12,6 @@ use crate::testing::log_id;
 use crate::EffectiveMembership;
 use crate::Membership;
 use crate::MembershipState;
-use crate::MetricsChangeFlags;
 
 fn m01() -> Membership<u64, ()> {
     Membership::new(vec![btreeset! {0,1}], None)
@@ -48,16 +47,6 @@ fn test_following_handler_commit_entries_empty() -> anyhow::Result<()> {
         ),
         eng.state.membership_state
     );
-
-    assert_eq!(
-        MetricsChangeFlags {
-            replication: false,
-            local_data: false,
-            cluster: false,
-        },
-        eng.output.metrics_flags
-    );
-
     assert_eq!(0, eng.output.take_commands().len());
 
     Ok(())
@@ -79,16 +68,6 @@ fn test_following_handler_commit_entries_ge_accepted() -> anyhow::Result<()> {
         ),
         eng.state.membership_state
     );
-
-    assert_eq!(
-        MetricsChangeFlags {
-            replication: false,
-            local_data: true,
-            cluster: false,
-        },
-        eng.output.metrics_flags
-    );
-
     assert_eq!(
         vec![Command::FollowerCommit {
             already_committed: Some(log_id(1, 1)),
@@ -116,16 +95,6 @@ fn test_following_handler_commit_entries_le_accepted() -> anyhow::Result<()> {
         ),
         eng.state.membership_state
     );
-
-    assert_eq!(
-        MetricsChangeFlags {
-            replication: false,
-            local_data: true,
-            cluster: false,
-        },
-        eng.output.metrics_flags
-    );
-
     assert_eq!(
         vec![
             Command::FollowerCommit {

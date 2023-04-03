@@ -6,7 +6,6 @@ use crate::engine::CEngine;
 use crate::engine::Engine;
 use crate::testing::log_id;
 use crate::Membership;
-use crate::MetricsChangeFlags;
 use crate::SnapshotMeta;
 use crate::StoredMembership;
 
@@ -52,15 +51,6 @@ fn test_update_snapshot_no_update() -> anyhow::Result<()> {
         eng.state.snapshot_meta
     );
 
-    assert_eq!(
-        MetricsChangeFlags {
-            replication: false,
-            local_data: false,
-            cluster: false,
-        },
-        eng.output.metrics_flags
-    );
-
     assert_eq!(0, eng.output.take_commands().len());
 
     Ok(())
@@ -86,15 +76,6 @@ fn test_update_snapshot_updated() -> anyhow::Result<()> {
             snapshot_id: "1-2-3-4".to_string(),
         },
         eng.state.snapshot_meta
-    );
-
-    assert_eq!(
-        MetricsChangeFlags {
-            replication: false,
-            local_data: true,
-            cluster: false,
-        },
-        eng.output.metrics_flags
     );
 
     assert_eq!(0, eng.output.take_commands().len());

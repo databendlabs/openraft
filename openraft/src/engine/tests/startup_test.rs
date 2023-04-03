@@ -13,7 +13,6 @@ use crate::testing::log_id;
 use crate::utime::UTime;
 use crate::EffectiveMembership;
 use crate::Membership;
-use crate::MetricsChangeFlags;
 use crate::ServerState;
 use crate::Vote;
 
@@ -46,16 +45,6 @@ fn test_startup_as_leader() -> anyhow::Result<()> {
     eng.startup();
 
     assert_eq!(ServerState::Leader, eng.state.server_state);
-
-    assert_eq!(
-        MetricsChangeFlags {
-            replication: true,
-            local_data: false,
-            cluster: true,
-        },
-        eng.output.metrics_flags
-    );
-
     assert_eq!(
         vec![
             //
@@ -88,16 +77,6 @@ fn test_startup_candidate_becomes_follower() -> anyhow::Result<()> {
     eng.startup();
 
     assert_eq!(ServerState::Follower, eng.state.server_state);
-
-    assert_eq!(
-        MetricsChangeFlags {
-            replication: false,
-            local_data: false,
-            cluster: false,
-        },
-        eng.output.metrics_flags
-    );
-
     assert_eq!(0, eng.output.take_commands().len());
 
     Ok(())
@@ -113,16 +92,6 @@ fn test_startup_as_follower() -> anyhow::Result<()> {
     eng.startup();
 
     assert_eq!(ServerState::Follower, eng.state.server_state);
-
-    assert_eq!(
-        MetricsChangeFlags {
-            replication: false,
-            local_data: false,
-            cluster: false,
-        },
-        eng.output.metrics_flags
-    );
-
     assert_eq!(0, eng.output.take_commands().len());
 
     Ok(())
@@ -139,16 +108,6 @@ fn test_startup_as_learner() -> anyhow::Result<()> {
     eng.startup();
 
     assert_eq!(ServerState::Learner, eng.state.server_state);
-
-    assert_eq!(
-        MetricsChangeFlags {
-            replication: false,
-            local_data: false,
-            cluster: false,
-        },
-        eng.output.metrics_flags
-    );
-
     assert_eq!(0, eng.output.take_commands().len());
 
     Ok(())

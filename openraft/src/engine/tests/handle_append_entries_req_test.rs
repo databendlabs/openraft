@@ -19,7 +19,6 @@ use crate::EffectiveMembership;
 use crate::Entry;
 use crate::Membership;
 use crate::MembershipState;
-use crate::MetricsChangeFlags;
 use crate::Vote;
 
 fn m01() -> Membership<u64, ()> {
@@ -76,16 +75,6 @@ fn test_handle_append_entries_req_vote_is_rejected() -> anyhow::Result<()> {
         eng.state.membership_state
     );
     assert_eq!(ServerState::Follower, eng.state.server_state);
-
-    assert_eq!(
-        MetricsChangeFlags {
-            replication: false,
-            local_data: false,
-            cluster: false,
-        },
-        eng.output.metrics_flags
-    );
-
     assert_eq!(0, eng.output.take_commands().len());
 
     Ok(())
@@ -124,16 +113,6 @@ fn test_handle_append_entries_req_prev_log_id_is_applied() -> anyhow::Result<()>
         eng.state.membership_state
     );
     assert_eq!(ServerState::Follower, eng.state.server_state);
-
-    assert_eq!(
-        MetricsChangeFlags {
-            replication: false,
-            local_data: true,
-            cluster: false,
-        },
-        eng.output.metrics_flags
-    );
-
     assert_eq!(
         vec![Command::SaveVote {
             vote: Vote::new_committed(2, 1)
@@ -173,16 +152,6 @@ fn test_handle_append_entries_req_prev_log_id_conflict() -> anyhow::Result<()> {
         eng.state.membership_state
     );
     assert_eq!(ServerState::Learner, eng.state.server_state);
-
-    assert_eq!(
-        MetricsChangeFlags {
-            replication: false,
-            local_data: true,
-            cluster: true,
-        },
-        eng.output.metrics_flags
-    );
-
     assert_eq!(
         vec![
             Command::SaveVote {
@@ -229,16 +198,6 @@ fn test_handle_append_entries_req_prev_log_id_is_committed() -> anyhow::Result<(
         eng.state.membership_state
     );
     assert_eq!(ServerState::Learner, eng.state.server_state);
-
-    assert_eq!(
-        MetricsChangeFlags {
-            replication: false,
-            local_data: true,
-            cluster: true,
-        },
-        eng.output.metrics_flags
-    );
-
     assert_eq!(
         vec![
             Command::SaveVote {
@@ -294,16 +253,6 @@ fn test_handle_append_entries_req_prev_log_id_not_exists() -> anyhow::Result<()>
         eng.state.membership_state
     );
     assert_eq!(ServerState::Follower, eng.state.server_state);
-
-    assert_eq!(
-        MetricsChangeFlags {
-            replication: false,
-            local_data: true,
-            cluster: false,
-        },
-        eng.output.metrics_flags
-    );
-
     assert_eq!(
         vec![Command::SaveVote {
             vote: Vote::new_committed(2, 1)
@@ -349,16 +298,6 @@ fn test_handle_append_entries_req_entries_conflict() -> anyhow::Result<()> {
         eng.state.membership_state
     );
     assert_eq!(ServerState::Learner, eng.state.server_state);
-
-    assert_eq!(
-        MetricsChangeFlags {
-            replication: false,
-            local_data: true,
-            cluster: true,
-        },
-        eng.output.metrics_flags
-    );
-
     assert_eq!(
         vec![
             Command::SaveVote {

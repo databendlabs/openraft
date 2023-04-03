@@ -15,7 +15,6 @@ use crate::Entry;
 use crate::EntryPayload;
 use crate::Membership;
 use crate::MembershipState;
-use crate::MetricsChangeFlags;
 use crate::RaftTypeConfig;
 
 fn m01() -> Membership<u64, ()> {
@@ -72,16 +71,6 @@ fn test_follower_do_append_entries_empty() -> anyhow::Result<()> {
         eng.state.membership_state
     );
     assert_eq!(ServerState::Follower, eng.state.server_state);
-
-    assert_eq!(
-        MetricsChangeFlags {
-            replication: false,
-            local_data: false,
-            cluster: false,
-        },
-        eng.output.metrics_flags
-    );
-
     assert_eq!(0, eng.output.take_commands().len());
 
     Ok(())
@@ -116,16 +105,6 @@ fn test_follower_do_append_entries_no_membership_entries() -> anyhow::Result<()>
         eng.state.membership_state
     );
     assert_eq!(ServerState::Follower, eng.state.server_state);
-
-    assert_eq!(
-        MetricsChangeFlags {
-            replication: false,
-            local_data: true,
-            cluster: false,
-        },
-        eng.output.metrics_flags
-    );
-
     assert_eq!(
         vec![
             //
@@ -184,16 +163,6 @@ fn test_follower_do_append_entries_one_membership_entry() -> anyhow::Result<()> 
         eng.state.server_state,
         "not in membership, become learner"
     );
-
-    assert_eq!(
-        MetricsChangeFlags {
-            replication: false,
-            local_data: true,
-            cluster: true,
-        },
-        eng.output.metrics_flags
-    );
-
     assert_eq!(
         vec![
             Command::UpdateMembership {
@@ -260,16 +229,6 @@ fn test_follower_do_append_entries_three_membership_entries() -> anyhow::Result<
         eng.state.server_state,
         "in membership, become follower"
     );
-
-    assert_eq!(
-        MetricsChangeFlags {
-            replication: false,
-            local_data: true,
-            cluster: true,
-        },
-        eng.output.metrics_flags
-    );
-
     assert_eq!(
         vec![
             Command::UpdateMembership {
