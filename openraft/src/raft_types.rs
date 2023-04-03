@@ -41,7 +41,9 @@ pub enum Update<T> {
 }
 
 /// Describes the need to update some aspect of the metrics.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone)]
+#[derive(Default)]
+#[derive(PartialEq, Eq)]
 pub(crate) struct MetricsChangeFlags {
     /// Replication state changes. E.g., adding/removing replication, progress update.
     pub(crate) replication: bool,

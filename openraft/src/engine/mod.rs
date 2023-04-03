@@ -36,6 +36,7 @@ mod log_id_list;
 pub(crate) mod handler;
 pub(crate) mod time_state;
 
+#[cfg(test)] mod command_test;
 #[cfg(test)] mod elect_test;
 #[cfg(test)] mod handle_append_entries_req_test;
 #[cfg(test)] mod handle_vote_req_test;
