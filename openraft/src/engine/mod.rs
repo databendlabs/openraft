@@ -36,16 +36,18 @@ mod log_id_list;
 pub(crate) mod handler;
 pub(crate) mod time_state;
 
-#[cfg(test)] mod command_test;
-#[cfg(test)] mod elect_test;
-#[cfg(test)] mod handle_append_entries_req_test;
-#[cfg(test)] mod handle_vote_req_test;
-#[cfg(test)] mod handle_vote_resp_test;
-#[cfg(test)] mod initialize_test;
-#[cfg(test)] mod log_id_list_test;
-#[cfg(test)] mod startup_test;
+#[cfg(test)]
+mod tests {
+    mod command_test;
+    mod elect_test;
+    mod handle_append_entries_req_test;
+    mod handle_vote_req_test;
+    mod handle_vote_resp_test;
+    mod initialize_test;
+    mod log_id_list_test;
+    mod startup_test;
+}
 #[cfg(test)] mod testing;
-#[cfg(test)] mod update_progress_test;
 
 pub(crate) use command::Command;
 pub(crate) use command::SendResult;
