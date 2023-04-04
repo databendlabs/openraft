@@ -276,7 +276,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
         // Applied logs are not needed. Purge them or there may be a hole in the log.
         if let Some(last) = &last_applied {
-            purge_applied_logs(self.storage.clone(), last, self.config.max_applied_log_to_keep).await?;
+            purge_applied_logs(self.storage.clone(), last, 0).await?;
         }
 
         // snapshot is installed
