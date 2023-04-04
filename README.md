@@ -51,11 +51,11 @@ Currently, openraft is the consensus engine of meta-service cluster in [databend
     - The chaos test is not yet done.
 
 - **Branch [release-0.8](https://github.com/datafuselabs/openraft/tree/release-0.8)**:
-  Latest published: [v0.8.1](https://github.com/datafuselabs/openraft/tree/v0.8.1) | [Change log v0.8.1](https://github.com/datafuselabs/openraft/blob/release-0.8/change-log.md#v081) |
+  Latest published: [v0.8.3](https://github.com/datafuselabs/openraft/tree/v0.8.3) | [Change log v0.8.3](https://github.com/datafuselabs/openraft/blob/release-0.8/change-log.md#v083) |
   ⬆️  [0.7 to 0.8 upgrade guide](https://datafuselabs.github.io/openraft/upgrade-v07-v08) |
 
 - **Branch [release-0.7](https://github.com/datafuselabs/openraft/tree/release-0.7)**:
-  Latest published: [v0.7.4](https://github.com/datafuselabs/openraft/tree/v0.7.4) | [Change log v0.7.4](https://github.com/datafuselabs/openraft/blob/release-0.7/change-log.md#v074) |
+  Latest published: [v0.7.6](https://github.com/datafuselabs/openraft/tree/v0.7.6) | [Change log v0.7.6](https://github.com/datafuselabs/openraft/blob/release-0.7/change-log.md#v076) |
   ⬆️  [0.6 to 0.7 upgrade guide](https://datafuselabs.github.io/openraft/upgrade-v06-v07) |
   `release-0.7` **Won't** accept new features but only bug fixes.
 
