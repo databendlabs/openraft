@@ -1,8 +1,7 @@
 use tokio::io::AsyncWriteExt;
 
-use crate::core::streaming_state::StreamingState;
+use crate::core::streaming_state::Streaming;
 use crate::core::RaftCore;
-use crate::core::SnapshotState;
 use crate::error::SnapshotMismatch;
 use crate::raft::InstallSnapshotRequest;
 use crate::raft::InstallSnapshotResponse;
@@ -45,41 +44,15 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             return Ok(());
         }
 
-        // Clear the state to None if it is building a snapshot locally.
-        if let SnapshotState::Snapshotting {
-            abort_handle,
-            join_handle,
-        } = &mut self.snapshot_state
-        {
-            abort_handle.abort();
-
-            // The building-snapshot task in another thread may still be running.
-            // It has to block until it returns before dealing with snapshot streaming.
-            // Otherwise there might be concurrency issue: installing the streaming snapshot and
-            // saving the built snapshot may happen in any order.
-            let _ = join_handle.await;
-            self.snapshot_state = SnapshotState::None;
-        }
-
-        // Init a new streaming state if it is None.
-        if let SnapshotState::None = self.snapshot_state {
-            if let Err(e) = self.check_new_install_snapshot(&req) {
-                let _ = tx.send(Err(e.into()));
-                return Ok(());
-            }
-            self.begin_installing_snapshot(&req).await?;
-        }
-
-        // It's Streaming.
-
         let done = req.done;
         let req_meta = req.meta.clone();
 
         // Changed to another stream. re-init snapshot state.
-        let stream_changed = if let SnapshotState::Streaming(streaming) = &self.snapshot_state {
+        let stream_changed = if let Some(streaming) = &self.snapshot_state.streaming {
             req_meta.snapshot_id != streaming.snapshot_id
         } else {
-            unreachable!("It has to be Streaming")
+            // A new stream is considered as changed
+            true
         };
 
         if stream_changed {
@@ -87,19 +60,18 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 let _ = tx.send(Err(e.into()));
                 return Ok(());
             }
-            self.begin_installing_snapshot(&req).await?;
+            self.begin_installing_snapshot(&req_meta).await?;
         }
 
+        // Safe unwrap: it has been checked in the previous if statement.
+        let streaming = self.snapshot_state.streaming.as_mut().unwrap();
+
         // Receive the data.
-        if let SnapshotState::Streaming(streaming) = &mut self.snapshot_state {
-            debug_assert_eq!(req_meta.snapshot_id, streaming.snapshot_id);
-            streaming.receive(req).await?;
-        } else {
-            unreachable!("It has to be Streaming")
-        }
+        streaming.receive(req).await?;
 
         if done {
             self.finalize_snapshot_installation(req_meta).await?;
+            self.run_engine_commands().await?;
         }
 
         let _ = tx.send(Ok(InstallSnapshotResponse {
@@ -131,14 +103,14 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     #[tracing::instrument(level = "debug", skip_all)]
     async fn begin_installing_snapshot(
         &mut self,
-        req: &InstallSnapshotRequest<C>,
+        meta: &SnapshotMeta<C::NodeId, C::Node>,
     ) -> Result<(), StorageError<C::NodeId>> {
-        tracing::debug!(req = display(req.summary()));
-
-        let id = req.meta.snapshot_id.clone();
+        tracing::debug!(req = display(meta.summary()));
 
         let snapshot_data = self.storage.begin_receiving_snapshot().await?;
-        self.snapshot_state = SnapshotState::Streaming(StreamingState::new(id, snapshot_data));
+
+        let id = meta.snapshot_id.clone();
+        self.snapshot_state.streaming = Some(Streaming::new(id, snapshot_data));
 
         Ok(())
     }
@@ -153,12 +125,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     ) -> Result<(), StorageError<C::NodeId>> {
         tracing::debug!(meta = display(meta.summary()));
 
-        let state = std::mem::take(&mut self.snapshot_state);
-        let streaming = if let SnapshotState::Streaming(streaming) = state {
-            streaming
-        } else {
-            unreachable!("snapshot_state has to be Streaming")
-        };
+        let streaming = self.snapshot_state.streaming.take().unwrap();
 
         let mut snapshot_data = streaming.snapshot_data;
 
@@ -172,7 +139,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         self.received_snapshot.insert(meta.snapshot_id.clone(), snapshot_data);
 
         self.engine.following_handler().install_snapshot(meta);
-        self.run_engine_commands().await?;
 
         Ok(())
     }
