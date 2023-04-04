@@ -467,3 +467,38 @@ impl<NID: NodeId> From<RejectVoteRequest<NID>> for AppendEntriesResponse<NID> {
         }
     }
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub(crate) enum RejectAppendEntries<NID: NodeId> {
+    #[error("reject AppendEntries by a greater vote: {0}")]
+    ByVote(Vote<NID>),
+
+    #[error("reject AppendEntries because of conflicting log-id: {local:?}; expect to be: {expect:?}")]
+    ByConflictingLogId {
+        expect: LogId<NID>,
+        local: Option<LogId<NID>>,
+    },
+}
+
+impl<NID: NodeId> From<RejectVoteRequest<NID>> for RejectAppendEntries<NID> {
+    fn from(r: RejectVoteRequest<NID>) -> Self {
+        match r {
+            RejectVoteRequest::ByVote(v) => RejectAppendEntries::ByVote(v),
+            RejectVoteRequest::ByLastLogId(_) => {
+                unreachable!("the leader should always has a greater last log id")
+            }
+        }
+    }
+}
+
+impl<NID: NodeId> From<Result<(), RejectAppendEntries<NID>>> for AppendEntriesResponse<NID> {
+    fn from(r: Result<(), RejectAppendEntries<NID>>) -> Self {
+        match r {
+            Ok(_) => AppendEntriesResponse::Success,
+            Err(e) => match e {
+                RejectAppendEntries::ByVote(v) => AppendEntriesResponse::HigherVote(v),
+                RejectAppendEntries::ByConflictingLogId { expect: _, local: _ } => AppendEntriesResponse::Conflict,
+            },
+        }
+    }
+}

@@ -17,15 +17,18 @@ use crate::engine::time_state;
 use crate::engine::time_state::TimeState;
 use crate::engine::Command;
 use crate::engine::EngineOutput;
+use crate::engine::SendResult;
 use crate::entry::RaftEntry;
 use crate::error::ForwardToLeader;
 use crate::error::InitializeError;
 use crate::error::NotAllowed;
 use crate::error::NotInMembers;
+use crate::error::RejectAppendEntries;
 use crate::internal_server_state::InternalServerState;
 use crate::membership::EffectiveMembership;
 use crate::node::Node;
 use crate::raft::AppendEntriesResponse;
+use crate::raft::AppendEntriesTx;
 use crate::raft::RaftRespTx;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
@@ -363,36 +366,65 @@ where
     ///
     /// Also clean conflicting entries and update membership state.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn handle_append_entries_req(
+    pub(crate) fn handle_append_entries(
         &mut self,
         vote: &Vote<NID>,
         prev_log_id: Option<LogId<NID>>,
         entries: Vec<Ent>,
-        leader_committed: Option<LogId<NID>>,
-    ) -> AppendEntriesResponse<NID> {
+        tx: Option<AppendEntriesTx<NID>>,
+    ) -> bool {
         tracing::debug!(
             vote = display(vote),
             prev_log_id = display(prev_log_id.summary()),
             entries = display(DisplaySlice::<_>(&entries)),
-            leader_committed = display(leader_committed.summary()),
-            "append-entries request"
-        );
-        tracing::debug!(
             my_vote = display(self.state.vote_ref()),
             my_last_log_id = display(self.state.last_log_id().summary()),
-            my_committed = display(self.state.committed().summary()),
-            "local state"
+            "{}",
+            func_name!()
         );
 
-        let res = self.vote_handler().handle_message_vote(vote);
-        if let Err(rejected) = res {
-            return rejected.into();
+        let res = self.append_entries(vote, prev_log_id, entries);
+        let is_ok = res.is_ok();
+
+        if let Some(tx) = tx {
+            let resp: AppendEntriesResponse<NID> = res.into();
+            self.output.push_command(Command::SendAppendEntriesResult {
+                send: SendResult::new(Ok(resp), tx),
+            });
         }
+        is_ok
+    }
+
+    pub(crate) fn append_entries(
+        &mut self,
+        vote: &Vote<NID>,
+        prev_log_id: Option<LogId<NID>>,
+        entries: Vec<Ent>,
+    ) -> Result<(), RejectAppendEntries<NID>> {
+        self.vote_handler().handle_message_vote(vote)?;
 
         // Vote is legal.
 
         let mut fh = self.following_handler();
-        fh.append_entries(prev_log_id, entries, leader_committed)
+        fh.ensure_log_consecutive(prev_log_id)?;
+        fh.append_entries(prev_log_id, entries);
+
+        Ok(())
+    }
+
+    /// Commit entries for follower/learner.
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub(crate) fn handle_commit_entries(&mut self, leader_committed: Option<LogId<NID>>) {
+        tracing::debug!(
+            leader_committed = display(leader_committed.summary()),
+            my_accepted = display(self.state.accepted().summary()),
+            my_committed = display(self.state.committed().summary()),
+            "{}",
+            func_name!()
+        );
+
+        let mut fh = self.following_handler();
+        fh.commit_entries(leader_committed);
     }
 
     /// Leader steps down(convert to learner) once the membership not containing it is committed.

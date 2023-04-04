@@ -9,7 +9,7 @@ use crate::engine::Command;
 use crate::engine::EngineConfig;
 use crate::engine::EngineOutput;
 use crate::entry::RaftEntry;
-use crate::raft::AppendEntriesResponse;
+use crate::error::RejectAppendEntries;
 use crate::raft_state::LogStateReader;
 use crate::EffectiveMembership;
 use crate::LogId;
@@ -52,16 +52,10 @@ where
     ///
     /// Also clean conflicting entries and update membership state.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn append_entries(
-        &mut self,
-        prev_log_id: Option<LogId<NID>>,
-        entries: Vec<Ent>,
-        leader_committed: Option<LogId<NID>>,
-    ) -> AppendEntriesResponse<NID> {
+    pub(crate) fn append_entries(&mut self, prev_log_id: Option<LogId<NID>>, entries: Vec<Ent>) {
         tracing::debug!(
             prev_log_id = display(prev_log_id.summary()),
             entries = display(DisplaySlice::<_>(&entries)),
-            leader_committed = display(leader_committed.summary()),
             "append-entries request"
         );
         tracing::debug!(
@@ -73,18 +67,6 @@ where
         if let Some(x) = entries.first() {
             debug_assert!(x.get_log_id().index == prev_log_id.next_index());
         }
-
-        if let Some(ref prev) = prev_log_id {
-            if !self.state.has_log_id(prev) {
-                let local = self.state.get_log_id(prev.index);
-                tracing::debug!(local = display(local.summary()), "prev_log_id does not match");
-
-                self.truncate_logs(prev.index);
-                return AppendEntriesResponse::Conflict;
-            }
-        }
-
-        // else `prev_log_id.is_none()` means replicating logs from the very beginning.
 
         tracing::debug!(
             committed = display(self.state.committed().summary()),
@@ -107,10 +89,28 @@ where
         }
 
         self.do_append_entries(entries, since);
+    }
 
-        self.commit_entries(leader_committed);
+    /// Ensures the log to replicate is consecutive to the local log.
+    ///
+    /// If not, truncate the local log and return an error.
+    pub(crate) fn ensure_log_consecutive(
+        &mut self,
+        prev_log_id: Option<LogId<NID>>,
+    ) -> Result<(), RejectAppendEntries<NID>> {
+        if let Some(ref prev) = prev_log_id {
+            if !self.state.has_log_id(prev) {
+                let local = self.state.get_log_id(prev.index);
+                tracing::debug!(local = display(DisplayOption(&local)), "prev_log_id does not match");
 
-        AppendEntriesResponse::Success
+                self.truncate_logs(prev.index);
+                return Err(RejectAppendEntries::ByConflictingLogId { local, expect: *prev });
+            }
+        }
+
+        // else `prev_log_id.is_none()` means replicating logs from the very beginning.
+
+        Ok(())
     }
 
     /// Follower/Learner appends `entries[since..]`.
@@ -143,8 +143,9 @@ where
         self.output.push_command(Command::AppendInputEntries { entries });
     }
 
+    /// Commit entries that are already committed by the leader.
     #[tracing::instrument(level = "debug", skip_all)]
-    fn commit_entries(&mut self, leader_committed: Option<LogId<NID>>) {
+    pub(crate) fn commit_entries(&mut self, leader_committed: Option<LogId<NID>>) {
         let accepted = self.state.accepted().copied();
         let committed = std::cmp::min(accepted, leader_committed);
 
@@ -232,7 +233,9 @@ where
 
         let m = Arc::new(membership);
 
-        // TODO: if effective membership changes, call `update_repliation()`
+        // TODO: if effective membership changes, call `update_replication()`, if a follower has replication
+        //       streams. Now we don't have replication streams for follower, so it's ok to not call
+        //       `update_replication()`.
         let effective_changed = self.state.membership_state.update_committed(m);
         if let Some(c) = effective_changed {
             self.output.push_command(Command::UpdateMembership { membership: c })
@@ -247,6 +250,7 @@ where
         // There are two special cases in which snapshot last log id does not exists locally:
         // Snapshot last log id before the local last-purged-log-id, or after the local last-log-id:
         //
+        // ```
         //      snapshot ----.
         //                   v
         // -----------------------llllllllll--->
@@ -254,6 +258,7 @@ where
         //      snapshot ----.
         //                   v
         // ----lllllllllll--------------------->
+        // ```
         //
         // In the first case, snapshot-last-log-id <= last-purged-log-id <=
         // local-snapshot-last-log-id. Thus snapshot is obsolete and won't be installed.

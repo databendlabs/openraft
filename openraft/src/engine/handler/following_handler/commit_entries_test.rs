@@ -97,10 +97,11 @@ fn test_following_handler_commit_entries_le_accepted() -> anyhow::Result<()> {
     );
     assert_eq!(
         vec![
+            //
             Command::FollowerCommit {
                 already_committed: Some(log_id(1, 1)),
                 upto: log_id(2, 3)
-            }, //
+            },
         ],
         eng.output.take_commands()
     );
