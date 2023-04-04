@@ -948,11 +948,11 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     ) {
         tracing::debug!(req = display(req.summary()), func = func_name!());
 
-        let resp = self.engine.handle_append_entries_req(&req.vote, req.prev_log_id, req.entries, req.leader_commit);
+        let is_ok = self.engine.handle_append_entries(&req.vote, req.prev_log_id, req.entries, Some(tx));
 
-        self.engine.output.push_command(Command::SendAppendEntriesResult {
-            send: SendResult::new(Ok(resp), tx),
-        });
+        if is_ok {
+            self.engine.handle_commit_entries(req.leader_commit);
+        }
     }
 
     // TODO: Make this method non-async. It does not need to run any async command in it.

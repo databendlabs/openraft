@@ -41,15 +41,11 @@ fn eng() -> Engine<u64, (), <UTCfg as RaftTypeConfig>::Entry> {
 fn test_follower_append_entries_update_accepted() -> anyhow::Result<()> {
     let mut eng = eng();
 
-    eng.following_handler().append_entries(
-        Some(log_id(2, 3)),
-        vec![
-            //
-            blank_ent(3, 4),
-            blank_ent(3, 5),
-        ],
-        None,
-    );
+    eng.following_handler().append_entries(Some(log_id(2, 3)), vec![
+        //
+        blank_ent(3, 4),
+        blank_ent(3, 5),
+    ]);
 
     assert_eq!(
         &[
@@ -64,14 +60,10 @@ fn test_follower_append_entries_update_accepted() -> anyhow::Result<()> {
 
     // Update again, accept should not decrease.
 
-    eng.following_handler().append_entries(
-        Some(log_id(2, 3)),
-        vec![
-            //
-            blank_ent(3, 4),
-        ],
-        None,
-    );
+    eng.following_handler().append_entries(Some(log_id(2, 3)), vec![
+        //
+        blank_ent(3, 4),
+    ]);
 
     assert_eq!(Some(&log_id(3, 5)), eng.state.last_log_id());
     assert_eq!(Some(&log_id(3, 5)), eng.state.accepted());

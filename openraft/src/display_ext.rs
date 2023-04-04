@@ -1,4 +1,4 @@
-//! Implement [`std::fmt::Display`] for types such as `Option<T>` and slice `&[T]`.
+//! Implement [`fmt::Display`] for types such as `Option<T>` and slice `&[T]`.
 
 use std::fmt;
 
@@ -9,7 +9,7 @@ use std::fmt;
 pub(crate) struct DisplayOption<'a, T: fmt::Display>(pub &'a Option<T>);
 
 impl<'a, T: fmt::Display> fmt::Display for DisplayOption<'a, T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.0 {
             None => {
                 write!(f, "None")
@@ -26,7 +26,7 @@ impl<'a, T: fmt::Display> fmt::Display for DisplayOption<'a, T> {
 pub(crate) struct DisplaySlice<'a, T: fmt::Display, const MAX: usize = 5>(pub &'a [T]);
 
 impl<'a, T: fmt::Display, const MAX: usize> fmt::Display for DisplaySlice<'a, T, MAX> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let slice = self.0;
         let len = slice.len();
 
