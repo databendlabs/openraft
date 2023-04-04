@@ -28,9 +28,10 @@ use tracing::Span;
 use crate::config::Config;
 use crate::config::RuntimeConfig;
 use crate::config::SnapshotPolicy;
+use crate::core::building_state;
+use crate::core::snapshot_state;
 use crate::core::ServerState;
 use crate::core::SnapshotResult;
-use crate::core::SnapshotState;
 use crate::display_ext::DisplaySlice;
 use crate::engine::Command;
 use crate::engine::Engine;
@@ -146,7 +147,7 @@ pub struct RaftCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<
     pub(crate) leader_data: Option<LeaderData<C, S::SnapshotData>>,
 
     /// The node's current snapshot state.
-    pub(crate) snapshot_state: SnapshotState<C, S::SnapshotData>,
+    pub(crate) snapshot_state: snapshot_state::State<C, S::SnapshotData>,
 
     /// Received snapshot that are ready to install.
     pub(crate) received_snapshot: BTreeMap<SnapshotId, Box<S::SnapshotData>>,
@@ -529,22 +530,19 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         });
     }
 
-    pub(crate) async fn handle_building_snapshot_result(
+    fn handle_building_snapshot_result(
         &mut self,
         result: SnapshotResult<C::NodeId, C::Node>,
     ) -> Result<(), StorageError<C::NodeId>> {
         tracing::info!("handle_building_snapshot_result: {:?}", result);
 
-        if let SnapshotState::Streaming { .. } = &self.snapshot_state {
-            tracing::info!("snapshot is being streaming. Ignore building snapshot result");
-            return Ok(());
-        }
+        debug_assert!(self.snapshot_state.building.is_some(), "no snapshot is building");
 
-        // TODO: add building-session id to identify different building
+        // One build will only be triggered if there is no other build in progress.
+        // Therefore there won't be multiple builds in progress.
         match result {
             SnapshotResult::Ok(meta) => {
                 self.engine.finish_building_snapshot(meta);
-                self.run_engine_commands().await?;
             }
             SnapshotResult::StorageError(sto_err) => {
                 return Err(sto_err);
@@ -552,40 +550,39 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             SnapshotResult::Aborted => {}
         }
 
-        self.snapshot_state = SnapshotState::None;
+        self.snapshot_state.building = None;
 
         Ok(())
     }
 
-    /// Trigger a log compaction (snapshot) job if needed.
-    /// If force is True, it will skip the threshold check and start creating snapshot as demanded.
+    /// Trigger a snapshot building(log compaction) job if needed.
+    ///
+    /// If `force` is True, it will skip the threshold check and start creating snapshot as
+    /// demanded. But it will still check if there is already a snapshot building job in progress.
     #[tracing::instrument(level = "debug", skip(self))]
     pub(crate) async fn trigger_snapshot_if_needed(&mut self, force: bool) {
         tracing::debug!("trigger_snapshot_if_needed: force: {}", force);
 
-        if let SnapshotState::None = self.snapshot_state {
-            // Continue.
-        } else {
-            // Snapshot building or streaming is in progress.
+        if self.snapshot_state.building.is_some() {
+            tracing::debug!("snapshot building is in progress, do not trigger snapshot");
             return;
         }
 
-        let SnapshotPolicy::LogsSinceLast(threshold) = &self.config.snapshot_policy;
+        let SnapshotPolicy::LogsSinceLast(threshold) = self.config.snapshot_policy;
 
         if !force {
             // If we are below the threshold, then there is nothing to do.
             if self.engine.state.committed().next_index() - self.engine.state.snapshot_meta.last_log_id.next_index()
-                < *threshold
+                < threshold
             {
                 return;
             }
         }
 
-        // At this point, we are clear to begin a new compaction process.
+        // At this point, we are clear to begin a new snapshot building process.
+
         let mut builder = self.storage.get_snapshot_builder().await;
-
         let (fu, abort_handle) = abortable(async move { builder.build_snapshot().await });
-
         let tx_api = self.tx_api.clone();
 
         let join_handle = tokio::spawn(
@@ -614,10 +611,10 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             .instrument(tracing::debug_span!("building-snapshot")),
         );
 
-        self.snapshot_state = SnapshotState::Snapshotting {
+        self.snapshot_state.building = Some(building_state::Building {
             abort_handle,
             join_handle,
-        };
+        });
     }
 
     /// Reject a request due to the Raft node being in a state which prohibits the request.
@@ -989,7 +986,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 self.handle_install_snapshot_request(rpc, tx).await?;
             }
             RaftMsg::BuildingSnapshotResult { result } => {
-                self.handle_building_snapshot_result(result).await?;
+                self.handle_building_snapshot_result(result)?;
             }
             RaftMsg::CheckIsLeaderRequest { tx } => {
                 if self.engine.state.is_leader(&self.engine.config.id) {

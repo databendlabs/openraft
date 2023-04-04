@@ -20,9 +20,9 @@ use tracing::Level;
 use crate::config::Config;
 use crate::config::RuntimeConfig;
 use crate::core::replication_lag;
+use crate::core::snapshot_state;
 use crate::core::RaftCore;
 use crate::core::SnapshotResult;
-use crate::core::SnapshotState;
 use crate::core::Tick;
 use crate::core::TickHandle;
 use crate::display_ext::DisplaySlice;
@@ -244,7 +244,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
             engine,
             leader_data: None,
 
-            snapshot_state: SnapshotState::None,
+            snapshot_state: snapshot_state::State::default(),
             received_snapshot: BTreeMap::new(),
 
             tx_api: tx_api.clone(),

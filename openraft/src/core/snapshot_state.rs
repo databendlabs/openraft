@@ -1,7 +1,5 @@
-use futures::future::AbortHandle;
-use tokio::task::JoinHandle;
-
-use crate::core::streaming_state::StreamingState;
+use crate::core::building_state::Building;
+use crate::core::streaming_state::Streaming;
 use crate::Node;
 use crate::NodeId;
 use crate::RaftTypeConfig;
@@ -9,22 +7,24 @@ use crate::SnapshotMeta;
 use crate::StorageError;
 
 /// The current snapshot state of the Raft node.
-pub(crate) enum SnapshotState<C: RaftTypeConfig, SD> {
-    None,
-
-    /// The Raft node is compacting itself.
-    Snapshotting {
-        /// A handle to abort the compaction process early if needed.
-        abort_handle: AbortHandle,
-        join_handle: JoinHandle<()>,
-    },
+///
+/// There can be a building process and a streaming process at the same time.
+/// When receiving or building a snapshot is done, the snapshot with a greater last-log-id will be
+/// installed.
+pub(crate) struct State<C: RaftTypeConfig, SD> {
     /// The Raft node is streaming in a snapshot from the leader.
-    Streaming(StreamingState<C, SD>),
+    pub(crate) streaming: Option<Streaming<C, SD>>,
+
+    /// The Raft node is building snapshot itself.
+    pub(crate) building: Option<Building>,
 }
 
-impl<C: RaftTypeConfig, SD> Default for SnapshotState<C, SD> {
+impl<C: RaftTypeConfig, SD> Default for State<C, SD> {
     fn default() -> Self {
-        SnapshotState::None
+        Self {
+            streaming: None,
+            building: None,
+        }
     }
 }
 
