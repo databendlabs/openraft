@@ -1,3 +1,9 @@
+## v0.7.6
+
+### Fixed:
+
+-   Fixed: [f632b36c](https://github.com/datafuselabs/openraft/commit/f632b36c3de9e2f33c386499049d1fd7110c7e50) when a snapshot is installed, all logs convered by snapshot should be purged; by 张炎泼; 2023-04-04
+
 ## v0.7.5
 
 
