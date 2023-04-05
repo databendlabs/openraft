@@ -1,5 +1,4 @@
 use std::io::SeekFrom;
-use std::marker::PhantomData;
 
 use tokio::io::AsyncSeek;
 use tokio::io::AsyncSeekExt;
@@ -14,7 +13,7 @@ use crate::SnapshotId;
 use crate::StorageError;
 
 /// The Raft node is streaming in a snapshot from the leader.
-pub(crate) struct Streaming<C: RaftTypeConfig, SD> {
+pub(crate) struct Streaming<SD> {
     /// The offset of the last byte written to the snapshot.
     pub(crate) offset: u64,
 
@@ -23,11 +22,9 @@ pub(crate) struct Streaming<C: RaftTypeConfig, SD> {
 
     /// A handle to the snapshot writer.
     pub(crate) snapshot_data: Box<SD>,
-
-    _p: PhantomData<C>,
 }
 
-impl<C: RaftTypeConfig, SD> Streaming<C, SD>
+impl<SD> Streaming<SD>
 where SD: AsyncSeek + AsyncWrite + Unpin
 {
     pub(crate) fn new(snapshot_id: SnapshotId, snapshot_data: Box<SD>) -> Self {
@@ -35,12 +32,14 @@ where SD: AsyncSeek + AsyncWrite + Unpin
             offset: 0,
             snapshot_id,
             snapshot_data,
-            _p: Default::default(),
         }
     }
 
     /// Receive a chunk of snapshot data.
-    pub(crate) async fn receive(&mut self, req: InstallSnapshotRequest<C>) -> Result<bool, StorageError<C::NodeId>> {
+    pub(crate) async fn receive<C: RaftTypeConfig>(
+        &mut self,
+        req: InstallSnapshotRequest<C>,
+    ) -> Result<bool, StorageError<C::NodeId>> {
         // TODO: check id?
 
         // Always seek to the target offset if not an exact match.

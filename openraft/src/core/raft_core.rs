@@ -147,7 +147,7 @@ pub struct RaftCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<
     pub(crate) leader_data: Option<LeaderData<C, S::SnapshotData>>,
 
     /// The node's current snapshot state.
-    pub(crate) snapshot_state: snapshot_state::State<C, S::SnapshotData>,
+    pub(crate) snapshot_state: snapshot_state::State<S::SnapshotData>,
 
     /// Received snapshot that are ready to install.
     pub(crate) received_snapshot: BTreeMap<SnapshotId, Box<S::SnapshotData>>,
