@@ -47,15 +47,10 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         let done = req.done;
         let req_meta = req.meta.clone();
 
-        // Changed to another stream. re-init snapshot state.
-        let stream_changed = if let Some(streaming) = &self.snapshot_state.streaming {
-            req_meta.snapshot_id != streaming.snapshot_id
-        } else {
-            // A new stream is considered as changed
-            true
-        };
+        let curr_id = self.snapshot_state.streaming.as_ref().map(|s| &s.snapshot_id);
 
-        if stream_changed {
+        // Changed to another stream. re-init snapshot state.
+        if curr_id != Some(&req_meta.snapshot_id) {
             if let Err(e) = self.check_new_install_snapshot(&req) {
                 let _ = tx.send(Err(e.into()));
                 return Ok(());

@@ -2,7 +2,6 @@ use crate::core::building_state::Building;
 use crate::core::streaming_state::Streaming;
 use crate::Node;
 use crate::NodeId;
-use crate::RaftTypeConfig;
 use crate::SnapshotMeta;
 use crate::StorageError;
 
@@ -11,15 +10,15 @@ use crate::StorageError;
 /// There can be a building process and a streaming process at the same time.
 /// When receiving or building a snapshot is done, the snapshot with a greater last-log-id will be
 /// installed.
-pub(crate) struct State<C: RaftTypeConfig, SD> {
+pub(crate) struct State<SD> {
     /// The Raft node is streaming in a snapshot from the leader.
-    pub(crate) streaming: Option<Streaming<C, SD>>,
+    pub(crate) streaming: Option<Streaming<SD>>,
 
     /// The Raft node is building snapshot itself.
     pub(crate) building: Option<Building>,
 }
 
-impl<C: RaftTypeConfig, SD> Default for State<C, SD> {
+impl<SD> Default for State<SD> {
     fn default() -> Self {
         Self {
             streaming: None,
