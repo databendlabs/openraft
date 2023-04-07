@@ -113,33 +113,15 @@ where
     /// data.
     InstallSnapshot { snapshot_meta: SnapshotMeta<NID, N> },
 
+    // TODO: remove this, use InstallSnapshot instead.
     /// A received snapshot does not need to be installed, just drop buffered snapshot data.
     CancelSnapshot { snapshot_meta: SnapshotMeta<NID, N> },
 
     // ---
     // --- Response commands
     // ---
-    /// Send vote result `res` to its caller via `tx`
-    SendVoteResult {
-        send: SendResult<Result<VoteResponse<NID>, Infallible>>,
-    },
-
-    /// Send append-entries result `res` to its caller via `tx`
-    SendAppendEntriesResult {
-        send: SendResult<Result<AppendEntriesResponse<NID>, Infallible>>,
-    },
-
-    // TODO: use it
-    #[allow(dead_code)]
-    /// Send install-snapshot result `res` to its caller via `tx`
-    SendInstallSnapshotResult {
-        send: SendResult<Result<InstallSnapshotResponse<NID>, InstallSnapshotError>>,
-    },
-
-    /// Send install-snapshot result `res` to its caller via `tx`
-    SendInitializeResult {
-        send: SendResult<Result<(), InitializeError<NID, N>>>,
-    },
+    /// Send result to caller
+    SendResult { send: SendResult<NID, N> },
 
     //
     // --- Draft unimplemented commands:
@@ -177,10 +159,7 @@ where
             (Command::DeleteConflictLog { since },                 Command::DeleteConflictLog { since: b }, )                                    => since == b,
             (Command::InstallSnapshot { snapshot_meta },           Command::InstallSnapshot { snapshot_meta: b }, )                              => snapshot_meta == b,
             (Command::CancelSnapshot { snapshot_meta },            Command::CancelSnapshot { snapshot_meta: b }, )                               => snapshot_meta == b,
-            (Command::SendVoteResult { send },                     Command::SendVoteResult { send: b })                                          => send == b,
-            (Command::SendAppendEntriesResult { send },            Command::SendAppendEntriesResult { send: b })                                 => send == b,
-            (Command::SendInstallSnapshotResult { send },          Command::SendInstallSnapshotResult { send: b })                               => send == b,
-            (Command::SendInitializeResult { send },               Command::SendInitializeResult { send: b })                                    => send == b,
+            (Command::SendResult { send },                         Command::SendResult { send: b })                                              => send == b,
             (Command::BuildSnapshot {},                            Command::BuildSnapshot {})                                                    => true,
             _ => false,
         }
@@ -218,40 +197,75 @@ where
             Command::InstallSnapshot { .. } => flags.set_data_changed(),
             Command::CancelSnapshot { .. } => {}
             Command::BuildSnapshot { .. } => flags.set_data_changed(),
-            Command::SendVoteResult { .. } => {}
-            Command::SendAppendEntriesResult { .. } => {}
-            Command::SendInstallSnapshotResult { .. } => {}
-            Command::SendInitializeResult { .. } => {}
+            Command::SendResult { .. } => {}
+        }
+    }
+}
+
+/// A command to send result to the caller.
+#[derive(Debug)]
+#[derive(PartialEq, Eq)]
+#[derive(derive_more::From)]
+pub(crate) enum SendResult<NID, N>
+where
+    NID: NodeId,
+    N: Node,
+{
+    Vote(Sender<Result<VoteResponse<NID>, Infallible>>),
+    AppendEntries(Sender<Result<AppendEntriesResponse<NID>, Infallible>>),
+    InstallSnapshot(Sender<Result<InstallSnapshotResponse<NID>, InstallSnapshotError>>),
+    Initialize(Sender<Result<(), InitializeError<NID, N>>>),
+}
+
+impl<NID, N> SendResult<NID, N>
+where
+    NID: NodeId,
+    N: Node,
+{
+    pub(crate) fn new<T>(res: T, tx: oneshot::Sender<T>) -> Self
+    where
+        T: Debug + PartialEq + Eq,
+        Self: From<Sender<T>>,
+    {
+        SendResult::from(Sender::new(res, tx))
+    }
+
+    pub(crate) fn send(self) {
+        match self {
+            SendResult::Vote(x) => x.send(),
+            SendResult::AppendEntries(x) => x.send(),
+            SendResult::InstallSnapshot(x) => x.send(),
+            SendResult::Initialize(x) => x.send(),
         }
     }
 }
 
 #[derive(Debug)]
-pub(crate) struct SendResult<T>
+pub(crate) struct Sender<T>
 where T: Debug + PartialEq + Eq
 {
-    res: T,
+    value: T,
     tx: oneshot::Sender<T>,
 }
 
-impl<T> PartialEq for SendResult<T>
+impl<T> PartialEq for Sender<T>
 where T: Debug + PartialEq + Eq
 {
     fn eq(&self, other: &Self) -> bool {
-        self.res == other.res
+        self.value == other.value
     }
 }
 
-impl<T> Eq for SendResult<T> where T: Debug + PartialEq + Eq {}
+impl<T> Eq for Sender<T> where T: Debug + PartialEq + Eq {}
 
-impl<T> SendResult<T>
+impl<T> Sender<T>
 where T: Debug + PartialEq + Eq
 {
     pub(crate) fn new(res: T, tx: oneshot::Sender<T>) -> Self {
-        Self { res, tx }
+        Self { value: res, tx }
     }
 
     pub(crate) fn send(self) {
-        let _ = self.tx.send(self.res);
+        let _ = self.tx.send(self.value);
     }
 }

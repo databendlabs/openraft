@@ -797,6 +797,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
     }
 }
 
+// TODO: rename to ResultSender
 pub(crate) type RaftRespTx<T, E> = oneshot::Sender<Result<T, E>>;
 
 /// TX for Install Snapshot Response

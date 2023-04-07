@@ -388,7 +388,7 @@ where
 
         if let Some(tx) = tx {
             let resp: AppendEntriesResponse<NID> = res.into();
-            self.output.push_command(Command::SendAppendEntriesResult {
+            self.output.push_command(Command::SendResult {
                 send: SendResult::new(Ok(resp), tx),
             });
         }

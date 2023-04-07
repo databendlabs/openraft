@@ -51,6 +51,7 @@ mod tests {
 
 pub(crate) use command::Command;
 pub(crate) use command::SendResult;
+pub(crate) use command::Sender;
 pub(crate) use engine_config::EngineConfig;
 pub(crate) use engine_impl::Engine;
 pub(crate) use engine_output::EngineOutput;

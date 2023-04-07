@@ -1,13 +1,18 @@
+use std::fmt::Debug;
+
 use crate::engine::handler::server_state_handler::ServerStateHandler;
 use crate::engine::time_state::TimeState;
 use crate::engine::Command;
 use crate::engine::EngineConfig;
 use crate::engine::EngineOutput;
+use crate::engine::SendResult;
+use crate::engine::Sender;
 use crate::entry::RaftEntry;
 use crate::error::RejectVoteRequest;
 use crate::internal_server_state::InternalServerState;
 use crate::leader::Leader;
 use crate::progress::Progress;
+use crate::raft::RaftRespTx;
 use crate::raft_state::LogStateReader;
 use crate::LogIdOptionExt;
 use crate::Node;
@@ -15,6 +20,7 @@ use crate::NodeId;
 use crate::RaftState;
 use crate::Vote;
 
+#[cfg(test)] mod accept_vote_test;
 #[cfg(test)] mod handle_message_vote_test;
 
 /// Handle raft vote related operations
@@ -40,6 +46,42 @@ where
     N: Node,
     Ent: RaftEntry<NID, N>,
 {
+    /// Validate and accept the input `vote` and send result via `tx`.
+    ///
+    /// If the vote is not GE the local vote, it sends an caller defined response via `tx` and
+    /// returns an empty error to inform the caller about the invalid vote.
+    ///
+    /// Otherwise it returns the `tx` to the caller in an `Ok` return value.
+    ///
+    /// The `f` is used to create the error response.
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub(crate) fn accept_vote<T, E, F>(
+        &mut self,
+        vote: &Vote<NID>,
+        tx: RaftRespTx<T, E>,
+        f: F,
+    ) -> Result<RaftRespTx<T, E>, ()>
+    where
+        T: Debug + Eq,
+        E: Debug + Eq,
+        SendResult<NID, N>: From<Sender<Result<T, E>>>,
+        F: Fn(&RaftState<NID, N>, RejectVoteRequest<NID>) -> Result<T, E>,
+    {
+        // TODO: give this method a better name
+        let vote_res = self.handle_message_vote(vote);
+
+        if let Err(e) = vote_res {
+            let res = f(self.state, e);
+
+            self.output.push_command(Command::SendResult {
+                send: SendResult::new(res, tx),
+            });
+
+            return Err(());
+        }
+        Ok(tx)
+    }
+
     /// Mark the vote as committed, i.e., being granted and saved by a quorum.
     ///
     /// The committed vote, is not necessary in original raft.
@@ -76,6 +118,7 @@ where
         if vote >= self.state.vote_ref() {
             // Ok
         } else {
+            tracing::info!("vote {} is rejected by local vote: {}", vote, self.state.vote_ref());
             return Err(RejectVoteRequest::ByVote(*self.state.vote_ref()));
         }
         tracing::debug!(%vote, "vote is changing to" );
@@ -83,6 +126,8 @@ where
         // Grant the vote
 
         if vote > self.state.vote_ref() {
+            tracing::info!("vote is changing from {} to {}", self.state.vote_ref(), vote);
+
             self.state.vote.update(*self.timer.now(), *vote);
             self.output.push_command(Command::SaveVote { vote: *vote });
         } else {

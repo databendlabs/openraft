@@ -15,6 +15,7 @@ use maplit::btreeset;
 use pin_utils::pin_mut;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncSeek;
+use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio::sync::watch;
@@ -30,6 +31,8 @@ use crate::config::RuntimeConfig;
 use crate::config::SnapshotPolicy;
 use crate::core::building_state;
 use crate::core::snapshot_state;
+use crate::core::snapshot_state::SnapshotRequestId;
+use crate::core::streaming_state::Streaming;
 use crate::core::ServerState;
 use crate::core::SnapshotResult;
 use crate::display_ext::DisplaySlice;
@@ -46,6 +49,7 @@ use crate::error::ForwardToLeader;
 use crate::error::InitializeError;
 use crate::error::QuorumNotEnough;
 use crate::error::RPCError;
+use crate::error::SnapshotMismatch;
 use crate::error::Timeout;
 use crate::log_id::LogIdOptionExt;
 use crate::log_id::RaftLogId;
@@ -62,6 +66,9 @@ use crate::raft::AppendEntriesTx;
 use crate::raft::ClientWriteResponse;
 use crate::raft::ClientWriteTx;
 use crate::raft::ExternalCommand;
+use crate::raft::InstallSnapshotRequest;
+use crate::raft::InstallSnapshotResponse;
+use crate::raft::InstallSnapshotTx;
 use crate::raft::RaftMsg;
 use crate::raft::RaftRespTx;
 use crate::raft::VoteRequest;
@@ -87,8 +94,10 @@ use crate::RaftNetworkFactory;
 use crate::RaftStorage;
 use crate::RaftTypeConfig;
 use crate::SnapshotId;
+use crate::SnapshotSegmentId;
 use crate::StorageError;
 use crate::StorageHelper;
+use crate::StorageIOError;
 use crate::Update;
 use crate::Vote;
 
@@ -525,9 +534,103 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
         let entry = C::Entry::new_membership(LogId::default(), membership);
         let res = self.engine.initialize(entry);
-        self.engine.output.push_command(Command::SendInitializeResult {
+        self.engine.output.push_command(Command::SendResult {
             send: SendResult::new(res, tx),
         });
+    }
+
+    /// Invoked by leader to send chunks of a snapshot to a follower.
+    ///
+    /// Leaders always send chunks in order. It is important to note that, according to the Raft
+    /// spec, a log may only have one snapshot at any time. As snapshot contents are application
+    /// specific, the Raft log will only store a pointer to the snapshot file along with the
+    /// index & term.
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub(crate) async fn handle_install_snapshot_request(
+        &mut self,
+        req: InstallSnapshotRequest<C>,
+        tx: InstallSnapshotTx<C::NodeId>,
+    ) -> Result<(), StorageError<C::NodeId>> {
+        // TODO: move receiving to another thread.
+        tracing::debug!(req = display(req.summary()));
+
+        let snapshot_meta = req.meta.clone();
+        let done = req.done;
+        let offset = req.offset;
+
+        let req_id = SnapshotRequestId::new(*req.vote.leader_id(), snapshot_meta.snapshot_id.clone(), offset);
+
+        let res = self.engine.vote_handler().accept_vote(&req.vote, tx, |state, _rejected| {
+            Ok(InstallSnapshotResponse {
+                vote: *state.vote_ref(),
+            })
+        });
+
+        let tx = match res {
+            Ok(tx) => tx,
+            Err(_) => return Ok(()),
+        };
+
+        let curr_id = self.snapshot_state.streaming.as_ref().map(|s| &s.snapshot_id);
+
+        // Changed to another stream. re-init snapshot state.
+        if curr_id != Some(&req.meta.snapshot_id) {
+            if req.offset > 0 {
+                let mismatch = SnapshotMismatch {
+                    expect: SnapshotSegmentId {
+                        id: snapshot_meta.snapshot_id.clone(),
+                        offset: 0,
+                    },
+                    got: SnapshotSegmentId {
+                        id: snapshot_meta.snapshot_id.clone(),
+                        offset,
+                    },
+                };
+
+                self.engine.output.push_command(Command::SendResult {
+                    send: SendResult::new(Err(mismatch.into()), tx),
+                });
+
+                return Ok(());
+            }
+
+            let snapshot_data = self.storage.begin_receiving_snapshot().await?;
+            self.snapshot_state.streaming = Some(Streaming::new(req.meta.snapshot_id.clone(), snapshot_data));
+        }
+
+        tracing::info!("Received snapshot request: {:?}", req_id);
+
+        let streaming = self.snapshot_state.streaming.as_mut().unwrap();
+
+        // Receive the data.
+        streaming.receive(req).await?;
+
+        if done {
+            let streaming = self.snapshot_state.streaming.take().unwrap();
+            let mut data = streaming.snapshot_data;
+
+            data.as_mut()
+                .shutdown()
+                .await
+                .map_err(|e| StorageIOError::write_snapshot(snapshot_meta.signature(), &e))?;
+
+            self.received_snapshot.insert(snapshot_meta.snapshot_id.clone(), data);
+        }
+
+        if done {
+            self.engine.following_handler().install_snapshot(snapshot_meta);
+        }
+
+        self.engine.output.push_command(Command::SendResult {
+            send: SendResult::new(
+                Ok(InstallSnapshotResponse {
+                    vote: *self.engine.state.vote_ref(),
+                }),
+                tx,
+            ),
+        });
+
+        Ok(())
     }
 
     fn handle_building_snapshot_result(
@@ -926,7 +1029,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         tracing::debug!(req = display(req.summary()), func = func_name!());
 
         let resp = self.engine.handle_vote_req(req);
-        self.engine.output.push_command(Command::SendVoteResult {
+        self.engine.output.push_command(Command::SendResult {
             send: SendResult::new(Ok(resp), tx),
         });
     }
@@ -1368,25 +1471,13 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
                 debug_assert!(got.is_some(), "there has to be a buffered snapshot data");
             }
             Command::InstallSnapshot { snapshot_meta } => {
-                let snapshot_data = self.received_snapshot.remove(&snapshot_meta.snapshot_id);
+                let data = self.received_snapshot.remove(&snapshot_meta.snapshot_id).unwrap();
 
-                if let Some(data) = snapshot_data {
-                    self.storage.install_snapshot(&snapshot_meta, data).await?;
-                    tracing::debug!("Done install_snapshot, meta: {:?}", snapshot_meta);
-                } else {
-                    unreachable!("buffered snapshot not found: snapshot meta: {:?}", snapshot_meta)
-                }
+                tracing::info!("Start to install_snapshot, meta: {:?}", snapshot_meta);
+                self.storage.install_snapshot(&snapshot_meta, data).await?;
+                tracing::info!("Done install_snapshot, meta: {:?}", snapshot_meta);
             }
-            Command::SendVoteResult { send } => {
-                send.send();
-            }
-            Command::SendAppendEntriesResult { send } => {
-                send.send();
-            }
-            Command::SendInstallSnapshotResult { send } => {
-                send.send();
-            }
-            Command::SendInitializeResult { send } => {
+            Command::SendResult { send } => {
                 send.send();
             }
         }
