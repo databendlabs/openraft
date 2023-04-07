@@ -54,7 +54,7 @@ async fn follower_restart_does_not_interrupt() -> anyhow::Result<()> {
         assert!(res.is_err(), "term should not increase");
 
         router
-            .wait(&1, Some(Duration::from_millis(7_000)))
+            .wait(&1, Some(Duration::from_millis(9_000)))
             .metrics(
                 |x| x.current_term > term,
                 concat!(

@@ -50,7 +50,8 @@ mod tests {
 #[cfg(test)] mod testing;
 
 pub(crate) use command::Command;
-pub(crate) use command::SendResult;
+pub(crate) use command::Respond;
+pub(crate) use command::ValueSender;
 pub(crate) use engine_config::EngineConfig;
 pub(crate) use engine_impl::Engine;
 pub(crate) use engine_output::EngineOutput;

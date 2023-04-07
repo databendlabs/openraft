@@ -797,20 +797,20 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
     }
 }
 
-pub(crate) type RaftRespTx<T, E> = oneshot::Sender<Result<T, E>>;
+pub(crate) type ResultSender<T, E> = oneshot::Sender<Result<T, E>>;
 
 /// TX for Install Snapshot Response
-pub(crate) type InstallSnapshotTx<NID> = RaftRespTx<InstallSnapshotResponse<NID>, InstallSnapshotError>;
+pub(crate) type InstallSnapshotTx<NID> = ResultSender<InstallSnapshotResponse<NID>, InstallSnapshotError>;
 
 /// TX for Vote Response
-pub(crate) type VoteTx<NID> = RaftRespTx<VoteResponse<NID>, Infallible>;
+pub(crate) type VoteTx<NID> = ResultSender<VoteResponse<NID>, Infallible>;
 
 /// TX for Append Entries Response
-pub(crate) type AppendEntriesTx<NID> = RaftRespTx<AppendEntriesResponse<NID>, Infallible>;
+pub(crate) type AppendEntriesTx<NID> = ResultSender<AppendEntriesResponse<NID>, Infallible>;
 
 /// TX for Client Write Response
 pub(crate) type ClientWriteTx<C> =
-    RaftRespTx<ClientWriteResponse<C>, ClientWriteError<<C as RaftTypeConfig>::NodeId, <C as RaftTypeConfig>::Node>>;
+    ResultSender<ClientWriteResponse<C>, ClientWriteError<<C as RaftTypeConfig>::NodeId, <C as RaftTypeConfig>::Node>>;
 
 /// A message coming from the Raft API.
 pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> {
@@ -849,12 +849,12 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStor
     },
 
     CheckIsLeaderRequest {
-        tx: RaftRespTx<(), CheckIsLeaderError<C::NodeId, C::Node>>,
+        tx: ResultSender<(), CheckIsLeaderError<C::NodeId, C::Node>>,
     },
 
     Initialize {
         members: BTreeMap<C::NodeId, C::Node>,
-        tx: RaftRespTx<(), InitializeError<C::NodeId, C::Node>>,
+        tx: ResultSender<(), InitializeError<C::NodeId, C::Node>>,
     },
 
     /// Request raft core to setup a new replication to a learner.
@@ -874,7 +874,7 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStor
         /// config will be converted into learners, otherwise they will be removed.
         retain: bool,
 
-        tx: RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C::NodeId, C::Node>>,
+        tx: ResultSender<ClientWriteResponse<C>, ClientWriteError<C::NodeId, C::Node>>,
     },
 
     ExternalRequest {
