@@ -188,8 +188,7 @@ where
         self.output.push_command(Command::DeleteConflictLog { since: since_log_id });
 
         let changed = self.state.membership_state.truncate(since);
-        if let Some(c) = changed {
-            self.output.push_command(Command::UpdateMembership { membership: c });
+        if let Some(_c) = changed {
             self.server_state_handler().update_server_state_if_changed();
         }
     }
@@ -219,10 +218,6 @@ where
             "updated membership state"
         );
 
-        self.output.push_command(Command::UpdateMembership {
-            membership: self.state.membership_state.effective().clone(),
-        });
-
         self.server_state_handler().update_server_state_if_changed();
     }
 
@@ -236,10 +231,7 @@ where
         // TODO: if effective membership changes, call `update_replication()`, if a follower has replication
         //       streams. Now we don't have replication streams for follower, so it's ok to not call
         //       `update_replication()`.
-        let effective_changed = self.state.membership_state.update_committed(m);
-        if let Some(c) = effective_changed {
-            self.output.push_command(Command::UpdateMembership { membership: c })
-        }
+        let _effective_changed = self.state.membership_state.update_committed(m);
 
         self.server_state_handler().update_server_state_if_changed();
     }

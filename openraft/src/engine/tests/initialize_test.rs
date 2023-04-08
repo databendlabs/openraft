@@ -74,9 +74,6 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
                 Command::AppendEntry {
                     entry: Entry::<Config>::new_membership(LogId::default(), m1())
                 },
-                Command::UpdateMembership {
-                    membership: eng.state.membership_state.effective().clone()
-                },
                 // When update the effective membership, the engine set it to Follower.
                 // But when initializing, it will switch to Candidate at once, in the last output
                 // command.
@@ -145,23 +142,12 @@ fn test_initialize() -> anyhow::Result<()> {
         assert_eq!(Some(&log_id0), eng.state.last_log_id());
 
         assert_eq!(ServerState::Candidate, eng.state.server_state);
-        assert_eq!(
-            MetricsChangeFlags {
-                replication: false,
-                local_data: true,
-                cluster: true,
-            },
-            eng.output.metrics_flags
-        );
         assert_eq!(&m12(), eng.state.membership_state.effective().membership());
 
         assert_eq!(
             vec![
                 Command::AppendEntry {
                     entry: Entry::new_membership(LogId::default(), m12())
-                },
-                Command::UpdateMembership {
-                    membership: eng.state.membership_state.effective().clone()
                 },
                 // When update the effective membership, the engine set it to Follower.
                 // But when initializing, it will switch to Candidate at once, in the last output

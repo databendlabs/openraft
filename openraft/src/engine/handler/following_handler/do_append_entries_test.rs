@@ -164,21 +164,16 @@ fn test_follower_do_append_entries_one_membership_entry() -> anyhow::Result<()> 
         "not in membership, become learner"
     );
     assert_eq!(
-        vec![
-            Command::UpdateMembership {
-                membership: Arc::new(EffectiveMembership::new(Some(log_id(3, 5)), m34())),
-            },
-            Command::AppendInputEntries {
-                entries: vec![
-                    //
-                    blank_ent(3, 4),
-                    Entry::<UTCfg> {
-                        log_id: log_id(3, 5),
-                        payload: EntryPayload::<UTCfg>::Membership(m34()),
-                    },
-                ]
-            },
-        ],
+        vec![Command::AppendInputEntries {
+            entries: vec![
+                //
+                blank_ent(3, 4),
+                Entry::<UTCfg> {
+                    log_id: log_id(3, 5),
+                    payload: EntryPayload::<UTCfg>::Membership(m34()),
+                },
+            ]
+        },],
         eng.output.take_commands()
     );
 
@@ -230,19 +225,14 @@ fn test_follower_do_append_entries_three_membership_entries() -> anyhow::Result<
         "in membership, become follower"
     );
     assert_eq!(
-        vec![
-            Command::UpdateMembership {
-                membership: Arc::new(EffectiveMembership::new(Some(log_id(4, 7)), m45())),
-            },
-            Command::AppendInputEntries {
-                entries: vec![
-                    blank_ent(3, 4),
-                    Entry::<UTCfg>::new_membership(log_id(3, 5), m01()),
-                    Entry::<UTCfg>::new_membership(log_id(4, 6), m34()),
-                    Entry::<UTCfg>::new_membership(log_id(4, 7), m45()),
-                ]
-            },
-        ],
+        vec![Command::AppendInputEntries {
+            entries: vec![
+                blank_ent(3, 4),
+                Entry::<UTCfg>::new_membership(log_id(3, 5), m01()),
+                Entry::<UTCfg>::new_membership(log_id(4, 6), m34()),
+                Entry::<UTCfg>::new_membership(log_id(4, 7), m45()),
+            ]
+        },],
         eng.output.take_commands()
     );
 

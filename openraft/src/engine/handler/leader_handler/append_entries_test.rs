@@ -278,12 +278,6 @@ fn test_leader_append_entries_fast_commit_upto_membership_entry() -> anyhow::Res
                 already_committed: Some(log_id(0, 0)),
                 upto: LogId::new(CommittedLeaderId::new(3, 1), 4)
             },
-            Command::UpdateMembership {
-                membership: Arc::new(EffectiveMembership::new(
-                    Some(LogId::new(CommittedLeaderId::new(3, 1), 5)),
-                    m34()
-                )),
-            },
             Command::RebuildReplicationStreams {
                 targets: vec![(3, ProgressEntry::empty(7)), (4, ProgressEntry::empty(7))]
             },
@@ -364,12 +358,6 @@ fn test_leader_append_entries_fast_commit_membership_no_voter_change() -> anyhow
                 already_committed: Some(log_id(0, 0)),
                 upto: LogId::new(CommittedLeaderId::new(3, 1), 4)
             },
-            Command::UpdateMembership {
-                membership: Arc::new(EffectiveMembership::new(
-                    Some(LogId::new(CommittedLeaderId::new(3, 1), 5)),
-                    m1_2()
-                )),
-            },
             Command::RebuildReplicationStreams {
                 targets: vec![(2, ProgressEntry::empty(7))]
             },
@@ -447,12 +435,6 @@ fn test_leader_append_entries_fast_commit_if_membership_voter_change_to_1() -> a
                     Entry::new_membership(log_id(3, 5), m1_2()),
                     blank_ent(3, 6),
                 ]
-            },
-            Command::UpdateMembership {
-                membership: Arc::new(EffectiveMembership::new(
-                    Some(LogId::new(CommittedLeaderId::new(3, 1), 5)),
-                    m1_2()
-                )),
             },
             Command::RebuildReplicationStreams {
                 targets: vec![(2, ProgressEntry::empty(7))]
