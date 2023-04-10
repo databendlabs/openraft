@@ -144,9 +144,6 @@ fn test_install_snapshot_not_conflict() -> anyhow::Result<()> {
     );
     assert_eq!(
         vec![
-            Command::UpdateMembership {
-                membership: Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m1234()))
-            },
             //
             Command::InstallSnapshot {
                 snapshot_meta: SnapshotMeta {
@@ -215,9 +212,6 @@ fn test_install_snapshot_conflict() -> anyhow::Result<()> {
     assert_eq!(
         vec![
             Command::DeleteConflictLog { since: log_id(2, 4) },
-            Command::UpdateMembership {
-                membership: Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m1234()))
-            },
             //
             Command::InstallSnapshot {
                 snapshot_meta: SnapshotMeta {
@@ -265,9 +259,6 @@ fn test_install_snapshot_advance_last_log_id() -> anyhow::Result<()> {
     );
     assert_eq!(
         vec![
-            Command::UpdateMembership {
-                membership: Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m1234()))
-            },
             //
             Command::InstallSnapshot {
                 snapshot_meta: SnapshotMeta {

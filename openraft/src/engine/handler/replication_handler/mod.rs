@@ -94,9 +94,6 @@ where
 
         self.state.membership_state.append(EffectiveMembership::new_arc(Some(*log_id), m.clone()));
 
-        let em = self.state.membership_state.effective();
-        self.output.push_command(Command::UpdateMembership { membership: em.clone() });
-
         // TODO(9): currently only a leader has replication setup.
         //       It's better to setup replication for both leader and candidate.
         //       e.g.: if self.internal_server_state.is_leading() {

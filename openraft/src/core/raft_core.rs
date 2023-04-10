@@ -1463,9 +1463,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
             Command::UpdateProgressMetrics { target, matching } => {
                 self.update_progress_metrics(target, matching);
             }
-            Command::UpdateMembership { .. } => {
-                // TODO: not used
-            }
             Command::CancelSnapshot { snapshot_meta } => {
                 let got = self.received_snapshot.remove(&snapshot_meta.snapshot_id);
                 debug_assert!(got.is_some(), "there has to be a buffered snapshot data");

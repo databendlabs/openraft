@@ -67,9 +67,6 @@ fn test_truncate_logs_since_3() -> anyhow::Result<()> {
         vec![
             //
             Command::DeleteConflictLog { since: log_id(2, 3) },
-            Command::UpdateMembership {
-                membership: Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01()))
-            },
         ],
         eng.output.take_commands()
     );
@@ -186,9 +183,6 @@ fn test_truncate_logs_revert_effective_membership() -> anyhow::Result<()> {
         vec![
             //
             Command::DeleteConflictLog { since: log_id(4, 4) },
-            Command::UpdateMembership {
-                membership: Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m01()))
-            },
         ],
         eng.output.take_commands()
     );

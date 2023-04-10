@@ -5,7 +5,6 @@ use maplit::btreeset;
 use crate::core::ServerState;
 use crate::engine::testing::UTCfg;
 use crate::engine::CEngine;
-use crate::engine::Command;
 use crate::engine::Engine;
 use crate::testing::log_id;
 use crate::EffectiveMembership;
@@ -52,12 +51,7 @@ fn test_update_committed_membership_at_index_4() -> anyhow::Result<()> {
         eng.state.membership_state
     );
     assert_eq!(ServerState::Learner, eng.state.server_state);
-    assert_eq!(
-        vec![Command::UpdateMembership {
-            membership: Arc::new(EffectiveMembership::new(Some(log_id(3, 4)), m34())),
-        },],
-        eng.output.take_commands()
-    );
+    assert_eq!(true, eng.output.take_commands().is_empty());
 
     Ok(())
 }

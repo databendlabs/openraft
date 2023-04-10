@@ -6,7 +6,6 @@ use crate::progress::Inflight;
 use crate::raft::VoteRequest;
 use crate::raft_types::MetricsChangeFlags;
 use crate::testing::log_id;
-use crate::EffectiveMembership;
 use crate::Entry;
 use crate::Membership;
 use crate::SnapshotMeta;
@@ -35,7 +34,6 @@ fn test_command_update_metrics_flags() -> anyhow::Result<()> {
     t(Command::LeaderCommit { already_committed: None, upto: log_id(1,2) }, false, true, false);
     t(Command::FollowerCommit { already_committed: None, upto: log_id(1,2) }, false, true, false);
     t(Command::Replicate { target: 3, req: Inflight::None }, false, false, false);
-    t(Command::UpdateMembership{ membership: EffectiveMembership::new_arc(Some(log_id(1,1)), Membership::new(vec![], ()) ) }, false, false, true);
     t(Command::RebuildReplicationStreams{ targets: vec![] }, true, false, false);
     t(Command::UpdateProgressMetrics{ target: 0, matching: log_id(1,2), }, true, false, false);
     t(Command::SaveVote{ vote: Vote::new(1,2) }, false, true, false);

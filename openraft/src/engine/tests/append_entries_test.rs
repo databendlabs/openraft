@@ -159,9 +159,6 @@ fn test_append_entries_prev_log_id_conflict() -> anyhow::Result<()> {
                 vote: Vote::new_committed(2, 1)
             },
             Command::DeleteConflictLog { since: log_id(1, 2) },
-            Command::UpdateMembership {
-                membership: Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01()))
-            },
         ],
         eng.output.take_commands()
     );
@@ -202,9 +199,6 @@ fn test_append_entries_prev_log_id_is_committed() -> anyhow::Result<()> {
                 vote: Vote::new_committed(2, 1)
             },
             Command::DeleteConflictLog { since: log_id(1, 2) },
-            Command::UpdateMembership {
-                membership: Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01()))
-            },
             Command::AppendInputEntries {
                 entries: vec![blank_ent(2, 2)]
             },
@@ -298,12 +292,6 @@ fn test_append_entries_conflict() -> anyhow::Result<()> {
                 vote: Vote::new_committed(2, 1)
             },
             Command::DeleteConflictLog { since: log_id(2, 3) },
-            Command::UpdateMembership {
-                membership: Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01()))
-            },
-            Command::UpdateMembership {
-                membership: Arc::new(EffectiveMembership::new(Some(log_id(3, 3)), m34()))
-            },
             Command::AppendInputEntries {
                 entries: vec![Entry::new_membership(log_id(3, 3), m34())]
             },

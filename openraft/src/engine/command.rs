@@ -1,5 +1,4 @@
 use std::fmt::Debug;
-use std::sync::Arc;
 
 use tokio::sync::oneshot;
 
@@ -13,7 +12,6 @@ use crate::raft::AppendEntriesResponse;
 use crate::raft::InstallSnapshotResponse;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
-use crate::EffectiveMembership;
 use crate::LogId;
 use crate::MetricsChangeFlags;
 use crate::Node;
@@ -68,17 +66,6 @@ where
 
     /// Replicate log entries or snapshot to a target.
     Replicate { target: NID, req: Inflight<NID> },
-
-    // /// Replicate a snapshot to a target.
-    // ReplicateSnapshot {
-    //     target: NID,
-    //     snapshot_last_log_id: Option<LogId<NID>>,
-    // },
-    /// Membership config changed, need to update replication streams.
-    UpdateMembership {
-        // TODO: not used yet.
-        membership: Arc<EffectiveMembership<NID, N>>,
-    },
 
     /// Membership config changed, need to update replication streams.
     /// The Runtime has to close all old replications and start new ones.
@@ -150,7 +137,6 @@ where
             (Command::LeaderCommit { already_committed, upto, },   Command::LeaderCommit { already_committed: b_committed, upto: b_upto, }, )    => already_committed == b_committed && upto == b_upto,
             (Command::FollowerCommit { already_committed, upto, }, Command::FollowerCommit { already_committed: b_committed, upto: b_upto, }, )  => already_committed == b_committed && upto == b_upto,
             (Command::Replicate { target, req },                   Command::Replicate { target: b_target, req: other_req, }, )                   => target == b_target && req == other_req,
-            (Command::UpdateMembership { membership },             Command::UpdateMembership { membership: b }, )                                => membership == b,
             (Command::RebuildReplicationStreams { targets },       Command::RebuildReplicationStreams { targets: b }, )                          => targets == b,
             (Command::UpdateProgressMetrics { target, matching },  Command::UpdateProgressMetrics { target: b_target, matching: b_matching, }, ) => target == b_target && matching == b_matching,
             (Command::SaveVote { vote },                           Command::SaveVote { vote: b })                                                => vote == b,
@@ -187,7 +173,6 @@ where
             Command::LeaderCommit { .. } => flags.set_data_changed(),
             Command::FollowerCommit { .. } => flags.set_data_changed(),
             Command::Replicate { .. } => {}
-            Command::UpdateMembership { .. } => flags.set_cluster_changed(),
             Command::RebuildReplicationStreams { .. } => flags.set_replication_changed(),
             Command::UpdateProgressMetrics { .. } => flags.set_replication_changed(),
             Command::SaveVote { .. } => flags.set_data_changed(),
