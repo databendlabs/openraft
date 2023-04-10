@@ -20,7 +20,6 @@ use crate::storage::Snapshot;
 use crate::DefensiveCheck;
 use crate::LogId;
 use crate::RaftStorage;
-use crate::RaftStorageDebug;
 use crate::RaftTypeConfig;
 use crate::SnapshotMeta;
 use crate::StorageError;
@@ -142,17 +141,6 @@ where
     C: RaftTypeConfig,
     T: RaftStorage<C>,
 {
-}
-
-#[async_trait]
-impl<C, T, SM> RaftStorageDebug<SM> for StoreExt<C, T>
-where
-    T: RaftStorage<C> + RaftStorageDebug<SM>,
-    C: RaftTypeConfig,
-{
-    async fn get_state_machine(&mut self) -> SM {
-        self.inner().get_state_machine().await
-    }
 }
 
 #[async_trait]

@@ -119,7 +119,6 @@ pub use crate::storage::LogState;
 pub use crate::storage::RaftLogReader;
 pub use crate::storage::RaftSnapshotBuilder;
 pub use crate::storage::RaftStorage;
-pub use crate::storage::RaftStorageDebug;
 pub use crate::storage::Snapshot;
 pub use crate::storage::SnapshotMeta;
 pub use crate::storage::StorageHelper;
