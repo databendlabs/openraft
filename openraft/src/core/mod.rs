@@ -5,11 +5,10 @@
 //! storage or forward messages to other raft nodes.
 
 mod building_state;
-mod install_snapshot;
 mod raft_core;
 mod replication_state;
 mod server_state;
-mod streaming_state;
+pub(crate) mod streaming_state;
 mod tick;
 
 pub(crate) mod snapshot_state;

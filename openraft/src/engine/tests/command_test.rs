@@ -1,12 +1,9 @@
 use crate::engine::testing::blank_ent;
 use crate::engine::testing::UTCfg;
 use crate::engine::Command;
-use crate::engine::SendResult;
+use crate::engine::Respond;
 use crate::progress::Inflight;
-use crate::raft::AppendEntriesResponse;
-use crate::raft::InstallSnapshotResponse;
 use crate::raft::VoteRequest;
-use crate::raft::VoteResponse;
 use crate::raft_types::MetricsChangeFlags;
 use crate::testing::log_id;
 use crate::EffectiveMembership;
@@ -58,20 +55,7 @@ fn test_command_update_metrics_flags() -> anyhow::Result<()> {
     t(Command::BuildSnapshot{} , false, true, false);
     
     let (tx, _rx) = tokio::sync::oneshot::channel();
-    t(Command::SendVoteResult{ send: SendResult::new(Ok(VoteResponse {
-        vote: Vote::new(1,1),
-        vote_granted: false,
-        last_log_id: None,
-    }), tx) }, false, false, false);
-
-    let (tx, _rx) = tokio::sync::oneshot::channel();
-    t(Command::SendAppendEntriesResult{ send: SendResult::new(Ok(AppendEntriesResponse::Conflict), tx) }, false, false, false);
-
-    let (tx, _rx) = tokio::sync::oneshot::channel();
-    t(Command::SendInstallSnapshotResult{ send: SendResult::new(Ok(InstallSnapshotResponse{vote:Vote::new(1,2)}),tx) }, false, false, false);
-
-    let (tx, _rx) = tokio::sync::oneshot::channel();
-    t(Command::SendInitializeResult{ send: SendResult::new(Ok(()), tx) }, false, false, false);
+    t(Command::Respond { resp: Respond::new(Ok(()), tx) }, false, false, false);
 
     Ok(())
 }

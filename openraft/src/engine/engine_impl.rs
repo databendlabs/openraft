@@ -17,7 +17,7 @@ use crate::engine::time_state;
 use crate::engine::time_state::TimeState;
 use crate::engine::Command;
 use crate::engine::EngineOutput;
-use crate::engine::SendResult;
+use crate::engine::Respond;
 use crate::entry::RaftEntry;
 use crate::error::ForwardToLeader;
 use crate::error::InitializeError;
@@ -29,7 +29,7 @@ use crate::membership::EffectiveMembership;
 use crate::node::Node;
 use crate::raft::AppendEntriesResponse;
 use crate::raft::AppendEntriesTx;
-use crate::raft::RaftRespTx;
+use crate::raft::ResultSender;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::raft_state::LogStateReader;
@@ -206,8 +206,8 @@ where
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn get_leader_handler_or_reject<T, E>(
         &mut self,
-        tx: Option<RaftRespTx<T, E>>,
-    ) -> Option<(LeaderHandler<NID, N, Ent>, Option<RaftRespTx<T, E>>)>
+        tx: Option<ResultSender<T, E>>,
+    ) -> Option<(LeaderHandler<NID, N, Ent>, Option<ResultSender<T, E>>)>
     where
         E: From<ForwardToLeader<NID, N>>,
     {
@@ -388,8 +388,8 @@ where
 
         if let Some(tx) = tx {
             let resp: AppendEntriesResponse<NID> = res.into();
-            self.output.push_command(Command::SendAppendEntriesResult {
-                send: SendResult::new(Ok(resp), tx),
+            self.output.push_command(Command::Respond {
+                resp: Respond::new(Ok(resp), tx),
             });
         }
         is_ok
