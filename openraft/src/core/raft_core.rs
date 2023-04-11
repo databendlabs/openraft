@@ -214,16 +214,15 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
     /// Handle `is_leader` requests.
     ///
-    /// Spawn requests to all members of the cluster, include members being added in joint
-    /// consensus. Each request will have a timeout, and we respond once we have a majority
-    /// agreement from each config group. Most of the time, we will have a single uniform
-    /// config group.
+    /// Send heartbeat to all voters. We respond once we have
+    /// a quorum of agreement.
     ///
-    /// From the spec (§8):
-    /// Second, a leader must check whether it has been deposed before processing a read-only
-    /// request (its information may be stale if a more recent leader has been elected). Raft
-    /// handles this by having the leader exchange heartbeat messages with a majority of the
-    /// cluster before responding to read-only requests.
+    /// Why:
+    /// To ensure linearizability, a read request proposed at time `T1` confirms this node's
+    /// leadership to guarantee that all the committed entries proposed before `T1` are present in
+    /// this node.
+    // TODO: the second condition is such a read request can only read from state machine only when the last log it sees
+    //       at `T1` is committed.
     #[tracing::instrument(level = "trace", skip(self, tx))]
     pub(super) async fn handle_check_is_leader_request(
         &mut self,
@@ -231,10 +230,15 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     ) -> Result<(), StorageError<C::NodeId>> {
         // Setup sentinel values to track when we've received majority confirmation of leadership.
 
-        let em = self.engine.state.membership_state.effective();
-        let mut granted = btreeset! {self.id};
+        let my_id = self.id;
+        let my_vote = *self.engine.state.vote_ref();
+        let ttl = Duration::from_millis(self.config.heartbeat_interval);
+        let eff_mem = self.engine.state.membership_state.effective().clone();
+        let core_tx = self.tx_api.clone();
 
-        if em.is_quorum(granted.iter()) {
+        let mut granted = btreeset! {my_id};
+
+        if eff_mem.is_quorum(granted.iter()) {
             let _ = tx.send(Ok(()));
             return Ok(());
         }
@@ -244,116 +248,114 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
         let voter_progresses = {
             let l = &self.engine.internal_server_state.leading().unwrap();
-            l.progress
-                .iter()
-                .filter(|(id, _v)| l.progress.is_voter(id) == Some(true))
-                .copied()
-                .collect::<Vec<_>>()
+            l.progress.iter().filter(|(id, _v)| l.progress.is_voter(id) == Some(true))
         };
 
         for (target, progress) in voter_progresses {
-            if target == self.id {
+            let target = *target;
+
+            if target == my_id {
                 continue;
             }
 
             let rpc = AppendEntriesRequest {
-                vote: *self.engine.state.vote_ref(),
+                vote: my_vote,
                 prev_log_id: progress.matching,
                 entries: vec![],
                 leader_commit: self.engine.state.committed().copied(),
             };
 
-            let my_id = self.id;
             // Safe unwrap(): target is in membership
-            let target_node = self.engine.state.membership_state.effective().get_node(&target).unwrap().clone();
+            let target_node = eff_mem.get_node(&target).unwrap().clone();
             let mut client = self.network.new_client(target, &target_node).await;
 
-            let ttl = Duration::from_millis(self.config.heartbeat_interval);
+            let fu = async move {
+                let outer_res = timeout(ttl, client.send_append_entries(rpc)).await;
+                match outer_res {
+                    Ok(append_res) => match append_res {
+                        Ok(x) => Ok((target, x)),
+                        Err(err) => Err((target, err)),
+                    },
+                    Err(_timeout) => {
+                        let timeout_err = Timeout {
+                            action: RPCTypes::AppendEntries,
+                            id: my_id,
+                            target,
+                            timeout: ttl,
+                        };
 
-            let task = tokio::spawn(
-                async move {
-                    let outer_res = timeout(ttl, client.send_append_entries(rpc)).await;
-                    match outer_res {
-                        Ok(append_res) => match append_res {
-                            Ok(x) => Ok((target, x)),
-                            Err(err) => Err((target, err)),
-                        },
-                        Err(_timeout) => {
-                            let timeout_err = Timeout {
-                                action: RPCTypes::AppendEntries,
-                                id: my_id,
-                                target,
-                                timeout: ttl,
-                            };
-
-                            Err((target, RPCError::Timeout(timeout_err)))
-                        }
+                        Err((target, RPCError::Timeout(timeout_err)))
                     }
                 }
-                // TODO(xp): add target to span
-                .instrument(tracing::debug_span!("SPAWN_append_entries")),
-            )
-            .map_err(move |err| (target, err));
+            };
+
+            let fu = fu.instrument(tracing::debug_span!("spawn_is_leader", target = target.to_string()));
+            let task = tokio::spawn(fu).map_err(move |err| (target, err));
 
             pending.push(task);
         }
 
-        // Handle responses as they return.
-        while let Some(res) = pending.next().await {
-            let (target, data) = match res {
-                Ok(Ok(res)) => res,
-                Ok(Err((target, err))) => {
-                    tracing::error!(target=display(target), error=%err, "timeout while confirming leadership for read request");
-                    continue;
-                }
-                Err((target, err)) => {
-                    tracing::error!(target = display(target), "{}", err);
-                    continue;
-                }
-            };
+        let waiting_fu = async move {
+            // Handle responses as they return.
+            while let Some(res) = pending.next().await {
+                let (target, append_res) = match res {
+                    Ok(Ok(res)) => res,
+                    Ok(Err((target, err))) => {
+                        tracing::error!(target=display(target), error=%err, "timeout while confirming leadership for read request");
+                        continue;
+                    }
+                    Err((target, err)) => {
+                        tracing::error!(target = display(target), "fail to join task: {}", err);
+                        continue;
+                    }
+                };
 
-            // If we receive a response with a greater term, then revert to follower and abort this
-            // request.
-            if let AppendEntriesResponse::HigherVote(vote) = data {
-                debug_assert!(
-                    &vote > self.engine.state.vote_ref(),
-                    "committed vote({}) has total order relation with other votes({})",
-                    self.engine.state.vote_ref(),
-                    vote
-                );
+                // If we receive a response with a greater term, then revert to follower and abort this
+                // request.
+                if let AppendEntriesResponse::HigherVote(vote) = append_res {
+                    debug_assert!(
+                        vote > my_vote,
+                        "committed vote({}) has total order relation with other votes({})",
+                        my_vote,
+                        vote
+                    );
 
-                let res = self.engine.vote_handler().handle_message_vote(&vote);
-                self.run_engine_commands().await?;
+                    let send_res = core_tx.send(RaftMsg::HigherVote {
+                        target,
+                        higher: vote,
+                        vote: my_vote,
+                    });
 
-                if let Err(e) = res {
-                    // simply ignore stale responses
-                    tracing::warn!(target = display(target), "vote {vote} rejected: {e}");
-                    continue;
+                    if let Err(_e) = send_res {
+                        tracing::error!("fail to send HigherVote to raft core");
+                    }
+
+                    // we are no longer leader so error out early
+                    let err = ForwardToLeader::empty();
+                    let _ = tx.send(Err(err.into()));
+                    return;
                 }
-                // we are no longer leader so error out early
-                if !self.engine.state.is_leader(&self.engine.config.id) {
-                    self.reject_with_forward_to_leader(tx);
-                    return Ok(());
+
+                granted.insert(target);
+
+                if eff_mem.is_quorum(granted.iter()) {
+                    let _ = tx.send(Ok(()));
+                    return;
                 }
             }
 
-            granted.insert(target);
+            // If we've hit this location, then we've failed to gather needed confirmations due to
+            // request failures.
 
-            let mem = &self.engine.state.membership_state.effective();
-            if mem.is_quorum(granted.iter()) {
-                let _ = tx.send(Ok(()));
-                return Ok(());
+            let _ = tx.send(Err(QuorumNotEnough {
+                cluster: eff_mem.membership().summary(),
+                got: granted,
             }
-        }
+            .into()));
+        };
 
-        // If we've hit this location, then we've failed to gather needed confirmations due to
-        // request failures.
+        tokio::spawn(waiting_fu.instrument(tracing::debug_span!("spawn_is_leader_waiting")));
 
-        let _ = tx.send(Err(QuorumNotEnough {
-            cluster: self.engine.state.membership_state.effective().membership().summary(),
-            got: granted,
-        }
-        .into()));
         Ok(())
     }
 
