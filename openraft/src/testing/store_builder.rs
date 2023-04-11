@@ -1,12 +1,8 @@
-use std::marker::PhantomData;
-
 use async_trait::async_trait;
 
-use crate::DefensiveCheckBase;
 use crate::RaftStorage;
 use crate::RaftTypeConfig;
 use crate::StorageError;
-use crate::StoreExt;
 
 /// The trait to build a [`RaftStorage`] implementation.
 ///
@@ -24,35 +20,4 @@ where
 {
     /// Build a [`RaftStorage`] implementation
     async fn build(&self) -> Result<(G, S), StorageError<C::NodeId>>;
-}
-
-/// A builder for testing [`StoreExt`].
-pub struct DefensiveStoreBuilder<C, BaseStore, BaseBuilder, G>
-where
-    C: RaftTypeConfig,
-    BaseStore: RaftStorage<C>,
-    BaseBuilder: StoreBuilder<C, BaseStore, G>,
-{
-    pub base_builder: BaseBuilder,
-
-    pub s: PhantomData<(C, BaseStore, G)>,
-}
-
-#[async_trait]
-impl<C, G, BaseStore, BaseBuilder> StoreBuilder<C, StoreExt<C, BaseStore>, G>
-    for DefensiveStoreBuilder<C, BaseStore, BaseBuilder, G>
-where
-    C: RaftTypeConfig,
-    BaseStore: RaftStorage<C>,
-    BaseBuilder: StoreBuilder<C, BaseStore, G>,
-    G: Send + Sync,
-{
-    async fn build(&self) -> Result<(G, StoreExt<C, BaseStore>), StorageError<C::NodeId>> {
-        let (g, store) = self.base_builder.build().await?;
-        let sto_ext = StoreExt::new(store);
-        sto_ext.set_defensive(true);
-        assert!(sto_ext.is_defensive(), "must impl defensive check");
-
-        Ok((g, sto_ext))
-    }
 }

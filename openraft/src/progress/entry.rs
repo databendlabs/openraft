@@ -73,15 +73,15 @@ impl<NID: NodeId> ProgressEntry<NID> {
         self
     }
 
-    /// Return if a log id is inflight sending.
+    /// Return if a range of log id `..=log_id` is inflight sending.
     ///
     /// `prev_log_id` is never inflight.
-    pub(crate) fn is_inflight(&self, log_id: &LogId<NID>) -> bool {
+    pub(crate) fn is_log_range_inflight(&self, upto: &LogId<NID>) -> bool {
         match &self.inflight {
             Inflight::None => false,
             Inflight::Logs { log_id_range, .. } => {
-                let lid = Some(*log_id);
-                lid > log_id_range.prev_log_id && lid <= log_id_range.last_log_id
+                let lid = Some(*upto);
+                lid > log_id_range.prev_log_id
             }
             Inflight::Snapshot { last_log_id: _, .. } => false,
         }
@@ -257,19 +257,19 @@ mod tests {
         Inflight::logs(Some(log_id(prev_index)), Some(log_id(last_index)))
     }
     #[test]
-    fn test_is_inflight() -> anyhow::Result<()> {
+    fn test_is_log_range_inflight() -> anyhow::Result<()> {
         let mut pe = ProgressEntry::empty(20);
-        assert_eq!(false, pe.is_inflight(&log_id(2)));
+        assert_eq!(false, pe.is_log_range_inflight(&log_id(2)));
 
         pe.inflight = inflight_logs(2, 4);
-        assert_eq!(false, pe.is_inflight(&log_id(1)));
-        assert_eq!(false, pe.is_inflight(&log_id(2)));
-        assert_eq!(true, pe.is_inflight(&log_id(3)));
-        assert_eq!(true, pe.is_inflight(&log_id(4)));
-        assert_eq!(false, pe.is_inflight(&log_id(5)));
+        assert_eq!(false, pe.is_log_range_inflight(&log_id(1)));
+        assert_eq!(false, pe.is_log_range_inflight(&log_id(2)));
+        assert_eq!(true, pe.is_log_range_inflight(&log_id(3)));
+        assert_eq!(true, pe.is_log_range_inflight(&log_id(4)));
+        assert_eq!(true, pe.is_log_range_inflight(&log_id(5)));
 
         pe.inflight = Inflight::snapshot(Some(log_id(5)));
-        assert_eq!(false, pe.is_inflight(&log_id(5)));
+        assert_eq!(false, pe.is_log_range_inflight(&log_id(5)));
 
         Ok(())
     }

@@ -38,11 +38,9 @@ use openraft::raft::InstallSnapshotRequest;
 use openraft::raft::InstallSnapshotResponse;
 use openraft::raft::VoteRequest;
 use openraft::raft::VoteResponse;
-use openraft::storage::RaftLogReader;
 use openraft::storage::RaftStorage;
 use openraft::CommittedLeaderId;
 use openraft::Config;
-use openraft::DefensiveCheckBase;
 use openraft::Entry;
 use openraft::EntryPayload;
 use openraft::LogId;
@@ -56,7 +54,6 @@ use openraft::RaftNetworkFactory;
 use openraft::RaftState;
 use openraft::RaftTypeConfig;
 use openraft::ServerState;
-use openraft::StoreExt;
 use openraft_memstore::Config as MemConfig;
 use openraft_memstore::IntoMemClientRequest;
 use openraft_memstore::MemNodeId;
@@ -69,10 +66,8 @@ use crate::fixtures::logging::init_file_logging;
 
 pub mod logging;
 
-pub type StoreWithDefensive<C = MemConfig, S = Arc<MemStore>> = StoreExt<C, S>;
-
 /// A concrete Raft type used during testing.
-pub type MemRaft<C = MemConfig, S = Arc<MemStore>> = Raft<C, TypedRaftRouter<C, S>, StoreWithDefensive<C, S>>;
+pub type MemRaft<C = MemConfig, S = Arc<MemStore>> = Raft<C, TypedRaftRouter<C, S>, S>;
 
 pub fn init_default_ut_tracing() {
     static START: Once = Once::new();
@@ -145,7 +140,7 @@ where
     config: Arc<Config>,
     /// The table of all nodes currently known to this router instance.
     #[allow(clippy::type_complexity)]
-    routing_table: Arc<Mutex<BTreeMap<C::NodeId, (MemRaft<C, S>, StoreWithDefensive<C, S>)>>>,
+    routing_table: Arc<Mutex<BTreeMap<C::NodeId, (MemRaft<C, S>, S)>>>,
 
     /// Nodes which are isolated can neither send nor receive frames.
     isolated_nodes: Arc<Mutex<HashSet<C::NodeId>>>,
@@ -332,41 +327,19 @@ where
         self.new_raft_node_with_sto(id, memstore).await
     }
 
-    pub fn new_store(&mut self) -> StoreWithDefensive<C, S> {
-        let defensive = env::var("OPENRAFT_STORE_DEFENSIVE").ok();
-
-        let sto = StoreExt::<C, S>::new(S::default());
-
-        if let Some(d) = defensive {
-            tracing::info!("OPENRAFT_STORE_DEFENSIVE set store defensive to {}", d);
-
-            let want = if d == "on" {
-                true
-            } else if d == "off" {
-                false
-            } else {
-                tracing::warn!("unknown value of OPENRAFT_STORE_DEFENSIVE: {}", d);
-                return sto;
-            };
-
-            sto.set_defensive(want);
-            if sto.is_defensive() != want {
-                tracing::error!("failure to set store defensive to {}", want);
-            }
-        }
-
-        sto
+    pub fn new_store(&mut self) -> S {
+        S::default()
     }
 
     #[tracing::instrument(level = "debug", skip(self, sto))]
-    pub async fn new_raft_node_with_sto(&mut self, id: C::NodeId, sto: StoreWithDefensive<C, S>) {
+    pub async fn new_raft_node_with_sto(&mut self, id: C::NodeId, sto: S) {
         let node = Raft::new(id, self.config.clone(), self.clone(), sto.clone()).await.unwrap();
         let mut rt = self.routing_table.lock().unwrap();
         rt.insert(id, (node, sto));
     }
 
     /// Remove the target node from the routing table & isolation.
-    pub fn remove_node(&mut self, id: C::NodeId) -> Option<(MemRaft<C, S>, StoreWithDefensive<C, S>)> {
+    pub fn remove_node(&mut self, id: C::NodeId) -> Option<(MemRaft<C, S>, S)> {
         let opt_handles = {
             let mut rt = self.routing_table.lock().unwrap();
             rt.remove(&id)
@@ -428,7 +401,7 @@ where
         Ok(r)
     }
 
-    pub fn get_storage_handle(&self, node_id: &C::NodeId) -> anyhow::Result<StoreWithDefensive<C, S>> {
+    pub fn get_storage_handle(&self, node_id: &C::NodeId) -> anyhow::Result<S> {
         let rt = self.routing_table.lock().unwrap();
         let addr = rt.get(node_id).with_context(|| format!("could not find node {} in routing table", node_id))?;
         let sto = addr.clone().1;
@@ -614,7 +587,7 @@ where
 
     /// Send external request to the particular node.
     pub fn external_request<
-        F: FnOnce(&RaftState<C::NodeId, C::Node>, &mut StoreExt<C, S>, &mut TypedRaftRouter<C, S>) + Send + 'static,
+        F: FnOnce(&RaftState<C::NodeId, C::Node>, &mut S, &mut TypedRaftRouter<C, S>) + Send + 'static,
     >(
         &self,
         target: C::NodeId,
@@ -798,7 +771,7 @@ where
     /// Assert against the state of the storage system one node in the cluster.
     pub async fn assert_storage_state_with_sto(
         &self,
-        storage: &mut StoreWithDefensive<C, S>,
+        storage: &mut S,
         id: &C::NodeId,
         expect_term: u64,
         expect_last_log: u64,
