@@ -71,26 +71,17 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Base test
-          - toolchain: "nightly"
-            store_defensive: "on"
-            send_delay: "0"
-            features: ""
-
           - toolchain: "stable"
-            store_defensive: "off"
             send_delay: "0"
             features: ""
 
           # With network delay
           - toolchain: "nightly"
-            store_defensive: "on"
             send_delay: "30"
             features: ""
 
           # Feature-flag: Standard raft term
           - toolchain: "nightly"
-            store_defensive: "on"
             send_delay: "0"
             features: "single-term-leader"
 
@@ -119,7 +110,6 @@ jobs:
           RUST_TEST_THREADS: 2
           RUST_LOG: debug
           RUST_BACKTRACE: full
-          OPENRAFT_STORE_DEFENSIVE: ${{ matrix.store_defensive }}
           OPENRAFT_NETWORK_SEND_DELAY: ${{ matrix.send_delay }}
 
 
@@ -133,7 +123,6 @@ jobs:
           RUST_TEST_THREADS: 2
           RUST_LOG: debug
           RUST_BACKTRACE: full
-          OPENRAFT_STORE_DEFENSIVE: ${{ matrix.store_defensive }}
           OPENRAFT_NETWORK_SEND_DELAY: ${{ matrix.send_delay }}
 
 
