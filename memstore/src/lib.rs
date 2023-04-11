@@ -21,7 +21,6 @@ use openraft::EntryPayload;
 use openraft::LogId;
 use openraft::RaftLogId;
 use openraft::RaftStorage;
-use openraft::RaftStorageDebug;
 use openraft::SnapshotMeta;
 use openraft::StorageError;
 use openraft::StorageIOError;
@@ -136,19 +135,16 @@ impl MemStore {
     pub async fn new_async() -> Arc<Self> {
         Arc::new(Self::new())
     }
+
+    /// Get a handle to the state machine for testing purposes.
+    pub async fn get_state_machine(&self) -> MemStoreStateMachine {
+        self.sm.write().await.clone()
+    }
 }
 
 impl Default for MemStore {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-#[async_trait]
-impl RaftStorageDebug<MemStoreStateMachine> for Arc<MemStore> {
-    /// Get a handle to the state machine for testing purposes.
-    async fn get_state_machine(&mut self) -> MemStoreStateMachine {
-        self.sm.write().await.clone()
     }
 }
 

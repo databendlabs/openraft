@@ -340,10 +340,3 @@ where C: RaftTypeConfig
         &mut self,
     ) -> Result<Option<Snapshot<C::NodeId, C::Node, Self::SnapshotData>>, StorageError<C::NodeId>>;
 }
-
-/// APIs for debugging a store.
-#[async_trait]
-pub trait RaftStorageDebug<SM> {
-    /// Get a handle to the state machine for testing purposes.
-    async fn get_state_machine(&mut self) -> SM;
-}

@@ -4,7 +4,6 @@ use std::time::Duration;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
-use openraft::RaftStorageDebug;
 use openraft::ServerState;
 
 use crate::fixtures::init_default_ut_tracing;
@@ -57,7 +56,7 @@ async fn metrics_state_machine_consistency() -> Result<()> {
     log_index += 1;
     for node_id in 0..2 {
         router.wait_for_log(&btreeset![node_id], Some(log_index), None, "write one log").await?;
-        let mut sto = router.get_storage_handle(&node_id)?;
+        let sto = router.get_storage_handle(&node_id)?;
         assert!(sto.get_state_machine().await.client_status.get("foo").is_some());
     }
 
