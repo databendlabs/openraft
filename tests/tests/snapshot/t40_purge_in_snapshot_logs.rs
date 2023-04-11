@@ -49,6 +49,10 @@ async fn purge_in_snapshot_logs() -> Result<()> {
             )
             .await?;
         let mut sto0 = router.get_storage_handle(&0)?;
+
+        // Wait for purge to complete.
+        sleep(Duration::from_millis(500)).await;
+
         let logs = sto0.try_get_log_entries(..).await?;
         assert_eq!(max_keep as usize, logs.len());
     }

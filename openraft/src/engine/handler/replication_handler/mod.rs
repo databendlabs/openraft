@@ -358,7 +358,7 @@ where
         // Check if any replication task is going to use the log that are going to purge.
         let mut in_use = false;
         for (id, prog_entry) in self.leader.progress.iter() {
-            if prog_entry.is_inflight(&purge_upto) {
+            if prog_entry.is_log_range_inflight(&purge_upto) {
                 tracing::debug!("log {} is in use by {}", purge_upto, id);
                 in_use = true;
             }
