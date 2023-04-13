@@ -2,6 +2,7 @@ use std::fmt::Debug;
 
 use tokio::sync::oneshot;
 
+use crate::engine::CommandKind;
 use crate::entry::RaftEntry;
 use crate::error::Infallible;
 use crate::error::InitializeError;
@@ -12,6 +13,7 @@ use crate::raft::AppendEntriesResponse;
 use crate::raft::InstallSnapshotResponse;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
+use crate::LeaderId;
 use crate::LogId;
 use crate::MetricsChangeFlags;
 use crate::Node;
@@ -104,11 +106,11 @@ where
     /// A received snapshot does not need to be installed, just drop buffered snapshot data.
     CancelSnapshot { snapshot_meta: SnapshotMeta<NID, N> },
 
-    // ---
-    // --- Response commands
-    // ---
     /// Send result to caller
-    Respond { resp: Respond<NID, N> },
+    Respond {
+        when: Option<Condition<NID>>,
+        resp: Respond<NID, N>,
+    },
 
     //
     // --- Draft unimplemented commands:
@@ -145,7 +147,7 @@ where
             (Command::DeleteConflictLog { since },                 Command::DeleteConflictLog { since: b }, )                                    => since == b,
             (Command::InstallSnapshot { snapshot_meta },           Command::InstallSnapshot { snapshot_meta: b }, )                              => snapshot_meta == b,
             (Command::CancelSnapshot { snapshot_meta },            Command::CancelSnapshot { snapshot_meta: b }, )                               => snapshot_meta == b,
-            (Command::Respond { resp: send },                         Command::Respond { resp: b })                                              => send == b,
+            (Command::Respond { when, resp: send },                Command::Respond { when: b_when, resp: b })                                   => send == b && when == b_when,
             (Command::BuildSnapshot {},                            Command::BuildSnapshot {})                                                    => true,
             _ => false,
         }
@@ -185,6 +187,79 @@ where
             Command::Respond { .. } => {}
         }
     }
+
+    #[allow(dead_code)]
+    #[rustfmt::skip]
+    pub(crate) fn kind(&self) -> CommandKind {
+        match self {
+            Command::BecomeLeader                     => CommandKind::Other,
+            Command::QuitLeader                       => CommandKind::Other,
+            Command::AppendEntry { .. }               => CommandKind::Log,
+            Command::AppendInputEntries { .. }        => CommandKind::Log,
+            Command::AppendBlankLog { .. }            => CommandKind::Log,
+            Command::ReplicateCommitted { .. }        => CommandKind::Network,
+            Command::LeaderCommit { .. }              => CommandKind::StateMachine,
+            Command::FollowerCommit { .. }            => CommandKind::StateMachine,
+            Command::Replicate { .. }                 => CommandKind::Network,
+            Command::RebuildReplicationStreams { .. } => CommandKind::Other,
+            Command::UpdateProgressMetrics { .. }     => CommandKind::Other,
+            Command::SaveVote { .. }                  => CommandKind::Log,
+            Command::SendVote { .. }                  => CommandKind::Network,
+            Command::PurgeLog { .. }                  => CommandKind::Log,
+            Command::DeleteConflictLog { .. }         => CommandKind::Log,
+            Command::InstallSnapshot { .. }           => CommandKind::StateMachine,
+            Command::CancelSnapshot { .. }            => CommandKind::Other,
+            Command::Respond { .. }                   => CommandKind::Other,
+            Command::BuildSnapshot { .. }             => CommandKind::StateMachine,
+        }
+    }
+
+    /// Return the condition the command waits for if any.
+    #[allow(dead_code)]
+    #[rustfmt::skip]
+    pub(crate) fn condition(&self) -> Option<&Condition<NID>> {
+        match self {
+            Command::BecomeLeader                     => None,
+            Command::QuitLeader                       => None,
+            Command::AppendEntry { .. }               => None,
+            Command::AppendInputEntries { .. }        => None,
+            Command::AppendBlankLog { .. }            => None,
+            Command::ReplicateCommitted { .. }        => None,
+            Command::LeaderCommit { .. }              => None,
+            Command::FollowerCommit { .. }            => None,
+            Command::Replicate { .. }                 => None,
+            Command::RebuildReplicationStreams { .. } => None,
+            Command::UpdateProgressMetrics { .. }     => None,
+            Command::SaveVote { .. }                  => None,
+            Command::SendVote { .. }                  => None,
+            Command::PurgeLog { .. }                  => None,
+            Command::DeleteConflictLog { .. }         => None,
+            Command::InstallSnapshot { .. }           => None,
+            Command::CancelSnapshot { .. }            => None,
+            Command::Respond { when, .. }             => when.as_ref(),
+            Command::BuildSnapshot { .. }             => None,
+        }
+    }
+}
+
+/// A condition to wait for before running a command.
+#[derive(Debug, Clone, Copy)]
+#[derive(PartialEq, Eq)]
+pub(crate) enum Condition<NID>
+where NID: NodeId
+{
+    /// Wait until the log is flushed to the disk.
+    ///
+    /// In raft, a log io can be uniquely identified by `(leader_id, log_id)`, not `log_id`.
+    /// A same log id can be written multiple times by different leaders.
+    #[allow(dead_code)]
+    LogFlushed {
+        leader: LeaderId<NID>,
+        log_id: Option<LogId<NID>>,
+    },
+    Applied {
+        log_id: Option<LogId<NID>>,
+    },
 }
 
 /// A command to send return value to the caller via a `oneshot::Sender`.
@@ -198,6 +273,7 @@ where
 {
     Vote(ValueSender<Result<VoteResponse<NID>, Infallible>>),
     AppendEntries(ValueSender<Result<AppendEntriesResponse<NID>, Infallible>>),
+    ReceiveSnapshotChunk(ValueSender<Result<(), InstallSnapshotError>>),
     InstallSnapshot(ValueSender<Result<InstallSnapshotResponse<NID>, InstallSnapshotError>>),
     Initialize(ValueSender<Result<(), InitializeError<NID, N>>>),
 }
@@ -219,6 +295,7 @@ where
         match self {
             Respond::Vote(x) => x.send(),
             Respond::AppendEntries(x) => x.send(),
+            Respond::ReceiveSnapshotChunk(x) => x.send(),
             Respond::InstallSnapshot(x) => x.send(),
             Respond::Initialize(x) => x.send(),
         }

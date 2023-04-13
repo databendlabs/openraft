@@ -620,7 +620,7 @@ impl RaftStorage<Config> for Arc<RocksStore> {
             let updated_state_machine: SerializableRocksStateMachine = serde_json::from_slice(&new_snapshot.data)
                 .map_err(|e| {
                     StorageIOError::new(
-                        ErrorSubject::Snapshot(new_snapshot.meta.signature()),
+                        ErrorSubject::Snapshot(Some(new_snapshot.meta.signature())),
                         ErrorVerb::Read,
                         AnyError::new(&e),
                     )

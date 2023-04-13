@@ -62,6 +62,7 @@ fn test_accept_vote_reject_smaller_vote() -> anyhow::Result<()> {
         vec![
             //
             Command::Respond {
+                when: None,
                 resp: Respond::new(mk_res(), tx)
             },
         ],

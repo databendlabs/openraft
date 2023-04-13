@@ -40,6 +40,14 @@ where
         self.commands.push_back(cmd)
     }
 
+    /// Put back the command to the head of the queue.
+    ///
+    /// This will be used when the command is not ready to be executed.
+    pub(crate) fn postpone_command(&mut self, cmd: Command<NID, N, Ent>) {
+        tracing::debug!("postpone command: {:?}", cmd);
+        self.commands.push_front(cmd)
+    }
+
     /// Pop the first command to run from the queue.
     pub(crate) fn pop_command(&mut self) -> Option<Command<NID, N, Ent>> {
         self.commands.pop_front()

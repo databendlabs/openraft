@@ -289,7 +289,7 @@ mod meta {
         type Value = RocksSnapshot;
 
         fn subject(v: Option<&Self::Value>) -> ErrorSubject<RocksNodeId> {
-            ErrorSubject::Snapshot(v.unwrap().meta.signature())
+            ErrorSubject::Snapshot(Some(v.unwrap().meta.signature()))
         }
     }
 }
@@ -566,7 +566,7 @@ impl RaftStorage<Config> for Arc<RocksStore> {
         // Update the state machine.
         {
             let updated_state_machine: SerializableRocksStateMachine = serde_json::from_slice(&new_snapshot.data)
-                .map_err(|e| StorageIOError::read_snapshot(new_snapshot.meta.signature(), &e))?;
+                .map_err(|e| StorageIOError::read_snapshot(Some(new_snapshot.meta.signature()), &e))?;
             let mut state_machine = self.state_machine.write().await;
             *state_machine = RocksStateMachine::from_serializable(updated_state_machine, self.db.clone())?;
         }

@@ -74,6 +74,7 @@ where
             let res = f(self.state, e);
 
             self.output.push_command(Command::Respond {
+                when: None,
                 resp: Respond::new(res, tx),
             });
 

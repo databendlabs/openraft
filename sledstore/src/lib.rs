@@ -370,13 +370,13 @@ impl SledStore {
         let val = serde_json::to_vec(&snap).unwrap();
         let meta = snap.meta.clone();
         store_tree.insert(b"snapshot", val.as_slice()).map_err(|e| StorageError::IO {
-            source: StorageIOError::write_snapshot(snap.meta.signature(), &e),
+            source: StorageIOError::write_snapshot(Some(snap.meta.signature()), &e),
         })?;
 
         store_tree
             .flush_async()
             .await
-            .map_err(|e| StorageIOError::write_snapshot(meta.signature(), &e).into())
+            .map_err(|e| StorageIOError::write_snapshot(Some(meta.signature()), &e).into())
             .map(|_| ())
     }
 }
@@ -642,7 +642,7 @@ impl RaftStorage<ExampleTypeConfig> for Arc<SledStore> {
         // Update the state machine.
         {
             let updated_state_machine: SerializableExampleStateMachine = serde_json::from_slice(&new_snapshot.data)
-                .map_err(|e| StorageIOError::read_snapshot(new_snapshot.meta.signature(), &e))?;
+                .map_err(|e| StorageIOError::read_snapshot(Some(new_snapshot.meta.signature()), &e))?;
             let mut state_machine = self.state_machine.write().await;
             *state_machine = ExampleStateMachine::from_serializable(updated_state_machine, self.db.clone()).await?;
         }

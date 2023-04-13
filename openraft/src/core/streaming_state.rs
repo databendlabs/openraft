@@ -46,7 +46,7 @@ where SD: AsyncSeek + AsyncWrite + Unpin
         if req.offset != self.offset {
             if let Err(err) = self.snapshot_data.as_mut().seek(SeekFrom::Start(req.offset)).await {
                 return Err(StorageError::from_io_error(
-                    ErrorSubject::Snapshot(req.meta.signature()),
+                    ErrorSubject::Snapshot(Some(req.meta.signature())),
                     ErrorVerb::Seek,
                     err,
                 ));
@@ -58,7 +58,7 @@ where SD: AsyncSeek + AsyncWrite + Unpin
         let res = self.snapshot_data.as_mut().write_all(&req.data).await;
         if let Err(err) = res {
             return Err(StorageError::from_io_error(
-                ErrorSubject::Snapshot(req.meta.signature()),
+                ErrorSubject::Snapshot(Some(req.meta.signature())),
                 ErrorVerb::Write,
                 err,
             ));

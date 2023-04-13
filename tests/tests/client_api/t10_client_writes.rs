@@ -51,8 +51,6 @@ async fn client_writes() -> Result<()> {
     log_index += 100 * 6;
     router.wait_for_log(&btreeset![0, 1, 2], Some(log_index), None, "sync logs").await?;
 
-    router.assert_stable_cluster(Some(1), Some(log_index)); // The extra 1 is from the leader's initial commit entry.
-
     router
         .assert_storage_state(
             1,

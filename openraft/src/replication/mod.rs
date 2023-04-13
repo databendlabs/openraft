@@ -455,7 +455,7 @@ where
     ) -> Result<(), ReplicationError<C::NodeId, C::Node>> {
         tracing::debug!(id = display(id), snapshot = debug(&snapshot.meta), "stream_snapshot",);
 
-        let err_x = || (ErrorSubject::Snapshot(snapshot.meta.signature()), ErrorVerb::Read);
+        let err_x = || (ErrorSubject::Snapshot(Some(snapshot.meta.signature())), ErrorVerb::Read);
 
         let mut offset = 0;
         let end = snapshot.snapshot.seek(SeekFrom::End(0)).await.sto_res(err_x)?;

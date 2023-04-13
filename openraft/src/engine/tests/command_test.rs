@@ -2,6 +2,7 @@ use crate::engine::testing::blank_ent;
 use crate::engine::testing::UTCfg;
 use crate::engine::Command;
 use crate::engine::Respond;
+use crate::error::InstallSnapshotError;
 use crate::progress::Inflight;
 use crate::raft::VoteRequest;
 use crate::raft_types::MetricsChangeFlags;
@@ -53,7 +54,7 @@ fn test_command_update_metrics_flags() -> anyhow::Result<()> {
     t(Command::BuildSnapshot{} , false, true, false);
     
     let (tx, _rx) = tokio::sync::oneshot::channel();
-    t(Command::Respond { resp: Respond::new(Ok(()), tx) }, false, false, false);
+    t(Command::Respond { when:None, resp: Respond::<u64, ()>::new::<Result<(), InstallSnapshotError>>(Ok(()), tx) }, false, false, false);
 
     Ok(())
 }
