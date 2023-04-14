@@ -5,12 +5,12 @@ use std::time::Duration;
 use anyhow::Result;
 use futures::stream::StreamExt;
 use maplit::btreeset;
+use openraft::storage::RaftStateMachine;
 use openraft::CommittedLeaderId;
 use openraft::Config;
 use openraft::LogId;
 use openraft::LogIdOptionExt;
 use openraft::Membership;
-use openraft::RaftStorage;
 use openraft::ServerState;
 use openraft::StoredMembership;
 
@@ -53,13 +53,13 @@ async fn state_machine_apply_membership() -> Result<()> {
     router.assert_stable_cluster(Some(1), Some(log_index));
 
     for i in 0..=0 {
-        let mut sto = router.get_storage_handle(&i)?;
+        let (_sto, mut sm) = router.get_storage_handle(&i)?;
         assert_eq!(
             StoredMembership::new(
                 Some(LogId::new(CommittedLeaderId::new(0, 0), 0)),
                 Membership::new(vec![btreeset! {0}], None)
             ),
-            sto.last_applied_state().await?.1
+            sm.applied_state().await?.1
         );
     }
 
@@ -102,8 +102,8 @@ async fn state_machine_apply_membership() -> Result<()> {
             .metrics(|x| x.last_applied.index() == Some(log_index), "uniform log applied")
             .await?;
 
-        let mut sto = router.get_storage_handle(&i)?;
-        let (_, last_membership) = sto.last_applied_state().await?;
+        let (_sto, mut sm) = router.get_storage_handle(&i)?;
+        let (_, last_membership) = sm.applied_state().await?;
         assert_eq!(
             StoredMembership::new(
                 Some(LogId::new(CommittedLeaderId::new(1, 0), log_index)),

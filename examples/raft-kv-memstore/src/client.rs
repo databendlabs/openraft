@@ -5,20 +5,18 @@ use std::time::Duration;
 
 use openraft::error::ForwardToLeader;
 use openraft::error::NetworkError;
-use openraft::error::RPCError;
 use openraft::error::RemoteError;
 use openraft::BasicNode;
 use openraft::RaftMetrics;
 use openraft::TryAsRef;
-use reqwest::Client;
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use serde::Serialize;
 use tokio::time::timeout;
 
 use crate::typ;
-use crate::ExampleNodeId;
-use crate::ExampleRequest;
+use crate::NodeId;
+use crate::Request;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Empty {}
@@ -27,14 +25,14 @@ pub struct ExampleClient {
     /// The leader node to send request to.
     ///
     /// All traffic should be sent to the leader in a cluster.
-    pub leader: Arc<Mutex<(ExampleNodeId, String)>>,
+    pub leader: Arc<Mutex<(NodeId, String)>>,
 
-    pub inner: Client,
+    pub inner: reqwest::Client,
 }
 
 impl ExampleClient {
     /// Create a client with a leader node id and a node manager to get node address by node id.
-    pub fn new(leader_id: ExampleNodeId, leader_addr: String) -> Self {
+    pub fn new(leader_id: NodeId, leader_addr: String) -> Self {
         Self {
             leader: Arc::new(Mutex::new((leader_id, leader_addr))),
             inner: reqwest::Client::new(),
@@ -49,10 +47,7 @@ impl ExampleClient {
     /// will be applied to state machine.
     ///
     /// The result of applying the request will be returned.
-    pub async fn write(
-        &self,
-        req: &ExampleRequest,
-    ) -> Result<typ::ClientWriteResponse, typ::RPCError<typ::ClientWriteError>> {
+    pub async fn write(&self, req: &Request) -> Result<typ::ClientWriteResponse, typ::RPCError<typ::ClientWriteError>> {
         self.send_rpc_to_leader("write", Some(req)).await
     }
 
@@ -87,7 +82,7 @@ impl ExampleClient {
     /// The node to add has to exist, i.e., being added with `write(ExampleRequest::AddNode{})`
     pub async fn add_learner(
         &self,
-        req: (ExampleNodeId, String),
+        req: (NodeId, String),
     ) -> Result<typ::ClientWriteResponse, typ::RPCError<typ::ClientWriteError>> {
         self.send_rpc_to_leader("add-learner", Some(&req)).await
     }
@@ -98,7 +93,7 @@ impl ExampleClient {
     /// or an error [`LearnerNotFound`] will be returned.
     pub async fn change_membership(
         &self,
-        req: &BTreeSet<ExampleNodeId>,
+        req: &BTreeSet<NodeId>,
     ) -> Result<typ::ClientWriteResponse, typ::RPCError<typ::ClientWriteError>> {
         self.send_rpc_to_leader("change-membership", Some(req)).await
     }
@@ -108,7 +103,7 @@ impl ExampleClient {
     /// Metrics contains various information about the cluster, such as current leader,
     /// membership config, replication status etc.
     /// See [`RaftMetrics`].
-    pub async fn metrics(&self) -> Result<RaftMetrics<ExampleNodeId, BasicNode>, typ::RPCError> {
+    pub async fn metrics(&self) -> Result<RaftMetrics<NodeId, BasicNode>, typ::RPCError> {
         self.do_send_rpc_to_leader("metrics", None::<&()>).await
     }
 
@@ -118,7 +113,8 @@ impl ExampleClient {
     ///
     /// It sends out a POST request if `req` is Some. Otherwise a GET request.
     /// The remote endpoint must respond a reply in form of `Result<T, E>`.
-    /// An `Err` happened on remote will be wrapped in an [`RPCError::RemoteError`].
+    /// An `Err` happened on remote will be wrapped in an
+    /// [`openraft::error::RPCError::RemoteError`].
     async fn do_send_rpc_to_leader<Req, Resp, Err>(
         &self,
         uri: &str,
@@ -150,22 +146,22 @@ impl ExampleClient {
 
         let res = timeout(Duration::from_millis(3_000), fu).await;
         let resp = match res {
-            Ok(x) => x.map_err(|e| RPCError::Network(NetworkError::new(&e)))?,
+            Ok(x) => x.map_err(|e| typ::RPCError::Network(NetworkError::new(&e)))?,
             Err(timeout_err) => {
                 tracing::error!("timeout {} to url: {}", timeout_err, url);
-                return Err(RPCError::Network(NetworkError::new(&timeout_err)));
+                return Err(typ::RPCError::Network(NetworkError::new(&timeout_err)));
             }
         };
 
         let res: Result<Resp, typ::RaftError<Err>> =
-            resp.json().await.map_err(|e| RPCError::Network(NetworkError::new(&e)))?;
+            resp.json().await.map_err(|e| typ::RPCError::Network(NetworkError::new(&e)))?;
         tracing::debug!(
             "<<< client recv reply from {}: {}",
             url,
             serde_json::to_string_pretty(&res).unwrap()
         );
 
-        res.map_err(|e| RPCError::RemoteError(RemoteError::new(leader_id, e)))
+        res.map_err(|e| typ::RPCError::RemoteError(RemoteError::new(leader_id, e)))
     }
 
     /// Try the best to send a request to the leader.

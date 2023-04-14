@@ -35,9 +35,9 @@ use rocksdb::DB;
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::ExampleNode;
-use crate::ExampleNodeId;
-use crate::ExampleTypeConfig;
+use crate::Node;
+use crate::NodeId;
+use crate::TypeConfig;
 
 /**
  * Here you will set the types of request that will interact with the raft nodes.
@@ -46,7 +46,7 @@ use crate::ExampleTypeConfig;
  * You will want to add any request that can write data in all nodes here.
  */
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub enum ExampleRequest {
+pub enum Request {
     Set { key: String, value: String },
 }
 
@@ -59,13 +59,13 @@ pub enum ExampleRequest {
  *
  */
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct ExampleResponse {
+pub struct Response {
     pub value: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct ExampleSnapshot {
-    pub meta: SnapshotMeta<ExampleNodeId, ExampleNode>,
+pub struct StoredSnapshot {
+    pub meta: SnapshotMeta<NodeId, Node>,
 
     /// The data of the state machine at the time of this snapshot.
     pub data: Vec<u8>,
@@ -79,16 +79,16 @@ pub struct ExampleSnapshot {
  */
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct SerializableExampleStateMachine {
-    pub last_applied_log: Option<LogId<ExampleNodeId>>,
+    pub last_applied_log: Option<LogId<NodeId>>,
 
-    pub last_membership: StoredMembership<ExampleNodeId, ExampleNode>,
+    pub last_membership: StoredMembership<NodeId, Node>,
 
     /// Application data.
     pub data: BTreeMap<String, String>,
 }
 
-impl From<&ExampleStateMachine> for SerializableExampleStateMachine {
-    fn from(state: &ExampleStateMachine) -> Self {
+impl From<&StateMachine> for SerializableExampleStateMachine {
+    fn from(state: &StateMachine) -> Self {
         let mut data = BTreeMap::new();
         for res in state.db.iterator_cf(
             state.db.cf_handle("data").expect("cf_handle"),
@@ -111,20 +111,20 @@ impl From<&ExampleStateMachine> for SerializableExampleStateMachine {
 }
 
 #[derive(Debug, Clone)]
-pub struct ExampleStateMachine {
+pub struct StateMachine {
     /// Application data.
     pub db: Arc<DB>,
 }
 
-fn sm_r_err<E: Error + 'static>(e: E) -> StorageError<ExampleNodeId> {
+fn sm_r_err<E: Error + 'static>(e: E) -> StorageError<NodeId> {
     StorageIOError::read_state_machine(&e).into()
 }
-fn sm_w_err<E: Error + 'static>(e: E) -> StorageError<ExampleNodeId> {
+fn sm_w_err<E: Error + 'static>(e: E) -> StorageError<NodeId> {
     StorageIOError::write(&e).into()
 }
 
-impl ExampleStateMachine {
-    fn get_last_membership(&self) -> StorageResult<StoredMembership<ExampleNodeId, ExampleNode>> {
+impl StateMachine {
+    fn get_last_membership(&self) -> StorageResult<StoredMembership<NodeId, Node>> {
         self.db
             .get_cf(
                 self.db.cf_handle("state_machine").expect("cf_handle"),
@@ -137,7 +137,7 @@ impl ExampleStateMachine {
                     .unwrap_or_else(|| Ok(StoredMembership::default()))
             })
     }
-    fn set_last_membership(&self, membership: StoredMembership<ExampleNodeId, ExampleNode>) -> StorageResult<()> {
+    fn set_last_membership(&self, membership: StoredMembership<NodeId, Node>) -> StorageResult<()> {
         self.db
             .put_cf(
                 self.db.cf_handle("state_machine").expect("cf_handle"),
@@ -146,7 +146,7 @@ impl ExampleStateMachine {
             )
             .map_err(sm_w_err)
     }
-    fn get_last_applied_log(&self) -> StorageResult<Option<LogId<ExampleNodeId>>> {
+    fn get_last_applied_log(&self) -> StorageResult<Option<LogId<NodeId>>> {
         self.db
             .get_cf(
                 self.db.cf_handle("state_machine").expect("cf_handle"),
@@ -155,7 +155,7 @@ impl ExampleStateMachine {
             .map_err(sm_r_err)
             .and_then(|value| value.map(|v| serde_json::from_slice(&v).map_err(sm_r_err)).transpose())
     }
-    fn set_last_applied_log(&self, log_id: LogId<ExampleNodeId>) -> StorageResult<()> {
+    fn set_last_applied_log(&self, log_id: LogId<NodeId>) -> StorageResult<()> {
         self.db
             .put_cf(
                 self.db.cf_handle("state_machine").expect("cf_handle"),
@@ -177,7 +177,7 @@ impl ExampleStateMachine {
         Ok(r)
     }
 
-    fn new(db: Arc<DB>) -> ExampleStateMachine {
+    fn new(db: Arc<DB>) -> StateMachine {
         Self { db }
     }
     fn insert(&self, key: String, value: String) -> StorageResult<()> {
@@ -195,13 +195,13 @@ impl ExampleStateMachine {
 }
 
 #[derive(Debug)]
-pub struct ExampleStore {
+pub struct Store {
     db: Arc<DB>,
 
     /// The Raft state machine.
-    pub state_machine: RwLock<ExampleStateMachine>,
+    pub state_machine: RwLock<StateMachine>,
 }
-type StorageResult<T> = Result<T, StorageError<ExampleNodeId>>;
+type StorageResult<T> = Result<T, StorageError<NodeId>>;
 
 /// converts an id to a byte vector for storing in the database.
 /// Note that we're using big endian encoding to ensure correct sorting of keys
@@ -215,7 +215,7 @@ fn bin_to_id(buf: &[u8]) -> u64 {
     (&buf[0..8]).read_u64::<BigEndian>().unwrap()
 }
 
-impl ExampleStore {
+impl Store {
     fn store(&self) -> &ColumnFamily {
         self.db.cf_handle("store").unwrap()
     }
@@ -224,11 +224,7 @@ impl ExampleStore {
         self.db.cf_handle("logs").unwrap()
     }
 
-    fn flush(
-        &self,
-        subject: ErrorSubject<ExampleNodeId>,
-        verb: ErrorVerb,
-    ) -> Result<(), StorageIOError<ExampleNodeId>> {
+    fn flush(&self, subject: ErrorSubject<NodeId>, verb: ErrorVerb) -> Result<(), StorageIOError<NodeId>> {
         self.db.flush_wal(true).map_err(|e| StorageIOError::new(subject, verb, AnyError::new(&e)))?;
         Ok(())
     }
@@ -277,7 +273,7 @@ impl ExampleStore {
         Ok(())
     }
 
-    fn set_vote_(&self, vote: &Vote<ExampleNodeId>) -> StorageResult<()> {
+    fn set_vote_(&self, vote: &Vote<NodeId>) -> StorageResult<()> {
         self.db
             .put_cf(self.store(), b"vote", serde_json::to_vec(vote).unwrap())
             .map_err(|e| StorageError::IO {
@@ -288,7 +284,7 @@ impl ExampleStore {
         Ok(())
     }
 
-    fn get_vote_(&self) -> StorageResult<Option<Vote<ExampleNodeId>>> {
+    fn get_vote_(&self) -> StorageResult<Option<Vote<NodeId>>> {
         Ok(self
             .db
             .get_cf(self.store(), b"vote")
@@ -298,7 +294,7 @@ impl ExampleStore {
             .and_then(|v| serde_json::from_slice(&v).ok()))
     }
 
-    fn get_current_snapshot_(&self) -> StorageResult<Option<ExampleSnapshot>> {
+    fn get_current_snapshot_(&self) -> StorageResult<Option<StoredSnapshot>> {
         Ok(self
             .db
             .get_cf(self.store(), b"snapshot")
@@ -308,7 +304,7 @@ impl ExampleStore {
             .and_then(|v| serde_json::from_slice(&v).ok()))
     }
 
-    fn set_current_snapshot_(&self, snap: ExampleSnapshot) -> StorageResult<()> {
+    fn set_current_snapshot_(&self, snap: StoredSnapshot) -> StorageResult<()> {
         self.db
             .put_cf(self.store(), b"snapshot", serde_json::to_vec(&snap).unwrap().as_slice())
             .map_err(|e| StorageError::IO {
@@ -320,11 +316,11 @@ impl ExampleStore {
 }
 
 #[async_trait]
-impl RaftLogReader<ExampleTypeConfig> for Arc<ExampleStore> {
-    async fn get_log_state(&mut self) -> StorageResult<LogState<ExampleTypeConfig>> {
+impl RaftLogReader<TypeConfig> for Arc<Store> {
+    async fn get_log_state(&mut self) -> StorageResult<LogState<TypeConfig>> {
         let last = self.db.iterator_cf(self.logs(), rocksdb::IteratorMode::End).next().and_then(|res| {
             let (_, ent) = res.unwrap();
-            Some(serde_json::from_slice::<Entry<ExampleTypeConfig>>(&ent).ok()?.log_id)
+            Some(serde_json::from_slice::<Entry<TypeConfig>>(&ent).ok()?.log_id)
         });
 
         let last_purged_log_id = self.get_last_purged_()?;
@@ -342,7 +338,7 @@ impl RaftLogReader<ExampleTypeConfig> for Arc<ExampleStore> {
     async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + Send + Sync>(
         &mut self,
         range: RB,
-    ) -> StorageResult<Vec<Entry<ExampleTypeConfig>>> {
+    ) -> StorageResult<Vec<Entry<TypeConfig>>> {
         let start = match range.start_bound() {
             std::ops::Bound::Included(x) => id_to_bin(*x),
             std::ops::Bound::Excluded(x) => id_to_bin(*x + 1),
@@ -367,11 +363,9 @@ impl RaftLogReader<ExampleTypeConfig> for Arc<ExampleStore> {
 }
 
 #[async_trait]
-impl RaftSnapshotBuilder<ExampleTypeConfig, Cursor<Vec<u8>>> for Arc<ExampleStore> {
+impl RaftSnapshotBuilder<TypeConfig, Cursor<Vec<u8>>> for Arc<Store> {
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn build_snapshot(
-        &mut self,
-    ) -> Result<Snapshot<ExampleNodeId, ExampleNode, Cursor<Vec<u8>>>, StorageError<ExampleNodeId>> {
+    async fn build_snapshot(&mut self) -> Result<Snapshot<NodeId, Node, Cursor<Vec<u8>>>, StorageError<NodeId>> {
         let data;
         let last_applied_log;
         let last_membership;
@@ -401,7 +395,7 @@ impl RaftSnapshotBuilder<ExampleTypeConfig, Cursor<Vec<u8>>> for Arc<ExampleStor
             snapshot_id,
         };
 
-        let snapshot = ExampleSnapshot {
+        let snapshot = StoredSnapshot {
             meta: meta.clone(),
             data: data.clone(),
         };
@@ -416,23 +410,23 @@ impl RaftSnapshotBuilder<ExampleTypeConfig, Cursor<Vec<u8>>> for Arc<ExampleStor
 }
 
 #[async_trait]
-impl RaftStorage<ExampleTypeConfig> for Arc<ExampleStore> {
+impl RaftStorage<TypeConfig> for Arc<Store> {
     type SnapshotData = Cursor<Vec<u8>>;
     type LogReader = Self;
     type SnapshotBuilder = Self;
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn save_vote(&mut self, vote: &Vote<ExampleNodeId>) -> Result<(), StorageError<ExampleNodeId>> {
+    async fn save_vote(&mut self, vote: &Vote<NodeId>) -> Result<(), StorageError<NodeId>> {
         self.set_vote_(vote)
     }
 
-    async fn read_vote(&mut self) -> Result<Option<Vote<ExampleNodeId>>, StorageError<ExampleNodeId>> {
+    async fn read_vote(&mut self) -> Result<Option<Vote<NodeId>>, StorageError<NodeId>> {
         self.get_vote_()
     }
 
     #[tracing::instrument(level = "trace", skip(self, entries))]
     async fn append_to_log<I>(&mut self, entries: I) -> StorageResult<()>
-    where I: IntoIterator<Item = Entry<ExampleTypeConfig>> + Send {
+    where I: IntoIterator<Item = Entry<TypeConfig>> + Send {
         for entry in entries {
             let id = id_to_bin(entry.log_id.index);
             assert_eq!(bin_to_id(&id), entry.log_id.index);
@@ -449,7 +443,7 @@ impl RaftStorage<ExampleTypeConfig> for Arc<ExampleStore> {
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
-    async fn delete_conflict_logs_since(&mut self, log_id: LogId<ExampleNodeId>) -> StorageResult<()> {
+    async fn delete_conflict_logs_since(&mut self, log_id: LogId<NodeId>) -> StorageResult<()> {
         tracing::debug!("delete_log: [{:?}, +oo)", log_id);
 
         let from = id_to_bin(log_id.index);
@@ -458,7 +452,7 @@ impl RaftStorage<ExampleTypeConfig> for Arc<ExampleStore> {
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
-    async fn purge_logs_upto(&mut self, log_id: LogId<ExampleNodeId>) -> Result<(), StorageError<ExampleNodeId>> {
+    async fn purge_logs_upto(&mut self, log_id: LogId<NodeId>) -> Result<(), StorageError<NodeId>> {
         tracing::debug!("delete_log: [0, {:?}]", log_id);
 
         self.set_last_purged_(log_id)?;
@@ -469,13 +463,7 @@ impl RaftStorage<ExampleTypeConfig> for Arc<ExampleStore> {
 
     async fn last_applied_state(
         &mut self,
-    ) -> Result<
-        (
-            Option<LogId<ExampleNodeId>>,
-            StoredMembership<ExampleNodeId, ExampleNode>,
-        ),
-        StorageError<ExampleNodeId>,
-    > {
+    ) -> Result<(Option<LogId<NodeId>>, StoredMembership<NodeId, Node>), StorageError<NodeId>> {
         let state_machine = self.state_machine.read().await;
         Ok((
             state_machine.get_last_applied_log()?,
@@ -486,8 +474,8 @@ impl RaftStorage<ExampleTypeConfig> for Arc<ExampleStore> {
     #[tracing::instrument(level = "trace", skip(self, entries))]
     async fn apply_to_state_machine(
         &mut self,
-        entries: &[Entry<ExampleTypeConfig>],
-    ) -> Result<Vec<ExampleResponse>, StorageError<ExampleNodeId>> {
+        entries: &[Entry<TypeConfig>],
+    ) -> Result<Vec<Response>, StorageError<NodeId>> {
         let mut res = Vec::with_capacity(entries.len());
 
         let sm = self.state_machine.write().await;
@@ -498,11 +486,11 @@ impl RaftStorage<ExampleTypeConfig> for Arc<ExampleStore> {
             sm.set_last_applied_log(entry.log_id)?;
 
             match entry.payload {
-                EntryPayload::Blank => res.push(ExampleResponse { value: None }),
+                EntryPayload::Blank => res.push(Response { value: None }),
                 EntryPayload::Normal(ref req) => match req {
-                    ExampleRequest::Set { key, value } => {
+                    Request::Set { key, value } => {
                         sm.insert(key.clone(), value.clone())?;
-                        res.push(ExampleResponse {
+                        res.push(Response {
                             value: Some(value.clone()),
                         })
                     }
@@ -510,7 +498,7 @@ impl RaftStorage<ExampleTypeConfig> for Arc<ExampleStore> {
                 EntryPayload::Membership(ref mem) => {
                     sm.set_last_membership(StoredMembership::new(Some(entry.log_id), mem.clone()))?;
 
-                    res.push(ExampleResponse { value: None })
+                    res.push(Response { value: None })
                 }
             };
         }
@@ -520,22 +508,22 @@ impl RaftStorage<ExampleTypeConfig> for Arc<ExampleStore> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn begin_receiving_snapshot(&mut self) -> Result<Box<Self::SnapshotData>, StorageError<ExampleNodeId>> {
+    async fn begin_receiving_snapshot(&mut self) -> Result<Box<Self::SnapshotData>, StorageError<NodeId>> {
         Ok(Box::new(Cursor::new(Vec::new())))
     }
 
     #[tracing::instrument(level = "trace", skip(self, snapshot))]
     async fn install_snapshot(
         &mut self,
-        meta: &SnapshotMeta<ExampleNodeId, ExampleNode>,
+        meta: &SnapshotMeta<NodeId, Node>,
         snapshot: Box<Self::SnapshotData>,
-    ) -> Result<(), StorageError<ExampleNodeId>> {
+    ) -> Result<(), StorageError<NodeId>> {
         tracing::info!(
             { snapshot_size = snapshot.get_ref().len() },
             "decoding snapshot for installation"
         );
 
-        let new_snapshot = ExampleSnapshot {
+        let new_snapshot = StoredSnapshot {
             meta: meta.clone(),
             data: snapshot.into_inner(),
         };
@@ -545,7 +533,7 @@ impl RaftStorage<ExampleTypeConfig> for Arc<ExampleStore> {
             let updated_state_machine: SerializableExampleStateMachine = serde_json::from_slice(&new_snapshot.data)
                 .map_err(|e| StorageIOError::read_snapshot(new_snapshot.meta.signature(), &e))?;
             let mut state_machine = self.state_machine.write().await;
-            *state_machine = ExampleStateMachine::from_serializable(updated_state_machine, self.db.clone())?;
+            *state_machine = StateMachine::from_serializable(updated_state_machine, self.db.clone())?;
         }
 
         self.set_current_snapshot_(new_snapshot)?;
@@ -555,8 +543,8 @@ impl RaftStorage<ExampleTypeConfig> for Arc<ExampleStore> {
     #[tracing::instrument(level = "trace", skip(self))]
     async fn get_current_snapshot(
         &mut self,
-    ) -> Result<Option<Snapshot<ExampleNodeId, ExampleNode, Self::SnapshotData>>, StorageError<ExampleNodeId>> {
-        match ExampleStore::get_current_snapshot_(self)? {
+    ) -> Result<Option<Snapshot<NodeId, Node, Self::SnapshotData>>, StorageError<NodeId>> {
+        match Store::get_current_snapshot_(self)? {
             Some(snapshot) => {
                 let data = snapshot.data.clone();
                 Ok(Some(Snapshot {
@@ -576,8 +564,8 @@ impl RaftStorage<ExampleTypeConfig> for Arc<ExampleStore> {
         self.clone()
     }
 }
-impl ExampleStore {
-    pub(crate) async fn new<P: AsRef<Path>>(db_path: P) -> Arc<ExampleStore> {
+impl Store {
+    pub(crate) async fn new<P: AsRef<Path>>(db_path: P) -> Arc<Store> {
         let mut db_opts = Options::default();
         db_opts.create_missing_column_families(true);
         db_opts.create_if_missing(true);
@@ -590,7 +578,7 @@ impl ExampleStore {
         let db = DB::open_cf_descriptors(&db_opts, db_path, vec![store, state_machine, data, logs]).unwrap();
 
         let db = Arc::new(db);
-        let state_machine = RwLock::new(ExampleStateMachine::new(db.clone()));
-        Arc::new(ExampleStore { db, state_machine })
+        let state_machine = RwLock::new(StateMachine::new(db.clone()));
+        Arc::new(Store { db, state_machine })
     }
 }

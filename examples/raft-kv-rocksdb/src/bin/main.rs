@@ -1,12 +1,6 @@
 use clap::Parser;
-use openraft::Raft;
-use raft_kv_rocksdb::network::raft_network_impl::ExampleNetwork;
 use raft_kv_rocksdb::start_example_raft_node;
-use raft_kv_rocksdb::store::ExampleStore;
-use raft_kv_rocksdb::ExampleTypeConfig;
 use tracing_subscriber::EnvFilter;
-
-pub type ExampleRaft = Raft<ExampleTypeConfig, ExampleNetwork, ExampleStore>;
 
 #[derive(Parser, Clone, Debug)]
 #[clap(author, version, about, long_about = None)]

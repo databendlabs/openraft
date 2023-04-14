@@ -1,45 +1,47 @@
-use std::fmt::Debug;
 use std::marker::PhantomData;
-use std::ops::RangeBounds;
 use std::sync::Arc;
 
 use tokio::time::Instant;
 
-use crate::defensive::check_range_matches_entries;
 use crate::engine::LogIdList;
 use crate::entry::RaftPayload;
 use crate::log_id::RaftLogId;
+use crate::storage::RaftLogStorage;
+use crate::storage::RaftStateMachine;
 use crate::utime::UTime;
 use crate::EffectiveMembership;
-use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::MembershipState;
 use crate::RaftState;
-use crate::RaftStorage;
 use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::StoredMembership;
 
-/// StorageHelper provides additional methods to access a [`RaftStorage`] implementation.
-pub struct StorageHelper<'a, C, Sto>
+/// StorageHelper provides additional methods to access a [`RaftLogStorage`] and
+/// [`RaftStateMachine`] implementation.
+pub struct StorageHelper<'a, C, LS, SM>
 where
     C: RaftTypeConfig,
-    Sto: RaftStorage<C>,
+    LS: RaftLogStorage<C>,
+    SM: RaftStateMachine<C>,
 {
-    pub(crate) sto: &'a mut Sto,
+    pub(crate) log_store: &'a mut LS,
+    pub(crate) state_machine: &'a mut SM,
     _p: PhantomData<C>,
 }
 
-impl<'a, C, Sto> StorageHelper<'a, C, Sto>
+impl<'a, C, LS, SM> StorageHelper<'a, C, LS, SM>
 where
     C: RaftTypeConfig,
-    Sto: RaftStorage<C>,
+    LS: RaftLogStorage<C>,
+    SM: RaftStateMachine<C>,
 {
     /// Creates a new `StorageHelper` that provides additional functions based on the underlying
-    ///  [`RaftStorage`] implementation.
-    pub fn new(sto: &'a mut Sto) -> Self {
+    ///  [`RaftLogStorage`] and [`RaftStateMachine`] implementation.
+    pub fn new(sto: &'a mut LS, sm: &'a mut SM) -> Self {
         Self {
-            sto,
+            log_store: sto,
+            state_machine: sm,
             _p: Default::default(),
         }
     }
@@ -53,23 +55,23 @@ where
     /// When the Raft node is first started, it will call this interface to fetch the last known
     /// state from stable storage.
     pub async fn get_initial_state(&mut self) -> Result<RaftState<C::NodeId, C::Node>, StorageError<C::NodeId>> {
-        let vote = self.sto.read_vote().await?;
-        let st = self.sto.get_log_state().await?;
+        let vote = self.log_store.read_vote().await?;
+        let st = self.log_store.get_log_state().await?;
         let mut last_purged_log_id = st.last_purged_log_id;
         let mut last_log_id = st.last_log_id;
-        let (last_applied, _) = self.sto.last_applied_state().await?;
+        let (last_applied, _) = self.state_machine.applied_state().await?;
         let mem_state = self.get_membership().await?;
 
         // Clean up dirty state: snapshot is installed but logs are not cleaned.
         if last_log_id < last_applied {
-            self.sto.purge_logs_upto(last_applied.unwrap()).await?;
+            self.log_store.purge(last_applied.unwrap()).await?;
             last_log_id = last_applied;
             last_purged_log_id = last_applied;
         }
 
-        let log_ids = LogIdList::load_log_ids(last_purged_log_id, last_log_id, self).await?;
+        let log_ids = LogIdList::load_log_ids(last_purged_log_id, last_log_id, self.log_store).await?;
 
-        let snapshot_meta = self.sto.get_current_snapshot().await?.map(|x| x.meta).unwrap_or_default();
+        let snapshot_meta = self.state_machine.get_current_snapshot().await?.map(|x| x.meta).unwrap_or_default();
 
         let now = Instant::now();
 
@@ -90,19 +92,6 @@ where
         })
     }
 
-    /// Get the log id of the entry at `index`.
-    pub async fn get_log_id(&mut self, log_index: u64) -> Result<LogId<C::NodeId>, StorageError<C::NodeId>> {
-        let st = self.sto.get_log_state().await?;
-
-        if Some(log_index) == st.last_purged_log_id.index() {
-            return Ok(st.last_purged_log_id.unwrap());
-        }
-
-        let entries = self.get_log_entries(log_index..=log_index).await?;
-
-        Ok(*entries[0].get_log_id())
-    }
-
     /// Returns the last 2 membership config found in log or state machine.
     ///
     /// A raft node needs to store at most 2 membership config log:
@@ -120,7 +109,7 @@ where
     ///
     /// Thus a raft node will only need to store at most two recent membership logs.
     pub async fn get_membership(&mut self) -> Result<MembershipState<C::NodeId, C::Node>, StorageError<C::NodeId>> {
-        let (_, sm_mem) = self.sto.last_applied_state().await?;
+        let (_, sm_mem) = self.state_machine.applied_state().await?;
 
         let sm_mem_next_index = sm_mem.log_id().next_index();
 
@@ -154,12 +143,12 @@ where
     /// This method returns at most membership logs with greatest log index which is
     /// `>=since_index`. If no such membership log is found, it returns `None`, e.g., when logs
     /// are cleaned after being applied.
-    #[tracing::instrument(level = "trace", skip(self))]
+    #[tracing::instrument(level = "trace", skip_all)]
     pub async fn last_membership_in_log(
         &mut self,
         since_index: u64,
     ) -> Result<Vec<StoredMembership<C::NodeId, C::Node>>, StorageError<C::NodeId>> {
-        let st = self.sto.get_log_state().await?;
+        let st = self.log_store.get_log_state().await?;
 
         let mut end = st.last_log_id.next_index();
         let start = std::cmp::max(st.last_purged_log_id.next_index(), since_index);
@@ -169,7 +158,7 @@ where
 
         while start < end {
             let step_start = std::cmp::max(start, end.saturating_sub(step));
-            let entries = self.sto.try_get_log_entries(step_start..end).await?;
+            let entries = self.log_store.try_get_log_entries(step_start..end).await?;
 
             for ent in entries.iter().rev() {
                 if let Some(mem) = ent.get_membership() {
@@ -183,29 +172,6 @@ where
 
             end = end.saturating_sub(step);
         }
-
-        Ok(res)
-    }
-
-    /// Try to get an log entry.
-    ///
-    /// It does not return an error if the log entry at `log_index` is not found.
-    pub async fn try_get_log_entry(&mut self, log_index: u64) -> Result<Option<C::Entry>, StorageError<C::NodeId>> {
-        let mut res = self.sto.try_get_log_entries(log_index..(log_index + 1)).await?;
-        Ok(res.pop())
-    }
-
-    /// Get a series of log entries from storage.
-    ///
-    /// Similar to `try_get_log_entries` except an error will be returned if there is an entry not
-    /// found in the specified range.
-    pub async fn get_log_entries<RB: RangeBounds<u64> + Clone + Debug + Send + Sync>(
-        &mut self,
-        range: RB,
-    ) -> Result<Vec<C::Entry>, StorageError<C::NodeId>> {
-        let res = self.sto.try_get_log_entries(range.clone()).await?;
-
-        check_range_matches_entries::<C, _>(range, &res)?;
 
         Ok(res)
     }

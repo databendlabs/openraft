@@ -8,9 +8,9 @@ use openraft::error::RaftError;
 use openraft::BasicNode;
 use web::Json;
 
-use crate::app::ExampleApp;
-use crate::store::ExampleRequest;
-use crate::ExampleNodeId;
+use crate::app::App;
+use crate::store::Request;
+use crate::NodeId;
 
 /**
  * Application API
@@ -22,13 +22,13 @@ use crate::ExampleNodeId;
  *  - `POST - /read` attempt to find a value from a given key.
  */
 #[post("/write")]
-pub async fn write(app: Data<ExampleApp>, req: Json<ExampleRequest>) -> actix_web::Result<impl Responder> {
+pub async fn write(app: Data<App>, req: Json<Request>) -> actix_web::Result<impl Responder> {
     let response = app.raft.client_write(req.0).await;
     Ok(Json(response))
 }
 
 #[post("/read")]
-pub async fn read(app: Data<ExampleApp>, req: Json<String>) -> actix_web::Result<impl Responder> {
+pub async fn read(app: Data<App>, req: Json<String>) -> actix_web::Result<impl Responder> {
     let state_machine = app.store.state_machine.read().await;
     let key = req.0;
     let value = state_machine.data.get(&key).cloned();
@@ -38,7 +38,7 @@ pub async fn read(app: Data<ExampleApp>, req: Json<String>) -> actix_web::Result
 }
 
 #[post("/consistent_read")]
-pub async fn consistent_read(app: Data<ExampleApp>, req: Json<String>) -> actix_web::Result<impl Responder> {
+pub async fn consistent_read(app: Data<App>, req: Json<String>) -> actix_web::Result<impl Responder> {
     let ret = app.raft.is_leader().await;
 
     match ret {
@@ -47,7 +47,7 @@ pub async fn consistent_read(app: Data<ExampleApp>, req: Json<String>) -> actix_
             let key = req.0;
             let value = state_machine.data.get(&key).cloned();
 
-            let res: Result<String, RaftError<ExampleNodeId, CheckIsLeaderError<ExampleNodeId, BasicNode>>> =
+            let res: Result<String, RaftError<NodeId, CheckIsLeaderError<NodeId, BasicNode>>> =
                 Ok(value.unwrap_or_default());
             Ok(Json(res))
         }

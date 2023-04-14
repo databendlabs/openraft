@@ -8,36 +8,38 @@ use openraft::raft::VoteRequest;
 use openraft::raft::VoteResponse;
 use toy_rpc::macros::export_impl;
 
-use crate::app::ExampleApp;
-use crate::ExampleTypeConfig;
+use crate::app::App;
+use crate::TypeConfig;
 
-// --- Raft communication
-
+/// Raft protocol service.
 pub struct Raft {
-    app: Arc<ExampleApp>,
+    app: Arc<App>,
 }
 
 #[export_impl]
 impl Raft {
-    pub fn new(app: Arc<ExampleApp>) -> Self {
+    pub fn new(app: Arc<App>) -> Self {
         Self { app }
     }
+
     #[export_method]
     pub async fn vote(&self, vote: VoteRequest<u64>) -> Result<VoteResponse<u64>, toy_rpc::Error> {
         self.app.raft.vote(vote).await.map_err(|e| toy_rpc::Error::Internal(Box::new(e)))
     }
+
     #[export_method]
     pub async fn append(
         &self,
-        req: AppendEntriesRequest<ExampleTypeConfig>,
+        req: AppendEntriesRequest<TypeConfig>,
     ) -> Result<AppendEntriesResponse<u64>, toy_rpc::Error> {
         tracing::debug!("handle append");
         self.app.raft.append_entries(req).await.map_err(|e| toy_rpc::Error::Internal(Box::new(e)))
     }
+
     #[export_method]
     pub async fn snapshot(
         &self,
-        req: InstallSnapshotRequest<ExampleTypeConfig>,
+        req: InstallSnapshotRequest<TypeConfig>,
     ) -> Result<InstallSnapshotResponse<u64>, toy_rpc::Error> {
         self.app.raft.install_snapshot(req).await.map_err(|e| toy_rpc::Error::Internal(Box::new(e)))
     }

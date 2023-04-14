@@ -35,7 +35,7 @@ async fn purge_in_snapshot_logs() -> Result<()> {
     let leader = router.get_raft_handle(&0)?;
     let learner = router.get_raft_handle(&1)?;
 
-    let mut sto0 = router.get_storage_handle(&0)?;
+    let (mut sto0, mut _sm0) = router.get_storage_handle(&0)?;
 
     tracing::info!("--- build snapshot on leader, check purged log");
     {
@@ -48,7 +48,7 @@ async fn purge_in_snapshot_logs() -> Result<()> {
                 "building 1st snapshot",
             )
             .await?;
-        let mut sto0 = router.get_storage_handle(&0)?;
+        let (mut sto0, mut _sm0) = router.get_storage_handle(&0)?;
 
         // Wait for purge to complete.
         sleep(Duration::from_millis(500)).await;
@@ -92,7 +92,7 @@ async fn purge_in_snapshot_logs() -> Result<()> {
             )
             .await?;
 
-        let mut sto1 = router.get_storage_handle(&1)?;
+        let (mut sto1, mut _sm) = router.get_storage_handle(&1)?;
         let logs = sto1.try_get_log_entries(..).await?;
         assert_eq!(0, logs.len());
     }

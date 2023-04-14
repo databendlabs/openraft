@@ -2,12 +2,12 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use maplit::btreeset;
+use openraft::testing;
 use openraft::Config;
 use openraft::Entry;
 use openraft::EntryPayload;
 use openraft::Membership;
 use openraft::Raft;
-use openraft::RaftStorage;
 
 use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::log_id;
@@ -35,11 +35,11 @@ async fn new_leader_auto_commit_uniform_config() -> Result<()> {
 
     let mut log_index = router.new_cluster(btreeset! {0}, btreeset! {}).await?;
 
-    let mut sto = router.get_storage_handle(&0)?;
+    let (mut sto, sm) = router.get_storage_handle(&0)?;
     router.remove_node(0);
 
     {
-        sto.append_to_log([Entry {
+        testing::blocking_append(&mut sto, [Entry {
             log_id: log_id(1, 0, log_index + 1),
             payload: EntryPayload::Membership(Membership::new(
                 vec![btreeset! {0}, btreeset! {0,1,2}],
@@ -58,7 +58,7 @@ async fn new_leader_auto_commit_uniform_config() -> Result<()> {
     router.new_raft_node(1).await;
     router.new_raft_node(2).await;
 
-    let node = Raft::new(0, config.clone(), router.clone(), sto.clone());
+    let node = Raft::new(0, config.clone(), router.clone(), sto.clone(), sm.clone());
 
     let _ = node;
 

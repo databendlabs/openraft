@@ -7,15 +7,15 @@ use maplit::btreeset;
 use openraft::error::InitializeError;
 use openraft::error::NotAllowed;
 use openraft::error::NotInMembers;
+use openraft::storage::RaftLogReaderExt;
+use openraft::storage::RaftStateMachine;
 use openraft::CommittedLeaderId;
 use openraft::Config;
 use openraft::EffectiveMembership;
 use openraft::EntryPayload;
 use openraft::LogId;
 use openraft::Membership;
-use openraft::RaftStorage;
 use openraft::ServerState;
-use openraft::StorageHelper;
 use openraft::StoredMembership;
 use openraft::Vote;
 use tokio::sync::oneshot;
@@ -113,8 +113,8 @@ async fn initialization() -> anyhow::Result<()> {
     }
 
     for i in [0, 1, 2] {
-        let mut sto = router.get_storage_handle(&1)?;
-        let first = StorageHelper::new(&mut sto).get_log_entries(0..2).await?.into_iter().next();
+        let (mut sto, mut sm) = router.get_storage_handle(&1)?;
+        let first = sto.get_log_entries(0..2).await?.into_iter().next();
 
         tracing::info!("--- check membership is replicated: id: {}, first log: {:?}", i, first);
         let mem = match first.unwrap().payload {
@@ -125,7 +125,7 @@ async fn initialization() -> anyhow::Result<()> {
         };
         assert_eq!(btreeset![0, 1, 2], mem.get_joint_config()[0].clone());
 
-        let sm_mem = sto.last_applied_state().await?.1;
+        let sm_mem = sm.applied_state().await?.1;
         assert_eq!(
             StoredMembership::new(
                 Some(LogId::new(CommittedLeaderId::new(0, 0), 0)),

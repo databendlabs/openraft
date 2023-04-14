@@ -1,19 +1,30 @@
 //! The Raft storage interface and data types.
 
+pub(crate) mod adapter;
+mod callback;
 mod helper;
+mod log_store_ext;
 mod snapshot_signature;
+mod v2;
+
 use std::fmt::Debug;
 use std::ops::RangeBounds;
 
+pub use adapter::Adaptor;
 use async_trait::async_trait;
 pub use helper::StorageHelper;
+pub use log_store_ext::RaftLogReaderExt;
 pub use snapshot_signature::SnapshotSignature;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncSeek;
 use tokio::io::AsyncWrite;
+pub use v2::RaftLogStorage;
+pub use v2::RaftStateMachine;
 
 use crate::node::Node;
 use crate::raft_types::SnapshotId;
+pub use crate::storage::callback::LogApplied;
+pub use crate::storage::callback::LogFlushed;
 use crate::LogId;
 use crate::MessageSummary;
 use crate::NodeId;
@@ -260,12 +271,6 @@ where C: RaftTypeConfig
         &mut self,
     ) -> Result<(Option<LogId<C::NodeId>>, StoredMembership<C::NodeId, C::Node>), StorageError<C::NodeId>>;
 
-    // TODO: The reply should happen asynchronously, somehow. Make this method synchronous and
-    // instead of using the result, pass a channel where to post the completion. The Raft core can
-    // then collect completions on this channel and update the client with the result once all
-    // the preceding operations have been applied to the state machine. This way we'll reach
-    // operation pipelining w/o the need to wait for the completion of each operation inline.
-    // ---
     /// Apply the given payload of entries to the state machine.
     ///
     /// The Raft protocol guarantees that only logs which have been _committed_, that is, logs which
