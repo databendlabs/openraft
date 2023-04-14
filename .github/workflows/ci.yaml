@@ -317,7 +317,7 @@ jobs:
       - name: Test demo script of examples/${{ matrix.example }}
         # The script is not meant for testing. Just to ensure it works but do not
         # rely on it.
-        if: ${{ matrix.toolchain == 'nightly' }}
+        if: ${{ matrix.toolchain == 'stable' }}
 
         shell: bash
         run: |
