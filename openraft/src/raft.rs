@@ -638,7 +638,12 @@ where
                 },
                 rx,
             )
-            .await?;
+            .await;
+
+        if let Err(e) = &res {
+            tracing::error!("the first step error: {}", e);
+        }
+        let res = res?;
 
         tracing::debug!("res of first step: {:?}", res.summary());
 
@@ -652,7 +657,12 @@ where
         tracing::debug!("the second step is to change to uniform config: {:?}", changes);
 
         let (tx, rx) = oneshot::channel();
-        let res = self.call_core(RaftMsg::ChangeMembership { changes, retain, tx }, rx).await?;
+        let res = self.call_core(RaftMsg::ChangeMembership { changes, retain, tx }, rx).await;
+
+        if let Err(e) = &res {
+            tracing::error!("the second step error: {}", e);
+        }
+        let res = res?;
 
         tracing::info!("res of second step of do_change_membership: {}", res.summary());
 
