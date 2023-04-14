@@ -127,10 +127,10 @@ jobs:
 
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         if: failure()
         with:
-          name: ut
+          name: "ut-${{ matrix.toolchain }}-${{ matrix.features }}-${{ matrix.send_delay }}"
           path: |
             openraft/_log/
             tests/_log/
@@ -234,10 +234,10 @@ jobs:
 
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         if: failure()
         with:
-          name: ut
+          name: openraft-feature-test
           path: |
             openraft/_log/
 
@@ -317,7 +317,7 @@ jobs:
       - name: Test demo script of examples/${{ matrix.example }}
         # The script is not meant for testing. Just to ensure it works but do not
         # rely on it.
-        if: ${{ matrix.toolchain == 'nightly' }}
+        if: ${{ matrix.toolchain == 'stable' }}
 
         shell: bash
         run: |
