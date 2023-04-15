@@ -356,6 +356,10 @@ mod tests {
             unimplemented!("testing")
         }
 
+        fn applied(&self) -> Option<&LogId<u64>> {
+            todo!()
+        }
+
         fn snapshot_last_log_id(&self) -> Option<&LogId<u64>> {
             self.snap_last.as_ref()
         }

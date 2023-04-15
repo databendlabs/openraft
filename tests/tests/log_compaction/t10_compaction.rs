@@ -71,6 +71,8 @@ async fn compaction() -> Result<()> {
     router.client_request_many(0, "0", (snapshot_threshold - 1 - log_index) as usize).await?;
     log_index = snapshot_threshold - 1;
 
+    tracing::info!("--- log_index: {}", log_index);
+
     router.wait_for_log(&btreeset![0], Some(log_index), timeout(), "write").await?;
     router.assert_stable_cluster(Some(1), Some(log_index));
     router
@@ -104,11 +106,13 @@ async fn compaction() -> Result<()> {
     router.add_learner(0, 1).await.expect("failed to add new node as learner");
     log_index += 1; // add_learner log
 
-    tracing::info!("--- add 1 log after snapshot");
+    tracing::info!("--- add 1 log after snapshot, log_index: {}", log_index);
     {
         router.client_request_many(0, "0", 1).await?;
         log_index += 1;
     }
+
+    tracing::info!("--- log_index: {}", log_index);
 
     router.wait_for_log(&btreeset![0, 1], Some(log_index), timeout(), "add follower").await?;
 

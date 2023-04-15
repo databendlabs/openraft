@@ -98,7 +98,7 @@ where NID: NodeId
     StateMachine,
 
     /// Error happened when operating snapshot.
-    Snapshot(SnapshotSignature<NID>),
+    Snapshot(Option<SnapshotSignature<NID>>),
 
     None,
 }
@@ -279,11 +279,11 @@ where NID: NodeId
         Self::new(ErrorSubject::StateMachine, ErrorVerb::Read, source)
     }
 
-    pub fn write_snapshot(signature: SnapshotSignature<NID>, source: impl Into<AnyError>) -> Self {
+    pub fn write_snapshot(signature: Option<SnapshotSignature<NID>>, source: impl Into<AnyError>) -> Self {
         Self::new(ErrorSubject::Snapshot(signature), ErrorVerb::Write, source)
     }
 
-    pub fn read_snapshot(signature: SnapshotSignature<NID>, source: impl Into<AnyError>) -> Self {
+    pub fn read_snapshot(signature: Option<SnapshotSignature<NID>>, source: impl Into<AnyError>) -> Self {
         Self::new(ErrorSubject::Snapshot(signature), ErrorVerb::Read, source)
     }
 

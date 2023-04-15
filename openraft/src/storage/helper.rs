@@ -6,6 +6,8 @@ use tokio::time::Instant;
 use crate::engine::LogIdList;
 use crate::entry::RaftPayload;
 use crate::log_id::RaftLogId;
+use crate::raft_state::IOState;
+use crate::raft_state::LogIOId;
 use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
 use crate::utime::UTime;
@@ -71,6 +73,9 @@ where
 
         let log_ids = LogIdList::load_log_ids(last_purged_log_id, last_log_id, self.log_store).await?;
 
+        // TODO: `flushed` is not set.
+        let io_state = IOState::new(LogIOId::default(), last_applied);
+
         let snapshot_meta = self.state_machine.get_current_snapshot().await?.map(|x| x.meta).unwrap_or_default();
 
         let now = Instant::now();
@@ -88,6 +93,7 @@ where
             // -- volatile fields: they are not persisted.
             server_state: Default::default(),
             accepted: Default::default(),
+            io_state,
             purge_upto: last_purged_log_id,
         })
     }

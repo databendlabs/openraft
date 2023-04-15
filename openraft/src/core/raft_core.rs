@@ -1,11 +1,12 @@
 use std::collections::BTreeMap;
+use std::fmt::Debug;
 use std::fmt::Display;
+use std::fmt::Formatter;
 use std::pin::Pin;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use anyerror::AnyError;
-use futures::future::abortable;
 use futures::future::select;
 use futures::future::Either;
 use futures::stream::FuturesUnordered;
@@ -16,7 +17,6 @@ use maplit::btreeset;
 use pin_utils::pin_mut;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncSeek;
-use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio::sync::watch;
@@ -30,27 +30,24 @@ use tracing::Span;
 use crate::config::Config;
 use crate::config::RuntimeConfig;
 use crate::config::SnapshotPolicy;
-use crate::core::building_state;
-use crate::core::snapshot_state;
-use crate::core::snapshot_state::SnapshotRequestId;
-use crate::core::streaming_state::Streaming;
+use crate::core::sm;
 use crate::core::ServerState;
-use crate::core::SnapshotResult;
+use crate::display_ext::DisplayOption;
 use crate::display_ext::DisplaySlice;
 use crate::engine::Command;
+use crate::engine::Condition;
 use crate::engine::Engine;
 use crate::engine::Respond;
 use crate::entry::FromAppData;
 use crate::entry::RaftEntry;
-use crate::entry::RaftPayload;
 use crate::error::CheckIsLeaderError;
 use crate::error::ClientWriteError;
 use crate::error::Fatal;
 use crate::error::ForwardToLeader;
 use crate::error::InitializeError;
+use crate::error::InstallSnapshotError;
 use crate::error::QuorumNotEnough;
 use crate::error::RPCError;
-use crate::error::SnapshotMismatch;
 use crate::error::Timeout;
 use crate::log_id::LogIdOptionExt;
 use crate::log_id::RaftLogId;
@@ -85,7 +82,6 @@ use crate::runtime::RaftRuntime;
 use crate::storage::LogFlushed;
 use crate::storage::RaftLogReaderExt;
 use crate::storage::RaftLogStorage;
-use crate::storage::RaftSnapshotBuilder;
 use crate::storage::RaftStateMachine;
 use crate::versioned::Updatable;
 use crate::versioned::Versioned;
@@ -99,8 +95,6 @@ use crate::RPCTypes;
 use crate::RaftNetwork;
 use crate::RaftNetworkFactory;
 use crate::RaftTypeConfig;
-use crate::SnapshotId;
-use crate::SnapshotSegmentId;
 use crate::StorageError;
 use crate::StorageIOError;
 use crate::Update;
@@ -114,8 +108,27 @@ pub(crate) struct ApplyingEntry<NID: NodeId, N: Node> {
 }
 
 impl<NID: NodeId, N: Node> ApplyingEntry<NID, N> {
-    fn new(log_id: LogId<NID>, membership: Option<Membership<NID, N>>) -> Self {
+    pub(crate) fn new(log_id: LogId<NID>, membership: Option<Membership<NID, N>>) -> Self {
         Self { log_id, membership }
+    }
+}
+
+/// The result of applying log entries to state machine.
+pub(crate) struct ApplyResult<C: RaftTypeConfig> {
+    pub(crate) since: u64,
+    pub(crate) end: u64,
+    pub(crate) last_applied: LogId<C::NodeId>,
+    pub(crate) applying_entries: Vec<ApplyingEntry<C::NodeId, C::Node>>,
+    pub(crate) apply_results: Vec<C::R>,
+}
+
+impl<C: RaftTypeConfig> Debug for ApplyResult<C> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ApplyResult")
+            .field("since", &self.since)
+            .field("end", &self.end)
+            .field("last_applied", &self.last_applied)
+            .finish()
     }
 }
 
@@ -153,6 +166,7 @@ where SD: AsyncRead + AsyncSeek + Send + Unpin + 'static
     }
 }
 
+// TODO: remove SM
 /// The core type implementing the Raft protocol.
 pub struct RaftCore<C, N, LS, SM>
 where
@@ -175,18 +189,15 @@ where
     /// The [`RaftLogStorage`] implementation.
     pub(crate) log_store: LS,
 
-    /// The [`RaftStateMachine`] implementation.
-    pub(crate) state_machine: SM,
+    /// A controlling handle to the [`RaftStateMachine`] worker.
+    pub(crate) sm_handle: sm::Handle<C, SM>,
 
     pub(crate) engine: Engine<C::NodeId, C::Node, C::Entry>,
 
     pub(crate) leader_data: Option<LeaderData<C, SM::SnapshotData>>,
 
-    /// The node's current snapshot state.
-    pub(crate) snapshot_state: snapshot_state::State<SM::SnapshotData>,
-
-    /// Received snapshot that are ready to install.
-    pub(crate) received_snapshot: BTreeMap<SnapshotId, Box<SM::SnapshotData>>,
+    /// Whether it is building a snapshot
+    pub(crate) building_snapshot: bool,
 
     pub(crate) tx_api: mpsc::UnboundedSender<RaftMsg<C, N, LS>>,
     pub(crate) rx_api: mpsc::UnboundedReceiver<RaftMsg<C, N, LS>>,
@@ -526,7 +537,7 @@ where
             // --- data ---
             current_term: self.engine.state.vote_ref().leader_id().get_term(),
             last_log_index: self.engine.state.last_log_id().index(),
-            last_applied: self.engine.state.committed().copied(),
+            last_applied: self.engine.state.applied().copied(),
             snapshot: self.engine.state.snapshot_meta.last_log_id,
 
             // --- cluster ---
@@ -569,6 +580,7 @@ where
         let entry = C::Entry::new_membership(LogId::default(), membership);
         let res = self.engine.initialize(entry);
         self.engine.output.push_command(Command::Respond {
+            when: None,
             resp: Respond::new(res, tx),
         });
     }
@@ -590,9 +602,6 @@ where
 
         let snapshot_meta = req.meta.clone();
         let done = req.done;
-        let offset = req.offset;
-
-        let req_id = SnapshotRequestId::new(*req.vote.leader_id(), snapshot_meta.snapshot_id.clone(), offset);
 
         let res = self.engine.vote_handler().accept_vote(&req.vote, tx, |state, _rejected| {
             Ok(InstallSnapshotResponse {
@@ -605,57 +614,41 @@ where
             Err(_) => return Ok(()),
         };
 
-        let curr_id = self.snapshot_state.streaming.as_ref().map(|s| &s.snapshot_id);
+        // TODO: This is still blocking, to make it non-blocking, we need to move receiving to another
+        //       thread.
+        let (recv_tx, recv_rx) = oneshot::channel::<Result<(), InstallSnapshotError>>();
 
-        // Changed to another stream. re-init snapshot state.
-        if curr_id != Some(&req.meta.snapshot_id) {
-            if req.offset > 0 {
-                let mismatch = SnapshotMismatch {
-                    expect: SnapshotSegmentId {
-                        id: snapshot_meta.snapshot_id.clone(),
-                        offset: 0,
-                    },
-                    got: SnapshotSegmentId {
-                        id: snapshot_meta.snapshot_id.clone(),
-                        offset,
-                    },
-                };
+        // No command id because it is blocking
+        let cmd = sm::Command::receive(req, 0, recv_tx);
+        self.sm_handle.send(cmd).map_err(|_e| {
+            StorageIOError::write_snapshot(Some(snapshot_meta.signature()), AnyError::error("channel closed"))
+        })?;
 
-                self.engine.output.push_command(Command::Respond {
-                    resp: Respond::new(Err(mismatch.into()), tx),
-                });
+        let recv_res = recv_rx.await.map_err(|_e| {
+            StorageIOError::write_snapshot(Some(snapshot_meta.signature()), AnyError::error("channel closed"))
+        })?;
 
-                return Ok(());
-            }
-
-            let snapshot_data = self.state_machine.begin_receiving_snapshot().await?;
-            self.snapshot_state.streaming = Some(Streaming::new(req.meta.snapshot_id.clone(), snapshot_data));
+        if let Err(e) = recv_res {
+            self.engine.output.push_command(Command::Respond {
+                when: None,
+                resp: Respond::new(Err(e), tx),
+            });
+            return Ok(());
         }
 
-        tracing::info!("Received snapshot request: {:?}", req_id);
-
-        let streaming = self.snapshot_state.streaming.as_mut().unwrap();
-
-        // Receive the data.
-        streaming.receive(req).await?;
+        let mut condition = None;
 
         if done {
-            let streaming = self.snapshot_state.streaming.take().unwrap();
-            let mut data = streaming.snapshot_data;
+            // If to install snapshot, we can only respond when snapshot is successfully installed.
+            condition = Some(Condition::Applied {
+                log_id: snapshot_meta.last_log_id,
+            });
 
-            data.as_mut()
-                .shutdown()
-                .await
-                .map_err(|e| StorageIOError::write_snapshot(snapshot_meta.signature(), &e))?;
-
-            self.received_snapshot.insert(snapshot_meta.snapshot_id.clone(), data);
-        }
-
-        if done {
             self.engine.following_handler().install_snapshot(snapshot_meta);
         }
 
         self.engine.output.push_command(Command::Respond {
+            when: condition,
             resp: Respond::new(
                 Ok(InstallSnapshotResponse {
                     vote: *self.engine.state.vote_ref(),
@@ -667,40 +660,15 @@ where
         Ok(())
     }
 
-    fn handle_building_snapshot_result(
-        &mut self,
-        result: SnapshotResult<C::NodeId, C::Node>,
-    ) -> Result<(), StorageError<C::NodeId>> {
-        tracing::info!("handle_building_snapshot_result: {:?}", result);
-
-        debug_assert!(self.snapshot_state.building.is_some(), "no snapshot is building");
-
-        // One build will only be triggered if there is no other build in progress.
-        // Therefore there won't be multiple builds in progress.
-        match result {
-            SnapshotResult::Ok(meta) => {
-                self.engine.finish_building_snapshot(meta);
-            }
-            SnapshotResult::StorageError(sto_err) => {
-                return Err(sto_err);
-            }
-            SnapshotResult::Aborted => {}
-        }
-
-        self.snapshot_state.building = None;
-
-        Ok(())
-    }
-
     /// Trigger a snapshot building(log compaction) job if needed.
     ///
     /// If `force` is True, it will skip the threshold check and start creating snapshot as
     /// demanded. But it will still check if there is already a snapshot building job in progress.
     #[tracing::instrument(level = "debug", skip(self))]
-    pub(crate) async fn trigger_snapshot_if_needed(&mut self, force: bool) {
+    pub(crate) fn trigger_snapshot_if_needed(&mut self, force: bool) {
         tracing::debug!("trigger_snapshot_if_needed: force: {}", force);
 
-        if self.snapshot_state.building.is_some() {
+        if self.building_snapshot {
             tracing::debug!("snapshot building is in progress, do not trigger snapshot");
             return;
         }
@@ -718,40 +686,10 @@ where
 
         // At this point, we are clear to begin a new snapshot building process.
 
-        let mut builder = self.state_machine.get_snapshot_builder().await;
-        let (fu, abort_handle) = abortable(async move { builder.build_snapshot().await });
-        let tx_api = self.tx_api.clone();
+        self.building_snapshot = true;
 
-        let join_handle = tokio::spawn(
-            async move {
-                match fu.await {
-                    Ok(res) => match res {
-                        Ok(snapshot) => {
-                            let _ = tx_api.send(RaftMsg::BuildingSnapshotResult {
-                                result: SnapshotResult::Ok(snapshot.meta),
-                            });
-                        }
-                        Err(err) => {
-                            tracing::error!({error=%err}, "error while generating snapshot");
-                            let _ = tx_api.send(RaftMsg::BuildingSnapshotResult {
-                                result: SnapshotResult::StorageError(err),
-                            });
-                        }
-                    },
-                    Err(_aborted) => {
-                        let _ = tx_api.send(RaftMsg::BuildingSnapshotResult {
-                            result: SnapshotResult::Aborted,
-                        });
-                    }
-                }
-            }
-            .instrument(tracing::debug_span!("building-snapshot")),
-        );
-
-        self.snapshot_state.building = Some(building_state::Building {
-            abort_handle,
-            join_handle,
-        });
+        // Does not care about response and the command seq
+        self.sm_handle.send(sm::Command::build_snapshot(0)).unwrap();
     }
 
     /// Reject a request due to the Raft node being in a state which prohibits the request.
@@ -855,27 +793,26 @@ where
             "about to apply"
         );
 
-        // Fake complain: avoid using `collect()` when not needed
-        #[allow(clippy::needless_collect)]
-        let applying_entries = entries
-            .iter()
-            .map(|e| ApplyingEntry::new(*e.get_log_id(), e.get_membership().cloned()))
-            .collect::<Vec<_>>();
-
-        // TODO: prepare response before apply_to_state_machine,
-        //       so that an Entry does not need to be Clone,
-        //       and no references will be used by apply_to_state_machine
-
         let last_applied = *entries[entries.len() - 1].get_log_id();
-        let apply_results = self.state_machine.apply(entries).await?;
 
-        tracing::debug!(last_applied = display(last_applied), "update last_applied");
+        // Do not care about the command id
+        let cmd = sm::Command::apply(0, entries);
+        self.sm_handle.send(cmd).map_err(|e| StorageIOError::apply(last_applied, AnyError::error(e)))?;
+
+        Ok(())
+    }
+
+    /// When received results of applying log entries to the state machine, send back responses to
+    /// the callers that proposed the entries.
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub(crate) fn handle_apply_result(&mut self, res: ApplyResult<C>) {
+        tracing::debug!(last_applied = display(res.last_applied), "{}", func_name!());
 
         if let Some(l) = &mut self.leader_data {
-            let mut results = apply_results.into_iter();
-            let mut applying_entries = applying_entries.into_iter();
+            let mut results = res.apply_results.into_iter();
+            let mut applying_entries = res.applying_entries.into_iter();
 
-            for log_index in since..end {
+            for log_index in res.since..res.end {
                 let ent = applying_entries.next().unwrap();
                 let apply_res = results.next().unwrap();
                 let tx = l.client_resp_channels.remove(&log_index);
@@ -884,8 +821,9 @@ where
             }
         }
 
-        self.trigger_snapshot_if_needed(false).await;
-        Ok(())
+        // TODO(2): it does not have to trigger snapshot after applying, only when building a
+        //          snapshot.
+        self.trigger_snapshot_if_needed(false);
     }
 
     /// Send result of applying a log entry to its client.
@@ -984,7 +922,21 @@ where
 
         while let Some(cmd) = self.engine.output.pop_command() {
             tracing::debug!("run command: {:?}", cmd);
-            self.run_command(cmd).await?;
+
+            let res = self.run_command(cmd).await?;
+
+            if let Some(cmd) = res {
+                tracing::debug!("early return: postpone command: {:?}", cmd);
+                self.engine.output.postpone_command(cmd);
+
+                if tracing::enabled!(Level::DEBUG) {
+                    for c in self.engine.output.iter_commands().take(8) {
+                        tracing::debug!("postponed, first 8 queued commands: {:?}", c);
+                    }
+                }
+
+                return Ok(());
+            }
         }
 
         Ok(())
@@ -1090,6 +1042,7 @@ where
 
         let resp = self.engine.handle_vote_req(req);
         self.engine.output.push_command(Command::Respond {
+            when: None,
             resp: Respond::new(Ok(resp), tx),
         });
     }
@@ -1148,9 +1101,6 @@ where
             RaftMsg::InstallSnapshot { rpc, tx } => {
                 self.handle_install_snapshot_request(rpc, tx).await?;
             }
-            RaftMsg::BuildingSnapshotResult { result } => {
-                self.handle_building_snapshot_result(result)?;
-            }
             RaftMsg::CheckIsLeaderRequest { tx } => {
                 if self.engine.state.is_leader(&self.engine.config.id) {
                     self.handle_check_is_leader_request(tx).await?;
@@ -1187,7 +1137,7 @@ where
                     ExternalCommand::Heartbeat => {
                         self.send_heartbeat("ExternalCommand");
                     }
-                    ExternalCommand::Snapshot => self.trigger_snapshot_if_needed(true).await,
+                    ExternalCommand::Snapshot => self.trigger_snapshot_if_needed(true),
                 }
             }
             RaftMsg::Tick { i } => {
@@ -1221,10 +1171,24 @@ where
                 // When a membership that removes the leader is committed,
                 // the leader continue to work for a short while before reverting to a learner.
                 // This way, let the leader replicate the `membership-log-is-committed` message to
-                // followers. Otherwise, if the leader step down at once, the
-                // follower might have to re-commit the membership log
-                // again, electing itself.
-                self.engine.leader_step_down();
+                // followers.
+                // Otherwise, if the leader step down at once, the follower might have to
+                // re-commit the membership log again, electing itself.
+                //
+                // ---
+                //
+                // Stepping down only when the response of the second change-membership is sent.
+                // Otherwise the Sender to the caller will be dropped before sending back the
+                // response.
+
+                // TODO: temp solution: Manually wait until the second membership log being applied to state
+                //       machine. Because the response is sent back to the caller after log is
+                //       applied.
+                //       ---
+                //       A better way is to make leader step down a command that waits for the log to be applied.
+                if self.engine.state.applied() >= self.engine.state.membership_state.effective().log_id().as_ref() {
+                    self.engine.leader_step_down();
+                }
             }
 
             RaftMsg::HigherVote {
@@ -1250,6 +1214,32 @@ where
                     self.handle_replication_progress(target, id, result);
                 }
             }
+
+            RaftMsg::StateMachine { command_result } => {
+                tracing::debug!("sm::StateMachine command result: {:?}", command_result);
+
+                match command_result.result? {
+                    sm::Response::BuildSnapshot(meta) => {
+                        self.building_snapshot = false;
+                        self.engine.finish_building_snapshot(meta);
+                    }
+                    sm::Response::GetSnapshot(_) => {}
+                    sm::Response::ReceiveSnapshotChunk(_) => {}
+                    sm::Response::InstallSnapshot(meta) => {
+                        if let Some(meta) = meta {
+                            self.engine.state.io_state_mut().update_applied(meta.last_log_id);
+                            self.engine.output.metrics_flags.set_data_changed();
+                        }
+                    }
+                    sm::Response::Apply(res) => {
+                        self.engine.state.io_state_mut().update_applied(Some(res.last_applied));
+                        self.engine.output.metrics_flags.set_data_changed();
+
+                        self.handle_apply_result(res);
+                    }
+                }
+            }
+
             RaftMsg::ReplicationFatal => {
                 return Err(Fatal::Stopped);
             }
@@ -1421,7 +1411,25 @@ where
     async fn run_command<'e>(
         &mut self,
         cmd: Command<C::NodeId, C::Node, C::Entry>,
-    ) -> Result<(), StorageError<C::NodeId>> {
+    ) -> Result<Option<Command<C::NodeId, C::Node, C::Entry>>, StorageError<C::NodeId>> {
+        if let Some(condition) = cmd.condition() {
+            match condition {
+                Condition::LogFlushed { .. } => {
+                    // TODO: not used yet
+                }
+                Condition::Applied { log_id } => {
+                    if self.engine.state.applied() < log_id.as_ref() {
+                        tracing::debug!(
+                            "log_id: {} has not yet applied, postpone cmd: {:?}",
+                            DisplayOption(log_id),
+                            cmd
+                        );
+                        return Ok(Some(cmd));
+                    }
+                }
+            }
+        }
+
         match cmd {
             Command::BecomeLeader => {
                 debug_assert!(self.leader_data.is_none(), "can not become leader twice");
@@ -1500,7 +1508,17 @@ where
                             let _ = node.tx_repl.send(Replicate::logs(id, log_id_range));
                         }
                         Inflight::Snapshot { id, last_log_id } => {
-                            let snapshot = self.state_machine.get_current_snapshot().await?;
+                            // TODO(2): move to another task.
+                            let (tx, rx) = oneshot::channel();
+
+                            let cmd = sm::Command::get_snapshot(0, tx);
+                            self.sm_handle
+                                .send(cmd)
+                                .map_err(|e| StorageIOError::read_snapshot(None, AnyError::error(e)))?;
+
+                            let snapshot =
+                                rx.await.map_err(|e| StorageIOError::read_snapshot(None, AnyError::error(e)))?;
+
                             tracing::debug!("snapshot: {}", snapshot.as_ref().map(|x| &x.meta).summary());
 
                             if let Some(snapshot) = snapshot {
@@ -1532,22 +1550,26 @@ where
                 self.update_progress_metrics(target, matching);
             }
             Command::CancelSnapshot { snapshot_meta } => {
-                let got = self.received_snapshot.remove(&snapshot_meta.snapshot_id);
-                debug_assert!(got.is_some(), "there has to be a buffered snapshot data");
+                // Command seq is 0 because it does not wait for a response
+                let cmd = sm::Command::cancel_snapshot(0, snapshot_meta.clone());
+                self.sm_handle
+                    .send(cmd)
+                    .map_err(|e| StorageIOError::write_snapshot(Some(snapshot_meta.signature()), AnyError::error(e)))?;
             }
             Command::InstallSnapshot { snapshot_meta } => {
-                // Safe unwrap: it is guaranteed that the snapshot data is buffered. Otherwise it is a bug.
-                let data = self.received_snapshot.remove(&snapshot_meta.snapshot_id).unwrap();
-
                 tracing::info!("Start to install_snapshot, meta: {:?}", snapshot_meta);
-                self.state_machine.install_snapshot(&snapshot_meta, data).await?;
-                tracing::info!("Done install_snapshot, meta: {:?}", snapshot_meta);
+
+                // Command seq is 0 because it does not wait for a response
+                let cmd = sm::Command::install_snapshot(0, snapshot_meta.clone());
+                self.sm_handle
+                    .send(cmd)
+                    .map_err(|e| StorageIOError::write_snapshot(Some(snapshot_meta.signature()), AnyError::error(e)))?;
             }
-            Command::Respond { resp: send } => {
+            Command::Respond { resp: send, .. } => {
                 send.send();
             }
         }
 
-        Ok(())
+        Ok(None)
     }
 }

@@ -20,9 +20,13 @@ use crate::SnapshotMeta;
 use crate::Vote;
 
 mod accepted;
+pub(crate) mod io_state;
 mod log_state_reader;
 mod membership_state;
 mod vote_state_reader;
+
+pub(crate) use io_state::IOState;
+#[allow(unused)] pub(crate) use io_state::LogIOId;
 
 #[cfg(test)]
 mod tests {
@@ -76,6 +80,8 @@ where
 
     pub(crate) accepted: Accepted<NID>,
 
+    pub(crate) io_state: IOState<NID>,
+
     /// The log id upto which the next time it purges.
     ///
     /// If a log is in use by a replication task, the purge is postponed and is stored in this
@@ -98,6 +104,10 @@ where
 
     fn committed(&self) -> Option<&LogId<NID>> {
         self.committed.as_ref()
+    }
+
+    fn applied(&self) -> Option<&LogId<NID>> {
+        self.io_state.applied()
     }
 
     fn snapshot_last_log_id(&self) -> Option<&LogId<NID>> {
@@ -220,6 +230,10 @@ where
         } else {
             None
         }
+    }
+
+    pub(crate) fn io_state_mut(&mut self) -> &mut IOState<NID> {
+        &mut self.io_state
     }
 
     /// Find the first entry in the input that does not exist on local raft-log,

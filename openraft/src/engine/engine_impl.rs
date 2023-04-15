@@ -388,6 +388,7 @@ where
         if let Some(tx) = tx {
             let resp: AppendEntriesResponse<NID> = res.into();
             self.output.push_command(Command::Respond {
+                when: None,
                 resp: Respond::new(Ok(resp), tx),
             });
         }
@@ -453,6 +454,17 @@ where
         }
     }
 
+    /// Update Engine state when a new snapshot is built.
+    ///
+    /// NOTE:
+    /// - Engine updates its state for building a snapshot is done after storage finished building a
+    ///   snapshot,
+    /// - while Engine updates its state for installing a snapshot is done before storage starts
+    ///   installing a snapshot.
+    ///
+    /// This is all right because:
+    /// - Engine only keeps the snapshot meta with the greatest last-log-id;
+    /// - and a snapshot smaller than last-committed is not allowed to be installed.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn finish_building_snapshot(&mut self, meta: SnapshotMeta<NID, N>) {
         tracing::info!("finish_building_snapshot: {:?}", meta);

@@ -308,9 +308,9 @@ impl Store {
         self.db
             .put_cf(self.store(), b"snapshot", serde_json::to_vec(&snap).unwrap().as_slice())
             .map_err(|e| StorageError::IO {
-                source: StorageIOError::write_snapshot(snap.meta.signature(), &e),
+                source: StorageIOError::write_snapshot(Some(snap.meta.signature()), &e),
             })?;
-        self.flush(ErrorSubject::Snapshot(snap.meta.signature()), ErrorVerb::Write)?;
+        self.flush(ErrorSubject::Snapshot(Some(snap.meta.signature())), ErrorVerb::Write)?;
         Ok(())
     }
 }
@@ -531,7 +531,7 @@ impl RaftStorage<TypeConfig> for Arc<Store> {
         // Update the state machine.
         {
             let updated_state_machine: SerializableExampleStateMachine = serde_json::from_slice(&new_snapshot.data)
-                .map_err(|e| StorageIOError::read_snapshot(new_snapshot.meta.signature(), &e))?;
+                .map_err(|e| StorageIOError::read_snapshot(Some(new_snapshot.meta.signature()), &e))?;
             let mut state_machine = self.state_machine.write().await;
             *state_machine = StateMachine::from_serializable(updated_state_machine, self.db.clone())?;
         }

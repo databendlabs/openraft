@@ -389,7 +389,7 @@ impl RaftStorage<Config> for Arc<MemStore> {
         // Update the state machine.
         {
             let new_sm: MemStoreStateMachine = serde_json::from_slice(&new_snapshot.data)
-                .map_err(|e| StorageIOError::read_snapshot(new_snapshot.meta.signature(), &e))?;
+                .map_err(|e| StorageIOError::read_snapshot(Some(new_snapshot.meta.signature()), &e))?;
             let mut sm = self.sm.write().await;
             *sm = new_sm;
         }

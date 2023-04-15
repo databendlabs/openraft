@@ -28,6 +28,7 @@
 //! ```
 
 mod command;
+mod command_kind;
 mod engine_config;
 mod engine_impl;
 mod engine_output;
@@ -50,8 +51,10 @@ mod tests {
 #[cfg(test)] mod testing;
 
 pub(crate) use command::Command;
+pub(crate) use command::Condition;
 pub(crate) use command::Respond;
 pub(crate) use command::ValueSender;
+pub(crate) use command_kind::CommandKind;
 pub(crate) use engine_config::EngineConfig;
 pub(crate) use engine_impl::Engine;
 pub(crate) use engine_output::EngineOutput;

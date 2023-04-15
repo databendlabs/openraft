@@ -21,9 +21,8 @@ use tracing::Level;
 use crate::config::Config;
 use crate::config::RuntimeConfig;
 use crate::core::replication_lag;
-use crate::core::snapshot_state;
+use crate::core::sm;
 use crate::core::RaftCore;
-use crate::core::SnapshotResult;
 use crate::core::Tick;
 use crate::core::TickHandle;
 use crate::display_ext::DisplaySlice;
@@ -189,7 +188,7 @@ where
     SM: RaftStateMachine<C>,
 {
     inner: Arc<RaftInner<C, N, LS>>,
-    _p: PhantomData<SM>,
+    _phantom: PhantomData<SM>,
 }
 
 impl<C, N, LS, SM> Raft<C, N, LS, SM>
@@ -258,19 +257,20 @@ where
 
         let engine = Engine::new(state, eng_config);
 
-        let core = RaftCore {
+        let sm_handle = sm::Worker::spawn(state_machine, tx_api.clone());
+
+        let core: RaftCore<C, N, LS, SM> = RaftCore {
             id,
             config: config.clone(),
             runtime_config: runtime_config.clone(),
             network,
             log_store,
-            state_machine,
+            sm_handle,
 
             engine,
             leader_data: None,
 
-            snapshot_state: snapshot_state::State::default(),
-            received_snapshot: BTreeMap::new(),
+            building_snapshot: false,
 
             tx_api: tx_api.clone(),
             rx_api,
@@ -295,7 +295,7 @@ where
 
         Ok(Self {
             inner: Arc::new(inner),
-            _p: Default::default(),
+            _phantom: Default::default(),
         })
     }
 
@@ -881,12 +881,6 @@ where
         tx: InstallSnapshotTx<C::NodeId>,
     },
 
-    BuildingSnapshotResult {
-        // TODO: building snapshot session id
-        // snapshot_meta: SnapshotMeta<C::NodeId, C::Node>,
-        result: SnapshotResult<C::NodeId, C::Node>,
-    },
-
     ClientWriteRequest {
         app_data: C::D,
         tx: ClientWriteTx<C>,
@@ -974,6 +968,12 @@ where
         // membership_log_id: Option<LogId<C::NodeId>>,
     },
 
+    /// Result of executing a command sent from state machine worker.
+    StateMachine {
+        command_result: sm::CommandResult<C>,
+    },
+
+    // TODO: it should have a body about the error.
     /// Some critical error has taken place, and Raft needs to shutdown.
     /// Sent by a replication task `ReplicationCore`.
     ReplicationFatal,
@@ -998,9 +998,6 @@ where
             }
             RaftMsg::InstallSnapshot { rpc, .. } => {
                 format!("InstallSnapshot: {}", rpc.summary())
-            }
-            RaftMsg::BuildingSnapshotResult { result: update } => {
-                format!("BuildingSnapshotResult: {:?}", update)
             }
             RaftMsg::ClientWriteRequest { .. } => "ClientWriteRequest".to_string(),
             RaftMsg::CheckIsLeaderRequest { .. } => "CheckIsLeaderRequest".to_string(),
@@ -1046,6 +1043,9 @@ where
                 )
             }
             RaftMsg::ReplicationFatal => "ReplicationFatal".to_string(),
+            RaftMsg::StateMachine { command_result: done } => {
+                format!("StateMachine command done: {:?}", done)
+            }
         }
     }
 }
