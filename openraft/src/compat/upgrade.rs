@@ -6,6 +6,11 @@
 pub trait Upgrade<To> {
     /// Upgrades the current instance to type To.
     fn upgrade(self) -> To;
+
+    fn try_upgrade(self) -> Result<To, (Self, &'static str)>
+    where Self: Sized {
+        Ok(self.upgrade())
+    }
 }
 
 /// `Compat` is a serialization compatible type that can be deserialized from both an older type

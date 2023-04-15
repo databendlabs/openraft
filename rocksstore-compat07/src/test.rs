@@ -18,7 +18,7 @@ struct RocksBuilder {}
 #[async_trait]
 impl StoreBuilder<Config, LogStore, StateMachine, TempDir> for RocksBuilder {
     async fn build(&self) -> Result<(TempDir, LogStore, StateMachine), StorageError<RocksNodeId>> {
-        let td = tempfile::TempDir::new().expect("couldn't create temp dir");
+        let td = TempDir::new().expect("couldn't create temp dir");
         let store = RocksStore::new(td.path()).await;
         let (log_store, sm) = Adaptor::new(store);
         Ok((td, log_store, sm))

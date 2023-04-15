@@ -100,7 +100,7 @@ jobs:
 
       # - A store with defensive checks returns error when unexpected accesses are sent to RaftStore.
       # - Raft should not depend on defensive error to work correctly.
-      - name: Unit Tests, with and without defensive store
+      - name: Unit Tests
         uses: actions-rs/cargo@v1
         with:
           command: test

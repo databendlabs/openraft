@@ -85,8 +85,6 @@ where
         }
     }
 
-    // TODO(1): make it private because only tests need it.
-    //          rewrite memstore with separated log-store and state machine.
     /// Get a write lock of the underlying storage.
     pub async fn storage_mut(&self) -> RwLockWriteGuard<S> {
         self.storage.write().await

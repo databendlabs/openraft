@@ -151,7 +151,7 @@ where
 
             tracing::debug!("{}: received command: {:?}", func_name!(), cmd);
 
-            let done = match cmd.payload {
+            let command_result = match cmd.payload {
                 CommandPayload::BuildSnapshot => {
                     let resp = self.build_snapshot().await?;
                     CommandResult::new(cmd.command_id, Ok(Response::BuildSnapshot(resp)))
@@ -182,7 +182,7 @@ where
                 }
             };
 
-            let _ = self.resp_tx.send(RaftMsg::StateMachine { command_result: done });
+            let _ = self.resp_tx.send(RaftMsg::StateMachine { command_result });
 
             (cmd.respond)();
         }
