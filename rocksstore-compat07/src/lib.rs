@@ -13,9 +13,9 @@
 //! rocksdb, and then upgrade it to the latest format. You can find usages of `compat07::*` that are
 //! used in this implementation to provide compatibility with older data.
 //!
-//! [`RaftStorage`]: openraft::RaftStorage
+//! [`RaftStorage`]: RaftStorage
 //! [`openraft::compat`]: openraft::compat
-//! [`compat07::LogId`]: openraft::compat::compat07::LogId
+//! [`compat07::LogId`]: compat07::LogId
 
 #[cfg(test)] mod compatibility_test;
 #[cfg(test)] mod test;
@@ -645,17 +645,17 @@ impl RaftStorage<Config> for Arc<RocksStore> {
             return Ok(None);
         };
 
+        println!("bs: {:?}", String::from_utf8(bs.clone()).unwrap());
+
         let curr_snap = serde_json::from_slice::<RocksSnapshotCompat>(&bs).map_err(|e| StorageIOError::read(&e))?;
 
         let d = curr_snap.data;
-
-        let meta = match curr_snap.meta {
-            compat07::SnapshotMeta::Old(_o) => {
-                // SnapshotMeta can not be upgrade.
-                // It does not have `last_membership` field and can not be installed by a follower.
-                return Ok(None);
-            }
-            compat07::SnapshotMeta::New(meta) => meta,
+        let meta = if let Ok(meta) = curr_snap.meta.try_upgrade() {
+            meta
+        } else {
+            // SnapshotMeta can not be upgrade.
+            // It does not have `last_membership` field and can not be installed by a follower.
+            return Ok(None);
         };
 
         Ok(Some(Snapshot {
