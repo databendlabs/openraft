@@ -14,6 +14,7 @@ use crate::utime::UTime;
 use crate::EffectiveMembership;
 use crate::LogIdOptionExt;
 use crate::MembershipState;
+use crate::RaftSnapshotBuilder;
 use crate::RaftState;
 use crate::RaftTypeConfig;
 use crate::StorageError;
@@ -76,7 +77,23 @@ where
         // TODO: `flushed` is not set.
         let io_state = IOState::new(LogIOId::default(), last_applied);
 
-        let snapshot_meta = self.state_machine.get_current_snapshot().await?.map(|x| x.meta).unwrap_or_default();
+        let snapshot = self.state_machine.get_current_snapshot().await?;
+
+        // If there is not a snapshot and there are logs purged, which means the snapshot is not persisted,
+        // we just rebuild it so that replication can use it.
+        let snapshot = match snapshot {
+            None => {
+                if last_purged_log_id.is_some() {
+                    let mut b = self.state_machine.get_snapshot_builder().await;
+                    let s = b.build_snapshot().await?;
+                    Some(s)
+                } else {
+                    None
+                }
+            }
+            s @ Some(_) => s,
+        };
+        let snapshot_meta = snapshot.map(|x| x.meta).unwrap_or_default();
 
         let now = Instant::now();
 

@@ -6,6 +6,7 @@
 mod fixtures;
 
 mod t20_api_install_snapshot;
+mod t20_startup_snapshot;
 mod t20_trigger_snapshot;
 mod t23_snapshot_chunk_size;
 mod t24_snapshot_when_lacking_log;
