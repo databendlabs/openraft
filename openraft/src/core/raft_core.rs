@@ -196,9 +196,6 @@ where
 
     pub(crate) leader_data: Option<LeaderData<C, SM::SnapshotData>>,
 
-    /// Whether it is building a snapshot
-    pub(crate) building_snapshot: bool,
-
     pub(crate) tx_api: mpsc::UnboundedSender<RaftMsg<C, N, LS>>,
     pub(crate) rx_api: mpsc::UnboundedReceiver<RaftMsg<C, N, LS>>,
 
@@ -668,7 +665,9 @@ where
     pub(crate) fn trigger_snapshot_if_needed(&mut self, force: bool) {
         tracing::debug!("trigger_snapshot_if_needed: force: {}", force);
 
-        if self.building_snapshot {
+        let state = &mut self.engine.state;
+
+        if state.io_state_mut().building_snapshot() {
             tracing::debug!("snapshot building is in progress, do not trigger snapshot");
             return;
         }
@@ -676,17 +675,14 @@ where
         let SnapshotPolicy::LogsSinceLast(threshold) = self.config.snapshot_policy;
 
         if !force {
+            // TODO: applied() is delayed and may be smaller than the expected state `snapshot_meta`.
             // If we are below the threshold, then there is nothing to do.
-            if self.engine.state.committed().next_index() - self.engine.state.snapshot_meta.last_log_id.next_index()
-                < threshold
-            {
+            if state.applied().next_index() < state.snapshot_meta.last_log_id.next_index() + threshold {
                 return;
             }
         }
 
-        // At this point, we are clear to begin a new snapshot building process.
-
-        self.building_snapshot = true;
+        state.io_state_mut().set_building_snapshot(true);
 
         // Does not care about response and the command seq
         self.sm_handle.send(sm::Command::build_snapshot(0)).unwrap();
@@ -1220,7 +1216,7 @@ where
 
                 match command_result.result? {
                     sm::Response::BuildSnapshot(meta) => {
-                        self.building_snapshot = false;
+                        self.engine.state.io_state_mut().set_building_snapshot(false);
                         self.engine.finish_building_snapshot(meta);
                     }
                     sm::Response::GetSnapshot(_) => {}
