@@ -610,18 +610,23 @@ where
             Err(_) => return Ok(()),
         };
 
-        // TODO: This is still blocking, to make it non-blocking, we need to move receiving to another
-        //       thread.
+        // TODO(2): This is still blocking, to make it non-blocking, we need to move receiving to another
+        //          thread.
         let (recv_tx, recv_rx) = oneshot::channel::<Result<(), InstallSnapshotError>>();
 
-        // No command id because it is blocking
-        let cmd = sm::Command::receive(req, 0, recv_tx);
+        let cmd = sm::Command::receive(req, recv_tx);
         self.sm_handle.send(cmd).map_err(|_e| {
-            StorageIOError::write_snapshot(Some(snapshot_meta.signature()), AnyError::error("channel closed"))
+            StorageIOError::write_snapshot(
+                Some(snapshot_meta.signature()),
+                AnyError::error("sm-worker channel closed"),
+            )
         })?;
 
         let recv_res = recv_rx.await.map_err(|_e| {
-            StorageIOError::write_snapshot(Some(snapshot_meta.signature()), AnyError::error("channel closed"))
+            StorageIOError::write_snapshot(
+                Some(snapshot_meta.signature()),
+                AnyError::error("sm-worker channel closed"),
+            )
         })?;
 
         if let Err(e) = recv_res {
@@ -766,8 +771,7 @@ where
 
         let last_applied = *entries[entries.len() - 1].get_log_id();
 
-        // Do not care about the command id
-        let cmd = sm::Command::apply(0, entries);
+        let cmd = sm::Command::apply(entries);
         self.sm_handle.send(cmd).map_err(|e| StorageIOError::apply(last_applied, AnyError::error(e)))?;
 
         Ok(())
@@ -1437,8 +1441,7 @@ where
                 self.log_store.truncate(since).await?;
             }
             Command::BuildSnapshot {} => {
-                // Does not care about response and the command seq
-                self.sm_handle.send(sm::Command::build_snapshot(0)).unwrap();
+                self.sm_handle.send(sm::Command::build_snapshot()).unwrap();
             }
             Command::SendVote { vote_req } => {
                 self.spawn_parallel_vote_requests(&vote_req).await;
@@ -1482,7 +1485,7 @@ where
                             // worker to receive it.
                             let (tx, rx) = oneshot::channel();
 
-                            let cmd = sm::Command::get_snapshot(0, tx);
+                            let cmd = sm::Command::get_snapshot(tx);
                             self.sm_handle
                                 .send(cmd)
                                 .map_err(|e| StorageIOError::read_snapshot(None, AnyError::error(e)))?;
@@ -1514,8 +1517,7 @@ where
                 self.update_progress_metrics(target, matching);
             }
             Command::CancelSnapshot { snapshot_meta } => {
-                // Command seq is 0 because it does not wait for a response
-                let cmd = sm::Command::cancel_snapshot(0, snapshot_meta.clone());
+                let cmd = sm::Command::cancel_snapshot(snapshot_meta.clone());
                 self.sm_handle
                     .send(cmd)
                     .map_err(|e| StorageIOError::write_snapshot(Some(snapshot_meta.signature()), AnyError::error(e)))?;
@@ -1523,8 +1525,7 @@ where
             Command::InstallSnapshot { snapshot_meta } => {
                 tracing::info!("Start to install_snapshot, meta: {:?}", snapshot_meta);
 
-                // Command seq is 0 because it does not wait for a response
-                let cmd = sm::Command::install_snapshot(0, snapshot_meta.clone());
+                let cmd = sm::Command::install_snapshot(snapshot_meta.clone());
                 self.sm_handle
                     .send(cmd)
                     .map_err(|e| StorageIOError::write_snapshot(Some(snapshot_meta.signature()), AnyError::error(e)))?;

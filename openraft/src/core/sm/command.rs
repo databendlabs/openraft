@@ -1,5 +1,7 @@
 use std::fmt::Debug;
 use std::fmt::Formatter;
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering;
 
 use tokio::sync::oneshot;
 
@@ -41,56 +43,58 @@ where
     C: RaftTypeConfig,
     SM: RaftStateMachine<C>,
 {
-    pub(crate) fn new<F>(payload: CommandPayload<C, SM>, command_id: CommandSeq, respond: F) -> Self
+    /// Generate the next command seq with atomic increment.
+    fn next_seq() -> CommandSeq {
+        static SEQ: AtomicU64 = AtomicU64::new(1);
+        SEQ.fetch_add(1, Ordering::Relaxed)
+    }
+
+    pub(crate) fn new<F>(payload: CommandPayload<C, SM>, respond: F) -> Self
     where F: FnOnce() + Send + 'static {
         Self {
-            command_id,
+            command_id: Self::next_seq(),
             payload,
             respond: Box::new(respond),
         }
     }
 
-    pub(crate) fn build_snapshot(command_id: CommandSeq) -> Self {
+    pub(crate) fn build_snapshot() -> Self {
         let payload = CommandPayload::BuildSnapshot;
-        Command::new(payload, command_id, || {})
+        Command::new(payload, || {})
     }
 
-    pub(crate) fn get_snapshot(
-        command_id: CommandSeq,
-        tx: oneshot::Sender<Option<Snapshot<C::NodeId, C::Node, SM::SnapshotData>>>,
-    ) -> Self {
+    pub(crate) fn get_snapshot(tx: oneshot::Sender<Option<Snapshot<C::NodeId, C::Node, SM::SnapshotData>>>) -> Self {
         let payload = CommandPayload::GetSnapshot { tx };
-        Command::new(payload, command_id, || {})
+        Command::new(payload, || {})
     }
 
     pub(crate) fn receive(
         req: InstallSnapshotRequest<C>,
-        command_id: CommandSeq,
         tx: oneshot::Sender<Result<(), InstallSnapshotError>>,
     ) -> Self {
         let payload = CommandPayload::ReceiveSnapshotChunk { req, tx };
-        Command::new(payload, command_id, || {})
+        Command::new(payload, || {})
     }
 
-    pub(crate) fn install_snapshot(command_id: CommandSeq, snapshot_meta: SnapshotMeta<C::NodeId, C::Node>) -> Self {
+    pub(crate) fn install_snapshot(snapshot_meta: SnapshotMeta<C::NodeId, C::Node>) -> Self {
         let payload = CommandPayload::FinalizeSnapshot {
             install: true,
             snapshot_meta,
         };
-        Command::new(payload, command_id, || {})
+        Command::new(payload, || {})
     }
 
-    pub(crate) fn cancel_snapshot(command_id: CommandSeq, snapshot_meta: SnapshotMeta<C::NodeId, C::Node>) -> Self {
+    pub(crate) fn cancel_snapshot(snapshot_meta: SnapshotMeta<C::NodeId, C::Node>) -> Self {
         let payload = CommandPayload::FinalizeSnapshot {
             install: false,
             snapshot_meta,
         };
-        Command::new(payload, command_id, || {})
+        Command::new(payload, || {})
     }
 
-    pub(crate) fn apply(command_id: CommandSeq, entries: Vec<C::Entry>) -> Self {
+    pub(crate) fn apply(entries: Vec<C::Entry>) -> Self {
         let payload = CommandPayload::Apply { entries };
-        Command::new(payload, command_id, || {})
+        Command::new(payload, || {})
     }
 }
 
