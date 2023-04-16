@@ -29,7 +29,6 @@ use tracing::Span;
 
 use crate::config::Config;
 use crate::config::RuntimeConfig;
-use crate::config::SnapshotPolicy;
 use crate::core::sm;
 use crate::core::ServerState;
 use crate::display_ext::DisplayOption;
@@ -534,7 +533,7 @@ where
             // --- data ---
             current_term: self.engine.state.vote_ref().leader_id().get_term(),
             last_log_index: self.engine.state.last_log_id().index(),
-            last_applied: self.engine.state.applied().copied(),
+            last_applied: self.engine.state.io_applied().copied(),
             snapshot: self.engine.state.snapshot_meta.last_log_id,
 
             // --- cluster ---
@@ -672,14 +671,10 @@ where
             return;
         }
 
-        let SnapshotPolicy::LogsSinceLast(threshold) = self.config.snapshot_policy;
-
-        if !force {
-            // TODO: applied() is delayed and may be smaller than the expected state `snapshot_meta`.
-            // If we are below the threshold, then there is nothing to do.
-            if state.applied().next_index() < state.snapshot_meta.last_log_id.next_index() + threshold {
-                return;
-            }
+        if force || self.config.snapshot_policy.should_snapshot(state) {
+            // Start snapshot building job
+        } else {
+            return;
         }
 
         state.io_state_mut().set_building_snapshot(true);
@@ -1182,7 +1177,7 @@ where
                 //       applied.
                 //       ---
                 //       A better way is to make leader step down a command that waits for the log to be applied.
-                if self.engine.state.applied() >= self.engine.state.membership_state.effective().log_id().as_ref() {
+                if self.engine.state.io_applied() >= self.engine.state.membership_state.effective().log_id().as_ref() {
                     self.engine.leader_step_down();
                 }
             }
@@ -1414,7 +1409,7 @@ where
                     // TODO: not used yet
                 }
                 Condition::Applied { log_id } => {
-                    if self.engine.state.applied() < log_id.as_ref() {
+                    if self.engine.state.io_applied() < log_id.as_ref() {
                         tracing::debug!(
                             "log_id: {} has not yet applied, postpone cmd: {:?}",
                             DisplayOption(log_id),

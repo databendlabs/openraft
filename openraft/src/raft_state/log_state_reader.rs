@@ -50,7 +50,9 @@ pub(crate) trait LogStateReader<NID: NodeId> {
     fn committed(&self) -> Option<&LogId<NID>>;
 
     /// The last known applied log id, i.e., the id of the log that is applied to state machine.
-    fn applied(&self) -> Option<&LogId<NID>>;
+    ///
+    /// This is actually happened io-state which might fall behind committed log id.
+    fn io_applied(&self) -> Option<&LogId<NID>>;
 
     /// Return the last log id the snapshot includes.
     fn snapshot_last_log_id(&self) -> Option<&LogId<NID>>;
