@@ -1,6 +1,7 @@
 use std::ops::Deref;
 
 use crate::engine::handler::log_handler::LogHandler;
+use crate::engine::handler::sm_handler::StateMachineHandler;
 use crate::engine::Command;
 use crate::engine::EngineConfig;
 use crate::engine::EngineOutput;
@@ -187,10 +188,15 @@ where
             self.output.push_command(Command::ReplicateCommitted {
                 committed: self.state.committed().copied(),
             });
+
             self.output.push_command(Command::LeaderCommit {
                 already_committed: prev_committed,
                 upto: self.state.committed().copied().unwrap(),
             });
+
+            if self.config.snapshot_policy.should_snapshot(&self.state) {
+                self.sm_handler().build_snapshot();
+            }
         }
     }
 
@@ -402,6 +408,13 @@ where
     pub(crate) fn log_handler(&mut self) -> LogHandler<NID, N, Ent> {
         LogHandler {
             config: self.config,
+            state: self.state,
+            output: self.output,
+        }
+    }
+
+    pub(crate) fn sm_handler(&mut self) -> StateMachineHandler<NID, N, Ent> {
+        StateMachineHandler {
             state: self.state,
             output: self.output,
         }

@@ -98,6 +98,13 @@ where
     /// inclusive.
     DeleteConflictLog { since: LogId<NID> },
 
+    // TODO(3): put all state machine related commands in a separate enum.
+    /// Build a snapshot.
+    ///
+    /// This command will send a [`sm::Command::BuildSnapshot`] to [`sm::Worker`].
+    /// The response will be sent back in a `RaftMsg::StateMachine` message to `RaftCore`.
+    BuildSnapshot {},
+
     /// Install a snapshot data file: e.g., replace state machine with snapshot, save snapshot
     /// data.
     InstallSnapshot { snapshot_meta: SnapshotMeta<NID, N> },
@@ -111,13 +118,6 @@ where
         when: Option<Condition<NID>>,
         resp: Respond<NID, N>,
     },
-
-    //
-    // --- Draft unimplemented commands:
-
-    // TODO:
-    #[allow(dead_code)]
-    BuildSnapshot {},
 }
 
 /// For unit testing
@@ -145,10 +145,10 @@ where
             (Command::SendVote { vote_req },                       Command::SendVote { vote_req: b }, )                                          => vote_req == b,
             (Command::PurgeLog { upto },                           Command::PurgeLog { upto: b })                                                => upto == b,
             (Command::DeleteConflictLog { since },                 Command::DeleteConflictLog { since: b }, )                                    => since == b,
+            (Command::BuildSnapshot {},                            Command::BuildSnapshot { })                                                   => true,
             (Command::InstallSnapshot { snapshot_meta },           Command::InstallSnapshot { snapshot_meta: b }, )                              => snapshot_meta == b,
             (Command::CancelSnapshot { snapshot_meta },            Command::CancelSnapshot { snapshot_meta: b }, )                               => snapshot_meta == b,
             (Command::Respond { when, resp: send },                Command::Respond { when: b_when, resp: b })                                   => send == b && when == b_when,
-            (Command::BuildSnapshot {},                            Command::BuildSnapshot {})                                                    => true,
             _ => false,
         }
     }
@@ -181,9 +181,9 @@ where
             Command::SendVote { .. } => {}
             Command::PurgeLog { .. } => flags.set_data_changed(),
             Command::DeleteConflictLog { .. } => flags.set_data_changed(),
+            Command::BuildSnapshot { .. } => flags.set_data_changed(),
             Command::InstallSnapshot { .. } => flags.set_data_changed(),
             Command::CancelSnapshot { .. } => {}
-            Command::BuildSnapshot { .. } => flags.set_data_changed(),
             Command::Respond { .. } => {}
         }
     }
@@ -207,10 +207,10 @@ where
             Command::SendVote { .. }                  => CommandKind::Network,
             Command::PurgeLog { .. }                  => CommandKind::Log,
             Command::DeleteConflictLog { .. }         => CommandKind::Log,
+            Command::BuildSnapshot { .. }             => CommandKind::StateMachine,
             Command::InstallSnapshot { .. }           => CommandKind::StateMachine,
             Command::CancelSnapshot { .. }            => CommandKind::Other,
             Command::Respond { .. }                   => CommandKind::Other,
-            Command::BuildSnapshot { .. }             => CommandKind::StateMachine,
         }
     }
 
@@ -234,10 +234,10 @@ where
             Command::SendVote { .. }                  => None,
             Command::PurgeLog { .. }                  => None,
             Command::DeleteConflictLog { .. }         => None,
+            Command::BuildSnapshot {}                 => None,
             Command::InstallSnapshot { .. }           => None,
             Command::CancelSnapshot { .. }            => None,
             Command::Respond { when, .. }             => when.as_ref(),
-            Command::BuildSnapshot { .. }             => None,
         }
     }
 }
