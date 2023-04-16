@@ -656,31 +656,11 @@ where
         Ok(())
     }
 
-    /// Trigger a snapshot building(log compaction) job if needed.
-    ///
-    /// If `force` is True, it will skip the threshold check and start creating snapshot as
-    /// demanded. But it will still check if there is already a snapshot building job in progress.
+    /// Trigger a snapshot building(log compaction) job if there is no pending building job.
     #[tracing::instrument(level = "debug", skip(self))]
-    pub(crate) fn trigger_snapshot_if_needed(&mut self, force: bool) {
-        tracing::debug!("trigger_snapshot_if_needed: force: {}", force);
-
-        let state = &mut self.engine.state;
-
-        if state.io_state_mut().building_snapshot() {
-            tracing::debug!("snapshot building is in progress, do not trigger snapshot");
-            return;
-        }
-
-        if force || self.config.snapshot_policy.should_snapshot(state) {
-            // Start snapshot building job
-        } else {
-            return;
-        }
-
-        state.io_state_mut().set_building_snapshot(true);
-
-        // Does not care about response and the command seq
-        self.sm_handle.send(sm::Command::build_snapshot(0)).unwrap();
+    pub(crate) fn trigger_snapshot(&mut self) {
+        tracing::debug!("{}", func_name!());
+        self.engine.sm_handler().build_snapshot();
     }
 
     /// Reject a request due to the Raft node being in a state which prohibits the request.
@@ -811,10 +791,6 @@ where
                 Self::send_response(ent, apply_res, tx);
             }
         }
-
-        // TODO(2): it does not have to trigger snapshot after applying, only when building a
-        //          snapshot.
-        self.trigger_snapshot_if_needed(false);
     }
 
     /// Send result of applying a log entry to its client.
@@ -1128,7 +1104,7 @@ where
                     ExternalCommand::Heartbeat => {
                         self.send_heartbeat("ExternalCommand");
                     }
-                    ExternalCommand::Snapshot => self.trigger_snapshot_if_needed(true),
+                    ExternalCommand::Snapshot => self.trigger_snapshot(),
                 }
             }
             RaftMsg::Tick { i } => {
@@ -1211,7 +1187,6 @@ where
 
                 match command_result.result? {
                     sm::Response::BuildSnapshot(meta) => {
-                        self.engine.state.io_state_mut().set_building_snapshot(false);
                         self.engine.finish_building_snapshot(meta);
                     }
                     sm::Response::GetSnapshot(_) => {}
@@ -1461,8 +1436,10 @@ where
             Command::DeleteConflictLog { since } => {
                 self.log_store.truncate(since).await?;
             }
-            // TODO(2): Engine initiate a snapshot building
-            Command::BuildSnapshot { .. } => {}
+            Command::BuildSnapshot {} => {
+                // Does not care about response and the command seq
+                self.sm_handle.send(sm::Command::build_snapshot(0)).unwrap();
+            }
             Command::SendVote { vote_req } => {
                 self.spawn_parallel_vote_requests(&vote_req).await;
             }

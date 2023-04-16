@@ -4,6 +4,7 @@ use crate::display_ext::DisplayOption;
 use crate::display_ext::DisplaySlice;
 use crate::engine::handler::log_handler::LogHandler;
 use crate::engine::handler::server_state_handler::ServerStateHandler;
+use crate::engine::handler::sm_handler::StateMachineHandler;
 use crate::engine::handler::snapshot_handler::SnapshotHandler;
 use crate::engine::Command;
 use crate::engine::EngineConfig;
@@ -163,6 +164,10 @@ where
                 already_committed: prev_committed,
                 upto: committed.unwrap(),
             });
+
+            if self.config.snapshot_policy.should_snapshot(&self.state) {
+                self.sm_handler().build_snapshot();
+            }
         }
     }
 
@@ -375,6 +380,13 @@ where
 
     fn snapshot_handler(&mut self) -> SnapshotHandler<NID, N, Ent> {
         SnapshotHandler {
+            state: self.state,
+            output: self.output,
+        }
+    }
+
+    pub(crate) fn sm_handler(&mut self) -> StateMachineHandler<NID, N, Ent> {
+        StateMachineHandler {
             state: self.state,
             output: self.output,
         }

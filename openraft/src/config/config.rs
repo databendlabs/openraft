@@ -33,8 +33,7 @@ impl SnapshotPolicy {
     where NID: NodeId {
         match self {
             SnapshotPolicy::LogsSinceLast(threshold) => {
-                // NOTE: io_applied() is delayed and may be smaller than the expected state `snapshot_meta`.
-                state.io_applied().next_index() >= state.snapshot_last_log_id().next_index() + threshold
+                state.committed().next_index() >= state.snapshot_last_log_id().next_index() + threshold
             }
         }
     }
