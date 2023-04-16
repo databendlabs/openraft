@@ -356,7 +356,7 @@ mod tests {
             unimplemented!("testing")
         }
 
-        fn applied(&self) -> Option<&LogId<u64>> {
+        fn io_applied(&self) -> Option<&LogId<u64>> {
             todo!()
         }
 

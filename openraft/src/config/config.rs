@@ -1,5 +1,6 @@
 //! Raft runtime configuration.
 
+use std::ops::Deref;
 use std::sync::atomic::AtomicBool;
 use std::time::Duration;
 
@@ -8,6 +9,9 @@ use rand::thread_rng;
 use rand::Rng;
 
 use crate::config::error::ConfigError;
+use crate::raft_state::LogStateReader;
+use crate::LogIdOptionExt;
+use crate::NodeId;
 
 /// Log compaction and snapshot policy.
 ///
@@ -22,6 +26,18 @@ pub enum SnapshotPolicy {
     /// A snapshot will be generated once the log has grown the specified number of logs since
     /// the last snapshot.
     LogsSinceLast(u64),
+}
+
+impl SnapshotPolicy {
+    pub(crate) fn should_snapshot<NID>(&self, state: &impl Deref<Target = impl LogStateReader<NID>>) -> bool
+    where NID: NodeId {
+        match self {
+            SnapshotPolicy::LogsSinceLast(threshold) => {
+                // NOTE: io_applied() is delayed and may be smaller than the expected state `snapshot_meta`.
+                state.io_applied().next_index() >= state.snapshot_last_log_id().next_index() + threshold
+            }
+        }
+    }
 }
 
 /// Parse number with unit such as 5.3 KB

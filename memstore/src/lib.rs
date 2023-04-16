@@ -136,6 +136,14 @@ impl MemStore {
         Arc::new(Self::new())
     }
 
+    /// Remove the current snapshot.
+    ///
+    /// This method is only used for testing purposes.
+    pub async fn drop_snapshot(&self) {
+        let mut current = self.current_snapshot.write().await;
+        *current = None;
+    }
+
     /// Get a handle to the state machine for testing purposes.
     pub async fn get_state_machine(&self) -> MemStoreStateMachine {
         self.sm.write().await.clone()
@@ -290,7 +298,7 @@ impl RaftStorage<Config> for Arc<MemStore> {
 
     #[tracing::instrument(level = "debug", skip_all)]
     async fn purge_logs_upto(&mut self, log_id: LogId<MemNodeId>) -> Result<(), StorageError<MemNodeId>> {
-        tracing::debug!("delete_log: [{:?}, +oo)", log_id);
+        tracing::debug!("purge_log_upto: [{:?}, +oo)", log_id);
 
         {
             let mut ld = self.last_purged_log_id.write().await;

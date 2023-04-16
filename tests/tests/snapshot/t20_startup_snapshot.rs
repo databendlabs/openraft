@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use maplit::btreeset;
 use openraft::storage::RaftLogStorage;
+use openraft::storage::RaftStateMachine;
 use openraft::Config;
 use openraft::SnapshotPolicy;
 
@@ -33,13 +34,23 @@ async fn startup_build_snapshot() -> anyhow::Result<()> {
 
     tracing::info!("--- send client requests");
     {
-        router.client_request_many(0, "0", (snapshot_threshold - 1 - log_index) as usize).await?;
-        log_index = snapshot_threshold - 1;
+        router.client_request_many(0, "0", (20 - 1 - log_index) as usize).await?;
+        log_index = 20 - 1;
+
+        router.wait(&0, timeout()).log(Some(log_index), "node-0 applied all requests").await?;
+        router.wait(&0, timeout()).snapshot(log_id(1, 0, log_index), "node-0 snapshot").await?;
     }
 
     tracing::info!("--- shut down and purge to log index: {}", 5);
-    let (_, mut log_store, sm) = router.remove_node(0).unwrap();
-    log_store.purge(log_id(1, 0, 5)).await?;
+    let (_, mut log_store, mut sm) = router.remove_node(0).unwrap();
+    log_store.purge(log_id(1, 0, 19)).await?;
+
+    tracing::info!("--- drop current snapshot");
+    {
+        sm.storage_mut().await.drop_snapshot().await;
+        let snap = sm.get_current_snapshot().await?;
+        assert!(snap.is_none());
+    }
 
     tracing::info!("--- restart, expect snapshot at index: {} for node-1", log_index);
     {

@@ -106,7 +106,7 @@ where
         self.committed.as_ref()
     }
 
-    fn applied(&self) -> Option<&LogId<NID>> {
+    fn io_applied(&self) -> Option<&LogId<NID>> {
         self.io_state.applied()
     }
 
