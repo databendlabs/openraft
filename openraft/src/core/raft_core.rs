@@ -660,7 +660,7 @@ where
     #[tracing::instrument(level = "debug", skip(self))]
     pub(crate) fn trigger_snapshot(&mut self) {
         tracing::debug!("{}", func_name!());
-        self.engine.sm_handler().build_snapshot();
+        self.engine.snapshot_handler().trigger_snapshot();
     }
 
     /// Reject a request due to the Raft node being in a state which prohibits the request.

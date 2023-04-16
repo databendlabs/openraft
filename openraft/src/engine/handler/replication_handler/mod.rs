@@ -1,7 +1,7 @@
 use std::ops::Deref;
 
 use crate::engine::handler::log_handler::LogHandler;
-use crate::engine::handler::sm_handler::StateMachineHandler;
+use crate::engine::handler::snapshot_handler::SnapshotHandler;
 use crate::engine::Command;
 use crate::engine::EngineConfig;
 use crate::engine::EngineOutput;
@@ -195,7 +195,7 @@ where
             });
 
             if self.config.snapshot_policy.should_snapshot(&self.state) {
-                self.sm_handler().build_snapshot();
+                self.snapshot_handler().trigger_snapshot();
             }
         }
     }
@@ -413,8 +413,8 @@ where
         }
     }
 
-    pub(crate) fn sm_handler(&mut self) -> StateMachineHandler<NID, N, Ent> {
-        StateMachineHandler {
+    fn snapshot_handler(&mut self) -> SnapshotHandler<NID, N, Ent> {
+        SnapshotHandler {
             state: self.state,
             output: self.output,
         }
