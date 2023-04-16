@@ -270,8 +270,6 @@ where
             engine,
             leader_data: None,
 
-            building_snapshot: false,
-
             tx_api: tx_api.clone(),
             rx_api,
 
