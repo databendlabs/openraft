@@ -7,6 +7,7 @@ use std::fmt::Formatter;
 use std::io::SeekFrom;
 use std::sync::Arc;
 
+use anyerror::AnyError;
 use futures::future::FutureExt;
 pub(crate) use replication_session_id::ReplicationSessionId;
 use tokio::io::AsyncRead;
@@ -14,6 +15,7 @@ use tokio::io::AsyncReadExt;
 use tokio::io::AsyncSeek;
 use tokio::io::AsyncSeekExt;
 use tokio::sync::mpsc;
+use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 use tokio::time::sleep;
 use tokio::time::timeout;
@@ -45,6 +47,8 @@ use crate::RPCTypes;
 use crate::RaftNetwork;
 use crate::RaftNetworkFactory;
 use crate::RaftTypeConfig;
+use crate::StorageError;
+use crate::StorageIOError;
 use crate::ToStorageResult;
 
 /// The handle to a spawned replication stream.
@@ -169,7 +173,7 @@ where
                     repl_id = id;
                     match r_action {
                         Payload::Logs(log_id_range) => self.send_log_entries(id, log_id_range).await,
-                        Payload::Snapshot(snapshot) => self.stream_snapshot(id, snapshot).await,
+                        Payload::Snapshot(snapshot_rx) => self.stream_snapshot(id, snapshot_rx).await,
                     }
                 }
             };
@@ -447,13 +451,33 @@ where
         }
     }
 
-    #[tracing::instrument(level = "trace", skip(self, snapshot))]
+    #[tracing::instrument(level = "info", skip_all)]
     async fn stream_snapshot(
         &mut self,
         id: u64,
-        mut snapshot: Snapshot<C::NodeId, C::Node, SM::SnapshotData>,
+        rx: oneshot::Receiver<Option<Snapshot<C::NodeId, C::Node, SM::SnapshotData>>>,
     ) -> Result<(), ReplicationError<C::NodeId, C::Node>> {
-        tracing::debug!(id = display(id), snapshot = debug(&snapshot.meta), "stream_snapshot",);
+        tracing::info!(id = display(id), "{}", func_name!());
+
+        let snapshot = rx.await.map_err(|e| {
+            let io_err = StorageIOError::read_snapshot(None, AnyError::error(e));
+            StorageError::IO { source: io_err }
+        })?;
+
+        tracing::info!(
+            "received snapshot: id={}; meta:{}",
+            id,
+            snapshot.as_ref().map(|x| &x.meta).summary()
+        );
+
+        let mut snapshot = match snapshot {
+            None => {
+                let io_err = StorageIOError::read_snapshot(None, AnyError::error("snapshot not found"));
+                let sto_err = StorageError::IO { source: io_err };
+                return Err(ReplicationError::StorageError(sto_err));
+            }
+            Some(x) => x,
+        };
 
         let err_x = || (ErrorSubject::Snapshot(Some(snapshot.meta.signature())), ErrorVerb::Read);
 
@@ -572,8 +596,8 @@ where
             Payload::Logs(log_id_range) => {
                 format!("Logs{{id={}, {}}}", self.id, log_id_range)
             }
-            Payload::Snapshot(snapshot) => {
-                format!("Snapshot{{id={}, {}}}", self.id, snapshot.meta.summary())
+            Payload::Snapshot(_) => {
+                format!("Snapshot{{id={}}}", self.id)
             }
         }
     }
@@ -592,10 +616,10 @@ where
         }
     }
 
-    fn new_snapshot(id: u64, snapshot: Snapshot<NID, N, SD>) -> Self {
+    fn new_snapshot(id: u64, snapshot_rx: oneshot::Receiver<Option<Snapshot<NID, N, SD>>>) -> Self {
         Self {
             id,
-            payload: Payload::Snapshot(snapshot),
+            payload: Payload::Snapshot(snapshot_rx),
         }
     }
 }
@@ -610,7 +634,7 @@ where
     SD: AsyncRead + AsyncSeek + Send + Unpin + 'static,
 {
     Logs(LogIdRange<NID>),
-    Snapshot(Snapshot<NID, N, SD>),
+    Snapshot(oneshot::Receiver<Option<Snapshot<NID, N, SD>>>),
 }
 
 impl<NID, N, SD> Debug for Payload<NID, N, SD>
@@ -624,8 +648,8 @@ where
             Self::Logs(log_id_range) => {
                 write!(f, "Logs({})", log_id_range)
             }
-            Self::Snapshot(snapshot) => {
-                write!(f, "Snapshot({:?})", snapshot.meta)
+            Self::Snapshot(_) => {
+                write!(f, "Snapshot()")
             }
         }
     }
@@ -665,8 +689,8 @@ where
         Self::Data(Data::new_logs(id, log_id_range))
     }
 
-    pub(crate) fn snapshot(id: u64, snapshot: Snapshot<NID, N, SD>) -> Self {
-        Self::Data(Data::new_snapshot(id, snapshot))
+    pub(crate) fn snapshot(id: u64, snapshot_rx: oneshot::Receiver<Option<Snapshot<NID, N, SD>>>) -> Self {
+        Self::Data(Data::new_snapshot(id, snapshot_rx))
     }
 }
 

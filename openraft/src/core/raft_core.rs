@@ -660,7 +660,7 @@ where
     #[tracing::instrument(level = "debug", skip(self))]
     pub(crate) fn trigger_snapshot(&mut self) {
         tracing::debug!("{}", func_name!());
-        self.engine.sm_handler().build_snapshot();
+        self.engine.snapshot_handler().trigger_snapshot();
     }
 
     /// Reject a request due to the Raft node being in a state which prohibits the request.
@@ -1476,7 +1476,10 @@ where
                             let _ = node.tx_repl.send(Replicate::logs(id, log_id_range));
                         }
                         Inflight::Snapshot { id, last_log_id } => {
-                            // TODO(2): move to another task.
+                            let _ = last_log_id;
+
+                            // Create a channel to let state machine worker to send the snapshot and the replication
+                            // worker to receive it.
                             let (tx, rx) = oneshot::channel();
 
                             let cmd = sm::Command::get_snapshot(0, tx);
@@ -1484,17 +1487,10 @@ where
                                 .send(cmd)
                                 .map_err(|e| StorageIOError::read_snapshot(None, AnyError::error(e)))?;
 
-                            let snapshot =
-                                rx.await.map_err(|e| StorageIOError::read_snapshot(None, AnyError::error(e)))?;
-
-                            tracing::debug!("snapshot: {}", snapshot.as_ref().map(|x| &x.meta).summary());
-
-                            if let Some(snapshot) = snapshot {
-                                debug_assert_eq!(last_log_id, snapshot.meta.last_log_id);
-                                let _ = node.tx_repl.send(Replicate::snapshot(id, snapshot));
-                            } else {
-                                unreachable!("No snapshot");
-                            }
+                            // unwrap: The replication channel must not be dropped or it is a bug.
+                            node.tx_repl.send(Replicate::snapshot(id, rx)).map_err(|_e| {
+                                StorageIOError::read_snapshot(None, AnyError::error("replication channel closed"))
+                            })?;
                         }
                     }
                 } else {

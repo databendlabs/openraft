@@ -11,7 +11,6 @@ use crate::engine::handler::log_handler::LogHandler;
 use crate::engine::handler::replication_handler::ReplicationHandler;
 use crate::engine::handler::replication_handler::SendNone;
 use crate::engine::handler::server_state_handler::ServerStateHandler;
-use crate::engine::handler::sm_handler::StateMachineHandler;
 use crate::engine::handler::snapshot_handler::SnapshotHandler;
 use crate::engine::handler::vote_handler::VoteHandler;
 use crate::engine::time_state;
@@ -643,13 +642,6 @@ where
 
         FollowingHandler {
             config: &mut self.config,
-            state: &mut self.state,
-            output: &mut self.output,
-        }
-    }
-
-    pub(crate) fn sm_handler(&mut self) -> StateMachineHandler<NID, N, Ent> {
-        StateMachineHandler {
             state: &mut self.state,
             output: &mut self.output,
         }

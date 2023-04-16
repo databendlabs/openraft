@@ -1,3 +1,6 @@
+//! This mod handles state machine operations
+
+use crate::engine::Command;
 use crate::engine::EngineOutput;
 use crate::entry::RaftEntry;
 use crate::raft_state::LogStateReader;
@@ -7,6 +10,7 @@ use crate::NodeId;
 use crate::RaftState;
 use crate::SnapshotMeta;
 
+#[cfg(test)] mod trigger_snapshot_test;
 #[cfg(test)] mod update_snapshot_test;
 
 /// Handle raft vote related operations
@@ -26,6 +30,24 @@ where
     N: Node,
     Ent: RaftEntry<NID, N>,
 {
+    /// Trigger building snapshot if there is no pending building job.
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub(crate) fn trigger_snapshot(&mut self) -> bool {
+        // TODO: test
+        tracing::info!("{}", func_name!());
+
+        if self.state.io_state_mut().building_snapshot() {
+            tracing::debug!("snapshot building is in progress, do not trigger snapshot");
+            return false;
+        }
+
+        tracing::info!("push snapshot building command");
+
+        self.state.io_state.set_building_snapshot(true);
+        self.output.push_command(Command::BuildSnapshot {});
+        true
+    }
+
     /// Update engine state when a new snapshot is built or installed.
     ///
     /// Engine records only the metadata of a snapshot. Snapshot data is stored by RaftStorage

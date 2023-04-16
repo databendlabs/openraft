@@ -219,7 +219,7 @@ where
 
     #[tracing::instrument(level = "info", skip_all)]
     async fn build_snapshot(&mut self) -> Result<SnapshotMeta<C::NodeId, C::Node>, StorageError<C::NodeId>> {
-        // TODO: move it to another task
+        // TODO(3): move it to another task
         // use futures::future::abortable;
         // let (fu, abort_handle) = abortable(async move { builder.build_snapshot().await });
 
@@ -240,7 +240,10 @@ where
 
         let snapshot = self.state_machine.get_current_snapshot().await?;
 
-        tracing::info!("sending back snapshot");
+        tracing::info!(
+            "sending back snapshot: meta: {:?}",
+            snapshot.as_ref().map(|s| s.meta.summary())
+        );
         let _ = tx.send(snapshot);
         Ok(())
     }
