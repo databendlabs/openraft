@@ -29,6 +29,7 @@ use openraft::Vote;
 use serde::Deserialize;
 use serde::Serialize;
 use tokio::sync::RwLock;
+use tokio::time::Duration;
 
 /// The application data request type which the `MemStore` works with.
 ///
@@ -96,6 +97,13 @@ pub struct MemStoreStateMachine {
     pub client_status: HashMap<String, String>,
 }
 
+#[derive(Debug, Clone)]
+#[derive(PartialEq, Eq)]
+#[derive(PartialOrd, Ord)]
+pub enum BlockOperation {
+    BuildSnapshot,
+}
+
 /// An in-memory storage system implementing the `RaftStorage` trait.
 pub struct MemStore {
     last_purged_log_id: RwLock<Option<LogId<MemNodeId>>>,
@@ -105,6 +113,9 @@ pub struct MemStore {
 
     /// The Raft state machine.
     sm: RwLock<MemStoreStateMachine>,
+
+    /// Block operations for testing purposes.
+    block: Mutex<BTreeMap<BlockOperation, Duration>>,
 
     /// The current hard state.
     vote: RwLock<Option<Vote<MemNodeId>>>,
@@ -126,6 +137,7 @@ impl MemStore {
             last_purged_log_id: RwLock::new(None),
             log,
             sm,
+            block: Mutex::new(BTreeMap::new()),
             vote: RwLock::new(None),
             snapshot_idx: Arc::new(Mutex::new(0)),
             current_snapshot,
@@ -147,6 +159,21 @@ impl MemStore {
     /// Get a handle to the state machine for testing purposes.
     pub async fn get_state_machine(&self) -> MemStoreStateMachine {
         self.sm.write().await.clone()
+    }
+
+    /// Block an operation for testing purposes.
+    pub fn set_blocking(&self, block: BlockOperation, d: Duration) {
+        self.block.lock().unwrap().insert(block, d);
+    }
+
+    /// Get the blocking flag for an operation.
+    pub fn get_blocking(&self, block: &BlockOperation) -> Option<Duration> {
+        self.block.lock().unwrap().get(block).cloned()
+    }
+
+    /// Clear a blocking flag for an operation.
+    pub fn clear_blocking(&mut self, block: BlockOperation) {
+        self.block.lock().unwrap().remove(&block);
     }
 }
 
@@ -215,6 +242,11 @@ impl RaftSnapshotBuilder<Config, Cursor<Vec<u8>>> for Arc<MemStore> {
 
             last_applied_log = sm.last_applied_log;
             last_membership = sm.last_membership.clone();
+
+            if let Some(d) = self.get_blocking(&BlockOperation::BuildSnapshot) {
+                tracing::info!(?d, "blocking snapshot build");
+                tokio::time::sleep(d).await;
+            }
         }
 
         let snapshot_size = data.len();
