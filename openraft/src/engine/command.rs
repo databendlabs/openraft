@@ -2,6 +2,7 @@ use std::fmt::Debug;
 
 use tokio::sync::oneshot;
 
+use crate::core::sm;
 use crate::engine::CommandKind;
 use crate::entry::RaftEntry;
 use crate::error::Infallible;
@@ -257,9 +258,13 @@ where NID: NodeId
         leader: LeaderId<NID>,
         log_id: Option<LogId<NID>>,
     },
-    Applied {
-        log_id: Option<LogId<NID>>,
-    },
+
+    /// Wait until the log is applied to the state machine.
+    Applied { log_id: Option<LogId<NID>> },
+
+    /// Wait until a [`sm::Worker`] command is finished.
+    #[allow(dead_code)]
+    StateMachineCommand { command_seq: sm::CommandSeq },
 }
 
 /// A command to send return value to the caller via a `oneshot::Sender`.
