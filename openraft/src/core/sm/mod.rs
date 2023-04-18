@@ -154,17 +154,17 @@ where
             let command_result = match cmd.payload {
                 CommandPayload::BuildSnapshot => {
                     let resp = self.build_snapshot().await?;
-                    CommandResult::new(cmd.command_id, Ok(Response::BuildSnapshot(resp)))
+                    CommandResult::new(cmd.seq, Ok(Response::BuildSnapshot(resp)))
                 }
                 CommandPayload::GetSnapshot { tx } => {
                     #[allow(clippy::let_unit_value)]
                     let resp = self.get_snapshot(tx).await?;
-                    CommandResult::new(cmd.command_id, Ok(Response::GetSnapshot(resp)))
+                    CommandResult::new(cmd.seq, Ok(Response::GetSnapshot(resp)))
                 }
                 CommandPayload::ReceiveSnapshotChunk { req, tx } => {
                     #[allow(clippy::let_unit_value)]
                     let resp = self.receive_snapshot_chunk(req, tx).await?;
-                    CommandResult::new(cmd.command_id, Ok(Response::ReceiveSnapshotChunk(resp)))
+                    CommandResult::new(cmd.seq, Ok(Response::ReceiveSnapshotChunk(resp)))
                 }
                 CommandPayload::FinalizeSnapshot { install, snapshot_meta } => {
                     let resp = if install {
@@ -174,11 +174,11 @@ where
                         self.received = None;
                         None
                     };
-                    CommandResult::new(cmd.command_id, Ok(Response::InstallSnapshot(resp)))
+                    CommandResult::new(cmd.seq, Ok(Response::InstallSnapshot(resp)))
                 }
                 CommandPayload::Apply { entries } => {
                     let resp = self.apply(entries).await?;
-                    CommandResult::new(cmd.command_id, Ok(Response::Apply(resp)))
+                    CommandResult::new(cmd.seq, Ok(Response::Apply(resp)))
                 }
             };
 

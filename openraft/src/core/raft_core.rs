@@ -615,6 +615,7 @@ where
         let (recv_tx, recv_rx) = oneshot::channel::<Result<(), InstallSnapshotError>>();
 
         let cmd = sm::Command::receive(req, recv_tx);
+
         self.sm_handle.send(cmd).map_err(|_e| {
             StorageIOError::write_snapshot(
                 Some(snapshot_meta.signature()),
@@ -1385,7 +1386,7 @@ where
         if let Some(condition) = cmd.condition() {
             match condition {
                 Condition::LogFlushed { .. } => {
-                    // TODO: not used yet
+                    todo!()
                 }
                 Condition::Applied { log_id } => {
                     if self.engine.state.io_applied() < log_id.as_ref() {
@@ -1396,6 +1397,9 @@ where
                         );
                         return Ok(Some(cmd));
                     }
+                }
+                Condition::StateMachineCommand { .. } => {
+                    todo!()
                 }
             }
         }

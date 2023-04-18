@@ -18,7 +18,7 @@ where
     C: RaftTypeConfig,
     SM: RaftStateMachine<C>,
 {
-    pub(crate) command_id: CommandSeq,
+    pub(crate) seq: CommandSeq,
     pub(crate) payload: CommandPayload<C, SM>,
 
     /// Custom respond function to be called when the command is done.
@@ -32,7 +32,7 @@ where
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("StateMachineCommand")
-            .field("command_id", &self.command_id)
+            .field("seq", &self.seq)
             .field("payload", &self.payload)
             .finish()
     }
@@ -52,10 +52,15 @@ where
     pub(crate) fn new<F>(payload: CommandPayload<C, SM>, respond: F) -> Self
     where F: FnOnce() + Send + 'static {
         Self {
-            command_id: Self::next_seq(),
+            seq: Self::next_seq(),
             payload,
             respond: Box::new(respond),
         }
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn seq(&self) -> CommandSeq {
+        self.seq
     }
 
     pub(crate) fn build_snapshot() -> Self {
