@@ -191,7 +191,7 @@ where
     /// A controlling handle to the [`RaftStateMachine`] worker.
     pub(crate) sm_handle: sm::Handle<C, SM>,
 
-    pub(crate) engine: Engine<C::NodeId, C::Node, C::Entry>,
+    pub(crate) engine: Engine<C>,
 
     pub(crate) leader_data: Option<LeaderData<C, SM::SnapshotData>>,
 
@@ -1379,10 +1379,7 @@ where
     LS: RaftLogStorage<C>,
     SM: RaftStateMachine<C>,
 {
-    async fn run_command<'e>(
-        &mut self,
-        cmd: Command<C::NodeId, C::Node, C::Entry>,
-    ) -> Result<Option<Command<C::NodeId, C::Node, C::Entry>>, StorageError<C::NodeId>> {
+    async fn run_command<'e>(&mut self, cmd: Command<C>) -> Result<Option<Command<C>>, StorageError<C::NodeId>> {
         if let Some(condition) = cmd.condition() {
             match condition {
                 Condition::LogFlushed { .. } => {

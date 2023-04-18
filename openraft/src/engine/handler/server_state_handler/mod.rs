@@ -1,31 +1,23 @@
 use crate::engine::Command;
 use crate::engine::EngineConfig;
 use crate::engine::EngineOutput;
-use crate::entry::RaftEntry;
-use crate::Node;
-use crate::NodeId;
 use crate::RaftState;
+use crate::RaftTypeConfig;
 use crate::ServerState;
 
 #[cfg(test)] mod update_server_state_test;
 
 /// Handle raft server-state related operations
-pub(crate) struct ServerStateHandler<'st, NID, N, Ent>
-where
-    NID: NodeId,
-    N: Node,
-    Ent: RaftEntry<NID, N>,
+pub(crate) struct ServerStateHandler<'st, C>
+where C: RaftTypeConfig
 {
-    pub(crate) config: &'st EngineConfig<NID>,
-    pub(crate) state: &'st mut RaftState<NID, N>,
-    pub(crate) output: &'st mut EngineOutput<NID, N, Ent>,
+    pub(crate) config: &'st EngineConfig<C::NodeId>,
+    pub(crate) state: &'st mut RaftState<C::NodeId, C::Node>,
+    pub(crate) output: &'st mut EngineOutput<C>,
 }
 
-impl<'st, NID, N, Ent> ServerStateHandler<'st, NID, N, Ent>
-where
-    NID: NodeId,
-    N: Node,
-    Ent: RaftEntry<NID, N>,
+impl<'st, C> ServerStateHandler<'st, C>
+where C: RaftTypeConfig
 {
     /// Re-calculate the server-state, if it changed, update the `server_state` field and dispatch
     /// commands to inform a runtime.

@@ -5,7 +5,6 @@ use crate::engine::handler::snapshot_handler::SnapshotHandler;
 use crate::engine::Command;
 use crate::engine::EngineConfig;
 use crate::engine::EngineOutput;
-use crate::entry::RaftEntry;
 use crate::internal_server_state::LeaderQuorumSet;
 use crate::leader::Leader;
 use crate::progress::entry::ProgressEntry;
@@ -18,9 +17,8 @@ use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::Membership;
 use crate::MessageSummary;
-use crate::Node;
-use crate::NodeId;
 use crate::RaftState;
+use crate::RaftTypeConfig;
 use crate::ServerState;
 
 #[cfg(test)] mod append_membership_test;
@@ -34,16 +32,13 @@ use crate::ServerState;
 /// - Tracking replication progress and commit;
 /// - Purging in-snapshot logs;
 /// - etc
-pub(crate) struct ReplicationHandler<'x, NID, N, Ent>
-where
-    NID: NodeId,
-    N: Node,
-    Ent: RaftEntry<NID, N>,
+pub(crate) struct ReplicationHandler<'x, C>
+where C: RaftTypeConfig
 {
-    pub(crate) config: &'x mut EngineConfig<NID>,
-    pub(crate) leader: &'x mut Leader<NID, LeaderQuorumSet<NID>>,
-    pub(crate) state: &'x mut RaftState<NID, N>,
-    pub(crate) output: &'x mut EngineOutput<NID, N, Ent>,
+    pub(crate) config: &'x mut EngineConfig<C::NodeId>,
+    pub(crate) leader: &'x mut Leader<C::NodeId, LeaderQuorumSet<C::NodeId>>,
+    pub(crate) state: &'x mut RaftState<C::NodeId, C::Node>,
+    pub(crate) output: &'x mut EngineOutput<C>,
 }
 
 /// An option about whether to send an RPC to follower/learner even when there is no data to send.
@@ -56,11 +51,8 @@ pub(crate) enum SendNone {
     True,
 }
 
-impl<'x, NID, N, Ent> ReplicationHandler<'x, NID, N, Ent>
-where
-    NID: NodeId,
-    N: Node,
-    Ent: RaftEntry<NID, N>,
+impl<'x, C> ReplicationHandler<'x, C>
+where C: RaftTypeConfig
 {
     /// Append a blank log.
     ///
@@ -81,7 +73,7 @@ where
     ///
     /// It is called by the leader when a new membership log is appended to log store.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn append_membership(&mut self, log_id: &LogId<NID>, m: &Membership<NID, N>) {
+    pub(crate) fn append_membership(&mut self, log_id: &LogId<C::NodeId>, m: &Membership<C::NodeId, C::Node>) {
         tracing::debug!("update effective membership: log_id:{} {}", log_id, m.summary());
 
         debug_assert!(
@@ -128,7 +120,7 @@ where
     /// Update progress when replicated data(logs or snapshot) matches on follower/learner and is
     /// accepted.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn update_matching(&mut self, node_id: NID, inflight_id: u64, log_id: Option<LogId<NID>>) {
+    pub(crate) fn update_matching(&mut self, node_id: C::NodeId, inflight_id: u64, log_id: Option<LogId<C::NodeId>>) {
         tracing::debug!(
             node_id = display(node_id),
             inflight_id = display(inflight_id),
@@ -176,7 +168,7 @@ where
     ///
     /// In raft a log that is granted and in the leader term is committed.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn try_commit_granted(&mut self, granted: Option<LogId<NID>>) {
+    pub(crate) fn try_commit_granted(&mut self, granted: Option<LogId<C::NodeId>>) {
         // Only when the log id is proposed by current leader, it is committed.
         if let Some(c) = granted {
             if !self.state.vote_ref().is_same_leader(c.committed_leader_id()) {
@@ -203,7 +195,7 @@ where
     /// Update progress when replicated data(logs or snapshot) does not match follower/learner state
     /// and is rejected.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn update_conflicting(&mut self, target: NID, inflight_id: u64, conflict: LogId<NID>) {
+    pub(crate) fn update_conflicting(&mut self, target: C::NodeId, inflight_id: u64, conflict: LogId<C::NodeId>) {
         // TODO(2): test it?
         tracing::debug!(
             target = display(target),
@@ -225,7 +217,12 @@ where
 
     /// Update replication progress when a response is received.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn update_progress(&mut self, target: NID, id: u64, repl_res: Result<ReplicationResult<NID>, String>) {
+    pub(crate) fn update_progress(
+        &mut self,
+        target: C::NodeId,
+        id: u64,
+        repl_res: Result<ReplicationResult<C::NodeId>, String>,
+    ) {
         // TODO(2): test
         match repl_res {
             Ok(p) => {
@@ -331,7 +328,7 @@ where
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn send_to_target(output: &mut EngineOutput<NID, N, Ent>, target: &NID, inflight: &Inflight<NID>) {
+    pub(crate) fn send_to_target(output: &mut EngineOutput<C>, target: &C::NodeId, inflight: &Inflight<C::NodeId>) {
         output.push_command(Command::Replicate {
             target: *target,
             req: *inflight,
@@ -385,7 +382,7 @@ where
     ///
     /// Writing to local log store does not have to wait for a replication response from remote
     /// node. Thus it can just be done in a fast-path.
-    pub(crate) fn update_local_progress(&mut self, upto: Option<LogId<NID>>) {
+    pub(crate) fn update_local_progress(&mut self, upto: Option<LogId<C::NodeId>>) {
         if upto.is_none() {
             return;
         }
@@ -405,7 +402,7 @@ where
         }
     }
 
-    pub(crate) fn log_handler(&mut self) -> LogHandler<NID, N, Ent> {
+    pub(crate) fn log_handler(&mut self) -> LogHandler<C> {
         LogHandler {
             config: self.config,
             state: self.state,
@@ -413,7 +410,7 @@ where
         }
     }
 
-    fn snapshot_handler(&mut self) -> SnapshotHandler<NID, N, Ent> {
+    fn snapshot_handler(&mut self) -> SnapshotHandler<C> {
         SnapshotHandler {
             state: self.state,
             output: self.output,

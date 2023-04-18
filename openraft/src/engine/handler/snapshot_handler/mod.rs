@@ -2,33 +2,25 @@
 
 use crate::engine::Command;
 use crate::engine::EngineOutput;
-use crate::entry::RaftEntry;
 use crate::raft_state::LogStateReader;
 use crate::summary::MessageSummary;
-use crate::Node;
-use crate::NodeId;
 use crate::RaftState;
+use crate::RaftTypeConfig;
 use crate::SnapshotMeta;
 
 #[cfg(test)] mod trigger_snapshot_test;
 #[cfg(test)] mod update_snapshot_test;
 
 /// Handle raft vote related operations
-pub(crate) struct SnapshotHandler<'st, 'out, NID, N, Ent>
-where
-    NID: NodeId,
-    N: Node,
-    Ent: RaftEntry<NID, N>,
+pub(crate) struct SnapshotHandler<'st, 'out, C>
+where C: RaftTypeConfig
 {
-    pub(crate) state: &'st mut RaftState<NID, N>,
-    pub(crate) output: &'out mut EngineOutput<NID, N, Ent>,
+    pub(crate) state: &'st mut RaftState<C::NodeId, C::Node>,
+    pub(crate) output: &'out mut EngineOutput<C>,
 }
 
-impl<'st, 'out, NID, N, Ent> SnapshotHandler<'st, 'out, NID, N, Ent>
-where
-    NID: NodeId,
-    N: Node,
-    Ent: RaftEntry<NID, N>,
+impl<'st, 'out, C> SnapshotHandler<'st, 'out, C>
+where C: RaftTypeConfig
 {
     /// Trigger building snapshot if there is no pending building job.
     #[tracing::instrument(level = "debug", skip_all)]
@@ -53,7 +45,7 @@ where
     /// Engine records only the metadata of a snapshot. Snapshot data is stored by RaftStorage
     /// implementation.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn update_snapshot(&mut self, meta: SnapshotMeta<NID, N>) -> bool {
+    pub(crate) fn update_snapshot(&mut self, meta: SnapshotMeta<C::NodeId, C::Node>) -> bool {
         tracing::info!("update_snapshot: {:?}", meta);
 
         if meta.last_log_id <= self.state.snapshot_last_log_id().copied() {

@@ -6,7 +6,6 @@ use tokio::time::Instant;
 
 use crate::core::ServerState;
 use crate::engine::testing::UTCfg;
-use crate::engine::CEngine;
 use crate::engine::Command;
 use crate::engine::Engine;
 use crate::engine::LogIdList;
@@ -30,7 +29,7 @@ fn m1234() -> Membership<u64, ()> {
     Membership::<u64, ()>::new(vec![btreeset! {1,2,3,4}], None)
 }
 
-fn eng() -> CEngine<UTCfg> {
+fn eng() -> Engine<UTCfg> {
     let mut eng = Engine::default();
     eng.state.enable_validate = false; // Disable validation for incomplete state
 

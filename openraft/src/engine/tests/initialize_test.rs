@@ -24,7 +24,7 @@ use crate::Vote;
 #[test]
 fn test_initialize_single_node() -> anyhow::Result<()> {
     let eng = || {
-        let mut eng = Engine::default();
+        let mut eng = Engine::<Config>::default();
         eng.state.enable_validate = false; // Disable validation for incomplete state
 
         eng.state.server_state = eng.calc_server_state();
@@ -114,7 +114,7 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
 #[test]
 fn test_initialize() -> anyhow::Result<()> {
     let eng = || {
-        let mut eng = Engine::default();
+        let mut eng = Engine::<Config>::default();
         eng.state.enable_validate = false; // Disable validation for incomplete state
 
         eng.state.server_state = eng.calc_server_state();

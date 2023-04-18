@@ -7,7 +7,6 @@ use crate::progress::Inflight;
 use crate::raft::VoteRequest;
 use crate::raft_types::MetricsChangeFlags;
 use crate::testing::log_id;
-use crate::Entry;
 use crate::Membership;
 use crate::SnapshotMeta;
 use crate::StoredMembership;
@@ -17,7 +16,7 @@ use crate::Vote;
 #[rustfmt::skip]
 fn test_command_update_metrics_flags() -> anyhow::Result<()> {
     //
-    fn t(c: Command<u64, (), Entry<UTCfg>>, repl: bool, data: bool, cluster: bool) {
+    fn t(c: Command<UTCfg>, repl: bool, data: bool, cluster: bool) {
         let mut flags = MetricsChangeFlags::default();
 
         c.update_metrics_flags(&mut flags);

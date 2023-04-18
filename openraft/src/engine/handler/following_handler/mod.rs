@@ -8,16 +8,16 @@ use crate::engine::handler::snapshot_handler::SnapshotHandler;
 use crate::engine::Command;
 use crate::engine::EngineConfig;
 use crate::engine::EngineOutput;
-use crate::entry::RaftEntry;
+use crate::entry::RaftPayload;
 use crate::error::RejectAppendEntries;
 use crate::raft_state::LogStateReader;
 use crate::EffectiveMembership;
 use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::MessageSummary;
-use crate::Node;
-use crate::NodeId;
+use crate::RaftLogId;
 use crate::RaftState;
+use crate::RaftTypeConfig;
 use crate::SnapshotMeta;
 use crate::StoredMembership;
 
@@ -31,28 +31,22 @@ use crate::StoredMembership;
 /// Receive replication request and deal with them.
 ///
 /// It mainly implements the logic of a follower/learner
-pub(crate) struct FollowingHandler<'x, NID, N, Ent>
-where
-    NID: NodeId,
-    N: Node,
-    Ent: RaftEntry<NID, N>,
+pub(crate) struct FollowingHandler<'x, C>
+where C: RaftTypeConfig
 {
-    pub(crate) config: &'x mut EngineConfig<NID>,
-    pub(crate) state: &'x mut RaftState<NID, N>,
-    pub(crate) output: &'x mut EngineOutput<NID, N, Ent>,
+    pub(crate) config: &'x mut EngineConfig<C::NodeId>,
+    pub(crate) state: &'x mut RaftState<C::NodeId, C::Node>,
+    pub(crate) output: &'x mut EngineOutput<C>,
 }
 
-impl<'x, NID, N, Ent> FollowingHandler<'x, NID, N, Ent>
-where
-    NID: NodeId,
-    N: Node,
-    Ent: RaftEntry<NID, N>,
+impl<'x, C> FollowingHandler<'x, C>
+where C: RaftTypeConfig
 {
     /// Append entries to follower/learner.
     ///
     /// Also clean conflicting entries and update membership state.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn append_entries(&mut self, prev_log_id: Option<LogId<NID>>, entries: Vec<Ent>) {
+    pub(crate) fn append_entries(&mut self, prev_log_id: Option<LogId<C::NodeId>>, entries: Vec<C::Entry>) {
         tracing::debug!(
             prev_log_id = display(prev_log_id.summary()),
             entries = display(DisplaySlice::<_>(&entries)),
@@ -96,8 +90,8 @@ where
     /// If not, truncate the local log and return an error.
     pub(crate) fn ensure_log_consecutive(
         &mut self,
-        prev_log_id: Option<LogId<NID>>,
-    ) -> Result<(), RejectAppendEntries<NID>> {
+        prev_log_id: Option<LogId<C::NodeId>>,
+    ) -> Result<(), RejectAppendEntries<C::NodeId>> {
         if let Some(ref prev) = prev_log_id {
             if !self.state.has_log_id(prev) {
                 let local = self.state.get_log_id(prev.index);
@@ -121,7 +115,7 @@ where
     ///
     /// Membership config changes are also detected and applied here.
     #[tracing::instrument(level = "debug", skip(self, entries))]
-    fn do_append_entries(&mut self, mut entries: Vec<Ent>, since: usize) {
+    fn do_append_entries(&mut self, mut entries: Vec<C::Entry>, since: usize) {
         let l = entries.len();
 
         if since == l {
@@ -145,7 +139,7 @@ where
 
     /// Commit entries that are already committed by the leader.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn commit_entries(&mut self, leader_committed: Option<LogId<NID>>) {
+    pub(crate) fn commit_entries(&mut self, leader_committed: Option<LogId<C::NodeId>>) {
         let accepted = self.state.accepted().copied();
         let committed = std::cmp::min(accepted, leader_committed);
 
@@ -199,8 +193,8 @@ where
 
     /// Append membership log if membership config entries are found, after appending entries to
     /// log.
-    fn append_membership<'a>(&mut self, entries: impl DoubleEndedIterator<Item = &'a Ent>)
-    where Ent: 'a {
+    fn append_membership<'a>(&mut self, entries: impl DoubleEndedIterator<Item = &'a C::Entry>)
+    where C::Entry: 'a {
         let memberships = Self::last_two_memberships(entries);
         if memberships.is_empty() {
             return;
@@ -227,7 +221,7 @@ where
 
     /// Update membership state with a committed membership config
     #[tracing::instrument(level = "debug", skip_all)]
-    fn update_committed_membership(&mut self, membership: EffectiveMembership<NID, N>) {
+    fn update_committed_membership(&mut self, membership: EffectiveMembership<C::NodeId, C::Node>) {
         tracing::debug!("update committed membership: {}", membership.summary());
 
         let m = Arc::new(membership);
@@ -242,7 +236,7 @@ where
 
     /// Follower/Learner handles install-snapshot.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn install_snapshot(&mut self, meta: SnapshotMeta<NID, N>) {
+    pub(crate) fn install_snapshot(&mut self, meta: SnapshotMeta<C::NodeId, C::Node>) {
         // There are two special cases in which snapshot last log id does not exists locally:
         // Snapshot last log id before the local last-purged-log-id, or after the local last-log-id:
         //
@@ -352,8 +346,10 @@ where
     ///
     /// A follower/learner reverts the effective membership to the previous one,
     /// when conflicting logs are found.
-    fn last_two_memberships<'a>(entries: impl DoubleEndedIterator<Item = &'a Ent>) -> Vec<StoredMembership<NID, N>>
-    where Ent: 'a {
+    fn last_two_memberships<'a>(
+        entries: impl DoubleEndedIterator<Item = &'a C::Entry>,
+    ) -> Vec<StoredMembership<C::NodeId, C::Node>>
+    where C::Entry: 'a {
         let mut memberships = vec![];
 
         // Find the last 2 membership config entries: the committed and the effective.
@@ -369,7 +365,7 @@ where
         memberships
     }
 
-    fn log_handler(&mut self) -> LogHandler<NID, N, Ent> {
+    fn log_handler(&mut self) -> LogHandler<C> {
         LogHandler {
             config: self.config,
             state: self.state,
@@ -377,14 +373,14 @@ where
         }
     }
 
-    fn snapshot_handler(&mut self) -> SnapshotHandler<NID, N, Ent> {
+    fn snapshot_handler(&mut self) -> SnapshotHandler<C> {
         SnapshotHandler {
             state: self.state,
             output: self.output,
         }
     }
 
-    fn server_state_handler(&mut self) -> ServerStateHandler<NID, N, Ent> {
+    fn server_state_handler(&mut self) -> ServerStateHandler<C> {
         ServerStateHandler {
             config: self.config,
             state: self.state,

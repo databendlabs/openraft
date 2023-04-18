@@ -3,7 +3,6 @@ use std::sync::Arc;
 use maplit::btreeset;
 
 use crate::engine::testing::UTCfg;
-use crate::engine::CEngine;
 use crate::engine::Command;
 use crate::engine::Engine;
 use crate::engine::LogIdList;
@@ -26,7 +25,7 @@ fn m23() -> Membership<u64, ()> {
     Membership::<u64, ()>::new(vec![btreeset! {2,3}], None)
 }
 
-fn eng() -> CEngine<UTCfg> {
+fn eng() -> Engine<UTCfg> {
     let mut eng = Engine::default();
     eng.state.enable_validate = false; // Disable validation for incomplete state
 

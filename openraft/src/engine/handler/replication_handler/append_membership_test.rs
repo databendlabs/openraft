@@ -5,7 +5,6 @@ use tokio::time::Instant;
 
 use crate::core::ServerState;
 use crate::engine::testing::UTCfg;
-use crate::engine::CEngine;
 use crate::engine::Command;
 use crate::engine::Engine;
 use crate::engine::LogIdList;
@@ -41,7 +40,7 @@ fn m4_356() -> Membership<u64, ()> {
     Membership::<u64, ()>::new(vec![btreeset! {4}], Some(btreeset! {3,5,6}))
 }
 
-fn eng() -> CEngine<UTCfg> {
+fn eng() -> Engine<UTCfg> {
     let mut eng = Engine::default();
     eng.config.id = 2;
     eng.state.membership_state = MembershipState::new(

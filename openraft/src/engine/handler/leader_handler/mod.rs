@@ -3,13 +3,13 @@ use crate::engine::handler::replication_handler::SendNone;
 use crate::engine::Command;
 use crate::engine::EngineConfig;
 use crate::engine::EngineOutput;
-use crate::entry::RaftEntry;
+use crate::entry::RaftPayload;
 use crate::internal_server_state::LeaderQuorumSet;
 use crate::leader::Leader;
 use crate::raft_state::LogStateReader;
-use crate::Node;
-use crate::NodeId;
+use crate::RaftLogId;
 use crate::RaftState;
+use crate::RaftTypeConfig;
 
 #[cfg(test)] mod append_entries_test;
 #[cfg(test)] mod send_heartbeat_test;
@@ -19,23 +19,17 @@ use crate::RaftState;
 /// - Append new logs;
 /// - Change membership;
 /// - etc
-pub(crate) struct LeaderHandler<'x, NID, N, Ent>
-where
-    NID: NodeId,
-    N: Node,
-    Ent: RaftEntry<NID, N>,
+pub(crate) struct LeaderHandler<'x, C>
+where C: RaftTypeConfig
 {
-    pub(crate) config: &'x mut EngineConfig<NID>,
-    pub(crate) leader: &'x mut Leader<NID, LeaderQuorumSet<NID>>,
-    pub(crate) state: &'x mut RaftState<NID, N>,
-    pub(crate) output: &'x mut EngineOutput<NID, N, Ent>,
+    pub(crate) config: &'x mut EngineConfig<C::NodeId>,
+    pub(crate) leader: &'x mut Leader<C::NodeId, LeaderQuorumSet<C::NodeId>>,
+    pub(crate) state: &'x mut RaftState<C::NodeId, C::Node>,
+    pub(crate) output: &'x mut EngineOutput<C>,
 }
 
-impl<'x, NID, N, Ent> LeaderHandler<'x, NID, N, Ent>
-where
-    NID: NodeId,
-    N: Node,
-    Ent: RaftEntry<NID, N>,
+impl<'x, C> LeaderHandler<'x, C>
+where C: RaftTypeConfig
 {
     /// Append new log entries by a leader.
     ///
@@ -48,7 +42,7 @@ where
     /// TODO(xp): metrics flag needs to be dealt with.
     /// TODO(xp): if vote indicates this node is not the leader, refuse append
     #[tracing::instrument(level = "debug", skip(self, entries))]
-    pub(crate) fn leader_append_entries(&mut self, mut entries: Vec<Ent>) {
+    pub(crate) fn leader_append_entries(&mut self, mut entries: Vec<C::Entry>) {
         let l = entries.len();
         if l == 0 {
             return;
@@ -125,7 +119,7 @@ where
         rh.initiate_replication(SendNone::True);
     }
 
-    pub(crate) fn replication_handler(&mut self) -> ReplicationHandler<NID, N, Ent> {
+    pub(crate) fn replication_handler(&mut self) -> ReplicationHandler<C> {
         ReplicationHandler {
             config: self.config,
             leader: self.leader,
