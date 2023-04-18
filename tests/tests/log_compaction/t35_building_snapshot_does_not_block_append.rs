@@ -10,7 +10,7 @@ use openraft::RaftNetworkFactory;
 use openraft::Vote;
 use openraft_memstore::BlockOperation;
 
-use crate::fixtures::blank;
+use crate::fixtures::blank_ent;
 use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::log_id;
 use crate::fixtures::RaftRouter;
@@ -59,7 +59,7 @@ async fn building_snapshot_does_not_block_append() -> Result<()> {
         let rpc = AppendEntriesRequest::<openraft_memstore::Config> {
             vote: Vote::new_committed(1, 0),
             prev_log_id: Some(log_id(1, 0, log_index)),
-            entries: vec![blank(1, 15)],
+            entries: vec![blank_ent(1, 15)],
             leader_commit: None,
         };
 
