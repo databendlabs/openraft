@@ -7,7 +7,6 @@ use crate::engine::EngineConfig;
 use crate::engine::EngineOutput;
 use crate::engine::Respond;
 use crate::engine::ValueSender;
-use crate::entry::RaftEntry;
 use crate::error::RejectVoteRequest;
 use crate::internal_server_state::InternalServerState;
 use crate::leader::Leader;
@@ -15,9 +14,8 @@ use crate::progress::Progress;
 use crate::raft::ResultSender;
 use crate::raft_state::LogStateReader;
 use crate::LogIdOptionExt;
-use crate::Node;
-use crate::NodeId;
 use crate::RaftState;
+use crate::RaftTypeConfig;
 use crate::Vote;
 
 #[cfg(test)] mod accept_vote_test;
@@ -27,24 +25,18 @@ use crate::Vote;
 ///
 /// A `vote` defines the state of a openraft node.
 /// See [`RaftState::calc_server_state`] .
-pub(crate) struct VoteHandler<'st, NID, N, Ent>
-where
-    NID: NodeId,
-    N: Node,
-    Ent: RaftEntry<NID, N>,
+pub(crate) struct VoteHandler<'st, C>
+where C: RaftTypeConfig
 {
-    pub(crate) config: &'st EngineConfig<NID>,
-    pub(crate) state: &'st mut RaftState<NID, N>,
+    pub(crate) config: &'st EngineConfig<C::NodeId>,
+    pub(crate) state: &'st mut RaftState<C::NodeId, C::Node>,
     pub(crate) timer: &'st mut TimeState,
-    pub(crate) output: &'st mut EngineOutput<NID, N, Ent>,
-    pub(crate) internal_server_state: &'st mut InternalServerState<NID>,
+    pub(crate) output: &'st mut EngineOutput<C>,
+    pub(crate) internal_server_state: &'st mut InternalServerState<C::NodeId>,
 }
 
-impl<'st, NID, N, Ent> VoteHandler<'st, NID, N, Ent>
-where
-    NID: NodeId,
-    N: Node,
-    Ent: RaftEntry<NID, N>,
+impl<'st, C> VoteHandler<'st, C>
+where C: RaftTypeConfig
 {
     /// Validate and accept the input `vote` and send result via `tx`.
     ///
@@ -57,15 +49,15 @@ where
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn accept_vote<T, E, F>(
         &mut self,
-        vote: &Vote<NID>,
+        vote: &Vote<C::NodeId>,
         tx: ResultSender<T, E>,
         f: F,
     ) -> Result<ResultSender<T, E>, ()>
     where
         T: Debug + Eq,
         E: Debug + Eq,
-        Respond<NID, N>: From<ValueSender<Result<T, E>>>,
-        F: Fn(&RaftState<NID, N>, RejectVoteRequest<NID>) -> Result<T, E>,
+        Respond<C::NodeId, C::Node>: From<ValueSender<Result<T, E>>>,
+        F: Fn(&RaftState<C::NodeId, C::Node>, RejectVoteRequest<C::NodeId>) -> Result<T, E>,
     {
         // TODO: give this method a better name
         let vote_res = self.handle_message_vote(vote);
@@ -112,7 +104,7 @@ where
     /// Grant vote if vote >= mine.
     /// Note: This method does not check last-log-id. handle-vote-request has to deal with
     /// last-log-id itself.
-    pub(crate) fn handle_message_vote(&mut self, vote: &Vote<NID>) -> Result<(), RejectVoteRequest<NID>> {
+    pub(crate) fn handle_message_vote(&mut self, vote: &Vote<C::NodeId>) -> Result<(), RejectVoteRequest<C::NodeId>> {
         // Partial ord compare:
         // Vote does not has to be total ord.
         // `!(a >= b)` does not imply `a < b`.
@@ -210,7 +202,7 @@ where
         self.server_state_handler().update_server_state_if_changed();
     }
 
-    pub(crate) fn server_state_handler(&mut self) -> ServerStateHandler<NID, N, Ent> {
+    pub(crate) fn server_state_handler(&mut self) -> ServerStateHandler<C> {
         ServerStateHandler {
             config: self.config,
             state: self.state,

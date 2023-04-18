@@ -10,7 +10,7 @@ use openraft::Config;
 use openraft::ServerState;
 use openraft::Vote;
 
-use crate::fixtures::blank;
+use crate::fixtures::blank_ent;
 use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
 
@@ -57,9 +57,9 @@ async fn append_inconsistent_log() -> Result<()> {
     r2.shutdown().await?;
 
     for i in log_index + 1..=100 {
-        testing::blocking_append(&mut sto0, [blank(2, i)]).await?;
+        testing::blocking_append(&mut sto0, [blank_ent(2, i)]).await?;
 
-        testing::blocking_append(&mut sto2, [blank(3, i)]).await?;
+        testing::blocking_append(&mut sto2, [blank_ent(3, i)]).await?;
     }
 
     sto0.save_vote(&Vote::new(2, 0)).await?;

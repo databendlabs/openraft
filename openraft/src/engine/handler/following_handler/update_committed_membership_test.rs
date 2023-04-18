@@ -4,7 +4,6 @@ use maplit::btreeset;
 
 use crate::core::ServerState;
 use crate::engine::testing::UTCfg;
-use crate::engine::CEngine;
 use crate::engine::Engine;
 use crate::testing::log_id;
 use crate::EffectiveMembership;
@@ -23,7 +22,7 @@ fn m34() -> Membership<u64, ()> {
     Membership::<u64, ()>::new(vec![btreeset! {3,4}], None)
 }
 
-fn eng() -> CEngine<UTCfg> {
+fn eng() -> Engine<UTCfg> {
     let mut eng = Engine::default();
     eng.config.id = 2;
     eng.state.membership_state = MembershipState::new(

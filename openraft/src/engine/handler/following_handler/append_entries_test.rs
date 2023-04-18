@@ -10,7 +10,6 @@ use crate::testing::log_id;
 use crate::EffectiveMembership;
 use crate::Membership;
 use crate::MembershipState;
-use crate::RaftTypeConfig;
 use crate::Vote;
 
 fn m01() -> Membership<u64, ()> {
@@ -21,7 +20,7 @@ fn m23() -> Membership<u64, ()> {
     Membership::new(vec![btreeset! {2,3}], None)
 }
 
-fn eng() -> Engine<u64, (), <UTCfg as RaftTypeConfig>::Entry> {
+fn eng() -> Engine<UTCfg> {
     let mut eng = Engine::default();
     eng.state.enable_validate = false; // Disable validation for incomplete state
 

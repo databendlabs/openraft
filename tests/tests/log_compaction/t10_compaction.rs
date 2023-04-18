@@ -19,7 +19,7 @@ use openraft::ServerState;
 use openraft::SnapshotPolicy;
 use openraft::Vote;
 
-use crate::fixtures::blank;
+use crate::fixtures::blank_ent;
 use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
 
@@ -96,7 +96,7 @@ async fn compaction() -> Result<()> {
 
     // Add a new node and assert that it received the same snapshot.
     let (mut sto1, sm1) = router.new_store();
-    testing::blocking_append(&mut sto1, [blank(0, 0), Entry {
+    testing::blocking_append(&mut sto1, [blank_ent(0, 0), Entry {
         log_id: LogId::new(CommittedLeaderId::new(1, 0), 1),
         payload: EntryPayload::Membership(Membership::new(vec![btreeset! {0}], None)),
     }])

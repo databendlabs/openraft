@@ -18,7 +18,7 @@ use crate::engine::time_state::TimeState;
 use crate::engine::Command;
 use crate::engine::EngineOutput;
 use crate::engine::Respond;
-use crate::entry::RaftEntry;
+use crate::entry::RaftPayload;
 use crate::error::ForwardToLeader;
 use crate::error::InitializeError;
 use crate::error::NotAllowed;
@@ -26,7 +26,6 @@ use crate::error::NotInMembers;
 use crate::error::RejectAppendEntries;
 use crate::internal_server_state::InternalServerState;
 use crate::membership::EffectiveMembership;
-use crate::node::Node;
 use crate::raft::AppendEntriesResponse;
 use crate::raft::AppendEntriesTx;
 use crate::raft::ResultSender;
@@ -38,7 +37,8 @@ use crate::summary::MessageSummary;
 use crate::validate::Valid;
 use crate::LogId;
 use crate::Membership;
-use crate::NodeId;
+use crate::RaftLogId;
+use crate::RaftTypeConfig;
 use crate::SnapshotMeta;
 use crate::Vote;
 
@@ -52,16 +52,13 @@ use crate::Vote;
 /// but none of the application specific data.
 /// TODO: make the fields private
 #[derive(Debug, Default)]
-pub(crate) struct Engine<NID, N, Ent>
-where
-    NID: NodeId,
-    N: Node,
-    Ent: RaftEntry<NID, N>,
+pub(crate) struct Engine<C>
+where C: RaftTypeConfig
 {
-    pub(crate) config: EngineConfig<NID>,
+    pub(crate) config: EngineConfig<C::NodeId>,
 
     /// The state of this raft node.
-    pub(crate) state: Valid<RaftState<NID, N>>,
+    pub(crate) state: Valid<RaftState<C::NodeId, C::Node>>,
 
     // TODO: add a Voting state as a container.
     /// Whether a greater log id is seen during election.
@@ -73,19 +70,16 @@ where
     pub(crate) timer: TimeState,
 
     /// The internal server state used by Engine.
-    pub(crate) internal_server_state: InternalServerState<NID>,
+    pub(crate) internal_server_state: InternalServerState<C::NodeId>,
 
     /// Output entry for the runtime.
-    pub(crate) output: EngineOutput<NID, N, Ent>,
+    pub(crate) output: EngineOutput<C>,
 }
 
-impl<NID, N, Ent> Engine<NID, N, Ent>
-where
-    N: Node,
-    NID: NodeId,
-    Ent: RaftEntry<NID, N>,
+impl<C> Engine<C>
+where C: RaftTypeConfig
 {
-    pub(crate) fn new(init_state: RaftState<NID, N>, config: EngineConfig<NID>) -> Self {
+    pub(crate) fn new(init_state: RaftState<C::NodeId, C::Node>, config: EngineConfig<C::NodeId>) -> Self {
         let now = Instant::now();
         Self {
             config,
@@ -145,7 +139,7 @@ where
     /// follower. This step is not confined by the consensus protocol and has to be dealt with
     /// differently.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn initialize(&mut self, mut entry: Ent) -> Result<(), InitializeError<NID, N>> {
+    pub(crate) fn initialize(&mut self, mut entry: C::Entry) -> Result<(), InitializeError<C::NodeId, C::Node>> {
         self.check_initialize()?;
 
         self.state.assign_log_ids([&mut entry]);
@@ -206,9 +200,9 @@ where
     pub(crate) fn get_leader_handler_or_reject<T, E>(
         &mut self,
         tx: Option<ResultSender<T, E>>,
-    ) -> Option<(LeaderHandler<NID, N, Ent>, Option<ResultSender<T, E>>)>
+    ) -> Option<(LeaderHandler<C>, Option<ResultSender<T, E>>)>
     where
-        E: From<ForwardToLeader<NID, N>>,
+        E: From<ForwardToLeader<C::NodeId, C::Node>>,
     {
         let res = self.leader_handler();
         let forward_err = match res {
@@ -227,7 +221,7 @@ where
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn handle_vote_req(&mut self, req: VoteRequest<NID>) -> VoteResponse<NID> {
+    pub(crate) fn handle_vote_req(&mut self, req: VoteRequest<C::NodeId>) -> VoteResponse<C::NodeId> {
         let now = *self.timer.now();
         let lease = self.config.timer_config.leader_lease;
         let vote = self.state.vote_ref();
@@ -312,7 +306,7 @@ where
     }
 
     #[tracing::instrument(level = "debug", skip(self, resp))]
-    pub(crate) fn handle_vote_resp(&mut self, target: NID, resp: VoteResponse<NID>) {
+    pub(crate) fn handle_vote_resp(&mut self, target: C::NodeId, resp: VoteResponse<C::NodeId>) {
         tracing::debug!(
             resp = display(resp.summary()),
             target = display(target),
@@ -367,10 +361,10 @@ where
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn handle_append_entries(
         &mut self,
-        vote: &Vote<NID>,
-        prev_log_id: Option<LogId<NID>>,
-        entries: Vec<Ent>,
-        tx: Option<AppendEntriesTx<NID>>,
+        vote: &Vote<C::NodeId>,
+        prev_log_id: Option<LogId<C::NodeId>>,
+        entries: Vec<C::Entry>,
+        tx: Option<AppendEntriesTx<C::NodeId>>,
     ) -> bool {
         tracing::debug!(
             vote = display(vote),
@@ -386,7 +380,7 @@ where
         let is_ok = res.is_ok();
 
         if let Some(tx) = tx {
-            let resp: AppendEntriesResponse<NID> = res.into();
+            let resp: AppendEntriesResponse<C::NodeId> = res.into();
             self.output.push_command(Command::Respond {
                 when: None,
                 resp: Respond::new(Ok(resp), tx),
@@ -397,10 +391,10 @@ where
 
     pub(crate) fn append_entries(
         &mut self,
-        vote: &Vote<NID>,
-        prev_log_id: Option<LogId<NID>>,
-        entries: Vec<Ent>,
-    ) -> Result<(), RejectAppendEntries<NID>> {
+        vote: &Vote<C::NodeId>,
+        prev_log_id: Option<LogId<C::NodeId>>,
+        entries: Vec<C::Entry>,
+    ) -> Result<(), RejectAppendEntries<C::NodeId>> {
         self.vote_handler().handle_message_vote(vote)?;
 
         // Vote is legal.
@@ -414,7 +408,7 @@ where
 
     /// Commit entries for follower/learner.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn handle_commit_entries(&mut self, leader_committed: Option<LogId<NID>>) {
+    pub(crate) fn handle_commit_entries(&mut self, leader_committed: Option<LogId<C::NodeId>>) {
         tracing::debug!(
             leader_committed = display(leader_committed.summary()),
             my_accepted = display(self.state.accepted().summary()),
@@ -466,7 +460,7 @@ where
     /// - Engine only keeps the snapshot meta with the greatest last-log-id;
     /// - and a snapshot smaller than last-committed is not allowed to be installed.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn finish_building_snapshot(&mut self, meta: SnapshotMeta<NID, N>) {
+    pub(crate) fn finish_building_snapshot(&mut self, meta: SnapshotMeta<C::NodeId, C::Node>) {
         tracing::info!("finish_building_snapshot: {:?}", meta);
 
         self.state.io_state_mut().set_building_snapshot(false);
@@ -491,11 +485,8 @@ where
 }
 
 /// Supporting util
-impl<NID, N, Ent> Engine<NID, N, Ent>
-where
-    N: Node,
-    NID: NodeId,
-    Ent: RaftEntry<NID, N>,
+impl<C> Engine<C>
+where C: RaftTypeConfig
 {
     /// Vote is granted by a quorum, leader established.
     #[tracing::instrument(level = "debug", skip_all)]
@@ -520,7 +511,7 @@ where
     ///
     /// It is allowed to initialize only when `last_log_id.is_none()` and `vote==(term=0,
     /// node_id=0)`. See: [Conditions for initialization](https://datafuselabs.github.io/openraft/cluster-formation.html#conditions-for-initialization)
-    fn check_initialize(&self) -> Result<(), NotAllowed<NID>> {
+    fn check_initialize(&self) -> Result<(), NotAllowed<C::NodeId>> {
         if self.state.last_log_id().is_none() && self.state.vote_ref() == &Vote::default() {
             return Ok(());
         }
@@ -539,7 +530,10 @@ where
 
     /// When initialize, the node that accept initialize request has to be a member of the initial
     /// config.
-    fn check_members_contain_me(&self, m: &Membership<NID, N>) -> Result<(), NotInMembers<NID, N>> {
+    fn check_members_contain_me(
+        &self,
+        m: &Membership<C::NodeId, C::Node>,
+    ) -> Result<(), NotInMembers<C::NodeId, C::Node>> {
         if !m.is_voter(&self.config.id) {
             let e = NotInMembers {
                 node_id: self.config.id,
@@ -575,7 +569,7 @@ where
 
     // --- handlers ---
 
-    pub(crate) fn vote_handler(&mut self) -> VoteHandler<NID, N, Ent> {
+    pub(crate) fn vote_handler(&mut self) -> VoteHandler<C> {
         VoteHandler {
             config: &self.config,
             state: &mut self.state,
@@ -585,7 +579,7 @@ where
         }
     }
 
-    pub(crate) fn log_handler(&mut self) -> LogHandler<NID, N, Ent> {
+    pub(crate) fn log_handler(&mut self) -> LogHandler<C> {
         LogHandler {
             config: &mut self.config,
             state: &mut self.state,
@@ -593,14 +587,14 @@ where
         }
     }
 
-    pub(crate) fn snapshot_handler(&mut self) -> SnapshotHandler<NID, N, Ent> {
+    pub(crate) fn snapshot_handler(&mut self) -> SnapshotHandler<C> {
         SnapshotHandler {
             state: &mut self.state,
             output: &mut self.output,
         }
     }
 
-    pub(crate) fn leader_handler(&mut self) -> Result<LeaderHandler<NID, N, Ent>, ForwardToLeader<NID, N>> {
+    pub(crate) fn leader_handler(&mut self) -> Result<LeaderHandler<C>, ForwardToLeader<C::NodeId, C::Node>> {
         let leader = match self.internal_server_state.leading_mut() {
             None => {
                 tracing::debug!("this node is NOT a leader: {:?}", self.state.server_state);
@@ -621,7 +615,7 @@ where
         })
     }
 
-    pub(crate) fn replication_handler(&mut self) -> ReplicationHandler<NID, N, Ent> {
+    pub(crate) fn replication_handler(&mut self) -> ReplicationHandler<C> {
         let leader = match self.internal_server_state.leading_mut() {
             None => {
                 unreachable!("There is no leader, can not handle replication");
@@ -637,7 +631,7 @@ where
         }
     }
 
-    pub(crate) fn following_handler(&mut self) -> FollowingHandler<NID, N, Ent> {
+    pub(crate) fn following_handler(&mut self) -> FollowingHandler<C> {
         debug_assert!(self.internal_server_state.is_following());
 
         FollowingHandler {
@@ -647,7 +641,7 @@ where
         }
     }
 
-    pub(crate) fn server_state_handler(&mut self) -> ServerStateHandler<NID, N, Ent> {
+    pub(crate) fn server_state_handler(&mut self) -> ServerStateHandler<C> {
         ServerStateHandler {
             config: &self.config,
             state: &mut self.state,

@@ -981,7 +981,7 @@ impl<T> From<std::ops::Range<T>> for ValueTest<T> {
 }
 
 fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(5000))
+    Some(Duration::from_millis(5_000))
 }
 
 pub fn log_id(term: u64, node_id: MemNodeId, index: u64) -> LogId<MemNodeId> {
@@ -989,7 +989,7 @@ pub fn log_id(term: u64, node_id: MemNodeId, index: u64) -> LogId<MemNodeId> {
 }
 
 /// Create a blank log entry for test.
-pub fn blank<C: RaftTypeConfig>(term: u64, index: u64) -> Entry<C>
+pub fn blank_ent<C: RaftTypeConfig>(term: u64, index: u64) -> Entry<C>
 where C::NodeId: From<u64> {
     Entry {
         log_id: LogId::new(CommittedLeaderId::new(term, 0.into()), index),
@@ -997,6 +997,7 @@ where C::NodeId: From<u64> {
     }
 }
 
+/// Create a membership log entry for test.
 pub fn membership_ent(term: u64, node_id: MemNodeId, index: u64, config: Vec<BTreeSet<MemNodeId>>) -> Entry<MemConfig> {
     Entry::new_membership(log_id(term, node_id, index), Membership::new(config, None))
 }

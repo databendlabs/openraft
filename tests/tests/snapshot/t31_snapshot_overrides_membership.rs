@@ -18,7 +18,7 @@ use openraft::RaftNetworkFactory;
 use openraft::SnapshotPolicy;
 use openraft::Vote;
 
-use crate::fixtures::blank;
+use crate::fixtures::blank_ent;
 use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
 
@@ -92,7 +92,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
             let req = AppendEntriesRequest {
                 vote: Vote::new_committed(1, 0),
                 prev_log_id: None,
-                entries: vec![blank(0, 0), Entry {
+                entries: vec![blank_ent(0, 0), Entry {
                     log_id: LogId::new(CommittedLeaderId::new(1, 0), 1),
                     payload: EntryPayload::Membership(Membership::new(vec![btreeset! {2,3}], None)),
                 }],

@@ -24,7 +24,7 @@ use openraft::SnapshotPolicy;
 use openraft::StorageHelper;
 use openraft::Vote;
 
-use crate::fixtures::blank;
+use crate::fixtures::blank_ent;
 use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::membership_ent;
 use crate::fixtures::RaftRouter;
@@ -93,21 +93,21 @@ async fn snapshot_delete_conflicting_logs() -> Result<()> {
             vote: Vote::new_committed(1, 0),
             prev_log_id: None,
             entries: vec![
-                blank(0, 0),
-                blank(1, 1),
+                blank_ent(0, 0),
+                blank_ent(1, 1),
                 // conflict membership will be replaced with membership in snapshot
                 Entry {
                     log_id: LogId::new(CommittedLeaderId::new(1, 0), 2),
                     payload: EntryPayload::Membership(Membership::new(vec![btreeset! {2,3}], None)),
                 },
-                blank(1, 3),
-                blank(1, 4),
-                blank(1, 5),
-                blank(1, 6),
-                blank(1, 7),
-                blank(1, 8),
-                blank(1, 9),
-                blank(1, 10),
+                blank_ent(1, 3),
+                blank_ent(1, 4),
+                blank_ent(1, 5),
+                blank_ent(1, 6),
+                blank_ent(1, 7),
+                blank_ent(1, 8),
+                blank_ent(1, 9),
+                blank_ent(1, 10),
                 // another conflict membership, will be removed
                 Entry {
                     log_id: LogId::new(CommittedLeaderId::new(1, 0), 11),

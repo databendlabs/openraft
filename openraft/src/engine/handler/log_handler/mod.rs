@@ -1,35 +1,27 @@
 use crate::engine::Command;
 use crate::engine::EngineConfig;
 use crate::engine::EngineOutput;
-use crate::entry::RaftEntry;
 use crate::raft_state::LogStateReader;
 use crate::summary::MessageSummary;
 use crate::LogId;
 use crate::LogIdOptionExt;
-use crate::Node;
-use crate::NodeId;
 use crate::RaftState;
+use crate::RaftTypeConfig;
 
 #[cfg(test)] mod calc_purge_upto_test;
 #[cfg(test)] mod purge_log_test;
 
 /// Handle raft vote related operations
-pub(crate) struct LogHandler<'x, NID, N, Ent>
-where
-    NID: NodeId,
-    N: Node,
-    Ent: RaftEntry<NID, N>,
+pub(crate) struct LogHandler<'x, C>
+where C: RaftTypeConfig
 {
-    pub(crate) config: &'x mut EngineConfig<NID>,
-    pub(crate) state: &'x mut RaftState<NID, N>,
-    pub(crate) output: &'x mut EngineOutput<NID, N, Ent>,
+    pub(crate) config: &'x mut EngineConfig<C::NodeId>,
+    pub(crate) state: &'x mut RaftState<C::NodeId, C::Node>,
+    pub(crate) output: &'x mut EngineOutput<C>,
 }
 
-impl<'x, NID, N, Ent> LogHandler<'x, NID, N, Ent>
-where
-    NID: NodeId,
-    N: Node,
-    Ent: RaftEntry<NID, N>,
+impl<'x, C> LogHandler<'x, C>
+where C: RaftTypeConfig
 {
     /// Purge log entries upto `RaftState.purge_upto()`, inclusive.
     #[tracing::instrument(level = "debug", skip_all)]
@@ -75,7 +67,7 @@ where
     /// `max_keep` specifies the number of applied logs to keep.
     /// `max_keep==0` means every applied log can be purged.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn calc_purge_upto(&self) -> Option<LogId<NID>> {
+    pub(crate) fn calc_purge_upto(&self) -> Option<LogId<C::NodeId>> {
         let st = &self.state;
         let max_keep = self.config.max_in_snapshot_log_to_keep;
         let batch_size = self.config.purge_batch_size;
