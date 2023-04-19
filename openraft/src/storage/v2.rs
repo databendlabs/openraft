@@ -23,6 +23,11 @@ pub(crate) mod sealed {
     /// Seal [`RaftLogStorage`] and [`RaftStateMachine`]. This is to prevent users from implementing
     /// them before being stable.
     pub trait Sealed {}
+
+    /// Implement non-public trait [`Sealed`] for all types so that [`RaftLogStorage`] and
+    /// [`RaftStateMachine`] can be implemented by 3rd party crates.
+    #[cfg(feature = "storage-v2")]
+    impl<T> Sealed for T {}
 }
 
 #[async_trait]

@@ -1,6 +1,6 @@
 //! The Raft storage interface and data types.
 
-pub(crate) mod adapter;
+#[cfg(not(feature = "storage-v2"))] pub(crate) mod adapter;
 mod callback;
 mod helper;
 mod log_store_ext;
@@ -10,7 +10,7 @@ mod v2;
 use std::fmt::Debug;
 use std::ops::RangeBounds;
 
-pub use adapter::Adaptor;
+#[cfg(not(feature = "storage-v2"))] pub use adapter::Adaptor;
 use async_trait::async_trait;
 pub use helper::StorageHelper;
 pub use log_store_ext::RaftLogReaderExt;
