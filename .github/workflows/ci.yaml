@@ -175,6 +175,39 @@ jobs:
           OPENRAFT_STORE_DEFENSIVE: on
 
 
+  # Test external stores that enable different openraft features.
+  external-stores:
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - store: "stores/rocksstore-v2"
+
+    steps:
+      - name: Setup | Checkout
+        uses: actions/checkout@v2
+
+
+      - name: Setup | Toolchain
+        uses: actions-rs/toolchain@v1.0.6
+        with:
+          toolchain: "nightly"
+          override: true
+
+
+      - name: Unit Tests
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --manifest-path "${{ matrix.store }}/Cargo.toml"
+        env:
+          # Parallel tests block each other and result in timeout.
+          RUST_TEST_THREADS: 2
+          RUST_LOG: debug
+          RUST_BACKTRACE: full
+          OPENRAFT_STORE_DEFENSIVE: on
 
   # Feature "serde" will be enabled if one of the member carge enables
   # "serde", such as `memstore`, when building cargo workspace.
@@ -261,7 +294,7 @@ jobs:
         shell: bash
         run: |
           cargo clippy --no-deps --workspace --all-targets                -- -D warnings
-          cargo clippy --no-deps --workspace --all-targets --all-features -- -D warnings
+          cargo clippy --no-deps --workspace --all-targets --features "bt,serde,bench,single-term-leader,compat-07" -- -D warnings
 
 
       - name: Build-doc

@@ -18,3 +18,9 @@ By default openraft enables no features.
    compat-07 = ["compat", "single-term-leader", "serde", "dep:or07", "compat-07-testing"]
    compat-07-testing = ["dep:tempdir", "anyhow", "dep:serde_json"]
    ```
+
+- `storage-v2`: enables `RaftLogStorage` and `RaftStateMachine` as the v2 storage
+  This is a temporary feature flag, and will be removed in the future, when v2 storage is stable.
+  This feature disables `Adapter`, which is for v1 storage to be used as v2.
+  V2 storage separates log store and state machine store so that log IO and state machine IO can be parallelized naturally. 
+  

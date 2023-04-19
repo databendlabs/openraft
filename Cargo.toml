@@ -47,4 +47,8 @@ members = [
     "rocksstore",
     "rocksstore-compat07",
     "sledstore"]
-exclude = ["examples/raft-kv-memstore", "examples/raft-kv-rocksdb"]
+exclude = [
+    "stores/rocksstore-v2",
+    "examples/raft-kv-memstore",
+    "examples/raft-kv-rocksdb",
+]
