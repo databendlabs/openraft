@@ -224,8 +224,8 @@ where
     #[error(transparent)]
     HigherVote(#[from] HigherVote<NID>),
 
-    #[error("Replication is closed")]
-    Closed,
+    #[error(transparent)]
+    Closed(#[from] ReplicationClosed),
 
     // TODO(xp): two sub type: StorageError / TransportError
     // TODO(xp): a sub error for just send_append_entries()
@@ -235,6 +235,11 @@ where
     #[error(transparent)]
     RPCError(#[from] RPCError<NID, N, RaftError<NID, Infallible>>),
 }
+
+/// Error occurs when replication is closed.
+#[derive(Debug, thiserror::Error)]
+#[error("Replication is closed by RaftCore")]
+pub(crate) struct ReplicationClosed {}
 
 /// Error occurs when invoking a remote raft API.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -247,6 +252,11 @@ pub enum RPCError<NID: NodeId, N: Node, E: Error> {
     #[error(transparent)]
     Timeout(#[from] Timeout<NID>),
 
+    /// The node is temporarily unreachable and should backoff before retrying.
+    #[error(transparent)]
+    Unreachable(#[from] Unreachable),
+
+    /// Failed to send the RPC request and should retry immediately.
     #[error(transparent)]
     Network(#[from] NetworkError),
 
@@ -265,6 +275,7 @@ where
     where E: TryAsRef<ForwardToLeader<NID, N>> {
         match self {
             RPCError::Timeout(_) => None,
+            RPCError::Unreachable(_) => None,
             RPCError::Network(_) => None,
             RPCError::RemoteError(remote_err) => remote_err.source.forward_to_leader(),
         }
@@ -324,6 +335,27 @@ pub struct NetworkError {
 }
 
 impl NetworkError {
+    pub fn new<E: Error + 'static>(e: &E) -> Self {
+        Self {
+            source: AnyError::new(e),
+        }
+    }
+}
+
+/// Error that indicates a node is unreachable and should not retry sending anything to it
+/// immediately.
+///
+/// It is similar to [`NetworkError`] but indicating a backoff.
+/// When a [`NetworkError`] is returned, Openraft will retry immediately.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
+#[error("Unreachable node: {source}")]
+pub struct Unreachable {
+    #[from]
+    source: AnyError,
+}
+
+impl Unreachable {
     pub fn new<E: Error + 'static>(e: &E) -> Self {
         Self {
             source: AnyError::new(e),

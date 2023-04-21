@@ -5,6 +5,7 @@
 #[cfg(feature = "bt")] use std::backtrace::Backtrace;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::env;
 use std::panic::PanicInfo;
@@ -28,6 +29,7 @@ use openraft::error::NetworkError;
 use openraft::error::RPCError;
 use openraft::error::RaftError;
 use openraft::error::RemoteError;
+use openraft::error::Unreachable;
 use openraft::metrics::Wait;
 use openraft::raft::AppendEntriesRequest;
 use openraft::raft::AppendEntriesResponse;
@@ -144,12 +146,25 @@ pub struct TypedRaftRouter {
     #[allow(clippy::type_complexity)]
     routing_table: Arc<Mutex<BTreeMap<MemNodeId, (MemRaft, MemLogStore, MemStateMachine)>>>,
 
-    /// Nodes which are isolated can neither send nor receive frames.
+    /// Nodes which are isolated can neither send nor receive frames, it returns an `NetworkError`.
     isolated_nodes: Arc<Mutex<HashSet<MemNodeId>>>,
+
+    /// Nodes to which an RPC is sent return an `Unreachable` error.
+    unreachable_nodes: Arc<Mutex<HashSet<MemNodeId>>>,
 
     /// To emulate network delay for sending, in milliseconds.
     /// 0 means no delay.
     send_delay: Arc<AtomicU64>,
+
+    /// Count of RPCs sent.
+    rpc_count: Arc<Mutex<HashMap<RPCType, u64>>>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum RPCType {
+    AppendEntries,
+    InstallSnapshot,
+    Vote,
 }
 
 /// Default `RaftRouter` for memstore.
@@ -181,7 +196,9 @@ impl Builder {
             config: self.config,
             routing_table: Default::default(),
             isolated_nodes: Default::default(),
+            unreachable_nodes: Default::default(),
             send_delay: Arc::new(AtomicU64::new(send_delay)),
+            rpc_count: Default::default(),
         }
     }
 }
@@ -192,7 +209,9 @@ impl Clone for TypedRaftRouter {
             config: self.config.clone(),
             routing_table: self.routing_table.clone(),
             isolated_nodes: self.isolated_nodes.clone(),
+            unreachable_nodes: self.unreachable_nodes.clone(),
             send_delay: self.send_delay.clone(),
+            rpc_count: self.rpc_count.clone(),
         }
     }
 }
@@ -221,6 +240,16 @@ impl TypedRaftRouter {
         let r = rand::random::<u64>() % send_delay;
         let timeout = Duration::from_millis(r);
         tokio::time::sleep(timeout).await;
+    }
+
+    fn count_rpc(&self, rpc_type: RPCType) {
+        let mut rpc_count = self.rpc_count.lock().unwrap();
+        let count = rpc_count.entry(rpc_type).or_insert(0);
+        *count += 1;
+    }
+
+    pub fn get_rpc_count(&self) -> HashMap<RPCType, u64> {
+        self.rpc_count.lock().unwrap().clone()
     }
 
     /// Create a cluster: 0 is the initial leader, others are voters and learners
@@ -315,7 +344,6 @@ impl TypedRaftRouter {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-
     pub async fn new_raft_node_with_sto(&mut self, id: MemNodeId, log_store: MemLogStore, sm: MemStateMachine) {
         let node = Raft::new(id, self.config.clone(), self.clone(), log_store.clone(), sm.clone()).await.unwrap();
         let mut rt = self.routing_table.lock().unwrap();
@@ -354,6 +382,17 @@ impl TypedRaftRouter {
     #[tracing::instrument(level = "debug", skip(self))]
     pub fn isolate_node(&self, id: MemNodeId) {
         self.isolated_nodes.lock().unwrap().insert(id);
+    }
+
+    /// Set to `true` to return [`Unreachable`](`openraft::errors::Unreachable`) when sending RPC to
+    /// a node.
+    pub fn set_unreachable(&self, id: MemNodeId, unreachable: bool) {
+        let mut u = self.unreachable_nodes.lock().unwrap();
+        if unreachable {
+            u.insert(id);
+        } else {
+            u.remove(&id);
+        }
     }
 
     /// Get a payload of the latest metrics from each node in the cluster.
@@ -882,12 +921,24 @@ impl TypedRaftRouter {
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
-    pub fn check_reachable(&self, id: MemNodeId, target: MemNodeId) -> Result<(), NetworkError> {
+    pub fn check_network_error(&self, id: MemNodeId, target: MemNodeId) -> Result<(), NetworkError> {
         let isolated = self.isolated_nodes.lock().unwrap();
 
         if isolated.contains(&target) || isolated.contains(&id) {
             let network_err = NetworkError::new(&AnyError::error(format!("isolated:{} -> {}", id, target)));
             return Err(network_err);
+        }
+
+        Ok(())
+    }
+
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub fn check_unreachable(&self, id: MemNodeId, target: MemNodeId) -> Result<(), Unreachable> {
+        let unreachable = self.unreachable_nodes.lock().unwrap();
+
+        if unreachable.contains(&target) || unreachable.contains(&id) {
+            let err = Unreachable::new(&AnyError::error(format!("isolated:{} -> {}", id, target)));
+            return Err(err);
         }
 
         Ok(())
@@ -919,7 +970,10 @@ impl RaftNetwork<MemConfig> for RaftRouterNetwork {
         rpc: AppendEntriesRequest<MemConfig>,
     ) -> Result<AppendEntriesResponse<MemNodeId>, RPCError<MemNodeId, (), RaftError<MemNodeId>>> {
         tracing::debug!("append_entries to id={} {}", self.target, rpc.summary());
-        self.owner.check_reachable(rpc.vote.leader_id().voted_for().unwrap(), self.target)?;
+        self.owner.count_rpc(RPCType::AppendEntries);
+
+        self.owner.check_network_error(rpc.vote.leader_id().voted_for().unwrap(), self.target)?;
+        self.owner.check_unreachable(rpc.vote.leader_id().voted_for().unwrap(), self.target)?;
         self.owner.rand_send_delay().await;
 
         let node = self.owner.get_raft_handle(&self.target)?;
@@ -928,6 +982,7 @@ impl RaftNetwork<MemConfig> for RaftRouterNetwork {
 
         tracing::debug!("append_entries: recv resp from id={} {:?}", self.target, resp);
         let resp = resp.map_err(|e| RemoteError::new(self.target, e))?;
+
         Ok(resp)
     }
 
@@ -937,13 +992,17 @@ impl RaftNetwork<MemConfig> for RaftRouterNetwork {
         rpc: InstallSnapshotRequest<MemConfig>,
     ) -> Result<InstallSnapshotResponse<MemNodeId>, RPCError<MemNodeId, (), RaftError<MemNodeId, InstallSnapshotError>>>
     {
-        self.owner.check_reachable(rpc.vote.leader_id().voted_for().unwrap(), self.target)?;
+        self.owner.count_rpc(RPCType::InstallSnapshot);
+
+        self.owner.check_network_error(rpc.vote.leader_id().voted_for().unwrap(), self.target)?;
+        self.owner.check_unreachable(rpc.vote.leader_id().voted_for().unwrap(), self.target)?;
         self.owner.rand_send_delay().await;
 
         let node = self.owner.get_raft_handle(&self.target)?;
 
         let resp = node.install_snapshot(rpc).await;
         let resp = resp.map_err(|e| RemoteError::new(self.target, e))?;
+
         Ok(resp)
     }
 
@@ -952,13 +1011,17 @@ impl RaftNetwork<MemConfig> for RaftRouterNetwork {
         &mut self,
         rpc: VoteRequest<MemNodeId>,
     ) -> Result<VoteResponse<MemNodeId>, RPCError<MemNodeId, (), RaftError<MemNodeId>>> {
-        self.owner.check_reachable(rpc.vote.leader_id().voted_for().unwrap(), self.target)?;
+        self.owner.count_rpc(RPCType::Vote);
+
+        self.owner.check_network_error(rpc.vote.leader_id().voted_for().unwrap(), self.target)?;
+        self.owner.check_unreachable(rpc.vote.leader_id().voted_for().unwrap(), self.target)?;
         self.owner.rand_send_delay().await;
 
         let node = self.owner.get_raft_handle(&self.target)?;
 
         let resp = node.vote(rpc).await;
         let resp = resp.map_err(|e| RemoteError::new(self.target, e))?;
+
         Ok(resp)
     }
 }
