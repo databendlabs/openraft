@@ -63,13 +63,14 @@ where
     NID: NodeId,
     N: Node,
 {
+    // TODO: make this more readable
     fn summary(&self) -> String {
         format!("Metrics{{id:{},{:?}, term:{}, last_log:{:?}, last_applied:{:?}, leader:{:?}, membership:{}, snapshot:{:?}, replication:{}",
                 self.id,
                 self.state,
                 self.current_term,
                 self.last_log_index,
-                self.last_applied,
+                self.last_applied.summary(),
                 self.current_leader,
                 self.membership_config.summary(),
                 self.snapshot,

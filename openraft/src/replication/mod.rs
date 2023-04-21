@@ -14,21 +14,25 @@ use tokio::io::AsyncRead;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncSeek;
 use tokio::io::AsyncSeekExt;
+use tokio::select;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 use tokio::time::sleep;
 use tokio::time::timeout;
 use tokio::time::Duration;
+use tokio::time::Instant;
 use tracing_futures::Instrument;
 
 use crate::config::Config;
 use crate::error::HigherVote;
 use crate::error::RPCError;
+use crate::error::ReplicationClosed;
 use crate::error::ReplicationError;
 use crate::error::Timeout;
 use crate::log_id::LogIdOptionExt;
 use crate::log_id_range::LogIdRange;
+use crate::network::Backoff;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
 use crate::raft::InstallSnapshotRequest;
@@ -59,7 +63,7 @@ where
     S: AsyncRead + AsyncSeek + Send + Unpin + 'static,
 {
     /// The spawn handle the `ReplicationCore` task.
-    pub(crate) join_handle: JoinHandle<()>,
+    pub(crate) join_handle: JoinHandle<Result<(), ReplicationClosed>>,
 
     /// The channel used for communicating with the replication task.
     pub(crate) tx_repl: mpsc::UnboundedSender<Replicate<NID, N, S>>,
@@ -92,6 +96,10 @@ where
 
     /// The `RaftNetwork` interface.
     network: N::Network,
+
+    /// The backoff policy if an [`Unreachable`] error is returned.
+    /// It will be reset to `None` when an successful response is received.
+    backoff: Option<Backoff>,
 
     /// The `RaftLogReader` of a `RaftStorage` interface.
     log_reader: LS::LogReader,
@@ -146,6 +154,7 @@ where
             target,
             session_id,
             network,
+            backoff: None,
             log_reader,
             config,
             committed,
@@ -161,7 +170,7 @@ where
     }
 
     #[tracing::instrument(level="debug", skip(self), fields(session=%self.session_id, target=display(self.target), cluster=%self.config.cluster_name))]
-    async fn main(mut self) {
+    async fn main(mut self) -> Result<(), ReplicationClosed> {
         loop {
             let action = std::mem::replace(&mut self.next_action, None);
 
@@ -179,13 +188,16 @@ where
             };
 
             match res {
-                Ok(_x) => {}
+                Ok(_) => {
+                    // reset backoff
+                    self.backoff = None;
+                }
                 Err(err) => {
                     tracing::warn!(error=%err, "error replication to target={}", self.target);
 
                     match err {
-                        ReplicationError::Closed => {
-                            return;
+                        ReplicationError::Closed(closed) => {
+                            return Err(closed);
                         }
                         ReplicationError::HigherVote(h) => {
                             let _ = self.tx_raft_core.send(RaftMsg::HigherVote {
@@ -193,14 +205,14 @@ where
                                 higher: h.higher,
                                 vote: self.session_id.vote,
                             });
-                            return;
+                            return Ok(());
                         }
                         ReplicationError::StorageError(err) => {
                             tracing::error!(error=%err, "error replication to target={}", self.target);
 
                             // TODO: report this error
                             let _ = self.tx_raft_core.send(RaftMsg::ReplicationFatal);
-                            return;
+                            return Ok(());
                         }
                         ReplicationError::RPCError(err) => {
                             tracing::error!(err = display(&err), "RPCError");
@@ -210,24 +222,29 @@ where
                                 result: Err(err.to_string()),
                                 session_id: self.session_id,
                             });
+
+                            // If there is an [`Unreachable`] error, we will backoff for a period of time
+                            // Backoff will be reset if there is a successful RPC is sent.
+                            if let RPCError::Unreachable(_unreachable) = err {
+                                if self.backoff.is_none() {
+                                    self.backoff = Some(self.network.backoff());
+                                }
+                            }
                         }
                     };
                 }
             };
 
-            let res = self.drain_events().await;
-            match res {
-                Ok(_x) => {}
-                Err(err) => match err {
-                    ReplicationError::Closed => {
-                        return;
-                    }
+            if let Some(b) = &mut self.backoff {
+                let duration = b.next().unwrap_or_else(|| {
+                    tracing::warn!("backoff exhausted, using default");
+                    Duration::from_millis(500)
+                });
 
-                    _ => {
-                        unreachable!("no other error expected but: {:?}", err);
-                    }
-                },
+                self.backoff_drain_events(Instant::now() + duration).await?;
             }
+
+            self.drain_events().await?;
         }
     }
 
@@ -367,14 +384,49 @@ where
         }
     }
 
+    /// Drain all events in the channel in backoff mode, i.e., there was an un-retry-able error and
+    /// should not send out anything before backoff interval expired.
+    ///
+    /// In the backoff period, we should not send out any RPCs, but we should still receive events,
+    /// in case the channel is closed, it should quit at once.
+    #[tracing::instrument(level = "trace", skip(self))]
+    pub async fn backoff_drain_events(&mut self, until: Instant) -> Result<(), ReplicationClosed> {
+        let d = until - Instant::now();
+        tracing::warn!(
+            interval = debug(d),
+            "{} backoff mode: drain events without processing them",
+            func_name!()
+        );
+
+        loop {
+            let sleep_duration = until - Instant::now();
+            let sleep = sleep(sleep_duration);
+
+            let recv = self.rx_repl.recv();
+
+            tracing::debug!("backoff timeout: {:?}", sleep_duration);
+
+            select! {
+                _ = sleep => {
+                    tracing::debug!("backoff timeout");
+                    return Ok(());
+                }
+                recv_res = recv => {
+                    let event = recv_res.ok_or(ReplicationClosed{})?;
+                    self.process_event(event);
+                }
+            }
+        }
+    }
+
     /// Receive and process events from RaftCore, until `next_action` is filled.
     ///
     /// It blocks until at least one event is received.
     #[tracing::instrument(level = "trace", skip_all)]
-    pub async fn drain_events(&mut self) -> Result<(), ReplicationError<C::NodeId, C::Node>> {
+    pub async fn drain_events(&mut self) -> Result<(), ReplicationClosed> {
         tracing::debug!("drain_events");
 
-        let event = self.rx_repl.recv().await.ok_or(ReplicationError::Closed)?;
+        let event = self.rx_repl.recv().await.ok_or(ReplicationClosed {})?;
         self.process_event(event);
 
         self.try_drain_events().await?;
@@ -399,10 +451,13 @@ where
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    pub async fn try_drain_events(&mut self) -> Result<(), ReplicationError<C::NodeId, C::Node>> {
+    pub async fn try_drain_events(&mut self) -> Result<(), ReplicationClosed> {
         tracing::debug!("try_drain_raft_rx");
 
-        while self.next_action.is_none() {
+        // Just drain all events in the channel.
+        // There should not be more than one `Replicate::Data` event in the channel.
+        // Looping it just collect all commit events and heartbeat events.
+        loop {
             let maybe_res = self.rx_repl.recv().now_or_never();
 
             let recv_res = match maybe_res {
@@ -413,12 +468,10 @@ where
                 Some(x) => x,
             };
 
-            let event = recv_res.ok_or(ReplicationError::Closed)?;
+            let event = recv_res.ok_or(ReplicationClosed {})?;
 
             self.process_event(event);
         }
-
-        Ok(())
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
@@ -445,7 +498,9 @@ where
                 //-  If self.next_action is not None, next_action will serve as a heartbeat.
             }
             Replicate::Data(d) => {
-                debug_assert!(self.next_action.is_none(),);
+                // TODO: Currently there is at most 1 in flight data. But in future RaftCore may send next data
+                //       actions without waiting for the previous to finish.
+                debug_assert!(self.next_action.is_none(), "there can not be two data action in flight");
                 self.next_action = Some(d);
             }
         }

@@ -1,6 +1,7 @@
 //! The Raft network interface.
 
 use std::fmt::Formatter;
+use std::time::Duration;
 
 use async_trait::async_trait;
 
@@ -63,6 +64,41 @@ where C: RaftTypeConfig
         &mut self,
         rpc: VoteRequest<C::NodeId>,
     ) -> Result<VoteResponse<C::NodeId>, RPCError<C::NodeId, C::Node, RaftError<C::NodeId>>>;
+
+    /// Build a backoff instance if the target node is temporarily(or permanently) unreachable.
+    ///
+    /// When a [`Unreachable`](`crate::error::Unreachable`) error is returned from the `Network`
+    /// methods, Openraft does not retry connecting to a node immediately. Instead, it sleeps
+    /// for a while and retries. The duration of the sleep is determined by the backoff
+    /// instance.
+    ///
+    /// The backoff is an infinite iterator that returns the ith sleep interval before the ith
+    /// retry. The returned instance will be dropped if a successful RPC is made.
+    ///
+    /// By default it returns a constant backoff of 500 ms.
+    fn backoff(&self) -> Backoff {
+        Backoff::new(std::iter::repeat(Duration::from_millis(500)))
+    }
+}
+
+/// A backoff instance that is an infinite iterator of durations to sleep before next retry, when a
+/// [`Unreachable`](`crate::error::Unreachable`) occurs.
+pub struct Backoff {
+    inner: Box<dyn Iterator<Item = Duration> + Send + 'static>,
+}
+
+impl Backoff {
+    pub fn new(iter: impl Iterator<Item = Duration> + Send + 'static) -> Self {
+        Self { inner: Box::new(iter) }
+    }
+}
+
+impl Iterator for Backoff {
+    type Item = Duration;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next()
+    }
 }
 
 /// A trait defining the interface for a Raft network factory to create connections between cluster
