@@ -678,9 +678,9 @@ where
         E: Debug,
     {
         let sum = if tracing::enabled!(Level::DEBUG) {
-            None
-        } else {
             Some(mes.summary())
+        } else {
+            None
         };
 
         let send_res = self.inner.tx_api.send(mes);
