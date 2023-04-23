@@ -917,8 +917,17 @@ where
     /// Run an event handling loop
     #[tracing::instrument(level="debug", skip_all, fields(id=display(self.id)))]
     async fn runtime_loop(&mut self, mut rx_shutdown: oneshot::Receiver<()>) -> Result<(), Fatal<C::NodeId>> {
+        // The most number of RaftMsg to process in one loop.
+        // In each loop, it does not have to check rx_shutdown and flush metrics for every RaftMsg
+        // processed.
+        let n_raft_msg = 512;
+
         loop {
             self.flush_metrics();
+
+            // Wait for one RaftMsg and handle it.
+            // If there is one, process more RaftMsgs. Otherwise, block waiting for one incoming
+            // message from either rx_api or rx_shutdown.
 
             let msg_res: Result<RaftMsg<C, N, LS>, &str> = {
                 let recv = self.rx_api.recv();
@@ -940,7 +949,9 @@ where
                     self.handle_api_msg(msg).await?;
 
                     // Run as many commands as possible.
-                    // If there is a command that waits for a callback, just return and wait for next message.
+                    // If there is a command that waits for a callback, just return and wait for
+                    // next message.
+
                     self.run_engine_commands().await?;
                 }
                 Err(reason) => {
@@ -948,7 +959,63 @@ where
                     return Ok(());
                 }
             }
+
+            // Process at most `n_raft_msg` RaftMsgs.
+
+            let res = self.handle_msg(n_raft_msg).await?;
+            match res {
+                Ok(_) => {
+                    tracing::debug!("there are more queued RaftMsg to process");
+                }
+                Err(e) => match e {
+                    mpsc::error::TryRecvError::Empty => {
+                        tracing::debug!("all RaftMsg are processed, wait for more");
+                    }
+                    mpsc::error::TryRecvError::Disconnected => {
+                        tracing::debug!("rx_api is disconnected, quit");
+                        return Ok(());
+                    }
+                },
+            }
+
+            // Check shutdown signal.
+
+            match rx_shutdown.try_recv() {
+                Ok(_) => {
+                    tracing::debug!("recv from rx_shutdown");
+                    return Ok(());
+                }
+                Err(e) => match e {
+                    oneshot::error::TryRecvError::Empty => {
+                        tracing::debug!("rx_shutdown is empty, continue");
+                    }
+                    oneshot::error::TryRecvError::Closed => {
+                        tracing::debug!("rx_shutdown is disconnected, quit");
+                        return Ok(());
+                    }
+                },
+            }
         }
+    }
+    async fn handle_msg(&mut self, at_most: u64) -> Result<Result<(), mpsc::error::TryRecvError>, Fatal<C::NodeId>> {
+        for _ in 0..at_most {
+            let res = self.rx_api.try_recv();
+            let msg = match res {
+                Ok(msg) => msg,
+                Err(e) => {
+                    // No more message
+                    return Ok(Err(e));
+                }
+            };
+
+            self.handle_api_msg(msg).await?;
+
+            // Run as many commands as possible.
+            // If there is a command that waits for a callback, just return and wait for next message.
+            self.run_engine_commands().await?;
+        }
+
+        Ok(Ok(()))
     }
 
     /// Spawn parallel vote requests to all cluster members.
