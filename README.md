@@ -80,25 +80,42 @@ Currently, openraft is the consensus engine of meta-service cluster in [databend
 
 - [ ] Goal performance is 1,000,000 put/sec.
 
-    Bench history:
-    - 2022 Jul 01: 41,000 put/sec; 23,255 ns/op;
-    - 2022 Jul 07: 43,000 put/sec; 23,218 ns/op; Use `Progress` to track replication.
-    - 2022 Jul 09: 45,000 put/sec; 21,784 ns/op; Batch purge applied log
-    - 2023 Feb 28: 48,000 put/sec; 20,558 ns/op;
-
-    Run the benchmark: `make bench_cluster_of_3`
-
-    Benchmark setting:
-    - No network.
-    - In memory store.
-    - A cluster of 3 nodes on one server.
-    - Single client.
-
 <!--
    - - [ ] Consider to separate log storage and log order storage.
    -   Leader only determines and replicates the index of log entries, not log
    -   payload.
       -->
+
+# Performance
+
+The benchmark is focused on the Openraft framework itself and is run on a
+minimized store and network. This is **NOT a real world** application benchmark!!!
+
+Benchmark history:
+
+|  Date      | clients | put/s       | ns/op      | Changes                             |
+| :--        | --:     | --:         | --:        | :--                                 |
+| 2023-04-23 |  64     | **467,000** |    2,139   | State-machine moved to separate task |
+|            |   1     |    70,000   | **14,273** |                                     |
+| 2023-02-28 |   1     |    48,000   | **20,558** |                                     |
+| 2022-07-09 |   1     |    45,000   | **21,784** | Batch purge applied log             |
+| 2022-07-07 |   1     |    43,000   | **23,218** | Use `Progress` to track replication |
+| 2022-07-01 |   1     |    41,000   | **23,255** |                                     |
+
+
+To access the benchmark, go to the `./cluster_benchmark` folder and run `make
+bench_cluster_of_3`.
+
+The benchmark is carried out with varying numbers of clients because:
+- The `1 client` benchmark shows the average **latency** to commit each log.
+- The `64 client` benchmark shows the maximum **throughput**.
+
+The benchmark is conducted with the following settings:
+- No network.
+- In-memory store.
+- A cluster of 3 nodes in a single process on a Mac M1-Max laptop.
+- Request: empty
+- Response: empty
 
 
 # Features

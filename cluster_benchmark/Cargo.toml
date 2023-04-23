@@ -1,0 +1,40 @@
+# These tests depend on `memstore`, while `memstore` enables `serde` feature of `openraft`.
+# This make it impossible to test openraft with `serde` feature off.
+
+[package]
+name = "cluster-benchmark"
+description = "openraft cluster benchmark"
+
+version = "0.1.0"
+edition = "2021"
+authors = [
+    "drdr xp <drdr.xp@gmail.com>",
+]
+categories = ["algorithms", "asynchronous", "data-structures"]
+homepage = "https://github.com/datafuselabs/openraft"
+keywords = ["raft", "consensus"]
+license = "MIT/Apache-2.0"
+repository = "https://github.com/datafuselabs/openraft"
+
+[dependencies]
+
+[dev-dependencies]
+openraft           = { path="../openraft", version = "0.8.4", features = ["serde", "storage-v2"] }
+
+anyhow = "1.0.63"
+maplit = "1.0.2"
+serde = { version="1.0.114", features=["derive", "rc"]}
+serde_json = "1.0.57"
+tokio = { version="1.8", default-features=false, features=["fs", "io-util", "macros", "rt", "rt-multi-thread", "sync", "time"] }
+tracing = "0.1.29"
+
+[features]
+
+bt = ["openraft/bt"]
+single-term-leader = ["openraft/single-term-leader"]
+
+[profile.release]
+debug = 2
+lto = "thin"
+overflow-checks = false
+codegen-units = 1
