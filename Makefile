@@ -20,13 +20,13 @@ bench:
 	cargo bench --features bench
 
 bench_cluster_of_1:
-	cargo test --package tests --test benchmark --release bench_cluster_of_1 -- --ignored --nocapture
+	cargo test --manifest-path cluster_benchmark/Cargo.toml --test benchmark --release bench_cluster_of_1 -- --ignored --nocapture
 
 bench_cluster_of_3:
-	cargo test --package tests --test benchmark --release bench_cluster_of_3 -- --ignored --nocapture
+	cargo test --manifest-path cluster_benchmark/Cargo.toml --test benchmark --release bench_cluster_of_3 -- --ignored --nocapture
 
 bench_cluster_of_5:
-	cargo test --package tests --test benchmark --release bench_cluster_of_5 -- --ignored --nocapture
+	cargo test --manifest-path cluster_benchmark/Cargo.toml --test benchmark --release bench_cluster_of_5 -- --ignored --nocapture
 
 fmt:
 	cargo fmt
