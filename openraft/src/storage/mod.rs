@@ -162,7 +162,8 @@ where
 {
     /// Build snapshot
     ///
-    /// A snapshot has to contain information about exactly all logs up to the last applied.
+    /// A snapshot has to contain state of all applied log, including membership. Usually it is just
+    /// a serialized state machine.
     ///
     /// Building snapshot can be done by:
     /// - Performing log compaction, e.g. merge log entries that operates on the same key, like a
@@ -313,6 +314,7 @@ where C: RaftTypeConfig
     /// Raft will use this handle to receive snapshot data.
     ///
     /// ### implementation guide
+    ///
     /// See the [storage chapter of the guide](https://datafuselabs.github.io/openraft/storage.html)
     /// for details on log compaction / snapshotting.
     async fn begin_receiving_snapshot(&mut self) -> Result<Box<Self::SnapshotData>, StorageError<C::NodeId>>;

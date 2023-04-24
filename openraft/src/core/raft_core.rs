@@ -10,7 +10,6 @@ use anyerror::AnyError;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use futures::TryFutureExt;
-use maplit::btreemap;
 use maplit::btreeset;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncSeek;
