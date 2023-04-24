@@ -60,6 +60,6 @@ where
     NID: NodeId,
 {
     fn summary(&self) -> String {
-        format!("{{log_id:{:?} membership:{}}}", self.log_id, self.membership.summary())
+        format!("{{log_id:{}, {}}}", self.log_id.summary(), self.membership.summary())
     }
 }
