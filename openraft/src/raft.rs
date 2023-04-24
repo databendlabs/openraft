@@ -8,6 +8,7 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
 
+use maplit::btreemap;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio::sync::watch;
@@ -506,7 +507,16 @@ where
         blocking: bool,
     ) -> Result<ClientWriteResponse<C>, RaftError<C::NodeId, ClientWriteError<C::NodeId, C::Node>>> {
         let (tx, rx) = oneshot::channel();
-        let resp = self.call_core(RaftMsg::AddLearner { id, node, tx }, rx).await?;
+        let resp = self
+            .call_core(
+                RaftMsg::ChangeMembership {
+                    changes: ChangeMembers::AddNodes(btreemap! {id=>node}),
+                    retain: true,
+                    tx,
+                },
+                rx,
+            )
+            .await?;
 
         if !blocking {
             return Ok(resp);
@@ -894,16 +904,6 @@ where
         tx: ResultSender<(), InitializeError<C::NodeId, C::Node>>,
     },
 
-    /// Request raft core to setup a new replication to a learner.
-    AddLearner {
-        id: C::NodeId,
-
-        node: C::Node,
-
-        /// Send the log id when the replication becomes line-rate.
-        tx: ClientWriteTx<C>,
-    },
-
     ChangeMembership {
         changes: ChangeMembers<C::NodeId, C::Node>,
 
@@ -1002,9 +1002,6 @@ where
             RaftMsg::CheckIsLeaderRequest { .. } => "CheckIsLeaderRequest".to_string(),
             RaftMsg::Initialize { members, .. } => {
                 format!("Initialize: {:?}", members)
-            }
-            RaftMsg::AddLearner { id, node, .. } => {
-                format!("AddLearner: id: {}, node: {:?}", id, node)
             }
             RaftMsg::ChangeMembership {
                 changes: members,
