@@ -112,6 +112,7 @@ where NID: NodeId
     #[error("panicked")]
     Panicked,
 
+    /// Raft stopped normally.
     #[error("raft stopped")]
     Stopped,
 }

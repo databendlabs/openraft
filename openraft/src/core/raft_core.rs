@@ -2,21 +2,18 @@ use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::fmt::Formatter;
-use std::pin::Pin;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use anyerror::AnyError;
-use futures::future::select;
-use futures::future::Either;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use futures::TryFutureExt;
 use maplit::btreemap;
 use maplit::btreeset;
-use pin_utils::pin_mut;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncSeek;
+use tokio::select;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio::sync::watch;
@@ -882,6 +879,10 @@ where
         };
     }
 
+    /// Run as many commands as possible.
+    ///
+    /// If there is a command that waits for a callback, just return and wait for
+    /// next RaftMsg.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) async fn run_engine_commands(&mut self) -> Result<(), StorageError<C::NodeId>> {
         if tracing::enabled!(Level::DEBUG) {
@@ -925,97 +926,75 @@ where
         loop {
             self.flush_metrics();
 
-            // Wait for one RaftMsg and handle it.
-            // If there is one, process more RaftMsgs. Otherwise, block waiting for one incoming
-            // message from either rx_api or rx_shutdown.
+            // In each loop, the first step is blocking waiting for any message from any channel.
+            // Then if there is any message, process as many as possible to maximuze throughput.
 
-            let msg_res: Result<RaftMsg<C, N, LS>, &str> = {
-                let recv = self.rx_api.recv();
-                pin_mut!(recv);
+            select! {
+                // Check shutdown in each loop first so that a message flood in `tx_api` won't block shutting down.
+                // `select!` without `biased` provides a random fairness.
+                // We want to check shutdown prior to other channels.
+                // See: https://docs.rs/tokio/latest/tokio/macro.select.html#fairness
+                biased;
 
-                let either = select(recv, Pin::new(&mut rx_shutdown)).await;
-
-                match either {
-                    Either::Left((recv_res, _shutdown)) => match recv_res {
-                        Some(msg) => Ok(msg),
-                        None => Err("all rx_api senders are dropped"),
-                    },
-                    Either::Right((_rx_shutdown_res, _recv)) => Err("recv from rx_shutdown"),
+                _ = &mut rx_shutdown => {
+                    tracing::info!("recv from rx_shutdown");
+                    return Err(Fatal::Stopped);
                 }
-            };
 
-            match msg_res {
-                Ok(msg) => {
-                    self.handle_api_msg(msg).await?;
-
-                    // Run as many commands as possible.
-                    // If there is a command that waits for a callback, just return and wait for
-                    // next message.
-
-                    self.run_engine_commands().await?;
-                }
-                Err(reason) => {
-                    tracing::info!(reason);
-                    return Ok(());
+                msg_res = self.rx_api.recv() => {
+                    match msg_res {
+                        Some(msg) => self.handle_api_msg(msg).await?,
+                        None => {
+                            tracing::info!("all rx_api senders are dropped");
+                            return Err(Fatal::Stopped);
+                        }
+                    };
                 }
             }
 
-            // Process at most `n_raft_msg` RaftMsgs.
+            self.run_engine_commands().await?;
 
-            let res = self.handle_msg(n_raft_msg).await?;
-            match res {
-                Ok(_) => {
-                    tracing::debug!("there are more queued RaftMsg to process");
-                }
-                Err(e) => match e {
-                    mpsc::error::TryRecvError::Empty => {
-                        tracing::debug!("all RaftMsg are processed, wait for more");
-                    }
-                    mpsc::error::TryRecvError::Disconnected => {
-                        tracing::debug!("rx_api is disconnected, quit");
-                        return Ok(());
-                    }
-                },
-            }
+            // There is a message waking up the loop, process channels one by one.
 
-            // Check shutdown signal.
-
-            match rx_shutdown.try_recv() {
-                Ok(_) => {
-                    tracing::debug!("recv from rx_shutdown");
-                    return Ok(());
-                }
-                Err(e) => match e {
-                    oneshot::error::TryRecvError::Empty => {
-                        tracing::debug!("rx_shutdown is empty, continue");
-                    }
-                    oneshot::error::TryRecvError::Closed => {
-                        tracing::debug!("rx_shutdown is disconnected, quit");
-                        return Ok(());
-                    }
-                },
-            }
+            // Use raft_msg_processed to balance multiple channels consumption in future.
+            let raft_msg_processed = self.process_at_most(n_raft_msg).await?;
+            let _ = raft_msg_processed;
         }
     }
-    async fn handle_msg(&mut self, at_most: u64) -> Result<Result<(), mpsc::error::TryRecvError>, Fatal<C::NodeId>> {
-        for _ in 0..at_most {
+
+    /// Process RaftMsg as many as possible.
+    ///
+    /// It returns the number of processed message.
+    /// If the input channel is closed, it returns `Fatal::Stopped`.
+    async fn process_at_most(&mut self, at_most: u64) -> Result<u64, Fatal<C::NodeId>> {
+        for i in 0..at_most {
             let res = self.rx_api.try_recv();
             let msg = match res {
                 Ok(msg) => msg,
-                Err(e) => {
-                    // No more message
-                    return Ok(Err(e));
-                }
+                Err(e) => match e {
+                    mpsc::error::TryRecvError::Empty => {
+                        tracing::debug!("all RaftMsg are processed, wait for more");
+                        return Ok(i + 1);
+                    }
+                    mpsc::error::TryRecvError::Disconnected => {
+                        tracing::debug!("rx_api is disconnected, quit");
+                        return Err(Fatal::Stopped);
+                    }
+                },
             };
 
             self.handle_api_msg(msg).await?;
 
-            // Run as many commands as possible.
-            // If there is a command that waits for a callback, just return and wait for next message.
+            // TODO: does run_engine_commands() run too frequently?
+            //       to run many commands in one shot, it is possible to batch more commands to gain
+            //       better performance.
+
             self.run_engine_commands().await?;
         }
 
-        Ok(Ok(()))
+        tracing::debug!("at_most({}) reached, there are more queued RaftMsg to process", at_most);
+
+        Ok(at_most)
     }
 
     /// Spawn parallel vote requests to all cluster members.
