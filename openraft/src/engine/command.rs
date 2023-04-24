@@ -15,7 +15,6 @@ use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::LeaderId;
 use crate::LogId;
-use crate::MetricsChangeFlags;
 use crate::Node;
 use crate::NodeId;
 use crate::RaftTypeConfig;
@@ -164,34 +163,6 @@ where
 impl<C> Command<C>
 where C: RaftTypeConfig
 {
-    /// Update the flag of the metrics that needs to be updated when this command is executed.
-    pub(crate) fn update_metrics_flags(&self, flags: &mut MetricsChangeFlags) {
-        match &self {
-            Command::BecomeLeader { .. } => flags.set_cluster_changed(),
-            Command::QuitLeader => flags.set_cluster_changed(),
-            Command::AppendEntry { .. } => flags.set_data_changed(),
-            Command::AppendInputEntries { entries } => {
-                debug_assert!(!entries.is_empty());
-                flags.set_data_changed()
-            }
-            Command::AppendBlankLog { .. } => flags.set_data_changed(),
-            Command::ReplicateCommitted { .. } => {}
-            Command::LeaderCommit { .. } => flags.set_data_changed(),
-            Command::FollowerCommit { .. } => flags.set_data_changed(),
-            Command::Replicate { .. } => {}
-            Command::RebuildReplicationStreams { .. } => flags.set_replication_changed(),
-            Command::UpdateProgressMetrics { .. } => flags.set_replication_changed(),
-            Command::SaveVote { .. } => flags.set_data_changed(),
-            Command::SendVote { .. } => {}
-            Command::PurgeLog { .. } => flags.set_data_changed(),
-            Command::DeleteConflictLog { .. } => flags.set_data_changed(),
-            Command::BuildSnapshot { .. } => flags.set_data_changed(),
-            Command::InstallSnapshot { .. } => flags.set_data_changed(),
-            Command::CancelSnapshot { .. } => {}
-            Command::Respond { .. } => {}
-        }
-    }
-
     #[allow(dead_code)]
     #[rustfmt::skip]
     pub(crate) fn kind(&self) -> CommandKind {

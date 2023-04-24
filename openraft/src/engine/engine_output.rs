@@ -1,7 +1,6 @@
 use std::collections::VecDeque;
 
 use crate::engine::Command;
-use crate::MetricsChangeFlags;
 use crate::RaftTypeConfig;
 
 /// The entry of output from Engine to the runtime.
@@ -9,9 +8,6 @@ use crate::RaftTypeConfig;
 pub(crate) struct EngineOutput<C>
 where C: RaftTypeConfig
 {
-    /// Tracks what kind of metrics changed
-    pub(crate) metrics_flags: MetricsChangeFlags,
-
     /// Command queue that need to be executed by `RaftRuntime`.
     pub(crate) commands: VecDeque<Command<C>>,
 }
@@ -21,14 +17,12 @@ where C: RaftTypeConfig
 {
     pub(crate) fn new(command_buffer_size: usize) -> Self {
         Self {
-            metrics_flags: MetricsChangeFlags::default(),
             commands: VecDeque::with_capacity(command_buffer_size),
         }
     }
 
     /// Push a command to the queue.
     pub(crate) fn push_command(&mut self, cmd: Command<C>) {
-        cmd.update_metrics_flags(&mut self.metrics_flags);
         self.commands.push_back(cmd)
     }
 

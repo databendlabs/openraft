@@ -18,7 +18,6 @@ use crate::vote::CommittedLeaderId;
 use crate::Entry;
 use crate::LogId;
 use crate::Membership;
-use crate::MetricsChangeFlags;
 use crate::Vote;
 
 #[test]
@@ -57,16 +56,6 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
         assert_eq!(Some(&log_id(1, 1)), eng.state.last_log_id());
 
         assert_eq!(ServerState::Leader, eng.state.server_state);
-        assert_eq!(
-            MetricsChangeFlags {
-                // Command::UpdateReplicationStreams will set this flag.
-                // Although there is no replication to create.
-                replication: true,
-                local_data: true,
-                cluster: true,
-            },
-            eng.output.metrics_flags
-        );
         assert_eq!(&m1(), eng.state.membership_state.effective().membership());
 
         assert_eq!(

@@ -160,7 +160,6 @@ fn test_leader_append_entries_fast_commit() -> anyhow::Result<()> {
     eng.vote_handler().become_leading();
 
     eng.output.clear_commands();
-    eng.output.metrics_flags.reset();
 
     // log id will be assigned by eng.
     eng.leader_handler()?.leader_append_entries(vec![
@@ -306,7 +305,6 @@ fn test_leader_append_entries_fast_commit_membership_no_voter_change() -> anyhow
     eng.state.server_state = eng.calc_server_state();
 
     eng.output.clear_commands();
-    eng.output.metrics_flags.reset();
 
     // log id will be assigned by eng.
     eng.leader_handler()?.leader_append_entries(vec![
@@ -392,7 +390,6 @@ fn test_leader_append_entries_fast_commit_if_membership_voter_change_to_1() -> a
     eng.state.server_state = eng.calc_server_state();
 
     eng.output.clear_commands();
-    eng.output.metrics_flags.reset();
 
     // log id will be assigned by eng.
     eng.leader_handler()?.leader_append_entries(vec![

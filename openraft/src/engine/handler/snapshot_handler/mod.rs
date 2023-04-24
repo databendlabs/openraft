@@ -58,7 +58,6 @@ where C: RaftTypeConfig
         }
 
         self.state.snapshot_meta = meta;
-        self.output.metrics_flags.set_data_changed();
 
         true
     }

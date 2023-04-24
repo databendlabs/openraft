@@ -93,7 +93,6 @@ use crate::RaftNetworkFactory;
 use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::StorageIOError;
-use crate::Update;
 use crate::Vote;
 
 /// A temp struct to hold the data for a node that is being applied.
@@ -213,7 +212,7 @@ where
         let res = self.do_main(rx_shutdown).instrument(span).await;
 
         // Flush buffered metrics
-        self.report_metrics(Update::AsIs);
+        self.report_metrics(None);
 
         tracing::info!("update the metrics for shutdown");
         {
@@ -243,7 +242,7 @@ where
         self.run_engine_commands().await?;
 
         // Initialize metrics.
-        self.report_metrics(Update::Update(None));
+        self.report_metrics(None);
 
         self.runtime_loop(rx_shutdown).await
     }
@@ -495,34 +494,13 @@ where
     /// Then clear flags about the cached changes, to avoid unnecessary metrics report.
     #[tracing::instrument(level = "debug", skip_all)]
     pub fn flush_metrics(&mut self) {
-        if !self.engine.output.metrics_flags.changed() {
-            return;
-        }
-
-        let leader_metrics = if self.engine.output.metrics_flags.replication {
-            let replication_metrics = self.leader_data.as_ref().map(|x| x.replication_metrics.clone());
-            Update::Update(replication_metrics)
-        } else {
-            #[allow(clippy::collapsible_else_if)]
-            if self.leader_data.is_some() {
-                Update::AsIs
-            } else {
-                Update::Update(None)
-            }
-        };
-
+        let leader_metrics = self.leader_data.as_ref().map(|x| x.replication_metrics.clone());
         self.report_metrics(leader_metrics);
-        self.engine.output.metrics_flags.reset();
     }
 
     /// Report a metrics payload on the current state of the Raft node.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn report_metrics(&self, replication: Update<Option<Versioned<ReplicationMetrics<C::NodeId>>>>) {
-        let replication = match replication {
-            Update::Update(v) => v,
-            Update::AsIs => self.tx_metrics.borrow().replication.clone(),
-        };
-
+    pub(crate) fn report_metrics(&self, replication: Option<Versioned<ReplicationMetrics<C::NodeId>>>) {
         let m = RaftMetrics {
             running_state: Ok(()),
             id: self.id,
@@ -541,14 +519,6 @@ where
             // --- replication ---
             replication,
         };
-
-        {
-            let curr = self.tx_metrics.borrow();
-            if m == *curr {
-                tracing::debug!("metrics not changed: {}", m.summary());
-                return;
-            }
-        }
 
         tracing::debug!("report_metrics: {}", m.summary());
         let res = self.tx_metrics.send(m);
@@ -1245,12 +1215,10 @@ where
                     sm::Response::InstallSnapshot(meta) => {
                         if let Some(meta) = meta {
                             self.engine.state.io_state_mut().update_applied(meta.last_log_id);
-                            self.engine.output.metrics_flags.set_data_changed();
                         }
                     }
                     sm::Response::Apply(res) => {
                         self.engine.state.io_state_mut().update_applied(Some(res.last_applied));
-                        self.engine.output.metrics_flags.set_data_changed();
 
                         self.handle_apply_result(res);
                     }
@@ -1374,8 +1342,6 @@ where
             // This method is only called after `update_progress()`.
             // And this node may become a non-leader after `update_progress()`
         }
-
-        self.engine.output.metrics_flags.set_replication_changed()
     }
 
     /// If a message is sent by a previous server state but is received by current server state,

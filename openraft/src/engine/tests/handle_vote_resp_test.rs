@@ -18,7 +18,6 @@ use crate::CommittedLeaderId;
 use crate::EffectiveMembership;
 use crate::LogId;
 use crate::Membership;
-use crate::MetricsChangeFlags;
 use crate::Vote;
 
 fn m12() -> Membership<u64, ()> {
@@ -58,14 +57,6 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         assert!(eng.internal_server_state.is_following());
 
         assert_eq!(ServerState::Follower, eng.state.server_state);
-        assert_eq!(
-            MetricsChangeFlags {
-                replication: false,
-                local_data: false,
-                cluster: false,
-            },
-            eng.output.metrics_flags
-        );
 
         assert_eq!(0, eng.output.take_commands().len());
     }
@@ -95,14 +86,6 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         );
 
         assert_eq!(ServerState::Candidate, eng.state.server_state);
-        assert_eq!(
-            MetricsChangeFlags {
-                replication: false,
-                local_data: false,
-                cluster: false,
-            },
-            eng.output.metrics_flags
-        );
 
         assert!(eng.output.take_commands().is_empty());
     }
@@ -131,14 +114,6 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         assert!(eng.internal_server_state.is_following());
 
         assert_eq!(ServerState::Follower, eng.state.server_state);
-        assert_eq!(
-            MetricsChangeFlags {
-                replication: false,
-                local_data: true,
-                cluster: false,
-            },
-            eng.output.metrics_flags
-        );
 
         assert_eq!(
             vec![Command::SaveVote { vote: Vote::new(3, 2) },],
@@ -171,14 +146,6 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         );
 
         assert_eq!(ServerState::Candidate, eng.state.server_state);
-        assert_eq!(
-            MetricsChangeFlags {
-                replication: false,
-                local_data: false,
-                cluster: false,
-            },
-            eng.output.metrics_flags
-        );
 
         assert!(eng.output.take_commands().is_empty());
     }
@@ -208,14 +175,6 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         );
 
         assert_eq!(ServerState::Candidate, eng.state.server_state);
-        assert_eq!(
-            MetricsChangeFlags {
-                replication: false,
-                local_data: false,
-                cluster: false,
-            },
-            eng.output.metrics_flags
-        );
 
         assert_eq!(0, eng.output.take_commands().len());
     }
@@ -245,14 +204,6 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         );
 
         assert_eq!(ServerState::Leader, eng.state.server_state);
-        assert_eq!(
-            MetricsChangeFlags {
-                replication: true,
-                local_data: true,
-                cluster: true,
-            },
-            eng.output.metrics_flags
-        );
 
         assert_eq!(
             vec![
