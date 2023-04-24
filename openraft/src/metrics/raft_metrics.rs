@@ -5,7 +5,6 @@ use crate::error::Fatal;
 use crate::metrics::ReplicationMetrics;
 use crate::node::Node;
 use crate::summary::MessageSummary;
-use crate::versioned::Versioned;
 use crate::LogId;
 use crate::NodeId;
 use crate::StoredMembership;
@@ -54,8 +53,8 @@ where
     // ---
     // --- replication ---
     // ---
-    /// The metrics about the leader. It is Some() only when this node is leader.
-    pub replication: Option<Versioned<ReplicationMetrics<NID>>>,
+    /// The replication states. It is Some() only when this node is leader.
+    pub replication: Option<ReplicationMetrics<NID>>,
 }
 
 impl<NID, N> MessageSummary<RaftMetrics<NID, N>> for RaftMetrics<NID, N>
@@ -64,7 +63,7 @@ where
     N: Node,
 {
     fn summary(&self) -> String {
-        format!("Metrics{{id:{},{:?}, term:{}, last_log:{:?}, last_applied:{:?}, leader:{:?}, membership:{}, snapshot:{:?}, replication:{}",
+        format!("Metrics{{id:{},{:?}, term:{}, last_log:{:?}, last_applied:{:?}, leader:{:?}, membership:{}, snapshot:{:?}, replication:{{{}}}",
                 self.id,
                 self.state,
                 self.current_term,
@@ -73,7 +72,9 @@ where
                 self.current_leader,
                 self.membership_config.summary(),
                 self.snapshot,
-                self.replication.as_ref().map(|x| x.summary()).unwrap_or_default(),
+                self.replication.as_ref().map(|x| {
+                    x.iter().map(|(k, v)| format!("{}:{}", k, v.summary())).collect::<Vec<_>>().join(",")
+                }).unwrap_or_default(),
         )
     }
 }

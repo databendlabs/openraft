@@ -8,15 +8,16 @@
 //! return a stream of metrics.
 
 mod raft_metrics;
-mod replication_metrics;
 mod wait;
 
-#[cfg(test)] mod replication_metrics_test;
 #[cfg(test)] mod wait_test;
 
+use std::collections::BTreeMap;
+
 pub use raft_metrics::RaftMetrics;
-pub use replication_metrics::ReplicationMetrics;
-pub use replication_metrics::ReplicationTargetMetrics;
-pub(crate) use replication_metrics::UpdateMatchedLogId;
 pub use wait::Wait;
 pub use wait::WaitError;
+
+use crate::LogId;
+
+pub(crate) type ReplicationMetrics<NID> = BTreeMap<NID, Option<LogId<NID>>>;

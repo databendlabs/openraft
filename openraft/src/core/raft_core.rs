@@ -1,3 +1,4 @@
+use std::borrow::Borrow;
 use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::fmt::Display;
@@ -49,7 +50,6 @@ use crate::log_id::LogIdOptionExt;
 use crate::log_id::RaftLogId;
 use crate::metrics::RaftMetrics;
 use crate::metrics::ReplicationMetrics;
-use crate::metrics::UpdateMatchedLogId;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::Inflight;
 use crate::progress::Progress;
@@ -79,8 +79,6 @@ use crate::storage::LogFlushed;
 use crate::storage::RaftLogReaderExt;
 use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
-use crate::versioned::Updatable;
-use crate::versioned::Versioned;
 use crate::ChangeMembers;
 use crate::LogId;
 use crate::Membership;
@@ -141,9 +139,6 @@ where SD: AsyncRead + AsyncSeek + Send + Unpin + 'static
     //           It requires the Engine to emit correct add/remove replication commands
     pub(super) replications: BTreeMap<C::NodeId, ReplicationHandle<C::NodeId, C::Node, SD>>,
 
-    /// The metrics of all replication streams
-    pub(crate) replication_metrics: Versioned<ReplicationMetrics<C::NodeId>>,
-
     /// The time to send next heartbeat.
     pub(crate) next_heartbeat: Instant,
 }
@@ -155,7 +150,6 @@ where SD: AsyncRead + AsyncSeek + Send + Unpin + 'static
         Self {
             client_resp_channels: Default::default(),
             replications: BTreeMap::new(),
-            replication_metrics: Versioned::new(ReplicationMetrics::default()),
             next_heartbeat: Instant::now(),
         }
     }
@@ -490,17 +484,20 @@ where
         true
     }
 
-    /// Flush cached changes of metrics to notify metrics watchers with updated metrics.
-    /// Then clear flags about the cached changes, to avoid unnecessary metrics report.
     #[tracing::instrument(level = "debug", skip_all)]
     pub fn flush_metrics(&mut self) {
-        let leader_metrics = self.leader_data.as_ref().map(|x| x.replication_metrics.clone());
+        let leader_metrics = if let Some(leader) = self.engine.internal_server_state.leading() {
+            let prog = &leader.progress;
+            Some(prog.iter().map(|(id, p)| (*id, *p.borrow())).collect())
+        } else {
+            None
+        };
         self.report_metrics(leader_metrics);
     }
 
     /// Report a metrics payload on the current state of the Raft node.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn report_metrics(&self, replication: Option<Versioned<ReplicationMetrics<C::NodeId>>>) {
+    pub(crate) fn report_metrics(&self, replication: Option<ReplicationMetrics<C::NodeId>>) {
         let m = RaftMetrics {
             running_state: Ok(()),
             id: self.id,
@@ -842,8 +839,6 @@ where
                 let _x = handle.await;
                 tracing::info!("Done joining removed replication : {}", target);
             }
-
-            l.replication_metrics = Versioned::new(ReplicationMetrics::default());
         } else {
             unreachable!("it has to be a leader!!!");
         };
@@ -1327,23 +1322,6 @@ where
         }
     }
 
-    #[tracing::instrument(level = "debug", skip_all)]
-    fn update_progress_metrics(&mut self, target: C::NodeId, matching: LogId<C::NodeId>) {
-        tracing::debug!(%target, ?matching, "update_leader_metrics");
-
-        if let Some(l) = &mut self.leader_data {
-            tracing::debug!(
-                target = display(target),
-                matching = debug(&matching),
-                "update replication_metrics"
-            );
-            l.replication_metrics.update(UpdateMatchedLogId { target, matching });
-        } else {
-            // This method is only called after `update_progress()`.
-            // And this node may become a non-leader after `update_progress()`
-        }
-    }
-
     /// If a message is sent by a previous server state but is received by current server state,
     /// it is a stale message and should be just ignored.
     fn does_vote_match(&self, vote: &Vote<C::NodeId>, msg: impl Display) -> bool {
@@ -1525,9 +1503,6 @@ where
                         unreachable!("it has to be a leader!!!");
                     }
                 }
-            }
-            Command::UpdateProgressMetrics { target, matching } => {
-                self.update_progress_metrics(target, matching);
             }
             Command::CancelSnapshot { snapshot_meta } => {
                 let cmd = sm::Command::cancel_snapshot(snapshot_meta.clone());

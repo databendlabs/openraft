@@ -79,15 +79,6 @@ where C: RaftTypeConfig
         targets: Vec<(C::NodeId, ProgressEntry<C::NodeId>)>,
     },
 
-    // TODO(3): it also update the progress of a leader.
-    //          Add doc:
-    //          `target` can also be the leader id.
-    /// As the state of replication to `target` is updated, the metrics should be updated.
-    UpdateProgressMetrics {
-        target: C::NodeId,
-        matching: LogId<C::NodeId>,
-    },
-
     /// Save vote to storage
     SaveVote { vote: Vote<C::NodeId> },
 
@@ -146,7 +137,6 @@ where
             (Command::FollowerCommit { already_committed, upto, }, Command::FollowerCommit { already_committed: b_committed, upto: b_upto, }, )  => already_committed == b_committed && upto == b_upto,
             (Command::Replicate { target, req },                   Command::Replicate { target: b_target, req: other_req, }, )                   => target == b_target && req == other_req,
             (Command::RebuildReplicationStreams { targets },       Command::RebuildReplicationStreams { targets: b }, )                          => targets == b,
-            (Command::UpdateProgressMetrics { target, matching },  Command::UpdateProgressMetrics { target: b_target, matching: b_matching, }, ) => target == b_target && matching == b_matching,
             (Command::SaveVote { vote },                           Command::SaveVote { vote: b })                                                => vote == b,
             (Command::SendVote { vote_req },                       Command::SendVote { vote_req: b }, )                                          => vote_req == b,
             (Command::PurgeLog { upto },                           Command::PurgeLog { upto: b })                                                => upto == b,
@@ -177,7 +167,6 @@ where C: RaftTypeConfig
             Command::FollowerCommit { .. }            => CommandKind::StateMachine,
             Command::Replicate { .. }                 => CommandKind::Network,
             Command::RebuildReplicationStreams { .. } => CommandKind::Other,
-            Command::UpdateProgressMetrics { .. }     => CommandKind::Other,
             Command::SaveVote { .. }                  => CommandKind::Log,
             Command::SendVote { .. }                  => CommandKind::Network,
             Command::PurgeLog { .. }                  => CommandKind::Log,
@@ -204,7 +193,6 @@ where C: RaftTypeConfig
             Command::FollowerCommit { .. }            => None,
             Command::Replicate { .. }                 => None,
             Command::RebuildReplicationStreams { .. } => None,
-            Command::UpdateProgressMetrics { .. }     => None,
             Command::SaveVote { .. }                  => None,
             Command::SendVote { .. }                  => None,
             Command::PurgeLog { .. }                  => None,

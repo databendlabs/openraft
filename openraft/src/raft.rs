@@ -49,6 +49,7 @@ use crate::AppData;
 use crate::AppDataResponse;
 use crate::ChangeMembers;
 use crate::LogId;
+use crate::LogIdOptionExt;
 use crate::Membership;
 use crate::MessageSummary;
 use crate::NodeId;
@@ -565,7 +566,7 @@ where
             Some(x) => x,
         };
 
-        let replication_metrics = &repl.data().replication;
+        let replication_metrics = repl;
         let target_metrics = match replication_metrics.get(&node_id) {
             None => {
                 // Maybe replication is not reported yet. Keep waiting.
@@ -574,13 +575,13 @@ where
             Some(x) => x,
         };
 
-        let matched = target_metrics.matched();
+        let matched = *target_metrics;
 
-        let distance = replication_lag(&Some(matched.index), &metrics.last_log_index);
+        let distance = replication_lag(&matched.index(), &metrics.last_log_index);
 
         if distance <= self.inner.config.replication_lag_threshold {
             // replication became up to date.
-            return Ok(Some(matched));
+            return Ok(matched);
         }
 
         // Not up to date, keep waiting.

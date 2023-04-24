@@ -63,7 +63,7 @@ async fn stop_replication_to_removed_unreachable_follower_network_failure() -> R
         router
             .wait(&0, timeout())
             .metrics(
-                |x| x.replication.as_ref().map(|y| y.data().replication.contains_key(&4)) == Some(false),
+                |x| x.replication.as_ref().map(|y| y.contains_key(&4)) == Some(false),
                 "stopped replication to node 4",
             )
             .await?;

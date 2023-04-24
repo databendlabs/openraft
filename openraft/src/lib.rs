@@ -60,7 +60,6 @@ pub mod raft;
 pub mod storage;
 pub mod testing;
 pub mod timer;
-pub mod versioned;
 
 pub(crate) mod engine;
 pub(crate) mod log_id_range;
@@ -95,7 +94,6 @@ pub use crate::membership::EffectiveMembership;
 pub use crate::membership::Membership;
 pub use crate::membership::StoredMembership;
 pub use crate::metrics::RaftMetrics;
-pub use crate::metrics::ReplicationTargetMetrics;
 pub use crate::network::RPCTypes;
 pub use crate::network::RaftNetwork;
 pub use crate::network::RaftNetworkFactory;
