@@ -1441,13 +1441,7 @@ where
                     unreachable!("it has to be a leader!!!");
                 }
             }
-            Command::LeaderCommit {
-                ref already_committed,
-                ref upto,
-            } => {
-                self.apply_to_state_machine(already_committed.next_index(), upto.index).await?;
-            }
-            Command::FollowerCommit {
+            Command::Apply {
                 ref already_committed,
                 ref upto,
             } => {

@@ -173,7 +173,7 @@ where C: RaftTypeConfig
                 committed: self.state.committed().copied(),
             });
 
-            self.output.push_command(Command::LeaderCommit {
+            self.output.push_command(Command::Apply {
                 already_committed: prev_committed,
                 upto: self.state.committed().copied().unwrap(),
             });

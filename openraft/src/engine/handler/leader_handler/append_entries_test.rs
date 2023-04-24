@@ -205,7 +205,7 @@ fn test_leader_append_entries_fast_commit() -> anyhow::Result<()> {
             Command::ReplicateCommitted {
                 committed: Some(log_id(3, 6))
             },
-            Command::LeaderCommit {
+            Command::Apply {
                 already_committed: Some(log_id(0, 0)),
                 upto: LogId::new(CommittedLeaderId::new(3, 1), 6)
             },
@@ -272,7 +272,7 @@ fn test_leader_append_entries_fast_commit_upto_membership_entry() -> anyhow::Res
             Command::ReplicateCommitted {
                 committed: Some(log_id(3, 4))
             },
-            Command::LeaderCommit {
+            Command::Apply {
                 already_committed: Some(log_id(0, 0)),
                 upto: LogId::new(CommittedLeaderId::new(3, 1), 4)
             },
@@ -351,7 +351,7 @@ fn test_leader_append_entries_fast_commit_membership_no_voter_change() -> anyhow
             Command::ReplicateCommitted {
                 committed: Some(log_id(3, 4))
             },
-            Command::LeaderCommit {
+            Command::Apply {
                 already_committed: Some(log_id(0, 0)),
                 upto: LogId::new(CommittedLeaderId::new(3, 1), 4)
             },
@@ -366,7 +366,7 @@ fn test_leader_append_entries_fast_commit_membership_no_voter_change() -> anyhow
             Command::ReplicateCommitted {
                 committed: Some(log_id(3, 6))
             },
-            Command::LeaderCommit {
+            Command::Apply {
                 already_committed: Some(LogId::new(CommittedLeaderId::new(3, 1), 4)),
                 upto: LogId::new(CommittedLeaderId::new(3, 1), 6)
             },
@@ -443,7 +443,7 @@ fn test_leader_append_entries_fast_commit_if_membership_voter_change_to_1() -> a
             Command::ReplicateCommitted {
                 committed: Some(log_id(3, 6))
             },
-            Command::LeaderCommit {
+            Command::Apply {
                 already_committed: Some(log_id(0, 0)),
                 upto: LogId::new(CommittedLeaderId::new(3, 1), 6)
             },
