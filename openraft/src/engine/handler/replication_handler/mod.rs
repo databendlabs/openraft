@@ -153,14 +153,6 @@ where C: RaftTypeConfig
 
         tracing::debug!(granted = display(granted.summary()), "granted after updating progress");
 
-        if node_id != self.config.id {
-            // TODO(3): replication metrics should also contains leader's progress
-            self.output.push_command(Command::UpdateProgressMetrics {
-                target: node_id,
-                matching: log_id.unwrap(),
-            });
-        }
-
         self.try_commit_granted(granted);
     }
 

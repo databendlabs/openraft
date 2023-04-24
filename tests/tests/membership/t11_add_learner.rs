@@ -134,8 +134,8 @@ async fn add_learner_non_blocking() -> Result<()> {
 
         let metrics = router.get_raft_handle(&0)?.metrics().borrow().clone();
         let repl = metrics.replication.as_ref().unwrap();
-        let n1_repl = repl.data().replication.get(&1);
-        assert_eq!(None, n1_repl);
+        let n1_repl = repl.get(&1);
+        assert_eq!(Some(&None), n1_repl, "no replication state to the learner is reported");
     }
 
     Ok(())

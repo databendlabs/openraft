@@ -5,7 +5,6 @@ use anyhow::Result;
 use futures::stream::StreamExt;
 use maplit::btreemap;
 use maplit::btreeset;
-use openraft::metrics::ReplicationTargetMetrics;
 use openraft::CommittedLeaderId;
 use openraft::Config;
 use openraft::LogId;
@@ -15,6 +14,7 @@ use openraft::ServerState;
 use tokio::time::sleep;
 
 use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::log_id;
 use crate::fixtures::RaftRouter;
 
 /// Cluster leader_metrics test.
@@ -65,7 +65,9 @@ async fn leader_metrics() -> Result<()> {
             &0,
             |x| {
                 if let Some(ref q) = x.replication {
-                    q.data().replication.is_empty()
+                    q == &btreemap! {
+                        0u64 => Some(log_id(1,0,1)),
+                    }
                 } else {
                     false
                 }
@@ -106,14 +108,14 @@ async fn leader_metrics() -> Result<()> {
 
     router.assert_stable_cluster(Some(1), Some(log_index)); // Still in term 1, so leader is still node 0.
 
-    let ww = ReplicationTargetMetrics::new(LogId::new(CommittedLeaderId::new(1, 0), log_index));
-    let want_repl = btreemap! { 1=>ww.clone(), 2=>ww.clone(), 3=>ww.clone(), 4=>ww.clone(), };
+    let ww = Some(LogId::new(CommittedLeaderId::new(1, 0), log_index));
+    let want_repl = btreemap! { 0u64=>ww, 1u64=>ww, 2=>ww, 3=>ww, 4=>ww, };
     router
         .wait_for_metrics(
             &0,
             |x| {
                 if let Some(ref q) = x.replication {
-                    q.data().replication == want_repl
+                    q == &want_repl
                 } else {
                     false
                 }
@@ -145,14 +147,14 @@ async fn leader_metrics() -> Result<()> {
 
     tracing::info!("--- replication metrics should reflect the replication state");
     {
-        let ww = ReplicationTargetMetrics::new(LogId::new(CommittedLeaderId::new(1, 0), log_index));
-        let want_repl = btreemap! { 1=>ww.clone(), 2=>ww.clone(), 3=>ww.clone()};
+        let ww = Some(LogId::new(CommittedLeaderId::new(1, 0), log_index));
+        let want_repl = btreemap! { 0=>ww, 1=>ww, 2=>ww, 3=>ww};
         router
             .wait_for_metrics(
                 &0,
                 |x| {
                     if let Some(ref q) = x.replication {
-                        q.data().replication == want_repl
+                        q == &want_repl
                     } else {
                         false
                     }

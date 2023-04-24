@@ -79,16 +79,7 @@ fn test_update_matching() -> anyhow::Result<()> {
     {
         rh.update_matching(3, inflight_id_3, Some(log_id(1, 2)));
         assert_eq!(None, rh.state.committed());
-        assert_eq!(
-            vec![
-                //
-                Command::UpdateProgressMetrics {
-                    target: 3,
-                    matching: log_id(1, 2),
-                },
-            ],
-            rh.output.take_commands()
-        );
+        assert_eq!(0, rh.output.take_commands().len());
     }
 
     // progress: None, (2,1), (1,2); quorum-ed: (1,2), not at leader vote, not committed
@@ -106,10 +97,6 @@ fn test_update_matching() -> anyhow::Result<()> {
         assert_eq!(Some(&log_id(2, 1)), rh.state.committed());
         assert_eq!(
             vec![
-                Command::UpdateProgressMetrics {
-                    target: 3,
-                    matching: log_id(2, 3),
-                },
                 Command::ReplicateCommitted {
                     committed: Some(log_id(2, 1))
                 },
@@ -129,10 +116,6 @@ fn test_update_matching() -> anyhow::Result<()> {
         assert_eq!(Some(&log_id(2, 3)), rh.state.committed());
         assert_eq!(
             vec![
-                Command::UpdateProgressMetrics {
-                    target: 1,
-                    matching: log_id(2, 4),
-                },
                 Command::ReplicateCommitted {
                     committed: Some(log_id(2, 3))
                 },
