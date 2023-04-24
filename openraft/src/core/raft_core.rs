@@ -1097,9 +1097,6 @@ where
             RaftMsg::Initialize { members, tx } => {
                 self.handle_initialize(members, tx);
             }
-            RaftMsg::AddLearner { id, node, tx } => {
-                self.change_membership(ChangeMembers::AddNodes(btreemap! {id=>node}), true, tx);
-            }
             RaftMsg::ChangeMembership { changes, retain, tx } => {
                 self.change_membership(changes, retain, tx);
             }
@@ -1133,7 +1130,6 @@ where
 
                 self.handle_tick_election();
 
-                // TODO: test: with heartbeat log, election is automatically rejected.
                 // TODO: test: fixture: make isolated_nodes a single-way isolating.
 
                 // Leader send heartbeat
