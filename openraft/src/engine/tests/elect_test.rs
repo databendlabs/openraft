@@ -16,7 +16,6 @@ use crate::CommittedLeaderId;
 use crate::EffectiveMembership;
 use crate::LogId;
 use crate::Membership;
-use crate::MetricsChangeFlags;
 use crate::Vote;
 
 fn m1() -> Membership<u64, ()> {
@@ -53,14 +52,6 @@ fn test_elect() -> anyhow::Result<()> {
         );
 
         assert_eq!(ServerState::Leader, eng.state.server_state);
-        assert_eq!(
-            MetricsChangeFlags {
-                replication: true,
-                local_data: true,
-                cluster: true,
-            },
-            eng.output.metrics_flags
-        );
 
         assert_eq!(
             vec![
@@ -116,14 +107,6 @@ fn test_elect() -> anyhow::Result<()> {
         );
 
         assert_eq!(ServerState::Leader, eng.state.server_state);
-        assert_eq!(
-            MetricsChangeFlags {
-                replication: true,
-                local_data: true,
-                cluster: true,
-            },
-            eng.output.metrics_flags
-        );
 
         assert_eq!(
             vec![
@@ -175,14 +158,6 @@ fn test_elect() -> anyhow::Result<()> {
         );
 
         assert_eq!(ServerState::Candidate, eng.state.server_state);
-        assert_eq!(
-            MetricsChangeFlags {
-                replication: false,
-                local_data: true,
-                cluster: false,
-            },
-            eng.output.metrics_flags
-        );
 
         assert_eq!(
             vec![Command::SaveVote { vote: Vote::new(1, 1) }, Command::SendVote {

@@ -40,7 +40,6 @@ pub(crate) mod time_state;
 #[cfg(test)]
 mod tests {
     mod append_entries_test;
-    mod command_test;
     mod elect_test;
     mod handle_vote_req_test;
     mod handle_vote_resp_test;
