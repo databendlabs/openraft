@@ -21,7 +21,6 @@ use anyhow::Context;
 use lazy_static::lazy_static;
 use maplit::btreeset;
 use openraft::async_trait::async_trait;
-use openraft::entry::RaftEntry;
 use openraft::error::CheckIsLeaderError;
 use openraft::error::ClientWriteError;
 use openraft::error::InstallSnapshotError;
@@ -43,10 +42,8 @@ use openraft::storage::RaftLogStorage;
 use openraft::storage::RaftStateMachine;
 use openraft::CommittedLeaderId;
 use openraft::Config;
-use openraft::Entry;
 use openraft::LogId;
 use openraft::LogIdOptionExt;
-use openraft::Membership;
 use openraft::MessageSummary;
 use openraft::Raft;
 use openraft::RaftLogReader;
@@ -1047,9 +1044,4 @@ fn timeout() -> Option<Duration> {
 
 pub fn log_id(term: u64, node_id: MemNodeId, index: u64) -> LogId<MemNodeId> {
     LogId::new(CommittedLeaderId::new(term, node_id), index)
-}
-
-/// Create a membership log entry for test.
-pub fn membership_ent(term: u64, node_id: MemNodeId, index: u64, config: Vec<BTreeSet<MemNodeId>>) -> Entry<MemConfig> {
-    Entry::new_membership(log_id(term, node_id, index), Membership::new(config, None))
 }
