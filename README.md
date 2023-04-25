@@ -95,6 +95,7 @@ Benchmark history:
 
 |  Date      | clients | put/s       | ns/op      | Changes                              |
 | :--        | --:     | --:         | --:        | :--                                  |
+| 2023-04-25 |  64     | **730,000** |    1,369   | Split channels                       |
 | 2023-04-24 |  64     | **652,000** |    1,532   | Reduce metrics report rate           |
 | 2023-04-23 |  64     | **467,000** |    2,139   | State-machine moved to separate task |
 |            |   1     |    70,000   | **14,273** |                                      |

@@ -16,12 +16,9 @@ use crate::entry::RaftPayload;
 use crate::error::InstallSnapshotError;
 use crate::error::SnapshotMismatch;
 use crate::raft::InstallSnapshotRequest;
-use crate::raft::RaftMsg;
-use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
 use crate::summary::MessageSummary;
 use crate::RaftLogId;
-use crate::RaftNetworkFactory;
 use crate::RaftSnapshotBuilder;
 use crate::RaftTypeConfig;
 use crate::Snapshot;
@@ -38,6 +35,8 @@ pub(crate) use command::CommandPayload;
 #[allow(unused_imports)] pub(crate) use command::CommandSeq;
 pub(crate) use response::CommandResult;
 pub(crate) use response::Response;
+
+use crate::core::notify::Notify;
 
 // TODO: replace it with Snapshot<NID,N,SD>
 /// Received snapshot from the leader.
@@ -78,11 +77,9 @@ where
     }
 }
 
-pub(crate) struct Worker<C, N, LS, SM>
+pub(crate) struct Worker<C, SM>
 where
     C: RaftTypeConfig,
-    N: RaftNetworkFactory<C>,
-    LS: RaftLogStorage<C>,
     SM: RaftStateMachine<C>,
 {
     state_machine: SM,
@@ -93,18 +90,16 @@ where
 
     cmd_rx: mpsc::UnboundedReceiver<Command<C, SM>>,
 
-    resp_tx: mpsc::UnboundedSender<RaftMsg<C, N, LS>>,
+    resp_tx: mpsc::UnboundedSender<Notify<C>>,
 }
 
-impl<C, N, LS, SM> Worker<C, N, LS, SM>
+impl<C, SM> Worker<C, SM>
 where
     C: RaftTypeConfig,
-    N: RaftNetworkFactory<C>,
-    LS: RaftLogStorage<C>,
     SM: RaftStateMachine<C>,
 {
     /// Spawn a new state machine worker, return a controlling handle.
-    pub(crate) fn spawn(state_machine: SM, resp_tx: mpsc::UnboundedSender<RaftMsg<C, N, LS>>) -> Handle<C, SM> {
+    pub(crate) fn spawn(state_machine: SM, resp_tx: mpsc::UnboundedSender<Notify<C>>) -> Handle<C, SM> {
         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
 
         let worker = Worker {
@@ -127,7 +122,7 @@ where
             if let Err(err) = res {
                 tracing::error!("{} while execute state machine command", err,);
 
-                let _ = self.resp_tx.send(RaftMsg::StateMachine {
+                let _ = self.resp_tx.send(Notify::StateMachine {
                     command_result: CommandResult {
                         command_seq: 0,
                         result: Err(err),
@@ -199,7 +194,7 @@ where
                 }
             };
 
-            let _ = self.resp_tx.send(RaftMsg::StateMachine { command_result });
+            let _ = self.resp_tx.send(Notify::StateMachine { command_result });
 
             (cmd.respond)();
         }

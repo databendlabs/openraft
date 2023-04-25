@@ -25,6 +25,7 @@ use tokio::time::Instant;
 use tracing_futures::Instrument;
 
 use crate::config::Config;
+use crate::core::notify::Notify;
 use crate::error::HigherVote;
 use crate::error::RPCError;
 use crate::error::ReplicationClosed;
@@ -36,7 +37,6 @@ use crate::network::Backoff;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
 use crate::raft::InstallSnapshotRequest;
-use crate::raft::RaftMsg;
 use crate::storage::RaftLogReader;
 use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
@@ -89,7 +89,7 @@ where
 
     /// A channel for sending events to the RaftCore.
     #[allow(clippy::type_complexity)]
-    tx_raft_core: mpsc::UnboundedSender<RaftMsg<C, N, LS>>,
+    tx_raft_core: mpsc::UnboundedSender<Notify<C>>,
 
     /// A channel for receiving events from the RaftCore.
     rx_repl: mpsc::UnboundedReceiver<Replicate<C::NodeId, C::Node, SM::SnapshotData>>,
@@ -136,7 +136,7 @@ where
         matching: Option<LogId<C::NodeId>>,
         network: N::Network,
         log_reader: LS::LogReader,
-        tx_raft_core: mpsc::UnboundedSender<RaftMsg<C, N, LS>>,
+        tx_raft_core: mpsc::UnboundedSender<Notify<C>>,
         span: tracing::Span,
     ) -> ReplicationHandle<C::NodeId, C::Node, SM::SnapshotData> {
         tracing::debug!(
@@ -200,7 +200,7 @@ where
                             return Err(closed);
                         }
                         ReplicationError::HigherVote(h) => {
-                            let _ = self.tx_raft_core.send(RaftMsg::HigherVote {
+                            let _ = self.tx_raft_core.send(Notify::HigherVote {
                                 target: self.target,
                                 higher: h.higher,
                                 vote: self.session_id.vote,
@@ -211,12 +211,12 @@ where
                             tracing::error!(error=%error, "error replication to target={}", self.target);
 
                             // TODO: report this error
-                            let _ = self.tx_raft_core.send(RaftMsg::ReplicationStorageError { error });
+                            let _ = self.tx_raft_core.send(Notify::ReplicationStorageError { error });
                             return Ok(());
                         }
                         ReplicationError::RPCError(err) => {
                             tracing::error!(err = display(&err), "RPCError");
-                            let _ = self.tx_raft_core.send(RaftMsg::UpdateReplicationProgress {
+                            let _ = self.tx_raft_core.send(Notify::UpdateReplicationProgress {
                                 target: self.target,
                                 id: repl_id,
                                 result: Err(err.to_string()),
@@ -350,7 +350,7 @@ where
             "update_conflicting"
         );
 
-        let _ = self.tx_raft_core.send(RaftMsg::UpdateReplicationProgress {
+        let _ = self.tx_raft_core.send(Notify::UpdateReplicationProgress {
             session_id: self.session_id,
             id,
             target: self.target,
@@ -375,7 +375,7 @@ where
         if self.matching < new_matching {
             self.matching = new_matching;
 
-            let _ = self.tx_raft_core.send(RaftMsg::UpdateReplicationProgress {
+            let _ = self.tx_raft_core.send(Notify::UpdateReplicationProgress {
                 session_id: self.session_id,
                 id,
                 target: self.target,
