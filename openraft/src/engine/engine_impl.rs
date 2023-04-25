@@ -168,6 +168,8 @@ where C: RaftTypeConfig
     #[tracing::instrument(level = "debug", skip(self))]
     pub(crate) fn elect(&mut self) {
         let v = Vote::new(self.state.vote_ref().leader_id().term + 1, self.config.id);
+        tracing::info!(vote = display(&v), "{}", func_name!());
+
         // Safe unwrap(): it won't reject itself ˙–˙
         self.vote_handler().handle_message_vote(&v).unwrap();
 
@@ -307,12 +309,12 @@ where C: RaftTypeConfig
 
     #[tracing::instrument(level = "debug", skip(self, resp))]
     pub(crate) fn handle_vote_resp(&mut self, target: C::NodeId, resp: VoteResponse<C::NodeId>) {
-        tracing::debug!(
+        tracing::info!(
             resp = display(resp.summary()),
             target = display(target),
             "handle_vote_resp"
         );
-        tracing::debug!(
+        tracing::info!(
             my_vote = display(self.state.vote_ref()),
             my_last_log_id = display(self.state.last_log_id().summary()),
             "handle_vote_resp"
@@ -333,7 +335,7 @@ where C: RaftTypeConfig
 
             let quorum_granted = leader.is_vote_granted();
             if quorum_granted {
-                tracing::debug!("quorum granted vote");
+                tracing::info!("a quorum granted my vote");
                 self.establish_leader();
             }
             return;
@@ -351,6 +353,11 @@ where C: RaftTypeConfig
 
         // Seen a higher log. Record it so that the next election will be delayed for a while.
         if resp.last_log_id.as_ref() > self.state.last_log_id() {
+            tracing::info!(
+                greater_log_id = display(resp.last_log_id.summary()),
+                "seen a greater log id when {}",
+                func_name!()
+            );
             self.set_greater_log();
         }
     }
@@ -491,6 +498,8 @@ where C: RaftTypeConfig
     /// Vote is granted by a quorum, leader established.
     #[tracing::instrument(level = "debug", skip_all)]
     fn establish_leader(&mut self) {
+        tracing::info!("{}", func_name!());
+
         self.vote_handler().commit_vote();
 
         let mut rh = self.replication_handler();

@@ -375,7 +375,7 @@ where
     /// (§5.2).
     #[tracing::instrument(level = "debug", skip(self, rpc))]
     pub async fn vote(&self, rpc: VoteRequest<C::NodeId>) -> Result<VoteResponse<C::NodeId>, RaftError<C::NodeId>> {
-        tracing::debug!(rpc = display(rpc.summary()), "Raft::vote()");
+        tracing::info!(rpc = display(rpc.summary()), "Raft::vote()");
 
         let (tx, rx) = oneshot::channel();
         self.call_core(RaftMsg::RequestVote { rpc, tx }, rx).await

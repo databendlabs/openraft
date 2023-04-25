@@ -557,7 +557,7 @@ where
         tx: InstallSnapshotTx<C::NodeId>,
     ) -> Result<(), StorageError<C::NodeId>> {
         // TODO: move receiving to another thread.
-        tracing::debug!(req = display(req.summary()));
+        tracing::info!(req = display(req.summary()));
 
         let snapshot_meta = req.meta.clone();
         let done = req.done;
@@ -1020,7 +1020,7 @@ where
 
     #[tracing::instrument(level = "debug", skip_all)]
     pub(super) fn handle_vote_request(&mut self, req: VoteRequest<C::NodeId>, tx: VoteTx<C::NodeId>) {
-        tracing::debug!(req = display(req.summary()), func = func_name!());
+        tracing::info!(req = display(req.summary()), func = func_name!());
 
         let resp = self.engine.handle_vote_req(req);
         self.engine.output.push_command(Command::Respond {
@@ -1064,10 +1064,11 @@ where
                 // Thus it is time sensitive. Update the cached time for it.
                 let now = Instant::now();
                 self.engine.timer.update_now(now);
-                tracing::debug!(
+                tracing::info!(
+                    now = debug(now),
                     vote_request = display(rpc.summary()),
-                    "handle vote request: now: {:?}",
-                    now
+                    "received RaftMsg::RequestVote: {}",
+                    func_name!()
                 );
 
                 self.handle_vote_request(rpc, tx);
@@ -1076,11 +1077,24 @@ where
                 let now = Instant::now();
                 self.engine.timer.update_now(now);
 
+                tracing::info!(
+                    now = debug(now),
+                    resp = display(resp.summary()),
+                    "received RaftMsg::VoteResponse: {}",
+                    func_name!()
+                );
+
                 if self.does_vote_match(&vote, "VoteResponse") {
                     self.handle_vote_resp(resp, target);
                 }
             }
             RaftMsg::InstallSnapshot { rpc, tx } => {
+                tracing::info!(
+                    req = display(rpc.summary()),
+                    "received RaftMst::IntallSnapshot: {}",
+                    func_name!()
+                );
+
                 self.handle_install_snapshot_request(rpc, tx).await?;
             }
             RaftMsg::CheckIsLeaderRequest { tx } => {
@@ -1094,15 +1108,30 @@ where
                 self.write_entry(C::Entry::from_app_data(app_data), Some(tx));
             }
             RaftMsg::Initialize { members, tx } => {
+                tracing::info!(
+                    members = debug(&members),
+                    "received RaftMsg::Initialize: {}",
+                    func_name!()
+                );
+
                 self.handle_initialize(members, tx);
             }
             RaftMsg::ChangeMembership { changes, retain, tx } => {
+                tracing::info!(
+                    members = debug(&changes),
+                    retain = debug(&retain),
+                    "received RaftMsg::ChangeMembership: {}",
+                    func_name!()
+                );
+
                 self.change_membership(changes, retain, tx);
             }
             RaftMsg::ExternalRequest { req } => {
                 req(&self.engine.state, &mut self.log_store, &mut self.network);
             }
             RaftMsg::ExternalCommand { cmd } => {
+                tracing::info!(cmd = debug(&cmd), "received RaftMsg::ExternalCommand: {}", func_name!());
+
                 match cmd {
                     ExternalCommand::Elect => {
                         if self.engine.state.membership_state.effective().is_voter(&self.id) {
@@ -1169,11 +1198,15 @@ where
                 }
             }
 
-            RaftMsg::HigherVote {
-                target: _,
-                higher,
-                vote,
-            } => {
+            RaftMsg::HigherVote { target, higher, vote } => {
+                tracing::info!(
+                    target = display(target),
+                    higher_vote = display(&higher),
+                    sending_vote = display(&vote),
+                    "received RaftMsg::HigherVote: {}",
+                    func_name!()
+                );
+
                 if self.does_vote_match(&vote, "HigherVote") {
                     // Rejected vote change is ok.
                     let _ = self.engine.vote_handler().handle_message_vote(&higher);
@@ -1198,11 +1231,26 @@ where
 
                 match command_result.result? {
                     sm::Response::BuildSnapshot(meta) => {
+                        tracing::info!(
+                            "sm::StateMachine command done: BuildSnapshot: {}: {}",
+                            meta.summary(),
+                            func_name!()
+                        );
                         self.engine.finish_building_snapshot(meta);
                     }
-                    sm::Response::GetSnapshot(_) => {}
-                    sm::Response::ReceiveSnapshotChunk(_) => {}
+                    sm::Response::GetSnapshot(_) => {
+                        tracing::info!("sm::StateMachine command done: GetSnapshot: {}", func_name!());
+                    }
+                    sm::Response::ReceiveSnapshotChunk(_) => {
+                        tracing::info!("sm::StateMachine command done: ReceiveSnapshotChunk: {}", func_name!());
+                    }
                     sm::Response::InstallSnapshot(meta) => {
+                        tracing::info!(
+                            "sm::StateMachine command done: InstallSnapshot: {}: {}",
+                            meta.summary(),
+                            func_name!()
+                        );
+
                         if let Some(meta) = meta {
                             self.engine.state.io_state_mut().update_applied(meta.last_log_id);
                         }
@@ -1216,6 +1264,12 @@ where
             }
 
             RaftMsg::ReplicationStorageError { error } => {
+                tracing::error!(
+                    error = display(&error),
+                    "received RaftMsg::ReplicationStorageError: {}",
+                    func_name!()
+                );
+
                 return Err(Fatal::from(error));
             }
         };
