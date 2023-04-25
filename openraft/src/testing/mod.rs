@@ -9,18 +9,11 @@ use tokio::sync::oneshot;
 use crate::log_id::RaftLogId;
 use crate::storage::LogFlushed;
 use crate::storage::RaftLogStorage;
-use crate::BasicNode;
 use crate::CommittedLeaderId;
 use crate::LogId;
 use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::StorageIOError;
-
-crate::declare_raft_types!(
-    /// Dummy Raft types for the purpose of testing internal structures requiring
-    /// `RaftTypeConfig`, like `MembershipConfig`.
-    pub(crate) DummyConfig: D = u64, R = u64, NodeId = u64, Node = BasicNode, Entry = crate::entry::Entry<DummyConfig>
-);
 
 /// Builds a log id with node_id set to 1, for testing purposes.
 pub fn log_id1(term: u64, index: u64) -> LogId<u64> {

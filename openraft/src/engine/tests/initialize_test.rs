@@ -3,7 +3,7 @@ use pretty_assertions::assert_eq;
 use tokio::time::Instant;
 
 use crate::core::ServerState;
-use crate::engine::testing::Config;
+use crate::engine::testing::UTConfig;
 use crate::engine::Command;
 use crate::engine::Engine;
 use crate::engine::LogIdList;
@@ -25,7 +25,7 @@ use crate::Vote;
 #[test]
 fn test_initialize_single_node() -> anyhow::Result<()> {
     let eng = || {
-        let mut eng = Engine::<Config>::default();
+        let mut eng = Engine::<UTConfig>::default();
         eng.state.enable_validate = false; // Disable validation for incomplete state
 
         eng.state.server_state = eng.calc_server_state();
@@ -38,7 +38,7 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
     };
 
     let m1 = || Membership::<u64, ()>::new(vec![btreeset! {1}], None);
-    let entry = Entry::<Config>::new_membership(LogId::default(), m1());
+    let entry = Entry::<UTConfig>::new_membership(LogId::default(), m1());
 
     tracing::info!("--- ok: init empty node 1 with membership(1,2)");
     tracing::info!("--- expect OK result, check output commands and state changes");
@@ -58,7 +58,7 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
         assert_eq!(
             vec![
                 Command::AppendEntry {
-                    entry: Entry::<Config>::new_membership(LogId::default(), m1())
+                    entry: Entry::<UTConfig>::new_membership(LogId::default(), m1())
                 },
                 // When update the effective membership, the engine set it to Follower.
                 // But when initializing, it will switch to Candidate at once, in the last output
@@ -72,7 +72,7 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
                 Command::BecomeLeader,
                 Command::RebuildReplicationStreams { targets: vec![] },
                 Command::AppendEntry {
-                    entry: Entry::<Config>::new_blank(log_id(1, 1, 1))
+                    entry: Entry::<UTConfig>::new_blank(log_id(1, 1, 1))
                 },
                 Command::ReplicateCommitted {
                     committed: Some(LogId {
@@ -97,7 +97,7 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
 #[test]
 fn test_initialize() -> anyhow::Result<()> {
     let eng = || {
-        let mut eng = Engine::<Config>::default();
+        let mut eng = Engine::<UTConfig>::default();
         eng.state.enable_validate = false; // Disable validation for incomplete state
 
         eng.state.server_state = eng.calc_server_state();
@@ -110,7 +110,7 @@ fn test_initialize() -> anyhow::Result<()> {
     };
 
     let m12 = || Membership::<u64, ()>::new(vec![btreeset! {1,2}], None);
-    let entry = || Entry::<Config>::new_membership(LogId::default(), m12());
+    let entry = || Entry::<UTConfig>::new_membership(LogId::default(), m12());
 
     tracing::info!("--- ok: init empty node 1 with membership(1,2)");
     tracing::info!("--- expect OK result, check output commands and state changes");

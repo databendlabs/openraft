@@ -6,7 +6,7 @@ use tokio::time::Instant;
 
 use crate::core::ServerState;
 use crate::engine::testing::blank_ent;
-use crate::engine::testing::UTCfg;
+use crate::engine::testing::UTConfig;
 use crate::engine::Command;
 use crate::engine::Engine;
 use crate::entry::RaftEntry;
@@ -32,7 +32,7 @@ fn m34() -> Membership<u64, ()> {
     Membership::<u64, ()>::new(vec![btreeset! {3,4}], None)
 }
 
-fn eng() -> Engine<UTCfg> {
+fn eng() -> Engine<UTConfig> {
     let mut eng = Engine::default();
     eng.state.enable_validate = false; // Disable validation for incomplete state
 
@@ -53,7 +53,7 @@ fn eng() -> Engine<UTCfg> {
 fn test_append_entries_vote_is_rejected() -> anyhow::Result<()> {
     let mut eng = eng();
 
-    let res = eng.append_entries(&Vote::new(1, 1), None, Vec::<Entry<UTCfg>>::new());
+    let res = eng.append_entries(&Vote::new(1, 1), None, Vec::<Entry<UTConfig>>::new());
 
     assert_eq!(Err(RejectAppendEntries::ByVote(Vote::new(2, 1))), res);
     assert_eq!(
@@ -88,7 +88,7 @@ fn test_append_entries_prev_log_id_is_applied() -> anyhow::Result<()> {
     let res = eng.append_entries(
         &Vote::new_committed(2, 1),
         Some(log_id1(0, 0)),
-        Vec::<Entry<UTCfg>>::new(),
+        Vec::<Entry<UTConfig>>::new(),
     );
 
     assert_eq!(Ok(()), res);
@@ -126,7 +126,7 @@ fn test_append_entries_prev_log_id_conflict() -> anyhow::Result<()> {
     let res = eng.append_entries(
         &Vote::new_committed(2, 1),
         Some(log_id1(2, 2)),
-        Vec::<Entry<UTCfg>>::new(),
+        Vec::<Entry<UTConfig>>::new(),
     );
 
     assert_eq!(

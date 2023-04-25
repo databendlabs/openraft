@@ -7,7 +7,7 @@ use maplit::btreeset;
 use tokio::time::Instant;
 
 use crate::engine::testing::blank_ent;
-use crate::engine::testing::UTCfg;
+use crate::engine::testing::UTConfig;
 use crate::engine::Command;
 use crate::engine::Engine;
 use crate::entry::RaftEntry;
@@ -50,7 +50,7 @@ fn m34() -> Membership<u64, ()> {
     Membership::<u64, ()>::new(vec![btreeset! {3,4}], None)
 }
 
-fn eng() -> Engine<UTCfg> {
+fn eng() -> Engine<UTConfig> {
     let mut eng = Engine::default();
     eng.state.enable_validate = false; // Disable validation for incomplete state
 
@@ -73,7 +73,7 @@ fn test_leader_append_entries_empty() -> anyhow::Result<()> {
     let mut eng = eng();
     eng.vote_handler().become_leading();
 
-    eng.leader_handler()?.leader_append_entries(Vec::<Entry<UTCfg>>::new());
+    eng.leader_handler()?.leader_append_entries(Vec::<Entry<UTConfig>>::new());
 
     assert_eq!(
         &[

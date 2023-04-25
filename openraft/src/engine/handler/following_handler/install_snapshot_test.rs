@@ -3,7 +3,7 @@ use std::sync::Arc;
 use maplit::btreeset;
 use pretty_assertions::assert_eq;
 
-use crate::engine::testing::UTCfg;
+use crate::engine::testing::UTConfig;
 use crate::engine::Command;
 use crate::engine::Engine;
 use crate::engine::LogIdList;
@@ -23,7 +23,7 @@ fn m1234() -> Membership<u64, ()> {
     Membership::<u64, ()>::new(vec![btreeset! {1,2,3,4}], None)
 }
 
-fn eng() -> Engine<UTCfg> {
+fn eng() -> Engine<UTConfig> {
     let mut eng = Engine::default();
     eng.state.enable_validate = false; // Disable validation for incomplete state
 
@@ -164,7 +164,7 @@ fn test_install_snapshot_conflict() -> anyhow::Result<()> {
     // Snapshot will be installed, all non-committed log will be deleted.
     // And there should be no conflicting logs left.
     let mut eng = {
-        let mut eng = Engine::<UTCfg>::default();
+        let mut eng = Engine::<UTConfig>::default();
         eng.state.enable_validate = false; // Disable validation for incomplete state
 
         eng.state.vote.update(*eng.timer.now(), Vote::new_committed(2, 1));
