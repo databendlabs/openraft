@@ -86,7 +86,7 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
                         index: 1,
                     },),
                 },
-                Command::LeaderCommit {
+                Command::Apply {
                     already_committed: None,
                     upto: LogId {
                         leader_id: CommittedLeaderId::new(1, 1),

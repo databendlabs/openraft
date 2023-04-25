@@ -48,17 +48,10 @@ where C: RaftTypeConfig
     /// Replicate the committed log id to other nodes
     ReplicateCommitted { committed: Option<LogId<C::NodeId>> },
 
-    /// Commit entries that are already in the store, upto `upto`, inclusive.
-    /// And send applied result to the client that proposed the entry.
-    LeaderCommit {
-        // TODO: pass the log id list?
-        // TODO: merge LeaderCommit and FollowerCommit
-        already_committed: Option<LogId<C::NodeId>>,
-        upto: LogId<C::NodeId>,
-    },
-
-    /// Commit entries that are already in the store, upto `upto`, inclusive.
-    FollowerCommit {
+    /// Apply committed log entries that are already persisted in the store, upto `upto`, inclusive.
+    /// And if it is leader, send applied result to the client that proposed the entry.
+    Apply {
+        // TODO: pass the log id list or entries?
         already_committed: Option<LogId<C::NodeId>>,
         upto: LogId<C::NodeId>,
     },
@@ -127,24 +120,23 @@ where
     #[rustfmt::skip]
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (Command::BecomeLeader,                                Command::BecomeLeader)                                                        => true,
-            (Command::QuitLeader,                                  Command::QuitLeader)                                                          => true,
-            (Command::AppendEntry { entry },                       Command::AppendEntry { entry: b }, )                                          => entry == b,
-            (Command::AppendInputEntries { entries },              Command::AppendInputEntries { entries: b }, )                                 => entries == b,
-            (Command::AppendBlankLog { log_id },                   Command::AppendBlankLog { log_id: b }, )                                      => log_id == b,
-            (Command::ReplicateCommitted { committed },            Command::ReplicateCommitted { committed: b }, )                               => committed == b,
-            (Command::LeaderCommit { already_committed, upto, },   Command::LeaderCommit { already_committed: b_committed, upto: b_upto, }, )    => already_committed == b_committed && upto == b_upto,
-            (Command::FollowerCommit { already_committed, upto, }, Command::FollowerCommit { already_committed: b_committed, upto: b_upto, }, )  => already_committed == b_committed && upto == b_upto,
-            (Command::Replicate { target, req },                   Command::Replicate { target: b_target, req: other_req, }, )                   => target == b_target && req == other_req,
-            (Command::RebuildReplicationStreams { targets },       Command::RebuildReplicationStreams { targets: b }, )                          => targets == b,
-            (Command::SaveVote { vote },                           Command::SaveVote { vote: b })                                                => vote == b,
-            (Command::SendVote { vote_req },                       Command::SendVote { vote_req: b }, )                                          => vote_req == b,
-            (Command::PurgeLog { upto },                           Command::PurgeLog { upto: b })                                                => upto == b,
-            (Command::DeleteConflictLog { since },                 Command::DeleteConflictLog { since: b }, )                                    => since == b,
-            (Command::BuildSnapshot {},                            Command::BuildSnapshot { })                                                   => true,
-            (Command::InstallSnapshot { snapshot_meta },           Command::InstallSnapshot { snapshot_meta: b }, )                              => snapshot_meta == b,
-            (Command::CancelSnapshot { snapshot_meta },            Command::CancelSnapshot { snapshot_meta: b }, )                               => snapshot_meta == b,
-            (Command::Respond { when, resp: send },                Command::Respond { when: b_when, resp: b })                                   => send == b && when == b_when,
+            (Command::BecomeLeader,                          Command::BecomeLeader)                                              => true,
+            (Command::QuitLeader,                            Command::QuitLeader)                                                => true,
+            (Command::AppendEntry { entry },                 Command::AppendEntry { entry: b }, )                                => entry == b,
+            (Command::AppendInputEntries { entries },        Command::AppendInputEntries { entries: b }, )                       => entries == b,
+            (Command::AppendBlankLog { log_id },             Command::AppendBlankLog { log_id: b }, )                            => log_id == b,
+            (Command::ReplicateCommitted { committed },      Command::ReplicateCommitted { committed: b }, )                     => committed == b,
+            (Command::Apply { already_committed, upto, },    Command::Apply { already_committed: b_committed, upto: b_upto, }, ) => already_committed == b_committed && upto == b_upto,
+            (Command::Replicate { target, req },             Command::Replicate { target: b_target, req: other_req, }, )         => target == b_target && req == other_req,
+            (Command::RebuildReplicationStreams { targets }, Command::RebuildReplicationStreams { targets: b }, )                => targets == b,
+            (Command::SaveVote { vote },                     Command::SaveVote { vote: b })                                      => vote == b,
+            (Command::SendVote { vote_req },                 Command::SendVote { vote_req: b }, )                                => vote_req == b,
+            (Command::PurgeLog { upto },                     Command::PurgeLog { upto: b })                                      => upto == b,
+            (Command::DeleteConflictLog { since },           Command::DeleteConflictLog { since: b }, )                          => since == b,
+            (Command::BuildSnapshot {},                      Command::BuildSnapshot { })                                         => true,
+            (Command::InstallSnapshot { snapshot_meta },     Command::InstallSnapshot { snapshot_meta: b }, )                    => snapshot_meta == b,
+            (Command::CancelSnapshot { snapshot_meta },      Command::CancelSnapshot { snapshot_meta: b }, )                     => snapshot_meta == b,
+            (Command::Respond { when, resp: send },          Command::Respond { when: b_when, resp: b })                         => send == b && when == b_when,
             _ => false,
         }
     }
@@ -157,24 +149,26 @@ where C: RaftTypeConfig
     #[rustfmt::skip]
     pub(crate) fn kind(&self) -> CommandKind {
         match self {
-            Command::BecomeLeader                     => CommandKind::Other,
-            Command::QuitLeader                       => CommandKind::Other,
+            Command::BecomeLeader                     => CommandKind::Main,
+            Command::QuitLeader                       => CommandKind::Main,
+            Command::RebuildReplicationStreams { .. } => CommandKind::Main,
+            Command::Respond { .. }                   => CommandKind::Main,
+
             Command::AppendEntry { .. }               => CommandKind::Log,
             Command::AppendInputEntries { .. }        => CommandKind::Log,
             Command::AppendBlankLog { .. }            => CommandKind::Log,
-            Command::ReplicateCommitted { .. }        => CommandKind::Network,
-            Command::LeaderCommit { .. }              => CommandKind::StateMachine,
-            Command::FollowerCommit { .. }            => CommandKind::StateMachine,
-            Command::Replicate { .. }                 => CommandKind::Network,
-            Command::RebuildReplicationStreams { .. } => CommandKind::Other,
             Command::SaveVote { .. }                  => CommandKind::Log,
-            Command::SendVote { .. }                  => CommandKind::Network,
             Command::PurgeLog { .. }                  => CommandKind::Log,
             Command::DeleteConflictLog { .. }         => CommandKind::Log,
+
+            Command::ReplicateCommitted { .. }        => CommandKind::Network,
+            Command::Replicate { .. }                 => CommandKind::Network,
+            Command::SendVote { .. }                  => CommandKind::Network,
+
+            Command::Apply { .. }                     => CommandKind::StateMachine,
             Command::BuildSnapshot { .. }             => CommandKind::StateMachine,
             Command::InstallSnapshot { .. }           => CommandKind::StateMachine,
-            Command::CancelSnapshot { .. }            => CommandKind::Other,
-            Command::Respond { .. }                   => CommandKind::Other,
+            Command::CancelSnapshot { .. }            => CommandKind::StateMachine,
         }
     }
 
@@ -189,8 +183,7 @@ where C: RaftTypeConfig
             Command::AppendInputEntries { .. }        => None,
             Command::AppendBlankLog { .. }            => None,
             Command::ReplicateCommitted { .. }        => None,
-            Command::LeaderCommit { .. }              => None,
-            Command::FollowerCommit { .. }            => None,
+            Command::Apply { .. }                     => None,
             Command::Replicate { .. }                 => None,
             Command::RebuildReplicationStreams { .. } => None,
             Command::SaveVote { .. }                  => None,
