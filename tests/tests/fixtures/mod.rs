@@ -44,7 +44,6 @@ use openraft::storage::RaftStateMachine;
 use openraft::CommittedLeaderId;
 use openraft::Config;
 use openraft::Entry;
-use openraft::EntryPayload;
 use openraft::LogId;
 use openraft::LogIdOptionExt;
 use openraft::Membership;
@@ -55,7 +54,6 @@ use openraft::RaftMetrics;
 use openraft::RaftNetwork;
 use openraft::RaftNetworkFactory;
 use openraft::RaftState;
-use openraft::RaftTypeConfig;
 use openraft::ServerState;
 use openraft_memstore::ClientRequest;
 use openraft_memstore::ClientResponse;
@@ -1049,15 +1047,6 @@ fn timeout() -> Option<Duration> {
 
 pub fn log_id(term: u64, node_id: MemNodeId, index: u64) -> LogId<MemNodeId> {
     LogId::new(CommittedLeaderId::new(term, node_id), index)
-}
-
-/// Create a blank log entry for test.
-pub fn blank_ent<C: RaftTypeConfig>(term: u64, index: u64) -> Entry<C>
-where C::NodeId: From<u64> {
-    Entry {
-        log_id: LogId::new(CommittedLeaderId::new(term, 0.into()), index),
-        payload: EntryPayload::Blank,
-    }
 }
 
 /// Create a membership log entry for test.

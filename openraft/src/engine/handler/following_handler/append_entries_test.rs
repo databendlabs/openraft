@@ -2,10 +2,10 @@ use std::sync::Arc;
 
 use maplit::btreeset;
 
-use crate::engine::testing::blank_ent;
-use crate::engine::testing::UTCfg;
+use crate::engine::testing::UTConfig;
 use crate::engine::Engine;
 use crate::raft_state::LogStateReader;
+use crate::testing::blank_ent;
 use crate::testing::log_id1;
 use crate::EffectiveMembership;
 use crate::Membership;
@@ -20,7 +20,7 @@ fn m23() -> Membership<u64, ()> {
     Membership::new(vec![btreeset! {2,3}], None)
 }
 
-fn eng() -> Engine<UTCfg> {
+fn eng() -> Engine<UTConfig> {
     let mut eng = Engine::default();
     eng.state.enable_validate = false; // Disable validation for incomplete state
 
@@ -42,8 +42,8 @@ fn test_follower_append_entries_update_accepted() -> anyhow::Result<()> {
 
     eng.following_handler().append_entries(Some(log_id1(2, 3)), vec![
         //
-        blank_ent(3, 4),
-        blank_ent(3, 5),
+        blank_ent(3, 1, 4),
+        blank_ent(3, 1, 5),
     ]);
 
     assert_eq!(
@@ -61,7 +61,7 @@ fn test_follower_append_entries_update_accepted() -> anyhow::Result<()> {
 
     eng.following_handler().append_entries(Some(log_id1(2, 3)), vec![
         //
-        blank_ent(3, 4),
+        blank_ent(3, 1, 4),
     ]);
 
     assert_eq!(Some(&log_id1(3, 5)), eng.state.last_log_id());

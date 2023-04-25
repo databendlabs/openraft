@@ -3,7 +3,7 @@ use std::sync::Arc;
 use maplit::btreeset;
 use tokio::time::Instant;
 
-use crate::engine::testing::UTCfg;
+use crate::engine::testing::UTConfig;
 use crate::engine::Command;
 use crate::engine::Engine;
 use crate::progress::entry::ProgressEntry;
@@ -23,7 +23,7 @@ fn m34() -> Membership<u64, ()> {
     Membership::<u64, ()>::new(vec![btreeset! {3,4}], None)
 }
 
-fn eng() -> Engine<UTCfg> {
+fn eng() -> Engine<UTConfig> {
     let mut eng = Engine::default();
     eng.config.id = 2;
     // This will be overridden

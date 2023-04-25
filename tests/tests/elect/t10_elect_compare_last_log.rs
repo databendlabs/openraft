@@ -7,13 +7,13 @@ use maplit::btreeset;
 use openraft::entry::RaftEntry;
 use openraft::storage::RaftLogStorage;
 use openraft::testing;
+use openraft::testing::blank_ent;
 use openraft::Config;
 use openraft::Entry;
 use openraft::Membership;
 use openraft::ServerState;
 use openraft::Vote;
 
-use crate::fixtures::blank_ent;
 use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::log_id;
 use crate::fixtures::RaftRouter;
@@ -43,7 +43,7 @@ async fn elect_compare_last_log() -> Result<()> {
 
         testing::blocking_append(&mut sto0, [
             //
-            blank_ent(0, 0),
+            blank_ent(0, 0, 0),
             Entry::new_membership(log_id(2, 0, 1), Membership::new(vec![btreeset! {0,1}], None)),
         ])
         .await?;
@@ -54,9 +54,9 @@ async fn elect_compare_last_log() -> Result<()> {
         sto1.save_vote(&Vote::new(10, 0)).await?;
 
         testing::blocking_append(&mut sto1, [
-            blank_ent(0, 0),
+            blank_ent(0, 0, 0),
             Entry::new_membership(log_id(1, 0, 1), Membership::new(vec![btreeset! {0,1}], None)),
-            blank_ent(1, 2),
+            blank_ent(1, 0, 2),
         ])
         .await?;
     }

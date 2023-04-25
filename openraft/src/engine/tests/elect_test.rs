@@ -5,7 +5,7 @@ use pretty_assertions::assert_eq;
 use tokio::time::Instant;
 
 use crate::core::ServerState;
-use crate::engine::testing::UTCfg;
+use crate::engine::testing::UTConfig;
 use crate::engine::Command;
 use crate::engine::Engine;
 use crate::engine::LogIdList;
@@ -29,7 +29,7 @@ fn m12() -> Membership<u64, ()> {
     Membership::new(vec![btreeset! {1,2}], None)
 }
 
-fn eng() -> Engine<UTCfg> {
+fn eng() -> Engine<UTConfig> {
     let mut eng = Engine::default();
     eng.state.log_ids = LogIdList::new([LogId::new(CommittedLeaderId::new(0, 0), 0)]);
     eng.state.enable_validate = false; // Disable validation for incomplete state
@@ -65,7 +65,7 @@ fn test_elect() -> anyhow::Result<()> {
                 Command::BecomeLeader,
                 Command::RebuildReplicationStreams { targets: vec![] },
                 Command::AppendEntry {
-                    entry: Entry::<UTCfg>::new_blank(log_id(1, 1, 1))
+                    entry: Entry::<UTConfig>::new_blank(log_id(1, 1, 1))
                 },
                 Command::ReplicateCommitted {
                     committed: Some(LogId {
@@ -117,7 +117,7 @@ fn test_elect() -> anyhow::Result<()> {
                 Command::BecomeLeader,
                 Command::RebuildReplicationStreams { targets: vec![] },
                 Command::AppendEntry {
-                    entry: Entry::<UTCfg>::new_blank(log_id(2, 1, 1))
+                    entry: Entry::<UTConfig>::new_blank(log_id(2, 1, 1))
                 },
                 Command::ReplicateCommitted {
                     committed: Some(LogId {
