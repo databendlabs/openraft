@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use openraft::raft::AppendEntriesRequest;
+use openraft::testing::blank_ent;
 use openraft::CommittedLeaderId;
 use openraft::Config;
 use openraft::Entry;
@@ -12,7 +13,6 @@ use openraft::RaftNetworkFactory;
 use openraft::Vote;
 use openraft_memstore::ClientRequest;
 
-use crate::fixtures::blank_ent;
 use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
 
@@ -66,7 +66,7 @@ async fn conflict_with_empty_entries() -> Result<()> {
     let rpc = AppendEntriesRequest::<openraft_memstore::Config> {
         vote: Vote::new_committed(1, 1),
         prev_log_id: None,
-        entries: vec![blank_ent(0, 0), blank_ent(1, 1), Entry {
+        entries: vec![blank_ent(0, 0, 0), blank_ent(1, 0, 1), Entry {
             log_id: LogId::new(CommittedLeaderId::new(1, 0), 2),
             payload: EntryPayload::Normal(ClientRequest {
                 client: "foo".to_string(),

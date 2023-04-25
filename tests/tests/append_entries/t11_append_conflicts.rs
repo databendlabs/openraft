@@ -6,6 +6,7 @@ use maplit::btreeset;
 use openraft::raft::AppendEntriesRequest;
 use openraft::storage::RaftLogReaderExt;
 use openraft::storage::RaftLogStorage;
+use openraft::testing::blank_ent;
 use openraft::CommittedLeaderId;
 use openraft::Config;
 use openraft::Entry;
@@ -14,7 +15,6 @@ use openraft::RaftTypeConfig;
 use openraft::ServerState;
 use openraft::Vote;
 
-use crate::fixtures::blank_ent;
 use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
 
@@ -61,7 +61,7 @@ async fn append_conflicts() -> Result<()> {
     let req = AppendEntriesRequest {
         vote: Vote::new_committed(1, 2),
         prev_log_id: None,
-        entries: vec![blank_ent(0, 0)],
+        entries: vec![blank_ent(0, 0, 0)],
         leader_commit: Some(LogId::new(CommittedLeaderId::new(1, 0), 2)),
     };
 
@@ -89,7 +89,12 @@ async fn append_conflicts() -> Result<()> {
     let req = || AppendEntriesRequest {
         vote: Vote::new_committed(1, 2),
         prev_log_id: Some(LogId::new(CommittedLeaderId::new(0, 0), 0)),
-        entries: vec![blank_ent(1, 1), blank_ent(1, 2), blank_ent(1, 3), blank_ent(1, 4)],
+        entries: vec![
+            blank_ent(1, 0, 1),
+            blank_ent(1, 0, 2),
+            blank_ent(1, 0, 3),
+            blank_ent(1, 0, 4),
+        ],
         // this set the last_applied to 2
         leader_commit: Some(LogId::new(CommittedLeaderId::new(1, 0), 2)),
     };
@@ -114,7 +119,7 @@ async fn append_conflicts() -> Result<()> {
     let req = AppendEntriesRequest {
         vote: Vote::new_committed(1, 2),
         prev_log_id: Some(LogId::new(CommittedLeaderId::new(1, 0), 1)),
-        entries: vec![blank_ent(1, 2)],
+        entries: vec![blank_ent(1, 0, 2)],
         leader_commit: Some(LogId::new(CommittedLeaderId::new(1, 0), 2)),
     };
 
@@ -129,7 +134,7 @@ async fn append_conflicts() -> Result<()> {
     let req = AppendEntriesRequest {
         vote: Vote::new_committed(1, 2),
         prev_log_id: Some(LogId::new(CommittedLeaderId::new(1, 0), 2)),
-        entries: vec![blank_ent(2, 3)],
+        entries: vec![blank_ent(2, 0, 3)],
         // this set the last_applied to 2
         leader_commit: Some(LogId::new(CommittedLeaderId::new(1, 0), 2)),
     };
@@ -174,7 +179,7 @@ async fn append_conflicts() -> Result<()> {
     let req = AppendEntriesRequest {
         vote: Vote::new_committed(1, 2),
         prev_log_id: Some(LogId::new(CommittedLeaderId::new(1, 0), 2)),
-        entries: vec![blank_ent(2, 3), blank_ent(2, 4), blank_ent(2, 5)],
+        entries: vec![blank_ent(2, 0, 3), blank_ent(2, 0, 4), blank_ent(2, 0, 5)],
         leader_commit: Some(LogId::new(CommittedLeaderId::new(1, 0), 2)),
     };
 
@@ -189,7 +194,7 @@ async fn append_conflicts() -> Result<()> {
     let req = AppendEntriesRequest {
         vote: Vote::new_committed(1, 2),
         prev_log_id: Some(LogId::new(CommittedLeaderId::new(2, 0), 3)),
-        entries: vec![blank_ent(3, 4)],
+        entries: vec![blank_ent(3, 0, 4)],
         leader_commit: Some(LogId::new(CommittedLeaderId::new(1, 0), 2)),
     };
 
@@ -228,7 +233,7 @@ where
         .iter()
         .skip(skip)
         .enumerate()
-        .map(|(i, term)| blank_ent(*term, (i + skip) as u64))
+        .map(|(i, term)| blank_ent(*term, 0, (i + skip) as u64))
         .collect::<Vec<_>>();
 
     let w = format!("{:?}", &want);

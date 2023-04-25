@@ -5,6 +5,7 @@ use std::time::Duration;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::raft::AppendEntriesRequest;
+use openraft::testing::blank_ent;
 use openraft::CommittedLeaderId;
 use openraft::Config;
 use openraft::Entry;
@@ -14,7 +15,6 @@ use openraft::Membership;
 use openraft::ServerState;
 use openraft::Vote;
 
-use crate::fixtures::blank_ent;
 use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
 
@@ -48,18 +48,18 @@ async fn append_updates_membership() -> Result<()> {
             vote: Vote::new_committed(1, 1),
             prev_log_id: None,
             entries: vec![
-                blank_ent(0, 0),
-                blank_ent(1, 1),
+                blank_ent(0, 0, 0),
+                blank_ent(1, 0, 1),
                 Entry {
                     log_id: LogId::new(CommittedLeaderId::new(1, 0), 2),
                     payload: EntryPayload::Membership(Membership::new(vec![btreeset! {1,2}], None)),
                 },
-                blank_ent(1, 3),
+                blank_ent(1, 0, 3),
                 Entry {
                     log_id: LogId::new(CommittedLeaderId::new(1, 0), 4),
                     payload: EntryPayload::Membership(Membership::new(vec![btreeset! {1,2,3,4}], None)),
                 },
-                blank_ent(1, 5),
+                blank_ent(1, 0, 5),
             ],
             leader_commit: Some(LogId::new(CommittedLeaderId::new(0, 0), 0)),
         };
@@ -76,7 +76,7 @@ async fn append_updates_membership() -> Result<()> {
         let req = AppendEntriesRequest {
             vote: Vote::new_committed(2, 2),
             prev_log_id: Some(LogId::new(CommittedLeaderId::new(1, 0), 2)),
-            entries: vec![blank_ent(2, 3)],
+            entries: vec![blank_ent(2, 0, 3)],
             leader_commit: Some(LogId::new(CommittedLeaderId::new(0, 0), 0)),
         };
 

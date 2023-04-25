@@ -6,6 +6,7 @@ pub use store_builder::StoreBuilder;
 pub use suite::Suite;
 use tokio::sync::oneshot;
 
+use crate::entry::RaftEntry;
 use crate::log_id::RaftLogId;
 use crate::storage::LogFlushed;
 use crate::storage::RaftLogStorage;
@@ -29,6 +30,11 @@ pub fn log_id(term: u64, node_id: u64, index: u64) -> LogId<u64> {
         leader_id: CommittedLeaderId::new(term, node_id),
         index,
     }
+}
+
+/// Create a blank log entry for test.
+pub fn blank_ent<C: RaftTypeConfig>(term: u64, node_id: C::NodeId, index: u64) -> crate::Entry<C> {
+    crate::Entry::<C>::new_blank(LogId::new(CommittedLeaderId::new(term, node_id), index))
 }
 
 /// Append to log and wait for the log to be flushed.

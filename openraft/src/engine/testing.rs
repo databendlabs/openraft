@@ -1,5 +1,3 @@
-use crate::entry::RaftEntry;
-use crate::testing::log_id1;
 use crate::RaftTypeConfig;
 
 /// Trivial Raft type config for Engine related unit test.
@@ -12,8 +10,4 @@ impl RaftTypeConfig for UTConfig {
     type NodeId = u64;
     type Node = ();
     type Entry = crate::Entry<UTConfig>;
-}
-
-pub(crate) fn blank_ent(term: u64, index: u64) -> crate::Entry<UTConfig> {
-    crate::Entry::<UTConfig>::new_blank(log_id1(term, index))
 }
