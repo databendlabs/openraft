@@ -207,11 +207,11 @@ where
                             });
                             return Ok(());
                         }
-                        ReplicationError::StorageError(err) => {
-                            tracing::error!(error=%err, "error replication to target={}", self.target);
+                        ReplicationError::StorageError(error) => {
+                            tracing::error!(error=%error, "error replication to target={}", self.target);
 
                             // TODO: report this error
-                            let _ = self.tx_raft_core.send(RaftMsg::ReplicationFatal);
+                            let _ = self.tx_raft_core.send(RaftMsg::ReplicationStorageError { error });
                             return Ok(());
                         }
                         ReplicationError::RPCError(err) => {
