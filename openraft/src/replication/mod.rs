@@ -1,7 +1,7 @@
 //! Replication stream.
 
 mod replication_session_id;
-
+mod response;
 use std::fmt::Debug;
 use std::fmt::Formatter;
 use std::io::SeekFrom;
@@ -10,6 +10,7 @@ use std::sync::Arc;
 use anyerror::AnyError;
 use futures::future::FutureExt;
 pub(crate) use replication_session_id::ReplicationSessionId;
+pub(crate) use response::Response;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncSeek;
@@ -200,10 +201,12 @@ where
                             return Err(closed);
                         }
                         ReplicationError::HigherVote(h) => {
-                            let _ = self.tx_raft_core.send(Notify::HigherVote {
-                                target: self.target,
-                                higher: h.higher,
-                                vote: self.session_id.vote,
+                            let _ = self.tx_raft_core.send(Notify::Network {
+                                response: Response::HigherVote {
+                                    target: self.target,
+                                    higher: h.higher,
+                                    vote: self.session_id.vote,
+                                },
                             });
                             return Ok(());
                         }
@@ -211,16 +214,20 @@ where
                             tracing::error!(error=%error, "error replication to target={}", self.target);
 
                             // TODO: report this error
-                            let _ = self.tx_raft_core.send(Notify::ReplicationStorageError { error });
+                            let _ = self.tx_raft_core.send(Notify::Network {
+                                response: Response::StorageError { error },
+                            });
                             return Ok(());
                         }
                         ReplicationError::RPCError(err) => {
                             tracing::error!(err = display(&err), "RPCError");
-                            let _ = self.tx_raft_core.send(Notify::UpdateReplicationProgress {
-                                target: self.target,
-                                id: repl_id,
-                                result: Err(err.to_string()),
-                                session_id: self.session_id,
+                            let _ = self.tx_raft_core.send(Notify::Network {
+                                response: Response::Progress {
+                                    target: self.target,
+                                    id: repl_id,
+                                    result: Err(err.to_string()),
+                                    session_id: self.session_id,
+                                },
                             });
 
                             // If there is an [`Unreachable`] error, we will backoff for a period of time
@@ -350,11 +357,15 @@ where
             "update_conflicting"
         );
 
-        let _ = self.tx_raft_core.send(Notify::UpdateReplicationProgress {
-            session_id: self.session_id,
-            id,
-            target: self.target,
-            result: Ok(ReplicationResult::Conflict(conflict)),
+        let _ = self.tx_raft_core.send({
+            Notify::Network {
+                response: Response::Progress {
+                    session_id: self.session_id,
+                    id,
+                    target: self.target,
+                    result: Ok(ReplicationResult::Conflict(conflict)),
+                },
+            }
         });
     }
 
@@ -375,11 +386,15 @@ where
         if self.matching < new_matching {
             self.matching = new_matching;
 
-            let _ = self.tx_raft_core.send(Notify::UpdateReplicationProgress {
-                session_id: self.session_id,
-                id,
-                target: self.target,
-                result: Ok(ReplicationResult::Matching(new_matching)),
+            let _ = self.tx_raft_core.send({
+                Notify::Network {
+                    response: Response::Progress {
+                        session_id: self.session_id,
+                        id,
+                        target: self.target,
+                        result: Ok(ReplicationResult::Matching(new_matching)),
+                    },
+                }
             });
         }
     }

@@ -103,6 +103,7 @@ where
     }
 }
 
+// TODO: move to other mod, it is shared by log, sm and replication
 /// A sequence number of a state machine command.
 ///
 /// It is used to identify and consume a submitted command when the command callback is received by
