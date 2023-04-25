@@ -13,21 +13,16 @@ use tracing::Instrument;
 use tracing::Level;
 use tracing::Span;
 
-use crate::raft::RaftMsg;
-use crate::storage::RaftLogStorage;
-use crate::RaftNetworkFactory;
+use crate::core::notify::Notify;
 use crate::RaftTypeConfig;
 
 /// Emit RaftMsg::Tick event at regular `interval`.
-pub(crate) struct Tick<C, N, LS>
-where
-    C: RaftTypeConfig,
-    N: RaftNetworkFactory<C>,
-    LS: RaftLogStorage<C>,
+pub(crate) struct Tick<C>
+where C: RaftTypeConfig
 {
     interval: Duration,
 
-    tx: mpsc::UnboundedSender<RaftMsg<C, N, LS>>,
+    tx: mpsc::UnboundedSender<Notify<C>>,
 
     /// Emit event or not
     enabled: Arc<AtomicBool>,
@@ -38,13 +33,10 @@ pub(crate) struct TickHandle {
     join_handle: JoinHandle<()>,
 }
 
-impl<C, N, LS> Tick<C, N, LS>
-where
-    C: RaftTypeConfig,
-    N: RaftNetworkFactory<C>,
-    LS: RaftLogStorage<C>,
+impl<C> Tick<C>
+where C: RaftTypeConfig
 {
-    pub(crate) fn spawn(interval: Duration, tx: mpsc::UnboundedSender<RaftMsg<C, N, LS>>, enabled: bool) -> TickHandle {
+    pub(crate) fn spawn(interval: Duration, tx: mpsc::UnboundedSender<Notify<C>>, enabled: bool) -> TickHandle {
         let enabled = Arc::new(AtomicBool::from(enabled));
         let this = Self {
             interval,
@@ -69,7 +61,7 @@ where
                 continue;
             }
 
-            let send_res = self.tx.send(RaftMsg::Tick { i });
+            let send_res = self.tx.send(Notify::Tick { i });
             if let Err(e) = send_res {
                 tracing::info!("Tick fails to send, receiving end quit: {e}");
             } else {

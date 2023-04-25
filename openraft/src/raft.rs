@@ -42,8 +42,6 @@ use crate::membership::IntoNodes;
 use crate::metrics::RaftMetrics;
 use crate::metrics::Wait;
 use crate::node::Node;
-use crate::replication::ReplicationResult;
-use crate::replication::ReplicationSessionId;
 use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
 use crate::AppData;
@@ -57,7 +55,6 @@ use crate::NodeId;
 use crate::RaftNetworkFactory;
 use crate::RaftState;
 use crate::SnapshotMeta;
-use crate::StorageError;
 use crate::StorageHelper;
 use crate::Vote;
 
@@ -229,12 +226,13 @@ where
         mut state_machine: SM,
     ) -> Result<Self, Fatal<C::NodeId>> {
         let (tx_api, rx_api) = mpsc::unbounded_channel();
+        let (tx_notify, rx_notify) = mpsc::unbounded_channel();
         let (tx_metrics, rx_metrics) = watch::channel(RaftMetrics::new_initial(id));
         let (tx_shutdown, rx_shutdown) = oneshot::channel();
 
         let tick_handle = Tick::spawn(
             Duration::from_millis(config.heartbeat_interval * 3 / 2),
-            tx_api.clone(),
+            tx_notify.clone(),
             config.enable_tick,
         );
 
@@ -260,7 +258,7 @@ where
 
         let engine = Engine::new(state, eng_config);
 
-        let sm_handle = sm::Worker::spawn(state_machine, tx_api.clone());
+        let sm_handle = sm::Worker::spawn(state_machine, tx_notify.clone());
 
         let core: RaftCore<C, N, LS, SM> = RaftCore {
             id,
@@ -275,6 +273,9 @@ where
 
             tx_api: tx_api.clone(),
             rx_api,
+
+            tx_notify,
+            rx_notify,
 
             tx_metrics,
 
@@ -878,14 +879,6 @@ where
         tx: VoteTx<C::NodeId>,
     },
 
-    VoteResponse {
-        target: C::NodeId,
-        resp: VoteResponse<C::NodeId>,
-
-        /// Which ServerState sent this message. It is also the requested vote.
-        vote: Vote<C::NodeId>,
-    },
-
     InstallSnapshot {
         rpc: InstallSnapshotRequest<C>,
         tx: InstallSnapshotTx<C::NodeId>,
@@ -923,62 +916,6 @@ where
     ExternalCommand {
         cmd: ExternalCommand,
     },
-
-    /// A tick event to wake up RaftCore to check timeout etc.
-    Tick {
-        /// ith tick
-        i: u64,
-    },
-
-    // /// Logs that are submitted to append has been persisted to disk.
-    // LogPersisted {},
-    /// Update the `matched` log id of a replication target.
-    /// Sent by a replication task `ReplicationCore`.
-    UpdateReplicationProgress {
-        /// The ID of the target node for which the match index is to be updated.
-        target: C::NodeId,
-
-        /// The id of the subject that submit this replication action.
-        ///
-        /// It is only used for debugging purpose.
-        id: u64,
-
-        /// Either the last log id that has been successfully replicated to the target,
-        /// or an error in string.
-        result: Result<ReplicationResult<C::NodeId>, String>,
-
-        /// In which session this message is sent.
-        /// A replication session(vote,membership_log_id) should ignore message from other session.
-        session_id: ReplicationSessionId<C::NodeId>,
-    },
-
-    /// ReplicationCore has seen a higher `vote`.
-    /// Sent by a replication task `ReplicationCore`.
-    HigherVote {
-        /// The ID of the target node from which the new term was observed.
-        target: C::NodeId,
-
-        /// The higher vote observed.
-        higher: Vote<C::NodeId>,
-
-        /// Which ServerState sent this message
-        vote: Vote<C::NodeId>,
-        // TODO: need this?
-        // /// The cluster this replication works for.
-        // membership_log_id: Option<LogId<C::NodeId>>,
-    },
-
-    /// Result of executing a command sent from state machine worker.
-    StateMachine {
-        command_result: sm::CommandResult<C>,
-    },
-
-    /// [`StorageError`] error has taken place locally(not on remote node) when replicating, and
-    /// [`RaftCore`] needs to shutdown. Sent by a replication task
-    /// [`crate::replication::ReplicationCore`].
-    ReplicationStorageError {
-        error: StorageError<C::NodeId>,
-    },
 }
 
 impl<C, N, LS> MessageSummary<RaftMsg<C, N, LS>> for RaftMsg<C, N, LS>
@@ -994,9 +931,6 @@ where
             }
             RaftMsg::RequestVote { rpc, .. } => {
                 format!("RequestVote: {}", rpc.summary())
-            }
-            RaftMsg::VoteResponse { target, resp, vote } => {
-                format!("VoteResponse: from: {}: {}, res-vote: {}", target, resp.summary(), vote)
             }
             RaftMsg::InstallSnapshot { rpc, .. } => {
                 format!("InstallSnapshot: {}", rpc.summary())
@@ -1016,34 +950,6 @@ where
             RaftMsg::ExternalRequest { .. } => "External Request".to_string(),
             RaftMsg::ExternalCommand { cmd } => {
                 format!("ExternalCommand: {:?}", cmd)
-            }
-            RaftMsg::Tick { i } => {
-                format!("Tick {}", i)
-            }
-            RaftMsg::UpdateReplicationProgress {
-                ref target,
-                ref id,
-                ref result,
-                ref session_id,
-            } => {
-                format!(
-                    "UpdateReplicationProgress: target: {}, id: {}, result: {:?}, session_id: {}",
-                    target, id, result, session_id,
-                )
-            }
-            RaftMsg::HigherVote {
-                ref target,
-                higher: ref new_vote,
-                ref vote,
-            } => {
-                format!(
-                    "Seen a higher vote: target: {}, vote: {}, server_state_vote: {}",
-                    target, new_vote, vote
-                )
-            }
-            RaftMsg::ReplicationStorageError { error } => format!("ReplicationFatal: {}", error),
-            RaftMsg::StateMachine { command_result: done } => {
-                format!("StateMachine command done: {:?}", done)
             }
         }
     }

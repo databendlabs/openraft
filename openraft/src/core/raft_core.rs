@@ -26,6 +26,8 @@ use tracing::Span;
 
 use crate::config::Config;
 use crate::config::RuntimeConfig;
+use crate::core::balancer::Balancer;
+use crate::core::notify::Notify;
 use crate::core::sm;
 use crate::core::ServerState;
 use crate::display_ext::DisplayOption;
@@ -184,8 +186,16 @@ where
 
     pub(crate) leader_data: Option<LeaderData<C, SM::SnapshotData>>,
 
+    #[allow(dead_code)]
     pub(crate) tx_api: mpsc::UnboundedSender<RaftMsg<C, N, LS>>,
     pub(crate) rx_api: mpsc::UnboundedReceiver<RaftMsg<C, N, LS>>,
+
+    /// A Sender to send callback by other components to [`RaftCore`], when an action is finished,
+    /// such as flushing log to disk, or applying log entries to state machine.
+    pub(crate) tx_notify: mpsc::UnboundedSender<Notify<C>>,
+
+    /// A Receiver to receive callback from other components.
+    pub(crate) rx_notify: mpsc::UnboundedReceiver<Notify<C>>,
 
     pub(crate) tx_metrics: watch::Sender<RaftMetrics<C::NodeId, C::Node>>,
 
@@ -262,7 +272,7 @@ where
         let my_vote = *self.engine.state.vote_ref();
         let ttl = Duration::from_millis(self.config.heartbeat_interval);
         let eff_mem = self.engine.state.membership_state.effective().clone();
-        let core_tx = self.tx_api.clone();
+        let core_tx = self.tx_notify.clone();
 
         let mut granted = btreeset! {my_id};
 
@@ -348,7 +358,7 @@ where
                         vote
                     );
 
-                    let send_res = core_tx.send(RaftMsg::HigherVote {
+                    let send_res = core_tx.send(Notify::HigherVote {
                         target,
                         higher: vote,
                         vote: my_vote,
@@ -810,7 +820,7 @@ where
             progress_entry.matching,
             network,
             self.log_store.get_log_reader().await,
-            self.tx_api.clone(),
+            self.tx_notify.clone(),
             tracing::span!(parent: &self.span, Level::DEBUG, "replication", id=display(self.id), target=display(target)),
         )
     }
@@ -882,16 +892,16 @@ where
     /// Run an event handling loop
     #[tracing::instrument(level="debug", skip_all, fields(id=display(self.id)))]
     async fn runtime_loop(&mut self, mut rx_shutdown: oneshot::Receiver<()>) -> Result<(), Fatal<C::NodeId>> {
-        // The most number of RaftMsg to process in one loop.
-        // In each loop, it does not have to check rx_shutdown and flush metrics for every RaftMsg
-        // processed.
-        let n_raft_msg = 512;
+        // Ratio control the ratio of number of RaftMsg to process to number of Notify to process.
+        let mut balancer = Balancer::new(10_000);
 
         loop {
             self.flush_metrics();
 
+            // In each loop, it does not have to check rx_shutdown and flush metrics for every RaftMsg
+            // processed.
             // In each loop, the first step is blocking waiting for any message from any channel.
-            // Then if there is any message, process as many as possible to maximuze throughput.
+            // Then if there is any message, process as many as possible to maximize throughput.
 
             select! {
                 // Check shutdown in each loop first so that a message flood in `tx_api` won't block shutting down.
@@ -903,6 +913,16 @@ where
                 _ = &mut rx_shutdown => {
                     tracing::info!("recv from rx_shutdown");
                     return Err(Fatal::Stopped);
+                }
+
+                notify_res = self.rx_notify.recv() => {
+                    match notify_res {
+                        Some(notify) => self.handle_notify(notify).await?,
+                        None => {
+                            tracing::error!("all rx_notify senders are dropped");
+                            return Err(Fatal::Stopped);
+                        }
+                    };
                 }
 
                 msg_res = self.rx_api.recv() => {
@@ -920,9 +940,21 @@ where
 
             // There is a message waking up the loop, process channels one by one.
 
-            // Use raft_msg_processed to balance multiple channels consumption in future.
-            let raft_msg_processed = self.process_at_most(n_raft_msg).await?;
-            let _ = raft_msg_processed;
+            let raft_msg_processed = self.process_raft_msg(balancer.raft_msg()).await?;
+            let notify_processed = self.process_notify(balancer.notify()).await?;
+
+            // If one of the channel consumed all its budget, re-balance the budget ratio.
+
+            #[allow(clippy::collapsible_else_if)]
+            if notify_processed == balancer.notify() {
+                tracing::info!("there may be more Notify to process, increaase Notify ratio");
+                balancer.increase_notify();
+            } else {
+                if raft_msg_processed == balancer.raft_msg() {
+                    tracing::info!("there may be more RaftMsg to process, increase RaftMsg ratio");
+                    balancer.increase_raft_msg();
+                }
+            }
         }
     }
 
@@ -930,7 +962,7 @@ where
     ///
     /// It returns the number of processed message.
     /// If the input channel is closed, it returns `Fatal::Stopped`.
-    async fn process_at_most(&mut self, at_most: u64) -> Result<u64, Fatal<C::NodeId>> {
+    async fn process_raft_msg(&mut self, at_most: u64) -> Result<u64, Fatal<C::NodeId>> {
         for i in 0..at_most {
             let res = self.rx_api.try_recv();
             let msg = match res {
@@ -961,6 +993,41 @@ where
         Ok(at_most)
     }
 
+    /// Process Notify as many as possible.
+    ///
+    /// It returns the number of processed notifications.
+    /// If the input channel is closed, it returns `Fatal::Stopped`.
+    async fn process_notify(&mut self, at_most: u64) -> Result<u64, Fatal<C::NodeId>> {
+        for i in 0..at_most {
+            let res = self.rx_notify.try_recv();
+            let notify = match res {
+                Ok(msg) => msg,
+                Err(e) => match e {
+                    mpsc::error::TryRecvError::Empty => {
+                        tracing::debug!("all Notify are processed, wait for more");
+                        return Ok(i + 1);
+                    }
+                    mpsc::error::TryRecvError::Disconnected => {
+                        tracing::error!("rx_notify is disconnected, quit");
+                        return Err(Fatal::Stopped);
+                    }
+                },
+            };
+
+            self.handle_notify(notify).await?;
+
+            // TODO: does run_engine_commands() run too frequently?
+            //       to run many commands in one shot, it is possible to batch more commands to gain
+            //       better performance.
+
+            self.run_engine_commands().await?;
+        }
+
+        tracing::debug!("at_most({}) reached, there are more queued Notify to process", at_most);
+
+        Ok(at_most)
+    }
+
     /// Spawn parallel vote requests to all cluster members.
     #[tracing::instrument(level = "trace", skip_all, fields(vote=vote_req.summary()))]
     async fn spawn_parallel_vote_requests(&mut self, vote_req: &VoteRequest<C::NodeId>) {
@@ -979,7 +1046,7 @@ where
             let target_node = self.engine.state.membership_state.effective().get_node(&target).unwrap().clone();
             let mut client = self.network.new_client(target, &target_node).await;
 
-            let tx = self.tx_api.clone();
+            let tx = self.tx_notify.clone();
 
             let ttl = Duration::from_millis(self.config.election_timeout_min);
             let id = self.id;
@@ -1004,7 +1071,7 @@ where
 
                     match res {
                         Ok(resp) => {
-                            let _ = tx.send(RaftMsg::VoteResponse { target, resp, vote });
+                            let _ = tx.send(Notify::VoteResponse { target, resp, vote });
                         }
                         Err(err) => tracing::error!({error=%err, target=display(target)}, "while requesting vote"),
                     }
@@ -1073,21 +1140,6 @@ where
 
                 self.handle_vote_request(rpc, tx);
             }
-            RaftMsg::VoteResponse { target, resp, vote } => {
-                let now = Instant::now();
-                self.engine.timer.update_now(now);
-
-                tracing::info!(
-                    now = debug(now),
-                    resp = display(resp.summary()),
-                    "received RaftMsg::VoteResponse: {}",
-                    func_name!()
-                );
-
-                if self.does_vote_match(&vote, "VoteResponse") {
-                    self.handle_vote_resp(resp, target);
-                }
-            }
             RaftMsg::InstallSnapshot { rpc, tx } => {
                 tracing::info!(
                     req = display(rpc.summary()),
@@ -1148,7 +1200,32 @@ where
                     ExternalCommand::Snapshot => self.trigger_snapshot(),
                 }
             }
-            RaftMsg::Tick { i } => {
+        };
+        Ok(())
+    }
+
+    // TODO: Make this method non-async. It does not need to run any async command in it.
+    #[tracing::instrument(level = "debug", skip_all, fields(state = debug(self.engine.state.server_state), id=display(self.id)))]
+    pub(crate) async fn handle_notify(&mut self, notify: Notify<C>) -> Result<(), Fatal<C::NodeId>> {
+        tracing::debug!("recv from rx_notify: {}", notify.summary());
+
+        match notify {
+            Notify::VoteResponse { target, resp, vote } => {
+                let now = Instant::now();
+                self.engine.timer.update_now(now);
+
+                tracing::info!(
+                    now = debug(now),
+                    resp = display(resp.summary()),
+                    "received Notify::VoteResponse: {}",
+                    func_name!()
+                );
+
+                if self.does_vote_match(&vote, "VoteResponse") {
+                    self.handle_vote_resp(resp, target);
+                }
+            }
+            Notify::Tick { i } => {
                 // check every timer
 
                 let now = Instant::now();
@@ -1198,12 +1275,12 @@ where
                 }
             }
 
-            RaftMsg::HigherVote { target, higher, vote } => {
+            Notify::HigherVote { target, higher, vote } => {
                 tracing::info!(
                     target = display(target),
                     higher_vote = display(&higher),
                     sending_vote = display(&vote),
-                    "received RaftMsg::HigherVote: {}",
+                    "received Notify::HigherVote: {}",
                     func_name!()
                 );
 
@@ -1213,7 +1290,7 @@ where
                 }
             }
 
-            RaftMsg::UpdateReplicationProgress {
+            Notify::UpdateReplicationProgress {
                 target,
                 id,
                 result,
@@ -1226,7 +1303,7 @@ where
                 }
             }
 
-            RaftMsg::StateMachine { command_result } => {
+            Notify::StateMachine { command_result } => {
                 tracing::debug!("sm::StateMachine command result: {:?}", command_result);
 
                 match command_result.result? {
@@ -1263,10 +1340,10 @@ where
                 }
             }
 
-            RaftMsg::ReplicationStorageError { error } => {
+            Notify::ReplicationStorageError { error } => {
                 tracing::error!(
                     error = display(&error),
-                    "received RaftMsg::ReplicationStorageError: {}",
+                    "received Notify::ReplicationStorageError: {}",
                     func_name!()
                 );
 
