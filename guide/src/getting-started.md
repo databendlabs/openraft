@@ -139,9 +139,9 @@ corresponding methods of a remote `Raft`.
 pub trait RaftNetwork<D>: Send + Sync + 'static
 where D: AppData
 {
-    async fn send_append_entries(&self, target: NodeId, node:Option<Node>, rpc: AppendEntriesRequest<D>) -> Result<AppendEntriesResponse>;
-    async fn send_install_snapshot( &self, target: NodeId, node:Option<Node>, rpc: InstallSnapshotRequest,) -> Result<InstallSnapshotResponse>;
-    async fn send_vote(&self, target: NodeId, node:Option<Node>, rpc: VoteRequest) -> Result<VoteResponse>;
+    async fn send_append_entries(&mut self, rpc: AppendEntriesRequest<D>) -> Result<AppendEntriesResponse, RPCError<RaftError>>;
+    async fn send_install_snapshot(&mut self, rpc: InstallSnapshotRequest,) -> Result<InstallSnapshotResponse, RPCError<RaftError<InstallSnapshotError>>>;
+    async fn send_vote(&mut self, rpc: VoteRequest) -> Result<VoteResponse, RPCError<RaftError>>;
 }
 ```
 
@@ -156,6 +156,26 @@ As a real-world impl, you may want to use [Tonic gRPC](https://github.com/hyperi
 [databend-meta](https://github.com/datafuselabs/databend/blob/6603392a958ba8593b1f4b01410bebedd484c6a9/metasrv/src/network.rs#L89) would be an excellent real-world example.
 
 
+### Implement `RaftNetworkFactory` 
+
+`RaftNetworkFactory` is a singleton that creates `RaftNetwork` instances for each replication stream.
+
+```rust
+pub trait RaftNetworkFactory<C>: Send + Sync + 'static
+    where C: RaftTypeConfig
+{
+    type Network: RaftNetwork<C>;
+    async fn new_client(&mut self, target: C::NodeId, node: &C::Node) -> Self::Network;
+}
+```
+
+`RaftNetworkFactory::Network` is the application implementation of trait `RaftNetwork`.
+The only method `new_client` create a new network instance sending RPCs to the target node.
+
+This function should **not** create a connection but rather a client that will connect when
+required..
+
+
 ### Find the address of the target node.
 
 An implementation of `RaftNetwork` need to connect to the remote raft peer,
@@ -165,29 +185,22 @@ You have two ways to find the address of a remote peer:
 
 1. Managing the mapping from node-id to address by yourself.
 
-2. `openraft` allows you to store the additional info in its internal Membership,
+2. `openraft` allows you to store the additional info in its Membership,
    which is automatically replicated as regular logs.
 
-   To use this feature, you need to pass a `Node` instance, which contains
-   address and other info, to `Raft::add_learner()`:
+   To use this feature, you need to specify the type in `RaftTypeConfig`, with:
 
-   - `Raft::add_learner(node_id, None, ...)` tells `openraft` to store only node-id
-     in `Membership`. The membership data then would be like:
+   ```rust
+   openraft::declare_raft_types!(
+      pub TypeConfig: D = Request, R = Response, NodeId = NodeId, Node = openraft::BasicNode, Entry = openraft::Entry<TypeConfig>
+   );
+   ```
 
-     ```json
-     "membership": {
-        "learners": [],
-        "configs": [ [ 1, 2, 3 ] ],
-        "nodes": {}
-     }
-     ```
-
-   - `Raft::add_learner(node_id, Some(Node::new("127.0.0.1")), ...)` tells `openraft`
+   - `Raft::add_learner(node_id, Node::new("127.0.0.1"), ...)` tells `openraft`
      to store node-id, and its address in `Membership` too:
 
      ```json
-     "membership": {
-        "learners": [],
+     {
         "configs": [ [ 1, 2, 3 ] ],
         "nodes": {
           "1": { "addr": "127.0.0.1:21001", "data": {} },
@@ -197,15 +210,57 @@ You have two ways to find the address of a remote peer:
      }
      ```
 
+## 4. Define types for the application
 
 
-## 4. Put everything together
+Openraft is a generic implementation of Raft, it requires the application to define
+concrete types for these generic arguments and most types are parameterized by [`RaftTypeConfig`]:
+
+```rust
+openraft::declare_raft_types!(
+   pub Config:
+    D = ClientRequest,
+    R = ClientResponse,
+    NodeId = MemNodeId,
+    Node = openraft::BasiceNode,
+    Entry = openraft::Entry<Config>
+);
+```
+
+The above declaration defines a `RaftTypeConfig` implementation as the following and will be used by struct `Raft`:
+
+```rust
+pub struct TypeConfig {}
+impl openraft::RaftTypeConfig for TypeConfig {
+    type D = Request;
+    type R = Response;
+    type NodeId = NodeId;
+    type Node = BasicNode;
+    type Entry = openraft::Entry<TypeConfig>
+    ;
+}
+```
+
+```rust
+pub struct Raft<C: RaftTypeConfig, N, LS, SM> {}
+```
+
+Openraft provides default implementation for `Node`(`EmptyNode` and `BasiceNode`) and `Entry`(`Entry`),
+you can use them directly or define your own types.
+
+
+## 5. Put everything together
 
 Finally, we put these parts together and boot up a raft node
-[main.rs](https://github.com/datafuselabs/openraft/blob/main/examples/raft-kv-memstore/src/bin/main.rs)
+[main.rs](https://github.com/datafuselabs/openraft/blob/main/examples/raft-kv-memstore/src/lib.rs)
 :
 
 ```rust
+// Define the types used in the application.
+openraft::declare_raft_types!(
+    pub TypeConfig: D = Request, R = Response, NodeId = NodeId, Node = BasicNode, Entry = openraft::Entry<TypeConfig>
+);
+
 #[tokio::main]
 async fn main() {
   #[actix_web::main]
@@ -222,13 +277,15 @@ async fn main() {
 
     // Create a instance of where the Raft data will be stored.
     let store = Arc::new(ExampleStore::default());
+      
+    let (log_store, state_machine) = Adaptor::new(store.clone());
 
     // Create the network layer that will connect and communicate the raft instances and
     // will be used in conjunction with the store created above.
     let network = Arc::new(ExampleNetwork {});
 
     // Create a local raft instance.
-    let raft = Raft::new(node_id, config.clone(), network, store.clone());
+    let raft = openraft::Raft::new(node_id, config.clone(), network, log_store, state_machine).await.unwrap();
 
     // Create an application that will store all the instances created above, this will
     // be later used on the actix-web services.
@@ -268,7 +325,7 @@ async fn main() {
 
 ```
 
-## 5. Run the cluster
+## 6. Run the cluster
 
 To set up a demo raft cluster includes:
 - Bring up three uninitialized raft nodes;
@@ -286,6 +343,3 @@ And two test scripts for setting up a cluster are provided:
 
 - [test_cluster.rs](https://github.com/datafuselabs/openraft/blob/main/examples/raft-kv-memstore/tests/cluster/test_cluster.rs)
   Use ExampleClient to set up a cluster, write data, and then read it.
-
-
-
