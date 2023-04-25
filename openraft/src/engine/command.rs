@@ -39,12 +39,6 @@ where C: RaftTypeConfig
     /// Append a `range` of entries.
     AppendInputEntries { entries: Vec<C::Entry> },
 
-    /// Append a blank log.
-    ///
-    /// One of the usage is when a leader is established, a blank log is written to commit the
-    /// state.
-    AppendBlankLog { log_id: LogId<C::NodeId> },
-
     /// Replicate the committed log id to other nodes
     ReplicateCommitted { committed: Option<LogId<C::NodeId>> },
 
@@ -124,7 +118,6 @@ where
             (Command::QuitLeader,                            Command::QuitLeader)                                                => true,
             (Command::AppendEntry { entry },                 Command::AppendEntry { entry: b }, )                                => entry == b,
             (Command::AppendInputEntries { entries },        Command::AppendInputEntries { entries: b }, )                       => entries == b,
-            (Command::AppendBlankLog { log_id },             Command::AppendBlankLog { log_id: b }, )                            => log_id == b,
             (Command::ReplicateCommitted { committed },      Command::ReplicateCommitted { committed: b }, )                     => committed == b,
             (Command::Apply { already_committed, upto, },    Command::Apply { already_committed: b_committed, upto: b_upto, }, ) => already_committed == b_committed && upto == b_upto,
             (Command::Replicate { target, req },             Command::Replicate { target: b_target, req: other_req, }, )         => target == b_target && req == other_req,
@@ -156,7 +149,6 @@ where C: RaftTypeConfig
 
             Command::AppendEntry { .. }               => CommandKind::Log,
             Command::AppendInputEntries { .. }        => CommandKind::Log,
-            Command::AppendBlankLog { .. }            => CommandKind::Log,
             Command::SaveVote { .. }                  => CommandKind::Log,
             Command::PurgeLog { .. }                  => CommandKind::Log,
             Command::DeleteConflictLog { .. }         => CommandKind::Log,
@@ -181,7 +173,6 @@ where C: RaftTypeConfig
             Command::QuitLeader                       => None,
             Command::AppendEntry { .. }               => None,
             Command::AppendInputEntries { .. }        => None,
-            Command::AppendBlankLog { .. }            => None,
             Command::ReplicateCommitted { .. }        => None,
             Command::Apply { .. }                     => None,
             Command::Replicate { .. }                 => None,

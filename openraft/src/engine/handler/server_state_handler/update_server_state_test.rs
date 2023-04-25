@@ -7,7 +7,7 @@ use tokio::time::Instant;
 use crate::engine::testing::UTCfg;
 use crate::engine::Command;
 use crate::engine::Engine;
-use crate::testing::log_id;
+use crate::testing::log_id1;
 use crate::utime::UTime;
 use crate::EffectiveMembership;
 use crate::Membership;
@@ -30,8 +30,8 @@ fn eng() -> Engine<UTCfg> {
     eng.config.id = 2;
     eng.state.vote = UTime::new(Instant::now(), Vote::new_committed(2, 2));
     eng.state.membership_state = MembershipState::new(
-        Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01())),
-        Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m123())),
+        Arc::new(EffectiveMembership::new(Some(log_id1(1, 1)), m01())),
+        Arc::new(EffectiveMembership::new(Some(log_id1(2, 3)), m123())),
     );
     eng.state.server_state = eng.state.calc_server_state(&eng.config.id);
 

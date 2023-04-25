@@ -1,5 +1,5 @@
 use crate::entry::RaftEntry;
-use crate::testing::log_id;
+use crate::testing::log_id1;
 use crate::RaftTypeConfig;
 
 /// Req for test
@@ -32,5 +32,5 @@ impl RaftTypeConfig for UTCfg {
 }
 
 pub(crate) fn blank_ent(term: u64, index: u64) -> crate::Entry<UTCfg> {
-    crate::Entry::<UTCfg>::new_blank(log_id(term, index))
+    crate::Entry::<UTCfg>::new_blank(log_id1(term, index))
 }

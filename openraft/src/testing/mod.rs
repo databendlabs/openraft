@@ -22,10 +22,18 @@ crate::declare_raft_types!(
     pub(crate) DummyConfig: D = u64, R = u64, NodeId = u64, Node = BasicNode, Entry = crate::entry::Entry<DummyConfig>
 );
 
-/// Builds a log id with node_id set to 0, for testing purposes.
-pub fn log_id(term: u64, index: u64) -> LogId<u64> {
+/// Builds a log id with node_id set to 1, for testing purposes.
+pub fn log_id1(term: u64, index: u64) -> LogId<u64> {
     LogId::<u64> {
         leader_id: CommittedLeaderId::new(term, 1),
+        index,
+    }
+}
+
+/// Builds a log id, for testing purposes.
+pub fn log_id(term: u64, node_id: u64, index: u64) -> LogId<u64> {
+    LogId::<u64> {
+        leader_id: CommittedLeaderId::new(term, node_id),
         index,
     }
 }

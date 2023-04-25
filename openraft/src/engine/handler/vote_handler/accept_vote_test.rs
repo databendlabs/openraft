@@ -12,7 +12,7 @@ use crate::engine::Engine;
 use crate::engine::Respond;
 use crate::error::Infallible;
 use crate::raft::VoteResponse;
-use crate::testing::log_id;
+use crate::testing::log_id1;
 use crate::utime::UTime;
 use crate::EffectiveMembership;
 use crate::Membership;
@@ -40,7 +40,7 @@ fn eng() -> Engine<UTCfg> {
     eng.state.server_state = ServerState::Candidate;
     eng.state
         .membership_state
-        .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01())));
+        .set_effective(Arc::new(EffectiveMembership::new(Some(log_id1(1, 1)), m01())));
 
     eng.vote_handler().become_leading();
     eng

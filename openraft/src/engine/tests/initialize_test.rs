@@ -13,6 +13,8 @@ use crate::error::NotAllowed;
 use crate::error::NotInMembers;
 use crate::raft::VoteRequest;
 use crate::raft_state::LogStateReader;
+use crate::testing::log_id;
+use crate::testing::log_id1;
 use crate::utime::UTime;
 use crate::vote::CommittedLeaderId;
 use crate::Entry;
@@ -35,11 +37,6 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
         index: 0,
     };
 
-    let log_id = |term, index| LogId {
-        leader_id: CommittedLeaderId::new(term, 1),
-        index,
-    };
-
     let m1 = || Membership::<u64, ()>::new(vec![btreeset! {1}], None);
     let entry = Entry::<Config>::new_membership(LogId::default(), m1());
 
@@ -52,8 +49,8 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
         eng.initialize(entry)?;
 
         assert_eq!(Some(log_id0), eng.state.get_log_id(0));
-        assert_eq!(Some(log_id(1, 1)), eng.state.get_log_id(1));
-        assert_eq!(Some(&log_id(1, 1)), eng.state.last_log_id());
+        assert_eq!(Some(log_id1(1, 1)), eng.state.get_log_id(1));
+        assert_eq!(Some(&log_id1(1, 1)), eng.state.last_log_id());
 
         assert_eq!(ServerState::Leader, eng.state.server_state);
         assert_eq!(&m1(), eng.state.membership_state.effective().membership());
@@ -74,11 +71,8 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
                 },
                 Command::BecomeLeader,
                 Command::RebuildReplicationStreams { targets: vec![] },
-                Command::AppendBlankLog {
-                    log_id: LogId {
-                        leader_id: CommittedLeaderId::new(1, 1),
-                        index: 1,
-                    },
+                Command::AppendEntry {
+                    entry: Entry::<Config>::new_blank(log_id(1, 1, 1))
                 },
                 Command::ReplicateCommitted {
                     committed: Some(LogId {
