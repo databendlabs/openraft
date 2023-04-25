@@ -28,6 +28,7 @@ categories = {
         'Improve:':      typs['improve'],
         'internal:':     typs['internal'],
         'doc:':          typs['doc'],
+        'Doc:':          typs['doc'],
         'refactor:':     typs['refactor'],
         'fixbug:':       typs['fixbug'],
         'fixdoc:':       typs['fixdoc'],
