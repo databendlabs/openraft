@@ -5,6 +5,7 @@ use anyhow::Result;
 use maplit::btreeset;
 use openraft::raft::AppendEntriesRequest;
 use openraft::testing::blank_ent;
+use openraft::testing::log_id;
 use openraft::Config;
 use openraft::RaftNetwork;
 use openraft::RaftNetworkFactory;
@@ -12,7 +13,6 @@ use openraft::Vote;
 use openraft_memstore::BlockOperation;
 
 use crate::fixtures::init_default_ut_tracing;
-use crate::fixtures::log_id;
 use crate::fixtures::RaftRouter;
 
 /// When building a snapshot, append-entries request should not be blocked.

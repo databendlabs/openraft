@@ -3,6 +3,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::testing;
+use openraft::testing::log_id;
 use openraft::Config;
 use openraft::Entry;
 use openraft::EntryPayload;
@@ -10,7 +11,6 @@ use openraft::Membership;
 use openraft::Raft;
 
 use crate::fixtures::init_default_ut_tracing;
-use crate::fixtures::log_id;
 use crate::fixtures::RaftRouter;
 
 /// Cluster members_leader_fix_partial test.

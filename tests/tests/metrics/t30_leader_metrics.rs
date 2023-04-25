@@ -5,6 +5,7 @@ use anyhow::Result;
 use futures::stream::StreamExt;
 use maplit::btreemap;
 use maplit::btreeset;
+use openraft::testing::log_id;
 use openraft::CommittedLeaderId;
 use openraft::Config;
 use openraft::LogId;
@@ -14,7 +15,6 @@ use openraft::ServerState;
 use tokio::time::sleep;
 
 use crate::fixtures::init_default_ut_tracing;
-use crate::fixtures::log_id;
 use crate::fixtures::RaftRouter;
 
 /// Cluster leader_metrics test.

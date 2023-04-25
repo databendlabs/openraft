@@ -1215,8 +1215,8 @@ where
                 }
             }
 
-            RaftMsg::ReplicationFatal => {
-                return Err(Fatal::Stopped);
+            RaftMsg::ReplicationStorageError { error } => {
+                return Err(Fatal::from(error));
             }
         };
         Ok(())

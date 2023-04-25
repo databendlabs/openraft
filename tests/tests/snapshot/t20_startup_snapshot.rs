@@ -4,11 +4,11 @@ use std::time::Duration;
 use maplit::btreeset;
 use openraft::storage::RaftLogStorage;
 use openraft::storage::RaftStateMachine;
+use openraft::testing::log_id;
 use openraft::Config;
 use openraft::SnapshotPolicy;
 
 use crate::fixtures::init_default_ut_tracing;
-use crate::fixtures::log_id;
 use crate::fixtures::RaftRouter;
 
 /// When startup, if there is no snapshot and there are logs purged, it should build a snapshot at

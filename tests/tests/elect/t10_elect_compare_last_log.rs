@@ -1,21 +1,17 @@
-use std::option::Option::None;
 use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
-use openraft::entry::RaftEntry;
 use openraft::storage::RaftLogStorage;
 use openraft::testing;
 use openraft::testing::blank_ent;
+use openraft::testing::membership_ent;
 use openraft::Config;
-use openraft::Entry;
-use openraft::Membership;
 use openraft::ServerState;
 use openraft::Vote;
 
 use crate::fixtures::init_default_ut_tracing;
-use crate::fixtures::log_id;
 use crate::fixtures::RaftRouter;
 
 /// The last_log in a vote request must be greater or equal than the local one.
@@ -44,7 +40,7 @@ async fn elect_compare_last_log() -> Result<()> {
         testing::blocking_append(&mut sto0, [
             //
             blank_ent(0, 0, 0),
-            Entry::new_membership(log_id(2, 0, 1), Membership::new(vec![btreeset! {0,1}], None)),
+            membership_ent(2, 0, 1, vec![btreeset! {0,1}]),
         ])
         .await?;
     }
@@ -55,7 +51,7 @@ async fn elect_compare_last_log() -> Result<()> {
 
         testing::blocking_append(&mut sto1, [
             blank_ent(0, 0, 0),
-            Entry::new_membership(log_id(1, 0, 1), Membership::new(vec![btreeset! {0,1}], None)),
+            membership_ent(1, 0, 1, vec![btreeset! {0,1}]),
             blank_ent(1, 0, 2),
         ])
         .await?;

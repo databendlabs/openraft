@@ -209,6 +209,38 @@ jobs:
           RUST_BACKTRACE: full
           OPENRAFT_STORE_DEFENSIVE: on
 
+  # Test external crate.
+  # cluster_benchmark is a standalone crate for benchmarking openraft cluster.
+  cluster-benchmark:
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - crate: "cluster_benchmark"
+
+    steps:
+      - name: Setup | Checkout
+        uses: actions/checkout@v2
+
+
+      - name: Setup | Toolchain
+        uses: actions-rs/toolchain@v1.0.6
+        with:
+          toolchain: "nightly"
+          override: true
+
+
+      - name: Unit Tests
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --tests nothing --manifest-path "${{ matrix.crate }}/Cargo.toml"
+        env:
+          RUST_LOG: debug
+          RUST_BACKTRACE: full
+
   # Feature "serde" will be enabled if one of the member carge enables
   # "serde", such as `memstore`, when building cargo workspace.
   #

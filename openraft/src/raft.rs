@@ -57,6 +57,7 @@ use crate::NodeId;
 use crate::RaftNetworkFactory;
 use crate::RaftState;
 use crate::SnapshotMeta;
+use crate::StorageError;
 use crate::StorageHelper;
 use crate::Vote;
 
@@ -972,10 +973,12 @@ where
         command_result: sm::CommandResult<C>,
     },
 
-    // TODO: it should have a body about the error.
-    /// Some critical error has taken place, and Raft needs to shutdown.
-    /// Sent by a replication task `ReplicationCore`.
-    ReplicationFatal,
+    /// [`StorageError`] error has taken place locally(not on remote node) when replicating, and
+    /// [`RaftCore`] needs to shutdown. Sent by a replication task
+    /// [`crate::replication::ReplicationCore`].
+    ReplicationStorageError {
+        error: StorageError<C::NodeId>,
+    },
 }
 
 impl<C, N, LS> MessageSummary<RaftMsg<C, N, LS>> for RaftMsg<C, N, LS>
@@ -1038,7 +1041,7 @@ where
                     target, new_vote, vote
                 )
             }
-            RaftMsg::ReplicationFatal => "ReplicationFatal".to_string(),
+            RaftMsg::ReplicationStorageError { error } => format!("ReplicationFatal: {}", error),
             RaftMsg::StateMachine { command_result: done } => {
                 format!("StateMachine command done: {:?}", done)
             }
@@ -1053,7 +1056,7 @@ pub(crate) enum ExternalCommand {
     Elect,
     /// Emit a heartbeat message, only if the node is leader.
     Heartbeat,
-    /// Trigger to build a snapshot
+    /// Trigger to build a snapshot on this node.
     Snapshot,
 }
 

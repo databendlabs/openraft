@@ -10,6 +10,7 @@ use openraft::storage::RaftLogStorage;
 use openraft::storage::RaftStateMachine;
 use openraft::testing;
 use openraft::testing::blank_ent;
+use openraft::testing::membership_ent;
 use openraft::CommittedLeaderId;
 use openraft::Config;
 use openraft::Entry;
@@ -26,7 +27,6 @@ use openraft::StorageHelper;
 use openraft::Vote;
 
 use crate::fixtures::init_default_ut_tracing;
-use crate::fixtures::membership_ent;
 use crate::fixtures::RaftRouter;
 
 /// Installing snapshot on a node that has logs conflict with snapshot.meta.last_log_id will delete
