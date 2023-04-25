@@ -1414,11 +1414,6 @@ where
                 tracing::debug!("AppendInputEntries: {}", DisplaySlice::<_>(&entries),);
                 self.append_to_log(entries, last_log_id).await?
             }
-            Command::AppendBlankLog { log_id } => {
-                let ent = C::Entry::new_blank(log_id);
-                let entries = [ent];
-                self.append_to_log(entries, log_id).await?
-            }
             Command::SaveVote { vote } => {
                 self.log_store.save_vote(&vote).await?;
             }

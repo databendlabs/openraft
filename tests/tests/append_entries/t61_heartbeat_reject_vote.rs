@@ -5,7 +5,7 @@ use std::time::Duration;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::raft::VoteRequest;
-use openraft::testing::log_id;
+use openraft::testing::log_id1;
 use openraft::Config;
 use openraft::Vote;
 use tokio::time::sleep;
@@ -61,7 +61,7 @@ async fn heartbeat_reject_vote() -> Result<()> {
 
     tracing::info!("--- leader lease rejects vote request");
     {
-        let res = node1.vote(VoteRequest::new(Vote::new(10, 2), Some(log_id(10, 10)))).await?;
+        let res = node1.vote(VoteRequest::new(Vote::new(10, 2), Some(log_id1(10, 10)))).await?;
         assert!(!res.vote_granted);
     }
 
@@ -79,7 +79,7 @@ async fn heartbeat_reject_vote() -> Result<()> {
 
         router.wait(&1, timeout()).log(Some(log_index), "no log is written").await?;
 
-        let res = node1.vote(VoteRequest::new(Vote::new(10, 2), Some(log_id(10, 10)))).await?;
+        let res = node1.vote(VoteRequest::new(Vote::new(10, 2), Some(log_id1(10, 10)))).await?;
         assert!(res.vote_granted, "vote is granted after leader lease expired");
     }
 

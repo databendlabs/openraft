@@ -9,13 +9,16 @@ use crate::engine::testing::UTCfg;
 use crate::engine::Command;
 use crate::engine::Engine;
 use crate::engine::LogIdList;
+use crate::entry::RaftEntry;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::Inflight;
 use crate::raft::VoteResponse;
 use crate::testing::log_id;
+use crate::testing::log_id1;
 use crate::utime::UTime;
 use crate::CommittedLeaderId;
 use crate::EffectiveMembership;
+use crate::Entry;
 use crate::LogId;
 use crate::Membership;
 use crate::Vote;
@@ -45,12 +48,12 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         eng.state.vote = UTime::new(Instant::now(), Vote::new(2, 1));
         eng.state
             .membership_state
-            .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12())));
+            .set_effective(Arc::new(EffectiveMembership::new(Some(log_id1(1, 1)), m12())));
 
         eng.handle_vote_resp(2, VoteResponse {
             vote: Vote::new(2, 2),
             vote_granted: true,
-            last_log_id: Some(log_id(2, 2)),
+            last_log_id: Some(log_id1(2, 2)),
         });
 
         assert_eq!(Vote::new(2, 1), *eng.state.vote_ref());
@@ -68,7 +71,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         eng.state.vote = UTime::new(Instant::now(), Vote::new(2, 1));
         eng.state
             .membership_state
-            .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12())));
+            .set_effective(Arc::new(EffectiveMembership::new(Some(log_id1(1, 1)), m12())));
         eng.vote_handler().become_leading();
         eng.internal_server_state.leading_mut().map(|l| l.vote_granted_by.insert(1));
         eng.state.server_state = ServerState::Candidate;
@@ -76,7 +79,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         eng.handle_vote_resp(2, VoteResponse {
             vote: Vote::new(1, 1),
             vote_granted: false,
-            last_log_id: Some(log_id(2, 2)),
+            last_log_id: Some(log_id1(2, 2)),
         });
 
         assert_eq!(Vote::new(2, 1), *eng.state.vote_ref());
@@ -96,10 +99,10 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         let mut eng = eng();
         eng.config.id = 1;
         eng.state.vote = UTime::new(Instant::now(), Vote::new(2, 1));
-        eng.state.log_ids = LogIdList::new(vec![log_id(3, 3)]);
+        eng.state.log_ids = LogIdList::new(vec![log_id1(3, 3)]);
         eng.state
             .membership_state
-            .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12())));
+            .set_effective(Arc::new(EffectiveMembership::new(Some(log_id1(1, 1)), m12())));
         eng.vote_handler().become_leading();
         eng.internal_server_state.leading_mut().map(|l| l.vote_granted_by.insert(1));
         eng.state.server_state = ServerState::Candidate;
@@ -107,7 +110,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         eng.handle_vote_resp(2, VoteResponse {
             vote: Vote::new(3, 2),
             vote_granted: false,
-            last_log_id: Some(log_id(2, 2)),
+            last_log_id: Some(log_id1(2, 2)),
         });
 
         assert_eq!(Vote::new(3, 2), *eng.state.vote_ref());
@@ -128,7 +131,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         eng.state.vote = UTime::new(Instant::now(), Vote::new(2, 1));
         eng.state
             .membership_state
-            .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12())));
+            .set_effective(Arc::new(EffectiveMembership::new(Some(log_id1(1, 1)), m12())));
         eng.vote_handler().become_leading();
         eng.internal_server_state.leading_mut().map(|l| l.vote_granted_by.insert(1));
         eng.state.server_state = ServerState::Candidate;
@@ -136,7 +139,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         eng.handle_vote_resp(2, VoteResponse {
             vote: Vote::new(2, 1),
             vote_granted: false,
-            last_log_id: Some(log_id(2, 2)),
+            last_log_id: Some(log_id1(2, 2)),
         });
 
         assert_eq!(Vote::new(2, 1), *eng.state.vote_ref());
@@ -157,7 +160,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         eng.state.vote = UTime::new(Instant::now(), Vote::new(2, 1));
         eng.state
             .membership_state
-            .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m1234())));
+            .set_effective(Arc::new(EffectiveMembership::new(Some(log_id1(1, 1)), m1234())));
         eng.vote_handler().become_leading();
         eng.internal_server_state.leading_mut().map(|l| l.vote_granted_by.insert(1));
         eng.state.server_state = ServerState::Candidate;
@@ -165,7 +168,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         eng.handle_vote_resp(2, VoteResponse {
             vote: Vote::new(2, 1),
             vote_granted: true,
-            last_log_id: Some(log_id(2, 2)),
+            last_log_id: Some(log_id1(2, 2)),
         });
 
         assert_eq!(Vote::new(2, 1), *eng.state.vote_ref());
@@ -186,7 +189,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         eng.state.vote = UTime::new(Instant::now(), Vote::new(2, 1));
         eng.state
             .membership_state
-            .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12())));
+            .set_effective(Arc::new(EffectiveMembership::new(Some(log_id1(1, 1)), m12())));
         eng.vote_handler().become_leading();
         eng.internal_server_state.leading_mut().map(|l| l.vote_granted_by.insert(1));
         eng.state.server_state = ServerState::Candidate;
@@ -194,7 +197,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         eng.handle_vote_resp(2, VoteResponse {
             vote: Vote::new(2, 1),
             vote_granted: true,
-            last_log_id: Some(log_id(2, 2)),
+            last_log_id: Some(log_id1(2, 2)),
         });
 
         assert_eq!(Vote::new_committed(2, 1), *eng.state.vote_ref());
@@ -214,15 +217,12 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
                 Command::RebuildReplicationStreams {
                     targets: vec![(2, ProgressEntry::empty(1))]
                 },
-                Command::AppendBlankLog {
-                    log_id: LogId {
-                        leader_id: CommittedLeaderId::new(2, 1),
-                        index: 1,
-                    },
+                Command::AppendEntry {
+                    entry: Entry::<UTCfg>::new_blank(log_id(2, 1, 1)),
                 },
                 Command::Replicate {
                     target: 2,
-                    req: Inflight::logs(None, Some(log_id(2, 1))).with_id(1),
+                    req: Inflight::logs(None, Some(log_id1(2, 1))).with_id(1),
                 },
             ],
             eng.output.take_commands()

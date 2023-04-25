@@ -12,7 +12,7 @@ use crate::engine::Engine;
 use crate::entry::RaftEntry;
 use crate::error::RejectAppendEntries;
 use crate::raft_state::LogStateReader;
-use crate::testing::log_id;
+use crate::testing::log_id1;
 use crate::utime::UTime;
 use crate::EffectiveMembership;
 use crate::Entry;
@@ -38,12 +38,12 @@ fn eng() -> Engine<UTCfg> {
 
     eng.config.id = 2;
     eng.state.vote = UTime::new(Instant::now(), Vote::new(2, 1));
-    eng.state.log_ids.append(log_id(1, 1));
-    eng.state.log_ids.append(log_id(2, 3));
-    eng.state.committed = Some(log_id(0, 0));
+    eng.state.log_ids.append(log_id1(1, 1));
+    eng.state.log_ids.append(log_id1(2, 3));
+    eng.state.committed = Some(log_id1(0, 0));
     eng.state.membership_state = MembershipState::new(
-        Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01())),
-        Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23())),
+        Arc::new(EffectiveMembership::new(Some(log_id1(1, 1)), m01())),
+        Arc::new(EffectiveMembership::new(Some(log_id1(2, 3)), m23())),
     );
     eng.state.server_state = eng.calc_server_state();
     eng
@@ -58,17 +58,17 @@ fn test_append_entries_vote_is_rejected() -> anyhow::Result<()> {
     assert_eq!(Err(RejectAppendEntries::ByVote(Vote::new(2, 1))), res);
     assert_eq!(
         &[
-            log_id(1, 1), //
-            log_id(2, 3),
+            log_id1(1, 1), //
+            log_id1(2, 3),
         ],
         eng.state.log_ids.key_log_ids()
     );
     assert_eq!(Vote::new(2, 1), *eng.state.vote_ref());
-    assert_eq!(Some(&log_id(2, 3)), eng.state.last_log_id());
+    assert_eq!(Some(&log_id1(2, 3)), eng.state.last_log_id());
     assert_eq!(
         MembershipState::new(
-            Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01())),
-            Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23())),
+            Arc::new(EffectiveMembership::new(Some(log_id1(1, 1)), m01())),
+            Arc::new(EffectiveMembership::new(Some(log_id1(2, 3)), m23())),
         ),
         eng.state.membership_state
     );
@@ -87,24 +87,24 @@ fn test_append_entries_prev_log_id_is_applied() -> anyhow::Result<()> {
 
     let res = eng.append_entries(
         &Vote::new_committed(2, 1),
-        Some(log_id(0, 0)),
+        Some(log_id1(0, 0)),
         Vec::<Entry<UTCfg>>::new(),
     );
 
     assert_eq!(Ok(()), res);
     assert_eq!(
         &[
-            log_id(1, 1), //
-            log_id(2, 3), //
+            log_id1(1, 1), //
+            log_id1(2, 3), //
         ],
         eng.state.log_ids.key_log_ids()
     );
     assert_eq!(Vote::new_committed(2, 1), *eng.state.vote_ref());
-    assert_eq!(Some(&log_id(2, 3)), eng.state.last_log_id());
+    assert_eq!(Some(&log_id1(2, 3)), eng.state.last_log_id());
     assert_eq!(
         MembershipState::new(
-            Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01())),
-            Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23())),
+            Arc::new(EffectiveMembership::new(Some(log_id1(1, 1)), m01())),
+            Arc::new(EffectiveMembership::new(Some(log_id1(2, 3)), m23())),
         ),
         eng.state.membership_state
     );
@@ -125,29 +125,29 @@ fn test_append_entries_prev_log_id_conflict() -> anyhow::Result<()> {
 
     let res = eng.append_entries(
         &Vote::new_committed(2, 1),
-        Some(log_id(2, 2)),
+        Some(log_id1(2, 2)),
         Vec::<Entry<UTCfg>>::new(),
     );
 
     assert_eq!(
         Err(RejectAppendEntries::ByConflictingLogId {
-            expect: log_id(2, 2),
-            local: Some(log_id(1, 2)),
+            expect: log_id1(2, 2),
+            local: Some(log_id1(1, 2)),
         }),
         res
     );
     assert_eq!(
         &[
-            log_id(1, 1), //
+            log_id1(1, 1), //
         ],
         eng.state.log_ids.key_log_ids()
     );
     assert_eq!(Vote::new_committed(2, 1), *eng.state.vote_ref());
-    assert_eq!(Some(&log_id(1, 1)), eng.state.last_log_id());
+    assert_eq!(Some(&log_id1(1, 1)), eng.state.last_log_id());
     assert_eq!(
         MembershipState::new(
-            Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01())),
-            Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01())),
+            Arc::new(EffectiveMembership::new(Some(log_id1(1, 1)), m01())),
+            Arc::new(EffectiveMembership::new(Some(log_id1(1, 1)), m01())),
         ),
         eng.state.membership_state
     );
@@ -157,7 +157,7 @@ fn test_append_entries_prev_log_id_conflict() -> anyhow::Result<()> {
             Command::SaveVote {
                 vote: Vote::new_committed(2, 1)
             },
-            Command::DeleteConflictLog { since: log_id(1, 2) },
+            Command::DeleteConflictLog { since: log_id1(1, 2) },
         ],
         eng.output.take_commands()
     );
@@ -169,7 +169,7 @@ fn test_append_entries_prev_log_id_conflict() -> anyhow::Result<()> {
 fn test_append_entries_prev_log_id_is_committed() -> anyhow::Result<()> {
     let mut eng = eng();
 
-    let res = eng.append_entries(&Vote::new_committed(2, 1), Some(log_id(0, 0)), vec![
+    let res = eng.append_entries(&Vote::new_committed(2, 1), Some(log_id1(0, 0)), vec![
         blank_ent(1, 1),
         blank_ent(2, 2),
     ]);
@@ -177,17 +177,17 @@ fn test_append_entries_prev_log_id_is_committed() -> anyhow::Result<()> {
     assert_eq!(Ok(()), res);
     assert_eq!(
         &[
-            log_id(1, 1), //
-            log_id(2, 2), //
+            log_id1(1, 1), //
+            log_id1(2, 2), //
         ],
         eng.state.log_ids.key_log_ids()
     );
     assert_eq!(Vote::new_committed(2, 1), *eng.state.vote_ref());
-    assert_eq!(Some(&log_id(2, 2)), eng.state.last_log_id());
+    assert_eq!(Some(&log_id1(2, 2)), eng.state.last_log_id());
     assert_eq!(
         MembershipState::new(
-            Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01())),
-            Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01())),
+            Arc::new(EffectiveMembership::new(Some(log_id1(1, 1)), m01())),
+            Arc::new(EffectiveMembership::new(Some(log_id1(1, 1)), m01())),
         ),
         eng.state.membership_state
     );
@@ -197,7 +197,7 @@ fn test_append_entries_prev_log_id_is_committed() -> anyhow::Result<()> {
             Command::SaveVote {
                 vote: Vote::new_committed(2, 1)
             },
-            Command::DeleteConflictLog { since: log_id(1, 2) },
+            Command::DeleteConflictLog { since: log_id1(1, 2) },
             Command::AppendInputEntries {
                 entries: vec![blank_ent(2, 2)]
             },
@@ -214,31 +214,31 @@ fn test_append_entries_prev_log_id_not_exists() -> anyhow::Result<()> {
     eng.state.vote = UTime::new(Instant::now(), Vote::new(1, 2));
     eng.vote_handler().become_leading();
 
-    let res = eng.append_entries(&Vote::new_committed(2, 1), Some(log_id(2, 4)), vec![
+    let res = eng.append_entries(&Vote::new_committed(2, 1), Some(log_id1(2, 4)), vec![
         blank_ent(2, 5),
         blank_ent(2, 6),
     ]);
 
     assert_eq!(
         Err(RejectAppendEntries::ByConflictingLogId {
-            expect: log_id(2, 4),
+            expect: log_id1(2, 4),
             local: None,
         }),
         res
     );
     assert_eq!(
         &[
-            log_id(1, 1), //
-            log_id(2, 3), //
+            log_id1(1, 1), //
+            log_id1(2, 3), //
         ],
         eng.state.log_ids.key_log_ids()
     );
     assert_eq!(Vote::new_committed(2, 1), *eng.state.vote_ref());
-    assert_eq!(Some(&log_id(2, 3)), eng.state.last_log_id());
+    assert_eq!(Some(&log_id1(2, 3)), eng.state.last_log_id());
     assert_eq!(
         MembershipState::new(
-            Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01())),
-            Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23())),
+            Arc::new(EffectiveMembership::new(Some(log_id1(1, 1)), m01())),
+            Arc::new(EffectiveMembership::new(Some(log_id1(2, 3)), m23())),
         ),
         eng.state.membership_state
     );
@@ -262,25 +262,25 @@ fn test_append_entries_conflict() -> anyhow::Result<()> {
     // It is no longer a member, change to learner
     let mut eng = eng();
 
-    let resp = eng.append_entries(&Vote::new_committed(2, 1), Some(log_id(1, 1)), vec![
+    let resp = eng.append_entries(&Vote::new_committed(2, 1), Some(log_id1(1, 1)), vec![
         blank_ent(1, 2),
-        Entry::new_membership(log_id(3, 3), m34()),
+        Entry::new_membership(log_id1(3, 3), m34()),
     ]);
 
     assert_eq!(Ok(()), resp);
     assert_eq!(
         &[
-            log_id(1, 1), //
-            log_id(3, 3), //
+            log_id1(1, 1), //
+            log_id1(3, 3), //
         ],
         eng.state.log_ids.key_log_ids()
     );
     assert_eq!(Vote::new_committed(2, 1), *eng.state.vote_ref());
-    assert_eq!(Some(&log_id(3, 3)), eng.state.last_log_id());
+    assert_eq!(Some(&log_id1(3, 3)), eng.state.last_log_id());
     assert_eq!(
         MembershipState::new(
-            Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01())),
-            Arc::new(EffectiveMembership::new(Some(log_id(3, 3)), m34())),
+            Arc::new(EffectiveMembership::new(Some(log_id1(1, 1)), m01())),
+            Arc::new(EffectiveMembership::new(Some(log_id1(3, 3)), m34())),
         ),
         eng.state.membership_state
     );
@@ -290,9 +290,9 @@ fn test_append_entries_conflict() -> anyhow::Result<()> {
             Command::SaveVote {
                 vote: Vote::new_committed(2, 1)
             },
-            Command::DeleteConflictLog { since: log_id(2, 3) },
+            Command::DeleteConflictLog { since: log_id1(2, 3) },
             Command::AppendInputEntries {
-                entries: vec![Entry::new_membership(log_id(3, 3), m34())]
+                entries: vec![Entry::new_membership(log_id1(3, 3), m34())]
             },
         ],
         eng.output.take_commands()

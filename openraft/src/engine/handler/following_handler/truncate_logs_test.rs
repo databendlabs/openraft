@@ -7,7 +7,7 @@ use crate::engine::Command;
 use crate::engine::Engine;
 use crate::engine::LogIdList;
 use crate::raft_state::LogStateReader;
-use crate::testing::log_id;
+use crate::testing::log_id1;
 use crate::EffectiveMembership;
 use crate::Membership;
 use crate::MembershipState;
@@ -31,13 +31,13 @@ fn eng() -> Engine<UTCfg> {
 
     eng.config.id = 2;
     eng.state.log_ids = LogIdList::new(vec![
-        log_id(2, 2), //
-        log_id(4, 4),
-        log_id(4, 6),
+        log_id1(2, 2), //
+        log_id1(4, 4),
+        log_id1(4, 6),
     ]);
     eng.state.membership_state = MembershipState::new(
-        Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01())),
-        Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23())),
+        Arc::new(EffectiveMembership::new(Some(log_id1(1, 1)), m01())),
+        Arc::new(EffectiveMembership::new(Some(log_id1(2, 3)), m23())),
     );
 
     eng.state.server_state = ServerState::Follower;
@@ -51,12 +51,12 @@ fn test_truncate_logs_since_3() -> anyhow::Result<()> {
 
     eng.following_handler().truncate_logs(3);
 
-    assert_eq!(Some(&log_id(2, 2)), eng.state.last_log_id());
-    assert_eq!(&[log_id(2, 2)], eng.state.log_ids.key_log_ids());
+    assert_eq!(Some(&log_id1(2, 2)), eng.state.last_log_id());
+    assert_eq!(&[log_id1(2, 2)], eng.state.log_ids.key_log_ids());
     assert_eq!(
         MembershipState::new(
-            Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01())),
-            Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01())),
+            Arc::new(EffectiveMembership::new(Some(log_id1(1, 1)), m01())),
+            Arc::new(EffectiveMembership::new(Some(log_id1(1, 1)), m01())),
         ),
         eng.state.membership_state
     );
@@ -65,7 +65,7 @@ fn test_truncate_logs_since_3() -> anyhow::Result<()> {
     assert_eq!(
         vec![
             //
-            Command::DeleteConflictLog { since: log_id(2, 3) },
+            Command::DeleteConflictLog { since: log_id1(2, 3) },
         ],
         eng.output.take_commands()
     );
@@ -79,19 +79,19 @@ fn test_truncate_logs_since_4() -> anyhow::Result<()> {
 
     eng.following_handler().truncate_logs(4);
 
-    assert_eq!(Some(&log_id(2, 3)), eng.state.last_log_id());
-    assert_eq!(&[log_id(2, 2), log_id(2, 3)], eng.state.log_ids.key_log_ids());
+    assert_eq!(Some(&log_id1(2, 3)), eng.state.last_log_id());
+    assert_eq!(&[log_id1(2, 2), log_id1(2, 3)], eng.state.log_ids.key_log_ids());
     assert_eq!(
         MembershipState::new(
-            Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01())),
-            Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23())),
+            Arc::new(EffectiveMembership::new(Some(log_id1(1, 1)), m01())),
+            Arc::new(EffectiveMembership::new(Some(log_id1(2, 3)), m23())),
         ),
         eng.state.membership_state
     );
     assert_eq!(ServerState::Follower, eng.state.server_state);
 
     assert_eq!(
-        vec![Command::DeleteConflictLog { since: log_id(4, 4) }],
+        vec![Command::DeleteConflictLog { since: log_id1(4, 4) }],
         eng.output.take_commands()
     );
 
@@ -104,10 +104,10 @@ fn test_truncate_logs_since_5() -> anyhow::Result<()> {
 
     eng.following_handler().truncate_logs(5);
 
-    assert_eq!(Some(&log_id(4, 4)), eng.state.last_log_id());
-    assert_eq!(&[log_id(2, 2), log_id(4, 4)], eng.state.log_ids.key_log_ids());
+    assert_eq!(Some(&log_id1(4, 4)), eng.state.last_log_id());
+    assert_eq!(&[log_id1(2, 2), log_id1(4, 4)], eng.state.log_ids.key_log_ids());
     assert_eq!(
-        vec![Command::DeleteConflictLog { since: log_id(4, 5) }],
+        vec![Command::DeleteConflictLog { since: log_id1(4, 5) }],
         eng.output.take_commands()
     );
 
@@ -120,13 +120,13 @@ fn test_truncate_logs_since_6() -> anyhow::Result<()> {
 
     eng.following_handler().truncate_logs(6);
 
-    assert_eq!(Some(&log_id(4, 5)), eng.state.last_log_id());
+    assert_eq!(Some(&log_id1(4, 5)), eng.state.last_log_id());
     assert_eq!(
-        &[log_id(2, 2), log_id(4, 4), log_id(4, 5)],
+        &[log_id1(2, 2), log_id1(4, 4), log_id1(4, 5)],
         eng.state.log_ids.key_log_ids()
     );
     assert_eq!(
-        vec![Command::DeleteConflictLog { since: log_id(4, 6) }],
+        vec![Command::DeleteConflictLog { since: log_id1(4, 6) }],
         eng.output.take_commands()
     );
 
@@ -139,9 +139,9 @@ fn test_truncate_logs_since_7() -> anyhow::Result<()> {
 
     eng.following_handler().truncate_logs(7);
 
-    assert_eq!(Some(&log_id(4, 6)), eng.state.last_log_id());
+    assert_eq!(Some(&log_id1(4, 6)), eng.state.last_log_id());
     assert_eq!(
-        &[log_id(2, 2), log_id(4, 4), log_id(4, 6)],
+        &[log_id1(2, 2), log_id1(4, 4), log_id1(4, 6)],
         eng.state.log_ids.key_log_ids()
     );
     assert!(eng.output.take_commands().is_empty());
@@ -155,9 +155,9 @@ fn test_truncate_logs_since_8() -> anyhow::Result<()> {
 
     eng.following_handler().truncate_logs(8);
 
-    assert_eq!(Some(&log_id(4, 6)), eng.state.last_log_id());
+    assert_eq!(Some(&log_id1(4, 6)), eng.state.last_log_id());
     assert_eq!(
-        &[log_id(2, 2), log_id(4, 4), log_id(4, 6)],
+        &[log_id1(2, 2), log_id1(4, 4), log_id1(4, 6)],
         eng.state.log_ids.key_log_ids()
     );
     assert!(eng.output.take_commands().is_empty());
@@ -169,19 +169,19 @@ fn test_truncate_logs_since_8() -> anyhow::Result<()> {
 fn test_truncate_logs_revert_effective_membership() -> anyhow::Result<()> {
     let mut eng = eng();
     eng.state.membership_state = MembershipState::new(
-        Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m01())),
-        Arc::new(EffectiveMembership::new(Some(log_id(4, 4)), m12())),
+        Arc::new(EffectiveMembership::new(Some(log_id1(2, 3)), m01())),
+        Arc::new(EffectiveMembership::new(Some(log_id1(4, 4)), m12())),
     );
     eng.state.server_state = eng.calc_server_state();
 
     eng.following_handler().truncate_logs(4);
 
-    assert_eq!(Some(&log_id(2, 3)), eng.state.last_log_id());
-    assert_eq!(&[log_id(2, 2), log_id(2, 3)], eng.state.log_ids.key_log_ids());
+    assert_eq!(Some(&log_id1(2, 3)), eng.state.last_log_id());
+    assert_eq!(&[log_id1(2, 2), log_id1(2, 3)], eng.state.log_ids.key_log_ids());
     assert_eq!(
         vec![
             //
-            Command::DeleteConflictLog { since: log_id(4, 4) },
+            Command::DeleteConflictLog { since: log_id1(4, 4) },
         ],
         eng.output.take_commands()
     );

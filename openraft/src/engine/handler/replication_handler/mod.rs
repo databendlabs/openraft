@@ -5,6 +5,7 @@ use crate::engine::handler::snapshot_handler::SnapshotHandler;
 use crate::engine::Command;
 use crate::engine::EngineConfig;
 use crate::engine::EngineOutput;
+use crate::entry::RaftEntry;
 use crate::internal_server_state::LeaderQuorumSet;
 use crate::leader::Leader;
 use crate::progress::entry::ProgressEntry;
@@ -64,7 +65,8 @@ where C: RaftTypeConfig
             self.state.last_log_id().next_index(),
         );
         self.state.log_ids.append(log_id);
-        self.output.push_command(Command::AppendBlankLog { log_id });
+        let entry = C::Entry::new_blank(log_id);
+        self.output.push_command(Command::AppendEntry { entry });
 
         self.update_local_progress(Some(log_id));
     }

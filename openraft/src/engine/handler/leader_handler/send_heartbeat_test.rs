@@ -11,7 +11,7 @@ use crate::engine::Command;
 use crate::engine::Engine;
 use crate::progress::Inflight;
 use crate::progress::Progress;
-use crate::testing::log_id;
+use crate::testing::log_id1;
 use crate::utime::UTime;
 use crate::EffectiveMembership;
 use crate::Membership;
@@ -31,13 +31,13 @@ fn eng() -> Engine<UTCfg> {
     eng.state.enable_validate = false; // Disable validation for incomplete state
 
     eng.config.id = 1;
-    eng.state.committed = Some(log_id(0, 0));
+    eng.state.committed = Some(log_id1(0, 0));
     eng.state.vote = UTime::new(Instant::now(), Vote::new_committed(3, 1));
-    eng.state.log_ids.append(log_id(1, 1));
-    eng.state.log_ids.append(log_id(2, 3));
+    eng.state.log_ids.append(log_id1(1, 1));
+    eng.state.log_ids.append(log_id1(2, 3));
     eng.state.membership_state = MembershipState::new(
-        Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01())),
-        Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23())),
+        Arc::new(EffectiveMembership::new(Some(log_id1(1, 1)), m01())),
+        Arc::new(EffectiveMembership::new(Some(log_id1(2, 3)), m23())),
     );
     eng.state.server_state = eng.calc_server_state();
 
@@ -56,11 +56,11 @@ fn test_leader_send_heartbeat() -> anyhow::Result<()> {
             vec![
                 Command::Replicate {
                     target: 2,
-                    req: Inflight::logs(None, Some(log_id(2, 3))).with_id(1),
+                    req: Inflight::logs(None, Some(log_id1(2, 3))).with_id(1),
                 },
                 Command::Replicate {
                     target: 3,
-                    req: Inflight::logs(None, Some(log_id(2, 3))).with_id(1),
+                    req: Inflight::logs(None, Some(log_id1(2, 3))).with_id(1),
                 },
             ],
             eng.output.take_commands()
@@ -77,8 +77,8 @@ fn test_leader_send_heartbeat() -> anyhow::Result<()> {
     // No data to send, sending a heartbeat is to send empty RPC:
     {
         let l = eng.leader_handler()?;
-        let _ = l.leader.progress.update_with(&2, |ent| ent.update_matching(Some(log_id(2, 3))));
-        let _ = l.leader.progress.update_with(&3, |ent| ent.update_matching(Some(log_id(2, 3))));
+        let _ = l.leader.progress.update_with(&2, |ent| ent.update_matching(Some(log_id1(2, 3))));
+        let _ = l.leader.progress.update_with(&3, |ent| ent.update_matching(Some(log_id1(2, 3))));
     }
     eng.output.clear_commands();
     eng.leader_handler()?.send_heartbeat();
@@ -86,11 +86,11 @@ fn test_leader_send_heartbeat() -> anyhow::Result<()> {
         vec![
             Command::Replicate {
                 target: 2,
-                req: Inflight::logs(Some(log_id(2, 3)), Some(log_id(2, 3))).with_id(1),
+                req: Inflight::logs(Some(log_id1(2, 3)), Some(log_id1(2, 3))).with_id(1),
             },
             Command::Replicate {
                 target: 3,
-                req: Inflight::logs(Some(log_id(2, 3)), Some(log_id(2, 3))).with_id(1),
+                req: Inflight::logs(Some(log_id1(2, 3)), Some(log_id1(2, 3))).with_id(1),
             },
         ],
         eng.output.take_commands()
