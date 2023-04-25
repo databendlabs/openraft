@@ -40,7 +40,6 @@ use openraft::raft::VoteResponse;
 use openraft::storage::Adaptor;
 use openraft::storage::RaftLogStorage;
 use openraft::storage::RaftStateMachine;
-use openraft::CommittedLeaderId;
 use openraft::Config;
 use openraft::LogId;
 use openraft::LogIdOptionExt;
@@ -1040,8 +1039,4 @@ impl<T> From<std::ops::Range<T>> for ValueTest<T> {
 
 fn timeout() -> Option<Duration> {
     Some(Duration::from_millis(5_000))
-}
-
-pub fn log_id(term: u64, node_id: MemNodeId, index: u64) -> LogId<MemNodeId> {
-    LogId::new(CommittedLeaderId::new(term, node_id), index)
 }

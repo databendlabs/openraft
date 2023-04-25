@@ -27,11 +27,8 @@ pub fn log_id1(term: u64, index: u64) -> LogId<u64> {
 }
 
 /// Builds a log id, for testing purposes.
-pub fn log_id(term: u64, node_id: u64, index: u64) -> LogId<u64> {
-    LogId::<u64> {
-        leader_id: CommittedLeaderId::new(term, node_id),
-        index,
-    }
+pub fn log_id<NID: crate::NodeId>(term: u64, node_id: NID, index: u64) -> LogId<NID> {
+    LogId::new(CommittedLeaderId::new(term, node_id), index)
 }
 
 /// Create a blank log entry for test.
