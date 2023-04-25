@@ -70,6 +70,7 @@ use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::raft::VoteTx;
 use crate::raft_state::LogStateReader;
+use crate::replication;
 use crate::replication::Replicate;
 use crate::replication::ReplicationCore;
 use crate::replication::ReplicationHandle;
@@ -1225,6 +1226,22 @@ where
                     self.handle_vote_resp(resp, target);
                 }
             }
+
+            Notify::HigherVote { target, higher, vote } => {
+                tracing::info!(
+                    target = display(target),
+                    higher_vote = display(&higher),
+                    sending_vote = display(&vote),
+                    "received Notify::HigherVote: {}",
+                    func_name!()
+                );
+
+                if self.does_vote_match(&vote, "HigherVote") {
+                    // Rejected vote change is ok.
+                    let _ = self.engine.vote_handler().handle_message_vote(&higher);
+                }
+            }
+
             Notify::Tick { i } => {
                 // check every timer
 
@@ -1275,31 +1292,46 @@ where
                 }
             }
 
-            Notify::HigherVote { target, higher, vote } => {
-                tracing::info!(
-                    target = display(target),
-                    higher_vote = display(&higher),
-                    sending_vote = display(&vote),
-                    "received Notify::HigherVote: {}",
-                    func_name!()
-                );
+            Notify::Network { response } => {
+                //
+                match response {
+                    replication::Response::Progress {
+                        target,
+                        id,
+                        result,
+                        session_id,
+                    } => {
+                        // If vote or membership changes, ignore the message.
+                        // There is chance delayed message reports a wrong state.
+                        if self.does_replication_session_match(&session_id, "UpdateReplicationMatched") {
+                            self.handle_replication_progress(target, id, result);
+                        }
+                    }
 
-                if self.does_vote_match(&vote, "HigherVote") {
-                    // Rejected vote change is ok.
-                    let _ = self.engine.vote_handler().handle_message_vote(&higher);
-                }
-            }
+                    replication::Response::StorageError { error } => {
+                        tracing::error!(
+                            error = display(&error),
+                            "received Notify::ReplicationStorageError: {}",
+                            func_name!()
+                        );
 
-            Notify::UpdateReplicationProgress {
-                target,
-                id,
-                result,
-                session_id,
-            } => {
-                // If vote or membership changes, ignore the message.
-                // There is chance delayed message reports a wrong state.
-                if self.does_replication_session_match(&session_id, "UpdateReplicationMatched") {
-                    self.handle_replication_progress(target, id, result);
+                        return Err(Fatal::from(error));
+                    }
+
+                    replication::Response::HigherVote { target, higher, vote } => {
+                        tracing::info!(
+                            target = display(target),
+                            higher_vote = display(&higher),
+                            sending_vote = display(&vote),
+                            "received Notify::HigherVote: {}",
+                            func_name!()
+                        );
+
+                        if self.does_vote_match(&vote, "HigherVote") {
+                            // Rejected vote change is ok.
+                            let _ = self.engine.vote_handler().handle_message_vote(&higher);
+                        }
+                    }
                 }
             }
 
@@ -1338,16 +1370,6 @@ where
                         self.handle_apply_result(res);
                     }
                 }
-            }
-
-            Notify::ReplicationStorageError { error } => {
-                tracing::error!(
-                    error = display(&error),
-                    "received Notify::ReplicationStorageError: {}",
-                    func_name!()
-                );
-
-                return Err(Fatal::from(error));
             }
         };
         Ok(())
