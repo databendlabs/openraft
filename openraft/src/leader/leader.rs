@@ -61,6 +61,12 @@ where
     /// Update that a node has granted the vote.
     pub(crate) fn grant_vote_by(&mut self, target: NID) {
         self.vote_granted_by.insert(target);
+        tracing::info!(
+            target = display(target),
+            granted = debug(&self.vote_granted_by),
+            "{}",
+            func_name!()
+        );
     }
 
     /// Return if a quorum of `membership` has granted it.

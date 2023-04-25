@@ -153,20 +153,37 @@ where
 
             let command_result = match cmd.payload {
                 CommandPayload::BuildSnapshot => {
+                    tracing::info!("{}: build snapshot", func_name!());
+
                     let resp = self.build_snapshot().await?;
                     CommandResult::new(cmd.seq, Ok(Response::BuildSnapshot(resp)))
                 }
                 CommandPayload::GetSnapshot { tx } => {
+                    tracing::info!("{}: get snapshot", func_name!());
+
                     #[allow(clippy::let_unit_value)]
                     let resp = self.get_snapshot(tx).await?;
                     CommandResult::new(cmd.seq, Ok(Response::GetSnapshot(resp)))
                 }
                 CommandPayload::ReceiveSnapshotChunk { req, tx } => {
+                    tracing::info!(
+                        req = display(req.summary()),
+                        "{}: received snapshot chunk",
+                        func_name!()
+                    );
+
                     #[allow(clippy::let_unit_value)]
                     let resp = self.receive_snapshot_chunk(req, tx).await?;
                     CommandResult::new(cmd.seq, Ok(Response::ReceiveSnapshotChunk(resp)))
                 }
                 CommandPayload::FinalizeSnapshot { install, snapshot_meta } => {
+                    tracing::info!(
+                        install = display(install),
+                        snapshot_meta = display(snapshot_meta.summary()),
+                        "{}: finalize and install snapshot",
+                        func_name!()
+                    );
+
                     let resp = if install {
                         let resp = self.install_snapshot(snapshot_meta).await?;
                         Some(resp)

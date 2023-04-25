@@ -39,8 +39,10 @@ where C: RaftTypeConfig
         let is_leader = server_state == ServerState::Leader;
 
         if !was_leader && is_leader {
+            tracing::info!(id = display(self.config.id), "become leader");
             self.output.push_command(Command::BecomeLeader);
         } else if was_leader && !is_leader {
+            tracing::info!(id = display(self.config.id), "quit leader");
             self.output.push_command(Command::QuitLeader);
         } else {
             // nothing to do
