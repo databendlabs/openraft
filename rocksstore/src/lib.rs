@@ -27,6 +27,7 @@ use openraft::LogId;
 use openraft::RaftLogReader;
 use openraft::RaftSnapshotBuilder;
 use openraft::RaftStorage;
+use openraft::RaftTypeConfig;
 use openraft::SnapshotMeta;
 use openraft::StorageError;
 use openraft::StorageIOError;
@@ -44,7 +45,8 @@ pub type RocksNodeId = u64;
 
 openraft::declare_raft_types!(
     /// Declare the type configuration for `MemStore`.
-    pub Config: D = RocksRequest, R = RocksResponse, NodeId = RocksNodeId, Node = BasicNode, Entry = Entry<Config>
+    pub TypeConfig: D = RocksRequest, R = RocksResponse, NodeId = RocksNodeId, Node = BasicNode,
+    Entry = Entry<TypeConfig>, SnapshotData = Cursor<Vec<u8>>
 );
 
 /**
@@ -336,15 +338,15 @@ impl RocksStore {
 }
 
 #[async_trait]
-impl RaftLogReader<Config> for Arc<RocksStore> {
-    async fn get_log_state(&mut self) -> StorageResult<LogState<Config>> {
+impl RaftLogReader<TypeConfig> for Arc<RocksStore> {
+    async fn get_log_state(&mut self) -> StorageResult<LogState<TypeConfig>> {
         let last = self.db.iterator_cf(self.cf_logs(), rocksdb::IteratorMode::End).next();
 
         let last_log_id = match last {
             None => None,
             Some(res) => {
                 let (_log_index, entry_bytes) = res.map_err(read_logs_err)?;
-                let ent = serde_json::from_slice::<Entry<Config>>(&entry_bytes).map_err(read_logs_err)?;
+                let ent = serde_json::from_slice::<Entry<TypeConfig>>(&entry_bytes).map_err(read_logs_err)?;
                 Some(ent.log_id)
             }
         };
@@ -365,7 +367,7 @@ impl RaftLogReader<Config> for Arc<RocksStore> {
     async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + Send + Sync>(
         &mut self,
         range: RB,
-    ) -> StorageResult<Vec<Entry<Config>>> {
+    ) -> StorageResult<Vec<Entry<TypeConfig>>> {
         let start = match range.start_bound() {
             std::ops::Bound::Included(x) => id_to_bin(*x),
             std::ops::Bound::Excluded(x) => id_to_bin(*x + 1),
@@ -394,11 +396,9 @@ impl RaftLogReader<Config> for Arc<RocksStore> {
 }
 
 #[async_trait]
-impl RaftSnapshotBuilder<Config, Cursor<Vec<u8>>> for Arc<RocksStore> {
+impl RaftSnapshotBuilder<TypeConfig> for Arc<RocksStore> {
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn build_snapshot(
-        &mut self,
-    ) -> Result<Snapshot<RocksNodeId, BasicNode, Cursor<Vec<u8>>>, StorageError<RocksNodeId>> {
+    async fn build_snapshot(&mut self) -> Result<Snapshot<TypeConfig>, StorageError<RocksNodeId>> {
         let data;
         let last_applied_log;
         let last_membership;
@@ -443,8 +443,7 @@ impl RaftSnapshotBuilder<Config, Cursor<Vec<u8>>> for Arc<RocksStore> {
 }
 
 #[async_trait]
-impl RaftStorage<Config> for Arc<RocksStore> {
-    type SnapshotData = Cursor<Vec<u8>>;
+impl RaftStorage<TypeConfig> for Arc<RocksStore> {
     type LogReader = Self;
     type SnapshotBuilder = Self;
 
@@ -459,7 +458,7 @@ impl RaftStorage<Config> for Arc<RocksStore> {
 
     #[tracing::instrument(level = "trace", skip(self, entries))]
     async fn append_to_log<I>(&mut self, entries: I) -> StorageResult<()>
-    where I: IntoIterator<Item = Entry<Config>> + Send {
+    where I: IntoIterator<Item = Entry<TypeConfig>> + Send {
         for entry in entries {
             let id = id_to_bin(entry.log_id.index);
             assert_eq!(bin_to_id(&id), entry.log_id.index);
@@ -511,7 +510,7 @@ impl RaftStorage<Config> for Arc<RocksStore> {
     #[tracing::instrument(level = "trace", skip(self, entries))]
     async fn apply_to_state_machine(
         &mut self,
-        entries: &[Entry<Config>],
+        entries: &[Entry<TypeConfig>],
     ) -> Result<Vec<RocksResponse>, StorageError<RocksNodeId>> {
         let mut res = Vec::with_capacity(entries.len());
 
@@ -543,7 +542,9 @@ impl RaftStorage<Config> for Arc<RocksStore> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn begin_receiving_snapshot(&mut self) -> Result<Box<Self::SnapshotData>, StorageError<RocksNodeId>> {
+    async fn begin_receiving_snapshot(
+        &mut self,
+    ) -> Result<Box<<TypeConfig as RaftTypeConfig>::SnapshotData>, StorageError<RocksNodeId>> {
         Ok(Box::new(Cursor::new(Vec::new())))
     }
 
@@ -551,7 +552,7 @@ impl RaftStorage<Config> for Arc<RocksStore> {
     async fn install_snapshot(
         &mut self,
         meta: &SnapshotMeta<RocksNodeId, BasicNode>,
-        snapshot: Box<Self::SnapshotData>,
+        snapshot: Box<<TypeConfig as RaftTypeConfig>::SnapshotData>,
     ) -> Result<(), StorageError<RocksNodeId>> {
         tracing::info!(
             { snapshot_size = snapshot.get_ref().len() },
@@ -577,9 +578,7 @@ impl RaftStorage<Config> for Arc<RocksStore> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn get_current_snapshot(
-        &mut self,
-    ) -> Result<Option<Snapshot<RocksNodeId, BasicNode, Self::SnapshotData>>, StorageError<RocksNodeId>> {
+    async fn get_current_snapshot(&mut self) -> Result<Option<Snapshot<TypeConfig>>, StorageError<RocksNodeId>> {
         let curr_snap = self.get_meta::<meta::Snapshot>()?;
 
         match curr_snap {

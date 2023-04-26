@@ -414,6 +414,8 @@ pub mod testing {
 
 #[cfg(test)]
 mod tests {
+    use std::io::Cursor;
+
     use maplit::btreemap;
     use maplit::btreeset;
 
@@ -507,7 +509,9 @@ mod tests {
     }
 
     crate::declare_raft_types!(
-        pub TestingConfig: D = u64, R = u64, NodeId = u64, Node = crate::EmptyNode, Entry = crate::Entry<TestingConfig>
+        pub TestingConfig:
+        D = u64, R = u64, NodeId = u64, Node = crate::EmptyNode,
+        Entry = crate::Entry<TestingConfig>, SnapshotData = Cursor<Vec<u8>>
     );
 
     #[test]

@@ -166,7 +166,6 @@ where
     C: RaftTypeConfig,
     S: RaftStorage<C>,
 {
-    type SnapshotData = S::SnapshotData;
     type SnapshotBuilder = S::SnapshotBuilder;
 
     async fn applied_state(
@@ -185,21 +184,19 @@ where
         S::get_snapshot_builder(self.storage_mut().await.deref_mut()).await
     }
 
-    async fn begin_receiving_snapshot(&mut self) -> Result<Box<Self::SnapshotData>, StorageError<C::NodeId>> {
+    async fn begin_receiving_snapshot(&mut self) -> Result<Box<C::SnapshotData>, StorageError<C::NodeId>> {
         S::begin_receiving_snapshot(self.storage_mut().await.deref_mut()).await
     }
 
     async fn install_snapshot(
         &mut self,
         meta: &SnapshotMeta<C::NodeId, C::Node>,
-        snapshot: Box<Self::SnapshotData>,
+        snapshot: Box<C::SnapshotData>,
     ) -> Result<(), StorageError<C::NodeId>> {
         S::install_snapshot(self.storage_mut().await.deref_mut(), meta, snapshot).await
     }
 
-    async fn get_current_snapshot(
-        &mut self,
-    ) -> Result<Option<Snapshot<C::NodeId, C::Node, Self::SnapshotData>>, StorageError<C::NodeId>> {
+    async fn get_current_snapshot(&mut self) -> Result<Option<Snapshot<C>>, StorageError<C::NodeId>> {
         S::get_current_snapshot(self.storage_mut().await.deref_mut()).await
     }
 }

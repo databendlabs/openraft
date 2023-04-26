@@ -6,16 +6,23 @@ use openraft::testing::StoreBuilder;
 use openraft::testing::Suite;
 use openraft::StorageError;
 
-use crate::Config;
 use crate::MemNodeId;
 use crate::MemStore;
+use crate::TypeConfig;
 
 struct MemBuilder {}
 #[async_trait]
-impl StoreBuilder<Config, Adaptor<Config, Arc<MemStore>>, Adaptor<Config, Arc<MemStore>>> for MemBuilder {
+impl StoreBuilder<TypeConfig, Adaptor<TypeConfig, Arc<MemStore>>, Adaptor<TypeConfig, Arc<MemStore>>> for MemBuilder {
     async fn build(
         &self,
-    ) -> Result<((), Adaptor<Config, Arc<MemStore>>, Adaptor<Config, Arc<MemStore>>), StorageError<MemNodeId>> {
+    ) -> Result<
+        (
+            (),
+            Adaptor<TypeConfig, Arc<MemStore>>,
+            Adaptor<TypeConfig, Arc<MemStore>>,
+        ),
+        StorageError<MemNodeId>,
+    > {
         let store = MemStore::new_async().await;
         let (log_store, sm) = Adaptor::new(store);
         Ok(((), log_store, sm))

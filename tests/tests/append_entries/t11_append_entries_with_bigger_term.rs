@@ -44,7 +44,7 @@ async fn append_entries_with_bigger_term() -> Result<()> {
         .await?;
 
     // append entries with term 2 and leader_id, this MUST cause hard state changed in node 0
-    let req = AppendEntriesRequest::<openraft_memstore::Config> {
+    let req = AppendEntriesRequest::<openraft_memstore::TypeConfig> {
         vote: Vote::new_committed(2, 1),
         prev_log_id: Some(LogId::new(CommittedLeaderId::new(1, 0), log_index)),
         entries: vec![],

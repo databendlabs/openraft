@@ -20,6 +20,7 @@ use openraft::Entry;
 use openraft::EntryPayload;
 use openraft::LogId;
 use openraft::RaftLogId;
+use openraft::RaftTypeConfig;
 use openraft::SnapshotMeta;
 use openraft::StorageError;
 use openraft::StorageIOError;
@@ -38,7 +39,8 @@ pub struct ClientResponse {}
 pub type NodeId = u64;
 
 openraft::declare_raft_types!(
-    pub Config: D = ClientRequest, R = ClientResponse, NodeId = NodeId, Node = (), Entry = Entry<Config>
+    pub TypeConfig: D = ClientRequest, R = ClientResponse, NodeId = NodeId, Node = (),
+    Entry = Entry<TypeConfig>, SnapshotData = Cursor<Vec<u8>>
 );
 
 #[derive(Debug)]
@@ -55,7 +57,7 @@ pub struct StateMachine {
 
 pub struct LogStore {
     vote: RwLock<Option<Vote<NodeId>>>,
-    log: RwLock<BTreeMap<u64, Entry<Config>>>,
+    log: RwLock<BTreeMap<u64, Entry<TypeConfig>>>,
     last_purged_log_id: RwLock<Option<LogId<NodeId>>>,
 }
 
@@ -98,11 +100,11 @@ impl StateMachineStore {
 }
 
 #[async_trait]
-impl RaftLogReader<Config> for Arc<LogStore> {
+impl RaftLogReader<TypeConfig> for Arc<LogStore> {
     async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + Send + Sync>(
         &mut self,
         range: RB,
-    ) -> Result<Vec<Entry<Config>>, StorageError<NodeId>> {
+    ) -> Result<Vec<Entry<TypeConfig>>, StorageError<NodeId>> {
         let mut entries = vec![];
         {
             let log = self.log.read().await;
@@ -114,7 +116,7 @@ impl RaftLogReader<Config> for Arc<LogStore> {
         Ok(entries)
     }
 
-    async fn get_log_state(&mut self) -> Result<LogState<Config>, StorageError<NodeId>> {
+    async fn get_log_state(&mut self) -> Result<LogState<TypeConfig>, StorageError<NodeId>> {
         let log = self.log.read().await;
         let last_serialized = log.iter().rev().next().map(|(_, ent)| ent);
 
@@ -138,9 +140,9 @@ impl RaftLogReader<Config> for Arc<LogStore> {
 }
 
 #[async_trait]
-impl RaftSnapshotBuilder<Config, Cursor<Vec<u8>>> for Arc<StateMachineStore> {
+impl RaftSnapshotBuilder<TypeConfig> for Arc<StateMachineStore> {
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn build_snapshot(&mut self) -> Result<Snapshot<NodeId, (), Cursor<Vec<u8>>>, StorageError<NodeId>> {
+    async fn build_snapshot(&mut self) -> Result<Snapshot<TypeConfig>, StorageError<NodeId>> {
         let data;
         let last_applied_log;
         let last_membership;
@@ -190,7 +192,7 @@ impl RaftSnapshotBuilder<Config, Cursor<Vec<u8>>> for Arc<StateMachineStore> {
 }
 
 #[async_trait]
-impl RaftLogStorage<Config> for Arc<LogStore> {
+impl RaftLogStorage<TypeConfig> for Arc<LogStore> {
     #[tracing::instrument(level = "trace", skip(self))]
     async fn save_vote(&mut self, vote: &Vote<NodeId>) -> Result<(), StorageError<NodeId>> {
         let mut v = self.vote.write().await;
@@ -225,7 +227,7 @@ impl RaftLogStorage<Config> for Arc<LogStore> {
 
     #[tracing::instrument(level = "trace", skip_all)]
     async fn append<I>(&mut self, entries: I, callback: LogFlushed<NodeId>) -> Result<(), StorageError<NodeId>>
-    where I: IntoIterator<Item = Entry<Config>> + Send {
+    where I: IntoIterator<Item = Entry<TypeConfig>> + Send {
         {
             let mut log = self.log.write().await;
             log.extend(entries.into_iter().map(|entry| (entry.get_log_id().index, entry)));
@@ -242,9 +244,7 @@ impl RaftLogStorage<Config> for Arc<LogStore> {
 }
 
 #[async_trait]
-impl RaftStateMachine<Config> for Arc<StateMachineStore> {
-    type SnapshotData = Cursor<Vec<u8>>;
-
+impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
     async fn applied_state(
         &mut self,
     ) -> Result<(Option<LogId<NodeId>>, StoredMembership<NodeId, ()>), StorageError<NodeId>> {
@@ -253,7 +253,7 @@ impl RaftStateMachine<Config> for Arc<StateMachineStore> {
     }
 
     async fn apply<I>(&mut self, entries: I) -> Result<Vec<ClientResponse>, StorageError<NodeId>>
-    where I: IntoIterator<Item = Entry<Config>> + Send {
+    where I: IntoIterator<Item = Entry<TypeConfig>> + Send {
         let mut sm = self.sm.write().await;
 
         let it = entries.into_iter();
@@ -275,7 +275,9 @@ impl RaftStateMachine<Config> for Arc<StateMachineStore> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn begin_receiving_snapshot(&mut self) -> Result<Box<Self::SnapshotData>, StorageError<NodeId>> {
+    async fn begin_receiving_snapshot(
+        &mut self,
+    ) -> Result<Box<<TypeConfig as RaftTypeConfig>::SnapshotData>, StorageError<NodeId>> {
         Ok(Box::new(Cursor::new(Vec::new())))
     }
 
@@ -283,7 +285,7 @@ impl RaftStateMachine<Config> for Arc<StateMachineStore> {
     async fn install_snapshot(
         &mut self,
         meta: &SnapshotMeta<NodeId, ()>,
-        snapshot: Box<Self::SnapshotData>,
+        snapshot: Box<<TypeConfig as RaftTypeConfig>::SnapshotData>,
     ) -> Result<(), StorageError<NodeId>> {
         let new_snapshot = StoredSnapshot {
             meta: meta.clone(),
@@ -305,9 +307,7 @@ impl RaftStateMachine<Config> for Arc<StateMachineStore> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn get_current_snapshot(
-        &mut self,
-    ) -> Result<Option<Snapshot<NodeId, (), Self::SnapshotData>>, StorageError<NodeId>> {
+    async fn get_current_snapshot(&mut self) -> Result<Option<Snapshot<TypeConfig>>, StorageError<NodeId>> {
         match &*self.current_snapshot.read().await {
             Some(snapshot) => {
                 let data = snapshot.data.clone();
