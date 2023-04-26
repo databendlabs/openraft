@@ -1235,7 +1235,7 @@ where
 
                 if self.does_vote_match(&vote, "HigherVote") {
                     // Rejected vote change is ok.
-                    let _ = self.engine.vote_handler().handle_message_vote(&higher);
+                    let _ = self.engine.vote_handler().update_vote(&higher);
                 }
             }
 
@@ -1326,7 +1326,7 @@ where
 
                         if self.does_vote_match(&vote, "HigherVote") {
                             // Rejected vote change is ok.
-                            let _ = self.engine.vote_handler().handle_message_vote(&higher);
+                            let _ = self.engine.vote_handler().update_vote(&higher);
                         }
                     }
                 }
