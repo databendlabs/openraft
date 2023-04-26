@@ -189,8 +189,6 @@ where
             };
 
             let _ = self.resp_tx.send(Notify::StateMachine { command_result });
-
-            (cmd.respond)();
         }
     }
     #[tracing::instrument(level = "info", skip_all)]

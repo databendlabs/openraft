@@ -1571,9 +1571,6 @@ where
             Command::DeleteConflictLog { since } => {
                 self.log_store.truncate(since).await?;
             }
-            Command::BuildSnapshot {} => {
-                self.sm_handle.send(sm::Command::build_snapshot()).unwrap();
-            }
             Command::SendVote { vote_req } => {
                 self.spawn_parallel_vote_requests(&vote_req).await;
             }
@@ -1638,19 +1635,11 @@ where
                     }
                 }
             }
-            Command::CancelSnapshot { snapshot_meta } => {
-                let cmd = sm::Command::cancel_snapshot(snapshot_meta.clone());
-                self.sm_handle
-                    .send(cmd)
-                    .map_err(|e| StorageIOError::write_snapshot(Some(snapshot_meta.signature()), AnyError::error(e)))?;
-            }
-            Command::InstallSnapshot { snapshot_meta } => {
-                tracing::info!("Start to install_snapshot, meta: {:?}", snapshot_meta);
-
-                let cmd = sm::Command::install_snapshot(snapshot_meta.clone());
-                self.sm_handle
-                    .send(cmd)
-                    .map_err(|e| StorageIOError::write_snapshot(Some(snapshot_meta.signature()), AnyError::error(e)))?;
+            Command::StateMachine { command } => {
+                // Just forward a state machine command to the worker.
+                self.sm_handle.send(command).map_err(|_e| {
+                    StorageIOError::write_state_machine(AnyError::error("can not send to sm::Worker".to_string()))
+                })?;
             }
             Command::Respond { resp: send, .. } => {
                 send.send();

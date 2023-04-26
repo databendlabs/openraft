@@ -7,19 +7,18 @@ use tokio::sync::oneshot;
 
 use crate::display_ext::DisplaySlice;
 use crate::error::InstallSnapshotError;
+use crate::log_id::RaftLogId;
 use crate::raft::InstallSnapshotRequest;
 use crate::RaftTypeConfig;
 use crate::Snapshot;
 use crate::SnapshotMeta;
 
+#[derive(PartialEq)]
 pub(crate) struct Command<C>
 where C: RaftTypeConfig
 {
     pub(crate) seq: CommandSeq,
     pub(crate) payload: CommandPayload<C>,
-
-    /// Custom respond function to be called when the command is done.
-    pub(crate) respond: Box<dyn FnOnce() + Send + 'static>,
 }
 
 impl<C> Debug for Command<C>
@@ -37,17 +36,17 @@ impl<C> Command<C>
 where C: RaftTypeConfig
 {
     /// Generate the next command seq with atomic increment.
+    #[allow(dead_code)]
     fn next_seq() -> CommandSeq {
         static SEQ: AtomicU64 = AtomicU64::new(1);
         SEQ.fetch_add(1, Ordering::Relaxed)
     }
 
-    pub(crate) fn new<F>(payload: CommandPayload<C>, respond: F) -> Self
-    where F: FnOnce() + Send + 'static {
+    pub(crate) fn new(payload: CommandPayload<C>) -> Self {
         Self {
-            seq: Self::next_seq(),
+            // seq: Self::next_seq(),
+            seq: 0,
             payload,
-            respond: Box::new(respond),
         }
     }
 
@@ -58,12 +57,12 @@ where C: RaftTypeConfig
 
     pub(crate) fn build_snapshot() -> Self {
         let payload = CommandPayload::BuildSnapshot;
-        Command::new(payload, || {})
+        Command::new(payload)
     }
 
     pub(crate) fn get_snapshot(tx: oneshot::Sender<Option<Snapshot<C>>>) -> Self {
         let payload = CommandPayload::GetSnapshot { tx };
-        Command::new(payload, || {})
+        Command::new(payload)
     }
 
     pub(crate) fn receive(
@@ -71,7 +70,7 @@ where C: RaftTypeConfig
         tx: oneshot::Sender<Result<(), InstallSnapshotError>>,
     ) -> Self {
         let payload = CommandPayload::ReceiveSnapshotChunk { req, tx };
-        Command::new(payload, || {})
+        Command::new(payload)
     }
 
     pub(crate) fn install_snapshot(snapshot_meta: SnapshotMeta<C::NodeId, C::Node>) -> Self {
@@ -79,7 +78,7 @@ where C: RaftTypeConfig
             install: true,
             snapshot_meta,
         };
-        Command::new(payload, || {})
+        Command::new(payload)
     }
 
     pub(crate) fn cancel_snapshot(snapshot_meta: SnapshotMeta<C::NodeId, C::Node>) -> Self {
@@ -87,12 +86,12 @@ where C: RaftTypeConfig
             install: false,
             snapshot_meta,
         };
-        Command::new(payload, || {})
+        Command::new(payload)
     }
 
     pub(crate) fn apply(entries: Vec<C::Entry>) -> Self {
         let payload = CommandPayload::Apply { entries };
-        Command::new(payload, || {})
+        Command::new(payload)
     }
 }
 
@@ -149,6 +148,39 @@ where C: RaftTypeConfig
                 write!(f, "FinalizeSnapshot: install:{} {:?}", install, snapshot_meta)
             }
             CommandPayload::Apply { entries } => write!(f, "Apply: {}", DisplaySlice::<_>(entries)),
+        }
+    }
+}
+
+// `PartialEq` is only used for testing
+impl<C> PartialEq for CommandPayload<C>
+where C: RaftTypeConfig
+{
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (CommandPayload::BuildSnapshot, CommandPayload::BuildSnapshot) => true,
+            (CommandPayload::GetSnapshot { .. }, CommandPayload::GetSnapshot { .. }) => true,
+            (
+                CommandPayload::ReceiveSnapshotChunk { req: req1, .. },
+                CommandPayload::ReceiveSnapshotChunk { req: req2, .. },
+            ) => req1 == req2,
+            (
+                CommandPayload::FinalizeSnapshot {
+                    install: install1,
+                    snapshot_meta: meta1,
+                },
+                CommandPayload::FinalizeSnapshot {
+                    install: install2,
+                    snapshot_meta: meta2,
+                },
+            ) => install1 == install2 && meta1 == meta2,
+            (CommandPayload::Apply { entries: entries1 }, CommandPayload::Apply { entries: entries2 }) => {
+                // Entry may not be `Eq`, we just compare log id.
+                // This would be enough for testing.
+                entries1.iter().map(|e| *e.get_log_id()).collect::<Vec<_>>()
+                    == entries2.iter().map(|e| *e.get_log_id()).collect::<Vec<_>>()
+            }
+            _ => false,
         }
     }
 }
