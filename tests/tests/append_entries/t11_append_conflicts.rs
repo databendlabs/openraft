@@ -229,7 +229,7 @@ where
 {
     let logs = log_store.get_log_entries(..).await?;
     let skip = 0;
-    let want: Vec<Entry<openraft_memstore::Config>> = terms
+    let want: Vec<Entry<openraft_memstore::TypeConfig>> = terms
         .iter()
         .skip(skip)
         .enumerate()

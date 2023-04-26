@@ -8,8 +8,8 @@ use openraft::StorageError;
 use tempfile::TempDir;
 
 use crate::ExampleNodeId;
-use crate::ExampleTypeConfig;
 use crate::SledStore;
+use crate::TypeConfig;
 
 struct SledBuilder {}
 
@@ -18,11 +18,11 @@ pub fn test_sled_store() -> Result<(), StorageError<ExampleNodeId>> {
     Suite::test_all(SledBuilder {})
 }
 
-type LogStore = Adaptor<ExampleTypeConfig, Arc<SledStore>>;
-type StateMachine = Adaptor<ExampleTypeConfig, Arc<SledStore>>;
+type LogStore = Adaptor<TypeConfig, Arc<SledStore>>;
+type StateMachine = Adaptor<TypeConfig, Arc<SledStore>>;
 
 #[async_trait]
-impl StoreBuilder<ExampleTypeConfig, LogStore, StateMachine, TempDir> for SledBuilder {
+impl StoreBuilder<TypeConfig, LogStore, StateMachine, TempDir> for SledBuilder {
     async fn build(&self) -> Result<(TempDir, LogStore, StateMachine), StorageError<ExampleNodeId>> {
         let td = TempDir::new().expect("couldn't create temp dir");
 

@@ -3,9 +3,6 @@
 //! logs, and [`RaftStateMachine`] is responsible for storing state machine and snapshot.
 
 use async_trait::async_trait;
-use tokio::io::AsyncRead;
-use tokio::io::AsyncSeek;
-use tokio::io::AsyncWrite;
 
 use crate::storage::callback::LogFlushed;
 use crate::storage::v2::sealed::Sealed;
@@ -112,14 +109,8 @@ where C: RaftTypeConfig
 pub trait RaftStateMachine<C>: Sealed + Send + Sync + 'static
 where C: RaftTypeConfig
 {
-    /// The associated type used for exposing a snapshot for reading & writing.
-    ///
-    /// See the [storage chapter of the guide](https://datafuselabs.github.io/openraft/getting-started.html#implement-raftstorage)
-    /// for details on where and how this is used.
-    type SnapshotData: AsyncRead + AsyncWrite + AsyncSeek + Send + Sync + Unpin + 'static;
-
     /// Snapshot builder type.
-    type SnapshotBuilder: RaftSnapshotBuilder<C, Self::SnapshotData>;
+    type SnapshotBuilder: RaftSnapshotBuilder<C>;
 
     // TODO: This can be made into sync, provided all state machines will use atomic read or the
     //       like.
@@ -184,7 +175,7 @@ where C: RaftTypeConfig
     ///
     /// See the [storage chapter of the guide](https://datafuselabs.github.io/openraft/storage.html)
     /// for details on snapshot streaming.
-    async fn begin_receiving_snapshot(&mut self) -> Result<Box<Self::SnapshotData>, StorageError<C::NodeId>>;
+    async fn begin_receiving_snapshot(&mut self) -> Result<Box<C::SnapshotData>, StorageError<C::NodeId>>;
 
     /// Install a snapshot which has finished streaming from the leader.
     ///
@@ -200,7 +191,7 @@ where C: RaftTypeConfig
     async fn install_snapshot(
         &mut self,
         meta: &SnapshotMeta<C::NodeId, C::Node>,
-        snapshot: Box<Self::SnapshotData>,
+        snapshot: Box<C::SnapshotData>,
     ) -> Result<(), StorageError<C::NodeId>>;
 
     /// Get a readable handle to the current snapshot.
@@ -216,7 +207,5 @@ where C: RaftTypeConfig
     /// A proper snapshot implementation will store last-applied-log-id and the
     /// last-applied-membership config as part of the snapshot, which should be decoded for
     /// creating this method's response data.
-    async fn get_current_snapshot(
-        &mut self,
-    ) -> Result<Option<Snapshot<C::NodeId, C::Node, Self::SnapshotData>>, StorageError<C::NodeId>>;
+    async fn get_current_snapshot(&mut self) -> Result<Option<Snapshot<C>>, StorageError<C::NodeId>>;
 }

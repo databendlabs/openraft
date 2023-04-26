@@ -23,10 +23,10 @@ use openraft::Raft;
 use openraft::RaftNetwork;
 use openraft::RaftNetworkFactory;
 
-use crate::store::Config as MemConfig;
 use crate::store::LogStore;
 use crate::store::NodeId;
 use crate::store::StateMachineStore;
+use crate::store::TypeConfig as MemConfig;
 
 pub type BenchRaft = Raft<MemConfig, Router, Arc<LogStore>, Arc<StateMachineStore>>;
 

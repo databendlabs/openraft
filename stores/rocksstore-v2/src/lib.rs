@@ -33,6 +33,7 @@ use openraft::LogId;
 use openraft::RaftLogId;
 use openraft::RaftLogReader;
 use openraft::RaftSnapshotBuilder;
+use openraft::RaftTypeConfig;
 use openraft::SnapshotMeta;
 use openraft::StorageError;
 use openraft::StorageIOError;
@@ -50,8 +51,9 @@ use serde::Serialize;
 pub type RocksNodeId = u64;
 
 openraft::declare_raft_types!(
-    /// Declare the type configuration for `MemStore`.
-    pub Config: D = RocksRequest, R = RocksResponse, NodeId = RocksNodeId, Node = BasicNode, Entry = Entry<Config>
+    /// Declare the type configuration.
+    pub TypeConfig: D = RocksRequest, R = RocksResponse, NodeId = RocksNodeId, Node = BasicNode,
+    Entry = Entry<TypeConfig>, SnapshotData = Cursor<Vec<u8>>
 );
 
 /**
@@ -229,15 +231,15 @@ impl RocksLogStore {
 }
 
 #[async_trait]
-impl RaftLogReader<Config> for RocksLogStore {
-    async fn get_log_state(&mut self) -> StorageResult<LogState<Config>> {
+impl RaftLogReader<TypeConfig> for RocksLogStore {
+    async fn get_log_state(&mut self) -> StorageResult<LogState<TypeConfig>> {
         let last = self.db.iterator_cf(self.cf_logs(), rocksdb::IteratorMode::End).next();
 
         let last_log_id = match last {
             None => None,
             Some(res) => {
                 let (_log_index, entry_bytes) = res.map_err(read_logs_err)?;
-                let ent = serde_json::from_slice::<Entry<Config>>(&entry_bytes).map_err(read_logs_err)?;
+                let ent = serde_json::from_slice::<Entry<TypeConfig>>(&entry_bytes).map_err(read_logs_err)?;
                 Some(ent.log_id)
             }
         };
@@ -258,7 +260,7 @@ impl RaftLogReader<Config> for RocksLogStore {
     async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + Send + Sync>(
         &mut self,
         range: RB,
-    ) -> StorageResult<Vec<Entry<Config>>> {
+    ) -> StorageResult<Vec<Entry<TypeConfig>>> {
         let start = match range.start_bound() {
             std::ops::Bound::Included(x) => id_to_bin(*x),
             std::ops::Bound::Excluded(x) => id_to_bin(*x + 1),
@@ -287,11 +289,9 @@ impl RaftLogReader<Config> for RocksLogStore {
 }
 
 #[async_trait]
-impl RaftSnapshotBuilder<Config, Cursor<Vec<u8>>> for RocksStateMachine {
+impl RaftSnapshotBuilder<TypeConfig> for RocksStateMachine {
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn build_snapshot(
-        &mut self,
-    ) -> Result<Snapshot<RocksNodeId, BasicNode, Cursor<Vec<u8>>>, StorageError<RocksNodeId>> {
+    async fn build_snapshot(&mut self) -> Result<Snapshot<TypeConfig>, StorageError<RocksNodeId>> {
         let data;
 
         // Serialize the data of the state machine.
@@ -335,7 +335,7 @@ impl RaftSnapshotBuilder<Config, Cursor<Vec<u8>>> for RocksStateMachine {
 }
 
 #[async_trait]
-impl RaftLogStorage<Config> for RocksLogStore {
+impl RaftLogStorage<TypeConfig> for RocksLogStore {
     type LogReader = Self;
 
     async fn save_vote(&mut self, vote: &Vote<RocksNodeId>) -> Result<(), StorageError<RocksNodeId>> {
@@ -358,7 +358,7 @@ impl RaftLogStorage<Config> for RocksLogStore {
         callback: LogFlushed<RocksNodeId>,
     ) -> Result<(), StorageError<RocksNodeId>>
     where
-        I: IntoIterator<Item = Entry<Config>> + Send,
+        I: IntoIterator<Item = Entry<TypeConfig>> + Send,
     {
         for entry in entries {
             let id = id_to_bin(entry.log_id.index);
@@ -407,8 +407,7 @@ impl RaftLogStorage<Config> for RocksLogStore {
     }
 }
 #[async_trait]
-impl RaftStateMachine<Config> for RocksStateMachine {
-    type SnapshotData = Cursor<Vec<u8>>;
+impl RaftStateMachine<TypeConfig> for RocksStateMachine {
     type SnapshotBuilder = Self;
 
     async fn applied_state(
@@ -418,7 +417,7 @@ impl RaftStateMachine<Config> for RocksStateMachine {
     }
 
     async fn apply<I>(&mut self, entries: I) -> Result<Vec<RocksResponse>, StorageError<RocksNodeId>>
-    where I: IntoIterator<Item = Entry<Config>> + Send {
+    where I: IntoIterator<Item = Entry<TypeConfig>> + Send {
         let entries_iter = entries.into_iter();
         let mut res = Vec::with_capacity(entries_iter.size_hint().0);
 
@@ -452,14 +451,16 @@ impl RaftStateMachine<Config> for RocksStateMachine {
         self.clone()
     }
 
-    async fn begin_receiving_snapshot(&mut self) -> Result<Box<Self::SnapshotData>, StorageError<RocksNodeId>> {
+    async fn begin_receiving_snapshot(
+        &mut self,
+    ) -> Result<Box<<TypeConfig as RaftTypeConfig>::SnapshotData>, StorageError<RocksNodeId>> {
         Ok(Box::new(Cursor::new(Vec::new())))
     }
 
     async fn install_snapshot(
         &mut self,
         meta: &SnapshotMeta<RocksNodeId, BasicNode>,
-        snapshot: Box<Self::SnapshotData>,
+        snapshot: Box<<TypeConfig as RaftTypeConfig>::SnapshotData>,
     ) -> Result<(), StorageError<RocksNodeId>> {
         tracing::info!(
             { snapshot_size = snapshot.get_ref().len() },
@@ -490,9 +491,7 @@ impl RaftStateMachine<Config> for RocksStateMachine {
         Ok(())
     }
 
-    async fn get_current_snapshot(
-        &mut self,
-    ) -> Result<Option<Snapshot<RocksNodeId, BasicNode, Self::SnapshotData>>, StorageError<RocksNodeId>> {
+    async fn get_current_snapshot(&mut self) -> Result<Option<Snapshot<TypeConfig>>, StorageError<RocksNodeId>> {
         let x = self
             .db
             .get_cf(self.db.cf_handle("sm_meta").unwrap(), "snapshot")

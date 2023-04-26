@@ -56,7 +56,7 @@ async fn building_snapshot_does_not_block_append() -> Result<()> {
 
     tracing::info!("--- send append-entries request to the follower that is building snapshot");
     {
-        let rpc = AppendEntriesRequest::<openraft_memstore::Config> {
+        let rpc = AppendEntriesRequest::<openraft_memstore::TypeConfig> {
             vote: Vote::new_committed(1, 0),
             prev_log_id: Some(log_id(1, 0, log_index)),
             entries: vec![blank_ent(1, 0, 15)],

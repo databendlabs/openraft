@@ -1,8 +1,6 @@
 use std::io::SeekFrom;
 
-use tokio::io::AsyncSeek;
 use tokio::io::AsyncSeekExt;
-use tokio::io::AsyncWrite;
 use tokio::io::AsyncWriteExt;
 
 use crate::raft::InstallSnapshotRequest;
@@ -13,7 +11,9 @@ use crate::SnapshotId;
 use crate::StorageError;
 
 /// The Raft node is streaming in a snapshot from the leader.
-pub(crate) struct Streaming<SD> {
+pub(crate) struct Streaming<C>
+where C: RaftTypeConfig
+{
     /// The offset of the last byte written to the snapshot.
     pub(crate) offset: u64,
 
@@ -21,13 +21,13 @@ pub(crate) struct Streaming<SD> {
     pub(crate) snapshot_id: SnapshotId,
 
     /// A handle to the snapshot writer.
-    pub(crate) snapshot_data: Box<SD>,
+    pub(crate) snapshot_data: Box<C::SnapshotData>,
 }
 
-impl<SD> Streaming<SD>
-where SD: AsyncSeek + AsyncWrite + Unpin
+impl<C> Streaming<C>
+where C: RaftTypeConfig
 {
-    pub(crate) fn new(snapshot_id: SnapshotId, snapshot_data: Box<SD>) -> Self {
+    pub(crate) fn new(snapshot_id: SnapshotId, snapshot_data: Box<C::SnapshotData>) -> Self {
         Self {
             offset: 0,
             snapshot_id,
@@ -36,10 +36,7 @@ where SD: AsyncSeek + AsyncWrite + Unpin
     }
 
     /// Receive a chunk of snapshot data.
-    pub(crate) async fn receive<C: RaftTypeConfig>(
-        &mut self,
-        req: InstallSnapshotRequest<C>,
-    ) -> Result<bool, StorageError<C::NodeId>> {
+    pub(crate) async fn receive(&mut self, req: InstallSnapshotRequest<C>) -> Result<bool, StorageError<C::NodeId>> {
         // TODO: check id?
 
         // Always seek to the target offset if not an exact match.

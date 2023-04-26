@@ -7,16 +7,16 @@ use openraft::testing::Suite;
 use openraft::StorageError;
 use tempfile::TempDir;
 
-use crate::Config;
 use crate::RocksNodeId;
 use crate::RocksStore;
+use crate::TypeConfig;
 
-type LogStore = Adaptor<Config, Arc<RocksStore>>;
-type StateMachine = Adaptor<Config, Arc<RocksStore>>;
+type LogStore = Adaptor<TypeConfig, Arc<RocksStore>>;
+type StateMachine = Adaptor<TypeConfig, Arc<RocksStore>>;
 
 struct RocksBuilder {}
 #[async_trait]
-impl StoreBuilder<Config, LogStore, StateMachine, TempDir> for RocksBuilder {
+impl StoreBuilder<TypeConfig, LogStore, StateMachine, TempDir> for RocksBuilder {
     async fn build(&self) -> Result<(TempDir, LogStore, StateMachine), StorageError<RocksNodeId>> {
         let td = TempDir::new().expect("couldn't create temp dir");
         let store = RocksStore::new(td.path()).await;

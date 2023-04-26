@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::fmt::Formatter;
+use std::marker::PhantomData;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
@@ -11,8 +12,6 @@ use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use futures::TryFutureExt;
 use maplit::btreeset;
-use tokio::io::AsyncRead;
-use tokio::io::AsyncSeek;
 use tokio::select;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
@@ -130,24 +129,20 @@ impl<C: RaftTypeConfig> Debug for ApplyResult<C> {
 /// Data for a Leader.
 ///
 /// It is created when RaftCore enters leader state, and will be dropped when it quits leader state.
-pub(crate) struct LeaderData<C: RaftTypeConfig, SD>
-where SD: AsyncRead + AsyncSeek + Send + Unpin + 'static
-{
+pub(crate) struct LeaderData<C: RaftTypeConfig> {
     /// Channels to send result back to client when logs are committed.
     pub(crate) client_resp_channels: BTreeMap<u64, ClientWriteTx<C>>,
 
     /// A mapping of node IDs the replication state of the target node.
     // TODO(xp): make it a field of RaftCore. it does not have to belong to leader.
     //           It requires the Engine to emit correct add/remove replication commands
-    pub(super) replications: BTreeMap<C::NodeId, ReplicationHandle<C::NodeId, C::Node, SD>>,
+    pub(super) replications: BTreeMap<C::NodeId, ReplicationHandle<C>>,
 
     /// The time to send next heartbeat.
     pub(crate) next_heartbeat: Instant,
 }
 
-impl<C: RaftTypeConfig, SD> LeaderData<C, SD>
-where SD: AsyncRead + AsyncSeek + Send + Unpin + 'static
-{
+impl<C: RaftTypeConfig> LeaderData<C> {
     pub(crate) fn new() -> Self {
         Self {
             client_resp_channels: Default::default(),
@@ -181,11 +176,11 @@ where
     pub(crate) log_store: LS,
 
     /// A controlling handle to the [`RaftStateMachine`] worker.
-    pub(crate) sm_handle: sm::Handle<C, SM>,
+    pub(crate) sm_handle: sm::Handle<C>,
 
     pub(crate) engine: Engine<C>,
 
-    pub(crate) leader_data: Option<LeaderData<C, SM::SnapshotData>>,
+    pub(crate) leader_data: Option<LeaderData<C>>,
 
     #[allow(dead_code)]
     pub(crate) tx_api: mpsc::UnboundedSender<RaftMsg<C, N, LS>>,
@@ -201,6 +196,8 @@ where
     pub(crate) tx_metrics: watch::Sender<RaftMetrics<C::NodeId, C::Node>>,
 
     pub(crate) span: Span,
+
+    pub(crate) _p: PhantomData<SM>,
 }
 
 impl<C, N, LS, SM> RaftCore<C, N, LS, SM>
@@ -804,7 +801,7 @@ where
         &mut self,
         target: C::NodeId,
         progress_entry: ProgressEntry<C::NodeId>,
-    ) -> ReplicationHandle<C::NodeId, C::Node, SM::SnapshotData> {
+    ) -> ReplicationHandle<C> {
         // Safe unwrap(): target must be in membership
         let target_node = self.engine.state.membership_state.effective().get_node(&target).unwrap();
 
@@ -813,7 +810,7 @@ where
 
         let session_id = ReplicationSessionId::new(*self.engine.state.vote_ref(), *membership_log_id);
 
-        ReplicationCore::<C, N, LS, SM>::spawn(
+        ReplicationCore::<C, N, LS>::spawn(
             target,
             session_id,
             self.config.clone(),
@@ -948,7 +945,7 @@ where
 
             #[allow(clippy::collapsible_else_if)]
             if notify_processed == balancer.notify() {
-                tracing::info!("there may be more Notify to process, increaase Notify ratio");
+                tracing::info!("there may be more Notify to process, increase Notify ratio");
                 balancer.increase_notify();
             } else {
                 if raft_msg_processed == balancer.raft_msg() {

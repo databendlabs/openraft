@@ -26,6 +26,7 @@ use openraft::RaftLogId;
 use openraft::RaftLogReader;
 use openraft::RaftSnapshotBuilder;
 use openraft::RaftStorage;
+use openraft::RaftTypeConfig;
 use openraft::SnapshotMeta;
 use openraft::StorageError;
 use openraft::StorageIOError;
@@ -39,7 +40,8 @@ pub type ExampleNodeId = u64;
 
 openraft::declare_raft_types!(
     /// Declare the type configuration for example K/V store.
-    pub ExampleTypeConfig: D = ExampleRequest, R = ExampleResponse, NodeId = ExampleNodeId, Node = BasicNode, Entry = Entry<ExampleTypeConfig>
+    pub TypeConfig: D = ExampleRequest, R = ExampleResponse, NodeId = ExampleNodeId, Node = BasicNode,
+    Entry = Entry<TypeConfig>, SnapshotData = Cursor<Vec<u8>>
 );
 
 /**
@@ -382,8 +384,8 @@ impl SledStore {
 }
 
 #[async_trait]
-impl RaftLogReader<ExampleTypeConfig> for Arc<SledStore> {
-    async fn get_log_state(&mut self) -> StorageResult<LogState<ExampleTypeConfig>> {
+impl RaftLogReader<TypeConfig> for Arc<SledStore> {
+    async fn get_log_state(&mut self) -> StorageResult<LogState<TypeConfig>> {
         let last_purged = self.get_last_purged_()?;
 
         let logs_tree = logs(&self.db);
@@ -397,7 +399,7 @@ impl RaftLogReader<ExampleTypeConfig> for Arc<SledStore> {
             });
         };
 
-        let last_ent = serde_json::from_slice::<Entry<ExampleTypeConfig>>(&ent_ivec).map_err(read_logs_err)?;
+        let last_ent = serde_json::from_slice::<Entry<TypeConfig>>(&ent_ivec).map_err(read_logs_err)?;
         let last_log_id = Some(*last_ent.get_log_id());
 
         let last_log_id = std::cmp::max(last_log_id, last_purged);
@@ -410,7 +412,7 @@ impl RaftLogReader<ExampleTypeConfig> for Arc<SledStore> {
     async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + Send + Sync>(
         &mut self,
         range: RB,
-    ) -> StorageResult<Vec<Entry<ExampleTypeConfig>>> {
+    ) -> StorageResult<Vec<Entry<TypeConfig>>> {
         let start_bound = range.start_bound();
         let start = match start_bound {
             std::ops::Bound::Included(x) => id_to_bin(*x),
@@ -440,11 +442,9 @@ impl RaftLogReader<ExampleTypeConfig> for Arc<SledStore> {
 }
 
 #[async_trait]
-impl RaftSnapshotBuilder<ExampleTypeConfig, Cursor<Vec<u8>>> for Arc<SledStore> {
+impl RaftSnapshotBuilder<TypeConfig> for Arc<SledStore> {
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn build_snapshot(
-        &mut self,
-    ) -> Result<Snapshot<ExampleNodeId, BasicNode, Cursor<Vec<u8>>>, StorageError<ExampleNodeId>> {
+    async fn build_snapshot(&mut self) -> Result<Snapshot<TypeConfig>, StorageError<ExampleNodeId>> {
         let data;
         let last_applied_log;
         let last_membership;
@@ -489,8 +489,7 @@ impl RaftSnapshotBuilder<ExampleTypeConfig, Cursor<Vec<u8>>> for Arc<SledStore> 
 }
 
 #[async_trait]
-impl RaftStorage<ExampleTypeConfig> for Arc<SledStore> {
-    type SnapshotData = Cursor<Vec<u8>>;
+impl RaftStorage<TypeConfig> for Arc<SledStore> {
     type LogReader = Self;
     type SnapshotBuilder = Self;
 
@@ -509,7 +508,7 @@ impl RaftStorage<ExampleTypeConfig> for Arc<SledStore> {
 
     #[tracing::instrument(level = "trace", skip(self, entries))]
     async fn append_to_log<I>(&mut self, entries: I) -> StorageResult<()>
-    where I: IntoIterator<Item = Entry<ExampleTypeConfig>> + Send {
+    where I: IntoIterator<Item = Entry<TypeConfig>> + Send {
         let logs_tree = logs(&self.db);
         let mut batch = sled::Batch::default();
         for entry in entries {
@@ -576,7 +575,7 @@ impl RaftStorage<ExampleTypeConfig> for Arc<SledStore> {
     #[tracing::instrument(level = "trace", skip(self, entries))]
     async fn apply_to_state_machine(
         &mut self,
-        entries: &[Entry<ExampleTypeConfig>],
+        entries: &[Entry<TypeConfig>],
     ) -> Result<Vec<ExampleResponse>, StorageError<ExampleNodeId>> {
         let sm = self.state_machine.write().await;
         let state_machine = state_machine(&self.db);
@@ -619,7 +618,9 @@ impl RaftStorage<ExampleTypeConfig> for Arc<SledStore> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn begin_receiving_snapshot(&mut self) -> Result<Box<Self::SnapshotData>, StorageError<ExampleNodeId>> {
+    async fn begin_receiving_snapshot(
+        &mut self,
+    ) -> Result<Box<<TypeConfig as RaftTypeConfig>::SnapshotData>, StorageError<ExampleNodeId>> {
         Ok(Box::new(Cursor::new(Vec::new())))
     }
 
@@ -627,7 +628,7 @@ impl RaftStorage<ExampleTypeConfig> for Arc<SledStore> {
     async fn install_snapshot(
         &mut self,
         meta: &SnapshotMeta<ExampleNodeId, BasicNode>,
-        snapshot: Box<Self::SnapshotData>,
+        snapshot: Box<<TypeConfig as RaftTypeConfig>::SnapshotData>,
     ) -> Result<(), StorageError<ExampleNodeId>> {
         tracing::info!(
             { snapshot_size = snapshot.get_ref().len() },
@@ -652,9 +653,7 @@ impl RaftStorage<ExampleTypeConfig> for Arc<SledStore> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn get_current_snapshot(
-        &mut self,
-    ) -> Result<Option<Snapshot<ExampleNodeId, BasicNode, Self::SnapshotData>>, StorageError<ExampleNodeId>> {
+    async fn get_current_snapshot(&mut self) -> Result<Option<Snapshot<TypeConfig>>, StorageError<ExampleNodeId>> {
         match SledStore::get_current_snapshot_(self)? {
             Some(snapshot) => {
                 let data = snapshot.data.clone();

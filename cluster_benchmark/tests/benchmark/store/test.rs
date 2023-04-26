@@ -5,14 +5,14 @@ use openraft::testing::StoreBuilder;
 use openraft::testing::Suite;
 use openraft::StorageError;
 
-use crate::store::Config;
 use crate::store::LogStore;
 use crate::store::NodeId;
 use crate::store::StateMachineStore;
+use crate::store::TypeConfig;
 
 struct Builder {}
 #[async_trait]
-impl StoreBuilder<Config, Arc<LogStore>, Arc<StateMachineStore>> for Builder {
+impl StoreBuilder<TypeConfig, Arc<LogStore>, Arc<StateMachineStore>> for Builder {
     async fn build(&self) -> Result<((), Arc<LogStore>, Arc<StateMachineStore>), StorageError<NodeId>> {
         let log_store = LogStore::new_async().await;
         let sm = Arc::new(StateMachineStore::new());

@@ -11,9 +11,7 @@ use anyerror::AnyError;
 use futures::future::FutureExt;
 pub(crate) use replication_session_id::ReplicationSessionId;
 pub(crate) use response::Response;
-use tokio::io::AsyncRead;
 use tokio::io::AsyncReadExt;
-use tokio::io::AsyncSeek;
 use tokio::io::AsyncSeekExt;
 use tokio::select;
 use tokio::sync::mpsc;
@@ -40,13 +38,11 @@ use crate::raft::AppendEntriesResponse;
 use crate::raft::InstallSnapshotRequest;
 use crate::storage::RaftLogReader;
 use crate::storage::RaftLogStorage;
-use crate::storage::RaftStateMachine;
 use crate::storage::Snapshot;
 use crate::ErrorSubject;
 use crate::ErrorVerb;
 use crate::LogId;
 use crate::MessageSummary;
-use crate::Node;
 use crate::NodeId;
 use crate::RPCTypes;
 use crate::RaftNetwork;
@@ -57,17 +53,14 @@ use crate::StorageIOError;
 use crate::ToStorageResult;
 
 /// The handle to a spawned replication stream.
-pub(crate) struct ReplicationHandle<NID, N, S>
-where
-    NID: NodeId,
-    N: Node,
-    S: AsyncRead + AsyncSeek + Send + Unpin + 'static,
+pub(crate) struct ReplicationHandle<C>
+where C: RaftTypeConfig
 {
     /// The spawn handle the `ReplicationCore` task.
     pub(crate) join_handle: JoinHandle<Result<(), ReplicationClosed>>,
 
     /// The channel used for communicating with the replication task.
-    pub(crate) tx_repl: mpsc::UnboundedSender<Replicate<NID, N, S>>,
+    pub(crate) tx_repl: mpsc::UnboundedSender<Replicate<C>>,
 }
 
 /// A task responsible for sending replication events to a target follower in the Raft cluster.
@@ -75,12 +68,11 @@ where
 /// NOTE: we do not stack replication requests to targets because this could result in
 /// out-of-order delivery. We always buffer until we receive a success response, then send the
 /// next payload from the buffer.
-pub(crate) struct ReplicationCore<C, N, LS, SM>
+pub(crate) struct ReplicationCore<C, N, LS>
 where
     C: RaftTypeConfig,
     N: RaftNetworkFactory<C>,
     LS: RaftLogStorage<C>,
-    SM: RaftStateMachine<C>,
 {
     /// The ID of the target Raft node which replication events are to be sent to.
     target: C::NodeId,
@@ -93,7 +85,7 @@ where
     tx_raft_core: mpsc::UnboundedSender<Notify<C>>,
 
     /// A channel for receiving events from the RaftCore.
-    rx_repl: mpsc::UnboundedReceiver<Replicate<C::NodeId, C::Node, SM::SnapshotData>>,
+    rx_repl: mpsc::UnboundedReceiver<Replicate<C>>,
 
     /// The `RaftNetwork` interface.
     network: N::Network,
@@ -115,15 +107,14 @@ where
     matching: Option<LogId<C::NodeId>>,
 
     /// Next replication action to run.
-    next_action: Option<Data<C::NodeId, C::Node, SM::SnapshotData>>,
+    next_action: Option<Data<C>>,
 }
 
-impl<C, N, LS, SM> ReplicationCore<C, N, LS, SM>
+impl<C, N, LS> ReplicationCore<C, N, LS>
 where
     C: RaftTypeConfig,
     N: RaftNetworkFactory<C>,
     LS: RaftLogStorage<C>,
-    SM: RaftStateMachine<C>,
 {
     /// Spawn a new replication task for the target node.
     #[tracing::instrument(level = "trace", skip_all,fields(target=display(target), session_id=display(session_id)))]
@@ -139,7 +130,7 @@ where
         log_reader: LS::LogReader,
         tx_raft_core: mpsc::UnboundedSender<Notify<C>>,
         span: tracing::Span,
-    ) -> ReplicationHandle<C::NodeId, C::Node, SM::SnapshotData> {
+    ) -> ReplicationHandle<C> {
         tracing::debug!(
             session_id = display(&session_id),
             target = display(&target),
@@ -490,7 +481,7 @@ where
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
-    pub fn process_event(&mut self, event: Replicate<C::NodeId, C::Node, SM::SnapshotData>) {
+    pub fn process_event(&mut self, event: Replicate<C>) {
         tracing::debug!(event=%event.summary(), "process_event");
 
         match event {
@@ -525,7 +516,7 @@ where
     async fn stream_snapshot(
         &mut self,
         id: u64,
-        rx: oneshot::Receiver<Option<Snapshot<C::NodeId, C::Node, SM::SnapshotData>>>,
+        rx: oneshot::Receiver<Option<Snapshot<C>>>,
     ) -> Result<(), ReplicationError<C::NodeId, C::Node>> {
         tracing::info!(id = display(id), "{}", func_name!());
 
@@ -645,21 +636,15 @@ where
 /// It defines what data to send to a follower/learner and an id to identify who is sending this
 /// data.
 #[derive(Debug)]
-pub(crate) struct Data<NID, N, SD>
-where
-    NID: NodeId,
-    N: Node,
-    SD: AsyncRead + AsyncSeek + Send + Unpin + 'static,
+pub(crate) struct Data<C>
+where C: RaftTypeConfig
 {
     id: u64,
-    payload: Payload<NID, N, SD>,
+    payload: Payload<C>,
 }
 
-impl<NID, N, S> MessageSummary<Data<NID, N, S>> for Data<NID, N, S>
-where
-    NID: NodeId,
-    N: Node,
-    S: AsyncRead + AsyncSeek + Send + Unpin + 'static,
+impl<C> MessageSummary<Data<C>> for Data<C>
+where C: RaftTypeConfig
 {
     fn summary(&self) -> String {
         match &self.payload {
@@ -673,20 +658,17 @@ where
     }
 }
 
-impl<NID, N, SD> Data<NID, N, SD>
-where
-    NID: NodeId,
-    N: Node,
-    SD: AsyncRead + AsyncSeek + Send + Unpin + 'static,
+impl<C> Data<C>
+where C: RaftTypeConfig
 {
-    fn new_logs(id: u64, log_id_range: LogIdRange<NID>) -> Self {
+    fn new_logs(id: u64, log_id_range: LogIdRange<C::NodeId>) -> Self {
         Self {
             id,
             payload: Payload::Logs(log_id_range),
         }
     }
 
-    fn new_snapshot(id: u64, snapshot_rx: oneshot::Receiver<Option<Snapshot<NID, N, SD>>>) -> Self {
+    fn new_snapshot(id: u64, snapshot_rx: oneshot::Receiver<Option<Snapshot<C>>>) -> Self {
         Self {
             id,
             payload: Payload::Snapshot(snapshot_rx),
@@ -697,21 +679,15 @@ where
 /// The data to replication.
 ///
 /// Either a series of logs or a snapshot.
-pub(crate) enum Payload<NID, N, SD>
-where
-    NID: NodeId,
-    N: Node,
-    SD: AsyncRead + AsyncSeek + Send + Unpin + 'static,
+pub(crate) enum Payload<C>
+where C: RaftTypeConfig
 {
-    Logs(LogIdRange<NID>),
-    Snapshot(oneshot::Receiver<Option<Snapshot<NID, N, SD>>>),
+    Logs(LogIdRange<C::NodeId>),
+    Snapshot(oneshot::Receiver<Option<Snapshot<C>>>),
 }
 
-impl<NID, N, SD> Debug for Payload<NID, N, SD>
-where
-    NID: NodeId,
-    N: Node,
-    SD: AsyncRead + AsyncSeek + Send + Unpin + 'static,
+impl<C> Debug for Payload<C>
+where C: RaftTypeConfig
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -733,42 +709,33 @@ pub(crate) enum ReplicationResult<NID: NodeId> {
 }
 
 /// A replication request sent by RaftCore leader state to replication stream.
-pub(crate) enum Replicate<NID, N, SD>
-where
-    NID: NodeId,
-    N: Node,
-    SD: AsyncRead + AsyncSeek + Send + Unpin + 'static,
+pub(crate) enum Replicate<C>
+where C: RaftTypeConfig
 {
     /// Inform replication stream to forward the committed log id to followers/learners.
-    Committed(Option<LogId<NID>>),
+    Committed(Option<LogId<C::NodeId>>),
 
     /// Send an empty AppendEntries RPC as heartbeat.
     Heartbeat,
 
     /// Send a chunk of data, e.g., logs or snapshot.
-    Data(Data<NID, N, SD>),
+    Data(Data<C>),
 }
 
-impl<NID, N, SD> Replicate<NID, N, SD>
-where
-    NID: NodeId,
-    N: Node,
-    SD: AsyncRead + AsyncSeek + Send + Unpin + 'static,
+impl<C> Replicate<C>
+where C: RaftTypeConfig
 {
-    pub(crate) fn logs(id: u64, log_id_range: LogIdRange<NID>) -> Self {
+    pub(crate) fn logs(id: u64, log_id_range: LogIdRange<C::NodeId>) -> Self {
         Self::Data(Data::new_logs(id, log_id_range))
     }
 
-    pub(crate) fn snapshot(id: u64, snapshot_rx: oneshot::Receiver<Option<Snapshot<NID, N, SD>>>) -> Self {
+    pub(crate) fn snapshot(id: u64, snapshot_rx: oneshot::Receiver<Option<Snapshot<C>>>) -> Self {
         Self::Data(Data::new_snapshot(id, snapshot_rx))
     }
 }
 
-impl<NID, N, S> MessageSummary<Replicate<NID, N, S>> for Replicate<NID, N, S>
-where
-    NID: NodeId,
-    N: Node,
-    S: AsyncRead + AsyncSeek + Send + Unpin + 'static,
+impl<C> MessageSummary<Replicate<C>> for Replicate<C>
+where C: RaftTypeConfig
 {
     fn summary(&self) -> String {
         match self {

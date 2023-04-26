@@ -50,7 +50,7 @@ async fn conflict_with_empty_entries() -> Result<()> {
 
     // Expect conflict even if the message contains no entries.
 
-    let rpc = AppendEntriesRequest::<openraft_memstore::Config> {
+    let rpc = AppendEntriesRequest::<openraft_memstore::TypeConfig> {
         vote: Vote::new_committed(1, 1),
         prev_log_id: Some(LogId::new(CommittedLeaderId::new(1, 0), 5)),
         entries: vec![],
@@ -63,7 +63,7 @@ async fn conflict_with_empty_entries() -> Result<()> {
 
     // Feed logs
 
-    let rpc = AppendEntriesRequest::<openraft_memstore::Config> {
+    let rpc = AppendEntriesRequest::<openraft_memstore::TypeConfig> {
         vote: Vote::new_committed(1, 1),
         prev_log_id: None,
         entries: vec![blank_ent(0, 0, 0), blank_ent(1, 0, 1), Entry {
@@ -83,7 +83,7 @@ async fn conflict_with_empty_entries() -> Result<()> {
 
     // Expect a conflict with prev_log_index == 3
 
-    let rpc = AppendEntriesRequest::<openraft_memstore::Config> {
+    let rpc = AppendEntriesRequest::<openraft_memstore::TypeConfig> {
         vote: Vote::new_committed(1, 1),
         prev_log_id: Some(LogId::new(CommittedLeaderId::new(1, 0), 3)),
         entries: vec![],
