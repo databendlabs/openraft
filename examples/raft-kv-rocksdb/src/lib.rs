@@ -2,6 +2,7 @@
 #![deny(unused_qualifications)]
 
 use std::fmt::Display;
+use std::io::Cursor;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -33,17 +34,14 @@ pub struct Node {
 
 impl Display for Node {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "ExampleNode {{ rpc_addr: {}, api_addr: {} }}",
-            self.rpc_addr, self.api_addr
-        )
+        write!(f, "Node {{ rpc_addr: {}, api_addr: {} }}", self.rpc_addr, self.api_addr)
     }
 }
 
 openraft::declare_raft_types!(
     /// Declare the type configuration for example K/V store.
-    pub TypeConfig: D = Request, R = Response, NodeId = NodeId, Node = Node, Entry = openraft::Entry<TypeConfig>
+    pub TypeConfig: D = Request, R = Response, NodeId = NodeId, Node = Node,
+    Entry = openraft::Entry<TypeConfig>, Snapshot = Cursor<Vec<u8>>
 );
 
 pub type LogStore = Adaptor<TypeConfig, Arc<Store>>;

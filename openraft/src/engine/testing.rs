@@ -1,3 +1,5 @@
+use std::io::Cursor;
+
 use crate::RaftTypeConfig;
 
 /// Trivial Raft type config for Engine related unit test.
@@ -10,4 +12,5 @@ impl RaftTypeConfig for UTConfig {
     type NodeId = u64;
     type Node = ();
     type Entry = crate::Entry<UTConfig>;
+    type Snapshot = Cursor<Vec<u8>>;
 }

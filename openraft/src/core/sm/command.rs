@@ -8,27 +8,22 @@ use tokio::sync::oneshot;
 use crate::display_ext::DisplaySlice;
 use crate::error::InstallSnapshotError;
 use crate::raft::InstallSnapshotRequest;
-use crate::storage::RaftStateMachine;
 use crate::RaftTypeConfig;
 use crate::Snapshot;
 use crate::SnapshotMeta;
 
-pub(crate) struct Command<C, SM>
-where
-    C: RaftTypeConfig,
-    SM: RaftStateMachine<C>,
+pub(crate) struct Command<C>
+where C: RaftTypeConfig
 {
     pub(crate) seq: CommandSeq,
-    pub(crate) payload: CommandPayload<C, SM>,
+    pub(crate) payload: CommandPayload<C>,
 
     /// Custom respond function to be called when the command is done.
     pub(crate) respond: Box<dyn FnOnce() + Send + 'static>,
 }
 
-impl<C, SM> Debug for Command<C, SM>
-where
-    C: RaftTypeConfig,
-    SM: RaftStateMachine<C>,
+impl<C> Debug for Command<C>
+where C: RaftTypeConfig
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("StateMachineCommand")
@@ -38,10 +33,8 @@ where
     }
 }
 
-impl<C, SM> Command<C, SM>
-where
-    C: RaftTypeConfig,
-    SM: RaftStateMachine<C>,
+impl<C> Command<C>
+where C: RaftTypeConfig
 {
     /// Generate the next command seq with atomic increment.
     fn next_seq() -> CommandSeq {
@@ -49,7 +42,7 @@ where
         SEQ.fetch_add(1, Ordering::Relaxed)
     }
 
-    pub(crate) fn new<F>(payload: CommandPayload<C, SM>, respond: F) -> Self
+    pub(crate) fn new<F>(payload: CommandPayload<C>, respond: F) -> Self
     where F: FnOnce() + Send + 'static {
         Self {
             seq: Self::next_seq(),
@@ -68,7 +61,7 @@ where
         Command::new(payload, || {})
     }
 
-    pub(crate) fn get_snapshot(tx: oneshot::Sender<Option<Snapshot<C::NodeId, C::Node, SM::SnapshotData>>>) -> Self {
+    pub(crate) fn get_snapshot(tx: oneshot::Sender<Option<Snapshot<C>>>) -> Self {
         let payload = CommandPayload::GetSnapshot { tx };
         Command::new(payload, || {})
     }
@@ -111,18 +104,14 @@ where
 pub(crate) type CommandSeq = u64;
 
 /// The payload of a state machine command.
-pub(crate) enum CommandPayload<C, SM>
-where
-    C: RaftTypeConfig,
-    SM: RaftStateMachine<C>,
+pub(crate) enum CommandPayload<C>
+where C: RaftTypeConfig
 {
     /// Instruct the state machine to create a snapshot based on its most recent view.
     BuildSnapshot,
 
     /// Get the latest built snapshot.
-    GetSnapshot {
-        tx: oneshot::Sender<Option<Snapshot<C::NodeId, C::Node, SM::SnapshotData>>>,
-    },
+    GetSnapshot { tx: oneshot::Sender<Option<Snapshot<C>>> },
 
     /// Receive a chunk of snapshot.
     ///
@@ -146,10 +135,8 @@ where
     Apply { entries: Vec<C::Entry> },
 }
 
-impl<C, SM> Debug for CommandPayload<C, SM>
-where
-    C: RaftTypeConfig,
-    SM: RaftStateMachine<C>,
+impl<C> Debug for CommandPayload<C>
+where C: RaftTypeConfig
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {

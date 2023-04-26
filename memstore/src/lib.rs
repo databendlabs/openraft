@@ -21,6 +21,7 @@ use openraft::EntryPayload;
 use openraft::LogId;
 use openraft::RaftLogId;
 use openraft::RaftStorage;
+use openraft::RaftTypeConfig;
 use openraft::SnapshotMeta;
 use openraft::StorageError;
 use openraft::StorageIOError;
@@ -72,7 +73,8 @@ pub type MemNodeId = u64;
 
 openraft::declare_raft_types!(
     /// Declare the type configuration for `MemStore`.
-    pub Config: D = ClientRequest, R = ClientResponse, NodeId = MemNodeId, Node = (), Entry = Entry<Config>
+    pub Config: D = ClientRequest, R = ClientResponse, NodeId = MemNodeId, Node = (),
+    Entry = Entry<Config>, Snapshot = Cursor<Vec<u8>>
 );
 
 /// The application snapshot type which the `MemStore` works with.
@@ -228,9 +230,9 @@ impl RaftLogReader<Config> for Arc<MemStore> {
 }
 
 #[async_trait]
-impl RaftSnapshotBuilder<Config, Cursor<Vec<u8>>> for Arc<MemStore> {
+impl RaftSnapshotBuilder<Config> for Arc<MemStore> {
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn build_snapshot(&mut self) -> Result<Snapshot<MemNodeId, (), Cursor<Vec<u8>>>, StorageError<MemNodeId>> {
+    async fn build_snapshot(&mut self) -> Result<Snapshot<Config>, StorageError<MemNodeId>> {
         let data;
         let last_applied_log;
         let last_membership;
@@ -290,8 +292,6 @@ impl RaftSnapshotBuilder<Config, Cursor<Vec<u8>>> for Arc<MemStore> {
 
 #[async_trait]
 impl RaftStorage<Config> for Arc<MemStore> {
-    type SnapshotData = Cursor<Vec<u8>>;
-
     #[tracing::instrument(level = "trace", skip(self))]
     async fn save_vote(&mut self, vote: &Vote<MemNodeId>) -> Result<(), StorageError<MemNodeId>> {
         tracing::debug!(?vote, "save_vote");
@@ -399,7 +399,9 @@ impl RaftStorage<Config> for Arc<MemStore> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn begin_receiving_snapshot(&mut self) -> Result<Box<Self::SnapshotData>, StorageError<MemNodeId>> {
+    async fn begin_receiving_snapshot(
+        &mut self,
+    ) -> Result<Box<<Config as RaftTypeConfig>::Snapshot>, StorageError<MemNodeId>> {
         Ok(Box::new(Cursor::new(Vec::new())))
     }
 
@@ -407,7 +409,7 @@ impl RaftStorage<Config> for Arc<MemStore> {
     async fn install_snapshot(
         &mut self,
         meta: &SnapshotMeta<MemNodeId, ()>,
-        snapshot: Box<Self::SnapshotData>,
+        snapshot: Box<<Config as RaftTypeConfig>::Snapshot>,
     ) -> Result<(), StorageError<MemNodeId>> {
         tracing::info!(
             { snapshot_size = snapshot.get_ref().len() },
@@ -441,9 +443,7 @@ impl RaftStorage<Config> for Arc<MemStore> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn get_current_snapshot(
-        &mut self,
-    ) -> Result<Option<Snapshot<MemNodeId, (), Self::SnapshotData>>, StorageError<MemNodeId>> {
+    async fn get_current_snapshot(&mut self) -> Result<Option<Snapshot<Config>>, StorageError<MemNodeId>> {
         match &*self.current_snapshot.read().await {
             Some(snapshot) => {
                 let data = snapshot.data.clone();

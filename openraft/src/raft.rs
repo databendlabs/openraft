@@ -9,6 +9,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use maplit::btreemap;
+use tokio::io::AsyncRead;
+use tokio::io::AsyncSeek;
+use tokio::io::AsyncWrite;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio::sync::watch;
@@ -94,6 +97,12 @@ pub trait RaftTypeConfig:
 
     /// Raft log entry, which can be built from an AppData.
     type Entry: RaftEntry<Self::NodeId, Self::Node> + FromAppData<Self::D>;
+
+    /// Snapshot data for exposing a snapshot for reading & writing.
+    ///
+    /// See the [storage chapter of the guide](https://datafuselabs.github.io/openraft/getting-started.html#implement-raftstorage)
+    /// for details on where and how this is used.
+    type Snapshot: AsyncRead + AsyncWrite + AsyncSeek + Send + Sync + Unpin + 'static;
 }
 
 /// Define types for a Raft type configuration.
@@ -280,6 +289,8 @@ where
             tx_metrics,
 
             span: core_span,
+
+            _p: Default::default(),
         };
 
         let core_handle = tokio::spawn(core.main(rx_shutdown).instrument(trace_span!("spawn").or_current()));

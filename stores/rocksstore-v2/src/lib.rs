@@ -33,6 +33,7 @@ use openraft::LogId;
 use openraft::RaftLogId;
 use openraft::RaftLogReader;
 use openraft::RaftSnapshotBuilder;
+use openraft::RaftTypeConfig;
 use openraft::SnapshotMeta;
 use openraft::StorageError;
 use openraft::StorageIOError;
@@ -50,8 +51,9 @@ use serde::Serialize;
 pub type RocksNodeId = u64;
 
 openraft::declare_raft_types!(
-    /// Declare the type configuration for `MemStore`.
-    pub Config: D = RocksRequest, R = RocksResponse, NodeId = RocksNodeId, Node = BasicNode, Entry = Entry<Config>
+    /// Declare the type configuration.
+    pub Config: D = RocksRequest, R = RocksResponse, NodeId = RocksNodeId, Node = BasicNode,
+    Entry = Entry<Config>, Snapshot = Cursor<Vec<u8>>
 );
 
 /**
@@ -287,11 +289,9 @@ impl RaftLogReader<Config> for RocksLogStore {
 }
 
 #[async_trait]
-impl RaftSnapshotBuilder<Config, Cursor<Vec<u8>>> for RocksStateMachine {
+impl RaftSnapshotBuilder<Config> for RocksStateMachine {
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn build_snapshot(
-        &mut self,
-    ) -> Result<Snapshot<RocksNodeId, BasicNode, Cursor<Vec<u8>>>, StorageError<RocksNodeId>> {
+    async fn build_snapshot(&mut self) -> Result<Snapshot<Config>, StorageError<RocksNodeId>> {
         let data;
 
         // Serialize the data of the state machine.
@@ -408,7 +408,6 @@ impl RaftLogStorage<Config> for RocksLogStore {
 }
 #[async_trait]
 impl RaftStateMachine<Config> for RocksStateMachine {
-    type SnapshotData = Cursor<Vec<u8>>;
     type SnapshotBuilder = Self;
 
     async fn applied_state(
@@ -452,14 +451,16 @@ impl RaftStateMachine<Config> for RocksStateMachine {
         self.clone()
     }
 
-    async fn begin_receiving_snapshot(&mut self) -> Result<Box<Self::SnapshotData>, StorageError<RocksNodeId>> {
+    async fn begin_receiving_snapshot(
+        &mut self,
+    ) -> Result<Box<<Config as RaftTypeConfig>::Snapshot>, StorageError<RocksNodeId>> {
         Ok(Box::new(Cursor::new(Vec::new())))
     }
 
     async fn install_snapshot(
         &mut self,
         meta: &SnapshotMeta<RocksNodeId, BasicNode>,
-        snapshot: Box<Self::SnapshotData>,
+        snapshot: Box<<Config as RaftTypeConfig>::Snapshot>,
     ) -> Result<(), StorageError<RocksNodeId>> {
         tracing::info!(
             { snapshot_size = snapshot.get_ref().len() },
@@ -490,9 +491,7 @@ impl RaftStateMachine<Config> for RocksStateMachine {
         Ok(())
     }
 
-    async fn get_current_snapshot(
-        &mut self,
-    ) -> Result<Option<Snapshot<RocksNodeId, BasicNode, Self::SnapshotData>>, StorageError<RocksNodeId>> {
+    async fn get_current_snapshot(&mut self) -> Result<Option<Snapshot<Config>>, StorageError<RocksNodeId>> {
         let x = self
             .db
             .get_cf(self.db.cf_handle("sm_meta").unwrap(), "snapshot")

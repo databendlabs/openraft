@@ -15,6 +15,7 @@ use openraft::LogId;
 use openraft::RaftLogReader;
 use openraft::RaftSnapshotBuilder;
 use openraft::RaftStorage;
+use openraft::RaftTypeConfig;
 use openraft::SnapshotMeta;
 use openraft::StorageError;
 use openraft::StorageIOError;
@@ -123,9 +124,9 @@ impl RaftLogReader<TypeConfig> for Arc<Store> {
 }
 
 #[async_trait]
-impl RaftSnapshotBuilder<TypeConfig, Cursor<Vec<u8>>> for Arc<Store> {
+impl RaftSnapshotBuilder<TypeConfig> for Arc<Store> {
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn build_snapshot(&mut self) -> Result<Snapshot<NodeId, BasicNode, Cursor<Vec<u8>>>, StorageError<NodeId>> {
+    async fn build_snapshot(&mut self) -> Result<Snapshot<TypeConfig>, StorageError<NodeId>> {
         let data;
         let last_applied_log;
         let last_membership;
@@ -176,7 +177,6 @@ impl RaftSnapshotBuilder<TypeConfig, Cursor<Vec<u8>>> for Arc<Store> {
 
 #[async_trait]
 impl RaftStorage<TypeConfig> for Arc<Store> {
-    type SnapshotData = Cursor<Vec<u8>>;
     type LogReader = Self;
     type SnapshotBuilder = Self;
 
@@ -277,7 +277,9 @@ impl RaftStorage<TypeConfig> for Arc<Store> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn begin_receiving_snapshot(&mut self) -> Result<Box<Self::SnapshotData>, StorageError<NodeId>> {
+    async fn begin_receiving_snapshot(
+        &mut self,
+    ) -> Result<Box<<TypeConfig as RaftTypeConfig>::Snapshot>, StorageError<NodeId>> {
         Ok(Box::new(Cursor::new(Vec::new())))
     }
 
@@ -285,7 +287,7 @@ impl RaftStorage<TypeConfig> for Arc<Store> {
     async fn install_snapshot(
         &mut self,
         meta: &SnapshotMeta<NodeId, BasicNode>,
-        snapshot: Box<Self::SnapshotData>,
+        snapshot: Box<<TypeConfig as RaftTypeConfig>::Snapshot>,
     ) -> Result<(), StorageError<NodeId>> {
         tracing::info!(
             { snapshot_size = snapshot.get_ref().len() },
@@ -312,9 +314,7 @@ impl RaftStorage<TypeConfig> for Arc<Store> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn get_current_snapshot(
-        &mut self,
-    ) -> Result<Option<Snapshot<NodeId, BasicNode, Self::SnapshotData>>, StorageError<NodeId>> {
+    async fn get_current_snapshot(&mut self) -> Result<Option<Snapshot<TypeConfig>>, StorageError<NodeId>> {
         match &*self.current_snapshot.read().await {
             Some(snapshot) => {
                 let data = snapshot.data.clone();

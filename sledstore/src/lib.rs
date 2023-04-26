@@ -26,6 +26,7 @@ use openraft::RaftLogId;
 use openraft::RaftLogReader;
 use openraft::RaftSnapshotBuilder;
 use openraft::RaftStorage;
+use openraft::RaftTypeConfig;
 use openraft::SnapshotMeta;
 use openraft::StorageError;
 use openraft::StorageIOError;
@@ -39,7 +40,8 @@ pub type ExampleNodeId = u64;
 
 openraft::declare_raft_types!(
     /// Declare the type configuration for example K/V store.
-    pub ExampleTypeConfig: D = ExampleRequest, R = ExampleResponse, NodeId = ExampleNodeId, Node = BasicNode, Entry = Entry<ExampleTypeConfig>
+    pub ExampleTypeConfig: D = ExampleRequest, R = ExampleResponse, NodeId = ExampleNodeId, Node = BasicNode,
+    Entry = Entry<ExampleTypeConfig>, Snapshot = Cursor<Vec<u8>>
 );
 
 /**
@@ -440,11 +442,9 @@ impl RaftLogReader<ExampleTypeConfig> for Arc<SledStore> {
 }
 
 #[async_trait]
-impl RaftSnapshotBuilder<ExampleTypeConfig, Cursor<Vec<u8>>> for Arc<SledStore> {
+impl RaftSnapshotBuilder<ExampleTypeConfig> for Arc<SledStore> {
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn build_snapshot(
-        &mut self,
-    ) -> Result<Snapshot<ExampleNodeId, BasicNode, Cursor<Vec<u8>>>, StorageError<ExampleNodeId>> {
+    async fn build_snapshot(&mut self) -> Result<Snapshot<ExampleTypeConfig>, StorageError<ExampleNodeId>> {
         let data;
         let last_applied_log;
         let last_membership;
@@ -490,7 +490,6 @@ impl RaftSnapshotBuilder<ExampleTypeConfig, Cursor<Vec<u8>>> for Arc<SledStore> 
 
 #[async_trait]
 impl RaftStorage<ExampleTypeConfig> for Arc<SledStore> {
-    type SnapshotData = Cursor<Vec<u8>>;
     type LogReader = Self;
     type SnapshotBuilder = Self;
 
@@ -619,7 +618,9 @@ impl RaftStorage<ExampleTypeConfig> for Arc<SledStore> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn begin_receiving_snapshot(&mut self) -> Result<Box<Self::SnapshotData>, StorageError<ExampleNodeId>> {
+    async fn begin_receiving_snapshot(
+        &mut self,
+    ) -> Result<Box<<ExampleTypeConfig as RaftTypeConfig>::Snapshot>, StorageError<ExampleNodeId>> {
         Ok(Box::new(Cursor::new(Vec::new())))
     }
 
@@ -627,7 +628,7 @@ impl RaftStorage<ExampleTypeConfig> for Arc<SledStore> {
     async fn install_snapshot(
         &mut self,
         meta: &SnapshotMeta<ExampleNodeId, BasicNode>,
-        snapshot: Box<Self::SnapshotData>,
+        snapshot: Box<<ExampleTypeConfig as RaftTypeConfig>::Snapshot>,
     ) -> Result<(), StorageError<ExampleNodeId>> {
         tracing::info!(
             { snapshot_size = snapshot.get_ref().len() },
@@ -654,7 +655,7 @@ impl RaftStorage<ExampleTypeConfig> for Arc<SledStore> {
     #[tracing::instrument(level = "trace", skip(self))]
     async fn get_current_snapshot(
         &mut self,
-    ) -> Result<Option<Snapshot<ExampleNodeId, BasicNode, Self::SnapshotData>>, StorageError<ExampleNodeId>> {
+    ) -> Result<Option<Snapshot<ExampleTypeConfig>>, StorageError<ExampleNodeId>> {
         match SledStore::get_current_snapshot_(self)? {
             Some(snapshot) => {
                 let data = snapshot.data.clone();

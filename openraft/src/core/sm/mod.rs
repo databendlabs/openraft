@@ -40,38 +40,32 @@ use crate::core::notify::Notify;
 
 // TODO: replace it with Snapshot<NID,N,SD>
 /// Received snapshot from the leader.
-struct Received<C: RaftTypeConfig, SM: RaftStateMachine<C>> {
+struct Received<C: RaftTypeConfig> {
     snapshot_meta: SnapshotMeta<C::NodeId, C::Node>,
-    data: Box<SM::SnapshotData>,
+    data: Box<C::Snapshot>,
 }
 
-impl<C, SM> Received<C, SM>
-where
-    C: RaftTypeConfig,
-    SM: RaftStateMachine<C>,
+impl<C> Received<C>
+where C: RaftTypeConfig
 {
-    pub(crate) fn new(snapshot_meta: SnapshotMeta<C::NodeId, C::Node>, data: Box<SM::SnapshotData>) -> Self {
+    pub(crate) fn new(snapshot_meta: SnapshotMeta<C::NodeId, C::Node>, data: Box<C::Snapshot>) -> Self {
         Self { snapshot_meta, data }
     }
 }
 
 /// State machine worker handle for sending command to it.
-pub(crate) struct Handle<C, SM>
-where
-    C: RaftTypeConfig,
-    SM: RaftStateMachine<C>,
+pub(crate) struct Handle<C>
+where C: RaftTypeConfig
 {
-    cmd_tx: mpsc::UnboundedSender<Command<C, SM>>,
+    cmd_tx: mpsc::UnboundedSender<Command<C>>,
     #[allow(dead_code)]
     join_handle: tokio::task::JoinHandle<()>,
 }
 
-impl<C, SM> Handle<C, SM>
-where
-    C: RaftTypeConfig,
-    SM: RaftStateMachine<C>,
+impl<C> Handle<C>
+where C: RaftTypeConfig
 {
-    pub(crate) fn send(&mut self, cmd: Command<C, SM>) -> Result<(), mpsc::error::SendError<Command<C, SM>>> {
+    pub(crate) fn send(&mut self, cmd: Command<C>) -> Result<(), mpsc::error::SendError<Command<C>>> {
         tracing::debug!("sending command to state machine worker: {:?}", cmd);
         self.cmd_tx.send(cmd)
     }
@@ -84,11 +78,11 @@ where
 {
     state_machine: SM,
 
-    streaming: Option<Streaming<SM::SnapshotData>>,
+    streaming: Option<Streaming<C>>,
 
-    received: Option<Received<C, SM>>,
+    received: Option<Received<C>>,
 
-    cmd_rx: mpsc::UnboundedReceiver<Command<C, SM>>,
+    cmd_rx: mpsc::UnboundedReceiver<Command<C>>,
 
     resp_tx: mpsc::UnboundedSender<Notify<C>>,
 }
@@ -99,7 +93,7 @@ where
     SM: RaftStateMachine<C>,
 {
     /// Spawn a new state machine worker, return a controlling handle.
-    pub(crate) fn spawn(state_machine: SM, resp_tx: mpsc::UnboundedSender<Notify<C>>) -> Handle<C, SM> {
+    pub(crate) fn spawn(state_machine: SM, resp_tx: mpsc::UnboundedSender<Notify<C>>) -> Handle<C> {
         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
 
         let worker = Worker {
@@ -244,10 +238,7 @@ where
     }
 
     #[tracing::instrument(level = "info", skip_all)]
-    async fn get_snapshot(
-        &mut self,
-        tx: oneshot::Sender<Option<Snapshot<C::NodeId, C::Node, SM::SnapshotData>>>,
-    ) -> Result<(), StorageError<C::NodeId>> {
+    async fn get_snapshot(&mut self, tx: oneshot::Sender<Option<Snapshot<C>>>) -> Result<(), StorageError<C::NodeId>> {
         tracing::info!("{}", func_name!());
 
         let snapshot = self.state_machine.get_current_snapshot().await?;
