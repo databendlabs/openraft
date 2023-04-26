@@ -192,7 +192,13 @@ You have two ways to find the address of a remote peer:
 
    ```rust
    openraft::declare_raft_types!(
-      pub TypeConfig: D = Request, R = Response, NodeId = NodeId, Node = openraft::BasicNode, Entry = openraft::Entry<TypeConfig>
+      pub TypeConfig:
+          D = Request,
+          R = Response,
+          NodeId = NodeId,
+          Node = openraft::BasicNode,
+          Entry = openraft::Entry<TypeConfig>,
+          SnapshotData = Cursor<Vec<u8>>
    );
    ```
 
@@ -223,7 +229,8 @@ openraft::declare_raft_types!(
     R = ClientResponse,
     NodeId = MemNodeId,
     Node = openraft::BasiceNode,
-    Entry = openraft::Entry<Config>
+    Entry = openraft::Entry<Config>,
+    SnapshotData = Cursor<Vec<u8>>
 );
 ```
 
@@ -236,8 +243,8 @@ impl openraft::RaftTypeConfig for TypeConfig {
     type R = Response;
     type NodeId = NodeId;
     type Node = BasicNode;
-    type Entry = openraft::Entry<TypeConfig>
-    ;
+    type Entry = openraft::Entry<TypeConfig>;
+    type SnapshotData = Cursor<Vec<u8>>;
 }
 ```
 

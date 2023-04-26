@@ -38,7 +38,13 @@ In general, the upgrade includes the following steps:
 
   ```rust
   openraft::declare_raft_types!(
-      pub MyTypeConfig: D = ClientRequest, R = ClientResponse, NodeId = u64, Node = openraft::EmptyNode, Entry = openraft::entry::Entry<MyTypeConfig>
+      pub MyTypeConfig:
+          D = ClientRequest,
+          R = ClientResponse,
+          NodeId = u64,
+          Node = openraft::EmptyNode,
+          Entry = openraft::entry::Entry<MyTypeConfig>, 
+          SnapshotData = Cursor<Vec<u8>>,
   );
   ```
 
@@ -278,6 +284,12 @@ Function `get_log_entries()` and `try_get_log_entry()` are provided with default
 
   ```rust
   openraft::declare_raft_types!(
-      pub MyTypeConfig: D = ClientRequest, R = ClientResponse, NodeId = u64, Node = openraft::EmptyNode, Entry = openraft::entry::Entry<MyTypeConfig>
+      pub MyTypeConfig:
+          D = ClientRequest,
+          R = ClientResponse,
+          NodeId = u64,
+          Node = openraft::EmptyNode,
+          Entry = openraft::entry::Entry<MyTypeConfig>,
+          SnapshotData = Cursor<Vec<u8>>
   );
   ```

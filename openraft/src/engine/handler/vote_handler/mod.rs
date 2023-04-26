@@ -59,7 +59,6 @@ where C: RaftTypeConfig
         Respond<C::NodeId, C::Node>: From<ValueSender<Result<T, E>>>,
         F: Fn(&RaftState<C::NodeId, C::Node>, RejectVoteRequest<C::NodeId>) -> Result<T, E>,
     {
-        // TODO: give this method a better name
         let vote_res = self.update_vote(vote);
 
         if let Err(e) = vote_res {
