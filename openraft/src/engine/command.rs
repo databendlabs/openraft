@@ -18,7 +18,6 @@ use crate::LogId;
 use crate::Node;
 use crate::NodeId;
 use crate::RaftTypeConfig;
-use crate::SnapshotMeta;
 use crate::Vote;
 
 /// Commands to send to `RaftRuntime` to execute, to update the application state.
@@ -79,30 +78,26 @@ where C: RaftTypeConfig
     /// inclusive.
     DeleteConflictLog { since: LogId<C::NodeId> },
 
-    // TODO(3): put all state machine related commands in a separate enum.
-    /// Build a snapshot.
+    // TODO(1): current it is only used to replace BuildSnapshot, InstallSnapshot, CancelSnapshot.
+    /// A command send to state machine worker [`sm::Worker`].
     ///
-    /// This command will send a [`sm::Command::BuildSnapshot`] to [`sm::Worker`].
+    /// The runtime(`RaftCore`) will just forward this command to [`sm::Worker`].
     /// The response will be sent back in a `RaftMsg::StateMachine` message to `RaftCore`.
-    BuildSnapshot {},
-
-    /// Install a snapshot data file: e.g., replace state machine with snapshot, save snapshot
-    /// data.
-    InstallSnapshot {
-        snapshot_meta: SnapshotMeta<C::NodeId, C::Node>,
-    },
-
-    // TODO: remove this, use InstallSnapshot instead.
-    /// A received snapshot does not need to be installed, just drop buffered snapshot data.
-    CancelSnapshot {
-        snapshot_meta: SnapshotMeta<C::NodeId, C::Node>,
-    },
+    StateMachine { command: sm::Command<C> },
 
     /// Send result to caller
     Respond {
         when: Option<Condition<C::NodeId>>,
         resp: Respond<C::NodeId, C::Node>,
     },
+}
+
+impl<C> From<sm::Command<C>> for Command<C>
+where C: RaftTypeConfig
+{
+    fn from(cmd: sm::Command<C>) -> Self {
+        Self::StateMachine { command: cmd }
+    }
 }
 
 /// For unit testing
@@ -126,10 +121,8 @@ where
             (Command::SendVote { vote_req },                 Command::SendVote { vote_req: b }, )                                => vote_req == b,
             (Command::PurgeLog { upto },                     Command::PurgeLog { upto: b })                                      => upto == b,
             (Command::DeleteConflictLog { since },           Command::DeleteConflictLog { since: b }, )                          => since == b,
-            (Command::BuildSnapshot {},                      Command::BuildSnapshot { })                                         => true,
-            (Command::InstallSnapshot { snapshot_meta },     Command::InstallSnapshot { snapshot_meta: b }, )                    => snapshot_meta == b,
-            (Command::CancelSnapshot { snapshot_meta },      Command::CancelSnapshot { snapshot_meta: b }, )                     => snapshot_meta == b,
             (Command::Respond { when, resp: send },          Command::Respond { when: b_when, resp: b })                         => send == b && when == b_when,
+            (Command::StateMachine { command },              Command::StateMachine { command: b })                               => command == b,
             _ => false,
         }
     }
@@ -157,10 +150,9 @@ where C: RaftTypeConfig
             Command::Replicate { .. }                 => CommandKind::Network,
             Command::SendVote { .. }                  => CommandKind::Network,
 
-            Command::Apply { .. }                     => CommandKind::StateMachine,
-            Command::BuildSnapshot { .. }             => CommandKind::StateMachine,
-            Command::InstallSnapshot { .. }           => CommandKind::StateMachine,
-            Command::CancelSnapshot { .. }            => CommandKind::StateMachine,
+            Command::StateMachine { .. }              => CommandKind::StateMachine,
+            // Apply is firstly handled by RaftCore, then forwarded to state machine worker.
+            Command::Apply { .. }                     => CommandKind::Main,
         }
     }
 
@@ -181,10 +173,9 @@ where C: RaftTypeConfig
             Command::SendVote { .. }                  => None,
             Command::PurgeLog { .. }                  => None,
             Command::DeleteConflictLog { .. }         => None,
-            Command::BuildSnapshot {}                 => None,
-            Command::InstallSnapshot { .. }           => None,
-            Command::CancelSnapshot { .. }            => None,
             Command::Respond { when, .. }             => when.as_ref(),
+            // TODO(1): 
+            Command::StateMachine { .. }              => None,
         }
     }
 }

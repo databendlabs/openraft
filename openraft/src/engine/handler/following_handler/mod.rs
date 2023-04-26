@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use crate::core::sm;
 use crate::display_ext::DisplayOption;
 use crate::display_ext::DisplaySlice;
 use crate::engine::handler::log_handler::LogHandler;
@@ -270,7 +271,7 @@ where C: RaftTypeConfig
                 snap_last_log_id.summary(),
                 self.state.committed().summary()
             );
-            self.output.push_command(Command::CancelSnapshot { snapshot_meta: meta });
+            self.output.push_command(Command::from(sm::Command::cancel_snapshot(meta)));
             // // TODO: temp solution: committed is updated after snapshot_last_log_id.
             // self.state.enable_validate = old_validate;
             return;
@@ -326,7 +327,7 @@ where C: RaftTypeConfig
         //       - Replace state machine with snapshot and replace the `current_snapshot` in the store.
         //       - Do not install, just replace the `current_snapshot` with a newer one. This command can be
         //         used for leader to synchronize its snapshot data.
-        self.output.push_command(Command::InstallSnapshot { snapshot_meta: meta });
+        self.output.push_command(Command::from(sm::Command::install_snapshot(meta)));
 
         // A local log that is <= snap_last_log_id can not conflict with the leader.
         // But there will be a hole in the logs. Thus it's better remove all logs.

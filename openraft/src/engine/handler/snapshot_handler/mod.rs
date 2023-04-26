@@ -1,5 +1,6 @@
 //! This mod handles state machine operations
 
+use crate::core::sm;
 use crate::engine::Command;
 use crate::engine::EngineOutput;
 use crate::raft_state::LogStateReader;
@@ -36,7 +37,8 @@ where C: RaftTypeConfig
         tracing::info!("push snapshot building command");
 
         self.state.io_state.set_building_snapshot(true);
-        self.output.push_command(Command::BuildSnapshot {});
+
+        self.output.push_command(Command::from(sm::Command::build_snapshot()));
         true
     }
 

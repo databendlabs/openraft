@@ -1,5 +1,6 @@
 use pretty_assertions::assert_eq;
 
+use crate::core::sm;
 use crate::engine::testing::UTConfig;
 use crate::engine::Command;
 use crate::engine::Engine;
@@ -27,7 +28,13 @@ fn test_trigger_snapshot() -> anyhow::Result<()> {
 
     assert_eq!(true, got);
     assert_eq!(true, eng.state.io_state_mut().building_snapshot());
-    assert_eq!(vec![Command::BuildSnapshot {},], eng.output.take_commands());
+    assert_eq!(
+        vec![
+            //
+            Command::from(sm::Command::build_snapshot()),
+        ],
+        eng.output.take_commands()
+    );
 
     // Trigger twice will not trigger again.
 
