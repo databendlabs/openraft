@@ -171,7 +171,7 @@ where C: RaftTypeConfig
         tracing::info!(vote = display(&v), "{}", func_name!());
 
         // Safe unwrap(): it won't reject itself ˙–˙
-        self.vote_handler().handle_message_vote(&v).unwrap();
+        self.vote_handler().update_vote(&v).unwrap();
 
         // Safe unwrap()
         let leader = self.internal_server_state.leading_mut().unwrap();
@@ -288,7 +288,7 @@ where C: RaftTypeConfig
 
         // Then check vote just as it does for every incoming event.
 
-        let res = self.vote_handler().handle_message_vote(&req.vote);
+        let res = self.vote_handler().update_vote(&req.vote);
 
         tracing::info!(
             req = display(req.summary()),
@@ -349,7 +349,7 @@ where C: RaftTypeConfig
         //
         // Explicitly ignore the returned error:
         // resp.vote being not greater than mine is all right.
-        let _ = self.vote_handler().handle_message_vote(&resp.vote);
+        let _ = self.vote_handler().update_vote(&resp.vote);
 
         // Seen a higher log. Record it so that the next election will be delayed for a while.
         if resp.last_log_id.as_ref() > self.state.last_log_id() {
@@ -402,7 +402,7 @@ where C: RaftTypeConfig
         prev_log_id: Option<LogId<C::NodeId>>,
         entries: Vec<C::Entry>,
     ) -> Result<(), RejectAppendEntries<C::NodeId>> {
-        self.vote_handler().handle_message_vote(vote)?;
+        self.vote_handler().update_vote(vote)?;
 
         // Vote is legal.
 

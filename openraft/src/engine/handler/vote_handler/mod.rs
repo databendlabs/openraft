@@ -59,8 +59,7 @@ where C: RaftTypeConfig
         Respond<C::NodeId, C::Node>: From<ValueSender<Result<T, E>>>,
         F: Fn(&RaftState<C::NodeId, C::Node>, RejectVoteRequest<C::NodeId>) -> Result<T, E>,
     {
-        // TODO: give this method a better name
-        let vote_res = self.handle_message_vote(vote);
+        let vote_res = self.update_vote(vote);
 
         if let Err(e) = vote_res {
             let res = f(self.state, e);
@@ -92,19 +91,20 @@ where C: RaftTypeConfig
         let mut v = *self.state.vote_ref();
         v.commit();
 
-        let _res = self.handle_message_vote(&v);
+        let _res = self.update_vote(&v);
         debug_assert!(_res.is_ok(), "commit vote can not fail but: {:?}", _res);
     }
 
     /// Check and update the local vote and related state for every message received.
     ///
-    /// This is used by all incoming event, such as the 3 RPC append-entries, vote, install-snapshot
-    /// to check the `vote` field.
+    /// This is used by all incoming event, such as the three RPC append-entries, vote,
+    /// install-snapshot to check the `vote` field.
     ///
-    /// Grant vote if vote >= mine.
+    /// It grants the input vote and persists it if `input_vote >= my_vote`.
+    ///
     /// Note: This method does not check last-log-id. handle-vote-request has to deal with
     /// last-log-id itself.
-    pub(crate) fn handle_message_vote(&mut self, vote: &Vote<C::NodeId>) -> Result<(), RejectVoteRequest<C::NodeId>> {
+    pub(crate) fn update_vote(&mut self, vote: &Vote<C::NodeId>) -> Result<(), RejectVoteRequest<C::NodeId>> {
         // Partial ord compare:
         // Vote does not has to be total ord.
         // `!(a >= b)` does not imply `a < b`.

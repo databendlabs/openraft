@@ -39,7 +39,7 @@ fn eng() -> Engine<UTConfig> {
 fn test_handle_message_vote_reject_smaller_vote() -> anyhow::Result<()> {
     let mut eng = eng();
 
-    let resp = eng.vote_handler().handle_message_vote(&Vote::new(1, 2));
+    let resp = eng.vote_handler().update_vote(&Vote::new(1, 2));
 
     assert_eq!(Err(RejectVoteRequest::ByVote(Vote::new(2, 1))), resp);
 
@@ -60,7 +60,7 @@ fn test_handle_message_vote_committed_vote() -> anyhow::Result<()> {
     eng.timer.update_now(*eng.timer.now() + Duration::from_millis(1));
     let now = *eng.timer.now();
 
-    let resp = eng.vote_handler().handle_message_vote(&Vote::new_committed(3, 2));
+    let resp = eng.vote_handler().update_vote(&Vote::new_committed(3, 2));
 
     assert_eq!(Ok(()), resp);
 
@@ -89,7 +89,7 @@ fn test_handle_message_vote_granted_equal_vote() -> anyhow::Result<()> {
     eng.timer.update_now(*eng.timer.now() + Duration::from_millis(1));
     let now = *eng.timer.now();
 
-    let resp = eng.vote_handler().handle_message_vote(&Vote::new(2, 1));
+    let resp = eng.vote_handler().update_vote(&Vote::new(2, 1));
 
     assert_eq!(Ok(()), resp);
 
@@ -109,7 +109,7 @@ fn test_handle_message_vote_granted_greater_vote() -> anyhow::Result<()> {
     let mut eng = eng();
     eng.state.log_ids = LogIdList::new(vec![log_id1(2, 3)]);
 
-    let resp = eng.vote_handler().handle_message_vote(&Vote::new(3, 1));
+    let resp = eng.vote_handler().update_vote(&Vote::new(3, 1));
 
     assert_eq!(Ok(()), resp);
 
@@ -138,7 +138,7 @@ fn test_handle_message_vote_granted_follower_learner_does_not_emit_update_server
         eng.state.server_state = st;
         eng.output.clear_commands();
 
-        let resp = eng.vote_handler().handle_message_vote(&Vote::new(3, 1));
+        let resp = eng.vote_handler().update_vote(&Vote::new(3, 1));
 
         assert_eq!(Ok(()), resp);
 
@@ -161,7 +161,7 @@ fn test_handle_message_vote_granted_follower_learner_does_not_emit_update_server
         eng.state.server_state = st;
         eng.output.clear_commands();
 
-        let resp = eng.vote_handler().handle_message_vote(&Vote::new(3, 1));
+        let resp = eng.vote_handler().update_vote(&Vote::new(3, 1));
 
         assert_eq!(Ok(()), resp);
 
