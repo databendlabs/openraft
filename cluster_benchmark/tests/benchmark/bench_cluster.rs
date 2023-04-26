@@ -36,7 +36,7 @@ fn bench_cluster_of_1() -> anyhow::Result<()> {
     bench_with_config(&BenchConfig {
         worker_threads: 32,
         n_operations: 100_000,
-        n_client: 64,
+        n_client: 256,
         members: btreeset! {0},
     })?;
     Ok(())
@@ -48,7 +48,7 @@ fn bench_cluster_of_3() -> anyhow::Result<()> {
     bench_with_config(&BenchConfig {
         worker_threads: 32,
         n_operations: 100_000,
-        n_client: 64,
+        n_client: 256,
         members: btreeset! {0,1,2},
     })?;
     Ok(())
@@ -60,7 +60,7 @@ fn bench_cluster_of_5() -> anyhow::Result<()> {
     bench_with_config(&BenchConfig {
         worker_threads: 32,
         n_operations: 100_000,
-        n_client: 64,
+        n_client: 256,
         members: btreeset! {0,1,2,3,4},
     })?;
     Ok(())

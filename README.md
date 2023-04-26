@@ -71,6 +71,8 @@ Currently, openraft is the consensus engine of meta-service cluster in [databend
   See: [Openraft Vote design](https://datafuselabs.github.io/openraft/vote);
   Or use standard raft mode with [feature flag `single-term-leader`](https://datafuselabs.github.io/openraft/feature-flags).
 
+- [x] **2023-04-26** Goal performance is 1,000,000 put/sec.
+
 - [ ] Reduce the complexity of vote and pre-vote: [get rid of pre-vote RPC](https://github.com/datafuselabs/openraft/discussions/15);
 
 - [ ] Support flexible quorum, e.g.:[Hierarchical Quorums](https://zookeeper.apache.org/doc/r3.5.9/zookeeperHierarchicalQuorums.html)
@@ -78,7 +80,6 @@ Currently, openraft is the consensus engine of meta-service cluster in [databend
 - [ ] Consider introducing read-quorum and write-quorum,
   improve efficiency with a cluster with an even number of nodes.
 
-- [ ] Goal performance is 1,000,000 put/sec.
 
 <!--
    - - [ ] Consider to separate log storage and log order storage.
@@ -93,16 +94,17 @@ minimized store and network. This is **NOT a real world** application benchmark!
 
 Benchmark history:
 
-|  Date      | clients | put/s       | ns/op      | Changes                              |
-| :--        | --:     | --:         | --:        | :--                                  |
-| 2023-04-25 |  64     | **730,000** |    1,369   | Split channels                       |
-| 2023-04-24 |  64     | **652,000** |    1,532   | Reduce metrics report rate           |
-| 2023-04-23 |  64     | **467,000** |    2,139   | State-machine moved to separate task |
-|            |   1     |    70,000   | **14,273** |                                      |
-| 2023-02-28 |   1     |    48,000   | **20,558** |                                      |
-| 2022-07-09 |   1     |    45,000   | **21,784** | Batch purge applied log              |
-| 2022-07-07 |   1     |    43,000   | **23,218** | Use `Progress` to track replication  |
-| 2022-07-01 |   1     |    41,000   | **23,255** |                                      |
+|  Date      | clients | put/s         | ns/op      | Changes                              |
+| :--        | --:     | --:           | --:        | :--                                  |
+| 2023-04-26 | 256     | **1,014,000** |      985   |                                      |
+| 2023-04-25 |  64     |   **730,000** |    1,369   | Split channels                       |
+| 2023-04-24 |  64     |   **652,000** |    1,532   | Reduce metrics report rate           |
+| 2023-04-23 |  64     |   **467,000** |    2,139   | State-machine moved to separate task |
+|            |   1     |      70,000   | **14,273** |                                      |
+| 2023-02-28 |   1     |      48,000   | **20,558** |                                      |
+| 2022-07-09 |   1     |      45,000   | **21,784** | Batch purge applied log              |
+| 2022-07-07 |   1     |      43,000   | **23,218** | Use `Progress` to track replication  |
+| 2022-07-01 |   1     |      41,000   | **23,255** |                                      |
 
 
 To access the benchmark, go to the `./cluster_benchmark` folder and run `make
