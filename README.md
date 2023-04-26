@@ -93,16 +93,17 @@ minimized store and network. This is **NOT a real world** application benchmark!
 
 Benchmark history:
 
-|  Date      | clients | put/s       | ns/op      | Changes                              |
-| :--        | --:     | --:         | --:        | :--                                  |
-| 2023-04-25 |  64     | **730,000** |    1,369   | Split channels                       |
-| 2023-04-24 |  64     | **652,000** |    1,532   | Reduce metrics report rate           |
-| 2023-04-23 |  64     | **467,000** |    2,139   | State-machine moved to separate task |
-|            |   1     |    70,000   | **14,273** |                                      |
-| 2023-02-28 |   1     |    48,000   | **20,558** |                                      |
-| 2022-07-09 |   1     |    45,000   | **21,784** | Batch purge applied log              |
-| 2022-07-07 |   1     |    43,000   | **23,218** | Use `Progress` to track replication  |
-| 2022-07-01 |   1     |    41,000   | **23,255** |                                      |
+|  Date      | clients | put/s        | ns/op      | Changes                              |
+| :--        | --:     | --:          | --:        | :--                                  |
+| 2023-04-26 | 256     | **1014,000** |      985   |                                      |
+| 2023-04-25 |  64     |  **730,000** |    1,369   | Split channels                       |
+| 2023-04-24 |  64     |  **652,000** |    1,532   | Reduce metrics report rate           |
+| 2023-04-23 |  64     |  **467,000** |    2,139   | State-machine moved to separate task |
+|            |   1     |     70,000   | **14,273** |                                      |
+| 2023-02-28 |   1     |     48,000   | **20,558** |                                      |
+| 2022-07-09 |   1     |     45,000   | **21,784** | Batch purge applied log              |
+| 2022-07-07 |   1     |     43,000   | **23,218** | Use `Progress` to track replication  |
+| 2022-07-01 |   1     |     41,000   | **23,255** |                                      |
 
 
 To access the benchmark, go to the `./cluster_benchmark` folder and run `make
