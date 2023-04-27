@@ -206,6 +206,7 @@ fn test_leader_append_entries_fast_commit() -> anyhow::Result<()> {
                 committed: Some(log_id1(3, 6))
             },
             Command::Apply {
+                seq: 1,
                 already_committed: Some(log_id1(0, 0)),
                 upto: LogId::new(CommittedLeaderId::new(3, 1), 6)
             },
@@ -273,6 +274,7 @@ fn test_leader_append_entries_fast_commit_upto_membership_entry() -> anyhow::Res
                 committed: Some(log_id1(3, 4))
             },
             Command::Apply {
+                seq: 1,
                 already_committed: Some(log_id1(0, 0)),
                 upto: LogId::new(CommittedLeaderId::new(3, 1), 4)
             },
@@ -352,6 +354,7 @@ fn test_leader_append_entries_fast_commit_membership_no_voter_change() -> anyhow
                 committed: Some(log_id1(3, 4))
             },
             Command::Apply {
+                seq: 1,
                 already_committed: Some(log_id1(0, 0)),
                 upto: LogId::new(CommittedLeaderId::new(3, 1), 4)
             },
@@ -367,6 +370,7 @@ fn test_leader_append_entries_fast_commit_membership_no_voter_change() -> anyhow
                 committed: Some(log_id1(3, 6))
             },
             Command::Apply {
+                seq: 2,
                 already_committed: Some(LogId::new(CommittedLeaderId::new(3, 1), 4)),
                 upto: LogId::new(CommittedLeaderId::new(3, 1), 6)
             },
@@ -444,6 +448,7 @@ fn test_leader_append_entries_fast_commit_if_membership_voter_change_to_1() -> a
                 committed: Some(log_id1(3, 6))
             },
             Command::Apply {
+                seq: 1,
                 already_committed: Some(log_id1(0, 0)),
                 upto: LogId::new(CommittedLeaderId::new(3, 1), 6)
             },

@@ -101,6 +101,7 @@ fn test_update_matching() -> anyhow::Result<()> {
                     committed: Some(log_id1(2, 1))
                 },
                 Command::Apply {
+                    seq: 1,
                     already_committed: None,
                     upto: log_id1(2, 1)
                 }
@@ -120,6 +121,7 @@ fn test_update_matching() -> anyhow::Result<()> {
                     committed: Some(log_id1(2, 3))
                 },
                 Command::Apply {
+                    seq: 2,
                     already_committed: Some(log_id1(2, 1)),
                     upto: log_id1(2, 3)
                 }

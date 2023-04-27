@@ -10,8 +10,12 @@ use crate::engine::Command;
 use crate::engine::EngineConfig;
 use crate::engine::EngineOutput;
 use crate::entry::RaftPayload;
+use crate::error::InstallSnapshotError;
 use crate::error::RejectAppendEntries;
+use crate::error::SnapshotMismatch;
+use crate::raft::InstallSnapshotRequest;
 use crate::raft_state::LogStateReader;
+use crate::raft_state::StreamingState;
 use crate::EffectiveMembership;
 use crate::LogId;
 use crate::LogIdOptionExt;
@@ -20,6 +24,7 @@ use crate::RaftLogId;
 use crate::RaftState;
 use crate::RaftTypeConfig;
 use crate::SnapshotMeta;
+use crate::SnapshotSegmentId;
 use crate::StoredMembership;
 
 #[cfg(test)] mod append_entries_test;
@@ -153,7 +158,9 @@ where C: RaftTypeConfig
         );
 
         if let Some(prev_committed) = self.state.update_committed(&committed) {
+            let seq = self.output.next_sm_seq();
             self.output.push_command(Command::Apply {
+                seq,
                 // TODO(xp): when restart, commit is reset to None. Use last_applied instead.
                 already_committed: prev_committed,
                 upto: committed.unwrap(),
@@ -233,6 +240,52 @@ where C: RaftTypeConfig
         let _effective_changed = self.state.membership_state.update_committed(m);
 
         self.server_state_handler().update_server_state_if_changed();
+    }
+
+    /// receives a snapshot chunk.
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub(crate) fn receive_snapshot_chunk(
+        &mut self,
+        req: InstallSnapshotRequest<C>,
+    ) -> Result<(), InstallSnapshotError> {
+        // TODO: add unit test
+        tracing::info!(req = display(req.summary()), "{}", func_name!());
+
+        let snapshot_meta = &req.meta;
+
+        let curr_id = self.state.snapshot_streaming.as_ref().map(|s| &s.snapshot_id);
+
+        // Changed to another stream. re-init snapshot state.
+        if curr_id != Some(&req.meta.snapshot_id) {
+            if req.offset > 0 {
+                let mismatch = SnapshotMismatch {
+                    expect: SnapshotSegmentId {
+                        id: snapshot_meta.snapshot_id.clone(),
+                        offset: 0,
+                    },
+                    got: SnapshotSegmentId {
+                        id: snapshot_meta.snapshot_id.clone(),
+                        offset: req.offset,
+                    },
+                };
+
+                tracing::warn!("snapshot mismatch: {}", mismatch);
+                return Err(mismatch.into());
+            }
+
+            if req.offset == 0 {
+                self.state.snapshot_streaming = Some(StreamingState {
+                    offset: 0,
+                    snapshot_id: req.meta.snapshot_id.clone(),
+                });
+            }
+        }
+
+        self.state.snapshot_streaming.as_mut().unwrap().offset = req.offset;
+
+        let sm_cmd = sm::Command::receive(req);
+        self.output.push_command(Command::from(sm_cmd));
+        Ok(())
     }
 
     /// Follower/Learner handles install-snapshot.

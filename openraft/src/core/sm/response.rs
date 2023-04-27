@@ -12,10 +12,6 @@ where C: RaftTypeConfig
     /// Build a snapshot, it returns result via the universal RaftCore response channel.
     BuildSnapshot(SnapshotMeta<C::NodeId, C::Node>),
 
-    /// GetSnapshot, it returns result in a dedicated oneshot channel, because it is a blocking
-    /// call. Therefore it just sends back a `()` to the RaftCore.
-    GetSnapshot(()),
-
     /// When finishing receiving a snapshot chunk.
     ///
     /// It does not return any value to RaftCore.

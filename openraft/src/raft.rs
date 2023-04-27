@@ -24,6 +24,7 @@ use tracing::Level;
 
 use crate::config::Config;
 use crate::config::RuntimeConfig;
+use crate::core::command_state::CommandState;
 use crate::core::replication_lag;
 use crate::core::sm;
 use crate::core::RaftCore;
@@ -288,6 +289,7 @@ where
 
             tx_metrics,
 
+            command_state: CommandState::default(),
             span: core_span,
 
             _p: Default::default(),

@@ -26,8 +26,10 @@ use tracing::Span;
 use crate::config::Config;
 use crate::config::RuntimeConfig;
 use crate::core::balancer::Balancer;
+use crate::core::command_state::CommandState;
 use crate::core::notify::Notify;
 use crate::core::sm;
+use crate::core::sm::CommandSeq;
 use crate::core::ServerState;
 use crate::display_ext::DisplayOption;
 use crate::display_ext::DisplaySlice;
@@ -42,7 +44,6 @@ use crate::error::ClientWriteError;
 use crate::error::Fatal;
 use crate::error::ForwardToLeader;
 use crate::error::InitializeError;
-use crate::error::InstallSnapshotError;
 use crate::error::QuorumNotEnough;
 use crate::error::RPCError;
 use crate::error::Timeout;
@@ -61,7 +62,6 @@ use crate::raft::ClientWriteResponse;
 use crate::raft::ClientWriteTx;
 use crate::raft::ExternalCommand;
 use crate::raft::InstallSnapshotRequest;
-use crate::raft::InstallSnapshotResponse;
 use crate::raft::InstallSnapshotTx;
 use crate::raft::RaftMsg;
 use crate::raft::ResultSender;
@@ -194,6 +194,8 @@ where
     pub(crate) rx_notify: mpsc::UnboundedReceiver<Notify<C>>,
 
     pub(crate) tx_metrics: watch::Sender<RaftMetrics<C::NodeId, C::Node>>,
+
+    pub(crate) command_state: CommandState,
 
     pub(crate) span: Span,
 
@@ -555,82 +557,16 @@ where
     /// Invoked by leader to send chunks of a snapshot to a follower.
     ///
     /// Leaders always send chunks in order. It is important to note that, according to the Raft
-    /// spec, a log may only have one snapshot at any time. As snapshot contents are application
-    /// specific, the Raft log will only store a pointer to the snapshot file along with the
-    /// index & term.
+    /// spec, a node may only have one snapshot at any time. As snapshot contents are application
+    /// specific.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) async fn handle_install_snapshot_request(
+    pub(crate) fn handle_install_snapshot_request(
         &mut self,
         req: InstallSnapshotRequest<C>,
         tx: InstallSnapshotTx<C::NodeId>,
-    ) -> Result<(), StorageError<C::NodeId>> {
-        // TODO: move receiving to another thread.
-        tracing::info!(req = display(req.summary()));
-
-        let snapshot_meta = req.meta.clone();
-        let done = req.done;
-
-        let res = self.engine.vote_handler().accept_vote(&req.vote, tx, |state, _rejected| {
-            Ok(InstallSnapshotResponse {
-                vote: *state.vote_ref(),
-            })
-        });
-
-        let tx = match res {
-            Ok(tx) => tx,
-            Err(_) => return Ok(()),
-        };
-
-        // TODO(2): This is still blocking, to make it non-blocking, we need to move receiving to another
-        //          thread.
-        let (recv_tx, recv_rx) = oneshot::channel::<Result<(), InstallSnapshotError>>();
-
-        let cmd = sm::Command::receive(req, recv_tx);
-
-        self.sm_handle.send(cmd).map_err(|_e| {
-            StorageIOError::write_snapshot(
-                Some(snapshot_meta.signature()),
-                AnyError::error("sm-worker channel closed"),
-            )
-        })?;
-
-        let recv_res = recv_rx.await.map_err(|_e| {
-            StorageIOError::write_snapshot(
-                Some(snapshot_meta.signature()),
-                AnyError::error("sm-worker channel closed"),
-            )
-        })?;
-
-        if let Err(e) = recv_res {
-            self.engine.output.push_command(Command::Respond {
-                when: None,
-                resp: Respond::new(Err(e), tx),
-            });
-            return Ok(());
-        }
-
-        let mut condition = None;
-
-        if done {
-            // If to install snapshot, we can only respond when snapshot is successfully installed.
-            condition = Some(Condition::Applied {
-                log_id: snapshot_meta.last_log_id,
-            });
-
-            self.engine.following_handler().install_snapshot(snapshot_meta);
-        }
-
-        self.engine.output.push_command(Command::Respond {
-            when: condition,
-            resp: Respond::new(
-                Ok(InstallSnapshotResponse {
-                    vote: *self.engine.state.vote_ref(),
-                }),
-                tx,
-            ),
-        });
-
-        Ok(())
+    ) {
+        tracing::info!(req = display(req.summary()), "{}", func_name!());
+        self.engine.handle_install_snapshot(req, tx);
     }
 
     /// Trigger a snapshot building(log compaction) job if there is no pending building job.
@@ -717,6 +653,7 @@ where
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) async fn apply_to_state_machine(
         &mut self,
+        seq: CommandSeq,
         since: u64,
         upto_index: u64,
     ) -> Result<(), StorageError<C::NodeId>> {
@@ -743,7 +680,7 @@ where
 
         let last_applied = *entries[entries.len() - 1].get_log_id();
 
-        let cmd = sm::Command::apply(entries);
+        let cmd = sm::Command::apply(entries).with_seq(seq);
         self.sm_handle.send(cmd).map_err(|e| StorageIOError::apply(last_applied, AnyError::error(e)))?;
 
         Ok(())
@@ -1141,11 +1078,11 @@ where
             RaftMsg::InstallSnapshot { rpc, tx } => {
                 tracing::info!(
                     req = display(rpc.summary()),
-                    "received RaftMst::IntallSnapshot: {}",
+                    "received RaftMst::InstallSnapshot: {}",
                     func_name!()
                 );
 
-                self.handle_install_snapshot_request(rpc, tx).await?;
+                self.handle_install_snapshot_request(rpc, tx);
             }
             RaftMsg::CheckIsLeaderRequest { tx } => {
                 if self.engine.state.is_leader(&self.engine.config.id) {
@@ -1335,6 +1272,14 @@ where
             Notify::StateMachine { command_result } => {
                 tracing::debug!("sm::StateMachine command result: {:?}", command_result);
 
+                debug_assert!(
+                    self.command_state.finished_sm_seq < command_result.command_seq,
+                    "sm::StateMachine command result is out of order: expect {} < {}",
+                    self.command_state.finished_sm_seq,
+                    command_result.command_seq
+                );
+                self.command_state.finished_sm_seq = command_result.command_seq;
+
                 match command_result.result? {
                     sm::Response::BuildSnapshot(meta) => {
                         tracing::info!(
@@ -1343,9 +1288,6 @@ where
                             func_name!()
                         );
                         self.engine.finish_building_snapshot(meta);
-                    }
-                    sm::Response::GetSnapshot(_) => {
-                        tracing::info!("sm::StateMachine command done: GetSnapshot: {}", func_name!());
                     }
                     sm::Response::ReceiveSnapshotChunk(_) => {
                         tracing::info!("sm::StateMachine command done: ReceiveSnapshotChunk: {}", func_name!());
@@ -1515,7 +1457,10 @@ where
     SM: RaftStateMachine<C>,
 {
     async fn run_command<'e>(&mut self, cmd: Command<C>) -> Result<Option<Command<C>>, StorageError<C::NodeId>> {
-        if let Some(condition) = cmd.condition() {
+        let condition = cmd.condition();
+        tracing::debug!("condition: {:?}", condition);
+
+        if let Some(condition) = condition {
             match condition {
                 Condition::LogFlushed { .. } => {
                     todo!()
@@ -1530,8 +1475,16 @@ where
                         return Ok(Some(cmd));
                     }
                 }
-                Condition::StateMachineCommand { .. } => {
-                    todo!()
+                Condition::StateMachineCommand { command_seq } => {
+                    if self.command_state.finished_sm_seq < *command_seq {
+                        tracing::debug!(
+                            "sm::Command({}) has not yet finished({}), postpone cmd: {:?}",
+                            command_seq,
+                            self.command_state.finished_sm_seq,
+                            cmd
+                        );
+                        return Ok(Some(cmd));
+                    }
                 }
             }
         }
@@ -1584,10 +1537,11 @@ where
                 }
             }
             Command::Apply {
+                seq,
                 ref already_committed,
                 ref upto,
             } => {
-                self.apply_to_state_machine(already_committed.next_index(), upto.index).await?;
+                self.apply_to_state_machine(seq, already_committed.next_index(), upto.index).await?;
             }
             Command::Replicate { req, target } => {
                 if let Some(l) = &self.leader_data {

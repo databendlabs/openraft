@@ -81,6 +81,7 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
                     },),
                 },
                 Command::Apply {
+                    seq: 1,
                     already_committed: None,
                     upto: LogId {
                         leader_id: CommittedLeaderId::new(1, 1),
