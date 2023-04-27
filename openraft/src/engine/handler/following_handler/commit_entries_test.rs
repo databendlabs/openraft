@@ -69,6 +69,7 @@ fn test_following_handler_commit_entries_ge_accepted() -> anyhow::Result<()> {
     );
     assert_eq!(
         vec![Command::Apply {
+            seq: 1,
             already_committed: Some(log_id1(1, 1)),
             upto: log_id1(1, 2),
         }],
@@ -98,6 +99,7 @@ fn test_following_handler_commit_entries_le_accepted() -> anyhow::Result<()> {
         vec![
             //
             Command::Apply {
+                seq: 1,
                 already_committed: Some(log_id1(1, 1)),
                 upto: log_id1(2, 3)
             },

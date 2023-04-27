@@ -5,6 +5,7 @@
 //! storage or forward messages to other raft nodes.
 
 pub(crate) mod balancer;
+pub(crate) mod command_state;
 pub(crate) mod notify;
 mod raft_core;
 mod replication_state;

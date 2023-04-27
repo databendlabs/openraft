@@ -13,8 +13,6 @@ use crate::core::streaming_state::Streaming;
 use crate::core::ApplyResult;
 use crate::core::ApplyingEntry;
 use crate::entry::RaftPayload;
-use crate::error::InstallSnapshotError;
-use crate::error::SnapshotMismatch;
 use crate::raft::InstallSnapshotRequest;
 use crate::storage::RaftStateMachine;
 use crate::summary::MessageSummary;
@@ -23,7 +21,6 @@ use crate::RaftSnapshotBuilder;
 use crate::RaftTypeConfig;
 use crate::Snapshot;
 use crate::SnapshotMeta;
-use crate::SnapshotSegmentId;
 use crate::StorageError;
 use crate::StorageIOError;
 
@@ -140,21 +137,21 @@ where
 
             tracing::debug!("{}: received command: {:?}", func_name!(), cmd);
 
-            let command_result = match cmd.payload {
+            match cmd.payload {
                 CommandPayload::BuildSnapshot => {
                     tracing::info!("{}: build snapshot", func_name!());
 
                     let resp = self.build_snapshot().await?;
-                    CommandResult::new(cmd.seq, Ok(Response::BuildSnapshot(resp)))
+                    let res = CommandResult::new(cmd.seq, Ok(Response::BuildSnapshot(resp)));
+                    let _ = self.resp_tx.send(Notify::sm(res));
                 }
                 CommandPayload::GetSnapshot { tx } => {
                     tracing::info!("{}: get snapshot", func_name!());
 
-                    #[allow(clippy::let_unit_value)]
-                    let resp = self.get_snapshot(tx).await?;
-                    CommandResult::new(cmd.seq, Ok(Response::GetSnapshot(resp)))
+                    self.get_snapshot(tx).await?;
+                    // GetSnapshot does not respond to RaftCore
                 }
-                CommandPayload::ReceiveSnapshotChunk { req, tx } => {
+                CommandPayload::ReceiveSnapshotChunk { req } => {
                     tracing::info!(
                         req = display(req.summary()),
                         "{}: received snapshot chunk",
@@ -162,8 +159,9 @@ where
                     );
 
                     #[allow(clippy::let_unit_value)]
-                    let resp = self.receive_snapshot_chunk(req, tx).await?;
-                    CommandResult::new(cmd.seq, Ok(Response::ReceiveSnapshotChunk(resp)))
+                    let resp = self.receive_snapshot_chunk(req).await?;
+                    let res = CommandResult::new(cmd.seq, Ok(Response::ReceiveSnapshotChunk(resp)));
+                    let _ = self.resp_tx.send(Notify::sm(res));
                 }
                 CommandPayload::FinalizeSnapshot { install, snapshot_meta } => {
                     tracing::info!(
@@ -180,15 +178,15 @@ where
                         self.received = None;
                         None
                     };
-                    CommandResult::new(cmd.seq, Ok(Response::InstallSnapshot(resp)))
+                    let res = CommandResult::new(cmd.seq, Ok(Response::InstallSnapshot(resp)));
+                    let _ = self.resp_tx.send(Notify::sm(res));
                 }
                 CommandPayload::Apply { entries } => {
                     let resp = self.apply(entries).await?;
-                    CommandResult::new(cmd.seq, Ok(Response::Apply(resp)))
+                    let res = CommandResult::new(cmd.seq, Ok(Response::Apply(resp)));
+                    let _ = self.resp_tx.send(Notify::sm(res));
                 }
             };
-
-            let _ = self.resp_tx.send(Notify::StateMachine { command_result });
         }
     }
     #[tracing::instrument(level = "info", skip_all)]
@@ -250,11 +248,7 @@ where
     }
 
     #[tracing::instrument(level = "info", skip_all)]
-    async fn receive_snapshot_chunk(
-        &mut self,
-        req: InstallSnapshotRequest<C>,
-        tx: oneshot::Sender<Result<(), InstallSnapshotError>>,
-    ) -> Result<(), StorageError<C::NodeId>> {
+    async fn receive_snapshot_chunk(&mut self, req: InstallSnapshotRequest<C>) -> Result<(), StorageError<C::NodeId>> {
         let snapshot_meta = req.meta.clone();
         let done = req.done;
         let offset = req.offset;
@@ -272,23 +266,6 @@ where
 
         // Changed to another stream. re-init snapshot state.
         if curr_id != Some(&req.meta.snapshot_id) {
-            if req.offset > 0 {
-                let mismatch = SnapshotMismatch {
-                    expect: SnapshotSegmentId {
-                        id: snapshot_meta.snapshot_id.clone(),
-                        offset: 0,
-                    },
-                    got: SnapshotSegmentId {
-                        id: snapshot_meta.snapshot_id.clone(),
-                        offset,
-                    },
-                };
-
-                tracing::warn!("snapshot mismatch: {}", mismatch);
-                let _ = tx.send(Err(mismatch.into()));
-                return Ok(());
-            }
-
             let snapshot_data = self.state_machine.begin_receiving_snapshot().await?;
             self.streaming = Some(Streaming::new(req.meta.snapshot_id.clone(), snapshot_data));
         }
@@ -310,8 +287,6 @@ where
             tracing::info!("store completed streaming snapshot: {:?}", snapshot_meta);
             self.received = Some(Received::new(snapshot_meta, data));
         }
-
-        let _ = tx.send(Ok(()));
 
         Ok(())
     }

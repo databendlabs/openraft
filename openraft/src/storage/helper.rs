@@ -111,6 +111,7 @@ where
             server_state: Default::default(),
             accepted: Default::default(),
             io_state,
+            snapshot_streaming: None,
             purge_upto: last_purged_log_id,
         })
     }

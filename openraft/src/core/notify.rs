@@ -45,6 +45,14 @@ where C: RaftTypeConfig
     },
 }
 
+impl<C> Notify<C>
+where C: RaftTypeConfig
+{
+    pub(crate) fn sm(command_result: sm::CommandResult<C>) -> Self {
+        Self::StateMachine { command_result }
+    }
+}
+
 impl<C> MessageSummary<Notify<C>> for Notify<C>
 where C: RaftTypeConfig
 {

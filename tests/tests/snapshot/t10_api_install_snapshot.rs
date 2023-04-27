@@ -25,6 +25,7 @@ async fn snapshot_arguments() -> Result<()> {
     let config = Arc::new(
         Config {
             enable_heartbeat: false,
+            enable_tick: false,
             ..Default::default()
         }
         .validate()?,
@@ -49,8 +50,9 @@ async fn snapshot_arguments() -> Result<()> {
     }
 
     let n = router.remove_node(0).ok_or_else(|| anyhow::anyhow!("node not found"))?;
-    let req0 = InstallSnapshotRequest {
-        vote: Vote::new_committed(1, 0),
+    let make_req = || InstallSnapshotRequest {
+        /// force it to be a follower
+        vote: Vote::new_committed(2, 1),
         meta: SnapshotMeta {
             snapshot_id: "ss1".into(),
             last_log_id: Some(LogId {
@@ -66,7 +68,7 @@ async fn snapshot_arguments() -> Result<()> {
 
     tracing::info!("--- only allow to begin a new session when offset is 0");
     {
-        let mut req = req0.clone();
+        let mut req = make_req();
         req.offset = 2;
         let res = n.0.install_snapshot(req).await;
         assert_eq!(
@@ -77,13 +79,12 @@ async fn snapshot_arguments() -> Result<()> {
 
     tracing::info!("--- install and write ss1:[0,3)");
     {
-        let req = req0.clone();
-        n.0.install_snapshot(req).await?;
+        n.0.install_snapshot(make_req()).await?;
     }
 
     tracing::info!("-- continue write with different id");
     {
-        let mut req = req0.clone();
+        let mut req = make_req();
         req.offset = 3;
         req.meta.snapshot_id = "ss2".into();
         let res = n.0.install_snapshot(req).await;
@@ -95,12 +96,12 @@ async fn snapshot_arguments() -> Result<()> {
 
     tracing::info!("-- write from offset=0 with different id, create a new session");
     {
-        let mut req = req0.clone();
+        let mut req = make_req();
         req.offset = 0;
         req.meta.snapshot_id = "ss2".into();
         n.0.install_snapshot(req).await?;
 
-        let mut req = req0.clone();
+        let mut req = make_req();
         req.offset = 3;
         req.meta.snapshot_id = "ss2".into();
         n.0.install_snapshot(req).await?;
@@ -108,7 +109,7 @@ async fn snapshot_arguments() -> Result<()> {
 
     tracing::info!("-- continue write with mismatched offset is allowed");
     {
-        let mut req = req0.clone();
+        let mut req = make_req();
         req.offset = 8;
         req.meta.snapshot_id = "ss2".into();
         n.0.install_snapshot(req).await?;

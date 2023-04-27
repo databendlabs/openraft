@@ -1,5 +1,6 @@
 use std::collections::VecDeque;
 
+use crate::core::sm::CommandSeq;
 use crate::engine::Command;
 use crate::RaftTypeConfig;
 
@@ -8,6 +9,9 @@ use crate::RaftTypeConfig;
 pub(crate) struct EngineOutput<C>
 where C: RaftTypeConfig
 {
+    /// A Engine level sequence number for identifying a command.
+    pub(crate) seq: CommandSeq,
+
     /// Command queue that need to be executed by `RaftRuntime`.
     pub(crate) commands: VecDeque<Command<C>>,
 }
@@ -15,14 +19,46 @@ where C: RaftTypeConfig
 impl<C> EngineOutput<C>
 where C: RaftTypeConfig
 {
+    /// Generate the next command seq of an sm::Command.
+    pub(crate) fn next_sm_seq(&mut self) -> CommandSeq {
+        self.seq += 1;
+        self.seq
+    }
+
+    /// Get the last used sm::Command seq
+    pub(crate) fn last_sm_seq(&self) -> CommandSeq {
+        self.seq
+    }
+
     pub(crate) fn new(command_buffer_size: usize) -> Self {
         Self {
+            seq: 0,
             commands: VecDeque::with_capacity(command_buffer_size),
         }
     }
 
     /// Push a command to the queue.
-    pub(crate) fn push_command(&mut self, cmd: Command<C>) {
+    pub(crate) fn push_command(&mut self, mut cmd: Command<C>) {
+        match &mut cmd {
+            Command::StateMachine { command } => {
+                let seq = self.next_sm_seq();
+                tracing::debug!("next_seq: {}", seq);
+                command.set_seq(seq);
+            }
+            Command::BecomeLeader => {}
+            Command::QuitLeader => {}
+            Command::AppendEntry { .. } => {}
+            Command::AppendInputEntries { .. } => {}
+            Command::ReplicateCommitted { .. } => {}
+            Command::Apply { .. } => {}
+            Command::Replicate { .. } => {}
+            Command::RebuildReplicationStreams { .. } => {}
+            Command::SaveVote { .. } => {}
+            Command::SendVote { .. } => {}
+            Command::PurgeLog { .. } => {}
+            Command::DeleteConflictLog { .. } => {}
+            Command::Respond { .. } => {}
+        }
         self.commands.push_back(cmd)
     }
 

@@ -1,14 +1,12 @@
 use std::fmt::Debug;
 use std::fmt::Formatter;
-use std::sync::atomic::AtomicU64;
-use std::sync::atomic::Ordering;
 
 use tokio::sync::oneshot;
 
 use crate::display_ext::DisplaySlice;
-use crate::error::InstallSnapshotError;
 use crate::log_id::RaftLogId;
 use crate::raft::InstallSnapshotRequest;
+use crate::MessageSummary;
 use crate::RaftTypeConfig;
 use crate::Snapshot;
 use crate::SnapshotMeta;
@@ -35,24 +33,22 @@ where C: RaftTypeConfig
 impl<C> Command<C>
 where C: RaftTypeConfig
 {
-    /// Generate the next command seq with atomic increment.
-    #[allow(dead_code)]
-    fn next_seq() -> CommandSeq {
-        static SEQ: AtomicU64 = AtomicU64::new(1);
-        SEQ.fetch_add(1, Ordering::Relaxed)
-    }
-
     pub(crate) fn new(payload: CommandPayload<C>) -> Self {
-        Self {
-            // seq: Self::next_seq(),
-            seq: 0,
-            payload,
-        }
+        Self { seq: 0, payload }
     }
 
     #[allow(dead_code)]
     pub(crate) fn seq(&self) -> CommandSeq {
         self.seq
+    }
+
+    pub(crate) fn with_seq(mut self, seq: CommandSeq) -> Self {
+        self.seq = seq;
+        self
+    }
+
+    pub(crate) fn set_seq(&mut self, seq: CommandSeq) {
+        self.seq = seq;
     }
 
     pub(crate) fn build_snapshot() -> Self {
@@ -65,14 +61,12 @@ where C: RaftTypeConfig
         Command::new(payload)
     }
 
-    pub(crate) fn receive(
-        req: InstallSnapshotRequest<C>,
-        tx: oneshot::Sender<Result<(), InstallSnapshotError>>,
-    ) -> Self {
-        let payload = CommandPayload::ReceiveSnapshotChunk { req, tx };
+    pub(crate) fn receive(req: InstallSnapshotRequest<C>) -> Self {
+        let payload = CommandPayload::ReceiveSnapshotChunk { req };
         Command::new(payload)
     }
 
+    // TODO: all sm command should have a command seq.
     pub(crate) fn install_snapshot(snapshot_meta: SnapshotMeta<C::NodeId, C::Node>) -> Self {
         let payload = CommandPayload::FinalizeSnapshot {
             install: true,
@@ -117,10 +111,7 @@ where C: RaftTypeConfig
     /// If it is the final chunk, the snapshot stream will be closed and saved.
     ///
     /// Installing a snapshot includes two steps: ReceiveSnapshotChunk and FinalizeSnapshot.
-    ReceiveSnapshotChunk {
-        req: InstallSnapshotRequest<C>,
-        tx: oneshot::Sender<Result<(), InstallSnapshotError>>,
-    },
+    ReceiveSnapshotChunk { req: InstallSnapshotRequest<C> },
 
     /// After receiving all chunks, finalize the snapshot by installing it or discarding it,
     /// if the snapshot is stale(the snapshot last log id is smaller than the local committed).
@@ -142,7 +133,7 @@ where C: RaftTypeConfig
             CommandPayload::BuildSnapshot => write!(f, "BuildSnapshot"),
             CommandPayload::GetSnapshot { .. } => write!(f, "GetSnapshot"),
             CommandPayload::ReceiveSnapshotChunk { req, .. } => {
-                write!(f, "ReceiveSnapshotChunk: {:?}", req)
+                write!(f, "ReceiveSnapshotChunk: {}", req.summary())
             }
             CommandPayload::FinalizeSnapshot { install, snapshot_meta } => {
                 write!(f, "FinalizeSnapshot: install:{} {:?}", install, snapshot_meta)

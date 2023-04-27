@@ -10,6 +10,7 @@ use openraft::storage::RaftLogStorage;
 use openraft::storage::RaftStateMachine;
 use openraft::testing;
 use openraft::testing::blank_ent;
+use openraft::testing::log_id;
 use openraft::testing::membership_ent;
 use openraft::CommittedLeaderId;
 use openraft::Config;
@@ -156,10 +157,7 @@ async fn snapshot_delete_conflicting_logs() -> Result<()> {
 
         tracing::info!("--- DONE installing snapshot");
 
-        router
-            .wait(&1, timeout())
-            .snapshot(LogId::new(CommittedLeaderId::new(5, 0), log_index), "node-1 snapshot")
-            .await?;
+        router.wait(&1, timeout()).snapshot(log_id(5, 0, log_index), "node-1 snapshot").await?;
     }
 
     tracing::info!("--- check that learner membership is affected, conflict log are deleted");

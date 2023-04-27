@@ -68,11 +68,14 @@ fn test_install_snapshot_lt_last_snapshot() -> anyhow::Result<()> {
         eng.state.snapshot_meta
     );
     assert_eq!(
-        vec![Command::from(sm::Command::cancel_snapshot(SnapshotMeta {
-            last_log_id: Some(log_id1(2, 2)),
-            last_membership: StoredMembership::new(Some(log_id1(1, 1)), m1234()),
-            snapshot_id: "1-2-3-4".to_string(),
-        }))],
+        vec![Command::from(
+            sm::Command::cancel_snapshot(SnapshotMeta {
+                last_log_id: Some(log_id1(2, 2)),
+                last_membership: StoredMembership::new(Some(log_id1(1, 1)), m1234()),
+                snapshot_id: "1-2-3-4".to_string(),
+            })
+            .with_seq(1)
+        )],
         eng.output.take_commands()
     );
 
@@ -102,11 +105,14 @@ fn test_install_snapshot_lt_committed() -> anyhow::Result<()> {
         eng.state.snapshot_meta
     );
     assert_eq!(
-        vec![Command::from(sm::Command::cancel_snapshot(SnapshotMeta {
-            last_log_id: Some(log_id1(4, 5)),
-            last_membership: StoredMembership::new(Some(log_id1(1, 1)), m1234()),
-            snapshot_id: "1-2-3-4".to_string(),
-        }))],
+        vec![Command::from(
+            sm::Command::cancel_snapshot(SnapshotMeta {
+                last_log_id: Some(log_id1(4, 5)),
+                last_membership: StoredMembership::new(Some(log_id1(1, 1)), m1234()),
+                snapshot_id: "1-2-3-4".to_string(),
+            })
+            .with_seq(1)
+        )],
         eng.output.take_commands()
     );
 
@@ -141,11 +147,14 @@ fn test_install_snapshot_not_conflict() -> anyhow::Result<()> {
     assert_eq!(
         vec![
             //
-            Command::from(sm::Command::install_snapshot(SnapshotMeta {
-                last_log_id: Some(log_id1(4, 6)),
-                last_membership: StoredMembership::new(Some(log_id1(1, 1)), m1234()),
-                snapshot_id: "1-2-3-4".to_string(),
-            })),
+            Command::from(
+                sm::Command::install_snapshot(SnapshotMeta {
+                    last_log_id: Some(log_id1(4, 6)),
+                    last_membership: StoredMembership::new(Some(log_id1(1, 1)), m1234()),
+                    snapshot_id: "1-2-3-4".to_string(),
+                })
+                .with_seq(1)
+            ),
             Command::PurgeLog { upto: log_id1(4, 6) },
         ],
         eng.output.take_commands()
@@ -207,11 +216,14 @@ fn test_install_snapshot_conflict() -> anyhow::Result<()> {
         vec![
             //
             Command::DeleteConflictLog { since: log_id1(2, 4) },
-            Command::from(sm::Command::install_snapshot(SnapshotMeta {
-                last_log_id: Some(log_id1(5, 6)),
-                last_membership: StoredMembership::new(Some(log_id1(1, 1)), m1234()),
-                snapshot_id: "1-2-3-4".to_string(),
-            })),
+            Command::from(
+                sm::Command::install_snapshot(SnapshotMeta {
+                    last_log_id: Some(log_id1(5, 6)),
+                    last_membership: StoredMembership::new(Some(log_id1(1, 1)), m1234()),
+                    snapshot_id: "1-2-3-4".to_string(),
+                })
+                .with_seq(1)
+            ),
             Command::PurgeLog { upto: log_id1(5, 6) },
         ],
         eng.output.take_commands()
@@ -252,11 +264,14 @@ fn test_install_snapshot_advance_last_log_id() -> anyhow::Result<()> {
     assert_eq!(
         vec![
             //
-            Command::from(sm::Command::install_snapshot(SnapshotMeta {
-                last_log_id: Some(log_id1(100, 100)),
-                last_membership: StoredMembership::new(Some(log_id1(1, 1)), m1234()),
-                snapshot_id: "1-2-3-4".to_string(),
-            })),
+            Command::from(
+                sm::Command::install_snapshot(SnapshotMeta {
+                    last_log_id: Some(log_id1(100, 100)),
+                    last_membership: StoredMembership::new(Some(log_id1(1, 1)), m1234()),
+                    snapshot_id: "1-2-3-4".to_string(),
+                })
+                .with_seq(1)
+            ),
             Command::PurgeLog {
                 upto: log_id1(100, 100)
             },
