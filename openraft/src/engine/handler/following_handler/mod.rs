@@ -31,6 +31,7 @@ use crate::StoredMembership;
 #[cfg(test)] mod commit_entries_test;
 #[cfg(test)] mod do_append_entries_test;
 #[cfg(test)] mod install_snapshot_test;
+#[cfg(test)] mod receive_snapshot_chunk_test;
 #[cfg(test)] mod truncate_logs_test;
 #[cfg(test)] mod update_committed_membership_test;
 
@@ -248,10 +249,9 @@ where C: RaftTypeConfig
         &mut self,
         req: InstallSnapshotRequest<C>,
     ) -> Result<(), InstallSnapshotError> {
-        // TODO: add unit test
         tracing::info!(req = display(req.summary()), "{}", func_name!());
 
-        let snapshot_meta = &req.meta;
+        let snapshot_id = &req.meta.snapshot_id;
 
         let curr_id = self.state.snapshot_streaming.as_ref().map(|s| &s.snapshot_id);
 
@@ -260,11 +260,11 @@ where C: RaftTypeConfig
             if req.offset > 0 {
                 let mismatch = SnapshotMismatch {
                     expect: SnapshotSegmentId {
-                        id: snapshot_meta.snapshot_id.clone(),
+                        id: snapshot_id.clone(),
                         offset: 0,
                     },
                     got: SnapshotSegmentId {
-                        id: snapshot_meta.snapshot_id.clone(),
+                        id: snapshot_id.clone(),
                         offset: req.offset,
                     },
                 };
@@ -276,7 +276,7 @@ where C: RaftTypeConfig
             if req.offset == 0 {
                 self.state.snapshot_streaming = Some(StreamingState {
                     offset: 0,
-                    snapshot_id: req.meta.snapshot_id.clone(),
+                    snapshot_id: snapshot_id.clone(),
                 });
             }
         }

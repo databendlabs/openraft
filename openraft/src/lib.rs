@@ -69,7 +69,7 @@ pub(crate) mod validate;
 mod display_ext;
 mod internal_server_state;
 mod leader;
-mod raft_state;
+pub(crate) mod raft_state;
 mod runtime;
 mod try_as_ref;
 

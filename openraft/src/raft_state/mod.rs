@@ -23,7 +23,7 @@ mod accepted;
 pub(crate) mod io_state;
 mod log_state_reader;
 mod membership_state;
-mod snapshot_streaming;
+pub(crate) mod snapshot_streaming;
 mod vote_state_reader;
 
 pub(crate) use io_state::IOState;
