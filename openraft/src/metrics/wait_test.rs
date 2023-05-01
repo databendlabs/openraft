@@ -186,6 +186,8 @@ where
         current_term: 0,
         last_log_index: None,
         last_applied: None,
+        purged: None,
+
         current_leader: None,
         membership_config: Arc::new(StoredMembership::new(None, Membership::new(vec![btreeset! {}], None))),
 

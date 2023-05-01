@@ -104,6 +104,7 @@ pub struct MemStoreStateMachine {
 #[derive(PartialOrd, Ord)]
 pub enum BlockOperation {
     BuildSnapshot,
+    PurgeLog,
 }
 
 /// An in-memory storage system implementing the `RaftStorage` trait.
@@ -331,7 +332,12 @@ impl RaftStorage<TypeConfig> for Arc<MemStore> {
 
     #[tracing::instrument(level = "debug", skip_all)]
     async fn purge_logs_upto(&mut self, log_id: LogId<MemNodeId>) -> Result<(), StorageError<MemNodeId>> {
-        tracing::debug!("purge_log_upto: [{:?}, +oo)", log_id);
+        tracing::debug!("purge_log_upto: {:?}", log_id);
+
+        if let Some(d) = self.get_blocking(&BlockOperation::PurgeLog) {
+            tracing::info!(?d, "block purging log");
+            tokio::time::sleep(d).await;
+        }
 
         {
             let mut ld = self.last_purged_log_id.write().await;

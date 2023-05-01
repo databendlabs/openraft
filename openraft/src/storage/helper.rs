@@ -75,7 +75,7 @@ where
         let log_ids = LogIdList::load_log_ids(last_purged_log_id, last_log_id, self.log_store).await?;
 
         // TODO: `flushed` is not set.
-        let io_state = IOState::new(LogIOId::default(), last_applied);
+        let io_state = IOState::new(LogIOId::default(), last_applied, last_purged_log_id);
 
         let snapshot = self.state_machine.get_current_snapshot().await?;
 
