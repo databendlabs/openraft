@@ -262,8 +262,26 @@ impl TypedRaftRouter {
 
         tracing::info!("--- wait for init node to ready");
 
+        // Sending an external requests will also find all nodes in Learner state.
+        //
+        // This demonstrates fire-and-forget external request, which will be serialized
+        // with other processing. It is not required for the correctness of the test
+        //
+        // Since the execution of API messages is serialized, even if the request executes
+        // some unknown time in the future (due to fire-and-forget semantics), it will
+        // properly receive the state before initialization, as that state will appear
+        // later in the sequence.
+        //
+        // Also, this external request will be definitely executed, since it's ordered
+        // before other requests in the Raft core API queue, which definitely are executed
+        // (since they are awaited).
+        #[allow(clippy::single_element_loop)]
+        for node in [0] {
+            self.external_request(node, |s, _sto, _net| {
+                assert_eq!(s.server_state, ServerState::Learner);
+            });
+        }
         self.wait_for_log(&btreeset![leader_id], None, timeout(), "empty").await?;
-        self.wait_for_state(&btreeset![leader_id], ServerState::Learner, timeout(), "empty").await?;
 
         tracing::info!("--- initializing single node cluster: {}", 0);
 
@@ -284,7 +302,10 @@ impl TypedRaftRouter {
             self.new_raft_node(*id).await;
             self.add_learner(leader_id, *id).await?;
             log_index += 1;
+
+            self.wait_for_state(&btreeset![*id], ServerState::Learner, timeout(), "empty node").await?;
         }
+
         self.wait_for_log(
             &voter_ids,
             Some(log_index),
@@ -651,52 +672,6 @@ impl TypedRaftRouter {
         };
 
         node.0.client_write(req).await.map(|res| res.data)
-    }
-
-    /// Assert that the cluster is in a pristine state, with all nodes as learners.
-    pub fn assert_pristine_cluster(&self) {
-        let nodes = self.latest_metrics();
-        for node in nodes.iter() {
-            assert!(
-                node.current_leader.is_none(),
-                "node {} has a current leader: {:?}, expected none",
-                node.id,
-                node.current_leader,
-            );
-            assert_eq!(
-                node.state,
-                ServerState::Learner,
-                "node is in state {:?}, expected Learner",
-                node.state
-            );
-            assert_eq!(
-                node.current_term, 0,
-                "node {} has term {}, expected 0",
-                node.id, node.current_term
-            );
-            assert_eq!(
-                None,
-                node.last_applied.index(),
-                "node {} has last_applied {:?}, expected None",
-                node.id,
-                node.last_applied
-            );
-            assert_eq!(
-                None, node.last_log_index,
-                "node {} has last_log_index {:?}, expected None",
-                node.id, node.last_log_index
-            );
-
-            let nodes_count = node.membership_config.nodes().count();
-            assert_eq!(0, nodes_count, "expected empty configs, got: {:?}", nodes_count);
-
-            assert_eq!(
-                0,
-                node.membership_config.membership().get_joint_config().len(),
-                "node {} is in joint consensus, expected uniform consensus",
-                node.id
-            );
-        }
     }
 
     /// Assert that the cluster has an elected leader, and is in a stable state with all nodes

@@ -30,8 +30,6 @@ async fn commit_joint_config_during_0_to_012() -> Result<()> {
     let mut router = RaftRouter::new(config.clone());
     router.new_raft_node(0).await;
 
-    // router.assert_pristine_cluster().await;
-
     // Initialize the cluster, then assert that a stable cluster was formed & held.
     tracing::info!("--- initializing cluster");
     router.initialize_from_single_node(0).await?;

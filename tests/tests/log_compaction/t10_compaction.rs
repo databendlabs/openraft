@@ -16,7 +16,6 @@ use openraft::LogId;
 use openraft::Membership;
 use openraft::RaftNetwork;
 use openraft::RaftNetworkFactory;
-use openraft::ServerState;
 use openraft::SnapshotPolicy;
 use openraft::Vote;
 
@@ -46,23 +45,9 @@ async fn compaction() -> Result<()> {
         .validate()?,
     );
     let mut router = RaftRouter::new(config.clone());
-    router.new_raft_node(0).await;
 
-    let mut log_index = 0;
-
-    // Assert all nodes are in learner state & have no entries.
-    router.wait_for_log(&btreeset![0], None, timeout(), "empty").await?;
-    router.wait_for_state(&btreeset![0], ServerState::Learner, timeout(), "empty").await?;
-
-    router.assert_pristine_cluster();
-
-    tracing::info!(log_index, "--- initializing cluster");
-
-    router.initialize_from_single_node(0).await?;
-    log_index += 1;
-
-    router.wait_for_log(&btreeset![0], Some(log_index), timeout(), "init leader").await?;
-    router.assert_stable_cluster(Some(1), Some(1));
+    tracing::info!("--- initializing cluster");
+    let mut log_index = router.new_cluster(btreeset! {0}, btreeset! {}).await?;
 
     // Send enough requests to the cluster that compaction on the node should be triggered.
     // Puts us exactly at the configured snapshot policy threshold.
@@ -74,7 +59,6 @@ async fn compaction() -> Result<()> {
     tracing::info!(log_index, "--- log_index: {}", log_index);
 
     router.wait_for_log(&btreeset![0], Some(log_index), timeout(), "write").await?;
-    router.assert_stable_cluster(Some(1), Some(log_index));
     router
         .wait_for_snapshot(
             &btreeset![0],
