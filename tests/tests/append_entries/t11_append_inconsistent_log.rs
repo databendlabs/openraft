@@ -46,7 +46,7 @@ async fn append_inconsistent_log() -> Result<()> {
 
     let mut log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
 
-    tracing::info!("--- remove all nodes and fake the logs");
+    tracing::info!(log_index, "--- remove all nodes and fake the logs");
 
     let (r0, mut sto0, sm0) = router.remove_node(0).unwrap();
     let (r1, sto1, sm1) = router.remove_node(1).unwrap();
@@ -67,13 +67,16 @@ async fn append_inconsistent_log() -> Result<()> {
 
     log_index = 100;
 
-    tracing::info!("--- restart node 1 and isolate. To let node-2 to become leader, node-1 should not vote for node-0");
+    tracing::info!(
+        log_index,
+        "--- restart node 1 and isolate. To let node-2 to become leader, node-1 should not vote for node-0"
+    );
     {
         router.new_raft_node_with_sto(1, sto1.clone(), sm1.clone()).await;
         router.isolate_node(1);
     }
 
-    tracing::info!("--- restart node 0 and 2");
+    tracing::info!(log_index, "--- restart node 0 and 2");
     {
         router.new_raft_node_with_sto(0, sto0.clone(), sm0.clone()).await;
         router.new_raft_node_with_sto(2, sto2.clone(), sm2.clone()).await;
@@ -82,7 +85,7 @@ async fn append_inconsistent_log() -> Result<()> {
     // leader appends at least one blank log. There may be more than one transient leaders
     log_index += 1;
 
-    tracing::info!("--- wait for node states");
+    tracing::info!(log_index, "--- wait for node states");
     {
         router
             .wait_for_state(

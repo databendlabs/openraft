@@ -34,7 +34,7 @@ async fn metrics_state_machine_consistency() -> Result<()> {
     router.new_raft_node(0).await;
     router.new_raft_node(1).await;
 
-    tracing::info!("--- initializing single node cluster");
+    tracing::info!(log_index, "--- initializing single node cluster");
     {
         let n0 = router.get_raft_handle(&0)?;
         n0.initialize(btreeset! {0}).await?;
@@ -43,16 +43,16 @@ async fn metrics_state_machine_consistency() -> Result<()> {
         router.wait(&0, timeout()).state(ServerState::Leader, "n0 -> leader").await?;
     }
 
-    tracing::info!("--- add one learner");
+    tracing::info!(log_index, "--- add one learner");
     router.add_learner(0, 1).await?;
     log_index += 1;
 
-    tracing::info!("--- write one log");
+    tracing::info!(log_index, "--- write one log");
     router.client_request(0, "foo", 1).await?;
 
     // Wait for metrics to be up to date.
     // Once last_applied updated, the key should be visible in state machine.
-    tracing::info!("--- wait for log to sync");
+    tracing::info!(log_index, "--- wait for log to sync");
     log_index += 1;
     for node_id in 0..2 {
         router.wait_for_log(&btreeset![node_id], Some(log_index), None, "write one log").await?;

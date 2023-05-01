@@ -42,7 +42,7 @@ async fn replication_does_not_block_purge() -> Result<()> {
     router.isolate_node(1);
     router.isolate_node(2);
 
-    tracing::info!("--- build snapshot on leader, check purged log");
+    tracing::info!(log_index, "--- build snapshot on leader, check purged log");
     {
         log_index += router.client_request_many(0, "0", 10).await?;
 

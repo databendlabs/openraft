@@ -27,23 +27,23 @@ async fn single_restart() -> anyhow::Result<()> {
     tracing::info!("--- bring up cluster of 1 node");
     let mut log_index = router.new_cluster(btreeset! {0}, btreeset! {}).await?;
 
-    tracing::info!("--- write to 1 log");
+    tracing::info!(log_index, "--- write to 1 log");
     {
         router.client_request_many(0, "foo", 1).await?;
         log_index += 1;
     }
 
-    tracing::info!("--- stop and restart node 0");
+    tracing::info!(log_index, "--- stop and restart node 0");
     {
         let (node, sto, sm) = router.remove_node(0).unwrap();
         node.shutdown().await?;
 
-        tracing::info!("--- restart node 0");
+        tracing::info!(log_index, "--- restart node 0");
 
         router.new_raft_node_with_sto(0, sto, sm).await;
     }
 
-    tracing::info!("--- write to 1 log after restart");
+    tracing::info!(log_index, "--- write to 1 log after restart");
     {
         router.client_request_many(0, "foo", 1).await?;
         log_index += 1;

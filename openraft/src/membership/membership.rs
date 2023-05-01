@@ -103,6 +103,7 @@ where
     }
 }
 
+// Public APIs
 impl<NID, N> Membership<NID, N>
 where
     N: Node,
@@ -128,6 +129,59 @@ where
         Membership { configs: config, nodes }
     }
 
+    /// Check to see if the config is currently in joint consensus.
+    #[deprecated(note = "use `get_joint_config().len() > 1` instead")]
+    pub fn is_in_joint_consensus(&self) -> bool {
+        self.configs.len() > 1
+    }
+
+    /// Returns reference to the joint config.
+    ///
+    /// Membership is defined by a joint of multiple configs.
+    /// Each config is a vec of node-id.
+    ///
+    /// The returned `Vec` contains one or more configs(currently it is two). If there is only one
+    /// config, it is in a uniform config, otherwise, it is in a joint consensus.
+    pub fn get_joint_config(&self) -> &Vec<BTreeSet<NID>> {
+        &self.configs
+    }
+
+    /// Returns an Iterator of all nodes(voters and learners).
+    pub fn nodes(&self) -> impl Iterator<Item = (&NID, &N)> {
+        self.nodes.iter()
+    }
+
+    /// Get a the node(either voter or learner) by node id.
+    pub fn get_node(&self, node_id: &NID) -> Option<&N> {
+        self.nodes.get(node_id)
+    }
+
+    /// Returns an Iterator of all voter node ids. Learners are not included.
+    pub fn voter_ids(&self) -> impl Iterator<Item = NID> {
+        self.configs.as_joint().ids()
+    }
+
+    /// Returns an Iterator of all learner node ids. Voters are not included.
+    pub fn learner_ids(&self) -> impl Iterator<Item = NID> + '_ {
+        self.nodes.keys().filter(|x| !self.is_voter(x)).copied()
+    }
+}
+
+impl<NID, N> Membership<NID, N>
+where
+    N: Node,
+    NID: NodeId,
+{
+    /// Check if the given `NodeId` exists and is a voter.
+    pub(crate) fn is_voter(&self, node_id: &NID) -> bool {
+        for c in self.configs.iter() {
+            if c.contains(node_id) {
+                return true;
+            }
+        }
+        false
+    }
+
     /// Create a new Membership the same as [`new()`], but does not add default value
     /// `Node::default()` if a voter id is not in `nodes`. Thus it may create an invalid instance.
     pub(crate) fn new_unchecked<T>(configs: Vec<BTreeSet<NID>>, nodes: T) -> Self
@@ -151,11 +205,6 @@ where
         }
 
         res
-    }
-
-    /// Check to see if the config is currently in joint consensus.
-    pub fn is_in_joint_consensus(&self) -> bool {
-        self.configs.len() > 1
     }
 
     /// Ensure the membership config is valid:
@@ -190,59 +239,10 @@ where
 
         Ok(())
     }
-}
 
-/// Membership API
-impl<NID, N> Membership<NID, N>
-where
-    N: Node,
-    NID: NodeId,
-{
-    /// Returns an Iterator of all voter node ids. Learners are not included.
-    pub fn voter_ids(&self) -> impl Iterator<Item = NID> {
-        self.configs.as_joint().ids()
-    }
-
-    /// Returns an Iterator of all learner node ids. Voters are not included.
-    pub fn learner_ids(&self) -> impl Iterator<Item = NID> + '_ {
-        self.nodes.keys().filter(|x| !self.is_voter(x)).copied()
-    }
-
-    /// Returns an Iterator of all nodes(voters and learners).
-    pub fn nodes(&self) -> impl Iterator<Item = (&NID, &N)> {
-        self.nodes.iter()
-    }
-
-    /// Get a the node(either voter or learner) by node id.
-    pub fn get_node(&self, node_id: &NID) -> Option<&N> {
-        self.nodes.get(node_id)
-    }
-
-    /// Check if the given `NodeId` exists and is a voter.
-    pub(crate) fn is_voter(&self, node_id: &NID) -> bool {
-        for c in self.configs.iter() {
-            if c.contains(node_id) {
-                return true;
-            }
-        }
-        false
-    }
-
-    /// Returns reference to the joint config.
-    ///
-    /// Membership is defined by a joint of multiple configs.
-    /// Each config is a vec of node-id.
-    pub fn get_joint_config(&self) -> &Vec<BTreeSet<NID>> {
-        &self.configs
-    }
-}
-
-/// Quorum related API
-impl<NID, N> Membership<NID, N>
-where
-    N: Node,
-    NID: NodeId,
-{
+    // ---
+    // Quorum related internal API
+    // ---
     /// Returns the next coherent membership to change to, while the expected final membership is
     /// `goal`.
     ///

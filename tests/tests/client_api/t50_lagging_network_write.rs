@@ -40,7 +40,7 @@ async fn lagging_network_write() -> Result<()> {
     router.assert_pristine_cluster();
 
     // Initialize the cluster, then assert that a stable cluster was formed & held.
-    tracing::info!("--- initializing cluster");
+    tracing::info!(log_index, "--- initializing cluster");
     router.initialize_from_single_node(0).await?;
     log_index += 1; // log 0: initial membership log; log 1: leader commits a blank log
 

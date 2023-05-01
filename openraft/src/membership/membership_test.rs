@@ -80,8 +80,8 @@ fn test_membership() -> anyhow::Result<()> {
     assert!(m123_345.is_voter(&4));
     assert!(!m123_345.is_voter(&6));
 
-    assert!(!m123.is_in_joint_consensus());
-    assert!(m123_345.is_in_joint_consensus());
+    assert!(!m123.get_joint_config().len() > 1);
+    assert!(m123_345.get_joint_config().len() > 1);
 
     Ok(())
 }

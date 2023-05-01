@@ -74,7 +74,7 @@ async fn snapshot_delete_conflicting_logs() -> Result<()> {
         router.wait(&0, timeout()).log(Some(log_index), "init node-0 log").await?;
     }
 
-    tracing::info!("--- send just enough logs to trigger snapshot");
+    tracing::info!(log_index, "--- send just enough logs to trigger snapshot");
     {
         router.client_request_many(0, "0", (snapshot_threshold - 1 - log_index) as usize).await?;
         log_index = snapshot_threshold - 1;
@@ -86,7 +86,7 @@ async fn snapshot_delete_conflicting_logs() -> Result<()> {
             .await?;
     }
 
-    tracing::info!("--- create node-1 and add conflicting logs");
+    tracing::info!(log_index, "--- create node-1 and add conflicting logs");
     {
         router.new_raft_node(1).await;
 
@@ -119,7 +119,7 @@ async fn snapshot_delete_conflicting_logs() -> Result<()> {
         };
         router.new_client(1, &()).await.send_append_entries(req).await?;
 
-        tracing::info!("--- check that learner membership is affected");
+        tracing::info!(log_index, "--- check that learner membership is affected");
         {
             let (mut sto1, mut sm1) = router.get_storage_handle(&1)?;
             let m = StorageHelper::new(&mut sto1, &mut sm1).get_membership().await?;
@@ -136,7 +136,7 @@ async fn snapshot_delete_conflicting_logs() -> Result<()> {
         }
     }
 
-    tracing::info!("--- manually build and install snapshot to node-1");
+    tracing::info!(log_index, "--- manually build and install snapshot to node-1");
     {
         let (mut sto0, mut sm0) = router.get_storage_handle(&0)?;
 
@@ -155,12 +155,15 @@ async fn snapshot_delete_conflicting_logs() -> Result<()> {
 
         router.new_client(1, &()).await.send_install_snapshot(req).await?;
 
-        tracing::info!("--- DONE installing snapshot");
+        tracing::info!(log_index, "--- DONE installing snapshot");
 
         router.wait(&1, timeout()).snapshot(log_id(5, 0, log_index), "node-1 snapshot").await?;
     }
 
-    tracing::info!("--- check that learner membership is affected, conflict log are deleted");
+    tracing::info!(
+        log_index,
+        "--- check that learner membership is affected, conflict log are deleted"
+    );
     {
         let (mut sto1, mut sm1) = router.get_storage_handle(&1)?;
 

@@ -26,7 +26,7 @@ async fn follower_restart_does_not_interrupt() -> anyhow::Result<()> {
     let log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
     let _ = log_index;
 
-    tracing::info!("--- stop and restart follower nodes 1,2");
+    tracing::info!(log_index, "--- stop and restart follower nodes 1,2");
     {
         // Stop followers first or the follower may start re-electing.
 
@@ -42,7 +42,7 @@ async fn follower_restart_does_not_interrupt() -> anyhow::Result<()> {
         let (n0, _sto0, _sm0) = router.remove_node(0).unwrap();
         n0.shutdown().await?;
 
-        tracing::info!("--- restart node 1,2");
+        tracing::info!(log_index, "--- restart node 1,2");
 
         router.new_raft_node_with_sto(1, sto1, sm1).await;
         router.new_raft_node_with_sto(2, sto2, sm2).await;

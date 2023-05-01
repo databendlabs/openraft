@@ -25,7 +25,7 @@ async fn trigger_snapshot() -> anyhow::Result<()> {
     tracing::info!("--- initializing cluster");
     let mut log_index = router.new_cluster(btreeset! {0,1}, btreeset! {}).await?;
 
-    tracing::info!("--- trigger snapshot for node-1");
+    tracing::info!(log_index, "--- trigger snapshot for node-1");
     {
         let n1 = router.get_raft_handle(&1)?;
         n1.trigger_snapshot().await?;
@@ -36,7 +36,7 @@ async fn trigger_snapshot() -> anyhow::Result<()> {
             .await?;
     }
 
-    tracing::info!("--- send some logs");
+    tracing::info!(log_index, "--- send some logs");
     {
         router.client_request_many(0, "0", 10).await?;
         log_index += 10;
@@ -45,7 +45,7 @@ async fn trigger_snapshot() -> anyhow::Result<()> {
         router.wait(&1, timeout()).log(Some(log_index), "node-1 write logs").await?;
     }
 
-    tracing::info!("--- trigger snapshot for node-0");
+    tracing::info!(log_index, "--- trigger snapshot for node-0");
     {
         let n0 = router.get_raft_handle(&0)?;
         n0.trigger_snapshot().await?;

@@ -47,7 +47,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
 
     let mut log_index = router.new_cluster(btreeset! {0}, btreeset! {}).await?;
 
-    tracing::info!("--- send just enough logs to trigger snapshot");
+    tracing::info!(log_index, "--- send just enough logs to trigger snapshot");
     {
         router.client_request_many(0, "0", (snapshot_threshold - 1 - log_index) as usize).await?;
         log_index = snapshot_threshold - 1;
@@ -81,13 +81,13 @@ async fn snapshot_overrides_membership() -> Result<()> {
             .await?;
     }
 
-    tracing::info!("--- create learner");
+    tracing::info!(log_index, "--- create learner");
     {
-        tracing::info!("--- create learner");
+        tracing::info!(log_index, "--- create learner");
         router.new_raft_node(1).await;
         let (mut sto, mut sm) = router.get_storage_handle(&1)?;
 
-        tracing::info!("--- add a membership config log to the learner");
+        tracing::info!(log_index, "--- add a membership config log to the learner");
         {
             let req = AppendEntriesRequest {
                 vote: Vote::new_committed(1, 0),
@@ -100,7 +100,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
             };
             router.new_client(1, &()).await.send_append_entries(req).await?;
 
-            tracing::info!("--- check that learner membership is affected");
+            tracing::info!(log_index, "--- check that learner membership is affected");
             {
                 let m = StorageHelper::new(&mut sto, &mut sm).get_membership().await?;
 
@@ -112,14 +112,17 @@ async fn snapshot_overrides_membership() -> Result<()> {
             }
         }
 
-        tracing::info!("--- add learner to the cluster to receive snapshot, which overrides the learner storage");
+        tracing::info!(
+            log_index,
+            "--- add learner to the cluster to receive snapshot, which overrides the learner storage"
+        );
         {
             let snapshot_index = log_index;
 
             router.add_learner(0, 1).await.expect("failed to add new node as learner");
             log_index += 1;
 
-            tracing::info!("--- DONE add learner");
+            tracing::info!(log_index, "--- DONE add learner");
 
             router.wait_for_log(&btreeset![0, 1], Some(log_index), timeout(), "add learner").await?;
             router

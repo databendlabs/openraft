@@ -32,7 +32,7 @@ async fn add_remove_voter() -> Result<()> {
 
     let mut log_index = router.new_cluster(c01234.clone(), btreeset! {}).await?;
 
-    tracing::info!("--- write 100 logs");
+    tracing::info!(log_index, "--- write 100 logs");
     {
         router.client_request_many(0, "client", 100).await?;
         log_index += 100;
@@ -40,7 +40,7 @@ async fn add_remove_voter() -> Result<()> {
         router.wait_for_log(&c01234, Some(log_index), timeout(), "write 100 logs").await?;
     }
 
-    tracing::info!("--- remove n{}", 4);
+    tracing::info!(log_index, "--- remove n{}", 4);
     {
         let node = router.get_raft_handle(&0)?;
         node.change_membership(c0123.clone(), false).await?;
@@ -49,7 +49,7 @@ async fn add_remove_voter() -> Result<()> {
         router.wait_for_log(&c0123, Some(log_index), timeout(), "removed node-4 from membership").await?;
     }
 
-    tracing::info!("--- write another 100 logs");
+    tracing::info!(log_index, "--- write another 100 logs");
     {
         router.client_request_many(0, "client", 100).await?;
         log_index += 100;
@@ -57,7 +57,7 @@ async fn add_remove_voter() -> Result<()> {
 
     router.wait_for_log(&c0123, Some(log_index), timeout(), "4 nodes recv logs 100~200").await?;
 
-    tracing::info!("--- log will not be sync to removed node");
+    tracing::info!(log_index, "--- log will not be sync to removed node");
     {
         let x = router.latest_metrics();
         assert!(x[4].last_log_index < Some(log_index - 50));

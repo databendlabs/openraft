@@ -32,7 +32,7 @@ async fn after_snapshot_add_learner_and_request_a_log() -> Result<()> {
     let mut log_index = router.new_cluster(btreeset! {0}, btreeset! {}).await?;
     let snapshot_index;
 
-    tracing::info!("--- send just enough logs to trigger snapshot");
+    tracing::info!(log_index, "--- send just enough logs to trigger snapshot");
     {
         router.client_request_many(0, "0", (snapshot_threshold - 1 - log_index) as usize).await?;
         log_index = snapshot_threshold - 1;
@@ -67,13 +67,16 @@ async fn after_snapshot_add_learner_and_request_a_log() -> Result<()> {
             .await?;
     }
 
-    tracing::info!("--- add learner to the cluster to receive snapshot, which overrides the learner storage");
+    tracing::info!(
+        log_index,
+        "--- add learner to the cluster to receive snapshot, which overrides the learner storage"
+    );
     {
         router.new_raft_node(1).await;
         router.add_learner(0, 1).await.expect("failed to add new node as learner");
         log_index += 1;
 
-        tracing::info!("--- DONE add learner");
+        tracing::info!(log_index, "--- DONE add learner");
 
         router
             .wait(&1, timeout())
@@ -84,7 +87,7 @@ async fn after_snapshot_add_learner_and_request_a_log() -> Result<()> {
             .await?;
 
         log_index += router.client_request_many(0, "0", 1).await?;
-        tracing::info!("--- after request a log");
+        tracing::info!(log_index, "--- after request a log");
 
         router
             .wait_for_log(

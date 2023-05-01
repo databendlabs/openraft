@@ -38,7 +38,7 @@ async fn snapshot_line_rate_to_snapshot() -> Result<()> {
 
     let mut log_index = router.new_cluster(btreeset! {0}, btreeset! {1}).await?;
 
-    tracing::info!("--- send more than half threshold logs");
+    tracing::info!(log_index, "--- send more than half threshold logs");
     {
         router.client_request_many(0, "0", (snapshot_threshold / 2 + 2 - log_index) as usize).await?;
         log_index = snapshot_threshold / 2 + 2;
@@ -53,8 +53,8 @@ async fn snapshot_line_rate_to_snapshot() -> Result<()> {
             .await?;
     }
 
-    tracing::info!("--- stop replication to node 1");
-    tracing::info!("--- send just enough logs to trigger snapshot");
+    tracing::info!(log_index, "--- stop replication to node 1");
+    tracing::info!(log_index, "--- send just enough logs to trigger snapshot");
     {
         router.isolate_node(1);
 
@@ -79,7 +79,7 @@ async fn snapshot_line_rate_to_snapshot() -> Result<()> {
             .await?;
     }
 
-    tracing::info!("--- restore node 1 and replication");
+    tracing::info!(log_index, "--- restore node 1 and replication");
     {
         router.restore_node(1);
 

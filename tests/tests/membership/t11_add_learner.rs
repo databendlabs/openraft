@@ -38,7 +38,7 @@ async fn add_learner_basic() -> Result<()> {
 
     let mut log_index = router.new_cluster(btreeset! {0}, btreeset! {}).await?;
 
-    tracing::info!("--- re-adding leader commits a new log but does nothing");
+    tracing::info!(log_index, "--- re-adding leader commits a new log but does nothing");
     {
         let res = router.add_learner(0, 0).await?;
         log_index += 1;
@@ -47,14 +47,14 @@ async fn add_learner_basic() -> Result<()> {
         router.wait(&0, timeout()).log(Some(log_index), "commit re-adding leader log").await?;
     }
 
-    tracing::info!("--- add new node node-1");
+    tracing::info!(log_index, "--- add new node node-1");
     {
-        tracing::info!("--- write up to 1000 logs");
+        tracing::info!(log_index, "--- write up to 1000 logs");
         {
             router.client_request_many(0, "learner_add", 1000 - log_index as usize).await?;
             log_index = 1000;
 
-            tracing::info!("--- write up to 1000 logs done");
+            tracing::info!(log_index, "--- write up to 1000 logs done");
             router.wait_for_log(&btreeset! {0}, Some(log_index), timeout(), "write 1000 logs to leader").await?;
         }
 
@@ -64,7 +64,7 @@ async fn add_learner_basic() -> Result<()> {
 
         router.wait_for_log(&btreeset! {0,1}, Some(log_index), timeout(), "add learner").await?;
 
-        tracing::info!("--- add_learner blocks until the replication catches up");
+        tracing::info!(log_index, "--- add_learner blocks until the replication catches up");
         {
             let (mut sto1, _sm1) = router.get_storage_handle(&1)?;
 
@@ -78,7 +78,7 @@ async fn add_learner_basic() -> Result<()> {
         }
     }
 
-    tracing::info!("--- re-add node-1, nothing changes");
+    tracing::info!(log_index, "--- re-add node-1, nothing changes");
     {
         let res = router.add_learner(0, 1).await?;
         log_index += 1;
@@ -113,9 +113,9 @@ async fn add_learner_non_blocking() -> Result<()> {
 
     let mut log_index = router.new_cluster(btreeset! {0}, btreeset! {}).await?;
 
-    tracing::info!("--- add new node node-1, in non blocking mode");
+    tracing::info!(log_index, "--- add new node node-1, in non blocking mode");
     {
-        tracing::info!("--- write up to 100 logs");
+        tracing::info!(log_index, "--- write up to 100 logs");
 
         router.client_request_many(0, "learner_add", 100 - log_index as usize).await?;
         log_index = 100;
@@ -158,7 +158,7 @@ async fn add_learner_when_previous_membership_not_committed() -> Result<()> {
 
     let log_index = router.new_cluster(btreeset! {0}, btreeset! {1}).await?;
 
-    tracing::info!("--- block replication to prevent committing any log");
+    tracing::info!(log_index, "--- block replication to prevent committing any log");
     {
         router.isolate_node(1);
 
@@ -172,7 +172,7 @@ async fn add_learner_when_previous_membership_not_committed() -> Result<()> {
         sleep(Duration::from_millis(500)).await;
     }
 
-    tracing::info!("--- add new node node-1, in non blocking mode");
+    tracing::info!(log_index, "--- add new node node-1, in non blocking mode");
     {
         let node = router.get_raft_handle(&0)?;
         let res = node.add_learner(2, (), true).await;
@@ -227,7 +227,7 @@ async fn check_learner_after_leader_transferred() -> Result<()> {
     node.change_membership(btreeset![1, 3, 4], false).await?;
     log_index += 2; // 2 change_membership log
 
-    tracing::info!("--- old leader commits 2 membership log");
+    tracing::info!(log_index, "--- old leader commits 2 membership log");
     {
         router
             .wait(&orig_leader_id, timeout())
@@ -235,7 +235,7 @@ async fn check_learner_after_leader_transferred() -> Result<()> {
             .await?;
     }
 
-    tracing::info!("--- new cluster commits 2 membership logs");
+    tracing::info!(log_index, "--- new cluster commits 2 membership logs");
     {
         // leader commit a new log.
         log_index += 1;
@@ -251,7 +251,7 @@ async fn check_learner_after_leader_transferred() -> Result<()> {
         }
     }
 
-    tracing::info!("--- check new cluster membership");
+    tracing::info!(log_index, "--- check new cluster membership");
     {
         let (mut sto1, mut sm1) = router.get_storage_handle(&1)?;
         let m = StorageHelper::new(&mut sto1, &mut sm1).get_membership().await?;
@@ -270,7 +270,7 @@ async fn check_learner_after_leader_transferred() -> Result<()> {
         );
     }
 
-    tracing::info!("--- check learner in new cluster can receive new log");
+    tracing::info!(log_index, "--- check learner in new cluster can receive new log");
     {
         let new_leader = router.leader().expect("expected the cluster to have a new leader");
         router.client_request_many(new_leader, "0", 1).await?;

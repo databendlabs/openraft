@@ -37,7 +37,7 @@ async fn leader_election_after_changing_0_to_01234() -> Result<()> {
     let mut log_index = router.new_cluster(btreeset! {0,1,2,3,4}, btreeset! {}).await?;
 
     // Isolate old leader and assert that a new leader takes over.
-    tracing::info!("--- isolating leader node 0");
+    tracing::info!(log_index, "--- isolating leader node 0");
     router.isolate_node(0);
 
     // Wait for leader lease to expire
@@ -61,7 +61,7 @@ async fn leader_election_after_changing_0_to_01234() -> Result<()> {
 
     let leader_id = 1;
 
-    tracing::info!("--- restore node 0, log_index:{}", log_index);
+    tracing::info!(log_index, "--- restore node 0, log_index:{}", log_index);
     router.restore_node(0);
     router
         .wait(&0, timeout())

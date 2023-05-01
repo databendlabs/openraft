@@ -36,7 +36,7 @@ async fn snapshot_chunk_size() -> Result<()> {
 
     let mut log_index = 0;
 
-    tracing::info!("--- initializing cluster");
+    tracing::info!(log_index, "--- initializing cluster");
     {
         router.new_raft_node(0).await;
 
@@ -49,7 +49,7 @@ async fn snapshot_chunk_size() -> Result<()> {
         router.wait_for_log(&btreeset![0], Some(log_index), timeout(), "init leader").await?;
     }
 
-    tracing::info!("--- send just enough logs to trigger snapshot");
+    tracing::info!(log_index, "--- send just enough logs to trigger snapshot");
     {
         router.client_request_many(0, "0", (snapshot_threshold - 1 - log_index) as usize).await?;
         log_index = snapshot_threshold - 1;
@@ -83,7 +83,7 @@ async fn snapshot_chunk_size() -> Result<()> {
             .await?;
     }
 
-    tracing::info!("--- add learner to receive snapshot and logs");
+    tracing::info!(log_index, "--- add learner to receive snapshot and logs");
     {
         router.new_raft_node(1).await;
         router.add_learner(0, 1).await.expect("failed to add new node as learner");

@@ -34,7 +34,7 @@ async fn heartbeat_reject_vote() -> Result<()> {
     let log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {3}).await?;
 
     let vote_modified_time = Arc::new(Mutex::new(Some(Instant::now())));
-    tracing::info!("--- leader lease is set by heartbeat");
+    tracing::info!(log_index, "--- leader lease is set by heartbeat");
     {
         let m = vote_modified_time.clone();
 
@@ -59,20 +59,20 @@ async fn heartbeat_reject_vote() -> Result<()> {
     let node0 = router.get_raft_handle(&0)?;
     let node1 = router.get_raft_handle(&1)?;
 
-    tracing::info!("--- leader lease rejects vote request");
+    tracing::info!(log_index, "--- leader lease rejects vote request");
     {
         let res = node1.vote(VoteRequest::new(Vote::new(10, 2), Some(log_id1(10, 10)))).await?;
         assert!(!res.vote_granted);
     }
 
-    tracing::info!("--- ensures no more blank-log heartbeat is used");
+    tracing::info!(log_index, "--- ensures no more blank-log heartbeat is used");
     {
         // TODO: this part can be removed when blank-log heartbeat is removed.
         sleep(Duration::from_millis(1500)).await;
         router.wait(&1, timeout()).log(Some(log_index), "no log is written").await?;
     }
 
-    tracing::info!("--- disable heartbeat, vote request will be granted");
+    tracing::info!(log_index, "--- disable heartbeat, vote request will be granted");
     {
         node0.enable_heartbeat(false);
         sleep(Duration::from_millis(1500)).await;

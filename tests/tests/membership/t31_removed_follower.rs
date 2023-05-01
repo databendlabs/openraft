@@ -24,7 +24,7 @@ async fn stop_replication_to_removed_follower() -> Result<()> {
 
     let mut log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
 
-    tracing::info!("--- add node 3,4");
+    tracing::info!(log_index, "--- add node 3,4");
 
     router.new_raft_node(3).await;
     router.new_raft_node(4).await;
@@ -34,7 +34,7 @@ async fn stop_replication_to_removed_follower() -> Result<()> {
     log_index += 2;
     router.wait_for_log(&btreeset![0, 1, 2], Some(log_index), None, "cluster of 2 learners").await?;
 
-    tracing::info!("--- changing config to 0,3,4");
+    tracing::info!(log_index, "--- changing config to 0,3,4");
     {
         let node = router.get_raft_handle(&0)?;
         node.change_membership(btreeset![0, 3, 4], false).await?;
@@ -75,7 +75,7 @@ async fn stop_replication_to_removed_follower() -> Result<()> {
         );
     }
 
-    tracing::info!("--- write to new cluster, current log={}", log_index);
+    tracing::info!(log_index, "--- write to new cluster, current log={}", log_index);
     {
         let n = 10;
         router.client_request_many(0, "after_change", n).await?;

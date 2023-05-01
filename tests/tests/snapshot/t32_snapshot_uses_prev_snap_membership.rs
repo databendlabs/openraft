@@ -50,7 +50,7 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
 
     let (mut sto0, mut sm0) = router.get_storage_handle(&0)?;
 
-    tracing::info!("--- send just enough logs to trigger snapshot");
+    tracing::info!(log_index, "--- send just enough logs to trigger snapshot");
     {
         router.client_request_many(0, "0", (snapshot_threshold - 1 - log_index) as usize).await?;
         log_index = snapshot_threshold - 1;
@@ -90,7 +90,7 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
         );
     }
 
-    tracing::info!("--- send just enough logs to trigger the 2nd snapshot");
+    tracing::info!(log_index, "--- send just enough logs to trigger the 2nd snapshot");
     {
         router.client_request_many(0, "0", (snapshot_threshold * 2 - 1 - log_index) as usize).await?;
         log_index = snapshot_threshold * 2 - 1;
@@ -106,7 +106,7 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
             .await?;
     }
 
-    tracing::info!("--- check membership");
+    tracing::info!(log_index, "--- check membership");
     {
         {
             let logs = sto0.get_log_entries(..).await?;

@@ -35,7 +35,7 @@ async fn snapshot_arguments() -> Result<()> {
 
     let mut log_index = 0;
 
-    tracing::info!("--- initializing cluster");
+    tracing::info!(log_index, "--- initializing cluster");
     {
         router.new_raft_node(0).await;
 
@@ -66,7 +66,7 @@ async fn snapshot_arguments() -> Result<()> {
         done: false,
     };
 
-    tracing::info!("--- only allow to begin a new session when offset is 0");
+    tracing::info!(log_index, "--- only allow to begin a new session when offset is 0");
     {
         let mut req = make_req();
         req.offset = 2;
@@ -77,7 +77,7 @@ async fn snapshot_arguments() -> Result<()> {
         );
     }
 
-    tracing::info!("--- install and write ss1:[0,3)");
+    tracing::info!(log_index, "--- install and write ss1:[0,3)");
     {
         n.0.install_snapshot(make_req()).await?;
     }
