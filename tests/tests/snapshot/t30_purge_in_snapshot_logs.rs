@@ -37,7 +37,7 @@ async fn purge_in_snapshot_logs() -> Result<()> {
 
     let (mut sto0, mut _sm0) = router.get_storage_handle(&0)?;
 
-    tracing::info!("--- build snapshot on leader, check purged log");
+    tracing::info!(log_index, "--- build snapshot on leader, check purged log");
     {
         log_index += router.client_request_many(0, "0", 10).await?;
         leader.trigger_snapshot().await?;
@@ -59,7 +59,7 @@ async fn purge_in_snapshot_logs() -> Result<()> {
 
     // Leader:  -------15..20
     // Learner: 0..10
-    tracing::info!("--- block replication, build another snapshot");
+    tracing::info!(log_index, "--- block replication, build another snapshot");
     {
         router.isolate_node(1);
 
@@ -80,7 +80,10 @@ async fn purge_in_snapshot_logs() -> Result<()> {
     // just before building snapshot.
     sleep(Duration::from_millis(500)).await;
 
-    tracing::info!("--- restore replication, install the 2nd snapshot on learner");
+    tracing::info!(
+        log_index,
+        "--- restore replication, install the 2nd snapshot on learner"
+    );
     {
         router.restore_node(1);
 

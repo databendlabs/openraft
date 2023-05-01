@@ -270,7 +270,7 @@ impl TypedRaftRouter {
         self.initialize_from_single_node(leader_id).await?;
         let mut log_index = 1; // log 0: initial membership log; log 1: leader initial log
 
-        tracing::info!("--- wait for init node to become leader");
+        tracing::info!(log_index, "--- wait for init node to become leader");
 
         self.wait_for_log(&btreeset![leader_id], Some(log_index), timeout(), "init").await?;
         self.assert_stable_cluster(Some(1), Some(log_index));
@@ -279,7 +279,7 @@ impl TypedRaftRouter {
             if *id == leader_id {
                 continue;
             }
-            tracing::info!("--- add voter: {}", id);
+            tracing::info!(log_index, "--- add voter: {}", id);
 
             self.new_raft_node(*id).await;
             self.add_learner(leader_id, *id).await?;
@@ -294,7 +294,7 @@ impl TypedRaftRouter {
         .await?;
 
         if voter_ids.len() > 1 {
-            tracing::info!("--- change membership to setup voters: {:?}", voter_ids);
+            tracing::info!(log_index, "--- change membership to setup voters: {:?}", voter_ids);
 
             let node = self.get_raft_handle(&MemNodeId::default())?;
             node.change_membership(voter_ids.clone(), false).await?;
@@ -310,7 +310,7 @@ impl TypedRaftRouter {
         }
 
         for id in learners.clone() {
-            tracing::info!("--- add learner: {}", id);
+            tracing::info!(log_index, "--- add learner: {}", id);
             self.new_raft_node(id).await;
             self.add_learner(MemNodeId::default(), id).await?;
             log_index += 1;

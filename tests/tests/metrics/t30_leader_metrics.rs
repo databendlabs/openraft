@@ -52,7 +52,7 @@ async fn leader_metrics() -> Result<()> {
 
     router.assert_pristine_cluster();
 
-    tracing::info!("--- initializing cluster");
+    tracing::info!(log_index, "--- initializing cluster");
 
     router.initialize_from_single_node(0).await?;
     log_index += 1;
@@ -83,7 +83,7 @@ async fn leader_metrics() -> Result<()> {
     router.new_raft_node(3).await;
     router.new_raft_node(4).await;
 
-    tracing::info!("--- adding 4 new nodes to cluster");
+    tracing::info!(log_index, "--- adding 4 new nodes to cluster");
 
     {
         let mut new_nodes = futures::stream::FuturesUnordered::new();
@@ -98,7 +98,7 @@ async fn leader_metrics() -> Result<()> {
     log_index += 4; // 4 add_learner log
     router.wait_for_log(&c01234, Some(log_index), timeout(), "add learner 1,2,3,4").await?;
 
-    tracing::info!("--- changing cluster config to 01234");
+    tracing::info!(log_index, "--- changing cluster config to 01234");
 
     let node = router.get_raft_handle(&0)?;
     node.change_membership(c01234.clone(), false).await?;
@@ -129,7 +129,7 @@ async fn leader_metrics() -> Result<()> {
     router.client_request_many(0, "client", 10).await?;
     log_index += 10;
 
-    tracing::info!("--- remove n{}", 4);
+    tracing::info!(log_index, "--- remove n{}", 4);
     {
         let node = router.get_raft_handle(&0)?;
         node.change_membership(c0123.clone(), false).await?;
@@ -145,7 +145,10 @@ async fn leader_metrics() -> Result<()> {
             .await?;
     }
 
-    tracing::info!("--- replication metrics should reflect the replication state");
+    tracing::info!(
+        log_index,
+        "--- replication metrics should reflect the replication state"
+    );
     {
         let ww = Some(LogId::new(CommittedLeaderId::new(1, 0), log_index));
         let want_repl = btreemap! { 0=>ww, 1=>ww, 2=>ww, 3=>ww};
@@ -168,7 +171,7 @@ async fn leader_metrics() -> Result<()> {
     let n0 = router.get_raft_handle(&0)?;
     let n1 = router.get_raft_handle(&1)?;
 
-    tracing::info!("--- let node-1 to elect to take leadership from node-0");
+    tracing::info!(log_index, "--- let node-1 to elect to take leadership from node-0");
     {
         // Let the leader lease expire
         sleep(Duration::from_millis(700)).await;

@@ -30,7 +30,7 @@ async fn append_entries_backoff() -> Result<()> {
     let counts0 = router.get_rpc_count();
     let n = 10u64;
 
-    tracing::info!("--- set node 2 to unreachable, and write 10 entries");
+    tracing::info!(log_index, "--- set node 2 to unreachable, and write 10 entries");
     {
         router.set_unreachable(2, true);
 

@@ -41,7 +41,7 @@ async fn single_node() -> Result<()> {
     router.assert_pristine_cluster();
 
     // Initialize the cluster, then assert that a stable cluster was formed & held.
-    tracing::info!("--- initializing cluster");
+    tracing::info!(log_index, "--- initializing cluster");
     router.initialize_from_single_node(0).await?;
     log_index += 1;
 

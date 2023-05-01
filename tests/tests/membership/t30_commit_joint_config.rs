@@ -44,7 +44,7 @@ async fn commit_joint_config_during_0_to_012() -> Result<()> {
     router.new_raft_node(1).await;
     router.new_raft_node(2).await;
 
-    tracing::info!("--- adding new nodes to cluster");
+    tracing::info!(log_index, "--- adding new nodes to cluster");
     let mut new_nodes = futures::stream::FuturesUnordered::new();
     new_nodes.push(router.add_learner(0, 1));
     new_nodes.push(router.add_learner(0, 2));
@@ -55,12 +55,15 @@ async fn commit_joint_config_during_0_to_012() -> Result<()> {
 
     router.wait_for_log(&btreeset![0], Some(log_index), None, "init node 0").await?;
 
-    tracing::info!("--- isolate node 1,2, so that membership [0,1,2] wont commit");
+    tracing::info!(
+        log_index,
+        "--- isolate node 1,2, so that membership [0,1,2] wont commit"
+    );
 
     router.isolate_node(1);
     router.isolate_node(2);
 
-    tracing::info!("--- changing cluster config, should timeout");
+    tracing::info!(log_index, "--- changing cluster config, should timeout");
 
     tokio::spawn({
         let router = router.clone();
@@ -106,19 +109,19 @@ async fn commit_joint_config_during_012_to_234() -> Result<()> {
 
     let mut log_index = router.new_cluster(btreeset! {0,1,2,3,4}, btreeset! {}).await?;
 
-    tracing::info!("--- isolate 3,4");
+    tracing::info!(log_index, "--- isolate 3,4");
 
     router.isolate_node(3);
     router.isolate_node(4);
 
-    tracing::info!("--- changing config to 0,1,2");
+    tracing::info!(log_index, "--- changing config to 0,1,2");
     let node = router.get_raft_handle(&0)?;
     node.change_membership(btreeset![0, 1, 2], false).await?;
     log_index += 2;
 
     router.wait_for_log(&btreeset![0, 1, 2], Some(log_index), None, "cluster of 0,1,2").await?;
 
-    tracing::info!("--- changing config to 2,3,4");
+    tracing::info!(log_index, "--- changing config to 2,3,4");
     {
         let router = router.clone();
         // this is expected to be blocked since 3 and 4 are isolated.

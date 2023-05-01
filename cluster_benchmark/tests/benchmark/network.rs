@@ -68,10 +68,10 @@ impl Router {
         rafts.get_mut(&0).unwrap().initialize(voter_ids.clone()).await?;
         let log_index = 1; // log 0: initial membership log
 
-        tracing::info!("--- wait for init node to become leader");
+        tracing::info!(log_index, "--- wait for init node to become leader");
 
         for (id, s) in rafts.iter_mut() {
-            tracing::info!("--- wait init log: {}, index: {}", id, log_index);
+            tracing::info!(log_index, "--- wait init log: {}, index: {}", id, log_index);
             s.wait(timeout()).log(Some(log_index), "init").await?;
         }
 

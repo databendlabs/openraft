@@ -76,7 +76,7 @@ async fn initialization() -> anyhow::Result<()> {
     }
 
     // Initialize the cluster, then assert that a stable cluster was formed & held.
-    tracing::info!("--- initializing cluster");
+    tracing::info!(log_index, "--- initializing cluster");
     {
         let n0 = router.get_raft_handle(&0)?;
         n0.initialize(btreeset! {0,1,2}).await?;
@@ -89,7 +89,7 @@ async fn initialization() -> anyhow::Result<()> {
 
     router.assert_stable_cluster(Some(1), Some(log_index));
 
-    tracing::info!("--- check membership state");
+    tracing::info!(log_index, "--- check membership state");
     for node_id in [0, 1, 2] {
         router.external_request(node_id, move |s, _sto, _net| {
             let want = EffectiveMembership::new(
@@ -116,7 +116,12 @@ async fn initialization() -> anyhow::Result<()> {
         let (mut sto, mut sm) = router.get_storage_handle(&1)?;
         let first = sto.get_log_entries(0..2).await?.into_iter().next();
 
-        tracing::info!("--- check membership is replicated: id: {}, first log: {:?}", i, first);
+        tracing::info!(
+            log_index,
+            "--- check membership is replicated: id: {}, first log: {:?}",
+            i,
+            first
+        );
         let mem = match first.unwrap().payload {
             EntryPayload::Membership(ref x) => x.clone(),
             _ => {

@@ -41,7 +41,7 @@ async fn client_reads() -> Result<()> {
     router.assert_pristine_cluster();
 
     // Initialize the cluster, then assert that a stable cluster was formed & held.
-    tracing::info!("--- initializing cluster");
+    tracing::info!(log_index, "--- initializing cluster");
     router.initialize_from_single_node(0).await?;
     log_index += 1;
 
@@ -59,12 +59,12 @@ async fn client_reads() -> Result<()> {
     router.is_leader(1).await.expect_err("expected is_leader on follower node 1 to fail");
     router.is_leader(2).await.expect_err("expected is_leader on follower node 2 to fail");
 
-    tracing::info!("--- isolate node 1 then is_leader should work");
+    tracing::info!(log_index, "--- isolate node 1 then is_leader should work");
 
     router.isolate_node(1);
     router.is_leader(leader).await?;
 
-    tracing::info!("--- isolate node 2 then is_leader should fail");
+    tracing::info!(log_index, "--- isolate node 2 then is_leader should fail");
 
     router.isolate_node(2);
     let rst = router.is_leader(leader).await;

@@ -56,7 +56,7 @@ async fn compaction() -> Result<()> {
 
     router.assert_pristine_cluster();
 
-    tracing::info!("--- initializing cluster");
+    tracing::info!(log_index, "--- initializing cluster");
 
     router.initialize_from_single_node(0).await?;
     log_index += 1;
@@ -71,7 +71,7 @@ async fn compaction() -> Result<()> {
     router.client_request_many(0, "0", (snapshot_threshold - 1 - log_index) as usize).await?;
     log_index = snapshot_threshold - 1;
 
-    tracing::info!("--- log_index: {}", log_index);
+    tracing::info!(log_index, "--- log_index: {}", log_index);
 
     router.wait_for_log(&btreeset![0], Some(log_index), timeout(), "write").await?;
     router.assert_stable_cluster(Some(1), Some(log_index));
@@ -106,17 +106,20 @@ async fn compaction() -> Result<()> {
     router.add_learner(0, 1).await.expect("failed to add new node as learner");
     log_index += 1; // add_learner log
 
-    tracing::info!("--- add 1 log after snapshot, log_index: {}", log_index);
+    tracing::info!(log_index, "--- add 1 log after snapshot, log_index: {}", log_index);
     {
         router.client_request_many(0, "0", 1).await?;
         log_index += 1;
     }
 
-    tracing::info!("--- log_index: {}", log_index);
+    tracing::info!(log_index, "--- log_index: {}", log_index);
 
     router.wait_for_log(&btreeset![0, 1], Some(log_index), timeout(), "add follower").await?;
 
-    tracing::info!("--- logs should be deleted after installing snapshot; left only the last one");
+    tracing::info!(
+        log_index,
+        "--- logs should be deleted after installing snapshot; left only the last one"
+    );
     {
         let (mut sto, _sm) = router.get_storage_handle(&1)?;
         let logs = sto.get_log_entries(..).await?;

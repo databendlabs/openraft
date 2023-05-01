@@ -32,7 +32,7 @@ async fn startup_build_snapshot() -> anyhow::Result<()> {
     tracing::info!("--- initializing cluster");
     let mut log_index = router.new_cluster(btreeset! {0}, btreeset! {}).await?;
 
-    tracing::info!("--- send client requests");
+    tracing::info!(log_index, "--- send client requests");
     {
         router.client_request_many(0, "0", (20 - 1 - log_index) as usize).await?;
         log_index = 20 - 1;
@@ -41,18 +41,22 @@ async fn startup_build_snapshot() -> anyhow::Result<()> {
         router.wait(&0, timeout()).snapshot(log_id(1, 0, log_index), "node-0 snapshot").await?;
     }
 
-    tracing::info!("--- shut down and purge to log index: {}", 5);
+    tracing::info!(log_index, "--- shut down and purge to log index: {}", 5);
     let (_, mut log_store, mut sm) = router.remove_node(0).unwrap();
     log_store.purge(log_id(1, 0, 19)).await?;
 
-    tracing::info!("--- drop current snapshot");
+    tracing::info!(log_index, "--- drop current snapshot");
     {
         sm.storage_mut().await.drop_snapshot().await;
         let snap = sm.get_current_snapshot().await?;
         assert!(snap.is_none());
     }
 
-    tracing::info!("--- restart, expect snapshot at index: {} for node-1", log_index);
+    tracing::info!(
+        log_index,
+        "--- restart, expect snapshot at index: {} for node-1",
+        log_index
+    );
     {
         router.new_raft_node_with_sto(0, log_store, sm).await;
         router.wait(&0, timeout()).snapshot(log_id(1, 0, log_index), "node-1 snapshot").await?;

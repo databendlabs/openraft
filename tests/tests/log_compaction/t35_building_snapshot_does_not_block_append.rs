@@ -31,20 +31,20 @@ async fn building_snapshot_does_not_block_append() -> Result<()> {
 
     let follower = router.get_raft_handle(&1)?;
 
-    tracing::info!("--- set flag to block snapshot building");
+    tracing::info!(log_index, "--- set flag to block snapshot building");
     {
         let (mut _sto1, sm1) = router.get_storage_handle(&1)?;
         sm1.storage_mut().await.set_blocking(BlockOperation::BuildSnapshot, Duration::from_millis(5_000));
     }
 
-    tracing::info!("--- build snapshot on follower, it should block");
+    tracing::info!(log_index, "--- build snapshot on follower, it should block");
     {
         log_index += router.client_request_many(0, "0", 10).await?;
         router.wait(&1, timeout()).log(Some(log_index), "written 10 logs").await?;
 
         follower.trigger_snapshot().await?;
 
-        tracing::info!("--- sleep 500 ms to make sure snapshot is started");
+        tracing::info!(log_index, "--- sleep 500 ms to make sure snapshot is started");
         tokio::time::sleep(Duration::from_millis(500)).await;
 
         let res = router
@@ -54,7 +54,10 @@ async fn building_snapshot_does_not_block_append() -> Result<()> {
         assert!(res.is_err(), "snapshot should be blocked and can not finish");
     }
 
-    tracing::info!("--- send append-entries request to the follower that is building snapshot");
+    tracing::info!(
+        log_index,
+        "--- send append-entries request to the follower that is building snapshot"
+    );
     {
         let rpc = AppendEntriesRequest::<openraft_memstore::TypeConfig> {
             vote: Vote::new_committed(1, 0),

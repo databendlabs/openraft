@@ -118,7 +118,7 @@ async fn change_from_to(old: BTreeSet<MemNodeId>, change_members: BTreeSet<MemNo
 
     let mut log_index = router.new_cluster(old.clone(), btreeset! {}).await?;
 
-    tracing::info!("--- write 10 logs");
+    tracing::info!(log_index, "--- write 10 logs");
     {
         router.client_request_many(0, "client", 10).await?;
         log_index += 10;
@@ -128,7 +128,7 @@ async fn change_from_to(old: BTreeSet<MemNodeId>, change_members: BTreeSet<MemNo
 
     let orig_leader = router.leader().expect("expected the cluster to have a leader");
 
-    tracing::info!("--- change to {:?}", new);
+    tracing::info!(log_index, "--- change to {:?}", new);
     {
         for id in only_in_new {
             router.new_raft_node(*id).await;
@@ -145,13 +145,13 @@ async fn change_from_to(old: BTreeSet<MemNodeId>, change_members: BTreeSet<MemNo
             log_index += 1;
         }
 
-        tracing::info!("--- let a node in the new cluster elect");
+        tracing::info!(log_index, "--- let a node in the new cluster elect");
         {
             let n = router.get_raft_handle(new.iter().next().unwrap())?;
             n.enable_elect(true);
         }
 
-        tracing::info!("--- wait for old leader or new leader");
+        tracing::info!(log_index, "--- wait for old leader or new leader");
         {
             for id in new.iter() {
                 router
@@ -181,7 +181,7 @@ async fn change_from_to(old: BTreeSet<MemNodeId>, change_members: BTreeSet<MemNo
         }
     }
 
-    tracing::info!("--- removed nodes are left in non-leader state");
+    tracing::info!(log_index, "--- removed nodes are left in non-leader state");
     {
         for id in only_in_old.clone() {
             router
@@ -198,7 +198,7 @@ async fn change_from_to(old: BTreeSet<MemNodeId>, change_members: BTreeSet<MemNo
         }
     }
 
-    tracing::info!("--- write another 10 logs");
+    tracing::info!(log_index, "--- write another 10 logs");
     {
         // get new leader
 
@@ -224,7 +224,7 @@ async fn change_from_to(old: BTreeSet<MemNodeId>, change_members: BTreeSet<MemNo
             .await?;
     }
 
-    tracing::info!("--- log will not be sync to removed node");
+    tracing::info!(log_index, "--- log will not be sync to removed node");
     {
         for id in only_in_old {
             let res = router
@@ -262,7 +262,7 @@ async fn change_by_add(old: BTreeSet<MemNodeId>, add: &[MemNodeId]) -> anyhow::R
 
     let mut log_index = router.new_cluster(old.clone(), btreeset! {}).await?;
 
-    tracing::info!("--- write 10 logs");
+    tracing::info!(log_index, "--- write 10 logs");
     {
         log_index += router.client_request_many(0, "client", 10).await?;
         for id in old.iter() {
@@ -272,7 +272,7 @@ async fn change_by_add(old: BTreeSet<MemNodeId>, add: &[MemNodeId]) -> anyhow::R
 
     let leader_id = router.leader().expect("expected the cluster to have a leader");
 
-    tracing::info!("--- add learner before change-membership");
+    tracing::info!(log_index, "--- add learner before change-membership");
     {
         for id in only_in_new {
             router.new_raft_node(*id).await;
@@ -282,7 +282,7 @@ async fn change_by_add(old: BTreeSet<MemNodeId>, add: &[MemNodeId]) -> anyhow::R
         }
     }
 
-    tracing::info!("--- change: {:?}", change);
+    tracing::info!(log_index, "--- change: {:?}", change);
     {
         let node = router.get_raft_handle(&0)?;
         node.change_membership(change, false).await?;
@@ -296,7 +296,7 @@ async fn change_by_add(old: BTreeSet<MemNodeId>, add: &[MemNodeId]) -> anyhow::R
         }
     }
 
-    tracing::info!("--- write another 10 logs");
+    tracing::info!(log_index, "--- write another 10 logs");
     {
         log_index += router.client_request_many(leader_id, "client", 10).await?;
 
@@ -331,7 +331,7 @@ async fn change_by_remove(old: BTreeSet<MemNodeId>, remove: &[MemNodeId]) -> any
 
     let mut log_index = router.new_cluster(old.clone(), btreeset! {}).await?;
 
-    tracing::info!("--- write 10 logs");
+    tracing::info!(log_index, "--- write 10 logs");
     {
         log_index += router.client_request_many(0, "client", 10).await?;
         for id in old.iter() {
@@ -341,7 +341,7 @@ async fn change_by_remove(old: BTreeSet<MemNodeId>, remove: &[MemNodeId]) -> any
 
     let orig_leader = router.leader().expect("expected the cluster to have a leader");
 
-    tracing::info!("--- change {:?}", &change);
+    tracing::info!(log_index, "--- change {:?}", &change);
     {
         let node = router.get_raft_handle(&0)?;
         node.change_membership(change.clone(), false).await?;
@@ -351,13 +351,13 @@ async fn change_by_remove(old: BTreeSet<MemNodeId>, remove: &[MemNodeId]) -> any
             log_index += 1;
         }
 
-        tracing::info!("--- let a node in the new cluster elect");
+        tracing::info!(log_index, "--- let a node in the new cluster elect");
         {
             let n = router.get_raft_handle(new.iter().next().unwrap())?;
             n.enable_elect(true);
         }
 
-        tracing::info!("--- wait for old leader or new leader");
+        tracing::info!(log_index, "--- wait for old leader or new leader");
         {
             for id in new.iter() {
                 router
@@ -387,7 +387,7 @@ async fn change_by_remove(old: BTreeSet<MemNodeId>, remove: &[MemNodeId]) -> any
         }
     }
 
-    tracing::info!("--- removed nodes are left in follower state");
+    tracing::info!(log_index, "--- removed nodes are left in follower state");
     {
         for id in only_in_old.clone() {
             // The removed node will be left in follower state, it can never elect itself
@@ -402,7 +402,7 @@ async fn change_by_remove(old: BTreeSet<MemNodeId>, remove: &[MemNodeId]) -> any
         }
     }
 
-    tracing::info!("--- write another 10 logs");
+    tracing::info!(log_index, "--- write another 10 logs");
     {
         // TODO(xp): leader may not be stable, other node may take leadership by a higher vote.
         //           Then client write may receive a ForwardToLeader Error with empty leader.
@@ -425,7 +425,7 @@ async fn change_by_remove(old: BTreeSet<MemNodeId>, remove: &[MemNodeId]) -> any
             .await?;
     }
 
-    tracing::info!("--- log will not be sync to removed node");
+    tracing::info!(log_index, "--- log will not be sync to removed node");
     {
         for id in only_in_old {
             let res = router

@@ -29,7 +29,7 @@ async fn t99_issue_584_replication_state_reverted() -> Result<()> {
     let mut log_index = router.new_cluster(btreeset! {0}, btreeset! {1}).await?;
 
     let n = 500u64;
-    tracing::info!("--- write up to {} logs", n);
+    tracing::info!(log_index, "--- write up to {} logs", n);
     {
         router.client_request_many(0, "foo", (n - log_index) as usize).await?;
         log_index = n;
@@ -37,7 +37,10 @@ async fn t99_issue_584_replication_state_reverted() -> Result<()> {
         router.wait(&1, timeout()).log(Some(log_index), "replicate all logs to learner").await?;
     }
 
-    tracing::info!("--- change-membership: make learner node-1 a voter. This should not panic");
+    tracing::info!(
+        log_index,
+        "--- change-membership: make learner node-1 a voter. This should not panic"
+    );
     {
         let leader = router.get_raft_handle(&0)?;
         leader.change_membership(btreeset![0, 1], false).await?;

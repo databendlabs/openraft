@@ -46,7 +46,7 @@ async fn remove_leader() -> Result<()> {
     // 2 for change_membership
     log_index += 2;
 
-    tracing::info!("--- old leader commits 2 membership log");
+    tracing::info!(log_index, "--- old leader commits 2 membership log");
     {
         router
             .wait(&orig_leader, timeout())
@@ -62,7 +62,7 @@ async fn remove_leader() -> Result<()> {
         .log_at_least(Some(log_index), "node in old cluster commits at least 1 membership log")
         .await?;
 
-    tracing::info!("--- new cluster commits 2 membership logs");
+    tracing::info!(log_index, "--- new cluster commits 2 membership logs");
     {
         // leader commit a new log.
         log_index += 1;
@@ -79,7 +79,7 @@ async fn remove_leader() -> Result<()> {
         }
     }
 
-    tracing::info!("--- check term in new cluster");
+    tracing::info!(log_index, "--- check term in new cluster");
     {
         for id in [1, 2, 3] {
             router
@@ -92,7 +92,7 @@ async fn remove_leader() -> Result<()> {
         }
     }
 
-    tracing::info!("--- check state of the old leader");
+    tracing::info!(log_index, "--- check state of the old leader");
     {
         let metrics = router.get_metrics(&0)?;
         let cfg = &metrics.membership_config.membership();
@@ -130,7 +130,7 @@ async fn remove_leader_access_new_cluster() -> Result<()> {
 
     let orig_leader = 0;
 
-    tracing::info!("--- change membership 012 to 2");
+    tracing::info!(log_index, "--- change membership 012 to 2");
     {
         let node = router.get_raft_handle(&orig_leader)?;
         node.change_membership(btreeset![2], false).await?;
@@ -149,7 +149,7 @@ async fn remove_leader_access_new_cluster() -> Result<()> {
             .await?;
     }
 
-    tracing::info!("--- old leader commits 2 membership log");
+    tracing::info!(log_index, "--- old leader commits 2 membership log");
     {
         router
             .wait(&orig_leader, timeout())
@@ -173,7 +173,7 @@ async fn remove_leader_access_new_cluster() -> Result<()> {
         },
     }
 
-    tracing::info!("--- elect node-2, handle write");
+    tracing::info!(log_index, "--- elect node-2, handle write");
     {
         let n2 = router.get_raft_handle(&2)?;
         n2.enable_elect(true);

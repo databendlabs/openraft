@@ -53,14 +53,17 @@ async fn return_error_after_panic() -> Result<()> {
     let log_index = router.new_cluster(btreeset! {0}, btreeset! {}).await?;
     let _ = log_index; // unused;
 
-    tracing::info!("--- panic the RaftCore");
+    tracing::info!(log_index, "--- panic the RaftCore");
     {
         router.external_request(0, |_s, _sto, _net| {
             panic!("foo");
         });
     }
 
-    tracing::info!("--- calls the panicked raft should get a Fatal::Panicked error");
+    tracing::info!(
+        log_index,
+        "--- calls the panicked raft should get a Fatal::Panicked error"
+    );
     {
         let res = router.client_request(0, "foo", 2).await;
         let err = res.unwrap_err();
@@ -87,13 +90,16 @@ async fn return_error_after_shutdown() -> Result<()> {
     let log_index = router.new_cluster(btreeset! {0}, btreeset! {}).await?;
     let _ = log_index; // unused;
 
-    tracing::info!("--- shutdown the raft");
+    tracing::info!(log_index, "--- shutdown the raft");
     {
         let n = router.get_raft_handle(&0)?;
         n.shutdown().await?;
     }
 
-    tracing::info!("--- calls the panicked raft should get a Fatal::Panicked error");
+    tracing::info!(
+        log_index,
+        "--- calls the panicked raft should get a Fatal::Panicked error"
+    );
     {
         let res = router.client_request(0, "foo", 2).await;
         let err = res.unwrap_err();

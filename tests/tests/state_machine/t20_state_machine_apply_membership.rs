@@ -45,7 +45,7 @@ async fn state_machine_apply_membership() -> Result<()> {
     router.assert_pristine_cluster();
 
     // Initialize the cluster, then assert that a stable cluster was formed & held.
-    tracing::info!("--- initializing cluster");
+    tracing::info!(log_index, "--- initializing cluster");
     router.initialize_from_single_node(0).await?;
     log_index += 1;
 
@@ -69,7 +69,7 @@ async fn state_machine_apply_membership() -> Result<()> {
     router.new_raft_node(3).await;
     router.new_raft_node(4).await;
 
-    tracing::info!("--- adding new nodes to cluster");
+    tracing::info!(log_index, "--- adding new nodes to cluster");
     let mut new_nodes = futures::stream::FuturesUnordered::new();
     new_nodes.push(router.add_learner(0, 1));
     new_nodes.push(router.add_learner(0, 2));
@@ -81,13 +81,13 @@ async fn state_machine_apply_membership() -> Result<()> {
     log_index += 4;
     router.wait_for_log(&btreeset![0], Some(log_index), None, "add learner").await?;
 
-    tracing::info!("--- changing cluster config");
+    tracing::info!(log_index, "--- changing cluster config");
     let node = router.get_raft_handle(&0)?;
     node.change_membership(btreeset![0, 1, 2], false).await?;
 
     log_index += 2;
 
-    tracing::info!("--- every node receives joint log");
+    tracing::info!(log_index, "--- every node receives joint log");
     for i in 0..5 {
         router
             .wait(&i, None)
@@ -95,7 +95,7 @@ async fn state_machine_apply_membership() -> Result<()> {
             .await?;
     }
 
-    tracing::info!("--- only 3 node applied membership config");
+    tracing::info!(log_index, "--- only 3 node applied membership config");
     for i in 0..3 {
         router
             .wait(&i, None)

@@ -28,7 +28,7 @@ async fn replication_1_voter_to_isolated_learner() -> Result<()> {
 
     let mut log_index = router.new_cluster(btreeset! {0}, btreeset! {1}).await?;
 
-    tracing::info!("--- stop replication to node 1");
+    tracing::info!(log_index, "--- stop replication to node 1");
     {
         router.isolate_node(1);
 
@@ -45,7 +45,7 @@ async fn replication_1_voter_to_isolated_learner() -> Result<()> {
             .await?;
     }
 
-    tracing::info!("--- restore replication to node 1");
+    tracing::info!(log_index, "--- restore replication to node 1");
     {
         router.restore_node(1);
 

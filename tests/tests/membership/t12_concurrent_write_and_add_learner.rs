@@ -61,7 +61,7 @@ async fn concurrent_write_and_add_learner() -> Result<()> {
         wait_log(&router, &btreeset![0], log_index).await?;
     }
 
-    tracing::info!("--- adding two candidate nodes");
+    tracing::info!(log_index, "--- adding two candidate nodes");
     {
         // Sync some new nodes.
         router.new_raft_node(1).await;
@@ -70,7 +70,7 @@ async fn concurrent_write_and_add_learner() -> Result<()> {
         router.add_learner(0, 2).await?;
         log_index += 2; // two add_learner logs
 
-        tracing::info!("--- changing cluster config");
+        tracing::info!(log_index, "--- changing cluster config");
 
         let node = router.get_raft_handle(&0)?;
         node.change_membership(candidates.clone(), false).await?;
@@ -83,7 +83,7 @@ async fn concurrent_write_and_add_learner() -> Result<()> {
 
     let leader = router.leader().unwrap();
 
-    tracing::info!("--- write one log");
+    tracing::info!(log_index, "--- write one log");
     {
         router.client_request_many(leader, "client", 1).await?;
         log_index += 1;
@@ -92,7 +92,7 @@ async fn concurrent_write_and_add_learner() -> Result<()> {
     }
 
     // Concurrently add Learner and write another log.
-    tracing::info!("--- concurrently add learner and write another log");
+    tracing::info!(log_index, "--- concurrently add learner and write another log");
     {
         router.new_raft_node(3).await;
         let r = router.clone();
