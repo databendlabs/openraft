@@ -10,6 +10,7 @@ use crate::core::ServerState;
 use crate::log_id::LogIdOptionExt;
 use crate::metrics::Wait;
 use crate::metrics::WaitError;
+use crate::testing::log_id;
 use crate::vote::CommittedLeaderId;
 use crate::LogId;
 use crate::Membership;
@@ -166,6 +167,24 @@ async fn test_wait() -> anyhow::Result<()> {
             }
         }
     }
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
+async fn test_wait_purged() -> anyhow::Result<()> {
+    let (init, w, tx) = init_wait_test::<u64, ()>();
+
+    let h = tokio::spawn(async move {
+        sleep(Duration::from_millis(10)).await;
+        let mut update = init.clone();
+        update.purged = Some(log_id(1, 2, 3));
+        let rst = tx.send(update);
+        assert!(rst.is_ok());
+    });
+    let got = w.purged(Some(log_id(1, 2, 3)), "purged").await?;
+    h.await?;
+    assert_eq!(Some(log_id(1, 2, 3)), got.purged);
 
     Ok(())
 }
