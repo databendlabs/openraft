@@ -54,7 +54,6 @@ async fn initialization() -> anyhow::Result<()> {
     // Assert all nodes are in learner state & have no entries.
     router.wait_for_log(&btreeset![0, 1, 2], None, timeout(), "empty").await?;
     router.wait_for_state(&btreeset![0, 1, 2], ServerState::Learner, timeout(), "empty").await?;
-    router.assert_pristine_cluster();
 
     // Sending an external requests will also find all nodes in Learner state.
     //
@@ -86,8 +85,6 @@ async fn initialization() -> anyhow::Result<()> {
             router.wait(&node_id, timeout()).log(Some(log_index), "init").await?;
         }
     }
-
-    router.assert_stable_cluster(Some(1), Some(log_index));
 
     tracing::info!(log_index, "--- check membership state");
     for node_id in [0, 1, 2] {

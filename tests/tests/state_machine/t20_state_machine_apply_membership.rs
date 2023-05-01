@@ -1,6 +1,5 @@
 use std::option::Option::None;
 use std::sync::Arc;
-use std::time::Duration;
 
 use anyhow::Result;
 use futures::stream::StreamExt;
@@ -11,7 +10,6 @@ use openraft::Config;
 use openraft::LogId;
 use openraft::LogIdOptionExt;
 use openraft::Membership;
-use openraft::ServerState;
 use openraft::StoredMembership;
 
 use crate::fixtures::init_default_ut_tracing;
@@ -35,22 +33,9 @@ async fn state_machine_apply_membership() -> Result<()> {
     );
 
     let mut router = RaftRouter::new(config.clone());
-    router.new_raft_node(0).await;
 
-    let mut log_index = 0;
-
-    // Assert all nodes are in learner state & have no entries.
-    router.wait_for_log(&btreeset![0], None, None, "empty").await?;
-    router.wait_for_state(&btreeset![0], ServerState::Learner, None, "empty").await?;
-    router.assert_pristine_cluster();
-
-    // Initialize the cluster, then assert that a stable cluster was formed & held.
-    tracing::info!(log_index, "--- initializing cluster");
-    router.initialize_from_single_node(0).await?;
-    log_index += 1;
-
-    router.wait_for_log(&btreeset![0], Some(log_index), timeout(), "init").await?;
-    router.assert_stable_cluster(Some(1), Some(log_index));
+    tracing::info!("--- initializing cluster");
+    let mut log_index = router.new_cluster(btreeset! {0}, btreeset! {}).await?;
 
     for i in 0..=0 {
         let (_sto, mut sm) = router.get_storage_handle(&i)?;
@@ -114,8 +99,4 @@ async fn state_machine_apply_membership() -> Result<()> {
     }
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(1000))
 }

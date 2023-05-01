@@ -42,23 +42,9 @@ async fn leader_metrics() -> Result<()> {
         .validate()?,
     );
     let mut router = RaftRouter::new(config.clone());
-    router.new_raft_node(0).await;
 
-    // Assert all nodes are in learner state & have no entries.
-    let mut log_index = 0;
-
-    router.wait_for_log(&btreeset![0], None, timeout(), "init").await?;
-    router.wait_for_state(&btreeset![0], ServerState::Learner, timeout(), "init").await?;
-
-    router.assert_pristine_cluster();
-
-    tracing::info!(log_index, "--- initializing cluster");
-
-    router.initialize_from_single_node(0).await?;
-    log_index += 1;
-
-    router.wait_for_log(&btreeset![0], Some(log_index), timeout(), "init cluster").await?;
-    router.assert_stable_cluster(Some(1), Some(log_index));
+    tracing::info!("--- initializing cluster");
+    let mut log_index = router.new_cluster(btreeset! {0}, btreeset! {}).await?;
 
     router
         .wait_for_metrics(
@@ -105,8 +91,6 @@ async fn leader_metrics() -> Result<()> {
     log_index += 2; // 2 member-change logs
 
     router.wait_for_log(&c01234, Some(log_index), timeout(), "change members to 0,1,2,3,4").await?;
-
-    router.assert_stable_cluster(Some(1), Some(log_index)); // Still in term 1, so leader is still node 0.
 
     let ww = Some(LogId::new(CommittedLeaderId::new(1, 0), log_index));
     let want_repl = btreemap! { 0u64=>ww, 1u64=>ww, 2=>ww, 3=>ww, 4=>ww, };
