@@ -5,6 +5,7 @@ use tokio::sync::watch;
 use tokio::time::Instant;
 
 use crate::core::ServerState;
+use crate::display_ext::DisplayOption;
 use crate::metrics::RaftMetrics;
 use crate::node::Node;
 use crate::LogId;
@@ -187,6 +188,16 @@ where
         self.metrics(
             |x| x.snapshot == Some(want_snapshot),
             &format!("{} .snapshot -> {}", msg.to_string(), want_snapshot),
+        )
+        .await
+    }
+
+    /// Wait for `purged` to become `want` or timeout.
+    #[tracing::instrument(level = "trace", skip(self), fields(msg=msg.to_string().as_str()))]
+    pub async fn purged(&self, want: Option<LogId<NID>>, msg: impl ToString) -> Result<RaftMetrics<NID, N>, WaitError> {
+        self.metrics(
+            |x| x.purged == want,
+            &format!("{} .purged -> {}", msg.to_string(), DisplayOption(&want)),
         )
         .await
     }
