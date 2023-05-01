@@ -25,16 +25,25 @@ pub(crate) struct IOState<NID: NodeId> {
 
     /// The last log id that has been flushed to storage.
     pub(crate) flushed: LogIOId<NID>,
+
     /// The last log id that has been applied to state machine.
     pub(crate) applied: Option<LogId<NID>>,
+
+    /// The last log id that has been purged from storage.
+    ///
+    /// [`RaftState::last_purged_log_id`](`crate::raft_state::RaftState::last_purged_log_id`)
+    /// is just the log id that is going to be purged, i.e., there is a `PurgeLog` command queued to
+    /// be executed, and it may not be the actually purged log id.
+    pub(crate) purged: Option<LogId<NID>>,
 }
 
 impl<NID: NodeId> IOState<NID> {
-    pub(crate) fn new(flushed: LogIOId<NID>, applied: Option<LogId<NID>>) -> Self {
+    pub(crate) fn new(flushed: LogIOId<NID>, applied: Option<LogId<NID>>, purged: Option<LogId<NID>>) -> Self {
         Self {
             building_snapshot: false,
             flushed,
             applied,
+            purged,
         }
     }
     pub(crate) fn update_applied(&mut self, log_id: Option<LogId<NID>>) {
@@ -61,5 +70,13 @@ impl<NID: NodeId> IOState<NID> {
 
     pub(crate) fn building_snapshot(&self) -> bool {
         self.building_snapshot
+    }
+
+    pub(crate) fn update_purged(&mut self, log_id: Option<LogId<NID>>) {
+        self.purged = log_id;
+    }
+
+    pub(crate) fn purged(&self) -> Option<&LogId<NID>> {
+        self.purged.as_ref()
     }
 }

@@ -38,6 +38,12 @@ where
     /// If there is no snapshot, it is (0,0).
     pub snapshot: Option<LogId<NID>>,
 
+    /// The last log id that has purged from storage, inclusive.
+    ///
+    /// `purged` is also the first log id Openraft knows, although the corresponding log entry has
+    /// already been deleted.
+    pub purged: Option<LogId<NID>>,
+
     // ---
     // --- cluster ---
     // ---
@@ -64,7 +70,7 @@ where
 {
     // TODO: make this more readable
     fn summary(&self) -> String {
-        format!("Metrics{{id:{},{:?}, term:{}, last_log:{:?}, last_applied:{:?}, leader:{:?}, membership:{}, snapshot:{:?}, replication:{{{}}}",
+        format!("Metrics{{id:{},{:?}, term:{}, last_log:{:?}, last_applied:{:?}, leader:{:?}, membership:{}, snapshot:{:?}, purged:{}, replication:{{{}}}",
                 self.id,
                 self.state,
                 self.current_term,
@@ -73,6 +79,7 @@ where
                 self.current_leader,
                 self.membership_config.summary(),
                 self.snapshot,
+                self.purged.summary(),
                 self.replication.as_ref().map(|x| {
                     x.iter().map(|(k, v)| format!("{}:{}", k, v.summary())).collect::<Vec<_>>().join(",")
                 }).unwrap_or_default(),
@@ -89,13 +96,16 @@ where
         Self {
             running_state: Ok(()),
             id,
-            state: ServerState::Follower,
+
             current_term: 0,
             last_log_index: None,
             last_applied: None,
+            snapshot: None,
+            purged: None,
+
+            state: ServerState::Follower,
             current_leader: None,
             membership_config: Arc::new(StoredMembership::default()),
-            snapshot: None,
             replication: None,
         }
     }

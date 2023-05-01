@@ -516,6 +516,7 @@ where
             last_log_index: self.engine.state.last_log_id().index(),
             last_applied: self.engine.state.io_applied().copied(),
             snapshot: self.engine.state.snapshot_meta.last_log_id,
+            purged: self.engine.state.io_purged().copied(),
 
             // --- cluster ---
             state: self.engine.state.server_state,
@@ -1520,7 +1521,10 @@ where
             Command::SaveVote { vote } => {
                 self.log_store.save_vote(&vote).await?;
             }
-            Command::PurgeLog { upto } => self.log_store.purge(upto).await?,
+            Command::PurgeLog { upto } => {
+                self.log_store.purge(upto).await?;
+                self.engine.state.io_state_mut().update_purged(Some(upto));
+            }
             Command::DeleteConflictLog { since } => {
                 self.log_store.truncate(since).await?;
             }
