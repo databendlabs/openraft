@@ -584,6 +584,9 @@ where
                     Err(err) => {
                         tracing::warn!(error=%err, "error sending InstallSnapshot RPC to target");
 
+                        // If sender is closed, return at once
+                        self.try_drain_events().await?;
+
                         // Sleep a short time otherwise in test environment it is a dead-loop that
                         // never yields. Because network implementation does
                         // not yield.
@@ -593,6 +596,9 @@ where
                 },
                 Err(err) => {
                     tracing::warn!(error=%err, "timeout while sending InstallSnapshot RPC to target");
+
+                    // If sender is closed, return at once
+                    self.try_drain_events().await?;
 
                     // Sleep a short time otherwise in test environment it is a dead-loop that never
                     // yields. Because network implementation does not yield.
