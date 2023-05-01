@@ -4,7 +4,7 @@ use crate::NodeId;
 
 /// APIs to get significant log ids reflecting the raft state.
 ///
-/// See: https://datafuselabs.github.io/openraft/log-data-layout
+/// See: [`log_pointers`](`crate::docs::data::log_pointers`).
 pub(crate) trait LogStateReader<NID: NodeId> {
     /// Get previous log id, i.e., the log id at index - 1
     fn prev_log_id(&self, index: u64) -> Option<LogId<NID>> {

@@ -60,7 +60,7 @@ where
     /// Get the value by `id`.
     fn get(&self, id: &ID) -> &V;
 
-    /// Get the greatest value that is granted by a quorum defined in [`quorum_set()`].
+    /// Get the greatest value that is granted by a quorum defined in [`Self::quorum_set()`].
     ///
     /// In raft or other distributed consensus,
     /// To commit a value, the value has to be **granted by a quorum** and has to be the greatest

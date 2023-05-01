@@ -1,14 +1,21 @@
-//! ### log and state machine
-//!
-//! ```
-//!
-//! ------------+------+------+-----+------+-----+----> log index
-//!             |      |      |     |      |     ` last_log
-//!             |      |      |     |      ` committed
-//!             |      |      |     ` last_applied
-//!             |      |      ` snapshot
-//!             |      ` purged
-//!             ` delayed follower
-//!
-//! ```
-//!  TODO: explain each concept related to log positions in the above diagram.
+#![doc = include_str!("docs.md")]
+
+#[rustfmt::skip]
+
+
+pub mod faq;
+
+pub mod getting_started;
+
+pub mod cluster_control;
+
+pub mod feature_flags;
+
+pub mod data;
+pub mod protocol;
+
+pub mod internal;
+
+pub mod upgrade_guide;
+
+pub mod obsolete;

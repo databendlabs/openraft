@@ -16,7 +16,7 @@ pub(crate) struct LogIOId<NID: NodeId> {
 /// machine or snapshot building.
 ///
 /// These states are updated only when the io complete and thus may fall behind to the state stored
-/// in [`RaftState`](`openraft::RaftState`),.
+/// in [`RaftState`](`crate::RaftState`),.
 #[derive(Debug, Clone, Copy)]
 #[derive(Default)]
 #[derive(PartialEq, Eq)]
@@ -35,7 +35,7 @@ pub(crate) struct IOState<NID: NodeId> {
 
     /// The last log id that has been purged from storage.
     ///
-    /// [`RaftState::last_purged_log_id`](`crate::raft_state::RaftState::last_purged_log_id`)
+    /// `RaftState::last_purged_log_id()`
     /// is just the log id that is going to be purged, i.e., there is a `PurgeLog` command queued to
     /// be executed, and it may not be the actually purged log id.
     pub(crate) purged: Option<LogId<NID>>,

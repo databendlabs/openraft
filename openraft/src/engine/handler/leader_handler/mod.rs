@@ -1,3 +1,4 @@
+#[allow(unused_imports)] use crate::docs;
 use crate::engine::handler::replication_handler::ReplicationHandler;
 use crate::engine::handler::replication_handler::SendNone;
 use crate::engine::Command;
@@ -39,6 +40,8 @@ where C: RaftTypeConfig
     /// If there is a membership config log entry, the caller has to guarantee the previous one is
     /// committed.
     ///
+    /// See [`docs::protocol::fast_commit`]
+    ///
     /// TODO(xp): metrics flag needs to be dealt with.
     /// TODO(xp): if vote indicates this node is not the leader, refuse append
     #[tracing::instrument(level = "debug", skip(self, entries))]
@@ -69,33 +72,6 @@ where C: RaftTypeConfig
         }
 
         self.output.push_command(Command::AppendInputEntries { entries });
-
-        // Fast commit:
-        // If the cluster has only one voter, then an entry will be committed as soon as it is
-        // appended. But if there is a membership log in the middle of the input entries,
-        // the condition to commit will change. Thus we have to deal with entries before and
-        // after a membership entry differently:
-        //
-        // When a membership entry is seen, update progress for all former entries.
-        // Then upgrade the quorum set for the Progress.
-        //
-        // E.g., if the input entries are `2..6`, entry 4 changes membership from `a` to `abc`.
-        // Then it will output a LeaderCommit command to commit entries `2,3`.
-        // ```text
-        // 1 2 3 4 5 6
-        // a x x a y y
-        //       b
-        //       c
-        // ```
-        //
-        // If the input entries are `2..6`, entry 4 changes membership from `abc` to `a`.
-        // Then it will output a LeaderCommit command to commit entries `2,3,4,5,6`.
-        // ```text
-        // 1 2 3 4 5 6
-        // a x x a y y
-        // b
-        // c
-        // ```
 
         let mut rh = self.replication_handler();
 

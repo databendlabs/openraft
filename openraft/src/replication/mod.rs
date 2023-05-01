@@ -91,7 +91,7 @@ where
     /// The `RaftNetwork` interface.
     network: N::Network,
 
-    /// The backoff policy if an [`Unreachable`] error is returned.
+    /// The backoff policy if an [`Unreachable`](`crate::error::Unreachable`) error is returned.
     /// It will be reset to `None` when an successful response is received.
     backoff: Option<Backoff>,
 

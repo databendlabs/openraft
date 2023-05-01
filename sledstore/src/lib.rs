@@ -278,7 +278,7 @@ type StorageResult<T> = Result<T, StorageError<ExampleNodeId>>;
 
 /// converts an id to a byte vector for storing in the database.
 /// Note that we're using big endian encoding to ensure correct sorting of keys
-/// with notes form: https://github.com/spacejam/sled#a-note-on-lexicographic-ordering-and-endianness
+/// with notes form: <https://github.com/spacejam/sled#a-note-on-lexicographic-ordering-and-endianness>
 fn id_to_bin(id: u64) -> [u8; 8] {
     let mut buf: [u8; 8] = [0; 8];
     BigEndian::write_u64(&mut buf, id);

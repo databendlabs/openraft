@@ -35,7 +35,7 @@ fix:
 	cargo fix --allow-staged
 
 doc:
-	RUSTDOCFLAGS="-D warnings" cargo doc --all --no-deps
+	RUSTDOCFLAGS="-D warnings" cargo doc --document-private-items --all --no-deps
 
 check_missing_doc:
 	# Warn about missing doc for public API

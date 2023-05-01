@@ -89,3 +89,7 @@ storage-v2 = []
 
 # Enable this flag to show all types/mods, including the feature enabled ones on docs.rs
 all-features = true
+
+# Sort modules by appearance order for crate `docs`.
+# https://doc.rust-lang.org/rustdoc/unstable-features.html#--sort-modules-by-appearance-control-how-items-on-module-pages-are-sorted
+rustdoc-args = ["-Z", "unstable-options", "--sort-modules-by-appearance"]
