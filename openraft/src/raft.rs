@@ -673,7 +673,7 @@ where
 
         let (log_id, joint) = (res.log_id, res.membership.clone().unwrap());
 
-        if !joint.is_in_joint_consensus() {
+        if joint.get_joint_config().len() == 1 {
             return Ok(res);
         }
 

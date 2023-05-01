@@ -690,8 +690,9 @@ impl TypedRaftRouter {
             let nodes_count = node.membership_config.nodes().count();
             assert_eq!(0, nodes_count, "expected empty configs, got: {:?}", nodes_count);
 
-            assert!(
-                !node.membership_config.membership().is_in_joint_consensus(),
+            assert_eq!(
+                0,
+                node.membership_config.membership().get_joint_config().len(),
                 "node {} is in joint consensus, expected uniform consensus",
                 node.id
             );
@@ -777,8 +778,9 @@ impl TypedRaftRouter {
                 "node {} has membership {:?}, expected {:?}",
                 node.id, members, all_nodes
             );
-            assert!(
-                !node.membership_config.membership().is_in_joint_consensus(),
+            assert_eq!(
+                1,
+                node.membership_config.membership().get_joint_config().len(),
                 "node {} was not in uniform consensus state",
                 node.id
             );

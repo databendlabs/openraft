@@ -104,7 +104,7 @@ async fn remove_leader() -> Result<()> {
         assert_eq!(metrics.membership_config.membership().get_joint_config().clone(), vec![
             btreeset![1, 2, 3]
         ]);
-        assert!(!cfg.is_in_joint_consensus());
+        assert_eq!(1, cfg.get_joint_config().len());
     }
 
     Ok(())
