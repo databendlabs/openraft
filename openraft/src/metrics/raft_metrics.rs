@@ -1,6 +1,8 @@
+use std::fmt;
 use std::sync::Arc;
 
 use crate::core::ServerState;
+use crate::display_ext::DisplayOption;
 use crate::error::Fatal;
 use crate::metrics::ReplicationMetrics;
 use crate::node::Node;
@@ -67,28 +69,50 @@ where
     pub replication: Option<ReplicationMetrics<NID>>,
 }
 
+impl<NID, N> fmt::Display for RaftMetrics<NID, N>
+where
+    NID: NodeId,
+    N: Node,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Metrics{{")?;
+
+        write!(
+            f,
+            "id:{}, {:?}, term:{}, vote:{}, last_log:{}, last_applied:{}, leader:{}",
+            self.id,
+            self.state,
+            self.current_term,
+            self.vote,
+            DisplayOption(&self.last_log_index),
+            DisplayOption(&self.last_applied),
+            DisplayOption(&self.current_leader),
+        )?;
+
+        write!(f, ", ")?;
+        write!(
+            f,
+            "membership:{}, snapshot:{}, purged:{}, replication:{{{}}}",
+            self.membership_config.summary(),
+            DisplayOption(&self.snapshot),
+            DisplayOption(&self.purged),
+            self.replication
+                .as_ref()
+                .map(|x| { x.iter().map(|(k, v)| format!("{}:{}", k, DisplayOption(v))).collect::<Vec<_>>().join(",") })
+                .unwrap_or_default(),
+        )?;
+
+        write!(f, "}}")?;
+        Ok(())
+    }
+}
 impl<NID, N> MessageSummary<RaftMetrics<NID, N>> for RaftMetrics<NID, N>
 where
     NID: NodeId,
     N: Node,
 {
-    // TODO: make this more readable
     fn summary(&self) -> String {
-        format!("Metrics{{id:{},{:?}, term:{}, vote:{}, last_log:{:?}, last_applied:{:?}, leader:{:?}, membership:{}, snapshot:{:?}, purged:{}, replication:{{{}}}",
-                self.id,
-                self.state,
-                self.current_term,
-                self.vote,
-                self.last_log_index,
-                self.last_applied.summary(),
-                self.current_leader,
-                self.membership_config.summary(),
-                self.snapshot,
-                self.purged.summary(),
-                self.replication.as_ref().map(|x| {
-                    x.iter().map(|(k, v)| format!("{}:{}", k, v.summary())).collect::<Vec<_>>().join(",")
-                }).unwrap_or_default(),
-        )
+        self.to_string()
     }
 }
 
