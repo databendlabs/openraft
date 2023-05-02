@@ -59,6 +59,8 @@ where
     /// state from stable storage.
     pub async fn get_initial_state(&mut self) -> Result<RaftState<C::NodeId, C::Node>, StorageError<C::NodeId>> {
         let vote = self.log_store.read_vote().await?;
+        let vote = vote.unwrap_or_default();
+
         let st = self.log_store.get_log_state().await?;
         let mut last_purged_log_id = st.last_purged_log_id;
         let mut last_log_id = st.last_log_id;
@@ -75,7 +77,7 @@ where
         let log_ids = LogIdList::load_log_ids(last_purged_log_id, last_log_id, self.log_store).await?;
 
         // TODO: `flushed` is not set.
-        let io_state = IOState::new(LogIOId::default(), last_applied, last_purged_log_id);
+        let io_state = IOState::new(vote, LogIOId::default(), last_applied, last_purged_log_id);
 
         let snapshot = self.state_machine.get_current_snapshot().await?;
 
@@ -101,7 +103,7 @@ where
             committed: last_applied,
             // The initial value for `vote` is the minimal possible value.
             // See: [Conditions for initialization](https://datafuselabs.github.io/openraft/cluster-formation.html#conditions-for-initialization)
-            vote: UTime::new(now, vote.unwrap_or_default()),
+            vote: UTime::new(now, vote),
             purged_next: last_purged_log_id.next_index(),
             log_ids,
             membership_state: mem_state,

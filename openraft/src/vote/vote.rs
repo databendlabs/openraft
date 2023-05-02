@@ -43,7 +43,7 @@ impl<NID: NodeId> std::fmt::Display for Vote<NID> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "vote:{}:{}",
+            "{}:{}",
             self.leader_id,
             if self.is_committed() {
                 "committed"

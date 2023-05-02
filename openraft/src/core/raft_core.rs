@@ -507,21 +507,24 @@ where
     /// Report a metrics payload on the current state of the Raft node.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn report_metrics(&self, replication: Option<ReplicationMetrics<C::NodeId>>) {
+        let st = &self.engine.state;
+
         let m = RaftMetrics {
             running_state: Ok(()),
             id: self.id,
 
             // --- data ---
-            current_term: self.engine.state.vote_ref().leader_id().get_term(),
-            last_log_index: self.engine.state.last_log_id().index(),
-            last_applied: self.engine.state.io_applied().copied(),
-            snapshot: self.engine.state.snapshot_meta.last_log_id,
-            purged: self.engine.state.io_purged().copied(),
+            current_term: st.vote_ref().leader_id().get_term(),
+            vote: *st.io_state().vote(),
+            last_log_index: st.last_log_id().index(),
+            last_applied: st.io_applied().copied(),
+            snapshot: st.snapshot_meta.last_log_id,
+            purged: st.io_purged().copied(),
 
             // --- cluster ---
-            state: self.engine.state.server_state,
+            state: st.server_state,
             current_leader: self.current_leader(),
-            membership_config: self.engine.state.membership_state.effective().stored_membership().clone(),
+            membership_config: st.membership_state.effective().stored_membership().clone(),
 
             // --- replication ---
             replication,
@@ -1520,6 +1523,7 @@ where
             }
             Command::SaveVote { vote } => {
                 self.log_store.save_vote(&vote).await?;
+                self.engine.state.io_state_mut().update_vote(vote);
             }
             Command::PurgeLog { upto } => {
                 self.log_store.purge(upto).await?;

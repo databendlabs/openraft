@@ -64,7 +64,7 @@ where
     NID: NodeId,
 {
     fn summary(&self) -> String {
-        let mut res = vec!["members:[".to_string()];
+        let mut res = vec!["voters:[".to_string()];
         for (i, c) in self.configs.iter().enumerate() {
             if i > 0 {
                 res.push(",".to_string());

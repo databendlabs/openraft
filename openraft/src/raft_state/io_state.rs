@@ -2,6 +2,7 @@ use crate::display_ext::DisplayOption;
 use crate::LeaderId;
 use crate::LogId;
 use crate::NodeId;
+use crate::Vote;
 
 #[derive(Debug, Clone, Copy)]
 #[derive(Default)]
@@ -23,6 +24,9 @@ pub(crate) struct IOState<NID: NodeId> {
     /// Whether it is building a snapshot
     building_snapshot: bool,
 
+    // The last flushed vote.
+    pub(crate) vote: Vote<NID>,
+
     /// The last log id that has been flushed to storage.
     pub(crate) flushed: LogIOId<NID>,
 
@@ -38,14 +42,29 @@ pub(crate) struct IOState<NID: NodeId> {
 }
 
 impl<NID: NodeId> IOState<NID> {
-    pub(crate) fn new(flushed: LogIOId<NID>, applied: Option<LogId<NID>>, purged: Option<LogId<NID>>) -> Self {
+    pub(crate) fn new(
+        vote: Vote<NID>,
+        flushed: LogIOId<NID>,
+        applied: Option<LogId<NID>>,
+        purged: Option<LogId<NID>>,
+    ) -> Self {
         Self {
             building_snapshot: false,
+            vote,
             flushed,
             applied,
             purged,
         }
     }
+
+    pub(crate) fn update_vote(&mut self, vote: Vote<NID>) {
+        self.vote = vote;
+    }
+
+    pub(crate) fn vote(&self) -> &Vote<NID> {
+        &self.vote
+    }
+
     pub(crate) fn update_applied(&mut self, log_id: Option<LogId<NID>>) {
         tracing::debug!(applied = display(DisplayOption(&log_id)), "{}", func_name!());
 

@@ -1,3 +1,4 @@
+use crate::display_ext::DisplayOption;
 use crate::LogId;
 use crate::Membership;
 use crate::MessageSummary;
@@ -60,6 +61,10 @@ where
     NID: NodeId,
 {
     fn summary(&self) -> String {
-        format!("{{log_id:{}, {}}}", self.log_id.summary(), self.membership.summary())
+        format!(
+            "{{log_id:{}, {}}}",
+            DisplayOption(&self.log_id),
+            self.membership.summary()
+        )
     }
 }
