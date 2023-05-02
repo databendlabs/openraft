@@ -2,12 +2,12 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use maplit::btreeset;
+use openraft::network::RaftNetwork;
+use openraft::network::RaftNetworkFactory;
 use openraft::raft::AppendEntriesRequest;
 use openraft::CommittedLeaderId;
 use openraft::Config;
 use openraft::LogId;
-use openraft::RaftNetwork;
-use openraft::RaftNetworkFactory;
 use openraft::Vote;
 
 use crate::fixtures::init_default_ut_tracing;

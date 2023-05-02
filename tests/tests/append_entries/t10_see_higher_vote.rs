@@ -3,12 +3,12 @@ use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
+use openraft::network::RaftNetwork;
+use openraft::network::RaftNetworkFactory;
 use openraft::raft::VoteRequest;
 use openraft::CommittedLeaderId;
 use openraft::Config;
 use openraft::LogId;
-use openraft::RaftNetwork;
-use openraft::RaftNetworkFactory;
 use openraft::ServerState;
 use openraft::Vote;
 use openraft_memstore::ClientRequest;

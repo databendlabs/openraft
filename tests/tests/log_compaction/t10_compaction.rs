@@ -4,6 +4,8 @@ use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
+use openraft::network::RaftNetwork;
+use openraft::network::RaftNetworkFactory;
 use openraft::raft::AppendEntriesRequest;
 use openraft::storage::RaftLogReaderExt;
 use openraft::testing;
@@ -14,8 +16,6 @@ use openraft::Entry;
 use openraft::EntryPayload;
 use openraft::LogId;
 use openraft::Membership;
-use openraft::RaftNetwork;
-use openraft::RaftNetworkFactory;
 use openraft::SnapshotPolicy;
 use openraft::Vote;
 

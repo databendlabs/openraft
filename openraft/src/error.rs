@@ -7,6 +7,7 @@ use std::time::Duration;
 
 use anyerror::AnyError;
 
+use crate::network::RPCTypes;
 use crate::node::Node;
 use crate::raft::AppendEntriesResponse;
 use crate::raft_types::SnapshotSegmentId;
@@ -14,7 +15,6 @@ use crate::try_as_ref::TryAsRef;
 use crate::LogId;
 use crate::Membership;
 use crate::NodeId;
-use crate::RPCTypes;
 use crate::StorageError;
 use crate::Vote;
 

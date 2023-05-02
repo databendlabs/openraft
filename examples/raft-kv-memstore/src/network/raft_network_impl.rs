@@ -2,6 +2,8 @@ use async_trait::async_trait;
 use openraft::error::InstallSnapshotError;
 use openraft::error::NetworkError;
 use openraft::error::RemoteError;
+use openraft::network::RaftNetwork;
+use openraft::network::RaftNetworkFactory;
 use openraft::raft::AppendEntriesRequest;
 use openraft::raft::AppendEntriesResponse;
 use openraft::raft::InstallSnapshotRequest;
@@ -9,8 +11,6 @@ use openraft::raft::InstallSnapshotResponse;
 use openraft::raft::VoteRequest;
 use openraft::raft::VoteResponse;
 use openraft::BasicNode;
-use openraft::RaftNetwork;
-use openraft::RaftNetworkFactory;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
