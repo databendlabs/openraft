@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
 use anyhow::Result;
+use openraft::network::RaftNetwork;
+use openraft::network::RaftNetworkFactory;
 use openraft::raft::AppendEntriesRequest;
 use openraft::testing::blank_ent;
 use openraft::CommittedLeaderId;
@@ -8,8 +10,6 @@ use openraft::Config;
 use openraft::Entry;
 use openraft::EntryPayload;
 use openraft::LogId;
-use openraft::RaftNetwork;
-use openraft::RaftNetworkFactory;
 use openraft::Vote;
 use openraft_memstore::ClientRequest;
 
