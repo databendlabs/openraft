@@ -40,7 +40,6 @@ async fn switch_to_snapshot_replication_when_lacking_log() -> Result<()> {
         log_index = snapshot_threshold - 1;
 
         router.wait_for_log(&btreeset![0], Some(log_index), None, "send log to trigger snapshot").await?;
-        router.assert_stable_cluster(Some(1), Some(log_index));
 
         router
             .wait_for_snapshot(

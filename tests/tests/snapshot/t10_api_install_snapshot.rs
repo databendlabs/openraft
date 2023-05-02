@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
@@ -7,7 +6,6 @@ use openraft::raft::InstallSnapshotRequest;
 use openraft::CommittedLeaderId;
 use openraft::Config;
 use openraft::LogId;
-use openraft::ServerState;
 use openraft::SnapshotMeta;
 use openraft::Vote;
 
@@ -36,18 +34,7 @@ async fn snapshot_arguments() -> Result<()> {
     let mut log_index = 0;
 
     tracing::info!(log_index, "--- initializing cluster");
-    {
-        router.new_raft_node(0).await;
-
-        router.wait_for_log(&btreeset![0], None, timeout(), "empty").await?;
-        router.wait_for_state(&btreeset![0], ServerState::Learner, timeout(), "empty").await?;
-
-        router.initialize_from_single_node(0).await?;
-        log_index += 1;
-
-        router.wait_for_log(&btreeset![0], Some(log_index), timeout(), "init leader").await?;
-        router.assert_stable_cluster(Some(1), Some(log_index));
-    }
+    log_index = router.new_cluster(btreeset! {0}, btreeset! {}).await?;
 
     let n = router.remove_node(0).ok_or_else(|| anyhow::anyhow!("node not found"))?;
     let make_req = || InstallSnapshotRequest {
@@ -115,8 +102,4 @@ async fn snapshot_arguments() -> Result<()> {
         n.0.install_snapshot(req).await?;
     }
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(1000))
 }

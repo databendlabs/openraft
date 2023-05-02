@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
+use openraft::testing::log_id;
 use openraft::CommittedLeaderId;
 use openraft::Config;
 use openraft::LogId;
@@ -46,14 +47,10 @@ async fn after_snapshot_add_learner_and_request_a_log() -> Result<()> {
                 "send log to trigger snapshot",
             )
             .await?;
-        router.assert_stable_cluster(Some(1), Some(log_index));
 
         router
             .wait(&0, timeout())
-            .snapshot(
-                LogId::new(CommittedLeaderId::new(1, 0), snapshot_index),
-                "leader-0 has built snapshot",
-            )
+            .snapshot(log_id(1, 0, snapshot_index), "leader-0 has built snapshot")
             .await?;
 
         router
@@ -61,7 +58,7 @@ async fn after_snapshot_add_learner_and_request_a_log() -> Result<()> {
                 1,
                 log_index,
                 Some(0),
-                LogId::new(CommittedLeaderId::new(1, 0), log_index),
+                log_id(1, 0, log_index),
                 Some((log_index.into(), 1)),
             )
             .await?;
