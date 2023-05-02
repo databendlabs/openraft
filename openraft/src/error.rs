@@ -486,6 +486,7 @@ pub(crate) enum RejectVoteRequest<NID: NodeId> {
     #[error("reject vote request by a greater vote: {0}")]
     ByVote(Vote<NID>),
 
+    #[allow(dead_code)]
     #[error("reject vote request by a greater last-log-id: {0:?}")]
     ByLastLogId(Option<LogId<NID>>),
 }
