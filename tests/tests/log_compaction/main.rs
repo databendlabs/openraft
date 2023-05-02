@@ -7,3 +7,4 @@ mod fixtures;
 
 mod t10_compaction;
 mod t35_building_snapshot_does_not_block_append;
+mod t35_building_snapshot_does_not_block_apply;

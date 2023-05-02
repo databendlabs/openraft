@@ -6,7 +6,6 @@ use openraft::storage::RaftLogStorage;
 use openraft::storage::RaftStateMachine;
 use openraft::testing::log_id;
 use openraft::Config;
-use openraft::SnapshotPolicy;
 
 use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
@@ -15,12 +14,9 @@ use crate::fixtures::RaftRouter;
 /// once.
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn startup_build_snapshot() -> anyhow::Result<()> {
-    let snapshot_threshold = 10;
-
     let config = Arc::new(
         Config {
             enable_heartbeat: false,
-            snapshot_policy: SnapshotPolicy::LogsSinceLast(snapshot_threshold),
             max_in_snapshot_log_to_keep: 0,
             ..Default::default()
         }
@@ -34,10 +30,10 @@ async fn startup_build_snapshot() -> anyhow::Result<()> {
 
     tracing::info!(log_index, "--- send client requests");
     {
-        router.client_request_many(0, "0", (20 - 1 - log_index) as usize).await?;
-        log_index = 20 - 1;
+        log_index += router.client_request_many(0, "0", (20 - 1 - log_index) as usize).await?;
 
         router.wait(&0, timeout()).log(Some(log_index), "node-0 applied all requests").await?;
+        router.get_raft_handle(&0)?.trigger_snapshot().await?;
         router.wait(&0, timeout()).snapshot(log_id(1, 0, log_index), "node-0 snapshot").await?;
     }
 

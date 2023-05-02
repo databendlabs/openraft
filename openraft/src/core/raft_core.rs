@@ -1276,15 +1276,25 @@ where
             Notify::StateMachine { command_result } => {
                 tracing::debug!("sm::StateMachine command result: {:?}", command_result);
 
-                debug_assert!(
-                    self.command_state.finished_sm_seq < command_result.command_seq,
-                    "sm::StateMachine command result is out of order: expect {} < {}",
-                    self.command_state.finished_sm_seq,
-                    command_result.command_seq
-                );
-                self.command_state.finished_sm_seq = command_result.command_seq;
+                let seq = command_result.command_seq;
+                let res = command_result.result?;
 
-                match command_result.result? {
+                match res {
+                    // BuildSnapshot is a read operation that does not have to be serialized by
+                    // sm::Worker. Thus it may finish out of order.
+                    sm::Response::BuildSnapshot(_) => {}
+                    _ => {
+                        debug_assert!(
+                            self.command_state.finished_sm_seq < seq,
+                            "sm::StateMachine command result is out of order: expect {} < {}",
+                            self.command_state.finished_sm_seq,
+                            seq
+                        );
+                    }
+                }
+                self.command_state.finished_sm_seq = seq;
+
+                match res {
                     sm::Response::BuildSnapshot(meta) => {
                         tracing::info!(
                             "sm::StateMachine command done: BuildSnapshot: {}: {}",

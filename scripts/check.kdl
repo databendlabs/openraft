@@ -1,0 +1,39 @@
+// Use zellij to run test in parallel.
+//
+// Install:
+//   cargo install zellij
+//
+// Usage:
+//   zellij action new-tab --layout check.kdl
+//   zellij --layout check.kdl
+
+simplified_ui true
+
+layout {
+
+    tab name="3m1q" {
+        // tab-bar
+        pane size=1 borderless=true {
+            plugin location="zellij:tab-bar"
+        }
+
+        pane split_direction="vertical" {
+            pane {
+                command "cargo"
+                args "test" "--lib"
+            }
+            pane {
+                command "cargo"
+                args "test" "--test" "*"
+            }
+            pane {
+                command "cargo"
+                args "clippy" "--no-deps" "--all-targets" "--" "-D" "warnings"
+            }
+        }
+        // status-bar
+        pane size=2 borderless=true {
+            plugin location="zellij:status-bar"
+        }
+    }
+}

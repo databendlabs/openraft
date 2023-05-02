@@ -166,6 +166,10 @@ pub enum Violation<NID: NodeId> {
 
 /// A storage error could be either a defensive check error or an error occurred when doing the
 /// actual io operation.
+///
+/// It indicates a data crash.
+/// An application returning this error will shutdown the Openraft node immediately to prevent
+/// further damage.
 #[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub enum StorageError<NID>
@@ -212,6 +216,10 @@ where NID: NodeId
 }
 
 /// Error that occurs when operating the store.
+///
+/// It indicates a data crash.
+/// An application returning this error will shutdown the Openraft node immediately to prevent
+/// further damage.
 #[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct StorageIOError<NID>
