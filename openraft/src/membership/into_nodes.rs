@@ -15,8 +15,16 @@ where
     N: Node,
     NID: NodeId,
 {
-    fn has_nodes(&self) -> bool;
-    fn node_ids(&self) -> Vec<NID>;
+    #[deprecated(note = "unused any more")]
+    fn has_nodes(&self) -> bool {
+        unimplemented!("has_nodes is deprecated")
+    }
+
+    #[deprecated(note = "unused any more")]
+    fn node_ids(&self) -> Vec<NID> {
+        unimplemented!("node_ids is deprecated")
+    }
+
     fn into_nodes(self) -> BTreeMap<NID, N>;
 }
 
@@ -25,14 +33,6 @@ where
     N: Node,
     NID: NodeId,
 {
-    fn has_nodes(&self) -> bool {
-        false
-    }
-
-    fn node_ids(&self) -> Vec<NID> {
-        vec![]
-    }
-
     fn into_nodes(self) -> BTreeMap<NID, N> {
         btreemap! {}
     }
@@ -43,14 +43,6 @@ where
     N: Node,
     NID: NodeId,
 {
-    fn has_nodes(&self) -> bool {
-        false
-    }
-
-    fn node_ids(&self) -> Vec<NID> {
-        self.iter().copied().collect()
-    }
-
     fn into_nodes(self) -> BTreeMap<NID, N> {
         self.into_iter().map(|node_id| (node_id, N::default())).collect()
     }
@@ -61,19 +53,6 @@ where
     N: Node,
     NID: NodeId,
 {
-    fn has_nodes(&self) -> bool {
-        true
-    }
-
-    fn node_ids(&self) -> Vec<NID> {
-        match self {
-            None => {
-                vec![]
-            }
-            Some(bs) => bs.iter().copied().collect(),
-        }
-    }
-
     fn into_nodes(self) -> BTreeMap<NID, N> {
         match self {
             None => BTreeMap::new(),
@@ -87,14 +66,6 @@ where
     N: Node,
     NID: NodeId,
 {
-    fn has_nodes(&self) -> bool {
-        true
-    }
-
-    fn node_ids(&self) -> Vec<NID> {
-        self.keys().copied().collect()
-    }
-
     fn into_nodes(self) -> BTreeMap<NID, N> {
         self
     }
