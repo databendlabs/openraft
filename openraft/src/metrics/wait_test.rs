@@ -18,6 +18,7 @@ use crate::Node;
 use crate::NodeId;
 use crate::RaftMetrics;
 use crate::StoredMembership;
+use crate::Vote;
 
 /// Test wait for different state changes
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
@@ -172,6 +173,29 @@ async fn test_wait() -> anyhow::Result<()> {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
+async fn test_wait_vote() -> anyhow::Result<()> {
+    let (init, w, tx) = init_wait_test::<u64, ()>();
+
+    let h = tokio::spawn(async move {
+        sleep(Duration::from_millis(10)).await;
+        let mut update = init.clone();
+        update.vote = Vote::new_committed(1, 2);
+        let rst = tx.send(update);
+        assert!(rst.is_ok());
+    });
+
+    // timeout
+    let res = w.vote(Vote::new(1, 2), "vote").await;
+    assert!(res.is_err());
+
+    let got = w.vote(Vote::new_committed(1, 2), "vote").await?;
+    h.await?;
+    assert_eq!(Vote::new_committed(1, 2), got.vote);
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 async fn test_wait_purged() -> anyhow::Result<()> {
     let (init, w, tx) = init_wait_test::<u64, ()>();
 
@@ -203,6 +227,7 @@ where
         id: NID::default(),
         state: ServerState::Learner,
         current_term: 0,
+        vote: Vote::default(),
         last_log_index: None,
         last_applied: None,
         purged: None,

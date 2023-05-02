@@ -12,6 +12,7 @@ use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::MessageSummary;
 use crate::NodeId;
+use crate::Vote;
 
 // Error variants related to metrics.
 #[derive(Debug, thiserror::Error)]
@@ -103,6 +104,12 @@ where
                 }
             };
         }
+    }
+
+    /// Wait for `vote` to become `want` or timeout.
+    #[tracing::instrument(level = "trace", skip(self), fields(msg=msg.to_string().as_str()))]
+    pub async fn vote(&self, want: Vote<NID>, msg: impl ToString) -> Result<RaftMetrics<NID, N>, WaitError> {
+        self.metrics(|m| m.vote == want, &format!("{} .vote -> {}", msg.to_string(), want)).await
     }
 
     /// Wait for `current_leader` to become `Some(leader_id)` until timeout.

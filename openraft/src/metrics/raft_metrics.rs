@@ -8,6 +8,7 @@ use crate::summary::MessageSummary;
 use crate::LogId;
 use crate::NodeId;
 use crate::StoredMembership;
+use crate::Vote;
 
 /// A set of metrics describing the current state of a Raft node.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -27,6 +28,9 @@ where
     // ---
     /// The current term of the Raft node.
     pub current_term: u64,
+
+    /// The last accepted vote.
+    pub vote: Vote<NID>,
 
     /// The last log index has been appended to this Raft node's log.
     pub last_log_index: Option<u64>,
@@ -70,10 +74,11 @@ where
 {
     // TODO: make this more readable
     fn summary(&self) -> String {
-        format!("Metrics{{id:{},{:?}, term:{}, last_log:{:?}, last_applied:{:?}, leader:{:?}, membership:{}, snapshot:{:?}, purged:{}, replication:{{{}}}",
+        format!("Metrics{{id:{},{:?}, term:{}, vote:{}, last_log:{:?}, last_applied:{:?}, leader:{:?}, membership:{}, snapshot:{:?}, purged:{}, replication:{{{}}}",
                 self.id,
                 self.state,
                 self.current_term,
+                self.vote,
                 self.last_log_index,
                 self.last_applied.summary(),
                 self.current_leader,
@@ -98,6 +103,7 @@ where
             id,
 
             current_term: 0,
+            vote: Vote::default(),
             last_log_index: None,
             last_applied: None,
             snapshot: None,

@@ -245,6 +245,20 @@ where
         &mut self.io_state
     }
 
+    // TODO: move these doc to the [`IOState`]
+    /// Returns the state of the already happened IO.
+    ///
+    /// [`RaftState`] stores the expected state when all queued IO are completed,
+    /// which may advance the actual IO state.
+    ///
+    /// [`IOState`] stores the actual state of the storage.
+    ///
+    /// Usually, when a client request is handled, [`RaftState`] is updated and several IO command
+    /// is enqueued. And when the IO commands are completed, [`IOState`] is updated.
+    pub(crate) fn io_state(&self) -> &IOState<NID> {
+        &self.io_state
+    }
+
     /// Find the first entry in the input that does not exist on local raft-log,
     /// by comparing the log id.
     pub(crate) fn first_conflicting_index<Ent>(&self, entries: &[Ent]) -> usize
