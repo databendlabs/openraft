@@ -149,12 +149,12 @@ pub struct Config {
     #[clap(
         long,
         default_value = "since_last:5000",
-        parse(try_from_str=parse_snapshot_policy)
+        value_parser=parse_snapshot_policy
     )]
     pub snapshot_policy: SnapshotPolicy,
 
     /// The maximum snapshot chunk size allowed when transmitting snapshots (in bytes)
-    #[clap(long, default_value = "3MiB", parse(try_from_str=parse_bytes_with_unit))]
+    #[clap(long, default_value = "3MiB", value_parser=parse_bytes_with_unit)]
     pub snapshot_max_chunk_size: u64,
 
     /// The maximum number of logs to keep that are already included in **snapshot**.
@@ -179,25 +179,37 @@ pub struct Config {
     /// - `--enable-tick`: true
     /// - `--enable-tick=true`: true
     /// - `--enable-tick=false`: false
+    // clap 4 requires `num_args = 0..=1`, or it complains about missing arg error
+    // https://github.com/clap-rs/clap/discussions/4374
     #[clap(long,
            default_value_t = true,
            action = clap::ArgAction::Set,
-           default_missing_value = "true")]
+           num_args = 0..=1,
+           default_missing_value = "true"
+    )]
     pub enable_tick: bool,
 
     /// Whether a leader sends heartbeat log to following nodes, i.e., followers and learners.
+    // clap 4 requires `num_args = 0..=1`, or it complains about missing arg error
+    // https://github.com/clap-rs/clap/discussions/4374
     #[clap(long,
            default_value_t = true,
            action = clap::ArgAction::Set,
-           default_missing_value = "true")]
+           num_args = 0..=1,
+           default_missing_value = "true"
+    )]
     pub enable_heartbeat: bool,
 
     /// Whether a follower will enter candidate state if it does not receive message from the
     /// leader for a while.
+    // clap 4 requires `num_args = 0..=1`, or it complains about missing arg error
+    // https://github.com/clap-rs/clap/discussions/4374
     #[clap(long,
            default_value_t = true,
            action = clap::ArgAction::Set,
-           default_missing_value = "true")]
+           num_args = 0..=1,
+           default_missing_value = "true"
+    )]
     pub enable_elect: bool,
 }
 

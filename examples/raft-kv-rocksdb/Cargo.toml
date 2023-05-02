@@ -26,7 +26,7 @@ openraft = { path = "../../openraft", features = ["serde"] }
 async-std = { version = "1.12.0", features = ["attributes", "tokio1"] }
 async-trait = "0.1.36"
 byteorder = "1.4.3"
-clap = { version = "3.0.13", features = ["derive", "env"] }
+clap = { version = "4.1.11", features = ["derive", "env"] }
 reqwest = { version = "0.11.9", features = ["json"] }
 rocksdb = "0.20.1"
 serde = { version = "1.0.114", features = ["derive"] }
