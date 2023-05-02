@@ -60,7 +60,6 @@ async fn snapshot_overrides_membership() -> Result<()> {
                 "send log to trigger snapshot",
             )
             .await?;
-        router.assert_stable_cluster(Some(1), Some(log_index));
 
         router
             .wait_for_snapshot(

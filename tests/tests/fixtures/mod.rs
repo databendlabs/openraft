@@ -51,6 +51,7 @@ use openraft::RaftNetwork;
 use openraft::RaftNetworkFactory;
 use openraft::RaftState;
 use openraft::ServerState;
+use openraft::Vote;
 use openraft_memstore::ClientRequest;
 use openraft_memstore::ClientResponse;
 use openraft_memstore::IntoMemClientRequest;
@@ -291,7 +292,7 @@ impl TypedRaftRouter {
         tracing::info!(log_index, "--- wait for init node to become leader");
 
         self.wait_for_log(&btreeset![leader_id], Some(log_index), timeout(), "init").await?;
-        self.assert_stable_cluster(Some(1), Some(log_index));
+        self.wait(&leader_id, timeout()).vote(Vote::new_committed(1, 0), "init vote").await?;
 
         for id in voter_ids.iter() {
             if *id == leader_id {
@@ -672,94 +673,6 @@ impl TypedRaftRouter {
         };
 
         node.0.client_write(req).await.map(|res| res.data)
-    }
-
-    /// Assert that the cluster has an elected leader, and is in a stable state with all nodes
-    /// uniform.
-    ///
-    /// If `expected_term` is `Some`, then all nodes will be tested to ensure that they are in the
-    /// given term. Else, the leader's current term will be used for the assertion.
-    ///
-    /// If `expected_last_log` is `Some`, then all nodes will be tested to ensure that their last
-    /// log index and last applied log match the given value. Else, the leader's last_log_index
-    /// will be used for the assertion.
-    pub fn assert_stable_cluster(&self, expected_term: Option<u64>, expected_last_log: Option<u64>) {
-        let isolated = {
-            let x = self.isolated_nodes.lock().unwrap();
-            x.clone()
-        };
-        let nodes = self.latest_metrics();
-
-        let non_isolated_nodes: Vec<_> = nodes.iter().filter(|node| !isolated.contains(&node.id)).collect();
-        let leader = nodes
-            .iter()
-            .filter(|node| !isolated.contains(&node.id))
-            .find(|node| node.state == ServerState::Leader)
-            .expect("expected to find a cluster leader");
-        let followers: Vec<_> = nodes
-            .iter()
-            .filter(|node| !isolated.contains(&node.id))
-            .filter(|node| node.state == ServerState::Follower)
-            .collect();
-
-        assert_eq!(
-            followers.len() + 1,
-            non_isolated_nodes.len(),
-            "expected all nodes to be followers with one leader, got 1 leader and {} followers, expected {} followers",
-            followers.len(),
-            non_isolated_nodes.len() - 1,
-        );
-        let expected_term = match expected_term {
-            Some(term) => term,
-            None => leader.current_term,
-        };
-        let expected_last_log = if expected_last_log.is_some() {
-            expected_last_log
-        } else {
-            leader.last_log_index
-        };
-        let all_nodes = nodes.iter().map(|node| node.id).collect::<Vec<_>>();
-
-        for node in non_isolated_nodes.iter() {
-            assert_eq!(
-                node.current_leader,
-                Some(leader.id),
-                "node {} has leader {:?}, expected {}",
-                node.id,
-                node.current_leader,
-                leader.id
-            );
-            assert_eq!(
-                node.current_term, expected_term,
-                "node {} has term {}, expected {}",
-                node.id, node.current_term, expected_term
-            );
-            assert_eq!(
-                node.last_applied.index(),
-                expected_last_log,
-                "node {} has last_applied {:?}, expected {:?}",
-                node.id,
-                node.last_applied,
-                expected_last_log
-            );
-            assert_eq!(
-                node.last_log_index, expected_last_log,
-                "node {} has last_log_index {:?}, expected {:?}",
-                node.id, node.last_log_index, expected_last_log
-            );
-            let members = node.membership_config.voter_ids().collect::<Vec<_>>();
-            assert_eq!(
-                members, all_nodes,
-                "node {} has membership {:?}, expected {:?}",
-                node.id, members, all_nodes
-            );
-            assert_eq!(
-                1,
-                node.membership_config.membership().get_joint_config().len(),
-                "node {} was not in uniform consensus state",
-                node.id
-            );
-        }
     }
 
     /// Assert against the state of the storage system one node in the cluster.

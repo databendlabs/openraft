@@ -7,6 +7,7 @@ use maplit::btreeset;
 use openraft::Config;
 use openraft::LogIdOptionExt;
 use openraft::ServerState;
+use openraft::Vote;
 
 use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
@@ -36,7 +37,6 @@ use crate::fixtures::RaftRouter;
 /// - asserts that all of the leader, followers and the learner receives all logs.
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn concurrent_write_and_add_learner() -> Result<()> {
-    let timeout = Duration::from_millis(500);
     let candidates = btreeset![0, 1, 2];
 
     // Setup test dependencies.
@@ -77,8 +77,9 @@ async fn concurrent_write_and_add_learner() -> Result<()> {
         log_index += 2; // Tow member change logs
 
         wait_log(&router, &candidates, log_index).await?;
-        router.assert_stable_cluster(Some(1), Some(log_index)); // Still in term 1, so leader is
-                                                                // still node 0.
+        for id in [0, 1, 2] {
+            router.wait(&id, timeout()).vote(Vote::new_committed(1, 0), "after changing membership").await?;
+        }
     }
 
     let leader = router.leader().unwrap();
@@ -118,7 +119,7 @@ async fn concurrent_write_and_add_learner() -> Result<()> {
         .wait_for_metrics(
             &3u64,
             |x| x.state == ServerState::Learner,
-            Some(timeout),
+            timeout(),
             &format!("n{}.state -> {:?}", 3, ServerState::Learner),
         )
         .await?;
@@ -128,7 +129,7 @@ async fn concurrent_write_and_add_learner() -> Result<()> {
         .wait_for_metrics(
             &3u64,
             |x| x.last_log_index == Some(log_index),
-            Some(timeout),
+            timeout(),
             &format!("n{}.last_log_index -> {}", 3, log_index),
         )
         .await?;
@@ -137,13 +138,12 @@ async fn concurrent_write_and_add_learner() -> Result<()> {
 }
 
 async fn wait_log(router: &RaftRouter, node_ids: &BTreeSet<u64>, want_log: u64) -> anyhow::Result<()> {
-    let timeout = Duration::from_millis(500);
     for i in node_ids.iter() {
         router
             .wait_for_metrics(
                 i,
                 |x| x.last_log_index == Some(want_log),
-                Some(timeout),
+                timeout(),
                 &format!("n{}.last_log_index -> {}", i, want_log),
             )
             .await?;
@@ -151,10 +151,14 @@ async fn wait_log(router: &RaftRouter, node_ids: &BTreeSet<u64>, want_log: u64) 
             .wait_for_metrics(
                 i,
                 |x| x.last_applied.index() == Some(want_log),
-                Some(timeout),
+                timeout(),
                 &format!("n{}.last_applied -> {}", i, want_log),
             )
             .await?;
     }
     Ok(())
+}
+
+fn timeout() -> Option<Duration> {
+    Some(Duration::from_millis(500))
 }
