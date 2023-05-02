@@ -51,6 +51,7 @@ use crate::log_id::LogIdOptionExt;
 use crate::log_id::RaftLogId;
 use crate::metrics::RaftMetrics;
 use crate::metrics::ReplicationMetrics;
+use crate::network::RPCOption;
 use crate::network::RPCTypes;
 use crate::network::RaftNetwork;
 use crate::network::RaftNetworkFactory;
@@ -307,8 +308,10 @@ where
             let target_node = eff_mem.get_node(&target).unwrap().clone();
             let mut client = self.network.new_client(target, &target_node).await;
 
+            let option = RPCOption::new(ttl);
+
             let fu = async move {
-                let outer_res = timeout(ttl, client.send_append_entries(rpc)).await;
+                let outer_res = timeout(ttl, client.append_entries(rpc, option)).await;
                 match outer_res {
                     Ok(append_res) => match append_res {
                         Ok(x) => Ok((target, x)),
@@ -991,10 +994,11 @@ where
 
             let ttl = Duration::from_millis(self.config.election_timeout_min);
             let id = self.id;
+            let option = RPCOption::new(ttl);
 
             let _ = tokio::spawn(
                 async move {
-                    let tm_res = timeout(ttl, client.send_vote(req)).await;
+                    let tm_res = timeout(ttl, client.vote(req, option)).await;
                     let res = match tm_res {
                         Ok(res) => res,
 

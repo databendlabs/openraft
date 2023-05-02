@@ -112,7 +112,8 @@ async fn do_bench(bench_config: &BenchConfig) -> anyhow::Result<()> {
                 l.client_write(ClientRequest {})
                     .await
                     .map_err(|e| {
-                        tracing::error!("client_write error: {:?}", e);
+                        eprintln!("client_write error: {:?}", e);
+                        e
                     })
                     .unwrap();
             }
