@@ -103,6 +103,9 @@ pub struct MemStoreStateMachine {
 #[derive(PartialEq, Eq)]
 #[derive(PartialOrd, Ord)]
 pub enum BlockOperation {
+    /// Block building a snapshot but does not hold a lock on the state machine.
+    /// This will prevent building snapshot returning but should not block applying entries.
+    DelayBuildingSnapshot,
     BuildSnapshot,
     PurgeLog,
 }
@@ -238,6 +241,11 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<MemStore> {
         let data;
         let last_applied_log;
         let last_membership;
+
+        if let Some(d) = self.get_blocking(&BlockOperation::DelayBuildingSnapshot) {
+            tracing::info!(?d, "delay snapshot build");
+            tokio::time::sleep(d).await;
+        }
 
         {
             // Serialize the data of the state machine.

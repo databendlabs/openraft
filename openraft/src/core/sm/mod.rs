@@ -141,9 +141,8 @@ where
                 CommandPayload::BuildSnapshot => {
                     tracing::info!("{}: build snapshot", func_name!());
 
-                    let resp = self.build_snapshot().await?;
-                    let res = CommandResult::new(cmd.seq, Ok(Response::BuildSnapshot(resp)));
-                    let _ = self.resp_tx.send(Notify::sm(res));
+                    // It is a read operation and is spawned, and it responds in another task
+                    self.build_snapshot(cmd.seq, self.resp_tx.clone()).await;
                 }
                 CommandPayload::GetSnapshot { tx } => {
                     tracing::info!("{}: get snapshot", func_name!());
@@ -219,18 +218,30 @@ where
         Ok(resp)
     }
 
+    /// Build a snapshot from the state machine.
+    ///
+    /// Building snapshot is a read-only operation, so it can be run in another task in parallel.
+    /// This parallelization depends on the [`RaftSnapshotBuilder`] implementation returned  by
+    /// [`get_snapshot_builder()`](`RaftStateMachine::get_snapshot_builder()`): The builder must:
+    /// - hold a consistent view of the state machine that won't be affected by further writes such
+    ///   as applying a log entry,
+    /// - or it must be able to acquire a lock that prevents any write operations.
     #[tracing::instrument(level = "info", skip_all)]
-    async fn build_snapshot(&mut self) -> Result<SnapshotMeta<C::NodeId, C::Node>, StorageError<C::NodeId>> {
-        // TODO(3): move it to another task
+    async fn build_snapshot(&mut self, seq: CommandSeq, resp_tx: mpsc::UnboundedSender<Notify<C>>) {
+        // TODO: need to be abortable?
         // use futures::future::abortable;
         // let (fu, abort_handle) = abortable(async move { builder.build_snapshot().await });
 
         tracing::info!("{}", func_name!());
 
         let mut builder = self.state_machine.get_snapshot_builder().await;
-        let snapshot = builder.build_snapshot().await?;
 
-        Ok(snapshot.meta)
+        let _handle = tokio::spawn(async move {
+            let res = builder.build_snapshot().await;
+            let res = res.map(|snap| Response::BuildSnapshot(snap.meta));
+            let cmd_res = CommandResult::new(seq, res);
+            let _ = resp_tx.send(Notify::sm(cmd_res));
+        });
     }
 
     #[tracing::instrument(level = "info", skip_all)]
