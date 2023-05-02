@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
+use openraft::network::RPCOption;
 use openraft::network::RaftNetwork;
 use openraft::network::RaftNetworkFactory;
 use openraft::raft::AppendEntriesRequest;
@@ -127,15 +128,20 @@ async fn compaction() -> Result<()> {
         "--- send a heartbeat with prev_log_id to be some value <= last_applied to ensure the commit index is updated"
     );
     {
+        let option = RPCOption::new(Duration::from_millis(1_000));
+
         let res = router
             .new_client(1, &())
             .await
-            .send_append_entries(AppendEntriesRequest {
-                vote: Vote::new_committed(1, 0),
-                prev_log_id: Some(LogId::new(CommittedLeaderId::new(1, 0), 2)),
-                entries: vec![],
-                leader_commit: Some(LogId::new(CommittedLeaderId::new(0, 0), 0)),
-            })
+            .send_append_entries(
+                AppendEntriesRequest {
+                    vote: Vote::new_committed(1, 0),
+                    prev_log_id: Some(LogId::new(CommittedLeaderId::new(1, 0), 2)),
+                    entries: vec![],
+                    leader_commit: Some(LogId::new(CommittedLeaderId::new(0, 0), 0)),
+                },
+                option,
+            )
             .await?;
 
         tracing::debug!("--- append-entries res: {:?}", res);

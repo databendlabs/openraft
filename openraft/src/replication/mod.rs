@@ -33,6 +33,7 @@ use crate::error::Timeout;
 use crate::log_id::LogIdOptionExt;
 use crate::log_id_range::LogIdRange;
 use crate::network::Backoff;
+use crate::network::RPCOption;
 use crate::network::RPCTypes;
 use crate::network::RaftNetwork;
 use crate::network::RaftNetworkFactory;
@@ -292,7 +293,8 @@ where
         );
 
         let the_timeout = Duration::from_millis(self.config.heartbeat_interval);
-        let res = timeout(the_timeout, self.network.send_append_entries(payload)).await;
+        let option = RPCOption::new(the_timeout);
+        let res = timeout(the_timeout, self.network.send_append_entries(payload, option)).await;
 
         tracing::debug!("append_entries res: {:?}", res);
 
@@ -576,7 +578,9 @@ where
                 self.config.send_snapshot_timeout()
             };
 
-            let res = timeout(snap_timeout, self.network.send_install_snapshot(req)).await;
+            let option = RPCOption::new(snap_timeout);
+
+            let res = timeout(snap_timeout, self.network.send_install_snapshot(req, option)).await;
 
             let res = match res {
                 Ok(outer_res) => match outer_res {

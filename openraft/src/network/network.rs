@@ -5,6 +5,7 @@ use async_trait::async_trait;
 use crate::error::InstallSnapshotError;
 use crate::error::RPCError;
 use crate::error::RaftError;
+use crate::network::rpc_option::RPCOption;
 use crate::network::Backoff;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
@@ -32,12 +33,14 @@ where C: RaftTypeConfig
     async fn send_append_entries(
         &mut self,
         rpc: AppendEntriesRequest<C>,
+        option: RPCOption,
     ) -> Result<AppendEntriesResponse<C::NodeId>, RPCError<C::NodeId, C::Node, RaftError<C::NodeId>>>;
 
     /// Send an InstallSnapshot RPC to the target Raft node (§7).
     async fn send_install_snapshot(
         &mut self,
         rpc: InstallSnapshotRequest<C>,
+        option: RPCOption,
     ) -> Result<
         InstallSnapshotResponse<C::NodeId>,
         RPCError<C::NodeId, C::Node, RaftError<C::NodeId, InstallSnapshotError>>,
@@ -47,6 +50,7 @@ where C: RaftTypeConfig
     async fn send_vote(
         &mut self,
         rpc: VoteRequest<C::NodeId>,
+        option: RPCOption,
     ) -> Result<VoteResponse<C::NodeId>, RPCError<C::NodeId, C::Node, RaftError<C::NodeId>>>;
 
     /// Build a backoff instance if the target node is temporarily(or permanently) unreachable.

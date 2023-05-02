@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use openraft::error::InstallSnapshotError;
 use openraft::error::NetworkError;
 use openraft::error::RemoteError;
+use openraft::network::RPCOption;
 use openraft::network::RaftNetwork;
 use openraft::network::RaftNetworkFactory;
 use openraft::raft::AppendEntriesRequest;
@@ -83,6 +84,7 @@ impl RaftNetwork<TypeConfig> for NetworkConnection {
     async fn send_append_entries(
         &mut self,
         req: AppendEntriesRequest<TypeConfig>,
+        _option: RPCOption,
     ) -> Result<AppendEntriesResponse<NodeId>, typ::RPCError> {
         self.owner.send_rpc(self.target, &self.target_node, "raft-append", req).await
     }
@@ -90,11 +92,16 @@ impl RaftNetwork<TypeConfig> for NetworkConnection {
     async fn send_install_snapshot(
         &mut self,
         req: InstallSnapshotRequest<TypeConfig>,
+        _option: RPCOption,
     ) -> Result<InstallSnapshotResponse<NodeId>, typ::RPCError<InstallSnapshotError>> {
         self.owner.send_rpc(self.target, &self.target_node, "raft-snapshot", req).await
     }
 
-    async fn send_vote(&mut self, req: VoteRequest<NodeId>) -> Result<VoteResponse<NodeId>, typ::RPCError> {
+    async fn send_vote(
+        &mut self,
+        req: VoteRequest<NodeId>,
+        _option: RPCOption,
+    ) -> Result<VoteResponse<NodeId>, typ::RPCError> {
         self.owner.send_rpc(self.target, &self.target_node, "raft-vote", req).await
     }
 }

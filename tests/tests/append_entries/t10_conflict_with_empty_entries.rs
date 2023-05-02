@@ -1,6 +1,8 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::Result;
+use openraft::network::RPCOption;
 use openraft::network::RaftNetwork;
 use openraft::network::RaftNetworkFactory;
 use openraft::raft::AppendEntriesRequest;
@@ -57,7 +59,8 @@ async fn conflict_with_empty_entries() -> Result<()> {
         leader_commit: Some(LogId::new(CommittedLeaderId::new(1, 0), 5)),
     };
 
-    let resp = router.new_client(0, &()).await.send_append_entries(rpc).await?;
+    let option = RPCOption::new(Duration::from_millis(1_000));
+    let resp = router.new_client(0, &()).await.send_append_entries(rpc, option).await?;
     assert!(!resp.is_success());
     assert!(resp.is_conflict());
 
@@ -77,7 +80,9 @@ async fn conflict_with_empty_entries() -> Result<()> {
         leader_commit: Some(LogId::new(CommittedLeaderId::new(1, 0), 5)),
     };
 
-    let resp = router.new_client(0, &()).await.send_append_entries(rpc).await?;
+    let option = RPCOption::new(Duration::from_millis(1_000));
+
+    let resp = router.new_client(0, &()).await.send_append_entries(rpc, option).await?;
     assert!(resp.is_success());
     assert!(!resp.is_conflict());
 
@@ -90,7 +95,9 @@ async fn conflict_with_empty_entries() -> Result<()> {
         leader_commit: Some(LogId::new(CommittedLeaderId::new(1, 0), 5)),
     };
 
-    let resp = router.new_client(0, &()).await.send_append_entries(rpc).await?;
+    let option = RPCOption::new(Duration::from_millis(1_000));
+
+    let resp = router.new_client(0, &()).await.send_append_entries(rpc, option).await?;
     assert!(!resp.is_success());
     assert!(resp.is_conflict());
 

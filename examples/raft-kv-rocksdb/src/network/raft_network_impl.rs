@@ -7,6 +7,7 @@ use openraft::error::NetworkError;
 use openraft::error::RPCError;
 use openraft::error::RaftError;
 use openraft::error::RemoteError;
+use openraft::network::RPCOption;
 use openraft::network::RaftNetwork;
 use openraft::network::RaftNetworkFactory;
 use openraft::raft::AppendEntriesRequest;
@@ -96,6 +97,7 @@ impl RaftNetwork<TypeConfig> for NetworkConnection {
     async fn send_append_entries(
         &mut self,
         req: AppendEntriesRequest<TypeConfig>,
+        _option: RPCOption,
     ) -> Result<AppendEntriesResponse<NodeId>, RPCError<NodeId, Node, RaftError<NodeId>>> {
         tracing::debug!(req = debug(&req), "send_append_entries");
 
@@ -112,6 +114,7 @@ impl RaftNetwork<TypeConfig> for NetworkConnection {
     async fn send_install_snapshot(
         &mut self,
         req: InstallSnapshotRequest<TypeConfig>,
+        _option: RPCOption,
     ) -> Result<InstallSnapshotResponse<NodeId>, RPCError<NodeId, Node, RaftError<NodeId, InstallSnapshotError>>> {
         tracing::debug!(req = debug(&req), "send_install_snapshot");
         self.c().await?.raft().snapshot(req).await.map_err(|e| to_error(e, self.target))
@@ -121,6 +124,7 @@ impl RaftNetwork<TypeConfig> for NetworkConnection {
     async fn send_vote(
         &mut self,
         req: VoteRequest<NodeId>,
+        _option: RPCOption,
     ) -> Result<VoteResponse<NodeId>, RPCError<NodeId, Node, RaftError<NodeId>>> {
         tracing::debug!(req = debug(&req), "send_vote");
         self.c().await?.raft().vote(req).await.map_err(|e| to_error(e, self.target))

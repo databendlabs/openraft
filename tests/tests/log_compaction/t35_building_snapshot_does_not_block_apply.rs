@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
+use openraft::network::RPCOption;
 use openraft::network::RaftNetwork;
 use openraft::network::RaftNetworkFactory;
 use openraft::raft::AppendEntriesRequest;
@@ -74,7 +75,9 @@ async fn building_snapshot_does_not_block_apply() -> Result<()> {
         };
 
         let mut cli = router.new_client(1, &()).await;
-        let fu = cli.send_append_entries(rpc);
+        let option = RPCOption::new(Duration::from_millis(1_000));
+
+        let fu = cli.send_append_entries(rpc, option);
         let fu = tokio::time::timeout(Duration::from_millis(500), fu);
         let resp = fu.await??;
         assert!(resp.is_success());
