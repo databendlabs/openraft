@@ -143,6 +143,8 @@ impl<NID: NodeId> Inflight<NID> {
 
     /// Update inflight state when log upto `upto` is acknowledged by a follower/learner.
     pub(crate) fn ack(&mut self, upto: Option<LogId<NID>>) {
+        let request_id = self.get_id();
+
         match self {
             Inflight::None => {
                 unreachable!("no inflight data")
@@ -161,6 +163,10 @@ impl<NID: NodeId> Inflight<NID> {
                 debug_assert_eq!(&upto, last_log_id);
                 *self = Inflight::None;
             }
+        }
+
+        if let Some(request_id) = request_id {
+            self.set_id(request_id);
         }
     }
 

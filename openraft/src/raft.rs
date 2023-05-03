@@ -1,8 +1,8 @@
 //! Public Raft interface and data types.
 
 use std::collections::BTreeMap;
+use std::fmt;
 use std::fmt::Debug;
-use std::fmt::Display;
 use std::marker::PhantomData;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -30,6 +30,7 @@ use crate::core::sm;
 use crate::core::RaftCore;
 use crate::core::Tick;
 use crate::core::TickHandle;
+use crate::display_ext::DisplayOptionExt;
 use crate::display_ext::DisplaySlice;
 use crate::engine::Engine;
 use crate::engine::EngineConfig;
@@ -357,7 +358,7 @@ where
     async fn send_external_command(
         &self,
         cmd: ExternalCommand,
-        cmd_desc: impl Display + Default,
+        cmd_desc: impl fmt::Display + Default,
     ) -> Result<(), Fatal<C::NodeId>> {
         let send_res = self.inner.tx_api.send(RaftMsg::ExternalCommand { cmd });
 
@@ -731,8 +732,8 @@ where
 
     async fn get_core_stopped_error(
         &self,
-        when: impl Display,
-        message_summary: Option<impl Display + Default>,
+        when: impl fmt::Display,
+        message_summary: Option<impl fmt::Display + Default>,
     ) -> Fatal<C::NodeId> {
         // Wait for the core task to finish.
         self.join_core_task().await;
@@ -1000,7 +1001,7 @@ pub struct AppendEntriesRequest<C: RaftTypeConfig> {
 impl<C: RaftTypeConfig> Debug for AppendEntriesRequest<C>
 where C::D: Debug
 {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("AppendEntriesRequest")
             .field("vote", &self.vote)
             .field("prev_log_id", &self.prev_log_id)
@@ -1023,12 +1024,35 @@ impl<C: RaftTypeConfig> MessageSummary<AppendEntriesRequest<C>> for AppendEntrie
 }
 
 /// The response to an `AppendEntriesRequest`.
+///
+/// [`RaftNetwork::send_append_entries`] returns this type only when received an RPC reply.
+/// Otherwise it should return [`RPCError`].
 #[derive(Debug)]
 #[derive(PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub enum AppendEntriesResponse<NID: NodeId> {
+    /// Successfully replicated all log entries to the target node.
     Success,
+
+    /// Successfully sent the first portion of log entries.
+    ///
+    /// [`RaftNetwork::send_append_entries`] can return a partial success.
+    /// For example, it tries to send log entries `[1-2..3-10]`, the application is allowed to send
+    /// just `[1-2..1-3]` and return `PartialSuccess(1-3)`,
+    ///
+    /// ### Caution
+    ///
+    /// The returned matching log id must be **greater than or equal to** the first log
+    /// id([`AppendEntriesRequest::prev_log_id`]) of the entries to send. If no RPC reply is
+    /// received, [`RaftNetwork::send_append_entries`] must return an [`RPCError`] to inform
+    /// Openraft that the first log id([`AppendEntriesRequest::prev_log_id`]) may not match on
+    /// the remote target node.
+    PartialSuccess(Option<LogId<NID>>),
+
+    /// The first log id([`AppendEntriesRequest::prev_log_id`]) of the entries to send does not
+    /// match on the remote target node.
     Conflict,
+
     /// Seen a vote `v` that does not hold `mine_vote >= v`.
     /// And a leader's vote(committed vote) must be total order with other vote.
     /// Therefore it has to be a higher vote: `mine_vote < v`
@@ -1045,12 +1069,15 @@ impl<NID: NodeId> AppendEntriesResponse<NID> {
     }
 }
 
-impl<NID: NodeId> MessageSummary<AppendEntriesResponse<NID>> for AppendEntriesResponse<NID> {
-    fn summary(&self) -> String {
+impl<NID: NodeId> fmt::Display for AppendEntriesResponse<NID> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            AppendEntriesResponse::Success => "Success".to_string(),
-            AppendEntriesResponse::HigherVote(vote) => format!("Higher vote, {}", vote),
-            AppendEntriesResponse::Conflict => "Conflict".to_string(),
+            AppendEntriesResponse::Success => write!(f, "Success"),
+            AppendEntriesResponse::PartialSuccess(m) => {
+                write!(f, "PartialSuccess({})", m.display())
+            }
+            AppendEntriesResponse::HigherVote(vote) => write!(f, "Higher vote, {}", vote),
+            AppendEntriesResponse::Conflict => write!(f, "Conflict"),
         }
     }
 }
