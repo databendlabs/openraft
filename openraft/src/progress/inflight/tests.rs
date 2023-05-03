@@ -129,6 +129,15 @@ fn test_inflight_ack() -> anyhow::Result<()> {
 }
 
 #[test]
+fn test_inflight_ack_inherit_request_id() -> anyhow::Result<()> {
+    let mut f = Inflight::logs(Some(log_id(5)), Some(log_id(10))).with_id(10);
+
+    f.ack(Some(log_id(5)));
+    assert_eq!(Some(10), f.get_id());
+    Ok(())
+}
+
+#[test]
 fn test_inflight_conflict() -> anyhow::Result<()> {
     {
         let mut f = Inflight::logs(Some(log_id(5)), Some(log_id(10)));

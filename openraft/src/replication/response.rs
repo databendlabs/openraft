@@ -21,7 +21,7 @@ where C: RaftTypeConfig
         /// The id of the subject that submit this replication action.
         ///
         /// It is only used for debugging purpose.
-        id: u64,
+        request_id: u64,
 
         /// Either the last log id that has been successfully replicated to the target,
         /// or an error in string.
@@ -61,7 +61,7 @@ where C: RaftTypeConfig
         match self {
             Self::Progress {
                 ref target,
-                ref id,
+                request_id: ref id,
                 ref result,
                 ref session_id,
             } => {

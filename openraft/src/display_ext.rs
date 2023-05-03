@@ -19,6 +19,18 @@ impl<'a, T: fmt::Display> fmt::Display for DisplayOption<'a, T> {
     }
 }
 
+pub(crate) trait DisplayOptionExt<'a, T: fmt::Display> {
+    fn display(&'a self) -> DisplayOption<'a, T>;
+}
+
+impl<T> DisplayOptionExt<'_, T> for Option<T>
+where T: fmt::Display
+{
+    fn display(&self) -> DisplayOption<T> {
+        DisplayOption(self)
+    }
+}
+
 /// Implement `Display` for `&[T]` if T is `Display`.
 ///
 /// It outputs at most `MAX` elements, excluding those from the 5th to the second-to-last one:
