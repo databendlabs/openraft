@@ -1123,7 +1123,7 @@ pub struct InstallSnapshotRequest<C: RaftTypeConfig> {
 impl<C: RaftTypeConfig> MessageSummary<InstallSnapshotRequest<C>> for InstallSnapshotRequest<C> {
     fn summary(&self) -> String {
         format!(
-            "vote={}, meta={:?}, offset={}, len={}, done={}",
+            "vote={}, meta={}, offset={}, len={}, done={}",
             self.vote,
             self.meta,
             self.offset,
@@ -1136,6 +1136,8 @@ impl<C: RaftTypeConfig> MessageSummary<InstallSnapshotRequest<C>> for InstallSna
 /// The response to an `InstallSnapshotRequest`.
 #[derive(Debug)]
 #[derive(PartialEq, Eq)]
+#[derive(derive_more::Display)]
+#[display(fmt = "{{vote:{}}}", vote)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct InstallSnapshotResponse<NID: NodeId> {
     pub vote: Vote<NID>,

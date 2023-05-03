@@ -37,13 +37,10 @@ where
         write!(writer, "{:0>2?} ", std::thread::current().id())?;
 
         if let Some(scope) = ctx.event_scope() {
-            let mut seen = false;
-
             for span in scope.from_root() {
-                write!(writer, "{}", span.metadata().name())?;
+                write!(writer, "{}", span.metadata().target())?;
+                write!(writer, "@{}", span.metadata().name())?;
                 write!(writer, "#{:x}", span.id().into_u64())?;
-
-                seen = true;
 
                 let ext = span.extensions();
                 if let Some(fields) = &ext.get::<FormattedFields<N>>() {
@@ -51,11 +48,7 @@ where
                         write!(writer, "{{{}}}", fields)?;
                     }
                 }
-                write!(writer, ":")?;
-            }
-
-            if seen {
-                writer.write_char(' ')?;
+                write!(writer, ": ")?;
             }
         };
 

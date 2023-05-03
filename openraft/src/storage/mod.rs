@@ -7,6 +7,7 @@ mod log_store_ext;
 mod snapshot_signature;
 mod v2;
 
+use std::fmt;
 use std::fmt::Debug;
 use std::ops::RangeBounds;
 
@@ -18,6 +19,7 @@ pub use snapshot_signature::SnapshotSignature;
 pub use v2::RaftLogStorage;
 pub use v2::RaftStateMachine;
 
+use crate::display_ext::DisplayOption;
 use crate::node::Node;
 use crate::raft_types::SnapshotId;
 pub use crate::storage::callback::LogApplied;
@@ -49,18 +51,29 @@ where
     pub snapshot_id: SnapshotId,
 }
 
+impl<NID, N> fmt::Display for SnapshotMeta<NID, N>
+where
+    NID: NodeId,
+    N: Node,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{{snapshot_id: {}, last_log:{}, last_membership: {}}}",
+            self.snapshot_id,
+            DisplayOption(&self.last_log_id),
+            self.last_membership
+        )
+    }
+}
+
 impl<NID, N> MessageSummary<SnapshotMeta<NID, N>> for SnapshotMeta<NID, N>
 where
     NID: NodeId,
     N: Node,
 {
     fn summary(&self) -> String {
-        format!(
-            "{{snapshot_id: {}, last_membership: {}, last_log_id: {}}}",
-            self.snapshot_id,
-            self.last_log_id.summary(),
-            self.last_membership.summary()
-        )
+        self.to_string()
     }
 }
 

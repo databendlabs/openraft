@@ -542,12 +542,14 @@ where
     ///
     /// It is allowed to initialize only when `last_log_id.is_none()` and `vote==(0,0)`.
     /// See: [Conditions for initialization](https://datafuselabs.github.io/openraft/cluster-formation.html#conditions-for-initialization)
-    #[tracing::instrument(level = "debug", skip(self))]
+    #[tracing::instrument(level = "debug", skip(self, tx))]
     pub(crate) fn handle_initialize(
         &mut self,
         member_nodes: BTreeMap<C::NodeId, C::Node>,
         tx: ResultSender<(), InitializeError<C::NodeId, C::Node>>,
     ) {
+        tracing::debug!(member_nodes = debug(&member_nodes), "{}", func_name!());
+
         let membership = Membership::from(member_nodes);
 
         let entry = C::Entry::new_membership(LogId::default(), membership);
