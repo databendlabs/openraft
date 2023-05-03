@@ -1,3 +1,5 @@
+use std::fmt;
+
 use crate::display_ext::DisplayOption;
 use crate::LogId;
 use crate::Membership;
@@ -55,16 +57,27 @@ where
     }
 }
 
+impl<NID, N> fmt::Display for StoredMembership<NID, N>
+where
+    N: Node,
+    NID: NodeId,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{{log_id:{}, {}}}",
+            DisplayOption(&self.log_id),
+            self.membership.summary()
+        )
+    }
+}
+
 impl<NID, N> MessageSummary<StoredMembership<NID, N>> for StoredMembership<NID, N>
 where
     N: Node,
     NID: NodeId,
 {
     fn summary(&self) -> String {
-        format!(
-            "{{log_id:{}, {}}}",
-            DisplayOption(&self.log_id),
-            self.membership.summary()
-        )
+        self.to_string()
     }
 }

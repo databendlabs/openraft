@@ -87,7 +87,7 @@ where
         let all_node_ids = self.nodes.keys().cloned().collect::<BTreeSet<_>>();
         let members = self.voter_ids().collect::<BTreeSet<_>>();
 
-        res.push(",learners:[".to_string());
+        res.push(", learners:[".to_string());
         for (learner_cnt, learner_id) in all_node_ids.difference(&members).enumerate() {
             if learner_cnt > 0 {
                 res.push(",".to_string());
