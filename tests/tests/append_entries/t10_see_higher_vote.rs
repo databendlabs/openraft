@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
+use openraft::network::RPCOption;
 use openraft::network::RaftNetwork;
 use openraft::network::RaftNetworkFactory;
 use openraft::raft::VoteRequest;
@@ -40,13 +41,18 @@ async fn append_sees_higher_vote() -> Result<()> {
         // Let leader lease expire
         sleep(Duration::from_millis(800)).await;
 
+        let option = RPCOption::new(Duration::from_millis(1_000));
+
         let resp = router
             .new_client(1, &())
             .await
-            .send_vote(VoteRequest {
-                vote: Vote::new(10, 1),
-                last_log_id: Some(LogId::new(CommittedLeaderId::new(10, 1), 5)),
-            })
+            .vote(
+                VoteRequest {
+                    vote: Vote::new(10, 1),
+                    last_log_id: Some(LogId::new(CommittedLeaderId::new(10, 1), 5)),
+                },
+                option,
+            )
             .await?;
 
         assert!(resp.vote_granted);

@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
+use openraft::network::RPCOption;
 use openraft::network::RaftNetwork;
 use openraft::network::RaftNetworkFactory;
 use openraft::raft::AppendEntriesRequest;
@@ -97,7 +98,9 @@ async fn snapshot_overrides_membership() -> Result<()> {
                 }],
                 leader_commit: Some(LogId::new(CommittedLeaderId::new(0, 0), 0)),
             };
-            router.new_client(1, &()).await.send_append_entries(req).await?;
+            let option = RPCOption::new(Duration::from_millis(1_000));
+
+            router.new_client(1, &()).await.append_entries(req, option).await?;
 
             tracing::info!(log_index, "--- check that learner membership is affected");
             {
