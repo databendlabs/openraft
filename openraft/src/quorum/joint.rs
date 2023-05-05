@@ -45,7 +45,7 @@ where
     }
 }
 
-/// Implement QuorumSet for Joint<..&[QS]>
+/// Implement QuorumSet for `Joint<.., &[QS]>`
 impl<'d, ID, QS> QuorumSet<ID> for Joint<ID, QS, &'d [QS]>
 where
     ID: PartialOrd + Ord + 'static,
@@ -71,7 +71,7 @@ where
     }
 }
 
-/// Implement QuorumSet for Joint<..Vec<QS>>
+/// Implement QuorumSet for `Joint<.., Vec<QS>>`
 impl<ID, QS> QuorumSet<ID> for Joint<ID, QS, Vec<QS>>
 where
     ID: PartialOrd + Ord + 'static,

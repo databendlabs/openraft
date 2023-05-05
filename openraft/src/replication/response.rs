@@ -33,7 +33,7 @@ where C: RaftTypeConfig
     },
 
     /// [`StorageError`] error has taken place locally(not on remote node) when replicating, and
-    /// [`RaftCore`] needs to shutdown. Sent by a replication task
+    /// [`RaftCore`](`crate::core::RaftCore`) needs to shutdown. Sent by a replication task
     /// [`crate::replication::ReplicationCore`].
     StorageError { error: StorageError<C::NodeId> },
 

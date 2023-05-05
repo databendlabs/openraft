@@ -17,8 +17,9 @@ use crate::StoredMembership;
 use crate::Vote;
 
 pub(crate) mod sealed {
-    /// Seal [`RaftLogStorage`] and [`RaftStateMachine`]. This is to prevent users from implementing
-    /// them before being stable.
+    /// Seal [`RaftLogStorage`](`crate::storage::RaftLogStorage`) and
+    /// [`RaftStateMachine`](`crate::storage::RaftStateMachine`). This is to prevent users from
+    /// implementing them before being stable.
     pub trait Sealed {}
 
     /// Implement non-public trait [`Sealed`] for all types so that [`RaftLogStorage`] and

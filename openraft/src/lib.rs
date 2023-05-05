@@ -67,6 +67,8 @@ pub(crate) mod utime;
 pub(crate) mod validate;
 
 mod display_ext;
+
+pub mod docs;
 mod internal_server_state;
 mod leader;
 pub(crate) mod raft_state;

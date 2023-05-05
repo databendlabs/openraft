@@ -1,26 +1,27 @@
-on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'guide/**'
-      - 'book.toml'
-      - 'README.md'
-jobs:
-  deploy-guide:
-    runs-on: ubuntu-18.04
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v2
+# Disabled, guide is moved to https://docs.rs/openraft/0.8.3/openraft/docs
+# on:
+#   push:
+#     branches:
+#       - main
+#     paths:
+#       - 'guide/**'
+#       - 'book.toml'
+#       - 'README.md'
+# jobs:
+#   deploy-guide:
+#     runs-on: ubuntu-18.04
+#     steps:
+#       - name: Checkout
+#         uses: actions/checkout@v2
 
-      - name: Install mdbook
-        uses: drmingdrmer/mdbook-full@main
+#       - name: Install mdbook
+#         uses: drmingdrmer/mdbook-full@main
 
-      - name: Build mdbook
-        run: mdbook build
+#       - name: Build mdbook
+#         run: mdbook build
 
-      - name: Deploy to github page
-        uses: peaceiris/actions-gh-pages@v3
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./guide/book
+#       - name: Deploy to github page
+#         uses: peaceiris/actions-gh-pages@v3
+#         with:
+#           github_token: ${{ secrets.GITHUB_TOKEN }}
+#           publish_dir: ./guide/book

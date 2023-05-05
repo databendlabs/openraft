@@ -182,7 +182,7 @@ where
         false
     }
 
-    /// Create a new Membership the same as [`new()`], but does not add default value
+    /// Create a new Membership the same as [`Self::new()`], but does not add default value
     /// `Node::default()` if a voter id is not in `nodes`. Thus it may create an invalid instance.
     pub(crate) fn new_unchecked<T>(configs: Vec<BTreeSet<NID>>, nodes: T) -> Self
     where T: IntoNodes<NID, N> {
