@@ -1,7 +1,11 @@
+use std::future::Future;
+
 use async_trait::async_trait;
 
+#[cfg(not(feature = "storage-v2"))] use crate::storage::Adaptor;
 use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
+use crate::RaftStorage;
 use crate::RaftTypeConfig;
 use crate::StorageError;
 
@@ -22,6 +26,24 @@ where
     LS: RaftLogStorage<C>,
     SM: RaftStateMachine<C>,
 {
-    /// Build a [`RaftLogStorage`] implementation
+    /// Build a [`RaftLogStorage`] and [`RaftStateMachine`] implementation
     async fn build(&self) -> Result<(G, LS, SM), StorageError<C::NodeId>>;
+}
+
+// Add a default implementation for async function that returns a [`RaftStorage`] implementation.
+#[cfg(not(feature = "storage-v2"))]
+#[async_trait]
+impl<C, S, F, Fu> StoreBuilder<C, Adaptor<C, S>, Adaptor<C, S>, ()> for F
+where
+    F: Send + Sync,
+    C: RaftTypeConfig,
+    S: RaftStorage<C>,
+    Fu: Future<Output = S> + Send,
+    F: Fn() -> Fu,
+{
+    async fn build(&self) -> Result<((), Adaptor<C, S>, Adaptor<C, S>), StorageError<C::NodeId>> {
+        let store = self().await;
+        let (log_store, sm) = Adaptor::new(store);
+        Ok(((), log_store, sm))
+    }
 }

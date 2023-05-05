@@ -24,6 +24,7 @@ impl StoreBuilder<TypeConfig, LogStore, StateMachine, TempDir> for RocksBuilder 
         Ok((td, log_store, sm))
     }
 }
+
 /// To customize a builder:
 ///
 /// ```ignore

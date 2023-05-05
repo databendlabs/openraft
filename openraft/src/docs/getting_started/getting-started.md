@@ -35,12 +35,10 @@ Request and response can be any types that implement [`AppData`] and [`AppDataRe
 
 ```ignore
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ExampleRequest {/* fields */}
-impl AppData for ExampleRequest {}
+pub struct Request {key: String}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ExampleResponse(Result<Option<String>, ClientError>);
-impl AppDataResponse for ExampleResponse {}
+pub struct Response(Result<Option<String>, ClientError>);
 ```
 
 These two types are entirely application-specific and are mainly related to the
@@ -77,50 +75,13 @@ A [`RaftTypeConfig`] is also used by other components such as [`RaftStorage`], [
 
 ## 3. Implement [`RaftStorage`]
 
-The trait [`RaftStorage: RaftLogReader`][`RaftStorage`] defines how data is
-stored and consumed in a Raft-based application. It could be a wrapper for a
-local key-value store like [RocksDB](https://docs.rs/rocksdb/latest/rocksdb/).
+The trait [`RaftStorage`] defines how data is stored and consumed.
+It could be a wrapper for a local key-value store like [RocksDB](https://docs.rs/rocksdb/latest/rocksdb/).
 
-The APIs are quite straightforward, and there is a good example,
-[`Example: MemStore`](https://github.com/datafuselabs/openraft/blob/main/examples/raft-kv-memstore/src/store/mod.rs),
-which is a pure in-memory implementation that demonstrates what should be done
-when a method is called.
-
--   Read logs:
-    [`RaftStorage`] defines the API to get log reader [`RaftLogReader`], :
-    An application implements associated type [`RaftStorage::LogReader`] and [`get_log_reader()`] to return a read-only log reader:
-    - [`get_log_reader() -> Self::LogReader`][`get_log_reader()`],
-
-    [`RaftLogReader`] which defines the APIs to read logs, and is an also super trait of [`RaftStorage`] :
-    - [`get_log_state()`] get latest log state from the storage;
-    - [`try_get_log_entries()`] get log entries in a range;
-
--   Write logs:
-    [`RaftStorage`] defines the APIs to write logs:
-    - [`append_to_log(entries)`][`append_to_log()`],
-    - [`delete_conflict_logs_since(since: LogId)`][`delete_conflict_logs_since()`],
-    - [`purge_logs_upto(upto: LogId)`][`purge_logs_upto()`];
-
--   Read/write Raft vote(see: [`docs::Vote`][`Vote`]):
-    - [`save_vote(vote: &Vote)`][`save_vote()`];
-    - [`read_vote() -> Result<Option<Vote>>`][`read_vote()`];
-
--   Apply log entry to the state machine.
-    - [`last_applied_state() -> Result<(Option<LogId>, Option<EffectiveMembership>)>`][`last_applied_state()`],
-    - [`apply_to_state_machine(entries) -> Result<Vec<AppResponse>>`][`apply_to_state_machine()`];
-
--   Snapshot APIs:
-    Build a snapshot from the local state machine:
-    - [`get_snapshot_builder() -> Self::SnapshotBuilder`][`get_snapshot_builder()`],
-    - [`build_snapshot() -> Result<Snapshot>`][`build_snapshot()`],
-
-    Get the current snapshot:
-    - [`get_current_snapshot() -> Result<Option<Snapshot>>`][`get_current_snapshot()`],
-
-    Install a snapshot from leader:
-    - [`begin_receiving_snapshot() -> Result<Box<SnapshotData>>`][`begin_receiving_snapshot()`],
-    - [`install_snapshot(meta, snapshot)`][`install_snapshot()`];
-
+There is a good example,
+[`Mem KV Store`](https://github.com/datafuselabs/openraft/blob/main/examples/raft-kv-memstore/src/store/mod.rs),
+that demonstrates what should be done when a method is called. The list of [`RaftStorage`] methods is shown below.
+Follow the link to method document to see the details. 
 
 | Kind       | [`RaftStorage`] method           | Return value                 | Description                           |
 |------------|----------------------------------|------------------------------|---------------------------------------|
@@ -140,40 +101,51 @@ when a method is called.
 | Snapshot:  | [`get_snapshot_builder()`]       | impl [`RaftSnapshotBuilder`] | get a snapshot builder                | 
 |            |                                  | ↳ [`build_snapshot()`]       | build a snapshot from state machine   |
 
+Most of the APIs are quite straightforward, except two indirect APIs:
+
+-   Read logs:
+    [`RaftStorage`] defines a method [`get_log_reader()`] to get log reader [`RaftLogReader`] :
+  
+    ```ignore
+    trait RaftStorage<C: RaftTypeConfig> {
+        type LogReader: RaftLogReader<C>;
+        async fn get_log_reader(&mut self) -> Self::LogReader;
+    }
+    ```
+
+    [`RaftLogReader`] defines the APIs to read logs, and is an also super trait of [`RaftStorage`] :
+    - [`get_log_state()`] get latest log state from the storage;
+    - [`try_get_log_entries()`] get log entries in a range;
+    
+    ```ignore
+    trait RaftLogReader<C: RaftTypeConfig> {
+        async fn get_log_state(&mut self) -> Result<LogState<C>, ...>;
+        async fn try_get_log_entries<RB: RangeBounds<u64>>(&mut self, range: RB) -> Result<Vec<C::Entry>, ...>;
+    }
+    ```
+
+-   Build a snapshot from the local state machine needs to be done in two steps:
+    - [`RaftStorage::get_snapshot_builder() -> Self::SnapshotBuilder`][`get_snapshot_builder()`],
+    - [`RaftSnapshotBuilder::build_snapshot() -> Result<Snapshot>`][`build_snapshot()`],
+
 
 ### Ensure the implementation of RaftStorage is correct
 
+There is a [Test suite for RaftStorage][`Suite`] available in Openraft. If your implementation passes the tests, Openraft should work well with it. To test your implementation, you have two options:
 
-There is a [Test suite for RaftStorage][`Suite`] available. If an implementation passes the test, Openraft will work well with it.
-Refer to the [`MemStore` test](https://github.com/datafuselabs/openraft/blob/main/memstore/src/test.rs) for an example.
+1. Run `Suite::test_all()` with an `async fn()` that creates a new [`RaftStorage`], as shown in the [`MemStore` test](https://github.com/datafuselabs/openraft/blob/main/memstore/src/test.rs):
 
-To test your implementation with this suite, implement a `StoreBuilder` and call `Suite::test_all`:
+  ```ignore
+  #[test]
+  pub fn test_mem_store() -> anyhow::Result<()> {
+    openraft::testing::Suite::test_all(MemStore::new_async)
+  }
+  ```
 
-```ignore
-type LogStore = Adaptor<TypeConfig, Arc<MemStore>>;
-type StateMachine = Adaptor<TypeConfig, Arc<MemStore>>;
+2. Alternatively, run `Suite::test_all()` with a [`StoreBuilder`] implementation, as shown in the [`RocksStore` test](https://github.com/datafuselabs/openraft/blob/main/rocksstore/src/test.rs).
 
-struct MemBuilder {}
+By following either of these approaches, you can ensure that your custom storage implementation can work correctly in a distributed system.
 
-#[async_trait]
-impl StoreBuilder<TypeConfig, LogStore, StateMachine, ()> for MemBuilder {
-    async fn build(&self) -> Result<((), LogStore, StateMachine), StorageError<RocksNodeId>> {
-        let store = MemStore::new_async().await;
-        let (log_store, state_machine) = Adaptor::new(store);
-        Ok(((), log_store, state_machine))
-    }
-}
-
-#[test]
-pub fn test_mem_store() -> anyhow::Result<()> {
-  openraft::testing::Suite::test_all(MemBuilder {})
-}
-```
-
-By implementing the `StoreBuilder` and calling `Suite::test_all` with your custom builder, you can ensure that your implementation of `RaftStorage` is compatible with Openraft.
-
-There is a second example in [Test suite for RaftStorage](https://github.com/datafuselabs/openraft/blob/main/rocksstore/src/test.rs)
-that showcases building a rocksdb backed store.
 
 ### An implementation has to guarantee data durability.
 
@@ -181,31 +153,38 @@ The caller always assumes a completed write is persistent.
 The raft correctness highly depends on a reliable store.
 
 
-## 4. implement [`RaftNetwork`]
+## 4. Implement [`RaftNetwork`]
 
 Raft nodes need to communicate with each other to achieve consensus about the logs.
-The trait [`RaftNetwork`] defines the data transmission requirements for this communication.
+The trait [`RaftNetwork`] defines the data transmission requirements.
+
+```ignore
+pub trait RaftNetwork<C: RaftTypeConfig>: Send + Sync + 'static {
+    async fn send_append_entries(&mut self, rpc: AppendEntriesRequest<C>) -> Result<...>;
+    async fn send_install_snapshot(&mut self, rpc: InstallSnapshotRequest<C>) -> Result<...>;
+    async fn send_vote(&mut self, rpc: VoteRequest<C::NodeId>) -> Result<...>;
+}
+```
 
 An implementation of [`RaftNetwork`] can be considered as a wrapper that invokes
 the corresponding methods of a remote [`Raft`]. It is responsible for sending
-and receiving messages between Raft nodes to maintain consistency and achieve
-consensus.
+and receiving messages between Raft nodes.
 
 Here is the list of methods that need to be implemented for the [`RaftNetwork`] trait:
 
 
-| [`RaftNetwork`] method       | forward request            | target                                   |
+| [`RaftNetwork`] method       | forward request            | to target                                |
 |------------------------------|----------------------------|------------------------------------------|
 | [`send_append_entries()`]    | [`AppendEntriesRequest`]   | remote node [`Raft::append_entries()`]   |
 | [`send_install_snapshot()`]  | [`InstallSnapshotRequest`] | remote node [`Raft::install_snapshot()`] |
 | [`send_vote()`]              | [`VoteRequest`]            | remote node [`Raft::vote()`]             |
 
-[ExampleNetwork](https://github.com/datafuselabs/openraft/blob/main/examples/raft-kv-memstore/src/network/raft_network_impl.rs)
-demonstrates how to forward messages to other Raft nodes using a basic in-memory network implementation.
+[Mem KV Network](https://github.com/datafuselabs/openraft/blob/main/examples/raft-kv-memstore/src/network/raft_network_impl.rs)
+demonstrates how to forward messages to other Raft nodes using [`reqwest`](https://docs.rs/reqwest/latest/reqwest/) as network transport layer.
 
 To receive and handle these requests, there should be a server endpoint for each of these RPCs.
 When the server receives a Raft RPC, it simply passes it to its `raft` instance and replies with the returned result:
-[raft-server-endpoint](https://github.com/datafuselabs/openraft/blob/main/examples/raft-kv-memstore/src/network/raft.rs).
+[Mem KV Server](https://github.com/datafuselabs/openraft/blob/main/examples/raft-kv-memstore/src/network/raft.rs).
 
 For a real-world implementation, you may want to use [Tonic gRPC](https://github.com/hyperium/tonic) to handle gRPC-based communication between Raft nodes. The [databend-meta](https://github.com/datafuselabs/databend/blob/6603392a958ba8593b1f4b01410bebedd484c6a9/metasrv/src/network.rs#L89) project provides an excellent real-world example of a Tonic gRPC-based Raft network implementation.
 
@@ -214,8 +193,15 @@ For a real-world implementation, you may want to use [Tonic gRPC](https://github
 
 [`RaftNetworkFactory`] is a singleton responsible for creating [`RaftNetwork`] instances for each replication target node.
 
+```ignore
+pub trait RaftNetworkFactory<C: RaftTypeConfig>: Send + Sync + 'static {
+    type Network: RaftNetwork<C>;
+    async fn new_client(&mut self, target: C::NodeId, node: &C::Node) -> Self::Network;
+}
+```
+
 This trait contains only one method:
-- [`RaftNetworkFactory::new_client()`] generates a new [`RaftNetwork`] instance for a target node, intended for sending RPCs to that node.
+- [`RaftNetworkFactory::new_client()`] builds a new [`RaftNetwork`] instance for a target node, intended for sending RPCs to that node.
   The associated type `RaftNetworkFactory::Network` represents the application's implementation of the `RaftNetwork` trait.
 
 This function should **not** establish a connection; instead, it should create a client that connects when
@@ -224,39 +210,28 @@ necessary.
 
 ### Find the address of the target node.
 
-An implementation of [`RaftNetwork`] needs to connect to the remote Raft peer,
-using protocols such as TCP.
+In Openraft, an implementation of [`RaftNetwork`] needs to connect to remote Raft peers. To store additional information about each peer, you need to specify the `Node` type in `RaftTypeConfig`:
 
-There are two ways to find the address of a remote peer:
+```ignore
+pub struct TypeConfig {}
+impl openraft::RaftTypeConfig for TypeConfig {
+   // ...
+   type Node = BasicNode;
+}
+```
 
-1. Manage the mapping from node-id to address independently.
+Then use `Raft::add_learner(node_id, BasicNode::new("127.0.0.1"), ...)` to instruct Openraft to store node information in [`Membership`]. This information is then consistently replicated across all nodes, and will be passed to [`RaftNetworkFactory::new_client()`] to connect to remote Raft peers:
 
-2. Openraft allows you to store additional information in its [`Membership`],
-   which is automatically replicated as regular logs.
-
-   To use this feature, you need to specify the `Node` type in `RaftTypeConfig`, as follows:
-
-   ```ignore
-   pub struct TypeConfig {}
-   impl openraft::RaftTypeConfig for TypeConfig {
-       // ...
-       type Node = BasicNode;
-   }
-   ```
-
-   Use `Raft::add_learner(node_id, BasicNode::new("127.0.0.1"), ...)` to instruct Openraft
-   to store both the node-id and its address in [`Membership`]:
-
-   ```json
-   {
-      "configs": [ [ 1, 2, 3 ] ],
-      "nodes": {
-        "1": { "addr": "127.0.0.1:21001" },
-        "2": { "addr": "127.0.0.1:21002" },
-        "3": { "addr": "127.0.0.1:21003" }
-      }
-   }
-   ```
+```json
+{
+  "configs": [ [ 1, 2, 3 ] ],
+  "nodes": {
+    "1": { "addr": "127.0.0.1:21001" },
+    "2": { "addr": "127.0.0.1:21002" },
+    "3": { "addr": "127.0.0.1:21003" }
+  }
+}
+```
 
 
 ## 5. Put everything together
@@ -414,4 +389,5 @@ Additionally, two test scripts for setting up a cluster are available:
 [`build_snapshot()`]:                 `crate::storage::RaftSnapshotBuilder::build_snapshot`
 [`Snapshot`]:                         `crate::storage::Snapshot`
 
+[`StoreBuilder`]:                   `crate::testing::StoreBuilder`
 [`Suite`]:                          `crate::testing::Suite`
