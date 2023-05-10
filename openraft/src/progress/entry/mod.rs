@@ -8,6 +8,7 @@ use std::ops::Deref;
 use crate::less;
 use crate::less_equal;
 use crate::progress::inflight::Inflight;
+use crate::progress::inflight::InflightError;
 use crate::raft_state::LogStateReader;
 use crate::summary::MessageSummary;
 use crate::validate::Valid;
@@ -87,30 +88,43 @@ impl<NID: NodeId> ProgressEntry<NID> {
         }
     }
 
-    pub(crate) fn update_matching(&mut self, matching: Option<LogId<NID>>) {
+    pub(crate) fn update_matching(
+        &mut self,
+        request_id: u64,
+        matching: Option<LogId<NID>>,
+    ) -> Result<(), InflightError> {
         tracing::debug!(
             self = display(&self),
+            request_id = display(request_id),
             matching = display(matching.summary()),
             "update_matching"
         );
 
-        debug_assert!(matching >= self.matching);
+        self.inflight.ack(request_id, matching)?;
 
+        debug_assert!(matching >= self.matching);
         self.matching = matching;
-        self.inflight.ack(self.matching);
 
         let matching_next = self.matching.next_index();
         self.searching_end = std::cmp::max(self.searching_end, matching_next);
+
+        Ok(())
     }
 
-    #[allow(dead_code)]
-    pub(crate) fn update_conflicting(&mut self, conflict: u64) {
-        tracing::debug!(self = debug(&self), conflict = display(conflict), "update_conflict");
+    pub(crate) fn update_conflicting(&mut self, request_id: u64, conflict: u64) -> Result<(), InflightError> {
+        tracing::debug!(
+            self = debug(&self),
+            request_id = display(request_id),
+            conflict = display(conflict),
+            "update_conflict"
+        );
 
-        self.inflight.conflict(conflict);
+        self.inflight.conflict(request_id, conflict)?;
 
         debug_assert!(conflict < self.searching_end);
         self.searching_end = conflict;
+
+        Ok(())
     }
 
     /// Initialize a replication action: sending log entries or sending snapshot.

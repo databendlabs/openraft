@@ -9,7 +9,7 @@
 #[cfg(test)]
 mod bench;
 pub(crate) mod entry;
-mod inflight;
+pub(crate) mod inflight;
 
 use std::borrow::Borrow;
 use std::fmt::Debug;
