@@ -1,5 +1,6 @@
 use std::ops::Deref;
 
+use crate::display_ext::DisplayOptionExt;
 use crate::engine::handler::log_handler::LogHandler;
 use crate::engine::handler::snapshot_handler::SnapshotHandler;
 use crate::engine::Command;
@@ -123,18 +124,7 @@ where C: RaftTypeConfig
     /// accepted.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn update_matching(&mut self, node_id: C::NodeId, inflight_id: u64, log_id: Option<LogId<C::NodeId>>) {
-        tracing::debug!(
-            node_id = display(node_id),
-            inflight_id = display(inflight_id),
-            log_id = display(log_id.summary()),
-            "update_progress",
-        );
-        tracing::debug!(progress = display(&self.leader.progress), "leader progress");
-
         debug_assert!(log_id.is_some(), "a valid update can never set matching to None");
-
-        // Whether it is a response for the current inflight request.
-        let mut is_mine = true;
 
         // The value granted by a quorum may not yet be a committed.
         // A committed is **granted** and also is in current term.
@@ -142,18 +132,15 @@ where C: RaftTypeConfig
             .leader
             .progress
             .update_with(&node_id, |prog_entry| {
-                is_mine = prog_entry.inflight.is_my_id(inflight_id);
-                if is_mine {
-                    prog_entry.update_matching(log_id);
+                let res = prog_entry.update_matching(inflight_id, log_id);
+                if let Err(e) = &res {
+                    tracing::error!(error = display(e), "update_matching");
+                    panic!("update_matching error: {}", e);
                 }
             })
             .expect("it should always update existing progress");
 
-        if !is_mine {
-            return;
-        }
-
-        tracing::debug!(granted = display(granted.summary()), "granted after updating progress");
+        tracing::debug!(granted = display(granted.display()), "granted after updating progress");
 
         self.try_commit_granted(granted);
     }
@@ -193,22 +180,18 @@ where C: RaftTypeConfig
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn update_conflicting(&mut self, target: C::NodeId, inflight_id: u64, conflict: LogId<C::NodeId>) {
         // TODO(2): test it?
-        tracing::debug!(
-            target = display(target),
-            inflight_id = display(inflight_id),
-            conflict = display(&conflict),
-            progress = debug(&self.leader.progress),
-            "update_conflicting"
-        );
 
         let prog_entry = self.leader.progress.get_mut(&target).unwrap();
 
-        // Update inflight state only when a matching response is received.
-        if !prog_entry.inflight.is_my_id(inflight_id) {
-            return;
-        }
+        debug_assert_eq!(
+            prog_entry.inflight.get_id(),
+            Some(inflight_id),
+            "inflight({:?}) id should match: {}",
+            prog_entry.inflight,
+            inflight_id
+        );
 
-        prog_entry.update_conflicting(conflict.index);
+        prog_entry.update_conflicting(inflight_id, conflict.index).unwrap();
     }
 
     /// Update replication progress when a response is received.
@@ -216,33 +199,47 @@ where C: RaftTypeConfig
     pub(crate) fn update_progress(
         &mut self,
         target: C::NodeId,
-        id: u64,
+        request_id: u64,
         repl_res: Result<ReplicationResult<C::NodeId>, String>,
     ) {
         // TODO(2): test
-        match repl_res {
-            Ok(p) => {
-                tracing::debug!(id = display(id), result = debug(&p), "update progress");
 
-                match p {
-                    ReplicationResult::Matching(matching) => {
-                        self.update_matching(target, id, matching);
-                    }
-                    ReplicationResult::Conflict(conflict) => {
-                        self.update_conflicting(target, id, conflict);
-                    }
+        tracing::debug!(
+            target = display(target),
+            request_id = display(request_id),
+            result = debug(&repl_res),
+            progress = display(&self.leader.progress),
+            "{}",
+            func_name!()
+        );
+
+        match repl_res {
+            Ok(p) => match p {
+                ReplicationResult::Matching(matching) => {
+                    self.update_matching(target, request_id, matching);
                 }
-            }
+                ReplicationResult::Conflict(conflict) => {
+                    self.update_conflicting(target, request_id, conflict);
+                }
+            },
             Err(err_str) => {
-                tracing::warn!(id = display(id), result = display(&err_str), "update progress error");
+                tracing::warn!(
+                    id = display(request_id),
+                    result = display(&err_str),
+                    "update progress error"
+                );
 
                 // Reset inflight state and it will retry.
                 let p = self.leader.progress.get_mut(&target).unwrap();
 
-                // Reset inflight state only when a matching response is received.
-                if p.inflight.is_my_id(id) {
-                    p.inflight = Inflight::None;
-                }
+                debug_assert!(
+                    p.inflight.is_my_id(request_id),
+                    "inflight({:?}) id should match: {}",
+                    p.inflight,
+                    request_id
+                );
+
+                p.inflight = Inflight::None;
             }
         };
 

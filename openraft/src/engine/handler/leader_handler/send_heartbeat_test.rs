@@ -77,8 +77,8 @@ fn test_leader_send_heartbeat() -> anyhow::Result<()> {
     // No data to send, sending a heartbeat is to send empty RPC:
     {
         let l = eng.leader_handler()?;
-        let _ = l.leader.progress.update_with(&2, |ent| ent.update_matching(Some(log_id1(2, 3))));
-        let _ = l.leader.progress.update_with(&3, |ent| ent.update_matching(Some(log_id1(2, 3))));
+        let _ = l.leader.progress.update_with(&2, |ent| ent.update_matching(1, Some(log_id1(2, 3))).unwrap());
+        let _ = l.leader.progress.update_with(&3, |ent| ent.update_matching(1, Some(log_id1(2, 3))).unwrap());
     }
     eng.output.clear_commands();
     eng.leader_handler()?.send_heartbeat();

@@ -41,12 +41,12 @@ fn test_update_matching() -> anyhow::Result<()> {
     {
         let mut pe = ProgressEntry::empty(20);
         pe.inflight = inflight_logs(5, 10);
-        pe.update_matching(Some(log_id(6)));
+        pe.update_matching(pe.inflight.id(), Some(log_id(6)))?;
         assert_eq!(inflight_logs(6, 10), pe.inflight);
         assert_eq!(Some(log_id(6)), pe.matching);
         assert_eq!(20, pe.searching_end);
 
-        pe.update_matching(Some(log_id(10)));
+        pe.update_matching(pe.inflight.id(), Some(log_id(10)))?;
         assert_eq!(Inflight::None, pe.inflight);
         assert_eq!(Some(log_id(10)), pe.matching);
         assert_eq!(20, pe.searching_end);
@@ -58,7 +58,7 @@ fn test_update_matching() -> anyhow::Result<()> {
         pe.matching = Some(log_id(6));
         pe.inflight = inflight_logs(5, 20);
 
-        pe.update_matching(Some(log_id(20)));
+        pe.update_matching(pe.inflight.id(), Some(log_id(20)))?;
         assert_eq!(21, pe.searching_end);
     }
 
@@ -70,7 +70,7 @@ fn test_update_conflicting() -> anyhow::Result<()> {
     let mut pe = ProgressEntry::empty(20);
     pe.matching = Some(log_id(3));
     pe.inflight = inflight_logs(5, 10);
-    pe.update_conflicting(5);
+    pe.update_conflicting(pe.inflight.id(), 5)?;
     assert_eq!(Inflight::None, pe.inflight);
     assert_eq!(&Some(log_id(3)), pe.borrow());
     assert_eq!(5, pe.searching_end);
