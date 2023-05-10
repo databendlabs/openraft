@@ -1241,7 +1241,7 @@ where
                 match response {
                     replication::Response::Progress {
                         target,
-                        id,
+                        request_id: id,
                         result,
                         session_id,
                     } => {
@@ -1576,7 +1576,7 @@ where
                             let _ = node.tx_repl.send(Replicate::Heartbeat);
                         }
                         Inflight::Logs { id, log_id_range } => {
-                            let _ = node.tx_repl.send(Replicate::logs(id, log_id_range));
+                            let _ = node.tx_repl.send(Replicate::logs(Some(id), log_id_range));
                         }
                         Inflight::Snapshot { id, last_log_id } => {
                             let _ = last_log_id;

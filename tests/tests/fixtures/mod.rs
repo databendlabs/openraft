@@ -47,6 +47,7 @@ use openraft::LogId;
 use openraft::LogIdOptionExt;
 use openraft::MessageSummary;
 use openraft::Raft;
+use openraft::RaftLogId;
 use openraft::RaftLogReader;
 use openraft::RaftMetrics;
 use openraft::RaftState;
@@ -151,6 +152,12 @@ pub struct TypedRaftRouter {
     /// 0 means no delay.
     send_delay: Arc<AtomicU64>,
 
+    /// To simulate PartialSuccess for AppendEntries RPCs.
+    ///
+    /// If the quota is set to `Some(n)`, then the AppendEntries RPC consumes the quota,
+    /// and send out at most `n` entries.
+    append_entries_quota: Arc<Mutex<Option<u64>>>,
+
     /// Count of RPCs sent.
     rpc_count: Arc<Mutex<HashMap<RPCType, u64>>>,
 }
@@ -193,6 +200,7 @@ impl Builder {
             isolated_nodes: Default::default(),
             unreachable_nodes: Default::default(),
             send_delay: Arc::new(AtomicU64::new(send_delay)),
+            append_entries_quota: Arc::new(Mutex::new(None)),
             rpc_count: Default::default(),
         }
     }
@@ -206,6 +214,7 @@ impl Clone for TypedRaftRouter {
             isolated_nodes: self.isolated_nodes.clone(),
             unreachable_nodes: self.unreachable_nodes.clone(),
             send_delay: self.send_delay.clone(),
+            append_entries_quota: self.append_entries_quota.clone(),
             rpc_count: self.rpc_count.clone(),
         }
     }
@@ -235,6 +244,11 @@ impl TypedRaftRouter {
         let r = rand::random::<u64>() % send_delay;
         let timeout = Duration::from_millis(r);
         tokio::time::sleep(timeout).await;
+    }
+
+    pub fn set_append_entries_quota(&mut self, quota: Option<u64>) {
+        let mut append_entries_quota = self.append_entries_quota.lock().unwrap();
+        *append_entries_quota = quota;
     }
 
     fn count_rpc(&self, rpc_type: RPCType) {
@@ -851,7 +865,7 @@ impl RaftNetwork<MemConfig> for RaftRouterNetwork {
     /// Send an AppendEntries RPC to the target Raft node (§5).
     async fn send_append_entries(
         &mut self,
-        rpc: AppendEntriesRequest<MemConfig>,
+        mut rpc: AppendEntriesRequest<MemConfig>,
     ) -> Result<AppendEntriesResponse<MemNodeId>, RPCError<MemNodeId, (), RaftError<MemNodeId>>> {
         tracing::debug!("append_entries to id={} {}", self.target, rpc.summary());
         self.owner.count_rpc(RPCType::AppendEntries);
@@ -860,6 +874,38 @@ impl RaftNetwork<MemConfig> for RaftRouterNetwork {
         self.owner.check_unreachable(rpc.vote.leader_id().voted_for().unwrap(), self.target)?;
         self.owner.rand_send_delay().await;
 
+        // decrease quota if quota is set
+        let truncated = {
+            let n = rpc.entries.len() as u64;
+
+            let mut x = self.owner.append_entries_quota.lock().unwrap();
+            let q = *x;
+            tracing::debug!("current quota: {:?}", q);
+
+            if let Some(quota) = q {
+                if quota < n {
+                    rpc.entries.truncate(quota as usize);
+                    *x = Some(0);
+                    if let Some(last) = rpc.entries.last() {
+                        Some(Some(*last.get_log_id()))
+                    } else {
+                        Some(rpc.prev_log_id)
+                    }
+                } else {
+                    *x = Some(quota - n);
+                    None
+                }
+            } else {
+                None
+            }
+        };
+
+        {
+            let x = self.owner.append_entries_quota.lock().unwrap();
+            tracing::debug!("quota after consumption: {:?}", *x);
+        }
+        tracing::debug!("append_entries truncated: {:?}", truncated);
+
         let node = self.owner.get_raft_handle(&self.target)?;
 
         let resp = node.append_entries(rpc).await;
@@ -867,7 +913,15 @@ impl RaftNetwork<MemConfig> for RaftRouterNetwork {
         tracing::debug!("append_entries: recv resp from id={} {:?}", self.target, resp);
         let resp = resp.map_err(|e| RemoteError::new(self.target, e))?;
 
-        Ok(resp)
+        // If entries are truncated by quota, return an partial success response.
+        if let Some(truncated) = truncated {
+            match resp {
+                AppendEntriesResponse::Success => Ok(AppendEntriesResponse::PartialSuccess(truncated)),
+                _ => Ok(resp),
+            }
+        } else {
+            Ok(resp)
+        }
     }
 
     /// Send an InstallSnapshot RPC to the target Raft node (§7).

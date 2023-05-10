@@ -289,7 +289,7 @@ where C: RaftTypeConfig
     /// `send_none` specifies whether to force to send a message even when there is no data to send.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn initiate_replication(&mut self, send_none: SendNone) {
-        tracing::debug!(progress = debug(&self.leader.progress), "send_to_all");
+        tracing::debug!(progress = debug(&self.leader.progress), "{}", func_name!());
 
         for (id, prog_entry) in self.leader.progress.iter_mut() {
             // TODO: update matching should be done here for leader
@@ -299,6 +299,7 @@ where C: RaftTypeConfig
             }
 
             let t = prog_entry.next_send(self.state, self.config.max_payload_entries);
+            tracing::debug!(target = display(*id), send = debug(&t), "next send");
 
             match t {
                 Ok(inflight) => {
