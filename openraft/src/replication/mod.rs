@@ -471,7 +471,7 @@ where
     ///
     /// In the backoff period, we should not send out any RPCs, but we should still receive events,
     /// in case the channel is closed, it should quit at once.
-    #[tracing::instrument(level = "trace", skip(self))]
+    #[tracing::instrument(level = "debug", skip(self))]
     pub async fn backoff_drain_events(&mut self, until: Instant) -> Result<(), ReplicationClosed> {
         let d = until - Instant::now();
         tracing::warn!(

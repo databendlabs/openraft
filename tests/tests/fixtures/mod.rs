@@ -835,7 +835,7 @@ impl TypedRaftRouter {
         let unreachable = self.unreachable_nodes.lock().unwrap();
 
         if unreachable.contains(&target) || unreachable.contains(&id) {
-            let err = Unreachable::new(&AnyError::error(format!("isolated:{} -> {}", id, target)));
+            let err = Unreachable::new(&AnyError::error(format!("unreachable:{} -> {}", id, target)));
             return Err(err);
         }
 
