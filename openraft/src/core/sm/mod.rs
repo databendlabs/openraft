@@ -188,7 +188,7 @@ where
             };
         }
     }
-    #[tracing::instrument(level = "info", skip_all)]
+    #[tracing::instrument(level = "debug", skip_all)]
     async fn apply(&mut self, entries: Vec<C::Entry>) -> Result<ApplyResult<C>, StorageError<C::NodeId>> {
         // TODO: prepare response before apply_to_state_machine,
         //       so that an Entry does not need to be Clone,
