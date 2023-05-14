@@ -27,7 +27,7 @@ async fn stop_replication_to_removed_unreachable_follower_network_failure() -> R
 
     tracing::info!(log_index, "--- isolate node 4");
     {
-        router.isolate_node(4);
+        router.set_node_network_failure(4, true);
     }
 
     // logs on node 4 will stop here:
@@ -74,7 +74,7 @@ async fn stop_replication_to_removed_unreachable_follower_network_failure() -> R
         "--- restore network isolation, node 4 won't catch up log and will enter candidate state"
     );
     {
-        router.restore_node(4);
+        router.set_node_network_failure(4, false);
 
         router
             .wait(&4, timeout())

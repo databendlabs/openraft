@@ -32,7 +32,7 @@ async fn commit_joint_config_during_0_to_012() -> Result<()> {
 
     // Initialize the cluster, then assert that a stable cluster was formed & held.
     tracing::info!("--- initializing cluster");
-    router.initialize_from_single_node(0).await?;
+    router.initialize(0).await?;
     // Assert all nodes are in learner state & have no entries.
     let mut log_index = 1;
 
@@ -58,8 +58,8 @@ async fn commit_joint_config_during_0_to_012() -> Result<()> {
         "--- isolate node 1,2, so that membership [0,1,2] wont commit"
     );
 
-    router.isolate_node(1);
-    router.isolate_node(2);
+    router.set_node_network_failure(1, true);
+    router.set_node_network_failure(2, true);
 
     tracing::info!(log_index, "--- changing cluster config, should timeout");
 
@@ -109,8 +109,8 @@ async fn commit_joint_config_during_012_to_234() -> Result<()> {
 
     tracing::info!(log_index, "--- isolate 3,4");
 
-    router.isolate_node(3);
-    router.isolate_node(4);
+    router.set_node_network_failure(3, true);
+    router.set_node_network_failure(4, true);
 
     tracing::info!(log_index, "--- changing config to 0,1,2");
     let node = router.get_raft_handle(&0)?;

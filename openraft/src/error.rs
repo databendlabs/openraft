@@ -318,14 +318,10 @@ pub struct HigherVote<NID: NodeId> {
     pub mine: Vote<NID>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-#[error("leader committed index {committed_index} advances target log index {target_index} too many")]
-pub struct CommittedAdvanceTooMany {
-    pub committed_index: u64,
-    pub target_index: u64,
-}
-
+/// Error that indicates a **temporary** network error and when it is returned, Openraft will retry
+/// immediately.
+///
+/// Unlike [`Unreachable`], which indicates a error that should backoff before retrying.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 #[error("NetworkError: {source}")]

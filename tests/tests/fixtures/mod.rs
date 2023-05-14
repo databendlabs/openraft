@@ -134,6 +134,7 @@ pub fn log_panic(panic: &PanicInfo) {
 }
 
 /// A type which emulates a network transport and implements the `RaftNetworkFactory` trait.
+#[derive(Clone)]
 pub struct TypedRaftRouter {
     /// The Raft runtime config which all nodes are using.
     config: Arc<Config>,
@@ -142,8 +143,8 @@ pub struct TypedRaftRouter {
     #[allow(clippy::type_complexity)]
     routing_table: Arc<Mutex<BTreeMap<MemNodeId, (MemRaft, MemLogStore, MemStateMachine)>>>,
 
-    /// Nodes which are isolated can neither send nor receive frames, it returns an `NetworkError`.
-    isolated_nodes: Arc<Mutex<HashSet<MemNodeId>>>,
+    /// Nodes that can neither send nor receive frames, and will return an `NetworkError`.
+    network_failure_nodes: Arc<Mutex<HashSet<MemNodeId>>>,
 
     /// Nodes to which an RPC is sent return an `Unreachable` error.
     unreachable_nodes: Arc<Mutex<HashSet<MemNodeId>>>,
@@ -197,25 +198,11 @@ impl Builder {
         TypedRaftRouter {
             config: self.config,
             routing_table: Default::default(),
-            isolated_nodes: Default::default(),
+            network_failure_nodes: Default::default(),
             unreachable_nodes: Default::default(),
             send_delay: Arc::new(AtomicU64::new(send_delay)),
             append_entries_quota: Arc::new(Mutex::new(None)),
             rpc_count: Default::default(),
-        }
-    }
-}
-
-impl Clone for TypedRaftRouter {
-    fn clone(&self) -> Self {
-        Self {
-            config: self.config.clone(),
-            routing_table: self.routing_table.clone(),
-            isolated_nodes: self.isolated_nodes.clone(),
-            unreachable_nodes: self.unreachable_nodes.clone(),
-            send_delay: self.send_delay.clone(),
-            append_entries_quota: self.append_entries_quota.clone(),
-            rpc_count: self.rpc_count.clone(),
         }
     }
 }
@@ -300,7 +287,7 @@ impl TypedRaftRouter {
 
         tracing::info!("--- initializing single node cluster: {}", 0);
 
-        self.initialize_from_single_node(leader_id).await?;
+        self.initialize(leader_id).await?;
         let mut log_index = 1; // log 0: initial membership log; log 1: leader initial log
 
         tracing::info!(log_index, "--- wait for init node to become leader");
@@ -388,20 +375,25 @@ impl TypedRaftRouter {
         };
 
         {
-            let mut isolated = self.isolated_nodes.lock().unwrap();
+            let mut isolated = self.network_failure_nodes.lock().unwrap();
             isolated.remove(&id);
         }
 
         opt_handles
     }
 
-    /// Initialize all nodes based on the config in the routing table.
-    pub async fn initialize_from_single_node(&self, node_id: MemNodeId) -> anyhow::Result<()> {
-        tracing::info!({ node_id = display(node_id) }, "initializing cluster from single node");
+    /// Initialize cluster with the config that contains all nodes.
+    pub async fn initialize(&self, node_id: MemNodeId) -> anyhow::Result<()> {
         let members: BTreeSet<MemNodeId> = {
             let rt = self.routing_table.lock().unwrap();
             rt.keys().cloned().collect()
         };
+
+        tracing::info!(
+            node_id = display(node_id),
+            members = debug(&members),
+            "initializing cluster"
+        );
 
         let node = self.get_raft_handle(&node_id)?;
         node.initialize(members.clone()).await?;
@@ -410,8 +402,13 @@ impl TypedRaftRouter {
 
     /// Isolate the network of the specified node.
     #[tracing::instrument(level = "debug", skip(self))]
-    pub fn isolate_node(&self, id: MemNodeId) {
-        self.isolated_nodes.lock().unwrap().insert(id);
+    pub fn set_node_network_failure(&self, id: MemNodeId, emit_failure: bool) {
+        let mut nodes = self.network_failure_nodes.lock().unwrap();
+        if emit_failure {
+            nodes.insert(id);
+        } else {
+            nodes.remove(&id);
+        }
     }
 
     /// Set to `true` to return [`Unreachable`](`openraft::errors::Unreachable`) when sending RPC to
@@ -554,7 +551,7 @@ impl TypedRaftRouter {
     /// Get the ID of the current leader.
     pub fn leader(&self) -> Option<MemNodeId> {
         let isolated = {
-            let isolated = self.isolated_nodes.lock().unwrap();
+            let isolated = self.network_failure_nodes.lock().unwrap();
             isolated.clone()
         };
 
@@ -576,7 +573,7 @@ impl TypedRaftRouter {
     /// Restore the network of the specified node.
     #[tracing::instrument(level = "debug", skip(self))]
     pub fn restore_node(&self, id: MemNodeId) {
-        let mut nodes = self.isolated_nodes.lock().unwrap();
+        let mut nodes = self.network_failure_nodes.lock().unwrap();
         nodes.remove(&id);
     }
 
@@ -820,7 +817,7 @@ impl TypedRaftRouter {
 
     #[tracing::instrument(level = "debug", skip(self))]
     pub fn check_network_error(&self, id: MemNodeId, target: MemNodeId) -> Result<(), NetworkError> {
-        let isolated = self.isolated_nodes.lock().unwrap();
+        let isolated = self.network_failure_nodes.lock().unwrap();
 
         if isolated.contains(&target) || isolated.contains(&id) {
             let network_err = NetworkError::new(&AnyError::error(format!("isolated:{} -> {}", id, target)));
