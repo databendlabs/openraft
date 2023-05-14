@@ -43,7 +43,7 @@ async fn snapshot_chunk_size() -> Result<()> {
         router.wait_for_log(&btreeset![0], None, timeout(), "empty").await?;
         router.wait_for_state(&btreeset![0], ServerState::Learner, timeout(), "empty").await?;
 
-        router.initialize_from_single_node(0).await?;
+        router.initialize(0).await?;
         log_index += 1;
 
         router.wait_for_log(&btreeset![0], Some(log_index), timeout(), "init leader").await?;

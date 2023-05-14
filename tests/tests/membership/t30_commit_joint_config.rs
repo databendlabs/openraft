@@ -32,7 +32,7 @@ async fn commit_joint_config_during_0_to_012() -> Result<()> {
 
     // Initialize the cluster, then assert that a stable cluster was formed & held.
     tracing::info!("--- initializing cluster");
-    router.initialize_from_single_node(0).await?;
+    router.initialize(0).await?;
     // Assert all nodes are in learner state & have no entries.
     let mut log_index = 1;
 

@@ -300,7 +300,7 @@ impl TypedRaftRouter {
 
         tracing::info!("--- initializing single node cluster: {}", 0);
 
-        self.initialize_from_single_node(leader_id).await?;
+        self.initialize(leader_id).await?;
         let mut log_index = 1; // log 0: initial membership log; log 1: leader initial log
 
         tracing::info!(log_index, "--- wait for init node to become leader");
@@ -395,13 +395,18 @@ impl TypedRaftRouter {
         opt_handles
     }
 
-    /// Initialize all nodes based on the config in the routing table.
-    pub async fn initialize_from_single_node(&self, node_id: MemNodeId) -> anyhow::Result<()> {
-        tracing::info!({ node_id = display(node_id) }, "initializing cluster from single node");
+    /// Initialize cluster with the config that contains all nodes.
+    pub async fn initialize(&self, node_id: MemNodeId) -> anyhow::Result<()> {
         let members: BTreeSet<MemNodeId> = {
             let rt = self.routing_table.lock().unwrap();
             rt.keys().cloned().collect()
         };
+
+        tracing::info!(
+            node_id = display(node_id),
+            members = debug(&members),
+            "initializing cluster"
+        );
 
         let node = self.get_raft_handle(&node_id)?;
         node.initialize(members.clone()).await?;

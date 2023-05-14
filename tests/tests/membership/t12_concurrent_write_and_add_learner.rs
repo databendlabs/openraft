@@ -55,7 +55,7 @@ async fn concurrent_write_and_add_learner() -> Result<()> {
 
     tracing::info!("--- initializing cluster of 1 node");
     {
-        router.initialize_from_single_node(0).await?;
+        router.initialize(0).await?;
         log_index = 1;
 
         wait_log(&router, &btreeset![0], log_index).await?;
