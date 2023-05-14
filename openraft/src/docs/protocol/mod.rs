@@ -11,7 +11,3 @@ pub mod replication {
         #![doc = include_str!("snapshot_replication.md")]
     }
 }
-
-pub mod fast_commit {
-    #![doc = include_str!("fast_commit.md")]
-}

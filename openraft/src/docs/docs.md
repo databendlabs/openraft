@@ -23,7 +23,9 @@ To learn about the data structures used in Openraft and the commit protocol, see
   - [`Extended membership`](`data::extended_membership`) explains how members are organized in Openraft;
   - [`Effective membership`](`data::effective_membership`) explains when membership config takes effect;
 - [`protocol`] :
-  - [`fast-commit`](`protocol::fast_commit`);
+  - [`replication`](`protocol::replication`);
+    - [`log_replication`](`protocol::replication::log_replication`);
+    - [`snapshot_replication`](`protocol::replication::snapshot_replication`);
 
 Contributors who want to understand the internals of Openraft can find relevant information in
 - [`internal`] :
@@ -32,3 +34,5 @@ Contributors who want to understand the internals of Openraft can find relevant 
 
 Finally, the archived and discarded documents:
 - [`obsolete`] describes obsolete design documents and why they are discarded;
+  - [`blank-log-heartbeeat`](`obsolete::heartbeat`);
+  - [`fast-commit`](`obsolete::fast_commit`);

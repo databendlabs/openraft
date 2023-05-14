@@ -7,7 +7,6 @@ use crate::engine::EngineOutput;
 use crate::entry::RaftPayload;
 use crate::internal_server_state::LeaderQuorumSet;
 use crate::leader::Leader;
-use crate::raft_state::LogStateReader;
 use crate::RaftLogId;
 use crate::RaftState;
 use crate::RaftTypeConfig;
@@ -40,9 +39,6 @@ where C: RaftTypeConfig
     /// If there is a membership config log entry, the caller has to guarantee the previous one is
     /// committed.
     ///
-    /// See [`docs::protocol::fast_commit`]
-    ///
-    /// TODO(xp): metrics flag needs to be dealt with.
     /// TODO(xp): if vote indicates this node is not the leader, refuse append
     #[tracing::instrument(level = "debug", skip(self, entries))]
     pub(crate) fn leader_append_entries(&mut self, mut entries: Vec<C::Entry>) {
@@ -53,12 +49,6 @@ where C: RaftTypeConfig
 
         self.state.assign_log_ids(&mut entries);
         self.state.extend_log_ids_from_same_leader(&entries);
-
-        let last_log_id = {
-            // Safe unwrap(): entries.len() > 0
-            let last = entries.last().unwrap();
-            Some(*last.get_log_id())
-        };
 
         let mut membership_entry = None;
         for entry in entries.iter() {
@@ -75,17 +65,13 @@ where C: RaftTypeConfig
 
         let mut rh = self.replication_handler();
 
+        // Since this entry, the condition to commit has been changed.
+        // But we only need to commit in the new membership config.
+        // Because any quorum in the new one intersect with one in the previous membership config.
         if let Some((log_id, m)) = membership_entry {
-            if log_id.index > 0 {
-                let prev_log_id = rh.state.get_log_id(log_id.index - 1);
-                rh.update_local_progress(prev_log_id);
-            }
-
-            // since this entry, the condition to commit has been changed.
             rh.append_membership(&log_id, &m);
         }
 
-        rh.update_local_progress(last_log_id);
         rh.initiate_replication(SendNone::False);
     }
 
