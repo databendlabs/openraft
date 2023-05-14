@@ -27,7 +27,7 @@ async fn snapshot_to_unreachable_node_should_not_block() -> Result<()> {
     let mut log_index = router.new_cluster(btreeset! {0,1}, btreeset! {2}).await?;
 
     tracing::info!(log_index, "--- isolate replication 0 -> 2");
-    router.isolate_node(2);
+    router.set_node_network_failure(2, true);
 
     let n = 10;
     tracing::info!(log_index, "--- write {} logs", n);
