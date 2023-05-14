@@ -8,3 +8,7 @@
 pub mod heartbeat {
     #![doc = include_str!("blank-log-heartbeat.md")]
 }
+
+pub mod fast_commit {
+    #![doc = include_str!("fast_commit.md")]
+}
