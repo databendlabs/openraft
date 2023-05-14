@@ -266,7 +266,7 @@ where
     pub(super) async fn handle_check_is_leader_request(
         &mut self,
         tx: ResultSender<(), CheckIsLeaderError<C::NodeId, C::Node>>,
-    ) -> Result<(), StorageError<C::NodeId>> {
+    ) {
         // Setup sentinel values to track when we've received majority confirmation of leadership.
 
         let my_id = self.id;
@@ -279,7 +279,7 @@ where
 
         if eff_mem.is_quorum(granted.iter()) {
             let _ = tx.send(Ok(()));
-            return Ok(());
+            return;
         }
 
         // Spawn parallel requests, all with the standard timeout for heartbeats.
@@ -396,8 +396,6 @@ where
         };
 
         tokio::spawn(waiting_fu.instrument(tracing::debug_span!("spawn_is_leader_waiting")));
-
-        Ok(())
     }
 
     /// Submit change-membership by writing a Membership log entry.
@@ -861,7 +859,7 @@ where
 
                 notify_res = self.rx_notify.recv() => {
                     match notify_res {
-                        Some(notify) => self.handle_notify(notify).await?,
+                        Some(notify) => self.handle_notify(notify)?,
                         None => {
                             tracing::error!("all rx_notify senders are dropped");
                             return Err(Fatal::Stopped);
@@ -871,7 +869,7 @@ where
 
                 msg_res = self.rx_api.recv() => {
                     match msg_res {
-                        Some(msg) => self.handle_api_msg(msg).await?,
+                        Some(msg) => self.handle_api_msg(msg).await,
                         None => {
                             tracing::info!("all rx_api senders are dropped");
                             return Err(Fatal::Stopped);
@@ -923,7 +921,7 @@ where
                 },
             };
 
-            self.handle_api_msg(msg).await?;
+            self.handle_api_msg(msg).await;
 
             // TODO: does run_engine_commands() run too frequently?
             //       to run many commands in one shot, it is possible to batch more commands to gain
@@ -958,7 +956,7 @@ where
                 },
             };
 
-            self.handle_notify(notify).await?;
+            self.handle_notify(notify)?;
 
             // TODO: does run_engine_commands() run too frequently?
             //       to run many commands in one shot, it is possible to batch more commands to gain
@@ -1064,7 +1062,7 @@ where
 
     // TODO: Make this method non-async. It does not need to run any async command in it.
     #[tracing::instrument(level = "debug", skip(self, msg), fields(state = debug(self.engine.state.server_state), id=display(self.id)))]
-    pub(crate) async fn handle_api_msg(&mut self, msg: RaftMsg<C, N, LS>) -> Result<(), Fatal<C::NodeId>> {
+    pub(crate) async fn handle_api_msg(&mut self, msg: RaftMsg<C, N, LS>) {
         tracing::debug!("recv from rx_api: {}", msg.summary());
 
         match msg {
@@ -1096,7 +1094,7 @@ where
             }
             RaftMsg::CheckIsLeaderRequest { tx } => {
                 if self.engine.state.is_leader(&self.engine.config.id) {
-                    self.handle_check_is_leader_request(tx).await?;
+                    self.handle_check_is_leader_request(tx).await;
                 } else {
                     self.reject_with_forward_to_leader(tx);
                 }
@@ -1146,12 +1144,11 @@ where
                 }
             }
         };
-        Ok(())
     }
 
     // TODO: Make this method non-async. It does not need to run any async command in it.
     #[tracing::instrument(level = "debug", skip_all, fields(state = debug(self.engine.state.server_state), id=display(self.id)))]
-    pub(crate) async fn handle_notify(&mut self, notify: Notify<C>) -> Result<(), Fatal<C::NodeId>> {
+    pub(crate) fn handle_notify(&mut self, notify: Notify<C>) -> Result<(), Fatal<C::NodeId>> {
         tracing::debug!("recv from rx_notify: {}", notify.summary());
 
         match notify {
