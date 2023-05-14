@@ -326,6 +326,10 @@ pub struct CommittedAdvanceTooMany {
     pub target_index: u64,
 }
 
+/// Error that indicates a **temporary** network error and when it is returned, Openraft will retry
+/// immediately.
+///
+/// Unlike [`Unreachable`], which indicates a error that should backoff before retrying.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 #[error("NetworkError: {source}")]
