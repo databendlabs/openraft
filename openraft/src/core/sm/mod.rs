@@ -35,21 +35,6 @@ pub(crate) use response::Response;
 
 use crate::core::notify::Notify;
 
-// TODO: replace it with Snapshot<NID,N,SD>
-/// Received snapshot from the leader.
-struct Received<C: RaftTypeConfig> {
-    snapshot_meta: SnapshotMeta<C::NodeId, C::Node>,
-    data: Box<C::SnapshotData>,
-}
-
-impl<C> Received<C>
-where C: RaftTypeConfig
-{
-    pub(crate) fn new(snapshot_meta: SnapshotMeta<C::NodeId, C::Node>, data: Box<C::SnapshotData>) -> Self {
-        Self { snapshot_meta, data }
-    }
-}
-
 /// State machine worker handle for sending command to it.
 pub(crate) struct Handle<C>
 where C: RaftTypeConfig
@@ -77,7 +62,7 @@ where
 
     streaming: Option<Streaming<C>>,
 
-    received: Option<Received<C>>,
+    received: Option<Snapshot<C>>,
 
     cmd_rx: mpsc::UnboundedReceiver<Command<C>>,
 
@@ -296,7 +281,7 @@ where
                 .map_err(|e| StorageIOError::write_snapshot(Some(snapshot_meta.signature()), &e))?;
 
             tracing::info!("store completed streaming snapshot: {:?}", snapshot_meta);
-            self.received = Some(Received::new(snapshot_meta, data));
+            self.received = Some(Snapshot::new(snapshot_meta, data));
         }
 
         Ok(())
@@ -313,13 +298,13 @@ where
         let received = self.received.take().unwrap();
 
         debug_assert!(
-            received.snapshot_meta == snapshot_meta,
+            received.meta == snapshot_meta,
             "expected snapshot meta: {:?}, got: {:?}",
-            received.snapshot_meta,
+            received.meta,
             snapshot_meta
         );
 
-        self.state_machine.install_snapshot(&snapshot_meta, received.data).await?;
+        self.state_machine.install_snapshot(&snapshot_meta, received.snapshot).await?;
 
         tracing::info!("Done install_snapshot, meta: {:?}", snapshot_meta);
 

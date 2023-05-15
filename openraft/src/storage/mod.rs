@@ -108,6 +108,14 @@ where C: RaftTypeConfig
     pub snapshot: Box<C::SnapshotData>,
 }
 
+impl<C> Snapshot<C>
+where C: RaftTypeConfig
+{
+    pub(crate) fn new(meta: SnapshotMeta<C::NodeId, C::Node>, snapshot: Box<C::SnapshotData>) -> Self {
+        Self { meta, snapshot }
+    }
+}
+
 /// The state about logs.
 ///
 /// Invariance: last_purged_log_id <= last_applied <= last_log_id
