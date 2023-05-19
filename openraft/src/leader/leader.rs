@@ -1,8 +1,8 @@
-use std::collections::BTreeSet;
+use tokio::time::Instant;
 
+use crate::leader::voting::Voting;
 use crate::log_id::LogIndexOptionExt;
 use crate::progress::entry::ProgressEntry;
-use crate::progress::Progress;
 use crate::progress::VecProgress;
 use crate::quorum::QuorumSet;
 use crate::LogId;
@@ -29,8 +29,8 @@ pub(crate) struct Leader<NID: NodeId, QS: QuorumSet<NID>> {
     /// The vote this leader works in.
     pub(crate) vote: Vote<NID>,
 
-    /// Which nodes have granted the the vote of this node.
-    pub(crate) vote_granted_by: BTreeSet<NID>,
+    /// Voting state
+    voting: Voting<NID, QS>,
 
     /// Tracks the replication progress and committed index
     pub(crate) progress: VecProgress<NID, ProgressEntry<NID>, Option<LogId<NID>>, QS>,
@@ -42,14 +42,18 @@ where
     QS: QuorumSet<NID> + 'static,
 {
     pub(crate) fn new(
+        now: Instant,
         vote: Vote<NID>,
         quorum_set: QS,
         learner_ids: impl Iterator<Item = NID>,
         last_log_index: Option<u64>,
-    ) -> Self {
+    ) -> Self
+    where
+        QS: Clone,
+    {
         Self {
             vote,
-            vote_granted_by: BTreeSet::new(),
+            voting: Voting::new(now, vote, quorum_set.clone()),
             progress: VecProgress::new(
                 quorum_set,
                 learner_ids,
@@ -58,20 +62,20 @@ where
         }
     }
 
-    /// Update that a node has granted the vote.
-    pub(crate) fn grant_vote_by(&mut self, target: NID) {
-        self.vote_granted_by.insert(target);
-        tracing::info!(
-            target = display(target),
-            granted = debug(&self.vote_granted_by),
-            "{}",
-            func_name!()
-        );
+    #[allow(dead_code)]
+    pub(crate) fn voting(&self) -> &Voting<NID, QS> {
+        &self.voting
     }
 
-    /// Return if a quorum of `membership` has granted it.
-    pub(crate) fn is_vote_granted(&self) -> bool {
-        let qs = self.progress.quorum_set();
-        qs.is_quorum(self.vote_granted_by.iter())
+    #[allow(dead_code)]
+    pub(crate) fn voting_mut(&mut self) -> &mut Voting<NID, QS> {
+        &mut self.voting
+    }
+
+    /// Update that a node has granted the vote.
+    ///
+    /// Return if a quorum has granted the vote.
+    pub(crate) fn grant_vote_by(&mut self, target: NID) -> bool {
+        self.voting.grant_by(&target)
     }
 }

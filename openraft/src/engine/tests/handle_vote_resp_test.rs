@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use maplit::btreeset;
@@ -73,7 +74,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
             .membership_state
             .set_effective(Arc::new(EffectiveMembership::new(Some(log_id1(1, 1)), m12())));
         eng.vote_handler().become_leading();
-        eng.internal_server_state.leading_mut().map(|l| l.vote_granted_by.insert(1));
+        eng.internal_server_state.leading_mut().map(|l| l.voting_mut().grant_by(&1));
         eng.state.server_state = ServerState::Candidate;
 
         eng.handle_vote_resp(2, VoteResponse {
@@ -85,7 +86,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         assert_eq!(Vote::new(2, 1), *eng.state.vote_ref());
         assert_eq!(
             Some(btreeset! {1},),
-            eng.internal_server_state.leading().map(|x| x.vote_granted_by.clone())
+            eng.internal_server_state.leading().map(|x| x.voting().granters().collect::<BTreeSet<_>>())
         );
 
         assert_eq!(ServerState::Candidate, eng.state.server_state);
@@ -104,7 +105,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
             .membership_state
             .set_effective(Arc::new(EffectiveMembership::new(Some(log_id1(1, 1)), m12())));
         eng.vote_handler().become_leading();
-        eng.internal_server_state.leading_mut().map(|l| l.vote_granted_by.insert(1));
+        eng.internal_server_state.leading_mut().map(|l| l.voting_mut().grant_by(&1));
         eng.state.server_state = ServerState::Candidate;
 
         eng.handle_vote_resp(2, VoteResponse {
@@ -133,7 +134,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
             .membership_state
             .set_effective(Arc::new(EffectiveMembership::new(Some(log_id1(1, 1)), m12())));
         eng.vote_handler().become_leading();
-        eng.internal_server_state.leading_mut().map(|l| l.vote_granted_by.insert(1));
+        eng.internal_server_state.leading_mut().map(|l| l.voting_mut().grant_by(&1));
         eng.state.server_state = ServerState::Candidate;
 
         eng.handle_vote_resp(2, VoteResponse {
@@ -145,7 +146,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         assert_eq!(Vote::new(2, 1), *eng.state.vote_ref());
         assert_eq!(
             Some(btreeset! {1},),
-            eng.internal_server_state.leading().map(|x| x.vote_granted_by.clone())
+            eng.internal_server_state.leading().map(|x| x.voting().granters().collect::<BTreeSet<_>>())
         );
 
         assert_eq!(ServerState::Candidate, eng.state.server_state);
@@ -162,7 +163,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
             .membership_state
             .set_effective(Arc::new(EffectiveMembership::new(Some(log_id1(1, 1)), m1234())));
         eng.vote_handler().become_leading();
-        eng.internal_server_state.leading_mut().map(|l| l.vote_granted_by.insert(1));
+        eng.internal_server_state.leading_mut().map(|l| l.voting_mut().grant_by(&1));
         eng.state.server_state = ServerState::Candidate;
 
         eng.handle_vote_resp(2, VoteResponse {
@@ -174,7 +175,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         assert_eq!(Vote::new(2, 1), *eng.state.vote_ref());
         assert_eq!(
             Some(btreeset! {1,2},),
-            eng.internal_server_state.leading().map(|x| x.vote_granted_by.clone())
+            eng.internal_server_state.leading().map(|x| x.voting().granters().collect::<BTreeSet<_>>())
         );
 
         assert_eq!(ServerState::Candidate, eng.state.server_state);
@@ -191,7 +192,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
             .membership_state
             .set_effective(Arc::new(EffectiveMembership::new(Some(log_id1(1, 1)), m12())));
         eng.vote_handler().become_leading();
-        eng.internal_server_state.leading_mut().map(|l| l.vote_granted_by.insert(1));
+        eng.internal_server_state.leading_mut().map(|l| l.voting_mut().grant_by(&1));
         eng.state.server_state = ServerState::Candidate;
 
         eng.handle_vote_resp(2, VoteResponse {
@@ -203,7 +204,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         assert_eq!(Vote::new_committed(2, 1), *eng.state.vote_ref());
         assert_eq!(
             Some(btreeset! {1,2},),
-            eng.internal_server_state.leading().map(|x| x.vote_granted_by.clone())
+            eng.internal_server_state.leading().map(|x| x.voting().granters().collect::<BTreeSet<_>>())
         );
 
         assert_eq!(ServerState::Leader, eng.state.server_state);

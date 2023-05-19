@@ -1,3 +1,4 @@
+use core::fmt;
 use std::ops::Deref;
 use std::ops::DerefMut;
 
@@ -8,6 +9,15 @@ use tokio::time::Instant;
 pub(crate) struct UTime<T> {
     data: T,
     utime: Option<Instant>,
+}
+
+impl<T: fmt::Display> fmt::Display for UTime<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.utime {
+            Some(utime) => write!(f, "{}@{:?}", self.data, utime),
+            None => write!(f, "{}", self.data),
+        }
+    }
 }
 
 impl<T: Clone> Clone for UTime<T> {

@@ -165,6 +165,7 @@ where C: RaftTypeConfig
 
         let em = &self.state.membership_state.effective();
         let mut leader = Leader::new(
+            *self.timer.now(),
             *self.state.vote_ref(),
             em.membership().to_quorum_set(),
             em.learner_ids(),
