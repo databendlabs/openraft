@@ -3,6 +3,10 @@
 pub mod replication {
     #![doc = include_str!("replication.md")]
 
+    pub mod leader_lease {
+        #![doc = include_str!("leader_lease.md")]
+    }
+
     pub mod log_replication {
         #![doc = include_str!("log_replication.md")]
     }

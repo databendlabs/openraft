@@ -1099,9 +1099,15 @@ pub struct VoteRequest<NID: NodeId> {
     pub last_log_id: Option<LogId<NID>>,
 }
 
+impl<NID: NodeId> fmt::Display for VoteRequest<NID> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{{vote:{}, last_log:{}}}", self.vote, self.last_log_id.display(),)
+    }
+}
+
 impl<NID: NodeId> MessageSummary<VoteRequest<NID>> for VoteRequest<NID> {
     fn summary(&self) -> String {
-        format!("{}, last_log:{:?}", self.vote, self.last_log_id.map(|x| x.to_string()),)
+        self.to_string()
     }
 }
 

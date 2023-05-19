@@ -45,9 +45,6 @@ async fn append_entries_backoff() -> Result<()> {
     let c0 = *counts0.get(&RPCType::AppendEntries).unwrap_or(&0);
     let c1 = *counts1.get(&RPCType::AppendEntries).unwrap_or(&0);
 
-    // dbg!(counts0);
-    // dbg!(counts1);
-
     // Without backoff, the leader would send about 40 append-entries RPC.
     // 20 for append log entries, 20 for updating committed.
     assert!(

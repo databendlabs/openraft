@@ -98,7 +98,7 @@ pub struct Store {
 impl RaftLogReader<TypeConfig> for Arc<Store> {
     async fn get_log_state(&mut self) -> Result<LogState<TypeConfig>, StorageError<NodeId>> {
         let log = self.log.read().await;
-        let last = log.iter().rev().next().map(|(_, ent)| ent.log_id);
+        let last = log.iter().next_back().map(|(_, ent)| ent.log_id);
 
         let last_purged = *self.last_purged_log_id.read().await;
 

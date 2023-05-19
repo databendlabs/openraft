@@ -1,7 +1,8 @@
 use std::fmt::Debug;
 
+use tokio::time::Instant;
+
 use crate::engine::handler::server_state_handler::ServerStateHandler;
-use crate::engine::time_state::TimeState;
 use crate::engine::Command;
 use crate::engine::EngineConfig;
 use crate::engine::EngineOutput;
@@ -13,6 +14,7 @@ use crate::leader::Leader;
 use crate::progress::Progress;
 use crate::raft::ResultSender;
 use crate::raft_state::LogStateReader;
+use crate::utime::UTime;
 use crate::RaftState;
 use crate::RaftTypeConfig;
 use crate::Vote;
@@ -29,7 +31,6 @@ where C: RaftTypeConfig
 {
     pub(crate) config: &'st EngineConfig<C::NodeId>,
     pub(crate) state: &'st mut RaftState<C::NodeId, C::Node>,
-    pub(crate) timer: &'st mut TimeState,
     pub(crate) output: &'st mut EngineOutput<C>,
     pub(crate) internal_server_state: &'st mut InternalServerState<C::NodeId>,
 }
@@ -120,15 +121,15 @@ where C: RaftTypeConfig
         if vote > self.state.vote_ref() {
             tracing::info!("vote is changing from {} to {}", self.state.vote_ref(), vote);
 
-            self.state.vote.update(*self.timer.now(), *vote);
+            self.state.vote.update(Instant::now(), *vote);
             self.output.push_command(Command::SaveVote { vote: *vote });
         } else {
-            self.state.vote.touch(*self.timer.now());
+            self.state.vote.touch(Instant::now());
         }
 
         // Update vote related timer and lease.
 
-        tracing::debug!(now = debug(&self.timer.now()), "{}", func_name!());
+        tracing::debug!(now = debug(Instant::now()), "{}", func_name!());
 
         self.update_internal_server_state();
 
@@ -153,7 +154,7 @@ where C: RaftTypeConfig
         if let Some(l) = self.internal_server_state.leading_mut() {
             if l.vote.leader_id() == self.state.vote_ref().leader_id() {
                 // Vote still belongs to the same leader. Just updating vote is enough.
-                l.vote = *self.state.vote_ref();
+                l.vote = UTime::without_utime(*self.state.vote_ref());
                 self.server_state_handler().update_server_state_if_changed();
                 return;
             }
@@ -164,7 +165,7 @@ where C: RaftTypeConfig
 
         let em = &self.state.membership_state.effective();
         let mut leader = Leader::new(
-            *self.timer.now(),
+            Instant::now(),
             *self.state.vote_ref(),
             em.membership().to_quorum_set(),
             em.learner_ids(),
@@ -174,6 +175,8 @@ where C: RaftTypeConfig
         // We can just ignore the result here:
         // The `committed` will not be updated until a log of current term is granted by a quorum
         let _ = leader.progress.update_with(&self.config.id, |v| v.matching = self.state.last_log_id().copied());
+
+        // Do not update clock_progress, until the first blank log is committed.
 
         *self.internal_server_state = InternalServerState::Leading(leader);
 

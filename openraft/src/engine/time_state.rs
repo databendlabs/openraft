@@ -1,7 +1,5 @@
 use std::time::Duration;
 
-use tokio::time::Instant;
-
 #[derive(Clone, Debug)]
 #[derive(PartialEq, Eq)]
 pub(crate) struct Config {
@@ -31,37 +29,5 @@ impl Default for Config {
             smaller_log_timeout: Duration::from_millis(200),
             leader_lease: Duration::from_millis(150),
         }
-    }
-}
-
-/// Wall clock time related state that track current wall clock time, leader lease, timeout etc.
-#[derive(Debug)]
-#[derive(PartialEq, Eq)]
-pub(crate) struct TimeState {
-    /// Cached current time.
-    now: Instant,
-}
-
-impl Default for TimeState {
-    fn default() -> Self {
-        let now = Instant::now();
-        Self { now }
-    }
-}
-
-impl TimeState {
-    pub(crate) fn new(now: Instant) -> Self {
-        Self { now }
-    }
-
-    pub(crate) fn now(&self) -> &Instant {
-        &self.now
-    }
-
-    pub(crate) fn update_now(&mut self, now: Instant) {
-        tracing::debug!("update_now: {:?}", now);
-        debug_assert!(now >= self.now, "monotonic time expects {:?} >= {:?}", now, self.now);
-
-        self.now = now;
     }
 }

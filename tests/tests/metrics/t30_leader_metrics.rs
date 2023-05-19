@@ -19,8 +19,6 @@ use crate::fixtures::RaftRouter;
 
 /// Cluster leader_metrics test.
 ///
-/// What does this test do?
-///
 /// - brings 5 nodes online: one leader and 4 learner.
 /// - add 4 learner as follower.
 /// - asserts that the leader was able to successfully commit logs and that the followers has
