@@ -19,6 +19,8 @@ pub(crate) type LeaderQuorumSet<NID> = Joint<NID, Vec<NID>, Vec<Vec<NID>>>;
 ///   learner.
 #[derive(Clone, Debug)]
 #[derive(PartialEq, Eq)]
+#[allow(clippy::large_enum_variant)]
+// TODO(9): consider moving Leader to a Box
 pub(crate) enum InternalServerState<NID>
 where NID: NodeId
 {

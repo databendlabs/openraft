@@ -159,12 +159,12 @@ where
     P: PartialOrd + Ord + Copy + 'static,
     QS: QuorumSet<ID>,
 {
-    pub(crate) fn new(quorum_set: QS, learner_ids: impl Iterator<Item = ID>, default_v: V) -> Self {
+    pub(crate) fn new(quorum_set: QS, learner_ids: impl IntoIterator<Item = ID>, default_v: V) -> Self {
         let mut vector = quorum_set.ids().map(|id| (id, default_v)).collect::<Vec<_>>();
 
         let voter_count = vector.len();
 
-        vector.extend(learner_ids.map(|id| (id, default_v)));
+        vector.extend(learner_ids.into_iter().map(|id| (id, default_v)));
 
         Self {
             quorum_set,

@@ -180,8 +180,7 @@ where C: RaftTypeConfig
 
         // Safe unwrap()
         let leader = self.internal_server_state.leading_mut().unwrap();
-        leader.grant_vote_by(self.config.id);
-        let quorum_granted = leader.is_vote_granted();
+        let quorum_granted = leader.grant_vote_by(self.config.id);
 
         // Fast-path: if there is only one node in the cluster.
 
@@ -336,9 +335,7 @@ where C: RaftTypeConfig
         }
 
         if resp.vote_granted {
-            leader.grant_vote_by(target);
-
-            let quorum_granted = leader.is_vote_granted();
+            let quorum_granted = leader.grant_vote_by(target);
             if quorum_granted {
                 tracing::info!("a quorum granted my vote");
                 self.establish_leader();
