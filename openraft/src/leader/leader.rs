@@ -1,11 +1,13 @@
+use std::fmt;
+
 use tokio::time::Instant;
 
 use crate::leader::voting::Voting;
-use crate::log_id::LogIndexOptionExt;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::VecProgress;
 use crate::quorum::QuorumSet;
 use crate::LogId;
+use crate::LogIdOptionExt;
 use crate::NodeId;
 use crate::Vote;
 
@@ -39,26 +41,22 @@ pub(crate) struct Leader<NID: NodeId, QS: QuorumSet<NID>> {
 impl<NID, QS> Leader<NID, QS>
 where
     NID: NodeId,
-    QS: QuorumSet<NID> + 'static,
+    QS: QuorumSet<NID> + fmt::Debug + 'static,
 {
     pub(crate) fn new(
         now: Instant,
         vote: Vote<NID>,
         quorum_set: QS,
         learner_ids: impl Iterator<Item = NID>,
-        last_log_index: Option<u64>,
+        last_log_id: Option<LogId<NID>>,
     ) -> Self
     where
         QS: Clone,
     {
         Self {
             vote,
-            voting: Voting::new(now, vote, quorum_set.clone()),
-            progress: VecProgress::new(
-                quorum_set,
-                learner_ids,
-                ProgressEntry::empty(last_log_index.next_index()),
-            ),
+            voting: Voting::new(now, vote, last_log_id, quorum_set.clone()),
+            progress: VecProgress::new(quorum_set, learner_ids, ProgressEntry::empty(last_log_id.next_index())),
         }
     }
 
