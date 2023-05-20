@@ -13,7 +13,6 @@ use crate::leader::Leader;
 use crate::progress::Progress;
 use crate::raft::ResultSender;
 use crate::raft_state::LogStateReader;
-use crate::LogIdOptionExt;
 use crate::RaftState;
 use crate::RaftTypeConfig;
 use crate::Vote;
@@ -169,7 +168,7 @@ where C: RaftTypeConfig
             *self.state.vote_ref(),
             em.membership().to_quorum_set(),
             em.learner_ids(),
-            self.state.last_log_id().index(),
+            self.state.last_log_id().copied(),
         );
 
         // We can just ignore the result here:

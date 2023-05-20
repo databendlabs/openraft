@@ -70,7 +70,6 @@ use crate::raft::InstallSnapshotTx;
 use crate::raft::RaftMsg;
 use crate::raft::ResultSender;
 use crate::raft::VoteRequest;
-use crate::raft::VoteResponse;
 use crate::raft::VoteTx;
 use crate::raft_state::LogStateReader;
 use crate::replication;
@@ -364,7 +363,7 @@ where
                     let send_res = core_tx.send(Notify::HigherVote {
                         target,
                         higher: vote,
-                        vote: my_vote,
+                        sender_vote: my_vote,
                     });
 
                     if let Err(_e) = send_res {
@@ -1014,7 +1013,11 @@ where
 
                     match res {
                         Ok(resp) => {
-                            let _ = tx.send(Notify::VoteResponse { target, resp, vote });
+                            let _ = tx.send(Notify::VoteResponse {
+                                target,
+                                resp,
+                                sender_vote: vote,
+                            });
                         }
                         Err(err) => tracing::error!({error=%err, target=display(target)}, "while requesting vote"),
                     }
@@ -1037,12 +1040,6 @@ where
             when: None,
             resp: Respond::new(Ok(resp), tx),
         });
-    }
-
-    /// Handle response from a vote request sent to a peer.
-    #[tracing::instrument(level = "debug", skip_all)]
-    fn handle_vote_resp(&mut self, resp: VoteResponse<C::NodeId>, target: C::NodeId) {
-        self.engine.handle_vote_resp(target, resp);
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
@@ -1152,7 +1149,11 @@ where
         tracing::debug!("recv from rx_notify: {}", notify.summary());
 
         match notify {
-            Notify::VoteResponse { target, resp, vote } => {
+            Notify::VoteResponse {
+                target,
+                resp,
+                sender_vote: vote,
+            } => {
                 let now = Instant::now();
                 self.engine.timer.update_now(now);
 
@@ -1164,11 +1165,15 @@ where
                 );
 
                 if self.does_vote_match(&vote, "VoteResponse") {
-                    self.handle_vote_resp(resp, target);
+                    self.engine.handle_vote_resp(target, resp);
                 }
             }
 
-            Notify::HigherVote { target, higher, vote } => {
+            Notify::HigherVote {
+                target,
+                higher,
+                sender_vote: vote,
+            } => {
                 tracing::info!(
                     target = display(target),
                     higher_vote = display(&higher),

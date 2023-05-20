@@ -182,7 +182,7 @@ where C: RaftTypeConfig
         let leader = self.internal_server_state.leading_mut().unwrap();
         let quorum_granted = leader.grant_vote_by(self.config.id);
 
-        // Fast-path: if there is only one node in the cluster.
+        // Fast-path: if there is only one voter in the cluster.
 
         if quorum_granted {
             self.establish_leader();
@@ -316,12 +316,10 @@ where C: RaftTypeConfig
         tracing::info!(
             resp = display(resp.summary()),
             target = display(target),
-            "handle_vote_resp"
-        );
-        tracing::info!(
             my_vote = display(self.state.vote_ref()),
             my_last_log_id = display(self.state.last_log_id().summary()),
-            "handle_vote_resp"
+            "{}",
+            func_name!()
         );
 
         // If this node is no longer a leader(i.e., electing), just ignore the delayed vote_resp.
