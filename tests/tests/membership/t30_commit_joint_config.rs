@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::Result;
 use futures::stream::StreamExt;
@@ -36,7 +37,7 @@ async fn commit_joint_config_during_0_to_012() -> Result<()> {
     // Assert all nodes are in learner state & have no entries.
     let mut log_index = 1;
 
-    router.wait_for_log(&btreeset![0], Some(log_index), None, "init node 0").await?;
+    router.wait_for_log(&btreeset![0], Some(log_index), timeout(), "init node 0").await?;
 
     // Sync some new nodes.
     router.new_raft_node(1).await;
@@ -51,7 +52,7 @@ async fn commit_joint_config_during_0_to_012() -> Result<()> {
     }
     log_index += 2;
 
-    router.wait_for_log(&btreeset![0], Some(log_index), None, "init node 0").await?;
+    router.wait_for_log(&btreeset![0], Some(log_index), timeout(), "init node 0").await?;
 
     tracing::info!(
         log_index,
@@ -76,7 +77,7 @@ async fn commit_joint_config_during_0_to_012() -> Result<()> {
         .wait_for_metrics(
             &0,
             |x| x.last_applied.index() > Some(log_index),
-            None,
+            timeout(),
             "the next joint log should not commit",
         )
         .await;
@@ -134,10 +135,14 @@ async fn commit_joint_config_during_012_to_234() -> Result<()> {
     }
     log_index += 2;
 
-    let wait_rst = router.wait_for_log(&btreeset![0], Some(log_index), None, "cluster of joint").await;
+    let wait_rst = router.wait_for_log(&btreeset![0], Some(log_index), timeout(), "cluster of joint").await;
 
     // the first step of joint should not pass because the new config can not constitute a quorum
     assert!(wait_rst.is_err());
 
     Ok(())
+}
+
+fn timeout() -> Option<Duration> {
+    Some(Duration::from_millis(1_000))
 }

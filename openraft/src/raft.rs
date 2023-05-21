@@ -513,7 +513,7 @@ where
     ///
     /// If the node to add is already a voter or learner, it will still re-add it.
     ///
-    /// A `node` stores the network address of a node. Thus an application does not
+    /// A `node` is able to store the network address of a node. Thus an application does not
     /// need another store for mapping node-id to ip-addr when implementing the RaftNetwork.
     #[tracing::instrument(level = "debug", skip(self, id), fields(target=display(id)))]
     pub async fn add_learner(
@@ -816,6 +816,9 @@ where
 
     /// Get a handle to wait for the metrics to satisfy some condition.
     ///
+    /// If `timeout` is `None`, then it will wait forever(10 years).
+    /// If `timeout` is `Some`, then it will wait for the specified duration.
+    ///
     /// ```ignore
     /// # use std::time::Duration;
     /// # use openraft::{State, Raft};
@@ -834,7 +837,7 @@ where
     pub fn wait(&self, timeout: Option<Duration>) -> Wait<C::NodeId, C::Node> {
         let timeout = match timeout {
             Some(t) => t,
-            None => Duration::from_millis(500),
+            None => Duration::from_secs(86400 * 365 * 100),
         };
         Wait {
             timeout,
