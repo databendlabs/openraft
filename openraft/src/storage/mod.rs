@@ -192,9 +192,6 @@ where C: RaftTypeConfig
 
 /// A trait defining the interface for a Raft storage system.
 ///
-/// See the [storage chapter of the guide](https://datafuselabs.github.io/openraft/storage.html)
-/// for details and discussion on this trait and how to implement it.
-///
 /// Typically, the storage implementation as such will be hidden behind a `Box<T>`, `Arc<T>` or
 /// a similar, more advanced reference type and this interface implemented on that reference type.
 ///
