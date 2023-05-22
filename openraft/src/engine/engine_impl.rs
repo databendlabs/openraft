@@ -81,7 +81,6 @@ impl<C> Engine<C>
 where C: RaftTypeConfig
 {
     pub(crate) fn new(init_state: RaftState<C::NodeId, C::Node>, config: EngineConfig<C::NodeId>) -> Self {
-        // let now = Instant::now();
         Self {
             config,
             state: Valid::new(init_state),

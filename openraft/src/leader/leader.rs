@@ -12,10 +12,10 @@ use crate::LogIdOptionExt;
 use crate::NodeId;
 use crate::Vote;
 
-/// Leader data.
+/// Leading state data.
 ///
-/// Openraft leader is the combination of Leader and Candidate in original raft.
-/// A node becomes Leader at once when starting election, although at this time, it can not propose
+/// Openraft leading state is the combination of Leader and Candidate in original raft.
+/// A node becomes Leading at once when starting election, although at this time, it can not propose
 /// any new log, because its `vote` has not yet been granted by a quorum. I.e., A leader without
 /// commit vote is a Candidate in original raft.
 ///
@@ -28,7 +28,7 @@ use crate::Vote;
 /// But instead it will be able to upgrade its `leader_id` without losing leadership.
 #[derive(Clone, Debug)]
 #[derive(PartialEq, Eq)]
-pub(crate) struct Leader<NID: NodeId, QS: QuorumSet<NID>> {
+pub(crate) struct Leading<NID: NodeId, QS: QuorumSet<NID>> {
     // TODO(1): set the utime,
     // TODO(1): update it when heartbeat is granted by a quorum
     /// The vote this leader works in.
@@ -48,7 +48,7 @@ pub(crate) struct Leader<NID: NodeId, QS: QuorumSet<NID>> {
     pub(crate) clock_progress: VecProgress<NID, Option<Instant>, Option<Instant>, QS>,
 }
 
-impl<NID, QS> Leader<NID, QS>
+impl<NID, QS> Leading<NID, QS>
 where
     NID: NodeId,
     QS: QuorumSet<NID> + fmt::Debug + 'static,

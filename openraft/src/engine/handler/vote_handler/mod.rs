@@ -10,7 +10,7 @@ use crate::engine::Respond;
 use crate::engine::ValueSender;
 use crate::error::RejectVoteRequest;
 use crate::internal_server_state::InternalServerState;
-use crate::leader::Leader;
+use crate::leader::Leading;
 use crate::progress::Progress;
 use crate::raft::ResultSender;
 use crate::raft_state::LogStateReader;
@@ -164,7 +164,7 @@ where C: RaftTypeConfig
         // Re-create a new Leader instance.
 
         let em = &self.state.membership_state.effective();
-        let mut leader = Leader::new(
+        let mut leader = Leading::new(
             Instant::now(),
             *self.state.vote_ref(),
             em.membership().to_quorum_set(),
