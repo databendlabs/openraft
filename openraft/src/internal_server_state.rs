@@ -1,4 +1,4 @@
-use crate::leader::Leader;
+use crate::leader::Leading;
 use crate::quorum::Joint;
 use crate::NodeId;
 
@@ -27,7 +27,7 @@ where NID: NodeId
     /// Leader or candidate.
     ///
     /// `vote.committed==true` means it is a leader.
-    Leading(Leader<NID, LeaderQuorumSet<NID>>),
+    Leading(Leading<NID, LeaderQuorumSet<NID>>),
 
     /// Follower or learner.
     ///
@@ -46,14 +46,14 @@ where NID: NodeId
 impl<NID> InternalServerState<NID>
 where NID: NodeId
 {
-    pub(crate) fn leading(&self) -> Option<&Leader<NID, LeaderQuorumSet<NID>>> {
+    pub(crate) fn leading(&self) -> Option<&Leading<NID, LeaderQuorumSet<NID>>> {
         match self {
             InternalServerState::Leading(l) => Some(l),
             InternalServerState::Following => None,
         }
     }
 
-    pub(crate) fn leading_mut(&mut self) -> Option<&mut Leader<NID, LeaderQuorumSet<NID>>> {
+    pub(crate) fn leading_mut(&mut self) -> Option<&mut Leading<NID, LeaderQuorumSet<NID>>> {
         match self {
             InternalServerState::Leading(l) => Some(l),
             InternalServerState::Following => None,

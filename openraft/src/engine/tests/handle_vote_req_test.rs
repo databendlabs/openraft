@@ -34,7 +34,6 @@ fn eng() -> Engine<UTConfig> {
         .set_effective(Arc::new(EffectiveMembership::new(Some(log_id1(1, 1)), m01())));
     eng.vote_handler().become_leading();
 
-    // eng.timer.update_now(Instant::now() + Duration::from_millis(300));
     eng
 }
 
