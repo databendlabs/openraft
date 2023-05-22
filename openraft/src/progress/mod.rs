@@ -271,7 +271,7 @@ where
 
         let new_progress = elt.1.borrow();
 
-        debug_assert!(new_progress >= &prev_progress);
+        debug_assert!(new_progress >= &prev_progress,);
 
         let prev_le_granted = prev_progress <= self.granted;
         let new_gt_granted = new_progress > &self.granted;

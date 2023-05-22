@@ -83,6 +83,7 @@ use crate::storage::LogFlushed;
 use crate::storage::RaftLogReaderExt;
 use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
+use crate::utime::UTime;
 use crate::ChangeMembers;
 use crate::LogId;
 use crate::Membership;
@@ -236,9 +237,6 @@ where
     #[tracing::instrument(level="trace", skip_all, fields(id=display(self.id), cluster=%self.config.cluster_name))]
     async fn do_main(&mut self, rx_shutdown: oneshot::Receiver<()>) -> Result<(), Fatal<C::NodeId>> {
         tracing::debug!("raft node is initializing");
-
-        let now = Instant::now();
-        self.engine.timer.update_now(now);
 
         self.engine.startup();
         // It may not finish running all of the commands, if there is a command waiting for a callback.
@@ -472,18 +470,14 @@ where
     /// Currently heartbeat is a blank log
     #[tracing::instrument(level = "debug", skip_all, fields(id = display(self.id)))]
     pub fn send_heartbeat(&mut self, emitter: impl Display) -> bool {
-        tracing::debug!(now = debug(self.engine.timer.now()), "send_heartbeat");
+        tracing::debug!(now = debug(Instant::now()), "send_heartbeat");
 
         let mut lh = if let Some((lh, _)) =
             self.engine.get_leader_handler_or_reject::<(), ClientWriteError<C::NodeId, C::Node>>(None)
         {
             lh
         } else {
-            tracing::debug!(
-                now = debug(self.engine.timer.now()),
-                "{} failed to send heartbeat",
-                emitter
-            );
+            tracing::debug!(now = debug(Instant::now()), "{} failed to send heartbeat", emitter);
             return false;
         };
 
@@ -1067,10 +1061,7 @@ where
                 self.handle_append_entries_request(rpc, tx);
             }
             RaftMsg::RequestVote { rpc, tx } => {
-                // Vote request needs to check if the lease of the last leader expired.
-                // Thus it is time sensitive. Update the cached time for it.
                 let now = Instant::now();
-                self.engine.timer.update_now(now);
                 tracing::info!(
                     now = debug(now),
                     vote_request = display(rpc.summary()),
@@ -1155,7 +1146,6 @@ where
                 sender_vote: vote,
             } => {
                 let now = Instant::now();
-                self.engine.timer.update_now(now);
 
                 tracing::info!(
                     now = debug(now),
@@ -1192,8 +1182,6 @@ where
                 // check every timer
 
                 let now = Instant::now();
-                // TODO: store server start time and use relative time
-                self.engine.timer.update_now(now);
                 tracing::debug!("received tick: {}, now: {:?}", i, now);
 
                 self.handle_tick_election();
@@ -1338,7 +1326,7 @@ where
 
     #[tracing::instrument(level = "debug", skip_all)]
     fn handle_tick_election(&mut self) {
-        let now = *self.engine.timer.now();
+        let now = Instant::now();
 
         tracing::debug!("try to trigger election by tick, now: {:?}", now);
 
@@ -1407,7 +1395,7 @@ where
         &mut self,
         target: C::NodeId,
         id: u64,
-        result: Result<ReplicationResult<C::NodeId>, String>,
+        result: Result<UTime<ReplicationResult<C::NodeId>>, String>,
     ) {
         tracing::debug!(
             target = display(target),
@@ -1607,7 +1595,7 @@ where
                                 .map_err(|e| StorageIOError::read_snapshot(None, AnyError::error(e)))?;
 
                             // unwrap: The replication channel must not be dropped or it is a bug.
-                            node.tx_repl.send(Replicate::snapshot(id, rx)).map_err(|_e| {
+                            node.tx_repl.send(Replicate::snapshot(Some(id), rx)).map_err(|_e| {
                                 StorageIOError::read_snapshot(None, AnyError::error("replication channel closed"))
                             })?;
                         }

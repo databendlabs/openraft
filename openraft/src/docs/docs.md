@@ -24,6 +24,7 @@ To learn about the data structures used in Openraft and the commit protocol, see
   - [`Effective membership`](`data::effective_membership`) explains when membership config takes effect;
 - [`protocol`] :
   - [`replication`](`protocol::replication`);
+    - [`leader_lease`](`protocol::replication::leader_lease`);
     - [`log_replication`](`protocol::replication::log_replication`);
     - [`snapshot_replication`](`protocol::replication::snapshot_replication`);
 

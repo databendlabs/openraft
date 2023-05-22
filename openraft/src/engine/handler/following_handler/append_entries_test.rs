@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use maplit::btreeset;
+use tokio::time::Instant;
 
 use crate::engine::testing::UTConfig;
 use crate::engine::Engine;
@@ -25,7 +26,7 @@ fn eng() -> Engine<UTConfig> {
     eng.state.enable_validate = false; // Disable validation for incomplete state
 
     eng.config.id = 2;
-    eng.state.vote.update(*eng.timer.now(), Vote::new_committed(2, 1));
+    eng.state.vote.update(Instant::now(), Vote::new_committed(2, 1));
     eng.state.log_ids.append(log_id1(1, 1));
     eng.state.log_ids.append(log_id1(2, 3));
     eng.state.membership_state = MembershipState::new(

@@ -13,8 +13,6 @@ use crate::engine::handler::replication_handler::SendNone;
 use crate::engine::handler::server_state_handler::ServerStateHandler;
 use crate::engine::handler::snapshot_handler::SnapshotHandler;
 use crate::engine::handler::vote_handler::VoteHandler;
-use crate::engine::time_state;
-use crate::engine::time_state::TimeState;
 use crate::engine::Command;
 use crate::engine::Condition;
 use crate::engine::EngineOutput;
@@ -72,8 +70,6 @@ where C: RaftTypeConfig
     /// should be greater.
     pub(crate) seen_greater_log: bool,
 
-    pub(crate) timer: TimeState,
-
     /// The internal server state used by Engine.
     pub(crate) internal_server_state: InternalServerState<C::NodeId>,
 
@@ -85,12 +81,10 @@ impl<C> Engine<C>
 where C: RaftTypeConfig
 {
     pub(crate) fn new(init_state: RaftState<C::NodeId, C::Node>, config: EngineConfig<C::NodeId>) -> Self {
-        let now = Instant::now();
         Self {
             config,
             state: Valid::new(init_state),
             seen_greater_log: false,
-            timer: time_state::TimeState::new(now),
             internal_server_state: InternalServerState::default(),
             output: EngineOutput::new(4096),
         }
@@ -228,7 +222,7 @@ where C: RaftTypeConfig
 
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn handle_vote_req(&mut self, req: VoteRequest<C::NodeId>) -> VoteResponse<C::NodeId> {
-        let now = *self.timer.now();
+        let now = Instant::now();
         let lease = self.config.timer_config.leader_lease;
         let vote = self.state.vote_ref();
 
@@ -637,7 +631,6 @@ where C: RaftTypeConfig
         VoteHandler {
             config: &self.config,
             state: &mut self.state,
-            timer: &mut self.timer,
             output: &mut self.output,
             internal_server_state: &mut self.internal_server_state,
         }
