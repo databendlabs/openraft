@@ -1,5 +1,6 @@
 use crate::replication::ReplicationResult;
 use crate::replication::ReplicationSessionId;
+use crate::utime::UTime;
 use crate::MessageSummary;
 use crate::RaftTypeConfig;
 use crate::StorageError;
@@ -23,12 +24,23 @@ where C: RaftTypeConfig
         /// It is only used for debugging purpose.
         request_id: u64,
 
-        /// Either the last log id that has been successfully replicated to the target,
+        /// The request by this leader has been successfully handled by the target node,
         /// or an error in string.
-        result: Result<ReplicationResult<C::NodeId>, String>,
+        ///
+        /// A successful result can still be log matching or log conflicting.
+        /// In either case, the request is considered accepted, i.e., this leader is still valid to
+        /// the target node.
+        ///
+        /// The result also track the time when this request is sent.
+        result: Result<UTime<ReplicationResult<C::NodeId>>, String>,
 
         /// In which session this message is sent.
-        /// A replication session(vote,membership_log_id) should ignore message from other session.
+        ///
+        /// This session id identifies a certain leader(by vote) that is replicating to a certain
+        /// group of nodes.
+        ///
+        /// A message should be discarded if it does not match the present vote and
+        /// membership_log_id.
         session_id: ReplicationSessionId<C::NodeId>,
     },
 

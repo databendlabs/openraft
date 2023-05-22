@@ -57,9 +57,19 @@ impl<T> UTime<T> {
         Self { data, utime: Some(now) }
     }
 
+    /// Creates a new object that has no last-updated time.
+    pub(crate) fn without_utime(data: T) -> Self {
+        Self { data, utime: None }
+    }
+
     /// Return the last updated time of this object.
     pub(crate) fn utime(&self) -> Option<Instant> {
         self.utime
+    }
+
+    /// Consumes this object and returns the inner data.
+    pub(crate) fn into_inner(self) -> T {
+        self.data
     }
 
     /// Update the content of the object and the last updated time.
@@ -70,6 +80,13 @@ impl<T> UTime<T> {
 
     /// Update the last updated time.
     pub(crate) fn touch(&mut self, now: Instant) {
+        debug_assert!(
+            Some(now) >= self.utime,
+            "expect now: {:?}, must >= self.utime: {:?}, {:?}",
+            now,
+            self.utime,
+            self.utime.unwrap() - now
+        );
         self.utime = Some(now);
     }
 }

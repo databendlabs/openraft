@@ -6,6 +6,7 @@ use crate::leader::voting::Voting;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::VecProgress;
 use crate::quorum::QuorumSet;
+use crate::utime::UTime;
 use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::NodeId;
@@ -28,14 +29,23 @@ use crate::Vote;
 #[derive(Clone, Debug)]
 #[derive(PartialEq, Eq)]
 pub(crate) struct Leader<NID: NodeId, QS: QuorumSet<NID>> {
+    // TODO(1): set the utime,
+    // TODO(1): update it when heartbeat is granted by a quorum
     /// The vote this leader works in.
-    pub(crate) vote: Vote<NID>,
+    pub(crate) vote: UTime<Vote<NID>>,
 
-    /// Voting state
+    /// Voting state, i.e., there is a Candidate running.
     voting: Voting<NID, QS>,
 
     /// Tracks the replication progress and committed index
     pub(crate) progress: VecProgress<NID, ProgressEntry<NID>, Option<LogId<NID>>, QS>,
+
+    /// Tracks the clock time acknowledged by other nodes.
+    ///
+    /// See [`docs::leader_lease`] for more details.
+    ///
+    /// [`docs::leader_lease`]: `crate::docs::protocol::replication::leader_lease`
+    pub(crate) clock_progress: VecProgress<NID, Option<Instant>, Option<Instant>, QS>,
 }
 
 impl<NID, QS> Leader<NID, QS>
@@ -44,7 +54,7 @@ where
     QS: QuorumSet<NID> + fmt::Debug + 'static,
 {
     pub(crate) fn new(
-        now: Instant,
+        starting_voting_time: Instant,
         vote: Vote<NID>,
         quorum_set: QS,
         learner_ids: impl Iterator<Item = NID>,
@@ -53,10 +63,17 @@ where
     where
         QS: Clone,
     {
+        let learner_ids = learner_ids.collect::<Vec<_>>();
+
         Self {
-            vote,
-            voting: Voting::new(now, vote, last_log_id, quorum_set.clone()),
-            progress: VecProgress::new(quorum_set, learner_ids, ProgressEntry::empty(last_log_id.next_index())),
+            vote: UTime::without_utime(vote),
+            voting: Voting::new(starting_voting_time, vote, last_log_id, quorum_set.clone()),
+            progress: VecProgress::new(
+                quorum_set.clone(),
+                learner_ids.iter().copied(),
+                ProgressEntry::empty(last_log_id.next_index()),
+            ),
+            clock_progress: VecProgress::new(quorum_set, learner_ids, None),
         }
     }
 

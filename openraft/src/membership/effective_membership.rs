@@ -143,7 +143,6 @@ where
     }
 
     /// Returns an Iterator of all learner node ids. Voters are not included.
-    #[allow(dead_code)]
     pub(crate) fn learner_ids(&self) -> impl Iterator<Item = NID> + '_ {
         self.membership().learner_ids()
     }

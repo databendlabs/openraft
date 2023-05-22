@@ -1,5 +1,7 @@
 use std::ops::Deref;
 
+use tokio::time::Instant;
+
 use crate::display_ext::DisplayOptionExt;
 use crate::engine::handler::log_handler::LogHandler;
 use crate::engine::handler::snapshot_handler::SnapshotHandler;
@@ -14,6 +16,7 @@ use crate::progress::Inflight;
 use crate::progress::Progress;
 use crate::raft_state::LogStateReader;
 use crate::replication::ReplicationResult;
+use crate::utime::UTime;
 use crate::EffectiveMembership;
 use crate::LogId;
 use crate::LogIdOptionExt;
@@ -111,13 +114,81 @@ where C: RaftTypeConfig
     pub(crate) fn rebuild_progresses(&mut self) {
         let em = self.state.membership_state.effective();
 
-        let end = self.state.last_log_id().next_index();
-
-        let old_progress = self.leader.progress.clone();
         let learner_ids = em.learner_ids().collect::<Vec<_>>();
 
-        self.leader.progress =
-            old_progress.upgrade_quorum_set(em.membership().to_quorum_set(), &learner_ids, ProgressEntry::empty(end));
+        {
+            let end = self.state.last_log_id().next_index();
+            let default_v = ProgressEntry::empty(end);
+
+            let old_progress = self.leader.progress.clone();
+
+            self.leader.progress =
+                old_progress.upgrade_quorum_set(em.membership().to_quorum_set(), &learner_ids, default_v);
+        }
+
+        {
+            let old_progress = self.leader.clock_progress.clone();
+
+            self.leader.clock_progress =
+                old_progress.upgrade_quorum_set(em.membership().to_quorum_set(), &learner_ids, None);
+        }
+    }
+
+    /// Update replication progress when a successful response is received.
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub(crate) fn update_success_progress(
+        &mut self,
+        target: C::NodeId,
+        request_id: u64,
+        result: UTime<ReplicationResult<C::NodeId>>,
+    ) {
+        let sending_time = result.utime().unwrap();
+
+        // No matter what the result is, the validity of the leader is granted by a follower.
+        self.update_leader_vote_clock(target, sending_time);
+
+        match result.into_inner() {
+            ReplicationResult::Matching(matching) => {
+                self.update_matching(target, request_id, matching);
+            }
+            ReplicationResult::Conflict(conflict) => {
+                self.update_conflicting(target, request_id, conflict);
+            }
+        }
+    }
+
+    /// Update progress when replicated data(logs or snapshot) matches on follower/learner and is
+    /// accepted.
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub(crate) fn update_leader_vote_clock(&mut self, node_id: C::NodeId, t: Instant) {
+        tracing::debug!(target = display(node_id), t = debug(t), "{}", func_name!());
+
+        let granted = *self
+            .leader
+            .clock_progress
+            .update(&node_id, Some(t))
+            .expect("it should always update existing progress");
+
+        tracing::debug!(
+            granted = debug(granted),
+            clock_progress = debug(&self.leader.clock_progress),
+            "granted leader vote clock after updating"
+        );
+
+        // When membership changes, the granted value may revert to a previous value.
+        // E.g.: when membership changes from 12345 to {12345,123}:
+        // ```
+        // Voters: 1 2 3 4 5
+        // Value:  1 1 2 2 2 // 2 is granted by a quorum
+        //
+        // Voters: 1 2 3 4 5
+        //         1 2 3
+        // Value:  1 1 2 2 2 // 1 is granted by a quorum
+        // ```
+        if granted > self.leader.vote.utime() {
+            // Safe unwrap(): Only Some() can be greater than another Option
+            self.leader.vote.touch(granted.unwrap());
+        }
     }
 
     /// Update progress when replicated data(logs or snapshot) matches on follower/learner and is
@@ -200,7 +271,7 @@ where C: RaftTypeConfig
         &mut self,
         target: C::NodeId,
         request_id: u64,
-        repl_res: Result<ReplicationResult<C::NodeId>, String>,
+        repl_res: Result<UTime<ReplicationResult<C::NodeId>>, String>,
     ) {
         // TODO(2): test
 
@@ -214,14 +285,9 @@ where C: RaftTypeConfig
         );
 
         match repl_res {
-            Ok(p) => match p {
-                ReplicationResult::Matching(matching) => {
-                    self.update_matching(target, request_id, matching);
-                }
-                ReplicationResult::Conflict(conflict) => {
-                    self.update_conflicting(target, request_id, conflict);
-                }
-            },
+            Ok(p) => {
+                self.update_success_progress(target, request_id, p);
+            }
             Err(err_str) => {
                 tracing::warn!(
                     id = display(request_id),

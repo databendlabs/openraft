@@ -3,8 +3,7 @@
 mod replication_session_id;
 mod response;
 
-use std::fmt::Debug;
-use std::fmt::Formatter;
+use std::fmt;
 use std::io::SeekFrom;
 use std::sync::Arc;
 
@@ -46,6 +45,7 @@ use crate::raft::InstallSnapshotRequest;
 use crate::storage::RaftLogReader;
 use crate::storage::RaftLogStorage;
 use crate::storage::Snapshot;
+use crate::utime::UTime;
 use crate::ErrorSubject;
 use crate::ErrorVerb;
 use crate::LogId;
@@ -174,11 +174,14 @@ where
 
             let res = match action {
                 None => Ok(None),
-                Some(Data { request_id, payload }) => {
-                    repl_id = request_id;
-                    match payload {
-                        Payload::Logs(log_id_range) => self.send_log_entries(request_id, log_id_range).await,
-                        Payload::Snapshot(snapshot_rx) => self.stream_snapshot(request_id, snapshot_rx).await,
+                Some(d) => {
+                    tracing::debug!(replication_data = display(&d), "{} send replication RPC", func_name!());
+
+                    repl_id = d.request_id;
+
+                    match d.payload {
+                        Payload::Logs(log_id_range) => self.send_log_entries(d.request_id, log_id_range).await,
+                        Payload::Snapshot(snapshot_rx) => self.stream_snapshot(d.request_id, snapshot_rx).await,
                     }
                 }
             };
@@ -301,6 +304,8 @@ where
             logs
         };
 
+        let leader_time = Instant::now();
+
         // Build the heartbeat frame to be sent to the follower.
         let payload = AppendEntriesRequest {
             vote: self.session_id.vote,
@@ -312,6 +317,7 @@ where
         // Send the payload.
         tracing::debug!(
             payload=%payload.summary(),
+            now = debug(leader_time),
             "start sending append_entries, timeout: {:?}",
             self.config.heartbeat_interval
         );
@@ -341,7 +347,7 @@ where
 
         match append_resp {
             AppendEntriesResponse::Success => {
-                self.update_matching(request_id, log_id_range.last_log_id);
+                self.update_matching(request_id, leader_time, log_id_range.last_log_id);
                 Ok(None)
             }
             AppendEntriesResponse::PartialSuccess(matching) => {
@@ -370,8 +376,9 @@ where
                     log_id_range.prev_log_id.index().display()
                 );
 
-                self.update_matching(request_id, matching);
+                self.update_matching(request_id, leader_time, matching);
                 if matching < log_id_range.last_log_id {
+                    // TODO(9): an RPC has already been made, it should use a newer time
                     Ok(Some(Data::new_logs(
                         request_id,
                         LogIdRange::new(matching, log_id_range.last_log_id),
@@ -399,14 +406,14 @@ where
                 debug_assert!(conflict.is_some(), "prev_log_id=None never conflict");
 
                 let conflict = conflict.unwrap();
-                self.update_conflicting(request_id, conflict);
+                self.update_conflicting(request_id, leader_time, conflict);
 
                 Ok(None)
             }
         }
     }
 
-    fn update_conflicting(&mut self, request_id: Option<u64>, conflict: LogId<C::NodeId>) {
+    fn update_conflicting(&mut self, request_id: Option<u64>, leader_time: Instant, conflict: LogId<C::NodeId>) {
         tracing::debug!(
             target = display(self.target),
             request_id = display(request_id.display()),
@@ -421,7 +428,7 @@ where
                         session_id: self.session_id,
                         request_id,
                         target: self.target,
-                        result: Ok(ReplicationResult::Conflict(conflict)),
+                        result: Ok(UTime::new(leader_time, ReplicationResult::Conflict(conflict))),
                     },
                 }
             });
@@ -438,7 +445,12 @@ where
     /// Update the `matching` log id, which is for tracking follower replication, and report the
     /// matched log id to `RaftCore` to commit an entry.
     #[tracing::instrument(level = "trace", skip(self))]
-    fn update_matching(&mut self, request_id: Option<u64>, new_matching: Option<LogId<C::NodeId>>) {
+    fn update_matching(
+        &mut self,
+        request_id: Option<u64>,
+        leader_time: Instant,
+        new_matching: Option<LogId<C::NodeId>>,
+    ) {
         tracing::debug!(
             request_id = display(request_id.display()),
             target = display(self.target),
@@ -459,7 +471,7 @@ where
                         session_id: self.session_id,
                         request_id,
                         target: self.target,
-                        result: Ok(ReplicationResult::Matching(new_matching)),
+                        result: Ok(UTime::new(leader_time, ReplicationResult::Matching(new_matching))),
                     },
                 }
             });
@@ -631,6 +643,8 @@ where
             snapshot.snapshot.seek(SeekFrom::Start(offset)).await.sto_res(err_x)?;
             let n_read = snapshot.snapshot.read_buf(&mut buf).await.sto_res(err_x)?;
 
+            let leader_time = Instant::now();
+
             let done = (offset + n_read as u64) == end;
             let req = InstallSnapshotRequest {
                 vote: self.session_id.vote,
@@ -677,6 +691,7 @@ where
                     }
                 },
                 Err(err) => {
+                    // TODO(2): add backoff when Unreachable is returned
                     tracing::warn!(error=%err, "timeout while sending InstallSnapshot RPC to target");
 
                     // If sender is closed, return at once
@@ -705,7 +720,8 @@ where
                     self.matching.summary(),
                 );
 
-                self.update_matching(request_id, snapshot.meta.last_log_id);
+                // TODO: update leader lease for every successfully sent chunk.
+                self.update_matching(request_id, leader_time, snapshot.meta.last_log_id);
 
                 return Ok(None);
             }
@@ -731,7 +747,14 @@ where C: RaftTypeConfig
     ///
     /// A replication request without an id does not need to send a reply to the caller.
     request_id: Option<u64>,
+
     payload: Payload<C>,
+}
+
+impl<C: RaftTypeConfig> fmt::Display for Data<C> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{{id: {}, payload: {}}}", self.request_id.display(), self.payload)
+    }
 }
 
 impl<C> MessageSummary<Data<C>> for Data<C>
@@ -752,16 +775,16 @@ where C: RaftTypeConfig
 impl<C> Data<C>
 where C: RaftTypeConfig
 {
-    fn new_logs(id: Option<u64>, log_id_range: LogIdRange<C::NodeId>) -> Self {
+    fn new_logs(request_id: Option<u64>, log_id_range: LogIdRange<C::NodeId>) -> Self {
         Self {
-            request_id: id,
+            request_id,
             payload: Payload::Logs(log_id_range),
         }
     }
 
-    fn new_snapshot(id: u64, snapshot_rx: oneshot::Receiver<Option<Snapshot<C>>>) -> Self {
+    fn new_snapshot(request_id: Option<u64>, snapshot_rx: oneshot::Receiver<Option<Snapshot<C>>>) -> Self {
         Self {
-            request_id: Some(id),
+            request_id,
             payload: Payload::Snapshot(snapshot_rx),
         }
     }
@@ -777,10 +800,25 @@ where C: RaftTypeConfig
     Snapshot(oneshot::Receiver<Option<Snapshot<C>>>),
 }
 
-impl<C> Debug for Payload<C>
+impl<C> fmt::Display for Payload<C>
 where C: RaftTypeConfig
 {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Logs(log_id_range) => {
+                write!(f, "Logs({})", log_id_range)
+            }
+            Self::Snapshot(_) => {
+                write!(f, "Snapshot()")
+            }
+        }
+    }
+}
+
+impl<C> fmt::Debug for Payload<C>
+where C: RaftTypeConfig
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Logs(log_id_range) => {
                 write!(f, "Logs({})", log_id_range)
@@ -820,7 +858,7 @@ where C: RaftTypeConfig
         Self::Data(Data::new_logs(id, log_id_range))
     }
 
-    pub(crate) fn snapshot(id: u64, snapshot_rx: oneshot::Receiver<Option<Snapshot<C>>>) -> Self {
+    pub(crate) fn snapshot(id: Option<u64>, snapshot_rx: oneshot::Receiver<Option<Snapshot<C>>>) -> Self {
         Self::Data(Data::new_snapshot(id, snapshot_rx))
     }
 }
