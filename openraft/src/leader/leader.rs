@@ -1,4 +1,5 @@
 use std::fmt;
+use std::ops::Deref;
 
 use tokio::time::Instant;
 
@@ -34,8 +35,10 @@ pub(crate) struct Leading<NID: NodeId, QS: QuorumSet<NID>> {
     /// The vote this leader works in.
     pub(crate) vote: UTime<Vote<NID>>,
 
+    quorum_set: QS,
+
     /// Voting state, i.e., there is a Candidate running.
-    voting: Voting<NID, QS>,
+    voting: Option<Voting<NID, QS>>,
 
     /// Tracks the replication progress and committed index
     pub(crate) progress: VecProgress<NID, ProgressEntry<NID>, Option<LogId<NID>>, QS>,
@@ -51,23 +54,20 @@ pub(crate) struct Leading<NID: NodeId, QS: QuorumSet<NID>> {
 impl<NID, QS> Leading<NID, QS>
 where
     NID: NodeId,
-    QS: QuorumSet<NID> + fmt::Debug + 'static,
+    QS: QuorumSet<NID> + Clone + fmt::Debug + 'static,
 {
     pub(crate) fn new(
-        starting_voting_time: Instant,
         vote: Vote<NID>,
         quorum_set: QS,
         learner_ids: impl Iterator<Item = NID>,
         last_log_id: Option<LogId<NID>>,
-    ) -> Self
-    where
-        QS: Clone,
-    {
+    ) -> Self {
         let learner_ids = learner_ids.collect::<Vec<_>>();
 
         Self {
             vote: UTime::without_utime(vote),
-            voting: Voting::new(starting_voting_time, vote, last_log_id, quorum_set.clone()),
+            quorum_set: quorum_set.clone(),
+            voting: None,
             progress: VecProgress::new(
                 quorum_set.clone(),
                 learner_ids.iter().copied(),
@@ -78,19 +78,28 @@ where
     }
 
     #[allow(dead_code)]
-    pub(crate) fn voting(&self) -> &Voting<NID, QS> {
-        &self.voting
+    pub(crate) fn voting(&self) -> Option<&Voting<NID, QS>> {
+        self.voting.as_ref()
     }
 
     #[allow(dead_code)]
-    pub(crate) fn voting_mut(&mut self) -> &mut Voting<NID, QS> {
-        &mut self.voting
+    pub(crate) fn voting_mut(&mut self) -> Option<&mut Voting<NID, QS>> {
+        self.voting.as_mut()
     }
 
-    /// Update that a node has granted the vote.
-    ///
-    /// Return if a quorum has granted the vote.
-    pub(crate) fn grant_vote_by(&mut self, target: NID) -> bool {
-        self.voting.grant_by(&target)
+    pub(crate) fn initialize_voting(&mut self, last_log_id: Option<LogId<NID>>) -> &mut Voting<NID, QS> {
+        self.voting = Some(Voting::new(
+            Instant::now(),
+            *self.vote.deref(),
+            last_log_id,
+            self.quorum_set.clone(),
+        ));
+        self.voting.as_mut().unwrap()
+    }
+
+    /// Finish the voting process and return the state.
+    pub(crate) fn finish_voting(&mut self) -> Voting<NID, QS> {
+        // it has to be in voting progress
+        self.voting.take().unwrap()
     }
 }

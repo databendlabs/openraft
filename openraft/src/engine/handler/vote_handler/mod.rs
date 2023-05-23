@@ -74,27 +74,6 @@ where C: RaftTypeConfig
         Ok(tx)
     }
 
-    /// Mark the vote as committed, i.e., being granted and saved by a quorum.
-    ///
-    /// The committed vote, is not necessary in original raft.
-    /// Openraft insists doing this because:
-    /// - Voting is not in the hot path, thus no performance penalty.
-    /// - Leadership won't be lost if a leader restarted quick enough.
-    pub(crate) fn commit_vote(&mut self) {
-        debug_assert!(!self.state.vote_ref().is_committed());
-        debug_assert_eq!(
-            self.state.vote_ref().leader_id().voted_for(),
-            Some(self.config.id),
-            "it can only commit its own vote"
-        );
-
-        let mut v = *self.state.vote_ref();
-        v.commit();
-
-        let _res = self.update_vote(&v);
-        debug_assert!(_res.is_ok(), "commit vote can not fail but: {:?}", _res);
-    }
-
     /// Check and update the local vote and related state for every message received.
     ///
     /// This is used by all incoming event, such as the three RPC append-entries, vote,
@@ -165,13 +144,14 @@ where C: RaftTypeConfig
 
         let em = &self.state.membership_state.effective();
         let mut leader = Leading::new(
-            Instant::now(),
             *self.state.vote_ref(),
             em.membership().to_quorum_set(),
             em.learner_ids(),
             self.state.last_log_id().copied(),
         );
 
+        // TODO: the progress should be initialized when the leader is elected.
+        // TODO: we do not need to update the progress until the first blank log is appended.
         // We can just ignore the result here:
         // The `committed` will not be updated until a log of current term is granted by a quorum
         let _ = leader.progress.update_with(&self.config.id, |v| v.matching = self.state.last_log_id().copied());

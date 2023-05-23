@@ -66,6 +66,10 @@ where
         }
     }
 
+    pub(crate) fn vote_ref(&self) -> &Vote<NID> {
+        &self.vote
+    }
+
     pub(crate) fn progress(&self) -> &VecProgress<NID, bool, bool, QS> {
         &self.progress
     }

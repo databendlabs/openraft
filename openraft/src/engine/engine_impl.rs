@@ -172,9 +172,15 @@ where C: RaftTypeConfig
         // Safe unwrap(): it won't reject itself ˙–˙
         self.vote_handler().update_vote(&v).unwrap();
 
-        // Safe unwrap()
-        let leader = self.internal_server_state.leading_mut().unwrap();
-        let quorum_granted = leader.grant_vote_by(self.config.id);
+        // TODO: simplify voting initialization.
+        //       - update_vote() should be moved to after initialize_voting(), because it can be considered
+        //         as a local RPC
+
+        // Safe unwrap(): leading state is just created
+        let leading = self.internal_server_state.leading_mut().unwrap();
+        let voting = leading.initialize_voting(self.state.last_log_id().copied());
+
+        let quorum_granted = voting.grant_by(&self.config.id);
 
         // Fast-path: if there is only one voter in the cluster.
 
@@ -316,10 +322,13 @@ where C: RaftTypeConfig
             func_name!()
         );
 
-        // If this node is no longer a leader(i.e., electing), just ignore the delayed vote_resp.
-        let leader = match &mut self.internal_server_state {
-            InternalServerState::Leading(l) => l,
-            InternalServerState::Following => return,
+        let voting = if let Some(voting) = self.internal_server_state.voting_mut() {
+            // TODO check the sending vote matches current vote
+            voting
+        } else {
+            // If this node is no longer a leader(i.e., electing) or candidate,
+            // just ignore the delayed vote_resp.
+            return;
         };
 
         if &resp.vote < self.state.vote_ref() {
@@ -327,7 +336,7 @@ where C: RaftTypeConfig
         }
 
         if resp.vote_granted {
-            let quorum_granted = leader.grant_vote_by(target);
+            let quorum_granted = voting.grant_by(&target);
             if quorum_granted {
                 tracing::info!("a quorum granted my vote");
                 self.establish_leader();
@@ -549,16 +558,38 @@ where C: RaftTypeConfig
     fn establish_leader(&mut self) {
         tracing::info!("{}", func_name!());
 
-        self.vote_handler().commit_vote();
+        // Mark the vote as committed, i.e., being granted and saved by a quorum.
+        //
+        // The committed vote, is not necessary in original raft.
+        // Openraft insists doing this because:
+        // - Voting is not in the hot path, thus no performance penalty.
+        // - Leadership won't be lost if a leader restarted quick enough.
+        {
+            let leading = self.internal_server_state.leading_mut().unwrap();
+            let voting = leading.finish_voting();
+            let mut vote = *voting.vote_ref();
+
+            debug_assert!(!vote.is_committed());
+            debug_assert_eq!(
+                vote.leader_id().voted_for(),
+                Some(self.config.id),
+                "it can only commit its own vote"
+            );
+            vote.commit();
+
+            let _res = self.vote_handler().update_vote(&vote);
+            debug_assert!(_res.is_ok(), "commit vote can not fail but: {:?}", _res);
+        }
 
         let mut rh = self.replication_handler();
 
         // It has to setup replication stream first because append_blank_log() may update the
         // committed-log-id(a single leader with several learners), in which case the
         // committed-log-id will be at once submitted to replicate before replication stream
-        // is built. TODO: But replication streams should be built when a node enters
-        // leading state.       Thus append_blank_log() can be moved before
-        // rebuild_replication_streams()
+        // is built.
+        //
+        // TODO: But replication streams should be built when a node enters leading state.
+        //       Thus append_blank_log() can be moved before rebuild_replication_streams()
 
         rh.rebuild_replication_streams();
         rh.append_blank_log();
