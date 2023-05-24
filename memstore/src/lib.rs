@@ -52,13 +52,13 @@ pub struct ClientRequest {
 
 /// Helper trait to build `ClientRequest` for `MemStore` in generic test code.
 pub trait IntoMemClientRequest<T> {
-    fn make_request(client_id: &str, serial: u64) -> T;
+    fn make_request(client_id: impl ToString, serial: u64) -> T;
 }
 
 impl IntoMemClientRequest<ClientRequest> for ClientRequest {
-    fn make_request(client_id: &str, serial: u64) -> Self {
+    fn make_request(client_id: impl ToString, serial: u64) -> Self {
         Self {
-            client: client_id.into(),
+            client: client_id.to_string(),
             serial,
             status: format!("request-{}", serial),
         }

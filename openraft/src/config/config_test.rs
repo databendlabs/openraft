@@ -94,6 +94,20 @@ fn test_build() -> anyhow::Result<()> {
 }
 
 #[test]
+fn test_config_snapshot_policy() -> anyhow::Result<()> {
+    let config = Config::build(&["foo", "--snapshot-policy=never"])?;
+    assert_eq!(SnapshotPolicy::Never, config.snapshot_policy);
+
+    let config = Config::build(&["foo", "--snapshot-policy=since_last:3"])?;
+    assert_eq!(SnapshotPolicy::LogsSinceLast(3), config.snapshot_policy);
+
+    let res = Config::build(&["foo", "--snapshot-policy=bar:3"]);
+    assert!(res.is_err());
+
+    Ok(())
+}
+
+#[test]
 fn test_config_enable_tick() -> anyhow::Result<()> {
     let config = Config::build(&["foo", "--enable-tick=false"])?;
     assert_eq!(false, config.enable_tick);

@@ -4,6 +4,7 @@ use std::ops::Deref;
 use std::sync::atomic::AtomicBool;
 use std::time::Duration;
 
+use anyerror::AnyError;
 use clap::Parser;
 use rand::thread_rng;
 use rand::Rng;
@@ -26,6 +27,12 @@ pub enum SnapshotPolicy {
     /// A snapshot will be generated once the log has grown the specified number of logs since
     /// the last snapshot.
     LogsSinceLast(u64),
+
+    /// Openraft will never trigger a snapshot building.
+    /// With this option, the application calls
+    /// [`Raft::trigger_snapshot()`](`crate::Raft::trigger_snapshot`) to manually trigger a
+    /// snapshot.
+    Never,
 }
 
 impl SnapshotPolicy {
@@ -35,6 +42,7 @@ impl SnapshotPolicy {
             SnapshotPolicy::LogsSinceLast(threshold) => {
                 state.committed().next_index() >= state.snapshot_last_log_id().next_index() + threshold
             }
+            SnapshotPolicy::Never => false,
         }
     }
 }
@@ -50,17 +58,21 @@ fn parse_bytes_with_unit(src: &str) -> Result<u64, ConfigError> {
 }
 
 fn parse_snapshot_policy(src: &str) -> Result<SnapshotPolicy, ConfigError> {
+    if src == "never" {
+        return Ok(SnapshotPolicy::Never);
+    }
+
     let elts = src.split(':').collect::<Vec<_>>();
     if elts.len() != 2 {
         return Err(ConfigError::InvalidSnapshotPolicy {
-            syntax: "since_last:<num>".to_string(),
+            syntax: "never|since_last:<num>".to_string(),
             invalid: src.to_string(),
         });
     }
 
     if elts[0] != "since_last" {
         return Err(ConfigError::InvalidSnapshotPolicy {
-            syntax: "since_last:<num>".to_string(),
+            syntax: "never|since_last:<num>".to_string(),
             invalid: src.to_string(),
         });
     }
@@ -258,7 +270,10 @@ impl Config {
     ///
     /// The first element in `args` must be the application name.
     pub fn build(args: &[&str]) -> Result<Config, ConfigError> {
-        let config = <Self as Parser>::parse_from(args);
+        let config = <Self as Parser>::try_parse_from(args).map_err(|e| ConfigError::ParseError {
+            source: AnyError::from(&e),
+            args: args.iter().map(|x| x.to_string()).collect(),
+        })?;
         config.validate()
     }
 
