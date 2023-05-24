@@ -50,9 +50,9 @@ fn test_elect() -> anyhow::Result<()> {
         eng.elect();
 
         assert_eq!(Vote::new_committed(1, 1), *eng.state.vote_ref());
-        assert_eq!(
-            Some(btreeset! {1},),
-            eng.internal_server_state.leading().map(|x| x.voting().granters().collect::<BTreeSet<_>>())
+        assert!(
+            eng.internal_server_state.voting_mut().is_none(),
+            "voting state is removed when becoming leader"
         );
 
         assert_eq!(ServerState::Leader, eng.state.server_state);
@@ -98,14 +98,14 @@ fn test_elect() -> anyhow::Result<()> {
         // Build in-progress election state
         eng.state.vote = UTime::new(Instant::now(), Vote::new_committed(1, 2));
         eng.vote_handler().become_leading();
-        eng.internal_server_state.leading_mut().map(|l| l.voting_mut().grant_by(&1));
+        eng.internal_server_state.voting_mut().map(|l| l.grant_by(&1));
 
         eng.elect();
 
         assert_eq!(Vote::new_committed(2, 1), *eng.state.vote_ref());
-        assert_eq!(
-            Some(btreeset! {1},),
-            eng.internal_server_state.leading().map(|x| x.voting().granters().collect::<BTreeSet<_>>())
+        assert!(
+            eng.internal_server_state.voting_mut().is_none(),
+            "voting state is removed when becoming leader"
         );
 
         assert_eq!(ServerState::Leader, eng.state.server_state);
@@ -154,7 +154,7 @@ fn test_elect() -> anyhow::Result<()> {
         assert_eq!(Vote::new(1, 1), *eng.state.vote_ref());
         assert_eq!(
             Some(btreeset! {1},),
-            eng.internal_server_state.leading().map(|x| x.voting().granters().collect::<BTreeSet<_>>())
+            eng.internal_server_state.leading().map(|x| x.voting().unwrap().granters().collect::<BTreeSet<_>>())
         );
 
         assert_eq!(ServerState::Candidate, eng.state.server_state);

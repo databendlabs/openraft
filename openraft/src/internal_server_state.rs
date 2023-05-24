@@ -1,3 +1,4 @@
+use crate::leader::voting::Voting;
 use crate::leader::Leading;
 use crate::quorum::Joint;
 use crate::NodeId;
@@ -46,6 +47,13 @@ where NID: NodeId
 impl<NID> InternalServerState<NID>
 where NID: NodeId
 {
+    pub(crate) fn voting_mut(&mut self) -> Option<&mut Voting<NID, LeaderQuorumSet<NID>>> {
+        match self {
+            InternalServerState::Leading(l) => l.voting_mut(),
+            InternalServerState::Following => None,
+        }
+    }
+
     pub(crate) fn leading(&self) -> Option<&Leading<NID, LeaderQuorumSet<NID>>> {
         match self {
             InternalServerState::Leading(l) => Some(l),
