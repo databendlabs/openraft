@@ -31,7 +31,7 @@ use crate::fixtures::RaftRouter;
 /// - send enough requests to the node that log compaction will be triggered.
 /// - add new nodes and assert that they receive the snapshot.
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
-async fn compaction() -> Result<()> {
+async fn build_snapshot() -> Result<()> {
     let snapshot_threshold: u64 = 50;
 
     // Setup test dependencies.
