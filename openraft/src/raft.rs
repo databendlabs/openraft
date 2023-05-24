@@ -334,7 +334,7 @@ where
 
     /// Trigger election at once and return at once.
     ///
-    /// Returns error when RaftCore has Fatal error, e.g. shut down or having storage error.
+    /// Returns error when RaftCore has [`Fatal`] error, e.g. shut down or having storage error.
     /// It is not affected by `Raft::enable_elect(false)`.
     pub async fn trigger_elect(&self) -> Result<(), Fatal<C::NodeId>> {
         self.send_external_command(ExternalCommand::Elect, "trigger_elect").await
@@ -342,7 +342,7 @@ where
 
     /// Trigger a heartbeat at once and return at once.
     ///
-    /// Returns error when RaftCore has Fatal error, e.g. shut down or having storage error.
+    /// Returns error when RaftCore has [`Fatal`] error, e.g. shut down or having storage error.
     /// It is not affected by `Raft::enable_heartbeat(false)`.
     pub async fn trigger_heartbeat(&self) -> Result<(), Fatal<C::NodeId>> {
         self.send_external_command(ExternalCommand::Heartbeat, "trigger_heartbeat").await
@@ -350,9 +350,28 @@ where
 
     /// Trigger to build a snapshot at once and return at once.
     ///
-    /// Returns error when RaftCore has Fatal error, e.g. shut down or having storage error.
+    /// Returns error when RaftCore has [`Fatal`] error, e.g. shut down or having storage error.
     pub async fn trigger_snapshot(&self) -> Result<(), Fatal<C::NodeId>> {
         self.send_external_command(ExternalCommand::Snapshot, "trigger_snapshot").await
+    }
+
+    /// Initiate the log purge up to and including the given `upto` log index.
+    ///
+    /// Logs that are not included in a snapshot will **NOT** be purged.
+    /// In such scenario it will delete as many log as possible.
+    /// The [`max_in_snapshot_log_to_keep`] config is not taken into account
+    /// when purging logs.
+    ///
+    /// It returns error only when RaftCore has [`Fatal`] error, e.g. shut down or having storage
+    /// error.
+    ///
+    /// Openraft won't purge logs at once, e.g. it may be delayed by several seconds, because if it
+    /// is a leader and a replication task has been replicating the logs to a follower, the logs
+    /// can't be purged until the replication task is finished.
+    ///
+    /// [`max_in_snapshot_log_to_keep`]: `crate::Config::max_in_snapshot_log_to_keep`
+    pub async fn purge_log(&self, upto: u64) -> Result<(), Fatal<C::NodeId>> {
+        self.send_external_command(ExternalCommand::PurgeLog { upto }, "purge_log").await
     }
 
     async fn send_external_command(
@@ -977,10 +996,38 @@ where
 pub(crate) enum ExternalCommand {
     /// Trigger an election at once.
     Elect,
+
     /// Emit a heartbeat message, only if the node is leader.
     Heartbeat,
+
     /// Trigger to build a snapshot on this node.
     Snapshot,
+
+    /// Purge logs that are already in a snapshot.
+    ///
+    /// Openraft will respect the [`max_in_snapshot_log_to_keep`] when purging.
+    ///
+    /// [`max_in_snapshot_log_to_keep`]: `crate::Config::max_in_snapshot_log_to_keep`
+    PurgeLog { upto: u64 },
+}
+
+impl fmt::Display for ExternalCommand {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ExternalCommand::Elect => {
+                write!(f, "{:?}", self)
+            }
+            ExternalCommand::Heartbeat => {
+                write!(f, "{:?}", self)
+            }
+            ExternalCommand::Snapshot => {
+                write!(f, "{:?}", self)
+            }
+            ExternalCommand::PurgeLog { upto } => {
+                write!(f, "PurgeLog[..={}]", upto)
+            }
+        }
+    }
 }
 
 /// An RPC sent by a cluster leader to replicate log entries (§5.3), and as a heartbeat (§5.2).

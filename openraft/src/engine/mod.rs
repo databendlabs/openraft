@@ -46,6 +46,7 @@ mod tests {
     mod initialize_test;
     mod log_id_list_test;
     mod startup_test;
+    mod trigger_purge_log_test;
 }
 #[cfg(test)] mod testing;
 

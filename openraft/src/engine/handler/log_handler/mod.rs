@@ -51,12 +51,17 @@ where C: RaftTypeConfig
     /// This method is called after building a snapshot, because openraft only purge logs that are
     /// already included in snapshot.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn update_purge_upto(&mut self) {
+    pub(crate) fn schedule_policy_based_purge(&mut self) {
         if let Some(purge_upto) = self.calc_purge_upto() {
-            debug_assert!(self.state.purge_upto() <= Some(&purge_upto));
-
-            self.state.purge_upto = Some(purge_upto);
+            self.update_purge_upto(purge_upto);
         }
+    }
+
+    /// Update the log id it expect to purge up to. It won't trigger purge immediately.
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub(crate) fn update_purge_upto(&mut self, purge_upto: LogId<C::NodeId>) {
+        debug_assert!(self.state.purge_upto() <= Some(&purge_upto));
+        self.state.purge_upto = Some(purge_upto);
     }
 
     /// Calculate the log id up to which to purge, inclusive.
