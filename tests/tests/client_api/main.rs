@@ -6,8 +6,9 @@
 mod fixtures;
 
 // The number indicate the preferred running order for these case.
-// The later tests may depend on the earlier ones.
+// See ./README.md
 
 mod t10_client_writes;
 mod t11_client_reads;
+mod t12_trigger_purge_log;
 mod t50_lagging_network_write;

@@ -3,6 +3,7 @@ use std::time::Duration;
 use tokio::time::Instant;
 
 use crate::core::ServerState;
+use crate::display_ext::DisplayOptionExt;
 use crate::display_ext::DisplaySlice;
 use crate::engine::engine_config::EngineConfig;
 use crate::engine::handler::following_handler::FollowingHandler;
@@ -39,6 +40,7 @@ use crate::raft_state::RaftState;
 use crate::summary::MessageSummary;
 use crate::validate::Valid;
 use crate::LogId;
+use crate::LogIdOptionExt;
 use crate::Membership;
 use crate::RaftLogId;
 use crate::RaftTypeConfig;
@@ -526,7 +528,7 @@ where C: RaftTypeConfig
     /// - and a snapshot smaller than last-committed is not allowed to be installed.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn finish_building_snapshot(&mut self, meta: SnapshotMeta<C::NodeId, C::Node>) {
-        tracing::info!("finish_building_snapshot: {:?}", meta);
+        tracing::info!(snapshot_meta = display(&meta), "{}", func_name!());
 
         self.state.io_state_mut().set_building_snapshot(false);
 
@@ -537,7 +539,24 @@ where C: RaftTypeConfig
             return;
         }
 
-        self.log_handler().update_purge_upto();
+        self.log_handler().schedule_policy_based_purge();
+        self.try_purge_log();
+    }
+
+    /// Try to purge logs up to the expected position.
+    ///
+    /// If the node is a leader, it will only purge logs when no replication tasks are using them.
+    /// Otherwise, it will retry purging the logs the next time replication has made progress.
+    ///
+    /// If the node is a follower or learner, it will always purge the logs immediately since no
+    /// other tasks are using the logs.
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub(crate) fn try_purge_log(&mut self) {
+        tracing::debug!(
+            purge_upto = display(self.state.purge_upto().display()),
+            "{}",
+            func_name!()
+        );
 
         if self.internal_server_state.is_leading() {
             // If it is leading, it must not delete a log that is in use by a replication task.
@@ -546,6 +565,48 @@ where C: RaftTypeConfig
             // For follower/learner, no other tasks are using logs, just purge.
             self.log_handler().purge_log();
         }
+    }
+
+    /// This is a to user API that triggers log purging upto `index`, inclusive.
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub(crate) fn trigger_purge_log(&mut self, mut index: u64) {
+        tracing::info!(index = display(index), "{}", func_name!());
+
+        let snapshot_last_log_id = self.state.snapshot_last_log_id();
+        let snapshot_last_log_id = if let Some(x) = snapshot_last_log_id {
+            *x
+        } else {
+            tracing::info!("no snapshot, can not purge");
+            return;
+        };
+
+        let scheduled = self.state.purge_upto();
+
+        if index < scheduled.next_index() {
+            tracing::info!(
+                "no update, already scheduled: {}; index: {}",
+                scheduled.display(),
+                index,
+            );
+            return;
+        }
+
+        if index > snapshot_last_log_id.index {
+            tracing::info!(
+                "can not purge logs not in a snapshot; index: {}, last in snapshot log id: {}",
+                index,
+                snapshot_last_log_id
+            );
+            index = snapshot_last_log_id.index;
+        }
+
+        // Safe unwrap: `index` is ensured to be present in the above code.
+        let log_id = self.state.get_log_id(index).unwrap();
+
+        tracing::info!(purge_upto = display(log_id), "{}", func_name!());
+
+        self.log_handler().update_purge_upto(log_id);
+        self.try_purge_log();
     }
 }
 

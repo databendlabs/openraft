@@ -1129,6 +1129,9 @@ where
                         self.send_heartbeat("ExternalCommand");
                     }
                     ExternalCommand::Snapshot => self.trigger_snapshot(),
+                    ExternalCommand::PurgeLog { upto } => {
+                        self.engine.trigger_purge_log(upto);
+                    }
                 }
             }
         };
