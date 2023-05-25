@@ -7,7 +7,6 @@ mod fixtures;
 
 mod t10_api_install_snapshot;
 mod t20_startup_snapshot;
-mod t20_trigger_snapshot;
 mod t30_purge_in_snapshot_logs;
 mod t31_snapshot_overrides_membership;
 mod t32_snapshot_uses_prev_snap_membership;
