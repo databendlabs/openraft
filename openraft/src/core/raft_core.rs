@@ -1520,18 +1520,6 @@ where
                 }
                 self.leader_data = None;
             }
-            Command::AppendEntry { entry } => {
-                let log_id = *entry.get_log_id();
-                tracing::debug!("AppendEntry: {}", &entry);
-
-                self.append_to_log([entry], log_id).await?;
-
-                // The leader may have changed.
-                // But reporting to a different leader is not a problem.
-                if let Ok(mut lh) = self.engine.leader_handler() {
-                    lh.replication_handler().update_local_progress(Some(log_id));
-                }
-            }
             Command::AppendInputEntries { entries } => {
                 let last_log_id = *entries.last().unwrap().get_log_id();
                 tracing::debug!("AppendInputEntries: {}", DisplaySlice::<_>(&entries),);

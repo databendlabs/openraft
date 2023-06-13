@@ -70,7 +70,7 @@ where C: RaftTypeConfig
         );
         self.state.log_ids.append(log_id);
         let entry = C::Entry::new_blank(log_id);
-        self.output.push_command(Command::AppendEntry { entry });
+        self.output.push_command(Command::AppendInputEntries { entries: vec![entry] });
 
         self.update_local_progress(Some(log_id));
     }

@@ -1,5 +1,6 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
+use std::vec;
 
 use maplit::btreeset;
 use pretty_assertions::assert_eq;
@@ -65,8 +66,8 @@ fn test_elect() -> anyhow::Result<()> {
                 },
                 Command::BecomeLeader,
                 Command::RebuildReplicationStreams { targets: vec![] },
-                Command::AppendEntry {
-                    entry: Entry::<UTConfig>::new_blank(log_id(1, 1, 1))
+                Command::AppendInputEntries {
+                    entries: vec![Entry::<UTConfig>::new_blank(log_id(1, 1, 1))]
                 },
                 Command::ReplicateCommitted {
                     committed: Some(LogId {
@@ -118,8 +119,8 @@ fn test_elect() -> anyhow::Result<()> {
                 },
                 Command::BecomeLeader,
                 Command::RebuildReplicationStreams { targets: vec![] },
-                Command::AppendEntry {
-                    entry: Entry::<UTConfig>::new_blank(log_id(2, 1, 1))
+                Command::AppendInputEntries {
+                    entries: vec![Entry::<UTConfig>::new_blank(log_id(2, 1, 1))]
                 },
                 Command::ReplicateCommitted {
                     committed: Some(LogId {

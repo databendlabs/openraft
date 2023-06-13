@@ -1,3 +1,5 @@
+use std::vec;
+
 use maplit::btreeset;
 use pretty_assertions::assert_eq;
 use tokio::time::Instant;
@@ -57,8 +59,8 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
 
         assert_eq!(
             vec![
-                Command::AppendEntry {
-                    entry: Entry::<UTConfig>::new_membership(LogId::default(), m1())
+                Command::AppendInputEntries {
+                    entries: vec![Entry::<UTConfig>::new_membership(LogId::default(), m1())]
                 },
                 // When update the effective membership, the engine set it to Follower.
                 // But when initializing, it will switch to Candidate at once, in the last output
@@ -71,8 +73,8 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
                 },
                 Command::BecomeLeader,
                 Command::RebuildReplicationStreams { targets: vec![] },
-                Command::AppendEntry {
-                    entry: Entry::<UTConfig>::new_blank(log_id(1, 1, 1))
+                Command::AppendInputEntries {
+                    entries: vec![Entry::<UTConfig>::new_blank(log_id(1, 1, 1))]
                 },
                 Command::ReplicateCommitted {
                     committed: Some(LogId {
@@ -130,8 +132,8 @@ fn test_initialize() -> anyhow::Result<()> {
 
         assert_eq!(
             vec![
-                Command::AppendEntry {
-                    entry: Entry::new_membership(LogId::default(), m12())
+                Command::AppendInputEntries {
+                    entries: vec![Entry::new_membership(LogId::default(), m12())]
                 },
                 // When update the effective membership, the engine set it to Follower.
                 // But when initializing, it will switch to Candidate at once, in the last output

@@ -32,9 +32,6 @@ where C: RaftTypeConfig
     /// No longer a leader. Clean up leader's data.
     QuitLeader,
 
-    /// Append one entry.
-    AppendEntry { entry: C::Entry },
-
     /// Append a `range` of entries.
     AppendInputEntries { entries: Vec<C::Entry> },
 
@@ -113,7 +110,6 @@ where
         match (self, other) {
             (Command::BecomeLeader,                            Command::BecomeLeader)                                                          => true,
             (Command::QuitLeader,                              Command::QuitLeader)                                                            => true,
-            (Command::AppendEntry { entry },                   Command::AppendEntry { entry: b }, )                                            => entry == b,
             (Command::AppendInputEntries { entries },          Command::AppendInputEntries { entries: b }, )                                   => entries == b,
             (Command::ReplicateCommitted { committed },        Command::ReplicateCommitted { committed: b }, )                                 => committed == b,
             (Command::Apply { seq, already_committed, upto, }, Command::Apply { seq: b_seq, already_committed: b_committed, upto: b_upto, }, ) => seq == b_seq && already_committed == b_committed && upto == b_upto,
@@ -142,7 +138,6 @@ where C: RaftTypeConfig
             Command::RebuildReplicationStreams { .. } => CommandKind::Main,
             Command::Respond { .. }                   => CommandKind::Main,
 
-            Command::AppendEntry { .. }               => CommandKind::Log,
             Command::AppendInputEntries { .. }        => CommandKind::Log,
             Command::SaveVote { .. }                  => CommandKind::Log,
             Command::PurgeLog { .. }                  => CommandKind::Log,
@@ -165,7 +160,6 @@ where C: RaftTypeConfig
         match self {
             Command::BecomeLeader                     => None,
             Command::QuitLeader                       => None,
-            Command::AppendEntry { .. }               => None,
             Command::AppendInputEntries { .. }        => None,
             Command::ReplicateCommitted { .. }        => None,
             Command::Apply { .. }                     => None,
