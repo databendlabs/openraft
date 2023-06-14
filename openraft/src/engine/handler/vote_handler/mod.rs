@@ -52,7 +52,7 @@ where C: RaftTypeConfig
         vote: &Vote<C::NodeId>,
         tx: ResultSender<T, E>,
         f: F,
-    ) -> Result<ResultSender<T, E>, ()>
+    ) -> Option<ResultSender<T, E>>
     where
         T: Debug + Eq,
         E: Debug + Eq,
@@ -69,9 +69,9 @@ where C: RaftTypeConfig
                 resp: Respond::new(res, tx),
             });
 
-            return Err(());
+            return None;
         }
-        Ok(tx)
+        Some(tx)
     }
 
     /// Check and update the local vote and related state for every message received.
