@@ -52,6 +52,7 @@ use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
 use crate::AppData;
 use crate::AppDataResponse;
+use crate::AsyncRuntime;
 use crate::ChangeMembers;
 use crate::LogId;
 use crate::LogIdOptionExt;
@@ -105,6 +106,9 @@ pub trait RaftTypeConfig:
     /// See the [storage chapter of the guide](https://datafuselabs.github.io/openraft/getting-started.html#implement-raftstorage)
     /// for details on where and how this is used.
     type SnapshotData: AsyncRead + AsyncWrite + AsyncSeek + Send + Sync + Unpin + 'static;
+
+    /// Asynchronous runtime type.
+    type AsyncRuntime: AsyncRuntime;
 }
 
 /// Define types for a Raft type configuration.
@@ -159,7 +163,7 @@ where
     id: C::NodeId,
     config: Arc<Config>,
     runtime_config: Arc<RuntimeConfig>,
-    tick_handle: TickHandle,
+    tick_handle: TickHandle<C>,
     tx_api: mpsc::UnboundedSender<RaftMsg<C, N, LS>>,
     rx_metrics: watch::Receiver<RaftMetrics<C::NodeId, C::Node>>,
     // TODO(xp): it does not need to be a async mutex.

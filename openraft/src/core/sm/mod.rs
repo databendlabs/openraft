@@ -16,6 +16,7 @@ use crate::entry::RaftPayload;
 use crate::raft::InstallSnapshotRequest;
 use crate::storage::RaftStateMachine;
 use crate::summary::MessageSummary;
+use crate::AsyncRuntime;
 use crate::RaftLogId;
 use crate::RaftSnapshotBuilder;
 use crate::RaftTypeConfig;
@@ -41,7 +42,7 @@ where C: RaftTypeConfig
 {
     cmd_tx: mpsc::UnboundedSender<Command<C>>,
     #[allow(dead_code)]
-    join_handle: tokio::task::JoinHandle<()>,
+    join_handle: <C::AsyncRuntime as AsyncRuntime>::JoinHandle<()>,
 }
 
 impl<C> Handle<C>
@@ -91,8 +92,8 @@ where
         Handle { cmd_tx, join_handle }
     }
 
-    fn do_spawn(mut self) -> tokio::task::JoinHandle<()> {
-        tokio::spawn(async move {
+    fn do_spawn(mut self) -> <C::AsyncRuntime as AsyncRuntime>::JoinHandle<()> {
+        C::AsyncRuntime::spawn(async move {
             let res = self.worker_loop().await;
 
             if let Err(err) = res {
@@ -221,7 +222,7 @@ where
 
         let mut builder = self.state_machine.get_snapshot_builder().await;
 
-        let _handle = tokio::spawn(async move {
+        let _handle = C::AsyncRuntime::spawn(async move {
             let res = builder.build_snapshot().await;
             let res = res.map(|snap| Response::BuildSnapshot(snap.meta));
             let cmd_res = CommandResult::new(seq, res);

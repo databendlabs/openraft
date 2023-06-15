@@ -6,7 +6,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use tokio::sync::mpsc;
-use tokio::task::JoinHandle;
 use tokio::time::sleep_until;
 use tokio::time::Instant;
 use tracing::Instrument;
@@ -14,6 +13,7 @@ use tracing::Level;
 use tracing::Span;
 
 use crate::core::notify::Notify;
+use crate::AsyncRuntime;
 use crate::RaftTypeConfig;
 
 /// Emit RaftMsg::Tick event at regular `interval`.
@@ -28,23 +28,28 @@ where C: RaftTypeConfig
     enabled: Arc<AtomicBool>,
 }
 
-pub(crate) struct TickHandle {
+pub(crate) struct TickHandle<C>
+where C: RaftTypeConfig
+{
     enabled: Arc<AtomicBool>,
-    join_handle: JoinHandle<()>,
+    join_handle: <C::AsyncRuntime as AsyncRuntime>::JoinHandle<()>,
 }
 
 impl<C> Tick<C>
 where C: RaftTypeConfig
 {
-    pub(crate) fn spawn(interval: Duration, tx: mpsc::UnboundedSender<Notify<C>>, enabled: bool) -> TickHandle {
+    pub(crate) fn spawn(interval: Duration, tx: mpsc::UnboundedSender<Notify<C>>, enabled: bool) -> TickHandle<C> {
         let enabled = Arc::new(AtomicBool::from(enabled));
         let this = Self {
             interval,
             enabled: enabled.clone(),
             tx,
         };
-        let join_handle =
-            tokio::spawn(this.tick_loop().instrument(tracing::span!(parent: &Span::current(), Level::DEBUG, "tick")));
+        let join_handle = C::AsyncRuntime::spawn(this.tick_loop().instrument(tracing::span!(
+            parent: &Span::current(),
+            Level::DEBUG,
+            "tick"
+        )));
         TickHandle { enabled, join_handle }
     }
 
@@ -71,12 +76,14 @@ where C: RaftTypeConfig
     }
 }
 
-impl TickHandle {
+impl<C> TickHandle<C>
+where C: RaftTypeConfig
+{
     pub(crate) fn enable(&self, enabled: bool) {
         self.enabled.store(enabled, Ordering::Relaxed);
     }
 
     pub(crate) async fn shutdown(&self) {
-        self.join_handle.abort();
+        C::AsyncRuntime::abort(&self.join_handle);
     }
 }

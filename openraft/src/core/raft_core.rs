@@ -84,6 +84,7 @@ use crate::storage::RaftLogReaderExt;
 use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
 use crate::utime::UTime;
+use crate::AsyncRuntime;
 use crate::ChangeMembers;
 use crate::LogId;
 use crate::Membership;
@@ -328,7 +329,7 @@ where
             };
 
             let fu = fu.instrument(tracing::debug_span!("spawn_is_leader", target = target.to_string()));
-            let task = tokio::spawn(fu).map_err(move |err| (target, err));
+            let task = C::AsyncRuntime::spawn(fu).map_err(move |err| (target, err));
 
             pending.push(task);
         }
@@ -392,7 +393,7 @@ where
             .into()));
         };
 
-        tokio::spawn(waiting_fu.instrument(tracing::debug_span!("spawn_is_leader_waiting")));
+        C::AsyncRuntime::spawn(waiting_fu.instrument(tracing::debug_span!("spawn_is_leader_waiting")));
     }
 
     /// Submit change-membership by writing a Membership log entry.
@@ -987,7 +988,7 @@ where
             let id = self.id;
             let option = RPCOption::new(ttl);
 
-            let _ = tokio::spawn(
+            let _ = C::AsyncRuntime::spawn(
                 async move {
                     let tm_res = timeout(ttl, client.vote(req, option)).await;
                     let res = match tm_res {
