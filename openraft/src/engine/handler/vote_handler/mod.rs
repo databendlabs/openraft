@@ -41,9 +41,9 @@ where C: RaftTypeConfig
     /// Validate and accept the input `vote` and send result via `tx`.
     ///
     /// If the vote is not GE the local vote, it sends an caller defined response via `tx` and
-    /// returns an empty error to inform the caller about the invalid vote.
+    /// returns `None` to inform the caller about the invalid vote.
     ///
-    /// Otherwise it returns the `tx` to the caller in an `Ok` return value.
+    /// Otherwise it returns `Some(tx)`.
     ///
     /// The `f` is used to create the error response.
     #[tracing::instrument(level = "debug", skip_all)]
