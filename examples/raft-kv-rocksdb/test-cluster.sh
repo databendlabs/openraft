@@ -43,6 +43,7 @@ rpc() {
 }
 
 export RUST_LOG=trace
+export RUST_BACKTRACE=full
 bin=./target/debug/raft-key-value-rocks
 
 echo "Killing all running raft-key-value-rocks and cleaning up old data"
