@@ -85,7 +85,9 @@ where C: RaftTypeConfig
     /// - There must not be a **hole** in logs. Because Raft only examine the last log id to ensure
     ///   correctness.
     async fn append<I>(&mut self, entries: I, callback: LogFlushed<C::NodeId>) -> Result<(), StorageError<C::NodeId>>
-    where I: IntoIterator<Item = C::Entry> + Send;
+    where
+        I: IntoIterator<Item = C::Entry> + Send,
+        I::IntoIter: Send;
 
     /// Truncate logs since `log_id`, inclusive
     ///
@@ -155,7 +157,9 @@ where C: RaftTypeConfig
     ///   persist state on disk. But every snapshot has to be persistent. And when starting up the
     ///   application, the state machine should be rebuilt from the last snapshot.
     async fn apply<I>(&mut self, entries: I) -> Result<Vec<C::R>, StorageError<C::NodeId>>
-    where I: IntoIterator<Item = C::Entry> + Send;
+    where
+        I: IntoIterator<Item = C::Entry> + Send,
+        I::IntoIter: Send;
 
     /// Get the snapshot builder for the state machine.
     ///
