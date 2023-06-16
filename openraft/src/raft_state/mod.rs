@@ -1,7 +1,6 @@
 use std::error::Error;
 use std::ops::Deref;
-
-use tokio::time::Instant;
+use std::time::Instant;
 
 use crate::engine::LogIdList;
 use crate::entry::RaftEntry;

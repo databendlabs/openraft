@@ -1,7 +1,5 @@
 use std::fmt::Debug;
 
-use tokio::time::Instant;
-
 use crate::engine::handler::server_state_handler::ServerStateHandler;
 use crate::engine::Command;
 use crate::engine::EngineConfig;
@@ -15,6 +13,7 @@ use crate::progress::Progress;
 use crate::raft::ResultSender;
 use crate::raft_state::LogStateReader;
 use crate::utime::UTime;
+use crate::AsyncRuntime;
 use crate::RaftState;
 use crate::RaftTypeConfig;
 use crate::Vote;
@@ -100,15 +99,15 @@ where C: RaftTypeConfig
         if vote > self.state.vote_ref() {
             tracing::info!("vote is changing from {} to {}", self.state.vote_ref(), vote);
 
-            self.state.vote.update(Instant::now(), *vote);
+            self.state.vote.update(C::AsyncRuntime::now(), *vote);
             self.output.push_command(Command::SaveVote { vote: *vote });
         } else {
-            self.state.vote.touch(Instant::now());
+            self.state.vote.touch(C::AsyncRuntime::now());
         }
 
         // Update vote related timer and lease.
 
-        tracing::debug!(now = debug(Instant::now()), "{}", func_name!());
+        tracing::debug!(now = debug(C::AsyncRuntime::now()), "{}", func_name!());
 
         self.update_internal_server_state();
 

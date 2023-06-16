@@ -32,7 +32,7 @@ fn eng() -> Engine<UTConfig> {
 
     eng.config.id = 1;
     eng.state.committed = Some(log_id1(0, 0));
-    eng.state.vote = UTime::new(Instant::now(), Vote::new_committed(3, 1));
+    eng.state.vote = UTime::new(Instant::now().into(), Vote::new_committed(3, 1));
     eng.state.log_ids.append(log_id1(1, 1));
     eng.state.log_ids.append(log_id1(2, 3));
     eng.state.membership_state = MembershipState::new(

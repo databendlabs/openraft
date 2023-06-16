@@ -6,6 +6,8 @@ use std::fmt::Formatter;
 use std::marker::PhantomData;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::time::Duration;
+use std::time::Instant;
 
 use anyerror::AnyError;
 use futures::stream::FuturesUnordered;
@@ -16,9 +18,6 @@ use tokio::select;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio::sync::watch;
-use tokio::time::timeout;
-use tokio::time::Duration;
-use tokio::time::Instant;
 use tracing::Instrument;
 use tracing::Level;
 use tracing::Span;
@@ -84,6 +83,7 @@ use crate::storage::RaftLogReaderExt;
 use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
 use crate::utime::UTime;
+use crate::AsyncRuntime;
 use crate::ChangeMembers;
 use crate::LogId;
 use crate::Membership;
@@ -148,7 +148,7 @@ impl<C: RaftTypeConfig> LeaderData<C> {
         Self {
             client_resp_channels: Default::default(),
             replications: BTreeMap::new(),
-            next_heartbeat: Instant::now(),
+            next_heartbeat: C::AsyncRuntime::now(),
         }
     }
 }
@@ -308,7 +308,7 @@ where
             let option = RPCOption::new(ttl);
 
             let fu = async move {
-                let outer_res = timeout(ttl, client.append_entries(rpc, option)).await;
+                let outer_res = C::AsyncRuntime::timeout(ttl, client.append_entries(rpc, option)).await;
                 match outer_res {
                     Ok(append_res) => match append_res {
                         Ok(x) => Ok((target, x)),
@@ -328,7 +328,7 @@ where
             };
 
             let fu = fu.instrument(tracing::debug_span!("spawn_is_leader", target = target.to_string()));
-            let task = tokio::spawn(fu).map_err(move |err| (target, err));
+            let task = C::AsyncRuntime::spawn(fu).map_err(move |err| (target, err));
 
             pending.push(task);
         }
@@ -392,7 +392,7 @@ where
             .into()));
         };
 
-        tokio::spawn(waiting_fu.instrument(tracing::debug_span!("spawn_is_leader_waiting")));
+        C::AsyncRuntime::spawn(waiting_fu.instrument(tracing::debug_span!("spawn_is_leader_waiting")));
     }
 
     /// Submit change-membership by writing a Membership log entry.
@@ -470,14 +470,18 @@ where
     /// Currently heartbeat is a blank log
     #[tracing::instrument(level = "debug", skip_all, fields(id = display(self.id)))]
     pub fn send_heartbeat(&mut self, emitter: impl Display) -> bool {
-        tracing::debug!(now = debug(Instant::now()), "send_heartbeat");
+        tracing::debug!(now = debug(C::AsyncRuntime::now()), "send_heartbeat");
 
         let mut lh = if let Some((lh, _)) =
             self.engine.get_leader_handler_or_reject::<(), ClientWriteError<C::NodeId, C::Node>>(None)
         {
             lh
         } else {
-            tracing::debug!(now = debug(Instant::now()), "{} failed to send heartbeat", emitter);
+            tracing::debug!(
+                now = debug(C::AsyncRuntime::now()),
+                "{} failed to send heartbeat",
+                emitter
+            );
             return false;
         };
 
@@ -988,9 +992,9 @@ where
             let id = self.id;
             let option = RPCOption::new(ttl);
 
-            let _ = tokio::spawn(
+            let _ = C::AsyncRuntime::spawn(
                 async move {
-                    let tm_res = timeout(ttl, client.vote(req, option)).await;
+                    let tm_res = C::AsyncRuntime::timeout(ttl, client.vote(req, option)).await;
                     let res = match tm_res {
                         Ok(res) => res,
 
@@ -1062,7 +1066,7 @@ where
                 self.handle_append_entries_request(rpc, tx);
             }
             RaftMsg::RequestVote { rpc, tx } => {
-                let now = Instant::now();
+                let now = C::AsyncRuntime::now();
                 tracing::info!(
                     now = debug(now),
                     vote_request = display(rpc.summary()),
@@ -1149,7 +1153,7 @@ where
                 resp,
                 sender_vote: vote,
             } => {
-                let now = Instant::now();
+                let now = C::AsyncRuntime::now();
 
                 tracing::info!(
                     now = debug(now),
@@ -1185,7 +1189,7 @@ where
             Notify::Tick { i } => {
                 // check every timer
 
-                let now = Instant::now();
+                let now = C::AsyncRuntime::now();
                 tracing::debug!("received tick: {}, now: {:?}", i, now);
 
                 self.handle_tick_election();
@@ -1202,7 +1206,8 @@ where
 
                         // Install next heartbeat
                         if let Some(l) = &mut self.leader_data {
-                            l.next_heartbeat = Instant::now() + Duration::from_millis(self.config.heartbeat_interval);
+                            l.next_heartbeat =
+                                C::AsyncRuntime::now() + Duration::from_millis(self.config.heartbeat_interval);
                         }
                     }
                 }
@@ -1330,7 +1335,7 @@ where
 
     #[tracing::instrument(level = "debug", skip_all)]
     fn handle_tick_election(&mut self) {
-        let now = Instant::now();
+        let now = C::AsyncRuntime::now();
 
         tracing::debug!("try to trigger election by tick, now: {:?}", now);
 

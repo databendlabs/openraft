@@ -168,7 +168,7 @@ fn test_initialize() -> anyhow::Result<()> {
     tracing::info!("--- not allowed because of vote");
     {
         let mut eng = eng();
-        eng.state.vote = UTime::new(Instant::now(), Vote::new(0, 1));
+        eng.state.vote = UTime::new(Instant::now().into(), Vote::new(0, 1));
 
         assert_eq!(
             Err(InitializeError::NotAllowed(NotAllowed {

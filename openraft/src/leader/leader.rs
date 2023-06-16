@@ -1,7 +1,6 @@
 use std::fmt;
 use std::ops::Deref;
-
-use tokio::time::Instant;
+use std::time::Instant;
 
 use crate::leader::voting::Voting;
 use crate::progress::entry::ProgressEntry;
@@ -87,9 +86,9 @@ where
         self.voting.as_mut()
     }
 
-    pub(crate) fn initialize_voting(&mut self, last_log_id: Option<LogId<NID>>) -> &mut Voting<NID, QS> {
+    pub(crate) fn initialize_voting(&mut self, last_log_id: Option<LogId<NID>>, now: Instant) -> &mut Voting<NID, QS> {
         self.voting = Some(Voting::new(
-            Instant::now(),
+            now,
             *self.vote.deref(),
             last_log_id,
             self.quorum_set.clone(),

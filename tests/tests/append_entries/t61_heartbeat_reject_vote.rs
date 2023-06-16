@@ -40,8 +40,8 @@ async fn heartbeat_reject_vote() -> Result<()> {
 
         router.external_request(1, move |state, _store, _net| {
             let mut l = m.lock().unwrap();
-            *l = state.vote_last_modified();
-            assert!(state.vote_last_modified() > Some(now));
+            *l = state.vote_last_modified().map(|t| t.into());
+            assert!(state.vote_last_modified() > Some(now.into()));
         });
 
         let now = Instant::now();
@@ -51,8 +51,8 @@ async fn heartbeat_reject_vote() -> Result<()> {
 
         router.external_request(1, move |state, _store, _net| {
             let l = m.lock().unwrap();
-            assert!(state.vote_last_modified() > Some(now));
-            assert!(state.vote_last_modified() > *l);
+            assert!(state.vote_last_modified() > Some(now.into()));
+            assert!(state.vote_last_modified() > (*l).map(|t| t.into()));
         });
     }
 

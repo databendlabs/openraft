@@ -1,6 +1,5 @@
 use std::ops::Deref;
-
-use tokio::time::Instant;
+use std::time::Instant;
 
 use crate::display_ext::DisplayOptionExt;
 use crate::engine::handler::log_handler::LogHandler;

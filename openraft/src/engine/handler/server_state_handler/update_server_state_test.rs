@@ -28,7 +28,7 @@ fn eng() -> Engine<UTConfig> {
     eng.state.enable_validate = false; // Disable validation for incomplete state
 
     eng.config.id = 2;
-    eng.state.vote = UTime::new(Instant::now(), Vote::new_committed(2, 2));
+    eng.state.vote = UTime::new(Instant::now().into(), Vote::new_committed(2, 2));
     eng.state.membership_state = MembershipState::new(
         Arc::new(EffectiveMembership::new(Some(log_id1(1, 1)), m01())),
         Arc::new(EffectiveMembership::new(Some(log_id1(2, 3)), m123())),
@@ -48,7 +48,7 @@ fn test_update_server_state_if_changed() -> anyhow::Result<()> {
         assert_eq!(ServerState::Leader, ssh.state.server_state);
 
         ssh.output.clear_commands();
-        ssh.state.vote = UTime::new(Instant::now(), Vote::new(2, 100));
+        ssh.state.vote = UTime::new(Instant::now().into(), Vote::new(2, 100));
         ssh.update_server_state_if_changed();
 
         assert_eq!(ServerState::Follower, ssh.state.server_state);

@@ -18,6 +18,7 @@ use crate::Node;
 use crate::NodeId;
 use crate::RaftMetrics;
 use crate::StoredMembership;
+use crate::Tokio;
 use crate::Vote;
 
 /// Test wait for different state changes
@@ -213,7 +214,11 @@ async fn test_wait_purged() -> anyhow::Result<()> {
     Ok(())
 }
 
-pub(crate) type InitResult<NID, N> = (RaftMetrics<NID, N>, Wait<NID, N>, watch::Sender<RaftMetrics<NID, N>>);
+pub(crate) type InitResult<NID, N> = (
+    RaftMetrics<NID, N>,
+    Wait<NID, N, Tokio>,
+    watch::Sender<RaftMetrics<NID, N>>,
+);
 
 /// Build a initial state for testing of Wait:
 /// Returns init metrics, Wait, and the tx to send an updated metrics.
@@ -242,6 +247,7 @@ where
     let w = Wait {
         timeout: Duration::from_millis(100),
         rx,
+        _phantom: std::marker::PhantomData,
     };
 
     (init, w, tx)

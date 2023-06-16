@@ -1,6 +1,5 @@
 use std::fmt;
-
-use tokio::time::Instant;
+use std::time::Instant;
 
 use crate::display_ext::DisplayOptionExt;
 use crate::progress::Progress;

@@ -1,8 +1,7 @@
 use core::fmt;
 use std::ops::Deref;
 use std::ops::DerefMut;
-
-use tokio::time::Instant;
+use std::time::Instant;
 
 /// Record the last update time for an object
 #[derive(Debug, Default)]

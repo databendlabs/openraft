@@ -2,12 +2,12 @@ use core::time::Duration;
 use std::collections::BTreeSet;
 
 use tokio::sync::watch;
-use tokio::time::Instant;
 
 use crate::core::ServerState;
 use crate::display_ext::DisplayOption;
 use crate::metrics::RaftMetrics;
 use crate::node::Node;
+use crate::AsyncRuntime;
 use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::MessageSummary;
@@ -26,25 +26,28 @@ pub enum WaitError {
 
 /// Wait is a wrapper of RaftMetrics channel that impls several utils to wait for metrics to satisfy
 /// some condition.
-pub struct Wait<NID, N>
+pub struct Wait<NID, N, A>
 where
     NID: NodeId,
     N: Node,
+    A: AsyncRuntime,
 {
     pub timeout: Duration,
     pub rx: watch::Receiver<RaftMetrics<NID, N>>,
+    pub(crate) _phantom: std::marker::PhantomData<A>,
 }
 
-impl<NID, N> Wait<NID, N>
+impl<NID, N, A> Wait<NID, N, A>
 where
     NID: NodeId,
     N: Node,
+    A: AsyncRuntime,
 {
     /// Wait for metrics to satisfy some condition or timeout.
     #[tracing::instrument(level = "trace", skip(self, func), fields(msg=%msg.to_string()))]
     pub async fn metrics<T>(&self, func: T, msg: impl ToString) -> Result<RaftMetrics<NID, N>, WaitError>
     where T: Fn(&RaftMetrics<NID, N>) -> bool + Send {
-        let timeout_at = Instant::now() + self.timeout;
+        let timeout_at = A::now() + self.timeout;
 
         let mut rx = self.rx.clone();
         loop {
@@ -67,7 +70,7 @@ where
                 return Ok(latest);
             }
 
-            let now = Instant::now();
+            let now = A::now();
             if now >= timeout_at {
                 return Err(WaitError::Timeout(
                     self.timeout,
@@ -77,7 +80,7 @@ where
 
             let sleep_time = timeout_at - now;
             tracing::debug!(?sleep_time, "wait timeout");
-            let delay = tokio::time::sleep(sleep_time);
+            let delay = A::sleep(sleep_time);
 
             tokio::select! {
                 _ = delay => {

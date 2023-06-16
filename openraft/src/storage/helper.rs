@@ -1,8 +1,6 @@
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-use tokio::time::Instant;
-
 use crate::engine::LogIdList;
 use crate::entry::RaftPayload;
 use crate::log_id::RaftLogId;
@@ -11,6 +9,7 @@ use crate::raft_state::LogIOId;
 use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
 use crate::utime::UTime;
+use crate::AsyncRuntime;
 use crate::EffectiveMembership;
 use crate::LogIdOptionExt;
 use crate::MembershipState;
@@ -97,7 +96,7 @@ where
         };
         let snapshot_meta = snapshot.map(|x| x.meta).unwrap_or_default();
 
-        let now = Instant::now();
+        let now = C::AsyncRuntime::now();
 
         Ok(RaftState {
             committed: last_applied,

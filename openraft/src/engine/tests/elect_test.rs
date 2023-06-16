@@ -96,7 +96,7 @@ fn test_elect() -> anyhow::Result<()> {
             .set_effective(Arc::new(EffectiveMembership::new(Some(log_id1(0, 1)), m1())));
 
         // Build in-progress election state
-        eng.state.vote = UTime::new(Instant::now(), Vote::new_committed(1, 2));
+        eng.state.vote = UTime::new(Instant::now().into(), Vote::new_committed(1, 2));
         eng.vote_handler().become_leading();
         eng.internal_server_state.voting_mut().map(|l| l.grant_by(&1));
 

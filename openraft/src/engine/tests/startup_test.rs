@@ -39,7 +39,7 @@ fn test_startup_as_leader() -> anyhow::Result<()> {
         .membership_state
         .set_effective(Arc::new(EffectiveMembership::new(Some(log_id1(2, 3)), m23())));
     // Committed vote makes it a leader at startup.
-    eng.state.vote = UTime::new(Instant::now(), Vote::new_committed(1, 2));
+    eng.state.vote = UTime::new(Instant::now().into(), Vote::new_committed(1, 2));
 
     eng.startup();
 
@@ -71,7 +71,7 @@ fn test_startup_candidate_becomes_follower() -> anyhow::Result<()> {
         .membership_state
         .set_effective(Arc::new(EffectiveMembership::new(Some(log_id1(2, 3)), m23())));
     // Non-committed vote makes it a candidate at startup.
-    eng.state.vote = UTime::new(Instant::now(), Vote::new(1, 2));
+    eng.state.vote = UTime::new(Instant::now().into(), Vote::new(1, 2));
 
     eng.startup();
 

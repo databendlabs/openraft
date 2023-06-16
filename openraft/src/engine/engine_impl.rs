@@ -1,7 +1,5 @@
 use std::time::Duration;
 
-use tokio::time::Instant;
-
 use crate::core::ServerState;
 use crate::display_ext::DisplayOptionExt;
 use crate::display_ext::DisplaySlice;
@@ -39,6 +37,7 @@ use crate::raft_state::LogStateReader;
 use crate::raft_state::RaftState;
 use crate::summary::MessageSummary;
 use crate::validate::Valid;
+use crate::AsyncRuntime;
 use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::Membership;
@@ -180,7 +179,7 @@ where C: RaftTypeConfig
 
         // Safe unwrap(): leading state is just created
         let leading = self.internal_server_state.leading_mut().unwrap();
-        let voting = leading.initialize_voting(self.state.last_log_id().copied());
+        let voting = leading.initialize_voting(self.state.last_log_id().copied(), C::AsyncRuntime::now());
 
         let quorum_granted = voting.grant_by(&self.config.id);
 
@@ -230,7 +229,7 @@ where C: RaftTypeConfig
 
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn handle_vote_req(&mut self, req: VoteRequest<C::NodeId>) -> VoteResponse<C::NodeId> {
-        let now = Instant::now();
+        let now = C::AsyncRuntime::now();
         let lease = self.config.timer_config.leader_lease;
         let vote = self.state.vote_ref();
 

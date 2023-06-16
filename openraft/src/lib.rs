@@ -51,6 +51,7 @@ mod vote;
 #[cfg(feature = "compat")] pub mod compat;
 #[cfg(feature = "compat-07")] pub use or07;
 
+pub mod async_runtime;
 pub mod entry;
 pub mod error;
 pub mod log_id;
@@ -84,6 +85,8 @@ pub use network::RPCTypes;
 pub use network::RaftNetwork;
 pub use network::RaftNetworkFactory;
 
+pub use crate::async_runtime::AsyncRuntime;
+pub use crate::async_runtime::Tokio;
 pub use crate::change_members::ChangeMembers;
 pub use crate::config::Config;
 pub use crate::config::ConfigError;

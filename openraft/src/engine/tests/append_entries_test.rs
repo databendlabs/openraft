@@ -37,7 +37,7 @@ fn eng() -> Engine<UTConfig> {
     eng.state.enable_validate = false; // Disable validation for incomplete state
 
     eng.config.id = 2;
-    eng.state.vote = UTime::new(Instant::now(), Vote::new(2, 1));
+    eng.state.vote = UTime::new(Instant::now().into(), Vote::new(2, 1));
     eng.state.log_ids.append(log_id1(1, 1));
     eng.state.log_ids.append(log_id1(2, 3));
     eng.state.committed = Some(log_id1(0, 0));
@@ -82,7 +82,7 @@ fn test_append_entries_vote_is_rejected() -> anyhow::Result<()> {
 fn test_append_entries_prev_log_id_is_applied() -> anyhow::Result<()> {
     // An applied log id has to be committed thus
     let mut eng = eng();
-    eng.state.vote = UTime::new(Instant::now(), Vote::new(1, 2));
+    eng.state.vote = UTime::new(Instant::now().into(), Vote::new(1, 2));
     eng.vote_handler().become_leading();
 
     let res = eng.append_entries(
@@ -211,7 +211,7 @@ fn test_append_entries_prev_log_id_is_committed() -> anyhow::Result<()> {
 #[test]
 fn test_append_entries_prev_log_id_not_exists() -> anyhow::Result<()> {
     let mut eng = eng();
-    eng.state.vote = UTime::new(Instant::now(), Vote::new(1, 2));
+    eng.state.vote = UTime::new(Instant::now().into(), Vote::new(1, 2));
     eng.vote_handler().become_leading();
 
     let res = eng.append_entries(&Vote::new_committed(2, 1), Some(log_id1(2, 4)), vec![

@@ -36,7 +36,7 @@ fn eng() -> Engine<UTConfig> {
     eng.state.enable_validate = false; // Disable validation for incomplete state
 
     eng.config.id = 0;
-    eng.state.vote = UTime::new(Instant::now(), Vote::new(2, 1));
+    eng.state.vote = UTime::new(Instant::now().into(), Vote::new(2, 1));
     eng.state.server_state = ServerState::Candidate;
     eng.state
         .membership_state
