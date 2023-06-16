@@ -1132,6 +1132,7 @@ where
     C: RaftTypeConfig,
     SM: RaftStateMachine<C>,
     I: IntoIterator<Item = C::Entry> + Send,
+    I::IntoIter: Send,
 {
     sm.apply(entries).await?;
     Ok(())

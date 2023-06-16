@@ -638,6 +638,7 @@ where
     ) -> Result<(), StorageError<C::NodeId>>
     where
         I: IntoIterator<Item = C::Entry> + Send,
+        I::IntoIter: Send,
     {
         tracing::debug!("append_to_log");
 
