@@ -440,7 +440,6 @@ where C: RaftTypeConfig
     ) -> Option<()> {
         tracing::info!(req = display(req.summary()), "{}", func_name!());
 
-        // TODO(1): accept_vote() should return Option instead of Result.
         let res = self.vote_handler().accept_vote(&req.vote, tx, |state, _rejected| {
             Ok(InstallSnapshotResponse {
                 vote: *state.vote_ref(),
@@ -448,8 +447,8 @@ where C: RaftTypeConfig
         });
 
         let tx = match res {
-            Ok(tx) => tx,
-            Err(_) => return Some(()),
+            Some(tx) => tx,
+            None => return Some(()),
         };
 
         let res = self.install_snapshot(req);

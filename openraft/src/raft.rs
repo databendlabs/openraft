@@ -194,7 +194,6 @@ where
 /// `shutdown` method should be called on this type to await the shutdown of the node. If the parent
 /// application needs to shutdown the Raft node for any reason, calling `shutdown` will do the
 /// trick.
-#[derive(Clone)]
 pub struct Raft<C, N, LS, SM>
 where
     C: RaftTypeConfig,
@@ -204,6 +203,21 @@ where
 {
     inner: Arc<RaftInner<C, N, LS>>,
     _phantom: PhantomData<SM>,
+}
+
+impl<C, N, LS, SM> Clone for Raft<C, N, LS, SM>
+where
+    C: RaftTypeConfig,
+    N: RaftNetworkFactory<C>,
+    LS: RaftLogStorage<C>,
+    SM: RaftStateMachine<C>,
+{
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+            _phantom: PhantomData,
+        }
+    }
 }
 
 impl<C, N, LS, SM> Raft<C, N, LS, SM>

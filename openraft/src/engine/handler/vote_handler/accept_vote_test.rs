@@ -54,7 +54,7 @@ fn test_accept_vote_reject_smaller_vote() -> anyhow::Result<()> {
     let (tx, _rx) = oneshot::channel();
     let resp = eng.vote_handler().accept_vote(&Vote::new(1, 2), tx, |_state, _err| mk_res());
 
-    assert!(resp.is_err());
+    assert!(resp.is_none());
 
     let (tx, _rx) = oneshot::channel();
     assert_eq!(
@@ -79,7 +79,7 @@ fn test_accept_vote_granted_greater_vote() -> anyhow::Result<()> {
     let (tx, _rx) = oneshot::channel();
     let resp = eng.vote_handler().accept_vote(&Vote::new(3, 3), tx, |_state, _err| mk_res());
 
-    assert!(resp.is_ok());
+    assert!(resp.is_some());
 
     assert_eq!(
         vec![Command::SaveVote { vote: Vote::new(3, 3) },],
