@@ -9,7 +9,6 @@ use std::sync::Arc;
 use async_std::net::TcpListener;
 use async_std::task;
 use openraft::storage::Adaptor;
-use openraft::AsyncRuntime;
 use openraft::Config;
 use openraft::Tokio;
 

@@ -9,7 +9,6 @@ use actix_web::middleware::Logger;
 use actix_web::web::Data;
 use actix_web::HttpServer;
 use openraft::storage::Adaptor;
-use openraft::AsyncRuntime;
 use openraft::BasicNode;
 use openraft::Config;
 use openraft::Tokio;

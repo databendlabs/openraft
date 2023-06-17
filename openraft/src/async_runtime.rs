@@ -6,8 +6,8 @@ use std::time::Instant;
 
 /// A trait defining interfaces with an asynchronous runtime.
 ///
-/// The intention of this trait is to allow an application this crate to choose an asynchronous
-/// runtime that best suits it.
+/// The intention of this trait is to allow an application using this crate to bind an asynchronous
+/// runtime that suits it the best.
 ///
 /// ## Note
 ///
