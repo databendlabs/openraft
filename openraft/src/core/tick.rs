@@ -12,6 +12,7 @@ use tracing::Span;
 
 use crate::core::notify::Notify;
 use crate::AsyncRuntime;
+use crate::Instant;
 use crate::RaftTypeConfig;
 
 /// Emit RaftMsg::Tick event at regular `interval`.
@@ -56,7 +57,7 @@ where C: RaftTypeConfig
         loop {
             i += 1;
 
-            let at = C::AsyncRuntime::now() + self.interval;
+            let at = <C::AsyncRuntime as AsyncRuntime>::Instant::now() + self.interval;
             C::AsyncRuntime::sleep_until(at).await;
 
             if !self.enabled.load(Ordering::Relaxed) {

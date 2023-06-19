@@ -14,13 +14,12 @@ use crate::raft::VoteRequest;
 use crate::testing::log_id;
 use crate::testing::log_id1;
 use crate::utime::UTime;
-use crate::AsyncRuntime;
 use crate::CommittedLeaderId;
 use crate::EffectiveMembership;
 use crate::Entry;
 use crate::LogId;
 use crate::Membership;
-use crate::Tokio;
+use crate::TokioInstant;
 use crate::Vote;
 
 fn m1() -> Membership<u64, ()> {
@@ -97,7 +96,7 @@ fn test_elect() -> anyhow::Result<()> {
             .set_effective(Arc::new(EffectiveMembership::new(Some(log_id1(0, 1)), m1())));
 
         // Build in-progress election state
-        eng.state.vote = UTime::new::<Tokio>(Tokio::now(), Vote::new_committed(1, 2));
+        eng.state.vote = UTime::new(TokioInstant::now(), Vote::new_committed(1, 2));
         eng.vote_handler().become_leading();
         eng.internal_server_state.voting_mut().map(|l| l.grant_by(&1));
 

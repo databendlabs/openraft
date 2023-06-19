@@ -11,11 +11,10 @@ use crate::progress::Progress;
 use crate::raft_state::LogStateReader;
 use crate::testing::log_id1;
 use crate::utime::UTime;
-use crate::AsyncRuntime;
 use crate::EffectiveMembership;
 use crate::Membership;
 use crate::MembershipState;
-use crate::Tokio;
+use crate::TokioInstant;
 use crate::Vote;
 
 fn m01() -> Membership<u64, ()> {
@@ -31,7 +30,7 @@ fn eng() -> Engine<UTConfig> {
     eng.state.enable_validate = false; // Disable validation for incomplete state
 
     eng.config.id = 2;
-    eng.state.vote = UTime::new::<Tokio>(Tokio::now(), Vote::new_committed(2, 1));
+    eng.state.vote = UTime::new(TokioInstant::now(), Vote::new_committed(2, 1));
     eng.state.membership_state = MembershipState::new(
         Arc::new(EffectiveMembership::new(Some(log_id1(1, 1)), m01())),
         Arc::new(EffectiveMembership::new(Some(log_id1(2, 3)), m123())),

@@ -421,7 +421,7 @@ mod tests {
 
     use crate::compat::Upgrade;
     use crate::CommittedLeaderId;
-    use crate::Tokio;
+    use crate::TokioRuntime;
 
     #[test]
     fn test_serde_log_id() -> anyhow::Result<()> {
@@ -513,7 +513,7 @@ mod tests {
         pub TestingConfig:
         D = u64, R = u64, NodeId = u64, Node = crate::EmptyNode,
         Entry = crate::Entry<TestingConfig>, SnapshotData = Cursor<Vec<u8>>,
-        AsyncRuntime = Tokio
+        AsyncRuntime = TokioRuntime
     );
 
     #[test]

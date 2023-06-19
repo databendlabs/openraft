@@ -10,7 +10,7 @@ use async_std::net::TcpListener;
 use async_std::task;
 use openraft::storage::Adaptor;
 use openraft::Config;
-use openraft::Tokio;
+use openraft::TokioRuntime;
 
 use crate::app::App;
 use crate::network::api;
@@ -42,7 +42,7 @@ impl Display for Node {
 openraft::declare_raft_types!(
     /// Declare the type configuration for example K/V store.
     pub TypeConfig: D = Request, R = Response, NodeId = NodeId, Node = Node,
-    Entry = openraft::Entry<TypeConfig>, SnapshotData = Cursor<Vec<u8>>, AsyncRuntime = Tokio
+    Entry = openraft::Entry<TypeConfig>, SnapshotData = Cursor<Vec<u8>>, AsyncRuntime = TokioRuntime
 );
 
 pub type LogStore = Adaptor<TypeConfig, Arc<Store>>;

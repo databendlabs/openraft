@@ -5,7 +5,7 @@ use anyhow::Result;
 use maplit::btreeset;
 use openraft::AsyncRuntime;
 use openraft::Config;
-use openraft::Tokio;
+use openraft::TokioRuntime;
 
 use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
@@ -30,8 +30,8 @@ async fn enable_heartbeat() -> Result<()> {
     node0.enable_heartbeat(true);
 
     for _i in 0..3 {
-        let now = Tokio::now();
-        Tokio::sleep(Duration::from_millis(500)).await;
+        let now = <TokioRuntime as AsyncRuntime>::Instant::now();
+        TokioRuntime::sleep(Duration::from_millis(500)).await;
 
         for node_id in [1, 2, 3] {
             // no new log will be sent, .
@@ -42,7 +42,7 @@ async fn enable_heartbeat() -> Result<()> {
 
             // leader lease is extended.
             router.external_request(node_id, move |state, _store, _net| {
-                assert!(state.vote_last_modified::<Tokio>() > Some(now));
+                assert!(state.vote_last_modified() > Some(now));
             });
         }
     }

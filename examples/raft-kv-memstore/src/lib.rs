@@ -11,7 +11,7 @@ use actix_web::HttpServer;
 use openraft::storage::Adaptor;
 use openraft::BasicNode;
 use openraft::Config;
-use openraft::Tokio;
+use openraft::TokioRuntime;
 
 use crate::app::App;
 use crate::network::api;
@@ -32,7 +32,7 @@ pub type NodeId = u64;
 openraft::declare_raft_types!(
     /// Declare the type configuration for example K/V store.
     pub TypeConfig: D = Request, R = Response, NodeId = NodeId, Node = BasicNode,
-    Entry = openraft::Entry<TypeConfig>, SnapshotData = Cursor<Vec<u8>>, AsyncRuntime = Tokio
+    Entry = openraft::Entry<TypeConfig>, SnapshotData = Cursor<Vec<u8>>, AsyncRuntime = TokioRuntime
 );
 
 pub type LogStore = Adaptor<TypeConfig, Arc<Store>>;

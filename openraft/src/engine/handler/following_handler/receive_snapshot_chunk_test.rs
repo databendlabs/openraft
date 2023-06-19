@@ -10,12 +10,11 @@ use crate::error::SnapshotMismatch;
 use crate::raft::InstallSnapshotRequest;
 use crate::raft_state::StreamingState;
 use crate::testing::log_id1;
-use crate::AsyncRuntime;
 use crate::Membership;
 use crate::SnapshotMeta;
 use crate::SnapshotSegmentId;
 use crate::StoredMembership;
-use crate::Tokio;
+use crate::TokioInstant;
 use crate::Vote;
 
 fn m1234() -> Membership<u64, ()> {
@@ -26,7 +25,7 @@ fn eng() -> Engine<UTConfig> {
     let mut eng = Engine::default();
     eng.state.enable_validate = false; // Disable validation for incomplete state
 
-    eng.state.vote.update::<Tokio>(Tokio::now(), Vote::new_committed(2, 1));
+    eng.state.vote.update(TokioInstant::now(), Vote::new_committed(2, 1));
     eng.state.server_state = eng.calc_server_state();
 
     eng

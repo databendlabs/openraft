@@ -40,8 +40,9 @@ pub(crate) struct ReplicationHandler<'x, C>
 where C: RaftTypeConfig
 {
     pub(crate) config: &'x mut EngineConfig<C::NodeId>,
-    pub(crate) leader: &'x mut Leading<C::NodeId, LeaderQuorumSet<C::NodeId>, C::AsyncRuntime>,
-    pub(crate) state: &'x mut RaftState<C::NodeId, C::Node>,
+    pub(crate) leader:
+        &'x mut Leading<C::NodeId, LeaderQuorumSet<C::NodeId>, <C::AsyncRuntime as AsyncRuntime>::Instant>,
+    pub(crate) state: &'x mut RaftState<C::NodeId, C::Node, <C::AsyncRuntime as AsyncRuntime>::Instant>,
     pub(crate) output: &'x mut EngineOutput<C>,
 }
 
@@ -139,9 +140,9 @@ where C: RaftTypeConfig
         &mut self,
         target: C::NodeId,
         request_id: u64,
-        result: UTime<ReplicationResult<C::NodeId>>,
+        result: UTime<ReplicationResult<C::NodeId>, <C::AsyncRuntime as AsyncRuntime>::Instant>,
     ) {
-        let sending_time = result.utime::<C::AsyncRuntime>().unwrap();
+        let sending_time = result.utime().unwrap();
 
         // No matter what the result is, the validity of the leader is granted by a follower.
         self.update_leader_vote_clock(target, sending_time);
@@ -188,9 +189,9 @@ where C: RaftTypeConfig
         //         1 2 3
         // Value:  1 1 2 2 2 // 1 is granted by a quorum
         // ```
-        if granted > self.leader.vote.utime::<C::AsyncRuntime>() {
+        if granted > self.leader.vote.utime() {
             // Safe unwrap(): Only Some() can be greater than another Option
-            self.leader.vote.touch::<C::AsyncRuntime>(granted.unwrap());
+            self.leader.vote.touch(granted.unwrap());
         }
     }
 
@@ -274,7 +275,7 @@ where C: RaftTypeConfig
         &mut self,
         target: C::NodeId,
         request_id: u64,
-        repl_res: Result<UTime<ReplicationResult<C::NodeId>>, String>,
+        repl_res: Result<UTime<ReplicationResult<C::NodeId>, <C::AsyncRuntime as AsyncRuntime>::Instant>, String>,
     ) {
         // TODO(2): test
 

@@ -839,7 +839,11 @@ where
     ///
     /// If the API channel is already closed (Raft is in shutdown), then the request functor is
     /// destroyed right away and not called at all.
-    pub fn external_request<F: FnOnce(&RaftState<C::NodeId, C::Node>, &mut LS, &mut N) + Send + 'static>(
+    pub fn external_request<
+        F: FnOnce(&RaftState<C::NodeId, C::Node, <C::AsyncRuntime as AsyncRuntime>::Instant>, &mut LS, &mut N)
+            + Send
+            + 'static,
+    >(
         &self,
         req: F,
     ) {
@@ -965,7 +969,11 @@ where
 
     ExternalRequest {
         #[allow(clippy::type_complexity)]
-        req: Box<dyn FnOnce(&RaftState<C::NodeId, C::Node>, &mut LS, &mut N) + Send + 'static>,
+        req: Box<
+            dyn FnOnce(&RaftState<C::NodeId, C::Node, <C::AsyncRuntime as AsyncRuntime>::Instant>, &mut LS, &mut N)
+                + Send
+                + 'static,
+        >,
     },
 
     ExternalCommand {

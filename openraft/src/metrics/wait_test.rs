@@ -18,7 +18,7 @@ use crate::Node;
 use crate::NodeId;
 use crate::RaftMetrics;
 use crate::StoredMembership;
-use crate::Tokio;
+use crate::TokioRuntime;
 use crate::Vote;
 
 /// Test wait for different state changes
@@ -216,7 +216,7 @@ async fn test_wait_purged() -> anyhow::Result<()> {
 
 pub(crate) type InitResult<NID, N> = (
     RaftMetrics<NID, N>,
-    Wait<NID, N, Tokio>,
+    Wait<NID, N, TokioRuntime>,
     watch::Sender<RaftMetrics<NID, N>>,
 );
 

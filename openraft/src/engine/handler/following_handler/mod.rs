@@ -16,6 +16,7 @@ use crate::error::SnapshotMismatch;
 use crate::raft::InstallSnapshotRequest;
 use crate::raft_state::LogStateReader;
 use crate::raft_state::StreamingState;
+use crate::AsyncRuntime;
 use crate::EffectiveMembership;
 use crate::LogId;
 use crate::LogIdOptionExt;
@@ -42,7 +43,7 @@ pub(crate) struct FollowingHandler<'x, C>
 where C: RaftTypeConfig
 {
     pub(crate) config: &'x mut EngineConfig<C::NodeId>,
-    pub(crate) state: &'x mut RaftState<C::NodeId, C::Node>,
+    pub(crate) state: &'x mut RaftState<C::NodeId, C::Node, <C::AsyncRuntime as AsyncRuntime>::Instant>,
     pub(crate) output: &'x mut EngineOutput<C>,
 }
 

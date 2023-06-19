@@ -17,13 +17,12 @@ use crate::testing::log_id;
 use crate::testing::log_id1;
 use crate::utime::UTime;
 use crate::vote::CommittedLeaderId;
-use crate::AsyncRuntime;
 use crate::EffectiveMembership;
 use crate::Entry;
 use crate::LogId;
 use crate::Membership;
 use crate::MembershipState;
-use crate::Tokio;
+use crate::TokioInstant;
 use crate::Vote;
 
 fn m01() -> Membership<u64, ()> {
@@ -49,7 +48,7 @@ fn eng() -> Engine<UTConfig> {
 
     eng.config.id = 1;
     eng.state.committed = Some(log_id1(0, 0));
-    eng.state.vote = UTime::new::<Tokio>(Tokio::now(), Vote::new_committed(3, 1));
+    eng.state.vote = UTime::new(TokioInstant::now(), Vote::new_committed(3, 1));
     eng.state.log_ids.append(log_id1(1, 1));
     eng.state.log_ids.append(log_id1(2, 3));
     eng.state.membership_state = MembershipState::new(

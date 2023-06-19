@@ -8,6 +8,7 @@ use crate::display_ext::DisplayOption;
 use crate::metrics::RaftMetrics;
 use crate::node::Node;
 use crate::AsyncRuntime;
+use crate::Instant;
 use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::MessageSummary;
@@ -47,7 +48,7 @@ where
     #[tracing::instrument(level = "trace", skip(self, func), fields(msg=%msg.to_string()))]
     pub async fn metrics<T>(&self, func: T, msg: impl ToString) -> Result<RaftMetrics<NID, N>, WaitError>
     where T: Fn(&RaftMetrics<NID, N>) -> bool + Send {
-        let timeout_at = A::now() + self.timeout;
+        let timeout_at = A::Instant::now() + self.timeout;
 
         let mut rx = self.rx.clone();
         loop {
@@ -70,7 +71,7 @@ where
                 return Ok(latest);
             }
 
-            let now = A::now();
+            let now = A::Instant::now();
             if now >= timeout_at {
                 return Err(WaitError::Timeout(
                     self.timeout,

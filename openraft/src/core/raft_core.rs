@@ -84,6 +84,7 @@ use crate::storage::RaftStateMachine;
 use crate::utime::UTime;
 use crate::AsyncRuntime;
 use crate::ChangeMembers;
+use crate::Instant;
 use crate::LogId;
 use crate::Membership;
 use crate::MessageSummary;
@@ -147,7 +148,7 @@ impl<C: RaftTypeConfig> LeaderData<C> {
         Self {
             client_resp_channels: Default::default(),
             replications: BTreeMap::new(),
-            next_heartbeat: C::AsyncRuntime::now(),
+            next_heartbeat: <C::AsyncRuntime as AsyncRuntime>::Instant::now(),
         }
     }
 }
@@ -469,7 +470,10 @@ where
     /// Currently heartbeat is a blank log
     #[tracing::instrument(level = "debug", skip_all, fields(id = display(self.id)))]
     pub fn send_heartbeat(&mut self, emitter: impl Display) -> bool {
-        tracing::debug!(now = debug(C::AsyncRuntime::now()), "send_heartbeat");
+        tracing::debug!(
+            now = debug(<C::AsyncRuntime as AsyncRuntime>::Instant::now()),
+            "send_heartbeat"
+        );
 
         let mut lh = if let Some((lh, _)) =
             self.engine.get_leader_handler_or_reject::<(), ClientWriteError<C::NodeId, C::Node>>(None)
@@ -477,7 +481,7 @@ where
             lh
         } else {
             tracing::debug!(
-                now = debug(C::AsyncRuntime::now()),
+                now = debug(<C::AsyncRuntime as AsyncRuntime>::Instant::now()),
                 "{} failed to send heartbeat",
                 emitter
             );
@@ -1065,7 +1069,7 @@ where
                 self.handle_append_entries_request(rpc, tx);
             }
             RaftMsg::RequestVote { rpc, tx } => {
-                let now = C::AsyncRuntime::now();
+                let now = <C::AsyncRuntime as AsyncRuntime>::Instant::now();
                 tracing::info!(
                     now = debug(now),
                     vote_request = display(rpc.summary()),
@@ -1152,7 +1156,7 @@ where
                 resp,
                 sender_vote: vote,
             } => {
-                let now = C::AsyncRuntime::now();
+                let now = <C::AsyncRuntime as AsyncRuntime>::Instant::now();
 
                 tracing::info!(
                     now = debug(now),
@@ -1188,7 +1192,7 @@ where
             Notify::Tick { i } => {
                 // check every timer
 
-                let now = C::AsyncRuntime::now();
+                let now = <C::AsyncRuntime as AsyncRuntime>::Instant::now();
                 tracing::debug!("received tick: {}, now: {:?}", i, now);
 
                 self.handle_tick_election();
@@ -1205,8 +1209,8 @@ where
 
                         // Install next heartbeat
                         if let Some(l) = &mut self.leader_data {
-                            l.next_heartbeat =
-                                C::AsyncRuntime::now() + Duration::from_millis(self.config.heartbeat_interval);
+                            l.next_heartbeat = <C::AsyncRuntime as AsyncRuntime>::Instant::now()
+                                + Duration::from_millis(self.config.heartbeat_interval);
                         }
                     }
                 }
@@ -1334,7 +1338,7 @@ where
 
     #[tracing::instrument(level = "debug", skip_all)]
     fn handle_tick_election(&mut self) {
-        let now = C::AsyncRuntime::now();
+        let now = <C::AsyncRuntime as AsyncRuntime>::Instant::now();
 
         tracing::debug!("try to trigger election by tick, now: {:?}", now);
 
@@ -1361,7 +1365,7 @@ where
             tracing::debug!("there are multiple voter, check election timeout");
 
             let current_vote = self.engine.state.vote_ref();
-            let utime = self.engine.state.vote_last_modified::<C::AsyncRuntime>();
+            let utime = self.engine.state.vote_last_modified();
             let timer_config = &self.engine.config.timer_config;
 
             let mut election_timeout = if current_vote.is_committed() {
@@ -1403,7 +1407,7 @@ where
         &mut self,
         target: C::NodeId,
         id: u64,
-        result: Result<UTime<ReplicationResult<C::NodeId>>, String>,
+        result: Result<UTime<ReplicationResult<C::NodeId>, <C::AsyncRuntime as AsyncRuntime>::Instant>, String>,
     ) {
         tracing::debug!(
             target = display(target),

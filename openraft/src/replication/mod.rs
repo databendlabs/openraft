@@ -45,6 +45,7 @@ use crate::utime::UTime;
 use crate::AsyncRuntime;
 use crate::ErrorSubject;
 use crate::ErrorVerb;
+use crate::Instant;
 use crate::LogId;
 use crate::MessageSummary;
 use crate::NodeId;
@@ -258,7 +259,7 @@ where
                     Duration::from_millis(500)
                 });
 
-                self.backoff_drain_events(C::AsyncRuntime::now() + duration).await?;
+                self.backoff_drain_events(<C::AsyncRuntime as AsyncRuntime>::Instant::now() + duration).await?;
             }
 
             self.drain_events().await?;
@@ -301,7 +302,7 @@ where
             logs
         };
 
-        let leader_time = C::AsyncRuntime::now();
+        let leader_time = <C::AsyncRuntime as AsyncRuntime>::Instant::now();
 
         // Build the heartbeat frame to be sent to the follower.
         let payload = AppendEntriesRequest {
@@ -430,10 +431,7 @@ where
                         session_id: self.session_id,
                         request_id,
                         target: self.target,
-                        result: Ok(UTime::new::<C::AsyncRuntime>(
-                            leader_time,
-                            ReplicationResult::Conflict(conflict),
-                        )),
+                        result: Ok(UTime::new(leader_time, ReplicationResult::Conflict(conflict))),
                     },
                 }
             });
@@ -476,10 +474,7 @@ where
                         session_id: self.session_id,
                         request_id,
                         target: self.target,
-                        result: Ok(UTime::new::<C::AsyncRuntime>(
-                            leader_time,
-                            ReplicationResult::Matching(new_matching),
-                        )),
+                        result: Ok(UTime::new(leader_time, ReplicationResult::Matching(new_matching))),
                     },
                 }
             });
@@ -496,7 +491,7 @@ where
         &mut self,
         until: <C::AsyncRuntime as AsyncRuntime>::Instant,
     ) -> Result<(), ReplicationClosed> {
-        let d = until - C::AsyncRuntime::now();
+        let d = until - <C::AsyncRuntime as AsyncRuntime>::Instant::now();
         tracing::warn!(
             interval = debug(d),
             "{} backoff mode: drain events without processing them",
@@ -504,7 +499,7 @@ where
         );
 
         loop {
-            let sleep_duration = until - C::AsyncRuntime::now();
+            let sleep_duration = until - <C::AsyncRuntime as AsyncRuntime>::Instant::now();
             let sleep = C::AsyncRuntime::sleep(sleep_duration);
 
             let recv = self.rx_repl.recv();
@@ -654,7 +649,7 @@ where
             snapshot.snapshot.seek(SeekFrom::Start(offset)).await.sto_res(err_x)?;
             let n_read = snapshot.snapshot.read_buf(&mut buf).await.sto_res(err_x)?;
 
-            let leader_time = C::AsyncRuntime::now();
+            let leader_time = <C::AsyncRuntime as AsyncRuntime>::Instant::now();
 
             let done = (offset + n_read as u64) == end;
             let req = InstallSnapshotRequest {

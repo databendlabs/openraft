@@ -11,6 +11,7 @@ use crate::storage::RaftStateMachine;
 use crate::utime::UTime;
 use crate::AsyncRuntime;
 use crate::EffectiveMembership;
+use crate::Instant;
 use crate::LogIdOptionExt;
 use crate::MembershipState;
 use crate::RaftSnapshotBuilder;
@@ -56,7 +57,10 @@ where
     ///
     /// When the Raft node is first started, it will call this interface to fetch the last known
     /// state from stable storage.
-    pub async fn get_initial_state(&mut self) -> Result<RaftState<C::NodeId, C::Node>, StorageError<C::NodeId>> {
+    pub async fn get_initial_state(
+        &mut self,
+    ) -> Result<RaftState<C::NodeId, C::Node, <C::AsyncRuntime as AsyncRuntime>::Instant>, StorageError<C::NodeId>>
+    {
         let vote = self.log_store.read_vote().await?;
         let vote = vote.unwrap_or_default();
 
@@ -96,13 +100,13 @@ where
         };
         let snapshot_meta = snapshot.map(|x| x.meta).unwrap_or_default();
 
-        let now = C::AsyncRuntime::now();
+        let now = <C::AsyncRuntime as AsyncRuntime>::Instant::now();
 
         Ok(RaftState {
             committed: last_applied,
             // The initial value for `vote` is the minimal possible value.
             // See: [Conditions for initialization](https://datafuselabs.github.io/openraft/cluster-formation.html#conditions-for-initialization)
-            vote: UTime::new::<C::AsyncRuntime>(now, vote),
+            vote: UTime::new(now, vote),
             purged_next: last_purged_log_id.next_index(),
             log_ids,
             membership_state: mem_state,
