@@ -1,6 +1,5 @@
 use maplit::btreeset;
 use pretty_assertions::assert_eq;
-use tokio::time::Instant;
 
 use crate::core::ServerState;
 use crate::engine::testing::UTConfig;
@@ -17,9 +16,11 @@ use crate::testing::log_id;
 use crate::testing::log_id1;
 use crate::utime::UTime;
 use crate::vote::CommittedLeaderId;
+use crate::AsyncRuntime;
 use crate::Entry;
 use crate::LogId;
 use crate::Membership;
+use crate::Tokio;
 use crate::Vote;
 
 #[test]
@@ -168,7 +169,7 @@ fn test_initialize() -> anyhow::Result<()> {
     tracing::info!("--- not allowed because of vote");
     {
         let mut eng = eng();
-        eng.state.vote = UTime::new(Instant::now().into(), Vote::new(0, 1));
+        eng.state.vote = UTime::new::<Tokio>(Tokio::now(), Vote::new(0, 1));
 
         assert_eq!(
             Err(InitializeError::NotAllowed(NotAllowed {

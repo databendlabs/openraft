@@ -3,7 +3,6 @@ use std::sync::Arc;
 
 use maplit::btreeset;
 use pretty_assertions::assert_eq;
-use tokio::time::Instant;
 
 use crate::core::ServerState;
 use crate::engine::testing::UTConfig;
@@ -18,11 +17,13 @@ use crate::raft_state::LogStateReader;
 use crate::testing::log_id;
 use crate::testing::log_id1;
 use crate::utime::UTime;
+use crate::AsyncRuntime;
 use crate::CommittedLeaderId;
 use crate::EffectiveMembership;
 use crate::Entry;
 use crate::LogId;
 use crate::Membership;
+use crate::Tokio;
 use crate::Vote;
 
 fn m12() -> Membership<u64, ()> {
@@ -47,7 +48,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
     {
         let mut eng = eng();
         eng.state.server_state = ServerState::Follower;
-        eng.state.vote = UTime::new(Instant::now().into(), Vote::new(2, 1));
+        eng.state.vote = UTime::new::<Tokio>(Tokio::now(), Vote::new(2, 1));
         eng.state
             .membership_state
             .set_effective(Arc::new(EffectiveMembership::new(Some(log_id1(1, 1)), m12())));
@@ -70,7 +71,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
     {
         let mut eng = eng();
         eng.config.id = 1;
-        eng.state.vote = UTime::new(Instant::now().into(), Vote::new(2, 1));
+        eng.state.vote = UTime::new::<Tokio>(Tokio::now(), Vote::new(2, 1));
         eng.state
             .membership_state
             .set_effective(Arc::new(EffectiveMembership::new(Some(log_id1(1, 1)), m12())));
@@ -79,7 +80,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         let last_log_id = eng.state.last_log_id().copied();
 
         eng.internal_server_state.leading_mut().map(|l| {
-            l.initialize_voting(last_log_id, Instant::now().into());
+            l.initialize_voting(last_log_id, Tokio::now());
             l.voting_mut().unwrap().grant_by(&1)
         });
         eng.state.server_state = ServerState::Candidate;
@@ -106,7 +107,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
     {
         let mut eng = eng();
         eng.config.id = 1;
-        eng.state.vote = UTime::new(Instant::now().into(), Vote::new(2, 1));
+        eng.state.vote = UTime::new::<Tokio>(Tokio::now(), Vote::new(2, 1));
         eng.state.log_ids = LogIdList::new(vec![log_id1(3, 3)]);
         eng.state
             .membership_state
@@ -116,7 +117,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         let last_log_id = eng.state.last_log_id().copied();
 
         eng.internal_server_state.leading_mut().map(|l| {
-            l.initialize_voting(last_log_id, Instant::now().into());
+            l.initialize_voting(last_log_id, Tokio::now());
             l.voting_mut().unwrap().grant_by(&1)
         });
         eng.state.server_state = ServerState::Candidate;
@@ -142,7 +143,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
     {
         let mut eng = eng();
         eng.config.id = 1;
-        eng.state.vote = UTime::new(Instant::now().into(), Vote::new(2, 1));
+        eng.state.vote = UTime::new::<Tokio>(Tokio::now(), Vote::new(2, 1));
         eng.state
             .membership_state
             .set_effective(Arc::new(EffectiveMembership::new(Some(log_id1(1, 1)), m12())));
@@ -151,7 +152,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         let last_log_id = eng.state.last_log_id().copied();
 
         eng.internal_server_state.leading_mut().map(|l| {
-            l.initialize_voting(last_log_id, Instant::now().into());
+            l.initialize_voting(last_log_id, Tokio::now());
             l.voting_mut().unwrap().grant_by(&1)
         });
 
@@ -178,7 +179,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
     {
         let mut eng = eng();
         eng.config.id = 1;
-        eng.state.vote = UTime::new(Instant::now().into(), Vote::new(2, 1));
+        eng.state.vote = UTime::new::<Tokio>(Tokio::now(), Vote::new(2, 1));
         eng.state
             .membership_state
             .set_effective(Arc::new(EffectiveMembership::new(Some(log_id1(1, 1)), m1234())));
@@ -187,7 +188,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         let last_log_id = eng.state.last_log_id().copied();
 
         eng.internal_server_state.leading_mut().map(|l| {
-            l.initialize_voting(last_log_id, Instant::now().into());
+            l.initialize_voting(last_log_id, Tokio::now());
             l.voting_mut().unwrap().grant_by(&1)
         });
 
@@ -214,7 +215,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
     {
         let mut eng = eng();
         eng.config.id = 1;
-        eng.state.vote = UTime::new(Instant::now().into(), Vote::new(2, 1));
+        eng.state.vote = UTime::new::<Tokio>(Tokio::now(), Vote::new(2, 1));
         eng.state
             .membership_state
             .set_effective(Arc::new(EffectiveMembership::new(Some(log_id1(1, 1)), m12())));
@@ -223,7 +224,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         let last_log_id = eng.state.last_log_id().copied();
 
         eng.internal_server_state.leading_mut().map(|l| {
-            l.initialize_voting(last_log_id, Instant::now().into());
+            l.initialize_voting(last_log_id, Tokio::now());
             l.voting_mut().unwrap().grant_by(&1)
         });
 

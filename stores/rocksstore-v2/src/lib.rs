@@ -24,7 +24,6 @@ use openraft::storage::LogState;
 use openraft::storage::RaftLogStorage;
 use openraft::storage::RaftStateMachine;
 use openraft::storage::Snapshot;
-use openraft::AsyncRuntime;
 use openraft::AnyError;
 use openraft::BasicNode;
 use openraft::Entry;

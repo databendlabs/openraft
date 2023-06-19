@@ -1,6 +1,5 @@
 use std::error::Error;
 use std::ops::Deref;
-use std::time::Instant;
 
 use crate::engine::LogIdList;
 use crate::entry::RaftEntry;
@@ -11,6 +10,7 @@ use crate::log_id::RaftLogId;
 use crate::node::Node;
 use crate::utime::UTime;
 use crate::validate::Validate;
+use crate::AsyncRuntime;
 use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::NodeId;
@@ -185,8 +185,8 @@ where
     }
 
     /// Return the last updated time of the vote.
-    pub fn vote_last_modified(&self) -> Option<Instant> {
-        self.vote.utime()
+    pub fn vote_last_modified<A: AsyncRuntime>(&self) -> Option<A::Instant> {
+        self.vote.utime::<A>()
     }
 
     /// Return the accepted last log id of the current leader.

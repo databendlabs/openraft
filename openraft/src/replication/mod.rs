@@ -7,7 +7,6 @@ use std::fmt;
 use std::io::SeekFrom;
 use std::sync::Arc;
 use std::time::Duration;
-use std::time::Instant;
 
 use anyerror::AnyError;
 use futures::future::FutureExt;
@@ -411,7 +410,12 @@ where
         }
     }
 
-    fn update_conflicting(&mut self, request_id: Option<u64>, leader_time: Instant, conflict: LogId<C::NodeId>) {
+    fn update_conflicting(
+        &mut self,
+        request_id: Option<u64>,
+        leader_time: <C::AsyncRuntime as AsyncRuntime>::Instant,
+        conflict: LogId<C::NodeId>,
+    ) {
         tracing::debug!(
             target = display(self.target),
             request_id = display(request_id.display()),
@@ -426,7 +430,10 @@ where
                         session_id: self.session_id,
                         request_id,
                         target: self.target,
-                        result: Ok(UTime::new(leader_time, ReplicationResult::Conflict(conflict))),
+                        result: Ok(UTime::new::<C::AsyncRuntime>(
+                            leader_time,
+                            ReplicationResult::Conflict(conflict),
+                        )),
                     },
                 }
             });
@@ -446,7 +453,7 @@ where
     fn update_matching(
         &mut self,
         request_id: Option<u64>,
-        leader_time: Instant,
+        leader_time: <C::AsyncRuntime as AsyncRuntime>::Instant,
         new_matching: Option<LogId<C::NodeId>>,
     ) {
         tracing::debug!(
@@ -469,7 +476,10 @@ where
                         session_id: self.session_id,
                         request_id,
                         target: self.target,
-                        result: Ok(UTime::new(leader_time, ReplicationResult::Matching(new_matching))),
+                        result: Ok(UTime::new::<C::AsyncRuntime>(
+                            leader_time,
+                            ReplicationResult::Matching(new_matching),
+                        )),
                     },
                 }
             });
@@ -482,7 +492,10 @@ where
     /// In the backoff period, we should not send out any RPCs, but we should still receive events,
     /// in case the channel is closed, it should quit at once.
     #[tracing::instrument(level = "debug", skip(self))]
-    pub async fn backoff_drain_events(&mut self, until: Instant) -> Result<(), ReplicationClosed> {
+    pub async fn backoff_drain_events(
+        &mut self,
+        until: <C::AsyncRuntime as AsyncRuntime>::Instant,
+    ) -> Result<(), ReplicationClosed> {
         let d = until - C::AsyncRuntime::now();
         tracing::warn!(
             interval = debug(d),

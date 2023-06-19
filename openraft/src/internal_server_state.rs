@@ -1,6 +1,7 @@
 use crate::leader::voting::Voting;
 use crate::leader::Leading;
 use crate::quorum::Joint;
+use crate::AsyncRuntime;
 use crate::NodeId;
 
 /// The quorum set type used by `Leader`.
@@ -22,13 +23,15 @@ pub(crate) type LeaderQuorumSet<NID> = Joint<NID, Vec<NID>, Vec<Vec<NID>>>;
 #[derive(PartialEq, Eq)]
 #[allow(clippy::large_enum_variant)]
 // TODO(9): consider moving Leader to a Box
-pub(crate) enum InternalServerState<NID>
-where NID: NodeId
+pub(crate) enum InternalServerState<NID, A>
+where
+    NID: NodeId,
+    A: AsyncRuntime,
 {
     /// Leader or candidate.
     ///
     /// `vote.committed==true` means it is a leader.
-    Leading(Leading<NID, LeaderQuorumSet<NID>>),
+    Leading(Leading<NID, LeaderQuorumSet<NID>, A>),
 
     /// Follower or learner.
     ///
@@ -36,32 +39,36 @@ where NID: NodeId
     Following,
 }
 
-impl<NID> Default for InternalServerState<NID>
-where NID: NodeId
+impl<NID, A> Default for InternalServerState<NID, A>
+where
+    NID: NodeId,
+    A: AsyncRuntime,
 {
     fn default() -> Self {
         Self::Following
     }
 }
 
-impl<NID> InternalServerState<NID>
-where NID: NodeId
+impl<NID, A> InternalServerState<NID, A>
+where
+    NID: NodeId,
+    A: AsyncRuntime,
 {
-    pub(crate) fn voting_mut(&mut self) -> Option<&mut Voting<NID, LeaderQuorumSet<NID>>> {
+    pub(crate) fn voting_mut(&mut self) -> Option<&mut Voting<NID, LeaderQuorumSet<NID>, A>> {
         match self {
             InternalServerState::Leading(l) => l.voting_mut(),
             InternalServerState::Following => None,
         }
     }
 
-    pub(crate) fn leading(&self) -> Option<&Leading<NID, LeaderQuorumSet<NID>>> {
+    pub(crate) fn leading(&self) -> Option<&Leading<NID, LeaderQuorumSet<NID>, A>> {
         match self {
             InternalServerState::Leading(l) => Some(l),
             InternalServerState::Following => None,
         }
     }
 
-    pub(crate) fn leading_mut(&mut self) -> Option<&mut Leading<NID, LeaderQuorumSet<NID>>> {
+    pub(crate) fn leading_mut(&mut self) -> Option<&mut Leading<NID, LeaderQuorumSet<NID>, A>> {
         match self {
             InternalServerState::Leading(l) => Some(l),
             InternalServerState::Following => None,

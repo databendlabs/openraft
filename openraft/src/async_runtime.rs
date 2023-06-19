@@ -1,6 +1,12 @@
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::future::Future;
+use std::ops::Add;
+use std::ops::AddAssign;
+use std::ops::Sub;
+use std::ops::SubAssign;
+use std::panic::RefUnwindSafe;
+use std::panic::UnwindSafe;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -12,20 +18,43 @@ use std::time::Instant;
 /// ## Note
 ///
 /// The default asynchronous runtime is `tokio`.
-pub trait AsyncRuntime: Send + Sync + 'static {
-    /// The type that [`Self::JoinHandle`] returns on failure.
+pub trait AsyncRuntime: Debug + Default + Send + Sync + 'static {
+    /// The error type of [`Self::JoinHandle`].
     type JoinError: Debug + Display + Send;
 
     /// The return type of [`Self::spawn`].
     type JoinHandle<T: Send + 'static>: Future<Output = Result<T, Self::JoinError>> + Send + Sync + Unpin;
 
-    /// The type that enables the user to sleep.
+    /// The type that enables the user to sleep in an asynchronous runtime.
     type Sleep: Future<Output = ()> + Send + Sync;
+
+    /// A measurement of a monotonically non-decreasing clock.
+    type Instant: Add<Duration, Output = Self::Instant>
+        + AddAssign<Duration>
+        + Clone
+        + Copy
+        + Debug
+        + Eq
+        + From<Instant> // Conversion between `Self::Instant` and `Instant` must be a linear
+        // transformation, e.g., preserving ordering.
+        + Into<Instant>
+        + Ord
+        + PartialEq
+        + PartialOrd
+        + RefUnwindSafe
+        + Send
+        + Sub<Duration, Output = Self::Instant>
+        + Sub<Self::Instant, Output = Duration>
+        + SubAssign<Duration>
+        + Sync
+        + Unpin
+        + UnwindSafe;
 
     /// The timeout error type.
     type TimeoutError: Debug + Display + Send;
 
-    /// The timeout type used by [`Self::timeout`].
+    /// The timeout type used by [`Self::timeout`] and [`Self::timeout_at`] that enables the user
+    /// to await the outcome of a [`Future`].
     type Timeout<R, T: Future<Output = R> + Send>: Future<Output = Result<R, Self::TimeoutError>> + Send;
 
     /// Spawn a new task.
@@ -34,22 +63,22 @@ pub trait AsyncRuntime: Send + Sync + 'static {
         T: Future + Send + 'static,
         T::Output: Send + 'static;
 
-    /// Waits until `duration` has elapsed.
+    /// Wait until `duration` has elapsed.
     fn sleep(duration: Duration) -> Self::Sleep;
 
-    /// Waits until `deadline` is reached.
-    fn sleep_until(deadline: Instant) -> Self::Sleep;
+    /// Wait until `deadline` is reached.
+    fn sleep_until(deadline: Self::Instant) -> Self::Sleep;
 
-    /// Returns the current instant.
-    fn now() -> Instant;
+    /// Return the current instant.
+    fn now() -> Self::Instant;
 
-    /// Requires a [`Future`] to complete before the specified duration has elapsed.
+    /// Require a [`Future`] to complete before the specified duration has elapsed.
     fn timeout<R, F: Future<Output = R> + Send>(duration: Duration, future: F) -> Self::Timeout<R, F>;
 
-    /// Requires a [`Future`] to complete before the specified instant in time.
-    fn timeout_at<R, F: Future<Output = R> + Send>(deadline: Instant, future: F) -> Self::Timeout<R, F>;
+    /// Require a [`Future`] to complete before the specified instant in time.
+    fn timeout_at<R, F: Future<Output = R> + Send>(deadline: Self::Instant, future: F) -> Self::Timeout<R, F>;
 
-    /// Checks if the [`Self::JoinError`] is `panic`.
+    /// Check if the [`Self::JoinError`] is `panic`.
     fn is_panic(join_error: &Self::JoinError) -> bool;
 
     /// Abort the task associated with the supplied join handle.
@@ -57,12 +86,14 @@ pub trait AsyncRuntime: Send + Sync + 'static {
 }
 
 /// `Tokio` is the default asynchronous executor.
+#[derive(Debug, Default)]
 pub struct Tokio;
 
 impl AsyncRuntime for Tokio {
     type JoinError = tokio::task::JoinError;
     type JoinHandle<T: Send + 'static> = tokio::task::JoinHandle<T>;
     type Sleep = tokio::time::Sleep;
+    type Instant = tokio::time::Instant;
     type TimeoutError = tokio::time::error::Elapsed;
     type Timeout<R, T: Future<Output = R> + Send> = tokio::time::Timeout<T>;
 
@@ -81,13 +112,13 @@ impl AsyncRuntime for Tokio {
     }
 
     #[inline]
-    fn sleep_until(deadline: Instant) -> Self::Sleep {
-        tokio::time::sleep_until(deadline.into())
+    fn sleep_until(deadline: Self::Instant) -> Self::Sleep {
+        tokio::time::sleep_until(deadline)
     }
 
     #[inline]
-    fn now() -> Instant {
-        tokio::time::Instant::now().into()
+    fn now() -> Self::Instant {
+        tokio::time::Instant::now()
     }
 
     #[inline]
@@ -96,8 +127,8 @@ impl AsyncRuntime for Tokio {
     }
 
     #[inline]
-    fn timeout_at<R, F: Future<Output = R> + Send>(deadline: Instant, future: F) -> Self::Timeout<R, F> {
-        tokio::time::timeout_at(deadline.into(), future)
+    fn timeout_at<R, F: Future<Output = R> + Send>(deadline: Self::Instant, future: F) -> Self::Timeout<R, F> {
+        tokio::time::timeout_at(deadline, future)
     }
 
     #[inline]

@@ -31,7 +31,7 @@ where C: RaftTypeConfig
     pub(crate) config: &'st EngineConfig<C::NodeId>,
     pub(crate) state: &'st mut RaftState<C::NodeId, C::Node>,
     pub(crate) output: &'st mut EngineOutput<C>,
-    pub(crate) internal_server_state: &'st mut InternalServerState<C::NodeId>,
+    pub(crate) internal_server_state: &'st mut InternalServerState<C::NodeId, C::AsyncRuntime>,
 }
 
 impl<'st, C> VoteHandler<'st, C>
@@ -99,10 +99,10 @@ where C: RaftTypeConfig
         if vote > self.state.vote_ref() {
             tracing::info!("vote is changing from {} to {}", self.state.vote_ref(), vote);
 
-            self.state.vote.update(C::AsyncRuntime::now(), *vote);
+            self.state.vote.update::<C::AsyncRuntime>(C::AsyncRuntime::now(), *vote);
             self.output.push_command(Command::SaveVote { vote: *vote });
         } else {
-            self.state.vote.touch(C::AsyncRuntime::now());
+            self.state.vote.touch::<C::AsyncRuntime>(C::AsyncRuntime::now());
         }
 
         // Update vote related timer and lease.

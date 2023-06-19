@@ -3,7 +3,17 @@ use std::ops::Deref;
 use std::ops::DerefMut;
 use std::time::Instant;
 
+use crate::AsyncRuntime;
+
 /// Record the last update time for an object
+///
+/// # Note
+///
+/// [`UTime`] is a part of [`RaftState`](crate::RaftState) where [`RaftState`](crate::RaftState)
+/// cannot be associated with any asynchronous runtime. This forces [`UTime`] to be independent of
+/// an asynchronous runtime, therefore [`UTime`] uses [`Instant`] directly. The fact that
+/// [`Instant`] being used in [`UTime`] suggests that the field cannot be modified by its own, and
+/// it has to be just a placeholder.
 #[derive(Debug, Default)]
 pub(crate) struct UTime<T> {
     data: T,
@@ -52,8 +62,11 @@ impl<T> DerefMut for UTime<T> {
 
 impl<T> UTime<T> {
     /// Creates a new object that keeps track of the time when it was last updated.
-    pub(crate) fn new(now: Instant, data: T) -> Self {
-        Self { data, utime: Some(now) }
+    pub(crate) fn new<A: AsyncRuntime>(now: A::Instant, data: T) -> Self {
+        Self {
+            data,
+            utime: Some(now.into()),
+        }
     }
 
     /// Creates a new object that has no last-updated time.
@@ -62,8 +75,8 @@ impl<T> UTime<T> {
     }
 
     /// Return the last updated time of this object.
-    pub(crate) fn utime(&self) -> Option<Instant> {
-        self.utime
+    pub(crate) fn utime<A: AsyncRuntime>(&self) -> Option<A::Instant> {
+        self.utime.map(|i| i.into())
     }
 
     /// Consumes this object and returns the inner data.
@@ -72,20 +85,20 @@ impl<T> UTime<T> {
     }
 
     /// Update the content of the object and the last updated time.
-    pub(crate) fn update(&mut self, now: Instant, data: T) {
+    pub(crate) fn update<A: AsyncRuntime>(&mut self, now: A::Instant, data: T) {
         self.data = data;
-        self.utime = Some(now);
+        self.utime = Some(now.into());
     }
 
     /// Update the last updated time.
-    pub(crate) fn touch(&mut self, now: Instant) {
+    pub(crate) fn touch<A: AsyncRuntime>(&mut self, now: A::Instant) {
         debug_assert!(
-            Some(now) >= self.utime,
+            Some(now.into()) >= self.utime,
             "expect now: {:?}, must >= self.utime: {:?}, {:?}",
             now,
             self.utime,
-            self.utime.unwrap() - now
+            self.utime.unwrap() - now.into()
         );
-        self.utime = Some(now);
+        self.utime = Some(now.into());
     }
 }

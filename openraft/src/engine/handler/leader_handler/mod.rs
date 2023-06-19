@@ -23,7 +23,7 @@ pub(crate) struct LeaderHandler<'x, C>
 where C: RaftTypeConfig
 {
     pub(crate) config: &'x mut EngineConfig<C::NodeId>,
-    pub(crate) leader: &'x mut Leading<C::NodeId, LeaderQuorumSet<C::NodeId>>,
+    pub(crate) leader: &'x mut Leading<C::NodeId, LeaderQuorumSet<C::NodeId>, C::AsyncRuntime>,
     pub(crate) state: &'x mut RaftState<C::NodeId, C::Node>,
     pub(crate) output: &'x mut EngineOutput<C>,
 }

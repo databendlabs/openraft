@@ -102,7 +102,7 @@ where
             committed: last_applied,
             // The initial value for `vote` is the minimal possible value.
             // See: [Conditions for initialization](https://datafuselabs.github.io/openraft/cluster-formation.html#conditions-for-initialization)
-            vote: UTime::new(now, vote),
+            vote: UTime::new::<C::AsyncRuntime>(now, vote),
             purged_next: last_purged_log_id.next_index(),
             log_ids,
             membership_state: mem_state,

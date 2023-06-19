@@ -6,10 +6,11 @@ use anyhow::Result;
 use maplit::btreeset;
 use openraft::raft::VoteRequest;
 use openraft::testing::log_id1;
+use openraft::AsyncRuntime;
 use openraft::Config;
+use openraft::Tokio;
 use openraft::Vote;
 use tokio::time::sleep;
-use tokio::time::Instant;
 
 use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
@@ -28,31 +29,31 @@ async fn heartbeat_reject_vote() -> Result<()> {
     );
     let mut router = RaftRouter::new(config.clone());
 
-    let now = Instant::now();
+    let now = Tokio::now();
     sleep(Duration::from_millis(1)).await;
 
     let log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {3}).await?;
 
-    let vote_modified_time = Arc::new(Mutex::new(Some(Instant::now())));
+    let vote_modified_time = Arc::new(Mutex::new(Some(Tokio::now())));
     tracing::info!(log_index, "--- leader lease is set by heartbeat");
     {
         let m = vote_modified_time.clone();
 
         router.external_request(1, move |state, _store, _net| {
             let mut l = m.lock().unwrap();
-            *l = state.vote_last_modified().map(|t| t.into());
-            assert!(state.vote_last_modified() > Some(now.into()));
+            *l = state.vote_last_modified::<Tokio>();
+            assert!(state.vote_last_modified::<Tokio>() > Some(now));
         });
 
-        let now = Instant::now();
+        let now = Tokio::now();
         sleep(Duration::from_millis(700)).await;
 
         let m = vote_modified_time.clone();
 
         router.external_request(1, move |state, _store, _net| {
             let l = m.lock().unwrap();
-            assert!(state.vote_last_modified() > Some(now.into()));
-            assert!(state.vote_last_modified() > (*l).map(|t| t.into()));
+            assert!(state.vote_last_modified::<Tokio>() > Some(now));
+            assert!(state.vote_last_modified::<Tokio>() > *l);
         });
     }
 

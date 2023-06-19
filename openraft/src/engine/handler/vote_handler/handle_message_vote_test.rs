@@ -2,7 +2,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use maplit::btreeset;
-use tokio::time::Instant;
 
 use crate::core::ServerState;
 use crate::engine::testing::UTConfig;
@@ -12,8 +11,10 @@ use crate::engine::LogIdList;
 use crate::error::RejectVoteRequest;
 use crate::testing::log_id1;
 use crate::utime::UTime;
+use crate::AsyncRuntime;
 use crate::EffectiveMembership;
 use crate::Membership;
+use crate::Tokio;
 use crate::Vote;
 
 fn m01() -> Membership<u64, ()> {
@@ -25,7 +26,7 @@ fn eng() -> Engine<UTConfig> {
     eng.state.enable_validate = false; // Disable validation for incomplete state
 
     eng.config.id = 0;
-    eng.state.vote = UTime::new(Instant::now().into(), Vote::new(2, 1));
+    eng.state.vote = UTime::new::<Tokio>(Tokio::now(), Vote::new(2, 1));
     eng.state.server_state = ServerState::Candidate;
     eng.state
         .membership_state
@@ -57,7 +58,7 @@ fn test_handle_message_vote_reject_smaller_vote() -> anyhow::Result<()> {
 fn test_handle_message_vote_committed_vote() -> anyhow::Result<()> {
     let mut eng = eng();
     eng.state.log_ids = LogIdList::new(vec![log_id1(2, 3)]);
-    let now = Instant::now().into();
+    let now = Tokio::now();
 
     let resp = eng.vote_handler().update_vote(&Vote::new_committed(3, 2));
 
@@ -68,8 +69,8 @@ fn test_handle_message_vote_committed_vote() -> anyhow::Result<()> {
 
     assert_eq!(ServerState::Follower, eng.state.server_state);
 
-    assert!(Some(now) <= eng.state.vote_last_modified());
-    assert!(eng.state.vote_last_modified() <= Some(now + Duration::from_millis(20)));
+    assert!(Some(now) <= eng.state.vote_last_modified::<Tokio>());
+    assert!(eng.state.vote_last_modified::<Tokio>() <= Some(now + Duration::from_millis(20)));
     assert_eq!(
         vec![Command::SaveVote {
             vote: Vote::new_committed(3, 2)
@@ -86,7 +87,7 @@ fn test_handle_message_vote_granted_equal_vote() -> anyhow::Result<()> {
 
     let mut eng = eng();
     eng.state.log_ids = LogIdList::new(vec![log_id1(2, 3)]);
-    let now = Instant::now().into();
+    let now = Tokio::now();
 
     let resp = eng.vote_handler().update_vote(&Vote::new(2, 1));
 
@@ -97,8 +98,8 @@ fn test_handle_message_vote_granted_equal_vote() -> anyhow::Result<()> {
 
     assert_eq!(ServerState::Follower, eng.state.server_state);
 
-    assert!(Some(now) <= eng.state.vote_last_modified());
-    assert!(eng.state.vote_last_modified() <= Some(now + Duration::from_millis(20)));
+    assert!(Some(now) <= eng.state.vote_last_modified::<Tokio>());
+    assert!(eng.state.vote_last_modified::<Tokio>() <= Some(now + Duration::from_millis(20)));
 
     assert!(eng.output.take_commands().is_empty());
     Ok(())

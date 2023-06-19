@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use maplit::btreeset;
-use tokio::time::Instant;
 
 use crate::core::ServerState;
 use crate::engine::testing::UTConfig;
@@ -13,11 +12,13 @@ use crate::progress::Inflight;
 use crate::progress::Progress;
 use crate::testing::log_id1;
 use crate::utime::UTime;
+use crate::AsyncRuntime;
 use crate::CommittedLeaderId;
 use crate::EffectiveMembership;
 use crate::LogId;
 use crate::Membership;
 use crate::MembershipState;
+use crate::Tokio;
 use crate::Vote;
 
 fn m01() -> Membership<u64, ()> {
@@ -47,7 +48,7 @@ fn eng() -> Engine<UTConfig> {
         Arc::new(EffectiveMembership::new(Some(log_id1(1, 1)), m01())),
         Arc::new(EffectiveMembership::new(Some(log_id1(2, 3)), m23())),
     );
-    eng.state.vote = UTime::new(Instant::now().into(), Vote::new_committed(2, 2));
+    eng.state.vote = UTime::new::<Tokio>(Tokio::now(), Vote::new_committed(2, 2));
     eng.state.server_state = eng.calc_server_state();
     eng
 }
@@ -57,7 +58,7 @@ fn test_leader_append_membership_for_leader() -> anyhow::Result<()> {
     let mut eng = eng();
     eng.state.server_state = ServerState::Leader;
     // Make it a real leader: voted for itself and vote is committed.
-    eng.state.vote = UTime::new(Instant::now().into(), Vote::new_committed(2, 2));
+    eng.state.vote = UTime::new::<Tokio>(Tokio::now(), Vote::new_committed(2, 2));
     eng.vote_handler().become_leading();
 
     eng.replication_handler().append_membership(&log_id1(3, 4), &m34());
@@ -109,7 +110,7 @@ fn test_leader_append_membership_update_learner_process() -> anyhow::Result<()> 
 
     eng.state.server_state = ServerState::Leader;
     // Make it a real leader: voted for itself and vote is committed.
-    eng.state.vote = UTime::new(Instant::now().into(), Vote::new_committed(2, 2));
+    eng.state.vote = UTime::new::<Tokio>(Tokio::now(), Vote::new_committed(2, 2));
     eng.state
         .membership_state
         .set_effective(Arc::new(EffectiveMembership::new(Some(log_id1(2, 3)), m23_45())));

@@ -7,7 +7,6 @@ use std::marker::PhantomData;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
-use std::time::Instant;
 
 use anyerror::AnyError;
 use futures::stream::FuturesUnordered;
@@ -140,7 +139,7 @@ pub(crate) struct LeaderData<C: RaftTypeConfig> {
     pub(super) replications: BTreeMap<C::NodeId, ReplicationHandle<C>>,
 
     /// The time to send next heartbeat.
-    pub(crate) next_heartbeat: Instant,
+    pub(crate) next_heartbeat: <C::AsyncRuntime as AsyncRuntime>::Instant,
 }
 
 impl<C: RaftTypeConfig> LeaderData<C> {
@@ -1362,7 +1361,7 @@ where
             tracing::debug!("there are multiple voter, check election timeout");
 
             let current_vote = self.engine.state.vote_ref();
-            let utime = self.engine.state.vote_last_modified();
+            let utime = self.engine.state.vote_last_modified::<C::AsyncRuntime>();
             let timer_config = &self.engine.config.timer_config;
 
             let mut election_timeout = if current_vote.is_committed() {

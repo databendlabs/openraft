@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use maplit::btreeset;
 use pretty_assertions::assert_eq;
-use tokio::time::Instant;
 
 use crate::core::sm;
 use crate::engine::testing::UTConfig;
@@ -11,10 +10,12 @@ use crate::engine::Engine;
 use crate::engine::LogIdList;
 use crate::raft_state::LogStateReader;
 use crate::testing::log_id1;
+use crate::AsyncRuntime;
 use crate::EffectiveMembership;
 use crate::Membership;
 use crate::SnapshotMeta;
 use crate::StoredMembership;
+use crate::Tokio;
 use crate::Vote;
 
 fn m12() -> Membership<u64, ()> {
@@ -29,7 +30,7 @@ fn eng() -> Engine<UTConfig> {
     let mut eng = Engine::default();
     eng.state.enable_validate = false; // Disable validation for incomplete state
 
-    eng.state.vote.update(Instant::now().into(), Vote::new_committed(2, 1));
+    eng.state.vote.update::<Tokio>(Tokio::now(), Vote::new_committed(2, 1));
     eng.state.committed = Some(log_id1(4, 5));
     eng.state.log_ids = LogIdList::new(vec![
         //
@@ -172,7 +173,7 @@ fn test_install_snapshot_conflict() -> anyhow::Result<()> {
         let mut eng = Engine::<UTConfig>::default();
         eng.state.enable_validate = false; // Disable validation for incomplete state
 
-        eng.state.vote.update(Instant::now().into(), Vote::new_committed(2, 1));
+        eng.state.vote.update::<Tokio>(Tokio::now(), Vote::new_committed(2, 1));
         eng.state.committed = Some(log_id1(2, 3));
         eng.state.log_ids = LogIdList::new(vec![
             //

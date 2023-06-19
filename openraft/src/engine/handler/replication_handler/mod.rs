@@ -1,5 +1,4 @@
 use std::ops::Deref;
-use std::time::Instant;
 
 use crate::display_ext::DisplayOptionExt;
 use crate::engine::handler::log_handler::LogHandler;
@@ -16,6 +15,7 @@ use crate::progress::Progress;
 use crate::raft_state::LogStateReader;
 use crate::replication::ReplicationResult;
 use crate::utime::UTime;
+use crate::AsyncRuntime;
 use crate::EffectiveMembership;
 use crate::LogId;
 use crate::LogIdOptionExt;
@@ -40,7 +40,7 @@ pub(crate) struct ReplicationHandler<'x, C>
 where C: RaftTypeConfig
 {
     pub(crate) config: &'x mut EngineConfig<C::NodeId>,
-    pub(crate) leader: &'x mut Leading<C::NodeId, LeaderQuorumSet<C::NodeId>>,
+    pub(crate) leader: &'x mut Leading<C::NodeId, LeaderQuorumSet<C::NodeId>, C::AsyncRuntime>,
     pub(crate) state: &'x mut RaftState<C::NodeId, C::Node>,
     pub(crate) output: &'x mut EngineOutput<C>,
 }
@@ -141,7 +141,7 @@ where C: RaftTypeConfig
         request_id: u64,
         result: UTime<ReplicationResult<C::NodeId>>,
     ) {
-        let sending_time = result.utime().unwrap();
+        let sending_time = result.utime::<C::AsyncRuntime>().unwrap();
 
         // No matter what the result is, the validity of the leader is granted by a follower.
         self.update_leader_vote_clock(target, sending_time);
@@ -159,7 +159,11 @@ where C: RaftTypeConfig
     /// Update progress when replicated data(logs or snapshot) matches on follower/learner and is
     /// accepted.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn update_leader_vote_clock(&mut self, node_id: C::NodeId, t: Instant) {
+    pub(crate) fn update_leader_vote_clock(
+        &mut self,
+        node_id: C::NodeId,
+        t: <C::AsyncRuntime as AsyncRuntime>::Instant,
+    ) {
         tracing::debug!(target = display(node_id), t = debug(t), "{}", func_name!());
 
         let granted = *self
@@ -184,9 +188,9 @@ where C: RaftTypeConfig
         //         1 2 3
         // Value:  1 1 2 2 2 // 1 is granted by a quorum
         // ```
-        if granted > self.leader.vote.utime() {
+        if granted > self.leader.vote.utime::<C::AsyncRuntime>() {
             // Safe unwrap(): Only Some() can be greater than another Option
-            self.leader.vote.touch(granted.unwrap());
+            self.leader.vote.touch::<C::AsyncRuntime>(granted.unwrap());
         }
     }
 

@@ -72,7 +72,7 @@ where C: RaftTypeConfig
     pub(crate) seen_greater_log: bool,
 
     /// The internal server state used by Engine.
-    pub(crate) internal_server_state: InternalServerState<C::NodeId>,
+    pub(crate) internal_server_state: InternalServerState<C::NodeId, C::AsyncRuntime>,
 
     /// Output entry for the runtime.
     pub(crate) output: EngineOutput<C>,
@@ -234,7 +234,10 @@ where C: RaftTypeConfig
         let vote = self.state.vote_ref();
 
         // Make default vote-last-modified a low enough value, that expires leader lease.
-        let vote_utime = self.state.vote_last_modified().unwrap_or_else(|| now - lease - Duration::from_millis(1));
+        let vote_utime = self
+            .state
+            .vote_last_modified::<C::AsyncRuntime>()
+            .unwrap_or_else(|| now - lease - Duration::from_millis(1));
 
         tracing::info!(req = display(req.summary()), "Engine::handle_vote_req");
         tracing::info!(
