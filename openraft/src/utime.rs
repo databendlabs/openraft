@@ -63,10 +63,7 @@ impl<T, I: Instant> DerefMut for UTime<T, I> {
 impl<T, I: Instant> UTime<T, I> {
     /// Creates a new object that keeps track of the time when it was last updated.
     pub(crate) fn new(now: I, data: T) -> Self {
-        Self {
-            data,
-            utime: Some(now),
-        }
+        Self { data, utime: Some(now) }
     }
 
     /// Creates a new object that has no last-updated time.
