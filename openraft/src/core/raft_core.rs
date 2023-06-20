@@ -988,7 +988,7 @@ where
             let id = self.id;
             let option = RPCOption::new(ttl);
 
-            let _ = tokio::spawn(
+            tokio::spawn(
                 async move {
                     let tm_res = timeout(ttl, client.vote(req, option)).await;
                     let res = match tm_res {

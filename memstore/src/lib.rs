@@ -209,7 +209,7 @@ impl RaftLogReader<TypeConfig> for Arc<MemStore> {
 
     async fn get_log_state(&mut self) -> Result<LogState<TypeConfig>, StorageError<MemNodeId>> {
         let log = self.log.read().await;
-        let last_serialized = log.iter().rev().next().map(|(_, ent)| ent);
+        let last_serialized = log.iter().next_back().map(|(_, ent)| ent);
 
         let last = match last_serialized {
             None => None,

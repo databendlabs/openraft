@@ -81,7 +81,7 @@ where
     fn create(storage: Arc<RwLock<S>>) -> Self {
         Self {
             storage,
-            _phantom: PhantomData::default(),
+            _phantom: PhantomData,
         }
     }
 

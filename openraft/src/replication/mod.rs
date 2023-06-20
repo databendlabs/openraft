@@ -168,7 +168,7 @@ where
     #[tracing::instrument(level="debug", skip(self), fields(session=%self.session_id, target=display(self.target), cluster=%self.config.cluster_name))]
     async fn main(mut self) -> Result<(), ReplicationClosed> {
         loop {
-            let action = std::mem::replace(&mut self.next_action, None);
+            let action = self.next_action.take();
 
             let mut repl_id = None;
 
