@@ -91,10 +91,7 @@ impl<NID: NodeId> std::fmt::Display for CommittedLeaderId<NID> {
 impl<NID: NodeId> CommittedLeaderId<NID> {
     pub fn new(term: u64, node_id: NID) -> Self {
         let _ = node_id;
-        Self {
-            term,
-            p: PhantomData::default(),
-        }
+        Self { term, p: PhantomData }
     }
 }
 
