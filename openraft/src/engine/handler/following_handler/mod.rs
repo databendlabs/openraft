@@ -343,7 +343,9 @@ where C: RaftTypeConfig
         }
 
         // Do install:
-        // 1. Truncate all logs if conflict
+        //
+        // 1. Truncate all logs if conflict.
+        //
         //    Unlike normal append-entries RPC, if conflicting logs are found, it is not
         // **necessary** to delete them.    But cleaning them make the assumption of
         // incremental-log-id always hold, which makes it easier to debug.    See: [Snapshot-replication](https://datafuselabs.github.io/openraft/replication.html#snapshot-replication)
