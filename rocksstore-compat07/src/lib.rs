@@ -52,6 +52,7 @@ use openraft::SnapshotMeta;
 use openraft::StorageError;
 use openraft::StorageIOError;
 use openraft::StoredMembership;
+use openraft::TokioRuntime;
 use openraft::Vote;
 use rocksdb::ColumnFamily;
 use rocksdb::ColumnFamilyDescriptor;
@@ -66,7 +67,7 @@ pub type RocksNodeId = u64;
 openraft::declare_raft_types!(
     /// Declare the type configuration for `MemStore`.
     pub TypeConfig: D = RocksRequest, R = RocksResponse, NodeId = RocksNodeId, Node = EmptyNode,
-    Entry = Entry<TypeConfig>, SnapshotData = Cursor<Vec<u8>>
+    Entry = Entry<TypeConfig>, SnapshotData = Cursor<Vec<u8>>, AsyncRuntime = TokioRuntime
 );
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

@@ -1,7 +1,5 @@
 use std::time::Duration;
 
-use tokio::time::Instant;
-
 use crate::core::ServerState;
 use crate::display_ext::DisplayOptionExt;
 use crate::display_ext::DisplaySlice;
@@ -39,6 +37,8 @@ use crate::raft_state::LogStateReader;
 use crate::raft_state::RaftState;
 use crate::summary::MessageSummary;
 use crate::validate::Valid;
+use crate::AsyncRuntime;
+use crate::Instant;
 use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::Membership;
@@ -63,7 +63,7 @@ where C: RaftTypeConfig
     pub(crate) config: EngineConfig<C::NodeId>,
 
     /// The state of this raft node.
-    pub(crate) state: Valid<RaftState<C::NodeId, C::Node>>,
+    pub(crate) state: Valid<RaftState<C::NodeId, C::Node, <C::AsyncRuntime as AsyncRuntime>::Instant>>,
 
     // TODO: add a Voting state as a container.
     /// Whether a greater log id is seen during election.
@@ -73,7 +73,7 @@ where C: RaftTypeConfig
     pub(crate) seen_greater_log: bool,
 
     /// The internal server state used by Engine.
-    pub(crate) internal_server_state: InternalServerState<C::NodeId>,
+    pub(crate) internal_server_state: InternalServerState<C::NodeId, <C::AsyncRuntime as AsyncRuntime>::Instant>,
 
     /// Output entry for the runtime.
     pub(crate) output: EngineOutput<C>,
@@ -82,7 +82,10 @@ where C: RaftTypeConfig
 impl<C> Engine<C>
 where C: RaftTypeConfig
 {
-    pub(crate) fn new(init_state: RaftState<C::NodeId, C::Node>, config: EngineConfig<C::NodeId>) -> Self {
+    pub(crate) fn new(
+        init_state: RaftState<C::NodeId, C::Node, <C::AsyncRuntime as AsyncRuntime>::Instant>,
+        config: EngineConfig<C::NodeId>,
+    ) -> Self {
         Self {
             config,
             state: Valid::new(init_state),
@@ -180,7 +183,10 @@ where C: RaftTypeConfig
 
         // Safe unwrap(): leading state is just created
         let leading = self.internal_server_state.leading_mut().unwrap();
-        let voting = leading.initialize_voting(self.state.last_log_id().copied());
+        let voting = leading.initialize_voting(
+            self.state.last_log_id().copied(),
+            <C::AsyncRuntime as AsyncRuntime>::Instant::now(),
+        );
 
         let quorum_granted = voting.grant_by(&self.config.id);
 
@@ -230,7 +236,7 @@ where C: RaftTypeConfig
 
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn handle_vote_req(&mut self, req: VoteRequest<C::NodeId>) -> VoteResponse<C::NodeId> {
-        let now = Instant::now();
+        let now = <C::AsyncRuntime as AsyncRuntime>::Instant::now();
         let lease = self.config.timer_config.leader_lease;
         let vote = self.state.vote_ref();
 

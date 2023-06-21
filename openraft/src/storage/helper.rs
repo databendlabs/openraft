@@ -1,8 +1,6 @@
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-use tokio::time::Instant;
-
 use crate::engine::LogIdList;
 use crate::entry::RaftPayload;
 use crate::log_id::RaftLogId;
@@ -11,7 +9,9 @@ use crate::raft_state::LogIOId;
 use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
 use crate::utime::UTime;
+use crate::AsyncRuntime;
 use crate::EffectiveMembership;
+use crate::Instant;
 use crate::LogIdOptionExt;
 use crate::MembershipState;
 use crate::RaftSnapshotBuilder;
@@ -57,7 +57,10 @@ where
     ///
     /// When the Raft node is first started, it will call this interface to fetch the last known
     /// state from stable storage.
-    pub async fn get_initial_state(&mut self) -> Result<RaftState<C::NodeId, C::Node>, StorageError<C::NodeId>> {
+    pub async fn get_initial_state(
+        &mut self,
+    ) -> Result<RaftState<C::NodeId, C::Node, <C::AsyncRuntime as AsyncRuntime>::Instant>, StorageError<C::NodeId>>
+    {
         let vote = self.log_store.read_vote().await?;
         let vote = vote.unwrap_or_default();
 
@@ -97,7 +100,7 @@ where
         };
         let snapshot_meta = snapshot.map(|x| x.meta).unwrap_or_default();
 
-        let now = Instant::now();
+        let now = <C::AsyncRuntime as AsyncRuntime>::Instant::now();
 
         Ok(RaftState {
             committed: last_applied,

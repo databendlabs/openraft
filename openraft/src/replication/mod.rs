@@ -6,6 +6,7 @@ mod response;
 use std::fmt;
 use std::io::SeekFrom;
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyerror::AnyError;
 use futures::future::FutureExt;
@@ -16,11 +17,6 @@ use tokio::io::AsyncSeekExt;
 use tokio::select;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
-use tokio::task::JoinHandle;
-use tokio::time::sleep;
-use tokio::time::timeout;
-use tokio::time::Duration;
-use tokio::time::Instant;
 use tracing_futures::Instrument;
 
 use crate::config::Config;
@@ -46,8 +42,10 @@ use crate::storage::RaftLogReader;
 use crate::storage::RaftLogStorage;
 use crate::storage::Snapshot;
 use crate::utime::UTime;
+use crate::AsyncRuntime;
 use crate::ErrorSubject;
 use crate::ErrorVerb;
+use crate::Instant;
 use crate::LogId;
 use crate::MessageSummary;
 use crate::NodeId;
@@ -61,7 +59,7 @@ pub(crate) struct ReplicationHandle<C>
 where C: RaftTypeConfig
 {
     /// The spawn handle the `ReplicationCore` task.
-    pub(crate) join_handle: JoinHandle<Result<(), ReplicationClosed>>,
+    pub(crate) join_handle: <C::AsyncRuntime as AsyncRuntime>::JoinHandle<Result<(), ReplicationClosed>>,
 
     /// The channel used for communicating with the replication task.
     pub(crate) tx_repl: mpsc::UnboundedSender<Replicate<C>>,
@@ -160,7 +158,7 @@ where
             next_action: None,
         };
 
-        let join_handle = tokio::spawn(this.main().instrument(span));
+        let join_handle = C::AsyncRuntime::spawn(this.main().instrument(span));
 
         ReplicationHandle { join_handle, tx_repl }
     }
@@ -261,7 +259,7 @@ where
                     Duration::from_millis(500)
                 });
 
-                self.backoff_drain_events(Instant::now() + duration).await?;
+                self.backoff_drain_events(<C::AsyncRuntime as AsyncRuntime>::Instant::now() + duration).await?;
             }
 
             self.drain_events().await?;
@@ -304,7 +302,7 @@ where
             logs
         };
 
-        let leader_time = Instant::now();
+        let leader_time = <C::AsyncRuntime as AsyncRuntime>::Instant::now();
 
         // Build the heartbeat frame to be sent to the follower.
         let payload = AppendEntriesRequest {
@@ -324,7 +322,7 @@ where
 
         let the_timeout = Duration::from_millis(self.config.heartbeat_interval);
         let option = RPCOption::new(the_timeout);
-        let res = timeout(the_timeout, self.network.append_entries(payload, option)).await;
+        let res = C::AsyncRuntime::timeout(the_timeout, self.network.append_entries(payload, option)).await;
 
         tracing::debug!("append_entries res: {:?}", res);
 
@@ -413,7 +411,12 @@ where
         }
     }
 
-    fn update_conflicting(&mut self, request_id: Option<u64>, leader_time: Instant, conflict: LogId<C::NodeId>) {
+    fn update_conflicting(
+        &mut self,
+        request_id: Option<u64>,
+        leader_time: <C::AsyncRuntime as AsyncRuntime>::Instant,
+        conflict: LogId<C::NodeId>,
+    ) {
         tracing::debug!(
             target = display(self.target),
             request_id = display(request_id.display()),
@@ -448,7 +451,7 @@ where
     fn update_matching(
         &mut self,
         request_id: Option<u64>,
-        leader_time: Instant,
+        leader_time: <C::AsyncRuntime as AsyncRuntime>::Instant,
         new_matching: Option<LogId<C::NodeId>>,
     ) {
         tracing::debug!(
@@ -484,8 +487,11 @@ where
     /// In the backoff period, we should not send out any RPCs, but we should still receive events,
     /// in case the channel is closed, it should quit at once.
     #[tracing::instrument(level = "debug", skip(self))]
-    pub async fn backoff_drain_events(&mut self, until: Instant) -> Result<(), ReplicationClosed> {
-        let d = until - Instant::now();
+    pub async fn backoff_drain_events(
+        &mut self,
+        until: <C::AsyncRuntime as AsyncRuntime>::Instant,
+    ) -> Result<(), ReplicationClosed> {
+        let d = until - <C::AsyncRuntime as AsyncRuntime>::Instant::now();
         tracing::warn!(
             interval = debug(d),
             "{} backoff mode: drain events without processing them",
@@ -493,8 +499,8 @@ where
         );
 
         loop {
-            let sleep_duration = until - Instant::now();
-            let sleep = sleep(sleep_duration);
+            let sleep_duration = until - <C::AsyncRuntime as AsyncRuntime>::Instant::now();
+            let sleep = C::AsyncRuntime::sleep(sleep_duration);
 
             let recv = self.rx_repl.recv();
 
@@ -643,7 +649,7 @@ where
             snapshot.snapshot.seek(SeekFrom::Start(offset)).await.sto_res(err_x)?;
             let n_read = snapshot.snapshot.read_buf(&mut buf).await.sto_res(err_x)?;
 
-            let leader_time = Instant::now();
+            let leader_time = <C::AsyncRuntime as AsyncRuntime>::Instant::now();
 
             let done = (offset + n_read as u64) == end;
             let req = InstallSnapshotRequest {
@@ -672,7 +678,7 @@ where
 
             let option = RPCOption::new(snap_timeout);
 
-            let res = timeout(snap_timeout, self.network.install_snapshot(req, option)).await;
+            let res = C::AsyncRuntime::timeout(snap_timeout, self.network.install_snapshot(req, option)).await;
 
             let res = match res {
                 Ok(outer_res) => match outer_res {
@@ -686,7 +692,7 @@ where
                         // Sleep a short time otherwise in test environment it is a dead-loop that
                         // never yields. Because network implementation does
                         // not yield.
-                        sleep(Duration::from_millis(10)).await;
+                        C::AsyncRuntime::sleep(Duration::from_millis(10)).await;
                         continue;
                     }
                 },
@@ -699,7 +705,7 @@ where
 
                     // Sleep a short time otherwise in test environment it is a dead-loop that never
                     // yields. Because network implementation does not yield.
-                    sleep(Duration::from_millis(10)).await;
+                    C::AsyncRuntime::sleep(Duration::from_millis(10)).await;
                     continue;
                 }
             };

@@ -31,6 +31,7 @@ use openraft::SnapshotMeta;
 use openraft::StorageError;
 use openraft::StorageIOError;
 use openraft::StoredMembership;
+use openraft::TokioRuntime;
 use openraft::Vote;
 use serde::Deserialize;
 use serde::Serialize;
@@ -41,7 +42,7 @@ pub type ExampleNodeId = u64;
 openraft::declare_raft_types!(
     /// Declare the type configuration for example K/V store.
     pub TypeConfig: D = ExampleRequest, R = ExampleResponse, NodeId = ExampleNodeId, Node = BasicNode,
-    Entry = Entry<TypeConfig>, SnapshotData = Cursor<Vec<u8>>
+    Entry = Entry<TypeConfig>, SnapshotData = Cursor<Vec<u8>>, AsyncRuntime = TokioRuntime
 );
 
 /**

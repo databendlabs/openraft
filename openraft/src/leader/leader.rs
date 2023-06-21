@@ -1,13 +1,12 @@
 use std::fmt;
 use std::ops::Deref;
 
-use tokio::time::Instant;
-
 use crate::leader::voting::Voting;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::VecProgress;
 use crate::quorum::QuorumSet;
 use crate::utime::UTime;
+use crate::Instant;
 use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::NodeId;
@@ -29,16 +28,16 @@ use crate::Vote;
 /// But instead it will be able to upgrade its `leader_id` without losing leadership.
 #[derive(Clone, Debug)]
 #[derive(PartialEq, Eq)]
-pub(crate) struct Leading<NID: NodeId, QS: QuorumSet<NID>> {
+pub(crate) struct Leading<NID: NodeId, QS: QuorumSet<NID>, I: Instant> {
     // TODO(1): set the utime,
     // TODO(1): update it when heartbeat is granted by a quorum
     /// The vote this leader works in.
-    pub(crate) vote: UTime<Vote<NID>>,
+    pub(crate) vote: UTime<Vote<NID>, I>,
 
     quorum_set: QS,
 
     /// Voting state, i.e., there is a Candidate running.
-    voting: Option<Voting<NID, QS>>,
+    voting: Option<Voting<NID, QS, I>>,
 
     /// Tracks the replication progress and committed index
     pub(crate) progress: VecProgress<NID, ProgressEntry<NID>, Option<LogId<NID>>, QS>,
@@ -48,13 +47,14 @@ pub(crate) struct Leading<NID: NodeId, QS: QuorumSet<NID>> {
     /// See [`docs::leader_lease`] for more details.
     ///
     /// [`docs::leader_lease`]: `crate::docs::protocol::replication::leader_lease`
-    pub(crate) clock_progress: VecProgress<NID, Option<Instant>, Option<Instant>, QS>,
+    pub(crate) clock_progress: VecProgress<NID, Option<I>, Option<I>, QS>,
 }
 
-impl<NID, QS> Leading<NID, QS>
+impl<NID, QS, I> Leading<NID, QS, I>
 where
     NID: NodeId,
     QS: QuorumSet<NID> + Clone + fmt::Debug + 'static,
+    I: Instant,
 {
     pub(crate) fn new(
         vote: Vote<NID>,
@@ -78,18 +78,18 @@ where
     }
 
     #[allow(dead_code)]
-    pub(crate) fn voting(&self) -> Option<&Voting<NID, QS>> {
+    pub(crate) fn voting(&self) -> Option<&Voting<NID, QS, I>> {
         self.voting.as_ref()
     }
 
     #[allow(dead_code)]
-    pub(crate) fn voting_mut(&mut self) -> Option<&mut Voting<NID, QS>> {
+    pub(crate) fn voting_mut(&mut self) -> Option<&mut Voting<NID, QS, I>> {
         self.voting.as_mut()
     }
 
-    pub(crate) fn initialize_voting(&mut self, last_log_id: Option<LogId<NID>>) -> &mut Voting<NID, QS> {
+    pub(crate) fn initialize_voting(&mut self, last_log_id: Option<LogId<NID>>, now: I) -> &mut Voting<NID, QS, I> {
         self.voting = Some(Voting::new(
-            Instant::now(),
+            now,
             *self.vote.deref(),
             last_log_id,
             self.quorum_set.clone(),
@@ -98,7 +98,7 @@ where
     }
 
     /// Finish the voting process and return the state.
-    pub(crate) fn finish_voting(&mut self) -> Voting<NID, QS> {
+    pub(crate) fn finish_voting(&mut self) -> Voting<NID, QS, I> {
         // it has to be in voting progress
         self.voting.take().unwrap()
     }

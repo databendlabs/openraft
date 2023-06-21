@@ -2,7 +2,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use maplit::btreeset;
-use tokio::time::Instant;
 
 use crate::core::ServerState;
 use crate::engine::testing::UTConfig;
@@ -15,6 +14,7 @@ use crate::testing::log_id1;
 use crate::utime::UTime;
 use crate::EffectiveMembership;
 use crate::Membership;
+use crate::TokioInstant;
 use crate::Vote;
 
 fn m01() -> Membership<u64, ()> {
@@ -27,7 +27,7 @@ fn eng() -> Engine<UTConfig> {
 
     eng.config.id = 1;
     // By default expire the leader lease so that the vote can be overridden in these tests.
-    eng.state.vote = UTime::new(Instant::now() - Duration::from_millis(300), Vote::new(2, 1));
+    eng.state.vote = UTime::new(TokioInstant::now() - Duration::from_millis(300), Vote::new(2, 1));
     eng.state.server_state = ServerState::Candidate;
     eng.state
         .membership_state
@@ -40,7 +40,7 @@ fn eng() -> Engine<UTConfig> {
 #[test]
 fn test_handle_vote_req_rejected_by_leader_lease() -> anyhow::Result<()> {
     let mut eng = eng();
-    eng.state.vote.update(Instant::now(), Vote::new_committed(2, 1));
+    eng.state.vote.update(TokioInstant::now(), Vote::new_committed(2, 1));
 
     let resp = eng.handle_vote_req(VoteRequest {
         vote: Vote::new(3, 2),

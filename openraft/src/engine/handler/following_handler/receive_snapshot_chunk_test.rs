@@ -1,6 +1,5 @@
 use maplit::btreeset;
 use pretty_assertions::assert_eq;
-use tokio::time::Instant;
 
 use crate::core::sm;
 use crate::engine::testing::UTConfig;
@@ -15,6 +14,7 @@ use crate::Membership;
 use crate::SnapshotMeta;
 use crate::SnapshotSegmentId;
 use crate::StoredMembership;
+use crate::TokioInstant;
 use crate::Vote;
 
 fn m1234() -> Membership<u64, ()> {
@@ -25,7 +25,7 @@ fn eng() -> Engine<UTConfig> {
     let mut eng = Engine::default();
     eng.state.enable_validate = false; // Disable validation for incomplete state
 
-    eng.state.vote.update(Instant::now(), Vote::new_committed(2, 1));
+    eng.state.vote.update(TokioInstant::now(), Vote::new_committed(2, 1));
     eng.state.server_state = eng.calc_server_state();
 
     eng

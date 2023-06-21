@@ -1,6 +1,7 @@
 use crate::replication::ReplicationResult;
 use crate::replication::ReplicationSessionId;
 use crate::utime::UTime;
+use crate::AsyncRuntime;
 use crate::MessageSummary;
 use crate::RaftTypeConfig;
 use crate::StorageError;
@@ -32,7 +33,7 @@ where C: RaftTypeConfig
         /// the target node.
         ///
         /// The result also track the time when this request is sent.
-        result: Result<UTime<ReplicationResult<C::NodeId>>, String>,
+        result: Result<UTime<ReplicationResult<C::NodeId>, <C::AsyncRuntime as AsyncRuntime>::Instant>, String>,
 
         /// In which session this message is sent.
         ///

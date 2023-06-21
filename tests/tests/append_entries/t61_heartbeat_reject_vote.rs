@@ -7,9 +7,9 @@ use maplit::btreeset;
 use openraft::raft::VoteRequest;
 use openraft::testing::log_id1;
 use openraft::Config;
+use openraft::TokioInstant;
 use openraft::Vote;
 use tokio::time::sleep;
-use tokio::time::Instant;
 
 use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
@@ -28,12 +28,12 @@ async fn heartbeat_reject_vote() -> Result<()> {
     );
     let mut router = RaftRouter::new(config.clone());
 
-    let now = Instant::now();
+    let now = TokioInstant::now();
     sleep(Duration::from_millis(1)).await;
 
     let log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {3}).await?;
 
-    let vote_modified_time = Arc::new(Mutex::new(Some(Instant::now())));
+    let vote_modified_time = Arc::new(Mutex::new(Some(TokioInstant::now())));
     tracing::info!(log_index, "--- leader lease is set by heartbeat");
     {
         let m = vote_modified_time.clone();
@@ -44,7 +44,7 @@ async fn heartbeat_reject_vote() -> Result<()> {
             assert!(state.vote_last_modified() > Some(now));
         });
 
-        let now = Instant::now();
+        let now = TokioInstant::now();
         sleep(Duration::from_millis(700)).await;
 
         let m = vote_modified_time.clone();

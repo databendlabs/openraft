@@ -1,6 +1,7 @@
 use std::io::Cursor;
 
 use crate::RaftTypeConfig;
+use crate::TokioRuntime;
 
 /// Trivial Raft type config for Engine related unit test.
 #[derive(Debug, Clone, Copy, Default, Eq, PartialEq, Ord, PartialOrd)]
@@ -13,4 +14,5 @@ impl RaftTypeConfig for UTConfig {
     type Node = ();
     type Entry = crate::Entry<UTConfig>;
     type SnapshotData = Cursor<Vec<u8>>;
+    type AsyncRuntime = TokioRuntime;
 }

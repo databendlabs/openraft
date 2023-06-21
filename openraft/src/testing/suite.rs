@@ -23,6 +23,7 @@ use crate::testing::StoreBuilder;
 use crate::vote::CommittedLeaderId;
 use crate::AppData;
 use crate::AppDataResponse;
+use crate::AsyncRuntime;
 use crate::LogId;
 use crate::Membership;
 use crate::NodeId;
@@ -337,7 +338,7 @@ where
 
     pub async fn get_initial_state_without_init(mut store: LS, mut sm: SM) -> Result<(), StorageError<C::NodeId>> {
         let initial = StorageHelper::new(&mut store, &mut sm).get_initial_state().await?;
-        let mut want = RaftState::default();
+        let mut want = RaftState::<C::NodeId, C::Node, <C::AsyncRuntime as AsyncRuntime>::Instant>::default();
         want.vote.update(initial.vote.utime().unwrap(), Vote::default());
 
         assert_eq!(want, initial, "uninitialized state");

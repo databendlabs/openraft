@@ -1,8 +1,6 @@
 use std::error::Error;
 use std::ops::Deref;
 
-use tokio::time::Instant;
-
 use crate::engine::LogIdList;
 use crate::entry::RaftEntry;
 use crate::equal;
@@ -12,6 +10,7 @@ use crate::log_id::RaftLogId;
 use crate::node::Node;
 use crate::utime::UTime;
 use crate::validate::Validate;
+use crate::Instant;
 use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::NodeId;
@@ -46,15 +45,15 @@ pub(crate) use crate::raft_state::snapshot_streaming::StreamingState;
 
 /// A struct used to represent the raft state which a Raft node needs.
 #[derive(Clone, Debug)]
-#[derive(Default)]
 #[derive(PartialEq, Eq)]
-pub struct RaftState<NID, N>
+pub struct RaftState<NID, N, I>
 where
     NID: NodeId,
     N: Node,
+    I: Instant,
 {
     /// The vote state of this node.
-    pub(crate) vote: UTime<Vote<NID>>,
+    pub(crate) vote: UTime<Vote<NID>, I>,
 
     /// The LogId of the last log committed(AKA applied) to the state machine.
     ///
@@ -94,10 +93,34 @@ where
     pub(crate) purge_upto: Option<LogId<NID>>,
 }
 
-impl<NID, N> LogStateReader<NID> for RaftState<NID, N>
+impl<NID, N, I> Default for RaftState<NID, N, I>
 where
     NID: NodeId,
     N: Node,
+    I: Instant,
+{
+    fn default() -> Self {
+        Self {
+            vote: UTime::default(),
+            committed: None,
+            purged_next: 0,
+            log_ids: LogIdList::default(),
+            membership_state: MembershipState::default(),
+            snapshot_meta: SnapshotMeta::default(),
+            server_state: ServerState::default(),
+            accepted: Accepted::default(),
+            io_state: IOState::default(),
+            snapshot_streaming: None,
+            purge_upto: None,
+        }
+    }
+}
+
+impl<NID, N, I> LogStateReader<NID> for RaftState<NID, N, I>
+where
+    NID: NodeId,
+    N: Node,
+    I: Instant,
 {
     fn get_log_id(&self, index: u64) -> Option<LogId<NID>> {
         self.log_ids.get(index)
@@ -135,20 +158,22 @@ where
     }
 }
 
-impl<NID, N> VoteStateReader<NID> for RaftState<NID, N>
+impl<NID, N, I> VoteStateReader<NID> for RaftState<NID, N, I>
 where
     NID: NodeId,
     N: Node,
+    I: Instant,
 {
     fn vote_ref(&self) -> &Vote<NID> {
         self.vote.deref()
     }
 }
 
-impl<NID, N> Validate for RaftState<NID, N>
+impl<NID, N, I> Validate for RaftState<NID, N, I>
 where
     NID: NodeId,
     N: Node,
+    I: Instant,
 {
     fn validate(&self) -> Result<(), Box<dyn Error>> {
         if self.purged_next == 0 {
@@ -175,10 +200,11 @@ where
     }
 }
 
-impl<NID, N> RaftState<NID, N>
+impl<NID, N, I> RaftState<NID, N, I>
 where
     NID: NodeId,
     N: Node,
+    I: Instant,
 {
     /// Get a reference to the current vote.
     pub fn vote_ref(&self) -> &Vote<NID> {
@@ -186,7 +212,7 @@ where
     }
 
     /// Return the last updated time of the vote.
-    pub fn vote_last_modified(&self) -> Option<Instant> {
+    pub fn vote_last_modified(&self) -> Option<I> {
         self.vote.utime()
     }
 

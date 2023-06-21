@@ -2,7 +2,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use maplit::btreeset;
-use tokio::time::Instant;
 
 use crate::core::ServerState;
 use crate::engine::testing::UTConfig;
@@ -14,6 +13,7 @@ use crate::testing::log_id1;
 use crate::utime::UTime;
 use crate::EffectiveMembership;
 use crate::Membership;
+use crate::TokioInstant;
 use crate::Vote;
 
 fn m01() -> Membership<u64, ()> {
@@ -25,7 +25,7 @@ fn eng() -> Engine<UTConfig> {
     eng.state.enable_validate = false; // Disable validation for incomplete state
 
     eng.config.id = 0;
-    eng.state.vote = UTime::new(Instant::now(), Vote::new(2, 1));
+    eng.state.vote = UTime::new(TokioInstant::now(), Vote::new(2, 1));
     eng.state.server_state = ServerState::Candidate;
     eng.state
         .membership_state
@@ -57,7 +57,7 @@ fn test_handle_message_vote_reject_smaller_vote() -> anyhow::Result<()> {
 fn test_handle_message_vote_committed_vote() -> anyhow::Result<()> {
     let mut eng = eng();
     eng.state.log_ids = LogIdList::new(vec![log_id1(2, 3)]);
-    let now = Instant::now();
+    let now = TokioInstant::now();
 
     let resp = eng.vote_handler().update_vote(&Vote::new_committed(3, 2));
 
@@ -86,7 +86,7 @@ fn test_handle_message_vote_granted_equal_vote() -> anyhow::Result<()> {
 
     let mut eng = eng();
     eng.state.log_ids = LogIdList::new(vec![log_id1(2, 3)]);
-    let now = Instant::now();
+    let now = TokioInstant::now();
 
     let resp = eng.vote_handler().update_vote(&Vote::new(2, 1));
 

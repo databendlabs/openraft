@@ -16,8 +16,6 @@ use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio::sync::watch;
 use tokio::sync::Mutex;
-use tokio::task::JoinError;
-use tokio::task::JoinHandle;
 use tracing::trace_span;
 use tracing::Instrument;
 use tracing::Level;
@@ -52,6 +50,7 @@ use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
 use crate::AppData;
 use crate::AppDataResponse;
+use crate::AsyncRuntime;
 use crate::ChangeMembers;
 use crate::LogId;
 use crate::LogIdOptionExt;
@@ -105,6 +104,9 @@ pub trait RaftTypeConfig:
     /// See the [storage chapter of the guide](https://datafuselabs.github.io/openraft/getting-started.html#implement-raftstorage)
     /// for details on where and how this is used.
     type SnapshotData: AsyncRead + AsyncWrite + AsyncSeek + Send + Sync + Unpin + 'static;
+
+    /// Asynchronous runtime type.
+    type AsyncRuntime: AsyncRuntime;
 }
 
 /// Define types for a Raft type configuration.
@@ -140,11 +142,13 @@ macro_rules! declare_raft_types {
 }
 
 /// The running state of RaftCore
-enum CoreState<NID>
-where NID: NodeId
+enum CoreState<NID, A>
+where
+    NID: NodeId,
+    A: AsyncRuntime,
 {
     /// The RaftCore task is still running.
-    Running(JoinHandle<Result<(), Fatal<NID>>>),
+    Running(A::JoinHandle<Result<(), Fatal<NID>>>),
 
     /// The RaftCore task has finished. The return value of the task is stored.
     Done(Result<(), Fatal<NID>>),
@@ -159,13 +163,13 @@ where
     id: C::NodeId,
     config: Arc<Config>,
     runtime_config: Arc<RuntimeConfig>,
-    tick_handle: TickHandle,
+    tick_handle: TickHandle<C>,
     tx_api: mpsc::UnboundedSender<RaftMsg<C, N, LS>>,
     rx_metrics: watch::Receiver<RaftMetrics<C::NodeId, C::Node>>,
     // TODO(xp): it does not need to be a async mutex.
     #[allow(clippy::type_complexity)]
     tx_shutdown: Mutex<Option<oneshot::Sender<()>>>,
-    core_state: Mutex<CoreState<C::NodeId>>,
+    core_state: Mutex<CoreState<C::NodeId, C::AsyncRuntime>>,
 }
 
 /// The Raft API.
@@ -310,7 +314,7 @@ where
             _p: Default::default(),
         };
 
-        let core_handle = tokio::spawn(core.main(rx_shutdown).instrument(trace_span!("spawn").or_current()));
+        let core_handle = C::AsyncRuntime::spawn(core.main(rx_shutdown).instrument(trace_span!("spawn").or_current()));
 
         let inner = RaftInner {
             id,
@@ -806,7 +810,7 @@ where
 
                 let core_task_res = match res {
                     Err(err) => {
-                        if err.is_panic() {
+                        if C::AsyncRuntime::is_panic(&err) {
                             Err(Fatal::Panicked)
                         } else {
                             Err(Fatal::Stopped)
@@ -835,7 +839,11 @@ where
     ///
     /// If the API channel is already closed (Raft is in shutdown), then the request functor is
     /// destroyed right away and not called at all.
-    pub fn external_request<F: FnOnce(&RaftState<C::NodeId, C::Node>, &mut LS, &mut N) + Send + 'static>(
+    pub fn external_request<
+        F: FnOnce(&RaftState<C::NodeId, C::Node, <C::AsyncRuntime as AsyncRuntime>::Instant>, &mut LS, &mut N)
+            + Send
+            + 'static,
+    >(
         &self,
         req: F,
     ) {
@@ -867,7 +875,7 @@ where
     /// // wait for raft state to become a follower
     /// r.wait(None).state(State::Follower, "state").await?;
     /// ```
-    pub fn wait(&self, timeout: Option<Duration>) -> Wait<C::NodeId, C::Node> {
+    pub fn wait(&self, timeout: Option<Duration>) -> Wait<C::NodeId, C::Node, C::AsyncRuntime> {
         let timeout = match timeout {
             Some(t) => t,
             None => Duration::from_secs(86400 * 365 * 100),
@@ -875,13 +883,14 @@ where
         Wait {
             timeout,
             rx: self.inner.rx_metrics.clone(),
+            _phantom: PhantomData,
         }
     }
 
     /// Shutdown this Raft node.
     ///
     /// It sends a shutdown signal and waits until `RaftCore` returns.
-    pub async fn shutdown(&self) -> Result<(), JoinError> {
+    pub async fn shutdown(&self) -> Result<(), <C::AsyncRuntime as AsyncRuntime>::JoinError> {
         if let Some(tx) = self.inner.tx_shutdown.lock().await.take() {
             // A failure to send means the RaftCore is already shutdown. Continue to check the task
             // return value.
@@ -960,7 +969,11 @@ where
 
     ExternalRequest {
         #[allow(clippy::type_complexity)]
-        req: Box<dyn FnOnce(&RaftState<C::NodeId, C::Node>, &mut LS, &mut N) + Send + 'static>,
+        req: Box<
+            dyn FnOnce(&RaftState<C::NodeId, C::Node, <C::AsyncRuntime as AsyncRuntime>::Instant>, &mut LS, &mut N)
+                + Send
+                + 'static,
+        >,
     },
 
     ExternalCommand {

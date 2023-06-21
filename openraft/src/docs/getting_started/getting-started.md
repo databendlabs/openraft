@@ -60,6 +60,7 @@ impl openraft::RaftTypeConfig for TypeConfig {
     type Node = BasicNode;
     type Entry = openraft::Entry<TypeConfig>;
     type SnapshotData = Cursor<Vec<u8>>;
+    type AsyncRuntime = TokioRuntime;
 }
 ```
 
@@ -81,7 +82,7 @@ It could be a wrapper for a local key-value store like [RocksDB](https://docs.rs
 There is a good example,
 [`Mem KV Store`](https://github.com/datafuselabs/openraft/blob/main/examples/raft-kv-memstore/src/store/mod.rs),
 that demonstrates what should be done when a method is called. The list of [`RaftStorage`] methods is shown below.
-Follow the link to method document to see the details. 
+Follow the link to method document to see the details.
 
 | Kind       | [`RaftStorage`] method           | Return value                 | Description                           |
 |------------|----------------------------------|------------------------------|---------------------------------------|
@@ -98,14 +99,14 @@ Follow the link to method document to see the details.
 | Snapshot:  | [`begin_receiving_snapshot()`]   | `SnapshotData`               | begin to install snapshot             |
 | Snapshot:  | [`install_snapshot()`]           | ()                           | install snapshot                      |
 | Snapshot:  | [`get_current_snapshot()`]       | [`Snapshot`]                 | get current snapshot                  |
-| Snapshot:  | [`get_snapshot_builder()`]       | impl [`RaftSnapshotBuilder`] | get a snapshot builder                | 
+| Snapshot:  | [`get_snapshot_builder()`]       | impl [`RaftSnapshotBuilder`] | get a snapshot builder                |
 |            |                                  | ↳ [`build_snapshot()`]       | build a snapshot from state machine   |
 
 Most of the APIs are quite straightforward, except two indirect APIs:
 
 -   Read logs:
     [`RaftStorage`] defines a method [`get_log_reader()`] to get log reader [`RaftLogReader`] :
-  
+
     ```ignore
     trait RaftStorage<C: RaftTypeConfig> {
         type LogReader: RaftLogReader<C>;
@@ -116,7 +117,7 @@ Most of the APIs are quite straightforward, except two indirect APIs:
     [`RaftLogReader`] defines the APIs to read logs, and is an also super trait of [`RaftStorage`] :
     - [`get_log_state()`] get latest log state from the storage;
     - [`try_get_log_entries()`] get log entries in a range;
-    
+
     ```ignore
     trait RaftLogReader<C: RaftTypeConfig> {
         async fn get_log_state(&mut self) -> Result<LogState<C>, ...>;
@@ -294,17 +295,17 @@ async fn main() {
               .wrap(Logger::new("%a %{User-Agent}i"))
               .wrap(middleware::Compress::default())
               .app_data(app.clone())
-          
+
               // raft internal RPC
               .service(raft::append).service(raft::snapshot).service(raft::vote)
-          
+
               // admin API
               .service(management::init)
               .service(management::add_learner)
               .service(management::change_membership)
               .service(management::metrics)
               .service(management::list_nodes)
-          
+
               // application API
               .service(api::write).service(api::read)
     })
@@ -364,7 +365,7 @@ Additionally, two test scripts for setting up a cluster are available:
 [`RaftStorage`]:                    `crate::storage::RaftStorage`
 [`RaftStorage::LogReader`]:         `crate::storage::RaftStorage::LogReader`
 [`RaftStorage::SnapshotBuilder`]:   `crate::storage::RaftStorage::SnapshotBuilder`
-[`get_log_reader()`]:               `crate::storage::RaftStorage::get_log_reader`    
+[`get_log_reader()`]:               `crate::storage::RaftStorage::get_log_reader`
 [`save_vote()`]:                    `crate::storage::RaftStorage::save_vote`
 [`read_vote()`]:                    `crate::storage::RaftStorage::read_vote`
 [`append_to_log()`]:                `crate::storage::RaftStorage::append_to_log`

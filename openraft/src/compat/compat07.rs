@@ -421,6 +421,7 @@ mod tests {
 
     use crate::compat::Upgrade;
     use crate::CommittedLeaderId;
+    use crate::TokioRuntime;
 
     #[test]
     fn test_serde_log_id() -> anyhow::Result<()> {
@@ -511,7 +512,8 @@ mod tests {
     crate::declare_raft_types!(
         pub TestingConfig:
         D = u64, R = u64, NodeId = u64, Node = crate::EmptyNode,
-        Entry = crate::Entry<TestingConfig>, SnapshotData = Cursor<Vec<u8>>
+        Entry = crate::Entry<TestingConfig>, SnapshotData = Cursor<Vec<u8>>,
+        AsyncRuntime = TokioRuntime
     );
 
     #[test]

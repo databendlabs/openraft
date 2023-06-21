@@ -16,6 +16,7 @@ use crate::error::SnapshotMismatch;
 use crate::raft::InstallSnapshotRequest;
 use crate::raft_state::LogStateReader;
 use crate::raft_state::StreamingState;
+use crate::AsyncRuntime;
 use crate::EffectiveMembership;
 use crate::LogId;
 use crate::LogIdOptionExt;
@@ -42,7 +43,7 @@ pub(crate) struct FollowingHandler<'x, C>
 where C: RaftTypeConfig
 {
     pub(crate) config: &'x mut EngineConfig<C::NodeId>,
-    pub(crate) state: &'x mut RaftState<C::NodeId, C::Node>,
+    pub(crate) state: &'x mut RaftState<C::NodeId, C::Node, <C::AsyncRuntime as AsyncRuntime>::Instant>,
     pub(crate) output: &'x mut EngineOutput<C>,
 }
 
@@ -342,7 +343,9 @@ where C: RaftTypeConfig
         }
 
         // Do install:
-        // 1. Truncate all logs if conflict
+        //
+        // 1. Truncate all logs if conflict.
+        //
         //    Unlike normal append-entries RPC, if conflicting logs are found, it is not
         // **necessary** to delete them.    But cleaning them make the assumption of
         // incremental-log-id always hold, which makes it easier to debug.    See: [Snapshot-replication](https://datafuselabs.github.io/openraft/replication.html#snapshot-replication)

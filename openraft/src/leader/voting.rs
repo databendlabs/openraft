@@ -1,11 +1,10 @@
 use std::fmt;
 
-use tokio::time::Instant;
-
 use crate::display_ext::DisplayOptionExt;
 use crate::progress::Progress;
 use crate::progress::VecProgress;
 use crate::quorum::QuorumSet;
+use crate::Instant;
 use crate::LogId;
 use crate::NodeId;
 use crate::Vote;
@@ -13,13 +12,14 @@ use crate::Vote;
 /// Voting state.
 #[derive(Clone, Debug)]
 #[derive(PartialEq, Eq)]
-pub(crate) struct Voting<NID, QS>
+pub(crate) struct Voting<NID, QS, I>
 where
     NID: NodeId,
     QS: QuorumSet<NID>,
+    I: Instant,
 {
     /// When the voting is started.
-    starting_time: Instant,
+    starting_time: I,
 
     /// The vote.
     vote: Vote<NID>,
@@ -30,10 +30,11 @@ where
     progress: VecProgress<NID, bool, bool, QS>,
 }
 
-impl<NID, QS> fmt::Display for Voting<NID, QS>
+impl<NID, QS, I> fmt::Display for Voting<NID, QS, I>
 where
     NID: NodeId,
     QS: QuorumSet<NID> + fmt::Debug + 'static,
+    I: Instant,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -47,17 +48,13 @@ where
     }
 }
 
-impl<NID, QS> Voting<NID, QS>
+impl<NID, QS, I> Voting<NID, QS, I>
 where
     NID: NodeId,
     QS: QuorumSet<NID> + fmt::Debug + 'static,
+    I: Instant,
 {
-    pub(crate) fn new(
-        starting_time: Instant,
-        vote: Vote<NID>,
-        last_log_id: Option<LogId<NID>>,
-        quorum_set: QS,
-    ) -> Self {
+    pub(crate) fn new(starting_time: I, vote: Vote<NID>, last_log_id: Option<LogId<NID>>, quorum_set: QS) -> Self {
         Self {
             starting_time,
             vote,

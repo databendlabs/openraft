@@ -52,6 +52,8 @@ use openraft::RaftLogReader;
 use openraft::RaftMetrics;
 use openraft::RaftState;
 use openraft::ServerState;
+use openraft::TokioInstant;
+use openraft::TokioRuntime;
 use openraft::Vote;
 use openraft_memstore::ClientRequest;
 use openraft_memstore::ClientResponse;
@@ -475,7 +477,7 @@ impl TypedRaftRouter {
         Ok(rst)
     }
 
-    pub fn wait(&self, node_id: &MemNodeId, timeout: Option<Duration>) -> Wait<MemNodeId, ()> {
+    pub fn wait(&self, node_id: &MemNodeId, timeout: Option<Duration>) -> Wait<MemNodeId, (), TokioRuntime> {
         let node = {
             let rt = self.routing_table.lock().unwrap();
             rt.get(node_id).expect("target node not found in routing table").clone().0
@@ -637,7 +639,7 @@ impl TypedRaftRouter {
 
     /// Send external request to the particular node.
     pub fn external_request<
-        F: FnOnce(&RaftState<MemNodeId, ()>, &mut MemLogStore, &mut TypedRaftRouter) + Send + 'static,
+        F: FnOnce(&RaftState<MemNodeId, (), TokioInstant>, &mut MemLogStore, &mut TypedRaftRouter) + Send + 'static,
     >(
         &self,
         target: MemNodeId,

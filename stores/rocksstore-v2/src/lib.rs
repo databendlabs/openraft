@@ -38,6 +38,7 @@ use openraft::SnapshotMeta;
 use openraft::StorageError;
 use openraft::StorageIOError;
 use openraft::StoredMembership;
+use openraft::TokioRuntime;
 use openraft::Vote;
 use rand::Rng;
 use rocksdb::ColumnFamily;
@@ -53,7 +54,7 @@ pub type RocksNodeId = u64;
 openraft::declare_raft_types!(
     /// Declare the type configuration.
     pub TypeConfig: D = RocksRequest, R = RocksResponse, NodeId = RocksNodeId, Node = BasicNode,
-    Entry = Entry<TypeConfig>, SnapshotData = Cursor<Vec<u8>>
+    Entry = Entry<TypeConfig>, SnapshotData = Cursor<Vec<u8>>, AsyncRuntime = TokioRuntime
 );
 
 /**

@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use maplit::btreeset;
-use tokio::time::Instant;
 
 use crate::engine::testing::UTConfig;
 use crate::engine::Command;
@@ -13,6 +12,7 @@ use crate::utime::UTime;
 use crate::EffectiveMembership;
 use crate::Membership;
 use crate::ServerState;
+use crate::TokioInstant;
 use crate::Vote;
 
 fn m23() -> Membership<u64, ()> {
@@ -39,7 +39,7 @@ fn test_startup_as_leader() -> anyhow::Result<()> {
         .membership_state
         .set_effective(Arc::new(EffectiveMembership::new(Some(log_id1(2, 3)), m23())));
     // Committed vote makes it a leader at startup.
-    eng.state.vote = UTime::new(Instant::now(), Vote::new_committed(1, 2));
+    eng.state.vote = UTime::new(TokioInstant::now(), Vote::new_committed(1, 2));
 
     eng.startup();
 
@@ -71,7 +71,7 @@ fn test_startup_candidate_becomes_follower() -> anyhow::Result<()> {
         .membership_state
         .set_effective(Arc::new(EffectiveMembership::new(Some(log_id1(2, 3)), m23())));
     // Non-committed vote makes it a candidate at startup.
-    eng.state.vote = UTime::new(Instant::now(), Vote::new(1, 2));
+    eng.state.vote = UTime::new(TokioInstant::now(), Vote::new(1, 2));
 
     eng.startup();
 
