@@ -995,7 +995,7 @@ where
             let id = self.id;
             let option = RPCOption::new(ttl);
 
-            let _ = C::AsyncRuntime::spawn(
+            C::AsyncRuntime::spawn(
                 async move {
                     let tm_res = C::AsyncRuntime::timeout(ttl, client.vote(req, option)).await;
                     let res = match tm_res {

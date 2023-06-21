@@ -58,7 +58,7 @@ async fn new_leader_auto_commit_uniform_config() -> Result<()> {
     router.new_raft_node(1).await;
     router.new_raft_node(2).await;
 
-    let node = Raft::new(0, config.clone(), router.clone(), sto.clone(), sm.clone());
+    let node = Raft::new(0, config.clone(), router.clone(), sto.clone(), sm.clone()).await?;
 
     let _ = node;
 
