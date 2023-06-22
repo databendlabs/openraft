@@ -2,11 +2,13 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
+use maplit::btreemap;
 use maplit::btreeset;
 use openraft::error::ChangeMembershipError;
 use openraft::error::ClientWriteError;
 use openraft::error::InProgress;
 use openraft::storage::RaftLogReaderExt;
+use openraft::ChangeMembers;
 use openraft::CommittedLeaderId;
 use openraft::Config;
 use openraft::LogId;
@@ -136,6 +138,37 @@ async fn add_learner_non_blocking() -> Result<()> {
         let repl = metrics.replication.as_ref().unwrap();
         let n1_repl = repl.get(&1);
         assert_eq!(Some(&None), n1_repl, "no replication state to the learner is reported");
+    }
+
+    Ok(())
+}
+
+#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+async fn add_learner_with_set_nodes() -> Result<()> {
+    // Add learners and update nodes with ChangeMembers::SetNodes
+    // Node updating is ensured by unit tests of ChangeMembers
+    let config = Arc::new(
+        Config {
+            replication_lag_threshold: 0,
+            enable_tick: false,
+            ..Default::default()
+        }
+        .validate()?,
+    );
+    let mut router = RaftRouter::new(config.clone());
+
+    let log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+
+    tracing::info!(log_index, "--- set node 2 and 4");
+    {
+        router.new_raft_node(4).await;
+
+        let raft = router.get_raft_handle(&0)?;
+        raft.change_membership(ChangeMembers::SetNodes(btreemap! {2=>(), 4=>()}), true).await?;
+
+        let metrics = router.get_raft_handle(&0)?.metrics().borrow().clone();
+        let node_ids = metrics.membership_config.membership().nodes().map(|x| *x.0).collect::<Vec<_>>();
+        assert_eq!(vec![0, 1, 2, 4], node_ids);
     }
 
     Ok(())
