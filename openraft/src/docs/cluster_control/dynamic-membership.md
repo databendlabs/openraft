@@ -72,6 +72,51 @@ tolerates a minority member crash.
 
 To read more about Openraft's [Extended Membership Algorithm][`extended_membership`].
 
+
+## Update Node
+
+To update a node, such as altering its network address,
+the application calls [`Raft::change_membership()`][].
+The initial argument should be set to [`ChangeMembers::SetNodes(BTreeMap<NodeId,Node>)`][`ChangeMembers::SetNodes`].
+
+**Warning: Misusing `SetNodes` could lead to a split-brain situation**:
+
+### Brain split
+
+When Updating node network addresses,
+brain split could occur if the new address belongs to another node,
+leading to two elected leaders.
+
+Consider a 3-node cluster (`a, b, c`, with addresses `x, y, z`) and an
+uninitialized node `d` with address `w`:
+
+```text
+a: x
+b: y
+c: z
+
+d: w
+```
+
+Mistakenly updating `b`'s address from `y` to `w` would enable both `x, y` and `z, w` to form quorums and elect leaders:
+
+- `c` proposes ChangeMembership: `{a:x, b:w, c:z}`;
+- `c, d` grant `c`;
+
+- `c` elects itself as leader
+- `c, d` confirm `c` as leader
+
+- `a` elects itself as leader
+- `a, b` confirm `a` as leader
+
+
+Directly updating node addresses with `ChangeMembers::SetNodes`
+should be replaced with `ChangeMembers::RemoveNodes` and `ChangeMembers::RemoveNodes` whenever possible.
+
+Do not use `ChangeMembers::SetNodes` unless you know what you are doing.
+
+
+[`ChangeMembers::SetNodes`]: `crate::change_members::ChangeMembers::SetNodes`
 [`Raft::add_learner()`]: `crate::Raft::add_learner`
 [`Raft::change_membership()`]: `crate::Raft::change_membership`
 [`extended_membership`]: `crate::docs::data::extended_membership`

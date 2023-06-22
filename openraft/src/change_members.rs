@@ -26,7 +26,22 @@ pub enum ChangeMembers<NID: NodeId, N: Node> {
     ReplaceAllVoters(BTreeSet<NID>),
 
     /// Add nodes to membership, as learners.
+    ///
+    /// it **WONT** replace existing node.
+    ///
+    /// Prefer using this variant instead of `SetNodes` whenever possible, as `AddNodes` ensures
+    /// safety, whereas incorrect usage of `SetNodes` can result in a brain split.
+    /// See: [Update-Node](`crate::docs::cluster_control::dynamic_membership#update-node`)
     AddNodes(BTreeMap<NID, N>),
+
+    /// Add or replace nodes in membership config.
+    ///
+    /// it **WILL** replace existing node.
+    ///
+    /// Prefer using `AddNodes` instead of `SetNodes` whenever possible, as `AddNodes` ensures
+    /// safety, whereas incorrect usage of `SetNodes` can result in a brain split.
+    /// See: [Update-Node](`crate::docs::cluster_control::dynamic_membership#update-node`)
+    SetNodes(BTreeMap<NID, N>),
 
     /// Remove nodes from membership.
     ///

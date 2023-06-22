@@ -155,6 +155,30 @@ fn test_membership_add_learner() -> anyhow::Result<()> {
 }
 
 #[test]
+fn test_membership_update_nodes() -> anyhow::Result<()> {
+    let node = |s: &str| TestNode {
+        addr: s.to_string(),
+        data: Default::default(),
+    };
+
+    let m_1_2 = Membership::<u64, TestNode>::new_unchecked(
+        vec![btreeset! {1}, btreeset! {2}],
+        btreemap! {1=>node("1"), 2=>node("2")},
+    );
+
+    let m_1_2_3 = m_1_2.change(ChangeMembers::SetNodes(btreemap! {2=>node("20"), 3=>node("30")}), true)?;
+    assert_eq!(
+        Membership::<u64, TestNode>::new_unchecked(
+            vec![btreeset! {1}, btreeset! {2}],
+            btreemap! {1=>node("1"), 2=>node("20"), 3=>node("30")}
+        ),
+        m_1_2_3
+    );
+
+    Ok(())
+}
+
+#[test]
 fn test_membership_extend_nodes() -> anyhow::Result<()> {
     let node = |s: &str| TestNode {
         addr: s.to_string(),

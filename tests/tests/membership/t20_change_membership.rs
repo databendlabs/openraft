@@ -12,7 +12,7 @@ use openraft::ServerState;
 use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
 
-/// When a change-membership log is committed, the membership_state should be updated.
+/// When a change-membership log is committed, the `RaftState.membership_state` should be updated.
 #[async_entry::test(worker_threads = 3, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn update_membership_state() -> anyhow::Result<()> {
     let config = Arc::new(

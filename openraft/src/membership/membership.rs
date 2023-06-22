@@ -321,6 +321,12 @@ where
                 }
                 self
             }
+            ChangeMembers::SetNodes(set_nodes) => {
+                for (node_id, node) in set_nodes.into_iter() {
+                    self.nodes.insert(node_id, node);
+                }
+                self
+            }
             ChangeMembers::RemoveNodes(remove_node_ids) => {
                 for node_id in remove_node_ids.iter() {
                     self.nodes.remove(node_id);
@@ -512,6 +518,23 @@ mod tests {
                 Ok(Membership::<u64, ()> {
                     configs: vec![btreeset! {1,2}],
                     nodes: btreemap! {1=>(),2=>(),3=>(), 4=>()}
+                }),
+                res
+            );
+        }
+
+        // SetNodes: Ok
+        {
+            let m = || Membership::<u64, u64> {
+                configs: vec![btreeset! {1,2}],
+                nodes: btreemap! {1=>1,2=>2,3=>3},
+            };
+
+            let res = m().change(ChangeMembers::SetNodes(btreemap! {3=>30, 4=>40}), false);
+            assert_eq!(
+                Ok(Membership::<u64, u64> {
+                    configs: vec![btreeset! {1,2}],
+                    nodes: btreemap! {1=>1,2=>2,3=>30, 4=>40}
                 }),
                 res
             );
