@@ -1,4 +1,4 @@
-use std::fmt::Formatter;
+use std::fmt;
 use std::ops::Bound;
 
 use anyerror::AnyError;
@@ -63,10 +63,10 @@ where NID: NodeId
     }
 }
 
-impl<NID> std::fmt::Display for DefensiveError<NID>
+impl<NID> fmt::Display for DefensiveError<NID>
 where NID: NodeId
 {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "'{:?}' violates: '{}'", self.subject, self.violation)
     }
 }
@@ -104,13 +104,21 @@ where NID: NodeId
 }
 
 /// What it is doing when an error occurs.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug)]
+#[derive(Clone, Copy)]
+#[derive(PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub enum ErrorVerb {
     Read,
     Write,
     Seek,
     Delete,
+}
+
+impl fmt::Display for ErrorVerb {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
 }
 
 /// Violations a store would return when running defensive check.
@@ -231,10 +239,10 @@ where NID: NodeId
     backtrace: Option<String>,
 }
 
-impl<NID> std::fmt::Display for StorageIOError<NID>
+impl<NID> fmt::Display for StorageIOError<NID>
 where NID: NodeId
 {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "when {:?} {:?}: {}", self.verb, self.subject, self.source)
     }
 }
