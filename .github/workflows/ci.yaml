@@ -271,7 +271,7 @@ jobs:
             features: "single-term-leader"
 
           - toolchain: "nightly"
-            features: "single-term-leader,serde"
+            features: "single-term-leader,serde,singlethreaded"
 
 
     steps:

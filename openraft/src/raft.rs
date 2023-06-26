@@ -57,6 +57,7 @@ use crate::LogIdOptionExt;
 use crate::Membership;
 use crate::MessageSummary;
 use crate::NodeId;
+use crate::OptionalSend;
 use crate::RaftState;
 use crate::SnapshotMeta;
 use crate::StorageHelper;
@@ -103,7 +104,7 @@ pub trait RaftTypeConfig:
     ///
     /// See the [storage chapter of the guide](https://datafuselabs.github.io/openraft/getting-started.html#implement-raftstorage)
     /// for details on where and how this is used.
-    type SnapshotData: AsyncRead + AsyncWrite + AsyncSeek + Send + Sync + Unpin + 'static;
+    type SnapshotData: AsyncRead + AsyncWrite + AsyncSeek + OptionalSend + Sync + Unpin + 'static;
 
     /// Asynchronous runtime type.
     type AsyncRuntime: AsyncRuntime;

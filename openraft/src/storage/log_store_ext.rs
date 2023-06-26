@@ -1,7 +1,7 @@
 use std::fmt::Debug;
 use std::ops::RangeBounds;
 
-use async_trait::async_trait;
+use macros::add_async_trait;
 
 use crate::defensive::check_range_matches_entries;
 use crate::LogId;
@@ -11,7 +11,7 @@ use crate::RaftLogReader;
 use crate::RaftTypeConfig;
 use crate::StorageError;
 
-#[async_trait]
+#[add_async_trait]
 pub trait RaftLogReaderExt<C>: RaftLogReader<C>
 where C: RaftTypeConfig
 {

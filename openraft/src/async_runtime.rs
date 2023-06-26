@@ -4,6 +4,8 @@ use std::future::Future;
 use std::time::Duration;
 
 use crate::Instant;
+use crate::OptionalSend;
+use crate::OptionalSync;
 use crate::TokioInstant;
 
 /// A trait defining interfaces with an asynchronous runtime.
@@ -19,10 +21,13 @@ pub trait AsyncRuntime: Debug + Default + Send + Sync + 'static {
     type JoinError: Debug + Display + Send;
 
     /// The return type of [`Self::spawn`].
-    type JoinHandle<T: Send + 'static>: Future<Output = Result<T, Self::JoinError>> + Send + Sync + Unpin;
+    type JoinHandle<T: OptionalSend + 'static>: Future<Output = Result<T, Self::JoinError>>
+        + OptionalSend
+        + OptionalSync
+        + Unpin;
 
     /// The type that enables the user to sleep in an asynchronous runtime.
-    type Sleep: Future<Output = ()> + Send + Sync;
+    type Sleep: Future<Output = ()> + OptionalSend + OptionalSync;
 
     /// A measurement of a monotonically non-decreasing clock.
     type Instant: Instant;
@@ -32,13 +37,13 @@ pub trait AsyncRuntime: Debug + Default + Send + Sync + 'static {
 
     /// The timeout type used by [`Self::timeout`] and [`Self::timeout_at`] that enables the user
     /// to await the outcome of a [`Future`].
-    type Timeout<R, T: Future<Output = R> + Send>: Future<Output = Result<R, Self::TimeoutError>> + Send;
+    type Timeout<R, T: Future<Output = R> + OptionalSend>: Future<Output = Result<R, Self::TimeoutError>> + OptionalSend;
 
     /// Spawn a new task.
     fn spawn<T>(future: T) -> Self::JoinHandle<T::Output>
     where
-        T: Future + Send + 'static,
-        T::Output: Send + 'static;
+        T: Future + OptionalSend + 'static,
+        T::Output: OptionalSend + 'static;
 
     /// Wait until `duration` has elapsed.
     fn sleep(duration: Duration) -> Self::Sleep;
@@ -47,16 +52,16 @@ pub trait AsyncRuntime: Debug + Default + Send + Sync + 'static {
     fn sleep_until(deadline: Self::Instant) -> Self::Sleep;
 
     /// Require a [`Future`] to complete before the specified duration has elapsed.
-    fn timeout<R, F: Future<Output = R> + Send>(duration: Duration, future: F) -> Self::Timeout<R, F>;
+    fn timeout<R, F: Future<Output = R> + OptionalSend>(duration: Duration, future: F) -> Self::Timeout<R, F>;
 
     /// Require a [`Future`] to complete before the specified instant in time.
-    fn timeout_at<R, F: Future<Output = R> + Send>(deadline: Self::Instant, future: F) -> Self::Timeout<R, F>;
+    fn timeout_at<R, F: Future<Output = R> + OptionalSend>(deadline: Self::Instant, future: F) -> Self::Timeout<R, F>;
 
     /// Check if the [`Self::JoinError`] is `panic`.
     fn is_panic(join_error: &Self::JoinError) -> bool;
 
     /// Abort the task associated with the supplied join handle.
-    fn abort<T: Send + 'static>(join_handle: &Self::JoinHandle<T>);
+    fn abort<T: OptionalSend + 'static>(join_handle: &Self::JoinHandle<T>);
 }
 
 /// `Tokio` is the default asynchronous executor.
@@ -65,19 +70,26 @@ pub struct TokioRuntime;
 
 impl AsyncRuntime for TokioRuntime {
     type JoinError = tokio::task::JoinError;
-    type JoinHandle<T: Send + 'static> = tokio::task::JoinHandle<T>;
+    type JoinHandle<T: OptionalSend + 'static> = tokio::task::JoinHandle<T>;
     type Sleep = tokio::time::Sleep;
     type Instant = TokioInstant;
     type TimeoutError = tokio::time::error::Elapsed;
-    type Timeout<R, T: Future<Output = R> + Send> = tokio::time::Timeout<T>;
+    type Timeout<R, T: Future<Output = R> + OptionalSend> = tokio::time::Timeout<T>;
 
     #[inline]
     fn spawn<T>(future: T) -> Self::JoinHandle<T::Output>
     where
-        T: Future + Send + 'static,
-        T::Output: Send + 'static,
+        T: Future + OptionalSend + 'static,
+        T::Output: OptionalSend + 'static,
     {
-        tokio::task::spawn(future)
+        #[cfg(feature = "singlethreaded")]
+        {
+            tokio::task::spawn_local(future)
+        }
+        #[cfg(not(feature = "singlethreaded"))]
+        {
+            tokio::task::spawn(future)
+        }
     }
 
     #[inline]
@@ -91,12 +103,12 @@ impl AsyncRuntime for TokioRuntime {
     }
 
     #[inline]
-    fn timeout<R, F: Future<Output = R> + Send>(duration: Duration, future: F) -> Self::Timeout<R, F> {
+    fn timeout<R, F: Future<Output = R> + OptionalSend>(duration: Duration, future: F) -> Self::Timeout<R, F> {
         tokio::time::timeout(duration, future)
     }
 
     #[inline]
-    fn timeout_at<R, F: Future<Output = R> + Send>(deadline: Self::Instant, future: F) -> Self::Timeout<R, F> {
+    fn timeout_at<R, F: Future<Output = R> + OptionalSend>(deadline: Self::Instant, future: F) -> Self::Timeout<R, F> {
         tokio::time::timeout_at(deadline, future)
     }
 
@@ -106,7 +118,7 @@ impl AsyncRuntime for TokioRuntime {
     }
 
     #[inline]
-    fn abort<T: Send + 'static>(join_handle: &Self::JoinHandle<T>) {
+    fn abort<T: OptionalSend + 'static>(join_handle: &Self::JoinHandle<T>) {
         join_handle.abort();
     }
 }

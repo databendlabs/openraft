@@ -46,6 +46,7 @@ resolver = "2"
 members = [
     "openraft",
     "memstore",
+    "macros",
     "tests",
     "rocksstore",
     "rocksstore-compat07",

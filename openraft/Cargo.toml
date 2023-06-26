@@ -20,6 +20,7 @@ anyhow          = { workspace = true, optional = true }
 byte-unit       = { workspace = true }
 derive_more     = { workspace = true }
 futures         = { workspace = true }
+macros          = { path = "../macros" }
 maplit          = { workspace = true }
 pin-utils       = { workspace = true }
 rand            = { workspace = true }
@@ -82,6 +83,9 @@ compat-07-testing = ["dep:tempfile", "anyhow", "dep:serde_json"]
 # See `openraft::storage::v2` for more details.
 # V2 API are unstable and may change in the future.
 storage-v2 = []
+
+# Disallows applications to share a raft instance with multiple threads.
+singlethreaded = ["macros/singlethreaded"]
 
 # default = ["single-term-leader"]
 
