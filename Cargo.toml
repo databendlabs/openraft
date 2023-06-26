@@ -29,6 +29,7 @@ maplit = "1.0.2"
 pin-utils = "0.1.0"
 pretty_assertions = "1.0.0"
 rand = "0.8"
+rkyv = { version = "0.7.42", features=["validation"] }
 serde = { version="1.0.114", features=["derive", "rc"]}
 serde_json = "1.0.57"
 tempfile = { version = "3.4.0" }

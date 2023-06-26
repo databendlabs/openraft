@@ -2,6 +2,11 @@
 #[derive(Debug, Clone, Copy, Default)]
 #[derive(PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[cfg_attr(
+    feature = "rkyv",
+    derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize),
+    archive(check_bytes)
+)]
 pub enum ServerState {
     /// The node is completely passive; replicating entries, but neither voting nor timing out.
     #[default]

@@ -14,6 +14,11 @@ use crate::NodeId;
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 #[derive(PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
+#[cfg_attr(
+    feature = "rkyv",
+    derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize),
+    archive(check_bytes)
+)]
 pub struct LeaderId<NID>
 where NID: NodeId
 {

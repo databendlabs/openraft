@@ -1060,6 +1060,11 @@ impl fmt::Display for ExternalCommand {
 /// An RPC sent by a cluster leader to replicate log entries (§5.3), and as a heartbeat (§5.2).
 #[derive(Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
+#[cfg_attr(
+    feature = "rkyv",
+    derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize),
+    archive(check_bytes)
+)]
 pub struct AppendEntriesRequest<C: RaftTypeConfig> {
     pub vote: Vote<C::NodeId>,
 
@@ -1110,6 +1115,11 @@ impl<C: RaftTypeConfig> MessageSummary<AppendEntriesRequest<C>> for AppendEntrie
 #[derive(Debug)]
 #[derive(PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
+#[cfg_attr(
+    feature = "rkyv",
+    derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize),
+    archive(check_bytes)
+)]
 pub enum AppendEntriesResponse<NID: NodeId> {
     /// Successfully replicated all log entries to the target node.
     Success,
@@ -1168,6 +1178,11 @@ impl<NID: NodeId> fmt::Display for AppendEntriesResponse<NID> {
 /// An RPC sent by candidates to gather votes (§5.2).
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
+#[cfg_attr(
+    feature = "rkyv",
+    derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize),
+    archive(check_bytes)
+)]
 pub struct VoteRequest<NID: NodeId> {
     pub vote: Vote<NID>,
     pub last_log_id: Option<LogId<NID>>,
@@ -1194,6 +1209,11 @@ impl<NID: NodeId> VoteRequest<NID> {
 /// The response to a `VoteRequest`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
+#[cfg_attr(
+    feature = "rkyv",
+    derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize),
+    archive(check_bytes)
+)]
 pub struct VoteResponse<NID: NodeId> {
     /// vote after a node handling vote-request.
     /// Thus `resp.vote >= req.vote` always holds.
@@ -1221,6 +1241,11 @@ impl<NID: NodeId> MessageSummary<VoteResponse<NID>> for VoteResponse<NID> {
 #[derive(Clone, Debug)]
 #[derive(PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
+#[cfg_attr(
+    feature = "rkyv",
+    derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize),
+    archive(check_bytes)
+)]
 pub struct InstallSnapshotRequest<C: RaftTypeConfig> {
     pub vote: Vote<C::NodeId>,
 
@@ -1255,6 +1280,11 @@ impl<C: RaftTypeConfig> MessageSummary<InstallSnapshotRequest<C>> for InstallSna
 #[derive(derive_more::Display)]
 #[display(fmt = "{{vote:{}}}", vote)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
+#[cfg_attr(
+    feature = "rkyv",
+    derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize),
+    archive(check_bytes)
+)]
 pub struct InstallSnapshotResponse<NID: NodeId> {
     pub vote: Vote<NID>,
 }
@@ -1264,6 +1294,11 @@ pub struct InstallSnapshotResponse<NID: NodeId> {
     feature = "serde",
     derive(serde::Deserialize, serde::Serialize),
     serde(bound = "C::R: AppDataResponse")
+)]
+#[cfg_attr(
+    feature = "rkyv",
+    derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize),
+    archive(check_bytes)
 )]
 pub struct ClientWriteResponse<C: RaftTypeConfig> {
     /// The id of the log that is applied.
