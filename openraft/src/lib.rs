@@ -20,6 +20,8 @@
 //!
 //! - `serde`: Add serde::Serialize and serde:Deserialize bound to data types. If you'd like to use
 //!   `serde` to serialize messages.
+//!
+//! - `singlethreaded`: Prevent `Raft` instances from being shared among multiple threads.
 
 macro_rules! func_name {
     () => {{
@@ -83,6 +85,7 @@ mod try_as_ref;
 pub use anyerror;
 pub use anyerror::AnyError;
 pub use async_trait;
+pub use macros::add_async_trait;
 pub use network::RPCTypes;
 pub use network::RaftNetwork;
 pub use network::RaftNetworkFactory;
@@ -150,6 +153,30 @@ pub trait OptionalSerde {}
 #[cfg(not(feature = "serde"))]
 impl<T> OptionalSerde for T {}
 
+#[cfg(feature = "singlethreaded")]
+pub trait OptionalSend {}
+
+#[cfg(feature = "singlethreaded")]
+pub trait OptionalSync {}
+
+#[cfg(feature = "singlethreaded")]
+impl<T: ?Sized> OptionalSend for T {}
+
+#[cfg(feature = "singlethreaded")]
+impl<T: ?Sized> OptionalSync for T {}
+
+#[cfg(not(feature = "singlethreaded"))]
+pub trait OptionalSend: Send {}
+
+#[cfg(not(feature = "singlethreaded"))]
+pub trait OptionalSync: Sync {}
+
+#[cfg(not(feature = "singlethreaded"))]
+impl<T: Send + ?Sized> OptionalSend for T {}
+
+#[cfg(not(feature = "singlethreaded"))]
+impl<T: Sync + ?Sized> OptionalSync for T {}
+
 /// A trait defining application specific data.
 ///
 /// The intention of this trait is that applications which are using this crate will be able to
@@ -162,9 +189,9 @@ impl<T> OptionalSerde for T {}
 /// ## Note
 ///
 /// The trait is automatically implemented for all types which satisfy its supertraits.
-pub trait AppData: Send + Sync + 'static + OptionalSerde {}
+pub trait AppData: OptionalSend + Sync + 'static + OptionalSerde {}
 
-impl<T> AppData for T where T: Send + Sync + 'static + OptionalSerde {}
+impl<T> AppData for T where T: OptionalSend + Sync + 'static + OptionalSerde {}
 
 /// A trait defining application specific response data.
 ///
@@ -183,6 +210,6 @@ impl<T> AppData for T where T: Send + Sync + 'static + OptionalSerde {}
 /// ## Note
 ///
 /// The trait is automatically implemented for all types which satisfy its supertraits.
-pub trait AppDataResponse: Send + Sync + 'static + OptionalSerde {}
+pub trait AppDataResponse: OptionalSend + Sync + 'static + OptionalSerde {}
 
-impl<T> AppDataResponse for T where T: Send + Sync + 'static + OptionalSerde {}
+impl<T> AppDataResponse for T where T: OptionalSend + Sync + 'static + OptionalSerde {}

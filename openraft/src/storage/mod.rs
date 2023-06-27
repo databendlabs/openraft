@@ -12,9 +12,9 @@ use std::fmt::Debug;
 use std::ops::RangeBounds;
 
 #[cfg(not(feature = "storage-v2"))] pub use adapter::Adaptor;
-use async_trait::async_trait;
 pub use helper::StorageHelper;
 pub use log_store_ext::RaftLogReaderExt;
+use macros::add_async_trait;
 pub use snapshot_signature::SnapshotSignature;
 pub use v2::RaftLogStorage;
 pub use v2::RaftStateMachine;
@@ -27,6 +27,7 @@ pub use crate::storage::callback::LogFlushed;
 use crate::LogId;
 use crate::MessageSummary;
 use crate::NodeId;
+use crate::OptionalSend;
 use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::StoredMembership;
@@ -136,7 +137,7 @@ pub struct LogState<C: RaftTypeConfig> {
 /// Typically, the log reader implementation as such will be hidden behind an `Arc<T>` and
 /// this interface implemented on the `Arc<T>`. It can be co-implemented with [`RaftStorage`]
 /// interface on the same cloneable object, if the underlying state machine is anyway synchronized.
-#[async_trait]
+#[add_async_trait]
 pub trait RaftLogReader<C>: Send + Sync + 'static
 where C: RaftTypeConfig
 {
@@ -169,7 +170,7 @@ where C: RaftTypeConfig
 /// `Arc<T>` or `Box<T>` and this interface implemented on the reference type. It can be
 /// co-implemented with [`RaftStorage`] interface on the same cloneable object, if the underlying
 /// state machine is anyway synchronized.
-#[async_trait]
+#[add_async_trait]
 pub trait RaftSnapshotBuilder<C>: Send + Sync + 'static
 where C: RaftTypeConfig
 {
@@ -199,7 +200,7 @@ where C: RaftTypeConfig
 /// storage, except concurrency with snapshot builder and log reader, both created by this API.
 /// The implementation of the API has to cope with (infrequent) concurrent access from these two
 /// components.
-#[async_trait]
+#[add_async_trait]
 pub trait RaftStorage<C>: RaftLogReader<C> + Send + Sync + 'static
 where C: RaftTypeConfig
 {
@@ -236,7 +237,7 @@ where C: RaftTypeConfig
     /// - There must not be a **hole** in logs. Because Raft only examine the last log id to ensure
     ///   correctness.
     async fn append_to_log<I>(&mut self, entries: I) -> Result<(), StorageError<C::NodeId>>
-    where I: IntoIterator<Item = C::Entry> + Send;
+    where I: IntoIterator<Item = C::Entry> + OptionalSend;
 
     /// Delete conflict log entries since `log_id`, inclusive.
     ///

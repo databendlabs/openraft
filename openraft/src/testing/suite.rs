@@ -27,6 +27,7 @@ use crate::AsyncRuntime;
 use crate::LogId;
 use crate::Membership;
 use crate::NodeId;
+use crate::OptionalSend;
 use crate::RaftSnapshotBuilder;
 use crate::RaftTypeConfig;
 use crate::StorageError;
@@ -1120,7 +1121,7 @@ where
     LS: RaftLogStorage<C>,
     SM: RaftStateMachine<C>,
     B: StoreBuilder<C, LS, SM, G>,
-    Fu: Future<Output = Result<Ret, StorageError<C::NodeId>>> + Send,
+    Fu: Future<Output = Result<Ret, StorageError<C::NodeId>>> + OptionalSend,
     TestFn: Fn(LS, SM) -> Fu + Sync + Send,
 {
     let (_g, store, sm) = builder.build().await?;
@@ -1132,8 +1133,8 @@ async fn apply<C, SM, I>(sm: &mut SM, entries: I) -> Result<(), StorageError<C::
 where
     C: RaftTypeConfig,
     SM: RaftStateMachine<C>,
-    I: IntoIterator<Item = C::Entry> + Send,
-    I::IntoIter: Send,
+    I: IntoIterator<Item = C::Entry> + OptionalSend,
+    I::IntoIter: OptionalSend,
 {
     sm.apply(entries).await?;
     Ok(())

@@ -6,6 +6,7 @@ use crate::LogId;
 use crate::Membership;
 use crate::Node;
 use crate::NodeId;
+use crate::OptionalSend;
 use crate::OptionalSerde;
 
 /// Defines operations on an entry payload.
@@ -26,7 +27,7 @@ pub trait RaftEntry<NID, N>: RaftPayload<NID, N> + RaftLogId<NID>
 where
     N: Node,
     NID: NodeId,
-    Self: OptionalSerde + Debug + Display + Send + Sync,
+    Self: OptionalSerde + Debug + Display + OptionalSend + Sync,
 {
     /// Create a new blank log entry.
     ///

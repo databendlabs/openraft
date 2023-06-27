@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use async_trait::async_trait;
+use macros::add_async_trait;
 
 use crate::error::InstallSnapshotError;
 use crate::error::RPCError;
@@ -13,6 +13,7 @@ use crate::raft::InstallSnapshotRequest;
 use crate::raft::InstallSnapshotResponse;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
+use crate::OptionalSend;
 use crate::RaftTypeConfig;
 
 /// A trait defining the interface for a Raft network between cluster members.
@@ -34,8 +35,8 @@ use crate::RaftTypeConfig;
 ///   delegate to the old API.
 ///
 /// - Implementing the new APIs will disable the old APIs.
-#[async_trait]
-pub trait RaftNetwork<C>: Send + Sync + 'static
+#[add_async_trait]
+pub trait RaftNetwork<C>: OptionalSend + Sync + 'static
 where C: RaftTypeConfig
 {
     /// Send an AppendEntries RPC to the target.

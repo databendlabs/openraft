@@ -1,4 +1,4 @@
-use async_trait::async_trait;
+use macros::add_async_trait;
 
 use crate::network::RaftNetwork;
 use crate::RaftTypeConfig;
@@ -11,7 +11,7 @@ use crate::RaftTypeConfig;
 ///
 /// Typically, the network implementation as such will be hidden behind a `Box<T>` or `Arc<T>` and
 /// this interface implemented on the `Box<T>` or `Arc<T>`.
-#[async_trait]
+#[add_async_trait]
 pub trait RaftNetworkFactory<C>: Send + Sync + 'static
 where C: RaftTypeConfig
 {

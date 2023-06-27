@@ -2,11 +2,12 @@
 //! [`RaftStorage`](`crate::storage::RaftStorage`). [`RaftLogStorage`] is responsible for storing
 //! logs, and [`RaftStateMachine`] is responsible for storing state machine and snapshot.
 
-use async_trait::async_trait;
+use macros::add_async_trait;
 
 use crate::storage::callback::LogFlushed;
 use crate::storage::v2::sealed::Sealed;
 use crate::LogId;
+use crate::OptionalSend;
 use crate::RaftLogReader;
 use crate::RaftSnapshotBuilder;
 use crate::RaftTypeConfig;
@@ -40,7 +41,7 @@ pub(crate) mod sealed {
 /// - All write-IO must be serialized, i.e., the internal implementation must **NOT** apply a latter
 ///   write request before a former write request is completed. This rule applies to both `vote` and
 ///   `log` IO. E.g., Saving a vote and appending a log entry must be serialized too.
-#[async_trait]
+#[add_async_trait]
 pub trait RaftLogStorage<C>: Sealed + RaftLogReader<C> + Send + Sync + 'static
 where C: RaftTypeConfig
 {
@@ -86,8 +87,8 @@ where C: RaftTypeConfig
     ///   correctness.
     async fn append<I>(&mut self, entries: I, callback: LogFlushed<C::NodeId>) -> Result<(), StorageError<C::NodeId>>
     where
-        I: IntoIterator<Item = C::Entry> + Send,
-        I::IntoIter: Send;
+        I: IntoIterator<Item = C::Entry> + OptionalSend,
+        I::IntoIter: OptionalSend;
 
     /// Truncate logs since `log_id`, inclusive
     ///
@@ -108,7 +109,7 @@ where C: RaftTypeConfig
 ///
 /// Snapshot is part of the state machine, because usually a snapshot is the persisted state of the
 /// state machine.
-#[async_trait]
+#[add_async_trait]
 pub trait RaftStateMachine<C>: Sealed + Send + Sync + 'static
 where C: RaftTypeConfig
 {
@@ -158,8 +159,8 @@ where C: RaftTypeConfig
     ///   application, the state machine should be rebuilt from the last snapshot.
     async fn apply<I>(&mut self, entries: I) -> Result<Vec<C::R>, StorageError<C::NodeId>>
     where
-        I: IntoIterator<Item = C::Entry> + Send,
-        I::IntoIter: Send;
+        I: IntoIterator<Item = C::Entry> + OptionalSend,
+        I::IntoIter: OptionalSend;
 
     /// Get the snapshot builder for the state machine.
     ///

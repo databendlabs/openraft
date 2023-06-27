@@ -4,7 +4,7 @@ use std::ops::DerefMut;
 use std::ops::RangeBounds;
 use std::sync::Arc;
 
-use async_trait::async_trait;
+use macros::add_async_trait;
 use tokio::sync::RwLock;
 use tokio::sync::RwLockReadGuard;
 use tokio::sync::RwLockWriteGuard;
@@ -15,6 +15,7 @@ use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
 use crate::LogId;
 use crate::LogState;
+use crate::OptionalSend;
 use crate::RaftLogReader;
 use crate::RaftStorage;
 use crate::RaftTypeConfig;
@@ -96,7 +97,7 @@ where
     }
 }
 
-#[async_trait]
+#[add_async_trait]
 impl<C, S> RaftLogReader<C> for Adaptor<C, S>
 where
     C: RaftTypeConfig,
@@ -121,7 +122,7 @@ where
 {
 }
 
-#[async_trait]
+#[add_async_trait]
 impl<C, S> RaftLogStorage<C> for Adaptor<C, S>
 where
     C: RaftTypeConfig,
@@ -142,7 +143,7 @@ where
     }
 
     async fn append<I>(&mut self, entries: I, callback: LogFlushed<C::NodeId>) -> Result<(), StorageError<C::NodeId>>
-    where I: IntoIterator<Item = C::Entry> + Send {
+    where I: IntoIterator<Item = C::Entry> + OptionalSend {
         // Default implementation that calls the flush-before-return `append_to_log`.
 
         S::append_to_log(self.storage_mut().await.deref_mut(), entries).await?;
@@ -160,7 +161,7 @@ where
     }
 }
 
-#[async_trait]
+#[add_async_trait]
 impl<C, S> RaftStateMachine<C> for Adaptor<C, S>
 where
     C: RaftTypeConfig,
@@ -175,7 +176,7 @@ where
     }
 
     async fn apply<I>(&mut self, entries: I) -> Result<Vec<C::R>, StorageError<C::NodeId>>
-    where I: IntoIterator<Item = C::Entry> + Send {
+    where I: IntoIterator<Item = C::Entry> + OptionalSend {
         let entries = entries.into_iter().collect::<Vec<_>>();
         S::apply_to_state_machine(self.storage_mut().await.deref_mut(), &entries).await
     }

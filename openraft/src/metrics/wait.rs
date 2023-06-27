@@ -13,6 +13,7 @@ use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::MessageSummary;
 use crate::NodeId;
+use crate::OptionalSend;
 use crate::Vote;
 
 // Error variants related to metrics.
@@ -47,7 +48,7 @@ where
     /// Wait for metrics to satisfy some condition or timeout.
     #[tracing::instrument(level = "trace", skip(self, func), fields(msg=%msg.to_string()))]
     pub async fn metrics<T>(&self, func: T, msg: impl ToString) -> Result<RaftMetrics<NID, N>, WaitError>
-    where T: Fn(&RaftMetrics<NID, N>) -> bool + Send {
+    where T: Fn(&RaftMetrics<NID, N>) -> bool + OptionalSend {
         let timeout_at = A::Instant::now() + self.timeout;
 
         let mut rx = self.rx.clone();

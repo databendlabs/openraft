@@ -15,7 +15,7 @@ jobs:
       matrix:
         include:
           - toolchain: "nightly"
-            features: "bench,serde,bt"
+            features: "bench,serde,bt,singlethreaded"
 
     steps:
       - name: Setup | Checkout
@@ -271,7 +271,7 @@ jobs:
             features: "single-term-leader"
 
           - toolchain: "nightly"
-            features: "single-term-leader,serde"
+            features: "single-term-leader,serde,singlethreaded"
 
 
     steps:

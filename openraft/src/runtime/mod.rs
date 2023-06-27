@@ -1,3 +1,5 @@
+use macros::add_async_trait;
+
 use crate::engine::Command;
 use crate::RaftTypeConfig;
 use crate::StorageError;
@@ -55,7 +57,7 @@ use crate::StorageError;
 /// ```
 ///
 /// TODO: add this diagram to guides/
-#[async_trait::async_trait]
+#[add_async_trait]
 pub(crate) trait RaftRuntime<C: RaftTypeConfig> {
     /// Run a command produced by the engine.
     ///

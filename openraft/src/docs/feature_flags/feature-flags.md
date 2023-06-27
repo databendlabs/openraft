@@ -24,3 +24,7 @@ By default openraft enables no features.
   This feature disables `Adapter`, which is for v1 storage to be used as v2.
   V2 storage separates log store and state machine store so that log IO and state machine IO can be parallelized naturally. 
   
+- `singlethreaded`: removes `Send` bounds from `AppData`, `AppDataResponse`, `RaftEntry`, and `SnapshotData` to force the
+  asynchronous runtime to spawn any tasks in the current thread.
+  This is for any single-threaded application that never allows a raft instance to be shared among multiple threads.
+  In order to use the feature, `AsyncRuntime::spawn` should invoke `tokio::task::spawn_local` or equivalents.

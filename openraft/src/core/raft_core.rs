@@ -12,6 +12,7 @@ use anyerror::AnyError;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use futures::TryFutureExt;
+use macros::add_async_trait;
 use maplit::btreeset;
 use tokio::select;
 use tokio::sync::mpsc;
@@ -90,6 +91,7 @@ use crate::Membership;
 use crate::MessageSummary;
 use crate::Node;
 use crate::NodeId;
+use crate::OptionalSend;
 use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::StorageIOError;
@@ -644,8 +646,8 @@ where
         last_log_id: LogId<C::NodeId>,
     ) -> Result<(), StorageError<C::NodeId>>
     where
-        I: IntoIterator<Item = C::Entry> + Send,
-        I::IntoIter: Send,
+        I: IntoIterator<Item = C::Entry> + OptionalSend,
+        I::IntoIter: OptionalSend,
     {
         tracing::debug!("append_to_log");
 
@@ -1470,7 +1472,7 @@ where
     }
 }
 
-#[async_trait::async_trait]
+#[add_async_trait]
 impl<C, N, LS, SM> RaftRuntime<C> for RaftCore<C, N, LS, SM>
 where
     C: RaftTypeConfig,
