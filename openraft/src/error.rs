@@ -28,6 +28,12 @@ use crate::Vote;
     derive(serde::Deserialize, serde::Serialize),
     serde(bound = "E:serde::Serialize + for <'d> serde::Deserialize<'d>")
 )]
+#[cfg_attr(
+    feature = "rkyv",
+    derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize),
+    archive(check_bytes)
+)]
+
 pub enum RaftError<NID, E = Infallible>
 where NID: NodeId
 {
@@ -469,6 +475,35 @@ pub struct EmptyMembership {}
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[error("infallible")]
 pub enum Infallible {}
+
+#[cfg(feature = "rkyv")]
+mod rkyv_serialization {
+    //! Manual implementations for the required `rkyv` traits since it is not
+    //! possible to derive them on an enum with no variant. All implementations
+    //! use `unreachable` since `Infallible` cannot be constructed.
+
+    impl rkyv::Archive for super::Infallible {
+        type Archived = ();
+        type Resolver = ();
+
+        #[inline]
+        unsafe fn resolve(&self, _: usize, _: Self::Resolver, _: *mut Self::Archived) {
+            unreachable!()
+        }
+    }
+
+    impl<S: rkyv::Fallible + ?Sized> rkyv::Serialize<S> for super::Infallible {
+        fn serialize(&self, _: &mut S) -> Result<Self::Resolver, S::Error> {
+            unreachable!()
+        }
+    }
+
+    impl<D: rkyv::Fallible + ?Sized> rkyv::Deserialize<super::Infallible, D> for u16 {
+        fn deserialize(&self, _: &mut D) -> Result<super::Infallible, D::Error> {
+            unreachable!()
+        }
+    }
+}
 
 /// A place holder to mark RaftError won't have a ForwardToLeader variant.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]

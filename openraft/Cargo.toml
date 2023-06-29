@@ -26,6 +26,7 @@ pin-utils       = { workspace = true }
 rand            = { workspace = true }
 serde           = { workspace = true, optional = true }
 serde_json      = { workspace = true, optional = true }
+rkyv            = { workspace = true, optional = true }
 clap            = { workspace = true }
 tempfile        = { workspace = true, optional = true }
 thiserror       = { workspace = true }
@@ -58,6 +59,10 @@ bt  = ["anyerror/backtrace", "anyhow/backtrace"]
 # Add serde::Serialize and serde:Deserialize bound to data types.
 # If you'd like to use `serde` to serialize messages.
 serde = ["dep:serde"]
+
+# Add rkyv::Archive, rkyv:Deserialize and rkyv::Serialize derives and archive(check_bytes) to data types.
+# If you'd like to use `rkyv` to serialize messages.
+rkyv = ["dep:rkyv"]
 
 # Turn on this feature it allows at most ONE quorum-granted leader for each term.
 # This is the way standard raft does, by making the LeaderId a partial order value.

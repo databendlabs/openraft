@@ -17,6 +17,11 @@ pub use traits::RaftPayload;
 
 /// A Raft log entry.
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
+#[cfg_attr(
+    feature = "rkyv",
+    derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize),
+    archive(check_bytes)
+)]
 pub struct Entry<C>
 where C: RaftTypeConfig
 {

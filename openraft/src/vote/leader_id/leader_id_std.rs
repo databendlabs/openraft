@@ -6,6 +6,11 @@ use crate::NodeId;
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
+#[cfg_attr(
+    feature = "rkyv",
+    derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize),
+    archive(check_bytes)
+)]
 pub struct LeaderId<NID>
 where NID: NodeId
 {
@@ -76,6 +81,11 @@ impl<NID: NodeId> std::fmt::Display for LeaderId<NID> {
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 #[derive(PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
+#[cfg_attr(
+    feature = "rkyv",
+    derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize),
+    archive(check_bytes)
+)]
 #[cfg_attr(feature = "serde", serde(transparent))]
 pub struct CommittedLeaderId<NID> {
     pub term: u64,
