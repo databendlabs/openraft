@@ -167,6 +167,12 @@ impl MemStore {
         self.sm.write().await.clone()
     }
 
+    /// Clear the state machine for testing purposes.
+    pub async fn clear_state_machine(&self) {
+        let mut sm = self.sm.write().await;
+        *sm = MemStoreStateMachine::default();
+    }
+
     /// Block an operation for testing purposes.
     pub fn set_blocking(&self, block: BlockOperation, d: Duration) {
         self.block.lock().unwrap().insert(block, d);

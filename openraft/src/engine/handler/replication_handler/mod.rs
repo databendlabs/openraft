@@ -195,6 +195,14 @@ where C: RaftTypeConfig
     /// accepted.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn update_matching(&mut self, node_id: C::NodeId, inflight_id: u64, log_id: Option<LogId<C::NodeId>>) {
+        tracing::debug!(
+            node_id = display(node_id),
+            inflight_id = display(inflight_id),
+            log_id = display(log_id.display()),
+            "{}",
+            func_name!()
+        );
+
         debug_assert!(log_id.is_some(), "a valid update can never set matching to None");
 
         // The value granted by a quorum may not yet be a committed.
@@ -443,6 +451,8 @@ where C: RaftTypeConfig
     /// Writing to local log store does not have to wait for a replication response from remote
     /// node. Thus it can just be done in a fast-path.
     pub(crate) fn update_local_progress(&mut self, upto: Option<LogId<C::NodeId>>) {
+        tracing::debug!(upto = display(upto.display()), "{}", func_name!());
+
         if upto.is_none() {
             return;
         }
@@ -451,6 +461,11 @@ where C: RaftTypeConfig
 
         // The leader may not be in membership anymore
         if let Some(prog_entry) = self.leader.progress.get_mut(&id) {
+            tracing::debug!(
+                self_matching = display(prog_entry.matching.display()),
+                "update progress"
+            );
+
             if prog_entry.matching >= upto {
                 return;
             }

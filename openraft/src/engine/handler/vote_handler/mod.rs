@@ -11,7 +11,6 @@ use crate::engine::ValueSender;
 use crate::error::RejectVoteRequest;
 use crate::internal_server_state::InternalServerState;
 use crate::leader::Leading;
-use crate::progress::Progress;
 use crate::raft::ResultSender;
 use crate::raft_state::LogStateReader;
 use crate::utime::UTime;
@@ -143,18 +142,12 @@ where C: RaftTypeConfig
         // Re-create a new Leader instance.
 
         let em = &self.state.membership_state.effective();
-        let mut leader = Leading::new(
+        let leader = Leading::new(
             *self.state.vote_ref(),
             em.membership().to_quorum_set(),
             em.learner_ids(),
             self.state.last_log_id().copied(),
         );
-
-        // TODO: the progress should be initialized when the leader is elected.
-        // TODO: we do not need to update the progress until the first blank log is appended.
-        // We can just ignore the result here:
-        // The `committed` will not be updated until a log of current term is granted by a quorum
-        let _ = leader.progress.update_with(&self.config.id, |v| v.matching = self.state.last_log_id().copied());
 
         // Do not update clock_progress, until the first blank log is committed.
 

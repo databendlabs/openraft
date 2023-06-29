@@ -1,0 +1,30 @@
+#!/usr/bin/env mprocs --config
+
+
+# run local check in parallel with mprocs
+#
+# Usage:
+#   mprocs --config ./scripts/check.yaml
+#
+# Install:
+#   cargo install mprocs
+#
+# See: https://github.com/pvolok/mprocs
+
+
+procs:
+  test-lib:
+    cmd: ["cargo", "test", "--lib"]
+  it:
+    cmd: ["cargo", "test", "--test", "*"]
+  clippy:
+    cmd: ["cargo", "clippy", "--no-deps", "--all-targets", "--", "-D", "warnings"]
+
+  # # keeps examples:
+  # xx:
+  #   shell: "nodemon server.js"
+  # webpack: "webpack serve"
+  # tests:
+  #   shell: "jest -w"
+  #   env:
+  #     NODE_ENV: test
