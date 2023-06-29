@@ -113,6 +113,10 @@ where C: RaftTypeConfig
 
             let mut rh = self.replication_handler();
             rh.rebuild_replication_streams();
+
+            // Restore the progress about the local log
+            rh.update_local_progress(rh.state.last_log_id().copied());
+
             rh.initiate_replication(SendNone::False);
 
             return;

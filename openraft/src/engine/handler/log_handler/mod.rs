@@ -12,7 +12,7 @@ use crate::RaftTypeConfig;
 #[cfg(test)] mod calc_purge_upto_test;
 #[cfg(test)] mod purge_log_test;
 
-/// Handle raft vote related operations
+/// Handle raft-log related operations
 pub(crate) struct LogHandler<'x, C>
 where C: RaftTypeConfig
 {
