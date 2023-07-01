@@ -8,6 +8,7 @@ pub(crate) mod balancer;
 pub(crate) mod command_state;
 pub(crate) mod notify;
 mod raft_core;
+pub(crate) mod raft_msg;
 mod replication_state;
 mod server_state;
 pub(crate) mod sm;

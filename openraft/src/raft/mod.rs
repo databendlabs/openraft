@@ -3,8 +3,6 @@
 mod message;
 mod raft_inner;
 
-use std::collections::BTreeMap;
-use std::fmt;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::sync::atomic::Ordering;
@@ -33,6 +31,8 @@ use tracing::Level;
 use crate::config::Config;
 use crate::config::RuntimeConfig;
 use crate::core::command_state::CommandState;
+use crate::core::raft_msg::external_command::ExternalCommand;
+use crate::core::raft_msg::RaftMsg;
 use crate::core::replication_lag;
 use crate::core::sm;
 use crate::core::RaftCore;
@@ -44,7 +44,6 @@ use crate::entry::RaftEntry;
 use crate::error::CheckIsLeaderError;
 use crate::error::ClientWriteError;
 use crate::error::Fatal;
-use crate::error::Infallible;
 use crate::error::InitializeError;
 use crate::error::InstallSnapshotError;
 use crate::error::RaftError;
@@ -817,156 +816,5 @@ where
         // TODO(xp): API change: replace `JoinError` with `Fatal`,
         //           to let the caller know the return value of RaftCore task.
         Ok(())
-    }
-}
-
-pub(crate) type ResultSender<T, E> = oneshot::Sender<Result<T, E>>;
-
-/// TX for Install Snapshot Response
-pub(crate) type InstallSnapshotTx<NID> = ResultSender<InstallSnapshotResponse<NID>, InstallSnapshotError>;
-
-/// TX for Vote Response
-pub(crate) type VoteTx<NID> = ResultSender<VoteResponse<NID>, Infallible>;
-
-/// TX for Append Entries Response
-pub(crate) type AppendEntriesTx<NID> = ResultSender<AppendEntriesResponse<NID>, Infallible>;
-
-/// TX for Client Write Response
-pub(crate) type ClientWriteTx<C> =
-    ResultSender<ClientWriteResponse<C>, ClientWriteError<<C as RaftTypeConfig>::NodeId, <C as RaftTypeConfig>::Node>>;
-
-/// A message coming from the Raft API.
-pub(crate) enum RaftMsg<C, N, LS>
-where
-    C: RaftTypeConfig,
-    N: RaftNetworkFactory<C>,
-    LS: RaftLogStorage<C>,
-{
-    AppendEntries {
-        rpc: AppendEntriesRequest<C>,
-        tx: AppendEntriesTx<C::NodeId>,
-    },
-
-    RequestVote {
-        rpc: VoteRequest<C::NodeId>,
-        tx: VoteTx<C::NodeId>,
-    },
-
-    InstallSnapshot {
-        rpc: InstallSnapshotRequest<C>,
-        tx: InstallSnapshotTx<C::NodeId>,
-    },
-
-    ClientWriteRequest {
-        app_data: C::D,
-        tx: ClientWriteTx<C>,
-    },
-
-    CheckIsLeaderRequest {
-        tx: ResultSender<(), CheckIsLeaderError<C::NodeId, C::Node>>,
-    },
-
-    Initialize {
-        members: BTreeMap<C::NodeId, C::Node>,
-        tx: ResultSender<(), InitializeError<C::NodeId, C::Node>>,
-    },
-
-    ChangeMembership {
-        changes: ChangeMembers<C::NodeId, C::Node>,
-
-        /// If `retain` is `true`, then the voters that are not in the new
-        /// config will be converted into learners, otherwise they will be removed.
-        retain: bool,
-
-        tx: ResultSender<ClientWriteResponse<C>, ClientWriteError<C::NodeId, C::Node>>,
-    },
-
-    ExternalRequest {
-        #[allow(clippy::type_complexity)]
-        req: Box<
-            dyn FnOnce(&RaftState<C::NodeId, C::Node, <C::AsyncRuntime as AsyncRuntime>::Instant>, &mut LS, &mut N)
-                + Send
-                + 'static,
-        >,
-    },
-
-    ExternalCommand {
-        cmd: ExternalCommand,
-    },
-}
-
-impl<C, N, LS> MessageSummary<RaftMsg<C, N, LS>> for RaftMsg<C, N, LS>
-where
-    C: RaftTypeConfig,
-    N: RaftNetworkFactory<C>,
-    LS: RaftLogStorage<C>,
-{
-    fn summary(&self) -> String {
-        match self {
-            RaftMsg::AppendEntries { rpc, .. } => {
-                format!("AppendEntries: {}", rpc.summary())
-            }
-            RaftMsg::RequestVote { rpc, .. } => {
-                format!("RequestVote: {}", rpc.summary())
-            }
-            RaftMsg::InstallSnapshot { rpc, .. } => {
-                format!("InstallSnapshot: {}", rpc.summary())
-            }
-            RaftMsg::ClientWriteRequest { .. } => "ClientWriteRequest".to_string(),
-            RaftMsg::CheckIsLeaderRequest { .. } => "CheckIsLeaderRequest".to_string(),
-            RaftMsg::Initialize { members, .. } => {
-                format!("Initialize: {:?}", members)
-            }
-            RaftMsg::ChangeMembership {
-                changes: members,
-                retain,
-                ..
-            } => {
-                format!("ChangeMembership: members: {:?}, retain: {}", members, retain,)
-            }
-            RaftMsg::ExternalRequest { .. } => "External Request".to_string(),
-            RaftMsg::ExternalCommand { cmd } => {
-                format!("ExternalCommand: {:?}", cmd)
-            }
-        }
-    }
-}
-
-/// Commands send by user
-#[derive(Debug, Clone)]
-pub(crate) enum ExternalCommand {
-    /// Trigger an election at once.
-    Elect,
-
-    /// Emit a heartbeat message, only if the node is leader.
-    Heartbeat,
-
-    /// Trigger to build a snapshot on this node.
-    Snapshot,
-
-    /// Purge logs that are already in a snapshot.
-    ///
-    /// Openraft will respect the [`max_in_snapshot_log_to_keep`] when purging.
-    ///
-    /// [`max_in_snapshot_log_to_keep`]: `crate::Config::max_in_snapshot_log_to_keep`
-    PurgeLog { upto: u64 },
-}
-
-impl fmt::Display for ExternalCommand {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ExternalCommand::Elect => {
-                write!(f, "{:?}", self)
-            }
-            ExternalCommand::Heartbeat => {
-                write!(f, "{:?}", self)
-            }
-            ExternalCommand::Snapshot => {
-                write!(f, "{:?}", self)
-            }
-            ExternalCommand::PurgeLog { upto } => {
-                write!(f, "PurgeLog[..={}]", upto)
-            }
-        }
     }
 }

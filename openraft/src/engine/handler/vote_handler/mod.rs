@@ -1,5 +1,6 @@
 use std::fmt::Debug;
 
+use crate::core::raft_msg::ResultSender;
 use crate::engine::handler::server_state_handler::ServerStateHandler;
 use crate::engine::Command;
 use crate::engine::EngineConfig;
@@ -9,7 +10,6 @@ use crate::engine::ValueSender;
 use crate::error::RejectVoteRequest;
 use crate::internal_server_state::InternalServerState;
 use crate::leader::Leading;
-use crate::raft::ResultSender;
 use crate::raft_state::LogStateReader;
 use crate::utime::UTime;
 use crate::AsyncRuntime;

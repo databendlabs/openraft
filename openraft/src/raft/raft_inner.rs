@@ -7,11 +7,11 @@ use tokio::sync::watch;
 use tokio::sync::Mutex;
 
 use crate::config::RuntimeConfig;
+use crate::core::raft_msg::external_command::ExternalCommand;
+use crate::core::raft_msg::RaftMsg;
 use crate::core::TickHandle;
 use crate::error::Fatal;
 use crate::raft::CoreState;
-use crate::raft::ExternalCommand;
-use crate::raft::RaftMsg;
 use crate::storage::RaftLogStorage;
 use crate::AsyncRuntime;
 use crate::Config;
