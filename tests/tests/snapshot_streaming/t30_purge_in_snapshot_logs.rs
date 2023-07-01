@@ -40,7 +40,7 @@ async fn purge_in_snapshot_logs() -> Result<()> {
     tracing::info!(log_index, "--- build snapshot on leader, check purged log");
     {
         log_index += router.client_request_many(0, "0", 10).await?;
-        leader.trigger_snapshot().await?;
+        leader.trigger().snapshot().await?;
         leader
             .wait(timeout())
             .snapshot(
@@ -66,7 +66,7 @@ async fn purge_in_snapshot_logs() -> Result<()> {
         log_index += router.client_request_many(0, "0", 5).await?;
         router.wait(&0, timeout()).log(Some(log_index), "write another 5 logs").await?;
 
-        leader.trigger_snapshot().await?;
+        leader.trigger().snapshot().await?;
         leader
             .wait(timeout())
             .snapshot(

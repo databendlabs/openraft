@@ -47,7 +47,7 @@ async fn building_snapshot_does_not_block_apply() -> Result<()> {
         log_index += router.client_request_many(0, "0", 10).await?;
         router.wait(&1, timeout()).log(Some(log_index), "written 10 logs").await?;
 
-        follower.trigger_snapshot().await?;
+        follower.trigger().snapshot().await?;
 
         tracing::info!(log_index, "--- sleep 500 ms to make sure snapshot is started");
         tokio::time::sleep(Duration::from_millis(500)).await;

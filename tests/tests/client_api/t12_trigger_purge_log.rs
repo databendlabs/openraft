@@ -41,7 +41,7 @@ async fn trigger_purge_log() -> anyhow::Result<()> {
     tracing::info!(log_index, "--- trigger snapshot for node-0");
     {
         let n0 = router.get_raft_handle(&0)?;
-        n0.trigger_snapshot().await?;
+        n0.trigger().snapshot().await?;
 
         router.wait(&0, timeout()).snapshot(log_id(1, 0, log_index), "node-1 snapshot").await?;
     }
@@ -60,7 +60,7 @@ async fn trigger_purge_log() -> anyhow::Result<()> {
     tracing::info!(log_index, "--- purge log for node 0");
     {
         let n0 = router.get_raft_handle(&0)?;
-        n0.purge_log(snapshot_index).await?;
+        n0.trigger().purge_log(snapshot_index).await?;
 
         router
             .wait(&0, timeout())
@@ -70,7 +70,7 @@ async fn trigger_purge_log() -> anyhow::Result<()> {
             )
             .await?;
 
-        n0.purge_log(log_index).await?;
+        n0.trigger().purge_log(log_index).await?;
         let res = router
             .wait(&0, timeout())
             .purged(

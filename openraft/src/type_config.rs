@@ -38,6 +38,7 @@ use crate::OptionalSend;
 ///        AsyncRuntime = openraft::TokioRuntime,
 /// );
 /// ```
+/// [`Raft`]: crate::Raft
 pub trait RaftTypeConfig:
     Sized + Send + Sync + Debug + Clone + Copy + Default + Eq + PartialEq + Ord + PartialOrd + 'static
 {

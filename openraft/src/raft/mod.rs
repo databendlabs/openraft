@@ -2,6 +2,7 @@
 
 mod message;
 mod raft_inner;
+mod trigger;
 
 pub(in crate::raft) mod core_state;
 
@@ -31,7 +32,6 @@ use tracing::Level;
 use crate::config::Config;
 use crate::config::RuntimeConfig;
 use crate::core::command_state::CommandState;
-use crate::core::raft_msg::external_command::ExternalCommand;
 use crate::core::raft_msg::RaftMsg;
 use crate::core::replication_lag;
 use crate::core::sm;
@@ -50,6 +50,7 @@ use crate::metrics::RaftMetrics;
 use crate::metrics::Wait;
 use crate::network::RaftNetworkFactory;
 use crate::raft::raft_inner::RaftInner;
+use crate::raft::trigger::Trigger;
 use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
 use crate::AsyncRuntime;
@@ -58,7 +59,7 @@ use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::MessageSummary;
 use crate::RaftState;
-use crate::RaftTypeConfig;
+pub use crate::RaftTypeConfig;
 use crate::StorageHelper;
 
 /// Define types for a Raft type configuration.
@@ -277,46 +278,39 @@ where
         self.inner.runtime_config.enable_elect.store(enabled, Ordering::Relaxed);
     }
 
-    /// Trigger election at once and return at once.
+    /// Return a handle to manually trigger raft actions, such as elect or build snapshot.
     ///
-    /// Returns error when RaftCore has [`Fatal`] error, e.g. shut down or having storage error.
-    /// It is not affected by `Raft::enable_elect(false)`.
+    /// Example:
+    /// ```ignore
+    /// let raft = Raft::new(...).await?;
+    /// raft.trigger().elect().await?;
+    /// ```
+    pub fn trigger(&self) -> Trigger<C, N, LS> {
+        Trigger::new(self.inner.as_ref())
+    }
+
+    /// Trigger election at once and return at once.
+    #[deprecated(note = "use `Raft::trigger().elect()` instead")]
     pub async fn trigger_elect(&self) -> Result<(), Fatal<C::NodeId>> {
-        self.inner.send_external_command(ExternalCommand::Elect, "trigger_elect").await
+        self.trigger().elect().await
     }
 
     /// Trigger a heartbeat at once and return at once.
-    ///
-    /// Returns error when RaftCore has [`Fatal`] error, e.g. shut down or having storage error.
-    /// It is not affected by `Raft::enable_heartbeat(false)`.
+    #[deprecated(note = "use `Raft::trigger().heartbeat()` instead")]
     pub async fn trigger_heartbeat(&self) -> Result<(), Fatal<C::NodeId>> {
-        self.inner.send_external_command(ExternalCommand::Heartbeat, "trigger_heartbeat").await
+        self.trigger().heartbeat().await
     }
 
     /// Trigger to build a snapshot at once and return at once.
-    ///
-    /// Returns error when RaftCore has [`Fatal`] error, e.g. shut down or having storage error.
+    #[deprecated(note = "use `Raft::trigger().snapshot()` instead")]
     pub async fn trigger_snapshot(&self) -> Result<(), Fatal<C::NodeId>> {
-        self.inner.send_external_command(ExternalCommand::Snapshot, "trigger_snapshot").await
+        self.trigger().snapshot().await
     }
 
     /// Initiate the log purge up to and including the given `upto` log index.
-    ///
-    /// Logs that are not included in a snapshot will **NOT** be purged.
-    /// In such scenario it will delete as many log as possible.
-    /// The [`max_in_snapshot_log_to_keep`] config is not taken into account
-    /// when purging logs.
-    ///
-    /// It returns error only when RaftCore has [`Fatal`] error, e.g. shut down or having storage
-    /// error.
-    ///
-    /// Openraft won't purge logs at once, e.g. it may be delayed by several seconds, because if it
-    /// is a leader and a replication task has been replicating the logs to a follower, the logs
-    /// can't be purged until the replication task is finished.
-    ///
-    /// [`max_in_snapshot_log_to_keep`]: `crate::Config::max_in_snapshot_log_to_keep`
+    #[deprecated(note = "use `Raft::trigger().purge_log()` instead")]
     pub async fn purge_log(&self, upto: u64) -> Result<(), Fatal<C::NodeId>> {
-        self.inner.send_external_command(ExternalCommand::PurgeLog { upto }, "purge_log").await
+        self.trigger().purge_log(upto).await
     }
 
     /// Submit an AppendEntries RPC to this Raft node.

@@ -35,7 +35,7 @@ async fn metrics_purged() -> Result<()> {
     tracing::info!(log_index, "--- trigger snapshot");
     {
         let n0 = router.get_raft_handle(&0)?;
-        n0.trigger_snapshot().await?;
+        n0.trigger().snapshot().await?;
         n0.wait(timeout()).snapshot(log_id(1, 0, log_index), "build snapshot").await?;
 
         tracing::info!(log_index, "--- metrics reports purged log id");
