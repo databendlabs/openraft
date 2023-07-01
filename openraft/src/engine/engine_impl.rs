@@ -1,5 +1,8 @@
 use std::time::Duration;
 
+use crate::core::raft_msg::AppendEntriesTx;
+use crate::core::raft_msg::InstallSnapshotTx;
+use crate::core::raft_msg::ResultSender;
 use crate::core::ServerState;
 use crate::display_ext::DisplayOptionExt;
 use crate::display_ext::DisplaySlice;
@@ -26,11 +29,8 @@ use crate::error::RejectAppendEntries;
 use crate::internal_server_state::InternalServerState;
 use crate::membership::EffectiveMembership;
 use crate::raft::AppendEntriesResponse;
-use crate::raft::AppendEntriesTx;
 use crate::raft::InstallSnapshotRequest;
 use crate::raft::InstallSnapshotResponse;
-use crate::raft::InstallSnapshotTx;
-use crate::raft::ResultSender;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::raft_state::LogStateReader;
