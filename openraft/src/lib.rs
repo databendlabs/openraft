@@ -65,6 +65,7 @@ pub mod raft;
 pub mod storage;
 pub mod testing;
 pub mod timer;
+pub mod type_config;
 
 pub(crate) mod engine;
 pub(crate) mod log_id_range;
@@ -89,6 +90,7 @@ pub use macros::add_async_trait;
 pub use network::RPCTypes;
 pub use network::RaftNetwork;
 pub use network::RaftNetworkFactory;
+pub use type_config::RaftTypeConfig;
 
 pub use crate::async_runtime::AsyncRuntime;
 pub use crate::async_runtime::TokioRuntime;
@@ -114,7 +116,6 @@ pub use crate::node::EmptyNode;
 pub use crate::node::Node;
 pub use crate::node::NodeId;
 pub use crate::raft::Raft;
-pub use crate::raft::RaftTypeConfig;
 pub use crate::raft_state::MembershipState;
 pub use crate::raft_state::RaftState;
 pub use crate::raft_types::SnapshotId;

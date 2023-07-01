@@ -46,7 +46,7 @@ async fn replication_does_not_block_purge() -> Result<()> {
     {
         log_index += router.client_request_many(0, "0", 10).await?;
 
-        leader.trigger_snapshot().await?;
+        leader.trigger().snapshot().await?;
         leader
             .wait(timeout())
             .snapshot(LogId::new(CommittedLeaderId::new(1, 0), log_index), "built snapshot")

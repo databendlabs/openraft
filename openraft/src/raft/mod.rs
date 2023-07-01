@@ -2,6 +2,9 @@
 
 mod message;
 mod raft_inner;
+mod trigger;
+
+pub(in crate::raft) mod core_state;
 
 use std::fmt::Debug;
 use std::marker::PhantomData;
@@ -9,6 +12,7 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
 
+use core_state::CoreState;
 use maplit::btreemap;
 pub use message::AppendEntriesRequest;
 pub use message::AppendEntriesResponse;
@@ -17,9 +21,6 @@ pub use message::InstallSnapshotRequest;
 pub use message::InstallSnapshotResponse;
 pub use message::VoteRequest;
 pub use message::VoteResponse;
-use tokio::io::AsyncRead;
-use tokio::io::AsyncSeek;
-use tokio::io::AsyncWrite;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio::sync::watch;
@@ -31,7 +32,6 @@ use tracing::Level;
 use crate::config::Config;
 use crate::config::RuntimeConfig;
 use crate::core::command_state::CommandState;
-use crate::core::raft_msg::external_command::ExternalCommand;
 use crate::core::raft_msg::RaftMsg;
 use crate::core::replication_lag;
 use crate::core::sm;
@@ -39,8 +39,6 @@ use crate::core::RaftCore;
 use crate::core::Tick;
 use crate::engine::Engine;
 use crate::engine::EngineConfig;
-use crate::entry::FromAppData;
-use crate::entry::RaftEntry;
 use crate::error::CheckIsLeaderError;
 use crate::error::ClientWriteError;
 use crate::error::Fatal;
@@ -51,68 +49,18 @@ use crate::membership::IntoNodes;
 use crate::metrics::RaftMetrics;
 use crate::metrics::Wait;
 use crate::network::RaftNetworkFactory;
-use crate::node::Node;
 use crate::raft::raft_inner::RaftInner;
+use crate::raft::trigger::Trigger;
 use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
-use crate::AppData;
-use crate::AppDataResponse;
 use crate::AsyncRuntime;
 use crate::ChangeMembers;
 use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::MessageSummary;
-use crate::NodeId;
-use crate::OptionalSend;
 use crate::RaftState;
+pub use crate::RaftTypeConfig;
 use crate::StorageHelper;
-
-/// Configuration of types used by the [`Raft`] core engine.
-///
-/// The (empty) implementation structure defines request/response types, node ID type
-/// and the like. Refer to the documentation of associated types for more information.
-///
-/// ## Note
-///
-/// Since Rust cannot automatically infer traits for various inner types using this config
-/// type as a parameter, this trait simply uses all the traits required for various types
-/// as its supertraits as a workaround. To ease the declaration, the macro
-/// `declare_raft_types` is provided, which can be used to declare the type easily.
-///
-/// Example:
-/// ```ignore
-/// openraft::declare_raft_types!(
-///    /// Declare the type configuration for `MemStore`.
-///    pub Config: D = ClientRequest, R = ClientResponse, NodeId = MemNodeId
-/// );
-/// ```
-pub trait RaftTypeConfig:
-    Sized + Send + Sync + Debug + Clone + Copy + Default + Eq + PartialEq + Ord + PartialOrd + 'static
-{
-    /// Application-specific request data passed to the state machine.
-    type D: AppData;
-
-    /// Application-specific response data returned by the state machine.
-    type R: AppDataResponse;
-
-    /// A Raft node's ID.
-    type NodeId: NodeId;
-
-    /// Raft application level node data
-    type Node: Node;
-
-    /// Raft log entry, which can be built from an AppData.
-    type Entry: RaftEntry<Self::NodeId, Self::Node> + FromAppData<Self::D>;
-
-    /// Snapshot data for exposing a snapshot for reading & writing.
-    ///
-    /// See the [storage chapter of the guide](https://datafuselabs.github.io/openraft/getting-started.html#implement-raftstorage)
-    /// for details on where and how this is used.
-    type SnapshotData: AsyncRead + AsyncWrite + AsyncSeek + OptionalSend + Sync + Unpin + 'static;
-
-    /// Asynchronous runtime type.
-    type AsyncRuntime: AsyncRuntime;
-}
 
 /// Define types for a Raft type configuration.
 ///
@@ -125,8 +73,14 @@ pub trait RaftTypeConfig:
 /// Example:
 /// ```ignore
 /// openraft::declare_raft_types!(
-///    /// Declare the type configuration for `MemStore`.
-///    pub Config: D = ClientRequest, R = ClientResponse, NodeId = MemNodeId
+///    pub Config:
+///        D            = ClientRequest,
+///        R            = ClientResponse,
+///        NodeId       = u64,
+///        Node         = openraft::BasicNode,
+///        Entry        = openraft::Entry<TypeConfig>,
+///        SnapshotData = Cursor<Vec<u8>>,
+///        AsyncRuntime = openraft::TokioRuntime,
 /// );
 /// ```
 #[macro_export]
@@ -144,19 +98,6 @@ macro_rules! declare_raft_types {
             )+
         }
     };
-}
-
-/// The running state of RaftCore
-enum CoreState<NID, A>
-where
-    NID: NodeId,
-    A: AsyncRuntime,
-{
-    /// The RaftCore task is still running.
-    Running(A::JoinHandle<Result<(), Fatal<NID>>>),
-
-    /// The RaftCore task has finished. The return value of the task is stored.
-    Done(Result<(), Fatal<NID>>),
 }
 
 /// The Raft API.
@@ -337,46 +278,39 @@ where
         self.inner.runtime_config.enable_elect.store(enabled, Ordering::Relaxed);
     }
 
-    /// Trigger election at once and return at once.
+    /// Return a handle to manually trigger raft actions, such as elect or build snapshot.
     ///
-    /// Returns error when RaftCore has [`Fatal`] error, e.g. shut down or having storage error.
-    /// It is not affected by `Raft::enable_elect(false)`.
+    /// Example:
+    /// ```ignore
+    /// let raft = Raft::new(...).await?;
+    /// raft.trigger().elect().await?;
+    /// ```
+    pub fn trigger(&self) -> Trigger<C, N, LS> {
+        Trigger::new(self.inner.as_ref())
+    }
+
+    /// Trigger election at once and return at once.
+    #[deprecated(note = "use `Raft::trigger().elect()` instead")]
     pub async fn trigger_elect(&self) -> Result<(), Fatal<C::NodeId>> {
-        self.inner.send_external_command(ExternalCommand::Elect, "trigger_elect").await
+        self.trigger().elect().await
     }
 
     /// Trigger a heartbeat at once and return at once.
-    ///
-    /// Returns error when RaftCore has [`Fatal`] error, e.g. shut down or having storage error.
-    /// It is not affected by `Raft::enable_heartbeat(false)`.
+    #[deprecated(note = "use `Raft::trigger().heartbeat()` instead")]
     pub async fn trigger_heartbeat(&self) -> Result<(), Fatal<C::NodeId>> {
-        self.inner.send_external_command(ExternalCommand::Heartbeat, "trigger_heartbeat").await
+        self.trigger().heartbeat().await
     }
 
     /// Trigger to build a snapshot at once and return at once.
-    ///
-    /// Returns error when RaftCore has [`Fatal`] error, e.g. shut down or having storage error.
+    #[deprecated(note = "use `Raft::trigger().snapshot()` instead")]
     pub async fn trigger_snapshot(&self) -> Result<(), Fatal<C::NodeId>> {
-        self.inner.send_external_command(ExternalCommand::Snapshot, "trigger_snapshot").await
+        self.trigger().snapshot().await
     }
 
     /// Initiate the log purge up to and including the given `upto` log index.
-    ///
-    /// Logs that are not included in a snapshot will **NOT** be purged.
-    /// In such scenario it will delete as many log as possible.
-    /// The [`max_in_snapshot_log_to_keep`] config is not taken into account
-    /// when purging logs.
-    ///
-    /// It returns error only when RaftCore has [`Fatal`] error, e.g. shut down or having storage
-    /// error.
-    ///
-    /// Openraft won't purge logs at once, e.g. it may be delayed by several seconds, because if it
-    /// is a leader and a replication task has been replicating the logs to a follower, the logs
-    /// can't be purged until the replication task is finished.
-    ///
-    /// [`max_in_snapshot_log_to_keep`]: `crate::Config::max_in_snapshot_log_to_keep`
+    #[deprecated(note = "use `Raft::trigger().purge_log()` instead")]
     pub async fn purge_log(&self, upto: u64) -> Result<(), Fatal<C::NodeId>> {
-        self.inner.send_external_command(ExternalCommand::PurgeLog { upto }, "purge_log").await
+        self.trigger().purge_log(upto).await
     }
 
     /// Submit an AppendEntries RPC to this Raft node.

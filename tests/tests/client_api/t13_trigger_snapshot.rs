@@ -28,7 +28,7 @@ async fn trigger_snapshot() -> anyhow::Result<()> {
     tracing::info!(log_index, "--- trigger snapshot for node-1");
     {
         let n1 = router.get_raft_handle(&1)?;
-        n1.trigger_snapshot().await?;
+        n1.trigger().snapshot().await?;
 
         router
             .wait(&1, timeout())
@@ -48,7 +48,7 @@ async fn trigger_snapshot() -> anyhow::Result<()> {
     tracing::info!(log_index, "--- trigger snapshot for node-0");
     {
         let n0 = router.get_raft_handle(&0)?;
-        n0.trigger_snapshot().await?;
+        n0.trigger().snapshot().await?;
 
         router
             .wait(&0, timeout())

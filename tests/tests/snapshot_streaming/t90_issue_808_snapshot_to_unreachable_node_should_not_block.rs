@@ -40,7 +40,7 @@ async fn snapshot_to_unreachable_node_should_not_block() -> Result<()> {
 
     tracing::info!(log_index, "--- build a snapshot");
     {
-        n0.trigger_snapshot().await?;
+        n0.trigger().snapshot().await?;
 
         n0.wait(timeout()).snapshot(log_id(1, 0, log_index), "snapshot").await?;
         n0.wait(timeout()).purged(Some(log_id(1, 0, log_index)), "logs in snapshot are purged").await?;
