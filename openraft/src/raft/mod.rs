@@ -1,5 +1,7 @@
 //! Public Raft interface and data types.
 
+mod raft_inner;
+
 use std::collections::BTreeMap;
 use std::fmt;
 use std::fmt::Debug;
@@ -27,7 +29,6 @@ use crate::core::replication_lag;
 use crate::core::sm;
 use crate::core::RaftCore;
 use crate::core::Tick;
-use crate::core::TickHandle;
 use crate::display_ext::DisplayOptionExt;
 use crate::display_ext::DisplaySlice;
 use crate::engine::Engine;
@@ -46,6 +47,7 @@ use crate::metrics::RaftMetrics;
 use crate::metrics::Wait;
 use crate::network::RaftNetworkFactory;
 use crate::node::Node;
+use crate::raft::raft_inner::RaftInner;
 use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
 use crate::AppData;
@@ -153,24 +155,6 @@ where
 
     /// The RaftCore task has finished. The return value of the task is stored.
     Done(Result<(), Fatal<NID>>),
-}
-
-struct RaftInner<C, N, LS>
-where
-    C: RaftTypeConfig,
-    N: RaftNetworkFactory<C>,
-    LS: RaftLogStorage<C>,
-{
-    id: C::NodeId,
-    config: Arc<Config>,
-    runtime_config: Arc<RuntimeConfig>,
-    tick_handle: TickHandle<C>,
-    tx_api: mpsc::UnboundedSender<RaftMsg<C, N, LS>>,
-    rx_metrics: watch::Receiver<RaftMetrics<C::NodeId, C::Node>>,
-    // TODO(xp): it does not need to be a async mutex.
-    #[allow(clippy::type_complexity)]
-    tx_shutdown: Mutex<Option<oneshot::Sender<()>>>,
-    core_state: Mutex<CoreState<C::NodeId, C::AsyncRuntime>>,
 }
 
 /// The Raft API.
@@ -356,7 +340,7 @@ where
     /// Returns error when RaftCore has [`Fatal`] error, e.g. shut down or having storage error.
     /// It is not affected by `Raft::enable_elect(false)`.
     pub async fn trigger_elect(&self) -> Result<(), Fatal<C::NodeId>> {
-        self.send_external_command(ExternalCommand::Elect, "trigger_elect").await
+        self.inner.send_external_command(ExternalCommand::Elect, "trigger_elect").await
     }
 
     /// Trigger a heartbeat at once and return at once.
@@ -364,14 +348,14 @@ where
     /// Returns error when RaftCore has [`Fatal`] error, e.g. shut down or having storage error.
     /// It is not affected by `Raft::enable_heartbeat(false)`.
     pub async fn trigger_heartbeat(&self) -> Result<(), Fatal<C::NodeId>> {
-        self.send_external_command(ExternalCommand::Heartbeat, "trigger_heartbeat").await
+        self.inner.send_external_command(ExternalCommand::Heartbeat, "trigger_heartbeat").await
     }
 
     /// Trigger to build a snapshot at once and return at once.
     ///
     /// Returns error when RaftCore has [`Fatal`] error, e.g. shut down or having storage error.
     pub async fn trigger_snapshot(&self) -> Result<(), Fatal<C::NodeId>> {
-        self.send_external_command(ExternalCommand::Snapshot, "trigger_snapshot").await
+        self.inner.send_external_command(ExternalCommand::Snapshot, "trigger_snapshot").await
     }
 
     /// Initiate the log purge up to and including the given `upto` log index.
@@ -390,21 +374,7 @@ where
     ///
     /// [`max_in_snapshot_log_to_keep`]: `crate::Config::max_in_snapshot_log_to_keep`
     pub async fn purge_log(&self, upto: u64) -> Result<(), Fatal<C::NodeId>> {
-        self.send_external_command(ExternalCommand::PurgeLog { upto }, "purge_log").await
-    }
-
-    async fn send_external_command(
-        &self,
-        cmd: ExternalCommand,
-        cmd_desc: impl fmt::Display + Default,
-    ) -> Result<(), Fatal<C::NodeId>> {
-        let send_res = self.inner.tx_api.send(RaftMsg::ExternalCommand { cmd });
-
-        if send_res.is_err() {
-            let fatal = self.get_core_stopped_error("sending external command to RaftCore", Some(cmd_desc)).await;
-            return Err(fatal);
-        }
-        Ok(())
+        self.inner.send_external_command(ExternalCommand::PurgeLog { upto }, "purge_log").await
     }
 
     /// Submit an AppendEntries RPC to this Raft node.
@@ -751,7 +721,7 @@ where
         let send_res = self.inner.tx_api.send(mes);
 
         if send_res.is_err() {
-            let fatal = self.get_core_stopped_error("sending tx to RaftCore", sum).await;
+            let fatal = self.inner.get_core_stopped_error("sending tx to RaftCore", sum).await;
             return Err(RaftError::Fatal(fatal));
         }
 
@@ -761,69 +731,9 @@ where
         match recv_res {
             Ok(x) => x.map_err(|e| RaftError::APIError(e)),
             Err(_) => {
-                let fatal = self.get_core_stopped_error("receiving rx from RaftCore", sum).await;
+                let fatal = self.inner.get_core_stopped_error("receiving rx from RaftCore", sum).await;
                 tracing::error!(error = debug(&fatal), "core_call fatal error");
                 Err(RaftError::Fatal(fatal))
-            }
-        }
-    }
-
-    async fn get_core_stopped_error(
-        &self,
-        when: impl fmt::Display,
-        message_summary: Option<impl fmt::Display + Default>,
-    ) -> Fatal<C::NodeId> {
-        // Wait for the core task to finish.
-        self.join_core_task().await;
-
-        // Retrieve the result.
-        let core_res = {
-            let state = self.inner.core_state.lock().await;
-            if let CoreState::Done(core_task_res) = &*state {
-                core_task_res.clone()
-            } else {
-                unreachable!("RaftCore should have already quit")
-            }
-        };
-
-        tracing::error!(
-            core_result = debug(&core_res),
-            "failure {}; message: {}",
-            when,
-            message_summary.unwrap_or_default()
-        );
-
-        match core_res {
-            // A normal quit is still an unexpected "stop" to the caller.
-            Ok(_) => Fatal::Stopped,
-            Err(e) => e,
-        }
-    }
-
-    /// Wait for RaftCore task to finish and record the returned value from the task.
-    #[tracing::instrument(level = "debug", skip_all)]
-    async fn join_core_task(&self) {
-        let mut state = self.inner.core_state.lock().await;
-        match &mut *state {
-            CoreState::Running(handle) => {
-                let res = handle.await;
-                tracing::info!(res = debug(&res), "RaftCore exited");
-
-                let core_task_res = match res {
-                    Err(err) => {
-                        if C::AsyncRuntime::is_panic(&err) {
-                            Err(Fatal::Panicked)
-                        } else {
-                            Err(Fatal::Stopped)
-                        }
-                    }
-                    Ok(returned_res) => returned_res,
-                };
-
-                *state = CoreState::Done(core_task_res);
-            }
-            CoreState::Done(_) => {
-                // RaftCore has already quit, nothing to do
             }
         }
     }
@@ -898,7 +808,7 @@ where
             let send_res = tx.send(());
             tracing::info!("sending shutdown signal to RaftCore, sending res: {:?}", send_res);
         }
-        self.join_core_task().await;
+        self.inner.join_core_task().await;
         self.inner.tick_handle.shutdown().await;
 
         // TODO(xp): API change: replace `JoinError` with `Fatal`,
