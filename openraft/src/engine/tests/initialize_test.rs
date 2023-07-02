@@ -13,7 +13,6 @@ use crate::error::NotInMembers;
 use crate::raft::VoteRequest;
 use crate::raft_state::LogStateReader;
 use crate::testing::log_id;
-use crate::testing::log_id1;
 use crate::utime::UTime;
 use crate::vote::CommittedLeaderId;
 use crate::Entry;
@@ -49,8 +48,8 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
         eng.initialize(entry)?;
 
         assert_eq!(Some(log_id0), eng.state.get_log_id(0));
-        assert_eq!(Some(log_id1(1, 1)), eng.state.get_log_id(1));
-        assert_eq!(Some(&log_id1(1, 1)), eng.state.last_log_id());
+        assert_eq!(Some(log_id(1, 1, 1)), eng.state.get_log_id(1));
+        assert_eq!(Some(&log_id(1, 1, 1)), eng.state.last_log_id());
 
         assert_eq!(ServerState::Leader, eng.state.server_state);
         assert_eq!(&m1(), eng.state.membership_state.effective().membership());

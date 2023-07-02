@@ -6,7 +6,7 @@ use crate::engine::testing::UTConfig;
 use crate::engine::Engine;
 use crate::raft_state::LogStateReader;
 use crate::testing::blank_ent;
-use crate::testing::log_id1;
+use crate::testing::log_id;
 use crate::EffectiveMembership;
 use crate::Membership;
 use crate::MembershipState;
@@ -27,11 +27,11 @@ fn eng() -> Engine<UTConfig> {
 
     eng.config.id = 2;
     eng.state.vote.update(TokioInstant::now(), Vote::new_committed(2, 1));
-    eng.state.log_ids.append(log_id1(1, 1));
-    eng.state.log_ids.append(log_id1(2, 3));
+    eng.state.log_ids.append(log_id(1, 1, 1));
+    eng.state.log_ids.append(log_id(2, 1, 3));
     eng.state.membership_state = MembershipState::new(
-        Arc::new(EffectiveMembership::new(Some(log_id1(1, 1)), m01())),
-        Arc::new(EffectiveMembership::new(Some(log_id1(2, 3)), m23())),
+        Arc::new(EffectiveMembership::new(Some(log_id(1, 1, 1)), m01())),
+        Arc::new(EffectiveMembership::new(Some(log_id(2, 1, 3)), m23())),
     );
     eng.state.server_state = eng.calc_server_state();
     eng
@@ -41,7 +41,7 @@ fn eng() -> Engine<UTConfig> {
 fn test_follower_append_entries_update_accepted() -> anyhow::Result<()> {
     let mut eng = eng();
 
-    eng.following_handler().append_entries(Some(log_id1(2, 3)), vec![
+    eng.following_handler().append_entries(Some(log_id(2, 1, 3)), vec![
         //
         blank_ent(3, 1, 4),
         blank_ent(3, 1, 5),
@@ -49,24 +49,24 @@ fn test_follower_append_entries_update_accepted() -> anyhow::Result<()> {
 
     assert_eq!(
         &[
-            log_id1(1, 1), //
-            log_id1(2, 3),
-            log_id1(3, 4),
-            log_id1(3, 5),
+            log_id(1, 1, 1), //
+            log_id(2, 1, 3),
+            log_id(3, 1, 4),
+            log_id(3, 1, 5),
         ],
         eng.state.log_ids.key_log_ids()
     );
-    assert_eq!(Some(&log_id1(3, 5)), eng.state.accepted());
+    assert_eq!(Some(&log_id(3, 1, 5)), eng.state.accepted());
 
     // Update again, accept should not decrease.
 
-    eng.following_handler().append_entries(Some(log_id1(2, 3)), vec![
+    eng.following_handler().append_entries(Some(log_id(2, 1, 3)), vec![
         //
         blank_ent(3, 1, 4),
     ]);
 
-    assert_eq!(Some(&log_id1(3, 5)), eng.state.last_log_id());
-    assert_eq!(Some(&log_id1(3, 5)), eng.state.accepted());
+    assert_eq!(Some(&log_id(3, 1, 5)), eng.state.last_log_id());
+    assert_eq!(Some(&log_id(3, 1, 5)), eng.state.accepted());
 
     Ok(())
 }

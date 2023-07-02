@@ -7,7 +7,7 @@ use crate::error::ChangeMembershipError;
 use crate::error::EmptyMembership;
 use crate::error::InProgress;
 use crate::error::LearnerNotFound;
-use crate::testing::log_id1;
+use crate::testing::log_id;
 use crate::ChangeMembers;
 use crate::EffectiveMembership;
 use crate::Membership;
@@ -15,7 +15,7 @@ use crate::MembershipState;
 
 /// Create an Arc<EffectiveMembership>
 fn effmem(term: u64, index: u64, m: Membership<u64, ()>) -> Arc<EffectiveMembership<u64, ()>> {
-    let lid = Some(log_id1(term, index));
+    let lid = Some(log_id(term, 1, index));
     Arc::new(EffectiveMembership::new(lid, m))
 }
 
@@ -38,8 +38,8 @@ fn test_apply_not_committed() -> anyhow::Result<()> {
 
     assert_eq!(
         Err(ChangeMembershipError::InProgress(InProgress {
-            committed: Some(log_id1(2, 2)),
-            membership_log_id: Some(log_id1(3, 4))
+            committed: Some(log_id(2, 1, 2)),
+            membership_log_id: Some(log_id(3, 1, 4))
         })),
         res
     );

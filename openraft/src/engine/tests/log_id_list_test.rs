@@ -6,20 +6,20 @@ fn test_log_id_list_extend_from_same_leader() -> anyhow::Result<()> {
 
     // Extend one log id to an empty LogIdList: Just store it directly
 
-    ids.extend_from_same_leader(&[log_id1(1, 2)]);
-    assert_eq!(vec![log_id1(1, 2)], ids.key_log_ids());
+    ids.extend_from_same_leader(&[log_id(1, 1, 2)]);
+    assert_eq!(vec![log_id(1, 1, 2)], ids.key_log_ids());
 
     // Extend two log ids that are adjacent to the last stored one.
     // It should append only one log id as the new ending log id.
 
     ids.extend_from_same_leader(&[
-        log_id1(1, 3), //
-        log_id1(1, 4),
+        log_id(1, 1, 3), //
+        log_id(1, 1, 4),
     ]);
     assert_eq!(
         vec![
-            log_id1(1, 2), //
-            log_id1(1, 4)
+            log_id(1, 1, 2), //
+            log_id(1, 1, 4)
         ],
         ids.key_log_ids(),
         "same leader as the last"
@@ -29,15 +29,15 @@ fn test_log_id_list_extend_from_same_leader() -> anyhow::Result<()> {
     // It should just store every log id for each leader, plus one last-log-id.
 
     ids.extend_from_same_leader(&[
-        log_id1(2, 5), //
-        log_id1(2, 6),
-        log_id1(2, 7),
+        log_id(2, 1, 5), //
+        log_id(2, 1, 6),
+        log_id(2, 1, 7),
     ]);
     assert_eq!(
         vec![
-            log_id1(1, 2), //
-            log_id1(2, 5),
-            log_id1(2, 7)
+            log_id(1, 1, 2), //
+            log_id(2, 1, 5),
+            log_id(2, 1, 7)
         ],
         ids.key_log_ids(),
         "different leader as the last"
@@ -52,20 +52,20 @@ fn test_log_id_list_extend() -> anyhow::Result<()> {
 
     // Extend one log id to an empty LogIdList: Just store it directly
 
-    ids.extend(&[log_id1(1, 2)]);
-    assert_eq!(vec![log_id1(1, 2)], ids.key_log_ids());
+    ids.extend(&[log_id(1, 1, 2)]);
+    assert_eq!(vec![log_id(1, 1, 2)], ids.key_log_ids());
 
     // Extend two log ids that are adjacent to the last stored one.
     // It should append only one log id as the new ending log id.
 
     ids.extend(&[
-        log_id1(1, 3), //
-        log_id1(1, 4),
+        log_id(1, 1, 3), //
+        log_id(1, 1, 4),
     ]);
     assert_eq!(
         vec![
-            log_id1(1, 2), //
-            log_id1(1, 4)
+            log_id(1, 1, 2), //
+            log_id(1, 1, 4)
         ],
         ids.key_log_ids(),
         "same leader as the last"
@@ -75,15 +75,15 @@ fn test_log_id_list_extend() -> anyhow::Result<()> {
     // Last two has the same leader id.
 
     ids.extend(&[
-        log_id1(1, 5), //
-        log_id1(2, 6),
-        log_id1(2, 7),
+        log_id(1, 1, 5), //
+        log_id(2, 1, 6),
+        log_id(2, 1, 7),
     ]);
     assert_eq!(
         vec![
-            log_id1(1, 2), //
-            log_id1(2, 6),
-            log_id1(2, 7)
+            log_id(1, 1, 2), //
+            log_id(2, 1, 6),
+            log_id(2, 1, 7)
         ],
         ids.key_log_ids(),
         "last 2 have the same leaders"
@@ -93,15 +93,15 @@ fn test_log_id_list_extend() -> anyhow::Result<()> {
     // Last two have different leader id.
 
     ids.extend(&[
-        log_id1(2, 8), //
-        log_id1(2, 9),
-        log_id1(3, 10),
+        log_id(2, 1, 8), //
+        log_id(2, 1, 9),
+        log_id(3, 1, 10),
     ]);
     assert_eq!(
         vec![
-            log_id1(1, 2), //
-            log_id1(2, 6),
-            log_id1(3, 10),
+            log_id(1, 1, 2), //
+            log_id(2, 1, 6),
+            log_id(3, 1, 10),
         ],
         ids.key_log_ids(),
         "last 2 have different leaders"
@@ -117,12 +117,12 @@ fn test_log_id_list_append() -> anyhow::Result<()> {
     // Append log id one by one, check the internally constructed `key_log_id` as expected.
 
     let cases = vec![
-        (log_id1(1, 2), vec![log_id1(1, 2)]), //
-        (log_id1(1, 3), vec![log_id1(1, 2), log_id1(1, 3)]),
-        (log_id1(1, 4), vec![log_id1(1, 2), log_id1(1, 4)]),
-        (log_id1(2, 5), vec![log_id1(1, 2), log_id1(2, 5)]),
-        (log_id1(2, 7), vec![log_id1(1, 2), log_id1(2, 5), log_id1(2, 7)]),
-        (log_id1(2, 9), vec![log_id1(1, 2), log_id1(2, 5), log_id1(2, 9)]),
+        (log_id(1, 1, 2), vec![log_id(1, 1, 2)]), //
+        (log_id(1, 1, 3), vec![log_id(1, 1, 2), log_id(1, 1, 3)]),
+        (log_id(1, 1, 4), vec![log_id(1, 1, 2), log_id(1, 1, 4)]),
+        (log_id(2, 1, 5), vec![log_id(1, 1, 2), log_id(2, 1, 5)]),
+        (log_id(2, 1, 7), vec![log_id(1, 1, 2), log_id(2, 1, 5), log_id(2, 1, 7)]),
+        (log_id(2, 1, 9), vec![log_id(1, 1, 2), log_id(2, 1, 5), log_id(2, 1, 9)]),
     ];
 
     for (new_log_id, want) in cases {
@@ -138,11 +138,11 @@ fn test_log_id_list_truncate() -> anyhow::Result<()> {
     // Sample data for test
     let make_ids = || {
         LogIdList::<u64>::new(vec![
-            log_id1(2, 2), //
-            log_id1(3, 3),
-            log_id1(6, 6),
-            log_id1(9, 9),
-            log_id1(9, 11),
+            log_id(2, 1, 2), //
+            log_id(3, 1, 3),
+            log_id(6, 1, 6),
+            log_id(9, 1, 9),
+            log_id(9, 1, 11),
         ])
     };
 
@@ -157,65 +157,65 @@ fn test_log_id_list_truncate() -> anyhow::Result<()> {
             //
         ]),
         (3, vec![
-            log_id1(2, 2), //
+            log_id(2, 1, 2), //
         ]),
         (4, vec![
-            log_id1(2, 2), //
-            log_id1(3, 3),
+            log_id(2, 1, 2), //
+            log_id(3, 1, 3),
         ]),
         (5, vec![
-            log_id1(2, 2), //
-            log_id1(3, 3),
-            log_id1(3, 4),
+            log_id(2, 1, 2), //
+            log_id(3, 1, 3),
+            log_id(3, 1, 4),
         ]),
         (6, vec![
-            log_id1(2, 2), //
-            log_id1(3, 3),
-            log_id1(3, 5),
+            log_id(2, 1, 2), //
+            log_id(3, 1, 3),
+            log_id(3, 1, 5),
         ]),
         (7, vec![
-            log_id1(2, 2), //
-            log_id1(3, 3),
-            log_id1(6, 6),
+            log_id(2, 1, 2), //
+            log_id(3, 1, 3),
+            log_id(6, 1, 6),
         ]),
         (8, vec![
-            log_id1(2, 2), //
-            log_id1(3, 3),
-            log_id1(6, 6),
-            log_id1(6, 7),
+            log_id(2, 1, 2), //
+            log_id(3, 1, 3),
+            log_id(6, 1, 6),
+            log_id(6, 1, 7),
         ]),
         (9, vec![
-            log_id1(2, 2), //
-            log_id1(3, 3),
-            log_id1(6, 6),
-            log_id1(6, 8),
+            log_id(2, 1, 2), //
+            log_id(3, 1, 3),
+            log_id(6, 1, 6),
+            log_id(6, 1, 8),
         ]),
         (10, vec![
-            log_id1(2, 2), //
-            log_id1(3, 3),
-            log_id1(6, 6),
-            log_id1(9, 9),
+            log_id(2, 1, 2), //
+            log_id(3, 1, 3),
+            log_id(6, 1, 6),
+            log_id(9, 1, 9),
         ]),
         (11, vec![
-            log_id1(2, 2), //
-            log_id1(3, 3),
-            log_id1(6, 6),
-            log_id1(9, 9),
-            log_id1(9, 10),
+            log_id(2, 1, 2), //
+            log_id(3, 1, 3),
+            log_id(6, 1, 6),
+            log_id(9, 1, 9),
+            log_id(9, 1, 10),
         ]),
         (12, vec![
-            log_id1(2, 2), //
-            log_id1(3, 3),
-            log_id1(6, 6),
-            log_id1(9, 9),
-            log_id1(9, 11),
+            log_id(2, 1, 2), //
+            log_id(3, 1, 3),
+            log_id(6, 1, 6),
+            log_id(9, 1, 9),
+            log_id(9, 1, 11),
         ]),
         (13, vec![
-            log_id1(2, 2), //
-            log_id1(3, 3),
-            log_id1(6, 6),
-            log_id1(9, 9),
-            log_id1(9, 11),
+            log_id(2, 1, 2), //
+            log_id(3, 1, 3),
+            log_id(6, 1, 6),
+            log_id(9, 1, 9),
+            log_id(9, 1, 11),
         ]),
     ];
 
@@ -234,62 +234,74 @@ fn test_log_id_list_purge() -> anyhow::Result<()> {
     // Purge on an empty log id list:
     {
         let mut ids = LogIdList::<u64>::new(vec![]);
-        ids.purge(&log_id1(2, 2));
-        assert_eq!(vec![log_id1(2, 2)], ids.key_log_ids());
+        ids.purge(&log_id(2, 1, 2));
+        assert_eq!(vec![log_id(2, 1, 2)], ids.key_log_ids());
     }
 
     // Sample data for test
     let make_ids = || {
         LogIdList::<u64>::new(vec![
-            log_id1(2, 2), //
-            log_id1(3, 3),
-            log_id1(6, 6),
-            log_id1(9, 9),
-            log_id1(9, 11),
+            log_id(2, 1, 2), //
+            log_id(3, 1, 3),
+            log_id(6, 1, 6),
+            log_id(9, 1, 9),
+            log_id(9, 1, 11),
         ])
     };
 
     let cases = vec![
-        (log_id1(2, 1), vec![
-            log_id1(2, 2),
-            log_id1(3, 3),
-            log_id1(6, 6),
-            log_id1(9, 9),
-            log_id1(9, 11),
+        (log_id(2, 1, 1), vec![
+            log_id(2, 1, 2),
+            log_id(3, 1, 3),
+            log_id(6, 1, 6),
+            log_id(9, 1, 9),
+            log_id(9, 1, 11),
         ]),
-        (log_id1(2, 2), vec![
-            log_id1(2, 2),
-            log_id1(3, 3),
-            log_id1(6, 6),
-            log_id1(9, 9),
-            log_id1(9, 11),
+        (log_id(2, 1, 2), vec![
+            log_id(2, 1, 2),
+            log_id(3, 1, 3),
+            log_id(6, 1, 6),
+            log_id(9, 1, 9),
+            log_id(9, 1, 11),
         ]),
-        (log_id1(3, 3), vec![
-            log_id1(3, 3),
-            log_id1(6, 6),
-            log_id1(9, 9),
-            log_id1(9, 11),
+        (log_id(3, 1, 3), vec![
+            log_id(3, 1, 3),
+            log_id(6, 1, 6),
+            log_id(9, 1, 9),
+            log_id(9, 1, 11),
         ]),
-        (log_id1(3, 4), vec![
-            log_id1(3, 4),
-            log_id1(6, 6),
-            log_id1(9, 9),
-            log_id1(9, 11),
+        (log_id(3, 1, 4), vec![
+            log_id(3, 1, 4),
+            log_id(6, 1, 6),
+            log_id(9, 1, 9),
+            log_id(9, 1, 11),
         ]),
-        (log_id1(3, 5), vec![
-            log_id1(3, 5),
-            log_id1(6, 6),
-            log_id1(9, 9),
-            log_id1(9, 11),
+        (log_id(3, 1, 5), vec![
+            log_id(3, 1, 5),
+            log_id(6, 1, 6),
+            log_id(9, 1, 9),
+            log_id(9, 1, 11),
         ]),
-        (log_id1(6, 6), vec![log_id1(6, 6), log_id1(9, 9), log_id1(9, 11)]),
-        (log_id1(6, 7), vec![log_id1(6, 7), log_id1(9, 9), log_id1(9, 11)]),
-        (log_id1(6, 8), vec![log_id1(6, 8), log_id1(9, 9), log_id1(9, 11)]),
-        (log_id1(9, 9), vec![log_id1(9, 9), log_id1(9, 11)]),
-        (log_id1(9, 10), vec![log_id1(9, 10), log_id1(9, 11)]),
-        (log_id1(9, 11), vec![log_id1(9, 11)]),
-        (log_id1(9, 12), vec![log_id1(9, 12)]),
-        (log_id1(10, 12), vec![log_id1(10, 12)]),
+        (log_id(6, 1, 6), vec![
+            log_id(6, 1, 6),
+            log_id(9, 1, 9),
+            log_id(9, 1, 11),
+        ]),
+        (log_id(6, 1, 7), vec![
+            log_id(6, 1, 7),
+            log_id(9, 1, 9),
+            log_id(9, 1, 11),
+        ]),
+        (log_id(6, 1, 8), vec![
+            log_id(6, 1, 8),
+            log_id(9, 1, 9),
+            log_id(9, 1, 11),
+        ]),
+        (log_id(9, 1, 9), vec![log_id(9, 1, 9), log_id(9, 1, 11)]),
+        (log_id(9, 1, 10), vec![log_id(9, 1, 10), log_id(9, 1, 11)]),
+        (log_id(9, 1, 11), vec![log_id(9, 1, 11)]),
+        (log_id(9, 1, 12), vec![log_id(9, 1, 12)]),
+        (log_id(10, 1, 12), vec![log_id(10, 1, 12)]),
     ];
 
     for (upto, want) in cases {
@@ -315,27 +327,27 @@ fn test_log_id_list_get_log_id() -> anyhow::Result<()> {
     // Get log id that is a key log id or not.
 
     let ids = LogIdList::<u64>::new(vec![
-        log_id1(1, 1),
-        log_id1(1, 2),
-        log_id1(3, 3),
-        log_id1(5, 6),
-        log_id1(7, 8),
-        log_id1(7, 10),
+        log_id(1, 1, 1),
+        log_id(1, 1, 2),
+        log_id(3, 1, 3),
+        log_id(5, 1, 6),
+        log_id(7, 1, 8),
+        log_id(7, 1, 10),
     ]);
 
     assert_eq!(None, ids.get(0));
-    assert_eq!(Some(log_id1(1, 1)), ids.get(1));
-    assert_eq!(Some(log_id1(1, 2)), ids.get(2));
-    assert_eq!(Some(log_id1(3, 3)), ids.get(3));
-    assert_eq!(Some(log_id1(3, 4)), ids.get(4));
-    assert_eq!(Some(log_id1(3, 5)), ids.get(5));
-    assert_eq!(Some(log_id1(5, 6)), ids.get(6));
-    assert_eq!(Some(log_id1(5, 7)), ids.get(7));
-    assert_eq!(Some(log_id1(7, 8)), ids.get(8));
-    assert_eq!(Some(log_id1(7, 9)), ids.get(9));
-    assert_eq!(Some(log_id1(7, 10)), ids.get(10));
+    assert_eq!(Some(log_id(1, 1, 1)), ids.get(1));
+    assert_eq!(Some(log_id(1, 1, 2)), ids.get(2));
+    assert_eq!(Some(log_id(3, 1, 3)), ids.get(3));
+    assert_eq!(Some(log_id(3, 1, 4)), ids.get(4));
+    assert_eq!(Some(log_id(3, 1, 5)), ids.get(5));
+    assert_eq!(Some(log_id(5, 1, 6)), ids.get(6));
+    assert_eq!(Some(log_id(5, 1, 7)), ids.get(7));
+    assert_eq!(Some(log_id(7, 1, 8)), ids.get(8));
+    assert_eq!(Some(log_id(7, 1, 9)), ids.get(9));
+    assert_eq!(Some(log_id(7, 1, 10)), ids.get(10));
     assert_eq!(None, ids.get(11));
 
     Ok(())
 }
-use crate::testing::log_id1;
+use crate::testing::log_id;

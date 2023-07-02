@@ -18,17 +18,12 @@ use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::StorageIOError;
 
-/// Builds a log id with node_id set to 1, for testing purposes.
-pub fn log_id1(term: u64, index: u64) -> LogId<u64> {
-    LogId::<u64> {
-        leader_id: CommittedLeaderId::new(term, 1),
-        index,
-    }
-}
-
 /// Builds a log id, for testing purposes.
 pub fn log_id<NID: crate::NodeId>(term: u64, node_id: NID, index: u64) -> LogId<NID> {
-    LogId::new(CommittedLeaderId::new(term, node_id), index)
+    LogId::<NID> {
+        leader_id: CommittedLeaderId::new(term, node_id),
+        index,
+    }
 }
 
 /// Create a blank log entry for test.
