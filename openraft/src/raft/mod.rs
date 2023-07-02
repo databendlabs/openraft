@@ -2,13 +2,13 @@
 
 mod message;
 mod raft_inner;
+mod runtime_config_handle;
 mod trigger;
 
 pub(in crate::raft) mod core_state;
 
 use std::fmt::Debug;
 use std::marker::PhantomData;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -50,6 +50,7 @@ use crate::metrics::RaftMetrics;
 use crate::metrics::Wait;
 use crate::network::RaftNetworkFactory;
 use crate::raft::raft_inner::RaftInner;
+use crate::raft::runtime_config_handle::RuntimeConfigHandle;
 use crate::raft::trigger::Trigger;
 use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
@@ -261,21 +262,33 @@ where
         })
     }
 
-    /// Enable or disable raft internal ticker.
+    /// Return a handle to update runtime config.
     ///
-    /// The internal ticker triggers all timeout based event, e.g. election event or heartbeat
-    /// event. By disabling the ticker, a follower will not enter candidate again, a leader will
-    /// not send heartbeat.
+    /// Such enabling/disabling heartbeat, election, etc.
+    ///
+    /// Example:
+    /// ```ignore
+    /// let raft = Raft::new(...).await?;
+    /// raft.runtime_config().heartbeat(true);
+    /// ```
+    pub fn runtime_config(&self) -> RuntimeConfigHandle<C, N, LS> {
+        RuntimeConfigHandle::new(self.inner.as_ref())
+    }
+
+    /// Enable or disable raft internal ticker.
+    #[deprecated(note = "use `Raft::runtime_config().tick()` instead")]
     pub fn enable_tick(&self, enabled: bool) {
-        self.inner.tick_handle.enable(enabled);
+        self.runtime_config().tick(enabled)
     }
 
+    #[deprecated(note = "use `Raft::runtime_config().heartbeat()` instead")]
     pub fn enable_heartbeat(&self, enabled: bool) {
-        self.inner.runtime_config.enable_heartbeat.store(enabled, Ordering::Relaxed);
+        self.runtime_config().heartbeat(enabled)
     }
 
+    #[deprecated(note = "use `Raft::runtime_config().elect()` instead")]
     pub fn enable_elect(&self, enabled: bool) {
-        self.inner.runtime_config.enable_elect.store(enabled, Ordering::Relaxed);
+        self.runtime_config().elect(enabled)
     }
 
     /// Return a handle to manually trigger raft actions, such as elect or build snapshot.

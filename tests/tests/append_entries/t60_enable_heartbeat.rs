@@ -27,7 +27,7 @@ async fn enable_heartbeat() -> Result<()> {
     let _ = log_index;
 
     let node0 = router.get_raft_handle(&0)?;
-    node0.enable_heartbeat(true);
+    node0.runtime_config().heartbeat(true);
 
     for _i in 0..3 {
         let now = <TokioRuntime as AsyncRuntime>::Instant::now();
