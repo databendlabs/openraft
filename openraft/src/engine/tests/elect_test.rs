@@ -12,7 +12,6 @@ use crate::engine::LogIdList;
 use crate::entry::RaftEntry;
 use crate::raft::VoteRequest;
 use crate::testing::log_id;
-use crate::testing::log_id1;
 use crate::utime::UTime;
 use crate::CommittedLeaderId;
 use crate::EffectiveMembership;
@@ -45,7 +44,7 @@ fn test_elect() -> anyhow::Result<()> {
         eng.config.id = 1;
         eng.state
             .membership_state
-            .set_effective(Arc::new(EffectiveMembership::new(Some(log_id1(0, 1)), m1())));
+            .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(0, 1, 1)), m1())));
 
         eng.elect();
 
@@ -93,7 +92,7 @@ fn test_elect() -> anyhow::Result<()> {
         eng.config.id = 1;
         eng.state
             .membership_state
-            .set_effective(Arc::new(EffectiveMembership::new(Some(log_id1(0, 1)), m1())));
+            .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(0, 1, 1)), m1())));
 
         // Build in-progress election state
         eng.state.vote = UTime::new(TokioInstant::now(), Vote::new_committed(1, 2));
@@ -146,8 +145,8 @@ fn test_elect() -> anyhow::Result<()> {
         eng.config.id = 1;
         eng.state
             .membership_state
-            .set_effective(Arc::new(EffectiveMembership::new(Some(log_id1(0, 1)), m12())));
-        eng.state.log_ids = LogIdList::new(vec![log_id1(1, 1)]);
+            .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(0, 1, 1)), m12())));
+        eng.state.log_ids = LogIdList::new(vec![log_id(1, 1, 1)]);
 
         eng.elect();
 
@@ -161,7 +160,7 @@ fn test_elect() -> anyhow::Result<()> {
 
         assert_eq!(
             vec![Command::SaveVote { vote: Vote::new(1, 1) }, Command::SendVote {
-                vote_req: VoteRequest::new(Vote::new(1, 1), Some(log_id1(1, 1)))
+                vote_req: VoteRequest::new(Vote::new(1, 1), Some(log_id(1, 1, 1)))
             },],
             eng.output.take_commands()
         );

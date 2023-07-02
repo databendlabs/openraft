@@ -14,7 +14,6 @@ use crate::progress::Inflight;
 use crate::raft_state::LogStateReader;
 use crate::testing::blank_ent;
 use crate::testing::log_id;
-use crate::testing::log_id1;
 use crate::utime::UTime;
 use crate::vote::CommittedLeaderId;
 use crate::EffectiveMembership;
@@ -47,13 +46,13 @@ fn eng() -> Engine<UTConfig> {
     eng.state.enable_validate = false; // Disable validation for incomplete state
 
     eng.config.id = 1;
-    eng.state.committed = Some(log_id1(0, 0));
+    eng.state.committed = Some(log_id(0, 1, 0));
     eng.state.vote = UTime::new(TokioInstant::now(), Vote::new_committed(3, 1));
-    eng.state.log_ids.append(log_id1(1, 1));
-    eng.state.log_ids.append(log_id1(2, 3));
+    eng.state.log_ids.append(log_id(1, 1, 1));
+    eng.state.log_ids.append(log_id(2, 1, 3));
     eng.state.membership_state = MembershipState::new(
-        Arc::new(EffectiveMembership::new(Some(log_id1(1, 1)), m01())),
-        Arc::new(EffectiveMembership::new(Some(log_id1(2, 3)), m23())),
+        Arc::new(EffectiveMembership::new(Some(log_id(1, 1, 1)), m01())),
+        Arc::new(EffectiveMembership::new(Some(log_id(2, 1, 3)), m23())),
     );
     eng.state.server_state = eng.calc_server_state();
 
@@ -69,16 +68,16 @@ fn test_leader_append_entries_empty() -> anyhow::Result<()> {
 
     assert_eq!(
         &[
-            log_id1(1, 1), //
-            log_id1(2, 3),
+            log_id(1, 1, 1), //
+            log_id(2, 1, 3),
         ],
         eng.state.log_ids.key_log_ids()
     );
-    assert_eq!(Some(&log_id1(2, 3)), eng.state.last_log_id());
+    assert_eq!(Some(&log_id(2, 1, 3)), eng.state.last_log_id());
     assert_eq!(
         MembershipState::new(
-            Arc::new(EffectiveMembership::new(Some(log_id1(1, 1)), m01())),
-            Arc::new(EffectiveMembership::new(Some(log_id1(2, 3)), m23())),
+            Arc::new(EffectiveMembership::new(Some(log_id(1, 1, 1)), m01())),
+            Arc::new(EffectiveMembership::new(Some(log_id(2, 1, 3)), m23())),
         ),
         eng.state.membership_state
     );
@@ -101,8 +100,8 @@ fn test_leader_append_entries_normal() -> anyhow::Result<()> {
 
     assert_eq!(
         &[
-            log_id1(1, 1), //
-            log_id1(2, 3),
+            log_id(1, 1, 1), //
+            log_id(2, 1, 3),
             LogId::new(CommittedLeaderId::new(3, 1), 4),
             LogId::new(CommittedLeaderId::new(3, 1), 6),
         ],
@@ -114,8 +113,8 @@ fn test_leader_append_entries_normal() -> anyhow::Result<()> {
     );
     assert_eq!(
         MembershipState::new(
-            Arc::new(EffectiveMembership::new(Some(log_id1(1, 1)), m01())),
-            Arc::new(EffectiveMembership::new(Some(log_id1(2, 3)), m23())),
+            Arc::new(EffectiveMembership::new(Some(log_id(1, 1, 1)), m01())),
+            Arc::new(EffectiveMembership::new(Some(log_id(2, 1, 3)), m23())),
         ),
         eng.state.membership_state
     );
@@ -130,11 +129,11 @@ fn test_leader_append_entries_normal() -> anyhow::Result<()> {
             },
             Command::Replicate {
                 target: 2,
-                req: Inflight::logs(None, Some(log_id1(3, 6))).with_id(1),
+                req: Inflight::logs(None, Some(log_id(3, 1, 6))).with_id(1),
             },
             Command::Replicate {
                 target: 3,
-                req: Inflight::logs(None, Some(log_id1(3, 6))).with_id(1),
+                req: Inflight::logs(None, Some(log_id(3, 1, 6))).with_id(1),
             },
         ],
         eng.output.take_commands()
@@ -148,7 +147,7 @@ fn test_leader_append_entries_single_node_leader() -> anyhow::Result<()> {
     let mut eng = eng();
     eng.state
         .membership_state
-        .set_effective(Arc::new(EffectiveMembership::new(Some(log_id1(2, 3)), m1())));
+        .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(2, 1, 3)), m1())));
     eng.vote_handler().become_leading();
 
     eng.output.clear_commands();
@@ -177,7 +176,7 @@ fn test_leader_append_entries_single_node_leader() -> anyhow::Result<()> {
         ),
         eng.state.membership_state
     );
-    assert_eq!(Some(&log_id1(0, 0)), eng.state.committed());
+    assert_eq!(Some(&log_id(0, 1, 0)), eng.state.committed());
 
     assert_eq!(
         vec![Command::AppendInputEntries {
@@ -197,7 +196,7 @@ fn test_leader_append_entries_with_membership_log() -> anyhow::Result<()> {
     let mut eng = eng();
     eng.state
         .membership_state
-        .set_effective(Arc::new(EffectiveMembership::new(Some(log_id1(2, 3)), m1())));
+        .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(2, 1, 3)), m1())));
     eng.vote_handler().become_leading();
     eng.state.server_state = eng.calc_server_state();
 
@@ -206,14 +205,14 @@ fn test_leader_append_entries_with_membership_log() -> anyhow::Result<()> {
     // log id will be assigned by eng.
     eng.leader_handler()?.leader_append_entries(vec![
         blank_ent(1, 1, 1), //
-        Entry::new_membership(log_id1(1, 1), m1_2()),
+        Entry::new_membership(log_id(1, 1, 1), m1_2()),
         blank_ent(1, 1, 1),
     ]);
 
     assert_eq!(
         &[
-            log_id1(1, 1), //
-            log_id1(2, 3),
+            log_id(1, 1, 1), //
+            log_id(2, 1, 3),
             log_id(3, 1, 4),
             log_id(3, 1, 6),
         ],
@@ -225,19 +224,19 @@ fn test_leader_append_entries_with_membership_log() -> anyhow::Result<()> {
     );
     assert_eq!(
         MembershipState::new(
-            Arc::new(EffectiveMembership::new(Some(log_id1(2, 3)), m1())),
-            Arc::new(EffectiveMembership::new(Some(log_id1(3, 5)), m1_2())),
+            Arc::new(EffectiveMembership::new(Some(log_id(2, 1, 3)), m1())),
+            Arc::new(EffectiveMembership::new(Some(log_id(3, 1, 5)), m1_2())),
         ),
         eng.state.membership_state
     );
-    assert_eq!(Some(&log_id1(0, 0)), eng.state.committed());
+    assert_eq!(Some(&log_id(0, 1, 0)), eng.state.committed());
 
     assert_eq!(
         vec![
             Command::AppendInputEntries {
                 entries: vec![
                     blank_ent(3, 1, 4), //
-                    Entry::new_membership(log_id1(3, 5), m1_2()),
+                    Entry::new_membership(log_id(3, 1, 5), m1_2()),
                     blank_ent(3, 1, 6),
                 ]
             },
@@ -246,7 +245,7 @@ fn test_leader_append_entries_with_membership_log() -> anyhow::Result<()> {
             },
             Command::Replicate {
                 target: 2,
-                req: Inflight::logs(None, Some(log_id1(3, 6))).with_id(1),
+                req: Inflight::logs(None, Some(log_id(3, 1, 6))).with_id(1),
             },
         ],
         eng.output.take_commands()

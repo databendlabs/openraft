@@ -9,7 +9,7 @@ use crate::error::InstallSnapshotError;
 use crate::error::SnapshotMismatch;
 use crate::raft::InstallSnapshotRequest;
 use crate::raft_state::StreamingState;
-use crate::testing::log_id1;
+use crate::testing::log_id;
 use crate::Membership;
 use crate::SnapshotMeta;
 use crate::SnapshotSegmentId;
@@ -33,8 +33,8 @@ fn eng() -> Engine<UTConfig> {
 
 fn make_meta() -> SnapshotMeta<u64, ()> {
     SnapshotMeta {
-        last_log_id: Some(log_id1(2, 2)),
-        last_membership: StoredMembership::new(Some(log_id1(1, 1)), m1234()),
+        last_log_id: Some(log_id(2, 1, 2)),
+        last_membership: StoredMembership::new(Some(log_id(1, 1, 1)), m1234()),
         snapshot_id: "1-2-3-4".to_string(),
     }
 }
