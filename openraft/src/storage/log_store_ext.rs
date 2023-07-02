@@ -5,7 +5,6 @@ use macros::add_async_trait;
 
 use crate::defensive::check_range_matches_entries;
 use crate::LogId;
-use crate::LogIdOptionExt;
 use crate::RaftLogId;
 use crate::RaftLogReader;
 use crate::RaftTypeConfig;
@@ -40,12 +39,6 @@ where C: RaftTypeConfig
 
     /// Get the log id of the entry at `index`.
     async fn get_log_id(&mut self, log_index: u64) -> Result<LogId<C::NodeId>, StorageError<C::NodeId>> {
-        let st = self.get_log_state().await?;
-
-        if Some(log_index) == st.last_purged_log_id.index() {
-            return Ok(st.last_purged_log_id.unwrap());
-        }
-
         let entries = self.get_log_entries(log_index..=log_index).await?;
 
         Ok(*entries[0].get_log_id())
