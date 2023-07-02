@@ -148,7 +148,7 @@ async fn change_from_to(old: BTreeSet<MemNodeId>, change_members: BTreeSet<MemNo
         tracing::info!(log_index, "--- let a node in the new cluster elect");
         {
             let n = router.get_raft_handle(new.iter().next().unwrap())?;
-            n.enable_elect(true);
+            n.runtime_config().elect(true);
         }
 
         tracing::info!(log_index, "--- wait for old leader or new leader");
@@ -354,7 +354,7 @@ async fn change_by_remove(old: BTreeSet<MemNodeId>, remove: &[MemNodeId]) -> any
         tracing::info!(log_index, "--- let a node in the new cluster elect");
         {
             let n = router.get_raft_handle(new.iter().next().unwrap())?;
-            n.enable_elect(true);
+            n.runtime_config().elect(true);
         }
 
         tracing::info!(log_index, "--- wait for old leader or new leader");

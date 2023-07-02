@@ -176,7 +176,7 @@ async fn remove_leader_access_new_cluster() -> Result<()> {
     tracing::info!(log_index, "--- elect node-2, handle write");
     {
         let n2 = router.get_raft_handle(&2)?;
-        n2.enable_elect(true);
+        n2.runtime_config().elect(true);
         n2.wait(timeout()).state(ServerState::Leader, "node-2 elect itself").await?;
         log_index += 1;
 

@@ -74,7 +74,7 @@ async fn heartbeat_reject_vote() -> Result<()> {
 
     tracing::info!(log_index, "--- disable heartbeat, vote request will be granted");
     {
-        node0.enable_heartbeat(false);
+        node0.runtime_config().heartbeat(false);
         sleep(Duration::from_millis(1500)).await;
 
         router.wait(&1, timeout()).log(Some(log_index), "no log is written").await?;
