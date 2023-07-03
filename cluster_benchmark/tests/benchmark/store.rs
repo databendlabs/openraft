@@ -116,28 +116,6 @@ impl RaftLogReader<TypeConfig> for Arc<LogStore> {
 
         Ok(entries)
     }
-
-    async fn get_log_state(&mut self) -> Result<LogState<TypeConfig>, StorageError<NodeId>> {
-        let log = self.log.read().await;
-        let last_serialized = log.iter().rev().next().map(|(_, ent)| ent);
-
-        let last = match last_serialized {
-            None => None,
-            Some(ent) => Some(*ent.get_log_id()),
-        };
-
-        let last_purged = self.last_purged_log_id.read().await.clone();
-
-        let last = match last {
-            None => last_purged,
-            Some(x) => Some(x),
-        };
-
-        Ok(LogState {
-            last_purged_log_id: last_purged,
-            last_log_id: last,
-        })
-    }
 }
 
 #[async_trait]
@@ -194,6 +172,28 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<StateMachineStore> {
 
 #[async_trait]
 impl RaftLogStorage<TypeConfig> for Arc<LogStore> {
+    async fn get_log_state(&mut self) -> Result<LogState<TypeConfig>, StorageError<NodeId>> {
+        let log = self.log.read().await;
+        let last_serialized = log.iter().rev().next().map(|(_, ent)| ent);
+
+        let last = match last_serialized {
+            None => None,
+            Some(ent) => Some(*ent.get_log_id()),
+        };
+
+        let last_purged = self.last_purged_log_id.read().await.clone();
+
+        let last = match last {
+            None => last_purged,
+            Some(x) => Some(x),
+        };
+
+        Ok(LogState {
+            last_purged_log_id: last_purged,
+            last_log_id: last,
+        })
+    }
+
     #[tracing::instrument(level = "trace", skip(self))]
     async fn save_vote(&mut self, vote: &Vote<NodeId>) -> Result<(), StorageError<NodeId>> {
         let mut v = self.vote.write().await;

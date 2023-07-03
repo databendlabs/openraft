@@ -7,6 +7,7 @@ use macros::add_async_trait;
 use crate::storage::callback::LogFlushed;
 use crate::storage::v2::sealed::Sealed;
 use crate::LogId;
+use crate::LogState;
 use crate::OptionalSend;
 use crate::RaftLogReader;
 use crate::RaftSnapshotBuilder;
@@ -50,6 +51,15 @@ where C: RaftTypeConfig
     /// Log reader is used by multiple replication tasks, which read logs and send them to remote
     /// nodes.
     type LogReader: RaftLogReader<C>;
+
+    /// Returns the last deleted log id and the last log id.
+    ///
+    /// The impl should **not** consider the applied log id in state machine.
+    /// The returned `last_log_id` could be the log id of the last present log entry, or the
+    /// `last_purged_log_id` if there is no entry at all.
+    // NOTE: This can be made into sync, provided all state machines will use atomic read or the
+    // like.
+    async fn get_log_state(&mut self) -> Result<LogState<C>, StorageError<C::NodeId>>;
 
     /// Get the log reader.
     ///

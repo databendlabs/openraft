@@ -103,10 +103,6 @@ where
     C: RaftTypeConfig,
     S: RaftStorage<C>,
 {
-    async fn get_log_state(&mut self) -> Result<LogState<C>, StorageError<C::NodeId>> {
-        S::get_log_state(self.storage_mut().await.deref_mut()).await
-    }
-
     async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + Send + Sync>(
         &mut self,
         range: RB,
@@ -129,6 +125,10 @@ where
     S: RaftStorage<C>,
 {
     type LogReader = S::LogReader;
+
+    async fn get_log_state(&mut self) -> Result<LogState<C>, StorageError<C::NodeId>> {
+        S::get_log_state(self.storage_mut().await.deref_mut()).await
+    }
 
     async fn save_vote(&mut self, vote: &Vote<C::NodeId>) -> Result<(), StorageError<C::NodeId>> {
         S::save_vote(self.storage_mut().await.deref_mut(), vote).await

@@ -48,7 +48,6 @@ use openraft::LogIdOptionExt;
 use openraft::MessageSummary;
 use openraft::Raft;
 use openraft::RaftLogId;
-use openraft::RaftLogReader;
 use openraft::RaftMetrics;
 use openraft::RaftState;
 use openraft::ServerState;

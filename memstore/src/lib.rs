@@ -213,32 +213,6 @@ impl RaftLogReader<TypeConfig> for Arc<MemStore> {
 
         Ok(entries)
     }
-
-    async fn get_log_state(&mut self) -> Result<LogState<TypeConfig>, StorageError<MemNodeId>> {
-        let log = self.log.read().await;
-        let last_serialized = log.iter().next_back().map(|(_, ent)| ent);
-
-        let last = match last_serialized {
-            None => None,
-            Some(serialized) => {
-                let ent: Entry<TypeConfig> =
-                    serde_json::from_str(serialized).map_err(|e| StorageIOError::read_logs(&e))?;
-                Some(*ent.get_log_id())
-            }
-        };
-
-        let last_purged = *self.last_purged_log_id.read().await;
-
-        let last = match last {
-            None => last_purged,
-            Some(x) => Some(x),
-        };
-
-        Ok(LogState {
-            last_purged_log_id: last_purged,
-            last_log_id: last,
-        })
-    }
 }
 
 #[async_trait]
@@ -309,6 +283,32 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<MemStore> {
 
 #[async_trait]
 impl RaftStorage<TypeConfig> for Arc<MemStore> {
+    async fn get_log_state(&mut self) -> Result<LogState<TypeConfig>, StorageError<MemNodeId>> {
+        let log = self.log.read().await;
+        let last_serialized = log.iter().next_back().map(|(_, ent)| ent);
+
+        let last = match last_serialized {
+            None => None,
+            Some(serialized) => {
+                let ent: Entry<TypeConfig> =
+                    serde_json::from_str(serialized).map_err(|e| StorageIOError::read_logs(&e))?;
+                Some(*ent.get_log_id())
+            }
+        };
+
+        let last_purged = *self.last_purged_log_id.read().await;
+
+        let last = match last {
+            None => last_purged,
+            Some(x) => Some(x),
+        };
+
+        Ok(LogState {
+            last_purged_log_id: last_purged,
+            last_log_id: last,
+        })
+    }
+
     #[tracing::instrument(level = "trace", skip(self))]
     async fn save_vote(&mut self, vote: &Vote<MemNodeId>) -> Result<(), StorageError<MemNodeId>> {
         tracing::debug!(?vote, "save_vote");

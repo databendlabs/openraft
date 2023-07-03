@@ -233,31 +233,6 @@ impl RocksLogStore {
 
 #[async_trait]
 impl RaftLogReader<TypeConfig> for RocksLogStore {
-    async fn get_log_state(&mut self) -> StorageResult<LogState<TypeConfig>> {
-        let last = self.db.iterator_cf(self.cf_logs(), rocksdb::IteratorMode::End).next();
-
-        let last_log_id = match last {
-            None => None,
-            Some(res) => {
-                let (_log_index, entry_bytes) = res.map_err(read_logs_err)?;
-                let ent = serde_json::from_slice::<Entry<TypeConfig>>(&entry_bytes).map_err(read_logs_err)?;
-                Some(ent.log_id)
-            }
-        };
-
-        let last_purged_log_id = self.get_meta::<meta::LastPurged>()?;
-
-        let last_log_id = match last_log_id {
-            None => last_purged_log_id,
-            Some(x) => Some(x),
-        };
-
-        Ok(LogState {
-            last_purged_log_id,
-            last_log_id,
-        })
-    }
-
     async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + Send + Sync>(
         &mut self,
         range: RB,
@@ -338,6 +313,31 @@ impl RaftSnapshotBuilder<TypeConfig> for RocksStateMachine {
 #[async_trait]
 impl RaftLogStorage<TypeConfig> for RocksLogStore {
     type LogReader = Self;
+
+    async fn get_log_state(&mut self) -> StorageResult<LogState<TypeConfig>> {
+        let last = self.db.iterator_cf(self.cf_logs(), rocksdb::IteratorMode::End).next();
+
+        let last_log_id = match last {
+            None => None,
+            Some(res) => {
+                let (_log_index, entry_bytes) = res.map_err(read_logs_err)?;
+                let ent = serde_json::from_slice::<Entry<TypeConfig>>(&entry_bytes).map_err(read_logs_err)?;
+                Some(ent.log_id)
+            }
+        };
+
+        let last_purged_log_id = self.get_meta::<meta::LastPurged>()?;
+
+        let last_log_id = match last_log_id {
+            None => last_purged_log_id,
+            Some(x) => Some(x),
+        };
+
+        Ok(LogState {
+            last_purged_log_id,
+            last_log_id,
+        })
+    }
 
     async fn save_vote(&mut self, vote: &Vote<RocksNodeId>) -> Result<(), StorageError<RocksNodeId>> {
         self.put_meta::<meta::Vote>(vote)?;
