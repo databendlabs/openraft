@@ -708,14 +708,17 @@ where
         let res = store.get_log_id(0).await;
         assert!(res.is_err());
 
-        let res = store.get_log_id(11).await;
+        let res = store.get_log_id(3).await;
         assert!(res.is_err());
-
-        let res = store.get_log_id(3).await?;
-        assert_eq!(log_id_0(1, 3), res);
 
         let res = store.get_log_id(4).await?;
         assert_eq!(log_id_0(1, 4), res);
+
+        let res = store.get_log_id(10).await?;
+        assert_eq!(log_id_0(1, 10), res);
+
+        let res = store.get_log_id(11).await;
+        assert!(res.is_err());
 
         Ok(())
     }
