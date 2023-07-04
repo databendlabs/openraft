@@ -87,8 +87,8 @@ Follow the link to method document to see the details.
 | Kind       | [`RaftStorage`] method           | Return value                 | Description                           |
 |------------|----------------------------------|------------------------------|---------------------------------------|
 | Read log:  | [`get_log_reader()`]             | impl [`RaftLogReader`]       | get a read-only log reader            |
-|            |                                  | ↳ [`get_log_state()`]        | get first/last log id                 |
 |            |                                  | ↳ [`try_get_log_entries()`]  | get a range of logs                   |
+|            | [`get_log_state()`]              | [`LogState`]                 | get first/last log id                 |
 | Write log: | [`append_to_log()`]              | ()                           | append logs                           |
 | Write log: | [`delete_conflict_logs_since()`] | ()                           | delete logs `[index, +oo)`            |
 | Write log: | [`purge_logs_upto()`]            | ()                           | purge logs `(-oo, index]`             |
@@ -115,15 +115,15 @@ Most of the APIs are quite straightforward, except two indirect APIs:
     ```
 
     [`RaftLogReader`] defines the APIs to read logs, and is an also super trait of [`RaftStorage`] :
-    - [`get_log_state()`] get latest log state from the storage;
     - [`try_get_log_entries()`] get log entries in a range;
 
     ```ignore
     trait RaftLogReader<C: RaftTypeConfig> {
-        async fn get_log_state(&mut self) -> Result<LogState<C>, ...>;
         async fn try_get_log_entries<RB: RangeBounds<u64>>(&mut self, range: RB) -> Result<Vec<C::Entry>, ...>;
     }
     ```
+
+    And [`RaftStorage::get_log_state()`][`get_log_state()`] get latest log state from the storage;
 
 -   Build a snapshot from the local state machine needs to be done in two steps:
     - [`RaftStorage::get_snapshot_builder() -> Self::SnapshotBuilder`][`get_snapshot_builder()`],
@@ -357,12 +357,13 @@ Additionally, two test scripts for setting up a cluster are available:
 [`Entry`]:                          `crate::entry::Entry`
 [`docs::Vote`]:                     `crate::docs::data::Vote`
 [`Vote`]:                           `crate::vote::Vote`
+[`LogState`]:                       `crate::storage::LogState` 
 
 [`RaftLogReader`]:                  `crate::storage::RaftLogReader`
-[`get_log_state()`]:                `crate::storage::RaftLogReader::get_log_state`
 [`try_get_log_entries()`]:          `crate::storage::RaftLogReader::try_get_log_entries`
 
 [`RaftStorage`]:                    `crate::storage::RaftStorage`
+[`get_log_state()`]:                `crate::storage::RaftStorage::get_log_state`
 [`RaftStorage::LogReader`]:         `crate::storage::RaftStorage::LogReader`
 [`RaftStorage::SnapshotBuilder`]:   `crate::storage::RaftStorage::SnapshotBuilder`
 [`get_log_reader()`]:               `crate::storage::RaftStorage::get_log_reader`

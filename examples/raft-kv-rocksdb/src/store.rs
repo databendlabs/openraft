@@ -318,24 +318,6 @@ impl Store {
 
 #[async_trait]
 impl RaftLogReader<TypeConfig> for Arc<Store> {
-    async fn get_log_state(&mut self) -> StorageResult<LogState<TypeConfig>> {
-        let last = self.db.iterator_cf(self.logs(), rocksdb::IteratorMode::End).next().and_then(|res| {
-            let (_, ent) = res.unwrap();
-            Some(serde_json::from_slice::<Entry<TypeConfig>>(&ent).ok()?.log_id)
-        });
-
-        let last_purged_log_id = self.get_last_purged_()?;
-
-        let last_log_id = match last {
-            None => last_purged_log_id,
-            Some(x) => Some(x),
-        };
-        Ok(LogState {
-            last_purged_log_id,
-            last_log_id,
-        })
-    }
-
     async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + Send + Sync>(
         &mut self,
         range: RB,
@@ -414,6 +396,24 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<Store> {
 impl RaftStorage<TypeConfig> for Arc<Store> {
     type LogReader = Self;
     type SnapshotBuilder = Self;
+
+    async fn get_log_state(&mut self) -> StorageResult<LogState<TypeConfig>> {
+        let last = self.db.iterator_cf(self.logs(), rocksdb::IteratorMode::End).next().and_then(|res| {
+            let (_, ent) = res.unwrap();
+            Some(serde_json::from_slice::<Entry<TypeConfig>>(&ent).ok()?.log_id)
+        });
+
+        let last_purged_log_id = self.get_last_purged_()?;
+
+        let last_log_id = match last {
+            None => last_purged_log_id,
+            Some(x) => Some(x),
+        };
+        Ok(LogState {
+            last_purged_log_id,
+            last_log_id,
+        })
+    }
 
     #[tracing::instrument(level = "trace", skip(self))]
     async fn save_vote(&mut self, vote: &Vote<NodeId>) -> Result<(), StorageError<NodeId>> {

@@ -314,7 +314,7 @@ pub mod testing {
                 }
 
                 // get_log_state
-                let got = crate::RaftLogReader::get_log_state(&mut s8).await?;
+                let got = crate::RaftStorage::get_log_state(&mut s8).await?;
                 assert_eq!(
                     crate::LogState {
                         last_purged_log_id: Some(crate::LogId::new(crate::CommittedLeaderId::new(1, 0), 5)),

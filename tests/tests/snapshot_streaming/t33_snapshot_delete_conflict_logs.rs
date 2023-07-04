@@ -21,7 +21,6 @@ use openraft::Entry;
 use openraft::EntryPayload;
 use openraft::LogId;
 use openraft::Membership;
-use openraft::RaftLogReader;
 use openraft::RaftSnapshotBuilder;
 use openraft::ServerState;
 use openraft::SnapshotPolicy;

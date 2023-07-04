@@ -386,30 +386,6 @@ impl SledStore {
 
 #[async_trait]
 impl RaftLogReader<TypeConfig> for Arc<SledStore> {
-    async fn get_log_state(&mut self) -> StorageResult<LogState<TypeConfig>> {
-        let last_purged = self.get_last_purged_()?;
-
-        let logs_tree = logs(&self.db);
-        let last_ivec_kv = logs_tree.last().map_err(read_logs_err)?;
-        let (_, ent_ivec) = if let Some(last) = last_ivec_kv {
-            last
-        } else {
-            return Ok(LogState {
-                last_purged_log_id: last_purged,
-                last_log_id: last_purged,
-            });
-        };
-
-        let last_ent = serde_json::from_slice::<Entry<TypeConfig>>(&ent_ivec).map_err(read_logs_err)?;
-        let last_log_id = Some(*last_ent.get_log_id());
-
-        let last_log_id = std::cmp::max(last_log_id, last_purged);
-        Ok(LogState {
-            last_purged_log_id: last_purged,
-            last_log_id,
-        })
-    }
-
     async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + Send + Sync>(
         &mut self,
         range: RB,
@@ -493,6 +469,30 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<SledStore> {
 impl RaftStorage<TypeConfig> for Arc<SledStore> {
     type LogReader = Self;
     type SnapshotBuilder = Self;
+
+    async fn get_log_state(&mut self) -> StorageResult<LogState<TypeConfig>> {
+        let last_purged = self.get_last_purged_()?;
+
+        let logs_tree = logs(&self.db);
+        let last_ivec_kv = logs_tree.last().map_err(read_logs_err)?;
+        let (_, ent_ivec) = if let Some(last) = last_ivec_kv {
+            last
+        } else {
+            return Ok(LogState {
+                last_purged_log_id: last_purged,
+                last_log_id: last_purged,
+            });
+        };
+
+        let last_ent = serde_json::from_slice::<Entry<TypeConfig>>(&ent_ivec).map_err(read_logs_err)?;
+        let last_log_id = Some(*last_ent.get_log_id());
+
+        let last_log_id = std::cmp::max(last_log_id, last_purged);
+        Ok(LogState {
+            last_purged_log_id: last_purged,
+            last_log_id,
+        })
+    }
 
     #[tracing::instrument(level = "trace", skip(self))]
     async fn save_vote(&mut self, vote: &Vote<ExampleNodeId>) -> Result<(), StorageError<ExampleNodeId>> {

@@ -141,15 +141,6 @@ pub struct LogState<C: RaftTypeConfig> {
 pub trait RaftLogReader<C>: Send + Sync + 'static
 where C: RaftTypeConfig
 {
-    /// Returns the last deleted log id and the last log id.
-    ///
-    /// The impl should not consider the applied log id in state machine.
-    /// The returned `last_log_id` could be the log id of the last present log entry, or the
-    /// `last_purged_log_id` if there is no entry at all.
-    // NOTE: This can be made into sync, provided all state machines will use atomic read or the
-    // like.
-    async fn get_log_state(&mut self) -> Result<LogState<C>, StorageError<C::NodeId>>;
-
     /// Get a series of log entries from storage.
     ///
     /// The start value is inclusive in the search and the stop value is non-inclusive: `[start,
@@ -218,6 +209,15 @@ where C: RaftTypeConfig
     async fn read_vote(&mut self) -> Result<Option<Vote<C::NodeId>>, StorageError<C::NodeId>>;
 
     // --- Log
+
+    /// Returns the last deleted log id and the last log id.
+    ///
+    /// The impl should **not** consider the applied log id in state machine.
+    /// The returned `last_log_id` could be the log id of the last present log entry, or the
+    /// `last_purged_log_id` if there is no entry at all.
+    // NOTE: This can be made into sync, provided all state machines will use atomic read or the
+    // like.
+    async fn get_log_state(&mut self) -> Result<LogState<C>, StorageError<C::NodeId>>;
 
     /// Get the log reader.
     ///

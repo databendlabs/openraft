@@ -96,23 +96,6 @@ pub struct Store {
 
 #[async_trait]
 impl RaftLogReader<TypeConfig> for Arc<Store> {
-    async fn get_log_state(&mut self) -> Result<LogState<TypeConfig>, StorageError<NodeId>> {
-        let log = self.log.read().await;
-        let last = log.iter().next_back().map(|(_, ent)| ent.log_id);
-
-        let last_purged = *self.last_purged_log_id.read().await;
-
-        let last = match last {
-            None => last_purged,
-            Some(x) => Some(x),
-        };
-
-        Ok(LogState {
-            last_purged_log_id: last_purged,
-            last_log_id: last,
-        })
-    }
-
     async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + Send + Sync>(
         &mut self,
         range: RB,
@@ -179,6 +162,23 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<Store> {
 impl RaftStorage<TypeConfig> for Arc<Store> {
     type LogReader = Self;
     type SnapshotBuilder = Self;
+
+    async fn get_log_state(&mut self) -> Result<LogState<TypeConfig>, StorageError<NodeId>> {
+        let log = self.log.read().await;
+        let last = log.iter().next_back().map(|(_, ent)| ent.log_id);
+
+        let last_purged = *self.last_purged_log_id.read().await;
+
+        let last = match last {
+            None => last_purged,
+            Some(x) => Some(x),
+        };
+
+        Ok(LogState {
+            last_purged_log_id: last_purged,
+            last_log_id: last,
+        })
+    }
 
     #[tracing::instrument(level = "trace", skip(self))]
     async fn save_vote(&mut self, vote: &Vote<NodeId>) -> Result<(), StorageError<NodeId>> {

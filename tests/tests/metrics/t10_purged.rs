@@ -3,9 +3,9 @@ use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
+use openraft::storage::RaftLogStorage;
 use openraft::testing::log_id;
 use openraft::Config;
-use openraft::RaftLogReader;
 
 use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
