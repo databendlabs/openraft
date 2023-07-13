@@ -211,9 +211,6 @@ where
             helper.get_initial_state().await?
         };
 
-        // TODO(xp): this is not necessary.
-        log_store.save_vote(state.vote_ref()).await?;
-
         let engine = Engine::new(state, eng_config);
 
         let sm_handle = sm::Worker::spawn(state_machine, tx_notify.clone());
