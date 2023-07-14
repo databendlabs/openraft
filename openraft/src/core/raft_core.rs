@@ -1321,8 +1321,12 @@ where
                         let st = self.engine.state.io_state_mut();
                         st.update_snapshot(last_log_id);
                     }
-                    sm::Response::ReceiveSnapshotChunk(_) => {
+                    sm::Response::ReceiveSnapshotChunk(meta) => {
                         tracing::info!("sm::StateMachine command done: ReceiveSnapshotChunk: {}", func_name!());
+
+                        if let Some(meta) = meta {
+                            self.engine.following_handler().install_snapshot(meta);
+                        }
                     }
                     sm::Response::InstallSnapshot(meta) => {
                         tracing::info!(

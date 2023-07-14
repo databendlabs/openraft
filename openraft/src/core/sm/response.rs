@@ -14,8 +14,8 @@ where C: RaftTypeConfig
 
     /// When finishing receiving a snapshot chunk.
     ///
-    /// It does not return any value to RaftCore.
-    ReceiveSnapshotChunk(()),
+    /// Returns if the snapshot is complete
+    ReceiveSnapshotChunk(Option<SnapshotMeta<C::NodeId, C::Node>>),
 
     /// When finishing installing a snapshot.
     ///

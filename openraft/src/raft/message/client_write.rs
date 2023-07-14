@@ -1,6 +1,5 @@
 use std::fmt::Debug;
 
-use crate::AppDataResponse;
 use crate::LogId;
 use crate::Membership;
 use crate::MessageSummary;
