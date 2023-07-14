@@ -290,32 +290,12 @@ where C: RaftTypeConfig
     }
 
     /// Follower/Learner handles install-snapshot.
+    ///
+    /// Refer to [`snapshot_replication`](crate::docs::protocol::replication::snapshot_replication)
+    /// for the reason the following workflow is needed.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn install_snapshot(&mut self, meta: SnapshotMeta<C::NodeId, C::Node>) {
-        // There are two special cases in which snapshot last log id does not exists locally:
-        // Snapshot last log id before the local last-purged-log-id, or after the local last-log-id:
-        //
-        // ```
-        //      snapshot ----.
-        //                   v
-        // -----------------------llllllllll--->
-        //
-        //      snapshot ----.
-        //                   v
-        // ----lllllllllll--------------------->
-        // ```
-        //
-        // In the first case, snapshot-last-log-id <= last-purged-log-id <=
-        // local-snapshot-last-log-id. Thus snapshot is obsolete and won't be installed.
-        //
-        // In the second case, all local logs will be purged after install.
-
         tracing::info!("install_snapshot: meta:{:?}", meta);
-
-        // // TODO: temp solution: committed is updated after snapshot_last_log_id.
-        // //       committed should be updated first or together with snapshot_last_log_id(i.e.,
-        // extract `state` first). let old_validate = self.state.enable_validate;
-        // self.state.enable_validate = false;
 
         let snap_last_log_id = meta.last_log_id;
 
@@ -326,49 +306,26 @@ where C: RaftTypeConfig
                 self.state.committed().summary()
             );
             self.output.push_command(Command::from(sm::Command::cancel_snapshot(meta)));
-            // // TODO: temp solution: committed is updated after snapshot_last_log_id.
-            // self.state.enable_validate = old_validate;
             return;
         }
 
         // snapshot_last_log_id can not be None
         let snap_last_log_id = snap_last_log_id.unwrap();
 
+        // 1. Truncate all logs if conflict.
+        // 2. Install snapshot.
+        // 3. Purge logs the snapshot covers.
+
         let mut snap_handler = self.snapshot_handler();
         let updated = snap_handler.update_snapshot(meta.clone());
         if !updated {
-            // // TODO: temp solution: committed is updated after snapshot_last_log_id.
-            // self.state.enable_validate = old_validate;
             return;
         }
-
-        // Do install:
-        //
-        // 1. Truncate all logs if conflict.
-        //
-        //    Unlike normal append-entries RPC, if conflicting logs are found, it is not
-        // **necessary** to delete them.    But cleaning them make the assumption of
-        // incremental-log-id always hold, which makes it easier to debug.    See: [Snapshot-replication](https://datafuselabs.github.io/openraft/replication.html#snapshot-replication)
-        //
-        //    Truncate all:
-        //
-        //    It just truncate **ALL** logs here, because `snap_last_log_id` is committed, if the
-        // local log id conflicts    with `snap_last_log_id`, there must be a quorum that
-        // contains `snap_last_log_id`.    Thus it is safe to remove all logs on this node.
-        //
-        //    The logs before `snap_last_log_id` may conflicts with the leader too.
-        //    It's not safe to remove the conflicting logs that are less than `snap_last_log_id`
-        // after installing    snapshot.
-        //
-        //    If the node crashes, dirty logs may remain there. These logs may be forwarded to other
-        // nodes if this nodes    becomes a leader.
-        //
-        // 2. Install snapshot.
 
         let local = self.state.get_log_id(snap_last_log_id.index);
         if let Some(local) = local {
             if local != snap_last_log_id {
-                // Delete non-committed logs.
+                // Conflict, delete all non-committed logs.
                 self.truncate_logs(self.state.committed().next_index());
             }
         }
@@ -385,18 +342,9 @@ where C: RaftTypeConfig
         //         used for leader to synchronize its snapshot data.
         self.output.push_command(Command::from(sm::Command::install_snapshot(meta)));
 
-        // A local log that is <= snap_last_log_id can not conflict with the leader.
-        // But there will be a hole in the logs. Thus it's better remove all logs.
-
-        // In the second case, if local-last-log-id is smaller than snapshot-last-log-id,
-        // and this node crashes after installing snapshot and before purging logs,
-        // the log will be purged the next start up, in [`RaftState::get_initial_state`].
         // TODO: move this to LogHandler::purge_log()?
         self.state.purge_upto = Some(snap_last_log_id);
         self.log_handler().purge_log();
-
-        // // TODO: temp solution: committed is updated after snapshot_last_log_id.
-        // self.state.enable_validate = old_validate;
     }
 
     /// Find the last 2 membership entries in a list of entries.
