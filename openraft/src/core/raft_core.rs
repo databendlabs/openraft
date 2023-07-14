@@ -1313,8 +1313,12 @@ where
                         );
                         self.engine.finish_building_snapshot(meta);
                     }
-                    sm::Response::ReceiveSnapshotChunk(_) => {
+                    sm::Response::ReceiveSnapshotChunk(meta) => {
                         tracing::info!("sm::StateMachine command done: ReceiveSnapshotChunk: {}", func_name!());
+
+                        if let Some(meta) = meta {
+                            self.engine.following_handler().install_snapshot(meta);
+                        }
                     }
                     sm::Response::InstallSnapshot(meta) => {
                         tracing::info!(

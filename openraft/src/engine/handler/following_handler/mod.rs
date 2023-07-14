@@ -1,3 +1,4 @@
+use std::ops::Deref;
 use std::sync::Arc;
 
 use crate::core::sm;
@@ -254,19 +255,17 @@ where C: RaftTypeConfig
 
         let snapshot_id = &req.meta.snapshot_id;
 
-        let curr_id = self.state.snapshot_streaming.as_ref().map(|s| &s.snapshot_id);
+        let cur_id = self.state.snapshot_streaming.as_ref().map(|s| s.snapshot_id.deref());
 
-        // Changed to another stream. re-init snapshot state.
-        if curr_id != Some(&req.meta.snapshot_id) {
-            if req.offset > 0 {
+        if cur_id != Some(&req.meta.snapshot_id) {
+            // request from another snapshot stream. we only keep track of one at a time.
+            if !req.data.is_manifest() {
                 let mismatch = SnapshotMismatch {
                     expect: SnapshotSegmentId {
-                        id: snapshot_id.clone(),
-                        offset: 0,
+                        id: cur_id.unwrap_or("").to_string(),
                     },
                     got: SnapshotSegmentId {
                         id: snapshot_id.clone(),
-                        offset: req.offset,
                     },
                 };
 
@@ -274,18 +273,15 @@ where C: RaftTypeConfig
                 return Err(mismatch.into());
             }
 
-            if req.offset == 0 {
-                self.state.snapshot_streaming = Some(StreamingState {
-                    offset: 0,
-                    snapshot_id: snapshot_id.clone(),
-                });
-            }
+            // Changed to another stream. re-init snapshot state.
+            self.state.snapshot_streaming = Some(StreamingState {
+                snapshot_id: snapshot_id.clone(),
+            });
         }
-
-        self.state.snapshot_streaming.as_mut().unwrap().offset = req.offset;
 
         let sm_cmd = sm::Command::receive(req);
         self.output.push_command(Command::from(sm_cmd));
+
         Ok(())
     }
 
