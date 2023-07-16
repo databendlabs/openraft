@@ -91,6 +91,7 @@ where
         run_fut(run_test(builder, Self::get_initial_state_last_log_gt_sm))?;
         run_fut(run_test(builder, Self::get_initial_state_last_log_lt_sm))?;
         run_fut(run_test(builder, Self::get_initial_state_log_ids))?;
+        run_fut(run_test(builder, Self::get_initial_state_re_apply_committed))?;
         run_fut(run_test(builder, Self::save_vote))?;
         run_fut(run_test(builder, Self::get_log_entries))?;
         run_fut(run_test(builder, Self::try_get_log_entry))?;
@@ -589,6 +590,43 @@ where
             let initial = StorageHelper::new(&mut store, &mut sm).get_initial_state().await?;
             assert_eq!(vec![log_id(3, 0, 6)], initial.log_ids.key_log_ids());
         }
+
+        Ok(())
+    }
+
+    /// Test if committed logs are re-applied.
+    pub async fn get_initial_state_re_apply_committed(
+        mut store: LS,
+        mut sm: SM,
+    ) -> Result<(), StorageError<C::NodeId>> {
+        Self::default_vote(&mut store).await?;
+
+        append(&mut store, [
+            blank_ent_0::<C>(1, 2),
+            blank_ent_0::<C>(1, 3),
+            blank_ent_0::<C>(1, 4),
+            blank_ent_0::<C>(1, 5),
+        ])
+        .await?;
+        store.purge(log_id_0(1, 1)).await?;
+
+        apply(&mut sm, [blank_ent_0::<C>(1, 2)]).await?;
+
+        store.save_committed(Some(log_id_0(1, 4))).await?;
+        let got = store.read_committed().await?;
+        if got.is_none() {
+            tracing::info!("This implementation does not store committed log id, skip test re-applying committed logs");
+            return Ok(());
+        }
+
+        let initial = StorageHelper::new(&mut store, &mut sm).get_initial_state().await?;
+
+        assert_eq!(Some(&log_id_0(1, 4)), initial.io_applied(), "last_applied is updated");
+        assert_eq!(
+            Some(log_id_0(1, 4)),
+            sm.applied_state().await?.0,
+            "last_applied is updated"
+        );
 
         Ok(())
     }

@@ -1,11 +1,13 @@
 use std::marker::PhantomData;
 use std::sync::Arc;
 
+use crate::display_ext::DisplayOptionExt;
 use crate::engine::LogIdList;
 use crate::entry::RaftPayload;
 use crate::log_id::RaftLogId;
 use crate::raft_state::IOState;
 use crate::raft_state::LogIOId;
+use crate::storage::RaftLogReaderExt;
 use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
 use crate::utime::UTime;
@@ -64,10 +66,42 @@ where
         let vote = self.log_store.read_vote().await?;
         let vote = vote.unwrap_or_default();
 
+        let mut committed = self.log_store.read_committed().await?;
+
         let st = self.log_store.get_log_state().await?;
         let mut last_purged_log_id = st.last_purged_log_id;
         let mut last_log_id = st.last_log_id;
-        let (last_applied, _) = self.state_machine.applied_state().await?;
+
+        let (mut last_applied, _) = self.state_machine.applied_state().await?;
+
+        tracing::info!(
+            vote = display(&vote),
+            last_purged_log_id = display(last_purged_log_id.display()),
+            last_applied = display(last_applied.display()),
+            committed = display(committed.display()),
+            last_log_id = display(last_log_id.display()),
+            "get_initial_state"
+        );
+
+        // TODO: It is possible `committed < last_applied` because when installing snapshot,
+        //       new committed should be saved, but not yet.
+        if committed < last_applied {
+            committed = last_applied;
+        }
+
+        // Re-apply log entries to recover SM to latest state.
+        if last_applied < committed {
+            let start = last_applied.next_index();
+            let end = committed.next_index();
+
+            tracing::info!("re-apply log {}..{} to state machine", start, end);
+
+            let entries = self.log_store.get_log_entries(start..end).await?;
+            self.state_machine.apply(entries).await?;
+
+            last_applied = committed;
+        }
+
         let mem_state = self.get_membership().await?;
 
         // Clean up dirty state: snapshot is installed but logs are not cleaned.
@@ -75,8 +109,20 @@ where
             self.log_store.purge(last_applied.unwrap()).await?;
             last_log_id = last_applied;
             last_purged_log_id = last_applied;
+
+            tracing::info!(
+                "Clean the hole between last_log_id({}) and last_applied({}) by purging logs to {}",
+                last_log_id.display(),
+                last_applied.display(),
+                last_applied.display(),
+            );
         }
 
+        tracing::info!(
+            "load key log ids from ({},{}]",
+            last_purged_log_id.display(),
+            last_log_id.display()
+        );
         let log_ids = LogIdList::load_log_ids(last_purged_log_id, last_log_id, self.log_store).await?;
 
         // TODO: `flushed` is not set.

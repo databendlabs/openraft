@@ -208,6 +208,33 @@ where C: RaftTypeConfig
 
     async fn read_vote(&mut self) -> Result<Option<Vote<C::NodeId>>, StorageError<C::NodeId>>;
 
+    /// Saves the last committed log id to storage.
+    ///
+    /// # Optional feature
+    ///
+    /// If the state machine flushes state to disk before returning from `apply()`,
+    /// then the application does not need to implement this method.
+    ///
+    /// Otherwise, i.e., the state machine just relies on periodical snapshot to persist state to
+    /// disk:
+    ///
+    /// - If the `committed` log id is saved, the state machine will be recovered to the state
+    ///   corresponding to this `committed` log id upon system startup, i.e., the state at the point
+    ///   when the committed log id was applied.
+    ///
+    /// - If the `committed` log id is not saved, Openraft will just recover the state machine to
+    ///   the state of the last snapshot taken.
+    async fn save_committed(&mut self, _committed: Option<LogId<C::NodeId>>) -> Result<(), StorageError<C::NodeId>> {
+        // By default `committed` log id is not saved
+        Ok(())
+    }
+
+    /// Return the last saved committed log id by [`Self::save_committed`].
+    async fn read_committed(&mut self) -> Result<Option<LogId<C::NodeId>>, StorageError<C::NodeId>> {
+        // By default `committed` log id is not saved and this method just return None.
+        Ok(None)
+    }
+
     // --- Log
 
     /// Returns the last deleted log id and the last log id.

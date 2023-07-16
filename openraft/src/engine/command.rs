@@ -154,6 +154,7 @@ where C: RaftTypeConfig
 
             Command::StateMachine { .. }              => CommandKind::StateMachine,
             // Apply is firstly handled by RaftCore, then forwarded to state machine worker.
+            // TODO: Apply also write `committed` to log-store, which should be run in CommandKind::Log
             Command::Apply { .. }                     => CommandKind::Main,
         }
     }
@@ -168,6 +169,7 @@ where C: RaftTypeConfig
             Command::AppendEntry { .. }               => None,
             Command::AppendInputEntries { .. }        => None,
             Command::ReplicateCommitted { .. }        => None,
+            // TODO: Apply also write `committed` to log-store, which should be run in CommandKind::Log
             Command::Apply { .. }                     => None,
             Command::Replicate { .. }                 => None,
             Command::RebuildReplicationStreams { .. } => None,

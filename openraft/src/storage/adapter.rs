@@ -138,6 +138,14 @@ where
         S::read_vote(self.storage_mut().await.deref_mut()).await
     }
 
+    async fn save_committed(&mut self, committed: Option<LogId<C::NodeId>>) -> Result<(), StorageError<C::NodeId>> {
+        S::save_committed(self.storage_mut().await.deref_mut(), committed).await
+    }
+
+    async fn read_committed(&mut self) -> Result<Option<LogId<C::NodeId>>, StorageError<C::NodeId>> {
+        S::read_committed(self.storage_mut().await.deref_mut()).await
+    }
+
     async fn get_log_reader(&mut self) -> Self::LogReader {
         S::get_log_reader(self.storage_mut().await.deref_mut()).await
     }
