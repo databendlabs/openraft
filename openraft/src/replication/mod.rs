@@ -644,34 +644,45 @@ where
         let leader_time = <C::AsyncRuntime as AsyncRuntime>::Instant::now();
         let snap_timeout = self.config.send_snapshot_timeout();
 
-        for chunk_id in manifest.chunks_to_send() {
-            let chunk = snapshot.snapshot.get_chunk(&chunk_id).sto_res(err_x)?;
-
+        // currently not doing anything with response for manifest
+        let _resp = loop {
             let req = InstallSnapshotRequest {
                 vote: self.session_id.vote,
                 meta: snapshot.meta.clone(),
-                data: crate::raft::InstallSnapshotData::chunk(chunk),
+                data: crate::raft::InstallSnapshotData::Manifest(manifest.clone()),
             };
 
-            // Send the RPC over to the target.
-            tracing::debug!(?chunk_id, "sending snapshot chunk");
+            match self.send_snapshot(req, snap_timeout).await? {
+                // send failed
+                None => {
+                    // If sender is closed, return at once
+                    self.try_drain_events().await?;
 
-            // let snap_timeout = if done {
-            //     self.config.install_snapshot_timeout()
-            // } else {
-            //     self.config.send_snapshot_timeout()
-            // };
+                    // Sleep a short time otherwise in test environment it is a dead-loop that
+                    // never yields. Because network implementation does
+                    // not yield.
+                    C::AsyncRuntime::sleep(Duration::from_millis(10)).await;
+                }
+                Some(resp) => break resp,
+            }
+        };
 
-            let option = RPCOption::new(snap_timeout);
+        for chunk_id in manifest.chunks_to_send() {
+            let res = loop {
+                let chunk = snapshot.snapshot.get_chunk(&chunk_id).sto_res(err_x)?;
 
-            let res = C::AsyncRuntime::timeout(snap_timeout, self.network.install_snapshot(req, option)).await;
+                // Send the RPC over to the target.
+                tracing::debug!(?chunk_id, "sending snapshot chunk");
 
-            let res: InstallSnapshotResponse<C::NodeId> = match res {
-                Ok(outer_res) => match outer_res {
-                    Ok(res) => res,
-                    Err(err) => {
-                        tracing::warn!(error=%err, "error sending InstallSnapshot RPC to target");
+                let req = InstallSnapshotRequest {
+                    vote: self.session_id.vote,
+                    meta: snapshot.meta.clone(),
+                    data: crate::raft::InstallSnapshotData::Chunk(chunk),
+                };
 
+                match self.send_snapshot(req, snap_timeout).await? {
+                    // send failed
+                    None => {
                         // If sender is closed, return at once
                         self.try_drain_events().await?;
 
@@ -679,20 +690,8 @@ where
                         // never yields. Because network implementation does
                         // not yield.
                         C::AsyncRuntime::sleep(Duration::from_millis(10)).await;
-                        continue;
                     }
-                },
-                Err(err) => {
-                    // TODO(2): add backoff when Unreachable is returned
-                    tracing::warn!(error=%err, "timeout while sending InstallSnapshot RPC to target");
-
-                    // If sender is closed, return at once
-                    self.try_drain_events().await?;
-
-                    // Sleep a short time otherwise in test environment it is a dead-loop that never
-                    // yields. Because network implementation does not yield.
-                    C::AsyncRuntime::sleep(Duration::from_millis(10)).await;
-                    continue;
+                    Some(resp) => break resp,
                 }
             };
 
@@ -706,19 +705,6 @@ where
                 }));
             }
 
-            // If we just sent the final chunk of the snapshot, then transition to lagging state.
-            // if done {
-            //         tracing::debug!(
-            //             "done install snapshot: snapshot last_log_id: {:?}, matching: {}",
-            //             snapshot.meta.last_log_id,
-            //             self.matching.summary(),
-            //         );
-            //
-            //         // TODO: update leader lease for every successfully sent chunk.
-            //         self.update_matching(request_id, leader_time, snapshot.meta.last_log_id);
-            //
-            //         return Ok(None);
-            //     }
             self.try_drain_events().await?;
         }
 
@@ -731,125 +717,16 @@ where
         self.update_matching(request_id, leader_time, snapshot.meta.last_log_id);
 
         Ok(None)
-
-        // let mut offset = 0;
-        // let end = snapshot.snapshot.seek(SeekFrom::End(0)).await.sto_res(err_x)?;
-        // let mut buf = Vec::with_capacity(self.config.snapshot_max_chunk_size as usize);
-        //
-        // loop {
-        //     // Build the RPC.
-        //     snapshot.snapshot.seek(SeekFrom::Start(offset)).await.sto_res(err_x)?;
-        //     let n_read = snapshot.snapshot.read_buf(&mut buf).await.sto_res(err_x)?;
-        //
-        //     let leader_time = <C::AsyncRuntime as AsyncRuntime>::Instant::now();
-        //
-        //     let done = (offset + n_read as u64) == end;
-        //     let req = InstallSnapshotRequest {
-        //         vote: self.session_id.vote,
-        //         meta: snapshot.meta.clone(),
-        //         offset,
-        //         data: Vec::from(&buf[..n_read]),
-        //         done,
-        //     };
-        //     buf.clear();
-        //
-        //     // Send the RPC over to the target.
-        //     tracing::debug!(
-        //         snapshot_size = req.data.len(),
-        //         req.offset,
-        //         end,
-        //         req.done,
-        //         "sending snapshot chunk"
-        //     );
-        //
-        //     let snap_timeout = if done {
-        //         self.config.install_snapshot_timeout()
-        //     } else {
-        //         self.config.send_snapshot_timeout()
-        //     };
-        //
-        //     let option = RPCOption::new(snap_timeout);
-        //
-        //     let res = C::AsyncRuntime::timeout(snap_timeout, self.network.install_snapshot(req,
-        // option)).await;
-        //
-        //     let res = match res {
-        //         Ok(outer_res) => match outer_res {
-        //             Ok(res) => res,
-        //             Err(err) => {
-        //                 tracing::warn!(error=%err, "error sending InstallSnapshot RPC to
-        // target");
-        //
-        //                 // If sender is closed, return at once
-        //                 self.try_drain_events().await?;
-        //
-        //                 // Sleep a short time otherwise in test environment it is a dead-loop
-        // that                 // never yields. Because network implementation does
-        //                 // not yield.
-        //                 C::AsyncRuntime::sleep(Duration::from_millis(10)).await;
-        //                 continue;
-        //             }
-        //         },
-        //         Err(err) => {
-        //             // TODO(2): add backoff when Unreachable is returned
-        //             tracing::warn!(error=%err, "timeout while sending InstallSnapshot RPC to
-        // target");
-        //
-        //             // If sender is closed, return at once
-        //             self.try_drain_events().await?;
-        //
-        //             // Sleep a short time otherwise in test environment it is a dead-loop that
-        // never             // yields. Because network implementation does not yield.
-        //             C::AsyncRuntime::sleep(Duration::from_millis(10)).await;
-        //             continue;
-        //         }
-        //     };
-        //
-        //         // Handle response conditions.
-        //         if res.vote > self.session_id.vote {
-        //             return Err(ReplicationError::HigherVote(HigherVote {
-        //                 higher: res.vote,
-        //                 mine: self.session_id.vote,
-        //            }));
-        //         }
-        //
-        //         // If we just sent the final chunk of the snapshot, then transition to lagging
-        // state.         if done {
-        //             tracing::debug!(
-        //                 "done install snapshot: snapshot last_log_id: {:?}, matching: {}",
-        //                 snapshot.meta.last_log_id,
-        //                 self.matching.summary(),
-        //             );
-        //
-        //             // TODO: update leader lease for every successfully sent chunk.
-        //             self.update_matching(request_id, leader_time, snapshot.meta.last_log_id);
-        //
-        //             return Ok(None);
-        //         }
-        //
-        //         // Everything is good, so update offset for sending the next chunk.
-        //         offset += n_read as u64;
-        //
-        //         // Check raft channel to ensure we are staying up-to-date, then loop.
-        //         self.try_drain_events().await?;
-        //     }
-        //
     }
 
-    /// Send the RPC over to the target.
+    /// Send the RPC over to the target. Will
     #[tracing::instrument(level = "info", skip_all)]
     async fn send_snapshot(
         &mut self,
         req: InstallSnapshotRequest<C>,
+        snap_timeout: Duration,
     ) -> Result<Option<InstallSnapshotResponse<C::NodeId>>, ReplicationError<C::NodeId, C::Node>> {
         // tracing::debug!(?req.chunk_id(), "sending snapshot request");
-
-        // let snap_timeout = if done {
-        //     self.config.install_snapshot_timeout()
-        // } else {
-        let snap_timeout = self.config.send_snapshot_timeout();
-        // };
-
         let option = RPCOption::new(snap_timeout);
 
         let res = C::AsyncRuntime::timeout(snap_timeout, self.network.install_snapshot(req, option)).await;
@@ -859,32 +736,17 @@ where
                 Ok(res) => res,
                 Err(err) => {
                     tracing::warn!(error=%err, "error sending InstallSnapshot RPC to target");
-
-                    // If sender is closed, return at once
-                    self.try_drain_events().await?;
-
-                    // Sleep a short time otherwise in test environment it is a dead-loop that
-                    // never yields. Because network implementation does
-                    // not yield.
-                    C::AsyncRuntime::sleep(Duration::from_millis(10)).await;
                     return Ok(None);
                 }
             },
             Err(err) => {
                 // TODO(2): add backoff when Unreachable is returned
                 tracing::warn!(error=%err, "timeout while sending InstallSnapshot RPC to target");
-
-                // If sender is closed, return at once
-                self.try_drain_events().await?;
-
-                // Sleep a short time otherwise in test environment it is a dead-loop that never
-                // yields. Because network implementation does not yield.
-                C::AsyncRuntime::sleep(Duration::from_millis(10)).await;
                 return Ok(None);
             }
         };
 
-        return Ok(Some(res));
+        Ok(Some(res))
     }
 }
 

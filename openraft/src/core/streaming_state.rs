@@ -36,7 +36,7 @@ where C: RaftTypeConfig
         }
     }
 
-    /// Receive a chunk of snapshot data.
+    /// Receive a chunk of snapshot data. Returns true if it was a new chunk
     pub(crate) async fn receive(&mut self, chunk: C::SnapshotChunk) -> Result<bool, StorageError<C::NodeId>> {
         let chunk_id = chunk.id();
         let err_x = || {
@@ -48,30 +48,6 @@ where C: RaftTypeConfig
 
         self.streaming_data.as_mut().receive(chunk).sto_res(err_x)?;
 
-        return Ok(self.manifest.receive(&chunk_id).sto_res(err_x)?);
-
-        // // Always seek to the target offset if not an exact match.
-        // if req.offset != self.offset {
-        //     if let Err(err) = self.manifest.as_mut().seek(SeekFrom::Start(req.offset)).await {
-        //         return Err(StorageError::from_io_error(
-        //             ErrorSubject::Snapshot(Some(req.meta.signature())),
-        //             ErrorVerb::Seek,
-        //             err,
-        //         ));
-        //     }
-        //     self.offset = req.offset;
-        // }
-
-        // // Write the next segment & update offset.
-        // let res = self.manifest.as_mut().write_all(&req.data).await;
-        // if let Err(err) = res {
-        //     return Err(StorageError::from_io_error(
-        //         ErrorSubject::Snapshot(Some(req.meta.signature())),
-        //         ErrorVerb::Write,
-        //         err,
-        //     ));
-        // }
-        // self.offset += req.data.len() as u64;
-        // Ok(req.done)
+        self.manifest.receive(&chunk_id).sto_res(err_x)
     }
 }
