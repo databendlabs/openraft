@@ -14,6 +14,7 @@ use crate::core::ApplyingEntry;
 use crate::entry::RaftPayload;
 use crate::raft::InstallSnapshotData;
 use crate::raft::InstallSnapshotRequest;
+use crate::raft::SnapshotManifest;
 use crate::storage::RaftStateMachine;
 use crate::summary::MessageSummary;
 use crate::AsyncRuntime;
@@ -273,7 +274,13 @@ where
                 false
             }
             InstallSnapshotData::Chunk(chunk) => match self.streaming.as_mut() {
-                Some(streaming) => streaming.receive(chunk).await?,
+                Some(streaming) => {
+                    if streaming.receive(chunk).await? {
+                        streaming.manifest.is_complete()
+                    } else {
+                        false
+                    }
+                }
                 None => {
                     tracing::error!("should never happen");
                     false
