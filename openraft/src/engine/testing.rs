@@ -1,6 +1,7 @@
 use std::collections::BTreeSet;
 
 use anyerror::AnyError;
+use async_trait::async_trait;
 use derive_more::Display;
 
 use crate::raft::SnapshotChunk;
@@ -79,12 +80,13 @@ impl SnapshotManifest for VecManifest {
     }
 }
 
+#[async_trait]
 impl SnapshotData for VecSnapshot {
     type Chunk = VecSnapshotChunk;
     type ChunkId = VecChunkId;
     type Manifest = VecManifest;
 
-    fn manifest(&self) -> Self::Manifest {
+    async fn manifest(&self) -> Self::Manifest {
         let chunks: BTreeSet<_> = self
             .data
             .as_slice()
@@ -99,14 +101,14 @@ impl SnapshotData for VecSnapshot {
         VecManifest { chunks }
     }
 
-    fn get_chunk(&self, id: &Self::ChunkId) -> Result<Self::Chunk, AnyError> {
+    async fn get_chunk(&self, id: &Self::ChunkId) -> Result<Self::Chunk, AnyError> {
         Ok(VecSnapshotChunk {
             chunk_id: id.clone(),
             data: self.data[id.offset..(id.offset + id.len)].to_vec(),
         })
     }
 
-    fn receive(&mut self, c: Self::Chunk) -> Result<(), AnyError> {
+    async fn receive(&mut self, c: Self::Chunk) -> Result<(), AnyError> {
         if self.data.len() < (c.chunk_id.offset + c.chunk_id.len) {
             self.data.reserve((c.chunk_id.offset + c.chunk_id.len) - self.data.len());
         }

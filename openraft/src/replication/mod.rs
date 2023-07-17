@@ -640,7 +640,7 @@ where
 
         let err_x = || (ErrorSubject::Snapshot(Some(snapshot.meta.signature())), ErrorVerb::Read);
 
-        let mut manifest: C::SnapshotManifest = snapshot.snapshot.manifest();
+        let mut manifest: C::SnapshotManifest = snapshot.snapshot.manifest().await;
         let leader_time = <C::AsyncRuntime as AsyncRuntime>::Instant::now();
         let snap_timeout = self.config.send_snapshot_timeout();
 
@@ -669,7 +669,7 @@ where
 
         for chunk_id in manifest.chunks_to_send() {
             let res = loop {
-                let chunk = snapshot.snapshot.get_chunk(&chunk_id).sto_res(err_x)?;
+                let chunk = snapshot.snapshot.get_chunk(&chunk_id).await.sto_res(err_x)?;
 
                 // Send the RPC over to the target.
                 tracing::debug!(?chunk_id, "sending snapshot chunk");

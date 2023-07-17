@@ -1,4 +1,5 @@
 use anyerror::AnyError;
+use async_trait::async_trait;
 
 use crate::MessageSummary;
 use crate::NodeId;
@@ -71,6 +72,7 @@ pub trait SnapshotManifest: Clone + Send + Sync + Default + PartialEq + Optional
     fn is_complete(&self) -> bool;
 }
 
+#[async_trait]
 pub trait SnapshotData: Send + Sync {
     type Chunk: SnapshotChunk<ChunkId = Self::ChunkId>;
     type ChunkId;
@@ -78,13 +80,13 @@ pub trait SnapshotData: Send + Sync {
 
     // Generate the manifest for this snapshot. The manifest should be able to keep track of all
     // the chunks to send or receive
-    fn manifest(&self) -> Self::Manifest;
+    async fn manifest(&self) -> Self::Manifest;
 
     // Get the chunk to be sent to the follower
-    fn get_chunk(&self, id: &Self::ChunkId) -> Result<Self::Chunk, AnyError>;
+    async fn get_chunk(&self, id: &Self::ChunkId) -> Result<Self::Chunk, AnyError>;
 
     // Receive the chunk sent to this node and apply it.
-    fn receive(&mut self, c: Self::Chunk) -> Result<(), AnyError>;
+    async fn receive(&mut self, c: Self::Chunk) -> Result<(), AnyError>;
 }
 
 pub trait SnapshotChunk: Clone + PartialEq + Send + Sync + OptionalSerde {
@@ -92,30 +94,6 @@ pub trait SnapshotChunk: Clone + PartialEq + Send + Sync + OptionalSerde {
 
     fn id(&self) -> Self::ChunkId;
 }
-
-// pub struct ChunkIter<I, C> {
-//     pub iter: I,
-//     _c: PhantomData<C>,
-// }
-
-// impl<I, C> ChunkIter<I, C>
-// where I: Iterator<Item = C>
-// {
-//     pub fn new(iter: impl IntoIterator<Item = C>) -> Self {
-//         Self {
-//             iter: iter.into_iter(),
-//             _c: PhantomData,
-//         }
-//     }
-// }
-
-// impl<I: Iterator> Iterator for ChunkIter<I, I::Item> {
-//     type Item = I::Item;
-
-//     fn next(&mut self) -> Option<Self::Item> {
-//         self.iter.next()
-//     }
-// }
 
 impl<C: RaftTypeConfig> MessageSummary<InstallSnapshotRequest<C>> for InstallSnapshotRequest<C> {
     fn summary(&self) -> String {
