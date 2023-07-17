@@ -46,7 +46,7 @@ where C: RaftTypeConfig
             )
         };
 
-        self.streaming_data.as_mut().receive(chunk).sto_res(err_x)?;
+        self.streaming_data.as_mut().receive(chunk).await.sto_res(err_x)?;
 
         self.manifest.receive(&chunk_id).sto_res(err_x)
     }
