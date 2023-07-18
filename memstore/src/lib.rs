@@ -115,6 +115,8 @@ pub enum BlockOperation {
 pub struct MemStore {
     last_purged_log_id: RwLock<Option<LogId<MemNodeId>>>,
 
+    committed: RwLock<Option<LogId<MemNodeId>>>,
+
     /// The Raft log. Logs are stored in serialized json.
     log: RwLock<BTreeMap<u64, String>>,
 
@@ -142,6 +144,7 @@ impl MemStore {
 
         Self {
             last_purged_log_id: RwLock::new(None),
+            committed: RwLock::new(None),
             log,
             sm,
             block: Mutex::new(BTreeMap::new()),
@@ -320,6 +323,17 @@ impl RaftStorage<TypeConfig> for Arc<MemStore> {
 
     async fn read_vote(&mut self) -> Result<Option<Vote<MemNodeId>>, StorageError<MemNodeId>> {
         Ok(*self.vote.read().await)
+    }
+
+    async fn save_committed(&mut self, committed: Option<LogId<MemNodeId>>) -> Result<(), StorageError<MemNodeId>> {
+        tracing::debug!(?committed, "save_committed");
+        let mut c = self.committed.write().await;
+        *c = committed;
+        Ok(())
+    }
+
+    async fn read_committed(&mut self) -> Result<Option<LogId<MemNodeId>>, StorageError<MemNodeId>> {
+        Ok(*self.committed.read().await)
     }
 
     async fn last_applied_state(

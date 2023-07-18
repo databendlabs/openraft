@@ -1583,6 +1583,7 @@ where
                 ref already_committed,
                 ref upto,
             } => {
+                self.log_store.save_committed(Some(*upto)).await?;
                 self.apply_to_state_machine(seq, already_committed.next_index(), upto.index).await?;
             }
             Command::Replicate { req, target } => {
