@@ -7,7 +7,7 @@ on:
 
 jobs:
 
-  build:
+  test-release-build:
     name: Build
     runs-on: ubuntu-latest
 
@@ -100,7 +100,7 @@ jobs:
 
       # - A store with defensive checks returns error when unexpected accesses are sent to RaftStore.
       # - Raft should not depend on defensive error to work correctly.
-      - name: Unit Tests
+      - name: Test crate `openraft/`
         uses: actions-rs/cargo@v1
         with:
           command: test
@@ -113,7 +113,7 @@ jobs:
           OPENRAFT_NETWORK_SEND_DELAY: ${{ matrix.send_delay }}
 
 
-      - name: Unit Tests, with and without defensive store
+      - name: Test crate `tests/`
         uses: actions-rs/cargo@v1
         with:
           command: test
@@ -162,7 +162,7 @@ jobs:
 
       # - A store with defensive checks returns error when unexpected accesses are sent to RaftStore.
       # - Raft should not depend on defensive error to work correctly.
-      - name: Unit Tests, with and without defensive store
+      - name: Unit Tests, with defensive store
         uses: actions-rs/cargo@v1
         with:
           command: test
@@ -241,12 +241,12 @@ jobs:
           RUST_LOG: debug
           RUST_BACKTRACE: full
 
-  # Feature "serde" will be enabled if one of the member carge enables
-  # "serde", such as `memstore`, when building cargo workspace.
+  # Feature "serde" will be enabled if one of the member crates enables
+  # "serde", such as `memstore`, when building a cargo workspace.
   #
   # To test openraft with "serde" off, it must not build other crates.
   #
-  # This job only test crate `openraft`.
+  # This job only tests crate `openraft`.
   openraft-feature-test:
     runs-on: ubuntu-latest
 
@@ -263,9 +263,9 @@ jobs:
             features: "serde"
 
           # Some test requires feature single-term-leader on and serde off.
-          # This can only be tested without building other crate that enables
+          # This can only be tested without building another crate that enables
           # `serde`.
-          # Move this test to unit-test when snapshot API is upgraded to
+          # Move this test to unit-test when the snapshot API is upgraded to
           # non-serde-dependent.
           - toolchain: "nightly"
             features: "single-term-leader"
@@ -286,11 +286,23 @@ jobs:
           override: true
 
 
-      - name: Unit Tests, with and without defensive store
+      - name: Test crate `openraft/`
         uses: actions-rs/cargo@v1
         with:
           command: test
           args: --features "${{ matrix.features }}" --manifest-path openraft/Cargo.toml
+        env:
+          # Parallel tests block each other and result in timeout.
+          RUST_TEST_THREADS: 2
+          RUST_LOG: debug
+          RUST_BACKTRACE: full
+
+
+      - name: Test crate `tests/`
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --features "${{ matrix.features }}" --manifest-path tests/Cargo.toml
         env:
           # Parallel tests block each other and result in timeout.
           RUST_TEST_THREADS: 2
