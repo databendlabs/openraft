@@ -1,4 +1,4 @@
-### Understanding Openraft Log Pointers
+# Understanding Openraft Log Pointers
 
 Inside Openraft, there are several pointers pointing to the raft-log:
 
@@ -37,3 +37,38 @@ If a follower's `last_log` is lagging behind the leader's `purged`, it will be r
               ` purged
 ```
 
+## Optionally Persisted `committed`
+
+In standard raft, `committed` is not persisted.
+`committed` log index can be recovered when leader established (by re-commit all logs),
+or when a follower receives `committed` log id message from the leader.
+
+Openraft provides optional API for application to store `committed` log id.
+See: [`RaftLogStorage::save_committed`].
+
+If the state machine does not flush state to disk before returning from `apply()`,
+[`RaftLogStorage::save_committed`] may help restoring the last committed log id.
+
+- If the `committed` log id is saved, the state machine will be recovered to the state
+  corresponding to this `committed` log id upon system startup, i.e., the state at the point
+  when the committed log id was applied.
+
+- If the `committed` log id is not saved, Openraft will just recover the state machine to
+  the state of the last snapshot taken.
+
+### Why
+
+The reason of adding a persisted `committed` is to just make things clear.
+Without persisting `committed`:
+
+- The `RaftMetrics.last_applied` will fall back upon startup, which may confuse a monitoring service.
+- The application may depend on the state in the state machine, e.g., by saving node information in the state machine. State falling back may cause a node to try to contact a removed node.
+
+Although these issues can all be addressed, it introduces more work to make things strictly correct.
+A state machine that won't revert to a former state is easier to use:)
+
+### Overhead
+
+The overhead introduced by calling `save_committed()` should be minimal: in average, it will be called for every `max_payload_entries` log entries. Meanwhile I do not quite worry about the penalty, unless there is a measurable overhead.
+
+[`RaftLogStorage::save_committed`]: `crate::storage::RaftLogStorage::save_committed`

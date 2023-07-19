@@ -81,18 +81,12 @@ where C: RaftTypeConfig
     ///
     /// # Optional feature
     ///
-    /// If the state machine flushes state to disk before returning from `apply()`,
-    /// then the application does not need to implement this method.
+    /// If the state machine flushes state to disk before
+    /// returning from `apply()`, then the application does not need to implement this method.
     ///
-    /// Otherwise, i.e., the state machine just relies on periodical snapshot to persist state to
-    /// disk:
+    /// See: [`docs::data::log_pointers`].
     ///
-    /// - If the `committed` log id is saved, the state machine will be recovered to the state
-    ///   corresponding to this `committed` log id upon system startup, i.e., the state at the point
-    ///   when the committed log id was applied.
-    ///
-    /// - If the `committed` log id is not saved, Openraft will just recover the state machine to
-    ///   the state of the last snapshot taken.
+    /// [`docs::data::log_pointers`]: `crate::docs::data::log_pointers#optionally-persisted-committed`
     async fn save_committed(&mut self, _committed: Option<LogId<C::NodeId>>) -> Result<(), StorageError<C::NodeId>> {
         // By default `committed` log id is not saved
         Ok(())
