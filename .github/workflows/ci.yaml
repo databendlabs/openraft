@@ -306,6 +306,54 @@ jobs:
           path: |
             openraft/_log/
 
+
+  # Integration tests with various features.
+  tests-feature-test:
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - toolchain: "nightly"
+            features: ""
+
+          - toolchain: "nightly"
+            features: "single-term-leader"
+
+
+    steps:
+      - name: Setup | Checkout
+        uses: actions/checkout@v2
+
+
+      - name: Setup | Toolchain
+        uses: actions-rs/toolchain@v1.0.6
+        with:
+          toolchain: "${{ matrix.toolchain }}"
+          override: true
+
+
+      - name: Test crate `tests/`
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --features "${{ matrix.features }}" --manifest-path tests/Cargo.toml
+        env:
+          # Parallel tests block each other and result in timeout.
+          RUST_TEST_THREADS: 2
+          RUST_LOG: debug
+          RUST_BACKTRACE: full
+
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        if: failure()
+        with:
+          name: tests-feature-test
+          path: |
+            openraft/_log/
+
   lint:
     name: lint
     runs-on: ubuntu-latest
