@@ -11,7 +11,7 @@ integration tests to a separate crate.
 
 A test file name starts with `t[\d\d]_`, where `\d\d` is the test case number indicating priority.
 
-- `t00`: no used.
+- `t00`: not used.
 - `t10`: basic behaviors.
 - `t20`: life cycle test cases. 
 - `t30`: special cases for an API. 
