@@ -321,6 +321,9 @@ jobs:
           - toolchain: "nightly"
             features: "single-term-leader"
 
+          - toolchain: "nightly"
+            features: "loosen-follower-log-revert"
+
 
     steps:
       - name: Setup | Checkout
