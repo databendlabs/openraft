@@ -5,6 +5,7 @@ use std::fmt::Display;
 use std::fmt::Formatter;
 use std::ops::Deref;
 
+use crate::display_ext::DisplayOptionExt;
 use crate::less;
 use crate::less_equal;
 use crate::progress::inflight::Inflight;
@@ -124,6 +125,27 @@ impl<NID: NodeId> ProgressEntry<NID> {
         debug_assert!(conflict < self.searching_end);
         self.searching_end = conflict;
 
+        // An already matching log id is found lost:
+        //
+        // - If log reversion is allowed, just restart the binary search from the beginning.
+        // - Otherwise, panic it.
+        //
+        // Refer to: `docs::feature_flags#loosen_follower_log_revert`
+        {
+            #[cfg(feature = "loosen-follower-log-revert")]
+            if conflict < self.matching.next_index() {
+                self.matching = None;
+            }
+
+            debug_assert!(
+                conflict >= self.matching.next_index(),
+                "follower log reversion is not allowed \
+                without `--features loosen-follower-log-revert`; \
+                matching: {}; conflict: {}",
+                self.matching.display(),
+                conflict
+            );
+        }
         Ok(())
     }
 
