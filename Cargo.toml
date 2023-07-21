@@ -10,7 +10,7 @@ description = "Advanced Raft consensus"
 documentation = "https://docs.rs/openraft"
 homepage = "https://github.com/datafuselabs/openraft"
 keywords = ["raft", "consensus"]
-license = "MIT/Apache-2.0"
+license = "MIT OR Apache-2.0"
 repository = "https://github.com/datafuselabs/openraft"
 
 
