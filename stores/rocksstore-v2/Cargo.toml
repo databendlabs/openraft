@@ -12,7 +12,7 @@ authors = [
 categories = ["algorithms", "asynchronous", "data-structures"]
 homepage = "https://github.com/datafuselabs/openraft"
 keywords = ["raft", "consensus"]
-license = "MIT/Apache-2.0"
+license = "MIT OR Apache-2.0"
 repository = "https://github.com/datafuselabs/openraft"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
