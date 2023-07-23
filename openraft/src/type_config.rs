@@ -1,17 +1,13 @@
 use std::fmt::Debug;
-use std::fmt::Display;
 
 use crate::entry::FromAppData;
 use crate::entry::RaftEntry;
-use crate::raft::SnapshotChunk;
 use crate::raft::SnapshotData;
-use crate::raft::SnapshotManifest;
 use crate::AppData;
 use crate::AppDataResponse;
 use crate::AsyncRuntime;
 use crate::Node;
 use crate::NodeId;
-use crate::OptionalSerde;
 
 /// Configuration of types used by the [`Raft`] core engine.
 ///
@@ -57,18 +53,23 @@ pub trait RaftTypeConfig:
     /// Raft log entry, which can be built from an AppData.
     type Entry: RaftEntry<Self::NodeId, Self::Node> + FromAppData<Self::D>;
 
-    type SnapshotChunkId: Eq + PartialEq + Send + Sync + Display + Debug + OptionalSerde + 'static;
+    // type SnapshotChunkId: Eq + PartialEq + Send + Sync + Display + Debug + OptionalSerde + 'static;
 
-    type SnapshotChunk: SnapshotChunk<ChunkId = Self::SnapshotChunkId> + Debug + 'static;
+    // type SnapshotChunk: SnapshotChunk<ChunkId = Self::SnapshotChunkId> + Debug + 'static;
 
-    type SnapshotManifest: SnapshotManifest<ChunkId = <Self::SnapshotChunk as SnapshotChunk>::ChunkId> + 'static;
+    // type SnapshotManifest: SnapshotManifest<ChunkId = <Self::SnapshotChunk as
+    // SnapshotChunk>::ChunkId> + 'static;
     /// Snapshot data for exposing a snapshot for reading & writing.
     ///
     /// See the [storage chapter of the guide](https://datafuselabs.github.io/openraft/getting-started.html#implement-raftstorage)
     /// for details on where and how this is used.
-    type SnapshotData: SnapshotData<ChunkId = Self::SnapshotChunkId, Manifest = Self::SnapshotManifest, Chunk = Self::SnapshotChunk>
-        + 'static;
+    type SnapshotData: SnapshotData + 'static;
 
     /// Asynchronous runtime type.
     type AsyncRuntime: AsyncRuntime;
 }
+
+pub type RTCSnapshotData<C> = <C as RaftTypeConfig>::SnapshotData;
+pub type RTCSnapshotChunkId<C> = <<C as RaftTypeConfig>::SnapshotData as SnapshotData>::ChunkId;
+pub type RTCSnapshotChunk<C> = <<C as RaftTypeConfig>::SnapshotData as SnapshotData>::Chunk;
+pub type RTCSnapshotManifest<C> = <<C as RaftTypeConfig>::SnapshotData as SnapshotData>::Manifest;

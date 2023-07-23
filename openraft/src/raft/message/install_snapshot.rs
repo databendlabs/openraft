@@ -1,6 +1,12 @@
+use std::fmt::Debug;
+use std::fmt::Display;
+
 use anyerror::AnyError;
 use async_trait::async_trait;
 
+use crate::type_config::RTCSnapshotChunk;
+use crate::type_config::RTCSnapshotChunkId;
+use crate::type_config::RTCSnapshotManifest;
 use crate::MessageSummary;
 use crate::NodeId;
 use crate::OptionalSerde;
@@ -27,20 +33,12 @@ pub struct InstallSnapshotRequest<C: RaftTypeConfig> {
 #[derive(PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub enum InstallSnapshotData<C: RaftTypeConfig> {
-    Manifest(C::SnapshotManifest),
-    Chunk(C::SnapshotChunk),
+    Manifest(RTCSnapshotManifest<C>),
+    Chunk(RTCSnapshotChunk<C>),
 }
 
 impl<C: RaftTypeConfig> InstallSnapshotData<C> {
-    pub fn chunk(data: C::SnapshotChunk) -> Self {
-        Self::Chunk(data)
-    }
-
-    pub fn manifest(manifest: C::SnapshotManifest) -> Self {
-        Self::Manifest(manifest)
-    }
-
-    pub fn chunk_id(&self) -> Option<<C::SnapshotChunk as SnapshotChunk>::ChunkId> {
+    pub fn chunk_id(&self) -> Option<RTCSnapshotChunkId<C>> {
         match self {
             Self::Manifest(_) => None,
             Self::Chunk(c) => Some(c.id()),
@@ -74,9 +72,9 @@ pub trait SnapshotManifest: Clone + Send + Sync + Default + PartialEq + Optional
 
 #[async_trait]
 pub trait SnapshotData: Send + Sync {
+    type ChunkId: Eq + PartialEq + Send + Sync + Display + Debug + OptionalSerde + 'static;
     type Chunk: SnapshotChunk<ChunkId = Self::ChunkId>;
-    type ChunkId;
-    type Manifest: SnapshotManifest;
+    type Manifest: SnapshotManifest<ChunkId = Self::ChunkId>;
 
     // Generate the manifest for this snapshot. The manifest should be able to keep track of all
     // the chunks to send or receive

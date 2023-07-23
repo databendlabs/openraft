@@ -47,7 +47,7 @@ fn make_req(offset: u64) -> InstallSnapshotRequest<UTConfig> {
     InstallSnapshotRequest {
         vote: Vote::new_committed(2, 1),
         meta: make_meta(),
-        data: InstallSnapshotData::chunk(VecSnapshotChunk {
+        data: InstallSnapshotData::Chunk(VecSnapshotChunk {
             chunk_id: VecChunkId {
                 offset: offset as usize,
                 len: 0,

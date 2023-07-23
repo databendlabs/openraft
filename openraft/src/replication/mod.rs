@@ -41,6 +41,7 @@ use crate::raft::SnapshotManifest;
 use crate::storage::RaftLogReader;
 use crate::storage::RaftLogStorage;
 use crate::storage::Snapshot;
+use crate::type_config::RTCSnapshotManifest;
 use crate::utime::UTime;
 use crate::AsyncRuntime;
 use crate::ErrorSubject;
@@ -643,7 +644,7 @@ where
 
         let err_x = || (ErrorSubject::Snapshot(Some(snapshot.meta.signature())), ErrorVerb::Read);
 
-        let mut manifest: C::SnapshotManifest = snapshot.snapshot.manifest().await;
+        let mut manifest: RTCSnapshotManifest<C> = snapshot.snapshot.manifest().await;
         let leader_time = <C::AsyncRuntime as AsyncRuntime>::Instant::now();
         let snap_timeout = self.config.send_snapshot_timeout();
 

@@ -21,9 +21,6 @@ impl RaftTypeConfig for UTConfig {
     type Node = ();
     type Entry = crate::Entry<UTConfig>;
     type SnapshotData = VecSnapshot;
-    type SnapshotChunk = VecSnapshotChunk;
-    type SnapshotChunkId = VecChunkId;
-    type SnapshotManifest = VecManifest;
     type AsyncRuntime = TokioRuntime;
 }
 

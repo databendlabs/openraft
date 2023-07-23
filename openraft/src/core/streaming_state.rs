@@ -1,6 +1,9 @@
 use crate::raft::SnapshotChunk;
 use crate::raft::SnapshotData;
 use crate::raft::SnapshotManifest;
+use crate::type_config::RTCSnapshotChunk;
+use crate::type_config::RTCSnapshotData;
+use crate::type_config::RTCSnapshotManifest;
 use crate::ErrorSubject;
 use crate::ErrorVerb;
 use crate::RaftTypeConfig;
@@ -16,9 +19,9 @@ where C: RaftTypeConfig
     pub(crate) snapshot_meta: SnapshotMeta<C::NodeId, C::Node>,
 
     /// A handle to the snapshot writer.
-    pub(crate) streaming_data: Box<C::SnapshotData>,
+    pub(crate) streaming_data: Box<RTCSnapshotData<C>>,
 
-    pub(crate) manifest: C::SnapshotManifest,
+    pub(crate) manifest: RTCSnapshotManifest<C>,
 }
 
 impl<C> Streaming<C>
@@ -26,8 +29,8 @@ where C: RaftTypeConfig
 {
     pub(crate) fn new(
         snapshot_meta: SnapshotMeta<C::NodeId, C::Node>,
-        manifest: C::SnapshotManifest,
-        streaming_data: Box<C::SnapshotData>,
+        manifest: RTCSnapshotManifest<C>,
+        streaming_data: Box<RTCSnapshotData<C>>,
     ) -> Self {
         Self {
             snapshot_meta,
@@ -37,7 +40,7 @@ where C: RaftTypeConfig
     }
 
     /// Receive a chunk of snapshot data. Returns true if it was a new chunk
-    pub(crate) async fn receive(&mut self, chunk: C::SnapshotChunk) -> Result<bool, StorageError<C::NodeId>> {
+    pub(crate) async fn receive(&mut self, chunk: RTCSnapshotChunk<C>) -> Result<bool, StorageError<C::NodeId>> {
         let chunk_id = chunk.id();
         let err_x = || {
             (
