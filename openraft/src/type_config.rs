@@ -1,5 +1,4 @@
 use std::fmt::Debug;
-use std::fmt::Display;
 
 use crate::entry::FromAppData;
 use crate::entry::RaftEntry;
@@ -54,11 +53,12 @@ pub trait RaftTypeConfig:
     /// Raft log entry, which can be built from an AppData.
     type Entry: RaftEntry<Self::NodeId, Self::Node> + FromAppData<Self::D>;
 
-    type SnapshotChunkId: Eq + PartialEq + Send + Sync + Display + Debug + OptionalSerde + 'static;
+    // type SnapshotChunkId: Eq + PartialEq + Send + Sync + Display + Debug + OptionalSerde + 'static;
 
-    type SnapshotChunk: SnapshotChunk<ChunkId = Self::SnapshotChunkId> + Debug + 'static;
+    // type SnapshotChunk: SnapshotChunk<ChunkId = Self::SnapshotChunkId> + Debug + 'static;
 
-    type SnapshotManifest: SnapshotManifest<ChunkId = <Self::SnapshotChunk as SnapshotChunk>::ChunkId> + 'static;
+    // type SnapshotManifest: SnapshotManifest<ChunkId = <Self::SnapshotChunk as
+    // SnapshotChunk>::ChunkId> + 'static;
     /// Snapshot data for exposing a snapshot for reading & writing.
     ///
     /// See the [storage chapter of the guide](https://datafuselabs.github.io/openraft/getting-started.html#implement-raftstorage)
