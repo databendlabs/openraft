@@ -106,16 +106,16 @@ where
 
         // Clean up dirty state: snapshot is installed but logs are not cleaned.
         if last_log_id < last_applied {
-            self.log_store.purge(last_applied.unwrap()).await?;
-            last_log_id = last_applied;
-            last_purged_log_id = last_applied;
-
             tracing::info!(
                 "Clean the hole between last_log_id({}) and last_applied({}) by purging logs to {}",
                 last_log_id.display(),
                 last_applied.display(),
                 last_applied.display(),
             );
+
+            self.log_store.purge(last_applied.unwrap()).await?;
+            last_log_id = last_applied;
+            last_purged_log_id = last_applied;
         }
 
         tracing::info!(
