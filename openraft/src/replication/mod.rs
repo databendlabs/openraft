@@ -49,6 +49,7 @@ use crate::Instant;
 use crate::LogId;
 use crate::MessageSummary;
 use crate::NodeId;
+use crate::RaftLogId;
 use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::StorageIOError;
@@ -294,10 +295,12 @@ where
             debug_assert_eq!(
                 logs.len(),
                 (end - start) as usize,
-                "expect logs {}..{} but got only {} entries",
+                "expect logs {}..{} but got only {} entries, first: {}, last: {}",
                 start,
                 end,
-                logs.len()
+                logs.len(),
+                logs.first().map(|ent| ent.get_log_id()).display(),
+                logs.last().map(|ent| ent.get_log_id()).display()
             );
             logs
         };
