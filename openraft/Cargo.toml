@@ -93,6 +93,11 @@ singlethreaded = ["macros/singlethreaded"]
 # For instance, in an even number nodes cluster, erasing a node's data and then rebooting it(log reverts to empty) will not result in data loss.
 loosen-follower-log-revert = []
 
+# Enables "log" feature in `tracing` crate, to let tracing events emit log
+# record.
+# See: https://docs.rs/tracing/latest/tracing/#emitting-log-records
+tracing-log = [ "tracing/log" ]
+
 # default = ["single-term-leader"]
 
 [package.metadata.docs.rs]
