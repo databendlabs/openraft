@@ -18,6 +18,6 @@ pub struct SnapshotSegmentId {
 
 impl Display for SnapshotSegmentId {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}+", self.id)
+        write!(f, "{}", self.id)
     }
 }

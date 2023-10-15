@@ -1,8 +1,11 @@
+use std::collections::BTreeSet;
 use std::fmt::Debug;
 use std::fmt::Display;
+use std::io::Cursor;
 
 use anyerror::AnyError;
 use async_trait::async_trait;
+use derive_more::Display;
 
 use crate::type_config::RTCSnapshotChunk;
 use crate::type_config::RTCSnapshotChunkId;
@@ -107,4 +110,124 @@ impl<C: RaftTypeConfig> MessageSummary<InstallSnapshotRequest<C>> for InstallSna
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct InstallSnapshotResponse<NID: NodeId> {
     pub vote: Vote<NID>,
+}
+
+#[derive(Clone, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+pub struct ExampleManifest {
+    pub chunks: BTreeSet<ExampleChunkId>,
+}
+
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Display)]
+#[display(fmt = "(offset: {})", offset)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+pub struct ExampleChunkId {
+    pub offset: usize,
+    pub len: usize,
+}
+
+#[derive(Clone)]
+pub struct ExampleSnapshot {
+    pub chunk_len: usize,
+    pub data: Vec<u8>,
+}
+
+impl ExampleSnapshot {
+    pub fn into_inner(self) -> Vec<u8> {
+        self.data
+    }
+
+    pub fn get_ref(&self) -> &[u8] {
+        &self.data
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Display)]
+#[display(fmt = "{}", chunk_id)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+pub struct ExampleSnapshotChunk {
+    pub chunk_id: ExampleChunkId,
+    pub data: Vec<u8>,
+}
+
+impl SnapshotChunk for ExampleSnapshotChunk {
+    type ChunkId = ExampleChunkId;
+
+    fn id(&self) -> Self::ChunkId {
+        self.chunk_id.clone()
+    }
+}
+
+impl SnapshotManifest for ExampleManifest {
+    type Iter = std::collections::btree_set::IntoIter<ExampleChunkId>;
+    type ChunkId = ExampleChunkId;
+
+    fn chunks_to_send(&self) -> Self::Iter {
+        self.chunks.clone().into_iter()
+    }
+
+    fn receive(&mut self, c: &Self::ChunkId) -> Result<bool, AnyError> {
+        Ok(self.chunks.remove(c))
+    }
+
+    fn is_complete(&self) -> bool {
+        self.chunks.is_empty()
+    }
+}
+
+#[async_trait]
+impl SnapshotData for ExampleSnapshot {
+    type Chunk = ExampleSnapshotChunk;
+    type ChunkId = ExampleChunkId;
+    type Manifest = ExampleManifest;
+
+    async fn manifest(&self) -> Self::Manifest {
+        let chunks: BTreeSet<_> = self
+            .data
+            .as_slice()
+            .chunks(self.chunk_len)
+            .enumerate()
+            .map(|(i, c)| ExampleChunkId {
+                offset: i * self.chunk_len,
+                len: c.len(),
+            })
+            .collect();
+
+        ExampleManifest { chunks }
+    }
+
+    async fn get_chunk(&self, id: &Self::ChunkId) -> Result<Self::Chunk, AnyError> {
+        Ok(ExampleSnapshotChunk {
+            chunk_id: id.clone(),
+            data: self.data[id.offset..(id.offset + id.len)].to_vec(),
+        })
+    }
+
+    async fn receive(&mut self, c: Self::Chunk) -> Result<(), AnyError> {
+        if self.data.len() < (c.chunk_id.offset + c.chunk_id.len) {
+            self.data.extend_from_slice(&vec![0; (c.chunk_id.offset + c.chunk_id.len) - self.data.len()]);
+        }
+
+        let _: Vec<_> = self.data.splice(c.chunk_id.offset..(c.chunk_id.offset + c.chunk_id.len), c.data).collect();
+
+        Ok(())
+    }
+}
+
+impl<'a> From<&'a [u8]> for ExampleSnapshot {
+    fn from(value: &'a [u8]) -> Self {
+        Self {
+            chunk_len: 1024,
+            data: value.to_vec(),
+        }
+    }
+}
+
+impl From<Cursor<Vec<u8>>> for ExampleSnapshot {
+    fn from(value: Cursor<Vec<u8>>) -> Self {
+        Self {
+            chunk_len: 1024,
+            data: value.into_inner(),
+        }
+    }
 }

@@ -3,13 +3,13 @@ use pretty_assertions::assert_eq;
 
 use crate::core::sm;
 use crate::engine::testing::UTConfig;
-use crate::engine::testing::VecChunkId;
-use crate::engine::testing::VecManifest;
-use crate::engine::testing::VecSnapshotChunk;
 use crate::engine::Command;
 use crate::engine::Engine;
 use crate::error::InstallSnapshotError;
 use crate::error::SnapshotMismatch;
+use crate::raft::ExampleChunkId;
+use crate::raft::ExampleManifest;
+use crate::raft::ExampleSnapshotChunk;
 use crate::raft::InstallSnapshotData;
 use crate::raft::InstallSnapshotRequest;
 use crate::raft_state::StreamingState;
@@ -47,8 +47,8 @@ fn make_req(offset: u64) -> InstallSnapshotRequest<UTConfig> {
     InstallSnapshotRequest {
         vote: Vote::new_committed(2, 1),
         meta: make_meta(),
-        data: InstallSnapshotData::Chunk(VecSnapshotChunk {
-            chunk_id: VecChunkId {
+        data: InstallSnapshotData::Chunk(ExampleSnapshotChunk {
+            chunk_id: ExampleChunkId {
                 offset: offset as usize,
                 len: 0,
             },
@@ -61,7 +61,7 @@ fn make_manifest() -> InstallSnapshotRequest<UTConfig> {
     InstallSnapshotRequest {
         vote: Vote::new_committed(2, 1),
         meta: make_meta(),
-        data: InstallSnapshotData::Manifest(VecManifest { chunks: btreeset! {} }),
+        data: InstallSnapshotData::Manifest(ExampleManifest { chunks: btreeset! {} }),
     }
 }
 

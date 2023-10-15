@@ -15,6 +15,7 @@ use byteorder::BigEndian;
 use byteorder::ByteOrder;
 use byteorder::ReadBytesExt;
 use openraft::async_trait::async_trait;
+use openraft::raft::ExampleSnapshot as RaftExampleSnapshot;
 use openraft::storage::LogState;
 use openraft::storage::Snapshot;
 use openraft::AnyError;
@@ -42,7 +43,7 @@ pub type ExampleNodeId = u64;
 openraft::declare_raft_types!(
     /// Declare the type configuration for example K/V store.
     pub TypeConfig: D = ExampleRequest, R = ExampleResponse, NodeId = ExampleNodeId, Node = BasicNode,
-    Entry = Entry<TypeConfig>, SnapshotData = Cursor<Vec<u8>>, AsyncRuntime = TokioRuntime
+    Entry = Entry<TypeConfig>, SnapshotData = RaftExampleSnapshot, AsyncRuntime = TokioRuntime
 );
 
 /**
@@ -460,7 +461,7 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<SledStore> {
 
         Ok(Snapshot {
             meta,
-            snapshot: Box::new(Cursor::new(data)),
+            snapshot: Box::new(Cursor::new(data).into()),
         })
     }
 }
@@ -622,7 +623,7 @@ impl RaftStorage<TypeConfig> for Arc<SledStore> {
     async fn begin_receiving_snapshot(
         &mut self,
     ) -> Result<Box<<TypeConfig as RaftTypeConfig>::SnapshotData>, StorageError<ExampleNodeId>> {
-        Ok(Box::new(Cursor::new(Vec::new())))
+        Ok(Box::new(Cursor::new(Vec::new()).into()))
     }
 
     #[tracing::instrument(level = "trace", skip(self, snapshot))]
@@ -660,7 +661,7 @@ impl RaftStorage<TypeConfig> for Arc<SledStore> {
                 let data = snapshot.data.clone();
                 Ok(Some(Snapshot {
                     meta: snapshot.meta,
-                    snapshot: Box::new(Cursor::new(data)),
+                    snapshot: Box::new(Cursor::new(data).into()),
                 }))
             }
             None => Ok(None),

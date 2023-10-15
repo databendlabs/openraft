@@ -12,6 +12,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use openraft::async_trait::async_trait;
+use openraft::raft::ExampleSnapshot;
 use openraft::storage::LogState;
 use openraft::storage::RaftLogReader;
 use openraft::storage::RaftSnapshotBuilder;
@@ -75,7 +76,7 @@ pub type MemNodeId = u64;
 openraft::declare_raft_types!(
     /// Declare the type configuration for `MemStore`.
     pub TypeConfig: D = ClientRequest, R = ClientResponse, NodeId = MemNodeId, Node = (),
-    Entry = Entry<TypeConfig>, SnapshotData = Cursor<Vec<u8>>, AsyncRuntime = TokioRuntime
+    Entry = Entry<TypeConfig>, SnapshotData = ExampleSnapshot, AsyncRuntime = TokioRuntime
 );
 
 /// The application snapshot type which the `MemStore` works with.
@@ -279,7 +280,7 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<MemStore> {
 
         Ok(Snapshot {
             meta,
-            snapshot: Box::new(Cursor::new(data)),
+            snapshot: Box::new(Cursor::new(data).into()),
         })
     }
 }
@@ -438,7 +439,7 @@ impl RaftStorage<TypeConfig> for Arc<MemStore> {
     async fn begin_receiving_snapshot(
         &mut self,
     ) -> Result<Box<<TypeConfig as RaftTypeConfig>::SnapshotData>, StorageError<MemNodeId>> {
-        Ok(Box::new(Cursor::new(Vec::new())))
+        Ok(Box::new(Cursor::new(Vec::new()).into()))
     }
 
     #[tracing::instrument(level = "trace", skip(self, snapshot))]
@@ -485,7 +486,7 @@ impl RaftStorage<TypeConfig> for Arc<MemStore> {
                 let data = snapshot.data.clone();
                 Ok(Some(Snapshot {
                     meta: snapshot.meta.clone(),
-                    snapshot: Box::new(Cursor::new(data)),
+                    snapshot: Box::new(Cursor::new(data).into()),
                 }))
             }
             None => Ok(None),

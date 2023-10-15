@@ -8,6 +8,9 @@ use openraft::network::RPCOption;
 use openraft::network::RaftNetwork;
 use openraft::network::RaftNetworkFactory;
 use openraft::raft::AppendEntriesRequest;
+use openraft::raft::ExampleChunkId;
+use openraft::raft::ExampleSnapshotChunk;
+use openraft::raft::InstallSnapshotData;
 use openraft::raft::InstallSnapshotRequest;
 use openraft::storage::RaftLogStorage;
 use openraft::storage::RaftStateMachine;
@@ -150,9 +153,10 @@ async fn snapshot_delete_conflicting_logs() -> Result<()> {
         let req = InstallSnapshotRequest {
             vote: sto0.read_vote().await?.unwrap(),
             meta: snap.meta.clone(),
-            offset: 0,
-            data: snap.snapshot.into_inner(),
-            done: true,
+            data: InstallSnapshotData::Chunk(ExampleSnapshotChunk {
+                chunk_id: ExampleChunkId { offset: 0, len: 0 },
+                data: snap.snapshot.data,
+            }),
         };
 
         let option = RPCOption::new(Duration::from_millis(1_000));

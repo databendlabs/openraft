@@ -14,6 +14,10 @@ use std::time::Duration;
 
 use core_state::CoreState;
 use maplit::btreemap;
+pub use message::ExampleChunkId;
+pub use message::ExampleManifest;
+pub use message::ExampleSnapshot;
+pub use message::ExampleSnapshotChunk;
 pub use message::AppendEntriesRequest;
 pub use message::AppendEntriesResponse;
 pub use message::ClientWriteResponse;

@@ -53,12 +53,6 @@ pub trait RaftTypeConfig:
     /// Raft log entry, which can be built from an AppData.
     type Entry: RaftEntry<Self::NodeId, Self::Node> + FromAppData<Self::D>;
 
-    // type SnapshotChunkId: Eq + PartialEq + Send + Sync + Display + Debug + OptionalSerde + 'static;
-
-    // type SnapshotChunk: SnapshotChunk<ChunkId = Self::SnapshotChunkId> + Debug + 'static;
-
-    // type SnapshotManifest: SnapshotManifest<ChunkId = <Self::SnapshotChunk as
-    // SnapshotChunk>::ChunkId> + 'static;
     /// Snapshot data for exposing a snapshot for reading & writing.
     ///
     /// See the [storage chapter of the guide](https://datafuselabs.github.io/openraft/getting-started.html#implement-raftstorage)
@@ -69,7 +63,7 @@ pub trait RaftTypeConfig:
     type AsyncRuntime: AsyncRuntime;
 }
 
-pub type RTCSnapshotData<C> = <C as RaftTypeConfig>::SnapshotData;
-pub type RTCSnapshotChunkId<C> = <<C as RaftTypeConfig>::SnapshotData as SnapshotData>::ChunkId;
-pub type RTCSnapshotChunk<C> = <<C as RaftTypeConfig>::SnapshotData as SnapshotData>::Chunk;
-pub type RTCSnapshotManifest<C> = <<C as RaftTypeConfig>::SnapshotData as SnapshotData>::Manifest;
+pub(crate) type RTCSnapshotData<C> = <C as RaftTypeConfig>::SnapshotData;
+pub(crate) type RTCSnapshotChunkId<C> = <<C as RaftTypeConfig>::SnapshotData as SnapshotData>::ChunkId;
+pub(crate) type RTCSnapshotChunk<C> = <<C as RaftTypeConfig>::SnapshotData as SnapshotData>::Chunk;
+pub(crate) type RTCSnapshotManifest<C> = <<C as RaftTypeConfig>::SnapshotData as SnapshotData>::Manifest;
