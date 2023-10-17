@@ -275,11 +275,16 @@ where
             }
             InstallSnapshotData::Chunk(chunk) => match self.streaming.as_mut() {
                 Some(streaming) => {
-                    if streaming.receive(chunk).await? {
-                        streaming.manifest.is_complete()
-                    } else {
-                        false
+                    if !streaming.receive(chunk).await? {
+                        // we received a chunk that doesn't exist in the manifest
+                        tracing::warn!(
+                            snapshot_req_id = debug(&req_id),
+                            "{} chunk does not exist in manifest",
+                            func_name!()
+                        );
                     }
+
+                    streaming.manifest.is_complete()
                 }
                 None => {
                     tracing::error!("should never happen");

@@ -8,10 +8,10 @@ use openraft::network::RPCOption;
 use openraft::network::RaftNetwork;
 use openraft::network::RaftNetworkFactory;
 use openraft::raft::AppendEntriesRequest;
-use openraft::raft::ExampleChunkId;
-use openraft::raft::ExampleSnapshotChunk;
 use openraft::raft::InstallSnapshotData;
 use openraft::raft::InstallSnapshotRequest;
+use openraft::raft::SnapshotData;
+use openraft::raft::SnapshotManifest;
 use openraft::storage::RaftLogStorage;
 use openraft::storage::RaftStateMachine;
 use openraft::testing;
@@ -57,6 +57,8 @@ async fn snapshot_delete_conflicting_logs() -> Result<()> {
 
     let mut router = RaftRouter::new(config.clone());
     let mut log_index;
+    // cargo test --package tests --test snapshot_streaming --
+    // t33_snapshot_delete_conflict_logs::snapshot_delete_conflicting_logs --exact --nocapture
 
     tracing::info!("--- manually init node-0 with a higher vote, in order to override conflict log on learner later");
     {
@@ -150,18 +152,28 @@ async fn snapshot_delete_conflicting_logs() -> Result<()> {
             b.build_snapshot().await?
         };
 
+        let manifest = snap.snapshot.manifest().await;
+
+        let mut client = router.new_client(1, &()).await;
+
         let req = InstallSnapshotRequest {
             vote: sto0.read_vote().await?.unwrap(),
             meta: snap.meta.clone(),
-            data: InstallSnapshotData::Chunk(ExampleSnapshotChunk {
-                chunk_id: ExampleChunkId { offset: 0, len: 0 },
-                data: snap.snapshot.data,
-            }),
+            data: InstallSnapshotData::Manifest(manifest.clone()),
         };
 
-        let option = RPCOption::new(Duration::from_millis(1_000));
+        client.install_snapshot(req, RPCOption::new(Duration::from_millis(1_000))).await?;
 
-        router.new_client(1, &()).await.install_snapshot(req, option).await?;
+        for chunk_id in manifest.chunks_to_send() {
+            let chunk = snap.snapshot.get_chunk(&chunk_id).await?;
+            let req = InstallSnapshotRequest {
+                vote: sto0.read_vote().await?.unwrap(),
+                meta: snap.meta.clone(),
+                data: InstallSnapshotData::Chunk(chunk),
+            };
+
+            client.install_snapshot(req, RPCOption::new(Duration::from_millis(1_000))).await?;
+        }
 
         tracing::info!(log_index, "--- DONE installing snapshot");
 

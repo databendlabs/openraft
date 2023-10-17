@@ -15,6 +15,7 @@ mod change_handler;
 #[cfg(test)] mod membership_state_test;
 
 pub(crate) use change_handler::ChangeHandler;
+use tracing::info;
 
 /// The state of membership configs a raft node needs to know.
 ///
@@ -85,6 +86,7 @@ where
     pub(crate) fn commit(&mut self, committed_log_id: &Option<LogId<NID>>) {
         if committed_log_id >= self.effective().log_id() {
             debug_assert!(committed_log_id.index() >= self.effective().log_id().index());
+            info!("committed: {:?} effective: {:?}", self.committed, self.effective);
             self.committed = self.effective.clone();
         }
     }
@@ -123,6 +125,7 @@ where
         }
 
         if c.log_id() > self.committed.log_id() {
+            info!("c.log_id: {:?} committed: {:?}", c.log_id(), self.committed.log_id());
             self.committed = c
         }
 
@@ -151,6 +154,10 @@ where
 
         // Openraft allows at most only one non-committed membership config.
         // If there is another new config, self.effective must have been committed.
+        info!(
+            "append: committed: {:?} effective: {:?}",
+            self.committed, self.effective
+        );
         self.committed = self.effective.clone();
         self.effective = m;
     }
