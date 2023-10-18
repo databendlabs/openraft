@@ -512,7 +512,7 @@ where
             vote: *st.io_state().vote(),
             last_log_index: st.last_log_id().index(),
             last_applied: st.io_applied().copied(),
-            snapshot: st.snapshot_meta.last_log_id,
+            snapshot: st.io_snapshot_last_log_id().copied(),
             purged: st.io_purged().copied(),
 
             // --- cluster ---
@@ -1301,7 +1301,15 @@ where
                             meta.summary(),
                             func_name!()
                         );
+
+                        // Update in-memory state first, then the io state.
+                        // In-memory state should always be ahead or equal to the io state.
+
+                        let last_log_id = meta.last_log_id;
                         self.engine.finish_building_snapshot(meta);
+
+                        let st = self.engine.state.io_state_mut();
+                        st.update_snapshot(last_log_id);
                     }
                     sm::Response::ReceiveSnapshotChunk(_) => {
                         tracing::info!("sm::StateMachine command done: ReceiveSnapshotChunk: {}", func_name!());
@@ -1314,7 +1322,9 @@ where
                         );
 
                         if let Some(meta) = meta {
-                            self.engine.state.io_state_mut().update_applied(meta.last_log_id);
+                            let st = self.engine.state.io_state_mut();
+                            st.update_applied(meta.last_log_id);
+                            st.update_snapshot(meta.last_log_id);
                         }
                     }
                     sm::Response::Apply(res) => {

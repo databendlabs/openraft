@@ -17,6 +17,17 @@ pub(crate) struct LogIOId<NID: NodeId> {
 ///
 /// These states are updated only when the io complete and thus may fall behind to the state stored
 /// in [`RaftState`](`crate::RaftState`),.
+///
+/// The log ids that are tracked includes:
+///
+/// ```text
+/// | log ids
+/// | *------------+---------+---------+---------+------------------>
+/// |              |         |         |         `---> flushed
+/// |              |         |         `-------------> applied
+/// |              |         `-----------------------> snapshot
+/// |              `---------------------------------> purged
+/// ```
 #[derive(Debug, Clone, Copy)]
 #[derive(Default)]
 #[derive(PartialEq, Eq)]
@@ -24,7 +35,7 @@ pub(crate) struct IOState<NID: NodeId> {
     /// Whether it is building a snapshot
     building_snapshot: bool,
 
-    // The last flushed vote.
+    /// The last flushed vote.
     pub(crate) vote: Vote<NID>,
 
     /// The last log id that has been flushed to storage.
@@ -32,6 +43,9 @@ pub(crate) struct IOState<NID: NodeId> {
 
     /// The last log id that has been applied to state machine.
     pub(crate) applied: Option<LogId<NID>>,
+
+    /// The last log id in the currently persisted snapshot.
+    pub(crate) snapshot: Option<LogId<NID>>,
 
     /// The last log id that has been purged from storage.
     ///
@@ -46,6 +60,7 @@ impl<NID: NodeId> IOState<NID> {
         vote: Vote<NID>,
         flushed: LogIOId<NID>,
         applied: Option<LogId<NID>>,
+        snapshot: Option<LogId<NID>>,
         purged: Option<LogId<NID>>,
     ) -> Self {
         Self {
@@ -53,6 +68,7 @@ impl<NID: NodeId> IOState<NID> {
             vote,
             flushed,
             applied,
+            snapshot,
             purged,
         }
     }
@@ -81,6 +97,23 @@ impl<NID: NodeId> IOState<NID> {
 
     pub(crate) fn applied(&self) -> Option<&LogId<NID>> {
         self.applied.as_ref()
+    }
+
+    pub(crate) fn update_snapshot(&mut self, log_id: Option<LogId<NID>>) {
+        tracing::debug!(snapshot = display(DisplayOption(&log_id)), "{}", func_name!());
+
+        debug_assert!(
+            log_id > self.snapshot,
+            "snapshot log id should be monotonically increasing: current: {:?}, update: {:?}",
+            self.snapshot,
+            log_id
+        );
+
+        self.snapshot = log_id;
+    }
+
+    pub(crate) fn snapshot(&self) -> Option<&LogId<NID>> {
+        self.snapshot.as_ref()
     }
 
     pub(crate) fn set_building_snapshot(&mut self, building: bool) {

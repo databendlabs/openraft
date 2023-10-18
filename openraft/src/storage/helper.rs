@@ -76,9 +76,6 @@ where
 
         let log_ids = LogIdList::load_log_ids(last_purged_log_id, last_log_id, self.log_store).await?;
 
-        // TODO: `flushed` is not set.
-        let io_state = IOState::new(vote, LogIOId::default(), last_applied, last_purged_log_id);
-
         let snapshot = self.state_machine.get_current_snapshot().await?;
 
         // If there is not a snapshot and there are logs purged, which means the snapshot is not persisted,
@@ -96,6 +93,15 @@ where
             s @ Some(_) => s,
         };
         let snapshot_meta = snapshot.map(|x| x.meta).unwrap_or_default();
+
+        // TODO: `flushed` is not set.
+        let io_state = IOState::new(
+            vote,
+            LogIOId::default(),
+            last_applied,
+            snapshot_meta.last_log_id,
+            last_purged_log_id,
+        );
 
         let now = Instant::now();
 

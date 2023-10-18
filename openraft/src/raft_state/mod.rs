@@ -115,6 +115,10 @@ where
         self.io_state.applied()
     }
 
+    fn io_snapshot_last_log_id(&self) -> Option<&LogId<NID>> {
+        self.io_state.snapshot()
+    }
+
     fn io_purged(&self) -> Option<&LogId<NID>> {
         self.io_state.purged()
     }
