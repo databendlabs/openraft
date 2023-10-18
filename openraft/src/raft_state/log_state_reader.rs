@@ -54,6 +54,11 @@ pub(crate) trait LogStateReader<NID: NodeId> {
     /// This is actually happened io-state which might fall behind committed log id.
     fn io_applied(&self) -> Option<&LogId<NID>>;
 
+    /// The last log id in the last persisted snapshot.
+    ///
+    /// This is actually happened io-state which might fall behind `Self::snapshot_last_log_id()`.
+    fn io_snapshot_last_log_id(&self) -> Option<&LogId<NID>>;
+
     /// The last known purged log id, inclusive.
     ///
     /// This is actually purged log id from storage.

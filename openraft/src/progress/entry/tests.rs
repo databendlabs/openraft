@@ -121,6 +121,10 @@ impl LogStateReader<u64> for LogState {
         todo!()
     }
 
+    fn io_snapshot_last_log_id(&self) -> Option<&LogId<u64>> {
+        todo!()
+    }
+
     fn io_purged(&self) -> Option<&LogId<u64>> {
         todo!()
     }

@@ -228,6 +228,7 @@ where
             let cmd_res = CommandResult::new(seq, res);
             let _ = resp_tx.send(Notify::sm(cmd_res));
         });
+        tracing::info!("{} returning; spawned building snapshot task", func_name!());
     }
 
     #[tracing::instrument(level = "info", skip_all)]
