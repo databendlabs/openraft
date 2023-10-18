@@ -14,7 +14,7 @@ fn progress_update_01234_567(b: &mut Bencher) {
     let mut progress = VecProgress::<u64, u64, u64, _>::new(quorum_set, 0..=7, 0);
 
     let mut id = 0u64;
-    let mut values = vec![0, 1, 2, 3, 4, 5, 6, 7];
+    let mut values = [0, 1, 2, 3, 4, 5, 6, 7];
     b.iter(|| {
         id = (id + 1) & 7;
         values[id as usize] += 1;
