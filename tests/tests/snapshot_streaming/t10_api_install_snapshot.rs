@@ -2,6 +2,10 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use maplit::btreeset;
+use openraft::raft::ExampleChunkId;
+use openraft::raft::ExampleManifest;
+use openraft::raft::ExampleSnapshotChunk;
+use openraft::raft::InstallSnapshotData;
 use openraft::raft::InstallSnapshotRequest;
 use openraft::CommittedLeaderId;
 use openraft::Config;
@@ -48,18 +52,20 @@ async fn snapshot_arguments() -> Result<()> {
             }),
             last_membership: Default::default(),
         },
-        offset: 0,
-        data: vec![1, 2, 3],
-        done: false,
+        data: InstallSnapshotData::Manifest(ExampleManifest::default()),
     };
 
     tracing::info!(log_index, "--- only allow to begin a new session when offset is 0");
     {
         let mut req = make_req();
-        req.offset = 2;
+        req.data = InstallSnapshotData::Chunk(ExampleSnapshotChunk {
+            chunk_id: ExampleChunkId { offset: 2, len: 0 },
+            data: vec![],
+        });
+
         let res = n.0.install_snapshot(req).await;
         assert_eq!(
-            "snapshot segment id mismatch, expect: ss1+0, got: ss1+2",
+            "snapshot segment id mismatch, expect: , got: ss1",
             res.unwrap_err().to_string()
         );
     }
@@ -72,11 +78,15 @@ async fn snapshot_arguments() -> Result<()> {
     tracing::info!("-- continue write with different id");
     {
         let mut req = make_req();
-        req.offset = 3;
         req.meta.snapshot_id = "ss2".into();
+        req.data = InstallSnapshotData::Chunk(ExampleSnapshotChunk {
+            chunk_id: ExampleChunkId { offset: 3, len: 0 },
+            data: vec![],
+        });
+
         let res = n.0.install_snapshot(req).await;
         assert_eq!(
-            "snapshot segment id mismatch, expect: ss2+0, got: ss2+3",
+            "snapshot segment id mismatch, expect: ss1, got: ss2",
             res.unwrap_err().to_string()
         );
     }
@@ -84,12 +94,22 @@ async fn snapshot_arguments() -> Result<()> {
     tracing::info!("-- write from offset=0 with different id, create a new session");
     {
         let mut req = make_req();
-        req.offset = 0;
         req.meta.snapshot_id = "ss2".into();
         n.0.install_snapshot(req).await?;
 
         let mut req = make_req();
-        req.offset = 3;
+        req.data = InstallSnapshotData::Chunk(ExampleSnapshotChunk {
+            chunk_id: ExampleChunkId { offset: 0, len: 0 },
+            data: vec![],
+        });
+        req.meta.snapshot_id = "ss2".into();
+        n.0.install_snapshot(req).await?;
+
+        let mut req = make_req();
+        req.data = InstallSnapshotData::Chunk(ExampleSnapshotChunk {
+            chunk_id: ExampleChunkId { offset: 3, len: 0 },
+            data: vec![],
+        });
         req.meta.snapshot_id = "ss2".into();
         n.0.install_snapshot(req).await?;
     }
@@ -97,7 +117,11 @@ async fn snapshot_arguments() -> Result<()> {
     tracing::info!("-- continue write with mismatched offset is allowed");
     {
         let mut req = make_req();
-        req.offset = 8;
+        req.data = InstallSnapshotData::Chunk(ExampleSnapshotChunk {
+            chunk_id: ExampleChunkId { offset: 8, len: 0 },
+            data: vec![],
+        });
+
         req.meta.snapshot_id = "ss2".into();
         n.0.install_snapshot(req).await?;
     }

@@ -483,16 +483,9 @@ where C: RaftTypeConfig
     pub(crate) fn install_snapshot(&mut self, req: InstallSnapshotRequest<C>) -> Result<(), InstallSnapshotError> {
         tracing::info!(req = display(req.summary()), "{}", func_name!());
 
-        let done = req.done;
-        let snapshot_meta = req.meta.clone();
-
         let mut fh = self.following_handler();
 
         fh.receive_snapshot_chunk(req)?;
-
-        if done {
-            fh.install_snapshot(snapshot_meta);
-        }
 
         Ok(())
     }

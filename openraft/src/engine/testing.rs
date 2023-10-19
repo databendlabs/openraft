@@ -1,5 +1,4 @@
-use std::io::Cursor;
-
+use crate::raft::ExampleSnapshot;
 use crate::RaftTypeConfig;
 use crate::TokioRuntime;
 
@@ -13,6 +12,6 @@ impl RaftTypeConfig for UTConfig {
     type NodeId = u64;
     type Node = ();
     type Entry = crate::Entry<UTConfig>;
-    type SnapshotData = Cursor<Vec<u8>>;
+    type SnapshotData = ExampleSnapshot;
     type AsyncRuntime = TokioRuntime;
 }

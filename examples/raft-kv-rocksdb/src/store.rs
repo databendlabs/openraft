@@ -387,7 +387,7 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<Store> {
 
         Ok(Snapshot {
             meta,
-            snapshot: Box::new(Cursor::new(data)),
+            snapshot: Box::new(Cursor::new(data).into()),
         })
     }
 }
@@ -511,7 +511,7 @@ impl RaftStorage<TypeConfig> for Arc<Store> {
     async fn begin_receiving_snapshot(
         &mut self,
     ) -> Result<Box<<TypeConfig as RaftTypeConfig>::SnapshotData>, StorageError<NodeId>> {
-        Ok(Box::new(Cursor::new(Vec::new())))
+        Ok(Box::new(Cursor::new(Vec::new()).into()))
     }
 
     #[tracing::instrument(level = "trace", skip(self, snapshot))]
@@ -549,7 +549,7 @@ impl RaftStorage<TypeConfig> for Arc<Store> {
                 let data = snapshot.data.clone();
                 Ok(Some(Snapshot {
                     meta: snapshot.meta,
-                    snapshot: Box::new(Cursor::new(data)),
+                    snapshot: Box::new(Cursor::new(data).into()),
                 }))
             }
             None => Ok(None),
