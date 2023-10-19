@@ -35,6 +35,7 @@ use byteorder::WriteBytesExt;
 use openraft::async_trait::async_trait;
 use openraft::compat::compat07;
 use openraft::compat::Upgrade;
+use openraft::raft::ExampleSnapshot;
 use openraft::AnyError;
 use openraft::EmptyNode;
 use openraft::Entry;
@@ -67,7 +68,7 @@ pub type RocksNodeId = u64;
 openraft::declare_raft_types!(
     /// Declare the type configuration for `MemStore`.
     pub TypeConfig: D = RocksRequest, R = RocksResponse, NodeId = RocksNodeId, Node = EmptyNode,
-    Entry = Entry<TypeConfig>, SnapshotData = Cursor<Vec<u8>>, AsyncRuntime = TokioRuntime
+    Entry = Entry<TypeConfig>, SnapshotData = ExampleSnapshot, AsyncRuntime = TokioRuntime
 );
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -444,7 +445,7 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<RocksStore> {
 
         Ok(Snapshot {
             meta,
-            snapshot: Box::new(Cursor::new(data)),
+            snapshot: Box::new(Cursor::new(data).into()),
         })
     }
 }
@@ -598,7 +599,7 @@ impl RaftStorage<TypeConfig> for Arc<RocksStore> {
     async fn begin_receiving_snapshot(
         &mut self,
     ) -> Result<Box<<TypeConfig as RaftTypeConfig>::SnapshotData>, StorageError<RocksNodeId>> {
-        Ok(Box::new(Cursor::new(Vec::new())))
+        Ok(Box::new(Cursor::new(Vec::new()).into()))
     }
 
     #[tracing::instrument(level = "trace", skip(self, snapshot))]
@@ -660,7 +661,7 @@ impl RaftStorage<TypeConfig> for Arc<RocksStore> {
 
         Ok(Some(Snapshot {
             meta,
-            snapshot: Box::new(Cursor::new(d)),
+            snapshot: Box::new(Cursor::new(d).into()),
         }))
     }
 

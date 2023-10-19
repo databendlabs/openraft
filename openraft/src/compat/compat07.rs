@@ -414,12 +414,11 @@ pub mod testing {
 
 #[cfg(test)]
 mod tests {
-    use std::io::Cursor;
-
     use maplit::btreemap;
     use maplit::btreeset;
 
     use crate::compat::Upgrade;
+    use crate::raft::ExampleSnapshot;
     use crate::CommittedLeaderId;
     use crate::TokioRuntime;
 
@@ -512,7 +511,7 @@ mod tests {
     crate::declare_raft_types!(
         pub TestingConfig:
         D = u64, R = u64, NodeId = u64, Node = crate::EmptyNode,
-        Entry = crate::Entry<TestingConfig>, SnapshotData = Cursor<Vec<u8>>,
+        Entry = crate::Entry<TestingConfig>, SnapshotData = ExampleSnapshot,
         AsyncRuntime = TokioRuntime
     );
 

@@ -35,6 +35,22 @@ where NID: NodeId
     }
 }
 
+impl<NID, T> ToStorageResult<NID, T> for Result<T, AnyError>
+where NID: NodeId
+{
+    fn sto_res<F>(self, f: F) -> Result<T, StorageError<NID>>
+    where F: FnOnce() -> (ErrorSubject<NID>, ErrorVerb) {
+        match self {
+            Ok(x) => Ok(x),
+            Err(e) => {
+                let (subject, verb) = f();
+                let io_err = StorageIOError::new(subject, verb, e);
+                Err(io_err.into())
+            }
+        }
+    }
+}
+
 /// An error that occurs when the RaftStore impl runs defensive check of input or output.
 /// E.g. re-applying an log entry is a violation that may be a potential bug.
 #[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]

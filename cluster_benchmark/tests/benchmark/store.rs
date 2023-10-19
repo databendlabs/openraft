@@ -16,6 +16,7 @@ use openraft::storage::RaftLogStorage;
 use openraft::storage::RaftSnapshotBuilder;
 use openraft::storage::RaftStateMachine;
 use openraft::storage::Snapshot;
+use openraft::raft::ExampleSnapshot;
 use openraft::Entry;
 use openraft::EntryPayload;
 use openraft::LogId;
@@ -41,7 +42,7 @@ pub type NodeId = u64;
 
 openraft::declare_raft_types!(
     pub TypeConfig: D = ClientRequest, R = ClientResponse, NodeId = NodeId, Node = (),
-    Entry = Entry<TypeConfig>, SnapshotData = Cursor<Vec<u8>>, AsyncRuntime = TokioRuntime
+    Entry = Entry<TypeConfig>, SnapshotData = ExampleSnapshot, AsyncRuntime = TokioRuntime
 );
 
 #[derive(Debug)]
@@ -165,7 +166,7 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<StateMachineStore> {
 
         Ok(Snapshot {
             meta,
-            snapshot: Box::new(Cursor::new(data)),
+            snapshot: Box::new(Cursor::new(data).into()),
         })
     }
 }
@@ -279,7 +280,7 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
     async fn begin_receiving_snapshot(
         &mut self,
     ) -> Result<Box<<TypeConfig as RaftTypeConfig>::SnapshotData>, StorageError<NodeId>> {
-        Ok(Box::new(Cursor::new(Vec::new())))
+        Ok(Box::new(Cursor::new(Vec::new()).into()))
     }
 
     #[tracing::instrument(level = "trace", skip(self, snapshot))]
@@ -314,7 +315,7 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
                 let data = snapshot.data.clone();
                 Ok(Some(Snapshot {
                     meta: snapshot.meta.clone(),
-                    snapshot: Box::new(Cursor::new(data)),
+                    snapshot: Box::new(Cursor::new(data).into()),
                 }))
             }
             None => Ok(None),

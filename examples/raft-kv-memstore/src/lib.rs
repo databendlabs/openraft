@@ -1,13 +1,13 @@
 #![allow(clippy::uninlined_format_args)]
 #![deny(unused_qualifications)]
 
-use std::io::Cursor;
 use std::sync::Arc;
 
 use actix_web::middleware;
 use actix_web::middleware::Logger;
 use actix_web::web::Data;
 use actix_web::HttpServer;
+use openraft::raft::ExampleSnapshot;
 use openraft::storage::Adaptor;
 use openraft::BasicNode;
 use openraft::Config;
@@ -32,7 +32,7 @@ pub type NodeId = u64;
 openraft::declare_raft_types!(
     /// Declare the type configuration for example K/V store.
     pub TypeConfig: D = Request, R = Response, NodeId = NodeId, Node = BasicNode,
-    Entry = openraft::Entry<TypeConfig>, SnapshotData = Cursor<Vec<u8>>, AsyncRuntime = TokioRuntime
+    Entry = openraft::Entry<TypeConfig>, SnapshotData = ExampleSnapshot, AsyncRuntime = TokioRuntime
 );
 
 pub type LogStore = Adaptor<TypeConfig, Arc<Store>>;

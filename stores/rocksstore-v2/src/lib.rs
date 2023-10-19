@@ -39,6 +39,7 @@ use openraft::StorageError;
 use openraft::StorageIOError;
 use openraft::StoredMembership;
 use openraft::TokioRuntime;
+use openraft::raft::ExampleSnapshot;
 use openraft::Vote;
 use rand::Rng;
 use rocksdb::ColumnFamily;
@@ -54,7 +55,7 @@ pub type RocksNodeId = u64;
 openraft::declare_raft_types!(
     /// Declare the type configuration.
     pub TypeConfig: D = RocksRequest, R = RocksResponse, NodeId = RocksNodeId, Node = BasicNode,
-    Entry = Entry<TypeConfig>, SnapshotData = Cursor<Vec<u8>>, AsyncRuntime = TokioRuntime
+    Entry = Entry<TypeConfig>, SnapshotData = ExampleSnapshot, AsyncRuntime = TokioRuntime
 );
 
 /**
@@ -305,7 +306,7 @@ impl RaftSnapshotBuilder<TypeConfig> for RocksStateMachine {
 
         Ok(Snapshot {
             meta,
-            snapshot: Box::new(Cursor::new(data)),
+            snapshot: Box::new(Cursor::new(data).into()),
         })
     }
 }
@@ -455,7 +456,7 @@ impl RaftStateMachine<TypeConfig> for RocksStateMachine {
     async fn begin_receiving_snapshot(
         &mut self,
     ) -> Result<Box<<TypeConfig as RaftTypeConfig>::SnapshotData>, StorageError<RocksNodeId>> {
-        Ok(Box::new(Cursor::new(Vec::new())))
+        Ok(Box::new(Cursor::new(Vec::new()).into()))
     }
 
     async fn install_snapshot(
@@ -510,7 +511,7 @@ impl RaftStateMachine<TypeConfig> for RocksStateMachine {
 
         Ok(Some(Snapshot {
             meta: snapshot.meta,
-            snapshot: Box::new(Cursor::new(data)),
+            snapshot: Box::new(Cursor::new(data).into()),
         }))
     }
 }

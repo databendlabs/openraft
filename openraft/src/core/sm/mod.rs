@@ -4,7 +4,6 @@
 //! It is responsible for applying log entries, building/receiving snapshot  and sending responses
 //! to the RaftCore.
 
-use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 
@@ -13,7 +12,9 @@ use crate::core::streaming_state::Streaming;
 use crate::core::ApplyResult;
 use crate::core::ApplyingEntry;
 use crate::entry::RaftPayload;
+use crate::raft::InstallSnapshotData;
 use crate::raft::InstallSnapshotRequest;
+use crate::raft::SnapshotManifest;
 use crate::storage::RaftStateMachine;
 use crate::summary::MessageSummary;
 use crate::AsyncRuntime;
@@ -23,7 +24,6 @@ use crate::RaftTypeConfig;
 use crate::Snapshot;
 use crate::SnapshotMeta;
 use crate::StorageError;
-use crate::StorageIOError;
 
 pub(crate) mod command;
 pub(crate) mod response;
@@ -241,17 +241,23 @@ where
             "sending back snapshot: meta: {:?}",
             snapshot.as_ref().map(|s| s.meta.summary())
         );
+
         let _ = tx.send(snapshot);
+
         Ok(())
     }
 
     #[tracing::instrument(level = "info", skip_all)]
-    async fn receive_snapshot_chunk(&mut self, req: InstallSnapshotRequest<C>) -> Result<(), StorageError<C::NodeId>> {
+    async fn receive_snapshot_chunk(
+        &mut self,
+        req: InstallSnapshotRequest<C>,
+    ) -> Result<Option<SnapshotMeta<C::NodeId, C::Node>>, StorageError<C::NodeId>> {
         let snapshot_meta = req.meta.clone();
-        let done = req.done;
-        let offset = req.offset;
-
-        let req_id = SnapshotRequestId::new(*req.vote.leader_id(), snapshot_meta.snapshot_id.clone(), offset);
+        let req_id = SnapshotRequestId::new(
+            *req.vote.leader_id(),
+            snapshot_meta.snapshot_id.clone(),
+            req.data.chunk_id(),
+        );
 
         tracing::info!(
             req = display(req.summary()),
@@ -260,33 +266,42 @@ where
             func_name!()
         );
 
-        let curr_id = self.streaming.as_ref().map(|s| &s.snapshot_id);
+        let done = match req.data {
+            InstallSnapshotData::Manifest(manifest) => {
+                let streaming_manifest = self.state_machine.begin_receiving_snapshot().await?;
+                self.streaming = Some(Streaming::new(req.meta, manifest, streaming_manifest));
 
-        // Changed to another stream. re-init snapshot state.
-        if curr_id != Some(&req.meta.snapshot_id) {
-            let snapshot_data = self.state_machine.begin_receiving_snapshot().await?;
-            self.streaming = Some(Streaming::new(req.meta.snapshot_id.clone(), snapshot_data));
-        }
+                false
+            }
+            InstallSnapshotData::Chunk(chunk) => match self.streaming.as_mut() {
+                Some(streaming) => {
+                    if !streaming.receive(chunk).await? {
+                        // we received a chunk that doesn't exist in the manifest
+                        tracing::warn!(
+                            snapshot_req_id = debug(&req_id),
+                            "{} chunk does not exist in manifest",
+                            func_name!()
+                        );
+                    }
 
-        let streaming = self.streaming.as_mut().unwrap();
-        streaming.receive(req).await?;
-
-        tracing::info!(snapshot_req_id = debug(&req_id), "received snapshot chunk");
+                    streaming.manifest.is_complete()
+                }
+                None => {
+                    tracing::error!("should never happen");
+                    false
+                }
+            },
+        };
 
         if done {
-            let streaming = self.streaming.take().unwrap();
-            let mut data = streaming.snapshot_data;
-
-            data.as_mut()
-                .shutdown()
-                .await
-                .map_err(|e| StorageIOError::write_snapshot(Some(snapshot_meta.signature()), &e))?;
-
             tracing::info!("store completed streaming snapshot: {:?}", snapshot_meta);
-            self.received = Some(Snapshot::new(snapshot_meta, data));
+            let streaming = self.streaming.take().unwrap();
+            self.received = Some(Snapshot::new(snapshot_meta.clone(), streaming.streaming_data));
+
+            return Ok(Some(snapshot_meta));
         }
 
-        Ok(())
+        Ok(None)
     }
 
     #[tracing::instrument(level = "info", skip_all)]

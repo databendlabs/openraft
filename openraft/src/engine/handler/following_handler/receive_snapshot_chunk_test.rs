@@ -7,6 +7,10 @@ use crate::engine::Command;
 use crate::engine::Engine;
 use crate::error::InstallSnapshotError;
 use crate::error::SnapshotMismatch;
+use crate::raft::ExampleChunkId;
+use crate::raft::ExampleManifest;
+use crate::raft::ExampleSnapshotChunk;
+use crate::raft::InstallSnapshotData;
 use crate::raft::InstallSnapshotRequest;
 use crate::raft_state::StreamingState;
 use crate::testing::log_id;
@@ -43,30 +47,34 @@ fn make_req(offset: u64) -> InstallSnapshotRequest<UTConfig> {
     InstallSnapshotRequest {
         vote: Vote::new_committed(2, 1),
         meta: make_meta(),
-        offset,
-        data: vec![],
-        done: false,
+        data: InstallSnapshotData::Chunk(ExampleSnapshotChunk {
+            chunk_id: ExampleChunkId {
+                offset: offset as usize,
+                len: 0,
+            },
+            data: vec![],
+        }),
+    }
+}
+
+fn make_manifest() -> InstallSnapshotRequest<UTConfig> {
+    InstallSnapshotRequest {
+        vote: Vote::new_committed(2, 1),
+        meta: make_meta(),
+        data: InstallSnapshotData::Manifest(ExampleManifest { chunks: btreeset! {} }),
     }
 }
 
 #[test]
-fn test_receive_snapshot_chunk_new_chunk() -> anyhow::Result<()> {
+fn test_receive_snapshot_chunk_new_chunk_no_manifest() -> anyhow::Result<()> {
     let mut eng = eng();
     assert!(eng.state.snapshot_streaming.is_none());
 
-    eng.following_handler().receive_snapshot_chunk(make_req(0))?;
+    let res = eng.following_handler().receive_snapshot_chunk(make_req(0));
 
-    assert_eq!(
-        Some(StreamingState {
-            offset: 0,
-            snapshot_id: "1-2-3-4".to_string(),
-        }),
-        eng.state.snapshot_streaming
-    );
-    assert_eq!(
-        vec![Command::from(sm::Command::receive(make_req(0)).with_seq(1))],
-        eng.output.take_commands()
-    );
+    assert!(res.is_err());
+    assert_eq!(None, eng.state.snapshot_streaming);
+    assert_eq!(Vec::<Command<UTConfig>>::new(), eng.output.take_commands());
 
     Ok(())
 }
@@ -76,7 +84,6 @@ fn test_receive_snapshot_chunk_continue_receive_chunk() -> anyhow::Result<()> {
     let mut eng = eng();
 
     eng.state.snapshot_streaming = Some(StreamingState {
-        offset: 0,
         snapshot_id: "1-2-3-4".to_string(),
     });
 
@@ -84,7 +91,6 @@ fn test_receive_snapshot_chunk_continue_receive_chunk() -> anyhow::Result<()> {
 
     assert_eq!(
         Some(StreamingState {
-            offset: 2,
             snapshot_id: "1-2-3-4".to_string(),
         }),
         eng.state.snapshot_streaming
@@ -98,26 +104,25 @@ fn test_receive_snapshot_chunk_continue_receive_chunk() -> anyhow::Result<()> {
 }
 
 #[test]
-fn test_receive_snapshot_chunk_diff_id_offset_0() -> anyhow::Result<()> {
-    // When receiving a chunk with different snapshot id and offset 0, starts a new snapshot streaming.
+fn test_receive_snapshot_chunk_diff_id_manifest() -> anyhow::Result<()> {
+    // When receiving a chunk with different snapshot id and is a manifest, starts a new snapshot
+    // streaming.
     let mut eng = eng();
 
     eng.state.snapshot_streaming = Some(StreamingState {
-        offset: 2,
         snapshot_id: "1-2-3-100".to_string(),
     });
 
-    eng.following_handler().receive_snapshot_chunk(make_req(0))?;
+    eng.following_handler().receive_snapshot_chunk(make_manifest())?;
 
     assert_eq!(
         Some(StreamingState {
-            offset: 0,
             snapshot_id: "1-2-3-4".to_string(),
         }),
         eng.state.snapshot_streaming
     );
     assert_eq!(
-        vec![Command::from(sm::Command::receive(make_req(0)).with_seq(1))],
+        vec![Command::from(sm::Command::receive(make_manifest()).with_seq(1))],
         eng.output.take_commands()
     );
 
@@ -131,7 +136,6 @@ fn test_receive_snapshot_chunk_diff_id_offset_gt_0() -> anyhow::Result<()> {
     let mut eng = eng();
 
     eng.state.snapshot_streaming = Some(StreamingState {
-        offset: 2,
         snapshot_id: "1-2-3-100".to_string(),
     });
 
@@ -140,12 +144,10 @@ fn test_receive_snapshot_chunk_diff_id_offset_gt_0() -> anyhow::Result<()> {
     assert_eq!(
         Err(InstallSnapshotError::from(SnapshotMismatch {
             expect: SnapshotSegmentId {
-                id: "1-2-3-4".to_string(),
-                offset: 0
+                id: "1-2-3-100".to_string(),
             },
             got: SnapshotSegmentId {
                 id: "1-2-3-4".to_string(),
-                offset: 3
             },
         })),
         res
@@ -153,7 +155,6 @@ fn test_receive_snapshot_chunk_diff_id_offset_gt_0() -> anyhow::Result<()> {
 
     assert_eq!(
         Some(StreamingState {
-            offset: 2,
             snapshot_id: "1-2-3-100".to_string(),
         }),
         eng.state.snapshot_streaming,

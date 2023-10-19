@@ -17,8 +17,16 @@ use maplit::btreemap;
 pub use message::AppendEntriesRequest;
 pub use message::AppendEntriesResponse;
 pub use message::ClientWriteResponse;
+pub use message::ExampleChunkId;
+pub use message::ExampleManifest;
+pub use message::ExampleSnapshot;
+pub use message::ExampleSnapshotChunk;
+pub use message::InstallSnapshotData;
 pub use message::InstallSnapshotRequest;
 pub use message::InstallSnapshotResponse;
+pub use message::SnapshotChunk;
+pub use message::SnapshotData;
+pub use message::SnapshotManifest;
 pub use message::VoteRequest;
 pub use message::VoteResponse;
 use tokio::sync::mpsc;
@@ -80,7 +88,7 @@ use crate::StorageHelper;
 ///        NodeId       = u64,
 ///        Node         = openraft::BasicNode,
 ///        Entry        = openraft::Entry<TypeConfig>,
-///        SnapshotData = Cursor<Vec<u8>>,
+///        SnapshotData = openraft::ExampleSnapshot,
 ///        AsyncRuntime = openraft::TokioRuntime,
 /// );
 /// ```

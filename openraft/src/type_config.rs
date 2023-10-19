@@ -1,17 +1,13 @@
 use std::fmt::Debug;
 
-use tokio::io::AsyncRead;
-use tokio::io::AsyncSeek;
-use tokio::io::AsyncWrite;
-
 use crate::entry::FromAppData;
 use crate::entry::RaftEntry;
+use crate::raft::SnapshotData;
 use crate::AppData;
 use crate::AppDataResponse;
 use crate::AsyncRuntime;
 use crate::Node;
 use crate::NodeId;
-use crate::OptionalSend;
 
 /// Configuration of types used by the [`Raft`] core engine.
 ///
@@ -34,7 +30,7 @@ use crate::OptionalSend;
 ///        NodeId       = u64,
 ///        Node         = openraft::BasicNode,
 ///        Entry        = openraft::Entry<TypeConfig>,
-///        SnapshotData = Cursor<Vec<u8>>,
+///        SnapshotData = ExampleSnapshot,
 ///        AsyncRuntime = openraft::TokioRuntime,
 /// );
 /// ```
@@ -61,8 +57,13 @@ pub trait RaftTypeConfig:
     ///
     /// See the [storage chapter of the guide](https://datafuselabs.github.io/openraft/getting-started.html#implement-raftstorage)
     /// for details on where and how this is used.
-    type SnapshotData: AsyncRead + AsyncWrite + AsyncSeek + OptionalSend + Sync + Unpin + 'static;
+    type SnapshotData: SnapshotData + 'static;
 
     /// Asynchronous runtime type.
     type AsyncRuntime: AsyncRuntime;
 }
+
+pub(crate) type RTCSnapshotData<C> = <C as RaftTypeConfig>::SnapshotData;
+pub(crate) type RTCSnapshotChunkId<C> = <<C as RaftTypeConfig>::SnapshotData as SnapshotData>::ChunkId;
+pub(crate) type RTCSnapshotChunk<C> = <<C as RaftTypeConfig>::SnapshotData as SnapshotData>::Chunk;
+pub(crate) type RTCSnapshotManifest<C> = <<C as RaftTypeConfig>::SnapshotData as SnapshotData>::Manifest;
