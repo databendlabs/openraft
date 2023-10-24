@@ -216,7 +216,7 @@ impl RaftStorage<TypeConfig> for Arc<Store> {
 
     #[tracing::instrument(level = "debug", skip(self))]
     async fn purge_logs_upto(&mut self, log_id: LogId<NodeId>) -> Result<(), StorageError<NodeId>> {
-        tracing::debug!("delete_log: [{:?}, +oo)", log_id);
+        tracing::debug!("delete_log: (-oo, {:?}]", log_id);
 
         {
             let mut ld = self.last_purged_log_id.write().await;
