@@ -17,7 +17,7 @@
     <br/><br/>
 
 
--   **🤔 Can I wipe out the data of **one** node and wait for the leader to replicate all data to it again**?
+-   **🤔 Can I wipe out the data of ONE node and wait for the leader to replicate all data to it again**?
 
     💡 Avoid doing this. Doing so will panic the leader. But it is permitted
     if [`loosen-follower-log-revert`] feature flag is enabled.
@@ -48,5 +48,29 @@
     `--feature loosen-follower-log-revert` to permit erasing a node.
     <br/><br/>
 
+
+-   **🤔 Is Openraft resilient to incorrectly configured clusters?**
+
+    💡 No, Openraft, like standard raft, cannot identify errors in cluster configuration.
+
+    A common error is the assigning a wrong network addresses to a node. In such
+    a scenario, if this node becomes the leader, it will attempt to replicate
+    logs to itself. This will cause Openraft to panic because replication
+    messages can only be received by a follower.
+
+    ```text
+    thread 'main' panicked at openraft/src/engine/engine_impl.rs:793:9:
+    assertion failed: self.internal_server_state.is_following()
+    ```
+
+    ```ignore
+    // openraft/src/engine/engine_impl.rs:793
+    pub(crate) fn following_handler(&mut self) -> FollowingHandler<C> {
+        debug_assert!(self.internal_server_state.is_following());
+        // ...
+    }
+    ```
+
+    <br/><br/>
 
 [`loosen-follower-log-revert`]: `crate::docs::feature_flags#loosen_follower_log_revert`
