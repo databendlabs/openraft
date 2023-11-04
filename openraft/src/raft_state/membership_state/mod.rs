@@ -77,6 +77,12 @@ where
         Self { committed, effective }
     }
 
+    /// Return true if the given node id is an either voter or learner.
+    pub(crate) fn contains(&self, id: &NID) -> bool {
+        self.effective.membership().contains(id)
+    }
+
+    /// Check if the given `NodeId` exists and is a voter.
     pub(crate) fn is_voter(&self, id: &NID) -> bool {
         self.effective.membership().is_voter(id)
     }

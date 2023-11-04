@@ -95,7 +95,6 @@ where C: RaftTypeConfig
         }
     }
 
-    // TODO: test it
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn startup(&mut self) {
         // Allows starting up as a leader.
@@ -517,10 +516,7 @@ where C: RaftTypeConfig
 
         #[allow(clippy::collapsible_if)]
         if em.log_id().as_ref() <= self.state.committed() {
-            if !em.is_voter(&self.config.id) && self.state.is_leading(&self.config.id) {
-                tracing::debug!("leader {} is stepping down", self.config.id);
-                self.vote_handler().become_following();
-            }
+            self.vote_handler().update_internal_server_state();
         }
     }
 

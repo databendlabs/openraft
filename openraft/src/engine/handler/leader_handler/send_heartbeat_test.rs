@@ -23,7 +23,7 @@ fn m01() -> Membership<u64, ()> {
 }
 
 fn m23() -> Membership<u64, ()> {
-    Membership::<u64, ()>::new(vec![btreeset! {2,3}], None)
+    Membership::<u64, ()>::new(vec![btreeset! {2,3}], btreeset! {1,2,3})
 }
 
 fn eng() -> Engine<UTConfig> {

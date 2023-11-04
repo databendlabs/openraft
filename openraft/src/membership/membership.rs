@@ -172,6 +172,11 @@ where
     N: Node,
     NID: NodeId,
 {
+    /// Return true if the given node id is an either voter or learner.
+    pub(crate) fn contains(&self, node_id: &NID) -> bool {
+        self.nodes.contains_key(node_id)
+    }
+
     /// Check if the given `NodeId` exists and is a voter.
     pub(crate) fn is_voter(&self, node_id: &NID) -> bool {
         for c in self.configs.iter() {

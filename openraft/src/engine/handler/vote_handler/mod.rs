@@ -124,7 +124,7 @@ where C: RaftTypeConfig
 
     /// Enter leading or following state by checking `vote`.
     pub(crate) fn update_internal_server_state(&mut self) {
-        if self.state.vote_ref().leader_id().voted_for() == Some(self.config.id) {
+        if self.state.is_leading(&self.config.id) {
             self.become_leading();
         } else {
             self.become_following();

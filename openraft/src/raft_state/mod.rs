@@ -319,24 +319,34 @@ where
     }
 
     /// Determine the current server state by state.
+    ///
+    /// See [Determine Server State][] for more details about determining the server state.
+    ///
+    /// [Determine Server State]: crate::docs::data::vote#vote-and-membership-define-the-server-state
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn calc_server_state(&self, id: &NID) -> ServerState {
         tracing::debug!(
-            is_member = display(self.is_voter(id)),
+            contains = display(self.membership_state.contains(id)),
+            is_voter = display(self.is_voter(id)),
             is_leader = display(self.is_leader(id)),
             is_leading = display(self.is_leading(id)),
             "states"
         );
-        if self.is_voter(id) {
-            if self.is_leader(id) {
-                ServerState::Leader
-            } else if self.is_leading(id) {
-                ServerState::Candidate
-            } else {
-                ServerState::Follower
-            }
+
+        // Openraft does not require Leader/Candidate to be a voter, i.e., a learner node could
+        // also be possible to be a leader. Although currently it is not supported.
+        // Allowing this will simplify leader step down: The leader just run as long as it wants to,
+        #[allow(clippy::collapsible_else_if)]
+        if self.is_leader(id) {
+            ServerState::Leader
+        } else if self.is_leading(id) {
+            ServerState::Candidate
         } else {
-            ServerState::Learner
+            if self.is_voter(id) {
+                ServerState::Follower
+            } else {
+                ServerState::Learner
+            }
         }
     }
 
@@ -346,12 +356,25 @@ where
 
     /// The node is candidate(leadership is not granted by a quorum) or leader(leadership is granted
     /// by a quorum)
+    ///
+    /// Note that in Openraft Leader does not have to be a voter. See [Determine Server State][] for
+    /// more details about determining the server state.
+    ///
+    /// [Determine Server State]: crate::docs::data::vote#vote-and-membership-define-the-server-state
     pub(crate) fn is_leading(&self, id: &NID) -> bool {
-        self.vote.leader_id().voted_for().as_ref() == Some(id)
+        self.membership_state.contains(id) && self.vote.leader_id().voted_for().as_ref() == Some(id)
     }
 
+    /// The node is leader
+    ///
+    /// Leadership is granted by a quorum and the vote is committed.
+    ///
+    /// Note that in Openraft Leader does not have to be a voter. See [Determine Server State][] for
+    /// more details about determining the server state.
+    ///
+    /// [Determine Server State]: crate::docs::data::vote#vote-and-membership-define-the-server-state
     pub(crate) fn is_leader(&self, id: &NID) -> bool {
-        self.vote.leader_id().voted_for().as_ref() == Some(id) && self.vote.is_committed()
+        self.is_leading(id) && self.vote.is_committed()
     }
 
     pub(crate) fn assign_log_ids<'a, Ent: RaftEntry<NID, N> + 'a>(
