@@ -132,12 +132,27 @@ async fn add_learner_non_blocking() -> Result<()> {
         let raft = router.get_raft_handle(&0)?;
         raft.add_learner(1, (), false).await?;
 
-        sleep(Duration::from_millis(500)).await;
+        let n = 6;
+        for i in 0..=n {
+            if i == n {
+                unreachable!("no replication status is reported to metrics!");
+            }
 
-        let metrics = router.get_raft_handle(&0)?.metrics().borrow().clone();
-        let repl = metrics.replication.as_ref().unwrap();
-        let n1_repl = repl.get(&1);
-        assert_eq!(Some(&None), n1_repl, "no replication state to the learner is reported");
+            let metrics = router.get_raft_handle(&0)?.metrics().borrow().clone();
+            let repl = metrics.replication.as_ref().unwrap();
+
+            // The result is Some(&None) when there is no success replication is made,
+            // and is None if no replication attempt is made(no success or failure is reported to metrics).
+            let n1_repl = repl.get(&1);
+            if n1_repl.is_none() {
+                tracing::info!("--- no replication attempt is made, sleep and retry: {}-th attempt", i);
+
+                sleep(Duration::from_millis(500)).await;
+                continue;
+            }
+            assert_eq!(Some(&None), n1_repl, "no replication state to the learner is reported");
+            break;
+        }
     }
 
     Ok(())
