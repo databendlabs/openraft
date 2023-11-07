@@ -41,7 +41,7 @@ The only difference between these two modes is the definition of `LeaderId`, and
 See: [`leader-id`].
 
 
-## Vote defines the server state
+## Vote and Membership define the server state
 
 In the default mode, the `Vote` defines the server state(leader, candidate, follower or learner).
 A server state has a unique corresponding `vote`, thus `vote` can be used to identify different server
@@ -55,17 +55,27 @@ new membership log is replicated to a follower or learner.
 
 E.g.:
 
-- A vote `(term=1, node_id=2, committed=false)` is in a candidate state for
-  node-2.
+- Node-2 with vote `(term=1, node_id=2, committed=true)`:
+  - is a leader if it is **present** in config, either a voter or non-voter.
+  - is a learner if it is **absent** in config.
 
-- A vote `(term=1, node_id=2, committed=true)` is in a leader state for
-  node-2.
+- Node-2 with vote `(term=1, node_id=2, committed=false)`:
+  - is a candidate if it is **present** in config, either a voter or non-voter.
+  - is a learner if it is **absent** in config.
 
-- A vote `(term=1, node_id=2, committed=false|true)` is in a follower/learner
-  state for node-3.
+- Node-3 with vote `(term=1, node_id=99, committed=false|true)`:
+  - is a follower if it is a **voter** in config,
+  - is a learner if it is a **non-voter** or **absent** in config.
 
-- A vote `(term=1, node_id=1, committed=false|true)` is in another different
-  follower/learner state for node-3.
+For node-2:
+
+| vote \ membership                     | Voter     | Non-voter | Absent  |
+|---------------------------------------|-----------|-----------|---------|
+| (term=1, node_id=2, committed=true)   | leader    | leader    | learner |
+| (term=1, node_id=2, committed=false)  | candidate | candidate | learner |
+| (term=1, node_id=99, committed=true)  | follower  | learner   | learner |
+| (term=1, node_id=99, committed=false) | follower  | learner   | learner |
+
 
 
 [`Vote`]: `crate::vote::Vote`

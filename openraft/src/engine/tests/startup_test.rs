@@ -15,6 +15,10 @@ use crate::ServerState;
 use crate::TokioInstant;
 use crate::Vote;
 
+fn m_empty() -> Membership<u64, ()> {
+    Membership::<u64, ()>::new(vec![btreeset! {}], None)
+}
+
 fn m23() -> Membership<u64, ()> {
     Membership::<u64, ()>::new(vec![btreeset! {2,3}], None)
 }
@@ -59,6 +63,25 @@ fn test_startup_as_leader() -> anyhow::Result<()> {
         ],
         eng.output.take_commands()
     );
+
+    Ok(())
+}
+
+/// When starting up, a leader that is not a voter should not panic.
+#[test]
+fn test_startup_as_leader_not_voter_issue_920() -> anyhow::Result<()> {
+    let mut eng = eng();
+    // self.id==2 is a voter:
+    eng.state
+        .membership_state
+        .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(2, 1, 3)), m_empty())));
+    // Committed vote makes it a leader at startup.
+    eng.state.vote = UTime::new(TokioInstant::now(), Vote::new_committed(1, 2));
+
+    eng.startup();
+
+    assert_eq!(ServerState::Learner, eng.state.server_state);
+    assert_eq!(eng.output.take_commands(), vec![]);
 
     Ok(())
 }

@@ -1,6 +1,5 @@
 use std::fmt::Debug;
 
-use crate::AppDataResponse;
 use crate::LogId;
 use crate::Membership;
 use crate::MessageSummary;
@@ -10,7 +9,7 @@ use crate::RaftTypeConfig;
 #[cfg_attr(
     feature = "serde",
     derive(serde::Deserialize, serde::Serialize),
-    serde(bound = "C::R: AppDataResponse")
+    serde(bound = "C::R: crate::AppDataResponse")
 )]
 pub struct ClientWriteResponse<C: RaftTypeConfig> {
     /// The id of the log that is applied.

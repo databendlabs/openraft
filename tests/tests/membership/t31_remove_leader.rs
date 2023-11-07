@@ -94,10 +94,9 @@ async fn remove_leader() -> Result<()> {
 
     tracing::info!(log_index, "--- check state of the old leader");
     {
-        let metrics = router.get_metrics(&0)?;
+        let metrics = router.wait(&0, timeout()).state(ServerState::Learner, "old leader steps down").await?;
         let cfg = &metrics.membership_config.membership();
 
-        assert!(metrics.state != ServerState::Leader);
         assert_eq!(metrics.current_term, 1);
         assert_eq!(metrics.last_log_index, Some(8));
         assert_eq!(metrics.last_applied, Some(LogId::new(CommittedLeaderId::new(1, 0), 8)));
@@ -105,6 +104,69 @@ async fn remove_leader() -> Result<()> {
             btreeset![1, 2, 3]
         ]);
         assert_eq!(1, cfg.get_joint_config().len());
+    }
+
+    Ok(())
+}
+
+/// Change membership from {0,1} to {1,2,3}, keep node-0 as learner;
+///
+/// - The leader should NOT step down after joint log is committed.
+#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+async fn remove_leader_and_convert_to_learner() -> Result<()> {
+    let config = Arc::new(
+        Config {
+            election_timeout_min: 800,
+            election_timeout_max: 1000,
+            enable_elect: false,
+            enable_heartbeat: false,
+            ..Default::default()
+        }
+        .validate()?,
+    );
+    let mut router = RaftRouter::new(config.clone());
+
+    let mut log_index = router.new_cluster(btreeset! {0,1}, btreeset! {2,3}).await?;
+
+    let old_leader = 0;
+
+    tracing::info!(log_index, "--- change membership and retain removed node as learner");
+    {
+        let node = router.get_raft_handle(&old_leader)?;
+        node.change_membership(btreeset![1, 2, 3], true).await?;
+        log_index += 2;
+    }
+
+    tracing::info!(log_index, "--- old leader commits 2 membership log");
+    {
+        router
+            .wait(&old_leader, timeout())
+            .log(Some(log_index), "old leader commits 2 membership log")
+            .await?;
+    }
+
+    // Another node(e.g. node-1) in the old cluster may not commit the second membership change log.
+    // Because to commit the 2nd log it only need a quorum of the new cluster.
+
+    router
+        .wait(&1, timeout())
+        .log_at_least(
+            Some(log_index - 1),
+            "node in old cluster commits at least 1 membership log",
+        )
+        .await?;
+
+    tracing::info!(log_index, "--- wait 1 sec, old leader(non-voter) stays as a leader");
+    {
+        tokio::time::sleep(Duration::from_millis(1_000)).await;
+
+        router
+            .wait(&0, timeout())
+            .state(
+                ServerState::Leader,
+                "old leader is not removed from membership, it is still a leader",
+            )
+            .await?;
     }
 
     Ok(())
