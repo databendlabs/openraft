@@ -93,7 +93,7 @@ async fn test_cluster() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     // Wait for server to start up.
-    async_std::task::sleep(Duration::from_millis(500)).await;
+    async_std::task::sleep(Duration::from_millis(1_000)).await;
 
     // --- Create a client to the first node, as a control handle to the cluster.
 
@@ -172,7 +172,7 @@ async fn test_cluster() -> Result<(), Box<dyn std::error::Error>> {
 
     // --- Wait for a while to let the replication get done.
 
-    async_std::task::sleep(Duration::from_millis(200)).await;
+    async_std::task::sleep(Duration::from_millis(500)).await;
 
     // --- Read it on every node.
 
@@ -200,7 +200,7 @@ async fn test_cluster() -> Result<(), Box<dyn std::error::Error>> {
         })
         .await?;
 
-    async_std::task::sleep(Duration::from_millis(200)).await;
+    async_std::task::sleep(Duration::from_millis(500)).await;
 
     // --- Read it on every node.
 
