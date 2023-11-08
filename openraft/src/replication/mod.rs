@@ -645,12 +645,20 @@ where
 
         let mut offset = 0;
         let end = snapshot.snapshot.seek(SeekFrom::End(0)).await.sto_res(err_x)?;
-        let mut buf = Vec::with_capacity(self.config.snapshot_max_chunk_size as usize);
 
         loop {
             // Build the RPC.
             snapshot.snapshot.seek(SeekFrom::Start(offset)).await.sto_res(err_x)?;
-            let n_read = snapshot.snapshot.read_buf(&mut buf).await.sto_res(err_x)?;
+
+            let mut buf = Vec::with_capacity(self.config.snapshot_max_chunk_size as usize);
+            while buf.capacity() > buf.len() {
+                let n = snapshot.snapshot.read_buf(&mut buf).await.sto_res(err_x)?;
+                if n == 0 {
+                    break;
+                }
+            }
+
+            let n_read = buf.len();
 
             let leader_time = <C::AsyncRuntime as AsyncRuntime>::Instant::now();
 
@@ -659,10 +667,9 @@ where
                 vote: self.session_id.vote,
                 meta: snapshot.meta.clone(),
                 offset,
-                data: Vec::from(&buf[..n_read]),
+                data: buf,
                 done,
             };
-            buf.clear();
 
             // Send the RPC over to the target.
             tracing::debug!(
