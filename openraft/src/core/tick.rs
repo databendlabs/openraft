@@ -66,8 +66,9 @@ where C: RaftTypeConfig
             }
 
             let send_res = self.tx.send(Notify::Tick { i });
-            if let Err(e) = send_res {
-                tracing::info!("Tick fails to send, receiving end quit: {e}");
+            if let Err(_e) = send_res {
+                tracing::info!("Stopping tick_loop(), main loop terminated");
+                break;
             } else {
                 tracing::debug!("Tick sent: {}", i)
             }
