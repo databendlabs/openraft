@@ -28,6 +28,16 @@ nodes in the cluster, including voters and non-voters (learners).  When a
 replication.
 
 
+### What will happen when data gets lost?
+
+Raft operates on the presumption that the storage medium (i.e., the disk) is
+secure and reliable.
+
+If this presumption is violated, e.g., the raft logs are lost or the snapshot is
+damaged, no predictable outcome can be assured. In other words, the resulting
+behavior is **undefined**.
+
+
 ### Can I wipe out the data of ONE node and wait for the leader to replicate all data to it again?
 
 Avoid doing this. Doing so will panic the leader. But it is permitted
