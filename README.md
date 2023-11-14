@@ -161,4 +161,4 @@ Check out the [CONTRIBUTING.md](https://github.com/datafuselabs/openraft/blob/ma
 
 # License
 
-Openraft is licensed under the terms of the MIT License or the Apache License 2.0, at your choosing.
+Openraft is licensed under the terms of the [MIT License](LICENSE-MIT) or the [Apache License 2.0](LICENSE-APACHE), at your choosing.
