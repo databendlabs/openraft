@@ -1,6 +1,8 @@
 use macros::add_async_trait;
 
 use crate::network::RaftNetwork;
+use crate::OptionalSend;
+use crate::OptionalSync;
 use crate::RaftTypeConfig;
 
 /// A trait defining the interface for a Raft network factory to create connections between cluster
@@ -12,7 +14,7 @@ use crate::RaftTypeConfig;
 /// Typically, the network implementation as such will be hidden behind a `Box<T>` or `Arc<T>` and
 /// this interface implemented on the `Box<T>` or `Arc<T>`.
 #[add_async_trait]
-pub trait RaftNetworkFactory<C>: Send + Sync + 'static
+pub trait RaftNetworkFactory<C>: OptionalSend + OptionalSync + 'static
 where C: RaftTypeConfig
 {
     /// Actual type of the network handling a single connection.

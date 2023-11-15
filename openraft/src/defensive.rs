@@ -5,11 +5,12 @@ use std::ops::RangeBounds;
 use crate::log_id::RaftLogId;
 use crate::DefensiveError;
 use crate::ErrorSubject;
+use crate::OptionalSend;
 use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::Violation;
 
-pub fn check_range_matches_entries<C: RaftTypeConfig, RB: RangeBounds<u64> + Debug + Send>(
+pub fn check_range_matches_entries<C: RaftTypeConfig, RB: RangeBounds<u64> + Debug + OptionalSend>(
     range: RB,
     entries: &[C::Entry],
 ) -> Result<(), StorageError<C::NodeId>> {

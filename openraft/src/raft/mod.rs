@@ -59,6 +59,7 @@ use crate::ChangeMembers;
 use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::MessageSummary;
+use crate::OptionalSend;
 use crate::RaftState;
 pub use crate::RaftTypeConfig;
 use crate::StorageHelper;
@@ -147,6 +148,47 @@ where
             _phantom: PhantomData,
         }
     }
+}
+
+#[cfg(feature = "singlethreaded")]
+// SAFETY: Even for a single-threaded Raft, the API object is MT-capable.
+//
+// The API object just sends the requests to the Raft loop over a channel. If all the relevant
+// types in the type config are `Send`, then it's safe to send the request across threads over
+// the channel.
+//
+// Notably, the state machine, log storage and network factory DO NOT have to be `Send`, those
+// are only used within Raft task(s) on a single thread.
+unsafe impl<C, N, LS, SM> Send for Raft<C, N, LS, SM>
+where
+    C: RaftTypeConfig,
+    N: RaftNetworkFactory<C>,
+    LS: RaftLogStorage<C>,
+    SM: RaftStateMachine<C>,
+    C::D: Send,
+    C::Entry: Send,
+    C::Node: Send,
+    C::NodeId: Send,
+    C::R: Send,
+{
+}
+
+#[cfg(feature = "singlethreaded")]
+// SAFETY: Even for a single-threaded Raft, the API object is MT-capable.
+//
+// See above for details.
+unsafe impl<C, N, LS, SM> Sync for Raft<C, N, LS, SM>
+where
+    C: RaftTypeConfig + Send,
+    N: RaftNetworkFactory<C>,
+    LS: RaftLogStorage<C>,
+    SM: RaftStateMachine<C>,
+    C::D: Send,
+    C::Entry: Send,
+    C::Node: Send,
+    C::NodeId: Send,
+    C::R: Send,
+{
 }
 
 impl<C, N, LS, SM> Raft<C, N, LS, SM>
@@ -698,7 +740,7 @@ where
     /// destroyed right away and not called at all.
     pub fn external_request<
         F: FnOnce(&RaftState<C::NodeId, C::Node, <C::AsyncRuntime as AsyncRuntime>::Instant>, &mut LS, &mut N)
-            + Send
+            + OptionalSend
             + 'static,
     >(
         &self,

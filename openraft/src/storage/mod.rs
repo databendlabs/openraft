@@ -28,6 +28,7 @@ use crate::LogId;
 use crate::MessageSummary;
 use crate::NodeId;
 use crate::OptionalSend;
+use crate::OptionalSync;
 use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::StoredMembership;
@@ -138,7 +139,7 @@ pub struct LogState<C: RaftTypeConfig> {
 /// this interface implemented on the `Arc<T>`. It can be co-implemented with [`RaftStorage`]
 /// interface on the same cloneable object, if the underlying state machine is anyway synchronized.
 #[add_async_trait]
-pub trait RaftLogReader<C>: Send + Sync + 'static
+pub trait RaftLogReader<C>: OptionalSend + OptionalSync + 'static
 where C: RaftTypeConfig
 {
     /// Get a series of log entries from storage.
@@ -147,7 +148,7 @@ where C: RaftTypeConfig
     /// stop)`.
     ///
     /// Entry that is not found is allowed.
-    async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + Send + Sync>(
+    async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + OptionalSend + OptionalSync>(
         &mut self,
         range: RB,
     ) -> Result<Vec<C::Entry>, StorageError<C::NodeId>>;
@@ -162,7 +163,7 @@ where C: RaftTypeConfig
 /// co-implemented with [`RaftStorage`] interface on the same cloneable object, if the underlying
 /// state machine is anyway synchronized.
 #[add_async_trait]
-pub trait RaftSnapshotBuilder<C>: Send + Sync + 'static
+pub trait RaftSnapshotBuilder<C>: OptionalSend + OptionalSync + 'static
 where C: RaftTypeConfig
 {
     /// Build snapshot
@@ -192,7 +193,7 @@ where C: RaftTypeConfig
 /// The implementation of the API has to cope with (infrequent) concurrent access from these two
 /// components.
 #[add_async_trait]
-pub trait RaftStorage<C>: RaftLogReader<C> + Send + Sync + 'static
+pub trait RaftStorage<C>: RaftLogReader<C> + OptionalSend + OptionalSync + 'static
 where C: RaftTypeConfig
 {
     /// Log reader type.

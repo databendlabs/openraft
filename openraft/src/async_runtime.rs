@@ -16,9 +16,9 @@ use crate::TokioInstant;
 /// ## Note
 ///
 /// The default asynchronous runtime is `tokio`.
-pub trait AsyncRuntime: Debug + Default + Send + Sync + 'static {
+pub trait AsyncRuntime: Debug + Default + OptionalSend + OptionalSync + 'static {
     /// The error type of [`Self::JoinHandle`].
-    type JoinError: Debug + Display + Send;
+    type JoinError: Debug + Display + OptionalSend;
 
     /// The return type of [`Self::spawn`].
     type JoinHandle<T: OptionalSend + 'static>: Future<Output = Result<T, Self::JoinError>>
@@ -33,7 +33,7 @@ pub trait AsyncRuntime: Debug + Default + Send + Sync + 'static {
     type Instant: Instant;
 
     /// The timeout error type.
-    type TimeoutError: Debug + Display + Send;
+    type TimeoutError: Debug + Display + OptionalSend;
 
     /// The timeout type used by [`Self::timeout`] and [`Self::timeout_at`] that enables the user
     /// to await the outcome of a [`Future`].
