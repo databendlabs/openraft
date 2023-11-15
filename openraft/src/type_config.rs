@@ -12,6 +12,7 @@ use crate::AsyncRuntime;
 use crate::Node;
 use crate::NodeId;
 use crate::OptionalSend;
+use crate::OptionalSync;
 
 /// Configuration of types used by the [`Raft`] core engine.
 ///
@@ -40,7 +41,7 @@ use crate::OptionalSend;
 /// ```
 /// [`Raft`]: crate::Raft
 pub trait RaftTypeConfig:
-    Sized + Send + Sync + Debug + Clone + Copy + Default + Eq + PartialEq + Ord + PartialOrd + 'static
+    Sized + OptionalSend + OptionalSync + Debug + Clone + Copy + Default + Eq + PartialEq + Ord + PartialOrd + 'static
 {
     /// Application-specific request data passed to the state machine.
     type D: AppData;
@@ -61,7 +62,7 @@ pub trait RaftTypeConfig:
     ///
     /// See the [storage chapter of the guide](https://datafuselabs.github.io/openraft/getting-started.html#implement-raftstorage)
     /// for details on where and how this is used.
-    type SnapshotData: AsyncRead + AsyncWrite + AsyncSeek + OptionalSend + Sync + Unpin + 'static;
+    type SnapshotData: AsyncRead + AsyncWrite + AsyncSeek + OptionalSend + OptionalSync + Unpin + 'static;
 
     /// Asynchronous runtime type.
     type AsyncRuntime: AsyncRuntime;

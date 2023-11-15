@@ -5,6 +5,8 @@ use macros::add_async_trait;
 
 use crate::defensive::check_range_matches_entries;
 use crate::LogId;
+use crate::OptionalSend;
+use crate::OptionalSync;
 use crate::RaftLogId;
 use crate::RaftLogReader;
 use crate::RaftTypeConfig;
@@ -26,7 +28,7 @@ where C: RaftTypeConfig
     ///
     /// Similar to `try_get_log_entries` except an error will be returned if there is an entry not
     /// found in the specified range.
-    async fn get_log_entries<RB: RangeBounds<u64> + Clone + Debug + Send + Sync>(
+    async fn get_log_entries<RB: RangeBounds<u64> + Clone + Debug + OptionalSend + OptionalSync>(
         &mut self,
         range: RB,
     ) -> Result<Vec<C::Entry>, StorageError<C::NodeId>> {

@@ -89,11 +89,17 @@ where
         tx: ResultSender<ClientWriteResponse<C>, ClientWriteError<C::NodeId, C::Node>>,
     },
 
+    #[allow(clippy::type_complexity)]
     ExternalRequest {
-        #[allow(clippy::type_complexity)]
+        #[cfg(not(feature = "singlethreaded"))]
         req: Box<
             dyn FnOnce(&RaftState<C::NodeId, C::Node, <C::AsyncRuntime as AsyncRuntime>::Instant>, &mut LS, &mut N)
                 + Send
+                + 'static,
+        >,
+        #[cfg(feature = "singlethreaded")]
+        req: Box<
+            dyn FnOnce(&RaftState<C::NodeId, C::Node, <C::AsyncRuntime as AsyncRuntime>::Instant>, &mut LS, &mut N)
                 + 'static,
         >,
     },
