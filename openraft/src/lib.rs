@@ -189,9 +189,9 @@ impl<T: Sync + ?Sized> OptionalSync for T {}
 /// ## Note
 ///
 /// The trait is automatically implemented for all types which satisfy its supertraits.
-pub trait AppData: OptionalSend + Sync + 'static + OptionalSerde {}
+pub trait AppData: OptionalSend + OptionalSync + 'static + OptionalSerde {}
 
-impl<T> AppData for T where T: OptionalSend + Sync + 'static + OptionalSerde {}
+impl<T> AppData for T where T: OptionalSend + OptionalSync + 'static + OptionalSerde {}
 
 /// A trait defining application specific response data.
 ///
@@ -210,6 +210,6 @@ impl<T> AppData for T where T: OptionalSend + Sync + 'static + OptionalSerde {}
 /// ## Note
 ///
 /// The trait is automatically implemented for all types which satisfy its supertraits.
-pub trait AppDataResponse: OptionalSend + Sync + 'static + OptionalSerde {}
+pub trait AppDataResponse: OptionalSend + OptionalSync + 'static + OptionalSerde {}
 
-impl<T> AppDataResponse for T where T: OptionalSend + Sync + 'static + OptionalSerde {}
+impl<T> AppDataResponse for T where T: OptionalSend + OptionalSync + 'static + OptionalSerde {}

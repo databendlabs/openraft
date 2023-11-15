@@ -14,6 +14,7 @@ use crate::raft::InstallSnapshotResponse;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::OptionalSend;
+use crate::OptionalSync;
 use crate::RaftTypeConfig;
 
 /// A trait defining the interface for a Raft network between cluster members.
@@ -36,7 +37,7 @@ use crate::RaftTypeConfig;
 ///
 /// - Implementing the new APIs will disable the old APIs.
 #[add_async_trait]
-pub trait RaftNetwork<C>: OptionalSend + Sync + 'static
+pub trait RaftNetwork<C>: OptionalSend + OptionalSync + 'static
 where C: RaftTypeConfig
 {
     /// Send an AppendEntries RPC to the target.
