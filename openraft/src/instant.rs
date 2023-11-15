@@ -7,6 +7,9 @@ use std::panic::RefUnwindSafe;
 use std::panic::UnwindSafe;
 use std::time::Duration;
 
+use crate::OptionalSend;
+use crate::OptionalSync;
+
 /// A measurement of a monotonically non-decreasing clock.
 pub trait Instant:
     Add<Duration, Output = Self>
@@ -19,11 +22,11 @@ pub trait Instant:
     + PartialEq
     + PartialOrd
     + RefUnwindSafe
-    + Send
+    + OptionalSend
     + Sub<Duration, Output = Self>
     + Sub<Self, Output = Duration>
     + SubAssign<Duration>
-    + Sync
+    + OptionalSync
     + Unpin
     + UnwindSafe
     + 'static

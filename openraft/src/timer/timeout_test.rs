@@ -6,6 +6,7 @@ use tokio::time::Instant;
 
 use crate::timer::timeout::RaftTimer;
 use crate::timer::Timeout;
+use crate::TokioRuntime;
 
 #[async_entry::test(worker_threads = 3)]
 async fn test_timeout() -> anyhow::Result<()> {
@@ -13,7 +14,7 @@ async fn test_timeout() -> anyhow::Result<()> {
     {
         let (tx, rx) = oneshot::channel();
         let now = Instant::now();
-        let _t = Timeout::new(
+        let _t = Timeout::<TokioRuntime>::new(
             || {
                 let _ = tx.send(1u64);
             },
@@ -32,7 +33,7 @@ async fn test_timeout() -> anyhow::Result<()> {
     {
         let (tx, rx) = oneshot::channel();
         let now = Instant::now();
-        let t = Timeout::new(
+        let t = Timeout::<TokioRuntime>::new(
             || {
                 let _ = tx.send(1u64);
             },
@@ -54,7 +55,7 @@ async fn test_timeout() -> anyhow::Result<()> {
     {
         let (tx, rx) = oneshot::channel();
         let now = Instant::now();
-        let t = Timeout::new(
+        let t = Timeout::<TokioRuntime>::new(
             || {
                 let _ = tx.send(1u64);
             },
@@ -76,7 +77,7 @@ async fn test_timeout() -> anyhow::Result<()> {
     {
         let (tx, rx) = oneshot::channel();
         let now = Instant::now();
-        let t = Timeout::new(
+        let t = Timeout::<TokioRuntime>::new(
             || {
                 let _ = tx.send(1u64);
             },

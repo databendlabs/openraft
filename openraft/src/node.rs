@@ -3,16 +3,32 @@ use std::fmt::Display;
 use std::fmt::Formatter;
 use std::hash::Hash;
 
+use crate::OptionalSend;
+use crate::OptionalSync;
+
 /// Essential trait bound for node-id, except serde.
 #[doc(hidden)]
 pub trait NodeIdEssential:
-    Sized + Send + Sync + Eq + PartialEq + Ord + PartialOrd + Debug + Display + Hash + Copy + Clone + Default + 'static
+    Sized
+    + OptionalSend
+    + OptionalSync
+    + Eq
+    + PartialEq
+    + Ord
+    + PartialOrd
+    + Debug
+    + Display
+    + Hash
+    + Copy
+    + Clone
+    + Default
+    + 'static
 {
 }
 
 impl<T> NodeIdEssential for T where T: Sized
-        + Send
-        + Sync
+        + OptionalSend
+        + OptionalSync
         + Eq
         + PartialEq
         + Ord
@@ -43,8 +59,12 @@ pub trait NodeId: NodeIdEssential {}
 impl<T> NodeId for T where T: NodeIdEssential {}
 
 /// Essential trait bound for application level node-data, except serde.
-pub trait NodeEssential: Sized + Send + Sync + Eq + PartialEq + Debug + Clone + Default + 'static {}
-impl<T> NodeEssential for T where T: Sized + Send + Sync + Eq + PartialEq + Debug + Clone + Default + 'static {}
+pub trait NodeEssential:
+    Sized + OptionalSend + OptionalSync + Eq + PartialEq + Debug + Clone + Default + 'static
+{
+}
+impl<T> NodeEssential for T where T: Sized + OptionalSend + OptionalSync + Eq + PartialEq + Debug + Clone + Default + 'static
+{}
 
 /// A Raft `Node`, this trait holds all relevant node information.
 ///
