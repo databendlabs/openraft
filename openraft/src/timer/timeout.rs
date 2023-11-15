@@ -8,14 +8,16 @@ use futures::future::Either;
 use tokio::sync::oneshot;
 use tokio::sync::oneshot::Receiver;
 use tokio::sync::oneshot::Sender;
-use tokio::time::sleep_until;
-use tokio::time::Instant;
 use tracing::trace_span;
 use tracing::Instrument;
 
-pub(crate) trait RaftTimer {
+use crate::AsyncRuntime;
+use crate::Instant;
+use crate::OptionalSend;
+
+pub(crate) trait RaftTimer<RT: AsyncRuntime> {
     /// Create a new instance that will call `callback` after `timeout`.
-    fn new<F: FnOnce() + Send + 'static>(callback: F, timeout: Duration) -> Self;
+    fn new<F: FnOnce() + OptionalSend + 'static>(callback: F, timeout: Duration) -> Self;
 
     /// Update the timeout to a duration since now.
     fn update_timeout(&self, timeout: Duration);
@@ -28,33 +30,33 @@ pub(crate) trait RaftTimer {
 ///
 /// The deadline can be updated to a higher value then the old deadline won't trigger the
 /// `callback`.
-pub(crate) struct Timeout {
+pub(crate) struct Timeout<RT: AsyncRuntime> {
     /// A guard to notify the inner-task to quit when it is dropped.
     // tx is not explicitly used.
     #[allow(dead_code)]
     tx: Sender<()>,
 
     /// Shared state for running the sleep-notify task.
-    inner: Arc<TimeoutInner>,
+    inner: Arc<TimeoutInner<RT>>,
 }
 
-pub(crate) struct TimeoutInner {
+pub(crate) struct TimeoutInner<RT: AsyncRuntime> {
     /// The time when this Timeout is created.
     ///
     /// The `relative_deadline` stores timeout deadline relative to `init` in micro second.
     /// Thus a `u64` is enough for it to run for years.
-    init: Instant,
+    init: RT::Instant,
 
     /// The micro seconds since `init` after which the callback will be triggered.
     relative_deadline: AtomicU64,
 }
 
-impl RaftTimer for Timeout {
-    fn new<F: FnOnce() + Send + 'static>(callback: F, timeout: Duration) -> Self {
+impl<RT: AsyncRuntime> RaftTimer<RT> for Timeout<RT> {
+    fn new<F: FnOnce() + OptionalSend + 'static>(callback: F, timeout: Duration) -> Self {
         let (tx, rx) = oneshot::channel();
 
         let inner = TimeoutInner {
-            init: Instant::now(),
+            init: RT::Instant::now(),
             relative_deadline: AtomicU64::new(timeout.as_micros() as u64),
         };
 
@@ -65,13 +67,13 @@ impl RaftTimer for Timeout {
             inner: inner.clone(),
         };
 
-        tokio::spawn(inner.sleep_loop(rx, callback).instrument(trace_span!("timeout-loop").or_current()));
+        RT::spawn(inner.sleep_loop(rx, callback).instrument(trace_span!("timeout-loop").or_current()));
 
         t
     }
 
     fn update_timeout(&self, timeout: Duration) {
-        let since_init = Instant::now() + timeout - self.inner.init;
+        let since_init = RT::Instant::now() + timeout - self.inner.init;
 
         let new_at = since_init.as_micros() as u64;
 
@@ -79,11 +81,15 @@ impl RaftTimer for Timeout {
     }
 }
 
-impl TimeoutInner {
+impl<RT: AsyncRuntime> TimeoutInner<RT> {
     /// Sleep until the deadline and send callback if the deadline is not changed.
     /// Otherwise, sleep again.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) async fn sleep_loop<F: FnOnce() + Send + 'static>(self: Arc<Self>, rx: Receiver<()>, callback: F) {
+    pub(crate) async fn sleep_loop<F: FnOnce() + OptionalSend + 'static>(
+        self: Arc<Self>,
+        rx: Receiver<()>,
+        callback: F,
+    ) {
         let mut wake_up_at = None;
 
         let mut rx = rx;
@@ -102,7 +108,7 @@ impl TimeoutInner {
 
             let deadline = self.init + Duration::from_micros(curr_deadline);
 
-            let either = select(Box::pin(sleep_until(deadline)), rx).await;
+            let either = select(Box::pin(RT::sleep_until(deadline)), rx).await;
             rx = match either {
                 Either::Left((_sleep_res, rx)) => {
                     tracing::debug!("sleep returned, continue to check if deadline changed");

@@ -6,14 +6,27 @@ use tokio::time::Instant;
 
 use crate::timer::timeout::RaftTimer;
 use crate::timer::Timeout;
+use crate::TokioRuntime;
 
+#[cfg(not(feature = "singlethreaded"))]
 #[async_entry::test(worker_threads = 3)]
 async fn test_timeout() -> anyhow::Result<()> {
+    test_timeout_inner().await
+}
+
+#[cfg(feature = "singlethreaded")]
+#[test]
+fn test_timeout() -> anyhow::Result<()> {
+    let rt = tokio::runtime::Builder::new_current_thread().enable_time().build().unwrap();
+    tokio::task::LocalSet::new().block_on(&rt, test_timeout_inner())
+}
+
+async fn test_timeout_inner() -> anyhow::Result<()> {
     tracing::info!("--- set timeout, recv result");
     {
         let (tx, rx) = oneshot::channel();
         let now = Instant::now();
-        let _t = Timeout::new(
+        let _t = Timeout::<TokioRuntime>::new(
             || {
                 let _ = tx.send(1u64);
             },
@@ -32,7 +45,7 @@ async fn test_timeout() -> anyhow::Result<()> {
     {
         let (tx, rx) = oneshot::channel();
         let now = Instant::now();
-        let t = Timeout::new(
+        let t = Timeout::<TokioRuntime>::new(
             || {
                 let _ = tx.send(1u64);
             },
@@ -54,7 +67,7 @@ async fn test_timeout() -> anyhow::Result<()> {
     {
         let (tx, rx) = oneshot::channel();
         let now = Instant::now();
-        let t = Timeout::new(
+        let t = Timeout::<TokioRuntime>::new(
             || {
                 let _ = tx.send(1u64);
             },
@@ -76,7 +89,7 @@ async fn test_timeout() -> anyhow::Result<()> {
     {
         let (tx, rx) = oneshot::channel();
         let now = Instant::now();
-        let t = Timeout::new(
+        let t = Timeout::<TokioRuntime>::new(
             || {
                 let _ = tx.send(1u64);
             },

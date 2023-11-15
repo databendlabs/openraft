@@ -59,6 +59,7 @@ use crate::ChangeMembers;
 use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::MessageSummary;
+use crate::OptionalSend;
 use crate::RaftState;
 pub use crate::RaftTypeConfig;
 use crate::StorageHelper;
@@ -698,7 +699,7 @@ where
     /// destroyed right away and not called at all.
     pub fn external_request<
         F: FnOnce(&RaftState<C::NodeId, C::Node, <C::AsyncRuntime as AsyncRuntime>::Instant>, &mut LS, &mut N)
-            + Send
+            + OptionalSend
             + 'static,
     >(
         &self,
