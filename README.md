@@ -75,7 +75,7 @@ Currently, openraft is the consensus engine of meta-service cluster in [databend
 
 - [ ] Reduce the complexity of vote and pre-vote: [get rid of pre-vote RPC](https://github.com/datafuselabs/openraft/discussions/15);
 
-- [ ] Support flexible quorum, e.g.:[Hierarchical Quorums](https://zookeeper.apache.org/doc/r3.5.9/zookeeperHierarchicalQuorums.html)
+- [ ] Support flexible quorum, e.g.: [Hierarchical Quorums](https://zookeeper.apache.org/doc/r3.5.9/zookeeperHierarchicalQuorums.html)
 
 - [ ] Consider introducing read-quorum and write-quorum,
   improve efficiency with a cluster with an even number of nodes.
