@@ -466,7 +466,22 @@ where
             func_name!()
         );
 
-        debug_assert!(self.matching <= new_matching);
+        if cfg!(feature = "loosen-follower-log-revert") {
+            if self.matching > new_matching {
+                tracing::warn!(
+                "follower log is reverted from {} to {}; with 'loosen-follower-log-revert' enabled, this is allowed",
+                self.matching.display(),
+                new_matching.display(),
+            );
+            }
+        } else {
+            debug_assert!(
+                self.matching <= new_matching,
+                "follower log is reverted from {} to {}",
+                self.matching.display(),
+                new_matching.display(),
+            );
+        }
 
         self.matching = new_matching;
 

@@ -17,6 +17,8 @@ async fn feature_loosen_follower_log_revert() -> Result<()> {
         Config {
             enable_tick: false,
             enable_heartbeat: false,
+            // Make sure the replication is done in more than one steps
+            max_payload_entries: 1,
             ..Default::default()
         }
         .validate()?,
