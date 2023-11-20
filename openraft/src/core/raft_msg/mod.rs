@@ -10,17 +10,14 @@ use crate::error::InitializeError;
 use crate::error::InstallSnapshotError;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
+use crate::raft::BoxCoreFn;
 use crate::raft::ClientWriteResponse;
 use crate::raft::InstallSnapshotRequest;
 use crate::raft::InstallSnapshotResponse;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
-use crate::storage::RaftLogStorage;
-use crate::AsyncRuntime;
 use crate::ChangeMembers;
 use crate::MessageSummary;
-use crate::RaftNetworkFactory;
-use crate::RaftState;
 use crate::RaftTypeConfig;
 
 pub(crate) mod external_command;
@@ -44,11 +41,8 @@ pub(crate) type ClientWriteTx<C> =
 /// A message sent by application to the [`RaftCore`].
 ///
 /// [`RaftCore`]: crate::core::RaftCore
-pub(crate) enum RaftMsg<C, N, LS>
-where
-    C: RaftTypeConfig,
-    N: RaftNetworkFactory<C>,
-    LS: RaftLogStorage<C>,
+pub(crate) enum RaftMsg<C>
+where C: RaftTypeConfig
 {
     AppendEntries {
         rpc: AppendEntriesRequest<C>,
@@ -89,19 +83,8 @@ where
         tx: ResultSender<ClientWriteResponse<C>, ClientWriteError<C::NodeId, C::Node>>,
     },
 
-    #[allow(clippy::type_complexity)]
     ExternalRequest {
-        #[cfg(not(feature = "singlethreaded"))]
-        req: Box<
-            dyn FnOnce(&RaftState<C::NodeId, C::Node, <C::AsyncRuntime as AsyncRuntime>::Instant>, &mut LS, &mut N)
-                + Send
-                + 'static,
-        >,
-        #[cfg(feature = "singlethreaded")]
-        req: Box<
-            dyn FnOnce(&RaftState<C::NodeId, C::Node, <C::AsyncRuntime as AsyncRuntime>::Instant>, &mut LS, &mut N)
-                + 'static,
-        >,
+        req: BoxCoreFn<C>,
     },
 
     ExternalCommand {
@@ -109,11 +92,8 @@ where
     },
 }
 
-impl<C, N, LS> MessageSummary<RaftMsg<C, N, LS>> for RaftMsg<C, N, LS>
-where
-    C: RaftTypeConfig,
-    N: RaftNetworkFactory<C>,
-    LS: RaftLogStorage<C>,
+impl<C> MessageSummary<RaftMsg<C>> for RaftMsg<C>
+where C: RaftTypeConfig
 {
     fn summary(&self) -> String {
         match self {

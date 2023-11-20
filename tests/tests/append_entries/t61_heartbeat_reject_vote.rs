@@ -38,7 +38,7 @@ async fn heartbeat_reject_vote() -> Result<()> {
     {
         let m = vote_modified_time.clone();
 
-        router.external_request(1, move |state, _store, _net| {
+        router.external_request(1, move |state| {
             let mut l = m.lock().unwrap();
             *l = state.vote_last_modified();
             assert!(state.vote_last_modified() > Some(now));
@@ -49,7 +49,7 @@ async fn heartbeat_reject_vote() -> Result<()> {
 
         let m = vote_modified_time.clone();
 
-        router.external_request(1, move |state, _store, _net| {
+        router.external_request(1, move |state| {
             let l = m.lock().unwrap();
             assert!(state.vote_last_modified() > Some(now));
             assert!(state.vote_last_modified() > *l);

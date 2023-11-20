@@ -1,9 +1,12 @@
 //! Public Raft interface and data types.
 
+mod external_request;
 mod message;
 mod raft_inner;
 mod runtime_config_handle;
 mod trigger;
+
+pub(crate) use self::external_request::BoxCoreFn;
 
 pub(in crate::raft) mod core_state;
 
@@ -59,7 +62,6 @@ use crate::ChangeMembers;
 use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::MessageSummary;
-use crate::OptionalSend;
 use crate::RaftState;
 pub use crate::RaftTypeConfig;
 use crate::StorageHelper;
@@ -124,30 +126,11 @@ macro_rules! declare_raft_types {
 /// `shutdown` method should be called on this type to await the shutdown of the node. If the parent
 /// application needs to shutdown the Raft node for any reason, calling `shutdown` will do the
 /// trick.
-pub struct Raft<C, N, LS, SM>
-where
-    C: RaftTypeConfig,
-    N: RaftNetworkFactory<C>,
-    LS: RaftLogStorage<C>,
-    SM: RaftStateMachine<C>,
+#[derive(Clone)]
+pub struct Raft<C>
+where C: RaftTypeConfig
 {
-    inner: Arc<RaftInner<C, N, LS>>,
-    _phantom: PhantomData<SM>,
-}
-
-impl<C, N, LS, SM> Clone for Raft<C, N, LS, SM>
-where
-    C: RaftTypeConfig,
-    N: RaftNetworkFactory<C>,
-    LS: RaftLogStorage<C>,
-    SM: RaftStateMachine<C>,
-{
-    fn clone(&self) -> Self {
-        Self {
-            inner: self.inner.clone(),
-            _phantom: PhantomData,
-        }
-    }
+    inner: Arc<RaftInner<C>>,
 }
 
 #[cfg(feature = "singlethreaded")]
@@ -159,12 +142,9 @@ where
 //
 // Notably, the state machine, log storage and network factory DO NOT have to be `Send`, those
 // are only used within Raft task(s) on a single thread.
-unsafe impl<C, N, LS, SM> Send for Raft<C, N, LS, SM>
+unsafe impl<C> Send for Raft<C>
 where
     C: RaftTypeConfig,
-    N: RaftNetworkFactory<C>,
-    LS: RaftLogStorage<C>,
-    SM: RaftStateMachine<C>,
     C::D: Send,
     C::Entry: Send,
     C::Node: Send + Sync,
@@ -177,12 +157,9 @@ where
 // SAFETY: Even for a single-threaded Raft, the API object is MT-capable.
 //
 // See above for details.
-unsafe impl<C, N, LS, SM> Sync for Raft<C, N, LS, SM>
+unsafe impl<C> Sync for Raft<C>
 where
     C: RaftTypeConfig + Send,
-    N: RaftNetworkFactory<C>,
-    LS: RaftLogStorage<C>,
-    SM: RaftStateMachine<C>,
     C::D: Send,
     C::Entry: Send,
     C::Node: Send + Sync,
@@ -191,12 +168,8 @@ where
 {
 }
 
-impl<C, N, LS, SM> Raft<C, N, LS, SM>
-where
-    C: RaftTypeConfig,
-    N: RaftNetworkFactory<C>,
-    LS: RaftLogStorage<C>,
-    SM: RaftStateMachine<C>,
+impl<C> Raft<C>
+where C: RaftTypeConfig
 {
     /// Create and spawn a new Raft task.
     ///
@@ -218,13 +191,18 @@ where
     /// An implementation of the `RaftStorage` trait which will be used by Raft for data storage.
     /// See the docs on the `RaftStorage` trait for more details.
     #[tracing::instrument(level="debug", skip_all, fields(cluster=%config.cluster_name))]
-    pub async fn new(
+    pub async fn new<LS, N, SM>(
         id: C::NodeId,
         config: Arc<Config>,
         network: N,
         mut log_store: LS,
         mut state_machine: SM,
-    ) -> Result<Self, Fatal<C::NodeId>> {
+    ) -> Result<Self, Fatal<C::NodeId>>
+    where
+        N: RaftNetworkFactory<C>,
+        LS: RaftLogStorage<C>,
+        SM: RaftStateMachine<C>,
+    {
         let (tx_api, rx_api) = mpsc::unbounded_channel();
         let (tx_notify, rx_notify) = mpsc::unbounded_channel();
         let (tx_metrics, rx_metrics) = watch::channel(RaftMetrics::new_initial(id));
@@ -295,10 +273,7 @@ where
             core_state: Mutex::new(CoreState::Running(core_handle)),
         };
 
-        Ok(Self {
-            inner: Arc::new(inner),
-            _phantom: Default::default(),
-        })
+        Ok(Self { inner: Arc::new(inner) })
     }
 
     /// Return a handle to update runtime config.
@@ -310,7 +285,7 @@ where
     /// let raft = Raft::new(...).await?;
     /// raft.runtime_config().heartbeat(true);
     /// ```
-    pub fn runtime_config(&self) -> RuntimeConfigHandle<C, N, LS> {
+    pub fn runtime_config(&self) -> RuntimeConfigHandle<C> {
         RuntimeConfigHandle::new(self.inner.as_ref())
     }
 
@@ -337,7 +312,7 @@ where
     /// let raft = Raft::new(...).await?;
     /// raft.trigger().elect().await?;
     /// ```
-    pub fn trigger(&self) -> Trigger<C, N, LS> {
+    pub fn trigger(&self) -> Trigger<C> {
         Trigger::new(self.inner.as_ref())
     }
 
@@ -694,7 +669,7 @@ where
     #[tracing::instrument(level = "debug", skip(self, mes, rx))]
     pub(crate) async fn call_core<T, E>(
         &self,
-        mes: RaftMsg<C, N, LS>,
+        mes: RaftMsg<C>,
         rx: oneshot::Receiver<Result<T, E>>,
     ) -> Result<T, RaftError<C::NodeId, E>>
     where
@@ -738,15 +713,10 @@ where
     ///
     /// If the API channel is already closed (Raft is in shutdown), then the request functor is
     /// destroyed right away and not called at all.
-    pub fn external_request<
-        F: FnOnce(&RaftState<C::NodeId, C::Node, <C::AsyncRuntime as AsyncRuntime>::Instant>, &mut LS, &mut N)
-            + OptionalSend
-            + 'static,
-    >(
-        &self,
-        req: F,
-    ) {
-        let _ignore_error = self.inner.tx_api.send(RaftMsg::ExternalRequest { req: Box::new(req) });
+    pub fn external_request<F>(&self, req: F)
+    where F: FnOnce(&RaftState<C::NodeId, C::Node, <C::AsyncRuntime as AsyncRuntime>::Instant>) + Send + 'static {
+        let req: BoxCoreFn<C> = Box::new(req);
+        let _ignore_error = self.inner.tx_api.send(RaftMsg::ExternalRequest { req });
     }
 
     /// Get a handle to the metrics channel.

@@ -3,30 +3,22 @@
 use std::sync::atomic::Ordering;
 
 use crate::raft::RaftInner;
-use crate::storage::RaftLogStorage;
-use crate::RaftNetworkFactory;
 use crate::RaftTypeConfig;
 
 /// RuntimeConfigHandle is an interface to update runtime config.
 ///
 /// These config are mainly designed for testing purpose and special use cases.
 /// Usually you don't need to change runtime config.
-pub struct RuntimeConfigHandle<'r, C, N, LS>
-where
-    C: RaftTypeConfig,
-    N: RaftNetworkFactory<C>,
-    LS: RaftLogStorage<C>,
+pub struct RuntimeConfigHandle<'r, C>
+where C: RaftTypeConfig
 {
-    raft_inner: &'r RaftInner<C, N, LS>,
+    raft_inner: &'r RaftInner<C>,
 }
 
-impl<'r, C, N, LS> RuntimeConfigHandle<'r, C, N, LS>
-where
-    C: RaftTypeConfig,
-    N: RaftNetworkFactory<C>,
-    LS: RaftLogStorage<C>,
+impl<'r, C> RuntimeConfigHandle<'r, C>
+where C: RaftTypeConfig
 {
-    pub(in crate::raft) fn new(raft_inner: &'r RaftInner<C, N, LS>) -> Self {
+    pub(in crate::raft) fn new(raft_inner: &'r RaftInner<C>) -> Self {
         Self { raft_inner }
     }
 

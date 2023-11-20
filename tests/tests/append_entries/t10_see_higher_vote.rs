@@ -78,7 +78,7 @@ async fn append_sees_higher_vote() -> Result<()> {
             .state(ServerState::Follower, "node-0 becomes follower due to a higher vote")
             .await?;
 
-        router.external_request(0, |st, _, _| {
+        router.external_request(0, |st| {
             assert_eq!(&Vote::new(10, 1), st.vote_ref(), "higher vote is stored");
         });
     }

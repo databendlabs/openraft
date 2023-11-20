@@ -47,7 +47,7 @@ openraft::declare_raft_types!(
 
 pub type LogStore = Adaptor<TypeConfig, Arc<Store>>;
 pub type StateMachineStore = Adaptor<TypeConfig, Arc<Store>>;
-pub type ExampleRaft = openraft::Raft<TypeConfig, Network, LogStore, StateMachineStore>;
+pub type ExampleRaft = openraft::Raft<TypeConfig>;
 
 type Server = tide::Server<Arc<App>>;
 
