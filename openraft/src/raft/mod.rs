@@ -133,41 +133,6 @@ where C: RaftTypeConfig
     inner: Arc<RaftInner<C>>,
 }
 
-#[cfg(feature = "singlethreaded")]
-// SAFETY: Even for a single-threaded Raft, the API object is MT-capable.
-//
-// The API object just sends the requests to the Raft loop over a channel. If all the relevant
-// types in the type config are `Send`, then it's safe to send the request across threads over
-// the channel.
-//
-// Notably, the state machine, log storage and network factory DO NOT have to be `Send`, those
-// are only used within Raft task(s) on a single thread.
-unsafe impl<C> Send for Raft<C>
-where
-    C: RaftTypeConfig,
-    C::D: Send,
-    C::Entry: Send,
-    C::Node: Send + Sync,
-    C::NodeId: Send + Sync,
-    C::R: Send,
-{
-}
-
-#[cfg(feature = "singlethreaded")]
-// SAFETY: Even for a single-threaded Raft, the API object is MT-capable.
-//
-// See above for details.
-unsafe impl<C> Sync for Raft<C>
-where
-    C: RaftTypeConfig + Send,
-    C::D: Send,
-    C::Entry: Send,
-    C::Node: Send + Sync,
-    C::NodeId: Send + Sync,
-    C::R: Send,
-{
-}
-
 impl<C> Raft<C>
 where C: RaftTypeConfig
 {
