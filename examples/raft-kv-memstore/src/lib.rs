@@ -37,7 +37,7 @@ openraft::declare_raft_types!(
 
 pub type LogStore = Adaptor<TypeConfig, Arc<Store>>;
 pub type StateMachineStore = Adaptor<TypeConfig, Arc<Store>>;
-pub type Raft = openraft::Raft<TypeConfig, Network, LogStore, StateMachineStore>;
+pub type Raft = openraft::Raft<TypeConfig>;
 
 pub mod typ {
     use openraft::BasicNode;

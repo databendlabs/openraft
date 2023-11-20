@@ -12,26 +12,21 @@ use crate::core::raft_msg::RaftMsg;
 use crate::core::TickHandle;
 use crate::error::Fatal;
 use crate::raft::core_state::CoreState;
-use crate::storage::RaftLogStorage;
 use crate::AsyncRuntime;
 use crate::Config;
 use crate::RaftMetrics;
-use crate::RaftNetworkFactory;
 use crate::RaftTypeConfig;
 
 /// RaftInner is the internal handle and provides internally used APIs to communicate with
 /// `RaftCore`.
-pub(in crate::raft) struct RaftInner<C, N, LS>
-where
-    C: RaftTypeConfig,
-    N: RaftNetworkFactory<C>,
-    LS: RaftLogStorage<C>,
+pub(in crate::raft) struct RaftInner<C>
+where C: RaftTypeConfig
 {
     pub(in crate::raft) id: C::NodeId,
     pub(in crate::raft) config: Arc<Config>,
     pub(in crate::raft) runtime_config: Arc<RuntimeConfig>,
     pub(in crate::raft) tick_handle: TickHandle<C>,
-    pub(in crate::raft) tx_api: mpsc::UnboundedSender<RaftMsg<C, N, LS>>,
+    pub(in crate::raft) tx_api: mpsc::UnboundedSender<RaftMsg<C>>,
     pub(in crate::raft) rx_metrics: watch::Receiver<RaftMetrics<C::NodeId, C::Node>>,
 
     // TODO(xp): it does not need to be a async mutex.
@@ -40,11 +35,8 @@ where
     pub(in crate::raft) core_state: Mutex<CoreState<C::NodeId, C::AsyncRuntime>>,
 }
 
-impl<C, N, LS> RaftInner<C, N, LS>
-where
-    C: RaftTypeConfig,
-    N: RaftNetworkFactory<C>,
-    LS: RaftLogStorage<C>,
+impl<C> RaftInner<C>
+where C: RaftTypeConfig
 {
     /// Send an [`ExternalCommand`] to RaftCore to execute in the `RaftCore` thread.
     ///

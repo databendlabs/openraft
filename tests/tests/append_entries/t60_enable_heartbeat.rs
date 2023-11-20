@@ -41,7 +41,7 @@ async fn enable_heartbeat() -> Result<()> {
                 .await?;
 
             // leader lease is extended.
-            router.external_request(node_id, move |state, _store, _net| {
+            router.external_request(node_id, move |state| {
                 assert!(state.vote_last_modified() > Some(now));
             });
         }

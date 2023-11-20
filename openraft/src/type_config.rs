@@ -67,3 +67,23 @@ pub trait RaftTypeConfig:
     /// Asynchronous runtime type.
     type AsyncRuntime: AsyncRuntime;
 }
+
+#[allow(dead_code)]
+pub(crate) mod alias {
+    //! Type alias for types used in `RaftTypeConfig`.
+
+    pub(crate) type DOf<C> = <C as crate::RaftTypeConfig>::D;
+    pub(crate) type ROf<C> = <C as crate::RaftTypeConfig>::R;
+    pub(crate) type NodeIdOf<C> = <C as crate::RaftTypeConfig>::NodeId;
+    pub(crate) type NodeOf<C> = <C as crate::RaftTypeConfig>::Node;
+    pub(crate) type EntryOf<C> = <C as crate::RaftTypeConfig>::Entry;
+    pub(crate) type SnapshotDataOf<C> = <C as crate::RaftTypeConfig>::SnapshotData;
+    pub(crate) type AsyncRuntimeOf<C> = <C as crate::RaftTypeConfig>::AsyncRuntime;
+
+    pub(crate) type JoinErrorOf<C> = <AsyncRuntimeOf<C> as crate::AsyncRuntime>::JoinError;
+    pub(crate) type JoinHandleOf<C, T> = <AsyncRuntimeOf<C> as crate::AsyncRuntime>::JoinHandle<T>;
+    pub(crate) type SleepOf<C> = <AsyncRuntimeOf<C> as crate::AsyncRuntime>::Sleep;
+    pub(crate) type InstantOf<C> = <AsyncRuntimeOf<C> as crate::AsyncRuntime>::Instant;
+    pub(crate) type TimeoutErrorOf<C> = <AsyncRuntimeOf<C> as crate::AsyncRuntime>::TimeoutError;
+    pub(crate) type TimeoutOf<C, R, F> = <AsyncRuntimeOf<C> as crate::AsyncRuntime>::Timeout<R, F>;
+}

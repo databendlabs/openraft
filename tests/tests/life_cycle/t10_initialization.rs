@@ -69,7 +69,7 @@ async fn initialization() -> anyhow::Result<()> {
     // before other requests in the Raft core API queue, which definitely are executed
     // (since they are awaited).
     for node in [0, 1, 2] {
-        router.external_request(node, |s, _sto, _net| {
+        router.external_request(node, |s| {
             assert_eq!(s.server_state, ServerState::Learner);
         });
     }
@@ -88,7 +88,7 @@ async fn initialization() -> anyhow::Result<()> {
 
     tracing::info!(log_index, "--- check membership state");
     for node_id in [0, 1, 2] {
-        router.external_request(node_id, move |s, _sto, _net| {
+        router.external_request(node_id, move |s| {
             let want = EffectiveMembership::new(
                 Some(LogId::new(CommittedLeaderId::new(0, 0), 0)),
                 Membership::new(vec![btreeset! {0,1,2}], None),
@@ -147,7 +147,7 @@ async fn initialization() -> anyhow::Result<()> {
     let mut follower_count = 0;
     for node in [0, 1, 2] {
         let (tx, rx) = oneshot::channel();
-        router.external_request(node, |s, _sm, _net| tx.send(s.server_state).unwrap());
+        router.external_request(node, |s| tx.send(s.server_state).unwrap());
         match rx.await.unwrap() {
             ServerState::Leader => {
                 assert!(!found_leader);
@@ -176,7 +176,7 @@ async fn initialize_err_target_not_include_target() -> anyhow::Result<()> {
     router.new_raft_node(1).await;
 
     for node in [0, 1] {
-        router.external_request(node, |s, _sto, _net| {
+        router.external_request(node, |s| {
             assert_eq!(s.server_state, ServerState::Learner);
         });
     }
@@ -210,7 +210,7 @@ async fn initialize_err_not_allowed() -> anyhow::Result<()> {
     router.new_raft_node(0).await;
 
     for node in [0] {
-        router.external_request(node, |s, _sto, _net| {
+        router.external_request(node, |s| {
             assert_eq!(s.server_state, ServerState::Learner);
         });
     }

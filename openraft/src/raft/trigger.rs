@@ -3,27 +3,19 @@
 use crate::core::raft_msg::external_command::ExternalCommand;
 use crate::error::Fatal;
 use crate::raft::RaftInner;
-use crate::storage::RaftLogStorage;
-use crate::RaftNetworkFactory;
 use crate::RaftTypeConfig;
 
 /// Trigger is an interface to trigger an action to RaftCore by external caller.
-pub struct Trigger<'r, C, N, LS>
-where
-    C: RaftTypeConfig,
-    N: RaftNetworkFactory<C>,
-    LS: RaftLogStorage<C>,
+pub struct Trigger<'r, C>
+where C: RaftTypeConfig
 {
-    raft_inner: &'r RaftInner<C, N, LS>,
+    raft_inner: &'r RaftInner<C>,
 }
 
-impl<'r, C, N, LS> Trigger<'r, C, N, LS>
-where
-    C: RaftTypeConfig,
-    N: RaftNetworkFactory<C>,
-    LS: RaftLogStorage<C>,
+impl<'r, C> Trigger<'r, C>
+where C: RaftTypeConfig
 {
-    pub(in crate::raft) fn new(raft_inner: &'r RaftInner<C, N, LS>) -> Self {
+    pub(in crate::raft) fn new(raft_inner: &'r RaftInner<C>) -> Self {
         Self { raft_inner }
     }
 

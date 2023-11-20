@@ -72,7 +72,7 @@ pub type MemLogStore = Adaptor<MemConfig, Arc<MemStore>>;
 pub type MemStateMachine = Adaptor<MemConfig, Arc<MemStore>>;
 
 /// A concrete Raft type used during testing.
-pub type MemRaft = Raft<MemConfig, TypedRaftRouter, MemLogStore, MemStateMachine>;
+pub type MemRaft = Raft<MemConfig>;
 
 pub fn init_default_ut_tracing() {
     static START: Once = Once::new();
@@ -280,7 +280,7 @@ impl TypedRaftRouter {
         // (since they are awaited).
         #[allow(clippy::single_element_loop)]
         for node in [0] {
-            self.external_request(node, |s, _sto, _net| {
+            self.external_request(node, |s| {
                 assert_eq!(s.server_state, ServerState::Learner);
             });
         }
@@ -637,9 +637,7 @@ impl TypedRaftRouter {
     }
 
     /// Send external request to the particular node.
-    pub fn external_request<
-        F: FnOnce(&RaftState<MemNodeId, (), TokioInstant>, &mut MemLogStore, &mut TypedRaftRouter) + Send + 'static,
-    >(
+    pub fn external_request<F: FnOnce(&RaftState<MemNodeId, (), TokioInstant>) + Send + 'static>(
         &self,
         target: MemNodeId,
         req: F,

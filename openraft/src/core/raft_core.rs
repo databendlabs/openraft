@@ -186,8 +186,8 @@ where
     pub(crate) leader_data: Option<LeaderData<C>>,
 
     #[allow(dead_code)]
-    pub(crate) tx_api: mpsc::UnboundedSender<RaftMsg<C, N, LS>>,
-    pub(crate) rx_api: mpsc::UnboundedReceiver<RaftMsg<C, N, LS>>,
+    pub(crate) tx_api: mpsc::UnboundedSender<RaftMsg<C>>,
+    pub(crate) rx_api: mpsc::UnboundedReceiver<RaftMsg<C>>,
 
     /// A Sender to send callback by other components to [`RaftCore`], when an action is finished,
     /// such as flushing log to disk, or applying log entries to state machine.
@@ -1063,7 +1063,7 @@ where
 
     // TODO: Make this method non-async. It does not need to run any async command in it.
     #[tracing::instrument(level = "debug", skip(self, msg), fields(state = debug(self.engine.state.server_state), id=display(self.id)))]
-    pub(crate) async fn handle_api_msg(&mut self, msg: RaftMsg<C, N, LS>) {
+    pub(crate) async fn handle_api_msg(&mut self, msg: RaftMsg<C>) {
         tracing::debug!("recv from rx_api: {}", msg.summary());
 
         match msg {
@@ -1120,7 +1120,7 @@ where
                 self.change_membership(changes, retain, tx);
             }
             RaftMsg::ExternalRequest { req } => {
-                req(&self.engine.state, &mut self.log_store, &mut self.network);
+                req(&self.engine.state);
             }
             RaftMsg::ExternalCommand { cmd } => {
                 tracing::info!(cmd = debug(&cmd), "received RaftMsg::ExternalCommand: {}", func_name!());
