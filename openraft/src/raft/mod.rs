@@ -48,12 +48,9 @@ use crate::error::RaftError;
 use crate::membership::IntoNodes;
 use crate::metrics::RaftMetrics;
 use crate::metrics::Wait;
-use crate::network::RaftNetworkFactory;
 use crate::raft::raft_inner::RaftInner;
 use crate::raft::runtime_config_handle::RuntimeConfigHandle;
 use crate::raft::trigger::Trigger;
-use crate::storage::RaftLogStorage;
-use crate::storage::RaftStateMachine;
 use crate::AsyncRuntime;
 use crate::ChangeMembers;
 use crate::LogId;
@@ -63,6 +60,7 @@ use crate::OptionalSend;
 use crate::RaftState;
 pub use crate::RaftTypeConfig;
 use crate::StorageHelper;
+pub use crate::StorageTypeConfig;
 
 /// Define types for a Raft type configuration.
 ///
@@ -124,28 +122,22 @@ macro_rules! declare_raft_types {
 /// `shutdown` method should be called on this type to await the shutdown of the node. If the parent
 /// application needs to shutdown the Raft node for any reason, calling `shutdown` will do the
 /// trick.
-pub struct Raft<C, N, LS, SM>
+pub struct Raft<C, S>
 where
     C: RaftTypeConfig,
-    N: RaftNetworkFactory<C>,
-    LS: RaftLogStorage<C>,
-    SM: RaftStateMachine<C>,
+    S: StorageTypeConfig<C>,
 {
-    inner: Arc<RaftInner<C, N, LS>>,
-    _phantom: PhantomData<SM>,
+    inner: Arc<RaftInner<C, S::NetworkFactory, S::LogStorage>>,
 }
 
-impl<C, N, LS, SM> Clone for Raft<C, N, LS, SM>
+impl<C, S> Clone for Raft<C, S>
 where
     C: RaftTypeConfig,
-    N: RaftNetworkFactory<C>,
-    LS: RaftLogStorage<C>,
-    SM: RaftStateMachine<C>,
+    S: StorageTypeConfig<C>,
 {
     fn clone(&self) -> Self {
         Self {
             inner: self.inner.clone(),
-            _phantom: PhantomData,
         }
     }
 }
@@ -159,7 +151,7 @@ where
 //
 // Notably, the state machine, log storage and network factory DO NOT have to be `Send`, those
 // are only used within Raft task(s) on a single thread.
-unsafe impl<C, N, LS, SM> Send for Raft<C, N, LS, SM>
+unsafe impl<C, S> Send for Raft<C, S>
 where
     C: RaftTypeConfig,
     N: RaftNetworkFactory<C>,
@@ -177,7 +169,7 @@ where
 // SAFETY: Even for a single-threaded Raft, the API object is MT-capable.
 //
 // See above for details.
-unsafe impl<C, N, LS, SM> Sync for Raft<C, N, LS, SM>
+unsafe impl<C, S> Sync for Raft<C, S>
 where
     C: RaftTypeConfig + Send,
     N: RaftNetworkFactory<C>,
@@ -191,12 +183,10 @@ where
 {
 }
 
-impl<C, N, LS, SM> Raft<C, N, LS, SM>
+impl<C, S> Raft<C, S>
 where
     C: RaftTypeConfig,
-    N: RaftNetworkFactory<C>,
-    LS: RaftLogStorage<C>,
-    SM: RaftStateMachine<C>,
+    S: StorageTypeConfig<C>,
 {
     /// Create and spawn a new Raft task.
     ///
@@ -221,9 +211,9 @@ where
     pub async fn new(
         id: C::NodeId,
         config: Arc<Config>,
-        network: N,
-        mut log_store: LS,
-        mut state_machine: SM,
+        network: S::NetworkFactory,
+        mut log_store: S::LogStorage,
+        mut state_machine: S::StateMachine,
     ) -> Result<Self, Fatal<C::NodeId>> {
         let (tx_api, rx_api) = mpsc::unbounded_channel();
         let (tx_notify, rx_notify) = mpsc::unbounded_channel();
@@ -257,7 +247,7 @@ where
 
         let sm_handle = sm::Worker::spawn(state_machine, tx_notify.clone());
 
-        let core: RaftCore<C, N, LS, SM> = RaftCore {
+        let core: RaftCore<C, S::NetworkFactory, S::LogStorage, S::StateMachine> = RaftCore {
             id,
             config: config.clone(),
             runtime_config: runtime_config.clone(),
@@ -295,10 +285,7 @@ where
             core_state: Mutex::new(CoreState::Running(core_handle)),
         };
 
-        Ok(Self {
-            inner: Arc::new(inner),
-            _phantom: Default::default(),
-        })
+        Ok(Self { inner: Arc::new(inner) })
     }
 
     /// Return a handle to update runtime config.
@@ -310,7 +297,7 @@ where
     /// let raft = Raft::new(...).await?;
     /// raft.runtime_config().heartbeat(true);
     /// ```
-    pub fn runtime_config(&self) -> RuntimeConfigHandle<C, N, LS> {
+    pub fn runtime_config(&self) -> RuntimeConfigHandle<C, S::NetworkFactory, S::LogStorage> {
         RuntimeConfigHandle::new(self.inner.as_ref())
     }
 
@@ -337,7 +324,7 @@ where
     /// let raft = Raft::new(...).await?;
     /// raft.trigger().elect().await?;
     /// ```
-    pub fn trigger(&self) -> Trigger<C, N, LS> {
+    pub fn trigger(&self) -> Trigger<C, S::NetworkFactory, S::LogStorage> {
         Trigger::new(self.inner.as_ref())
     }
 
@@ -694,7 +681,7 @@ where
     #[tracing::instrument(level = "debug", skip(self, mes, rx))]
     pub(crate) async fn call_core<T, E>(
         &self,
-        mes: RaftMsg<C, N, LS>,
+        mes: RaftMsg<C, S::NetworkFactory, S::LogStorage>,
         rx: oneshot::Receiver<Result<T, E>>,
     ) -> Result<T, RaftError<C::NodeId, E>>
     where
@@ -739,8 +726,11 @@ where
     /// If the API channel is already closed (Raft is in shutdown), then the request functor is
     /// destroyed right away and not called at all.
     pub fn external_request<
-        F: FnOnce(&RaftState<C::NodeId, C::Node, <C::AsyncRuntime as AsyncRuntime>::Instant>, &mut LS, &mut N)
-            + OptionalSend
+        F: FnOnce(
+                &RaftState<C::NodeId, C::Node, <C::AsyncRuntime as AsyncRuntime>::Instant>,
+                &mut S::LogStorage,
+                &mut S::NetworkFactory,
+            ) + OptionalSend
             + 'static,
     >(
         &self,

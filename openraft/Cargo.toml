@@ -76,8 +76,11 @@ single-term-leader = []
 compat = []
 
 # Turn on to let openraft provide additional data types to build v0.7 compatible RaftStorage.
-compat-07 = ["compat", "serde", "dep:or07", "compat-07-testing"]
+compat-07 = ["compat", "serde", "dep:or07", "compat-07-testing", "compat-08"]
 compat-07-testing = ["dep:tempfile", "anyhow", "dep:serde_json"]
+
+# Turn on compatibility with original `Raft` API with individual types for network/log/state machine.
+compat-08 = []
 
 # Allows an application to implement a custom the v2 storage API.
 # See `openraft::storage::v2` for more details.

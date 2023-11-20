@@ -51,6 +51,7 @@ use openraft::RaftLogId;
 use openraft::RaftMetrics;
 use openraft::RaftState;
 use openraft::ServerState;
+use openraft::StorageTypeConfig;
 use openraft::TokioInstant;
 use openraft::TokioRuntime;
 use openraft::Vote;
@@ -71,8 +72,17 @@ pub mod logging;
 pub type MemLogStore = Adaptor<MemConfig, Arc<MemStore>>;
 pub type MemStateMachine = Adaptor<MemConfig, Arc<MemStore>>;
 
+/// Storage types configuration for `openraft` tests.
+pub struct StorageConfig;
+
+impl StorageTypeConfig<MemConfig> for StorageConfig {
+    type NetworkFactory = TypedRaftRouter;
+    type LogStorage = MemLogStore;
+    type StateMachine = MemStateMachine;
+}
+
 /// A concrete Raft type used during testing.
-pub type MemRaft = Raft<MemConfig, TypedRaftRouter, MemLogStore, MemStateMachine>;
+pub type MemRaft = Raft<MemConfig, TypedRaftRouter, StorageConfig>;
 
 pub fn init_default_ut_tracing() {
     static START: Once = Once::new();
