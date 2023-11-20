@@ -6,6 +6,8 @@ use tokio::io::AsyncWrite;
 
 use crate::entry::FromAppData;
 use crate::entry::RaftEntry;
+use crate::storage::RaftLogStorage;
+use crate::storage::RaftStateMachine;
 use crate::AppData;
 use crate::AppDataResponse;
 use crate::AsyncRuntime;
@@ -13,6 +15,7 @@ use crate::Node;
 use crate::NodeId;
 use crate::OptionalSend;
 use crate::OptionalSync;
+use crate::RaftNetworkFactory;
 
 /// Configuration of types used by the [`Raft`] core engine.
 ///
@@ -41,7 +44,7 @@ use crate::OptionalSync;
 /// ```
 /// [`Raft`]: crate::Raft
 pub trait RaftTypeConfig:
-    Sized + OptionalSend + OptionalSync + Debug + Clone + Copy + Default + Eq + PartialEq + Ord + PartialOrd + 'static
+    Sized + Send + Sync + Debug + Clone + Copy + Default + Eq + PartialEq + Ord + PartialOrd + 'static
 {
     /// Application-specific request data passed to the state machine.
     type D: AppData;
@@ -66,4 +69,23 @@ pub trait RaftTypeConfig:
 
     /// Asynchronous runtime type.
     type AsyncRuntime: AsyncRuntime;
+}
+
+/// Configuration of types used by the [`Raft`] core engine for the storage.
+///
+/// The (empty) implementation of this structure defines network factory, log storage and
+/// state machine types. Refer to the documentation of associated types for more information.
+///
+/// [`Raft`]: crate::Raft
+// : Sized + Send + Sync + Debug + Clone + Copy + Default + Eq + PartialEq + Ord + PartialOrd +
+// 'static
+pub trait StorageTypeConfig<C: RaftTypeConfig> {
+    /// Network factory to use to create new connections.
+    type NetworkFactory: RaftNetworkFactory<C>;
+
+    /// Log storage storing the deltas.
+    type LogStorage: RaftLogStorage<C>;
+
+    /// State machine processing requests and storing the snapshot of the data.
+    type StateMachine: RaftStateMachine<C>;
 }

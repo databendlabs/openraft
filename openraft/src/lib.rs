@@ -61,6 +61,7 @@ pub mod log_id;
 pub mod metrics;
 pub mod network;
 pub mod raft;
+pub mod raft_compat;
 pub mod storage;
 pub mod testing;
 pub mod timer;
@@ -90,6 +91,7 @@ pub use network::RPCTypes;
 pub use network::RaftNetwork;
 pub use network::RaftNetworkFactory;
 pub use type_config::RaftTypeConfig;
+pub use type_config::StorageTypeConfig;
 
 pub use crate::async_runtime::AsyncRuntime;
 pub use crate::async_runtime::TokioRuntime;
@@ -114,7 +116,6 @@ pub use crate::node::BasicNode;
 pub use crate::node::EmptyNode;
 pub use crate::node::Node;
 pub use crate::node::NodeId;
-pub use crate::raft::Raft;
 pub use crate::raft_state::MembershipState;
 pub use crate::raft_state::RaftState;
 pub use crate::raft_types::SnapshotId;
@@ -138,6 +139,11 @@ pub use crate::try_as_ref::TryAsRef;
 pub use crate::vote::CommittedLeaderId;
 pub use crate::vote::LeaderId;
 pub use crate::vote::Vote;
+
+#[cfg(not(feature = "compat-08"))]
+pub use crate::raft::Raft;
+#[cfg(feature = "compat-08")]
+pub use crate::raft_compat::Raft;
 
 #[cfg(feature = "serde")]
 #[doc(hidden)]

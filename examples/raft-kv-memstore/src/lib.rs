@@ -11,6 +11,7 @@ use actix_web::HttpServer;
 use openraft::storage::Adaptor;
 use openraft::BasicNode;
 use openraft::Config;
+use openraft::StorageTypeConfig;
 use openraft::TokioRuntime;
 
 use crate::app::App;
@@ -37,7 +38,17 @@ openraft::declare_raft_types!(
 
 pub type LogStore = Adaptor<TypeConfig, Arc<Store>>;
 pub type StateMachineStore = Adaptor<TypeConfig, Arc<Store>>;
-pub type Raft = openraft::Raft<TypeConfig, Network, LogStore, StateMachineStore>;
+
+/// Storage types configuration for `openraft`.
+pub struct StorageConfig;
+
+impl StorageTypeConfig<TypeConfig> for StorageConfig {
+    type NetworkFactory =Network;
+    type LogStorage = LogStore;
+    type StateMachine = StateMachineStore;
+}
+
+pub type Raft = openraft::Raft<TypeConfig, StorageConfig>;
 
 pub mod typ {
     use openraft::BasicNode;
