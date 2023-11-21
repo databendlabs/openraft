@@ -41,6 +41,8 @@ use crate::raft::InstallSnapshotRequest;
 use crate::storage::RaftLogReader;
 use crate::storage::RaftLogStorage;
 use crate::storage::Snapshot;
+use crate::type_config::alias::InstantOf;
+use crate::type_config::alias::JoinHandleOf;
 use crate::utime::UTime;
 use crate::AsyncRuntime;
 use crate::ErrorSubject;
@@ -60,7 +62,7 @@ pub(crate) struct ReplicationHandle<C>
 where C: RaftTypeConfig
 {
     /// The spawn handle the `ReplicationCore` task.
-    pub(crate) join_handle: <C::AsyncRuntime as AsyncRuntime>::JoinHandle<Result<(), ReplicationClosed>>,
+    pub(crate) join_handle: JoinHandleOf<C, Result<(), ReplicationClosed>>,
 
     /// The channel used for communicating with the replication task.
     pub(crate) tx_repl: mpsc::UnboundedSender<Replicate<C>>,
@@ -260,7 +262,7 @@ where
                     Duration::from_millis(500)
                 });
 
-                self.backoff_drain_events(<C::AsyncRuntime as AsyncRuntime>::Instant::now() + duration).await?;
+                self.backoff_drain_events(InstantOf::<C>::now() + duration).await?;
             }
 
             self.drain_events().await?;
@@ -305,7 +307,7 @@ where
             logs
         };
 
-        let leader_time = <C::AsyncRuntime as AsyncRuntime>::Instant::now();
+        let leader_time = InstantOf::<C>::now();
 
         // Build the heartbeat frame to be sent to the follower.
         let payload = AppendEntriesRequest {
@@ -391,12 +393,7 @@ where
         }
     }
 
-    fn update_conflicting(
-        &mut self,
-        request_id: Option<u64>,
-        leader_time: <C::AsyncRuntime as AsyncRuntime>::Instant,
-        conflict: LogId<C::NodeId>,
-    ) {
+    fn update_conflicting(&mut self, request_id: Option<u64>, leader_time: InstantOf<C>, conflict: LogId<C::NodeId>) {
         tracing::debug!(
             target = display(self.target),
             request_id = display(request_id.display()),
@@ -431,7 +428,7 @@ where
     fn update_matching(
         &mut self,
         request_id: Option<u64>,
-        leader_time: <C::AsyncRuntime as AsyncRuntime>::Instant,
+        leader_time: InstantOf<C>,
         new_matching: Option<LogId<C::NodeId>>,
     ) {
         tracing::debug!(
@@ -482,11 +479,8 @@ where
     /// In the backoff period, we should not send out any RPCs, but we should still receive events,
     /// in case the channel is closed, it should quit at once.
     #[tracing::instrument(level = "debug", skip(self))]
-    pub async fn backoff_drain_events(
-        &mut self,
-        until: <C::AsyncRuntime as AsyncRuntime>::Instant,
-    ) -> Result<(), ReplicationClosed> {
-        let d = until - <C::AsyncRuntime as AsyncRuntime>::Instant::now();
+    pub async fn backoff_drain_events(&mut self, until: InstantOf<C>) -> Result<(), ReplicationClosed> {
+        let d = until - InstantOf::<C>::now();
         tracing::warn!(
             interval = debug(d),
             "{} backoff mode: drain events without processing them",
@@ -494,7 +488,7 @@ where
         );
 
         loop {
-            let sleep_duration = until - <C::AsyncRuntime as AsyncRuntime>::Instant::now();
+            let sleep_duration = until - InstantOf::<C>::now();
             let sleep = C::AsyncRuntime::sleep(sleep_duration);
 
             let recv = self.rx_repl.recv();
@@ -652,7 +646,7 @@ where
 
             let n_read = buf.len();
 
-            let leader_time = <C::AsyncRuntime as AsyncRuntime>::Instant::now();
+            let leader_time = InstantOf::<C>::now();
 
             let done = (offset + n_read as u64) == end;
             let req = InstallSnapshotRequest {
@@ -743,9 +737,9 @@ where
     }
 
     /// Check if partial success result(`matching`) is valid for a given log range to send.
-    fn debug_assert_partial_success(to_send: &LogIdRange<C::NodeId>, matching: &Option<LogId<C::LogId>>) {
+    fn debug_assert_partial_success(to_send: &LogIdRange<C::NodeId>, matching: &Option<LogId<C::NodeId>>) {
         debug_assert!(
-            matching <= to_send.last_log_id,
+            matching <= &to_send.last_log_id,
             "matching ({}) should be <= last_log_id ({})",
             matching.display(),
             to_send.last_log_id.display()
@@ -757,7 +751,7 @@ where
             to_send.last_log_id.index().display()
         );
         debug_assert!(
-            matching >= to_send.prev_log_id,
+            matching >= &to_send.prev_log_id,
             "matching ({}) should be >= prev_log_id ({})",
             matching.display(),
             to_send.prev_log_id.display()
