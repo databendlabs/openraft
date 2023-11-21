@@ -352,30 +352,7 @@ where
                 Ok(None)
             }
             AppendEntriesResponse::PartialSuccess(matching) => {
-                debug_assert!(
-                    matching <= log_id_range.last_log_id,
-                    "matching ({}) should be <= last_log_id ({})",
-                    matching.display(),
-                    log_id_range.last_log_id.display()
-                );
-                debug_assert!(
-                    matching.index() <= log_id_range.last_log_id.index(),
-                    "matching.index ({}) should be <= last_log_id.index ({})",
-                    matching.index().display(),
-                    log_id_range.last_log_id.index().display()
-                );
-                debug_assert!(
-                    matching >= log_id_range.prev_log_id,
-                    "matching ({}) should be >= prev_log_id ({})",
-                    matching.display(),
-                    log_id_range.prev_log_id.display()
-                );
-                debug_assert!(
-                    matching.index() >= log_id_range.prev_log_id.index(),
-                    "matching.index ({}) should be >= prev_log_id.index ({})",
-                    matching.index().display(),
-                    log_id_range.prev_log_id.index().display()
-                );
+                Self::debug_assert_partial_success(&log_id_range, &matching);
 
                 self.update_matching(request_id, leader_time, matching);
                 if matching < log_id_range.last_log_id {
@@ -763,6 +740,34 @@ where
             // Check raft channel to ensure we are staying up-to-date, then loop.
             self.try_drain_events().await?;
         }
+    }
+
+    /// Check if partial success result(`matching`) is valid for a given log range to send.
+    fn debug_assert_partial_success(to_send: &LogIdRange<C::NodeId>, matching: &Option<LogId<C::LogId>>) {
+        debug_assert!(
+            matching <= to_send.last_log_id,
+            "matching ({}) should be <= last_log_id ({})",
+            matching.display(),
+            to_send.last_log_id.display()
+        );
+        debug_assert!(
+            matching.index() <= to_send.last_log_id.index(),
+            "matching.index ({}) should be <= last_log_id.index ({})",
+            matching.index().display(),
+            to_send.last_log_id.index().display()
+        );
+        debug_assert!(
+            matching >= to_send.prev_log_id,
+            "matching ({}) should be >= prev_log_id ({})",
+            matching.display(),
+            to_send.prev_log_id.display()
+        );
+        debug_assert!(
+            matching.index() >= to_send.prev_log_id.index(),
+            "matching.index ({}) should be >= prev_log_id.index ({})",
+            matching.index().display(),
+            to_send.prev_log_id.index().display()
+        );
     }
 }
 
