@@ -1,8 +1,9 @@
-use crate::replication::ReplicationResult;
 use crate::replication::ReplicationSessionId;
 use crate::utime::UTime;
 use crate::AsyncRuntime;
+use crate::LogId;
 use crate::MessageSummary;
+use crate::NodeId;
 use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::Vote;
@@ -98,4 +99,11 @@ where C: RaftTypeConfig
             }
         }
     }
+}
+
+/// Result of an replication action.
+#[derive(Clone, Debug)]
+pub(crate) enum ReplicationResult<NID: NodeId> {
+    Matching(Option<LogId<NID>>),
+    Conflict(LogId<NID>),
 }
