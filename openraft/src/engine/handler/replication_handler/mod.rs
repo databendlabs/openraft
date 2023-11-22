@@ -13,7 +13,7 @@ use crate::progress::entry::ProgressEntry;
 use crate::progress::Inflight;
 use crate::progress::Progress;
 use crate::raft_state::LogStateReader;
-use crate::replication::ReplicationResult;
+use crate::replication::response::ReplicationResult;
 use crate::utime::UTime;
 use crate::AsyncRuntime;
 use crate::EffectiveMembership;

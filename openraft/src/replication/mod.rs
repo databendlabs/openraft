@@ -1,9 +1,9 @@
 //! Replication stream.
 
 mod replication_session_id;
-mod response;
+pub(crate) mod request;
+pub(crate) mod response;
 
-use std::fmt;
 use std::io::SeekFrom;
 use std::sync::Arc;
 use std::time::Duration;
@@ -11,6 +11,10 @@ use std::time::Duration;
 use anyerror::AnyError;
 use futures::future::FutureExt;
 pub(crate) use replication_session_id::ReplicationSessionId;
+use request::Data;
+use request::DataWithId;
+use request::Replicate;
+use response::ReplicationResult;
 pub(crate) use response::Response;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncSeekExt;
@@ -50,7 +54,6 @@ use crate::ErrorVerb;
 use crate::Instant;
 use crate::LogId;
 use crate::MessageSummary;
-use crate::NodeId;
 use crate::RaftLogId;
 use crate::RaftTypeConfig;
 use crate::StorageError;
@@ -281,7 +284,7 @@ where
         log_ids: DataWithId<LogIdRange<C::NodeId>>,
     ) -> Result<Option<Data<C>>, ReplicationError<C::NodeId, C::Node>> {
         let request_id = log_ids.request_id();
-        let log_id_range = &log_ids.data;
+        let log_id_range = log_ids.data();
 
         tracing::debug!(
             request_id = display(request_id.display()),
@@ -601,7 +604,7 @@ where
         snapshot_rx: DataWithId<oneshot::Receiver<Option<Snapshot<C>>>>,
     ) -> Result<Option<Data<C>>, ReplicationError<C::NodeId, C::Node>> {
         let request_id = snapshot_rx.request_id();
-        let rx = snapshot_rx.data;
+        let rx = snapshot_rx.into_data();
 
         tracing::info!(request_id = display(request_id.display()), "{}", func_name!());
 
@@ -760,144 +763,5 @@ where
             matching.index().display(),
             to_send.prev_log_id.index().display()
         );
-    }
-}
-
-pub struct DataWithId<T> {
-    /// The id of this replication request.
-    ///
-    /// A replication request without an id does not need to send a reply to the caller.
-    request_id: Option<u64>,
-    data: T,
-}
-
-impl<T> DataWithId<T> {
-    pub fn new(request_id: Option<u64>, data: T) -> Self {
-        Self { request_id, data }
-    }
-
-    pub fn request_id(&self) -> Option<u64> {
-        self.request_id
-    }
-}
-
-/// Request to replicate a chunk of data, logs or snapshot.
-///
-/// It defines what data to send to a follower/learner and an id to identify who is sending this
-/// data.
-/// Thd data is either a series of logs or a snapshot.
-pub(crate) enum Data<C>
-where C: RaftTypeConfig
-{
-    Logs(DataWithId<LogIdRange<C::NodeId>>),
-    Snapshot(DataWithId<oneshot::Receiver<Option<Snapshot<C>>>>),
-}
-
-impl<C> fmt::Debug for Data<C>
-where C: RaftTypeConfig
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Logs(l) => f
-                .debug_struct("Data::Logs")
-                .field("request_id", &l.request_id())
-                .field("log_id_range", &l.data)
-                .finish(),
-            Self::Snapshot(s) => f.debug_struct("Data::Snapshot").field("request_id", &s.request_id()).finish(),
-        }
-    }
-}
-
-impl<C: RaftTypeConfig> fmt::Display for Data<C> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Logs(l) => {
-                write!(
-                    f,
-                    "Logs{{request_id: {}, log_id_range: {}}}",
-                    l.request_id.display(),
-                    l.data
-                )
-            }
-            Self::Snapshot(s) => {
-                write!(f, "Snapshot{{request_id: {}}}", s.request_id.display())
-            }
-        }
-    }
-}
-
-impl<C> MessageSummary<Data<C>> for Data<C>
-where C: RaftTypeConfig
-{
-    fn summary(&self) -> String {
-        self.to_string()
-    }
-}
-
-impl<C> Data<C>
-where C: RaftTypeConfig
-{
-    fn new_logs(request_id: Option<u64>, log_id_range: LogIdRange<C::NodeId>) -> Self {
-        Self::Logs(DataWithId::new(request_id, log_id_range))
-    }
-
-    fn new_snapshot(request_id: Option<u64>, snapshot_rx: oneshot::Receiver<Option<Snapshot<C>>>) -> Self {
-        Self::Snapshot(DataWithId::new(request_id, snapshot_rx))
-    }
-
-    fn request_id(&self) -> Option<u64> {
-        match self {
-            Self::Logs(l) => l.request_id(),
-            Self::Snapshot(s) => s.request_id(),
-        }
-    }
-}
-
-/// Result of an replication action.
-#[derive(Clone, Debug)]
-pub(crate) enum ReplicationResult<NID: NodeId> {
-    Matching(Option<LogId<NID>>),
-    Conflict(LogId<NID>),
-}
-
-/// A replication request sent by RaftCore leader state to replication stream.
-pub(crate) enum Replicate<C>
-where C: RaftTypeConfig
-{
-    /// Inform replication stream to forward the committed log id to followers/learners.
-    Committed(Option<LogId<C::NodeId>>),
-
-    /// Send an empty AppendEntries RPC as heartbeat.
-    Heartbeat,
-
-    /// Send a chunk of data, e.g., logs or snapshot.
-    Data(Data<C>),
-}
-
-impl<C> Replicate<C>
-where C: RaftTypeConfig
-{
-    pub(crate) fn logs(id: Option<u64>, log_id_range: LogIdRange<C::NodeId>) -> Self {
-        Self::Data(Data::new_logs(id, log_id_range))
-    }
-
-    pub(crate) fn snapshot(id: Option<u64>, snapshot_rx: oneshot::Receiver<Option<Snapshot<C>>>) -> Self {
-        Self::Data(Data::new_snapshot(id, snapshot_rx))
-    }
-}
-
-impl<C> MessageSummary<Replicate<C>> for Replicate<C>
-where C: RaftTypeConfig
-{
-    fn summary(&self) -> String {
-        match self {
-            Replicate::Committed(c) => {
-                format!("Replicate::Committed: {:?}", c)
-            }
-            Replicate::Heartbeat => "Replicate::Heartbeat".to_string(),
-            Replicate::Data(d) => {
-                format!("Replicate::Data({})", d.summary())
-            }
-        }
     }
 }
