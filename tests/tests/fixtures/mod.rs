@@ -189,7 +189,7 @@ pub struct TypedRaftRouter {
 
     /// The table of all nodes currently known to this router instance.
     #[allow(clippy::type_complexity)]
-    routing_table: Arc<Mutex<BTreeMap<MemNodeId, (MemRaft, MemLogStore, MemStateMachine)>>>,
+    nodes: Arc<Mutex<BTreeMap<MemNodeId, (MemRaft, MemLogStore, MemStateMachine)>>>,
 
     /// Whether to fail a network RPC that is sent from/to a node.
     /// And it defines what kind of error to return.
@@ -236,7 +236,7 @@ impl Builder {
         };
         TypedRaftRouter {
             config: self.config,
-            routing_table: Default::default(),
+            nodes: Default::default(),
             fail_rpc: Default::default(),
             send_delay: Arc::new(AtomicU64::new(send_delay)),
             append_entries_quota: Arc::new(Mutex::new(None)),
@@ -401,14 +401,14 @@ impl TypedRaftRouter {
     #[tracing::instrument(level = "debug", skip_all)]
     pub async fn new_raft_node_with_sto(&mut self, id: MemNodeId, log_store: MemLogStore, sm: MemStateMachine) {
         let node = Raft::new(id, self.config.clone(), self.clone(), log_store.clone(), sm.clone()).await.unwrap();
-        let mut rt = self.routing_table.lock().unwrap();
+        let mut rt = self.nodes.lock().unwrap();
         rt.insert(id, (node, log_store, sm));
     }
 
     /// Remove the target node from the routing table & isolation.
     pub fn remove_node(&mut self, id: MemNodeId) -> Option<(MemRaft, MemLogStore, MemStateMachine)> {
         let opt_handles = {
-            let mut rt = self.routing_table.lock().unwrap();
+            let mut rt = self.nodes.lock().unwrap();
             rt.remove(&id)
         };
 
@@ -421,7 +421,7 @@ impl TypedRaftRouter {
     /// Initialize cluster with the config that contains all nodes.
     pub async fn initialize(&self, node_id: MemNodeId) -> anyhow::Result<()> {
         let members: BTreeSet<MemNodeId> = {
-            let rt = self.routing_table.lock().unwrap();
+            let rt = self.nodes.lock().unwrap();
             rt.keys().cloned().collect()
         };
 
@@ -474,7 +474,7 @@ impl TypedRaftRouter {
     /// Get a payload of the latest metrics from each node in the cluster.
     #[allow(clippy::significant_drop_in_scrutinee)]
     pub fn latest_metrics(&self) -> Vec<RaftMetrics<MemNodeId, ()>> {
-        let rt = self.routing_table.lock().unwrap();
+        let rt = self.nodes.lock().unwrap();
         let mut metrics = vec![];
         for node in rt.values() {
             let m = node.0.metrics().borrow().clone();
@@ -492,7 +492,7 @@ impl TypedRaftRouter {
 
     #[tracing::instrument(level = "debug", skip(self))]
     pub fn get_raft_handle(&self, node_id: &MemNodeId) -> Result<MemRaft, NetworkError> {
-        let rt = self.routing_table.lock().unwrap();
+        let rt = self.nodes.lock().unwrap();
         let raft_and_sto = rt
             .get(node_id)
             .ok_or_else(|| NetworkError::new(&AnyError::error(format!("node {} not found", *node_id))))?;
@@ -501,7 +501,7 @@ impl TypedRaftRouter {
     }
 
     pub fn get_storage_handle(&self, node_id: &MemNodeId) -> anyhow::Result<(MemLogStore, MemStateMachine)> {
-        let rt = self.routing_table.lock().unwrap();
+        let rt = self.nodes.lock().unwrap();
         let addr = rt.get(node_id).with_context(|| format!("could not find node {} in routing table", node_id))?;
         let x = addr.clone();
         Ok((x.1, x.2))
@@ -526,7 +526,7 @@ impl TypedRaftRouter {
 
     pub fn wait(&self, node_id: &MemNodeId, timeout: Option<Duration>) -> Wait<MemNodeId, (), TokioRuntime> {
         let node = {
-            let rt = self.routing_table.lock().unwrap();
+            let rt = self.nodes.lock().unwrap();
             rt.get(node_id).expect("target node not found in routing table").clone().0
         };
 
@@ -621,7 +621,7 @@ impl TypedRaftRouter {
     /// Send a is_leader request to the target node.
     pub async fn is_leader(&self, target: MemNodeId) -> Result<(), CheckIsLeaderError<MemNodeId, ()>> {
         let node = {
-            let rt = self.routing_table.lock().unwrap();
+            let rt = self.nodes.lock().unwrap();
             rt.get(&target).unwrap_or_else(|| panic!("node with ID {} does not exist", target)).clone()
         };
         node.0.is_leader().await.map_err(|e| e.into_api_error().unwrap())
@@ -672,7 +672,7 @@ impl TypedRaftRouter {
         target: MemNodeId,
         req: F,
     ) {
-        let rt = self.routing_table.lock().unwrap();
+        let rt = self.nodes.lock().unwrap();
         rt.get(&target)
             .unwrap_or_else(|| panic!("node '{}' does not exist in routing table", target))
             .0
@@ -706,7 +706,7 @@ impl TypedRaftRouter {
         req: ClientRequest,
     ) -> Result<ClientResponse, RaftError<MemNodeId, ClientWriteError<MemNodeId, ()>>> {
         let node = {
-            let rt = self.routing_table.lock().unwrap();
+            let rt = self.nodes.lock().unwrap();
             rt.get(&target)
                 .unwrap_or_else(|| panic!("node '{}' does not exist in routing table", target))
                 .clone()
@@ -820,7 +820,7 @@ impl TypedRaftRouter {
         expect_snapshot: Option<(ValueTest<u64>, u64)>,
     ) -> anyhow::Result<()> {
         let node_ids = {
-            let rt = self.routing_table.lock().unwrap();
+            let rt = self.nodes.lock().unwrap();
             let node_ids = rt.keys().cloned().collect::<Vec<_>>();
             node_ids
         };
