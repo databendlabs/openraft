@@ -1,8 +1,11 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use anyerror::AnyError;
 use anyhow::Result;
 use maplit::btreeset;
+use openraft::error::RPCError;
+use openraft::error::Unreachable;
 use openraft::Config;
 use openraft::RPCTypes;
 
@@ -32,7 +35,19 @@ async fn append_entries_backoff() -> Result<()> {
 
     tracing::info!(log_index, "--- set node 2 to unreachable, and write 10 entries");
     {
-        router.set_unreachable(2, true);
+        router.set_rpc_pre_hook(
+            RPCTypes::AppendEntries,
+            Some(Box::new(|_router, _t, _id, target| {
+                if target == 2 {
+                    let any_err = AnyError::error("unreachable");
+                    Err(RPCError::Unreachable(Unreachable::new(&any_err)))
+                } else {
+                    Ok(())
+                }
+            })),
+        );
+        // The above is equivalent to the following:
+        // router.set_unreachable(2, true);
 
         router.client_request_many(0, "0", n as usize).await?;
         log_index += n;

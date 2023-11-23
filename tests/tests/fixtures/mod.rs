@@ -23,6 +23,7 @@ use maplit::btreeset;
 use openraft::async_trait::async_trait;
 use openraft::error::CheckIsLeaderError;
 use openraft::error::ClientWriteError;
+use openraft::error::Infallible;
 use openraft::error::InstallSnapshotError;
 use openraft::error::NetworkError;
 use openraft::error::RPCError;
@@ -140,7 +141,7 @@ pub fn log_panic(panic: &PanicInfo) {
 #[derive(Debug, Clone, Copy)]
 #[derive(PartialEq, Eq)]
 #[derive(Hash)]
-enum Direction {
+pub enum Direction {
     NetSend,
     NetRecv,
 }
@@ -158,7 +159,7 @@ use Direction::NetRecv;
 use Direction::NetSend;
 
 #[derive(Debug, Clone, Copy)]
-enum RPCErrorType {
+pub enum RPCErrorType {
     /// Returns [`Unreachable`](`openraft::error::Unreachable`).
     Unreachable,
     /// Returns [`NetworkError`](`openraft::error::NetworkError`).
@@ -180,6 +181,11 @@ impl RPCErrorType {
         }
     }
 }
+
+/// Pre-hook result, which does not return remote Error.
+pub type PreHookResult = Result<(), RPCError<MemNodeId, (), Infallible>>;
+
+pub type RPCPreHook = Box<dyn Fn(&TypedRaftRouter, RPCTypes, MemNodeId, MemNodeId) -> PreHookResult + Send + 'static>;
 
 /// A type which emulates a network transport and implements the `RaftNetworkFactory` trait.
 #[derive(Clone)]
@@ -207,6 +213,9 @@ pub struct TypedRaftRouter {
 
     /// Count of RPCs sent.
     rpc_count: Arc<Mutex<HashMap<RPCTypes, u64>>>,
+
+    /// A hook function to be called when before an RPC is sent to target node.
+    rpc_pre_hook: Arc<Mutex<HashMap<RPCTypes, RPCPreHook>>>,
 }
 
 /// Default `RaftRouter` for memstore.
@@ -241,6 +250,7 @@ impl Builder {
             send_delay: Arc::new(AtomicU64::new(send_delay)),
             append_entries_quota: Arc::new(Mutex::new(None)),
             rpc_count: Default::default(),
+            rpc_pre_hook: Default::default(),
         }
     }
 }
@@ -462,12 +472,55 @@ impl TypedRaftRouter {
     }
 
     /// Set whether to emit a specified rpc error when sending to/receiving from a node.
-    fn set_rpc_failure(&self, id: MemNodeId, dir: Direction, rpc_error_type: Option<RPCErrorType>) {
+    pub fn set_rpc_failure(&self, id: MemNodeId, dir: Direction, rpc_error_type: Option<RPCErrorType>) {
         let mut fails = self.fail_rpc.lock().unwrap();
         if let Some(rpc_error_type) = rpc_error_type {
             fails.insert((id, dir), rpc_error_type);
         } else {
             fails.remove(&(id, dir));
+        }
+    }
+
+    /// Set a hook function to be called when before an RPC is sent to target node.
+    pub fn set_rpc_pre_hook(&self, rpc_type: RPCTypes, hook: Option<RPCPreHook>) {
+        let mut rpc_pre_hook = self.rpc_pre_hook.lock().unwrap();
+        if let Some(hook) = hook {
+            rpc_pre_hook.insert(rpc_type, hook);
+        } else {
+            rpc_pre_hook.remove(&rpc_type);
+        }
+    }
+
+    /// Call pre-hook before an RPC is sent.
+    fn call_rpc_pre_hook<E>(
+        &self,
+        rpc_type: RPCTypes,
+        from: MemNodeId,
+        to: MemNodeId,
+    ) -> Result<(), RPCError<MemNodeId, (), E>>
+    where
+        E: std::error::Error,
+    {
+        let rpc_pre_hook = self.rpc_pre_hook.lock().unwrap();
+        if let Some(hook) = rpc_pre_hook.get(&rpc_type) {
+            let res = hook(self, rpc_type, from, to);
+            match res {
+                Ok(()) => Ok(()),
+                Err(err) => {
+                    // The pre-hook should only return RPCError variants
+                    let rpc_err = match err {
+                        RPCError::Timeout(e) => e.into(),
+                        RPCError::Unreachable(e) => e.into(),
+                        RPCError::Network(e) => e.into(),
+                        RPCError::RemoteError(e) => {
+                            unreachable!("unexpected RemoteError: {:?}", e);
+                        }
+                    };
+                    Err(rpc_err)
+                }
+            }
+        } else {
+            Ok(())
         }
     }
 
@@ -889,12 +942,12 @@ impl RaftNetwork<MemConfig> for RaftRouterNetwork {
         &mut self,
         mut rpc: AppendEntriesRequest<MemConfig>,
     ) -> Result<AppendEntriesResponse<MemNodeId>, RPCError<MemNodeId, (), RaftError<MemNodeId>>> {
+        let from_id = rpc.vote.leader_id().voted_for().unwrap();
+
         tracing::debug!("append_entries to id={} {}", self.target, rpc.summary());
         self.owner.count_rpc(RPCTypes::AppendEntries);
-
-        let from_id = rpc.vote.leader_id().voted_for().unwrap();
+        self.owner.call_rpc_pre_hook(RPCTypes::AppendEntries, from_id, self.target)?;
         self.owner.emit_rpc_error(from_id, self.target)?;
-
         self.owner.rand_send_delay().await;
 
         // decrease quota if quota is set
@@ -953,11 +1006,11 @@ impl RaftNetwork<MemConfig> for RaftRouterNetwork {
         rpc: InstallSnapshotRequest<MemConfig>,
     ) -> Result<InstallSnapshotResponse<MemNodeId>, RPCError<MemNodeId, (), RaftError<MemNodeId, InstallSnapshotError>>>
     {
-        self.owner.count_rpc(RPCTypes::InstallSnapshot);
-
         let from_id = rpc.vote.leader_id().voted_for().unwrap();
-        self.owner.emit_rpc_error(from_id, self.target)?;
 
+        self.owner.count_rpc(RPCTypes::InstallSnapshot);
+        self.owner.call_rpc_pre_hook(RPCTypes::InstallSnapshot, from_id, self.target)?;
+        self.owner.emit_rpc_error(from_id, self.target)?;
         self.owner.rand_send_delay().await;
 
         let node = self.owner.get_raft_handle(&self.target)?;
@@ -973,11 +1026,11 @@ impl RaftNetwork<MemConfig> for RaftRouterNetwork {
         &mut self,
         rpc: VoteRequest<MemNodeId>,
     ) -> Result<VoteResponse<MemNodeId>, RPCError<MemNodeId, (), RaftError<MemNodeId>>> {
-        self.owner.count_rpc(RPCTypes::Vote);
-
         let from_id = rpc.vote.leader_id().voted_for().unwrap();
-        self.owner.emit_rpc_error(from_id, self.target)?;
 
+        self.owner.count_rpc(RPCTypes::Vote);
+        self.owner.call_rpc_pre_hook(RPCTypes::Vote, from_id, self.target)?;
+        self.owner.emit_rpc_error(from_id, self.target)?;
         self.owner.rand_send_delay().await;
 
         let node = self.owner.get_raft_handle(&self.target)?;
