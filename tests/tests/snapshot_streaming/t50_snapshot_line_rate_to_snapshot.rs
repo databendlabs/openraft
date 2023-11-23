@@ -56,7 +56,7 @@ async fn snapshot_line_rate_to_snapshot() -> Result<()> {
     tracing::info!(log_index, "--- stop replication to node 1");
     tracing::info!(log_index, "--- send just enough logs to trigger snapshot");
     {
-        router.set_node_network_failure(1, true);
+        router.set_network_error(1, true);
 
         router.client_request_many(0, "0", (snapshot_threshold - 1 - log_index) as usize).await?;
         log_index = snapshot_threshold - 1;
@@ -81,7 +81,7 @@ async fn snapshot_line_rate_to_snapshot() -> Result<()> {
 
     tracing::info!(log_index, "--- restore node 1 and replication");
     {
-        router.set_node_network_failure(1, false);
+        router.set_network_error(1, false);
 
         router.wait_for_log(&btreeset![1], Some(log_index), timeout(), "replicate by snapshot").await?;
         router

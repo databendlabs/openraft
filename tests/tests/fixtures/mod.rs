@@ -6,8 +6,8 @@
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
-use std::collections::HashSet;
 use std::env;
+use std::fmt;
 use std::panic::PanicInfo;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
@@ -46,6 +46,9 @@ use openraft::Config;
 use openraft::LogId;
 use openraft::LogIdOptionExt;
 use openraft::MessageSummary;
+use openraft::Node;
+use openraft::NodeId;
+use openraft::RPCTypes;
 use openraft::Raft;
 use openraft::RaftLogId;
 use openraft::RaftMetrics;
@@ -134,6 +137,50 @@ pub fn log_panic(panic: &PanicInfo) {
     eprintln!("{}", backtrace);
 }
 
+#[derive(Debug, Clone, Copy)]
+#[derive(PartialEq, Eq)]
+#[derive(Hash)]
+enum Direction {
+    NetSend,
+    NetRecv,
+}
+
+impl fmt::Display for Direction {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            NetSend => write!(f, "sending from"),
+            NetRecv => write!(f, "receiving by"),
+        }
+    }
+}
+
+use Direction::NetRecv;
+use Direction::NetSend;
+
+#[derive(Debug, Clone, Copy)]
+enum RPCErrorType {
+    /// Returns [`Unreachable`](`openraft::error::Unreachable`).
+    Unreachable,
+    /// Returns [`NetworkError`](`openraft::error::NetworkError`).
+    NetworkError,
+}
+
+impl RPCErrorType {
+    fn make_error<NID, N, E>(&self, id: NID, dir: Direction) -> RPCError<NID, N, RaftError<NID, E>>
+    where
+        NID: NodeId,
+        N: Node,
+        E: std::error::Error,
+    {
+        let msg = format!("error {} id={}", dir, id);
+
+        match self {
+            RPCErrorType::Unreachable => Unreachable::new(&AnyError::error(msg)).into(),
+            RPCErrorType::NetworkError => NetworkError::new(&AnyError::error(msg)).into(),
+        }
+    }
+}
+
 /// A type which emulates a network transport and implements the `RaftNetworkFactory` trait.
 #[derive(Clone)]
 pub struct TypedRaftRouter {
@@ -144,11 +191,9 @@ pub struct TypedRaftRouter {
     #[allow(clippy::type_complexity)]
     routing_table: Arc<Mutex<BTreeMap<MemNodeId, (MemRaft, MemLogStore, MemStateMachine)>>>,
 
-    /// Nodes that can neither send nor receive frames, and will return an `NetworkError`.
-    network_failure_nodes: Arc<Mutex<HashSet<MemNodeId>>>,
-
-    /// Nodes to which an RPC is sent return an `Unreachable` error.
-    unreachable_nodes: Arc<Mutex<HashSet<MemNodeId>>>,
+    /// Whether to fail a network RPC that is sent from/to a node.
+    /// And it defines what kind of error to return.
+    fail_rpc: Arc<Mutex<HashMap<(MemNodeId, Direction), RPCErrorType>>>,
 
     /// To emulate network delay for sending, in milliseconds.
     /// 0 means no delay.
@@ -161,14 +206,7 @@ pub struct TypedRaftRouter {
     append_entries_quota: Arc<Mutex<Option<u64>>>,
 
     /// Count of RPCs sent.
-    rpc_count: Arc<Mutex<HashMap<RPCType, u64>>>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum RPCType {
-    AppendEntries,
-    InstallSnapshot,
-    Vote,
+    rpc_count: Arc<Mutex<HashMap<RPCTypes, u64>>>,
 }
 
 /// Default `RaftRouter` for memstore.
@@ -199,8 +237,7 @@ impl Builder {
         TypedRaftRouter {
             config: self.config,
             routing_table: Default::default(),
-            network_failure_nodes: Default::default(),
-            unreachable_nodes: Default::default(),
+            fail_rpc: Default::default(),
             send_delay: Arc::new(AtomicU64::new(send_delay)),
             append_entries_quota: Arc::new(Mutex::new(None)),
             rpc_count: Default::default(),
@@ -239,13 +276,13 @@ impl TypedRaftRouter {
         *append_entries_quota = quota;
     }
 
-    fn count_rpc(&self, rpc_type: RPCType) {
+    fn count_rpc(&self, rpc_type: RPCTypes) {
         let mut rpc_count = self.rpc_count.lock().unwrap();
         let count = rpc_count.entry(rpc_type).or_insert(0);
         *count += 1;
     }
 
-    pub fn get_rpc_count(&self) -> HashMap<RPCType, u64> {
+    pub fn get_rpc_count(&self) -> HashMap<RPCTypes, u64> {
         self.rpc_count.lock().unwrap().clone()
     }
 
@@ -375,10 +412,8 @@ impl TypedRaftRouter {
             rt.remove(&id)
         };
 
-        {
-            let mut isolated = self.network_failure_nodes.lock().unwrap();
-            isolated.remove(&id);
-        }
+        self.set_network_error(id, false);
+        self.set_unreachable(id, false);
 
         opt_handles
     }
@@ -403,23 +438,36 @@ impl TypedRaftRouter {
 
     /// Isolate the network of the specified node.
     #[tracing::instrument(level = "debug", skip(self))]
-    pub fn set_node_network_failure(&self, id: MemNodeId, emit_failure: bool) {
-        let mut nodes = self.network_failure_nodes.lock().unwrap();
-        if emit_failure {
-            nodes.insert(id);
+    pub fn set_network_error(&self, id: MemNodeId, emit_failure: bool) {
+        let v = if emit_failure {
+            Some(RPCErrorType::NetworkError)
         } else {
-            nodes.remove(&id);
-        }
+            None
+        };
+
+        self.set_rpc_failure(id, NetRecv, v);
+        self.set_rpc_failure(id, NetSend, v);
     }
 
     /// Set to `true` to return [`Unreachable`](`openraft::errors::Unreachable`) when sending RPC to
     /// a node.
     pub fn set_unreachable(&self, id: MemNodeId, unreachable: bool) {
-        let mut u = self.unreachable_nodes.lock().unwrap();
-        if unreachable {
-            u.insert(id);
+        let v = if unreachable {
+            Some(RPCErrorType::Unreachable)
         } else {
-            u.remove(&id);
+            None
+        };
+        self.set_rpc_failure(id, NetRecv, v);
+        self.set_rpc_failure(id, NetSend, v);
+    }
+
+    /// Set whether to emit a specified rpc error when sending to/receiving from a node.
+    fn set_rpc_failure(&self, id: MemNodeId, dir: Direction, rpc_error_type: Option<RPCErrorType>) {
+        let mut fails = self.fail_rpc.lock().unwrap();
+        if let Some(rpc_error_type) = rpc_error_type {
+            fails.insert((id, dir), rpc_error_type);
+        } else {
+            fails.remove(&(id, dir));
         }
     }
 
@@ -551,31 +599,13 @@ impl TypedRaftRouter {
 
     /// Get the ID of the current leader.
     pub fn leader(&self) -> Option<MemNodeId> {
-        let isolated = {
-            let isolated = self.network_failure_nodes.lock().unwrap();
-            isolated.clone()
-        };
-
-        tracing::debug!("router::leader: isolated: {:?}", isolated);
-
         self.latest_metrics().into_iter().find_map(|node| {
             if node.current_leader == Some(node.id) {
-                if isolated.contains(&node.id) {
-                    None
-                } else {
-                    Some(node.id)
-                }
+                Some(node.id)
             } else {
                 None
             }
         })
-    }
-
-    /// Restore the network of the specified node.
-    #[tracing::instrument(level = "debug", skip(self))]
-    pub fn restore_node(&self, id: MemNodeId) {
-        let mut nodes = self.network_failure_nodes.lock().unwrap();
-        nodes.remove(&id);
     }
 
     /// Bring up a new learner and add it to the leader's membership.
@@ -815,24 +845,20 @@ impl TypedRaftRouter {
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
-    pub fn check_network_error(&self, id: MemNodeId, target: MemNodeId) -> Result<(), NetworkError> {
-        let isolated = self.network_failure_nodes.lock().unwrap();
+    pub fn emit_rpc_error<E>(
+        &self,
+        id: MemNodeId,
+        target: MemNodeId,
+    ) -> Result<(), RPCError<MemNodeId, (), RaftError<MemNodeId, E>>>
+    where
+        E: std::error::Error,
+    {
+        let fails = self.fail_rpc.lock().unwrap();
 
-        if isolated.contains(&target) || isolated.contains(&id) {
-            let network_err = NetworkError::new(&AnyError::error(format!("isolated:{} -> {}", id, target)));
-            return Err(network_err);
-        }
-
-        Ok(())
-    }
-
-    #[tracing::instrument(level = "debug", skip(self))]
-    pub fn check_unreachable(&self, id: MemNodeId, target: MemNodeId) -> Result<(), Unreachable> {
-        let unreachable = self.unreachable_nodes.lock().unwrap();
-
-        if unreachable.contains(&target) || unreachable.contains(&id) {
-            let err = Unreachable::new(&AnyError::error(format!("unreachable:{} -> {}", id, target)));
-            return Err(err);
+        for key in [(id, NetSend), (target, NetRecv)] {
+            if let Some(err_type) = fails.get(&key) {
+                return Err(err_type.make_error(key.0, key.1));
+            }
         }
 
         Ok(())
@@ -864,10 +890,11 @@ impl RaftNetwork<MemConfig> for RaftRouterNetwork {
         mut rpc: AppendEntriesRequest<MemConfig>,
     ) -> Result<AppendEntriesResponse<MemNodeId>, RPCError<MemNodeId, (), RaftError<MemNodeId>>> {
         tracing::debug!("append_entries to id={} {}", self.target, rpc.summary());
-        self.owner.count_rpc(RPCType::AppendEntries);
+        self.owner.count_rpc(RPCTypes::AppendEntries);
 
-        self.owner.check_network_error(rpc.vote.leader_id().voted_for().unwrap(), self.target)?;
-        self.owner.check_unreachable(rpc.vote.leader_id().voted_for().unwrap(), self.target)?;
+        let from_id = rpc.vote.leader_id().voted_for().unwrap();
+        self.owner.emit_rpc_error(from_id, self.target)?;
+
         self.owner.rand_send_delay().await;
 
         // decrease quota if quota is set
@@ -926,10 +953,11 @@ impl RaftNetwork<MemConfig> for RaftRouterNetwork {
         rpc: InstallSnapshotRequest<MemConfig>,
     ) -> Result<InstallSnapshotResponse<MemNodeId>, RPCError<MemNodeId, (), RaftError<MemNodeId, InstallSnapshotError>>>
     {
-        self.owner.count_rpc(RPCType::InstallSnapshot);
+        self.owner.count_rpc(RPCTypes::InstallSnapshot);
 
-        self.owner.check_network_error(rpc.vote.leader_id().voted_for().unwrap(), self.target)?;
-        self.owner.check_unreachable(rpc.vote.leader_id().voted_for().unwrap(), self.target)?;
+        let from_id = rpc.vote.leader_id().voted_for().unwrap();
+        self.owner.emit_rpc_error(from_id, self.target)?;
+
         self.owner.rand_send_delay().await;
 
         let node = self.owner.get_raft_handle(&self.target)?;
@@ -945,10 +973,11 @@ impl RaftNetwork<MemConfig> for RaftRouterNetwork {
         &mut self,
         rpc: VoteRequest<MemNodeId>,
     ) -> Result<VoteResponse<MemNodeId>, RPCError<MemNodeId, (), RaftError<MemNodeId>>> {
-        self.owner.count_rpc(RPCType::Vote);
+        self.owner.count_rpc(RPCTypes::Vote);
 
-        self.owner.check_network_error(rpc.vote.leader_id().voted_for().unwrap(), self.target)?;
-        self.owner.check_unreachable(rpc.vote.leader_id().voted_for().unwrap(), self.target)?;
+        let from_id = rpc.vote.leader_id().voted_for().unwrap();
+        self.owner.emit_rpc_error(from_id, self.target)?;
+
         self.owner.rand_send_delay().await;
 
         let node = self.owner.get_raft_handle(&self.target)?;

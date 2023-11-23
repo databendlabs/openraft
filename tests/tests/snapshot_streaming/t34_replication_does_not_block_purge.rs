@@ -39,8 +39,8 @@ async fn replication_does_not_block_purge() -> Result<()> {
 
     let leader = router.get_raft_handle(&0)?;
 
-    router.set_node_network_failure(1, true);
-    router.set_node_network_failure(2, true);
+    router.set_network_error(1, true);
+    router.set_network_error(2, true);
 
     tracing::info!(log_index, "--- build snapshot on leader, check purged log");
     {

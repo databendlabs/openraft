@@ -127,7 +127,7 @@ async fn add_learner_non_blocking() -> Result<()> {
         router.new_raft_node(1).await;
 
         // Replication problem should not block adding-learner in non-blocking mode.
-        router.set_node_network_failure(1, true);
+        router.set_network_error(1, true);
 
         let raft = router.get_raft_handle(&0)?;
         raft.add_learner(1, (), false).await?;
@@ -208,7 +208,7 @@ async fn add_learner_when_previous_membership_not_committed() -> Result<()> {
 
     tracing::info!(log_index, "--- block replication to prevent committing any log");
     {
-        router.set_node_network_failure(1, true);
+        router.set_network_error(1, true);
 
         let node = router.get_raft_handle(&0)?;
         tokio::spawn(async move {
