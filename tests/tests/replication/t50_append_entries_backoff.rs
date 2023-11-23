@@ -4,9 +4,9 @@ use std::time::Duration;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
+use openraft::RPCTypes;
 
 use crate::fixtures::init_default_ut_tracing;
-use crate::fixtures::RPCType;
 use crate::fixtures::RaftRouter;
 
 /// Append-entries should backoff when a `Unreachable` error is found.
@@ -42,8 +42,8 @@ async fn append_entries_backoff() -> Result<()> {
 
     let counts1 = router.get_rpc_count();
 
-    let c0 = *counts0.get(&RPCType::AppendEntries).unwrap_or(&0);
-    let c1 = *counts1.get(&RPCType::AppendEntries).unwrap_or(&0);
+    let c0 = *counts0.get(&RPCTypes::AppendEntries).unwrap_or(&0);
+    let c1 = *counts1.get(&RPCTypes::AppendEntries).unwrap_or(&0);
 
     // Without backoff, the leader would send about 40 append-entries RPC.
     // 20 for append log entries, 20 for updating committed.

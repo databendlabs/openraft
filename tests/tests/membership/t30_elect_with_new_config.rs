@@ -38,7 +38,7 @@ async fn leader_election_after_changing_0_to_01234() -> Result<()> {
 
     // Isolate old leader and assert that a new leader takes over.
     tracing::info!(log_index, "--- isolating leader node 0");
-    router.set_node_network_failure(0, true);
+    router.set_network_error(0, true);
 
     // Wait for leader lease to expire
     sleep(Duration::from_millis(700)).await;
@@ -62,7 +62,7 @@ async fn leader_election_after_changing_0_to_01234() -> Result<()> {
     let leader_id = 1;
 
     tracing::info!(log_index, "--- restore node 0, log_index:{}", log_index);
-    router.set_node_network_failure(0, false);
+    router.set_network_error(0, false);
     router
         .wait(&0, timeout())
         .metrics(

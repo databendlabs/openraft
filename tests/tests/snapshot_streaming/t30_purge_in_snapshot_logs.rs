@@ -61,7 +61,7 @@ async fn purge_in_snapshot_logs() -> Result<()> {
     // Learner: 0..10
     tracing::info!(log_index, "--- block replication, build another snapshot");
     {
-        router.set_node_network_failure(1, true);
+        router.set_network_error(1, true);
 
         log_index += router.client_request_many(0, "0", 5).await?;
         router.wait(&0, timeout()).log(Some(log_index), "write another 5 logs").await?;
@@ -85,7 +85,7 @@ async fn purge_in_snapshot_logs() -> Result<()> {
         "--- restore replication, install the 2nd snapshot on learner"
     );
     {
-        router.set_node_network_failure(1, false);
+        router.set_network_error(1, false);
 
         learner
             .wait(timeout())

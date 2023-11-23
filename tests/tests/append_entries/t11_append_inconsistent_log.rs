@@ -73,7 +73,7 @@ async fn append_inconsistent_log() -> Result<()> {
     );
     {
         router.new_raft_node_with_sto(1, sto1.clone(), sm1.clone()).await;
-        router.set_node_network_failure(1, true);
+        router.set_network_error(1, true);
     }
 
     tracing::info!(log_index, "--- restart node 0 and 2");

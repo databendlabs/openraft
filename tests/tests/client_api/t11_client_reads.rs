@@ -44,12 +44,12 @@ async fn client_reads() -> Result<()> {
 
     tracing::info!(log_index, "--- isolate node 1 then is_leader should work");
 
-    router.set_node_network_failure(1, true);
+    router.set_network_error(1, true);
     router.is_leader(leader).await?;
 
     tracing::info!(log_index, "--- isolate node 2 then is_leader should fail");
 
-    router.set_node_network_failure(2, true);
+    router.set_network_error(2, true);
     let rst = router.is_leader(leader).await;
     tracing::debug!(?rst, "is_leader with majority down");
 
