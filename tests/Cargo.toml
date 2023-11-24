@@ -24,6 +24,7 @@ openraft-memstore  = { path="../memstore" }
 anyerror           = { workspace = true }
 anyhow             = { workspace = true }
 async-entry        = { workspace = true }
+derive_more        = { workspace = true }
 futures            = { workspace = true }
 lazy_static        = { workspace = true }
 maplit             = { workspace = true }
