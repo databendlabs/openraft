@@ -5,6 +5,7 @@ use std::fmt::Formatter;
 use crate::less_equal;
 use crate::validate::Validate;
 use crate::LogId;
+use crate::LogIdOptionExt;
 use crate::MessageSummary;
 use crate::NodeId;
 
@@ -42,6 +43,11 @@ impl<NID: NodeId> LogIdRange<NID> {
             prev_log_id: prev,
             last_log_id: last,
         }
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn len(&self) -> u64 {
+        self.last_log_id.next_index() - self.prev_log_id.next_index()
     }
 }
 

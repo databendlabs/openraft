@@ -1,5 +1,6 @@
 //! Replication stream.
 
+pub(crate) mod hint;
 mod replication_session_id;
 pub(crate) mod request;
 pub(crate) mod response;
@@ -29,6 +30,7 @@ use crate::display_ext::DisplayOption;
 use crate::display_ext::DisplayOptionExt;
 use crate::error::HigherVote;
 use crate::error::Infallible;
+use crate::error::PayloadTooLarge;
 use crate::error::RPCError;
 use crate::error::RaftError;
 use crate::error::ReplicationClosed;
@@ -44,9 +46,11 @@ use crate::network::RaftNetworkFactory;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
 use crate::raft::InstallSnapshotRequest;
+use crate::replication::hint::ReplicationHint;
 use crate::storage::RaftLogReader;
 use crate::storage::RaftLogStorage;
 use crate::storage::Snapshot;
+use crate::type_config::alias::AsyncRuntimeOf;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::JoinHandleOf;
 use crate::utime::UTime;
@@ -118,6 +122,10 @@ where
 
     /// Next replication action to run.
     next_action: Option<Data<C>>,
+
+    /// Appropriate number of entries to send.
+    /// This is only used by AppendEntries RPC.
+    entries_hint: ReplicationHint,
 }
 
 impl<C, N, LS> ReplicationCore<C, N, LS>
@@ -164,6 +172,7 @@ where
             tx_raft_core,
             rx_repl,
             next_action: None,
+            entries_hint: Default::default(),
         };
 
         let join_handle = C::AsyncRuntime::spawn(this.main().instrument(span));
@@ -177,6 +186,8 @@ where
             let action = self.next_action.take();
 
             let mut repl_id = None;
+            // Backup the log data for retrying.
+            let mut log_data = None;
 
             let res = match action {
                 None => Ok(None),
@@ -186,7 +197,10 @@ where
                     repl_id = d.request_id();
 
                     match d {
-                        Data::Logs(log) => self.send_log_entries(log).await,
+                        Data::Logs(log) => {
+                            log_data = Some(log.clone());
+                            self.send_log_entries(log).await
+                        }
                         Data::Snapshot(snap) => self.stream_snapshot(snap).await,
                     }
                 }
@@ -233,15 +247,33 @@ where
                         ReplicationError::RPCError(err) => {
                             tracing::error!(err = display(&err), "RPCError");
 
-                            // If there is an [`Unreachable`] error, we will backoff for a period of time
-                            // Backoff will be reset if there is a successful RPC is sent.
-                            if let RPCError::Unreachable(_unreachable) = &err {
-                                if self.backoff.is_none() {
-                                    self.backoff = Some(self.network.backoff());
+                            let retry = match &err {
+                                RPCError::Timeout(_) => false,
+                                RPCError::Unreachable(_unreachable) => {
+                                    // If there is an [`Unreachable`] error, we will backoff for a
+                                    // period of time. Backoff will be reset if there is a
+                                    // successful RPC is sent.
+                                    if self.backoff.is_none() {
+                                        self.backoff = Some(self.network.backoff());
+                                    }
+                                    false
                                 }
-                            }
+                                RPCError::PayloadTooLarge(too_large) => {
+                                    self.update_hint(too_large);
 
-                            self.send_progress_error(repl_id, err);
+                                    // PayloadTooLarge is a retryable error: retry at once.
+                                    self.next_action = Some(Data::Logs(log_data.unwrap()));
+                                    true
+                                }
+                                RPCError::Network(_) => false,
+                                RPCError::RemoteError(_) => false,
+                            };
+
+                            if retry {
+                                debug_assert!(self.next_action.is_some(), "next_action must be Some");
+                            } else {
+                                self.send_progress_error(repl_id, err);
+                            }
                         }
                     };
                 }
@@ -260,6 +292,25 @@ where
         }
     }
 
+    /// When a [`PayloadTooLarge`] error is received, update the hint for the next several RPC.
+    fn update_hint(&mut self, too_large: &PayloadTooLarge) {
+        const DEFAULT_ENTRIES_HINT_TTL: u64 = 10;
+
+        match too_large.action() {
+            RPCTypes::Vote => {
+                unreachable!("Vote RPC should not be too large")
+            }
+            RPCTypes::AppendEntries => {
+                self.entries_hint = ReplicationHint::new(too_large.entries_hint(), DEFAULT_ENTRIES_HINT_TTL);
+                tracing::debug!(entries_hint = debug(&self.entries_hint), "updated entries hint");
+            }
+            RPCTypes::InstallSnapshot => {
+                // TODO: handle too large
+                tracing::error!("InstallSnapshot RPC is too large, but it is not supported yet");
+            }
+        }
+    }
+
     /// Send an AppendEntries RPC to the target.
     ///
     /// This request will timeout if no response is received within the
@@ -272,32 +323,52 @@ where
         log_ids: DataWithId<LogIdRange<C::NodeId>>,
     ) -> Result<Option<Data<C>>, ReplicationError<C::NodeId, C::Node>> {
         let request_id = log_ids.request_id();
-        let log_id_range = log_ids.data();
 
         tracing::debug!(
             request_id = display(request_id.display()),
-            log_id_range = display(log_id_range),
+            log_id_range = display(log_ids.data()),
             "send_log_entries",
         );
 
-        let start = log_id_range.prev_log_id.next_index();
-        let end = log_id_range.last_log_id.next_index();
+        // Series of logs to send, and the last log id to send
+        let (logs, sending_range) = {
+            let rng = log_ids.data();
 
-        let logs = if start == end {
-            vec![]
-        } else {
-            let logs = self.log_reader.try_get_log_entries(start..end).await?;
-            debug_assert_eq!(
-                logs.len(),
-                (end - start) as usize,
-                "expect logs {}..{} but got only {} entries, first: {}, last: {}",
-                start,
-                end,
-                logs.len(),
-                logs.first().map(|ent| ent.get_log_id()).display(),
-                logs.last().map(|ent| ent.get_log_id()).display()
-            );
-            logs
+            // The log index start and end to send.
+            let (start, end) = {
+                let start = rng.prev_log_id.next_index();
+                let end = rng.last_log_id.next_index();
+
+                if let Some(hint) = self.entries_hint.get() {
+                    let hint_end = start + hint;
+                    (start, std::cmp::min(end, hint_end))
+                } else {
+                    (start, end)
+                }
+            };
+
+            if start == end {
+                // Heartbeat RPC, no logs to send, last log id is the same as prev_log_id
+                let r = LogIdRange::new(rng.prev_log_id, rng.prev_log_id);
+                (vec![], r)
+            } else {
+                let logs = self.log_reader.try_get_log_entries(start..end).await?;
+                debug_assert_eq!(
+                    logs.len(),
+                    (end - start) as usize,
+                    "expect logs {}..{} but got only {} entries, first: {}, last: {}",
+                    start,
+                    end,
+                    logs.len(),
+                    logs.first().map(|ent| ent.get_log_id()).display(),
+                    logs.last().map(|ent| ent.get_log_id()).display()
+                );
+
+                let last_log_id = logs.last().map(|ent| *ent.get_log_id());
+
+                let r = LogIdRange::new(rng.prev_log_id, last_log_id);
+                (logs, r)
+            }
         };
 
         let leader_time = InstantOf::<C>::now();
@@ -305,7 +376,7 @@ where
         // Build the heartbeat frame to be sent to the follower.
         let payload = AppendEntriesRequest {
             vote: self.session_id.vote,
-            prev_log_id: log_id_range.prev_log_id,
+            prev_log_id: sending_range.prev_log_id,
             leader_commit: self.committed,
             entries: logs,
         };
@@ -320,7 +391,7 @@ where
 
         let the_timeout = Duration::from_millis(self.config.heartbeat_interval);
         let option = RPCOption::new(the_timeout);
-        let res = C::AsyncRuntime::timeout(the_timeout, self.network.append_entries(payload, option)).await;
+        let res = AsyncRuntimeOf::<C>::timeout(the_timeout, self.network.append_entries(payload, option)).await;
 
         tracing::debug!("append_entries res: {:?}", res);
 
@@ -332,33 +403,26 @@ where
                 timeout: the_timeout,
             };
             RPCError::Timeout(to)
-        })?;
+        })?; // return Timeout error
+
         let append_resp = append_res?;
 
         tracing::debug!(
-            req = display(&log_id_range),
+            req = display(&sending_range),
             resp = display(&append_resp),
             "append_entries resp"
         );
 
         match append_resp {
             AppendEntriesResponse::Success => {
-                self.send_progress_matching(request_id, leader_time, log_id_range.last_log_id);
-                Ok(None)
+                let matching = sending_range.last_log_id;
+                let next = self.finish_success_append(matching, leader_time, log_ids);
+                Ok(next)
             }
             AppendEntriesResponse::PartialSuccess(matching) => {
-                Self::debug_assert_partial_success(log_id_range, &matching);
-
-                self.send_progress_matching(request_id, leader_time, matching);
-                if matching < log_id_range.last_log_id {
-                    // TODO(9): an RPC has already been made, it should use a newer time
-                    Ok(Some(Data::new_logs(
-                        request_id,
-                        LogIdRange::new(matching, log_id_range.last_log_id),
-                    )))
-                } else {
-                    Ok(None)
-                }
+                Self::debug_assert_partial_success(&sending_range, &matching);
+                let next = self.finish_success_append(matching, leader_time, log_ids);
+                Ok(next)
             }
             AppendEntriesResponse::HigherVote(vote) => {
                 debug_assert!(
@@ -375,7 +439,7 @@ where
                 }))
             }
             AppendEntriesResponse::Conflict => {
-                let conflict = log_id_range.prev_log_id;
+                let conflict = sending_range.prev_log_id;
                 debug_assert!(conflict.is_some(), "prev_log_id=None never conflict");
 
                 let conflict = conflict.unwrap();
@@ -753,6 +817,27 @@ where
 
             // Check raft channel to ensure we are staying up-to-date, then loop.
             self.try_drain_events().await?;
+        }
+    }
+
+    /// Update matching and build a return value for a successful append-entries RPC.
+    ///
+    /// If there are more logs to send, it returns a new `Some(Data::Logs)` to send.
+    fn finish_success_append(
+        &mut self,
+        matching: Option<LogId<C::NodeId>>,
+        leader_time: InstantOf<C>,
+        log_ids: DataWithId<LogIdRange<C::NodeId>>,
+    ) -> Option<Data<C>> {
+        self.send_progress_matching(log_ids.request_id(), leader_time, matching);
+
+        if matching < log_ids.data().last_log_id {
+            Some(Data::new_logs(
+                log_ids.request_id(),
+                LogIdRange::new(matching, log_ids.data().last_log_id),
+            ))
+        } else {
+            None
         }
     }
 
