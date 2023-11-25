@@ -893,13 +893,13 @@ where
 
         store.purge(log_id_0(0, 0)).await?;
 
-        append(&mut store, [blank_ent_0::<C>(2, 10)]).await?;
+        append(&mut store, [blank_ent_0::<C>(2, 11)]).await?;
 
         let l = store.try_get_log_entries(0..).await?.len();
         let last = store.try_get_log_entries(0..).await?.into_iter().last().unwrap();
 
-        assert_eq!(l, 10, "expected 10 entries to exist in the log");
-        assert_eq!(*last.get_log_id(), log_id_0(2, 10), "unexpected log id");
+        assert_eq!(l, 11, "expected 11 entries to exist in the log");
+        assert_eq!(*last.get_log_id(), log_id_0(2, 11), "unexpected log id");
         Ok(())
     }
 
