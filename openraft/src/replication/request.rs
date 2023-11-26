@@ -123,6 +123,7 @@ where C: RaftTypeConfig
     }
 }
 
+#[derive(Clone)]
 pub(crate) struct DataWithId<T> {
     /// The id of this replication request.
     ///
