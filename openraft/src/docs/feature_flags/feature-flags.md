@@ -2,7 +2,7 @@
 
 By default openraft enables no features.
 
-- `bt`: attaches backtrace to generated errors.
+- `bt`: attaches backtrace to generated errors. This feature works ONLY with nightly rust.
 
 - `serde`: derives `serde::Serialize, serde::Deserialize` for type that are used
   in storage and network, such as `Vote` or `AppendEntriesRequest`.
