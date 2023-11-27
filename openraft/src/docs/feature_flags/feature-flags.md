@@ -3,7 +3,7 @@
 By default openraft enables no features.
 
 - `bt`:
-  attaches backtrace to generated errors.
+  attaches backtrace to generated errors. This feature works ONLY with nightly rust.
   <br/><br/>
 
 - `loosen-follower-log-revert`:
