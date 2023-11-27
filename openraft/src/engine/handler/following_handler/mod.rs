@@ -342,23 +342,24 @@ where C: RaftTypeConfig
         }
 
         // Do install:
-        // 1. Truncate all logs if conflict
-        //    Unlike normal append-entries RPC, if conflicting logs are found, it is not
-        // **necessary** to delete them.    But cleaning them make the assumption of
-        // incremental-log-id always hold, which makes it easier to debug.    See: [Snapshot-replication](https://datafuselabs.github.io/openraft/replication.html#snapshot-replication)
+        // 1. Truncate all logs if conflict. Unlike normal append-entries RPC, if conflicting logs are
+        //    found, it is not **necessary** to delete them. But cleaning them make the assumption of
+        //    incremental-log-id always hold, which makes it easier to debug.
+        //
+        //    See: [Snapshot-replication](https://datafuselabs.github.io/openraft/replication.html#snapshot-replication)
         //
         //    Truncate all:
         //
         //    It just truncate **ALL** logs here, because `snap_last_log_id` is committed, if the
-        // local log id conflicts    with `snap_last_log_id`, there must be a quorum that
-        // contains `snap_last_log_id`.    Thus it is safe to remove all logs on this node.
+        //    local log id conflicts with `snap_last_log_id`, there must be a quorum that contains
+        //    `snap_last_log_id`. Thus it is safe to remove all logs on this node.
         //
         //    The logs before `snap_last_log_id` may conflicts with the leader too.
         //    It's not safe to remove the conflicting logs that are less than `snap_last_log_id`
-        // after installing    snapshot.
+        //    after installing snapshot.
         //
-        //    If the node crashes, dirty logs may remain there. These logs may be forwarded to other
-        // nodes if this nodes    becomes a leader.
+        //    If the node crashes, dirty logs may remain there. These logs may be forwarded to
+        //    other nodes if this nodes becomes a leader.
         //
         // 2. Install snapshot.
 

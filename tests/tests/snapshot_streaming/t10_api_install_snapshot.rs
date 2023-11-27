@@ -38,7 +38,7 @@ async fn snapshot_arguments() -> Result<()> {
 
     let n = router.remove_node(0).ok_or_else(|| anyhow::anyhow!("node not found"))?;
     let make_req = || InstallSnapshotRequest {
-        /// force it to be a follower
+        // force it to be a follower
         vote: Vote::new_committed(2, 1),
         meta: SnapshotMeta {
             snapshot_id: "ss1".into(),

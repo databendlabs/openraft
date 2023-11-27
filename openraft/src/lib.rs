@@ -15,7 +15,7 @@
 //!   `RUSTC_BOOTSTRAP=1`.
 //!
 //! - `bt`: Enable backtrace: generate backtrace for errors. This requires unstable feature
-//! `error_generic_member_access` and `provide_any` thus it can not be used with stable rust.
+//!   `error_generic_member_access` thus it can not be used with stable rust.
 //!
 //! - `serde`: Add serde::Serialize and serde:Deserialize bound to data types. If you'd like to use
 //!   `serde` to serialize messages.

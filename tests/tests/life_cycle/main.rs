@@ -1,5 +1,4 @@
 #![cfg_attr(feature = "bt", feature(error_generic_member_access))]
-#![cfg_attr(feature = "bt", feature(provide_any))]
 
 #[macro_use]
 #[path = "../fixtures/mod.rs"]

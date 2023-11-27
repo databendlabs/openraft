@@ -63,9 +63,9 @@ fn test_membership() -> anyhow::Result<()> {
     let m123 = Membership::<u64, ()>::new(vec![btreeset! {1,2,3}], None);
     let m123_345 = Membership::<u64, ()>::new(vec![btreeset! {1,2,3}, btreeset! {3,4,5}], None);
 
-    assert_eq!(Some(btreeset! {1}), m1.get_joint_config().get(0).cloned());
-    assert_eq!(Some(btreeset! {1,2,3}), m123.get_joint_config().get(0).cloned());
-    assert_eq!(Some(btreeset! {1,2,3}), m123_345.get_joint_config().get(0).cloned());
+    assert_eq!(Some(btreeset! {1}), m1.get_joint_config().first().cloned());
+    assert_eq!(Some(btreeset! {1,2,3}), m123.get_joint_config().first().cloned());
+    assert_eq!(Some(btreeset! {1,2,3}), m123_345.get_joint_config().first().cloned());
 
     assert_eq!(None, m1.get_joint_config().get(1).cloned());
     assert_eq!(None, m123.get_joint_config().get(1).cloned());

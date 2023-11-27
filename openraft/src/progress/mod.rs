@@ -370,7 +370,7 @@ mod t {
     #[test]
     fn vec_progress_new() -> anyhow::Result<()> {
         let quorum_set: Vec<u64> = vec![0, 1, 2, 3, 4];
-        let progress = VecProgress::<u64, u64, u64, _>::new(quorum_set, [6, 7].into_iter(), 0);
+        let progress = VecProgress::<u64, u64, u64, _>::new(quorum_set, [6, 7], 0);
 
         assert_eq!(
             vec![
@@ -393,7 +393,7 @@ mod t {
     #[test]
     fn vec_progress_get() -> anyhow::Result<()> {
         let quorum_set: Vec<u64> = vec![0, 1, 2, 3, 4];
-        let mut progress = VecProgress::<u64, u64, u64, _>::new(quorum_set, [6, 7].into_iter(), 0);
+        let mut progress = VecProgress::<u64, u64, u64, _>::new(quorum_set, [6, 7], 0);
 
         let _ = progress.update(&6, 5);
         assert_eq!(&5, progress.get(&6));
@@ -414,7 +414,7 @@ mod t {
     #[test]
     fn vec_progress_iter() -> anyhow::Result<()> {
         let quorum_set: Vec<u64> = vec![0, 1, 2, 3, 4];
-        let mut progress = VecProgress::<u64, u64, u64, _>::new(quorum_set, [6, 7].into_iter(), 0);
+        let mut progress = VecProgress::<u64, u64, u64, _>::new(quorum_set, [6, 7], 0);
 
         let _ = progress.update(&7, 7);
         let _ = progress.update(&3, 3);
@@ -441,10 +441,10 @@ mod t {
     #[test]
     fn vec_progress_move_up() -> anyhow::Result<()> {
         let quorum_set: Vec<u64> = vec![0, 1, 2, 3, 4];
-        let mut progress = VecProgress::<u64, u64, u64, _>::new(quorum_set, [6].into_iter(), 0);
+        let mut progress = VecProgress::<u64, u64, u64, _>::new(quorum_set, [6], 0);
 
         // initial: 0-0, 1-0, 2-0, 3-0, 4-0
-        let cases = vec![
+        let cases = [
             ((1, 2), &[(1, 2), (0, 0), (2, 0), (3, 0), (4, 0), (6, 0)], 0), //
             ((2, 3), &[(2, 3), (1, 2), (0, 0), (3, 0), (4, 0), (6, 0)], 0), //
             ((1, 3), &[(2, 3), (1, 3), (0, 0), (3, 0), (4, 0), (6, 0)], 1), // no move
@@ -473,7 +473,7 @@ mod t {
     #[test]
     fn vec_progress_update() -> anyhow::Result<()> {
         let quorum_set: Vec<u64> = vec![0, 1, 2, 3, 4];
-        let mut progress = VecProgress::<u64, u64, u64, _>::new(quorum_set, [6].into_iter(), 0);
+        let mut progress = VecProgress::<u64, u64, u64, _>::new(quorum_set, [6], 0);
 
         // initial: 0,0,0,0,0
         let cases = vec![
@@ -515,10 +515,10 @@ mod t {
         let pv = |p, user_data| ProgressEntry { progress: p, user_data };
 
         let quorum_set: Vec<u64> = vec![0, 1, 2];
-        let mut progress = VecProgress::<u64, ProgressEntry, u64, _>::new(quorum_set, [3].into_iter(), pv(0, "foo"));
+        let mut progress = VecProgress::<u64, ProgressEntry, u64, _>::new(quorum_set, [3], pv(0, "foo"));
 
         // initial: 0,0,0,0
-        let cases = vec![
+        let cases = [
             (3, pv(9, "a"), Ok(&0)), // 0,0,0,9 // learner won't affect granted
             (1, pv(2, "b"), Ok(&0)), // 0,2,0,9
             (2, pv(3, "c"), Ok(&2)), // 0,2,3,9
@@ -543,7 +543,7 @@ mod t {
     #[test]
     fn vec_progress_update_does_not_move_learner_elt() -> anyhow::Result<()> {
         let quorum_set: Vec<u64> = vec![0, 1, 2, 3, 4];
-        let mut progress = VecProgress::<u64, u64, u64, _>::new(quorum_set, [6].into_iter(), 0);
+        let mut progress = VecProgress::<u64, u64, u64, _>::new(quorum_set, [6], 0);
 
         assert_eq!(Some(5), progress.index(&6));
 
@@ -563,7 +563,7 @@ mod t {
 
         // Initially, committed is 5
 
-        let mut p012 = VecProgress::<u64, u64, u64, _>::new(qs012, [5].into_iter(), 0);
+        let mut p012 = VecProgress::<u64, u64, u64, _>::new(qs012, [5], 0);
 
         let _ = p012.update(&0, 5);
         let _ = p012.update(&1, 6);
@@ -597,7 +597,7 @@ mod t {
     #[test]
     fn vec_progress_is_voter() -> anyhow::Result<()> {
         let quorum_set: Vec<u64> = vec![0, 1, 2, 3, 4];
-        let progress = VecProgress::<u64, u64, u64, _>::new(quorum_set, [6, 7].into_iter(), 0);
+        let progress = VecProgress::<u64, u64, u64, _>::new(quorum_set, [6, 7], 0);
 
         assert_eq!(Some(true), progress.is_voter(&1));
         assert_eq!(Some(true), progress.is_voter(&3));
