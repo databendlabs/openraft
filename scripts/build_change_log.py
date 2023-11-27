@@ -233,7 +233,7 @@ def build_ver_changelog(new_ver, commit="HEAD", since=None):
     If ``since`` is specified, build change log since ``since`` upto ``commit``.
     '''
 
-    fn = 'change-log/v{new_ver}.md'.format(new_ver=new_ver)
+    fn  = version_chaagelog_fn(new_ver)
     if os.path.exists(fn):
         print("--- Version {new_ver} change log exists, skip...".format(new_ver=new_ver))
         print("--- To rebuild it, delete {fn} and re-run".format(fn=fn))
@@ -282,6 +282,88 @@ def build_ver_changelog(new_ver, commit="HEAD", since=None):
 
     with open(fn, 'w') as f:
         f.write(changelog)
+
+
+
+def build_ver_changelog_summary(ver):
+    """
+    Build summary in short list
+    Summary:
+
+    - Added:
+        -   Define custom `Entry` type for raft log.
+        -   Add feature flag storage-v2 to enable `RaftLogStorage` and `RaftStateMachine`.
+
+    Detail:
+    """
+
+    fn = version_chaagelog_fn(ver)
+
+    header = "Summary:"
+    footer = "Detail:"
+
+    with open(fn, 'r') as f:
+        lines = f.readlines()
+
+    lines = [l.rstrip() for l in lines]
+
+    # Remove existent summary
+    footer_indexs = lines.index(footer)
+    if footer_indexs >= 0:
+        # skip `Detail:`, and a following blank line.
+        lines = lines[footer_indexs+2:]
+
+    # Build summary:
+    # - Remove lines that starts with space, which is detail section, a list item
+    #   with indent.
+    # - Remove blank lines
+    source = [l for l in lines if not l.startswith(" ") and l != ""]
+    summary = [header, ""]
+    for l in source:
+        if l.startswith("### "):
+            # Section header, Strip "### "
+            l = "- " + l[4:]
+
+        elif l.startswith('-   '):
+            # Log:
+            #   remove `Fixed:`,
+            l = l.split(sep=None, maxsplit=2)[2]
+
+            # First letter upper case
+            if l[0] >= 'a' and l[0] <= 'z':
+                l = l[0].upper() + l[1:]
+
+            # Remove suffix date
+            l = re.sub('; \d\d\d\d-\d\d-\d\d$', '', l)
+
+            # Remove suffix author
+            l = re.sub('; by [^ ]*$', '.', l)
+
+            #   add indent:
+            l = "    -   " + l
+        else:
+            raise ValueError("unknown line: " + repr(l))
+
+        summary.append(l)
+
+    summary.append("")
+    summary.append(footer)
+    summary.append("")
+
+    with open(fn, 'w') as f:
+        for l in summary:
+            f.write(l + "\n")
+        for l in lines:
+            f.write(l + "\n")
+
+
+def version_chaagelog_fn(ver):
+    _ = semantic_version.Version(ver)
+
+    fn = 'change-log/v{ver}.md'.format(ver=ver)
+
+    return fn
+
 
 def build_changelog():
 
@@ -333,5 +415,6 @@ if __name__ == "__main__":
         since = None
 
     build_ver_changelog(new_ver, since=since)
+    build_ver_changelog_summary(new_ver)
     build_changelog()
 
