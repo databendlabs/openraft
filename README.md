@@ -7,7 +7,7 @@
 
 [![Crates.io](https://img.shields.io/crates/v/openraft.svg)](https://crates.io/crates/openraft)
 [![docs.rs](https://docs.rs/openraft/badge.svg)](https://docs.rs/openraft)
-[![guides](https://img.shields.io/badge/guide-%E2%86%97-brightgreen)](https://datafuselabs.github.io/openraft)
+[![guides](https://img.shields.io/badge/guide-%E2%86%97-brightgreen)](https://docs.rs/openraft/latest/openraft/docs/index.html)
 <br/>
 [![CI](https://github.com/datafuselabs/openraft/actions/workflows/ci.yaml/badge.svg)](https://github.com/datafuselabs/openraft/actions/workflows/ci.yaml)
 ![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue)
@@ -22,10 +22,10 @@ This project intends to improve raft as the next-generation consensus protocol f
 Currently, openraft is the consensus engine of meta-service cluster in [databend](https://github.com/datafuselabs/databend).
 
 
-- **Get started**: [The guide](https://datafuselabs.github.io/openraft) is the best place to get started,
-  followed by [the docs](https://docs.rs/openraft/latest/) for more in-depth details.
+- **Get started**: [The guide](https://docs.rs/openraft/latest/openraft/docs/getting_started/index.html) is the best place to get started,
+  followed by [the docs](https://docs.rs/openraft/latest/openraft/docs/index.html) for more in-depth details.
 
-- [Openraft FAQ](https://datafuselabs.github.io/openraft/faq) explains some common questions.
+- [Openraft FAQ](https://docs.rs/openraft/latest/openraft/docs/faq/index.html) explains some common questions.
 
 - 🙌 Questions? Join the [Discord channel](https://discord.gg/JsaUQyAnkE) or start a [discussion](https://github.com/datafuselabs/openraft/discussions/new).
 
@@ -51,12 +51,13 @@ Currently, openraft is the consensus engine of meta-service cluster in [databend
     - The chaos test is not yet done.
 
 - **Branch [release-0.8](https://github.com/datafuselabs/openraft/tree/release-0.8)**:
-  Latest published: [v0.8.3](https://github.com/datafuselabs/openraft/tree/v0.8.3) | [Change log v0.8.3](https://github.com/datafuselabs/openraft/blob/release-0.8/change-log.md#v083) |
-  ⬆️  [0.7 to 0.8 upgrade guide](https://datafuselabs.github.io/openraft/upgrade-v07-v08) |
+  Latest published: [v0.8.6](https://github.com/datafuselabs/openraft/tree/v0.8.6) | [Change log v0.8.3](https://github.com/datafuselabs/openraft/blob/release-0.8/change-log.md#v086) |
+  ⬆️  [0.7 to 0.8 upgrade guide](https://docs.rs/openraft/0.8.4/openraft/docs/upgrade_guide/upgrade_07_08/index.html) | ⬆️  [0.8.3 to 0.8.4 upgrade guide](https://docs.rs/openraft/0.8.4/openraft/docs/upgrade_guide/upgrade_083_084/index.html) |
+  `release-0.8` **Won't** accept new features but only bug fixes.
 
 - **Branch [release-0.7](https://github.com/datafuselabs/openraft/tree/release-0.7)**:
   Latest published: [v0.7.6](https://github.com/datafuselabs/openraft/tree/v0.7.6) | [Change log v0.7.6](https://github.com/datafuselabs/openraft/blob/release-0.7/change-log.md#v076) |
-  ⬆️  [0.6 to 0.7 upgrade guide](https://datafuselabs.github.io/openraft/upgrade-v06-v07) |
+  ⬆️  [0.6 to 0.7 upgrade guide](https://docs.rs/openraft/0.8.4/openraft/docs/upgrade_guide/upgrade_06_07/index.html) |
   `release-0.7` **Won't** accept new features but only bug fixes.
 
 - **Branch [release-0.6](https://github.com/datafuselabs/openraft/tree/release-0.6)**:
@@ -65,11 +66,11 @@ Currently, openraft is the consensus engine of meta-service cluster in [databend
 
 # Roadmap
 
-- [x] **2022-10-31** [Extended joint membership](https://datafuselabs.github.io/openraft/extended-membership)
+- [x] **2022-10-31** [Extended joint membership](https://docs.rs/openraft/latest/openraft/docs/data/extended_membership/index.html)
 
 - [x] **2023-02-14** Minimize confliction rate when electing;
-  See: [Openraft Vote design](https://datafuselabs.github.io/openraft/vote);
-  Or use standard raft mode with [feature flag `single-term-leader`](https://datafuselabs.github.io/openraft/feature-flags).
+  See: [Openraft Vote design](https://docs.rs/openraft/latest/openraft/docs/data/vote/index.html);
+  Or use standard raft mode with [feature flag `single-term-leader`](https://docs.rs/openraft/latest/openraft/docs/feature_flags/index.html).
 
 - [x] **2023-04-26** Goal performance is 1,000,000 put/sec.
 
@@ -139,10 +140,10 @@ The benchmark is conducted with the following settings:
 
 - It fully supports dynamic cluster membership changes with joint config.
   The buggy single-step membership change algo is not considered.
-  See the [`dynamic membership`](https://datafuselabs.github.io/openraft/dynamic-membership) chapter in the guide.
+  See the [`dynamic membership`](https://docs.rs/openraft/latest/openraft/docs/cluster_control/dynamic_membership/index.html) chapter in the guide.
 
 - Details on initial cluster formation, and how to effectively do so from an application's perspective,
-  are discussed in the [cluster formation](https://datafuselabs.github.io/openraft/cluster-formation) chapter in the guide.
+  are discussed in the [cluster formation](https://docs.rs/openraft/latest/openraft/docs/cluster_control/cluster_formation/index.html) chapter in the guide.
 
 - Automatic log compaction with snapshots, as well as snapshot streaming from the leader node to follower nodes is fully supported and configurable.
 

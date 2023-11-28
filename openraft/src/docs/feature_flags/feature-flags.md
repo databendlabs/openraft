@@ -2,7 +2,23 @@
 
 By default openraft enables no features.
 
-- `bt`: attaches backtrace to generated errors. This feature works ONLY with nightly rust.
+- `bench`: Enables benchmarks in unittest. Benchmark in openraft depends on the unstable feature
+  `test` thus it can not be used with stable rust. In order to run the benchmark with stable
+  toolchain, the unstable features have to be enabled explicitly with environment variable
+  `RUSTC_BOOTSTRAP=1`.
+  <br/><br/>
+
+- `bt`:
+  attaches backtrace to generated errors. This feature works ONLY with nightly rust, because it requires unstable feature `error_generic_member_access`.
+  <br/><br/>
+
+- `loosen-follower-log-revert`:
+  Permit the follower's log to roll back to an earlier state without causing the leader to panic.
+  Although log state reversion is typically seen as a bug, enabling it can be useful for testing or other special scenarios.
+  For instance, in an even number nodes cluster, erasing a node's data and then rebooting it(log reverts to empty) will not result in data loss.
+
+  **Do not use it unless you know what you are doing**.
+  <br/><br/>
 
 - `serde`: derives `serde::Serialize, serde::Deserialize` for type that are used
   in storage and network, such as `Vote` or `AppendEntriesRequest`.

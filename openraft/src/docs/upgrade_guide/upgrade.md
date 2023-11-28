@@ -16,6 +16,12 @@ A commit message starting with these keywords needs attention:
 
 - Fix: bug fix. No modification is required.
 
+## Upgrade from [v0.8.3](https://github.com/datafuselabs/openraft/tree/v0.8.3) to [v0.8.4](https://github.com/datafuselabs/openraft/tree/v0.8.4):
+
+[Change log v0.8.4](https://github.com/datafuselabs/openraft/blob/release-0.8/change-log.md)
+
+[Guide for upgrading v0.8.3 to v0.8.4](`crate::docs::upgrade_guide::upgrade_083_084`)
+
 ## Upgrade from [v0.7](https://github.com/datafuselabs/openraft/tree/v0.7.4) to [v0.8](https://github.com/datafuselabs/openraft/tree/release-0.8):
 
 [Change log v0.8](https://github.com/datafuselabs/openraft/blob/release-0.8/change-log.md)

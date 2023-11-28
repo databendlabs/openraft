@@ -1,4 +1,5 @@
-#![doc = include_str!("../README.md")]
+#![doc = include_str!("lib_readme.md")]
+#![doc = include_str!("docs/docs.md")]
 #![cfg_attr(feature = "bt", feature(error_generic_member_access))]
 #![cfg_attr(feature = "bench", feature(test))]
 // TODO: `clippy::result-large-err`: StorageError is 136 bytes, try to reduce the size.
@@ -6,19 +7,6 @@
 #![deny(unused_qualifications)]
 // TODO: Enable this when doc is complete
 // #![warn(missing_docs)]
-
-//! # Feature flags
-//!
-//! - `bench`: Enables benchmarks in unittest. Benchmark in openraft depends on the unstable feature
-//!   `test` thus it can not be used with stable rust. In order to run the benchmark with stable
-//!   toolchain, the unstable features have to be enabled explicitly with environment variable
-//!   `RUSTC_BOOTSTRAP=1`.
-//!
-//! - `bt`: Enable backtrace: generate backtrace for errors. This requires unstable feature
-//!   `error_generic_member_access` thus it can not be used with stable rust.
-//!
-//! - `serde`: Add serde::Serialize and serde:Deserialize bound to data types. If you'd like to use
-//!   `serde` to serialize messages.
 
 macro_rules! func_name {
     () => {{
