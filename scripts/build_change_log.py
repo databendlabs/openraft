@@ -308,8 +308,11 @@ def build_ver_changelog_summary(ver):
     lines = [l.rstrip() for l in lines]
 
     # Remove existent summary
-    footer_indexs = lines.index(footer)
-    if footer_indexs >= 0:
+    try:
+        footer_indexs = lines.index(footer)
+    except ValueError as e:
+        print("No footer found")
+    else:
         # skip `Detail:`, and a following blank line.
         lines = lines[footer_indexs+2:]
 
