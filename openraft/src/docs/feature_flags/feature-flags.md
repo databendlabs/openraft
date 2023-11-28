@@ -2,8 +2,14 @@
 
 By default openraft enables no features.
 
+- `bench`: Enables benchmarks in unittest. Benchmark in openraft depends on the unstable feature
+  `test` thus it can not be used with stable rust. In order to run the benchmark with stable
+  toolchain, the unstable features have to be enabled explicitly with environment variable
+  `RUSTC_BOOTSTRAP=1`.
+  <br/><br/>
+
 - `bt`:
-  attaches backtrace to generated errors. This feature works ONLY with nightly rust.
+  attaches backtrace to generated errors. This feature works ONLY with nightly rust, because it requires unstable feature `error_generic_member_access`.
   <br/><br/>
 
 - `loosen-follower-log-revert`:
