@@ -246,11 +246,11 @@ def build_ver_changelog(new_ver, commit="HEAD", since=None):
         new_ver = new_ver.lstrip('v')
         new_ver = semantic_version.Version(new_ver)
         tags = [t for t in tags if t < new_ver]
-        latest = tags[-1]
+        latest = 'v' + str(tags[-1])
     else:
         latest = since
 
-    chs = changes('v' + str(latest), commit)
+    chs = changes(latest, commit)
     chs = norm_changes(chs)
 
     lines = []
@@ -409,6 +409,8 @@ def load_cargo_version():
 if __name__ == "__main__":
     # Usage: to build change log from git log for the current version.
     # ./scripts/build_change_log.py
+    # ./scripts/build_change_log.py v0.8.3
+    # ./scripts/build_change_log.py 12345abc
 
     new_ver = load_cargo_version()
 
