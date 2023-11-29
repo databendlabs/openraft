@@ -340,7 +340,10 @@ def build_ver_changelog_summary(ver):
             l = re.sub('; \d\d\d\d-\d\d-\d\d$', '', l)
 
             # Remove suffix author
-            l = re.sub('; by [^ ]*$', '.', l)
+            l = re.sub('; by .*?$', '.', l)
+
+            # Remove redundent "."
+            l = re.sub('[.][.]$', '.', l)
 
             #   add indent:
             l = "    -   " + l
