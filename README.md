@@ -8,6 +8,7 @@
 [![Crates.io](https://img.shields.io/crates/v/openraft.svg)](https://crates.io/crates/openraft)
 [![docs.rs](https://docs.rs/openraft/badge.svg)](https://docs.rs/openraft)
 [![guides](https://img.shields.io/badge/guide-%E2%86%97-brightgreen)](https://docs.rs/openraft/latest/openraft/docs/index.html)
+[![Discord Chat](https://img.shields.io/discord/1015845055434588200?logo=discord)](https://discord.gg/ZKw3WG7FQ9)
 <br/>
 [![CI](https://github.com/datafuselabs/openraft/actions/workflows/ci.yaml/badge.svg)](https://github.com/datafuselabs/openraft/actions/workflows/ci.yaml)
 ![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue)
