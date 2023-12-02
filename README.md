@@ -164,7 +164,7 @@ The benchmark is conducted with the following settings:
 
 # Contributing
 
-Check out the [CONTRIBUTING.md](https://github.com/datafuselabs/openraft/blob/master/CONTRIBUTING.md) guide for more details on getting started with contributing to this project.
+Check out the [CONTRIBUTING.md](https://github.com/datafuselabs/openraft/blob/main/CONTRIBUTING.md) guide for more details on getting started with contributing to this project.
 
 # License
 
