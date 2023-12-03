@@ -1,5 +1,6 @@
+use validit::Validate;
+
 use crate::engine::LogIdList;
-use crate::validate::Validate;
 use crate::CommittedLeaderId;
 use crate::LogId;
 use crate::RaftState;

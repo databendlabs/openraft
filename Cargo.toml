@@ -38,6 +38,7 @@ tracing = { version = "0.1.29" }
 tracing-appender = "0.2.0"
 tracing-futures = "0.2.4"
 tracing-subscriber = { version = "0.3.3",  features=["env-filter"] }
+validit = { version = "0.2.2" }
 
 [workspace]
 

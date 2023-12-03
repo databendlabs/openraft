@@ -23,7 +23,7 @@ fn m12() -> Membership<u64, ()> {
 
 fn eng() -> Engine<UTConfig> {
     let mut eng = Engine::default();
-    eng.state.enable_validate = false; // Disable validation for incomplete state
+    eng.state.enable_validation(false); // Disable validation for incomplete state
     eng.state.membership_state = MembershipState::new(
         EffectiveMembership::new_arc(Some(log_id(1, 0, 1)), m12()),
         EffectiveMembership::new_arc(Some(log_id(1, 0, 1)), m12()),

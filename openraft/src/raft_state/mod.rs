@@ -1,15 +1,14 @@
 use std::error::Error;
 use std::ops::Deref;
 
+use validit::Validate;
+
 use crate::engine::LogIdList;
 use crate::entry::RaftEntry;
-use crate::equal;
 use crate::error::ForwardToLeader;
-use crate::less_equal;
 use crate::log_id::RaftLogId;
 use crate::node::Node;
 use crate::utime::UTime;
-use crate::validate::Validate;
 use crate::Instant;
 use crate::LogId;
 use crate::LogIdOptionExt;
@@ -181,22 +180,22 @@ where
 {
     fn validate(&self) -> Result<(), Box<dyn Error>> {
         if self.purged_next == 0 {
-            less_equal!(self.log_ids.first().index(), Some(0));
+            validit::less_equal!(self.log_ids.first().index(), Some(0));
         } else {
-            equal!(self.purged_next, self.log_ids.first().next_index());
+            validit::equal!(self.purged_next, self.log_ids.first().next_index());
         }
 
-        less_equal!(self.last_purged_log_id(), self.purge_upto());
+        validit::less_equal!(self.last_purged_log_id(), self.purge_upto());
         if self.snapshot_last_log_id().is_none() {
             // There is no snapshot, it is possible the application does not store snapshot, and
             // just restarted. it is just ok.
             // In such a case, we assert the monotonic relation without  snapshot-last-log-id
-            less_equal!(self.purge_upto(), self.committed());
+            validit::less_equal!(self.purge_upto(), self.committed());
         } else {
-            less_equal!(self.purge_upto(), self.snapshot_last_log_id());
+            validit::less_equal!(self.purge_upto(), self.snapshot_last_log_id());
         }
-        less_equal!(self.snapshot_last_log_id(), self.committed());
-        less_equal!(self.committed(), self.last_log_id());
+        validit::less_equal!(self.snapshot_last_log_id(), self.committed());
+        validit::less_equal!(self.committed(), self.last_log_id());
 
         self.membership_state.validate()?;
 

@@ -55,7 +55,6 @@ pub mod type_config;
 pub(crate) mod engine;
 pub(crate) mod log_id_range;
 pub(crate) mod utime;
-pub(crate) mod validate;
 
 mod display_ext;
 

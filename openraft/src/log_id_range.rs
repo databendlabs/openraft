@@ -2,8 +2,8 @@ use std::error::Error;
 use std::fmt::Display;
 use std::fmt::Formatter;
 
-use crate::less_equal;
-use crate::validate::Validate;
+use validit::Validate;
+
 use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::MessageSummary;
@@ -32,7 +32,7 @@ impl<NID: NodeId> Display for LogIdRange<NID> {
 
 impl<NID: NodeId> Validate for LogIdRange<NID> {
     fn validate(&self) -> Result<(), Box<dyn Error>> {
-        less_equal!(self.prev_log_id, self.last_log_id);
+        validit::less_equal!(self.prev_log_id, self.last_log_id);
         Ok(())
     }
 }
@@ -53,8 +53,9 @@ impl<NID: NodeId> LogIdRange<NID> {
 
 #[cfg(test)]
 mod tests {
+    use validit::Valid;
+
     use crate::log_id_range::LogIdRange;
-    use crate::validate::Valid;
     use crate::CommittedLeaderId;
     use crate::LogId;
 

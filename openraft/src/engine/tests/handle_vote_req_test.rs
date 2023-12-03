@@ -23,7 +23,7 @@ fn m01() -> Membership<u64, ()> {
 
 fn eng() -> Engine<UTConfig> {
     let mut eng = Engine::default();
-    eng.state.enable_validate = false; // Disable validation for incomplete state
+    eng.state.enable_validation(false); // Disable validation for incomplete state
 
     eng.config.id = 1;
     // By default expire the leader lease so that the vote can be overridden in these tests.

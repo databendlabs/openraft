@@ -27,7 +27,7 @@ fn m1234() -> Membership<u64, ()> {
 
 fn eng() -> Engine<UTConfig> {
     let mut eng = Engine::default();
-    eng.state.enable_validate = false; // Disable validation for incomplete state
+    eng.state.enable_validation(false); // Disable validation for incomplete state
 
     eng.state.vote.update(TokioInstant::now(), Vote::new_committed(2, 1));
     eng.state.committed = Some(log_id(4, 1, 5));
@@ -170,7 +170,7 @@ fn test_install_snapshot_conflict() -> anyhow::Result<()> {
     // And there should be no conflicting logs left.
     let mut eng = {
         let mut eng = Engine::<UTConfig>::default();
-        eng.state.enable_validate = false; // Disable validation for incomplete state
+        eng.state.enable_validation(false); // Disable validation for incomplete state
 
         eng.state.vote.update(TokioInstant::now(), Vote::new_committed(2, 1));
         eng.state.committed = Some(log_id(2, 1, 3));

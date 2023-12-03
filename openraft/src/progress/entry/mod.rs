@@ -3,17 +3,14 @@ use std::error::Error;
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::fmt::Formatter;
-use std::ops::Deref;
+
+use validit::Validate;
 
 use crate::display_ext::DisplayOptionExt;
-use crate::less;
-use crate::less_equal;
 use crate::progress::inflight::Inflight;
 use crate::progress::inflight::InflightError;
 use crate::raft_state::LogStateReader;
 use crate::summary::MessageSummary;
-use crate::validate::Valid;
-use crate::validate::Validate;
 use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::NodeId;
@@ -231,12 +228,6 @@ impl<NID: NodeId> Borrow<Option<LogId<NID>>> for ProgressEntry<NID> {
     }
 }
 
-impl<NID: NodeId> Borrow<Option<LogId<NID>>> for Valid<ProgressEntry<NID>> {
-    fn borrow(&self) -> &Option<LogId<NID>> {
-        self.deref().borrow()
-    }
-}
-
 impl<NID: NodeId> Display for ProgressEntry<NID> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(
@@ -251,7 +242,7 @@ impl<NID: NodeId> Display for ProgressEntry<NID> {
 
 impl<NID: NodeId> Validate for ProgressEntry<NID> {
     fn validate(&self) -> Result<(), Box<dyn Error>> {
-        less_equal!(self.matching.next_index(), self.searching_end);
+        validit::less_equal!(self.matching.next_index(), self.searching_end);
 
         self.inflight.validate()?;
 
@@ -260,12 +251,12 @@ impl<NID: NodeId> Validate for ProgressEntry<NID> {
             Inflight::Logs { log_id_range, .. } => {
                 // matching <= prev_log_id              <= last_log_id
                 //             prev_log_id.next_index() <= searching_end
-                less_equal!(self.matching, log_id_range.prev_log_id);
-                less_equal!(log_id_range.prev_log_id.next_index(), self.searching_end);
+                validit::less_equal!(self.matching, log_id_range.prev_log_id);
+                validit::less_equal!(log_id_range.prev_log_id.next_index(), self.searching_end);
             }
             Inflight::Snapshot { last_log_id, .. } => {
                 // There is no need to send a snapshot smaller than last matching.
-                less!(self.matching, last_log_id);
+                validit::less!(self.matching, last_log_id);
             }
         }
         Ok(())

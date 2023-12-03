@@ -4,8 +4,9 @@ use std::error::Error;
 use std::fmt::Display;
 use std::fmt::Formatter;
 
+use validit::Validate;
+
 use crate::log_id_range::LogIdRange;
-use crate::validate::Validate;
 use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::MessageSummary;
