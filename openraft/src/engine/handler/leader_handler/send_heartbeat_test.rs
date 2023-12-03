@@ -28,7 +28,7 @@ fn m23() -> Membership<u64, ()> {
 
 fn eng() -> Engine<UTConfig> {
     let mut eng = Engine::default();
-    eng.state.enable_validate = false; // Disable validation for incomplete state
+    eng.state.enable_validation(false); // Disable validation for incomplete state
 
     eng.config.id = 1;
     eng.state.committed = Some(log_id(0, 1, 0));

@@ -22,7 +22,7 @@ fn m01() -> Membership<u64, ()> {
 
 fn eng() -> Engine<UTConfig> {
     let mut eng = Engine::default();
-    eng.state.enable_validate = false; // Disable validation for incomplete state
+    eng.state.enable_validation(false); // Disable validation for incomplete state
 
     eng.config.id = 0;
     eng.state.vote = UTime::new(TokioInstant::now(), Vote::new(2, 1));

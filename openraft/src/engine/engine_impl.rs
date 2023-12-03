@@ -1,5 +1,7 @@
 use std::time::Duration;
 
+use validit::Valid;
+
 use crate::core::raft_msg::AppendEntriesTx;
 use crate::core::raft_msg::InstallSnapshotTx;
 use crate::core::raft_msg::ResultSender;
@@ -36,7 +38,6 @@ use crate::raft::VoteResponse;
 use crate::raft_state::LogStateReader;
 use crate::raft_state::RaftState;
 use crate::summary::MessageSummary;
-use crate::validate::Valid;
 use crate::AsyncRuntime;
 use crate::Instant;
 use crate::LogId;

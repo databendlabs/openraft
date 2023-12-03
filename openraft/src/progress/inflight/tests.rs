@@ -1,6 +1,7 @@
+use validit::Validate;
+
 use crate::log_id_range::LogIdRange;
 use crate::progress::Inflight;
-use crate::validate::Validate;
 use crate::CommittedLeaderId;
 use crate::LogId;
 

@@ -18,7 +18,7 @@ fn m1234() -> Membership<u64, ()> {
 
 fn eng() -> Engine<UTConfig> {
     let mut eng = Engine::default();
-    eng.state.enable_validate = false; // Disable validation for incomplete state
+    eng.state.enable_validation(false); // Disable validation for incomplete state
 
     eng.state.snapshot_meta = SnapshotMeta {
         last_log_id: Some(log_id(2, 1, 2)),

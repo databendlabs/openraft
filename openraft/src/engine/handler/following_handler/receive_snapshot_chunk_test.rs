@@ -23,7 +23,7 @@ fn m1234() -> Membership<u64, ()> {
 
 fn eng() -> Engine<UTConfig> {
     let mut eng = Engine::default();
-    eng.state.enable_validate = false; // Disable validation for incomplete state
+    eng.state.enable_validation(false); // Disable validation for incomplete state
 
     eng.state.vote.update(TokioInstant::now(), Vote::new_committed(2, 1));
     eng.state.server_state = eng.calc_server_state();

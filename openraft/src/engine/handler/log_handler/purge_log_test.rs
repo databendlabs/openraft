@@ -7,7 +7,7 @@ use crate::testing::log_id;
 
 fn eng() -> Engine<UTConfig> {
     let mut eng = Engine::default();
-    eng.state.enable_validate = false; // Disable validation for incomplete state
+    eng.state.enable_validation(false); // Disable validation for incomplete state
 
     eng.state.log_ids = LogIdList::new(vec![log_id(2, 1, 2), log_id(4, 1, 4), log_id(4, 1, 6)]);
     eng.state.purged_next = 3;

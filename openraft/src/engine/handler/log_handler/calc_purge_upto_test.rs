@@ -13,7 +13,7 @@ fn log_id(term: u64, index: u64) -> LogId<u64> {
 
 fn eng() -> Engine<UTConfig> {
     let mut eng = Engine::default();
-    eng.state.enable_validate = false; // Disable validation for incomplete state
+    eng.state.enable_validation(false); // Disable validation for incomplete state
 
     eng.state.log_ids = LogIdList::new(vec![
         //
