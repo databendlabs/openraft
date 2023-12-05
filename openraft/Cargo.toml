@@ -22,7 +22,6 @@ derive_more     = { workspace = true }
 futures         = { workspace = true }
 macros          = { path = "../macros" }
 maplit          = { workspace = true }
-pin-utils       = { workspace = true }
 rand            = { workspace = true }
 serde           = { workspace = true, optional = true }
 serde_json      = { workspace = true, optional = true }
