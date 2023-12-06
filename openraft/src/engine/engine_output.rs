@@ -50,7 +50,7 @@ where C: RaftTypeConfig
             Command::AppendEntry { .. } => {}
             Command::AppendInputEntries { .. } => {}
             Command::ReplicateCommitted { .. } => {}
-            Command::Apply { .. } => {}
+            Command::Commit { .. } => {}
             Command::Replicate { .. } => {}
             Command::RebuildReplicationStreams { .. } => {}
             Command::SaveVote { .. } => {}

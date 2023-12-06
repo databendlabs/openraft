@@ -68,7 +68,7 @@ fn test_following_handler_commit_entries_ge_accepted() -> anyhow::Result<()> {
         eng.state.membership_state
     );
     assert_eq!(
-        vec![Command::Apply {
+        vec![Command::Commit {
             seq: 1,
             already_committed: Some(log_id(1, 1, 1)),
             upto: log_id(1, 1, 2),
@@ -98,7 +98,7 @@ fn test_following_handler_commit_entries_le_accepted() -> anyhow::Result<()> {
     assert_eq!(
         vec![
             //
-            Command::Apply {
+            Command::Commit {
                 seq: 1,
                 already_committed: Some(log_id(1, 1, 1)),
                 upto: log_id(2, 1, 3)

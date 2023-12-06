@@ -84,6 +84,9 @@ where C: RaftTypeConfig
     ///
     /// If the state machine flushes state to disk before
     /// returning from `apply()`, then the application does not need to implement this method.
+    /// Otherwise, this method is also optional(but not recommended), but your application has to
+    /// deal with state reversion of state machine carefully upon restart. E.g., do not serve
+    /// read operation a new `commit` message is received.
     ///
     /// See: [`docs::data::log_pointers`].
     ///
