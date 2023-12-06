@@ -18,7 +18,6 @@ use openraft::Membership;
 use openraft::ServerState;
 use openraft::StoredMembership;
 use openraft::Vote;
-use tokio::sync::oneshot;
 
 use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
@@ -146,9 +145,8 @@ async fn initialization() -> anyhow::Result<()> {
     let mut found_leader = false;
     let mut follower_count = 0;
     for node in [0, 1, 2] {
-        let (tx, rx) = oneshot::channel();
-        router.external_request(node, |s| tx.send(s.server_state).unwrap());
-        match rx.await.unwrap() {
+        let server_state = router.access_raft_state(node, |s| s.server_state).await?;
+        match server_state {
             ServerState::Leader => {
                 assert!(!found_leader);
                 found_leader = true;

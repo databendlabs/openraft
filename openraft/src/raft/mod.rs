@@ -666,6 +666,47 @@ where C: RaftTypeConfig
         }
     }
 
+    /// Provides read-only access to [`RaftState`] through a user-provided function.
+    ///
+    /// The function `func` is applied to the current [`RaftState`]. The result of this function,
+    /// of type `V`, is returned wrapped in `Result<V, Fatal<C::NodeId>>`. `Fatal` error will be
+    /// returned if failed to receive a reply from `RaftCore`.
+    ///
+    /// A `Fatal` error is returned if:
+    /// - Raft core task is stopped normally.
+    /// - Raft core task is panicked due to programming error.
+    /// - Raft core task is encountered a storage error.
+    ///
+    /// Example for getting the current committed log id:
+    /// ```ignore
+    /// let committed = my_raft.access_raft_state(|st| st.committed).await?;
+    /// ```
+    pub async fn access_raft_state<F, V>(&self, func: F) -> Result<V, Fatal<C::NodeId>>
+    where
+        F: FnOnce(&RaftState<C::NodeId, C::Node, <C::AsyncRuntime as AsyncRuntime>::Instant>) -> V + Send + 'static,
+        V: Send + 'static,
+    {
+        let (tx, rx) = oneshot::channel();
+
+        self.external_request(|st| {
+            let result = func(st);
+            if let Err(_err) = tx.send(result) {
+                tracing::error!("{}: to-Raft tx send error", func_name!());
+            }
+        });
+
+        match rx.await {
+            Ok(res) => Ok(res),
+            Err(err) => {
+                tracing::error!(error = display(&err), "{}: rx recv error", func_name!());
+
+                let when = format!("{}: rx recv", func_name!());
+                let fatal = self.inner.get_core_stopped_error(when, None::<u64>).await;
+                Err(fatal)
+            }
+        }
+    }
+
     /// Send a request to the Raft core loop in a fire-and-forget manner.
     ///
     /// The request functor will be called with a mutable reference to both the state machine
