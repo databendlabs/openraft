@@ -100,7 +100,7 @@ fn test_update_matching() -> anyhow::Result<()> {
                 Command::ReplicateCommitted {
                     committed: Some(log_id(2, 1, 1))
                 },
-                Command::Apply {
+                Command::Commit {
                     seq: 1,
                     already_committed: None,
                     upto: log_id(2, 1, 1)
@@ -120,7 +120,7 @@ fn test_update_matching() -> anyhow::Result<()> {
                 Command::ReplicateCommitted {
                     committed: Some(log_id(2, 1, 3))
                 },
-                Command::Apply {
+                Command::Commit {
                     seq: 2,
                     already_committed: Some(log_id(2, 1, 1)),
                     upto: log_id(2, 1, 3)

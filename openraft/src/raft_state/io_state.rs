@@ -39,6 +39,7 @@ pub(crate) struct IOState<NID: NodeId> {
     pub(crate) vote: Vote<NID>,
 
     /// The last log id that has been flushed to storage.
+    // TODO: this wont be used until we move log io into separate task.
     pub(crate) flushed: LogIOId<NID>,
 
     /// The last log id that has been applied to state machine.

@@ -79,7 +79,7 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
                         index: 1,
                     },),
                 },
-                Command::Apply {
+                Command::Commit {
                     seq: 1,
                     already_committed: None,
                     upto: LogId {

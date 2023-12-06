@@ -161,7 +161,7 @@ where C: RaftTypeConfig
 
         if let Some(prev_committed) = self.state.update_committed(&committed) {
             let seq = self.output.next_sm_seq();
-            self.output.push_command(Command::Apply {
+            self.output.push_command(Command::Commit {
                 seq,
                 // TODO(xp): when restart, commit is reset to None. Use last_applied instead.
                 already_committed: prev_committed,

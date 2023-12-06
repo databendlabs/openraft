@@ -73,7 +73,7 @@ fn test_elect() -> anyhow::Result<()> {
                         index: 1,
                     },),
                 },
-                Command::Apply {
+                Command::Commit {
                     seq: 1,
                     already_committed: None,
                     upto: LogId {
@@ -126,7 +126,7 @@ fn test_elect() -> anyhow::Result<()> {
                         index: 1,
                     },),
                 },
-                Command::Apply {
+                Command::Commit {
                     seq: 1,
                     already_committed: None,
                     upto: LogId {

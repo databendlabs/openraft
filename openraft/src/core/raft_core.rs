@@ -1589,7 +1589,7 @@ where
                     unreachable!("it has to be a leader!!!");
                 }
             }
-            Command::Apply {
+            Command::Commit {
                 seq,
                 ref already_committed,
                 ref upto,

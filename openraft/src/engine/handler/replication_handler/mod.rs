@@ -246,7 +246,7 @@ where C: RaftTypeConfig
             });
 
             let seq = self.output.next_sm_seq();
-            self.output.push_command(Command::Apply {
+            self.output.push_command(Command::Commit {
                 seq,
                 already_committed: prev_committed,
                 upto: self.state.committed().copied().unwrap(),
