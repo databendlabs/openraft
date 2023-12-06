@@ -23,6 +23,7 @@ use maplit::btreeset;
 use openraft::async_trait::async_trait;
 use openraft::error::CheckIsLeaderError;
 use openraft::error::ClientWriteError;
+use openraft::error::Fatal;
 use openraft::error::Infallible;
 use openraft::error::InstallSnapshotError;
 use openraft::error::NetworkError;
@@ -764,16 +765,23 @@ impl TypedRaftRouter {
     }
 
     /// Send external request to the particular node.
+    pub async fn with_raft_state<V, F>(&self, target: MemNodeId, func: F) -> Result<V, Fatal<MemNodeId>>
+    where
+        F: FnOnce(&RaftState<MemNodeId, (), TokioInstant>) -> V + Send + 'static,
+        V: Send + 'static,
+    {
+        let r = self.get_raft_handle(&target).unwrap();
+        r.with_raft_state(func).await
+    }
+
+    /// Send external request to the particular node.
     pub fn external_request<F: FnOnce(&RaftState<MemNodeId, (), TokioInstant>) + Send + 'static>(
         &self,
         target: MemNodeId,
         req: F,
     ) {
-        let rt = self.nodes.lock().unwrap();
-        rt.get(&target)
-            .unwrap_or_else(|| panic!("node '{}' does not exist in routing table", target))
-            .0
-            .external_request(req)
+        let r = self.get_raft_handle(&target).unwrap();
+        r.external_request(req)
     }
 
     /// Request the current leader from the target node.

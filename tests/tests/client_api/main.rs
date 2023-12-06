@@ -11,4 +11,5 @@ mod t10_client_writes;
 mod t11_client_reads;
 mod t12_trigger_purge_log;
 mod t13_trigger_snapshot;
+mod t16_with_raft_state;
 mod t50_lagging_network_write;
