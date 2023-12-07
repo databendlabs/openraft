@@ -43,7 +43,7 @@ async fn t99_issue_584_replication_state_reverted() -> Result<()> {
     );
     {
         let leader = router.get_raft_handle(&0)?;
-        leader.change_membership(btreeset![0, 1], false).await?;
+        leader.change_membership([0, 1], false).await?;
         log_index += 2; // 2 change_membership log
 
         let _ = log_index;
