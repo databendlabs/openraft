@@ -71,7 +71,7 @@ async fn snapshot_delete_conflicting_logs() -> Result<()> {
         router.new_raft_node_with_sto(0, sto0, sm0).await;
 
         router.wait(&0, timeout()).state(ServerState::Leader, "init node-0 server-state").await?;
-        router.wait(&0, timeout()).log(Some(log_index), "init node-0 log").await?;
+        router.wait(&0, timeout()).applied_index(Some(log_index), "init node-0 log").await?;
     }
 
     tracing::info!(log_index, "--- send just enough logs to trigger snapshot");
@@ -79,7 +79,7 @@ async fn snapshot_delete_conflicting_logs() -> Result<()> {
         router.client_request_many(0, "0", (snapshot_threshold - 1 - log_index) as usize).await?;
         log_index = snapshot_threshold - 1;
 
-        router.wait(&0, timeout()).log(Some(log_index), "trigger snapshot").await?;
+        router.wait(&0, timeout()).applied_index(Some(log_index), "trigger snapshot").await?;
         router
             .wait(&0, timeout())
             .snapshot(LogId::new(CommittedLeaderId::new(5, 0), log_index), "build snapshot")

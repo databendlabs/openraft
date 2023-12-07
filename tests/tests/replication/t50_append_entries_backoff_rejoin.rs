@@ -52,7 +52,9 @@ async fn append_entries_backoff_rejoin() -> Result<()> {
     tracing::info!(log_index, "--- write {} entries to node-1", n);
     {
         log_index += router.client_request_many(1, "1", n as usize).await?;
-        n1.wait(timeout()).log_at_least(Some(log_index), format!("node-1 commit {} writes", n)).await?;
+        n1.wait(timeout())
+            .applied_index_at_least(Some(log_index), format!("node-1 commit {} writes", n))
+            .await?;
     }
 
     tracing::info!(log_index, "--- restart node-0, check replication");
@@ -62,7 +64,7 @@ async fn append_entries_backoff_rejoin() -> Result<()> {
 
         router
             .wait(&0, timeout())
-            .log_at_least(Some(log_index), format!("node-0 commit {} writes", n))
+            .applied_index_at_least(Some(log_index), format!("node-0 commit {} writes", n))
             .await?;
     }
 

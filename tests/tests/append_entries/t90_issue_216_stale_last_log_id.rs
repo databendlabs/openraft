@@ -57,10 +57,10 @@ async fn stale_last_log_id() -> Result<()> {
         log_index += n_ops as u64;
     }
 
-    router.wait(&1, Some(Duration::from_millis(1000))).log(Some(log_index), "").await?;
-    router.wait(&2, Some(Duration::from_millis(1000))).log(Some(log_index), "").await?;
-    router.wait(&3, Some(Duration::from_millis(1000))).log(Some(log_index), "").await?;
-    router.wait(&4, Some(Duration::from_millis(1000))).log(Some(log_index), "").await?;
+    router.wait(&1, Some(Duration::from_millis(1000))).applied_index(Some(log_index), "").await?;
+    router.wait(&2, Some(Duration::from_millis(1000))).applied_index(Some(log_index), "").await?;
+    router.wait(&3, Some(Duration::from_millis(1000))).applied_index(Some(log_index), "").await?;
+    router.wait(&4, Some(Duration::from_millis(1000))).applied_index(Some(log_index), "").await?;
 
     Ok(())
 }

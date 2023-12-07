@@ -81,7 +81,7 @@ async fn initialization() -> anyhow::Result<()> {
         log_index += 1;
 
         for node_id in [0, 1, 2] {
-            router.wait(&node_id, timeout()).log(Some(log_index), "init").await?;
+            router.wait(&node_id, timeout()).applied_index(Some(log_index), "init").await?;
         }
     }
 

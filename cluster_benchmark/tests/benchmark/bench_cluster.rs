@@ -122,7 +122,7 @@ async fn do_bench(bench_config: &BenchConfig) -> anyhow::Result<()> {
         handles.push(h)
     }
 
-    leader.wait(timeout()).log_at_least(Some(total), "commit all written logs").await?;
+    leader.wait(timeout()).applied_index_at_least(Some(total), "commit all written logs").await?;
 
     let elapsed = now.elapsed();
 

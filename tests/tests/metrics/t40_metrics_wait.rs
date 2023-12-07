@@ -43,7 +43,7 @@ async fn metrics_wait() -> Result<()> {
 
     tracing::info!("--- wait and timeout");
 
-    let rst = router.wait(&0, timeout()).log(Some(2), "timeout waiting for log 2").await;
+    let rst = router.wait(&0, timeout()).applied_index(Some(2), "timeout waiting for log 2").await;
 
     match rst {
         Ok(_) => {

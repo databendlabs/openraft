@@ -34,7 +34,10 @@ async fn trigger_purge_log() -> anyhow::Result<()> {
         log_index += router.client_request_many(0, "0", 10).await?;
 
         for id in [0, 1, 2] {
-            router.wait(&id, timeout()).log(Some(log_index), format_args!("node-{} write logs", id)).await?;
+            router
+                .wait(&id, timeout())
+                .applied_index(Some(log_index), format_args!("node-{} write logs", id))
+                .await?;
         }
     }
 
@@ -53,7 +56,10 @@ async fn trigger_purge_log() -> anyhow::Result<()> {
         log_index += router.client_request_many(0, "0", 10).await?;
 
         for id in [0, 1, 2] {
-            router.wait(&id, timeout()).log(Some(log_index), format_args!("node-{} write logs", id)).await?;
+            router
+                .wait(&id, timeout())
+                .applied_index(Some(log_index), format_args!("node-{} write logs", id))
+                .await?;
         }
     }
 

@@ -39,14 +39,14 @@ async fn append_entries_partial_success() -> Result<()> {
         });
         log_index += quota;
 
-        router.wait(&0, timeout()).log(Some(log_index), format!("{} writes", quota)).await?;
+        router.wait(&0, timeout()).applied_index(Some(log_index), format!("{} writes", quota)).await?;
 
         log_index += 1;
         tracing::info!(log_index, "--- can not send log at index {}", log_index,);
 
         let res = router
             .wait(&0, timeout())
-            .log(Some(log_index), format!("log index {} is limited by quota", log_index))
+            .applied_index(Some(log_index), format!("log index {} is limited by quota", log_index))
             .await;
 
         assert!(res.is_err(), "log index {} is limited by quota", log_index);
@@ -57,7 +57,7 @@ async fn append_entries_partial_success() -> Result<()> {
         router.set_append_entries_quota(Some(1));
         router
             .wait(&0, timeout())
-            .log(Some(log_index), format!("log index {} can be replicated", log_index))
+            .applied_index(Some(log_index), format!("log index {} can be replicated", log_index))
             .await?;
     }
 

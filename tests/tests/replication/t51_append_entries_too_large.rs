@@ -37,7 +37,7 @@ async fn append_entries_too_large() -> Result<()> {
     tracing::info!(log_index, "--- write {} entries to leader", n);
     {
         log_index += router.client_request_many(0, "0", n as usize).await?;
-        router.wait(&0, timeout()).log(Some(log_index), format!("{} writes", n)).await?;
+        router.wait(&0, timeout()).applied_index(Some(log_index), format!("{} writes", n)).await?;
     }
 
     let count = Arc::new(AtomicU64::new(0));
@@ -69,7 +69,7 @@ async fn append_entries_too_large() -> Result<()> {
         router.add_learner(0, 1).await?;
         log_index += 1;
 
-        router.wait(&1, timeout()).log(Some(log_index), "1 node added").await?;
+        router.wait(&1, timeout()).applied_index(Some(log_index), "1 node added").await?;
     }
 
     assert_eq!(

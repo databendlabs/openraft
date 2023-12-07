@@ -64,7 +64,7 @@ async fn purge_in_snapshot_logs() -> Result<()> {
         router.set_network_error(1, true);
 
         log_index += router.client_request_many(0, "0", 5).await?;
-        router.wait(&0, timeout()).log(Some(log_index), "write another 5 logs").await?;
+        router.wait(&0, timeout()).applied_index(Some(log_index), "write another 5 logs").await?;
 
         leader.trigger().snapshot().await?;
         leader

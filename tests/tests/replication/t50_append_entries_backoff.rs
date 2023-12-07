@@ -49,7 +49,7 @@ async fn append_entries_backoff() -> Result<()> {
         router.client_request_many(0, "0", n as usize).await?;
         log_index += n;
 
-        router.wait(&0, timeout()).log(Some(log_index), format!("{} writes", n)).await?;
+        router.wait(&0, timeout()).applied_index(Some(log_index), format!("{} writes", n)).await?;
     }
 
     let counts1 = router.get_rpc_count();

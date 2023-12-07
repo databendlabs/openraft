@@ -1,6 +1,6 @@
 use proc_macro::TokenStream;
 
-/// This macro either emits `#[async_trait::async_trait]` or `#[asnc_trait::async_trait(?Send)]`
+/// This macro either emits `#[async_trait::async_trait]` or `#[async_trait::async_trait(?Send)]`
 /// based on the activated feature set.
 ///
 /// This assumes that the `[async_trait](https://crates.io/crates/async-trait)` crate is imported
