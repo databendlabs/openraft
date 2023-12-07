@@ -1,5 +1,9 @@
 //! The protocol used by Openraft to replicate data.
 
+pub mod read {
+    #![doc = include_str!("read.md")]
+}
+
 pub mod replication {
     #![doc = include_str!("replication.md")]
 

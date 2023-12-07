@@ -51,6 +51,7 @@ use crate::error::RaftError;
 use crate::membership::IntoNodes;
 use crate::metrics::RaftMetrics;
 use crate::metrics::Wait;
+use crate::metrics::WaitError;
 use crate::network::RaftNetworkFactory;
 use crate::raft::raft_inner::RaftInner;
 use crate::raft::runtime_config_handle::RuntimeConfigHandle;
@@ -362,10 +363,96 @@ where C: RaftTypeConfig
     ///
     /// The actual read operation itself is up to the application, this method just ensures that
     /// the read will not be stale.
+    #[deprecated(note = "use `Raft::ensure_linearizable()` instead. deprecated since 0.9.0")]
     #[tracing::instrument(level = "debug", skip(self))]
     pub async fn is_leader(&self) -> Result<(), RaftError<C::NodeId, CheckIsLeaderError<C::NodeId, C::Node>>> {
         let (tx, rx) = oneshot::channel();
-        self.call_core(RaftMsg::CheckIsLeaderRequest { tx }, rx).await
+        let _ = self.call_core(RaftMsg::CheckIsLeaderRequest { tx }, rx).await?;
+        Ok(())
+    }
+
+    /// Ensures a read operation performed following this method are linearizable across the
+    /// cluster.
+    ///
+    /// This method is just a shorthand for calling [`get_read_log_id()`](Raft::get_read_log_id) and
+    /// then calling [Raft::wait].
+    ///
+    /// This method confirms the node's leadership at the time of invocation by sending
+    /// heartbeats to a quorum of followers, and the state machine is up to date.
+    /// This method blocks until all these conditions are met.
+    ///
+    /// Returns:
+    /// - `Ok(read_log_id)` on successful confirmation that the node is the leader. `read_log_id`
+    ///   represents the log id up to which the state machine has applied to ensure a linearizable
+    ///   read.
+    /// - `Err(RaftError<CheckIsLeaderError>)` if it detects a higher term, or if it fails to
+    ///   communicate with a quorum of followers.
+    ///
+    /// # Examples
+    /// ```ignore
+    /// my_raft.ensure_linearizable().await?;
+    /// // Proceed with the state machine read
+    /// ```
+    /// Read more about how it works: [Read Operation](crate::docs::protocol::read)
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub async fn ensure_linearizable(
+        &self,
+    ) -> Result<Option<LogId<C::NodeId>>, RaftError<C::NodeId, CheckIsLeaderError<C::NodeId, C::Node>>> {
+        let (read_log_id, applied) = self.get_read_log_id().await?;
+
+        if read_log_id.index() > applied.index() {
+            self.wait(None)
+                .applied_index_at_least(read_log_id.index(), "ensure_linearizable")
+                .await
+                .map_err(|e| match e {
+                    WaitError::Timeout(_, _) => {
+                        unreachable!("did not specify timeout")
+                    }
+                    WaitError::ShuttingDown => Fatal::Stopped,
+                })?;
+        }
+        Ok(read_log_id)
+    }
+
+    /// Ensures this node is leader and returns the log id up to which the state machine should
+    /// apply to ensure a read can be linearizable across the cluster.
+    ///
+    /// The leadership is ensured by sending heartbeats to a quorum of followers.
+    /// Note that this is just the first step for linearizable read. The second step is to wait for
+    /// state machine to reach the returned `read_log_id`.
+    ///
+    /// Returns:
+    /// - `Ok((read_log_id, last_applied_log_id))` on successful confirmation that the node is the
+    ///   leader. `read_log_id` represents the log id up to which the state machine should apply to
+    ///   ensure a linearizable read.
+    /// - `Err(RaftError<CheckIsLeaderError>)` if it detects a higher term, or if it fails to
+    ///   communicate with a quorum of followers.
+    ///
+    /// The caller should then wait for `last_applied_log_id` to catch up, which can be done by
+    /// subscribing to [`Raft::metrics`] and waiting for `last_applied_log_id` to
+    /// reach `read_log_id`.
+    ///
+    /// # Examples
+    /// ```ignore
+    /// let (read_log_id, applied_log_id) = my_raft.get_read_log_id().await?;
+    /// if read_log_id.index() > applied_log_id.index() {
+    ///     my_raft.wait(None).applied_index_at_least(read_log_id.index()).await?;
+    /// }
+    /// // Proceed with the state machine read
+    /// ```
+    /// The comparison `read_log_id > applied_log_id` would also be valid in the above example.
+    ///
+    /// See: [Read Operation](crate::docs::protocol::read)
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub async fn get_read_log_id(
+        &self,
+    ) -> Result<
+        (Option<LogId<C::NodeId>>, Option<LogId<C::NodeId>>),
+        RaftError<C::NodeId, CheckIsLeaderError<C::NodeId, C::Node>>,
+    > {
+        let (tx, rx) = oneshot::channel();
+        let (read_log_id, applied) = self.call_core(RaftMsg::CheckIsLeaderRequest { tx }, rx).await?;
+        Ok((read_log_id, applied))
     }
 
     /// Submit a mutating client request to Raft to update the state of the system (§5.1).

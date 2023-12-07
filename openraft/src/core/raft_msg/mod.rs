@@ -16,6 +16,9 @@ use crate::raft::InstallSnapshotRequest;
 use crate::raft::InstallSnapshotResponse;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
+use crate::type_config::alias::LogIdOf;
+use crate::type_config::alias::NodeIdOf;
+use crate::type_config::alias::NodeOf;
 use crate::ChangeMembers;
 use crate::MessageSummary;
 use crate::RaftTypeConfig;
@@ -35,8 +38,11 @@ pub(crate) type VoteTx<NID> = ResultSender<VoteResponse<NID>, Infallible>;
 pub(crate) type AppendEntriesTx<NID> = ResultSender<AppendEntriesResponse<NID>, Infallible>;
 
 /// TX for Client Write Response
-pub(crate) type ClientWriteTx<C> =
-    ResultSender<ClientWriteResponse<C>, ClientWriteError<<C as RaftTypeConfig>::NodeId, <C as RaftTypeConfig>::Node>>;
+pub(crate) type ClientWriteTx<C> = ResultSender<ClientWriteResponse<C>, ClientWriteError<NodeIdOf<C>, NodeOf<C>>>;
+
+/// TX for Linearizable Read Response
+pub(crate) type ClientReadTx<C> =
+    ResultSender<(Option<LogIdOf<C>>, Option<LogIdOf<C>>), CheckIsLeaderError<NodeIdOf<C>, NodeOf<C>>>;
 
 /// A message sent by application to the [`RaftCore`].
 ///
@@ -65,7 +71,7 @@ where C: RaftTypeConfig
     },
 
     CheckIsLeaderRequest {
-        tx: ResultSender<(), CheckIsLeaderError<C::NodeId, C::Node>>,
+        tx: ClientReadTx<C>,
     },
 
     Initialize {
