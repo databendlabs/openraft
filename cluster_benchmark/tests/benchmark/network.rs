@@ -73,7 +73,7 @@ impl Router {
 
         for (id, s) in rafts.iter_mut() {
             tracing::info!(log_index, "--- wait init log: {}, index: {}", id, log_index);
-            s.wait(timeout()).log(Some(log_index), "init").await?;
+            s.wait(timeout()).applied_index(Some(log_index), "init").await?;
         }
 
         Ok(())

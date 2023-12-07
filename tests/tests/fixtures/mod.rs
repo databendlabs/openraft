@@ -641,7 +641,7 @@ impl TypedRaftRouter {
         msg: &str,
     ) -> anyhow::Result<()> {
         for i in node_ids.iter() {
-            self.wait(i, timeout).log(want_log, msg).await?;
+            self.wait(i, timeout).applied_index(want_log, msg).await?;
         }
         Ok(())
     }

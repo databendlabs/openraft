@@ -50,7 +50,7 @@ async fn remove_leader() -> Result<()> {
     {
         router
             .wait(&orig_leader, timeout())
-            .log(Some(log_index), "old leader commits 2 membership log")
+            .applied_index(Some(log_index), "old leader commits 2 membership log")
             .await?;
     }
 
@@ -59,7 +59,7 @@ async fn remove_leader() -> Result<()> {
 
     router
         .wait(&1, timeout())
-        .log_at_least(Some(log_index), "node in old cluster commits at least 1 membership log")
+        .applied_index_at_least(Some(log_index), "node in old cluster commits at least 1 membership log")
         .await?;
 
     tracing::info!(log_index, "--- new cluster commits 2 membership logs");
@@ -71,7 +71,7 @@ async fn remove_leader() -> Result<()> {
         for id in [2, 3] {
             router
                 .wait(&id, timeout())
-                .log_at_least(
+                .applied_index_at_least(
                     Some(log_index),
                     "node in new cluster finally commit at least one blank leader-initialize log",
                 )
@@ -141,7 +141,7 @@ async fn remove_leader_and_convert_to_learner() -> Result<()> {
     {
         router
             .wait(&old_leader, timeout())
-            .log(Some(log_index), "old leader commits 2 membership log")
+            .applied_index(Some(log_index), "old leader commits 2 membership log")
             .await?;
     }
 
@@ -150,7 +150,7 @@ async fn remove_leader_and_convert_to_learner() -> Result<()> {
 
     router
         .wait(&1, timeout())
-        .log_at_least(
+        .applied_index_at_least(
             Some(log_index - 1),
             "node in old cluster commits at least 1 membership log",
         )
@@ -215,7 +215,7 @@ async fn remove_leader_access_new_cluster() -> Result<()> {
     {
         router
             .wait(&orig_leader, timeout())
-            .log(Some(log_index), "old leader commits 2 membership log")
+            .applied_index(Some(log_index), "old leader commits 2 membership log")
             .await?;
     }
 
@@ -245,7 +245,9 @@ async fn remove_leader_access_new_cluster() -> Result<()> {
         router.send_client_request(2, ClientRequest::make_request("foo", 1)).await?;
         log_index += 1;
 
-        n2.wait(timeout()).log(Some(log_index), "node-2 become leader and handle write request").await?;
+        n2.wait(timeout())
+            .applied_index(Some(log_index), "node-2 become leader and handle write request")
+            .await?;
     }
 
     Ok(())

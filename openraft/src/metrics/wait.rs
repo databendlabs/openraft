@@ -128,6 +128,7 @@ where
     }
 
     /// Wait until applied exactly `want_log`(inclusive) logs or timeout.
+    #[deprecated(note = "use `log_index()` and `applied_index()` instead, deprecated since 0.9.0")]
     #[tracing::instrument(level = "trace", skip(self), fields(msg=msg.to_string().as_str()))]
     pub async fn log(&self, want_log_index: Option<u64>, msg: impl ToString) -> Result<RaftMetrics<NID, N>, WaitError> {
         self.metrics(
@@ -144,6 +145,7 @@ where
     }
 
     /// Wait until applied at least `want_log`(inclusive) logs or timeout.
+    #[deprecated(note = "use `log_index_at_least()` and `applied_index_at_least()` instead, deprecated since 0.9.0")]
     #[tracing::instrument(level = "trace", skip(self), fields(msg=msg.to_string().as_str()))]
     pub async fn log_at_least(
         &self,
@@ -159,6 +161,59 @@ where
         self.metrics(
             |x| x.last_applied.index() >= want_log,
             &format!("{} .last_applied >= {:?}", msg.to_string(), want_log),
+        )
+        .await
+    }
+
+    /// Block until the last log index becomes exactly `index`(inclusive) or timeout.
+    #[tracing::instrument(level = "trace", skip(self), fields(msg=msg.to_string().as_str()))]
+    pub async fn log_index(&self, index: Option<u64>, msg: impl ToString) -> Result<RaftMetrics<NID, N>, WaitError> {
+        self.metrics(
+            |x| x.last_log_index == index,
+            &format!("{} .last_log_index == {:?}", msg.to_string(), index),
+        )
+        .await
+    }
+
+    /// Block until the last log index becomes at least `index`(inclusive) or timeout.
+    #[tracing::instrument(level = "trace", skip(self), fields(msg=msg.to_string().as_str()))]
+    pub async fn log_index_at_least(
+        &self,
+        index: Option<u64>,
+        msg: impl ToString,
+    ) -> Result<RaftMetrics<NID, N>, WaitError> {
+        self.metrics(
+            |x| x.last_log_index >= index,
+            &format!("{} .last_log_index >= {:?}", msg.to_string(), index),
+        )
+        .await
+    }
+
+    /// Block until the applied index becomes exactly `index`(inclusive) or timeout.
+    #[tracing::instrument(level = "trace", skip(self), fields(msg=msg.to_string().as_str()))]
+    pub async fn applied_index(
+        &self,
+        index: Option<u64>,
+        msg: impl ToString,
+    ) -> Result<RaftMetrics<NID, N>, WaitError> {
+        self.metrics(
+            |x| x.last_applied.index() == index,
+            &format!("{} .last_applied.index == {:?}", msg.to_string(), index),
+        )
+        .await
+    }
+
+    /// Block until the last applied log index become at least `index`(inclusive) or timeout.
+    /// Note that this also implies `last_log_id >= index`.
+    #[tracing::instrument(level = "trace", skip(self), fields(msg=msg.to_string().as_str()))]
+    pub async fn applied_index_at_least(
+        &self,
+        index: Option<u64>,
+        msg: impl ToString,
+    ) -> Result<RaftMetrics<NID, N>, WaitError> {
+        self.metrics(
+            |m| m.last_log_index >= index && m.last_applied.index() >= index,
+            &format!("{} .last_applied.index >= {:?}", msg.to_string(), index),
         )
         .await
     }

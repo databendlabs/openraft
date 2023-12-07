@@ -41,7 +41,7 @@ async fn test_wait() -> anyhow::Result<()> {
     }
 
     {
-        // wait for log
+        // wait for applied log
         let (init, w, tx) = init_wait_test::<u64, ()>();
 
         let h = tokio::spawn(async move {
@@ -52,10 +52,10 @@ async fn test_wait() -> anyhow::Result<()> {
             let rst = tx.send(update);
             assert!(rst.is_ok());
         });
-        let got = w.log(Some(3), "log").await?;
-        let got_least2 = w.log_at_least(Some(2), "log").await?;
-        let got_least3 = w.log_at_least(Some(3), "log").await?;
-        let got_least4 = w.log_at_least(Some(4), "log").await;
+        let got = w.applied_index(Some(3), "log").await?;
+        let got_least2 = w.applied_index_at_least(Some(2), "log").await?;
+        let got_least3 = w.applied_index_at_least(Some(3), "log").await?;
+        let got_least4 = w.applied_index_at_least(Some(4), "log").await;
         h.await?;
 
         assert_eq!(Some(3), got.last_log_index);
@@ -169,6 +169,34 @@ async fn test_wait() -> anyhow::Result<()> {
             }
         }
     }
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
+async fn test_wait_log_index() -> anyhow::Result<()> {
+    // wait for applied log
+    let (init, w, tx) = init_wait_test::<u64, ()>();
+
+    let h = tokio::spawn(async move {
+        sleep(Duration::from_millis(10)).await;
+        let mut update = init.clone();
+        update.last_log_index = Some(3);
+        let rst = tx.send(update);
+        assert!(rst.is_ok());
+    });
+
+    let got = w.log_index(Some(3), "log").await?;
+    let got_least2 = w.log_index_at_least(Some(2), "log").await?;
+    let got_least3 = w.log_index_at_least(Some(3), "log").await?;
+    let got_least4 = w.log_index_at_least(Some(4), "log").await;
+    h.await?;
+
+    assert_eq!(Some(3), got.last_log_index);
+    assert_eq!(Some(3), got_least2.last_log_index);
+    assert_eq!(Some(3), got_least3.last_log_index);
+
+    assert!(got_least4.is_err());
 
     Ok(())
 }

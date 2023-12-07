@@ -49,7 +49,7 @@ async fn single_leader_restart_re_apply_logs() -> anyhow::Result<()> {
 
     tracing::info!(log_index, "--- a single leader should re-apply all logs");
     {
-        router.wait(&0, timeout()).log(Some(log_index), "node-0 works").await?;
+        router.wait(&0, timeout()).applied_index(Some(log_index), "node-0 works").await?;
     }
 
     Ok(())

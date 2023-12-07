@@ -41,8 +41,8 @@ async fn trigger_snapshot() -> anyhow::Result<()> {
         router.client_request_many(0, "0", 10).await?;
         log_index += 10;
 
-        router.wait(&0, timeout()).log(Some(log_index), "node-0 write logs").await?;
-        router.wait(&1, timeout()).log(Some(log_index), "node-1 write logs").await?;
+        router.wait(&0, timeout()).applied_index(Some(log_index), "node-0 write logs").await?;
+        router.wait(&1, timeout()).applied_index(Some(log_index), "node-1 write logs").await?;
     }
 
     tracing::info!(log_index, "--- trigger snapshot for node-0");

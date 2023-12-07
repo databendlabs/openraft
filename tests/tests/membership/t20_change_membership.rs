@@ -35,7 +35,10 @@ async fn update_membership_state() -> anyhow::Result<()> {
         tracing::info!(log_index, "--- change_membership blocks until success: {:?}", res);
 
         for node_id in [0, 1, 2, 3, 4] {
-            router.wait(&node_id, timeout()).log(Some(log_index), "change-membership log applied").await?;
+            router
+                .wait(&node_id, timeout())
+                .applied_index(Some(log_index), "change-membership log applied")
+                .await?;
             router.external_request(node_id, move |st| {
                 tracing::debug!("--- got state: {:?}", st);
                 assert_eq!(st.membership_state.committed().log_id().index(), Some(log_index));
@@ -70,7 +73,7 @@ async fn change_with_new_learner_blocking() -> anyhow::Result<()> {
         router.client_request_many(0, "non_voter_add", 100 - log_index as usize).await?;
         log_index = 100;
 
-        router.wait(&0, timeout()).log(Some(log_index), "received 100 logs").await?;
+        router.wait(&0, timeout()).applied_index(Some(log_index), "received 100 logs").await?;
     }
 
     tracing::info!(log_index, "--- change membership without adding-learner");
@@ -103,7 +106,7 @@ async fn change_without_adding_learner() -> anyhow::Result<()> {
     let mut router = RaftRouter::new(config.clone());
 
     let log_index = router.new_cluster(btreeset! {0}, btreeset! {}).await?;
-    router.wait(&0, timeout()).log(Some(log_index), "received 100 logs").await?;
+    router.wait(&0, timeout()).applied_index(Some(log_index), "received 100 logs").await?;
 
     router.new_raft_node(1).await;
     let leader = router.get_raft_handle(&0)?;

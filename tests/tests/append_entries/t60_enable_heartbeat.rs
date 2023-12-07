@@ -37,7 +37,7 @@ async fn enable_heartbeat() -> Result<()> {
             // no new log will be sent, .
             router
                 .wait(&node_id, timeout())
-                .log_at_least(Some(log_index), format!("node {} emit heartbeat log", node_id))
+                .applied_index_at_least(Some(log_index), format!("node {} emit heartbeat log", node_id))
                 .await?;
 
             // leader lease is extended.

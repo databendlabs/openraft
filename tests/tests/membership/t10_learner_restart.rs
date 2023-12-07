@@ -49,7 +49,7 @@ async fn learner_restart() -> Result<()> {
 
     // restart node-1, assert the state as expected.
     let restarted = Raft::new(1, config.clone(), router.clone(), sto1, sm1).await?;
-    restarted.wait(timeout()).log(Some(log_index), "log after restart").await?;
+    restarted.wait(timeout()).applied_index(Some(log_index), "log after restart").await?;
     restarted.wait(timeout()).state(ServerState::Learner, "server state after restart").await?;
 
     Ok(())

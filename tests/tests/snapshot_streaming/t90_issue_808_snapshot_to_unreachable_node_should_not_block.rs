@@ -33,7 +33,7 @@ async fn snapshot_to_unreachable_node_should_not_block() -> Result<()> {
     tracing::info!(log_index, "--- write {} logs", n);
     {
         log_index += router.client_request_many(0, "0", n).await?;
-        router.wait(&0, timeout()).log(Some(log_index), format!("{} writes", n)).await?;
+        router.wait(&0, timeout()).applied_index(Some(log_index), format!("{} writes", n)).await?;
     }
 
     let n0 = router.get_raft_handle(&0)?;

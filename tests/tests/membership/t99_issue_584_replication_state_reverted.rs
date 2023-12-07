@@ -34,7 +34,7 @@ async fn t99_issue_584_replication_state_reverted() -> Result<()> {
         router.client_request_many(0, "foo", (n - log_index) as usize).await?;
         log_index = n;
 
-        router.wait(&1, timeout()).log(Some(log_index), "replicate all logs to learner").await?;
+        router.wait(&1, timeout()).applied_index(Some(log_index), "replicate all logs to learner").await?;
     }
 
     tracing::info!(

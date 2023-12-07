@@ -55,7 +55,7 @@ async fn leader_election_after_changing_0_to_01234() -> Result<()> {
     for node_id in [1, 2, 3, 4] {
         router
             .wait(&node_id, timeout())
-            .log(Some(log_index), "replicate and apply log to every node")
+            .applied_index(Some(log_index), "replicate and apply log to every node")
             .await?;
     }
 

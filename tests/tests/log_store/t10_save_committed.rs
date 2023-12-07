@@ -29,7 +29,7 @@ async fn write_committed_log_id_to_log_store() -> Result<()> {
     log_index += router.client_request_many(0, "0", 10).await?;
 
     for i in [0, 1, 2] {
-        router.wait(&i, timeout()).log(Some(log_index), "write logs").await?;
+        router.wait(&i, timeout()).applied_index(Some(log_index), "write logs").await?;
     }
 
     for id in [0, 1, 2] {
