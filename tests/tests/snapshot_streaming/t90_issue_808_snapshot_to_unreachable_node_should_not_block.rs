@@ -51,7 +51,7 @@ async fn snapshot_to_unreachable_node_should_not_block() -> Result<()> {
         "--- change membership to {{0}}, replication should be closed and re-spawned, snapshot streaming should stop at once"
     );
     {
-        n0.change_membership(btreeset! {0}, true).await?;
+        n0.change_membership([0], true).await?;
         n0.wait(timeout()).voter_ids([0], "change membership to {{0}}").await?;
     }
 

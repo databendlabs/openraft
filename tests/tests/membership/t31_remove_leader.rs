@@ -42,7 +42,7 @@ async fn remove_leader() -> Result<()> {
     router.wait_for_log(&btreeset![0, 1], Some(log_index), timeout(), "add learner").await?;
 
     let node = router.get_raft_handle(&orig_leader)?;
-    node.change_membership(btreeset![1, 2, 3], false).await?;
+    node.change_membership([1, 2, 3], false).await?;
     // 2 for change_membership
     log_index += 2;
 
@@ -133,7 +133,7 @@ async fn remove_leader_and_convert_to_learner() -> Result<()> {
     tracing::info!(log_index, "--- change membership and retain removed node as learner");
     {
         let node = router.get_raft_handle(&old_leader)?;
-        node.change_membership(btreeset![1, 2, 3], true).await?;
+        node.change_membership([1, 2, 3], true).await?;
         log_index += 2;
     }
 
@@ -195,7 +195,7 @@ async fn remove_leader_access_new_cluster() -> Result<()> {
     tracing::info!(log_index, "--- change membership 012 to 2");
     {
         let node = router.get_raft_handle(&orig_leader)?;
-        node.change_membership(btreeset![2], false).await?;
+        node.change_membership([2], false).await?;
         // 2 change_membership logs
         log_index += 2;
 
