@@ -121,8 +121,8 @@ where
     #[tracing::instrument(level = "trace", skip(self), fields(msg=msg.to_string().as_str()))]
     pub async fn current_leader(&self, leader_id: NID, msg: impl ToString) -> Result<RaftMetrics<NID, N>, WaitError> {
         self.metrics(
-            |x| x.current_leader == Some(leader_id),
-            &format!("{} .current_leader -> {}", msg.to_string(), leader_id),
+            |m| m.current_leader == Some(leader_id),
+            &format!("{} .current_leader == {}", msg.to_string(), leader_id),
         )
         .await
     }
@@ -133,13 +133,13 @@ where
     pub async fn log(&self, want_log_index: Option<u64>, msg: impl ToString) -> Result<RaftMetrics<NID, N>, WaitError> {
         self.metrics(
             |x| x.last_log_index == want_log_index,
-            &format!("{} .last_log_index -> {:?}", msg.to_string(), want_log_index),
+            &format!("{} .last_log_index == {:?}", msg.to_string(), want_log_index),
         )
         .await?;
 
         self.metrics(
             |x| x.last_applied.index() == want_log_index,
-            &format!("{} .last_applied -> {:?}", msg.to_string(), want_log_index),
+            &format!("{} .last_applied == {:?}", msg.to_string(), want_log_index),
         )
         .await
     }
@@ -169,7 +169,7 @@ where
     #[tracing::instrument(level = "trace", skip(self), fields(msg=msg.to_string().as_str()))]
     pub async fn log_index(&self, index: Option<u64>, msg: impl ToString) -> Result<RaftMetrics<NID, N>, WaitError> {
         self.metrics(
-            |x| x.last_log_index == index,
+            |m| m.last_log_index == index,
             &format!("{} .last_log_index == {:?}", msg.to_string(), index),
         )
         .await
@@ -183,7 +183,7 @@ where
         msg: impl ToString,
     ) -> Result<RaftMetrics<NID, N>, WaitError> {
         self.metrics(
-            |x| x.last_log_index >= index,
+            |m| m.last_log_index >= index,
             &format!("{} .last_log_index >= {:?}", msg.to_string(), index),
         )
         .await
@@ -197,7 +197,7 @@ where
         msg: impl ToString,
     ) -> Result<RaftMetrics<NID, N>, WaitError> {
         self.metrics(
-            |x| x.last_applied.index() == index,
+            |m| m.last_applied.index() == index,
             &format!("{} .last_applied.index == {:?}", msg.to_string(), index),
         )
         .await
@@ -222,13 +222,14 @@ where
     #[tracing::instrument(level = "trace", skip(self), fields(msg=msg.to_string().as_str()))]
     pub async fn state(&self, want_state: ServerState, msg: impl ToString) -> Result<RaftMetrics<NID, N>, WaitError> {
         self.metrics(
-            |x| x.state == want_state,
-            &format!("{} .state -> {:?}", msg.to_string(), want_state),
+            |m| m.state == want_state,
+            &format!("{} .state == {:?}", msg.to_string(), want_state),
         )
         .await
     }
 
     /// Wait for `membership` to become the expected node id set or timeout.
+    #[deprecated(note = "use `voter_ids()` instead, deprecated since 0.9.0")]
     #[tracing::instrument(level = "trace", skip(self), fields(msg=msg.to_string().as_str()))]
     pub async fn members(
         &self,
@@ -236,8 +237,8 @@ where
         msg: impl ToString,
     ) -> Result<RaftMetrics<NID, N>, WaitError> {
         self.metrics(
-            |x| {
-                let got = x.membership_config.membership().voter_ids().collect::<BTreeSet<_>>();
+            |m| {
+                let got = m.membership_config.membership().voter_ids().collect::<BTreeSet<_>>();
                 want_members == got
             },
             &format!("{} .members -> {:?}", msg.to_string(), want_members),
@@ -245,16 +246,37 @@ where
         .await
     }
 
-    /// Wait for `snapshot` to become `want_snapshot` or timeout.
+    /// Block until membership contains exact the expected `voter_ids` or timeout.
+    #[tracing::instrument(level = "trace", skip_all, fields(msg=msg.to_string().as_str()))]
+    pub async fn voter_ids(
+        &self,
+        voter_ids: impl IntoIterator<Item = NID>,
+        msg: impl ToString,
+    ) -> Result<RaftMetrics<NID, N>, WaitError> {
+        let want = voter_ids.into_iter().collect::<BTreeSet<_>>();
+
+        tracing::debug!("block until voter_ids == {:?}", want);
+
+        self.metrics(
+            |m| {
+                let got = m.membership_config.membership().voter_ids().collect();
+                want == got
+            },
+            &format!("{} .members == {:?}", msg.to_string(), want),
+        )
+        .await
+    }
+
+    /// Wait for `snapshot` to become `snapshot_last_log_id` or timeout.
     #[tracing::instrument(level = "trace", skip(self), fields(msg=msg.to_string().as_str()))]
     pub async fn snapshot(
         &self,
-        want_snapshot: LogId<NID>,
+        snapshot_last_log_id: LogId<NID>,
         msg: impl ToString,
     ) -> Result<RaftMetrics<NID, N>, WaitError> {
         self.metrics(
-            |x| x.snapshot == Some(want_snapshot),
-            &format!("{} .snapshot -> {}", msg.to_string(), want_snapshot),
+            |m| m.snapshot == Some(snapshot_last_log_id),
+            &format!("{} .snapshot == {}", msg.to_string(), snapshot_last_log_id),
         )
         .await
     }
@@ -263,8 +285,8 @@ where
     #[tracing::instrument(level = "trace", skip(self), fields(msg=msg.to_string().as_str()))]
     pub async fn purged(&self, want: Option<LogId<NID>>, msg: impl ToString) -> Result<RaftMetrics<NID, N>, WaitError> {
         self.metrics(
-            |x| x.purged == want,
-            &format!("{} .purged -> {}", msg.to_string(), DisplayOption(&want)),
+            |m| m.purged == want,
+            &format!("{} .purged == {}", msg.to_string(), DisplayOption(&want)),
         )
         .await
     }

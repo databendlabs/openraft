@@ -68,7 +68,7 @@ async fn append_updates_membership() -> Result<()> {
         assert!(resp.is_success());
         assert!(!resp.is_conflict());
 
-        r0.wait(timeout()).members(btreeset! {1,2,3,4}, "append-entries update membership").await?;
+        r0.wait(timeout()).voter_ids([1, 2, 3, 4], "append-entries update membership").await?;
     }
 
     tracing::info!("--- delete inconsistent logs update membership");
@@ -84,7 +84,7 @@ async fn append_updates_membership() -> Result<()> {
         assert!(resp.is_success());
         assert!(!resp.is_conflict());
 
-        r0.wait(timeout()).members(btreeset! {1,2}, "deleting inconsistent logs updates membership").await?;
+        r0.wait(timeout()).voter_ids([1, 2], "deleting inconsistent logs updates membership").await?;
     }
 
     Ok(())

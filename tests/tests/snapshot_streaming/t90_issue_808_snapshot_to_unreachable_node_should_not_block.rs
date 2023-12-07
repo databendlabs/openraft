@@ -52,7 +52,7 @@ async fn snapshot_to_unreachable_node_should_not_block() -> Result<()> {
     );
     {
         n0.change_membership(btreeset! {0}, true).await?;
-        n0.wait(timeout()).members(btreeset! {0}, "change membership to {{0}}").await?;
+        n0.wait(timeout()).voter_ids([0], "change membership to {{0}}").await?;
     }
 
     Ok(())
