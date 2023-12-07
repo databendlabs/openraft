@@ -99,7 +99,7 @@ async fn test_wait() -> anyhow::Result<()> {
             let rst = tx.send(update);
             assert!(rst.is_ok());
         });
-        let got = w.members(btreeset![1, 2], "members").await?;
+        let got = w.voter_ids([1, 2], "members").await?;
         h.await?;
 
         assert_eq!(
