@@ -4,13 +4,13 @@ use std::collections::BTreeSet;
 use tokio::sync::watch;
 
 use crate::core::ServerState;
-use crate::display_ext::DisplayOption;
+use crate::metrics::Condition;
+use crate::metrics::Metric;
 use crate::metrics::RaftMetrics;
 use crate::node::Node;
 use crate::AsyncRuntime;
 use crate::Instant;
 use crate::LogId;
-use crate::LogIdOptionExt;
 use crate::MessageSummary;
 use crate::NodeId;
 use crate::OptionalSend;
@@ -114,7 +114,7 @@ where
     /// Wait for `vote` to become `want` or timeout.
     #[tracing::instrument(level = "trace", skip(self), fields(msg=msg.to_string().as_str()))]
     pub async fn vote(&self, want: Vote<NID>, msg: impl ToString) -> Result<RaftMetrics<NID, N>, WaitError> {
-        self.metrics(|m| m.vote == want, &format!("{} .vote -> {}", msg.to_string(), want)).await
+        self.eq(Metric::Vote(want), msg).await
     }
 
     /// Wait for `current_leader` to become `Some(leader_id)` until timeout.
@@ -131,17 +131,8 @@ where
     #[deprecated(note = "use `log_index()` and `applied_index()` instead, deprecated since 0.9.0")]
     #[tracing::instrument(level = "trace", skip(self), fields(msg=msg.to_string().as_str()))]
     pub async fn log(&self, want_log_index: Option<u64>, msg: impl ToString) -> Result<RaftMetrics<NID, N>, WaitError> {
-        self.metrics(
-            |x| x.last_log_index == want_log_index,
-            &format!("{} .last_log_index == {:?}", msg.to_string(), want_log_index),
-        )
-        .await?;
-
-        self.metrics(
-            |x| x.last_applied.index() == want_log_index,
-            &format!("{} .last_applied == {:?}", msg.to_string(), want_log_index),
-        )
-        .await
+        self.eq(Metric::LastLogIndex(want_log_index), msg.to_string()).await?;
+        self.eq(Metric::AppliedIndex(want_log_index), msg.to_string()).await
     }
 
     /// Wait until applied at least `want_log`(inclusive) logs or timeout.
@@ -152,27 +143,14 @@ where
         want_log: Option<u64>,
         msg: impl ToString,
     ) -> Result<RaftMetrics<NID, N>, WaitError> {
-        self.metrics(
-            |x| x.last_log_index >= want_log,
-            &format!("{} .last_log_index >= {:?}", msg.to_string(), want_log),
-        )
-        .await?;
-
-        self.metrics(
-            |x| x.last_applied.index() >= want_log,
-            &format!("{} .last_applied >= {:?}", msg.to_string(), want_log),
-        )
-        .await
+        self.ge(Metric::LastLogIndex(want_log), msg.to_string()).await?;
+        self.ge(Metric::AppliedIndex(want_log), msg.to_string()).await
     }
 
     /// Block until the last log index becomes exactly `index`(inclusive) or timeout.
     #[tracing::instrument(level = "trace", skip(self), fields(msg=msg.to_string().as_str()))]
     pub async fn log_index(&self, index: Option<u64>, msg: impl ToString) -> Result<RaftMetrics<NID, N>, WaitError> {
-        self.metrics(
-            |m| m.last_log_index == index,
-            &format!("{} .last_log_index == {:?}", msg.to_string(), index),
-        )
-        .await
+        self.eq(Metric::LastLogIndex(index), msg).await
     }
 
     /// Block until the last log index becomes at least `index`(inclusive) or timeout.
@@ -182,11 +160,7 @@ where
         index: Option<u64>,
         msg: impl ToString,
     ) -> Result<RaftMetrics<NID, N>, WaitError> {
-        self.metrics(
-            |m| m.last_log_index >= index,
-            &format!("{} .last_log_index >= {:?}", msg.to_string(), index),
-        )
-        .await
+        self.ge(Metric::LastLogIndex(index), msg).await
     }
 
     /// Block until the applied index becomes exactly `index`(inclusive) or timeout.
@@ -196,11 +170,7 @@ where
         index: Option<u64>,
         msg: impl ToString,
     ) -> Result<RaftMetrics<NID, N>, WaitError> {
-        self.metrics(
-            |m| m.last_applied.index() == index,
-            &format!("{} .last_applied.index == {:?}", msg.to_string(), index),
-        )
-        .await
+        self.eq(Metric::AppliedIndex(index), msg).await
     }
 
     /// Block until the last applied log index become at least `index`(inclusive) or timeout.
@@ -211,11 +181,7 @@ where
         index: Option<u64>,
         msg: impl ToString,
     ) -> Result<RaftMetrics<NID, N>, WaitError> {
-        self.metrics(
-            |m| m.last_log_index >= index && m.last_applied.index() >= index,
-            &format!("{} .last_applied.index >= {:?}", msg.to_string(), index),
-        )
-        .await
+        self.ge(Metric::AppliedIndex(index), msg).await
     }
 
     /// Wait for `state` to become `want_state` or timeout.
@@ -274,19 +240,48 @@ where
         snapshot_last_log_id: LogId<NID>,
         msg: impl ToString,
     ) -> Result<RaftMetrics<NID, N>, WaitError> {
-        self.metrics(
-            |m| m.snapshot == Some(snapshot_last_log_id),
-            &format!("{} .snapshot == {}", msg.to_string(), snapshot_last_log_id),
-        )
-        .await
+        self.eq(Metric::Snapshot(Some(snapshot_last_log_id)), msg).await
     }
 
     /// Wait for `purged` to become `want` or timeout.
     #[tracing::instrument(level = "trace", skip(self), fields(msg=msg.to_string().as_str()))]
     pub async fn purged(&self, want: Option<LogId<NID>>, msg: impl ToString) -> Result<RaftMetrics<NID, N>, WaitError> {
+        self.eq(Metric::Purged(want), msg).await
+    }
+
+    /// Block until a metric becomes greater than or equal the specified value or timeout.
+    ///
+    /// For example, to await until the term becomes 2 or greater:
+    /// ```ignore
+    /// my_raft.wait(None).ge(Metric::Term(2), "become term 2").await?;
+    /// ```
+    pub async fn ge(&self, metric: Metric<NID>, msg: impl ToString) -> Result<RaftMetrics<NID, N>, WaitError> {
+        self.until(Condition::ge(metric), msg).await
+    }
+
+    /// Block until a metric becomes equal to the specified value or timeout.
+    ///
+    /// For example, to await until the term becomes exact 2:
+    /// ```ignore
+    /// my_raft.wait(None).eq(Metric::Term(2), "become term 2").await?;
+    /// ```
+    pub async fn eq(&self, metric: Metric<NID>, msg: impl ToString) -> Result<RaftMetrics<NID, N>, WaitError> {
+        self.until(Condition::eq(metric), msg).await
+    }
+
+    /// Block until a metric satisfies the specified condition or timeout.
+    #[tracing::instrument(level = "trace", skip_all, fields(cond=cond.to_string(), msg=msg.to_string().as_str()))]
+    pub(crate) async fn until(
+        &self,
+        cond: Condition<NID>,
+        msg: impl ToString,
+    ) -> Result<RaftMetrics<NID, N>, WaitError> {
         self.metrics(
-            |m| m.purged == want,
-            &format!("{} .purged == {}", msg.to_string(), DisplayOption(&want)),
+            |raft_metrics| match &cond {
+                Condition::GE(expect) => raft_metrics >= expect,
+                Condition::EQ(expect) => raft_metrics == expect,
+            },
+            &format!("{} .{}", msg.to_string(), cond),
         )
         .await
     }
