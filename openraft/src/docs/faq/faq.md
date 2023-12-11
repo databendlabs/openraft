@@ -6,7 +6,23 @@ In standard Raft log id is `(term, log_index)`, in Openraft he log id `(term,
 node_id, log_index)` is used to minimize the chance of election conflicts.
 This way in every term there could be more than one leaders elected, and the last one is valid.
 See: [`leader-id`](`crate::docs::data::leader_id`) for details.
-<br/>
+
+
+### If I start a node and set it as leader, will there be any problems if the node keeps running?
+
+No problem at all.
+
+It's quite typical to initiate a cluster with a single node for testing purposes.
+
+
+### Are there any issues with running a single node service?
+
+Not at all.
+
+Running a cluster with just one node is a standard approach for testing or as an initial step in setting up a cluster.
+
+A single node functions exactly the same as cluster mode.
+It will consistently maintain the `Leader` status and never transition to `Candidate` or `Follower` states.
 
 
 ### How to remove node-2 safely from a cluster `{1, 2, 3}`?
@@ -14,7 +30,6 @@ See: [`leader-id`](`crate::docs::data::leader_id`) for details.
 Call `Raft::change_membership(btreeset!{1, 3})` to exclude node-2 from
 the cluster. Then wipe out node-2 data.
 **NEVER** modify/erase the data of any node that is still in a raft cluster, unless you know what you are doing.
-<br/>
 
 
 ### What actions are required when a node restarts?
@@ -69,7 +84,6 @@ N5 |                 elect  L2
 But for even number nodes cluster, Erasing **exactly one** node won't cause data loss.
 Thus, in a special scenario like this, or for testing purpose, you can use
 `--feature loosen-follower-log-revert` to permit erasing a node.
-<br/>
 
 
 ### Is Openraft resilient to incorrectly configured clusters?
@@ -94,7 +108,6 @@ pub(crate) fn following_handler(&mut self) -> FollowingHandler<C> {
 }
 ```
 
-<br/>
 
 [`loosen-follower-log-revert`]: `crate::docs::feature_flags#loosen_follower_log_revert`
 
