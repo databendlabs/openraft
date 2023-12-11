@@ -27,16 +27,21 @@
 //! not every change of the state.
 //! Because internally, `watch::channel()` only stores one last state.
 
+mod metric;
 mod raft_metrics;
 mod wait;
 
+mod metric_display;
+mod wait_condition;
 #[cfg(test)] mod wait_test;
 
 use std::collections::BTreeMap;
 
+pub use metric::Metric;
 pub use raft_metrics::RaftMetrics;
 pub use wait::Wait;
 pub use wait::WaitError;
+pub(crate) use wait_condition::Condition;
 
 use crate::LogId;
 
