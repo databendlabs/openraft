@@ -86,4 +86,10 @@ pub(crate) mod alias {
     pub(crate) type InstantOf<C> = <AsyncRuntimeOf<C> as crate::AsyncRuntime>::Instant;
     pub(crate) type TimeoutErrorOf<C> = <AsyncRuntimeOf<C> as crate::AsyncRuntime>::TimeoutError;
     pub(crate) type TimeoutOf<C, R, F> = <AsyncRuntimeOf<C> as crate::AsyncRuntime>::Timeout<R, F>;
+
+    // Usually used types
+    pub(crate) type LogIdOf<C> = crate::LogId<NodeIdOf<C>>;
+    pub(crate) type VoteOf<C> = crate::Vote<NodeIdOf<C>>;
+    pub(crate) type LeaderIdOf<C> = crate::LeaderId<NodeIdOf<C>>;
+    pub(crate) type CommittedLeaderIdOf<C> = crate::CommittedLeaderId<NodeIdOf<C>>;
 }

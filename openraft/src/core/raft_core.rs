@@ -29,6 +29,7 @@ use crate::core::command_state::CommandState;
 use crate::core::notify::Notify;
 use crate::core::raft_msg::external_command::ExternalCommand;
 use crate::core::raft_msg::AppendEntriesTx;
+use crate::core::raft_msg::ClientReadTx;
 use crate::core::raft_msg::ClientWriteTx;
 use crate::core::raft_msg::InstallSnapshotTx;
 use crate::core::raft_msg::RaftMsg;
@@ -45,7 +46,6 @@ use crate::engine::Engine;
 use crate::engine::Respond;
 use crate::entry::FromAppData;
 use crate::entry::RaftEntry;
-use crate::error::CheckIsLeaderError;
 use crate::error::ClientWriteError;
 use crate::error::Fatal;
 use crate::error::ForwardToLeader;
@@ -263,11 +263,18 @@ where
     // TODO: the second condition is such a read request can only read from state machine only when the last log it sees
     //       at `T1` is committed.
     #[tracing::instrument(level = "trace", skip(self, tx))]
-    pub(super) async fn handle_check_is_leader_request(
-        &mut self,
-        tx: ResultSender<(), CheckIsLeaderError<C::NodeId, C::Node>>,
-    ) {
+    pub(super) async fn handle_check_is_leader_request(&mut self, tx: ClientReadTx<C>) {
         // Setup sentinel values to track when we've received majority confirmation of leadership.
+
+        let resp = {
+            let read_log_id = self.engine.state.get_read_log_id().copied();
+
+            // TODO: this applied is a little stale when being returned to client.
+            //       Fix this when the following heartbeats are replaced with calling RaftNetwork.
+            let applied = self.engine.state.io_applied().copied();
+
+            (read_log_id, applied)
+        };
 
         let my_id = self.id;
         let my_vote = *self.engine.state.vote_ref();
@@ -278,7 +285,7 @@ where
         let mut granted = btreeset! {my_id};
 
         if eff_mem.is_quorum(granted.iter()) {
-            let _ = tx.send(Ok(()));
+            let _ = tx.send(Ok(resp));
             return;
         }
 
@@ -351,7 +358,7 @@ where
                     }
                 };
 
-                // If we receive a response with a greater term, then revert to follower and abort this
+                // If we receive a response with a greater vote, then revert to follower and abort this
                 // request.
                 if let AppendEntriesResponse::HigherVote(vote) = append_res {
                     debug_assert!(
@@ -368,7 +375,7 @@ where
                     });
 
                     if let Err(_e) = send_res {
-                        tracing::error!("fail to send HigherVote to raft core");
+                        tracing::error!("fail to send HigherVote to RaftCore");
                     }
 
                     // we are no longer leader so error out early
@@ -380,7 +387,7 @@ where
                 granted.insert(target);
 
                 if eff_mem.is_quorum(granted.iter()) {
-                    let _ = tx.send(Ok(()));
+                    let _ = tx.send(Ok(resp));
                     return;
                 }
             }
@@ -395,6 +402,7 @@ where
             .into()));
         };
 
+        // TODO: do not spawn, manage read requests with a queue by RaftCore
         C::AsyncRuntime::spawn(waiting_fu.instrument(tracing::debug_span!("spawn_is_leader_waiting")));
     }
 

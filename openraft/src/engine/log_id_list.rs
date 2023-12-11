@@ -269,7 +269,6 @@ impl<NID: NodeId> LogIdList<NID> {
     /// Get the log id at the specified index.
     ///
     /// It will return `last_purged_log_id` if index is at the last purged index.
-    #[allow(dead_code)]
     pub(crate) fn get(&self, index: u64) -> Option<LogId<NID>> {
         let res = self.key_log_ids.binary_search_by(|log_id| log_id.index.cmp(&index));
 
@@ -285,17 +284,34 @@ impl<NID: NodeId> LogIdList<NID> {
         }
     }
 
-    #[allow(dead_code)]
     pub(crate) fn first(&self) -> Option<&LogId<NID>> {
         self.key_log_ids.first()
     }
 
-    #[allow(dead_code)]
     pub(crate) fn last(&self) -> Option<&LogId<NID>> {
         self.key_log_ids.last()
     }
 
     pub(crate) fn key_log_ids(&self) -> &[LogId<NID>] {
         &self.key_log_ids
+    }
+
+    /// Returns key log ids appended by the last leader.
+    ///
+    /// Note that the 0-th log does not belong to any leader(but a membership log to initialize a
+    /// cluster) but this method does not differentiate between them.
+    pub(crate) fn by_last_leader(&self) -> &[LogId<NID>] {
+        let ks = &self.key_log_ids;
+        let l = ks.len();
+        if l < 2 {
+            return ks;
+        }
+
+        // There are at most two(adjacent) key log ids with the same leader_id
+        if ks[l - 1].leader_id() == ks[l - 2].leader_id() {
+            &ks[l - 2..]
+        } else {
+            &ks[l - 1..]
+        }
     }
 }

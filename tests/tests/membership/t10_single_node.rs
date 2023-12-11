@@ -48,7 +48,7 @@ async fn single_node() -> Result<()> {
         .await?;
 
     // Read some data from the single node cluster.
-    router.is_leader(0).await?;
+    router.ensure_linearizable(0).await?;
 
     Ok(())
 }

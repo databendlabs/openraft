@@ -716,13 +716,11 @@ impl TypedRaftRouter {
         node.add_learner(target, (), true).await.map_err(|e| e.into_api_error().unwrap())
     }
 
-    /// Send a is_leader request to the target node.
-    pub async fn is_leader(&self, target: MemNodeId) -> Result<(), CheckIsLeaderError<MemNodeId, ()>> {
-        let node = {
-            let rt = self.nodes.lock().unwrap();
-            rt.get(&target).unwrap_or_else(|| panic!("node with ID {} does not exist", target)).clone()
-        };
-        node.0.is_leader().await.map_err(|e| e.into_api_error().unwrap())
+    /// Ensure read linearizability.
+    pub async fn ensure_linearizable(&self, target: MemNodeId) -> Result<(), CheckIsLeaderError<MemNodeId, ()>> {
+        let n = self.get_raft_handle(&target).unwrap();
+        n.ensure_linearizable().await.map_err(|e| e.into_api_error().unwrap())?;
+        Ok(())
     }
 
     /// Send a client request to the target node, causing test failure on error.
