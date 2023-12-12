@@ -1,5 +1,14 @@
 # FAQ
 
+### What are the differences between Openraft and standard Raft?
+
+- Optionally, In one term there could be more than one leaders to be established, in order to reduce election conflict. See: std mode and adv mode leader id: [`leader_id`][];
+- Openraft stores committed log id: See: [`RaftLogStorage::save_committed()`][];
+- Openraft optimized `ReadIndex`: no `blank log` check: [`Linearizable Read`][].
+- A restarted Leader will stay in Leader state if possible;
+- Does not support single step memebership change. Only joint is supported.
+
+
 ### Why is log id a tuple of `(term, node_id, log_index)`?
 
 In standard Raft log id is `(term, log_index)`, in Openraft he log id `(term,
@@ -110,7 +119,14 @@ pub(crate) fn following_handler(&mut self) -> FollowingHandler<C> {
 
 
 [`loosen-follower-log-revert`]: `crate::docs::feature_flags#loosen_follower_log_revert`
+[`single-term-leader`]:         `crate::docs::feature_flags#single_term_leader`
+
+[`Linearizable Read`]: `crate::docs::protocol::read`
+[`leader_id`]:         `crate::docs::data::leader_id`
+
+[`RaftLogStorage::save_committed()`]: `crate::storage::RaftLogStorage::save_committed`
 
 [`add_learner()`]: `crate::Raft::add_learner`
 [`change_membership()`]: `crate::Raft::change_membership`
+
 [`Membership`]: `crate::Membership`
