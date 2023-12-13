@@ -15,6 +15,9 @@ and an in-process network that uses function calls to simulate RPC.
 |  64     |  **730,000** |    1,369   |
 |   1     |     70,000   | **14,273** |
 
+The benchmark is carried out with varying numbers of clients because:
+- The `1 client` benchmark shows the average **latency** to commit each log.
+- The `64 client` benchmark shows the maximum **throughput**.
 
 The benchmark is conducted with the following settings:
 - No network.
@@ -25,6 +28,8 @@ The benchmark is conducted with the following settings:
 
 
 ## Run it
+
+`make bench_cluster_of_3` in repo root folder, or in this folder:
 
 ```sh
 cargo test --test benchmark --release bench_cluster_of_3 -- --ignored --nocapture
