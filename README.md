@@ -57,7 +57,7 @@ Currently, openraft is the consensus engine of meta-service cluster in [databend
     The main branch is for the [release-0.9](https://github.com/datafuselabs/openraft/tree/release-0.9).
 
 - **Branch [release-0.8](https://github.com/datafuselabs/openraft/tree/release-0.8)**:
-  Latest published: [v0.8.7](https://github.com/datafuselabs/openraft/tree/v0.8.7) | [Change log v0.8.7](https://github.com/datafuselabs/openraft/blob/release-0.8/change-log.md#v087) |
+  Latest published: [v0.8.8](https://github.com/datafuselabs/openraft/tree/v0.8.8) | [Change log v0.8.8](https://github.com/datafuselabs/openraft/blob/release-0.8/change-log.md#v088) |
   ⬆️  [0.7 to 0.8 upgrade guide](https://docs.rs/openraft/0.8.4/openraft/docs/upgrade_guide/upgrade_07_08/index.html) | ⬆️  [0.8.3 to 0.8.4 upgrade guide](https://docs.rs/openraft/0.8.4/openraft/docs/upgrade_guide/upgrade_083_084/index.html) |
   `release-0.8` **Won't** accept new features but only bug fixes.
 
