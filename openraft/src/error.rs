@@ -338,11 +338,16 @@ impl NetworkError {
     }
 }
 
-/// Error that indicates a node is unreachable and should not retry sending anything to it
-/// immediately.
+/// Error indicating a node is unreachable. Retries should be delayed.
 ///
-/// It is similar to [`NetworkError`] but indicating a backoff.
-/// When a [`NetworkError`] is returned, Openraft will retry immediately.
+/// This error suggests that immediate retries are not advisable when a node is not reachable.
+/// Upon encountering this error, Openraft will invoke [`backoff()`] to implement a delay before
+/// attempting to resend any information.
+///
+/// This error is similar to [`NetworkError`] but with a key distinction: `Unreachable` advises a
+/// backoff period, whereas with [`NetworkError`], Openraft may attempt an immediate retry.
+///
+/// [`backoff()`]: crate::network::RaftNetwork::backoff
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 #[error("Unreachable node: {source}")]
