@@ -1,5 +1,5 @@
 [workspace.package]
-version = "0.8.8"
+version = "0.8.9"
 edition = "2021"
 authors = [
     "Databend Authors <opensource@datafuselabs.com>",

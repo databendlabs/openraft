@@ -18,7 +18,7 @@ repository = "https://github.com/datafuselabs/openraft"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-openraft = { path= "../../openraft", version = "0.8.8", features=["serde", "storage-v2"] }
+openraft = { path= "../../openraft", version = "0.8.9", features=["serde", "storage-v2"] }
 
 rocksdb = "0.20.1"
 rand = "*"
