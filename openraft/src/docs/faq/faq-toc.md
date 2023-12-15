@@ -5,5 +5,4 @@
 - [How to remove node-2 safely from a cluster `{1, 2, 3}`?](#how-to-remove-node-2-safely-from-a-cluster-1-2-3)
 - [What actions are required when a node restarts?](#what-actions-are-required-when-a-node-restarts)
 - [What will happen when data gets lost?](#what-will-happen-when-data-gets-lost)
-- [Can I wipe out the data of ONE node and wait for the leader to replicate all data to it again?](#can-i-wipe-out-the-data-of-one-node-and-wait-for-the-leader-to-replicate-all-data-to-it-again)
 - [Is Openraft resilient to incorrectly configured clusters?](#is-openraft-resilient-to-incorrectly-configured-clusters)
