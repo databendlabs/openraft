@@ -1,3 +1,6 @@
+## General
+
+
 ### What are the differences between Openraft and standard Raft?
 
 - Optionally, In one term there could be more than one leaders to be established, in order to reduce election conflict. See: std mode and adv mode leader id: [`leader_id`][];
@@ -7,12 +10,19 @@
 - Does not support single step memebership change. Only joint is supported.
 
 
+## Data structure
+
+
 ### Why is log id a tuple of `(term, node_id, log_index)`?
 
 In standard Raft log id is `(term, log_index)`, in Openraft he log id `(term,
 node_id, log_index)` is used to minimize the chance of election conflicts.
 This way in every term there could be more than one leaders elected, and the last one is valid.
 See: [`leader-id`](`crate::docs::data::leader_id`) for details.
+
+
+
+## Cluster management
 
 
 ### How to initialize a cluster?
