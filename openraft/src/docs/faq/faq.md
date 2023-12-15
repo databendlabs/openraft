@@ -19,6 +19,13 @@ This way in every term there could be more than one leaders elected, and the las
 See: [`leader-id`](`crate::docs::data::leader_id`) for details.
 
 
+## Replication
+
+
+### How to minimize error logging when a follower is offline
+
+Excessive error logging, like `ERROR openraft::replication: 248: RPCError err=NetworkError: ...`, occurs when a follower node becomes unresponsive. To alleviate this, implement a mechanism within [`RaftNetwork`][] that returns a [`Unreachable`][] error instead of a [`NetworkError`][] when immediate replication retries to the affected node are not advised.
+
 
 ## Cluster management
 
@@ -98,7 +105,14 @@ pub(crate) fn following_handler(&mut self) -> FollowingHandler<C> {
 
 [`leader_id`]:         `crate::docs::data::leader_id`
 
+[`RaftNetwork`]: `crate::network::RaftNetwork`
+
 [`add_learner()`]: `crate::Raft::add_learner`
 [`change_membership()`]: `crate::Raft::change_membership`
 
 [`Membership`]: `crate::Membership`
+
+[`Unreachable`]: `crate::error::Unreachable`
+[`NetworkError`]: `crate::error::NetworkError`
+
+
