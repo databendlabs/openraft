@@ -35,6 +35,7 @@ fix:
 	cargo fix --allow-staged
 
 doc:
+	make -C openraft/src/docs/faq
 	RUSTDOCFLAGS="-D warnings" cargo doc --document-private-items --all --no-deps
 
 check_missing_doc:
