@@ -1,5 +1,3 @@
-# FAQ
-
 ### What are the differences between Openraft and standard Raft?
 
 - Optionally, In one term there could be more than one leaders to be established, in order to reduce election conflict. See: std mode and adv mode leader id: [`leader_id`][];
