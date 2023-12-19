@@ -58,20 +58,27 @@ async fn append_sees_higher_vote() -> Result<()> {
         assert!(resp.vote_granted);
     }
 
+    // Current state:
+    // n0: vote=(1,0)
+    // n1: vote=(10,1)
     tracing::info!("--- a write operation will see a higher vote, then the leader revert to follower");
     {
         router.wait(&0, timeout()).state(ServerState::Leader, "node-0 is leader").await?;
 
         let n0 = router.get_raft_handle(&0)?;
-        let res = n0
-            .client_write(ClientRequest {
-                client: "0".to_string(),
-                serial: 1,
-                status: "2".to_string(),
-            })
-            .await;
+        tokio::spawn(async move {
+            let res = n0
+                .client_write(ClientRequest {
+                    client: "0".to_string(),
+                    serial: 1,
+                    status: "2".to_string(),
+                })
+                .await;
 
-        tracing::debug!("--- client_write res: {:?}", res);
+            tracing::debug!("--- client_write res: {:?}", res);
+        });
+
+        tokio::time::sleep(Duration::from_millis(500)).await;
 
         router
             .wait(&0, timeout())

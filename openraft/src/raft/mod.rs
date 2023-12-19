@@ -6,6 +6,8 @@ mod raft_inner;
 mod runtime_config_handle;
 mod trigger;
 
+use std::collections::BTreeMap;
+
 pub(crate) use self::external_request::BoxCoreFn;
 
 pub(in crate::raft) mod core_state;
@@ -210,6 +212,9 @@ where C: RaftTypeConfig
             sm_handle,
 
             engine,
+
+            client_resp_channels: BTreeMap::new(),
+
             leader_data: None,
 
             tx_api: tx_api.clone(),

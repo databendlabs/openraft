@@ -13,3 +13,4 @@ mod t12_trigger_purge_log;
 mod t13_trigger_snapshot;
 mod t16_with_raft_state;
 mod t50_lagging_network_write;
+mod t51_write_when_leader_quit;
