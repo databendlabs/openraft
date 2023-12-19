@@ -6,7 +6,10 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use openraft::async_trait::async_trait;
+use openraft::storage::LogFlushed;
 use openraft::storage::LogState;
+use openraft::storage::RaftLogStorage;
+use openraft::storage::RaftStateMachine;
 use openraft::storage::Snapshot;
 use openraft::BasicNode;
 use openraft::Entry;
@@ -14,7 +17,6 @@ use openraft::EntryPayload;
 use openraft::LogId;
 use openraft::RaftLogReader;
 use openraft::RaftSnapshotBuilder;
-use openraft::RaftStorage;
 use openraft::RaftTypeConfig;
 use openraft::SnapshotMeta;
 use openraft::StorageError;
@@ -33,7 +35,7 @@ use crate::TypeConfig;
  * For example the `Set` will be used to write data (key and value) to the raft database.
  * The `AddNode` will append a new node to the current existing shared list of nodes.
  * You will want to add any request that can write data in all nodes here.
- */
+*/
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Request {
     Set { key: String, value: String },
@@ -46,7 +48,7 @@ pub enum Request {
  *
  * TODO: Should we explain how to create multiple `AppDataResponse`?
  *
- */
+*/
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Response {
     pub value: Option<String>,
@@ -60,14 +62,11 @@ pub struct StoredSnapshot {
     pub data: Vec<u8>,
 }
 
-/**
- * Here defines a state machine of the raft, this state represents a copy of the data
- * between each node. Note that we are using `serde` to serialize the `data`, which has
- * a implementation to be serialized. Note that for this test we set both the key and
- * value as String, but you could set any type of value that has the serialization impl.
- */
+/// Data contained in the Raft state machine. Note that we are using `serde` to serialize the
+/// `data`, which has a implementation to be serialized. Note that for this test we set both the key
+/// and value as String, but you could set any type of value that has the serialization impl.
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
-pub struct StateMachine {
+pub struct StateMachineData {
     pub last_applied_log: Option<LogId<NodeId>>,
 
     pub last_membership: StoredMembership<NodeId, BasicNode>,
@@ -76,26 +75,32 @@ pub struct StateMachine {
     pub data: BTreeMap<String, String>,
 }
 
+/// Defines a state machine for the Raft cluster. This state machine represents a copy of the
+/// data for this node. Additionally, it is responsible for storing the last snapshot of the data.
 #[derive(Debug, Default)]
-pub struct Store {
+pub struct StateMachineStore {
+    /// The Raft state machine.
+    pub state_machine: RwLock<StateMachineData>,
+
+    snapshot_idx: Arc<Mutex<u64>>,
+
+    /// The last received snapshot.
+    current_snapshot: RwLock<Option<StoredSnapshot>>,
+}
+
+#[derive(Debug, Default)]
+pub struct LogStore {
     last_purged_log_id: RwLock<Option<LogId<NodeId>>>,
 
     /// The Raft log.
     log: RwLock<BTreeMap<u64, Entry<TypeConfig>>>,
 
-    /// The Raft state machine.
-    pub state_machine: RwLock<StateMachine>,
-
     /// The current granted vote.
     vote: RwLock<Option<Vote<NodeId>>>,
-
-    snapshot_idx: Arc<Mutex<u64>>,
-
-    current_snapshot: RwLock<Option<StoredSnapshot>>,
 }
 
 #[async_trait]
-impl RaftLogReader<TypeConfig> for Arc<Store> {
+impl RaftLogReader<TypeConfig> for Arc<LogStore> {
     async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + Send + Sync>(
         &mut self,
         range: RB,
@@ -107,7 +112,7 @@ impl RaftLogReader<TypeConfig> for Arc<Store> {
 }
 
 #[async_trait]
-impl RaftSnapshotBuilder<TypeConfig> for Arc<Store> {
+impl RaftSnapshotBuilder<TypeConfig> for Arc<StateMachineStore> {
     #[tracing::instrument(level = "trace", skip(self))]
     async fn build_snapshot(&mut self) -> Result<Snapshot<TypeConfig>, StorageError<NodeId>> {
         let data;
@@ -159,84 +164,10 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<Store> {
 }
 
 #[async_trait]
-impl RaftStorage<TypeConfig> for Arc<Store> {
-    type LogReader = Self;
+impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
     type SnapshotBuilder = Self;
 
-    async fn get_log_state(&mut self) -> Result<LogState<TypeConfig>, StorageError<NodeId>> {
-        let log = self.log.read().await;
-        let last = log.iter().next_back().map(|(_, ent)| ent.log_id);
-
-        let last_purged = *self.last_purged_log_id.read().await;
-
-        let last = match last {
-            None => last_purged,
-            Some(x) => Some(x),
-        };
-
-        Ok(LogState {
-            last_purged_log_id: last_purged,
-            last_log_id: last,
-        })
-    }
-
-    #[tracing::instrument(level = "trace", skip(self))]
-    async fn save_vote(&mut self, vote: &Vote<NodeId>) -> Result<(), StorageError<NodeId>> {
-        let mut v = self.vote.write().await;
-        *v = Some(*vote);
-        Ok(())
-    }
-
-    async fn read_vote(&mut self) -> Result<Option<Vote<NodeId>>, StorageError<NodeId>> {
-        Ok(*self.vote.read().await)
-    }
-
-    #[tracing::instrument(level = "trace", skip(self, entries))]
-    async fn append_to_log<I>(&mut self, entries: I) -> Result<(), StorageError<NodeId>>
-    where I: IntoIterator<Item = Entry<TypeConfig>> + Send {
-        let mut log = self.log.write().await;
-        for entry in entries {
-            log.insert(entry.log_id.index, entry);
-        }
-        Ok(())
-    }
-
-    #[tracing::instrument(level = "debug", skip(self))]
-    async fn delete_conflict_logs_since(&mut self, log_id: LogId<NodeId>) -> Result<(), StorageError<NodeId>> {
-        tracing::debug!("delete_log: [{:?}, +oo)", log_id);
-
-        let mut log = self.log.write().await;
-        let keys = log.range(log_id.index..).map(|(k, _v)| *k).collect::<Vec<_>>();
-        for key in keys {
-            log.remove(&key);
-        }
-
-        Ok(())
-    }
-
-    #[tracing::instrument(level = "debug", skip(self))]
-    async fn purge_logs_upto(&mut self, log_id: LogId<NodeId>) -> Result<(), StorageError<NodeId>> {
-        tracing::debug!("delete_log: (-oo, {:?}]", log_id);
-
-        {
-            let mut ld = self.last_purged_log_id.write().await;
-            assert!(*ld <= Some(log_id));
-            *ld = Some(log_id);
-        }
-
-        {
-            let mut log = self.log.write().await;
-
-            let keys = log.range(..=log_id.index).map(|(k, _v)| *k).collect::<Vec<_>>();
-            for key in keys {
-                log.remove(&key);
-            }
-        }
-
-        Ok(())
-    }
-
-    async fn last_applied_state(
+    async fn applied_state(
         &mut self,
     ) -> Result<(Option<LogId<NodeId>>, StoredMembership<NodeId, BasicNode>), StorageError<NodeId>> {
         let state_machine = self.state_machine.read().await;
@@ -244,11 +175,9 @@ impl RaftStorage<TypeConfig> for Arc<Store> {
     }
 
     #[tracing::instrument(level = "trace", skip(self, entries))]
-    async fn apply_to_state_machine(
-        &mut self,
-        entries: &[Entry<TypeConfig>],
-    ) -> Result<Vec<Response>, StorageError<NodeId>> {
-        let mut res = Vec::with_capacity(entries.len());
+    async fn apply<I>(&mut self, entries: I) -> Result<Vec<Response>, StorageError<NodeId>>
+    where I: IntoIterator<Item = Entry<TypeConfig>> + Send {
+        let mut res = Vec::new(); //No `with_capacity`; do not know `len` of iterator
 
         let mut sm = self.state_machine.write().await;
 
@@ -301,7 +230,7 @@ impl RaftStorage<TypeConfig> for Arc<Store> {
 
         // Update the state machine.
         {
-            let updated_state_machine: StateMachine = serde_json::from_slice(&new_snapshot.data)
+            let updated_state_machine: StateMachineData = serde_json::from_slice(&new_snapshot.data)
                 .map_err(|e| StorageIOError::read_snapshot(Some(new_snapshot.meta.signature()), &e))?;
             let mut state_machine = self.state_machine.write().await;
             *state_machine = updated_state_machine;
@@ -327,11 +256,92 @@ impl RaftStorage<TypeConfig> for Arc<Store> {
         }
     }
 
-    async fn get_log_reader(&mut self) -> Self::LogReader {
+    async fn get_snapshot_builder(&mut self) -> Self::SnapshotBuilder {
         self.clone()
     }
+}
 
-    async fn get_snapshot_builder(&mut self) -> Self::SnapshotBuilder {
+#[async_trait]
+impl RaftLogStorage<TypeConfig> for Arc<LogStore> {
+    type LogReader = Self;
+
+    async fn get_log_state(&mut self) -> Result<LogState<TypeConfig>, StorageError<NodeId>> {
+        let log = self.log.read().await;
+        let last = log.iter().next_back().map(|(_, ent)| ent.log_id);
+
+        let last_purged = *self.last_purged_log_id.read().await;
+
+        let last = match last {
+            None => last_purged,
+            Some(x) => Some(x),
+        };
+
+        Ok(LogState {
+            last_purged_log_id: last_purged,
+            last_log_id: last,
+        })
+    }
+
+    #[tracing::instrument(level = "trace", skip(self))]
+    async fn save_vote(&mut self, vote: &Vote<NodeId>) -> Result<(), StorageError<NodeId>> {
+        let mut v = self.vote.write().await;
+        *v = Some(*vote);
+        Ok(())
+    }
+
+    async fn read_vote(&mut self) -> Result<Option<Vote<NodeId>>, StorageError<NodeId>> {
+        Ok(*self.vote.read().await)
+    }
+
+    #[tracing::instrument(level = "trace", skip(self, entries, callback))]
+    async fn append<I>(&mut self, entries: I, callback: LogFlushed<NodeId>) -> Result<(), StorageError<NodeId>>
+    where I: IntoIterator<Item = Entry<TypeConfig>> + Send {
+        // Simple implementation that calls the flush-before-return `append_to_log`.
+        let mut log = self.log.write().await;
+        for entry in entries {
+            log.insert(entry.log_id.index, entry);
+        }
+        callback.log_io_completed(Ok(()));
+
+        Ok(())
+    }
+
+    #[tracing::instrument(level = "debug", skip(self))]
+    async fn truncate(&mut self, log_id: LogId<NodeId>) -> Result<(), StorageError<NodeId>> {
+        tracing::debug!("delete_log: [{:?}, +oo)", log_id);
+
+        let mut log = self.log.write().await;
+        let keys = log.range(log_id.index..).map(|(k, _v)| *k).collect::<Vec<_>>();
+        for key in keys {
+            log.remove(&key);
+        }
+
+        Ok(())
+    }
+
+    #[tracing::instrument(level = "debug", skip(self))]
+    async fn purge(&mut self, log_id: LogId<NodeId>) -> Result<(), StorageError<NodeId>> {
+        tracing::debug!("delete_log: (-oo, {:?}]", log_id);
+
+        {
+            let mut ld = self.last_purged_log_id.write().await;
+            assert!(*ld <= Some(log_id));
+            *ld = Some(log_id);
+        }
+
+        {
+            let mut log = self.log.write().await;
+
+            let keys = log.range(..=log_id.index).map(|(k, _v)| *k).collect::<Vec<_>>();
+            for key in keys {
+                log.remove(&key);
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn get_log_reader(&mut self) -> Self::LogReader {
         self.clone()
     }
 }
