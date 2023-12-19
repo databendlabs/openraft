@@ -21,8 +21,6 @@ use crate::storage::RaftStateMachine;
 use crate::storage::StorageHelper;
 use crate::testing::StoreBuilder;
 use crate::vote::CommittedLeaderId;
-use crate::AppData;
-use crate::AppDataResponse;
 use crate::AsyncRuntime;
 use crate::LogId;
 use crate::Membership;
@@ -48,11 +46,15 @@ macro_rules! btreeset {
 }
 
 /// Test suite to ensure a `RaftStore` impl works as expected.
+///
+/// Additional traits are required to be implemented by the store builder for testing:
+/// - `C::D` and `C::R` requires `Debug` for debugging.
+/// - `C::NodeId` requires `From<u64>` to build a node id.
 pub struct Suite<C, LS, SM, B, G>
 where
     C: RaftTypeConfig,
-    C::D: AppData + Debug,
-    C::R: AppDataResponse + Debug,
+    C::D: Debug,
+    C::R: Debug,
     LS: RaftLogStorage<C>,
     SM: RaftStateMachine<C>,
     B: StoreBuilder<C, LS, SM, G>,
@@ -65,8 +67,8 @@ where
 impl<C, LS, SM, B, G> Suite<C, LS, SM, B, G>
 where
     C: RaftTypeConfig,
-    C::D: AppData + Debug,
-    C::R: AppDataResponse + Debug,
+    C::D: Debug,
+    C::R: Debug,
     C::NodeId: From<u64>,
     LS: RaftLogStorage<C>,
     SM: RaftStateMachine<C>,
@@ -108,8 +110,8 @@ where
         run_fut(run_test(builder, Self::append_to_log))?;
         run_fut(run_test(builder, Self::snapshot_meta))?;
 
-        // run_fut(Suite::apply_single(builder))?;
-        // run_fut(Suite::apply_multi(builder))?;
+        run_fut(run_test(builder, Self::apply_single))?;
+        run_fut(run_test(builder, Self::apply_multiple))?;
 
         // TODO(xp): test: finalized_snapshot, do_log_compaction, begin_receiving_snapshot,
         // get_current_snapshot
@@ -984,121 +986,67 @@ where
         Ok(())
     }
 
-    // pub async fn apply_single(mut store: S, mut sm: SM) -> Result<(), StorageError<C::NodeId>> {
+    pub async fn apply_single(mut store: LS, mut sm: SM) -> Result<(), StorageError<C::NodeId>> {
+        let (last_applied, _) = sm.applied_state().await?;
+        assert_eq!(last_applied, None,);
 
-    //
-    //     let entry = Entry {
-    //         log_id: log_id(3,1),
-    //
-    //         payload: EntryPayload::Normal(ClientRequest {
-    //             client: "0".into(),
-    //             serial: 0,
-    //             status: "lit".into(),
-    //         }),
-    //     };
-    //
-    //     apply(&mut sm, &[&entry]).await?;
-    //     let (last_applied, _) = store.last_applied_state().await?;
-    //
-    //     assert_eq!(
-    //         last_applied,
-    //         Some(log_id(3,1)),
-    //         "expected last_applied_log to be 1, got {:?}",
-    //         last_applied
-    //     );
-    //
-    //     let sm = store.get_state_machine().await;
-    //     let client_serial =
-    //         sm.client_serial_responses.get("0").expect("expected entry to exist in
-    // client_serial_responses");     assert_eq!(client_serial, &(0, None), "unexpected client
-    // serial response");
-    //
-    //     let client_status = sm.client_status.get("0").expect("expected entry to exist in
-    // client_status");     assert_eq!(
-    //         client_status, "lit",
-    //         "expected client_status to be 'lit', got '{}'",
-    //         client_status
-    //     );
-    //     Ok(())
-    // }
-    //
-    // pub async fn apply_multi(mut store: S, mut sm: SM) -> Result<(), StorageError<C::NodeId>> {
+        tracing::info!("--- apply blank entry");
+        {
+            let entry = blank_ent_0::<C>(0, 0);
 
-    //
-    //     let req0 = ClientRequest {
-    //         client: "1".into(),
-    //         serial: 0,
-    //         status: "old".into(),
-    //     };
-    //     let req1 = ClientRequest {
-    //         client: "1".into(),
-    //         serial: 1,
-    //         status: "new".into(),
-    //     };
-    //     let req2 = ClientRequest {
-    //         client: "2".into(),
-    //         serial: 0,
-    //         status: "other".into(),
-    //     };
-    //
-    //     let entries = vec![
-    //         (&log_id(3,1), &req0),
-    //         (&log_id(3,2), &req1),
-    //         (&log_id(3,3), &req2),
-    //     ]
-    //     .into_iter()
-    //     .map(|(id, req)| Entry {
-    //         log_id: *id,
-    //         payload: EntryPayload::Normal(req.clone()),
-    //     })
-    //     .collect::<Vec<_>>();
-    //
-    //     apply(&mut sm, &entries.iter().collect::<Vec<_>>()).await?;
-    //
-    //     let (last_applied, _) = store.last_applied_state().await?;
-    //
-    //     assert_eq!(
-    //         last_applied,
-    //         Some(log_id(3,3)),
-    //         "expected last_applied_log to be 3, got {:?}",
-    //         last_applied
-    //     );
-    //
-    //     let sm = store.get_state_machine().await;
-    //
-    //     let client_serial1 = sm
-    //         .client_serial_responses
-    //         .get("1")
-    //         .expect("expected entry to exist in client_serial_responses for client 1");
-    //     assert_eq!(client_serial1.0, 1, "unexpected client serial response");
-    //     assert_eq!(
-    //         client_serial1.1,
-    //         Some(String::from("old")),
-    //         "unexpected client serial response"
-    //     );
-    //
-    //     let client_serial2 = sm
-    //         .client_serial_responses
-    //         .get("2")
-    //         .expect("expected entry to exist in client_serial_responses for client 2");
-    //     assert_eq!(client_serial2.0, 0, "unexpected client serial response");
-    //     assert_eq!(client_serial2.1, None, "unexpected client serial response");
-    //
-    //     let client_status1 = sm.client_status.get("1").expect("expected entry to exist in
-    // client_status for client 1");     let client_status2 =
-    // sm.client_status.get("2").expect("expected entry to exist in client_status for
-    // client 2");     assert_eq!(
-    //         client_status1, "new",
-    //         "expected client_status to be 'new', got '{}'",
-    //         client_status1
-    //     );
-    //     assert_eq!(
-    //         client_status2, "other",
-    //         "expected client_status to be 'other', got '{}'",
-    //         client_status2
-    //     );
-    //     Ok(())
-    // }
+            let replies = apply(&mut sm, [entry]).await?;
+            assert_eq!(replies.len(), 1, "expected 1 response");
+            let (last_applied, _) = sm.applied_state().await?;
+
+            assert_eq!(last_applied, Some(log_id_0(0, 0)),);
+        }
+
+        tracing::info!("--- apply membership entry");
+        {
+            let entry = membership_ent_0::<C>(1, 1, btreeset! {1,2});
+
+            let replies = apply(&mut sm, [entry]).await?;
+            assert_eq!(replies.len(), 1, "expected 1 response");
+            let (last_applied, mem) = sm.applied_state().await?;
+
+            assert_eq!(last_applied, Some(log_id_0(1, 1)),);
+            assert_eq!(mem.membership(), &Membership::new(vec![btreeset! {1,2}], None));
+        }
+
+        // TODO: figure out how to test applying normal entry. `C::D` can not be built by Openraft
+        // tracing::info!("--- apply normal entry");
+        // {
+        //     let entry = {
+        //         let mut e = C::Entry::from_app_data(C::D::from(1));
+        //         e.set_log_id(&log_id_0(2, 2));
+        //         e
+        //     };
+        //
+        //     let replies = apply(&mut sm, [entry]).await?;
+        //     assert_eq!(replies.len(), 1, "expected 1 response");
+        //     let (last_applied, _) = sm.applied_state().await?;
+        //
+        //     assert_eq!(last_applied, Some(log_id_0(2, 2)),);
+        // }
+
+        Ok(())
+    }
+
+    pub async fn apply_multiple(mut store: LS, mut sm: SM) -> Result<(), StorageError<C::NodeId>> {
+        let (last_applied, _) = sm.applied_state().await?;
+        assert_eq!(last_applied, None,);
+
+        let entries = [blank_ent_0::<C>(0, 0), membership_ent_0::<C>(1, 1, btreeset! {1,2})];
+
+        let replies = apply(&mut sm, entries).await?;
+        assert_eq!(replies.len(), 2);
+
+        let (last_applied, mem) = sm.applied_state().await?;
+        assert_eq!(last_applied, Some(log_id_0(1, 1)),);
+        assert_eq!(mem.membership(), &Membership::new(vec![btreeset! {1,2}], None));
+
+        Ok(())
+    }
 
     pub async fn feed_10_logs_vote_self(sto: &mut LS) -> Result<(), StorageError<C::NodeId>> {
         append(sto, [blank_ent_0::<C>(0, 0)]).await?;
@@ -1170,15 +1118,15 @@ where
 }
 
 /// A wrapper for calling nonblocking `RaftStorage::apply_to_state_machine()`
-async fn apply<C, SM, I>(sm: &mut SM, entries: I) -> Result<(), StorageError<C::NodeId>>
+async fn apply<C, SM, I>(sm: &mut SM, entries: I) -> Result<Vec<C::R>, StorageError<C::NodeId>>
 where
     C: RaftTypeConfig,
     SM: RaftStateMachine<C>,
     I: IntoIterator<Item = C::Entry> + OptionalSend,
     I::IntoIter: OptionalSend,
 {
-    sm.apply(entries).await?;
-    Ok(())
+    let resp = sm.apply(entries).await?;
+    Ok(resp)
 }
 
 /// A wrapper for calling nonblocking `RaftStorage::append_to_log()`

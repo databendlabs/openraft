@@ -191,7 +191,17 @@ where
             .map(|e| ApplyingEntry::new(*e.get_log_id(), e.get_membership().cloned()))
             .collect::<Vec<_>>();
 
+        let n_entries = applying_entries.len();
+
         let apply_results = self.state_machine.apply(entries).await?;
+
+        let n_replies = apply_results.len();
+
+        debug_assert_eq!(
+            n_entries, n_replies,
+            "n_entries: {} should equal n_replies: {}",
+            n_entries, n_replies
+        );
 
         let resp = ApplyResult {
             since,
