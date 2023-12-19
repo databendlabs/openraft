@@ -82,6 +82,7 @@ use crate::storage::LogFlushed;
 use crate::storage::RaftLogReaderExt;
 use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
+use crate::type_config::alias::AsyncRuntimeOf;
 use crate::type_config::alias::InstantOf;
 use crate::utime::UTime;
 use crate::AsyncRuntime;
@@ -134,9 +135,6 @@ impl<C: RaftTypeConfig> Debug for ApplyResult<C> {
 ///
 /// It is created when RaftCore enters leader state, and will be dropped when it quits leader state.
 pub(crate) struct LeaderData<C: RaftTypeConfig> {
-    /// Channels to send result back to client when logs are committed.
-    pub(crate) client_resp_channels: BTreeMap<u64, ClientWriteTx<C>>,
-
     /// A mapping of node IDs the replication state of the target node.
     // TODO(xp): make it a field of RaftCore. it does not have to belong to leader.
     //           It requires the Engine to emit correct add/remove replication commands
@@ -149,7 +147,6 @@ pub(crate) struct LeaderData<C: RaftTypeConfig> {
 impl<C: RaftTypeConfig> LeaderData<C> {
     pub(crate) fn new() -> Self {
         Self {
-            client_resp_channels: Default::default(),
             replications: BTreeMap::new(),
             next_heartbeat: <C::AsyncRuntime as AsyncRuntime>::Instant::now(),
         }
@@ -183,6 +180,9 @@ where
     pub(crate) sm_handle: sm::Handle<C>,
 
     pub(crate) engine: Engine<C>,
+
+    /// Channels to send result back to client when logs are applied.
+    pub(crate) client_resp_channels: BTreeMap<u64, ClientWriteTx<C>>,
 
     pub(crate) leader_data: Option<LeaderData<C>>,
 
@@ -468,9 +468,7 @@ where
 
         // Install callback channels.
         if let Some(tx) = tx {
-            if let Some(l) = &mut self.leader_data {
-                l.client_resp_channels.insert(index, tx);
-            }
+            self.client_resp_channels.insert(index, tx);
         }
 
         true
@@ -711,17 +709,15 @@ where
     pub(crate) fn handle_apply_result(&mut self, res: ApplyResult<C>) {
         tracing::debug!(last_applied = display(res.last_applied), "{}", func_name!());
 
-        if let Some(l) = &mut self.leader_data {
-            let mut results = res.apply_results.into_iter();
-            let mut applying_entries = res.applying_entries.into_iter();
+        let mut results = res.apply_results.into_iter();
+        let mut applying_entries = res.applying_entries.into_iter();
 
-            for log_index in res.since..res.end {
-                let ent = applying_entries.next().unwrap();
-                let apply_res = results.next().unwrap();
-                let tx = l.client_resp_channels.remove(&log_index);
+        for log_index in res.since..res.end {
+            let ent = applying_entries.next().unwrap();
+            let apply_res = results.next().unwrap();
+            let tx = self.client_resp_channels.remove(&log_index);
 
-                Self::send_response(ent, apply_res, tx);
-            }
+            Self::send_response(ent, apply_res, tx);
         }
     }
 
@@ -1538,16 +1534,6 @@ where
                 self.leader_data = Some(LeaderData::new());
             }
             Command::QuitLeader => {
-                if let Some(l) = &mut self.leader_data {
-                    // Leadership lost, inform waiting clients
-                    let chans = std::mem::take(&mut l.client_resp_channels);
-                    for (_, tx) in chans.into_iter() {
-                        let _ = tx.send(Err(ClientWriteError::ForwardToLeader(ForwardToLeader {
-                            leader_id: None,
-                            leader_node: None,
-                        })));
-                    }
-                }
                 self.leader_data = None;
             }
             Command::AppendEntry { entry } => {
@@ -1584,6 +1570,28 @@ where
             }
             Command::DeleteConflictLog { since } => {
                 self.log_store.truncate(since).await?;
+
+                // Inform clients waiting for logs to be applied.
+                let removed = self.client_resp_channels.split_off(&since.index);
+                if !removed.is_empty() {
+                    let leader_id = self.current_leader();
+                    let leader_node = self.get_leader_node(leader_id);
+
+                    AsyncRuntimeOf::<C>::spawn(async move {
+                        for (log_index, tx) in removed.into_iter() {
+                            let res = tx.send(Err(ClientWriteError::ForwardToLeader(ForwardToLeader {
+                                leader_id,
+                                leader_node: leader_node.clone(),
+                            })));
+
+                            tracing::debug!(
+                                "sent ForwardToLeader for log_index: {}, is_ok: {}",
+                                log_index,
+                                res.is_ok()
+                            );
+                        }
+                    });
+                }
             }
             Command::SendVote { vote_req } => {
                 self.spawn_parallel_vote_requests(&vote_req).await;
