@@ -8,7 +8,6 @@ use actix_web::middleware;
 use actix_web::middleware::Logger;
 use actix_web::web::Data;
 use actix_web::HttpServer;
-use openraft::storage::Adaptor;
 use openraft::BasicNode;
 use openraft::Config;
 use openraft::TokioRuntime;
@@ -20,7 +19,6 @@ use crate::network::raft;
 use crate::network::Network;
 use crate::store::Request;
 use crate::store::Response;
-use crate::store::Store;
 
 pub mod app;
 pub mod client;
@@ -35,8 +33,8 @@ openraft::declare_raft_types!(
     Entry = openraft::Entry<TypeConfig>, SnapshotData = Cursor<Vec<u8>>, AsyncRuntime = TokioRuntime
 );
 
-pub type LogStore = Adaptor<TypeConfig, Arc<Store>>;
-pub type StateMachineStore = Adaptor<TypeConfig, Arc<Store>>;
+pub type LogStore = crate::store::LogStore;
+pub type StateMachineStore = crate::store::StateMachineStore;
 pub type Raft = openraft::Raft<TypeConfig>;
 
 pub mod typ {
@@ -67,25 +65,34 @@ pub async fn start_example_raft_node(node_id: NodeId, http_addr: String) -> std:
 
     let config = Arc::new(config.validate().unwrap());
 
+    // Create a instance of where the Raft logs will be stored.
+    let log_store = Arc::new(LogStore::default());
     // Create a instance of where the Raft data will be stored.
-    let store = Arc::new(Store::default());
-
-    let (log_store, state_machine) = Adaptor::new(store.clone());
+    let state_machine_store = Arc::new(StateMachineStore::default());
 
     // Create the network layer that will connect and communicate the raft instances and
     // will be used in conjunction with the store created above.
     let network = Network {};
 
     // Create a local raft instance.
-    let raft = openraft::Raft::new(node_id, config.clone(), network, log_store, state_machine).await.unwrap();
+    let raft = openraft::Raft::new(
+        node_id,
+        config.clone(),
+        network,
+        log_store.clone(),
+        state_machine_store.clone(),
+    )
+    .await
+    .unwrap();
 
     // Create an application that will store all the instances created above, this will
-    // be later used on the actix-web services.
+    // later be used on the actix-web services.
     let app_data = Data::new(App {
         id: node_id,
         addr: http_addr.clone(),
         raft,
-        store,
+        log_store,
+        state_machine_store,
         config,
     });
 

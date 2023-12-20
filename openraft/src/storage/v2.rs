@@ -107,7 +107,7 @@ where C: RaftTypeConfig
     /// It should returns immediately after saving the input log entries in memory, and calls the
     /// `callback` when the entries are persisted on disk, i.e., avoid blocking.
     ///
-    /// This method is still async because preparing preparing the IO is usually async.
+    /// This method is still async because preparing the IO is usually async.
     ///
     /// ### To ensure correctness:
     ///
