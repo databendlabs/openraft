@@ -95,6 +95,8 @@ pub struct LogStore {
     /// The Raft log.
     log: RwLock<BTreeMap<u64, Entry<TypeConfig>>>,
 
+    committed: RwLock<Option<LogId<NodeId>>>,
+
     /// The current granted vote.
     vote: RwLock<Option<Vote<NodeId>>>,
 }
@@ -280,6 +282,17 @@ impl RaftLogStorage<TypeConfig> for Arc<LogStore> {
             last_purged_log_id: last_purged,
             last_log_id: last,
         })
+    }
+
+    async fn save_committed(&mut self, committed: Option<LogId<NodeId>>) -> Result<(), StorageError<NodeId>> {
+        let mut c = self.committed.write().await;
+        *c = committed;
+        Ok(())
+    }
+
+    async fn read_committed(&mut self) -> Result<Option<LogId<NodeId>>, StorageError<NodeId>> {
+        let committed = self.committed.read().await;
+        Ok(*committed)
     }
 
     #[tracing::instrument(level = "trace", skip(self))]

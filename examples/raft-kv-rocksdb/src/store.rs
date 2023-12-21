@@ -329,6 +329,25 @@ impl LogStore {
         Ok(())
     }
 
+    fn set_committed_(&self, committed: &Option<LogId<NodeId>>) -> Result<(), StorageIOError<NodeId>> {
+        let json = serde_json::to_vec(committed).unwrap();
+
+        self.db.put_cf(self.store(), b"committed", json).map_err(|e| StorageIOError::write(&e))?;
+
+        self.flush(ErrorSubject::Store, ErrorVerb::Write)?;
+        Ok(())
+    }
+
+    fn get_committed_(&self) -> StorageResult<Option<LogId<NodeId>>> {
+        Ok(self
+            .db
+            .get_cf(self.store(), b"committed")
+            .map_err(|e| StorageError::IO {
+                source: StorageIOError::read(&e),
+            })?
+            .and_then(|v| serde_json::from_slice(&v).ok()))
+    }
+
     fn set_vote_(&self, vote: &Vote<NodeId>) -> StorageResult<()> {
         self.db
             .put_cf(self.store(), b"vote", serde_json::to_vec(vote).unwrap())
@@ -400,6 +419,16 @@ impl RaftLogStorage<TypeConfig> for LogStore {
             last_purged_log_id,
             last_log_id,
         })
+    }
+
+    async fn save_committed(&mut self, _committed: Option<LogId<NodeId>>) -> Result<(), StorageError<NodeId>> {
+        self.set_committed_(&_committed)?;
+        Ok(())
+    }
+
+    async fn read_committed(&mut self) -> Result<Option<LogId<NodeId>>, StorageError<NodeId>> {
+        let c = self.get_committed_()?;
+        Ok(c)
     }
 
     #[tracing::instrument(level = "trace", skip(self))]

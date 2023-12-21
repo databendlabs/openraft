@@ -403,7 +403,10 @@ where
         };
 
         // TODO: do not spawn, manage read requests with a queue by RaftCore
-        C::AsyncRuntime::spawn(waiting_fu.instrument(tracing::debug_span!("spawn_is_leader_waiting")));
+
+        // False positive lint warning(`non-binding `let` on a future`): https://github.com/rust-lang/rust-clippy/issues/9932
+        #[allow(clippy::let_underscore_future)]
+        let _ = C::AsyncRuntime::spawn(waiting_fu.instrument(tracing::debug_span!("spawn_is_leader_waiting")));
     }
 
     /// Submit change-membership by writing a Membership log entry.
@@ -1002,7 +1005,9 @@ where
             let id = self.id;
             let option = RPCOption::new(ttl);
 
-            C::AsyncRuntime::spawn(
+            // False positive lint warning(`non-binding `let` on a future`): https://github.com/rust-lang/rust-clippy/issues/9932
+            #[allow(clippy::let_underscore_future)]
+            let _ = C::AsyncRuntime::spawn(
                 async move {
                     let tm_res = C::AsyncRuntime::timeout(ttl, client.vote(req, option)).await;
                     let res = match tm_res {
@@ -1577,7 +1582,9 @@ where
                     let leader_id = self.current_leader();
                     let leader_node = self.get_leader_node(leader_id);
 
-                    AsyncRuntimeOf::<C>::spawn(async move {
+                    // False positive lint warning(`non-binding `let` on a future`): https://github.com/rust-lang/rust-clippy/issues/9932
+                    #[allow(clippy::let_underscore_future)]
+                    let _ = AsyncRuntimeOf::<C>::spawn(async move {
                         for (log_index, tx) in removed.into_iter() {
                             let res = tx.send(Err(ClientWriteError::ForwardToLeader(ForwardToLeader {
                                 leader_id,

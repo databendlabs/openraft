@@ -90,6 +90,28 @@ fn to_error<E: std::error::Error + 'static + Clone>(e: toy_rpc::Error, target: N
     }
 }
 
+// With nightly-2023-12-20, and `err(Debug)` in the instrument macro, this gives the following lint
+// warning. Without `err(Debug)` it is OK. Suppress it with `#[allow(clippy::blocks_in_conditions)]`
+//
+// warning: in a `match` scrutinee, avoid complex blocks or closures with blocks; instead, move the
+// block or closure higher and bind it with a `let`
+//
+//    --> src/network/raft_network_impl.rs:99:91
+//     |
+// 99  |       ) -> Result<AppendEntriesResponse<NodeId>, RPCError<NodeId, Node, RaftError<NodeId>>>
+// {
+//     |  ___________________________________________________________________________________________^
+// 100 | |         tracing::debug!(req = debug(&req), "send_append_entries");
+// 101 | |
+// 102 | |         let c = self.c().await?;
+// ...   |
+// 108 | |         raft.append(req).await.map_err(|e| to_error(e, self.target))
+// 109 | |     }
+//     | |_____^
+//     |
+//     = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#blocks_in_conditions
+//     = note: `#[warn(clippy::blocks_in_conditions)]` on by default
+#[allow(clippy::blocks_in_conditions)]
 #[async_trait]
 impl RaftNetwork<TypeConfig> for NetworkConnection {
     #[tracing::instrument(level = "debug", skip_all, err(Debug))]
