@@ -35,10 +35,10 @@ async fn write(mut req: Request<Arc<App>>) -> tide::Result {
 
 async fn read(mut req: Request<Arc<App>>) -> tide::Result {
     let key: String = req.body_json().await?;
-    let state_machine = req.state().store.state_machine.read().await;
-    let value = state_machine.get(&key)?;
+    let kvs = req.state().key_values.read().await;
+    let value = kvs.get(&key);
 
-    let res: Result<String, Infallible> = Ok(value.unwrap_or_default());
+    let res: Result<String, Infallible> = Ok(value.cloned().unwrap_or_default());
     Ok(Response::builder(StatusCode::Ok).body(Body::from_json(&res)?).build())
 }
 
@@ -48,11 +48,11 @@ async fn consistent_read(mut req: Request<Arc<App>>) -> tide::Result {
     match ret {
         Ok(_) => {
             let key: String = req.body_json().await?;
-            let state_machine = req.state().store.state_machine.read().await;
+            let kvs = req.state().key_values.read().await;
 
-            let value = state_machine.get(&key)?;
+            let value = kvs.get(&key);
 
-            let res: Result<String, CheckIsLeaderError<NodeId, Node>> = Ok(value.unwrap_or_default());
+            let res: Result<String, CheckIsLeaderError<NodeId, Node>> = Ok(value.cloned().unwrap_or_default());
             Ok(Response::builder(StatusCode::Ok).body(Body::from_json(&res)?).build())
         }
         e => Ok(Response::builder(StatusCode::Ok).body(Body::from_json(&e)?).build()),
