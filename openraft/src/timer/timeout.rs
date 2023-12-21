@@ -67,7 +67,9 @@ impl<RT: AsyncRuntime> RaftTimer<RT> for Timeout<RT> {
             inner: inner.clone(),
         };
 
-        RT::spawn(inner.sleep_loop(rx, callback).instrument(trace_span!("timeout-loop").or_current()));
+        // False positive lint warning(`non-binding `let` on a future`): https://github.com/rust-lang/rust-clippy/issues/9932
+        #[allow(clippy::let_underscore_future)]
+        let _ = RT::spawn(inner.sleep_loop(rx, callback).instrument(trace_span!("timeout-loop").or_current()));
 
         t
     }
