@@ -1,6 +1,6 @@
 use proc_macro::TokenStream;
 
-/// This macro either emits `#[async_trait::async_trait]` if the `singlethreaded` is disabled.
+/// This macro emits `#[async_trait::async_trait]` if the `singlethreaded` feature is disabled.
 ///
 /// Starting from Rust 1.75.0, the `async_fn_in_trait` language feature is generally available 
 /// that allows traits to contain asynchronous methods and associated functions. However, the 
