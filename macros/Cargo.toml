@@ -17,6 +17,5 @@ proc-macro = true
 
 [features]
 
-# Passes `?Send` to `async_trait` to force affected tasks to be spawned in the current thread.
+# Do not use `async_trait` and do not add `Send` bounds.
 singlethreaded = []
-
