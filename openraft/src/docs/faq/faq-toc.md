@@ -1,5 +1,7 @@
 - [General](#general)
   * [What are the differences between Openraft and standard Raft?](#what-are-the-differences-between-openraft-and-standard-raft)
+- [Observation and Management](#observation-and-management)
+  * [How to get notified when the server state changes?](#how-to-get-notified-when-the-server-state-changes)
 - [Data structure](#data-structure)
   * [Why is log id a tuple of `(term, node_id, log_index)`?](#why-is-log-id-a-tuple-of-term-node_id-log_index)
 - [Replication](#replication)

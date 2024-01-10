@@ -10,6 +10,42 @@
 - Does not support single step memebership change. Only joint is supported.
 
 
+## Observation and Management
+
+
+### How to get notified when the server state changes?
+
+To monitor the state of a Raft node,
+it's recommended to subscribe to updates in the [`RaftMetrics`][]
+by calling [`Raft::metrics()`][].
+
+The following code snippet provides an example of how to wait for changes in `RaftMetrics` until a leader is elected:
+
+```ignore
+let mut rx = self.raft.metrics();
+loop {
+    if let Some(l) = rx.borrow().current_leader {
+        return Ok(Some(l));
+    }
+
+    rx.changed().await?;
+}
+```
+
+The second example calls a function when the current node becomes the leader:
+
+```ignore
+let mut rx = self.raft.metrics();
+loop {
+    if rx.borrow().state == ServerState::Leader {
+         app_init_leader();
+    }
+
+    rx.changed().await?;
+}
+```
+
+
 ## Data structure
 
 
@@ -155,3 +191,5 @@ pub(crate) fn following_handler(&mut self) -> FollowingHandler<C> {
 [`NetworkError`]: `crate::error::NetworkError`
 
 
+[`RaftMetrics`]: `crate::metrics::RaftMetrics`
+[`Raft::metrics()`]: `crate::Raft::metrics`
