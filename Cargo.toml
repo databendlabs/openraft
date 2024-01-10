@@ -55,5 +55,6 @@ exclude = [
     "cluster_benchmark",
     "stores/rocksstore-v2",
     "examples/raft-kv-memstore",
+    "examples/raft-kv-memstore-singlethreaded",
     "examples/raft-kv-rocksdb",
 ]
