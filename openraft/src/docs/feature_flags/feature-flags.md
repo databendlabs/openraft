@@ -25,9 +25,12 @@ By default openraft enables no features.
   <br/><br/>
 
 - `single-term-leader`: allows only one leader to be elected in each `term`.
-  This is the standard raft policy, which increases election confliction rate
-  but reduce `LogId`(`(term, node_id, index)` to `(term, index)`) size.
-  Read more about how it is implemented in [`vote`](./vote.md)
+  This is the standard raft policy, which increases election conflict rate
+  but reduce `LogId` size(`(term, node_id, index)` to `(term, index)`).
+
+  Read more about how it is implemented in:
+  [`leader_id`](crate::docs::data::leader_id)
+  and [`vote`](crate::docs::data::vote).
   <br/><br/>
 
 - `compat-07`: provides additional data types to build v0.7 compatible RaftStorage.
