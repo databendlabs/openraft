@@ -1,10 +1,36 @@
-# Leader-id in Advanced mode and Standard mode
+## Leader-id in Advanced mode and Standard mode
 
-Openraft provides two `LeaderId` types to switch between these two modes with feature `single-term-leader`:
+Openraft provides two `LeaderId` types to switch between these two modes with feature [`single-term-leader`] :
+
+The feature [`single-term-leader`] affects the `PartialOrd` implementation of `LeaderId`, where `LeaderId` is defined as a tuple `(term, node_id)`.
+
+### Definition of `LeaderId`
+
+Within Openraft, and also implicitly in the standard Raft, `LeaderId` is utilized to uniquely identify a leader. The `LeaderId` could either be a confirmed leader, one that has been granted by a `Quorum`, or a potential `Leader`, such as a `Candidate`.
+
+- In standard Raft, the definition of `LeaderId` as `(term, node_id)` implies a **`partial order`**, although it is not explicitly articulated in the original paper.
+
+  When comparing two `LeaderId` `A` and `B`, the partial order for `LeaderId` in standard Raft is as follows:
+
+  `A.term > B.term ↔ A > B`.
+  <br/><br/>
+
+- Conversely, in Openraft, with the [`single-term-leader`] feature disabled by default, `LeaderId` follows a `total order` based on lexicographical comparison:
+
+  `A.term > B.term || (A.term == B.term && A.node_id > B.node_id) ↔ A > B`.
+
+Activating the `single-term-leader` feature makes `LeaderId` conform to the `partial order` seen in standard Raft.
+
+### Usage of `LeaderId`
+
+When handling `VoteRequest`, both Openraft and standard Raft (though not explicitly detailed) rely on the ordering of `LeaderId` to decide whether to grant a vote:
+**a node will grant a vote with a `LeaderId` that is greater than any it has previously granted**.
+
+Consequently, by default in Openraft (with `single-term-leader` disabled), it is possible to elect multiple `Leader`s within the same term, with the last elected `Leader` being recognized as valid. In contrast, under standard Raft protocol, only a single `Leader` is elected per `term`.
 
 ### Default: advanced mode
 
-`cargo build` without [`single-term-leader`], is the advanced mode, the default mode:
+`cargo build` without [`single-term-leader`][], is the advanced mode, the default mode:
 `LeaderId` is defined as the following, and it is a **totally ordered** value(two or more leaders can be granted in the same term):
 
 ```ignore
@@ -99,3 +125,4 @@ So let a committed `Vote` override a incomparable non-committed is safe.
 - Cons: election conflicting rate may increase.
 
 
+[`single-term-leader`]: crate::docs::feature_flags

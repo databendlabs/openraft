@@ -14,7 +14,7 @@ In a standard Raft, the corresponding concept is `(term, voted_for: Option<NodeI
 
 The validity checking for RPCs in Openraft, such as when handling vote or append-entries requests,
 is straightforward. Essentially, **a node will grant a `Vote` only if it is greater than or equal to the last `Vote` it has seen**.
-Refer to the `PartialOrd` implementation for [`Vote`]. The pseudo code about vote order checking is as follows:
+Refer to the `PartialOrd` implementation for [`Vote`]. The pseudocode about vote order checking is as follows:
 
 ```ignore
 # pseudo code
@@ -43,7 +43,7 @@ See: [`leader-id`].
 
 ## Vote and Membership define the server state
 
-In the default mode, the `Vote` defines the server state(leader, candidate, follower or learner).
+In the default mode, the `Vote` defines the server state (leader, candidate, follower or learner).
 A server state has a unique corresponding `vote`, thus `vote` can be used to identify different server
 states, i.e, if the `vote` changes, the server state must have changed.
 
