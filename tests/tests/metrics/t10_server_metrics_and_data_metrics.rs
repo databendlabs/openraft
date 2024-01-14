@@ -40,12 +40,7 @@ async fn server_metrics_and_data_metrics() -> Result<()> {
     log_index += router.client_request_many(0, "foo", n).await?;
 
     let last_log_index = data_metrics.borrow().last_log.unwrap_or_default().index;
-    assert_eq!(
-        last_log_index,
-        log_index,
-        "last_log_index should be {:?}",
-        log_index
-    );
+    assert_eq!(last_log_index, log_index, "last_log_index should be {:?}", log_index);
     assert!(
         !server_metrics.borrow().has_changed(),
         "server metrics should not update"
