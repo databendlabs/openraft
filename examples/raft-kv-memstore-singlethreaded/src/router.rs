@@ -1,6 +1,6 @@
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::rc::Rc;
-use std::sync::Mutex;
 
 use tokio::sync::oneshot;
 
@@ -14,7 +14,7 @@ use crate::NodeId;
 #[derive(Debug, Clone)]
 #[derive(Default)]
 pub struct Router {
-    pub targets: Rc<Mutex<BTreeMap<NodeId, RequestTx>>>,
+    pub targets: Rc<RefCell<BTreeMap<NodeId, RequestTx>>>,
 }
 
 impl Router {
@@ -30,7 +30,7 @@ impl Router {
         tracing::debug!("send to: {}, {}, {}", to, path, encoded_req);
 
         {
-            let mut targets = self.targets.lock().unwrap();
+            let mut targets = self.targets.borrow_mut();
             let tx = targets.get_mut(&to).unwrap();
 
             tx.send((path.to_string(), encoded_req, resp_tx)).unwrap();

@@ -31,7 +31,7 @@ impl App {
         let (tx, rx) = mpsc::unbounded_channel();
 
         {
-            let mut targets = router.targets.lock().unwrap();
+            let mut targets = router.targets.borrow_mut();
             targets.insert(id, tx);
         }
 

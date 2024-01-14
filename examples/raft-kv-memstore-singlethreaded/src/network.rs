@@ -21,8 +21,6 @@ pub struct Connection {
     target: NodeId,
 }
 
-// NOTE: This could be implemented also on `Arc<ExampleNetwork>`, but since it's empty, implemented
-// directly.
 #[add_async_trait]
 impl RaftNetworkFactory<TypeConfig> for Router {
     type Network = Connection;

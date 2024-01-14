@@ -1,11 +1,10 @@
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::io::Cursor;
 use std::marker::PhantomData;
 use std::ops::RangeBounds;
 use std::rc::Rc;
-use std::sync::Arc;
-use std::sync::Mutex;
 
 use openraft::add_async_trait;
 use openraft::storage::LogFlushed;
@@ -27,7 +26,6 @@ use openraft::StoredMembership;
 use openraft::Vote;
 use serde::Deserialize;
 use serde::Serialize;
-use tokio::sync::RwLock;
 
 use crate::NodeId;
 use crate::TypeConfig;
@@ -101,25 +99,25 @@ pub struct StateMachineData {
 #[derive(Debug, Default)]
 pub struct StateMachineStore {
     /// The Raft state machine.
-    pub state_machine: RwLock<StateMachineData>,
+    pub state_machine: RefCell<StateMachineData>,
 
-    snapshot_idx: Arc<Mutex<u64>>,
+    snapshot_idx: RefCell<u64>,
 
     /// The last received snapshot.
-    current_snapshot: RwLock<Option<StoredSnapshot>>,
+    current_snapshot: RefCell<Option<StoredSnapshot>>,
 }
 
 #[derive(Debug, Default)]
 pub struct LogStore {
-    last_purged_log_id: RwLock<Option<LogId<NodeId>>>,
+    last_purged_log_id: RefCell<Option<LogId<NodeId>>>,
 
     /// The Raft log.
-    log: RwLock<BTreeMap<u64, Entry<TypeConfig>>>,
+    log: RefCell<BTreeMap<u64, Entry<TypeConfig>>>,
 
-    committed: RwLock<Option<LogId<NodeId>>>,
+    committed: RefCell<Option<LogId<NodeId>>>,
 
     /// The current granted vote.
-    vote: RwLock<Option<Vote<NodeId>>>,
+    vote: RefCell<Option<Vote<NodeId>>>,
 }
 
 #[add_async_trait]
@@ -128,7 +126,7 @@ impl RaftLogReader<TypeConfig> for Rc<LogStore> {
         &mut self,
         range: RB,
     ) -> Result<Vec<Entry<TypeConfig>>, StorageError<NodeId>> {
-        let log = self.log.read().await;
+        let log = self.log.borrow();
         let response = log.range(range.clone()).map(|(_, val)| val.clone()).collect::<Vec<_>>();
         Ok(response)
     }
@@ -144,7 +142,7 @@ impl RaftSnapshotBuilder<TypeConfig> for Rc<StateMachineStore> {
 
         {
             // Serialize the data of the state machine.
-            let state_machine = self.state_machine.read().await;
+            let state_machine = self.state_machine.borrow();
             data = serde_json::to_vec(&*state_machine).map_err(|e| StorageIOError::read_state_machine(&e))?;
 
             last_applied_log = state_machine.last_applied;
@@ -152,7 +150,7 @@ impl RaftSnapshotBuilder<TypeConfig> for Rc<StateMachineStore> {
         }
 
         let snapshot_idx = {
-            let mut l = self.snapshot_idx.lock().unwrap();
+            let mut l = self.snapshot_idx.borrow_mut();
             *l += 1;
             *l
         };
@@ -175,7 +173,7 @@ impl RaftSnapshotBuilder<TypeConfig> for Rc<StateMachineStore> {
         };
 
         {
-            let mut current_snapshot = self.current_snapshot.write().await;
+            let mut current_snapshot = self.current_snapshot.borrow_mut();
             *current_snapshot = Some(snapshot);
         }
 
@@ -193,7 +191,7 @@ impl RaftStateMachine<TypeConfig> for Rc<StateMachineStore> {
     async fn applied_state(
         &mut self,
     ) -> Result<(Option<LogId<NodeId>>, StoredMembership<NodeId, BasicNode>), StorageError<NodeId>> {
-        let state_machine = self.state_machine.read().await;
+        let state_machine = self.state_machine.borrow();
         Ok((state_machine.last_applied, state_machine.last_membership.clone()))
     }
 
@@ -202,7 +200,7 @@ impl RaftStateMachine<TypeConfig> for Rc<StateMachineStore> {
     where I: IntoIterator<Item = Entry<TypeConfig>> {
         let mut res = Vec::new(); //No `with_capacity`; do not know `len` of iterator
 
-        let mut sm = self.state_machine.write().await;
+        let mut sm = self.state_machine.borrow_mut();
 
         for entry in entries {
             tracing::debug!(%entry.log_id, "replicate to sm");
@@ -255,19 +253,19 @@ impl RaftStateMachine<TypeConfig> for Rc<StateMachineStore> {
         {
             let updated_state_machine: StateMachineData = serde_json::from_slice(&new_snapshot.data)
                 .map_err(|e| StorageIOError::read_snapshot(Some(new_snapshot.meta.signature()), &e))?;
-            let mut state_machine = self.state_machine.write().await;
+            let mut state_machine = self.state_machine.borrow_mut();
             *state_machine = updated_state_machine;
         }
 
         // Update current snapshot.
-        let mut current_snapshot = self.current_snapshot.write().await;
+        let mut current_snapshot = self.current_snapshot.borrow_mut();
         *current_snapshot = Some(new_snapshot);
         Ok(())
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
     async fn get_current_snapshot(&mut self) -> Result<Option<Snapshot<TypeConfig>>, StorageError<NodeId>> {
-        match &*self.current_snapshot.read().await {
+        match &*self.current_snapshot.borrow() {
             Some(snapshot) => {
                 let data = snapshot.data.clone();
                 Ok(Some(Snapshot {
@@ -289,10 +287,10 @@ impl RaftLogStorage<TypeConfig> for Rc<LogStore> {
     type LogReader = Self;
 
     async fn get_log_state(&mut self) -> Result<LogState<TypeConfig>, StorageError<NodeId>> {
-        let log = self.log.read().await;
+        let log = self.log.borrow();
         let last = log.iter().next_back().map(|(_, ent)| ent.log_id);
 
-        let last_purged = *self.last_purged_log_id.read().await;
+        let last_purged = *self.last_purged_log_id.borrow();
 
         let last = match last {
             None => last_purged,
@@ -306,32 +304,32 @@ impl RaftLogStorage<TypeConfig> for Rc<LogStore> {
     }
 
     async fn save_committed(&mut self, committed: Option<LogId<NodeId>>) -> Result<(), StorageError<NodeId>> {
-        let mut c = self.committed.write().await;
+        let mut c = self.committed.borrow_mut();
         *c = committed;
         Ok(())
     }
 
     async fn read_committed(&mut self) -> Result<Option<LogId<NodeId>>, StorageError<NodeId>> {
-        let committed = self.committed.read().await;
+        let committed = self.committed.borrow();
         Ok(*committed)
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
     async fn save_vote(&mut self, vote: &Vote<NodeId>) -> Result<(), StorageError<NodeId>> {
-        let mut v = self.vote.write().await;
+        let mut v = self.vote.borrow_mut();
         *v = Some(*vote);
         Ok(())
     }
 
     async fn read_vote(&mut self) -> Result<Option<Vote<NodeId>>, StorageError<NodeId>> {
-        Ok(*self.vote.read().await)
+        Ok(*self.vote.borrow())
     }
 
     #[tracing::instrument(level = "trace", skip(self, entries, callback))]
     async fn append<I>(&mut self, entries: I, callback: LogFlushed<NodeId>) -> Result<(), StorageError<NodeId>>
     where I: IntoIterator<Item = Entry<TypeConfig>> {
         // Simple implementation that calls the flush-before-return `append_to_log`.
-        let mut log = self.log.write().await;
+        let mut log = self.log.borrow_mut();
         for entry in entries {
             log.insert(entry.log_id.index, entry);
         }
@@ -344,7 +342,7 @@ impl RaftLogStorage<TypeConfig> for Rc<LogStore> {
     async fn truncate(&mut self, log_id: LogId<NodeId>) -> Result<(), StorageError<NodeId>> {
         tracing::debug!("delete_log: [{:?}, +oo)", log_id);
 
-        let mut log = self.log.write().await;
+        let mut log = self.log.borrow_mut();
         let keys = log.range(log_id.index..).map(|(k, _v)| *k).collect::<Vec<_>>();
         for key in keys {
             log.remove(&key);
@@ -358,13 +356,13 @@ impl RaftLogStorage<TypeConfig> for Rc<LogStore> {
         tracing::debug!("delete_log: (-oo, {:?}]", log_id);
 
         {
-            let mut ld = self.last_purged_log_id.write().await;
+            let mut ld = self.last_purged_log_id.borrow_mut();
             assert!(*ld <= Some(log_id));
             *ld = Some(log_id);
         }
 
         {
-            let mut log = self.log.write().await;
+            let mut log = self.log.borrow_mut();
 
             let keys = log.range(..=log_id.index).map(|(k, _v)| *k).collect::<Vec<_>>();
             for key in keys {

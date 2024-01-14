@@ -22,18 +22,7 @@ use tokio::task::LocalSet;
 use tracing_subscriber::EnvFilter;
 
 pub fn log_panic(panic: &PanicInfo) {
-    let backtrace = {
-        format!("{:?}", Backtrace::force_capture())
-        // #[cfg(feature = "bt")]
-        // {
-        //     format!("{:?}", Backtrace::force_capture())
-        // }
-        //
-        // #[cfg(not(feature = "bt"))]
-        // {
-        //     "backtrace is disabled without --features 'bt'".to_string()
-        // }
-    };
+    let backtrace = format!("{:?}", Backtrace::force_capture());
 
     eprintln!("{}", panic);
 

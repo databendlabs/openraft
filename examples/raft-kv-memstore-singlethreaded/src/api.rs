@@ -26,7 +26,7 @@ pub async fn read(app: &mut App, req: String) -> String {
 
     let res = match ret {
         Ok(_) => {
-            let state_machine = app.state_machine.state_machine.read().await;
+            let state_machine = app.state_machine.state_machine.borrow();
             let value = state_machine.data.get(&key).cloned();
 
             let res: Result<String, RaftError<NodeId, CheckIsLeaderError<NodeId, BasicNode>>> =
