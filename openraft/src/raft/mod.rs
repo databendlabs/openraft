@@ -51,7 +51,11 @@ use crate::error::InitializeError;
 use crate::error::InstallSnapshotError;
 use crate::error::RaftError;
 use crate::membership::IntoNodes;
+use crate::metrics::is_data_metrics_changed;
+use crate::metrics::is_server_metrics_changed;
+use crate::metrics::RaftDataMetrics;
 use crate::metrics::RaftMetrics;
+use crate::metrics::RaftServerMetrics;
 use crate::metrics::Wait;
 use crate::metrics::WaitError;
 use crate::network::RaftNetworkFactory;
@@ -174,7 +178,36 @@ where C: RaftTypeConfig
         let (tx_api, rx_api) = mpsc::unbounded_channel();
         let (tx_notify, rx_notify) = mpsc::unbounded_channel();
         let (tx_metrics, rx_metrics) = watch::channel(RaftMetrics::new_initial(id));
+        let (tx_data_metrics, rx_data_metrics) = watch::channel(RaftDataMetrics::default());
+        let (tx_server_metrics, rx_server_metrics) = watch::channel(RaftServerMetrics::default());
         let (tx_shutdown, rx_shutdown) = oneshot::channel();
+
+        let mut raft_metrics_rx = rx_metrics.clone();
+
+        #[allow(clippy::let_underscore_future)]
+        let _ = C::AsyncRuntime::spawn(async move {
+            let mut last = RaftMetrics::new_initial(id);
+            loop {
+                let latest = raft_metrics_rx.borrow().clone();
+                if is_data_metrics_changed(&last, &latest) {
+                    if let Err(err) = tx_data_metrics.send(latest.clone().into()) {
+                        tracing::error!(error=%err, id=display(id), "error reporting data metrics");
+                    }
+                }
+
+                if is_server_metrics_changed(&last, &latest) {
+                    if let Err(err) = tx_server_metrics.send(latest.clone().into()) {
+                        tracing::error!(error=%err, id=display(id), "error reporting server metrics");
+                    }
+                }
+
+                last = latest;
+                if let Err(e) = raft_metrics_rx.changed().await {
+                    tracing::info!(error=%e, id=display(id), "metrics sender closed, so close data_metrics sender and server_metrics sender");
+                    return;
+                }
+            }
+        });
 
         let tick_handle = Tick::spawn(
             Duration::from_millis(config.heartbeat_interval * 3 / 2),
@@ -240,6 +273,8 @@ where C: RaftTypeConfig
             tick_handle,
             tx_api,
             rx_metrics,
+            rx_data_metrics,
+            rx_server_metrics,
             tx_shutdown: Mutex::new(Some(tx_shutdown)),
             core_state: Mutex::new(CoreState::Running(core_handle)),
         };
@@ -820,6 +855,16 @@ where C: RaftTypeConfig
     /// Get a handle to the metrics channel.
     pub fn metrics(&self) -> watch::Receiver<RaftMetrics<C::NodeId, C::Node>> {
         self.inner.rx_metrics.clone()
+    }
+
+    /// Get a handle to the data metrics channel.
+    pub fn data_metrics(&self) -> watch::Receiver<RaftDataMetrics<C::NodeId>> {
+        self.inner.rx_data_metrics.clone()
+    }
+
+    /// Get a handle to the server metrics channel.
+    pub fn server_metrics(&self) -> watch::Receiver<RaftServerMetrics<C::NodeId, C::Node>> {
+        self.inner.rx_server_metrics.clone()
     }
 
     /// Get a handle to wait for the metrics to satisfy some condition.
