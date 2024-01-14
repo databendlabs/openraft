@@ -11,6 +11,8 @@ use crate::core::raft_msg::external_command::ExternalCommand;
 use crate::core::raft_msg::RaftMsg;
 use crate::core::TickHandle;
 use crate::error::Fatal;
+use crate::metrics::RaftDataMetrics;
+use crate::metrics::RaftServerMetrics;
 use crate::raft::core_state::CoreState;
 use crate::AsyncRuntime;
 use crate::Config;
@@ -28,6 +30,8 @@ where C: RaftTypeConfig
     pub(in crate::raft) tick_handle: TickHandle<C>,
     pub(in crate::raft) tx_api: mpsc::UnboundedSender<RaftMsg<C>>,
     pub(in crate::raft) rx_metrics: watch::Receiver<RaftMetrics<C::NodeId, C::Node>>,
+    pub(in crate::raft) rx_data_metrics: watch::Receiver<RaftDataMetrics<C::NodeId>>,
+    pub(in crate::raft) rx_server_metrics: watch::Receiver<RaftServerMetrics<C::NodeId, C::Node>>,
 
     // TODO(xp): it does not need to be a async mutex.
     #[allow(clippy::type_complexity)]
