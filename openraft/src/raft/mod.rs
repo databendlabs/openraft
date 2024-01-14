@@ -51,8 +51,6 @@ use crate::error::InitializeError;
 use crate::error::InstallSnapshotError;
 use crate::error::RaftError;
 use crate::membership::IntoNodes;
-use crate::metrics::is_data_metrics_changed;
-use crate::metrics::is_server_metrics_changed;
 use crate::metrics::RaftDataMetrics;
 use crate::metrics::RaftMetrics;
 use crate::metrics::RaftServerMetrics;
@@ -182,33 +180,6 @@ where C: RaftTypeConfig
         let (tx_server_metrics, rx_server_metrics) = watch::channel(RaftServerMetrics::default());
         let (tx_shutdown, rx_shutdown) = oneshot::channel();
 
-        let mut raft_metrics_rx = rx_metrics.clone();
-
-        #[allow(clippy::let_underscore_future)]
-        let _ = C::AsyncRuntime::spawn(async move {
-            let mut last = RaftMetrics::new_initial(id);
-            loop {
-                let latest = raft_metrics_rx.borrow().clone();
-                if is_data_metrics_changed(&last, &latest) {
-                    if let Err(err) = tx_data_metrics.send(latest.clone().into()) {
-                        tracing::error!(error=%err, id=display(id), "error reporting data metrics");
-                    }
-                }
-
-                if is_server_metrics_changed(&last, &latest) {
-                    if let Err(err) = tx_server_metrics.send(latest.clone().into()) {
-                        tracing::error!(error=%err, id=display(id), "error reporting server metrics");
-                    }
-                }
-
-                last = latest;
-                if let Err(e) = raft_metrics_rx.changed().await {
-                    tracing::info!(error=%e, id=display(id), "metrics sender closed, so close data_metrics sender and server_metrics sender");
-                    return;
-                }
-            }
-        });
-
         let tick_handle = Tick::spawn(
             Duration::from_millis(config.heartbeat_interval * 3 / 2),
             tx_notify.clone(),
@@ -257,6 +228,8 @@ where C: RaftTypeConfig
             rx_notify,
 
             tx_metrics,
+            tx_data_metrics,
+            tx_server_metrics,
 
             command_state: CommandState::default(),
             span: core_span,

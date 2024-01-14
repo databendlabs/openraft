@@ -141,37 +141,13 @@ where
     }
 }
 
-pub fn is_data_metrics_changed<NID, N>(old: &RaftMetrics<NID, N>, new: &RaftMetrics<NID, N>) -> bool
-where
-    NID: NodeId,
-    N: Node,
-{
-    new.last_log_index.ne(&old.last_log_index)
-        || new.last_applied.ne(&old.last_applied)
-        || new.snapshot.ne(&old.snapshot)
-        || new.purged.ne(&old.purged)
-        || new.replication.ne(&old.replication)
-}
-
-pub fn is_server_metrics_changed<NID, N>(old: &RaftMetrics<NID, N>, new: &RaftMetrics<NID, N>) -> bool
-where
-    NID: NodeId,
-    N: Node,
-{
-    new.current_term.ne(&old.current_term)
-        || new.vote.ne(&old.vote)
-        || new.state.ne(&old.state)
-        || new.current_leader.ne(&old.current_leader)
-        || new.membership_config.ne(&old.membership_config)
-}
-
 /// Subset of RaftMetrics, only include data-related metrics
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct RaftDataMetrics<NID>
 where NID: NodeId
 {
-    pub last_log_index: Option<u64>,
+    pub last_log: Option<LogId<NID>>,
     pub last_applied: Option<LogId<NID>>,
     pub snapshot: Option<LogId<NID>>,
     pub purged: Option<LogId<NID>>,
@@ -187,7 +163,7 @@ where NID: NodeId
         write!(
             f,
             "last_log:{}, last_applied:{}, snapshot:{}, purged:{}, replication:{{{}}}",
-            DisplayOption(&self.last_log_index),
+            DisplayOption(&self.last_log),
             DisplayOption(&self.last_applied),
             DisplayOption(&self.snapshot),
             DisplayOption(&self.purged),
@@ -210,22 +186,6 @@ where NID: NodeId
     }
 }
 
-impl<NID, N> From<RaftMetrics<NID, N>> for RaftDataMetrics<NID>
-where
-    NID: NodeId,
-    N: Node,
-{
-    fn from(metrics: RaftMetrics<NID, N>) -> Self {
-        Self {
-            last_log_index: metrics.last_log_index,
-            last_applied: metrics.last_applied,
-            snapshot: metrics.snapshot,
-            purged: metrics.purged,
-            replication: metrics.replication,
-        }
-    }
-}
-
 /// Subset of RaftMetrics, only include server-related metrics
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
@@ -235,7 +195,6 @@ where
     N: Node,
 {
     pub id: NID,
-    pub current_term: u64,
     pub vote: Vote<NID>,
     pub state: ServerState,
     pub current_leader: Option<NID>,
@@ -252,10 +211,9 @@ where
 
         write!(
             f,
-            "id:{}, {:?}, term:{}, vote:{}, leader:{}, membership:{}",
+            "id:{}, {:?}, vote:{}, leader:{}, membership:{}",
             self.id,
             self.state,
-            self.current_term,
             self.vote,
             DisplayOption(&self.current_leader),
             self.membership_config.summary(),
@@ -273,22 +231,5 @@ where
 {
     fn summary(&self) -> String {
         self.to_string()
-    }
-}
-
-impl<NID, N> From<RaftMetrics<NID, N>> for RaftServerMetrics<NID, N>
-where
-    NID: NodeId,
-    N: Node,
-{
-    fn from(metrics: RaftMetrics<NID, N>) -> Self {
-        Self {
-            id: metrics.id,
-            current_term: metrics.current_term,
-            vote: metrics.vote,
-            state: metrics.state,
-            current_leader: metrics.current_leader,
-            membership_config: metrics.membership_config,
-        }
     }
 }

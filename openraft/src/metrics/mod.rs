@@ -38,8 +38,6 @@ mod wait_condition;
 use std::collections::BTreeMap;
 
 pub use metric::Metric;
-pub use raft_metrics::is_data_metrics_changed;
-pub use raft_metrics::is_server_metrics_changed;
 pub use raft_metrics::RaftDataMetrics;
 pub use raft_metrics::RaftMetrics;
 pub use raft_metrics::RaftServerMetrics;

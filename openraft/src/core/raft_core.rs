@@ -55,7 +55,7 @@ use crate::error::RPCError;
 use crate::error::Timeout;
 use crate::log_id::LogIdOptionExt;
 use crate::log_id::RaftLogId;
-use crate::metrics::RaftMetrics;
+use crate::metrics::{RaftDataMetrics, RaftMetrics, RaftServerMetrics};
 use crate::metrics::ReplicationMetrics;
 use crate::network::RPCOption;
 use crate::network::RPCTypes;
@@ -198,6 +198,8 @@ where
     pub(crate) rx_notify: mpsc::UnboundedReceiver<Notify<C>>,
 
     pub(crate) tx_metrics: watch::Sender<RaftMetrics<C::NodeId, C::Node>>,
+    pub(crate) tx_data_metrics: watch::Sender<RaftDataMetrics<C::NodeId>>,
+    pub(crate) tx_server_metrics: watch::Sender<RaftServerMetrics<C::NodeId, C::Node>>,
 
     pub(crate) command_state: CommandState,
 
@@ -522,6 +524,7 @@ where
     pub(crate) fn report_metrics(&self, replication: Option<ReplicationMetrics<C::NodeId>>) {
         let st = &self.engine.state;
 
+        let membership_config = st.membership_state.effective().stored_membership().clone();
         let m = RaftMetrics {
             running_state: Ok(()),
             id: self.id,
@@ -537,10 +540,10 @@ where
             // --- cluster ---
             state: st.server_state,
             current_leader: self.current_leader(),
-            membership_config: st.membership_state.effective().stored_membership().clone(),
+            membership_config: membership_config.clone(),
 
             // --- replication ---
-            replication,
+            replication: replication.clone(),
         };
 
         tracing::debug!("report_metrics: {}", m.summary());
@@ -549,6 +552,36 @@ where
         if let Err(err) = res {
             tracing::error!(error=%err, id=display(self.id), "error reporting metrics");
         }
+
+        let data_metrics = RaftDataMetrics {
+            last_log: st.last_log_id().copied(),
+            last_applied: st.io_applied().copied(),
+            snapshot: st.io_snapshot_last_log_id().copied(),
+            purged: st.io_purged().copied(),
+            replication,
+        };
+        self.tx_data_metrics.send_if_modified(|metrix| {
+            if data_metrics.ne(metrix) {
+                *metrix = data_metrics.clone();
+                return true;
+            }
+            false
+        });
+
+        let server_metrics = RaftServerMetrics {
+            id: self.id,
+            vote: *st.io_state().vote(),
+            state: st.server_state,
+            current_leader: self.current_leader(),
+            membership_config,
+        };
+        self.tx_server_metrics.send_if_modified(|metrix| {
+            if server_metrics.ne(metrix) {
+                *metrix = server_metrics.clone();
+                return true;
+            }
+            false
+        });
     }
 
     /// Handle the admin command `initialize`.

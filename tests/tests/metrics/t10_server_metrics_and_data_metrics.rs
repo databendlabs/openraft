@@ -39,12 +39,12 @@ async fn server_metrics_and_data_metrics() -> Result<()> {
     tracing::info!(log_index, "--- write {} logs", n);
     log_index += router.client_request_many(0, "foo", n).await?;
 
-    let last_log_index = data_metrics.borrow().last_log_index;
+    let last_log_index = data_metrics.borrow().last_log.unwrap_or_default().index;
     assert_eq!(
         last_log_index,
-        Some(log_index),
+        log_index,
         "last_log_index should be {:?}",
-        Some(log_index)
+        log_index
     );
     assert!(
         !server_metrics.borrow().has_changed(),
