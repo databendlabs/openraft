@@ -27,7 +27,8 @@ use crate::Vote;
 #[cfg_attr(
     feature = "serde",
     derive(serde::Deserialize, serde::Serialize),
-    serde(bound = "E:serde::Serialize + for <'d> serde::Deserialize<'d>")
+    serde(bound(serialize = "E: serde::Serialize")),
+    serde(bound(deserialize = "E: for <'d> serde::Deserialize<'d>"))
 )]
 pub enum RaftError<NID, E = Infallible>
 where NID: NodeId
