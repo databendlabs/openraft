@@ -24,18 +24,14 @@ use crate::Vote;
 /// It is either a Fatal error indicating that `Raft` is no longer running, such as underlying IO
 /// error, or an API error `E`.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[cfg_attr(
-    feature = "serde",
-    derive(serde::Deserialize, serde::Serialize),
-    serde(bound(serialize = "E: serde::Serialize")),
-    serde(bound(deserialize = "E: for <'d> serde::Deserialize<'d>"))
-)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub enum RaftError<NID, E = Infallible>
 where NID: NodeId
 {
     #[error(transparent)]
     APIError(E),
 
+    #[cfg_attr(feature = "serde", serde(bound = ""))]
     #[error(transparent)]
     Fatal(#[from] Fatal<NID>),
 }
