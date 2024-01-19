@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 use crate::engine::time_state;
+use crate::AsyncRuntime;
 use crate::Config;
 use crate::NodeId;
 use crate::SnapshotPolicy;
@@ -41,8 +42,8 @@ impl<NID: NodeId> Default for EngineConfig<NID> {
 }
 
 impl<NID: NodeId> EngineConfig<NID> {
-    pub(crate) fn new(id: NID, config: &Config) -> Self {
-        let election_timeout = Duration::from_millis(config.new_rand_election_timeout());
+    pub(crate) fn new<RT: AsyncRuntime>(id: NID, config: &Config) -> Self {
+        let election_timeout = Duration::from_millis(config.new_rand_election_timeout::<RT>());
         Self {
             id,
             snapshot_policy: config.snapshot_policy.clone(),
