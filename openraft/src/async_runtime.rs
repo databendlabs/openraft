@@ -13,6 +13,8 @@ use crate::TokioInstant;
 /// The intention of this trait is to allow an application using this crate to bind an asynchronous
 /// runtime that suits it the best.
 ///
+/// Some additional related functions are also exposed by this trait.
+///
 /// ## Note
 ///
 /// The default asynchronous runtime is `tokio`.
@@ -39,6 +41,9 @@ pub trait AsyncRuntime: Debug + Default + OptionalSend + OptionalSync + 'static 
     /// to await the outcome of a [`Future`].
     type Timeout<R, T: Future<Output = R> + OptionalSend>: Future<Output = Result<R, Self::TimeoutError>> + OptionalSend;
 
+    /// Type of a thread-local random number generator.
+    type ThreadLocalRng: rand::Rng;
+
     /// Spawn a new task.
     fn spawn<T>(future: T) -> Self::JoinHandle<T::Output>
     where
@@ -62,6 +67,14 @@ pub trait AsyncRuntime: Debug + Default + OptionalSend + OptionalSync + 'static 
 
     /// Abort the task associated with the supplied join handle.
     fn abort<T: OptionalSend + 'static>(join_handle: &Self::JoinHandle<T>);
+
+    /// Get the random number generator to use for generating random numbers.
+    ///
+    /// # Note
+    ///
+    /// This is a per-thread instance, which cannot be shared across threads or
+    /// sent to another thread.
+    fn thread_rng() -> Self::ThreadLocalRng;
 }
 
 /// `Tokio` is the default asynchronous executor.
@@ -75,6 +88,7 @@ impl AsyncRuntime for TokioRuntime {
     type Instant = TokioInstant;
     type TimeoutError = tokio::time::error::Elapsed;
     type Timeout<R, T: Future<Output = R> + OptionalSend> = tokio::time::Timeout<T>;
+    type ThreadLocalRng = rand::rngs::ThreadRng;
 
     #[inline]
     fn spawn<T>(future: T) -> Self::JoinHandle<T::Output>
@@ -120,5 +134,10 @@ impl AsyncRuntime for TokioRuntime {
     #[inline]
     fn abort<T: OptionalSend + 'static>(join_handle: &Self::JoinHandle<T>) {
         join_handle.abort();
+    }
+
+    #[inline]
+    fn thread_rng() -> Self::ThreadLocalRng {
+        rand::thread_rng()
     }
 }

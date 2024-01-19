@@ -196,7 +196,7 @@ where C: RaftTypeConfig
             cluster = display(&config.cluster_name)
         );
 
-        let eng_config = EngineConfig::new(id, config.as_ref());
+        let eng_config = EngineConfig::new::<C::AsyncRuntime>(id, config.as_ref());
 
         let state = {
             let mut helper = StorageHelper::new(&mut log_store, &mut state_machine);

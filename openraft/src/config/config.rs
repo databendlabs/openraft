@@ -6,11 +6,11 @@ use std::time::Duration;
 
 use anyerror::AnyError;
 use clap::Parser;
-use rand::thread_rng;
 use rand::Rng;
 
 use crate::config::error::ConfigError;
 use crate::raft_state::LogStateReader;
+use crate::AsyncRuntime;
 use crate::LogIdOptionExt;
 use crate::NodeId;
 
@@ -248,8 +248,8 @@ impl Default for Config {
 
 impl Config {
     /// Generate a new random election timeout within the configured min & max.
-    pub fn new_rand_election_timeout(&self) -> u64 {
-        thread_rng().gen_range(self.election_timeout_min..self.election_timeout_max)
+    pub fn new_rand_election_timeout<RT: AsyncRuntime>(&self) -> u64 {
+        RT::thread_rng().gen_range(self.election_timeout_min..self.election_timeout_max)
     }
 
     /// Get the timeout for sending and installing the last snapshot segment.
