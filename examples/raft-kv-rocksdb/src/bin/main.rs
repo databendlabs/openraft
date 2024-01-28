@@ -15,7 +15,7 @@ pub struct Opt {
     pub rpc_addr: String,
 }
 
-#[async_std::main]
+#[tokio::main]
 async fn main() -> std::io::Result<()> {
     // Setup the logger
     tracing_subscriber::fmt()
