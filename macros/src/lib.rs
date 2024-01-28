@@ -1,28 +1,95 @@
 use proc_macro::TokenStream;
+use quote::quote;
+use syn::parse2;
+use syn::parse_macro_input;
+use syn::parse_str;
+use syn::token::RArrow;
+use syn::Item;
+use syn::ReturnType;
+use syn::TraitItem;
+use syn::Type;
 
-/// This macro emits `#[async_trait::async_trait]` if the `singlethreaded` feature is disabled.
+/// This proc macro attribute optionally adds `Send` bounds to a trait.
 ///
-/// Starting from Rust 1.75.0, the `async_fn_in_trait` language feature is generally available
-/// that allows traits to contain asynchronous methods and associated functions. However, the
-/// feature has several known issues that are mainly related to Rust compiler's abilities to infer
-/// `Send` bounds of associated types: [`90696``](https://github.com/rust-lang/rust/issues/90696).
+/// By default, `Send` bounds will be added to the trait and to the return bounds of any  async
+/// functions defined withing the trait.
 ///
-/// Therefore, if a trait requires `Send` bounds in its associated data types, this macro
-/// circumvents the compiler shortcomings by using the
-/// [`async-trait`](https://crates.io/crates/async-trait) crate which boxes return
-/// [`Future`](https://doc.rust-lang.org/std/future/trait.Future.html) types of all the
-/// asynchronous methods and associated functions of the trait.
+/// If the `singlethreaded` feature is enabled, the trait definition remains the same without any
+/// added `Send` bounds.
+///
+/// # Example
+///
+/// ```
+/// use macros::add_async_trait;
+///
+/// #[add_async_trait]
+/// trait MyTrait {
+///     async fn my_method(&self) -> Result<(), String>;
+/// }
+/// ```
+///
+/// Note: This proc macro can only be used with traits.
+///
+/// # Panics
+///
+/// This proc macro will panic if used on anything other than trait definitions.
 #[proc_macro_attribute]
 pub fn add_async_trait(_attr: TokenStream, item: TokenStream) -> TokenStream {
     if cfg!(feature = "singlethreaded") {
-        // `async_fn_in_trait` requires the user to explicitly specify the `Send` bound for public
-        // trait methods, however the `singlethreaded` feature renders the requirement irrelevant.
-        let mut output = "#[allow(async_fn_in_trait)]".parse::<TokenStream>().unwrap();
-        output.extend(item);
-        output
+        allow_non_send_bounds(item)
     } else {
-        let mut output = "#[async_trait::async_trait]".parse::<TokenStream>().unwrap();
-        output.extend(item);
-        output
+        add_send_bounds(item)
+    }
+}
+
+fn allow_non_send_bounds(item: TokenStream) -> TokenStream {
+    // `async_fn_in_trait` requires the user to explicitly specify the `Send` bound for public
+    // trait methods, however the `singlethreaded` feature renders the requirement irrelevant.
+    let item: proc_macro2::TokenStream = item.into();
+    quote! {
+        #[allow(async_fn_in_trait)]
+        #item
+    }
+    .into()
+}
+
+fn add_send_bounds(item: TokenStream) -> TokenStream {
+    let send_bound = parse_str("Send").unwrap();
+    let default_return_type: Box<Type> = parse_str("impl std::future::Future<Output = ()> + Send").unwrap();
+
+    match parse_macro_input!(item) {
+        Item::Trait(mut input) => {
+            // add `Send` bound to the trait
+            input.supertraits.push(send_bound);
+
+            for item in input.items.iter_mut() {
+                // for each async function definition
+                let TraitItem::Fn(function) = item else { continue };
+                if function.sig.asyncness.is_none() {
+                    continue;
+                };
+
+                // remove async from signature
+                function.sig.asyncness = None;
+
+                // wrap the return type in a `Future`
+                function.sig.output = match &function.sig.output {
+                    ReturnType::Default => ReturnType::Type(RArrow::default(), default_return_type.clone()),
+                    ReturnType::Type(arrow, t) => {
+                        let tokens = quote!(impl std::future::Future<Output = #t> + Send);
+                        ReturnType::Type(*arrow, parse2(tokens).unwrap())
+                    }
+                };
+
+                // if a body is defined, wrap it in an async block
+                let Some(body) = &function.default else { continue };
+                let body = parse2(quote!({ async move #body })).unwrap();
+                function.default = Some(body);
+            }
+
+            quote!(#input).into()
+        }
+
+        _ => panic!("add_async_trait can only be used with traits"),
     }
 }

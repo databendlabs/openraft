@@ -4,8 +4,10 @@
 
 use std::path::Path;
 
+use macros::add_async_trait;
+
 /// Build a latest `RaftStorage` implementation for compatibility test.
-#[async_trait::async_trait]
+#[add_async_trait]
 pub trait StoreBuilder {
     type C: crate::RaftTypeConfig<NodeId = u64, Node = crate::EmptyNode>;
     type S: crate::RaftStorage<Self::C>;

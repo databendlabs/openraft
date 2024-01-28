@@ -25,7 +25,6 @@
 //! struct Builder07;
 //! struct BuilderLatest;
 //!
-//! #[async_trait::async_trait]
 //! impl compat::testing::StoreBuilder07 for Builder07 {
 //!     type D = rocksstore07::RocksRequest;
 //!     type R = rocksstore07::RocksResponse;
@@ -40,7 +39,6 @@
 //!     }
 //! }
 //!
-//! #[async_trait::async_trait]
 //! impl compat::testing::StoreBuilder for BuilderLatest {
 //!     type C = crate::Config;
 //!     type S = Arc<crate::RocksStore>;
@@ -87,6 +85,7 @@ pub use vote::Vote;
 pub mod testing {
     use std::path::Path;
 
+    use macros::add_async_trait;
     use maplit::btreemap;
     use maplit::btreeset;
 
@@ -96,7 +95,7 @@ pub mod testing {
     use crate::log_id::RaftLogId;
 
     /// Build a v0.7 `RaftStorage` implementation for compatibility test.
-    #[async_trait::async_trait]
+    #[add_async_trait]
     pub trait StoreBuilder07 {
         type D: or07::AppData;
         type R: or07::AppDataResponse;

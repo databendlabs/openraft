@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use openraft::storage::Adaptor;
 use openraft::testing::StoreBuilder;
 use openraft::testing::Suite;
@@ -15,7 +14,7 @@ type LogStore = Adaptor<TypeConfig, Arc<RocksStore>>;
 type StateMachine = Adaptor<TypeConfig, Arc<RocksStore>>;
 
 struct RocksBuilder {}
-#[async_trait]
+
 impl StoreBuilder<TypeConfig, LogStore, StateMachine, TempDir> for RocksBuilder {
     async fn build(&self) -> Result<(TempDir, LogStore, StateMachine), StorageError<RocksNodeId>> {
         let td = TempDir::new().expect("couldn't create temp dir");
@@ -28,14 +27,12 @@ impl StoreBuilder<TypeConfig, LogStore, StateMachine, TempDir> for RocksBuilder 
 /// To customize a builder:
 ///
 /// ```ignore
-/// use async_trait::async_trait;
 /// use openraft::testing::StoreBuilder;
 /// use crate::ClientRequest;
 /// use crate::ClientResponse;
 ///
 /// struct MemStoreBuilder {}
 ///
-/// #[async_trait]
 /// impl StoreBuilder<ClientRequest, ClientResponse, MemStore> for MemStoreBuilder {
 ///     async fn build(&self) -> MemStore {
 ///         MemStore::new().await

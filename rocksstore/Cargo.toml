@@ -26,7 +26,6 @@ async-std = { version = "1.12.0", features = ["attributes", "tokio1"] }
 tracing = "0.1.29"
 
 [dev-dependencies]
-async-trait = { version = "0.1.36" }
 tempfile = { version = "3.4.0" }
 
 [package.metadata.docs.rs]

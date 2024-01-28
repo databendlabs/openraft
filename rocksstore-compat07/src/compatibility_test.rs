@@ -8,7 +8,6 @@ struct Builder07;
 /// A builder builds latest openraft based rocksstore.
 struct BuilderLatest;
 
-#[async_trait::async_trait]
 impl compat::testing::StoreBuilder07 for Builder07 {
     type D = rocksstore07::RocksRequest;
     type R = rocksstore07::RocksResponse;
@@ -26,7 +25,6 @@ impl compat::testing::StoreBuilder07 for Builder07 {
     }
 }
 
-#[async_trait::async_trait]
 impl compat::testing::StoreBuilder for BuilderLatest {
     type C = crate::TypeConfig;
     type S = Arc<crate::RocksStore>;

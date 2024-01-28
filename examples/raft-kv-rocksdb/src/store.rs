@@ -9,7 +9,6 @@ use async_std::sync::RwLock;
 use byteorder::BigEndian;
 use byteorder::ReadBytesExt;
 use byteorder::WriteBytesExt;
-use openraft::async_trait::async_trait;
 use openraft::storage::LogFlushed;
 use openraft::storage::LogState;
 use openraft::storage::RaftLogStorage;
@@ -99,7 +98,6 @@ pub struct StateMachineData {
     pub kvs: Arc<RwLock<BTreeMap<String, String>>>,
 }
 
-#[async_trait]
 impl RaftSnapshotBuilder<TypeConfig> for StateMachineStore {
     async fn build_snapshot(&mut self) -> Result<Snapshot<TypeConfig>, StorageError<NodeId>> {
         let last_applied_log = self.data.last_applied_log_id;
@@ -198,7 +196,6 @@ impl StateMachineStore {
     }
 }
 
-#[async_trait]
 impl RaftStateMachine<TypeConfig> for StateMachineStore {
     type SnapshotBuilder = Self;
 
@@ -370,7 +367,6 @@ impl LogStore {
     }
 }
 
-#[async_trait]
 impl RaftLogReader<TypeConfig> for LogStore {
     async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + Send + Sync>(
         &mut self,
@@ -399,7 +395,6 @@ impl RaftLogReader<TypeConfig> for LogStore {
     }
 }
 
-#[async_trait]
 impl RaftLogStorage<TypeConfig> for LogStore {
     type LogReader = Self;
 

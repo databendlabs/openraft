@@ -12,7 +12,6 @@ use anyerror::AnyError;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use futures::TryFutureExt;
-use macros::add_async_trait;
 use maplit::btreeset;
 use tokio::select;
 use tokio::sync::mpsc;
@@ -1527,7 +1526,6 @@ where
     }
 }
 
-#[add_async_trait]
 impl<C, N, LS, SM> RaftRuntime<C> for RaftCore<C, N, LS, SM>
 where
     C: RaftTypeConfig,

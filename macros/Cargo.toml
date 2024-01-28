@@ -15,7 +15,12 @@ repository    = { workspace = true }
 [lib]
 proc-macro = true
 
+[dependencies]
+proc-macro2 = { workspace = true }
+quote = { workspace = true }
+syn = { workspace = true, features = ["full"] }
+
 [features]
 
-# Do not use `async_trait` and do not add `Send` bounds.
+# Do not add `Send` bounds.
 singlethreaded = []

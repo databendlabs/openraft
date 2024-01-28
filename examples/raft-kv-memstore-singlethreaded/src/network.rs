@@ -1,4 +1,3 @@
-use openraft::add_async_trait;
 use openraft::error::InstallSnapshotError;
 use openraft::error::RemoteError;
 use openraft::raft::AppendEntriesRequest;
@@ -21,7 +20,6 @@ pub struct Connection {
     target: NodeId,
 }
 
-#[add_async_trait]
 impl RaftNetworkFactory<TypeConfig> for Router {
     type Network = Connection;
 
@@ -33,7 +31,6 @@ impl RaftNetworkFactory<TypeConfig> for Router {
     }
 }
 
-#[add_async_trait]
 impl RaftNetwork<TypeConfig> for Connection {
     async fn send_append_entries(
         &mut self,

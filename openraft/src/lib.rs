@@ -69,7 +69,6 @@ mod try_as_ref;
 
 pub use anyerror;
 pub use anyerror::AnyError;
-pub use async_trait;
 pub use macros::add_async_trait;
 pub use network::RPCTypes;
 pub use network::RaftNetwork;

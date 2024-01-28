@@ -8,7 +8,6 @@ use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-use openraft::async_trait::async_trait;
 use openraft::storage::LogFlushed;
 use openraft::storage::LogState;
 use openraft::storage::RaftLogReader;
@@ -100,7 +99,6 @@ impl StateMachineStore {
     }
 }
 
-#[async_trait]
 impl RaftLogReader<TypeConfig> for Arc<LogStore> {
     async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + Send + Sync>(
         &mut self,
@@ -118,7 +116,6 @@ impl RaftLogReader<TypeConfig> for Arc<LogStore> {
     }
 }
 
-#[async_trait]
 impl RaftSnapshotBuilder<TypeConfig> for Arc<StateMachineStore> {
     #[tracing::instrument(level = "trace", skip(self))]
     async fn build_snapshot(&mut self) -> Result<Snapshot<TypeConfig>, StorageError<NodeId>> {
@@ -170,7 +167,6 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<StateMachineStore> {
     }
 }
 
-#[async_trait]
 impl RaftLogStorage<TypeConfig> for Arc<LogStore> {
     async fn get_log_state(&mut self) -> Result<LogState<TypeConfig>, StorageError<NodeId>> {
         let log = self.log.read().await;
@@ -244,7 +240,6 @@ impl RaftLogStorage<TypeConfig> for Arc<LogStore> {
     }
 }
 
-#[async_trait]
 impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
     async fn applied_state(
         &mut self,

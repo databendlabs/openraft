@@ -1,4 +1,3 @@
-use async_trait::async_trait;
 use openraft::error::InstallSnapshotError;
 use openraft::error::NetworkError;
 use openraft::error::RemoteError;
@@ -59,7 +58,6 @@ impl Network {
 
 // NOTE: This could be implemented also on `Arc<ExampleNetwork>`, but since it's empty, implemented
 // directly.
-#[async_trait]
 impl RaftNetworkFactory<TypeConfig> for Network {
     type Network = NetworkConnection;
 
@@ -78,7 +76,6 @@ pub struct NetworkConnection {
     target_node: BasicNode,
 }
 
-#[async_trait]
 impl RaftNetwork<TypeConfig> for NetworkConnection {
     async fn send_append_entries(
         &mut self,

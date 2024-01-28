@@ -7,7 +7,6 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Duration;
 
-use openraft::async_trait::async_trait;
 use openraft::error::InstallSnapshotError;
 use openraft::error::RPCError;
 use openraft::error::RaftError;
@@ -80,7 +79,6 @@ impl Router {
     }
 }
 
-#[async_trait]
 impl RaftNetworkFactory<MemConfig> for Router {
     type Network = Network;
 
@@ -97,7 +95,6 @@ pub struct Network {
     target_raft: BenchRaft,
 }
 
-#[async_trait]
 impl RaftNetwork<MemConfig> for Network {
     async fn append_entries(
         &mut self,
