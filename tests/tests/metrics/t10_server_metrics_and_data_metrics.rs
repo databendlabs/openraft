@@ -31,7 +31,11 @@ async fn server_metrics_and_data_metrics() -> Result<()> {
     let data_metrics = node.data_metrics();
 
     let current_leader = router.current_leader(0).await;
-    let leader = server_metrics.borrow_and_update().current_leader;
+    let server_metrics_1 = {
+        let sm = server_metrics.borrow_and_update();
+        sm.clone()
+    };
+    let leader = server_metrics_1.current_leader;
     assert_eq!(leader, current_leader, "current_leader should be {:?}", current_leader);
 
     // Write some logs.
@@ -41,9 +45,16 @@ async fn server_metrics_and_data_metrics() -> Result<()> {
 
     let last_log_index = data_metrics.borrow().last_log.unwrap_or_default().index;
     assert_eq!(last_log_index, log_index, "last_log_index should be {:?}", log_index);
+
+    let sm = server_metrics.borrow();
+    let server_metrics_2 = sm.clone();
+
+    // TODO: flaky fail, find out why.
     assert!(
-        !server_metrics.borrow().has_changed(),
-        "server metrics should not update"
+        !sm.has_changed(),
+        "server metrics should not update, but {:?} --> {:?}",
+        server_metrics_1,
+        server_metrics_2
     );
     Ok(())
 }
