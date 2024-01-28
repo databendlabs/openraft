@@ -18,7 +18,6 @@ use std::sync::Arc;
 use byteorder::BigEndian;
 use byteorder::ReadBytesExt;
 use byteorder::WriteBytesExt;
-use openraft::async_trait::async_trait;
 use openraft::storage::LogFlushed;
 use openraft::storage::LogState;
 use openraft::storage::RaftLogStorage;
@@ -231,7 +230,6 @@ impl RocksLogStore {
     }
 }
 
-#[async_trait]
 impl RaftLogReader<TypeConfig> for RocksLogStore {
     async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + Send + Sync>(
         &mut self,
@@ -264,7 +262,6 @@ impl RaftLogReader<TypeConfig> for RocksLogStore {
     }
 }
 
-#[async_trait]
 impl RaftSnapshotBuilder<TypeConfig> for RocksStateMachine {
     #[tracing::instrument(level = "trace", skip(self))]
     async fn build_snapshot(&mut self) -> Result<Snapshot<TypeConfig>, StorageError<RocksNodeId>> {
@@ -310,7 +307,6 @@ impl RaftSnapshotBuilder<TypeConfig> for RocksStateMachine {
     }
 }
 
-#[async_trait]
 impl RaftLogStorage<TypeConfig> for RocksLogStore {
     type LogReader = Self;
 
@@ -407,7 +403,7 @@ impl RaftLogStorage<TypeConfig> for RocksLogStore {
         Ok(())
     }
 }
-#[async_trait]
+
 impl RaftStateMachine<TypeConfig> for RocksStateMachine {
     type SnapshotBuilder = Self;
 

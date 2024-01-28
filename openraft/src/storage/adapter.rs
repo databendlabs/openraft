@@ -4,7 +4,6 @@ use std::ops::DerefMut;
 use std::ops::RangeBounds;
 use std::sync::Arc;
 
-use macros::add_async_trait;
 use tokio::sync::RwLock;
 use tokio::sync::RwLockReadGuard;
 use tokio::sync::RwLockWriteGuard;
@@ -98,7 +97,6 @@ where
     }
 }
 
-#[add_async_trait]
 impl<C, S> RaftLogReader<C> for Adaptor<C, S>
 where
     C: RaftTypeConfig,
@@ -119,7 +117,6 @@ where
 {
 }
 
-#[add_async_trait]
 impl<C, S> RaftLogStorage<C> for Adaptor<C, S>
 where
     C: RaftTypeConfig,
@@ -170,7 +167,6 @@ where
     }
 }
 
-#[add_async_trait]
 impl<C, S> RaftStateMachine<C> for Adaptor<C, S>
 where
     C: RaftTypeConfig,

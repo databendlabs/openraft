@@ -6,7 +6,6 @@ use std::marker::PhantomData;
 use std::ops::RangeBounds;
 use std::rc::Rc;
 
-use openraft::add_async_trait;
 use openraft::storage::LogFlushed;
 use openraft::storage::LogState;
 use openraft::storage::RaftLogStorage;
@@ -120,7 +119,6 @@ pub struct LogStore {
     vote: RefCell<Option<Vote<NodeId>>>,
 }
 
-#[add_async_trait]
 impl RaftLogReader<TypeConfig> for Rc<LogStore> {
     async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug>(
         &mut self,
@@ -132,7 +130,6 @@ impl RaftLogReader<TypeConfig> for Rc<LogStore> {
     }
 }
 
-#[add_async_trait]
 impl RaftSnapshotBuilder<TypeConfig> for Rc<StateMachineStore> {
     #[tracing::instrument(level = "trace", skip(self))]
     async fn build_snapshot(&mut self) -> Result<Snapshot<TypeConfig>, StorageError<NodeId>> {
@@ -184,7 +181,6 @@ impl RaftSnapshotBuilder<TypeConfig> for Rc<StateMachineStore> {
     }
 }
 
-#[add_async_trait]
 impl RaftStateMachine<TypeConfig> for Rc<StateMachineStore> {
     type SnapshotBuilder = Self;
 
@@ -282,7 +278,6 @@ impl RaftStateMachine<TypeConfig> for Rc<StateMachineStore> {
     }
 }
 
-#[add_async_trait]
 impl RaftLogStorage<TypeConfig> for Rc<LogStore> {
     type LogReader = Self;
 

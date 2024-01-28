@@ -11,7 +11,6 @@ use std::ops::RangeBounds;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-use openraft::async_trait::async_trait;
 use openraft::storage::LogState;
 use openraft::storage::RaftLogReader;
 use openraft::storage::RaftSnapshotBuilder;
@@ -205,7 +204,6 @@ impl Default for MemStore {
     }
 }
 
-#[async_trait]
 impl RaftLogReader<TypeConfig> for Arc<MemStore> {
     async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + Send + Sync>(
         &mut self,
@@ -224,7 +222,6 @@ impl RaftLogReader<TypeConfig> for Arc<MemStore> {
     }
 }
 
-#[async_trait]
 impl RaftSnapshotBuilder<TypeConfig> for Arc<MemStore> {
     #[tracing::instrument(level = "trace", skip(self))]
     async fn build_snapshot(&mut self) -> Result<Snapshot<TypeConfig>, StorageError<MemNodeId>> {
@@ -290,7 +287,6 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<MemStore> {
     }
 }
 
-#[async_trait]
 impl RaftStorage<TypeConfig> for Arc<MemStore> {
     async fn get_log_state(&mut self) -> Result<LogState<TypeConfig>, StorageError<MemNodeId>> {
         let log = self.log.read().await;

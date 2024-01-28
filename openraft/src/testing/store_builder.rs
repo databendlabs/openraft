@@ -1,6 +1,6 @@
 #[cfg(not(feature = "storage-v2"))] use std::future::Future;
 
-use async_trait::async_trait;
+use macros::add_async_trait;
 
 #[cfg(not(feature = "storage-v2"))] use crate::storage::Adaptor;
 use crate::storage::RaftLogStorage;
@@ -19,7 +19,7 @@ use crate::StorageError;
 ///
 /// By default `G` is a trivial guard `()`. To test a store that is backed by a folder on disk, `G`
 /// could be the dropper of the temp-dir that stores data.
-#[async_trait]
+#[add_async_trait]
 pub trait StoreBuilder<C, LS, SM, G = ()>: Send + Sync
 where
     C: RaftTypeConfig,
@@ -32,7 +32,6 @@ where
 
 // Add a default implementation for async function that returns a [`RaftStorage`] implementation.
 #[cfg(not(feature = "storage-v2"))]
-#[async_trait]
 impl<C, S, F, Fu> StoreBuilder<C, Adaptor<C, S>, Adaptor<C, S>, ()> for F
 where
     F: Send + Sync,

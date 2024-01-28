@@ -5,7 +5,6 @@ use std::ops::RangeBounds;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-use openraft::async_trait::async_trait;
 use openraft::storage::LogFlushed;
 use openraft::storage::LogState;
 use openraft::storage::RaftLogStorage;
@@ -101,7 +100,6 @@ pub struct LogStore {
     vote: RwLock<Option<Vote<NodeId>>>,
 }
 
-#[async_trait]
 impl RaftLogReader<TypeConfig> for Arc<LogStore> {
     async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + Send + Sync>(
         &mut self,
@@ -113,7 +111,6 @@ impl RaftLogReader<TypeConfig> for Arc<LogStore> {
     }
 }
 
-#[async_trait]
 impl RaftSnapshotBuilder<TypeConfig> for Arc<StateMachineStore> {
     #[tracing::instrument(level = "trace", skip(self))]
     async fn build_snapshot(&mut self) -> Result<Snapshot<TypeConfig>, StorageError<NodeId>> {
@@ -165,7 +162,6 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<StateMachineStore> {
     }
 }
 
-#[async_trait]
 impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
     type SnapshotBuilder = Self;
 
@@ -263,7 +259,6 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
     }
 }
 
-#[async_trait]
 impl RaftLogStorage<TypeConfig> for Arc<LogStore> {
     type LogReader = Self;
 

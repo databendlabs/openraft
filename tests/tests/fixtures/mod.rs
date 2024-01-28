@@ -20,7 +20,6 @@ use anyerror::AnyError;
 use anyhow::Context;
 use lazy_static::lazy_static;
 use maplit::btreeset;
-use openraft::async_trait::async_trait;
 use openraft::error::CheckIsLeaderError;
 use openraft::error::ClientWriteError;
 use openraft::error::Fatal;
@@ -968,7 +967,6 @@ impl TypedRaftRouter {
     }
 }
 
-#[async_trait]
 impl RaftNetworkFactory<MemConfig> for TypedRaftRouter {
     type Network = RaftRouterNetwork;
 
@@ -985,7 +983,6 @@ pub struct RaftRouterNetwork {
     owner: TypedRaftRouter,
 }
 
-#[async_trait]
 impl RaftNetwork<MemConfig> for RaftRouterNetwork {
     /// Send an AppendEntries RPC to the target Raft node (§5).
     async fn send_append_entries(

@@ -25,7 +25,6 @@ tracing = "0.1.29"
 
 [dev-dependencies]
 tempfile = { version = "3.4.0" }
-async-trait = { version = "0.1.36" }
 
 [package.metadata.docs.rs]
 all-features = true

@@ -15,9 +15,9 @@ repository    = { workspace = true }
 
 [dependencies]
 anyerror        = { workspace = true }
-async-trait     = { workspace = true }
 anyhow          = { workspace = true, optional = true }
 byte-unit       = { workspace = true }
+clap            = { workspace = true }
 derive_more     = { workspace = true }
 futures         = { workspace = true }
 macros          = { path = "../macros" }
@@ -25,7 +25,6 @@ maplit          = { workspace = true }
 rand            = { workspace = true }
 serde           = { workspace = true, optional = true }
 serde_json      = { workspace = true, optional = true }
-clap            = { workspace = true }
 tempfile        = { workspace = true, optional = true }
 thiserror       = { workspace = true }
 tokio           = { workspace = true }
