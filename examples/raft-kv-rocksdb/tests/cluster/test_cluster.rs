@@ -4,13 +4,13 @@ use std::panic::PanicInfo;
 use std::thread;
 use std::time::Duration;
 
-use async_std::task::block_on;
 use maplit::btreemap;
 use maplit::btreeset;
 use raft_kv_rocksdb::client::ExampleClient;
 use raft_kv_rocksdb::start_example_raft_node;
 use raft_kv_rocksdb::store::Request;
 use raft_kv_rocksdb::Node;
+use tokio::runtime::Handle;
 use tracing_subscriber::EnvFilter;
 
 pub fn log_panic(panic: &PanicInfo) {
@@ -36,7 +36,7 @@ pub fn log_panic(panic: &PanicInfo) {
 
 /// Setup a cluster of 3 nodes.
 /// Write to it and read from it.
-#[async_std::test(flavor = "multi_thread", worker_threads = 8)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 async fn test_cluster() -> Result<(), Box<dyn std::error::Error>> {
     // --- The client itself does not store addresses for all nodes, but just node id.
     //     Thus we need a supporting component to provide mapping from node id to node address.
@@ -77,23 +77,26 @@ async fn test_cluster() -> Result<(), Box<dyn std::error::Error>> {
     let d2 = tempfile::TempDir::new()?;
     let d3 = tempfile::TempDir::new()?;
 
+    let handle = Handle::current();
+    let handle_clone = handle.clone();
     let _h1 = thread::spawn(move || {
-        let x = block_on(start_example_raft_node(1, d1.path(), get_addr(1), get_rpc_addr(1)));
+        let x = handle_clone.block_on(start_example_raft_node(1, d1.path(), get_addr(1), get_rpc_addr(1)));
         println!("x: {:?}", x);
     });
 
+    let handle_clone = handle.clone();
     let _h2 = thread::spawn(move || {
-        let x = block_on(start_example_raft_node(2, d2.path(), get_addr(2), get_rpc_addr(2)));
+        let x = handle_clone.block_on(start_example_raft_node(2, d2.path(), get_addr(2), get_rpc_addr(2)));
         println!("x: {:?}", x);
     });
 
     let _h3 = thread::spawn(move || {
-        let x = block_on(start_example_raft_node(3, d3.path(), get_addr(3), get_rpc_addr(3)));
+        let x = handle.block_on(start_example_raft_node(3, d3.path(), get_addr(3), get_rpc_addr(3)));
         println!("x: {:?}", x);
     });
 
     // Wait for server to start up.
-    async_std::task::sleep(Duration::from_millis(1_000)).await;
+    tokio::time::sleep(Duration::from_millis(1_000)).await;
 
     // --- Create a client to the first node, as a control handle to the cluster.
 
@@ -172,7 +175,7 @@ async fn test_cluster() -> Result<(), Box<dyn std::error::Error>> {
 
     // --- Wait for a while to let the replication get done.
 
-    async_std::task::sleep(Duration::from_millis(500)).await;
+    tokio::time::sleep(Duration::from_millis(500)).await;
 
     // --- Read it on every node.
 
@@ -200,7 +203,7 @@ async fn test_cluster() -> Result<(), Box<dyn std::error::Error>> {
         })
         .await?;
 
-    async_std::task::sleep(Duration::from_millis(500)).await;
+    tokio::time::sleep(Duration::from_millis(500)).await;
 
     // --- Read it on every node.
 

@@ -48,7 +48,7 @@ async fn init(req: Request<Arc<App>>) -> tide::Result {
     let mut nodes = BTreeMap::new();
     let node = Node {
         api_addr: req.state().api_addr.clone(),
-        rpc_addr: req.state().rcp_addr.clone(),
+        rpc_addr: req.state().rpc_addr.clone(),
     };
 
     nodes.insert(req.state().id, node);

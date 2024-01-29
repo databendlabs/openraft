@@ -6,10 +6,10 @@ use std::io::Cursor;
 use std::path::Path;
 use std::sync::Arc;
 
-use async_std::net::TcpListener;
-use async_std::task;
 use openraft::Config;
 use openraft::TokioRuntime;
+use tokio::net::TcpListener;
+use tokio::task;
 
 use crate::app::App;
 use crate::network::api;
@@ -79,7 +79,7 @@ pub async fn start_example_raft_node<P>(
     node_id: NodeId,
     dir: P,
     http_addr: String,
-    rcp_addr: String,
+    rpc_addr: String,
 ) -> std::io::Result<()>
 where
     P: AsRef<Path>,
@@ -107,7 +107,7 @@ where
     let app = Arc::new(App {
         id: node_id,
         api_addr: http_addr.clone(),
-        rcp_addr: rcp_addr.clone(),
+        rpc_addr: rpc_addr.clone(),
         raft,
         key_values: kvs,
         config,
@@ -117,7 +117,7 @@ where
 
     let server = toy_rpc::Server::builder().register(echo_service).build();
 
-    let listener = TcpListener::bind(rcp_addr).await.unwrap();
+    let listener = TcpListener::bind(rpc_addr).await.unwrap();
     let handle = task::spawn(async move {
         server.accept_websocket(listener).await.unwrap();
     });
@@ -130,6 +130,6 @@ where
     api::rest(&mut app);
 
     app.listen(http_addr).await?;
-    handle.await;
+    _ = handle.await;
     Ok(())
 }
