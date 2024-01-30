@@ -3,6 +3,7 @@ use std::fmt::Debug;
 use std::future::Future;
 use std::marker::PhantomData;
 use std::option::Option::None;
+use std::time::Duration;
 
 use anyerror::AnyError;
 use maplit::btreeset;
@@ -668,6 +669,10 @@ where
 
         store.purge(LogId::new(CommittedLeaderId::new(0, C::NodeId::default()), 0)).await?;
 
+        // `purge()` does not have to do the purge at once.
+        // The implementation may choose to do it in the background.
+        tokio::time::sleep(Duration::from_millis(1_000)).await;
+
         let ent = store.try_get_log_entry(3).await?;
         assert_eq!(Some(log_id_0(1, 3)), ent.map(|x| *x.get_log_id()));
 
@@ -732,6 +737,10 @@ where
         {
             store.purge(log_id_0(2, 3)).await?;
 
+            // `purge()` does not have to do the purge at once.
+            // The implementation may choose to do it in the background.
+            tokio::time::sleep(Duration::from_millis(1_000)).await;
+
             let st = store.get_log_state().await?;
             assert_eq!(Some(log_id_0(2, 3)), st.last_purged_log_id);
             assert_eq!(Some(log_id_0(2, 3)), st.last_log_id);
@@ -744,6 +753,10 @@ where
         Self::feed_10_logs_vote_self(&mut store).await?;
 
         store.purge(log_id_0(1, 3)).await?;
+
+        // `purge()` does not have to do the purge at once.
+        // The implementation may choose to do it in the background.
+        tokio::time::sleep(Duration::from_millis(1_000)).await;
 
         let res = store.get_log_id(0).await;
         assert!(res.is_err());
@@ -791,6 +804,10 @@ where
         {
             store.purge(log_id_0(1, 2)).await?;
 
+            // `purge()` does not have to do the purge at once.
+            // The implementation may choose to do it in the background.
+            tokio::time::sleep(Duration::from_millis(1_000)).await;
+
             let last_log_id = store.get_log_state().await?.last_log_id;
             assert_eq!(Some(log_id_0(1, 2)), last_log_id);
         }
@@ -837,6 +854,10 @@ where
 
         store.purge(log_id_0(0, 0)).await?;
 
+        // `purge()` does not have to do the purge at once.
+        // The implementation may choose to do it in the background.
+        tokio::time::sleep(Duration::from_millis(1_000)).await;
+
         let logs = store.try_get_log_entries(0..100).await?;
         assert_eq!(logs.len(), 10);
         assert_eq!(logs[0].get_log_id().index, 1);
@@ -858,6 +879,10 @@ where
 
         store.purge(log_id_0(1, 5)).await?;
 
+        // `purge()` does not have to do the purge at once.
+        // The implementation may choose to do it in the background.
+        tokio::time::sleep(Duration::from_millis(1_000)).await;
+
         let logs = store.try_get_log_entries(0..100).await?;
         assert_eq!(logs.len(), 5);
         assert_eq!(logs[0].get_log_id().index, 6);
@@ -878,6 +903,10 @@ where
         Self::feed_10_logs_vote_self(&mut store).await?;
 
         store.purge(log_id_0(1, 20)).await?;
+
+        // `purge()` does not have to do the purge at once.
+        // The implementation may choose to do it in the background.
+        tokio::time::sleep(Duration::from_millis(1_000)).await;
 
         let logs = store.try_get_log_entries(0..100).await?;
         assert_eq!(logs.len(), 0);
@@ -937,6 +966,10 @@ where
         Self::feed_10_logs_vote_self(&mut store).await?;
 
         store.purge(log_id_0(0, 0)).await?;
+
+        // `purge()` does not have to do the purge at once.
+        // The implementation may choose to do it in the background.
+        tokio::time::sleep(Duration::from_millis(1_000)).await;
 
         append(&mut store, [blank_ent_0::<C>(2, 11)]).await?;
 
