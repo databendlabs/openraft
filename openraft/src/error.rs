@@ -31,6 +31,7 @@ where NID: NodeId
     #[error(transparent)]
     APIError(E),
 
+    // Reset serde trait bound for NID but not for E
     #[cfg_attr(feature = "serde", serde(bound = ""))]
     #[error(transparent)]
     Fatal(#[from] Fatal<NID>),
@@ -118,7 +119,7 @@ where NID: NodeId
 // TODO: remove
 #[derive(Debug, Clone, thiserror::Error, derive_more::TryInto)]
 #[derive(PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub enum InstallSnapshotError {
     #[error(transparent)]
     SnapshotMismatch(#[from] SnapshotMismatch),
@@ -241,10 +242,14 @@ pub(crate) struct ReplicationClosed {}
 
 /// Error occurs when invoking a remote raft API.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+// NID already has serde bound.
+// E still needs additional serde bound.
+// `serde(bound="")` does not work in this case.
 #[cfg_attr(
     feature = "serde",
-    derive(serde::Deserialize, serde::Serialize),
-    serde(bound = "E:serde::Serialize + for <'d> serde::Deserialize<'d>")
+    derive(serde::Serialize, serde::Deserialize),
+    serde(bound(serialize = "E: serde::Serialize")),
+    serde(bound(deserialize = "E: for <'d> serde::Deserialize<'d>"))
 )]
 pub enum RPCError<NID: NodeId, N: Node, E: Error> {
     #[error(transparent)]
@@ -326,7 +331,7 @@ pub struct HigherVote<NID: NodeId> {
 ///
 /// Unlike [`Unreachable`], which indicates a error that should backoff before retrying.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[error("NetworkError: {source}")]
 pub struct NetworkError {
     #[from]
@@ -352,7 +357,7 @@ impl NetworkError {
 ///
 /// [`backoff()`]: crate::network::RaftNetwork::backoff
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[error("Unreachable node: {source}")]
 pub struct Unreachable {
     #[from]
@@ -404,7 +409,7 @@ impl Unreachable {
 /// [`InstallSnapshotRequest`]: crate::raft::InstallSnapshotRequest
 /// [`Config::snapshot_max_chunk_size`]: crate::config::Config::snapshot_max_chunk_size
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub struct PayloadTooLarge {
     action: RPCTypes,
 
@@ -548,7 +553,7 @@ where
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[error("snapshot segment id mismatch, expect: {expect}, got: {got}")]
 pub struct SnapshotMismatch {
     pub expect: SnapshotSegmentId,
