@@ -89,7 +89,7 @@ where C: RaftTypeConfig
         tx: ResultSender<ClientWriteResponse<C>, ClientWriteError<C::NodeId, C::Node>>,
     },
 
-    ExternalRequest {
+    ExternalCoreRequest {
         req: BoxCoreFn<C>,
     },
 
@@ -124,7 +124,7 @@ where C: RaftTypeConfig
             } => {
                 format!("ChangeMembership: members: {:?}, retain: {}", members, retain,)
             }
-            RaftMsg::ExternalRequest { .. } => "External Request".to_string(),
+            RaftMsg::ExternalCoreRequest { .. } => "External Request".to_string(),
             RaftMsg::ExternalCommand { cmd } => {
                 format!("ExternalCommand: {:?}", cmd)
             }
