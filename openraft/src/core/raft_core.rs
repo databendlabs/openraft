@@ -1163,7 +1163,7 @@ where
 
                 self.change_membership(changes, retain, tx);
             }
-            RaftMsg::ExternalRequest { req } => {
+            RaftMsg::ExternalCoreRequest { req } => {
                 req(&self.engine.state);
             }
             RaftMsg::ExternalCommand { cmd } => {

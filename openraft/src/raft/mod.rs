@@ -822,7 +822,7 @@ where C: RaftTypeConfig
     pub fn external_request<F>(&self, req: F)
     where F: FnOnce(&RaftState<C::NodeId, C::Node, <C::AsyncRuntime as AsyncRuntime>::Instant>) + Send + 'static {
         let req: BoxCoreFn<C> = Box::new(req);
-        let _ignore_error = self.inner.tx_api.send(RaftMsg::ExternalRequest { req });
+        let _ignore_error = self.inner.tx_api.send(RaftMsg::ExternalCoreRequest { req });
     }
 
     /// Get a handle to the metrics channel.
