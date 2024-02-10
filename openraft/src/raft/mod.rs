@@ -72,6 +72,7 @@ use crate::RaftState;
 pub use crate::RaftTypeConfig;
 use crate::Snapshot;
 use crate::StorageHelper;
+use crate::Vote;
 
 /// Define types for a Raft type configuration.
 ///
@@ -359,6 +360,23 @@ where C: RaftTypeConfig
         let (tx, rx) = oneshot::channel();
         let cmd = ExternalCommand::GetSnapshot { tx };
         self.call_core(RaftMsg::ExternalCommand { cmd }, rx).await
+    }
+
+    /// Install a completely received snapshot to the state machine.
+    ///
+    /// This method is used to implement a totally application defined snapshot transmission.
+    /// The application receives a snapshot from the leader, in chunks or a stream, and
+    /// then rebuild a snapshot, then pass the snapshot to Raft to install.
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub async fn install_complete_snapshot(
+        &self,
+        vote: Vote<C::NodeId>,
+        snapshot: Snapshot<C>,
+    ) -> Result<InstallSnapshotResponse<C::NodeId>, RaftError<C::NodeId>> {
+        tracing::debug!("Raft::install_complete_snapshot()");
+
+        let (tx, rx) = oneshot::channel();
+        self.call_core(RaftMsg::InstallCompleteSnapshot { vote, snapshot, tx }, rx).await
     }
 
     /// Submit an InstallSnapshot RPC to this Raft node.

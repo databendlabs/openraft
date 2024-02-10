@@ -99,7 +99,7 @@ where
 }
 
 /// The data associated with the current snapshot.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Snapshot<C>
 where C: RaftTypeConfig
 {
@@ -115,6 +115,14 @@ where C: RaftTypeConfig
 {
     pub(crate) fn new(meta: SnapshotMeta<C::NodeId, C::Node>, snapshot: Box<C::SnapshotData>) -> Self {
         Self { meta, snapshot }
+    }
+}
+
+impl<C> fmt::Display for Snapshot<C>
+where C: RaftTypeConfig
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Snapshot{{meta: {}}}", self.meta)
     }
 }
 

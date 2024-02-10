@@ -166,6 +166,17 @@ where
                     let res = CommandResult::new(cmd.seq, Ok(Response::InstallSnapshot(resp)));
                     let _ = self.resp_tx.send(Notify::sm(res));
                 }
+                CommandPayload::InstallCompleteSnapshot { snapshot } => {
+                    tracing::info!("{}: install complete snapshot", func_name!());
+
+                    let meta = snapshot.meta.clone();
+                    self.state_machine.install_snapshot(&meta, snapshot.snapshot).await?;
+
+                    tracing::info!("Done install complete snapshot, meta: {}", meta);
+
+                    let res = CommandResult::new(cmd.seq, Ok(Response::InstallSnapshot(Some(meta))));
+                    let _ = self.resp_tx.send(Notify::sm(res));
+                }
                 CommandPayload::Apply { entries } => {
                     let resp = self.apply(entries).await?;
                     let res = CommandResult::new(cmd.seq, Ok(Response::Apply(resp)));
