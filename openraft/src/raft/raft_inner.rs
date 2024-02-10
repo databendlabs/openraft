@@ -131,6 +131,11 @@ where C: RaftTypeConfig
         Ok(())
     }
 
+    pub(in crate::raft) async fn is_core_running(&self) -> bool {
+        let state = self.core_state.lock().await;
+        state.is_running()
+    }
+
     /// Get the error that caused RaftCore to stop.
     pub(in crate::raft) async fn get_core_stopped_error(
         &self,
