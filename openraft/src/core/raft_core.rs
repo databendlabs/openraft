@@ -1183,6 +1183,13 @@ where
                         self.send_heartbeat("ExternalCommand");
                     }
                     ExternalCommand::Snapshot => self.trigger_snapshot(),
+                    ExternalCommand::GetSnapshot { tx } => {
+                        let cmd = sm::Command::get_snapshot(tx);
+                        let res = self.sm_handle.send(cmd);
+                        if let Err(e) = res {
+                            tracing::error!(error = display(e), "error sending GetSnapshot to sm worker");
+                        }
+                    }
                     ExternalCommand::PurgeLog { upto } => {
                         self.engine.trigger_purge_log(upto);
                     }

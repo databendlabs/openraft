@@ -2,14 +2,17 @@
 
 use std::fmt;
 
+use crate::core::raft_msg::ResultSender;
+use crate::RaftTypeConfig;
+use crate::Snapshot;
+
 /// Application-triggered Raft actions for testing and administration.
 ///
 /// Typically, openraft handles actions automatically.
 ///
 /// An application can also disable these policy-based triggering and use these commands manually,
 /// for testing or administrative purpose.
-#[derive(Debug, Clone)]
-pub(crate) enum ExternalCommand {
+pub(crate) enum ExternalCommand<C: RaftTypeConfig> {
     /// Initiate an election at once.
     Elect,
 
@@ -19,6 +22,9 @@ pub(crate) enum ExternalCommand {
     /// Initiate to build a snapshot on this node.
     Snapshot,
 
+    /// Get a snapshot from the state machine, send back via a oneshot::Sender.
+    GetSnapshot { tx: ResultSender<Option<Snapshot<C>>> },
+
     /// Purge logs covered by a snapshot up to a specified index.
     ///
     /// Openraft respects the [`max_in_snapshot_log_to_keep`] config when purging.
@@ -27,17 +33,30 @@ pub(crate) enum ExternalCommand {
     PurgeLog { upto: u64 },
 }
 
-impl fmt::Display for ExternalCommand {
+impl<C> fmt::Debug for ExternalCommand<C>
+where C: RaftTypeConfig
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(self, f)
+    }
+}
+
+impl<C> fmt::Display for ExternalCommand<C>
+where C: RaftTypeConfig
+{
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ExternalCommand::Elect => {
-                write!(f, "{:?}", self)
+                write!(f, "Elect")
             }
             ExternalCommand::Heartbeat => {
-                write!(f, "{:?}", self)
+                write!(f, "Heartbeat")
             }
             ExternalCommand::Snapshot => {
-                write!(f, "{:?}", self)
+                write!(f, "Snapshot")
+            }
+            ExternalCommand::GetSnapshot { .. } => {
+                write!(f, "GetSnapshot")
             }
             ExternalCommand::PurgeLog { upto } => {
                 write!(f, "PurgeLog[..={}]", upto)

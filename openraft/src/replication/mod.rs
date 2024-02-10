@@ -21,11 +21,11 @@ use tokio::io::AsyncReadExt;
 use tokio::io::AsyncSeekExt;
 use tokio::select;
 use tokio::sync::mpsc;
-use tokio::sync::oneshot;
 use tracing_futures::Instrument;
 
 use crate::config::Config;
 use crate::core::notify::Notify;
+use crate::core::raft_msg::ResultReceiver;
 use crate::display_ext::DisplayOption;
 use crate::display_ext::DisplayOptionExt;
 use crate::error::HigherVote;
@@ -684,7 +684,7 @@ where
     #[tracing::instrument(level = "info", skip_all)]
     async fn stream_snapshot(
         &mut self,
-        snapshot_rx: DataWithId<oneshot::Receiver<Option<Snapshot<C>>>>,
+        snapshot_rx: DataWithId<ResultReceiver<Option<Snapshot<C>>>>,
     ) -> Result<Option<Data<C>>, ReplicationError<C::NodeId, C::Node>> {
         let request_id = snapshot_rx.request_id();
         let rx = snapshot_rx.into_data();
@@ -695,6 +695,9 @@ where
             let io_err = StorageIOError::read_snapshot(None, AnyError::error(e));
             StorageError::IO { source: io_err }
         })?;
+
+        // Safe unwrap(): the error is Infallible, so it is safe to unwrap.
+        let snapshot = snapshot.unwrap();
 
         tracing::info!(
             "received snapshot: request_id={}; meta:{}",
