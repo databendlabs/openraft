@@ -26,16 +26,18 @@ use crate::RaftTypeConfig;
 pub(crate) mod external_command;
 
 /// A oneshot TX to send result from `RaftCore` to external caller, e.g. `Raft::append_entries`.
-pub(crate) type ResultSender<T, E> = oneshot::Sender<Result<T, E>>;
+pub(crate) type ResultSender<T, E = Infallible> = oneshot::Sender<Result<T, E>>;
+
+pub(crate) type ResultReceiver<T, E = Infallible> = oneshot::Receiver<Result<T, E>>;
 
 /// TX for Install Snapshot Response
 pub(crate) type InstallSnapshotTx<NID> = ResultSender<InstallSnapshotResponse<NID>, InstallSnapshotError>;
 
 /// TX for Vote Response
-pub(crate) type VoteTx<NID> = ResultSender<VoteResponse<NID>, Infallible>;
+pub(crate) type VoteTx<NID> = ResultSender<VoteResponse<NID>>;
 
 /// TX for Append Entries Response
-pub(crate) type AppendEntriesTx<NID> = ResultSender<AppendEntriesResponse<NID>, Infallible>;
+pub(crate) type AppendEntriesTx<NID> = ResultSender<AppendEntriesResponse<NID>>;
 
 /// TX for Client Write Response
 pub(crate) type ClientWriteTx<C> = ResultSender<ClientWriteResponse<C>, ClientWriteError<NodeIdOf<C>, NodeOf<C>>>;
@@ -94,7 +96,7 @@ where C: RaftTypeConfig
     },
 
     ExternalCommand {
-        cmd: ExternalCommand,
+        cmd: ExternalCommand<C>,
     },
 }
 

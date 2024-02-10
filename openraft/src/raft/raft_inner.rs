@@ -47,7 +47,7 @@ where C: RaftTypeConfig
     /// It returns at once.
     pub(in crate::raft) async fn send_external_command(
         &self,
-        cmd: ExternalCommand,
+        cmd: ExternalCommand<C>,
         cmd_desc: impl fmt::Display + Default,
     ) -> Result<(), Fatal<C::NodeId>> {
         let send_res = self.tx_api.send(RaftMsg::ExternalCommand { cmd });
