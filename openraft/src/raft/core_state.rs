@@ -13,3 +13,12 @@ where C: RaftTypeConfig
     /// The RaftCore task has finished. The return value of the task is stored.
     Done(Result<Infallible, Fatal<C>>),
 }
+
+impl<C> CoreState<C>
+where C: RaftTypeConfig
+{
+    /// Returns `true` if the RaftCore task is still running.
+    pub(in crate::raft) fn is_running(&self) -> bool {
+        matches!(self, CoreState::Running(_))
+    }
+}
