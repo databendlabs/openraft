@@ -3,6 +3,7 @@
 use std::fmt;
 
 use crate::core::raft_msg::ResultSender;
+use crate::core::sm;
 use crate::RaftTypeConfig;
 use crate::Snapshot;
 
@@ -31,6 +32,10 @@ pub(crate) enum ExternalCommand<C: RaftTypeConfig> {
     ///
     /// [`max_in_snapshot_log_to_keep`]: `crate::Config::max_in_snapshot_log_to_keep`
     PurgeLog { upto: u64 },
+
+    /// Send a [`sm::Command`] to [`sm::worker::Worker`].
+    /// This command is run in the sm task.
+    StateMachineCommand { sm_cmd: sm::Command<C> },
 }
 
 impl<C> fmt::Debug for ExternalCommand<C>
@@ -60,6 +65,9 @@ where C: RaftTypeConfig
             }
             ExternalCommand::PurgeLog { upto } => {
                 write!(f, "PurgeLog[..={}]", upto)
+            }
+            ExternalCommand::StateMachineCommand { sm_cmd } => {
+                write!(f, "StateMachineCommand: {}", sm_cmd)
             }
         }
     }

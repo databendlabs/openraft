@@ -1214,6 +1214,12 @@ where
                     ExternalCommand::PurgeLog { upto } => {
                         self.engine.trigger_purge_log(upto);
                     }
+                    ExternalCommand::StateMachineCommand { sm_cmd } => {
+                        let res = self.sm_handle.send(sm_cmd);
+                        if let Err(e) = res {
+                            tracing::error!(error = display(e), "error sending sm::Command to sm::Worker");
+                        }
+                    }
                 }
             }
         };
