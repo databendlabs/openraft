@@ -43,10 +43,3 @@ impl Instant for tokio::time::Instant {
         tokio::time::Instant::now()
     }
 }
-
-impl Instant for std::time::Instant {
-    #[inline]
-    fn now() -> Self {
-        Self::now()
-    }
-}
