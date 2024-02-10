@@ -49,6 +49,7 @@ pub(crate) mod proposer;
 pub(crate) mod raft_state;
 pub(crate) mod utime;
 
+pub mod base;
 #[cfg(feature = "compat")]
 pub mod compat;
 pub mod docs;
@@ -74,6 +75,9 @@ pub use type_config::async_runtime;
 pub use type_config::async_runtime::impls::TokioRuntime;
 pub use type_config::AsyncRuntime;
 
+pub use crate::base::OptionalSend;
+pub use crate::base::OptionalSerde;
+pub use crate::base::OptionalSync;
 pub use crate::change_members::ChangeMembers;
 pub use crate::config::Config;
 pub use crate::config::ConfigError;
@@ -123,44 +127,6 @@ pub use crate::type_config::RaftTypeConfig;
 pub use crate::vote::CommittedLeaderId;
 pub use crate::vote::LeaderId;
 pub use crate::vote::Vote;
-
-#[cfg(feature = "serde")]
-#[doc(hidden)]
-pub trait OptionalSerde: serde::Serialize + for<'a> serde::Deserialize<'a> {}
-
-#[cfg(feature = "serde")]
-impl<T> OptionalSerde for T where T: serde::Serialize + for<'a> serde::Deserialize<'a> {}
-
-#[cfg(not(feature = "serde"))]
-#[doc(hidden)]
-pub trait OptionalSerde {}
-
-#[cfg(not(feature = "serde"))]
-impl<T> OptionalSerde for T {}
-
-#[cfg(feature = "singlethreaded")]
-pub trait OptionalSend {}
-
-#[cfg(feature = "singlethreaded")]
-pub trait OptionalSync {}
-
-#[cfg(feature = "singlethreaded")]
-impl<T: ?Sized> OptionalSend for T {}
-
-#[cfg(feature = "singlethreaded")]
-impl<T: ?Sized> OptionalSync for T {}
-
-#[cfg(not(feature = "singlethreaded"))]
-pub trait OptionalSend: Send {}
-
-#[cfg(not(feature = "singlethreaded"))]
-pub trait OptionalSync: Sync {}
-
-#[cfg(not(feature = "singlethreaded"))]
-impl<T: Send + ?Sized> OptionalSend for T {}
-
-#[cfg(not(feature = "singlethreaded"))]
-impl<T: Sync + ?Sized> OptionalSync for T {}
 
 /// A trait defining application specific data.
 ///

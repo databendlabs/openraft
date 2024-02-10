@@ -4,6 +4,7 @@ use tracing_futures::Instrument;
 use crate::async_runtime::MpscUnboundedReceiver;
 use crate::async_runtime::MpscUnboundedSender;
 use crate::async_runtime::OneshotSender;
+use crate::base::BoxAsyncOnceMut;
 use crate::core::notification::Notification;
 use crate::core::raft_msg::ResultSender;
 use crate::core::sm::handle::Handle;
@@ -141,6 +142,14 @@ where
                     let resp = self.apply(first, last).await?;
                     let res = CommandResult::new(Ok(Response::Apply(resp)));
                     let _ = self.resp_tx.send(Notification::sm(res));
+                }
+                Command::Func { func } => {
+                    tracing::info!("{}: run user defined Func", func_name!());
+
+                    let f: Box<BoxAsyncOnceMut<'static, SM>> = func.downcast().unwrap();
+
+                    let fu = f(&mut self.state_machine);
+                    fu.await;
                 }
             };
         }

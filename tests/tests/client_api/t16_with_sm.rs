@@ -7,12 +7,14 @@ use openraft::testing::log_id;
 use openraft::Config;
 
 use crate::fixtures::ut_harness;
+use crate::fixtures::MemStateMachine;
 use crate::fixtures::RaftRouter;
 
-/// Access Raft state via [`Raft::with_raft_state()`](openraft::Raft::with_raft_state)
+/// Access [`RaftStateMachine`] via
+/// [`Raft::with_state_machine()`](openraft::Raft::with_state_machine)
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
-async fn with_raft_state() -> Result<()> {
+async fn with_state_machine() -> Result<()> {
     let config = Arc::new(
         Config {
             enable_heartbeat: false,
@@ -28,13 +30,23 @@ async fn with_raft_state() -> Result<()> {
 
     let n0 = router.get_raft_handle(&0)?;
 
-    let committed = n0.with_raft_state(|st| st.committed).await?;
-    assert_eq!(committed, Some(log_id(1, 0, log_index)));
+    tracing::info!("--- get last applied from SM");
+    {
+        let applied = n0
+            .with_state_machine(|sm: &mut MemStateMachine| {
+                Box::pin(async move {
+                    let d = sm.get_state_machine().await;
+                    d.last_applied_log
+                })
+            })
+            .await?;
+        assert_eq!(applied, Some(log_id(1, 0, log_index)));
+    }
 
     tracing::info!("--- shutting down node 0");
     n0.shutdown().await?;
 
-    let res = n0.with_raft_state(|st| st.committed).await;
+    let res = n0.with_state_machine(|_sm: &mut MemStateMachine| Box::pin(async move {})).await;
     assert_eq!(Err(Fatal::Stopped), res);
 
     Ok(())
