@@ -9,7 +9,7 @@ use openraft::Config;
 use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 
-/// Access Raft state via `Raft::with_raft_state()`
+/// Access Raft state via [`Raft::with_raft_state()`](openraft::Raft::with_raft_state)
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn with_raft_state() -> Result<()> {

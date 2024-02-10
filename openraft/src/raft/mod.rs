@@ -10,7 +10,6 @@
 
 #[cfg(test)]
 mod declare_raft_types_test;
-mod external_request;
 mod impl_raft_blocking_write;
 pub(crate) mod message;
 mod raft_inner;
@@ -20,8 +19,6 @@ pub mod trigger;
 
 use std::collections::BTreeMap;
 use std::error::Error;
-
-pub(crate) use self::external_request::BoxCoreFn;
 
 pub(in crate::raft) mod core_state;
 
@@ -48,11 +45,15 @@ use tracing::Level;
 use crate::async_runtime::watch::WatchReceiver;
 use crate::async_runtime::MpscUnboundedSender;
 use crate::async_runtime::OneshotSender;
+use crate::base::BoxAsyncOnceMut;
+use crate::base::BoxFuture;
+use crate::base::BoxOnce;
 use crate::config::Config;
 use crate::config::RuntimeConfig;
 use crate::core::raft_msg::external_command::ExternalCommand;
 use crate::core::raft_msg::RaftMsg;
 use crate::core::replication_lag;
+use crate::core::sm;
 use crate::core::sm::worker;
 use crate::core::RaftCore;
 use crate::core::Tick;
@@ -63,6 +64,7 @@ use crate::error::ClientWriteError;
 use crate::error::Fatal;
 use crate::error::Infallible;
 use crate::error::InitializeError;
+use crate::error::InvalidStateMachineType;
 use crate::error::RaftError;
 use crate::membership::IntoNodes;
 use crate::metrics::RaftDataMetrics;
@@ -224,8 +226,6 @@ where C: RaftTypeConfig
     /// ### `storage`
     /// An implementation of the [`RaftLogStorage`] and [`RaftStateMachine`] trait which will be
     /// used by Raft for data storage.
-    ///
-    /// [`RaftNetworkFactory`]: crate::network::RaftNetworkFactory
     #[tracing::instrument(level="debug", skip_all, fields(cluster=%config.cluster_name))]
     pub async fn new<LS, N, SM>(
         id: C::NodeId,
@@ -407,7 +407,7 @@ where C: RaftTypeConfig
 
     /// Install a completely received snapshot to the state machine.
     ///
-    /// This method is used to implement a totally application defined snapshot transmission.
+    /// This method is used to implement an application defined snapshot transmission.
     /// The application receives a snapshot from the leader, in chunks or a stream, and
     /// then rebuild a snapshot, then pass the snapshot to Raft to install.
     #[tracing::instrument(level = "debug", skip_all)]
@@ -780,8 +780,93 @@ where C: RaftTypeConfig
     /// destroyed right away and not called at all.
     pub fn external_request<F>(&self, req: F)
     where F: FnOnce(&RaftState<C>) + OptionalSend + 'static {
-        let req: BoxCoreFn<C> = Box::new(req);
+        let req: BoxOnce<'static, RaftState<C>> = Box::new(req);
         let _ignore_error = self.inner.tx_api.send(RaftMsg::ExternalCoreRequest { req });
+    }
+
+    /// Provides mutable access to [`RaftStateMachine`] through a user-provided function.
+    ///
+    /// The function `func` is applied to the current [`RaftStateMachine`]. The result of this
+    /// function, of type `V`, is returned wrapped in
+    /// `Result<Result<V, InvalidStateMachineType>, Fatal<C>>`.
+    /// `Fatal` error will be returned if failed to receive a reply from `RaftCore`.
+    ///
+    /// A `Fatal` error is returned if:
+    /// - Raft core task is stopped normally.
+    /// - Raft core task is panicked due to programming error.
+    /// - Raft core task is encountered a storage error.
+    ///
+    /// If the user function fail to run, e.g., the input `SM` is different one from the one in
+    /// `RaftCore`, it returns an [`InvalidStateMachineType`] error.
+    ///
+    /// Example for getting the last applied log id from SM(assume there is `last_applied()` method
+    /// provided):
+    ///
+    /// ```rust,ignore
+    /// let last_applied_log_id = my_raft.with_state_machine(|sm| {
+    ///     async move { sm.last_applied().await }
+    /// }).await?;
+    /// ```
+    pub async fn with_state_machine<F, SM, V>(&self, func: F) -> Result<Result<V, InvalidStateMachineType>, Fatal<C>>
+    where
+        SM: RaftStateMachine<C>,
+        F: FnOnce(&mut SM) -> BoxFuture<V> + OptionalSend + 'static,
+        V: OptionalSend + 'static,
+    {
+        let (tx, rx) = C::oneshot();
+
+        self.external_state_machine_request(|sm| {
+            Box::pin(async move {
+                let resp = func(sm).await;
+                if let Err(_err) = tx.send(resp) {
+                    tracing::error!("{}: fail to send response to user communicating tx", func_name!());
+                }
+            })
+        });
+
+        let recv_res = rx.await;
+        tracing::debug!("{} receives result is error: {:?}", func_name!(), recv_res.is_err());
+
+        let Ok(v) = recv_res else {
+            if self.inner.is_core_running().await {
+                return Ok(Err(InvalidStateMachineType::new::<SM>()));
+            } else {
+                let fatal = self.inner.get_core_stopped_error("receiving rx from RaftCore", None::<&'static str>).await;
+                tracing::error!(error = debug(&fatal), "error when {}", func_name!());
+                return Err(fatal);
+            }
+        };
+
+        Ok(Ok(v))
+    }
+
+    /// Send a request to the [`RaftStateMachine`] worker in a fire-and-forget manner.
+    ///
+    /// The request functor will be called with a mutable reference to the state machine.
+    /// The functor returns a [`Future`] because state machine methods are `async`.
+    ///
+    /// If the API channel is already closed (Raft is in shutdown), then the request functor is
+    /// destroyed right away and not called at all.
+    ///
+    /// If the input `SM` is different from the one in `RaftCore`, it just silently ignores it.
+    pub fn external_state_machine_request<F, SM>(&self, req: F)
+    where
+        SM: 'static,
+        F: FnOnce(&mut SM) -> BoxFuture<()> + OptionalSend + 'static,
+    {
+        let input_sm_type = std::any::type_name::<SM>();
+
+        let func: BoxAsyncOnceMut<'static, SM> = Box::new(req);
+
+        // Erase the type so that to send through a channel without `SM` type parameter.
+        // `sm::Worker` will downcast it back to BoxAsyncOnce<SM>.
+        let func = Box::new(func);
+
+        let sm_cmd = sm::Command::Func { func, input_sm_type };
+        let raft_msg = RaftMsg::ExternalCommand {
+            cmd: ExternalCommand::StateMachineCommand { sm_cmd },
+        };
+        let _ignore_error = self.inner.tx_api.send(raft_msg);
     }
 
     /// Get a handle to the metrics channel.

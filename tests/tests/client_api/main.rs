@@ -15,5 +15,6 @@ mod t13_get_snapshot;
 mod t13_install_full_snapshot;
 mod t13_trigger_snapshot;
 mod t16_with_raft_state;
+mod t16_with_state_machine;
 mod t50_lagging_network_write;
 mod t51_write_when_leader_quit;

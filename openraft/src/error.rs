@@ -2,6 +2,7 @@
 
 pub mod decompose;
 pub mod into_ok;
+mod invalid_sm;
 mod replication_closed;
 mod streaming_error;
 
@@ -13,6 +14,7 @@ use std::time::Duration;
 
 use anyerror::AnyError;
 
+pub use self::invalid_sm::InvalidStateMachineType;
 pub use self::replication_closed::ReplicationClosed;
 pub use self::streaming_error::StreamingError;
 use crate::network::RPCTypes;
