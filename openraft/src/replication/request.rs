@@ -21,7 +21,7 @@ where C: RaftTypeConfig
         Self::Data(Data::new_logs(id, log_id_range))
     }
 
-    pub(crate) fn snapshot(id: Option<u64>, snapshot_rx: oneshot::Receiver<Option<Snapshot<C>>>) -> Self {
+    pub(crate) fn snapshot(id: Option<u64>, snapshot_rx: ResultReceiver<Option<Snapshot<C>>>) -> Self {
         Self::Data(Data::new_snapshot(id, snapshot_rx))
     }
 }
@@ -42,8 +42,7 @@ where C: RaftTypeConfig
     }
 }
 
-use tokio::sync::oneshot;
-
+use crate::core::raft_msg::ResultReceiver;
 use crate::display_ext::DisplayOptionExt;
 use crate::log_id_range::LogIdRange;
 use crate::LogId;
@@ -60,7 +59,7 @@ pub(crate) enum Data<C>
 where C: RaftTypeConfig
 {
     Logs(DataWithId<LogIdRange<C::NodeId>>),
-    Snapshot(DataWithId<oneshot::Receiver<Option<Snapshot<C>>>>),
+    Snapshot(DataWithId<ResultReceiver<Option<Snapshot<C>>>>),
 }
 
 impl<C> fmt::Debug for Data<C>
@@ -111,7 +110,7 @@ where C: RaftTypeConfig
         Self::Logs(DataWithId::new(request_id, log_id_range))
     }
 
-    pub(crate) fn new_snapshot(request_id: Option<u64>, snapshot_rx: oneshot::Receiver<Option<Snapshot<C>>>) -> Self {
+    pub(crate) fn new_snapshot(request_id: Option<u64>, snapshot_rx: ResultReceiver<Option<Snapshot<C>>>) -> Self {
         Self::Snapshot(DataWithId::new(request_id, snapshot_rx))
     }
 

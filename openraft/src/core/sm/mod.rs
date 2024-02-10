@@ -6,7 +6,6 @@
 
 use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
-use tokio::sync::oneshot;
 
 use crate::core::snapshot_state::SnapshotRequestId;
 use crate::core::streaming_state::Streaming;
@@ -35,6 +34,7 @@ pub(crate) use response::CommandResult;
 pub(crate) use response::Response;
 
 use crate::core::notify::Notify;
+use crate::core::raft_msg::ResultSender;
 
 /// State machine worker handle for sending command to it.
 pub(crate) struct Handle<C>
@@ -242,7 +242,7 @@ where
     }
 
     #[tracing::instrument(level = "info", skip_all)]
-    async fn get_snapshot(&mut self, tx: oneshot::Sender<Option<Snapshot<C>>>) -> Result<(), StorageError<C::NodeId>> {
+    async fn get_snapshot(&mut self, tx: ResultSender<Option<Snapshot<C>>>) -> Result<(), StorageError<C::NodeId>> {
         tracing::info!("{}", func_name!());
 
         let snapshot = self.state_machine.get_current_snapshot().await?;
@@ -251,7 +251,7 @@ where
             "sending back snapshot: meta: {:?}",
             snapshot.as_ref().map(|s| s.meta.summary())
         );
-        let _ = tx.send(snapshot);
+        let _ = tx.send(Ok(snapshot));
         Ok(())
     }
 

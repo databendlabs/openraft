@@ -37,6 +37,7 @@ use tracing::Level;
 use crate::config::Config;
 use crate::config::RuntimeConfig;
 use crate::core::command_state::CommandState;
+use crate::core::raft_msg::external_command::ExternalCommand;
 use crate::core::raft_msg::RaftMsg;
 use crate::core::replication_lag;
 use crate::core::sm;
@@ -69,6 +70,7 @@ use crate::LogIdOptionExt;
 use crate::MessageSummary;
 use crate::RaftState;
 pub use crate::RaftTypeConfig;
+use crate::Snapshot;
 use crate::StorageHelper;
 
 /// Define types for a Raft type configuration.
@@ -345,6 +347,21 @@ where C: RaftTypeConfig
         let (tx, rx) = oneshot::channel();
         self.call_core(RaftMsg::RequestVote { rpc, tx }, rx).await
     }
+
+    /// Get the latest snapshot from the state machine.
+    ///
+    /// It returns error only when `RaftCore` fails to serve the request, e.g., Encountering a
+    /// storage error or shutting down.
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub async fn get_snapshot(&self) -> Result<Option<Snapshot<C>>, RaftError<C::NodeId>> {
+        tracing::debug!("Raft::get_snapshot()");
+
+        let (tx, rx) = oneshot::channel();
+        let cmd = ExternalCommand::GetSnapshot { tx };
+        self.call_core(RaftMsg::ExternalCommand { cmd }, rx).await
+    }
+    // TODO: test get_snapshot
+    // TODO: add install_snapshot
 
     /// Submit an InstallSnapshot RPC to this Raft node.
     ///

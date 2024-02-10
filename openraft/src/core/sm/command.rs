@@ -1,8 +1,7 @@
 use std::fmt::Debug;
 use std::fmt::Formatter;
 
-use tokio::sync::oneshot;
-
+use crate::core::raft_msg::ResultSender;
 use crate::display_ext::DisplaySlice;
 use crate::log_id::RaftLogId;
 use crate::raft::InstallSnapshotRequest;
@@ -56,7 +55,7 @@ where C: RaftTypeConfig
         Command::new(payload)
     }
 
-    pub(crate) fn get_snapshot(tx: oneshot::Sender<Option<Snapshot<C>>>) -> Self {
+    pub(crate) fn get_snapshot(tx: ResultSender<Option<Snapshot<C>>>) -> Self {
         let payload = CommandPayload::GetSnapshot { tx };
         Command::new(payload)
     }
@@ -104,7 +103,7 @@ where C: RaftTypeConfig
     BuildSnapshot,
 
     /// Get the latest built snapshot.
-    GetSnapshot { tx: oneshot::Sender<Option<Snapshot<C>>> },
+    GetSnapshot { tx: ResultSender<Option<Snapshot<C>>> },
 
     /// Receive a chunk of snapshot.
     ///
