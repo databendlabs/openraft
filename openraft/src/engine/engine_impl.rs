@@ -45,6 +45,7 @@ use crate::LogIdOptionExt;
 use crate::Membership;
 use crate::RaftLogId;
 use crate::RaftTypeConfig;
+use crate::Snapshot;
 use crate::SnapshotMeta;
 use crate::Vote;
 
@@ -477,6 +478,42 @@ where C: RaftTypeConfig
         });
 
         Some(())
+    }
+
+    /// Install a completely received snapshot on a follower.
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub(crate) fn handle_install_complete_snapshot(
+        &mut self,
+        vote: Vote<C::NodeId>,
+        snapshot: Snapshot<C>,
+        tx: ResultSender<InstallSnapshotResponse<C::NodeId>>,
+    ) {
+        tracing::info!(vote = display(vote), snapshot = display(&snapshot), "{}", func_name!());
+
+        let vote_res = self.vote_handler().accept_vote(&vote, tx, |state, _rejected| {
+            Ok(InstallSnapshotResponse {
+                vote: *state.vote_ref(),
+            })
+        });
+
+        let Some(tx) = vote_res else {
+            return;
+        };
+
+        let mut fh = self.following_handler();
+        fh.install_complete_snapshot(snapshot);
+        let res = Ok(InstallSnapshotResponse {
+            vote: *self.state.vote_ref(),
+        });
+
+        self.output.push_command(Command::Respond {
+            // When there is an error, there may still be queued IO, we need to run them before sending back
+            // response.
+            when: Some(Condition::StateMachineCommand {
+                command_seq: self.output.last_sm_seq(),
+            }),
+            resp: Respond::new(res, tx),
+        });
     }
 
     #[tracing::instrument(level = "debug", skip_all)]

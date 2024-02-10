@@ -24,6 +24,7 @@ use crate::MessageSummary;
 use crate::RaftLogId;
 use crate::RaftState;
 use crate::RaftTypeConfig;
+use crate::Snapshot;
 use crate::SnapshotMeta;
 use crate::SnapshotSegmentId;
 use crate::StoredMembership;
@@ -343,6 +344,59 @@ where C: RaftTypeConfig
         self.output.push_command(Command::from(sm::Command::install_snapshot(meta)));
 
         // TODO: move this to LogHandler::purge_log()?
+        self.state.purge_upto = Some(snap_last_log_id);
+        self.log_handler().purge_log();
+    }
+
+    /// Follower/Learner handles install-full-snapshot.
+    ///
+    /// Refer to [`snapshot_replication`](crate::docs::protocol::replication::snapshot_replication)
+    /// for the reason the following workflow is needed.
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub(crate) fn install_complete_snapshot(&mut self, snapshot: Snapshot<C>) {
+        let meta = &snapshot.meta;
+        tracing::info!("install_complete_snapshot: meta:{:?}", meta);
+
+        let snap_last_log_id = meta.last_log_id;
+
+        if snap_last_log_id.as_ref() <= self.state.committed() {
+            tracing::info!(
+                "No need to install snapshot; snapshot last_log_id({}) <= committed({})",
+                snap_last_log_id.summary(),
+                self.state.committed().summary()
+            );
+            return;
+        }
+
+        // snapshot_last_log_id can not be None
+        let snap_last_log_id = snap_last_log_id.unwrap();
+
+        // 1. Truncate all logs if conflict.
+        // 2. Install snapshot.
+        // 3. Purge logs the snapshot covers.
+
+        let mut snap_handler = self.snapshot_handler();
+        let updated = snap_handler.update_snapshot(meta.clone());
+        if !updated {
+            return;
+        }
+
+        let local = self.state.get_log_id(snap_last_log_id.index);
+        if let Some(local) = local {
+            if local != snap_last_log_id {
+                // Conflict, delete all non-committed logs.
+                self.truncate_logs(self.state.committed().next_index());
+            }
+        }
+
+        self.state.update_accepted(Some(snap_last_log_id));
+        self.state.committed = Some(snap_last_log_id);
+        self.update_committed_membership(EffectiveMembership::new_from_stored_membership(
+            meta.last_membership.clone(),
+        ));
+
+        self.output.push_command(Command::from(sm::Command::install_complete_snapshot(snapshot)));
+
         self.state.purge_upto = Some(snap_last_log_id);
         self.log_handler().purge_log();
     }

@@ -22,6 +22,8 @@ use crate::type_config::alias::NodeOf;
 use crate::ChangeMembers;
 use crate::MessageSummary;
 use crate::RaftTypeConfig;
+use crate::Snapshot;
+use crate::Vote;
 
 pub(crate) mod external_command;
 
@@ -65,6 +67,12 @@ where C: RaftTypeConfig
     InstallSnapshot {
         rpc: InstallSnapshotRequest<C>,
         tx: InstallSnapshotTx<C::NodeId>,
+    },
+
+    InstallCompleteSnapshot {
+        vote: Vote<C::NodeId>,
+        snapshot: Snapshot<C>,
+        tx: ResultSender<InstallSnapshotResponse<C::NodeId>>,
     },
 
     ClientWriteRequest {
@@ -113,6 +121,9 @@ where C: RaftTypeConfig
             }
             RaftMsg::InstallSnapshot { rpc, .. } => {
                 format!("InstallSnapshot: {}", rpc.summary())
+            }
+            RaftMsg::InstallCompleteSnapshot { vote, snapshot, .. } => {
+                format!("InstallCompleteSnapshot: vote: {}, snapshot: {}", vote, snapshot)
             }
             RaftMsg::ClientWriteRequest { .. } => "ClientWriteRequest".to_string(),
             RaftMsg::CheckIsLeaderRequest { .. } => "CheckIsLeaderRequest".to_string(),

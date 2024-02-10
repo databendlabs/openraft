@@ -1134,6 +1134,9 @@ where
 
                 self.handle_install_snapshot_request(rpc, tx);
             }
+            RaftMsg::InstallCompleteSnapshot { vote, snapshot, tx } => {
+                self.engine.handle_install_complete_snapshot(vote, snapshot, tx);
+            }
             RaftMsg::CheckIsLeaderRequest { tx } => {
                 if self.engine.state.is_leader(&self.engine.config.id) {
                     self.handle_check_is_leader_request(tx).await;
