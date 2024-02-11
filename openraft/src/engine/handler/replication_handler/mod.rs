@@ -170,7 +170,7 @@ where C: RaftTypeConfig
         let granted = *self
             .leader
             .clock_progress
-            .update(&node_id, Some(t))
+            .increase_to(&node_id, Some(t))
             .expect("it should always update existing progress");
 
         tracing::debug!(

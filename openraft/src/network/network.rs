@@ -1,21 +1,30 @@
+use std::future::Future;
 use std::time::Duration;
 
 use macros::add_async_trait;
 
+use crate::error::Fatal;
 use crate::error::InstallSnapshotError;
 use crate::error::RPCError;
 use crate::error::RaftError;
+use crate::error::ReplicationClosed;
+use crate::error::StreamingError;
 use crate::network::rpc_option::RPCOption;
+use crate::network::stream_snapshot;
+use crate::network::stream_snapshot::SnapshotTransport;
 use crate::network::Backoff;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
 use crate::raft::InstallSnapshotRequest;
 use crate::raft::InstallSnapshotResponse;
+use crate::raft::SnapshotResponse;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::OptionalSend;
 use crate::OptionalSync;
 use crate::RaftTypeConfig;
+use crate::Snapshot;
+use crate::Vote;
 
 /// A trait defining the interface for a Raft network between cluster members.
 ///
@@ -52,6 +61,7 @@ where C: RaftTypeConfig
     }
 
     /// Send an InstallSnapshot RPC to the target.
+    #[deprecated(since = "0.9.0", note = "use `snapshot()` instead for sending a complete snapshot")]
     async fn install_snapshot(
         &mut self,
         rpc: InstallSnapshotRequest<C>,
@@ -76,8 +86,37 @@ where C: RaftTypeConfig
         self.send_vote(rpc).await
     }
 
+    /// Send a complete Snapshot to the target.
+    ///
+    /// This method is responsible to fragment the snapshot and send it to the target node.
+    /// Before returning from this method, the snapshot should be completely transmitted and
+    /// installed on the target node, or rejected because of `vote` being smaller than the
+    /// remote one.
+    ///
+    /// The default implementation just calls several `install_snapshot` RPC for each fragment.
+    ///
+    /// The `vote` is the leader vote which is used to check if the leader is still valid by a
+    /// follower.
+    /// When the follower finished receiving snapshot, it calls `Raft::install_complete_snapshot()`
+    /// with this vote.
+    ///
+    /// `cancel` get `Ready` when the caller decides to cancel this snapshot transmission.
+    async fn snapshot(
+        &mut self,
+        vote: Vote<C::NodeId>,
+        snapshot: Snapshot<C>,
+        cancel: impl Future<Output = ReplicationClosed> + OptionalSend,
+        option: RPCOption,
+    ) -> Result<SnapshotResponse<C::NodeId>, StreamingError<C, Fatal<C::NodeId>>> {
+        let resp = stream_snapshot::Chunked::send_snapshot(self, vote, snapshot, cancel, option).await?;
+        Ok(resp)
+    }
+
     /// Send an AppendEntries RPC to the target Raft node (§5).
-    #[deprecated(note = "use `append_entries` instead. This method will be removed in 0.9")]
+    #[deprecated(
+        since = "0.8.4",
+        note = "use `append_entries` instead. This method will be removed in 0.9"
+    )]
     async fn send_append_entries(
         &mut self,
         rpc: AppendEntriesRequest<C>,
@@ -87,7 +126,10 @@ where C: RaftTypeConfig
     }
 
     /// Send an InstallSnapshot RPC to the target Raft node (§7).
-    #[deprecated(note = "use `install_snapshot` instead. This method will be removed in 0.9")]
+    #[deprecated(
+        since = "0.8.4",
+        note = "use `install_snapshot` instead. This method will be removed in 0.9"
+    )]
     async fn send_install_snapshot(
         &mut self,
         rpc: InstallSnapshotRequest<C>,
@@ -100,7 +142,7 @@ where C: RaftTypeConfig
     }
 
     /// Send a RequestVote RPC to the target Raft node (§5).
-    #[deprecated(note = "use `vote` instead. This method will be removed in 0.9")]
+    #[deprecated(since = "0.8.4", note = "use `vote` instead. This method will be removed in 0.9")]
     async fn send_vote(
         &mut self,
         rpc: VoteRequest<C::NodeId>,

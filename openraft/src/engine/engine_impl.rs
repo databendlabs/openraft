@@ -32,7 +32,7 @@ use crate::error::RejectVoteRequest;
 use crate::internal_server_state::InternalServerState;
 use crate::membership::EffectiveMembership;
 use crate::raft::AppendEntriesResponse;
-use crate::raft::InstallSnapshotResponse;
+use crate::raft::SnapshotResponse;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::raft_state::LogStateReader;
@@ -451,14 +451,12 @@ where C: RaftTypeConfig
         &mut self,
         vote: Vote<C::NodeId>,
         snapshot: Snapshot<C>,
-        tx: ResultSender<InstallSnapshotResponse<C::NodeId>>,
+        tx: ResultSender<SnapshotResponse<C::NodeId>>,
     ) {
         tracing::info!(vote = display(vote), snapshot = display(&snapshot), "{}", func_name!());
 
         let vote_res = self.vote_handler().accept_vote(&vote, tx, |state, _rejected| {
-            Ok(InstallSnapshotResponse {
-                vote: *state.vote_ref(),
-            })
+            Ok(SnapshotResponse::new(*state.vote_ref()))
         });
 
         let Some(tx) = vote_res else {
@@ -467,7 +465,7 @@ where C: RaftTypeConfig
 
         let mut fh = self.following_handler();
         fh.install_complete_snapshot(snapshot);
-        let res = Ok(InstallSnapshotResponse {
+        let res = Ok(SnapshotResponse {
             vote: *self.state.vote_ref(),
         });
 

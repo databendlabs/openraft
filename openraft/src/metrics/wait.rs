@@ -128,7 +128,7 @@ where
     }
 
     /// Wait until applied exactly `want_log`(inclusive) logs or timeout.
-    #[deprecated(note = "use `log_index()` and `applied_index()` instead, deprecated since 0.9.0")]
+    #[deprecated(since = "0.9.0", note = "use `log_index()` and `applied_index()` instead")]
     #[tracing::instrument(level = "trace", skip(self), fields(msg=msg.to_string().as_str()))]
     pub async fn log(&self, want_log_index: Option<u64>, msg: impl ToString) -> Result<RaftMetrics<NID, N>, WaitError> {
         self.eq(Metric::LastLogIndex(want_log_index), msg.to_string()).await?;
@@ -136,7 +136,10 @@ where
     }
 
     /// Wait until applied at least `want_log`(inclusive) logs or timeout.
-    #[deprecated(note = "use `log_index_at_least()` and `applied_index_at_least()` instead, deprecated since 0.9.0")]
+    #[deprecated(
+        since = "0.9.0",
+        note = "use `log_index_at_least()` and `applied_index_at_least()` instead"
+    )]
     #[tracing::instrument(level = "trace", skip(self), fields(msg=msg.to_string().as_str()))]
     pub async fn log_at_least(
         &self,
@@ -195,7 +198,7 @@ where
     }
 
     /// Wait for `membership` to become the expected node id set or timeout.
-    #[deprecated(note = "use `voter_ids()` instead, deprecated since 0.9.0")]
+    #[deprecated(since = "0.9.0", note = "use `voter_ids()` instead")]
     #[tracing::instrument(level = "trace", skip(self), fields(msg=msg.to_string().as_str()))]
     pub async fn members(
         &self,
