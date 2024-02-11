@@ -14,5 +14,6 @@ pub use append_entries::AppendEntriesResponse;
 pub use client_write::ClientWriteResponse;
 pub use install_snapshot::InstallSnapshotRequest;
 pub use install_snapshot::InstallSnapshotResponse;
+pub use install_snapshot::SnapshotResponse;
 pub use vote::VoteRequest;
 pub use vote::VoteResponse;

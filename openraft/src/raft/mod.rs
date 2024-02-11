@@ -24,6 +24,7 @@ pub use message::AppendEntriesResponse;
 pub use message::ClientWriteResponse;
 pub use message::InstallSnapshotRequest;
 pub use message::InstallSnapshotResponse;
+pub use message::SnapshotResponse;
 pub use message::VoteRequest;
 pub use message::VoteResponse;
 use tokio::sync::mpsc;
@@ -280,17 +281,17 @@ where C: RaftTypeConfig
     }
 
     /// Enable or disable raft internal ticker.
-    #[deprecated(note = "use `Raft::runtime_config().tick()` instead")]
+    #[deprecated(since = "0.8.4", note = "use `Raft::runtime_config().tick()` instead")]
     pub fn enable_tick(&self, enabled: bool) {
         self.runtime_config().tick(enabled)
     }
 
-    #[deprecated(note = "use `Raft::runtime_config().heartbeat()` instead")]
+    #[deprecated(since = "0.8.4", note = "use `Raft::runtime_config().heartbeat()` instead")]
     pub fn enable_heartbeat(&self, enabled: bool) {
         self.runtime_config().heartbeat(enabled)
     }
 
-    #[deprecated(note = "use `Raft::runtime_config().elect()` instead")]
+    #[deprecated(since = "0.8.4", note = "use `Raft::runtime_config().elect()` instead")]
     pub fn enable_elect(&self, enabled: bool) {
         self.runtime_config().elect(enabled)
     }
@@ -307,25 +308,25 @@ where C: RaftTypeConfig
     }
 
     /// Trigger election at once and return at once.
-    #[deprecated(note = "use `Raft::trigger().elect()` instead")]
+    #[deprecated(since = "0.8.4", note = "use `Raft::trigger().elect()` instead")]
     pub async fn trigger_elect(&self) -> Result<(), Fatal<C::NodeId>> {
         self.trigger().elect().await
     }
 
     /// Trigger a heartbeat at once and return at once.
-    #[deprecated(note = "use `Raft::trigger().heartbeat()` instead")]
+    #[deprecated(since = "0.8.4", note = "use `Raft::trigger().heartbeat()` instead")]
     pub async fn trigger_heartbeat(&self) -> Result<(), Fatal<C::NodeId>> {
         self.trigger().heartbeat().await
     }
 
     /// Trigger to build a snapshot at once and return at once.
-    #[deprecated(note = "use `Raft::trigger().snapshot()` instead")]
+    #[deprecated(since = "0.8.4", note = "use `Raft::trigger().snapshot()` instead")]
     pub async fn trigger_snapshot(&self) -> Result<(), Fatal<C::NodeId>> {
         self.trigger().snapshot().await
     }
 
     /// Initiate the log purge up to and including the given `upto` log index.
-    #[deprecated(note = "use `Raft::trigger().purge_log()` instead")]
+    #[deprecated(since = "0.8.4", note = "use `Raft::trigger().purge_log()` instead")]
     pub async fn purge_log(&self, upto: u64) -> Result<(), Fatal<C::NodeId>> {
         self.trigger().purge_log(upto).await
     }
@@ -393,11 +394,18 @@ where C: RaftTypeConfig
         &self,
         vote: Vote<C::NodeId>,
         snapshot: Snapshot<C>,
-    ) -> Result<InstallSnapshotResponse<C::NodeId>, RaftError<C::NodeId>> {
+    ) -> Result<SnapshotResponse<C::NodeId>, Fatal<C::NodeId>> {
         tracing::info!("Raft::install_complete_snapshot()");
 
         let (tx, rx) = oneshot::channel();
-        self.inner.call_core(RaftMsg::InstallCompleteSnapshot { vote, snapshot, tx }, rx).await
+        let res = self.inner.call_core(RaftMsg::InstallCompleteSnapshot { vote, snapshot, tx }, rx).await;
+        match res {
+            Ok(x) => Ok(x),
+            Err(e) => {
+                // Safe unwrap: `RaftError<Infallible>` must be a Fatal.
+                Err(e.into_fatal().unwrap())
+            }
+        }
     }
 
     /// Receive an `InstallSnapshotRequest`.
@@ -453,13 +461,9 @@ where C: RaftTypeConfig
 
         let snapshot = Chunked::receive_snapshot(&mut *streaming, req).await?;
         if let Some(snapshot) = snapshot {
-            let resp =
-                self.install_complete_snapshot(req_vote, snapshot).await.map_err(|e: RaftError<C::NodeId>| {
-                    // Safe to get rid of Infallible
-                    e.into_fatal().unwrap()
-                })?;
+            let resp = self.install_complete_snapshot(req_vote, snapshot).await?;
 
-            Ok(resp)
+            Ok(resp.into())
         } else {
             // Wait for more chunks
             Ok(InstallSnapshotResponse { vote: req_vote })
@@ -481,7 +485,7 @@ where C: RaftTypeConfig
     ///
     /// The actual read operation itself is up to the application, this method just ensures that
     /// the read will not be stale.
-    #[deprecated(note = "use `Raft::ensure_linearizable()` instead. deprecated since 0.9.0")]
+    #[deprecated(since = "0.9.0", note = "use `Raft::ensure_linearizable()` instead")]
     #[tracing::instrument(level = "debug", skip(self))]
     pub async fn is_leader(&self) -> Result<(), RaftError<C::NodeId, CheckIsLeaderError<C::NodeId, C::Node>>> {
         let (tx, rx) = oneshot::channel();

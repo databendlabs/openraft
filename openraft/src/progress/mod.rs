@@ -50,6 +50,18 @@ where
         self.update_with(id, |x| *x = value)
     }
 
+    /// Update the value if the new value is greater than the current value.
+    ///
+    /// It returns Err(committed) if the `id` is not found.
+    fn increase_to(&mut self, id: &ID, value: V) -> Result<&P, &P>
+    where V: PartialOrd {
+        self.update_with(id, |x| {
+            if value > *x {
+                *x = value;
+            }
+        })
+    }
+
     /// Try to get the value by `id`.
     fn try_get(&self, id: &ID) -> Option<&V>;
 
