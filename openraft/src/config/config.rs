@@ -137,6 +137,10 @@ pub struct Config {
     ///
     /// It is disabled by default, by setting it to `0`.
     /// The timeout for sending every segment is `install_snapshot_timeout`.
+    #[deprecated(
+        since = "0.9.0",
+        note = "Sending snapshot by chunks is deprecated; Use `install_snapshot_timeout` instead"
+    )]
     #[clap(long, default_value = "0")]
     pub send_snapshot_timeout: u64,
 
@@ -258,7 +262,12 @@ impl Config {
     }
 
     /// Get the timeout for sending a non-last snapshot segment.
+    #[deprecated(
+        since = "0.9.0",
+        note = "Sending snapshot by chunks is deprecated; Use `install_snapshot_timeout()` instead"
+    )]
     pub fn send_snapshot_timeout(&self) -> Duration {
+        #[allow(deprecated)]
         if self.send_snapshot_timeout > 0 {
             Duration::from_millis(self.send_snapshot_timeout)
         } else {

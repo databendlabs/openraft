@@ -779,6 +779,7 @@ where
 
         let membership_log_id = self.engine.state.membership_state.effective().log_id();
         let network = self.network.new_client(target, target_node).await;
+        let snapshot_network = self.network.new_client(target, target_node).await;
 
         let session_id = ReplicationSessionId::new(*self.engine.state.vote_ref(), *membership_log_id);
 
@@ -789,6 +790,7 @@ where
             self.engine.state.committed().copied(),
             progress_entry.matching,
             network,
+            snapshot_network,
             self.log_store.get_log_reader().await,
             self.tx_notify.clone(),
             tracing::span!(parent: &self.span, Level::DEBUG, "replication", id=display(self.id), target=display(target)),

@@ -4,16 +4,23 @@ use std::time::Duration;
 /// networking behaviors.
 ///
 /// [`RaftNetwork`]: `crate::network::RaftNetwork`
+#[derive(Clone, Debug)]
 pub struct RPCOption {
     /// The expected time-to-last for an RPC.
     ///
     /// The caller will cancel an RPC if it takes longer than this duration.
     hard_ttl: Duration,
+
+    /// The size of the snapshot chunk.
+    pub(crate) snapshot_chunk_size: Option<usize>,
 }
 
 impl RPCOption {
     pub fn new(hard_ttl: Duration) -> Self {
-        Self { hard_ttl }
+        Self {
+            hard_ttl,
+            snapshot_chunk_size: None,
+        }
     }
 
     /// The moderate max interval an RPC should last for.
@@ -38,5 +45,10 @@ impl RPCOption {
     /// When exceeding this limit, the RPC will be dropped by Openraft at once.
     pub fn hard_ttl(&self) -> Duration {
         self.hard_ttl
+    }
+
+    /// Get the recommended size of the snapshot chunk for transport.
+    pub fn snapshot_chunk_size(&self) -> Option<usize> {
+        self.snapshot_chunk_size
     }
 }
