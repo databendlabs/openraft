@@ -355,7 +355,7 @@ jobs:
         with:
           name: tests-feature-test
           path: |
-            openraft/_log/
+            tests/_log/
 
   lint:
     name: lint

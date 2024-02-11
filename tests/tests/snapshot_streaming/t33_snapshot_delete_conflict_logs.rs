@@ -157,6 +157,7 @@ async fn snapshot_delete_conflicting_logs() -> Result<()> {
 
         let option = RPCOption::new(Duration::from_millis(1_000));
 
+        #[allow(deprecated)]
         router.new_client(1, &()).await.install_snapshot(req, option).await?;
 
         tracing::info!(log_index, "--- DONE installing snapshot");

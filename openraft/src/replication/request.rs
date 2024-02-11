@@ -1,6 +1,7 @@
 use std::fmt;
 
 /// A replication request sent by RaftCore leader state to replication stream.
+#[derive(Debug)]
 pub(crate) enum Replicate<C>
 where C: RaftTypeConfig
 {
@@ -24,31 +25,43 @@ where C: RaftTypeConfig
     pub(crate) fn snapshot(id: Option<u64>, snapshot_rx: ResultReceiver<Option<Snapshot<C>>>) -> Self {
         Self::Data(Data::new_snapshot(id, snapshot_rx))
     }
+
+    pub(crate) fn new_data(data: Data<C>) -> Self {
+        Self::Data(data)
+    }
+}
+
+impl<C: RaftTypeConfig> fmt::Display for Replicate<C> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Committed(c) => write!(f, "Committed({})", c.display()),
+            Self::Heartbeat => write!(f, "Heartbeat"),
+            Self::Data(d) => write!(f, "Data({})", d),
+        }
+    }
 }
 
 impl<C> MessageSummary<Replicate<C>> for Replicate<C>
 where C: RaftTypeConfig
 {
     fn summary(&self) -> String {
-        match self {
-            Replicate::Committed(c) => {
-                format!("Replicate::Committed: {:?}", c)
-            }
-            Replicate::Heartbeat => "Replicate::Heartbeat".to_string(),
-            Replicate::Data(d) => {
-                format!("Replicate::Data({})", d.summary())
-            }
-        }
+        self.to_string()
     }
 }
 
 use crate::core::raft_msg::ResultReceiver;
 use crate::display_ext::DisplayOptionExt;
+use crate::error::Fatal;
+use crate::error::StreamingError;
 use crate::log_id_range::LogIdRange;
+use crate::raft::SnapshotResponse;
+use crate::replication::callbacks::SnapshotCallback;
+use crate::type_config::alias::InstantOf;
 use crate::LogId;
 use crate::MessageSummary;
 use crate::RaftTypeConfig;
 use crate::Snapshot;
+use crate::SnapshotMeta;
 
 /// Request to replicate a chunk of data, logs or snapshot.
 ///
@@ -61,6 +74,7 @@ where C: RaftTypeConfig
     Heartbeat,
     Logs(DataWithId<LogIdRange<C::NodeId>>),
     Snapshot(DataWithId<ResultReceiver<Option<Snapshot<C>>>>),
+    SnapshotCallback(DataWithId<SnapshotCallback<C>>),
 }
 
 impl<C> fmt::Debug for Data<C>
@@ -77,6 +91,11 @@ where C: RaftTypeConfig
                 .field("log_id_range", &l.data)
                 .finish(),
             Self::Snapshot(s) => f.debug_struct("Data::Snapshot").field("request_id", &s.request_id()).finish(),
+            Self::SnapshotCallback(resp) => f
+                .debug_struct("Data::SnapshotCallback")
+                .field("request_id", &resp.request_id())
+                .field("callback", &resp.data)
+                .finish(),
         }
     }
 }
@@ -97,6 +116,14 @@ impl<C: RaftTypeConfig> fmt::Display for Data<C> {
             }
             Self::Snapshot(s) => {
                 write!(f, "Snapshot{{request_id: {}}}", s.request_id.display())
+            }
+            Self::SnapshotCallback(l) => {
+                write!(
+                    f,
+                    "SnapshotCallback{{request_id: {}, callback: {}}}",
+                    l.request_id.display(),
+                    l.data
+                )
             }
         }
     }
@@ -125,11 +152,24 @@ where C: RaftTypeConfig
         Self::Snapshot(DataWithId::new(request_id, snapshot_rx))
     }
 
+    pub(crate) fn new_snapshot_callback(
+        request_id: Option<u64>,
+        start_time: InstantOf<C>,
+        snapshot_meta: SnapshotMeta<C::NodeId, C::Node>,
+        result: Result<SnapshotResponse<C::NodeId>, StreamingError<C, Fatal<C::NodeId>>>,
+    ) -> Self {
+        Self::SnapshotCallback(DataWithId::new(
+            request_id,
+            SnapshotCallback::new(start_time, snapshot_meta, result),
+        ))
+    }
+
     pub(crate) fn request_id(&self) -> Option<u64> {
         match self {
             Self::Heartbeat => None,
             Self::Logs(l) => l.request_id(),
             Self::Snapshot(s) => s.request_id(),
+            Self::SnapshotCallback(r) => r.request_id(),
         }
     }
 
@@ -139,6 +179,7 @@ where C: RaftTypeConfig
             Self::Heartbeat => false,
             Self::Logs(_) => true,
             Self::Snapshot(_) => true,
+            Self::SnapshotCallback(_) => true,
         }
     }
 }

@@ -130,7 +130,7 @@ where
     }
 
     /// Check to see if the config is currently in joint consensus.
-    #[deprecated(note = "use `get_joint_config().len() > 1` instead")]
+    #[deprecated(since = "0.8.4", note = "use `get_joint_config().len() > 1` instead")]
     pub fn is_in_joint_consensus(&self) -> bool {
         self.configs.len() > 1
     }

@@ -68,7 +68,11 @@ fn test_build() -> anyhow::Result<()> {
     assert_eq!(10, config.election_timeout_min);
     assert_eq!(20, config.election_timeout_max);
     assert_eq!(5, config.heartbeat_interval);
-    assert_eq!(199, config.send_snapshot_timeout);
+
+    #[allow(deprecated)]
+    {
+        assert_eq!(199, config.send_snapshot_timeout);
+    }
     assert_eq!(200, config.install_snapshot_timeout);
     assert_eq!(201, config.max_payload_entries);
     assert_eq!(SnapshotPolicy::LogsSinceLast(202), config.snapshot_policy);
@@ -78,6 +82,7 @@ fn test_build() -> anyhow::Result<()> {
     assert_eq!(207, config.purge_batch_size);
 
     // Test config methods
+    #[allow(deprecated)]
     {
         let mut c = config;
         assert_eq!(Duration::from_millis(199), c.send_snapshot_timeout());
