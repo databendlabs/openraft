@@ -14,6 +14,7 @@ use crate::raft::BoxCoreFn;
 use crate::raft::ClientWriteResponse;
 use crate::raft::InstallSnapshotRequest;
 use crate::raft::InstallSnapshotResponse;
+use crate::raft::SnapshotResponse;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::type_config::alias::LogIdOf;
@@ -72,7 +73,7 @@ where C: RaftTypeConfig
     InstallCompleteSnapshot {
         vote: Vote<C::NodeId>,
         snapshot: Snapshot<C>,
-        tx: ResultSender<InstallSnapshotResponse<C::NodeId>>,
+        tx: ResultSender<SnapshotResponse<C::NodeId>>,
     },
 
     ClientWriteRequest {

@@ -11,6 +11,7 @@ use crate::progress::entry::ProgressEntry;
 use crate::progress::Inflight;
 use crate::raft::AppendEntriesResponse;
 use crate::raft::InstallSnapshotResponse;
+use crate::raft::SnapshotResponse;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::LeaderId;
@@ -229,7 +230,7 @@ where
     AppendEntries(ValueSender<Result<AppendEntriesResponse<NID>, Infallible>>),
     ReceiveSnapshotChunk(ValueSender<Result<(), InstallSnapshotError>>),
     InstallSnapshot(ValueSender<Result<InstallSnapshotResponse<NID>, InstallSnapshotError>>),
-    InstallCompleteSnapshot(ValueSender<Result<InstallSnapshotResponse<NID>, Infallible>>),
+    InstallCompleteSnapshot(ValueSender<Result<SnapshotResponse<NID>, Infallible>>),
     Initialize(ValueSender<Result<(), InitializeError<NID, N>>>),
 }
 

@@ -1,5 +1,8 @@
 //! Error types exposed by this crate.
 
+mod replication_closed;
+mod streaming_error;
+
 use std::collections::BTreeSet;
 use std::error::Error;
 use std::fmt;
@@ -8,6 +11,8 @@ use std::time::Duration;
 
 use anyerror::AnyError;
 
+pub use self::replication_closed::ReplicationClosed;
+pub use self::streaming_error::StreamingError;
 use crate::network::RPCTypes;
 use crate::node::Node;
 use crate::raft::AppendEntriesResponse;
@@ -235,11 +240,6 @@ where
     RPCError(#[from] RPCError<NID, N, RaftError<NID, Infallible>>),
 }
 
-/// Error occurs when replication is closed.
-#[derive(Debug, thiserror::Error)]
-#[error("Replication is closed by RaftCore")]
-pub(crate) struct ReplicationClosed {}
-
 /// Error occurs when invoking a remote raft API.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 // NID already has serde bound.
@@ -314,6 +314,21 @@ impl<NID: NodeId, N: Node, T: Error> RemoteError<NID, N, T> {
             target,
             target_node: Some(node),
             source: e,
+        }
+    }
+}
+
+impl<NID, N, E> From<RemoteError<NID, N, Fatal<NID>>> for RemoteError<NID, N, RaftError<NID, E>>
+where
+    NID: NodeId,
+    N: Node,
+    E: Error,
+{
+    fn from(e: RemoteError<NID, N, Fatal<NID>>) -> Self {
+        RemoteError {
+            target: e.target,
+            target_node: e.target_node,
+            source: RaftError::Fatal(e.source),
         }
     }
 }

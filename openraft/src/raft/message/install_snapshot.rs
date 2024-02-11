@@ -45,3 +45,19 @@ impl<C: RaftTypeConfig> MessageSummary<InstallSnapshotRequest<C>> for InstallSna
 pub struct InstallSnapshotResponse<NID: NodeId> {
     pub vote: Vote<NID>,
 }
+
+/// The response to `Raft::install_complete_snapshot` API.
+#[derive(Debug)]
+#[derive(PartialEq, Eq)]
+#[derive(derive_more::Display)]
+#[display(fmt = "SnapshotResponse{{vote:{}}}", vote)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
+pub struct SnapshotResponse<NID: NodeId> {
+    pub vote: Vote<NID>,
+}
+
+impl<NID: NodeId> SnapshotResponse<NID> {
+    pub fn new(vote: Vote<NID>) -> Self {
+        Self { vote }
+    }
+}

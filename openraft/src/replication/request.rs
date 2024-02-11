@@ -24,6 +24,10 @@ where C: RaftTypeConfig
     pub(crate) fn snapshot(id: Option<u64>, snapshot_rx: ResultReceiver<Option<Snapshot<C>>>) -> Self {
         Self::Data(Data::new_snapshot(id, snapshot_rx))
     }
+
+    pub(crate) fn new_data(data: Data<C>) -> Self {
+        Self::Data(data)
+    }
 }
 
 impl<C> MessageSummary<Replicate<C>> for Replicate<C>
@@ -44,11 +48,17 @@ where C: RaftTypeConfig
 
 use crate::core::raft_msg::ResultReceiver;
 use crate::display_ext::DisplayOptionExt;
+use crate::error::Fatal;
+use crate::error::StreamingError;
 use crate::log_id_range::LogIdRange;
+use crate::raft::SnapshotResponse;
+use crate::replication::internal_response::ReplicateSnapshotResponse;
+use crate::type_config::alias::InstantOf;
 use crate::LogId;
 use crate::MessageSummary;
 use crate::RaftTypeConfig;
 use crate::Snapshot;
+use crate::SnapshotMeta;
 
 /// Request to replicate a chunk of data, logs or snapshot.
 ///
@@ -61,6 +71,7 @@ where C: RaftTypeConfig
     Heartbeat,
     Logs(DataWithId<LogIdRange<C::NodeId>>),
     Snapshot(DataWithId<ResultReceiver<Option<Snapshot<C>>>>),
+    SnapshotResponse(DataWithId<ReplicateSnapshotResponse<C>>),
 }
 
 impl<C> fmt::Debug for Data<C>
@@ -77,6 +88,11 @@ where C: RaftTypeConfig
                 .field("log_id_range", &l.data)
                 .finish(),
             Self::Snapshot(s) => f.debug_struct("Data::Snapshot").field("request_id", &s.request_id()).finish(),
+            Self::SnapshotResponse(resp) => f
+                .debug_struct("Data::SnapshotResponse")
+                .field("request_id", &resp.request_id())
+                .field("response", &resp.data)
+                .finish(),
         }
     }
 }
@@ -97,6 +113,14 @@ impl<C: RaftTypeConfig> fmt::Display for Data<C> {
             }
             Self::Snapshot(s) => {
                 write!(f, "Snapshot{{request_id: {}}}", s.request_id.display())
+            }
+            Data::SnapshotResponse(l) => {
+                write!(
+                    f,
+                    "SnapshotResponse{{request_id: {}, response: {}}}",
+                    l.request_id.display(),
+                    l.data
+                )
             }
         }
     }
@@ -125,11 +149,25 @@ where C: RaftTypeConfig
         Self::Snapshot(DataWithId::new(request_id, snapshot_rx))
     }
 
+    pub(crate) fn new_snapshot_response(
+        request_id: Option<u64>,
+
+        start_time: InstantOf<C>,
+        snapshot_meta: SnapshotMeta<C::NodeId, C::Node>,
+        result: Result<SnapshotResponse<C::NodeId>, StreamingError<C, Fatal<C::NodeId>>>,
+    ) -> Self {
+        Self::SnapshotResponse(DataWithId::new(
+            request_id,
+            ReplicateSnapshotResponse::new(start_time, snapshot_meta, result),
+        ))
+    }
+
     pub(crate) fn request_id(&self) -> Option<u64> {
         match self {
             Self::Heartbeat => None,
             Self::Logs(l) => l.request_id(),
             Self::Snapshot(s) => s.request_id(),
+            Data::SnapshotResponse(r) => r.request_id(),
         }
     }
 
@@ -139,6 +177,7 @@ where C: RaftTypeConfig
             Self::Heartbeat => false,
             Self::Logs(_) => true,
             Self::Snapshot(_) => true,
+            Data::SnapshotResponse(_) => true,
         }
     }
 }

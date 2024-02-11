@@ -24,6 +24,7 @@ pub use message::AppendEntriesResponse;
 pub use message::ClientWriteResponse;
 pub use message::InstallSnapshotRequest;
 pub use message::InstallSnapshotResponse;
+pub use message::SnapshotResponse;
 pub use message::VoteRequest;
 pub use message::VoteResponse;
 use tokio::sync::mpsc;
@@ -372,11 +373,18 @@ where C: RaftTypeConfig
         &self,
         vote: Vote<C::NodeId>,
         snapshot: Snapshot<C>,
-    ) -> Result<InstallSnapshotResponse<C::NodeId>, RaftError<C::NodeId>> {
+    ) -> Result<SnapshotResponse<C::NodeId>, Fatal<C::NodeId>> {
         tracing::debug!("Raft::install_complete_snapshot()");
 
         let (tx, rx) = oneshot::channel();
-        self.call_core(RaftMsg::InstallCompleteSnapshot { vote, snapshot, tx }, rx).await
+        let res = self.call_core(RaftMsg::InstallCompleteSnapshot { vote, snapshot, tx }, rx).await;
+        match res {
+            Ok(x) => Ok(x),
+            Err(e) => {
+                // Safe unwrap: `RaftError<Infallible>` must be a Fatal.
+                Err(e.into_fatal().unwrap())
+            }
+        }
     }
 
     /// Submit an InstallSnapshot RPC to this Raft node.
