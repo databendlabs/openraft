@@ -197,6 +197,14 @@ where
                     repl_id = d.request_id();
 
                     match d {
+                        Data::Heartbeat => {
+                            let m = &self.matching;
+                            // request_id==None will be ignored by RaftCore.
+                            let d = DataWithId::new(None, LogIdRange::new(*m, *m));
+
+                            log_data = Some(d.clone());
+                            self.send_log_entries(d).await
+                        }
                         Data::Logs(log) => {
                             log_data = Some(log.clone());
                             self.send_log_entries(log).await
@@ -610,17 +618,9 @@ where
             self.process_event(event);
         }
 
+        // Returning from process_event(), next_action is never None.
+
         self.try_drain_events().await?;
-
-        // No action filled after all events are processed, fill in an action to send committed
-        // index.
-        if self.next_action.is_none() {
-            let m = &self.matching;
-
-            // empty message, just for syncing the committed index
-            // request_id==None will be ignored by RaftCore.
-            self.next_action = Some(Data::new_logs(None, LogIdRange::new(*m, *m)));
-        }
 
         Ok(())
     }
@@ -664,18 +664,25 @@ where
                 );
 
                 self.committed = c;
+
+                // If there is no action, fill in an heartbeat action to send committed index.
+                if self.next_action.is_none() {
+                    self.next_action = Some(Data::new_heartbeat());
+                }
             }
             Replicate::Heartbeat => {
-                // Nothing to do. Heartbeat message is just for waking up replication to send
-                // something: When all messages are drained,
-                // - if self.next_action is None, it sends an empty AppendEntries request as
-                //   heartbeat.
-                //-  If self.next_action is not None, next_action will serve as a heartbeat.
+                // Never overwrite action with payload.
+                if self.next_action.is_none() {
+                    self.next_action = Some(Data::new_heartbeat());
+                }
             }
             Replicate::Data(d) => {
                 // TODO: Currently there is at most 1 in flight data. But in future RaftCore may send next data
                 //       actions without waiting for the previous to finish.
-                debug_assert!(self.next_action.is_none(), "there can not be two data action in flight");
+                debug_assert!(
+                    !self.next_action.as_ref().map(|d| d.has_payload()).unwrap_or(false),
+                    "there can not be two actions with payload in flight"
+                );
                 self.next_action = Some(d);
             }
         }
