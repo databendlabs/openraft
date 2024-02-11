@@ -58,6 +58,7 @@ use crate::Snapshot;
 pub(crate) enum Data<C>
 where C: RaftTypeConfig
 {
+    Heartbeat,
     Logs(DataWithId<LogIdRange<C::NodeId>>),
     Snapshot(DataWithId<ResultReceiver<Option<Snapshot<C>>>>),
 }
@@ -67,6 +68,9 @@ where C: RaftTypeConfig
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Data::Heartbeat => {
+                write!(f, "Data::Heartbeat")
+            }
             Self::Logs(l) => f
                 .debug_struct("Data::Logs")
                 .field("request_id", &l.request_id())
@@ -80,6 +84,9 @@ where C: RaftTypeConfig
 impl<C: RaftTypeConfig> fmt::Display for Data<C> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Data::Heartbeat => {
+                write!(f, "Heartbeat")
+            }
             Self::Logs(l) => {
                 write!(
                     f,
@@ -106,6 +113,10 @@ where C: RaftTypeConfig
 impl<C> Data<C>
 where C: RaftTypeConfig
 {
+    pub(crate) fn new_heartbeat() -> Self {
+        Self::Heartbeat
+    }
+
     pub(crate) fn new_logs(request_id: Option<u64>, log_id_range: LogIdRange<C::NodeId>) -> Self {
         Self::Logs(DataWithId::new(request_id, log_id_range))
     }
@@ -116,8 +127,18 @@ where C: RaftTypeConfig
 
     pub(crate) fn request_id(&self) -> Option<u64> {
         match self {
+            Self::Heartbeat => None,
             Self::Logs(l) => l.request_id(),
             Self::Snapshot(s) => s.request_id(),
+        }
+    }
+
+    /// Return true if the data includes any payload, i.e., not a heartbeat.
+    pub(crate) fn has_payload(&self) -> bool {
+        match self {
+            Self::Heartbeat => false,
+            Self::Logs(_) => true,
+            Self::Snapshot(_) => true,
         }
     }
 }
