@@ -57,17 +57,17 @@ async fn test_cluster() -> Result<(), Box<dyn std::error::Error>> {
 
     fn get_addr(node_id: u32) -> String {
         match node_id {
-            1 => "127.0.0.1:21001".to_string(),
-            2 => "127.0.0.1:21002".to_string(),
-            3 => "127.0.0.1:21003".to_string(),
+            1 => "127.0.0.1:31001".to_string(),
+            2 => "127.0.0.1:31002".to_string(),
+            3 => "127.0.0.1:31003".to_string(),
             _ => panic!("node not found"),
         }
     }
     fn get_rpc_addr(node_id: u32) -> String {
         match node_id {
-            1 => "127.0.0.1:22001".to_string(),
-            2 => "127.0.0.1:22002".to_string(),
-            3 => "127.0.0.1:22003".to_string(),
+            1 => "127.0.0.1:32001".to_string(),
+            2 => "127.0.0.1:32002".to_string(),
+            3 => "127.0.0.1:32003".to_string(),
             _ => panic!("node not found"),
         }
     }
@@ -230,7 +230,7 @@ async fn test_cluster() -> Result<(), Box<dyn std::error::Error>> {
     match x {
         Err(e) => {
             let s = e.to_string();
-            let expect_err:String = "error occur on remote peer 2: has to forward request to: Some(1), Some(Node { rpc_addr: \"127.0.0.1:22001\", api_addr: \"127.0.0.1:21001\" })".to_string();
+            let expect_err:String = "error occur on remote peer 2: has to forward request to: Some(1), Some(Node { rpc_addr: \"127.0.0.1:32001\", api_addr: \"127.0.0.1:31001\" })".to_string();
 
             assert_eq!(s, expect_err);
         }
