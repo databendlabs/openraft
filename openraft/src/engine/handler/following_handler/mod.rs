@@ -10,12 +10,8 @@ use crate::engine::Command;
 use crate::engine::EngineConfig;
 use crate::engine::EngineOutput;
 use crate::entry::RaftPayload;
-use crate::error::InstallSnapshotError;
 use crate::error::RejectAppendEntries;
-use crate::error::SnapshotMismatch;
-use crate::raft::InstallSnapshotRequest;
 use crate::raft_state::LogStateReader;
-use crate::raft_state::StreamingState;
 use crate::AsyncRuntime;
 use crate::EffectiveMembership;
 use crate::LogId;
@@ -25,15 +21,12 @@ use crate::RaftLogId;
 use crate::RaftState;
 use crate::RaftTypeConfig;
 use crate::Snapshot;
-use crate::SnapshotMeta;
-use crate::SnapshotSegmentId;
 use crate::StoredMembership;
 
 #[cfg(test)] mod append_entries_test;
 #[cfg(test)] mod commit_entries_test;
 #[cfg(test)] mod do_append_entries_test;
 #[cfg(test)] mod install_snapshot_test;
-#[cfg(test)] mod receive_snapshot_chunk_test;
 #[cfg(test)] mod truncate_logs_test;
 #[cfg(test)] mod update_committed_membership_test;
 
@@ -243,109 +236,6 @@ where C: RaftTypeConfig
         let _effective_changed = self.state.membership_state.update_committed(m);
 
         self.server_state_handler().update_server_state_if_changed();
-    }
-
-    /// receives a snapshot chunk.
-    #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn receive_snapshot_chunk(
-        &mut self,
-        req: InstallSnapshotRequest<C>,
-    ) -> Result<(), InstallSnapshotError> {
-        tracing::info!(req = display(req.summary()), "{}", func_name!());
-
-        let snapshot_id = &req.meta.snapshot_id;
-
-        let curr_id = self.state.snapshot_streaming.as_ref().map(|s| &s.snapshot_id);
-
-        // Changed to another stream. re-init snapshot state.
-        if curr_id != Some(&req.meta.snapshot_id) {
-            if req.offset > 0 {
-                let mismatch = SnapshotMismatch {
-                    expect: SnapshotSegmentId {
-                        id: snapshot_id.clone(),
-                        offset: 0,
-                    },
-                    got: SnapshotSegmentId {
-                        id: snapshot_id.clone(),
-                        offset: req.offset,
-                    },
-                };
-
-                tracing::warn!("snapshot mismatch: {}", mismatch);
-                return Err(mismatch.into());
-            }
-
-            if req.offset == 0 {
-                self.state.snapshot_streaming = Some(StreamingState {
-                    offset: 0,
-                    snapshot_id: snapshot_id.clone(),
-                });
-            }
-        }
-
-        self.state.snapshot_streaming.as_mut().unwrap().offset = req.offset;
-
-        let sm_cmd = sm::Command::receive(req);
-        self.output.push_command(Command::from(sm_cmd));
-        Ok(())
-    }
-
-    /// Follower/Learner handles install-snapshot.
-    ///
-    /// Refer to [`snapshot_replication`](crate::docs::protocol::replication::snapshot_replication)
-    /// for the reason the following workflow is needed.
-    #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn install_snapshot(&mut self, meta: SnapshotMeta<C::NodeId, C::Node>) {
-        tracing::info!("install_snapshot: meta:{:?}", meta);
-
-        let snap_last_log_id = meta.last_log_id;
-
-        if snap_last_log_id.as_ref() <= self.state.committed() {
-            tracing::info!(
-                "No need to install snapshot; snapshot last_log_id({}) <= committed({})",
-                snap_last_log_id.summary(),
-                self.state.committed().summary()
-            );
-            self.output.push_command(Command::from(sm::Command::cancel_snapshot(meta)));
-            return;
-        }
-
-        // snapshot_last_log_id can not be None
-        let snap_last_log_id = snap_last_log_id.unwrap();
-
-        // 1. Truncate all logs if conflict.
-        // 2. Install snapshot.
-        // 3. Purge logs the snapshot covers.
-
-        let mut snap_handler = self.snapshot_handler();
-        let updated = snap_handler.update_snapshot(meta.clone());
-        if !updated {
-            return;
-        }
-
-        let local = self.state.get_log_id(snap_last_log_id.index);
-        if let Some(local) = local {
-            if local != snap_last_log_id {
-                // Conflict, delete all non-committed logs.
-                self.truncate_logs(self.state.committed().next_index());
-            }
-        }
-
-        self.state.update_accepted(Some(snap_last_log_id));
-        self.state.committed = Some(snap_last_log_id);
-        self.update_committed_membership(EffectiveMembership::new_from_stored_membership(
-            meta.last_membership.clone(),
-        ));
-
-        // TODO: There should be two separate commands for installing snapshot:
-        //       - Replace state machine with snapshot and replace the `current_snapshot` in the store.
-        //       - Do not install, just replace the `current_snapshot` with a newer one. This command can be
-        //         used for leader to synchronize its snapshot data.
-        self.output.push_command(Command::from(sm::Command::install_snapshot(meta)));
-
-        // TODO: move this to LogHandler::purge_log()?
-        self.state.purge_upto = Some(snap_last_log_id);
-        self.log_handler().purge_log();
     }
 
     /// Follower/Learner handles install-full-snapshot.
