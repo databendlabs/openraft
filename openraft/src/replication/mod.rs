@@ -707,10 +707,15 @@ where
                     "there can not be two actions with payload in flight, curr: {}",
                     self.next_action.as_ref().map(|d| d.to_string()).display()
                 );
-                debug_assert!(
-                    self.snapshot_state.is_none(),
-                    "can not send other data while sending snapshot"
-                );
+
+                if matches!(d, Data::SnapshotCallback(_)) {
+                    debug_assert!(self.snapshot_state.is_some(),);
+                } else {
+                    debug_assert!(
+                        self.snapshot_state.is_none(),
+                        "can not send other data while sending snapshot"
+                    );
+                }
                 self.next_action = Some(d);
             }
         }
@@ -749,7 +754,8 @@ where
             Some(x) => x,
         };
 
-        let option = RPCOption::new(self.config.install_snapshot_timeout());
+        let mut option = RPCOption::new(self.config.install_snapshot_timeout());
+        option.snapshot_chunk_size = Some(self.config.snapshot_max_chunk_size as usize);
 
         let (tx_cancel, rx_cancel) = oneshot::channel();
 
