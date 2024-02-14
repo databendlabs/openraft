@@ -5,20 +5,20 @@ use tokio::sync::oneshot;
 use crate::core::raft_msg::external_command::ExternalCommand;
 use crate::error::CheckIsLeaderError;
 use crate::error::ClientWriteError;
+use crate::error::HigherVote;
 use crate::error::Infallible;
 use crate::error::InitializeError;
-use crate::error::InstallSnapshotError;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
 use crate::raft::BoxCoreFn;
 use crate::raft::ClientWriteResponse;
-use crate::raft::InstallSnapshotRequest;
 use crate::raft::InstallSnapshotResponse;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::NodeIdOf;
 use crate::type_config::alias::NodeOf;
+use crate::type_config::alias::SnapshotDataOf;
 use crate::ChangeMembers;
 use crate::MessageSummary;
 use crate::RaftTypeConfig;
@@ -31,9 +31,6 @@ pub(crate) mod external_command;
 pub(crate) type ResultSender<T, E = Infallible> = oneshot::Sender<Result<T, E>>;
 
 pub(crate) type ResultReceiver<T, E = Infallible> = oneshot::Receiver<Result<T, E>>;
-
-/// TX for Install Snapshot Response
-pub(crate) type InstallSnapshotTx<NID> = ResultSender<InstallSnapshotResponse<NID>, InstallSnapshotError>;
 
 /// TX for Vote Response
 pub(crate) type VoteTx<NID> = ResultSender<VoteResponse<NID>>;
@@ -64,15 +61,20 @@ where C: RaftTypeConfig
         tx: VoteTx<C::NodeId>,
     },
 
-    InstallSnapshot {
-        rpc: InstallSnapshotRequest<C>,
-        tx: InstallSnapshotTx<C::NodeId>,
-    },
-
     InstallCompleteSnapshot {
         vote: Vote<C::NodeId>,
         snapshot: Snapshot<C>,
         tx: ResultSender<InstallSnapshotResponse<C::NodeId>>,
+    },
+
+    /// Begin receiving a snapshot from the leader.
+    ///
+    /// Returns a handle to a snapshot data ready for receiving if successful.
+    /// Otherwise, it is an error because of the `vote` is not GE the local `vote`, the local `vote`
+    /// will be returned in a Err
+    BeginReceivingSnapshot {
+        vote: Vote<C::NodeId>,
+        tx: ResultSender<Box<SnapshotDataOf<C>>, HigherVote<C::NodeId>>,
     },
 
     ClientWriteRequest {
@@ -119,8 +121,8 @@ where C: RaftTypeConfig
             RaftMsg::RequestVote { rpc, .. } => {
                 format!("RequestVote: {}", rpc.summary())
             }
-            RaftMsg::InstallSnapshot { rpc, .. } => {
-                format!("InstallSnapshot: {}", rpc.summary())
+            RaftMsg::BeginReceivingSnapshot { vote, .. } => {
+                format!("BeginReceivingSnapshot: vote: {}", vote)
             }
             RaftMsg::InstallCompleteSnapshot { vote, snapshot, .. } => {
                 format!("InstallCompleteSnapshot: vote: {}, snapshot: {}", vote, snapshot)
