@@ -1,21 +1,25 @@
 use std::fmt;
+use std::fmt::Debug;
 use std::sync::Arc;
 
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio::sync::watch;
 use tokio::sync::Mutex;
+use tracing::Level;
 
 use crate::config::RuntimeConfig;
 use crate::core::raft_msg::external_command::ExternalCommand;
 use crate::core::raft_msg::RaftMsg;
 use crate::core::TickHandle;
 use crate::error::Fatal;
+use crate::error::RaftError;
 use crate::metrics::RaftDataMetrics;
 use crate::metrics::RaftServerMetrics;
 use crate::raft::core_state::CoreState;
 use crate::AsyncRuntime;
 use crate::Config;
+use crate::MessageSummary;
 use crate::RaftMetrics;
 use crate::RaftTypeConfig;
 
@@ -42,6 +46,42 @@ where C: RaftTypeConfig
 impl<C> RaftInner<C>
 where C: RaftTypeConfig
 {
+    /// Invoke RaftCore by sending a RaftMsg and blocks waiting for response.
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub(crate) async fn call_core<T, E>(
+        &self,
+        mes: RaftMsg<C>,
+        rx: oneshot::Receiver<Result<T, E>>,
+    ) -> Result<T, RaftError<C::NodeId, E>>
+    where
+        E: Debug,
+    {
+        let sum = if tracing::enabled!(Level::DEBUG) {
+            Some(mes.summary())
+        } else {
+            None
+        };
+
+        let send_res = self.tx_api.send(mes);
+
+        if send_res.is_err() {
+            let fatal = self.get_core_stopped_error("sending tx to RaftCore", sum).await;
+            return Err(RaftError::Fatal(fatal));
+        }
+
+        let recv_res = rx.await;
+        tracing::debug!("call_core receives result is error: {:?}", recv_res.is_err());
+
+        match recv_res {
+            Ok(x) => x.map_err(|e| RaftError::APIError(e)),
+            Err(_) => {
+                let fatal = self.get_core_stopped_error("receiving rx from RaftCore", sum).await;
+                tracing::error!(error = debug(&fatal), "core_call fatal error");
+                Err(RaftError::Fatal(fatal))
+            }
+        }
+    }
+
     /// Send an [`ExternalCommand`] to RaftCore to execute in the `RaftCore` thread.
     ///
     /// It returns at once.
