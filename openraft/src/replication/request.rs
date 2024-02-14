@@ -34,15 +34,9 @@ where C: RaftTypeConfig
 impl<C: RaftTypeConfig> fmt::Display for Replicate<C> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Committed(c) => {
-                write!(f, "Committed({})", c.display())
-            }
-            Self::Heartbeat => {
-                write!(f, "Heartbeat")
-            }
-            Self::Data(d) => {
-                write!(f, "Data({})", d)
-            }
+            Self::Committed(c) => write!(f, "Committed({})", c.display()),
+            Self::Heartbeat => write!(f, "Heartbeat"),
+            Self::Data(d) => write!(f, "Data({})", d),
         }
     }
 }
