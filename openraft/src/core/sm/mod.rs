@@ -4,15 +4,11 @@
 //! It is responsible for applying log entries, building/receiving snapshot  and sending responses
 //! to the RaftCore.
 
-use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
 
-use crate::core::snapshot_state::SnapshotRequestId;
-use crate::core::streaming_state::Streaming;
 use crate::core::ApplyResult;
 use crate::core::ApplyingEntry;
 use crate::entry::RaftPayload;
-use crate::raft::InstallSnapshotRequest;
 use crate::storage::RaftStateMachine;
 use crate::summary::MessageSummary;
 use crate::AsyncRuntime;
@@ -20,9 +16,7 @@ use crate::RaftLogId;
 use crate::RaftSnapshotBuilder;
 use crate::RaftTypeConfig;
 use crate::Snapshot;
-use crate::SnapshotMeta;
 use crate::StorageError;
-use crate::StorageIOError;
 
 pub(crate) mod command;
 pub(crate) mod response;
@@ -61,10 +55,6 @@ where
 {
     state_machine: SM,
 
-    streaming: Option<Streaming<C>>,
-
-    received: Option<Snapshot<C>>,
-
     cmd_rx: mpsc::UnboundedReceiver<Command<C>>,
 
     resp_tx: mpsc::UnboundedSender<Notify<C>>,
@@ -81,8 +71,6 @@ where
 
         let worker = Worker {
             state_machine,
-            streaming: None,
-            received: None,
             cmd_rx,
             resp_tx,
         };
@@ -136,36 +124,6 @@ where
                     self.get_snapshot(tx).await?;
                     // GetSnapshot does not respond to RaftCore
                 }
-                CommandPayload::ReceiveSnapshotChunk { req } => {
-                    tracing::info!(
-                        req = display(req.summary()),
-                        "{}: received snapshot chunk",
-                        func_name!()
-                    );
-
-                    #[allow(clippy::let_unit_value)]
-                    let resp = self.receive_snapshot_chunk(req).await?;
-                    let res = CommandResult::new(cmd.seq, Ok(Response::ReceiveSnapshotChunk(resp)));
-                    let _ = self.resp_tx.send(Notify::sm(res));
-                }
-                CommandPayload::FinalizeSnapshot { install, snapshot_meta } => {
-                    tracing::info!(
-                        install = display(install),
-                        snapshot_meta = display(snapshot_meta.summary()),
-                        "{}: finalize and install snapshot",
-                        func_name!()
-                    );
-
-                    let resp = if install {
-                        let resp = self.install_snapshot(snapshot_meta).await?;
-                        Some(resp)
-                    } else {
-                        self.received = None;
-                        None
-                    };
-                    let res = CommandResult::new(cmd.seq, Ok(Response::InstallSnapshot(resp)));
-                    let _ = self.resp_tx.send(Notify::sm(res));
-                }
                 CommandPayload::InstallCompleteSnapshot { snapshot } => {
                     tracing::info!("{}: install complete snapshot", func_name!());
 
@@ -176,6 +134,14 @@ where
 
                     let res = CommandResult::new(cmd.seq, Ok(Response::InstallSnapshot(Some(meta))));
                     let _ = self.resp_tx.send(Notify::sm(res));
+                }
+                CommandPayload::BeginReceivingSnapshot { tx } => {
+                    tracing::info!("{}: BeginReceivingSnapshot", func_name!());
+
+                    let snapshot_data = self.state_machine.begin_receiving_snapshot().await?;
+
+                    let _ = tx.send(Ok(snapshot_data));
+                    // No response to RaftCore
                 }
                 CommandPayload::Apply { entries } => {
                     let resp = self.apply(entries).await?;
@@ -264,73 +230,5 @@ where
         );
         let _ = tx.send(Ok(snapshot));
         Ok(())
-    }
-
-    #[tracing::instrument(level = "info", skip_all)]
-    async fn receive_snapshot_chunk(&mut self, req: InstallSnapshotRequest<C>) -> Result<(), StorageError<C::NodeId>> {
-        let snapshot_meta = req.meta.clone();
-        let done = req.done;
-        let offset = req.offset;
-
-        let req_id = SnapshotRequestId::new(*req.vote.leader_id(), snapshot_meta.snapshot_id.clone(), offset);
-
-        tracing::info!(
-            req = display(req.summary()),
-            snapshot_req_id = debug(&req_id),
-            "{}",
-            func_name!()
-        );
-
-        let curr_id = self.streaming.as_ref().map(|s| &s.snapshot_id);
-
-        // Changed to another stream. re-init snapshot state.
-        if curr_id != Some(&req.meta.snapshot_id) {
-            let snapshot_data = self.state_machine.begin_receiving_snapshot().await?;
-            self.streaming = Some(Streaming::new(req.meta.snapshot_id.clone(), snapshot_data));
-        }
-
-        let streaming = self.streaming.as_mut().unwrap();
-        streaming.receive(req).await?;
-
-        tracing::info!(snapshot_req_id = debug(&req_id), "received snapshot chunk");
-
-        if done {
-            let streaming = self.streaming.take().unwrap();
-            let mut data = streaming.snapshot_data;
-
-            data.as_mut()
-                .shutdown()
-                .await
-                .map_err(|e| StorageIOError::write_snapshot(Some(snapshot_meta.signature()), &e))?;
-
-            tracing::info!("store completed streaming snapshot: {:?}", snapshot_meta);
-            self.received = Some(Snapshot::new(snapshot_meta, data));
-        }
-
-        Ok(())
-    }
-
-    #[tracing::instrument(level = "info", skip_all)]
-    async fn install_snapshot(
-        &mut self,
-        snapshot_meta: SnapshotMeta<C::NodeId, C::Node>,
-    ) -> Result<SnapshotMeta<C::NodeId, C::Node>, StorageError<C::NodeId>> {
-        tracing::info!("installing snapshot: {:?}", snapshot_meta);
-
-        // If there is no received data, it is a bug
-        let received = self.received.take().unwrap();
-
-        debug_assert!(
-            received.meta == snapshot_meta,
-            "expected snapshot meta: {:?}, got: {:?}",
-            received.meta,
-            snapshot_meta
-        );
-
-        self.state_machine.install_snapshot(&snapshot_meta, received.snapshot).await?;
-
-        tracing::info!("Done install_snapshot, meta: {:?}", snapshot_meta);
-
-        Ok(snapshot_meta)
     }
 }

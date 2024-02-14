@@ -1,3 +1,5 @@
+use std::fmt;
+
 use crate::MessageSummary;
 use crate::NodeId;
 use crate::RaftTypeConfig;
@@ -23,16 +25,23 @@ pub struct InstallSnapshotRequest<C: RaftTypeConfig> {
     pub done: bool,
 }
 
-impl<C: RaftTypeConfig> MessageSummary<InstallSnapshotRequest<C>> for InstallSnapshotRequest<C> {
-    fn summary(&self) -> String {
-        format!(
-            "vote={}, meta={}, offset={}, len={}, done={}",
+impl<C: RaftTypeConfig> fmt::Display for InstallSnapshotRequest<C> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "InstallSnapshotRequest {{ vote:{}, meta:{}, offset:{}, len:{}, done:{} }}",
             self.vote,
             self.meta,
             self.offset,
             self.data.len(),
             self.done
         )
+    }
+}
+
+impl<C: RaftTypeConfig> MessageSummary<InstallSnapshotRequest<C>> for InstallSnapshotRequest<C> {
+    fn summary(&self) -> String {
+        self.to_string()
     }
 }
 
