@@ -1134,6 +1134,9 @@ where
 
                 self.handle_install_snapshot_request(rpc, tx);
             }
+            RaftMsg::BeginReceiveSnapshot { vote, tx } => {
+                self.engine.handle_begin_receiving_snapshot(vote, tx);
+            }
             RaftMsg::InstallCompleteSnapshot { vote, snapshot, tx } => {
                 self.engine.handle_install_complete_snapshot(vote, snapshot, tx);
             }

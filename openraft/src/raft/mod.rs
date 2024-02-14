@@ -41,6 +41,7 @@ use crate::core::raft_msg::external_command::ExternalCommand;
 use crate::core::raft_msg::RaftMsg;
 use crate::core::replication_lag;
 use crate::core::sm;
+use crate::core::streaming_state::Streaming;
 use crate::core::RaftCore;
 use crate::core::Tick;
 use crate::engine::Engine;
@@ -48,6 +49,7 @@ use crate::engine::EngineConfig;
 use crate::error::CheckIsLeaderError;
 use crate::error::ClientWriteError;
 use crate::error::Fatal;
+use crate::error::HigherVote;
 use crate::error::InitializeError;
 use crate::error::InstallSnapshotError;
 use crate::error::RaftError;
@@ -57,12 +59,15 @@ use crate::metrics::RaftMetrics;
 use crate::metrics::RaftServerMetrics;
 use crate::metrics::Wait;
 use crate::metrics::WaitError;
+use crate::network::stream_snapshot::ChunkedTransport;
+use crate::network::stream_snapshot::SnapshotTransport;
 use crate::network::RaftNetworkFactory;
 use crate::raft::raft_inner::RaftInner;
 use crate::raft::runtime_config_handle::RuntimeConfigHandle;
 use crate::raft::trigger::Trigger;
 use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
+use crate::type_config::alias::SnapshotDataOf;
 use crate::AsyncRuntime;
 use crate::ChangeMembers;
 use crate::LogId;
@@ -253,6 +258,7 @@ where C: RaftTypeConfig
             rx_server_metrics,
             tx_shutdown: Mutex::new(Some(tx_shutdown)),
             core_state: Mutex::new(CoreState::Running(core_handle)),
+            snapshot: Mutex::new(None),
         };
 
         Ok(Self { inner: Arc::new(inner) })
@@ -362,6 +368,20 @@ where C: RaftTypeConfig
         self.inner.call_core(RaftMsg::ExternalCommand { cmd }, rx).await
     }
 
+    /// Get a snapshot data for receiving snapshot from the leader.
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub async fn begin_receiving_snapshot(
+        &self,
+        vote: Vote<C::NodeId>,
+    ) -> Result<Box<SnapshotDataOf<C>>, RaftError<C::NodeId, HigherVote<C::NodeId>>> {
+        // TODO: test
+        tracing::debug!("Raft::install_complete_snapshot()");
+
+        let (tx, rx) = oneshot::channel();
+        let resp = self.inner.call_core(RaftMsg::BeginReceiveSnapshot { vote, tx }, rx).await?;
+        Ok(resp)
+    }
+
     /// Install a completely received snapshot to the state machine.
     ///
     /// This method is used to implement a totally application defined snapshot transmission.
@@ -383,15 +403,49 @@ where C: RaftTypeConfig
     ///
     /// These RPCs are sent by the cluster leader in order to bring a new node or a slow node
     /// up-to-speed with the leader (§7).
-    #[tracing::instrument(level = "debug", skip(self, rpc))]
+    #[tracing::instrument(level = "debug", skip_all)]
     pub async fn install_snapshot(
         &self,
-        rpc: InstallSnapshotRequest<C>,
+        req: InstallSnapshotRequest<C>,
     ) -> Result<InstallSnapshotResponse<C::NodeId>, RaftError<C::NodeId, InstallSnapshotError>> {
-        tracing::debug!(rpc = display(rpc.summary()), "Raft::install_snapshot()");
+        tracing::debug!(req = display(&req), "Raft::install_snapshot()");
 
-        let (tx, rx) = oneshot::channel();
-        self.inner.call_core(RaftMsg::InstallSnapshot { rpc, tx }, rx).await
+        let req_vote = req.vote;
+
+        let mut streaming = self.inner.snapshot.lock().await;
+
+        let curr_id = streaming.as_ref().map(|s| &s.snapshot_id);
+
+        if curr_id != Some(&req.meta.snapshot_id) {
+            // Changed to another stream. re-init snapshot state.
+            let res = self.begin_receiving_snapshot(req_vote).await;
+            let snapshot_data = match res {
+                Ok(snapshot_data) => snapshot_data,
+                Err(raft_err) => {
+                    return match raft_err {
+                        RaftError::APIError(higher_vote) => Ok(InstallSnapshotResponse {
+                            vote: higher_vote.higher,
+                        }),
+                        RaftError::Fatal(f) => Err(f.into()),
+                    }
+                }
+            };
+            *streaming = Some(Streaming::new(req.meta.snapshot_id.clone(), snapshot_data));
+        }
+
+        let snapshot = ChunkedTransport::receive_snapshot(&mut *streaming, req).await?;
+        if let Some(snapshot) = snapshot {
+            let resp =
+                self.install_complete_snapshot(req_vote, snapshot).await.map_err(|e: RaftError<C::NodeId>| {
+                    // Safe to get rid of Infallible
+                    e.into_fatal().unwrap()
+                })?;
+
+            Ok(resp)
+        } else {
+            // Wait for more chunks
+            Ok(InstallSnapshotResponse { vote: req_vote })
+        }
     }
 
     /// Get the ID of the current leader from this Raft node.

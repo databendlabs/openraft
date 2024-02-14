@@ -177,6 +177,14 @@ where
                     let res = CommandResult::new(cmd.seq, Ok(Response::InstallSnapshot(Some(meta))));
                     let _ = self.resp_tx.send(Notify::sm(res));
                 }
+                CommandPayload::BeginReceivingSnapshot { tx } => {
+                    tracing::info!("{}: BeginReceivingSnapshot", func_name!());
+
+                    let snapshot_data = self.state_machine.begin_receiving_snapshot().await?;
+
+                    let _ = tx.send(Ok(snapshot_data));
+                    // No response to RaftCore
+                }
                 CommandPayload::Apply { entries } => {
                     let resp = self.apply(entries).await?;
                     let res = CommandResult::new(cmd.seq, Ok(Response::Apply(resp)));

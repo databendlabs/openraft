@@ -3,8 +3,10 @@ use std::fmt::Formatter;
 
 use crate::core::raft_msg::ResultSender;
 use crate::display_ext::DisplaySlice;
+use crate::error::HigherVote;
 use crate::log_id::RaftLogId;
 use crate::raft::InstallSnapshotRequest;
+use crate::type_config::alias::SnapshotDataOf;
 use crate::MessageSummary;
 use crate::RaftTypeConfig;
 use crate::Snapshot;
@@ -74,6 +76,11 @@ where C: RaftTypeConfig
         Command::new(payload)
     }
 
+    pub(crate) fn begin_receiving_snapshot(tx: ResultSender<Box<SnapshotDataOf<C>>, HigherVote<C::NodeId>>) -> Self {
+        let payload = CommandPayload::BeginReceivingSnapshot { tx };
+        Command::new(payload)
+    }
+
     pub(crate) fn install_complete_snapshot(snapshot: Snapshot<C>) -> Self {
         let payload = CommandPayload::InstallCompleteSnapshot { snapshot };
         Command::new(payload)
@@ -129,6 +136,10 @@ where C: RaftTypeConfig
         snapshot_meta: SnapshotMeta<C::NodeId, C::Node>,
     },
 
+    BeginReceivingSnapshot {
+        tx: ResultSender<Box<SnapshotDataOf<C>>, HigherVote<C::NodeId>>,
+    },
+
     InstallCompleteSnapshot {
         snapshot: Snapshot<C>,
     },
@@ -154,6 +165,9 @@ where C: RaftTypeConfig
             }
             CommandPayload::InstallCompleteSnapshot { snapshot } => {
                 write!(f, "InstallCompleteSnapshot: meta: {:?}", snapshot.meta)
+            }
+            CommandPayload::BeginReceivingSnapshot { .. } => {
+                write!(f, "BeginReceivingSnapshot")
             }
             CommandPayload::Apply { entries } => write!(f, "Apply: {}", DisplaySlice::<_>(entries)),
         }
