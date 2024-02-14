@@ -99,13 +99,14 @@ where
     /// A channel for receiving events from the RaftCore.
     rx_repl: mpsc::UnboundedReceiver<Replicate<C>>,
 
-    /// A weak reference to the sender for receiving snapshot replication event.
+    /// A weak reference to the Sender for receiving snapshot replication callback.
     ///
-    /// This tx is hold by the ReplicationCore itself and is made a weak so that when RaftCore drops
-    /// the only non-weak tx, the Receiver will be closed.
+    /// Because 1) ReplicationCore replies on the `close` event to shutdown.
+    /// 2) ReplicationCore holds this tx; It is made a weak so that when
+    /// RaftCore drops the only non-weak tx, the Receiver `rx_repl` will be closed.
     weak_tx_snapshot: mpsc::WeakUnboundedSender<Replicate<C>>,
 
-    /// The `RaftNetwork` interface.
+    /// The `RaftNetwork` interface for replicating logs and heartbeat.
     network: N::Network,
 
     /// Another `RaftNetwork` specific for snapshot replication.
@@ -115,7 +116,7 @@ where
 
     /// The current snapshot replication state.
     ///
-    /// It includes a cancel signal and the join handle of the snapshot replication task.
+    /// It includes a cancel signaler and the join handle of the snapshot replication task.
     snapshot_state: Option<(oneshot::Sender<()>, JoinHandleOf<C, ()>)>,
 
     /// The backoff policy if an [`Unreachable`](`crate::error::Unreachable`) error is returned.
