@@ -30,7 +30,6 @@ use crate::core::raft_msg::external_command::ExternalCommand;
 use crate::core::raft_msg::AppendEntriesTx;
 use crate::core::raft_msg::ClientReadTx;
 use crate::core::raft_msg::ClientWriteTx;
-use crate::core::raft_msg::InstallSnapshotTx;
 use crate::core::raft_msg::RaftMsg;
 use crate::core::raft_msg::ResultSender;
 use crate::core::raft_msg::VoteTx;
@@ -69,7 +68,6 @@ use crate::quorum::QuorumSet;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
 use crate::raft::ClientWriteResponse;
-use crate::raft::InstallSnapshotRequest;
 use crate::raft::VoteRequest;
 use crate::raft_state::LogStateReader;
 use crate::replication;
@@ -607,21 +605,6 @@ where
         });
     }
 
-    /// Invoked by leader to send chunks of a snapshot to a follower.
-    ///
-    /// Leaders always send chunks in order. It is important to note that, according to the Raft
-    /// spec, a node may only have one snapshot at any time. As snapshot contents are application
-    /// specific.
-    #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn handle_install_snapshot_request(
-        &mut self,
-        req: InstallSnapshotRequest<C>,
-        tx: InstallSnapshotTx<C::NodeId>,
-    ) {
-        tracing::info!(req = display(req.summary()), "{}", func_name!());
-        self.engine.handle_install_snapshot(req, tx);
-    }
-
     /// Trigger a snapshot building(log compaction) job if there is no pending building job.
     #[tracing::instrument(level = "debug", skip(self))]
     pub(crate) fn trigger_snapshot(&mut self) {
@@ -1125,14 +1108,8 @@ where
 
                 self.handle_vote_request(rpc, tx);
             }
-            RaftMsg::InstallSnapshot { rpc, tx } => {
-                tracing::info!(
-                    req = display(rpc.summary()),
-                    "received RaftMst::InstallSnapshot: {}",
-                    func_name!()
-                );
-
-                self.handle_install_snapshot_request(rpc, tx);
+            RaftMsg::BeginReceivingSnapshot { vote, tx } => {
+                self.engine.handle_begin_receiving_snapshot(vote, tx);
             }
             RaftMsg::InstallCompleteSnapshot { vote, snapshot, tx } => {
                 self.engine.handle_install_complete_snapshot(vote, snapshot, tx);
@@ -1374,9 +1351,6 @@ where
 
                         let st = self.engine.state.io_state_mut();
                         st.update_snapshot(last_log_id);
-                    }
-                    sm::Response::ReceiveSnapshotChunk(_) => {
-                        tracing::info!("sm::StateMachine command done: ReceiveSnapshotChunk: {}", func_name!());
                     }
                     sm::Response::InstallSnapshot(meta) => {
                         tracing::info!(

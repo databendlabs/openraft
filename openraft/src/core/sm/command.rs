@@ -3,12 +3,11 @@ use std::fmt::Formatter;
 
 use crate::core::raft_msg::ResultSender;
 use crate::display_ext::DisplaySlice;
+use crate::error::HigherVote;
 use crate::log_id::RaftLogId;
-use crate::raft::InstallSnapshotRequest;
-use crate::MessageSummary;
+use crate::type_config::alias::SnapshotDataOf;
 use crate::RaftTypeConfig;
 use crate::Snapshot;
-use crate::SnapshotMeta;
 
 #[derive(PartialEq)]
 pub(crate) struct Command<C>
@@ -60,30 +59,13 @@ where C: RaftTypeConfig
         Command::new(payload)
     }
 
-    pub(crate) fn receive(req: InstallSnapshotRequest<C>) -> Self {
-        let payload = CommandPayload::ReceiveSnapshotChunk { req };
-        Command::new(payload)
-    }
-
-    // TODO: all sm command should have a command seq.
-    pub(crate) fn install_snapshot(snapshot_meta: SnapshotMeta<C::NodeId, C::Node>) -> Self {
-        let payload = CommandPayload::FinalizeSnapshot {
-            install: true,
-            snapshot_meta,
-        };
+    pub(crate) fn begin_receiving_snapshot(tx: ResultSender<Box<SnapshotDataOf<C>>, HigherVote<C::NodeId>>) -> Self {
+        let payload = CommandPayload::BeginReceivingSnapshot { tx };
         Command::new(payload)
     }
 
     pub(crate) fn install_complete_snapshot(snapshot: Snapshot<C>) -> Self {
         let payload = CommandPayload::InstallCompleteSnapshot { snapshot };
-        Command::new(payload)
-    }
-
-    pub(crate) fn cancel_snapshot(snapshot_meta: SnapshotMeta<C::NodeId, C::Node>) -> Self {
-        let payload = CommandPayload::FinalizeSnapshot {
-            install: false,
-            snapshot_meta,
-        };
         Command::new(payload)
     }
 
@@ -112,21 +94,8 @@ where C: RaftTypeConfig
         tx: ResultSender<Option<Snapshot<C>>>,
     },
 
-    /// Receive a chunk of snapshot.
-    ///
-    /// If it is the final chunk, the snapshot stream will be closed and saved.
-    ///
-    /// Installing a snapshot includes two steps: ReceiveSnapshotChunk and FinalizeSnapshot.
-    ReceiveSnapshotChunk {
-        req: InstallSnapshotRequest<C>,
-    },
-
-    /// After receiving all chunks, finalize the snapshot by installing it or discarding it,
-    /// if the snapshot is stale(the snapshot last log id is smaller than the local committed).
-    FinalizeSnapshot {
-        /// To install it, or just discard it.
-        install: bool,
-        snapshot_meta: SnapshotMeta<C::NodeId, C::Node>,
+    BeginReceivingSnapshot {
+        tx: ResultSender<Box<SnapshotDataOf<C>>, HigherVote<C::NodeId>>,
     },
 
     InstallCompleteSnapshot {
@@ -146,14 +115,11 @@ where C: RaftTypeConfig
         match self {
             CommandPayload::BuildSnapshot => write!(f, "BuildSnapshot"),
             CommandPayload::GetSnapshot { .. } => write!(f, "GetSnapshot"),
-            CommandPayload::ReceiveSnapshotChunk { req, .. } => {
-                write!(f, "ReceiveSnapshotChunk: {}", req.summary())
-            }
-            CommandPayload::FinalizeSnapshot { install, snapshot_meta } => {
-                write!(f, "FinalizeSnapshot: install:{} {:?}", install, snapshot_meta)
-            }
             CommandPayload::InstallCompleteSnapshot { snapshot } => {
                 write!(f, "InstallCompleteSnapshot: meta: {:?}", snapshot.meta)
+            }
+            CommandPayload::BeginReceivingSnapshot { .. } => {
+                write!(f, "BeginReceivingSnapshot")
             }
             CommandPayload::Apply { entries } => write!(f, "Apply: {}", DisplaySlice::<_>(entries)),
         }
@@ -168,20 +134,11 @@ where C: RaftTypeConfig
         match (self, other) {
             (CommandPayload::BuildSnapshot, CommandPayload::BuildSnapshot) => true,
             (CommandPayload::GetSnapshot { .. }, CommandPayload::GetSnapshot { .. }) => true,
+            (CommandPayload::BeginReceivingSnapshot { .. }, CommandPayload::BeginReceivingSnapshot { .. }) => true,
             (
-                CommandPayload::ReceiveSnapshotChunk { req: req1, .. },
-                CommandPayload::ReceiveSnapshotChunk { req: req2, .. },
-            ) => req1 == req2,
-            (
-                CommandPayload::FinalizeSnapshot {
-                    install: install1,
-                    snapshot_meta: meta1,
-                },
-                CommandPayload::FinalizeSnapshot {
-                    install: install2,
-                    snapshot_meta: meta2,
-                },
-            ) => install1 == install2 && meta1 == meta2,
+                CommandPayload::InstallCompleteSnapshot { snapshot: s1 },
+                CommandPayload::InstallCompleteSnapshot { snapshot: s2 },
+            ) => s1.meta == s2.meta,
             (CommandPayload::Apply { entries: entries1 }, CommandPayload::Apply { entries: entries2 }) => {
                 // Entry may not be `Eq`, we just compare log id.
                 // This would be enough for testing.
