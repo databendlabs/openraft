@@ -3,9 +3,8 @@ use std::sync::Arc;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::raft::InstallSnapshotRequest;
-use openraft::CommittedLeaderId;
+use openraft::testing::log_id;
 use openraft::Config;
-use openraft::LogId;
 use openraft::SnapshotMeta;
 use openraft::Vote;
 
@@ -36,16 +35,13 @@ async fn snapshot_arguments() -> Result<()> {
     tracing::info!(log_index, "--- initializing cluster");
     log_index = router.new_cluster(btreeset! {0}, btreeset! {}).await?;
 
-    let n = router.remove_node(0).ok_or_else(|| anyhow::anyhow!("node not found"))?;
+    let n = router.remove_node(0).unwrap();
     let make_req = || InstallSnapshotRequest {
         // force it to be a follower
         vote: Vote::new_committed(2, 1),
         meta: SnapshotMeta {
             snapshot_id: "ss1".into(),
-            last_log_id: Some(LogId {
-                leader_id: CommittedLeaderId::new(1, 0),
-                index: 0,
-            }),
+            last_log_id: Some(log_id(1, 0, 0)),
             last_membership: Default::default(),
         },
         offset: 0,

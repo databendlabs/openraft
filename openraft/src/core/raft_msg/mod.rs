@@ -5,6 +5,7 @@ use tokio::sync::oneshot;
 use crate::core::raft_msg::external_command::ExternalCommand;
 use crate::error::CheckIsLeaderError;
 use crate::error::ClientWriteError;
+use crate::error::HigherVote;
 use crate::error::Infallible;
 use crate::error::InitializeError;
 use crate::error::InstallSnapshotError;
@@ -19,6 +20,7 @@ use crate::raft::VoteResponse;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::NodeIdOf;
 use crate::type_config::alias::NodeOf;
+use crate::type_config::alias::SnapshotDataOf;
 use crate::ChangeMembers;
 use crate::MessageSummary;
 use crate::RaftTypeConfig;
@@ -64,6 +66,8 @@ where C: RaftTypeConfig
         tx: VoteTx<C::NodeId>,
     },
 
+    // TODO: remove
+    #[allow(dead_code)]
     InstallSnapshot {
         rpc: InstallSnapshotRequest<C>,
         tx: InstallSnapshotTx<C::NodeId>,
@@ -73,6 +77,16 @@ where C: RaftTypeConfig
         vote: Vote<C::NodeId>,
         snapshot: Snapshot<C>,
         tx: ResultSender<InstallSnapshotResponse<C::NodeId>>,
+    },
+
+    /// Begin receiving a snapshot from the leader.
+    ///
+    /// Returns a handle to a snapshot data ready for receiving if successful.
+    /// Otherwise, it is an error because of the `vote` is not GE the local `vote`, the local `vote`
+    /// will be returned in a Err
+    BeginReceiveSnapshot {
+        vote: Vote<C::NodeId>,
+        tx: ResultSender<Box<SnapshotDataOf<C>>, HigherVote<C::NodeId>>,
     },
 
     ClientWriteRequest {
@@ -121,6 +135,9 @@ where C: RaftTypeConfig
             }
             RaftMsg::InstallSnapshot { rpc, .. } => {
                 format!("InstallSnapshot: {}", rpc.summary())
+            }
+            RaftMsg::BeginReceiveSnapshot { vote, .. } => {
+                format!("BeginReceiveSnapshot: vote: {}", vote)
             }
             RaftMsg::InstallCompleteSnapshot { vote, snapshot, .. } => {
                 format!("InstallCompleteSnapshot: vote: {}, snapshot: {}", vote, snapshot)

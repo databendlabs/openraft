@@ -99,6 +99,14 @@ where
     }
 }
 
+impl<NID, E> From<StorageError<NID>> for RaftError<NID, E>
+where NID: NodeId
+{
+    fn from(se: StorageError<NID>) -> Self {
+        RaftError::Fatal(Fatal::from(se))
+    }
+}
+
 /// Fatal is unrecoverable and shuts down raft at once.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
