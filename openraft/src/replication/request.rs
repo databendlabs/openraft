@@ -1,6 +1,7 @@
 use std::fmt;
 
 /// A replication request sent by RaftCore leader state to replication stream.
+#[derive(Debug)]
 pub(crate) enum Replicate<C>
 where C: RaftTypeConfig
 {
@@ -30,19 +31,27 @@ where C: RaftTypeConfig
     }
 }
 
+impl<C: RaftTypeConfig> fmt::Display for Replicate<C> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Committed(c) => {
+                write!(f, "Committed({})", c.display())
+            }
+            Self::Heartbeat => {
+                write!(f, "Heartbeat")
+            }
+            Self::Data(d) => {
+                write!(f, "Data({})", d)
+            }
+        }
+    }
+}
+
 impl<C> MessageSummary<Replicate<C>> for Replicate<C>
 where C: RaftTypeConfig
 {
     fn summary(&self) -> String {
-        match self {
-            Replicate::Committed(c) => {
-                format!("Replicate::Committed: {:?}", c)
-            }
-            Replicate::Heartbeat => "Replicate::Heartbeat".to_string(),
-            Replicate::Data(d) => {
-                format!("Replicate::Data({})", d.summary())
-            }
-        }
+        format!("{}", self)
     }
 }
 
