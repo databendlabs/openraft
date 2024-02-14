@@ -176,7 +176,7 @@ where
         );
 
         // other component to ReplicationStream
-        let (tx_repl, rx_repl) = mpsc::unbounded_channel();
+        let (tx_event, rx_event) = mpsc::unbounded_channel();
 
         let this = Self {
             target,
@@ -190,15 +190,18 @@ where
             committed,
             matching,
             tx_raft_core,
-            rx_event: rx_repl,
-            weak_tx_event: tx_repl.downgrade(),
+            rx_event,
+            weak_tx_event: tx_event.downgrade(),
             next_action: None,
             entries_hint: Default::default(),
         };
 
         let join_handle = C::AsyncRuntime::spawn(this.main().instrument(span));
 
-        ReplicationHandle { join_handle, tx_repl }
+        ReplicationHandle {
+            join_handle,
+            tx_repl: tx_event,
+        }
     }
 
     #[tracing::instrument(level="debug", skip(self), fields(session=%self.session_id, target=display(self.target), cluster=%self.config.cluster_name))]
