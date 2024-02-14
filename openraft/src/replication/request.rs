@@ -45,7 +45,7 @@ impl<C> MessageSummary<Replicate<C>> for Replicate<C>
 where C: RaftTypeConfig
 {
     fn summary(&self) -> String {
-        format!("{}", self)
+        self.to_string()
     }
 }
 
@@ -92,9 +92,9 @@ where C: RaftTypeConfig
                 .finish(),
             Self::Snapshot(s) => f.debug_struct("Data::Snapshot").field("request_id", &s.request_id()).finish(),
             Self::SnapshotCallback(resp) => f
-                .debug_struct("Data::SnapshotResponse")
+                .debug_struct("Data::SnapshotCallback")
                 .field("request_id", &resp.request_id())
-                .field("response", &resp.data)
+                .field("callback", &resp.data)
                 .finish(),
         }
     }
@@ -120,7 +120,7 @@ impl<C: RaftTypeConfig> fmt::Display for Data<C> {
             Self::SnapshotCallback(l) => {
                 write!(
                     f,
-                    "SnapshotResponse{{request_id: {}, response: {}}}",
+                    "SnapshotCallback{{request_id: {}, callback: {}}}",
                     l.request_id.display(),
                     l.data
                 )
