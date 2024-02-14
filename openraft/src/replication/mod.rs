@@ -99,7 +99,7 @@ where
     /// A channel for receiving events from the RaftCore.
     rx_repl: mpsc::UnboundedReceiver<Replicate<C>>,
 
-    /// A weak reference to the Sender for receiving snapshot replication callback.
+    /// A weak reference to the Sender for the separate sending-snapshot task to send callback.
     ///
     /// Because 1) ReplicationCore replies on the `close` event to shutdown.
     /// 2) ReplicationCore holds this tx; It is made a weak so that when
@@ -117,6 +117,8 @@ where
     /// The current snapshot replication state.
     ///
     /// It includes a cancel signaler and the join handle of the snapshot replication task.
+    /// When ReplicationCore is dropped, this Sender is dropped, the snapshot task will be notified
+    /// to quit.
     snapshot_state: Option<(oneshot::Sender<()>, JoinHandleOf<C, ()>)>,
 
     /// The backoff policy if an [`Unreachable`](`crate::error::Unreachable`) error is returned.
@@ -229,7 +231,7 @@ where
                             self.send_log_entries(log).await
                         }
                         Data::Snapshot(snap) => self.stream_snapshot(snap).await,
-                        Data::SnapshotResponse(resp) => self.handle_snapshot_response(resp),
+                        Data::SnapshotCallback(resp) => self.handle_snapshot_callback(resp),
                     }
                 }
             };
@@ -744,10 +746,7 @@ where
             Some(x) => x,
         };
 
-        // TODO: self.config.send_snapshot_timeout() is not used. It should be implemented by the
-        //       application, in `RaftNetwork::snapshot()`.
-        let snap_timeout = self.config.install_snapshot_timeout();
-        let option = RPCOption::new(snap_timeout);
+        let option = RPCOption::new(self.config.install_snapshot_timeout());
 
         let (tx_cancel, rx_cancel) = oneshot::channel();
 
@@ -784,23 +783,18 @@ where
 
         let start_time = InstantOf::<C>::now();
 
-        let res = net
-            .snapshot(
-                vote,
-                snapshot,
-                async move {
-                    let _ = cancel.await;
-                    ReplicationClosed::new("ReplicationCore is dropped")
-                },
-                option,
-            )
-            .await;
+        let cancel = async move {
+            let _ = cancel.await;
+            ReplicationClosed::new("ReplicationCore is dropped")
+        };
+
+        let res = net.snapshot(vote, snapshot, cancel, option).await;
         if let Err(e) = &res {
             tracing::warn!(error = display(e), "failed to send snapshot");
         }
 
         if let Some(tx_noty) = weak_tx.upgrade() {
-            let data = Data::new_snapshot_response(request_id, start_time, meta, res);
+            let data = Data::new_snapshot_callback(request_id, start_time, meta, res);
             let send_res = tx_noty.send(Replicate::new_data(data));
             if send_res.is_err() {
                 tracing::warn!("weak_tx failed to send snapshot result to ReplicationCore");
@@ -808,12 +802,9 @@ where
         } else {
             tracing::warn!("weak_tx is dropped, no response is sent to ReplicationCore");
         }
-
-        // TODO: send heartbeat periodically
-        // TODO: drain events
     }
 
-    fn handle_snapshot_response(
+    fn handle_snapshot_callback(
         &mut self,
         response: DataWithId<SnapshotCallback<C>>,
     ) -> Result<Option<Data<C>>, ReplicationError<C::NodeId, C::Node>> {

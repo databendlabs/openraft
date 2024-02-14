@@ -71,7 +71,7 @@ where C: RaftTypeConfig
     Heartbeat,
     Logs(DataWithId<LogIdRange<C::NodeId>>),
     Snapshot(DataWithId<ResultReceiver<Option<Snapshot<C>>>>),
-    SnapshotResponse(DataWithId<SnapshotCallback<C>>),
+    SnapshotCallback(DataWithId<SnapshotCallback<C>>),
 }
 
 impl<C> fmt::Debug for Data<C>
@@ -88,7 +88,7 @@ where C: RaftTypeConfig
                 .field("log_id_range", &l.data)
                 .finish(),
             Self::Snapshot(s) => f.debug_struct("Data::Snapshot").field("request_id", &s.request_id()).finish(),
-            Self::SnapshotResponse(resp) => f
+            Self::SnapshotCallback(resp) => f
                 .debug_struct("Data::SnapshotResponse")
                 .field("request_id", &resp.request_id())
                 .field("response", &resp.data)
@@ -114,7 +114,7 @@ impl<C: RaftTypeConfig> fmt::Display for Data<C> {
             Self::Snapshot(s) => {
                 write!(f, "Snapshot{{request_id: {}}}", s.request_id.display())
             }
-            Self::SnapshotResponse(l) => {
+            Self::SnapshotCallback(l) => {
                 write!(
                     f,
                     "SnapshotResponse{{request_id: {}, response: {}}}",
@@ -149,14 +149,13 @@ where C: RaftTypeConfig
         Self::Snapshot(DataWithId::new(request_id, snapshot_rx))
     }
 
-    pub(crate) fn new_snapshot_response(
+    pub(crate) fn new_snapshot_callback(
         request_id: Option<u64>,
-
         start_time: InstantOf<C>,
         snapshot_meta: SnapshotMeta<C::NodeId, C::Node>,
         result: Result<SnapshotResponse<C::NodeId>, StreamingError<C, Fatal<C::NodeId>>>,
     ) -> Self {
-        Self::SnapshotResponse(DataWithId::new(
+        Self::SnapshotCallback(DataWithId::new(
             request_id,
             SnapshotCallback::new(start_time, snapshot_meta, result),
         ))
@@ -167,7 +166,7 @@ where C: RaftTypeConfig
             Self::Heartbeat => None,
             Self::Logs(l) => l.request_id(),
             Self::Snapshot(s) => s.request_id(),
-            Self::SnapshotResponse(r) => r.request_id(),
+            Self::SnapshotCallback(r) => r.request_id(),
         }
     }
 
@@ -177,7 +176,7 @@ where C: RaftTypeConfig
             Self::Heartbeat => false,
             Self::Logs(_) => true,
             Self::Snapshot(_) => true,
-            Self::SnapshotResponse(_) => true,
+            Self::SnapshotCallback(_) => true,
         }
     }
 }
