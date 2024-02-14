@@ -3,8 +3,8 @@ use std::time::Duration;
 use validit::Valid;
 
 use crate::core::raft_msg::AppendEntriesTx;
-use crate::core::raft_msg::InstallSnapshotTx;
 use crate::core::raft_msg::ResultSender;
+use crate::core::sm;
 use crate::core::ServerState;
 use crate::display_ext::DisplayOptionExt;
 use crate::display_ext::DisplaySlice;
@@ -23,21 +23,22 @@ use crate::engine::EngineOutput;
 use crate::engine::Respond;
 use crate::entry::RaftPayload;
 use crate::error::ForwardToLeader;
+use crate::error::HigherVote;
 use crate::error::InitializeError;
-use crate::error::InstallSnapshotError;
 use crate::error::NotAllowed;
 use crate::error::NotInMembers;
 use crate::error::RejectAppendEntries;
+use crate::error::RejectVoteRequest;
 use crate::internal_server_state::InternalServerState;
 use crate::membership::EffectiveMembership;
 use crate::raft::AppendEntriesResponse;
-use crate::raft::InstallSnapshotRequest;
 use crate::raft::InstallSnapshotResponse;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::raft_state::LogStateReader;
 use crate::raft_state::RaftState;
 use crate::summary::MessageSummary;
+use crate::type_config::alias::SnapshotDataOf;
 use crate::AsyncRuntime;
 use crate::Instant;
 use crate::LogId;
@@ -444,42 +445,6 @@ where C: RaftTypeConfig
         fh.commit_entries(leader_committed);
     }
 
-    #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn handle_install_snapshot(
-        &mut self,
-        req: InstallSnapshotRequest<C>,
-        tx: InstallSnapshotTx<C::NodeId>,
-    ) -> Option<()> {
-        tracing::info!(req = display(req.summary()), "{}", func_name!());
-
-        let res = self.vote_handler().accept_vote(&req.vote, tx, |state, _rejected| {
-            Ok(InstallSnapshotResponse {
-                vote: *state.vote_ref(),
-            })
-        });
-
-        let tx = match res {
-            Some(tx) => tx,
-            None => return Some(()),
-        };
-
-        let res = self.install_snapshot(req);
-        let res = res.map(|_| InstallSnapshotResponse {
-            vote: *self.state.vote_ref(),
-        });
-
-        self.output.push_command(Command::Respond {
-            // When there is an error, there may still be queued IO, we need to run them before sending back
-            // response.
-            when: Some(Condition::StateMachineCommand {
-                command_seq: self.output.last_sm_seq(),
-            }),
-            resp: Respond::new(res, tx),
-        });
-
-        Some(())
-    }
-
     /// Install a completely received snapshot on a follower.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn handle_install_complete_snapshot(
@@ -516,22 +481,28 @@ where C: RaftTypeConfig
         });
     }
 
+    /// Install a completely received snapshot on a follower.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn install_snapshot(&mut self, req: InstallSnapshotRequest<C>) -> Result<(), InstallSnapshotError> {
-        tracing::info!(req = display(req.summary()), "{}", func_name!());
+    pub(crate) fn handle_begin_receiving_snapshot(
+        &mut self,
+        vote: Vote<C::NodeId>,
+        tx: ResultSender<Box<SnapshotDataOf<C>>, HigherVote<C::NodeId>>,
+    ) {
+        tracing::info!(vote = display(vote), "{}", func_name!());
 
-        let done = req.done;
-        let snapshot_meta = req.meta.clone();
+        let vote_res = self.vote_handler().update_vote(&vote);
 
-        let mut fh = self.following_handler();
-
-        fh.receive_snapshot_chunk(req)?;
-
-        if done {
-            fh.install_snapshot(snapshot_meta);
+        if let Err(e) = vote_res {
+            if let RejectVoteRequest::ByVote(v) = e {
+                let res = Err(HigherVote { higher: v, mine: vote });
+                let _ = tx.send(res);
+            } else {
+                unreachable!("unexpected error: {:?}", e);
+            }
+            return;
         }
 
-        Ok(())
+        self.output.push_command(Command::from(sm::Command::begin_receiving_snapshot(tx)));
     }
 
     /// Leader steps down(convert to learner) once the membership not containing it is committed.
