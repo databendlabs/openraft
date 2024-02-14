@@ -114,7 +114,7 @@ impl<C: RaftTypeConfig> fmt::Display for Data<C> {
             Self::Snapshot(s) => {
                 write!(f, "Snapshot{{request_id: {}}}", s.request_id.display())
             }
-            Data::SnapshotResponse(l) => {
+            Self::SnapshotResponse(l) => {
                 write!(
                     f,
                     "SnapshotResponse{{request_id: {}, response: {}}}",
@@ -167,7 +167,7 @@ where C: RaftTypeConfig
             Self::Heartbeat => None,
             Self::Logs(l) => l.request_id(),
             Self::Snapshot(s) => s.request_id(),
-            Data::SnapshotResponse(r) => r.request_id(),
+            Self::SnapshotResponse(r) => r.request_id(),
         }
     }
 
@@ -177,7 +177,7 @@ where C: RaftTypeConfig
             Self::Heartbeat => false,
             Self::Logs(_) => true,
             Self::Snapshot(_) => true,
-            Data::SnapshotResponse(_) => true,
+            Self::SnapshotResponse(_) => true,
         }
     }
 }

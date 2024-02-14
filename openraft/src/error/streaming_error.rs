@@ -11,7 +11,7 @@ use crate::error::Unreachable;
 use crate::RaftTypeConfig;
 use crate::StorageError;
 
-/// Error occurs when streaming local data to a remote raft node.
+/// Error occurred when streaming local data to a remote raft node.
 ///
 /// Thus this error includes storage error, network error, and remote error.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
