@@ -1,7 +1,7 @@
 //! Replication stream.
 
+pub(crate) mod callbacks;
 pub(crate) mod hint;
-pub(crate) mod internal_response;
 mod replication_session_id;
 pub(crate) mod request;
 pub(crate) mod response;
@@ -45,8 +45,8 @@ use crate::network::RaftNetwork;
 use crate::network::RaftNetworkFactory;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
+use crate::replication::callbacks::SnapshotCallback;
 use crate::replication::hint::ReplicationHint;
-use crate::replication::internal_response::ReplicateSnapshotResponse;
 use crate::storage::RaftLogReader;
 use crate::storage::RaftLogStorage;
 use crate::storage::Snapshot;
@@ -814,7 +814,7 @@ where
 
     fn handle_snapshot_response(
         &mut self,
-        response: DataWithId<ReplicateSnapshotResponse<C>>,
+        response: DataWithId<SnapshotCallback<C>>,
     ) -> Result<Option<Data<C>>, ReplicationError<C::NodeId, C::Node>> {
         tracing::debug!(
             request_id = debug(response.request_id()),
@@ -826,7 +826,7 @@ where
         self.snapshot_state = None;
 
         let request_id = response.request_id();
-        let ReplicateSnapshotResponse {
+        let SnapshotCallback {
             start_time,
             result,
             snapshot_meta,

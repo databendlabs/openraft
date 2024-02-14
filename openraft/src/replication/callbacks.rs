@@ -1,4 +1,4 @@
-//! Responses for ReplicationCore internal communication.
+//! Callbacks for ReplicationCore internal communication.
 use core::fmt;
 
 use crate::error::Fatal;
@@ -8,11 +8,15 @@ use crate::type_config::alias::InstantOf;
 use crate::RaftTypeConfig;
 use crate::SnapshotMeta;
 
+/// Callback payload when a snapshot transmission finished, successfully or not.
 #[derive(Debug)]
-pub(crate) struct ReplicateSnapshotResponse<C: RaftTypeConfig> {
+pub(crate) struct SnapshotCallback<C: RaftTypeConfig> {
+    // TODO: Remote `start_time`.
+    //       Because sending snapshot is a long lasting process,
+    //       we should not rely on the start time to extend leader lease.
     /// The time when the snapshot replication started on leader.
     ///
-    /// This time is used to extend lease of the leader on leader.
+    /// This time is used to extend lease of the leader on leader. like a heartbeat.
     pub(crate) start_time: InstantOf<C>,
 
     /// Meta data of the snapshot to be replicated.
@@ -22,7 +26,7 @@ pub(crate) struct ReplicateSnapshotResponse<C: RaftTypeConfig> {
     pub(crate) result: Result<SnapshotResponse<C::NodeId>, StreamingError<C, Fatal<C::NodeId>>>,
 }
 
-impl<C: RaftTypeConfig> ReplicateSnapshotResponse<C> {
+impl<C: RaftTypeConfig> SnapshotCallback<C> {
     pub(in crate::replication) fn new(
         start_time: InstantOf<C>,
         snapshot_meta: SnapshotMeta<C::NodeId, C::Node>,
@@ -36,18 +40,17 @@ impl<C: RaftTypeConfig> ReplicateSnapshotResponse<C> {
     }
 }
 
-impl<C: RaftTypeConfig> fmt::Display for ReplicateSnapshotResponse<C> {
+impl<C: RaftTypeConfig> fmt::Display for SnapshotCallback<C> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "SnapshotResponse {{ start_time: {:?}, snapshot_meta: {}, result:",
+            "SnapshotCallback {{ start_time: {:?}, snapshot_meta: {}, result:",
             self.start_time, self.snapshot_meta
         )?;
 
-        if let Ok(resp) = &self.result {
-            write!(f, " Ok({})", resp)?;
-        } else {
-            write!(f, " Err({})", self.result.as_ref().unwrap_err())?;
+        match &self.result {
+            Ok(resp) => write!(f, " Ok({})", resp)?,
+            Err(e) => write!(f, " Err({})", e)?,
         };
 
         write!(f, " }}",)

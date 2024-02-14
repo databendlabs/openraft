@@ -52,7 +52,7 @@ use crate::error::Fatal;
 use crate::error::StreamingError;
 use crate::log_id_range::LogIdRange;
 use crate::raft::SnapshotResponse;
-use crate::replication::internal_response::ReplicateSnapshotResponse;
+use crate::replication::callbacks::SnapshotCallback;
 use crate::type_config::alias::InstantOf;
 use crate::LogId;
 use crate::MessageSummary;
@@ -71,7 +71,7 @@ where C: RaftTypeConfig
     Heartbeat,
     Logs(DataWithId<LogIdRange<C::NodeId>>),
     Snapshot(DataWithId<ResultReceiver<Option<Snapshot<C>>>>),
-    SnapshotResponse(DataWithId<ReplicateSnapshotResponse<C>>),
+    SnapshotResponse(DataWithId<SnapshotCallback<C>>),
 }
 
 impl<C> fmt::Debug for Data<C>
@@ -158,7 +158,7 @@ where C: RaftTypeConfig
     ) -> Self {
         Self::SnapshotResponse(DataWithId::new(
             request_id,
-            ReplicateSnapshotResponse::new(start_time, snapshot_meta, result),
+            SnapshotCallback::new(start_time, snapshot_meta, result),
         ))
     }
 
