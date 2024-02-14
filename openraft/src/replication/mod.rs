@@ -96,15 +96,15 @@ where
     #[allow(clippy::type_complexity)]
     tx_raft_core: mpsc::UnboundedSender<Notify<C>>,
 
-    /// A channel for receiving events from the RaftCore.
-    rx_repl: mpsc::UnboundedReceiver<Replicate<C>>,
+    /// A channel for receiving events from the RaftCore and snapshot transmitting task.
+    rx_event: mpsc::UnboundedReceiver<Replicate<C>>,
 
     /// A weak reference to the Sender for the separate sending-snapshot task to send callback.
     ///
     /// Because 1) ReplicationCore replies on the `close` event to shutdown.
     /// 2) ReplicationCore holds this tx; It is made a weak so that when
     /// RaftCore drops the only non-weak tx, the Receiver `rx_repl` will be closed.
-    weak_tx_snapshot: mpsc::WeakUnboundedSender<Replicate<C>>,
+    weak_tx_event: mpsc::WeakUnboundedSender<Replicate<C>>,
 
     /// The `RaftNetwork` interface for replicating logs and heartbeat.
     network: N::Network,
@@ -190,8 +190,8 @@ where
             committed,
             matching,
             tx_raft_core,
-            rx_repl,
-            weak_tx_snapshot: tx_repl.downgrade(),
+            rx_event: rx_repl,
+            weak_tx_event: tx_repl.downgrade(),
             next_action: None,
             entries_hint: Default::default(),
         };
@@ -609,7 +609,7 @@ where
             let sleep_duration = until - InstantOf::<C>::now();
             let sleep = C::AsyncRuntime::sleep(sleep_duration);
 
-            let recv = self.rx_repl.recv();
+            let recv = self.rx_event.recv();
 
             tracing::debug!("backoff timeout: {:?}", sleep_duration);
 
@@ -637,7 +637,7 @@ where
         // instead, just try the best to drain all events.
         if self.next_action.is_none() {
             let event =
-                self.rx_repl.recv().await.ok_or(ReplicationClosed::new("rx_repl is closed in drain_event()"))?;
+                self.rx_event.recv().await.ok_or(ReplicationClosed::new("rx_repl is closed in drain_event()"))?;
             self.process_event(event);
         }
 
@@ -656,7 +656,7 @@ where
         // There should NOT be more than one `Replicate::Data` event in the channel.
         // Looping it just collect all commit events and heartbeat events.
         loop {
-            let maybe_res = self.rx_repl.recv().now_or_never();
+            let maybe_res = self.rx_event.recv().now_or_never();
 
             let Some(recv_res) = maybe_res else {
                 // No more event found in self.repl_rx
@@ -757,7 +757,7 @@ where
             snapshot,
             option,
             rx_cancel,
-            self.weak_tx_snapshot.clone(),
+            self.weak_tx_event.clone(),
         ));
 
         // When self.rx_repl is dropped,
