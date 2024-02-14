@@ -809,23 +809,23 @@ where
 
     fn handle_snapshot_callback(
         &mut self,
-        response: DataWithId<SnapshotCallback<C>>,
+        callback: DataWithId<SnapshotCallback<C>>,
     ) -> Result<Option<Data<C>>, ReplicationError<C::NodeId, C::Node>> {
         tracing::debug!(
-            request_id = debug(response.request_id()),
-            response = display(response.data()),
+            request_id = debug(callback.request_id()),
+            response = display(callback.data()),
             matching = display(self.matching.display()),
             "handle_snapshot_response"
         );
 
         self.snapshot_state = None;
 
-        let request_id = response.request_id();
+        let request_id = callback.request_id();
         let SnapshotCallback {
             start_time,
             result,
             snapshot_meta,
-        } = response.into_data();
+        } = callback.into_data();
 
         let resp = result?;
 
