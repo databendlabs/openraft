@@ -19,10 +19,10 @@ use crate::raft::InstallSnapshotResponse;
 use crate::raft::SnapshotResponse;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
-use crate::type_config::alias::AsyncRuntimeOf;
-use crate::ErrorSubject;
-use crate::ErrorVerb;
+use crate::OptionalSend;
 use crate::OptionalSync;
+use crate::RaftTypeConfig;
+use crate::Snapshot;
 use crate::Vote;
 
 /// A trait defining the interface for a Raft network between cluster members.
