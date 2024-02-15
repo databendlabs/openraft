@@ -20,11 +20,11 @@ pub(crate) trait SnapshotTransport<C: RaftTypeConfig> {
         _streaming: &mut Option<Streaming<C>>,
         _req: InstallSnapshotRequest<C>,
     ) -> Result<Option<Snapshot<C>>, StorageError<C::NodeId>> {
-        unimplemented!("receive_snapshot is only implemented with SnapshotData with AsyncRead + AsyncSeek")
+        unimplemented!("receive_snapshot is only implemented with SnapshotData with AsyncRead + AsyncSeek ...")
     }
 }
 
-/// receive snapshot by chunks.
+/// Receive snapshot by chunks.
 pub(crate) struct Chunked {}
 
 impl<C: RaftTypeConfig> SnapshotTransport<C> for Chunked
