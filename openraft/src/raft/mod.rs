@@ -376,7 +376,6 @@ where C: RaftTypeConfig
         &self,
         vote: Vote<C::NodeId>,
     ) -> Result<Box<SnapshotDataOf<C>>, RaftError<C::NodeId, HigherVote<C::NodeId>>> {
-        // TODO: test
         tracing::debug!("Raft::install_complete_snapshot()");
 
         let (tx, rx) = oneshot::channel();
