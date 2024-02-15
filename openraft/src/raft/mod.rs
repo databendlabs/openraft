@@ -53,13 +53,14 @@ use crate::error::HigherVote;
 use crate::error::InitializeError;
 use crate::error::InstallSnapshotError;
 use crate::error::RaftError;
+use crate::error::SnapshotMismatch;
 use crate::membership::IntoNodes;
 use crate::metrics::RaftDataMetrics;
 use crate::metrics::RaftMetrics;
 use crate::metrics::RaftServerMetrics;
 use crate::metrics::Wait;
 use crate::metrics::WaitError;
-use crate::network::stream_snapshot::ChunkedTransport;
+use crate::network::stream_snapshot::Chunked;
 use crate::network::stream_snapshot::SnapshotTransport;
 use crate::network::RaftNetworkFactory;
 use crate::raft::raft_inner::RaftInner;
@@ -76,6 +77,7 @@ use crate::MessageSummary;
 use crate::RaftState;
 pub use crate::RaftTypeConfig;
 use crate::Snapshot;
+use crate::SnapshotSegmentId;
 use crate::StorageHelper;
 use crate::Vote;
 
@@ -411,12 +413,26 @@ where C: RaftTypeConfig
         tracing::debug!(req = display(&req), "Raft::install_snapshot()");
 
         let req_vote = req.vote;
+        let snapshot_id = &req.meta.snapshot_id;
 
         let mut streaming = self.inner.snapshot.lock().await;
 
         let curr_id = streaming.as_ref().map(|s| &s.snapshot_id);
 
         if curr_id != Some(&req.meta.snapshot_id) {
+            if req.offset != 0 {
+                let mismatch = InstallSnapshotError::SnapshotMismatch(SnapshotMismatch {
+                    expect: SnapshotSegmentId {
+                        id: snapshot_id.clone(),
+                        offset: 0,
+                    },
+                    got: SnapshotSegmentId {
+                        id: snapshot_id.clone(),
+                        offset: req.offset,
+                    },
+                });
+                return Err(RaftError::APIError(mismatch));
+            }
             // Changed to another stream. re-init snapshot state.
             let res = self.begin_receiving_snapshot(req_vote).await;
             let snapshot_data = match res {
@@ -433,7 +449,7 @@ where C: RaftTypeConfig
             *streaming = Some(Streaming::new(req.meta.snapshot_id.clone(), snapshot_data));
         }
 
-        let snapshot = ChunkedTransport::receive_snapshot(&mut *streaming, req).await?;
+        let snapshot = Chunked::receive_snapshot(&mut *streaming, req).await?;
         if let Some(snapshot) = snapshot {
             let resp =
                 self.install_complete_snapshot(req_vote, snapshot).await.map_err(|e: RaftError<C::NodeId>| {

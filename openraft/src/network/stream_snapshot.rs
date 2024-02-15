@@ -25,9 +25,9 @@ pub(crate) trait SnapshotTransport<C: RaftTypeConfig> {
 }
 
 /// receive snapshot by chunks.
-pub(crate) struct ChunkedTransport {}
+pub(crate) struct Chunked {}
 
-impl<C: RaftTypeConfig> SnapshotTransport<C> for ChunkedTransport
+impl<C: RaftTypeConfig> SnapshotTransport<C> for Chunked
 where C::SnapshotData: AsyncRead + AsyncWrite + AsyncSeek + OptionalSend + OptionalSync + Unpin + 'static
 {
     async fn receive_snapshot(
