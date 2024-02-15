@@ -400,10 +400,13 @@ where C: RaftTypeConfig
         self.inner.call_core(RaftMsg::InstallCompleteSnapshot { vote, snapshot, tx }, rx).await
     }
 
-    /// Submit an InstallSnapshot RPC to this Raft node.
+    /// Receive an `InstallSnapshotRequest`.
     ///
     /// These RPCs are sent by the cluster leader in order to bring a new node or a slow node
-    /// up-to-speed with the leader (§7).
+    /// up-to-speed with the leader.
+    ///
+    /// If receiving is finished `done == true`, it installs the snapshot to the state machine.
+    /// Nothing will be done if the input snapshot is older than the state machine.
     #[tracing::instrument(level = "debug", skip_all)]
     pub async fn install_snapshot(
         &self,
