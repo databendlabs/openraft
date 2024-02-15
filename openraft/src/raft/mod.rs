@@ -376,7 +376,7 @@ where C: RaftTypeConfig
         &self,
         vote: Vote<C::NodeId>,
     ) -> Result<Box<SnapshotDataOf<C>>, RaftError<C::NodeId, HigherVote<C::NodeId>>> {
-        tracing::debug!("Raft::install_complete_snapshot()");
+        tracing::info!("Raft::begin_receiving_snapshot()");
 
         let (tx, rx) = oneshot::channel();
         let resp = self.inner.call_core(RaftMsg::BeginReceivingSnapshot { vote, tx }, rx).await?;
@@ -394,7 +394,7 @@ where C: RaftTypeConfig
         vote: Vote<C::NodeId>,
         snapshot: Snapshot<C>,
     ) -> Result<InstallSnapshotResponse<C::NodeId>, RaftError<C::NodeId>> {
-        tracing::debug!("Raft::install_complete_snapshot()");
+        tracing::info!("Raft::install_complete_snapshot()");
 
         let (tx, rx) = oneshot::channel();
         self.inner.call_core(RaftMsg::InstallCompleteSnapshot { vote, snapshot, tx }, rx).await
