@@ -8,12 +8,10 @@ use crate::error::ClientWriteError;
 use crate::error::HigherVote;
 use crate::error::Infallible;
 use crate::error::InitializeError;
-use crate::error::InstallSnapshotError;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
 use crate::raft::BoxCoreFn;
 use crate::raft::ClientWriteResponse;
-use crate::raft::InstallSnapshotRequest;
 use crate::raft::InstallSnapshotResponse;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
@@ -33,9 +31,6 @@ pub(crate) mod external_command;
 pub(crate) type ResultSender<T, E = Infallible> = oneshot::Sender<Result<T, E>>;
 
 pub(crate) type ResultReceiver<T, E = Infallible> = oneshot::Receiver<Result<T, E>>;
-
-/// TX for Install Snapshot Response
-pub(crate) type InstallSnapshotTx<NID> = ResultSender<InstallSnapshotResponse<NID>, InstallSnapshotError>;
 
 /// TX for Vote Response
 pub(crate) type VoteTx<NID> = ResultSender<VoteResponse<NID>>;
@@ -64,13 +59,6 @@ where C: RaftTypeConfig
     RequestVote {
         rpc: VoteRequest<C::NodeId>,
         tx: VoteTx<C::NodeId>,
-    },
-
-    // TODO: remove
-    #[allow(dead_code)]
-    InstallSnapshot {
-        rpc: InstallSnapshotRequest<C>,
-        tx: InstallSnapshotTx<C::NodeId>,
     },
 
     InstallCompleteSnapshot {
@@ -132,9 +120,6 @@ where C: RaftTypeConfig
             }
             RaftMsg::RequestVote { rpc, .. } => {
                 format!("RequestVote: {}", rpc.summary())
-            }
-            RaftMsg::InstallSnapshot { rpc, .. } => {
-                format!("InstallSnapshot: {}", rpc.summary())
             }
             RaftMsg::BeginReceiveSnapshot { vote, .. } => {
                 format!("BeginReceiveSnapshot: vote: {}", vote)

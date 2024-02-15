@@ -1,3 +1,4 @@
+use std::io::Cursor;
 use std::sync::Arc;
 
 use maplit::btreeset;
@@ -12,6 +13,7 @@ use crate::raft_state::LogStateReader;
 use crate::testing::log_id;
 use crate::EffectiveMembership;
 use crate::Membership;
+use crate::Snapshot;
 use crate::SnapshotMeta;
 use crate::StoredMembership;
 use crate::TokioInstant;
@@ -54,10 +56,13 @@ fn test_install_snapshot_lt_last_snapshot() -> anyhow::Result<()> {
     // `snapshot_meta.last_log_id`.
     let mut eng = eng();
 
-    eng.following_handler().install_snapshot(SnapshotMeta {
-        last_log_id: Some(log_id(2, 1, 2)),
-        last_membership: StoredMembership::new(Some(log_id(1, 1, 1)), m1234()),
-        snapshot_id: "1-2-3-4".to_string(),
+    eng.following_handler().install_complete_snapshot(Snapshot {
+        meta: SnapshotMeta {
+            last_log_id: Some(log_id(2, 1, 2)),
+            last_membership: StoredMembership::new(Some(log_id(1, 1, 1)), m1234()),
+            snapshot_id: "1-2-3-4".to_string(),
+        },
+        snapshot: Box::new(Cursor::new(vec![0u8])),
     });
 
     assert_eq!(
@@ -68,17 +73,7 @@ fn test_install_snapshot_lt_last_snapshot() -> anyhow::Result<()> {
         },
         eng.state.snapshot_meta
     );
-    assert_eq!(
-        vec![Command::from(
-            sm::Command::cancel_snapshot(SnapshotMeta {
-                last_log_id: Some(log_id(2, 1, 2)),
-                last_membership: StoredMembership::new(Some(log_id(1, 1, 1)), m1234()),
-                snapshot_id: "1-2-3-4".to_string(),
-            })
-            .with_seq(1)
-        )],
-        eng.output.take_commands()
-    );
+    assert!(eng.output.take_commands().is_empty());
 
     Ok(())
 }
@@ -91,10 +86,13 @@ fn test_install_snapshot_lt_committed() -> anyhow::Result<()> {
     // Although in this case the state machine is not affected.
     let mut eng = eng();
 
-    eng.following_handler().install_snapshot(SnapshotMeta {
-        last_log_id: Some(log_id(4, 1, 5)),
-        last_membership: StoredMembership::new(Some(log_id(1, 1, 1)), m1234()),
-        snapshot_id: "1-2-3-4".to_string(),
+    eng.following_handler().install_complete_snapshot(Snapshot {
+        meta: SnapshotMeta {
+            last_log_id: Some(log_id(4, 1, 5)),
+            last_membership: StoredMembership::new(Some(log_id(1, 1, 1)), m1234()),
+            snapshot_id: "1-2-3-4".to_string(),
+        },
+        snapshot: Box::new(Cursor::new(vec![0u8])),
     });
 
     assert_eq!(
@@ -105,17 +103,7 @@ fn test_install_snapshot_lt_committed() -> anyhow::Result<()> {
         },
         eng.state.snapshot_meta
     );
-    assert_eq!(
-        vec![Command::from(
-            sm::Command::cancel_snapshot(SnapshotMeta {
-                last_log_id: Some(log_id(4, 1, 5)),
-                last_membership: StoredMembership::new(Some(log_id(1, 1, 1)), m1234()),
-                snapshot_id: "1-2-3-4".to_string(),
-            })
-            .with_seq(1)
-        )],
-        eng.output.take_commands()
-    );
+    assert!(eng.output.take_commands().is_empty());
 
     Ok(())
 }
@@ -125,10 +113,13 @@ fn test_install_snapshot_not_conflict() -> anyhow::Result<()> {
     // Snapshot will be installed and there are no conflicting logs.
     let mut eng = eng();
 
-    eng.following_handler().install_snapshot(SnapshotMeta {
-        last_log_id: Some(log_id(4, 1, 6)),
-        last_membership: StoredMembership::new(Some(log_id(1, 1, 1)), m1234()),
-        snapshot_id: "1-2-3-4".to_string(),
+    eng.following_handler().install_complete_snapshot(Snapshot {
+        meta: SnapshotMeta {
+            last_log_id: Some(log_id(4, 1, 6)),
+            last_membership: StoredMembership::new(Some(log_id(1, 1, 1)), m1234()),
+            snapshot_id: "1-2-3-4".to_string(),
+        },
+        snapshot: Box::new(Cursor::new(vec![0u8])),
     });
 
     assert_eq!(
@@ -149,10 +140,13 @@ fn test_install_snapshot_not_conflict() -> anyhow::Result<()> {
         vec![
             //
             Command::from(
-                sm::Command::install_snapshot(SnapshotMeta {
-                    last_log_id: Some(log_id(4, 1, 6)),
-                    last_membership: StoredMembership::new(Some(log_id(1, 1, 1)), m1234()),
-                    snapshot_id: "1-2-3-4".to_string(),
+                sm::Command::install_complete_snapshot(Snapshot {
+                    meta: SnapshotMeta {
+                        last_log_id: Some(log_id(4, 1, 6)),
+                        last_membership: StoredMembership::new(Some(log_id(1, 1, 1)), m1234()),
+                        snapshot_id: "1-2-3-4".to_string(),
+                    },
+                    snapshot: Box::new(Cursor::new(vec![0u8])),
                 })
                 .with_seq(1)
             ),
@@ -193,10 +187,13 @@ fn test_install_snapshot_conflict() -> anyhow::Result<()> {
         eng
     };
 
-    eng.following_handler().install_snapshot(SnapshotMeta {
-        last_log_id: Some(log_id(5, 1, 6)),
-        last_membership: StoredMembership::new(Some(log_id(1, 1, 1)), m1234()),
-        snapshot_id: "1-2-3-4".to_string(),
+    eng.following_handler().install_complete_snapshot(Snapshot {
+        meta: SnapshotMeta {
+            last_log_id: Some(log_id(5, 1, 6)),
+            last_membership: StoredMembership::new(Some(log_id(1, 1, 1)), m1234()),
+            snapshot_id: "1-2-3-4".to_string(),
+        },
+        snapshot: Box::new(Cursor::new(vec![0u8])),
     });
 
     assert_eq!(
@@ -218,10 +215,13 @@ fn test_install_snapshot_conflict() -> anyhow::Result<()> {
             //
             Command::DeleteConflictLog { since: log_id(2, 1, 4) },
             Command::from(
-                sm::Command::install_snapshot(SnapshotMeta {
-                    last_log_id: Some(log_id(5, 1, 6)),
-                    last_membership: StoredMembership::new(Some(log_id(1, 1, 1)), m1234()),
-                    snapshot_id: "1-2-3-4".to_string(),
+                sm::Command::install_complete_snapshot(Snapshot {
+                    meta: SnapshotMeta {
+                        last_log_id: Some(log_id(5, 1, 6)),
+                        last_membership: StoredMembership::new(Some(log_id(1, 1, 1)), m1234()),
+                        snapshot_id: "1-2-3-4".to_string(),
+                    },
+                    snapshot: Box::new(Cursor::new(vec![0u8])),
                 })
                 .with_seq(1)
             ),
@@ -238,10 +238,13 @@ fn test_install_snapshot_advance_last_log_id() -> anyhow::Result<()> {
     // Snapshot will be installed and there are no conflicting logs.
     let mut eng = eng();
 
-    eng.following_handler().install_snapshot(SnapshotMeta {
-        last_log_id: Some(log_id(100, 1, 100)),
-        last_membership: StoredMembership::new(Some(log_id(1, 1, 1)), m1234()),
-        snapshot_id: "1-2-3-4".to_string(),
+    eng.following_handler().install_complete_snapshot(Snapshot {
+        meta: SnapshotMeta {
+            last_log_id: Some(log_id(100, 1, 100)),
+            last_membership: StoredMembership::new(Some(log_id(1, 1, 1)), m1234()),
+            snapshot_id: "1-2-3-4".to_string(),
+        },
+        snapshot: Box::new(Cursor::new(vec![0u8])),
     });
 
     assert_eq!(
@@ -264,12 +267,14 @@ fn test_install_snapshot_advance_last_log_id() -> anyhow::Result<()> {
     );
     assert_eq!(
         vec![
-            //
             Command::from(
-                sm::Command::install_snapshot(SnapshotMeta {
-                    last_log_id: Some(log_id(100, 1, 100)),
-                    last_membership: StoredMembership::new(Some(log_id(1, 1, 1)), m1234()),
-                    snapshot_id: "1-2-3-4".to_string(),
+                sm::Command::install_complete_snapshot(Snapshot {
+                    meta: SnapshotMeta {
+                        last_log_id: Some(log_id(100, 1, 100)),
+                        last_membership: StoredMembership::new(Some(log_id(1, 1, 1)), m1234()),
+                        snapshot_id: "1-2-3-4".to_string(),
+                    },
+                    snapshot: Box::new(Cursor::new(vec![0u8])),
                 })
                 .with_seq(1)
             ),
@@ -288,10 +293,13 @@ fn test_install_snapshot_update_accepted() -> anyhow::Result<()> {
     // Snapshot will be installed and `accepted` should be updated.
     let mut eng = eng();
 
-    eng.following_handler().install_snapshot(SnapshotMeta {
-        last_log_id: Some(log_id(100, 1, 100)),
-        last_membership: StoredMembership::new(Some(log_id(1, 1, 1)), m1234()),
-        snapshot_id: "1-2-3-4".to_string(),
+    eng.following_handler().install_complete_snapshot(Snapshot {
+        meta: SnapshotMeta {
+            last_log_id: Some(log_id(100, 1, 100)),
+            last_membership: StoredMembership::new(Some(log_id(1, 1, 1)), m1234()),
+            snapshot_id: "1-2-3-4".to_string(),
+        },
+        snapshot: Box::new(Cursor::new(vec![0u8])),
     });
 
     assert_eq!(Some(&log_id(100, 1, 100)), eng.state.accepted());
