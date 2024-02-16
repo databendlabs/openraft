@@ -778,10 +778,10 @@ where
             self.weak_tx_event.clone(),
         ));
 
-        // When self.rx_repl is dropped,
-        // ReplicationCore will return from the main loop
-        // and tx_cancel is dropped
-        // and the snapshot task will be notified.
+        // When self.rx_event is dropped:
+        // 1) ReplicationCore will return from the main loop;
+        // 2) and tx_cancel is dropped;
+        // 3) and the snapshot task will be notified.
         self.snapshot_state = Some((tx_cancel, jh));
         Ok(None)
     }
