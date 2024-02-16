@@ -42,7 +42,6 @@ use crate::core::raft_msg::external_command::ExternalCommand;
 use crate::core::raft_msg::RaftMsg;
 use crate::core::replication_lag;
 use crate::core::sm;
-use crate::core::streaming_state::Streaming;
 use crate::core::RaftCore;
 use crate::core::Tick;
 use crate::engine::Engine;
@@ -52,16 +51,16 @@ use crate::error::ClientWriteError;
 use crate::error::Fatal;
 use crate::error::HigherVote;
 use crate::error::InitializeError;
-use crate::error::InstallSnapshotError;
 use crate::error::RaftError;
-use crate::error::SnapshotMismatch;
 use crate::membership::IntoNodes;
 use crate::metrics::RaftDataMetrics;
 use crate::metrics::RaftMetrics;
 use crate::metrics::RaftServerMetrics;
 use crate::metrics::Wait;
 use crate::metrics::WaitError;
+#[cfg(not(feature = "general-snapshot-data"))]
 use crate::network::stream_snapshot::Chunked;
+#[cfg(not(feature = "general-snapshot-data"))]
 use crate::network::stream_snapshot::SnapshotTransport;
 use crate::network::RaftNetworkFactory;
 use crate::raft::raft_inner::RaftInner;
@@ -78,7 +77,6 @@ use crate::MessageSummary;
 use crate::RaftState;
 pub use crate::RaftTypeConfig;
 use crate::Snapshot;
-use crate::SnapshotSegmentId;
 use crate::StorageHelper;
 use crate::Vote;
 
@@ -261,6 +259,8 @@ where C: RaftTypeConfig
             rx_server_metrics,
             tx_shutdown: Mutex::new(Some(tx_shutdown)),
             core_state: Mutex::new(CoreState::Running(core_handle)),
+
+            #[cfg(not(feature = "general-snapshot-data"))]
             snapshot: Mutex::new(None),
         };
 
@@ -415,11 +415,15 @@ where C: RaftTypeConfig
     ///
     /// If receiving is finished `done == true`, it installs the snapshot to the state machine.
     /// Nothing will be done if the input snapshot is older than the state machine.
+    #[cfg(not(feature = "general-snapshot-data"))]
     #[tracing::instrument(level = "debug", skip_all)]
     pub async fn install_snapshot(
         &self,
         req: InstallSnapshotRequest<C>,
-    ) -> Result<InstallSnapshotResponse<C::NodeId>, RaftError<C::NodeId, InstallSnapshotError>> {
+    ) -> Result<InstallSnapshotResponse<C::NodeId>, RaftError<C::NodeId, crate::error::InstallSnapshotError>>
+    where
+        C::SnapshotData: tokio::io::AsyncRead + tokio::io::AsyncWrite + tokio::io::AsyncSeek + Unpin,
+    {
         tracing::debug!(req = display(&req), "Raft::install_snapshot()");
 
         let req_vote = req.vote;
@@ -431,12 +435,12 @@ where C: RaftTypeConfig
 
         if curr_id != Some(&req.meta.snapshot_id) {
             if req.offset != 0 {
-                let mismatch = InstallSnapshotError::SnapshotMismatch(SnapshotMismatch {
-                    expect: SnapshotSegmentId {
+                let mismatch = crate::error::InstallSnapshotError::SnapshotMismatch(crate::error::SnapshotMismatch {
+                    expect: crate::SnapshotSegmentId {
                         id: snapshot_id.clone(),
                         offset: 0,
                     },
-                    got: SnapshotSegmentId {
+                    got: crate::SnapshotSegmentId {
                         id: snapshot_id.clone(),
                         offset: req.offset,
                     },
@@ -456,7 +460,10 @@ where C: RaftTypeConfig
                     }
                 }
             };
-            *streaming = Some(Streaming::new(req.meta.snapshot_id.clone(), snapshot_data));
+            *streaming = Some(crate::network::streaming::Streaming::new(
+                req.meta.snapshot_id.clone(),
+                snapshot_data,
+            ));
         }
 
         let snapshot = Chunked::receive_snapshot(&mut *streaming, req).await?;

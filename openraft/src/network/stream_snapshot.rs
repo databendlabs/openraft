@@ -1,22 +1,17 @@
 use std::future::Future;
 use std::io::SeekFrom;
-use std::pin::Pin;
 use std::time::Duration;
 
 use futures::FutureExt;
 use macros::add_async_trait;
-use tokio::io::AsyncRead;
 use tokio::io::AsyncReadExt;
-use tokio::io::AsyncSeek;
 use tokio::io::AsyncSeekExt;
-use tokio::io::AsyncWrite;
 use tokio::io::AsyncWriteExt;
 
-use crate::core::snapshot_state::SnapshotRequestId;
-use crate::core::streaming_state::Streaming;
 use crate::error::Fatal;
 use crate::error::ReplicationClosed;
 use crate::error::StreamingError;
+use crate::network::streaming::Streaming;
 use crate::network::RPCOption;
 use crate::raft::InstallSnapshotRequest;
 use crate::raft::SnapshotResponse;
@@ -25,7 +20,6 @@ use crate::AsyncRuntime;
 use crate::ErrorSubject;
 use crate::ErrorVerb;
 use crate::OptionalSend;
-use crate::OptionalSync;
 use crate::RaftNetwork;
 use crate::RaftTypeConfig;
 use crate::Snapshot;
@@ -60,9 +54,7 @@ pub(crate) trait SnapshotTransport<C: RaftTypeConfig> {
 /// Send and Receive snapshot by chunks.
 pub(crate) struct Chunked {}
 
-impl<C: RaftTypeConfig> SnapshotTransport<C> for Chunked
-where C::SnapshotData: AsyncRead + AsyncWrite + AsyncSeek + OptionalSend + OptionalSync + Unpin + 'static
-{
+impl<C: RaftTypeConfig> SnapshotTransport<C> for Chunked {
     /// Stream snapshot by chunks.
     ///
     /// This function is for backward compatibility and provides a default implement for
@@ -89,12 +81,10 @@ where C::SnapshotData: AsyncRead + AsyncWrite + AsyncSeek + OptionalSend + Optio
         let mut offset = 0;
         let end = snapshot.snapshot.seek(SeekFrom::End(0)).await.sto_res(subject_verb)?;
 
+        let mut c = std::pin::pin!(cancel);
         loop {
-            // Safety: `cancel` is a future that is polled only by this function.
-            let c = unsafe { Pin::new_unchecked(&mut cancel) };
-
             // If canceled, return at once
-            if let Some(err) = c.now_or_never() {
+            if let Some(err) = c.as_mut().now_or_never() {
                 return Err(err.into());
             }
 
@@ -173,23 +163,15 @@ where C::SnapshotData: AsyncRead + AsyncWrite + AsyncSeek + OptionalSend + Optio
     ) -> Result<Option<Snapshot<C>>, StorageError<C::NodeId>> {
         let snapshot_meta = req.meta.clone();
         let done = req.done;
-        let offset = req.offset;
 
-        let req_id = SnapshotRequestId::new(*req.vote.leader_id(), snapshot_meta.snapshot_id.clone(), offset);
-
-        tracing::info!(
-            req = display(&req),
-            snapshot_req_id = debug(&req_id),
-            "{}",
-            func_name!()
-        );
+        tracing::info!(req = display(&req), "{}", func_name!());
 
         {
             let s = streaming.as_mut().unwrap();
             s.receive(req).await?;
         }
 
-        tracing::info!(snapshot_req_id = debug(&req_id), "received snapshot chunk");
+        tracing::info!("Done received snapshot chunk");
 
         if done {
             let streaming = streaming.take().unwrap();

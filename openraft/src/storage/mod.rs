@@ -113,6 +113,7 @@ where C: RaftTypeConfig
 impl<C> Snapshot<C>
 where C: RaftTypeConfig
 {
+    #[allow(dead_code)]
     pub(crate) fn new(meta: SnapshotMeta<C::NodeId, C::Node>, snapshot: Box<C::SnapshotData>) -> Self {
         Self { meta, snapshot }
     }

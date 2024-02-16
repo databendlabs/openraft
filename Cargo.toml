@@ -58,5 +58,6 @@ exclude = [
     "stores/rocksstore-v2",
     "examples/raft-kv-memstore",
     "examples/raft-kv-memstore-singlethreaded",
+    "examples/raft-kv-memstore-general-snapshot-data",
     "examples/raft-kv-rocksdb",
 ]

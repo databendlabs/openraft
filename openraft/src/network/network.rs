@@ -10,7 +10,9 @@ use crate::error::RaftError;
 use crate::error::ReplicationClosed;
 use crate::error::StreamingError;
 use crate::network::rpc_option::RPCOption;
+#[cfg(not(feature = "general-snapshot-data"))]
 use crate::network::stream_snapshot;
+#[cfg(not(feature = "general-snapshot-data"))]
 use crate::network::stream_snapshot::SnapshotTransport;
 use crate::network::Backoff;
 use crate::raft::AppendEntriesRequest;
@@ -108,8 +110,18 @@ where C: RaftTypeConfig
         cancel: impl Future<Output = ReplicationClosed> + OptionalSend,
         option: RPCOption,
     ) -> Result<SnapshotResponse<C::NodeId>, StreamingError<C, Fatal<C::NodeId>>> {
-        let resp = stream_snapshot::Chunked::send_snapshot(self, vote, snapshot, cancel, option).await?;
-        Ok(resp)
+        #[cfg(not(feature = "general-snapshot-data"))]
+        {
+            let resp = stream_snapshot::Chunked::send_snapshot(self, vote, snapshot, cancel, option).await?;
+            Ok(resp)
+        }
+        #[cfg(feature = "general-snapshot-data")]
+        {
+            let _ = (vote, snapshot, cancel, option);
+            unimplemented!(
+                "no default implementation for RaftNetwork::snapshot() if `general-snapshot-data` feature is enabled"
+            )
+        }
     }
 
     /// Send an AppendEntries RPC to the target Raft node (§5).

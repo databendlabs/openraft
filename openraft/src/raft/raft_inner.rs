@@ -11,7 +11,6 @@ use tracing::Level;
 use crate::config::RuntimeConfig;
 use crate::core::raft_msg::external_command::ExternalCommand;
 use crate::core::raft_msg::RaftMsg;
-use crate::core::streaming_state::Streaming;
 use crate::core::TickHandle;
 use crate::error::Fatal;
 use crate::error::RaftError;
@@ -44,7 +43,8 @@ where C: RaftTypeConfig
     pub(in crate::raft) core_state: Mutex<CoreState<C::NodeId, C::AsyncRuntime>>,
 
     /// The ongoing snapshot transmission.
-    pub(in crate::raft) snapshot: Mutex<Option<Streaming<C>>>,
+    #[cfg(not(feature = "general-snapshot-data"))]
+    pub(in crate::raft) snapshot: Mutex<Option<crate::network::streaming::Streaming<C>>>,
 }
 
 impl<C> RaftInner<C>

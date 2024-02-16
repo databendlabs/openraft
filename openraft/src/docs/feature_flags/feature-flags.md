@@ -55,6 +55,25 @@ By default openraft enables no features.
   In order to use the feature, `AsyncRuntime::spawn` should invoke `tokio::task::spawn_local` or equivalents.
   <br/><br/>
 
+- `general-snapshot-data`: Enable this feature flag to eliminate the `AsyncRead + AsyncWrite + AsyncSeek + Unpin` bound from [`RaftTypeConfig::SnapshotData`](crate::RaftTypeConfig::SnapshotData)
+  Enabling this feature allows applications to use a custom snapshot data format and transport fragmentation, diverging from the default implementation which typically relies on a single-file structure.
+
+  By default, it is off.
+  This feature is introduced in 0.9.0
+
+  On the sending end (leader that sends snapshot to follower):
+
+  - Without `general-snapshot-data`: [`RaftNetwork::snapshot()`](crate::network::RaftNetwork::snapshot) provides a default implementation that invokes the chunk-based API [`RaftNetwork::install_snapshot()`](crate::network::RaftNetwork::install_snapshot) for transmit.
+
+  - With `general-snapshot-data` enabled: [`RaftNetwork::snapshot()`](crate::network::RaftNetwork::snapshot) must be implemented to provide application customized snapshot transmission. Application does not need to implement [`RaftNetwork::install_snapshot()`](crate::network::RaftNetwork::install_snapshot).
+  
+  On the receiving end(follower):
+  
+  - `Raft::install_snapshot()` is available only when `general-snapshot-data` is disabled.
+
+  Refer to example `examples/raft-kv-memstore-general-snapshot-data` with `general-snapshot-data` enabled.
+  <br/><br/>
+
 - `tracing-log`: enables "log" feature in `tracing` crate, to let tracing events
   emit log record.
   See: [tracing doc: emitting-log-records](https://docs.rs/tracing/latest/tracing/#emitting-log-records)
