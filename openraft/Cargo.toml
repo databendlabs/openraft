@@ -26,6 +26,7 @@ rand            = { workspace = true }
 serde           = { workspace = true, optional = true }
 serde_json      = { workspace = true, optional = true }
 tempfile        = { workspace = true, optional = true }
+monoio          = { workspace = true, optional = true }
 thiserror       = { workspace = true }
 tokio           = { workspace = true }
 tracing         = { workspace = true }
@@ -78,6 +79,9 @@ compat = []
 compat-07 = ["compat", "serde", "dep:or07", "compat-07-testing"]
 compat-07-testing = ["dep:tempfile", "anyhow", "dep:serde_json"]
 
+monoio = ["dep:monoio", "singlethreaded"]
+monoio-sync = ["dep:monoio", "monoio/sync"]
+
 # Allows an application to implement a custom the v2 storage API.
 # See `openraft::storage::v2` for more details.
 # V2 API are unstable and may change in the future.
@@ -115,6 +119,7 @@ generic-snapshot-data = []
 tracing-log = [ "tracing/log" ]
 
 # default = ["single-term-leader"]
+# default = ["monoio"]
 
 [package.metadata.docs.rs]
 

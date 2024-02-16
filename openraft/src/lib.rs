@@ -75,6 +75,7 @@ pub use network::RaftNetwork;
 pub use network::RaftNetworkFactory;
 pub use type_config::RaftTypeConfig;
 
+#[cfg(feature = "monoio")] pub use crate::async_runtime::monoio;
 pub use crate::async_runtime::AsyncRuntime;
 pub use crate::async_runtime::TokioRuntime;
 pub use crate::change_members::ChangeMembers;

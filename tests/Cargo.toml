@@ -41,3 +41,4 @@ tracing-subscriber = { workspace = true }
 bt = ["openraft/bt"]
 single-term-leader = ["openraft/single-term-leader"]
 loosen-follower-log-revert = ["openraft/loosen-follower-log-revert"]
+monoio = ["openraft/monoio"]

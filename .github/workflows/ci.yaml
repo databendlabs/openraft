@@ -15,7 +15,7 @@ jobs:
       matrix:
         include:
           - toolchain: "nightly"
-            features: "bench,serde,bt,singlethreaded"
+            features: "bench,serde,bt,singlethreaded,monoio"
 
     steps:
       - name: Setup | Checkout
