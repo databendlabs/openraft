@@ -708,14 +708,23 @@ where
                     self.next_action.as_ref().map(|d| d.to_string()).display()
                 );
 
-                if matches!(d, Data::SnapshotCallback(_)) {
-                    debug_assert!(self.snapshot_state.is_some(),);
-                } else {
-                    debug_assert!(
-                        self.snapshot_state.is_none(),
-                        "can not send other data while sending snapshot"
-                    );
+                if cfg!(debug_assertions) {
+                    match &d {
+                        Data::SnapshotCallback(_) => {
+                            debug_assert!(
+                                self.snapshot_state.is_some(),
+                                "snapshot state must be Some to receive callback"
+                            );
+                        }
+                        _ => {
+                            debug_assert!(
+                                self.snapshot_state.is_none(),
+                                "can not send other data while sending snapshot"
+                            );
+                        }
+                    }
                 }
+
                 self.next_action = Some(d);
             }
         }
