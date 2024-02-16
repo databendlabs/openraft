@@ -11,7 +11,7 @@ use crate::SnapshotMeta;
 /// Callback payload when a snapshot transmission finished, successfully or not.
 #[derive(Debug)]
 pub(crate) struct SnapshotCallback<C: RaftTypeConfig> {
-    // TODO: Remote `start_time`.
+    // TODO: Remove `start_time`.
     //       Because sending snapshot is a long lasting process,
     //       we should not rely on the start time to extend leader lease.
     /// The time when the snapshot replication started on leader.
