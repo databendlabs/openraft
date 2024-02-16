@@ -1,9 +1,5 @@
 use std::fmt::Debug;
 
-use tokio::io::AsyncRead;
-use tokio::io::AsyncSeek;
-use tokio::io::AsyncWrite;
-
 use crate::entry::FromAppData;
 use crate::entry::RaftEntry;
 use crate::AppData;
@@ -58,11 +54,20 @@ pub trait RaftTypeConfig:
     /// Raft log entry, which can be built from an AppData.
     type Entry: RaftEntry<Self::NodeId, Self::Node> + FromAppData<Self::D>;
 
+    // TODO: fix the doc address
     /// Snapshot data for exposing a snapshot for reading & writing.
     ///
     /// See the [storage chapter of the guide](https://datafuselabs.github.io/openraft/getting-started.html#implement-raftstorage)
     /// for details on where and how this is used.
-    type SnapshotData: AsyncRead + AsyncWrite + AsyncSeek + OptionalSend + OptionalSync + Unpin + 'static;
+    #[cfg(not(feature = "generic-snapshot-data"))]
+    type SnapshotData: tokio::io::AsyncRead
+        + tokio::io::AsyncWrite
+        + tokio::io::AsyncSeek
+        + OptionalSend
+        + Unpin
+        + 'static;
+    #[cfg(feature = "generic-snapshot-data")]
+    type SnapshotData: OptionalSend + 'static;
 
     /// Asynchronous runtime type.
     type AsyncRuntime: AsyncRuntime;
