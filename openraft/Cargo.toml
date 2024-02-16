@@ -87,10 +87,27 @@ storage-v2 = []
 singlethreaded = ["macros/singlethreaded"]
 
 
-# Permit the follower's log to roll back to an earlier state without causing the leader to panic.
-# Although log state reversion is typically seen as a bug, enabling it can be useful for testing or other special scenarios.
-# For instance, in an even number nodes cluster, erasing a node's data and then rebooting it(log reverts to empty) will not result in data loss.
+# Permit the follower's log to roll back to an earlier state without causing the
+# leader to panic.
+#
+# Although log state reversion is typically seen as a bug, enabling it can be
+# useful for testing or other special scenarios.
+# For instance, in an even number nodes cluster, erasing a node's data and then
+# rebooting it(log reverts to empty) will not result in data loss.
 loosen-follower-log-revert = []
+
+
+# Enable this feature flag to eliminate the `AsyncRead + AsyncWrite + AsyncSeek
+# + Unpin` bound from `RaftTypeConfig::SnapshotData`.
+#
+# Enabling this feature allows applications to use a custom snapshot data format
+# and transport fragmentation, diverging from the default implementation which
+# typically relies on a single-file structure .
+#
+# By default it is off.
+# This feature is introduced in 0.9.0
+generic-snapshot-data = []
+
 
 # Enables "log" feature in `tracing` crate, to let tracing events emit log
 # record.

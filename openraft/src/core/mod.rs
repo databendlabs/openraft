@@ -12,10 +12,7 @@ pub(crate) mod raft_msg;
 mod replication_state;
 mod server_state;
 pub(crate) mod sm;
-pub(crate) mod streaming_state;
 mod tick;
-
-pub(crate) mod snapshot_state;
 
 pub(crate) use raft_core::ApplyResult;
 pub(crate) use raft_core::ApplyingEntry;
