@@ -95,7 +95,7 @@ where C: RaftTypeConfig
         &mut self,
         vote: Vote<C::NodeId>,
         snapshot: Snapshot<C>,
-        cancel: impl Future<Output = ReplicationClosed> + Send,
+        cancel: impl Future<Output = ReplicationClosed> + OptionalSend,
         option: RPCOption,
     ) -> Result<SnapshotResponse<C::NodeId>, StreamingError<C, Fatal<C::NodeId>>> {
         let resp = stream_snapshot::Chunked::send_snapshot(self, vote, snapshot, cancel, option).await?;
