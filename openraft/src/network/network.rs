@@ -89,8 +89,18 @@ where C: RaftTypeConfig
     /// Send a complete Snapshot to the target.
     ///
     /// This method is responsible to fragment the snapshot and send it to the target node.
+    /// Before returning from this method, the snapshot should be completely transmitted and
+    /// installed on the target node, or rejected because of `vote` being smaller than the
+    /// remote one.
     ///
-    /// The default implementation will call `install_snapshot` RPC for each fragment.
+    /// The default implementation just calls several `install_snapshot` RPC for each fragment.
+    ///
+    /// The `vote` is the leader vote which is used to check if the leader is still valid by a
+    /// follower.
+    /// When the follower finished receiving snapshot, it calls `Raft::install_complete_snapshot()`
+    /// with this vote.
+    ///
+    /// `cancel` get `Ready` when the caller decides to cancel this snapshot transmission.
     async fn snapshot(
         &mut self,
         vote: Vote<C::NodeId>,
