@@ -65,9 +65,6 @@ pub trait AsyncRuntime: Debug + Default + OptionalSend + OptionalSync + 'static 
     /// Check if the [`Self::JoinError`] is `panic`.
     fn is_panic(join_error: &Self::JoinError) -> bool;
 
-    /// Abort the task associated with the supplied join handle.
-    fn abort<T: OptionalSend + 'static>(join_handle: &Self::JoinHandle<T>);
-
     /// Get the random number generator to use for generating random numbers.
     ///
     /// # Note
@@ -129,11 +126,6 @@ impl AsyncRuntime for TokioRuntime {
     #[inline]
     fn is_panic(join_error: &Self::JoinError) -> bool {
         join_error.is_panic()
-    }
-
-    #[inline]
-    fn abort<T: OptionalSend + 'static>(join_handle: &Self::JoinHandle<T>) {
-        join_handle.abort();
     }
 
     #[inline]
