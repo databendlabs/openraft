@@ -14,6 +14,8 @@ use openraft::BasicNode;
 use openraft::Entry;
 use openraft::EntryPayload;
 use openraft::LogId;
+use openraft::OptionalSend;
+use openraft::OptionalSync;
 use openraft::RaftLogReader;
 use openraft::RaftSnapshotBuilder;
 use openraft::RaftTypeConfig;
@@ -101,7 +103,7 @@ pub struct LogStore {
 }
 
 impl RaftLogReader<TypeConfig> for Arc<LogStore> {
-    async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + Send + Sync>(
+    async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + OptionalSend + OptionalSync>(
         &mut self,
         range: RB,
     ) -> Result<Vec<Entry<TypeConfig>>, StorageError<NodeId>> {

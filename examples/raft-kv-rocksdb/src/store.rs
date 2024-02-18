@@ -20,6 +20,7 @@ use openraft::ErrorSubject;
 use openraft::ErrorVerb;
 use openraft::LogId;
 use openraft::OptionalSend;
+use openraft::OptionalSync;
 use openraft::RaftLogReader;
 use openraft::RaftSnapshotBuilder;
 use openraft::SnapshotMeta;
@@ -368,7 +369,7 @@ impl LogStore {
 }
 
 impl RaftLogReader<TypeConfig> for LogStore {
-    async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + Send + Sync>(
+    async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + OptionalSend + OptionalSync>(
         &mut self,
         range: RB,
     ) -> StorageResult<Vec<Entry<TypeConfig>>> {

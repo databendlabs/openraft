@@ -23,6 +23,8 @@ use openraft::Entry;
 use openraft::EntryPayload;
 use openraft::ErrorVerb;
 use openraft::LogId;
+use openraft::OptionalSend;
+use openraft::OptionalSync;
 use openraft::RaftLogReader;
 use openraft::RaftSnapshotBuilder;
 use openraft::RaftStorage;
@@ -338,7 +340,7 @@ impl RocksStore {
 }
 
 impl RaftLogReader<TypeConfig> for Arc<RocksStore> {
-    async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + Send + Sync>(
+    async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + OptionalSend + OptionalSync>(
         &mut self,
         range: RB,
     ) -> StorageResult<Vec<Entry<TypeConfig>>> {
@@ -455,7 +457,7 @@ impl RaftStorage<TypeConfig> for Arc<RocksStore> {
 
     #[tracing::instrument(level = "trace", skip(self, entries))]
     async fn append_to_log<I>(&mut self, entries: I) -> StorageResult<()>
-    where I: IntoIterator<Item = Entry<TypeConfig>> + Send {
+    where I: IntoIterator<Item = Entry<TypeConfig>> + OptionalSend {
         for entry in entries {
             let id = id_to_bin(entry.log_id.index);
             assert_eq!(bin_to_id(&id), entry.log_id.index);
