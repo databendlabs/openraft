@@ -29,6 +29,8 @@ use openraft::Entry;
 use openraft::EntryPayload;
 use openraft::ErrorVerb;
 use openraft::LogId;
+use openraft::OptionalSend;
+use openraft::OptionalSync;
 use openraft::RaftLogId;
 use openraft::RaftLogReader;
 use openraft::RaftSnapshotBuilder;
@@ -231,7 +233,7 @@ impl RocksLogStore {
 }
 
 impl RaftLogReader<TypeConfig> for RocksLogStore {
-    async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + Send + Sync>(
+    async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + OptionalSend + OptionalSync>(
         &mut self,
         range: RB,
     ) -> StorageResult<Vec<Entry<TypeConfig>>> {

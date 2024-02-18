@@ -21,6 +21,8 @@ use openraft::BasicNode;
 use openraft::Entry;
 use openraft::EntryPayload;
 use openraft::LogId;
+use openraft::OptionalSend;
+use openraft::OptionalSync;
 use openraft::RaftLogId;
 use openraft::RaftLogReader;
 use openraft::RaftSnapshotBuilder;
@@ -384,7 +386,7 @@ impl SledStore {
 }
 
 impl RaftLogReader<TypeConfig> for Arc<SledStore> {
-    async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + Send + Sync>(
+    async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + OptionalSend + OptionalSync>(
         &mut self,
         range: RB,
     ) -> StorageResult<Vec<Entry<TypeConfig>>> {
@@ -505,7 +507,7 @@ impl RaftStorage<TypeConfig> for Arc<SledStore> {
 
     #[tracing::instrument(level = "trace", skip(self, entries))]
     async fn append_to_log<I>(&mut self, entries: I) -> StorageResult<()>
-    where I: IntoIterator<Item = Entry<TypeConfig>> + Send {
+    where I: IntoIterator<Item = Entry<TypeConfig>> + OptionalSend {
         let logs_tree = logs(&self.db);
         let mut batch = sled::Batch::default();
         for entry in entries {
