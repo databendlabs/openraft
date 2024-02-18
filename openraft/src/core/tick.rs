@@ -46,6 +46,9 @@ where C: RaftTypeConfig
 {
     /// Signal the tick loop to stop, without waiting for it to stop.
     fn drop(&mut self) {
+        if self.shutdown.lock().unwrap().is_none() {
+            return;
+        }
         let _ = self.shutdown();
     }
 }
