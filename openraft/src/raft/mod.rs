@@ -955,7 +955,9 @@ where C: RaftTypeConfig
             tracing::info!("sending shutdown signal to RaftCore, sending res: {:?}", send_res);
         }
         self.inner.join_core_task().await;
-        self.inner.tick_handle.shutdown().await;
+        if let Some(join_handle) = self.inner.tick_handle.shutdown() {
+            let _ = join_handle.await;
+        }
 
         // TODO(xp): API change: replace `JoinError` with `Fatal`,
         //           to let the caller know the return value of RaftCore task.
