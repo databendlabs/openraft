@@ -49,6 +49,7 @@ impl RaftNetwork<TypeConfig> for Connection {
         Ok(resp)
     }
 
+    /// A real application should replace this method with customized implementation.
     async fn snapshot(
         &mut self,
         vote: Vote<NodeId>,

@@ -31,6 +31,7 @@ openraft::declare_raft_types!(
         Node = BasicNode,
         Entry = openraft::Entry<TypeConfig>,
         // In this example, snapshot is just a copy of the state machine.
+        // And it can be any type.
         SnapshotData = StateMachineData,
         AsyncRuntime = TokioRuntime
 );
@@ -82,6 +83,7 @@ pub async fn new_raft(node_id: NodeId, router: Router) -> (typ::Raft, App) {
         election_timeout_min: 1500,
         election_timeout_max: 3000,
         // Once snapshot is built, delete the logs at once.
+        // So that all further replication will be based on the snapshot.
         max_in_snapshot_log_to_keep: 0,
         ..Default::default()
     };
@@ -99,8 +101,6 @@ pub async fn new_raft(node_id: NodeId, router: Router) -> (typ::Raft, App) {
         .await
         .unwrap();
 
-    // Create an application that will store all the instances created above, this will
-    // later be used on the actix-web services.
     let app = App::new(node_id, raft.clone(), router, state_machine_store);
 
     (raft, app)
