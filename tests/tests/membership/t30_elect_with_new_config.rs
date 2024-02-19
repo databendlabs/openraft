@@ -5,9 +5,9 @@ use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
 use openraft::LogIdOptionExt;
-use tokio::time::sleep;
 
 use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::runtime::sleep;
 use crate::fixtures::RaftRouter;
 
 /// Dynamic membership test.

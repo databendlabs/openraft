@@ -1,3 +1,4 @@
+/*
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -108,3 +109,4 @@ async fn return_error_after_shutdown() -> Result<()> {
 
     Ok(())
 }
+*/

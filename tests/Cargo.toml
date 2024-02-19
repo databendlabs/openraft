@@ -21,6 +21,7 @@ repository    = { workspace = true }
 openraft           = { path="../openraft", version = "0.9.0" }
 openraft-memstore  = { path="../memstore" }
 monoio = "0.2.2"
+local-sync = "0.1"
 
 anyerror           = { workspace = true }
 anyhow             = { workspace = true }

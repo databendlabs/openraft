@@ -2,6 +2,9 @@
 
 #![allow(dead_code)]
 
+pub mod runtime;
+use runtime::{Runtime, Instant, sleep};
+
 #[cfg(feature = "bt")] use std::backtrace::Backtrace;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
@@ -60,8 +63,6 @@ use openraft::RaftMetrics;
 use openraft::RaftState;
 use openraft::RaftTypeConfig;
 use openraft::ServerState;
-#[cfg(not(feature = "monoio"))] use openraft::TokioInstant;
-#[cfg(not(feature = "monoio"))] use openraft::TokioRuntime;
 use openraft::Vote;
 use openraft_memstore::ClientRequest;
 use openraft_memstore::ClientResponse;
@@ -75,16 +76,6 @@ use openraft_memstore::TypeConfig as MemConfig;
 use tracing_appender::non_blocking::WorkerGuard;
 
 use crate::fixtures::logging::init_file_logging;
-
-#[cfg(not(feature = "monoio"))]
-type Runtime = TokioRuntime;
-#[cfg(feature = "monoio")]
-type Runtime = MonoioRuntime;
-
-#[cfg(not(feature = "monoio"))]
-type Instant = TokioInstant;
-#[cfg(feature = "monoio")]
-type Instant = MonoioInstant;
 
 pub mod logging;
 
@@ -324,7 +315,7 @@ impl TypedRaftRouter {
 
         let r = rand::random::<u64>() % send_delay;
         let timeout = Duration::from_millis(r);
-        tokio::time::sleep(timeout).await;
+        sleep(timeout).await;
     }
 
     pub fn set_append_entries_quota(&mut self, quota: Option<u64>) {

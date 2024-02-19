@@ -14,9 +14,10 @@ use openraft::Config;
 use openraft::LogId;
 use openraft::Membership;
 use openraft::StorageHelper;
-use tokio::time::sleep;
 
 use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::runtime::sleep;
+use crate::fixtures::runtime::spawn;
 use crate::fixtures::RaftRouter;
 
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
@@ -211,7 +212,7 @@ async fn add_learner_when_previous_membership_not_committed() -> Result<()> {
         router.set_network_error(1, true);
 
         let node = router.get_raft_handle(&0)?;
-        tokio::spawn(async move {
+        spawn(async move {
             let res = node.change_membership([0, 1], false).await;
             tracing::info!("do not expect res: {:?}", res);
             unreachable!("do not expect any res");
