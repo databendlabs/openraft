@@ -3,8 +3,6 @@
 #![allow(dead_code)]
 
 pub mod runtime;
-use runtime::{Runtime, Instant, sleep};
-
 #[cfg(feature = "bt")] use std::backtrace::Backtrace;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
@@ -73,6 +71,9 @@ use openraft_memstore::TypeConfig;
 use openraft_memstore::TypeConfig as MemConfig;
 #[allow(unused_imports)] use pretty_assertions::assert_eq;
 #[allow(unused_imports)] use pretty_assertions::assert_ne;
+use runtime::sleep;
+use runtime::Instant;
+use runtime::Runtime;
 use tracing_appender::non_blocking::WorkerGuard;
 
 use crate::fixtures::logging::init_file_logging;
