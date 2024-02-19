@@ -1,5 +1,5 @@
 [package]
-name = "raft-kv-memstore-general-snapshot-data"
+name = "raft-kv-memstore-generic-snapshot-data"
 version = "0.1.0"
 readme = "README.md"
 
@@ -16,7 +16,7 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/datafuselabs/openraft"
 
 [dependencies]
-openraft = { path = "../../openraft", features = ["serde", "storage-v2", "general-snapshot-data"] }
+openraft = { path = "../../openraft", features = ["serde", "storage-v2", "generic-snapshot-data"] }
 
 clap = { version = "4.1.11", features = ["derive", "env"] }
 reqwest = { version = "0.11.9", features = ["json"] }

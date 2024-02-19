@@ -256,7 +256,7 @@ where C: RaftTypeConfig
             tx_shutdown: Mutex::new(Some(tx_shutdown)),
             core_state: Mutex::new(CoreState::Running(core_handle)),
 
-            #[cfg(not(feature = "general-snapshot-data"))]
+            #[cfg(not(feature = "generic-snapshot-data"))]
             snapshot: Mutex::new(None),
         };
 
@@ -411,7 +411,7 @@ where C: RaftTypeConfig
     ///
     /// If receiving is finished `done == true`, it installs the snapshot to the state machine.
     /// Nothing will be done if the input snapshot is older than the state machine.
-    #[cfg(not(feature = "general-snapshot-data"))]
+    #[cfg(not(feature = "generic-snapshot-data"))]
     #[tracing::instrument(level = "debug", skip_all)]
     pub async fn install_snapshot(
         &self,

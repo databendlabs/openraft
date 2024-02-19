@@ -59,14 +59,14 @@ pub trait RaftTypeConfig:
     ///
     /// See the [storage chapter of the guide](https://datafuselabs.github.io/openraft/getting-started.html#implement-raftstorage)
     /// for details on where and how this is used.
-    #[cfg(not(feature = "general-snapshot-data"))]
+    #[cfg(not(feature = "generic-snapshot-data"))]
     type SnapshotData: tokio::io::AsyncRead
         + tokio::io::AsyncWrite
         + tokio::io::AsyncSeek
         + OptionalSend
         + Unpin
         + 'static;
-    #[cfg(feature = "general-snapshot-data")]
+    #[cfg(feature = "generic-snapshot-data")]
     type SnapshotData: OptionalSend + 'static;
 
     /// Asynchronous runtime type.
