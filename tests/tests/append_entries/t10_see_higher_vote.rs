@@ -3,6 +3,8 @@ use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
+#[cfg(feature = "monoio")] use monoio::spawn;
+#[cfg(feature = "monoio")] use monoio::time::sleep;
 use openraft::network::RPCOption;
 use openraft::network::RaftNetwork;
 use openraft::network::RaftNetworkFactory;
@@ -13,7 +15,8 @@ use openraft::LogId;
 use openraft::ServerState;
 use openraft::Vote;
 use openraft_memstore::ClientRequest;
-use tokio::time::sleep;
+#[cfg(not(feature = "monoio"))] use tokio::spawn;
+#[cfg(not(feature = "monoio"))] use tokio::time::sleep;
 
 use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
@@ -66,7 +69,7 @@ async fn append_sees_higher_vote() -> Result<()> {
         router.wait(&0, timeout()).state(ServerState::Leader, "node-0 is leader").await?;
 
         let n0 = router.get_raft_handle(&0)?;
-        tokio::spawn(async move {
+        spawn(async move {
             let res = n0
                 .client_write(ClientRequest {
                     client: "0".to_string(),
@@ -78,7 +81,7 @@ async fn append_sees_higher_vote() -> Result<()> {
             tracing::debug!("--- client_write res: {:?}", res);
         });
 
-        tokio::time::sleep(Duration::from_millis(500)).await;
+        sleep(Duration::from_millis(500)).await;
 
         router
             .wait(&0, timeout())

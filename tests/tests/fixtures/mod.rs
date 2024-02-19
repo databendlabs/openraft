@@ -33,6 +33,8 @@ use openraft::error::RemoteError;
 use openraft::error::Unreachable;
 use openraft::metrics::Wait;
 use openraft::network::RPCOption;
+#[cfg(feature = "monoio")] use openraft::monoio::MonoioInstant;
+#[cfg(feature = "monoio")] use openraft::monoio::MonoioRuntime;
 use openraft::network::RaftNetwork;
 use openraft::network::RaftNetworkFactory;
 use openraft::raft::AppendEntriesRequest;
@@ -58,8 +60,8 @@ use openraft::RaftMetrics;
 use openraft::RaftState;
 use openraft::RaftTypeConfig;
 use openraft::ServerState;
-use openraft::TokioInstant;
-use openraft::TokioRuntime;
+#[cfg(not(feature = "monoio"))] use openraft::TokioInstant;
+#[cfg(not(feature = "monoio"))] use openraft::TokioRuntime;
 use openraft::Vote;
 use openraft_memstore::ClientRequest;
 use openraft_memstore::ClientResponse;
@@ -73,6 +75,16 @@ use openraft_memstore::TypeConfig as MemConfig;
 use tracing_appender::non_blocking::WorkerGuard;
 
 use crate::fixtures::logging::init_file_logging;
+
+#[cfg(not(feature = "monoio"))]
+type Runtime = TokioRuntime;
+#[cfg(feature = "monoio")]
+type Runtime = MonoioRuntime;
+
+#[cfg(not(feature = "monoio"))]
+type Instant = TokioInstant;
+#[cfg(feature = "monoio")]
+type Instant = MonoioInstant;
 
 pub mod logging;
 
@@ -622,7 +634,7 @@ impl TypedRaftRouter {
         Ok(rst)
     }
 
-    pub fn wait(&self, node_id: &MemNodeId, timeout: Option<Duration>) -> Wait<MemNodeId, (), TokioRuntime> {
+    pub fn wait(&self, node_id: &MemNodeId, timeout: Option<Duration>) -> Wait<MemNodeId, (), Runtime> {
         let node = {
             let rt = self.nodes.lock().unwrap();
             rt.get(node_id).expect("target node not found in routing table").clone().0
@@ -765,7 +777,7 @@ impl TypedRaftRouter {
     /// Send external request to the particular node.
     pub async fn with_raft_state<V, F>(&self, target: MemNodeId, func: F) -> Result<V, Fatal<MemNodeId>>
     where
-        F: FnOnce(&RaftState<MemNodeId, (), TokioInstant>) -> V + Send + 'static,
+        F: FnOnce(&RaftState<MemNodeId, (), Instant>) -> V + Send + 'static,
         V: Send + 'static,
     {
         let r = self.get_raft_handle(&target).unwrap();
@@ -773,7 +785,7 @@ impl TypedRaftRouter {
     }
 
     /// Send external request to the particular node.
-    pub fn external_request<F: FnOnce(&RaftState<MemNodeId, (), TokioInstant>) + Send + 'static>(
+    pub fn external_request<F: FnOnce(&RaftState<MemNodeId, (), Instant>) + Send + 'static>(
         &self,
         target: MemNodeId,
         req: F,

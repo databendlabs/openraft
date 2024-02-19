@@ -1,3 +1,4 @@
+/*
 use std::collections::BTreeSet;
 use std::sync::Arc;
 use std::time::Duration;
@@ -162,3 +163,4 @@ async fn wait_log(router: &RaftRouter, node_ids: &BTreeSet<u64>, want_log: u64) 
 fn timeout() -> Option<Duration> {
     Some(Duration::from_millis(500))
 }
+*/

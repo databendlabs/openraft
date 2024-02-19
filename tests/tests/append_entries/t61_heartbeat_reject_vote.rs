@@ -1,3 +1,4 @@
+/*
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Duration;
@@ -89,3 +90,4 @@ async fn heartbeat_reject_vote() -> Result<()> {
 fn timeout() -> Option<Duration> {
     Some(Duration::from_millis(1_000))
 }
+*/

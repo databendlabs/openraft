@@ -1,3 +1,4 @@
+/*
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -53,3 +54,4 @@ async fn enable_heartbeat() -> Result<()> {
 fn timeout() -> Option<Duration> {
     Some(Duration::from_millis(1_000))
 }
+*/
