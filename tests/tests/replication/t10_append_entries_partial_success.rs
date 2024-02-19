@@ -6,6 +6,7 @@ use maplit::btreeset;
 use openraft::Config;
 
 use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::runtime::spawn;
 use crate::fixtures::RaftRouter;
 
 /// RaftNetwork::append_entries can return a partial success.
@@ -33,7 +34,7 @@ async fn append_entries_partial_success() -> Result<()> {
         router.set_append_entries_quota(Some(quota));
 
         let r = router.clone();
-        tokio::spawn(async move {
+        spawn(async move {
             // client request will be blocked due to limited quota=2
             r.client_request_many(0, "0", n as usize).await.unwrap();
         });

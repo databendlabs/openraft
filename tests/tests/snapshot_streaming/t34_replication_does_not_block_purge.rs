@@ -7,9 +7,9 @@ use openraft::CommittedLeaderId;
 use openraft::Config;
 use openraft::LogId;
 use openraft::RaftLogReader;
-use tokio::time::sleep;
 
 use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::runtime::sleep;
 use crate::fixtures::RaftRouter;
 
 /// Replication blocks purge, but it should not purge for ever.

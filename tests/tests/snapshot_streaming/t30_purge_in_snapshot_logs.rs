@@ -7,9 +7,9 @@ use openraft::CommittedLeaderId;
 use openraft::Config;
 use openraft::LogId;
 use openraft::RaftLogReader;
-use tokio::time::sleep;
 
 use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::runtime::sleep;
 use crate::fixtures::RaftRouter;
 
 /// Leader logs should be deleted upto snapshot.last_log_id-max_in_snapshot_log_to_keep after

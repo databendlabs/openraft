@@ -9,11 +9,13 @@ use openraft::network::RaftNetworkFactory;
 use openraft::raft::AppendEntriesRequest;
 use openraft::testing::blank_ent;
 use openraft::testing::log_id;
+use openraft::AsyncRuntime;
 use openraft::Config;
 use openraft::Vote;
 use openraft_memstore::BlockOperation;
 
 use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::runtime::Runtime;
 use crate::fixtures::RaftRouter;
 
 /// When building a snapshot, applying-entries request should not be blocked.
@@ -50,7 +52,7 @@ async fn building_snapshot_does_not_block_apply() -> Result<()> {
         follower.trigger().snapshot().await?;
 
         tracing::info!(log_index, "--- sleep 500 ms to make sure snapshot is started");
-        tokio::time::sleep(Duration::from_millis(500)).await;
+        Runtime::sleep(Duration::from_millis(500)).await;
 
         let res = router
             .wait(&1, Some(Duration::from_millis(500)))
@@ -78,7 +80,7 @@ async fn building_snapshot_does_not_block_apply() -> Result<()> {
         let option = RPCOption::new(Duration::from_millis(1_000));
 
         let fu = cli.append_entries(rpc, option);
-        let fu = tokio::time::timeout(Duration::from_millis(500), fu);
+        let fu = Runtime::timeout(Duration::from_millis(500), fu);
         let resp = fu.await??;
         assert!(resp.is_success());
 

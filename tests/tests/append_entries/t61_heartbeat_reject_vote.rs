@@ -1,4 +1,3 @@
-/*
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Duration;
@@ -8,11 +7,11 @@ use maplit::btreeset;
 use openraft::raft::VoteRequest;
 use openraft::testing::log_id;
 use openraft::Config;
-use openraft::TokioInstant;
 use openraft::Vote;
-use tokio::time::sleep;
 
 use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::runtime::sleep;
+use crate::fixtures::runtime::Instant;
 use crate::fixtures::RaftRouter;
 
 /// If a follower receives heartbeat, it should reject vote request until leader lease expired.
@@ -29,12 +28,12 @@ async fn heartbeat_reject_vote() -> Result<()> {
     );
     let mut router = RaftRouter::new(config.clone());
 
-    let now = TokioInstant::now();
+    let now = Instant::now();
     sleep(Duration::from_millis(1)).await;
 
     let log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {3}).await?;
 
-    let vote_modified_time = Arc::new(Mutex::new(Some(TokioInstant::now())));
+    let vote_modified_time = Arc::new(Mutex::new(Some(Instant::now())));
     tracing::info!(log_index, "--- leader lease is set by heartbeat");
     {
         let m = vote_modified_time.clone();
@@ -45,7 +44,7 @@ async fn heartbeat_reject_vote() -> Result<()> {
             assert!(state.vote_last_modified() > Some(now));
         });
 
-        let now = TokioInstant::now();
+        let now = Instant::now();
         sleep(Duration::from_millis(700)).await;
 
         let m = vote_modified_time.clone();
@@ -90,4 +89,3 @@ async fn heartbeat_reject_vote() -> Result<()> {
 fn timeout() -> Option<Duration> {
     Some(Duration::from_millis(1_000))
 }
-*/

@@ -1,4 +1,3 @@
-/*
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -6,9 +5,9 @@ use anyhow::Result;
 use maplit::btreeset;
 use openraft::AsyncRuntime;
 use openraft::Config;
-use openraft::TokioRuntime;
 
 use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::runtime::Runtime;
 use crate::fixtures::RaftRouter;
 
 /// Enable heartbeat, heartbeat should be replicated.
@@ -31,8 +30,8 @@ async fn enable_heartbeat() -> Result<()> {
     node0.runtime_config().heartbeat(true);
 
     for _i in 0..3 {
-        let now = <TokioRuntime as AsyncRuntime>::Instant::now();
-        TokioRuntime::sleep(Duration::from_millis(500)).await;
+        let now = <Runtime as AsyncRuntime>::Instant::now();
+        Runtime::sleep(Duration::from_millis(500)).await;
 
         for node_id in [1, 2, 3] {
             // no new log will be sent, .
@@ -54,4 +53,3 @@ async fn enable_heartbeat() -> Result<()> {
 fn timeout() -> Option<Duration> {
     Some(Duration::from_millis(1_000))
 }
-*/

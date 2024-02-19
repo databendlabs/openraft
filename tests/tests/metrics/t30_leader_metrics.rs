@@ -12,9 +12,9 @@ use openraft::LogId;
 use openraft::ServerState;
 #[allow(unused_imports)] use pretty_assertions::assert_eq;
 #[allow(unused_imports)] use pretty_assertions::assert_ne;
-use tokio::time::sleep;
 
 use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::runtime::sleep;
 use crate::fixtures::RaftRouter;
 
 /// Cluster leader_metrics test.
