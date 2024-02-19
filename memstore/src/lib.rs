@@ -72,6 +72,7 @@ pub struct ClientResponse(pub Option<String>);
 
 pub type MemNodeId = u64;
 
+#[cfg(not(feature = "monoio"))]
 openraft::declare_raft_types!(
     /// Declare the type configuration for `MemStore`.
     pub TypeConfig:
@@ -82,6 +83,19 @@ openraft::declare_raft_types!(
         Entry = Entry<TypeConfig>,
         SnapshotData = Cursor<Vec<u8>>,
         AsyncRuntime = TokioRuntime
+);
+
+#[cfg(feature = "monoio")]
+openraft::declare_raft_types!(
+    /// Declare the type configuration for `MemStore`.
+    pub TypeConfig:
+        D = ClientRequest,
+        R = ClientResponse,
+        NodeId = MemNodeId,
+        Node = (),
+        Entry = Entry<TypeConfig>,
+        SnapshotData = Cursor<Vec<u8>>,
+        AsyncRuntime = openraft::monoio::MonoioRuntime
 );
 
 /// The application snapshot type which the `MemStore` works with.
