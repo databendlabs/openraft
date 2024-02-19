@@ -141,6 +141,14 @@ TODO: 0.9
 
 Check out the [CONTRIBUTING.md](https://github.com/datafuselabs/openraft/blob/main/CONTRIBUTING.md) guide for more details on getting started with contributing to this project.
 
+## Contributors
+
+<a href="https://github.com/datafuselabs/openraft/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=datafuselabs/openraft"/>
+</a>
+
+Made with [contributors-img](https://contrib.rocks).
+
 # License
 
 Openraft is licensed under the terms of the [MIT License](https://en.wikipedia.org/wiki/MIT_License#License_terms) or the [Apache License 2.0](http://www.apache.org/licenses/LICENSE-2.0), at your choosing.
