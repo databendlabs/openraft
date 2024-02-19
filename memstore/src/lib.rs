@@ -15,6 +15,7 @@ use openraft::storage::LogState;
 use openraft::storage::RaftLogReader;
 use openraft::storage::RaftSnapshotBuilder;
 use openraft::storage::Snapshot;
+use openraft::AsyncRuntime;
 use openraft::Entry;
 use openraft::EntryPayload;
 use openraft::LogId;
@@ -26,7 +27,6 @@ use openraft::SnapshotMeta;
 use openraft::StorageError;
 use openraft::StorageIOError;
 use openraft::StoredMembership;
-use openraft::TokioRuntime;
 use openraft::Vote;
 use serde::Deserialize;
 use serde::Serialize;
@@ -82,7 +82,7 @@ openraft::declare_raft_types!(
         Node = (),
         Entry = Entry<TypeConfig>,
         SnapshotData = Cursor<Vec<u8>>,
-        AsyncRuntime = TokioRuntime
+        AsyncRuntime = openraft::TokioRuntime
 );
 
 #[cfg(feature = "monoio")]
@@ -246,7 +246,7 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<MemStore> {
 
         if let Some(d) = self.get_blocking(&BlockOperation::DelayBuildingSnapshot) {
             tracing::info!(?d, "delay snapshot build");
-            tokio::time::sleep(d).await;
+            <TypeConfig as RaftTypeConfig>::AsyncRuntime::sleep(d).await;
         }
 
         {
@@ -259,7 +259,7 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<MemStore> {
 
             if let Some(d) = self.get_blocking(&BlockOperation::BuildSnapshot) {
                 tracing::info!(?d, "blocking snapshot build");
-                tokio::time::sleep(d).await;
+                <TypeConfig as RaftTypeConfig>::AsyncRuntime::sleep(d).await;
             }
         }
 
@@ -382,7 +382,7 @@ impl RaftStorage<TypeConfig> for Arc<MemStore> {
 
         if let Some(d) = self.get_blocking(&BlockOperation::PurgeLog) {
             tracing::info!(?d, "block purging log");
-            tokio::time::sleep(d).await;
+            <TypeConfig as RaftTypeConfig>::AsyncRuntime::sleep(d).await;
         }
 
         {
