@@ -200,7 +200,7 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
     async fn begin_receiving_snapshot(
         &mut self,
     ) -> Result<Box<<TypeConfig as RaftTypeConfig>::SnapshotData>, StorageError<NodeId>> {
-        Ok(Box::new(StateMachineData::default()))
+        Ok(Box::default())
     }
 
     #[tracing::instrument(level = "trace", skip(self, snapshot))]

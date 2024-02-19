@@ -62,7 +62,7 @@ pub async fn snapshot(app: &mut App, req: String) -> String {
         .raft
         .install_complete_snapshot(vote, snapshot)
         .await
-        .map_err(|e| typ::RaftError::<typ::Infallible>::Fatal(e));
+        .map_err(typ::RaftError::<typ::Infallible>::Fatal);
     encode(res)
 }
 
