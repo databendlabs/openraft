@@ -6,7 +6,6 @@ mod factory;
 mod rpc_option;
 mod rpc_type;
 #[cfg(not(feature = "general-snapshot-data"))] pub(crate) mod stream_snapshot;
-#[cfg(not(feature = "general-snapshot-data"))] pub(crate) mod streaming;
 
 pub use backoff::Backoff;
 pub use factory::RaftNetworkFactory;

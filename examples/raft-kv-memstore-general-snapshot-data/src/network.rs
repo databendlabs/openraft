@@ -1,14 +1,10 @@
 use std::future::Future;
 
-
-
 use openraft::error::RemoteError;
 use openraft::error::ReplicationClosed;
 use openraft::network::RPCOption;
 use openraft::raft::AppendEntriesRequest;
 use openraft::raft::AppendEntriesResponse;
-
-
 use openraft::raft::SnapshotResponse;
 use openraft::raft::VoteRequest;
 use openraft::raft::VoteResponse;

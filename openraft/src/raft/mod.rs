@@ -58,10 +58,6 @@ use crate::metrics::RaftMetrics;
 use crate::metrics::RaftServerMetrics;
 use crate::metrics::Wait;
 use crate::metrics::WaitError;
-#[cfg(not(feature = "general-snapshot-data"))]
-use crate::network::stream_snapshot::Chunked;
-#[cfg(not(feature = "general-snapshot-data"))]
-use crate::network::stream_snapshot::SnapshotTransport;
 use crate::network::RaftNetworkFactory;
 use crate::raft::raft_inner::RaftInner;
 use crate::raft::runtime_config_handle::RuntimeConfigHandle;
@@ -424,6 +420,9 @@ where C: RaftTypeConfig
     where
         C::SnapshotData: tokio::io::AsyncRead + tokio::io::AsyncWrite + tokio::io::AsyncSeek + Unpin,
     {
+        use crate::network::stream_snapshot::Chunked;
+        use crate::network::stream_snapshot::SnapshotTransport;
+
         tracing::debug!(req = display(&req), "Raft::install_snapshot()");
 
         let req_vote = req.vote;
@@ -460,7 +459,7 @@ where C: RaftTypeConfig
                     }
                 }
             };
-            *streaming = Some(crate::network::streaming::Streaming::new(
+            *streaming = Some(crate::network::stream_snapshot::Streaming::new(
                 req.meta.snapshot_id.clone(),
                 snapshot_data,
             ));

@@ -44,7 +44,7 @@ where C: RaftTypeConfig
 
     /// The ongoing snapshot transmission.
     #[cfg(not(feature = "general-snapshot-data"))]
-    pub(in crate::raft) snapshot: Mutex<Option<crate::network::streaming::Streaming<C>>>,
+    pub(in crate::raft) snapshot: Mutex<Option<crate::network::stream_snapshot::Streaming<C>>>,
 }
 
 impl<C> RaftInner<C>

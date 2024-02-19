@@ -1,9 +1,5 @@
 use std::fmt::Debug;
 
-#[cfg(not(feature = "general-snapshot-data"))] use tokio::io::AsyncRead;
-#[cfg(not(feature = "general-snapshot-data"))] use tokio::io::AsyncSeek;
-#[cfg(not(feature = "general-snapshot-data"))] use tokio::io::AsyncWrite;
-
 use crate::entry::FromAppData;
 use crate::entry::RaftEntry;
 use crate::AppData;
@@ -64,7 +60,12 @@ pub trait RaftTypeConfig:
     /// See the [storage chapter of the guide](https://datafuselabs.github.io/openraft/getting-started.html#implement-raftstorage)
     /// for details on where and how this is used.
     #[cfg(not(feature = "general-snapshot-data"))]
-    type SnapshotData: AsyncRead + AsyncWrite + AsyncSeek + OptionalSend + Unpin + 'static;
+    type SnapshotData: tokio::io::AsyncRead
+        + tokio::io::AsyncWrite
+        + tokio::io::AsyncSeek
+        + OptionalSend
+        + Unpin
+        + 'static;
     #[cfg(feature = "general-snapshot-data")]
     type SnapshotData: OptionalSend + 'static;
 
