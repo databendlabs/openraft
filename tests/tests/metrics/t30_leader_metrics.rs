@@ -6,15 +6,17 @@ use futures::stream::StreamExt;
 use maplit::btreemap;
 use maplit::btreeset;
 use openraft::testing::log_id;
+use openraft::AsyncRuntime;
 use openraft::CommittedLeaderId;
 use openraft::Config;
 use openraft::LogId;
+use openraft::RaftTypeConfig;
 use openraft::ServerState;
+use openraft_memstore::TypeConfig;
 #[allow(unused_imports)] use pretty_assertions::assert_eq;
 #[allow(unused_imports)] use pretty_assertions::assert_ne;
 
 use crate::fixtures::init_default_ut_tracing;
-use crate::fixtures::runtime::sleep;
 use crate::fixtures::RaftRouter;
 
 /// Cluster leader_metrics test.
@@ -156,7 +158,7 @@ async fn leader_metrics() -> Result<()> {
     tracing::info!(log_index, "--- let node-1 to elect to take leadership from node-0");
     {
         // Let the leader lease expire
-        sleep(Duration::from_millis(700)).await;
+        <TypeConfig as RaftTypeConfig>::AsyncRuntime::sleep(Duration::from_millis(700)).await;
 
         n1.trigger().elect().await?;
         n1.wait(timeout()).state(ServerState::Leader, "node-1 becomes leader").await?;

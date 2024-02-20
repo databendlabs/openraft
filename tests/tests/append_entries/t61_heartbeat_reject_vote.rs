@@ -6,13 +6,16 @@ use anyhow::Result;
 use maplit::btreeset;
 use openraft::raft::VoteRequest;
 use openraft::testing::log_id;
+use openraft::AsyncRuntime;
 use openraft::Config;
+use openraft::RaftTypeConfig;
 use openraft::Vote;
+use openraft_memstore::TypeConfig;
 
 use crate::fixtures::init_default_ut_tracing;
-use crate::fixtures::runtime::sleep;
-use crate::fixtures::runtime::Instant;
 use crate::fixtures::RaftRouter;
+
+type Instant = <<TypeConfig as RaftTypeConfig>::AsyncRuntime as AsyncRuntime>::Instant;
 
 /// If a follower receives heartbeat, it should reject vote request until leader lease expired.
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
@@ -29,7 +32,7 @@ async fn heartbeat_reject_vote() -> Result<()> {
     let mut router = RaftRouter::new(config.clone());
 
     let now = Instant::now();
-    sleep(Duration::from_millis(1)).await;
+    <TypeConfig as RaftTypeConfig>::AsyncRuntime::sleep(Duration::from_millis(1)).await;
 
     let log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {3}).await?;
 
@@ -45,7 +48,7 @@ async fn heartbeat_reject_vote() -> Result<()> {
         });
 
         let now = Instant::now();
-        sleep(Duration::from_millis(700)).await;
+        <TypeConfig as RaftTypeConfig>::AsyncRuntime::sleep(Duration::from_millis(700)).await;
 
         let m = vote_modified_time.clone();
 
@@ -68,14 +71,14 @@ async fn heartbeat_reject_vote() -> Result<()> {
     tracing::info!(log_index, "--- ensures no more blank-log heartbeat is used");
     {
         // TODO: this part can be removed when blank-log heartbeat is removed.
-        sleep(Duration::from_millis(1500)).await;
+        <TypeConfig as RaftTypeConfig>::AsyncRuntime::sleep(Duration::from_millis(1500)).await;
         router.wait(&1, timeout()).applied_index(Some(log_index), "no log is written").await?;
     }
 
     tracing::info!(log_index, "--- disable heartbeat, vote request will be granted");
     {
         node0.runtime_config().heartbeat(false);
-        sleep(Duration::from_millis(1500)).await;
+        <TypeConfig as RaftTypeConfig>::AsyncRuntime::sleep(Duration::from_millis(1500)).await;
 
         router.wait(&1, timeout()).applied_index(Some(log_index), "no log is written").await?;
 

@@ -8,16 +8,17 @@ use openraft::error::ChangeMembershipError;
 use openraft::error::ClientWriteError;
 use openraft::error::InProgress;
 use openraft::storage::RaftLogReaderExt;
+use openraft::AsyncRuntime;
 use openraft::ChangeMembers;
 use openraft::CommittedLeaderId;
 use openraft::Config;
 use openraft::LogId;
 use openraft::Membership;
+use openraft::RaftTypeConfig;
 use openraft::StorageHelper;
+use openraft_memstore::TypeConfig;
 
 use crate::fixtures::init_default_ut_tracing;
-use crate::fixtures::runtime::sleep;
-use crate::fixtures::runtime::spawn;
 use crate::fixtures::RaftRouter;
 
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
@@ -148,7 +149,7 @@ async fn add_learner_non_blocking() -> Result<()> {
             if n1_repl.is_none() {
                 tracing::info!("--- no replication attempt is made, sleep and retry: {}-th attempt", i);
 
-                sleep(Duration::from_millis(500)).await;
+                <TypeConfig as RaftTypeConfig>::AsyncRuntime::sleep(Duration::from_millis(500)).await;
                 continue;
             }
             assert_eq!(Some(&None), n1_repl, "no replication state to the learner is reported");
@@ -213,13 +214,13 @@ async fn add_learner_when_previous_membership_not_committed() -> Result<()> {
         router.set_network_error(1, true);
 
         let node = router.get_raft_handle(&0)?;
-        spawn(async move {
+        <TypeConfig as RaftTypeConfig>::AsyncRuntime::spawn(async move {
             let res = node.change_membership([0, 1], false).await;
             tracing::info!("do not expect res: {:?}", res);
             unreachable!("do not expect any res");
         });
 
-        sleep(Duration::from_millis(500)).await;
+        <TypeConfig as RaftTypeConfig>::AsyncRuntime::sleep(Duration::from_millis(500)).await;
     }
 
     tracing::info!(log_index, "--- add new node node-1, in non blocking mode");

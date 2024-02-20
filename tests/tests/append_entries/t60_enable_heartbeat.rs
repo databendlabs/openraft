@@ -5,10 +5,13 @@ use anyhow::Result;
 use maplit::btreeset;
 use openraft::AsyncRuntime;
 use openraft::Config;
+use openraft::RaftTypeConfig;
+use openraft_memstore::TypeConfig;
 
 use crate::fixtures::init_default_ut_tracing;
-use crate::fixtures::runtime::Runtime;
 use crate::fixtures::RaftRouter;
+
+type Instant = <<TypeConfig as RaftTypeConfig>::AsyncRuntime as AsyncRuntime>::Instant;
 
 /// Enable heartbeat, heartbeat should be replicated.
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
@@ -30,8 +33,8 @@ async fn enable_heartbeat() -> Result<()> {
     node0.runtime_config().heartbeat(true);
 
     for _i in 0..3 {
-        let now = <Runtime as AsyncRuntime>::Instant::now();
-        Runtime::sleep(Duration::from_millis(500)).await;
+        let now = Instant::now();
+        <TypeConfig as RaftTypeConfig>::AsyncRuntime::sleep(Duration::from_millis(500)).await;
 
         for node_id in [1, 2, 3] {
             // no new log will be sent, .

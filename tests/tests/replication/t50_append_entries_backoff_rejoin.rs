@@ -3,11 +3,13 @@ use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
+use openraft::AsyncRuntime;
 use openraft::Config;
+use openraft::RaftTypeConfig;
 use openraft::ServerState;
+use openraft_memstore::TypeConfig;
 
 use crate::fixtures::init_default_ut_tracing;
-use crate::fixtures::runtime::sleep;
 use crate::fixtures::RaftRouter;
 
 /// A restarted unreachable node should recover correctly, and catch up with the leader:
@@ -44,7 +46,7 @@ async fn append_entries_backoff_rejoin() -> Result<()> {
     tracing::info!(log_index, "--- elect node-1");
     {
         // Timeout leader lease otherwise vote-request will be rejected by node-2
-        sleep(Duration::from_millis(1_000)).await;
+        <TypeConfig as RaftTypeConfig>::AsyncRuntime::sleep(Duration::from_millis(1_000)).await;
 
         n1.trigger().elect().await?;
         n1.wait(timeout()).state(ServerState::Leader, "node-1 elect").await?;

@@ -3,11 +3,13 @@ use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
+use openraft::AsyncRuntime;
 use openraft::Config;
 use openraft::LogIdOptionExt;
+use openraft::RaftTypeConfig;
+use openraft_memstore::TypeConfig;
 
 use crate::fixtures::init_default_ut_tracing;
-use crate::fixtures::runtime::sleep;
 use crate::fixtures::RaftRouter;
 
 /// Dynamic membership test.
@@ -41,7 +43,7 @@ async fn leader_election_after_changing_0_to_01234() -> Result<()> {
     router.set_network_error(0, true);
 
     // Wait for leader lease to expire
-    sleep(Duration::from_millis(700)).await;
+    <TypeConfig as RaftTypeConfig>::AsyncRuntime::sleep(Duration::from_millis(700)).await;
 
     // Let node-1 become leader.
     let node_1 = router.get_raft_handle(&1)?;

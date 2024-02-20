@@ -3,13 +3,15 @@ use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
+use openraft::AsyncRuntime;
 use openraft::CommittedLeaderId;
 use openraft::Config;
 use openraft::LogId;
 use openraft::RaftLogReader;
+use openraft::RaftTypeConfig;
+use openraft_memstore::TypeConfig;
 
 use crate::fixtures::init_default_ut_tracing;
-use crate::fixtures::runtime::sleep;
 use crate::fixtures::RaftRouter;
 
 /// Replication blocks purge, but it should not purge for ever.
@@ -52,7 +54,7 @@ async fn replication_does_not_block_purge() -> Result<()> {
             .snapshot(LogId::new(CommittedLeaderId::new(1, 0), log_index), "built snapshot")
             .await?;
 
-        sleep(Duration::from_millis(500)).await;
+        <TypeConfig as RaftTypeConfig>::AsyncRuntime::sleep(Duration::from_millis(500)).await;
 
         let (mut sto0, mut _sm0) = router.get_storage_handle(&0)?;
         let logs = sto0.try_get_log_entries(..).await?;

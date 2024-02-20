@@ -3,13 +3,15 @@ use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
+use openraft::AsyncRuntime;
 use openraft::CommittedLeaderId;
 use openraft::Config;
 use openraft::LogId;
 use openraft::RaftLogReader;
+use openraft::RaftTypeConfig;
+use openraft_memstore::TypeConfig;
 
 use crate::fixtures::init_default_ut_tracing;
-use crate::fixtures::runtime::sleep;
 use crate::fixtures::RaftRouter;
 
 /// Leader logs should be deleted upto snapshot.last_log_id-max_in_snapshot_log_to_keep after
@@ -51,7 +53,7 @@ async fn purge_in_snapshot_logs() -> Result<()> {
         let (mut sto0, mut _sm0) = router.get_storage_handle(&0)?;
 
         // Wait for purge to complete.
-        sleep(Duration::from_millis(500)).await;
+        <TypeConfig as RaftTypeConfig>::AsyncRuntime::sleep(Duration::from_millis(500)).await;
 
         let logs = sto0.try_get_log_entries(..).await?;
         assert_eq!(max_keep as usize, logs.len());
@@ -78,7 +80,7 @@ async fn purge_in_snapshot_logs() -> Result<()> {
 
     // There may be a cached append-entries request that already loads log 10..15 from the store,
     // just before building snapshot.
-    sleep(Duration::from_millis(500)).await;
+    <TypeConfig as RaftTypeConfig>::AsyncRuntime::sleep(Duration::from_millis(500)).await;
 
     tracing::info!(
         log_index,
