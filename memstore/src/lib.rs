@@ -95,7 +95,7 @@ openraft::declare_raft_types!(
         Node = (),
         Entry = Entry<TypeConfig>,
         SnapshotData = Cursor<Vec<u8>>,
-        AsyncRuntime = openraft::monoio::MonoioRuntime
+        AsyncRuntime = openraft::MonoioRuntime
 );
 
 /// The application snapshot type which the `MemStore` works with.
