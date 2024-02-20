@@ -226,14 +226,9 @@ async fn check_logs<C, LS>(log_store: &mut LS, terms: Vec<u64>) -> Result<()>
 where
     C: RaftTypeConfig,
     LS: RaftLogStorage<C>,
+    C::NodeId: Sync + Send,
 {
-    let logs = match log_store.get_log_entries(..).await {
-        Ok(elt) => elt,
-        Err(err) => {
-            dbg!(err);
-            anyhow::bail!("blbl")
-        }
-    };
+    let logs = log_store.get_log_entries(..).await?;
     let skip = 0;
     let want: Vec<Entry<openraft_memstore::TypeConfig>> = terms
         .iter()
