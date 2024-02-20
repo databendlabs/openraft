@@ -1,4 +1,3 @@
-/*
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -39,6 +38,7 @@ async fn shutdown() -> Result<()> {
 
 /// A panicked RaftCore should also return a proper error the next time accessing the `Raft`.
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[cfg_attr(feature = "monoio", ignore)]
 async fn return_error_after_panic() -> Result<()> {
     let config = Arc::new(
         Config {
@@ -109,4 +109,3 @@ async fn return_error_after_shutdown() -> Result<()> {
 
     Ok(())
 }
-*/
