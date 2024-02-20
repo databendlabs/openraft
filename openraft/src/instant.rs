@@ -34,12 +34,3 @@ pub trait Instant:
     /// Return the current instant.
     fn now() -> Self;
 }
-
-pub type TokioInstant = tokio::time::Instant;
-
-impl Instant for tokio::time::Instant {
-    #[inline]
-    fn now() -> Self {
-        tokio::time::Instant::now()
-    }
-}
