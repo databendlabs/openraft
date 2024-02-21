@@ -1133,7 +1133,7 @@ where
     Ok(())
 }
 
-/// Build a `RaftStorage` implementation and run a test on it.
+/// Build a `RaftLogStorage` and `RaftStateMachine` implementation and run a test on it.
 async fn run_test<C, LS, SM, G, B, TestFn, Ret, Fu>(
     builder: &B,
     test_fn: TestFn,
@@ -1150,7 +1150,7 @@ where
     test_fn(store, sm).await
 }
 
-/// A wrapper for calling nonblocking `RaftStorage::apply_to_state_machine()`
+/// A wrapper for calling nonblocking `RaftStateMachine::apply()`
 async fn apply<C, SM, I>(sm: &mut SM, entries: I) -> Result<Vec<C::R>, StorageError<C::NodeId>>
 where
     C: RaftTypeConfig,
@@ -1162,7 +1162,7 @@ where
     Ok(resp)
 }
 
-/// A wrapper for calling nonblocking `RaftStorage::append_to_log()`
+/// A wrapper for calling nonblocking `RaftLogStorage::append()`
 async fn append<C, LS, I>(store: &mut LS, entries: I) -> Result<(), StorageError<C::NodeId>>
 where
     C: RaftTypeConfig,
