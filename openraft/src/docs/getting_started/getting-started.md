@@ -65,7 +65,7 @@ impl openraft::RaftTypeConfig for TypeConfig {
 ```
 
 ```ignore
-pub struct Raft<C: RaftTypeConfig, N, LS, SM> {}
+pub struct Raft<C: RaftTypeConfig> {}
 ```
 
 Openraft provides default implementations for `Node` ([`EmptyNode`] and [`BasicNode`]) and log `Entry` ([`Entry`]).
@@ -338,58 +338,58 @@ Additionally, two test scripts for setting up a cluster are available:
 - [test_cluster.rs](https://github.com/datafuselabs/openraft/blob/main/examples/raft-kv-memstore/tests/cluster/test_cluster.rs)
   uses the `ExampleClient` to set up a cluster, write data, and read it back.
 
-[`Raft`]:                           `crate::Raft`
-[`Raft::append_entries()`]:           `crate::Raft::append_entries`
-[`Raft::vote()`]:                     `crate::Raft::vote`
-[`Raft::install_snapshot()`]:         `crate::Raft::install_snapshot`
+[`Raft`]:                               `crate::Raft`
+[`Raft::append_entries()`]:             `crate::Raft::append_entries`
+[`Raft::vote()`]:                       `crate::Raft::vote`
+[`Raft::install_snapshot()`]:           `crate::Raft::install_snapshot`
 
-[`AppendEntriesRequest`]:           `crate::raft::AppendEntriesRequest`
-[`VoteRequest`]:                    `crate::raft::VoteRequest`
-[`InstallSnapshotRequest`]:         `crate::raft::InstallSnapshotRequest`
+[`AppendEntriesRequest`]:               `crate::raft::AppendEntriesRequest`
+[`VoteRequest`]:                        `crate::raft::VoteRequest`
+[`InstallSnapshotRequest`]:             `crate::raft::InstallSnapshotRequest`
 
-[`AppData`]:                        `crate::AppData`
-[`AppDataResponse`]:                `crate::AppDataResponse`
-[`RaftTypeConfig`]:                 `crate::RaftTypeConfig`
-[`LogId`]:                          `crate::LogId`
-[`Membership`]:                     `crate::Membership`
-[`EmptyNode`]:                      `crate::EmptyNode`
-[`BasicNode`]:                      `crate::BasicNode`
-[`Entry`]:                          `crate::entry::Entry`
-[`docs::Vote`]:                     `crate::docs::data::Vote`
-[`Vote`]:                           `crate::vote::Vote`
-[`LogState`]:                       `crate::storage::LogState` 
+[`AppData`]:                            `crate::AppData`
+[`AppDataResponse`]:                    `crate::AppDataResponse`
+[`RaftTypeConfig`]:                     `crate::RaftTypeConfig`
+[`LogId`]:                              `crate::LogId`
+[`Membership`]:                         `crate::Membership`
+[`EmptyNode`]:                          `crate::EmptyNode`
+[`BasicNode`]:                          `crate::BasicNode`
+[`Entry`]:                              `crate::entry::Entry`
+[`docs::Vote`]:                         `crate::docs::data::Vote`
+[`Vote`]:                               `crate::vote::Vote`
+[`LogState`]:                           `crate::storage::LogState` 
 
-[`RaftLogReader`]:                  `crate::storage::RaftLogReader`
-[`try_get_log_entries()`]:          `crate::storage::RaftLogReader::try_get_log_entries`
+[`RaftLogReader`]:                      `crate::storage::RaftLogReader`
+[`try_get_log_entries()`]:              `crate::storage::RaftLogReader::try_get_log_entries`
 
-[`RaftStorage`]:                    `crate::storage::RaftStorage`
-[`get_log_state()`]:                `crate::storage::RaftStorage::get_log_state`
-[`RaftStorage::LogReader`]:         `crate::storage::RaftStorage::LogReader`
-[`RaftStorage::SnapshotBuilder`]:   `crate::storage::RaftStorage::SnapshotBuilder`
-[`get_log_reader()`]:               `crate::storage::RaftStorage::get_log_reader`
-[`save_vote()`]:                    `crate::storage::RaftStorage::save_vote`
-[`read_vote()`]:                    `crate::storage::RaftStorage::read_vote`
-[`append_to_log()`]:                `crate::storage::RaftStorage::append_to_log`
-[`delete_conflict_logs_since()`]:   `crate::storage::RaftStorage::delete_conflict_logs_since`
-[`purge_logs_upto()`]:              `crate::storage::RaftStorage::purge_logs_upto`
-[`last_applied_state()`]:           `crate::storage::RaftStorage::last_applied_state`
-[`apply_to_state_machine()`]:       `crate::storage::RaftStorage::apply_to_state_machine`
-[`get_current_snapshot()`]:         `crate::storage::RaftStorage::get_current_snapshot`
-[`begin_receiving_snapshot()`]:     `crate::storage::RaftStorage::begin_receiving_snapshot`
-[`install_snapshot()`]:             `crate::storage::RaftStorage::install_snapshot`
-[`get_snapshot_builder()`]:         `crate::storage::RaftStorage::get_snapshot_builder`
+[`RaftStorage`]:                        `crate::storage::RaftStorage`
+[`get_log_state()`]:                    `crate::storage::RaftStorage::get_log_state`
+[`RaftStorage::LogReader`]:             `crate::storage::RaftStorage::LogReader`
+[`RaftStorage::SnapshotBuilder`]:       `crate::storage::RaftStorage::SnapshotBuilder`
+[`get_log_reader()`]:                   `crate::storage::RaftStorage::get_log_reader`
+[`save_vote()`]:                        `crate::storage::RaftStorage::save_vote`
+[`read_vote()`]:                        `crate::storage::RaftStorage::read_vote`
+[`append_to_log()`]:                    `crate::storage::RaftStorage::append_to_log`
+[`delete_conflict_logs_since()`]:       `crate::storage::RaftStorage::delete_conflict_logs_since`
+[`purge_logs_upto()`]:                  `crate::storage::RaftStorage::purge_logs_upto`
+[`last_applied_state()`]:               `crate::storage::RaftStorage::last_applied_state`
+[`apply_to_state_machine()`]:           `crate::storage::RaftStorage::apply_to_state_machine`
+[`get_current_snapshot()`]:             `crate::storage::RaftStorage::get_current_snapshot`
+[`begin_receiving_snapshot()`]:         `crate::storage::RaftStorage::begin_receiving_snapshot`
+[`install_snapshot()`]:                 `crate::storage::RaftStorage::install_snapshot`
+[`get_snapshot_builder()`]:             `crate::storage::RaftStorage::get_snapshot_builder`
 
-[`RaftNetworkFactory`]:             `crate::network::RaftNetworkFactory`
-[`RaftNetworkFactory::new_client()`]: `crate::network::RaftNetworkFactory::new_client`
-[`RaftNetwork`]:                    `crate::network::RaftNetwork`
-[`send_append_entries()`]:    `crate::RaftNetwork::send_append_entries`
-[`send_vote()`]:              `crate::RaftNetwork::send_vote`
-[`send_install_snapshot()`]:  `crate::RaftNetwork::send_install_snapshot`
+[`RaftNetworkFactory`]:                 `crate::network::RaftNetworkFactory`
+[`RaftNetworkFactory::new_client()`]:   `crate::network::RaftNetworkFactory::new_client`
+[`RaftNetwork`]:                        `crate::network::RaftNetwork`
+[`send_append_entries()`]:              `crate::RaftNetwork::send_append_entries`
+[`send_vote()`]:                        `crate::RaftNetwork::send_vote`
+[`send_install_snapshot()`]:            `crate::RaftNetwork::send_install_snapshot`
 
 
-[`RaftSnapshotBuilder`]:            `crate::storage::RaftSnapshotBuilder`
-[`build_snapshot()`]:                 `crate::storage::RaftSnapshotBuilder::build_snapshot`
-[`Snapshot`]:                         `crate::storage::Snapshot`
+[`RaftSnapshotBuilder`]:                `crate::storage::RaftSnapshotBuilder`
+[`build_snapshot()`]:                   `crate::storage::RaftSnapshotBuilder::build_snapshot`
+[`Snapshot`]:                           `crate::storage::Snapshot`
 
-[`StoreBuilder`]:                   `crate::testing::StoreBuilder`
-[`Suite`]:                          `crate::testing::Suite`
+[`StoreBuilder`]:                       `crate::testing::StoreBuilder`
+[`Suite`]:                              `crate::testing::Suite`
