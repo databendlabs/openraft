@@ -1,4 +1,3 @@
-use std::option::Option::None;
 use std::sync::Arc;
 use std::time::Duration;
 
