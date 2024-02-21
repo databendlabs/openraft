@@ -36,6 +36,7 @@ fix:
 
 doc:
 	make -C openraft/src/docs/faq
+	make -C openraft/src/docs/feature_flags
 	RUSTDOCFLAGS="-D warnings" cargo doc --document-private-items --all --no-deps
 
 check_missing_doc:
