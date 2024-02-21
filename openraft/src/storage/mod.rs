@@ -201,6 +201,10 @@ where C: RaftTypeConfig
 /// storage, except concurrency with snapshot builder and log reader, both created by this API.
 /// The implementation of the API has to cope with (infrequent) concurrent access from these two
 /// components.
+#[cfg_attr(
+    feature = "storage-v2",
+    deprecated(since = "0.8.4", note = "use `RaftLogStorage` and `RaftStateMachine` instead")
+)]
 #[add_async_trait]
 pub trait RaftStorage<C>: RaftLogReader<C> + OptionalSend + OptionalSync + 'static
 where C: RaftTypeConfig
