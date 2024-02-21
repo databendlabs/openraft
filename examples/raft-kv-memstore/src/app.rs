@@ -11,7 +11,7 @@ pub struct App {
     pub id: NodeId,
     pub addr: String,
     pub raft: Raft,
-    pub log_store: Arc<LogStore>,
+    pub log_store: LogStore,
     pub state_machine_store: Arc<StateMachineStore>,
     pub config: Arc<openraft::Config>,
 }
