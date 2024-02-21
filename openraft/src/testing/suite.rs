@@ -2,7 +2,6 @@ use std::collections::BTreeSet;
 use std::fmt::Debug;
 use std::future::Future;
 use std::marker::PhantomData;
-use std::option::Option::None;
 use std::time::Duration;
 
 use anyerror::AnyError;
