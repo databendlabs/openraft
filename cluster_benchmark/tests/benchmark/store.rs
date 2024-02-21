@@ -102,7 +102,7 @@ impl StateMachineStore {
 }
 
 impl RaftLogReader<TypeConfig> for Arc<LogStore> {
-    async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + OptionalSend + OptionalSync>(
+    async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + OptionalSend>(
         &mut self,
         range: RB,
     ) -> Result<Vec<Entry<TypeConfig>>, StorageError<NodeId>> {
