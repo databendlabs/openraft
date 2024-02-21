@@ -15,7 +15,6 @@ use crate::storage::RaftStateMachine;
 use crate::LogId;
 use crate::LogState;
 use crate::OptionalSend;
-use crate::OptionalSync;
 use crate::RaftLogReader;
 use crate::RaftStorage;
 use crate::RaftTypeConfig;
@@ -102,7 +101,7 @@ where
     C: RaftTypeConfig,
     S: RaftStorage<C>,
 {
-    async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + OptionalSend + OptionalSync>(
+    async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + OptionalSend>(
         &mut self,
         range: RB,
     ) -> Result<Vec<C::Entry>, StorageError<C::NodeId>> {

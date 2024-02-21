@@ -157,7 +157,7 @@ where C: RaftTypeConfig
     /// stop)`.
     ///
     /// Entry that is not found is allowed.
-    async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + OptionalSend + OptionalSync>(
+    async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + OptionalSend>(
         &mut self,
         range: RB,
     ) -> Result<Vec<C::Entry>, StorageError<C::NodeId>>;

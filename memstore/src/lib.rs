@@ -19,7 +19,6 @@ use openraft::Entry;
 use openraft::EntryPayload;
 use openraft::LogId;
 use openraft::OptionalSend;
-use openraft::OptionalSync;
 use openraft::RaftLogId;
 use openraft::RaftStorage;
 use openraft::RaftTypeConfig;
@@ -207,7 +206,7 @@ impl Default for MemStore {
 }
 
 impl RaftLogReader<TypeConfig> for Arc<MemStore> {
-    async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + OptionalSend + OptionalSync>(
+    async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + OptionalSend>(
         &mut self,
         range: RB,
     ) -> Result<Vec<Entry<TypeConfig>>, StorageError<MemNodeId>> {
