@@ -42,7 +42,7 @@ pub struct Response(Result<Option<String>, ClientError>);
 ```
 
 These two types are entirely application-specific and are mainly related to the
-state machine implementation in [`RaftStorage`].
+state machine implementation in [`RaftStateMachine`].
 
 
 ## 2. Define types for the application
@@ -71,50 +71,56 @@ pub struct Raft<C: RaftTypeConfig> {}
 Openraft provides default implementations for `Node` ([`EmptyNode`] and [`BasicNode`]) and log `Entry` ([`Entry`]).
 You can use these implementations directly or define your own custom types.
 
-A [`RaftTypeConfig`] is also used by other components such as [`RaftStorage`], [`RaftNetworkFactory`] and [`RaftNetwork`].
+A [`RaftTypeConfig`] is also used by other components such as [`RaftLogStorage`], [`RaftStateMachine`],
+[`RaftNetworkFactory`] and [`RaftNetwork`].
 
 
-## 3. Implement [`RaftStorage`]
+## 3. Implement [`RaftLogStorage`] and [`RaftStateMachine`]
 
-The trait [`RaftStorage`] defines how data is stored and consumed.
+The trait [`RaftLogStorage`] defines how log data is stored and consumed.
 It could be a wrapper for a local key-value store like [RocksDB](https://docs.rs/rocksdb/latest/rocksdb/).
+
+The trait [`RaftStateMachine`] defines how log is interpreted. Usually it is an in memory state machine with or without on-disk data backed.
 
 There is a good example,
 [`Mem KV Store`](https://github.com/datafuselabs/openraft/blob/main/examples/raft-kv-memstore/src/store/mod.rs),
-that demonstrates what should be done when a method is called. The list of [`RaftStorage`] methods is shown below.
+that demonstrates what should be done when a method is called. The storage methods are listed as the below.
 Follow the link to method document to see the details.
 
-| Kind       | [`RaftStorage`] method           | Return value                 | Description                           |
-|------------|----------------------------------|------------------------------|---------------------------------------|
-| Read log:  | [`get_log_reader()`]             | impl [`RaftLogReader`]       | get a read-only log reader            |
-|            |                                  | ↳ [`try_get_log_entries()`]  | get a range of logs                   |
-|            | [`get_log_state()`]              | [`LogState`]                 | get first/last log id                 |
-| Write log: | [`append_to_log()`]              | ()                           | append logs                           |
-| Write log: | [`delete_conflict_logs_since()`] | ()                           | delete logs `[index, +oo)`            |
-| Write log: | [`purge_logs_upto()`]            | ()                           | purge logs `(-oo, index]`             |
-| Vote:      | [`save_vote()`]                  | ()                           | save vote                             |
-| Vote:      | [`read_vote()`]                  | [`Vote`]                     | read vote                             |
-| SM:        | [`last_applied_state()`]         | [`LogId`], [`Membership`]    | get last applied log id, membership   |
-| SM:        | [`apply_to_state_machine()`]     | Vec of [`AppDataResponse`]   | apply logs to state machine           |
-| Snapshot:  | [`begin_receiving_snapshot()`]   | `SnapshotData`               | begin to install snapshot             |
-| Snapshot:  | [`install_snapshot()`]           | ()                           | install snapshot                      |
-| Snapshot:  | [`get_current_snapshot()`]       | [`Snapshot`]                 | get current snapshot                  |
-| Snapshot:  | [`get_snapshot_builder()`]       | impl [`RaftSnapshotBuilder`] | get a snapshot builder                |
-|            |                                  | ↳ [`build_snapshot()`]       | build a snapshot from state machine   |
+| Kind       | [`RaftLogStorage`] method | Return value                 | Description                           |
+|------------|---------------------------|------------------------------|---------------------------------------|
+| Read log:  | [`get_log_reader()`]      | impl [`RaftLogReader`]       | get a read-only log reader            |
+|            |                           | ↳ [`try_get_log_entries()`]  | get a range of logs                   |
+|            | [`get_log_state()`]       | [`LogState`]                 | get first/last log id                 |
+| Write log: | [`append()`]              | ()                           | append logs                           |
+| Write log: | [`truncate()`]            | ()                           | delete logs `[index, +oo)`            |
+| Write log: | [`purge()`]               | ()                           | purge logs `(-oo, index]`             |
+| Vote:      | [`save_vote()`]           | ()                           | save vote                             |
+| Vote:      | [`read_vote()`]           | [`Vote`]                     | read vote                             |
+
+| Kind       | [`RaftStateMachine`] method    | Return value                 | Description                           |
+|------------|--------------------------------|------------------------------|---------------------------------------|
+| SM:        | [`applied_state()`]            | [`LogId`], [`Membership`]    | get last applied log id, membership   |
+| SM:        | [`apply()`]                    | Vec of [`AppDataResponse`]   | apply logs to state machine           |
+| Snapshot:  | [`begin_receiving_snapshot()`] | `SnapshotData`               | begin to install snapshot             |
+| Snapshot:  | [`install_snapshot()`]         | ()                           | install snapshot                      |
+| Snapshot:  | [`get_current_snapshot()`]     | [`Snapshot`]                 | get current snapshot                  |
+| Snapshot:  | [`get_snapshot_builder()`]     | impl [`RaftSnapshotBuilder`] | get a snapshot builder                |
+|            |                                | ↳ [`build_snapshot()`]       | build a snapshot from state machine   |
 
 Most of the APIs are quite straightforward, except two indirect APIs:
 
 -   Read logs:
-    [`RaftStorage`] defines a method [`get_log_reader()`] to get log reader [`RaftLogReader`] :
+    [`RaftLogStorage`] defines a method [`get_log_reader()`] to get log reader [`RaftLogReader`] :
 
     ```ignore
-    trait RaftStorage<C: RaftTypeConfig> {
+    trait RaftLogStorage<C: RaftTypeConfig> {
         type LogReader: RaftLogReader<C>;
         async fn get_log_reader(&mut self) -> Self::LogReader;
     }
     ```
 
-    [`RaftLogReader`] defines the APIs to read logs, and is an also super trait of [`RaftStorage`] :
+    [`RaftLogReader`] defines the APIs to read logs, and is an also super trait of [`RaftLogStorage`] :
     - [`try_get_log_entries()`] get log entries in a range;
 
     ```ignore
@@ -123,18 +129,21 @@ Most of the APIs are quite straightforward, except two indirect APIs:
     }
     ```
 
-    And [`RaftStorage::get_log_state()`][`get_log_state()`] get latest log state from the storage;
+    And [`RaftLogStorage::get_log_state()`][`get_log_state()`] get latest log state from the storage;
 
 -   Build a snapshot from the local state machine needs to be done in two steps:
-    - [`RaftStorage::get_snapshot_builder() -> Self::SnapshotBuilder`][`get_snapshot_builder()`],
+    - [`RaftLogStorage::get_snapshot_builder() -> Self::SnapshotBuilder`][`get_snapshot_builder()`],
     - [`RaftSnapshotBuilder::build_snapshot() -> Result<Snapshot>`][`build_snapshot()`],
 
 
-### Ensure the implementation of RaftStorage is correct
+### Ensure the storage implementation is correct
 
-There is a [Test suite for RaftStorage][`Suite`] available in Openraft. If your implementation passes the tests, Openraft should work well with it. To test your implementation, you have two options:
+There is a [Test suite for RaftLogStorage and RaftStateMachine][`Suite`] available in Openraft.
+If your implementation passes the tests, Openraft should work well with it.
+To test your implementation, you have two options:
 
-1. Run `Suite::test_all()` with an `async fn()` that creates a new [`RaftStorage`], as shown in the [`MemStore` test](https://github.com/datafuselabs/openraft/blob/main/memstore/src/test.rs):
+1. Run `Suite::test_all()` with an `async fn()` that creates a new pair of [`RaftLogStorage`] and [`RaftStateMachine`],
+   as shown in the [`MemStore` test](https://github.com/datafuselabs/openraft/blob/main/memstore/src/test.rs):
 
   ```ignore
   #[test]
@@ -143,14 +152,15 @@ There is a [Test suite for RaftStorage][`Suite`] available in Openraft. If your 
   }
   ```
 
-2. Alternatively, run `Suite::test_all()` with a [`StoreBuilder`] implementation, as shown in the [`RocksStore` test](https://github.com/datafuselabs/openraft/blob/main/rocksstore/src/test.rs).
+2. Alternatively, run `Suite::test_all()` with a [`StoreBuilder`] implementation,
+   as shown in the [`RocksStore` test](https://github.com/datafuselabs/openraft/blob/main/rocksstore/src/test.rs).
 
 By following either of these approaches, you can ensure that your custom storage implementation can work correctly in a distributed system.
 
 
 ### An implementation has to guarantee data durability.
 
-The caller always assumes a completed write is persistent.
+The caller always assumes a completed writing is persistent.
 The raft correctness highly depends on a reliable store.
 
 
@@ -161,9 +171,9 @@ The trait [`RaftNetwork`] defines the data transmission requirements.
 
 ```ignore
 pub trait RaftNetwork<C: RaftTypeConfig>: Send + Sync + 'static {
-    async fn send_append_entries(&mut self, rpc: AppendEntriesRequest<C>) -> Result<...>;
-    async fn send_install_snapshot(&mut self, rpc: InstallSnapshotRequest<C>) -> Result<...>;
-    async fn send_vote(&mut self, rpc: VoteRequest<C::NodeId>) -> Result<...>;
+    async fn vote(&mut self, rpc: VoteRequest<C::NodeId>) -> Result<...>;
+    async fn append_entries(&mut self, rpc: AppendEntriesRequest<C>) -> Result<...>;
+    async fn snapshot(&mut self, vote: Vote<C::NodeId>, snapshot: Snapshot<C>) -> Result<...>;
 }
 ```
 
@@ -174,11 +184,11 @@ and receiving messages between Raft nodes.
 Here is the list of methods that need to be implemented for the [`RaftNetwork`] trait:
 
 
-| [`RaftNetwork`] method       | forward request            | to target                                |
-|------------------------------|----------------------------|------------------------------------------|
-| [`send_append_entries()`]    | [`AppendEntriesRequest`]   | remote node [`Raft::append_entries()`]   |
-| [`send_install_snapshot()`]  | [`InstallSnapshotRequest`] | remote node [`Raft::install_snapshot()`] |
-| [`send_vote()`]              | [`VoteRequest`]            | remote node [`Raft::vote()`]             |
+| [`RaftNetwork`] method | forward request          | to target                                         |
+|------------------------|--------------------------|---------------------------------------------------|
+| [`append_entries()`]   | [`AppendEntriesRequest`] | remote node [`Raft::append_entries()`]            |
+| [`snapshot()`]         | [`Snapshot`]             | remote node [`Raft::install_complete_snapshot()`] |
+| [`vote()`]             | [`VoteRequest`]          | remote node [`Raft::vote()`]                      |
 
 [Mem KV Network](https://github.com/datafuselabs/openraft/blob/main/examples/raft-kv-memstore/src/network/raft_network_impl.rs)
 demonstrates how to forward messages to other Raft nodes using [`reqwest`](https://docs.rs/reqwest/latest/reqwest/) as network transport layer.
@@ -341,7 +351,7 @@ Additionally, two test scripts for setting up a cluster are available:
 [`Raft`]:                               `crate::Raft`
 [`Raft::append_entries()`]:             `crate::Raft::append_entries`
 [`Raft::vote()`]:                       `crate::Raft::vote`
-[`Raft::install_snapshot()`]:           `crate::Raft::install_snapshot`
+[`Raft::install_complete_snapshot()`]:  `crate::Raft::install_complete_snapshot`
 
 [`AppendEntriesRequest`]:               `crate::raft::AppendEntriesRequest`
 [`VoteRequest`]:                        `crate::raft::VoteRequest`
@@ -362,29 +372,33 @@ Additionally, two test scripts for setting up a cluster are available:
 [`RaftLogReader`]:                      `crate::storage::RaftLogReader`
 [`try_get_log_entries()`]:              `crate::storage::RaftLogReader::try_get_log_entries`
 
-[`RaftStorage`]:                        `crate::storage::RaftStorage`
-[`get_log_state()`]:                    `crate::storage::RaftStorage::get_log_state`
-[`RaftStorage::LogReader`]:             `crate::storage::RaftStorage::LogReader`
-[`RaftStorage::SnapshotBuilder`]:       `crate::storage::RaftStorage::SnapshotBuilder`
-[`get_log_reader()`]:                   `crate::storage::RaftStorage::get_log_reader`
-[`save_vote()`]:                        `crate::storage::RaftStorage::save_vote`
-[`read_vote()`]:                        `crate::storage::RaftStorage::read_vote`
-[`append_to_log()`]:                    `crate::storage::RaftStorage::append_to_log`
-[`delete_conflict_logs_since()`]:       `crate::storage::RaftStorage::delete_conflict_logs_since`
-[`purge_logs_upto()`]:                  `crate::storage::RaftStorage::purge_logs_upto`
-[`last_applied_state()`]:               `crate::storage::RaftStorage::last_applied_state`
-[`apply_to_state_machine()`]:           `crate::storage::RaftStorage::apply_to_state_machine`
-[`get_current_snapshot()`]:             `crate::storage::RaftStorage::get_current_snapshot`
-[`begin_receiving_snapshot()`]:         `crate::storage::RaftStorage::begin_receiving_snapshot`
-[`install_snapshot()`]:                 `crate::storage::RaftStorage::install_snapshot`
-[`get_snapshot_builder()`]:             `crate::storage::RaftStorage::get_snapshot_builder`
+
+[`RaftLogStorage::SnapshotBuilder`]:    `crate::storage::RaftLogStorage::SnapshotBuilder`
+
+[`RaftLogStorage`]:                     `crate::storage::RaftLogStorage`
+[`RaftLogStorage::LogReader`]:          `crate::storage::RaftLogStorage::LogReader`
+[`append()`]:                           `crate::storage::RaftLogStorage::append`
+[`truncate()`]:                         `crate::storage::RaftLogStorage::truncate`
+[`purge()`]:                            `crate::storage::RaftLogStorage::purge`
+[`save_vote()`]:                        `crate::storage::RaftLogStorage::save_vote`
+[`read_vote()`]:                        `crate::storage::RaftLogStorage::read_vote`
+[`get_log_state()`]:                    `crate::storage::RaftLogStorage::get_log_state`
+[`get_log_reader()`]:                   `crate::storage::RaftLogStorage::get_log_reader`
+
+[`RaftStateMachine`]:                   `crate::storage::RaftStateMachine`
+[`applied_state()`]:                    `crate::storage::RaftStateMachine::applied_state`
+[`apply()`]:                            `crate::storage::RaftStateMachine::apply`
+[`get_current_snapshot()`]:             `crate::storage::RaftStateMachine::get_current_snapshot`
+[`begin_receiving_snapshot()`]:         `crate::storage::RaftStateMachine::begin_receiving_snapshot`
+[`install_snapshot()`]:                 `crate::storage::RaftStateMachine::install_snapshot`
+[`get_snapshot_builder()`]:             `crate::storage::RaftStateMachine::get_snapshot_builder`
 
 [`RaftNetworkFactory`]:                 `crate::network::RaftNetworkFactory`
 [`RaftNetworkFactory::new_client()`]:   `crate::network::RaftNetworkFactory::new_client`
 [`RaftNetwork`]:                        `crate::network::RaftNetwork`
-[`send_append_entries()`]:              `crate::RaftNetwork::send_append_entries`
-[`send_vote()`]:                        `crate::RaftNetwork::send_vote`
-[`send_install_snapshot()`]:            `crate::RaftNetwork::send_install_snapshot`
+[`append_entries()`]:                   `crate::RaftNetwork::append_entries`
+[`vote()`]:                             `crate::RaftNetwork::vote`
+[`snapshot()`]:                         `crate::RaftNetwork::snapshot`
 
 
 [`RaftSnapshotBuilder`]:                `crate::storage::RaftSnapshotBuilder`

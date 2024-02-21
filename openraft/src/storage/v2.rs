@@ -212,10 +212,9 @@ where C: RaftTypeConfig
     ///
     /// Openraft will use this handle to receive snapshot data.
     ///
-    /// ### implementation guide
+    /// See the [storage chapter of the guide][sto] for details on log compaction / snapshotting.
     ///
-    /// See the [storage chapter of the guide](https://datafuselabs.github.io/openraft/storage.html)
-    /// for details on snapshot streaming.
+    /// [sto]: crate::docs::getting_started#3-implement-raftlogstorage-and-raftstatemachine
     async fn begin_receiving_snapshot(&mut self) -> Result<Box<C::SnapshotData>, StorageError<C::NodeId>>;
 
     /// Install a snapshot which has finished streaming from the leader.

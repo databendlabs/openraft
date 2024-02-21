@@ -157,7 +157,9 @@ where
         Ok(RaftState {
             committed: last_applied,
             // The initial value for `vote` is the minimal possible value.
-            // See: [Conditions for initialization](https://datafuselabs.github.io/openraft/cluster-formation.html#conditions-for-initialization)
+            // See: [Conditions for initialization][precondition]
+            //
+            // [precondition]: crate::docs::cluster_control::cluster_formation#preconditions-for-initialization
             vote: UTime::new(now, vote),
             purged_next: last_purged_log_id.next_index(),
             log_ids,

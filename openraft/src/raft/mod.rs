@@ -123,19 +123,16 @@ macro_rules! declare_raft_types {
 /// For more information on the Raft protocol, see
 /// [the specification here](https://raft.github.io/raft.pdf) (**pdf warning**).
 ///
-/// For details and discussion on this API, see the
-/// [Raft API](https://datafuselabs.github.io/openraft/raft.html) section of the guide.
+/// ### Clone
 ///
-/// ### clone
-/// This type implements `Clone`, and should be cloned liberally. The clone itself is very cheap
-/// and helps to facilitate use with async workflows.
+/// This type implements `Clone`, and cloning itself is very cheap and helps to facilitate use with
+/// async workflows.
 ///
-/// ### shutting down
-/// If any of the interfaces returns a `RaftError::ShuttingDown`, this indicates that the Raft node
-/// is shutting down (potentially for data safety reasons due to a storage error), and the
-/// `shutdown` method should be called on this type to await the shutdown of the node. If the parent
-/// application needs to shutdown the Raft node for any reason, calling `shutdown` will do the
-/// trick.
+/// ### Shutting down
+///
+/// If any of the interfaces returns a `RaftError::Fatal`, this indicates that the Raft node
+/// is shutting down. If the parent application needs to shutdown the Raft node for any reason,
+/// calling `shutdown` will do the trick.
 #[derive(Clone)]
 pub struct Raft<C>
 where C: RaftTypeConfig

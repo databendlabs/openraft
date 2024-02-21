@@ -1,9 +1,10 @@
 //! This mod provides types that can be deserialized from data written by either v0.7 or
 //! the latest openraft.
 //!
-//! This mod is enabled by feature flag `compat-07`. See: [feature-flag-compat-07](https://datafuselabs.github.io/openraft/feature-flags)
-//! Ap application does not needs to enable this feature if it chooses to manually upgrade v0.7
-//! on-disk data.
+//! This mod is enabled by feature flag `compat-07`.
+//! See: [feature-flag-compat-07](`crate::docs::feature_flags#feature-flag-compat-07`).
+//! Ap application does not needs to enable this feature if it chooses
+//! to manually upgrade v0.7 on-disk data.
 //!
 //! In v0.7 compatible mode, openraft enables feature flags:
 //! - `serde`: it adds `serde` implementation to types such as `LogId`.
@@ -15,10 +16,15 @@
 //!
 //! An application that tries to upgrade from v0.7 can use types in this mod to replace the
 //! corresponding ones in a `RaftStorage` implementation, so that v0.7 data and v0.8 data can both
-//! be read. [rocksstore-compat07](https://github.com/datafuselabs/openraft/tree/main/rocksstore-compat07) is an example using these type to implement an upgraded RaftStorage
+//! be read.
+//! [rocksstore-compat07](https://github.com/datafuselabs/openraft/tree/main/rocksstore-compat07)
+//! is an example using these type to implement an upgraded RaftStorage
 //!
 //! This mod also provides a testing suite [`testing::Suite07`] to ensure old data will be correctly
-//! read. An application should ensure its storage to pass test suite like [rocksstore-compat07/compatibility_test.rs](https://github.com/datafuselabs/openraft/blob/main/rocksstore-compat07/src/compatibility_test.rs) does:
+//! read.
+//! An application should ensure its storage
+//! to pass test suite like [rocksstore-compat07/compatibility_test.rs](https://github.com/datafuselabs/openraft/blob/main/rocksstore-compat07/src/compatibility_test.rs)
+//! does:
 //! ```ignore
 //! use openraft::compat;
 //!

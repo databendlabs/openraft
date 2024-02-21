@@ -54,11 +54,11 @@ pub trait RaftTypeConfig:
     /// Raft log entry, which can be built from an AppData.
     type Entry: RaftEntry<Self::NodeId, Self::Node> + FromAppData<Self::D>;
 
-    // TODO: fix the doc address
     /// Snapshot data for exposing a snapshot for reading & writing.
     ///
-    /// See the [storage chapter of the guide](https://datafuselabs.github.io/openraft/getting-started.html#implement-raftstorage)
-    /// for details on where and how this is used.
+    /// See the [storage chapter of the guide][sto] for details on log compaction / snapshotting.
+    ///
+    /// [sto]: crate::docs::getting_started#3-implement-raftlogstorage-and-raftstatemachine
     #[cfg(not(feature = "generic-snapshot-data"))]
     type SnapshotData: tokio::io::AsyncRead
         + tokio::io::AsyncWrite

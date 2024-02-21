@@ -11,7 +11,7 @@ where
     /// Check if two `joint` are coherent.
     ///
     /// Read more about:
-    /// [safe-membership-change](https://datafuselabs.github.io/openraft/dynamic-membership.html#the-safe-to-relation)
+    /// [Extended membership change](crate::docs::data::extended_membership)
     fn is_coherent_with(&self, other: &Joint<ID, QS, Vec<QS>>) -> bool {
         for a in self.children() {
             for b in other.children() {

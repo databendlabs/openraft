@@ -26,7 +26,7 @@ use crate::Vote;
 
 /// A trait defining the interface for a Raft network between cluster members.
 ///
-/// See the [network chapter of the guide](https://datafuselabs.github.io/openraft/getting-started.html#3-impl-raftnetwork)
+/// See the [network chapter of the guide](crate::docs::getting_started#4-implement-raftnetwork)
 /// for details and discussion on this trait and how to implement it.
 ///
 /// A single network instance is used to connect to a single target node. The network instance is

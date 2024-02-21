@@ -143,11 +143,14 @@ where C: RaftTypeConfig
     ///
     /// - The first log has to be membership config log.
     /// - The node has to contain no logs at all and the vote is the minimal value. See: [Conditions
-    ///   for initialization](https://datafuselabs.github.io/openraft/cluster-formation.html#conditions-for-initialization)
+    ///   for initialization][precondition].
+    ///
     ///
     /// Appending the very first log is slightly different from appending log by a leader or
     /// follower. This step is not confined by the consensus protocol and has to be dealt with
     /// differently.
+    ///
+    /// [precondition]: crate::docs::cluster_control::cluster_formation#preconditions-for-initialization
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn initialize(&mut self, mut entry: C::Entry) -> Result<(), InitializeError<C::NodeId, C::Node>> {
         self.check_initialize()?;

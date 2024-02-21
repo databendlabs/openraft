@@ -586,7 +586,9 @@ where
     /// Handle the admin command `initialize`.
     ///
     /// It is allowed to initialize only when `last_log_id.is_none()` and `vote==(0,0)`.
-    /// See: [Conditions for initialization](https://datafuselabs.github.io/openraft/cluster-formation.html#conditions-for-initialization)
+    /// See: [Conditions for initialization][precondition]
+    ///
+    /// [precondition]: crate::docs::cluster_control::cluster_formation#preconditions-for-initialization
     #[tracing::instrument(level = "debug", skip(self, tx))]
     pub(crate) fn handle_initialize(
         &mut self,
