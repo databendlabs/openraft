@@ -404,6 +404,7 @@ jobs:
           - "stable"
           - "nightly"
         example:
+          - "memstore"
           - "raft-kv-memstore"
           - "raft-kv-memstore-generic-snapshot-data"
           - "raft-kv-memstore-singlethreaded"

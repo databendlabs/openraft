@@ -52,10 +52,12 @@ members = [
     "tests",
     "rocksstore",
     "rocksstore-compat07",
-    "sledstore"]
+    "sledstore",
+]
 exclude = [
     "cluster_benchmark",
     "stores/rocksstore-v2",
+    "examples/memstore",
     "examples/raft-kv-memstore",
     "examples/raft-kv-memstore-singlethreaded",
     "examples/raft-kv-memstore-generic-snapshot-data",
