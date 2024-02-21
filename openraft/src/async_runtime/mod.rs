@@ -7,7 +7,7 @@ use crate::Instant;
 use crate::OptionalSend;
 use crate::OptionalSync;
 
-pub mod tokio;
+#[cfg(not(feature = "monoio"))] pub mod tokio;
 
 #[cfg(feature = "monoio")] pub mod monoio;
 

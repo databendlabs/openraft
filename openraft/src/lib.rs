@@ -77,7 +77,9 @@ pub use type_config::RaftTypeConfig;
 
 #[cfg(feature = "monoio")] pub use crate::async_runtime::monoio::MonoioInstant;
 #[cfg(feature = "monoio")] pub use crate::async_runtime::monoio::MonoioRuntime;
+#[cfg(not(feature = "monoio"))]
 pub use crate::async_runtime::tokio::TokioInstant;
+#[cfg(not(feature = "monoio"))]
 pub use crate::async_runtime::tokio::TokioRuntime;
 pub use crate::async_runtime::AsyncRuntime;
 pub use crate::change_members::ChangeMembers;
