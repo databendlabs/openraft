@@ -93,8 +93,14 @@ impl<C: RaftTypeConfig> LogStoreInner<C> {
         Ok(self.vote)
     }
 
-    async fn append<I>(&mut self, entries: I, callback: LogFlushed<C::NodeId>) -> Result<(), StorageError<C::NodeId>>
-    where I: IntoIterator<Item = C::Entry> {
+    async fn append<I>(
+        &mut self,
+        entries: I,
+        callback: LogFlushed<C::AsyncRuntime, C::NodeId>,
+    ) -> Result<(), StorageError<C::NodeId>>
+    where
+        I: IntoIterator<Item = C::Entry>,
+    {
         // Simple implementation that calls the flush-before-return `append_to_log`.
         for entry in entries {
             self.log.insert(entry.get_log_id().index, entry);
@@ -191,7 +197,7 @@ mod impl_log_store {
         async fn append<I>(
             &mut self,
             entries: I,
-            callback: LogFlushed<C::NodeId>,
+            callback: LogFlushed<C::AsyncRuntime, C::NodeId>,
         ) -> Result<(), StorageError<C::NodeId>>
         where
             I: IntoIterator<Item = C::Entry>,
