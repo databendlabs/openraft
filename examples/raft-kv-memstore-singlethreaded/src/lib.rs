@@ -100,7 +100,7 @@ pub async fn start_raft(node_id: NodeId, router: Router) -> std::io::Result<()> 
     let config = Arc::new(config.validate().unwrap());
 
     // Create a instance of where the Raft logs will be stored.
-    let log_store = Rc::new(LogStore::default());
+    let log_store = LogStore::default();
 
     // Create a instance of where the state machine data will be stored.
     let state_machine_store = Rc::new(StateMachineStore::default());

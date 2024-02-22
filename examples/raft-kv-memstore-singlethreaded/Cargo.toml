@@ -16,6 +16,7 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/datafuselabs/openraft"
 
 [dependencies]
+memstore = { path = "../memstore", features = [] }
 openraft = { path = "../../openraft", features = ["serde", "storage-v2", "singlethreaded"] }
 
 clap = { version = "4.1.11", features = ["derive", "env"] }

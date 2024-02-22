@@ -1,9 +1,11 @@
-//! Provide `LogStore`, which is a in-memory implementation of `RaftLogStore` for demostration
-//! purpose only.
+//! Provide raft log storage implementation, which is a in-memory implementation of `RaftLogStore`
+//! for demonstration purpose only.
 
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::ops::RangeBounds;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use openraft::storage::LogFlushed;
@@ -19,6 +21,12 @@ use tokio::sync::Mutex;
 #[derive(Clone, Debug, Default)]
 pub struct LogStore<C: RaftTypeConfig> {
     inner: Arc<Mutex<LogStoreInner<C>>>,
+}
+
+/// RaftLogStore implementation with a in-memory storage
+#[derive(Clone, Debug, Default)]
+pub struct LogStoreNoSend<C: RaftTypeConfig> {
+    inner: Rc<RefCell<LogStoreInner<C>>>,
 }
 
 #[derive(Debug)]
@@ -207,6 +215,91 @@ mod impl_log_store {
 
         async fn purge(&mut self, log_id: LogId<C::NodeId>) -> Result<(), StorageError<C::NodeId>> {
             let mut inner = self.inner.lock().await;
+            inner.purge(log_id).await
+        }
+
+        async fn get_log_reader(&mut self) -> Self::LogReader {
+            self.clone()
+        }
+    }
+}
+
+mod impl_log_store_no_send {
+    use std::fmt::Debug;
+    use std::ops::RangeBounds;
+
+    use openraft::storage::LogFlushed;
+    use openraft::storage::RaftLogStorage;
+    use openraft::LogId;
+    use openraft::LogState;
+    use openraft::RaftLogReader;
+    use openraft::RaftTypeConfig;
+    use openraft::StorageError;
+    use openraft::Vote;
+
+    use crate::log_store::LogStoreNoSend;
+
+    impl<C: RaftTypeConfig> RaftLogReader<C> for LogStoreNoSend<C>
+    where C::Entry: Clone
+    {
+        async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug>(
+            &mut self,
+            range: RB,
+        ) -> Result<Vec<C::Entry>, StorageError<C::NodeId>> {
+            let mut inner = self.inner.borrow_mut();
+            inner.try_get_log_entries(range).await
+        }
+    }
+
+    impl<C: RaftTypeConfig> RaftLogStorage<C> for LogStoreNoSend<C>
+    where C::Entry: Clone
+    {
+        type LogReader = Self;
+
+        async fn get_log_state(&mut self) -> Result<LogState<C>, StorageError<C::NodeId>> {
+            let mut inner = self.inner.borrow_mut();
+            inner.get_log_state().await
+        }
+
+        async fn save_committed(&mut self, committed: Option<LogId<C::NodeId>>) -> Result<(), StorageError<C::NodeId>> {
+            let mut inner = self.inner.borrow_mut();
+            inner.save_committed(committed).await
+        }
+
+        async fn read_committed(&mut self) -> Result<Option<LogId<C::NodeId>>, StorageError<C::NodeId>> {
+            let mut inner = self.inner.borrow_mut();
+            inner.read_committed().await
+        }
+
+        async fn save_vote(&mut self, vote: &Vote<C::NodeId>) -> Result<(), StorageError<C::NodeId>> {
+            let mut inner = self.inner.borrow_mut();
+            inner.save_vote(vote).await
+        }
+
+        async fn read_vote(&mut self) -> Result<Option<Vote<C::NodeId>>, StorageError<C::NodeId>> {
+            let mut inner = self.inner.borrow_mut();
+            inner.read_vote().await
+        }
+
+        async fn append<I>(
+            &mut self,
+            entries: I,
+            callback: LogFlushed<C::NodeId>,
+        ) -> Result<(), StorageError<C::NodeId>>
+        where
+            I: IntoIterator<Item = C::Entry>,
+        {
+            let mut inner = self.inner.borrow_mut();
+            inner.append(entries, callback).await
+        }
+
+        async fn truncate(&mut self, log_id: LogId<C::NodeId>) -> Result<(), StorageError<C::NodeId>> {
+            let mut inner = self.inner.borrow_mut();
+            inner.truncate(log_id).await
+        }
+
+        async fn purge(&mut self, log_id: LogId<C::NodeId>) -> Result<(), StorageError<C::NodeId>> {
+            let mut inner = self.inner.borrow_mut();
             inner.purge(log_id).await
         }
 

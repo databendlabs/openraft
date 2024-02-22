@@ -3,3 +3,4 @@
 mod log_store;
 
 pub use log_store::LogStore;
+pub use log_store::LogStoreNoSend;
