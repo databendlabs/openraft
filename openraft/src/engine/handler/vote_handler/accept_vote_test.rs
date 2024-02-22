@@ -4,6 +4,7 @@ use maplit::btreeset;
 use pretty_assertions::assert_eq;
 use tokio::sync::oneshot;
 
+use crate::async_runtime::AsyncOneshotSendExt;
 use crate::core::ServerState;
 use crate::engine::testing::UTConfig;
 use crate::engine::Command;
@@ -13,8 +14,10 @@ use crate::error::Infallible;
 use crate::raft::VoteResponse;
 use crate::testing::log_id;
 use crate::utime::UTime;
+use crate::AsyncRuntime;
 use crate::EffectiveMembership;
 use crate::Membership;
+use crate::RaftTypeConfig;
 use crate::TokioInstant;
 use crate::Vote;
 
@@ -51,12 +54,12 @@ fn test_accept_vote_reject_smaller_vote() -> anyhow::Result<()> {
     // When a vote is reject, it generate SendResultCommand and return an error.
     let mut eng = eng();
 
-    let (tx, _rx) = oneshot::channel();
+    let (tx, _rx) = <<UTConfig as RaftTypeConfig>::AsyncRuntime as AsyncRuntime>::oneshot();
     let resp = eng.vote_handler().accept_vote(&Vote::new(1, 2), tx, |_state, _err| mk_res());
 
     assert!(resp.is_none());
 
-    let (tx, _rx) = oneshot::channel();
+    let (tx, _rx) = <<UTConfig as RaftTypeConfig>::AsyncRuntime as AsyncRuntime>::oneshot();
     assert_eq!(
         vec![
             //
@@ -76,7 +79,7 @@ fn test_accept_vote_granted_greater_vote() -> anyhow::Result<()> {
     // When a vote is accepted, it generate SaveVote command and return an Ok.
     let mut eng = eng();
 
-    let (tx, _rx) = oneshot::channel();
+    let (tx, _rx) = <<UTConfig as RaftTypeConfig>::AsyncRuntime as AsyncRuntime>::oneshot();
     let resp = eng.vote_handler().accept_vote(&Vote::new(3, 3), tx, |_state, _err| mk_res());
 
     assert!(resp.is_some());
