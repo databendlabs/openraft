@@ -2,6 +2,7 @@ use std::time::Duration;
 
 use validit::Valid;
 
+use crate::async_runtime::AsyncOneshotSendExt;
 use crate::core::raft_msg::AppendEntriesTx;
 use crate::core::raft_msg::ResultSender;
 use crate::core::sm;
@@ -38,12 +39,14 @@ use crate::raft::VoteResponse;
 use crate::raft_state::LogStateReader;
 use crate::raft_state::RaftState;
 use crate::summary::MessageSummary;
+use crate::type_config::alias::AsyncRuntimeOf;
 use crate::type_config::alias::SnapshotDataOf;
 use crate::AsyncRuntime;
 use crate::Instant;
 use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::Membership;
+use crate::OptionalSend;
 use crate::RaftLogId;
 use crate::RaftTypeConfig;
 use crate::Snapshot;
@@ -222,9 +225,11 @@ where C: RaftTypeConfig
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn get_leader_handler_or_reject<T, E>(
         &mut self,
-        tx: Option<ResultSender<T, E>>,
-    ) -> Option<(LeaderHandler<C>, Option<ResultSender<T, E>>)>
+        tx: Option<ResultSender<C::AsyncRuntime, T, E>>,
+    ) -> Option<(LeaderHandler<C>, Option<ResultSender<C::AsyncRuntime, T, E>>)>
     where
+        T: OptionalSend,
+        E: OptionalSend,
         E: From<ForwardToLeader<C::NodeId, C::Node>>,
     {
         let res = self.leader_handler();
@@ -391,7 +396,7 @@ where C: RaftTypeConfig
         vote: &Vote<C::NodeId>,
         prev_log_id: Option<LogId<C::NodeId>>,
         entries: Vec<C::Entry>,
-        tx: Option<AppendEntriesTx<C::NodeId>>,
+        tx: Option<AppendEntriesTx<AsyncRuntimeOf<C>, C::NodeId>>,
     ) -> bool {
         tracing::debug!(
             vote = display(vote),
@@ -454,7 +459,7 @@ where C: RaftTypeConfig
         &mut self,
         vote: Vote<C::NodeId>,
         snapshot: Snapshot<C>,
-        tx: ResultSender<SnapshotResponse<C::NodeId>>,
+        tx: ResultSender<C::AsyncRuntime, SnapshotResponse<C::NodeId>>,
     ) {
         tracing::info!(vote = display(vote), snapshot = display(&snapshot), "{}", func_name!());
 
@@ -487,7 +492,7 @@ where C: RaftTypeConfig
     pub(crate) fn handle_begin_receiving_snapshot(
         &mut self,
         vote: Vote<C::NodeId>,
-        tx: ResultSender<Box<SnapshotDataOf<C>>, HigherVote<C::NodeId>>,
+        tx: ResultSender<C::AsyncRuntime, Box<SnapshotDataOf<C>>, HigherVote<C::NodeId>>,
     ) {
         tracing::info!(vote = display(vote), "{}", func_name!());
 

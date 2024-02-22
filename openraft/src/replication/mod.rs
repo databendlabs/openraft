@@ -733,7 +733,7 @@ where
     #[tracing::instrument(level = "info", skip_all)]
     async fn stream_snapshot(
         &mut self,
-        snapshot_rx: DataWithId<ResultReceiver<Option<Snapshot<C>>>>,
+        snapshot_rx: DataWithId<ResultReceiver<AsyncRuntimeOf<C>, Option<Snapshot<C>>>>,
     ) -> Result<Option<Data<C>>, ReplicationError<C::NodeId, C::Node>> {
         let request_id = snapshot_rx.request_id();
         let rx = snapshot_rx.into_data();

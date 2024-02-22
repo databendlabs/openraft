@@ -6,11 +6,13 @@
 
 use tokio::sync::mpsc;
 
+use crate::async_runtime::AsyncOneshotSendExt;
 use crate::core::ApplyResult;
 use crate::core::ApplyingEntry;
 use crate::entry::RaftPayload;
 use crate::storage::RaftStateMachine;
 use crate::summary::MessageSummary;
+use crate::type_config::alias::AsyncRuntimeOf;
 use crate::AsyncRuntime;
 use crate::RaftLogId;
 use crate::RaftSnapshotBuilder;
@@ -219,7 +221,10 @@ where
     }
 
     #[tracing::instrument(level = "info", skip_all)]
-    async fn get_snapshot(&mut self, tx: ResultSender<Option<Snapshot<C>>>) -> Result<(), StorageError<C::NodeId>> {
+    async fn get_snapshot(
+        &mut self,
+        tx: ResultSender<AsyncRuntimeOf<C>, Option<Snapshot<C>>>,
+    ) -> Result<(), StorageError<C::NodeId>> {
         tracing::info!("{}", func_name!());
 
         let snapshot = self.state_machine.get_current_snapshot().await?;

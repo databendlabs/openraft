@@ -3,7 +3,6 @@ use std::fmt::Debug;
 use std::sync::Arc;
 
 use tokio::sync::mpsc;
-use tokio::sync::oneshot;
 use tokio::sync::watch;
 use tokio::sync::Mutex;
 use tracing::Level;
@@ -20,6 +19,7 @@ use crate::raft::core_state::CoreState;
 use crate::AsyncRuntime;
 use crate::Config;
 use crate::MessageSummary;
+use crate::OptionalSend;
 use crate::RaftMetrics;
 use crate::RaftTypeConfig;
 
@@ -39,7 +39,7 @@ where C: RaftTypeConfig
 
     // TODO(xp): it does not need to be a async mutex.
     #[allow(clippy::type_complexity)]
-    pub(in crate::raft) tx_shutdown: Mutex<Option<oneshot::Sender<()>>>,
+    pub(in crate::raft) tx_shutdown: Mutex<Option<<C::AsyncRuntime as AsyncRuntime>::OneshotSender<()>>>,
     pub(in crate::raft) core_state: Mutex<CoreState<C::NodeId, C::AsyncRuntime>>,
 
     /// The ongoing snapshot transmission.
@@ -55,10 +55,11 @@ where C: RaftTypeConfig
     pub(crate) async fn call_core<T, E>(
         &self,
         mes: RaftMsg<C>,
-        rx: oneshot::Receiver<Result<T, E>>,
+        rx: <C::AsyncRuntime as AsyncRuntime>::OneshotReceiver<Result<T, E>>,
     ) -> Result<T, RaftError<C::NodeId, E>>
     where
-        E: Debug,
+        E: Debug + OptionalSend,
+        T: OptionalSend,
     {
         let sum = if tracing::enabled!(Level::DEBUG) {
             Some(mes.summary())
