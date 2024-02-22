@@ -4,26 +4,32 @@ use std::io;
 
 use tokio::sync::oneshot;
 
+use crate::async_runtime::AsyncOneshotSendExt;
 use crate::display_ext::DisplayOption;
+use crate::AsyncRuntime;
 use crate::LogId;
 use crate::NodeId;
 use crate::RaftTypeConfig;
 use crate::StorageIOError;
 
 /// A oneshot callback for completion of log io operation.
-pub struct LogFlushed<NID>
-where NID: NodeId
+pub struct LogFlushed<Runtime, NID>
+where
+    NID: NodeId,
+    Runtime: AsyncRuntime,
 {
     last_log_id: Option<LogId<NID>>,
-    tx: oneshot::Sender<Result<Option<LogId<NID>>, io::Error>>,
+    tx: Runtime::OneshotSender<Result<Option<LogId<NID>>, io::Error>>,
 }
 
-impl<NID> LogFlushed<NID>
-where NID: NodeId
+impl<NID, Runtime> LogFlushed<Runtime, NID>
+where
+    NID: NodeId,
+    Runtime: AsyncRuntime,
 {
     pub(crate) fn new(
         last_log_id: Option<LogId<NID>>,
-        tx: oneshot::Sender<Result<Option<LogId<NID>>, io::Error>>,
+        tx: Runtime::OneshotSender<Result<Option<LogId<NID>>, io::Error>>,
     ) -> Self {
         Self { last_log_id, tx }
     }

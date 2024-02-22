@@ -6,6 +6,7 @@ use macros::add_async_trait;
 
 use crate::storage::callback::LogFlushed;
 use crate::storage::v2::sealed::Sealed;
+use crate::type_config::alias::AsyncRuntimeOf;
 use crate::LogId;
 use crate::LogState;
 use crate::OptionalSend;
@@ -120,7 +121,11 @@ where C: RaftTypeConfig
     ///
     /// - There must not be a **hole** in logs. Because Raft only examine the last log id to ensure
     ///   correctness.
-    async fn append<I>(&mut self, entries: I, callback: LogFlushed<C::NodeId>) -> Result<(), StorageError<C::NodeId>>
+    async fn append<I>(
+        &mut self,
+        entries: I,
+        callback: LogFlushed<AsyncRuntimeOf<C>, C::NodeId>,
+    ) -> Result<(), StorageError<C::NodeId>>
     where
         I: IntoIterator<Item = C::Entry> + OptionalSend,
         I::IntoIter: OptionalSend;

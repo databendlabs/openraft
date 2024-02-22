@@ -6,12 +6,12 @@ use std::collections::BTreeSet;
 use anyerror::AnyError;
 pub use store_builder::StoreBuilder;
 pub use suite::Suite;
-use tokio::sync::oneshot;
 
 use crate::entry::RaftEntry;
 use crate::log_id::RaftLogId;
 use crate::storage::LogFlushed;
 use crate::storage::RaftLogStorage;
+use crate::AsyncRuntime;
 use crate::CommittedLeaderId;
 use crate::LogId;
 use crate::RaftTypeConfig;
@@ -55,7 +55,7 @@ where
     let entries = entries.into_iter().collect::<Vec<_>>();
     let last_log_id = entries.last().map(|e| *e.get_log_id()).unwrap();
 
-    let (tx, rx) = oneshot::channel();
+    let (tx, rx) = <C::AsyncRuntime as AsyncRuntime>::oneshot();
     let cb = LogFlushed::new(Some(last_log_id), tx);
     log_store.append(entries, cb).await?;
     rx.await.unwrap().map_err(|e| StorageIOError::write_logs(AnyError::error(e)))?;

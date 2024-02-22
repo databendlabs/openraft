@@ -15,12 +15,12 @@ use futures::TryFutureExt;
 use maplit::btreeset;
 use tokio::select;
 use tokio::sync::mpsc;
-use tokio::sync::oneshot;
 use tokio::sync::watch;
 use tracing::Instrument;
 use tracing::Level;
 use tracing::Span;
 
+use crate::async_runtime::AsyncOneshotSendExt;
 use crate::config::Config;
 use crate::config::RuntimeConfig;
 use crate::core::balancer::Balancer;
@@ -215,7 +215,10 @@ where
     SM: RaftStateMachine<C>,
 {
     /// The main loop of the Raft protocol.
-    pub(crate) async fn main(mut self, rx_shutdown: oneshot::Receiver<()>) -> Result<(), Fatal<C::NodeId>> {
+    pub(crate) async fn main(
+        mut self,
+        rx_shutdown: <C::AsyncRuntime as AsyncRuntime>::OneshotReceiver<()>,
+    ) -> Result<(), Fatal<C::NodeId>> {
         let span = tracing::span!(parent: &self.span, Level::DEBUG, "main");
         let res = self.do_main(rx_shutdown).instrument(span).await;
 
@@ -239,7 +242,10 @@ where
     }
 
     #[tracing::instrument(level="trace", skip_all, fields(id=display(self.id), cluster=%self.config.cluster_name))]
-    async fn do_main(&mut self, rx_shutdown: oneshot::Receiver<()>) -> Result<(), Fatal<C::NodeId>> {
+    async fn do_main(
+        &mut self,
+        rx_shutdown: <C::AsyncRuntime as AsyncRuntime>::OneshotReceiver<()>,
+    ) -> Result<(), Fatal<C::NodeId>> {
         tracing::debug!("raft node is initializing");
 
         self.engine.startup();
@@ -432,7 +438,7 @@ where
         &mut self,
         changes: ChangeMembers<C::NodeId, C::Node>,
         retain: bool,
-        tx: ResultSender<ClientWriteResponse<C>, ClientWriteError<C::NodeId, C::Node>>,
+        tx: ResultSender<AsyncRuntimeOf<C>, ClientWriteResponse<C>, ClientWriteError<C::NodeId, C::Node>>,
     ) {
         let res = self.engine.state.membership_state.change_handler().apply(changes, retain);
         let new_membership = match res {
@@ -593,7 +599,7 @@ where
     pub(crate) fn handle_initialize(
         &mut self,
         member_nodes: BTreeMap<C::NodeId, C::Node>,
-        tx: ResultSender<(), InitializeError<C::NodeId, C::Node>>,
+        tx: ResultSender<AsyncRuntimeOf<C>, (), InitializeError<C::NodeId, C::Node>>,
     ) {
         tracing::debug!(member_nodes = debug(&member_nodes), "{}", func_name!());
 
@@ -616,8 +622,12 @@ where
 
     /// Reject a request due to the Raft node being in a state which prohibits the request.
     #[tracing::instrument(level = "trace", skip(self, tx))]
-    pub(crate) fn reject_with_forward_to_leader<T, E>(&self, tx: ResultSender<T, E>)
-    where E: From<ForwardToLeader<C::NodeId, C::Node>> {
+    pub(crate) fn reject_with_forward_to_leader<T: OptionalSend, E: OptionalSend>(
+        &self,
+        tx: ResultSender<AsyncRuntimeOf<C>, T, E>,
+    ) where
+        E: From<ForwardToLeader<C::NodeId, C::Node>>,
+    {
         let mut leader_id = self.current_leader();
         let leader_node = self.get_leader_node(leader_id);
 
@@ -680,7 +690,7 @@ where
     {
         tracing::debug!("append_to_log");
 
-        let (tx, rx) = oneshot::channel();
+        let (tx, rx) = C::AsyncRuntime::oneshot();
         let callback = LogFlushed::new(Some(last_log_id), tx);
         self.log_store.append(entries, callback).await?;
         rx.await
@@ -865,7 +875,10 @@ where
 
     /// Run an event handling loop
     #[tracing::instrument(level="debug", skip_all, fields(id=display(self.id)))]
-    async fn runtime_loop(&mut self, mut rx_shutdown: oneshot::Receiver<()>) -> Result<(), Fatal<C::NodeId>> {
+    async fn runtime_loop(
+        &mut self,
+        mut rx_shutdown: <C::AsyncRuntime as AsyncRuntime>::OneshotReceiver<()>,
+    ) -> Result<(), Fatal<C::NodeId>> {
         // Ratio control the ratio of number of RaftMsg to process to number of Notify to process.
         let mut balancer = Balancer::new(10_000);
 
@@ -1067,7 +1080,11 @@ where
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(super) fn handle_vote_request(&mut self, req: VoteRequest<C::NodeId>, tx: VoteTx<C::NodeId>) {
+    pub(super) fn handle_vote_request(
+        &mut self,
+        req: VoteRequest<C::NodeId>,
+        tx: VoteTx<AsyncRuntimeOf<C>, C::NodeId>,
+    ) {
         tracing::info!(req = display(req.summary()), func = func_name!());
 
         let resp = self.engine.handle_vote_req(req);
@@ -1081,7 +1098,7 @@ where
     pub(super) fn handle_append_entries_request(
         &mut self,
         req: AppendEntriesRequest<C>,
-        tx: AppendEntriesTx<C::NodeId>,
+        tx: AppendEntriesTx<AsyncRuntimeOf<C>, C::NodeId>,
     ) {
         tracing::debug!(req = display(req.summary()), func = func_name!());
 
@@ -1657,7 +1674,7 @@ where
 
                             // Create a channel to let state machine worker to send the snapshot and the replication
                             // worker to receive it.
-                            let (tx, rx) = oneshot::channel();
+                            let (tx, rx) = C::AsyncRuntime::oneshot();
 
                             let cmd = sm::Command::get_snapshot(tx);
                             self.sm_handle

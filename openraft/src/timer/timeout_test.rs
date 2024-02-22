@@ -1,11 +1,11 @@
 use std::time::Duration;
 
-use tokio::sync::oneshot;
 use tokio::time::sleep;
 use tokio::time::Instant;
 
 use crate::timer::timeout::RaftTimer;
 use crate::timer::Timeout;
+use crate::AsyncRuntime;
 use crate::TokioRuntime;
 
 #[cfg(not(feature = "singlethreaded"))]
@@ -24,7 +24,7 @@ fn test_timeout() -> anyhow::Result<()> {
 async fn test_timeout_inner() -> anyhow::Result<()> {
     tracing::info!("--- set timeout, recv result");
     {
-        let (tx, rx) = oneshot::channel();
+        let (tx, rx) = <TokioRuntime as AsyncRuntime>::oneshot();
         let now = Instant::now();
         let _t = Timeout::<TokioRuntime>::new(
             || {
@@ -43,7 +43,7 @@ async fn test_timeout_inner() -> anyhow::Result<()> {
 
     tracing::info!("--- update timeout");
     {
-        let (tx, rx) = oneshot::channel();
+        let (tx, rx) = <TokioRuntime as AsyncRuntime>::oneshot();
         let now = Instant::now();
         let t = Timeout::<TokioRuntime>::new(
             || {
@@ -65,7 +65,7 @@ async fn test_timeout_inner() -> anyhow::Result<()> {
 
     tracing::info!("--- update timeout to a lower value wont take effect");
     {
-        let (tx, rx) = oneshot::channel();
+        let (tx, rx) = <TokioRuntime as AsyncRuntime>::oneshot();
         let now = Instant::now();
         let t = Timeout::<TokioRuntime>::new(
             || {
@@ -87,7 +87,7 @@ async fn test_timeout_inner() -> anyhow::Result<()> {
 
     tracing::info!("--- drop the `Timeout` will cancel the callback");
     {
-        let (tx, rx) = oneshot::channel();
+        let (tx, rx) = <TokioRuntime as AsyncRuntime>::oneshot();
         let now = Instant::now();
         let t = Timeout::<TokioRuntime>::new(
             || {

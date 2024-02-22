@@ -63,11 +63,12 @@ pub trait RaftTypeConfig:
     type SnapshotData: tokio::io::AsyncRead
         + tokio::io::AsyncWrite
         + tokio::io::AsyncSeek
+        + Debug
         + OptionalSend
         + Unpin
         + 'static;
     #[cfg(feature = "generic-snapshot-data")]
-    type SnapshotData: OptionalSend + 'static;
+    type SnapshotData: OptionalSend + Debug + 'static;
 
     /// Asynchronous runtime type.
     type AsyncRuntime: AsyncRuntime;

@@ -2,6 +2,7 @@ use std::fmt::Debug;
 
 use tokio::sync::oneshot;
 
+use crate::async_runtime::AsyncOneshotSendExt;
 use crate::core::sm;
 use crate::engine::CommandKind;
 use crate::error::Infallible;
@@ -14,10 +15,12 @@ use crate::raft::InstallSnapshotResponse;
 use crate::raft::SnapshotResponse;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
+use crate::AsyncRuntime;
 use crate::LeaderId;
 use crate::LogId;
 use crate::Node;
 use crate::NodeId;
+use crate::OptionalSend;
 use crate::RaftTypeConfig;
 use crate::Vote;
 
@@ -98,7 +101,7 @@ where C: RaftTypeConfig
     /// Send result to caller
     Respond {
         when: Option<Condition<C::NodeId>>,
-        resp: Respond<C::NodeId, C::Node>,
+        resp: Respond<C::AsyncRuntime, C::NodeId, C::Node>,
     },
 }
 
@@ -219,30 +222,60 @@ where NID: NodeId
 
 /// A command to send return value to the caller via a `oneshot::Sender`.
 #[derive(Debug)]
-#[derive(PartialEq, Eq)]
 #[derive(derive_more::From)]
-pub(crate) enum Respond<NID, N>
+pub(crate) enum Respond<R, NID, N>
 where
     NID: NodeId,
     N: Node,
+    R: AsyncRuntime,
 {
-    Vote(ValueSender<Result<VoteResponse<NID>, Infallible>>),
-    AppendEntries(ValueSender<Result<AppendEntriesResponse<NID>, Infallible>>),
-    ReceiveSnapshotChunk(ValueSender<Result<(), InstallSnapshotError>>),
-    InstallSnapshot(ValueSender<Result<InstallSnapshotResponse<NID>, InstallSnapshotError>>),
-    InstallCompleteSnapshot(ValueSender<Result<SnapshotResponse<NID>, Infallible>>),
-    Initialize(ValueSender<Result<(), InitializeError<NID, N>>>),
+    Vote(ValueSender<R, Result<VoteResponse<NID>, Infallible>>),
+    AppendEntries(ValueSender<R, Result<AppendEntriesResponse<NID>, Infallible>>),
+    ReceiveSnapshotChunk(ValueSender<R, Result<(), InstallSnapshotError>>),
+    InstallSnapshot(ValueSender<R, Result<InstallSnapshotResponse<NID>, InstallSnapshotError>>),
+    InstallCompleteSnapshot(ValueSender<R, Result<SnapshotResponse<NID>, Infallible>>),
+    Initialize(ValueSender<R, Result<(), InitializeError<NID, N>>>),
 }
 
-impl<NID, N> Respond<NID, N>
+impl<R, NID, N> PartialEq for Respond<R, NID, N>
+where
+    NID: NodeId + PartialEq,
+    N: Node + PartialEq,
+    R: AsyncRuntime,
+{
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Respond::Vote(f0_self), Respond::Vote(f0_other)) => f0_self.eq(f0_other),
+            (Respond::AppendEntries(f0_self), Respond::AppendEntries(f0_other)) => f0_self.eq(f0_other),
+            (Respond::ReceiveSnapshotChunk(f0_self), Respond::ReceiveSnapshotChunk(f0_other)) => f0_self.eq(f0_other),
+            (Respond::InstallSnapshot(f0_self), Respond::InstallSnapshot(f0_other)) => f0_self.eq(f0_other),
+            (Respond::InstallCompleteSnapshot(f0_self), Respond::InstallCompleteSnapshot(f0_other)) => {
+                f0_self.eq(f0_other)
+            }
+            (Respond::Initialize(f0_self), Respond::Initialize(f0_other)) => f0_self.eq(f0_other),
+            _unused => false,
+        }
+    }
+}
+
+impl<R, NID, N> Eq for Respond<R, NID, N>
+where
+    NID: NodeId + Eq,
+    N: Node + Eq,
+    R: AsyncRuntime,
+{
+}
+
+impl<R, NID, N> Respond<R, NID, N>
 where
     NID: NodeId,
     N: Node,
+    R: AsyncRuntime,
 {
-    pub(crate) fn new<T>(res: T, tx: oneshot::Sender<T>) -> Self
+    pub(crate) fn new<T>(res: T, tx: R::OneshotSender<T>) -> Self
     where
-        T: Debug + PartialEq + Eq,
-        Self: From<ValueSender<T>>,
+        T: Debug + PartialEq + Eq + OptionalSend,
+        Self: From<ValueSender<R, T>>,
     {
         Respond::from(ValueSender::new(res, tx))
     }
@@ -260,27 +293,38 @@ where
 }
 
 #[derive(Debug)]
-pub(crate) struct ValueSender<T>
-where T: Debug + PartialEq + Eq
+pub(crate) struct ValueSender<R, T>
+where
+    T: Debug + PartialEq + Eq + OptionalSend,
+    R: AsyncRuntime,
 {
     value: T,
-    tx: oneshot::Sender<T>,
+    tx: R::OneshotSender<T>,
 }
 
-impl<T> PartialEq for ValueSender<T>
-where T: Debug + PartialEq + Eq
+impl<R, T> PartialEq for ValueSender<R, T>
+where
+    T: Debug + PartialEq + Eq + OptionalSend,
+    R: AsyncRuntime,
 {
     fn eq(&self, other: &Self) -> bool {
         self.value == other.value
     }
 }
 
-impl<T> Eq for ValueSender<T> where T: Debug + PartialEq + Eq {}
-
-impl<T> ValueSender<T>
-where T: Debug + PartialEq + Eq
+impl<R, T> Eq for ValueSender<R, T>
+where
+    T: Debug + PartialEq + Eq + OptionalSend,
+    R: AsyncRuntime,
 {
-    pub(crate) fn new(res: T, tx: oneshot::Sender<T>) -> Self {
+}
+
+impl<R, T> ValueSender<R, T>
+where
+    T: Debug + PartialEq + Eq + OptionalSend,
+    R: AsyncRuntime,
+{
+    pub(crate) fn new(res: T, tx: R::OneshotSender<T>) -> Self {
         Self { value: res, tx }
     }
 
