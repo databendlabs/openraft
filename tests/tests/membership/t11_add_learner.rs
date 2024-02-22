@@ -196,7 +196,6 @@ async fn add_learner_with_set_nodes() -> Result<()> {
 /// Because adding learner is also a change-membership operation, a new membership config log will
 /// let raft consider the previous membership config log as committed, which is actually not.
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
-#[cfg_attr(feature = "monoio", ignore)] // Crashing the future is causing a whole crash with monoio
 async fn add_learner_when_previous_membership_not_committed() -> Result<()> {
     let config = Arc::new(
         Config {

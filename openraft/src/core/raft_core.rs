@@ -926,6 +926,11 @@ where
             let raft_msg_processed = self.process_raft_msg(balancer.raft_msg()).await?;
             let notify_processed = self.process_notify(balancer.notify()).await?;
 
+            // HACK: To force a yield when using monoio, it seems if we are not doing this we got
+            // an issue
+            #[cfg(feature = "monoio")]
+            monoio::time::sleep(Duration::from_millis(0)).await;
+
             // If one of the channel consumed all its budget, re-balance the budget ratio.
 
             #[allow(clippy::collapsible_else_if)]
