@@ -407,6 +407,7 @@ jobs:
           - "memstore"
           - "raft-kv-memstore"
           - "raft-kv-memstore-generic-snapshot-data"
+          - "raft-kv-memstore-opendal-snapshot-data"
           - "raft-kv-memstore-singlethreaded"
           - "raft-kv-rocksdb"
 
