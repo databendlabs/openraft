@@ -47,6 +47,7 @@ pub trait AsyncRuntime: Debug + Default + OptionalSend + OptionalSync + 'static 
     /// Type of a `oneshot` sender.
     type OneshotSender<T: OptionalSend>: AsyncOneshotSendExt<T> + OptionalSend + OptionalSync + Debug + Sized;
 
+    /// Type of a `oneshot` receiver error.
     type OneshotReceiverError: std::error::Error + OptionalSend;
 
     /// Type of a `oneshot` receiver.
@@ -99,7 +100,7 @@ pub trait AsyncRuntime: Debug + Default + OptionalSend + OptionalSync + 'static 
 #[derive(Debug, Default)]
 pub struct TokioRuntime;
 
-pub struct TokioSendWrapper<T: OptionalSend>(pub tokio::sync::oneshot::Sender<T>);
+pub struct TokioOneShotSender<T: OptionalSend>(pub tokio::sync::oneshot::Sender<T>);
 
 impl AsyncRuntime for TokioRuntime {
     type JoinError = tokio::task::JoinError;
@@ -109,7 +110,7 @@ impl AsyncRuntime for TokioRuntime {
     type TimeoutError = tokio::time::error::Elapsed;
     type Timeout<R, T: Future<Output = R> + OptionalSend> = tokio::time::Timeout<T>;
     type ThreadLocalRng = rand::rngs::ThreadRng;
-    type OneshotSender<T: OptionalSend> = TokioSendWrapper<T>;
+    type OneshotSender<T: OptionalSend> = TokioOneShotSender<T>;
     type OneshotReceiver<T: OptionalSend> = tokio::sync::oneshot::Receiver<T>;
     type OneshotReceiverError = tokio::sync::oneshot::error::RecvError;
 
@@ -163,7 +164,7 @@ impl AsyncRuntime for TokioRuntime {
     fn oneshot<T>() -> (Self::OneshotSender<T>, Self::OneshotReceiver<T>)
     where T: OptionalSend {
         let (tx, rx) = tokio::sync::oneshot::channel();
-        (TokioSendWrapper(tx), rx)
+        (TokioOneShotSender(tx), rx)
     }
 }
 
@@ -179,14 +180,14 @@ pub trait AsyncOneshotSendExt<T>: Unpin {
     fn send(self, t: T) -> Result<(), T>;
 }
 
-impl<T: OptionalSend> AsyncOneshotSendExt<T> for TokioSendWrapper<T> {
+impl<T: OptionalSend> AsyncOneshotSendExt<T> for TokioOneShotSender<T> {
     #[inline]
     fn send(self, t: T) -> Result<(), T> {
         self.0.send(t)
     }
 }
 
-impl<T: OptionalSend> Debug for TokioSendWrapper<T> {
+impl<T: OptionalSend> Debug for TokioOneShotSender<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_tuple("TokioSendWrapper").finish()
     }
