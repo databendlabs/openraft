@@ -243,14 +243,20 @@ where
 {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (Respond::Vote(f0_self), Respond::Vote(f0_other)) => f0_self.eq(f0_other),
-            (Respond::AppendEntries(f0_self), Respond::AppendEntries(f0_other)) => f0_self.eq(f0_other),
-            (Respond::ReceiveSnapshotChunk(f0_self), Respond::ReceiveSnapshotChunk(f0_other)) => f0_self.eq(f0_other),
-            (Respond::InstallSnapshot(f0_self), Respond::InstallSnapshot(f0_other)) => f0_self.eq(f0_other),
-            (Respond::InstallCompleteSnapshot(f0_self), Respond::InstallCompleteSnapshot(f0_other)) => {
-                f0_self.eq(f0_other)
+            (Respond::Vote(first_sender), Respond::Vote(second_sender)) => first_sender.eq(second_sender),
+            (Respond::AppendEntries(first_sender), Respond::AppendEntries(second_sender)) => {
+                first_sender.eq(second_sender)
             }
-            (Respond::Initialize(f0_self), Respond::Initialize(f0_other)) => f0_self.eq(f0_other),
+            (Respond::ReceiveSnapshotChunk(first_sender), Respond::ReceiveSnapshotChunk(second_sender)) => {
+                first_sender.eq(second_sender)
+            }
+            (Respond::InstallSnapshot(first_sender), Respond::InstallSnapshot(second_sender)) => {
+                first_sender.eq(second_sender)
+            }
+            (Respond::InstallCompleteSnapshot(first_sender), Respond::InstallCompleteSnapshot(second_sender)) => {
+                first_sender.eq(second_sender)
+            }
+            (Respond::Initialize(first_sender), Respond::Initialize(second_sender)) => first_sender.eq(second_sender),
             _unused => false,
         }
     }
