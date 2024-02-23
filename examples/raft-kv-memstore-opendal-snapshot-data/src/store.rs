@@ -1,26 +1,20 @@
 use std::collections::BTreeMap;
 use std::fmt::Debug;
-use std::ops::RangeBounds;
 use std::sync::Arc;
 use std::sync::Mutex;
 
 use opendal::Operator;
-use openraft::storage::LogFlushed;
-use openraft::storage::LogState;
-use openraft::storage::RaftLogStorage;
 use openraft::storage::RaftStateMachine;
 use openraft::storage::Snapshot;
 use openraft::BasicNode;
 use openraft::Entry;
 use openraft::EntryPayload;
 use openraft::LogId;
-use openraft::RaftLogReader;
 use openraft::RaftSnapshotBuilder;
 use openraft::RaftTypeConfig;
 use openraft::SnapshotMeta;
 use openraft::StorageError;
 use openraft::StoredMembership;
-use openraft::Vote;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -29,6 +23,8 @@ use crate::encode;
 use crate::typ;
 use crate::NodeId;
 use crate::TypeConfig;
+
+pub type LogStore = memstore::LogStore<TypeConfig>;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Request {
@@ -92,30 +88,6 @@ impl StateMachineStore {
             storage,
             current_snapshot: Mutex::new(None),
         }
-    }
-}
-
-#[derive(Debug, Default)]
-pub struct LogStore {
-    last_purged_log_id: Mutex<Option<LogId<NodeId>>>,
-
-    /// The Raft log.
-    log: Mutex<BTreeMap<u64, Entry<TypeConfig>>>,
-
-    committed: Mutex<Option<LogId<NodeId>>>,
-
-    /// The current granted vote.
-    vote: Mutex<Option<Vote<NodeId>>>,
-}
-
-impl RaftLogReader<TypeConfig> for Arc<LogStore> {
-    async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug>(
-        &mut self,
-        range: RB,
-    ) -> Result<Vec<Entry<TypeConfig>>, StorageError<NodeId>> {
-        let log = self.log.lock().unwrap();
-        let response = log.range(range.clone()).map(|(_, val)| val.clone()).collect::<Vec<_>>();
-        Ok(response)
     }
 }
 
@@ -266,101 +238,6 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
     }
 
     async fn get_snapshot_builder(&mut self) -> Self::SnapshotBuilder {
-        self.clone()
-    }
-}
-
-impl RaftLogStorage<TypeConfig> for Arc<LogStore> {
-    type LogReader = Self;
-
-    async fn get_log_state(&mut self) -> Result<LogState<TypeConfig>, StorageError<NodeId>> {
-        let log = self.log.lock().unwrap();
-        let last = log.iter().next_back().map(|(_, ent)| ent.log_id);
-
-        let last_purged = *self.last_purged_log_id.lock().unwrap();
-
-        let last = match last {
-            None => last_purged,
-            Some(x) => Some(x),
-        };
-
-        Ok(LogState {
-            last_purged_log_id: last_purged,
-            last_log_id: last,
-        })
-    }
-
-    async fn save_committed(&mut self, committed: Option<LogId<NodeId>>) -> Result<(), StorageError<NodeId>> {
-        let mut c = self.committed.lock().unwrap();
-        *c = committed;
-        Ok(())
-    }
-
-    async fn read_committed(&mut self) -> Result<Option<LogId<NodeId>>, StorageError<NodeId>> {
-        let committed = self.committed.lock().unwrap();
-        Ok(*committed)
-    }
-
-    #[tracing::instrument(level = "trace", skip(self))]
-    async fn save_vote(&mut self, vote: &Vote<NodeId>) -> Result<(), StorageError<NodeId>> {
-        let mut v = self.vote.lock().unwrap();
-        *v = Some(*vote);
-        Ok(())
-    }
-
-    async fn read_vote(&mut self) -> Result<Option<Vote<NodeId>>, StorageError<NodeId>> {
-        Ok(*self.vote.lock().unwrap())
-    }
-
-    #[tracing::instrument(level = "trace", skip(self, entries, callback))]
-    async fn append<I>(&mut self, entries: I, callback: LogFlushed<NodeId>) -> Result<(), StorageError<NodeId>>
-    where I: IntoIterator<Item = Entry<TypeConfig>> {
-        // Simple implementation that calls the flush-before-return `append_to_log`.
-        let mut log = self.log.lock().unwrap();
-        for entry in entries {
-            log.insert(entry.log_id.index, entry);
-        }
-        callback.log_io_completed(Ok(()));
-
-        Ok(())
-    }
-
-    #[tracing::instrument(level = "debug", skip(self))]
-    async fn truncate(&mut self, log_id: LogId<NodeId>) -> Result<(), StorageError<NodeId>> {
-        tracing::debug!("delete_log: [{:?}, +oo)", log_id);
-
-        let mut log = self.log.lock().unwrap();
-        let keys = log.range(log_id.index..).map(|(k, _v)| *k).collect::<Vec<_>>();
-        for key in keys {
-            log.remove(&key);
-        }
-
-        Ok(())
-    }
-
-    #[tracing::instrument(level = "debug", skip(self))]
-    async fn purge(&mut self, log_id: LogId<NodeId>) -> Result<(), StorageError<NodeId>> {
-        tracing::debug!("delete_log: (-oo, {:?}]", log_id);
-
-        {
-            let mut ld = self.last_purged_log_id.lock().unwrap();
-            assert!(*ld <= Some(log_id));
-            *ld = Some(log_id);
-        }
-
-        {
-            let mut log = self.log.lock().unwrap();
-
-            let keys = log.range(..=log_id.index).map(|(k, _v)| *k).collect::<Vec<_>>();
-            for key in keys {
-                log.remove(&key);
-            }
-        }
-
-        Ok(())
-    }
-
-    async fn get_log_reader(&mut self) -> Self::LogReader {
         self.clone()
     }
 }
