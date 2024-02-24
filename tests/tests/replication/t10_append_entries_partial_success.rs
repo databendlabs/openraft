@@ -8,7 +8,7 @@ use openraft::Config;
 use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
 
-/// RaftNetwork::send_append_entries can return a partial success.
+/// RaftNetwork::append_entries can return a partial success.
 /// For example, it tries to send log entries `[1-2..2-10]`, the application is allowed to send just
 /// `[1-2..1-3]` and return `PartialSuccess(1-3)`.
 #[async_entry::test(worker_threads = 4, init = "init_default_ut_tracing()", tracing_span = "debug")]

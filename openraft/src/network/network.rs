@@ -31,18 +31,6 @@ use crate::Vote;
 ///
 /// A single network instance is used to connect to a single target node. The network instance is
 /// constructed by the [`RaftNetworkFactory`](`crate::network::RaftNetworkFactory`).
-///
-/// ### 2023-05-03: New API with options
-///
-/// - This trait introduced 3 new API `append_entries`, `install_snapshot` and `vote` which accept
-///   an additional argument [`RPCOption`], and deprecated the old API `send_append_entries`,
-///   `send_install_snapshot` and `send_vote`.
-///
-/// - The old API will be **removed** in `0.9`. An application can still implement the old API
-///   without any changes. Openraft calls only the new API and the default implementation will
-///   delegate to the old API.
-///
-/// - Implementing the new APIs will disable the old APIs.
 #[add_async_trait]
 pub trait RaftNetwork<C>: OptionalSend + OptionalSync + 'static
 where C: RaftTypeConfig
@@ -52,37 +40,26 @@ where C: RaftTypeConfig
         &mut self,
         rpc: AppendEntriesRequest<C>,
         option: RPCOption,
-    ) -> Result<AppendEntriesResponse<C::NodeId>, RPCError<C::NodeId, C::Node, RaftError<C::NodeId>>> {
-        let _ = option;
-        #[allow(deprecated)]
-        self.send_append_entries(rpc).await
-    }
+    ) -> Result<AppendEntriesResponse<C::NodeId>, RPCError<C::NodeId, C::Node, RaftError<C::NodeId>>>;
 
     /// Send an InstallSnapshot RPC to the target.
+    #[cfg(not(feature = "generic-snapshot-data"))]
     #[deprecated(since = "0.9.0", note = "use `snapshot()` instead for sending a complete snapshot")]
     async fn install_snapshot(
         &mut self,
-        rpc: InstallSnapshotRequest<C>,
-        option: RPCOption,
+        _rpc: InstallSnapshotRequest<C>,
+        _option: RPCOption,
     ) -> Result<
         InstallSnapshotResponse<C::NodeId>,
         RPCError<C::NodeId, C::Node, RaftError<C::NodeId, InstallSnapshotError>>,
-    > {
-        let _ = option;
-        #[allow(deprecated)]
-        self.send_install_snapshot(rpc).await
-    }
+    >;
 
     /// Send a RequestVote RPC to the target.
     async fn vote(
         &mut self,
         rpc: VoteRequest<C::NodeId>,
         option: RPCOption,
-    ) -> Result<VoteResponse<C::NodeId>, RPCError<C::NodeId, C::Node, RaftError<C::NodeId>>> {
-        let _ = option;
-        #[allow(deprecated)]
-        self.send_vote(rpc).await
-    }
+    ) -> Result<VoteResponse<C::NodeId>, RPCError<C::NodeId, C::Node, RaftError<C::NodeId>>>;
 
     /// Send a complete Snapshot to the target.
     ///
@@ -99,6 +76,16 @@ where C: RaftTypeConfig
     /// with this vote.
     ///
     /// `cancel` get `Ready` when the caller decides to cancel this snapshot transmission.
+    #[cfg(feature = "generic-snapshot-data")]
+    async fn snapshot(
+        &mut self,
+        vote: Vote<C::NodeId>,
+        snapshot: Snapshot<C>,
+        cancel: impl Future<Output = ReplicationClosed> + OptionalSend,
+        option: RPCOption,
+    ) -> Result<SnapshotResponse<C::NodeId>, StreamingError<C, Fatal<C::NodeId>>>;
+
+    #[cfg(not(feature = "generic-snapshot-data"))]
     async fn snapshot(
         &mut self,
         vote: Vote<C::NodeId>,
@@ -106,60 +93,11 @@ where C: RaftTypeConfig
         cancel: impl Future<Output = ReplicationClosed> + OptionalSend,
         option: RPCOption,
     ) -> Result<SnapshotResponse<C::NodeId>, StreamingError<C, Fatal<C::NodeId>>> {
-        #[cfg(not(feature = "generic-snapshot-data"))]
-        {
-            use crate::network::stream_snapshot;
-            use crate::network::stream_snapshot::SnapshotTransport;
+        use crate::network::stream_snapshot;
+        use crate::network::stream_snapshot::SnapshotTransport;
 
-            let resp = stream_snapshot::Chunked::send_snapshot(self, vote, snapshot, cancel, option).await?;
-            Ok(resp)
-        }
-        #[cfg(feature = "generic-snapshot-data")]
-        {
-            let _ = (vote, snapshot, cancel, option);
-            unimplemented!(
-                "no default implementation for RaftNetwork::snapshot() if `generic-snapshot-data` feature is enabled"
-            )
-        }
-    }
-
-    /// Send an AppendEntries RPC to the target Raft node (§5).
-    #[deprecated(
-        since = "0.8.4",
-        note = "use `append_entries` instead. This method will be removed in 0.9"
-    )]
-    async fn send_append_entries(
-        &mut self,
-        rpc: AppendEntriesRequest<C>,
-    ) -> Result<AppendEntriesResponse<C::NodeId>, RPCError<C::NodeId, C::Node, RaftError<C::NodeId>>> {
-        let _ = rpc;
-        unimplemented!("send_append_entries is deprecated")
-    }
-
-    /// Send an InstallSnapshot RPC to the target Raft node (§7).
-    #[deprecated(
-        since = "0.8.4",
-        note = "use `install_snapshot` instead. This method will be removed in 0.9"
-    )]
-    async fn send_install_snapshot(
-        &mut self,
-        rpc: InstallSnapshotRequest<C>,
-    ) -> Result<
-        InstallSnapshotResponse<C::NodeId>,
-        RPCError<C::NodeId, C::Node, RaftError<C::NodeId, InstallSnapshotError>>,
-    > {
-        let _ = rpc;
-        unimplemented!("send_install_snapshot is deprecated")
-    }
-
-    /// Send a RequestVote RPC to the target Raft node (§5).
-    #[deprecated(since = "0.8.4", note = "use `vote` instead. This method will be removed in 0.9")]
-    async fn send_vote(
-        &mut self,
-        rpc: VoteRequest<C::NodeId>,
-    ) -> Result<VoteResponse<C::NodeId>, RPCError<C::NodeId, C::Node, RaftError<C::NodeId>>> {
-        let _ = rpc;
-        unimplemented!("send_vote is deprecated")
+        let resp = stream_snapshot::Chunked::send_snapshot(self, vote, snapshot, cancel, option).await?;
+        Ok(resp)
     }
 
     /// Build a backoff instance if the target node is temporarily(or permanently) unreachable.

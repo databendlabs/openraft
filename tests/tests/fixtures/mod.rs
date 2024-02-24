@@ -32,6 +32,7 @@ use openraft::error::RaftError;
 use openraft::error::RemoteError;
 use openraft::error::Unreachable;
 use openraft::metrics::Wait;
+use openraft::network::RPCOption;
 use openraft::network::RaftNetwork;
 use openraft::network::RaftNetworkFactory;
 use openraft::raft::AppendEntriesRequest;
@@ -985,9 +986,10 @@ pub struct RaftRouterNetwork {
 
 impl RaftNetwork<MemConfig> for RaftRouterNetwork {
     /// Send an AppendEntries RPC to the target Raft node (§5).
-    async fn send_append_entries(
+    async fn append_entries(
         &mut self,
         mut rpc: AppendEntriesRequest<MemConfig>,
+        _option: RPCOption,
     ) -> Result<AppendEntriesResponse<MemNodeId>, RPCError<MemNodeId, (), RaftError<MemNodeId>>> {
         let from_id = rpc.vote.leader_id().voted_for().unwrap();
 
@@ -1048,9 +1050,10 @@ impl RaftNetwork<MemConfig> for RaftRouterNetwork {
     }
 
     /// Send an InstallSnapshot RPC to the target Raft node (§7).
-    async fn send_install_snapshot(
+    async fn install_snapshot(
         &mut self,
         rpc: InstallSnapshotRequest<MemConfig>,
+        _option: RPCOption,
     ) -> Result<InstallSnapshotResponse<MemNodeId>, RPCError<MemNodeId, (), RaftError<MemNodeId, InstallSnapshotError>>>
     {
         let from_id = rpc.vote.leader_id().voted_for().unwrap();
@@ -1069,9 +1072,10 @@ impl RaftNetwork<MemConfig> for RaftRouterNetwork {
     }
 
     /// Send a RequestVote RPC to the target Raft node (§5).
-    async fn send_vote(
+    async fn vote(
         &mut self,
         rpc: VoteRequest<MemNodeId>,
+        _option: RPCOption,
     ) -> Result<VoteResponse<MemNodeId>, RPCError<MemNodeId, (), RaftError<MemNodeId>>> {
         let from_id = rpc.vote.leader_id().voted_for().unwrap();
 
