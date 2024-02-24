@@ -240,7 +240,7 @@ where
     Closed(#[from] ReplicationClosed),
 
     // TODO(xp): two sub type: StorageError / TransportError
-    // TODO(xp): a sub error for just send_append_entries()
+    // TODO(xp): a sub error for just append_entries()
     #[error(transparent)]
     StorageError(#[from] StorageError<NID>),
 

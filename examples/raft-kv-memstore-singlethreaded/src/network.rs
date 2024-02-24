@@ -1,5 +1,6 @@
 use openraft::error::InstallSnapshotError;
 use openraft::error::RemoteError;
+use openraft::network::RPCOption;
 use openraft::raft::AppendEntriesRequest;
 use openraft::raft::AppendEntriesResponse;
 use openraft::raft::InstallSnapshotRequest;
@@ -32,9 +33,10 @@ impl RaftNetworkFactory<TypeConfig> for Router {
 }
 
 impl RaftNetwork<TypeConfig> for Connection {
-    async fn send_append_entries(
+    async fn append_entries(
         &mut self,
         req: AppendEntriesRequest<TypeConfig>,
+        _option: RPCOption,
     ) -> Result<AppendEntriesResponse<NodeId>, typ::RPCError> {
         let resp = self
             .router
@@ -44,9 +46,10 @@ impl RaftNetwork<TypeConfig> for Connection {
         Ok(resp)
     }
 
-    async fn send_install_snapshot(
+    async fn install_snapshot(
         &mut self,
         req: InstallSnapshotRequest<TypeConfig>,
+        _option: RPCOption,
     ) -> Result<InstallSnapshotResponse<NodeId>, typ::RPCError<InstallSnapshotError>> {
         let resp = self
             .router
@@ -56,7 +59,11 @@ impl RaftNetwork<TypeConfig> for Connection {
         Ok(resp)
     }
 
-    async fn send_vote(&mut self, req: VoteRequest<NodeId>) -> Result<VoteResponse<NodeId>, typ::RPCError> {
+    async fn vote(
+        &mut self,
+        req: VoteRequest<NodeId>,
+        _option: RPCOption,
+    ) -> Result<VoteResponse<NodeId>, typ::RPCError> {
         let resp = self
             .router
             .send(self.target, "/raft/vote", req)
