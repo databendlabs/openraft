@@ -450,7 +450,7 @@ where C: RaftTypeConfig
 
     /// Install a completely received snapshot on a follower.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn handle_install_complete_snapshot(
+    pub(crate) fn handle_install_full_snapshot(
         &mut self,
         vote: Vote<C::NodeId>,
         snapshot: Snapshot<C>,
@@ -467,7 +467,7 @@ where C: RaftTypeConfig
         };
 
         let mut fh = self.following_handler();
-        fh.install_complete_snapshot(snapshot);
+        fh.install_full_snapshot(snapshot);
         let res = Ok(SnapshotResponse {
             vote: *self.state.vote_ref(),
         });

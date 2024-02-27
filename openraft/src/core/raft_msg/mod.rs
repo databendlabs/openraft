@@ -61,7 +61,7 @@ where C: RaftTypeConfig
         tx: VoteTx<C::NodeId>,
     },
 
-    InstallCompleteSnapshot {
+    InstallFullSnapshot {
         vote: Vote<C::NodeId>,
         snapshot: Snapshot<C>,
         tx: ResultSender<SnapshotResponse<C::NodeId>>,
@@ -124,8 +124,8 @@ where C: RaftTypeConfig
             RaftMsg::BeginReceivingSnapshot { vote, .. } => {
                 format!("BeginReceivingSnapshot: vote: {}", vote)
             }
-            RaftMsg::InstallCompleteSnapshot { vote, snapshot, .. } => {
-                format!("InstallCompleteSnapshot: vote: {}, snapshot: {}", vote, snapshot)
+            RaftMsg::InstallFullSnapshot { vote, snapshot, .. } => {
+                format!("InstallFullSnapshot: vote: {}, snapshot: {}", vote, snapshot)
             }
             RaftMsg::ClientWriteRequest { .. } => "ClientWriteRequest".to_string(),
             RaftMsg::CheckIsLeaderRequest { .. } => "CheckIsLeaderRequest".to_string(),

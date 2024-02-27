@@ -72,12 +72,12 @@ where C: RaftTypeConfig
     ///
     /// The `vote` is the leader vote which is used to check if the leader is still valid by a
     /// follower.
-    /// When the follower finished receiving snapshot, it calls `Raft::install_complete_snapshot()`
+    /// When the follower finished receiving snapshot, it calls `Raft::install_full_snapshot()`
     /// with this vote.
     ///
     /// `cancel` get `Ready` when the caller decides to cancel this snapshot transmission.
     #[cfg(feature = "generic-snapshot-data")]
-    async fn snapshot(
+    async fn full_snapshot(
         &mut self,
         vote: Vote<C::NodeId>,
         snapshot: Snapshot<C>,
@@ -86,7 +86,7 @@ where C: RaftTypeConfig
     ) -> Result<SnapshotResponse<C::NodeId>, StreamingError<C, Fatal<C::NodeId>>>;
 
     #[cfg(not(feature = "generic-snapshot-data"))]
-    async fn snapshot(
+    async fn full_snapshot(
         &mut self,
         vote: Vote<C::NodeId>,
         snapshot: Snapshot<C>,

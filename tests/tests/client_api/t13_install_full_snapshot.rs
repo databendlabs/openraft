@@ -10,7 +10,7 @@ use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
 
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
-async fn install_complete_snapshot() -> anyhow::Result<()> {
+async fn install_full_snapshot() -> anyhow::Result<()> {
     let config = Arc::new(
         Config {
             enable_heartbeat: false,
@@ -51,7 +51,7 @@ async fn install_complete_snapshot() -> anyhow::Result<()> {
     {
         let n1 = router.get_raft_handle(&1)?;
 
-        let resp = n1.install_complete_snapshot(Vote::new(0, 0), snap.clone()).await?;
+        let resp = n1.install_full_snapshot(Vote::new(0, 0), snap.clone()).await?;
         assert_eq!(
             Vote::new_committed(1, 0),
             resp.vote,
@@ -73,7 +73,7 @@ async fn install_complete_snapshot() -> anyhow::Result<()> {
     {
         let n1 = router.get_raft_handle(&1)?;
 
-        let resp = n1.install_complete_snapshot(Vote::new_committed(1, 0), snap.clone()).await?;
+        let resp = n1.install_full_snapshot(Vote::new_committed(1, 0), snap.clone()).await?;
         assert_eq!(Vote::new_committed(1, 0), resp.vote,);
         n1.with_raft_state(move |state| {
             assert_eq!(
@@ -88,7 +88,7 @@ async fn install_complete_snapshot() -> anyhow::Result<()> {
     {
         let n2 = router.get_raft_handle(&2)?;
 
-        let resp = n2.install_complete_snapshot(Vote::new_committed(1, 0), snap.clone()).await?;
+        let resp = n2.install_full_snapshot(Vote::new_committed(1, 0), snap.clone()).await?;
         assert_eq!(Vote::new_committed(1, 0), resp.vote,);
         n2.with_raft_state(move |state| {
             assert_eq!(

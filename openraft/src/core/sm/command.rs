@@ -64,8 +64,8 @@ where C: RaftTypeConfig
         Command::new(payload)
     }
 
-    pub(crate) fn install_complete_snapshot(snapshot: Snapshot<C>) -> Self {
-        let payload = CommandPayload::InstallCompleteSnapshot { snapshot };
+    pub(crate) fn install_full_snapshot(snapshot: Snapshot<C>) -> Self {
+        let payload = CommandPayload::InstallFullSnapshot { snapshot };
         Command::new(payload)
     }
 
@@ -98,7 +98,7 @@ where C: RaftTypeConfig
         tx: ResultSender<Box<SnapshotDataOf<C>>, HigherVote<C::NodeId>>,
     },
 
-    InstallCompleteSnapshot {
+    InstallFullSnapshot {
         snapshot: Snapshot<C>,
     },
 
@@ -115,8 +115,8 @@ where C: RaftTypeConfig
         match self {
             CommandPayload::BuildSnapshot => write!(f, "BuildSnapshot"),
             CommandPayload::GetSnapshot { .. } => write!(f, "GetSnapshot"),
-            CommandPayload::InstallCompleteSnapshot { snapshot } => {
-                write!(f, "InstallCompleteSnapshot: meta: {:?}", snapshot.meta)
+            CommandPayload::InstallFullSnapshot { snapshot } => {
+                write!(f, "InstallFullSnapshot: meta: {:?}", snapshot.meta)
             }
             CommandPayload::BeginReceivingSnapshot { .. } => {
                 write!(f, "BeginReceivingSnapshot")
@@ -136,8 +136,8 @@ where C: RaftTypeConfig
             (CommandPayload::GetSnapshot { .. }, CommandPayload::GetSnapshot { .. }) => true,
             (CommandPayload::BeginReceivingSnapshot { .. }, CommandPayload::BeginReceivingSnapshot { .. }) => true,
             (
-                CommandPayload::InstallCompleteSnapshot { snapshot: s1 },
-                CommandPayload::InstallCompleteSnapshot { snapshot: s2 },
+                CommandPayload::InstallFullSnapshot { snapshot: s1 },
+                CommandPayload::InstallFullSnapshot { snapshot: s2 },
             ) => s1.meta == s2.meta,
             (CommandPayload::Apply { entries: entries1 }, CommandPayload::Apply { entries: entries2 }) => {
                 // Entry may not be `Eq`, we just compare log id.
