@@ -230,7 +230,7 @@ where
     AppendEntries(ValueSender<Result<AppendEntriesResponse<NID>, Infallible>>),
     ReceiveSnapshotChunk(ValueSender<Result<(), InstallSnapshotError>>),
     InstallSnapshot(ValueSender<Result<InstallSnapshotResponse<NID>, InstallSnapshotError>>),
-    InstallCompleteSnapshot(ValueSender<Result<SnapshotResponse<NID>, Infallible>>),
+    InstallFullSnapshot(ValueSender<Result<SnapshotResponse<NID>, Infallible>>),
     Initialize(ValueSender<Result<(), InitializeError<NID, N>>>),
 }
 
@@ -253,7 +253,7 @@ where
             Respond::AppendEntries(x) => x.send(),
             Respond::ReceiveSnapshotChunk(x) => x.send(),
             Respond::InstallSnapshot(x) => x.send(),
-            Respond::InstallCompleteSnapshot(x) => x.send(),
+            Respond::InstallFullSnapshot(x) => x.send(),
             Respond::Initialize(x) => x.send(),
         }
     }

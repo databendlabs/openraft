@@ -7,7 +7,7 @@ This example is similar to the basic raft-kv-memstore example
 but focuses on how to handle snapshot with `generic-snapshot-data` enabled.
 Other aspects are minimized.
 
-To send a complete snapshot, Refer to implementation of `RaftNetwork::snapshot()` in this example.
+To send a complete snapshot, Refer to implementation of `RaftNetwork::full_snapshot()` in this example.
 
 To receive a complete snapshot, Refer to implementation of `api::snapshot()` in this example.
 

@@ -58,7 +58,7 @@ impl<C: RaftTypeConfig> SnapshotTransport<C> for Chunked {
     /// Stream snapshot by chunks.
     ///
     /// This function is for backward compatibility and provides a default implement for
-    /// `RaftNetwork::snapshot()` upon `RafNetwork::install_snapshot()`. This implementation
+    /// `RaftNetwork::full_snapshot()` upon `RafNetwork::install_snapshot()`. This implementation
     /// requires `SnapshotData` to be `AsyncRead + AsyncSeek`.
     ///
     /// The argument `vote` is the leader's vote which is used to check if the leader is still valid
@@ -96,7 +96,7 @@ impl<C: RaftTypeConfig> SnapshotTransport<C> for Chunked {
             snapshot.snapshot.seek(SeekFrom::Start(offset)).await.sto_res(subject_verb)?;
 
             // Safe unwrap(): this function is called only by default implementation of
-            // `RaftNetwork::snapshot()` and it is always set.
+            // `RaftNetwork::full_snapshot()` and it is always set.
             let chunk_size = option.snapshot_chunk_size().unwrap();
             let mut buf = Vec::with_capacity(chunk_size);
             while buf.capacity() > buf.len() {

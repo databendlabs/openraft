@@ -184,11 +184,11 @@ and receiving messages between Raft nodes.
 Here is the list of methods that need to be implemented for the [`RaftNetwork`] trait:
 
 
-| [`RaftNetwork`] method | forward request          | to target                                         |
-|------------------------|--------------------------|---------------------------------------------------|
-| [`append_entries()`]   | [`AppendEntriesRequest`] | remote node [`Raft::append_entries()`]            |
-| [`snapshot()`]         | [`Snapshot`]             | remote node [`Raft::install_complete_snapshot()`] |
-| [`vote()`]             | [`VoteRequest`]          | remote node [`Raft::vote()`]                      |
+| [`RaftNetwork`] method | forward request          | to target                                      |
+|------------------------|--------------------------|------------------------------------------------|
+| [`append_entries()`]   | [`AppendEntriesRequest`] | remote node [`Raft::append_entries()`]         |
+| [`full_snapshot()`]    | [`Snapshot`]             | remote node [`Raft::install_full_snapshot()`] |
+| [`vote()`]             | [`VoteRequest`]          | remote node [`Raft::vote()`]                   |
 
 [Mem KV Network](https://github.com/datafuselabs/openraft/blob/main/examples/raft-kv-memstore/src/network/raft_network_impl.rs)
 demonstrates how to forward messages to other Raft nodes using [`reqwest`](https://docs.rs/reqwest/latest/reqwest/) as network transport layer.
@@ -351,7 +351,7 @@ Additionally, two test scripts for setting up a cluster are available:
 [`Raft`]:                               `crate::Raft`
 [`Raft::append_entries()`]:             `crate::Raft::append_entries`
 [`Raft::vote()`]:                       `crate::Raft::vote`
-[`Raft::install_complete_snapshot()`]:  `crate::Raft::install_complete_snapshot`
+[`Raft::install_full_snapshot()`]:  `crate::Raft::install_full_snapshot`
 
 [`AppendEntriesRequest`]:               `crate::raft::AppendEntriesRequest`
 [`VoteRequest`]:                        `crate::raft::VoteRequest`
@@ -398,7 +398,7 @@ Additionally, two test scripts for setting up a cluster are available:
 [`RaftNetwork`]:                        `crate::network::RaftNetwork`
 [`append_entries()`]:                   `crate::RaftNetwork::append_entries`
 [`vote()`]:                             `crate::RaftNetwork::vote`
-[`snapshot()`]:                         `crate::RaftNetwork::snapshot`
+[`full_snapshot()`]:                         `crate::RaftNetwork::full_snapshot`
 
 
 [`RaftSnapshotBuilder`]:                `crate::storage::RaftSnapshotBuilder`

@@ -37,9 +37,9 @@ pub fn log_panic(panic: &PanicInfo) {
 ///
 /// - Setup a single node cluster, write some logs, take a snapshot;
 /// - Add a learner node-2 to receive snapshot replication, via the complete-snapshot API:
-///   - The sending end sends snapshot with `RaftNetwork::snapshot()`;
+///   - The sending end sends snapshot with `RaftNetwork::full_snapshot()`;
 ///   - The receiving end deliver the received snapshot to `Raft` with
-///     `Raft::install_complete_snapshot()`.
+///     `Raft::install_full_snapshot()`.
 #[tokio::test]
 async fn test_cluster() {
     std::panic::set_hook(Box::new(|panic| {
