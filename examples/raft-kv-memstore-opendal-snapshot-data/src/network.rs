@@ -37,9 +37,10 @@ impl RaftNetworkFactory<TypeConfig> for Router {
 }
 
 impl RaftNetwork<TypeConfig> for Connection {
-    async fn send_append_entries(
+    async fn append_entries(
         &mut self,
         req: AppendEntriesRequest<TypeConfig>,
+        _option: RPCOption,
     ) -> Result<AppendEntriesResponse<NodeId>, typ::RPCError> {
         let resp = self
             .router
@@ -50,7 +51,7 @@ impl RaftNetwork<TypeConfig> for Connection {
     }
 
     /// A real application should replace this method with customized implementation.
-    async fn snapshot(
+    async fn full_snapshot(
         &mut self,
         vote: Vote<NodeId>,
         snapshot: Snapshot<TypeConfig>,
@@ -65,7 +66,11 @@ impl RaftNetwork<TypeConfig> for Connection {
         Ok(resp)
     }
 
-    async fn send_vote(&mut self, req: VoteRequest<NodeId>) -> Result<VoteResponse<NodeId>, typ::RPCError> {
+    async fn vote(
+        &mut self,
+        req: VoteRequest<NodeId>,
+        _option: RPCOption,
+    ) -> Result<VoteResponse<NodeId>, typ::RPCError> {
         let resp = self
             .router
             .send(self.target, "/raft/vote", req)

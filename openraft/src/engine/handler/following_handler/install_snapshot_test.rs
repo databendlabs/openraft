@@ -56,7 +56,7 @@ fn test_install_snapshot_lt_last_snapshot() -> anyhow::Result<()> {
     // `snapshot_meta.last_log_id`.
     let mut eng = eng();
 
-    eng.following_handler().install_complete_snapshot(Snapshot {
+    eng.following_handler().install_full_snapshot(Snapshot {
         meta: SnapshotMeta {
             last_log_id: Some(log_id(2, 1, 2)),
             last_membership: StoredMembership::new(Some(log_id(1, 1, 1)), m1234()),
@@ -86,7 +86,7 @@ fn test_install_snapshot_lt_committed() -> anyhow::Result<()> {
     // Although in this case the state machine is not affected.
     let mut eng = eng();
 
-    eng.following_handler().install_complete_snapshot(Snapshot {
+    eng.following_handler().install_full_snapshot(Snapshot {
         meta: SnapshotMeta {
             last_log_id: Some(log_id(4, 1, 5)),
             last_membership: StoredMembership::new(Some(log_id(1, 1, 1)), m1234()),
@@ -113,7 +113,7 @@ fn test_install_snapshot_not_conflict() -> anyhow::Result<()> {
     // Snapshot will be installed and there are no conflicting logs.
     let mut eng = eng();
 
-    eng.following_handler().install_complete_snapshot(Snapshot {
+    eng.following_handler().install_full_snapshot(Snapshot {
         meta: SnapshotMeta {
             last_log_id: Some(log_id(4, 1, 6)),
             last_membership: StoredMembership::new(Some(log_id(1, 1, 1)), m1234()),
@@ -140,7 +140,7 @@ fn test_install_snapshot_not_conflict() -> anyhow::Result<()> {
         vec![
             //
             Command::from(
-                sm::Command::install_complete_snapshot(Snapshot {
+                sm::Command::install_full_snapshot(Snapshot {
                     meta: SnapshotMeta {
                         last_log_id: Some(log_id(4, 1, 6)),
                         last_membership: StoredMembership::new(Some(log_id(1, 1, 1)), m1234()),
@@ -187,7 +187,7 @@ fn test_install_snapshot_conflict() -> anyhow::Result<()> {
         eng
     };
 
-    eng.following_handler().install_complete_snapshot(Snapshot {
+    eng.following_handler().install_full_snapshot(Snapshot {
         meta: SnapshotMeta {
             last_log_id: Some(log_id(5, 1, 6)),
             last_membership: StoredMembership::new(Some(log_id(1, 1, 1)), m1234()),
@@ -215,7 +215,7 @@ fn test_install_snapshot_conflict() -> anyhow::Result<()> {
             //
             Command::DeleteConflictLog { since: log_id(2, 1, 4) },
             Command::from(
-                sm::Command::install_complete_snapshot(Snapshot {
+                sm::Command::install_full_snapshot(Snapshot {
                     meta: SnapshotMeta {
                         last_log_id: Some(log_id(5, 1, 6)),
                         last_membership: StoredMembership::new(Some(log_id(1, 1, 1)), m1234()),
@@ -238,7 +238,7 @@ fn test_install_snapshot_advance_last_log_id() -> anyhow::Result<()> {
     // Snapshot will be installed and there are no conflicting logs.
     let mut eng = eng();
 
-    eng.following_handler().install_complete_snapshot(Snapshot {
+    eng.following_handler().install_full_snapshot(Snapshot {
         meta: SnapshotMeta {
             last_log_id: Some(log_id(100, 1, 100)),
             last_membership: StoredMembership::new(Some(log_id(1, 1, 1)), m1234()),
@@ -268,7 +268,7 @@ fn test_install_snapshot_advance_last_log_id() -> anyhow::Result<()> {
     assert_eq!(
         vec![
             Command::from(
-                sm::Command::install_complete_snapshot(Snapshot {
+                sm::Command::install_full_snapshot(Snapshot {
                     meta: SnapshotMeta {
                         last_log_id: Some(log_id(100, 1, 100)),
                         last_membership: StoredMembership::new(Some(log_id(1, 1, 1)), m1234()),
@@ -293,7 +293,7 @@ fn test_install_snapshot_update_accepted() -> anyhow::Result<()> {
     // Snapshot will be installed and `accepted` should be updated.
     let mut eng = eng();
 
-    eng.following_handler().install_complete_snapshot(Snapshot {
+    eng.following_handler().install_full_snapshot(Snapshot {
         meta: SnapshotMeta {
             last_log_id: Some(log_id(100, 1, 100)),
             last_membership: StoredMembership::new(Some(log_id(1, 1, 1)), m1234()),

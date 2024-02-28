@@ -60,7 +60,7 @@ pub async fn snapshot(app: &mut App, req: String) -> String {
     };
     let res = app
         .raft
-        .install_complete_snapshot(vote, snapshot)
+        .install_full_snapshot(vote, snapshot)
         .await
         .map_err(typ::RaftError::<typ::Infallible>::Fatal);
     encode(res)

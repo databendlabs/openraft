@@ -806,7 +806,7 @@ where
             ReplicationClosed::new("ReplicationCore is dropped")
         };
 
-        let res = net.snapshot(vote, snapshot, cancel, option).await;
+        let res = net.full_snapshot(vote, snapshot, cancel, option).await;
         if let Err(e) = &res {
             tracing::warn!(error = display(e), "failed to send snapshot");
         }

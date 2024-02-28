@@ -1132,8 +1132,8 @@ where
             RaftMsg::BeginReceivingSnapshot { vote, tx } => {
                 self.engine.handle_begin_receiving_snapshot(vote, tx);
             }
-            RaftMsg::InstallCompleteSnapshot { vote, snapshot, tx } => {
-                self.engine.handle_install_complete_snapshot(vote, snapshot, tx);
+            RaftMsg::InstallFullSnapshot { vote, snapshot, tx } => {
+                self.engine.handle_install_full_snapshot(vote, snapshot, tx);
             }
             RaftMsg::CheckIsLeaderRequest { tx } => {
                 if self.engine.state.is_leader(&self.engine.config.id) {

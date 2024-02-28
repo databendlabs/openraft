@@ -6,6 +6,7 @@ use openraft::error::NetworkError;
 use openraft::error::RPCError;
 use openraft::error::RaftError;
 use openraft::error::RemoteError;
+use openraft::network::RPCOption;
 use openraft::network::RaftNetwork;
 use openraft::network::RaftNetworkFactory;
 use openraft::raft::AppendEntriesRequest;
@@ -99,7 +100,7 @@ fn to_error<E: std::error::Error + 'static + Clone>(e: toy_rpc::Error, target: N
 // 99  |       ) -> Result<AppendEntriesResponse<NodeId>, RPCError<NodeId, Node, RaftError<NodeId>>>
 // {
 //     |  ___________________________________________________________________________________________^
-// 100 | |         tracing::debug!(req = debug(&req), "send_append_entries");
+// 100 | |         tracing::debug!(req = debug(&req), "append_entries");
 // 101 | |
 // 102 | |         let c = self.c().await?;
 // ...   |
@@ -112,11 +113,12 @@ fn to_error<E: std::error::Error + 'static + Clone>(e: toy_rpc::Error, target: N
 #[allow(clippy::blocks_in_conditions)]
 impl RaftNetwork<TypeConfig> for NetworkConnection {
     #[tracing::instrument(level = "debug", skip_all, err(Debug))]
-    async fn send_append_entries(
+    async fn append_entries(
         &mut self,
         req: AppendEntriesRequest<TypeConfig>,
+        _option: RPCOption,
     ) -> Result<AppendEntriesResponse<NodeId>, RPCError<NodeId, Node, RaftError<NodeId>>> {
-        tracing::debug!(req = debug(&req), "send_append_entries");
+        tracing::debug!(req = debug(&req), "append_entries");
 
         let c = self.c().await?;
         tracing::debug!("got connection");
@@ -128,20 +130,22 @@ impl RaftNetwork<TypeConfig> for NetworkConnection {
     }
 
     #[tracing::instrument(level = "debug", skip_all, err(Debug))]
-    async fn send_install_snapshot(
+    async fn install_snapshot(
         &mut self,
         req: InstallSnapshotRequest<TypeConfig>,
+        _option: RPCOption,
     ) -> Result<InstallSnapshotResponse<NodeId>, RPCError<NodeId, Node, RaftError<NodeId, InstallSnapshotError>>> {
-        tracing::debug!(req = debug(&req), "send_install_snapshot");
+        tracing::debug!(req = debug(&req), "install_snapshot");
         self.c().await?.raft().snapshot(req).await.map_err(|e| to_error(e, self.target))
     }
 
     #[tracing::instrument(level = "debug", skip_all, err(Debug))]
-    async fn send_vote(
+    async fn vote(
         &mut self,
         req: VoteRequest<NodeId>,
+        _option: RPCOption,
     ) -> Result<VoteResponse<NodeId>, RPCError<NodeId, Node, RaftError<NodeId>>> {
-        tracing::debug!(req = debug(&req), "send_vote");
+        tracing::debug!(req = debug(&req), "vote");
         self.c().await?.raft().vote(req).await.map_err(|e| to_error(e, self.target))
     }
 }

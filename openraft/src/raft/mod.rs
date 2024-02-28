@@ -384,15 +384,15 @@ where C: RaftTypeConfig
     /// The application receives a snapshot from the leader, in chunks or a stream, and
     /// then rebuild a snapshot, then pass the snapshot to Raft to install.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn install_complete_snapshot(
+    pub async fn install_full_snapshot(
         &self,
         vote: Vote<C::NodeId>,
         snapshot: Snapshot<C>,
     ) -> Result<SnapshotResponse<C::NodeId>, Fatal<C::NodeId>> {
-        tracing::info!("Raft::install_complete_snapshot()");
+        tracing::info!("Raft::install_full_snapshot()");
 
         let (tx, rx) = C::AsyncRuntime::oneshot();
-        let res = self.inner.call_core(RaftMsg::InstallCompleteSnapshot { vote, snapshot, tx }, rx).await;
+        let res = self.inner.call_core(RaftMsg::InstallFullSnapshot { vote, snapshot, tx }, rx).await;
         match res {
             Ok(x) => Ok(x),
             Err(e) => {
@@ -465,7 +465,7 @@ where C: RaftTypeConfig
 
         let snapshot = Chunked::receive_snapshot(&mut *streaming, req).await?;
         if let Some(snapshot) = snapshot {
-            let resp = self.install_complete_snapshot(req_vote, snapshot).await?;
+            let resp = self.install_full_snapshot(req_vote, snapshot).await?;
 
             Ok(resp.into())
         } else {

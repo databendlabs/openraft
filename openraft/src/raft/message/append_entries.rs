@@ -53,11 +53,11 @@ impl<C: RaftTypeConfig> MessageSummary<AppendEntriesRequest<C>> for AppendEntrie
 
 /// The response to an `AppendEntriesRequest`.
 ///
-/// [`RaftNetwork::send_append_entries`] returns this type only when received an RPC reply.
+/// [`RaftNetwork::append_entries`] returns this type only when received an RPC reply.
 /// Otherwise it should return [`RPCError`].
 ///
 /// [`RPCError`]: crate::error::RPCError
-/// [`RaftNetwork::send_append_entries`]: crate::network::RaftNetwork::send_append_entries
+/// [`RaftNetwork::append_entries`]: crate::network::RaftNetwork::append_entries
 #[derive(Debug)]
 #[derive(PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
@@ -67,7 +67,7 @@ pub enum AppendEntriesResponse<NID: NodeId> {
 
     /// Successfully sent the first portion of log entries.
     ///
-    /// [`RaftNetwork::send_append_entries`] can return a partial success.
+    /// [`RaftNetwork::append_entries`] can return a partial success.
     /// For example, it tries to send log entries `[1-2..3-10]`, the application is allowed to send
     /// just `[1-2..1-3]` and return `PartialSuccess(1-3)`,
     ///
@@ -75,12 +75,12 @@ pub enum AppendEntriesResponse<NID: NodeId> {
     ///
     /// The returned matching log id must be **greater than or equal to** the first log
     /// id([`AppendEntriesRequest::prev_log_id`]) of the entries to send. If no RPC reply is
-    /// received, [`RaftNetwork::send_append_entries`] must return an [`RPCError`] to inform
+    /// received, [`RaftNetwork::append_entries`] must return an [`RPCError`] to inform
     /// Openraft that the first log id([`AppendEntriesRequest::prev_log_id`]) may not match on
     /// the remote target node.
     ///
     /// [`RPCError`]: crate::error::RPCError
-    /// [`RaftNetwork::send_append_entries`]: crate::network::RaftNetwork::send_append_entries
+    /// [`RaftNetwork::append_entries`]: crate::network::RaftNetwork::append_entries
     PartialSuccess(Option<LogId<NID>>),
 
     /// The first log id([`AppendEntriesRequest::prev_log_id`]) of the entries to send does not

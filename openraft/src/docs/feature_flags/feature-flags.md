@@ -35,11 +35,11 @@ This feature is introduced in 0.9.0
 
 On the sending end (leader that sends snapshot to follower):
 
-- Without `generic-snapshot-data`: [`RaftNetwork::snapshot()`]
+- Without `generic-snapshot-data`: [`RaftNetwork::full_snapshot()`]
   provides a default implementation that invokes the chunk-based API
   [`RaftNetwork::install_snapshot()`] for transmit.
 
-- With `generic-snapshot-data` enabled: [`RaftNetwork::snapshot()`]
+- With `generic-snapshot-data` enabled: [`RaftNetwork::full_snapshot()`]
   must be implemented to provide application customized snapshot transmission.
   Application does not need to implement [`RaftNetwork::install_snapshot()`].
 
@@ -96,5 +96,5 @@ emit log record.
 See: [tracing doc: emitting-log-records](https://docs.rs/tracing/latest/tracing/#emitting-log-records)
 
 
-[`RaftNetwork::snapshot()`]: crate::network::RaftNetwork::snapshot
+[`RaftNetwork::full_snapshot()`]: crate::network::RaftNetwork::full_snapshot
 [`RaftNetwork::install_snapshot()`]: crate::network::RaftNetwork::install_snapshot

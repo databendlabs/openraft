@@ -55,7 +55,7 @@ pub struct InstallSnapshotResponse<NID: NodeId> {
     pub vote: Vote<NID>,
 }
 
-/// The response to `Raft::install_complete_snapshot` API.
+/// The response to `Raft::install_full_snapshot` API.
 #[derive(Debug)]
 #[derive(PartialEq, Eq)]
 #[derive(derive_more::Display)]

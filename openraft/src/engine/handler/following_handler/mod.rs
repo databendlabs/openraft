@@ -243,9 +243,9 @@ where C: RaftTypeConfig
     /// Refer to [`snapshot_replication`](crate::docs::protocol::replication::snapshot_replication)
     /// for the reason the following workflow is needed.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn install_complete_snapshot(&mut self, snapshot: Snapshot<C>) {
+    pub(crate) fn install_full_snapshot(&mut self, snapshot: Snapshot<C>) {
         let meta = &snapshot.meta;
-        tracing::info!("install_complete_snapshot: meta:{:?}", meta);
+        tracing::info!("install_full_snapshot: meta:{:?}", meta);
 
         let snap_last_log_id = meta.last_log_id;
 
@@ -285,7 +285,7 @@ where C: RaftTypeConfig
             meta.last_membership.clone(),
         ));
 
-        self.output.push_command(Command::from(sm::Command::install_complete_snapshot(snapshot)));
+        self.output.push_command(Command::from(sm::Command::install_full_snapshot(snapshot)));
 
         self.state.purge_upto = Some(snap_last_log_id);
         self.log_handler().purge_log();
