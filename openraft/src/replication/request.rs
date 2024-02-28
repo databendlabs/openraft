@@ -22,10 +22,7 @@ where C: RaftTypeConfig
         Self::Data(Data::new_logs(id, log_id_range))
     }
 
-    pub(crate) fn snapshot(
-        id: Option<u64>,
-        snapshot_rx: ResultReceiver<AsyncRuntimeOf<C>, Option<Snapshot<C>>>,
-    ) -> Self {
+    pub(crate) fn snapshot(id: Option<u64>, snapshot_rx: ResultReceiver<C, Option<Snapshot<C>>>) -> Self {
         Self::Data(Data::new_snapshot(id, snapshot_rx))
     }
 
@@ -59,7 +56,6 @@ use crate::error::StreamingError;
 use crate::log_id_range::LogIdRange;
 use crate::raft::SnapshotResponse;
 use crate::replication::callbacks::SnapshotCallback;
-use crate::type_config::alias::AsyncRuntimeOf;
 use crate::type_config::alias::InstantOf;
 use crate::LogId;
 use crate::MessageSummary;
@@ -77,7 +73,7 @@ where C: RaftTypeConfig
 {
     Heartbeat,
     Logs(DataWithId<LogIdRange<C::NodeId>>),
-    Snapshot(DataWithId<ResultReceiver<AsyncRuntimeOf<C>, Option<Snapshot<C>>>>),
+    Snapshot(DataWithId<ResultReceiver<C, Option<Snapshot<C>>>>),
     SnapshotCallback(DataWithId<SnapshotCallback<C>>),
 }
 
@@ -152,10 +148,7 @@ where C: RaftTypeConfig
         Self::Logs(DataWithId::new(request_id, log_id_range))
     }
 
-    pub(crate) fn new_snapshot(
-        request_id: Option<u64>,
-        snapshot_rx: ResultReceiver<AsyncRuntimeOf<C>, Option<Snapshot<C>>>,
-    ) -> Self {
+    pub(crate) fn new_snapshot(request_id: Option<u64>, snapshot_rx: ResultReceiver<C, Option<Snapshot<C>>>) -> Self {
         Self::Snapshot(DataWithId::new(request_id, snapshot_rx))
     }
 

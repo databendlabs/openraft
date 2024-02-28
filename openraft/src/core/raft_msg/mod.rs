@@ -28,26 +28,23 @@ use crate::Vote;
 pub(crate) mod external_command;
 
 /// A oneshot TX to send result from `RaftCore` to external caller, e.g. `Raft::append_entries`.
-pub(crate) type ResultSender<Runtime, T, E = Infallible> = <Runtime as AsyncRuntime>::OneshotSender<Result<T, E>>;
+pub(crate) type ResultSender<C, T, E = Infallible> = <AsyncRuntimeOf<C> as AsyncRuntime>::OneshotSender<Result<T, E>>;
 
-pub(crate) type ResultReceiver<Runtime, T, E = Infallible> = <Runtime as AsyncRuntime>::OneshotReceiver<Result<T, E>>;
+pub(crate) type ResultReceiver<C, T, E = Infallible> =
+    <AsyncRuntimeOf<C> as AsyncRuntime>::OneshotReceiver<Result<T, E>>;
 
 /// TX for Vote Response
-pub(crate) type VoteTx<Runtime, NID> = ResultSender<Runtime, VoteResponse<NID>>;
+pub(crate) type VoteTx<C> = ResultSender<C, VoteResponse<NodeIdOf<C>>>;
 
 /// TX for Append Entries Response
-pub(crate) type AppendEntriesTx<Runtime, NID> = ResultSender<Runtime, AppendEntriesResponse<NID>>;
+pub(crate) type AppendEntriesTx<C> = ResultSender<C, AppendEntriesResponse<NodeIdOf<C>>>;
 
 /// TX for Client Write Response
-pub(crate) type ClientWriteTx<C> =
-    ResultSender<AsyncRuntimeOf<C>, ClientWriteResponse<C>, ClientWriteError<NodeIdOf<C>, NodeOf<C>>>;
+pub(crate) type ClientWriteTx<C> = ResultSender<C, ClientWriteResponse<C>, ClientWriteError<NodeIdOf<C>, NodeOf<C>>>;
 
 /// TX for Linearizable Read Response
-pub(crate) type ClientReadTx<C> = ResultSender<
-    AsyncRuntimeOf<C>,
-    (Option<LogIdOf<C>>, Option<LogIdOf<C>>),
-    CheckIsLeaderError<NodeIdOf<C>, NodeOf<C>>,
->;
+pub(crate) type ClientReadTx<C> =
+    ResultSender<C, (Option<LogIdOf<C>>, Option<LogIdOf<C>>), CheckIsLeaderError<NodeIdOf<C>, NodeOf<C>>>;
 
 /// A message sent by application to the [`RaftCore`].
 ///
@@ -57,18 +54,18 @@ where C: RaftTypeConfig
 {
     AppendEntries {
         rpc: AppendEntriesRequest<C>,
-        tx: AppendEntriesTx<AsyncRuntimeOf<C>, C::NodeId>,
+        tx: AppendEntriesTx<C>,
     },
 
     RequestVote {
         rpc: VoteRequest<C::NodeId>,
-        tx: VoteTx<AsyncRuntimeOf<C>, C::NodeId>,
+        tx: VoteTx<C>,
     },
 
     InstallFullSnapshot {
         vote: Vote<C::NodeId>,
         snapshot: Snapshot<C>,
-        tx: ResultSender<AsyncRuntimeOf<C>, SnapshotResponse<C::NodeId>>,
+        tx: ResultSender<C, SnapshotResponse<C::NodeId>>,
     },
 
     /// Begin receiving a snapshot from the leader.
@@ -78,7 +75,7 @@ where C: RaftTypeConfig
     /// will be returned in a Err
     BeginReceivingSnapshot {
         vote: Vote<C::NodeId>,
-        tx: ResultSender<AsyncRuntimeOf<C>, Box<SnapshotDataOf<C>>, HigherVote<C::NodeId>>,
+        tx: ResultSender<C, Box<SnapshotDataOf<C>>, HigherVote<C::NodeId>>,
     },
 
     ClientWriteRequest {
@@ -92,7 +89,7 @@ where C: RaftTypeConfig
 
     Initialize {
         members: BTreeMap<C::NodeId, C::Node>,
-        tx: ResultSender<AsyncRuntimeOf<C>, (), InitializeError<C::NodeId, C::Node>>,
+        tx: ResultSender<C, (), InitializeError<C::NodeId, C::Node>>,
     },
 
     ChangeMembership {
@@ -102,7 +99,7 @@ where C: RaftTypeConfig
         /// config will be converted into learners, otherwise they will be removed.
         retain: bool,
 
-        tx: ResultSender<AsyncRuntimeOf<C>, ClientWriteResponse<C>, ClientWriteError<C::NodeId, C::Node>>,
+        tx: ResultSender<C, ClientWriteResponse<C>, ClientWriteError<C::NodeId, C::Node>>,
     },
 
     ExternalCoreRequest {

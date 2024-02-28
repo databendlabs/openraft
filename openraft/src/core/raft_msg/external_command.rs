@@ -3,7 +3,6 @@
 use std::fmt;
 
 use crate::core::raft_msg::ResultSender;
-use crate::type_config::alias::AsyncRuntimeOf;
 use crate::RaftTypeConfig;
 use crate::Snapshot;
 
@@ -24,9 +23,7 @@ pub(crate) enum ExternalCommand<C: RaftTypeConfig> {
     Snapshot,
 
     /// Get a snapshot from the state machine, send back via a oneshot::Sender.
-    GetSnapshot {
-        tx: ResultSender<AsyncRuntimeOf<C>, Option<Snapshot<C>>>,
-    },
+    GetSnapshot { tx: ResultSender<C, Option<Snapshot<C>>> },
 
     /// Purge logs covered by a snapshot up to a specified index.
     ///

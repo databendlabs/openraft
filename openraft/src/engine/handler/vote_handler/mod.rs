@@ -11,7 +11,6 @@ use crate::error::RejectVoteRequest;
 use crate::internal_server_state::InternalServerState;
 use crate::leader::Leading;
 use crate::raft_state::LogStateReader;
-use crate::type_config::alias::AsyncRuntimeOf;
 use crate::utime::UTime;
 use crate::AsyncRuntime;
 use crate::Instant;
@@ -52,9 +51,9 @@ where C: RaftTypeConfig
     pub(crate) fn accept_vote<T, E, F>(
         &mut self,
         vote: &Vote<C::NodeId>,
-        tx: ResultSender<AsyncRuntimeOf<C>, T, E>,
+        tx: ResultSender<C, T, E>,
         f: F,
-    ) -> Option<ResultSender<AsyncRuntimeOf<C>, T, E>>
+    ) -> Option<ResultSender<C, T, E>>
     where
         T: Debug + Eq + OptionalSend,
         E: Debug + Eq + OptionalSend,
