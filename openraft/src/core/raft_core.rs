@@ -438,7 +438,7 @@ where
         &mut self,
         changes: ChangeMembers<C::NodeId, C::Node>,
         retain: bool,
-        tx: ResultSender<AsyncRuntimeOf<C>, ClientWriteResponse<C>, ClientWriteError<C::NodeId, C::Node>>,
+        tx: ResultSender<C, ClientWriteResponse<C>, ClientWriteError<C::NodeId, C::Node>>,
     ) {
         let res = self.engine.state.membership_state.change_handler().apply(changes, retain);
         let new_membership = match res {
@@ -599,7 +599,7 @@ where
     pub(crate) fn handle_initialize(
         &mut self,
         member_nodes: BTreeMap<C::NodeId, C::Node>,
-        tx: ResultSender<AsyncRuntimeOf<C>, (), InitializeError<C::NodeId, C::Node>>,
+        tx: ResultSender<C, (), InitializeError<C::NodeId, C::Node>>,
     ) {
         tracing::debug!(member_nodes = debug(&member_nodes), "{}", func_name!());
 
@@ -622,12 +622,8 @@ where
 
     /// Reject a request due to the Raft node being in a state which prohibits the request.
     #[tracing::instrument(level = "trace", skip(self, tx))]
-    pub(crate) fn reject_with_forward_to_leader<T: OptionalSend, E: OptionalSend>(
-        &self,
-        tx: ResultSender<AsyncRuntimeOf<C>, T, E>,
-    ) where
-        E: From<ForwardToLeader<C::NodeId, C::Node>>,
-    {
+    pub(crate) fn reject_with_forward_to_leader<T: OptionalSend, E: OptionalSend>(&self, tx: ResultSender<C, T, E>)
+    where E: From<ForwardToLeader<C::NodeId, C::Node>> {
         let mut leader_id = self.current_leader();
         let leader_node = self.get_leader_node(leader_id);
 
@@ -1080,11 +1076,7 @@ where
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(super) fn handle_vote_request(
-        &mut self,
-        req: VoteRequest<C::NodeId>,
-        tx: VoteTx<AsyncRuntimeOf<C>, C::NodeId>,
-    ) {
+    pub(super) fn handle_vote_request(&mut self, req: VoteRequest<C::NodeId>, tx: VoteTx<C>) {
         tracing::info!(req = display(req.summary()), func = func_name!());
 
         let resp = self.engine.handle_vote_req(req);
@@ -1095,11 +1087,7 @@ where
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(super) fn handle_append_entries_request(
-        &mut self,
-        req: AppendEntriesRequest<C>,
-        tx: AppendEntriesTx<AsyncRuntimeOf<C>, C::NodeId>,
-    ) {
+    pub(super) fn handle_append_entries_request(&mut self, req: AppendEntriesRequest<C>, tx: AppendEntriesTx<C>) {
         tracing::debug!(req = display(req.summary()), func = func_name!());
 
         let is_ok = self.engine.handle_append_entries(&req.vote, req.prev_log_id, req.entries, Some(tx));
