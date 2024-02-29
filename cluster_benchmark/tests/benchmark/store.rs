@@ -227,7 +227,7 @@ impl RaftLogStorage<TypeConfig> for Arc<LogStore> {
     async fn append<I>(
         &mut self,
         entries: I,
-        callback: LogFlushed<<TypeConfig as RaftTypeConfig>::AsyncRuntime, NodeId>,
+        callback: LogFlushed<TypeConfig>,
     ) -> Result<(), StorageError<NodeId>>
     where
         I: IntoIterator<Item = Entry<TypeConfig>> + Send,
