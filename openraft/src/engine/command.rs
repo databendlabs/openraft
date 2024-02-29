@@ -247,10 +247,10 @@ where
             (Respond::ReceiveSnapshotChunk(first_sender), Respond::ReceiveSnapshotChunk(second_sender)) => {
                 first_sender.eq(second_sender)
             }
-            (Respond::InstallFullSnapshot(first_sender), Respond::InstallFullSnapshot(second_sender)) => {
+            (Respond::InstallSnapshot(first_sender), Respond::InstallSnapshot(second_sender)) => {
                 first_sender.eq(second_sender)
             }
-            (Respond::InstallCompleteSnapshot(first_sender), Respond::InstallCompleteSnapshot(second_sender)) => {
+            (Respond::InstallFullSnapshot(first_sender), Respond::InstallFullSnapshot(second_sender)) => {
                 first_sender.eq(second_sender)
             }
             (Respond::Initialize(first_sender), Respond::Initialize(second_sender)) => first_sender.eq(second_sender),
