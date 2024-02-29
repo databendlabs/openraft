@@ -12,7 +12,6 @@ use crate::storage::v2::sealed::Sealed;
 use crate::storage::LogFlushed;
 use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
-use crate::type_config::alias::AsyncRuntimeOf;
 use crate::LogId;
 use crate::LogState;
 use crate::OptionalSend;
@@ -148,14 +147,8 @@ where
         S::get_log_reader(self.storage_mut().await.deref_mut()).await
     }
 
-    async fn append<I>(
-        &mut self,
-        entries: I,
-        callback: LogFlushed<AsyncRuntimeOf<C>, C::NodeId>,
-    ) -> Result<(), StorageError<C::NodeId>>
-    where
-        I: IntoIterator<Item = C::Entry> + OptionalSend,
-    {
+    async fn append<I>(&mut self, entries: I, callback: LogFlushed<C>) -> Result<(), StorageError<C::NodeId>>
+    where I: IntoIterator<Item = C::Entry> + OptionalSend {
         // Default implementation that calls the flush-before-return `append_to_log`.
 
         S::append_to_log(self.storage_mut().await.deref_mut(), entries).await?;

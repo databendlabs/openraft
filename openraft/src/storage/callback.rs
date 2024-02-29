@@ -8,28 +8,23 @@ use crate::async_runtime::AsyncOneshotSendExt;
 use crate::display_ext::DisplayOption;
 use crate::AsyncRuntime;
 use crate::LogId;
-use crate::NodeId;
 use crate::RaftTypeConfig;
 use crate::StorageIOError;
 
 /// A oneshot callback for completion of log io operation.
-pub struct LogFlushed<Runtime, NID>
-where
-    NID: NodeId,
-    Runtime: AsyncRuntime,
+pub struct LogFlushed<C>
+where C: RaftTypeConfig
 {
-    last_log_id: Option<LogId<NID>>,
-    tx: Runtime::OneshotSender<Result<Option<LogId<NID>>, io::Error>>,
+    last_log_id: Option<LogId<C::NodeId>>,
+    tx: <C::AsyncRuntime as AsyncRuntime>::OneshotSender<Result<Option<LogId<C::NodeId>>, io::Error>>,
 }
 
-impl<NID, Runtime> LogFlushed<Runtime, NID>
-where
-    NID: NodeId,
-    Runtime: AsyncRuntime,
+impl<C> LogFlushed<C>
+where C: RaftTypeConfig
 {
     pub(crate) fn new(
-        last_log_id: Option<LogId<NID>>,
-        tx: Runtime::OneshotSender<Result<Option<LogId<NID>>, io::Error>>,
+        last_log_id: Option<LogId<C::NodeId>>,
+        tx: <C::AsyncRuntime as AsyncRuntime>::OneshotSender<Result<Option<LogId<C::NodeId>>, io::Error>>,
     ) -> Self {
         Self { last_log_id, tx }
     }
