@@ -18,7 +18,7 @@ use crate::TokioInstant;
 /// ## Note
 ///
 /// The default asynchronous runtime is `tokio`.
-pub trait AsyncRuntime: Debug + Default + OptionalSend + OptionalSync + 'static {
+pub trait AsyncRuntime: Debug + Default + PartialEq + Eq + OptionalSend + OptionalSync + 'static {
     /// The error type of [`Self::JoinHandle`].
     type JoinError: Debug + Display + OptionalSend;
 
@@ -97,7 +97,7 @@ pub trait AsyncRuntime: Debug + Default + OptionalSend + OptionalSync + 'static 
 }
 
 /// `Tokio` is the default asynchronous executor.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, PartialEq, Eq)]
 pub struct TokioRuntime;
 
 pub struct TokioOneShotSender<T: OptionalSend>(pub tokio::sync::oneshot::Sender<T>);

@@ -218,7 +218,7 @@ where NID: NodeId
 }
 
 /// A command to send return value to the caller via a `oneshot::Sender`.
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 #[derive(derive_more::From)]
 pub(crate) enum Respond<C>
 where C: RaftTypeConfig
@@ -229,41 +229,6 @@ where C: RaftTypeConfig
     InstallSnapshot(ValueSender<C, Result<InstallSnapshotResponse<C::NodeId>, InstallSnapshotError>>),
     InstallFullSnapshot(ValueSender<C, Result<SnapshotResponse<C::NodeId>, Infallible>>),
     Initialize(ValueSender<C, Result<(), InitializeError<C::NodeId, C::Node>>>),
-}
-
-impl<C> PartialEq for Respond<C>
-where
-    C: RaftTypeConfig,
-    C::NodeId: PartialEq,
-    C::Node: PartialEq,
-{
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Respond::Vote(first_sender), Respond::Vote(second_sender)) => first_sender.eq(second_sender),
-            (Respond::AppendEntries(first_sender), Respond::AppendEntries(second_sender)) => {
-                first_sender.eq(second_sender)
-            }
-            (Respond::ReceiveSnapshotChunk(first_sender), Respond::ReceiveSnapshotChunk(second_sender)) => {
-                first_sender.eq(second_sender)
-            }
-            (Respond::InstallSnapshot(first_sender), Respond::InstallSnapshot(second_sender)) => {
-                first_sender.eq(second_sender)
-            }
-            (Respond::InstallFullSnapshot(first_sender), Respond::InstallFullSnapshot(second_sender)) => {
-                first_sender.eq(second_sender)
-            }
-            (Respond::Initialize(first_sender), Respond::Initialize(second_sender)) => first_sender.eq(second_sender),
-            _unused => false,
-        }
-    }
-}
-
-impl<C> Eq for Respond<C>
-where
-    C: RaftTypeConfig,
-    C::NodeId: Eq,
-    C::Node: Eq,
-{
 }
 
 impl<C> Respond<C>
