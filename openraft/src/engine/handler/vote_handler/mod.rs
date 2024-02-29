@@ -57,7 +57,7 @@ where C: RaftTypeConfig
     where
         T: Debug + Eq + OptionalSend,
         E: Debug + Eq + OptionalSend,
-        Respond<C::AsyncRuntime, C::NodeId, C::Node>: From<ValueSender<C::AsyncRuntime, Result<T, E>>>,
+        Respond<C>: From<ValueSender<C::AsyncRuntime, Result<T, E>>>,
         F: Fn(
             &RaftState<C::NodeId, C::Node, <C::AsyncRuntime as AsyncRuntime>::Instant>,
             RejectVoteRequest<C::NodeId>,

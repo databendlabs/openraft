@@ -91,6 +91,9 @@ pub(crate) mod alias {
     pub(crate) type InstantOf<C> = <AsyncRuntimeOf<C> as crate::AsyncRuntime>::Instant;
     pub(crate) type TimeoutErrorOf<C> = <AsyncRuntimeOf<C> as crate::AsyncRuntime>::TimeoutError;
     pub(crate) type TimeoutOf<C, R, F> = <AsyncRuntimeOf<C> as crate::AsyncRuntime>::Timeout<R, F>;
+    pub(crate) type OneshotSenderOf<C, T> = <AsyncRuntimeOf<C> as crate::AsyncRuntime>::OneshotSender<T>;
+    pub(crate) type OneshotReceiverErrorOf<C> = <AsyncRuntimeOf<C> as crate::AsyncRuntime>::OneshotReceiverError;
+    pub(crate) type OneshotReceiverOf<C, T> = <AsyncRuntimeOf<C> as crate::AsyncRuntime>::OneshotReceiver<T>;
 
     // Usually used types
     pub(crate) type LogIdOf<C> = crate::LogId<NodeIdOf<C>>;
