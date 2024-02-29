@@ -100,8 +100,6 @@ pub trait AsyncRuntime: Debug + Default + PartialEq + Eq + OptionalSend + Option
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct TokioRuntime;
 
-// pub struct TokioOneShotSender<T: OptionalSend>(pub tokio::sync::oneshot::Sender<T>);
-
 impl AsyncRuntime for TokioRuntime {
     type JoinError = tokio::task::JoinError;
     type JoinHandle<T: OptionalSend + 'static> = tokio::task::JoinHandle<T>;
