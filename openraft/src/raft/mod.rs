@@ -866,7 +866,7 @@ where C: RaftTypeConfig
         F: FnOnce(&RaftState<C::NodeId, C::Node, <C::AsyncRuntime as AsyncRuntime>::Instant>) -> V
             + OptionalSend
             + 'static,
-        V: OptionalSend + 'static,
+        V: OptionalSend + Debug + 'static,
     {
         let (tx, rx) = C::AsyncRuntime::oneshot();
 

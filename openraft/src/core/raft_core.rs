@@ -622,8 +622,12 @@ where
 
     /// Reject a request due to the Raft node being in a state which prohibits the request.
     #[tracing::instrument(level = "trace", skip(self, tx))]
-    pub(crate) fn reject_with_forward_to_leader<T: OptionalSend, E: OptionalSend>(&self, tx: ResultSender<C, T, E>)
-    where E: From<ForwardToLeader<C::NodeId, C::Node>> {
+    pub(crate) fn reject_with_forward_to_leader<T, E>(&self, tx: ResultSender<C, T, E>)
+    where 
+        T: OptionalSend + Debug,
+        E: OptionalSend + Debug,
+        E: From<ForwardToLeader<C::NodeId, C::Node>>
+    {
         let mut leader_id = self.current_leader();
         let leader_node = self.get_leader_node(leader_id);
 
@@ -1601,9 +1605,9 @@ where
             }
             Command::DeleteConflictLog { since } => {
                 self.log_store.truncate(since).await?;
-
                 // Inform clients waiting for logs to be applied.
                 let removed = self.client_resp_channels.split_off(&since.index);
+
                 if !removed.is_empty() {
                     let leader_id = self.current_leader();
                     let leader_node = self.get_leader_node(leader_id);

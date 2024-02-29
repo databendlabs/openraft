@@ -64,8 +64,10 @@ pub trait RaftTypeConfig:
         + tokio::io::AsyncWrite
         + tokio::io::AsyncSeek
         + OptionalSend
+        + Debug
         + Unpin
         + 'static;
+
     #[cfg(feature = "generic-snapshot-data")]
     type SnapshotData: OptionalSend + 'static;
 

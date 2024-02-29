@@ -227,8 +227,8 @@ where C: RaftTypeConfig
         tx: Option<ResultSender<C, T, E>>,
     ) -> Option<(LeaderHandler<C>, Option<ResultSender<C, T, E>>)>
     where
-        T: OptionalSend,
-        E: OptionalSend,
+        T: OptionalSend + core::fmt::Debug,
+        E: OptionalSend + core::fmt::Debug,
         E: From<ForwardToLeader<C::NodeId, C::Node>>,
     {
         let res = self.leader_handler();

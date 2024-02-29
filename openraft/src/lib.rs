@@ -194,6 +194,6 @@ impl<T> AppData for T where T: OptionalSend + OptionalSync + 'static + OptionalS
 /// ## Note
 ///
 /// The trait is automatically implemented for all types which satisfy its supertraits.
-pub trait AppDataResponse: OptionalSend + OptionalSync + 'static + OptionalSerde {}
+pub trait AppDataResponse: OptionalSend + OptionalSync + 'static + OptionalSerde + std::fmt::Debug {}
 
-impl<T> AppDataResponse for T where T: OptionalSend + OptionalSync + 'static + OptionalSerde {}
+impl<T> AppDataResponse for T where T: OptionalSend + OptionalSync + 'static + OptionalSerde + std::fmt::Debug {}

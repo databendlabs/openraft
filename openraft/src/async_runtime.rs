@@ -45,10 +45,10 @@ pub trait AsyncRuntime: Debug + Default + PartialEq + Eq + OptionalSend + Option
     type ThreadLocalRng: rand::Rng;
 
     /// Type of a `oneshot` sender.
-    type OneshotSender<T: OptionalSend>: AsyncOneshotSendExt<T> + OptionalSend + OptionalSync + Debug + Sized;
+    type OneshotSender<T: OptionalSend + Debug>: AsyncOneshotSendExt<T> + OptionalSend + OptionalSync + Debug;
 
     /// Type of a `oneshot` receiver error.
-    type OneshotReceiverError: std::error::Error + OptionalSend;
+    type OneshotReceiverError: std::error::Error + OptionalSend + Debug;
 
     /// Type of a `oneshot` receiver.
     type OneshotReceiver<T: OptionalSend>: OptionalSend
@@ -93,14 +93,14 @@ pub trait AsyncRuntime: Debug + Default + PartialEq + Eq + OptionalSend + Option
     ///
     /// Each handle can be used on separate tasks.
     fn oneshot<T>() -> (Self::OneshotSender<T>, Self::OneshotReceiver<T>)
-    where T: OptionalSend;
+    where T: OptionalSend + Debug;
 }
 
 /// `Tokio` is the default asynchronous executor.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct TokioRuntime;
 
-pub struct TokioOneShotSender<T: OptionalSend>(pub tokio::sync::oneshot::Sender<T>);
+// pub struct TokioOneShotSender<T: OptionalSend>(pub tokio::sync::oneshot::Sender<T>);
 
 impl AsyncRuntime for TokioRuntime {
     type JoinError = tokio::task::JoinError;
@@ -110,7 +110,7 @@ impl AsyncRuntime for TokioRuntime {
     type TimeoutError = tokio::time::error::Elapsed;
     type Timeout<R, T: Future<Output = R> + OptionalSend> = tokio::time::Timeout<T>;
     type ThreadLocalRng = rand::rngs::ThreadRng;
-    type OneshotSender<T: OptionalSend> = TokioOneShotSender<T>;
+    type OneshotSender<T: OptionalSend + Debug> = tokio::sync::oneshot::Sender<T>;
     type OneshotReceiver<T: OptionalSend> = tokio::sync::oneshot::Receiver<T>;
     type OneshotReceiverError = tokio::sync::oneshot::error::RecvError;
 
@@ -162,9 +162,8 @@ impl AsyncRuntime for TokioRuntime {
 
     #[inline]
     fn oneshot<T>() -> (Self::OneshotSender<T>, Self::OneshotReceiver<T>)
-    where T: OptionalSend {
-        let (tx, rx) = tokio::sync::oneshot::channel();
-        (TokioOneShotSender(tx), rx)
+    where T: OptionalSend + Debug {
+        tokio::sync::oneshot::channel()
     }
 }
 
@@ -180,15 +179,9 @@ pub trait AsyncOneshotSendExt<T>: Unpin {
     fn send(self, t: T) -> Result<(), T>;
 }
 
-impl<T: OptionalSend> AsyncOneshotSendExt<T> for TokioOneShotSender<T> {
+impl<T: OptionalSend> AsyncOneshotSendExt<T> for tokio::sync::oneshot::Sender<T> {
     #[inline]
     fn send(self, t: T) -> Result<(), T> {
-        self.0.send(t)
-    }
-}
-
-impl<T: OptionalSend> Debug for TokioOneShotSender<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_tuple("TokioSendWrapper").finish()
+        self.send(t)
     }
 }
