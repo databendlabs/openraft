@@ -16,6 +16,7 @@ use crate::error::RaftError;
 use crate::metrics::RaftDataMetrics;
 use crate::metrics::RaftServerMetrics;
 use crate::raft::core_state::CoreState;
+use crate::type_config::alias::OneshotSenderOf;
 use crate::AsyncRuntime;
 use crate::Config;
 use crate::MessageSummary;
@@ -39,7 +40,7 @@ where C: RaftTypeConfig
 
     // TODO(xp): it does not need to be a async mutex.
     #[allow(clippy::type_complexity)]
-    pub(in crate::raft) tx_shutdown: Mutex<Option<<C::AsyncRuntime as AsyncRuntime>::OneshotSender<()>>>,
+    pub(in crate::raft) tx_shutdown: Mutex<Option<OneshotSenderOf<C, ()>>>,
     pub(in crate::raft) core_state: Mutex<CoreState<C::NodeId, C::AsyncRuntime>>,
 
     /// The ongoing snapshot transmission.

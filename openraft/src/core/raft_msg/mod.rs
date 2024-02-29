@@ -17,6 +17,7 @@ use crate::type_config::alias::AsyncRuntimeOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::NodeIdOf;
 use crate::type_config::alias::NodeOf;
+use crate::type_config::alias::OneshotSenderOf;
 use crate::type_config::alias::SnapshotDataOf;
 use crate::AsyncRuntime;
 use crate::ChangeMembers;
@@ -28,7 +29,7 @@ use crate::Vote;
 pub(crate) mod external_command;
 
 /// A oneshot TX to send result from `RaftCore` to external caller, e.g. `Raft::append_entries`.
-pub(crate) type ResultSender<C, T, E = Infallible> = <AsyncRuntimeOf<C> as AsyncRuntime>::OneshotSender<Result<T, E>>;
+pub(crate) type ResultSender<C, T, E = Infallible> = OneshotSenderOf<C, Result<T, E>>;
 
 pub(crate) type ResultReceiver<C, T, E = Infallible> =
     <AsyncRuntimeOf<C> as AsyncRuntime>::OneshotReceiver<Result<T, E>>;
