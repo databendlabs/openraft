@@ -22,7 +22,6 @@ use openraft::LogId;
 use openraft::OptionalSend;
 use openraft::RaftLogReader;
 use openraft::RaftSnapshotBuilder;
-use openraft::RaftTypeConfig;
 use openraft::SnapshotMeta;
 use openraft::StorageError;
 use openraft::StorageIOError;
@@ -437,11 +436,7 @@ impl RaftLogStorage<TypeConfig> for LogStore {
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
-    async fn append<I>(
-        &mut self,
-        entries: I,
-        callback: LogFlushed<TypeConfig>,
-    ) -> StorageResult<()>
+    async fn append<I>(&mut self, entries: I, callback: LogFlushed<TypeConfig>) -> StorageResult<()>
     where
         I: IntoIterator<Item = Entry<TypeConfig>> + Send,
         I::IntoIter: Send,
