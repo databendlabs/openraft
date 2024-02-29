@@ -11,6 +11,7 @@ use crate::error::RejectVoteRequest;
 use crate::internal_server_state::InternalServerState;
 use crate::leader::Leading;
 use crate::raft_state::LogStateReader;
+use crate::type_config::alias::InstantOf;
 use crate::utime::UTime;
 use crate::AsyncRuntime;
 use crate::Instant;
@@ -57,11 +58,8 @@ where C: RaftTypeConfig
     where
         T: Debug + Eq + OptionalSend,
         E: Debug + Eq + OptionalSend,
-        Respond<C>: From<ValueSender<C::AsyncRuntime, Result<T, E>>>,
-        F: Fn(
-            &RaftState<C::NodeId, C::Node, <C::AsyncRuntime as AsyncRuntime>::Instant>,
-            RejectVoteRequest<C::NodeId>,
-        ) -> Result<T, E>,
+        Respond<C>: From<ValueSender<C, Result<T, E>>>,
+        F: Fn(&RaftState<C::NodeId, C::Node, InstantOf<C>>, RejectVoteRequest<C::NodeId>) -> Result<T, E>,
     {
         let vote_res = self.update_vote(vote);
 

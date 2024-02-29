@@ -14,7 +14,6 @@ use crate::raft::SnapshotResponse;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::type_config::alias::OneshotSenderOf;
-use crate::AsyncRuntime;
 use crate::LeaderId;
 use crate::LogId;
 use crate::NodeId;
@@ -224,12 +223,12 @@ where NID: NodeId
 pub(crate) enum Respond<C>
 where C: RaftTypeConfig
 {
-    Vote(ValueSender<C::AsyncRuntime, Result<VoteResponse<C::NodeId>, Infallible>>),
-    AppendEntries(ValueSender<C::AsyncRuntime, Result<AppendEntriesResponse<C::NodeId>, Infallible>>),
-    ReceiveSnapshotChunk(ValueSender<C::AsyncRuntime, Result<(), InstallSnapshotError>>),
-    InstallSnapshot(ValueSender<C::AsyncRuntime, Result<InstallSnapshotResponse<C::NodeId>, InstallSnapshotError>>),
-    InstallFullSnapshot(ValueSender<C::AsyncRuntime, Result<SnapshotResponse<C::NodeId>, Infallible>>),
-    Initialize(ValueSender<C::AsyncRuntime, Result<(), InitializeError<C::NodeId, C::Node>>>),
+    Vote(ValueSender<C, Result<VoteResponse<C::NodeId>, Infallible>>),
+    AppendEntries(ValueSender<C, Result<AppendEntriesResponse<C::NodeId>, Infallible>>),
+    ReceiveSnapshotChunk(ValueSender<C, Result<(), InstallSnapshotError>>),
+    InstallSnapshot(ValueSender<C, Result<InstallSnapshotResponse<C::NodeId>, InstallSnapshotError>>),
+    InstallFullSnapshot(ValueSender<C, Result<SnapshotResponse<C::NodeId>, Infallible>>),
+    Initialize(ValueSender<C, Result<(), InitializeError<C::NodeId, C::Node>>>),
 }
 
 impl<C> PartialEq for Respond<C>
@@ -273,7 +272,7 @@ where C: RaftTypeConfig
     pub(crate) fn new<T>(res: T, tx: OneshotSenderOf<C, T>) -> Self
     where
         T: Debug + PartialEq + Eq + OptionalSend,
-        Self: From<ValueSender<C::AsyncRuntime, T>>,
+        Self: From<ValueSender<C, T>>,
     {
         Respond::from(ValueSender::new(res, tx))
     }
@@ -291,38 +290,38 @@ where C: RaftTypeConfig
 }
 
 #[derive(Debug)]
-pub(crate) struct ValueSender<R, T>
+pub(crate) struct ValueSender<C, T>
 where
     T: Debug + PartialEq + Eq + OptionalSend,
-    R: AsyncRuntime,
+    C: RaftTypeConfig,
 {
     value: T,
-    tx: R::OneshotSender<T>,
+    tx: OneshotSenderOf<C, T>,
 }
 
-impl<R, T> PartialEq for ValueSender<R, T>
+impl<C, T> PartialEq for ValueSender<C, T>
 where
     T: Debug + PartialEq + Eq + OptionalSend,
-    R: AsyncRuntime,
+    C: RaftTypeConfig,
 {
     fn eq(&self, other: &Self) -> bool {
         self.value == other.value
     }
 }
 
-impl<R, T> Eq for ValueSender<R, T>
+impl<C, T> Eq for ValueSender<C, T>
 where
     T: Debug + PartialEq + Eq + OptionalSend,
-    R: AsyncRuntime,
+    C: RaftTypeConfig,
 {
 }
 
-impl<R, T> ValueSender<R, T>
+impl<C, T> ValueSender<C, T>
 where
     T: Debug + PartialEq + Eq + OptionalSend,
-    R: AsyncRuntime,
+    C: RaftTypeConfig,
 {
-    pub(crate) fn new(res: T, tx: R::OneshotSender<T>) -> Self {
+    pub(crate) fn new(res: T, tx: OneshotSenderOf<C, T>) -> Self {
         Self { value: res, tx }
     }
 
