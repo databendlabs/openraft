@@ -22,7 +22,7 @@ where C: RaftTypeConfig
         Self::Data(Data::new_logs(id, log_id_range))
     }
 
-    pub(crate) fn snapshot(id: Option<u64>, snapshot_rx: ResultReceiver<Option<Snapshot<C>>>) -> Self {
+    pub(crate) fn snapshot(id: Option<u64>, snapshot_rx: ResultReceiver<C, Option<Snapshot<C>>>) -> Self {
         Self::Data(Data::new_snapshot(id, snapshot_rx))
     }
 
@@ -73,7 +73,7 @@ where C: RaftTypeConfig
 {
     Heartbeat,
     Logs(DataWithId<LogIdRange<C::NodeId>>),
-    Snapshot(DataWithId<ResultReceiver<Option<Snapshot<C>>>>),
+    Snapshot(DataWithId<ResultReceiver<C, Option<Snapshot<C>>>>),
     SnapshotCallback(DataWithId<SnapshotCallback<C>>),
 }
 
@@ -148,7 +148,7 @@ where C: RaftTypeConfig
         Self::Logs(DataWithId::new(request_id, log_id_range))
     }
 
-    pub(crate) fn new_snapshot(request_id: Option<u64>, snapshot_rx: ResultReceiver<Option<Snapshot<C>>>) -> Self {
+    pub(crate) fn new_snapshot(request_id: Option<u64>, snapshot_rx: ResultReceiver<C, Option<Snapshot<C>>>) -> Self {
         Self::Snapshot(DataWithId::new(request_id, snapshot_rx))
     }
 

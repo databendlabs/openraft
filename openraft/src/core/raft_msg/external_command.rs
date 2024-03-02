@@ -23,7 +23,7 @@ pub(crate) enum ExternalCommand<C: RaftTypeConfig> {
     Snapshot,
 
     /// Get a snapshot from the state machine, send back via a oneshot::Sender.
-    GetSnapshot { tx: ResultSender<Option<Snapshot<C>>> },
+    GetSnapshot { tx: ResultSender<C, Option<Snapshot<C>>> },
 
     /// Purge logs covered by a snapshot up to a specified index.
     ///

@@ -1,7 +1,6 @@
 use std::fmt::Debug;
 
-use tokio::sync::oneshot;
-
+use crate::async_runtime::AsyncOneshotSendExt;
 use crate::core::sm;
 use crate::engine::CommandKind;
 use crate::error::Infallible;
@@ -14,10 +13,11 @@ use crate::raft::InstallSnapshotResponse;
 use crate::raft::SnapshotResponse;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
+use crate::type_config::alias::OneshotSenderOf;
 use crate::LeaderId;
 use crate::LogId;
-use crate::Node;
 use crate::NodeId;
+use crate::OptionalSend;
 use crate::RaftTypeConfig;
 use crate::Vote;
 
@@ -98,7 +98,7 @@ where C: RaftTypeConfig
     /// Send result to caller
     Respond {
         when: Option<Condition<C::NodeId>>,
-        resp: Respond<C::NodeId, C::Node>,
+        resp: Respond<C>,
     },
 }
 
@@ -218,31 +218,26 @@ where NID: NodeId
 }
 
 /// A command to send return value to the caller via a `oneshot::Sender`.
-#[derive(Debug)]
-#[derive(PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 #[derive(derive_more::From)]
-pub(crate) enum Respond<NID, N>
-where
-    NID: NodeId,
-    N: Node,
+pub(crate) enum Respond<C>
+where C: RaftTypeConfig
 {
-    Vote(ValueSender<Result<VoteResponse<NID>, Infallible>>),
-    AppendEntries(ValueSender<Result<AppendEntriesResponse<NID>, Infallible>>),
-    ReceiveSnapshotChunk(ValueSender<Result<(), InstallSnapshotError>>),
-    InstallSnapshot(ValueSender<Result<InstallSnapshotResponse<NID>, InstallSnapshotError>>),
-    InstallFullSnapshot(ValueSender<Result<SnapshotResponse<NID>, Infallible>>),
-    Initialize(ValueSender<Result<(), InitializeError<NID, N>>>),
+    Vote(ValueSender<C, Result<VoteResponse<C::NodeId>, Infallible>>),
+    AppendEntries(ValueSender<C, Result<AppendEntriesResponse<C::NodeId>, Infallible>>),
+    ReceiveSnapshotChunk(ValueSender<C, Result<(), InstallSnapshotError>>),
+    InstallSnapshot(ValueSender<C, Result<InstallSnapshotResponse<C::NodeId>, InstallSnapshotError>>),
+    InstallFullSnapshot(ValueSender<C, Result<SnapshotResponse<C::NodeId>, Infallible>>),
+    Initialize(ValueSender<C, Result<(), InitializeError<C::NodeId, C::Node>>>),
 }
 
-impl<NID, N> Respond<NID, N>
-where
-    NID: NodeId,
-    N: Node,
+impl<C> Respond<C>
+where C: RaftTypeConfig
 {
-    pub(crate) fn new<T>(res: T, tx: oneshot::Sender<T>) -> Self
+    pub(crate) fn new<T>(res: T, tx: OneshotSenderOf<C, T>) -> Self
     where
-        T: Debug + PartialEq + Eq,
-        Self: From<ValueSender<T>>,
+        T: Debug + PartialEq + Eq + OptionalSend,
+        Self: From<ValueSender<C, T>>,
     {
         Respond::from(ValueSender::new(res, tx))
     }
@@ -260,27 +255,38 @@ where
 }
 
 #[derive(Debug)]
-pub(crate) struct ValueSender<T>
-where T: Debug + PartialEq + Eq
+pub(crate) struct ValueSender<C, T>
+where
+    T: Debug + PartialEq + Eq + OptionalSend,
+    C: RaftTypeConfig,
 {
     value: T,
-    tx: oneshot::Sender<T>,
+    tx: OneshotSenderOf<C, T>,
 }
 
-impl<T> PartialEq for ValueSender<T>
-where T: Debug + PartialEq + Eq
+impl<C, T> PartialEq for ValueSender<C, T>
+where
+    T: Debug + PartialEq + Eq + OptionalSend,
+    C: RaftTypeConfig,
 {
     fn eq(&self, other: &Self) -> bool {
         self.value == other.value
     }
 }
 
-impl<T> Eq for ValueSender<T> where T: Debug + PartialEq + Eq {}
-
-impl<T> ValueSender<T>
-where T: Debug + PartialEq + Eq
+impl<C, T> Eq for ValueSender<C, T>
+where
+    T: Debug + PartialEq + Eq + OptionalSend,
+    C: RaftTypeConfig,
 {
-    pub(crate) fn new(res: T, tx: oneshot::Sender<T>) -> Self {
+}
+
+impl<C, T> ValueSender<C, T>
+where
+    T: Debug + PartialEq + Eq + OptionalSend,
+    C: RaftTypeConfig,
+{
+    pub(crate) fn new(res: T, tx: OneshotSenderOf<C, T>) -> Self {
         Self { value: res, tx }
     }
 

@@ -11,9 +11,11 @@ use crate::error::RejectVoteRequest;
 use crate::internal_server_state::InternalServerState;
 use crate::leader::Leading;
 use crate::raft_state::LogStateReader;
+use crate::type_config::alias::InstantOf;
 use crate::utime::UTime;
 use crate::AsyncRuntime;
 use crate::Instant;
+use crate::OptionalSend;
 use crate::RaftState;
 use crate::RaftTypeConfig;
 use crate::Vote;
@@ -50,17 +52,14 @@ where C: RaftTypeConfig
     pub(crate) fn accept_vote<T, E, F>(
         &mut self,
         vote: &Vote<C::NodeId>,
-        tx: ResultSender<T, E>,
+        tx: ResultSender<C, T, E>,
         f: F,
-    ) -> Option<ResultSender<T, E>>
+    ) -> Option<ResultSender<C, T, E>>
     where
-        T: Debug + Eq,
-        E: Debug + Eq,
-        Respond<C::NodeId, C::Node>: From<ValueSender<Result<T, E>>>,
-        F: Fn(
-            &RaftState<C::NodeId, C::Node, <C::AsyncRuntime as AsyncRuntime>::Instant>,
-            RejectVoteRequest<C::NodeId>,
-        ) -> Result<T, E>,
+        T: Debug + Eq + OptionalSend,
+        E: Debug + Eq + OptionalSend,
+        Respond<C>: From<ValueSender<C, Result<T, E>>>,
+        F: Fn(&RaftState<C::NodeId, C::Node, InstantOf<C>>, RejectVoteRequest<C::NodeId>) -> Result<T, E>,
     {
         let vote_res = self.update_vote(vote);
 

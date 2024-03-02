@@ -1,7 +1,5 @@
 use std::collections::BTreeMap;
 
-use tokio::sync::oneshot;
-
 use crate::core::raft_msg::external_command::ExternalCommand;
 use crate::error::CheckIsLeaderError;
 use crate::error::ClientWriteError;
@@ -15,10 +13,13 @@ use crate::raft::ClientWriteResponse;
 use crate::raft::SnapshotResponse;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
+use crate::type_config::alias::AsyncRuntimeOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::NodeIdOf;
 use crate::type_config::alias::NodeOf;
+use crate::type_config::alias::OneshotSenderOf;
 use crate::type_config::alias::SnapshotDataOf;
+use crate::AsyncRuntime;
 use crate::ChangeMembers;
 use crate::MessageSummary;
 use crate::RaftTypeConfig;
@@ -28,22 +29,23 @@ use crate::Vote;
 pub(crate) mod external_command;
 
 /// A oneshot TX to send result from `RaftCore` to external caller, e.g. `Raft::append_entries`.
-pub(crate) type ResultSender<T, E = Infallible> = oneshot::Sender<Result<T, E>>;
+pub(crate) type ResultSender<C, T, E = Infallible> = OneshotSenderOf<C, Result<T, E>>;
 
-pub(crate) type ResultReceiver<T, E = Infallible> = oneshot::Receiver<Result<T, E>>;
+pub(crate) type ResultReceiver<C, T, E = Infallible> =
+    <AsyncRuntimeOf<C> as AsyncRuntime>::OneshotReceiver<Result<T, E>>;
 
 /// TX for Vote Response
-pub(crate) type VoteTx<NID> = ResultSender<VoteResponse<NID>>;
+pub(crate) type VoteTx<C> = ResultSender<C, VoteResponse<NodeIdOf<C>>>;
 
 /// TX for Append Entries Response
-pub(crate) type AppendEntriesTx<NID> = ResultSender<AppendEntriesResponse<NID>>;
+pub(crate) type AppendEntriesTx<C> = ResultSender<C, AppendEntriesResponse<NodeIdOf<C>>>;
 
 /// TX for Client Write Response
-pub(crate) type ClientWriteTx<C> = ResultSender<ClientWriteResponse<C>, ClientWriteError<NodeIdOf<C>, NodeOf<C>>>;
+pub(crate) type ClientWriteTx<C> = ResultSender<C, ClientWriteResponse<C>, ClientWriteError<NodeIdOf<C>, NodeOf<C>>>;
 
 /// TX for Linearizable Read Response
 pub(crate) type ClientReadTx<C> =
-    ResultSender<(Option<LogIdOf<C>>, Option<LogIdOf<C>>), CheckIsLeaderError<NodeIdOf<C>, NodeOf<C>>>;
+    ResultSender<C, (Option<LogIdOf<C>>, Option<LogIdOf<C>>), CheckIsLeaderError<NodeIdOf<C>, NodeOf<C>>>;
 
 /// A message sent by application to the [`RaftCore`].
 ///
@@ -53,18 +55,18 @@ where C: RaftTypeConfig
 {
     AppendEntries {
         rpc: AppendEntriesRequest<C>,
-        tx: AppendEntriesTx<C::NodeId>,
+        tx: AppendEntriesTx<C>,
     },
 
     RequestVote {
         rpc: VoteRequest<C::NodeId>,
-        tx: VoteTx<C::NodeId>,
+        tx: VoteTx<C>,
     },
 
     InstallFullSnapshot {
         vote: Vote<C::NodeId>,
         snapshot: Snapshot<C>,
-        tx: ResultSender<SnapshotResponse<C::NodeId>>,
+        tx: ResultSender<C, SnapshotResponse<C::NodeId>>,
     },
 
     /// Begin receiving a snapshot from the leader.
@@ -74,7 +76,7 @@ where C: RaftTypeConfig
     /// will be returned in a Err
     BeginReceivingSnapshot {
         vote: Vote<C::NodeId>,
-        tx: ResultSender<Box<SnapshotDataOf<C>>, HigherVote<C::NodeId>>,
+        tx: ResultSender<C, Box<SnapshotDataOf<C>>, HigherVote<C::NodeId>>,
     },
 
     ClientWriteRequest {
@@ -88,7 +90,7 @@ where C: RaftTypeConfig
 
     Initialize {
         members: BTreeMap<C::NodeId, C::Node>,
-        tx: ResultSender<(), InitializeError<C::NodeId, C::Node>>,
+        tx: ResultSender<C, (), InitializeError<C::NodeId, C::Node>>,
     },
 
     ChangeMembership {
@@ -98,7 +100,7 @@ where C: RaftTypeConfig
         /// config will be converted into learners, otherwise they will be removed.
         retain: bool,
 
-        tx: ResultSender<ClientWriteResponse<C>, ClientWriteError<C::NodeId, C::Node>>,
+        tx: ResultSender<C, ClientWriteResponse<C>, ClientWriteError<C::NodeId, C::Node>>,
     },
 
     ExternalCoreRequest {

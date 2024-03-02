@@ -147,7 +147,7 @@ where
         S::get_log_reader(self.storage_mut().await.deref_mut()).await
     }
 
-    async fn append<I>(&mut self, entries: I, callback: LogFlushed<C::NodeId>) -> Result<(), StorageError<C::NodeId>>
+    async fn append<I>(&mut self, entries: I, callback: LogFlushed<C>) -> Result<(), StorageError<C::NodeId>>
     where I: IntoIterator<Item = C::Entry> + OptionalSend {
         // Default implementation that calls the flush-before-return `append_to_log`.
 

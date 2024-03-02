@@ -6,7 +6,6 @@ use std::time::Duration;
 
 use anyerror::AnyError;
 use maplit::btreeset;
-use tokio::sync::oneshot;
 
 use crate::entry::RaftEntry;
 use crate::log_id::RaftLogId;
@@ -1171,7 +1170,7 @@ where
     let entries = entries.into_iter().collect::<Vec<_>>();
     let last_log_id = *entries.last().unwrap().get_log_id();
 
-    let (tx, rx) = oneshot::channel();
+    let (tx, rx) = <C::AsyncRuntime as AsyncRuntime>::oneshot();
 
     let cb = LogFlushed::new(Some(last_log_id), tx);
 

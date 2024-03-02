@@ -54,12 +54,12 @@ where C: RaftTypeConfig
         Command::new(payload)
     }
 
-    pub(crate) fn get_snapshot(tx: ResultSender<Option<Snapshot<C>>>) -> Self {
+    pub(crate) fn get_snapshot(tx: ResultSender<C, Option<Snapshot<C>>>) -> Self {
         let payload = CommandPayload::GetSnapshot { tx };
         Command::new(payload)
     }
 
-    pub(crate) fn begin_receiving_snapshot(tx: ResultSender<Box<SnapshotDataOf<C>>, HigherVote<C::NodeId>>) -> Self {
+    pub(crate) fn begin_receiving_snapshot(tx: ResultSender<C, Box<SnapshotDataOf<C>>, HigherVote<C::NodeId>>) -> Self {
         let payload = CommandPayload::BeginReceivingSnapshot { tx };
         Command::new(payload)
     }
@@ -91,11 +91,11 @@ where C: RaftTypeConfig
 
     /// Get the latest built snapshot.
     GetSnapshot {
-        tx: ResultSender<Option<Snapshot<C>>>,
+        tx: ResultSender<C, Option<Snapshot<C>>>,
     },
 
     BeginReceivingSnapshot {
-        tx: ResultSender<Box<SnapshotDataOf<C>>, HigherVote<C::NodeId>>,
+        tx: ResultSender<C, Box<SnapshotDataOf<C>>, HigherVote<C::NodeId>>,
     },
 
     InstallFullSnapshot {

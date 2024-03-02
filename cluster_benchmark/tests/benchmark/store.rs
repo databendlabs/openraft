@@ -19,7 +19,6 @@ use openraft::Entry;
 use openraft::EntryPayload;
 use openraft::LogId;
 use openraft::OptionalSend;
-use openraft::OptionalSync;
 use openraft::RaftLogId;
 use openraft::RaftTypeConfig;
 use openraft::SnapshotMeta;
@@ -225,8 +224,14 @@ impl RaftLogStorage<TypeConfig> for Arc<LogStore> {
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
-    async fn append<I>(&mut self, entries: I, callback: LogFlushed<NodeId>) -> Result<(), StorageError<NodeId>>
-    where I: IntoIterator<Item = Entry<TypeConfig>> + Send {
+    async fn append<I>(
+        &mut self,
+        entries: I,
+        callback: LogFlushed<TypeConfig>,
+    ) -> Result<(), StorageError<NodeId>>
+    where
+        I: IntoIterator<Item = Entry<TypeConfig>> + Send,
+    {
         {
             let mut log = self.log.write().await;
             log.extend(entries.into_iter().map(|entry| (entry.get_log_id().index, entry)));

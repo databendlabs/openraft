@@ -120,7 +120,7 @@ where C: RaftTypeConfig
     ///
     /// - There must not be a **hole** in logs. Because Raft only examine the last log id to ensure
     ///   correctness.
-    async fn append<I>(&mut self, entries: I, callback: LogFlushed<C::NodeId>) -> Result<(), StorageError<C::NodeId>>
+    async fn append<I>(&mut self, entries: I, callback: LogFlushed<C>) -> Result<(), StorageError<C::NodeId>>
     where
         I: IntoIterator<Item = C::Entry> + OptionalSend,
         I::IntoIter: OptionalSend;

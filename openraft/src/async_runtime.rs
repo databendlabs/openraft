@@ -18,7 +18,7 @@ use crate::TokioInstant;
 /// ## Note
 ///
 /// The default asynchronous runtime is `tokio`.
-pub trait AsyncRuntime: Debug + Default + OptionalSend + OptionalSync + 'static {
+pub trait AsyncRuntime: Debug + Default + PartialEq + Eq + OptionalSend + OptionalSync + 'static {
     /// The error type of [`Self::JoinHandle`].
     type JoinError: Debug + Display + OptionalSend;
 
@@ -43,6 +43,18 @@ pub trait AsyncRuntime: Debug + Default + OptionalSend + OptionalSync + 'static 
 
     /// Type of a thread-local random number generator.
     type ThreadLocalRng: rand::Rng;
+
+    /// Type of a `oneshot` sender.
+    type OneshotSender<T: OptionalSend>: AsyncOneshotSendExt<T> + OptionalSend + OptionalSync + Debug + Sized;
+
+    /// Type of a `oneshot` receiver error.
+    type OneshotReceiverError: std::error::Error + OptionalSend;
+
+    /// Type of a `oneshot` receiver.
+    type OneshotReceiver<T: OptionalSend>: OptionalSend
+        + OptionalSync
+        + Future<Output = Result<T, Self::OneshotReceiverError>>
+        + Unpin;
 
     /// Spawn a new task.
     fn spawn<T>(future: T) -> Self::JoinHandle<T::Output>
@@ -72,11 +84,23 @@ pub trait AsyncRuntime: Debug + Default + OptionalSend + OptionalSync + 'static 
     /// This is a per-thread instance, which cannot be shared across threads or
     /// sent to another thread.
     fn thread_rng() -> Self::ThreadLocalRng;
+
+    /// Creates a new one-shot channel for sending single values.
+    ///
+    /// The function returns separate "send" and "receive" handles. The `Sender`
+    /// handle is used by the producer to send the value. The `Receiver` handle is
+    /// used by the consumer to receive the value.
+    ///
+    /// Each handle can be used on separate tasks.
+    fn oneshot<T>() -> (Self::OneshotSender<T>, Self::OneshotReceiver<T>)
+    where T: OptionalSend;
 }
 
 /// `Tokio` is the default asynchronous executor.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, PartialEq, Eq)]
 pub struct TokioRuntime;
+
+pub struct TokioOneShotSender<T: OptionalSend>(pub tokio::sync::oneshot::Sender<T>);
 
 impl AsyncRuntime for TokioRuntime {
     type JoinError = tokio::task::JoinError;
@@ -86,6 +110,9 @@ impl AsyncRuntime for TokioRuntime {
     type TimeoutError = tokio::time::error::Elapsed;
     type Timeout<R, T: Future<Output = R> + OptionalSend> = tokio::time::Timeout<T>;
     type ThreadLocalRng = rand::rngs::ThreadRng;
+    type OneshotSender<T: OptionalSend> = TokioOneShotSender<T>;
+    type OneshotReceiver<T: OptionalSend> = tokio::sync::oneshot::Receiver<T>;
+    type OneshotReceiverError = tokio::sync::oneshot::error::RecvError;
 
     #[inline]
     fn spawn<T>(future: T) -> Self::JoinHandle<T::Output>
@@ -131,5 +158,37 @@ impl AsyncRuntime for TokioRuntime {
     #[inline]
     fn thread_rng() -> Self::ThreadLocalRng {
         rand::thread_rng()
+    }
+
+    #[inline]
+    fn oneshot<T>() -> (Self::OneshotSender<T>, Self::OneshotReceiver<T>)
+    where T: OptionalSend {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        (TokioOneShotSender(tx), rx)
+    }
+}
+
+pub trait AsyncOneshotSendExt<T>: Unpin {
+    /// Attempts to send a value on this channel, returning it back if it could
+    /// not be sent.
+    ///
+    /// This method consumes `self` as only one value may ever be sent on a `oneshot`
+    /// channel. It is not marked async because sending a message to an `oneshot`
+    /// channel never requires any form of waiting.  Because of this, the `send`
+    /// method can be used in both synchronous and asynchronous code without
+    /// problems.
+    fn send(self, t: T) -> Result<(), T>;
+}
+
+impl<T: OptionalSend> AsyncOneshotSendExt<T> for TokioOneShotSender<T> {
+    #[inline]
+    fn send(self, t: T) -> Result<(), T> {
+        self.0.send(t)
+    }
+}
+
+impl<T: OptionalSend> Debug for TokioOneShotSender<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("TokioSendWrapper").finish()
     }
 }

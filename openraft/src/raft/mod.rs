@@ -28,13 +28,13 @@ pub use message::SnapshotResponse;
 pub use message::VoteRequest;
 pub use message::VoteResponse;
 use tokio::sync::mpsc;
-use tokio::sync::oneshot;
 use tokio::sync::watch;
 use tokio::sync::Mutex;
 use tracing::trace_span;
 use tracing::Instrument;
 use tracing::Level;
 
+use crate::async_runtime::AsyncOneshotSendExt;
 use crate::config::Config;
 use crate::config::RuntimeConfig;
 use crate::core::command_state::CommandState;
@@ -70,6 +70,7 @@ use crate::ChangeMembers;
 use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::MessageSummary;
+use crate::OptionalSend;
 use crate::RaftState;
 pub use crate::RaftTypeConfig;
 use crate::Snapshot;
@@ -180,7 +181,7 @@ where C: RaftTypeConfig
         let (tx_metrics, rx_metrics) = watch::channel(RaftMetrics::new_initial(id));
         let (tx_data_metrics, rx_data_metrics) = watch::channel(RaftDataMetrics::default());
         let (tx_server_metrics, rx_server_metrics) = watch::channel(RaftServerMetrics::default());
-        let (tx_shutdown, rx_shutdown) = oneshot::channel();
+        let (tx_shutdown, rx_shutdown) = C::AsyncRuntime::oneshot();
 
         let tick_handle = Tick::spawn(
             Duration::from_millis(config.heartbeat_interval * 3 / 2),
@@ -335,7 +336,7 @@ where C: RaftTypeConfig
     ) -> Result<AppendEntriesResponse<C::NodeId>, RaftError<C::NodeId>> {
         tracing::debug!(rpc = display(rpc.summary()), "Raft::append_entries");
 
-        let (tx, rx) = oneshot::channel();
+        let (tx, rx) = C::AsyncRuntime::oneshot();
         self.inner.call_core(RaftMsg::AppendEntries { rpc, tx }, rx).await
     }
 
@@ -347,7 +348,7 @@ where C: RaftTypeConfig
     pub async fn vote(&self, rpc: VoteRequest<C::NodeId>) -> Result<VoteResponse<C::NodeId>, RaftError<C::NodeId>> {
         tracing::info!(rpc = display(rpc.summary()), "Raft::vote()");
 
-        let (tx, rx) = oneshot::channel();
+        let (tx, rx) = C::AsyncRuntime::oneshot();
         self.inner.call_core(RaftMsg::RequestVote { rpc, tx }, rx).await
     }
 
@@ -359,7 +360,7 @@ where C: RaftTypeConfig
     pub async fn get_snapshot(&self) -> Result<Option<Snapshot<C>>, RaftError<C::NodeId>> {
         tracing::debug!("Raft::get_snapshot()");
 
-        let (tx, rx) = oneshot::channel();
+        let (tx, rx) = C::AsyncRuntime::oneshot();
         let cmd = ExternalCommand::GetSnapshot { tx };
         self.inner.call_core(RaftMsg::ExternalCommand { cmd }, rx).await
     }
@@ -372,7 +373,7 @@ where C: RaftTypeConfig
     ) -> Result<Box<SnapshotDataOf<C>>, RaftError<C::NodeId, HigherVote<C::NodeId>>> {
         tracing::info!("Raft::begin_receiving_snapshot()");
 
-        let (tx, rx) = oneshot::channel();
+        let (tx, rx) = C::AsyncRuntime::oneshot();
         let resp = self.inner.call_core(RaftMsg::BeginReceivingSnapshot { vote, tx }, rx).await?;
         Ok(resp)
     }
@@ -390,7 +391,7 @@ where C: RaftTypeConfig
     ) -> Result<SnapshotResponse<C::NodeId>, Fatal<C::NodeId>> {
         tracing::info!("Raft::install_full_snapshot()");
 
-        let (tx, rx) = oneshot::channel();
+        let (tx, rx) = C::AsyncRuntime::oneshot();
         let res = self.inner.call_core(RaftMsg::InstallFullSnapshot { vote, snapshot, tx }, rx).await;
         match res {
             Ok(x) => Ok(x),
@@ -491,7 +492,7 @@ where C: RaftTypeConfig
     #[deprecated(since = "0.9.0", note = "use `Raft::ensure_linearizable()` instead")]
     #[tracing::instrument(level = "debug", skip(self))]
     pub async fn is_leader(&self) -> Result<(), RaftError<C::NodeId, CheckIsLeaderError<C::NodeId, C::Node>>> {
-        let (tx, rx) = oneshot::channel();
+        let (tx, rx) = C::AsyncRuntime::oneshot();
         let _ = self.inner.call_core(RaftMsg::CheckIsLeaderRequest { tx }, rx).await?;
         Ok(())
     }
@@ -575,7 +576,7 @@ where C: RaftTypeConfig
         (Option<LogId<C::NodeId>>, Option<LogId<C::NodeId>>),
         RaftError<C::NodeId, CheckIsLeaderError<C::NodeId, C::Node>>,
     > {
-        let (tx, rx) = oneshot::channel();
+        let (tx, rx) = C::AsyncRuntime::oneshot();
         let (read_log_id, applied) = self.inner.call_core(RaftMsg::CheckIsLeaderRequest { tx }, rx).await?;
         Ok((read_log_id, applied))
     }
@@ -603,7 +604,7 @@ where C: RaftTypeConfig
         &self,
         app_data: C::D,
     ) -> Result<ClientWriteResponse<C>, RaftError<C::NodeId, ClientWriteError<C::NodeId, C::Node>>> {
-        let (tx, rx) = oneshot::channel();
+        let (tx, rx) = C::AsyncRuntime::oneshot();
         self.inner.call_core(RaftMsg::ClientWriteRequest { app_data, tx }, rx).await
     }
 
@@ -636,7 +637,7 @@ where C: RaftTypeConfig
     where
         T: IntoNodes<C::NodeId, C::Node> + Debug,
     {
-        let (tx, rx) = oneshot::channel();
+        let (tx, rx) = C::AsyncRuntime::oneshot();
         self.inner
             .call_core(
                 RaftMsg::Initialize {
@@ -671,7 +672,7 @@ where C: RaftTypeConfig
         node: C::Node,
         blocking: bool,
     ) -> Result<ClientWriteResponse<C>, RaftError<C::NodeId, ClientWriteError<C::NodeId, C::Node>>> {
-        let (tx, rx) = oneshot::channel();
+        let (tx, rx) = C::AsyncRuntime::oneshot();
         let resp = self
             .inner
             .call_core(
@@ -801,7 +802,7 @@ where C: RaftTypeConfig
             "change_membership: start to commit joint config"
         );
 
-        let (tx, rx) = oneshot::channel();
+        let (tx, rx) = C::AsyncRuntime::oneshot();
         // res is error if membership can not be changed.
         // If no error, it will enter a joint state
         let res = self
@@ -832,7 +833,7 @@ where C: RaftTypeConfig
         tracing::debug!("committed a joint config: {} {:?}", log_id, joint);
         tracing::debug!("the second step is to change to uniform config: {:?}", changes);
 
-        let (tx, rx) = oneshot::channel();
+        let (tx, rx) = C::AsyncRuntime::oneshot();
         let res = self.inner.call_core(RaftMsg::ChangeMembership { changes, retain, tx }, rx).await;
 
         if let Err(e) = &res {
@@ -862,10 +863,12 @@ where C: RaftTypeConfig
     /// ```
     pub async fn with_raft_state<F, V>(&self, func: F) -> Result<V, Fatal<C::NodeId>>
     where
-        F: FnOnce(&RaftState<C::NodeId, C::Node, <C::AsyncRuntime as AsyncRuntime>::Instant>) -> V + Send + 'static,
-        V: Send + 'static,
+        F: FnOnce(&RaftState<C::NodeId, C::Node, <C::AsyncRuntime as AsyncRuntime>::Instant>) -> V
+            + OptionalSend
+            + 'static,
+        V: OptionalSend + 'static,
     {
-        let (tx, rx) = oneshot::channel();
+        let (tx, rx) = C::AsyncRuntime::oneshot();
 
         self.external_request(|st| {
             let result = func(st);
@@ -899,7 +902,8 @@ where C: RaftTypeConfig
     /// If the API channel is already closed (Raft is in shutdown), then the request functor is
     /// destroyed right away and not called at all.
     pub fn external_request<F>(&self, req: F)
-    where F: FnOnce(&RaftState<C::NodeId, C::Node, <C::AsyncRuntime as AsyncRuntime>::Instant>) + Send + 'static {
+    where F: FnOnce(&RaftState<C::NodeId, C::Node, <C::AsyncRuntime as AsyncRuntime>::Instant>) + OptionalSend + 'static
+    {
         let req: BoxCoreFn<C> = Box::new(req);
         let _ignore_error = self.inner.tx_api.send(RaftMsg::ExternalCoreRequest { req });
     }

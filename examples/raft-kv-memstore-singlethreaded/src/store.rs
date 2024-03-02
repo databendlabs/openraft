@@ -321,7 +321,7 @@ impl RaftLogStorage<TypeConfig> for Rc<LogStore> {
     }
 
     #[tracing::instrument(level = "trace", skip(self, entries, callback))]
-    async fn append<I>(&mut self, entries: I, callback: LogFlushed<NodeId>) -> Result<(), StorageError<NodeId>>
+    async fn append<I>(&mut self, entries: I, callback: LogFlushed<TypeConfig>) -> Result<(), StorageError<NodeId>>
     where I: IntoIterator<Item = Entry<TypeConfig>> {
         // Simple implementation that calls the flush-before-return `append_to_log`.
         let mut log = self.log.borrow_mut();
