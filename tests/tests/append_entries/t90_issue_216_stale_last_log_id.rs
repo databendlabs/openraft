@@ -3,7 +3,10 @@ use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
+use openraft::AsyncRuntime;
 use openraft::Config;
+use openraft::RaftTypeConfig;
+use openraft_memstore::TypeConfig;
 
 use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
@@ -41,7 +44,7 @@ async fn stale_last_log_id() -> Result<()> {
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
 
     for i in 0..n_threads {
-        tokio::spawn({
+        <TypeConfig as RaftTypeConfig>::AsyncRuntime::spawn({
             let router = router.clone();
             let tx = tx.clone();
 

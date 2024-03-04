@@ -82,7 +82,6 @@ compat-07-testing = ["dep:tempfile", "anyhow", "dep:serde_json"]
 
 # Turn on monoio Runtime with singlethreaded monoio tasks
 monoio = ["dep:monoio", "singlethreaded", "dep:local-sync"]
-# monoio-sync = ["dep:monoio", "monoio/sync"]
 
 # Allows an application to implement a custom the v2 storage API.
 # See `openraft::storage::v2` for more details.

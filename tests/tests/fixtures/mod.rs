@@ -33,8 +33,6 @@ use openraft::error::RaftError;
 use openraft::error::RemoteError;
 use openraft::error::Unreachable;
 use openraft::metrics::Wait;
-#[cfg(feature = "monoio")] use openraft::monoio::MonoioInstant;
-#[cfg(feature = "monoio")] use openraft::monoio::MonoioRuntime;
 use openraft::network::RPCOption;
 use openraft::network::RaftNetwork;
 use openraft::network::RaftNetworkFactory;
