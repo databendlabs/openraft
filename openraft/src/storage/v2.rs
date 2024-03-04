@@ -2,7 +2,10 @@
 //! [`RaftStorage`](`crate::storage::RaftStorage`). [`RaftLogStorage`] is responsible for storing
 //! logs, and [`RaftStateMachine`] is responsible for storing state machine and snapshot.
 
+mod raft_log_storage_ext;
+
 use macros::add_async_trait;
+pub use raft_log_storage_ext::RaftLogStorageExt;
 
 use crate::storage::callback::LogFlushed;
 use crate::storage::v2::sealed::Sealed;

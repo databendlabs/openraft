@@ -5,7 +5,7 @@ use anyhow::Result;
 use maplit::btreeset;
 use openraft::storage::RaftLogReaderExt;
 use openraft::storage::RaftLogStorage;
-use openraft::testing;
+use openraft::storage::RaftLogStorageExt;
 use openraft::testing::blank_ent;
 use openraft::Config;
 use openraft::ServerState;
@@ -57,9 +57,8 @@ async fn append_inconsistent_log() -> Result<()> {
     r2.shutdown().await?;
 
     for i in log_index + 1..=100 {
-        testing::blocking_append(&mut sto0, [blank_ent(2, 0, i)]).await?;
-
-        testing::blocking_append(&mut sto2, [blank_ent(3, 0, i)]).await?;
+        sto0.blocking_append([blank_ent(2, 0, i)]).await?;
+        sto2.blocking_append([blank_ent(3, 0, i)]).await?;
     }
 
     sto0.save_vote(&Vote::new(2, 0)).await?;

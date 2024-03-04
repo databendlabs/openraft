@@ -9,8 +9,8 @@ use openraft::network::RaftNetworkFactory;
 use openraft::raft::AppendEntriesRequest;
 use openraft::raft::InstallSnapshotRequest;
 use openraft::storage::RaftLogStorage;
+use openraft::storage::RaftLogStorageExt;
 use openraft::storage::RaftStateMachine;
-use openraft::testing;
 use openraft::testing::blank_ent;
 use openraft::testing::log_id;
 use openraft::testing::membership_ent;
@@ -60,7 +60,7 @@ async fn snapshot_delete_conflicting_logs() -> Result<()> {
 
         // When the node starts, it will become candidate and increment its vote to (5,0)
         sto0.save_vote(&Vote::new(4, 0)).await?;
-        testing::blocking_append(&mut sto0, [
+        sto0.blocking_append([
             // manually insert the initializing log
             membership_ent(0, 0, 0, vec![btreeset! {0}]),
         ])

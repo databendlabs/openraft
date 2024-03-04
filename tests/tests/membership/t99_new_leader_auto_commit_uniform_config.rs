@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use maplit::btreeset;
-use openraft::testing;
+use openraft::storage::RaftLogStorageExt;
 use openraft::testing::log_id;
 use openraft::Config;
 use openraft::Entry;
@@ -39,7 +39,7 @@ async fn new_leader_auto_commit_uniform_config() -> Result<()> {
     router.remove_node(0);
 
     {
-        testing::blocking_append(&mut sto, [Entry {
+        sto.blocking_append([Entry {
             log_id: log_id(1, 0, log_index + 1),
             payload: EntryPayload::Membership(Membership::new(
                 vec![btreeset! {0}, btreeset! {0,1,2}],

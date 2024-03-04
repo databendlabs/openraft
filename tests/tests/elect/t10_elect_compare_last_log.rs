@@ -4,7 +4,7 @@ use std::time::Duration;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::storage::RaftLogStorage;
-use openraft::testing;
+use openraft::storage::RaftLogStorageExt;
 use openraft::testing::blank_ent;
 use openraft::testing::membership_ent;
 use openraft::Config;
@@ -37,7 +37,7 @@ async fn elect_compare_last_log() -> Result<()> {
     {
         sto0.save_vote(&Vote::new(10, 0)).await?;
 
-        testing::blocking_append(&mut sto0, [
+        sto0.blocking_append([
             //
             blank_ent(0, 0, 0),
             membership_ent(2, 0, 1, vec![btreeset! {0,1}]),
@@ -49,7 +49,7 @@ async fn elect_compare_last_log() -> Result<()> {
     {
         sto1.save_vote(&Vote::new(10, 0)).await?;
 
-        testing::blocking_append(&mut sto1, [
+        sto1.blocking_append([
             blank_ent(0, 0, 0),
             membership_ent(1, 0, 1, vec![btreeset! {0,1}]),
             blank_ent(1, 0, 2),
