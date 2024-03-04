@@ -13,14 +13,9 @@ toolchain, the unstable features have to be enabled explicitly with environment 
 attaches backtrace to generated errors.
 This feature works ONLY with nightly rust, because it requires unstable feature `error_generic_member_access`.
 
-## feature-flag `compat-07`
+## feature-flag `compat`
 
-Provides additional data types to build v0.7 compatible RaftStorage.
-
- ```toml
- compat-07 = ["compat", "single-term-leader", "serde", "dep:or07", "compat-07-testing"]
- compat-07-testing = ["dep:tempdir", "anyhow", "dep:serde_json"]
- ```
+Enables compatibility supporting types.
 
 ## feature-flag `generic-snapshot-data`
 

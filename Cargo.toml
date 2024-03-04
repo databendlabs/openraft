@@ -51,7 +51,6 @@ members = [
     "macros",
     "tests",
     "rocksstore",
-    "rocksstore-compat07",
     "sledstore",
 ]
 exclude = [

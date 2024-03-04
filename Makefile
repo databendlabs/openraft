@@ -66,7 +66,7 @@ unused_dep:
 
 typos:
 	# cargo install typos-cli
-	typos --write-changes openraft/ tests/ memstore/ rocksstore rocksstore-compat07/ examples/raft-kv-memstore/ examples/raft-kv-rocksdb/
+	typos --write-changes openraft/ tests/ memstore/ rocksstore examples/raft-kv-memstore/ examples/raft-kv-rocksdb/
 	# typos
 
 clean:
