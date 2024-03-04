@@ -376,7 +376,7 @@ jobs:
         shell: bash
         run: |
           cargo clippy --no-deps --workspace --all-targets                -- -D warnings
-          cargo clippy --no-deps --workspace --all-targets --features "bt,serde,bench,single-term-leader,compat-07" -- -D warnings
+          cargo clippy --no-deps --workspace --all-targets --features "bt,serde,bench,single-term-leader,compat" -- -D warnings
 
 
       - name: Build-doc

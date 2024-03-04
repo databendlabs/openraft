@@ -20,19 +20,19 @@ A commit message starting with these keywords needs attention:
 
 [Change log v0.8.4](https://github.com/datafuselabs/openraft/blob/release-0.8/change-log.md)
 
-[Guide for upgrading v0.8.3 to v0.8.4](`crate::docs::upgrade_guide::upgrade_083_084`)
+[Guide for upgrading v0.8.3 to v0.8.4](https://docs.rs/openraft/0.8.9/openraft/docs/upgrade_guide/upgrade_083_084)
 
 ## Upgrade from [v0.7](https://github.com/datafuselabs/openraft/tree/v0.7.4) to [v0.8](https://github.com/datafuselabs/openraft/tree/release-0.8):
 
 [Change log v0.8](https://github.com/datafuselabs/openraft/blob/release-0.8/change-log.md)
 
-[Guide for upgrading v0.7 to v0.8](`crate::docs::upgrade_guide::upgrade_07_08`)
+[Guide for upgrading v0.7 to v0.8](https://docs.rs/openraft/0.8.9/openraft/docs/upgrade_guide/upgrade_07_08)
 
 ## Upgrade from [v0.6.8](https://github.com/datafuselabs/openraft/tree/v0.6.8) to [v0.7.0](https://github.com/datafuselabs/openraft/tree/v0.7.0):
 
 [Change log v0.7.0](https://github.com/datafuselabs/openraft/blob/release-0.7/change-log.md#v070)
 
-[Guide for upgrading v0.6 to v0.7](`crate::docs::upgrade_guide::upgrade_06_07`)
+[Guide for upgrading v0.6 to v0.7](https://docs.rs/openraft/0.8.9/openraft/docs/upgrade_guide/upgrade_06_07)
 
 
 ## Upgrade from [v0.6.5](https://github.com/datafuselabs/openraft/tree/v0.6.5) to [v0.6.6](https://github.com/datafuselabs/openraft/tree/v0.6.6):
