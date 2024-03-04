@@ -145,7 +145,6 @@ jobs:
         include:
           - store: "memstore"
           - store: "rocksstore"
-          - store: "rocksstore-compat07"
           - store: "sledstore"
 
     steps:

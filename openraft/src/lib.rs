@@ -37,7 +37,6 @@ mod summary;
 mod vote;
 
 #[cfg(feature = "compat")] pub mod compat;
-#[cfg(feature = "compat-07")] pub use or07;
 
 pub mod async_runtime;
 pub mod entry;
