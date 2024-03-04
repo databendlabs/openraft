@@ -17,6 +17,7 @@ pub use log_store_ext::RaftLogReaderExt;
 use macros::add_async_trait;
 pub use snapshot_signature::SnapshotSignature;
 pub use v2::RaftLogStorage;
+pub use v2::RaftLogStorageExt;
 pub use v2::RaftStateMachine;
 
 use crate::display_ext::DisplayOption;

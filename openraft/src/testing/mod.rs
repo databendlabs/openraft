@@ -3,20 +3,13 @@ mod suite;
 
 use std::collections::BTreeSet;
 
-use anyerror::AnyError;
 pub use store_builder::StoreBuilder;
 pub use suite::Suite;
 
 use crate::entry::RaftEntry;
-use crate::log_id::RaftLogId;
-use crate::storage::LogFlushed;
-use crate::storage::RaftLogStorage;
-use crate::AsyncRuntime;
 use crate::CommittedLeaderId;
 use crate::LogId;
 use crate::RaftTypeConfig;
-use crate::StorageError;
-use crate::StorageIOError;
 
 /// Builds a log id, for testing purposes.
 pub fn log_id<NID: crate::NodeId>(term: u64, node_id: NID, index: u64) -> LogId<NID> {
@@ -42,23 +35,4 @@ pub fn membership_ent<C: RaftTypeConfig>(
         LogId::new(CommittedLeaderId::new(term, node_id), index),
         crate::Membership::new(config, None),
     )
-}
-
-/// Append to log and wait for the log to be flushed.
-pub async fn blocking_append<C: RaftTypeConfig, LS: RaftLogStorage<C>, I>(
-    log_store: &mut LS,
-    entries: I,
-) -> Result<(), StorageError<C::NodeId>>
-where
-    I: IntoIterator<Item = C::Entry>,
-{
-    let entries = entries.into_iter().collect::<Vec<_>>();
-    let last_log_id = entries.last().map(|e| *e.get_log_id()).unwrap();
-
-    let (tx, rx) = <C::AsyncRuntime as AsyncRuntime>::oneshot();
-    let cb = LogFlushed::new(Some(last_log_id), tx);
-    log_store.append(entries, cb).await?;
-    rx.await.unwrap().map_err(|e| StorageIOError::write_logs(AnyError::error(e)))?;
-
-    Ok(())
 }
