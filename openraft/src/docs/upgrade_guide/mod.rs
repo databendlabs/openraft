@@ -1,11 +1,11 @@
 #![doc = include_str!("upgrade.md")]
 
 pub mod upgrade_06_07 {
-    #![doc = include_str!("upgrade-v06-v07.md")]
+    //! See: [Guide for upgrading v0.6 to v0.7](https://docs.rs/openraft/0.8.9/openraft/docs/upgrade_guide/upgrade_06_07)
 }
 pub mod upgrade_07_08 {
-    #![doc = include_str!("upgrade-v07-v08.md")]
+    //! See: [Guide for upgrading v0.7 to v0.8](https://docs.rs/openraft/0.8.9/openraft/docs/upgrade_guide/upgrade_07_08)
 }
 pub mod upgrade_083_084 {
-    #![doc = include_str!("upgrade-v083-v084.md")]
+    //! See: [Guide for upgrading v0.8.3 to v0.8.4](https://docs.rs/openraft/0.8.9/openraft/docs/upgrade_guide/upgrade_083_084)
 }

@@ -1,5 +1,6 @@
 - [feature-flag `bench`](#feature-flag-bench)
 - [feature-flag `bt`](#feature-flag-bt)
+- [feature-flag `compat`](#feature-flag-compat)
 - [feature-flag `generic-snapshot-data`](#feature-flag-generic-snapshot-data)
 - [feature-flag `loosen-follower-log-revert`](#feature-flag-loosen-follower-log-revert)
 - [feature-flag `serde`](#feature-flag-serde)
