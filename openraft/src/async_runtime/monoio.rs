@@ -2,10 +2,9 @@ use std::fmt::Debug;
 use std::future::Future;
 use std::time::Duration;
 
+use super::AsyncOneshotSendExt;
 use crate::AsyncRuntime;
 use crate::OptionalSend;
-
-use super::AsyncOneshotSendExt;
 
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct MonoioRuntime;
