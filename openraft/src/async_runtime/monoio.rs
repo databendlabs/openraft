@@ -5,7 +5,9 @@ use std::time::Duration;
 use crate::AsyncRuntime;
 use crate::OptionalSend;
 
-#[derive(Debug, Default)]
+use super::AsyncOneshotSendExt;
+
+#[derive(Debug, Default, PartialEq, Eq)]
 pub struct MonoioRuntime;
 
 pub type MonoioInstant = monoio::time::Instant;
@@ -17,6 +19,8 @@ impl crate::Instant for monoio::time::Instant {
     }
 }
 
+pub struct MonoioOneshotSender<T: OptionalSend>(pub local_sync::oneshot::Sender<T>);
+
 impl AsyncRuntime for MonoioRuntime {
     type JoinError = crate::error::Infallible;
     type JoinHandle<T: OptionalSend + 'static> = monoio::task::JoinHandle<Result<T, Self::JoinError>>;
@@ -25,6 +29,9 @@ impl AsyncRuntime for MonoioRuntime {
     type TimeoutError = monoio::time::error::Elapsed;
     type Timeout<R, T: Future<Output = R> + OptionalSend> = monoio::time::Timeout<T>;
     type ThreadLocalRng = rand::rngs::ThreadRng;
+    type OneshotSender<T: OptionalSend> = MonoioOneshotSender<T>;
+    type OneshotReceiver<T: OptionalSend> = local_sync::oneshot::Receiver<T>;
+    type OneshotReceiverError = local_sync::oneshot::error::RecvError;
 
     #[inline]
     fn spawn<T>(future: T) -> Self::JoinHandle<T::Output>
@@ -64,5 +71,25 @@ impl AsyncRuntime for MonoioRuntime {
     #[inline]
     fn thread_rng() -> Self::ThreadLocalRng {
         rand::thread_rng()
+    }
+
+    #[inline]
+    fn oneshot<T>() -> (Self::OneshotSender<T>, Self::OneshotReceiver<T>)
+    where T: OptionalSend {
+        let (tx, rx) = local_sync::oneshot::channel();
+        (MonoioOneshotSender(tx), rx)
+    }
+}
+
+impl<T: OptionalSend> AsyncOneshotSendExt<T> for MonoioOneshotSender<T> {
+    #[inline]
+    fn send(self, t: T) -> Result<(), T> {
+        self.0.send(t)
+    }
+}
+
+impl<T: OptionalSend> Debug for MonoioOneshotSender<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("MonoioSendWrapper").finish()
     }
 }

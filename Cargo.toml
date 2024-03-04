@@ -24,6 +24,7 @@ clap = { version = "4.1.11", features = ["derive", "env"] }
 derive_more = { version="0.99.9" }
 futures = "0.3"
 lazy_static = "1.4.0"
+local-sync = "0.1"
 maplit = "1.0.2"
 monoio = "0.2.2"
 pretty_assertions = "1.0.0"
