@@ -8,3 +8,4 @@ mod fixtures;
 // The later tests may depend on the earlier ones.
 
 mod t10_elect_compare_last_log;
+mod t11_elect_seize_leadership;
