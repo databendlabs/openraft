@@ -42,7 +42,7 @@ where
 impl<C> Debug for Entry<C>
 where C: RaftTypeConfig
 {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Entry").field("log_id", &self.log_id).field("payload", &self.payload).finish()
     }
 }

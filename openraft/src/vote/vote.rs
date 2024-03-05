@@ -105,6 +105,7 @@ impl<NID: NodeId> Vote<NID> {
 }
 
 #[cfg(test)]
+#[allow(clippy::nonminimal_bool)]
 mod tests {
     #[cfg(not(feature = "single-term-leader"))]
     mod feature_no_single_term_leader {

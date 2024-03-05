@@ -4,7 +4,6 @@ use std::time::Duration;
 use macros::add_async_trait;
 
 use crate::error::Fatal;
-use crate::error::InstallSnapshotError;
 use crate::error::RPCError;
 use crate::error::RaftError;
 use crate::error::ReplicationClosed;
@@ -13,8 +12,6 @@ use crate::network::rpc_option::RPCOption;
 use crate::network::Backoff;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
-use crate::raft::InstallSnapshotRequest;
-use crate::raft::InstallSnapshotResponse;
 use crate::raft::SnapshotResponse;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
@@ -47,11 +44,11 @@ where C: RaftTypeConfig
     #[deprecated(since = "0.9.0", note = "use `snapshot()` instead for sending a complete snapshot")]
     async fn install_snapshot(
         &mut self,
-        _rpc: InstallSnapshotRequest<C>,
+        _rpc: crate::raft::InstallSnapshotRequest<C>,
         _option: RPCOption,
     ) -> Result<
-        InstallSnapshotResponse<C::NodeId>,
-        RPCError<C::NodeId, C::Node, RaftError<C::NodeId, InstallSnapshotError>>,
+        crate::raft::InstallSnapshotResponse<C::NodeId>,
+        RPCError<C::NodeId, C::Node, RaftError<C::NodeId, crate::error::InstallSnapshotError>>,
     >;
 
     /// Send a RequestVote RPC to the target.

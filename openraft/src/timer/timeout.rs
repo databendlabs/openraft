@@ -15,6 +15,7 @@ use crate::AsyncRuntime;
 use crate::Instant;
 use crate::OptionalSend;
 
+#[allow(dead_code)]
 pub(crate) trait RaftTimer<RT: AsyncRuntime> {
     /// Create a new instance that will call `callback` after `timeout`.
     fn new<F: FnOnce() + OptionalSend + 'static>(callback: F, timeout: Duration) -> Self;
@@ -23,6 +24,7 @@ pub(crate) trait RaftTimer<RT: AsyncRuntime> {
     fn update_timeout(&self, timeout: Duration);
 }
 
+// TODO: remove it.
 /// A oneshot timeout that supports deadline updating.
 ///
 /// When timeout deadline is reached, the `callback: Fn()` is called.
@@ -30,6 +32,7 @@ pub(crate) trait RaftTimer<RT: AsyncRuntime> {
 ///
 /// The deadline can be updated to a higher value then the old deadline won't trigger the
 /// `callback`.
+#[allow(dead_code)]
 pub(crate) struct Timeout<RT: AsyncRuntime> {
     /// A guard to notify the inner-task to quit when it is dropped.
     // tx is not explicitly used.
@@ -40,6 +43,7 @@ pub(crate) struct Timeout<RT: AsyncRuntime> {
     inner: Arc<TimeoutInner<RT>>,
 }
 
+#[allow(dead_code)]
 pub(crate) struct TimeoutInner<RT: AsyncRuntime> {
     /// The time when this Timeout is created.
     ///
