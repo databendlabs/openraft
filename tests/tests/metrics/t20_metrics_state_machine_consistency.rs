@@ -57,7 +57,7 @@ async fn metrics_state_machine_consistency() -> Result<()> {
     for node_id in 0..2 {
         router.wait_for_log(&btreeset![node_id], Some(log_index), None, "write one log").await?;
         let (sto, _sm) = router.get_storage_handle(&node_id)?;
-        assert!(sto.storage().await.get_state_machine().await.client_status.get("foo").is_some());
+        assert!(sto.storage().await.get_state_machine().await.client_status.contains_key("foo"));
     }
 
     Ok(())

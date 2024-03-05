@@ -33,8 +33,8 @@ openraft::declare_raft_types!(
     Entry = openraft::Entry<TypeConfig>, SnapshotData = Cursor<Vec<u8>>, AsyncRuntime = TokioRuntime
 );
 
-pub type LogStore = crate::store::LogStore;
-pub type StateMachineStore = crate::store::StateMachineStore;
+pub type LogStore = store::LogStore;
+pub type StateMachineStore = store::StateMachineStore;
 pub type Raft = openraft::Raft<TypeConfig>;
 
 pub mod typ {

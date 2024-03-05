@@ -67,7 +67,7 @@ impl<NID: NodeId> LeaderId<NID> {
     }
 }
 
-impl<NID: NodeId> std::fmt::Display for LeaderId<NID> {
+impl<NID: NodeId> fmt::Display for LeaderId<NID> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}-{:?}", self.term, self.voted_for)
     }
@@ -82,7 +82,7 @@ pub struct CommittedLeaderId<NID> {
     p: PhantomData<NID>,
 }
 
-impl<NID: NodeId> std::fmt::Display for CommittedLeaderId<NID> {
+impl<NID: NodeId> fmt::Display for CommittedLeaderId<NID> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.term)
     }
@@ -96,6 +96,7 @@ impl<NID: NodeId> CommittedLeaderId<NID> {
 }
 
 #[cfg(test)]
+#[allow(clippy::nonminimal_bool)]
 mod tests {
     use crate::CommittedLeaderId;
     use crate::LeaderId;

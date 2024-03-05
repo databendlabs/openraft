@@ -1098,8 +1098,8 @@ where
     }
 }
 
-fn log_id_0<NID: NodeId>(term: u64, index: u64) -> LogId<NID>
-where NID: From<u64> {
+fn log_id_0<NID>(term: u64, index: u64) -> LogId<NID>
+where NID: NodeId + From<u64> {
     LogId {
         leader_id: CommittedLeaderId::new(term, NODE_ID.into()),
         index,

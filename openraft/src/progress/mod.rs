@@ -63,6 +63,7 @@ where
     }
 
     /// Try to get the value by `id`.
+    #[allow(dead_code)]
     fn try_get(&self, id: &ID) -> Option<&V>;
 
     /// Returns a mutable reference to the value corresponding to the `id`.
@@ -70,6 +71,7 @@ where
 
     // TODO: merge `get` and `try_get`
     /// Get the value by `id`.
+    #[allow(dead_code)]
     fn get(&self, id: &ID) -> &V;
 
     /// Get the greatest value that is granted by a quorum defined in [`Self::quorum_set()`].
@@ -77,9 +79,11 @@ where
     /// In raft or other distributed consensus,
     /// To commit a value, the value has to be **granted by a quorum** and has to be the greatest
     /// value every proposed.
+    #[allow(dead_code)]
     fn granted(&self) -> &P;
 
     /// Returns the reference to the quorum set
+    #[allow(dead_code)]
     fn quorum_set(&self) -> &QS;
 
     /// Iterate over all id and values, voters first followed by learners.
@@ -327,6 +331,7 @@ where
         Ok(&self.granted)
     }
 
+    #[allow(dead_code)]
     fn try_get(&self, id: &ID) -> Option<&V> {
         let index = self.index(id)?;
         Some(&self.vector[index].1)
@@ -337,15 +342,18 @@ where
         Some(&mut self.vector[index].1)
     }
 
+    #[allow(dead_code)]
     fn get(&self, id: &ID) -> &V {
         let index = self.index(id).unwrap();
         &self.vector[index].1
     }
 
+    #[allow(dead_code)]
     fn granted(&self) -> &P {
         &self.granted
     }
 
+    #[allow(dead_code)]
     fn quorum_set(&self) -> &QS {
         &self.quorum_set
     }

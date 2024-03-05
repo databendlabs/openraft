@@ -34,7 +34,7 @@ impl ExampleClient {
     pub fn new(leader_id: NodeId, leader_addr: String) -> Self {
         Self {
             leader: Arc::new(Mutex::new((leader_id, leader_addr))),
-            inner: reqwest::Client::new(),
+            inner: Client::new(),
         }
     }
 
