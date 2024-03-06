@@ -5,7 +5,8 @@ mod factory;
 #[allow(clippy::module_inception)] mod network;
 mod rpc_option;
 mod rpc_type;
-#[cfg(not(feature = "generic-snapshot-data"))] pub(crate) mod stream_snapshot;
+
+pub mod snapshot_transport;
 
 pub use backoff::Backoff;
 pub use factory::RaftNetworkFactory;

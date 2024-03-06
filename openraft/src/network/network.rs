@@ -40,8 +40,24 @@ where C: RaftTypeConfig
     ) -> Result<AppendEntriesResponse<C::NodeId>, RPCError<C::NodeId, C::Node, RaftError<C::NodeId>>>;
 
     /// Send an InstallSnapshot RPC to the target.
+    #[cfg(feature = "generic-snapshot-data")]
+    #[deprecated(
+        since = "0.9.0",
+        note = "with `generic-snapshot-data` enabled, use `full_snapshot()` instead to send full snapshot"
+    )]
+    async fn install_snapshot(
+        &mut self,
+        _rpc: crate::raft::InstallSnapshotRequest<C>,
+        _option: RPCOption,
+    ) -> Result<
+        crate::raft::InstallSnapshotResponse<C::NodeId>,
+        RPCError<C::NodeId, C::Node, RaftError<C::NodeId, crate::error::InstallSnapshotError>>,
+    > {
+        unimplemented!()
+    }
+
+    /// Send an InstallSnapshot RPC to the target.
     #[cfg(not(feature = "generic-snapshot-data"))]
-    #[deprecated(since = "0.9.0", note = "use `snapshot()` instead for sending a complete snapshot")]
     async fn install_snapshot(
         &mut self,
         _rpc: crate::raft::InstallSnapshotRequest<C>,
@@ -82,6 +98,23 @@ where C: RaftTypeConfig
         option: RPCOption,
     ) -> Result<SnapshotResponse<C::NodeId>, StreamingError<C, Fatal<C::NodeId>>>;
 
+    /// Send a complete Snapshot to the target.
+    ///
+    /// This method is responsible to fragment the snapshot and send it to the target node.
+    /// Before returning from this method, the snapshot should be completely transmitted and
+    /// installed on the target node, or rejected because of `vote` being smaller than the
+    /// remote one.
+    ///
+    /// The default implementation just calls several `install_snapshot` RPC for each fragment.
+    ///
+    /// The `vote` is the leader vote which is used to check if the leader is still valid by a
+    /// follower.
+    /// When the follower finished receiving snapshot, it calls `Raft::install_full_snapshot()`
+    /// with this vote.
+    ///
+    /// `cancel` get `Ready` when the caller decides to cancel this snapshot transmission.
+    // If generic-snapshot-data disabled,
+    // provide a default implementation that relies on AsyncRead + AsyncSeek + Unpin
     #[cfg(not(feature = "generic-snapshot-data"))]
     async fn full_snapshot(
         &mut self,
@@ -90,10 +123,10 @@ where C: RaftTypeConfig
         cancel: impl Future<Output = ReplicationClosed> + OptionalSend,
         option: RPCOption,
     ) -> Result<SnapshotResponse<C::NodeId>, StreamingError<C, Fatal<C::NodeId>>> {
-        use crate::network::stream_snapshot;
-        use crate::network::stream_snapshot::SnapshotTransport;
+        use crate::network::snapshot_transport::Chunked;
+        use crate::network::snapshot_transport::SnapshotTransport;
 
-        let resp = stream_snapshot::Chunked::send_snapshot(self, vote, snapshot, cancel, option).await?;
+        let resp = Chunked::send_snapshot(self, vote, snapshot, cancel, option).await?;
         Ok(resp)
     }
 

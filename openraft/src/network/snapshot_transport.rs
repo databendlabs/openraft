@@ -1,3 +1,6 @@
+//! Provide a default chunked snapshot transport implementation for SnapshotData that implements
+//! AsyncWrite + AsyncRead + AsyncSeek + Unpin.
+
 use std::future::Future;
 use std::io::SeekFrom;
 use std::time::Duration;
@@ -28,8 +31,13 @@ use crate::StorageIOError;
 use crate::ToStorageResult;
 use crate::Vote;
 
+/// Defines the sending and receiving API for snapshot transport.
 #[add_async_trait]
-pub(crate) trait SnapshotTransport<C: RaftTypeConfig> {
+pub trait SnapshotTransport<C: RaftTypeConfig> {
+    /// Send a snapshot to a target node via `Net` in chunks.
+    ///
+    /// The implementation should watch the `cancel` future and return at once if it is ready.
+    // TODO: remove dependency on RaftNetwork
     async fn send_snapshot<Net>(
         _net: &mut Net,
         _vote: Vote<C::NodeId>,
@@ -38,23 +46,21 @@ pub(crate) trait SnapshotTransport<C: RaftTypeConfig> {
         _option: RPCOption,
     ) -> Result<SnapshotResponse<C::NodeId>, StreamingError<C, Fatal<C::NodeId>>>
     where
-        Net: RaftNetwork<C> + ?Sized,
-    {
-        unimplemented!("send_snapshot is only implemented with SnapshotData with AsyncRead + AsyncSeek ...")
-    }
+        Net: RaftNetwork<C> + ?Sized;
 
+    /// Receive a chunk of snapshot. If the snapshot is done, return the snapshot.
     async fn receive_snapshot(
         _streaming: &mut Option<Streaming<C>>,
         _req: InstallSnapshotRequest<C>,
-    ) -> Result<Option<Snapshot<C>>, StorageError<C::NodeId>> {
-        unimplemented!("receive_snapshot is only implemented with SnapshotData with AsyncWrite + AsyncSeek ...")
-    }
+    ) -> Result<Option<Snapshot<C>>, StorageError<C::NodeId>>;
 }
 
 /// Send and Receive snapshot by chunks.
-pub(crate) struct Chunked {}
+pub struct Chunked {}
 
-impl<C: RaftTypeConfig> SnapshotTransport<C> for Chunked {
+impl<C: RaftTypeConfig> SnapshotTransport<C> for Chunked
+where C::SnapshotData: tokio::io::AsyncRead + tokio::io::AsyncWrite + tokio::io::AsyncSeek + Unpin
+{
     /// Stream snapshot by chunks.
     ///
     /// This function is for backward compatibility and provides a default implement for
@@ -175,7 +181,7 @@ impl<C: RaftTypeConfig> SnapshotTransport<C> for Chunked {
 
         if done {
             let streaming = streaming.take().unwrap();
-            let mut data = streaming.snapshot_data;
+            let mut data = streaming.into_snapshot_data();
 
             data.as_mut()
                 .shutdown()
@@ -191,23 +197,23 @@ impl<C: RaftTypeConfig> SnapshotTransport<C> for Chunked {
 }
 
 /// The Raft node is streaming in a snapshot from the leader.
-pub(crate) struct Streaming<C>
+pub struct Streaming<C>
 where C: RaftTypeConfig
 {
     /// The offset of the last byte written to the snapshot.
-    pub(crate) offset: u64,
+    offset: u64,
 
     /// The ID of the snapshot being written.
-    pub(crate) snapshot_id: SnapshotId,
+    snapshot_id: SnapshotId,
 
     /// A handle to the snapshot writer.
-    pub(crate) snapshot_data: Box<C::SnapshotData>,
+    snapshot_data: Box<C::SnapshotData>,
 }
 
 impl<C> Streaming<C>
 where C: RaftTypeConfig
 {
-    pub(crate) fn new(snapshot_id: SnapshotId, snapshot_data: Box<C::SnapshotData>) -> Self {
+    pub fn new(snapshot_id: SnapshotId, snapshot_data: Box<C::SnapshotData>) -> Self {
         Self {
             offset: 0,
             snapshot_id,
@@ -215,8 +221,23 @@ where C: RaftTypeConfig
         }
     }
 
+    pub fn snapshot_id(&self) -> &SnapshotId {
+        &self.snapshot_id
+    }
+
+    /// Consumes the `Streaming` and returns the snapshot data.
+    pub fn into_snapshot_data(self) -> Box<C::SnapshotData> {
+        self.snapshot_data
+    }
+}
+
+impl<C> Streaming<C>
+where
+    C: RaftTypeConfig,
+    C::SnapshotData: tokio::io::AsyncWrite + tokio::io::AsyncSeek + Unpin,
+{
     /// Receive a chunk of snapshot data.
-    pub(crate) async fn receive(&mut self, req: InstallSnapshotRequest<C>) -> Result<bool, StorageError<C::NodeId>> {
+    pub async fn receive(&mut self, req: InstallSnapshotRequest<C>) -> Result<bool, StorageError<C::NodeId>> {
         // TODO: check id?
 
         // Always seek to the target offset if not an exact match.
