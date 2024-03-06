@@ -254,7 +254,6 @@ where C: RaftTypeConfig
             tx_shutdown: Mutex::new(Some(tx_shutdown)),
             core_state: Mutex::new(CoreState::Running(core_handle)),
 
-            #[cfg(not(feature = "generic-snapshot-data"))]
             snapshot: Mutex::new(None),
         };
 
@@ -409,7 +408,13 @@ where C: RaftTypeConfig
     ///
     /// If receiving is finished `done == true`, it installs the snapshot to the state machine.
     /// Nothing will be done if the input snapshot is older than the state machine.
-    #[cfg(not(feature = "generic-snapshot-data"))]
+    #[cfg_attr(
+        feature = "generic-snapshot-data",
+        deprecated(
+            since = "0.9.0",
+            note = "with `generic-snapshot-shot` enabled, use `Raft::install_full_snapshot()` instead"
+        )
+    )]
     #[tracing::instrument(level = "debug", skip_all)]
     pub async fn install_snapshot(
         &self,
@@ -418,8 +423,8 @@ where C: RaftTypeConfig
     where
         C::SnapshotData: tokio::io::AsyncRead + tokio::io::AsyncWrite + tokio::io::AsyncSeek + Unpin,
     {
-        use crate::network::stream_snapshot::Chunked;
-        use crate::network::stream_snapshot::SnapshotTransport;
+        use crate::network::snapshot_transport::Chunked;
+        use crate::network::snapshot_transport::SnapshotTransport;
 
         tracing::debug!(req = display(&req), "Raft::install_snapshot()");
 
@@ -428,7 +433,7 @@ where C: RaftTypeConfig
 
         let mut streaming = self.inner.snapshot.lock().await;
 
-        let curr_id = streaming.as_ref().map(|s| &s.snapshot_id);
+        let curr_id = streaming.as_ref().map(|s| s.snapshot_id());
 
         if curr_id != Some(&req.meta.snapshot_id) {
             if req.offset != 0 {
@@ -457,7 +462,7 @@ where C: RaftTypeConfig
                     }
                 }
             };
-            *streaming = Some(crate::network::stream_snapshot::Streaming::new(
+            *streaming = Some(crate::network::snapshot_transport::Streaming::new(
                 req.meta.snapshot_id.clone(),
                 snapshot_data,
             ));
