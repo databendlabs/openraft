@@ -421,65 +421,36 @@ where C: RaftTypeConfig
     where
         C::SnapshotData: tokio::io::AsyncRead + tokio::io::AsyncWrite + tokio::io::AsyncSeek + Unpin,
     {
-        use crate::network::snapshot_transport::Chunked;
-        use crate::network::snapshot_transport::SnapshotTransport;
-
         tracing::debug!(req = display(&req), "Raft::install_snapshot()");
 
         let req_vote = req.vote;
-        let snapshot_id = &req.meta.snapshot_id;
+        let resp = InstallSnapshotResponse { vote: req_vote };
 
-        let my_vote = self.with_raft_state(|state| *state.vote_ref()).await?;
-        if req_vote >= my_vote {
-            // Ok
-        } else {
-            tracing::info!("vote {} is rejected by local vote: {}", req_vote, my_vote);
-            return Ok(InstallSnapshotResponse { vote: my_vote });
-        }
-
-        let mut streaming = self.inner.snapshot.lock().await;
-
-        let curr_id = streaming.as_ref().map(|s| s.snapshot_id());
-
-        if curr_id != Some(&req.meta.snapshot_id) {
-            if req.offset != 0 {
-                let mismatch = crate::error::InstallSnapshotError::SnapshotMismatch(crate::error::SnapshotMismatch {
-                    expect: crate::SnapshotSegmentId {
-                        id: snapshot_id.clone(),
-                        offset: 0,
-                    },
-                    got: crate::SnapshotSegmentId {
-                        id: snapshot_id.clone(),
-                        offset: req.offset,
-                    },
-                });
-                return Err(RaftError::APIError(mismatch));
+        // Check vote.
+        // It is not mandatory because it is just a read operation
+        // but prevent unnecessary snapshot transfer early.
+        {
+            let my_vote = self.with_raft_state(|state| *state.vote_ref()).await?;
+            if req_vote >= my_vote {
+                // Ok
+            } else {
+                tracing::info!("vote {} is rejected by local vote: {}", req_vote, my_vote);
+                return Ok(resp);
             }
-            // Changed to another stream. re-init snapshot state.
-            let res = self.begin_receiving_snapshot().await;
-            let snapshot_data = match res {
-                Ok(snapshot_data) => snapshot_data,
-                Err(raft_err) => {
-                    // Safe unwrap: `RaftError<_, Infallible>` must be a Fatal.
-                    let fatal = raft_err.into_fatal().unwrap();
-                    return Err(fatal.into());
-                }
-            };
-            *streaming = Some(crate::network::snapshot_transport::Streaming::new(
-                req.meta.snapshot_id.clone(),
-                snapshot_data,
-            ));
         }
 
-        let snapshot = Chunked::receive_snapshot(&mut *streaming, req).await?;
-        if let Some(snapshot) = snapshot {
-            let resp = self.install_full_snapshot(req_vote, snapshot).await?;
+        let finished_snapshot = {
+            use crate::network::snapshot_transport::Chunked;
+            use crate::network::snapshot_transport::SnapshotTransport;
 
-            Ok(resp.into())
-        } else {
-            // Wait for more chunks
-            Ok(InstallSnapshotResponse { vote: req_vote })
+            let mut streaming = self.inner.snapshot.lock().await;
+            Chunked::receive_snapshot(&mut *streaming, self, req).await?
+        };
+
+        if let Some(snapshot) = finished_snapshot {
+            let _resp = self.install_full_snapshot(req_vote, snapshot).await?;
         }
+        Ok(resp)
     }
 
     /// Get the ID of the current leader from this Raft node.
