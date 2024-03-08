@@ -29,7 +29,6 @@ use crate::error::InitializeError;
 use crate::error::NotAllowed;
 use crate::error::NotInMembers;
 use crate::error::RejectAppendEntries;
-use crate::error::RejectVoteRequest;
 use crate::internal_server_state::InternalServerState;
 use crate::membership::EffectiveMembership;
 use crate::raft::AppendEntriesResponse;
@@ -490,23 +489,9 @@ where C: RaftTypeConfig
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn handle_begin_receiving_snapshot(
         &mut self,
-        vote: Vote<C::NodeId>,
         tx: ResultSender<C, Box<SnapshotDataOf<C>>, HigherVote<C::NodeId>>,
     ) {
-        tracing::info!(vote = display(vote), "{}", func_name!());
-
-        let vote_res = self.vote_handler().update_vote(&vote);
-
-        if let Err(e) = vote_res {
-            if let RejectVoteRequest::ByVote(v) = e {
-                let res = Err(HigherVote { higher: v, mine: vote });
-                let _ = tx.send(res);
-            } else {
-                unreachable!("unexpected error: {:?}", e);
-            }
-            return;
-        }
-
+        tracing::info!("{}", func_name!());
         self.output.push_command(Command::from(sm::Command::begin_receiving_snapshot(tx)));
     }
 

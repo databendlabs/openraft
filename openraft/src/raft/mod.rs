@@ -64,6 +64,7 @@ use crate::raft::runtime_config_handle::RuntimeConfigHandle;
 use crate::raft::trigger::Trigger;
 use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
+use crate::type_config::alias::AsyncRuntimeOf;
 use crate::type_config::alias::SnapshotDataOf;
 use crate::AsyncRuntime;
 use crate::ChangeMembers;
@@ -368,12 +369,11 @@ where C: RaftTypeConfig
     #[tracing::instrument(level = "debug", skip_all)]
     pub async fn begin_receiving_snapshot(
         &self,
-        vote: Vote<C::NodeId>,
     ) -> Result<Box<SnapshotDataOf<C>>, RaftError<C::NodeId, HigherVote<C::NodeId>>> {
         tracing::info!("Raft::begin_receiving_snapshot()");
 
-        let (tx, rx) = C::AsyncRuntime::oneshot();
-        let resp = self.inner.call_core(RaftMsg::BeginReceivingSnapshot { vote, tx }, rx).await?;
+        let (tx, rx) = AsyncRuntimeOf::<C>::oneshot();
+        let resp = self.inner.call_core(RaftMsg::BeginReceivingSnapshot { tx }, rx).await?;
         Ok(resp)
     }
 
@@ -431,6 +431,14 @@ where C: RaftTypeConfig
         let req_vote = req.vote;
         let snapshot_id = &req.meta.snapshot_id;
 
+        let my_vote = self.with_raft_state(|state| *state.vote_ref()).await?;
+        if req_vote >= my_vote {
+            // Ok
+        } else {
+            tracing::info!("vote {} is rejected by local vote: {}", req_vote, my_vote);
+            return Ok(InstallSnapshotResponse { vote: my_vote });
+        }
+
         let mut streaming = self.inner.snapshot.lock().await;
 
         let curr_id = streaming.as_ref().map(|s| s.snapshot_id());
@@ -450,7 +458,7 @@ where C: RaftTypeConfig
                 return Err(RaftError::APIError(mismatch));
             }
             // Changed to another stream. re-init snapshot state.
-            let res = self.begin_receiving_snapshot(req_vote).await;
+            let res = self.begin_receiving_snapshot().await;
             let snapshot_data = match res {
                 Ok(snapshot_data) => snapshot_data,
                 Err(raft_err) => {
