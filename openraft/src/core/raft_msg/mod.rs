@@ -71,11 +71,11 @@ where C: RaftTypeConfig
 
     /// Begin receiving a snapshot from the leader.
     ///
-    /// Returns a handle to a snapshot data ready for receiving if successful.
-    /// Otherwise, it is an error because of the `vote` is not GE the local `vote`, the local `vote`
-    /// will be returned in a Err
+    /// Returns a snapshot data handle for receiving data.
+    ///
+    /// It does not check [`Vote`] because it is a read operation
+    /// and does not break raft protocol.
     BeginReceivingSnapshot {
-        vote: Vote<C::NodeId>,
         tx: ResultSender<C, Box<SnapshotDataOf<C>>, HigherVote<C::NodeId>>,
     },
 
@@ -123,9 +123,7 @@ where C: RaftTypeConfig
             RaftMsg::RequestVote { rpc, .. } => {
                 format!("RequestVote: {}", rpc.summary())
             }
-            RaftMsg::BeginReceivingSnapshot { vote, .. } => {
-                format!("BeginReceivingSnapshot: vote: {}", vote)
-            }
+            RaftMsg::BeginReceivingSnapshot { .. } => "BeginReceivingSnapshot".to_string(),
             RaftMsg::InstallFullSnapshot { vote, snapshot, .. } => {
                 format!("InstallFullSnapshot: vote: {}, snapshot: {}", vote, snapshot)
             }

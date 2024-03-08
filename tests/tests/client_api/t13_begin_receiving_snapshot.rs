@@ -2,9 +2,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use maplit::btreeset;
-use openraft::error::HigherVote;
 use openraft::Config;
-use openraft::Vote;
 
 use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
@@ -35,24 +33,10 @@ async fn begin_receiving_snapshot() -> anyhow::Result<()> {
         router.wait(&1, timeout()).applied_index(Some(log_index), "write more log").await?;
     }
 
-    tracing::info!(log_index, "--- fails to execute with smaller vote");
-    {
-        let n1 = router.get_raft_handle(&1)?;
-
-        let res = n1.begin_receiving_snapshot(Vote::new(0, 0)).await;
-        assert_eq!(
-            HigherVote {
-                higher: Vote::new_committed(1, 0),
-                mine: Vote::new(0, 0),
-            },
-            res.unwrap_err().into_api_error().unwrap()
-        );
-    }
-
     tracing::info!(log_index, "--- got a snapshot data");
     {
         let n1 = router.get_raft_handle(&1)?;
-        let _resp = n1.begin_receiving_snapshot(Vote::new_committed(1, 0)).await?;
+        let _resp = n1.begin_receiving_snapshot().await?;
     }
 
     Ok(())
