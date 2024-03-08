@@ -12,6 +12,7 @@ use tokio::io::AsyncSeekExt;
 use tokio::io::AsyncWriteExt;
 
 use crate::error::Fatal;
+use crate::error::RaftError;
 use crate::error::ReplicationClosed;
 use crate::error::StreamingError;
 use crate::network::RPCOption;
@@ -22,6 +23,7 @@ use crate::AsyncRuntime;
 use crate::ErrorSubject;
 use crate::ErrorVerb;
 use crate::OptionalSend;
+use crate::Raft;
 use crate::RaftNetwork;
 use crate::RaftTypeConfig;
 use crate::Snapshot;
@@ -34,44 +36,67 @@ use crate::Vote;
 /// Defines the sending and receiving API for snapshot transport.
 #[add_async_trait]
 pub trait SnapshotTransport<C: RaftTypeConfig> {
-    /// Send a snapshot to a target node via `Net` in chunks.
+    /// Send a snapshot to a target node via `Net`.
     ///
-    /// The implementation should watch the `cancel` future and return at once if it is ready.
-    // TODO: remove dependency on RaftNetwork
+    /// This function is for backward compatibility and provides a default implement for
+    /// `RaftNetwork::full_snapshot()` upon `RafNetwork::install_snapshot()`.
+    ///
+    /// The argument `vote` is the leader's(the caller's) vote,
+    /// which is used to check if the leader is still valid by a follower.
+    ///
+    /// `cancel` is a future that is polled by this function to check if the caller decides to
+    /// cancel.
+    /// It return `Ready` if the caller decide to cancel this snapshot transmission.
+    // TODO: consider removing dependency on RaftNetwork
     async fn send_snapshot<Net>(
-        _net: &mut Net,
-        _vote: Vote<C::NodeId>,
-        _snapshot: Snapshot<C>,
-        _cancel: impl Future<Output = ReplicationClosed> + OptionalSend,
-        _option: RPCOption,
+        net: &mut Net,
+        vote: Vote<C::NodeId>,
+        snapshot: Snapshot<C>,
+        cancel: impl Future<Output = ReplicationClosed> + OptionalSend,
+        option: RPCOption,
     ) -> Result<SnapshotResponse<C::NodeId>, StreamingError<C, Fatal<C::NodeId>>>
     where
         Net: RaftNetwork<C> + ?Sized;
 
-    /// Receive a chunk of snapshot. If the snapshot is done, return the snapshot.
+    /// Receive a chunk of snapshot. If the snapshot is done receiving, return the snapshot.
+    ///
+    /// This method provide a default implementation for chunk based snapshot transport,
+    /// and requires the caller to provide two things:
+    ///
+    /// - The receiving state `streaming` is maintained by the caller.
+    /// - And it depends on `Raft::begin_receiving_snapshot()` to create a `SnapshotData` for
+    /// receiving data.
+    ///
+    /// Example usage:
+    /// ```ignore
+    /// struct App<C> {
+    ///     raft: Raft<C>
+    ///     streaming: Option<Streaming<C>>,
+    /// }
+    ///
+    /// impl<C> App<C> {
+    ///     fn handle_install_snapshot_request(&mut self, req: InstallSnapshotRequest<C>) {
+    ///         let res = Chunked::receive_snapshot(&mut self.streaming, &self.raft, req).await?;
+    ///         if let Some(snapshot) = res {
+    ///             self.raft.install_snapshot(snapshot).await?;
+    ///         }
+    ///     }
+    /// }
+    /// ```
     async fn receive_snapshot(
-        _streaming: &mut Option<Streaming<C>>,
-        _req: InstallSnapshotRequest<C>,
-    ) -> Result<Option<Snapshot<C>>, StorageError<C::NodeId>>;
+        streaming: &mut Option<Streaming<C>>,
+        raft: &Raft<C>,
+        req: InstallSnapshotRequest<C>,
+    ) -> Result<Option<Snapshot<C>>, RaftError<C::NodeId, crate::error::InstallSnapshotError>>;
 }
 
 /// Send and Receive snapshot by chunks.
 pub struct Chunked {}
 
+/// This chunk based implementation requires `SnapshotData` to be `AsyncRead + AsyncSeek`.
 impl<C: RaftTypeConfig> SnapshotTransport<C> for Chunked
 where C::SnapshotData: tokio::io::AsyncRead + tokio::io::AsyncWrite + tokio::io::AsyncSeek + Unpin
 {
-    /// Stream snapshot by chunks.
-    ///
-    /// This function is for backward compatibility and provides a default implement for
-    /// `RaftNetwork::full_snapshot()` upon `RafNetwork::install_snapshot()`. This implementation
-    /// requires `SnapshotData` to be `AsyncRead + AsyncSeek`.
-    ///
-    /// The argument `vote` is the leader's vote which is used to check if the leader is still valid
-    /// by a follower.
-    ///
-    /// `cancel` is a future that is polled only by this function. It return Ready if the caller
-    /// decide to cancel this snapshot transmission.
     async fn send_snapshot<Net>(
         net: &mut Net,
         vote: Vote<C::NodeId>,
@@ -165,12 +190,40 @@ where C::SnapshotData: tokio::io::AsyncRead + tokio::io::AsyncWrite + tokio::io:
 
     async fn receive_snapshot(
         streaming: &mut Option<Streaming<C>>,
+        raft: &Raft<C>,
         req: InstallSnapshotRequest<C>,
-    ) -> Result<Option<Snapshot<C>>, StorageError<C::NodeId>> {
+    ) -> Result<Option<Snapshot<C>>, RaftError<C::NodeId, crate::error::InstallSnapshotError>> {
+        let snapshot_id = &req.meta.snapshot_id;
         let snapshot_meta = req.meta.clone();
         let done = req.done;
 
         tracing::info!(req = display(&req), "{}", func_name!());
+
+        let curr_id = streaming.as_ref().map(|s| s.snapshot_id());
+
+        if curr_id != Some(snapshot_id) {
+            if req.offset != 0 {
+                let mismatch = crate::error::InstallSnapshotError::SnapshotMismatch(crate::error::SnapshotMismatch {
+                    expect: crate::SnapshotSegmentId {
+                        id: snapshot_id.clone(),
+                        offset: 0,
+                    },
+                    got: crate::SnapshotSegmentId {
+                        id: snapshot_id.clone(),
+                        offset: req.offset,
+                    },
+                });
+                return Err(RaftError::APIError(mismatch));
+            }
+
+            // Changed to another stream. re-init snapshot state.
+            let snapshot_data = raft.begin_receiving_snapshot().await.map_err(|e| {
+                // Safe unwrap: `RaftError<Infallible>` is always a Fatal.
+                RaftError::Fatal(e.into_fatal().unwrap())
+            })?;
+
+            *streaming = Some(Streaming::new(snapshot_id.clone(), snapshot_data));
+        }
 
         {
             let s = streaming.as_mut().unwrap();
@@ -183,10 +236,10 @@ where C::SnapshotData: tokio::io::AsyncRead + tokio::io::AsyncWrite + tokio::io:
             let streaming = streaming.take().unwrap();
             let mut data = streaming.into_snapshot_data();
 
-            data.as_mut()
-                .shutdown()
-                .await
-                .map_err(|e| StorageIOError::write_snapshot(Some(snapshot_meta.signature()), &e))?;
+            data.as_mut().shutdown().await.map_err(|e| {
+                let io_err = StorageIOError::write_snapshot(Some(snapshot_meta.signature()), &e);
+                StorageError::from(io_err)
+            })?;
 
             tracing::info!("finished streaming snapshot: {:?}", snapshot_meta);
             return Ok(Some(Snapshot::new(snapshot_meta, data)));
