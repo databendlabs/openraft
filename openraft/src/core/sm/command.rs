@@ -3,7 +3,7 @@ use std::fmt::Formatter;
 
 use crate::core::raft_msg::ResultSender;
 use crate::display_ext::DisplaySlice;
-use crate::error::HigherVote;
+use crate::error::Infallible;
 use crate::log_id::RaftLogId;
 use crate::type_config::alias::SnapshotDataOf;
 use crate::RaftTypeConfig;
@@ -59,7 +59,7 @@ where C: RaftTypeConfig
         Command::new(payload)
     }
 
-    pub(crate) fn begin_receiving_snapshot(tx: ResultSender<C, Box<SnapshotDataOf<C>>, HigherVote<C::NodeId>>) -> Self {
+    pub(crate) fn begin_receiving_snapshot(tx: ResultSender<C, Box<SnapshotDataOf<C>>, Infallible>) -> Self {
         let payload = CommandPayload::BeginReceivingSnapshot { tx };
         Command::new(payload)
     }
@@ -95,7 +95,7 @@ where C: RaftTypeConfig
     },
 
     BeginReceivingSnapshot {
-        tx: ResultSender<C, Box<SnapshotDataOf<C>>, HigherVote<C::NodeId>>,
+        tx: ResultSender<C, Box<SnapshotDataOf<C>>, Infallible>,
     },
 
     InstallFullSnapshot {

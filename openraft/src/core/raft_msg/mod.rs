@@ -3,7 +3,6 @@ use std::collections::BTreeMap;
 use crate::core::raft_msg::external_command::ExternalCommand;
 use crate::error::CheckIsLeaderError;
 use crate::error::ClientWriteError;
-use crate::error::HigherVote;
 use crate::error::Infallible;
 use crate::error::InitializeError;
 use crate::raft::AppendEntriesRequest;
@@ -76,7 +75,7 @@ where C: RaftTypeConfig
     /// It does not check [`Vote`] because it is a read operation
     /// and does not break raft protocol.
     BeginReceivingSnapshot {
-        tx: ResultSender<C, Box<SnapshotDataOf<C>>, HigherVote<C::NodeId>>,
+        tx: ResultSender<C, Box<SnapshotDataOf<C>>, Infallible>,
     },
 
     ClientWriteRequest {

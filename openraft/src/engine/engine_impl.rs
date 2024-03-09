@@ -24,7 +24,7 @@ use crate::engine::EngineOutput;
 use crate::engine::Respond;
 use crate::entry::RaftPayload;
 use crate::error::ForwardToLeader;
-use crate::error::HigherVote;
+use crate::error::Infallible;
 use crate::error::InitializeError;
 use crate::error::NotAllowed;
 use crate::error::NotInMembers;
@@ -487,10 +487,7 @@ where C: RaftTypeConfig
 
     /// Install a completely received snapshot on a follower.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn handle_begin_receiving_snapshot(
-        &mut self,
-        tx: ResultSender<C, Box<SnapshotDataOf<C>>, HigherVote<C::NodeId>>,
-    ) {
+    pub(crate) fn handle_begin_receiving_snapshot(&mut self, tx: ResultSender<C, Box<SnapshotDataOf<C>>, Infallible>) {
         tracing::info!("{}", func_name!());
         self.output.push_command(Command::from(sm::Command::begin_receiving_snapshot(tx)));
     }
