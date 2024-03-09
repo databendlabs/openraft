@@ -49,7 +49,7 @@ use crate::engine::EngineConfig;
 use crate::error::CheckIsLeaderError;
 use crate::error::ClientWriteError;
 use crate::error::Fatal;
-use crate::error::HigherVote;
+use crate::error::Infallible;
 use crate::error::InitializeError;
 use crate::error::RaftError;
 use crate::membership::IntoNodes;
@@ -367,9 +367,7 @@ where C: RaftTypeConfig
 
     /// Get a snapshot data for receiving snapshot from the leader.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn begin_receiving_snapshot(
-        &self,
-    ) -> Result<Box<SnapshotDataOf<C>>, RaftError<C::NodeId, HigherVote<C::NodeId>>> {
+    pub async fn begin_receiving_snapshot(&self) -> Result<Box<SnapshotDataOf<C>>, RaftError<C::NodeId, Infallible>> {
         tracing::info!("Raft::begin_receiving_snapshot()");
 
         let (tx, rx) = AsyncRuntimeOf::<C>::oneshot();
@@ -462,12 +460,9 @@ where C: RaftTypeConfig
             let snapshot_data = match res {
                 Ok(snapshot_data) => snapshot_data,
                 Err(raft_err) => {
-                    return match raft_err {
-                        RaftError::APIError(higher_vote) => Ok(InstallSnapshotResponse {
-                            vote: higher_vote.higher,
-                        }),
-                        RaftError::Fatal(f) => Err(f.into()),
-                    }
+                    // Safe unwrap: `RaftError<_, Infallible>` must be a Fatal.
+                    let fatal = raft_err.into_fatal().unwrap();
+                    return Err(fatal.into());
                 }
             };
             *streaming = Some(crate::network::snapshot_transport::Streaming::new(
