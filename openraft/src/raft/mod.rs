@@ -424,13 +424,13 @@ where C: RaftTypeConfig
         tracing::debug!(req = display(&req), "Raft::install_snapshot()");
 
         let req_vote = req.vote;
-        let resp = InstallSnapshotResponse { vote: req_vote };
+        let my_vote = self.with_raft_state(|state| *state.vote_ref()).await?;
+        let resp = InstallSnapshotResponse { vote: my_vote };
 
         // Check vote.
         // It is not mandatory because it is just a read operation
         // but prevent unnecessary snapshot transfer early.
         {
-            let my_vote = self.with_raft_state(|state| *state.vote_ref()).await?;
             if req_vote >= my_vote {
                 // Ok
             } else {
@@ -448,7 +448,8 @@ where C: RaftTypeConfig
         };
 
         if let Some(snapshot) = finished_snapshot {
-            let _resp = self.install_full_snapshot(req_vote, snapshot).await?;
+            let resp = self.install_full_snapshot(req_vote, snapshot).await?;
+            return Ok(resp.into());
         }
         Ok(resp)
     }
