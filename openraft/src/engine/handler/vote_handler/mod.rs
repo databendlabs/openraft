@@ -158,7 +158,7 @@ where C: RaftTypeConfig
 
         // Do not update clock_progress, until the first blank log is committed.
 
-        *self.internal_server_state = InternalServerState::Leading(leader);
+        *self.internal_server_state = InternalServerState::Leading(Box::new(leader));
 
         self.server_state_handler().update_server_state_if_changed();
     }
