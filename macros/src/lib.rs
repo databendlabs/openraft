@@ -1,3 +1,5 @@
+#![doc = include_str!("lib_readme.md")]
+
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::parse2;
@@ -11,7 +13,7 @@ use syn::Type;
 
 /// This proc macro attribute optionally adds `Send` bounds to a trait.
 ///
-/// By default, `Send` bounds will be added to the trait and to the return bounds of any  async
+/// By default, `Send` bounds will be added to the trait and to the return bounds of any async
 /// functions defined withing the trait.
 ///
 /// If the `singlethreaded` feature is enabled, the trait definition remains the same without any
@@ -20,11 +22,19 @@ use syn::Type;
 /// # Example
 ///
 /// ```
-/// use macros::add_async_trait;
+/// use openraft_macros::add_async_trait;
 ///
 /// #[add_async_trait]
 /// trait MyTrait {
 ///     async fn my_method(&self) -> Result<(), String>;
+/// }
+/// ```
+///
+/// The above code will be transformed into:
+///
+/// ```ignore
+/// trait MyTrait {
+///     fn my_method(&self) -> impl Future<Output=Result<(), String>> + Send;
 /// }
 /// ```
 ///

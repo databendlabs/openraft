@@ -1,6 +1,6 @@
 #[cfg(not(feature = "storage-v2"))] use std::future::Future;
 
-use macros::add_async_trait;
+use openraft_macros::add_async_trait;
 
 #[cfg(not(feature = "storage-v2"))] use crate::storage::Adaptor;
 use crate::storage::RaftLogStorage;

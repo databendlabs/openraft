@@ -1,5 +1,5 @@
 [package]
-name = "macros"
+name = "openraft-macros"
 
 version       = { workspace = true }
 edition       = { workspace = true }

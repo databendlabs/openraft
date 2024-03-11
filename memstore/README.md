@@ -1,5 +1,5 @@
 # openraft-memstore
 
-This is an in-memory example `RaftStorage` implementation based on [openraft-0.8](https://github.com/datafuselabs/openraft/tree/release-0.8).
+This is an in-memory example `RaftLogStorage` and `RaftStateMachine` implementation based on [openraft](https://github.com/datafuselabs/openraft/).
 
 This crate is built mainly for testing or demonstrating purpose.:)
