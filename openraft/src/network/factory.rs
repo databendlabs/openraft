@@ -1,4 +1,4 @@
-use macros::add_async_trait;
+use openraft_macros::add_async_trait;
 
 use crate::network::RaftNetwork;
 use crate::OptionalSend;

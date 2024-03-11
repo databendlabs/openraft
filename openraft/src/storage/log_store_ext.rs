@@ -1,7 +1,7 @@
 use std::fmt::Debug;
 use std::ops::RangeBounds;
 
-use macros::add_async_trait;
+use openraft_macros::add_async_trait;
 
 use crate::defensive::check_range_matches_entries;
 use crate::LogId;

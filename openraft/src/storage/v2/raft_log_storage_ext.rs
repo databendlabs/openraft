@@ -1,5 +1,5 @@
 use anyerror::AnyError;
-use macros::add_async_trait;
+use openraft_macros::add_async_trait;
 
 use crate::storage::LogFlushed;
 use crate::storage::RaftLogStorage;

@@ -6,7 +6,7 @@ use std::io::SeekFrom;
 use std::time::Duration;
 
 use futures::FutureExt;
-use macros::add_async_trait;
+use openraft_macros::add_async_trait;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncSeekExt;
 use tokio::io::AsyncWriteExt;

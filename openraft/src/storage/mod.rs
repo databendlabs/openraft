@@ -14,7 +14,7 @@ use std::ops::RangeBounds;
 #[cfg(not(feature = "storage-v2"))] pub use adapter::Adaptor;
 pub use helper::StorageHelper;
 pub use log_store_ext::RaftLogReaderExt;
-use macros::add_async_trait;
+use openraft_macros::add_async_trait;
 pub use snapshot_signature::SnapshotSignature;
 pub use v2::RaftLogStorage;
 pub use v2::RaftLogStorageExt;

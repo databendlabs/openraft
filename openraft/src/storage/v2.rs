@@ -4,7 +4,7 @@
 
 mod raft_log_storage_ext;
 
-use macros::add_async_trait;
+use openraft_macros::add_async_trait;
 pub use raft_log_storage_ext::RaftLogStorageExt;
 
 use crate::storage::callback::LogFlushed;

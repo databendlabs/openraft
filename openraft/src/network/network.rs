@@ -1,7 +1,7 @@
 use std::future::Future;
 use std::time::Duration;
 
-use macros::add_async_trait;
+use openraft_macros::add_async_trait;
 
 use crate::error::Fatal;
 use crate::error::RPCError;
