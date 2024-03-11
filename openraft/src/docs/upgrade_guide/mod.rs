@@ -9,3 +9,6 @@ pub mod upgrade_07_08 {
 pub mod upgrade_083_084 {
     //! See: [Guide for upgrading v0.8.3 to v0.8.4](https://docs.rs/openraft/0.8.9/openraft/docs/upgrade_guide/upgrade_083_084)
 }
+pub mod upgrade_08_09 {
+    #![doc = include_str!("upgrade-v08-v09.md")]
+}

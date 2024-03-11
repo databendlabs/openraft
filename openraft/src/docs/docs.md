@@ -15,6 +15,7 @@ When upgrading an Openraft application, consult:
   - [`v0.6-to-v0.7`](`crate::docs::upgrade_guide::upgrade_06_07`);
   - [`v0.7-to-v0.8`](`crate::docs::upgrade_guide::upgrade_07_08`);
   - [`v0.8.3-to-v0.8.4`](`crate::docs::upgrade_guide::upgrade_083_084`);
+  - [`v0.8-to-v0.9`](`crate::docs::upgrade_guide::upgrade_08_09`);
 
 To learn about the data structures used in Openraft and the commit protocol, see
 - [`feature_flags`](crate::docs::feature_flags);
