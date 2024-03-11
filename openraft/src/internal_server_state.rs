@@ -21,8 +21,6 @@ pub(crate) type LeaderQuorumSet<NID> = Joint<NID, Vec<NID>, Vec<Vec<NID>>>;
 ///   learner.
 #[derive(Clone, Debug)]
 #[derive(PartialEq, Eq)]
-#[allow(clippy::large_enum_variant)]
-// TODO(9): consider moving Leader to a Box
 // TODO(9): Make InternalServerState an Option, separate Leading(Proposer) role and
 //          Following(Acceptor) role
 pub(crate) enum InternalServerState<NID, I>
@@ -33,7 +31,7 @@ where
     /// Leader or candidate.
     ///
     /// `vote.committed==true` means it is a leader.
-    Leading(Leading<NID, LeaderQuorumSet<NID>, I>),
+    Leading(Box<Leading<NID, LeaderQuorumSet<NID>, I>>),
 
     /// Follower or learner.
     ///
