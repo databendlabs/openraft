@@ -1,6 +1,7 @@
-//! Defines [`RaftLogStorage`] and [`RaftStateMachine`] trait to replace the previous
-//! [`RaftStorage`](`crate::storage::RaftStorage`). [`RaftLogStorage`] is responsible for storing
-//! logs, and [`RaftStateMachine`] is responsible for storing state machine and snapshot.
+//! Defines [`RaftLogStorage`] and [`RaftStateMachine`] trait.
+//!
+//! [`RaftLogStorage`] is responsible for storing logs,
+//! and [`RaftStateMachine`] is responsible for storing state machine and snapshot.
 
 mod raft_log_storage_ext;
 
@@ -8,7 +9,6 @@ use openraft_macros::add_async_trait;
 pub use raft_log_storage_ext::RaftLogStorageExt;
 
 use crate::storage::callback::LogFlushed;
-use crate::storage::v2::sealed::Sealed;
 use crate::LogId;
 use crate::LogState;
 use crate::OptionalSend;
@@ -21,18 +21,6 @@ use crate::SnapshotMeta;
 use crate::StorageError;
 use crate::StoredMembership;
 use crate::Vote;
-
-pub(crate) mod sealed {
-    /// Seal [`RaftLogStorage`](`crate::storage::RaftLogStorage`) and
-    /// [`RaftStateMachine`](`crate::storage::RaftStateMachine`). This is to prevent users from
-    /// implementing them before being stable.
-    pub trait Sealed {}
-
-    /// Implement non-public trait [`Sealed`] for all types so that [`RaftLogStorage`] and
-    /// [`RaftStateMachine`] can be implemented by 3rd party crates.
-    #[cfg(feature = "storage-v2")]
-    impl<T> Sealed for T {}
-}
 
 /// API for log store.
 ///
@@ -47,7 +35,7 @@ pub(crate) mod sealed {
 ///   write request before a former write request is completed. This rule applies to both `vote` and
 ///   `log` IO. E.g., Saving a vote and appending a log entry must be serialized too.
 #[add_async_trait]
-pub trait RaftLogStorage<C>: Sealed + RaftLogReader<C> + OptionalSend + OptionalSync + 'static
+pub trait RaftLogStorage<C>: RaftLogReader<C> + OptionalSend + OptionalSync + 'static
 where C: RaftTypeConfig
 {
     /// Log reader type.
@@ -148,7 +136,7 @@ where C: RaftTypeConfig
 /// Snapshot is part of the state machine, because usually a snapshot is the persisted state of the
 /// state machine.
 #[add_async_trait]
-pub trait RaftStateMachine<C>: Sealed + OptionalSend + OptionalSync + 'static
+pub trait RaftStateMachine<C>: OptionalSend + OptionalSync + 'static
 where C: RaftTypeConfig
 {
     /// Snapshot builder type.

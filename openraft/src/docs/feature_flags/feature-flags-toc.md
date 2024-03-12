@@ -6,5 +6,4 @@
 - [feature-flag `serde`](#feature-flag-serde)
 - [feature-flag `single-term-leader`](#feature-flag-single-term-leader)
 - [feature-flag `singlethreaded`](#feature-flag-singlethreaded)
-- [feature-flag `storage-v2`](#feature-flag-storage-v2)
 - [feature-flag `tracing-log`](#feature-flag-tracing-log)

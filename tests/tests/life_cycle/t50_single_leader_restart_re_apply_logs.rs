@@ -39,7 +39,7 @@ async fn single_leader_restart_re_apply_logs() -> anyhow::Result<()> {
         node.shutdown().await?;
 
         // Clear state machine, logs should be re-applied upon restart, because it is a leader.
-        ls.storage().await.clear_state_machine().await;
+        sm.clear_state_machine().await;
 
         tracing::info!(log_index, "--- restart node-0");
 

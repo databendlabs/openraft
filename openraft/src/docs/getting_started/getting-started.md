@@ -143,12 +143,13 @@ If your implementation passes the tests, Openraft should work well with it.
 To test your implementation, you have two options:
 
 1. Run `Suite::test_all()` with an `async fn()` that creates a new pair of [`RaftLogStorage`] and [`RaftStateMachine`],
-   as shown in the [`MemStore` test](https://github.com/datafuselabs/openraft/blob/main/memstore/src/test.rs):
+   as shown in the [`MemStore` test](https://github.com/datafuselabs/openraft/blob/main/stores/memstore/src/test.rs):
 
   ```ignore
   #[test]
-  pub fn test_mem_store() -> anyhow::Result<()> {
-    openraft::testing::Suite::test_all(MemStore::new_async)
+  pub fn test_mem_store() -> Result<(), StorageError<MemNodeId>> {
+      Suite::test_all(MemStoreBuilder {})?;
+      Ok(())
   }
   ```
 

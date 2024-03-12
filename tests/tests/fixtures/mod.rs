@@ -42,7 +42,6 @@ use openraft::raft::InstallSnapshotRequest;
 use openraft::raft::InstallSnapshotResponse;
 use openraft::raft::VoteRequest;
 use openraft::raft::VoteResponse;
-use openraft::storage::Adaptor;
 use openraft::storage::RaftLogStorage;
 use openraft::storage::RaftStateMachine;
 use openraft::Config;
@@ -64,8 +63,9 @@ use openraft::Vote;
 use openraft_memstore::ClientRequest;
 use openraft_memstore::ClientResponse;
 use openraft_memstore::IntoMemClientRequest;
+use openraft_memstore::MemLogStore as LogStoreInner;
 use openraft_memstore::MemNodeId;
-use openraft_memstore::MemStore;
+use openraft_memstore::MemStateMachine as SMInner;
 use openraft_memstore::TypeConfig;
 use openraft_memstore::TypeConfig as MemConfig;
 #[allow(unused_imports)] use pretty_assertions::assert_eq;
@@ -76,8 +76,8 @@ use crate::fixtures::logging::init_file_logging;
 
 pub mod logging;
 
-pub type MemLogStore = Adaptor<MemConfig, Arc<MemStore>>;
-pub type MemStateMachine = Adaptor<MemConfig, Arc<MemStore>>;
+pub type MemLogStore = Arc<LogStoreInner>;
+pub type MemStateMachine = Arc<SMInner>;
 
 /// A concrete Raft type used during testing.
 pub type MemRaft = Raft<MemConfig>;
@@ -438,8 +438,8 @@ impl TypedRaftRouter {
     }
 
     pub fn new_store(&mut self) -> (MemLogStore, MemStateMachine) {
-        let store = Arc::new(MemStore::default());
-        Adaptor::new(store)
+        let (log, sm) = openraft_memstore::new_mem_store();
+        (log, sm)
     }
 
     #[tracing::instrument(level = "debug", skip_all)]

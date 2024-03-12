@@ -110,7 +110,6 @@ User
 [`ReplicationHandle`]: `crate::replication::ReplicationHandle`
 [`ReplicationCore`]:   `crate::replication::ReplicationCore`
 [`client_write`]:      `crate::raft::Raft::client_write`
-[`RaftStorage`]:       `crate::storage::RaftStorage`
 [`RaftLogStorage`]:    `crate::storage::RaftLogStorage`
 [`RaftStateMachine`]:  `crate::storage::RaftStateMachine`
 [`Adapter`]:           `crate::storage::Adapter`

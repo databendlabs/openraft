@@ -77,12 +77,6 @@ This feature relies on the `async_fn_in_trait` language feature that is official
 If the feature is enabled, affected asynchronous trait methods require `Send` bounds.
 In order to use the feature, `AsyncRuntime::spawn` should invoke `tokio::task::spawn_local` or equivalents.
 
-## feature-flag `storage-v2`
-
-Enables `RaftLogStorage` and `RaftStateMachine` as the v2 storage
-This is a temporary feature flag, and will be removed in the future, when v2 storage is stable.
-This feature disables `Adapter`, which is for v1 storage to be used as v2.
-V2 storage separates log store and state machine store so that log IO and state machine IO can be parallelized naturally.
 
 ## feature-flag `tracing-log`
 

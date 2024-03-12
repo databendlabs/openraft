@@ -125,7 +125,7 @@ where
     /// It will be reset to `None` when an successful response is received.
     backoff: Option<Backoff>,
 
-    /// The `RaftLogReader` of a `RaftStorage` interface.
+    /// The [`RaftLogStorage::LogReader`] interface.
     log_reader: LS::LogReader,
 
     /// The Raft's runtime config.

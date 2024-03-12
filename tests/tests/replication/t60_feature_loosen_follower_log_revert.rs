@@ -4,7 +4,6 @@ use std::time::Duration;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
-use openraft_memstore::MemStore;
 
 use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
@@ -39,12 +38,10 @@ async fn feature_loosen_follower_log_revert() -> Result<()> {
 
     tracing::info!(log_index, "--- erase node 3 and restart");
     {
-        let (_raft, ls, sm) = router.remove_node(3).unwrap();
-        {
-            let mut sto = ls.storage_mut().await;
-            *sto = Arc::new(MemStore::new());
-        }
-        router.new_raft_node_with_sto(3, ls, sm).await;
+        let (_raft, _ls, _sm) = router.remove_node(3).unwrap();
+        let (log, sm) = openraft_memstore::new_mem_store();
+
+        router.new_raft_node_with_sto(3, log, sm).await;
         router.add_learner(0, 3).await?;
         log_index += 1; // add learner
     }

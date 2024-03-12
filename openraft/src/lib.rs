@@ -105,7 +105,6 @@ pub use crate::raft_types::SnapshotSegmentId;
 pub use crate::storage::LogState;
 pub use crate::storage::RaftLogReader;
 pub use crate::storage::RaftSnapshotBuilder;
-#[cfg(not(feature = "storage-v2"))] pub use crate::storage::RaftStorage;
 pub use crate::storage::Snapshot;
 pub use crate::storage::SnapshotMeta;
 pub use crate::storage::StorageHelper;
@@ -165,9 +164,9 @@ impl<T: Sync + ?Sized> OptionalSync for T {}
 /// The intention of this trait is that applications which are using this crate will be able to
 /// use their own concrete data types throughout their application without having to serialize and
 /// deserialize their data as it goes through Raft. Instead, applications can present their data
-/// models as-is to Raft, Raft will present it to the application's `RaftStorage` impl when ready,
-/// and the application may then deal with the data directly in the storage engine without having
-/// to do a preliminary deserialization.
+/// models as-is to Raft, Raft will present it to the application's `RaftLogStorage` and
+/// `RaftStateMachine` impl when ready, and the application may then deal with the data directly in
+/// the storage engine without having to do a preliminary deserialization.
 ///
 /// ## Note
 ///

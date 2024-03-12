@@ -18,7 +18,7 @@ repository = "https://github.com/datafuselabs/openraft"
 
 [dependencies]
 memstore = { path = "../memstore", features = [] }
-openraft = { path = "../../openraft", features = ["serde", "storage-v2", "generic-snapshot-data"] }
+openraft = { path = "../../openraft", features = ["serde", "generic-snapshot-data"] }
 
 serde = { version = "1.0.114", features = ["derive"] }
 serde_json = "1.0.57"

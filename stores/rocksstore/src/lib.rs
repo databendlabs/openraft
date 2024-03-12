@@ -1,3 +1,7 @@
+//! This rocks-db backed storage implement the v2 storage API: [`RaftLogStorage`] and
+//! [`RaftStateMachine`] traits. Its state machine is pure in-memory store with persisted
+//! snapshot. In other words, `applying` a log entry does not flush data to disk at once.
+//! These data will be flushed to disk when a snapshot is created.
 #![deny(unused_crate_dependencies)]
 #![deny(unused_qualifications)]
 
@@ -11,11 +15,13 @@ use std::ops::RangeBounds;
 use std::path::Path;
 use std::sync::Arc;
 
-use async_std::sync::RwLock;
 use byteorder::BigEndian;
 use byteorder::ReadBytesExt;
 use byteorder::WriteBytesExt;
+use openraft::storage::LogFlushed;
 use openraft::storage::LogState;
+use openraft::storage::RaftLogStorage;
+use openraft::storage::RaftStateMachine;
 use openraft::storage::Snapshot;
 use openraft::AnyError;
 use openraft::BasicNode;
@@ -24,9 +30,9 @@ use openraft::EntryPayload;
 use openraft::ErrorVerb;
 use openraft::LogId;
 use openraft::OptionalSend;
+use openraft::RaftLogId;
 use openraft::RaftLogReader;
 use openraft::RaftSnapshotBuilder;
-use openraft::RaftStorage;
 use openraft::RaftTypeConfig;
 use openraft::SnapshotMeta;
 use openraft::StorageError;
@@ -34,6 +40,7 @@ use openraft::StorageIOError;
 use openraft::StoredMembership;
 use openraft::TokioRuntime;
 use openraft::Vote;
+use rand::Rng;
 use rocksdb::ColumnFamily;
 use rocksdb::ColumnFamilyDescriptor;
 use rocksdb::Direction;
@@ -45,7 +52,7 @@ use serde::Serialize;
 pub type RocksNodeId = u64;
 
 openraft::declare_raft_types!(
-    /// Declare the type configuration for `MemStore`.
+    /// Declare the type configuration.
     pub TypeConfig:
         D = RocksRequest,
         R = RocksResponse,
@@ -88,14 +95,10 @@ pub struct RocksSnapshot {
     pub data: Vec<u8>,
 }
 
-/**
- * Here defines a state machine of the raft, this state represents a copy of the data
- * between each node. Note that we are using `serde` to serialize the `data`, which has
- * a implementation to be serialized. Note that for this test we set both the key and
- * value as String, but you could set any type of value that has the serialization impl.
- */
-#[derive(Serialize, Deserialize, Debug, Default, Clone)]
-pub struct SerializableRocksStateMachine {
+#[derive(Debug, Clone)]
+#[derive(Default)]
+#[derive(Serialize, Deserialize)]
+pub struct StateMachine {
     pub last_applied_log: Option<LogId<RocksNodeId>>,
 
     pub last_membership: StoredMembership<RocksNodeId, BasicNode>,
@@ -104,129 +107,38 @@ pub struct SerializableRocksStateMachine {
     pub data: BTreeMap<String, String>,
 }
 
-impl From<&RocksStateMachine> for SerializableRocksStateMachine {
-    fn from(state: &RocksStateMachine) -> Self {
-        let mut data = BTreeMap::new();
+// TODO: restore state from snapshot
+/// State machine in this implementation is a pure in-memory store.
+/// It depends on the latest snapshot to restore the state when restarted.
+#[derive(Debug, Clone)]
+pub struct RocksStateMachine {
+    db: Arc<DB>,
+    sm: StateMachine,
+}
 
-        let it = state.db.iterator_cf(state.cf_sm_data(), rocksdb::IteratorMode::Start);
+impl RocksStateMachine {
+    async fn new(db: Arc<DB>) -> RocksStateMachine {
+        let mut state_machine = Self {
+            db,
+            sm: Default::default(),
+        };
+        let snapshot = state_machine.get_current_snapshot().await.unwrap();
 
-        for item in it {
-            let (key, value) = item.expect("invalid kv record");
-
-            let key: &[u8] = &key;
-            let value: &[u8] = &value;
-            data.insert(
-                String::from_utf8(key.to_vec()).expect("invalid key"),
-                String::from_utf8(value.to_vec()).expect("invalid data"),
-            );
+        // Restore previous state from snapshot
+        if let Some(s) = snapshot {
+            let prev: StateMachine = serde_json::from_slice(s.snapshot.get_ref()).unwrap();
+            state_machine.sm = prev;
         }
-        Self {
-            last_applied_log: state.get_last_applied_log().expect("last_applied_log"),
-            last_membership: state.get_last_membership().expect("last_membership"),
-            data,
-        }
+
+        state_machine
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct RocksStateMachine {
-    /// Application data.
-    pub db: Arc<DB>,
-}
-
-fn sm_r_err<E: Error + 'static>(e: E) -> StorageError<RocksNodeId> {
-    StorageIOError::read_state_machine(&e).into()
-}
-fn sm_w_err<E: Error + 'static>(e: E) -> StorageError<RocksNodeId> {
-    StorageIOError::write_state_machine(&e).into()
-}
-
-impl RocksStateMachine {
-    fn cf_sm_meta(&self) -> &ColumnFamily {
-        self.db.cf_handle("sm_meta").unwrap()
-    }
-
-    fn cf_sm_data(&self) -> &ColumnFamily {
-        self.db.cf_handle("sm_data").unwrap()
-    }
-
-    fn get_last_membership(&self) -> StorageResult<StoredMembership<RocksNodeId, BasicNode>> {
-        self.db.get_cf(self.cf_sm_meta(), "last_membership".as_bytes()).map_err(sm_r_err).and_then(|value| {
-            value
-                .map(|v| serde_json::from_slice(&v).map_err(sm_r_err))
-                .unwrap_or_else(|| Ok(StoredMembership::default()))
-        })
-    }
-
-    fn set_last_membership(&self, membership: StoredMembership<RocksNodeId, BasicNode>) -> StorageResult<()> {
-        self.db
-            .put_cf(
-                self.cf_sm_meta(),
-                "last_membership".as_bytes(),
-                serde_json::to_vec(&membership).map_err(sm_w_err)?,
-            )
-            .map_err(sm_w_err)
-    }
-
-    fn get_last_applied_log(&self) -> StorageResult<Option<LogId<RocksNodeId>>> {
-        self.db
-            .get_cf(self.cf_sm_meta(), "last_applied_log".as_bytes())
-            .map_err(sm_r_err)
-            .and_then(|value| value.map(|v| serde_json::from_slice(&v).map_err(sm_r_err)).transpose())
-    }
-
-    fn set_last_applied_log(&self, log_id: LogId<RocksNodeId>) -> StorageResult<()> {
-        self.db
-            .put_cf(
-                self.cf_sm_meta(),
-                "last_applied_log".as_bytes(),
-                serde_json::to_vec(&log_id).map_err(sm_w_err)?,
-            )
-            .map_err(sm_w_err)
-    }
-
-    fn from_serializable(sm: SerializableRocksStateMachine, db: Arc<DB>) -> StorageResult<Self> {
-        let r = Self { db };
-
-        for (key, value) in sm.data {
-            r.db.put_cf(r.cf_sm_data(), key.as_bytes(), value.as_bytes()).map_err(sm_w_err)?;
-        }
-
-        if let Some(log_id) = sm.last_applied_log {
-            r.set_last_applied_log(log_id)?;
-        }
-
-        r.set_last_membership(sm.last_membership)?;
-
-        Ok(r)
-    }
-
-    fn new(db: Arc<DB>) -> RocksStateMachine {
-        Self { db }
-    }
-
-    fn insert(&self, key: String, value: String) -> StorageResult<()> {
-        self.db
-            .put_cf(self.cf_sm_data(), key.as_bytes(), value.as_bytes())
-            .map_err(|e| StorageIOError::write(&e).into())
-    }
-
-    pub fn get(&self, key: &str) -> StorageResult<Option<String>> {
-        let key = key.as_bytes();
-        self.db
-            .get_cf(self.cf_sm_data(), key)
-            .map(|value| value.map(|v| String::from_utf8(v).expect("invalid data")))
-            .map_err(|e| StorageIOError::read(&e).into())
-    }
-}
-
-#[derive(Debug)]
-pub struct RocksStore {
+pub struct RocksLogStore {
     db: Arc<DB>,
-
-    /// The Raft state machine.
-    pub state_machine: RwLock<RocksStateMachine>,
 }
+
 type StorageResult<T> = Result<T, StorageError<RocksNodeId>>;
 
 /// converts an id to a byte vector for storing in the database.
@@ -250,7 +162,6 @@ mod meta {
     use openraft::LogId;
 
     use crate::RocksNodeId;
-    use crate::RocksSnapshot;
 
     /// Defines metadata key and value
     pub(crate) trait StoreMeta {
@@ -265,21 +176,11 @@ mod meta {
     }
 
     pub(crate) struct LastPurged {}
-    pub(crate) struct SnapshotIndex {}
     pub(crate) struct Vote {}
-    pub(crate) struct Snapshot {}
 
     impl StoreMeta for LastPurged {
         const KEY: &'static str = "last_purged_log_id";
         type Value = LogId<u64>;
-
-        fn subject(_v: Option<&Self::Value>) -> ErrorSubject<RocksNodeId> {
-            ErrorSubject::Store
-        }
-    }
-    impl StoreMeta for SnapshotIndex {
-        const KEY: &'static str = "snapshot_index";
-        type Value = u64;
 
         fn subject(_v: Option<&Self::Value>) -> ErrorSubject<RocksNodeId> {
             ErrorSubject::Store
@@ -293,17 +194,9 @@ mod meta {
             ErrorSubject::Vote
         }
     }
-    impl StoreMeta for Snapshot {
-        const KEY: &'static str = "snapshot";
-        type Value = RocksSnapshot;
-
-        fn subject(v: Option<&Self::Value>) -> ErrorSubject<RocksNodeId> {
-            ErrorSubject::Snapshot(Some(v.unwrap().meta.signature()))
-        }
-    }
 }
 
-impl RocksStore {
+impl RocksLogStore {
     fn cf_meta(&self) -> &ColumnFamily {
         self.db.cf_handle("meta").unwrap()
     }
@@ -344,7 +237,7 @@ impl RocksStore {
     }
 }
 
-impl RaftLogReader<TypeConfig> for Arc<RocksStore> {
+impl RaftLogReader<TypeConfig> for RocksLogStore {
     async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + OptionalSend>(
         &mut self,
         range: RB,
@@ -376,25 +269,17 @@ impl RaftLogReader<TypeConfig> for Arc<RocksStore> {
     }
 }
 
-impl RaftSnapshotBuilder<TypeConfig> for Arc<RocksStore> {
+impl RaftSnapshotBuilder<TypeConfig> for RocksStateMachine {
     #[tracing::instrument(level = "trace", skip(self))]
     async fn build_snapshot(&mut self) -> Result<Snapshot<TypeConfig>, StorageError<RocksNodeId>> {
-        let data;
-        let last_applied_log;
-        let last_membership;
+        // Serialize the data of the state machine.
+        let data = serde_json::to_vec(&self.sm).map_err(|e| StorageIOError::read_state_machine(&e))?;
 
-        {
-            // Serialize the data of the state machine.
-            let state_machine = SerializableRocksStateMachine::from(&*self.state_machine.read().await);
-            data = serde_json::to_vec(&state_machine).map_err(|e| StorageIOError::read_state_machine(&e))?;
+        let last_applied_log = self.sm.last_applied_log;
+        let last_membership = self.sm.last_membership.clone();
 
-            last_applied_log = state_machine.last_applied_log;
-            last_membership = state_machine.last_membership;
-        }
-
-        // TODO: we probably want this to be atomic.
-        let snapshot_idx: u64 = self.get_meta::<meta::SnapshotIndex>()?.unwrap_or_default() + 1;
-        self.put_meta::<meta::SnapshotIndex>(&snapshot_idx)?;
+        // Generate a random snapshot index.
+        let snapshot_idx: u64 = rand::thread_rng().gen_range(0..1000);
 
         let snapshot_id = if let Some(last) = last_applied_log {
             format!("{}-{}-{}", last.leader_id, last.index, snapshot_idx)
@@ -413,7 +298,12 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<RocksStore> {
             data: data.clone(),
         };
 
-        self.put_meta::<meta::Snapshot>(&snapshot)?;
+        let serialized_snapshot = serde_json::to_vec(&snapshot)
+            .map_err(|e| StorageIOError::write_snapshot(Some(meta.signature()), AnyError::new(&e)))?;
+
+        self.db
+            .put_cf(self.db.cf_handle("sm_meta").unwrap(), "snapshot", serialized_snapshot)
+            .map_err(|e| StorageIOError::write_snapshot(Some(meta.signature()), AnyError::new(&e)))?;
 
         Ok(Snapshot {
             meta,
@@ -422,9 +312,8 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<RocksStore> {
     }
 }
 
-impl RaftStorage<TypeConfig> for Arc<RocksStore> {
+impl RaftLogStorage<TypeConfig> for RocksLogStore {
     type LogReader = Self;
-    type SnapshotBuilder = Self;
 
     async fn get_log_state(&mut self) -> StorageResult<LogState<TypeConfig>> {
         let last = self.db.iterator_cf(self.cf_logs(), rocksdb::IteratorMode::End).next();
@@ -451,18 +340,28 @@ impl RaftStorage<TypeConfig> for Arc<RocksStore> {
         })
     }
 
-    #[tracing::instrument(level = "trace", skip(self))]
     async fn save_vote(&mut self, vote: &Vote<RocksNodeId>) -> Result<(), StorageError<RocksNodeId>> {
-        self.put_meta::<meta::Vote>(vote)
+        self.put_meta::<meta::Vote>(vote)?;
+        self.db.flush_wal(true).map_err(|e| StorageIOError::write_vote(&e))?;
+        Ok(())
     }
 
     async fn read_vote(&mut self) -> Result<Option<Vote<RocksNodeId>>, StorageError<RocksNodeId>> {
         self.get_meta::<meta::Vote>()
     }
 
-    #[tracing::instrument(level = "trace", skip(self, entries))]
-    async fn append_to_log<I>(&mut self, entries: I) -> StorageResult<()>
-    where I: IntoIterator<Item = Entry<TypeConfig>> + OptionalSend {
+    async fn get_log_reader(&mut self) -> Self::LogReader {
+        self.clone()
+    }
+
+    async fn append<I>(
+        &mut self,
+        entries: I,
+        callback: LogFlushed<TypeConfig>,
+    ) -> Result<(), StorageError<RocksNodeId>>
+    where
+        I: IntoIterator<Item = Entry<TypeConfig>> + Send,
+    {
         for entry in entries {
             let id = id_to_bin(entry.log_id.index);
             assert_eq!(bin_to_id(&id), entry.log_id.index);
@@ -474,85 +373,92 @@ impl RaftStorage<TypeConfig> for Arc<RocksStore> {
                 )
                 .map_err(|e| StorageIOError::write_logs(&e))?;
         }
+
+        self.db.flush_wal(true).map_err(|e| StorageIOError::write_logs(&e))?;
+
+        // If there is error, the callback will be dropped.
+        callback.log_io_completed(Ok(()));
         Ok(())
     }
 
-    #[tracing::instrument(level = "debug", skip(self))]
-    async fn delete_conflict_logs_since(&mut self, log_id: LogId<RocksNodeId>) -> StorageResult<()> {
-        tracing::debug!("delete_log: [{:?}, +oo)", log_id);
+    async fn truncate(&mut self, log_id: LogId<RocksNodeId>) -> Result<(), StorageError<RocksNodeId>> {
+        tracing::debug!("truncate: [{:?}, +oo)", log_id);
 
         let from = id_to_bin(log_id.index);
         let to = id_to_bin(0xff_ff_ff_ff_ff_ff_ff_ff);
-        self.db
-            .delete_range_cf(self.cf_logs(), &from, &to)
-            .map_err(|e| StorageIOError::write_logs(&e).into())
+        self.db.delete_range_cf(self.cf_logs(), &from, &to).map_err(|e| StorageIOError::write_logs(&e))?;
+
+        self.db.flush_wal(true).map_err(|e| StorageIOError::write_logs(&e))?;
+        Ok(())
     }
 
-    #[tracing::instrument(level = "debug", skip(self))]
-    async fn purge_logs_upto(&mut self, log_id: LogId<RocksNodeId>) -> Result<(), StorageError<RocksNodeId>> {
+    async fn purge(&mut self, log_id: LogId<RocksNodeId>) -> Result<(), StorageError<RocksNodeId>> {
         tracing::debug!("delete_log: [0, {:?}]", log_id);
 
+        // Write the last-purged log id before purging the logs.
+        // The logs at and before last-purged log id will be ignored by openraft.
+        // Therefore there is no need to do it in a transaction.
         self.put_meta::<meta::LastPurged>(&log_id)?;
 
         let from = id_to_bin(0);
         let to = id_to_bin(log_id.index + 1);
-        self.db
-            .delete_range_cf(self.cf_logs(), &from, &to)
-            .map_err(|e| StorageIOError::write_logs(&e).into())
-    }
+        self.db.delete_range_cf(self.cf_logs(), &from, &to).map_err(|e| StorageIOError::write_logs(&e))?;
 
-    async fn last_applied_state(
+        // Purging does not need to be persistent.
+        Ok(())
+    }
+}
+
+impl RaftStateMachine<TypeConfig> for RocksStateMachine {
+    type SnapshotBuilder = Self;
+
+    async fn applied_state(
         &mut self,
     ) -> Result<(Option<LogId<RocksNodeId>>, StoredMembership<RocksNodeId, BasicNode>), StorageError<RocksNodeId>> {
-        let state_machine = self.state_machine.read().await;
-        Ok((
-            state_machine.get_last_applied_log()?,
-            state_machine.get_last_membership()?,
-        ))
+        Ok((self.sm.last_applied_log, self.sm.last_membership.clone()))
     }
 
-    #[tracing::instrument(level = "trace", skip(self, entries))]
-    async fn apply_to_state_machine(
-        &mut self,
-        entries: &[Entry<TypeConfig>],
-    ) -> Result<Vec<RocksResponse>, StorageError<RocksNodeId>> {
-        let mut res = Vec::with_capacity(entries.len());
+    async fn apply<I>(&mut self, entries: I) -> Result<Vec<RocksResponse>, StorageError<RocksNodeId>>
+    where I: IntoIterator<Item = Entry<TypeConfig>> + Send {
+        let entries_iter = entries.into_iter();
+        let mut res = Vec::with_capacity(entries_iter.size_hint().0);
 
-        let sm = self.state_machine.write().await;
+        let sm = &mut self.sm;
 
-        for entry in entries {
+        for entry in entries_iter {
             tracing::debug!(%entry.log_id, "replicate to sm");
 
-            sm.set_last_applied_log(entry.log_id)?;
+            sm.last_applied_log = Some(*entry.get_log_id());
 
             match entry.payload {
                 EntryPayload::Blank => res.push(RocksResponse { value: None }),
                 EntryPayload::Normal(ref req) => match req {
                     RocksRequest::Set { key, value } => {
-                        sm.insert(key.clone(), value.clone())?;
+                        sm.data.insert(key.clone(), value.clone());
                         res.push(RocksResponse {
                             value: Some(value.clone()),
                         })
                     }
                 },
                 EntryPayload::Membership(ref mem) => {
-                    sm.set_last_membership(StoredMembership::new(Some(entry.log_id), mem.clone()))?;
+                    sm.last_membership = StoredMembership::new(Some(entry.log_id), mem.clone());
                     res.push(RocksResponse { value: None })
                 }
             };
         }
-        self.db.flush_wal(true).map_err(|e| StorageIOError::write_logs(&e))?;
         Ok(res)
     }
 
-    #[tracing::instrument(level = "trace", skip(self))]
+    async fn get_snapshot_builder(&mut self) -> Self::SnapshotBuilder {
+        self.clone()
+    }
+
     async fn begin_receiving_snapshot(
         &mut self,
     ) -> Result<Box<<TypeConfig as RaftTypeConfig>::SnapshotData>, StorageError<RocksNodeId>> {
         Ok(Box::new(Cursor::new(Vec::new())))
     }
 
-    #[tracing::instrument(level = "trace", skip(self, snapshot))]
     async fn install_snapshot(
         &mut self,
         meta: &SnapshotMeta<RocksNodeId, BasicNode>,
@@ -569,60 +475,62 @@ impl RaftStorage<TypeConfig> for Arc<RocksStore> {
         };
 
         // Update the state machine.
-        {
-            let updated_state_machine: SerializableRocksStateMachine = serde_json::from_slice(&new_snapshot.data)
-                .map_err(|e| StorageIOError::read_snapshot(Some(new_snapshot.meta.signature()), &e))?;
-            let mut state_machine = self.state_machine.write().await;
-            *state_machine = RocksStateMachine::from_serializable(updated_state_machine, self.db.clone())?;
-        }
+        let updated_state_machine: StateMachine = serde_json::from_slice(&new_snapshot.data)
+            .map_err(|e| StorageIOError::read_snapshot(Some(new_snapshot.meta.signature()), &e))?;
 
-        self.put_meta::<meta::Snapshot>(&new_snapshot)?;
+        self.sm = updated_state_machine;
 
+        // Save snapshot
+
+        let serialized_snapshot = serde_json::to_vec(&new_snapshot)
+            .map_err(|e| StorageIOError::write_snapshot(Some(meta.signature()), AnyError::new(&e)))?;
+
+        self.db
+            .put_cf(self.db.cf_handle("sm_meta").unwrap(), "snapshot", serialized_snapshot)
+            .map_err(|e| StorageIOError::write_snapshot(Some(meta.signature()), AnyError::new(&e)))?;
+
+        self.db.flush_wal(true).map_err(|e| StorageIOError::write_snapshot(Some(meta.signature()), &e))?;
         Ok(())
     }
 
-    #[tracing::instrument(level = "trace", skip(self))]
     async fn get_current_snapshot(&mut self) -> Result<Option<Snapshot<TypeConfig>>, StorageError<RocksNodeId>> {
-        let curr_snap = self.get_meta::<meta::Snapshot>()?;
+        let x = self
+            .db
+            .get_cf(self.db.cf_handle("sm_meta").unwrap(), "snapshot")
+            .map_err(|e| StorageIOError::write_snapshot(None, AnyError::new(&e)))?;
 
-        match curr_snap {
-            Some(snapshot) => {
-                let data = snapshot.data.clone();
-                Ok(Some(Snapshot {
-                    meta: snapshot.meta,
-                    snapshot: Box::new(Cursor::new(data)),
-                }))
-            }
-            None => Ok(None),
-        }
-    }
+        let bytes = match x {
+            Some(x) => x,
+            None => return Ok(None),
+        };
 
-    async fn get_log_reader(&mut self) -> Self::LogReader {
-        self.clone()
-    }
+        let snapshot: RocksSnapshot =
+            serde_json::from_slice(&bytes).map_err(|e| StorageIOError::write_snapshot(None, AnyError::new(&e)))?;
 
-    async fn get_snapshot_builder(&mut self) -> Self::SnapshotBuilder {
-        self.clone()
+        let data = snapshot.data.clone();
+
+        Ok(Some(Snapshot {
+            meta: snapshot.meta,
+            snapshot: Box::new(Cursor::new(data)),
+        }))
     }
 }
 
-impl RocksStore {
-    pub async fn new<P: AsRef<Path>>(db_path: P) -> Arc<RocksStore> {
-        let mut db_opts = Options::default();
-        db_opts.create_missing_column_families(true);
-        db_opts.create_if_missing(true);
+/// Create a pair of `RocksLogStore` and `RocksStateMachine` that are backed by a same rocks db
+/// instance.
+pub async fn new<P: AsRef<Path>>(db_path: P) -> (RocksLogStore, RocksStateMachine) {
+    let mut db_opts = Options::default();
+    db_opts.create_missing_column_families(true);
+    db_opts.create_if_missing(true);
 
-        let meta = ColumnFamilyDescriptor::new("meta", Options::default());
-        let sm_meta = ColumnFamilyDescriptor::new("sm_meta", Options::default());
-        let sm_data = ColumnFamilyDescriptor::new("sm_data", Options::default());
-        let logs = ColumnFamilyDescriptor::new("logs", Options::default());
+    let meta = ColumnFamilyDescriptor::new("meta", Options::default());
+    let sm_meta = ColumnFamilyDescriptor::new("sm_meta", Options::default());
+    let logs = ColumnFamilyDescriptor::new("logs", Options::default());
 
-        let db = DB::open_cf_descriptors(&db_opts, db_path, vec![meta, sm_meta, sm_data, logs]).unwrap();
+    let db = DB::open_cf_descriptors(&db_opts, db_path, vec![meta, sm_meta, logs]).unwrap();
 
-        let db = Arc::new(db);
-        let state_machine = RwLock::new(RocksStateMachine::new(db.clone()));
-        Arc::new(RocksStore { db, state_machine })
-    }
+    let db = Arc::new(db);
+    (RocksLogStore { db: db.clone() }, RocksStateMachine::new(db).await)
 }
 
 fn read_logs_err(e: impl Error + 'static) -> StorageError<RocksNodeId> {
