@@ -4,7 +4,7 @@ mod external_request;
 mod message;
 mod raft_inner;
 mod runtime_config_handle;
-mod trigger;
+pub mod trigger;
 
 use std::collections::BTreeMap;
 
@@ -60,7 +60,7 @@ use crate::metrics::Wait;
 use crate::metrics::WaitError;
 use crate::network::RaftNetworkFactory;
 use crate::raft::raft_inner::RaftInner;
-use crate::raft::runtime_config_handle::RuntimeConfigHandle;
+pub use crate::raft::runtime_config_handle::RuntimeConfigHandle;
 use crate::raft::trigger::Trigger;
 use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
@@ -89,7 +89,7 @@ use crate::Vote;
 /// Example:
 /// ```ignore
 /// openraft::declare_raft_types!(
-///    pub Config:
+///    pub TypeConfig:
 ///        D            = ClientRequest,
 ///        R            = ClientResponse,
 ///        NodeId       = u64,
