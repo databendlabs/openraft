@@ -1,3 +1,5 @@
+//! The default log entry type that implements [`RaftEntry`].
+
 use std::fmt;
 use std::fmt::Debug;
 
