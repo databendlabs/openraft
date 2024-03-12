@@ -15,16 +15,6 @@ where
     N: Node,
     NID: NodeId,
 {
-    #[deprecated(since = "0.8.4", note = "unused any more")]
-    fn has_nodes(&self) -> bool {
-        unimplemented!("has_nodes is deprecated")
-    }
-
-    #[deprecated(since = "0.8.4", note = "unused any more")]
-    fn node_ids(&self) -> Vec<NID> {
-        unimplemented!("node_ids is deprecated")
-    }
-
     fn into_nodes(self) -> BTreeMap<NID, N>;
 }
 
