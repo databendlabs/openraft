@@ -48,11 +48,11 @@ pub mod network;
 pub mod raft;
 pub mod storage;
 pub mod testing;
-pub mod timer;
-pub mod type_config;
 
 pub(crate) mod engine;
 pub(crate) mod log_id_range;
+pub(crate) mod timer;
+pub(crate) mod type_config;
 pub(crate) mod utime;
 
 mod display_ext;

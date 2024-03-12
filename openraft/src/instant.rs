@@ -1,3 +1,5 @@
+//! A trait for time instants.
+
 use std::fmt::Debug;
 use std::ops::Add;
 use std::ops::AddAssign;
