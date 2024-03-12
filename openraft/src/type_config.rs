@@ -25,7 +25,7 @@ use crate::OptionalSync;
 /// Example:
 /// ```ignore
 /// openraft::declare_raft_types!(
-///    pub Config:
+///    pub TypeConfig:
 ///        D            = ClientRequest,
 ///        R            = ClientResponse,
 ///        NodeId       = u64,

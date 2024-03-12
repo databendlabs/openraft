@@ -115,8 +115,21 @@ tracing-log = [ "tracing/log" ]
 
 [package.metadata.docs.rs]
 
-# Enable this flag to show all types/mods, including the feature enabled ones on docs.rs
-all-features = true
+# Enable these feature flags to show all types/mods,
+# including the feature enabled ones on docs.rs
+features = [
+    "bt",
+    "compat",
+    "generic-snapshot-data",
+    "loosen-follower-log-revert",
+    "serde",
+    "storage-v2",
+    "tracing-log",
+]
+
+# Do not use this to enable all features:
+# "singlethreaded" makes `Raft<C>` a `!Send`, which confuses users.
+# all-features = true
 
 # Sort modules by appearance order for crate `docs`.
 # https://doc.rust-lang.org/rustdoc/unstable-features.html#--sort-modules-by-appearance-control-how-items-on-module-pages-are-sorted
