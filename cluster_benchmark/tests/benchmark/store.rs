@@ -40,8 +40,14 @@ pub struct ClientResponse {}
 pub type NodeId = u64;
 
 openraft::declare_raft_types!(
-    pub TypeConfig: D = ClientRequest, R = ClientResponse, NodeId = NodeId, Node = (),
-    Entry = Entry<TypeConfig>, SnapshotData = Cursor<Vec<u8>>, AsyncRuntime = TokioRuntime
+    pub TypeConfig:
+        D = ClientRequest,
+        R = ClientResponse,
+        NodeId = NodeId,
+        Node = (),
+        Entry = Entry<TypeConfig>,
+        SnapshotData = Cursor<Vec<u8>>,
+        AsyncRuntime = TokioRuntime
 );
 
 #[derive(Debug)]
@@ -224,14 +230,8 @@ impl RaftLogStorage<TypeConfig> for Arc<LogStore> {
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
-    async fn append<I>(
-        &mut self,
-        entries: I,
-        callback: LogFlushed<TypeConfig>,
-    ) -> Result<(), StorageError<NodeId>>
-    where
-        I: IntoIterator<Item = Entry<TypeConfig>> + Send,
-    {
+    async fn append<I>(&mut self, entries: I, callback: LogFlushed<TypeConfig>) -> Result<(), StorageError<NodeId>>
+    where I: IntoIterator<Item = Entry<TypeConfig>> + Send {
         {
             let mut log = self.log.write().await;
             log.extend(entries.into_iter().map(|entry| (entry.get_log_id().index, entry)));
