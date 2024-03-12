@@ -36,7 +36,7 @@ openraft::declare_raft_types!(
         Node = BasicNode,
         Entry = openraft::Entry<TypeConfig>,
         SnapshotData = Cursor<Vec<u8>>,
-        AsyncRuntime = TokioRuntime
+        AsyncRuntime = TokioRuntime,
 );
 
 pub type LogStore = store::LogStore;

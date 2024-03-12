@@ -101,7 +101,7 @@ use crate::Vote;
 /// ```
 #[macro_export]
 macro_rules! declare_raft_types {
-    ( $(#[$outer:meta])* $visibility:vis $id:ident: $($(#[$inner:meta])* $type_id:ident = $type:ty),+ ) => {
+    ( $(#[$outer:meta])* $visibility:vis $id:ident: $($(#[$inner:meta])* $type_id:ident = $type:ty),+ $(,)? ) => {
         $(#[$outer])*
         #[derive(Debug, Clone, Copy, Default, Eq, PartialEq, Ord, PartialOrd)]
         #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
