@@ -162,8 +162,8 @@ where C: RaftTypeConfig
     /// for more details.
     ///
     /// ### `storage`
-    /// An implementation of the `RaftStorage` trait which will be used by Raft for data storage.
-    /// See the docs on the `RaftStorage` trait for more details.
+    /// An implementation of the [`RaftLogStorage`] and [`RaftStateMachine`] trait which will be
+    /// used by Raft for data storage.
     #[tracing::instrument(level="debug", skip_all, fields(cluster=%config.cluster_name))]
     pub async fn new<LS, N, SM>(
         id: C::NodeId,
@@ -536,7 +536,7 @@ where C: RaftTypeConfig
     /// track the latest serial number processed for each client, along with the associated
     /// response. If it receives a command whose serial number has already been executed, it
     /// responds immediately without re-executing the request (§8). The
-    /// `RaftStorage::apply_entry_to_state_machine` method is the perfect place to implement
+    /// [`RaftStateMachine::apply`] method is the perfect place to implement
     /// this.
     ///
     /// These are application specific requirements, and must be implemented by the application

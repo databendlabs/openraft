@@ -52,9 +52,9 @@ where
     }
 
     // TODO: let RaftStore store node-id.
-    //       To achieve this, RaftStorage must store node-id
-    //       To achieve this, RaftStorage has to provide API to initialize with a node id and API to
-    // read node-id
+    //       To achieve this, RaftLogStorage must store node-id
+    //       To achieve this, RaftLogStorage has to provide API to initialize with a node id and API to
+    //       read node-id
     /// Get Raft's state information from storage.
     ///
     /// When the Raft node is first started, it will call this interface to fetch the last known
@@ -197,7 +197,7 @@ where
         let sm_mem_next_index = sm_mem.log_id().next_index();
 
         let log_mem = self.last_membership_in_log(sm_mem_next_index).await?;
-        tracing::debug!(membership_in_sm=?sm_mem, membership_in_log=?log_mem, "RaftStorage::get_membership");
+        tracing::debug!(membership_in_sm=?sm_mem, membership_in_log=?log_mem, "{}", func_name!());
 
         // There 2 membership configs in logs.
         if log_mem.len() == 2 {

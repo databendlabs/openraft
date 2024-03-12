@@ -21,7 +21,7 @@ name = "raft-key-value-rocks"
 path = "src/bin/main.rs"
 
 [dependencies]
-openraft = { path = "../../openraft", features = ["serde", "storage-v2"] }
+openraft = { path = "../../openraft", features = ["serde"] }
 
 tokio = { version = "1.35.1", features = ["full"] }
 byteorder = "1.4.3"

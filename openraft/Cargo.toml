@@ -21,7 +21,7 @@ byte-unit       = { workspace = true }
 clap            = { workspace = true }
 derive_more     = { workspace = true }
 futures         = { workspace = true }
-openraft-macros = { path = "../macros", version = "0.9.0" }
+openraft-macros = { path = "../macros", version = "0.10.0" }
 maplit          = { workspace = true }
 rand            = { workspace = true }
 serde           = { workspace = true, optional = true }
@@ -75,11 +75,6 @@ single-term-leader = []
 # Provide basic compatible types
 compat = []
 
-# Allows an application to implement a custom the v2 storage API.
-# See `openraft::storage::v2` for more details.
-# V2 API are unstable and may change in the future.
-storage-v2 = []
-
 # Disallows applications to share a raft instance with multiple threads.
 singlethreaded = ["openraft-macros/singlethreaded"]
 
@@ -123,7 +118,6 @@ features = [
     "generic-snapshot-data",
     "loosen-follower-log-revert",
     "serde",
-    "storage-v2",
     "tracing-log",
 ]
 

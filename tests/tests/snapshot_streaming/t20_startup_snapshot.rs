@@ -43,7 +43,7 @@ async fn startup_build_snapshot() -> anyhow::Result<()> {
 
     tracing::info!(log_index, "--- drop current snapshot");
     {
-        sm.storage_mut().await.drop_snapshot().await;
+        sm.drop_snapshot().await;
         let snap = sm.get_current_snapshot().await?;
         assert!(snap.is_none());
     }

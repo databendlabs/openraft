@@ -39,13 +39,10 @@ The major components inside Openraft include:
     the state machine and snapshot, e.g., applying a log to the state machine or
     building a snapshot from the state machine.
 
-    In `v0.8`, [`RaftLogStorage`] and [`RaftStateMachine`] are both wrappers of
-    [`RaftStorage`].
 
 
 [`Raft`]:              `crate::raft::Raft`
 [`client_write`]:      `crate::raft::Raft::client_write`
-[`RaftStorage`]:       `crate::storage::RaftStorage`
 [`RaftLogStorage`]:    `crate::storage::RaftLogStorage`
 [`RaftStateMachine`]:  `crate::storage::RaftStateMachine`
 [`Adapter`]:           `crate::storage::Adapter`

@@ -47,15 +47,14 @@ resolver = "2"
 
 members = [
     "openraft",
-    "memstore",
     "macros",
     "tests",
-    "rocksstore",
-    "sledstore",
+    "stores/memstore",
+    "stores/rocksstore",
+    "stores/sledstore",
 ]
 exclude = [
     "cluster_benchmark",
-    "stores/rocksstore-v2",
     "examples/memstore",
     "examples/raft-kv-memstore",
     "examples/raft-kv-memstore-singlethreaded",

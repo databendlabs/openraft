@@ -45,8 +45,10 @@ where C: RaftTypeConfig
 
     /// Update engine state when a new snapshot is built or installed.
     ///
-    /// Engine records only the metadata of a snapshot. Snapshot data is stored by RaftStorage
-    /// implementation.
+    /// Engine records only the metadata of a snapshot. Snapshot data is stored by
+    /// [`RaftStateMachine`] implementation.
+    ///
+    /// [`RaftStateMachine`]: crate::storage::RaftStateMachine
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn update_snapshot(&mut self, meta: SnapshotMeta<C::NodeId, C::Node>) -> bool {
         tracing::info!("update_snapshot: {:?}", meta);
