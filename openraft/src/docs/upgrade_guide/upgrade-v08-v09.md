@@ -36,12 +36,28 @@ The first step for upgrading is to adapt the changes in the API.
 Follow the following steps to update your application to pass compilation with v0.9.
 
 - Implementation of `RaftLogReader::get_log_state()` is moved to `RaftLogReader::get_log_state()`.
+
 - Generic types parameters `N, LS, SM` are removed from `Raft<C, N, LS, SM>`.
+
 - `RaftNetwork::send_xxx()` methods are removed, and should be replaced with `RaftNetwork::xxx()`:
   - `RaftNetwork::send_append_entries()` to `RaftNetwork::append_entries()`;
   - `RaftNetwork::send_vote()` to `RaftNetwork::vote()`;
   - `RaftNetwork::send_install_snapshot()` to `RaftNetwork::install_snapshot()`;
 
+- `asycn` traits in Openraft are declared with [`#[openraft-macros::add_async_trait]`][`openraft-macros`] attribute since 0.9.
+  `#[async_trait::async_trait]` are no longer needed when implementing `async` trait.
+
+  For example, upgrade 0.8 async-trait implementation 
+  ```ignore
+  #[async_trait::async_trait]
+  impl RaftNetwork<TypeConfig> for MyNetwork {}
+  ```
+  
+  to 
+
+  ```ignore
+  impl RaftNetwork<TypeConfig> for MyNetwork {}
+  ```
 
 ## Upgrade `RaftTypeConfig`
 
@@ -188,5 +204,6 @@ To use arbitrary snapshot data, the application needs to:
 [`generic-snapshot-data`]:       `crate::docs::feature_flags#feature-flag-generic-snapshot-data`
 [`tracing-log`]:                 `crate::docs::feature_flags#feature-flag-tracing-log`
 
+[`openraft-macros`]: https://docs.rs/openraft-macros/latest/openraft_macros/
 [`tokio`]: https://tokio.rs/ 
 [`monoio`]: https://github.com/bytedance/monoio
