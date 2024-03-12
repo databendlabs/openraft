@@ -269,25 +269,11 @@ where C: RaftTypeConfig
     /// ```ignore
     /// let raft = Raft::new(...).await?;
     /// raft.runtime_config().heartbeat(true);
+    /// raft.runtime_config().tick(true);
+    /// raft.runtime_config().elect(true);
     /// ```
     pub fn runtime_config(&self) -> RuntimeConfigHandle<C> {
         RuntimeConfigHandle::new(self.inner.as_ref())
-    }
-
-    /// Enable or disable raft internal ticker.
-    #[deprecated(since = "0.8.4", note = "use `Raft::runtime_config().tick()` instead")]
-    pub fn enable_tick(&self, enabled: bool) {
-        self.runtime_config().tick(enabled)
-    }
-
-    #[deprecated(since = "0.8.4", note = "use `Raft::runtime_config().heartbeat()` instead")]
-    pub fn enable_heartbeat(&self, enabled: bool) {
-        self.runtime_config().heartbeat(enabled)
-    }
-
-    #[deprecated(since = "0.8.4", note = "use `Raft::runtime_config().elect()` instead")]
-    pub fn enable_elect(&self, enabled: bool) {
-        self.runtime_config().elect(enabled)
     }
 
     /// Return a handle to manually trigger raft actions, such as elect or build snapshot.
@@ -299,30 +285,6 @@ where C: RaftTypeConfig
     /// ```
     pub fn trigger(&self) -> Trigger<C> {
         Trigger::new(self.inner.as_ref())
-    }
-
-    /// Trigger election at once and return at once.
-    #[deprecated(since = "0.8.4", note = "use `Raft::trigger().elect()` instead")]
-    pub async fn trigger_elect(&self) -> Result<(), Fatal<C::NodeId>> {
-        self.trigger().elect().await
-    }
-
-    /// Trigger a heartbeat at once and return at once.
-    #[deprecated(since = "0.8.4", note = "use `Raft::trigger().heartbeat()` instead")]
-    pub async fn trigger_heartbeat(&self) -> Result<(), Fatal<C::NodeId>> {
-        self.trigger().heartbeat().await
-    }
-
-    /// Trigger to build a snapshot at once and return at once.
-    #[deprecated(since = "0.8.4", note = "use `Raft::trigger().snapshot()` instead")]
-    pub async fn trigger_snapshot(&self) -> Result<(), Fatal<C::NodeId>> {
-        self.trigger().snapshot().await
-    }
-
-    /// Initiate the log purge up to and including the given `upto` log index.
-    #[deprecated(since = "0.8.4", note = "use `Raft::trigger().purge_log()` instead")]
-    pub async fn purge_log(&self, upto: u64) -> Result<(), Fatal<C::NodeId>> {
-        self.trigger().purge_log(upto).await
     }
 
     /// Submit an AppendEntries RPC to this Raft node.
