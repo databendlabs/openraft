@@ -30,6 +30,19 @@
     - [`generic-snapshot-data`][]: Remove `AsyncRead + AsyncWrite` bound from snapshot data. Let application define its own snapshot data transfer.
 
 
+## Upgrade for API changes 
+
+The first step for upgrading is to adapt the changes in the API.
+Follow the following steps to update your application to pass compilation with v0.9.
+
+- Implementation of `RaftLogReader::get_log_state()` is moved to `RaftLogReader::get_log_state()`.
+- Generic types parameters `N, LS, SM` are removed from `Raft<C, N, LS, SM>`.
+- `RaftNetwork::send_xxx()` methods are removed, and should be replaced with `RaftNetwork::xxx()`:
+  - `RaftNetwork::send_append_entries()` to `RaftNetwork::append_entries()`;
+  - `RaftNetwork::send_vote()` to `RaftNetwork::vote()`;
+  - `RaftNetwork::send_install_snapshot()` to `RaftNetwork::install_snapshot()`;
+
+
 ## Upgrade `RaftTypeConfig`
 
 - Add `AsyncRuntime` to `RaftTypeConfig` to specify the async runtime to use.
