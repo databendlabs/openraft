@@ -6,6 +6,11 @@ use crate::raft::RaftInner;
 use crate::RaftTypeConfig;
 
 /// Trigger is an interface to trigger an action to RaftCore by external caller.
+///
+/// For example, to trigger an election at once, you can use the following code
+/// ```ignore
+/// raft.trigger().elect().await?;
+/// ```
 pub struct Trigger<'r, C>
 where C: RaftTypeConfig
 {

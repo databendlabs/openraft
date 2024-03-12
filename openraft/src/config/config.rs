@@ -30,8 +30,8 @@ pub enum SnapshotPolicy {
 
     /// Openraft will never trigger a snapshot building.
     /// With this option, the application calls
-    /// [`Raft::trigger_snapshot()`](`crate::Raft::trigger_snapshot`) to manually trigger a
-    /// snapshot.
+    /// [`Raft::trigger().snapshot()`](`crate::raft::trigger::Trigger::snapshot`) to manually
+    /// trigger a snapshot.
     Never,
 }
 
