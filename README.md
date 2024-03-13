@@ -28,10 +28,13 @@ Currently, openraft is the consensus engine of meta-service cluster in [databend
     - [Openraft FAQ](https://docs.rs/openraft/latest/openraft/docs/faq/index.html) explains some common questions.
 
 - 🙌 **Questions**?
-    - Join the [Discord channel](https://discord.gg/ZKw3WG7FQ9),
-    - or start a [Discussion](https://github.com/datafuselabs/openraft/discussions/new),
-    - or Join [Feishu(飞书) group](https://applink.feishu.cn/client/chat/chatter/add_by_link?link_token=d20l9084-6d36-4470-bac5-4bad7378d003),
-    - or join our wechat group: `drmingdrmer`.
+    - Why not take a peek at our [FAQ](https://docs.rs/openraft/latest/openraft/docs/faq/index.html)? You might find just what you need.
+    - Wanna chat? Come hang out with us on [Discord](https://discord.gg/ZKw3WG7FQ9)!
+    - Or start a new discussion over on [GitHub](https://github.com/datafuselabs/openraft/discussions/new).
+    - Or join our [Feishu group](https://applink.feishu.cn/client/chat/chatter/add_by_link?link_token=d20l9084-6d36-4470-bac5-4bad7378d003).
+    - And hey, if you're on WeChat, add us: `drmingdrmer`. Let's get the conversation started!
+
+Whatever your style, we're here to support you. 🚀 Let's make something awesome together!
 
 - Openraft is derived from [async-raft](https://docs.rs/crate/async-raft/latest) with several bugs fixed: [Fixed bugs](https://github.com/datafuselabs/openraft/blob/main/derived-from-async-raft.md).
 
