@@ -274,6 +274,11 @@ where C: RaftTypeConfig
         RuntimeConfigHandle::new(self.inner.as_ref())
     }
 
+    /// Return the config of this Raft node.
+    pub fn config(&self) -> &Arc<Config> {
+        &self.inner.config
+    }
+
     /// Enable or disable raft internal ticker.
     #[deprecated(since = "0.8.4", note = "use `Raft::runtime_config().tick()` instead")]
     pub fn enable_tick(&self, enabled: bool) {
