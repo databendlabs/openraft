@@ -5,6 +5,7 @@ use std::sync::Mutex;
 use openraft::error::NetworkError;
 use openraft::error::RPCError;
 use openraft::error::RemoteError;
+use openraft::error::Unreachable;
 use openraft::RaftMetrics;
 use openraft::TryAsRef;
 use reqwest::Client;
@@ -142,7 +143,13 @@ impl ExampleClient {
         }
         .send()
         .await
-        .map_err(|e| RPCError::Network(NetworkError::new(&e)))?;
+        .map_err(|e| {
+            if e.is_connect() {
+                // `Unreachable` informs the caller to backoff for a short while to avoid error log flush.
+                return RPCError::Unreachable(Unreachable::new(&e));
+            }
+            RPCError::Network(NetworkError::new(&e))
+        })?;
 
         let res: Result<Resp, Err> = resp.json().await.map_err(|e| RPCError::Network(NetworkError::new(&e)))?;
         println!(

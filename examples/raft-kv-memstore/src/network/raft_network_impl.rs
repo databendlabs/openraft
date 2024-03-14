@@ -43,7 +43,7 @@ impl Network {
         tracing::debug!("client is created for: {}", url);
 
         let resp = client.post(url).json(&req).send().await.map_err(|e| {
-            // If the error is a connection error, we return Unreachable so that connection isn't retried
+            // If the error is a connection error, we return `Unreachable` so that connection isn't retried
             // immediately.
             if e.is_connect() {
                 return openraft::error::RPCError::Unreachable(Unreachable::new(&e));
