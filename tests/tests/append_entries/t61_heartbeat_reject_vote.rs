@@ -20,6 +20,7 @@ async fn heartbeat_reject_vote() -> Result<()> {
     let config = Arc::new(
         Config {
             heartbeat_interval: 200,
+            enable_elect: false,
             election_timeout_min: 1000,
             election_timeout_max: 1001,
             ..Default::default()

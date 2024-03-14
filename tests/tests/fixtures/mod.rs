@@ -66,7 +66,7 @@ use openraft_memstore::IntoMemClientRequest;
 use openraft_memstore::MemLogStore as LogStoreInner;
 use openraft_memstore::MemNodeId;
 use openraft_memstore::MemStateMachine as SMInner;
-use openraft_memstore::TypeConfig;
+pub use openraft_memstore::TypeConfig;
 use openraft_memstore::TypeConfig as MemConfig;
 #[allow(unused_imports)] use pretty_assertions::assert_eq;
 #[allow(unused_imports)] use pretty_assertions::assert_ne;

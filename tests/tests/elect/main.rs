@@ -9,3 +9,4 @@ mod fixtures;
 
 mod t10_elect_compare_last_log;
 mod t11_elect_seize_leadership;
+mod t50_last_leader_expire;

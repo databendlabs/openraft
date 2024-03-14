@@ -1394,8 +1394,50 @@ where
         // TODO: leader lease should be extended. Or it has to examine if it is leader
         //       before electing.
         if self.engine.state.server_state == ServerState::Leader {
-            tracing::debug!("already a leader, do not elect again");
-            return;
+            tracing::debug!("already a leader, check lease expiration");
+
+            // TODO: the last-update time is updated to self.leader.vote.touch()
+            let leading = self.engine.internal_server_state.leading().unwrap();
+            let utime = leading.vote.utime();
+            // let utime = self.engine.state.vote_last_modified();
+
+            let timer_config = &self.engine.config.timer_config;
+
+            let election_timeout = timer_config.leader_lease + timer_config.election_timeout;
+
+            if utime > Some(now - election_timeout) {
+                // Leader lease not expired.
+
+                // Safe unwrap(): It is greater than a Some() thus must be a Some()
+                let last_modified = utime.unwrap();
+
+                let passed = now - last_modified;
+                tracing::debug!(
+                    "Leader vote lease is not expired: {:?}(< timeout {:?}) passed the last-modified time {:?}; do not elect",
+                    passed,
+                    election_timeout,
+                    last_modified
+                );
+
+                return;
+            } else {
+                // leader lease expired.
+                if let Some(last_modified) = utime {
+                    let passed = now - last_modified;
+                    tracing::info!(
+                        "Leader vote lease is expired: {:?}(>=timeout {:?}) passed the last-modified time {:?}; check next election condition",
+                        passed,
+                        election_timeout,
+                        last_modified
+                    );
+                } else {
+                    tracing::info!(
+                        "Leader vote lease is considered expired: because the last-modified time is None; check next election condition",
+                    );
+                }
+
+                // going on to check next condition.
+            }
         }
 
         if !self.engine.state.membership_state.effective().is_voter(&self.id) {
