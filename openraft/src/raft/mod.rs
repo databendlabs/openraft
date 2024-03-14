@@ -276,6 +276,11 @@ where C: RaftTypeConfig
         RuntimeConfigHandle::new(self.inner.as_ref())
     }
 
+    /// Return the config of this Raft node.
+    pub fn config(&self) -> &Arc<Config> {
+        &self.inner.config
+    }
+
     /// Return a handle to manually trigger raft actions, such as elect or build snapshot.
     ///
     /// Example:
