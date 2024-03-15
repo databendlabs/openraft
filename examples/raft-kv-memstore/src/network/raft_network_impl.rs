@@ -1,6 +1,7 @@
 use openraft::error::InstallSnapshotError;
 use openraft::error::NetworkError;
 use openraft::error::RemoteError;
+use openraft::error::Unreachable;
 use openraft::network::RPCOption;
 use openraft::network::RaftNetwork;
 use openraft::network::RaftNetworkFactory;
@@ -41,12 +42,14 @@ impl Network {
         let client = reqwest::Client::new();
         tracing::debug!("client is created for: {}", url);
 
-        let resp = client
-            .post(url)
-            .json(&req)
-            .send()
-            .await
-            .map_err(|e| openraft::error::RPCError::Network(NetworkError::new(&e)))?;
+        let resp = client.post(url).json(&req).send().await.map_err(|e| {
+            // If the error is a connection error, we return Unreachable so that connection isn't retried
+            // immediately.
+            if e.is_connect() {
+                return openraft::error::RPCError::Unreachable(Unreachable::new(&e));
+            }
+            openraft::error::RPCError::Network(NetworkError::new(&e))
+        })?;
 
         tracing::debug!("client.post() is sent");
 
