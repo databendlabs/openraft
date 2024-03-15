@@ -527,10 +527,15 @@ where
 
     /// Report a metrics payload on the current state of the Raft node.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn report_metrics(&self, replication: Option<ReplicationMetrics<C::NodeId>>) {
+    pub(crate) fn report_metrics(&mut self, replication: Option<ReplicationMetrics<C::NodeId>>) {
+        let last_quorum_acked = self.last_quorum_acked_time();
+        let millis_since_quorum_ack = last_quorum_acked.map(|t| t.elapsed().as_millis() as u64);
+
         let st = &self.engine.state;
 
         let membership_config = st.membership_state.effective().stored_membership().clone();
+        let current_leader = self.current_leader();
+
         let m = RaftMetrics {
             running_state: Ok(()),
             id: self.id,
@@ -545,7 +550,8 @@ where
 
             // --- cluster ---
             state: st.server_state,
-            current_leader: self.current_leader(),
+            current_leader,
+            millis_since_quorum_ack,
             membership_config: membership_config.clone(),
 
             // --- replication ---
@@ -564,6 +570,7 @@ where
             last_applied: st.io_applied().copied(),
             snapshot: st.io_snapshot_last_log_id().copied(),
             purged: st.io_purged().copied(),
+            millis_since_quorum_ack,
             replication,
         };
         self.tx_data_metrics.send_if_modified(|metrix| {
@@ -578,7 +585,7 @@ where
             id: self.id,
             vote: *st.io_state().vote(),
             state: st.server_state,
-            current_leader: self.current_leader(),
+            current_leader,
             membership_config,
         };
         self.tx_server_metrics.send_if_modified(|metrix| {
@@ -663,6 +670,16 @@ where
             tracing::debug!("id={} is not a voter", id);
             None
         }
+    }
+
+    /// Retrieves the most recent timestamp that is acknowledged by a quorum.
+    ///
+    /// This function returns the latest known time at which the leader received acknowledgment
+    /// from a quorum of followers, indicating its leadership is current and recognized.
+    /// If the node is not a leader or no acknowledgment has been received, `None` is returned.
+    fn last_quorum_acked_time(&mut self) -> Option<InstantOf<C>> {
+        let leading = self.engine.internal_server_state.leading_mut();
+        leading.and_then(|l| l.last_quorum_acked_time())
     }
 
     pub(crate) fn get_leader_node(&self, leader_id: Option<C::NodeId>) -> Option<C::Node> {
