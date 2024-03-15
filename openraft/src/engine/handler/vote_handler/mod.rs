@@ -84,6 +84,7 @@ where C: RaftTypeConfig
     ///
     /// Note: This method does not check last-log-id. handle-vote-request has to deal with
     /// last-log-id itself.
+    #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn update_vote(&mut self, vote: &Vote<C::NodeId>) -> Result<(), RejectVoteRequest<C::NodeId>> {
         // Partial ord compare:
         // Vote does not has to be total ord.
@@ -137,7 +138,11 @@ where C: RaftTypeConfig
     pub(crate) fn become_leading(&mut self) {
         if let Some(l) = self.internal_server_state.leading_mut() {
             if l.vote.leader_id() == self.state.vote_ref().leader_id() {
-                // Vote still belongs to the same leader. Just updating vote is enough.
+                tracing::debug!(
+                    "vote still belongs to the same leader. Just updating vote is enough: node-{}, {}",
+                    self.config.id,
+                    self.state.vote_ref()
+                );
                 l.vote = *self.state.vote_ref();
                 self.server_state_handler().update_server_state_if_changed();
                 return;
