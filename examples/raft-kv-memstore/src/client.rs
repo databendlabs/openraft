@@ -6,7 +6,6 @@ use std::time::Duration;
 use openraft::error::ForwardToLeader;
 use openraft::error::NetworkError;
 use openraft::error::RemoteError;
-use openraft::BasicNode;
 use openraft::RaftMetrics;
 use openraft::TryAsRef;
 use serde::de::DeserializeOwned;
@@ -17,6 +16,7 @@ use tokio::time::timeout;
 use crate::typ;
 use crate::NodeId;
 use crate::Request;
+use crate::TypeConfig;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Empty {}
@@ -103,7 +103,7 @@ impl ExampleClient {
     /// Metrics contains various information about the cluster, such as current leader,
     /// membership config, replication status etc.
     /// See [`RaftMetrics`].
-    pub async fn metrics(&self) -> Result<RaftMetrics<NodeId, BasicNode>, typ::RPCError> {
+    pub async fn metrics(&self) -> Result<RaftMetrics<TypeConfig>, typ::RPCError> {
         self.do_send_rpc_to_leader("metrics", None::<&()>).await
     }
 

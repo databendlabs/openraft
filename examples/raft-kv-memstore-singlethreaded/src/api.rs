@@ -13,6 +13,7 @@ use crate::app::App;
 use crate::decode;
 use crate::encode;
 use crate::NodeId;
+use crate::TypeConfig;
 
 pub async fn write(app: &mut App, req: String) -> String {
     let res = app.raft.client_write(decode(&req)).await;
@@ -88,6 +89,6 @@ pub async fn init(app: &mut App) -> String {
 pub async fn metrics(app: &mut App) -> String {
     let metrics = app.raft.metrics().borrow().clone();
 
-    let res: Result<RaftMetrics<NodeId, BasicNode>, Infallible> = Ok(metrics);
+    let res: Result<RaftMetrics<TypeConfig>, Infallible> = Ok(metrics);
     encode(res)
 }

@@ -2,27 +2,27 @@ use std::fmt;
 
 use crate::metrics::metric_display::MetricDisplay;
 use crate::metrics::Metric;
-use crate::NodeId;
+use crate::RaftTypeConfig;
 
 /// A condition that the application wait for.
 #[derive(Debug)]
-pub(crate) enum Condition<NID>
-where NID: NodeId
+pub(crate) enum Condition<C>
+where C: RaftTypeConfig
 {
-    GE(Metric<NID>),
-    EQ(Metric<NID>),
+    GE(Metric<C>),
+    EQ(Metric<C>),
 }
 
-impl<NID> Condition<NID>
-where NID: NodeId
+impl<C> Condition<C>
+where C: RaftTypeConfig
 {
     /// Build a new condition which the application will await to meet or exceed.
-    pub(crate) fn ge(v: Metric<NID>) -> Self {
+    pub(crate) fn ge(v: Metric<C>) -> Self {
         Self::GE(v)
     }
 
     /// Build a new condition which the application will await to meet.
-    pub(crate) fn eq(v: Metric<NID>) -> Self {
+    pub(crate) fn eq(v: Metric<C>) -> Self {
         Self::EQ(v)
     }
 
@@ -40,7 +40,7 @@ where NID: NodeId
         }
     }
 
-    pub(crate) fn value(&self) -> MetricDisplay<'_, NID> {
+    pub(crate) fn value(&self) -> MetricDisplay<'_, C> {
         match self {
             Condition::GE(v) => v.value(),
             Condition::EQ(v) => v.value(),
@@ -48,8 +48,8 @@ where NID: NodeId
     }
 }
 
-impl<NID> fmt::Display for Condition<NID>
-where NID: NodeId
+impl<C> fmt::Display for Condition<C>
+where C: RaftTypeConfig
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}{}{}", self.name(), self.op(), self.value())

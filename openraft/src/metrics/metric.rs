@@ -3,29 +3,28 @@ use std::cmp::Ordering;
 use crate::metrics::metric_display::MetricDisplay;
 use crate::LogId;
 use crate::LogIdOptionExt;
-use crate::Node;
-use crate::NodeId;
 use crate::RaftMetrics;
+use crate::RaftTypeConfig;
 use crate::Vote;
 
 /// A metric entry of a Raft node.
 ///
 /// This is used to specify which metric to observe.
 #[derive(Debug)]
-pub enum Metric<NID>
-where NID: NodeId
+pub enum Metric<C>
+where C: RaftTypeConfig
 {
     Term(u64),
-    Vote(Vote<NID>),
+    Vote(Vote<C::NodeId>),
     LastLogIndex(Option<u64>),
-    Applied(Option<LogId<NID>>),
+    Applied(Option<LogId<C::NodeId>>),
     AppliedIndex(Option<u64>),
-    Snapshot(Option<LogId<NID>>),
-    Purged(Option<LogId<NID>>),
+    Snapshot(Option<LogId<C::NodeId>>),
+    Purged(Option<LogId<C::NodeId>>),
 }
 
-impl<NID> Metric<NID>
-where NID: NodeId
+impl<C> Metric<C>
+where C: RaftTypeConfig
 {
     pub(crate) fn name(&self) -> &'static str {
         match self {
@@ -39,18 +38,16 @@ where NID: NodeId
         }
     }
 
-    pub(crate) fn value(&self) -> MetricDisplay<'_, NID> {
+    pub(crate) fn value(&self) -> MetricDisplay<'_, C> {
         MetricDisplay { metric: self }
     }
 }
 
 /// Metric can be compared with RaftMetrics by comparing the corresponding field of RaftMetrics.
-impl<NID, N> PartialEq<Metric<NID>> for RaftMetrics<NID, N>
-where
-    NID: NodeId,
-    N: Node,
+impl<C> PartialEq<Metric<C>> for RaftMetrics<C>
+where C: RaftTypeConfig
 {
-    fn eq(&self, other: &Metric<NID>) -> bool {
+    fn eq(&self, other: &Metric<C>) -> bool {
         match other {
             Metric::Term(v) => self.current_term == *v,
             Metric::Vote(v) => &self.vote == v,
@@ -64,12 +61,10 @@ where
 }
 
 /// Metric can be compared with RaftMetrics by comparing the corresponding field of RaftMetrics.
-impl<NID, N> PartialOrd<Metric<NID>> for RaftMetrics<NID, N>
-where
-    NID: NodeId,
-    N: Node,
+impl<C> PartialOrd<Metric<C>> for RaftMetrics<C>
+where C: RaftTypeConfig
 {
-    fn partial_cmp(&self, other: &Metric<NID>) -> Option<Ordering> {
+    fn partial_cmp(&self, other: &Metric<C>) -> Option<Ordering> {
         match other {
             Metric::Term(v) => Some(self.current_term.cmp(v)),
             Metric::Vote(v) => self.vote.partial_cmp(v),
