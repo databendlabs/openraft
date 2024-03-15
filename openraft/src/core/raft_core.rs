@@ -196,9 +196,9 @@ where
     /// A Receiver to receive callback from other components.
     pub(crate) rx_notify: mpsc::UnboundedReceiver<Notify<C>>,
 
-    pub(crate) tx_metrics: watch::Sender<RaftMetrics<C::NodeId, C::Node>>,
-    pub(crate) tx_data_metrics: watch::Sender<RaftDataMetrics<C::NodeId>>,
-    pub(crate) tx_server_metrics: watch::Sender<RaftServerMetrics<C::NodeId, C::Node>>,
+    pub(crate) tx_metrics: watch::Sender<RaftMetrics<C>>,
+    pub(crate) tx_data_metrics: watch::Sender<RaftDataMetrics<C>>,
+    pub(crate) tx_server_metrics: watch::Sender<RaftServerMetrics<C>>,
 
     pub(crate) command_state: CommandState,
 

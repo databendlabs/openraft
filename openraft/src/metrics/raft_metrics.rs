@@ -5,25 +5,20 @@ use crate::core::ServerState;
 use crate::display_ext::DisplayOption;
 use crate::error::Fatal;
 use crate::metrics::ReplicationMetrics;
-use crate::node::Node;
 use crate::summary::MessageSummary;
 use crate::LogId;
-use crate::NodeId;
+use crate::RaftTypeConfig;
 use crate::StoredMembership;
 use crate::Vote;
 
 /// A set of metrics describing the current state of a Raft node.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub struct RaftMetrics<NID, N>
-where
-    NID: NodeId,
-    N: Node,
-{
-    pub running_state: Result<(), Fatal<NID>>,
+pub struct RaftMetrics<C: RaftTypeConfig> {
+    pub running_state: Result<(), Fatal<C::NodeId>>,
 
     /// The ID of the Raft node.
-    pub id: NID,
+    pub id: C::NodeId,
 
     // ---
     // --- data ---
@@ -32,23 +27,23 @@ where
     pub current_term: u64,
 
     /// The last accepted vote.
-    pub vote: Vote<NID>,
+    pub vote: Vote<C::NodeId>,
 
     /// The last log index has been appended to this Raft node's log.
     pub last_log_index: Option<u64>,
 
     /// The last log index has been applied to this Raft node's state machine.
-    pub last_applied: Option<LogId<NID>>,
+    pub last_applied: Option<LogId<C::NodeId>>,
 
     /// The id of the last log included in snapshot.
     /// If there is no snapshot, it is (0,0).
-    pub snapshot: Option<LogId<NID>>,
+    pub snapshot: Option<LogId<C::NodeId>>,
 
     /// The last log id that has purged from storage, inclusive.
     ///
     /// `purged` is also the first log id Openraft knows, although the corresponding log entry has
     /// already been deleted.
-    pub purged: Option<LogId<NID>>,
+    pub purged: Option<LogId<C::NodeId>>,
 
     // ---
     // --- cluster ---
@@ -57,22 +52,20 @@ where
     pub state: ServerState,
 
     /// The current cluster leader.
-    pub current_leader: Option<NID>,
+    pub current_leader: Option<C::NodeId>,
 
     /// The current membership config of the cluster.
-    pub membership_config: Arc<StoredMembership<NID, N>>,
+    pub membership_config: Arc<StoredMembership<C::NodeId, C::Node>>,
 
     // ---
     // --- replication ---
     // ---
     /// The replication states. It is Some() only when this node is leader.
-    pub replication: Option<ReplicationMetrics<NID>>,
+    pub replication: Option<ReplicationMetrics<C::NodeId>>,
 }
 
-impl<NID, N> fmt::Display for RaftMetrics<NID, N>
-where
-    NID: NodeId,
-    N: Node,
+impl<C> fmt::Display for RaftMetrics<C>
+where C: RaftTypeConfig
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Metrics{{")?;
@@ -106,22 +99,18 @@ where
         Ok(())
     }
 }
-impl<NID, N> MessageSummary<RaftMetrics<NID, N>> for RaftMetrics<NID, N>
-where
-    NID: NodeId,
-    N: Node,
+impl<C> MessageSummary<RaftMetrics<C>> for RaftMetrics<C>
+where C: RaftTypeConfig
 {
     fn summary(&self) -> String {
         self.to_string()
     }
 }
 
-impl<NID, N> RaftMetrics<NID, N>
-where
-    NID: NodeId,
-    N: Node,
+impl<C> RaftMetrics<C>
+where C: RaftTypeConfig
 {
-    pub fn new_initial(id: NID) -> Self {
+    pub fn new_initial(id: C::NodeId) -> Self {
         Self {
             running_state: Ok(()),
             id,
@@ -144,18 +133,16 @@ where
 /// Subset of RaftMetrics, only include data-related metrics
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub struct RaftDataMetrics<NID>
-where NID: NodeId
-{
-    pub last_log: Option<LogId<NID>>,
-    pub last_applied: Option<LogId<NID>>,
-    pub snapshot: Option<LogId<NID>>,
-    pub purged: Option<LogId<NID>>,
-    pub replication: Option<ReplicationMetrics<NID>>,
+pub struct RaftDataMetrics<C: RaftTypeConfig> {
+    pub last_log: Option<LogId<C::NodeId>>,
+    pub last_applied: Option<LogId<C::NodeId>>,
+    pub snapshot: Option<LogId<C::NodeId>>,
+    pub purged: Option<LogId<C::NodeId>>,
+    pub replication: Option<ReplicationMetrics<C::NodeId>>,
 }
 
-impl<NID> fmt::Display for RaftDataMetrics<NID>
-where NID: NodeId
+impl<C> fmt::Display for RaftDataMetrics<C>
+where C: RaftTypeConfig
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "DataMetrics{{")?;
@@ -178,8 +165,8 @@ where NID: NodeId
     }
 }
 
-impl<NID> MessageSummary<RaftDataMetrics<NID>> for RaftDataMetrics<NID>
-where NID: NodeId
+impl<C> MessageSummary<RaftDataMetrics<C>> for RaftDataMetrics<C>
+where C: RaftTypeConfig
 {
     fn summary(&self) -> String {
         self.to_string()
@@ -189,22 +176,16 @@ where NID: NodeId
 /// Subset of RaftMetrics, only include server-related metrics
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub struct RaftServerMetrics<NID, N>
-where
-    NID: NodeId,
-    N: Node,
-{
-    pub id: NID,
-    pub vote: Vote<NID>,
+pub struct RaftServerMetrics<C: RaftTypeConfig> {
+    pub id: C::NodeId,
+    pub vote: Vote<C::NodeId>,
     pub state: ServerState,
-    pub current_leader: Option<NID>,
-    pub membership_config: Arc<StoredMembership<NID, N>>,
+    pub current_leader: Option<C::NodeId>,
+    pub membership_config: Arc<StoredMembership<C::NodeId, C::Node>>,
 }
 
-impl<NID, N> fmt::Display for RaftServerMetrics<NID, N>
-where
-    NID: NodeId,
-    N: Node,
+impl<C> fmt::Display for RaftServerMetrics<C>
+where C: RaftTypeConfig
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "ServerMetrics{{")?;
@@ -224,10 +205,8 @@ where
     }
 }
 
-impl<NID, N> MessageSummary<RaftServerMetrics<NID, N>> for RaftServerMetrics<NID, N>
-where
-    NID: NodeId,
-    N: Node,
+impl<C> MessageSummary<RaftServerMetrics<C>> for RaftServerMetrics<C>
+where C: RaftTypeConfig
 {
     fn summary(&self) -> String {
         self.to_string()

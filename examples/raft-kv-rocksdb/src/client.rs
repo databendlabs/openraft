@@ -16,6 +16,7 @@ use crate::typ;
 use crate::Node;
 use crate::NodeId;
 use crate::Request;
+use crate::TypeConfig;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Empty {}
@@ -102,7 +103,7 @@ impl ExampleClient {
     /// Metrics contains various information about the cluster, such as current leader,
     /// membership config, replication status etc.
     /// See [`RaftMetrics`].
-    pub async fn metrics(&self) -> Result<RaftMetrics<NodeId, Node>, typ::RPCError> {
+    pub async fn metrics(&self) -> Result<RaftMetrics<TypeConfig>, typ::RPCError> {
         self.do_send_rpc_to_leader("cluster/metrics", None::<&()>).await
     }
 

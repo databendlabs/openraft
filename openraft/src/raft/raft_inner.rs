@@ -34,9 +34,9 @@ where C: RaftTypeConfig
     pub(in crate::raft) runtime_config: Arc<RuntimeConfig>,
     pub(in crate::raft) tick_handle: TickHandle<C>,
     pub(in crate::raft) tx_api: mpsc::UnboundedSender<RaftMsg<C>>,
-    pub(in crate::raft) rx_metrics: watch::Receiver<RaftMetrics<C::NodeId, C::Node>>,
-    pub(in crate::raft) rx_data_metrics: watch::Receiver<RaftDataMetrics<C::NodeId>>,
-    pub(in crate::raft) rx_server_metrics: watch::Receiver<RaftServerMetrics<C::NodeId, C::Node>>,
+    pub(in crate::raft) rx_metrics: watch::Receiver<RaftMetrics<C>>,
+    pub(in crate::raft) rx_data_metrics: watch::Receiver<RaftDataMetrics<C>>,
+    pub(in crate::raft) rx_server_metrics: watch::Receiver<RaftServerMetrics<C>>,
 
     // TODO(xp): it does not need to be a async mutex.
     #[allow(clippy::type_complexity)]

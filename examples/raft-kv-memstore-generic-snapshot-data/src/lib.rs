@@ -58,7 +58,7 @@ pub mod typ {
     pub type RPCError<E = openraft::error::Infallible> = openraft::error::RPCError<NodeId, BasicNode, RaftError<E>>;
     pub type StreamingError<E> = openraft::error::StreamingError<TypeConfig, E>;
 
-    pub type RaftMetrics = openraft::RaftMetrics<NodeId, BasicNode>;
+    pub type RaftMetrics = openraft::RaftMetrics<TypeConfig>;
 
     pub type ClientWriteError = openraft::error::ClientWriteError<NodeId, BasicNode>;
     pub type CheckIsLeaderError = openraft::error::CheckIsLeaderError<NodeId, BasicNode>;

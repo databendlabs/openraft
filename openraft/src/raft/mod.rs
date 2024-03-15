@@ -13,7 +13,6 @@ pub(crate) use self::external_request::BoxCoreFn;
 pub(in crate::raft) mod core_state;
 
 use std::fmt::Debug;
-use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -668,7 +667,7 @@ where C: RaftTypeConfig
     /// Returns Err() if it should keep waiting.
     fn check_replication_upto_date(
         &self,
-        metrics: &RaftMetrics<C::NodeId, C::Node>,
+        metrics: &RaftMetrics<C>,
         node_id: C::NodeId,
         membership_log_id: Option<LogId<C::NodeId>>,
     ) -> Result<Option<LogId<C::NodeId>>, ()> {
@@ -856,17 +855,17 @@ where C: RaftTypeConfig
     }
 
     /// Get a handle to the metrics channel.
-    pub fn metrics(&self) -> watch::Receiver<RaftMetrics<C::NodeId, C::Node>> {
+    pub fn metrics(&self) -> watch::Receiver<RaftMetrics<C>> {
         self.inner.rx_metrics.clone()
     }
 
     /// Get a handle to the data metrics channel.
-    pub fn data_metrics(&self) -> watch::Receiver<RaftDataMetrics<C::NodeId>> {
+    pub fn data_metrics(&self) -> watch::Receiver<RaftDataMetrics<C>> {
         self.inner.rx_data_metrics.clone()
     }
 
     /// Get a handle to the server metrics channel.
-    pub fn server_metrics(&self) -> watch::Receiver<RaftServerMetrics<C::NodeId, C::Node>> {
+    pub fn server_metrics(&self) -> watch::Receiver<RaftServerMetrics<C>> {
         self.inner.rx_server_metrics.clone()
     }
 
@@ -890,7 +889,7 @@ where C: RaftTypeConfig
     /// // wait for raft state to become a follower
     /// r.wait(None).state(State::Follower, "state").await?;
     /// ```
-    pub fn wait(&self, timeout: Option<Duration>) -> Wait<C::NodeId, C::Node, C::AsyncRuntime> {
+    pub fn wait(&self, timeout: Option<Duration>) -> Wait<C> {
         let timeout = match timeout {
             Some(t) => t,
             None => Duration::from_secs(86400 * 365 * 100),
@@ -898,7 +897,6 @@ where C: RaftTypeConfig
         Wait {
             timeout,
             rx: self.inner.rx_metrics.clone(),
-            _phantom: PhantomData,
         }
     }
 

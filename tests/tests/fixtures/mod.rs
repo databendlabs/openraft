@@ -58,7 +58,6 @@ use openraft::RaftState;
 use openraft::RaftTypeConfig;
 use openraft::ServerState;
 use openraft::TokioInstant;
-use openraft::TokioRuntime;
 use openraft::Vote;
 use openraft_memstore::ClientRequest;
 use openraft_memstore::ClientResponse;
@@ -571,7 +570,7 @@ impl TypedRaftRouter {
 
     /// Get a payload of the latest metrics from each node in the cluster.
     #[allow(clippy::significant_drop_in_scrutinee)]
-    pub fn latest_metrics(&self) -> Vec<RaftMetrics<MemNodeId, ()>> {
+    pub fn latest_metrics(&self) -> Vec<RaftMetrics<MemConfig>> {
         let rt = self.nodes.lock().unwrap();
         let mut metrics = vec![];
         for node in rt.values() {
@@ -582,7 +581,7 @@ impl TypedRaftRouter {
         metrics
     }
 
-    pub fn get_metrics(&self, node_id: &MemNodeId) -> anyhow::Result<RaftMetrics<MemNodeId, ()>> {
+    pub fn get_metrics(&self, node_id: &MemNodeId) -> anyhow::Result<RaftMetrics<MemConfig>> {
         let node = self.get_raft_handle(node_id)?;
         let metrics = node.metrics().borrow().clone();
         Ok(metrics)
@@ -613,16 +612,16 @@ impl TypedRaftRouter {
         func: T,
         timeout: Option<Duration>,
         msg: &str,
-    ) -> anyhow::Result<RaftMetrics<MemNodeId, ()>>
+    ) -> anyhow::Result<RaftMetrics<MemConfig>>
     where
-        T: Fn(&RaftMetrics<MemNodeId, ()>) -> bool + Send,
+        T: Fn(&RaftMetrics<MemConfig>) -> bool + Send,
     {
         let wait = self.wait(node_id, timeout);
         let rst = wait.metrics(func, format!("node-{} {}", node_id, msg)).await?;
         Ok(rst)
     }
 
-    pub fn wait(&self, node_id: &MemNodeId, timeout: Option<Duration>) -> Wait<MemNodeId, (), TokioRuntime> {
+    pub fn wait(&self, node_id: &MemNodeId, timeout: Option<Duration>) -> Wait<MemConfig> {
         let node = {
             let rt = self.nodes.lock().unwrap();
             rt.get(node_id).expect("target node not found in routing table").clone().0

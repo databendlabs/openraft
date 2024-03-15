@@ -12,6 +12,7 @@ use openraft::RaftMetrics;
 
 use crate::app::App;
 use crate::NodeId;
+use crate::TypeConfig;
 
 // --- Cluster management
 
@@ -49,6 +50,6 @@ pub async fn init(app: Data<App>) -> actix_web::Result<impl Responder> {
 pub async fn metrics(app: Data<App>) -> actix_web::Result<impl Responder> {
     let metrics = app.raft.metrics().borrow().clone();
 
-    let res: Result<RaftMetrics<NodeId, BasicNode>, Infallible> = Ok(metrics);
+    let res: Result<RaftMetrics<TypeConfig>, Infallible> = Ok(metrics);
     Ok(Json(res))
 }
