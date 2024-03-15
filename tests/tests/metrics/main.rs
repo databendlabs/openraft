@@ -8,6 +8,7 @@ mod fixtures;
 // The later tests may depend on the earlier ones.
 
 mod t10_current_leader;
+mod t10_leader_last_ack;
 mod t10_purged;
 mod t10_server_metrics_and_data_metrics;
 mod t20_metrics_state_machine_consistency;

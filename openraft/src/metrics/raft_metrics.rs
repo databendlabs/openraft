@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use crate::core::ServerState;
 use crate::display_ext::DisplayOption;
+use crate::display_ext::DisplayOptionExt;
 use crate::error::Fatal;
 use crate::metrics::ReplicationMetrics;
 use crate::node::Node;
@@ -59,6 +60,21 @@ where
     /// The current cluster leader.
     pub current_leader: Option<NID>,
 
+    /// For a leader, it is the elapsed time in milliseconds since the most recently acknowledged
+    /// timestamp by a quorum.
+    ///
+    /// It is `None` if this node is not leader, or the leader is not yet acknowledged by a quorum.
+    /// Being acknowledged means receiving a reply of
+    /// `AppendEntries`(`AppendEntriesRequest.vote.committed == true`).
+    /// Receiving a reply of `RequestVote`(`RequestVote.vote.committed == false`) does not count,
+    /// because a node will not maintain a lease for a vote with `committed == false`.
+    ///
+    /// This duration is used by the application to assess the likelihood that the leader has lost
+    /// synchronization with the cluster.
+    /// A longer duration without acknowledgment may suggest a higher probability of the leader
+    /// being partitioned from the cluster.
+    pub millis_since_quorum_ack: Option<u64>,
+
     /// The current membership config of the cluster.
     pub membership_config: Arc<StoredMembership<NID, N>>,
 
@@ -79,7 +95,7 @@ where
 
         write!(
             f,
-            "id:{}, {:?}, term:{}, vote:{}, last_log:{}, last_applied:{}, leader:{}",
+            "id:{}, {:?}, term:{}, vote:{}, last_log:{}, last_applied:{}, leader:{}(since_last_ack:{} ms)",
             self.id,
             self.state,
             self.current_term,
@@ -87,6 +103,7 @@ where
             DisplayOption(&self.last_log_index),
             DisplayOption(&self.last_applied),
             DisplayOption(&self.current_leader),
+            DisplayOption(&self.millis_since_quorum_ack),
         )?;
 
         write!(f, ", ")?;
@@ -135,6 +152,7 @@ where
 
             state: ServerState::Follower,
             current_leader: None,
+            millis_since_quorum_ack: None,
             membership_config: Arc::new(StoredMembership::default()),
             replication: None,
         }
@@ -151,6 +169,22 @@ where NID: NodeId
     pub last_applied: Option<LogId<NID>>,
     pub snapshot: Option<LogId<NID>>,
     pub purged: Option<LogId<NID>>,
+
+    /// For a leader, it is the elapsed time in milliseconds since the most recently acknowledged
+    /// timestamp by a quorum.
+    ///
+    /// It is `None` if this node is not leader, or the leader is not yet acknowledged by a quorum.
+    /// Being acknowledged means receiving a reply of
+    /// `AppendEntries`(`AppendEntriesRequest.vote.committed == true`).
+    /// Receiving a reply of `RequestVote`(`RequestVote.vote.committed == false`) does not count,
+    /// because a node will not maintain a lease for a vote with `committed == false`.
+    ///
+    /// This duration is used by the application to assess the likelihood that the leader has lost
+    /// synchronization with the cluster.
+    /// A longer duration without acknowledgment may suggest a higher probability of the leader
+    /// being partitioned from the cluster.
+    pub millis_since_quorum_ack: Option<u64>,
+
     pub replication: Option<ReplicationMetrics<NID>>,
 }
 
@@ -162,11 +196,12 @@ where NID: NodeId
 
         write!(
             f,
-            "last_log:{}, last_applied:{}, snapshot:{}, purged:{}, replication:{{{}}}",
+            "last_log:{}, last_applied:{}, snapshot:{}, purged:{}, quorum_acked(leader):{} ms before, replication:{{{}}}",
             DisplayOption(&self.last_log),
             DisplayOption(&self.last_applied),
             DisplayOption(&self.snapshot),
             DisplayOption(&self.purged),
+            self.millis_since_quorum_ack.display(),
             self.replication
                 .as_ref()
                 .map(|x| { x.iter().map(|(k, v)| format!("{}:{}", k, DisplayOption(v))).collect::<Vec<_>>().join(",") })

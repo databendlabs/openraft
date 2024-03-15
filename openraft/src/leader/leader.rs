@@ -107,8 +107,7 @@ where
     /// Note that the leader may not be in the QuorumSet at all.
     /// In such a case, the update operation will be just ignored,
     /// and the quorum-acked-time is totally determined by remove voters.
-    #[allow(dead_code)]
-    pub(crate) fn quorum_acked_time(&mut self) -> Option<I> {
+    pub(crate) fn last_quorum_acked_time(&mut self) -> Option<I> {
         // For `Leading`, the vote is always the leader's vote.
         // Thus vote.voted_for() is this node.
 
@@ -142,7 +141,7 @@ mod tests {
     use crate::Vote;
 
     #[test]
-    fn test_leading_quorum_acked_time_leader_is_voter() {
+    fn test_leading_last_quorum_acked_time_leader_is_voter() {
         let mut leading = Leading::<u64, Vec<u64>, InstantOf<UTConfig>>::new(
             Vote::new_committed(2, 1),
             vec![1, 2, 3],
@@ -153,12 +152,12 @@ mod tests {
         let now1 = InstantOf::<UTConfig>::now();
 
         let _t2 = leading.clock_progress.increase_to(&2, Some(now1));
-        let t1 = leading.quorum_acked_time();
+        let t1 = leading.last_quorum_acked_time();
         assert_eq!(Some(now1), t1, "n1(leader) and n2 acked, t1 > t2");
     }
 
     #[test]
-    fn test_leading_quorum_acked_time_leader_is_learner() {
+    fn test_leading_last_quorum_acked_time_leader_is_learner() {
         let mut leading = Leading::<u64, Vec<u64>, InstantOf<UTConfig>>::new(
             Vote::new_committed(2, 4),
             vec![1, 2, 3],
@@ -168,17 +167,17 @@ mod tests {
 
         let t2 = InstantOf::<UTConfig>::now();
         let _ = leading.clock_progress.increase_to(&2, Some(t2));
-        let t = leading.quorum_acked_time();
+        let t = leading.last_quorum_acked_time();
         assert!(t.is_none(), "n1(leader+learner) does not count in quorum");
 
         let t3 = InstantOf::<UTConfig>::now();
         let _ = leading.clock_progress.increase_to(&3, Some(t3));
-        let t = leading.quorum_acked_time();
+        let t = leading.last_quorum_acked_time();
         assert_eq!(Some(t2), t, "n2 and n3 acked");
     }
 
     #[test]
-    fn test_leading_quorum_acked_time_leader_is_not_member() {
+    fn test_leading_last_quorum_acked_time_leader_is_not_member() {
         let mut leading = Leading::<u64, Vec<u64>, InstantOf<UTConfig>>::new(
             Vote::new_committed(2, 5),
             vec![1, 2, 3],
@@ -188,12 +187,12 @@ mod tests {
 
         let t2 = InstantOf::<UTConfig>::now();
         let _ = leading.clock_progress.increase_to(&2, Some(t2));
-        let t = leading.quorum_acked_time();
+        let t = leading.last_quorum_acked_time();
         assert!(t.is_none(), "n1(leader+learner) does not count in quorum");
 
         let t3 = InstantOf::<UTConfig>::now();
         let _ = leading.clock_progress.increase_to(&3, Some(t3));
-        let t = leading.quorum_acked_time();
+        let t = leading.last_quorum_acked_time();
         assert_eq!(Some(t2), t, "n2 and n3 acked");
     }
 }
