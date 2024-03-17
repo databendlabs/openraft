@@ -189,10 +189,6 @@ where C: RaftTypeConfig
         //         1 2 3
         // Value:  1 1 2 2 2 // 1 is granted by a quorum
         // ```
-        if granted > self.leader.vote.utime() {
-            // Safe unwrap(): Only Some() can be greater than another Option
-            self.leader.vote.touch(granted.unwrap());
-        }
     }
 
     /// Update progress when replicated data(logs or snapshot) matches on follower/learner and is

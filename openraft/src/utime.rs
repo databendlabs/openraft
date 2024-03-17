@@ -67,6 +67,7 @@ impl<T, I: Instant> UTime<T, I> {
     }
 
     /// Creates a new object that has no last-updated time.
+    #[allow(dead_code)]
     pub(crate) fn without_utime(data: T) -> Self {
         Self { data, utime: None }
     }
