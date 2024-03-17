@@ -12,7 +12,6 @@ use crate::internal_server_state::InternalServerState;
 use crate::leader::Leading;
 use crate::raft_state::LogStateReader;
 use crate::type_config::alias::InstantOf;
-use crate::utime::UTime;
 use crate::AsyncRuntime;
 use crate::Instant;
 use crate::OptionalSend;
@@ -139,7 +138,7 @@ where C: RaftTypeConfig
         if let Some(l) = self.internal_server_state.leading_mut() {
             if l.vote.leader_id() == self.state.vote_ref().leader_id() {
                 // Vote still belongs to the same leader. Just updating vote is enough.
-                l.vote = UTime::without_utime(*self.state.vote_ref());
+                l.vote = *self.state.vote_ref();
                 self.server_state_handler().update_server_state_if_changed();
                 return;
             }
