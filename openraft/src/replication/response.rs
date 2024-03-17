@@ -1,3 +1,4 @@
+use crate::replication::request_id::RequestId;
 use crate::replication::ReplicationSessionId;
 use crate::utime::UTime;
 use crate::AsyncRuntime;
@@ -22,9 +23,7 @@ where C: RaftTypeConfig
         target: C::NodeId,
 
         /// The id of the subject that submit this replication action.
-        ///
-        /// It is only used for debugging purpose.
-        request_id: u64,
+        request_id: RequestId,
 
         /// The request by this leader has been successfully handled by the target node,
         /// or an error in string.

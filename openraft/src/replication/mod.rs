@@ -4,6 +4,7 @@ pub(crate) mod callbacks;
 pub(crate) mod hint;
 mod replication_session_id;
 pub(crate) mod request;
+pub(crate) mod request_id;
 pub(crate) mod response;
 
 use std::sync::Arc;
@@ -47,6 +48,7 @@ use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
 use crate::replication::callbacks::SnapshotCallback;
 use crate::replication::hint::ReplicationHint;
+use crate::replication::request_id::RequestId;
 use crate::storage::RaftLogReader;
 use crate::storage::RaftLogStorage;
 use crate::storage::Snapshot;
@@ -209,34 +211,33 @@ where
         loop {
             let action = self.next_action.take();
 
-            let mut request_id = None;
+            let Some(d) = action else {
+                self.drain_events_with_backoff().await?;
+                continue;
+            };
+
             // Backup the log data for retrying.
             let mut log_data = None;
 
-            let res = match action {
-                None => Ok(None),
-                Some(d) => {
-                    tracing::debug!(replication_data = display(&d), "{} send replication RPC", func_name!());
+            tracing::debug!(replication_data = display(&d), "{} send replication RPC", func_name!());
 
-                    request_id = d.request_id();
+            let request_id = d.request_id();
 
-                    match d {
-                        Data::Heartbeat => {
-                            let m = &self.matching;
-                            // request_id==None will be ignored by RaftCore.
-                            let d = DataWithId::new(None, LogIdRange::new(*m, *m));
+            let res = match d {
+                Data::Heartbeat => {
+                    let m = &self.matching;
+                    // request_id==None will be ignored by RaftCore.
+                    let d = DataWithId::new(RequestId::new_heartbeat(), LogIdRange::new(*m, *m));
 
-                            log_data = Some(d.clone());
-                            self.send_log_entries(d).await
-                        }
-                        Data::Logs(log) => {
-                            log_data = Some(log.clone());
-                            self.send_log_entries(log).await
-                        }
-                        Data::Snapshot(snap) => self.stream_snapshot(snap).await,
-                        Data::SnapshotCallback(resp) => self.handle_snapshot_callback(resp),
-                    }
+                    log_data = Some(d.clone());
+                    self.send_log_entries(d).await
                 }
+                Data::Logs(log) => {
+                    log_data = Some(log.clone());
+                    self.send_log_entries(log).await
+                }
+                Data::Snapshot(snap) => self.stream_snapshot(snap).await,
+                Data::SnapshotCallback(resp) => self.handle_snapshot_callback(resp),
             };
 
             tracing::debug!(res = debug(&res), "replication action done");
@@ -312,17 +313,22 @@ where
                 }
             };
 
-            if let Some(b) = &mut self.backoff {
-                let duration = b.next().unwrap_or_else(|| {
-                    tracing::warn!("backoff exhausted, using default");
-                    Duration::from_millis(500)
-                });
-
-                self.backoff_drain_events(InstantOf::<C>::now() + duration).await?;
-            }
-
-            self.drain_events().await?;
+            self.drain_events_with_backoff().await?;
         }
+    }
+
+    async fn drain_events_with_backoff(&mut self) -> Result<(), ReplicationClosed> {
+        if let Some(b) = &mut self.backoff {
+            let duration = b.next().unwrap_or_else(|| {
+                tracing::warn!("backoff exhausted, using default");
+                Duration::from_millis(500)
+            });
+
+            self.backoff_drain_events(InstantOf::<C>::now() + duration).await?;
+        }
+
+        self.drain_events().await?;
+        Ok(())
     }
 
     /// When a [`PayloadTooLarge`] error is received, update the hint for the next several RPC.
@@ -358,7 +364,7 @@ where
         let request_id = log_ids.request_id();
 
         tracing::debug!(
-            request_id = display(request_id.display()),
+            request_id = display(request_id),
             log_id_range = display(log_ids.data()),
             "send_log_entries",
         );
@@ -487,60 +493,44 @@ where
     /// RaftCore will then submit another replication command.
     fn send_progress_error(
         &mut self,
-        request_id: Option<u64>,
+        request_id: RequestId,
         err: RPCError<C::NodeId, C::Node, RaftError<C::NodeId, Infallible>>,
     ) {
-        if let Some(request_id) = request_id {
-            let _ = self.tx_raft_core.send(Notify::Network {
-                response: Response::Progress {
-                    target: self.target,
-                    request_id,
-                    result: Err(err.to_string()),
-                    session_id: self.session_id,
-                },
-            });
-        } else {
-            tracing::warn!(
-                err = display(&err),
-                "encountered RPCError but request_id is None, no response is sent"
-            );
-        }
+        let _ = self.tx_raft_core.send(Notify::Network {
+            response: Response::Progress {
+                target: self.target,
+                request_id,
+                result: Err(err.to_string()),
+                session_id: self.session_id,
+            },
+        });
     }
 
     /// Send a `conflict` message to RaftCore.
     /// RaftCore will then submit another replication command.
     fn send_progress_conflicting(
         &mut self,
-        request_id: Option<u64>,
+        request_id: RequestId,
         leader_time: InstantOf<C>,
         conflict: LogId<C::NodeId>,
     ) {
         tracing::debug!(
             target = display(self.target),
-            request_id = display(request_id.display()),
+            request_id = display(request_id),
             conflict = display(&conflict),
             "update_conflicting"
         );
 
-        if let Some(request_id) = request_id {
-            let _ = self.tx_raft_core.send({
-                Notify::Network {
-                    response: Response::Progress {
-                        session_id: self.session_id,
-                        request_id,
-                        target: self.target,
-                        result: Ok(UTime::new(leader_time, ReplicationResult::Conflict(conflict))),
-                    },
-                }
-            });
-        } else {
-            tracing::info!(
-                target = display(self.target),
-                request_id = display(request_id.display()),
-                conflict = display(&conflict),
-                "replication conflict, but request_id is None, no response is sent to RaftCore"
-            )
-        }
+        let _ = self.tx_raft_core.send({
+            Notify::Network {
+                response: Response::Progress {
+                    session_id: self.session_id,
+                    request_id,
+                    target: self.target,
+                    result: Ok(UTime::new(leader_time, ReplicationResult::Conflict(conflict))),
+                },
+            }
+        });
     }
 
     /// Update the `matching` log id, which is for tracking follower replication, and report the
@@ -548,12 +538,12 @@ where
     #[tracing::instrument(level = "trace", skip(self))]
     fn send_progress_matching(
         &mut self,
-        request_id: Option<u64>,
+        request_id: RequestId,
         leader_time: InstantOf<C>,
         new_matching: Option<LogId<C::NodeId>>,
     ) {
         tracing::debug!(
-            request_id = display(request_id.display()),
+            request_id = display(request_id),
             target = display(self.target),
             curr_matching = display(DisplayOption(&self.matching)),
             new_matching = display(DisplayOption(&new_matching)),
@@ -580,18 +570,16 @@ where
 
         self.matching = new_matching;
 
-        if let Some(request_id) = request_id {
-            let _ = self.tx_raft_core.send({
-                Notify::Network {
-                    response: Response::Progress {
-                        session_id: self.session_id,
-                        request_id,
-                        target: self.target,
-                        result: Ok(UTime::new(leader_time, ReplicationResult::Matching(new_matching))),
-                    },
-                }
-            });
-        }
+        let _ = self.tx_raft_core.send({
+            Notify::Network {
+                response: Response::Progress {
+                    session_id: self.session_id,
+                    request_id,
+                    target: self.target,
+                    result: Ok(UTime::new(leader_time, ReplicationResult::Matching(new_matching))),
+                },
+            }
+        });
     }
 
     /// Drain all events in the channel in backoff mode, i.e., there was an un-retry-able error and
@@ -738,7 +726,7 @@ where
         let request_id = snapshot_rx.request_id();
         let rx = snapshot_rx.into_data();
 
-        tracing::info!(request_id = display(request_id.display()), "{}", func_name!());
+        tracing::info!(request_id = display(request_id), "{}", func_name!());
 
         let snapshot = rx.await.map_err(|e| {
             let io_err = StorageIOError::read_snapshot(None, AnyError::error(e));
@@ -750,7 +738,7 @@ where
 
         tracing::info!(
             "received snapshot: request_id={}; meta:{}",
-            request_id.display(),
+            request_id,
             snapshot.as_ref().map(|x| &x.meta).summary()
         );
 
@@ -787,7 +775,7 @@ where
     }
 
     async fn send_snapshot(
-        request_id: Option<u64>,
+        request_id: RequestId,
         network: Arc<Mutex<N::Network>>,
         vote: Vote<C::NodeId>,
         snapshot: Snapshot<C>,
