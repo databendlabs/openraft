@@ -72,6 +72,7 @@ use crate::raft::VoteRequest;
 use crate::raft_state::LogStateReader;
 use crate::replication;
 use crate::replication::request::Replicate;
+use crate::replication::request_id::RequestId;
 use crate::replication::response::ReplicationResult;
 use crate::replication::ReplicationCore;
 use crate::replication::ReplicationHandle;
@@ -1455,11 +1456,12 @@ where
     fn handle_replication_progress(
         &mut self,
         target: C::NodeId,
-        id: u64,
+        id: RequestId,
         result: Result<UTime<ReplicationResult<C::NodeId>, InstantOf<C>>, String>,
     ) {
         tracing::debug!(
             target = display(target),
+            request_id = display(id),
             result = debug(&result),
             "handle_replication_progress"
         );
@@ -1655,7 +1657,7 @@ where
                             let _ = node.tx_repl.send(Replicate::Heartbeat);
                         }
                         Inflight::Logs { id, log_id_range } => {
-                            let _ = node.tx_repl.send(Replicate::logs(Some(id), log_id_range));
+                            let _ = node.tx_repl.send(Replicate::logs(RequestId::new_append_entries(id), log_id_range));
                         }
                         Inflight::Snapshot { id, last_log_id } => {
                             let _ = last_log_id;
@@ -1670,7 +1672,7 @@ where
                                 .map_err(|e| StorageIOError::read_snapshot(None, AnyError::error(e)))?;
 
                             // unwrap: The replication channel must not be dropped or it is a bug.
-                            node.tx_repl.send(Replicate::snapshot(Some(id), rx)).map_err(|_e| {
+                            node.tx_repl.send(Replicate::snapshot(RequestId::new_snapshot(id), rx)).map_err(|_e| {
                                 StorageIOError::read_snapshot(None, AnyError::error("replication channel closed"))
                             })?;
                         }
