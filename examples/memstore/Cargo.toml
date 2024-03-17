@@ -15,7 +15,7 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/datafuselabs/openraft"
 
 [dependencies]
-openraft = { path = "../../openraft", features = ["serde"] }
+openraft = { path = "../../openraft", features = ["serde", "type-alias"] }
 
 tokio = { version = "1.0", default-features = false, features = ["sync"] }
 

@@ -12,7 +12,6 @@ use crate::internal_server_state::InternalServerState;
 use crate::leader::Leading;
 use crate::raft_state::LogStateReader;
 use crate::type_config::alias::InstantOf;
-use crate::AsyncRuntime;
 use crate::Instant;
 use crate::OptionalSend;
 use crate::RaftState;
@@ -30,10 +29,9 @@ pub(crate) struct VoteHandler<'st, C>
 where C: RaftTypeConfig
 {
     pub(crate) config: &'st EngineConfig<C::NodeId>,
-    pub(crate) state: &'st mut RaftState<C::NodeId, C::Node, <C::AsyncRuntime as AsyncRuntime>::Instant>,
+    pub(crate) state: &'st mut RaftState<C::NodeId, C::Node, InstantOf<C>>,
     pub(crate) output: &'st mut EngineOutput<C>,
-    pub(crate) internal_server_state:
-        &'st mut InternalServerState<C::NodeId, <C::AsyncRuntime as AsyncRuntime>::Instant>,
+    pub(crate) internal_server_state: &'st mut InternalServerState<C::NodeId, InstantOf<C>>,
 }
 
 impl<'st, C> VoteHandler<'st, C>
@@ -102,19 +100,15 @@ where C: RaftTypeConfig
         if vote > self.state.vote_ref() {
             tracing::info!("vote is changing from {} to {}", self.state.vote_ref(), vote);
 
-            self.state.vote.update(<C::AsyncRuntime as AsyncRuntime>::Instant::now(), *vote);
+            self.state.vote.update(InstantOf::<C>::now(), *vote);
             self.output.push_command(Command::SaveVote { vote: *vote });
         } else {
-            self.state.vote.touch(<C::AsyncRuntime as AsyncRuntime>::Instant::now());
+            self.state.vote.touch(InstantOf::<C>::now());
         }
 
         // Update vote related timer and lease.
 
-        tracing::debug!(
-            now = debug(<C::AsyncRuntime as AsyncRuntime>::Instant::now()),
-            "{}",
-            func_name!()
-        );
+        tracing::debug!(now = debug(InstantOf::<C>::now()), "{}", func_name!());
 
         self.update_internal_server_state();
 

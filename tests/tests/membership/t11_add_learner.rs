@@ -181,6 +181,8 @@ async fn add_learner_with_set_nodes() -> Result<()> {
         let raft = router.get_raft_handle(&0)?;
         raft.change_membership(ChangeMembers::SetNodes(btreemap! {2=>(), 4=>()}), true).await?;
 
+        // TODO: Flaky: there is chance that the log is committed but metrics is not updated.
+        //       Because metrics is updated in the next loop in the `runtime_loop`
         let metrics = router.get_raft_handle(&0)?.metrics().borrow().clone();
         let node_ids = metrics.membership_config.membership().nodes().map(|x| *x.0).collect::<Vec<_>>();
         assert_eq!(vec![0, 1, 2, 4], node_ids);

@@ -1,7 +1,7 @@
 use crate::replication::request_id::RequestId;
 use crate::replication::ReplicationSessionId;
+use crate::type_config::alias::InstantOf;
 use crate::utime::UTime;
-use crate::AsyncRuntime;
 use crate::LogId;
 use crate::MessageSummary;
 use crate::NodeId;
@@ -33,7 +33,7 @@ where C: RaftTypeConfig
         /// the target node.
         ///
         /// The result also track the time when this request is sent.
-        result: Result<UTime<ReplicationResult<C::NodeId>, <C::AsyncRuntime as AsyncRuntime>::Instant>, String>,
+        result: Result<UTime<ReplicationResult<C::NodeId>, InstantOf<C>>, String>,
 
         /// In which session this message is sent.
         ///

@@ -30,6 +30,7 @@ pub(crate) use response::Response;
 
 use crate::core::notify::Notify;
 use crate::core::raft_msg::ResultSender;
+use crate::type_config::alias::JoinHandleOf;
 
 /// State machine worker handle for sending command to it.
 pub(crate) struct Handle<C>
@@ -37,7 +38,7 @@ where C: RaftTypeConfig
 {
     cmd_tx: mpsc::UnboundedSender<Command<C>>,
     #[allow(dead_code)]
-    join_handle: <C::AsyncRuntime as AsyncRuntime>::JoinHandle<()>,
+    join_handle: JoinHandleOf<C, ()>,
 }
 
 impl<C> Handle<C>
@@ -81,7 +82,7 @@ where
         Handle { cmd_tx, join_handle }
     }
 
-    fn do_spawn(mut self) -> <C::AsyncRuntime as AsyncRuntime>::JoinHandle<()> {
+    fn do_spawn(mut self) -> JoinHandleOf<C, ()> {
         C::AsyncRuntime::spawn(async move {
             let res = self.worker_loop().await;
 
