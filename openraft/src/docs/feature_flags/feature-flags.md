@@ -87,3 +87,24 @@ See: [tracing doc: emitting-log-records](https://docs.rs/tracing/latest/tracing/
 
 [`RaftNetwork::full_snapshot()`]: crate::network::RaftNetwork::full_snapshot
 [`RaftNetwork::install_snapshot()`]: crate::network::RaftNetwork::install_snapshot
+
+
+## feature-flag `type-alias`
+
+Enable this feature to use type shortcuts defined in `openraft::alias::*`
+
+For example:
+```rust,ignore
+use openraft::alias::SnapshotDataOf;
+
+struct MyTypeConfig;
+impl RaftTypeconfig For MyTypeConfig { /*...*/ }
+
+// The following two lines are equivalent:
+let snapshot_data: SnapshotDataOf<MyTypeConfig>;
+let snapshot_data: <MyTypeConfig as RaftTypeConfig>::SnapshotData;
+```
+
+Note that the type shortcuts are not stable and may be changed in the future.
+It is also a good idea to copy the type shortcuts to your own codebase if you
+want to use them.

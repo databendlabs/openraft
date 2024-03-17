@@ -72,6 +72,10 @@ serde = ["dep:serde"]
 # This feature is disabled by default.
 single-term-leader = []
 
+# Enable this feature to use `openraft::alias::*` type shortcuts.
+# The type shortcuts are not stable and may be changed in the future.
+type-alias = []
+
 # Provide basic compatible types
 compat = []
 

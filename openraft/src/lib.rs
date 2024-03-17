@@ -72,6 +72,7 @@ pub use network::RPCTypes;
 pub use network::RaftNetwork;
 pub use network::RaftNetworkFactory;
 pub use openraft_macros::add_async_trait;
+#[cfg(feature = "type-alias")] pub use type_config::alias;
 pub use type_config::RaftTypeConfig;
 
 pub use crate::async_runtime::AsyncRuntime;
