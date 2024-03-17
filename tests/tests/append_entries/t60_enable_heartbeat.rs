@@ -3,9 +3,11 @@ use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
+use openraft::alias::InstantOf;
 use openraft::AsyncRuntime;
 use openraft::Config;
 use openraft::TokioRuntime;
+use openraft_memstore::TypeConfig;
 
 use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
@@ -30,7 +32,7 @@ async fn enable_heartbeat() -> Result<()> {
     node0.runtime_config().heartbeat(true);
 
     for _i in 0..3 {
-        let now = <TokioRuntime as AsyncRuntime>::Instant::now();
+        let now = InstantOf::<TypeConfig>::now();
         TokioRuntime::sleep(Duration::from_millis(500)).await;
 
         for node_id in [1, 2, 3] {

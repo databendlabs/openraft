@@ -84,6 +84,7 @@ use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
 use crate::type_config::alias::AsyncRuntimeOf;
 use crate::type_config::alias::InstantOf;
+use crate::type_config::alias::OneshotReceiverOf;
 use crate::utime::UTime;
 use crate::AsyncRuntime;
 use crate::ChangeMembers;
@@ -141,14 +142,14 @@ pub(crate) struct LeaderData<C: RaftTypeConfig> {
     pub(super) replications: BTreeMap<C::NodeId, ReplicationHandle<C>>,
 
     /// The time to send next heartbeat.
-    pub(crate) next_heartbeat: <C::AsyncRuntime as AsyncRuntime>::Instant,
+    pub(crate) next_heartbeat: InstantOf<C>,
 }
 
 impl<C: RaftTypeConfig> LeaderData<C> {
     pub(crate) fn new() -> Self {
         Self {
             replications: BTreeMap::new(),
-            next_heartbeat: <C::AsyncRuntime as AsyncRuntime>::Instant::now(),
+            next_heartbeat: InstantOf::<C>::now(),
         }
     }
 }
@@ -216,10 +217,7 @@ where
     SM: RaftStateMachine<C>,
 {
     /// The main loop of the Raft protocol.
-    pub(crate) async fn main(
-        mut self,
-        rx_shutdown: <C::AsyncRuntime as AsyncRuntime>::OneshotReceiver<()>,
-    ) -> Result<(), Fatal<C::NodeId>> {
+    pub(crate) async fn main(mut self, rx_shutdown: OneshotReceiverOf<C, ()>) -> Result<(), Fatal<C::NodeId>> {
         let span = tracing::span!(parent: &self.span, Level::DEBUG, "main");
         let res = self.do_main(rx_shutdown).instrument(span).await;
 
@@ -243,10 +241,7 @@ where
     }
 
     #[tracing::instrument(level="trace", skip_all, fields(id=display(self.id), cluster=%self.config.cluster_name))]
-    async fn do_main(
-        &mut self,
-        rx_shutdown: <C::AsyncRuntime as AsyncRuntime>::OneshotReceiver<()>,
-    ) -> Result<(), Fatal<C::NodeId>> {
+    async fn do_main(&mut self, rx_shutdown: OneshotReceiverOf<C, ()>) -> Result<(), Fatal<C::NodeId>> {
         tracing::debug!("raft node is initializing");
 
         self.engine.startup();
@@ -490,10 +485,7 @@ where
     /// Currently heartbeat is a blank log
     #[tracing::instrument(level = "debug", skip_all, fields(id = display(self.id)))]
     pub fn send_heartbeat(&mut self, emitter: impl Display) -> bool {
-        tracing::debug!(
-            now = debug(<C::AsyncRuntime as AsyncRuntime>::Instant::now()),
-            "send_heartbeat"
-        );
+        tracing::debug!(now = debug(InstantOf::<C>::now()), "send_heartbeat");
 
         let mut lh = if let Some((lh, _)) =
             self.engine.get_leader_handler_or_reject::<(), ClientWriteError<C::NodeId, C::Node>>(None)
@@ -501,7 +493,7 @@ where
             lh
         } else {
             tracing::debug!(
-                now = debug(<C::AsyncRuntime as AsyncRuntime>::Instant::now()),
+                now = debug(InstantOf::<C>::now()),
                 "{} failed to send heartbeat",
                 emitter
             );
@@ -889,10 +881,7 @@ where
 
     /// Run an event handling loop
     #[tracing::instrument(level="debug", skip_all, fields(id=display(self.id)))]
-    async fn runtime_loop(
-        &mut self,
-        mut rx_shutdown: <C::AsyncRuntime as AsyncRuntime>::OneshotReceiver<()>,
-    ) -> Result<(), Fatal<C::NodeId>> {
+    async fn runtime_loop(&mut self, mut rx_shutdown: OneshotReceiverOf<C, ()>) -> Result<(), Fatal<C::NodeId>> {
         // Ratio control the ratio of number of RaftMsg to process to number of Notify to process.
         let mut balancer = Balancer::new(10_000);
 
@@ -1125,7 +1114,7 @@ where
                 self.handle_append_entries_request(rpc, tx);
             }
             RaftMsg::RequestVote { rpc, tx } => {
-                let now = <C::AsyncRuntime as AsyncRuntime>::Instant::now();
+                let now = InstantOf::<C>::now();
                 tracing::info!(
                     now = debug(now),
                     vote_request = display(rpc.summary()),
@@ -1216,7 +1205,7 @@ where
                 resp,
                 sender_vote: vote,
             } => {
-                let now = <C::AsyncRuntime as AsyncRuntime>::Instant::now();
+                let now = InstantOf::<C>::now();
 
                 tracing::info!(
                     now = debug(now),
@@ -1252,7 +1241,7 @@ where
             Notify::Tick { i } => {
                 // check every timer
 
-                let now = <C::AsyncRuntime as AsyncRuntime>::Instant::now();
+                let now = InstantOf::<C>::now();
                 tracing::debug!("received tick: {}, now: {:?}", i, now);
 
                 self.handle_tick_election();
@@ -1269,8 +1258,8 @@ where
 
                         // Install next heartbeat
                         if let Some(l) = &mut self.leader_data {
-                            l.next_heartbeat = <C::AsyncRuntime as AsyncRuntime>::Instant::now()
-                                + Duration::from_millis(self.config.heartbeat_interval);
+                            l.next_heartbeat =
+                                InstantOf::<C>::now() + Duration::from_millis(self.config.heartbeat_interval);
                         }
                     }
                 }
@@ -1405,7 +1394,7 @@ where
 
     #[tracing::instrument(level = "debug", skip_all)]
     fn handle_tick_election(&mut self) {
-        let now = <C::AsyncRuntime as AsyncRuntime>::Instant::now();
+        let now = InstantOf::<C>::now();
 
         tracing::debug!("try to trigger election by tick, now: {:?}", now);
 

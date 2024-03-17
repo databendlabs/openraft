@@ -21,7 +21,7 @@ path = "src/bin/main.rs"
 
 [dependencies]
 memstore = { path = "../memstore", features = [] }
-openraft = { path = "../../openraft", features = ["serde"] }
+openraft = { path = "../../openraft", features = ["serde", "type-alias"] }
 
 actix-web = "4.0.0-rc.2"
 clap = { version = "4.1.11", features = ["derive", "env"] }

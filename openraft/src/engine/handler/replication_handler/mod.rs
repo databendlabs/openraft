@@ -15,8 +15,8 @@ use crate::progress::Progress;
 use crate::raft_state::LogStateReader;
 use crate::replication::request_id::RequestId;
 use crate::replication::response::ReplicationResult;
+use crate::type_config::alias::InstantOf;
 use crate::utime::UTime;
-use crate::AsyncRuntime;
 use crate::EffectiveMembership;
 use crate::LogId;
 use crate::LogIdOptionExt;
@@ -41,9 +41,8 @@ pub(crate) struct ReplicationHandler<'x, C>
 where C: RaftTypeConfig
 {
     pub(crate) config: &'x mut EngineConfig<C::NodeId>,
-    pub(crate) leader:
-        &'x mut Leading<C::NodeId, LeaderQuorumSet<C::NodeId>, <C::AsyncRuntime as AsyncRuntime>::Instant>,
-    pub(crate) state: &'x mut RaftState<C::NodeId, C::Node, <C::AsyncRuntime as AsyncRuntime>::Instant>,
+    pub(crate) leader: &'x mut Leading<C::NodeId, LeaderQuorumSet<C::NodeId>, InstantOf<C>>,
+    pub(crate) state: &'x mut RaftState<C::NodeId, C::Node, InstantOf<C>>,
     pub(crate) output: &'x mut EngineOutput<C>,
 }
 
@@ -141,7 +140,7 @@ where C: RaftTypeConfig
         &mut self,
         target: C::NodeId,
         request_id: RequestId,
-        result: UTime<ReplicationResult<C::NodeId>, <C::AsyncRuntime as AsyncRuntime>::Instant>,
+        result: UTime<ReplicationResult<C::NodeId>, InstantOf<C>>,
     ) {
         let sending_time = result.utime().unwrap();
 
@@ -167,11 +166,7 @@ where C: RaftTypeConfig
     /// Update progress when replicated data(logs or snapshot) matches on follower/learner and is
     /// accepted.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn update_leader_vote_clock(
-        &mut self,
-        node_id: C::NodeId,
-        t: <C::AsyncRuntime as AsyncRuntime>::Instant,
-    ) {
+    pub(crate) fn update_leader_vote_clock(&mut self, node_id: C::NodeId, t: InstantOf<C>) {
         tracing::debug!(target = display(node_id), t = debug(t), "{}", func_name!());
 
         let granted = *self
@@ -286,7 +281,7 @@ where C: RaftTypeConfig
         &mut self,
         target: C::NodeId,
         request_id: RequestId,
-        repl_res: Result<UTime<ReplicationResult<C::NodeId>, <C::AsyncRuntime as AsyncRuntime>::Instant>, String>,
+        repl_res: Result<UTime<ReplicationResult<C::NodeId>, InstantOf<C>>, String>,
     ) {
         // TODO(2): test
 

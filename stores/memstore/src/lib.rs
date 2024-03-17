@@ -11,6 +11,7 @@ use std::ops::RangeBounds;
 use std::sync::Arc;
 use std::sync::Mutex;
 
+use openraft::alias::SnapshotDataOf;
 use openraft::storage::LogFlushed;
 use openraft::storage::LogState;
 use openraft::storage::RaftLogReader;
@@ -23,7 +24,6 @@ use openraft::EntryPayload;
 use openraft::LogId;
 use openraft::OptionalSend;
 use openraft::RaftLogId;
-use openraft::RaftTypeConfig;
 use openraft::SnapshotMeta;
 use openraft::StorageError;
 use openraft::StorageIOError;
@@ -477,9 +477,7 @@ impl RaftStateMachine<TypeConfig> for Arc<MemStateMachine> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn begin_receiving_snapshot(
-        &mut self,
-    ) -> Result<Box<<TypeConfig as RaftTypeConfig>::SnapshotData>, StorageError<MemNodeId>> {
+    async fn begin_receiving_snapshot(&mut self) -> Result<Box<SnapshotDataOf<TypeConfig>>, StorageError<MemNodeId>> {
         Ok(Box::new(Cursor::new(Vec::new())))
     }
 
@@ -487,7 +485,7 @@ impl RaftStateMachine<TypeConfig> for Arc<MemStateMachine> {
     async fn install_snapshot(
         &mut self,
         meta: &SnapshotMeta<MemNodeId, ()>,
-        snapshot: Box<<TypeConfig as RaftTypeConfig>::SnapshotData>,
+        snapshot: Box<SnapshotDataOf<TypeConfig>>,
     ) -> Result<(), StorageError<MemNodeId>> {
         tracing::info!(
             { snapshot_size = snapshot.get_ref().len() },

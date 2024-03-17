@@ -10,8 +10,8 @@ use crate::raft_state::LogIOId;
 use crate::storage::RaftLogReaderExt;
 use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
+use crate::type_config::alias::InstantOf;
 use crate::utime::UTime;
-use crate::AsyncRuntime;
 use crate::EffectiveMembership;
 use crate::Instant;
 use crate::LogIdOptionExt;
@@ -61,8 +61,7 @@ where
     /// state from stable storage.
     pub async fn get_initial_state(
         &mut self,
-    ) -> Result<RaftState<C::NodeId, C::Node, <C::AsyncRuntime as AsyncRuntime>::Instant>, StorageError<C::NodeId>>
-    {
+    ) -> Result<RaftState<C::NodeId, C::Node, InstantOf<C>>, StorageError<C::NodeId>> {
         let vote = self.log_store.read_vote().await?;
         let vote = vote.unwrap_or_default();
 
@@ -152,7 +151,7 @@ where
             last_purged_log_id,
         );
 
-        let now = <C::AsyncRuntime as AsyncRuntime>::Instant::now();
+        let now = InstantOf::<C>::now();
 
         Ok(RaftState {
             committed: last_applied,

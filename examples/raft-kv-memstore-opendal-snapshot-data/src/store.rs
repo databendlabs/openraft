@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use opendal::Operator;
+use openraft::alias::SnapshotDataOf;
 use openraft::storage::RaftStateMachine;
 use openraft::storage::Snapshot;
 use openraft::BasicNode;
@@ -11,7 +12,6 @@ use openraft::Entry;
 use openraft::EntryPayload;
 use openraft::LogId;
 use openraft::RaftSnapshotBuilder;
-use openraft::RaftTypeConfig;
 use openraft::SnapshotMeta;
 use openraft::StorageError;
 use openraft::StoredMembership;
@@ -190,9 +190,7 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn begin_receiving_snapshot(
-        &mut self,
-    ) -> Result<Box<<TypeConfig as RaftTypeConfig>::SnapshotData>, StorageError<NodeId>> {
+    async fn begin_receiving_snapshot(&mut self) -> Result<Box<SnapshotDataOf<TypeConfig>>, StorageError<NodeId>> {
         Ok(Box::default())
     }
 
@@ -200,7 +198,7 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
     async fn install_snapshot(
         &mut self,
         meta: &SnapshotMeta<NodeId, BasicNode>,
-        snapshot: Box<<TypeConfig as RaftTypeConfig>::SnapshotData>,
+        snapshot: Box<SnapshotDataOf<TypeConfig>>,
     ) -> Result<(), StorageError<NodeId>> {
         tracing::info!("install snapshot");
 

@@ -16,6 +16,7 @@ use crate::error::RaftError;
 use crate::metrics::RaftDataMetrics;
 use crate::metrics::RaftServerMetrics;
 use crate::raft::core_state::CoreState;
+use crate::type_config::alias::OneshotReceiverOf;
 use crate::type_config::alias::OneshotSenderOf;
 use crate::AsyncRuntime;
 use crate::Config;
@@ -55,7 +56,7 @@ where C: RaftTypeConfig
     pub(crate) async fn call_core<T, E>(
         &self,
         mes: RaftMsg<C>,
-        rx: <C::AsyncRuntime as AsyncRuntime>::OneshotReceiver<Result<T, E>>,
+        rx: OneshotReceiverOf<C, Result<T, E>>,
     ) -> Result<T, RaftError<C::NodeId, E>>
     where
         E: Debug + OptionalSend,

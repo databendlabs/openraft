@@ -12,7 +12,7 @@ use crate::engine::EngineOutput;
 use crate::entry::RaftPayload;
 use crate::error::RejectAppendEntries;
 use crate::raft_state::LogStateReader;
-use crate::AsyncRuntime;
+use crate::type_config::alias::InstantOf;
 use crate::EffectiveMembership;
 use crate::LogId;
 use crate::LogIdOptionExt;
@@ -37,7 +37,7 @@ pub(crate) struct FollowingHandler<'x, C>
 where C: RaftTypeConfig
 {
     pub(crate) config: &'x mut EngineConfig<C::NodeId>,
-    pub(crate) state: &'x mut RaftState<C::NodeId, C::Node, <C::AsyncRuntime as AsyncRuntime>::Instant>,
+    pub(crate) state: &'x mut RaftState<C::NodeId, C::Node, InstantOf<C>>,
     pub(crate) output: &'x mut EngineOutput<C>,
 }
 

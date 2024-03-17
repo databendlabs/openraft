@@ -14,6 +14,7 @@ use async_std::sync::RwLock;
 use byteorder::BigEndian;
 use byteorder::ByteOrder;
 use byteorder::ReadBytesExt;
+use openraft::alias::SnapshotDataOf;
 use openraft::storage::LogFlushed;
 use openraft::storage::LogState;
 use openraft::storage::RaftLogStorage;
@@ -28,7 +29,6 @@ use openraft::OptionalSend;
 use openraft::RaftLogId;
 use openraft::RaftLogReader;
 use openraft::RaftSnapshotBuilder;
-use openraft::RaftTypeConfig;
 use openraft::SnapshotMeta;
 use openraft::StorageError;
 use openraft::StorageIOError;
@@ -634,7 +634,7 @@ impl RaftStateMachine<TypeConfig> for Arc<SledStore> {
     #[tracing::instrument(level = "trace", skip(self))]
     async fn begin_receiving_snapshot(
         &mut self,
-    ) -> Result<Box<<TypeConfig as RaftTypeConfig>::SnapshotData>, StorageError<ExampleNodeId>> {
+    ) -> Result<Box<SnapshotDataOf<TypeConfig>>, StorageError<ExampleNodeId>> {
         Ok(Box::new(Cursor::new(Vec::new())))
     }
 
@@ -642,7 +642,7 @@ impl RaftStateMachine<TypeConfig> for Arc<SledStore> {
     async fn install_snapshot(
         &mut self,
         meta: &SnapshotMeta<ExampleNodeId, BasicNode>,
-        snapshot: Box<<TypeConfig as RaftTypeConfig>::SnapshotData>,
+        snapshot: Box<SnapshotDataOf<TypeConfig>>,
     ) -> Result<(), StorageError<ExampleNodeId>> {
         tracing::info!(
             { snapshot_size = snapshot.get_ref().len() },
