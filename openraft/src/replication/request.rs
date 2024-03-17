@@ -18,11 +18,11 @@ where C: RaftTypeConfig
 impl<C> Replicate<C>
 where C: RaftTypeConfig
 {
-    pub(crate) fn logs(id: Option<u64>, log_id_range: LogIdRange<C::NodeId>) -> Self {
+    pub(crate) fn logs(id: RequestId, log_id_range: LogIdRange<C::NodeId>) -> Self {
         Self::Data(Data::new_logs(id, log_id_range))
     }
 
-    pub(crate) fn snapshot(id: Option<u64>, snapshot_rx: ResultReceiver<C, Option<Snapshot<C>>>) -> Self {
+    pub(crate) fn snapshot(id: RequestId, snapshot_rx: ResultReceiver<C, Option<Snapshot<C>>>) -> Self {
         Self::Data(Data::new_snapshot(id, snapshot_rx))
     }
 
@@ -56,6 +56,7 @@ use crate::error::StreamingError;
 use crate::log_id_range::LogIdRange;
 use crate::raft::SnapshotResponse;
 use crate::replication::callbacks::SnapshotCallback;
+use crate::replication::request_id::RequestId;
 use crate::type_config::alias::InstantOf;
 use crate::LogId;
 use crate::MessageSummary;
@@ -107,22 +108,16 @@ impl<C: RaftTypeConfig> fmt::Display for Data<C> {
                 write!(f, "Heartbeat")
             }
             Self::Logs(l) => {
-                write!(
-                    f,
-                    "Logs{{request_id: {}, log_id_range: {}}}",
-                    l.request_id.display(),
-                    l.data
-                )
+                write!(f, "Logs{{request_id: {}, log_id_range: {}}}", l.request_id, l.data)
             }
             Self::Snapshot(s) => {
-                write!(f, "Snapshot{{request_id: {}}}", s.request_id.display())
+                write!(f, "Snapshot{{request_id: {}}}", s.request_id)
             }
             Self::SnapshotCallback(l) => {
                 write!(
                     f,
                     "SnapshotCallback{{request_id: {}, callback: {}}}",
-                    l.request_id.display(),
-                    l.data
+                    l.request_id, l.data
                 )
             }
         }
@@ -144,16 +139,16 @@ where C: RaftTypeConfig
         Self::Heartbeat
     }
 
-    pub(crate) fn new_logs(request_id: Option<u64>, log_id_range: LogIdRange<C::NodeId>) -> Self {
+    pub(crate) fn new_logs(request_id: RequestId, log_id_range: LogIdRange<C::NodeId>) -> Self {
         Self::Logs(DataWithId::new(request_id, log_id_range))
     }
 
-    pub(crate) fn new_snapshot(request_id: Option<u64>, snapshot_rx: ResultReceiver<C, Option<Snapshot<C>>>) -> Self {
+    pub(crate) fn new_snapshot(request_id: RequestId, snapshot_rx: ResultReceiver<C, Option<Snapshot<C>>>) -> Self {
         Self::Snapshot(DataWithId::new(request_id, snapshot_rx))
     }
 
     pub(crate) fn new_snapshot_callback(
-        request_id: Option<u64>,
+        request_id: RequestId,
         start_time: InstantOf<C>,
         snapshot_meta: SnapshotMeta<C::NodeId, C::Node>,
         result: Result<SnapshotResponse<C::NodeId>, StreamingError<C, Fatal<C::NodeId>>>,
@@ -164,9 +159,9 @@ where C: RaftTypeConfig
         ))
     }
 
-    pub(crate) fn request_id(&self) -> Option<u64> {
+    pub(crate) fn request_id(&self) -> RequestId {
         match self {
-            Self::Heartbeat => None,
+            Self::Heartbeat => RequestId::new_heartbeat(),
             Self::Logs(l) => l.request_id(),
             Self::Snapshot(s) => s.request_id(),
             Self::SnapshotCallback(r) => r.request_id(),
@@ -187,18 +182,16 @@ where C: RaftTypeConfig
 #[derive(Clone)]
 pub(crate) struct DataWithId<T> {
     /// The id of this replication request.
-    ///
-    /// A replication request without an id does not need to send a reply to the caller.
-    request_id: Option<u64>,
+    request_id: RequestId,
     data: T,
 }
 
 impl<T> DataWithId<T> {
-    pub(crate) fn new(request_id: Option<u64>, data: T) -> Self {
+    pub(crate) fn new(request_id: RequestId, data: T) -> Self {
         Self { request_id, data }
     }
 
-    pub(crate) fn request_id(&self) -> Option<u64> {
+    pub(crate) fn request_id(&self) -> RequestId {
         self.request_id
     }
 

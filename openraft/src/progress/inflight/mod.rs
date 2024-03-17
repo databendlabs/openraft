@@ -7,6 +7,7 @@ use std::fmt::Formatter;
 use validit::Validate;
 
 use crate::log_id_range::LogIdRange;
+use crate::replication::request_id::RequestId;
 use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::MessageSummary;
@@ -112,11 +113,11 @@ impl<NID: NodeId> Inflight<NID> {
         }
     }
 
-    pub(crate) fn is_my_id(&self, res_id: u64) -> bool {
+    pub(crate) fn is_my_id(&self, res_id: RequestId) -> bool {
         match self {
             Inflight::None => false,
-            Inflight::Logs { id, .. } => *id == res_id,
-            Inflight::Snapshot { id, .. } => *id == res_id,
+            Inflight::Logs { id, .. } => RequestId::AppendEntries { id: *id } == res_id,
+            Inflight::Snapshot { id, .. } => RequestId::Snapshot { id: *id } == res_id,
         }
     }
 

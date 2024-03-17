@@ -13,6 +13,7 @@ use crate::progress::entry::ProgressEntry;
 use crate::progress::Inflight;
 use crate::progress::Progress;
 use crate::raft_state::LogStateReader;
+use crate::replication::request_id::RequestId;
 use crate::replication::response::ReplicationResult;
 use crate::utime::UTime;
 use crate::AsyncRuntime;
@@ -139,7 +140,7 @@ where C: RaftTypeConfig
     pub(crate) fn update_success_progress(
         &mut self,
         target: C::NodeId,
-        request_id: u64,
+        request_id: RequestId,
         result: UTime<ReplicationResult<C::NodeId>, <C::AsyncRuntime as AsyncRuntime>::Instant>,
     ) {
         let sending_time = result.utime().unwrap();
@@ -147,12 +148,18 @@ where C: RaftTypeConfig
         // No matter what the result is, the validity of the leader is granted by a follower.
         self.update_leader_vote_clock(target, sending_time);
 
+        let id = request_id.request_id();
+        let Some(id) = id else {
+            tracing::debug!(request_id = display(request_id), "no data for this request, return");
+            return;
+        };
+
         match result.into_inner() {
             ReplicationResult::Matching(matching) => {
-                self.update_matching(target, request_id, matching);
+                self.update_matching(target, id, matching);
             }
             ReplicationResult::Conflict(conflict) => {
-                self.update_conflicting(target, request_id, conflict);
+                self.update_conflicting(target, id, conflict);
             }
         }
     }
@@ -278,7 +285,7 @@ where C: RaftTypeConfig
     pub(crate) fn update_progress(
         &mut self,
         target: C::NodeId,
-        request_id: u64,
+        request_id: RequestId,
         repl_res: Result<UTime<ReplicationResult<C::NodeId>, <C::AsyncRuntime as AsyncRuntime>::Instant>, String>,
     ) {
         // TODO(2): test
@@ -298,22 +305,26 @@ where C: RaftTypeConfig
             }
             Err(err_str) => {
                 tracing::warn!(
-                    id = display(request_id),
+                    request_id = display(request_id),
                     result = display(&err_str),
                     "update progress error"
                 );
 
-                // Reset inflight state and it will retry.
-                let p = self.leader.progress.get_mut(&target).unwrap();
+                if request_id == RequestId::HeartBeat {
+                    tracing::warn!("heartbeat error: {}, no update to inflight data", err_str);
+                } else {
+                    // Reset inflight state and it will retry.
+                    let p = self.leader.progress.get_mut(&target).unwrap();
 
-                debug_assert!(
-                    p.inflight.is_my_id(request_id),
-                    "inflight({:?}) id should match: {}",
-                    p.inflight,
-                    request_id
-                );
+                    debug_assert!(
+                        p.inflight.is_my_id(request_id),
+                        "inflight({:?}) id should match: {}",
+                        p.inflight,
+                        request_id
+                    );
 
-                p.inflight = Inflight::None;
+                    p.inflight = Inflight::None;
+                }
             }
         };
 
