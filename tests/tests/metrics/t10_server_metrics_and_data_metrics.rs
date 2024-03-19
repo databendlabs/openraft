@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
@@ -43,6 +44,8 @@ async fn server_metrics_and_data_metrics() -> Result<()> {
     tracing::info!(log_index, "--- write {} logs", n);
     log_index += router.client_request_many(0, "foo", n).await?;
 
+    router.wait(&0, timeout()).applied_index(Some(log_index), "applied log index").await?;
+
     let last_log_index = data_metrics.borrow().last_log.unwrap_or_default().index;
     assert_eq!(last_log_index, log_index, "last_log_index should be {:?}", log_index);
 
@@ -57,4 +60,8 @@ async fn server_metrics_and_data_metrics() -> Result<()> {
         server_metrics_2
     );
     Ok(())
+}
+
+fn timeout() -> Option<Duration> {
+    Some(Duration::from_millis(500))
 }
