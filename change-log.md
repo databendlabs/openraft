@@ -1,3 +1,64 @@
+## v0.9.2
+
+Summary:
+
+- Added:
+    -   [8b54a80f](https://github.com/datafuselabs/openraft/commit/8b54a80f6e5b06a181f12f55179e0928a470e21b) `Raft::config()` returns a ref to Config this raft node uses.
+    -   [7d5326ce](https://github.com/datafuselabs/openraft/commit/7d5326ce7b5534c93300eabbcefa0c4d3d45284e) add `RaftMetrics::millis_since_quorum_ack`.
+- Improved:
+    -   [d4a3053f](https://github.com/datafuselabs/openraft/commit/d4a3053fa7b77fbe7db4fc7e598785b8f4d78676) Update example network err implementation.
+    -   [d2d155db](https://github.com/datafuselabs/openraft/commit/d2d155db1e10a619a0bf82710db200ab43afd113) Use `Unreachable` error in `examples/raft-kv-rocksdb`.
+- Fixed:
+    -   [17795e7f](https://github.com/datafuselabs/openraft/commit/17795e7f08bedc3417438aff2486fad261465225) Ensure heartbeat results are returned to `RaftCore`.
+    -   [768dfdc9](https://github.com/datafuselabs/openraft/commit/768dfdc9cc1ce5ea1b985dd00274ae8221764ef9) Ensure `RaftMetrics` are sent after `RaftDataMetrics` and `RaftServerMetrics`.
+
+Detail:
+
+### Added:
+
+-   Added: [8b54a80f](https://github.com/datafuselabs/openraft/commit/8b54a80f6e5b06a181f12f55179e0928a470e21b) `Raft::config()` returns a ref to Config this raft node uses; by 张炎泼; 2024-03-14
+
+-   Added: [7d5326ce](https://github.com/datafuselabs/openraft/commit/7d5326ce7b5534c93300eabbcefa0c4d3d45284e) add `RaftMetrics::millis_since_quorum_ack`; by 张炎泼; 2024-03-15
+
+    `RaftMetrics::millis_since_quorum_ack` is the interval in milliseconds
+    since the last timestamp a quorum acknowledged.
+
+    This duration is used by the application to assess the likelihood that
+    the leader has lost synchronization with the cluster.
+    A longer duration without acknowledgment may suggest a higher
+    probability of the leader being partitioned from the cluster.
+
+### Improved:
+
+-   Improved: [d4a3053f](https://github.com/datafuselabs/openraft/commit/d4a3053fa7b77fbe7db4fc7e598785b8f4d78676) Update example network err implementation; by Jonah Nestrick; 2024-03-15
+
+    Update the example to return unreachable error for connection errors to
+    prevent immediate retries.
+
+-   Improved: [d2d155db](https://github.com/datafuselabs/openraft/commit/d2d155db1e10a619a0bf82710db200ab43afd113) Use `Unreachable` error in `examples/raft-kv-rocksdb`; by 张炎泼; 2024-03-14
+
+### Fixed:
+
+-   Fixed: [17795e7f](https://github.com/datafuselabs/openraft/commit/17795e7f08bedc3417438aff2486fad261465225) Ensure heartbeat results are returned to `RaftCore`; by 张炎泼; 2024-03-17
+
+    Previously, the heartbeat results were not sent back to
+    `RaftCore`, which requires these results to calculate the **last
+    timestamp acknowledged by a quorum**.
+
+    This commit resolves the issue by ensuring that the heartbeat RPC
+    results are sent back to `RaftCore`, allowing it to correctly update the
+    **last timestamp acknowledged by a quorum**.
+
+-   Fixed: [768dfdc9](https://github.com/datafuselabs/openraft/commit/768dfdc9cc1ce5ea1b985dd00274ae8221764ef9) Ensure `RaftMetrics` are sent after `RaftDataMetrics` and `RaftServerMetrics`; by 张炎泼; 2024-03-19
+
+    This commit addresses an issue where `RaftMetrics` could be sent before
+    `RaftDataMetrics` and `RaftServerMetrics`. Since `Wait` relies solely on
+    `RaftMetrics` to reflect the latest state, it is crucial that
+    `RaftMetrics` are dispatched only after the other two metrics have been
+    updated. This change guarantees that once a change in `RaftMetrics` is
+    detected, it accurately represents the most recent changes from both
+    `RaftDataMetrics` and `RaftServerMetrics`.
+
 ## v0.9.0
 
 Summary:
