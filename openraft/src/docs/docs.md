@@ -22,6 +22,7 @@ To learn about the data structures used in Openraft and the commit protocol, see
 - [`data`](crate::docs::data) :
   - [`Vote`](`crate::docs::data::vote`) is the core in a distributed system;
   - [`Log pointers`](`crate::docs::data::log_pointers`) shows how Openraft tracks entries in the log;
+  - [`Leader lease`](`crate::docs::data::leader_lease`) explains leader lease for a Leader and a Follower;
   - [`Extended membership`](`crate::docs::data::extended_membership`) explains how members are organized in Openraft;
   - [`Effective membership`](`crate::docs::data::effective_membership`) explains when membership config takes effect;
 - [`protocol`](crate::docs::protocol) :
