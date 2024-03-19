@@ -558,13 +558,6 @@ where
             replication: replication.clone(),
         };
 
-        tracing::debug!("report_metrics: {}", m.summary());
-        let res = self.tx_metrics.send(m);
-
-        if let Err(err) = res {
-            tracing::error!(error=%err, id=display(self.id), "error reporting metrics");
-        }
-
         let data_metrics = RaftDataMetrics {
             last_log: st.last_log_id().copied(),
             last_applied: st.io_applied().copied(),
@@ -573,13 +566,6 @@ where
             millis_since_quorum_ack,
             replication,
         };
-        self.tx_data_metrics.send_if_modified(|metrix| {
-            if data_metrics.ne(metrix) {
-                *metrix = data_metrics.clone();
-                return true;
-            }
-            false
-        });
 
         let server_metrics = RaftServerMetrics {
             id: self.id,
@@ -588,6 +574,20 @@ where
             current_leader,
             membership_config,
         };
+
+        // Start to send metrics
+        // `RaftMetrics` is sent last, because `Wait` only examines `RaftMetrics`
+        // but not `RaftDataMetrics` and `RaftServerMetrics`.
+        // Thus if `RaftMetrics` change is perceived, the other two should have been updated.
+
+        self.tx_data_metrics.send_if_modified(|metrix| {
+            if data_metrics.ne(metrix) {
+                *metrix = data_metrics.clone();
+                return true;
+            }
+            false
+        });
+
         self.tx_server_metrics.send_if_modified(|metrix| {
             if server_metrics.ne(metrix) {
                 *metrix = server_metrics.clone();
@@ -595,6 +595,13 @@ where
             }
             false
         });
+
+        tracing::debug!("report_metrics: {}", m.summary());
+        let res = self.tx_metrics.send(m);
+
+        if let Err(err) = res {
+            tracing::error!(error=%err, id=display(self.id), "error reporting metrics");
+        }
     }
 
     /// Handle the admin command `initialize`.
