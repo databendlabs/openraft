@@ -31,7 +31,7 @@ where C: RaftTypeConfig
     pub(crate) config: &'st EngineConfig<C::NodeId>,
     pub(crate) state: &'st mut RaftState<C>,
     pub(crate) output: &'st mut EngineOutput<C>,
-    pub(crate) internal_server_state: &'st mut InternalServerState<C::NodeId, InstantOf<C>>,
+    pub(crate) internal_server_state: &'st mut InternalServerState<C>,
 }
 
 impl<'st, C> VoteHandler<'st, C>

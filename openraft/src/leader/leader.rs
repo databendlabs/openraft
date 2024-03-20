@@ -5,10 +5,11 @@ use crate::progress::entry::ProgressEntry;
 use crate::progress::Progress;
 use crate::progress::VecProgress;
 use crate::quorum::QuorumSet;
+use crate::type_config::alias::InstantOf;
+use crate::type_config::alias::LogIdOf;
 use crate::Instant;
-use crate::LogId;
 use crate::LogIdOptionExt;
-use crate::NodeId;
+use crate::RaftTypeConfig;
 use crate::Vote;
 
 /// Leading state data.
@@ -27,37 +28,38 @@ use crate::Vote;
 /// But instead it will be able to upgrade its `leader_id` without losing leadership.
 #[derive(Clone, Debug)]
 #[derive(PartialEq, Eq)]
-pub(crate) struct Leading<NID: NodeId, QS: QuorumSet<NID>, I: Instant> {
+pub(crate) struct Leading<C, QS: QuorumSet<C::NodeId>>
+where C: RaftTypeConfig
+{
     /// The vote this leader works in.
-    pub(crate) vote: Vote<NID>,
+    pub(crate) vote: Vote<C::NodeId>,
 
     quorum_set: QS,
 
     /// Voting state, i.e., there is a Candidate running.
-    voting: Option<Voting<NID, QS, I>>,
+    voting: Option<Voting<C, QS>>,
 
     /// Tracks the replication progress and committed index
-    pub(crate) progress: VecProgress<NID, ProgressEntry<NID>, Option<LogId<NID>>, QS>,
+    pub(crate) progress: VecProgress<C::NodeId, ProgressEntry<C::NodeId>, Option<LogIdOf<C>>, QS>,
 
     /// Tracks the clock time acknowledged by other nodes.
     ///
     /// See [`docs::leader_lease`] for more details.
     ///
     /// [`docs::leader_lease`]: `crate::docs::protocol::replication::leader_lease`
-    pub(crate) clock_progress: VecProgress<NID, Option<I>, Option<I>, QS>,
+    pub(crate) clock_progress: VecProgress<C::NodeId, Option<InstantOf<C>>, Option<InstantOf<C>>, QS>,
 }
 
-impl<NID, QS, I> Leading<NID, QS, I>
+impl<C, QS> Leading<C, QS>
 where
-    NID: NodeId,
-    QS: QuorumSet<NID> + Clone + fmt::Debug + 'static,
-    I: Instant,
+    C: RaftTypeConfig,
+    QS: QuorumSet<C::NodeId> + Clone + fmt::Debug + 'static,
 {
     pub(crate) fn new(
-        vote: Vote<NID>,
+        vote: Vote<C::NodeId>,
         quorum_set: QS,
-        learner_ids: impl Iterator<Item = NID>,
-        last_log_id: Option<LogId<NID>>,
+        learner_ids: impl Iterator<Item = C::NodeId>,
+        last_log_id: Option<LogIdOf<C>>,
     ) -> Self {
         let learner_ids = learner_ids.collect::<Vec<_>>();
 
@@ -75,22 +77,26 @@ where
     }
 
     #[allow(dead_code)]
-    pub(crate) fn voting(&self) -> Option<&Voting<NID, QS, I>> {
+    pub(crate) fn voting(&self) -> Option<&Voting<C, QS>> {
         self.voting.as_ref()
     }
 
     #[allow(dead_code)]
-    pub(crate) fn voting_mut(&mut self) -> Option<&mut Voting<NID, QS, I>> {
+    pub(crate) fn voting_mut(&mut self) -> Option<&mut Voting<C, QS>> {
         self.voting.as_mut()
     }
 
-    pub(crate) fn initialize_voting(&mut self, last_log_id: Option<LogId<NID>>, now: I) -> &mut Voting<NID, QS, I> {
+    pub(crate) fn initialize_voting(
+        &mut self,
+        last_log_id: Option<LogIdOf<C>>,
+        now: InstantOf<C>,
+    ) -> &mut Voting<C, QS> {
         self.voting = Some(Voting::new(now, self.vote, last_log_id, self.quorum_set.clone()));
         self.voting.as_mut().unwrap()
     }
 
     /// Finish the voting process and return the state.
-    pub(crate) fn finish_voting(&mut self) -> Voting<NID, QS, I> {
+    pub(crate) fn finish_voting(&mut self) -> Voting<C, QS> {
         // it has to be in voting progress
         self.voting.take().unwrap()
     }
@@ -107,7 +113,7 @@ where
     /// Note that the leader may not be in the QuorumSet at all.
     /// In such a case, the update operation will be just ignored,
     /// and the quorum-acked-time is totally determined by remove voters.
-    pub(crate) fn last_quorum_acked_time(&mut self) -> Option<I> {
+    pub(crate) fn last_quorum_acked_time(&mut self) -> Option<InstantOf<C>> {
         // For `Leading`, the vote is always the leader's vote.
         // Thus vote.voted_for() is this node.
 
@@ -142,12 +148,8 @@ mod tests {
 
     #[test]
     fn test_leading_last_quorum_acked_time_leader_is_voter() {
-        let mut leading = Leading::<u64, Vec<u64>, InstantOf<UTConfig>>::new(
-            Vote::new_committed(2, 1),
-            vec![1, 2, 3],
-            vec![4].into_iter(),
-            None,
-        );
+        let mut leading =
+            Leading::<UTConfig, Vec<u64>>::new(Vote::new_committed(2, 1), vec![1, 2, 3], vec![4].into_iter(), None);
 
         let now1 = InstantOf::<UTConfig>::now();
 
@@ -158,12 +160,8 @@ mod tests {
 
     #[test]
     fn test_leading_last_quorum_acked_time_leader_is_learner() {
-        let mut leading = Leading::<u64, Vec<u64>, InstantOf<UTConfig>>::new(
-            Vote::new_committed(2, 4),
-            vec![1, 2, 3],
-            vec![4].into_iter(),
-            None,
-        );
+        let mut leading =
+            Leading::<UTConfig, Vec<u64>>::new(Vote::new_committed(2, 4), vec![1, 2, 3], vec![4].into_iter(), None);
 
         let t2 = InstantOf::<UTConfig>::now();
         let _ = leading.clock_progress.increase_to(&2, Some(t2));
@@ -178,12 +176,8 @@ mod tests {
 
     #[test]
     fn test_leading_last_quorum_acked_time_leader_is_not_member() {
-        let mut leading = Leading::<u64, Vec<u64>, InstantOf<UTConfig>>::new(
-            Vote::new_committed(2, 5),
-            vec![1, 2, 3],
-            vec![4].into_iter(),
-            None,
-        );
+        let mut leading =
+            Leading::<UTConfig, Vec<u64>>::new(Vote::new_committed(2, 5), vec![1, 2, 3], vec![4].into_iter(), None);
 
         let t2 = InstantOf::<UTConfig>::now();
         let _ = leading.clock_progress.increase_to(&2, Some(t2));
