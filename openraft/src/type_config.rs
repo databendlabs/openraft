@@ -52,7 +52,7 @@ pub trait RaftTypeConfig:
     type Node: Node;
 
     /// Raft log entry, which can be built from an AppData.
-    type Entry: RaftEntry<Self::NodeId, Self::Node> + FromAppData<Self::D>;
+    type Entry: RaftEntry<Self> + FromAppData<Self::D>;
 
     /// Snapshot data for exposing a snapshot for reading & writing.
     ///
