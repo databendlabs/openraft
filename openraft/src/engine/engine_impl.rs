@@ -77,7 +77,7 @@ where C: RaftTypeConfig
     pub(crate) seen_greater_log: bool,
 
     /// The internal server state used by Engine.
-    pub(crate) internal_server_state: InternalServerState<C::NodeId, InstantOf<C>>,
+    pub(crate) internal_server_state: InternalServerState<C>,
 
     /// Output entry for the runtime.
     pub(crate) output: EngineOutput<C>,

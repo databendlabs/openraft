@@ -7,7 +7,6 @@ use crate::engine::EngineOutput;
 use crate::entry::RaftPayload;
 use crate::internal_server_state::LeaderQuorumSet;
 use crate::leader::Leading;
-use crate::type_config::alias::InstantOf;
 use crate::RaftLogId;
 use crate::RaftState;
 use crate::RaftTypeConfig;
@@ -24,7 +23,7 @@ pub(crate) struct LeaderHandler<'x, C>
 where C: RaftTypeConfig
 {
     pub(crate) config: &'x mut EngineConfig<C::NodeId>,
-    pub(crate) leader: &'x mut Leading<C::NodeId, LeaderQuorumSet<C::NodeId>, InstantOf<C>>,
+    pub(crate) leader: &'x mut Leading<C, LeaderQuorumSet<C::NodeId>>,
     pub(crate) state: &'x mut RaftState<C>,
     pub(crate) output: &'x mut EngineOutput<C>,
 }

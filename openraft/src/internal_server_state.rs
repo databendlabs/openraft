@@ -1,8 +1,7 @@
 use crate::leader::voting::Voting;
 use crate::leader::Leading;
 use crate::quorum::Joint;
-use crate::Instant;
-use crate::NodeId;
+use crate::RaftTypeConfig;
 
 /// The quorum set type used by `Leader`.
 pub(crate) type LeaderQuorumSet<NID> = Joint<NID, Vec<NID>, Vec<Vec<NID>>>;
@@ -23,15 +22,13 @@ pub(crate) type LeaderQuorumSet<NID> = Joint<NID, Vec<NID>, Vec<Vec<NID>>>;
 #[derive(PartialEq, Eq)]
 // TODO(9): Make InternalServerState an Option, separate Leading(Proposer) role and
 //          Following(Acceptor) role
-pub(crate) enum InternalServerState<NID, I>
-where
-    NID: NodeId,
-    I: Instant,
+pub(crate) enum InternalServerState<C>
+where C: RaftTypeConfig
 {
     /// Leader or candidate.
     ///
     /// `vote.committed==true` means it is a leader.
-    Leading(Box<Leading<NID, LeaderQuorumSet<NID>, I>>),
+    Leading(Box<Leading<C, LeaderQuorumSet<C::NodeId>>>),
 
     /// Follower or learner.
     ///
@@ -39,36 +36,32 @@ where
     Following,
 }
 
-impl<NID, I> Default for InternalServerState<NID, I>
-where
-    NID: NodeId,
-    I: Instant,
+impl<C> Default for InternalServerState<C>
+where C: RaftTypeConfig
 {
     fn default() -> Self {
         Self::Following
     }
 }
 
-impl<NID, I> InternalServerState<NID, I>
-where
-    NID: NodeId,
-    I: Instant,
+impl<C> InternalServerState<C>
+where C: RaftTypeConfig
 {
-    pub(crate) fn voting_mut(&mut self) -> Option<&mut Voting<NID, LeaderQuorumSet<NID>, I>> {
+    pub(crate) fn voting_mut(&mut self) -> Option<&mut Voting<C, LeaderQuorumSet<C::NodeId>>> {
         match self {
             InternalServerState::Leading(l) => l.voting_mut(),
             InternalServerState::Following => None,
         }
     }
 
-    pub(crate) fn leading(&self) -> Option<&Leading<NID, LeaderQuorumSet<NID>, I>> {
+    pub(crate) fn leading(&self) -> Option<&Leading<C, LeaderQuorumSet<C::NodeId>>> {
         match self {
             InternalServerState::Leading(l) => Some(l),
             InternalServerState::Following => None,
         }
     }
 
-    pub(crate) fn leading_mut(&mut self) -> Option<&mut Leading<NID, LeaderQuorumSet<NID>, I>> {
+    pub(crate) fn leading_mut(&mut self) -> Option<&mut Leading<C, LeaderQuorumSet<C::NodeId>>> {
         match self {
             InternalServerState::Leading(l) => Some(l),
             InternalServerState::Following => None,
