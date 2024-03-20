@@ -59,9 +59,7 @@ where
     ///
     /// When the Raft node is first started, it will call this interface to fetch the last known
     /// state from stable storage.
-    pub async fn get_initial_state(
-        &mut self,
-    ) -> Result<RaftState<C::NodeId, C::Node, InstantOf<C>>, StorageError<C::NodeId>> {
+    pub async fn get_initial_state(&mut self) -> Result<RaftState<C>, StorageError<C::NodeId>> {
         let vote = self.log_store.read_vote().await?;
         let vote = vote.unwrap_or_default();
 

@@ -29,7 +29,7 @@ pub(crate) struct VoteHandler<'st, C>
 where C: RaftTypeConfig
 {
     pub(crate) config: &'st EngineConfig<C::NodeId>,
-    pub(crate) state: &'st mut RaftState<C::NodeId, C::Node, InstantOf<C>>,
+    pub(crate) state: &'st mut RaftState<C>,
     pub(crate) output: &'st mut EngineOutput<C>,
     pub(crate) internal_server_state: &'st mut InternalServerState<C::NodeId, InstantOf<C>>,
 }
@@ -56,7 +56,7 @@ where C: RaftTypeConfig
         T: Debug + Eq + OptionalSend,
         E: Debug + Eq + OptionalSend,
         Respond<C>: From<ValueSender<C, Result<T, E>>>,
-        F: Fn(&RaftState<C::NodeId, C::Node, InstantOf<C>>, RejectVoteRequest<C::NodeId>) -> Result<T, E>,
+        F: Fn(&RaftState<C>, RejectVoteRequest<C::NodeId>) -> Result<T, E>,
     {
         let vote_res = self.update_vote(vote);
 

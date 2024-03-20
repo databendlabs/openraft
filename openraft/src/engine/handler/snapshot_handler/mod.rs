@@ -5,7 +5,6 @@ use crate::engine::Command;
 use crate::engine::EngineOutput;
 use crate::raft_state::LogStateReader;
 use crate::summary::MessageSummary;
-use crate::type_config::alias::InstantOf;
 use crate::RaftState;
 use crate::RaftTypeConfig;
 use crate::SnapshotMeta;
@@ -17,7 +16,7 @@ use crate::SnapshotMeta;
 pub(crate) struct SnapshotHandler<'st, 'out, C>
 where C: RaftTypeConfig
 {
-    pub(crate) state: &'st mut RaftState<C::NodeId, C::Node, InstantOf<C>>,
+    pub(crate) state: &'st mut RaftState<C>,
     pub(crate) output: &'out mut EngineOutput<C>,
 }
 

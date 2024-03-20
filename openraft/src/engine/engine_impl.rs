@@ -67,7 +67,7 @@ where C: RaftTypeConfig
     pub(crate) config: EngineConfig<C::NodeId>,
 
     /// The state of this raft node.
-    pub(crate) state: Valid<RaftState<C::NodeId, C::Node, InstantOf<C>>>,
+    pub(crate) state: Valid<RaftState<C>>,
 
     // TODO: add a Voting state as a container.
     /// Whether a greater log id is seen during election.
@@ -86,10 +86,7 @@ where C: RaftTypeConfig
 impl<C> Engine<C>
 where C: RaftTypeConfig
 {
-    pub(crate) fn new(
-        init_state: RaftState<C::NodeId, C::Node, InstantOf<C>>,
-        config: EngineConfig<C::NodeId>,
-    ) -> Self {
+    pub(crate) fn new(init_state: RaftState<C>, config: EngineConfig<C::NodeId>) -> Self {
         Self {
             config,
             state: Valid::new(init_state),

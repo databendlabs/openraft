@@ -64,7 +64,6 @@ use crate::raft::trigger::Trigger;
 use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
 use crate::type_config::alias::AsyncRuntimeOf;
-use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::JoinErrorOf;
 use crate::type_config::alias::SnapshotDataOf;
 use crate::AsyncRuntime;
@@ -811,7 +810,7 @@ where C: RaftTypeConfig
     /// ```
     pub async fn with_raft_state<F, V>(&self, func: F) -> Result<V, Fatal<C::NodeId>>
     where
-        F: FnOnce(&RaftState<C::NodeId, C::Node, InstantOf<C>>) -> V + OptionalSend + 'static,
+        F: FnOnce(&RaftState<C>) -> V + OptionalSend + 'static,
         V: OptionalSend + 'static,
     {
         let (tx, rx) = C::AsyncRuntime::oneshot();
@@ -848,7 +847,7 @@ where C: RaftTypeConfig
     /// If the API channel is already closed (Raft is in shutdown), then the request functor is
     /// destroyed right away and not called at all.
     pub fn external_request<F>(&self, req: F)
-    where F: FnOnce(&RaftState<C::NodeId, C::Node, InstantOf<C>>) + OptionalSend + 'static {
+    where F: FnOnce(&RaftState<C>) + OptionalSend + 'static {
         let req: BoxCoreFn<C> = Box::new(req);
         let _ignore_error = self.inner.tx_api.send(RaftMsg::ExternalCoreRequest { req });
     }
