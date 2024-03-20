@@ -2,7 +2,6 @@ use std::collections::BTreeSet;
 use std::fmt::Debug;
 use std::sync::Arc;
 
-use crate::entry::RaftEntry;
 use crate::log_id::RaftLogId;
 use crate::node::Node;
 use crate::quorum::Joint;
@@ -67,18 +66,6 @@ where
 {
     fn from(v: (&LID, Membership<NID, N>)) -> Self {
         EffectiveMembership::new(Some(*v.0.get_log_id()), v.1)
-    }
-}
-
-/// Build a EffectiveMembership from a membership config entry
-impl<NID, N, Ent> From<&Ent> for EffectiveMembership<NID, N>
-where
-    N: Node,
-    NID: NodeId,
-    Ent: RaftEntry<NID, N>,
-{
-    fn from(v: &Ent) -> Self {
-        EffectiveMembership::new(Some(*v.get_log_id()), v.get_membership().unwrap().clone())
     }
 }
 
