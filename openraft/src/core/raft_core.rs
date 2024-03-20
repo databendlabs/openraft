@@ -92,8 +92,6 @@ use crate::Instant;
 use crate::LogId;
 use crate::Membership;
 use crate::MessageSummary;
-use crate::Node;
-use crate::NodeId;
 use crate::OptionalSend;
 use crate::RaftTypeConfig;
 use crate::StorageError;
@@ -102,13 +100,13 @@ use crate::Vote;
 
 /// A temp struct to hold the data for a node that is being applied.
 #[derive(Debug)]
-pub(crate) struct ApplyingEntry<NID: NodeId, N: Node> {
-    log_id: LogId<NID>,
-    membership: Option<Membership<NID, N>>,
+pub(crate) struct ApplyingEntry<C: RaftTypeConfig> {
+    log_id: LogId<C::NodeId>,
+    membership: Option<Membership<C>>,
 }
 
-impl<NID: NodeId, N: Node> ApplyingEntry<NID, N> {
-    pub(crate) fn new(log_id: LogId<NID>, membership: Option<Membership<NID, N>>) -> Self {
+impl<C: RaftTypeConfig> ApplyingEntry<C> {
+    pub(crate) fn new(log_id: LogId<C::NodeId>, membership: Option<Membership<C>>) -> Self {
         Self { log_id, membership }
     }
 }
@@ -118,7 +116,7 @@ pub(crate) struct ApplyResult<C: RaftTypeConfig> {
     pub(crate) since: u64,
     pub(crate) end: u64,
     pub(crate) last_applied: LogId<C::NodeId>,
-    pub(crate) applying_entries: Vec<ApplyingEntry<C::NodeId, C::Node>>,
+    pub(crate) applying_entries: Vec<ApplyingEntry<C>>,
     pub(crate) apply_results: Vec<C::R>,
 }
 
@@ -217,7 +215,7 @@ where
     SM: RaftStateMachine<C>,
 {
     /// The main loop of the Raft protocol.
-    pub(crate) async fn main(mut self, rx_shutdown: OneshotReceiverOf<C, ()>) -> Result<(), Fatal<C::NodeId>> {
+    pub(crate) async fn main(mut self, rx_shutdown: OneshotReceiverOf<C, ()>) -> Result<(), Fatal<C>> {
         let span = tracing::span!(parent: &self.span, Level::DEBUG, "main");
         let res = self.do_main(rx_shutdown).instrument(span).await;
 
@@ -241,7 +239,7 @@ where
     }
 
     #[tracing::instrument(level="trace", skip_all, fields(id=display(self.id), cluster=%self.config.cluster_name))]
-    async fn do_main(&mut self, rx_shutdown: OneshotReceiverOf<C, ()>) -> Result<(), Fatal<C::NodeId>> {
+    async fn do_main(&mut self, rx_shutdown: OneshotReceiverOf<C, ()>) -> Result<(), Fatal<C>> {
         tracing::debug!("raft node is initializing");
 
         self.engine.startup();
@@ -434,7 +432,7 @@ where
         &mut self,
         changes: ChangeMembers<C::NodeId, C::Node>,
         retain: bool,
-        tx: ResultSender<C, ClientWriteResponse<C>, ClientWriteError<C::NodeId, C::Node>>,
+        tx: ResultSender<C, ClientWriteResponse<C>, ClientWriteError<C>>,
     ) {
         let res = self.engine.state.membership_state.change_handler().apply(changes, retain);
         let new_membership = match res {
@@ -487,9 +485,7 @@ where
     pub fn send_heartbeat(&mut self, emitter: impl Display) -> bool {
         tracing::debug!(now = debug(InstantOf::<C>::now()), "send_heartbeat");
 
-        let mut lh = if let Some((lh, _)) =
-            self.engine.get_leader_handler_or_reject::<(), ClientWriteError<C::NodeId, C::Node>>(None)
-        {
+        let mut lh = if let Some((lh, _)) = self.engine.get_leader_handler_or_reject::<(), ClientWriteError<C>>(None) {
             lh
         } else {
             tracing::debug!(
@@ -606,7 +602,7 @@ where
     pub(crate) fn handle_initialize(
         &mut self,
         member_nodes: BTreeMap<C::NodeId, C::Node>,
-        tx: ResultSender<C, (), InitializeError<C::NodeId, C::Node>>,
+        tx: ResultSender<C, (), InitializeError<C>>,
     ) {
         tracing::debug!(member_nodes = debug(&member_nodes), "{}", func_name!());
 
@@ -630,7 +626,7 @@ where
     /// Reject a request due to the Raft node being in a state which prohibits the request.
     #[tracing::instrument(level = "trace", skip(self, tx))]
     pub(crate) fn reject_with_forward_to_leader<T: OptionalSend, E>(&self, tx: ResultSender<C, T, E>)
-    where E: From<ForwardToLeader<C::NodeId, C::Node>> + OptionalSend {
+    where E: From<ForwardToLeader<C>> + OptionalSend {
         let mut leader_id = self.current_leader();
         let leader_node = self.get_leader_node(leader_id);
 
@@ -768,7 +764,7 @@ where
 
     /// Send result of applying a log entry to its client.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(super) fn send_response(entry: ApplyingEntry<C::NodeId, C::Node>, resp: C::R, tx: Option<ClientWriteTx<C>>) {
+    pub(super) fn send_response(entry: ApplyingEntry<C>, resp: C::R, tx: Option<ClientWriteTx<C>>) {
         tracing::debug!(entry = debug(&entry), "send_response");
 
         let tx = match tx {
@@ -888,7 +884,7 @@ where
 
     /// Run an event handling loop
     #[tracing::instrument(level="debug", skip_all, fields(id=display(self.id)))]
-    async fn runtime_loop(&mut self, mut rx_shutdown: OneshotReceiverOf<C, ()>) -> Result<(), Fatal<C::NodeId>> {
+    async fn runtime_loop(&mut self, mut rx_shutdown: OneshotReceiverOf<C, ()>) -> Result<(), Fatal<C>> {
         // Ratio control the ratio of number of RaftMsg to process to number of Notify to process.
         let mut balancer = Balancer::new(10_000);
 
@@ -959,7 +955,7 @@ where
     ///
     /// It returns the number of processed message.
     /// If the input channel is closed, it returns `Fatal::Stopped`.
-    async fn process_raft_msg(&mut self, at_most: u64) -> Result<u64, Fatal<C::NodeId>> {
+    async fn process_raft_msg(&mut self, at_most: u64) -> Result<u64, Fatal<C>> {
         for i in 0..at_most {
             let res = self.rx_api.try_recv();
             let msg = match res {
@@ -994,7 +990,7 @@ where
     ///
     /// It returns the number of processed notifications.
     /// If the input channel is closed, it returns `Fatal::Stopped`.
-    async fn process_notify(&mut self, at_most: u64) -> Result<u64, Fatal<C::NodeId>> {
+    async fn process_notify(&mut self, at_most: u64) -> Result<u64, Fatal<C>> {
         for i in 0..at_most {
             let res = self.rx_notify.try_recv();
             let notify = match res {
@@ -1027,7 +1023,7 @@ where
 
     /// Spawn parallel vote requests to all cluster members.
     #[tracing::instrument(level = "trace", skip_all, fields(vote=vote_req.summary()))]
-    async fn spawn_parallel_vote_requests(&mut self, vote_req: &VoteRequest<C::NodeId>) {
+    async fn spawn_parallel_vote_requests(&mut self, vote_req: &VoteRequest<C>) {
         let members = self.engine.state.membership_state.effective().voter_ids();
 
         let vote = vote_req.vote;
@@ -1058,7 +1054,7 @@ where
                         Ok(res) => res,
 
                         Err(_timeout) => {
-                            let timeout_err = Timeout {
+                            let timeout_err = Timeout::<C> {
                                 action: RPCTypes::Vote,
                                 id,
                                 target,
@@ -1090,7 +1086,7 @@ where
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(super) fn handle_vote_request(&mut self, req: VoteRequest<C::NodeId>, tx: VoteTx<C>) {
+    pub(super) fn handle_vote_request(&mut self, req: VoteRequest<C>, tx: VoteTx<C>) {
         tracing::info!(req = display(req.summary()), func = func_name!());
 
         let resp = self.engine.handle_vote_req(req);
@@ -1203,7 +1199,7 @@ where
 
     // TODO: Make this method non-async. It does not need to run any async command in it.
     #[tracing::instrument(level = "debug", skip_all, fields(state = debug(self.engine.state.server_state), id=display(self.id)))]
-    pub(crate) fn handle_notify(&mut self, notify: Notify<C>) -> Result<(), Fatal<C::NodeId>> {
+    pub(crate) fn handle_notify(&mut self, notify: Notify<C>) -> Result<(), Fatal<C>> {
         tracing::debug!("recv from rx_notify: {}", notify.summary());
 
         match notify {

@@ -52,14 +52,14 @@ openraft::declare_raft_types!(
 
 #[derive(Debug)]
 pub struct StoredSnapshot {
-    pub meta: SnapshotMeta<NodeId, ()>,
+    pub meta: SnapshotMeta<TypeConfig>,
     pub data: Vec<u8>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct StateMachine {
     pub last_applied_log: Option<LogId<NodeId>>,
-    pub last_membership: StoredMembership<NodeId, ()>,
+    pub last_membership: StoredMembership<TypeConfig>,
 }
 
 pub struct LogStore {
@@ -250,7 +250,7 @@ impl RaftLogStorage<TypeConfig> for Arc<LogStore> {
 impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
     async fn applied_state(
         &mut self,
-    ) -> Result<(Option<LogId<NodeId>>, StoredMembership<NodeId, ()>), StorageError<NodeId>> {
+    ) -> Result<(Option<LogId<NodeId>>, StoredMembership<TypeConfig>), StorageError<NodeId>> {
         let sm = self.sm.read().await;
         Ok((sm.last_applied_log, sm.last_membership.clone()))
     }
@@ -285,7 +285,7 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
     #[tracing::instrument(level = "trace", skip(self, snapshot))]
     async fn install_snapshot(
         &mut self,
-        meta: &SnapshotMeta<NodeId, ()>,
+        meta: &SnapshotMeta<TypeConfig>,
         snapshot: Box<SnapshotDataOf<TypeConfig>>,
     ) -> Result<(), StorageError<NodeId>> {
         let new_snapshot = StoredSnapshot {

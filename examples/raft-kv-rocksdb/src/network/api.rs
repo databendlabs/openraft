@@ -8,9 +8,8 @@ use tide::Response;
 use tide::StatusCode;
 
 use crate::app::App;
-use crate::Node;
-use crate::NodeId;
 use crate::Server;
+use crate::TypeConfig;
 
 pub fn rest(app: &mut Server) {
     let mut api = app.at("/api");
@@ -52,7 +51,7 @@ async fn consistent_read(mut req: Request<Arc<App>>) -> tide::Result {
 
             let value = kvs.get(&key);
 
-            let res: Result<String, CheckIsLeaderError<NodeId, Node>> = Ok(value.cloned().unwrap_or_default());
+            let res: Result<String, CheckIsLeaderError<TypeConfig>> = Ok(value.cloned().unwrap_or_default());
             Ok(Response::builder(StatusCode::Ok).body(Body::from_json(&res)?).build())
         }
         e => Ok(Response::builder(StatusCode::Ok).body(Body::from_json(&e)?).build()),

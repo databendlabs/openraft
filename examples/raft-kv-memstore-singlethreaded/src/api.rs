@@ -30,7 +30,7 @@ pub async fn read(app: &mut App, req: String) -> String {
             let state_machine = app.state_machine.state_machine.borrow();
             let value = state_machine.data.get(&key).cloned();
 
-            let res: Result<String, RaftError<NodeId, CheckIsLeaderError<NodeId, BasicNode>>> =
+            let res: Result<String, RaftError<TypeConfig, CheckIsLeaderError<TypeConfig>>> =
                 Ok(value.unwrap_or_default());
             res
         }

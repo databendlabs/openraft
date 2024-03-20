@@ -15,20 +15,20 @@ use crate::ServerState;
 use crate::TokioInstant;
 use crate::Vote;
 
-fn m_empty() -> Membership<u64, ()> {
-    Membership::<u64, ()>::new(vec![btreeset! {}], None)
+fn m_empty() -> Membership<UTConfig> {
+    Membership::<UTConfig>::new(vec![btreeset! {}], None)
 }
 
-fn m23() -> Membership<u64, ()> {
-    Membership::<u64, ()>::new(vec![btreeset! {2,3}], None)
+fn m23() -> Membership<UTConfig> {
+    Membership::<UTConfig>::new(vec![btreeset! {2,3}], None)
 }
 
-fn m34() -> Membership<u64, ()> {
-    Membership::<u64, ()>::new(vec![btreeset! {3,4}], None)
+fn m34() -> Membership<UTConfig> {
+    Membership::<UTConfig>::new(vec![btreeset! {3,4}], None)
 }
 
 fn eng() -> Engine<UTConfig> {
-    let mut eng = Engine::default();
+    let mut eng = Engine::testing_default(0);
     eng.config.id = 2;
     // This will be overridden
     eng.state.server_state = ServerState::default();

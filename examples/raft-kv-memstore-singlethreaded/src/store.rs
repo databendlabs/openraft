@@ -12,7 +12,6 @@ use openraft::storage::LogState;
 use openraft::storage::RaftLogStorage;
 use openraft::storage::RaftStateMachine;
 use openraft::storage::Snapshot;
-use openraft::BasicNode;
 use openraft::Entry;
 use openraft::EntryPayload;
 use openraft::LogId;
@@ -74,7 +73,7 @@ pub struct Response {
 
 #[derive(Debug)]
 pub struct StoredSnapshot {
-    pub meta: SnapshotMeta<NodeId, BasicNode>,
+    pub meta: SnapshotMeta<TypeConfig>,
 
     /// The data of the state machine at the time of this snapshot.
     pub data: Vec<u8>,
@@ -87,7 +86,7 @@ pub struct StoredSnapshot {
 pub struct StateMachineData {
     pub last_applied: Option<LogId<NodeId>>,
 
-    pub last_membership: StoredMembership<NodeId, BasicNode>,
+    pub last_membership: StoredMembership<TypeConfig>,
 
     /// Application data.
     pub data: BTreeMap<String, String>,
@@ -186,7 +185,7 @@ impl RaftStateMachine<TypeConfig> for Rc<StateMachineStore> {
 
     async fn applied_state(
         &mut self,
-    ) -> Result<(Option<LogId<NodeId>>, StoredMembership<NodeId, BasicNode>), StorageError<NodeId>> {
+    ) -> Result<(Option<LogId<NodeId>>, StoredMembership<TypeConfig>), StorageError<NodeId>> {
         let state_machine = self.state_machine.borrow();
         Ok((state_machine.last_applied, state_machine.last_membership.clone()))
     }
@@ -230,7 +229,7 @@ impl RaftStateMachine<TypeConfig> for Rc<StateMachineStore> {
     #[tracing::instrument(level = "trace", skip(self, snapshot))]
     async fn install_snapshot(
         &mut self,
-        meta: &SnapshotMeta<NodeId, BasicNode>,
+        meta: &SnapshotMeta<TypeConfig>,
         snapshot: Box<SnapshotDataOf<TypeConfig>>,
     ) -> Result<(), StorageError<NodeId>> {
         tracing::info!(

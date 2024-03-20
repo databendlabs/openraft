@@ -11,7 +11,7 @@ use crate::ServerState;
 pub(crate) struct ServerStateHandler<'st, C>
 where C: RaftTypeConfig
 {
-    pub(crate) config: &'st EngineConfig<C::NodeId>,
+    pub(crate) config: &'st EngineConfig<C>,
     pub(crate) state: &'st mut RaftState<C>,
     pub(crate) output: &'st mut EngineOutput<C>,
 }

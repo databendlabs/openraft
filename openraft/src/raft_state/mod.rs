@@ -67,10 +67,10 @@ where C: RaftTypeConfig
     pub log_ids: LogIdList<C::NodeId>,
 
     /// The latest cluster membership configuration found, in log or in state machine.
-    pub membership_state: MembershipState<C::NodeId, C::Node>,
+    pub membership_state: MembershipState<C>,
 
     /// The metadata of the last snapshot.
-    pub snapshot_meta: SnapshotMeta<C::NodeId, C::Node>,
+    pub snapshot_meta: SnapshotMeta<C>,
 
     // --
     // -- volatile fields: they are not persisted.
@@ -399,7 +399,7 @@ where C: RaftTypeConfig
     }
 
     /// Build a ForwardToLeader error that contains the leader id and node it knows.
-    pub(crate) fn forward_to_leader(&self) -> ForwardToLeader<C::NodeId, C::Node> {
+    pub(crate) fn forward_to_leader(&self) -> ForwardToLeader<C> {
         let vote = self.vote_ref();
 
         if vote.is_committed() {

@@ -14,13 +14,12 @@ use anyerror::AnyError;
 pub use self::replication_closed::ReplicationClosed;
 pub use self::streaming_error::StreamingError;
 use crate::network::RPCTypes;
-use crate::node::Node;
 use crate::raft::AppendEntriesResponse;
 use crate::raft_types::SnapshotSegmentId;
 use crate::try_as_ref::TryAsRef;
 use crate::LogId;
 use crate::Membership;
-use crate::NodeId;
+use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::Vote;
 
@@ -30,21 +29,21 @@ use crate::Vote;
 /// error, or an API error `E`.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-pub enum RaftError<NID, E = Infallible>
-where NID: NodeId
+pub enum RaftError<C, E = Infallible>
+where C: RaftTypeConfig
 {
     #[error(transparent)]
     APIError(E),
 
-    // Reset serde trait bound for NID but not for E
+    // Reset serde trait bound for C but not for E
     #[cfg_attr(feature = "serde", serde(bound = ""))]
     #[error(transparent)]
-    Fatal(#[from] Fatal<NID>),
+    Fatal(#[from] Fatal<C>),
 }
 
-impl<NID, E> RaftError<NID, E>
+impl<C, E> RaftError<C, E>
 where
-    NID: NodeId,
+    C: RaftTypeConfig,
     E: Debug,
 {
     /// Return a reference to Self::APIError.
@@ -64,7 +63,7 @@ where
     }
 
     /// Return a reference to Self::Fatal.
-    pub fn fatal(&self) -> Option<&Fatal<NID>> {
+    pub fn fatal(&self) -> Option<&Fatal<C>> {
         match self {
             RaftError::APIError(_) => None,
             RaftError::Fatal(f) => Some(f),
@@ -72,7 +71,7 @@ where
     }
 
     /// Try to convert self to Fatal error.
-    pub fn into_fatal(self) -> Option<Fatal<NID>> {
+    pub fn into_fatal(self) -> Option<Fatal<C>> {
         match self {
             RaftError::APIError(_) => None,
             RaftError::Fatal(f) => Some(f),
@@ -80,11 +79,8 @@ where
     }
 
     /// Return a reference to ForwardToLeader if Self::APIError contains it.
-    pub fn forward_to_leader<N>(&self) -> Option<&ForwardToLeader<NID, N>>
-    where
-        N: Node,
-        E: TryAsRef<ForwardToLeader<NID, N>>,
-    {
+    pub fn forward_to_leader(&self) -> Option<&ForwardToLeader<C>>
+    where E: TryAsRef<ForwardToLeader<C>> {
         match self {
             RaftError::APIError(api_err) => api_err.try_as_ref(),
             RaftError::Fatal(_) => None,
@@ -92,11 +88,8 @@ where
     }
 
     /// Try to convert self to ForwardToLeader error if APIError is a ForwardToLeader error.
-    pub fn into_forward_to_leader<N>(self) -> Option<ForwardToLeader<NID, N>>
-    where
-        N: Node,
-        E: TryInto<ForwardToLeader<NID, N>>,
-    {
+    pub fn into_forward_to_leader(self) -> Option<ForwardToLeader<C>>
+    where E: TryInto<ForwardToLeader<C>> {
         match self {
             RaftError::APIError(api_err) => api_err.try_into().ok(),
             RaftError::Fatal(_) => None,
@@ -104,10 +97,10 @@ where
     }
 }
 
-impl<NID, E> From<StorageError<NID>> for RaftError<NID, E>
-where NID: NodeId
+impl<C, E> From<StorageError<C::NodeId>> for RaftError<C, E>
+where C: RaftTypeConfig
 {
-    fn from(se: StorageError<NID>) -> Self {
+    fn from(se: StorageError<C::NodeId>) -> Self {
         RaftError::Fatal(Fatal::from(se))
     }
 }
@@ -115,11 +108,11 @@ where NID: NodeId
 /// Fatal is unrecoverable and shuts down raft at once.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub enum Fatal<NID>
-where NID: NodeId
+pub enum Fatal<C>
+where C: RaftTypeConfig
 {
     #[error(transparent)]
-    StorageError(#[from] StorageError<NID>),
+    StorageError(#[from] StorageError<C::NodeId>),
 
     #[error("panicked")]
     Panicked,
@@ -141,24 +134,20 @@ pub enum InstallSnapshotError {
 /// An error related to a is_leader request.
 #[derive(Debug, Clone, thiserror::Error, derive_more::TryInto)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub enum CheckIsLeaderError<NID, N>
-where
-    NID: NodeId,
-    N: Node,
+pub enum CheckIsLeaderError<C>
+where C: RaftTypeConfig
 {
     #[error(transparent)]
-    ForwardToLeader(#[from] ForwardToLeader<NID, N>),
+    ForwardToLeader(#[from] ForwardToLeader<C>),
 
     #[error(transparent)]
-    QuorumNotEnough(#[from] QuorumNotEnough<NID>),
+    QuorumNotEnough(#[from] QuorumNotEnough<C>),
 }
 
-impl<NID, N> TryAsRef<ForwardToLeader<NID, N>> for CheckIsLeaderError<NID, N>
-where
-    NID: NodeId,
-    N: Node,
+impl<C> TryAsRef<ForwardToLeader<C>> for CheckIsLeaderError<C>
+where C: RaftTypeConfig
 {
-    fn try_as_ref(&self) -> Option<&ForwardToLeader<NID, N>> {
+    fn try_as_ref(&self) -> Option<&ForwardToLeader<C>> {
         match self {
             Self::ForwardToLeader(f) => Some(f),
             _ => None,
@@ -170,25 +159,21 @@ where
 #[derive(Debug, Clone, thiserror::Error, derive_more::TryInto)]
 #[derive(PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub enum ClientWriteError<NID, N>
-where
-    NID: NodeId,
-    N: Node,
+pub enum ClientWriteError<C>
+where C: RaftTypeConfig
 {
     #[error(transparent)]
-    ForwardToLeader(#[from] ForwardToLeader<NID, N>),
+    ForwardToLeader(#[from] ForwardToLeader<C>),
 
     /// When writing a change-membership entry.
     #[error(transparent)]
-    ChangeMembershipError(#[from] ChangeMembershipError<NID>),
+    ChangeMembershipError(#[from] ChangeMembershipError<C>),
 }
 
-impl<NID, N> TryAsRef<ForwardToLeader<NID, N>> for ClientWriteError<NID, N>
-where
-    NID: NodeId,
-    N: Node,
+impl<C> TryAsRef<ForwardToLeader<C>> for ClientWriteError<C>
+where C: RaftTypeConfig
 {
-    fn try_as_ref(&self) -> Option<&ForwardToLeader<NID, N>> {
+    fn try_as_ref(&self) -> Option<&ForwardToLeader<C>> {
         match self {
             Self::ForwardToLeader(f) => Some(f),
             _ => None,
@@ -199,42 +184,38 @@ where
 /// The set of errors which may take place when requesting to propose a config change.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub enum ChangeMembershipError<NID: NodeId> {
+pub enum ChangeMembershipError<C: RaftTypeConfig> {
     #[error(transparent)]
-    InProgress(#[from] InProgress<NID>),
+    InProgress(#[from] InProgress<C>),
 
     #[error(transparent)]
     EmptyMembership(#[from] EmptyMembership),
 
     #[error(transparent)]
-    LearnerNotFound(#[from] LearnerNotFound<NID>),
+    LearnerNotFound(#[from] LearnerNotFound<C>),
 }
 
 /// The set of errors which may take place when initializing a pristine Raft node.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error, derive_more::TryInto)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub enum InitializeError<NID, N>
-where
-    NID: NodeId,
-    N: Node,
+pub enum InitializeError<C>
+where C: RaftTypeConfig
 {
     #[error(transparent)]
-    NotAllowed(#[from] NotAllowed<NID>),
+    NotAllowed(#[from] NotAllowed<C>),
 
     #[error(transparent)]
-    NotInMembers(#[from] NotInMembers<NID, N>),
+    NotInMembers(#[from] NotInMembers<C>),
 }
 
 /// Error variants related to the Replication.
 #[derive(Debug, thiserror::Error)]
 #[allow(clippy::large_enum_variant)]
-pub(crate) enum ReplicationError<NID, N>
-where
-    NID: NodeId,
-    N: Node,
+pub(crate) enum ReplicationError<C>
+where C: RaftTypeConfig
 {
     #[error(transparent)]
-    HigherVote(#[from] HigherVote<NID>),
+    HigherVote(#[from] HigherVote<C>),
 
     #[error(transparent)]
     Closed(#[from] ReplicationClosed),
@@ -242,15 +223,15 @@ where
     // TODO(xp): two sub type: StorageError / TransportError
     // TODO(xp): a sub error for just append_entries()
     #[error(transparent)]
-    StorageError(#[from] StorageError<NID>),
+    StorageError(#[from] StorageError<C::NodeId>),
 
     #[error(transparent)]
-    RPCError(#[from] RPCError<NID, N, RaftError<NID, Infallible>>),
+    RPCError(#[from] RPCError<C, RaftError<C, Infallible>>),
 }
 
 /// Error occurs when invoking a remote raft API.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-// NID already has serde bound.
+// C already has serde bound.
 // E still needs additional serde bound.
 // `serde(bound="")` does not work in this case.
 #[cfg_attr(
@@ -259,9 +240,9 @@ where
     serde(bound(serialize = "E: serde::Serialize")),
     serde(bound(deserialize = "E: for <'d> serde::Deserialize<'d>"))
 )]
-pub enum RPCError<NID: NodeId, N: Node, E: Error> {
+pub enum RPCError<C: RaftTypeConfig, E: Error> {
     #[error(transparent)]
-    Timeout(#[from] Timeout<NID>),
+    Timeout(#[from] Timeout<C>),
 
     /// The node is temporarily unreachable and should backoff before retrying.
     #[error(transparent)]
@@ -276,18 +257,17 @@ pub enum RPCError<NID: NodeId, N: Node, E: Error> {
     Network(#[from] NetworkError),
 
     #[error(transparent)]
-    RemoteError(#[from] RemoteError<NID, N, E>),
+    RemoteError(#[from] RemoteError<C, E>),
 }
 
-impl<NID, N, E> RPCError<NID, N, RaftError<NID, E>>
+impl<C, E> RPCError<C, RaftError<C, E>>
 where
-    NID: NodeId,
-    N: Node,
+    C: RaftTypeConfig,
     E: Error,
 {
     /// Return a reference to ForwardToLeader error if Self::RemoteError contains one.
-    pub fn forward_to_leader(&self) -> Option<&ForwardToLeader<NID, N>>
-    where E: TryAsRef<ForwardToLeader<NID, N>> {
+    pub fn forward_to_leader(&self) -> Option<&ForwardToLeader<C>>
+    where E: TryAsRef<ForwardToLeader<C>> {
         match self {
             RPCError::Timeout(_) => None,
             RPCError::Unreachable(_) => None,
@@ -301,23 +281,25 @@ where
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[error("error occur on remote peer {target}: {source}")]
-pub struct RemoteError<NID: NodeId, N: Node, T: Error> {
+pub struct RemoteError<C, T: Error>
+where C: RaftTypeConfig
+{
     #[cfg_attr(feature = "serde", serde(bound = ""))]
-    pub target: NID,
+    pub target: C::NodeId,
     #[cfg_attr(feature = "serde", serde(bound = ""))]
-    pub target_node: Option<N>,
+    pub target_node: Option<C::Node>,
     pub source: T,
 }
 
-impl<NID: NodeId, N: Node, T: Error> RemoteError<NID, N, T> {
-    pub fn new(target: NID, e: T) -> Self {
+impl<C: RaftTypeConfig, T: Error> RemoteError<C, T> {
+    pub fn new(target: C::NodeId, e: T) -> Self {
         Self {
             target,
             target_node: None,
             source: e,
         }
     }
-    pub fn new_with_node(target: NID, node: N, e: T) -> Self {
+    pub fn new_with_node(target: C::NodeId, node: C::Node, e: T) -> Self {
         Self {
             target,
             target_node: Some(node),
@@ -326,13 +308,12 @@ impl<NID: NodeId, N: Node, T: Error> RemoteError<NID, N, T> {
     }
 }
 
-impl<NID, N, E> From<RemoteError<NID, N, Fatal<NID>>> for RemoteError<NID, N, RaftError<NID, E>>
+impl<C, E> From<RemoteError<C, Fatal<C>>> for RemoteError<C, RaftError<C, E>>
 where
-    NID: NodeId,
-    N: Node,
+    C: RaftTypeConfig,
     E: Error,
 {
-    fn from(e: RemoteError<NID, N, Fatal<NID>>) -> Self {
+    fn from(e: RemoteError<C, Fatal<C>>) -> Self {
         RemoteError {
             target: e.target,
             target_node: e.target_node,
@@ -344,9 +325,9 @@ where
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 #[error("seen a higher vote: {higher} GT mine: {mine}")]
-pub struct HigherVote<NID: NodeId> {
-    pub higher: Vote<NID>,
-    pub mine: Vote<NID>,
+pub struct HigherVote<C: RaftTypeConfig> {
+    pub higher: Vote<C::NodeId>,
+    pub mine: Vote<C::NodeId>,
 }
 
 /// Error that indicates a **temporary** network error and when it is returned, Openraft will retry
@@ -416,7 +397,7 @@ impl Unreachable {
 ///     fn append_entries(&self,
 ///             rpc: AppendEntriesRequest<C>,
 ///             option: RPCOption
-///     ) -> Result<_, RPCError<C::NodeId, C::Node, RaftError<C::NodeId>>> {
+///     ) -> Result<_, RPCError<C::NodeId, C::Node, RaftError<C>>> {
 ///         if rpc.entries.len() > 10 {
 ///             return Err(PayloadTooLarge::new_entries_hint(10).into());
 ///         }
@@ -528,37 +509,25 @@ impl PayloadTooLarge {
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 #[error("timeout after {timeout:?} when {action} {id}->{target}")]
-pub struct Timeout<NID: NodeId> {
+pub struct Timeout<C: RaftTypeConfig> {
     pub action: RPCTypes,
-    pub id: NID,
-    pub target: NID,
+    pub id: C::NodeId,
+    pub target: C::NodeId,
     pub timeout: Duration,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-#[error("store has no log at: {index:?}, last purged: {last_purged_log_id:?}")]
-pub struct LackEntry<NID: NodeId> {
-    pub index: Option<u64>,
-    pub last_purged_log_id: Option<LogId<NID>>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 #[error("has to forward request to: {leader_id:?}, {leader_node:?}")]
-pub struct ForwardToLeader<NID, N>
-where
-    NID: NodeId,
-    N: Node,
+pub struct ForwardToLeader<C>
+where C: RaftTypeConfig
 {
-    pub leader_id: Option<NID>,
-    pub leader_node: Option<N>,
+    pub leader_id: Option<C::NodeId>,
+    pub leader_node: Option<C::Node>,
 }
 
-impl<NID, N> ForwardToLeader<NID, N>
-where
-    NID: NodeId,
-    N: Node,
+impl<C> ForwardToLeader<C>
+where C: RaftTypeConfig
 {
     pub const fn empty() -> Self {
         Self {
@@ -567,7 +536,7 @@ where
         }
     }
 
-    pub fn new(leader_id: NID, node: N) -> Self {
+    pub fn new(leader_id: C::NodeId, node: C::Node) -> Self {
         Self {
             leader_id: Some(leader_id),
             leader_node: Some(node),
@@ -586,44 +555,42 @@ pub struct SnapshotMismatch {
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 #[error("not enough for a quorum, cluster: {cluster}, got: {got:?}")]
-pub struct QuorumNotEnough<NID: NodeId> {
+pub struct QuorumNotEnough<C: RaftTypeConfig> {
     pub cluster: String,
-    pub got: BTreeSet<NID>,
+    pub got: BTreeSet<C::NodeId>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 #[error("the cluster is already undergoing a configuration change at log {membership_log_id:?}, last committed membership log id: {committed:?}")]
-pub struct InProgress<NID: NodeId> {
-    pub committed: Option<LogId<NID>>,
-    pub membership_log_id: Option<LogId<NID>>,
+pub struct InProgress<C: RaftTypeConfig> {
+    pub committed: Option<LogId<C::NodeId>>,
+    pub membership_log_id: Option<LogId<C::NodeId>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 #[error("Learner {node_id} not found: add it as learner before adding it as a voter")]
-pub struct LearnerNotFound<NID: NodeId> {
-    pub node_id: NID,
+pub struct LearnerNotFound<C: RaftTypeConfig> {
+    pub node_id: C::NodeId,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 #[error("not allowed to initialize due to current raft state: last_log_id: {last_log_id:?} vote: {vote}")]
-pub struct NotAllowed<NID: NodeId> {
-    pub last_log_id: Option<LogId<NID>>,
-    pub vote: Vote<NID>,
+pub struct NotAllowed<C: RaftTypeConfig> {
+    pub last_log_id: Option<LogId<C::NodeId>>,
+    pub vote: Vote<C::NodeId>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 #[error("node {node_id} has to be a member. membership:{membership:?}")]
-pub struct NotInMembers<NID, N>
-where
-    NID: NodeId,
-    N: Node,
+pub struct NotInMembers<C>
+where C: RaftTypeConfig
 {
-    pub node_id: NID,
-    pub membership: Membership<NID, N>,
+    pub node_id: C::NodeId,
+    pub membership: Membership<C>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -644,17 +611,19 @@ pub enum NoForward {}
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub(crate) enum RejectVoteRequest<NID: NodeId> {
+pub(crate) enum RejectVoteRequest<C: RaftTypeConfig> {
     #[error("reject vote request by a greater vote: {0}")]
-    ByVote(Vote<NID>),
+    ByVote(Vote<C::NodeId>),
 
     #[allow(dead_code)]
     #[error("reject vote request by a greater last-log-id: {0:?}")]
-    ByLastLogId(Option<LogId<NID>>),
+    ByLastLogId(Option<LogId<C::NodeId>>),
 }
 
-impl<NID: NodeId> From<RejectVoteRequest<NID>> for AppendEntriesResponse<NID> {
-    fn from(r: RejectVoteRequest<NID>) -> Self {
+impl<C> From<RejectVoteRequest<C>> for AppendEntriesResponse<C>
+where C: RaftTypeConfig
+{
+    fn from(r: RejectVoteRequest<C>) -> Self {
         match r {
             RejectVoteRequest::ByVote(v) => AppendEntriesResponse::HigherVote(v),
             RejectVoteRequest::ByLastLogId(_) => {
@@ -665,19 +634,21 @@ impl<NID: NodeId> From<RejectVoteRequest<NID>> for AppendEntriesResponse<NID> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-pub(crate) enum RejectAppendEntries<NID: NodeId> {
+pub(crate) enum RejectAppendEntries<C: RaftTypeConfig> {
     #[error("reject AppendEntries by a greater vote: {0}")]
-    ByVote(Vote<NID>),
+    ByVote(Vote<C::NodeId>),
 
     #[error("reject AppendEntries because of conflicting log-id: {local:?}; expect to be: {expect:?}")]
     ByConflictingLogId {
-        expect: LogId<NID>,
-        local: Option<LogId<NID>>,
+        expect: LogId<C::NodeId>,
+        local: Option<LogId<C::NodeId>>,
     },
 }
 
-impl<NID: NodeId> From<RejectVoteRequest<NID>> for RejectAppendEntries<NID> {
-    fn from(r: RejectVoteRequest<NID>) -> Self {
+impl<C> From<RejectVoteRequest<C>> for RejectAppendEntries<C>
+where C: RaftTypeConfig
+{
+    fn from(r: RejectVoteRequest<C>) -> Self {
         match r {
             RejectVoteRequest::ByVote(v) => RejectAppendEntries::ByVote(v),
             RejectVoteRequest::ByLastLogId(_) => {
@@ -687,8 +658,10 @@ impl<NID: NodeId> From<RejectVoteRequest<NID>> for RejectAppendEntries<NID> {
     }
 }
 
-impl<NID: NodeId> From<Result<(), RejectAppendEntries<NID>>> for AppendEntriesResponse<NID> {
-    fn from(r: Result<(), RejectAppendEntries<NID>>) -> Self {
+impl<C> From<Result<(), RejectAppendEntries<C>>> for AppendEntriesResponse<C>
+where C: RaftTypeConfig
+{
+    fn from(r: Result<(), RejectAppendEntries<C>>) -> Self {
         match r {
             Ok(_) => AppendEntriesResponse::Success,
             Err(e) => match e {

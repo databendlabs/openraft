@@ -40,7 +40,7 @@ use crate::ServerState;
 pub(crate) struct ReplicationHandler<'x, C>
 where C: RaftTypeConfig
 {
-    pub(crate) config: &'x mut EngineConfig<C::NodeId>,
+    pub(crate) config: &'x mut EngineConfig<C>,
     pub(crate) leader: &'x mut Leading<C, LeaderQuorumSet<C::NodeId>>,
     pub(crate) state: &'x mut RaftState<C>,
     pub(crate) output: &'x mut EngineOutput<C>,
@@ -79,7 +79,7 @@ where C: RaftTypeConfig
     ///
     /// It is called by the leader when a new membership log is appended to log store.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn append_membership(&mut self, log_id: &LogId<C::NodeId>, m: &Membership<C::NodeId, C::Node>) {
+    pub(crate) fn append_membership(&mut self, log_id: &LogId<C::NodeId>, m: &Membership<C>) {
         tracing::debug!("update effective membership: log_id:{} {}", log_id, m.summary());
 
         debug_assert!(

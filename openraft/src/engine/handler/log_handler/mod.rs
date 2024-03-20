@@ -15,7 +15,7 @@ use crate::RaftTypeConfig;
 pub(crate) struct LogHandler<'x, C>
 where C: RaftTypeConfig
 {
-    pub(crate) config: &'x mut EngineConfig<C::NodeId>,
+    pub(crate) config: &'x mut EngineConfig<C>,
     pub(crate) state: &'x mut RaftState<C>,
     pub(crate) output: &'x mut EngineOutput<C>,
 }

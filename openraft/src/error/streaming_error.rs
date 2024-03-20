@@ -32,7 +32,7 @@ pub enum StreamingError<C: RaftTypeConfig, E: Error> {
 
     /// Timeout when streaming data to remote node.
     #[error(transparent)]
-    Timeout(#[from] Timeout<C::NodeId>),
+    Timeout(#[from] Timeout<C>),
 
     /// The node is temporarily unreachable and should backoff before retrying.
     #[error(transparent)]
@@ -44,13 +44,13 @@ pub enum StreamingError<C: RaftTypeConfig, E: Error> {
 
     /// Remote node returns an error.
     #[error(transparent)]
-    RemoteError(#[from] RemoteError<C::NodeId, C::Node, E>),
+    RemoteError(#[from] RemoteError<C, E>),
 }
 
-impl<C: RaftTypeConfig, E> From<StreamingError<C, E>> for ReplicationError<C::NodeId, C::Node>
+impl<C: RaftTypeConfig, E> From<StreamingError<C, E>> for ReplicationError<C>
 where
     E: Error,
-    RaftError<C::NodeId>: From<E>,
+    RaftError<C>: From<E>,
 {
     fn from(e: StreamingError<C, E>) -> Self {
         match e {

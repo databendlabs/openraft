@@ -28,7 +28,7 @@ impl Network {
         target_node: &BasicNode,
         uri: &str,
         req: Req,
-    ) -> Result<Resp, openraft::error::RPCError<NodeId, BasicNode, Err>>
+    ) -> Result<Resp, openraft::error::RPCError<TypeConfig, Err>>
     where
         Req: Serialize,
         Err: std::error::Error + DeserializeOwned,
@@ -85,7 +85,7 @@ impl RaftNetwork<TypeConfig> for NetworkConnection {
         &mut self,
         req: AppendEntriesRequest<TypeConfig>,
         _option: RPCOption,
-    ) -> Result<AppendEntriesResponse<NodeId>, typ::RPCError> {
+    ) -> Result<AppendEntriesResponse<TypeConfig>, typ::RPCError> {
         self.owner.send_rpc(self.target, &self.target_node, "raft-append", req).await
     }
 
@@ -93,15 +93,15 @@ impl RaftNetwork<TypeConfig> for NetworkConnection {
         &mut self,
         req: InstallSnapshotRequest<TypeConfig>,
         _option: RPCOption,
-    ) -> Result<InstallSnapshotResponse<NodeId>, typ::RPCError<InstallSnapshotError>> {
+    ) -> Result<InstallSnapshotResponse<TypeConfig>, typ::RPCError<InstallSnapshotError>> {
         self.owner.send_rpc(self.target, &self.target_node, "raft-snapshot", req).await
     }
 
     async fn vote(
         &mut self,
-        req: VoteRequest<NodeId>,
+        req: VoteRequest<TypeConfig>,
         _option: RPCOption,
-    ) -> Result<VoteResponse<NodeId>, typ::RPCError> {
+    ) -> Result<VoteResponse<TypeConfig>, typ::RPCError> {
         self.owner.send_rpc(self.target, &self.target_node, "raft-vote", req).await
     }
 }

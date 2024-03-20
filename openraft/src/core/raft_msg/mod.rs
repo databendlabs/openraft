@@ -13,8 +13,6 @@ use crate::raft::SnapshotResponse;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::type_config::alias::LogIdOf;
-use crate::type_config::alias::NodeIdOf;
-use crate::type_config::alias::NodeOf;
 use crate::type_config::alias::OneshotReceiverOf;
 use crate::type_config::alias::OneshotSenderOf;
 use crate::type_config::alias::SnapshotDataOf;
@@ -32,17 +30,16 @@ pub(crate) type ResultSender<C, T, E = Infallible> = OneshotSenderOf<C, Result<T
 pub(crate) type ResultReceiver<C, T, E = Infallible> = OneshotReceiverOf<C, Result<T, E>>;
 
 /// TX for Vote Response
-pub(crate) type VoteTx<C> = ResultSender<C, VoteResponse<NodeIdOf<C>>>;
+pub(crate) type VoteTx<C> = ResultSender<C, VoteResponse<C>>;
 
 /// TX for Append Entries Response
-pub(crate) type AppendEntriesTx<C> = ResultSender<C, AppendEntriesResponse<NodeIdOf<C>>>;
+pub(crate) type AppendEntriesTx<C> = ResultSender<C, AppendEntriesResponse<C>>;
 
 /// TX for Client Write Response
-pub(crate) type ClientWriteTx<C> = ResultSender<C, ClientWriteResponse<C>, ClientWriteError<NodeIdOf<C>, NodeOf<C>>>;
+pub(crate) type ClientWriteTx<C> = ResultSender<C, ClientWriteResponse<C>, ClientWriteError<C>>;
 
 /// TX for Linearizable Read Response
-pub(crate) type ClientReadTx<C> =
-    ResultSender<C, (Option<LogIdOf<C>>, Option<LogIdOf<C>>), CheckIsLeaderError<NodeIdOf<C>, NodeOf<C>>>;
+pub(crate) type ClientReadTx<C> = ResultSender<C, (Option<LogIdOf<C>>, Option<LogIdOf<C>>), CheckIsLeaderError<C>>;
 
 /// A message sent by application to the [`RaftCore`].
 ///
@@ -56,14 +53,14 @@ where C: RaftTypeConfig
     },
 
     RequestVote {
-        rpc: VoteRequest<C::NodeId>,
+        rpc: VoteRequest<C>,
         tx: VoteTx<C>,
     },
 
     InstallFullSnapshot {
         vote: Vote<C::NodeId>,
         snapshot: Snapshot<C>,
-        tx: ResultSender<C, SnapshotResponse<C::NodeId>>,
+        tx: ResultSender<C, SnapshotResponse<C>>,
     },
 
     /// Begin receiving a snapshot from the leader.
@@ -87,7 +84,7 @@ where C: RaftTypeConfig
 
     Initialize {
         members: BTreeMap<C::NodeId, C::Node>,
-        tx: ResultSender<C, (), InitializeError<C::NodeId, C::Node>>,
+        tx: ResultSender<C, (), InitializeError<C>>,
     },
 
     ChangeMembership {
@@ -97,7 +94,7 @@ where C: RaftTypeConfig
         /// config will be converted into learners, otherwise they will be removed.
         retain: bool,
 
-        tx: ResultSender<C, ClientWriteResponse<C>, ClientWriteError<C::NodeId, C::Node>>,
+        tx: ResultSender<C, ClientWriteResponse<C>, ClientWriteError<C>>,
     },
 
     ExternalCoreRequest {

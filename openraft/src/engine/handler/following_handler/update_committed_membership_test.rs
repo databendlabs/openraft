@@ -10,20 +10,20 @@ use crate::EffectiveMembership;
 use crate::Membership;
 use crate::MembershipState;
 
-fn m01() -> Membership<u64, ()> {
-    Membership::<u64, ()>::new(vec![btreeset! {0,1}], None)
+fn m01() -> Membership<UTConfig> {
+    Membership::<UTConfig>::new(vec![btreeset! {0,1}], None)
 }
 
-fn m23() -> Membership<u64, ()> {
-    Membership::<u64, ()>::new(vec![btreeset! {2,3}], None)
+fn m23() -> Membership<UTConfig> {
+    Membership::<UTConfig>::new(vec![btreeset! {2,3}], None)
 }
 
-fn m34() -> Membership<u64, ()> {
-    Membership::<u64, ()>::new(vec![btreeset! {3,4}], None)
+fn m34() -> Membership<UTConfig> {
+    Membership::<UTConfig>::new(vec![btreeset! {3,4}], None)
 }
 
 fn eng() -> Engine<UTConfig> {
-    let mut eng = Engine::default();
+    let mut eng = Engine::testing_default(0);
     eng.config.id = 2;
     eng.state.membership_state = MembershipState::new(
         Arc::new(EffectiveMembership::new(Some(log_id(1, 1, 1)), m01())),

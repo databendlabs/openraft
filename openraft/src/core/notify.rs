@@ -11,7 +11,7 @@ where C: RaftTypeConfig
 {
     VoteResponse {
         target: C::NodeId,
-        resp: VoteResponse<C::NodeId>,
+        resp: VoteResponse<C>,
 
         /// The candidate that sent the vote request.
         ///

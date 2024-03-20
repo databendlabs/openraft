@@ -89,7 +89,7 @@ pub struct RocksResponse {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct RocksSnapshot {
-    pub meta: SnapshotMeta<RocksNodeId, BasicNode>,
+    pub meta: SnapshotMeta<TypeConfig>,
 
     /// The data of the state machine at the time of this snapshot.
     pub data: Vec<u8>,
@@ -101,7 +101,7 @@ pub struct RocksSnapshot {
 pub struct StateMachine {
     pub last_applied_log: Option<LogId<RocksNodeId>>,
 
-    pub last_membership: StoredMembership<RocksNodeId, BasicNode>,
+    pub last_membership: StoredMembership<TypeConfig>,
 
     /// Application data.
     pub data: BTreeMap<String, String>,
@@ -414,7 +414,7 @@ impl RaftStateMachine<TypeConfig> for RocksStateMachine {
 
     async fn applied_state(
         &mut self,
-    ) -> Result<(Option<LogId<RocksNodeId>>, StoredMembership<RocksNodeId, BasicNode>), StorageError<RocksNodeId>> {
+    ) -> Result<(Option<LogId<RocksNodeId>>, StoredMembership<TypeConfig>), StorageError<RocksNodeId>> {
         Ok((self.sm.last_applied_log, self.sm.last_membership.clone()))
     }
 
@@ -459,7 +459,7 @@ impl RaftStateMachine<TypeConfig> for RocksStateMachine {
 
     async fn install_snapshot(
         &mut self,
-        meta: &SnapshotMeta<RocksNodeId, BasicNode>,
+        meta: &SnapshotMeta<TypeConfig>,
         snapshot: Box<SnapshotDataOf<TypeConfig>>,
     ) -> Result<(), StorageError<RocksNodeId>> {
         tracing::info!(

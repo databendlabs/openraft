@@ -1,16 +1,14 @@
 use crate::error::Fatal;
-use crate::AsyncRuntime;
-use crate::NodeId;
+use crate::type_config::alias::JoinHandleOf;
+use crate::RaftTypeConfig;
 
 /// The running state of RaftCore
-pub(in crate::raft) enum CoreState<NID, A>
-where
-    NID: NodeId,
-    A: AsyncRuntime,
+pub(in crate::raft) enum CoreState<C>
+where C: RaftTypeConfig
 {
     /// The RaftCore task is still running.
-    Running(A::JoinHandle<Result<(), Fatal<NID>>>),
+    Running(JoinHandleOf<C, Result<(), Fatal<C>>>),
 
     /// The RaftCore task has finished. The return value of the task is stored.
-    Done(Result<(), Fatal<NID>>),
+    Done(Result<(), Fatal<C>>),
 }

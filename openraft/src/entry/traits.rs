@@ -17,7 +17,7 @@ where C: RaftTypeConfig
     fn is_blank(&self) -> bool;
 
     /// Return `Some(&Membership)` if the entry payload is a membership payload.
-    fn get_membership(&self) -> Option<&Membership<C::NodeId, C::Node>>;
+    fn get_membership(&self) -> Option<&Membership<C>>;
 }
 
 /// Defines operations on an entry.
@@ -34,7 +34,7 @@ where
     /// Create a new membership log entry.
     ///
     /// The returned instance must return `Some()` for `Self::get_membership()`.
-    fn new_membership(log_id: LogId<C::NodeId>, m: Membership<C::NodeId, C::Node>) -> Self;
+    fn new_membership(log_id: LogId<C::NodeId>, m: Membership<C>) -> Self;
 }
 
 /// Build a raft log entry from app data.

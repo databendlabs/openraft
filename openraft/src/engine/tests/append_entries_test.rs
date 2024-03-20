@@ -20,20 +20,20 @@ use crate::MembershipState;
 use crate::TokioInstant;
 use crate::Vote;
 
-fn m01() -> Membership<u64, ()> {
-    Membership::<u64, ()>::new(vec![btreeset! {0,1}], None)
+fn m01() -> Membership<UTConfig> {
+    Membership::<UTConfig>::new(vec![btreeset! {0,1}], None)
 }
 
-fn m23() -> Membership<u64, ()> {
-    Membership::<u64, ()>::new(vec![btreeset! {2,3}], None)
+fn m23() -> Membership<UTConfig> {
+    Membership::<UTConfig>::new(vec![btreeset! {2,3}], None)
 }
 
-fn m34() -> Membership<u64, ()> {
-    Membership::<u64, ()>::new(vec![btreeset! {3,4}], None)
+fn m34() -> Membership<UTConfig> {
+    Membership::<UTConfig>::new(vec![btreeset! {3,4}], None)
 }
 
 fn eng() -> Engine<UTConfig> {
-    let mut eng = Engine::default();
+    let mut eng = Engine::testing_default(0);
     eng.state.enable_validation(false); // Disable validation for incomplete state
 
     eng.config.id = 2;

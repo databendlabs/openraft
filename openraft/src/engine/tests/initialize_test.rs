@@ -24,7 +24,7 @@ use crate::Vote;
 #[test]
 fn test_initialize_single_node() -> anyhow::Result<()> {
     let eng = || {
-        let mut eng = Engine::<UTConfig>::default();
+        let mut eng = Engine::<UTConfig>::testing_default(0);
         eng.state.enable_validation(false); // Disable validation for incomplete state
 
         eng.state.server_state = eng.calc_server_state();
@@ -36,7 +36,7 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
         index: 0,
     };
 
-    let m1 = || Membership::<u64, ()>::new(vec![btreeset! {1}], None);
+    let m1 = || Membership::<UTConfig>::new(vec![btreeset! {1}], None);
     let entry = Entry::<UTConfig>::new_membership(LogId::default(), m1());
 
     tracing::info!("--- ok: init empty node 1 with membership(1,2)");
@@ -97,7 +97,7 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
 #[test]
 fn test_initialize() -> anyhow::Result<()> {
     let eng = || {
-        let mut eng = Engine::<UTConfig>::default();
+        let mut eng = Engine::<UTConfig>::testing_default(0);
         eng.state.enable_validation(false); // Disable validation for incomplete state
 
         eng.state.server_state = eng.calc_server_state();
@@ -109,7 +109,7 @@ fn test_initialize() -> anyhow::Result<()> {
         index: 0,
     };
 
-    let m12 = || Membership::<u64, ()>::new(vec![btreeset! {1,2}], None);
+    let m12 = || Membership::<UTConfig>::new(vec![btreeset! {1,2}], None);
     let entry = || Entry::<UTConfig>::new_membership(LogId::default(), m12());
 
     tracing::info!("--- ok: init empty node 1 with membership(1,2)");
