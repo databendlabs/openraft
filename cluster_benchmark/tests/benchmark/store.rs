@@ -52,7 +52,7 @@ openraft::declare_raft_types!(
 
 #[derive(Debug)]
 pub struct StoredSnapshot {
-    pub meta: SnapshotMeta<NodeId, ()>,
+    pub meta: SnapshotMeta<TypeConfig>,
     pub data: Vec<u8>,
 }
 
@@ -285,7 +285,7 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
     #[tracing::instrument(level = "trace", skip(self, snapshot))]
     async fn install_snapshot(
         &mut self,
-        meta: &SnapshotMeta<NodeId, ()>,
+        meta: &SnapshotMeta<TypeConfig>,
         snapshot: Box<SnapshotDataOf<TypeConfig>>,
     ) -> Result<(), StorageError<NodeId>> {
         let new_snapshot = StoredSnapshot {

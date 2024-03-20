@@ -79,7 +79,7 @@ pub struct ExampleResponse {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ExampleSnapshot {
-    pub meta: SnapshotMeta<ExampleNodeId, BasicNode>,
+    pub meta: SnapshotMeta<TypeConfig>,
 
     /// The data of the state machine at the time of this snapshot.
     pub data: Vec<u8>,
@@ -641,7 +641,7 @@ impl RaftStateMachine<TypeConfig> for Arc<SledStore> {
     #[tracing::instrument(level = "trace", skip(self, snapshot))]
     async fn install_snapshot(
         &mut self,
-        meta: &SnapshotMeta<ExampleNodeId, BasicNode>,
+        meta: &SnapshotMeta<TypeConfig>,
         snapshot: Box<SnapshotDataOf<TypeConfig>>,
     ) -> Result<(), StorageError<ExampleNodeId>> {
         tracing::info!(

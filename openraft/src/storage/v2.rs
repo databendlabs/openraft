@@ -221,7 +221,7 @@ where C: RaftTypeConfig
     /// snapshot.
     async fn install_snapshot(
         &mut self,
-        meta: &SnapshotMeta<C::NodeId, C::Node>,
+        meta: &SnapshotMeta<C>,
         snapshot: Box<C::SnapshotData>,
     ) -> Result<(), StorageError<C::NodeId>>;
 

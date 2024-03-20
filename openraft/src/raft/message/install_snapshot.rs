@@ -14,7 +14,7 @@ pub struct InstallSnapshotRequest<C: RaftTypeConfig> {
     pub vote: Vote<C::NodeId>,
 
     /// Metadata of a snapshot: snapshot_id, last_log_ed membership etc.
-    pub meta: SnapshotMeta<C::NodeId, C::Node>,
+    pub meta: SnapshotMeta<C>,
 
     /// The byte offset where this chunk of data is positioned in the snapshot file.
     pub offset: u64,

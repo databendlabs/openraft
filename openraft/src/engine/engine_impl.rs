@@ -522,7 +522,7 @@ where C: RaftTypeConfig
     /// - Engine only keeps the snapshot meta with the greatest last-log-id;
     /// - and a snapshot smaller than last-committed is not allowed to be installed.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn finish_building_snapshot(&mut self, meta: SnapshotMeta<C::NodeId, C::Node>) {
+    pub(crate) fn finish_building_snapshot(&mut self, meta: SnapshotMeta<C>) {
         tracing::info!(snapshot_meta = display(&meta), "{}", func_name!());
 
         self.state.io_state_mut().set_building_snapshot(false);

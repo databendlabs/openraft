@@ -49,7 +49,7 @@ where C: RaftTypeConfig
     ///
     /// [`RaftStateMachine`]: crate::storage::RaftStateMachine
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn update_snapshot(&mut self, meta: SnapshotMeta<C::NodeId, C::Node>) -> bool {
+    pub(crate) fn update_snapshot(&mut self, meta: SnapshotMeta<C>) -> bool {
         tracing::info!("update_snapshot: {:?}", meta);
 
         if meta.last_log_id <= self.state.snapshot_last_log_id().copied() {

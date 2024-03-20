@@ -68,7 +68,7 @@ pub struct Response {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct StoredSnapshot {
-    pub meta: SnapshotMeta<NodeId, Node>,
+    pub meta: SnapshotMeta<TypeConfig>,
 
     /// The data of the state machine at the time of this snapshot.
     pub data: Vec<u8>,
@@ -249,7 +249,7 @@ impl RaftStateMachine<TypeConfig> for StateMachineStore {
 
     async fn install_snapshot(
         &mut self,
-        meta: &SnapshotMeta<NodeId, Node>,
+        meta: &SnapshotMeta<TypeConfig>,
         snapshot: Box<SnapshotData>,
     ) -> Result<(), StorageError<NodeId>> {
         let new_snapshot = StoredSnapshot {

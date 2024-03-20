@@ -48,7 +48,7 @@ pub mod typ {
     pub type Raft = openraft::Raft<TypeConfig>;
 
     pub type Vote = openraft::Vote<NodeId>;
-    pub type SnapshotMeta = openraft::SnapshotMeta<NodeId, BasicNode>;
+    pub type SnapshotMeta = openraft::SnapshotMeta<TypeConfig>;
     pub type SnapshotData = <TypeConfig as openraft::RaftTypeConfig>::SnapshotData;
     pub type Snapshot = openraft::Snapshot<TypeConfig>;
 

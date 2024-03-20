@@ -70,7 +70,7 @@ where C: RaftTypeConfig
     pub membership_state: MembershipState<C::NodeId, C::Node>,
 
     /// The metadata of the last snapshot.
-    pub snapshot_meta: SnapshotMeta<C::NodeId, C::Node>,
+    pub snapshot_meta: SnapshotMeta<C>,
 
     // --
     // -- volatile fields: they are not persisted.
