@@ -383,7 +383,7 @@ where C: RaftTypeConfig
         self.is_leading(id) && self.vote.is_committed()
     }
 
-    pub(crate) fn assign_log_ids<'a, Ent: RaftEntry<C::NodeId, C::Node> + 'a>(
+    pub(crate) fn assign_log_ids<'a, Ent: RaftEntry<C> + 'a>(
         &mut self,
         entries: impl IntoIterator<Item = &'a mut Ent>,
     ) {

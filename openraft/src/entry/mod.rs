@@ -94,7 +94,7 @@ where C: RaftTypeConfig
     }
 }
 
-impl<C> RaftPayload<C::NodeId, C::Node> for Entry<C>
+impl<C> RaftPayload<C> for Entry<C>
 where C: RaftTypeConfig
 {
     fn is_blank(&self) -> bool {
@@ -118,7 +118,7 @@ where C: RaftTypeConfig
     }
 }
 
-impl<C> RaftEntry<C::NodeId, C::Node> for Entry<C>
+impl<C> RaftEntry<C> for Entry<C>
 where C: RaftTypeConfig
 {
     fn new_blank(log_id: LogId<C::NodeId>) -> Self {

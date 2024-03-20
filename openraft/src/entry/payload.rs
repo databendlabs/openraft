@@ -59,7 +59,7 @@ impl<C: RaftTypeConfig> MessageSummary<EntryPayload<C>> for EntryPayload<C> {
     }
 }
 
-impl<C: RaftTypeConfig> RaftPayload<C::NodeId, C::Node> for EntryPayload<C> {
+impl<C: RaftTypeConfig> RaftPayload<C> for EntryPayload<C> {
     fn is_blank(&self) -> bool {
         matches!(self, EntryPayload::Blank)
     }
