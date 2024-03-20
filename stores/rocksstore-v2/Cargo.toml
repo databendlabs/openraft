@@ -20,7 +20,7 @@ repository = "https://github.com/datafuselabs/openraft"
 [dependencies]
 openraft = { path= "../../openraft", version = "0.9.0", features=["serde", "storage-v2"] }
 
-rocksdb = "0.20.1"
+rocksdb = "0.22.0"
 rand = "*"
 byteorder = "1.4.3"
 serde = { version = "1.0.114", features = ["derive"] }
