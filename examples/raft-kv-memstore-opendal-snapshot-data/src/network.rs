@@ -41,7 +41,7 @@ impl RaftNetwork<TypeConfig> for Connection {
         &mut self,
         req: AppendEntriesRequest<TypeConfig>,
         _option: RPCOption,
-    ) -> Result<AppendEntriesResponse<NodeId>, typ::RPCError> {
+    ) -> Result<AppendEntriesResponse<TypeConfig>, typ::RPCError> {
         let resp = self
             .router
             .send(self.target, "/raft/append", req)
@@ -57,7 +57,7 @@ impl RaftNetwork<TypeConfig> for Connection {
         snapshot: Snapshot<TypeConfig>,
         _cancel: impl Future<Output = ReplicationClosed> + OptionalSend,
         _option: RPCOption,
-    ) -> Result<SnapshotResponse<NodeId>, typ::StreamingError<typ::Fatal>> {
+    ) -> Result<SnapshotResponse<TypeConfig>, typ::StreamingError<typ::Fatal>> {
         let resp = self
             .router
             .send::<_, _, typ::Infallible>(self.target, "/raft/snapshot", (vote, snapshot.meta, snapshot.snapshot))
@@ -68,9 +68,9 @@ impl RaftNetwork<TypeConfig> for Connection {
 
     async fn vote(
         &mut self,
-        req: VoteRequest<NodeId>,
+        req: VoteRequest<TypeConfig>,
         _option: RPCOption,
-    ) -> Result<VoteResponse<NodeId>, typ::RPCError> {
+    ) -> Result<VoteResponse<TypeConfig>, typ::RPCError> {
         let resp = self
             .router
             .send(self.target, "/raft/vote", req)

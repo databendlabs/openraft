@@ -26,6 +26,7 @@ use openraft::Raft;
 use crate::store::LogStore;
 use crate::store::NodeId;
 use crate::store::StateMachineStore;
+use crate::store::TypeConfig;
 use crate::store::TypeConfig as MemConfig;
 
 pub type BenchRaft = Raft<MemConfig>;
@@ -100,7 +101,7 @@ impl RaftNetwork<MemConfig> for Network {
         &mut self,
         rpc: AppendEntriesRequest<MemConfig>,
         _option: RPCOption,
-    ) -> Result<AppendEntriesResponse<NodeId>, RPCError<NodeId, (), RaftError<NodeId>>> {
+    ) -> Result<AppendEntriesResponse<TypeConfig>, RPCError<MemConfig, RaftError<MemConfig>>> {
         let resp = self.target_raft.append_entries(rpc).await.map_err(|e| RemoteError::new(self.target, e))?;
         Ok(resp)
     }
@@ -109,16 +110,17 @@ impl RaftNetwork<MemConfig> for Network {
         &mut self,
         rpc: InstallSnapshotRequest<MemConfig>,
         _option: RPCOption,
-    ) -> Result<InstallSnapshotResponse<NodeId>, RPCError<NodeId, (), RaftError<NodeId, InstallSnapshotError>>> {
+    ) -> Result<InstallSnapshotResponse<TypeConfig>, RPCError<MemConfig, RaftError<MemConfig, InstallSnapshotError>>>
+    {
         let resp = self.target_raft.install_snapshot(rpc).await.map_err(|e| RemoteError::new(self.target, e))?;
         Ok(resp)
     }
 
     async fn vote(
         &mut self,
-        rpc: VoteRequest<NodeId>,
+        rpc: VoteRequest<TypeConfig>,
         _option: RPCOption,
-    ) -> Result<VoteResponse<NodeId>, RPCError<NodeId, (), RaftError<NodeId>>> {
+    ) -> Result<VoteResponse<TypeConfig>, RPCError<MemConfig, RaftError<MemConfig>>> {
         let resp = self.target_raft.vote(rpc).await.map_err(|e| RemoteError::new(self.target, e))?;
         Ok(resp)
     }

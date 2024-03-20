@@ -8,16 +8,16 @@ use crate::Membership;
 use crate::SnapshotMeta;
 use crate::StoredMembership;
 
-fn m12() -> Membership<u64, ()> {
-    Membership::<u64, ()>::new(vec![btreeset! {1,2}], None)
+fn m12() -> Membership<UTConfig> {
+    Membership::<UTConfig>::new(vec![btreeset! {1,2}], None)
 }
 
-fn m1234() -> Membership<u64, ()> {
-    Membership::<u64, ()>::new(vec![btreeset! {1,2,3,4}], None)
+fn m1234() -> Membership<UTConfig> {
+    Membership::<UTConfig>::new(vec![btreeset! {1,2,3,4}], None)
 }
 
 fn eng() -> Engine<UTConfig> {
-    let mut eng = Engine::default();
+    let mut eng = Engine::testing_default(0);
     eng.state.enable_validation(false); // Disable validation for incomplete state
 
     eng.state.snapshot_meta = SnapshotMeta {

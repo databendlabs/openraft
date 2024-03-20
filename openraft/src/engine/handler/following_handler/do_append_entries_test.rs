@@ -16,24 +16,24 @@ use crate::EntryPayload;
 use crate::Membership;
 use crate::MembershipState;
 
-fn m01() -> Membership<u64, ()> {
+fn m01() -> Membership<UTConfig> {
     Membership::new(vec![btreeset! {0,1}], None)
 }
 
-fn m23() -> Membership<u64, ()> {
+fn m23() -> Membership<UTConfig> {
     Membership::new(vec![btreeset! {2,3}], None)
 }
 
-fn m34() -> Membership<u64, ()> {
+fn m34() -> Membership<UTConfig> {
     Membership::new(vec![btreeset! {3,4}], None)
 }
 
-fn m45() -> Membership<u64, ()> {
+fn m45() -> Membership<UTConfig> {
     Membership::new(vec![btreeset! {4,5}], None)
 }
 
 fn eng() -> Engine<UTConfig> {
-    let mut eng = Engine::default();
+    let mut eng = Engine::testing_default(0);
     eng.state.enable_validation(false); // Disable validation for incomplete state
 
     eng.config.id = 2;

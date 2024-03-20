@@ -4,8 +4,7 @@ use crate::display_ext::DisplayOption;
 use crate::LogId;
 use crate::Membership;
 use crate::MessageSummary;
-use crate::Node;
-use crate::NodeId;
+use crate::RaftTypeConfig;
 
 /// This struct represents information about a membership config that has already been stored in the
 /// raft logs.
@@ -19,48 +18,42 @@ use crate::NodeId;
 #[derive(Clone, Debug, Default)]
 #[derive(PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub struct StoredMembership<NID, N>
-where
-    N: Node,
-    NID: NodeId,
+pub struct StoredMembership<C>
+where C: RaftTypeConfig
 {
     /// The id of the log that stores this membership config
-    log_id: Option<LogId<NID>>,
+    log_id: Option<LogId<C::NodeId>>,
 
     /// Membership config
-    membership: Membership<NID, N>,
+    membership: Membership<C>,
 }
 
-impl<NID, N> StoredMembership<NID, N>
-where
-    N: Node,
-    NID: NodeId,
+impl<C> StoredMembership<C>
+where C: RaftTypeConfig
 {
-    pub fn new(log_id: Option<LogId<NID>>, membership: Membership<NID, N>) -> Self {
+    pub fn new(log_id: Option<LogId<C::NodeId>>, membership: Membership<C>) -> Self {
         Self { log_id, membership }
     }
 
-    pub fn log_id(&self) -> &Option<LogId<NID>> {
+    pub fn log_id(&self) -> &Option<LogId<C::NodeId>> {
         &self.log_id
     }
 
-    pub fn membership(&self) -> &Membership<NID, N> {
+    pub fn membership(&self) -> &Membership<C> {
         &self.membership
     }
 
-    pub fn voter_ids(&self) -> impl Iterator<Item = NID> {
+    pub fn voter_ids(&self) -> impl Iterator<Item = C::NodeId> {
         self.membership.voter_ids()
     }
 
-    pub fn nodes(&self) -> impl Iterator<Item = (&NID, &N)> {
+    pub fn nodes(&self) -> impl Iterator<Item = (&C::NodeId, &C::Node)> {
         self.membership.nodes()
     }
 }
 
-impl<NID, N> fmt::Display for StoredMembership<NID, N>
-where
-    N: Node,
-    NID: NodeId,
+impl<C> fmt::Display for StoredMembership<C>
+where C: RaftTypeConfig
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -72,10 +65,8 @@ where
     }
 }
 
-impl<NID, N> MessageSummary<StoredMembership<NID, N>> for StoredMembership<NID, N>
-where
-    N: Node,
-    NID: NodeId,
+impl<C> MessageSummary<StoredMembership<C>> for StoredMembership<C>
+where C: RaftTypeConfig
 {
     fn summary(&self) -> String {
         self.to_string()

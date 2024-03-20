@@ -150,8 +150,8 @@ where C: RaftTypeConfig
     pub(crate) fn new_snapshot_callback(
         request_id: RequestId,
         start_time: InstantOf<C>,
-        snapshot_meta: SnapshotMeta<C::NodeId, C::Node>,
-        result: Result<SnapshotResponse<C::NodeId>, StreamingError<C, Fatal<C::NodeId>>>,
+        snapshot_meta: SnapshotMeta<C>,
+        result: Result<SnapshotResponse<C>, StreamingError<C, Fatal<C>>>,
     ) -> Self {
         Self::SnapshotCallback(DataWithId::new(
             request_id,

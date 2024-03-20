@@ -28,7 +28,7 @@ use crate::Vote;
 pub(crate) struct VoteHandler<'st, C>
 where C: RaftTypeConfig
 {
-    pub(crate) config: &'st EngineConfig<C::NodeId>,
+    pub(crate) config: &'st EngineConfig<C>,
     pub(crate) state: &'st mut RaftState<C>,
     pub(crate) output: &'st mut EngineOutput<C>,
     pub(crate) internal_server_state: &'st mut InternalServerState<C>,
@@ -56,7 +56,7 @@ where C: RaftTypeConfig
         T: Debug + Eq + OptionalSend,
         E: Debug + Eq + OptionalSend,
         Respond<C>: From<ValueSender<C, Result<T, E>>>,
-        F: Fn(&RaftState<C>, RejectVoteRequest<C::NodeId>) -> Result<T, E>,
+        F: Fn(&RaftState<C>, RejectVoteRequest<C>) -> Result<T, E>,
     {
         let vote_res = self.update_vote(vote);
 
@@ -83,7 +83,7 @@ where C: RaftTypeConfig
     /// Note: This method does not check last-log-id. handle-vote-request has to deal with
     /// last-log-id itself.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn update_vote(&mut self, vote: &Vote<C::NodeId>) -> Result<(), RejectVoteRequest<C::NodeId>> {
+    pub(crate) fn update_vote(&mut self, vote: &Vote<C::NodeId>) -> Result<(), RejectVoteRequest<C>> {
         // Partial ord compare:
         // Vote does not has to be total ord.
         // `!(a >= b)` does not imply `a < b`.

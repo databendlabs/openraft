@@ -3,31 +3,37 @@ use std::fmt;
 use crate::display_ext::DisplayOptionExt;
 use crate::LogId;
 use crate::MessageSummary;
-use crate::NodeId;
+use crate::RaftTypeConfig;
 use crate::Vote;
 
 /// An RPC sent by candidates to gather votes (§5.2).
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub struct VoteRequest<NID: NodeId> {
-    pub vote: Vote<NID>,
-    pub last_log_id: Option<LogId<NID>>,
+pub struct VoteRequest<C: RaftTypeConfig> {
+    pub vote: Vote<C::NodeId>,
+    pub last_log_id: Option<LogId<C::NodeId>>,
 }
 
-impl<NID: NodeId> fmt::Display for VoteRequest<NID> {
+impl<C> fmt::Display for VoteRequest<C>
+where C: RaftTypeConfig
+{
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{{vote:{}, last_log:{}}}", self.vote, self.last_log_id.display(),)
     }
 }
 
-impl<NID: NodeId> MessageSummary<VoteRequest<NID>> for VoteRequest<NID> {
+impl<C> MessageSummary<VoteRequest<C>> for VoteRequest<C>
+where C: RaftTypeConfig
+{
     fn summary(&self) -> String {
         self.to_string()
     }
 }
 
-impl<NID: NodeId> VoteRequest<NID> {
-    pub fn new(vote: Vote<NID>, last_log_id: Option<LogId<NID>>) -> Self {
+impl<C> VoteRequest<C>
+where C: RaftTypeConfig
+{
+    pub fn new(vote: Vote<C::NodeId>, last_log_id: Option<LogId<C::NodeId>>) -> Self {
         Self { vote, last_log_id }
     }
 }
@@ -35,19 +41,21 @@ impl<NID: NodeId> VoteRequest<NID> {
 /// The response to a `VoteRequest`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub struct VoteResponse<NID: NodeId> {
+pub struct VoteResponse<C: RaftTypeConfig> {
     /// vote after a node handling vote-request.
     /// Thus `resp.vote >= req.vote` always holds.
-    pub vote: Vote<NID>,
+    pub vote: Vote<C::NodeId>,
 
     /// Will be true if the candidate received a vote from the responder.
     pub vote_granted: bool,
 
     /// The last log id stored on the remote voter.
-    pub last_log_id: Option<LogId<NID>>,
+    pub last_log_id: Option<LogId<C::NodeId>>,
 }
 
-impl<NID: NodeId> MessageSummary<VoteResponse<NID>> for VoteResponse<NID> {
+impl<C> MessageSummary<VoteResponse<C>> for VoteResponse<C>
+where C: RaftTypeConfig
+{
     fn summary(&self) -> String {
         format!(
             "{{granted:{}, {}, last_log:{:?}}}",

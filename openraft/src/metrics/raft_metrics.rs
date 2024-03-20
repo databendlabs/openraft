@@ -16,7 +16,7 @@ use crate::Vote;
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct RaftMetrics<C: RaftTypeConfig> {
-    pub running_state: Result<(), Fatal<C::NodeId>>,
+    pub running_state: Result<(), Fatal<C>>,
 
     /// The ID of the Raft node.
     pub id: C::NodeId,
@@ -71,7 +71,7 @@ pub struct RaftMetrics<C: RaftTypeConfig> {
     pub millis_since_quorum_ack: Option<u64>,
 
     /// The current membership config of the cluster.
-    pub membership_config: Arc<StoredMembership<C::NodeId, C::Node>>,
+    pub membership_config: Arc<StoredMembership<C>>,
 
     // ---
     // --- replication ---
@@ -217,7 +217,7 @@ pub struct RaftServerMetrics<C: RaftTypeConfig> {
     pub state: ServerState,
     pub current_leader: Option<C::NodeId>,
 
-    pub membership_config: Arc<StoredMembership<C::NodeId, C::Node>>,
+    pub membership_config: Arc<StoredMembership<C>>,
 }
 
 impl<C> fmt::Display for RaftServerMetrics<C>

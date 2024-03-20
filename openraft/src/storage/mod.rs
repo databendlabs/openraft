@@ -19,13 +19,11 @@ pub use v2::RaftLogStorageExt;
 pub use v2::RaftStateMachine;
 
 use crate::display_ext::DisplayOption;
-use crate::node::Node;
 use crate::raft_types::SnapshotId;
 pub use crate::storage::callback::LogApplied;
 pub use crate::storage::callback::LogFlushed;
 use crate::LogId;
 use crate::MessageSummary;
-use crate::NodeId;
 use crate::OptionalSend;
 use crate::OptionalSync;
 use crate::RaftTypeConfig;
@@ -34,16 +32,14 @@ use crate::StoredMembership;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub struct SnapshotMeta<NID, N>
-where
-    NID: NodeId,
-    N: Node,
+pub struct SnapshotMeta<C>
+where C: RaftTypeConfig
 {
     /// Log entries upto which this snapshot includes, inclusive.
-    pub last_log_id: Option<LogId<NID>>,
+    pub last_log_id: Option<LogId<C::NodeId>>,
 
     /// The last applied membership config.
-    pub last_membership: StoredMembership<NID, N>,
+    pub last_membership: StoredMembership<C>,
 
     /// To identify a snapshot when transferring.
     /// Caveat: even when two snapshot is built with the same `last_log_id`, they still could be
@@ -51,10 +47,8 @@ where
     pub snapshot_id: SnapshotId,
 }
 
-impl<NID, N> fmt::Display for SnapshotMeta<NID, N>
-where
-    NID: NodeId,
-    N: Node,
+impl<C> fmt::Display for SnapshotMeta<C>
+where C: RaftTypeConfig
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -67,22 +61,18 @@ where
     }
 }
 
-impl<NID, N> MessageSummary<SnapshotMeta<NID, N>> for SnapshotMeta<NID, N>
-where
-    NID: NodeId,
-    N: Node,
+impl<C> MessageSummary<SnapshotMeta<C>> for SnapshotMeta<C>
+where C: RaftTypeConfig
 {
     fn summary(&self) -> String {
         self.to_string()
     }
 }
 
-impl<NID, N> SnapshotMeta<NID, N>
-where
-    NID: NodeId,
-    N: Node,
+impl<C> SnapshotMeta<C>
+where C: RaftTypeConfig
 {
-    pub fn signature(&self) -> SnapshotSignature<NID> {
+    pub fn signature(&self) -> SnapshotSignature<C::NodeId> {
         SnapshotSignature {
             last_log_id: self.last_log_id,
             last_membership_log_id: *self.last_membership.log_id(),
@@ -90,8 +80,8 @@ where
         }
     }
 
-    /// Returns a ref to the id of the last log that is included in this snasphot.
-    pub fn last_log_id(&self) -> Option<&LogId<NID>> {
+    /// Returns a ref to the id of the last log that is included in this snapshot.
+    pub fn last_log_id(&self) -> Option<&LogId<C::NodeId>> {
         self.last_log_id.as_ref()
     }
 }
@@ -102,7 +92,7 @@ pub struct Snapshot<C>
 where C: RaftTypeConfig
 {
     /// metadata of a snapshot
-    pub meta: SnapshotMeta<C::NodeId, C::Node>,
+    pub meta: SnapshotMeta<C>,
 
     /// A read handle to the associated snapshot.
     pub snapshot: Box<C::SnapshotData>,
@@ -112,7 +102,7 @@ impl<C> Snapshot<C>
 where C: RaftTypeConfig
 {
     #[allow(dead_code)]
-    pub(crate) fn new(meta: SnapshotMeta<C::NodeId, C::Node>, snapshot: Box<C::SnapshotData>) -> Self {
+    pub(crate) fn new(meta: SnapshotMeta<C>, snapshot: Box<C::SnapshotData>) -> Self {
         Self { meta, snapshot }
     }
 }

@@ -3,24 +3,19 @@ use crate::error::InProgress;
 use crate::ChangeMembers;
 use crate::Membership;
 use crate::MembershipState;
-use crate::Node;
-use crate::NodeId;
+use crate::RaftTypeConfig;
 
 /// This struct handles change-membership requests, validating them and applying the changes if
 /// the necessary conditions are met. It operates at the `Engine` and `RaftState` level, and
 /// serves as the outermost API for a consensus engine.
-pub(crate) struct ChangeHandler<'m, NID, N>
-where
-    NID: NodeId,
-    N: Node,
+pub(crate) struct ChangeHandler<'m, C>
+where C: RaftTypeConfig
 {
-    pub(crate) state: &'m MembershipState<NID, N>,
+    pub(crate) state: &'m MembershipState<C>,
 }
 
-impl<'m, NID, N> ChangeHandler<'m, NID, N>
-where
-    NID: NodeId,
-    N: Node,
+impl<'m, C> ChangeHandler<'m, C>
+where C: RaftTypeConfig
 {
     /// Builds a new membership configuration by applying changes to the current configuration.
     ///
@@ -35,9 +30,9 @@ where
     /// configuration.
     pub(crate) fn apply(
         &self,
-        change: ChangeMembers<NID, N>,
+        change: ChangeMembers<C::NodeId, C::Node>,
         retain: bool,
-    ) -> Result<Membership<NID, N>, ChangeMembershipError<NID>> {
+    ) -> Result<Membership<C>, ChangeMembershipError<C>> {
         self.ensure_committed()?;
 
         let new_membership = self.state.effective().membership().clone().change(change, retain)?;
@@ -48,7 +43,7 @@ where
     ///
     /// Returns Ok if the last membership is committed, or an InProgress error
     /// otherwise, to indicate a change-membership request should be rejected.
-    pub(crate) fn ensure_committed(&self) -> Result<(), InProgress<NID>> {
+    pub(crate) fn ensure_committed(&self) -> Result<(), InProgress<C>> {
         let effective = self.state.effective();
         let committed = self.state.committed();
 

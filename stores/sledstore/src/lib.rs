@@ -79,7 +79,7 @@ pub struct ExampleResponse {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ExampleSnapshot {
-    pub meta: SnapshotMeta<ExampleNodeId, BasicNode>,
+    pub meta: SnapshotMeta<TypeConfig>,
 
     /// The data of the state machine at the time of this snapshot.
     pub data: Vec<u8>,
@@ -95,7 +95,7 @@ pub struct ExampleSnapshot {
 pub struct SerializableExampleStateMachine {
     pub last_applied_log: Option<LogId<ExampleNodeId>>,
 
-    pub last_membership: StoredMembership<ExampleNodeId, BasicNode>,
+    pub last_membership: StoredMembership<TypeConfig>,
 
     /// Application data.
     pub data: BTreeMap<String, String>,
@@ -164,7 +164,7 @@ fn conflictable_txn_err<E: Error + 'static>(e: E) -> sled::transaction::Conflict
 }
 
 impl ExampleStateMachine {
-    fn get_last_membership(&self) -> StorageResult<StoredMembership<ExampleNodeId, BasicNode>> {
+    fn get_last_membership(&self) -> StorageResult<StoredMembership<TypeConfig>> {
         let state_machine = state_machine(&self.db);
         let ivec = state_machine.get(b"last_membership").map_err(read_sm_err)?;
 
@@ -176,7 +176,7 @@ impl ExampleStateMachine {
 
         Ok(m)
     }
-    async fn set_last_membership(&self, membership: StoredMembership<ExampleNodeId, BasicNode>) -> StorageResult<()> {
+    async fn set_last_membership(&self, membership: StoredMembership<TypeConfig>) -> StorageResult<()> {
         let value = serde_json::to_vec(&membership).map_err(write_sm_err)?;
         let state_machine = state_machine(&self.db);
         state_machine.insert(b"last_membership", value).map_err(write_err)?;
@@ -187,7 +187,7 @@ impl ExampleStateMachine {
     fn set_last_membership_tx(
         &self,
         tx_state_machine: &sled::transaction::TransactionalTree,
-        membership: StoredMembership<ExampleNodeId, BasicNode>,
+        membership: StoredMembership<TypeConfig>,
     ) -> Result<(), sled::transaction::ConflictableTransactionError<AnyError>> {
         let value = serde_json::to_vec(&membership).map_err(conflictable_txn_err)?;
         tx_state_machine.insert(b"last_membership", value).map_err(conflictable_txn_err)?;
@@ -573,8 +573,7 @@ impl RaftStateMachine<TypeConfig> for Arc<SledStore> {
 
     async fn applied_state(
         &mut self,
-    ) -> Result<(Option<LogId<ExampleNodeId>>, StoredMembership<ExampleNodeId, BasicNode>), StorageError<ExampleNodeId>>
-    {
+    ) -> Result<(Option<LogId<ExampleNodeId>>, StoredMembership<TypeConfig>), StorageError<ExampleNodeId>> {
         let state_machine = self.state_machine.read().await;
         Ok((
             state_machine.get_last_applied_log()?,
@@ -641,7 +640,7 @@ impl RaftStateMachine<TypeConfig> for Arc<SledStore> {
     #[tracing::instrument(level = "trace", skip(self, snapshot))]
     async fn install_snapshot(
         &mut self,
-        meta: &SnapshotMeta<ExampleNodeId, BasicNode>,
+        meta: &SnapshotMeta<TypeConfig>,
         snapshot: Box<SnapshotDataOf<TypeConfig>>,
     ) -> Result<(), StorageError<ExampleNodeId>> {
         tracing::info!(

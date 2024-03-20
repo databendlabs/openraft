@@ -360,7 +360,7 @@ where
     async fn send_log_entries(
         &mut self,
         log_ids: DataWithId<LogIdRange<C::NodeId>>,
-    ) -> Result<Option<Data<C>>, ReplicationError<C::NodeId, C::Node>> {
+    ) -> Result<Option<Data<C>>, ReplicationError<C>> {
         let request_id = log_ids.request_id();
 
         tracing::debug!(
@@ -491,11 +491,7 @@ where
 
     /// Send the error result to RaftCore.
     /// RaftCore will then submit another replication command.
-    fn send_progress_error(
-        &mut self,
-        request_id: RequestId,
-        err: RPCError<C::NodeId, C::Node, RaftError<C::NodeId, Infallible>>,
-    ) {
+    fn send_progress_error(&mut self, request_id: RequestId, err: RPCError<C, RaftError<C, Infallible>>) {
         let _ = self.tx_raft_core.send(Notify::Network {
             response: Response::Progress {
                 target: self.target,
@@ -722,7 +718,7 @@ where
     async fn stream_snapshot(
         &mut self,
         snapshot_rx: DataWithId<ResultReceiver<C, Option<Snapshot<C>>>>,
-    ) -> Result<Option<Data<C>>, ReplicationError<C::NodeId, C::Node>> {
+    ) -> Result<Option<Data<C>>, ReplicationError<C>> {
         let request_id = snapshot_rx.request_id();
         let rx = snapshot_rx.into_data();
 
@@ -813,7 +809,7 @@ where
     fn handle_snapshot_callback(
         &mut self,
         callback: DataWithId<SnapshotCallback<C>>,
-    ) -> Result<Option<Data<C>>, ReplicationError<C::NodeId, C::Node>> {
+    ) -> Result<Option<Data<C>>, ReplicationError<C>> {
         tracing::debug!(
             request_id = debug(callback.request_id()),
             response = display(callback.data()),

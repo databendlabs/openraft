@@ -6,7 +6,7 @@ use crate::engine::Command;
 use crate::engine::Engine;
 
 fn eng() -> Engine<UTConfig> {
-    let mut eng = Engine::default();
+    let mut eng = Engine::testing_default(0);
     eng.state.enable_validation(false); // Disable validation for incomplete state
 
     eng

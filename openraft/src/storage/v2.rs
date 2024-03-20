@@ -154,7 +154,7 @@ where C: RaftTypeConfig
     /// last-applied-log-id.
     async fn applied_state(
         &mut self,
-    ) -> Result<(Option<LogId<C::NodeId>>, StoredMembership<C::NodeId, C::Node>), StorageError<C::NodeId>>;
+    ) -> Result<(Option<LogId<C::NodeId>>, StoredMembership<C>), StorageError<C::NodeId>>;
 
     /// Apply the given payload of entries to the state machine.
     ///
@@ -221,7 +221,7 @@ where C: RaftTypeConfig
     /// snapshot.
     async fn install_snapshot(
         &mut self,
-        meta: &SnapshotMeta<C::NodeId, C::Node>,
+        meta: &SnapshotMeta<C>,
         snapshot: Box<C::SnapshotData>,
     ) -> Result<(), StorageError<C::NodeId>>;
 

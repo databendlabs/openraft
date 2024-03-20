@@ -89,7 +89,7 @@ openraft::declare_raft_types!(
 /// The application snapshot type which the `MemStore` works with.
 #[derive(Debug)]
 pub struct MemStoreSnapshot {
-    pub meta: SnapshotMeta<MemNodeId, ()>,
+    pub meta: SnapshotMeta<TypeConfig>,
 
     /// The data of the state machine at the time of this snapshot.
     pub data: Vec<u8>,
@@ -100,7 +100,7 @@ pub struct MemStoreSnapshot {
 pub struct MemStoreStateMachine {
     pub last_applied_log: Option<LogId<MemNodeId>>,
 
-    pub last_membership: StoredMembership<MemNodeId, ()>,
+    pub last_membership: StoredMembership<TypeConfig>,
 
     /// A mapping of client IDs to their state info.
     pub client_serial_responses: HashMap<String, (u64, Option<String>)>,
@@ -430,7 +430,7 @@ impl RaftStateMachine<TypeConfig> for Arc<MemStateMachine> {
 
     async fn applied_state(
         &mut self,
-    ) -> Result<(Option<LogId<MemNodeId>>, StoredMembership<MemNodeId, ()>), StorageError<MemNodeId>> {
+    ) -> Result<(Option<LogId<MemNodeId>>, StoredMembership<TypeConfig>), StorageError<MemNodeId>> {
         let sm = self.sm.read().await;
         Ok((sm.last_applied_log, sm.last_membership.clone()))
     }
@@ -484,7 +484,7 @@ impl RaftStateMachine<TypeConfig> for Arc<MemStateMachine> {
     #[tracing::instrument(level = "trace", skip(self, snapshot))]
     async fn install_snapshot(
         &mut self,
-        meta: &SnapshotMeta<MemNodeId, ()>,
+        meta: &SnapshotMeta<TypeConfig>,
         snapshot: Box<SnapshotDataOf<TypeConfig>>,
     ) -> Result<(), StorageError<MemNodeId>> {
         tracing::info!(

@@ -42,7 +42,7 @@ where C: RaftTypeConfig
     // TODO(xp): it does not need to be a async mutex.
     #[allow(clippy::type_complexity)]
     pub(in crate::raft) tx_shutdown: Mutex<Option<OneshotSenderOf<C, ()>>>,
-    pub(in crate::raft) core_state: Mutex<CoreState<C::NodeId, C::AsyncRuntime>>,
+    pub(in crate::raft) core_state: Mutex<CoreState<C>>,
 
     /// The ongoing snapshot transmission.
     pub(in crate::raft) snapshot: Mutex<Option<crate::network::snapshot_transport::Streaming<C>>>,
@@ -57,7 +57,7 @@ where C: RaftTypeConfig
         &self,
         mes: RaftMsg<C>,
         rx: OneshotReceiverOf<C, Result<T, E>>,
-    ) -> Result<T, RaftError<C::NodeId, E>>
+    ) -> Result<T, RaftError<C, E>>
     where
         E: Debug + OptionalSend,
         T: OptionalSend,
@@ -95,7 +95,7 @@ where C: RaftTypeConfig
         &self,
         cmd: ExternalCommand<C>,
         cmd_desc: impl fmt::Display + Default,
-    ) -> Result<(), Fatal<C::NodeId>> {
+    ) -> Result<(), Fatal<C>> {
         let send_res = self.tx_api.send(RaftMsg::ExternalCommand { cmd });
 
         if send_res.is_err() {
@@ -110,7 +110,7 @@ where C: RaftTypeConfig
         &self,
         when: impl fmt::Display,
         message_summary: Option<impl fmt::Display + Default>,
-    ) -> Fatal<C::NodeId> {
+    ) -> Fatal<C> {
         // Wait for the core task to finish.
         self.join_core_task().await;
 

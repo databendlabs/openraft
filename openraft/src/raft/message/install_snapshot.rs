@@ -1,7 +1,6 @@
 use std::fmt;
 
 use crate::MessageSummary;
-use crate::NodeId;
 use crate::RaftTypeConfig;
 use crate::SnapshotMeta;
 use crate::Vote;
@@ -14,7 +13,7 @@ pub struct InstallSnapshotRequest<C: RaftTypeConfig> {
     pub vote: Vote<C::NodeId>,
 
     /// Metadata of a snapshot: snapshot_id, last_log_ed membership etc.
-    pub meta: SnapshotMeta<C::NodeId, C::Node>,
+    pub meta: SnapshotMeta<C>,
 
     /// The byte offset where this chunk of data is positioned in the snapshot file.
     pub offset: u64,
@@ -51,8 +50,8 @@ impl<C: RaftTypeConfig> MessageSummary<InstallSnapshotRequest<C>> for InstallSna
 #[derive(derive_more::Display)]
 #[display(fmt = "{{vote:{}}}", vote)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub struct InstallSnapshotResponse<NID: NodeId> {
-    pub vote: Vote<NID>,
+pub struct InstallSnapshotResponse<C: RaftTypeConfig> {
+    pub vote: Vote<C::NodeId>,
 }
 
 /// The response to `Raft::install_full_snapshot` API.
@@ -61,18 +60,20 @@ pub struct InstallSnapshotResponse<NID: NodeId> {
 #[derive(derive_more::Display)]
 #[display(fmt = "SnapshotResponse{{vote:{}}}", vote)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub struct SnapshotResponse<NID: NodeId> {
-    pub vote: Vote<NID>,
+pub struct SnapshotResponse<C: RaftTypeConfig> {
+    pub vote: Vote<C::NodeId>,
 }
 
-impl<NID: NodeId> SnapshotResponse<NID> {
-    pub fn new(vote: Vote<NID>) -> Self {
+impl<C: RaftTypeConfig> SnapshotResponse<C> {
+    pub fn new(vote: Vote<C::NodeId>) -> Self {
         Self { vote }
     }
 }
 
-impl<NID: NodeId> From<SnapshotResponse<NID>> for InstallSnapshotResponse<NID> {
-    fn from(snap_resp: SnapshotResponse<NID>) -> Self {
+impl<C> From<SnapshotResponse<C>> for InstallSnapshotResponse<C>
+where C: RaftTypeConfig
+{
+    fn from(snap_resp: SnapshotResponse<C>) -> Self {
         Self { vote: snap_resp.vote }
     }
 }
