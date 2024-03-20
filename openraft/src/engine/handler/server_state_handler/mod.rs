@@ -1,7 +1,6 @@
 use crate::engine::Command;
 use crate::engine::EngineConfig;
 use crate::engine::EngineOutput;
-use crate::type_config::alias::InstantOf;
 use crate::RaftState;
 use crate::RaftTypeConfig;
 use crate::ServerState;
@@ -13,7 +12,7 @@ pub(crate) struct ServerStateHandler<'st, C>
 where C: RaftTypeConfig
 {
     pub(crate) config: &'st EngineConfig<C::NodeId>,
-    pub(crate) state: &'st mut RaftState<C::NodeId, C::Node, InstantOf<C>>,
+    pub(crate) state: &'st mut RaftState<C>,
     pub(crate) output: &'st mut EngineOutput<C>,
 }
 

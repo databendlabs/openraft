@@ -57,7 +57,6 @@ use openraft::RaftMetrics;
 use openraft::RaftState;
 use openraft::RaftTypeConfig;
 use openraft::ServerState;
-use openraft::TokioInstant;
 use openraft::Vote;
 use openraft_memstore::ClientRequest;
 use openraft_memstore::ClientResponse;
@@ -764,7 +763,7 @@ impl TypedRaftRouter {
     /// Send external request to the particular node.
     pub async fn with_raft_state<V, F>(&self, target: MemNodeId, func: F) -> Result<V, Fatal<MemNodeId>>
     where
-        F: FnOnce(&RaftState<MemNodeId, (), TokioInstant>) -> V + Send + 'static,
+        F: FnOnce(&RaftState<MemConfig>) -> V + Send + 'static,
         V: Send + 'static,
     {
         let r = self.get_raft_handle(&target).unwrap();
@@ -772,11 +771,7 @@ impl TypedRaftRouter {
     }
 
     /// Send external request to the particular node.
-    pub fn external_request<F: FnOnce(&RaftState<MemNodeId, (), TokioInstant>) + Send + 'static>(
-        &self,
-        target: MemNodeId,
-        req: F,
-    ) {
+    pub fn external_request<F: FnOnce(&RaftState<MemConfig>) + Send + 'static>(&self, target: MemNodeId, req: F) {
         let r = self.get_raft_handle(&target).unwrap();
         r.external_request(req)
     }
