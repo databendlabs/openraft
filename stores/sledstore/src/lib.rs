@@ -423,6 +423,10 @@ impl RaftLogReader<TypeConfig> for Arc<SledStore> {
             .collect();
         logs
     }
+
+    async fn read_vote(&mut self) -> Result<Option<Vote<ExampleNodeId>>, StorageError<ExampleNodeId>> {
+        self.get_vote_()
+    }
 }
 
 impl RaftSnapshotBuilder<TypeConfig> for Arc<SledStore> {
@@ -501,10 +505,6 @@ impl RaftLogStorage<TypeConfig> for Arc<SledStore> {
     #[tracing::instrument(level = "trace", skip(self))]
     async fn save_vote(&mut self, vote: &Vote<ExampleNodeId>) -> Result<(), StorageError<ExampleNodeId>> {
         self.set_vote_(vote).await
-    }
-
-    async fn read_vote(&mut self) -> Result<Option<Vote<ExampleNodeId>>, StorageError<ExampleNodeId>> {
-        self.get_vote_()
     }
 
     async fn get_log_reader(&mut self) -> Self::LogReader {

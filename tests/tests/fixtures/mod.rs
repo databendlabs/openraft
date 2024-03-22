@@ -51,6 +51,7 @@ use openraft::MessageSummary;
 use openraft::RPCTypes;
 use openraft::Raft;
 use openraft::RaftLogId;
+use openraft::RaftLogReader;
 use openraft::RaftMetrics;
 use openraft::RaftState;
 use openraft::RaftTypeConfig;

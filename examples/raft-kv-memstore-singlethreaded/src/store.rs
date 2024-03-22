@@ -127,6 +127,10 @@ impl RaftLogReader<TypeConfig> for Rc<LogStore> {
         let response = log.range(range.clone()).map(|(_, val)| val.clone()).collect::<Vec<_>>();
         Ok(response)
     }
+
+    async fn read_vote(&mut self) -> Result<Option<Vote<NodeId>>, StorageError<NodeId>> {
+        Ok(*self.vote.borrow())
+    }
 }
 
 impl RaftSnapshotBuilder<TypeConfig> for Rc<StateMachineStore> {
@@ -311,10 +315,6 @@ impl RaftLogStorage<TypeConfig> for Rc<LogStore> {
         let mut v = self.vote.borrow_mut();
         *v = Some(*vote);
         Ok(())
-    }
-
-    async fn read_vote(&mut self) -> Result<Option<Vote<NodeId>>, StorageError<NodeId>> {
-        Ok(*self.vote.borrow())
     }
 
     #[tracing::instrument(level = "trace", skip(self, entries, callback))]

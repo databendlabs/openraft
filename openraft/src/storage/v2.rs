@@ -66,9 +66,6 @@ where C: RaftTypeConfig
     /// The vote must be persisted on disk before returning.
     async fn save_vote(&mut self, vote: &Vote<C::NodeId>) -> Result<(), StorageError<C::NodeId>>;
 
-    /// Return the last saved vote by [`Self::save_vote`].
-    async fn read_vote(&mut self) -> Result<Option<Vote<C::NodeId>>, StorageError<C::NodeId>>;
-
     /// Saves the last committed log id to storage.
     ///
     /// # Optional feature
