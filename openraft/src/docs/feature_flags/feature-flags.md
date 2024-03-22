@@ -74,7 +74,7 @@ Removes `Send` and `Sync` bounds from `AppData`, `AppDataResponse`, `RaftEntry`,
 and other types to force the  asynchronous runtime to spawn any tasks in the current thread.
 This is for any single-threaded application that never allows a raft instance to be shared among multiple threads.
 This feature relies on the `async_fn_in_trait` language feature that is officially supported from Rust 1.75.0.
-If the feature is enabled, affected asynchronous trait methods require `Send` bounds.
+If the feature is enabled, affected asynchronous trait methods will not require `Send` bounds.
 In order to use the feature, `AsyncRuntime::spawn` should invoke `tokio::task::spawn_local` or equivalents.
 
 ## feature-flag `storage-v2`
