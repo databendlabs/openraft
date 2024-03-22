@@ -156,6 +156,11 @@ mod impl_log_store {
             let mut inner = self.inner.lock().await;
             inner.try_get_log_entries(range).await
         }
+
+        async fn read_vote(&mut self) -> Result<Option<Vote<C::NodeId>>, StorageError<C::NodeId>> {
+            let mut inner = self.inner.lock().await;
+            inner.read_vote().await
+        }
     }
 
     impl<C: RaftTypeConfig> RaftLogStorage<C> for LogStore<C>
@@ -181,11 +186,6 @@ mod impl_log_store {
         async fn save_vote(&mut self, vote: &Vote<C::NodeId>) -> Result<(), StorageError<C::NodeId>> {
             let mut inner = self.inner.lock().await;
             inner.save_vote(vote).await
-        }
-
-        async fn read_vote(&mut self) -> Result<Option<Vote<C::NodeId>>, StorageError<C::NodeId>> {
-            let mut inner = self.inner.lock().await;
-            inner.read_vote().await
         }
 
         async fn append<I>(&mut self, entries: I, callback: LogFlushed<C>) -> Result<(), StorageError<C::NodeId>>

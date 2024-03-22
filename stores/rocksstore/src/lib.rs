@@ -267,6 +267,10 @@ impl RaftLogReader<TypeConfig> for RocksLogStore {
         }
         Ok(res)
     }
+
+    async fn read_vote(&mut self) -> Result<Option<Vote<RocksNodeId>>, StorageError<RocksNodeId>> {
+        self.get_meta::<meta::Vote>()
+    }
 }
 
 impl RaftSnapshotBuilder<TypeConfig> for RocksStateMachine {
@@ -344,10 +348,6 @@ impl RaftLogStorage<TypeConfig> for RocksLogStore {
         self.put_meta::<meta::Vote>(vote)?;
         self.db.flush_wal(true).map_err(|e| StorageIOError::write_vote(&e))?;
         Ok(())
-    }
-
-    async fn read_vote(&mut self) -> Result<Option<Vote<RocksNodeId>>, StorageError<RocksNodeId>> {
-        self.get_meta::<meta::Vote>()
     }
 
     async fn get_log_reader(&mut self) -> Self::LogReader {
