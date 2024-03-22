@@ -38,8 +38,8 @@ use crate::raft::VoteResponse;
 use crate::raft_state::LogStateReader;
 use crate::raft_state::RaftState;
 use crate::summary::MessageSummary;
+use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::SnapshotDataOf;
-use crate::AsyncRuntime;
 use crate::Instant;
 use crate::LogId;
 use crate::LogIdOptionExt;
@@ -60,14 +60,14 @@ use crate::Vote;
 /// This structure only contains necessary information to run raft algorithm,
 /// but none of the application specific data.
 /// TODO: make the fields private
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub(crate) struct Engine<C>
 where C: RaftTypeConfig
 {
-    pub(crate) config: EngineConfig<C::NodeId>,
+    pub(crate) config: EngineConfig<C>,
 
     /// The state of this raft node.
-    pub(crate) state: Valid<RaftState<C::NodeId, C::Node, <C::AsyncRuntime as AsyncRuntime>::Instant>>,
+    pub(crate) state: Valid<RaftState<C>>,
 
     // TODO: add a Voting state as a container.
     /// Whether a greater log id is seen during election.
@@ -77,7 +77,7 @@ where C: RaftTypeConfig
     pub(crate) seen_greater_log: bool,
 
     /// The internal server state used by Engine.
-    pub(crate) internal_server_state: InternalServerState<C::NodeId, <C::AsyncRuntime as AsyncRuntime>::Instant>,
+    pub(crate) internal_server_state: InternalServerState<C>,
 
     /// Output entry for the runtime.
     pub(crate) output: EngineOutput<C>,
@@ -86,10 +86,7 @@ where C: RaftTypeConfig
 impl<C> Engine<C>
 where C: RaftTypeConfig
 {
-    pub(crate) fn new(
-        init_state: RaftState<C::NodeId, C::Node, <C::AsyncRuntime as AsyncRuntime>::Instant>,
-        config: EngineConfig<C::NodeId>,
-    ) -> Self {
+    pub(crate) fn new(init_state: RaftState<C>, config: EngineConfig<C>) -> Self {
         Self {
             config,
             state: Valid::new(init_state),
@@ -97,6 +94,14 @@ where C: RaftTypeConfig
             internal_server_state: InternalServerState::default(),
             output: EngineOutput::new(4096),
         }
+    }
+
+    /// Create a default Engine for testing.
+    #[allow(dead_code)]
+    pub(crate) fn testing_default(id: C::NodeId) -> Self {
+        let config = EngineConfig::new_default(id);
+        let state = RaftState::default();
+        Self::new(state, config)
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
@@ -153,7 +158,7 @@ where C: RaftTypeConfig
     ///
     /// [precondition]: crate::docs::cluster_control::cluster_formation#preconditions-for-initialization
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn initialize(&mut self, mut entry: C::Entry) -> Result<(), InitializeError<C::NodeId, C::Node>> {
+    pub(crate) fn initialize(&mut self, mut entry: C::Entry) -> Result<(), InitializeError<C>> {
         self.check_initialize()?;
 
         self.state.assign_log_ids([&mut entry]);
@@ -193,10 +198,7 @@ where C: RaftTypeConfig
 
         // Safe unwrap(): leading state is just created
         let leading = self.internal_server_state.leading_mut().unwrap();
-        let voting = leading.initialize_voting(
-            self.state.last_log_id().copied(),
-            <C::AsyncRuntime as AsyncRuntime>::Instant::now(),
-        );
+        let voting = leading.initialize_voting(self.state.last_log_id().copied(), InstantOf::<C>::now());
 
         let quorum_granted = voting.grant_by(&self.config.id);
 
@@ -228,7 +230,7 @@ where C: RaftTypeConfig
     where
         T: OptionalSend,
         E: OptionalSend,
-        E: From<ForwardToLeader<C::NodeId, C::Node>>,
+        E: From<ForwardToLeader<C>>,
     {
         let res = self.leader_handler();
         let forward_err = match res {
@@ -247,8 +249,8 @@ where C: RaftTypeConfig
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn handle_vote_req(&mut self, req: VoteRequest<C::NodeId>) -> VoteResponse<C::NodeId> {
-        let now = <C::AsyncRuntime as AsyncRuntime>::Instant::now();
+    pub(crate) fn handle_vote_req(&mut self, req: VoteRequest<C>) -> VoteResponse<C> {
+        let now = InstantOf::<C>::now();
         let lease = self.config.timer_config.leader_lease;
         let vote = self.state.vote_ref();
 
@@ -332,7 +334,7 @@ where C: RaftTypeConfig
     }
 
     #[tracing::instrument(level = "debug", skip(self, resp))]
-    pub(crate) fn handle_vote_resp(&mut self, target: C::NodeId, resp: VoteResponse<C::NodeId>) {
+    pub(crate) fn handle_vote_resp(&mut self, target: C::NodeId, resp: VoteResponse<C>) {
         tracing::info!(
             resp = display(resp.summary()),
             target = display(target),
@@ -410,7 +412,7 @@ where C: RaftTypeConfig
         let is_ok = res.is_ok();
 
         if let Some(tx) = tx {
-            let resp: AppendEntriesResponse<C::NodeId> = res.into();
+            let resp: AppendEntriesResponse<C> = res.into();
             self.output.push_command(Command::Respond {
                 when: None,
                 resp: Respond::new(Ok(resp), tx),
@@ -424,7 +426,7 @@ where C: RaftTypeConfig
         vote: &Vote<C::NodeId>,
         prev_log_id: Option<LogId<C::NodeId>>,
         entries: Vec<C::Entry>,
-    ) -> Result<(), RejectAppendEntries<C::NodeId>> {
+    ) -> Result<(), RejectAppendEntries<C>> {
         self.vote_handler().update_vote(vote)?;
 
         // Vote is legal.
@@ -457,7 +459,7 @@ where C: RaftTypeConfig
         &mut self,
         vote: Vote<C::NodeId>,
         snapshot: Snapshot<C>,
-        tx: ResultSender<C, SnapshotResponse<C::NodeId>>,
+        tx: ResultSender<C, SnapshotResponse<C>>,
     ) {
         tracing::info!(vote = display(vote), snapshot = display(&snapshot), "{}", func_name!());
 
@@ -528,7 +530,7 @@ where C: RaftTypeConfig
     /// - Engine only keeps the snapshot meta with the greatest last-log-id;
     /// - and a snapshot smaller than last-committed is not allowed to be installed.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn finish_building_snapshot(&mut self, meta: SnapshotMeta<C::NodeId, C::Node>) {
+    pub(crate) fn finish_building_snapshot(&mut self, meta: SnapshotMeta<C>) {
         tracing::info!(snapshot_meta = display(&meta), "{}", func_name!());
 
         self.state.io_state_mut().set_building_snapshot(false);
@@ -662,7 +664,7 @@ where C: RaftTypeConfig
     ///
     /// It is allowed to initialize only when `last_log_id.is_none()` and `vote==(term=0,
     /// node_id=0)`. See: [Conditions for initialization](https://datafuselabs.github.io/openraft/cluster-formation.html#conditions-for-initialization)
-    fn check_initialize(&self) -> Result<(), NotAllowed<C::NodeId>> {
+    fn check_initialize(&self) -> Result<(), NotAllowed<C>> {
         if self.state.last_log_id().is_none() && self.state.vote_ref() == &Vote::default() {
             return Ok(());
         }
@@ -681,10 +683,7 @@ where C: RaftTypeConfig
 
     /// When initialize, the node that accept initialize request has to be a member of the initial
     /// config.
-    fn check_members_contain_me(
-        &self,
-        m: &Membership<C::NodeId, C::Node>,
-    ) -> Result<(), NotInMembers<C::NodeId, C::Node>> {
+    fn check_members_contain_me(&self, m: &Membership<C>) -> Result<(), NotInMembers<C>> {
         if !m.is_voter(&self.config.id) {
             let e = NotInMembers {
                 node_id: self.config.id,
@@ -744,7 +743,7 @@ where C: RaftTypeConfig
         }
     }
 
-    pub(crate) fn leader_handler(&mut self) -> Result<LeaderHandler<C>, ForwardToLeader<C::NodeId, C::Node>> {
+    pub(crate) fn leader_handler(&mut self) -> Result<LeaderHandler<C>, ForwardToLeader<C>> {
         let leader = match self.internal_server_state.leading_mut() {
             None => {
                 tracing::debug!("this node is NOT a leader: {:?}", self.state.server_state);

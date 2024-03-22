@@ -12,8 +12,6 @@ use crate::internal_server_state::InternalServerState;
 use crate::leader::Leading;
 use crate::raft_state::LogStateReader;
 use crate::type_config::alias::InstantOf;
-use crate::utime::UTime;
-use crate::AsyncRuntime;
 use crate::Instant;
 use crate::OptionalSend;
 use crate::RaftState;
@@ -30,11 +28,10 @@ use crate::Vote;
 pub(crate) struct VoteHandler<'st, C>
 where C: RaftTypeConfig
 {
-    pub(crate) config: &'st EngineConfig<C::NodeId>,
-    pub(crate) state: &'st mut RaftState<C::NodeId, C::Node, <C::AsyncRuntime as AsyncRuntime>::Instant>,
+    pub(crate) config: &'st EngineConfig<C>,
+    pub(crate) state: &'st mut RaftState<C>,
     pub(crate) output: &'st mut EngineOutput<C>,
-    pub(crate) internal_server_state:
-        &'st mut InternalServerState<C::NodeId, <C::AsyncRuntime as AsyncRuntime>::Instant>,
+    pub(crate) internal_server_state: &'st mut InternalServerState<C>,
 }
 
 impl<'st, C> VoteHandler<'st, C>
@@ -59,7 +56,7 @@ where C: RaftTypeConfig
         T: Debug + Eq + OptionalSend,
         E: Debug + Eq + OptionalSend,
         Respond<C>: From<ValueSender<C, Result<T, E>>>,
-        F: Fn(&RaftState<C::NodeId, C::Node, InstantOf<C>>, RejectVoteRequest<C::NodeId>) -> Result<T, E>,
+        F: Fn(&RaftState<C>, RejectVoteRequest<C>) -> Result<T, E>,
     {
         let vote_res = self.update_vote(vote);
 
@@ -85,7 +82,8 @@ where C: RaftTypeConfig
     ///
     /// Note: This method does not check last-log-id. handle-vote-request has to deal with
     /// last-log-id itself.
-    pub(crate) fn update_vote(&mut self, vote: &Vote<C::NodeId>) -> Result<(), RejectVoteRequest<C::NodeId>> {
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub(crate) fn update_vote(&mut self, vote: &Vote<C::NodeId>) -> Result<(), RejectVoteRequest<C>> {
         // Partial ord compare:
         // Vote does not has to be total ord.
         // `!(a >= b)` does not imply `a < b`.
@@ -102,19 +100,15 @@ where C: RaftTypeConfig
         if vote > self.state.vote_ref() {
             tracing::info!("vote is changing from {} to {}", self.state.vote_ref(), vote);
 
-            self.state.vote.update(<C::AsyncRuntime as AsyncRuntime>::Instant::now(), *vote);
+            self.state.vote.update(InstantOf::<C>::now(), *vote);
             self.output.push_command(Command::SaveVote { vote: *vote });
         } else {
-            self.state.vote.touch(<C::AsyncRuntime as AsyncRuntime>::Instant::now());
+            self.state.vote.touch(InstantOf::<C>::now());
         }
 
         // Update vote related timer and lease.
 
-        tracing::debug!(
-            now = debug(<C::AsyncRuntime as AsyncRuntime>::Instant::now()),
-            "{}",
-            func_name!()
-        );
+        tracing::debug!(now = debug(InstantOf::<C>::now()), "{}", func_name!());
 
         self.update_internal_server_state();
 
@@ -138,8 +132,12 @@ where C: RaftTypeConfig
     pub(crate) fn become_leading(&mut self) {
         if let Some(l) = self.internal_server_state.leading_mut() {
             if l.vote.leader_id() == self.state.vote_ref().leader_id() {
-                // Vote still belongs to the same leader. Just updating vote is enough.
-                l.vote = UTime::without_utime(*self.state.vote_ref());
+                tracing::debug!(
+                    "vote still belongs to the same leader. Just updating vote is enough: node-{}, {}",
+                    self.config.id,
+                    self.state.vote_ref()
+                );
+                l.vote = *self.state.vote_ref();
                 self.server_state_handler().update_server_state_if_changed();
                 return;
             }
@@ -158,7 +156,7 @@ where C: RaftTypeConfig
 
         // Do not update clock_progress, until the first blank log is committed.
 
-        *self.internal_server_state = InternalServerState::Leading(leader);
+        *self.internal_server_state = InternalServerState::Leading(Box::new(leader));
 
         self.server_state_handler().update_server_state_if_changed();
     }

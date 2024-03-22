@@ -17,7 +17,6 @@
 
 </div>
 
-🪵🪵🪵 Raft is not yet good enough.
 This project intends to improve raft as the next-generation consensus protocol for distributed data storage systems (SQL, NoSQL, KV, Streaming, Graph ... or maybe something more exotic).
 
 Currently, openraft is the consensus engine of meta-service cluster in [databend](https://github.com/datafuselabs/databend).
@@ -29,9 +28,13 @@ Currently, openraft is the consensus engine of meta-service cluster in [databend
     - [Openraft FAQ](https://docs.rs/openraft/latest/openraft/docs/faq/index.html) explains some common questions.
 
 - 🙌 **Questions**?
-    - Join the [Discord channel](https://discord.gg/ZKw3WG7FQ9),
-    - or start a [Discussion](https://github.com/datafuselabs/openraft/discussions/new),
-    - or join our wechat group: `drmingdrmer`.
+    - Why not take a peek at our [FAQ](https://docs.rs/openraft/latest/openraft/docs/faq/index.html)? You might find just what you need.
+    - Wanna chat? Come hang out with us on [Discord](https://discord.gg/ZKw3WG7FQ9)!
+    - Or start a new discussion over on [GitHub](https://github.com/datafuselabs/openraft/discussions/new).
+    - Or join our [Feishu group](https://applink.feishu.cn/client/chat/chatter/add_by_link?link_token=d20l9084-6d36-4470-bac5-4bad7378d003).
+    - And hey, if you're on WeChat, add us: `drmingdrmer`. Let's get the conversation started!
+
+Whatever your style, we're here to support you. 🚀 Let's make something awesome together!
 
 - Openraft is derived from [async-raft](https://docs.rs/crate/async-raft/latest) with several bugs fixed: [Fixed bugs](https://github.com/datafuselabs/openraft/blob/main/derived-from-async-raft.md).
 
@@ -57,7 +60,12 @@ Currently, openraft is the consensus engine of meta-service cluster in [databend
 ## Versions
 
 - **Branch main** has been under active development.
-    The main branch is for the [release-0.9](https://github.com/datafuselabs/openraft/tree/release-0.9).
+    The main branch is for the [release-0.10](https://github.com/datafuselabs/openraft/tree/release-0.10).
+
+- **Branch [release-0.9](https://github.com/datafuselabs/openraft/tree/release-0.9)**:
+  Latest: ( [v0.9.0](https://github.com/datafuselabs/openraft/tree/v0.9.0) | [Change log](https://github.com/datafuselabs/openraft/blob/release-0.9/change-log.md#v090) );
+  Upgrade guide: ⬆️  [0.8 to 0.9](https://docs.rs/openraft/0.9.0/openraft/docs/upgrade_guide/upgrade_08_09/index.html);
+  `release-0.9` **Won't** accept new features but only bug fixes.
 
 - **Branch [release-0.8](https://github.com/datafuselabs/openraft/tree/release-0.8)**:
   Latest: ( [v0.8.8](https://github.com/datafuselabs/openraft/tree/v0.8.8) | [Change log](https://github.com/datafuselabs/openraft/blob/release-0.8/change-log.md#v088) );
@@ -121,25 +129,25 @@ For benchmark detail, go to the [./cluster_benchmark](./cluster_benchmark) folde
 - ✅ **Log Compaction**(snapshot of state machine): by policy or manully([`trigger_snapshot()`]).
 - ✅ **Snapshot replication**.
 - ✅ **Dynamic Membership**: using joint membership config change. Refer to [dynamic membership](https://docs.rs/openraft/latest/openraft/docs/cluster_control/dynamic_membership/index.html)
+- ✅ **Linearizable read**: [`ensure_linearizable()`][].
 - ⛔️ **Wont support**: Single-step config change.  <!-- TODO: explain why -->
-- ✅ Toggle heartbeat: [`enable_heartbeat`][].
-- ✅ Toggle election: [`enable_elect`][].
+- ✅ Toggle heartbeat / election: [`enable_heartbeat`][] / [`enable_elect`][].
+- ✅ Trigger snapshot / election manually: [`trigger_snapshot()`][] / [`trigger_elect()`][].
 - ✅ Purge log by policy or manually: [`purge_log()`][].
-
-<!--
-TODO: 0.9
-- ✅ Linearizable read.
--->
 
 
 # Who use it
 
-- [yuyang0/rrqlite](https://github.com/yuyang0/rrqlite)
-- [raymondshe/matchengine-raft](https://github.com/raymondshe/matchengine-raft)
+- [Databend](https://github.com/datafuselabs/databend) - The Next-Gen Cloud [Data+AI] Analytics
+- [CnosDB](https://github.com/cnosdb/cnosdb) - A cloud-native open source distributed time series database.
+- [yuyang0/rrqlite](https://github.com/yuyang0/rrqlite) - A rust implementation of [rqlite](https://github.com/rqlite/rqlite).
+- [raymondshe/matchengine-raft](https://github.com/raymondshe/matchengine-raft) - A example to demonstrate how openraft persists snapshots/logs to disk.
+- [Helyim](https://github.com/helyim/helyim) - [SeaweedFS](https://github.com/seaweedfs/seaweedfs) implemented in pure Rust.
 
 # Contributing
 
-Check out the [CONTRIBUTING.md](https://github.com/datafuselabs/openraft/blob/main/CONTRIBUTING.md) guide for more details on getting started with contributing to this project.
+Check out the [CONTRIBUTING.md](https://github.com/datafuselabs/openraft/blob/main/CONTRIBUTING.md)
+guide for more details on getting started with contributing to this project.
 
 ## Contributors
 
@@ -151,7 +159,9 @@ Made with [contributors-img](https://contrib.rocks).
 
 # License
 
-Openraft is licensed under the terms of the [MIT License](https://en.wikipedia.org/wiki/MIT_License#License_terms) or the [Apache License 2.0](http://www.apache.org/licenses/LICENSE-2.0), at your choosing.
+Openraft is licensed under the terms of the [MIT License](https://en.wikipedia.org/wiki/MIT_License#License_terms)
+or the [Apache License 2.0](http://www.apache.org/licenses/LICENSE-2.0), at your choosing.
+
 
 [`change_membership()`]: https://docs.rs/openraft/latest/openraft/raft/struct.Raft.html#method.change_membership
 [`add_learner()`]: https://docs.rs/openraft/latest/openraft/raft/struct.Raft.html#method.add_learner
@@ -160,14 +170,6 @@ Openraft is licensed under the terms of the [MIT License](https://en.wikipedia.o
 [`enable_heartbeat`]: https://docs.rs/openraft/latest/openraft/struct.Config.html#structfield.enable_heartbeat
 [`enable_elect`]: https://docs.rs/openraft/latest/openraft/struct.Config.html#structfield.enable_elect
 
-
-<!-- TODO: update these API when 0.9 is published: -->
-
 [`trigger_elect()`]: https://docs.rs/openraft/latest/openraft/raft/struct.Raft.html#method.trigger_elect
 [`trigger_snapshot()`]: https://docs.rs/openraft/latest/openraft/raft/struct.Raft.html#method.trigger_snapshot
-
-<!--
-TODO: enable when 0.9 is published:
-
-[`ensure_linearizable()`]: xx
--->
+[`ensure_linearizable()`]: https://docs.rs/openraft/latest/openraft/raft/struct.Raft.html#method.ensure_linearizable

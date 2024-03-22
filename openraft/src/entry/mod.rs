@@ -1,3 +1,5 @@
+//! The default log entry type that implements [`RaftEntry`].
+
 use std::fmt;
 use std::fmt::Debug;
 
@@ -92,14 +94,14 @@ where C: RaftTypeConfig
     }
 }
 
-impl<C> RaftPayload<C::NodeId, C::Node> for Entry<C>
+impl<C> RaftPayload<C> for Entry<C>
 where C: RaftTypeConfig
 {
     fn is_blank(&self) -> bool {
         self.payload.is_blank()
     }
 
-    fn get_membership(&self) -> Option<&Membership<C::NodeId, C::Node>> {
+    fn get_membership(&self) -> Option<&Membership<C>> {
         self.payload.get_membership()
     }
 }
@@ -116,7 +118,7 @@ where C: RaftTypeConfig
     }
 }
 
-impl<C> RaftEntry<C::NodeId, C::Node> for Entry<C>
+impl<C> RaftEntry<C> for Entry<C>
 where C: RaftTypeConfig
 {
     fn new_blank(log_id: LogId<C::NodeId>) -> Self {
@@ -126,7 +128,7 @@ where C: RaftTypeConfig
         }
     }
 
-    fn new_membership(log_id: LogId<C::NodeId>, m: Membership<C::NodeId, C::Node>) -> Self {
+    fn new_membership(log_id: LogId<C::NodeId>, m: Membership<C>) -> Self {
         Self {
             log_id,
             payload: EntryPayload::Membership(m),

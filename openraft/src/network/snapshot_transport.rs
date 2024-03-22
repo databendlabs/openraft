@@ -6,7 +6,7 @@ use std::io::SeekFrom;
 use std::time::Duration;
 
 use futures::FutureExt;
-use macros::add_async_trait;
+use openraft_macros::add_async_trait;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncSeekExt;
 use tokio::io::AsyncWriteExt;
@@ -54,7 +54,7 @@ pub trait SnapshotTransport<C: RaftTypeConfig> {
         snapshot: Snapshot<C>,
         cancel: impl Future<Output = ReplicationClosed> + OptionalSend,
         option: RPCOption,
-    ) -> Result<SnapshotResponse<C::NodeId>, StreamingError<C, Fatal<C::NodeId>>>
+    ) -> Result<SnapshotResponse<C>, StreamingError<C, Fatal<C>>>
     where
         Net: RaftNetwork<C> + ?Sized;
 
@@ -87,7 +87,7 @@ pub trait SnapshotTransport<C: RaftTypeConfig> {
         streaming: &mut Option<Streaming<C>>,
         raft: &Raft<C>,
         req: InstallSnapshotRequest<C>,
-    ) -> Result<Option<Snapshot<C>>, RaftError<C::NodeId, crate::error::InstallSnapshotError>>;
+    ) -> Result<Option<Snapshot<C>>, RaftError<C, crate::error::InstallSnapshotError>>;
 }
 
 /// Send and Receive snapshot by chunks.
@@ -103,7 +103,7 @@ where C::SnapshotData: tokio::io::AsyncRead + tokio::io::AsyncWrite + tokio::io:
         mut snapshot: Snapshot<C>,
         mut cancel: impl Future<Output = ReplicationClosed> + OptionalSend,
         option: RPCOption,
-    ) -> Result<SnapshotResponse<C::NodeId>, StreamingError<C, Fatal<C::NodeId>>>
+    ) -> Result<SnapshotResponse<C>, StreamingError<C, Fatal<C>>>
     where
         Net: RaftNetwork<C> + ?Sized,
     {
@@ -192,7 +192,7 @@ where C::SnapshotData: tokio::io::AsyncRead + tokio::io::AsyncWrite + tokio::io:
         streaming: &mut Option<Streaming<C>>,
         raft: &Raft<C>,
         req: InstallSnapshotRequest<C>,
-    ) -> Result<Option<Snapshot<C>>, RaftError<C::NodeId, crate::error::InstallSnapshotError>> {
+    ) -> Result<Option<Snapshot<C>>, RaftError<C, crate::error::InstallSnapshotError>> {
         let snapshot_id = &req.meta.snapshot_id;
         let snapshot_meta = req.meta.clone();
         let done = req.done;

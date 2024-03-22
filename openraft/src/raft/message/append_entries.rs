@@ -4,7 +4,6 @@ use crate::display_ext::DisplayOptionExt;
 use crate::display_ext::DisplaySlice;
 use crate::LogId;
 use crate::MessageSummary;
-use crate::NodeId;
 use crate::RaftTypeConfig;
 use crate::Vote;
 
@@ -61,7 +60,7 @@ impl<C: RaftTypeConfig> MessageSummary<AppendEntriesRequest<C>> for AppendEntrie
 #[derive(Debug)]
 #[derive(PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub enum AppendEntriesResponse<NID: NodeId> {
+pub enum AppendEntriesResponse<C: RaftTypeConfig> {
     /// Successfully replicated all log entries to the target node.
     Success,
 
@@ -81,7 +80,7 @@ pub enum AppendEntriesResponse<NID: NodeId> {
     ///
     /// [`RPCError`]: crate::error::RPCError
     /// [`RaftNetwork::append_entries`]: crate::network::RaftNetwork::append_entries
-    PartialSuccess(Option<LogId<NID>>),
+    PartialSuccess(Option<LogId<C::NodeId>>),
 
     /// The first log id([`AppendEntriesRequest::prev_log_id`]) of the entries to send does not
     /// match on the remote target node.
@@ -90,10 +89,12 @@ pub enum AppendEntriesResponse<NID: NodeId> {
     /// Seen a vote `v` that does not hold `mine_vote >= v`.
     /// And a leader's vote(committed vote) must be total order with other vote.
     /// Therefore it has to be a higher vote: `mine_vote < v`
-    HigherVote(Vote<NID>),
+    HigherVote(Vote<C::NodeId>),
 }
 
-impl<NID: NodeId> AppendEntriesResponse<NID> {
+impl<C> AppendEntriesResponse<C>
+where C: RaftTypeConfig
+{
     pub fn is_success(&self) -> bool {
         matches!(*self, AppendEntriesResponse::Success)
     }
@@ -103,7 +104,9 @@ impl<NID: NodeId> AppendEntriesResponse<NID> {
     }
 }
 
-impl<NID: NodeId> fmt::Display for AppendEntriesResponse<NID> {
+impl<C> fmt::Display for AppendEntriesResponse<C>
+where C: RaftTypeConfig
+{
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             AppendEntriesResponse::Success => write!(f, "Success"),

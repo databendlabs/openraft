@@ -3,7 +3,6 @@ use crate::engine::EngineConfig;
 use crate::engine::EngineOutput;
 use crate::raft_state::LogStateReader;
 use crate::summary::MessageSummary;
-use crate::AsyncRuntime;
 use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::RaftState;
@@ -16,8 +15,8 @@ use crate::RaftTypeConfig;
 pub(crate) struct LogHandler<'x, C>
 where C: RaftTypeConfig
 {
-    pub(crate) config: &'x mut EngineConfig<C::NodeId>,
-    pub(crate) state: &'x mut RaftState<C::NodeId, C::Node, <C::AsyncRuntime as AsyncRuntime>::Instant>,
+    pub(crate) config: &'x mut EngineConfig<C>,
+    pub(crate) state: &'x mut RaftState<C>,
     pub(crate) output: &'x mut EngineOutput<C>,
 }
 

@@ -1,3 +1,5 @@
+//! Testing utilities for OpenRaft.
+
 mod store_builder;
 mod suite;
 

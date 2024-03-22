@@ -2,7 +2,7 @@
 
 It is an example of how to build a real-world key-value store with `openraft`.
 Includes:
-- An in-memory `RaftStorage` implementation [store](./src/store/store.rs).
+- An in-memory `RaftLogStorage` and `RaftStateMachine` implementation [store](./src/store/store.rs).
 
 - A server is based on [actix-web](https://docs.rs/actix-web/4.0.0-rc.2).  
   Includes:

@@ -1,17 +1,17 @@
 use std::time::Duration;
 
 use crate::engine::time_state;
-use crate::AsyncRuntime;
+use crate::type_config::alias::AsyncRuntimeOf;
 use crate::Config;
-use crate::NodeId;
+use crate::RaftTypeConfig;
 use crate::SnapshotPolicy;
 
 /// Config for Engine
 #[derive(Clone, Debug)]
 #[derive(PartialEq, Eq)]
-pub(crate) struct EngineConfig<NID: NodeId> {
+pub(crate) struct EngineConfig<C: RaftTypeConfig> {
     /// The id of this node.
-    pub(crate) id: NID,
+    pub(crate) id: C::NodeId,
 
     /// The snapshot policy to use for a Raft node.
     pub(crate) snapshot_policy: SnapshotPolicy,
@@ -28,22 +28,11 @@ pub(crate) struct EngineConfig<NID: NodeId> {
     pub(crate) timer_config: time_state::Config,
 }
 
-impl<NID: NodeId> Default for EngineConfig<NID> {
-    fn default() -> Self {
-        Self {
-            id: NID::default(),
-            snapshot_policy: SnapshotPolicy::LogsSinceLast(5000),
-            max_in_snapshot_log_to_keep: 1000,
-            purge_batch_size: 256,
-            max_payload_entries: 300,
-            timer_config: time_state::Config::default(),
-        }
-    }
-}
-
-impl<NID: NodeId> EngineConfig<NID> {
-    pub(crate) fn new<RT: AsyncRuntime>(id: NID, config: &Config) -> Self {
-        let election_timeout = Duration::from_millis(config.new_rand_election_timeout::<RT>());
+impl<C> EngineConfig<C>
+where C: RaftTypeConfig
+{
+    pub(crate) fn new(id: C::NodeId, config: &Config) -> Self {
+        let election_timeout = Duration::from_millis(config.new_rand_election_timeout::<AsyncRuntimeOf<C>>());
         Self {
             id,
             snapshot_policy: config.snapshot_policy.clone(),
@@ -55,6 +44,18 @@ impl<NID: NodeId> EngineConfig<NID> {
                 smaller_log_timeout: Duration::from_millis(config.election_timeout_max * 2),
                 leader_lease: Duration::from_millis(config.election_timeout_max),
             },
+        }
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn new_default(id: C::NodeId) -> Self {
+        Self {
+            id,
+            snapshot_policy: SnapshotPolicy::LogsSinceLast(5000),
+            max_in_snapshot_log_to_keep: 1000,
+            purge_batch_size: 256,
+            max_payload_entries: 300,
+            timer_config: time_state::Config::default(),
         }
     }
 }

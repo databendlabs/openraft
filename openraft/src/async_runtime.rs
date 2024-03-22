@@ -1,3 +1,7 @@
+//! `async` runtime interface.
+//!
+//! `async` runtime is an abstraction over different asynchronous runtimes, such as `tokio`,
+//! `async-std`, etc.
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::future::Future;

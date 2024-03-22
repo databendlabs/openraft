@@ -72,6 +72,7 @@ use crate::raft::VoteRequest;
 use crate::raft_state::LogStateReader;
 use crate::replication;
 use crate::replication::request::Replicate;
+use crate::replication::request_id::RequestId;
 use crate::replication::response::ReplicationResult;
 use crate::replication::ReplicationCore;
 use crate::replication::ReplicationHandle;
@@ -83,6 +84,7 @@ use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
 use crate::type_config::alias::AsyncRuntimeOf;
 use crate::type_config::alias::InstantOf;
+use crate::type_config::alias::OneshotReceiverOf;
 use crate::utime::UTime;
 use crate::AsyncRuntime;
 use crate::ChangeMembers;
@@ -90,8 +92,6 @@ use crate::Instant;
 use crate::LogId;
 use crate::Membership;
 use crate::MessageSummary;
-use crate::Node;
-use crate::NodeId;
 use crate::OptionalSend;
 use crate::RaftTypeConfig;
 use crate::StorageError;
@@ -100,13 +100,13 @@ use crate::Vote;
 
 /// A temp struct to hold the data for a node that is being applied.
 #[derive(Debug)]
-pub(crate) struct ApplyingEntry<NID: NodeId, N: Node> {
-    log_id: LogId<NID>,
-    membership: Option<Membership<NID, N>>,
+pub(crate) struct ApplyingEntry<C: RaftTypeConfig> {
+    log_id: LogId<C::NodeId>,
+    membership: Option<Membership<C>>,
 }
 
-impl<NID: NodeId, N: Node> ApplyingEntry<NID, N> {
-    pub(crate) fn new(log_id: LogId<NID>, membership: Option<Membership<NID, N>>) -> Self {
+impl<C: RaftTypeConfig> ApplyingEntry<C> {
+    pub(crate) fn new(log_id: LogId<C::NodeId>, membership: Option<Membership<C>>) -> Self {
         Self { log_id, membership }
     }
 }
@@ -116,7 +116,7 @@ pub(crate) struct ApplyResult<C: RaftTypeConfig> {
     pub(crate) since: u64,
     pub(crate) end: u64,
     pub(crate) last_applied: LogId<C::NodeId>,
-    pub(crate) applying_entries: Vec<ApplyingEntry<C::NodeId, C::Node>>,
+    pub(crate) applying_entries: Vec<ApplyingEntry<C>>,
     pub(crate) apply_results: Vec<C::R>,
 }
 
@@ -140,14 +140,14 @@ pub(crate) struct LeaderData<C: RaftTypeConfig> {
     pub(super) replications: BTreeMap<C::NodeId, ReplicationHandle<C>>,
 
     /// The time to send next heartbeat.
-    pub(crate) next_heartbeat: <C::AsyncRuntime as AsyncRuntime>::Instant,
+    pub(crate) next_heartbeat: InstantOf<C>,
 }
 
 impl<C: RaftTypeConfig> LeaderData<C> {
     pub(crate) fn new() -> Self {
         Self {
             replications: BTreeMap::new(),
-            next_heartbeat: <C::AsyncRuntime as AsyncRuntime>::Instant::now(),
+            next_heartbeat: InstantOf::<C>::now(),
         }
     }
 }
@@ -196,9 +196,9 @@ where
     /// A Receiver to receive callback from other components.
     pub(crate) rx_notify: mpsc::UnboundedReceiver<Notify<C>>,
 
-    pub(crate) tx_metrics: watch::Sender<RaftMetrics<C::NodeId, C::Node>>,
-    pub(crate) tx_data_metrics: watch::Sender<RaftDataMetrics<C::NodeId>>,
-    pub(crate) tx_server_metrics: watch::Sender<RaftServerMetrics<C::NodeId, C::Node>>,
+    pub(crate) tx_metrics: watch::Sender<RaftMetrics<C>>,
+    pub(crate) tx_data_metrics: watch::Sender<RaftDataMetrics<C>>,
+    pub(crate) tx_server_metrics: watch::Sender<RaftServerMetrics<C>>,
 
     pub(crate) command_state: CommandState,
 
@@ -215,10 +215,7 @@ where
     SM: RaftStateMachine<C>,
 {
     /// The main loop of the Raft protocol.
-    pub(crate) async fn main(
-        mut self,
-        rx_shutdown: <C::AsyncRuntime as AsyncRuntime>::OneshotReceiver<()>,
-    ) -> Result<(), Fatal<C::NodeId>> {
+    pub(crate) async fn main(mut self, rx_shutdown: OneshotReceiverOf<C, ()>) -> Result<(), Fatal<C>> {
         let span = tracing::span!(parent: &self.span, Level::DEBUG, "main");
         let res = self.do_main(rx_shutdown).instrument(span).await;
 
@@ -242,10 +239,7 @@ where
     }
 
     #[tracing::instrument(level="trace", skip_all, fields(id=display(self.id), cluster=%self.config.cluster_name))]
-    async fn do_main(
-        &mut self,
-        rx_shutdown: <C::AsyncRuntime as AsyncRuntime>::OneshotReceiver<()>,
-    ) -> Result<(), Fatal<C::NodeId>> {
+    async fn do_main(&mut self, rx_shutdown: OneshotReceiverOf<C, ()>) -> Result<(), Fatal<C>> {
         tracing::debug!("raft node is initializing");
 
         self.engine.startup();
@@ -438,7 +432,7 @@ where
         &mut self,
         changes: ChangeMembers<C::NodeId, C::Node>,
         retain: bool,
-        tx: ResultSender<C, ClientWriteResponse<C>, ClientWriteError<C::NodeId, C::Node>>,
+        tx: ResultSender<C, ClientWriteResponse<C>, ClientWriteError<C>>,
     ) {
         let res = self.engine.state.membership_state.change_handler().apply(changes, retain);
         let new_membership = match res {
@@ -489,18 +483,13 @@ where
     /// Currently heartbeat is a blank log
     #[tracing::instrument(level = "debug", skip_all, fields(id = display(self.id)))]
     pub fn send_heartbeat(&mut self, emitter: impl Display) -> bool {
-        tracing::debug!(
-            now = debug(<C::AsyncRuntime as AsyncRuntime>::Instant::now()),
-            "send_heartbeat"
-        );
+        tracing::debug!(now = debug(InstantOf::<C>::now()), "send_heartbeat");
 
-        let mut lh = if let Some((lh, _)) =
-            self.engine.get_leader_handler_or_reject::<(), ClientWriteError<C::NodeId, C::Node>>(None)
-        {
+        let mut lh = if let Some((lh, _)) = self.engine.get_leader_handler_or_reject::<(), ClientWriteError<C>>(None) {
             lh
         } else {
             tracing::debug!(
-                now = debug(<C::AsyncRuntime as AsyncRuntime>::Instant::now()),
+                now = debug(InstantOf::<C>::now()),
                 "{} failed to send heartbeat",
                 emitter
             );
@@ -526,10 +515,15 @@ where
 
     /// Report a metrics payload on the current state of the Raft node.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn report_metrics(&self, replication: Option<ReplicationMetrics<C::NodeId>>) {
+    pub(crate) fn report_metrics(&mut self, replication: Option<ReplicationMetrics<C::NodeId>>) {
+        let last_quorum_acked = self.last_quorum_acked_time();
+        let millis_since_quorum_ack = last_quorum_acked.map(|t| t.elapsed().as_millis() as u64);
+
         let st = &self.engine.state;
 
         let membership_config = st.membership_state.effective().stored_membership().clone();
+        let current_leader = self.current_leader();
+
         let m = RaftMetrics {
             running_state: Ok(()),
             id: self.id,
@@ -544,27 +538,36 @@ where
 
             // --- cluster ---
             state: st.server_state,
-            current_leader: self.current_leader(),
+            current_leader,
+            millis_since_quorum_ack,
             membership_config: membership_config.clone(),
 
             // --- replication ---
             replication: replication.clone(),
         };
 
-        tracing::debug!("report_metrics: {}", m.summary());
-        let res = self.tx_metrics.send(m);
-
-        if let Err(err) = res {
-            tracing::error!(error=%err, id=display(self.id), "error reporting metrics");
-        }
-
         let data_metrics = RaftDataMetrics {
             last_log: st.last_log_id().copied(),
             last_applied: st.io_applied().copied(),
             snapshot: st.io_snapshot_last_log_id().copied(),
             purged: st.io_purged().copied(),
+            millis_since_quorum_ack,
             replication,
         };
+
+        let server_metrics = RaftServerMetrics {
+            id: self.id,
+            vote: *st.io_state().vote(),
+            state: st.server_state,
+            current_leader,
+            membership_config,
+        };
+
+        // Start to send metrics
+        // `RaftMetrics` is sent last, because `Wait` only examines `RaftMetrics`
+        // but not `RaftDataMetrics` and `RaftServerMetrics`.
+        // Thus if `RaftMetrics` change is perceived, the other two should have been updated.
+
         self.tx_data_metrics.send_if_modified(|metrix| {
             if data_metrics.ne(metrix) {
                 *metrix = data_metrics.clone();
@@ -573,13 +576,6 @@ where
             false
         });
 
-        let server_metrics = RaftServerMetrics {
-            id: self.id,
-            vote: *st.io_state().vote(),
-            state: st.server_state,
-            current_leader: self.current_leader(),
-            membership_config,
-        };
         self.tx_server_metrics.send_if_modified(|metrix| {
             if server_metrics.ne(metrix) {
                 *metrix = server_metrics.clone();
@@ -587,6 +583,13 @@ where
             }
             false
         });
+
+        tracing::debug!("report_metrics: {}", m.summary());
+        let res = self.tx_metrics.send(m);
+
+        if let Err(err) = res {
+            tracing::error!(error=%err, id=display(self.id), "error reporting metrics");
+        }
     }
 
     /// Handle the admin command `initialize`.
@@ -599,7 +602,7 @@ where
     pub(crate) fn handle_initialize(
         &mut self,
         member_nodes: BTreeMap<C::NodeId, C::Node>,
-        tx: ResultSender<C, (), InitializeError<C::NodeId, C::Node>>,
+        tx: ResultSender<C, (), InitializeError<C>>,
     ) {
         tracing::debug!(member_nodes = debug(&member_nodes), "{}", func_name!());
 
@@ -623,7 +626,7 @@ where
     /// Reject a request due to the Raft node being in a state which prohibits the request.
     #[tracing::instrument(level = "trace", skip(self, tx))]
     pub(crate) fn reject_with_forward_to_leader<T: OptionalSend, E>(&self, tx: ResultSender<C, T, E>)
-    where E: From<ForwardToLeader<C::NodeId, C::Node>> + OptionalSend {
+    where E: From<ForwardToLeader<C>> + OptionalSend {
         let mut leader_id = self.current_leader();
         let leader_node = self.get_leader_node(leader_id);
 
@@ -662,6 +665,16 @@ where
             tracing::debug!("id={} is not a voter", id);
             None
         }
+    }
+
+    /// Retrieves the most recent timestamp that is acknowledged by a quorum.
+    ///
+    /// This function returns the latest known time at which the leader received acknowledgment
+    /// from a quorum of followers, indicating its leadership is current and recognized.
+    /// If the node is not a leader or no acknowledgment has been received, `None` is returned.
+    fn last_quorum_acked_time(&mut self) -> Option<InstantOf<C>> {
+        let leading = self.engine.internal_server_state.leading_mut();
+        leading.and_then(|l| l.last_quorum_acked_time())
     }
 
     pub(crate) fn get_leader_node(&self, leader_id: Option<C::NodeId>) -> Option<C::Node> {
@@ -751,7 +764,7 @@ where
 
     /// Send result of applying a log entry to its client.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(super) fn send_response(entry: ApplyingEntry<C::NodeId, C::Node>, resp: C::R, tx: Option<ClientWriteTx<C>>) {
+    pub(super) fn send_response(entry: ApplyingEntry<C>, resp: C::R, tx: Option<ClientWriteTx<C>>) {
         tracing::debug!(entry = debug(&entry), "send_response");
 
         let tx = match tx {
@@ -871,10 +884,7 @@ where
 
     /// Run an event handling loop
     #[tracing::instrument(level="debug", skip_all, fields(id=display(self.id)))]
-    async fn runtime_loop(
-        &mut self,
-        mut rx_shutdown: <C::AsyncRuntime as AsyncRuntime>::OneshotReceiver<()>,
-    ) -> Result<(), Fatal<C::NodeId>> {
+    async fn runtime_loop(&mut self, mut rx_shutdown: OneshotReceiverOf<C, ()>) -> Result<(), Fatal<C>> {
         // Ratio control the ratio of number of RaftMsg to process to number of Notify to process.
         let mut balancer = Balancer::new(10_000);
 
@@ -945,7 +955,7 @@ where
     ///
     /// It returns the number of processed message.
     /// If the input channel is closed, it returns `Fatal::Stopped`.
-    async fn process_raft_msg(&mut self, at_most: u64) -> Result<u64, Fatal<C::NodeId>> {
+    async fn process_raft_msg(&mut self, at_most: u64) -> Result<u64, Fatal<C>> {
         for i in 0..at_most {
             let res = self.rx_api.try_recv();
             let msg = match res {
@@ -980,7 +990,7 @@ where
     ///
     /// It returns the number of processed notifications.
     /// If the input channel is closed, it returns `Fatal::Stopped`.
-    async fn process_notify(&mut self, at_most: u64) -> Result<u64, Fatal<C::NodeId>> {
+    async fn process_notify(&mut self, at_most: u64) -> Result<u64, Fatal<C>> {
         for i in 0..at_most {
             let res = self.rx_notify.try_recv();
             let notify = match res {
@@ -1013,7 +1023,7 @@ where
 
     /// Spawn parallel vote requests to all cluster members.
     #[tracing::instrument(level = "trace", skip_all, fields(vote=vote_req.summary()))]
-    async fn spawn_parallel_vote_requests(&mut self, vote_req: &VoteRequest<C::NodeId>) {
+    async fn spawn_parallel_vote_requests(&mut self, vote_req: &VoteRequest<C>) {
         let members = self.engine.state.membership_state.effective().voter_ids();
 
         let vote = vote_req.vote;
@@ -1044,7 +1054,7 @@ where
                         Ok(res) => res,
 
                         Err(_timeout) => {
-                            let timeout_err = Timeout {
+                            let timeout_err = Timeout::<C> {
                                 action: RPCTypes::Vote,
                                 id,
                                 target,
@@ -1076,7 +1086,7 @@ where
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(super) fn handle_vote_request(&mut self, req: VoteRequest<C::NodeId>, tx: VoteTx<C>) {
+    pub(super) fn handle_vote_request(&mut self, req: VoteRequest<C>, tx: VoteTx<C>) {
         tracing::info!(req = display(req.summary()), func = func_name!());
 
         let resp = self.engine.handle_vote_req(req);
@@ -1107,7 +1117,7 @@ where
                 self.handle_append_entries_request(rpc, tx);
             }
             RaftMsg::RequestVote { rpc, tx } => {
-                let now = <C::AsyncRuntime as AsyncRuntime>::Instant::now();
+                let now = InstantOf::<C>::now();
                 tracing::info!(
                     now = debug(now),
                     vote_request = display(rpc.summary()),
@@ -1189,7 +1199,7 @@ where
 
     // TODO: Make this method non-async. It does not need to run any async command in it.
     #[tracing::instrument(level = "debug", skip_all, fields(state = debug(self.engine.state.server_state), id=display(self.id)))]
-    pub(crate) fn handle_notify(&mut self, notify: Notify<C>) -> Result<(), Fatal<C::NodeId>> {
+    pub(crate) fn handle_notify(&mut self, notify: Notify<C>) -> Result<(), Fatal<C>> {
         tracing::debug!("recv from rx_notify: {}", notify.summary());
 
         match notify {
@@ -1198,7 +1208,7 @@ where
                 resp,
                 sender_vote: vote,
             } => {
-                let now = <C::AsyncRuntime as AsyncRuntime>::Instant::now();
+                let now = InstantOf::<C>::now();
 
                 tracing::info!(
                     now = debug(now),
@@ -1234,7 +1244,7 @@ where
             Notify::Tick { i } => {
                 // check every timer
 
-                let now = <C::AsyncRuntime as AsyncRuntime>::Instant::now();
+                let now = InstantOf::<C>::now();
                 tracing::debug!("received tick: {}, now: {:?}", i, now);
 
                 self.handle_tick_election();
@@ -1251,8 +1261,8 @@ where
 
                         // Install next heartbeat
                         if let Some(l) = &mut self.leader_data {
-                            l.next_heartbeat = <C::AsyncRuntime as AsyncRuntime>::Instant::now()
-                                + Duration::from_millis(self.config.heartbeat_interval);
+                            l.next_heartbeat =
+                                InstantOf::<C>::now() + Duration::from_millis(self.config.heartbeat_interval);
                         }
                     }
                 }
@@ -1387,7 +1397,7 @@ where
 
     #[tracing::instrument(level = "debug", skip_all)]
     fn handle_tick_election(&mut self) {
-        let now = <C::AsyncRuntime as AsyncRuntime>::Instant::now();
+        let now = InstantOf::<C>::now();
 
         tracing::debug!("try to trigger election by tick, now: {:?}", now);
 
@@ -1455,11 +1465,12 @@ where
     fn handle_replication_progress(
         &mut self,
         target: C::NodeId,
-        id: u64,
+        id: RequestId,
         result: Result<UTime<ReplicationResult<C::NodeId>, InstantOf<C>>, String>,
     ) {
         tracing::debug!(
             target = display(target),
+            request_id = display(id),
             result = debug(&result),
             "handle_replication_progress"
         );
@@ -1655,7 +1666,7 @@ where
                             let _ = node.tx_repl.send(Replicate::Heartbeat);
                         }
                         Inflight::Logs { id, log_id_range } => {
-                            let _ = node.tx_repl.send(Replicate::logs(Some(id), log_id_range));
+                            let _ = node.tx_repl.send(Replicate::logs(RequestId::new_append_entries(id), log_id_range));
                         }
                         Inflight::Snapshot { id, last_log_id } => {
                             let _ = last_log_id;
@@ -1670,7 +1681,7 @@ where
                                 .map_err(|e| StorageIOError::read_snapshot(None, AnyError::error(e)))?;
 
                             // unwrap: The replication channel must not be dropped or it is a bug.
-                            node.tx_repl.send(Replicate::snapshot(Some(id), rx)).map_err(|_e| {
+                            node.tx_repl.send(Replicate::snapshot(RequestId::new_snapshot(id), rx)).map_err(|_e| {
                                 StorageIOError::read_snapshot(None, AnyError::error("replication channel closed"))
                             })?;
                         }

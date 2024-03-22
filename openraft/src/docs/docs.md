@@ -15,12 +15,14 @@ When upgrading an Openraft application, consult:
   - [`v0.6-to-v0.7`](`crate::docs::upgrade_guide::upgrade_06_07`);
   - [`v0.7-to-v0.8`](`crate::docs::upgrade_guide::upgrade_07_08`);
   - [`v0.8.3-to-v0.8.4`](`crate::docs::upgrade_guide::upgrade_083_084`);
+  - [`v0.8-to-v0.9`](`crate::docs::upgrade_guide::upgrade_08_09`);
 
 To learn about the data structures used in Openraft and the commit protocol, see
 - [`feature_flags`](crate::docs::feature_flags);
 - [`data`](crate::docs::data) :
   - [`Vote`](`crate::docs::data::vote`) is the core in a distributed system;
   - [`Log pointers`](`crate::docs::data::log_pointers`) shows how Openraft tracks entries in the log;
+  - [`Leader lease`](`crate::docs::data::leader_lease`) explains leader lease for a Leader and a Follower;
   - [`Extended membership`](`crate::docs::data::extended_membership`) explains how members are organized in Openraft;
   - [`Effective membership`](`crate::docs::data::effective_membership`) explains when membership config takes effect;
 - [`protocol`](crate::docs::protocol) :

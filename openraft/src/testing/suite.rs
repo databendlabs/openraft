@@ -19,6 +19,7 @@ use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
 use crate::storage::StorageHelper;
 use crate::testing::StoreBuilder;
+use crate::type_config::alias::AsyncRuntimeOf;
 use crate::vote::CommittedLeaderId;
 use crate::AsyncRuntime;
 use crate::LogId;
@@ -341,7 +342,7 @@ where
 
     pub async fn get_initial_state_without_init(mut store: LS, mut sm: SM) -> Result<(), StorageError<C::NodeId>> {
         let initial = StorageHelper::new(&mut store, &mut sm).get_initial_state().await?;
-        let mut want = RaftState::<C::NodeId, C::Node, <C::AsyncRuntime as AsyncRuntime>::Instant>::default();
+        let mut want = RaftState::<C>::default();
         want.vote.update(initial.vote.utime().unwrap(), Vote::default());
 
         assert_eq!(want, initial, "uninitialized state");
@@ -1170,7 +1171,7 @@ where
     let entries = entries.into_iter().collect::<Vec<_>>();
     let last_log_id = *entries.last().unwrap().get_log_id();
 
-    let (tx, rx) = <C::AsyncRuntime as AsyncRuntime>::oneshot();
+    let (tx, rx) = AsyncRuntimeOf::<C>::oneshot();
 
     let cb = LogFlushed::new(Some(last_log_id), tx);
 

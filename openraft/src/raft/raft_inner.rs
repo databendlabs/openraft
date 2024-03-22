@@ -16,6 +16,7 @@ use crate::error::RaftError;
 use crate::metrics::RaftDataMetrics;
 use crate::metrics::RaftServerMetrics;
 use crate::raft::core_state::CoreState;
+use crate::type_config::alias::OneshotReceiverOf;
 use crate::type_config::alias::OneshotSenderOf;
 use crate::AsyncRuntime;
 use crate::Config;
@@ -34,14 +35,14 @@ where C: RaftTypeConfig
     pub(in crate::raft) runtime_config: Arc<RuntimeConfig>,
     pub(in crate::raft) tick_handle: TickHandle<C>,
     pub(in crate::raft) tx_api: mpsc::UnboundedSender<RaftMsg<C>>,
-    pub(in crate::raft) rx_metrics: watch::Receiver<RaftMetrics<C::NodeId, C::Node>>,
-    pub(in crate::raft) rx_data_metrics: watch::Receiver<RaftDataMetrics<C::NodeId>>,
-    pub(in crate::raft) rx_server_metrics: watch::Receiver<RaftServerMetrics<C::NodeId, C::Node>>,
+    pub(in crate::raft) rx_metrics: watch::Receiver<RaftMetrics<C>>,
+    pub(in crate::raft) rx_data_metrics: watch::Receiver<RaftDataMetrics<C>>,
+    pub(in crate::raft) rx_server_metrics: watch::Receiver<RaftServerMetrics<C>>,
 
     // TODO(xp): it does not need to be a async mutex.
     #[allow(clippy::type_complexity)]
     pub(in crate::raft) tx_shutdown: Mutex<Option<OneshotSenderOf<C, ()>>>,
-    pub(in crate::raft) core_state: Mutex<CoreState<C::NodeId, C::AsyncRuntime>>,
+    pub(in crate::raft) core_state: Mutex<CoreState<C>>,
 
     /// The ongoing snapshot transmission.
     pub(in crate::raft) snapshot: Mutex<Option<crate::network::snapshot_transport::Streaming<C>>>,
@@ -55,8 +56,8 @@ where C: RaftTypeConfig
     pub(crate) async fn call_core<T, E>(
         &self,
         mes: RaftMsg<C>,
-        rx: <C::AsyncRuntime as AsyncRuntime>::OneshotReceiver<Result<T, E>>,
-    ) -> Result<T, RaftError<C::NodeId, E>>
+        rx: OneshotReceiverOf<C, Result<T, E>>,
+    ) -> Result<T, RaftError<C, E>>
     where
         E: Debug + OptionalSend,
         T: OptionalSend,
@@ -94,7 +95,7 @@ where C: RaftTypeConfig
         &self,
         cmd: ExternalCommand<C>,
         cmd_desc: impl fmt::Display + Default,
-    ) -> Result<(), Fatal<C::NodeId>> {
+    ) -> Result<(), Fatal<C>> {
         let send_res = self.tx_api.send(RaftMsg::ExternalCommand { cmd });
 
         if send_res.is_err() {
@@ -109,7 +110,7 @@ where C: RaftTypeConfig
         &self,
         when: impl fmt::Display,
         message_summary: Option<impl fmt::Display + Default>,
-    ) -> Fatal<C::NodeId> {
+    ) -> Fatal<C> {
         // Wait for the core task to finish.
         self.join_core_task().await;
 

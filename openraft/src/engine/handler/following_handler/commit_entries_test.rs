@@ -12,16 +12,16 @@ use crate::EffectiveMembership;
 use crate::Membership;
 use crate::MembershipState;
 
-fn m01() -> Membership<u64, ()> {
+fn m01() -> Membership<UTConfig> {
     Membership::new(vec![btreeset! {0,1}], None)
 }
 
-fn m23() -> Membership<u64, ()> {
+fn m23() -> Membership<UTConfig> {
     Membership::new(vec![btreeset! {2,3}], None)
 }
 
 fn eng() -> Engine<UTConfig> {
-    let mut eng = Engine::default();
+    let mut eng = Engine::testing_default(0);
     eng.state.enable_validation(false); // Disable validation for incomplete state
 
     eng.state.committed = Some(log_id(1, 1, 1));

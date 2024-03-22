@@ -35,7 +35,7 @@ async fn building_snapshot_does_not_block_append() -> Result<()> {
     tracing::info!(log_index, "--- set flag to block snapshot building");
     {
         let (mut _sto1, sm1) = router.get_storage_handle(&1)?;
-        sm1.storage_mut().await.set_blocking(BlockOperation::BuildSnapshot, Duration::from_millis(5_000));
+        sm1.block.set_blocking(BlockOperation::BuildSnapshot, Duration::from_millis(5_000));
     }
 
     tracing::info!(log_index, "--- build snapshot on follower, it should block");

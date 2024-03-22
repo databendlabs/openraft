@@ -5,12 +5,11 @@ use actix_web::Responder;
 use openraft::error::CheckIsLeaderError;
 use openraft::error::Infallible;
 use openraft::error::RaftError;
-use openraft::BasicNode;
 use web::Json;
 
 use crate::app::App;
 use crate::store::Request;
-use crate::NodeId;
+use crate::TypeConfig;
 
 /**
  * Application API
@@ -47,7 +46,7 @@ pub async fn consistent_read(app: Data<App>, req: Json<String>) -> actix_web::Re
             let key = req.0;
             let value = state_machine.data.get(&key).cloned();
 
-            let res: Result<String, RaftError<NodeId, CheckIsLeaderError<NodeId, BasicNode>>> =
+            let res: Result<String, RaftError<TypeConfig, CheckIsLeaderError<TypeConfig>>> =
                 Ok(value.unwrap_or_default());
             Ok(Json(res))
         }

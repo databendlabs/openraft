@@ -5,6 +5,7 @@ use std::sync::Mutex;
 use openraft::error::NetworkError;
 use openraft::error::RPCError;
 use openraft::error::RemoteError;
+use openraft::error::Unreachable;
 use openraft::RaftMetrics;
 use openraft::TryAsRef;
 use reqwest::Client;
@@ -13,9 +14,9 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::typ;
-use crate::Node;
 use crate::NodeId;
 use crate::Request;
+use crate::TypeConfig;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Empty {}
@@ -102,7 +103,7 @@ impl ExampleClient {
     /// Metrics contains various information about the cluster, such as current leader,
     /// membership config, replication status etc.
     /// See [`RaftMetrics`].
-    pub async fn metrics(&self) -> Result<RaftMetrics<NodeId, Node>, typ::RPCError> {
+    pub async fn metrics(&self) -> Result<RaftMetrics<TypeConfig>, typ::RPCError> {
         self.do_send_rpc_to_leader("cluster/metrics", None::<&()>).await
     }
 
@@ -117,7 +118,7 @@ impl ExampleClient {
         &self,
         uri: &str,
         req: Option<&Req>,
-    ) -> Result<Resp, RPCError<NodeId, Node, Err>>
+    ) -> Result<Resp, RPCError<TypeConfig, Err>>
     where
         Req: Serialize + 'static,
         Resp: Serialize + DeserializeOwned,
@@ -142,7 +143,13 @@ impl ExampleClient {
         }
         .send()
         .await
-        .map_err(|e| RPCError::Network(NetworkError::new(&e)))?;
+        .map_err(|e| {
+            if e.is_connect() {
+                // `Unreachable` informs the caller to backoff for a short while to avoid error log flush.
+                return RPCError::Unreachable(Unreachable::new(&e));
+            }
+            RPCError::Network(NetworkError::new(&e))
+        })?;
 
         let res: Result<Resp, Err> = resp.json().await.map_err(|e| RPCError::Network(NetworkError::new(&e)))?;
         println!(

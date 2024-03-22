@@ -3,6 +3,7 @@ use std::sync::Arc;
 use maplit::btreemap;
 use maplit::btreeset;
 
+use crate::engine::testing::UTConfig;
 use crate::error::ForwardToLeader;
 use crate::utime::UTime;
 use crate::CommittedLeaderId;
@@ -21,13 +22,13 @@ fn log_id(term: u64, index: u64) -> LogId<u64> {
     }
 }
 
-fn m12() -> Membership<u64, ()> {
+fn m12() -> Membership<UTConfig> {
     Membership::new(vec![btreeset! {1,2}], None)
 }
 
 #[test]
 fn test_forward_to_leader_vote_not_committed() {
-    let rs = RaftState {
+    let rs = RaftState::<UTConfig> {
         vote: UTime::new(TokioInstant::now(), Vote::new(1, 2)),
         membership_state: MembershipState::new(
             Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12())),
@@ -41,7 +42,7 @@ fn test_forward_to_leader_vote_not_committed() {
 
 #[test]
 fn test_forward_to_leader_not_a_member() {
-    let rs = RaftState {
+    let rs = RaftState::<UTConfig> {
         vote: UTime::new(TokioInstant::now(), Vote::new_committed(1, 3)),
         membership_state: MembershipState::new(
             Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12())),
@@ -55,9 +56,9 @@ fn test_forward_to_leader_not_a_member() {
 
 #[test]
 fn test_forward_to_leader_has_leader() {
-    let m123 = || Membership::<u64, u64>::new(vec![btreeset! {1,2}], btreemap! {1=>4,2=>5,3=>6});
+    let m123 = || Membership::<UTConfig<u64>>::new(vec![btreeset! {1,2}], btreemap! {1=>4,2=>5,3=>6});
 
-    let rs = RaftState {
+    let rs = RaftState::<UTConfig<u64>> {
         vote: UTime::new(TokioInstant::now(), Vote::new_committed(1, 3)),
         membership_state: MembershipState::new(
             Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m123())),

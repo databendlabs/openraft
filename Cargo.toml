@@ -1,5 +1,5 @@
 [workspace.package]
-version = "0.9.0"
+version = "0.10.0"
 edition = "2021"
 authors = [
     "Databend Authors <opensource@datafuselabs.com>",
@@ -47,15 +47,14 @@ resolver = "2"
 
 members = [
     "openraft",
-    "memstore",
     "macros",
     "tests",
-    "rocksstore",
-    "sledstore",
+    "stores/memstore",
+    "stores/rocksstore",
+    "stores/sledstore",
 ]
 exclude = [
     "cluster_benchmark",
-    "stores/rocksstore-v2",
     "examples/memstore",
     "examples/raft-kv-memstore",
     "examples/raft-kv-memstore-singlethreaded",

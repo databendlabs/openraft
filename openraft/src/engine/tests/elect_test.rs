@@ -21,16 +21,16 @@ use crate::Membership;
 use crate::TokioInstant;
 use crate::Vote;
 
-fn m1() -> Membership<u64, ()> {
+fn m1() -> Membership<UTConfig> {
     Membership::new(vec![btreeset! {1}], None)
 }
 
-fn m12() -> Membership<u64, ()> {
+fn m12() -> Membership<UTConfig> {
     Membership::new(vec![btreeset! {1,2}], None)
 }
 
 fn eng() -> Engine<UTConfig> {
-    let mut eng = Engine::default();
+    let mut eng = Engine::testing_default(0);
     eng.state.log_ids = LogIdList::new([LogId::new(CommittedLeaderId::new(0, 0), 0)]);
     eng.state.enable_validation(false); // Disable validation for incomplete state
     eng

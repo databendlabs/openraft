@@ -4,7 +4,7 @@ mod external_request;
 mod message;
 mod raft_inner;
 mod runtime_config_handle;
-mod trigger;
+pub mod trigger;
 
 use std::collections::BTreeMap;
 
@@ -13,7 +13,6 @@ pub(crate) use self::external_request::BoxCoreFn;
 pub(in crate::raft) mod core_state;
 
 use std::fmt::Debug;
-use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -60,11 +59,12 @@ use crate::metrics::Wait;
 use crate::metrics::WaitError;
 use crate::network::RaftNetworkFactory;
 use crate::raft::raft_inner::RaftInner;
-use crate::raft::runtime_config_handle::RuntimeConfigHandle;
+pub use crate::raft::runtime_config_handle::RuntimeConfigHandle;
 use crate::raft::trigger::Trigger;
 use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
 use crate::type_config::alias::AsyncRuntimeOf;
+use crate::type_config::alias::JoinErrorOf;
 use crate::type_config::alias::SnapshotDataOf;
 use crate::AsyncRuntime;
 use crate::ChangeMembers;
@@ -89,7 +89,7 @@ use crate::Vote;
 /// Example:
 /// ```ignore
 /// openraft::declare_raft_types!(
-///    pub Config:
+///    pub TypeConfig:
 ///        D            = ClientRequest,
 ///        R            = ClientResponse,
 ///        NodeId       = u64,
@@ -101,7 +101,7 @@ use crate::Vote;
 /// ```
 #[macro_export]
 macro_rules! declare_raft_types {
-    ( $(#[$outer:meta])* $visibility:vis $id:ident: $($(#[$inner:meta])* $type_id:ident = $type:ty),+ ) => {
+    ( $(#[$outer:meta])* $visibility:vis $id:ident: $($(#[$inner:meta])* $type_id:ident = $type:ty),+ $(,)? ) => {
         $(#[$outer])*
         #[derive(Debug, Clone, Copy, Default, Eq, PartialEq, Ord, PartialOrd)]
         #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
@@ -162,8 +162,8 @@ where C: RaftTypeConfig
     /// for more details.
     ///
     /// ### `storage`
-    /// An implementation of the `RaftStorage` trait which will be used by Raft for data storage.
-    /// See the docs on the `RaftStorage` trait for more details.
+    /// An implementation of the [`RaftLogStorage`] and [`RaftStateMachine`] trait which will be
+    /// used by Raft for data storage.
     #[tracing::instrument(level="debug", skip_all, fields(cluster=%config.cluster_name))]
     pub async fn new<LS, N, SM>(
         id: C::NodeId,
@@ -171,7 +171,7 @@ where C: RaftTypeConfig
         network: N,
         mut log_store: LS,
         mut state_machine: SM,
-    ) -> Result<Self, Fatal<C::NodeId>>
+    ) -> Result<Self, Fatal<C>>
     where
         N: RaftNetworkFactory<C>,
         LS: RaftLogStorage<C>,
@@ -200,7 +200,7 @@ where C: RaftTypeConfig
             cluster = display(&config.cluster_name)
         );
 
-        let eng_config = EngineConfig::new::<C::AsyncRuntime>(id, config.as_ref());
+        let eng_config = EngineConfig::new(id, config.as_ref());
 
         let state = {
             let mut helper = StorageHelper::new(&mut log_store, &mut state_machine);
@@ -269,25 +269,16 @@ where C: RaftTypeConfig
     /// ```ignore
     /// let raft = Raft::new(...).await?;
     /// raft.runtime_config().heartbeat(true);
+    /// raft.runtime_config().tick(true);
+    /// raft.runtime_config().elect(true);
     /// ```
     pub fn runtime_config(&self) -> RuntimeConfigHandle<C> {
         RuntimeConfigHandle::new(self.inner.as_ref())
     }
 
-    /// Enable or disable raft internal ticker.
-    #[deprecated(since = "0.8.4", note = "use `Raft::runtime_config().tick()` instead")]
-    pub fn enable_tick(&self, enabled: bool) {
-        self.runtime_config().tick(enabled)
-    }
-
-    #[deprecated(since = "0.8.4", note = "use `Raft::runtime_config().heartbeat()` instead")]
-    pub fn enable_heartbeat(&self, enabled: bool) {
-        self.runtime_config().heartbeat(enabled)
-    }
-
-    #[deprecated(since = "0.8.4", note = "use `Raft::runtime_config().elect()` instead")]
-    pub fn enable_elect(&self, enabled: bool) {
-        self.runtime_config().elect(enabled)
+    /// Return the config of this Raft node.
+    pub fn config(&self) -> &Arc<Config> {
+        &self.inner.config
     }
 
     /// Return a handle to manually trigger raft actions, such as elect or build snapshot.
@@ -301,39 +292,12 @@ where C: RaftTypeConfig
         Trigger::new(self.inner.as_ref())
     }
 
-    /// Trigger election at once and return at once.
-    #[deprecated(since = "0.8.4", note = "use `Raft::trigger().elect()` instead")]
-    pub async fn trigger_elect(&self) -> Result<(), Fatal<C::NodeId>> {
-        self.trigger().elect().await
-    }
-
-    /// Trigger a heartbeat at once and return at once.
-    #[deprecated(since = "0.8.4", note = "use `Raft::trigger().heartbeat()` instead")]
-    pub async fn trigger_heartbeat(&self) -> Result<(), Fatal<C::NodeId>> {
-        self.trigger().heartbeat().await
-    }
-
-    /// Trigger to build a snapshot at once and return at once.
-    #[deprecated(since = "0.8.4", note = "use `Raft::trigger().snapshot()` instead")]
-    pub async fn trigger_snapshot(&self) -> Result<(), Fatal<C::NodeId>> {
-        self.trigger().snapshot().await
-    }
-
-    /// Initiate the log purge up to and including the given `upto` log index.
-    #[deprecated(since = "0.8.4", note = "use `Raft::trigger().purge_log()` instead")]
-    pub async fn purge_log(&self, upto: u64) -> Result<(), Fatal<C::NodeId>> {
-        self.trigger().purge_log(upto).await
-    }
-
     /// Submit an AppendEntries RPC to this Raft node.
     ///
     /// These RPCs are sent by the cluster leader to replicate log entries (§5.3), and are also
     /// used as heartbeats (§5.2).
     #[tracing::instrument(level = "debug", skip(self, rpc))]
-    pub async fn append_entries(
-        &self,
-        rpc: AppendEntriesRequest<C>,
-    ) -> Result<AppendEntriesResponse<C::NodeId>, RaftError<C::NodeId>> {
+    pub async fn append_entries(&self, rpc: AppendEntriesRequest<C>) -> Result<AppendEntriesResponse<C>, RaftError<C>> {
         tracing::debug!(rpc = display(rpc.summary()), "Raft::append_entries");
 
         let (tx, rx) = C::AsyncRuntime::oneshot();
@@ -345,7 +309,7 @@ where C: RaftTypeConfig
     /// These RPCs are sent by cluster peers which are in candidate state attempting to gather votes
     /// (§5.2).
     #[tracing::instrument(level = "debug", skip(self, rpc))]
-    pub async fn vote(&self, rpc: VoteRequest<C::NodeId>) -> Result<VoteResponse<C::NodeId>, RaftError<C::NodeId>> {
+    pub async fn vote(&self, rpc: VoteRequest<C>) -> Result<VoteResponse<C>, RaftError<C>> {
         tracing::info!(rpc = display(rpc.summary()), "Raft::vote()");
 
         let (tx, rx) = C::AsyncRuntime::oneshot();
@@ -357,7 +321,7 @@ where C: RaftTypeConfig
     /// It returns error only when `RaftCore` fails to serve the request, e.g., Encountering a
     /// storage error or shutting down.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn get_snapshot(&self) -> Result<Option<Snapshot<C>>, RaftError<C::NodeId>> {
+    pub async fn get_snapshot(&self) -> Result<Option<Snapshot<C>>, RaftError<C>> {
         tracing::debug!("Raft::get_snapshot()");
 
         let (tx, rx) = C::AsyncRuntime::oneshot();
@@ -367,7 +331,7 @@ where C: RaftTypeConfig
 
     /// Get a snapshot data for receiving snapshot from the leader.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn begin_receiving_snapshot(&self) -> Result<Box<SnapshotDataOf<C>>, RaftError<C::NodeId, Infallible>> {
+    pub async fn begin_receiving_snapshot(&self) -> Result<Box<SnapshotDataOf<C>>, RaftError<C, Infallible>> {
         tracing::info!("Raft::begin_receiving_snapshot()");
 
         let (tx, rx) = AsyncRuntimeOf::<C>::oneshot();
@@ -385,7 +349,7 @@ where C: RaftTypeConfig
         &self,
         vote: Vote<C::NodeId>,
         snapshot: Snapshot<C>,
-    ) -> Result<SnapshotResponse<C::NodeId>, Fatal<C::NodeId>> {
+    ) -> Result<SnapshotResponse<C>, Fatal<C>> {
         tracing::info!("Raft::install_full_snapshot()");
 
         let (tx, rx) = C::AsyncRuntime::oneshot();
@@ -417,7 +381,7 @@ where C: RaftTypeConfig
     pub async fn install_snapshot(
         &self,
         req: InstallSnapshotRequest<C>,
-    ) -> Result<InstallSnapshotResponse<C::NodeId>, RaftError<C::NodeId, crate::error::InstallSnapshotError>>
+    ) -> Result<InstallSnapshotResponse<C>, RaftError<C, crate::error::InstallSnapshotError>>
     where
         C::SnapshotData: tokio::io::AsyncRead + tokio::io::AsyncWrite + tokio::io::AsyncSeek + Unpin,
     {
@@ -471,7 +435,7 @@ where C: RaftTypeConfig
     /// the read will not be stale.
     #[deprecated(since = "0.9.0", note = "use `Raft::ensure_linearizable()` instead")]
     #[tracing::instrument(level = "debug", skip(self))]
-    pub async fn is_leader(&self) -> Result<(), RaftError<C::NodeId, CheckIsLeaderError<C::NodeId, C::Node>>> {
+    pub async fn is_leader(&self) -> Result<(), RaftError<C, CheckIsLeaderError<C>>> {
         let (tx, rx) = C::AsyncRuntime::oneshot();
         let _ = self.inner.call_core(RaftMsg::CheckIsLeaderRequest { tx }, rx).await?;
         Ok(())
@@ -501,9 +465,7 @@ where C: RaftTypeConfig
     /// ```
     /// Read more about how it works: [Read Operation](crate::docs::protocol::read)
     #[tracing::instrument(level = "debug", skip(self))]
-    pub async fn ensure_linearizable(
-        &self,
-    ) -> Result<Option<LogId<C::NodeId>>, RaftError<C::NodeId, CheckIsLeaderError<C::NodeId, C::Node>>> {
+    pub async fn ensure_linearizable(&self) -> Result<Option<LogId<C::NodeId>>, RaftError<C, CheckIsLeaderError<C>>> {
         let (read_log_id, applied) = self.get_read_log_id().await?;
 
         if read_log_id.index() > applied.index() {
@@ -552,10 +514,7 @@ where C: RaftTypeConfig
     #[tracing::instrument(level = "debug", skip(self))]
     pub async fn get_read_log_id(
         &self,
-    ) -> Result<
-        (Option<LogId<C::NodeId>>, Option<LogId<C::NodeId>>),
-        RaftError<C::NodeId, CheckIsLeaderError<C::NodeId, C::Node>>,
-    > {
+    ) -> Result<(Option<LogId<C::NodeId>>, Option<LogId<C::NodeId>>), RaftError<C, CheckIsLeaderError<C>>> {
         let (tx, rx) = C::AsyncRuntime::oneshot();
         let (read_log_id, applied) = self.inner.call_core(RaftMsg::CheckIsLeaderRequest { tx }, rx).await?;
         Ok((read_log_id, applied))
@@ -574,7 +533,7 @@ where C: RaftTypeConfig
     /// track the latest serial number processed for each client, along with the associated
     /// response. If it receives a command whose serial number has already been executed, it
     /// responds immediately without re-executing the request (§8). The
-    /// `RaftStorage::apply_entry_to_state_machine` method is the perfect place to implement
+    /// [`RaftStateMachine::apply`] method is the perfect place to implement
     /// this.
     ///
     /// These are application specific requirements, and must be implemented by the application
@@ -583,7 +542,7 @@ where C: RaftTypeConfig
     pub async fn client_write(
         &self,
         app_data: C::D,
-    ) -> Result<ClientWriteResponse<C>, RaftError<C::NodeId, ClientWriteError<C::NodeId, C::Node>>> {
+    ) -> Result<ClientWriteResponse<C>, RaftError<C, ClientWriteError<C>>> {
         let (tx, rx) = C::AsyncRuntime::oneshot();
         self.inner.call_core(RaftMsg::ClientWriteRequest { app_data, tx }, rx).await
     }
@@ -610,13 +569,8 @@ where C: RaftTypeConfig
     /// More than one node performing `initialize()` with the same config is safe,
     /// with different config will result in split brain condition.
     #[tracing::instrument(level = "debug", skip(self))]
-    pub async fn initialize<T>(
-        &self,
-        members: T,
-    ) -> Result<(), RaftError<C::NodeId, InitializeError<C::NodeId, C::Node>>>
-    where
-        T: IntoNodes<C::NodeId, C::Node> + Debug,
-    {
+    pub async fn initialize<T>(&self, members: T) -> Result<(), RaftError<C, InitializeError<C>>>
+    where T: IntoNodes<C::NodeId, C::Node> + Debug {
         let (tx, rx) = C::AsyncRuntime::oneshot();
         self.inner
             .call_core(
@@ -651,7 +605,7 @@ where C: RaftTypeConfig
         id: C::NodeId,
         node: C::Node,
         blocking: bool,
-    ) -> Result<ClientWriteResponse<C>, RaftError<C::NodeId, ClientWriteError<C::NodeId, C::Node>>> {
+    ) -> Result<ClientWriteResponse<C>, RaftError<C, ClientWriteError<C>>> {
         let (tx, rx) = C::AsyncRuntime::oneshot();
         let resp = self
             .inner
@@ -701,7 +655,7 @@ where C: RaftTypeConfig
     /// Returns Err() if it should keep waiting.
     fn check_replication_upto_date(
         &self,
-        metrics: &RaftMetrics<C::NodeId, C::Node>,
+        metrics: &RaftMetrics<C>,
         node_id: C::NodeId,
         membership_log_id: Option<LogId<C::NodeId>>,
     ) -> Result<Option<LogId<C::NodeId>>, ()> {
@@ -773,7 +727,7 @@ where C: RaftTypeConfig
         &self,
         members: impl Into<ChangeMembers<C::NodeId, C::Node>>,
         retain: bool,
-    ) -> Result<ClientWriteResponse<C>, RaftError<C::NodeId, ClientWriteError<C::NodeId, C::Node>>> {
+    ) -> Result<ClientWriteResponse<C>, RaftError<C, ClientWriteError<C>>> {
         let changes: ChangeMembers<C::NodeId, C::Node> = members.into();
 
         tracing::info!(
@@ -829,7 +783,7 @@ where C: RaftTypeConfig
     /// Provides read-only access to [`RaftState`] through a user-provided function.
     ///
     /// The function `func` is applied to the current [`RaftState`]. The result of this function,
-    /// of type `V`, is returned wrapped in `Result<V, Fatal<C::NodeId>>`. `Fatal` error will be
+    /// of type `V`, is returned wrapped in `Result<V, Fatal<C>>`. `Fatal` error will be
     /// returned if failed to receive a reply from `RaftCore`.
     ///
     /// A `Fatal` error is returned if:
@@ -841,11 +795,9 @@ where C: RaftTypeConfig
     /// ```ignore
     /// let committed = my_raft.with_raft_state(|st| st.committed).await?;
     /// ```
-    pub async fn with_raft_state<F, V>(&self, func: F) -> Result<V, Fatal<C::NodeId>>
+    pub async fn with_raft_state<F, V>(&self, func: F) -> Result<V, Fatal<C>>
     where
-        F: FnOnce(&RaftState<C::NodeId, C::Node, <C::AsyncRuntime as AsyncRuntime>::Instant>) -> V
-            + OptionalSend
-            + 'static,
+        F: FnOnce(&RaftState<C>) -> V + OptionalSend + 'static,
         V: OptionalSend + 'static,
     {
         let (tx, rx) = C::AsyncRuntime::oneshot();
@@ -882,24 +834,23 @@ where C: RaftTypeConfig
     /// If the API channel is already closed (Raft is in shutdown), then the request functor is
     /// destroyed right away and not called at all.
     pub fn external_request<F>(&self, req: F)
-    where F: FnOnce(&RaftState<C::NodeId, C::Node, <C::AsyncRuntime as AsyncRuntime>::Instant>) + OptionalSend + 'static
-    {
+    where F: FnOnce(&RaftState<C>) + OptionalSend + 'static {
         let req: BoxCoreFn<C> = Box::new(req);
         let _ignore_error = self.inner.tx_api.send(RaftMsg::ExternalCoreRequest { req });
     }
 
     /// Get a handle to the metrics channel.
-    pub fn metrics(&self) -> watch::Receiver<RaftMetrics<C::NodeId, C::Node>> {
+    pub fn metrics(&self) -> watch::Receiver<RaftMetrics<C>> {
         self.inner.rx_metrics.clone()
     }
 
     /// Get a handle to the data metrics channel.
-    pub fn data_metrics(&self) -> watch::Receiver<RaftDataMetrics<C::NodeId>> {
+    pub fn data_metrics(&self) -> watch::Receiver<RaftDataMetrics<C>> {
         self.inner.rx_data_metrics.clone()
     }
 
     /// Get a handle to the server metrics channel.
-    pub fn server_metrics(&self) -> watch::Receiver<RaftServerMetrics<C::NodeId, C::Node>> {
+    pub fn server_metrics(&self) -> watch::Receiver<RaftServerMetrics<C>> {
         self.inner.rx_server_metrics.clone()
     }
 
@@ -923,7 +874,7 @@ where C: RaftTypeConfig
     /// // wait for raft state to become a follower
     /// r.wait(None).state(State::Follower, "state").await?;
     /// ```
-    pub fn wait(&self, timeout: Option<Duration>) -> Wait<C::NodeId, C::Node, C::AsyncRuntime> {
+    pub fn wait(&self, timeout: Option<Duration>) -> Wait<C> {
         let timeout = match timeout {
             Some(t) => t,
             None => Duration::from_secs(86400 * 365 * 100),
@@ -931,14 +882,13 @@ where C: RaftTypeConfig
         Wait {
             timeout,
             rx: self.inner.rx_metrics.clone(),
-            _phantom: PhantomData,
         }
     }
 
     /// Shutdown this Raft node.
     ///
     /// It sends a shutdown signal and waits until `RaftCore` returns.
-    pub async fn shutdown(&self) -> Result<(), <C::AsyncRuntime as AsyncRuntime>::JoinError> {
+    pub async fn shutdown(&self) -> Result<(), JoinErrorOf<C>> {
         if let Some(tx) = self.inner.tx_shutdown.lock().await.take() {
             // A failure to send means the RaftCore is already shutdown. Continue to check the task
             // return value.

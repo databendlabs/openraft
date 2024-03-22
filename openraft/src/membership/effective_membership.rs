@@ -2,15 +2,13 @@ use std::collections::BTreeSet;
 use std::fmt::Debug;
 use std::sync::Arc;
 
-use crate::entry::RaftEntry;
 use crate::log_id::RaftLogId;
-use crate::node::Node;
 use crate::quorum::Joint;
 use crate::quorum::QuorumSet;
 use crate::LogId;
 use crate::Membership;
 use crate::MessageSummary;
-use crate::NodeId;
+use crate::RaftTypeConfig;
 use crate::StoredMembership;
 
 /// The currently active membership config.
@@ -21,24 +19,20 @@ use crate::StoredMembership;
 ///
 /// An active config is just the last seen config in raft spec.
 #[derive(Clone, Default, Eq)]
-pub struct EffectiveMembership<NID, N>
-where
-    N: Node,
-    NID: NodeId,
+pub struct EffectiveMembership<C>
+where C: RaftTypeConfig
 {
-    stored_membership: Arc<StoredMembership<NID, N>>,
+    stored_membership: Arc<StoredMembership<C>>,
 
     /// The quorum set built from `membership`.
-    quorum_set: Joint<NID, Vec<NID>, Vec<Vec<NID>>>,
+    quorum_set: Joint<C::NodeId, Vec<C::NodeId>, Vec<Vec<C::NodeId>>>,
 
     /// Cache of union of all members
-    voter_ids: BTreeSet<NID>,
+    voter_ids: BTreeSet<C::NodeId>,
 }
 
-impl<NID, N> Debug for EffectiveMembership<NID, N>
-where
-    N: Node,
-    NID: NodeId,
+impl<C> Debug for EffectiveMembership<C>
+where C: RaftTypeConfig
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("EffectiveMembership")
@@ -49,49 +43,32 @@ where
     }
 }
 
-impl<NID, N> PartialEq for EffectiveMembership<NID, N>
-where
-    N: Node,
-    NID: NodeId,
+impl<C> PartialEq for EffectiveMembership<C>
+where C: RaftTypeConfig
 {
     fn eq(&self, other: &Self) -> bool {
         self.stored_membership == other.stored_membership && self.voter_ids == other.voter_ids
     }
 }
 
-impl<NID, N, LID> From<(&LID, Membership<NID, N>)> for EffectiveMembership<NID, N>
+impl<C, LID> From<(&LID, Membership<C>)> for EffectiveMembership<C>
 where
-    N: Node,
-    NID: NodeId,
-    LID: RaftLogId<NID>,
+    C: RaftTypeConfig,
+    LID: RaftLogId<C::NodeId>,
 {
-    fn from(v: (&LID, Membership<NID, N>)) -> Self {
+    fn from(v: (&LID, Membership<C>)) -> Self {
         EffectiveMembership::new(Some(*v.0.get_log_id()), v.1)
     }
 }
 
-/// Build a EffectiveMembership from a membership config entry
-impl<NID, N, Ent> From<&Ent> for EffectiveMembership<NID, N>
-where
-    N: Node,
-    NID: NodeId,
-    Ent: RaftEntry<NID, N>,
+impl<C> EffectiveMembership<C>
+where C: RaftTypeConfig
 {
-    fn from(v: &Ent) -> Self {
-        EffectiveMembership::new(Some(*v.get_log_id()), v.get_membership().unwrap().clone())
-    }
-}
-
-impl<NID, N> EffectiveMembership<NID, N>
-where
-    N: Node,
-    NID: NodeId,
-{
-    pub(crate) fn new_arc(log_id: Option<LogId<NID>>, membership: Membership<NID, N>) -> Arc<Self> {
+    pub(crate) fn new_arc(log_id: Option<LogId<C::NodeId>>, membership: Membership<C>) -> Arc<Self> {
         Arc::new(Self::new(log_id, membership))
     }
 
-    pub fn new(log_id: Option<LogId<NID>>, membership: Membership<NID, N>) -> Self {
+    pub fn new(log_id: Option<LogId<C::NodeId>>, membership: Membership<C>) -> Self {
         let voter_ids = membership.voter_ids().collect();
 
         let configs = membership.get_joint_config();
@@ -109,51 +86,49 @@ where
         }
     }
 
-    pub(crate) fn new_from_stored_membership(stored: StoredMembership<NID, N>) -> Self {
+    pub(crate) fn new_from_stored_membership(stored: StoredMembership<C>) -> Self {
         Self::new(*stored.log_id(), stored.membership().clone())
     }
 
-    pub(crate) fn stored_membership(&self) -> &Arc<StoredMembership<NID, N>> {
+    pub(crate) fn stored_membership(&self) -> &Arc<StoredMembership<C>> {
         &self.stored_membership
     }
 
-    pub fn log_id(&self) -> &Option<LogId<NID>> {
+    pub fn log_id(&self) -> &Option<LogId<C::NodeId>> {
         self.stored_membership.log_id()
     }
 
-    pub fn membership(&self) -> &Membership<NID, N> {
+    pub fn membership(&self) -> &Membership<C> {
         self.stored_membership.membership()
     }
 }
 
 /// Membership API
-impl<NID, N> EffectiveMembership<NID, N>
-where
-    N: Node,
-    NID: NodeId,
+impl<C> EffectiveMembership<C>
+where C: RaftTypeConfig
 {
     #[allow(dead_code)]
-    pub(crate) fn is_voter(&self, nid: &NID) -> bool {
+    pub(crate) fn is_voter(&self, nid: &C::NodeId) -> bool {
         self.membership().is_voter(nid)
     }
 
     /// Returns an Iterator of all voter node ids. Learners are not included.
-    pub fn voter_ids(&self) -> impl Iterator<Item = NID> + '_ {
+    pub fn voter_ids(&self) -> impl Iterator<Item = C::NodeId> + '_ {
         self.voter_ids.iter().copied()
     }
 
     /// Returns an Iterator of all learner node ids. Voters are not included.
-    pub(crate) fn learner_ids(&self) -> impl Iterator<Item = NID> + '_ {
+    pub(crate) fn learner_ids(&self) -> impl Iterator<Item = C::NodeId> + '_ {
         self.membership().learner_ids()
     }
 
     /// Get a the node(either voter or learner) by node id.
-    pub fn get_node(&self, node_id: &NID) -> Option<&N> {
+    pub fn get_node(&self, node_id: &C::NodeId) -> Option<&C::Node> {
         self.membership().get_node(node_id)
     }
 
     /// Returns an Iterator of all nodes(voters and learners).
-    pub fn nodes(&self) -> impl Iterator<Item = (&NID, &N)> {
+    pub fn nodes(&self) -> impl Iterator<Item = (&C::NodeId, &C::Node)> {
         self.membership().nodes()
     }
 
@@ -161,15 +136,13 @@ where
     ///
     /// Membership is defined by a joint of multiple configs.
     /// Each config is a vec of node-id.
-    pub fn get_joint_config(&self) -> &Vec<Vec<NID>> {
+    pub fn get_joint_config(&self) -> &Vec<Vec<C::NodeId>> {
         self.quorum_set.children()
     }
 }
 
-impl<NID, N> MessageSummary<EffectiveMembership<NID, N>> for EffectiveMembership<NID, N>
-where
-    N: Node,
-    NID: NodeId,
+impl<C> MessageSummary<EffectiveMembership<C>> for EffectiveMembership<C>
+where C: RaftTypeConfig
 {
     fn summary(&self) -> String {
         format!(
@@ -181,14 +154,12 @@ where
 }
 
 /// Implement node-id joint quorum set.
-impl<NID, N> QuorumSet<NID> for EffectiveMembership<NID, N>
-where
-    N: Node,
-    NID: NodeId,
+impl<C> QuorumSet<C::NodeId> for EffectiveMembership<C>
+where C: RaftTypeConfig
 {
-    type Iter = std::collections::btree_set::IntoIter<NID>;
+    type Iter = std::collections::btree_set::IntoIter<C::NodeId>;
 
-    fn is_quorum<'a, I: Iterator<Item = &'a NID> + Clone>(&self, ids: I) -> bool {
+    fn is_quorum<'a, I: Iterator<Item = &'a C::NodeId> + Clone>(&self, ids: I) -> bool {
         self.quorum_set.is_quorum(ids)
     }
 

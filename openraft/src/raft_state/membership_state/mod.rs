@@ -7,8 +7,7 @@ use crate::EffectiveMembership;
 use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::MessageSummary;
-use crate::Node;
-use crate::NodeId;
+use crate::RaftTypeConfig;
 
 mod change_handler;
 #[cfg(test)] mod change_handler_test;
@@ -40,21 +39,17 @@ pub(crate) use change_handler::ChangeHandler;
 /// Thus a raft node will only need to store at most two recent membership logs.
 #[derive(Debug, Clone, Default)]
 #[derive(PartialEq, Eq)]
-pub struct MembershipState<NID, N>
-where
-    NID: NodeId,
-    N: Node,
+pub struct MembershipState<C>
+where C: RaftTypeConfig
 {
-    committed: Arc<EffectiveMembership<NID, N>>,
+    committed: Arc<EffectiveMembership<C>>,
 
     // Using `Arc` because the effective membership will be copied to RaftMetrics frequently.
-    effective: Arc<EffectiveMembership<NID, N>>,
+    effective: Arc<EffectiveMembership<C>>,
 }
 
-impl<NID, N> MessageSummary<MembershipState<NID, N>> for MembershipState<NID, N>
-where
-    NID: NodeId,
-    N: Node,
+impl<C> MessageSummary<MembershipState<C>> for MembershipState<C>
+where C: RaftTypeConfig
 {
     fn summary(&self) -> String {
         format!(
@@ -65,30 +60,25 @@ where
     }
 }
 
-impl<NID, N> MembershipState<NID, N>
-where
-    NID: NodeId,
-    N: Node,
+impl<C> MembershipState<C>
+where C: RaftTypeConfig
 {
-    pub(crate) fn new(
-        committed: Arc<EffectiveMembership<NID, N>>,
-        effective: Arc<EffectiveMembership<NID, N>>,
-    ) -> Self {
+    pub(crate) fn new(committed: Arc<EffectiveMembership<C>>, effective: Arc<EffectiveMembership<C>>) -> Self {
         Self { committed, effective }
     }
 
     /// Return true if the given node id is an either voter or learner.
-    pub(crate) fn contains(&self, id: &NID) -> bool {
+    pub(crate) fn contains(&self, id: &C::NodeId) -> bool {
         self.effective.membership().contains(id)
     }
 
     /// Check if the given `NodeId` exists and is a voter.
-    pub(crate) fn is_voter(&self, id: &NID) -> bool {
+    pub(crate) fn is_voter(&self, id: &C::NodeId) -> bool {
         self.effective.membership().is_voter(id)
     }
 
     /// Update membership state if the specified committed_log_id is greater than `self.effective`
-    pub(crate) fn commit(&mut self, committed_log_id: &Option<LogId<NID>>) {
+    pub(crate) fn commit(&mut self, committed_log_id: &Option<LogId<C::NodeId>>) {
         if committed_log_id >= self.effective().log_id() {
             debug_assert!(committed_log_id.index() >= self.effective().log_id().index());
             self.committed = self.effective.clone();
@@ -100,10 +90,7 @@ where
     ///
     /// If `self.effective` changed, it returns a reference to the new one.
     /// If not, it returns None.
-    pub(crate) fn update_committed(
-        &mut self,
-        c: Arc<EffectiveMembership<NID, N>>,
-    ) -> Option<Arc<EffectiveMembership<NID, N>>> {
+    pub(crate) fn update_committed(&mut self, c: Arc<EffectiveMembership<C>>) -> Option<Arc<EffectiveMembership<C>>> {
         let mut changed = false;
 
         // The local effective membership may conflict with the leader.
@@ -145,7 +132,7 @@ where
     /// - Leader appends a new membership,
     /// - Or a follower has confirmed preceding logs matches the leaders' and appends membership
     ///   received from the leader.
-    pub(crate) fn append(&mut self, m: Arc<EffectiveMembership<NID, N>>) {
+    pub(crate) fn append(&mut self, m: Arc<EffectiveMembership<C>>) {
         debug_assert!(
             m.log_id() > self.effective.log_id(),
             "new membership has to have a greater log_id"
@@ -179,7 +166,7 @@ where
     /// |                                    last membership      // before deleting since..
     /// last membership                                           // after  deleting since..
     /// ```
-    pub(crate) fn truncate(&mut self, since: u64) -> Option<Arc<EffectiveMembership<NID, N>>> {
+    pub(crate) fn truncate(&mut self, since: u64) -> Option<Arc<EffectiveMembership<C>>> {
         debug_assert!(
             since >= self.committed().log_id().next_index(),
             "committed log should never be truncated: committed membership can not conflict with the leader"
@@ -200,14 +187,14 @@ where
 
     // This method is only used by tests
     #[cfg(test)]
-    pub(crate) fn set_effective(&mut self, e: Arc<EffectiveMembership<NID, N>>) {
+    pub(crate) fn set_effective(&mut self, e: Arc<EffectiveMembership<C>>) {
         self.effective = e
     }
 
     /// Returns a reference to the last committed membership config.
     ///
     /// A committed membership config may or may not be the same as the effective one.
-    pub fn committed(&self) -> &Arc<EffectiveMembership<NID, N>> {
+    pub fn committed(&self) -> &Arc<EffectiveMembership<C>> {
         &self.committed
     }
 
@@ -217,19 +204,17 @@ where
     /// one.
     ///
     /// A committed membership config may or may not be the same as the effective one.
-    pub fn effective(&self) -> &Arc<EffectiveMembership<NID, N>> {
+    pub fn effective(&self) -> &Arc<EffectiveMembership<C>> {
         &self.effective
     }
 
-    pub(crate) fn change_handler(&self) -> ChangeHandler<NID, N> {
+    pub(crate) fn change_handler(&self) -> ChangeHandler<C> {
         ChangeHandler { state: self }
     }
 }
 
-impl<NID, N> Validate for MembershipState<NID, N>
-where
-    NID: NodeId,
-    N: Node,
+impl<C> Validate for MembershipState<C>
+where C: RaftTypeConfig
 {
     fn validate(&self) -> Result<(), Box<dyn Error>> {
         validit::less_equal!(self.committed.log_id(), self.effective.log_id());

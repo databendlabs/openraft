@@ -37,7 +37,7 @@ impl RaftNetwork<TypeConfig> for Connection {
         &mut self,
         req: AppendEntriesRequest<TypeConfig>,
         _option: RPCOption,
-    ) -> Result<AppendEntriesResponse<NodeId>, typ::RPCError> {
+    ) -> Result<AppendEntriesResponse<TypeConfig>, typ::RPCError> {
         let resp = self
             .router
             .send(self.target, "/raft/append", req)
@@ -50,7 +50,7 @@ impl RaftNetwork<TypeConfig> for Connection {
         &mut self,
         req: InstallSnapshotRequest<TypeConfig>,
         _option: RPCOption,
-    ) -> Result<InstallSnapshotResponse<NodeId>, typ::RPCError<InstallSnapshotError>> {
+    ) -> Result<InstallSnapshotResponse<TypeConfig>, typ::RPCError<InstallSnapshotError>> {
         let resp = self
             .router
             .send(self.target, "/raft/snapshot", req)
@@ -61,9 +61,9 @@ impl RaftNetwork<TypeConfig> for Connection {
 
     async fn vote(
         &mut self,
-        req: VoteRequest<NodeId>,
+        req: VoteRequest<TypeConfig>,
         _option: RPCOption,
-    ) -> Result<VoteResponse<NodeId>, typ::RPCError> {
+    ) -> Result<VoteResponse<TypeConfig>, typ::RPCError> {
         let resp = self
             .router
             .send(self.target, "/raft/vote", req)

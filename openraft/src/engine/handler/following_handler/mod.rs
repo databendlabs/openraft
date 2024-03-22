@@ -12,7 +12,6 @@ use crate::engine::EngineOutput;
 use crate::entry::RaftPayload;
 use crate::error::RejectAppendEntries;
 use crate::raft_state::LogStateReader;
-use crate::AsyncRuntime;
 use crate::EffectiveMembership;
 use crate::LogId;
 use crate::LogIdOptionExt;
@@ -36,8 +35,8 @@ use crate::StoredMembership;
 pub(crate) struct FollowingHandler<'x, C>
 where C: RaftTypeConfig
 {
-    pub(crate) config: &'x mut EngineConfig<C::NodeId>,
-    pub(crate) state: &'x mut RaftState<C::NodeId, C::Node, <C::AsyncRuntime as AsyncRuntime>::Instant>,
+    pub(crate) config: &'x mut EngineConfig<C>,
+    pub(crate) state: &'x mut RaftState<C>,
     pub(crate) output: &'x mut EngineOutput<C>,
 }
 
@@ -93,7 +92,7 @@ where C: RaftTypeConfig
     pub(crate) fn ensure_log_consecutive(
         &mut self,
         prev_log_id: Option<LogId<C::NodeId>>,
-    ) -> Result<(), RejectAppendEntries<C::NodeId>> {
+    ) -> Result<(), RejectAppendEntries<C>> {
         if let Some(ref prev) = prev_log_id {
             if !self.state.has_log_id(prev) {
                 let local = self.state.get_log_id(prev.index);
@@ -225,7 +224,7 @@ where C: RaftTypeConfig
 
     /// Update membership state with a committed membership config
     #[tracing::instrument(level = "debug", skip_all)]
-    fn update_committed_membership(&mut self, membership: EffectiveMembership<C::NodeId, C::Node>) {
+    fn update_committed_membership(&mut self, membership: EffectiveMembership<C>) {
         tracing::debug!("update committed membership: {}", membership.summary());
 
         let m = Arc::new(membership);
@@ -295,9 +294,7 @@ where C: RaftTypeConfig
     ///
     /// A follower/learner reverts the effective membership to the previous one,
     /// when conflicting logs are found.
-    fn last_two_memberships<'a>(
-        entries: impl DoubleEndedIterator<Item = &'a C::Entry>,
-    ) -> Vec<StoredMembership<C::NodeId, C::Node>>
+    fn last_two_memberships<'a>(entries: impl DoubleEndedIterator<Item = &'a C::Entry>) -> Vec<StoredMembership<C>>
     where C::Entry: 'a {
         let mut memberships = vec![];
 

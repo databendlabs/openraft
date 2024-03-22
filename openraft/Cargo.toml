@@ -13,6 +13,7 @@ keywords      = { workspace = true }
 license       = { workspace = true }
 repository    = { workspace = true }
 
+
 [dependencies]
 anyerror        = { workspace = true }
 anyhow          = { workspace = true, optional = true }
@@ -20,7 +21,7 @@ byte-unit       = { workspace = true }
 clap            = { workspace = true }
 derive_more     = { workspace = true }
 futures         = { workspace = true }
-macros          = { path = "../macros" }
+openraft-macros = { path = "../macros", version = "0.10.0" }
 maplit          = { workspace = true }
 rand            = { workspace = true }
 serde           = { workspace = true, optional = true }
@@ -71,16 +72,15 @@ serde = ["dep:serde"]
 # This feature is disabled by default.
 single-term-leader = []
 
+# Enable this feature to use `openraft::alias::*` type shortcuts.
+# The type shortcuts are not stable and may be changed in the future.
+type-alias = []
+
 # Provide basic compatible types
 compat = []
 
-# Allows an application to implement a custom the v2 storage API.
-# See `openraft::storage::v2` for more details.
-# V2 API are unstable and may change in the future.
-storage-v2 = []
-
 # Disallows applications to share a raft instance with multiple threads.
-singlethreaded = ["macros/singlethreaded"]
+singlethreaded = ["openraft-macros/singlethreaded"]
 
 
 # Permit the follower's log to roll back to an earlier state without causing the
@@ -114,8 +114,20 @@ tracing-log = [ "tracing/log" ]
 
 [package.metadata.docs.rs]
 
-# Enable this flag to show all types/mods, including the feature enabled ones on docs.rs
-all-features = true
+# Enable these feature flags to show all types/mods,
+# including the feature enabled ones on docs.rs
+features = [
+    "bt",
+    "compat",
+    "generic-snapshot-data",
+    "loosen-follower-log-revert",
+    "serde",
+    "tracing-log",
+]
+
+# Do not use this to enable all features:
+# "singlethreaded" makes `Raft<C>` a `!Send`, which confuses users.
+# all-features = true
 
 # Sort modules by appearance order for crate `docs`.
 # https://doc.rust-lang.org/rustdoc/unstable-features.html#--sort-modules-by-appearance-control-how-items-on-module-pages-are-sorted

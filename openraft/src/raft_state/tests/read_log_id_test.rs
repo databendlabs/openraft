@@ -1,9 +1,9 @@
+use crate::engine::testing::UTConfig;
 use crate::engine::LogIdList;
 use crate::utime::UTime;
 use crate::CommittedLeaderId;
 use crate::LogId;
 use crate::RaftState;
-use crate::TokioInstant;
 use crate::Vote;
 
 fn log_id(term: u64, index: u64) -> LogId<u64> {
@@ -17,7 +17,7 @@ fn log_id(term: u64, index: u64) -> LogId<u64> {
 fn test_raft_state_get_read_log_id() -> anyhow::Result<()> {
     let log_ids = || LogIdList::new(vec![log_id(1, 1), log_id(3, 4), log_id(3, 6)]);
     {
-        let rs = RaftState::<u64, (), TokioInstant> {
+        let rs = RaftState::<UTConfig> {
             vote: UTime::without_utime(Vote::new_committed(3, 0)),
             log_ids: log_ids(),
             committed: Some(log_id(2, 1)),
@@ -28,7 +28,7 @@ fn test_raft_state_get_read_log_id() -> anyhow::Result<()> {
     }
 
     {
-        let rs = RaftState::<u64, (), TokioInstant> {
+        let rs = RaftState::<UTConfig> {
             vote: UTime::without_utime(Vote::new_committed(3, 0)),
             log_ids: log_ids(),
             committed: Some(log_id(3, 5)),

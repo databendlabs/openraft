@@ -1,4 +1,4 @@
-use macros::add_async_trait;
+use openraft_macros::add_async_trait;
 
 use crate::engine::Command;
 use crate::RaftTypeConfig;
@@ -13,7 +13,7 @@ use crate::StorageError;
 /// or `elect` from a timer, and outputs `command`, such as
 /// `append-entry-to-storage`, or `commit-entry-at-index-5` to a runtime to execute.
 ///
-/// A `RaftRuntime` talks to `RaftStorage` and `RaftNetwork` to get things done.
+/// A `RaftRuntime` talks to `RaftLogStorage` and `RaftNetwork` to get things done.
 ///
 /// The workflow of writing something through raft protocol with engine and runtime would be like
 /// this:

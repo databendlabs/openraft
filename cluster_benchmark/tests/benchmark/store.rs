@@ -8,6 +8,7 @@ use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
+use openraft::alias::SnapshotDataOf;
 use openraft::storage::LogFlushed;
 use openraft::storage::LogState;
 use openraft::storage::RaftLogReader;
@@ -20,7 +21,6 @@ use openraft::EntryPayload;
 use openraft::LogId;
 use openraft::OptionalSend;
 use openraft::RaftLogId;
-use openraft::RaftTypeConfig;
 use openraft::SnapshotMeta;
 use openraft::StorageError;
 use openraft::StorageIOError;
@@ -40,20 +40,26 @@ pub struct ClientResponse {}
 pub type NodeId = u64;
 
 openraft::declare_raft_types!(
-    pub TypeConfig: D = ClientRequest, R = ClientResponse, NodeId = NodeId, Node = (),
-    Entry = Entry<TypeConfig>, SnapshotData = Cursor<Vec<u8>>, AsyncRuntime = TokioRuntime
+    pub TypeConfig:
+        D = ClientRequest,
+        R = ClientResponse,
+        NodeId = NodeId,
+        Node = (),
+        Entry = Entry<TypeConfig>,
+        SnapshotData = Cursor<Vec<u8>>,
+        AsyncRuntime = TokioRuntime
 );
 
 #[derive(Debug)]
 pub struct StoredSnapshot {
-    pub meta: SnapshotMeta<NodeId, ()>,
+    pub meta: SnapshotMeta<TypeConfig>,
     pub data: Vec<u8>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct StateMachine {
     pub last_applied_log: Option<LogId<NodeId>>,
-    pub last_membership: StoredMembership<NodeId, ()>,
+    pub last_membership: StoredMembership<TypeConfig>,
 }
 
 pub struct LogStore {
@@ -114,6 +120,10 @@ impl RaftLogReader<TypeConfig> for Arc<LogStore> {
         };
 
         Ok(entries)
+    }
+
+    async fn read_vote(&mut self) -> Result<Option<Vote<NodeId>>, StorageError<NodeId>> {
+        Ok(self.vote.read().await.clone())
     }
 }
 
@@ -198,10 +208,6 @@ impl RaftLogStorage<TypeConfig> for Arc<LogStore> {
         Ok(())
     }
 
-    async fn read_vote(&mut self) -> Result<Option<Vote<NodeId>>, StorageError<NodeId>> {
-        Ok(self.vote.read().await.clone())
-    }
-
     #[tracing::instrument(level = "debug", skip(self))]
     async fn truncate(&mut self, log_id: LogId<NodeId>) -> Result<(), StorageError<NodeId>> {
         let mut log = self.log.write().await;
@@ -224,14 +230,8 @@ impl RaftLogStorage<TypeConfig> for Arc<LogStore> {
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
-    async fn append<I>(
-        &mut self,
-        entries: I,
-        callback: LogFlushed<TypeConfig>,
-    ) -> Result<(), StorageError<NodeId>>
-    where
-        I: IntoIterator<Item = Entry<TypeConfig>> + Send,
-    {
+    async fn append<I>(&mut self, entries: I, callback: LogFlushed<TypeConfig>) -> Result<(), StorageError<NodeId>>
+    where I: IntoIterator<Item = Entry<TypeConfig>> + Send {
         {
             let mut log = self.log.write().await;
             log.extend(entries.into_iter().map(|entry| (entry.get_log_id().index, entry)));
@@ -250,7 +250,7 @@ impl RaftLogStorage<TypeConfig> for Arc<LogStore> {
 impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
     async fn applied_state(
         &mut self,
-    ) -> Result<(Option<LogId<NodeId>>, StoredMembership<NodeId, ()>), StorageError<NodeId>> {
+    ) -> Result<(Option<LogId<NodeId>>, StoredMembership<TypeConfig>), StorageError<NodeId>> {
         let sm = self.sm.read().await;
         Ok((sm.last_applied_log, sm.last_membership.clone()))
     }
@@ -278,17 +278,15 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn begin_receiving_snapshot(
-        &mut self,
-    ) -> Result<Box<<TypeConfig as RaftTypeConfig>::SnapshotData>, StorageError<NodeId>> {
+    async fn begin_receiving_snapshot(&mut self) -> Result<Box<SnapshotDataOf<TypeConfig>>, StorageError<NodeId>> {
         Ok(Box::new(Cursor::new(Vec::new())))
     }
 
     #[tracing::instrument(level = "trace", skip(self, snapshot))]
     async fn install_snapshot(
         &mut self,
-        meta: &SnapshotMeta<NodeId, ()>,
-        snapshot: Box<<TypeConfig as RaftTypeConfig>::SnapshotData>,
+        meta: &SnapshotMeta<TypeConfig>,
+        snapshot: Box<SnapshotDataOf<TypeConfig>>,
     ) -> Result<(), StorageError<NodeId>> {
         let new_snapshot = StoredSnapshot {
             meta: meta.clone(),

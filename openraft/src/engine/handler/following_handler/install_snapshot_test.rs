@@ -19,16 +19,16 @@ use crate::StoredMembership;
 use crate::TokioInstant;
 use crate::Vote;
 
-fn m12() -> Membership<u64, ()> {
-    Membership::<u64, ()>::new(vec![btreeset! {1,2}], None)
+fn m12() -> Membership<UTConfig> {
+    Membership::<UTConfig>::new(vec![btreeset! {1,2}], None)
 }
 
-fn m1234() -> Membership<u64, ()> {
-    Membership::<u64, ()>::new(vec![btreeset! {1,2,3,4}], None)
+fn m1234() -> Membership<UTConfig> {
+    Membership::<UTConfig>::new(vec![btreeset! {1,2,3,4}], None)
 }
 
 fn eng() -> Engine<UTConfig> {
-    let mut eng = Engine::default();
+    let mut eng = Engine::testing_default(0);
     eng.state.enable_validation(false); // Disable validation for incomplete state
 
     eng.state.vote.update(TokioInstant::now(), Vote::new_committed(2, 1));
@@ -163,7 +163,7 @@ fn test_install_snapshot_conflict() -> anyhow::Result<()> {
     // Snapshot will be installed, all non-committed log will be deleted.
     // And there should be no conflicting logs left.
     let mut eng = {
-        let mut eng = Engine::<UTConfig>::default();
+        let mut eng = Engine::<UTConfig>::testing_default(0);
         eng.state.enable_validation(false); // Disable validation for incomplete state
 
         eng.state.vote.update(TokioInstant::now(), Vote::new_committed(2, 1));

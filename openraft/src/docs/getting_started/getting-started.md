@@ -96,7 +96,6 @@ Follow the link to method document to see the details.
 | Write log: | [`truncate()`]            | ()                           | delete logs `[index, +oo)`            |
 | Write log: | [`purge()`]               | ()                           | purge logs `(-oo, index]`             |
 | Vote:      | [`save_vote()`]           | ()                           | save vote                             |
-| Vote:      | [`read_vote()`]           | [`Vote`]                     | read vote                             |
 
 | Kind       | [`RaftStateMachine`] method    | Return value                 | Description                           |
 |------------|--------------------------------|------------------------------|---------------------------------------|
@@ -122,10 +121,12 @@ Most of the APIs are quite straightforward, except two indirect APIs:
 
     [`RaftLogReader`] defines the APIs to read logs, and is an also super trait of [`RaftLogStorage`] :
     - [`try_get_log_entries()`] get log entries in a range;
+    - [`read_vote()`] read vote;
 
     ```ignore
     trait RaftLogReader<C: RaftTypeConfig> {
         async fn try_get_log_entries<RB: RangeBounds<u64>>(&mut self, range: RB) -> Result<Vec<C::Entry>, ...>;
+        async fn read_vote(&mut self) -> Result<Option<Vote<C::NodeId>>, ...>>;
     }
     ```
 
@@ -143,12 +144,13 @@ If your implementation passes the tests, Openraft should work well with it.
 To test your implementation, you have two options:
 
 1. Run `Suite::test_all()` with an `async fn()` that creates a new pair of [`RaftLogStorage`] and [`RaftStateMachine`],
-   as shown in the [`MemStore` test](https://github.com/datafuselabs/openraft/blob/main/memstore/src/test.rs):
+   as shown in the [`MemStore` test](https://github.com/datafuselabs/openraft/blob/main/stores/memstore/src/test.rs):
 
   ```ignore
   #[test]
-  pub fn test_mem_store() -> anyhow::Result<()> {
-    openraft::testing::Suite::test_all(MemStore::new_async)
+  pub fn test_mem_store() -> Result<(), StorageError<MemNodeId>> {
+      Suite::test_all(MemStoreBuilder {})?;
+      Ok(())
   }
   ```
 
@@ -371,6 +373,7 @@ Additionally, two test scripts for setting up a cluster are available:
 
 [`RaftLogReader`]:                      `crate::storage::RaftLogReader`
 [`try_get_log_entries()`]:              `crate::storage::RaftLogReader::try_get_log_entries`
+[`read_vote()`]:                        `crate::storage::RaftLogReader::read_vote`
 
 
 [`RaftLogStorage::SnapshotBuilder`]:    `crate::storage::RaftLogStorage::SnapshotBuilder`
@@ -381,7 +384,6 @@ Additionally, two test scripts for setting up a cluster are available:
 [`truncate()`]:                         `crate::storage::RaftLogStorage::truncate`
 [`purge()`]:                            `crate::storage::RaftLogStorage::purge`
 [`save_vote()`]:                        `crate::storage::RaftLogStorage::save_vote`
-[`read_vote()`]:                        `crate::storage::RaftLogStorage::read_vote`
 [`get_log_state()`]:                    `crate::storage::RaftLogStorage::get_log_state`
 [`get_log_reader()`]:                   `crate::storage::RaftLogStorage::get_log_reader`
 

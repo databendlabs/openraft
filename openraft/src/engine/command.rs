@@ -79,7 +79,7 @@ where C: RaftTypeConfig
     SaveVote { vote: Vote<C::NodeId> },
 
     /// Send vote to all other members
-    SendVote { vote_req: VoteRequest<C::NodeId> },
+    SendVote { vote_req: VoteRequest<C> },
 
     /// Purge log from the beginning to `upto`, inclusive.
     PurgeLog { upto: LogId<C::NodeId> },
@@ -223,12 +223,12 @@ where NID: NodeId
 pub(crate) enum Respond<C>
 where C: RaftTypeConfig
 {
-    Vote(ValueSender<C, Result<VoteResponse<C::NodeId>, Infallible>>),
-    AppendEntries(ValueSender<C, Result<AppendEntriesResponse<C::NodeId>, Infallible>>),
+    Vote(ValueSender<C, Result<VoteResponse<C>, Infallible>>),
+    AppendEntries(ValueSender<C, Result<AppendEntriesResponse<C>, Infallible>>),
     ReceiveSnapshotChunk(ValueSender<C, Result<(), InstallSnapshotError>>),
-    InstallSnapshot(ValueSender<C, Result<InstallSnapshotResponse<C::NodeId>, InstallSnapshotError>>),
-    InstallFullSnapshot(ValueSender<C, Result<SnapshotResponse<C::NodeId>, Infallible>>),
-    Initialize(ValueSender<C, Result<(), InitializeError<C::NodeId, C::Node>>>),
+    InstallSnapshot(ValueSender<C, Result<InstallSnapshotResponse<C>, InstallSnapshotError>>),
+    InstallFullSnapshot(ValueSender<C, Result<SnapshotResponse<C>, Infallible>>),
+    Initialize(ValueSender<C, Result<(), InitializeError<C>>>),
 }
 
 impl<C> Respond<C>

@@ -42,30 +42,27 @@ use openraft::raft::InstallSnapshotRequest;
 use openraft::raft::InstallSnapshotResponse;
 use openraft::raft::VoteRequest;
 use openraft::raft::VoteResponse;
-use openraft::storage::Adaptor;
 use openraft::storage::RaftLogStorage;
 use openraft::storage::RaftStateMachine;
 use openraft::Config;
 use openraft::LogId;
 use openraft::LogIdOptionExt;
 use openraft::MessageSummary;
-use openraft::Node;
-use openraft::NodeId;
 use openraft::RPCTypes;
 use openraft::Raft;
 use openraft::RaftLogId;
+use openraft::RaftLogReader;
 use openraft::RaftMetrics;
 use openraft::RaftState;
 use openraft::RaftTypeConfig;
 use openraft::ServerState;
-use openraft::TokioInstant;
-use openraft::TokioRuntime;
 use openraft::Vote;
 use openraft_memstore::ClientRequest;
 use openraft_memstore::ClientResponse;
 use openraft_memstore::IntoMemClientRequest;
+use openraft_memstore::MemLogStore as LogStoreInner;
 use openraft_memstore::MemNodeId;
-use openraft_memstore::MemStore;
+use openraft_memstore::MemStateMachine as SMInner;
 use openraft_memstore::TypeConfig;
 use openraft_memstore::TypeConfig as MemConfig;
 #[allow(unused_imports)] use pretty_assertions::assert_eq;
@@ -76,8 +73,8 @@ use crate::fixtures::logging::init_file_logging;
 
 pub mod logging;
 
-pub type MemLogStore = Adaptor<MemConfig, Arc<MemStore>>;
-pub type MemStateMachine = Adaptor<MemConfig, Arc<MemStore>>;
+pub type MemLogStore = Arc<LogStoreInner>;
+pub type MemStateMachine = Arc<SMInner>;
 
 /// A concrete Raft type used during testing.
 pub type MemRaft = Raft<MemConfig>;
@@ -173,10 +170,9 @@ pub enum RPCErrorType {
 }
 
 impl RPCErrorType {
-    fn make_error<NID, N, E>(&self, id: NID, dir: Direction) -> RPCError<NID, N, RaftError<NID, E>>
+    fn make_error<C, E>(&self, id: C::NodeId, dir: Direction) -> RPCError<C, RaftError<C, E>>
     where
-        NID: NodeId,
-        N: Node,
+        C: RaftTypeConfig,
         E: std::error::Error,
     {
         let msg = format!("error {} id={}", dir, id);
@@ -198,13 +194,13 @@ impl RPCErrorType {
 }
 
 /// Pre-hook result, which does not return remote Error.
-pub type PreHookResult = Result<(), RPCError<MemNodeId, (), Infallible>>;
+pub type PreHookResult = Result<(), RPCError<MemConfig, Infallible>>;
 
 #[derive(derive_more::From, derive_more::TryInto)]
 pub enum RPCRequest<C: RaftTypeConfig> {
     AppendEntries(AppendEntriesRequest<C>),
     InstallSnapshot(InstallSnapshotRequest<C>),
-    Vote(VoteRequest<C::NodeId>),
+    Vote(VoteRequest<C>),
 }
 
 impl<C: RaftTypeConfig> RPCRequest<C> {
@@ -438,8 +434,8 @@ impl TypedRaftRouter {
     }
 
     pub fn new_store(&mut self) -> (MemLogStore, MemStateMachine) {
-        let store = Arc::new(MemStore::default());
-        Adaptor::new(store)
+        let (log, sm) = openraft_memstore::new_mem_store();
+        (log, sm)
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
@@ -537,7 +533,7 @@ impl TypedRaftRouter {
         request: impl Into<RPCRequest<TypeConfig>>,
         from: MemNodeId,
         to: MemNodeId,
-    ) -> Result<(), RPCError<MemNodeId, (), E>>
+    ) -> Result<(), RPCError<MemConfig, E>>
     where
         E: std::error::Error,
     {
@@ -571,7 +567,7 @@ impl TypedRaftRouter {
 
     /// Get a payload of the latest metrics from each node in the cluster.
     #[allow(clippy::significant_drop_in_scrutinee)]
-    pub fn latest_metrics(&self) -> Vec<RaftMetrics<MemNodeId, ()>> {
+    pub fn latest_metrics(&self) -> Vec<RaftMetrics<MemConfig>> {
         let rt = self.nodes.lock().unwrap();
         let mut metrics = vec![];
         for node in rt.values() {
@@ -582,7 +578,7 @@ impl TypedRaftRouter {
         metrics
     }
 
-    pub fn get_metrics(&self, node_id: &MemNodeId) -> anyhow::Result<RaftMetrics<MemNodeId, ()>> {
+    pub fn get_metrics(&self, node_id: &MemNodeId) -> anyhow::Result<RaftMetrics<MemConfig>> {
         let node = self.get_raft_handle(node_id)?;
         let metrics = node.metrics().borrow().clone();
         Ok(metrics)
@@ -613,16 +609,16 @@ impl TypedRaftRouter {
         func: T,
         timeout: Option<Duration>,
         msg: &str,
-    ) -> anyhow::Result<RaftMetrics<MemNodeId, ()>>
+    ) -> anyhow::Result<RaftMetrics<MemConfig>>
     where
-        T: Fn(&RaftMetrics<MemNodeId, ()>) -> bool + Send,
+        T: Fn(&RaftMetrics<MemConfig>) -> bool + Send,
     {
         let wait = self.wait(node_id, timeout);
         let rst = wait.metrics(func, format!("node-{} {}", node_id, msg)).await?;
         Ok(rst)
     }
 
-    pub fn wait(&self, node_id: &MemNodeId, timeout: Option<Duration>) -> Wait<MemNodeId, (), TokioRuntime> {
+    pub fn wait(&self, node_id: &MemNodeId, timeout: Option<Duration>) -> Wait<MemConfig> {
         let node = {
             let rt = self.nodes.lock().unwrap();
             rt.get(node_id).expect("target node not found in routing table").clone().0
@@ -711,13 +707,13 @@ impl TypedRaftRouter {
         &self,
         leader: MemNodeId,
         target: MemNodeId,
-    ) -> Result<ClientWriteResponse<MemConfig>, ClientWriteError<MemNodeId, ()>> {
+    ) -> Result<ClientWriteResponse<MemConfig>, ClientWriteError<MemConfig>> {
         let node = self.get_raft_handle(&leader).unwrap();
         node.add_learner(target, (), true).await.map_err(|e| e.into_api_error().unwrap())
     }
 
     /// Ensure read linearizability.
-    pub async fn ensure_linearizable(&self, target: MemNodeId) -> Result<(), CheckIsLeaderError<MemNodeId, ()>> {
+    pub async fn ensure_linearizable(&self, target: MemNodeId) -> Result<(), CheckIsLeaderError<MemConfig>> {
         let n = self.get_raft_handle(&target).unwrap();
         n.ensure_linearizable().await.map_err(|e| e.into_api_error().unwrap())?;
         Ok(())
@@ -729,7 +725,7 @@ impl TypedRaftRouter {
         mut target: MemNodeId,
         client_id: &str,
         serial: u64,
-    ) -> Result<(), RaftError<MemNodeId, ClientWriteError<MemNodeId, ()>>> {
+    ) -> Result<(), RaftError<MemConfig, ClientWriteError<MemConfig>>> {
         for ith in 0..3 {
             let req = ClientRequest::make_request(client_id, serial);
             if let Err(err) = self.send_client_request(target, req).await {
@@ -763,9 +759,9 @@ impl TypedRaftRouter {
     }
 
     /// Send external request to the particular node.
-    pub async fn with_raft_state<V, F>(&self, target: MemNodeId, func: F) -> Result<V, Fatal<MemNodeId>>
+    pub async fn with_raft_state<V, F>(&self, target: MemNodeId, func: F) -> Result<V, Fatal<MemConfig>>
     where
-        F: FnOnce(&RaftState<MemNodeId, (), TokioInstant>) -> V + Send + 'static,
+        F: FnOnce(&RaftState<MemConfig>) -> V + Send + 'static,
         V: Send + 'static,
     {
         let r = self.get_raft_handle(&target).unwrap();
@@ -773,11 +769,7 @@ impl TypedRaftRouter {
     }
 
     /// Send external request to the particular node.
-    pub fn external_request<F: FnOnce(&RaftState<MemNodeId, (), TokioInstant>) + Send + 'static>(
-        &self,
-        target: MemNodeId,
-        req: F,
-    ) {
+    pub fn external_request<F: FnOnce(&RaftState<MemConfig>) + Send + 'static>(&self, target: MemNodeId, req: F) {
         let r = self.get_raft_handle(&target).unwrap();
         r.external_request(req)
     }
@@ -795,7 +787,7 @@ impl TypedRaftRouter {
         target: MemNodeId,
         client_id: &str,
         count: usize,
-    ) -> Result<u64, RaftError<MemNodeId, ClientWriteError<MemNodeId, ()>>> {
+    ) -> Result<u64, RaftError<MemConfig, ClientWriteError<MemConfig>>> {
         for idx in 0..count {
             self.client_request(target, client_id, idx as u64).await?;
         }
@@ -807,7 +799,7 @@ impl TypedRaftRouter {
         &self,
         target: MemNodeId,
         req: ClientRequest,
-    ) -> Result<ClientResponse, RaftError<MemNodeId, ClientWriteError<MemNodeId, ()>>> {
+    ) -> Result<ClientResponse, RaftError<MemConfig, ClientWriteError<MemConfig>>> {
         let node = {
             let rt = self.nodes.lock().unwrap();
             rt.get(&target)
@@ -952,7 +944,7 @@ impl TypedRaftRouter {
         &self,
         id: MemNodeId,
         target: MemNodeId,
-    ) -> Result<(), RPCError<MemNodeId, (), RaftError<MemNodeId, E>>>
+    ) -> Result<(), RPCError<MemConfig, RaftError<MemConfig, E>>>
     where
         E: std::error::Error,
     {
@@ -990,7 +982,7 @@ impl RaftNetwork<MemConfig> for RaftRouterNetwork {
         &mut self,
         mut rpc: AppendEntriesRequest<MemConfig>,
         _option: RPCOption,
-    ) -> Result<AppendEntriesResponse<MemNodeId>, RPCError<MemNodeId, (), RaftError<MemNodeId>>> {
+    ) -> Result<AppendEntriesResponse<MemConfig>, RPCError<MemConfig, RaftError<MemConfig>>> {
         let from_id = rpc.vote.leader_id().voted_for().unwrap();
 
         tracing::debug!("append_entries to id={} {}", self.target, rpc.summary());
@@ -1054,7 +1046,7 @@ impl RaftNetwork<MemConfig> for RaftRouterNetwork {
         &mut self,
         rpc: InstallSnapshotRequest<MemConfig>,
         _option: RPCOption,
-    ) -> Result<InstallSnapshotResponse<MemNodeId>, RPCError<MemNodeId, (), RaftError<MemNodeId, InstallSnapshotError>>>
+    ) -> Result<InstallSnapshotResponse<MemConfig>, RPCError<MemConfig, RaftError<MemConfig, InstallSnapshotError>>>
     {
         let from_id = rpc.vote.leader_id().voted_for().unwrap();
 
@@ -1074,9 +1066,9 @@ impl RaftNetwork<MemConfig> for RaftRouterNetwork {
     /// Send a RequestVote RPC to the target Raft node (§5).
     async fn vote(
         &mut self,
-        rpc: VoteRequest<MemNodeId>,
+        rpc: VoteRequest<MemConfig>,
         _option: RPCOption,
-    ) -> Result<VoteResponse<MemNodeId>, RPCError<MemNodeId, (), RaftError<MemNodeId>>> {
+    ) -> Result<VoteResponse<MemConfig>, RPCError<MemConfig, RaftError<MemConfig>>> {
         let from_id = rpc.vote.leader_id().voted_for().unwrap();
 
         self.owner.count_rpc(RPCTypes::Vote);

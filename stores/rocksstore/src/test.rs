@@ -26,9 +26,9 @@ impl StoreBuilder<TypeConfig, RocksLogStore, RocksStateMachine, TempDir> for Roc
 ///
 /// struct MemStoreBuilder {}
 ///
-/// impl StoreBuilder<ClientRequest, ClientResponse, MemStore> for MemStoreBuilder {
-///     async fn build(&self) -> MemStore {
-///         MemStore::new().await
+/// impl StoreBuilder<ClientRequest, ClientResponse, RocksLogStore, RocksStateMachine> for MemStoreBuilder {
+///     async fn build(&self) -> _ {
+///         // ...
 ///     }
 /// }
 /// #[test]

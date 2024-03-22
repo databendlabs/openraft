@@ -10,8 +10,8 @@ use crate::raft_state::LogIOId;
 use crate::storage::RaftLogReaderExt;
 use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
+use crate::type_config::alias::InstantOf;
 use crate::utime::UTime;
-use crate::AsyncRuntime;
 use crate::EffectiveMembership;
 use crate::Instant;
 use crate::LogIdOptionExt;
@@ -52,17 +52,14 @@ where
     }
 
     // TODO: let RaftStore store node-id.
-    //       To achieve this, RaftStorage must store node-id
-    //       To achieve this, RaftStorage has to provide API to initialize with a node id and API to
-    // read node-id
+    //       To achieve this, RaftLogStorage must store node-id
+    //       To achieve this, RaftLogStorage has to provide API to initialize with a node id and API to
+    //       read node-id
     /// Get Raft's state information from storage.
     ///
     /// When the Raft node is first started, it will call this interface to fetch the last known
     /// state from stable storage.
-    pub async fn get_initial_state(
-        &mut self,
-    ) -> Result<RaftState<C::NodeId, C::Node, <C::AsyncRuntime as AsyncRuntime>::Instant>, StorageError<C::NodeId>>
-    {
+    pub async fn get_initial_state(&mut self) -> Result<RaftState<C>, StorageError<C::NodeId>> {
         let vote = self.log_store.read_vote().await?;
         let vote = vote.unwrap_or_default();
 
@@ -152,7 +149,7 @@ where
             last_purged_log_id,
         );
 
-        let now = <C::AsyncRuntime as AsyncRuntime>::Instant::now();
+        let now = InstantOf::<C>::now();
 
         Ok(RaftState {
             committed: last_applied,
@@ -191,13 +188,13 @@ where
     /// a follower only need to revert at most one membership log.
     ///
     /// Thus a raft node will only need to store at most two recent membership logs.
-    pub async fn get_membership(&mut self) -> Result<MembershipState<C::NodeId, C::Node>, StorageError<C::NodeId>> {
+    pub async fn get_membership(&mut self) -> Result<MembershipState<C>, StorageError<C::NodeId>> {
         let (_, sm_mem) = self.state_machine.applied_state().await?;
 
         let sm_mem_next_index = sm_mem.log_id().next_index();
 
         let log_mem = self.last_membership_in_log(sm_mem_next_index).await?;
-        tracing::debug!(membership_in_sm=?sm_mem, membership_in_log=?log_mem, "RaftStorage::get_membership");
+        tracing::debug!(membership_in_sm=?sm_mem, membership_in_log=?log_mem, "{}", func_name!());
 
         // There 2 membership configs in logs.
         if log_mem.len() == 2 {
@@ -230,7 +227,7 @@ where
     pub async fn last_membership_in_log(
         &mut self,
         since_index: u64,
-    ) -> Result<Vec<StoredMembership<C::NodeId, C::Node>>, StorageError<C::NodeId>> {
+    ) -> Result<Vec<StoredMembership<C>>, StorageError<C::NodeId>> {
         let st = self.log_store.get_log_state().await?;
 
         let mut end = st.last_log_id.next_index();

@@ -74,15 +74,9 @@ Removes `Send` and `Sync` bounds from `AppData`, `AppDataResponse`, `RaftEntry`,
 and other types to force the  asynchronous runtime to spawn any tasks in the current thread.
 This is for any single-threaded application that never allows a raft instance to be shared among multiple threads.
 This feature relies on the `async_fn_in_trait` language feature that is officially supported from Rust 1.75.0.
-If the feature is enabled, affected asynchronous trait methods require `Send` bounds.
+If the feature is enabled, affected asynchronous trait methods will not require `Send` bounds.
 In order to use the feature, `AsyncRuntime::spawn` should invoke `tokio::task::spawn_local` or equivalents.
 
-## feature-flag `storage-v2`
-
-Enables `RaftLogStorage` and `RaftStateMachine` as the v2 storage
-This is a temporary feature flag, and will be removed in the future, when v2 storage is stable.
-This feature disables `Adapter`, which is for v1 storage to be used as v2.
-V2 storage separates log store and state machine store so that log IO and state machine IO can be parallelized naturally.
 
 ## feature-flag `tracing-log`
 
@@ -93,3 +87,24 @@ See: [tracing doc: emitting-log-records](https://docs.rs/tracing/latest/tracing/
 
 [`RaftNetwork::full_snapshot()`]: crate::network::RaftNetwork::full_snapshot
 [`RaftNetwork::install_snapshot()`]: crate::network::RaftNetwork::install_snapshot
+
+
+## feature-flag `type-alias`
+
+Enable this feature to use type shortcuts defined in `openraft::alias::*`
+
+For example:
+```rust,ignore
+use openraft::alias::SnapshotDataOf;
+
+struct MyTypeConfig;
+impl RaftTypeconfig For MyTypeConfig { /*...*/ }
+
+// The following two lines are equivalent:
+let snapshot_data: SnapshotDataOf<MyTypeConfig>;
+let snapshot_data: <MyTypeConfig as RaftTypeConfig>::SnapshotData;
+```
+
+Note that the type shortcuts are not stable and may be changed in the future.
+It is also a good idea to copy the type shortcuts to your own codebase if you
+want to use them.

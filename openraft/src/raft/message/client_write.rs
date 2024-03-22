@@ -19,7 +19,7 @@ pub struct ClientWriteResponse<C: RaftTypeConfig> {
     pub data: C::R,
 
     /// If the log entry is a change-membership entry.
-    pub membership: Option<Membership<C::NodeId, C::Node>>,
+    pub membership: Option<Membership<C>>,
 }
 
 impl<C: RaftTypeConfig> Debug for ClientWriteResponse<C>

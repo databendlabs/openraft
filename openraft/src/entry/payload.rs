@@ -8,7 +8,7 @@ use crate::RaftTypeConfig;
 
 /// Log entry payload variants.
 #[derive(PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub enum EntryPayload<C: RaftTypeConfig> {
     /// An empty payload committed by a new cluster leader.
     Blank,
@@ -16,7 +16,7 @@ pub enum EntryPayload<C: RaftTypeConfig> {
     Normal(C::D),
 
     /// A change-membership log entry.
-    Membership(Membership<C::NodeId, C::Node>),
+    Membership(Membership<C>),
 }
 
 impl<C> Clone for EntryPayload<C>
@@ -59,12 +59,12 @@ impl<C: RaftTypeConfig> MessageSummary<EntryPayload<C>> for EntryPayload<C> {
     }
 }
 
-impl<C: RaftTypeConfig> RaftPayload<C::NodeId, C::Node> for EntryPayload<C> {
+impl<C: RaftTypeConfig> RaftPayload<C> for EntryPayload<C> {
     fn is_blank(&self) -> bool {
         matches!(self, EntryPayload::Blank)
     }
 
-    fn get_membership(&self) -> Option<&Membership<C::NodeId, C::Node>> {
+    fn get_membership(&self) -> Option<&Membership<C>> {
         if let EntryPayload::Membership(m) = self {
             Some(m)
         } else {

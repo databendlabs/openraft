@@ -1,3 +1,5 @@
+//! A trait for time instants.
+
 use std::fmt::Debug;
 use std::ops::Add;
 use std::ops::AddAssign;
@@ -33,6 +35,18 @@ pub trait Instant:
 {
     /// Return the current instant.
     fn now() -> Self;
+
+    /// Return the amount of time since the instant.
+    ///
+    /// The returned duration is guaranteed to be non-negative.
+    fn elapsed(&self) -> Duration {
+        let now = Self::now();
+        if now > *self {
+            now - *self
+        } else {
+            Duration::from_secs(0)
+        }
+    }
 }
 
 pub type TokioInstant = tokio::time::Instant;

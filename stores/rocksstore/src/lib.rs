@@ -18,6 +18,7 @@ use std::sync::Arc;
 use byteorder::BigEndian;
 use byteorder::ReadBytesExt;
 use byteorder::WriteBytesExt;
+use openraft::alias::SnapshotDataOf;
 use openraft::storage::LogFlushed;
 use openraft::storage::LogState;
 use openraft::storage::RaftLogStorage;
@@ -33,7 +34,6 @@ use openraft::OptionalSend;
 use openraft::RaftLogId;
 use openraft::RaftLogReader;
 use openraft::RaftSnapshotBuilder;
-use openraft::RaftTypeConfig;
 use openraft::SnapshotMeta;
 use openraft::StorageError;
 use openraft::StorageIOError;
@@ -53,8 +53,14 @@ pub type RocksNodeId = u64;
 
 openraft::declare_raft_types!(
     /// Declare the type configuration.
-    pub TypeConfig: D = RocksRequest, R = RocksResponse, NodeId = RocksNodeId, Node = BasicNode,
-    Entry = Entry<TypeConfig>, SnapshotData = Cursor<Vec<u8>>, AsyncRuntime = TokioRuntime
+    pub TypeConfig:
+        D = RocksRequest,
+        R = RocksResponse,
+        NodeId = RocksNodeId,
+        Node = BasicNode,
+        Entry = Entry<TypeConfig>,
+        SnapshotData = Cursor<Vec<u8>>,
+        AsyncRuntime = TokioRuntime
 );
 
 /**
@@ -83,7 +89,7 @@ pub struct RocksResponse {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct RocksSnapshot {
-    pub meta: SnapshotMeta<RocksNodeId, BasicNode>,
+    pub meta: SnapshotMeta<TypeConfig>,
 
     /// The data of the state machine at the time of this snapshot.
     pub data: Vec<u8>,
@@ -95,7 +101,7 @@ pub struct RocksSnapshot {
 pub struct StateMachine {
     pub last_applied_log: Option<LogId<RocksNodeId>>,
 
-    pub last_membership: StoredMembership<RocksNodeId, BasicNode>,
+    pub last_membership: StoredMembership<TypeConfig>,
 
     /// Application data.
     pub data: BTreeMap<String, String>,
@@ -261,15 +267,17 @@ impl RaftLogReader<TypeConfig> for RocksLogStore {
         }
         Ok(res)
     }
+
+    async fn read_vote(&mut self) -> Result<Option<Vote<RocksNodeId>>, StorageError<RocksNodeId>> {
+        self.get_meta::<meta::Vote>()
+    }
 }
 
 impl RaftSnapshotBuilder<TypeConfig> for RocksStateMachine {
     #[tracing::instrument(level = "trace", skip(self))]
     async fn build_snapshot(&mut self) -> Result<Snapshot<TypeConfig>, StorageError<RocksNodeId>> {
-        let data;
-
         // Serialize the data of the state machine.
-        data = serde_json::to_vec(&self.sm).map_err(|e| StorageIOError::read_state_machine(&e))?;
+        let data = serde_json::to_vec(&self.sm).map_err(|e| StorageIOError::read_state_machine(&e))?;
 
         let last_applied_log = self.sm.last_applied_log;
         let last_membership = self.sm.last_membership.clone();
@@ -342,10 +350,6 @@ impl RaftLogStorage<TypeConfig> for RocksLogStore {
         Ok(())
     }
 
-    async fn read_vote(&mut self) -> Result<Option<Vote<RocksNodeId>>, StorageError<RocksNodeId>> {
-        self.get_meta::<meta::Vote>()
-    }
-
     async fn get_log_reader(&mut self) -> Self::LogReader {
         self.clone()
     }
@@ -410,7 +414,7 @@ impl RaftStateMachine<TypeConfig> for RocksStateMachine {
 
     async fn applied_state(
         &mut self,
-    ) -> Result<(Option<LogId<RocksNodeId>>, StoredMembership<RocksNodeId, BasicNode>), StorageError<RocksNodeId>> {
+    ) -> Result<(Option<LogId<RocksNodeId>>, StoredMembership<TypeConfig>), StorageError<RocksNodeId>> {
         Ok((self.sm.last_applied_log, self.sm.last_membership.clone()))
     }
 
@@ -449,16 +453,14 @@ impl RaftStateMachine<TypeConfig> for RocksStateMachine {
         self.clone()
     }
 
-    async fn begin_receiving_snapshot(
-        &mut self,
-    ) -> Result<Box<<TypeConfig as RaftTypeConfig>::SnapshotData>, StorageError<RocksNodeId>> {
+    async fn begin_receiving_snapshot(&mut self) -> Result<Box<SnapshotDataOf<TypeConfig>>, StorageError<RocksNodeId>> {
         Ok(Box::new(Cursor::new(Vec::new())))
     }
 
     async fn install_snapshot(
         &mut self,
-        meta: &SnapshotMeta<RocksNodeId, BasicNode>,
-        snapshot: Box<<TypeConfig as RaftTypeConfig>::SnapshotData>,
+        meta: &SnapshotMeta<TypeConfig>,
+        snapshot: Box<SnapshotDataOf<TypeConfig>>,
     ) -> Result<(), StorageError<RocksNodeId>> {
         tracing::info!(
             { snapshot_size = snapshot.get_ref().len() },

@@ -6,6 +6,11 @@ use crate::raft::RaftInner;
 use crate::RaftTypeConfig;
 
 /// Trigger is an interface to trigger an action to RaftCore by external caller.
+///
+/// For example, to trigger an election at once, you can use the following code
+/// ```ignore
+/// raft.trigger().elect().await?;
+/// ```
 pub struct Trigger<'r, C>
 where C: RaftTypeConfig
 {
@@ -23,7 +28,7 @@ where C: RaftTypeConfig
     ///
     /// Returns error when RaftCore has [`Fatal`] error, e.g. shut down or having storage error.
     /// It is not affected by `Raft::enable_elect(false)`.
-    pub async fn elect(&self) -> Result<(), Fatal<C::NodeId>> {
+    pub async fn elect(&self) -> Result<(), Fatal<C>> {
         self.raft_inner.send_external_command(ExternalCommand::Elect, "trigger_elect").await
     }
 
@@ -31,14 +36,14 @@ where C: RaftTypeConfig
     ///
     /// Returns error when RaftCore has [`Fatal`] error, e.g. shut down or having storage error.
     /// It is not affected by `Raft::enable_heartbeat(false)`.
-    pub async fn heartbeat(&self) -> Result<(), Fatal<C::NodeId>> {
+    pub async fn heartbeat(&self) -> Result<(), Fatal<C>> {
         self.raft_inner.send_external_command(ExternalCommand::Heartbeat, "trigger_heartbeat").await
     }
 
     /// Trigger to build a snapshot at once and return at once.
     ///
     /// Returns error when RaftCore has [`Fatal`] error, e.g. shut down or having storage error.
-    pub async fn snapshot(&self) -> Result<(), Fatal<C::NodeId>> {
+    pub async fn snapshot(&self) -> Result<(), Fatal<C>> {
         self.raft_inner.send_external_command(ExternalCommand::Snapshot, "trigger_snapshot").await
     }
 
@@ -57,7 +62,7 @@ where C: RaftTypeConfig
     /// can't be purged until the replication task is finished.
     ///
     /// [`max_in_snapshot_log_to_keep`]: `crate::Config::max_in_snapshot_log_to_keep`
-    pub async fn purge_log(&self, upto: u64) -> Result<(), Fatal<C::NodeId>> {
+    pub async fn purge_log(&self, upto: u64) -> Result<(), Fatal<C>> {
         self.raft_inner.send_external_command(ExternalCommand::PurgeLog { upto }, "purge_log").await
     }
 }

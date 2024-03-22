@@ -1,7 +1,7 @@
 use std::future::Future;
 use std::time::Duration;
 
-use macros::add_async_trait;
+use openraft_macros::add_async_trait;
 
 use crate::error::Fatal;
 use crate::error::RPCError;
@@ -37,7 +37,7 @@ where C: RaftTypeConfig
         &mut self,
         rpc: AppendEntriesRequest<C>,
         option: RPCOption,
-    ) -> Result<AppendEntriesResponse<C::NodeId>, RPCError<C::NodeId, C::Node, RaftError<C::NodeId>>>;
+    ) -> Result<AppendEntriesResponse<C>, RPCError<C, RaftError<C>>>;
 
     /// Send an InstallSnapshot RPC to the target.
     #[cfg(feature = "generic-snapshot-data")]
@@ -49,10 +49,8 @@ where C: RaftTypeConfig
         &mut self,
         _rpc: crate::raft::InstallSnapshotRequest<C>,
         _option: RPCOption,
-    ) -> Result<
-        crate::raft::InstallSnapshotResponse<C::NodeId>,
-        RPCError<C::NodeId, C::Node, RaftError<C::NodeId, crate::error::InstallSnapshotError>>,
-    > {
+    ) -> Result<crate::raft::InstallSnapshotResponse<C>, RPCError<C, RaftError<C, crate::error::InstallSnapshotError>>>
+    {
         unimplemented!()
     }
 
@@ -62,17 +60,14 @@ where C: RaftTypeConfig
         &mut self,
         _rpc: crate::raft::InstallSnapshotRequest<C>,
         _option: RPCOption,
-    ) -> Result<
-        crate::raft::InstallSnapshotResponse<C::NodeId>,
-        RPCError<C::NodeId, C::Node, RaftError<C::NodeId, crate::error::InstallSnapshotError>>,
-    >;
+    ) -> Result<crate::raft::InstallSnapshotResponse<C>, RPCError<C, RaftError<C, crate::error::InstallSnapshotError>>>;
 
     /// Send a RequestVote RPC to the target.
     async fn vote(
         &mut self,
-        rpc: VoteRequest<C::NodeId>,
+        rpc: VoteRequest<C>,
         option: RPCOption,
-    ) -> Result<VoteResponse<C::NodeId>, RPCError<C::NodeId, C::Node, RaftError<C::NodeId>>>;
+    ) -> Result<VoteResponse<C>, RPCError<C, RaftError<C>>>;
 
     /// Send a complete Snapshot to the target.
     ///
@@ -96,7 +91,7 @@ where C: RaftTypeConfig
         snapshot: Snapshot<C>,
         cancel: impl Future<Output = ReplicationClosed> + OptionalSend,
         option: RPCOption,
-    ) -> Result<SnapshotResponse<C::NodeId>, StreamingError<C, Fatal<C::NodeId>>>;
+    ) -> Result<SnapshotResponse<C>, StreamingError<C, Fatal<C>>>;
 
     /// Send a complete Snapshot to the target.
     ///
@@ -122,7 +117,7 @@ where C: RaftTypeConfig
         snapshot: Snapshot<C>,
         cancel: impl Future<Output = ReplicationClosed> + OptionalSend,
         option: RPCOption,
-    ) -> Result<SnapshotResponse<C::NodeId>, StreamingError<C, Fatal<C::NodeId>>> {
+    ) -> Result<SnapshotResponse<C>, StreamingError<C, Fatal<C>>> {
         use crate::network::snapshot_transport::Chunked;
         use crate::network::snapshot_transport::SnapshotTransport;
 

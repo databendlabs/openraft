@@ -18,8 +18,8 @@ repository    = { workspace = true }
 [dependencies]
 
 [dev-dependencies]
-openraft           = { path="../openraft", version = "0.9.0" }
-openraft-memstore  = { path="../memstore" }
+openraft           = { path="../openraft", version = "0.10.0", features=["type-alias"] }
+openraft-memstore  = { path= "../stores/memstore" }
 
 anyerror           = { workspace = true }
 anyhow             = { workspace = true }
