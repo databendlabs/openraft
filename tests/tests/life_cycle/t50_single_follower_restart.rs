@@ -4,6 +4,7 @@ use std::time::Duration;
 use maplit::btreeset;
 use openraft::storage::RaftLogStorage;
 use openraft::Config;
+use openraft::RaftLogReader;
 use openraft::ServerState;
 use openraft::Vote;
 

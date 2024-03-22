@@ -29,6 +29,7 @@ use crate::OptionalSync;
 use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::StoredMembership;
+use crate::Vote;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
@@ -149,6 +150,9 @@ where C: RaftTypeConfig
         &mut self,
         range: RB,
     ) -> Result<Vec<C::Entry>, StorageError<C::NodeId>>;
+
+    /// Return the last saved vote by [`RaftLogStorage::save_vote`].
+    async fn read_vote(&mut self) -> Result<Option<Vote<C::NodeId>>, StorageError<C::NodeId>>;
 }
 
 /// A trait defining the interface for a Raft state machine snapshot subsystem.

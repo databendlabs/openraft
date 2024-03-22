@@ -243,6 +243,10 @@ impl RaftLogReader<TypeConfig> for Arc<MemLogStore> {
 
         Ok(entries)
     }
+
+    async fn read_vote(&mut self) -> Result<Option<Vote<MemNodeId>>, StorageError<MemNodeId>> {
+        Ok(*self.vote.read().await)
+    }
 }
 
 impl RaftSnapshotBuilder<TypeConfig> for Arc<MemStateMachine> {
@@ -350,10 +354,6 @@ impl RaftLogStorage<TypeConfig> for Arc<MemLogStore> {
 
         *h = Some(*vote);
         Ok(())
-    }
-
-    async fn read_vote(&mut self) -> Result<Option<Vote<MemNodeId>>, StorageError<MemNodeId>> {
-        Ok(*self.vote.read().await)
     }
 
     async fn save_committed(&mut self, committed: Option<LogId<MemNodeId>>) -> Result<(), StorageError<MemNodeId>> {

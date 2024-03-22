@@ -121,6 +121,10 @@ impl RaftLogReader<TypeConfig> for Arc<LogStore> {
 
         Ok(entries)
     }
+
+    async fn read_vote(&mut self) -> Result<Option<Vote<NodeId>>, StorageError<NodeId>> {
+        Ok(self.vote.read().await.clone())
+    }
 }
 
 impl RaftSnapshotBuilder<TypeConfig> for Arc<StateMachineStore> {
@@ -202,10 +206,6 @@ impl RaftLogStorage<TypeConfig> for Arc<LogStore> {
         let mut v = self.vote.write().await;
         *v = Some(*vote);
         Ok(())
-    }
-
-    async fn read_vote(&mut self) -> Result<Option<Vote<NodeId>>, StorageError<NodeId>> {
-        Ok(self.vote.read().await.clone())
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
