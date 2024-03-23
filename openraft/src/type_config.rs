@@ -74,8 +74,8 @@ pub trait RaftTypeConfig:
 }
 
 #[allow(dead_code)]
+/// Type alias for types used in `RaftTypeConfig`.
 pub(crate) mod alias {
-    //! Type alias for types used in `RaftTypeConfig`.
 
     pub(crate) type DOf<C> = <C as crate::RaftTypeConfig>::D;
     pub(crate) type ROf<C> = <C as crate::RaftTypeConfig>::R;
