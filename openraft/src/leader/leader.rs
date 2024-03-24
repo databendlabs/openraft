@@ -34,6 +34,12 @@ where C: RaftTypeConfig
     /// The vote this leader works in.
     pub(crate) vote: Vote<C::NodeId>,
 
+    /// The log id of the first log entry proposed by this leader,
+    /// i.e., the `noop` log(AKA blank log) after leader established.
+    ///
+    /// It is set when leader established.
+    pub(crate) noop_log_id: Option<LogIdOf<C>>,
+
     quorum_set: QS,
 
     /// Voting state, i.e., there is a Candidate running.
@@ -65,6 +71,7 @@ where
 
         Self {
             vote,
+            noop_log_id: None,
             quorum_set: quorum_set.clone(),
             voting: None,
             progress: VecProgress::new(

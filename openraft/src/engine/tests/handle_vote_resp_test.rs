@@ -90,6 +90,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         });
 
         assert_eq!(Vote::new(2, 1), *eng.state.vote_ref());
+        assert_eq!(None, eng.internal_server_state.leading().unwrap().noop_log_id);
         assert_eq!(
             Some(btreeset! {1},),
             eng.internal_server_state.leading().map(|x| x.voting().unwrap().granters().collect::<BTreeSet<_>>())
@@ -163,6 +164,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         });
 
         assert_eq!(Vote::new(2, 1), *eng.state.vote_ref());
+        assert_eq!(None, eng.internal_server_state.leading().unwrap().noop_log_id);
         assert_eq!(
             Some(btreeset! {1},),
             eng.internal_server_state.leading().map(|x| x.voting().unwrap().granters().collect::<BTreeSet<_>>())
@@ -199,6 +201,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         });
 
         assert_eq!(Vote::new(2, 1), *eng.state.vote_ref());
+        assert_eq!(None, eng.internal_server_state.leading().unwrap().noop_log_id);
         assert_eq!(
             Some(btreeset! {1,2},),
             eng.internal_server_state.leading().map(|x| x.voting().unwrap().granters().collect::<BTreeSet<_>>())
@@ -235,6 +238,10 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         });
 
         assert_eq!(Vote::new_committed(2, 1), *eng.state.vote_ref());
+        assert_eq!(
+            Some(log_id(2, 1, 1)),
+            eng.internal_server_state.leading().unwrap().noop_log_id
+        );
         assert!(
             eng.internal_server_state.voting_mut().is_none(),
             "voting state is removed when becoming leader"
