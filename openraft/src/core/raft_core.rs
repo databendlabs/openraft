@@ -267,7 +267,16 @@ where
         // Setup sentinel values to track when we've received majority confirmation of leadership.
 
         let resp = {
-            let read_log_id = self.engine.state.get_read_log_id().copied();
+            let l = self.engine.leader_handler();
+            let lh = match l {
+                Ok(leading_handler) => leading_handler,
+                Err(forward) => {
+                    let _ = tx.send(Err(forward.into()));
+                    return;
+                }
+            };
+
+            let read_log_id = lh.get_read_log_id();
 
             // TODO: this applied is a little stale when being returned to client.
             //       Fix this when the following heartbeats are replaced with calling RaftNetwork.
@@ -1133,11 +1142,7 @@ where
                 self.engine.handle_install_full_snapshot(vote, snapshot, tx);
             }
             RaftMsg::CheckIsLeaderRequest { tx } => {
-                if self.engine.state.is_leader(&self.engine.config.id) {
-                    self.handle_check_is_leader_request(tx).await;
-                } else {
-                    self.reject_with_forward_to_leader(tx);
-                }
+                self.handle_check_is_leader_request(tx).await;
             }
             RaftMsg::ClientWriteRequest { app_data, tx } => {
                 self.write_entry(C::Entry::from_app_data(app_data), Some(tx));

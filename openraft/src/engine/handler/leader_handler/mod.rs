@@ -1,4 +1,3 @@
-#[allow(unused_imports)] use crate::docs;
 use crate::engine::handler::replication_handler::ReplicationHandler;
 use crate::engine::handler::replication_handler::SendNone;
 use crate::engine::Command;
@@ -7,11 +6,14 @@ use crate::engine::EngineOutput;
 use crate::entry::RaftPayload;
 use crate::internal_server_state::LeaderQuorumSet;
 use crate::leader::Leading;
+use crate::raft_state::LogStateReader;
+use crate::type_config::alias::LogIdOf;
 use crate::RaftLogId;
 use crate::RaftState;
 use crate::RaftTypeConfig;
 
 #[cfg(test)] mod append_entries_test;
+#[cfg(test)] mod get_read_log_id_test;
 #[cfg(test)] mod send_heartbeat_test;
 
 /// Handle leader operations.
@@ -79,6 +81,15 @@ where C: RaftTypeConfig
     pub(crate) fn send_heartbeat(&mut self) -> () {
         let mut rh = self.replication_handler();
         rh.initiate_replication(SendNone::True);
+    }
+
+    /// Get the log id for a linearizable read.
+    ///
+    /// See: [Read Operation](crate::docs::protocol::read)
+    pub(crate) fn get_read_log_id(&self) -> Option<LogIdOf<C>> {
+        let committed = self.state.committed().copied();
+        // noop log id is the first log this leader proposed.
+        std::cmp::max(self.leader.noop_log_id, committed)
     }
 
     pub(crate) fn replication_handler(&mut self) -> ReplicationHandler<C> {
