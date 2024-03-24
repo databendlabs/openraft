@@ -15,7 +15,6 @@ use crate::progress::Progress;
 use crate::raft_state::LogStateReader;
 use crate::replication::request_id::RequestId;
 use crate::replication::response::ReplicationResult;
-use crate::utime::UTime;
 use crate::AsyncRuntime;
 use crate::EffectiveMembership;
 use crate::LogId;
@@ -141,12 +140,10 @@ where C: RaftTypeConfig
         &mut self,
         target: C::NodeId,
         request_id: RequestId,
-        result: UTime<ReplicationResult<C::NodeId>, <C::AsyncRuntime as AsyncRuntime>::Instant>,
+        result: ReplicationResult<C>,
     ) {
-        let sending_time = result.utime().unwrap();
-
         // No matter what the result is, the validity of the leader is granted by a follower.
-        self.update_leader_vote_clock(target, sending_time);
+        self.update_leader_vote_clock(target, result.sending_time);
 
         let id = request_id.request_id();
         let Some(id) = id else {
@@ -154,11 +151,11 @@ where C: RaftTypeConfig
             return;
         };
 
-        match result.into_inner() {
-            ReplicationResult::Matching(matching) => {
+        match result.result {
+            Ok(matching) => {
                 self.update_matching(target, id, matching);
             }
-            ReplicationResult::Conflict(conflict) => {
+            Err(conflict) => {
                 self.update_conflicting(target, id, conflict);
             }
         }
@@ -286,7 +283,7 @@ where C: RaftTypeConfig
         &mut self,
         target: C::NodeId,
         request_id: RequestId,
-        repl_res: Result<UTime<ReplicationResult<C::NodeId>, <C::AsyncRuntime as AsyncRuntime>::Instant>, String>,
+        repl_res: Result<ReplicationResult<C>, String>,
     ) {
         // TODO(2): test
 

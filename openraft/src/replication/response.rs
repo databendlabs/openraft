@@ -1,10 +1,8 @@
 use crate::replication::request_id::RequestId;
 use crate::replication::ReplicationSessionId;
-use crate::utime::UTime;
-use crate::AsyncRuntime;
-use crate::LogId;
+use crate::type_config::alias::InstantOf;
+use crate::type_config::alias::LogIdOf;
 use crate::MessageSummary;
-use crate::NodeId;
 use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::Vote;
@@ -33,7 +31,7 @@ where C: RaftTypeConfig
         /// the target node.
         ///
         /// The result also track the time when this request is sent.
-        result: Result<UTime<ReplicationResult<C::NodeId>, <C::AsyncRuntime as AsyncRuntime>::Instant>, String>,
+        result: Result<ReplicationResult<C>, String>,
 
         /// In which session this message is sent.
         ///
@@ -100,9 +98,22 @@ where C: RaftTypeConfig
     }
 }
 
-/// Result of an replication action.
+/// Result of an append-entries replication
 #[derive(Clone, Debug)]
-pub(crate) enum ReplicationResult<NID: NodeId> {
-    Matching(Option<LogId<NID>>),
-    Conflict(LogId<NID>),
+pub(crate) struct ReplicationResult<C: RaftTypeConfig> {
+    /// The timestamp when this request is sent.
+    ///
+    /// It is used to update the lease for leader.
+    pub(crate) sending_time: InstantOf<C>,
+
+    /// Ok for matching, Err for conflict.
+    pub(crate) result: Result<Option<LogIdOf<C>>, LogIdOf<C>>,
+}
+
+impl<C> ReplicationResult<C>
+where C: RaftTypeConfig
+{
+    pub(crate) fn new(sending_time: InstantOf<C>, result: Result<Option<LogIdOf<C>>, LogIdOf<C>>) -> Self {
+        Self { sending_time, result }
+    }
 }

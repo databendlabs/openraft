@@ -84,7 +84,6 @@ use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
 use crate::type_config::alias::AsyncRuntimeOf;
 use crate::type_config::alias::InstantOf;
-use crate::utime::UTime;
 use crate::AsyncRuntime;
 use crate::ChangeMembers;
 use crate::Instant;
@@ -1481,7 +1480,7 @@ where
         &mut self,
         target: C::NodeId,
         id: RequestId,
-        result: Result<UTime<ReplicationResult<C::NodeId>, InstantOf<C>>, String>,
+        result: Result<ReplicationResult<C>, String>,
     ) {
         tracing::debug!(
             target = display(target),
