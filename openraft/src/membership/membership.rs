@@ -47,7 +47,49 @@ impl<C> fmt::Display for Membership<C>
 where C: RaftTypeConfig
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.summary())
+        write!(f, "{{voters:[",)?;
+
+        for (i, c) in self.configs.iter().enumerate() {
+            if i > 0 {
+                write!(f, ",",)?;
+            }
+
+            write!(f, "{{",)?;
+            for (i, node_id) in c.iter().enumerate() {
+                if i > 0 {
+                    write!(f, ",",)?;
+                }
+                write!(f, "{node_id}:")?;
+
+                if let Some(n) = self.get_node(node_id) {
+                    write!(f, "{n:?}")?;
+                } else {
+                    write!(f, "None")?;
+                }
+            }
+            write!(f, "}}")?;
+        }
+        write!(f, "]")?;
+
+        let all_node_ids = self.nodes.keys().cloned().collect::<BTreeSet<_>>();
+        let members = self.voter_ids().collect::<BTreeSet<_>>();
+
+        write!(f, ", learners:[")?;
+
+        for (learner_cnt, learner_id) in all_node_ids.difference(&members).enumerate() {
+            if learner_cnt > 0 {
+                write!(f, ",")?;
+            }
+
+            write!(f, "{learner_id}:")?;
+            if let Some(n) = self.get_node(learner_id) {
+                write!(f, "{n:?}")?;
+            } else {
+                write!(f, "None")?;
+            }
+        }
+        write!(f, "]}}")?;
+        Ok(())
     }
 }
 
@@ -55,42 +97,7 @@ impl<C> MessageSummary<Membership<C>> for Membership<C>
 where C: RaftTypeConfig
 {
     fn summary(&self) -> String {
-        let mut res = vec!["voters:[".to_string()];
-        for (i, c) in self.configs.iter().enumerate() {
-            if i > 0 {
-                res.push(",".to_string());
-            }
-
-            res.push("{".to_string());
-            for (i, node_id) in c.iter().enumerate() {
-                if i > 0 {
-                    res.push(",".to_string());
-                }
-                res.push(format!("{}", node_id));
-
-                let n = self.get_node(node_id).map(|x| format!("{:?}", x)).unwrap_or_else(|| "None".to_string());
-                res.push(format!(":{{{}}}", n));
-            }
-            res.push("}".to_string());
-        }
-        res.push("]".to_string());
-
-        let all_node_ids = self.nodes.keys().cloned().collect::<BTreeSet<_>>();
-        let members = self.voter_ids().collect::<BTreeSet<_>>();
-
-        res.push(", learners:[".to_string());
-        for (learner_cnt, learner_id) in all_node_ids.difference(&members).enumerate() {
-            if learner_cnt > 0 {
-                res.push(",".to_string());
-            }
-
-            res.push(format!("{}", learner_id));
-
-            let n = self.get_node(learner_id).map(|x| format!("{:?}", x)).unwrap_or_else(|| "None".to_string());
-            res.push(format!(":{{{}}}", n));
-        }
-        res.push("]".to_string());
-        res.join("")
+        self.to_string()
     }
 }
 
