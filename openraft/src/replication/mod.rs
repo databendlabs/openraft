@@ -55,7 +55,6 @@ use crate::storage::Snapshot;
 use crate::type_config::alias::AsyncRuntimeOf;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::JoinHandleOf;
-use crate::utime::UTime;
 use crate::AsyncRuntime;
 use crate::Instant;
 use crate::LogId;
@@ -523,7 +522,7 @@ where
                     session_id: self.session_id,
                     request_id,
                     target: self.target,
-                    result: Ok(UTime::new(leader_time, ReplicationResult::Conflict(conflict))),
+                    result: Ok(ReplicationResult::new(leader_time, Err(conflict))),
                 },
             }
         });
@@ -572,7 +571,7 @@ where
                     session_id: self.session_id,
                     request_id,
                     target: self.target,
-                    result: Ok(UTime::new(leader_time, ReplicationResult::Matching(new_matching))),
+                    result: Ok(ReplicationResult::new(leader_time, Ok(new_matching))),
                 },
             }
         });

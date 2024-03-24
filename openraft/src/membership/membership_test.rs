@@ -9,7 +9,6 @@ use crate::engine::testing::UTConfig;
 use crate::membership::IntoNodes;
 use crate::ChangeMembers;
 use crate::Membership;
-use crate::MessageSummary;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
@@ -38,10 +37,10 @@ fn test_membership_summary() -> anyhow::Result<()> {
     };
 
     let m = Membership::<UTConfig>::new(vec![btreeset! {1,2}, btreeset! {3}], None);
-    assert_eq!("{voters:[{1:(),2:()},{3:()}], learners:[]}", m.summary());
+    assert_eq!("{voters:[{1:(),2:()},{3:()}], learners:[]}", m.to_string());
 
     let m = Membership::<UTConfig>::new(vec![btreeset! {1,2}, btreeset! {3}], Some(btreeset! {4}));
-    assert_eq!("{voters:[{1:(),2:()},{3:()}], learners:[4:()]}", m.summary());
+    assert_eq!("{voters:[{1:(),2:()},{3:()}], learners:[4:()]}", m.to_string());
 
     let m = Membership::<UTConfig<TestNode>>::new_unchecked(vec![btreeset! {1,2}, btreeset! {3}], btreemap! {
         1=>node("127.0.0.1", "k1"),
@@ -52,7 +51,7 @@ fn test_membership_summary() -> anyhow::Result<()> {
     });
     assert_eq!(
         r#"{voters:[{1:TestNode { addr: "127.0.0.1", data: {"k1": "k1"} },2:TestNode { addr: "127.0.0.2", data: {"k2": "k2"} }},{3:TestNode { addr: "127.0.0.3", data: {"k3": "k3"} }}], learners:[4:TestNode { addr: "127.0.0.4", data: {"k4": "k4"} }]}"#,
-        m.summary()
+        m.to_string()
     );
 
     Ok(())
