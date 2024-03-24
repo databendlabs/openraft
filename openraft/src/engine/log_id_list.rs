@@ -300,6 +300,7 @@ impl<NID: NodeId> LogIdList<NID> {
     ///
     /// Note that the 0-th log does not belong to any leader(but a membership log to initialize a
     /// cluster) but this method does not differentiate between them.
+    #[allow(dead_code)]
     pub(crate) fn by_last_leader(&self) -> &[LogId<NID>] {
         let ks = &self.key_log_ids;
         let l = ks.len();
