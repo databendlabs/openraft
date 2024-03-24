@@ -1464,12 +1464,12 @@ where
     fn handle_replication_progress(
         &mut self,
         target: C::NodeId,
-        id: RequestId,
+        request_id: RequestId,
         result: Result<ReplicationResult<C>, String>,
     ) {
         tracing::debug!(
             target = display(target),
-            request_id = display(id),
+            request_id = display(request_id),
             result = debug(&result),
             "handle_replication_progress"
         );
@@ -1484,9 +1484,9 @@ where
             }
         }
 
-        // TODO: A leader may have stepped down.
+        // A leader may have stepped down.
         if self.engine.internal_server_state.is_leading() {
-            self.engine.replication_handler().update_progress(target, id, result);
+            self.engine.replication_handler().update_progress(target, request_id, result);
         }
     }
 

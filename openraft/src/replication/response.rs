@@ -1,3 +1,6 @@
+use std::fmt;
+
+use crate::display_ext::DisplayOptionExt;
 use crate::replication::request_id::RequestId;
 use crate::replication::ReplicationSessionId;
 use crate::type_config::alias::InstantOf;
@@ -110,10 +113,46 @@ pub(crate) struct ReplicationResult<C: RaftTypeConfig> {
     pub(crate) result: Result<Option<LogIdOf<C>>, LogIdOf<C>>,
 }
 
+impl<C> fmt::Display for ReplicationResult<C>
+where C: RaftTypeConfig
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{{time:{:?}, result:", self.sending_time)?;
+
+        match &self.result {
+            Ok(matching) => write!(f, "Match:{}", matching.display())?,
+            Err(conflict) => write!(f, "Conflict:{}", conflict)?,
+        }
+
+        write!(f, "}}")
+    }
+}
+
 impl<C> ReplicationResult<C>
 where C: RaftTypeConfig
 {
     pub(crate) fn new(sending_time: InstantOf<C>, result: Result<Option<LogIdOf<C>>, LogIdOf<C>>) -> Self {
         Self { sending_time, result }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::engine::testing::UTConfig;
+    use crate::replication::response::ReplicationResult;
+    use crate::testing::log_id;
+    use crate::type_config::alias::InstantOf;
+
+    #[test]
+    fn test_replication_result_display() {
+        // NOTE that with single-term-leader, log id is `1-3`
+
+        let result = ReplicationResult::<UTConfig>::new(InstantOf::<UTConfig>::now(), Ok(Some(log_id(1, 2, 3))));
+        let want = format!(", result:Match:{}}}", log_id(1, 2, 3));
+        assert!(result.to_string().ends_with(&want), "{}", result.to_string());
+
+        let result = ReplicationResult::<UTConfig>::new(InstantOf::<UTConfig>::now(), Err(log_id(1, 2, 3)));
+        let want = format!(", result:Conflict:{}}}", log_id(1, 2, 3));
+        assert!(result.to_string().ends_with(&want), "{}", result.to_string());
     }
 }
