@@ -153,7 +153,7 @@ where C: RaftTypeConfig
         // Re-create a new Leader instance.
 
         let em = &self.state.membership_state.effective();
-        let leader = Leading::new(
+        let leading = Leading::new(
             *self.state.vote_ref(),
             em.membership().to_quorum_set(),
             em.learner_ids(),
@@ -162,7 +162,7 @@ where C: RaftTypeConfig
 
         // Do not update clock_progress, until the first blank log is committed.
 
-        *self.internal_server_state = InternalServerState::Leading(Box::new(leader));
+        *self.internal_server_state = InternalServerState::Leading(Box::new(leading));
 
         self.server_state_handler().update_server_state_if_changed();
     }

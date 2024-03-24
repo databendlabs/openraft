@@ -31,6 +31,12 @@ pub(crate) struct Leading<NID: NodeId, QS: QuorumSet<NID>, I: Instant> {
     /// The vote this leader works in.
     pub(crate) vote: Vote<NID>,
 
+    /// The log id of the first log entry proposed by this leader,
+    /// i.e., the `noop` log(AKA blank log) after leader established.
+    ///
+    /// It is set when leader established.
+    pub(crate) noop_log_id: Option<LogId<NID>>,
+
     quorum_set: QS,
 
     /// Voting state, i.e., there is a Candidate running.
@@ -63,6 +69,7 @@ where
 
         Self {
             vote,
+            noop_log_id: None,
             quorum_set: quorum_set.clone(),
             voting: None,
             progress: VecProgress::new(

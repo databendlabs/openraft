@@ -643,6 +643,18 @@ where C: RaftTypeConfig
             debug_assert!(_res.is_ok(), "commit vote can not fail but: {:?}", _res);
         }
 
+        // Update the noop log index
+        {
+            let vote = *self.state.vote_ref();
+            let index = self.state.last_log_id().next_index();
+
+            let leading = self.internal_server_state.leading_mut().unwrap();
+
+            // TODO: in future the leader will be able to start another new election without quit leader.
+            debug_assert!(leading.noop_log_id.is_none());
+            leading.noop_log_id = Some(LogId::new(vote.committed_leader_id().unwrap(), index));
+        }
+
         let mut rh = self.replication_handler();
 
         // It has to setup replication stream first because append_blank_log() may update the
