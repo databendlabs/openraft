@@ -27,10 +27,8 @@ use tracing_futures::Instrument;
 use crate::config::Config;
 use crate::core::notify::Notify;
 use crate::core::raft_msg::ResultReceiver;
-use crate::display_ext::DisplayOption;
 use crate::display_ext::DisplayOptionExt;
 use crate::error::HigherVote;
-use crate::error::Infallible;
 use crate::error::PayloadTooLarge;
 use crate::error::RPCError;
 use crate::error::RaftError;
@@ -481,7 +479,7 @@ where
                 debug_assert!(conflict.is_some(), "prev_log_id=None never conflict");
 
                 let conflict = conflict.unwrap();
-                self.send_progress_conflicting(request_id, leader_time, conflict);
+                self.send_progress(request_id, ReplicationResult::new(leader_time, Err(conflict)));
 
                 Ok(None)
             }
@@ -490,11 +488,7 @@ where
 
     /// Send the error result to RaftCore.
     /// RaftCore will then submit another replication command.
-    fn send_progress_error(
-        &mut self,
-        request_id: RequestId,
-        err: RPCError<C::NodeId, C::Node, RaftError<C::NodeId, Infallible>>,
-    ) {
+    fn send_progress_error(&mut self, request_id: RequestId, err: RPCError<C::NodeId, C::Node, RaftError<C::NodeId>>) {
         let _ = self.tx_raft_core.send(Notify::Network {
             response: Response::Progress {
                 target: self.target,
@@ -505,20 +499,26 @@ where
         });
     }
 
-    /// Send a `conflict` message to RaftCore.
-    /// RaftCore will then submit another replication command.
-    fn send_progress_conflicting(
-        &mut self,
-        request_id: RequestId,
-        leader_time: InstantOf<C>,
-        conflict: LogId<C::NodeId>,
-    ) {
+    /// Send the success replication result(log matching or conflict) to RaftCore.
+    fn send_progress(&mut self, request_id: RequestId, replication_result: ReplicationResult<C>) {
         tracing::debug!(
-            target = display(self.target),
             request_id = display(request_id),
-            conflict = display(&conflict),
-            "update_conflicting"
+            target = display(self.target),
+            curr_matching = display(self.matching.display()),
+            result = display(&replication_result),
+            "{}",
+            func_name!()
         );
+
+        match replication_result.result {
+            Ok(matching) => {
+                self.validate_matching(matching);
+                self.matching = matching;
+            }
+            Err(_conflict) => {
+                // Conflict is not allowed to be less than the current matching.
+            }
+        }
 
         let _ = self.tx_raft_core.send({
             Notify::Network {
@@ -526,59 +526,36 @@ where
                     session_id: self.session_id,
                     request_id,
                     target: self.target,
-                    result: Ok(ReplicationResult::new(leader_time, Err(conflict))),
+                    result: Ok(replication_result),
                 },
             }
         });
     }
 
-    /// Update the `matching` log id, which is for tracking follower replication, and report the
-    /// matched log id to `RaftCore` to commit an entry.
-    #[tracing::instrument(level = "trace", skip(self))]
-    fn send_progress_matching(
-        &mut self,
-        request_id: RequestId,
-        leader_time: InstantOf<C>,
-        new_matching: Option<LogId<C::NodeId>>,
-    ) {
-        tracing::debug!(
-            request_id = display(request_id),
-            target = display(self.target),
-            curr_matching = display(DisplayOption(&self.matching)),
-            new_matching = display(DisplayOption(&new_matching)),
-            "{}",
-            func_name!()
-        );
-
+    /// Validate the value for updating matching log id.
+    ///
+    /// If the matching log id is reverted to a smaller value:
+    /// - log a warning message if [`loosen-follower-log-revert`] feature flag is enabled;
+    /// - otherwise panic, consider it as a bug.
+    ///
+    /// [`loosen-follower-log-revert`]: crate::docs::feature_flags#feature_flag_loosen_follower_log_revert
+    fn validate_matching(&self, matching: Option<LogId<C::NodeId>>) {
         if cfg!(feature = "loosen-follower-log-revert") {
-            if self.matching > new_matching {
+            if self.matching > matching {
                 tracing::warn!(
-                "follower log is reverted from {} to {}; with 'loosen-follower-log-revert' enabled, this is allowed",
-                self.matching.display(),
-                new_matching.display(),
-            );
+                    "follower log is reverted from {} to {}; with 'loosen-follower-log-revert' enabled, this is allowed",
+                    self.matching.display(),
+                    matching.display(),
+                );
             }
         } else {
             debug_assert!(
-                self.matching <= new_matching,
+                self.matching <= matching,
                 "follower log is reverted from {} to {}",
                 self.matching.display(),
-                new_matching.display(),
+                matching.display(),
             );
         }
-
-        self.matching = new_matching;
-
-        let _ = self.tx_raft_core.send({
-            Notify::Network {
-                response: Response::Progress {
-                    session_id: self.session_id,
-                    request_id,
-                    target: self.target,
-                    result: Ok(ReplicationResult::new(leader_time, Ok(new_matching))),
-                },
-            }
-        });
     }
 
     /// Drain all events in the channel in backoff mode, i.e., there was an un-retry-able error and
@@ -839,7 +816,10 @@ where
             }));
         }
 
-        self.send_progress_matching(request_id, start_time, snapshot_meta.last_log_id);
+        self.send_progress(
+            request_id,
+            ReplicationResult::new(start_time, Ok(snapshot_meta.last_log_id)),
+        );
 
         Ok(None)
     }
@@ -853,7 +833,7 @@ where
         leader_time: InstantOf<C>,
         log_ids: DataWithId<LogIdRange<C::NodeId>>,
     ) -> Option<Data<C>> {
-        self.send_progress_matching(log_ids.request_id(), leader_time, matching);
+        self.send_progress(log_ids.request_id(), ReplicationResult::new(leader_time, Ok(matching)));
 
         if matching < log_ids.data().last_log_id {
             Some(Data::new_logs(

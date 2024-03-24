@@ -15,6 +15,7 @@ use crate::progress::Progress;
 use crate::raft_state::LogStateReader;
 use crate::replication::request_id::RequestId;
 use crate::replication::response::ReplicationResult;
+use crate::type_config::alias::InstantOf;
 use crate::AsyncRuntime;
 use crate::EffectiveMembership;
 use crate::LogId;
@@ -143,7 +144,7 @@ where C: RaftTypeConfig
         result: ReplicationResult<C>,
     ) {
         // No matter what the result is, the validity of the leader is granted by a follower.
-        self.update_leader_vote_clock(target, result.sending_time);
+        self.update_leader_clock(target, result.sending_time);
 
         let id = request_id.request_id();
         let Some(id) = id else {
@@ -164,11 +165,7 @@ where C: RaftTypeConfig
     /// Update progress when replicated data(logs or snapshot) matches on follower/learner and is
     /// accepted.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn update_leader_vote_clock(
-        &mut self,
-        node_id: C::NodeId,
-        t: <C::AsyncRuntime as AsyncRuntime>::Instant,
-    ) {
+    pub(crate) fn update_leader_clock(&mut self, node_id: C::NodeId, t: InstantOf<C>) {
         tracing::debug!(target = display(node_id), t = debug(t), "{}", func_name!());
 
         let granted = *self
@@ -211,7 +208,7 @@ where C: RaftTypeConfig
 
         // The value granted by a quorum may not yet be a committed.
         // A committed is **granted** and also is in current term.
-        let granted = *self
+        let quorum_accepted = *self
             .leader
             .progress
             .update_with(&node_id, |prog_entry| {
@@ -223,16 +220,19 @@ where C: RaftTypeConfig
             })
             .expect("it should always update existing progress");
 
-        tracing::debug!(granted = display(granted.display()), "granted after updating progress");
+        tracing::debug!(
+            quorum_accepted = display(quorum_accepted.display()),
+            "after updating progress"
+        );
 
-        self.try_commit_granted(granted);
+        self.try_commit_quorum_accepted(quorum_accepted);
     }
 
     /// Commit the log id that is granted(accepted) by a quorum of voters.
     ///
     /// In raft a log that is granted and in the leader term is committed.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn try_commit_granted(&mut self, granted: Option<LogId<C::NodeId>>) {
+    pub(crate) fn try_commit_quorum_accepted(&mut self, granted: Option<LogId<C::NodeId>>) {
         // Only when the log id is proposed by current leader, it is committed.
         if let Some(c) = granted {
             if !self.state.vote_ref().is_same_leader(c.committed_leader_id()) {
@@ -285,8 +285,6 @@ where C: RaftTypeConfig
         request_id: RequestId,
         repl_res: Result<ReplicationResult<C>, String>,
     ) {
-        // TODO(2): test
-
         tracing::debug!(
             target = display(target),
             request_id = display(request_id),
