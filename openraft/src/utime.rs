@@ -78,6 +78,7 @@ impl<T, I: Instant> UTime<T, I> {
     }
 
     /// Consumes this object and returns the inner data.
+    #[allow(dead_code)]
     pub(crate) fn into_inner(self) -> T {
         self.data
     }
