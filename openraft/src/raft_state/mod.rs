@@ -32,7 +32,6 @@ mod tests {
     mod accepted_test;
     mod forward_to_leader_test;
     mod log_state_reader_test;
-    mod read_log_id_test;
     mod validate_test;
 }
 
@@ -41,7 +40,6 @@ pub(crate) use log_state_reader::LogStateReader;
 pub use membership_state::MembershipState;
 pub(crate) use vote_state_reader::VoteStateReader;
 
-use crate::display_ext::DisplayOptionExt;
 pub(crate) use crate::raft_state::snapshot_streaming::StreamingState;
 
 /// A struct used to represent the raft state which a Raft node needs.
@@ -219,29 +217,6 @@ where
     /// Return the last updated time of the vote.
     pub fn vote_last_modified(&self) -> Option<I> {
         self.vote.utime()
-    }
-
-    /// Get the log id for a linearizable read.
-    ///
-    /// See: [Read Operation](crate::docs::protocol::read)
-    pub(crate) fn get_read_log_id(&self) -> Option<&LogId<NID>> {
-        // Get the first known log id appended by the last leader.
-        // - This log may not be committed.
-        // - The leader blank log may have been purged and this could be the last purged log id.
-        // - There must be such an entry, which is guaranteed by `Engine::establish_leader()`.
-        let leader_first = self.log_ids.by_last_leader().first();
-
-        debug_assert_eq!(
-            leader_first.map(|log_id| *log_id.committed_leader_id()),
-            self.vote_ref().committed_leader_id(),
-            "leader_first must belong to a leader of current vote: leader_first: {}, vote.committed_leader_id: {}",
-            leader_first.map(|log_id| log_id.committed_leader_id()).display(),
-            self.vote_ref().committed_leader_id().display(),
-        );
-
-        let committed = self.committed();
-
-        std::cmp::max(leader_first, committed)
     }
 
     /// Return the accepted last log id of the current leader.
