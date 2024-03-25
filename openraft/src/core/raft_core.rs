@@ -34,6 +34,7 @@ use crate::core::raft_msg::RaftMsg;
 use crate::core::raft_msg::ResultSender;
 use crate::core::raft_msg::VoteTx;
 use crate::core::sm;
+use crate::core::sm::handle;
 use crate::core::sm::CommandSeq;
 use crate::core::ServerState;
 use crate::display_ext::DisplayOption;
@@ -175,7 +176,7 @@ where
     pub(crate) log_store: LS,
 
     /// A controlling handle to the [`RaftStateMachine`] worker.
-    pub(crate) sm_handle: sm::Handle<C>,
+    pub(crate) sm_handle: handle::Handle<C>,
 
     pub(crate) engine: Engine<C>,
 
