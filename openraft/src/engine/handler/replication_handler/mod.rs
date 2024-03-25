@@ -338,8 +338,7 @@ where C: RaftTypeConfig
             if let Ok(inflight) = r {
                 Self::send_to_target(self.output, &target, inflight);
             } else {
-                // TODO:
-                tracing::debug!("can not send: TODO");
+                tracing::debug!("nothing to send to target={target}, progress:{}", p);
             }
         }
     }
