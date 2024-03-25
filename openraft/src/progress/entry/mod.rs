@@ -109,6 +109,18 @@ impl<NID: NodeId> ProgressEntry<NID> {
         Ok(())
     }
 
+    /// Update conflicting log index.
+    ///
+    /// Conflicting log index is the last found log index on a follower that is not matching the
+    /// leader log.
+    ///
+    /// Usually if follower's data is lost, `conflict` is always greater than or equal `matching`.
+    /// But for testing purpose, a follower is allowed to clean its data and wait for leader to
+    /// replicate all data to it.
+    ///
+    /// To allow a follower to clean its data, enable feature flag [`loosen-follower-log-revert`] .
+    ///
+    /// [`loosen-follower-log-revert`]: crate::docs::feature_flags#feature_flag_loosen_follower_log_revert
     pub(crate) fn update_conflicting(&mut self, request_id: u64, conflict: u64) -> Result<(), InflightError> {
         tracing::debug!(
             self = debug(&self),
@@ -126,11 +138,15 @@ impl<NID: NodeId> ProgressEntry<NID> {
         //
         // - If log reversion is allowed, just restart the binary search from the beginning.
         // - Otherwise, panic it.
-        //
-        // Refer to: `docs::feature_flags#loosen_follower_log_revert`
         {
             #[cfg(feature = "loosen-follower-log-revert")]
             if conflict < self.matching.next_index() {
+                tracing::warn!(
+                    "conflict {} < last matching {}: follower log is reverted; with 'loosen-follower-log-revert' enabled, this is allowed.",
+                    conflict,
+                    self.matching.display(),
+                );
+
                 self.matching = None;
             }
 
@@ -159,12 +175,8 @@ impl<NID: NodeId> ProgressEntry<NID> {
         if !self.inflight.is_none() {
             return Err(&self.inflight);
         }
-        let purge_upto = log_state.purge_upto();
-        let snapshot_last = log_state.snapshot_last_log_id();
 
         let last_next = log_state.last_log_id().next_index();
-        let purge_upto_next = purge_upto.next_index();
-
         debug_assert!(
             self.searching_end <= last_next,
             "expect: searching_end: {} <= last_log_id.next_index: {}",
@@ -172,12 +184,18 @@ impl<NID: NodeId> ProgressEntry<NID> {
             last_next
         );
 
+        let purge_upto_next = {
+            let purge_upto = log_state.purge_upto();
+            purge_upto.next_index()
+        };
+
         // `searching_end` is the max value for `start`.
 
         // The log the follower needs is purged.
         // Replicate by snapshot.
         if self.searching_end < purge_upto_next {
             self.curr_inflight_id += 1;
+            let snapshot_last = log_state.snapshot_last_log_id();
             self.inflight = Inflight::snapshot(snapshot_last.copied()).with_id(self.curr_inflight_id);
             return Ok(&self.inflight);
         }
