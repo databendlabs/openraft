@@ -1,5 +1,7 @@
 use std::fmt;
 
+use crate::type_config::alias::LogIdOf;
+
 /// A replication request sent by RaftCore leader state to replication stream.
 #[derive(Debug)]
 pub(crate) enum Replicate<C>
@@ -22,8 +24,8 @@ where C: RaftTypeConfig
         Self::Data(Data::new_logs(id, log_id_range))
     }
 
-    pub(crate) fn snapshot(id: RequestId, snapshot_rx: ResultReceiver<C, Option<Snapshot<C>>>) -> Self {
-        Self::Data(Data::new_snapshot(id, snapshot_rx))
+    pub(crate) fn snapshot(id: RequestId, last_log_id: Option<LogIdOf<C>>) -> Self {
+        Self::Data(Data::new_snapshot(id, last_log_id))
     }
 
     pub(crate) fn new_data(data: Data<C>) -> Self {
@@ -49,7 +51,6 @@ where C: RaftTypeConfig
     }
 }
 
-use crate::core::raft_msg::ResultReceiver;
 use crate::display_ext::DisplayOptionExt;
 use crate::error::Fatal;
 use crate::error::StreamingError;
@@ -61,7 +62,6 @@ use crate::type_config::alias::InstantOf;
 use crate::LogId;
 use crate::MessageSummary;
 use crate::RaftTypeConfig;
-use crate::Snapshot;
 use crate::SnapshotMeta;
 
 /// Request to replicate a chunk of data, logs or snapshot.
@@ -74,7 +74,7 @@ where C: RaftTypeConfig
 {
     Heartbeat,
     Logs(DataWithId<LogIdRange<C::NodeId>>),
-    Snapshot(DataWithId<ResultReceiver<C, Option<Snapshot<C>>>>),
+    Snapshot(DataWithId<Option<LogIdOf<C>>>),
     SnapshotCallback(DataWithId<SnapshotCallback<C>>),
 }
 
@@ -143,8 +143,8 @@ where C: RaftTypeConfig
         Self::Logs(DataWithId::new(request_id, log_id_range))
     }
 
-    pub(crate) fn new_snapshot(request_id: RequestId, snapshot_rx: ResultReceiver<C, Option<Snapshot<C>>>) -> Self {
-        Self::Snapshot(DataWithId::new(request_id, snapshot_rx))
+    pub(crate) fn new_snapshot(request_id: RequestId, last_log_id: Option<LogIdOf<C>>) -> Self {
+        Self::Snapshot(DataWithId::new(request_id, last_log_id))
     }
 
     pub(crate) fn new_snapshot_callback(
