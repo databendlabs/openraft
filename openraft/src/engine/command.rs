@@ -89,9 +89,9 @@ where C: RaftTypeConfig
     DeleteConflictLog { since: LogId<C::NodeId> },
 
     // TODO(1): current it is only used to replace BuildSnapshot, InstallSnapshot, CancelSnapshot.
-    /// A command send to state machine worker [`sm::Worker`].
+    /// A command send to state machine worker [`worker::Worker`].
     ///
-    /// The runtime(`RaftCore`) will just forward this command to [`sm::Worker`].
+    /// The runtime(`RaftCore`) will just forward this command to [`worker::Worker`].
     /// The response will be sent back in a `RaftMsg::StateMachine` message to `RaftCore`.
     StateMachine { command: sm::Command<C> },
 
@@ -212,7 +212,7 @@ where NID: NodeId
     #[allow(dead_code)]
     Applied { log_id: Option<LogId<NID>> },
 
-    /// Wait until a [`sm::Worker`] command is finished.
+    /// Wait until a [`worker::Worker`] command is finished.
     #[allow(dead_code)]
     StateMachineCommand { command_seq: sm::CommandSeq },
 }

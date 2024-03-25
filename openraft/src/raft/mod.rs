@@ -41,7 +41,7 @@ use crate::core::command_state::CommandState;
 use crate::core::raft_msg::external_command::ExternalCommand;
 use crate::core::raft_msg::RaftMsg;
 use crate::core::replication_lag;
-use crate::core::sm;
+use crate::core::sm::worker;
 use crate::core::RaftCore;
 use crate::core::Tick;
 use crate::engine::Engine;
@@ -209,7 +209,7 @@ where C: RaftTypeConfig
 
         let engine = Engine::new(state, eng_config);
 
-        let sm_handle = sm::Worker::spawn(state_machine, tx_notify.clone());
+        let sm_handle = worker::Worker::spawn(state_machine, tx_notify.clone());
 
         let core: RaftCore<C, N, LS, SM> = RaftCore {
             id,
