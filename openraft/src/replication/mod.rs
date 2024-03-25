@@ -26,7 +26,7 @@ use tracing_futures::Instrument;
 
 use crate::config::Config;
 use crate::core::notify::Notify;
-use crate::core::raft_msg::ResultReceiver;
+use crate::core::sm::handle::SnapshotReader;
 use crate::display_ext::DisplayOptionExt;
 use crate::error::HigherVote;
 use crate::error::PayloadTooLarge;
@@ -53,6 +53,7 @@ use crate::storage::Snapshot;
 use crate::type_config::alias::AsyncRuntimeOf;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::JoinHandleOf;
+use crate::type_config::alias::LogIdOf;
 use crate::AsyncRuntime;
 use crate::Instant;
 use crate::LogId;
@@ -127,6 +128,9 @@ where
     /// The [`RaftLogStorage::LogReader`] interface.
     log_reader: LS::LogReader,
 
+    /// The handle to get a snapshot directly from state machine.
+    snapshot_reader: SnapshotReader<C>,
+
     /// The Raft's runtime config.
     config: Arc<Config>,
 
@@ -163,6 +167,7 @@ where
         network: N::Network,
         snapshot_network: N::Network,
         log_reader: LS::LogReader,
+        snapshot_reader: SnapshotReader<C>,
         tx_raft_core: mpsc::UnboundedSender<Notify<C>>,
         span: tracing::Span,
     ) -> ReplicationHandle<C> {
@@ -185,6 +190,7 @@ where
             snapshot_state: None,
             backoff: None,
             log_reader,
+            snapshot_reader,
             config,
             committed,
             matching,
@@ -697,20 +703,16 @@ where
     #[tracing::instrument(level = "info", skip_all)]
     async fn stream_snapshot(
         &mut self,
-        snapshot_rx: DataWithId<ResultReceiver<C, Option<Snapshot<C>>>>,
+        snapshot_req: DataWithId<Option<LogIdOf<C>>>,
     ) -> Result<Option<Data<C>>, ReplicationError<C>> {
-        let request_id = snapshot_rx.request_id();
-        let rx = snapshot_rx.into_data();
+        let request_id = snapshot_req.request_id();
 
         tracing::info!(request_id = display(request_id), "{}", func_name!());
 
-        let snapshot = rx.await.map_err(|e| {
-            let io_err = StorageIOError::read_snapshot(None, AnyError::error(e));
-            StorageError::IO { source: io_err }
+        let snapshot = self.snapshot_reader.get_snapshot().await.map_err(|reason| {
+            tracing::warn!(error = display(&reason), "failed to get snapshot from state machine");
+            ReplicationClosed::new(reason)
         })?;
-
-        // Safe unwrap(): the error is Infallible, so it is safe to unwrap.
-        let snapshot = snapshot.unwrap();
 
         tracing::info!(
             "received snapshot: request_id={}; meta:{}",
