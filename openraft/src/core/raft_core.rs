@@ -822,6 +822,7 @@ where
             network,
             snapshot_network,
             self.log_store.get_log_reader().await,
+            self.sm_handle.new_snapshot_reader(),
             self.tx_notify.clone(),
             tracing::span!(parent: &self.span, Level::DEBUG, "replication", id=display(self.id), target=display(target)),
         )
@@ -1674,21 +1675,10 @@ where
                             let _ = node.tx_repl.send(Replicate::logs(RequestId::new_append_entries(id), log_id_range));
                         }
                         Inflight::Snapshot { id, last_log_id } => {
-                            let _ = last_log_id;
-
-                            // Create a channel to let state machine worker to send the snapshot and the replication
-                            // worker to receive it.
-                            let (tx, rx) = C::AsyncRuntime::oneshot();
-
-                            let cmd = sm::Command::get_snapshot(tx);
-                            self.sm_handle
-                                .send(cmd)
-                                .map_err(|e| StorageIOError::read_snapshot(None, AnyError::error(e)))?;
-
                             // unwrap: The replication channel must not be dropped or it is a bug.
-                            node.tx_repl.send(Replicate::snapshot(RequestId::new_snapshot(id), rx)).map_err(|_e| {
-                                StorageIOError::read_snapshot(None, AnyError::error("replication channel closed"))
-                            })?;
+                            node.tx_repl.send(Replicate::snapshot(RequestId::new_snapshot(id), last_log_id)).map_err(
+                                |_e| StorageIOError::read_snapshot(None, AnyError::error("replication channel closed")),
+                            )?;
                         }
                     }
                 } else {

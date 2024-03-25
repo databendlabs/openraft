@@ -1,6 +1,5 @@
 use tokio::sync::mpsc;
 
-use crate::alias::JoinHandleOf;
 use crate::async_runtime::AsyncOneshotSendExt;
 use crate::core::notify::Notify;
 use crate::core::raft_msg::ResultSender;
@@ -15,6 +14,7 @@ use crate::core::ApplyingEntry;
 use crate::display_ext::DisplayOptionExt;
 use crate::entry::RaftPayload;
 use crate::storage::RaftStateMachine;
+use crate::type_config::alias::JoinHandleOf;
 use crate::AsyncRuntime;
 use crate::RaftLogId;
 use crate::RaftSnapshotBuilder;
