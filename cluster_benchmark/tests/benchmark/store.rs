@@ -43,11 +43,7 @@ openraft::declare_raft_types!(
     pub TypeConfig:
         D = ClientRequest,
         R = ClientResponse,
-        NodeId = NodeId,
         Node = (),
-        Entry = Entry<TypeConfig>,
-        SnapshotData = Cursor<Vec<u8>>,
-        AsyncRuntime = TokioRuntime
 );
 
 #[derive(Debug)]

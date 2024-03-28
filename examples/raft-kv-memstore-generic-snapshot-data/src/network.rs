@@ -8,6 +8,7 @@ use openraft::raft::AppendEntriesResponse;
 use openraft::raft::SnapshotResponse;
 use openraft::raft::VoteRequest;
 use openraft::raft::VoteResponse;
+use openraft::BasicNode;
 use openraft::OptionalSend;
 use openraft::RaftNetwork;
 use openraft::RaftNetworkFactory;
@@ -16,7 +17,6 @@ use openraft::Vote;
 
 use crate::router::Router;
 use crate::typ;
-use crate::BasicNode;
 use crate::NodeId;
 use crate::TypeConfig;
 
