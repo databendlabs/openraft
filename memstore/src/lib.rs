@@ -26,7 +26,6 @@ use openraft::SnapshotMeta;
 use openraft::StorageError;
 use openraft::StorageIOError;
 use openraft::StoredMembership;
-use openraft::TokioRuntime;
 use openraft::Vote;
 use serde::Deserialize;
 use serde::Serialize;
@@ -77,11 +76,7 @@ openraft::declare_raft_types!(
     pub TypeConfig:
         D = ClientRequest,
         R = ClientResponse,
-        NodeId = MemNodeId,
         Node = (),
-        Entry = Entry<TypeConfig>,
-        SnapshotData = Cursor<Vec<u8>>,
-        AsyncRuntime = TokioRuntime
 );
 
 /// The application snapshot type which the `MemStore` works with.

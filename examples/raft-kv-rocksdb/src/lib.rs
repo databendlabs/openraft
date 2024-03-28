@@ -7,7 +7,6 @@ use std::path::Path;
 use std::sync::Arc;
 
 use openraft::Config;
-use openraft::TokioRuntime;
 use tokio::net::TcpListener;
 use tokio::task;
 
@@ -44,11 +43,7 @@ openraft::declare_raft_types!(
     pub TypeConfig:
         D = Request,
         R = Response,
-        NodeId = NodeId,
         Node = Node,
-        Entry = openraft::Entry<TypeConfig>,
-        SnapshotData = SnapshotData,
-        AsyncRuntime = TokioRuntime
 );
 
 pub mod typ {

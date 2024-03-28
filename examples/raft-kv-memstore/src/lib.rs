@@ -8,9 +8,7 @@ use actix_web::middleware;
 use actix_web::middleware::Logger;
 use actix_web::web::Data;
 use actix_web::HttpServer;
-use openraft::BasicNode;
 use openraft::Config;
-use openraft::TokioRuntime;
 
 use crate::app::App;
 use crate::network::api;
@@ -32,11 +30,6 @@ openraft::declare_raft_types!(
     pub TypeConfig:
         D = Request,
         R = Response,
-        NodeId = NodeId,
-        Node = BasicNode,
-        Entry = openraft::Entry<TypeConfig>,
-        SnapshotData = Cursor<Vec<u8>>,
-        AsyncRuntime = TokioRuntime,
 );
 
 pub type LogStore = store::LogStore;

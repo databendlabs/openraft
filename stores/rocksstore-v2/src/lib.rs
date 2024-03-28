@@ -24,7 +24,6 @@ use openraft::storage::RaftLogStorage;
 use openraft::storage::RaftStateMachine;
 use openraft::storage::Snapshot;
 use openraft::AnyError;
-use openraft::BasicNode;
 use openraft::Entry;
 use openraft::EntryPayload;
 use openraft::ErrorVerb;
@@ -38,7 +37,6 @@ use openraft::SnapshotMeta;
 use openraft::StorageError;
 use openraft::StorageIOError;
 use openraft::StoredMembership;
-use openraft::TokioRuntime;
 use openraft::Vote;
 use rand::Rng;
 use rocksdb::ColumnFamily;
@@ -56,11 +54,6 @@ openraft::declare_raft_types!(
     pub TypeConfig:
         D = RocksRequest,
         R = RocksResponse,
-        NodeId = RocksNodeId,
-        Node = BasicNode,
-        Entry = Entry<TypeConfig>,
-        SnapshotData = Cursor<Vec<u8>>,
-        AsyncRuntime = TokioRuntime
 );
 
 /**
