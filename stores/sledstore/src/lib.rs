@@ -21,7 +21,6 @@ use openraft::storage::RaftLogStorage;
 use openraft::storage::RaftStateMachine;
 use openraft::storage::Snapshot;
 use openraft::AnyError;
-use openraft::BasicNode;
 use openraft::Entry;
 use openraft::EntryPayload;
 use openraft::LogId;
@@ -33,7 +32,6 @@ use openraft::SnapshotMeta;
 use openraft::StorageError;
 use openraft::StorageIOError;
 use openraft::StoredMembership;
-use openraft::TokioRuntime;
 use openraft::Vote;
 use serde::Deserialize;
 use serde::Serialize;
@@ -46,11 +44,6 @@ openraft::declare_raft_types!(
     pub TypeConfig:
         D = ExampleRequest,
         R = ExampleResponse,
-        NodeId = ExampleNodeId,
-        Node = BasicNode,
-        Entry = Entry<TypeConfig>,
-        SnapshotData = Cursor<Vec<u8>>,
-        AsyncRuntime = TokioRuntime
 );
 
 /**

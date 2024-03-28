@@ -6,9 +6,7 @@ use std::marker::PhantomData;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use openraft::BasicNode;
 use openraft::Config;
-use openraft::TokioRuntime;
 
 use crate::app::App;
 use crate::router::Router;
@@ -51,10 +49,6 @@ openraft::declare_raft_types!(
         D = Request,
         R = Response,
         NodeId = NodeId,
-        Node = BasicNode,
-        Entry = openraft::Entry<TypeConfig>,
-        SnapshotData = Cursor<Vec<u8>>,
-        AsyncRuntime = TokioRuntime
 );
 
 pub type LogStore = store::LogStore;

@@ -3,9 +3,7 @@
 
 use std::sync::Arc;
 
-use openraft::BasicNode;
 use openraft::Config;
-use openraft::TokioRuntime;
 
 use crate::app::App;
 use crate::router::Router;
@@ -27,13 +25,9 @@ openraft::declare_raft_types!(
     pub TypeConfig:
         D = Request,
         R = Response,
-        NodeId = NodeId,
-        Node = BasicNode,
-        Entry = openraft::Entry<TypeConfig>,
         // In this example, snapshot is just a copy of the state machine.
         // And it can be any type.
         SnapshotData = StateMachineData,
-        AsyncRuntime = TokioRuntime
 );
 
 pub type LogStore = store::LogStore;

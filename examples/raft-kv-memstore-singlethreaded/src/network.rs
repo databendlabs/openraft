@@ -7,12 +7,12 @@ use openraft::raft::InstallSnapshotRequest;
 use openraft::raft::InstallSnapshotResponse;
 use openraft::raft::VoteRequest;
 use openraft::raft::VoteResponse;
+use openraft::BasicNode;
 use openraft::RaftNetwork;
 use openraft::RaftNetworkFactory;
 
 use crate::router::Router;
 use crate::typ;
-use crate::BasicNode;
 use crate::NodeId;
 use crate::TypeConfig;
 
