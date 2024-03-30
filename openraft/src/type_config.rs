@@ -76,24 +76,28 @@ pub trait RaftTypeConfig:
 #[allow(dead_code)]
 /// Type alias for types used in `RaftTypeConfig`.
 pub mod alias {
+    use crate::AsyncRuntime;
+    use crate::RaftTypeConfig;
 
-    pub type DOf<C> = <C as crate::RaftTypeConfig>::D;
-    pub type ROf<C> = <C as crate::RaftTypeConfig>::R;
-    pub type NodeIdOf<C> = <C as crate::RaftTypeConfig>::NodeId;
-    pub type NodeOf<C> = <C as crate::RaftTypeConfig>::Node;
-    pub type EntryOf<C> = <C as crate::RaftTypeConfig>::Entry;
-    pub type SnapshotDataOf<C> = <C as crate::RaftTypeConfig>::SnapshotData;
-    pub type AsyncRuntimeOf<C> = <C as crate::RaftTypeConfig>::AsyncRuntime;
+    pub type DOf<C> = <C as RaftTypeConfig>::D;
+    pub type ROf<C> = <C as RaftTypeConfig>::R;
+    pub type NodeIdOf<C> = <C as RaftTypeConfig>::NodeId;
+    pub type NodeOf<C> = <C as RaftTypeConfig>::Node;
+    pub type EntryOf<C> = <C as RaftTypeConfig>::Entry;
+    pub type SnapshotDataOf<C> = <C as RaftTypeConfig>::SnapshotData;
+    pub type AsyncRuntimeOf<C> = <C as RaftTypeConfig>::AsyncRuntime;
 
-    pub type JoinErrorOf<C> = <AsyncRuntimeOf<C> as crate::AsyncRuntime>::JoinError;
-    pub type JoinHandleOf<C, T> = <AsyncRuntimeOf<C> as crate::AsyncRuntime>::JoinHandle<T>;
-    pub type SleepOf<C> = <AsyncRuntimeOf<C> as crate::AsyncRuntime>::Sleep;
-    pub type InstantOf<C> = <AsyncRuntimeOf<C> as crate::AsyncRuntime>::Instant;
-    pub type TimeoutErrorOf<C> = <AsyncRuntimeOf<C> as crate::AsyncRuntime>::TimeoutError;
-    pub type TimeoutOf<C, R, F> = <AsyncRuntimeOf<C> as crate::AsyncRuntime>::Timeout<R, F>;
-    pub type OneshotSenderOf<C, T> = <AsyncRuntimeOf<C> as crate::AsyncRuntime>::OneshotSender<T>;
-    pub type OneshotReceiverErrorOf<C> = <AsyncRuntimeOf<C> as crate::AsyncRuntime>::OneshotReceiverError;
-    pub type OneshotReceiverOf<C, T> = <AsyncRuntimeOf<C> as crate::AsyncRuntime>::OneshotReceiver<T>;
+    type Rt<C> = AsyncRuntimeOf<C>;
+
+    pub type JoinErrorOf<C> = <Rt<C> as AsyncRuntime>::JoinError;
+    pub type JoinHandleOf<C, T> = <Rt<C> as AsyncRuntime>::JoinHandle<T>;
+    pub type SleepOf<C> = <Rt<C> as AsyncRuntime>::Sleep;
+    pub type InstantOf<C> = <Rt<C> as AsyncRuntime>::Instant;
+    pub type TimeoutErrorOf<C> = <Rt<C> as AsyncRuntime>::TimeoutError;
+    pub type TimeoutOf<C, R, F> = <Rt<C> as AsyncRuntime>::Timeout<R, F>;
+    pub type OneshotSenderOf<C, T> = <Rt<C> as AsyncRuntime>::OneshotSender<T>;
+    pub type OneshotReceiverErrorOf<C> = <Rt<C> as AsyncRuntime>::OneshotReceiverError;
+    pub type OneshotReceiverOf<C, T> = <Rt<C> as AsyncRuntime>::OneshotReceiver<T>;
 
     // Usually used types
     pub type LogIdOf<C> = crate::LogId<NodeIdOf<C>>;
