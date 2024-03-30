@@ -6,7 +6,6 @@ use std::fmt::Debug;
 use crate::log_id::RaftLogId;
 use crate::LogId;
 use crate::Membership;
-use crate::MessageSummary;
 use crate::RaftTypeConfig;
 
 pub mod payload;
@@ -82,15 +81,7 @@ impl<C> fmt::Display for Entry<C>
 where C: RaftTypeConfig
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}:{}", self.log_id, self.payload.summary())
-    }
-}
-
-impl<C> MessageSummary<Entry<C>> for Entry<C>
-where C: RaftTypeConfig
-{
-    fn summary(&self) -> String {
-        format!("{}:{}", self.log_id, self.payload.summary())
+        write!(f, "{}:{}", self.log_id, self.payload)
     }
 }
 

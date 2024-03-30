@@ -20,7 +20,6 @@ use crate::EffectiveMembership;
 use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::Membership;
-use crate::MessageSummary;
 use crate::RaftState;
 use crate::RaftTypeConfig;
 use crate::ServerState;
@@ -79,7 +78,7 @@ where C: RaftTypeConfig
     /// It is called by the leader when a new membership log is appended to log store.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn append_membership(&mut self, log_id: &LogId<C::NodeId>, m: &Membership<C>) {
-        tracing::debug!("update effective membership: log_id:{} {}", log_id, m.summary());
+        tracing::debug!("update effective membership: log_id:{} {}", log_id, m);
 
         debug_assert!(
             self.state.server_state == ServerState::Leader,
@@ -416,8 +415,8 @@ where C: RaftTypeConfig
         // TODO: test
 
         tracing::debug!(
-            last_purged_log_id = display(self.state.last_purged_log_id().summary()),
-            purge_upto = display(self.state.purge_upto().summary()),
+            last_purged_log_id = display(self.state.last_purged_log_id().display()),
+            purge_upto = display(self.state.purge_upto().display()),
             "try_purge_log"
         );
 

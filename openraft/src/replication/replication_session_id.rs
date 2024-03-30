@@ -1,8 +1,8 @@
 use std::fmt::Display;
 use std::fmt::Formatter;
 
+use crate::display_ext::DisplayOptionExt;
 use crate::LogId;
-use crate::MessageSummary;
 use crate::NodeId;
 use crate::Vote;
 
@@ -39,7 +39,7 @@ pub(crate) struct ReplicationSessionId<NID: NodeId> {
 
 impl<NID: NodeId> Display for ReplicationSessionId<NID> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}/{}", self.vote, self.membership_log_id.summary())
+        write!(f, "{}/{}", self.vote, self.membership_log_id.display())
     }
 }
 

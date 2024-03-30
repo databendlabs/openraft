@@ -20,7 +20,6 @@ use crate::type_config::alias::OneshotReceiverOf;
 use crate::type_config::alias::OneshotSenderOf;
 use crate::AsyncRuntime;
 use crate::Config;
-use crate::MessageSummary;
 use crate::OptionalSend;
 use crate::RaftMetrics;
 use crate::RaftTypeConfig;
@@ -63,7 +62,7 @@ where C: RaftTypeConfig
         T: OptionalSend,
     {
         let sum = if tracing::enabled!(Level::DEBUG) {
-            Some(mes.summary())
+            Some(mes.to_string())
         } else {
             None
         };

@@ -23,7 +23,6 @@ use crate::raft_types::SnapshotId;
 pub use crate::storage::callback::LogApplied;
 pub use crate::storage::callback::LogFlushed;
 use crate::LogId;
-use crate::MessageSummary;
 use crate::OptionalSend;
 use crate::OptionalSync;
 use crate::RaftTypeConfig;
@@ -59,14 +58,6 @@ where C: RaftTypeConfig
             DisplayOption(&self.last_log_id),
             self.last_membership
         )
-    }
-}
-
-impl<C> MessageSummary<SnapshotMeta<C>> for SnapshotMeta<C>
-where C: RaftTypeConfig
-{
-    fn summary(&self) -> String {
-        self.to_string()
     }
 }
 

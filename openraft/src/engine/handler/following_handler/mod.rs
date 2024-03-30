@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use crate::core::sm;
 use crate::display_ext::DisplayOption;
+use crate::display_ext::DisplayOptionExt;
 use crate::display_ext::DisplaySlice;
 use crate::engine::handler::log_handler::LogHandler;
 use crate::engine::handler::server_state_handler::ServerStateHandler;
@@ -15,7 +16,6 @@ use crate::raft_state::LogStateReader;
 use crate::EffectiveMembership;
 use crate::LogId;
 use crate::LogIdOptionExt;
-use crate::MessageSummary;
 use crate::RaftLogId;
 use crate::RaftState;
 use crate::RaftTypeConfig;
@@ -49,13 +49,13 @@ where C: RaftTypeConfig
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn append_entries(&mut self, prev_log_id: Option<LogId<C::NodeId>>, entries: Vec<C::Entry>) {
         tracing::debug!(
-            prev_log_id = display(prev_log_id.summary()),
+            prev_log_id = display(prev_log_id.display()),
             entries = display(DisplaySlice::<_>(&entries)),
             "append-entries request"
         );
         tracing::debug!(
-            my_last_log_id = display(self.state.last_log_id().summary()),
-            my_committed = display(self.state.committed().summary()),
+            my_last_log_id = display(self.state.last_log_id().display()),
+            my_committed = display(self.state.committed().display()),
             "local state"
         );
 
@@ -64,7 +64,7 @@ where C: RaftTypeConfig
         }
 
         tracing::debug!(
-            committed = display(self.state.committed().summary()),
+            committed = display(self.state.committed().display()),
             entries = display(DisplaySlice::<_>(&entries)),
             "prev_log_id matches, skip matching entries",
         );
@@ -207,7 +207,7 @@ where C: RaftTypeConfig
         // Other membership log can be just ignored.
         for (i, m) in memberships.into_iter().enumerate() {
             tracing::debug!(
-                last = display(m.summary()),
+                last = display(&m),
                 "applying {}-th new membership configs received from leader",
                 i
             );
@@ -215,7 +215,7 @@ where C: RaftTypeConfig
         }
 
         tracing::debug!(
-            membership_state = display(&self.state.membership_state.summary()),
+            membership_state = display(&self.state.membership_state),
             "updated membership state"
         );
 
@@ -225,7 +225,7 @@ where C: RaftTypeConfig
     /// Update membership state with a committed membership config
     #[tracing::instrument(level = "debug", skip_all)]
     fn update_committed_membership(&mut self, membership: EffectiveMembership<C>) {
-        tracing::debug!("update committed membership: {}", membership.summary());
+        tracing::debug!("update committed membership: {}", membership);
 
         let m = Arc::new(membership);
 
@@ -251,8 +251,8 @@ where C: RaftTypeConfig
         if snap_last_log_id.as_ref() <= self.state.committed() {
             tracing::info!(
                 "No need to install snapshot; snapshot last_log_id({}) <= committed({})",
-                snap_last_log_id.summary(),
-                self.state.committed().summary()
+                snap_last_log_id.display(),
+                self.state.committed().display()
             );
             return;
         }

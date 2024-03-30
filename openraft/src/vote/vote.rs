@@ -3,7 +3,6 @@ use std::fmt::Formatter;
 
 use crate::vote::leader_id::CommittedLeaderId;
 use crate::LeaderId;
-use crate::MessageSummary;
 use crate::NodeId;
 
 /// `Vote` represent the privilege of a node.
@@ -51,12 +50,6 @@ impl<NID: NodeId> std::fmt::Display for Vote<NID> {
                 "uncommitted"
             }
         )
-    }
-}
-
-impl<NID: NodeId> MessageSummary<Vote<NID>> for Vote<NID> {
-    fn summary(&self) -> String {
-        format!("{}", self)
     }
 }
 

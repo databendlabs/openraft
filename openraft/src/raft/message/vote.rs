@@ -2,7 +2,6 @@ use std::fmt;
 
 use crate::display_ext::DisplayOptionExt;
 use crate::LogId;
-use crate::MessageSummary;
 use crate::RaftTypeConfig;
 use crate::Vote;
 
@@ -19,14 +18,6 @@ where C: RaftTypeConfig
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{{vote:{}, last_log:{}}}", self.vote, self.last_log_id.display(),)
-    }
-}
-
-impl<C> MessageSummary<VoteRequest<C>> for VoteRequest<C>
-where C: RaftTypeConfig
-{
-    fn summary(&self) -> String {
-        self.to_string()
     }
 }
 
@@ -53,11 +44,12 @@ pub struct VoteResponse<C: RaftTypeConfig> {
     pub last_log_id: Option<LogId<C::NodeId>>,
 }
 
-impl<C> MessageSummary<VoteResponse<C>> for VoteResponse<C>
+impl<C> fmt::Display for VoteResponse<C>
 where C: RaftTypeConfig
 {
-    fn summary(&self) -> String {
-        format!(
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
             "{{granted:{}, {}, last_log:{:?}}}",
             self.vote_granted,
             self.vote,

@@ -1,10 +1,10 @@
 //! This mod handles state machine operations
 
 use crate::core::sm;
+use crate::display_ext::DisplayOptionExt;
 use crate::engine::Command;
 use crate::engine::EngineOutput;
 use crate::raft_state::LogStateReader;
-use crate::summary::MessageSummary;
 use crate::RaftState;
 use crate::RaftTypeConfig;
 use crate::SnapshotMeta;
@@ -55,8 +55,8 @@ where C: RaftTypeConfig
         if meta.last_log_id <= self.state.snapshot_last_log_id().copied() {
             tracing::info!(
                 "No need to install a smaller snapshot: current snapshot last_log_id({}), new snapshot last_log_id({})",
-                self.state.snapshot_last_log_id().summary(),
-                meta.last_log_id.summary()
+                self.state.snapshot_last_log_id().display(),
+                meta.last_log_id.display()
             );
             return false;
         }

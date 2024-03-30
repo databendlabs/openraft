@@ -1,8 +1,8 @@
+use crate::display_ext::DisplayOptionExt;
 use crate::engine::Command;
 use crate::engine::EngineConfig;
 use crate::engine::EngineOutput;
 use crate::raft_state::LogStateReader;
-use crate::summary::MessageSummary;
 use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::RaftState;
@@ -30,8 +30,8 @@ where C: RaftTypeConfig
         let purge_upto = st.purge_upto();
 
         tracing::info!(
-            last_purged_log_id = display(st.last_purged_log_id().summary()),
-            purge_upto = display(purge_upto.summary()),
+            last_purged_log_id = display(st.last_purged_log_id().display()),
+            purge_upto = display(purge_upto.display()),
             "purge_log"
         );
 
@@ -90,7 +90,7 @@ where C: RaftTypeConfig
             tracing::debug!(
                 snapshot_last_log_id = debug(self.state.snapshot_meta.last_log_id),
                 max_keep,
-                last_purged_log_id = display(st.last_purged_log_id().summary()),
+                last_purged_log_id = display(st.last_purged_log_id().display()),
                 batch_size,
                 purge_end,
                 "no need to purge",

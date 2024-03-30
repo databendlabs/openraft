@@ -1,6 +1,5 @@
 use std::fmt;
 
-use crate::MessageSummary;
 use crate::RaftTypeConfig;
 use crate::SnapshotMeta;
 use crate::Vote;
@@ -35,12 +34,6 @@ impl<C: RaftTypeConfig> fmt::Display for InstallSnapshotRequest<C> {
             self.data.len(),
             self.done
         )
-    }
-}
-
-impl<C: RaftTypeConfig> MessageSummary<InstallSnapshotRequest<C>> for InstallSnapshotRequest<C> {
-    fn summary(&self) -> String {
-        self.to_string()
     }
 }
 

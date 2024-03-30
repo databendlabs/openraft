@@ -57,7 +57,6 @@ use crate::type_config::alias::LogIdOf;
 use crate::AsyncRuntime;
 use crate::Instant;
 use crate::LogId;
-use crate::MessageSummary;
 use crate::RaftLogId;
 use crate::RaftTypeConfig;
 use crate::StorageError;
@@ -174,7 +173,7 @@ where
         tracing::debug!(
             session_id = display(&session_id),
             target = display(&target),
-            committed = display(committed.summary()),
+            committed = display(committed.display()),
             matching = debug(&matching),
             "spawn replication"
         );
@@ -425,7 +424,7 @@ where
 
         // Send the payload.
         tracing::debug!(
-            payload=%payload.summary(),
+            payload = display(&payload),
             now = debug(leader_time),
             "start sending append_entries, timeout: {:?}",
             self.config.heartbeat_interval
@@ -644,7 +643,7 @@ where
 
     #[tracing::instrument(level = "trace", skip_all)]
     pub fn process_event(&mut self, event: Replicate<C>) {
-        tracing::debug!(event=%event.summary(), "process_event");
+        tracing::debug!(event = display(&event), "process_event");
 
         match event {
             Replicate::Committed(c) => {
@@ -652,8 +651,8 @@ where
                 debug_assert!(
                     c >= self.committed,
                     "expect new committed {} > self.committed {}",
-                    c.summary(),
-                    self.committed.summary()
+                    c.display(),
+                    self.committed.display()
                 );
 
                 self.committed = c;
@@ -717,7 +716,7 @@ where
         tracing::info!(
             "received snapshot: request_id={}; meta:{}",
             request_id,
-            snapshot.as_ref().map(|x| &x.meta).summary()
+            snapshot.as_ref().map(|x| &x.meta).display()
         );
 
         let snapshot = match snapshot {

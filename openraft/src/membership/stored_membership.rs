@@ -3,7 +3,6 @@ use std::fmt;
 use crate::display_ext::DisplayOption;
 use crate::LogId;
 use crate::Membership;
-use crate::MessageSummary;
 use crate::RaftTypeConfig;
 
 /// This struct represents information about a membership config that has already been stored in the
@@ -56,19 +55,6 @@ impl<C> fmt::Display for StoredMembership<C>
 where C: RaftTypeConfig
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{{log_id:{}, {}}}",
-            DisplayOption(&self.log_id),
-            self.membership.summary()
-        )
-    }
-}
-
-impl<C> MessageSummary<StoredMembership<C>> for StoredMembership<C>
-where C: RaftTypeConfig
-{
-    fn summary(&self) -> String {
-        self.to_string()
+        write!(f, "{{log_id:{}, {}}}", DisplayOption(&self.log_id), self.membership)
     }
 }

@@ -10,7 +10,6 @@ use crate::display_ext::DisplayOptionExt;
 use crate::progress::inflight::Inflight;
 use crate::progress::inflight::InflightError;
 use crate::raft_state::LogStateReader;
-use crate::summary::MessageSummary;
 use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::NodeId;
@@ -94,7 +93,7 @@ impl<NID: NodeId> ProgressEntry<NID> {
         tracing::debug!(
             self = display(&self),
             request_id = display(request_id),
-            matching = display(matching.summary()),
+            matching = display(matching.display()),
             "update_matching"
         );
 
@@ -251,7 +250,7 @@ impl<NID: NodeId> Display for ProgressEntry<NID> {
         write!(
             f,
             "{{[{}, {}), inflight:{}}}",
-            self.matching.summary(),
+            self.matching.display(),
             self.searching_end,
             self.inflight
         )

@@ -47,7 +47,6 @@ use openraft::storage::RaftStateMachine;
 use openraft::Config;
 use openraft::LogId;
 use openraft::LogIdOptionExt;
-use openraft::MessageSummary;
 use openraft::RPCTypes;
 use openraft::Raft;
 use openraft::RaftLogId;
@@ -985,7 +984,7 @@ impl RaftNetwork<MemConfig> for RaftRouterNetwork {
     ) -> Result<AppendEntriesResponse<MemConfig>, RPCError<MemConfig, RaftError<MemConfig>>> {
         let from_id = rpc.vote.leader_id().voted_for().unwrap();
 
-        tracing::debug!("append_entries to id={} {}", self.target, rpc.summary());
+        tracing::debug!("append_entries to id={} {}", self.target, rpc);
         self.owner.count_rpc(RPCTypes::AppendEntries);
         self.owner.call_rpc_pre_hook(rpc.clone(), from_id, self.target)?;
         self.owner.emit_rpc_error(from_id, self.target)?;

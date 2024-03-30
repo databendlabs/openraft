@@ -6,7 +6,6 @@ use crate::display_ext::DisplayOption;
 use crate::display_ext::DisplayOptionExt;
 use crate::error::Fatal;
 use crate::metrics::ReplicationMetrics;
-use crate::summary::MessageSummary;
 use crate::LogId;
 use crate::RaftTypeConfig;
 use crate::StoredMembership;
@@ -103,7 +102,7 @@ where C: RaftTypeConfig
         write!(
             f,
             "membership:{}, snapshot:{}, purged:{}, replication:{{{}}}",
-            self.membership_config.summary(),
+            self.membership_config,
             DisplayOption(&self.snapshot),
             DisplayOption(&self.purged),
             self.replication
@@ -114,13 +113,6 @@ where C: RaftTypeConfig
 
         write!(f, "}}")?;
         Ok(())
-    }
-}
-impl<C> MessageSummary<RaftMetrics<C>> for RaftMetrics<C>
-where C: RaftTypeConfig
-{
-    fn summary(&self) -> String {
-        self.to_string()
     }
 }
 
@@ -200,14 +192,6 @@ where C: RaftTypeConfig
     }
 }
 
-impl<C> MessageSummary<RaftDataMetrics<C>> for RaftDataMetrics<C>
-where C: RaftTypeConfig
-{
-    fn summary(&self) -> String {
-        self.to_string()
-    }
-}
-
 /// Subset of RaftMetrics, only include server-related metrics
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
@@ -233,18 +217,10 @@ where C: RaftTypeConfig
             self.state,
             self.vote,
             DisplayOption(&self.current_leader),
-            self.membership_config.summary(),
+            self.membership_config,
         )?;
 
         write!(f, "}}")?;
         Ok(())
-    }
-}
-
-impl<C> MessageSummary<RaftServerMetrics<C>> for RaftServerMetrics<C>
-where C: RaftTypeConfig
-{
-    fn summary(&self) -> String {
-        self.to_string()
     }
 }

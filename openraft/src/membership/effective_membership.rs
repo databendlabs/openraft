@@ -1,13 +1,14 @@
 use std::collections::BTreeSet;
+use std::fmt;
 use std::fmt::Debug;
 use std::sync::Arc;
 
+use crate::display_ext::DisplayOptionExt;
 use crate::log_id::RaftLogId;
 use crate::quorum::Joint;
 use crate::quorum::QuorumSet;
 use crate::LogId;
 use crate::Membership;
-use crate::MessageSummary;
 use crate::RaftTypeConfig;
 use crate::StoredMembership;
 
@@ -34,7 +35,7 @@ where C: RaftTypeConfig
 impl<C> Debug for EffectiveMembership<C>
 where C: RaftTypeConfig
 {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("EffectiveMembership")
             .field("log_id", self.log_id())
             .field("membership", self.membership())
@@ -141,14 +142,15 @@ where C: RaftTypeConfig
     }
 }
 
-impl<C> MessageSummary<EffectiveMembership<C>> for EffectiveMembership<C>
+impl<C> fmt::Display for EffectiveMembership<C>
 where C: RaftTypeConfig
 {
-    fn summary(&self) -> String {
-        format!(
-            "{{log_id:{:?} membership:{}}}",
-            self.log_id(),
-            self.membership().summary()
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "EffectiveMembership{{log_id: {}, membership: {}}}",
+            self.log_id().display(),
+            self.membership()
         )
     }
 }

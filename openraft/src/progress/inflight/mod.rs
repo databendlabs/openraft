@@ -6,11 +6,11 @@ use std::fmt::Formatter;
 
 use validit::Validate;
 
+use crate::display_ext::DisplayOptionExt;
 use crate::log_id_range::LogIdRange;
 use crate::replication::request_id::RequestId;
 use crate::LogId;
 use crate::LogIdOptionExt;
-use crate::MessageSummary;
 use crate::NodeId;
 
 #[derive(Debug)]
@@ -76,7 +76,7 @@ impl<NID: NodeId> Display for Inflight<NID> {
                 id,
                 last_log_id: last_next,
             } => {
-                write!(f, "Snapshot(id={}):{}", id, last_next.summary())
+                write!(f, "Snapshot(id={}):{}", id, last_next.display())
             }
         }
     }

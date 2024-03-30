@@ -38,6 +38,7 @@ use crate::core::sm::handle;
 use crate::core::sm::CommandSeq;
 use crate::core::ServerState;
 use crate::display_ext::DisplayOption;
+use crate::display_ext::DisplayOptionExt;
 use crate::display_ext::DisplaySlice;
 use crate::engine::Command;
 use crate::engine::Condition;
@@ -91,7 +92,6 @@ use crate::ChangeMembers;
 use crate::Instant;
 use crate::LogId;
 use crate::Membership;
-use crate::MessageSummary;
 use crate::OptionalSend;
 use crate::RaftTypeConfig;
 use crate::StorageError;
@@ -406,7 +406,7 @@ where
             // request failures.
 
             let _ = tx.send(Err(QuorumNotEnough {
-                cluster: eff_mem.membership().summary(),
+                cluster: eff_mem.membership().to_string(),
                 got: granted,
             }
             .into()));
@@ -593,7 +593,7 @@ where
             false
         });
 
-        tracing::debug!("report_metrics: {}", m.summary());
+        tracing::debug!("report_metrics: {}", m);
         let res = self.tx_metrics.send(m);
 
         if let Err(err) = res {
@@ -653,7 +653,7 @@ where
     pub(crate) fn current_leader(&self) -> Option<C::NodeId> {
         tracing::debug!(
             self_id = display(self.id),
-            vote = display(self.engine.state.vote_ref().summary()),
+            vote = display(self.engine.state.vote_ref()),
             "get current_leader"
         );
 
@@ -1032,7 +1032,7 @@ where
     }
 
     /// Spawn parallel vote requests to all cluster members.
-    #[tracing::instrument(level = "trace", skip_all, fields(vote=vote_req.summary()))]
+    #[tracing::instrument(level = "trace", skip_all)]
     async fn spawn_parallel_vote_requests(&mut self, vote_req: &VoteRequest<C>) {
         let members = self.engine.state.membership_state.effective().voter_ids();
 
@@ -1097,7 +1097,7 @@ where
 
     #[tracing::instrument(level = "debug", skip_all)]
     pub(super) fn handle_vote_request(&mut self, req: VoteRequest<C>, tx: VoteTx<C>) {
-        tracing::info!(req = display(req.summary()), func = func_name!());
+        tracing::info!(req = display(&req), func = func_name!());
 
         let resp = self.engine.handle_vote_req(req);
         self.engine.output.push_command(Command::Respond {
@@ -1108,7 +1108,7 @@ where
 
     #[tracing::instrument(level = "debug", skip_all)]
     pub(super) fn handle_append_entries_request(&mut self, req: AppendEntriesRequest<C>, tx: AppendEntriesTx<C>) {
-        tracing::debug!(req = display(req.summary()), func = func_name!());
+        tracing::debug!(req = display(&req), func = func_name!());
 
         let is_ok = self.engine.handle_append_entries(&req.vote, req.prev_log_id, req.entries, Some(tx));
 
@@ -1120,7 +1120,7 @@ where
     // TODO: Make this method non-async. It does not need to run any async command in it.
     #[tracing::instrument(level = "debug", skip(self, msg), fields(state = debug(self.engine.state.server_state), id=display(self.id)))]
     pub(crate) async fn handle_api_msg(&mut self, msg: RaftMsg<C>) {
-        tracing::debug!("recv from rx_api: {}", msg.summary());
+        tracing::debug!("recv from rx_api: {}", msg);
 
         match msg {
             RaftMsg::AppendEntries { rpc, tx } => {
@@ -1130,7 +1130,7 @@ where
                 let now = InstantOf::<C>::now();
                 tracing::info!(
                     now = debug(now),
-                    vote_request = display(rpc.summary()),
+                    vote_request = display(&rpc),
                     "received RaftMsg::RequestVote: {}",
                     func_name!()
                 );
@@ -1206,7 +1206,7 @@ where
     // TODO: Make this method non-async. It does not need to run any async command in it.
     #[tracing::instrument(level = "debug", skip_all, fields(state = debug(self.engine.state.server_state), id=display(self.id)))]
     pub(crate) fn handle_notify(&mut self, notify: Notify<C>) -> Result<(), Fatal<C>> {
-        tracing::debug!("recv from rx_notify: {}", notify.summary());
+        tracing::debug!("recv from rx_notify: {}", notify);
 
         match notify {
             Notify::VoteResponse {
@@ -1218,7 +1218,7 @@ where
 
                 tracing::info!(
                     now = debug(now),
-                    resp = display(resp.summary()),
+                    resp = display(&resp),
                     "received Notify::VoteResponse: {}",
                     func_name!()
                 );
@@ -1364,7 +1364,7 @@ where
                     sm::Response::BuildSnapshot(meta) => {
                         tracing::info!(
                             "sm::StateMachine command done: BuildSnapshot: {}: {}",
-                            meta.summary(),
+                            meta,
                             func_name!()
                         );
 
@@ -1380,7 +1380,7 @@ where
                     sm::Response::InstallSnapshot(meta) => {
                         tracing::info!(
                             "sm::StateMachine command done: InstallSnapshot: {}: {}",
-                            meta.summary(),
+                            meta.display(),
                             func_name!()
                         );
 
@@ -1526,8 +1526,8 @@ where
         if &session_id.membership_log_id != self.engine.state.membership_state.effective().log_id() {
             tracing::warn!(
                 "membership_log_id changed: msg sent by: {}; curr: {}; ignore when ({})",
-                session_id.membership_log_id.summary(),
-                self.engine.state.membership_state.effective().log_id().summary(),
+                session_id.membership_log_id.display(),
+                self.engine.state.membership_state.effective().log_id().display(),
                 msg
             );
             return false;

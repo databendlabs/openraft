@@ -3,7 +3,6 @@ use std::fmt::Formatter;
 
 use crate::entry::traits::RaftPayload;
 use crate::Membership;
-use crate::MessageSummary;
 use crate::RaftTypeConfig;
 
 /// Log entry payload variants.
@@ -47,15 +46,19 @@ impl<C: RaftTypeConfig> fmt::Debug for EntryPayload<C> {
     }
 }
 
-impl<C: RaftTypeConfig> MessageSummary<EntryPayload<C>> for EntryPayload<C> {
-    fn summary(&self) -> String {
+impl<C> fmt::Display for EntryPayload<C>
+where C: RaftTypeConfig
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            EntryPayload::Blank => "blank".to_string(),
-            EntryPayload::Normal(_n) => "normal".to_string(),
+            EntryPayload::Blank => write!(f, "blank")?,
+            EntryPayload::Normal(_n) => write!(f, "normal")?,
             EntryPayload::Membership(c) => {
-                format!("membership: {}", c.summary())
+                write!(f, "membership:{}", c)?;
             }
         }
+
+        Ok(())
     }
 }
 

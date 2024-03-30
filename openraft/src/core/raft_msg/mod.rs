@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::fmt;
 
 use crate::core::raft_msg::external_command::ExternalCommand;
 use crate::error::CheckIsLeaderError;
@@ -16,7 +17,6 @@ use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::OneshotSenderOf;
 use crate::type_config::alias::SnapshotDataOf;
 use crate::ChangeMembers;
-use crate::MessageSummary;
 use crate::RaftTypeConfig;
 use crate::Snapshot;
 use crate::Vote;
@@ -103,36 +103,37 @@ where C: RaftTypeConfig
     },
 }
 
-impl<C> MessageSummary<RaftMsg<C>> for RaftMsg<C>
+impl<C> fmt::Display for RaftMsg<C>
 where C: RaftTypeConfig
 {
-    fn summary(&self) -> String {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             RaftMsg::AppendEntries { rpc, .. } => {
-                format!("AppendEntries: {}", rpc.summary())
+                // TODO: avoid using summary()
+                write!(f, "AppendEntries: {}", rpc)
             }
             RaftMsg::RequestVote { rpc, .. } => {
-                format!("RequestVote: {}", rpc.summary())
+                write!(f, "RequestVote: {}", rpc)
             }
-            RaftMsg::BeginReceivingSnapshot { .. } => "BeginReceivingSnapshot".to_string(),
+            RaftMsg::BeginReceivingSnapshot { .. } => {
+                write!(f, "BeginReceivingSnapshot")
+            }
             RaftMsg::InstallFullSnapshot { vote, snapshot, .. } => {
-                format!("InstallFullSnapshot: vote: {}, snapshot: {}", vote, snapshot)
+                write!(f, "InstallFullSnapshot: vote: {}, snapshot: {}", vote, snapshot)
             }
-            RaftMsg::ClientWriteRequest { .. } => "ClientWriteRequest".to_string(),
-            RaftMsg::CheckIsLeaderRequest { .. } => "CheckIsLeaderRequest".to_string(),
+            RaftMsg::ClientWriteRequest { .. } => write!(f, "ClientWriteRequest"),
+            RaftMsg::CheckIsLeaderRequest { .. } => write!(f, "CheckIsLeaderRequest"),
             RaftMsg::Initialize { members, .. } => {
-                format!("Initialize: {:?}", members)
+                // TODO: avoid using Debug
+                write!(f, "Initialize: {:?}", members)
             }
-            RaftMsg::ChangeMembership {
-                changes: members,
-                retain,
-                ..
-            } => {
-                format!("ChangeMembership: members: {:?}, retain: {}", members, retain,)
+            RaftMsg::ChangeMembership { changes, retain, .. } => {
+                // TODO: avoid using Debug
+                write!(f, "ChangeMembership: members: {:?}, retain: {}", changes, retain,)
             }
-            RaftMsg::ExternalCoreRequest { .. } => "External Request".to_string(),
+            RaftMsg::ExternalCoreRequest { .. } => write!(f, "External Request"),
             RaftMsg::ExternalCommand { cmd } => {
-                format!("ExternalCommand: {:?}", cmd)
+                write!(f, "ExternalCommand: {}", cmd)
             }
         }
     }

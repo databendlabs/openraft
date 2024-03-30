@@ -11,7 +11,6 @@ use crate::quorum::FindCoherent;
 use crate::quorum::Joint;
 use crate::quorum::QuorumSet;
 use crate::ChangeMembers;
-use crate::MessageSummary;
 use crate::RaftTypeConfig;
 
 /// The membership configuration of the cluster.
@@ -90,14 +89,6 @@ where C: RaftTypeConfig
         }
         write!(f, "]}}")?;
         Ok(())
-    }
-}
-
-impl<C> MessageSummary<Membership<C>> for Membership<C>
-where C: RaftTypeConfig
-{
-    fn summary(&self) -> String {
-        self.to_string()
     }
 }
 

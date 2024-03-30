@@ -37,7 +37,6 @@ use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::raft_state::LogStateReader;
 use crate::raft_state::RaftState;
-use crate::summary::MessageSummary;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::SnapshotDataOf;
 use crate::Instant;
@@ -168,7 +167,7 @@ where C: RaftTypeConfig
         let m = entry.get_membership().expect("the only log entry for initializing has to be membership log");
         self.check_members_contain_me(m)?;
 
-        tracing::debug!("update effective membership: log_id:{} {}", log_id, m.summary());
+        tracing::debug!("update effective membership: log_id:{} {}", log_id, m);
 
         let em = EffectiveMembership::new_arc(Some(log_id), m.clone());
         self.state.membership_state.append(em);
@@ -257,10 +256,10 @@ where C: RaftTypeConfig
         // Make default vote-last-modified a low enough value, that expires leader lease.
         let vote_utime = self.state.vote_last_modified().unwrap_or_else(|| now - lease - Duration::from_millis(1));
 
-        tracing::info!(req = display(req.summary()), "Engine::handle_vote_req");
+        tracing::info!(req = display(&req), "Engine::handle_vote_req");
         tracing::info!(
-            my_vote = display(self.state.vote_ref().summary()),
-            my_last_log_id = display(self.state.last_log_id().summary()),
+            my_vote = display(self.state.vote_ref()),
+            my_last_log_id = display(self.state.last_log_id().display()),
             "Engine::handle_vote_req"
         );
         tracing::info!(
@@ -298,8 +297,8 @@ where C: RaftTypeConfig
         } else {
             tracing::info!(
                 "reject vote-request: by last_log_id: !(req.last_log_id({}) >= my_last_log_id({})",
-                req.last_log_id.summary(),
-                self.state.last_log_id().summary(),
+                req.last_log_id.display(),
+                self.state.last_log_id().display(),
             );
             // The res is not used yet.
             // let _res = Err(RejectVoteRequest::ByLastLogId(self.state.last_log_id().copied()));
@@ -316,11 +315,7 @@ where C: RaftTypeConfig
 
         let res = self.vote_handler().update_vote(&req.vote);
 
-        tracing::info!(
-            req = display(req.summary()),
-            result = debug(&res),
-            "handle vote request result"
-        );
+        tracing::info!(req = display(&req), result = debug(&res), "handle vote request result");
 
         let vote_granted = res.is_ok();
 
@@ -336,10 +331,10 @@ where C: RaftTypeConfig
     #[tracing::instrument(level = "debug", skip(self, resp))]
     pub(crate) fn handle_vote_resp(&mut self, target: C::NodeId, resp: VoteResponse<C>) {
         tracing::info!(
-            resp = display(resp.summary()),
+            resp = display(&resp),
             target = display(target),
             my_vote = display(self.state.vote_ref()),
-            my_last_log_id = display(self.state.last_log_id().summary()),
+            my_last_log_id = display(self.state.last_log_id().display()),
             "{}",
             func_name!()
         );
@@ -379,7 +374,7 @@ where C: RaftTypeConfig
         // Seen a higher log. Record it so that the next election will be delayed for a while.
         if resp.last_log_id.as_ref() > self.state.last_log_id() {
             tracing::info!(
-                greater_log_id = display(resp.last_log_id.summary()),
+                greater_log_id = display(resp.last_log_id.display()),
                 "seen a greater log id when {}",
                 func_name!()
             );
@@ -400,10 +395,10 @@ where C: RaftTypeConfig
     ) -> bool {
         tracing::debug!(
             vote = display(vote),
-            prev_log_id = display(prev_log_id.summary()),
+            prev_log_id = display(prev_log_id.display()),
             entries = display(DisplaySlice::<_>(&entries)),
             my_vote = display(self.state.vote_ref()),
-            my_last_log_id = display(self.state.last_log_id().summary()),
+            my_last_log_id = display(self.state.last_log_id().display()),
             "{}",
             func_name!()
         );
@@ -442,9 +437,9 @@ where C: RaftTypeConfig
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn handle_commit_entries(&mut self, leader_committed: Option<LogId<C::NodeId>>) {
         tracing::debug!(
-            leader_committed = display(leader_committed.summary()),
-            my_accepted = display(self.state.accepted().summary()),
-            my_committed = display(self.state.committed().summary()),
+            leader_committed = display(leader_committed.display()),
+            my_accepted = display(self.state.accepted().display()),
+            my_committed = display(self.state.committed().display()),
             "{}",
             func_name!()
         );
@@ -507,8 +502,8 @@ where C: RaftTypeConfig
 
         tracing::debug!(
             "membership: {}, committed: {}, is_leading: {}",
-            em.summary(),
-            self.state.committed().summary(),
+            em,
+            self.state.committed().display(),
             self.state.is_leading(&self.config.id),
         );
 
@@ -682,7 +677,7 @@ where C: RaftTypeConfig
         }
 
         tracing::error!(
-            last_log_id = display(self.state.last_log_id().summary()),
+            last_log_id = display(self.state.last_log_id().display()),
             vote = display(self.state.vote_ref()),
             "Can not initialize"
         );

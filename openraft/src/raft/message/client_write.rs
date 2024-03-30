@@ -1,8 +1,9 @@
+use std::fmt;
 use std::fmt::Debug;
 
+use crate::display_ext::DisplayOptionExt;
 use crate::LogId;
 use crate::Membership;
-use crate::MessageSummary;
 use crate::RaftTypeConfig;
 
 /// The response to a client-request.
@@ -25,7 +26,7 @@ pub struct ClientWriteResponse<C: RaftTypeConfig> {
 impl<C: RaftTypeConfig> Debug for ClientWriteResponse<C>
 where C::R: Debug
 {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ClientWriteResponse")
             .field("log_id", &self.log_id)
             .field("data", &self.data)
@@ -34,8 +35,15 @@ where C::R: Debug
     }
 }
 
-impl<C: RaftTypeConfig> MessageSummary<ClientWriteResponse<C>> for ClientWriteResponse<C> {
-    fn summary(&self) -> String {
-        format!("log_id: {}, membership: {:?}", self.log_id, self.membership)
+impl<C> fmt::Display for ClientWriteResponse<C>
+where C: RaftTypeConfig
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "ClientWriteResponse{{log_id:{}, membership:{}}}",
+            self.log_id,
+            self.membership.display()
+        )
     }
 }

@@ -1,4 +1,5 @@
 use std::error::Error;
+use std::fmt;
 use std::sync::Arc;
 
 use validit::Validate;
@@ -6,7 +7,6 @@ use validit::Validate;
 use crate::EffectiveMembership;
 use crate::LogId;
 use crate::LogIdOptionExt;
-use crate::MessageSummary;
 use crate::RaftTypeConfig;
 
 mod change_handler;
@@ -48,14 +48,14 @@ where C: RaftTypeConfig
     effective: Arc<EffectiveMembership<C>>,
 }
 
-impl<C> MessageSummary<MembershipState<C>> for MembershipState<C>
+impl<C> fmt::Display for MembershipState<C>
 where C: RaftTypeConfig
 {
-    fn summary(&self) -> String {
-        format!(
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
             "MembershipState{{committed: {}, effective: {}}}",
-            self.committed().summary(),
-            self.effective().summary()
+            self.committed, self.effective
         )
     }
 }
@@ -174,8 +174,8 @@ where C: RaftTypeConfig
 
         if Some(since) <= self.effective().log_id().index() {
             tracing::debug!(
-                effective = display(self.effective().summary()),
-                committed = display(self.committed().summary()),
+                effective = display(self.effective()),
+                committed = display(self.committed()),
                 "effective membership is in conflicting logs, revert it to last committed"
             );
 

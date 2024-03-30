@@ -43,14 +43,6 @@ impl<C: RaftTypeConfig> fmt::Display for Replicate<C> {
     }
 }
 
-impl<C> MessageSummary<Replicate<C>> for Replicate<C>
-where C: RaftTypeConfig
-{
-    fn summary(&self) -> String {
-        self.to_string()
-    }
-}
-
 use crate::display_ext::DisplayOptionExt;
 use crate::error::Fatal;
 use crate::error::StreamingError;
@@ -60,7 +52,6 @@ use crate::replication::callbacks::SnapshotCallback;
 use crate::replication::request_id::RequestId;
 use crate::type_config::alias::InstantOf;
 use crate::LogId;
-use crate::MessageSummary;
 use crate::RaftTypeConfig;
 use crate::SnapshotMeta;
 
@@ -121,14 +112,6 @@ impl<C: RaftTypeConfig> fmt::Display for Data<C> {
                 )
             }
         }
-    }
-}
-
-impl<C> MessageSummary<Data<C>> for Data<C>
-where C: RaftTypeConfig
-{
-    fn summary(&self) -> String {
-        self.to_string()
     }
 }
 

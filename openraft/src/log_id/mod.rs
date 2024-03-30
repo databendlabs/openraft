@@ -13,7 +13,6 @@ pub use log_index_option_ext::LogIndexOptionExt;
 pub use raft_log_id::RaftLogId;
 
 use crate::CommittedLeaderId;
-use crate::MessageSummary;
 use crate::NodeId;
 
 /// The identity of a raft log.
@@ -44,12 +43,6 @@ impl<NID: NodeId> RaftLogId<NID> for LogId<NID> {
 impl<NID: NodeId> Display for LogId<NID> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}-{}", self.leader_id, self.index)
-    }
-}
-
-impl<NID: NodeId> MessageSummary<LogId<NID>> for LogId<NID> {
-    fn summary(&self) -> String {
-        format!("{}", self)
     }
 }
 

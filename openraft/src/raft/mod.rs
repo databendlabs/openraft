@@ -71,7 +71,6 @@ use crate::AsyncRuntime;
 use crate::ChangeMembers;
 use crate::LogId;
 use crate::LogIdOptionExt;
-use crate::MessageSummary;
 use crate::OptionalSend;
 use crate::RaftState;
 pub use crate::RaftTypeConfig;
@@ -422,7 +421,7 @@ where C: RaftTypeConfig
     /// used as heartbeats (§5.2).
     #[tracing::instrument(level = "debug", skip(self, rpc))]
     pub async fn append_entries(&self, rpc: AppendEntriesRequest<C>) -> Result<AppendEntriesResponse<C>, RaftError<C>> {
-        tracing::debug!(rpc = display(rpc.summary()), "Raft::append_entries");
+        tracing::debug!(rpc = display(&rpc), "Raft::append_entries");
 
         let (tx, rx) = C::AsyncRuntime::oneshot();
         self.inner.call_core(RaftMsg::AppendEntries { rpc, tx }, rx).await
@@ -434,7 +433,7 @@ where C: RaftTypeConfig
     /// (§5.2).
     #[tracing::instrument(level = "debug", skip(self, rpc))]
     pub async fn vote(&self, rpc: VoteRequest<C>) -> Result<VoteResponse<C>, RaftError<C>> {
-        tracing::info!(rpc = display(rpc.summary()), "Raft::vote()");
+        tracing::info!(rpc = display(&rpc), "Raft::vote()");
 
         let (tx, rx) = C::AsyncRuntime::oneshot();
         self.inner.call_core(RaftMsg::RequestVote { rpc, tx }, rx).await
@@ -880,7 +879,7 @@ where C: RaftTypeConfig
         }
         let res = res?;
 
-        tracing::debug!("res of first step: {:?}", res.summary());
+        tracing::debug!("res of first step: {}", res);
 
         let (log_id, joint) = (res.log_id, res.membership.clone().unwrap());
 
@@ -899,7 +898,7 @@ where C: RaftTypeConfig
         }
         let res = res?;
 
-        tracing::info!("res of second step of do_change_membership: {}", res.summary());
+        tracing::info!("res of second step of do_change_membership: {}", res);
 
         Ok(res)
     }

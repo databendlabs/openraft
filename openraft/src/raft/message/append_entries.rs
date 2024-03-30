@@ -3,7 +3,6 @@ use std::fmt;
 use crate::display_ext::DisplayOptionExt;
 use crate::display_ext::DisplaySlice;
 use crate::LogId;
-use crate::MessageSummary;
 use crate::RaftTypeConfig;
 use crate::Vote;
 
@@ -38,13 +37,16 @@ where C::D: fmt::Debug
     }
 }
 
-impl<C: RaftTypeConfig> MessageSummary<AppendEntriesRequest<C>> for AppendEntriesRequest<C> {
-    fn summary(&self) -> String {
-        format!(
+impl<C> fmt::Display for AppendEntriesRequest<C>
+where C: RaftTypeConfig
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
             "vote={}, prev_log_id={}, leader_commit={}, entries={}",
             self.vote,
-            self.prev_log_id.summary(),
-            self.leader_commit.summary(),
+            self.prev_log_id.display(),
+            self.leader_commit.display(),
             DisplaySlice::<_>(self.entries.as_slice())
         )
     }

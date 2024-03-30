@@ -12,7 +12,6 @@ use crate::type_config::alias::InstantOf;
 use crate::AsyncRuntime;
 use crate::Instant;
 use crate::LogId;
-use crate::MessageSummary;
 use crate::OptionalSend;
 use crate::RaftTypeConfig;
 use crate::Vote;
@@ -47,20 +46,10 @@ where C: RaftTypeConfig
         loop {
             let latest = rx.borrow().clone();
 
-            tracing::debug!(
-                "id={} wait {:} latest: {}",
-                latest.id,
-                msg.to_string(),
-                latest.summary()
-            );
+            tracing::debug!("id={} wait {:} latest: {}", latest.id, msg.to_string(), latest);
 
             if func(&latest) {
-                tracing::debug!(
-                    "id={} done wait {:} latest: {}",
-                    latest.id,
-                    msg.to_string(),
-                    latest.summary()
-                );
+                tracing::debug!("id={} done wait {:} latest: {}", latest.id, msg.to_string(), latest);
                 return Ok(latest);
             }
 
@@ -78,8 +67,8 @@ where C: RaftTypeConfig
 
             tokio::select! {
                 _ = delay => {
-                tracing::debug!( "id={} timeout wait {:} latest: {}", latest.id, msg.to_string(), latest.summary() );
-                    return Err(WaitError::Timeout(self.timeout, format!("{} latest: {}", msg.to_string(), latest.summary())));
+                tracing::debug!( "id={} timeout wait {:} latest: {}", latest.id, msg.to_string(), latest );
+                    return Err(WaitError::Timeout(self.timeout, format!("{} latest: {}", msg.to_string(), latest)));
                 }
                 changed = rx.changed() => {
                     match changed {

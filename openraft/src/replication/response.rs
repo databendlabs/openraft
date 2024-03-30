@@ -5,7 +5,6 @@ use crate::replication::request_id::RequestId;
 use crate::replication::ReplicationSessionId;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::LogIdOf;
-use crate::MessageSummary;
 use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::Vote;
@@ -68,33 +67,31 @@ where C: RaftTypeConfig
     },
 }
 
-impl<C> MessageSummary<Response<C>> for Response<C>
+impl<C> fmt::Display for Response<C>
 where C: RaftTypeConfig
 {
-    fn summary(&self) -> String {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Progress {
-                ref target,
-                request_id: ref id,
-                ref result,
-                ref session_id,
+                target,
+                request_id,
+                result,
+                session_id,
             } => {
-                format!(
+                write!(
+                    f,
                     "UpdateReplicationProgress: target: {}, id: {}, result: {:?}, session_id: {}",
-                    target, id, result, session_id,
+                    target, request_id, result, session_id
                 )
             }
 
-            Self::StorageError { error } => format!("ReplicationStorageError: {}", error),
+            Self::StorageError { error } => write!(f, "ReplicationStorageError: {}", error),
 
-            Self::HigherVote {
-                ref target,
-                higher: ref new_vote,
-                ref vote,
-            } => {
-                format!(
+            Self::HigherVote { target, higher, vote } => {
+                write!(
+                    f,
                     "Seen a higher vote: target: {}, vote: {}, server_state_vote: {}",
-                    target, new_vote, vote
+                    target, higher, vote
                 )
             }
         }

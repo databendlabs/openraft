@@ -4,9 +4,9 @@ use std::fmt::Formatter;
 
 use validit::Validate;
 
+use crate::display_ext::DisplayOptionExt;
 use crate::LogId;
 use crate::LogIdOptionExt;
-use crate::MessageSummary;
 use crate::NodeId;
 
 // TODO: I need just a range, but not a log id range.
@@ -26,7 +26,7 @@ pub(crate) struct LogIdRange<NID: NodeId> {
 
 impl<NID: NodeId> Display for LogIdRange<NID> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "({}, {}]", self.prev_log_id.summary(), self.last_log_id.summary())
+        write!(f, "({}, {}]", self.prev_log_id.display(), self.last_log_id.display())
     }
 }
 
