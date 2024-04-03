@@ -2,7 +2,6 @@ use std::time::Duration;
 
 use validit::Valid;
 
-use crate::async_runtime::AsyncOneshotSendExt;
 use crate::core::raft_msg::AppendEntriesTx;
 use crate::core::raft_msg::ResultSender;
 use crate::core::sm;
@@ -31,6 +30,7 @@ use crate::error::NotInMembers;
 use crate::error::RejectAppendEntries;
 use crate::internal_server_state::InternalServerState;
 use crate::membership::EffectiveMembership;
+use crate::raft::responder::Responder;
 use crate::raft::AppendEntriesResponse;
 use crate::raft::SnapshotResponse;
 use crate::raft::VoteRequest;
@@ -38,13 +38,13 @@ use crate::raft::VoteResponse;
 use crate::raft_state::LogStateReader;
 use crate::raft_state::RaftState;
 use crate::summary::MessageSummary;
+use crate::type_config::alias::ResponderOf;
 use crate::type_config::alias::SnapshotDataOf;
 use crate::AsyncRuntime;
 use crate::Instant;
 use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::Membership;
-use crate::OptionalSend;
 use crate::RaftLogId;
 use crate::RaftTypeConfig;
 use crate::Snapshot;
@@ -221,15 +221,10 @@ where C: RaftTypeConfig
     ///
     /// If tx is None, no response will be sent.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn get_leader_handler_or_reject<T, E>(
+    pub(crate) fn get_leader_handler_or_reject(
         &mut self,
-        tx: Option<ResultSender<C, T, E>>,
-    ) -> Option<(LeaderHandler<C>, Option<ResultSender<C, T, E>>)>
-    where
-        T: OptionalSend,
-        E: OptionalSend,
-        E: From<ForwardToLeader<C::NodeId, C::Node>>,
-    {
+        tx: Option<ResponderOf<C>>,
+    ) -> Option<(LeaderHandler<C>, Option<ResponderOf<C>>)> {
         let res = self.leader_handler();
         let forward_err = match res {
             Ok(lh) => {
@@ -240,7 +235,7 @@ where C: RaftTypeConfig
         };
 
         if let Some(tx) = tx {
-            let _ = tx.send(Err(forward_err.into()));
+            tx.send(Err(forward_err.into()));
         }
 
         None

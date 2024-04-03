@@ -2,6 +2,7 @@ use std::fmt::Debug;
 
 use crate::entry::FromAppData;
 use crate::entry::RaftEntry;
+use crate::raft::responder::Responder;
 use crate::AppData;
 use crate::AppDataResponse;
 use crate::AsyncRuntime;
@@ -71,33 +72,46 @@ pub trait RaftTypeConfig:
 
     /// Asynchronous runtime type.
     type AsyncRuntime: AsyncRuntime;
+
+    /// Send the response or error of a client write request([`WriteResult`]).
+    ///
+    /// For example, return [`WriteResult`] the to the caller of [`Raft::client_write`], or send to
+    /// some application defined channel.
+    ///
+    /// [`Raft::client_write`]: `crate::raft::Raft::client_write`
+    /// [`WriteResult`]: `crate::raft::message::WriteResult`
+    type Responder: Responder<Self>;
 }
 
 #[allow(dead_code)]
 /// Type alias for types used in `RaftTypeConfig`.
 pub(crate) mod alias {
+    use crate::raft::responder::Responder;
+    use crate::RaftTypeConfig;
 
-    pub(crate) type DOf<C> = <C as crate::RaftTypeConfig>::D;
-    pub(crate) type ROf<C> = <C as crate::RaftTypeConfig>::R;
-    pub(crate) type NodeIdOf<C> = <C as crate::RaftTypeConfig>::NodeId;
-    pub(crate) type NodeOf<C> = <C as crate::RaftTypeConfig>::Node;
-    pub(crate) type EntryOf<C> = <C as crate::RaftTypeConfig>::Entry;
-    pub(crate) type SnapshotDataOf<C> = <C as crate::RaftTypeConfig>::SnapshotData;
-    pub(crate) type AsyncRuntimeOf<C> = <C as crate::RaftTypeConfig>::AsyncRuntime;
+    pub type DOf<C> = <C as RaftTypeConfig>::D;
+    pub type ROf<C> = <C as RaftTypeConfig>::R;
+    pub type NodeIdOf<C> = <C as RaftTypeConfig>::NodeId;
+    pub type NodeOf<C> = <C as RaftTypeConfig>::Node;
+    pub type EntryOf<C> = <C as RaftTypeConfig>::Entry;
+    pub type SnapshotDataOf<C> = <C as RaftTypeConfig>::SnapshotData;
+    pub type AsyncRuntimeOf<C> = <C as RaftTypeConfig>::AsyncRuntime;
+    pub type ResponderOf<C> = <C as RaftTypeConfig>::Responder;
+    pub type ResponderReceiverOf<C> = <ResponderOf<C> as Responder<C>>::Receiver;
 
-    pub(crate) type JoinErrorOf<C> = <AsyncRuntimeOf<C> as crate::AsyncRuntime>::JoinError;
-    pub(crate) type JoinHandleOf<C, T> = <AsyncRuntimeOf<C> as crate::AsyncRuntime>::JoinHandle<T>;
-    pub(crate) type SleepOf<C> = <AsyncRuntimeOf<C> as crate::AsyncRuntime>::Sleep;
-    pub(crate) type InstantOf<C> = <AsyncRuntimeOf<C> as crate::AsyncRuntime>::Instant;
-    pub(crate) type TimeoutErrorOf<C> = <AsyncRuntimeOf<C> as crate::AsyncRuntime>::TimeoutError;
-    pub(crate) type TimeoutOf<C, R, F> = <AsyncRuntimeOf<C> as crate::AsyncRuntime>::Timeout<R, F>;
-    pub(crate) type OneshotSenderOf<C, T> = <AsyncRuntimeOf<C> as crate::AsyncRuntime>::OneshotSender<T>;
-    pub(crate) type OneshotReceiverErrorOf<C> = <AsyncRuntimeOf<C> as crate::AsyncRuntime>::OneshotReceiverError;
-    pub(crate) type OneshotReceiverOf<C, T> = <AsyncRuntimeOf<C> as crate::AsyncRuntime>::OneshotReceiver<T>;
+    pub type JoinErrorOf<C> = <AsyncRuntimeOf<C> as crate::AsyncRuntime>::JoinError;
+    pub type JoinHandleOf<C, T> = <AsyncRuntimeOf<C> as crate::AsyncRuntime>::JoinHandle<T>;
+    pub type SleepOf<C> = <AsyncRuntimeOf<C> as crate::AsyncRuntime>::Sleep;
+    pub type InstantOf<C> = <AsyncRuntimeOf<C> as crate::AsyncRuntime>::Instant;
+    pub type TimeoutErrorOf<C> = <AsyncRuntimeOf<C> as crate::AsyncRuntime>::TimeoutError;
+    pub type TimeoutOf<C, R, F> = <AsyncRuntimeOf<C> as crate::AsyncRuntime>::Timeout<R, F>;
+    pub type OneshotSenderOf<C, T> = <AsyncRuntimeOf<C> as crate::AsyncRuntime>::OneshotSender<T>;
+    pub type OneshotReceiverErrorOf<C> = <AsyncRuntimeOf<C> as crate::AsyncRuntime>::OneshotReceiverError;
+    pub type OneshotReceiverOf<C, T> = <AsyncRuntimeOf<C> as crate::AsyncRuntime>::OneshotReceiver<T>;
 
     // Usually used types
-    pub(crate) type LogIdOf<C> = crate::LogId<NodeIdOf<C>>;
-    pub(crate) type VoteOf<C> = crate::Vote<NodeIdOf<C>>;
-    pub(crate) type LeaderIdOf<C> = crate::LeaderId<NodeIdOf<C>>;
-    pub(crate) type CommittedLeaderIdOf<C> = crate::CommittedLeaderId<NodeIdOf<C>>;
+    pub type LogIdOf<C> = crate::LogId<NodeIdOf<C>>;
+    pub type VoteOf<C> = crate::Vote<NodeIdOf<C>>;
+    pub type LeaderIdOf<C> = crate::LeaderId<NodeIdOf<C>>;
+    pub type CommittedLeaderIdOf<C> = crate::CommittedLeaderId<NodeIdOf<C>>;
 }

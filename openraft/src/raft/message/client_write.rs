@@ -1,9 +1,15 @@
 use std::fmt::Debug;
 
+use crate::error::ClientWriteError;
+use crate::type_config::alias::NodeIdOf;
+use crate::type_config::alias::NodeOf;
 use crate::LogId;
 use crate::Membership;
 use crate::MessageSummary;
 use crate::RaftTypeConfig;
+
+/// The result of a write request to Raft.
+pub type WriteResult<C> = Result<ClientWriteResponse<C>, ClientWriteError<NodeIdOf<C>, NodeOf<C>>>;
 
 /// The response to a client-request.
 #[cfg_attr(
@@ -20,6 +26,33 @@ pub struct ClientWriteResponse<C: RaftTypeConfig> {
 
     /// If the log entry is a change-membership entry.
     pub membership: Option<Membership<C::NodeId, C::Node>>,
+}
+
+impl<C> ClientWriteResponse<C>
+where C: RaftTypeConfig
+{
+    /// Create a new instance of `ClientWriteResponse`.
+    #[allow(dead_code)]
+    pub(crate) fn new_app_response(log_id: LogId<C::NodeId>, data: C::R) -> Self {
+        Self {
+            log_id,
+            data,
+            membership: None,
+        }
+    }
+
+    pub fn log_id(&self) -> &LogId<C::NodeId> {
+        &self.log_id
+    }
+
+    pub fn response(&self) -> &C::R {
+        &self.data
+    }
+
+    /// Return membership config if the log entry is a change-membership entry.
+    pub fn membership(&self) -> &Option<Membership<C::NodeId, C::Node>> {
+        &self.membership
+    }
 }
 
 impl<C: RaftTypeConfig> Debug for ClientWriteResponse<C>
