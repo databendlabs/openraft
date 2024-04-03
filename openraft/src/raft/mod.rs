@@ -2,23 +2,26 @@
 
 #[cfg(test)] mod declare_raft_types_test;
 mod external_request;
-mod message;
+mod impl_raft_blocking_write;
+pub(crate) mod message;
 mod raft_inner;
+pub mod responder;
 mod runtime_config_handle;
 pub mod trigger;
 
 use std::collections::BTreeMap;
+use std::error::Error;
 
 pub(crate) use self::external_request::BoxCoreFn;
 
 pub(in crate::raft) mod core_state;
 
 use std::fmt::Debug;
+use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
 
 use core_state::CoreState;
-use maplit::btreemap;
 pub use message::AppendEntriesRequest;
 pub use message::AppendEntriesResponse;
 pub use message::ClientWriteResponse;
@@ -27,6 +30,7 @@ pub use message::InstallSnapshotResponse;
 pub use message::SnapshotResponse;
 pub use message::VoteRequest;
 pub use message::VoteResponse;
+pub use message::WriteResult;
 use tokio::sync::mpsc;
 use tokio::sync::watch;
 use tokio::sync::Mutex;
@@ -60,15 +64,17 @@ use crate::metrics::Wait;
 use crate::metrics::WaitError;
 use crate::network::RaftNetworkFactory;
 use crate::raft::raft_inner::RaftInner;
+use crate::raft::responder::Responder;
 pub use crate::raft::runtime_config_handle::RuntimeConfigHandle;
 use crate::raft::trigger::Trigger;
 use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
 use crate::type_config::alias::AsyncRuntimeOf;
 use crate::type_config::alias::JoinErrorOf;
+use crate::type_config::alias::ResponderOf;
+use crate::type_config::alias::ResponderReceiverOf;
 use crate::type_config::alias::SnapshotDataOf;
 use crate::AsyncRuntime;
-use crate::ChangeMembers;
 use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::OptionalSend;
@@ -97,21 +103,23 @@ use crate::Vote;
 ///        Entry        = openraft::Entry<TypeConfig>,
 ///        SnapshotData = Cursor<Vec<u8>>,
 ///        AsyncRuntime = openraft::TokioRuntime,
+///        Responder    = openraft::impls::OneshotResponder<TypeConfig>,
 /// );
 /// ```
 ///
 /// **The types must be specified in the exact order**:
-/// `D`, `R`, `NodeId`, `Node`, `Entry`, `SnapshotData`, `AsyncRuntime`.
+/// `D`, `R`, `NodeId`, `Node`, `Entry`, `SnapshotData`, `AsyncRuntime`, `Responder`
 ///
 /// Types can be omitted, in which case the default type will be used.
 /// The default values for each type are:
 /// - `D`:            `String`
 /// - `R`:            `String`
 /// - `NodeId`:       `u64`
-/// - `Node`:         `::openraft::BasicNode`
-/// - `Entry`:        `::openraft::Entry<Self>`
+/// - `Node`:         `::openraft::impls::BasicNode`
+/// - `Entry`:        `::openraft::impls::Entry<Self>`
 /// - `SnapshotData`: `Cursor<Vec<u8>>`
-/// - `AsyncRuntime`: `::openraft::TokioRuntime`
+/// - `AsyncRuntime`: `::openraft::impls::TokioRuntime`
+/// - `Responder`:    `::openraft::impls::OneshotResponder<Self>`
 ///
 /// For example, to declare with only `D` and `R` types:
 /// ```ignore
@@ -188,7 +196,7 @@ macro_rules! declare_raft_types {
     };
 
     (@F_3, $($(#[$inner:meta])* $type_id:ident = $type:ty,)* @T) => {
-        type Node = $crate::BasicNode;
+        type Node = $crate::impls::BasicNode;
         $crate::declare_raft_types!(@F_4, $($(#[$inner])* $type_id = $type,)* @T);
     };
 
@@ -199,7 +207,7 @@ macro_rules! declare_raft_types {
     };
 
     (@F_4, $($(#[$inner:meta])* $type_id:ident = $type:ty,)* @T) => {
-        type Entry = $crate::Entry<Self>;
+        type Entry = $crate::impls::Entry<Self>;
         $crate::declare_raft_types!(@F_5, $($(#[$inner])* $type_id = $type,)* @T);
     };
 
@@ -221,19 +229,30 @@ macro_rules! declare_raft_types {
     };
 
     (@F_6, $($(#[$inner:meta])* $type_id:ident = $type:ty,)* @T) => {
-        type AsyncRuntime = $crate::TokioRuntime;
+        type AsyncRuntime = $crate::impls::TokioRuntime;
         $crate::declare_raft_types!(@F_7, $($(#[$inner])* $type_id = $type,)* @T);
     };
 
-    (@F_7, @T ) => {};
+    (@F_7, $(#[$meta:meta])* Responder=$t:ty, $($(#[$inner:meta])* $type_id:ident = $type:ty,)* @T) => {
+        $(#[$meta])*
+        type Responder = $t;
+        $crate::declare_raft_types!(@F_8, $($(#[$inner])* $type_id = $type,)* @T);
+    };
+
+    (@F_7, $($(#[$inner:meta])* $type_id:ident = $type:ty,)* @T) => {
+        type Responder = $crate::impls::OneshotResponder<Self>;
+        $crate::declare_raft_types!(@F_8, $($(#[$inner])* $type_id = $type,)* @T);
+    };
+
+    (@F_8, @T ) => {};
 
     // Match any non-captured items to raise compile error
-    (@F_7, $($(#[$inner:meta])* $type_id:ident = $type:ty,)* @T ) => {
+    (@F_8, $($(#[$inner:meta])* $type_id:ident = $type:ty,)* @T ) => {
         compile_error!(
             stringify!(
                 Type not in its expected position:
                 $($type_id=$type,)*
-                types must present in this order:  D, R, NodeId, Node, Entry, SnapshotData, AsyncRuntime
+                types must present in this order:  D, R, NodeId, Node, Entry, SnapshotData, AsyncRuntime, Responder
             )
         );
     };
@@ -662,12 +681,21 @@ where C: RaftTypeConfig
     /// These are application specific requirements, and must be implemented by the application
     /// which is being built on top of Raft.
     #[tracing::instrument(level = "debug", skip(self, app_data))]
-    pub async fn client_write(
+    pub async fn client_write<E>(
         &self,
         app_data: C::D,
-    ) -> Result<ClientWriteResponse<C>, RaftError<C, ClientWriteError<C>>> {
-        let (tx, rx) = C::AsyncRuntime::oneshot();
-        self.inner.call_core(RaftMsg::ClientWriteRequest { app_data, tx }, rx).await
+    ) -> Result<ClientWriteResponse<C>, RaftError<C, ClientWriteError<C>>>
+    where
+        ResponderReceiverOf<C>: Future<Output = Result<WriteResult<C>, E>>,
+        E: Error + OptionalSend,
+    {
+        let (app_data, tx, rx) = ResponderOf::<C>::from_app_data(app_data);
+
+        self.inner.send_msg(RaftMsg::ClientWriteRequest { app_data, tx }).await?;
+        let res: WriteResult<C> = self.inner.recv_msg(rx).await?;
+
+        let client_write_response = res.map_err(|e| RaftError::APIError(e))?;
+        Ok(client_write_response)
     }
 
     /// Initialize a pristine Raft node with the given config.
@@ -704,72 +732,6 @@ where C: RaftTypeConfig
                 rx,
             )
             .await
-    }
-
-    /// Add a new learner raft node, optionally, blocking until up-to-speed.
-    ///
-    /// - Add a node as learner into the cluster.
-    /// - Setup replication from leader to it.
-    ///
-    /// If `blocking` is `true`, this function blocks until the leader believes the logs on the new
-    /// node is up to date, i.e., ready to join the cluster, as a voter, by calling
-    /// `change_membership`.
-    ///
-    /// If blocking is `false`, this function returns at once as successfully setting up the
-    /// replication.
-    ///
-    /// If the node to add is already a voter or learner, it will still re-add it.
-    ///
-    /// A `node` is able to store the network address of a node. Thus an application does not
-    /// need another store for mapping node-id to ip-addr when implementing the RaftNetwork.
-    #[tracing::instrument(level = "debug", skip(self, id), fields(target=display(id)))]
-    pub async fn add_learner(
-        &self,
-        id: C::NodeId,
-        node: C::Node,
-        blocking: bool,
-    ) -> Result<ClientWriteResponse<C>, RaftError<C, ClientWriteError<C>>> {
-        let (tx, rx) = C::AsyncRuntime::oneshot();
-        let resp = self
-            .inner
-            .call_core(
-                RaftMsg::ChangeMembership {
-                    changes: ChangeMembers::AddNodes(btreemap! {id=>node}),
-                    retain: true,
-                    tx,
-                },
-                rx,
-            )
-            .await?;
-
-        if !blocking {
-            return Ok(resp);
-        }
-
-        if self.inner.id == id {
-            return Ok(resp);
-        }
-
-        // Otherwise, blocks until the replication to the new learner becomes up to date.
-
-        // The log id of the membership that contains the added learner.
-        let membership_log_id = resp.log_id;
-
-        let wait_res = self
-            .wait(None)
-            .metrics(
-                |metrics| match self.check_replication_upto_date(metrics, id, Some(membership_log_id)) {
-                    Ok(_matching) => true,
-                    // keep waiting
-                    Err(_) => false,
-                },
-                "wait new learner to become line-rate",
-            )
-            .await;
-
-        tracing::info!(wait_res = debug(&wait_res), "waiting for replication to new learner");
-
-        Ok(resp)
     }
 
     /// Returns Ok() with the latest known matched log id if it should quit waiting: leader change,
@@ -820,87 +782,6 @@ where C: RaftTypeConfig
 
         // Not up to date, keep waiting.
         Err(())
-    }
-
-    /// Propose a cluster configuration change.
-    ///
-    /// A node in the proposed config has to be a learner, otherwise it fails with LearnerNotFound
-    /// error.
-    ///
-    /// Internally:
-    /// - It proposes a **joint** config.
-    /// - When the **joint** config is committed, it proposes a uniform config.
-    ///
-    /// If `retain` is true, then all the members which not exists in the new membership,
-    /// will be turned into learners, otherwise will be removed.
-    ///
-    /// Example of `retain` usage:
-    /// If the original membership is {"voter":{1,2,3}, "learners":{}}, and call
-    /// `change_membership` with `voters` {3,4,5}, then:
-    ///    - If `retain` is `true`, the committed new membership is {"voters":{3,4,5},
-    ///      "learners":{1,2}}.
-    ///    - Otherwise if `retain` is `false`, then the new membership is {"voters":{3,4,5},
-    ///      "learners":{}}, in which the voters not exists in the new membership just be removed
-    ///      from the cluster.
-    ///
-    /// If it loses leadership or crashed before committing the second **uniform** config log, the
-    /// cluster is left in the **joint** config.
-    #[tracing::instrument(level = "info", skip_all)]
-    pub async fn change_membership(
-        &self,
-        members: impl Into<ChangeMembers<C::NodeId, C::Node>>,
-        retain: bool,
-    ) -> Result<ClientWriteResponse<C>, RaftError<C, ClientWriteError<C>>> {
-        let changes: ChangeMembers<C::NodeId, C::Node> = members.into();
-
-        tracing::info!(
-            changes = debug(&changes),
-            retain = display(retain),
-            "change_membership: start to commit joint config"
-        );
-
-        let (tx, rx) = C::AsyncRuntime::oneshot();
-        // res is error if membership can not be changed.
-        // If no error, it will enter a joint state
-        let res = self
-            .inner
-            .call_core(
-                RaftMsg::ChangeMembership {
-                    changes: changes.clone(),
-                    retain,
-                    tx,
-                },
-                rx,
-            )
-            .await;
-
-        if let Err(e) = &res {
-            tracing::error!("the first step error: {}", e);
-        }
-        let res = res?;
-
-        tracing::debug!("res of first step: {}", res);
-
-        let (log_id, joint) = (res.log_id, res.membership.clone().unwrap());
-
-        if joint.get_joint_config().len() == 1 {
-            return Ok(res);
-        }
-
-        tracing::debug!("committed a joint config: {} {:?}", log_id, joint);
-        tracing::debug!("the second step is to change to uniform config: {:?}", changes);
-
-        let (tx, rx) = C::AsyncRuntime::oneshot();
-        let res = self.inner.call_core(RaftMsg::ChangeMembership { changes, retain, tx }, rx).await;
-
-        if let Err(e) = &res {
-            tracing::error!("the second step error: {}", e);
-        }
-        let res = res?;
-
-        tracing::info!("res of second step of do_change_membership: {}", res);
-
-        Ok(res)
     }
 
     /// Provides read-only access to [`RaftState`] through a user-provided function.

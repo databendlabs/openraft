@@ -29,7 +29,6 @@ use crate::core::notify::Notify;
 use crate::core::raft_msg::external_command::ExternalCommand;
 use crate::core::raft_msg::AppendEntriesTx;
 use crate::core::raft_msg::ClientReadTx;
-use crate::core::raft_msg::ClientWriteTx;
 use crate::core::raft_msg::RaftMsg;
 use crate::core::raft_msg::ResultSender;
 use crate::core::raft_msg::VoteTx;
@@ -67,6 +66,7 @@ use crate::progress::entry::ProgressEntry;
 use crate::progress::Inflight;
 use crate::progress::Progress;
 use crate::quorum::QuorumSet;
+use crate::raft::responder::Responder;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
 use crate::raft::ClientWriteResponse;
@@ -87,6 +87,7 @@ use crate::storage::RaftStateMachine;
 use crate::type_config::alias::AsyncRuntimeOf;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::OneshotReceiverOf;
+use crate::type_config::alias::ResponderOf;
 use crate::AsyncRuntime;
 use crate::ChangeMembers;
 use crate::Instant;
@@ -181,7 +182,7 @@ where
     pub(crate) engine: Engine<C>,
 
     /// Channels to send result back to client when logs are applied.
-    pub(crate) client_resp_channels: BTreeMap<u64, ClientWriteTx<C>>,
+    pub(crate) client_resp_channels: BTreeMap<u64, ResponderOf<C>>,
 
     pub(crate) leader_data: Option<LeaderData<C>>,
 
@@ -441,13 +442,13 @@ where
         &mut self,
         changes: ChangeMembers<C::NodeId, C::Node>,
         retain: bool,
-        tx: ResultSender<C, ClientWriteResponse<C>, ClientWriteError<C>>,
+        tx: ResponderOf<C>,
     ) {
         let res = self.engine.state.membership_state.change_handler().apply(changes, retain);
         let new_membership = match res {
             Ok(x) => x,
             Err(e) => {
-                let _ = tx.send(Err(ClientWriteError::ChangeMembershipError(e)));
+                tx.send(Err(ClientWriteError::ChangeMembershipError(e)));
                 return;
             }
         };
@@ -464,7 +465,7 @@ where
     /// The result of applying it to state machine is sent to `resp_tx`, if it is not `None`.
     /// The calling side may not receive a result from `resp_tx`, if raft is shut down.
     #[tracing::instrument(level = "debug", skip_all, fields(id = display(self.id)))]
-    pub fn write_entry(&mut self, entry: C::Entry, resp_tx: Option<ClientWriteTx<C>>) -> bool {
+    pub fn write_entry(&mut self, entry: C::Entry, resp_tx: Option<ResponderOf<C>>) -> bool {
         tracing::debug!(payload = display(&entry), "write_entry");
 
         let (mut lh, tx) = if let Some((lh, tx)) = self.engine.get_leader_handler_or_reject(resp_tx) {
@@ -494,7 +495,7 @@ where
     pub fn send_heartbeat(&mut self, emitter: impl Display) -> bool {
         tracing::debug!(now = debug(InstantOf::<C>::now()), "send_heartbeat");
 
-        let mut lh = if let Some((lh, _)) = self.engine.get_leader_handler_or_reject::<(), ClientWriteError<C>>(None) {
+        let mut lh = if let Some((lh, _)) = self.engine.get_leader_handler_or_reject(None) {
             lh
         } else {
             tracing::debug!(
@@ -773,7 +774,7 @@ where
 
     /// Send result of applying a log entry to its client.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(super) fn send_response(entry: ApplyingEntry<C>, resp: C::R, tx: Option<ClientWriteTx<C>>) {
+    pub(super) fn send_response(entry: ApplyingEntry<C>, resp: C::R, tx: Option<ResponderOf<C>>) {
         tracing::debug!(entry = debug(&entry), "send_response");
 
         let tx = match tx {
@@ -789,11 +790,7 @@ where
             membership,
         });
 
-        let send_res = tx.send(res);
-        tracing::debug!(
-            "send client response through tx, send_res is error: {}",
-            send_res.is_err()
-        );
+        tx.send(res);
     }
 
     /// Spawn a new replication stream returning its replication state handle.
@@ -1629,16 +1626,12 @@ where
                     #[allow(clippy::let_underscore_future)]
                     let _ = AsyncRuntimeOf::<C>::spawn(async move {
                         for (log_index, tx) in removed.into_iter() {
-                            let res = tx.send(Err(ClientWriteError::ForwardToLeader(ForwardToLeader {
+                            tx.send(Err(ClientWriteError::ForwardToLeader(ForwardToLeader {
                                 leader_id,
                                 leader_node: leader_node.clone(),
                             })));
 
-                            tracing::debug!(
-                                "sent ForwardToLeader for log_index: {}, is_ok: {}",
-                                log_index,
-                                res.is_ok()
-                            );
+                            tracing::debug!("sent ForwardToLeader for log_index: {}", log_index,);
                         }
                     });
                 }

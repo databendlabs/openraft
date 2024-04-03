@@ -2,6 +2,7 @@ use std::fmt::Debug;
 
 use crate::entry::FromAppData;
 use crate::entry::RaftEntry;
+use crate::raft::responder::Responder;
 use crate::AppData;
 use crate::AppDataResponse;
 use crate::AsyncRuntime;
@@ -71,11 +72,21 @@ pub trait RaftTypeConfig:
 
     /// Asynchronous runtime type.
     type AsyncRuntime: AsyncRuntime;
+
+    /// Send the response or error of a client write request([`WriteResult`]).
+    ///
+    /// For example, return [`WriteResult`] the to the caller of [`Raft::client_write`], or send to
+    /// some application defined channel.
+    ///
+    /// [`Raft::client_write`]: `crate::raft::Raft::client_write`
+    /// [`WriteResult`]: `crate::raft::message::WriteResult`
+    type Responder: Responder<Self>;
 }
 
 #[allow(dead_code)]
 /// Type alias for types used in `RaftTypeConfig`.
 pub mod alias {
+    use crate::raft::responder::Responder;
     use crate::AsyncRuntime;
     use crate::RaftTypeConfig;
 
@@ -86,6 +97,8 @@ pub mod alias {
     pub type EntryOf<C> = <C as RaftTypeConfig>::Entry;
     pub type SnapshotDataOf<C> = <C as RaftTypeConfig>::SnapshotData;
     pub type AsyncRuntimeOf<C> = <C as RaftTypeConfig>::AsyncRuntime;
+    pub type ResponderOf<C> = <C as RaftTypeConfig>::Responder;
+    pub type ResponderReceiverOf<C> = <ResponderOf<C> as Responder<C>>::Receiver;
 
     type Rt<C> = AsyncRuntimeOf<C>;
 
