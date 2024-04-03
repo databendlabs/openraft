@@ -1,5 +1,6 @@
 use std::fmt;
 use std::fmt::Debug;
+use std::future::Future;
 use std::sync::Arc;
 
 use tokio::sync::mpsc;
@@ -50,6 +51,36 @@ where C: RaftTypeConfig
 impl<C> RaftInner<C>
 where C: RaftTypeConfig
 {
+    /// Send a RaftMsg to RaftCore
+    pub(crate) async fn send_msg(&self, mes: RaftMsg<C>) -> Result<(), Fatal<C>> {
+        let send_res = self.tx_api.send(mes);
+
+        if let Err(e) = send_res {
+            let fatal = self.get_core_stopped_error("sending RaftMsg to RaftCore", Some(e.0.to_string())).await;
+            return Err(fatal);
+        }
+        Ok(())
+    }
+
+    /// Receive a message from RaftCore, return error if RaftCore has stopped.
+    pub(crate) async fn recv_msg<T, E>(&self, rx: impl Future<Output = Result<T, E>>) -> Result<T, Fatal<C>>
+    where
+        T: OptionalSend,
+        E: OptionalSend,
+    {
+        let recv_res = rx.await;
+        tracing::debug!("{} receives result is error: {:?}", func_name!(), recv_res.is_err());
+
+        match recv_res {
+            Ok(x) => Ok(x),
+            Err(_) => {
+                let fatal = self.get_core_stopped_error("receiving rx from RaftCore", None::<&'static str>).await;
+                tracing::error!(error = debug(&fatal), "error when {}", func_name!());
+                Err(fatal)
+            }
+        }
+    }
+
     /// Invoke RaftCore by sending a RaftMsg and blocks waiting for response.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) async fn call_core<T, E>(
@@ -67,12 +98,7 @@ where C: RaftTypeConfig
             None
         };
 
-        let send_res = self.tx_api.send(mes);
-
-        if send_res.is_err() {
-            let fatal = self.get_core_stopped_error("sending tx to RaftCore", sum).await;
-            return Err(RaftError::Fatal(fatal));
-        }
+        self.send_msg(mes).await?;
 
         let recv_res = rx.await;
         tracing::debug!("call_core receives result is error: {:?}", recv_res.is_err());

@@ -3,18 +3,17 @@ use std::fmt;
 
 use crate::core::raft_msg::external_command::ExternalCommand;
 use crate::error::CheckIsLeaderError;
-use crate::error::ClientWriteError;
 use crate::error::Infallible;
 use crate::error::InitializeError;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
 use crate::raft::BoxCoreFn;
-use crate::raft::ClientWriteResponse;
 use crate::raft::SnapshotResponse;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::OneshotSenderOf;
+use crate::type_config::alias::ResponderOf;
 use crate::type_config::alias::SnapshotDataOf;
 use crate::ChangeMembers;
 use crate::RaftTypeConfig;
@@ -31,9 +30,6 @@ pub(crate) type VoteTx<C> = ResultSender<C, VoteResponse<C>>;
 
 /// TX for Append Entries Response
 pub(crate) type AppendEntriesTx<C> = ResultSender<C, AppendEntriesResponse<C>>;
-
-/// TX for Client Write Response
-pub(crate) type ClientWriteTx<C> = ResultSender<C, ClientWriteResponse<C>, ClientWriteError<C>>;
 
 /// TX for Linearizable Read Response
 pub(crate) type ClientReadTx<C> = ResultSender<C, (Option<LogIdOf<C>>, Option<LogIdOf<C>>), CheckIsLeaderError<C>>;
@@ -72,7 +68,7 @@ where C: RaftTypeConfig
 
     ClientWriteRequest {
         app_data: C::D,
-        tx: ClientWriteTx<C>,
+        tx: ResponderOf<C>,
     },
 
     CheckIsLeaderRequest {
@@ -91,7 +87,7 @@ where C: RaftTypeConfig
         /// config will be converted into learners, otherwise they will be removed.
         retain: bool,
 
-        tx: ResultSender<C, ClientWriteResponse<C>, ClientWriteError<C>>,
+        tx: ResponderOf<C>,
     },
 
     ExternalCoreRequest {

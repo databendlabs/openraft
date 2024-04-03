@@ -175,6 +175,7 @@ mod tests {
         type Entry = crate::Entry<TickUTConfig>;
         type SnapshotData = Cursor<Vec<u8>>;
         type AsyncRuntime = TokioRuntime;
+        type Responder = crate::impls::OneshotResponder<Self>;
     }
 
     // AsyncRuntime::spawn is `spawn_local` with singlethreaded enabled.

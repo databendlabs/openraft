@@ -14,6 +14,7 @@ declare_raft_types!(
         Entry = crate::Entry<Self>,
         SnapshotData = Cursor<Vec<u8>>,
         AsyncRuntime = TokioRuntime,
+        Responder = crate::impls::OneshotResponder<Self>,
 );
 
 declare_raft_types!(

@@ -12,6 +12,7 @@ mod client_write;
 pub use append_entries::AppendEntriesRequest;
 pub use append_entries::AppendEntriesResponse;
 pub use client_write::ClientWriteResponse;
+pub use client_write::WriteResult;
 pub use install_snapshot::InstallSnapshotRequest;
 pub use install_snapshot::InstallSnapshotResponse;
 pub use install_snapshot::SnapshotResponse;
