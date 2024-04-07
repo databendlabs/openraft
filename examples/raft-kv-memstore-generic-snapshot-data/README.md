@@ -14,4 +14,4 @@ To receive a complete snapshot, Refer to implementation of `api::snapshot()` in 
 
 ## Run it
 
-Run it with `cargo test -- --nocaputre`.
+Run it with `cargo test -- --nocapture`.
