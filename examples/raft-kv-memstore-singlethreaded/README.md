@@ -25,4 +25,4 @@ pub enum Request {
 
 ## Run it
 
-Run it with `cargo test -- --nocaputre`.
+Run it with `cargo test -- --nocapture`.
