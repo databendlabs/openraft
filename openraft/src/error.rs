@@ -97,7 +97,6 @@ where
     }
 }
 
-
 impl<C, E> TryAsRef<ForwardToLeader<C>> for RaftError<C, E>
 where
     C: RaftTypeConfig,
