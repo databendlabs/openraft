@@ -172,7 +172,7 @@ impl AsyncRuntime for TokioRuntime {
     }
 }
 
-pub trait AsyncOneshotSendExt<T>: Unpin {
+pub trait AsyncOneshotSendExt<T> {
     /// Attempts to send a value on this channel, returning it back if it could
     /// not be sent.
     ///
