@@ -97,6 +97,7 @@ where
     }
 }
 
+
 impl<NID, N , E> TryAsRef<ForwardToLeader<NID, N>> for RaftError<NID, E>
 where
     NID: NodeId,
