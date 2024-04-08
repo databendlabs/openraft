@@ -1,3 +1,57 @@
+## v0.9.4
+
+Summary:
+
+- Changed:
+    -   [2b8bc842](https://github.com/datafuselabs/openraft/commit/2b8bc84277c26e8293cf9d7bc8bcc08b1bd724f3) Add default value to `declare_raft_types`.
+- Added:
+    -   [93c0d9ae](https://github.com/datafuselabs/openraft/commit/93c0d9ae3c0c7574a55be31bf8636936b0721d9b) Implement `TryAsRef<ForwardToLeader<..>>` for `RaftError`.
+
+Detail:
+
+### Changed:
+
+-   Changed: [2b8bc842](https://github.com/datafuselabs/openraft/commit/2b8bc84277c26e8293cf9d7bc8bcc08b1bd724f3) Add default value to `declare_raft_types`; by 张炎泼; 2024-03-29
+
+    Types used in `declare_raft_types` can be omitted, in which case the default type will be used.
+    The default values for each type are:
+    - `D`:            `String`
+    - `R`:            `String`
+    - `NodeId`:       `u64`
+    - `Node`:         `::openraft::BasicNode`
+    - `Entry`:        `::openraft::Entry<Self>`
+    - `SnapshotData`: `Cursor<Vec<u8>>`
+    - `AsyncRuntime`: `::openraft::TokioRuntime`
+
+    Note that **The types must be specified in the exact order**:
+    `D`, `R`, `NodeId`, `Node`, `Entry`, `SnapshotData`, `AsyncRuntime`.
+
+    For example, to declare with only `D`, `R` and `Entry` types:
+    ```rust,ignore
+    openraft::declare_raft_types!(
+       pub TypeConfig:
+           D = ClientRequest,
+           R = ClientResponse,
+           Entry = MyEntry,
+    );
+    ```
+
+    Type `NodeId`, `Node`, `SnapshotData` and `AsyncRuntime` will be filled
+    with default values mentioned above.
+
+    Or one can just use the default types for all:
+    ```rust,ignore
+    openraft::declare_raft_types!(pub TypeConfig);
+    ```
+
+    Upgrade tip:
+
+    Ensures types declared in `declare_raft_types` are in the correct order
+
+### Added:
+
+-   Added: [93c0d9ae](https://github.com/datafuselabs/openraft/commit/93c0d9ae3c0c7574a55be31bf8636936b0721d9b) Implement `TryAsRef<ForwardToLeader<..>>` for `RaftError`; by 张炎泼; 2024-04-08
+
 ## v0.9.3
 
 Summary:
