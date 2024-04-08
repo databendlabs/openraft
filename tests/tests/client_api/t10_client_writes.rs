@@ -3,18 +3,18 @@ use std::sync::Arc;
 use anyhow::Result;
 use futures::prelude::*;
 use maplit::btreeset;
+use openraft::raft::ClientWriteResponse;
 use openraft::CommittedLeaderId;
 use openraft::Config;
 use openraft::LogId;
 use openraft::SnapshotPolicy;
+use openraft_memstore::ClientRequest;
+use openraft_memstore::IntoMemClientRequest;
+use openraft_memstore::TypeConfig;
 
 use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
 
-/// Client write tests.
-///
-/// What does this test do?
-///
 /// - create a stable 3-node cluster.
 /// - write a lot of data to it.
 /// - assert that the cluster stayed stable and has all of the expected data.
@@ -60,6 +60,38 @@ async fn client_writes() -> Result<()> {
             Some(((499..600).into(), 1)),
         )
         .await?;
+
+    Ok(())
+}
+
+/// Test Raft::client_write_ff,
+///
+/// Manually receive the client-write response via the returned `Responder::Receiver`
+#[async_entry::test(worker_threads = 4, init = "init_default_ut_tracing()", tracing_span = "debug")]
+async fn client_write_ff() -> Result<()> {
+    let config = Arc::new(
+        Config {
+            enable_tick: false,
+            ..Default::default()
+        }
+        .validate()?,
+    );
+
+    let mut router = RaftRouter::new(config.clone());
+
+    tracing::info!("--- initializing cluster");
+    let log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+    let _ = log_index;
+
+    let n0 = router.get_raft_handle(&0)?;
+
+    let resp_rx = n0.client_write_ff(ClientRequest::make_request("foo", 2)).await?;
+    let got: ClientWriteResponse<TypeConfig> = resp_rx.await??;
+    assert_eq!(None, got.response().0.as_deref());
+
+    let resp_rx = n0.client_write_ff(ClientRequest::make_request("foo", 3)).await?;
+    let got: ClientWriteResponse<TypeConfig> = resp_rx.await??;
+    assert_eq!(Some("request-2"), got.response().0.as_deref());
 
     Ok(())
 }
