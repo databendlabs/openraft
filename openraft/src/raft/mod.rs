@@ -717,6 +717,14 @@ where C: RaftTypeConfig
         self.inner.call_core(RaftMsg::ClientWriteRequest { app_data, tx }, rx).await
     }
 
+    /// Return `true` if this node is already initialized and can not be initialized again with
+    /// [`Raft::initialize`]
+    pub async fn is_initialized(&self) -> Result<bool, Fatal<C::NodeId>> {
+        let initialized = self.with_raft_state(|st| st.is_initialized()).await?;
+
+        Ok(initialized)
+    }
+
     /// Initialize a pristine Raft node with the given config.
     ///
     /// This command should be called on pristine nodes — where the log index is 0 and the node is

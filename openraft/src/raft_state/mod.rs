@@ -31,6 +31,7 @@ pub(crate) use io_state::IOState;
 mod tests {
     mod accepted_test;
     mod forward_to_leader_test;
+    mod is_initialized_test;
     mod log_state_reader_test;
     mod validate_test;
 }
@@ -217,6 +218,21 @@ where
     /// Return the last updated time of the vote.
     pub fn vote_last_modified(&self) -> Option<I> {
         self.vote.utime()
+    }
+
+    pub(crate) fn is_initialized(&self) -> bool {
+        // initialize() writes a membership config log entry.
+        // If there are logs, it is already initialized.
+        if self.last_log_id().is_some() {
+            return true;
+        }
+
+        // If it received a request-vote from other node, it is already initialized.
+        if self.vote_ref() != &Vote::default() {
+            return true;
+        }
+
+        false
     }
 
     /// Return the accepted last log id of the current leader.

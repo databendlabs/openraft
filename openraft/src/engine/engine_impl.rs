@@ -675,7 +675,7 @@ where C: RaftTypeConfig
     /// It is allowed to initialize only when `last_log_id.is_none()` and `vote==(term=0,
     /// node_id=0)`. See: [Conditions for initialization](https://datafuselabs.github.io/openraft/cluster-formation.html#conditions-for-initialization)
     fn check_initialize(&self) -> Result<(), NotAllowed<C::NodeId>> {
-        if self.state.last_log_id().is_none() && self.state.vote_ref() == &Vote::default() {
+        if !self.state.is_initialized() {
             return Ok(());
         }
 
