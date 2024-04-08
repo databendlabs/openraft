@@ -24,6 +24,7 @@ use openraft::storage::RaftLogStorage;
 use openraft::storage::RaftStateMachine;
 use openraft::storage::Snapshot;
 use openraft::AnyError;
+use openraft::BasicNode;
 use openraft::Entry;
 use openraft::EntryPayload;
 use openraft::ErrorVerb;
