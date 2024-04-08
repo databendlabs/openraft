@@ -97,6 +97,16 @@ where
     }
 }
 
+impl<C, E> TryAsRef<ForwardToLeader<C>> for RaftError<C, E>
+where
+    C: RaftTypeConfig,
+    E: Debug + TryAsRef<ForwardToLeader<C>>,
+{
+    fn try_as_ref(&self) -> Option<&ForwardToLeader<C>> {
+        self.forward_to_leader()
+    }
+}
+
 impl<C, E> From<StorageError<C::NodeId>> for RaftError<C, E>
 where C: RaftTypeConfig
 {
