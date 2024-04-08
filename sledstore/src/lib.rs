@@ -17,6 +17,7 @@ use byteorder::ReadBytesExt;
 use openraft::storage::LogState;
 use openraft::storage::Snapshot;
 use openraft::AnyError;
+use openraft::BasicNode;
 use openraft::Entry;
 use openraft::EntryPayload;
 use openraft::LogId;
