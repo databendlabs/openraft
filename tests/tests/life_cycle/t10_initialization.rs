@@ -48,6 +48,13 @@ async fn initialization() -> anyhow::Result<()> {
     router.new_raft_node(1).await;
     router.new_raft_node(2).await;
 
+    #[allow(clippy::bool_assert_comparison)]
+    {
+        let n0 = router.get_raft_handle(&0)?;
+        let inited = n0.is_initialized().await?;
+        assert_eq!(false, inited);
+    }
+
     let mut log_index = 0;
 
     // Assert all nodes are in learner state & have no entries.
@@ -82,6 +89,13 @@ async fn initialization() -> anyhow::Result<()> {
 
         for node_id in [0, 1, 2] {
             router.wait(&node_id, timeout()).applied_index(Some(log_index), "init").await?;
+        }
+
+        #[allow(clippy::bool_assert_comparison)]
+        for node_id in [0, 1, 2] {
+            let n = router.get_raft_handle(&node_id)?;
+            let inited = n.is_initialized().await?;
+            assert_eq!(true, inited);
         }
     }
 
