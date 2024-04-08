@@ -689,13 +689,27 @@ where C: RaftTypeConfig
         ResponderReceiverOf<C>: Future<Output = Result<WriteResult<C>, E>>,
         E: Error + OptionalSend,
     {
-        let (app_data, tx, rx) = ResponderOf::<C>::from_app_data(app_data);
+        let rx = self.client_write_ff(app_data).await?;
 
-        self.inner.send_msg(RaftMsg::ClientWriteRequest { app_data, tx }).await?;
         let res: WriteResult<C> = self.inner.recv_msg(rx).await?;
 
         let client_write_response = res.map_err(|e| RaftError::APIError(e))?;
         Ok(client_write_response)
+    }
+
+    /// Submit a mutating client request to Raft to update the state machine, returns an application
+    /// defined response receiver [`Responder::Receiver`].
+    ///
+    /// `_ff` means fire and forget.
+    ///
+    /// It is same as [`Raft::client_write`] but does not wait for the response.
+    #[tracing::instrument(level = "debug", skip(self, app_data))]
+    pub async fn client_write_ff(&self, app_data: C::D) -> Result<ResponderReceiverOf<C>, Fatal<C>> {
+        let (app_data, tx, rx) = ResponderOf::<C>::from_app_data(app_data);
+
+        self.inner.send_msg(RaftMsg::ClientWriteRequest { app_data, tx }).await?;
+
+        Ok(rx)
     }
 
     /// Return `true` if this node is already initialized and can not be initialized again with
