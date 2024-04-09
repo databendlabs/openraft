@@ -1,4 +1,5 @@
 use crate::error::Fatal;
+use crate::error::Infallible;
 use crate::AsyncRuntime;
 use crate::NodeId;
 
@@ -9,8 +10,8 @@ where
     A: AsyncRuntime,
 {
     /// The RaftCore task is still running.
-    Running(A::JoinHandle<Result<(), Fatal<NID>>>),
+    Running(A::JoinHandle<Result<Infallible, Fatal<NID>>>),
 
     /// The RaftCore task has finished. The return value of the task is stored.
-    Done(Result<(), Fatal<NID>>),
+    Done(Result<Infallible, Fatal<NID>>),
 }
