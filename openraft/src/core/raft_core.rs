@@ -48,6 +48,7 @@ use crate::entry::RaftEntry;
 use crate::error::ClientWriteError;
 use crate::error::Fatal;
 use crate::error::ForwardToLeader;
+use crate::error::Infallible;
 use crate::error::InitializeError;
 use crate::error::QuorumNotEnough;
 use crate::error::RPCError;
@@ -216,31 +217,38 @@ where
     SM: RaftStateMachine<C>,
 {
     /// The main loop of the Raft protocol.
-    pub(crate) async fn main(mut self, rx_shutdown: OneshotReceiverOf<C, ()>) -> Result<(), Fatal<C>> {
+    pub(crate) async fn main(mut self, rx_shutdown: OneshotReceiverOf<C, ()>) -> Result<Infallible, Fatal<C>> {
         let span = tracing::span!(parent: &self.span, Level::DEBUG, "main");
         let res = self.do_main(rx_shutdown).instrument(span).await;
 
         // Flush buffered metrics
         self.report_metrics(None);
 
-        tracing::info!("update the metrics for shutdown");
+        // Safe unwrap: res is Result<Infallible, _>
+        let err = res.unwrap_err();
+        match err {
+            Fatal::Stopped => { /* Normal quit */ }
+            _ => {
+                tracing::error!(error = display(&err), "quit RaftCore::main on error");
+            }
+        }
+
+        tracing::debug!("update the metrics for shutdown");
         {
             let mut curr = self.tx_metrics.borrow().clone();
             curr.state = ServerState::Shutdown;
-
-            if let Err(err) = &res {
-                tracing::error!(?err, "quit RaftCore::main on error");
-                curr.running_state = Err(err.clone());
-            }
+            curr.running_state = Err(err.clone());
 
             let _ = self.tx_metrics.send(curr);
         }
 
-        res
+        tracing::info!("RaftCore shutdown complete");
+
+        Err(err)
     }
 
     #[tracing::instrument(level="trace", skip_all, fields(id=display(self.id), cluster=%self.config.cluster_name))]
-    async fn do_main(&mut self, rx_shutdown: OneshotReceiverOf<C, ()>) -> Result<(), Fatal<C>> {
+    async fn do_main(&mut self, rx_shutdown: OneshotReceiverOf<C, ()>) -> Result<Infallible, Fatal<C>> {
         tracing::debug!("raft node is initializing");
 
         self.engine.startup();
@@ -890,8 +898,10 @@ where
     }
 
     /// Run an event handling loop
+    ///
+    /// It always returns a [`Fatal`] error upon returning.
     #[tracing::instrument(level="debug", skip_all, fields(id=display(self.id)))]
-    async fn runtime_loop(&mut self, mut rx_shutdown: OneshotReceiverOf<C, ()>) -> Result<(), Fatal<C>> {
+    async fn runtime_loop(&mut self, mut rx_shutdown: OneshotReceiverOf<C, ()>) -> Result<Infallible, Fatal<C>> {
         // Ratio control the ratio of number of RaftMsg to process to number of Notify to process.
         let mut balancer = Balancer::new(10_000);
 
