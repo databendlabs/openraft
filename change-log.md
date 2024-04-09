@@ -1,3 +1,58 @@
+## v0.9.5
+
+Summary:
+
+- Added:
+    -   [e4fed706](https://github.com/datafuselabs/openraft/commit/e4fed7066ce3f941717285a15de5894c505cb5b1) Add `Raft::is_initialized()`.
+    -   [3b18517a](https://github.com/datafuselabs/openraft/commit/3b18517a9a063defc33750faf3fd61d7ebf29c88) Add `RaftTypeConfig::Responder` to customize returning client write response.
+    -   [c508a354](https://github.com/datafuselabs/openraft/commit/c508a3540331b5ea08d75b09dfc7a90a87c93b89) `Raft::client_write_ff()` ff for fire-and-forget.
+
+Detail:
+
+### Added:
+
+-   Added: [e4fed706](https://github.com/datafuselabs/openraft/commit/e4fed7066ce3f941717285a15de5894c505cb5b1) Add `Raft::is_initialized()`; by 张炎泼; 2024-04-08
+
+    `Raft::is_initialized()` returns `true` if this raft node is already
+    initialized with `Raft::initialize()`, by checking if log is empty and
+    `vote` is not written.
+
+-   Added: [3b18517a](https://github.com/datafuselabs/openraft/commit/3b18517a9a063defc33750faf3fd61d7ebf29c88) Add `RaftTypeConfig::Responder` to customize returning client write response; by 张炎泼; 2024-04-03
+
+    This commit introduces the `Responder` trait that defines the mechanism
+    by which `RaftCore` sends responses back to the client after processing
+    write requests.  Applications can now customize response handling by
+    implementing their own version of the `RaftTypeConfig::Responder` trait.
+
+    The `Responder::from_app_data(RaftTypeConfig::D)` method is invoked to
+    create a new `Responder` instance when a client write request is
+    received.
+    Once the write operation is completed within `RaftCore`,
+    `Responder::send(WriteResult)` is called to dispatch the result
+    back to the client.
+
+    By default, `RaftTypeConfig::Responder` retains the existing
+    functionality using a oneshot channel, ensuring backward compatibility.
+
+    This change is non-breaking, requiring no modifications to existing
+    applications.
+
+    - Fix: #1068
+
+-   Added: [c508a354](https://github.com/datafuselabs/openraft/commit/c508a3540331b5ea08d75b09dfc7a90a87c93b89) `Raft::client_write_ff()` ff for fire-and-forget; by 张炎泼; 2024-04-08
+
+    `Raft<C>::client_write_ff() -> C::Responder::Receiver` submit a client
+    request to Raft to update the state machine, returns an application
+    defined response receiver `Responder::Receiver` to receive the response.
+
+    `_ff` means fire and forget.
+
+    It is same as [`Raft::client_write`] but does not wait for the response.
+    When using this method, it is the application's responsibility for
+    defining mechanism building and consuming the `Responder::Receiver`.
+
+    - Part of #1068
+
 ## v0.9.4
 
 Summary:
