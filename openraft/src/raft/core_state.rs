@@ -1,4 +1,5 @@
 use crate::error::Fatal;
+use crate::error::Infallible;
 use crate::type_config::alias::JoinHandleOf;
 use crate::RaftTypeConfig;
 
@@ -7,8 +8,8 @@ pub(in crate::raft) enum CoreState<C>
 where C: RaftTypeConfig
 {
     /// The RaftCore task is still running.
-    Running(JoinHandleOf<C, Result<(), Fatal<C>>>),
+    Running(JoinHandleOf<C, Result<Infallible, Fatal<C>>>),
 
     /// The RaftCore task has finished. The return value of the task is stored.
-    Done(Result<(), Fatal<C>>),
+    Done(Result<Infallible, Fatal<C>>),
 }
