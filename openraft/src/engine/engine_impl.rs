@@ -107,10 +107,10 @@ where C: RaftTypeConfig
     pub(crate) fn startup(&mut self) {
         // Allows starting up as a leader.
 
-        tracing::info!("startup: state: {:?}", self.state);
-        tracing::info!("startup: is_leader: {}", self.state.is_leader(&self.config.id));
         tracing::info!(
-            "startup: is_voter: {}",
+            "startup begin: state: {:?}, is_leader: {}, is_voter: {}",
+            self.state,
+            self.state.is_leader(&self.config.id),
             self.state.membership_state.effective().is_voter(&self.config.id)
         );
 
@@ -138,7 +138,7 @@ where C: RaftTypeConfig
         self.state.server_state = server_state;
 
         tracing::info!(
-            "startup: id={} target_state: {:?}",
+            "startup done: id={} target_state: {:?}",
             self.config.id,
             self.state.server_state
         );
