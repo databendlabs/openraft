@@ -9,6 +9,7 @@
 - [Cluster management](#cluster-management)
   * [How to initialize a cluster?](#how-to-initialize-a-cluster)
   * [Are there any issues with running a single node service?](#are-there-any-issues-with-running-a-single-node-service)
+  * [How do I store additional information about nodes in Openraft?](#how-do-i-store-additional-information-about-nodes-in-openraft)
   * [How to remove node-2 safely from a cluster `{1, 2, 3}`?](#how-to-remove-node-2-safely-from-a-cluster-1-2-3)
   * [What actions are required when a node restarts?](#what-actions-are-required-when-a-node-restarts)
   * [What will happen when data gets lost?](#what-will-happen-when-data-gets-lost)
