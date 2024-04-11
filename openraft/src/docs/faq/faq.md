@@ -98,6 +98,40 @@ A single node functions exactly the same as cluster mode.
 It will consistently maintain the `Leader` status and never transition to `Candidate` or `Follower` states.
 
 
+### How do I store additional information about nodes in Openraft?
+
+By default, Openraft provide a [`BasicNode`] as the node type in a cluster.
+To store more information about each node in Openraft, define a custom struct
+with the desired fields and use it in place of `BasicNode`. Here's a brief
+guide:
+
+1. Define your custom node struct:
+
+```rust,ignore
+#[derive(...)]
+struct MyNode {
+    ipv4: String,
+    ipv6: String,
+    port: u16,
+    // Add additional fields as needed
+}
+```
+
+2. Register the custom node type with `declare_raft_types!` macro:
+
+```rust,ignore
+openraft::declare_raft_types!(
+   pub MyRaftConfig: 
+       // ... 
+       NodeId = u64,        // Use the appropriate type for NodeId
+       Node = MyNode,       // Replace BasicNode with your custom node type
+       // ... other associated types
+);
+```
+
+Use `MyRaftConfig` in your Raft setup to utilize the custom node structure.
+
+
 ### How to remove node-2 safely from a cluster `{1, 2, 3}`?
 
 Call `Raft::change_membership(btreeset!{1, 3})` to exclude node-2 from
@@ -187,6 +221,9 @@ pub(crate) fn following_handler(&mut self) -> FollowingHandler<C> {
 
 [`Linearizable Read`]: `crate::docs::protocol::read`
 [`leader_id`]:         `crate::docs::data::leader_id`
+
+[`BasicNode`]:        `crate::node::BasicNode`
+[`RaftTypeConfig`]:   `crate::RaftTypeConfig`
 
 [`RaftLogStorage::save_committed()`]: `crate::storage::RaftLogStorage::save_committed`
 
