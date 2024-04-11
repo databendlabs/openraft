@@ -27,8 +27,9 @@ To learn about the data structures used in Openraft and the commit protocol, see
   - [`Effective membership`](`crate::docs::data::effective_membership`) explains when membership config takes effect;
 - [`protocol`](crate::docs::protocol) :
   - [`replication`](`crate::docs::protocol::replication`);
-    - [`leader_lease`](`crate::docs::protocol::replication::leader_lease`);
-    - [`log_replication`](`crate::docs::protocol::replication::log_replication`);
+    - [`leader_lease`](`crate::docs::protocol::replication::leader_lease`) outlines the leader validity criteria for Leaders and Followers;
+    - [`log_replication`](`crate::docs::protocol::replication::log_replication`) provides an overview of the general replication protocol;
+    - [`log_stream`](`crate::docs::protocol::replication::log_stream`) discusses the core aspects of streaming log replication;
     - [`snapshot_replication`](`crate::docs::protocol::replication::snapshot_replication`);
 
 Contributors who want to understand the internals of Openraft can find relevant information in

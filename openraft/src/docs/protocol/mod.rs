@@ -15,6 +15,10 @@ pub mod replication {
         #![doc = include_str!("log_replication.md")]
     }
 
+    pub mod log_stream {
+        #![doc = include_str!("log_stream.md")]
+    }
+
     pub mod snapshot_replication {
         #![doc = include_str!("snapshot_replication.md")]
     }
