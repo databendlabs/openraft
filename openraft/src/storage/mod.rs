@@ -122,7 +122,10 @@ pub struct LogState<C: RaftTypeConfig> {
 
 /// A trait defining the interface for a Raft log subsystem.
 ///
-/// This interface is accessed read-only from replica streams.
+/// This interface is accessed read-only by replication sub task: `ReplicationCore`.
+///
+/// A log reader must also be able to read the last saved vote by [`RaftLogStorage::save_vote`],
+/// See: [log-stream](`crate::docs::protocol::replication::log_stream`).
 ///
 /// Typically, the log reader implementation as such will be hidden behind an `Arc<T>` and
 /// this interface implemented on the `Arc<T>`. It can be co-implemented with [`RaftLogStorage`]
@@ -133,16 +136,23 @@ where C: RaftTypeConfig
 {
     /// Get a series of log entries from storage.
     ///
-    /// The start value is inclusive in the search and the stop value is non-inclusive: `[start,
-    /// stop)`.
+    /// ### Correctness requirements
     ///
-    /// Entry that is not found is allowed.
+    /// - The absence of an entry is tolerated only at the beginning or end of the range. Missing
+    ///   entries within the range (i.e., holes) are not permitted and should result in a
+    ///   `StorageError`.
+    ///
+    /// - The read operation must be transactional. That is, it should not reflect any state changes
+    ///   that occur after the read operation has commenced.
     async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + OptionalSend>(
         &mut self,
         range: RB,
     ) -> Result<Vec<C::Entry>, StorageError<C::NodeId>>;
 
     /// Return the last saved vote by [`RaftLogStorage::save_vote`].
+    ///
+    /// A log reader must also be able to read the last saved vote by [`RaftLogStorage::save_vote`],
+    /// See: [log-stream](`crate::docs::protocol::replication::log_stream`)
     async fn read_vote(&mut self) -> Result<Option<Vote<C::NodeId>>, StorageError<C::NodeId>>;
 }
 
