@@ -1,6 +1,8 @@
 use std::fmt;
 use std::fmt::Debug;
 
+use openraft_macros::since;
+
 use crate::display_ext::DisplayOptionExt;
 use crate::error::ClientWriteError;
 use crate::LogId;
@@ -32,6 +34,7 @@ where C: RaftTypeConfig
 {
     /// Create a new instance of `ClientWriteResponse`.
     #[allow(dead_code)]
+    #[since(version = "0.10.0")]
     pub(crate) fn new_app_response(log_id: LogId<C::NodeId>, data: C::R) -> Self {
         Self {
             log_id,
@@ -40,15 +43,18 @@ where C: RaftTypeConfig
         }
     }
 
+    #[since(version = "0.10.0")]
     pub fn log_id(&self) -> &LogId<C::NodeId> {
         &self.log_id
     }
 
+    #[since(version = "0.10.0")]
     pub fn response(&self) -> &C::R {
         &self.data
     }
 
     /// Return membership config if the log entry is a change-membership entry.
+    #[since(version = "0.10.0")]
     pub fn membership(&self) -> &Option<Membership<C>> {
         &self.membership
     }

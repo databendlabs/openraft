@@ -1,7 +1,11 @@
 #![doc = include_str!("lib_readme.md")]
 
+mod since;
+pub(crate) mod utils;
+
 use proc_macro::TokenStream;
 use quote::quote;
+use since::Since;
 use syn::parse2;
 use syn::parse_macro_input;
 use syn::parse_str;
@@ -102,4 +106,54 @@ fn add_send_bounds(item: TokenStream) -> TokenStream {
 
         _ => panic!("add_async_trait can only be used with traits"),
     }
+}
+
+/// Add a `Since` line of doc, such as `/// Since: 1.0.0`.
+///
+/// `#[since(version = "1.0.0")]` generates:
+/// ```rust,ignore
+/// /// Since: 1.0.0
+/// ```
+///
+/// `#[since(version = "1.0.0", date = "2021-01-01")]` generates:
+/// ```rust,ignore
+/// /// Since: 1.0.0, Date(2021-01-01)
+/// ```
+///
+/// - The `version` must be a valid semver string.
+/// - The `date` must be a valid date string in the format `yyyy-mm-dd`.
+///
+/// ### Example
+///
+/// ```rust,ignore
+/// /// Foo function
+/// ///
+/// /// Does something.
+/// #[since(version = "1.0.0")]
+/// fn foo() {}
+/// ```
+///
+/// The above code will be transformed into:
+///
+/// ```rust,ignore
+/// /// Foo function
+/// ///
+/// /// Does something.
+/// ///
+/// /// Since: 1.0.0
+/// fn foo() {}
+/// ```
+#[proc_macro_attribute]
+pub fn since(args: TokenStream, item: TokenStream) -> TokenStream {
+    let tokens = do_since(args, item.clone());
+    match tokens {
+        Ok(x) => x,
+        Err(e) => utils::token_stream_with_error(item, e),
+    }
+}
+
+fn do_since(args: TokenStream, item: TokenStream) -> Result<TokenStream, syn::Error> {
+    let since = Since::new(args)?;
+    let tokens = since.append_since_doc(item)?;
+    Ok(tokens)
 }

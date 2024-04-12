@@ -16,9 +16,11 @@ repository    = { workspace = true }
 proc-macro = true
 
 [dependencies]
+chrono = { workspace = true }
 proc-macro2 = { workspace = true }
 quote = { workspace = true }
-syn = { workspace = true, features = ["full"] }
+semver = { workspace = true }
+syn = { workspace = true, features = ["full", "extra-traits"] }
 
 [features]
 
