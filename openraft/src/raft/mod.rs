@@ -103,24 +103,20 @@ use crate::Vote;
 ///        Node         = openraft::BasicNode,
 ///        Entry        = openraft::Entry<TypeConfig>,
 ///        SnapshotData = Cursor<Vec<u8>>,
-///        AsyncRuntime = openraft::TokioRuntime,
 ///        Responder    = openraft::impls::OneshotResponder<TypeConfig>,
+///        AsyncRuntime = openraft::TokioRuntime,
 /// );
 /// ```
 ///
-/// **The types must be specified in the exact order**:
-/// `D`, `R`, `NodeId`, `Node`, `Entry`, `SnapshotData`, `AsyncRuntime`, `Responder`
-///
-/// Types can be omitted, in which case the default type will be used.
-/// The default values for each type are:
+/// Types can be omitted, and the following default type will be used:
 /// - `D`:            `String`
 /// - `R`:            `String`
 /// - `NodeId`:       `u64`
 /// - `Node`:         `::openraft::impls::BasicNode`
 /// - `Entry`:        `::openraft::impls::Entry<Self>`
 /// - `SnapshotData`: `Cursor<Vec<u8>>`
-/// - `AsyncRuntime`: `::openraft::impls::TokioRuntime`
 /// - `Responder`:    `::openraft::impls::OneshotResponder<Self>`
+/// - `AsyncRuntime`: `::openraft::impls::TokioRuntime`
 ///
 /// For example, to declare with only `D` and `R` types:
 /// ```ignore
@@ -151,111 +147,26 @@ macro_rules! declare_raft_types {
         $visibility struct $id {}
 
         impl $crate::RaftTypeConfig for $id {
-            $crate::declare_raft_types!(@F_0, $($(#[$inner])* $type_id = $type,)* @T);
+            // `expand!(KEYED, ...)` ignores the duplicates.
+            // Thus by appending default types after user defined types,
+            // the absent user defined types are filled with default types.
+            $crate::openraft_macros::expand!(
+                KEYED,
+                (T, ATTR, V) => {ATTR type T = V;},
+                $(($type_id, $(#[$inner])*, $type),)*
+
+                // Default types:
+                (D            , , String                                ),
+                (R            , , String                                ),
+                (NodeId       , , u64                                   ),
+                (Node         , , $crate::impls::BasicNode              ),
+                (Entry        , , $crate::impls::Entry<Self>            ),
+                (SnapshotData , , Cursor<Vec<u8>>                       ),
+                (Responder    , , $crate::impls::OneshotResponder<Self> ),
+                (AsyncRuntime , , $crate::impls::TokioRuntime           ),
+            );
+
         }
-    };
-
-    // Add explicit type D
-    (@F_0, $(#[$meta:meta])* D=$t:ty, $($(#[$inner:meta])* $type_id:ident = $type:ty,)* @T) => {
-        $(#[$meta])*
-        type D = $t;
-        $crate::declare_raft_types!(@F_1, $($(#[$inner])* $type_id = $type,)* @T);
-    };
-
-    // Add default type D
-    (@F_0, $($(#[$inner:meta])* $type_id:ident = $type:ty,)* @T) => {
-        type D = String;
-        $crate::declare_raft_types!(@F_1, $($(#[$inner])* $type_id = $type,)* @T);
-    };
-
-    (@F_1, $(#[$meta:meta])* R=$t:ty, $($(#[$inner:meta])* $type_id:ident = $type:ty,)* @T) => {
-        $(#[$meta])*
-        type R = $t;
-        $crate::declare_raft_types!(@F_2, $($(#[$inner])* $type_id = $type,)* @T);
-    };
-
-    (@F_1, $($(#[$inner:meta])* $type_id:ident = $type:ty,)* @T) => {
-        type R = String;
-        $crate::declare_raft_types!(@F_2, $($(#[$inner])* $type_id = $type,)* @T);
-    };
-
-    (@F_2, $(#[$meta:meta])* NodeId=$t:ty, $($(#[$inner:meta])* $type_id:ident = $type:ty,)* @T) => {
-        $(#[$meta])*
-        type NodeId = $t;
-        $crate::declare_raft_types!(@F_3, $($(#[$inner])* $type_id = $type,)* @T);
-    };
-
-    (@F_2, $($(#[$inner:meta])* $type_id:ident = $type:ty,)* @T) => {
-        type NodeId = u64;
-        $crate::declare_raft_types!(@F_3, $($(#[$inner])* $type_id = $type,)* @T);
-    };
-
-    (@F_3, $(#[$meta:meta])* Node=$t:ty, $($(#[$inner:meta])* $type_id:ident = $type:ty,)* @T) => {
-        $(#[$meta])*
-        type Node = $t;
-        $crate::declare_raft_types!(@F_4, $($(#[$inner])* $type_id = $type,)* @T);
-    };
-
-    (@F_3, $($(#[$inner:meta])* $type_id:ident = $type:ty,)* @T) => {
-        type Node = $crate::impls::BasicNode;
-        $crate::declare_raft_types!(@F_4, $($(#[$inner])* $type_id = $type,)* @T);
-    };
-
-    (@F_4, $(#[$meta:meta])* Entry=$t:ty, $($(#[$inner:meta])* $type_id:ident = $type:ty,)* @T) => {
-        $(#[$meta])*
-        type Entry = $t;
-        $crate::declare_raft_types!(@F_5, $($(#[$inner])* $type_id = $type,)* @T);
-    };
-
-    (@F_4, $($(#[$inner:meta])* $type_id:ident = $type:ty,)* @T) => {
-        type Entry = $crate::impls::Entry<Self>;
-        $crate::declare_raft_types!(@F_5, $($(#[$inner])* $type_id = $type,)* @T);
-    };
-
-    (@F_5, $(#[$meta:meta])* SnapshotData=$t:ty, $($(#[$inner:meta])* $type_id:ident = $type:ty,)* @T) => {
-        $(#[$meta])*
-        type SnapshotData = $t;
-        $crate::declare_raft_types!(@F_6, $($(#[$inner])* $type_id = $type,)* @T);
-    };
-
-    (@F_5, $($(#[$inner:meta])* $type_id:ident = $type:ty,)* @T) => {
-        type SnapshotData = Cursor<Vec<u8>>;
-        $crate::declare_raft_types!(@F_6, $($(#[$inner])* $type_id = $type,)* @T);
-    };
-
-    (@F_6, $(#[$meta:meta])* AsyncRuntime=$t:ty, $($(#[$inner:meta])* $type_id:ident = $type:ty,)* @T) => {
-        $(#[$meta])*
-        type AsyncRuntime = $t;
-        $crate::declare_raft_types!(@F_7, $($(#[$inner])* $type_id = $type,)* @T);
-    };
-
-    (@F_6, $($(#[$inner:meta])* $type_id:ident = $type:ty,)* @T) => {
-        type AsyncRuntime = $crate::impls::TokioRuntime;
-        $crate::declare_raft_types!(@F_7, $($(#[$inner])* $type_id = $type,)* @T);
-    };
-
-    (@F_7, $(#[$meta:meta])* Responder=$t:ty, $($(#[$inner:meta])* $type_id:ident = $type:ty,)* @T) => {
-        $(#[$meta])*
-        type Responder = $t;
-        $crate::declare_raft_types!(@F_8, $($(#[$inner])* $type_id = $type,)* @T);
-    };
-
-    (@F_7, $($(#[$inner:meta])* $type_id:ident = $type:ty,)* @T) => {
-        type Responder = $crate::impls::OneshotResponder<Self>;
-        $crate::declare_raft_types!(@F_8, $($(#[$inner])* $type_id = $type,)* @T);
-    };
-
-    (@F_8, @T ) => {};
-
-    // Match any non-captured items to raise compile error
-    (@F_8, $($(#[$inner:meta])* $type_id:ident = $type:ty,)* @T ) => {
-        compile_error!(
-            stringify!(
-                Type not in its expected position:
-                $($type_id=$type,)*
-                types must present in this order:  D, R, NodeId, Node, Entry, SnapshotData, AsyncRuntime, Responder
-            )
-        );
     };
 }
 

@@ -21,6 +21,7 @@ macro_rules! func_name {
         // nn.split("::").last().unwrap_or_default()
     }};
 }
+pub extern crate openraft_macros;
 
 mod change_members;
 mod config;
