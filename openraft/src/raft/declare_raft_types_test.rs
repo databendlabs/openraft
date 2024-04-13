@@ -7,10 +7,14 @@ use crate::TokioRuntime;
 
 declare_raft_types!(
     All:
-        D = (),
-        R = (),
         NodeId = u64,
         Node = (),
+
+        /// This is AppData
+        D = (),
+        #[allow(dead_code)]
+        #[allow(dead_code)]
+        R = (),
         Entry = crate::Entry<Self>,
         SnapshotData = Cursor<Vec<u8>>,
         AsyncRuntime = TokioRuntime,
