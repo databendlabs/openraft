@@ -1,5 +1,6 @@
 #![doc = include_str!("lib_readme.md")]
 
+mod expand;
 mod since;
 pub(crate) mod utils;
 
@@ -156,4 +157,69 @@ fn do_since(args: TokenStream, item: TokenStream) -> Result<TokenStream, syn::Er
     let since = Since::new(args)?;
     let tokens = since.append_since_doc(item)?;
     Ok(tokens)
+}
+
+/// Render a template with arguments multiple times.
+///
+/// The template to expand is defined as `(K,V) => { ... }`, where `K` and `V` are tempalte
+/// variables.
+///
+/// - The template must contain at least 1 variable.
+/// - If the first macro argument is `KEYED`, the first variable serve as the key for deduplication.
+///   Otherwise, the first macro argument should be `!KEYED`, and no deduplication will be
+///   performed.
+///
+/// # Example: `KEYED` for deduplication
+///
+/// The following code builds a series of let statements:
+/// ```
+/// # use openraft_macros::expand;
+/// # fn foo () {
+/// expand!(
+///     KEYED,
+///     // Template with variables K and V, and template body, excluding the braces.
+///     (K, T, V) => {let K: T = V;},
+///     // Arguments for rendering the template
+///     (a, u64, 1),
+///     (b, String, "foo".to_string()),
+///     (a, u32, 2), // duplicate a will be ignored
+///     (c, Vec<u8>, vec![1,2])
+/// );
+/// # }
+/// ```
+///
+/// The above code will be transformed into:
+///
+/// ```
+/// # fn foo () {
+/// let a: u64 = 1;
+/// let b: String = "foo".to_string();
+/// let c: Vec<u8> = vec![1, 2];
+/// # }
+/// ```
+///
+/// # Example: `!KEYED` for no deduplication
+///
+/// ```
+/// # use openraft_macros::expand;
+/// # fn foo () {
+/// expand!(!KEYED, (K, T, V) => {let K: T = V;},
+///                 (c, u8, 8),
+///                 (c, u16, 16),
+/// );
+/// # }
+/// ```
+///
+/// The above code will be transformed into:
+///
+/// ```
+/// # fn foo () {
+/// let c: u8 = 8;
+/// let c: u16 = 16;
+/// # }
+/// ```
+#[proc_macro]
+pub fn expand(item: TokenStream) -> TokenStream {
+    let repeat = parse_macro_input!(item as expand::Expand);
+    repeat.render().into()
 }
