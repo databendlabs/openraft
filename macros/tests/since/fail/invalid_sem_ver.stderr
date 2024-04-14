@@ -1,0 +1,5 @@
+error: `version`(`1.0.0..0`) is not valid semver.
+ --> tests/since/fail/invalid_sem_ver.rs:1:36
+  |
+1 | #[openraft_macros::since(version = "1.0.0..0")]
+  |                                    ^^^^^^^^^^

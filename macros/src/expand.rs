@@ -182,6 +182,8 @@ impl Parse for Expand {
             {
                 let content;
                 let _parenthesis = parenthesized!(content in input);
+                let content_str = content.to_string();
+                let content_span = content.span();
 
                 let k = content.parse::<TypeOrExpr>()?;
                 let mut args = vec![k.clone()];
@@ -199,6 +201,16 @@ impl Parse for Expand {
 
                     let v = content.parse::<TypeOrExpr>()?;
                     args.push(v);
+                }
+
+                if args.len() != b.idents.len() {
+                    return Err(syn::Error::new(
+                        content_span,
+                        format!(
+                            "Expected the same number of arguments(`{}`) as template variables(`{:?}`)",
+                            content_str, b.idents
+                        ),
+                    ));
                 }
 
                 // Ignore duplicates if keyed

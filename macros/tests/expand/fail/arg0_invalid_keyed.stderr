@@ -1,0 +1,11 @@
+error: Expected KEYED
+ --> tests/expand/fail/arg0_invalid_keyed.rs:3:10
+  |
+3 |         !FOO,
+  |          ^^^
+
+error: Expected KEYED
+ --> tests/expand/fail/arg0_invalid_keyed.rs:8:9
+  |
+8 |         FOO,
+  |         ^^^
