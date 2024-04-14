@@ -1,0 +1,5 @@
+error: `date`(`2021-01--`) is not valid date string. Expected format: yyyy-mm-dd
+ --> tests/since/fail/invalid_date.rs:1:52
+  |
+1 | #[openraft_macros::since(version = "1.0.0", date = "2021-01--")]
+  |                                                    ^^^^^^^^^^^
