@@ -1,0 +1,5 @@
+error: Expected the same number of arguments(`c, ,`) as template variables(`["K", "T", "V"]`)
+ --> tests/expand/fail/variable_absent.rs:5:10
+  |
+5 |         (c, , ),
+  |          ^
