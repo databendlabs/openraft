@@ -6,11 +6,11 @@ use std::fmt::Formatter;
 
 use validit::Validate;
 
+use crate::display_ext::DisplayOptionExt;
 use crate::log_id_range::LogIdRange;
 use crate::replication::request_id::RequestId;
 use crate::LogId;
 use crate::LogIdOptionExt;
-use crate::MessageSummary;
 use crate::NodeId;
 
 #[derive(Debug)]
@@ -66,17 +66,10 @@ impl<NID: NodeId> Validate for Inflight<NID> {
 impl<NID: NodeId> Display for Inflight<NID> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Inflight::None => {
-                write!(f, "None")
-            }
-            Inflight::Logs { id, log_id_range: l } => {
-                write!(f, "Logs(id={}):{}", id, l)
-            }
-            Inflight::Snapshot {
-                id,
-                last_log_id: last_next,
-            } => {
-                write!(f, "Snapshot(id={}):{}", id, last_next.summary())
+            Inflight::None => write!(f, "None"),
+            Inflight::Logs { id, log_id_range: r } => write!(f, "Logs(id={}):{}", id, r),
+            Inflight::Snapshot { id, last_log_id } => {
+                write!(f, "Snapshot(id={}):{}", id, last_log_id.display())
             }
         }
     }
