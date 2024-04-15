@@ -378,8 +378,8 @@ where
 
             // The log index start and end to send.
             let (start, end) = {
-                let start = rng.prev_log_id.next_index();
-                let end = rng.last_log_id.next_index();
+                let start = rng.prev.next_index();
+                let end = rng.last.next_index();
 
                 if let Some(hint) = self.entries_hint.get() {
                     let hint_end = start + hint;
@@ -391,7 +391,7 @@ where
 
             if start == end {
                 // Heartbeat RPC, no logs to send, last log id is the same as prev_log_id
-                let r = LogIdRange::new(rng.prev_log_id, rng.prev_log_id);
+                let r = LogIdRange::new(rng.prev, rng.prev);
                 (vec![], r)
             } else {
                 let logs = self.log_reader.try_get_log_entries(start..end).await?;
@@ -408,7 +408,7 @@ where
 
                 let last_log_id = logs.last().map(|ent| *ent.get_log_id());
 
-                let r = LogIdRange::new(rng.prev_log_id, last_log_id);
+                let r = LogIdRange::new(rng.prev, last_log_id);
                 (logs, r)
             }
         };
@@ -418,7 +418,7 @@ where
         // Build the heartbeat frame to be sent to the follower.
         let payload = AppendEntriesRequest {
             vote: self.session_id.vote,
-            prev_log_id: sending_range.prev_log_id,
+            prev_log_id: sending_range.prev,
             leader_commit: self.committed,
             entries: logs,
         };
@@ -457,7 +457,7 @@ where
 
         match append_resp {
             AppendEntriesResponse::Success => {
-                let matching = sending_range.last_log_id;
+                let matching = sending_range.last;
                 let next = self.finish_success_append(matching, leader_time, log_ids);
                 Ok(next)
             }
@@ -481,7 +481,7 @@ where
                 }))
             }
             AppendEntriesResponse::Conflict => {
-                let conflict = sending_range.prev_log_id;
+                let conflict = sending_range.prev;
                 debug_assert!(conflict.is_some(), "prev_log_id=None never conflict");
 
                 let conflict = conflict.unwrap();
@@ -837,10 +837,10 @@ where
     ) -> Option<Data<C>> {
         self.send_progress(log_ids.request_id(), ReplicationResult::new(leader_time, Ok(matching)));
 
-        if matching < log_ids.data().last_log_id {
+        if matching < log_ids.data().last {
             Some(Data::new_logs(
                 log_ids.request_id(),
-                LogIdRange::new(matching, log_ids.data().last_log_id),
+                LogIdRange::new(matching, log_ids.data().last),
             ))
         } else {
             None
@@ -850,28 +850,28 @@ where
     /// Check if partial success result(`matching`) is valid for a given log range to send.
     fn debug_assert_partial_success(to_send: &LogIdRange<C::NodeId>, matching: &Option<LogId<C::NodeId>>) {
         debug_assert!(
-            matching <= &to_send.last_log_id,
+            matching <= &to_send.last,
             "matching ({}) should be <= last_log_id ({})",
             matching.display(),
-            to_send.last_log_id.display()
+            to_send.last.display()
         );
         debug_assert!(
-            matching.index() <= to_send.last_log_id.index(),
+            matching.index() <= to_send.last.index(),
             "matching.index ({}) should be <= last_log_id.index ({})",
             matching.index().display(),
-            to_send.last_log_id.index().display()
+            to_send.last.index().display()
         );
         debug_assert!(
-            matching >= &to_send.prev_log_id,
+            matching >= &to_send.prev,
             "matching ({}) should be >= prev_log_id ({})",
             matching.display(),
-            to_send.prev_log_id.display()
+            to_send.prev.display()
         );
         debug_assert!(
-            matching.index() >= to_send.prev_log_id.index(),
+            matching.index() >= to_send.prev.index(),
             "matching.index ({}) should be >= prev_log_id.index ({})",
             matching.index().display(),
-            to_send.prev_log_id.index().display()
+            to_send.prev.index().display()
         );
     }
 }
