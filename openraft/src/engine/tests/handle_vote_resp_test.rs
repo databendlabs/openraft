@@ -263,7 +263,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
                 },
                 Command::Replicate {
                     target: 2,
-                    req: Inflight::logs(None, Some(log_id(2, 1, 1))).with_id(1),
+                    req: Inflight::logs(None, Some(log_id(2, 1, 1))),
                 },
             ],
             eng.output.take_commands()

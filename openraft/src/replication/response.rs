@@ -1,7 +1,6 @@
 use std::fmt;
 
 use crate::display_ext::DisplayOptionExt;
-use crate::replication::request_id::RequestId;
 use crate::replication::ReplicationSessionId;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::LogIdOf;
@@ -21,9 +20,6 @@ where C: RaftTypeConfig
     Progress {
         /// The ID of the target node for which the match index is to be updated.
         target: C::NodeId,
-
-        /// The id of the subject that submit this replication action.
-        request_id: RequestId,
 
         /// The request by this leader has been successfully handled by the target node,
         /// or an error in string.
@@ -74,14 +70,13 @@ where C: RaftTypeConfig
         match self {
             Self::Progress {
                 target,
-                request_id,
                 result,
                 session_id,
             } => {
                 write!(
                     f,
-                    "UpdateReplicationProgress: target: {}, id: {}, result: {:?}, session_id: {}",
-                    target, request_id, result, session_id
+                    "UpdateReplicationProgress: target: {}, result: {:?}, session_id: {}",
+                    target, result, session_id
                 )
             }
 

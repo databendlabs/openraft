@@ -8,7 +8,6 @@ use validit::Validate;
 
 use crate::display_ext::DisplayOptionExt;
 use crate::progress::inflight::Inflight;
-use crate::progress::inflight::InflightError;
 use crate::raft_state::LogStateReader;
 use crate::LogId;
 use crate::LogIdOptionExt;
@@ -20,8 +19,6 @@ use crate::NodeId;
 pub(crate) struct ProgressEntry<NID: NodeId> {
     /// The id of the last matching log on the target following node.
     pub(crate) matching: Option<LogId<NID>>,
-
-    pub(crate) curr_inflight_id: u64,
 
     /// The data being transmitted in flight.
     ///
@@ -37,7 +34,6 @@ impl<NID: NodeId> ProgressEntry<NID> {
     pub(crate) fn new(matching: Option<LogId<NID>>) -> Self {
         Self {
             matching,
-            curr_inflight_id: 0,
             inflight: Inflight::None,
             searching_end: matching.next_index(),
         }
@@ -49,17 +45,9 @@ impl<NID: NodeId> ProgressEntry<NID> {
     pub(crate) fn empty(end: u64) -> Self {
         Self {
             matching: None,
-            curr_inflight_id: 0,
             inflight: Inflight::None,
             searching_end: end,
         }
-    }
-
-    // This method is only used by tests.
-    #[allow(dead_code)]
-    pub(crate) fn with_curr_inflight_id(mut self, v: u64) -> Self {
-        self.curr_inflight_id = v;
-        self
     }
 
     // This method is only used by tests.
@@ -77,35 +65,28 @@ impl<NID: NodeId> ProgressEntry<NID> {
     pub(crate) fn is_log_range_inflight(&self, upto: &LogId<NID>) -> bool {
         match &self.inflight {
             Inflight::None => false,
-            Inflight::Logs { log_id_range, .. } => {
+            Inflight::Logs(rng) => {
                 let lid = Some(*upto);
-                lid > log_id_range.prev
+                lid > rng.prev
             }
-            Inflight::Snapshot { last_log_id: _, .. } => false,
+            Inflight::Snapshot(_) => false,
         }
     }
 
-    pub(crate) fn update_matching(
-        &mut self,
-        request_id: u64,
-        matching: Option<LogId<NID>>,
-    ) -> Result<(), InflightError> {
+    pub(crate) fn update_matching(&mut self, matching: Option<LogId<NID>>) {
         tracing::debug!(
             self = display(&self),
-            request_id = display(request_id),
             matching = display(matching.display()),
             "update_matching"
         );
 
-        self.inflight.ack(request_id, matching)?;
+        self.inflight.ack(matching);
 
         debug_assert!(matching >= self.matching);
         self.matching = matching;
 
         let matching_next = self.matching.next_index();
         self.searching_end = std::cmp::max(self.searching_end, matching_next);
-
-        Ok(())
     }
 
     /// Update conflicting log index.
@@ -120,15 +101,10 @@ impl<NID: NodeId> ProgressEntry<NID> {
     /// To allow a follower to clean its data, enable feature flag [`loosen-follower-log-revert`] .
     ///
     /// [`loosen-follower-log-revert`]: crate::docs::feature_flags#feature_flag_loosen_follower_log_revert
-    pub(crate) fn update_conflicting(&mut self, request_id: u64, conflict: u64) -> Result<(), InflightError> {
-        tracing::debug!(
-            self = debug(&self),
-            request_id = display(request_id),
-            conflict = display(conflict),
-            "update_conflict"
-        );
+    pub(crate) fn update_conflicting(&mut self, conflict: u64) {
+        tracing::debug!(self = debug(&self), conflict = display(conflict), "update_conflict");
 
-        self.inflight.conflict(request_id, conflict)?;
+        self.inflight.conflict(conflict);
 
         debug_assert!(conflict < self.searching_end);
         self.searching_end = conflict;
@@ -158,7 +134,6 @@ impl<NID: NodeId> ProgressEntry<NID> {
                 conflict
             );
         }
-        Ok(())
     }
 
     /// Initialize a replication action: sending log entries or sending snapshot.
@@ -193,9 +168,8 @@ impl<NID: NodeId> ProgressEntry<NID> {
         // The log the follower needs is purged.
         // Replicate by snapshot.
         if self.searching_end < purge_upto_next {
-            self.curr_inflight_id += 1;
             let snapshot_last = log_state.snapshot_last_log_id();
-            self.inflight = Inflight::snapshot(snapshot_last.copied()).with_id(self.curr_inflight_id);
+            self.inflight = Inflight::snapshot(snapshot_last.copied());
             return Ok(&self.inflight);
         }
 
@@ -216,8 +190,7 @@ impl<NID: NodeId> ProgressEntry<NID> {
         let prev = log_state.prev_log_id(start);
         let last = log_state.prev_log_id(end);
 
-        self.curr_inflight_id += 1;
-        self.inflight = Inflight::logs(prev, last).with_id(self.curr_inflight_id);
+        self.inflight = Inflight::logs(prev, last);
 
         Ok(&self.inflight)
     }
@@ -265,13 +238,13 @@ impl<NID: NodeId> Validate for ProgressEntry<NID> {
 
         match self.inflight {
             Inflight::None => {}
-            Inflight::Logs { log_id_range, .. } => {
+            Inflight::Logs(log_id_range) => {
                 // matching <= prev_log_id              <= last_log_id
                 //             prev_log_id.next_index() <= searching_end
                 validit::less_equal!(self.matching, log_id_range.prev);
                 validit::less_equal!(log_id_range.prev.next_index(), self.searching_end);
             }
-            Inflight::Snapshot { last_log_id, .. } => {
+            Inflight::Snapshot(last_log_id) => {
                 // There is no need to send a snapshot smaller than last matching.
                 validit::less!(self.matching, last_log_id);
             }

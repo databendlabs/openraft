@@ -20,12 +20,12 @@ where C: RaftTypeConfig
 impl<C> Replicate<C>
 where C: RaftTypeConfig
 {
-    pub(crate) fn logs(id: RequestId, log_id_range: LogIdRange<C::NodeId>) -> Self {
-        Self::Data(Data::new_logs(id, log_id_range))
+    pub(crate) fn logs(log_id_range: LogIdRange<C::NodeId>) -> Self {
+        Self::Data(Data::new_logs(log_id_range))
     }
 
-    pub(crate) fn snapshot(id: RequestId, last_log_id: Option<LogIdOf<C>>) -> Self {
-        Self::Data(Data::new_snapshot(id, last_log_id))
+    pub(crate) fn snapshot(last_log_id: Option<LogIdOf<C>>) -> Self {
+        Self::Data(Data::new_snapshot(last_log_id))
     }
 
     pub(crate) fn new_data(data: Data<C>) -> Self {
@@ -49,9 +49,7 @@ use crate::error::StreamingError;
 use crate::log_id_range::LogIdRange;
 use crate::raft::SnapshotResponse;
 use crate::replication::callbacks::SnapshotCallback;
-use crate::replication::request_id::RequestId;
 use crate::type_config::alias::InstantOf;
-use crate::utils::WithId;
 use crate::LogId;
 use crate::RaftTypeConfig;
 use crate::SnapshotMeta;
@@ -65,9 +63,9 @@ pub(crate) enum Data<C>
 where C: RaftTypeConfig
 {
     Heartbeat,
-    Logs(WithId<LogIdRange<C::NodeId>>),
-    Snapshot(WithId<Option<LogIdOf<C>>>),
-    SnapshotCallback(WithId<SnapshotCallback<C>>),
+    Logs(LogIdRange<C::NodeId>),
+    Snapshot(Option<LogIdOf<C>>),
+    SnapshotCallback(SnapshotCallback<C>),
 }
 
 impl<C> fmt::Debug for Data<C>
@@ -78,17 +76,9 @@ where C: RaftTypeConfig
             Data::Heartbeat => {
                 write!(f, "Data::Heartbeat")
             }
-            Self::Logs(l) => f
-                .debug_struct("Data::Logs")
-                .field("request_id", &l.request_id())
-                .field("log_id_range", l.inner())
-                .finish(),
-            Self::Snapshot(s) => f.debug_struct("Data::Snapshot").field("request_id", &s.request_id()).finish(),
-            Self::SnapshotCallback(resp) => f
-                .debug_struct("Data::SnapshotCallback")
-                .field("request_id", &resp.request_id())
-                .field("callback", resp.inner())
-                .finish(),
+            Self::Logs(l) => f.debug_struct("Data::Logs").field("log_id_range", l).finish(),
+            Self::Snapshot(s) => f.debug_struct("Data::Snapshot").field("last_log_id", s).finish(),
+            Self::SnapshotCallback(resp) => f.debug_struct("Data::SnapshotCallback").field("callback", resp).finish(),
         }
     }
 }
@@ -100,18 +90,13 @@ impl<C: RaftTypeConfig> fmt::Display for Data<C> {
                 write!(f, "Heartbeat")
             }
             Self::Logs(l) => {
-                write!(f, "Logs{{request_id: {}, log_id_range: {}}}", l.request_id(), l.inner())
+                write!(f, "Logs{{log_id_range: {}}}", l)
             }
-            Self::Snapshot(s) => {
-                write!(f, "Snapshot{{request_id: {}}}", s.request_id())
+            Self::Snapshot(last_log_id) => {
+                write!(f, "Snapshot{{last_log_id: {}}}", last_log_id.display())
             }
             Self::SnapshotCallback(l) => {
-                write!(
-                    f,
-                    "SnapshotCallback{{request_id: {}, callback: {}}}",
-                    l.request_id(),
-                    l.inner()
-                )
+                write!(f, "SnapshotCallback{{callback: {}}}", l)
             }
         }
     }
@@ -124,33 +109,20 @@ where C: RaftTypeConfig
         Self::Heartbeat
     }
 
-    pub(crate) fn new_logs(request_id: RequestId, log_id_range: LogIdRange<C::NodeId>) -> Self {
-        Self::Logs(WithId::new(request_id, log_id_range))
+    pub(crate) fn new_logs(log_id_range: LogIdRange<C::NodeId>) -> Self {
+        Self::Logs(log_id_range)
     }
 
-    pub(crate) fn new_snapshot(request_id: RequestId, last_log_id: Option<LogIdOf<C>>) -> Self {
-        Self::Snapshot(WithId::new(request_id, last_log_id))
+    pub(crate) fn new_snapshot(last_log_id: Option<LogIdOf<C>>) -> Self {
+        Self::Snapshot(last_log_id)
     }
 
     pub(crate) fn new_snapshot_callback(
-        request_id: RequestId,
         start_time: InstantOf<C>,
         snapshot_meta: SnapshotMeta<C>,
         result: Result<SnapshotResponse<C>, StreamingError<C, Fatal<C>>>,
     ) -> Self {
-        Self::SnapshotCallback(WithId::new(
-            request_id,
-            SnapshotCallback::new(start_time, snapshot_meta, result),
-        ))
-    }
-
-    pub(crate) fn request_id(&self) -> RequestId {
-        match self {
-            Self::Heartbeat => RequestId::new_heartbeat(),
-            Self::Logs(l) => l.request_id(),
-            Self::Snapshot(s) => s.request_id(),
-            Self::SnapshotCallback(r) => r.request_id(),
-        }
+        Self::SnapshotCallback(SnapshotCallback::new(start_time, snapshot_meta, result))
     }
 
     /// Return true if the data includes any payload, i.e., not a heartbeat.

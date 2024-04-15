@@ -129,11 +129,11 @@ fn test_leader_append_entries_normal() -> anyhow::Result<()> {
             },
             Command::Replicate {
                 target: 2,
-                req: Inflight::logs(None, Some(log_id(3, 1, 6))).with_id(1),
+                req: Inflight::logs(None, Some(log_id(3, 1, 6))),
             },
             Command::Replicate {
                 target: 3,
-                req: Inflight::logs(None, Some(log_id(3, 1, 6))).with_id(1),
+                req: Inflight::logs(None, Some(log_id(3, 1, 6))),
             },
         ],
         eng.output.take_commands()
@@ -245,7 +245,7 @@ fn test_leader_append_entries_with_membership_log() -> anyhow::Result<()> {
             },
             Command::Replicate {
                 target: 2,
-                req: Inflight::logs(None, Some(log_id(3, 1, 6))).with_id(1),
+                req: Inflight::logs(None, Some(log_id(3, 1, 6))),
             },
         ],
         eng.output.take_commands()

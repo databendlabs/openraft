@@ -55,7 +55,6 @@ fn test_startup_as_leader() -> anyhow::Result<()> {
             Command::RebuildReplicationStreams {
                 targets: vec![(3, ProgressEntry {
                     matching: None,
-                    curr_inflight_id: 0,
                     inflight: Inflight::None,
                     searching_end: 0
                 })]

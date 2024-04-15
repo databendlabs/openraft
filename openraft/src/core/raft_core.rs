@@ -75,7 +75,6 @@ use crate::raft::VoteRequest;
 use crate::raft_state::LogStateReader;
 use crate::replication;
 use crate::replication::request::Replicate;
-use crate::replication::request_id::RequestId;
 use crate::replication::response::ReplicationResult;
 use crate::replication::ReplicationCore;
 use crate::replication::ReplicationHandle;
@@ -1308,14 +1307,13 @@ where
                 match response {
                     replication::Response::Progress {
                         target,
-                        request_id: id,
                         result,
                         session_id,
                     } => {
                         // If vote or membership changes, ignore the message.
                         // There is chance delayed message reports a wrong state.
                         if self.does_replication_session_match(&session_id, "UpdateReplicationMatched") {
-                            self.handle_replication_progress(target, id, result);
+                            self.handle_replication_progress(target, result);
                         }
                     }
 
@@ -1475,15 +1473,9 @@ where
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    fn handle_replication_progress(
-        &mut self,
-        target: C::NodeId,
-        request_id: RequestId,
-        result: Result<ReplicationResult<C>, String>,
-    ) {
+    fn handle_replication_progress(&mut self, target: C::NodeId, result: Result<ReplicationResult<C>, String>) {
         tracing::debug!(
             target = display(target),
-            request_id = display(request_id),
             result = debug(&result),
             "handle_replication_progress"
         );
@@ -1500,7 +1492,7 @@ where
 
         // A leader may have stepped down.
         if self.engine.internal_server_state.is_leading() {
-            self.engine.replication_handler().update_progress(target, request_id, result);
+            self.engine.replication_handler().update_progress(target, result);
         }
     }
 
@@ -1674,14 +1666,14 @@ where
                         Inflight::None => {
                             let _ = node.tx_repl.send(Replicate::Heartbeat);
                         }
-                        Inflight::Logs { id, log_id_range } => {
-                            let _ = node.tx_repl.send(Replicate::logs(RequestId::new_append_entries(id), log_id_range));
+                        Inflight::Logs(rng) => {
+                            let _ = node.tx_repl.send(Replicate::logs(rng));
                         }
-                        Inflight::Snapshot { id, last_log_id } => {
+                        Inflight::Snapshot(last_log_id) => {
                             // unwrap: The replication channel must not be dropped or it is a bug.
-                            node.tx_repl.send(Replicate::snapshot(RequestId::new_snapshot(id), last_log_id)).map_err(
-                                |_e| StorageIOError::read_snapshot(None, AnyError::error("replication channel closed")),
-                            )?;
+                            node.tx_repl.send(Replicate::snapshot(last_log_id)).map_err(|_e| {
+                                StorageIOError::read_snapshot(None, AnyError::error("replication channel closed"))
+                            })?;
                         }
                     }
                 } else {

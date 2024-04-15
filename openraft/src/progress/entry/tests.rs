@@ -41,12 +41,12 @@ fn test_update_matching() -> anyhow::Result<()> {
     {
         let mut pe = ProgressEntry::empty(20);
         pe.inflight = inflight_logs(5, 10);
-        pe.update_matching(pe.inflight.id(), Some(log_id(6)))?;
+        pe.update_matching(Some(log_id(6)));
         assert_eq!(inflight_logs(6, 10), pe.inflight);
         assert_eq!(Some(log_id(6)), pe.matching);
         assert_eq!(20, pe.searching_end);
 
-        pe.update_matching(pe.inflight.id(), Some(log_id(10)))?;
+        pe.update_matching(Some(log_id(10)));
         assert_eq!(Inflight::None, pe.inflight);
         assert_eq!(Some(log_id(10)), pe.matching);
         assert_eq!(20, pe.searching_end);
@@ -58,7 +58,7 @@ fn test_update_matching() -> anyhow::Result<()> {
         pe.matching = Some(log_id(6));
         pe.inflight = inflight_logs(5, 20);
 
-        pe.update_matching(pe.inflight.id(), Some(log_id(20)))?;
+        pe.update_matching(Some(log_id(20)));
         assert_eq!(21, pe.searching_end);
     }
 
@@ -70,7 +70,7 @@ fn test_update_conflicting() -> anyhow::Result<()> {
     let mut pe = ProgressEntry::empty(20);
     pe.matching = Some(log_id(3));
     pe.inflight = inflight_logs(5, 10);
-    pe.update_conflicting(pe.inflight.id(), 5)?;
+    pe.update_conflicting(5);
     assert_eq!(Inflight::None, pe.inflight);
     assert_eq!(&Some(log_id(3)), pe.borrow());
     assert_eq!(5, pe.searching_end);
@@ -164,7 +164,7 @@ fn test_next_send() -> anyhow::Result<()> {
         pe.matching = Some(log_id(4));
 
         let res = pe.next_send(&LogState::new(6, 10, 20), 100);
-        assert_eq!(Ok(&Inflight::snapshot(Some(log_id(10))).with_id(1)), res);
+        assert_eq!(Ok(&Inflight::snapshot(Some(log_id(10)))), res);
     }
     {
         //    matching,end
@@ -178,7 +178,7 @@ fn test_next_send() -> anyhow::Result<()> {
         pe.matching = Some(log_id(4));
 
         let res = pe.next_send(&LogState::new(6, 10, 20), 100);
-        assert_eq!(Ok(&Inflight::snapshot(Some(log_id(10))).with_id(1)), res);
+        assert_eq!(Ok(&Inflight::snapshot(Some(log_id(10)))), res);
     }
 
     {
@@ -193,7 +193,7 @@ fn test_next_send() -> anyhow::Result<()> {
         pe.matching = Some(log_id(4));
 
         let res = pe.next_send(&LogState::new(6, 10, 20), 100);
-        assert_eq!(Ok(&inflight_logs(6, 20).with_id(1)), res);
+        assert_eq!(Ok(&inflight_logs(6, 20)), res);
     }
 
     {
@@ -208,7 +208,7 @@ fn test_next_send() -> anyhow::Result<()> {
         pe.matching = Some(log_id(4));
 
         let res = pe.next_send(&LogState::new(6, 10, 20), 100);
-        assert_eq!(Ok(&inflight_logs(6, 20).with_id(1)), res);
+        assert_eq!(Ok(&inflight_logs(6, 20)), res);
     }
 
     //-----------
@@ -225,7 +225,7 @@ fn test_next_send() -> anyhow::Result<()> {
         pe.matching = Some(log_id(6));
 
         let res = pe.next_send(&LogState::new(6, 10, 20), 100);
-        assert_eq!(Ok(&inflight_logs(6, 20).with_id(1)), res);
+        assert_eq!(Ok(&inflight_logs(6, 20)), res);
     }
 
     {
@@ -240,7 +240,7 @@ fn test_next_send() -> anyhow::Result<()> {
         pe.matching = Some(log_id(6));
 
         let res = pe.next_send(&LogState::new(6, 10, 20), 100);
-        assert_eq!(Ok(&inflight_logs(6, 20).with_id(1)), res);
+        assert_eq!(Ok(&inflight_logs(6, 20)), res);
     }
 
     {
@@ -255,7 +255,7 @@ fn test_next_send() -> anyhow::Result<()> {
         pe.matching = Some(log_id(6));
 
         let res = pe.next_send(&LogState::new(6, 10, 20), 100);
-        assert_eq!(Ok(&inflight_logs(6, 20).with_id(1)), res);
+        assert_eq!(Ok(&inflight_logs(6, 20)), res);
     }
 
     {
@@ -270,7 +270,7 @@ fn test_next_send() -> anyhow::Result<()> {
         pe.matching = Some(log_id(7));
 
         let res = pe.next_send(&LogState::new(6, 10, 20), 100);
-        assert_eq!(Ok(&inflight_logs(7, 20).with_id(1)), res);
+        assert_eq!(Ok(&inflight_logs(7, 20)), res);
     }
 
     {
@@ -285,7 +285,7 @@ fn test_next_send() -> anyhow::Result<()> {
         pe.matching = Some(log_id(7));
 
         let res = pe.next_send(&LogState::new(6, 10, 20), 100);
-        assert_eq!(Ok(&inflight_logs(7, 20).with_id(1)), res);
+        assert_eq!(Ok(&inflight_logs(7, 20)), res);
     }
 
     {
@@ -316,7 +316,7 @@ fn test_next_send() -> anyhow::Result<()> {
         pe.matching = Some(log_id(7));
 
         let res = pe.next_send(&LogState::new(6, 10, 20), 5);
-        assert_eq!(Ok(&inflight_logs(7, 12).with_id(1)), res);
+        assert_eq!(Ok(&inflight_logs(7, 12)), res);
     }
     Ok(())
 }

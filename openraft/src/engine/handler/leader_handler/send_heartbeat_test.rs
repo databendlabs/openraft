@@ -56,11 +56,11 @@ fn test_leader_send_heartbeat() -> anyhow::Result<()> {
             vec![
                 Command::Replicate {
                     target: 2,
-                    req: Inflight::logs(None, Some(log_id(2, 1, 3))).with_id(1),
+                    req: Inflight::logs(None, Some(log_id(2, 1, 3))),
                 },
                 Command::Replicate {
                     target: 3,
-                    req: Inflight::logs(None, Some(log_id(2, 1, 3))).with_id(1),
+                    req: Inflight::logs(None, Some(log_id(2, 1, 3))),
                 },
             ],
             eng.output.take_commands()
@@ -77,8 +77,8 @@ fn test_leader_send_heartbeat() -> anyhow::Result<()> {
     // No data to send, sending a heartbeat is to send empty RPC:
     {
         let l = eng.leader_handler()?;
-        let _ = l.leader.progress.update_with(&2, |ent| ent.update_matching(1, Some(log_id(2, 1, 3))).unwrap());
-        let _ = l.leader.progress.update_with(&3, |ent| ent.update_matching(1, Some(log_id(2, 1, 3))).unwrap());
+        let _ = l.leader.progress.update_with(&2, |ent| ent.update_matching(Some(log_id(2, 1, 3))));
+        let _ = l.leader.progress.update_with(&3, |ent| ent.update_matching(Some(log_id(2, 1, 3))));
     }
     eng.output.clear_commands();
     eng.leader_handler()?.send_heartbeat();
@@ -86,11 +86,11 @@ fn test_leader_send_heartbeat() -> anyhow::Result<()> {
         vec![
             Command::Replicate {
                 target: 2,
-                req: Inflight::logs(Some(log_id(2, 1, 3)), Some(log_id(2, 1, 3))).with_id(1),
+                req: Inflight::logs(Some(log_id(2, 1, 3)), Some(log_id(2, 1, 3))),
             },
             Command::Replicate {
                 target: 3,
-                req: Inflight::logs(Some(log_id(2, 1, 3)), Some(log_id(2, 1, 3))).with_id(1),
+                req: Inflight::logs(Some(log_id(2, 1, 3)), Some(log_id(2, 1, 3))),
             },
         ],
         eng.output.take_commands()
