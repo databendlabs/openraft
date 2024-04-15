@@ -10,7 +10,7 @@ use crate::Membership;
 use crate::RaftTypeConfig;
 
 /// The result of a write request to Raft.
-pub type WriteResult<C> = Result<ClientWriteResponse<C>, ClientWriteError<C>>;
+pub type ClientWriteResult<C> = Result<ClientWriteResponse<C>, ClientWriteError<C>>;
 
 /// The response to a client-request.
 #[cfg_attr(
