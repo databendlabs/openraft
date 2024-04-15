@@ -79,7 +79,7 @@ impl<NID: NodeId> ProgressEntry<NID> {
             Inflight::None => false,
             Inflight::Logs { log_id_range, .. } => {
                 let lid = Some(*upto);
-                lid > log_id_range.prev_log_id
+                lid > log_id_range.prev
             }
             Inflight::Snapshot { last_log_id: _, .. } => false,
         }
@@ -268,8 +268,8 @@ impl<NID: NodeId> Validate for ProgressEntry<NID> {
             Inflight::Logs { log_id_range, .. } => {
                 // matching <= prev_log_id              <= last_log_id
                 //             prev_log_id.next_index() <= searching_end
-                validit::less_equal!(self.matching, log_id_range.prev_log_id);
-                validit::less_equal!(log_id_range.prev_log_id.next_index(), self.searching_end);
+                validit::less_equal!(self.matching, log_id_range.prev);
+                validit::less_equal!(log_id_range.prev.next_index(), self.searching_end);
             }
             Inflight::Snapshot { last_log_id, .. } => {
                 // There is no need to send a snapshot smaller than last matching.

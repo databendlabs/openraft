@@ -174,9 +174,9 @@ impl<NID: NodeId> Inflight<NID> {
             }
             Inflight::Logs { id, log_id_range } => {
                 *self = {
-                    debug_assert!(upto >= log_id_range.prev_log_id);
-                    debug_assert!(upto <= log_id_range.last_log_id);
-                    Inflight::logs(upto, log_id_range.last_log_id).with_id(*id)
+                    debug_assert!(upto >= log_id_range.prev);
+                    debug_assert!(upto <= log_id_range.last);
+                    Inflight::logs(upto, log_id_range.last).with_id(*id)
                 }
             }
             Inflight::Snapshot { id: _, last_log_id } => {
@@ -205,7 +205,7 @@ impl<NID: NodeId> Inflight<NID> {
                 log_id_range: logs,
             } => {
                 // if prev_log_id==None, it will never conflict
-                debug_assert_eq!(Some(conflict), logs.prev_log_id.index());
+                debug_assert_eq!(Some(conflict), logs.prev.index());
                 *self = Inflight::None
             }
             Inflight::Snapshot { id: _, last_log_id: _ } => {
