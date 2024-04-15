@@ -14,7 +14,6 @@ use anyerror::AnyError;
 use futures::future::FutureExt;
 pub(crate) use replication_session_id::ReplicationSessionId;
 use request::Data;
-use request::DataWithId;
 use request::Replicate;
 use response::ReplicationResult;
 pub(crate) use response::Response;
@@ -54,6 +53,7 @@ use crate::type_config::alias::AsyncRuntimeOf;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::JoinHandleOf;
 use crate::type_config::alias::LogIdOf;
+use crate::utils::WithId;
 use crate::AsyncRuntime;
 use crate::Instant;
 use crate::LogId;
@@ -229,7 +229,7 @@ where
                 Data::Heartbeat => {
                     let m = &self.matching;
                     // request_id==None will be ignored by RaftCore.
-                    let d = DataWithId::new(RequestId::new_heartbeat(), LogIdRange::new(*m, *m));
+                    let d = WithId::new(RequestId::new_heartbeat(), LogIdRange::new(*m, *m));
 
                     log_data = Some(d.clone());
                     self.send_log_entries(d).await
@@ -361,19 +361,19 @@ where
     #[tracing::instrument(level = "debug", skip_all)]
     async fn send_log_entries(
         &mut self,
-        log_ids: DataWithId<LogIdRange<C::NodeId>>,
+        log_ids: WithId<LogIdRange<C::NodeId>>,
     ) -> Result<Option<Data<C>>, ReplicationError<C>> {
         let request_id = log_ids.request_id();
 
         tracing::debug!(
             request_id = display(request_id),
-            log_id_range = display(log_ids.data()),
+            log_id_range = display(log_ids.inner()),
             "send_log_entries",
         );
 
         // Series of logs to send, and the last log id to send
         let (logs, sending_range) = {
-            let rng = log_ids.data();
+            let rng = log_ids.inner();
 
             // The log index start and end to send.
             let (start, end) = {
@@ -702,7 +702,7 @@ where
     #[tracing::instrument(level = "info", skip_all)]
     async fn stream_snapshot(
         &mut self,
-        snapshot_req: DataWithId<Option<LogIdOf<C>>>,
+        snapshot_req: WithId<Option<LogIdOf<C>>>,
     ) -> Result<Option<Data<C>>, ReplicationError<C>> {
         let request_id = snapshot_req.request_id();
 
@@ -789,11 +789,11 @@ where
 
     fn handle_snapshot_callback(
         &mut self,
-        callback: DataWithId<SnapshotCallback<C>>,
+        callback: WithId<SnapshotCallback<C>>,
     ) -> Result<Option<Data<C>>, ReplicationError<C>> {
         tracing::debug!(
             request_id = debug(callback.request_id()),
-            response = display(callback.data()),
+            response = display(callback.inner()),
             matching = display(self.matching.display()),
             "handle_snapshot_response"
         );
@@ -805,7 +805,7 @@ where
             start_time,
             result,
             snapshot_meta,
-        } = callback.into_data();
+        } = callback.into_inner();
 
         let resp = result?;
 
@@ -832,14 +832,14 @@ where
         &mut self,
         matching: Option<LogId<C::NodeId>>,
         leader_time: InstantOf<C>,
-        log_ids: DataWithId<LogIdRange<C::NodeId>>,
+        log_ids: WithId<LogIdRange<C::NodeId>>,
     ) -> Option<Data<C>> {
         self.send_progress(log_ids.request_id(), ReplicationResult::new(leader_time, Ok(matching)));
 
-        if matching < log_ids.data().last {
+        if matching < log_ids.inner().last {
             Some(Data::new_logs(
                 log_ids.request_id(),
-                LogIdRange::new(matching, log_ids.data().last),
+                LogIdRange::new(matching, log_ids.inner().last),
             ))
         } else {
             None

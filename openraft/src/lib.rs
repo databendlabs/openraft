@@ -55,6 +55,7 @@ pub(crate) mod engine;
 pub(crate) mod log_id_range;
 pub(crate) mod timer;
 pub(crate) mod type_config;
+pub(crate) mod utils;
 pub(crate) mod utime;
 
 mod display_ext;
