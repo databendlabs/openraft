@@ -79,7 +79,7 @@ pub trait RaftTypeConfig:
     /// some application defined channel.
     ///
     /// [`Raft::client_write`]: `crate::raft::Raft::client_write`
-    /// [`WriteResult`]: `crate::raft::message::WriteResult`
+    /// [`WriteResult`]: `crate::raft::message::ClientWriteResult`
     type Responder: Responder<Self>;
 }
 

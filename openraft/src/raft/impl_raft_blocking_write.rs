@@ -7,7 +7,7 @@ use maplit::btreemap;
 use crate::core::raft_msg::RaftMsg;
 use crate::error::ClientWriteError;
 use crate::error::RaftError;
-use crate::raft::message::WriteResult;
+use crate::raft::message::ClientWriteResult;
 use crate::raft::responder::OneshotResponder;
 use crate::raft::ClientWriteResponse;
 use crate::summary::MessageSummary;
@@ -169,7 +169,7 @@ where C: RaftTypeConfig<Responder = OneshotResponder<C>>
     }
 }
 
-fn oneshot_channel<C>() -> (OneshotResponder<C>, OneshotReceiverOf<C, WriteResult<C>>)
+fn oneshot_channel<C>() -> (OneshotResponder<C>, OneshotReceiverOf<C, ClientWriteResult<C>>)
 where C: RaftTypeConfig {
     let (tx, rx) = C::AsyncRuntime::oneshot();
 

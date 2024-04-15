@@ -11,7 +11,7 @@ use crate::MessageSummary;
 use crate::RaftTypeConfig;
 
 /// The result of a write request to Raft.
-pub type WriteResult<C> = Result<ClientWriteResponse<C>, ClientWriteError<NodeIdOf<C>, NodeOf<C>>>;
+pub type ClientWriteResult<C> = Result<ClientWriteResponse<C>, ClientWriteError<NodeIdOf<C>, NodeOf<C>>>;
 
 /// The response to a client-request.
 #[cfg_attr(

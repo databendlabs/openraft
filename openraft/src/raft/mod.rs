@@ -26,12 +26,12 @@ use core_state::CoreState;
 pub use message::AppendEntriesRequest;
 pub use message::AppendEntriesResponse;
 pub use message::ClientWriteResponse;
+pub use message::ClientWriteResult;
 pub use message::InstallSnapshotRequest;
 pub use message::InstallSnapshotResponse;
 pub use message::SnapshotResponse;
 pub use message::VoteRequest;
 pub use message::VoteResponse;
-pub use message::WriteResult;
 use tokio::sync::mpsc;
 use tokio::sync::watch;
 use tokio::sync::Mutex;
@@ -644,12 +644,12 @@ where C: RaftTypeConfig
         app_data: C::D,
     ) -> Result<ClientWriteResponse<C>, RaftError<C::NodeId, ClientWriteError<C::NodeId, C::Node>>>
     where
-        ResponderReceiverOf<C>: Future<Output = Result<WriteResult<C>, E>>,
+        ResponderReceiverOf<C>: Future<Output = Result<ClientWriteResult<C>, E>>,
         E: Error + OptionalSend,
     {
         let rx = self.client_write_ff(app_data).await?;
 
-        let res: WriteResult<C> = self.inner.recv_msg(rx).await?;
+        let res: ClientWriteResult<C> = self.inner.recv_msg(rx).await?;
 
         let client_write_response = res.map_err(RaftError::APIError)?;
         Ok(client_write_response)
