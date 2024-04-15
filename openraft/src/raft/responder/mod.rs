@@ -3,7 +3,7 @@
 pub(crate) mod impls;
 pub use impls::OneshotResponder;
 
-use crate::raft::message::WriteResult;
+use crate::raft::message::ClientWriteResult;
 use crate::OptionalSend;
 use crate::RaftTypeConfig;
 
@@ -12,7 +12,7 @@ use crate::RaftTypeConfig;
 ///
 /// It is created for each request [`AppData`], and is sent to `RaftCore`.
 /// Once the request is completed,
-/// the `RaftCore` send the result [`WriteResult`] via it.
+/// the `RaftCore` send the result [`ClientWriteResult`] via it.
 /// The implementation of the trait then forward the response to application.
 /// There could optionally be a receiver to wait for the response.
 ///
@@ -35,5 +35,5 @@ where C: RaftTypeConfig
     /// Send result when the request has been completed.
     ///
     /// This method is called by the `RaftCore` once the request has been applied to state machine.
-    fn send(self, result: WriteResult<C>);
+    fn send(self, result: ClientWriteResult<C>);
 }

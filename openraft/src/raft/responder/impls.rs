@@ -1,5 +1,5 @@
 use crate::async_runtime::AsyncOneshotSendExt;
-use crate::raft::message::WriteResult;
+use crate::raft::message::ClientWriteResult;
 use crate::raft::responder::Responder;
 use crate::type_config::alias::AsyncRuntimeOf;
 use crate::type_config::alias::OneshotReceiverOf;
@@ -15,14 +15,14 @@ use crate::RaftTypeConfig;
 pub struct OneshotResponder<C>
 where C: RaftTypeConfig
 {
-    tx: OneshotSenderOf<C, WriteResult<C>>,
+    tx: OneshotSenderOf<C, ClientWriteResult<C>>,
 }
 
 impl<C> OneshotResponder<C>
 where C: RaftTypeConfig
 {
     /// Create a new instance from a [`AsyncRuntime::OneshotSender`].
-    pub fn new(tx: OneshotSenderOf<C, WriteResult<C>>) -> Self {
+    pub fn new(tx: OneshotSenderOf<C, ClientWriteResult<C>>) -> Self {
         Self { tx }
     }
 }
@@ -30,7 +30,7 @@ where C: RaftTypeConfig
 impl<C> Responder<C> for OneshotResponder<C>
 where C: RaftTypeConfig
 {
-    type Receiver = OneshotReceiverOf<C, WriteResult<C>>;
+    type Receiver = OneshotReceiverOf<C, ClientWriteResult<C>>;
 
     fn from_app_data(app_data: C::D) -> (C::D, Self, Self::Receiver)
     where Self: Sized {
@@ -38,7 +38,7 @@ where C: RaftTypeConfig
         (app_data, Self { tx }, rx)
     }
 
-    fn send(self, res: WriteResult<C>) {
+    fn send(self, res: ClientWriteResult<C>) {
         let res = self.tx.send(res);
 
         if res.is_ok() {
