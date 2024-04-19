@@ -89,7 +89,7 @@ impl<NID: NodeId> Inflight<NID> {
     pub(crate) fn ack(&mut self, upto: Option<LogId<NID>>) {
         match self {
             Inflight::None => {
-                unreachable!("no inflight data")
+                tracing::debug!("no inflight data, maybe it is a heartbeat or duplicate ack");
             }
             Inflight::Logs(rng) => {
                 *self = {

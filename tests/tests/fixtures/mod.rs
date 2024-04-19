@@ -708,7 +708,10 @@ impl TypedRaftRouter {
         target: MemNodeId,
     ) -> Result<ClientWriteResponse<MemConfig>, ClientWriteError<MemConfig>> {
         let node = self.get_raft_handle(&leader).unwrap();
-        node.add_learner(target, (), true).await.map_err(|e| e.into_api_error().unwrap())
+        node.add_learner(target, (), true).await.map_err(|e| {
+            tracing::error!(error=%e, "error from add_learner");
+            e.into_api_error().unwrap()
+        })
     }
 
     /// Ensure read linearizability.

@@ -188,7 +188,9 @@ where C: RaftTypeConfig
             func_name!()
         );
 
-        debug_assert!(log_id.is_some(), "a valid update can never set matching to None");
+        // An heartbeat or send-commit may be sent when matching log is found.
+        // In this case a matching of `None` value will be reported.
+        // debug_assert!(log_id.is_some(), "a valid update can never set matching to None");
 
         // The value granted by a quorum may not yet be a committed.
         // A committed is **granted** and also is in current term.
