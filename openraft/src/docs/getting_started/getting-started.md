@@ -132,7 +132,7 @@ Most of the APIs are quite straightforward, except two indirect APIs:
     And [`RaftLogStorage::get_log_state()`][`get_log_state()`] get latest log state from the storage;
 
 -   Build a snapshot from the local state machine needs to be done in two steps:
-    - [`RaftLogStorage::get_snapshot_builder() -> Self::SnapshotBuilder`][`get_snapshot_builder()`],
+    - [`RaftStateMachine::get_snapshot_builder() -> Self::SnapshotBuilder`][`get_snapshot_builder()`],
     - [`RaftSnapshotBuilder::build_snapshot() -> Result<Snapshot>`][`build_snapshot()`],
 
 
