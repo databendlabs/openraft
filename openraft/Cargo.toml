@@ -21,7 +21,7 @@ byte-unit       = { workspace = true }
 clap            = { workspace = true }
 derive_more     = { workspace = true }
 futures         = { workspace = true }
-openraft-macros = { path = "../macros", version = "0.9.0" }
+openraft-macros = { path = "../macros", version = "0.9.6" }
 maplit          = { workspace = true }
 rand            = { workspace = true }
 serde           = { workspace = true, optional = true }
