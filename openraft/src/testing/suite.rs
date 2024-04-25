@@ -86,7 +86,10 @@ where
         run_fut(run_test(builder, Self::last_membership_in_log_multi_step))?;
         run_fut(run_test(builder, Self::get_membership_initial))?;
         run_fut(run_test(builder, Self::get_membership_from_log_and_empty_sm))?;
-        run_fut(run_test(builder, Self::get_membership_from_log_and_sm))?;
+        run_fut(run_test(builder, Self::get_membership_from_empty_log_and_sm))?;
+        run_fut(run_test(builder, Self::get_membership_from_log_le_sm_last_applied))?;
+        run_fut(run_test(builder, Self::get_membership_from_log_gt_sm_last_applied_1))?;
+        run_fut(run_test(builder, Self::get_membership_from_log_gt_sm_last_applied_2))?;
         run_fut(run_test(builder, Self::get_initial_state_without_init))?;
         run_fut(run_test(builder, Self::get_initial_state_membership_from_log_and_sm))?;
         run_fut(run_test(builder, Self::get_initial_state_with_state))?;
@@ -260,7 +263,10 @@ where
         Ok(())
     }
 
-    pub async fn get_membership_from_log_and_sm(mut store: LS, mut sm: SM) -> Result<(), StorageError<C::NodeId>> {
+    pub async fn get_membership_from_empty_log_and_sm(
+        mut store: LS,
+        mut sm: SM,
+    ) -> Result<(), StorageError<C::NodeId>> {
         tracing::info!("--- no log, read membership from state machine");
         {
             apply(&mut sm, [
@@ -280,10 +286,31 @@ where
                 mem_state.effective().membership(),
             );
         }
+        Ok(())
+    }
 
+    pub async fn get_membership_from_log_le_sm_last_applied(
+        mut store: LS,
+        mut sm: SM,
+    ) -> Result<(), StorageError<C::NodeId>> {
         tracing::info!("--- membership presents in log, but smaller than last_applied, read from state machine");
         {
-            append(&mut store, [membership_ent_0::<C>(1, 1, btreeset! {1,2,3})]).await?;
+            apply(&mut sm, [
+                blank_ent_0::<C>(1, 1),
+                membership_ent_0::<C>(1, 2, btreeset! {3,4,5}),
+                blank_ent_0::<C>(1, 3),
+                blank_ent_0::<C>(1, 4),
+            ])
+            .await?;
+
+            // Intentionally append a membership entry that does not match the state machine,
+            // in order to see which membership is loaded.
+            append(&mut store, [
+                blank_ent_0::<C>(1, 1),
+                blank_ent_0::<C>(1, 2),
+                membership_ent_0::<C>(1, 3, btreeset! {1,2,3}),
+            ])
+            .await?;
 
             let mem_state = StorageHelper::new(&mut store, &mut sm).get_membership().await?;
 
@@ -296,10 +323,23 @@ where
                 mem_state.effective().membership(),
             );
         }
+        Ok(())
+    }
 
+    pub async fn get_membership_from_log_gt_sm_last_applied_1(
+        mut store: LS,
+        mut sm: SM,
+    ) -> Result<(), StorageError<C::NodeId>> {
         tracing::info!("--- membership presents in log and > sm.last_applied, read from log");
         {
+            apply(&mut sm, [
+                blank_ent_0::<C>(1, 1),
+                membership_ent_0::<C>(1, 2, btreeset! {3,4,5}),
+            ])
+            .await?;
+
             append(&mut store, [
+                membership_ent_0::<C>(1, 1, btreeset! {1,2,3}),
                 blank_ent_0::<C>(1, 2),
                 membership_ent_0::<C>(1, 3, btreeset! {7,8,9}),
             ])
@@ -316,10 +356,25 @@ where
                 mem_state.effective().membership(),
             );
         }
+        Ok(())
+    }
 
+    pub async fn get_membership_from_log_gt_sm_last_applied_2(
+        mut store: LS,
+        mut sm: SM,
+    ) -> Result<(), StorageError<C::NodeId>> {
         tracing::info!("--- two membership present in log and > sm.last_applied, read 2 from log");
         {
+            apply(&mut sm, [
+                blank_ent_0::<C>(1, 1),
+                membership_ent_0::<C>(1, 2, btreeset! {3,4,5}),
+            ])
+            .await?;
+
             append(&mut store, [
+                membership_ent_0::<C>(1, 1, btreeset! {1,2,3}),
+                blank_ent_0::<C>(1, 2),
+                membership_ent_0::<C>(1, 3, btreeset! {7,8,9}),
                 blank_ent_0::<C>(1, 4),
                 membership_ent_0::<C>(1, 5, btreeset! {10,11}),
             ])
