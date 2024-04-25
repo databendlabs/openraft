@@ -1,3 +1,16 @@
+## v0.9.7
+
+Summary:
+
+- Fixed:
+    -   [ff4cf8fe](https://github.com/datafuselabs/openraft/commit/ff4cf8fe4117d8899621619313275d8446ba3e85) openraft-0.9.6 requires openraft-macros-0.9.6 or newer.
+
+Detail:
+
+### Fixed:
+
+-   Fixed: [ff4cf8fe](https://github.com/datafuselabs/openraft/commit/ff4cf8fe4117d8899621619313275d8446ba3e85) openraft-0.9.6 requires openraft-macros-0.9.6 or newer; by 张炎泼; 2024-04-25
+
 ## v0.9.6
 
 Summary:
