@@ -27,7 +27,7 @@ futures = "0.3"
 lazy_static = "1.4.0"
 maplit = "1.0.2"
 pretty_assertions = "1.0.0"
-proc-macro2 = "=1.0.79"
+proc-macro2 = { version = ">=1.0.0,<1.0.80", features = [] }
 quote = "1.0"
 rand = "0.8"
 semver = "1.0.14"
