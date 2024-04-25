@@ -192,11 +192,9 @@ where
     ///
     /// Thus a raft node will only need to store at most two recent membership logs.
     pub async fn get_membership(&mut self) -> Result<MembershipState<C::NodeId, C::Node>, StorageError<C::NodeId>> {
-        let (_, sm_mem) = self.state_machine.applied_state().await?;
+        let (last_applied, sm_mem) = self.state_machine.applied_state().await?;
 
-        let sm_mem_next_index = sm_mem.log_id().next_index();
-
-        let log_mem = self.last_membership_in_log(sm_mem_next_index).await?;
+        let log_mem = self.last_membership_in_log(last_applied.next_index()).await?;
         tracing::debug!(membership_in_sm=?sm_mem, membership_in_log=?log_mem, "RaftStorage::get_membership");
 
         // There 2 membership configs in logs.
@@ -234,6 +232,9 @@ where
         let st = self.log_store.get_log_state().await?;
 
         let mut end = st.last_log_id.next_index();
+
+        tracing::info!("load membership from log: [{}..{})", since_index, end);
+
         let start = std::cmp::max(st.last_purged_log_id.next_index(), since_index);
         let step = 64;
 
