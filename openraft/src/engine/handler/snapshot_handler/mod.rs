@@ -26,8 +26,7 @@ where C: RaftTypeConfig
     /// Trigger building snapshot if there is no pending building job.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn trigger_snapshot(&mut self) -> bool {
-        // TODO: test
-        tracing::info!("{}", func_name!());
+        tracing::debug!("{}", func_name!());
 
         if self.state.io_state_mut().building_snapshot() {
             tracing::debug!("snapshot building is in progress, do not trigger snapshot");
