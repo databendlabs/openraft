@@ -6,7 +6,7 @@ Build change log since a previous git-tag
 - Usage: `./scripts/build_change_log.py <commit>`: build since specified commit.
 - Install: `pip install -r requirements.txt`.
 
-This script buils change log from git commit messages, outputs a versioned
+This script builds change log from git commit messages, outputs a versioned
 change log to `./change-log/<version>.md` and concatenates all versioned change log
 into `./change-log.md`.
 

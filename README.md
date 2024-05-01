@@ -126,7 +126,7 @@ For benchmark detail, go to the [./cluster_benchmark](./cluster_benchmark) folde
 
 - ✅ **Leader election**: by policy or manually([`trigger_elect()`][]).
 - ✅ **Non-voter(learner) Role**: refer to [`add_learner()`][].
-- ✅ **Log Compaction**(snapshot of state machine): by policy or manully([`trigger_snapshot()`]).
+- ✅ **Log Compaction**(snapshot of state machine): by policy or manually([`trigger_snapshot()`]).
 - ✅ **Snapshot replication**.
 - ✅ **Dynamic Membership**: using joint membership config change. Refer to [dynamic membership](https://docs.rs/openraft/latest/openraft/docs/cluster_control/dynamic_membership/index.html)
 - ✅ **Linearizable read**: [`ensure_linearizable()`][].

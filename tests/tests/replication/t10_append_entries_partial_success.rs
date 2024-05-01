@@ -25,7 +25,7 @@ async fn append_entries_partial_success() -> Result<()> {
 
     tracing::info!(
         log_index,
-        "--- set append-entries quota to {}, wirte {} entries",
+        "--- set append-entries quota to {}, write {} entries",
         quota,
         n
     );

@@ -1,4 +1,4 @@
-//! Provide `LogStore`, which is a in-memory implementation of `RaftLogStore` for demostration
+//! Provide `LogStore`, which is a in-memory implementation of `RaftLogStore` for demonstration
 //! purpose only.
 
 use std::collections::BTreeMap;
