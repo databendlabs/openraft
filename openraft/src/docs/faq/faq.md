@@ -7,7 +7,7 @@
 - Openraft stores committed log id: See: [`RaftLogStorage::save_committed()`][];
 - Openraft optimized `ReadIndex`: no `blank log` check: [`Linearizable Read`][].
 - A restarted Leader will stay in Leader state if possible;
-- Does not support single step memebership change. Only joint is supported.
+- Does not support single step membership change. Only joint is supported.
 
 
 ## Observation and Management
@@ -78,7 +78,7 @@ There are two ways to initialize a raft cluster, assuming there are three nodes,
    all 3 nodes, e.g. `n2.initialize(btreeset! {1,2,3})`.
 
 2. Incremental method:
-   First, call `Raft::initialize()` on `n1` with configuraion containing `n1`
+   First, call `Raft::initialize()` on `n1` with configuration containing `n1`
    itself, e.g., `n1.initialize(btreeset! {1})`.
    Subsequently use `Raft::change_membership()` on `n1` to add `n2` and `n3`
    into the cluster.

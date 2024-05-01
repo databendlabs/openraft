@@ -44,7 +44,7 @@ Follow the following steps to update your application to pass compilation with v
   - `RaftNetwork::send_vote()` to `RaftNetwork::vote()`;
   - `RaftNetwork::send_install_snapshot()` to `RaftNetwork::install_snapshot()`;
 
-- `asycn` traits in Openraft are declared with [`#[openraft-macros::add_async_trait]`][`openraft-macros`] attribute since 0.9.
+- `async` traits in Openraft are declared with [`#[openraft-macros::add_async_trait]`][`openraft-macros`] attribute since 0.9.
   `#[async_trait::async_trait]` are no longer needed when implementing `async` trait.
 
   For example, upgrade 0.8 async-trait implementation 
