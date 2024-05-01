@@ -54,7 +54,7 @@ async fn new_leader_auto_commit_uniform_config() -> Result<()> {
 
     let _ = log_index;
 
-    // To let tne router not panic
+    // To let the router not panic
     router.new_raft_node(1).await;
     router.new_raft_node(2).await;
 

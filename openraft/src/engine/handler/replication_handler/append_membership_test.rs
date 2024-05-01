@@ -96,7 +96,7 @@ fn test_leader_append_membership_for_leader() -> anyhow::Result<()> {
 
 #[test]
 fn test_leader_append_membership_update_learner_process() -> anyhow::Result<()> {
-    // When updating membership, voter progreess should inherit from learner progress, and
+    // When updating membership, voter progress should inherit from learner progress, and
     // learner process should inherit from voter process. If voter changes to
     // learner or vice versa.
 

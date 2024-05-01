@@ -311,12 +311,12 @@ def build_ver_changelog_summary(ver):
 
     # Remove existent summary
     try:
-        footer_indexs = lines.index(footer)
+        footer_indexes = lines.index(footer)
     except ValueError as e:
         print("No footer found")
     else:
         # skip `Detail:`, and a following blank line.
-        lines = lines[footer_indexs+2:]
+        lines = lines[footer_indexes+2:]
 
     # Build summary:
     # - Remove lines that starts with space, which is detail section, a list item
@@ -344,7 +344,7 @@ def build_ver_changelog_summary(ver):
             # Remove suffix author
             l = re.sub('; by .*?$', '.', l)
 
-            # Remove redundent "."
+            # Remove redundant "."
             l = re.sub('[.][.]$', '.', l)
 
             #   add indent:

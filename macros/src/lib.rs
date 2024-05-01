@@ -19,7 +19,7 @@ use syn::Type;
 /// This proc macro attribute optionally adds `Send` bounds to a trait.
 ///
 /// By default, `Send` bounds will be added to the trait and to the return bounds of any async
-/// functions defined withing the trait.
+/// functions defined within the trait.
 ///
 /// If the `singlethreaded` feature is enabled, the trait definition remains the same without any
 /// added `Send` bounds.
@@ -161,7 +161,7 @@ fn do_since(args: TokenStream, item: TokenStream) -> Result<TokenStream, syn::Er
 
 /// Render a template with arguments multiple times.
 ///
-/// The template to expand is defined as `(K,V) => { ... }`, where `K` and `V` are tempalte
+/// The template to expand is defined as `(K,V) => { ... }`, where `K` and `V` are template
 /// variables.
 ///
 /// - The template must contain at least 1 variable.
