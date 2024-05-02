@@ -37,11 +37,11 @@ use crate::error::ReplicationError;
 use crate::error::Timeout;
 use crate::log_id::LogIdOptionExt;
 use crate::log_id_range::LogIdRange;
+use crate::network::v2::RaftNetworkFactoryV2;
+use crate::network::v2::RaftNetworkV2;
 use crate::network::Backoff;
 use crate::network::RPCOption;
 use crate::network::RPCTypes;
-use crate::network::RaftNetwork;
-use crate::network::RaftNetworkFactory;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
 use crate::replication::callbacks::SnapshotCallback;
@@ -82,7 +82,7 @@ where C: RaftTypeConfig
 pub(crate) struct ReplicationCore<C, N, LS>
 where
     C: RaftTypeConfig,
-    N: RaftNetworkFactory<C>,
+    N: RaftNetworkFactoryV2<C>,
     LS: RaftLogStorage<C>,
 {
     /// The ID of the target Raft node which replication events are to be sent to.
@@ -150,7 +150,7 @@ where
 impl<C, N, LS> ReplicationCore<C, N, LS>
 where
     C: RaftTypeConfig,
-    N: RaftNetworkFactory<C>,
+    N: RaftNetworkFactoryV2<C>,
     LS: RaftLogStorage<C>,
 {
     /// Spawn a new replication task for the target node.

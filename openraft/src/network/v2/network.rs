@@ -8,8 +8,8 @@ use crate::error::RPCError;
 use crate::error::RaftError;
 use crate::error::ReplicationClosed;
 use crate::error::StreamingError;
-use crate::network::rpc_option::RPCOption;
 use crate::network::Backoff;
+use crate::network::RPCOption;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
 use crate::raft::SnapshotResponse;
@@ -17,6 +17,7 @@ use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::OptionalSend;
 use crate::OptionalSync;
+use crate::RaftNetwork;
 use crate::RaftTypeConfig;
 use crate::Snapshot;
 use crate::Vote;
@@ -28,8 +29,14 @@ use crate::Vote;
 ///
 /// A single network instance is used to connect to a single target node. The network instance is
 /// constructed by the [`RaftNetworkFactory`](`crate::network::RaftNetworkFactory`).
+///
+/// V2 network API removes `install_snapshot()` method that sends snapshot in chunks
+/// and introduces `full_snapshot()` method that let application fully customize snapshot transmit.
+///
+/// Compatibility: [`RaftNetworkV2`] is automatically implemented for [`RaftNetwork`]
+/// implementations.
 #[add_async_trait]
-pub trait RaftNetwork<C>: OptionalSend + OptionalSync + 'static
+pub trait RaftNetworkV2<C>: OptionalSend + OptionalSync + 'static
 where C: RaftTypeConfig
 {
     /// Send an AppendEntries RPC to the target.
@@ -38,29 +45,6 @@ where C: RaftTypeConfig
         rpc: AppendEntriesRequest<C>,
         option: RPCOption,
     ) -> Result<AppendEntriesResponse<C>, RPCError<C, RaftError<C>>>;
-
-    /// Send an InstallSnapshot RPC to the target.
-    #[cfg(feature = "generic-snapshot-data")]
-    #[deprecated(
-        since = "0.9.0",
-        note = "with `generic-snapshot-data` enabled, use `full_snapshot()` instead to send full snapshot"
-    )]
-    async fn install_snapshot(
-        &mut self,
-        _rpc: crate::raft::InstallSnapshotRequest<C>,
-        _option: RPCOption,
-    ) -> Result<crate::raft::InstallSnapshotResponse<C>, RPCError<C, RaftError<C, crate::error::InstallSnapshotError>>>
-    {
-        unimplemented!()
-    }
-
-    /// Send an InstallSnapshot RPC to the target.
-    #[cfg(not(feature = "generic-snapshot-data"))]
-    async fn install_snapshot(
-        &mut self,
-        _rpc: crate::raft::InstallSnapshotRequest<C>,
-        _option: RPCOption,
-    ) -> Result<crate::raft::InstallSnapshotResponse<C>, RPCError<C, RaftError<C, crate::error::InstallSnapshotError>>>;
 
     /// Send a RequestVote RPC to the target.
     async fn vote(
@@ -84,7 +68,6 @@ where C: RaftTypeConfig
     /// with this vote.
     ///
     /// `cancel` get `Ready` when the caller decides to cancel this snapshot transmission.
-    #[cfg(feature = "generic-snapshot-data")]
     async fn full_snapshot(
         &mut self,
         vote: Vote<C::NodeId>,
@@ -92,38 +75,6 @@ where C: RaftTypeConfig
         cancel: impl Future<Output = ReplicationClosed> + OptionalSend,
         option: RPCOption,
     ) -> Result<SnapshotResponse<C>, StreamingError<C, Fatal<C>>>;
-
-    /// Send a complete Snapshot to the target.
-    ///
-    /// This method is responsible to fragment the snapshot and send it to the target node.
-    /// Before returning from this method, the snapshot should be completely transmitted and
-    /// installed on the target node, or rejected because of `vote` being smaller than the
-    /// remote one.
-    ///
-    /// The default implementation just calls several `install_snapshot` RPC for each fragment.
-    ///
-    /// The `vote` is the leader vote which is used to check if the leader is still valid by a
-    /// follower.
-    /// When the follower finished receiving snapshot, it calls `Raft::install_full_snapshot()`
-    /// with this vote.
-    ///
-    /// `cancel` get `Ready` when the caller decides to cancel this snapshot transmission.
-    // If generic-snapshot-data disabled,
-    // provide a default implementation that relies on AsyncRead + AsyncSeek + Unpin
-    #[cfg(not(feature = "generic-snapshot-data"))]
-    async fn full_snapshot(
-        &mut self,
-        vote: Vote<C::NodeId>,
-        snapshot: Snapshot<C>,
-        cancel: impl Future<Output = ReplicationClosed> + OptionalSend,
-        option: RPCOption,
-    ) -> Result<SnapshotResponse<C>, StreamingError<C, Fatal<C>>> {
-        use crate::network::snapshot_transport::Chunked;
-        use crate::network::snapshot_transport::SnapshotTransport;
-
-        let resp = Chunked::send_snapshot(self, vote, snapshot, cancel, option).await?;
-        Ok(resp)
-    }
 
     /// Build a backoff instance if the target node is temporarily(or permanently) unreachable.
     ///
@@ -138,5 +89,46 @@ where C: RaftTypeConfig
     /// By default it returns a constant backoff of 500 ms.
     fn backoff(&self) -> Backoff {
         Backoff::new(std::iter::repeat(Duration::from_millis(500)))
+    }
+}
+
+impl<C, V1> RaftNetworkV2<C> for V1
+where
+    C: RaftTypeConfig,
+    V1: RaftNetwork<C>,
+    C::SnapshotData: tokio::io::AsyncRead + tokio::io::AsyncWrite + tokio::io::AsyncSeek + Unpin,
+{
+    async fn append_entries(
+        &mut self,
+        rpc: AppendEntriesRequest<C>,
+        option: RPCOption,
+    ) -> Result<AppendEntriesResponse<C>, RPCError<C, RaftError<C>>> {
+        RaftNetwork::<C>::append_entries(self, rpc, option).await
+    }
+
+    async fn vote(
+        &mut self,
+        rpc: VoteRequest<C>,
+        option: RPCOption,
+    ) -> Result<VoteResponse<C>, RPCError<C, RaftError<C>>> {
+        RaftNetwork::<C>::vote(self, rpc, option).await
+    }
+
+    async fn full_snapshot(
+        &mut self,
+        vote: Vote<C::NodeId>,
+        snapshot: Snapshot<C>,
+        cancel: impl Future<Output = ReplicationClosed> + OptionalSend,
+        option: RPCOption,
+    ) -> Result<SnapshotResponse<C>, StreamingError<C, Fatal<C>>> {
+        use crate::network::snapshot_transport::Chunked;
+        use crate::network::snapshot_transport::SnapshotTransport;
+
+        let resp = Chunked::send_snapshot(self, vote, snapshot, cancel, option).await?;
+        Ok(resp)
+    }
+
+    fn backoff(&self) -> Backoff {
+        RaftNetwork::<C>::backoff(self)
     }
 }

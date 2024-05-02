@@ -59,10 +59,10 @@ use crate::metrics::RaftDataMetrics;
 use crate::metrics::RaftMetrics;
 use crate::metrics::RaftServerMetrics;
 use crate::metrics::ReplicationMetrics;
+use crate::network::v2::RaftNetworkFactoryV2;
+use crate::network::v2::RaftNetworkV2;
 use crate::network::RPCOption;
 use crate::network::RPCTypes;
-use crate::network::RaftNetwork;
-use crate::network::RaftNetworkFactory;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::Inflight;
 use crate::progress::Progress;
@@ -159,7 +159,7 @@ impl<C: RaftTypeConfig> LeaderData<C> {
 pub struct RaftCore<C, N, LS, SM>
 where
     C: RaftTypeConfig,
-    N: RaftNetworkFactory<C>,
+    N: RaftNetworkFactoryV2<C>,
     LS: RaftLogStorage<C>,
     SM: RaftStateMachine<C>,
 {
@@ -171,7 +171,7 @@ where
 
     pub(crate) runtime_config: Arc<RuntimeConfig>,
 
-    /// The `RaftNetworkFactory` implementation.
+    /// The `RaftNetworkFactoryV2` implementation.
     pub(crate) network: N,
 
     /// The [`RaftLogStorage`] implementation.
@@ -212,7 +212,7 @@ where
 impl<C, N, LS, SM> RaftCore<C, N, LS, SM>
 where
     C: RaftTypeConfig,
-    N: RaftNetworkFactory<C>,
+    N: RaftNetworkFactoryV2<C>,
     LS: RaftLogStorage<C>,
     SM: RaftStateMachine<C>,
 {
@@ -1546,7 +1546,7 @@ where
 impl<C, N, LS, SM> RaftRuntime<C> for RaftCore<C, N, LS, SM>
 where
     C: RaftTypeConfig,
-    N: RaftNetworkFactory<C>,
+    N: RaftNetworkFactoryV2<C>,
     LS: RaftLogStorage<C>,
     SM: RaftStateMachine<C>,
 {

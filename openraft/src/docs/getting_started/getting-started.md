@@ -166,16 +166,22 @@ The caller always assumes a completed writing is persistent.
 The raft correctness highly depends on a reliable store.
 
 
-## 4. Implement [`RaftNetwork`]
+## 4. Implement [`RaftNetwork`] or [`RaftNetworkV2`].
 
-Raft nodes need to communicate with each other to achieve consensus about the logs.
-The trait [`RaftNetwork`] defines the data transmission requirements.
+Raft nodes communicate with each other to achieve consensus about the logs.
+The trait [`RaftNetwork`] and [`RaftNetworkV2`] defines the data transmission protocol.
+
+Your application can use either [`RaftNetwork`] or [`RaftNetworkV2`].
+The only difference between them is:
+- [`RaftNetwork`] sends snapshot in chunks with [`RaftNetwork::install_snapshot()`][`install_snapshot()`],
+- while [`RaftNetworkV2`] sends snapshot in one piece with [`RaftNetworkV2::full_snapshot()`][`full_snapshot()`].
+
 
 ```ignore
 pub trait RaftNetwork<C: RaftTypeConfig>: Send + Sync + 'static {
     async fn vote(&mut self, rpc: VoteRequest<C::NodeId>) -> Result<...>;
     async fn append_entries(&mut self, rpc: AppendEntriesRequest<C>) -> Result<...>;
-    async fn snapshot(&mut self, vote: Vote<C::NodeId>, snapshot: Snapshot<C>) -> Result<...>;
+    async fn install_snapshot(&mut self, vote: Vote<C::NodeId>, snapshot: Snapshot<C>) -> Result<...>;
 }
 ```
 
@@ -186,11 +192,12 @@ and receiving messages between Raft nodes.
 Here is the list of methods that need to be implemented for the [`RaftNetwork`] trait:
 
 
-| [`RaftNetwork`] method | forward request          | to target                                      |
-|------------------------|--------------------------|------------------------------------------------|
-| [`append_entries()`]   | [`AppendEntriesRequest`] | remote node [`Raft::append_entries()`]         |
-| [`full_snapshot()`]    | [`Snapshot`]             | remote node [`Raft::install_full_snapshot()`] |
-| [`vote()`]             | [`VoteRequest`]          | remote node [`Raft::vote()`]                   |
+| [`RaftNetwork`] method | forward request            | to target                                     |
+|------------------------|----------------------------|-----------------------------------------------|
+| [`append_entries()`]   | [`AppendEntriesRequest`]   | remote node [`Raft::append_entries()`]        |
+| [`vote()`]             | [`VoteRequest`]            | remote node [`Raft::vote()`]                  |
+| [`install_snapshot()`] | [`InstallSnapshotRequest`] | remote node [`Raft::install_snapshot()`]      |
+| [`full_snapshot()`]    | [`Snapshot`]               | remote node [`Raft::install_full_snapshot()`] |
 
 [Mem KV Network](https://github.com/datafuselabs/openraft/blob/main/examples/raft-kv-memstore/src/network/raft_network_impl.rs)
 demonstrates how to forward messages to other Raft nodes using [`reqwest`](https://docs.rs/reqwest/latest/reqwest/) as network transport layer.
@@ -202,9 +209,10 @@ When the server receives a Raft RPC, it simply passes it to its `raft` instance 
 For a real-world implementation, you may want to use [Tonic gRPC](https://github.com/hyperium/tonic) to handle gRPC-based communication between Raft nodes. The [databend-meta](https://github.com/datafuselabs/databend/blob/6603392a958ba8593b1f4b01410bebedd484c6a9/metasrv/src/network.rs#L89) project provides an excellent real-world example of a Tonic gRPC-based Raft network implementation.
 
 
-### Implement [`RaftNetworkFactory`]
+### Implement [`RaftNetworkFactory`] or [`RaftNetworkFactoryV2`].
 
 [`RaftNetworkFactory`] is a singleton responsible for creating [`RaftNetwork`] instances for each replication target node.
+Similarly, [`RaftNetworkFactoryV2`] is for creating [`RaftNetworkV2`] instances.
 
 ```ignore
 pub trait RaftNetworkFactory<C: RaftTypeConfig>: Send + Sync + 'static {
@@ -353,7 +361,8 @@ Additionally, two test scripts for setting up a cluster are available:
 [`Raft`]:                               `crate::Raft`
 [`Raft::append_entries()`]:             `crate::Raft::append_entries`
 [`Raft::vote()`]:                       `crate::Raft::vote`
-[`Raft::install_full_snapshot()`]:  `crate::Raft::install_full_snapshot`
+[`Raft::install_full_snapshot()`]:      `crate::Raft::install_full_snapshot`
+[`Raft::install_snapshot()`]:           `crate::Raft::install_snapshot`
 
 [`AppendEntriesRequest`]:               `crate::raft::AppendEntriesRequest`
 [`VoteRequest`]:                        `crate::raft::VoteRequest`
@@ -396,11 +405,14 @@ Additionally, two test scripts for setting up a cluster are available:
 [`get_snapshot_builder()`]:             `crate::storage::RaftStateMachine::get_snapshot_builder`
 
 [`RaftNetworkFactory`]:                 `crate::network::RaftNetworkFactory`
-[`RaftNetworkFactory::new_client()`]:   `crate::network::RaftNetworkFactory::new_client`
 [`RaftNetwork`]:                        `crate::network::RaftNetwork`
+[`RaftNetworkFactory::new_client()`]:   `crate::network::RaftNetworkFactory::new_client`
 [`append_entries()`]:                   `crate::RaftNetwork::append_entries`
 [`vote()`]:                             `crate::RaftNetwork::vote`
-[`full_snapshot()`]:                         `crate::RaftNetwork::full_snapshot`
+[`install_snapshot()`]:                 `crate::RaftNetwork::install_snapshot`
+[`full_snapshot()`]:                    `crate::network::v2::RaftNetworkV2::full_snapshot`
+[`RaftNetworkFactoryV2`]:               `crate::network::v2::RaftNetworkFactoryV2`
+[`RaftNetworkV2`]:                      `crate::network::v2::RaftNetworkV2`
 
 
 [`RaftSnapshotBuilder`]:                `crate::storage::RaftSnapshotBuilder`

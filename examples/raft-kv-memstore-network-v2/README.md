@@ -1,10 +1,10 @@
-# Example Openraft kv-store with snapshot stored in remote storage
+# Example Openraft kv-store using `RaftNetworkV2`
 
-This example shows how to save and retrieve snapshot data from remote storage,
-allowing users to follow a similar pattern for implementing business logic such as snapshot backups.
+With `RaftNetworkV2`, Openraft allows application to use any data type for snapshot data,
+instead of a single-file like data format with `AsyncSeek + AsyncRead + AsyncWrite + Unpin` bounds.
 
 This example is similar to the basic raft-kv-memstore example
-but focuses on how to store and fetch snapshot data from remote storage.
+but focuses on how to handle snapshot with `RaftNetworkV2::full_snapshot()`.
 Other aspects are minimized.
 
 To send a complete snapshot, Refer to implementation of `RaftNetworkV2::full_snapshot()` in this example.
