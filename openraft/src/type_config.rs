@@ -60,14 +60,6 @@ pub trait RaftTypeConfig:
     /// See the [storage chapter of the guide][sto] for details on log compaction / snapshotting.
     ///
     /// [sto]: crate::docs::getting_started#3-implement-raftlogstorage-and-raftstatemachine
-    #[cfg(not(feature = "generic-snapshot-data"))]
-    type SnapshotData: tokio::io::AsyncRead
-        + tokio::io::AsyncWrite
-        + tokio::io::AsyncSeek
-        + OptionalSend
-        + Unpin
-        + 'static;
-    #[cfg(feature = "generic-snapshot-data")]
     type SnapshotData: OptionalSend + 'static;
 
     /// Asynchronous runtime type.

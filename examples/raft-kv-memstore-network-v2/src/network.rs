@@ -2,6 +2,7 @@ use std::future::Future;
 
 use openraft::error::RemoteError;
 use openraft::error::ReplicationClosed;
+use openraft::network::v2::RaftNetworkV2;
 use openraft::network::RPCOption;
 use openraft::raft::AppendEntriesRequest;
 use openraft::raft::AppendEntriesResponse;
@@ -10,7 +11,6 @@ use openraft::raft::VoteRequest;
 use openraft::raft::VoteResponse;
 use openraft::BasicNode;
 use openraft::OptionalSend;
-use openraft::RaftNetwork;
 use openraft::RaftNetworkFactory;
 use openraft::Snapshot;
 use openraft::Vote;
@@ -36,7 +36,7 @@ impl RaftNetworkFactory<TypeConfig> for Router {
     }
 }
 
-impl RaftNetwork<TypeConfig> for Connection {
+impl RaftNetworkV2<TypeConfig> for Connection {
     async fn append_entries(
         &mut self,
         req: AppendEntriesRequest<TypeConfig>,

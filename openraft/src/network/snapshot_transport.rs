@@ -349,21 +349,16 @@ where
     }
 }
 
-#[cfg(feature = "generic-snapshot-data")]
 #[cfg(test)]
 mod tests {
-    use std::future::Future;
     use std::io::Cursor;
     use std::time::Duration;
 
     use crate::engine::testing::UTConfig;
-    use crate::error::Fatal;
     use crate::error::InstallSnapshotError;
     use crate::error::RPCError;
     use crate::error::RaftError;
-    use crate::error::ReplicationClosed;
     use crate::error::SnapshotMismatch;
-    use crate::error::StreamingError;
     use crate::network::snapshot_transport::Chunked;
     use crate::network::snapshot_transport::SnapshotTransport;
     use crate::network::RPCOption;
@@ -371,10 +366,8 @@ mod tests {
     use crate::raft::AppendEntriesResponse;
     use crate::raft::InstallSnapshotRequest;
     use crate::raft::InstallSnapshotResponse;
-    use crate::raft::SnapshotResponse;
     use crate::raft::VoteRequest;
     use crate::raft::VoteResponse;
-    use crate::OptionalSend;
     use crate::RaftNetwork;
     use crate::RaftTypeConfig;
     use crate::Snapshot;
@@ -406,16 +399,6 @@ mod tests {
             unimplemented!()
         }
 
-        async fn full_snapshot(
-            &mut self,
-            _vote: Vote<C::NodeId>,
-            _snapshot: Snapshot<C>,
-            _cancel: impl Future<Output = ReplicationClosed> + OptionalSend,
-            _option: RPCOption,
-        ) -> Result<SnapshotResponse<C>, StreamingError<C, Fatal<C>>> {
-            unimplemented!()
-        }
-
         async fn install_snapshot(
             &mut self,
             rpc: InstallSnapshotRequest<C>,
@@ -440,7 +423,7 @@ mod tests {
                     },
                 };
                 let err = RaftError::APIError(InstallSnapshotError::SnapshotMismatch(mismatch));
-                return Err(RPCError::RemoteError(crate::error::RemoteError::new(0, err)));
+                Err(RPCError::RemoteError(crate::error::RemoteError::new(0, err)))
             } else {
                 Ok(InstallSnapshotResponse { vote: rpc.vote })
             }

@@ -4,10 +4,10 @@ use std::panic::PanicInfo;
 use std::time::Duration;
 
 use openraft::BasicNode;
-use raft_kv_memstore_generic_snapshot_data::new_raft;
-use raft_kv_memstore_generic_snapshot_data::router::Router;
-use raft_kv_memstore_generic_snapshot_data::store::Request;
-use raft_kv_memstore_generic_snapshot_data::typ;
+use raft_kv_memstore_network_v2::new_raft;
+use raft_kv_memstore_network_v2::router::Router;
+use raft_kv_memstore_network_v2::store::Request;
+use raft_kv_memstore_network_v2::typ;
 use tokio::task;
 use tokio::task::LocalSet;
 use tracing_subscriber::EnvFilter;

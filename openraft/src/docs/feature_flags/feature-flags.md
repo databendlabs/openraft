@@ -17,33 +17,6 @@ This feature works ONLY with nightly rust, because it requires unstable feature 
 
 Enables compatibility supporting types.
 
-## feature-flag `generic-snapshot-data`
-
-Enable this feature flag
-to eliminate the `AsyncRead + AsyncWrite + AsyncSeek + Unpin` bound
-from [`RaftTypeConfig::SnapshotData`](crate::RaftTypeConfig::SnapshotData)
-Enabling this feature allows applications to use a custom snapshot data format and transport fragmentation,
-diverging from the default implementation which typically relies on a single-file structure.
-
-By default, it is off.
-This feature is introduced in 0.9.0
-
-On the sending end (leader that sends snapshot to follower):
-
-- Without `generic-snapshot-data`: [`RaftNetwork::full_snapshot()`]
-  provides a default implementation that invokes the chunk-based API
-  [`RaftNetwork::install_snapshot()`] for transmit.
-
-- With `generic-snapshot-data` enabled: [`RaftNetwork::full_snapshot()`]
-  must be implemented to provide application customized snapshot transmission.
-  Application does not need to implement [`RaftNetwork::install_snapshot()`].
-
-On the receiving end(follower):
-
-- `Raft::install_snapshot()` is available only when `generic-snapshot-data` is disabled.
-
-Refer to example `examples/raft-kv-memstore-generic-snapshot-data` with `generic-snapshot-data` enabled.
-
 ## feature-flag `loosen-follower-log-revert`
 
 Permit the follower's log to roll back to an earlier state without causing the leader to panic.
