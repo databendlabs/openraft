@@ -12,6 +12,8 @@ use tokio::io::AsyncSeekExt;
 use tokio::io::AsyncWriteExt;
 
 use crate::error::Fatal;
+use crate::error::InstallSnapshotError;
+use crate::error::RPCError;
 use crate::error::RaftError;
 use crate::error::ReplicationClosed;
 use crate::error::StreamingError;
@@ -87,7 +89,7 @@ pub trait SnapshotTransport<C: RaftTypeConfig> {
         streaming: &mut Option<Streaming<C>>,
         raft: &Raft<C>,
         req: InstallSnapshotRequest<C>,
-    ) -> Result<Option<Snapshot<C>>, RaftError<C::NodeId, crate::error::InstallSnapshotError>>;
+    ) -> Result<Option<Snapshot<C>>, RaftError<C::NodeId, InstallSnapshotError>>;
 }
 
 /// Send and Receive snapshot by chunks.
@@ -122,7 +124,7 @@ where C::SnapshotData: tokio::io::AsyncRead + tokio::io::AsyncWrite + tokio::io:
             // Sleep a short time otherwise in test environment it is a dead-loop that never
             // yields.
             // Because network implementation does not yield.
-            AsyncRuntimeOf::<C>::sleep(Duration::from_millis(10)).await;
+            AsyncRuntimeOf::<C>::sleep(Duration::from_millis(1)).await;
 
             snapshot.snapshot.seek(SeekFrom::Start(offset)).await.sto_res(subject_verb)?;
 
@@ -164,7 +166,35 @@ where C::SnapshotData: tokio::io::AsyncRead + tokio::io::AsyncWrite + tokio::io:
                 Ok(outer_res) => match outer_res {
                     Ok(res) => res,
                     Err(err) => {
+                        let err: RPCError<C::NodeId, C::Node, RaftError<C::NodeId, InstallSnapshotError>> = err;
+
                         tracing::warn!(error=%err, "error sending InstallSnapshot RPC to target");
+
+                        match err {
+                            RPCError::Timeout(_) => {}
+                            RPCError::Unreachable(_) => {}
+                            RPCError::PayloadTooLarge(_) => {}
+                            RPCError::Network(_) => {}
+                            RPCError::RemoteError(remote_err) => {
+                                //
+                                match remote_err.source {
+                                    RaftError::Fatal(_) => {}
+                                    RaftError::APIError(snapshot_err) => {
+                                        //
+                                        match snapshot_err {
+                                            InstallSnapshotError::SnapshotMismatch(mismatch) => {
+                                                //
+                                                tracing::warn!(
+                                                    mismatch = display(&mismatch),
+                                                    "snapshot mismatch, reset offset and retry"
+                                                );
+                                                offset = 0;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         continue;
                     }
                 },
@@ -192,7 +222,7 @@ where C::SnapshotData: tokio::io::AsyncRead + tokio::io::AsyncWrite + tokio::io:
         streaming: &mut Option<Streaming<C>>,
         raft: &Raft<C>,
         req: InstallSnapshotRequest<C>,
-    ) -> Result<Option<Snapshot<C>>, RaftError<C::NodeId, crate::error::InstallSnapshotError>> {
+    ) -> Result<Option<Snapshot<C>>, RaftError<C::NodeId, InstallSnapshotError>> {
         let snapshot_id = &req.meta.snapshot_id;
         let snapshot_meta = req.meta.clone();
         let done = req.done;
@@ -203,7 +233,7 @@ where C::SnapshotData: tokio::io::AsyncRead + tokio::io::AsyncWrite + tokio::io:
 
         if curr_id != Some(snapshot_id) {
             if req.offset != 0 {
-                let mismatch = crate::error::InstallSnapshotError::SnapshotMismatch(crate::error::SnapshotMismatch {
+                let mismatch = InstallSnapshotError::SnapshotMismatch(crate::error::SnapshotMismatch {
                     expect: crate::SnapshotSegmentId {
                         id: snapshot_id.clone(),
                         offset: 0,
@@ -316,5 +346,142 @@ where
         }
         self.offset += req.data.len() as u64;
         Ok(req.done)
+    }
+}
+
+#[cfg(feature = "generic-snapshot-data")]
+#[cfg(test)]
+mod tests {
+    use std::future::Future;
+    use std::io::Cursor;
+    use std::time::Duration;
+
+    use crate::engine::testing::UTConfig;
+    use crate::error::Fatal;
+    use crate::error::InstallSnapshotError;
+    use crate::error::RPCError;
+    use crate::error::RaftError;
+    use crate::error::ReplicationClosed;
+    use crate::error::SnapshotMismatch;
+    use crate::error::StreamingError;
+    use crate::network::snapshot_transport::Chunked;
+    use crate::network::snapshot_transport::SnapshotTransport;
+    use crate::network::RPCOption;
+    use crate::raft::AppendEntriesRequest;
+    use crate::raft::AppendEntriesResponse;
+    use crate::raft::InstallSnapshotRequest;
+    use crate::raft::InstallSnapshotResponse;
+    use crate::raft::SnapshotResponse;
+    use crate::raft::VoteRequest;
+    use crate::raft::VoteResponse;
+    use crate::OptionalSend;
+    use crate::RaftNetwork;
+    use crate::RaftTypeConfig;
+    use crate::Snapshot;
+    use crate::SnapshotMeta;
+    use crate::StoredMembership;
+    use crate::Vote;
+
+    struct Network {
+        received_offset: Vec<u64>,
+        match_cnt: u64,
+    }
+
+    impl<C> RaftNetwork<C> for Network
+    where C: RaftTypeConfig<NodeId = u64>
+    {
+        async fn append_entries(
+            &mut self,
+            _rpc: AppendEntriesRequest<C>,
+            _option: RPCOption,
+        ) -> Result<AppendEntriesResponse<C::NodeId>, RPCError<C::NodeId, C::Node, RaftError<C::NodeId>>> {
+            unimplemented!()
+        }
+
+        async fn vote(
+            &mut self,
+            _rpc: VoteRequest<C::NodeId>,
+            _option: RPCOption,
+        ) -> Result<VoteResponse<C::NodeId>, RPCError<C::NodeId, C::Node, RaftError<C::NodeId>>> {
+            unimplemented!()
+        }
+
+        async fn full_snapshot(
+            &mut self,
+            _vote: Vote<C::NodeId>,
+            _snapshot: Snapshot<C>,
+            _cancel: impl Future<Output = ReplicationClosed> + OptionalSend,
+            _option: RPCOption,
+        ) -> Result<SnapshotResponse<C::NodeId>, StreamingError<C, Fatal<C::NodeId>>> {
+            unimplemented!()
+        }
+
+        async fn install_snapshot(
+            &mut self,
+            rpc: InstallSnapshotRequest<C>,
+            _option: RPCOption,
+        ) -> Result<
+            InstallSnapshotResponse<C::NodeId>,
+            RPCError<C::NodeId, C::Node, RaftError<C::NodeId, InstallSnapshotError>>,
+        > {
+            // A fake implementation to test the Chunked::send_snapshot.
+
+            self.received_offset.push(rpc.offset);
+
+            // For the second last time, return a mismatch error.
+            // Then return Ok for the reset of the time.
+            self.match_cnt = self.match_cnt.saturating_sub(1);
+            if self.match_cnt == 1 {
+                let mismatch = SnapshotMismatch {
+                    expect: crate::SnapshotSegmentId {
+                        id: rpc.meta.snapshot_id.clone(),
+                        offset: 0,
+                    },
+                    got: crate::SnapshotSegmentId {
+                        id: rpc.meta.snapshot_id.clone(),
+                        offset: rpc.offset,
+                    },
+                };
+                let err = RaftError::APIError(InstallSnapshotError::SnapshotMismatch(mismatch));
+                return Err(RPCError::RemoteError(crate::error::RemoteError::new(0, err)));
+            } else {
+                Ok(InstallSnapshotResponse { vote: rpc.vote })
+            }
+        }
+    }
+
+    /// Test that `Chunked` should reset the offset to 0 to re-send all data,
+    /// if a [`SnapshotMismatch`] error is received.
+    #[tokio::test]
+    async fn test_chunked_reset_offset_if_snapshot_id_mismatch() {
+        let mut net = Network {
+            received_offset: vec![],
+            // When match_cnt == 1, return a mismatch error.
+            // For other times, return Ok.
+            match_cnt: 4,
+        };
+
+        let mut opt = RPCOption::new(Duration::from_millis(100));
+        opt.snapshot_chunk_size = Some(1);
+        let cancel = futures::future::pending();
+
+        Chunked::send_snapshot(
+            &mut net,
+            Vote::new(1, 0),
+            Snapshot::<UTConfig>::new(
+                SnapshotMeta {
+                    last_log_id: None,
+                    last_membership: StoredMembership::default(),
+                    snapshot_id: "1-1-1-1".to_string(),
+                },
+                Box::new(Cursor::new(vec![1, 2, 3])),
+            ),
+            cancel,
+            opt,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(net.received_offset, vec![0, 1, 2, 0, 1, 2]);
     }
 }

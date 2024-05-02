@@ -63,6 +63,44 @@ jobs:
           args: --features bench nothing-to-run --manifest-path openraft/Cargo.toml
 
 
+  # Run feature specific test for crate openraft.
+  openraft-features:
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - toolchain: "nightly"
+            features: "generic-snapshot-data"
+
+
+    steps:
+      - name: Setup | Checkout
+        uses: actions/checkout@v2
+
+
+      - name: Setup | Toolchain
+        uses: actions-rs/toolchain@v1.0.6
+        with:
+          toolchain: "${{ matrix.toolchain }}"
+          override: true
+
+
+      # - A store with defensive checks returns error when unexpected accesses are sent to RaftStore.
+      # - Raft should not depend on defensive error to work correctly.
+      - name: Test crate `openraft/`
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --features "${{ matrix.features }}" --manifest-path openraft/Cargo.toml
+        env:
+          # Parallel tests block each other and result in timeout.
+          RUST_TEST_THREADS: 2
+          RUST_LOG: debug
+          RUST_BACKTRACE: full
+
+
   # Run openraft unit test `openraft/` and integration test `tests/`.
   openraft-test:
     runs-on: ubuntu-latest
