@@ -93,18 +93,6 @@ singlethreaded = ["openraft-macros/singlethreaded"]
 loosen-follower-log-revert = []
 
 
-# Enable this feature flag to eliminate the `AsyncRead + AsyncWrite + AsyncSeek
-# + Unpin` bound from `RaftTypeConfig::SnapshotData`.
-#
-# Enabling this feature allows applications to use a custom snapshot data format
-# and transport fragmentation, diverging from the default implementation which
-# typically relies on a single-file structure .
-#
-# By default it is off.
-# This feature is introduced in 0.9.0
-generic-snapshot-data = []
-
-
 # Enables "log" feature in `tracing` crate, to let tracing events emit log
 # record.
 # See: https://docs.rs/tracing/latest/tracing/#emitting-log-records
@@ -119,7 +107,6 @@ tracing-log = [ "tracing/log" ]
 features = [
     "bt",
     "compat",
-    "generic-snapshot-data",
     "loosen-follower-log-revert",
     "serde",
     "tracing-log",

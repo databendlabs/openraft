@@ -62,7 +62,6 @@ use crate::metrics::RaftMetrics;
 use crate::metrics::RaftServerMetrics;
 use crate::metrics::Wait;
 use crate::metrics::WaitError;
-use crate::network::RaftNetworkFactory;
 use crate::raft::raft_inner::RaftInner;
 use crate::raft::responder::Responder;
 pub use crate::raft::runtime_config_handle::RuntimeConfigHandle;
@@ -78,6 +77,7 @@ use crate::AsyncRuntime;
 use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::OptionalSend;
+use crate::RaftNetworkFactory;
 use crate::RaftState;
 pub use crate::RaftTypeConfig;
 use crate::Snapshot;
@@ -210,13 +210,14 @@ where C: RaftTypeConfig
     /// Raft's runtime config. See the docs on the `Config` object for more details.
     ///
     /// ### `network`
-    /// An implementation of the `RaftNetworkFactory` trait which will be used by Raft for sending
-    /// RPCs to peer nodes within the cluster. See the docs on the `RaftNetworkFactory` trait
-    /// for more details.
+    /// An implementation of the [`RaftNetworkFactory`] trait which will be used by Raft for
+    /// sending RPCs to peer nodes within the cluster.
     ///
     /// ### `storage`
     /// An implementation of the [`RaftLogStorage`] and [`RaftStateMachine`] trait which will be
     /// used by Raft for data storage.
+    ///
+    /// [`RaftNetworkFactory`]: crate::network::RaftNetworkFactory
     #[tracing::instrument(level="debug", skip_all, fields(cluster=%config.cluster_name))]
     pub async fn new<LS, N, SM>(
         id: C::NodeId,
@@ -423,13 +424,6 @@ where C: RaftTypeConfig
     ///
     /// If receiving is finished `done == true`, it installs the snapshot to the state machine.
     /// Nothing will be done if the input snapshot is older than the state machine.
-    #[cfg_attr(
-        feature = "generic-snapshot-data",
-        deprecated(
-            since = "0.9.0",
-            note = "with `generic-snapshot-shot` enabled, use `Raft::install_full_snapshot()` instead"
-        )
-    )]
     #[tracing::instrument(level = "debug", skip_all)]
     pub async fn install_snapshot(
         &self,
