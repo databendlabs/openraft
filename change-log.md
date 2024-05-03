@@ -1,3 +1,19 @@
+## v0.9.8
+
+Summary:
+
+- Fixed:
+    -   [fd5c657f](https://github.com/datafuselabs/openraft/commit/fd5c657f2d08844b7917e599badb4d75875a9611) `Chunked` should reset offset 0 when a `SnapshotMismatch` error is received.
+
+Detail:
+
+### Fixed:
+
+-   Fixed: [fd5c657f](https://github.com/datafuselabs/openraft/commit/fd5c657f2d08844b7917e599badb4d75875a9611) `Chunked` should reset offset 0 when a `SnapshotMismatch` error is received; by 张炎泼; 2024-05-02
+
+    When a `SnapshotMismatch` is received, the sending end should re-send
+    all snapshot data from the beginning.
+
 ## v0.9.7
 
 Summary:
