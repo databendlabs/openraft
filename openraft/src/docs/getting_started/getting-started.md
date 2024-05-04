@@ -209,10 +209,9 @@ When the server receives a Raft RPC, it simply passes it to its `raft` instance 
 For a real-world implementation, you may want to use [Tonic gRPC](https://github.com/hyperium/tonic) to handle gRPC-based communication between Raft nodes. The [databend-meta](https://github.com/datafuselabs/databend/blob/6603392a958ba8593b1f4b01410bebedd484c6a9/metasrv/src/network.rs#L89) project provides an excellent real-world example of a Tonic gRPC-based Raft network implementation.
 
 
-### Implement [`RaftNetworkFactory`] or [`RaftNetworkFactoryV2`].
+### Implement [`RaftNetworkFactory`].
 
-[`RaftNetworkFactory`] is a singleton responsible for creating [`RaftNetwork`] instances for each replication target node.
-Similarly, [`RaftNetworkFactoryV2`] is for creating [`RaftNetworkV2`] instances.
+[`RaftNetworkFactory`] is a singleton responsible for creating [`RaftNetworkV2`] instances for each replication target node.
 
 ```ignore
 pub trait RaftNetworkFactory<C: RaftTypeConfig>: Send + Sync + 'static {
@@ -411,7 +410,6 @@ Additionally, two test scripts for setting up a cluster are available:
 [`vote()`]:                             `crate::RaftNetwork::vote`
 [`install_snapshot()`]:                 `crate::RaftNetwork::install_snapshot`
 [`full_snapshot()`]:                    `crate::network::v2::RaftNetworkV2::full_snapshot`
-[`RaftNetworkFactoryV2`]:               `crate::network::v2::RaftNetworkFactoryV2`
 [`RaftNetworkV2`]:                      `crate::network::v2::RaftNetworkV2`
 
 

@@ -62,7 +62,6 @@ use crate::metrics::RaftMetrics;
 use crate::metrics::RaftServerMetrics;
 use crate::metrics::Wait;
 use crate::metrics::WaitError;
-use crate::network::v2::RaftNetworkFactoryV2;
 use crate::raft::raft_inner::RaftInner;
 use crate::raft::responder::Responder;
 pub use crate::raft::runtime_config_handle::RuntimeConfigHandle;
@@ -78,6 +77,7 @@ use crate::AsyncRuntime;
 use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::OptionalSend;
+use crate::RaftNetworkFactory;
 use crate::RaftState;
 pub use crate::RaftTypeConfig;
 use crate::Snapshot;
@@ -210,12 +210,8 @@ where C: RaftTypeConfig
     /// Raft's runtime config. See the docs on the `Config` object for more details.
     ///
     /// ### `network`
-    /// An implementation of the [`RaftNetworkFactoryV2`] trait which will be used by Raft for
-    /// sending RPCs to peer nodes within the cluster. See the docs on the
-    /// [`RaftNetworkFactoryV2`] trait for more details.
-    ///
-    /// [`RaftNetworkFactoryV2`] is automatically implemented for [`RaftNetworkFactory`]
-    /// implementations.
+    /// An implementation of the [`RaftNetworkFactory`] trait which will be used by Raft for
+    /// sending RPCs to peer nodes within the cluster.
     ///
     /// ### `storage`
     /// An implementation of the [`RaftLogStorage`] and [`RaftStateMachine`] trait which will be
@@ -231,7 +227,7 @@ where C: RaftTypeConfig
         mut state_machine: SM,
     ) -> Result<Self, Fatal<C>>
     where
-        N: RaftNetworkFactoryV2<C>,
+        N: RaftNetworkFactory<C>,
         LS: RaftLogStorage<C>,
         SM: RaftStateMachine<C>,
     {

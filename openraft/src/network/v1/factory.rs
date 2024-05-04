@@ -1,6 +1,6 @@
 use openraft_macros::add_async_trait;
 
-use crate::network::RaftNetwork;
+use crate::network::v2::RaftNetworkV2;
 use crate::OptionalSend;
 use crate::OptionalSync;
 use crate::RaftTypeConfig;
@@ -18,7 +18,7 @@ pub trait RaftNetworkFactory<C>: OptionalSend + OptionalSync + 'static
 where C: RaftTypeConfig
 {
     /// Actual type of the network handling a single connection.
-    type Network: RaftNetwork<C>;
+    type Network: RaftNetworkV2<C>;
 
     /// Create a new network instance sending RPCs to the target node.
     ///

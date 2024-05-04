@@ -2,7 +2,6 @@ use std::future::Future;
 
 use openraft::error::RemoteError;
 use openraft::error::ReplicationClosed;
-use openraft::network::v2::RaftNetworkFactoryV2;
 use openraft::network::v2::RaftNetworkV2;
 use openraft::network::RPCOption;
 use openraft::raft::AppendEntriesRequest;
@@ -12,6 +11,7 @@ use openraft::raft::VoteRequest;
 use openraft::raft::VoteResponse;
 use openraft::BasicNode;
 use openraft::OptionalSend;
+use openraft::RaftNetworkFactory;
 use openraft::Snapshot;
 use openraft::Vote;
 
@@ -25,7 +25,7 @@ pub struct Connection {
     target: NodeId,
 }
 
-impl RaftNetworkFactoryV2<TypeConfig> for Router {
+impl RaftNetworkFactory<TypeConfig> for Router {
     type Network = Connection;
 
     async fn new_client(&mut self, target: NodeId, _node: &BasicNode) -> Self::Network {
