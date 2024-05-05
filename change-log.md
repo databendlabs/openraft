@@ -1,3 +1,26 @@
+## v0.9.9
+
+Summary:
+
+- Fixed:
+    -   [8b62c797](https://github.com/datafuselabs/openraft/commit/8b62c797b343df5f496dc1b7c0264d09229e3b4a) Immediate response when snapshot installation is unnecessary.
+
+Detail:
+
+### Fixed:
+
+-   Fixed: [8b62c797](https://github.com/datafuselabs/openraft/commit/8b62c797b343df5f496dc1b7c0264d09229e3b4a) Immediate response when snapshot installation is unnecessary; by 张炎泼; 2024-05-05
+
+    When `Engine::handle_install_full_snapshot()` is called and the provided
+    snapshot is not up-to-date, the snapshot should not be installed, and
+    the response should be sent back immediately. Previously, the method
+    might delay the response unnecessarily, waiting for an installation
+    process that would not proceed.
+
+    This commit adjusts the logic so that if the snapshot is recognized as
+    outdated, it immediately returns a `None` `Condition`, ensuring the
+    caller is informed straightaway that no installation will occur.
+
 ## v0.9.8
 
 Summary:
