@@ -8,6 +8,7 @@ use crate::engine::handler::log_handler::LogHandler;
 use crate::engine::handler::server_state_handler::ServerStateHandler;
 use crate::engine::handler::snapshot_handler::SnapshotHandler;
 use crate::engine::Command;
+use crate::engine::Condition;
 use crate::engine::EngineConfig;
 use crate::engine::EngineOutput;
 use crate::entry::RaftPayload;
@@ -237,12 +238,26 @@ where C: RaftTypeConfig
         self.server_state_handler().update_server_state_if_changed();
     }
 
-    /// Follower/Learner handles install-full-snapshot.
+    /// Installs a full snapshot on a follower or learner node.
     ///
     /// Refer to [`snapshot_replication`](crate::docs::protocol::replication::snapshot_replication)
     /// for the reason the following workflow is needed.
+    ///
+    /// The method processes the given `snapshot` and updates the internal state of the node based
+    /// on the snapshot's metadata. It checks if the `snapshot` is newer than the currently
+    /// committed snapshot. If not, it does nothing.
+    ///
+    /// It returns the condition about when the snapshot is installed and can proceed the commands
+    /// that depends on the state of snapshot.
+    ///
+    /// It returns an `Option<Condition<C>>` indicating the next action:
+    /// - `Some(Condition::StateMachineCommand { command_seq })` if the snapshot will be installed.
+    ///   Further commands that depend on snapshot state should use this condition so that these
+    ///   command block until the condition is satisfied(`RaftCore` receives a `Notify`).
+    /// - Otherwise `None` if the snapshot will not be installed (e.g., if it is not newer than the
+    ///   current state).
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn install_full_snapshot(&mut self, snapshot: Snapshot<C>) {
+    pub(crate) fn install_full_snapshot(&mut self, snapshot: Snapshot<C>) -> Option<Condition<C::NodeId>> {
         let meta = &snapshot.meta;
         tracing::info!("install_full_snapshot: meta:{:?}", meta);
 
@@ -254,7 +269,7 @@ where C: RaftTypeConfig
                 snap_last_log_id.display(),
                 self.state.committed().display()
             );
-            return;
+            return None;
         }
 
         // snapshot_last_log_id can not be None
@@ -267,7 +282,7 @@ where C: RaftTypeConfig
         let mut snap_handler = self.snapshot_handler();
         let updated = snap_handler.update_snapshot(meta.clone());
         if !updated {
-            return;
+            return None;
         }
 
         let local = self.state.get_log_id(snap_last_log_id.index);
@@ -285,9 +300,14 @@ where C: RaftTypeConfig
         ));
 
         self.output.push_command(Command::from(sm::Command::install_full_snapshot(snapshot)));
+        let last_sm_seq = self.output.last_sm_seq();
 
         self.state.purge_upto = Some(snap_last_log_id);
         self.log_handler().purge_log();
+
+        Some(Condition::StateMachineCommand {
+            command_seq: last_sm_seq,
+        })
     }
 
     /// Find the last 2 membership entries in a list of entries.
