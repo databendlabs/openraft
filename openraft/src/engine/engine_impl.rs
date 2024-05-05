@@ -18,7 +18,6 @@ use crate::engine::handler::server_state_handler::ServerStateHandler;
 use crate::engine::handler::snapshot_handler::SnapshotHandler;
 use crate::engine::handler::vote_handler::VoteHandler;
 use crate::engine::Command;
-use crate::engine::Condition;
 use crate::engine::EngineOutput;
 use crate::engine::Respond;
 use crate::entry::RaftPayload;
@@ -465,17 +464,16 @@ where C: RaftTypeConfig
         };
 
         let mut fh = self.following_handler();
-        fh.install_full_snapshot(snapshot);
+
+        // The condition to satisfy before running other command that depends on the snapshot.
+        // In this case, the response can only be sent when the snapshot is installed.
+        let cond = fh.install_full_snapshot(snapshot);
         let res = Ok(SnapshotResponse {
             vote: *self.state.vote_ref(),
         });
 
         self.output.push_command(Command::Respond {
-            // When there is an error, there may still be queued IO, we need to run them before sending back
-            // response.
-            when: Some(Condition::StateMachineCommand {
-                command_seq: self.output.last_sm_seq(),
-            }),
+            when: cond,
             resp: Respond::new(res, tx),
         });
     }
