@@ -94,7 +94,7 @@ where C: RaftTypeConfig
         &mut self,
         vote: Vote<C::NodeId>,
         snapshot: Snapshot<C>,
-        cancel: impl Future<Output = ReplicationClosed> + OptionalSend,
+        cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
         option: RPCOption,
     ) -> Result<SnapshotResponse<C::NodeId>, StreamingError<C, Fatal<C::NodeId>>>;
 
@@ -120,7 +120,7 @@ where C: RaftTypeConfig
         &mut self,
         vote: Vote<C::NodeId>,
         snapshot: Snapshot<C>,
-        cancel: impl Future<Output = ReplicationClosed> + OptionalSend,
+        cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
         option: RPCOption,
     ) -> Result<SnapshotResponse<C::NodeId>, StreamingError<C, Fatal<C::NodeId>>> {
         use crate::network::snapshot_transport::Chunked;
