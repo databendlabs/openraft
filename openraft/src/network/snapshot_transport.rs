@@ -54,7 +54,7 @@ pub trait SnapshotTransport<C: RaftTypeConfig> {
         net: &mut Net,
         vote: Vote<C::NodeId>,
         snapshot: Snapshot<C>,
-        cancel: impl Future<Output = ReplicationClosed> + OptionalSend,
+        cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
         option: RPCOption,
     ) -> Result<SnapshotResponse<C>, StreamingError<C, Fatal<C>>>
     where
@@ -103,7 +103,7 @@ where C::SnapshotData: tokio::io::AsyncRead + tokio::io::AsyncWrite + tokio::io:
         net: &mut Net,
         vote: Vote<C::NodeId>,
         mut snapshot: Snapshot<C>,
-        mut cancel: impl Future<Output = ReplicationClosed> + OptionalSend,
+        mut cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
         option: RPCOption,
     ) -> Result<SnapshotResponse<C>, StreamingError<C, Fatal<C>>>
     where
