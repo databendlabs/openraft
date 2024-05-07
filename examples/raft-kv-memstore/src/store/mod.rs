@@ -1,8 +1,9 @@
 use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::io::Cursor;
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use std::sync::Mutex;
 
 use openraft::alias::SnapshotDataOf;
 use openraft::storage::RaftStateMachine;
@@ -76,7 +77,12 @@ pub struct StateMachineStore {
     /// The Raft state machine.
     pub state_machine: RwLock<StateMachineData>,
 
-    snapshot_idx: Arc<Mutex<u64>>,
+    /// Used in identifier for snapshot.
+    ///
+    /// Note that concurrently created snapshots and snapshots created on different nodes
+    /// are not guaranteed to have sequential `snapshot_idx` values, but this does not matter for
+    /// correctness.
+    snapshot_idx: AtomicU64,
 
     /// The last received snapshot.
     current_snapshot: RwLock<Option<StoredSnapshot>>,
@@ -85,25 +91,19 @@ pub struct StateMachineStore {
 impl RaftSnapshotBuilder<TypeConfig> for Arc<StateMachineStore> {
     #[tracing::instrument(level = "trace", skip(self))]
     async fn build_snapshot(&mut self) -> Result<Snapshot<TypeConfig>, StorageError<NodeId>> {
-        let data;
-        let last_applied_log;
-        let last_membership;
+        // Serialize the data of the state machine.
+        let state_machine = self.state_machine.read().await;
+        let data = serde_json::to_vec(&state_machine.data).map_err(|e| StorageIOError::read_state_machine(&e))?;
 
-        {
-            // Serialize the data of the state machine.
-            let state_machine = self.state_machine.read().await;
-            data = serde_json::to_vec(&*state_machine).map_err(|e| StorageIOError::read_state_machine(&e))?;
+        let last_applied_log = state_machine.last_applied_log;
+        let last_membership = state_machine.last_membership.clone();
 
-            last_applied_log = state_machine.last_applied_log;
-            last_membership = state_machine.last_membership.clone();
-        }
+        // Lock the current snapshot before releasing the lock on the state machine, to avoid a race
+        // condition on the written snapshot
+        let mut current_snapshot = self.current_snapshot.write().await;
+        drop(state_machine);
 
-        let snapshot_idx = {
-            let mut l = self.snapshot_idx.lock().unwrap();
-            *l += 1;
-            *l
-        };
-
+        let snapshot_idx = self.snapshot_idx.fetch_add(1, Ordering::Relaxed) + 1;
         let snapshot_id = if let Some(last) = last_applied_log {
             format!("{}-{}-{}", last.leader_id, last.index, snapshot_idx)
         } else {
@@ -121,10 +121,7 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<StateMachineStore> {
             data: data.clone(),
         };
 
-        {
-            let mut current_snapshot = self.current_snapshot.write().await;
-            *current_snapshot = Some(snapshot);
-        }
+        *current_snapshot = Some(snapshot);
 
         Ok(Snapshot {
             meta,
@@ -196,15 +193,22 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
         };
 
         // Update the state machine.
-        {
-            let updated_state_machine: StateMachineData = serde_json::from_slice(&new_snapshot.data)
-                .map_err(|e| StorageIOError::read_snapshot(Some(new_snapshot.meta.signature()), &e))?;
-            let mut state_machine = self.state_machine.write().await;
-            *state_machine = updated_state_machine;
-        }
+        let updated_state_machine_data = serde_json::from_slice(&new_snapshot.data)
+            .map_err(|e| StorageIOError::read_snapshot(Some(new_snapshot.meta.signature()), &e))?;
+        let updated_state_machine = StateMachineData {
+            last_applied_log: meta.last_log_id,
+            last_membership: meta.last_membership.clone(),
+            data: updated_state_machine_data
+        };
+        let mut state_machine = self.state_machine.write().await;
+        *state_machine = updated_state_machine;
+
+        // Lock the current snapshot before releasing the lock on the state machine, to avoid a race
+        // condition on the written snapshot
+        let mut current_snapshot = self.current_snapshot.write().await;
+        drop(state_machine);
 
         // Update current snapshot.
-        let mut current_snapshot = self.current_snapshot.write().await;
         *current_snapshot = Some(new_snapshot);
         Ok(())
     }
