@@ -116,6 +116,8 @@ features = [
 # "singlethreaded" makes `Raft<C>` a `!Send`, which confuses users.
 # all-features = true
 
+# Disabled appearance order. It produce multiple `Trait`, `Struct` sections in a doc page.
+#
 # Sort modules by appearance order for crate `docs`.
 # https://doc.rust-lang.org/rustdoc/unstable-features.html#--sort-modules-by-appearance-control-how-items-on-module-pages-are-sorted
-rustdoc-args = ["-Z", "unstable-options", "--sort-modules-by-appearance"]
+# rustdoc-args = ["-Z", "unstable-options", "--sort-modules-by-appearance"]

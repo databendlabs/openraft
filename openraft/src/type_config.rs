@@ -77,6 +77,10 @@ pub trait RaftTypeConfig:
 
 #[allow(dead_code)]
 /// Type alias for types used in `RaftTypeConfig`.
+///
+/// Alias are enabled by feature flag [`type-alias`].
+///
+/// [`type-alias`]: crate::docs::feature_flags#feature-flag-type-alias
 pub mod alias {
     use crate::raft::responder::Responder;
     use crate::AsyncRuntime;
