@@ -55,7 +55,7 @@ impl RaftNetworkV2<TypeConfig> for Connection {
         &mut self,
         vote: Vote<NodeId>,
         snapshot: Snapshot<TypeConfig>,
-        _cancel: impl Future<Output = ReplicationClosed> + OptionalSend,
+        _cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
         _option: RPCOption,
     ) -> Result<SnapshotResponse<TypeConfig>, typ::StreamingError<typ::Fatal>> {
         let resp = self

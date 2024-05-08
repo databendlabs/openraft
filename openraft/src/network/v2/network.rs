@@ -73,7 +73,7 @@ where C: RaftTypeConfig
         &mut self,
         vote: Vote<C::NodeId>,
         snapshot: Snapshot<C>,
-        cancel: impl Future<Output = ReplicationClosed> + OptionalSend,
+        cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
         option: RPCOption,
     ) -> Result<SnapshotResponse<C>, StreamingError<C, Fatal<C>>>;
 
