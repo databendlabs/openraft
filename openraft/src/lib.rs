@@ -21,25 +21,38 @@ macro_rules! func_name {
         // nn.split("::").last().unwrap_or_default()
     }};
 }
+
 pub extern crate openraft_macros;
 
 mod change_members;
 mod config;
 mod core;
 mod defensive;
+mod display_ext;
+mod internal_server_state;
+mod leader;
 mod membership;
 mod node;
 mod progress;
 mod quorum;
 mod raft_types;
 mod replication;
+mod runtime;
 mod storage_error;
 mod summary;
+mod try_as_ref;
 mod vote;
 
-#[cfg(feature = "compat")] pub mod compat;
+pub(crate) mod engine;
+pub(crate) mod log_id_range;
+pub(crate) mod raft_state;
+pub(crate) mod timer;
+pub(crate) mod type_config;
+pub(crate) mod utime;
 
 pub mod async_runtime;
+#[cfg(feature = "compat")] pub mod compat;
+pub mod docs;
 pub mod entry;
 pub mod error;
 pub mod impls;
@@ -51,30 +64,11 @@ pub mod raft;
 pub mod storage;
 pub mod testing;
 
-pub(crate) mod engine;
-pub(crate) mod log_id_range;
-pub(crate) mod timer;
-pub(crate) mod type_config;
-pub(crate) mod utime;
-
-mod display_ext;
-
-pub mod docs;
-mod internal_server_state;
-mod leader;
-pub(crate) mod raft_state;
-mod runtime;
-mod try_as_ref;
-
 #[cfg(test)] mod feature_serde_test;
 
 pub use anyerror;
 pub use anyerror::AnyError;
-pub use network::RPCTypes;
-pub use network::RaftNetwork;
-pub use network::RaftNetworkFactory;
 pub use openraft_macros::add_async_trait;
-pub use type_config::RaftTypeConfig;
 
 pub use crate::async_runtime::AsyncRuntime;
 pub use crate::async_runtime::TokioRuntime;
@@ -95,6 +89,9 @@ pub use crate::membership::EffectiveMembership;
 pub use crate::membership::Membership;
 pub use crate::membership::StoredMembership;
 pub use crate::metrics::RaftMetrics;
+pub use crate::network::RPCTypes;
+pub use crate::network::RaftNetwork;
+pub use crate::network::RaftNetworkFactory;
 pub use crate::node::BasicNode;
 pub use crate::node::EmptyNode;
 pub use crate::node::Node;
@@ -120,6 +117,7 @@ pub use crate::storage_error::ToStorageResult;
 pub use crate::storage_error::Violation;
 pub use crate::summary::MessageSummary;
 pub use crate::try_as_ref::TryAsRef;
+pub use crate::type_config::RaftTypeConfig;
 pub use crate::vote::CommittedLeaderId;
 pub use crate::vote::LeaderId;
 pub use crate::vote::Vote;

@@ -1,4 +1,12 @@
 //! Public Raft interface and data types.
+//!
+//! [`Raft`] serves as the primary interface to a Raft node,
+//! facilitating all interactions with the underlying RaftCore.
+//!
+//! While `RaftCore` operates as a singleton within an application, [`Raft`] instances are designed
+//! to be cheaply cloneable.
+//! This allows multiple components within the application that require interaction with `RaftCore`
+//! to efficiently share access.
 
 #[cfg(test)] mod declare_raft_types_test;
 mod external_request;

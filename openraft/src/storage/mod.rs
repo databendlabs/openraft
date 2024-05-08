@@ -35,6 +35,11 @@ use crate::StorageError;
 use crate::StoredMembership;
 use crate::Vote;
 
+/// The metadata of a snapshot.
+///
+/// Including the last log id that included in this snapshot,
+/// the last membership included,
+/// and a snapshot id.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct SnapshotMeta<NID, N>
