@@ -198,7 +198,7 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
         let updated_state_machine = StateMachineData {
             last_applied_log: meta.last_log_id,
             last_membership: meta.last_membership.clone(),
-            data: updated_state_machine_data
+            data: updated_state_machine_data,
         };
         let mut state_machine = self.state_machine.write().await;
         *state_machine = updated_state_machine;

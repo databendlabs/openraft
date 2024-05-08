@@ -1152,11 +1152,9 @@ where
         let snapshot_entries = vec![membership_ent_0::<C>(1, 2, btreeset! {1, 2, 3}), blank_ent_0::<C>(3, 3)];
         sm_l.apply(snapshot_entries).await?;
         let snapshot_last_log_id = Some(log_id_0(3, 3));
-        let snapshot_last_membership= StoredMembership::new(Some(log_id_0(1, 2)), Membership::new(vec![btreeset![1, 2, 3]], None));
-        let snapshot_applied_state = (
-            snapshot_last_log_id.clone(),
-            snapshot_last_membership.clone()
-        );
+        let snapshot_last_membership =
+            StoredMembership::new(Some(log_id_0(1, 2)), Membership::new(vec![btreeset![1, 2, 3]], None));
+        let snapshot_applied_state = (snapshot_last_log_id.clone(), snapshot_last_membership.clone());
 
         tracing::info!("--- build and get snapshot on leader state machine");
         let ss1 = sm_l.get_snapshot_builder().await.build_snapshot().await?;

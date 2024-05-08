@@ -4,7 +4,8 @@ use openraft::testing::StoreBuilder;
 use openraft::testing::Suite;
 use openraft::StorageError;
 
-use crate::store::{LogStore, StateMachineStore};
+use crate::store::LogStore;
+use crate::store::StateMachineStore;
 use crate::NodeId;
 use crate::TypeConfig;
 
