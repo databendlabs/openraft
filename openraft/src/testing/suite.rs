@@ -116,8 +116,9 @@ where
         run_fut(run_test(builder, Self::apply_single))?;
         run_fut(run_test(builder, Self::apply_multiple))?;
 
-        // TODO(xp): test: finalized_snapshot, do_log_compaction, begin_receiving_snapshot,
-        // get_current_snapshot
+        run_fut(Self::transfer_snapshot(builder))?;
+
+        // TODO(xp): test: do_log_compaction
 
         Ok(())
     }
@@ -1132,6 +1133,60 @@ where
         assert_eq!(last_applied, Some(log_id_0(1, 1)),);
         assert_eq!(mem.membership(), &Membership::new(vec![btreeset! {1,2}], None));
 
+        Ok(())
+    }
+
+    /// Rudimentary test for snapshotting that builds a snapshot on one node and installs it on
+    /// another
+    pub async fn transfer_snapshot(builder: &B) -> Result<(), StorageError<C::NodeId>> {
+        // Create a snapshot on sm_l, and install it on sm_f
+        let (_g_l, _store_l, mut sm_l) = builder.build().await?;
+        let (_g_f, _store_f, mut sm_f) = builder.build().await?;
+
+        tracing::info!("--- make sure that initial snapshot is empty");
+        // Start with empty snapshot
+        assert!(sm_l.get_current_snapshot().await?.is_none(), "initialized snapshot");
+        assert!(sm_f.get_current_snapshot().await?.is_none(), "initialized snapshot");
+
+        // Add a few entries so we have state to snapshot
+        let snapshot_entries = vec![membership_ent_0::<C>(1, 2, btreeset! {1, 2, 3}), blank_ent_0::<C>(3, 3)];
+        sm_l.apply(snapshot_entries).await?;
+        let snapshot_last_log_id = Some(log_id_0(3, 3));
+        let snapshot_last_membership =
+            StoredMembership::new(Some(log_id_0(1, 2)), Membership::new(vec![btreeset![1, 2, 3]], None));
+        let snapshot_applied_state = (snapshot_last_log_id, snapshot_last_membership.clone());
+
+        tracing::info!("--- build and get snapshot on leader state machine");
+        let ss1 = sm_l.get_snapshot_builder().await.build_snapshot().await?;
+        assert_eq!(
+            ss1.meta.last_log_id, snapshot_last_log_id,
+            "built snapshot has wrong last log id"
+        );
+        assert_eq!(
+            ss1.meta.last_membership, snapshot_last_membership,
+            "built snapshot has wrong last membership"
+        );
+        let ss1_cur = sm_l.get_current_snapshot().await?.expect("uninitialized snapshot");
+        assert_eq!(
+            ss1_cur.meta, ss1.meta,
+            "current snapshot metadata not updated correctly on leader sm"
+        );
+
+        tracing::info!("--- install snapshot on follower state machine");
+        let mut ss2_box = sm_f.begin_receiving_snapshot().await?;
+        *ss2_box = *ss1_cur.snapshot;
+
+        sm_f.install_snapshot(&ss1_cur.meta, ss2_box).await?;
+
+        tracing::info!("--- check correctness of installed snapshot");
+        // ... by requesting whole snapshot
+        let ss2 = sm_f.get_current_snapshot().await?.expect("uninitialized snapshot");
+        assert_eq!(
+            ss2.meta, ss1.meta,
+            "snapshot metadata not updated correctly on follower sm"
+        );
+        // ... by checking smstore state
+        assert_eq!(sm_f.applied_state().await?, snapshot_applied_state);
         Ok(())
     }
 
