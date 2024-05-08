@@ -1139,7 +1139,7 @@ where
     /// Rudimentary test for snapshotting that builds a snapshot on one node and installs it on
     /// another
     pub async fn transfer_snapshot(builder: &B) -> Result<(), StorageError<C::NodeId>> {
-        // Create a snapshot on sm1, and install it on sm2
+        // Create a snapshot on sm_l, and install it on sm_f
         let (_g_l, _store_l, mut sm_l) = builder.build().await?;
         let (_g_f, _store_f, mut sm_f) = builder.build().await?;
 
