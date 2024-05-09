@@ -25,6 +25,8 @@ To learn about the data structures used in Openraft and the commit protocol, see
   - [`Leader lease`](`crate::docs::data::leader_lease`) explains leader lease for a Leader and a Follower;
   - [`Extended membership`](`crate::docs::data::extended_membership`) explains how members are organized in Openraft;
   - [`Effective membership`](`crate::docs::data::effective_membership`) explains when membership config takes effect;
+- [`components`](`crate::docs::components`) explains the components in Openraft;
+  - [`RaftStateMachine`](`crate::docs::components::state_machine`) is the core API for managing the state machine and snapshot functionalities;
 - [`protocol`](crate::docs::protocol) :
   - [`replication`](`crate::docs::protocol::replication`);
     - [`leader_lease`](`crate::docs::protocol::replication::leader_lease`) outlines the leader validity criteria for Leaders and Followers;

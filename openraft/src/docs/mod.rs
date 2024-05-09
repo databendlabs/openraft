@@ -12,6 +12,9 @@ pub mod cluster_control;
 pub mod feature_flags;
 
 pub mod data;
+
+pub mod components;
+
 pub mod protocol;
 
 pub mod internal;
