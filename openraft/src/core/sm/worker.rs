@@ -127,9 +127,9 @@ where
     }
     #[tracing::instrument(level = "debug", skip_all)]
     async fn apply(&mut self, entries: Vec<C::Entry>) -> Result<ApplyResult<C>, StorageError<C::NodeId>> {
-        // TODO: prepare response before apply_to_state_machine,
+        // TODO: prepare response before apply,
         //       so that an Entry does not need to be Clone,
-        //       and no references will be used by apply_to_state_machine
+        //       and no references will be used by apply
 
         let since = entries.first().map(|x| x.get_log_id().index).unwrap();
         let end = entries.last().map(|x| x.get_log_id().index + 1).unwrap();

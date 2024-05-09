@@ -132,6 +132,8 @@ where C: RaftTypeConfig
 ///
 /// Snapshot is part of the state machine, because usually a snapshot is the persisted state of the
 /// state machine.
+///
+/// See: [`StateMachine`](crate::docs::components::state_machine)
 #[add_async_trait]
 pub trait RaftStateMachine<C>: OptionalSend + OptionalSync + 'static
 where C: RaftTypeConfig
@@ -149,6 +151,8 @@ where C: RaftTypeConfig
     ///
     /// It is all right to return a membership with greater log id than the
     /// last-applied-log-id.
+    /// Because upon startup, the last membership will be loaded by scanning logs from the
+    /// `last-applied-log-id`.
     async fn applied_state(
         &mut self,
     ) -> Result<(Option<LogId<C::NodeId>>, StoredMembership<C>), StorageError<C::NodeId>>;
@@ -174,12 +178,11 @@ where C: RaftTypeConfig
     /// An implementation may choose to persist either the state machine or the snapshot:
     ///
     /// - An implementation with persistent state machine: persists the state on disk before
-    ///   returning from `apply_to_state_machine()`. So that a snapshot does not need to be
-    ///   persistent.
+    ///   returning from `apply()`. So that a snapshot does not need to be persistent.
     ///
-    /// - An implementation with persistent snapshot: `apply_to_state_machine()` does not have to
-    ///   persist state on disk. But every snapshot has to be persistent. And when starting up the
-    ///   application, the state machine should be rebuilt from the last snapshot.
+    /// - An implementation with persistent snapshot: `apply()` does not have to persist state on
+    ///   disk. But every snapshot has to be persistent. And when starting up the application, the
+    ///   state machine should be rebuilt from the last snapshot.
     async fn apply<I>(&mut self, entries: I) -> Result<Vec<C::R>, StorageError<C::NodeId>>
     where
         I: IntoIterator<Item = C::Entry> + OptionalSend,
