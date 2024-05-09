@@ -743,7 +743,7 @@ where
         since: u64,
         upto_index: u64,
     ) -> Result<(), StorageError<C::NodeId>> {
-        tracing::debug!(upto_index = display(upto_index), "apply_to_state_machine");
+        tracing::debug!(upto_index = display(upto_index), "{}", func_name!());
 
         let end = upto_index + 1;
 

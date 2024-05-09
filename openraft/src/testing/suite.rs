@@ -135,7 +135,7 @@ where
         {
             apply(&mut sm, [
                 blank_ent_0::<C>(1, 1),
-                membership_ent_0::<C>(1, 1, btreeset! {3,4,5}),
+                membership_ent_0::<C>(1, 2, btreeset! {3,4,5}),
             ])
             .await?;
 
@@ -1208,6 +1208,7 @@ where
     }
 }
 
+/// Create a log id with node id 0 for testing.
 fn log_id_0<NID>(term: u64, index: u64) -> LogId<NID>
 where NID: NodeId + From<u64> {
     LogId {
