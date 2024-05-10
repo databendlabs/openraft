@@ -137,7 +137,14 @@ where C: RaftTypeConfig
         self.state.extend_log_ids(&entries);
         self.append_membership(entries.iter());
 
-        self.output.push_command(Command::AppendInputEntries { entries });
+        // TODO: with asynchronous IO in future,
+        //       do not write log until vote being committed,
+        //       or consistency is broken.
+        self.output.push_command(Command::AppendInputEntries {
+            // A follower should always use the node's vote.
+            vote: *self.state.vote_ref(),
+            entries,
+        });
     }
 
     /// Commit entries that are already committed by the leader.

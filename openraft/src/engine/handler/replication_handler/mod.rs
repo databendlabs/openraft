@@ -71,7 +71,15 @@ where C: RaftTypeConfig
         );
         self.state.log_ids.append(log_id);
         let entry = C::Entry::new_blank(log_id);
-        self.output.push_command(Command::AppendEntry { entry });
+
+        // TODO: with asynchronous IO in future,
+        //       do not write log until vote being committed,
+        //       or consistency is broken.
+        self.output.push_command(Command::AppendEntry {
+            // A leader should always use the leader's vote.
+            vote: self.leader.vote,
+            entry,
+        });
 
         self.update_local_progress(Some(log_id));
     }

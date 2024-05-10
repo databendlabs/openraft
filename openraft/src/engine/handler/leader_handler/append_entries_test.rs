@@ -121,6 +121,7 @@ fn test_leader_append_entries_normal() -> anyhow::Result<()> {
     assert_eq!(
         vec![
             Command::AppendInputEntries {
+                vote: Vote::new_committed(3, 1),
                 entries: vec![
                     blank_ent(3, 1, 4), //
                     blank_ent(3, 1, 5),
@@ -180,6 +181,7 @@ fn test_leader_append_entries_single_node_leader() -> anyhow::Result<()> {
 
     assert_eq!(
         vec![Command::AppendInputEntries {
+            vote: Vote::new_committed(3, 1),
             entries: vec![
                 blank_ent(3, 1, 4), //
                 blank_ent(3, 1, 5),
@@ -234,6 +236,7 @@ fn test_leader_append_entries_with_membership_log() -> anyhow::Result<()> {
     assert_eq!(
         vec![
             Command::AppendInputEntries {
+                vote: Vote::new_committed(3, 1),
                 entries: vec![
                     blank_ent(3, 1, 4), //
                     Entry::new_membership(log_id(3, 1, 5), m1_2()),

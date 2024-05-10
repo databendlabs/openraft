@@ -10,11 +10,13 @@ use crate::entry::RaftEntry;
 use crate::raft_state::LogStateReader;
 use crate::testing::blank_ent;
 use crate::testing::log_id;
+use crate::utime::UTime;
 use crate::EffectiveMembership;
 use crate::Entry;
 use crate::EntryPayload;
 use crate::Membership;
 use crate::MembershipState;
+use crate::Vote;
 
 fn m01() -> Membership<u64, ()> {
     Membership::new(vec![btreeset! {0,1}], None)
@@ -78,6 +80,7 @@ fn test_follower_do_append_entries_empty() -> anyhow::Result<()> {
 #[test]
 fn test_follower_do_append_entries_no_membership_entries() -> anyhow::Result<()> {
     let mut eng = eng();
+    eng.state.vote = UTime::without_utime(Vote::new(1, 1));
 
     eng.following_handler().do_append_entries(
         vec![
@@ -108,6 +111,7 @@ fn test_follower_do_append_entries_no_membership_entries() -> anyhow::Result<()>
         vec![
             //
             Command::AppendInputEntries {
+                vote: Vote::new(1, 1),
                 entries: vec![blank_ent(3, 1, 4)]
             },
         ],
@@ -124,6 +128,7 @@ fn test_follower_do_append_entries_one_membership_entry() -> anyhow::Result<()> 
     // - Follower become Learner, since it is not in the new effective membership.
     let mut eng = eng();
     eng.config.id = 2; // make it a member, the become learner
+    eng.state.vote = UTime::without_utime(Vote::new(1, 1));
 
     eng.following_handler().do_append_entries(
         vec![
@@ -164,6 +169,7 @@ fn test_follower_do_append_entries_one_membership_entry() -> anyhow::Result<()> 
     );
     assert_eq!(
         vec![Command::AppendInputEntries {
+            vote: Vote::new(1, 1),
             entries: vec![
                 //
                 blank_ent(3, 1, 4),
@@ -187,6 +193,7 @@ fn test_follower_do_append_entries_three_membership_entries() -> anyhow::Result<
     let mut eng = eng();
     eng.config.id = 5; // make it a learner, then become follower
     eng.state.server_state = eng.calc_server_state();
+    eng.state.vote = UTime::without_utime(Vote::new(1, 1));
 
     eng.following_handler().do_append_entries(
         vec![
@@ -225,6 +232,7 @@ fn test_follower_do_append_entries_three_membership_entries() -> anyhow::Result<
     );
     assert_eq!(
         vec![Command::AppendInputEntries {
+            vote: Vote::new(1, 1),
             entries: vec![
                 blank_ent(3, 1, 4),
                 Entry::<UTConfig>::new_membership(log_id(3, 1, 5), m01()),

@@ -69,6 +69,7 @@ fn test_elect() -> anyhow::Result<()> {
                 Command::BecomeLeader,
                 Command::RebuildReplicationStreams { targets: vec![] },
                 Command::AppendEntry {
+                    vote: Vote::new_committed(1, 1),
                     entry: Entry::<UTConfig>::new_blank(log_id(1, 1, 1))
                 },
                 Command::ReplicateCommitted {
@@ -127,6 +128,7 @@ fn test_elect() -> anyhow::Result<()> {
                 Command::BecomeLeader,
                 Command::RebuildReplicationStreams { targets: vec![] },
                 Command::AppendEntry {
+                    vote: Vote::new_committed(2, 1),
                     entry: Entry::<UTConfig>::new_blank(log_id(2, 1, 1))
                 },
                 Command::ReplicateCommitted {
