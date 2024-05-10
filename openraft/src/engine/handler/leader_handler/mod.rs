@@ -63,7 +63,10 @@ where C: RaftTypeConfig
             }
         }
 
-        self.output.push_command(Command::AppendInputEntries { entries });
+        self.output.push_command(Command::AppendInputEntries {
+            vote: self.leader.vote,
+            entries,
+        });
 
         let mut rh = self.replication_handler();
 

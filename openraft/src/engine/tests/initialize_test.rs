@@ -57,6 +57,7 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
         assert_eq!(
             vec![
                 Command::AppendEntry {
+                    vote: Vote::default(),
                     entry: Entry::<UTConfig>::new_membership(LogId::default(), m1())
                 },
                 // When update the effective membership, the engine set it to Follower.
@@ -71,6 +72,7 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
                 Command::BecomeLeader,
                 Command::RebuildReplicationStreams { targets: vec![] },
                 Command::AppendEntry {
+                    vote: Vote::new_committed(1, 1),
                     entry: Entry::<UTConfig>::new_blank(log_id(1, 1, 1))
                 },
                 Command::ReplicateCommitted {
@@ -130,6 +132,7 @@ fn test_initialize() -> anyhow::Result<()> {
         assert_eq!(
             vec![
                 Command::AppendEntry {
+                    vote: Vote::default(),
                     entry: Entry::new_membership(LogId::default(), m12())
                 },
                 // When update the effective membership, the engine set it to Follower.

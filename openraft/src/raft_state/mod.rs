@@ -22,8 +22,8 @@ mod membership_state;
 pub(crate) mod snapshot_streaming;
 mod vote_state_reader;
 
+#[allow(unused)] pub(crate) use io_state::log_io_id::LogIOId;
 pub(crate) use io_state::IOState;
-#[allow(unused)] pub(crate) use io_state::LogIOId;
 
 #[cfg(test)]
 mod tests {

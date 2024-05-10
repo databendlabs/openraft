@@ -171,7 +171,10 @@ where C: RaftTypeConfig
         let em = EffectiveMembership::new_arc(Some(log_id), m.clone());
         self.state.membership_state.append(em);
 
-        self.output.push_command(Command::AppendEntry { entry });
+        self.output.push_command(Command::AppendEntry {
+            vote: *self.state.vote_ref(),
+            entry,
+        });
 
         self.server_state_handler().update_server_state_if_changed();
 

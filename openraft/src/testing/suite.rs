@@ -10,6 +10,7 @@ use maplit::btreeset;
 use crate::entry::RaftEntry;
 use crate::log_id::RaftLogId;
 use crate::membership::EffectiveMembership;
+use crate::raft_state::LogIOId;
 use crate::raft_state::LogStateReader;
 use crate::raft_state::RaftState;
 use crate::storage::LogFlushed;
@@ -1277,14 +1278,14 @@ async fn append<C, LS, I>(store: &mut LS, entries: I) -> Result<(), StorageError
 where
     C: RaftTypeConfig,
     LS: RaftLogStorage<C>,
-    I: IntoIterator<Item = C::Entry>,
+    I: IntoIterator<Item = C::Entry> + OptionalSend,
+    I::IntoIter: OptionalSend,
 {
-    let entries = entries.into_iter().collect::<Vec<_>>();
-    let last_log_id = *entries.last().unwrap().get_log_id();
-
     let (tx, rx) = AsyncRuntimeOf::<C>::oneshot();
 
-    let cb = LogFlushed::new(Some(last_log_id), tx);
+    // Dummy log io id for blocking append
+    let log_io_id = LogIOId::<C::NodeId>::new(Vote::<C::NodeId>::default(), None);
+    let cb = LogFlushed::new(log_io_id, tx);
 
     store.append(entries, cb).await?;
     rx.await.unwrap().map_err(|e| StorageIOError::write_logs(AnyError::error(e)))?;
