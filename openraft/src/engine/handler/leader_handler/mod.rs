@@ -63,7 +63,15 @@ where C: RaftTypeConfig
             }
         }
 
-        self.output.push_command(Command::AppendInputEntries { entries });
+        // TODO: with asynchronous IO in future,
+        //       do not write log until vote being committed,
+        //       or consistency is broken.
+        self.output.push_command(Command::AppendInputEntries {
+            // A leader should always use the leader's vote.
+            // It is allowed to be different from local vote.
+            vote: self.leader.vote,
+            entries,
+        });
 
         let mut rh = self.replication_handler();
 

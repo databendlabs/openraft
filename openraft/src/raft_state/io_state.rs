@@ -1,16 +1,11 @@
+use log_io_id::LogIOId;
+
 use crate::display_ext::DisplayOption;
-use crate::LeaderId;
 use crate::LogId;
 use crate::NodeId;
 use crate::Vote;
 
-#[derive(Debug, Clone, Copy)]
-#[derive(Default)]
-#[derive(PartialEq, Eq)]
-pub(crate) struct LogIOId<NID: NodeId> {
-    pub(crate) leader_id: LeaderId<NID>,
-    pub(crate) log_id: Option<LogId<NID>>,
-}
+pub(crate) mod log_io_id;
 
 /// IOState tracks the state of actually happened io including log flushed, applying log to state
 /// machine or snapshot building.
