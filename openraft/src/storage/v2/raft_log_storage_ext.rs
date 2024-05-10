@@ -1,6 +1,7 @@
 use anyerror::AnyError;
 use openraft_macros::add_async_trait;
 
+use crate::raft_state::LogIOId;
 use crate::storage::LogFlushed;
 use crate::storage::RaftLogStorage;
 use crate::type_config::alias::AsyncRuntimeOf;
@@ -9,6 +10,7 @@ use crate::OptionalSend;
 use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::StorageIOError;
+use crate::Vote;
 
 /// Extension trait for RaftLogStorage to provide utility methods.
 ///
@@ -27,7 +29,10 @@ where C: RaftTypeConfig
     {
         let (tx, rx) = AsyncRuntimeOf::<C>::oneshot();
 
-        let callback = LogFlushed::new(None, tx);
+        // dummy log_io_id
+        let log_io_id = LogIOId::<C::NodeId>::new(Vote::<C::NodeId>::default(), None);
+
+        let callback = LogFlushed::<C>::new(log_io_id, tx);
         self.append(entries, callback).await?;
         rx.await
             .map_err(|e| StorageIOError::write_logs(AnyError::error(e)))?

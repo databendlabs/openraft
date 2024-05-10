@@ -72,6 +72,7 @@ use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
 use crate::raft::ClientWriteResponse;
 use crate::raft::VoteRequest;
+use crate::raft_state::LogIOId;
 use crate::raft_state::LogStateReader;
 use crate::replication;
 use crate::replication::request::Replicate;
@@ -709,6 +710,7 @@ where
     pub(crate) async fn append_to_log<I>(
         &mut self,
         entries: I,
+        vote: Vote<C::NodeId>,
         last_log_id: LogId<C::NodeId>,
     ) -> Result<(), StorageError<C::NodeId>>
     where
@@ -718,7 +720,10 @@ where
         tracing::debug!("append_to_log");
 
         let (tx, rx) = C::AsyncRuntime::oneshot();
-        let callback = LogFlushed::new(Some(last_log_id), tx);
+        let log_io_id = LogIOId::new(vote, Some(last_log_id));
+
+        let callback = LogFlushed::new(log_io_id, tx);
+
         self.log_store.append(entries, callback).await?;
         rx.await
             .map_err(|e| StorageIOError::write_logs(AnyError::error(e)))?
@@ -1591,11 +1596,11 @@ where
             Command::QuitLeader => {
                 self.leader_data = None;
             }
-            Command::AppendEntry { entry } => {
+            Command::AppendEntry { vote, entry } => {
                 let log_id = *entry.get_log_id();
                 tracing::debug!("AppendEntry: {}", &entry);
 
-                self.append_to_log([entry], log_id).await?;
+                self.append_to_log([entry], vote, log_id).await?;
 
                 // The leader may have changed.
                 // But reporting to a different leader is not a problem.
@@ -1603,11 +1608,11 @@ where
                     lh.replication_handler().update_local_progress(Some(log_id));
                 }
             }
-            Command::AppendInputEntries { entries } => {
+            Command::AppendInputEntries { vote, entries } => {
                 let last_log_id = *entries.last().unwrap().get_log_id();
                 tracing::debug!("AppendInputEntries: {}", DisplaySlice::<_>(&entries),);
 
-                self.append_to_log(entries, last_log_id).await?;
+                self.append_to_log(entries, vote, last_log_id).await?;
 
                 // The leader may have changed.
                 // But reporting to a different leader is not a problem.

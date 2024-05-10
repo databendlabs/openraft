@@ -5,7 +5,7 @@ use std::io;
 use tokio::sync::oneshot;
 
 use crate::async_runtime::AsyncOneshotSendExt;
-use crate::display_ext::DisplayOption;
+use crate::raft_state::io_state::log_io_id::LogIOId;
 use crate::type_config::alias::OneshotSenderOf;
 use crate::LogId;
 use crate::RaftTypeConfig;
@@ -15,18 +15,18 @@ use crate::StorageIOError;
 pub struct LogFlushed<C>
 where C: RaftTypeConfig
 {
-    last_log_id: Option<LogId<C::NodeId>>,
-    tx: OneshotSenderOf<C, Result<Option<LogId<C::NodeId>>, io::Error>>,
+    log_io_id: LogIOId<C::NodeId>,
+    tx: OneshotSenderOf<C, Result<LogIOId<C::NodeId>, io::Error>>,
 }
 
 impl<C> LogFlushed<C>
 where C: RaftTypeConfig
 {
     pub(crate) fn new(
-        last_log_id: Option<LogId<C::NodeId>>,
-        tx: OneshotSenderOf<C, Result<Option<LogId<C::NodeId>>, io::Error>>,
+        log_io_id: LogIOId<C::NodeId>,
+        tx: OneshotSenderOf<C, Result<LogIOId<C::NodeId>, io::Error>>,
     ) -> Self {
-        Self { last_log_id, tx }
+        Self { log_io_id, tx }
     }
 
     /// Report log io completion event.
@@ -34,14 +34,10 @@ where C: RaftTypeConfig
     /// It will be called when the log is successfully appended to the storage or an error occurs.
     pub fn log_io_completed(self, result: Result<(), io::Error>) {
         let res = if let Err(e) = result {
-            tracing::error!(
-                "LogFlush error: {}, while flushing upto {}",
-                e,
-                DisplayOption(&self.last_log_id)
-            );
+            tracing::error!("LogFlush error: {}, while flushing upto {}", e, self.log_io_id);
             self.tx.send(Err(e))
         } else {
-            self.tx.send(Ok(self.last_log_id))
+            self.tx.send(Ok(self.log_io_id))
         };
 
         if let Err(e) = res {

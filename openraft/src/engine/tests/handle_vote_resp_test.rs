@@ -259,6 +259,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
                     targets: vec![(2, ProgressEntry::empty(1))]
                 },
                 Command::AppendEntry {
+                    vote: Vote::new_committed(2, 1),
                     entry: Entry::<UTConfig>::new_blank(log_id(2, 1, 1)),
                 },
                 Command::Replicate {
