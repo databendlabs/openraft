@@ -6,7 +6,6 @@ use crate::engine::handler::snapshot_handler::SnapshotHandler;
 use crate::engine::Command;
 use crate::engine::EngineConfig;
 use crate::engine::EngineOutput;
-use crate::entry::RaftEntry;
 use crate::internal_server_state::LeaderQuorumSet;
 use crate::leader::Leading;
 use crate::progress::entry::ProgressEntry;
@@ -57,30 +56,6 @@ pub(crate) enum SendNone {
 impl<'x, C> ReplicationHandler<'x, C>
 where C: RaftTypeConfig
 {
-    /// Append a blank log.
-    ///
-    /// It is used by the leader when leadership is established.
-    #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn append_blank_log(&mut self) {
-        let log_id = LogId::new(
-            self.state.vote_ref().committed_leader_id().unwrap(),
-            self.state.last_log_id().next_index(),
-        );
-        self.state.log_ids.append(log_id);
-        let entry = C::Entry::new_blank(log_id);
-
-        // TODO: with asynchronous IO in future,
-        //       do not write log until vote being committed,
-        //       or consistency is broken.
-        self.output.push_command(Command::AppendEntry {
-            // A leader should always use the leader's vote.
-            vote: self.leader.vote,
-            entry,
-        });
-
-        self.update_local_progress(Some(log_id));
-    }
-
     /// Append a new membership and update related state such as replication streams.
     ///
     /// It is called by the leader when a new membership log is appended to log store.

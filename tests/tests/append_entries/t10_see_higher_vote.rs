@@ -34,9 +34,9 @@ async fn append_sees_higher_vote() -> Result<()> {
 
     let mut router = RaftRouter::new(config.clone());
 
-    let _log_index = router.new_cluster(btreeset! {0,1}, btreeset! {}).await?;
+    let log_index = router.new_cluster(btreeset! {0,1}, btreeset! {}).await?;
 
-    tracing::info!("--- upgrade vote on node-1");
+    tracing::info!(log_index, "--- upgrade vote on node-1");
     {
         // Let leader lease expire
         sleep(Duration::from_millis(800)).await;

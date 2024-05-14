@@ -33,14 +33,6 @@ where C: RaftTypeConfig
     /// No longer a leader. Clean up leader's data.
     QuitLeader,
 
-    /// Append one entry.
-    AppendEntry {
-        /// Same as the `vote` in [`Command::AppendInputEntries`].
-        vote: Vote<C::NodeId>,
-
-        entry: C::Entry,
-    },
-
     /// Append a `range` of entries.
     AppendInputEntries {
         /// The vote of the leader that submits the entries to write.
@@ -139,7 +131,6 @@ where
         match (self, other) {
             (Command::BecomeLeader,                            Command::BecomeLeader)                                                          => true,
             (Command::QuitLeader,                              Command::QuitLeader)                                                            => true,
-            (Command::AppendEntry { vote, entry },             Command::AppendEntry { vote: vb, entry: b }, )                                  => vote == vb && entry == b,
             (Command::AppendInputEntries { vote, entries },    Command::AppendInputEntries { vote: vb, entries: b }, )                         => vote == vb && entries == b,
             (Command::ReplicateCommitted { committed },        Command::ReplicateCommitted { committed: b }, )                                 => committed == b,
             (Command::Commit { seq, already_committed, upto, }, Command::Commit { seq: b_seq, already_committed: b_committed, upto: b_upto, }, ) => seq == b_seq && already_committed == b_committed && upto == b_upto,
@@ -168,7 +159,6 @@ where C: RaftTypeConfig
             Command::RebuildReplicationStreams { .. } => CommandKind::Main,
             Command::Respond { .. }                   => CommandKind::Main,
 
-            Command::AppendEntry { .. }               => CommandKind::Log,
             Command::AppendInputEntries { .. }        => CommandKind::Log,
             Command::SaveVote { .. }                  => CommandKind::Log,
             Command::PurgeLog { .. }                  => CommandKind::Log,
@@ -192,7 +182,6 @@ where C: RaftTypeConfig
         match self {
             Command::BecomeLeader                     => None,
             Command::QuitLeader                       => None,
-            Command::AppendEntry { .. }               => None,
             Command::AppendInputEntries { .. }        => None,
             Command::ReplicateCommitted { .. }        => None,
             // TODO: Apply also write `committed` to log-store, which should be run in CommandKind::Log

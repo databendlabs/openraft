@@ -49,7 +49,9 @@ where C: RaftTypeConfig
             return;
         }
 
-        self.state.assign_log_ids(&mut entries);
+        // Engine::leader_handler() ensures it is a valid leader.
+        self.leader.assign_log_ids(&mut entries).unwrap();
+
         self.state.extend_log_ids_from_same_leader(&entries);
 
         let mut membership_entry = None;
