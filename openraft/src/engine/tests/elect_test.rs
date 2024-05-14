@@ -68,23 +68,9 @@ fn test_elect() -> anyhow::Result<()> {
                 },
                 Command::BecomeLeader,
                 Command::RebuildReplicationStreams { targets: vec![] },
-                Command::AppendEntry {
+                Command::AppendInputEntries {
                     vote: Vote::new_committed(1, 1),
-                    entry: Entry::<UTConfig>::new_blank(log_id(1, 1, 1))
-                },
-                Command::ReplicateCommitted {
-                    committed: Some(LogId {
-                        leader_id: CommittedLeaderId::new(1, 1),
-                        index: 1,
-                    },),
-                },
-                Command::Commit {
-                    seq: 1,
-                    already_committed: None,
-                    upto: LogId {
-                        leader_id: CommittedLeaderId::new(1, 1),
-                        index: 1,
-                    },
+                    entries: vec![Entry::<UTConfig>::new_blank(log_id(1, 1, 1))]
                 },
             ],
             eng.output.take_commands()
@@ -127,23 +113,9 @@ fn test_elect() -> anyhow::Result<()> {
                 },
                 Command::BecomeLeader,
                 Command::RebuildReplicationStreams { targets: vec![] },
-                Command::AppendEntry {
+                Command::AppendInputEntries {
                     vote: Vote::new_committed(2, 1),
-                    entry: Entry::<UTConfig>::new_blank(log_id(2, 1, 1))
-                },
-                Command::ReplicateCommitted {
-                    committed: Some(LogId {
-                        leader_id: CommittedLeaderId::new(2, 1),
-                        index: 1,
-                    },),
-                },
-                Command::Commit {
-                    seq: 1,
-                    already_committed: None,
-                    upto: LogId {
-                        leader_id: CommittedLeaderId::new(2, 1),
-                        index: 1,
-                    },
+                    entries: vec![Entry::<UTConfig>::new_blank(log_id(2, 1, 1))]
                 },
             ],
             eng.output.take_commands()

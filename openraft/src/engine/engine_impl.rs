@@ -20,6 +20,7 @@ use crate::engine::handler::vote_handler::VoteHandler;
 use crate::engine::Command;
 use crate::engine::EngineOutput;
 use crate::engine::Respond;
+use crate::entry::RaftEntry;
 use crate::entry::RaftPayload;
 use crate::error::ForwardToLeader;
 use crate::error::Infallible;
@@ -28,7 +29,6 @@ use crate::error::NotAllowed;
 use crate::error::NotInMembers;
 use crate::error::RejectAppendEntries;
 use crate::internal_server_state::InternalServerState;
-use crate::membership::EffectiveMembership;
 use crate::raft::responder::Responder;
 use crate::raft::AppendEntriesResponse;
 use crate::raft::SnapshotResponse;
@@ -155,25 +155,13 @@ where C: RaftTypeConfig
     pub(crate) fn initialize(&mut self, mut entry: C::Entry) -> Result<(), InitializeError<C::NodeId, C::Node>> {
         self.check_initialize()?;
 
-        self.state.assign_log_ids([&mut entry]);
-        let log_id = *entry.get_log_id();
-        self.state.extend_log_ids_from_same_leader(&[log_id]);
+        // The very first log id
+        entry.set_log_id(&LogId::default());
 
         let m = entry.get_membership().expect("the only log entry for initializing has to be membership log");
         self.check_members_contain_me(m)?;
 
-        tracing::debug!("update effective membership: log_id:{} {}", log_id, m.summary());
-
-        let em = EffectiveMembership::new_arc(Some(log_id), m.clone());
-        self.state.membership_state.append(em);
-
-        self.output.push_command(Command::AppendEntry {
-            // When initialize, it behaves as a learner.
-            vote: *self.state.vote_ref(),
-            entry,
-        });
-
-        self.server_state_handler().update_server_state_if_changed();
+        self.following_handler().do_append_entries(vec![entry], 0);
 
         // With the new config, start to elect to become leader
         self.elect();
@@ -663,8 +651,11 @@ where C: RaftTypeConfig
         //       Thus append_blank_log() can be moved before rebuild_replication_streams()
 
         rh.rebuild_replication_streams();
-        rh.append_blank_log();
-        rh.initiate_replication(SendNone::False);
+
+        // Safe unwrap(): Leader is just established
+        self.leader_handler()
+            .unwrap()
+            .leader_append_entries(vec![C::Entry::new_blank(LogId::<C::NodeId>::default())]);
     }
 
     /// Check if a raft node is in a state that allows to initialize.

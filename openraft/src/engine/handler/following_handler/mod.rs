@@ -118,7 +118,7 @@ where C: RaftTypeConfig
     ///
     /// Membership config changes are also detected and applied here.
     #[tracing::instrument(level = "debug", skip(self, entries))]
-    fn do_append_entries(&mut self, mut entries: Vec<C::Entry>, since: usize) {
+    pub(crate) fn do_append_entries(&mut self, mut entries: Vec<C::Entry>, since: usize) {
         let l = entries.len();
 
         if since == l {

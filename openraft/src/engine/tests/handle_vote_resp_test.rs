@@ -258,9 +258,9 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
                 Command::RebuildReplicationStreams {
                     targets: vec![(2, ProgressEntry::empty(1))]
                 },
-                Command::AppendEntry {
+                Command::AppendInputEntries {
                     vote: Vote::new_committed(2, 1),
-                    entry: Entry::<UTConfig>::new_blank(log_id(2, 1, 1)),
+                    entries: vec![Entry::<UTConfig>::new_blank(log_id(2, 1, 1))],
                 },
                 Command::Replicate {
                     target: 2,

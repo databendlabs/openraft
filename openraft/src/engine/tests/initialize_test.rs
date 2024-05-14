@@ -56,9 +56,9 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
 
         assert_eq!(
             vec![
-                Command::AppendEntry {
+                Command::AppendInputEntries {
                     vote: Vote::default(),
-                    entry: Entry::<UTConfig>::new_membership(LogId::default(), m1())
+                    entries: vec![Entry::<UTConfig>::new_membership(LogId::default(), m1())],
                 },
                 // When update the effective membership, the engine set it to Follower.
                 // But when initializing, it will switch to Candidate at once, in the last output
@@ -71,23 +71,9 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
                 },
                 Command::BecomeLeader,
                 Command::RebuildReplicationStreams { targets: vec![] },
-                Command::AppendEntry {
+                Command::AppendInputEntries {
                     vote: Vote::new_committed(1, 1),
-                    entry: Entry::<UTConfig>::new_blank(log_id(1, 1, 1))
-                },
-                Command::ReplicateCommitted {
-                    committed: Some(LogId {
-                        leader_id: CommittedLeaderId::new(1, 1),
-                        index: 1,
-                    },),
-                },
-                Command::Commit {
-                    seq: 1,
-                    already_committed: None,
-                    upto: LogId {
-                        leader_id: CommittedLeaderId::new(1, 1),
-                        index: 1,
-                    },
+                    entries: vec![Entry::<UTConfig>::new_blank(log_id(1, 1, 1))]
                 },
             ],
             eng.output.take_commands()
@@ -131,9 +117,9 @@ fn test_initialize() -> anyhow::Result<()> {
 
         assert_eq!(
             vec![
-                Command::AppendEntry {
+                Command::AppendInputEntries {
                     vote: Vote::default(),
-                    entry: Entry::new_membership(LogId::default(), m12())
+                    entries: vec![Entry::new_membership(LogId::default(), m12())],
                 },
                 // When update the effective membership, the engine set it to Follower.
                 // But when initializing, it will switch to Candidate at once, in the last output
