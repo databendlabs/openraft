@@ -4,7 +4,6 @@ use std::ops::Deref;
 use validit::Validate;
 
 use crate::engine::LogIdList;
-use crate::entry::RaftEntry;
 use crate::error::ForwardToLeader;
 use crate::log_id::RaftLogId;
 use crate::utime::UTime;
@@ -372,21 +371,6 @@ where C: RaftTypeConfig
     /// [Determine Server State]: crate::docs::data::vote#vote-and-membership-define-the-server-state
     pub(crate) fn is_leader(&self, id: &C::NodeId) -> bool {
         self.is_leading(id) && self.vote.is_committed()
-    }
-
-    pub(crate) fn assign_log_ids<'a, Ent: RaftEntry<C> + 'a>(
-        &mut self,
-        entries: impl IntoIterator<Item = &'a mut Ent>,
-    ) {
-        let mut log_id = LogId::new(
-            self.vote_ref().committed_leader_id().unwrap(),
-            self.last_log_id().next_index(),
-        );
-        for entry in entries {
-            entry.set_log_id(&log_id);
-            tracing::debug!("assign log id: {}", log_id);
-            log_id.index += 1;
-        }
     }
 
     /// Build a ForwardToLeader error that contains the leader id and node it knows.

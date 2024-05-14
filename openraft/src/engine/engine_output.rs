@@ -47,7 +47,6 @@ where C: RaftTypeConfig
             }
             Command::BecomeLeader => {}
             Command::QuitLeader => {}
-            Command::AppendEntry { .. } => {}
             Command::AppendInputEntries { .. } => {}
             Command::ReplicateCommitted { .. } => {}
             Command::Commit { .. } => {}

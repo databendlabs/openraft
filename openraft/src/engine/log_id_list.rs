@@ -185,7 +185,12 @@ impl<NID: NodeId> LogIdList<NID> {
 
         // l >= 1
 
-        debug_assert!(new_log_id > self.key_log_ids[l - 1]);
+        debug_assert!(
+            new_log_id > self.key_log_ids[l - 1],
+            "new_log_id: {}, last: {}",
+            new_log_id,
+            self.key_log_ids[l - 1]
+        );
 
         if l == 1 {
             self.key_log_ids.push(new_log_id);
