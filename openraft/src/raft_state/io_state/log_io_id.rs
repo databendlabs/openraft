@@ -1,7 +1,7 @@
 use std::fmt;
 
 use crate::display_ext::DisplayOptionExt;
-use crate::LeaderId;
+use crate::CommittedLeaderId;
 use crate::LogId;
 use crate::NodeId;
 
@@ -18,7 +18,7 @@ use crate::NodeId;
 #[derive(PartialEq, Eq)]
 pub(crate) struct LogIOId<NID: NodeId> {
     /// The id of the leader that performs the log io operation.
-    pub(crate) leader_id: LeaderId<NID>,
+    pub(crate) committed_leader_id: CommittedLeaderId<NID>,
 
     /// The last log id that has been flushed to storage.
     pub(crate) log_id: Option<LogId<NID>>,
@@ -26,14 +26,14 @@ pub(crate) struct LogIOId<NID: NodeId> {
 
 impl<NID: NodeId> fmt::Display for LogIOId<NID> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "by_leader({}):{}", self.leader_id, self.log_id.display())
+        write!(f, "by_leader({}):{}", self.committed_leader_id, self.log_id.display())
     }
 }
 
 impl<NID: NodeId> LogIOId<NID> {
-    pub(crate) fn new(leader_id: impl Into<LeaderId<NID>>, log_id: Option<LogId<NID>>) -> Self {
+    pub(crate) fn new(committed_leader_id: impl Into<CommittedLeaderId<NID>>, log_id: Option<LogId<NID>>) -> Self {
         Self {
-            leader_id: leader_id.into(),
+            committed_leader_id: committed_leader_id.into(),
             log_id,
         }
     }
