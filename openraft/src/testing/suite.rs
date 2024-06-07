@@ -18,11 +18,10 @@ use crate::storage::LogState;
 use crate::storage::RaftLogReaderExt;
 use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
+use crate::storage::LogEventChannel;
 use crate::storage::StorageHelper;
 use crate::testing::StoreBuilder;
-use crate::type_config::alias::AsyncRuntimeOf;
 use crate::vote::CommittedLeaderId;
-use crate::AsyncRuntime;
 use crate::LogId;
 use crate::Membership;
 use crate::NodeId;
@@ -1281,13 +1280,15 @@ where
     I: IntoIterator<Item = C::Entry> + OptionalSend,
     I::IntoIter: OptionalSend,
 {
-    let (tx, rx) = AsyncRuntimeOf::<C>::oneshot();
+
+    let mut chan = LogEventChannel::new();
 
     // Dummy log io id for blocking append
     let log_io_id = LogIOId::<C::NodeId>::new(Vote::<C::NodeId>::default(), None);
-    let cb = LogFlushed::new(log_io_id, tx);
+    let cb = LogFlushed::new(log_io_id, &mut chan);
 
     store.append(entries, cb).await?;
-    rx.await.unwrap().map_err(|e| StorageIOError::write_logs(AnyError::error(e)))?;
+    chan.wait_next().await.map_err(|e| StorageIOError::write_logs(AnyError::error(e)))?;
+    let _ = chan.try_recv().unwrap();
     Ok(())
 }

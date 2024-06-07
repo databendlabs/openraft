@@ -83,6 +83,7 @@ use crate::replication::ReplicationHandle;
 use crate::replication::ReplicationSessionId;
 use crate::runtime::RaftRuntime;
 use crate::storage::LogFlushed;
+use crate::storage::LogEventChannel;
 use crate::storage::RaftLogReaderExt;
 use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
@@ -155,6 +156,8 @@ impl<C: RaftTypeConfig> LeaderData<C> {
     }
 }
 
+type LogFLushResult<C> = Result<LogIOId<<C as RaftTypeConfig>::NodeId>, std::io::Error>;
+
 // TODO: remove SM
 /// The core type implementing the Raft protocol.
 pub struct RaftCore<C, N, LS, SM>
@@ -206,6 +209,8 @@ where
     pub(crate) command_state: CommandState,
 
     pub(crate) span: Span,
+
+    pub(crate) chan_log_flushed: LogEventChannel<LogFLushResult<C>>,
 
     pub(crate) _p: PhantomData<SM>,
 }
@@ -719,15 +724,10 @@ where
     {
         tracing::debug!("append_to_log");
 
-        let (tx, rx) = C::AsyncRuntime::oneshot();
         let log_io_id = LogIOId::new(vote, Some(last_log_id));
-
-        let callback = LogFlushed::new(log_io_id, tx);
-
+        let callback = LogFlushed::new(log_io_id, &mut self.chan_log_flushed);
         self.log_store.append(entries, callback).await?;
-        rx.await
-            .map_err(|e| StorageIOError::write_logs(AnyError::error(e)))?
-            .map_err(|e| StorageIOError::write_logs(AnyError::error(e)))?;
+
         Ok(())
     }
 
@@ -930,6 +930,13 @@ where
                     return Err(Fatal::Stopped);
                 }
 
+                res = self.chan_log_flushed.wait_next() => {
+                    if res.is_err() {
+                        tracing::info!("log event channel is closed");
+                        return Err(Fatal::Stopped);
+                    }
+                }
+
                 notify_res = self.rx_notify.recv() => {
                     match notify_res {
                         Some(notify) => self.handle_notify(notify)?,
@@ -951,6 +958,7 @@ where
                 }
             }
 
+            self.process_log_flushed()?;
             self.run_engine_commands().await?;
 
             // There is a message waking up the loop, process channels one by one.
@@ -971,6 +979,20 @@ where
                 }
             }
         }
+    }
+
+    /// Process log flushed events as many as possible.
+    fn process_log_flushed(&mut self) -> Result<(), Fatal<C>> {
+        while let Some(flush_res) = self.chan_log_flushed.try_recv() {
+            let log_io_id = flush_res.map_err(|e|
+                Into::<StorageError<_>>::into(StorageIOError::write_logs(AnyError::new(&e))))?;
+            // The leader may have changed.
+            // But reporting to a different leader is not a problem.
+            if let Ok(mut lh) = self.engine.leader_handler() {
+                lh.replication_handler().update_local_progress(log_io_id.log_id);
+            }
+        }
+        Ok(())
     }
 
     /// Process RaftMsg as many as possible.
@@ -1598,15 +1620,8 @@ where
             }
             Command::AppendInputEntries { vote, entries } => {
                 let last_log_id = *entries.last().unwrap().get_log_id();
-                tracing::debug!("AppendInputEntries: {}", DisplaySlice::<_>(&entries),);
-
+                tracing::debug!("AppendInputEntries: {}", DisplaySlice::<_>(&entries));
                 self.append_to_log(entries, vote, last_log_id).await?;
-
-                // The leader may have changed.
-                // But reporting to a different leader is not a problem.
-                if let Ok(mut lh) = self.engine.leader_handler() {
-                    lh.replication_handler().update_local_progress(Some(last_log_id));
-                }
             }
             Command::SaveVote { vote } => {
                 self.log_store.save_vote(&vote).await?;

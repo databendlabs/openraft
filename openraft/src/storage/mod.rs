@@ -22,6 +22,7 @@ use crate::display_ext::DisplayOption;
 use crate::raft_types::SnapshotId;
 pub use crate::storage::callback::LogApplied;
 pub use crate::storage::callback::LogFlushed;
+pub use crate::storage::callback::LogEventChannel;
 use crate::LogId;
 use crate::OptionalSend;
 use crate::OptionalSync;

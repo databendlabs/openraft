@@ -76,6 +76,7 @@ pub use crate::raft::runtime_config_handle::RuntimeConfigHandle;
 use crate::raft::trigger::Trigger;
 use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
+use crate::storage::LogEventChannel;
 use crate::type_config::alias::AsyncRuntimeOf;
 use crate::type_config::alias::JoinErrorOf;
 use crate::type_config::alias::ResponderOf;
@@ -299,6 +300,8 @@ where C: RaftTypeConfig
 
             command_state: CommandState::default(),
             span: core_span,
+
+            chan_log_flushed: LogEventChannel::new(),
 
             _p: Default::default(),
         };
