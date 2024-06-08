@@ -111,7 +111,7 @@ Mistakenly updating `b`'s address from `y` to `w` would enable both `x, y` and `
 
 
 Directly updating node addresses with `ChangeMembers::SetNodes`
-should be replaced with `ChangeMembers::RemoveNodes` and `ChangeMembers::RemoveNodes` whenever possible.
+should be replaced with `ChangeMembers::RemoveNodes` and `Raft::add_learner` whenever possible.
 
 Do not use `ChangeMembers::SetNodes` unless you know what you are doing.
 
