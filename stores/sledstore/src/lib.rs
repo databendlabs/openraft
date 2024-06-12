@@ -495,9 +495,13 @@ impl RaftLogStorage<TypeConfig> for Arc<SledStore> {
         })
     }
 
-    #[tracing::instrument(level = "trace", skip(self))]
-    async fn save_vote(&mut self, vote: &Vote<ExampleNodeId>) -> Result<(), StorageError<ExampleNodeId>> {
-        self.set_vote_(vote).await
+    #[tracing::instrument(level = "trace", skip(self, callback))]
+    async fn save_vote(
+        &mut self, vote: &Vote<ExampleNodeId>, callback: LogFlushed<TypeConfig>
+    ) -> Result<(), StorageError<ExampleNodeId>> {
+        self.set_vote_(vote).await?;
+        callback.log_io_completed(Ok(()));
+        Ok(())
     }
 
     async fn get_log_reader(&mut self) -> Self::LogReader {

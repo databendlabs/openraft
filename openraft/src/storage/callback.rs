@@ -7,9 +7,11 @@ use std::collections::BinaryHeap;
 use tokio::sync::mpsc;
 
 use crate::raft_state::io_state::log_io_id::LogIOId;
+use crate::Vote;
 use crate::LogId;
 use crate::RaftTypeConfig;
 use crate::StorageIOError;
+
 struct LogEvent<R> (R, u64);
 
 impl<R> Ord for LogEvent<R> {
@@ -114,23 +116,41 @@ impl<R> LogEventChannel<R> {
     }
 }
 
+#[derive(Debug)]
+pub(crate) enum LogFlushKind<C>
+where C: RaftTypeConfig
+{
+    Append(LogIOId<C::NodeId>),
+    SaveVote(Vote<C::NodeId>),
+}
+
 /// A oneshot callback for completion of log io operation.
 pub struct LogFlushed<C>
 where C: RaftTypeConfig
 {
-    log_io_id: LogIOId<C::NodeId>,
-    sender: LogEventSender<Result<LogIOId<C::NodeId>, io::Error>>,
+    io_kind: LogFlushKind<C>,
+    sender: LogEventSender<Result<LogFlushKind<C>, io::Error>>,
 }
 
 impl<C> LogFlushed<C>
 where C: RaftTypeConfig
 {
-    pub(crate) fn new(
+    pub(crate) fn with_append(
         log_io_id: LogIOId<C::NodeId>,
-        event_chan: &mut LogEventChannel<Result<LogIOId<C::NodeId>, io::Error>>,
+        event_chan: &mut LogEventChannel<Result<LogFlushKind<C>, io::Error>>,
     ) -> Self {
         Self {
-            log_io_id,
+            io_kind: LogFlushKind::Append(log_io_id),
+            sender: event_chan.new_sender()
+        }
+    }
+
+    pub(crate) fn with_save_vote(
+        vote: Vote<C::NodeId>,
+        event_chan: &mut LogEventChannel<Result<LogFlushKind<C>, io::Error>>,
+    ) -> Self {
+        Self {
+            io_kind: LogFlushKind::SaveVote(vote),
             sender: event_chan.new_sender()
         }
     }
@@ -140,10 +160,10 @@ where C: RaftTypeConfig
     /// It will be called when the log is successfully appended to the storage or an error occurs.
     pub fn log_io_completed(self, result: Result<(), io::Error>) {
         let res = if let Err(e) = result {
-            tracing::error!("LogFlush error: {}, while flushing upto {}", e, self.log_io_id);
+            tracing::error!("LogFlush error: {}, io_kind {:?}", e, self.io_kind);
             self.sender.send(Err(e))
         } else {
-            self.sender.send(Ok(self.log_io_id))
+            self.sender.send(Ok(self.io_kind))
         };
 
         if let Err(e) = res {

@@ -690,7 +690,7 @@ where
     }
 
     pub async fn save_vote(mut store: LS, mut sm: SM) -> Result<(), StorageError<C::NodeId>> {
-        store.save_vote(&Vote::new(100, NODE_ID.into())).await?;
+        save_vote(&mut store, Vote::new(100, NODE_ID.into())).await?;
 
         let got = store.read_vote().await?;
 
@@ -1202,8 +1202,8 @@ where
         Ok(())
     }
 
-    pub async fn default_vote(sto: &mut LS) -> Result<(), StorageError<C::NodeId>> {
-        sto.save_vote(&Vote::new(1, NODE_ID.into())).await?;
+    pub async fn default_vote(store: &mut LS) -> Result<(), StorageError<C::NodeId>> {
+        save_vote(store, Vote::new(1, NODE_ID.into())).await?;
 
         Ok(())
     }
@@ -1285,10 +1285,26 @@ where
 
     // Dummy log io id for blocking append
     let log_io_id = LogIOId::<C::NodeId>::new(Vote::<C::NodeId>::default(), None);
-    let cb = LogFlushed::new(log_io_id, &mut chan);
+    let cb = LogFlushed::with_append(log_io_id, &mut chan);
 
     store.append(entries, cb).await?;
     chan.wait_next().await.map_err(|e| StorageIOError::write_logs(AnyError::error(e)))?;
     let _ = chan.try_recv().unwrap();
     Ok(())
+}
+
+// A wrapper for calling nonblocking `RaftLogStorage::append()`
+async fn save_vote<C, LS>(store: &mut LS, vote: Vote::<C::NodeId>) -> Result<(), StorageError<C::NodeId>>
+where   
+    C: RaftTypeConfig,
+    LS: RaftLogStorage<C>,
+{       
+
+    let mut chan = LogEventChannel::new();
+    let cb = LogFlushed::with_save_vote(vote, &mut chan);
+
+    store.save_vote(&vote, cb).await?;
+    chan.wait_next().await.map_err(|e| StorageIOError::write_logs(AnyError::error(e)))?;
+    let _ = chan.try_recv().unwrap();
+    Ok(())  
 }

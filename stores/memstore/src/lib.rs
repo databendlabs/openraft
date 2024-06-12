@@ -342,12 +342,14 @@ impl RaftLogStorage<TypeConfig> for Arc<MemLogStore> {
         self.clone()
     }
 
-    #[tracing::instrument(level = "trace", skip(self))]
-    async fn save_vote(&mut self, vote: &Vote<MemNodeId>) -> Result<(), StorageError<MemNodeId>> {
+    #[tracing::instrument(level = "trace", skip(self, callback))]
+    async fn save_vote(
+        &mut self, vote: &Vote<MemNodeId>, callback: LogFlushed<TypeConfig>
+    ) -> Result<(), StorageError<MemNodeId>> {
         tracing::debug!(?vote, "save_vote");
         let mut h = self.vote.write().await;
-
         *h = Some(*vote);
+        callback.log_io_completed(Ok(()));
         Ok(())
     }
 

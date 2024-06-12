@@ -64,7 +64,7 @@ where C: RaftTypeConfig
     /// ### To ensure correctness:
     ///
     /// The vote must be persisted on disk before returning.
-    async fn save_vote(&mut self, vote: &Vote<C::NodeId>) -> Result<(), StorageError<C::NodeId>>;
+    async fn save_vote(&mut self, vote: &Vote<C::NodeId>, callback: LogFlushed<C>) -> Result<(), StorageError<C::NodeId>>;
 
     /// Saves the last committed log id to storage.
     ///

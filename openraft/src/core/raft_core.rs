@@ -83,6 +83,7 @@ use crate::replication::ReplicationHandle;
 use crate::replication::ReplicationSessionId;
 use crate::runtime::RaftRuntime;
 use crate::storage::LogFlushed;
+use crate::storage::LogFlushKind;
 use crate::storage::LogEventChannel;
 use crate::storage::RaftLogReaderExt;
 use crate::storage::RaftLogStorage;
@@ -156,7 +157,7 @@ impl<C: RaftTypeConfig> LeaderData<C> {
     }
 }
 
-type LogFLushResult<C> = Result<LogIOId<<C as RaftTypeConfig>::NodeId>, std::io::Error>;
+type LogFLushResult<C> = Result<LogFlushKind<C>, std::io::Error>;
 
 // TODO: remove SM
 /// The core type implementing the Raft protocol.
@@ -712,22 +713,29 @@ where
 
     /// A temp wrapper to make non-blocking `append_to_log` a blocking.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) async fn append_to_log<I>(
+    pub(crate) async fn append_to_log(
         &mut self,
-        entries: I,
+        entries: Vec<C::Entry>,
         vote: Vote<C::NodeId>,
-        last_log_id: LogId<C::NodeId>,
-    ) -> Result<(), StorageError<C::NodeId>>
-    where
-        I: IntoIterator<Item = C::Entry> + OptionalSend,
-        I::IntoIter: OptionalSend,
-    {
-        tracing::debug!("append_to_log");
+    ) -> Result<(), StorageError<C::NodeId>> {
+        tracing::debug!("append_to_log: {}", DisplaySlice::<_>(&entries));
 
+        let last_log_id = *entries.last().unwrap().get_log_id();
         let log_io_id = LogIOId::new(vote, Some(last_log_id));
-        let callback = LogFlushed::new(log_io_id, &mut self.chan_log_flushed);
+        let callback = LogFlushed::with_append(log_io_id, &mut self.chan_log_flushed);
         self.log_store.append(entries, callback).await?;
 
+        Ok(())
+    }
+
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub(crate) async fn save_vote(
+        &mut self, vote: Vote<C::NodeId>
+    ) -> Result<(), StorageError<C::NodeId>> {
+        tracing::debug!("save_vote: {}", &vote);
+
+        let callback = LogFlushed::with_save_vote(vote, &mut self.chan_log_flushed);
+        self.log_store.save_vote(&vote, callback).await?;
         Ok(())
     }
 
@@ -984,12 +992,19 @@ where
     /// Process log flushed events as many as possible.
     fn process_log_flushed(&mut self) -> Result<(), Fatal<C>> {
         while let Some(flush_res) = self.chan_log_flushed.try_recv() {
-            let log_io_id = flush_res.map_err(|e|
+            let io_kind = flush_res.map_err(|e|
                 Into::<StorageError<_>>::into(StorageIOError::write_logs(AnyError::new(&e))))?;
             // The leader may have changed.
             // But reporting to a different leader is not a problem.
-            if let Ok(mut lh) = self.engine.leader_handler() {
-                lh.replication_handler().update_local_progress(log_io_id.log_id);
+            match io_kind {
+                LogFlushKind::Append(log_io_id) => {
+                    if let Ok(mut lh) = self.engine.leader_handler() {
+                        lh.replication_handler().update_local_progress(log_io_id.log_id);
+                    }
+                }
+                LogFlushKind::SaveVote(vote) => {
+                    self.engine.state.io_state_mut().update_vote(vote);
+                }
             }
         }
         Ok(())
@@ -1619,13 +1634,10 @@ where
                 self.leader_data = None;
             }
             Command::AppendInputEntries { vote, entries } => {
-                let last_log_id = *entries.last().unwrap().get_log_id();
-                tracing::debug!("AppendInputEntries: {}", DisplaySlice::<_>(&entries));
-                self.append_to_log(entries, vote, last_log_id).await?;
+                self.append_to_log(entries, vote).await?;
             }
             Command::SaveVote { vote } => {
-                self.log_store.save_vote(&vote).await?;
-                self.engine.state.io_state_mut().update_vote(vote);
+                self.save_vote(vote).await?;
             }
             Command::PurgeLog { upto } => {
                 self.log_store.purge(upto).await?;

@@ -337,9 +337,12 @@ impl RaftLogStorage<TypeConfig> for RocksLogStore {
         })
     }
 
-    async fn save_vote(&mut self, vote: &Vote<RocksNodeId>) -> Result<(), StorageError<RocksNodeId>> {
+    async fn save_vote(
+        &mut self, vote: &Vote<RocksNodeId>, callback: LogFlushed<TypeConfig>
+    ) -> Result<(), StorageError<RocksNodeId>> {
         self.put_meta::<meta::Vote>(vote)?;
         self.db.flush_wal(true).map_err(|e| StorageIOError::write_vote(&e))?;
+        callback.log_io_completed(Ok(()));
         Ok(())
     }
 

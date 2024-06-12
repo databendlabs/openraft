@@ -31,7 +31,7 @@ where C: RaftTypeConfig
         // dummy log_io_id
         let log_io_id = LogIOId::<C::NodeId>::new(Vote::<C::NodeId>::default(), None);
 
-        let callback = LogFlushed::<C>::new(log_io_id, &mut chan);
+        let callback = LogFlushed::<C>::with_append(log_io_id, &mut chan);
         self.append(entries, callback).await?;
         chan.wait_next().await
             .map_err(|e| StorageIOError::write_logs(AnyError::error(e)))?;

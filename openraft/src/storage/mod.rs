@@ -23,6 +23,7 @@ use crate::raft_types::SnapshotId;
 pub use crate::storage::callback::LogApplied;
 pub use crate::storage::callback::LogFlushed;
 pub use crate::storage::callback::LogEventChannel;
+pub(crate) use crate::storage::callback::LogFlushKind;
 use crate::LogId;
 use crate::OptionalSend;
 use crate::OptionalSync;
