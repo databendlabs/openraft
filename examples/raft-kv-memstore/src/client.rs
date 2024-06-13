@@ -74,7 +74,7 @@ impl ExampleClient {
     /// Then setup replication with [`add_learner`].
     /// Then make the new node a member with [`change_membership`].
     pub async fn init(&self) -> Result<(), typ::RPCError<typ::InitializeError>> {
-        self.do_send_rpc_to_leader("init", Some(&Empty {})).await
+        self.do_send_rpc_to_leader("init", Some(&Vec::<(NodeId, String)>::new())).await
     }
 
     /// Add a node as learner.

@@ -35,11 +35,18 @@ pub async fn change_membership(app: Data<App>, req: Json<BTreeSet<NodeId>>) -> a
     Ok(Json(res))
 }
 
-/// Initialize a single-node cluster.
+/// Initialize a single-node cluster if the `req` is empty vec.
+/// Otherwise initialize a cluster with the `req` specified vec of node-id and node-address
 #[post("/init")]
-pub async fn init(app: Data<App>) -> actix_web::Result<impl Responder> {
+pub async fn init(app: Data<App>, req: Json<Vec<(NodeId, String)>>) -> actix_web::Result<impl Responder> {
     let mut nodes = BTreeMap::new();
-    nodes.insert(app.id, BasicNode { addr: app.addr.clone() });
+    if req.0.is_empty() {
+        nodes.insert(app.id, BasicNode { addr: app.addr.clone() });
+    } else {
+        for (id, addr) in req.0.into_iter() {
+            nodes.insert(id, BasicNode { addr });
+        }
+    };
     let res = app.raft.initialize(nodes).await;
     Ok(Json(res))
 }
