@@ -50,7 +50,7 @@ kill
 
 sleep 1
 
-echo "Start 3 uninitialized raft-key-value servers..."
+echo "Start 5 uninitialized raft-key-value servers..."
 
 nohup ./target/debug/raft-key-value  --id 1 --http-addr 127.0.0.1:21001 > n1.log &
 sleep 1
@@ -65,10 +65,22 @@ sleep 1
 echo "Server 3 started"
 sleep 1
 
-echo "Initialize server 1 as a single-node cluster"
+nohup ./target/debug/raft-key-value  --id 4 --http-addr 127.0.0.1:21004 > n4.log &
+sleep 1
+echo "Server 4 started"
+sleep 1
+
+nohup ./target/debug/raft-key-value  --id 5 --http-addr 127.0.0.1:21005 > n5.log &
+sleep 1
+echo "Server 5 started"
+sleep 1
+
+echo "Initialize servers 1,2,3 as a 3-nodes cluster"
 sleep 2
 echo
-rpc 21001/init '{}'
+
+rpc 21001/init '[[1, "127.0.0.1:21001"], [2, "127.0.0.1:21002"], [3, "127.0.0.1:21003"]]'
+# if you want to initialize server 1 as a single cluster, use `rpc 21001/init '[]'` or `rpc 21001/init '[[1, "127.0.0.1:21001"]]'`
 
 echo "Server 1 is a leader now"
 
@@ -81,16 +93,16 @@ rpc 21001/metrics
 sleep 1
 
 
-echo "Adding node 2 and node 3 as learners, to receive log from leader node 1"
+echo "Adding node 4 and node 5 as learners, to receive log from leader node 1"
 
 sleep 1
 echo
-rpc 21001/add-learner       '[2, "127.0.0.1:21002"]'
-echo "Node 2 added as learner"
+rpc 21001/add-learner       '[4, "127.0.0.1:21004"]'
+echo "Node 4 added as learner"
 sleep 1
 echo
-rpc 21001/add-learner       '[3, "127.0.0.1:21003"]'
-echo "Node 3 added as learner"
+rpc 21001/add-learner       '[5, "127.0.0.1:21005"]'
+echo "Node 5 added as learner"
 sleep 1
 
 echo "Get metrics from the leader, after adding 2 learners"
@@ -99,11 +111,11 @@ echo
 rpc 21001/metrics
 sleep 1
 
-echo "Changing membership from [1] to 3 nodes cluster: [1, 2, 3]"
+echo "Changing membership from [1, 2, 3] to 5 nodes cluster: [1, 2, 3, 4, 5]"
 echo
-rpc 21001/change-membership '[1, 2, 3]'
+rpc 21001/change-membership '[1, 2, 3, 4, 5]'
 sleep 1
-echo 'Membership changed to [1, 2, 3]'
+echo 'Membership changed to [1, 2, 3, 4, 5]'
 sleep 1
 
 echo "Get metrics from the leader again"
@@ -133,7 +145,7 @@ echo
 rpc 21003/read  '"foo"'
 
 
-echo "Changing membership from [1,2,3] to [3]"
+echo "Changing membership from [1,2,3, 4, 5] to [3]"
 echo
 rpc 21001/change-membership '[3]'
 sleep 1
