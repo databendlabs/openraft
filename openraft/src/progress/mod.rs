@@ -250,7 +250,16 @@ where
     /// and avoids unnecessary sorting: progresses are kept in order and only values greater than
     /// committed need to sort.
     ///
-    /// E.g., given 3 ids with value `1,3,5`,
+    /// E.g., given 3 ids with value `1,3,5`, as shown in the figure below:
+    /// 
+    /// ```text
+    /// a -----------+-------->
+    /// b -------+------------>
+    /// c ---+---------------->
+    /// ------------------------------
+    ///      1   3   5
+    /// ```
+    /// 
     /// the committed is `3` and assumes a majority quorum set is used.
     /// Then:
     /// - update(a, 6): nothing to do: committed is still 3;
@@ -260,14 +269,6 @@ where
     /// - update(c, 3): nothing to do: committed is still 3;
     /// - update(c, 4): re-calc:       committed becomes 4;
     /// - update(c, 6): re-calc:       committed becomes 5;
-    ///
-    /// ```text
-    /// a -----------+-------->
-    /// b -------+------------>
-    /// c ---+---------------->
-    /// ------------------------------
-    ///      1   3   5
-    /// ```
     fn update_with<F>(&mut self, id: &ID, f: F) -> Result<&P, &P>
     where F: FnOnce(&mut V) {
         self.stat.update_count += 1;
