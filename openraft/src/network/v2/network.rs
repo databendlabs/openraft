@@ -35,7 +35,10 @@ use crate::Vote;
 /// Compatibility: [`RaftNetworkV2`] is automatically implemented for [`RaftNetwork`]
 /// implementations.
 ///
+/// [Ensure connection to correct node][correct-node]
+///
 /// [`RaftNetwork`]: crate::network::v1::RaftNetwork
+/// [correct-node]: `crate::docs::cluster_control::dynamic_membership#ensure-connection-to-the-correct-node`
 #[add_async_trait]
 pub trait RaftNetworkV2<C>: OptionalSend + OptionalSync + 'static
 where C: RaftTypeConfig

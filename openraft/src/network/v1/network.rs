@@ -21,6 +21,10 @@ use crate::RaftTypeConfig;
 ///
 /// A single network instance is used to connect to a single target node. The network instance is
 /// constructed by the [`RaftNetworkFactory`](`crate::network::RaftNetworkFactory`).
+///
+/// [Ensure connection to correct node][correct-node]
+///
+/// [correct-node]: `crate::docs::cluster_control::dynamic_membership#ensure-connection-to-the-correct-node`
 #[add_async_trait]
 pub trait RaftNetwork<C>: OptionalSend + OptionalSync + 'static
 where C: RaftTypeConfig

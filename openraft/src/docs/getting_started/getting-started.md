@@ -253,6 +253,10 @@ Then use `Raft::add_learner(node_id, BasicNode::new("127.0.0.1"), ...)` to instr
 }
 ```
 
+###  Caution: ensure that a connection to the right node
+
+See: [Ensure connection to the correct node][`docs::connect-to-correct-node`]
+
 
 ## 5. Put everything together
 
@@ -419,3 +423,5 @@ Additionally, two test scripts for setting up a cluster are available:
 
 [`StoreBuilder`]:                       `crate::testing::StoreBuilder`
 [`Suite`]:                              `crate::testing::Suite`
+
+[`docs::connect-to-correct-node`]:      `crate::docs::cluster_control::dynamic_membership#ensure-connection-to-the-correct-node`
