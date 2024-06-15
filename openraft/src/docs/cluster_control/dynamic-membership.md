@@ -83,7 +83,7 @@ The initial argument should be set to [`ChangeMembers::SetNodes(BTreeMap<NodeId,
 
 ### Brain split
 
-When Updating node network addresses,
+When updating node network addresses,
 brain split could occur if the new address belongs to another node,
 leading to two elected leaders.
 
@@ -116,7 +116,31 @@ should be replaced with `ChangeMembers::RemoveNodes` and `Raft::add_learner` whe
 Do not use `ChangeMembers::SetNodes` unless you know what you are doing.
 
 
+### Ensure connection to the correct node
+
+Ensure that a connection to the right node is the responsibility
+of the [`RaftNetworkFactory`] and the [`RaftNetwork`] implementation.
+
+Connecting to a wrong node can lead to data inconsistency and even data loss.
+See: [brain split caused by wrong node address][`docs::brain-split`].
+
+Notably, the implementation should exercise additional care if one of the following conditions is met:
+
+* There is a chance that two cluster nodes have conflicting Node metadata.
+  For example, two nodes with the same hostname are added,
+  or one node is migrated to have the same hostname as another
+
+* The network cannot be trusted.
+  For example, a network adversary is present that might reroute Raft messages intended for one node to another.
+
+
+
 [`ChangeMembers::SetNodes`]: `crate::change_members::ChangeMembers::SetNodes`
 [`Raft::add_learner()`]: `crate::Raft::add_learner`
 [`Raft::change_membership()`]: `crate::Raft::change_membership`
 [`extended_membership`]: `crate::docs::data::extended_membership`
+
+[`RaftNetworkFactory`]:                 `crate::network::RaftNetworkFactory`
+[`RaftNetwork`]:                        `crate::network::RaftNetwork`
+
+[`docs::brain-split`]:                  `crate::docs::cluster_control::dynamic_membership#brain-split`
