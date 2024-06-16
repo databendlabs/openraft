@@ -167,6 +167,23 @@ where C: RaftTypeConfig
         &mut self,
         range: RB,
     ) -> Result<Vec<C::Entry>, StorageError<C::NodeId>>;
+
+    /// Returns log entries within range `[start, end)`, `end` is exclusive,
+    /// potentially limited by implementation-defined constraints.
+    ///
+    /// If the specified range is too large, the implementation may return only the first few log
+    /// entries to ensure the result is not excessively large.
+    ///
+    /// It must not return empty result if the input range is not empty.
+    ///
+    /// The default implementation just returns the full range of log entries.
+    async fn limited_get_log_entries(
+        &mut self,
+        start: u64,
+        end: u64,
+    ) -> Result<Vec<C::Entry>, StorageError<C::NodeId>> {
+        self.try_get_log_entries(start..end).await
+    }
 }
 
 /// A trait defining the interface for a Raft state machine snapshot subsystem.

@@ -100,6 +100,7 @@ where
         run_fut(run_test(builder, Self::get_initial_state_re_apply_committed))?;
         run_fut(run_test(builder, Self::save_vote))?;
         run_fut(run_test(builder, Self::get_log_entries))?;
+        run_fut(run_test(builder, Self::limited_get_log_entries))?;
         run_fut(run_test(builder, Self::try_get_log_entry))?;
         run_fut(run_test(builder, Self::initial_logs))?;
         run_fut(run_test(builder, Self::get_log_state))?;
@@ -715,6 +716,27 @@ where
             assert_eq!(logs.len(), 2);
             assert_eq!(*logs[0].get_log_id(), log_id_0(1, 5));
             assert_eq!(*logs[1].get_log_id(), log_id_0(1, 6));
+        }
+
+        Ok(())
+    }
+
+    pub async fn limited_get_log_entries(mut store: LS, mut sm: SM) -> Result<(), StorageError<C::NodeId>> {
+        Self::feed_10_logs_vote_self(&mut store).await?;
+
+        tracing::info!("--- get start == stop");
+        {
+            let logs = store.limited_get_log_entries(3, 3).await?;
+            assert_eq!(logs.len(), 0, "expected no logs to be returned");
+        }
+
+        tracing::info!("--- get start < stop");
+        {
+            let logs = store.limited_get_log_entries(5, 7).await?;
+
+            assert!(!logs.is_empty());
+            assert!(logs.len() <= 2);
+            assert_eq!(*logs[0].get_log_id(), log_id_0(1, 5));
         }
 
         Ok(())
