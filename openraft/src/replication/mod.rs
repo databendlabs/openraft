@@ -393,21 +393,23 @@ where
                 let r = LogIdRange::new(rng.prev, rng.prev);
                 (vec![], r)
             } else {
-                let logs = self.log_reader.try_get_log_entries(start..end).await?;
-                debug_assert_eq!(
-                    logs.len(),
-                    (end - start) as usize,
-                    "expect logs {}..{} but got only {} entries, first: {}, last: {}",
+                // limited_get_log_entries will return logs smaller than the range [start, end).
+                let logs = self.log_reader.limited_get_log_entries(start, end).await?;
+
+                let first = *logs.first().map(|x| x.get_log_id()).unwrap();
+                let last = *logs.last().map(|x| x.get_log_id()).unwrap();
+
+                debug_assert!(
+                    !logs.is_empty() && logs.len() <= (end - start) as usize,
+                    "expect logs ⊆ [{}..{}) but got {} entries, first: {}, last: {}",
                     start,
                     end,
                     logs.len(),
-                    logs.first().map(|ent| ent.get_log_id()).display(),
-                    logs.last().map(|ent| ent.get_log_id()).display()
+                    first,
+                    last
                 );
 
-                let last_log_id = logs.last().map(|ent| *ent.get_log_id());
-
-                let r = LogIdRange::new(rng.prev, last_log_id);
+                let r = LogIdRange::new(rng.prev, Some(last));
                 (logs, r)
             }
         };
