@@ -1,3 +1,41 @@
+## v0.9.12
+
+Summary:
+
+- DocFixed:
+    -   [1385394c](https://github.com/datafuselabs/openraft/commit/1385394c49baecf124ae9aa583753b51b29b443c) RemoveNodes -> add_leaner in dynamic-membership.
+- Added:
+    -   [8cd00388](https://github.com/datafuselabs/openraft/commit/8cd003889ce3f6948187c0f51393ed51e305e794) Add `RaftLogReader::limited_get_log_entries()`.
+
+Detail:
+
+### DocFixed:
+
+-   DocFixed: [1385394c](https://github.com/datafuselabs/openraft/commit/1385394c49baecf124ae9aa583753b51b29b443c) RemoveNodes -> add_leaner in dynamic-membership; by shuo; 2024-06-08
+
+### Added:
+
+-   Added: [8cd00388](https://github.com/datafuselabs/openraft/commit/8cd003889ce3f6948187c0f51393ed51e305e794) Add `RaftLogReader::limited_get_log_entries()`; by 张炎泼; 2024-06-16
+
+    This commit adds the `RaftLogReader::limited_get_log_entries()` method,
+    which enables applications to fetch log entries that are equal to or
+    smaller than a specified range. This functionality is particularly
+    useful for customizing the size of AppendEntries requests at the storage
+    API level.
+
+    - Applications can now decide the number of log entries to return based
+      on the input range. If the application determines that the requested
+      log entries range is too large for a single RPC, it can opt to return
+      only the first several requested log entries instead of the full
+      range.
+
+    - The method provides a default implementation that delegates the
+      operation to `RaftLogReader::try_get_log_entries`.
+
+    This enhancement allows for more flexible and efficient handling of log
+    entries, particularly in scenarios where network constraints or
+    performance considerations require smaller data transfers.
+
 ## v0.9.11
 
 Summary:
