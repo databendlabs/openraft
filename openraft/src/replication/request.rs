@@ -44,7 +44,6 @@ impl<C: RaftTypeConfig> fmt::Display for Replicate<C> {
 }
 
 use crate::display_ext::DisplayOptionExt;
-use crate::error::Fatal;
 use crate::error::StreamingError;
 use crate::log_id_range::LogIdRange;
 use crate::raft::SnapshotResponse;
@@ -134,7 +133,7 @@ where C: RaftTypeConfig
         request_id: RequestId,
         start_time: InstantOf<C>,
         snapshot_meta: SnapshotMeta<C>,
-        result: Result<SnapshotResponse<C>, StreamingError<C, Fatal<C>>>,
+        result: Result<SnapshotResponse<C>, StreamingError<C>>,
     ) -> Self {
         Self::SnapshotCallback(DataWithId::new(
             request_id,
