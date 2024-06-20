@@ -1,8 +1,9 @@
 use std::error::Error;
 
+use crate::error::Fatal;
+use crate::error::Infallible;
 use crate::error::NetworkError;
 use crate::error::RPCError;
-use crate::error::RaftError;
 use crate::error::RemoteError;
 use crate::error::ReplicationClosed;
 use crate::error::ReplicationError;
@@ -21,7 +22,7 @@ use crate::StorageError;
     serde(bound(serialize = "E: serde::Serialize")),
     serde(bound(deserialize = "E: for <'d> serde::Deserialize<'d>"))
 )]
-pub enum StreamingError<C: RaftTypeConfig, E: Error> {
+pub enum StreamingError<C: RaftTypeConfig, E: Error = Infallible> {
     /// The replication stream is closed intentionally.
     #[error(transparent)]
     Closed(#[from] ReplicationClosed),
@@ -47,12 +48,8 @@ pub enum StreamingError<C: RaftTypeConfig, E: Error> {
     RemoteError(#[from] RemoteError<C::NodeId, C::Node, E>),
 }
 
-impl<C: RaftTypeConfig, E> From<StreamingError<C, E>> for ReplicationError<C::NodeId, C::Node>
-where
-    E: Error,
-    RaftError<C::NodeId>: From<E>,
-{
-    fn from(e: StreamingError<C, E>) -> Self {
+impl<C: RaftTypeConfig> From<StreamingError<C, Fatal<C::NodeId>>> for ReplicationError<C::NodeId, C::Node> {
+    fn from(e: StreamingError<C, Fatal<C::NodeId>>) -> Self {
         match e {
             StreamingError::Closed(e) => ReplicationError::Closed(e),
             StreamingError::StorageError(e) => ReplicationError::StorageError(e),
@@ -60,12 +57,23 @@ where
             StreamingError::Unreachable(e) => ReplicationError::RPCError(RPCError::Unreachable(e)),
             StreamingError::Network(e) => ReplicationError::RPCError(RPCError::Network(e)),
             StreamingError::RemoteError(e) => {
-                let remote_err = RemoteError {
-                    target: e.target,
-                    target_node: e.target_node,
-                    source: RaftError::from(e.source),
-                };
-                ReplicationError::RPCError(RPCError::RemoteError(remote_err))
+                // Fatal on remote error is considered as unreachable.
+                ReplicationError::RPCError(RPCError::Unreachable(Unreachable::new(&e.source)))
+            }
+        }
+    }
+}
+
+impl<C: RaftTypeConfig> From<StreamingError<C>> for ReplicationError<C::NodeId, C::Node> {
+    fn from(e: StreamingError<C>) -> Self {
+        match e {
+            StreamingError::Closed(e) => ReplicationError::Closed(e),
+            StreamingError::StorageError(e) => ReplicationError::StorageError(e),
+            StreamingError::Timeout(e) => ReplicationError::RPCError(RPCError::Timeout(e)),
+            StreamingError::Unreachable(e) => ReplicationError::RPCError(RPCError::Unreachable(e)),
+            StreamingError::Network(e) => ReplicationError::RPCError(RPCError::Network(e)),
+            StreamingError::RemoteError(_e) => {
+                unreachable!("Infallible error should not be converted to ReplicationError")
             }
         }
     }

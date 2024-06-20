@@ -28,10 +28,10 @@ use crate::config::Config;
 use crate::core::notify::Notify;
 use crate::core::sm::handle::SnapshotReader;
 use crate::display_ext::DisplayOptionExt;
+use crate::error::decompose::DecomposeResult;
 use crate::error::HigherVote;
 use crate::error::PayloadTooLarge;
 use crate::error::RPCError;
-use crate::error::RaftError;
 use crate::error::ReplicationClosed;
 use crate::error::ReplicationError;
 use crate::error::Timeout;
@@ -449,7 +449,7 @@ where
             RPCError::Timeout(to)
         })?; // return Timeout error
 
-        let append_resp = append_res?;
+        let append_resp = DecomposeResult::<C, _, _>::decompose_infallible(append_res)?;
 
         tracing::debug!(
             req = display(&sending_range),
@@ -496,7 +496,7 @@ where
 
     /// Send the error result to RaftCore.
     /// RaftCore will then submit another replication command.
-    fn send_progress_error(&mut self, request_id: RequestId, err: RPCError<C::NodeId, C::Node, RaftError<C::NodeId>>) {
+    fn send_progress_error(&mut self, request_id: RequestId, err: RPCError<C::NodeId, C::Node>) {
         let _ = self.tx_raft_core.send(Notify::Network {
             response: Response::Progress {
                 target: self.target,
@@ -778,6 +778,8 @@ where
         if let Err(e) = &res {
             tracing::warn!(error = display(e), "failed to send snapshot");
         }
+
+        let res = res.decompose_infallible();
 
         if let Some(tx_noty) = weak_tx.upgrade() {
             let data = Data::new_snapshot_callback(request_id, start_time, meta, res);

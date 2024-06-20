@@ -52,7 +52,6 @@ where C: RaftTypeConfig
 }
 
 use crate::display_ext::DisplayOptionExt;
-use crate::error::Fatal;
 use crate::error::StreamingError;
 use crate::log_id_range::LogIdRange;
 use crate::raft::SnapshotResponse;
@@ -151,7 +150,7 @@ where C: RaftTypeConfig
         request_id: RequestId,
         start_time: InstantOf<C>,
         snapshot_meta: SnapshotMeta<C::NodeId, C::Node>,
-        result: Result<SnapshotResponse<C::NodeId>, StreamingError<C, Fatal<C::NodeId>>>,
+        result: Result<SnapshotResponse<C::NodeId>, StreamingError<C>>,
     ) -> Self {
         Self::SnapshotCallback(DataWithId::new(
             request_id,

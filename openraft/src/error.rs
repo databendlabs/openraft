@@ -1,5 +1,7 @@
 //! Error types exposed by this crate.
 
+pub mod decompose;
+pub mod into_ok;
 mod replication_closed;
 mod streaming_error;
 
@@ -256,7 +258,7 @@ where
     StorageError(#[from] StorageError<NID>),
 
     #[error(transparent)]
-    RPCError(#[from] RPCError<NID, N, RaftError<NID, Infallible>>),
+    RPCError(#[from] RPCError<NID, N>),
 }
 
 /// Error occurs when invoking a remote raft API.
@@ -270,7 +272,7 @@ where
     serde(bound(serialize = "E: serde::Serialize")),
     serde(bound(deserialize = "E: for <'d> serde::Deserialize<'d>"))
 )]
-pub enum RPCError<NID: NodeId, N: Node, E: Error> {
+pub enum RPCError<NID: NodeId, N: Node, E: Error = Infallible> {
     #[error(transparent)]
     Timeout(#[from] Timeout<NID>),
 

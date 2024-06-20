@@ -1,7 +1,6 @@
 //! Callbacks for ReplicationCore internal communication.
 use core::fmt;
 
-use crate::error::Fatal;
 use crate::error::StreamingError;
 use crate::raft::SnapshotResponse;
 use crate::type_config::alias::InstantOf;
@@ -23,14 +22,14 @@ pub(crate) struct SnapshotCallback<C: RaftTypeConfig> {
     pub(crate) snapshot_meta: SnapshotMeta<C::NodeId, C::Node>,
 
     /// The result of the snapshot replication.
-    pub(crate) result: Result<SnapshotResponse<C::NodeId>, StreamingError<C, Fatal<C::NodeId>>>,
+    pub(crate) result: Result<SnapshotResponse<C::NodeId>, StreamingError<C>>,
 }
 
 impl<C: RaftTypeConfig> SnapshotCallback<C> {
     pub(in crate::replication) fn new(
         start_time: InstantOf<C>,
         snapshot_meta: SnapshotMeta<C::NodeId, C::Node>,
-        result: Result<SnapshotResponse<C::NodeId>, StreamingError<C, Fatal<C::NodeId>>>,
+        result: Result<SnapshotResponse<C::NodeId>, StreamingError<C>>,
     ) -> Self {
         Self {
             start_time,
