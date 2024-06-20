@@ -3,9 +3,7 @@ use std::time::Duration;
 
 use openraft_macros::add_async_trait;
 
-use crate::error::Fatal;
 use crate::error::RPCError;
-use crate::error::RaftError;
 use crate::error::ReplicationClosed;
 use crate::error::StreamingError;
 use crate::network::Backoff;
@@ -48,14 +46,10 @@ where C: RaftTypeConfig
         &mut self,
         rpc: AppendEntriesRequest<C>,
         option: RPCOption,
-    ) -> Result<AppendEntriesResponse<C>, RPCError<C, RaftError<C>>>;
+    ) -> Result<AppendEntriesResponse<C>, RPCError<C>>;
 
     /// Send a RequestVote RPC to the target.
-    async fn vote(
-        &mut self,
-        rpc: VoteRequest<C>,
-        option: RPCOption,
-    ) -> Result<VoteResponse<C>, RPCError<C, RaftError<C>>>;
+    async fn vote(&mut self, rpc: VoteRequest<C>, option: RPCOption) -> Result<VoteResponse<C>, RPCError<C>>;
 
     /// Send a complete Snapshot to the target.
     ///
@@ -78,7 +72,7 @@ where C: RaftTypeConfig
         snapshot: Snapshot<C>,
         cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
         option: RPCOption,
-    ) -> Result<SnapshotResponse<C>, StreamingError<C, Fatal<C>>>;
+    ) -> Result<SnapshotResponse<C>, StreamingError<C>>;
 
     /// Build a backoff instance if the target node is temporarily(or permanently) unreachable.
     ///

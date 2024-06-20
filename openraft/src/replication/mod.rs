@@ -31,7 +31,6 @@ use crate::display_ext::DisplayOptionExt;
 use crate::error::HigherVote;
 use crate::error::PayloadTooLarge;
 use crate::error::RPCError;
-use crate::error::RaftError;
 use crate::error::ReplicationClosed;
 use crate::error::ReplicationError;
 use crate::error::Timeout;
@@ -495,7 +494,7 @@ where
 
     /// Send the error result to RaftCore.
     /// RaftCore will then submit another replication command.
-    fn send_progress_error(&mut self, request_id: RequestId, err: RPCError<C, RaftError<C>>) {
+    fn send_progress_error(&mut self, request_id: RequestId, err: RPCError<C>) {
         let _ = self.tx_raft_core.send(Notify::Network {
             response: Response::Progress {
                 target: self.target,

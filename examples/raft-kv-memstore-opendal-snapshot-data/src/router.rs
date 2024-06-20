@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::sync::Mutex;
 
+use openraft::error::Unreachable;
 use tokio::sync::oneshot;
 
 use crate::app::RequestTx;
@@ -19,10 +20,10 @@ pub struct Router {
 
 impl Router {
     /// Send request `Req` to target node `to`, and wait for response `Result<Resp, RaftError<E>>`.
-    pub async fn send<Req, Resp, E>(&self, to: NodeId, path: &str, req: Req) -> Result<Resp, RaftError<E>>
+    pub async fn send<Req, Resp>(&self, to: NodeId, path: &str, req: Req) -> Result<Resp, Unreachable>
     where
         Req: serde::Serialize,
-        Result<Resp, RaftError<E>>: serde::de::DeserializeOwned,
+        Result<Resp, RaftError>: serde::de::DeserializeOwned,
     {
         let (resp_tx, resp_rx) = oneshot::channel();
 
@@ -39,6 +40,7 @@ impl Router {
         let resp_str = resp_rx.await.unwrap();
         tracing::debug!("resp from: {}, {}, {}", to, path, resp_str);
 
-        decode::<Result<Resp, RaftError<E>>>(&resp_str)
+        let res = decode::<Result<Resp, RaftError>>(&resp_str);
+        res.map_err(|e| Unreachable::new(&e))
     }
 }

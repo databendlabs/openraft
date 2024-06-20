@@ -1,6 +1,5 @@
 use std::future::Future;
 
-use openraft::error::RemoteError;
 use openraft::error::ReplicationClosed;
 use openraft::network::v2::RaftNetworkV2;
 use openraft::network::RPCOption;
@@ -42,11 +41,7 @@ impl RaftNetworkV2<TypeConfig> for Connection {
         req: AppendEntriesRequest<TypeConfig>,
         _option: RPCOption,
     ) -> Result<AppendEntriesResponse<TypeConfig>, typ::RPCError> {
-        let resp = self
-            .router
-            .send(self.target, "/raft/append", req)
-            .await
-            .map_err(|e| RemoteError::new(self.target, e))?;
+        let resp = self.router.send(self.target, "/raft/append", req).await?;
         Ok(resp)
     }
 
@@ -57,12 +52,8 @@ impl RaftNetworkV2<TypeConfig> for Connection {
         snapshot: Snapshot<TypeConfig>,
         _cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
         _option: RPCOption,
-    ) -> Result<SnapshotResponse<TypeConfig>, typ::StreamingError<typ::Fatal>> {
-        let resp = self
-            .router
-            .send::<_, _, typ::Infallible>(self.target, "/raft/snapshot", (vote, snapshot.meta, snapshot.snapshot))
-            .await
-            .map_err(|e| RemoteError::new(self.target, e.into_fatal().unwrap()))?;
+    ) -> Result<SnapshotResponse<TypeConfig>, typ::StreamingError> {
+        let resp = self.router.send(self.target, "/raft/snapshot", (vote, snapshot.meta, snapshot.snapshot)).await?;
         Ok(resp)
     }
 
@@ -71,11 +62,7 @@ impl RaftNetworkV2<TypeConfig> for Connection {
         req: VoteRequest<TypeConfig>,
         _option: RPCOption,
     ) -> Result<VoteResponse<TypeConfig>, typ::RPCError> {
-        let resp = self
-            .router
-            .send(self.target, "/raft/vote", req)
-            .await
-            .map_err(|e| RemoteError::new(self.target, e))?;
+        let resp = self.router.send(self.target, "/raft/vote", req).await?;
         Ok(resp)
     }
 }
