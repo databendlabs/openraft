@@ -1,3 +1,25 @@
+## v0.9.13
+
+Summary:
+
+- Added:
+    -   [fb49efb3](https://github.com/datafuselabs/openraft/commit/fb49efb37e209ab0cd9ea7c4bc243f18f4e9a658) Add `DecomposeResult` to simplify error handling.
+
+Detail:
+
+### Added:
+
+-   Added: [fb49efb3](https://github.com/datafuselabs/openraft/commit/fb49efb37e209ab0cd9ea7c4bc243f18f4e9a658) Add `DecomposeResult` to simplify error handling; by 张炎泼; 2024-06-20
+
+    This commit treats remote errors occurring during RPC, like a `Fatal`
+    error, as an `Unreachable` error. This is due to Openraft's current
+    inability to distinguish between an unreachable node and a broken node.
+
+    - **Helper trait `DecomposeResult`:** Introduced to simplify handling
+      composite errors. It converts a result of the
+      form `Result<R, ErrorAOrB>`
+      into a nested result `Result<Result<R, ErrorA>, ErrorB>`.
+
 ## v0.9.12
 
 Summary:
