@@ -122,7 +122,8 @@ where
     management::rest(&mut app);
     api::rest(&mut app);
 
-    app.listen(http_addr).await?;
+    app.listen(http_addr.clone()).await?;
+    tracing::info!("App Server listening on: {}", http_addr);
     _ = handle.await;
     Ok(())
 }
