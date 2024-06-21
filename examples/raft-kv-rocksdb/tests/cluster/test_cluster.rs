@@ -96,7 +96,7 @@ async fn test_cluster() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     // Wait for server to start up.
-    tokio::time::sleep(Duration::from_millis(1_000)).await;
+    tokio::time::sleep(Duration::from_millis(3_000)).await;
 
     // --- Create a client to the first node, as a control handle to the cluster.
 
