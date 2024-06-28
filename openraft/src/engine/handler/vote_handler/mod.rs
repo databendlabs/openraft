@@ -1,18 +1,22 @@
 use std::fmt::Debug;
 
 use crate::core::raft_msg::ResultSender;
+use crate::engine::handler::leader_handler::LeaderHandler;
+use crate::engine::handler::replication_handler::ReplicationHandler;
 use crate::engine::handler::server_state_handler::ServerStateHandler;
 use crate::engine::Command;
 use crate::engine::EngineConfig;
 use crate::engine::EngineOutput;
 use crate::engine::Respond;
 use crate::engine::ValueSender;
+use crate::entry::RaftEntry;
 use crate::error::RejectVoteRequest;
-use crate::internal_server_state::InternalServerState;
-use crate::leader::Leading;
+use crate::proposer::CandidateState;
+use crate::proposer::LeaderState;
 use crate::raft_state::LogStateReader;
 use crate::type_config::alias::InstantOf;
 use crate::Instant;
+use crate::LogId;
 use crate::OptionalSend;
 use crate::RaftState;
 use crate::RaftTypeConfig;
@@ -28,10 +32,11 @@ use crate::Vote;
 pub(crate) struct VoteHandler<'st, C>
 where C: RaftTypeConfig
 {
-    pub(crate) config: &'st EngineConfig<C>,
+    pub(crate) config: &'st mut EngineConfig<C>,
     pub(crate) state: &'st mut RaftState<C>,
     pub(crate) output: &'st mut EngineOutput<C>,
-    pub(crate) internal_server_state: &'st mut InternalServerState<C>,
+    pub(crate) leader: &'st mut LeaderState<C>,
+    pub(crate) candidate: &'st mut CandidateState<C>,
 }
 
 impl<'st, C> VoteHandler<'st, C>
@@ -115,28 +120,45 @@ where C: RaftTypeConfig
         Ok(())
     }
 
-    /// Enter leading or following state by checking `vote`.
+    /// Update to Leader or following state depending on `Engine.state.vote`.
     pub(crate) fn update_internal_server_state(&mut self) {
-        if self.state.is_leading(&self.config.id) {
-            self.become_leading();
+        if self.state.is_leader(&self.config.id) {
+            self.become_leader();
+        } else if self.state.is_leading(&self.config.id) {
+            // candidate, nothing to do
         } else {
             self.become_following();
         }
     }
 
-    /// Enter leading state(vote.node_id == self.id) .
+    /// Enter Leader state(vote.node_id == self.id && vote.committed == true) .
     ///
-    /// Create a new leading state, when raft enters candidate state.
-    /// Leading state has two phase: election phase and replication phase, similar to paxos phase-1
-    /// and phase-2. Leader and Candidate shares the same state.
-    pub(crate) fn become_leading(&mut self) {
-        if let Some(l) = self.internal_server_state.leading_mut() {
+    /// Note that this is called when the Leader state changes caused by
+    /// the change of vote in the **Acceptor** part `engine.state.vote`.
+    /// This is **NOT** called when a node is elected as a leader.
+    ///
+    /// An example use of this mechanism is when node-a electing for node-b,
+    /// which can be used for Leader-a to transfer leadership to Follower-b.
+    pub(crate) fn become_leader(&mut self) {
+        tracing::debug!(
+            "become leader: node-{}, my vote: {}, last-log-id: {}",
+            self.config.id,
+            self.state.vote_ref(),
+            self.state.last_log_id().copied().unwrap_or_default()
+        );
+
+        if let Some(l) = self.leader.as_mut() {
+            tracing::debug!("leading vote: {}", l.vote,);
+
             if l.vote.leader_id() == self.state.vote_ref().leader_id() {
                 tracing::debug!(
                     "vote still belongs to the same leader. Just updating vote is enough: node-{}, {}",
                     self.config.id,
                     self.state.vote_ref()
                 );
+                // TODO: this is not gonna happen,
+                //       because `self.leader`(previous `internal_server_state`)
+                //       does not include Candidate any more.
                 l.vote = *self.state.vote_ref();
                 self.server_state_handler().update_server_state_if_changed();
                 return;
@@ -146,19 +168,20 @@ where C: RaftTypeConfig
         // It's a different leader that creates this vote.
         // Re-create a new Leader instance.
 
-        let em = &self.state.membership_state.effective();
-        let leading = Leading::new(
-            *self.state.vote_ref(),
-            em.membership().to_quorum_set(),
-            em.learner_ids(),
-            self.state.last_log_id().copied(),
-        );
-
-        // Do not update clock_progress, until the first blank log is committed.
-
-        *self.internal_server_state = InternalServerState::Leading(Box::new(leading));
+        let leader = self.state.new_leader();
+        *self.leader = Some(Box::new(leader));
 
         self.server_state_handler().update_server_state_if_changed();
+
+        self.replication_handler().rebuild_replication_streams();
+
+        let leader = self.leader.as_ref().unwrap();
+
+        // If the leader has not yet proposed any log, propose a blank log
+        if leader.last_log_id() < leader.noop_log_id() {
+            self.leader_handler()
+                .leader_append_entries(vec![C::Entry::new_blank(LogId::<C::NodeId>::default())]);
+        }
     }
 
     /// Enter following state(vote.node_id != self.id or self is not a voter).
@@ -174,11 +197,8 @@ where C: RaftTypeConfig
             "It must hold: vote is not mine, or I am not a voter(leader just left the cluster)"
         );
 
-        if self.internal_server_state.is_following() {
-            return;
-        }
-
-        *self.internal_server_state = InternalServerState::Following;
+        *self.leader = None;
+        *self.candidate = None;
 
         self.server_state_handler().update_server_state_if_changed();
     }
@@ -186,6 +206,28 @@ where C: RaftTypeConfig
     pub(crate) fn server_state_handler(&mut self) -> ServerStateHandler<C> {
         ServerStateHandler {
             config: self.config,
+            state: self.state,
+            output: self.output,
+        }
+    }
+
+    pub(crate) fn replication_handler(&mut self) -> ReplicationHandler<C> {
+        let leader = self.leader.as_mut().unwrap();
+
+        ReplicationHandler {
+            config: self.config,
+            leader,
+            state: self.state,
+            output: self.output,
+        }
+    }
+
+    pub(crate) fn leader_handler(&mut self) -> LeaderHandler<C> {
+        let leader = self.leader.as_mut().unwrap();
+
+        LeaderHandler {
+            config: self.config,
+            leader,
             state: self.state,
             output: self.output,
         }

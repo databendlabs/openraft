@@ -86,15 +86,15 @@ mod tests {
         use crate::MessageSummary;
 
         let lid = crate::testing::log_id(1, 2, 3);
-        assert_eq!("1-2-3", lid.to_string());
-        assert_eq!("1-2-3", lid.summary());
-        assert_eq!("Some(1-2-3)", Some(&lid).summary());
-        assert_eq!("Some(1-2-3)", Some(lid).summary());
+        assert_eq!("T1-N2-3", lid.to_string());
+        assert_eq!("T1-N2-3", lid.summary());
+        assert_eq!("Some(T1-N2-3)", Some(&lid).summary());
+        assert_eq!("Some(T1-N2-3)", Some(lid).summary());
 
         let slc = vec![lid, lid];
-        assert_eq!("1-2-3,1-2-3", slc.as_slice().summary());
+        assert_eq!("T1-N2-3,T1-N2-3", slc.as_slice().summary());
 
         let slc = vec![&lid, &lid];
-        assert_eq!("1-2-3,1-2-3", slc.as_slice().summary());
+        assert_eq!("T1-N2-3,T1-N2-3", slc.as_slice().summary());
     }
 }

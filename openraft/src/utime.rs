@@ -2,6 +2,7 @@ use core::fmt;
 use std::ops::Deref;
 use std::ops::DerefMut;
 
+use crate::display_ext::DisplayInstantExt;
 use crate::Instant;
 
 /// Record the last update time for an object
@@ -14,7 +15,7 @@ pub(crate) struct UTime<T, I: Instant> {
 impl<T: fmt::Display, I: Instant> fmt::Display for UTime<T, I> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.utime {
-            Some(utime) => write!(f, "{}@{:?}", self.data, utime),
+            Some(utime) => write!(f, "{}@{}", self.data, utime.display()),
             None => write!(f, "{}", self.data),
         }
     }
@@ -93,9 +94,9 @@ impl<T, I: Instant> UTime<T, I> {
     pub(crate) fn touch(&mut self, now: I) {
         debug_assert!(
             Some(now) >= self.utime,
-            "expect now: {:?}, must >= self.utime: {:?}, {:?}",
-            now,
-            self.utime,
+            "expect now: {}, must >= self.utime: {}, {:?}",
+            now.display(),
+            self.utime.unwrap().display(),
             self.utime.unwrap() - now,
         );
         self.utime = Some(now);
