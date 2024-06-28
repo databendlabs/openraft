@@ -1,5 +1,4 @@
-use crate::leader::voting::Voting;
-use crate::leader::Leading;
+use crate::leader::Leader;
 use crate::quorum::Joint;
 use crate::RaftTypeConfig;
 
@@ -25,14 +24,14 @@ pub(crate) type LeaderQuorumSet<NID> = Joint<NID, Vec<NID>, Vec<Vec<NID>>>;
 pub(crate) enum InternalServerState<C>
 where C: RaftTypeConfig
 {
-    /// Leader or candidate.
+    /// Leader state.
     ///
     /// `vote.committed==true` means it is a leader.
-    Leading(Box<Leading<C, LeaderQuorumSet<C::NodeId>>>),
+    Leader(Box<Leader<C, LeaderQuorumSet<C::NodeId>>>),
 
-    /// Follower or learner.
+    /// Follower or Learner state.
     ///
-    /// Being a voter means it is a follower.
+    /// It is a follower if it is a voter of the cluster, otherwise it is a learner.
     Following,
 }
 
@@ -47,36 +46,29 @@ where C: RaftTypeConfig
 impl<C> InternalServerState<C>
 where C: RaftTypeConfig
 {
-    pub(crate) fn voting_mut(&mut self) -> Option<&mut Voting<C, LeaderQuorumSet<C::NodeId>>> {
+    pub(crate) fn leader_ref(&self) -> Option<&Leader<C, LeaderQuorumSet<C::NodeId>>> {
         match self {
-            InternalServerState::Leading(l) => l.voting_mut(),
+            InternalServerState::Leader(l) => Some(l),
             InternalServerState::Following => None,
         }
     }
 
-    pub(crate) fn leading(&self) -> Option<&Leading<C, LeaderQuorumSet<C::NodeId>>> {
+    pub(crate) fn leader_mut(&mut self) -> Option<&mut Leader<C, LeaderQuorumSet<C::NodeId>>> {
         match self {
-            InternalServerState::Leading(l) => Some(l),
+            InternalServerState::Leader(l) => Some(l),
             InternalServerState::Following => None,
         }
     }
 
-    pub(crate) fn leading_mut(&mut self) -> Option<&mut Leading<C, LeaderQuorumSet<C::NodeId>>> {
+    pub(crate) fn is_leader(&self) -> bool {
         match self {
-            InternalServerState::Leading(l) => Some(l),
-            InternalServerState::Following => None,
-        }
-    }
-
-    pub(crate) fn is_leading(&self) -> bool {
-        match self {
-            InternalServerState::Leading(_) => true,
+            InternalServerState::Leader(_) => true,
             InternalServerState::Following => false,
         }
     }
 
     #[allow(dead_code)]
     pub(crate) fn is_following(&self) -> bool {
-        !self.is_leading()
+        !self.is_leader()
     }
 }

@@ -1,4 +1,4 @@
+pub(crate) mod candidate;
 #[allow(clippy::module_inception)] mod leader;
-pub(crate) mod voting;
 
-pub(crate) use leader::Leading;
+pub(crate) use leader::Leader;

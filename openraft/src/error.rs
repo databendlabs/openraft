@@ -336,10 +336,10 @@ where
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-#[error("seen a higher vote: {higher} GT mine: {mine}")]
-pub struct HigherVote<C: RaftTypeConfig> {
-    pub higher: Vote<C::NodeId>,
-    pub mine: Vote<C::NodeId>,
+#[error("seen a higher vote: {higher} GT mine: {sender_vote}")]
+pub(crate) struct HigherVote<C: RaftTypeConfig> {
+    pub(crate) higher: Vote<C::NodeId>,
+    pub(crate) sender_vote: Vote<C::NodeId>,
 }
 
 /// Error that indicates a **temporary** network error and when it is returned, Openraft will retry

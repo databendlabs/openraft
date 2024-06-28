@@ -49,7 +49,7 @@ impl<NID: NodeId> LeaderId<NID> {
 
 impl<NID: NodeId> fmt::Display for LeaderId<NID> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}-{}", self.term, self.node_id)
+        write!(f, "T{}-N{}", self.term, self.node_id)
     }
 }
 
@@ -69,7 +69,7 @@ pub type CommittedLeaderId<NID> = LeaderId<NID>;
 
 #[cfg(test)]
 mod tests {
-    use crate::LeaderId;
+    use crate::Vote;
 
     #[cfg(feature = "serde")]
     #[test]
@@ -89,7 +89,7 @@ mod tests {
     #[test]
     fn test_leader_id_partial_order() -> anyhow::Result<()> {
         #[allow(clippy::redundant_closure)]
-        let lid = |term, node_id| LeaderId::<u64>::new(term, node_id);
+        let lid = |term, node_id| Vote::<u64>::new(term, node_id);
 
         // Compare term first
         assert!(lid(2, 2) > lid(1, 2));

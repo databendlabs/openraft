@@ -1,5 +1,7 @@
 //! Implement [`fmt::Display`] for types such as `Option<T>` and slice `&[T]`.
 
+pub(crate) mod display_instant;
+
 use std::fmt;
 
 /// Implement `Display` for `Option<T>` if T is `Display`.
@@ -66,6 +68,18 @@ impl<'a, T: fmt::Display, const MAX: usize> fmt::Display for DisplaySlice<'a, T,
         }
 
         write!(f, "]")
+    }
+}
+
+pub(crate) trait DisplaySliceExt<'a, T: fmt::Display> {
+    fn display(&'a self) -> DisplaySlice<'a, T>;
+}
+
+impl<T> DisplaySliceExt<'_, T> for [T]
+where T: fmt::Display
+{
+    fn display(&self) -> DisplaySlice<T> {
+        DisplaySlice(self)
     }
 }
 

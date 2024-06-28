@@ -54,6 +54,7 @@ fn eng() -> Engine<UTConfig> {
         Arc::new(EffectiveMembership::new(Some(log_id(1, 1, 1)), m01())),
         Arc::new(EffectiveMembership::new(Some(log_id(2, 1, 3)), m23())),
     );
+    eng.testing_new_leader();
     eng.state.server_state = eng.calc_server_state();
 
     eng
@@ -62,7 +63,7 @@ fn eng() -> Engine<UTConfig> {
 #[test]
 fn test_leader_append_entries_empty() -> anyhow::Result<()> {
     let mut eng = eng();
-    eng.vote_handler().become_leading();
+    eng.output.take_commands();
 
     eng.leader_handler()?.leader_append_entries(Vec::<Entry<UTConfig>>::new());
 
@@ -81,7 +82,7 @@ fn test_leader_append_entries_empty() -> anyhow::Result<()> {
         ),
         eng.state.membership_state
     );
-    assert_eq!(0, eng.output.take_commands().len());
+    assert_eq!(eng.output.take_commands(), vec![]);
 
     Ok(())
 }
@@ -89,7 +90,7 @@ fn test_leader_append_entries_empty() -> anyhow::Result<()> {
 #[test]
 fn test_leader_append_entries_normal() -> anyhow::Result<()> {
     let mut eng = eng();
-    eng.vote_handler().become_leading();
+    eng.output.take_commands();
 
     // log id will be assigned by eng.
     eng.leader_handler()?.leader_append_entries(vec![
@@ -149,7 +150,7 @@ fn test_leader_append_entries_single_node_leader() -> anyhow::Result<()> {
     eng.state
         .membership_state
         .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(2, 1, 3)), m1())));
-    eng.vote_handler().become_leading();
+    eng.testing_new_leader();
 
     eng.output.clear_commands();
 
@@ -199,7 +200,7 @@ fn test_leader_append_entries_with_membership_log() -> anyhow::Result<()> {
     eng.state
         .membership_state
         .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(2, 1, 3)), m1())));
-    eng.vote_handler().become_leading();
+    eng.testing_new_leader();
     eng.state.server_state = eng.calc_server_state();
 
     eng.output.clear_commands();
