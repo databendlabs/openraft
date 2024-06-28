@@ -11,7 +11,7 @@ use crate::core::sm::CommandSeq;
 use crate::core::sm::Response;
 use crate::core::ApplyResult;
 use crate::core::ApplyingEntry;
-use crate::display_ext::DisplayOptionExt;
+use crate::display_ext::display_option::DisplayOptionExt;
 use crate::entry::RaftPayload;
 use crate::storage::RaftStateMachine;
 use crate::type_config::alias::JoinHandleOf;

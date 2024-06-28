@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::display_ext::DisplayOptionExt;
+use crate::display_ext::display_option::DisplayOptionExt;
 use crate::CommittedLeaderId;
 use crate::LogId;
 use crate::NodeId;

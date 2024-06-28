@@ -1,7 +1,7 @@
 use std::fmt;
 use std::fmt::Formatter;
 
-use crate::display_ext::DisplayOption;
+use crate::display_ext::display_option::DisplayOption;
 use crate::metrics::Metric;
 use crate::RaftTypeConfig;
 

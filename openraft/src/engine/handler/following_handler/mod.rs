@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
 use crate::core::sm;
-use crate::display_ext::DisplayOption;
-use crate::display_ext::DisplayOptionExt;
-use crate::display_ext::DisplaySlice;
+use crate::display_ext::display_option::DisplayOption;
+use crate::display_ext::display_option::DisplayOptionExt;
+use crate::display_ext::display_slice::DisplaySlice;
 use crate::engine::handler::log_handler::LogHandler;
 use crate::engine::handler::server_state_handler::ServerStateHandler;
 use crate::engine::handler::snapshot_handler::SnapshotHandler;

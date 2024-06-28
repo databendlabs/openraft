@@ -1,6 +1,6 @@
 use log_io_id::LogIOId;
 
-use crate::display_ext::DisplayOption;
+use crate::display_ext::display_option::DisplayOption;
 use crate::LogId;
 use crate::NodeId;
 use crate::Vote;

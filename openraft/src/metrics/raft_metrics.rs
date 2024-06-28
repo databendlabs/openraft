@@ -2,8 +2,8 @@ use std::fmt;
 use std::sync::Arc;
 
 use crate::core::ServerState;
-use crate::display_ext::DisplayOption;
-use crate::display_ext::DisplayOptionExt;
+use crate::display_ext::display_option::DisplayOption;
+use crate::display_ext::display_option::DisplayOptionExt;
 use crate::error::Fatal;
 use crate::metrics::ReplicationMetrics;
 use crate::LogId;

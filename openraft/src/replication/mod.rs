@@ -27,7 +27,7 @@ use tracing_futures::Instrument;
 use crate::config::Config;
 use crate::core::notify::Notify;
 use crate::core::sm::handle::SnapshotReader;
-use crate::display_ext::DisplayOptionExt;
+use crate::display_ext::display_option::DisplayOptionExt;
 use crate::error::HigherVote;
 use crate::error::PayloadTooLarge;
 use crate::error::RPCError;
@@ -265,7 +265,7 @@ where
                                 response: Response::HigherVote {
                                     target: self.target,
                                     higher: h.higher,
-                                    vote: self.session_id.vote,
+                                    sender_vote: *self.session_id.vote_ref(),
                                 },
                             });
                             return Ok(());
@@ -417,7 +417,7 @@ where
 
         // Build the heartbeat frame to be sent to the follower.
         let payload = AppendEntriesRequest {
-            vote: self.session_id.vote,
+            vote: *self.session_id.vote_ref(),
             prev_log_id: sending_range.prev,
             leader_commit: self.committed,
             entries: logs,
@@ -440,7 +440,7 @@ where
         let append_res = res.map_err(|_e| {
             let to = Timeout {
                 action: RPCTypes::AppendEntries,
-                id: self.session_id.vote.leader_id().voted_for().unwrap(),
+                id: self.session_id.vote_ref().leader_id().voted_for().unwrap(),
                 target: self.target,
                 timeout: the_timeout,
             };
@@ -468,16 +468,16 @@ where
             }
             AppendEntriesResponse::HigherVote(vote) => {
                 debug_assert!(
-                    vote > self.session_id.vote,
+                    &vote > self.session_id.vote_ref(),
                     "higher vote({}) should be greater than leader's vote({})",
                     vote,
-                    self.session_id.vote,
+                    self.session_id.vote_ref(),
                 );
                 tracing::debug!(%vote, "append entries failed. converting to follower");
 
                 Err(ReplicationError::HigherVote(HigherVote {
                     higher: vote,
-                    mine: self.session_id.vote,
+                    sender_vote: *self.session_id.vote_ref(),
                 }))
             }
             AppendEntriesResponse::Conflict => {
@@ -737,7 +737,7 @@ where
         let jh = AsyncRuntimeOf::<C>::spawn(Self::send_snapshot(
             request_id,
             self.snapshot_network.clone(),
-            self.session_id.vote,
+            *self.session_id.vote_ref(),
             snapshot,
             option,
             rx_cancel,
@@ -811,10 +811,11 @@ where
         let resp = result?;
 
         // Handle response conditions.
-        if resp.vote > self.session_id.vote {
+        let sender_vote = *self.session_id.vote_ref();
+        if resp.vote > sender_vote {
             return Err(ReplicationError::HigherVote(HigherVote {
                 higher: resp.vote,
-                mine: self.session_id.vote,
+                sender_vote,
             }));
         }
 

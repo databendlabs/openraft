@@ -2,7 +2,7 @@ use std::fmt::Debug;
 use std::fmt::Formatter;
 
 use crate::core::raft_msg::ResultSender;
-use crate::display_ext::DisplaySlice;
+use crate::display_ext::display_slice::DisplaySlice;
 use crate::error::Infallible;
 use crate::log_id::RaftLogId;
 use crate::type_config::alias::SnapshotDataOf;

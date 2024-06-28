@@ -2,6 +2,7 @@ use std::cmp::Ordering;
 use std::fmt;
 use std::marker::PhantomData;
 
+use crate::display_ext::display_option::DisplayOptionExt;
 use crate::NodeId;
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -69,7 +70,7 @@ impl<NID: NodeId> LeaderId<NID> {
 
 impl<NID: NodeId> fmt::Display for LeaderId<NID> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}-{:?}", self.term, self.voted_for)
+        write!(f, "T{}-N{}", self.term, self.voted_for.display())
     }
 }
 

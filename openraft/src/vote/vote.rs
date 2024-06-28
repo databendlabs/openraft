@@ -60,6 +60,7 @@ impl<NID: NodeId> Vote<NID> {
             committed: false,
         }
     }
+
     pub fn new_committed(term: u64, node_id: NID) -> Self {
         Self {
             leader_id: LeaderId::new(term, node_id),
@@ -75,7 +76,7 @@ impl<NID: NodeId> Vote<NID> {
         self.committed
     }
 
-    /// Return the [`LeaderId`] this vote represents for.
+    /// Return the [`Vote`] this vote represents for.
     ///
     /// The leader may or may not be granted by a quorum.
     pub fn leader_id(&self) -> &LeaderId<NID> {

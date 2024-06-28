@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::display_ext::DisplayOption;
+use crate::display_ext::display_option::DisplayOption;
 use crate::LogId;
 use crate::Membership;
 use crate::RaftTypeConfig;

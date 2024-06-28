@@ -9,13 +9,11 @@ use crate::engine::testing::UTConfig;
 use crate::engine::Command;
 use crate::engine::Engine;
 use crate::engine::LogIdList;
-use crate::entry::RaftEntry;
 use crate::raft::VoteRequest;
 use crate::testing::log_id;
 use crate::utime::UTime;
 use crate::CommittedLeaderId;
 use crate::EffectiveMembership;
-use crate::Entry;
 use crate::LogId;
 use crate::Membership;
 use crate::TokioInstant;
@@ -37,8 +35,8 @@ fn eng() -> Engine<UTConfig> {
 }
 
 #[test]
-fn test_elect() -> anyhow::Result<()> {
-    tracing::info!("--- single node: become leader at once");
+fn test_elect_single_node() -> anyhow::Result<()> {
+    tracing::info!("--- single node: still need to wait for Vote to persist");
     {
         let mut eng = eng();
         eng.config.id = 1;
@@ -48,35 +46,32 @@ fn test_elect() -> anyhow::Result<()> {
 
         eng.elect();
 
-        assert_eq!(Vote::new_committed(1, 1), *eng.state.vote_ref());
-        assert_eq!(
-            Some(log_id(1, 1, 1)),
-            eng.internal_server_state.leading().unwrap().noop_log_id
-        );
-        assert!(
-            eng.internal_server_state.voting_mut().is_none(),
-            "voting state is removed when becoming leader"
-        );
+        assert_eq!(Vote::new(1, 1), *eng.state.vote_ref());
+        assert!(eng.leader.is_following());
+        assert!(eng.candidate_ref().is_some(), "candidate state is pending");
 
-        assert_eq!(ServerState::Leader, eng.state.server_state);
+        assert_eq!(ServerState::Candidate, eng.state.server_state);
 
         assert_eq!(
             vec![
+                //
                 Command::SaveVote { vote: Vote::new(1, 1) },
-                Command::SaveVote {
-                    vote: Vote::new_committed(1, 1)
-                },
-                Command::BecomeLeader,
-                Command::RebuildReplicationStreams { targets: vec![] },
-                Command::AppendInputEntries {
-                    vote: Vote::new_committed(1, 1),
-                    entries: vec![Entry::<UTConfig>::new_blank(log_id(1, 1, 1))]
+                Command::SendVote {
+                    vote_req: VoteRequest {
+                        vote: Vote::new(1, 1),
+                        last_log_id: Some(log_id(0, 0, 0)),
+                    },
                 },
             ],
             eng.output.take_commands()
         );
     }
 
+    Ok(())
+}
+
+#[test]
+fn test_elect_single_node_elect_again() -> anyhow::Result<()> {
     tracing::info!("--- single node: electing again will override previous state");
     {
         let mut eng = eng();
@@ -87,41 +82,37 @@ fn test_elect() -> anyhow::Result<()> {
 
         // Build in-progress election state
         eng.state.vote = UTime::new(TokioInstant::now(), Vote::new_committed(1, 2));
-        eng.vote_handler().become_leading();
-        eng.internal_server_state.voting_mut().map(|l| l.grant_by(&1));
+        eng.testing_new_leader();
+        eng.candidate_mut().map(|candidate| candidate.grant_by(&1));
 
         eng.elect();
 
-        assert_eq!(Vote::new_committed(2, 1), *eng.state.vote_ref());
-        assert_eq!(
-            Some(log_id(2, 1, 1)),
-            eng.internal_server_state.leading().unwrap().noop_log_id
-        );
+        assert_eq!(Vote::new(2, 1), *eng.state.vote_ref());
+        assert_eq!(Vote::new(2, 1), *eng.candidate_ref().unwrap().vote_ref());
 
-        assert!(
-            eng.internal_server_state.voting_mut().is_none(),
-            "voting state is removed when becoming leader"
-        );
+        assert!(eng.candidate_mut().is_some(), "candidate state is pending");
 
-        assert_eq!(ServerState::Leader, eng.state.server_state);
+        assert_eq!(ServerState::Candidate, eng.state.server_state);
 
         assert_eq!(
             vec![
+                //
                 Command::SaveVote { vote: Vote::new(2, 1) },
-                Command::SaveVote {
-                    vote: Vote::new_committed(2, 1)
-                },
-                Command::BecomeLeader,
-                Command::RebuildReplicationStreams { targets: vec![] },
-                Command::AppendInputEntries {
-                    vote: Vote::new_committed(2, 1),
-                    entries: vec![Entry::<UTConfig>::new_blank(log_id(2, 1, 1))]
+                Command::SendVote {
+                    vote_req: VoteRequest {
+                        vote: Vote::new(2, 1),
+                        last_log_id: Some(log_id(0, 0, 0)),
+                    },
                 },
             ],
             eng.output.take_commands()
         );
     }
+    Ok(())
+}
 
+#[test]
+fn test_elect_multi_node_enter_candidate() -> anyhow::Result<()> {
     tracing::info!("--- multi nodes: enter candidate state");
     {
         let mut eng = eng();
@@ -134,19 +125,24 @@ fn test_elect() -> anyhow::Result<()> {
         eng.elect();
 
         assert_eq!(Vote::new(1, 1), *eng.state.vote_ref());
-        assert_eq!(None, eng.internal_server_state.leading().unwrap().noop_log_id);
+        assert!(eng.leader.is_following());
+        assert_eq!(Vote::new(1, 1), *eng.candidate_ref().unwrap().vote_ref());
 
         assert_eq!(
-            Some(btreeset! {1},),
-            eng.internal_server_state.leading().map(|x| x.voting().unwrap().granters().collect::<BTreeSet<_>>())
+            Some(btreeset! {},),
+            eng.candidate_ref().map(|x| x.granters().collect::<BTreeSet<_>>())
         );
 
         assert_eq!(ServerState::Candidate, eng.state.server_state);
 
         assert_eq!(
-            vec![Command::SaveVote { vote: Vote::new(1, 1) }, Command::SendVote {
-                vote_req: VoteRequest::new(Vote::new(1, 1), Some(log_id(1, 1, 1)))
-            },],
+            vec![
+                //
+                Command::SaveVote { vote: Vote::new(1, 1) },
+                Command::SendVote {
+                    vote_req: VoteRequest::new(Vote::new(1, 1), Some(log_id(1, 1, 1)))
+                },
+            ],
             eng.output.take_commands()
         );
     }

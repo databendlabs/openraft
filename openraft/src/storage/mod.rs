@@ -18,7 +18,7 @@ pub use v2::RaftLogStorage;
 pub use v2::RaftLogStorageExt;
 pub use v2::RaftStateMachine;
 
-use crate::display_ext::DisplayOption;
+use crate::display_ext::display_option::DisplayOption;
 use crate::raft_types::SnapshotId;
 pub use crate::storage::callback::LogApplied;
 pub use crate::storage::callback::LogFlushed;

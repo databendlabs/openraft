@@ -6,7 +6,7 @@ use std::fmt::Formatter;
 
 use validit::Validate;
 
-use crate::display_ext::DisplayOptionExt;
+use crate::display_ext::display_option::DisplayOptionExt;
 use crate::log_id_range::LogIdRange;
 use crate::replication::request_id::RequestId;
 use crate::LogId;
