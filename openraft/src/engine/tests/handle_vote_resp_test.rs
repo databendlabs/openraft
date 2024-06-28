@@ -13,7 +13,6 @@ use crate::entry::RaftEntry;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::Inflight;
 use crate::raft::VoteResponse;
-use crate::raft_state::LogStateReader;
 use crate::testing::log_id;
 use crate::utime::UTime;
 use crate::CommittedLeaderId;
@@ -51,21 +50,17 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
             .membership_state
             .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(1, 1, 1)), m12())));
 
-        eng.handle_vote_resp(2, VoteResponse {
-            vote: Vote::new(2, 2),
-            vote_granted: true,
-            last_log_id: Some(log_id(2, 1, 2)),
-        });
+        eng.handle_vote_resp(2, VoteResponse::new(Vote::new(2, 2), Some(log_id(2, 1, 2))));
 
         assert_eq!(Vote::new(2, 1), *eng.state.vote_ref());
-        assert!(eng.internal_server_state.is_following());
+        assert!(eng.leader.is_none());
 
         assert_eq!(ServerState::Follower, eng.state.server_state);
 
         assert_eq!(0, eng.output.take_commands().len());
     }
 
-    tracing::info!("--- recv a smaller vote. vote_granted==false; always keep trying in candidate state");
+    tracing::info!("--- recv a smaller vote; always keep trying in candidate state");
     {
         let mut eng = eng();
         eng.config.id = 1;
@@ -73,32 +68,26 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         eng.state
             .membership_state
             .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(1, 1, 1)), m12())));
-        eng.vote_handler().become_leading();
+        eng.new_candidate(*eng.state.vote_ref());
+        eng.output.take_commands();
 
-        let last_log_id = eng.state.last_log_id().copied();
+        let voting = eng.new_candidate(*eng.state.vote_ref());
+        voting.grant_by(&1);
 
-        eng.internal_server_state.leading_mut().map(|l| {
-            l.initialize_voting(last_log_id, TokioInstant::now());
-            l.voting_mut().unwrap().grant_by(&1)
-        });
         eng.state.server_state = ServerState::Candidate;
 
-        eng.handle_vote_resp(2, VoteResponse {
-            vote: Vote::new(1, 1),
-            vote_granted: false,
-            last_log_id: Some(log_id(2, 1, 2)),
-        });
+        eng.handle_vote_resp(2, VoteResponse::new(Vote::new(1, 1), Some(log_id(2, 1, 2))));
 
         assert_eq!(Vote::new(2, 1), *eng.state.vote_ref());
-        assert_eq!(None, eng.internal_server_state.leading().unwrap().noop_log_id);
+        assert_eq!(&Vote::new(2, 1), eng.candidate_ref().unwrap().vote_ref());
         assert_eq!(
-            Some(btreeset! {1},),
-            eng.internal_server_state.leading().map(|x| x.voting().unwrap().granters().collect::<BTreeSet<_>>())
+            btreeset! {1},
+            eng.candidate_ref().unwrap().granters().collect::<BTreeSet<_>>()
         );
 
         assert_eq!(ServerState::Candidate, eng.state.server_state);
 
-        assert!(eng.output.take_commands().is_empty());
+        assert_eq!(eng.output.take_commands(), vec![]);
     }
 
     // TODO: when seeing a higher vote, keep trying until a majority of higher votes are seen.
@@ -111,24 +100,18 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         eng.state
             .membership_state
             .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(1, 1, 1)), m12())));
-        eng.vote_handler().become_leading();
+        eng.new_candidate(*eng.state.vote_ref());
+        eng.output.take_commands();
 
-        let last_log_id = eng.state.last_log_id().copied();
+        let voting = eng.new_candidate(*eng.state.vote_ref());
+        voting.grant_by(&1);
 
-        eng.internal_server_state.leading_mut().map(|l| {
-            l.initialize_voting(last_log_id, TokioInstant::now());
-            l.voting_mut().unwrap().grant_by(&1)
-        });
         eng.state.server_state = ServerState::Candidate;
 
-        eng.handle_vote_resp(2, VoteResponse {
-            vote: Vote::new(3, 2),
-            vote_granted: false,
-            last_log_id: Some(log_id(2, 1, 2)),
-        });
+        eng.handle_vote_resp(2, VoteResponse::new(Vote::new(3, 2), Some(log_id(2, 1, 2))));
 
         assert_eq!(Vote::new(3, 2), *eng.state.vote_ref());
-        assert!(eng.internal_server_state.is_following());
+        assert!(eng.leader.is_none());
 
         assert_eq!(ServerState::Follower, eng.state.server_state);
 
@@ -136,43 +119,6 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
             vec![Command::SaveVote { vote: Vote::new(3, 2) },],
             eng.output.take_commands()
         );
-    }
-
-    tracing::info!("--- equal vote, rejected by higher last_log_id. keep trying in candidate state");
-    {
-        let mut eng = eng();
-        eng.config.id = 1;
-        eng.state.vote = UTime::new(TokioInstant::now(), Vote::new(2, 1));
-        eng.state
-            .membership_state
-            .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(1, 1, 1)), m12())));
-        eng.vote_handler().become_leading();
-
-        let last_log_id = eng.state.last_log_id().copied();
-
-        eng.internal_server_state.leading_mut().map(|l| {
-            l.initialize_voting(last_log_id, TokioInstant::now());
-            l.voting_mut().unwrap().grant_by(&1)
-        });
-
-        eng.state.server_state = ServerState::Candidate;
-
-        eng.handle_vote_resp(2, VoteResponse {
-            vote: Vote::new(2, 1),
-            vote_granted: false,
-            last_log_id: Some(log_id(2, 1, 2)),
-        });
-
-        assert_eq!(Vote::new(2, 1), *eng.state.vote_ref());
-        assert_eq!(None, eng.internal_server_state.leading().unwrap().noop_log_id);
-        assert_eq!(
-            Some(btreeset! {1},),
-            eng.internal_server_state.leading().map(|x| x.voting().unwrap().granters().collect::<BTreeSet<_>>())
-        );
-
-        assert_eq!(ServerState::Candidate, eng.state.server_state);
-
-        assert!(eng.output.take_commands().is_empty());
     }
 
     tracing::info!("--- equal vote, granted, but not constitute a quorum. nothing to do");
@@ -183,35 +129,32 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         eng.state
             .membership_state
             .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(1, 1, 1)), m1234())));
-        eng.vote_handler().become_leading();
+        eng.new_candidate(*eng.state.vote_ref());
+        eng.output.take_commands();
 
-        let last_log_id = eng.state.last_log_id().copied();
-
-        eng.internal_server_state.leading_mut().map(|l| {
-            l.initialize_voting(last_log_id, TokioInstant::now());
-            l.voting_mut().unwrap().grant_by(&1)
-        });
+        let voting = eng.new_candidate(*eng.state.vote_ref());
+        voting.grant_by(&1);
 
         eng.state.server_state = ServerState::Candidate;
 
-        eng.handle_vote_resp(2, VoteResponse {
-            vote: Vote::new(2, 1),
-            vote_granted: true,
-            last_log_id: Some(log_id(2, 1, 2)),
-        });
+        eng.handle_vote_resp(2, VoteResponse::new(Vote::new(2, 1), Some(log_id(2, 1, 2))));
 
         assert_eq!(Vote::new(2, 1), *eng.state.vote_ref());
-        assert_eq!(None, eng.internal_server_state.leading().unwrap().noop_log_id);
+        assert_eq!(&Vote::new(2, 1), eng.candidate_ref().unwrap().vote_ref());
         assert_eq!(
-            Some(btreeset! {1,2},),
-            eng.internal_server_state.leading().map(|x| x.voting().unwrap().granters().collect::<BTreeSet<_>>())
+            btreeset! {1,2},
+            eng.candidate_ref().unwrap().granters().collect::<BTreeSet<_>>()
         );
 
         assert_eq!(ServerState::Candidate, eng.state.server_state);
 
-        assert_eq!(0, eng.output.take_commands().len());
+        assert_eq!(eng.output.take_commands(), vec![]);
     }
+    Ok(())
+}
 
+#[test]
+fn test_handle_vote_resp_equal_vote() -> anyhow::Result<()> {
     tracing::info!("--- equal vote, granted, constitute a quorum. become leader");
     {
         let mut eng = eng();
@@ -220,44 +163,33 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         eng.state
             .membership_state
             .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(1, 1, 1)), m12())));
-        eng.vote_handler().become_leading();
+        eng.new_candidate(*eng.state.vote_ref());
 
-        let last_log_id = eng.state.last_log_id().copied();
-
-        eng.internal_server_state.leading_mut().map(|l| {
-            l.initialize_voting(last_log_id, TokioInstant::now());
-            l.voting_mut().unwrap().grant_by(&1)
-        });
+        let voting = eng.new_candidate(*eng.state.vote_ref());
+        voting.grant_by(&1);
 
         eng.state.server_state = ServerState::Candidate;
 
-        eng.handle_vote_resp(2, VoteResponse {
-            vote: Vote::new(2, 1),
-            vote_granted: true,
-            last_log_id: Some(log_id(2, 1, 2)),
-        });
+        eng.handle_vote_resp(2, VoteResponse::new(Vote::new(2, 1), Some(log_id(2, 1, 2))));
 
-        assert_eq!(Vote::new_committed(2, 1), *eng.state.vote_ref());
-        assert_eq!(
-            Some(log_id(2, 1, 1)),
-            eng.internal_server_state.leading().unwrap().noop_log_id
-        );
+        assert_eq!(Vote::new_committed(2, 1), *eng.state.vote_ref(),);
+        assert_eq!(Some(log_id(2, 1, 1)), eng.leader.as_ref().unwrap().noop_log_id);
         assert!(
-            eng.internal_server_state.voting_mut().is_none(),
-            "voting state is removed when becoming leader"
+            eng.candidate_ref().is_none(),
+            "candidate state is removed when becoming leader"
         );
 
         assert_eq!(ServerState::Leader, eng.state.server_state);
 
         assert_eq!(
             vec![
+                Command::RebuildReplicationStreams {
+                    targets: vec![(2, ProgressEntry::empty(1))]
+                },
                 Command::SaveVote {
                     vote: Vote::new_committed(2, 1)
                 },
                 Command::BecomeLeader,
-                Command::RebuildReplicationStreams {
-                    targets: vec![(2, ProgressEntry::empty(1))]
-                },
                 Command::AppendInputEntries {
                     vote: Vote::new_committed(2, 1),
                     entries: vec![Entry::<UTConfig>::new_blank(log_id(2, 1, 1))],

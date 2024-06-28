@@ -4,8 +4,8 @@ use crate::engine::Command;
 use crate::engine::EngineConfig;
 use crate::engine::EngineOutput;
 use crate::entry::RaftPayload;
-use crate::internal_server_state::LeaderQuorumSet;
-use crate::leader::Leading;
+use crate::proposer::Leader;
+use crate::proposer::LeaderQuorumSet;
 use crate::raft_state::LogStateReader;
 use crate::type_config::alias::LogIdOf;
 use crate::RaftLogId;
@@ -25,7 +25,7 @@ pub(crate) struct LeaderHandler<'x, C>
 where C: RaftTypeConfig
 {
     pub(crate) config: &'x mut EngineConfig<C>,
-    pub(crate) leader: &'x mut Leading<C, LeaderQuorumSet<C::NodeId>>,
+    pub(crate) leader: &'x mut Leader<C, LeaderQuorumSet<C::NodeId>>,
     pub(crate) state: &'x mut RaftState<C>,
     pub(crate) output: &'x mut EngineOutput<C>,
 }
@@ -49,8 +49,7 @@ where C: RaftTypeConfig
             return;
         }
 
-        // Engine::leader_handler() ensures it is a valid leader.
-        self.leader.assign_log_ids(&mut entries).unwrap();
+        self.leader.assign_log_ids(&mut entries);
 
         self.state.extend_log_ids_from_same_leader(&entries);
 

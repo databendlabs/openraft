@@ -60,6 +60,7 @@ impl<NID: NodeId> Vote<NID> {
             committed: false,
         }
     }
+
     pub fn new_committed(term: u64, node_id: NID) -> Self {
         Self {
             leader_id: LeaderId::new(term, node_id),

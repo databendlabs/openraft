@@ -49,7 +49,7 @@ impl<NID: NodeId> LeaderId<NID> {
 
 impl<NID: NodeId> fmt::Display for LeaderId<NID> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}-{}", self.term, self.node_id)
+        write!(f, "T{}-N{}", self.term, self.node_id)
     }
 }
 

@@ -6,9 +6,11 @@ use crate::core::raft_msg::AppendEntriesTx;
 use crate::core::raft_msg::ResultSender;
 use crate::core::sm;
 use crate::core::ServerState;
+use crate::display_ext::DisplayInstantExt;
 use crate::display_ext::DisplayOptionExt;
 use crate::display_ext::DisplaySlice;
 use crate::engine::engine_config::EngineConfig;
+use crate::engine::handler::establish_handler::EstablishHandler;
 use crate::engine::handler::following_handler::FollowingHandler;
 use crate::engine::handler::leader_handler::LeaderHandler;
 use crate::engine::handler::log_handler::LogHandler;
@@ -20,7 +22,6 @@ use crate::engine::handler::vote_handler::VoteHandler;
 use crate::engine::Command;
 use crate::engine::EngineOutput;
 use crate::engine::Respond;
-use crate::entry::RaftEntry;
 use crate::entry::RaftPayload;
 use crate::error::ForwardToLeader;
 use crate::error::Infallible;
@@ -28,7 +29,9 @@ use crate::error::InitializeError;
 use crate::error::NotAllowed;
 use crate::error::NotInMembers;
 use crate::error::RejectAppendEntries;
-use crate::internal_server_state::InternalServerState;
+use crate::proposer::Candidate;
+use crate::proposer::LeaderQuorumSet;
+use crate::proposer::LeaderState;
 use crate::raft::responder::Responder;
 use crate::raft::AppendEntriesResponse;
 use crate::raft::SnapshotResponse;
@@ -74,8 +77,10 @@ where C: RaftTypeConfig
     /// should be greater.
     pub(crate) seen_greater_log: bool,
 
-    /// The internal server state used by Engine.
-    pub(crate) internal_server_state: InternalServerState<C>,
+    /// The internal server state(Leader or following) used by Engine.
+    pub(crate) leader: LeaderState<C>,
+
+    pub(crate) candidate: Option<Candidate<C, LeaderQuorumSet<C::NodeId>>>,
 
     /// Output entry for the runtime.
     pub(crate) output: EngineOutput<C>,
@@ -89,9 +94,31 @@ where C: RaftTypeConfig
             config,
             state: Valid::new(init_state),
             seen_greater_log: false,
-            internal_server_state: InternalServerState::default(),
+            leader: None,
+            candidate: None,
             output: EngineOutput::new(4096),
         }
+    }
+
+    /// Create a new candidate state and return the mutable reference to it.
+    ///
+    /// The candidate `last_log_id` is initialized with the attributes of Acceptor part:
+    /// [`RaftState`]
+    pub(crate) fn new_candidate(&mut self, vote: Vote<C::NodeId>) -> &mut Candidate<C, LeaderQuorumSet<C::NodeId>> {
+        let now = InstantOf::<C>::now();
+        let last_log_id = self.state.last_log_id().copied();
+
+        let membership = self.state.membership_state.effective().membership();
+
+        self.candidate = Some(Candidate::new(
+            now,
+            vote,
+            last_log_id,
+            membership.to_quorum_set(),
+            membership.learner_ids(),
+        ));
+
+        self.candidate.as_mut().unwrap()
     }
 
     /// Create a default Engine for testing.
@@ -118,7 +145,6 @@ where C: RaftTypeConfig
             self.vote_handler().update_internal_server_state();
 
             let mut rh = self.replication_handler();
-            rh.rebuild_replication_streams();
 
             // Restore the progress about the local log
             rh.update_local_progress(rh.state.last_log_id().copied());
@@ -176,36 +202,31 @@ where C: RaftTypeConfig
     /// Start to elect this node as leader
     #[tracing::instrument(level = "debug", skip(self))]
     pub(crate) fn elect(&mut self) {
-        let v = Vote::new(self.state.vote_ref().leader_id().term + 1, self.config.id);
-        tracing::info!(vote = display(&v), "{}", func_name!());
+        let new_vote = Vote::new(self.state.vote_ref().leader_id().term + 1, self.config.id);
 
+        let candidate = self.new_candidate(new_vote);
+
+        tracing::info!("{}, new candidate: {}", func_name!(), candidate);
+
+        let last_log_id = candidate.last_log_id().copied();
+
+        // Simulate sending RequestVote RPC to local node.
         // Safe unwrap(): it won't reject itself ˙–˙
-        self.vote_handler().update_vote(&v).unwrap();
-
-        // TODO: simplify voting initialization.
-        //       - update_vote() should be moved to after initialize_voting(), because it can be considered
-        //         as a local RPC
-
-        // Safe unwrap(): leading state is just created
-        let leading = self.internal_server_state.leading_mut().unwrap();
-        let voting = leading.initialize_voting(self.state.last_log_id().copied(), InstantOf::<C>::now());
-
-        let quorum_granted = voting.grant_by(&self.config.id);
-
-        // Fast-path: if there is only one voter in the cluster.
-
-        if quorum_granted {
-            self.establish_leader();
-            return;
-        }
-
-        // Slow-path: send vote request, let a quorum grant it.
+        self.vote_handler().update_vote(&new_vote).unwrap();
 
         self.output.push_command(Command::SendVote {
-            vote_req: VoteRequest::new(*self.state.vote_ref(), self.state.last_log_id().copied()),
+            vote_req: VoteRequest::new(new_vote, last_log_id),
         });
 
         self.server_state_handler().update_server_state_if_changed();
+    }
+
+    pub(crate) fn candidate_ref(&self) -> Option<&Candidate<C, LeaderQuorumSet<C::NodeId>>> {
+        self.candidate.as_ref()
+    }
+
+    pub(crate) fn candidate_mut(&mut self) -> Option<&mut Candidate<C, LeaderQuorumSet<C::NodeId>>> {
+        self.candidate.as_mut()
     }
 
     /// Get a LeaderHandler for handling leader's operation. If it is not a leader, it send back a
@@ -249,10 +270,10 @@ where C: RaftTypeConfig
             "Engine::handle_vote_req"
         );
         tracing::info!(
-            "now; {:?}, vote is updated at: {:?}, vote is updated before {:?}, leader lease({:?}) will expire after {:?}",
-            now,
-            vote_utime,
-            now- vote_utime,
+            "now; {}, vote is updated at: {}, vote is updated before {:?}, leader lease({:?}) will expire after {:?}",
+            now.display(),
+            vote_utime.display(),
+            now - vote_utime,
             lease,
             vote_utime + lease - now
         );
@@ -268,11 +289,7 @@ where C: RaftTypeConfig
                     vote_utime + lease - now
                 );
 
-                return VoteResponse {
-                    vote: *self.state.vote_ref(),
-                    vote_granted: false,
-                    last_log_id: self.state.last_log_id().copied(),
-                };
+                return VoteResponse::new(self.state.vote_ref(), self.state.last_log_id().copied());
             }
         }
 
@@ -288,13 +305,10 @@ where C: RaftTypeConfig
             );
             // The res is not used yet.
             // let _res = Err(RejectVoteRequest::ByLastLogId(self.state.last_log_id().copied()));
-            return VoteResponse {
-                // Return the updated vote, this way the candidate knows which vote is granted, in case
-                // the candidate's vote is changed after sending the vote request.
-                vote: *self.state.vote_ref(),
-                vote_granted: false,
-                last_log_id: self.state.last_log_id().copied(),
-            };
+
+            // Return the updated vote, this way the candidate knows which vote is granted, in case
+            // the candidate's vote is changed after sending the vote request.
+            return VoteResponse::new(self.state.vote_ref(), self.state.last_log_id().copied());
         }
 
         // Then check vote just as it does for every incoming event.
@@ -303,15 +317,9 @@ where C: RaftTypeConfig
 
         tracing::info!(req = display(&req), result = debug(&res), "handle vote request result");
 
-        let vote_granted = res.is_ok();
-
-        VoteResponse {
-            // Return the updated vote, this way the candidate knows which vote is granted, in case
-            // the candidate's vote is changed after sending the vote request.
-            vote: *self.state.vote_ref(),
-            vote_granted,
-            last_log_id: self.state.last_log_id().copied(),
-        }
+        // Return the updated vote, this way the candidate knows which vote is granted, in case
+        // the candidate's vote is changed after sending the vote request.
+        VoteResponse::new(self.state.vote_ref(), self.state.last_log_id().copied())
     }
 
     #[tracing::instrument(level = "debug", skip(self, resp))]
@@ -325,21 +333,15 @@ where C: RaftTypeConfig
             func_name!()
         );
 
-        let voting = if let Some(voting) = self.internal_server_state.voting_mut() {
-            // TODO check the sending vote matches current vote
-            voting
-        } else {
-            // If this node is no longer a leader(i.e., electing) or candidate,
+        let Some(candidate) = self.candidate_mut() else {
+            // If the voting process has finished or canceled,
             // just ignore the delayed vote_resp.
             return;
         };
 
-        if &resp.vote < self.state.vote_ref() {
-            debug_assert!(!resp.vote_granted);
-        }
-
-        if resp.vote_granted {
-            let quorum_granted = voting.grant_by(&target);
+        // A vote request is granted iff the replied vote is the same as the requested vote.
+        if &resp.vote == candidate.vote_ref() {
+            let quorum_granted = candidate.grant_by(&target);
             if quorum_granted {
                 tracing::info!("a quorum granted my vote");
                 self.establish_leader();
@@ -347,9 +349,15 @@ where C: RaftTypeConfig
             return;
         }
 
-        // vote is rejected:
+        // TODO: resp.granted is never used.
 
-        debug_assert!(self.state.membership_state.effective().is_voter(&self.config.id));
+        // If not equal, vote is rejected:
+
+        // Note that it is still possible seeing a smaller vote:
+        // - The target has more logs than this node;
+        // - Or leader lease on remote node is not expired;
+        // - It is a delayed response of previous voting(resp.vote_granted could be true)
+        // In any case, no need to proceed.
 
         // If peer's vote is greater than current vote, revert to follower state.
         //
@@ -541,7 +549,7 @@ where C: RaftTypeConfig
             func_name!()
         );
 
-        if self.internal_server_state.is_leading() {
+        if self.leader.is_some() {
             // If it is leading, it must not delete a log that is in use by a replication task.
             self.replication_handler().try_purge_log();
         } else {
@@ -601,58 +609,8 @@ where C: RaftTypeConfig
     #[tracing::instrument(level = "debug", skip_all)]
     fn establish_leader(&mut self) {
         tracing::info!("{}", func_name!());
-
-        // Mark the vote as committed, i.e., being granted and saved by a quorum.
-        //
-        // The committed vote, is not necessary in original raft.
-        // Openraft insists doing this because:
-        // - Voting is not in the hot path, thus no performance penalty.
-        // - Leadership won't be lost if a leader restarted quick enough.
-        {
-            let leading = self.internal_server_state.leading_mut().unwrap();
-            let voting = leading.finish_voting();
-            let mut vote = *voting.vote_ref();
-
-            debug_assert!(!vote.is_committed());
-            debug_assert_eq!(
-                vote.leader_id().voted_for(),
-                Some(self.config.id),
-                "it can only commit its own vote"
-            );
-            vote.commit();
-
-            let _res = self.vote_handler().update_vote(&vote);
-            debug_assert!(_res.is_ok(), "commit vote can not fail but: {:?}", _res);
-        }
-
-        // Update the noop log index
-        {
-            let vote = *self.state.vote_ref();
-            let index = self.state.last_log_id().next_index();
-
-            let leading = self.internal_server_state.leading_mut().unwrap();
-
-            // TODO: in future the leader will be able to start another new election without quit leader.
-            debug_assert!(leading.noop_log_id.is_none());
-            leading.noop_log_id = Some(LogId::new(vote.committed_leader_id().unwrap(), index));
-        }
-
-        let mut rh = self.replication_handler();
-
-        // It has to setup replication stream first because append_blank_log() may update the
-        // committed-log-id(a single leader with several learners), in which case the
-        // committed-log-id will be at once submitted to replicate before replication stream
-        // is built.
-        //
-        // TODO: But replication streams should be built when a node enters leading state.
-        //       Thus append_blank_log() can be moved before rebuild_replication_streams()
-
-        rh.rebuild_replication_streams();
-
-        // Safe unwrap(): Leader is just established
-        self.leader_handler()
-            .unwrap()
-            .leader_append_entries(vec![C::Entry::new_blank(LogId::<C::NodeId>::default())]);
+        let candidate = self.candidate.take().unwrap();
+        self.establish_handler().establish(candidate);
     }
 
     /// Check if a raft node is in a state that allows to initialize.
@@ -716,10 +674,10 @@ where C: RaftTypeConfig
 
     pub(crate) fn vote_handler(&mut self) -> VoteHandler<C> {
         VoteHandler {
-            config: &self.config,
+            config: &mut self.config,
             state: &mut self.state,
             output: &mut self.output,
-            internal_server_state: &mut self.internal_server_state,
+            leader: &mut self.leader,
         }
     }
 
@@ -739,7 +697,7 @@ where C: RaftTypeConfig
     }
 
     pub(crate) fn leader_handler(&mut self) -> Result<LeaderHandler<C>, ForwardToLeader<C>> {
-        let leader = match self.internal_server_state.leading_mut() {
+        let leader = match self.leader.as_mut() {
             None => {
                 tracing::debug!("this node is NOT a leader: {:?}", self.state.server_state);
                 return Err(self.state.forward_to_leader());
@@ -747,7 +705,12 @@ where C: RaftTypeConfig
             Some(x) => x,
         };
 
-        if !self.state.is_leader(&self.config.id) {
+        // This leader is not accepted by a quorum yet.
+        // Not a valid leader.
+        //
+        // Note that leading state is separated from local RaftState(which is used by the `Acceptor` part),
+        // and do not consider the vote in the local RaftState.
+        if !leader.vote.is_committed() {
             return Err(self.state.forward_to_leader());
         }
 
@@ -760,7 +723,7 @@ where C: RaftTypeConfig
     }
 
     pub(crate) fn replication_handler(&mut self) -> ReplicationHandler<C> {
-        let leader = match self.internal_server_state.leading_mut() {
+        let leader = match self.leader.as_mut() {
             None => {
                 unreachable!("There is no leader, can not handle replication");
             }
@@ -776,7 +739,7 @@ where C: RaftTypeConfig
     }
 
     pub(crate) fn following_handler(&mut self) -> FollowingHandler<C> {
-        debug_assert!(self.internal_server_state.is_following());
+        debug_assert!(self.leader.is_none());
 
         FollowingHandler {
             config: &mut self.config,
@@ -790,6 +753,35 @@ where C: RaftTypeConfig
             config: &self.config,
             state: &mut self.state,
             output: &mut self.output,
+        }
+    }
+    pub(crate) fn establish_handler(&mut self) -> EstablishHandler<C> {
+        EstablishHandler {
+            config: &mut self.config,
+            leader: &mut self.leader,
+            state: &mut self.state,
+            output: &mut self.output,
+        }
+    }
+}
+
+/// Supporting utilities for unit test
+#[cfg(test)]
+mod engine_testing {
+    use crate::engine::Engine;
+    use crate::proposer::LeaderQuorumSet;
+    use crate::RaftTypeConfig;
+
+    impl<C> Engine<C>
+    where C: RaftTypeConfig
+    {
+        /// Create a Leader state just for testing purpose only,
+        /// without initializing related resource,
+        /// such as setting up replication, propose blank log.
+        pub(crate) fn testing_new_leader(&mut self) -> &mut crate::proposer::Leader<C, LeaderQuorumSet<C::NodeId>> {
+            let leader = self.state.new_leader();
+            self.leader = Some(Box::new(leader));
+            self.leader.as_mut().unwrap()
         }
     }
 }

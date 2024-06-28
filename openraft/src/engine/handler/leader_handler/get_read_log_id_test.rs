@@ -36,6 +36,7 @@ fn eng() -> Engine<UTConfig> {
         Arc::new(EffectiveMembership::new(Some(log_id(1, 1, 1)), m01())),
         Arc::new(EffectiveMembership::new(Some(log_id(2, 1, 3)), m23())),
     );
+    eng.testing_new_leader();
     eng.state.server_state = eng.calc_server_state();
 
     eng
@@ -44,10 +45,9 @@ fn eng() -> Engine<UTConfig> {
 #[test]
 fn test_get_read_log_id() -> anyhow::Result<()> {
     let mut eng = eng();
-    eng.vote_handler().become_leading();
 
     eng.state.committed = Some(log_id(0, 1, 0));
-    eng.internal_server_state.leading_mut().unwrap().noop_log_id = Some(log_id(1, 1, 2));
+    eng.leader.as_mut().unwrap().noop_log_id = Some(log_id(1, 1, 2));
 
     let got = eng.leader_handler()?.get_read_log_id();
     assert_eq!(Some(log_id(1, 1, 2)), got);

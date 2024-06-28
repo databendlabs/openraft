@@ -39,6 +39,8 @@ where C: RaftTypeConfig
 
     /// Push a command to the queue.
     pub(crate) fn push_command(&mut self, mut cmd: Command<C>) {
+        tracing::debug!("push command: {:?}", cmd);
+
         match &mut cmd {
             Command::StateMachine { command } => {
                 let seq = self.next_sm_seq();
