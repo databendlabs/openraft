@@ -60,6 +60,7 @@ impl<NID: NodeId> Vote<NID> {
             committed: false,
         }
     }
+
     pub fn new_committed(term: u64, node_id: NID) -> Self {
         Self {
             leader_id: LeaderId::new(term, node_id),
@@ -75,7 +76,7 @@ impl<NID: NodeId> Vote<NID> {
         self.committed
     }
 
-    /// Return the [`LeaderId`] this vote represents for.
+    /// Return the [`Vote`] this vote represents for.
     ///
     /// The leader may or may not be granted by a quorum.
     pub fn leader_id(&self) -> &LeaderId<NID> {
@@ -148,7 +149,6 @@ mod tests {
     mod feature_single_term_leader {
         use std::panic::UnwindSafe;
 
-        use crate::LeaderId;
         use crate::Vote;
 
         #[cfg(feature = "serde")]
@@ -171,7 +171,7 @@ mod tests {
             let vote = |term, node_id| Vote::<u64>::new(term, node_id);
 
             let none = |term| Vote::<u64> {
-                leader_id: LeaderId { term, voted_for: None },
+                leader_id: Vote { term, voted_for: None },
                 committed: false,
             };
 

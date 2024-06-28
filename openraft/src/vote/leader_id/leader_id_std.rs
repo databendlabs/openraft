@@ -2,6 +2,7 @@ use std::cmp::Ordering;
 use std::fmt;
 use std::marker::PhantomData;
 
+use crate::display_ext::DisplayOptionExt;
 use crate::NodeId;
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -69,7 +70,7 @@ impl<NID: NodeId> LeaderId<NID> {
 
 impl<NID: NodeId> fmt::Display for LeaderId<NID> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}-{:?}", self.term, self.voted_for)
+        write!(f, "T{}-N{}", self.term, self.voted_for.display())
     }
 }
 
@@ -99,7 +100,7 @@ impl<NID: NodeId> CommittedLeaderId<NID> {
 #[allow(clippy::nonminimal_bool)]
 mod tests {
     use crate::CommittedLeaderId;
-    use crate::LeaderId;
+    use crate::Vote;
 
     #[cfg(feature = "serde")]
     #[test]
@@ -118,9 +119,9 @@ mod tests {
     #[allow(clippy::neg_cmp_op_on_partial_ord)]
     fn test_leader_id_partial_order() -> anyhow::Result<()> {
         #[allow(clippy::redundant_closure)]
-        let lid = |term, node_id| LeaderId::<u64>::new(term, node_id);
+        let lid = |term, node_id| Vote::<u64>::new(term, node_id);
 
-        let lid_none = |term| LeaderId::<u64> { term, voted_for: None };
+        let lid_none = |term| Vote::<u64> { term, voted_for: None };
 
         // Compare term first
         assert!(lid(2, 2) > lid(1, 2));

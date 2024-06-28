@@ -18,6 +18,7 @@ repository    = { workspace = true }
 anyerror        = { workspace = true }
 anyhow          = { workspace = true, optional = true }
 byte-unit       = { workspace = true }
+chrono          = { workspace = true }
 clap            = { workspace = true }
 derive_more     = { workspace = true }
 futures         = { workspace = true }

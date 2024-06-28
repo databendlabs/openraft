@@ -7,7 +7,7 @@ use crate::engine::Command;
 use crate::engine::EngineConfig;
 use crate::engine::EngineOutput;
 use crate::internal_server_state::LeaderQuorumSet;
-use crate::leader::Leading;
+use crate::leader::Leader;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::Inflight;
 use crate::progress::Progress;
@@ -38,7 +38,7 @@ pub(crate) struct ReplicationHandler<'x, C>
 where C: RaftTypeConfig
 {
     pub(crate) config: &'x mut EngineConfig<C>,
-    pub(crate) leader: &'x mut Leading<C, LeaderQuorumSet<C::NodeId>>,
+    pub(crate) leader: &'x mut Leader<C, LeaderQuorumSet<C::NodeId>>,
     pub(crate) state: &'x mut RaftState<C>,
     pub(crate) output: &'x mut EngineOutput<C>,
 }

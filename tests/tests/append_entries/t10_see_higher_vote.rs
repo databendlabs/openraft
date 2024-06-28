@@ -55,7 +55,7 @@ async fn append_sees_higher_vote() -> Result<()> {
             )
             .await?;
 
-        assert!(resp.vote_granted);
+        assert!(resp.is_granted_to(&Vote::new(10, 1)));
     }
 
     // Current state:
