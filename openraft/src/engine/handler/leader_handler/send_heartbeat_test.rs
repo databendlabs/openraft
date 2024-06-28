@@ -39,6 +39,7 @@ fn eng() -> Engine<UTConfig> {
         Arc::new(EffectiveMembership::new(Some(log_id(1, 1, 1)), m01())),
         Arc::new(EffectiveMembership::new(Some(log_id(2, 1, 3)), m23())),
     );
+    eng.testing_new_leader();
     eng.state.server_state = eng.calc_server_state();
 
     eng
@@ -47,7 +48,7 @@ fn eng() -> Engine<UTConfig> {
 #[test]
 fn test_leader_send_heartbeat() -> anyhow::Result<()> {
     let mut eng = eng();
-    eng.vote_handler().become_leading();
+    eng.output.take_commands();
 
     // A heartbeat is a normal AppendEntries RPC if there are pending data to send.
     {

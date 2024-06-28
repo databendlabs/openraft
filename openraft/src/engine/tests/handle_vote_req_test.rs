@@ -2,6 +2,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use maplit::btreeset;
+use pretty_assertions::assert_eq;
 
 use crate::core::ServerState;
 use crate::engine::testing::UTConfig;
@@ -32,7 +33,8 @@ fn eng() -> Engine<UTConfig> {
     eng.state
         .membership_state
         .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(1, 1, 1)), m01())));
-    eng.vote_handler().become_leading();
+    eng.new_candidate(*eng.state.vote_ref());
+    eng.output.take_commands();
 
     eng
 }
@@ -47,17 +49,11 @@ fn test_handle_vote_req_rejected_by_leader_lease() -> anyhow::Result<()> {
         last_log_id: Some(log_id(2, 1, 3)),
     });
 
-    assert_eq!(
-        VoteResponse {
-            vote: Vote::new_committed(2, 1),
-            vote_granted: false,
-            last_log_id: None
-        },
-        resp
-    );
+    assert_eq!(VoteResponse::new(Vote::new_committed(2, 1), None), resp);
 
     assert_eq!(Vote::new_committed(2, 1), *eng.state.vote_ref());
-    assert!(eng.internal_server_state.is_leading());
+    assert!(eng.leader.is_none());
+    assert_eq!(eng.candidate_ref().unwrap().vote_ref(), &Vote::new(2, 1));
 
     assert_eq!(ServerState::Candidate, eng.state.server_state);
     assert_eq!(0, eng.output.take_commands().len());
@@ -74,17 +70,11 @@ fn test_handle_vote_req_reject_smaller_vote() -> anyhow::Result<()> {
         last_log_id: None,
     });
 
-    assert_eq!(
-        VoteResponse {
-            vote: Vote::new(2, 1),
-            vote_granted: false,
-            last_log_id: None
-        },
-        resp
-    );
+    assert_eq!(VoteResponse::new(Vote::new(2, 1), None), resp);
 
     assert_eq!(Vote::new(2, 1), *eng.state.vote_ref());
-    assert!(eng.internal_server_state.is_leading());
+    assert!(eng.leader.is_none());
+    assert_eq!(eng.candidate_ref().unwrap().vote_ref(), &Vote::new(2, 1));
 
     assert_eq!(ServerState::Candidate, eng.state.server_state);
     assert_eq!(0, eng.output.take_commands().len());
@@ -102,17 +92,11 @@ fn test_handle_vote_req_reject_smaller_last_log_id() -> anyhow::Result<()> {
         last_log_id: Some(log_id(1, 1, 3)),
     });
 
-    assert_eq!(
-        VoteResponse {
-            vote: Vote::new(2, 1),
-            vote_granted: false,
-            last_log_id: Some(log_id(2, 1, 3))
-        },
-        resp
-    );
+    assert_eq!(VoteResponse::new(Vote::new(2, 1), Some(log_id(2, 1, 3))), resp);
 
     assert_eq!(Vote::new(2, 1), *eng.state.vote_ref());
-    assert!(eng.internal_server_state.is_leading());
+    assert!(eng.leader.is_none());
+    assert_eq!(eng.candidate_ref().unwrap().vote_ref(), &Vote::new(2, 1));
 
     assert_eq!(ServerState::Candidate, eng.state.server_state);
     assert_eq!(0, eng.output.take_commands().len());
@@ -135,17 +119,10 @@ fn test_handle_vote_req_granted_equal_vote_and_last_log_id() -> anyhow::Result<(
         last_log_id: Some(log_id(2, 1, 3)),
     });
 
-    assert_eq!(
-        VoteResponse {
-            vote: Vote::new(2, 1),
-            vote_granted: true,
-            last_log_id: Some(log_id(2, 1, 3))
-        },
-        resp
-    );
+    assert_eq!(VoteResponse::new(Vote::new(2, 1), Some(log_id(2, 1, 3))), resp);
 
     assert_eq!(Vote::new(2, 1), *eng.state.vote_ref());
-    assert!(eng.internal_server_state.is_following());
+    assert!(eng.leader.is_none());
 
     assert_eq!(ServerState::Follower, eng.state.server_state);
     assert!(eng.output.take_commands().is_empty());
@@ -168,18 +145,11 @@ fn test_handle_vote_req_granted_greater_vote() -> anyhow::Result<()> {
         last_log_id: Some(log_id(2, 1, 3)),
     });
 
-    assert_eq!(
-        VoteResponse {
-            // respond the updated vote.
-            vote: Vote::new(3, 1),
-            vote_granted: true,
-            last_log_id: Some(log_id(2, 1, 3))
-        },
-        resp
-    );
+    // respond the updated vote.
+    assert_eq!(VoteResponse::new(Vote::new(3, 1), Some(log_id(2, 1, 3))), resp);
 
     assert_eq!(Vote::new(3, 1), *eng.state.vote_ref());
-    assert!(eng.internal_server_state.is_following());
+    assert!(eng.leader.is_none());
 
     assert_eq!(ServerState::Follower, eng.state.server_state);
     assert_eq!(

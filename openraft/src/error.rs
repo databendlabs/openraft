@@ -356,10 +356,10 @@ where
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-#[error("seen a higher vote: {higher} GT mine: {mine}")]
-pub struct HigherVote<NID: NodeId> {
-    pub higher: Vote<NID>,
-    pub mine: Vote<NID>,
+#[error("seen a higher vote: {higher} GT mine: {sender_vote}")]
+pub(crate) struct HigherVote<NID: NodeId> {
+    pub(crate) higher: Vote<NID>,
+    pub(crate) sender_vote: Vote<NID>,
 }
 
 /// Error that indicates a **temporary** network error and when it is returned, Openraft will retry

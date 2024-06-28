@@ -60,8 +60,8 @@ where C: RaftTypeConfig
         /// The higher vote observed.
         higher: Vote<C::NodeId>,
 
-        /// Which ServerState sent this message
-        vote: Vote<C::NodeId>,
+        /// Which state(a Leader or Candidate) sent this message
+        sender_vote: Vote<C::NodeId>,
         // TODO: need this?
         // /// The cluster this replication works for.
         // membership_log_id: Option<LogId<C::NodeId>>,
@@ -88,13 +88,13 @@ where C: RaftTypeConfig
             Self::StorageError { error } => format!("ReplicationStorageError: {}", error),
 
             Self::HigherVote {
-                ref target,
-                higher: ref new_vote,
-                ref vote,
+                target,
+                higher,
+                sender_vote,
             } => {
                 format!(
                     "Seen a higher vote: target: {}, vote: {}, server_state_vote: {}",
-                    target, new_vote, vote
+                    target, higher, sender_vote
                 )
             }
         }

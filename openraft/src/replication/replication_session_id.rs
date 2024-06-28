@@ -30,7 +30,7 @@ use crate::Vote;
 /// core believe node `c` already has `log_id=1`, and commit it.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ReplicationSessionId<NID: NodeId> {
-    /// The vote of the leader.
+    /// The Leader or Candidate this replication belongs to.
     pub(crate) vote: Vote<NID>,
 
     /// The log id of the membership log this replication works for.
@@ -49,5 +49,9 @@ impl<NID: NodeId> ReplicationSessionId<NID> {
             vote,
             membership_log_id,
         }
+    }
+
+    pub(crate) fn vote_ref(&self) -> &Vote<NID> {
+        &self.vote
     }
 }

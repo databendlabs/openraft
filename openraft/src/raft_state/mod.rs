@@ -12,6 +12,7 @@ use crate::Instant;
 use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::NodeId;
+use crate::RaftTypeConfig;
 use crate::ServerState;
 use crate::SnapshotMeta;
 use crate::Vote;
@@ -40,6 +41,8 @@ pub(crate) use log_state_reader::LogStateReader;
 pub use membership_state::MembershipState;
 pub(crate) use vote_state_reader::VoteStateReader;
 
+use crate::proposer::Leader;
+use crate::proposer::LeaderQuorumSet;
 pub(crate) use crate::raft_state::snapshot_streaming::StreamingState;
 
 /// A struct used to represent the raft state which a Raft node needs.
@@ -389,6 +392,26 @@ where
     /// [Determine Server State]: crate::docs::data::vote#vote-and-membership-define-the-server-state
     pub(crate) fn is_leader(&self, id: &NID) -> bool {
         self.is_leading(id) && self.vote.is_committed()
+    }
+
+    /// Create a Leader using the state of the local `Acceptor`: `Engine.state`.
+    ///
+    /// This is used when building a Leader without an election,
+    /// for example, node-1 elects node-2 as a Leader, node-2 will become a Leader when receives the
+    /// vote.
+    /// A Leader established with election using the state in `Engine.candidate`.
+    pub(crate) fn new_leader<C>(&mut self) -> Leader<C, LeaderQuorumSet<C::NodeId>>
+    where C: RaftTypeConfig<NodeId = NID> {
+        let em = &self.membership_state.effective().membership();
+
+        let last_leader_log_ids = self.log_ids.by_last_leader();
+
+        Leader::new(
+            *self.vote_ref(),
+            em.to_quorum_set(),
+            em.learner_ids(),
+            last_leader_log_ids,
+        )
     }
 
     /// Build a ForwardToLeader error that contains the leader id and node it knows.

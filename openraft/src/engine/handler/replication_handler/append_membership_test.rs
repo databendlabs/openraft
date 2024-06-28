@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use maplit::btreeset;
+use pretty_assertions::assert_eq;
 
 use crate::core::ServerState;
 use crate::engine::testing::UTConfig;
@@ -47,7 +48,7 @@ fn eng() -> Engine<UTConfig> {
         Arc::new(EffectiveMembership::new(Some(log_id(1, 1, 1)), m01())),
         Arc::new(EffectiveMembership::new(Some(log_id(2, 1, 3)), m23())),
     );
-    eng.state.vote = UTime::new(TokioInstant::now(), Vote::new_committed(2, 2));
+    eng.state.vote = UTime::new(TokioInstant::now(), Vote::new_committed(6, 2));
     eng.state.server_state = eng.calc_server_state();
     eng
 }
@@ -56,7 +57,8 @@ fn eng() -> Engine<UTConfig> {
 fn test_leader_append_membership_for_leader() -> anyhow::Result<()> {
     let mut eng = eng();
     // Make it a real leader: voted for itself and vote is committed.
-    eng.vote_handler().become_leading();
+    eng.testing_new_leader();
+    eng.output.take_commands();
 
     eng.replication_handler().append_membership(&log_id(3, 1, 4), &m34());
 
@@ -85,7 +87,7 @@ fn test_leader_append_membership_for_leader() -> anyhow::Result<()> {
     );
 
     assert!(
-        eng.internal_server_state.leading().unwrap().progress.get(&4).matching.is_none(),
+        eng.leader.as_ref().unwrap().progress.get(&4).matching.is_none(),
         "exists, but it is a None"
     );
 
@@ -110,9 +112,9 @@ fn test_leader_append_membership_update_learner_process() -> anyhow::Result<()> 
         .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(2, 1, 3)), m23_45())));
 
     // Make it a real leader: voted for itself and vote is committed.
-    eng.vote_handler().become_leading();
+    eng.testing_new_leader();
 
-    if let Some(l) = &mut eng.internal_server_state.leading_mut() {
+    if let Some(l) = &mut eng.leader.as_mut() {
         assert_eq!(&ProgressEntry::empty(11), l.progress.get(&4));
         assert_eq!(&ProgressEntry::empty(11), l.progress.get(&5));
 
@@ -141,7 +143,7 @@ fn test_leader_append_membership_update_learner_process() -> anyhow::Result<()> 
         eng.state.membership_state
     );
 
-    if let Some(l) = &mut eng.internal_server_state.leading_mut() {
+    if let Some(l) = &mut eng.leader.as_mut() {
         assert_eq!(
             &ProgressEntry::new(Some(log_id(1, 1, 4)))
                 .with_inflight(Inflight::logs(Some(log_id(1, 1, 4)), Some(log_id(5, 1, 10))).with_id(1))

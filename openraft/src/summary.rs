@@ -60,3 +60,26 @@ where T: MessageSummary<T> + 'static
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+
+    // With `single-term-leader`, log id is a two-element tuple
+    #[cfg(not(feature = "single-term-leader"))]
+    #[test]
+    fn test_display() {
+        use crate::MessageSummary;
+
+        let lid = crate::testing::log_id(1, 2, 3);
+        assert_eq!("T1-N2-3", lid.to_string());
+        assert_eq!("T1-N2-3", lid.summary());
+        assert_eq!("Some(T1-N2-3)", Some(&lid).summary());
+        assert_eq!("Some(T1-N2-3)", Some(lid).summary());
+
+        let slc = vec![lid, lid];
+        assert_eq!("T1-N2-3,T1-N2-3", slc.as_slice().summary());
+
+        let slc = vec![&lid, &lid];
+        assert_eq!("T1-N2-3,T1-N2-3", slc.as_slice().summary());
+    }
+}

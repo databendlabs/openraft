@@ -29,8 +29,6 @@ mod config;
 mod core;
 mod defensive;
 mod display_ext;
-mod internal_server_state;
-mod leader;
 mod membership;
 mod node;
 mod progress;
@@ -45,6 +43,7 @@ mod vote;
 
 pub(crate) mod engine;
 pub(crate) mod log_id_range;
+pub(crate) mod proposer;
 pub(crate) mod raft_state;
 pub(crate) mod timer;
 pub(crate) mod type_config;

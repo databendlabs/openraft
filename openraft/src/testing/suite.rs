@@ -147,6 +147,7 @@ where
             assert!(mem.is_empty());
         }
 
+        // Ensure last_membership_in_log() won't be affected by state machine.
         tracing::info!("--- membership presents in log, smaller than last_applied, read from log");
         {
             append(&mut store, [membership_ent_0::<C>(1, 1, btreeset! {1,2,3})]).await?;

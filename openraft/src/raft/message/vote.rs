@@ -1,3 +1,4 @@
+use std::borrow::Borrow;
 use std::fmt;
 
 use crate::display_ext::DisplayOptionExt;
@@ -40,7 +41,10 @@ pub struct VoteResponse<NID: NodeId> {
     /// Thus `resp.vote >= req.vote` always holds.
     pub vote: Vote<NID>,
 
-    /// Will be true if the candidate received a vote from the responder.
+    /// Previously, it is true if a node accepted and saved the VoteRequest.
+    /// Now, it is no longer used and is always false.
+    /// If `vote` is the same as the Candidate, the Vote is granted.
+    #[deprecated(note = "use new() and is_granted_to() instead", since = "0.10.0")]
     pub vote_granted: bool,
 
     /// The last log id stored on the remote voter.
@@ -50,8 +54,39 @@ pub struct VoteResponse<NID: NodeId> {
 impl<NID: NodeId> MessageSummary<VoteResponse<NID>> for VoteResponse<NID> {
     fn summary(&self) -> String {
         format!(
-            "{{granted:{}, {}, last_log:{:?}}}",
-            self.vote_granted,
+            "{{{}, last_log:{:?}}}",
+            self.vote,
+            self.last_log_id.map(|x| x.to_string())
+        )
+    }
+}
+
+impl<NID> VoteResponse<NID>
+where NID: NodeId
+{
+    pub fn new(vote: impl Borrow<Vote<NID>>, last_log_id: Option<LogId<NID>>) -> Self {
+        #[allow(deprecated)]
+        Self {
+            vote: *vote.borrow(),
+            vote_granted: false,
+            last_log_id: last_log_id.map(|x| *x.borrow()),
+        }
+    }
+
+    /// Returns `true` if the response indicates that the target node has granted a vote to the
+    /// candidate.
+    pub fn is_granted_to(&self, candidate_vote: &Vote<NID>) -> bool {
+        &self.vote == candidate_vote
+    }
+}
+
+impl<NID> fmt::Display for VoteResponse<NID>
+where NID: NodeId
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{{{}, last_log:{:?}}}",
             self.vote,
             self.last_log_id.map(|x| x.to_string())
         )

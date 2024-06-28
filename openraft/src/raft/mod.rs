@@ -285,6 +285,7 @@ where C: RaftTypeConfig
 
             client_resp_channels: BTreeMap::new(),
 
+            replications: Default::default(),
             leader_data: None,
 
             tx_api: tx_api.clone(),

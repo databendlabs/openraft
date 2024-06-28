@@ -25,11 +25,7 @@ fn m01() -> Membership<u64, ()> {
 
 /// Make a sample VoteResponse
 fn mk_res() -> Result<VoteResponse<u64>, Infallible> {
-    Ok::<VoteResponse<u64>, Infallible>(VoteResponse {
-        vote: Vote::new(2, 1),
-        vote_granted: false,
-        last_log_id: None,
-    })
+    Ok::<VoteResponse<u64>, Infallible>(VoteResponse::new(Vote::new(2, 1), None))
 }
 
 fn eng() -> Engine<UTConfig> {
@@ -43,7 +39,6 @@ fn eng() -> Engine<UTConfig> {
         .membership_state
         .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(1, 1, 1)), m01())));
 
-    eng.vote_handler().become_leading();
     eng
 }
 
@@ -51,6 +46,7 @@ fn eng() -> Engine<UTConfig> {
 fn test_accept_vote_reject_smaller_vote() -> anyhow::Result<()> {
     // When a vote is reject, it generate SendResultCommand and return an error.
     let mut eng = eng();
+    eng.output.take_commands();
 
     let (tx, _rx) = AsyncRuntimeOf::<UTConfig>::oneshot();
     let resp = eng.vote_handler().accept_vote(&Vote::new(1, 2), tx, |_state, _err| mk_res());
@@ -76,6 +72,7 @@ fn test_accept_vote_reject_smaller_vote() -> anyhow::Result<()> {
 fn test_accept_vote_granted_greater_vote() -> anyhow::Result<()> {
     // When a vote is accepted, it generate SaveVote command and return an Ok.
     let mut eng = eng();
+    eng.output.take_commands();
 
     let (tx, _rx) = AsyncRuntimeOf::<UTConfig>::oneshot();
     let resp = eng.vote_handler().accept_vote(&Vote::new(3, 3), tx, |_state, _err| mk_res());
