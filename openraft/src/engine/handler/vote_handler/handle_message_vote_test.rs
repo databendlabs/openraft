@@ -2,6 +2,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use maplit::btreeset;
+use pretty_assertions::assert_eq;
 
 use crate::core::ServerState;
 use crate::engine::testing::UTConfig;
@@ -31,7 +32,8 @@ fn eng() -> Engine<UTConfig> {
         .membership_state
         .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(1, 1, 1)), m01())));
 
-    eng.vote_handler().become_leading();
+    eng.new_leading();
+    eng.output.take_commands();
     eng
 }
 
@@ -46,7 +48,7 @@ fn test_handle_message_vote_reject_smaller_vote() -> anyhow::Result<()> {
     assert_eq!(Vote::new(2, 1), *eng.state.vote_ref());
     assert!(eng.internal_server_state.is_leading());
 
-    assert_eq!(ServerState::Follower, eng.state.server_state);
+    assert_eq!(ServerState::Candidate, eng.state.server_state);
 
     assert_eq!(0, eng.output.take_commands().len());
 

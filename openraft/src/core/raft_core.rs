@@ -72,6 +72,7 @@ use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
 use crate::raft::ClientWriteResponse;
 use crate::raft::VoteRequest;
+use crate::raft::VoteResponse;
 use crate::raft_state::LogIOId;
 use crate::raft_state::LogStateReader;
 use crate::replication;
@@ -137,11 +138,6 @@ impl<C: RaftTypeConfig> Debug for ApplyResult<C> {
 ///
 /// It is created when RaftCore enters leader state, and will be dropped when it quits leader state.
 pub(crate) struct LeaderData<C: RaftTypeConfig> {
-    /// A mapping of node IDs the replication state of the target node.
-    // TODO(xp): make it a field of RaftCore. it does not have to belong to leader.
-    //           It requires the Engine to emit correct add/remove replication commands
-    pub(super) replications: BTreeMap<C::NodeId, ReplicationHandle<C>>,
-
     /// The time to send next heartbeat.
     pub(crate) next_heartbeat: InstantOf<C>,
 }
@@ -149,7 +145,6 @@ pub(crate) struct LeaderData<C: RaftTypeConfig> {
 impl<C: RaftTypeConfig> LeaderData<C> {
     pub(crate) fn new() -> Self {
         Self {
-            replications: BTreeMap::new(),
             next_heartbeat: InstantOf::<C>::now(),
         }
     }
@@ -185,6 +180,9 @@ where
 
     /// Channels to send result back to client when logs are applied.
     pub(crate) client_resp_channels: BTreeMap<u64, ResponderOf<C>>,
+
+    /// A mapping of node IDs the replication state of the target node.
+    pub(crate) replications: BTreeMap<C::NodeId, ReplicationHandle<C>>,
 
     pub(crate) leader_data: Option<LeaderData<C>>,
 
@@ -821,7 +819,7 @@ where
         let network = self.network.new_client(target, target_node).await;
         let snapshot_network = self.network.new_client(target, target_node).await;
 
-        let session_id = ReplicationSessionId::new(*self.engine.state.vote_ref(), *membership_log_id);
+        let session_id = ReplicationSessionId::new(*self.engine.state.vote_ref().leader_id(), *membership_log_id);
 
         ReplicationCore::<C, N, LS>::spawn(
             target,
@@ -843,27 +841,23 @@ where
     pub async fn remove_all_replication(&mut self) {
         tracing::info!("remove all replication");
 
-        if let Some(l) = &mut self.leader_data {
-            let nodes = std::mem::take(&mut l.replications);
+        let nodes = std::mem::take(&mut self.replications);
 
-            tracing::debug!(
-                targets = debug(nodes.iter().map(|x| *x.0).collect::<Vec<_>>()),
-                "remove all targets from replication_metrics"
-            );
+        tracing::debug!(
+            targets = debug(nodes.iter().map(|x| *x.0).collect::<Vec<_>>()),
+            "remove all targets from replication_metrics"
+        );
 
-            for (target, s) in nodes {
-                let handle = s.join_handle;
+        for (target, s) in nodes {
+            let handle = s.join_handle;
 
-                // Drop sender to notify the task to shutdown
-                drop(s.tx_repl);
+            // Drop sender to notify the task to shutdown
+            drop(s.tx_repl);
 
-                tracing::debug!("joining removed replication: {}", target);
-                let _x = handle.await;
-                tracing::info!("Done joining removed replication : {}", target);
-            }
-        } else {
-            unreachable!("it has to be a leader!!!");
-        };
+            tracing::debug!("joining removed replication: {}", target);
+            let _x = handle.await;
+            tracing::info!("Done joining removed replication : {}", target);
+        }
     }
 
     /// Run as many commands as possible.
@@ -1224,7 +1218,7 @@ where
             Notify::VoteResponse {
                 target,
                 resp,
-                sender_vote: vote,
+                sender_vote,
             } => {
                 let now = InstantOf::<C>::now();
 
@@ -1235,7 +1229,7 @@ where
                     func_name!()
                 );
 
-                if self.does_vote_match(&vote, "VoteResponse") {
+                if self.does_vote_match(&sender_vote, "VoteResponse") {
                     self.engine.handle_vote_resp(target, resp);
                 }
             }
@@ -1269,6 +1263,7 @@ where
 
                 // TODO: test: fixture: make isolated_nodes a single-way isolating.
 
+                // TODO: check if it is Leader with Engine
                 // Leader send heartbeat
                 let heartbeat_at = self.leader_data.as_ref().map(|x| x.next_heartbeat);
                 if let Some(t) = heartbeat_at {
@@ -1334,7 +1329,11 @@ where
                         return Err(Fatal::from(error));
                     }
 
-                    replication::Response::HigherVote { target, higher, vote } => {
+                    replication::Response::HigherVote {
+                        target,
+                        higher,
+                        sender_vote: vote,
+                    } => {
                         tracing::info!(
                             target = display(target),
                             higher_vote = display(&higher),
@@ -1493,14 +1492,11 @@ where
             "handle_replication_progress"
         );
 
+        #[allow(clippy::collapsible_if)]
         if tracing::enabled!(Level::DEBUG) {
-            if let Some(l) = &self.leader_data {
-                if !l.replications.contains_key(&target) {
-                    tracing::warn!("leader has removed target: {}", target);
-                };
-            } else {
-                // TODO: A leader may have stepped down.
-            }
+            if !self.replications.contains_key(&target) {
+                tracing::warn!("leader has removed target: {}", target);
+            };
         }
 
         // A leader may have stepped down.
@@ -1511,12 +1507,32 @@ where
 
     /// If a message is sent by a previous server state but is received by current server state,
     /// it is a stale message and should be just ignored.
-    fn does_vote_match(&self, vote: &Vote<C::NodeId>, msg: impl Display) -> bool {
-        if vote != self.engine.state.vote_ref() {
+    fn does_vote_match(&self, sender_vote: &Vote<C::NodeId>, msg: impl Display) -> bool {
+        let Some(l) = self.engine.internal_server_state.leading() else {
             tracing::warn!(
-                "vote changed: msg sent by: {:?}; curr: {}; ignore when ({})",
-                vote,
-                self.engine.state.vote_ref(),
+                "This node is no longer in Leading state, ignore this msg: sent by: {:?}; ignore when ({})",
+                sender_vote,
+                msg
+            );
+            return false;
+        };
+
+        // Get the current leading vote:
+        // - If input `sender_vote` is committed, it is sent by a Leader. Therefore we check against current
+        //   Leader's vote.
+        // - Otherwise, it is sent by a Candidate, we check against the current in progress voting state.
+        let my_vote = if sender_vote.is_committed() {
+            Some(l.vote)
+        } else {
+            // If it finished voting, Candidate's vote is None.
+            l.voting().map(|x| *x.vote_ref())
+        };
+
+        if Some(*sender_vote) != my_vote {
+            tracing::warn!(
+                "A message will be ignored because vote changed: msg sent by vote: {}; current my vote: {}; when ({})",
+                sender_vote,
+                my_vote.display(),
                 msg
             );
             false
@@ -1531,7 +1547,7 @@ where
         session_id: &ReplicationSessionId<C::NodeId>,
         msg: impl Display + Copy,
     ) -> bool {
-        if !self.does_vote_match(&session_id.vote, msg) {
+        if !self.does_vote_match(&session_id.to_committed_vote(), msg) {
             return false;
         }
 
@@ -1611,6 +1627,13 @@ where
             Command::SaveVote { vote } => {
                 self.log_store.save_vote(&vote).await?;
                 self.engine.state.io_state_mut().update_vote(vote);
+
+                let _ = self.tx_notify.send(Notify::VoteResponse {
+                    target: self.id,
+                    // last_log_id is not used when sending VoteRequest to local node
+                    resp: VoteResponse::new(vote, None),
+                    sender_vote: vote,
+                });
             }
             Command::PurgeLog { upto } => {
                 self.log_store.purge(upto).await?;
@@ -1643,12 +1666,8 @@ where
                 self.spawn_parallel_vote_requests(&vote_req).await;
             }
             Command::ReplicateCommitted { committed } => {
-                if let Some(l) = &self.leader_data {
-                    for node in l.replications.values() {
-                        let _ = node.tx_repl.send(Replicate::Committed(committed));
-                    }
-                } else {
-                    unreachable!("it has to be a leader!!!");
+                for node in self.replications.values() {
+                    let _ = node.tx_repl.send(Replicate::Committed(committed));
                 }
             }
             Command::Commit {
@@ -1660,25 +1679,21 @@ where
                 self.apply_to_state_machine(seq, already_committed.next_index(), upto.index).await?;
             }
             Command::Replicate { req, target } => {
-                if let Some(l) = &self.leader_data {
-                    let node = l.replications.get(&target).expect("replication to target node exists");
+                let node = self.replications.get(&target).expect("replication to target node exists");
 
-                    match req {
-                        Inflight::None => {
-                            let _ = node.tx_repl.send(Replicate::Heartbeat);
-                        }
-                        Inflight::Logs { id, log_id_range } => {
-                            let _ = node.tx_repl.send(Replicate::logs(RequestId::new_append_entries(id), log_id_range));
-                        }
-                        Inflight::Snapshot { id, last_log_id } => {
-                            // unwrap: The replication channel must not be dropped or it is a bug.
-                            node.tx_repl.send(Replicate::snapshot(RequestId::new_snapshot(id), last_log_id)).map_err(
-                                |_e| StorageIOError::read_snapshot(None, AnyError::error("replication channel closed")),
-                            )?;
-                        }
+                match req {
+                    Inflight::None => {
+                        let _ = node.tx_repl.send(Replicate::Heartbeat);
                     }
-                } else {
-                    unreachable!("it has to be a leader!!!");
+                    Inflight::Logs { id, log_id_range } => {
+                        let _ = node.tx_repl.send(Replicate::logs(RequestId::new_append_entries(id), log_id_range));
+                    }
+                    Inflight::Snapshot { id, last_log_id } => {
+                        // unwrap: The replication channel must not be dropped or it is a bug.
+                        node.tx_repl.send(Replicate::snapshot(RequestId::new_snapshot(id), last_log_id)).map_err(
+                            |_e| StorageIOError::read_snapshot(None, AnyError::error("replication channel closed")),
+                        )?;
+                    }
                 }
             }
             Command::RebuildReplicationStreams { targets } => {
@@ -1686,12 +1701,7 @@ where
 
                 for (target, matching) in targets.iter() {
                     let handle = self.spawn_replication_stream(*target, *matching).await;
-
-                    if let Some(l) = &mut self.leader_data {
-                        l.replications.insert(*target, handle);
-                    } else {
-                        unreachable!("it has to be a leader!!!");
-                    }
+                    self.replications.insert(*target, handle);
                 }
             }
             Command::StateMachine { command } => {

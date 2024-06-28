@@ -10,6 +10,7 @@ use crate::entry::RaftEntry;
 use crate::error::InitializeError;
 use crate::error::NotAllowed;
 use crate::error::NotInMembers;
+use crate::progress::entry::ProgressEntry;
 use crate::raft::VoteRequest;
 use crate::raft_state::LogStateReader;
 use crate::testing::log_id;
@@ -48,10 +49,10 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
         eng.initialize(entry)?;
 
         assert_eq!(Some(log_id0), eng.state.get_log_id(0));
-        assert_eq!(Some(log_id(1, 1, 1)), eng.state.get_log_id(1));
-        assert_eq!(Some(&log_id(1, 1, 1)), eng.state.last_log_id());
+        assert_eq!(None, eng.state.get_log_id(1));
+        assert_eq!(Some(&log_id0), eng.state.last_log_id());
 
-        assert_eq!(ServerState::Leader, eng.state.server_state);
+        assert_eq!(ServerState::Candidate, eng.state.server_state);
         assert_eq!(&m1(), eng.state.membership_state.effective().membership());
 
         assert_eq!(
@@ -60,20 +61,13 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
                     vote: Vote::default(),
                     entries: vec![Entry::<UTConfig>::new_membership(LogId::default(), m1())],
                 },
+                Command::RebuildReplicationStreams { targets: vec![] },
                 // When update the effective membership, the engine set it to Follower.
                 // But when initializing, it will switch to Candidate at once, in the last output
                 // command.
                 Command::SaveVote { vote: Vote::new(1, 1) },
-                // TODO: duplicated SaveVote: one is emitted by elect(), the second is emitted when
-                // the node becomes       leader.
-                Command::SaveVote {
-                    vote: Vote::new_committed(1, 1),
-                },
-                Command::BecomeLeader,
-                Command::RebuildReplicationStreams { targets: vec![] },
-                Command::AppendInputEntries {
-                    vote: Vote::new_committed(1, 1),
-                    entries: vec![Entry::<UTConfig>::new_blank(log_id(1, 1, 1))]
+                Command::SendVote {
+                    vote_req: VoteRequest::new(Vote::new(1, 1), Some(log_id(0, 0, 0)))
                 },
             ],
             eng.output.take_commands()
@@ -120,6 +114,9 @@ fn test_initialize() -> anyhow::Result<()> {
                 Command::AppendInputEntries {
                     vote: Vote::default(),
                     entries: vec![Entry::new_membership(LogId::default(), m12())],
+                },
+                Command::RebuildReplicationStreams {
+                    targets: vec![(2, ProgressEntry::empty(1))]
                 },
                 // When update the effective membership, the engine set it to Follower.
                 // But when initializing, it will switch to Candidate at once, in the last output

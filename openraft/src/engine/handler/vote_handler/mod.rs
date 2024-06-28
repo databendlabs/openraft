@@ -129,8 +129,23 @@ where C: RaftTypeConfig
     /// Create a new leading state, when raft enters candidate state.
     /// Leading state has two phase: election phase and replication phase, similar to paxos phase-1
     /// and phase-2. Leader and Candidate shares the same state.
+    ///
+    /// Note that this is called when the Leading/Following state changes caused by
+    /// the change of vote in the **Acceptor** part `engine.state.vote`.
+    ///
+    /// An example use of this mechanism is when node-a electing for node-b,
+    /// which can be used for Leader-a to transfer leadership to Follower-b.
     pub(crate) fn become_leading(&mut self) {
+        tracing::debug!(
+            "become leading: node-{}, my vote: {}, last-log-id: {}",
+            self.config.id,
+            self.state.vote_ref(),
+            self.state.last_log_id().copied().unwrap_or_default()
+        );
+
         if let Some(l) = self.internal_server_state.leading_mut() {
+            tracing::debug!("leading vote: {}", l.vote,);
+
             if l.vote.leader_id() == self.state.vote_ref().leader_id() {
                 tracing::debug!(
                     "vote still belongs to the same leader. Just updating vote is enough: node-{}, {}",
@@ -147,14 +162,13 @@ where C: RaftTypeConfig
         // Re-create a new Leader instance.
 
         let em = &self.state.membership_state.effective();
+
         let leading = Leading::new(
             *self.state.vote_ref(),
             em.membership().to_quorum_set(),
             em.learner_ids(),
             self.state.last_log_id().copied(),
         );
-
-        // Do not update clock_progress, until the first blank log is committed.
 
         *self.internal_server_state = InternalServerState::Leading(Box::new(leading));
 

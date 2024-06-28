@@ -34,6 +34,8 @@ pub(crate) struct Leading<C, QS: QuorumSet<C::NodeId>>
 where C: RaftTypeConfig
 {
     /// The vote this leader works in.
+    ///
+    /// `self.voting` may be in progress requesting vote for a higher vote.
     pub(crate) vote: Vote<C::NodeId>,
 
     last_log_id: Option<LogIdOf<C>>,
@@ -138,12 +140,14 @@ where
         Ok(())
     }
 
+    /// Initialize a new voting process with specified vote, last_log_id and wall clock time.
     pub(crate) fn initialize_voting(
         &mut self,
+        vote: Vote<C::NodeId>,
         last_log_id: Option<LogIdOf<C>>,
         now: InstantOf<C>,
     ) -> &mut Voting<C, QS> {
-        self.voting = Some(Voting::new(now, self.vote, last_log_id, self.quorum_set.clone()));
+        self.voting = Some(Voting::new(now, vote, last_log_id, self.quorum_set.clone()));
         self.voting.as_mut().unwrap()
     }
 

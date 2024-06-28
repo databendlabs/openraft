@@ -56,7 +56,8 @@ fn test_update_matching_no_leader() -> anyhow::Result<()> {
 #[test]
 fn test_update_matching() -> anyhow::Result<()> {
     let mut eng = eng();
-    eng.vote_handler().become_leading();
+    eng.new_leading();
+    eng.output.take_commands();
 
     let mut rh = eng.replication_handler();
     let inflight_id_1 = {

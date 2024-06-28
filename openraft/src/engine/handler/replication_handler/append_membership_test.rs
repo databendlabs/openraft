@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use maplit::btreeset;
+use pretty_assertions::assert_eq;
 
 use crate::core::ServerState;
 use crate::engine::testing::UTConfig;
@@ -56,7 +57,8 @@ fn eng() -> Engine<UTConfig> {
 fn test_leader_append_membership_for_leader() -> anyhow::Result<()> {
     let mut eng = eng();
     // Make it a real leader: voted for itself and vote is committed.
-    eng.vote_handler().become_leading();
+    eng.new_leading();
+    eng.output.take_commands();
 
     eng.replication_handler().append_membership(&log_id(3, 1, 4), &m34());
 
@@ -110,7 +112,7 @@ fn test_leader_append_membership_update_learner_process() -> anyhow::Result<()> 
         .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(2, 1, 3)), m23_45())));
 
     // Make it a real leader: voted for itself and vote is committed.
-    eng.vote_handler().become_leading();
+    eng.new_leading();
 
     if let Some(l) = &mut eng.internal_server_state.leading_mut() {
         assert_eq!(&ProgressEntry::empty(11), l.progress.get(&4));

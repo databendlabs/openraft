@@ -2,6 +2,7 @@ use std::fmt::Display;
 use std::fmt::Formatter;
 
 use crate::display_ext::DisplayOptionExt;
+use crate::LeaderId;
 use crate::LogId;
 use crate::NodeId;
 use crate::Vote;
@@ -30,8 +31,8 @@ use crate::Vote;
 /// core believe node `c` already has `log_id=1`, and commit it.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ReplicationSessionId<NID: NodeId> {
-    /// The vote of the leader.
-    pub(crate) vote: Vote<NID>,
+    /// The Leader or Candidate this replication belongs to.
+    pub(crate) leader_id: LeaderId<NID>,
 
     /// The log id of the membership log this replication works for.
     pub(crate) membership_log_id: Option<LogId<NID>>,
@@ -39,15 +40,19 @@ pub(crate) struct ReplicationSessionId<NID: NodeId> {
 
 impl<NID: NodeId> Display for ReplicationSessionId<NID> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}/{}", self.vote, self.membership_log_id.display())
+        write!(f, "{}/{}", self.leader_id, self.membership_log_id.display())
     }
 }
 
 impl<NID: NodeId> ReplicationSessionId<NID> {
-    pub(crate) fn new(vote: Vote<NID>, membership_log_id: Option<LogId<NID>>) -> Self {
+    pub(crate) fn new(leader_id: LeaderId<NID>, membership_log_id: Option<LogId<NID>>) -> Self {
         Self {
-            vote,
+            leader_id,
             membership_log_id,
         }
+    }
+
+    pub(crate) fn to_committed_vote(self) -> Vote<NID> {
+        Vote::new_committed_from_leader_id(self.leader_id)
     }
 }

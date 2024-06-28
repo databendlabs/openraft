@@ -47,7 +47,8 @@ fn eng() -> Engine<UTConfig> {
 #[test]
 fn test_leader_send_heartbeat() -> anyhow::Result<()> {
     let mut eng = eng();
-    eng.vote_handler().become_leading();
+    eng.new_leading();
+    eng.output.take_commands();
 
     // A heartbeat is a normal AppendEntries RPC if there are pending data to send.
     {

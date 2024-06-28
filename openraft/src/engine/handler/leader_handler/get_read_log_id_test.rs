@@ -44,7 +44,7 @@ fn eng() -> Engine<UTConfig> {
 #[test]
 fn test_get_read_log_id() -> anyhow::Result<()> {
     let mut eng = eng();
-    eng.vote_handler().become_leading();
+    eng.new_leading();
 
     eng.state.committed = Some(log_id(0, 1, 0));
     eng.internal_server_state.leading_mut().unwrap().noop_log_id = Some(log_id(1, 1, 2));
