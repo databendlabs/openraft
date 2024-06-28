@@ -231,6 +231,8 @@ async fn initialize_err_not_allowed() -> anyhow::Result<()> {
     {
         let n0 = router.get_raft_handle(&0)?;
         n0.initialize(btreeset! {0}).await?;
+
+        n0.wait(timeout()).log_index(Some(1), "init").await?;
     }
 
     tracing::info!("--- Initialize node 0 again, not allowed");

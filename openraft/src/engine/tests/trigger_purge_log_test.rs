@@ -9,6 +9,7 @@ use crate::engine::Engine;
 use crate::engine::LogIdList;
 use crate::progress::Progress;
 use crate::testing::log_id;
+use crate::utime::UTime;
 use crate::CommittedLeaderId;
 use crate::EffectiveMembership;
 use crate::LogId;
@@ -16,6 +17,8 @@ use crate::Membership;
 use crate::MembershipState;
 use crate::SnapshotMeta;
 use crate::StoredMembership;
+use crate::TokioInstant;
+use crate::Vote;
 
 fn m12() -> Membership<UTConfig> {
     Membership::<UTConfig>::new(vec![btreeset! {1,2}], None)
@@ -105,10 +108,11 @@ fn test_trigger_purge_log_in_used_wont_be_delete() -> anyhow::Result<()> {
     eng.state.purge_upto = Some(log_id(1, 0, 2));
     eng.state.io_state.purged = Some(log_id(1, 0, 2));
     eng.state.log_ids = LogIdList::new([log_id(1, 0, 2), log_id(1, 0, 10)]);
+    eng.state.vote = UTime::new(TokioInstant::now(), Vote::new_committed(2, 1));
 
     // Make it a leader and mark the logs are in flight.
-    eng.vote_handler().become_leading();
-    let l = eng.internal_server_state.leading_mut().unwrap();
+    eng.testing_new_leader();
+    let l = eng.leader.as_mut().unwrap();
     let _ = l.progress.get_mut(&2).unwrap().next_send(eng.state.deref(), 10).unwrap();
 
     eng.trigger_purge_log(5);

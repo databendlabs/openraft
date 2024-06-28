@@ -49,20 +49,6 @@ impl<NID: NodeId> Display for LogId<NID> {
 impl<NID: NodeId> LogId<NID> {
     /// Creates a log id proposed by a committed leader with `leader_id` at the given index.
     pub fn new(leader_id: CommittedLeaderId<NID>, index: u64) -> Self {
-        if leader_id.term == 0 || index == 0 {
-            assert_eq!(
-                leader_id,
-                CommittedLeaderId::default(),
-                "zero-th log entry must be (0,0,0), but {} {}",
-                leader_id,
-                index
-            );
-            assert_eq!(
-                index, 0,
-                "zero-th log entry must be (0,0,0), but {} {}",
-                leader_id, index
-            );
-        }
         LogId { leader_id, index }
     }
 
