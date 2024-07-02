@@ -76,7 +76,7 @@ impl<NID: NodeId> Vote<NID> {
         self.committed
     }
 
-    /// Return the [`Vote`] this vote represents for.
+    /// Return the [`LeaderId`] this vote represents for.
     ///
     /// The leader may or may not be granted by a quorum.
     pub fn leader_id(&self) -> &LeaderId<NID> {
