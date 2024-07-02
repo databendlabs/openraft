@@ -175,9 +175,6 @@ where C: RaftTypeConfig
 
         let leader = self.leader.as_ref().unwrap();
 
-        // TODO: test building a Leader with proposed logs, check leader.noop_log_id, last_log_id
-        //       test restarted leader, no need to re-propose noop log
-
         // If the leader has not yet proposed any log, propose a blank log
         if leader.last_log_id() < leader.noop_log_id() {
             self.leader_handler()
