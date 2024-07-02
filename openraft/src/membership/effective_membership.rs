@@ -3,7 +3,7 @@ use std::fmt;
 use std::fmt::Debug;
 use std::sync::Arc;
 
-use crate::display_ext::display_option::DisplayOptionExt;
+use crate::display_ext::DisplayOptionExt;
 use crate::log_id::RaftLogId;
 use crate::quorum::Joint;
 use crate::quorum::QuorumSet;

@@ -1,6 +1,6 @@
 use std::ops::Deref;
 
-use crate::display_ext::display_option::DisplayOptionExt;
+use crate::display_ext::DisplayOptionExt;
 use crate::engine::handler::log_handler::LogHandler;
 use crate::engine::handler::snapshot_handler::SnapshotHandler;
 use crate::engine::Command;

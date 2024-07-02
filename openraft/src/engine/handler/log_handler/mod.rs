@@ -1,4 +1,4 @@
-use crate::display_ext::display_option::DisplayOptionExt;
+use crate::display_ext::DisplayOptionExt;
 use crate::engine::Command;
 use crate::engine::EngineConfig;
 use crate::engine::EngineOutput;

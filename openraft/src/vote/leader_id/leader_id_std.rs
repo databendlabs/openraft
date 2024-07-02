@@ -2,7 +2,7 @@ use std::cmp::Ordering;
 use std::fmt;
 use std::marker::PhantomData;
 
-use crate::display_ext::display_option::DisplayOptionExt;
+use crate::display_ext::DisplayOptionExt;
 use crate::NodeId;
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]

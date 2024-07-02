@@ -2,7 +2,7 @@ use core::fmt;
 use std::ops::Deref;
 use std::ops::DerefMut;
 
-use crate::display_ext::display_instant::DisplayInstantExt;
+use crate::display_ext::DisplayInstantExt;
 use crate::Instant;
 
 /// Record the last update time for an object

@@ -89,7 +89,7 @@ where T: Instant
 #[cfg(test)]
 mod tests {
 
-    use crate::display_ext::display_instant::DisplayInstantExt;
+    use crate::display_ext::DisplayInstantExt;
     use crate::TokioInstant;
 
     /// Check the result by a human.

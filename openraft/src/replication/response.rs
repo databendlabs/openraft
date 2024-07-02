@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::display_ext::display_option::DisplayOptionExt;
+use crate::display_ext::DisplayOptionExt;
 use crate::replication::request_id::RequestId;
 use crate::replication::ReplicationSessionId;
 use crate::type_config::alias::InstantOf;

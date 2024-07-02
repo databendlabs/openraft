@@ -1,7 +1,7 @@
 use std::fmt::Display;
 use std::fmt::Formatter;
 
-use crate::display_ext::display_option::DisplayOptionExt;
+use crate::display_ext::DisplayOptionExt;
 use crate::LogId;
 use crate::NodeId;
 use crate::Vote;

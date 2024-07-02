@@ -1,7 +1,7 @@
 use std::fmt;
 
-use crate::display_ext::display_option::DisplayOptionExt;
-use crate::display_ext::display_slice::DisplaySlice;
+use crate::display_ext::DisplayOptionExt;
+use crate::display_ext::DisplaySlice;
 use crate::LogId;
 use crate::RaftTypeConfig;
 use crate::Vote;

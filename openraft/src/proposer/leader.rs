@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::display_ext::display_slice::DisplaySliceExt;
+use crate::display_ext::DisplaySliceExt;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::Progress;
 use crate::progress::VecProgress;

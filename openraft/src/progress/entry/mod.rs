@@ -6,7 +6,7 @@ use std::fmt::Formatter;
 
 use validit::Validate;
 
-use crate::display_ext::display_option::DisplayOptionExt;
+use crate::display_ext::DisplayOptionExt;
 use crate::progress::inflight::Inflight;
 use crate::progress::inflight::InflightError;
 use crate::raft_state::LogStateReader;

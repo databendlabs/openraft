@@ -52,7 +52,7 @@ where T: fmt::Display
 
 #[cfg(test)]
 mod tests {
-    use crate::display_ext::display_slice::DisplaySlice;
+    use crate::display_ext::DisplaySlice;
 
     #[test]
     fn test_display_slice() {

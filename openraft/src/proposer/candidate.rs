@@ -1,7 +1,7 @@
 use std::fmt;
 
-use crate::display_ext::display_instant::DisplayInstantExt;
-use crate::display_ext::display_option::DisplayOptionExt;
+use crate::display_ext::DisplayInstantExt;
+use crate::display_ext::DisplayOptionExt;
 use crate::progress::Progress;
 use crate::progress::VecProgress;
 use crate::proposer::Leader;

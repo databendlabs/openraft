@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-use crate::display_ext::display_option::DisplayOptionExt;
+use crate::display_ext::DisplayOptionExt;
 use crate::engine::LogIdList;
 use crate::entry::RaftPayload;
 use crate::log_id::RaftLogId;

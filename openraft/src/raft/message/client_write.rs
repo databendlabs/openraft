@@ -3,7 +3,7 @@ use std::fmt::Debug;
 
 use openraft_macros::since;
 
-use crate::display_ext::display_option::DisplayOptionExt;
+use crate::display_ext::DisplayOptionExt;
 use crate::error::ClientWriteError;
 use crate::LogId;
 use crate::Membership;

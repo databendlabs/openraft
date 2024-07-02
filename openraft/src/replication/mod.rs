@@ -27,7 +27,7 @@ use tracing_futures::Instrument;
 use crate::config::Config;
 use crate::core::notify::Notify;
 use crate::core::sm::handle::SnapshotReader;
-use crate::display_ext::display_option::DisplayOptionExt;
+use crate::display_ext::DisplayOptionExt;
 use crate::error::HigherVote;
 use crate::error::PayloadTooLarge;
 use crate::error::RPCError;

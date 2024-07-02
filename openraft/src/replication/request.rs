@@ -43,7 +43,7 @@ impl<C: RaftTypeConfig> fmt::Display for Replicate<C> {
     }
 }
 
-use crate::display_ext::display_option::DisplayOptionExt;
+use crate::display_ext::DisplayOptionExt;
 use crate::error::StreamingError;
 use crate::log_id_range::LogIdRange;
 use crate::raft::SnapshotResponse;
