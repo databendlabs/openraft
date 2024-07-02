@@ -87,7 +87,7 @@ fn test_leader_append_membership_for_leader() -> anyhow::Result<()> {
     );
 
     assert!(
-        eng.leader.leader_ref().unwrap().progress.get(&4).matching.is_none(),
+        eng.leader.as_ref().unwrap().progress.get(&4).matching.is_none(),
         "exists, but it is a None"
     );
 
@@ -114,7 +114,7 @@ fn test_leader_append_membership_update_learner_process() -> anyhow::Result<()> 
     // Make it a real leader: voted for itself and vote is committed.
     eng.testing_new_leader();
 
-    if let Some(l) = &mut eng.leader.leader_mut() {
+    if let Some(l) = &mut eng.leader.as_mut() {
         assert_eq!(&ProgressEntry::empty(11), l.progress.get(&4));
         assert_eq!(&ProgressEntry::empty(11), l.progress.get(&5));
 
@@ -143,7 +143,7 @@ fn test_leader_append_membership_update_learner_process() -> anyhow::Result<()> 
         eng.state.membership_state
     );
 
-    if let Some(l) = &mut eng.leader.leader_mut() {
+    if let Some(l) = &mut eng.leader.as_mut() {
         assert_eq!(
             &ProgressEntry::new(Some(log_id(1, 1, 4)))
                 .with_inflight(Inflight::logs(Some(log_id(1, 1, 4)), Some(log_id(5, 1, 10))).with_id(1))

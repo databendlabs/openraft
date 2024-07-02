@@ -47,7 +47,7 @@ fn test_elect_single_node() -> anyhow::Result<()> {
         eng.elect();
 
         assert_eq!(Vote::new(1, 1), *eng.state.vote_ref());
-        assert!(eng.leader.is_following());
+        assert!(eng.leader.is_none());
         assert!(eng.candidate_ref().is_some(), "candidate state is pending");
 
         assert_eq!(ServerState::Candidate, eng.state.server_state);
@@ -125,7 +125,7 @@ fn test_elect_multi_node_enter_candidate() -> anyhow::Result<()> {
         eng.elect();
 
         assert_eq!(Vote::new(1, 1), *eng.state.vote_ref());
-        assert!(eng.leader.is_following());
+        assert!(eng.leader.is_none());
         assert_eq!(Vote::new(1, 1), *eng.candidate_ref().unwrap().vote_ref());
 
         assert_eq!(

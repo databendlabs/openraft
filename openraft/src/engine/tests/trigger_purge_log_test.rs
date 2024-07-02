@@ -112,7 +112,7 @@ fn test_trigger_purge_log_in_used_wont_be_delete() -> anyhow::Result<()> {
 
     // Make it a leader and mark the logs are in flight.
     eng.testing_new_leader();
-    let l = eng.leader.leader_mut().unwrap();
+    let l = eng.leader.as_mut().unwrap();
     let _ = l.progress.get_mut(&2).unwrap().next_send(eng.state.deref(), 10).unwrap();
 
     eng.trigger_purge_log(5);

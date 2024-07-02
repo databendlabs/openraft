@@ -312,7 +312,7 @@ where
         let mut pending = FuturesUnordered::new();
 
         let voter_progresses = {
-            let l = &self.engine.leader.leader_ref().unwrap();
+            let l = &self.engine.leader.as_ref().unwrap();
             l.progress.iter().filter(|(id, _v)| l.progress.is_voter(id) == Some(true))
         };
 
@@ -522,7 +522,7 @@ where
 
     #[tracing::instrument(level = "debug", skip_all)]
     pub fn flush_metrics(&mut self) {
-        let leader_metrics = if let Some(leader) = self.engine.leader.leader_ref() {
+        let leader_metrics = if let Some(leader) = self.engine.leader.as_ref() {
             let prog = &leader.progress;
             Some(prog.iter().map(|(id, p)| (*id, *p.borrow())).collect())
         } else {
@@ -691,7 +691,7 @@ where
     /// from a quorum of followers, indicating its leadership is current and recognized.
     /// If the node is not a leader or no acknowledgment has been received, `None` is returned.
     fn last_quorum_acked_time(&mut self) -> Option<InstantOf<C>> {
-        let leading = self.engine.leader.leader_mut();
+        let leading = self.engine.leader.as_mut();
         leading.and_then(|l| l.last_quorum_acked_time())
     }
 
@@ -820,7 +820,7 @@ where
         let network = self.network.new_client(target, target_node).await;
         let snapshot_network = self.network.new_client(target, target_node).await;
 
-        let leader = self.engine.leader.leader_ref().unwrap();
+        let leader = self.engine.leader.as_ref().unwrap();
 
         let session_id = ReplicationSessionId::new(leader.vote, *membership_log_id);
 
@@ -1503,7 +1503,7 @@ where
         }
 
         // A leader may have stepped down.
-        if self.engine.leader.is_leader() {
+        if self.engine.leader.is_some() {
             self.engine.replication_handler().update_progress(target, request_id, result);
         }
     }
@@ -1516,7 +1516,7 @@ where
         //   Leader's vote.
         // - Otherwise, it is sent by a Candidate, we check against the current in progress voting state.
         let my_vote = if sender_vote.is_committed() {
-            let l = self.engine.leader.leader_ref();
+            let l = self.engine.leader.as_ref();
             l.map(|x| x.vote)
         } else {
             // If it finished voting, Candidate's vote is None.

@@ -205,8 +205,8 @@ where
 mod tests {
     use crate::engine::testing::UTConfig;
     use crate::entry::RaftEntry;
-    use crate::leader::Leader;
     use crate::progress::Progress;
+    use crate::proposer::Leader;
     use crate::testing::blank_ent;
     use crate::testing::log_id;
     use crate::type_config::alias::InstantOf;

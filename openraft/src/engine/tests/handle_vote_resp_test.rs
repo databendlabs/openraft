@@ -53,7 +53,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         eng.handle_vote_resp(2, VoteResponse::new(Vote::new(2, 2), Some(log_id(2, 1, 2))));
 
         assert_eq!(Vote::new(2, 1), *eng.state.vote_ref());
-        assert!(eng.leader.is_following());
+        assert!(eng.leader.is_none());
 
         assert_eq!(ServerState::Follower, eng.state.server_state);
 
@@ -111,7 +111,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         eng.handle_vote_resp(2, VoteResponse::new(Vote::new(3, 2), Some(log_id(2, 1, 2))));
 
         assert_eq!(Vote::new(3, 2), *eng.state.vote_ref());
-        assert!(eng.leader.is_following());
+        assert!(eng.leader.is_none());
 
         assert_eq!(ServerState::Follower, eng.state.server_state);
 
@@ -173,7 +173,7 @@ fn test_handle_vote_resp_equal_vote() -> anyhow::Result<()> {
         eng.handle_vote_resp(2, VoteResponse::new(Vote::new(2, 1), Some(log_id(2, 1, 2))));
 
         assert_eq!(Vote::new_committed(2, 1), *eng.state.vote_ref(),);
-        assert_eq!(Some(log_id(2, 1, 1)), eng.leader.leader_ref().unwrap().noop_log_id);
+        assert_eq!(Some(log_id(2, 1, 1)), eng.leader.as_ref().unwrap().noop_log_id);
         assert!(
             eng.candidate_ref().is_none(),
             "candidate state is removed when becoming leader"

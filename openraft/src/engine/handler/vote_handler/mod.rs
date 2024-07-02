@@ -11,7 +11,7 @@ use crate::engine::Respond;
 use crate::engine::ValueSender;
 use crate::entry::RaftEntry;
 use crate::error::RejectVoteRequest;
-use crate::internal_server_state::InternalServerState;
+use crate::proposer::leader_state::LeaderState;
 use crate::raft_state::LogStateReader;
 use crate::type_config::alias::InstantOf;
 use crate::Instant;
@@ -34,7 +34,7 @@ where C: RaftTypeConfig
     pub(crate) config: &'st mut EngineConfig<C>,
     pub(crate) state: &'st mut RaftState<C>,
     pub(crate) output: &'st mut EngineOutput<C>,
-    pub(crate) leader: &'st mut InternalServerState<C>,
+    pub(crate) leader: &'st mut LeaderState<C>,
 }
 
 impl<'st, C> VoteHandler<'st, C>
@@ -145,7 +145,7 @@ where C: RaftTypeConfig
             self.state.last_log_id().copied().unwrap_or_default()
         );
 
-        if let Some(l) = self.leader.leader_mut() {
+        if let Some(l) = self.leader.as_mut() {
             tracing::debug!("leading vote: {}", l.vote,);
 
             if l.vote.leader_id() == self.state.vote_ref().leader_id() {
@@ -167,13 +167,13 @@ where C: RaftTypeConfig
         // Re-create a new Leader instance.
 
         let leader = self.state.new_leader();
-        *self.leader = InternalServerState::Leader(Box::new(leader));
+        *self.leader = Some(Box::new(leader));
 
         self.server_state_handler().update_server_state_if_changed();
 
         self.replication_handler().rebuild_replication_streams();
 
-        let leader = self.leader.leader_ref().unwrap();
+        let leader = self.leader.as_ref().unwrap();
 
         // TODO: test building a Leader with proposed logs, check leader.noop_log_id, last_log_id
         //       test restarted leader, no need to re-propose noop log
@@ -198,11 +198,7 @@ where C: RaftTypeConfig
             "It must hold: vote is not mine, or I am not a voter(leader just left the cluster)"
         );
 
-        // if self.leader.is_following() {
-        //     return;
-        // }
-
-        *self.leader = InternalServerState::Following;
+        *self.leader = None;
 
         self.server_state_handler().update_server_state_if_changed();
     }
@@ -216,7 +212,7 @@ where C: RaftTypeConfig
     }
 
     pub(crate) fn replication_handler(&mut self) -> ReplicationHandler<C> {
-        let leader = self.leader.leader_mut().unwrap();
+        let leader = self.leader.as_mut().unwrap();
 
         ReplicationHandler {
             config: self.config,
@@ -227,7 +223,7 @@ where C: RaftTypeConfig
     }
 
     pub(crate) fn leader_handler(&mut self) -> LeaderHandler<C> {
-        let leader = self.leader.leader_mut().unwrap();
+        let leader = self.leader.as_mut().unwrap();
 
         LeaderHandler {
             config: self.config,

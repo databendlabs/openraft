@@ -47,7 +47,7 @@ fn test_handle_message_vote_reject_smaller_vote() -> anyhow::Result<()> {
     assert_eq!(Err(RejectVoteRequest::ByVote(Vote::new_committed(2, 1))), resp);
 
     assert_eq!(Vote::new_committed(2, 1), *eng.state.vote_ref());
-    assert!(eng.leader.is_leader());
+    assert!(eng.leader.is_some());
 
     assert_eq!(ServerState::Candidate, eng.state.server_state);
 
@@ -67,7 +67,7 @@ fn test_handle_message_vote_committed_vote() -> anyhow::Result<()> {
     assert_eq!(Ok(()), resp);
 
     assert_eq!(Vote::new_committed(3, 2), *eng.state.vote_ref());
-    assert!(eng.leader.is_following());
+    assert!(eng.leader.is_none());
 
     assert_eq!(ServerState::Follower, eng.state.server_state);
 
@@ -96,7 +96,7 @@ fn test_handle_message_vote_granted_equal_vote() -> anyhow::Result<()> {
     assert_eq!(Ok(()), resp);
 
     assert_eq!(Vote::new(2, 1), *eng.state.vote_ref());
-    assert!(eng.leader.is_following());
+    assert!(eng.leader.is_none());
 
     assert_eq!(ServerState::Follower, eng.state.server_state);
 
@@ -119,7 +119,7 @@ fn test_handle_message_vote_granted_greater_vote() -> anyhow::Result<()> {
     assert_eq!(Ok(()), resp);
 
     assert_eq!(Vote::new(3, 1), *eng.state.vote_ref());
-    assert!(eng.leader.is_following());
+    assert!(eng.leader.is_none());
 
     assert_eq!(ServerState::Follower, eng.state.server_state);
     assert_eq!(

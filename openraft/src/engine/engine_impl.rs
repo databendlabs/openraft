@@ -29,9 +29,9 @@ use crate::error::InitializeError;
 use crate::error::NotAllowed;
 use crate::error::NotInMembers;
 use crate::error::RejectAppendEntries;
-use crate::internal_server_state::InternalServerState;
-use crate::internal_server_state::LeaderQuorumSet;
-use crate::leader::candidate::Candidate;
+use crate::proposer::candidate::Candidate;
+use crate::proposer::leader_state::LeaderQuorumSet;
+use crate::proposer::leader_state::LeaderState;
 use crate::raft::responder::Responder;
 use crate::raft::AppendEntriesResponse;
 use crate::raft::SnapshotResponse;
@@ -78,7 +78,7 @@ where C: RaftTypeConfig
     pub(crate) seen_greater_log: bool,
 
     /// The internal server state(Leader or following) used by Engine.
-    pub(crate) leader: InternalServerState<C>,
+    pub(crate) leader: LeaderState<C>,
 
     pub(crate) candidate: Option<Candidate<C, LeaderQuorumSet<C::NodeId>>>,
 
@@ -94,7 +94,7 @@ where C: RaftTypeConfig
             config,
             state: Valid::new(init_state),
             seen_greater_log: false,
-            leader: InternalServerState::default(),
+            leader: None,
             candidate: None,
             output: EngineOutput::new(4096),
         }
@@ -549,7 +549,7 @@ where C: RaftTypeConfig
             func_name!()
         );
 
-        if self.leader.is_leader() {
+        if self.leader.is_some() {
             // If it is leading, it must not delete a log that is in use by a replication task.
             self.replication_handler().try_purge_log();
         } else {
@@ -697,7 +697,7 @@ where C: RaftTypeConfig
     }
 
     pub(crate) fn leader_handler(&mut self) -> Result<LeaderHandler<C>, ForwardToLeader<C>> {
-        let leader = match self.leader.leader_mut() {
+        let leader = match self.leader.as_mut() {
             None => {
                 tracing::debug!("this node is NOT a leader: {:?}", self.state.server_state);
                 return Err(self.state.forward_to_leader());
@@ -723,7 +723,7 @@ where C: RaftTypeConfig
     }
 
     pub(crate) fn replication_handler(&mut self) -> ReplicationHandler<C> {
-        let leader = match self.leader.leader_mut() {
+        let leader = match self.leader.as_mut() {
             None => {
                 unreachable!("There is no leader, can not handle replication");
             }
@@ -739,7 +739,7 @@ where C: RaftTypeConfig
     }
 
     pub(crate) fn following_handler(&mut self) -> FollowingHandler<C> {
-        debug_assert!(self.leader.is_following());
+        debug_assert!(self.leader.is_none());
 
         FollowingHandler {
             config: &mut self.config,
@@ -769,8 +769,7 @@ where C: RaftTypeConfig
 #[cfg(test)]
 mod engine_testing {
     use crate::engine::Engine;
-    use crate::internal_server_state::InternalServerState;
-    use crate::internal_server_state::LeaderQuorumSet;
+    use crate::proposer::leader_state::LeaderQuorumSet;
     use crate::RaftTypeConfig;
 
     impl<C> Engine<C>
@@ -779,10 +778,10 @@ mod engine_testing {
         /// Create a Leader state just for testing purpose only,
         /// without initializing related resource,
         /// such as setting up replication, propose blank log.
-        pub(crate) fn testing_new_leader(&mut self) -> &mut crate::leader::Leader<C, LeaderQuorumSet<C::NodeId>> {
+        pub(crate) fn testing_new_leader(&mut self) -> &mut crate::proposer::Leader<C, LeaderQuorumSet<C::NodeId>> {
             let leader = self.state.new_leader();
-            self.leader = InternalServerState::Leader(Box::new(leader));
-            self.leader.leader_mut().unwrap()
+            self.leader = Some(Box::new(leader));
+            self.leader.as_mut().unwrap()
         }
     }
 }

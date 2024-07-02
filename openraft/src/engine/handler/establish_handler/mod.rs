@@ -4,9 +4,9 @@ use crate::engine::handler::vote_handler::VoteHandler;
 use crate::engine::EngineConfig;
 use crate::engine::EngineOutput;
 use crate::entry::RaftEntry;
-use crate::internal_server_state::InternalServerState;
-use crate::internal_server_state::LeaderQuorumSet;
-use crate::leader::candidate::Candidate;
+use crate::proposer::candidate::Candidate;
+use crate::proposer::leader_state::LeaderQuorumSet;
+use crate::proposer::leader_state::LeaderState;
 use crate::LogId;
 use crate::RaftState;
 use crate::RaftTypeConfig;
@@ -16,7 +16,7 @@ pub(crate) struct EstablishHandler<'x, C>
 where C: RaftTypeConfig
 {
     pub(crate) config: &'x mut EngineConfig<C>,
-    pub(crate) leader: &'x mut InternalServerState<C>,
+    pub(crate) leader: &'x mut LeaderState<C>,
     pub(crate) state: &'x mut RaftState<C>,
     pub(crate) output: &'x mut EngineOutput<C>,
 }
@@ -34,7 +34,7 @@ where C: RaftTypeConfig
             "it can only commit its own vote"
         );
 
-        if let Some(l) = self.leader.leader_ref() {
+        if let Some(l) = self.leader.as_ref() {
             #[allow(clippy::neg_cmp_op_on_partial_ord)]
             if !(&vote > l.vote_ref()) {
                 tracing::warn!(
@@ -46,7 +46,7 @@ where C: RaftTypeConfig
 
         let leader = candidate.into_leader();
         let vote = *leader.vote_ref();
-        *self.leader = InternalServerState::Leader(Box::new(leader));
+        *self.leader = Some(Box::new(leader));
 
         self.replication_handler().rebuild_replication_streams();
 
@@ -61,7 +61,7 @@ where C: RaftTypeConfig
     }
 
     pub(crate) fn replication_handler(&mut self) -> ReplicationHandler<C> {
-        let leader = self.leader.leader_mut().unwrap();
+        let leader = self.leader.as_mut().unwrap();
 
         ReplicationHandler {
             config: self.config,
@@ -81,7 +81,7 @@ where C: RaftTypeConfig
     }
 
     pub(crate) fn leader_handler(&mut self) -> LeaderHandler<C> {
-        let leader = self.leader.leader_mut().unwrap();
+        let leader = self.leader.as_mut().unwrap();
 
         LeaderHandler {
             config: self.config,

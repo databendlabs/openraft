@@ -96,8 +96,8 @@ fn test_startup_as_leader_with_proposed_logs() -> anyhow::Result<()> {
     eng.startup();
 
     assert_eq!(ServerState::Leader, eng.state.server_state);
-    assert_eq!(eng.leader.leader_ref().unwrap().noop_log_id(), Some(&log_id(1, 2, 4)));
-    assert_eq!(eng.leader.leader_ref().unwrap().last_log_id(), Some(&log_id(1, 2, 6)));
+    assert_eq!(eng.leader.as_ref().unwrap().noop_log_id(), Some(&log_id(1, 2, 4)));
+    assert_eq!(eng.leader.as_ref().unwrap().last_log_id(), Some(&log_id(1, 2, 6)));
     assert_eq!(
         vec![
             //

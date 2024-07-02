@@ -2,9 +2,9 @@ use std::fmt;
 
 use crate::display_ext::display_instant::DisplayInstantExt;
 use crate::display_ext::display_option::DisplayOptionExt;
-use crate::leader::Leader;
 use crate::progress::Progress;
 use crate::progress::VecProgress;
+use crate::proposer::Leader;
 use crate::quorum::QuorumSet;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::LogIdOf;
