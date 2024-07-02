@@ -90,12 +90,12 @@ where C: RaftTypeConfig
             Self::HigherVote {
                 target,
                 higher,
-                sender_vote: vote,
+                sender_vote,
             } => {
                 write!(
                     f,
                     "Seen a higher vote: target: {}, vote: {}, server_state_vote: {}",
-                    target, higher, vote
+                    target, higher, sender_vote
                 )
             }
         }

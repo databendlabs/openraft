@@ -1240,17 +1240,17 @@ where
             Notify::HigherVote {
                 target,
                 higher,
-                sender_vote: vote,
+                sender_vote,
             } => {
                 tracing::info!(
                     target = display(target),
                     higher_vote = display(&higher),
-                    sending_vote = display(&vote),
+                    sending_vote = display(&sender_vote),
                     "received Notify::HigherVote: {}",
                     func_name!()
                 );
 
-                if self.does_vote_match(&vote, "HigherVote") {
+                if self.does_vote_match(&sender_vote, "HigherVote") {
                     // Rejected vote change is ok.
                     let _ = self.engine.vote_handler().update_vote(&higher);
                 }
