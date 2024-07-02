@@ -29,9 +29,9 @@ use crate::error::InitializeError;
 use crate::error::NotAllowed;
 use crate::error::NotInMembers;
 use crate::error::RejectAppendEntries;
-use crate::proposer::candidate::Candidate;
-use crate::proposer::leader_state::LeaderQuorumSet;
-use crate::proposer::leader_state::LeaderState;
+use crate::proposer::Candidate;
+use crate::proposer::LeaderQuorumSet;
+use crate::proposer::LeaderState;
 use crate::raft::responder::Responder;
 use crate::raft::AppendEntriesResponse;
 use crate::raft::SnapshotResponse;
@@ -769,7 +769,7 @@ where C: RaftTypeConfig
 #[cfg(test)]
 mod engine_testing {
     use crate::engine::Engine;
-    use crate::proposer::leader_state::LeaderQuorumSet;
+    use crate::proposer::LeaderQuorumSet;
     use crate::RaftTypeConfig;
 
     impl<C> Engine<C>

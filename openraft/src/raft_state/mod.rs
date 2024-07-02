@@ -38,8 +38,8 @@ pub(crate) use log_state_reader::LogStateReader;
 pub use membership_state::MembershipState;
 pub(crate) use vote_state_reader::VoteStateReader;
 
-use crate::proposer::leader_state::LeaderQuorumSet;
 use crate::proposer::Leader;
+use crate::proposer::LeaderQuorumSet;
 pub(crate) use crate::raft_state::snapshot_streaming::StreamingState;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::LogIdOf;

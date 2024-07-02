@@ -11,7 +11,7 @@ use crate::engine::Respond;
 use crate::engine::ValueSender;
 use crate::entry::RaftEntry;
 use crate::error::RejectVoteRequest;
-use crate::proposer::leader_state::LeaderState;
+use crate::proposer::LeaderState;
 use crate::raft_state::LogStateReader;
 use crate::type_config::alias::InstantOf;
 use crate::Instant;
