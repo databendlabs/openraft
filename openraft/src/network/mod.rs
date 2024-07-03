@@ -2,7 +2,8 @@
 
 mod backoff;
 mod factory;
-#[allow(clippy::module_inception)] mod network;
+#[allow(clippy::module_inception)]
+mod network;
 mod rpc_option;
 mod rpc_type;
 

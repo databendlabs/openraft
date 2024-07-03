@@ -33,7 +33,7 @@ overflow_delimited_expr = true
 wrap_comments           = true
 comment_width           = 100
 max_width               = 120
-inline_attribute_width  = 80
+inline_attribute_width  = 0
 
 merge_derives           = false
 

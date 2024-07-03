@@ -49,7 +49,8 @@ mod tests {
     mod startup_test;
     mod trigger_purge_log_test;
 }
-#[cfg(test)] pub(crate) mod testing;
+#[cfg(test)]
+pub(crate) mod testing;
 
 pub(crate) use command::Command;
 pub(crate) use command::Condition;

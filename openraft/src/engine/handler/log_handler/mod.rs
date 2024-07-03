@@ -9,8 +9,10 @@ use crate::LogIdOptionExt;
 use crate::RaftState;
 use crate::RaftTypeConfig;
 
-#[cfg(test)] mod calc_purge_upto_test;
-#[cfg(test)] mod purge_log_test;
+#[cfg(test)]
+mod calc_purge_upto_test;
+#[cfg(test)]
+mod purge_log_test;
 
 /// Handle raft-log related operations
 pub(crate) struct LogHandler<'x, C>

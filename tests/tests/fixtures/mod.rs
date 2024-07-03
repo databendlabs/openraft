@@ -2,7 +2,8 @@
 
 #![allow(dead_code)]
 
-#[cfg(feature = "bt")] use std::backtrace::Backtrace;
+#[cfg(feature = "bt")]
+use std::backtrace::Backtrace;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
@@ -68,8 +69,10 @@ use openraft_memstore::MemNodeId;
 use openraft_memstore::MemStore;
 use openraft_memstore::TypeConfig;
 use openraft_memstore::TypeConfig as MemConfig;
-#[allow(unused_imports)] use pretty_assertions::assert_eq;
-#[allow(unused_imports)] use pretty_assertions::assert_ne;
+#[allow(unused_imports)]
+use pretty_assertions::assert_eq;
+#[allow(unused_imports)]
+use pretty_assertions::assert_ne;
 use tracing_appender::non_blocking::WorkerGuard;
 
 use crate::fixtures::logging::init_file_logging;

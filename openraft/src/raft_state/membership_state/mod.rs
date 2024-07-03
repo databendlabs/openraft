@@ -11,8 +11,10 @@ use crate::Node;
 use crate::NodeId;
 
 mod change_handler;
-#[cfg(test)] mod change_handler_test;
-#[cfg(test)] mod membership_state_test;
+#[cfg(test)]
+mod change_handler_test;
+#[cfg(test)]
+mod membership_state_test;
 
 pub(crate) use change_handler::ChangeHandler;
 

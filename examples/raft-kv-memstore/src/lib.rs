@@ -22,7 +22,8 @@ pub mod app;
 pub mod client;
 pub mod network;
 pub mod store;
-#[cfg(test)] mod test;
+#[cfg(test)]
+mod test;
 
 pub type NodeId = u64;
 

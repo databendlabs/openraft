@@ -281,4 +281,5 @@ impl<NID: NodeId> Validate for ProgressEntry<NID> {
     }
 }
 
-#[cfg(test)] mod tests;
+#[cfg(test)]
+mod tests;

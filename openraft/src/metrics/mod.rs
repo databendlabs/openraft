@@ -33,7 +33,8 @@ mod wait;
 
 mod metric_display;
 mod wait_condition;
-#[cfg(test)] mod wait_test;
+#[cfg(test)]
+mod wait_test;
 
 use std::collections::BTreeMap;
 

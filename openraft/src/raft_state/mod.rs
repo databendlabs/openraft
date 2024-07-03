@@ -23,7 +23,8 @@ mod log_state_reader;
 mod membership_state;
 mod vote_state_reader;
 
-#[allow(unused)] pub(crate) use io_state::log_io_id::LogIOId;
+#[allow(unused)]
+pub(crate) use io_state::log_io_id::LogIOId;
 pub(crate) use io_state::IOState;
 
 #[cfg(test)]
@@ -42,8 +43,6 @@ pub(crate) use vote_state_reader::VoteStateReader;
 
 use crate::proposer::Leader;
 use crate::proposer::LeaderQuorumSet;
-use crate::type_config::alias::InstantOf;
-use crate::type_config::alias::LogIdOf;
 
 /// A struct used to represent the raft state which a Raft node needs.
 #[derive(Clone, Debug)]

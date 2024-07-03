@@ -8,7 +8,8 @@
 //! This allows multiple components within the application that require interaction with `RaftCore`
 //! to efficiently share access.
 
-#[cfg(test)] mod declare_raft_types_test;
+#[cfg(test)]
+mod declare_raft_types_test;
 mod external_request;
 mod impl_raft_blocking_write;
 pub(crate) mod message;

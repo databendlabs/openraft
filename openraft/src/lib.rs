@@ -50,7 +50,8 @@ pub(crate) mod type_config;
 pub(crate) mod utime;
 
 pub mod async_runtime;
-#[cfg(feature = "compat")] pub mod compat;
+#[cfg(feature = "compat")]
+pub mod compat;
 pub mod docs;
 pub mod entry;
 pub mod error;
@@ -63,7 +64,8 @@ pub mod raft;
 pub mod storage;
 pub mod testing;
 
-#[cfg(test)] mod feature_serde_test;
+#[cfg(test)]
+mod feature_serde_test;
 
 pub use anyerror;
 pub use anyerror::AnyError;
@@ -103,7 +105,8 @@ pub use crate::raft_types::SnapshotSegmentId;
 pub use crate::storage::LogState;
 pub use crate::storage::RaftLogReader;
 pub use crate::storage::RaftSnapshotBuilder;
-#[cfg(not(feature = "storage-v2"))] pub use crate::storage::RaftStorage;
+#[cfg(not(feature = "storage-v2"))]
+pub use crate::storage::RaftStorage;
 pub use crate::storage::Snapshot;
 pub use crate::storage::SnapshotMeta;
 pub use crate::storage::StorageHelper;

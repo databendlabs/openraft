@@ -14,8 +14,10 @@ mod quorum_set_impl;
 #[cfg(test)]
 mod bench;
 
-#[cfg(test)] mod coherent_test;
-#[cfg(test)] mod quorum_set_test;
+#[cfg(test)]
+mod coherent_test;
+#[cfg(test)]
+mod quorum_set_test;
 
 pub(crate) use coherent::Coherent;
 pub(crate) use coherent::FindCoherent;

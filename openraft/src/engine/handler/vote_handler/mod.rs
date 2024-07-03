@@ -23,8 +23,10 @@ use crate::RaftState;
 use crate::RaftTypeConfig;
 use crate::Vote;
 
-#[cfg(test)] mod accept_vote_test;
-#[cfg(test)] mod handle_message_vote_test;
+#[cfg(test)]
+mod accept_vote_test;
+#[cfg(test)]
+mod handle_message_vote_test;
 
 /// Handle raft vote related operations
 ///

@@ -10,8 +10,10 @@ use crate::RaftState;
 use crate::RaftTypeConfig;
 use crate::SnapshotMeta;
 
-#[cfg(test)] mod trigger_snapshot_test;
-#[cfg(test)] mod update_snapshot_test;
+#[cfg(test)]
+mod trigger_snapshot_test;
+#[cfg(test)]
+mod update_snapshot_test;
 
 /// Handle raft vote related operations
 pub(crate) struct SnapshotHandler<'st, 'out, C>

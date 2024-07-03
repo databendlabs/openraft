@@ -1,11 +1,14 @@
-#[cfg(not(feature = "storage-v2"))] use std::future::Future;
+#[cfg(not(feature = "storage-v2"))]
+use std::future::Future;
 
 use openraft_macros::add_async_trait;
 
-#[cfg(not(feature = "storage-v2"))] use crate::storage::Adaptor;
+#[cfg(not(feature = "storage-v2"))]
+use crate::storage::Adaptor;
 use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
-#[cfg(not(feature = "storage-v2"))] use crate::RaftStorage;
+#[cfg(not(feature = "storage-v2"))]
+use crate::RaftStorage;
 use crate::RaftTypeConfig;
 use crate::StorageError;
 
