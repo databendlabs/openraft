@@ -12,9 +12,12 @@ use crate::RaftLogId;
 use crate::RaftState;
 use crate::RaftTypeConfig;
 
-#[cfg(test)] mod append_entries_test;
-#[cfg(test)] mod get_read_log_id_test;
-#[cfg(test)] mod send_heartbeat_test;
+#[cfg(test)]
+mod append_entries_test;
+#[cfg(test)]
+mod get_read_log_id_test;
+#[cfg(test)]
+mod send_heartbeat_test;
 
 /// Handle leader operations.
 ///

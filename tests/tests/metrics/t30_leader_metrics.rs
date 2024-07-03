@@ -10,8 +10,10 @@ use openraft::CommittedLeaderId;
 use openraft::Config;
 use openraft::LogId;
 use openraft::ServerState;
-#[allow(unused_imports)] use pretty_assertions::assert_eq;
-#[allow(unused_imports)] use pretty_assertions::assert_ne;
+#[allow(unused_imports)]
+use pretty_assertions::assert_eq;
+#[allow(unused_imports)]
+use pretty_assertions::assert_ne;
 use tokio::time::sleep;
 
 use crate::fixtures::init_default_ut_tracing;

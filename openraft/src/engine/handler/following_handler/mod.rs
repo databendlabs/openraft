@@ -23,12 +23,18 @@ use crate::RaftTypeConfig;
 use crate::Snapshot;
 use crate::StoredMembership;
 
-#[cfg(test)] mod append_entries_test;
-#[cfg(test)] mod commit_entries_test;
-#[cfg(test)] mod do_append_entries_test;
-#[cfg(test)] mod install_snapshot_test;
-#[cfg(test)] mod truncate_logs_test;
-#[cfg(test)] mod update_committed_membership_test;
+#[cfg(test)]
+mod append_entries_test;
+#[cfg(test)]
+mod commit_entries_test;
+#[cfg(test)]
+mod do_append_entries_test;
+#[cfg(test)]
+mod install_snapshot_test;
+#[cfg(test)]
+mod truncate_logs_test;
+#[cfg(test)]
+mod update_committed_membership_test;
 
 /// Receive replication request and deal with them.
 ///

@@ -23,8 +23,10 @@ use crate::RaftState;
 use crate::RaftTypeConfig;
 use crate::ServerState;
 
-#[cfg(test)] mod append_membership_test;
-#[cfg(test)] mod update_matching_test;
+#[cfg(test)]
+mod append_membership_test;
+#[cfg(test)]
+mod update_matching_test;
 
 /// Handle replication operations.
 ///

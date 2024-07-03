@@ -20,7 +20,8 @@ mod log_state_reader;
 mod membership_state;
 mod vote_state_reader;
 
-#[allow(unused)] pub(crate) use io_state::log_io_id::LogIOId;
+#[allow(unused)]
+pub(crate) use io_state::log_io_id::LogIOId;
 pub(crate) use io_state::IOState;
 
 #[cfg(test)]
