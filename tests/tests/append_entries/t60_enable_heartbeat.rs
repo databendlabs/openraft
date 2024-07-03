@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
-use openraft::alias::InstantOf;
+use openraft::type_config::TypeConfigExt;
 use openraft::AsyncRuntime;
 use openraft::Config;
 use openraft::TokioRuntime;
@@ -32,7 +32,7 @@ async fn enable_heartbeat() -> Result<()> {
     node0.runtime_config().heartbeat(true);
 
     for _i in 0..3 {
-        let now = InstantOf::<TypeConfig>::now();
+        let now = TypeConfig::now();
         TokioRuntime::sleep(Duration::from_millis(500)).await;
 
         for node_id in [1, 2, 3] {

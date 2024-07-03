@@ -10,10 +10,9 @@ use crate::raft_state::IOState;
 use crate::storage::RaftLogReaderExt;
 use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
-use crate::type_config::alias::InstantOf;
+use crate::type_config::TypeConfigExt;
 use crate::utime::UTime;
 use crate::EffectiveMembership;
-use crate::Instant;
 use crate::LogIdOptionExt;
 use crate::MembershipState;
 use crate::RaftSnapshotBuilder;
@@ -149,7 +148,7 @@ where
             last_purged_log_id,
         );
 
-        let now = InstantOf::<C>::now();
+        let now = C::now();
 
         Ok(RaftState {
             committed: last_applied,

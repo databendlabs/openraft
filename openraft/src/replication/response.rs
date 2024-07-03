@@ -142,17 +142,17 @@ mod tests {
     use crate::engine::testing::UTConfig;
     use crate::replication::response::ReplicationResult;
     use crate::testing::log_id;
-    use crate::type_config::alias::InstantOf;
+    use crate::type_config::TypeConfigExt;
 
     #[test]
     fn test_replication_result_display() {
         // NOTE that with single-term-leader, log id is `1-3`
 
-        let result = ReplicationResult::<UTConfig>::new(InstantOf::<UTConfig>::now(), Ok(Some(log_id(1, 2, 3))));
+        let result = ReplicationResult::<UTConfig>::new(UTConfig::<()>::now(), Ok(Some(log_id(1, 2, 3))));
         let want = format!(", result:Match:{}}}", log_id(1, 2, 3));
         assert!(result.to_string().ends_with(&want), "{}", result.to_string());
 
-        let result = ReplicationResult::<UTConfig>::new(InstantOf::<UTConfig>::now(), Err(log_id(1, 2, 3)));
+        let result = ReplicationResult::<UTConfig>::new(UTConfig::<()>::now(), Err(log_id(1, 2, 3)));
         let want = format!(", result:Conflict:{}}}", log_id(1, 2, 3));
         assert!(result.to_string().ends_with(&want), "{}", result.to_string());
     }

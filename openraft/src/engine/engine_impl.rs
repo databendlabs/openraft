@@ -41,10 +41,9 @@ use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::raft_state::LogStateReader;
 use crate::raft_state::RaftState;
-use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::ResponderOf;
 use crate::type_config::alias::SnapshotDataOf;
-use crate::Instant;
+use crate::type_config::TypeConfigExt;
 use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::Membership;
@@ -123,7 +122,7 @@ where C: RaftTypeConfig
     /// The candidate `last_log_id` is initialized with the attributes of Acceptor part:
     /// [`RaftState`]
     pub(crate) fn new_candidate(&mut self, vote: Vote<C::NodeId>) -> &mut Candidate<C, LeaderQuorumSet<C::NodeId>> {
-        let now = InstantOf::<C>::now();
+        let now = C::now();
         let last_log_id = self.state.last_log_id().copied();
 
         let membership = self.state.membership_state.effective().membership();
@@ -282,7 +281,7 @@ where C: RaftTypeConfig
 
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn handle_vote_req(&mut self, req: VoteRequest<C>) -> VoteResponse<C> {
-        let now = InstantOf::<C>::now();
+        let now = C::now();
         let lease = self.config.timer_config.leader_lease;
         let vote = self.state.vote_ref();
 

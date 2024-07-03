@@ -4,8 +4,7 @@ use openraft_macros::add_async_trait;
 use crate::raft_state::LogIOId;
 use crate::storage::LogFlushed;
 use crate::storage::RaftLogStorage;
-use crate::type_config::alias::AsyncRuntimeOf;
-use crate::AsyncRuntime;
+use crate::type_config::TypeConfigExt;
 use crate::OptionalSend;
 use crate::RaftTypeConfig;
 use crate::StorageError;
@@ -27,7 +26,7 @@ where C: RaftTypeConfig
         I: IntoIterator<Item = C::Entry> + OptionalSend,
         I::IntoIter: OptionalSend,
     {
-        let (tx, rx) = AsyncRuntimeOf::<C>::oneshot();
+        let (tx, rx) = C::oneshot();
 
         // dummy log_io_id
         let log_io_id = LogIOId::<C::NodeId>::new(Vote::<C::NodeId>::default(), None);

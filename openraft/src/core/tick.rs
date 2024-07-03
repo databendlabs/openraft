@@ -14,11 +14,8 @@ use tracing::Level;
 use tracing::Span;
 
 use crate::core::notify::Notify;
-use crate::type_config::alias::AsyncRuntimeOf;
-use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::JoinHandleOf;
-use crate::AsyncRuntime;
-use crate::Instant;
+use crate::type_config::TypeConfigExt;
 use crate::RaftTypeConfig;
 
 /// Emit RaftMsg::Tick event at regular `interval`.
@@ -68,7 +65,7 @@ where C: RaftTypeConfig
 
         let shutdown = Mutex::new(Some(shutdown));
 
-        let join_handle = AsyncRuntimeOf::<C>::spawn(this.tick_loop(shutdown_rx).instrument(tracing::span!(
+        let join_handle = C::spawn(this.tick_loop(shutdown_rx).instrument(tracing::span!(
             parent: &Span::current(),
             Level::DEBUG,
             "tick"
@@ -87,8 +84,8 @@ where C: RaftTypeConfig
         let mut cancel = std::pin::pin!(cancel_rx);
 
         loop {
-            let at = InstantOf::<C>::now() + self.interval;
-            let mut sleep_fut = AsyncRuntimeOf::<C>::sleep_until(at);
+            let at = C::now() + self.interval;
+            let mut sleep_fut = C::sleep_until(at);
             let sleep_fut = std::pin::pin!(sleep_fut);
             let cancel_fut = cancel.as_mut();
 
@@ -159,8 +156,7 @@ mod tests {
     use tokio::time::Duration;
 
     use crate::core::Tick;
-    use crate::type_config::alias::AsyncRuntimeOf;
-    use crate::AsyncRuntime;
+    use crate::type_config::TypeConfigExt;
     use crate::RaftTypeConfig;
     use crate::TokioRuntime;
 
@@ -187,9 +183,9 @@ mod tests {
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
         let th = Tick::<TickUTConfig>::spawn(Duration::from_millis(100), tx, true);
 
-        AsyncRuntimeOf::<TickUTConfig>::sleep(Duration::from_millis(500)).await;
+        TickUTConfig::sleep(Duration::from_millis(500)).await;
         let _ = th.shutdown().unwrap().await;
-        AsyncRuntimeOf::<TickUTConfig>::sleep(Duration::from_millis(500)).await;
+        TickUTConfig::sleep(Duration::from_millis(500)).await;
 
         let mut received = vec![];
         while let Some(x) = rx.recv().await {

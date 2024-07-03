@@ -3,9 +3,8 @@
 use tokio::sync::mpsc;
 
 use crate::core::sm;
-use crate::type_config::alias::AsyncRuntimeOf;
 use crate::type_config::alias::JoinHandleOf;
-use crate::AsyncRuntime;
+use crate::type_config::TypeConfigExt;
 use crate::RaftTypeConfig;
 use crate::Snapshot;
 
@@ -55,7 +54,7 @@ where C: RaftTypeConfig
     /// If the state machine worker has shutdown, it will return an error.
     /// If there is not snapshot available, it will return `Ok(None)`.
     pub(crate) async fn get_snapshot(&self) -> Result<Option<Snapshot<C>>, &'static str> {
-        let (tx, rx) = AsyncRuntimeOf::<C>::oneshot();
+        let (tx, rx) = C::oneshot();
 
         let cmd = sm::Command::get_snapshot(tx);
         tracing::debug!("SnapshotReader sending command to sm::Worker: {:?}", cmd);

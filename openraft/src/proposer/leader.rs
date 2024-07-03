@@ -209,7 +209,7 @@ mod tests {
     use crate::proposer::Leader;
     use crate::testing::blank_ent;
     use crate::testing::log_id;
-    use crate::type_config::alias::InstantOf;
+    use crate::type_config::TypeConfigExt;
     use crate::Entry;
     use crate::RaftLogId;
     use crate::Vote;
@@ -309,7 +309,7 @@ mod tests {
     fn test_leading_last_quorum_acked_time_leader_is_voter() {
         let mut leading = Leader::<UTConfig, Vec<u64>>::new(Vote::new_committed(2, 1), vec![1, 2, 3], [4], &[]);
 
-        let now1 = InstantOf::<UTConfig>::now();
+        let now1 = UTConfig::<()>::now();
 
         let _t2 = leading.clock_progress.increase_to(&2, Some(now1));
         let t1 = leading.last_quorum_acked_time();
@@ -320,12 +320,12 @@ mod tests {
     fn test_leading_last_quorum_acked_time_leader_is_learner() {
         let mut leading = Leader::<UTConfig, Vec<u64>>::new(Vote::new_committed(2, 4), vec![1, 2, 3], [4], &[]);
 
-        let t2 = InstantOf::<UTConfig>::now();
+        let t2 = UTConfig::<()>::now();
         let _ = leading.clock_progress.increase_to(&2, Some(t2));
         let t = leading.last_quorum_acked_time();
         assert!(t.is_none(), "n1(leader+learner) does not count in quorum");
 
-        let t3 = InstantOf::<UTConfig>::now();
+        let t3 = UTConfig::<()>::now();
         let _ = leading.clock_progress.increase_to(&3, Some(t3));
         let t = leading.last_quorum_acked_time();
         assert_eq!(Some(t2), t, "n2 and n3 acked");
@@ -335,12 +335,12 @@ mod tests {
     fn test_leading_last_quorum_acked_time_leader_is_not_member() {
         let mut leading = Leader::<UTConfig, Vec<u64>>::new(Vote::new_committed(2, 5), vec![1, 2, 3], [4], &[]);
 
-        let t2 = InstantOf::<UTConfig>::now();
+        let t2 = UTConfig::<()>::now();
         let _ = leading.clock_progress.increase_to(&2, Some(t2));
         let t = leading.last_quorum_acked_time();
         assert!(t.is_none(), "n1(leader+learner) does not count in quorum");
 
-        let t3 = InstantOf::<UTConfig>::now();
+        let t3 = UTConfig::<()>::now();
         let _ = leading.clock_progress.increase_to(&3, Some(t3));
         let t = leading.last_quorum_acked_time();
         assert_eq!(Some(t2), t, "n2 and n3 acked");
