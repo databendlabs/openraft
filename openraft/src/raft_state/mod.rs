@@ -21,7 +21,6 @@ mod accepted;
 pub(crate) mod io_state;
 mod log_state_reader;
 mod membership_state;
-pub(crate) mod snapshot_streaming;
 mod vote_state_reader;
 
 #[allow(unused)] pub(crate) use io_state::log_io_id::LogIOId;
@@ -43,7 +42,8 @@ pub(crate) use vote_state_reader::VoteStateReader;
 
 use crate::proposer::Leader;
 use crate::proposer::LeaderQuorumSet;
-pub(crate) use crate::raft_state::snapshot_streaming::StreamingState;
+use crate::type_config::alias::InstantOf;
+use crate::type_config::alias::LogIdOf;
 
 /// A struct used to represent the raft state which a Raft node needs.
 #[derive(Clone, Debug)]
@@ -86,8 +86,6 @@ where
 
     pub(crate) io_state: IOState<NID>,
 
-    pub(crate) snapshot_streaming: Option<StreamingState>,
-
     /// The log id upto which the next time it purges.
     ///
     /// If a log is in use by a replication task, the purge is postponed and is stored in this
@@ -112,7 +110,6 @@ where
             server_state: ServerState::default(),
             accepted: Accepted::default(),
             io_state: IOState::default(),
-            snapshot_streaming: None,
             purge_upto: None,
         }
     }
