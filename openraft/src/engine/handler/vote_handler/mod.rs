@@ -15,8 +15,8 @@ use crate::proposer::CandidateState;
 use crate::proposer::LeaderState;
 use crate::raft_state::LogStateReader;
 use crate::type_config::alias::InstantOf;
+use crate::type_config::TypeConfigExt;
 use crate::AsyncRuntime;
-use crate::Instant;
 use crate::LogId;
 use crate::OptionalSend;
 use crate::RaftState;
@@ -134,19 +134,15 @@ where C: RaftTypeConfig
         if vote > self.state.vote_ref() {
             tracing::info!("vote is changing from {} to {}", self.state.vote_ref(), vote);
 
-            self.state.vote.update(<C::AsyncRuntime as AsyncRuntime>::Instant::now(), *vote);
+            self.state.vote.update(C::now(), *vote);
             self.output.push_command(Command::SaveVote { vote: *vote });
         } else {
-            self.state.vote.touch(<C::AsyncRuntime as AsyncRuntime>::Instant::now());
+            self.state.vote.touch(C::now());
         }
 
         // Update vote related timer and lease.
 
-        tracing::debug!(
-            now = debug(<C::AsyncRuntime as AsyncRuntime>::Instant::now()),
-            "{}",
-            func_name!()
-        );
+        tracing::debug!(now = debug(C::now()), "{}", func_name!());
 
         self.update_internal_server_state();
 

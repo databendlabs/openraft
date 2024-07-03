@@ -1,4 +1,4 @@
-//! Implement [`fmt::Display`] for types such as `Option<T>` and slice `&[T]`.
+//! Implement [`std::fmt::Display`] for types such as `Option<T>` and slice `&[T]`.
 
 pub(crate) mod display_instant;
 pub(crate) mod display_option;

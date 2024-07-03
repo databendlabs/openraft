@@ -79,10 +79,10 @@ pub use crate::raft::runtime_config_handle::RuntimeConfigHandle;
 use crate::raft::trigger::Trigger;
 use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
-use crate::type_config::alias::AsyncRuntimeOf;
 use crate::type_config::alias::ResponderOf;
 use crate::type_config::alias::ResponderReceiverOf;
 use crate::type_config::alias::SnapshotDataOf;
+use crate::type_config::TypeConfigExt;
 use crate::AsyncRuntime;
 use crate::LogId;
 use crate::LogIdOptionExt;
@@ -439,7 +439,7 @@ where C: RaftTypeConfig
     pub async fn begin_receiving_snapshot(&self) -> Result<Box<SnapshotDataOf<C>>, RaftError<C::NodeId, Infallible>> {
         tracing::info!("Raft::begin_receiving_snapshot()");
 
-        let (tx, rx) = AsyncRuntimeOf::<C>::oneshot();
+        let (tx, rx) = C::oneshot();
         let resp = self.inner.call_core(RaftMsg::BeginReceivingSnapshot { tx }, rx).await?;
         Ok(resp)
     }

@@ -10,10 +10,10 @@ use crate::raft_state::IOState;
 use crate::storage::RaftLogReaderExt;
 use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
+use crate::type_config::TypeConfigExt;
 use crate::utime::UTime;
 use crate::AsyncRuntime;
 use crate::EffectiveMembership;
-use crate::Instant;
 use crate::LogIdOptionExt;
 use crate::MembershipState;
 use crate::RaftSnapshotBuilder;
@@ -152,7 +152,7 @@ where
             last_purged_log_id,
         );
 
-        let now = <C::AsyncRuntime as AsyncRuntime>::Instant::now();
+        let now = C::now();
 
         Ok(RaftState {
             committed: last_applied,

@@ -50,12 +50,11 @@ use crate::replication::request_id::RequestId;
 use crate::storage::RaftLogReader;
 use crate::storage::RaftLogStorage;
 use crate::storage::Snapshot;
-use crate::type_config::alias::AsyncRuntimeOf;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::JoinHandleOf;
 use crate::type_config::alias::LogIdOf;
+use crate::type_config::TypeConfigExt;
 use crate::AsyncRuntime;
-use crate::Instant;
 use crate::LogId;
 use crate::MessageSummary;
 use crate::RaftLogId;
@@ -327,7 +326,7 @@ where
                 Duration::from_millis(500)
             });
 
-            self.backoff_drain_events(InstantOf::<C>::now() + duration).await?;
+            self.backoff_drain_events(C::now() + duration).await?;
         }
 
         self.drain_events().await?;
@@ -415,7 +414,7 @@ where
             }
         };
 
-        let leader_time = InstantOf::<C>::now();
+        let leader_time = C::now();
 
         // Build the heartbeat frame to be sent to the follower.
         let payload = AppendEntriesRequest {
@@ -435,7 +434,7 @@ where
 
         let the_timeout = Duration::from_millis(self.config.heartbeat_interval);
         let option = RPCOption::new(the_timeout);
-        let res = AsyncRuntimeOf::<C>::timeout(the_timeout, self.network.append_entries(payload, option)).await;
+        let res = C::timeout(the_timeout, self.network.append_entries(payload, option)).await;
 
         tracing::debug!("append_entries res: {:?}", res);
 
@@ -573,7 +572,7 @@ where
     /// in case the channel is closed, it should quit at once.
     #[tracing::instrument(level = "debug", skip(self))]
     pub async fn backoff_drain_events(&mut self, until: InstantOf<C>) -> Result<(), ReplicationClosed> {
-        let d = until - InstantOf::<C>::now();
+        let d = until - C::now();
         tracing::warn!(
             interval = debug(d),
             "{} backoff mode: drain events without processing them",
@@ -581,8 +580,8 @@ where
         );
 
         loop {
-            let sleep_duration = until - InstantOf::<C>::now();
-            let sleep = C::AsyncRuntime::sleep(sleep_duration);
+            let sleep_duration = until - C::now();
+            let sleep = C::sleep(sleep_duration);
 
             let recv = self.rx_event.recv();
 
@@ -736,7 +735,7 @@ where
 
         let (tx_cancel, rx_cancel) = oneshot::channel();
 
-        let jh = AsyncRuntimeOf::<C>::spawn(Self::send_snapshot(
+        let jh = C::spawn(Self::send_snapshot(
             request_id,
             self.snapshot_network.clone(),
             *self.session_id.vote_ref(),
@@ -767,7 +766,7 @@ where
 
         let mut net = network.lock().await;
 
-        let start_time = InstantOf::<C>::now();
+        let start_time = C::now();
 
         let cancel = async move {
             let _ = cancel.await;

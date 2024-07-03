@@ -20,7 +20,7 @@ use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
 use crate::storage::StorageHelper;
 use crate::testing::StoreBuilder;
-use crate::type_config::alias::AsyncRuntimeOf;
+use crate::type_config::TypeConfigExt;
 use crate::vote::CommittedLeaderId;
 use crate::AsyncRuntime;
 use crate::LogId;
@@ -1304,7 +1304,7 @@ where
     I: IntoIterator<Item = C::Entry> + OptionalSend,
     I::IntoIter: OptionalSend,
 {
-    let (tx, rx) = AsyncRuntimeOf::<C>::oneshot();
+    let (tx, rx) = C::oneshot();
 
     // Dummy log io id for blocking append
     let log_io_id = LogIOId::<C::NodeId>::new(Vote::<C::NodeId>::default(), None);

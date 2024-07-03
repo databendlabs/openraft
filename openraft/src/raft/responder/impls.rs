@@ -1,10 +1,9 @@
 use crate::async_runtime::AsyncOneshotSendExt;
 use crate::raft::message::ClientWriteResult;
 use crate::raft::responder::Responder;
-use crate::type_config::alias::AsyncRuntimeOf;
 use crate::type_config::alias::OneshotReceiverOf;
 use crate::type_config::alias::OneshotSenderOf;
-use crate::AsyncRuntime;
+use crate::type_config::TypeConfigExt;
 use crate::RaftTypeConfig;
 
 /// A [`Responder`] implementation that sends the response via a oneshot channel.
@@ -22,6 +21,8 @@ impl<C> OneshotResponder<C>
 where C: RaftTypeConfig
 {
     /// Create a new instance from a [`AsyncRuntime::OneshotSender`].
+    ///
+    /// [`AsyncRuntime::OneshotSender`]: `crate::async_runtime::AsyncRuntime::OneshotSender`
     pub fn new(tx: OneshotSenderOf<C, ClientWriteResult<C>>) -> Self {
         Self { tx }
     }
@@ -34,7 +35,7 @@ where C: RaftTypeConfig
 
     fn from_app_data(app_data: C::D) -> (C::D, Self, Self::Receiver)
     where Self: Sized {
-        let (tx, rx) = AsyncRuntimeOf::<C>::oneshot();
+        let (tx, rx) = C::oneshot();
         (app_data, Self { tx }, rx)
     }
 

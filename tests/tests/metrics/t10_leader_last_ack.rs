@@ -3,9 +3,8 @@ use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
-use openraft::AsyncRuntime;
+use openraft::type_config::TypeConfigExt;
 use openraft::Config;
-use openraft::RaftTypeConfig;
 use openraft_memstore::TypeConfig;
 
 use crate::fixtures::init_default_ut_tracing;
@@ -41,7 +40,7 @@ async fn leader_last_ack_3_nodes() -> Result<()> {
 
     tracing::info!(log_index, "--- sleep 500 ms, the `millis` should extend");
     {
-        <<TypeConfig as RaftTypeConfig>::AsyncRuntime as AsyncRuntime>::sleep(Duration::from_millis(500)).await;
+        TypeConfig::sleep(Duration::from_millis(500)).await;
 
         let greater = n0.metrics().borrow().millis_since_quorum_ack;
         println!("greater: {:?}", greater);
@@ -70,7 +69,7 @@ async fn leader_last_ack_3_nodes() -> Result<()> {
         "--- sleep and heartbeat again; millis_since_quorum_ack refreshes"
     );
     {
-        <<TypeConfig as RaftTypeConfig>::AsyncRuntime as AsyncRuntime>::sleep(Duration::from_millis(500)).await;
+        TypeConfig::sleep(Duration::from_millis(500)).await;
 
         n0.trigger().heartbeat().await?;
 
@@ -93,7 +92,7 @@ async fn leader_last_ack_3_nodes() -> Result<()> {
         "--- sleep and heartbeat again; millis_since_quorum_ack does not refresh"
     );
     {
-        <<TypeConfig as RaftTypeConfig>::AsyncRuntime as AsyncRuntime>::sleep(Duration::from_millis(500)).await;
+        TypeConfig::sleep(Duration::from_millis(500)).await;
 
         n0.trigger().heartbeat().await?;
 
