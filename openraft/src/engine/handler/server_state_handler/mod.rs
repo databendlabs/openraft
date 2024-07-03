@@ -5,7 +5,8 @@ use crate::RaftState;
 use crate::RaftTypeConfig;
 use crate::ServerState;
 
-#[cfg(test)] mod update_server_state_test;
+#[cfg(test)]
+mod update_server_state_test;
 
 /// Handle raft server-state related operations
 pub(crate) struct ServerStateHandler<'st, C>

@@ -1,6 +1,7 @@
 //! A minimized store with least cost for benchmarking Openraft.
 
-#[cfg(feature = "bt")] use std::backtrace::Backtrace;
+#[cfg(feature = "bt")]
+use std::backtrace::Backtrace;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::sync::Arc;

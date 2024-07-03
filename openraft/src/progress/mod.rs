@@ -19,7 +19,8 @@ use std::slice::Iter;
 use std::slice::IterMut;
 
 // TODO: remove it
-#[allow(unused_imports)] pub(crate) use inflight::Inflight;
+#[allow(unused_imports)]
+pub(crate) use inflight::Inflight;
 
 use crate::quorum::QuorumSet;
 
