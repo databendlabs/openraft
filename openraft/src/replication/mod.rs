@@ -48,10 +48,10 @@ use crate::replication::request_id::RequestId;
 use crate::storage::RaftLogReader;
 use crate::storage::RaftLogStorage;
 use crate::storage::Snapshot;
-use crate::type_config::alias::AsyncRuntimeOf;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::JoinHandleOf;
 use crate::type_config::alias::LogIdOf;
+use crate::type_config::TypeConfigExt;
 use crate::AsyncRuntime;
 use crate::Instant;
 use crate::LogId;
@@ -433,7 +433,7 @@ where
 
         let the_timeout = Duration::from_millis(self.config.heartbeat_interval);
         let option = RPCOption::new(the_timeout);
-        let res = AsyncRuntimeOf::<C>::timeout(the_timeout, self.network.append_entries(payload, option)).await;
+        let res = C::timeout(the_timeout, self.network.append_entries(payload, option)).await;
 
         tracing::debug!("append_entries res: {:?}", res);
 
@@ -580,7 +580,7 @@ where
 
         loop {
             let sleep_duration = until - InstantOf::<C>::now();
-            let sleep = C::AsyncRuntime::sleep(sleep_duration);
+            let sleep = C::sleep(sleep_duration);
 
             let recv = self.rx_event.recv();
 
@@ -734,7 +734,7 @@ where
 
         let (tx_cancel, rx_cancel) = oneshot::channel();
 
-        let jh = AsyncRuntimeOf::<C>::spawn(Self::send_snapshot(
+        let jh = C::spawn(Self::send_snapshot(
             request_id,
             self.snapshot_network.clone(),
             *self.session_id.vote_ref(),

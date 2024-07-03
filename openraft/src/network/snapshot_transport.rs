@@ -20,8 +20,7 @@ use crate::error::StreamingError;
 use crate::network::RPCOption;
 use crate::raft::InstallSnapshotRequest;
 use crate::raft::SnapshotResponse;
-use crate::type_config::alias::AsyncRuntimeOf;
-use crate::AsyncRuntime;
+use crate::type_config::TypeConfigExt;
 use crate::ErrorSubject;
 use crate::ErrorVerb;
 use crate::OptionalSend;
@@ -124,7 +123,7 @@ where C::SnapshotData: tokio::io::AsyncRead + tokio::io::AsyncWrite + tokio::io:
             // Sleep a short time otherwise in test environment it is a dead-loop that never
             // yields.
             // Because network implementation does not yield.
-            AsyncRuntimeOf::<C>::sleep(Duration::from_millis(1)).await;
+            C::sleep(Duration::from_millis(1)).await;
 
             snapshot.snapshot.seek(SeekFrom::Start(offset)).await.sto_res(subject_verb)?;
 
@@ -160,7 +159,7 @@ where C::SnapshotData: tokio::io::AsyncRead + tokio::io::AsyncWrite + tokio::io:
             );
 
             #[allow(deprecated)]
-            let res = AsyncRuntimeOf::<C>::timeout(option.hard_ttl(), net.install_snapshot(req, option.clone())).await;
+            let res = C::timeout(option.hard_ttl(), net.install_snapshot(req, option.clone())).await;
 
             let resp = match res {
                 Ok(outer_res) => match outer_res {

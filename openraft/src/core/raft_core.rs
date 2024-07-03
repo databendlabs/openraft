@@ -88,10 +88,10 @@ use crate::storage::LogFlushed;
 use crate::storage::RaftLogReaderExt;
 use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
-use crate::type_config::alias::AsyncRuntimeOf;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::OneshotReceiverOf;
 use crate::type_config::alias::ResponderOf;
+use crate::type_config::TypeConfigExt;
 use crate::AsyncRuntime;
 use crate::ChangeMembers;
 use crate::Instant;
@@ -1646,7 +1646,7 @@ where
 
                     // False positive lint warning(`non-binding `let` on a future`): https://github.com/rust-lang/rust-clippy/issues/9932
                     #[allow(clippy::let_underscore_future)]
-                    let _ = AsyncRuntimeOf::<C>::spawn(async move {
+                    let _ = C::spawn(async move {
                         for (log_index, tx) in removed.into_iter() {
                             tx.send(Err(ClientWriteError::ForwardToLeader(ForwardToLeader {
                                 leader_id,

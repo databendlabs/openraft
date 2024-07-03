@@ -46,7 +46,6 @@ pub(crate) mod log_id_range;
 pub(crate) mod proposer;
 pub(crate) mod raft_state;
 pub(crate) mod timer;
-pub(crate) mod type_config;
 pub(crate) mod utime;
 
 pub mod async_runtime;
@@ -63,6 +62,7 @@ pub mod network;
 pub mod raft;
 pub mod storage;
 pub mod testing;
+pub mod type_config;
 
 #[cfg(test)]
 mod feature_serde_test;

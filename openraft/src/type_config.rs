@@ -1,4 +1,13 @@
+//! Define the configuration of types used by the Raft, such as [`NodeId`], log [`Entry`], etc.
+//!
+//! [`NodeId`]: `RaftTypeConfig::NodeId`
+//! [`Entry`]: `RaftTypeConfig::Entry`
+
+pub(crate) mod util;
+
 use std::fmt::Debug;
+
+pub use util::TypeConfigExt;
 
 use crate::entry::FromAppData;
 use crate::entry::RaftEntry;

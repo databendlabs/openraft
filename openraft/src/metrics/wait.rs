@@ -7,9 +7,8 @@ use crate::core::ServerState;
 use crate::metrics::Condition;
 use crate::metrics::Metric;
 use crate::metrics::RaftMetrics;
-use crate::type_config::alias::AsyncRuntimeOf;
 use crate::type_config::alias::InstantOf;
-use crate::AsyncRuntime;
+use crate::type_config::TypeConfigExt;
 use crate::Instant;
 use crate::LogId;
 use crate::OptionalSend;
@@ -63,7 +62,7 @@ where C: RaftTypeConfig
 
             let sleep_time = timeout_at - now;
             tracing::debug!(?sleep_time, "wait timeout");
-            let delay = AsyncRuntimeOf::<C>::sleep(sleep_time);
+            let delay = C::sleep(sleep_time);
 
             tokio::select! {
                 _ = delay => {
