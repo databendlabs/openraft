@@ -7,10 +7,7 @@ use crate::core::ServerState;
 use crate::metrics::Condition;
 use crate::metrics::Metric;
 use crate::metrics::RaftMetrics;
-use crate::type_config::alias::AsyncRuntimeOf;
-use crate::type_config::alias::InstantOf;
-use crate::AsyncRuntime;
-use crate::Instant;
+use crate::type_config::TypeConfigExt;
 use crate::LogId;
 use crate::OptionalSend;
 use crate::RaftTypeConfig;
@@ -40,7 +37,7 @@ where C: RaftTypeConfig
     #[tracing::instrument(level = "trace", skip(self, func), fields(msg=%msg.to_string()))]
     pub async fn metrics<T>(&self, func: T, msg: impl ToString) -> Result<RaftMetrics<C>, WaitError>
     where T: Fn(&RaftMetrics<C>) -> bool + OptionalSend {
-        let timeout_at = InstantOf::<C>::now() + self.timeout;
+        let timeout_at = C::now() + self.timeout;
 
         let mut rx = self.rx.clone();
         loop {
@@ -53,7 +50,7 @@ where C: RaftTypeConfig
                 return Ok(latest);
             }
 
-            let now = InstantOf::<C>::now();
+            let now = C::now();
             if now >= timeout_at {
                 return Err(WaitError::Timeout(
                     self.timeout,
@@ -63,7 +60,7 @@ where C: RaftTypeConfig
 
             let sleep_time = timeout_at - now;
             tracing::debug!(?sleep_time, "wait timeout");
-            let delay = AsyncRuntimeOf::<C>::sleep(sleep_time);
+            let delay = C::sleep(sleep_time);
 
             tokio::select! {
                 _ = delay => {

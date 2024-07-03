@@ -12,8 +12,7 @@ use crate::engine::LogIdList;
 use crate::engine::Respond;
 use crate::raft::SnapshotResponse;
 use crate::testing::log_id;
-use crate::type_config::alias::AsyncRuntimeOf;
-use crate::AsyncRuntime;
+use crate::type_config::TypeConfigExt;
 use crate::Membership;
 use crate::Snapshot;
 use crate::SnapshotMeta;
@@ -63,7 +62,7 @@ fn test_handle_install_full_snapshot_lt_last_snapshot() -> anyhow::Result<()> {
 
     let curr_vote = *eng.state.vote_ref();
 
-    let (tx, _rx) = AsyncRuntimeOf::<UTConfig>::oneshot();
+    let (tx, _rx) = UTConfig::<()>::oneshot();
 
     eng.handle_install_full_snapshot(
         curr_vote,
@@ -87,7 +86,7 @@ fn test_handle_install_full_snapshot_lt_last_snapshot() -> anyhow::Result<()> {
         eng.state.snapshot_meta
     );
 
-    let (dummy_tx, _rx) = AsyncRuntimeOf::<UTConfig>::oneshot();
+    let (dummy_tx, _rx) = UTConfig::<()>::oneshot();
     assert_eq!(
         vec![
             //
@@ -111,7 +110,7 @@ fn test_handle_install_full_snapshot_no_conflict() -> anyhow::Result<()> {
 
     let curr_vote = *eng.state.vote_ref();
 
-    let (tx, _rx) = AsyncRuntimeOf::<UTConfig>::oneshot();
+    let (tx, _rx) = UTConfig::<()>::oneshot();
 
     eng.handle_install_full_snapshot(
         curr_vote,
@@ -135,7 +134,7 @@ fn test_handle_install_full_snapshot_no_conflict() -> anyhow::Result<()> {
         eng.state.snapshot_meta
     );
 
-    let (dummy_tx, _rx) = AsyncRuntimeOf::<UTConfig>::oneshot();
+    let (dummy_tx, _rx) = UTConfig::<()>::oneshot();
     assert_eq!(
         vec![
             //

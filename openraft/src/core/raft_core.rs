@@ -88,10 +88,10 @@ use crate::storage::LogFlushed;
 use crate::storage::RaftLogReaderExt;
 use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
-use crate::type_config::alias::AsyncRuntimeOf;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::OneshotReceiverOf;
 use crate::type_config::alias::ResponderOf;
+use crate::type_config::TypeConfigExt;
 use crate::AsyncRuntime;
 use crate::ChangeMembers;
 use crate::Instant;
@@ -146,7 +146,7 @@ pub(crate) struct LeaderData<C: RaftTypeConfig> {
 impl<C: RaftTypeConfig> LeaderData<C> {
     pub(crate) fn new() -> Self {
         Self {
-            next_heartbeat: InstantOf::<C>::now(),
+            next_heartbeat: C::now(),
         }
     }
 }
@@ -501,16 +501,12 @@ where
     /// Currently heartbeat is a blank log
     #[tracing::instrument(level = "debug", skip_all, fields(id = display(self.id)))]
     pub fn send_heartbeat(&mut self, emitter: impl Display) -> bool {
-        tracing::debug!(now = debug(InstantOf::<C>::now()), "send_heartbeat");
+        tracing::debug!(now = debug(C::now()), "send_heartbeat");
 
         let mut lh = if let Some((lh, _)) = self.engine.get_leader_handler_or_reject(None) {
             lh
         } else {
-            tracing::debug!(
-                now = debug(InstantOf::<C>::now()),
-                "{} failed to send heartbeat",
-                emitter
-            );
+            tracing::debug!(now = debug(C::now()), "{} failed to send heartbeat", emitter);
             return false;
         };
 
@@ -1136,7 +1132,7 @@ where
                 self.handle_append_entries_request(rpc, tx);
             }
             RaftMsg::RequestVote { rpc, tx } => {
-                let now = InstantOf::<C>::now();
+                let now = C::now();
                 tracing::info!(
                     now = display(now.display()),
                     vote_request = display(&rpc),
@@ -1223,7 +1219,7 @@ where
                 resp,
                 sender_vote,
             } => {
-                let now = InstantOf::<C>::now();
+                let now = C::now();
 
                 tracing::info!(
                     now = display(now.display()),
@@ -1259,7 +1255,7 @@ where
             Notify::Tick { i } => {
                 // check every timer
 
-                let now = InstantOf::<C>::now();
+                let now = C::now();
                 tracing::debug!("received tick: {}, now: {:?}", i, now);
 
                 self.handle_tick_election();
@@ -1277,8 +1273,7 @@ where
 
                         // Install next heartbeat
                         if let Some(l) = &mut self.leader_data {
-                            l.next_heartbeat =
-                                InstantOf::<C>::now() + Duration::from_millis(self.config.heartbeat_interval);
+                            l.next_heartbeat = C::now() + Duration::from_millis(self.config.heartbeat_interval);
                         }
                     }
                 }
@@ -1417,7 +1412,7 @@ where
 
     #[tracing::instrument(level = "debug", skip_all)]
     fn handle_tick_election(&mut self) {
-        let now = InstantOf::<C>::now();
+        let now = C::now();
 
         tracing::debug!("try to trigger election by tick, now: {:?}", now);
 
@@ -1646,7 +1641,7 @@ where
 
                     // False positive lint warning(`non-binding `let` on a future`): https://github.com/rust-lang/rust-clippy/issues/9932
                     #[allow(clippy::let_underscore_future)]
-                    let _ = AsyncRuntimeOf::<C>::spawn(async move {
+                    let _ = C::spawn(async move {
                         for (log_index, tx) in removed.into_iter() {
                             tx.send(Err(ClientWriteError::ForwardToLeader(ForwardToLeader {
                                 leader_id,
