@@ -2,6 +2,7 @@ use std::future::Future;
 use std::time::Duration;
 
 use openraft_macros::add_async_trait;
+use openraft_macros::since;
 
 use crate::error::RPCError;
 use crate::error::ReplicationClosed;
@@ -37,6 +38,7 @@ use crate::Vote;
 ///
 /// [`RaftNetwork`]: crate::network::v1::RaftNetwork
 /// [correct-node]: `crate::docs::cluster_control::dynamic_membership#ensure-connection-to-the-correct-node`
+#[since(version = "0.10.0")]
 #[add_async_trait]
 pub trait RaftNetworkV2<C>: OptionalSend + OptionalSync + 'static
 where C: RaftTypeConfig
