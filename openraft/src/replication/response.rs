@@ -42,7 +42,7 @@ where C: RaftTypeConfig
         ///
         /// A message should be discarded if it does not match the present vote and
         /// membership_log_id.
-        session_id: ReplicationSessionId<C::NodeId>,
+        session_id: ReplicationSessionId<C>,
     },
 
     /// [`StorageError`] error has taken place locally(not on remote node) when replicating, and

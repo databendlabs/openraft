@@ -19,8 +19,8 @@ where C: RaftTypeConfig
     /// Consume the `candidate` state and establish a leader.
     pub(crate) fn establish(
         self,
-        candidate: Candidate<C, LeaderQuorumSet<C::NodeId>>,
-    ) -> Option<&'x mut Leader<C, LeaderQuorumSet<C::NodeId>>> {
+        candidate: Candidate<C, LeaderQuorumSet<C>>,
+    ) -> Option<&'x mut Leader<C, LeaderQuorumSet<C>>> {
         let vote = *candidate.vote_ref();
 
         debug_assert_eq!(

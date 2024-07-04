@@ -12,29 +12,33 @@ use crate::progress::inflight::InflightError;
 use crate::raft_state::LogStateReader;
 use crate::LogId;
 use crate::LogIdOptionExt;
-use crate::NodeId;
+use crate::RaftTypeConfig;
 
 /// State of replication to a target node.
 #[derive(Clone, Copy, Debug)]
 #[derive(PartialEq, Eq)]
-pub(crate) struct ProgressEntry<NID: NodeId> {
+pub(crate) struct ProgressEntry<C>
+where C: RaftTypeConfig
+{
     /// The id of the last matching log on the target following node.
-    pub(crate) matching: Option<LogId<NID>>,
+    pub(crate) matching: Option<LogId<C::NodeId>>,
 
     pub(crate) curr_inflight_id: u64,
 
     /// The data being transmitted in flight.
     ///
     /// A non-none inflight expects a response when the data was successfully sent or failed.
-    pub(crate) inflight: Inflight<NID>,
+    pub(crate) inflight: Inflight<C::NodeId>,
 
     /// One plus the max log index on the following node that might match the leader log.
     pub(crate) searching_end: u64,
 }
 
-impl<NID: NodeId> ProgressEntry<NID> {
+impl<C> ProgressEntry<C>
+where C: RaftTypeConfig
+{
     #[allow(dead_code)]
-    pub(crate) fn new(matching: Option<LogId<NID>>) -> Self {
+    pub(crate) fn new(matching: Option<LogId<C::NodeId>>) -> Self {
         Self {
             matching,
             curr_inflight_id: 0,
@@ -64,7 +68,7 @@ impl<NID: NodeId> ProgressEntry<NID> {
 
     // This method is only used by tests.
     #[allow(dead_code)]
-    pub(crate) fn with_inflight(mut self, inflight: Inflight<NID>) -> Self {
+    pub(crate) fn with_inflight(mut self, inflight: Inflight<C::NodeId>) -> Self {
         debug_assert_eq!(self.inflight, Inflight::None);
 
         self.inflight = inflight;
@@ -74,7 +78,7 @@ impl<NID: NodeId> ProgressEntry<NID> {
     /// Return if a range of log id `..=log_id` is inflight sending.
     ///
     /// `prev_log_id` is never inflight.
-    pub(crate) fn is_log_range_inflight(&self, upto: &LogId<NID>) -> bool {
+    pub(crate) fn is_log_range_inflight(&self, upto: &LogId<C::NodeId>) -> bool {
         match &self.inflight {
             Inflight::None => false,
             Inflight::Logs { log_id_range, .. } => {
@@ -88,7 +92,7 @@ impl<NID: NodeId> ProgressEntry<NID> {
     pub(crate) fn update_matching(
         &mut self,
         request_id: u64,
-        matching: Option<LogId<NID>>,
+        matching: Option<LogId<C::NodeId>>,
     ) -> Result<(), InflightError> {
         tracing::debug!(
             self = display(&self),
@@ -168,9 +172,9 @@ impl<NID: NodeId> ProgressEntry<NID> {
     #[allow(dead_code)]
     pub(crate) fn next_send(
         &mut self,
-        log_state: &impl LogStateReader<NID>,
+        log_state: &impl LogStateReader<C::NodeId>,
         max_entries: u64,
-    ) -> Result<&Inflight<NID>, &Inflight<NID>> {
+    ) -> Result<&Inflight<C::NodeId>, &Inflight<C::NodeId>> {
         if !self.inflight.is_none() {
             return Err(&self.inflight);
         }
@@ -239,13 +243,17 @@ impl<NID: NodeId> ProgressEntry<NID> {
     }
 }
 
-impl<NID: NodeId> Borrow<Option<LogId<NID>>> for ProgressEntry<NID> {
-    fn borrow(&self) -> &Option<LogId<NID>> {
+impl<C> Borrow<Option<LogId<C::NodeId>>> for ProgressEntry<C>
+where C: RaftTypeConfig
+{
+    fn borrow(&self) -> &Option<LogId<C::NodeId>> {
         &self.matching
     }
 }
 
-impl<NID: NodeId> Display for ProgressEntry<NID> {
+impl<C> Display for ProgressEntry<C>
+where C: RaftTypeConfig
+{
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -257,7 +265,9 @@ impl<NID: NodeId> Display for ProgressEntry<NID> {
     }
 }
 
-impl<NID: NodeId> Validate for ProgressEntry<NID> {
+impl<C> Validate for ProgressEntry<C>
+where C: RaftTypeConfig
+{
     fn validate(&self) -> Result<(), Box<dyn Error>> {
         validit::less_equal!(self.matching.next_index(), self.searching_end);
 

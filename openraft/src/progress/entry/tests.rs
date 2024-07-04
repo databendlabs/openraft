@@ -1,5 +1,6 @@
 use std::borrow::Borrow;
 
+use crate::engine::testing::UTConfig;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::inflight::Inflight;
 use crate::raft_state::LogStateReader;
@@ -19,7 +20,7 @@ fn inflight_logs(prev_index: u64, last_index: u64) -> Inflight<u64> {
 
 #[test]
 fn test_is_log_range_inflight() -> anyhow::Result<()> {
-    let mut pe = ProgressEntry::empty(20);
+    let mut pe = ProgressEntry::<UTConfig>::empty(20);
     assert_eq!(false, pe.is_log_range_inflight(&log_id(2)));
 
     pe.inflight = inflight_logs(2, 4);
@@ -39,7 +40,7 @@ fn test_is_log_range_inflight() -> anyhow::Result<()> {
 fn test_update_matching() -> anyhow::Result<()> {
     // Update matching and inflight
     {
-        let mut pe = ProgressEntry::empty(20);
+        let mut pe = ProgressEntry::<UTConfig>::empty(20);
         pe.inflight = inflight_logs(5, 10);
         pe.update_matching(pe.inflight.id(), Some(log_id(6)))?;
         assert_eq!(inflight_logs(6, 10), pe.inflight);
@@ -54,7 +55,7 @@ fn test_update_matching() -> anyhow::Result<()> {
 
     // `searching_end` should be updated
     {
-        let mut pe = ProgressEntry::empty(20);
+        let mut pe = ProgressEntry::<UTConfig>::empty(20);
         pe.matching = Some(log_id(6));
         pe.inflight = inflight_logs(5, 20);
 
@@ -67,7 +68,7 @@ fn test_update_matching() -> anyhow::Result<()> {
 
 #[test]
 fn test_update_conflicting() -> anyhow::Result<()> {
-    let mut pe = ProgressEntry::empty(20);
+    let mut pe = ProgressEntry::<UTConfig>::empty(20);
     pe.matching = Some(log_id(3));
     pe.inflight = inflight_logs(5, 10);
     pe.update_conflicting(pe.inflight.id(), 5)?;
@@ -146,7 +147,7 @@ impl LogStateReader<u64> for LogState {
 fn test_next_send() -> anyhow::Result<()> {
     // There is already inflight data, return it in an Err
     {
-        let mut pe = ProgressEntry::empty(20);
+        let mut pe = ProgressEntry::<UTConfig>::empty(20);
         pe.inflight = inflight_logs(10, 11);
         let res = pe.next_send(&LogState::new(6, 10, 20), 100);
         assert_eq!(Err(&inflight_logs(10, 11)), res);
@@ -160,7 +161,7 @@ fn test_next_send() -> anyhow::Result<()> {
         //      purged snap  last
         //      6      10    20
 
-        let mut pe = ProgressEntry::empty(4);
+        let mut pe = ProgressEntry::<UTConfig>::empty(4);
         pe.matching = Some(log_id(4));
 
         let res = pe.next_send(&LogState::new(6, 10, 20), 100);
@@ -174,7 +175,7 @@ fn test_next_send() -> anyhow::Result<()> {
         //      purged snap  last
         //      6      10    20
 
-        let mut pe = ProgressEntry::empty(6);
+        let mut pe = ProgressEntry::<UTConfig>::empty(6);
         pe.matching = Some(log_id(4));
 
         let res = pe.next_send(&LogState::new(6, 10, 20), 100);
@@ -189,7 +190,7 @@ fn test_next_send() -> anyhow::Result<()> {
         //      purged snap  last
         //      6      10    20
 
-        let mut pe = ProgressEntry::empty(7);
+        let mut pe = ProgressEntry::<UTConfig>::empty(7);
         pe.matching = Some(log_id(4));
 
         let res = pe.next_send(&LogState::new(6, 10, 20), 100);
@@ -204,7 +205,7 @@ fn test_next_send() -> anyhow::Result<()> {
         //      purged snap  last
         //      6      10    20
 
-        let mut pe = ProgressEntry::empty(20);
+        let mut pe = ProgressEntry::<UTConfig>::empty(20);
         pe.matching = Some(log_id(4));
 
         let res = pe.next_send(&LogState::new(6, 10, 20), 100);
@@ -221,7 +222,7 @@ fn test_next_send() -> anyhow::Result<()> {
         //      purged snap  last
         //      6      10    20
 
-        let mut pe = ProgressEntry::empty(7);
+        let mut pe = ProgressEntry::<UTConfig>::empty(7);
         pe.matching = Some(log_id(6));
 
         let res = pe.next_send(&LogState::new(6, 10, 20), 100);
@@ -236,7 +237,7 @@ fn test_next_send() -> anyhow::Result<()> {
         //      purged snap  last
         //      6      10    20
 
-        let mut pe = ProgressEntry::empty(8);
+        let mut pe = ProgressEntry::<UTConfig>::empty(8);
         pe.matching = Some(log_id(6));
 
         let res = pe.next_send(&LogState::new(6, 10, 20), 100);
@@ -251,7 +252,7 @@ fn test_next_send() -> anyhow::Result<()> {
         //      purged snap  last
         //      6      10    20
 
-        let mut pe = ProgressEntry::empty(20);
+        let mut pe = ProgressEntry::<UTConfig>::empty(20);
         pe.matching = Some(log_id(6));
 
         let res = pe.next_send(&LogState::new(6, 10, 20), 100);
@@ -266,7 +267,7 @@ fn test_next_send() -> anyhow::Result<()> {
         //      purged snap  last
         //      6      10    20
 
-        let mut pe = ProgressEntry::empty(20);
+        let mut pe = ProgressEntry::<UTConfig>::empty(20);
         pe.matching = Some(log_id(7));
 
         let res = pe.next_send(&LogState::new(6, 10, 20), 100);
@@ -281,7 +282,7 @@ fn test_next_send() -> anyhow::Result<()> {
         //      purged snap  last
         //      6      10    20
 
-        let mut pe = ProgressEntry::empty(8);
+        let mut pe = ProgressEntry::<UTConfig>::empty(8);
         pe.matching = Some(log_id(7));
 
         let res = pe.next_send(&LogState::new(6, 10, 20), 100);
@@ -296,7 +297,7 @@ fn test_next_send() -> anyhow::Result<()> {
         //      purged snap  last
         //      6      10    20
 
-        let mut pe = ProgressEntry::empty(21);
+        let mut pe = ProgressEntry::<UTConfig>::empty(21);
         pe.matching = Some(log_id(20));
 
         let res = pe.next_send(&LogState::new(6, 10, 20), 100);
@@ -312,7 +313,7 @@ fn test_next_send() -> anyhow::Result<()> {
         //      purged snap  last
         //      6      10    20
 
-        let mut pe = ProgressEntry::empty(20);
+        let mut pe = ProgressEntry::<UTConfig>::empty(20);
         pe.matching = Some(log_id(7));
 
         let res = pe.next_send(&LogState::new(6, 10, 20), 5);
