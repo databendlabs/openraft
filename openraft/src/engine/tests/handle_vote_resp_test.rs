@@ -53,6 +53,8 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         eng.handle_vote_resp(2, VoteResponse::new(Vote::new(2, 2), Some(log_id(2, 1, 2))));
 
         assert_eq!(Vote::new(2, 1), *eng.state.vote_ref());
+        assert_eq!(Vote::new(2, 2), eng.last_seen_vote);
+
         assert!(eng.leader.is_none());
 
         assert_eq!(ServerState::Follower, eng.state.server_state);
@@ -79,6 +81,8 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         eng.handle_vote_resp(2, VoteResponse::new(Vote::new(1, 1), Some(log_id(2, 1, 2))));
 
         assert_eq!(Vote::new(2, 1), *eng.state.vote_ref());
+        assert_eq!(Vote::new(1, 1), eng.last_seen_vote);
+
         assert_eq!(&Vote::new(2, 1), eng.candidate_ref().unwrap().vote_ref());
         assert_eq!(
             btreeset! {1},
@@ -110,14 +114,23 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
 
         eng.handle_vote_resp(2, VoteResponse::new(Vote::new(3, 2), Some(log_id(2, 1, 2))));
 
-        assert_eq!(Vote::new(3, 2), *eng.state.vote_ref());
+        assert_eq!(Vote::new(2, 1), *eng.state.vote_ref());
+        assert_eq!(Vote::new(3, 2), eng.last_seen_vote);
+
         assert!(eng.leader.is_none());
 
-        assert_eq!(ServerState::Follower, eng.state.server_state);
+        assert_eq!(
+            ServerState::Candidate,
+            eng.state.server_state,
+            "still in candidate state, until receives RequestVote/AppendEntries from other node"
+        );
 
         assert_eq!(
-            vec![Command::SaveVote { vote: Vote::new(3, 2) },],
-            eng.output.take_commands()
+            eng.output.take_commands(),
+            vec![
+                //
+            ],
+            "no SaveVote because the higher vote is not yet granted by this node"
         );
     }
 
@@ -140,6 +153,8 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         eng.handle_vote_resp(2, VoteResponse::new(Vote::new(2, 1), Some(log_id(2, 1, 2))));
 
         assert_eq!(Vote::new(2, 1), *eng.state.vote_ref());
+        assert_eq!(Vote::new(2, 1), eng.last_seen_vote);
+
         assert_eq!(&Vote::new(2, 1), eng.candidate_ref().unwrap().vote_ref());
         assert_eq!(
             btreeset! {1,2},
@@ -173,6 +188,8 @@ fn test_handle_vote_resp_equal_vote() -> anyhow::Result<()> {
         eng.handle_vote_resp(2, VoteResponse::new(Vote::new(2, 1), Some(log_id(2, 1, 2))));
 
         assert_eq!(Vote::new_committed(2, 1), *eng.state.vote_ref(),);
+        assert_eq!(Vote::new_committed(2, 1), eng.last_seen_vote);
+
         assert_eq!(Some(log_id(2, 1, 1)), eng.leader.as_ref().unwrap().noop_log_id);
         assert!(
             eng.candidate_ref().is_none(),

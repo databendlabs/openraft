@@ -81,9 +81,23 @@ where C: RaftTypeConfig
     /// should be greater.
     pub(crate) seen_greater_log: bool,
 
-    /// The internal server state(Leader or following) used by Engine.
+    /// The greatest vote this node has ever seen.
+    ///
+    /// It could be greater than `self.state.vote`,
+    /// because `self.state.vote` is update only when a node granted a vote,
+    /// i.e., the Leader with this vote is legal: has a greater log and vote.
+    ///
+    /// This vote value is used for election.
+    pub(crate) last_seen_vote: Vote<C::NodeId>,
+
+    /// Represents the Leader state.
     pub(crate) leader: LeaderState<C>,
 
+    /// Represents the Candidate state within Openraft.
+    ///
+    /// A Candidate can coexist with a Leader in the system.
+    /// This scenario is typically used to transition the Leader to a higher term (vote)
+    /// without losing leadership status.
     pub(crate) candidate: CandidateState<C>,
 
     /// Output entry for the runtime.
@@ -97,10 +111,12 @@ where C: RaftTypeConfig
         init_state: RaftState<C::NodeId, C::Node, <C::AsyncRuntime as AsyncRuntime>::Instant>,
         config: EngineConfig<C::NodeId>,
     ) -> Self {
+        let vote = *init_state.vote_ref();
         Self {
             config,
             state: Valid::new(init_state),
             seen_greater_log: false,
+            last_seen_vote: vote,
             leader: None,
             candidate: None,
             output: EngineOutput::new(4096),
@@ -212,7 +228,15 @@ where C: RaftTypeConfig
     /// Start to elect this node as leader
     #[tracing::instrument(level = "debug", skip(self))]
     pub(crate) fn elect(&mut self) {
-        let new_vote = Vote::new(self.state.vote_ref().leader_id().term + 1, self.config.id);
+        debug_assert!(
+            self.last_seen_vote >= *self.state.vote_ref(),
+            "expect: last_seen_vote({}) >= state.vote({}), when elect()",
+            self.last_seen_vote,
+            self.state.vote_ref()
+        );
+
+        let new_term = self.last_seen_vote.leader_id().term + 1;
+        let new_vote = Vote::new(new_term, self.config.id);
 
         let candidate = self.new_candidate(new_vote);
 
@@ -347,6 +371,16 @@ where C: RaftTypeConfig
             func_name!()
         );
 
+        // Update the last seen vote, but not `state.vote`.
+        // `state.vote` is updated only when the vote is granted
+        // (allows the vote owner to be a Leader).
+        //
+        // But in this case, the responded greater vote is not yet granted
+        // because the remote peer may have smaller log.
+        // And even when the remote peer has greater log, it does not have to grant the vote,
+        // if greater logs does not form a quorum.
+        self.vote_handler().update_last_seen(&resp.vote);
+
         let Some(candidate) = self.candidate_mut() else {
             // If the voting process has finished or canceled,
             // just ignore the delayed vote_resp.
@@ -372,12 +406,6 @@ where C: RaftTypeConfig
         // - Or leader lease on remote node is not expired;
         // - It is a delayed response of previous voting(resp.vote_granted could be true)
         // In any case, no need to proceed.
-
-        // If peer's vote is greater than current vote, revert to follower state.
-        //
-        // Explicitly ignore the returned error:
-        // resp.vote being not greater than mine is all right.
-        let _ = self.vote_handler().update_vote(&resp.vote);
 
         // Seen a higher log. Record it so that the next election will be delayed for a while.
         if resp.last_log_id.as_ref() > self.state.last_log_id() {
@@ -712,6 +740,7 @@ where C: RaftTypeConfig
             config: &mut self.config,
             state: &mut self.state,
             output: &mut self.output,
+            last_seen_vote: &mut self.last_seen_vote,
             leader: &mut self.leader,
             candidate: &mut self.candidate,
         }
