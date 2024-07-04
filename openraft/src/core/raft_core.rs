@@ -807,7 +807,7 @@ where
     pub(crate) async fn spawn_replication_stream(
         &mut self,
         target: C::NodeId,
-        progress_entry: ProgressEntry<C::NodeId>,
+        progress_entry: ProgressEntry<C>,
     ) -> ReplicationHandle<C> {
         // Safe unwrap(): target must be in membership
         let target_node = self.engine.state.membership_state.effective().get_node(&target).unwrap();
@@ -1533,11 +1533,7 @@ where
     }
     /// If a message is sent by a previous replication session but is received by current server
     /// state, it is a stale message and should be just ignored.
-    fn does_replication_session_match(
-        &self,
-        session_id: &ReplicationSessionId<C::NodeId>,
-        msg: impl Display + Copy,
-    ) -> bool {
+    fn does_replication_session_match(&self, session_id: &ReplicationSessionId<C>, msg: impl Display + Copy) -> bool {
         if !self.does_vote_match(session_id.vote_ref(), msg) {
             return false;
         }

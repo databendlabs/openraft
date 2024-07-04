@@ -16,7 +16,6 @@ use crate::raft::VoteResponse;
 use crate::type_config::alias::OneshotSenderOf;
 use crate::LeaderId;
 use crate::LogId;
-use crate::NodeId;
 use crate::OptionalSend;
 use crate::RaftTypeConfig;
 use crate::Vote;
@@ -82,7 +81,7 @@ where C: RaftTypeConfig
     /// updated.
     RebuildReplicationStreams {
         /// Targets to replicate to.
-        targets: Vec<(C::NodeId, ProgressEntry<C::NodeId>)>,
+        targets: Vec<(C::NodeId, ProgressEntry<C>)>,
     },
 
     /// Save vote to storage
@@ -107,7 +106,7 @@ where C: RaftTypeConfig
 
     /// Send result to caller
     Respond {
-        when: Option<Condition<C::NodeId>>,
+        when: Option<Condition<C>>,
         resp: Respond<C>,
     },
 }
@@ -178,7 +177,7 @@ where C: RaftTypeConfig
     /// Return the condition the command waits for if any.
     #[allow(dead_code)]
     #[rustfmt::skip]
-    pub(crate) fn condition(&self) -> Option<&Condition<C::NodeId>> {
+    pub(crate) fn condition(&self) -> Option<&Condition<C>> {
         match self {
             Command::BecomeLeader                     => None,
             Command::QuitLeader                       => None,
@@ -202,8 +201,8 @@ where C: RaftTypeConfig
 /// A condition to wait for before running a command.
 #[derive(Debug, Clone, Copy)]
 #[derive(PartialEq, Eq)]
-pub(crate) enum Condition<NID>
-where NID: NodeId
+pub(crate) enum Condition<C>
+where C: RaftTypeConfig
 {
     /// Wait until the log is flushed to the disk.
     ///
@@ -211,13 +210,13 @@ where NID: NodeId
     /// A same log id can be written multiple times by different leaders.
     #[allow(dead_code)]
     LogFlushed {
-        leader: LeaderId<NID>,
-        log_id: Option<LogId<NID>>,
+        leader: LeaderId<C::NodeId>,
+        log_id: Option<LogId<C::NodeId>>,
     },
 
     /// Wait until the log is applied to the state machine.
     #[allow(dead_code)]
-    Applied { log_id: Option<LogId<NID>> },
+    Applied { log_id: Option<LogId<C::NodeId>> },
 
     /// Wait until a [`sm::worker::Worker`] command is finished.
     #[allow(dead_code)]

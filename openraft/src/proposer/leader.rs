@@ -47,7 +47,7 @@ where C: RaftTypeConfig
     pub(crate) noop_log_id: Option<LogIdOf<C>>,
 
     /// Tracks the replication progress and committed index
-    pub(crate) progress: VecProgress<C::NodeId, ProgressEntry<C::NodeId>, Option<LogIdOf<C>>, QS>,
+    pub(crate) progress: VecProgress<C::NodeId, ProgressEntry<C>, Option<LogIdOf<C>>, QS>,
 
     /// Tracks the clock time acknowledged by other nodes.
     ///

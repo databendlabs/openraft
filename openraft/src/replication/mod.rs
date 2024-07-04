@@ -87,7 +87,7 @@ where
     target: C::NodeId,
 
     /// Identifies which session this replication belongs to.
-    session_id: ReplicationSessionId<C::NodeId>,
+    session_id: ReplicationSessionId<C>,
 
     /// A channel for sending events to the RaftCore.
     #[allow(clippy::type_complexity)]
@@ -157,7 +157,7 @@ where
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn spawn(
         target: C::NodeId,
-        session_id: ReplicationSessionId<C::NodeId>,
+        session_id: ReplicationSessionId<C>,
         config: Arc<Config>,
         committed: Option<LogId<C::NodeId>>,
         matching: Option<LogId<C::NodeId>>,

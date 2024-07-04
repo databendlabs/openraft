@@ -3,7 +3,7 @@ use std::fmt::Formatter;
 
 use crate::display_ext::DisplayOptionExt;
 use crate::LogId;
-use crate::NodeId;
+use crate::RaftTypeConfig;
 use crate::Vote;
 
 /// Uniquely identifies a replication session.
@@ -29,29 +29,35 @@ use crate::Vote;
 /// But the delayed message `{target=c, matched=log_id-1}` may be process by raft core and make raft
 /// core believe node `c` already has `log_id=1`, and commit it.
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct ReplicationSessionId<NID: NodeId> {
+pub(crate) struct ReplicationSessionId<C>
+where C: RaftTypeConfig
+{
     /// The Leader or Candidate this replication belongs to.
-    pub(crate) vote: Vote<NID>,
+    pub(crate) vote: Vote<C::NodeId>,
 
     /// The log id of the membership log this replication works for.
-    pub(crate) membership_log_id: Option<LogId<NID>>,
+    pub(crate) membership_log_id: Option<LogId<C::NodeId>>,
 }
 
-impl<NID: NodeId> Display for ReplicationSessionId<NID> {
+impl<C> Display for ReplicationSessionId<C>
+where C: RaftTypeConfig
+{
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}/{}", self.vote, self.membership_log_id.display())
     }
 }
 
-impl<NID: NodeId> ReplicationSessionId<NID> {
-    pub(crate) fn new(vote: Vote<NID>, membership_log_id: Option<LogId<NID>>) -> Self {
+impl<C> ReplicationSessionId<C>
+where C: RaftTypeConfig
+{
+    pub(crate) fn new(vote: Vote<C::NodeId>, membership_log_id: Option<LogId<C::NodeId>>) -> Self {
         Self {
             vote,
             membership_log_id,
         }
     }
 
-    pub(crate) fn vote_ref(&self) -> &Vote<NID> {
+    pub(crate) fn vote_ref(&self) -> &Vote<C::NodeId> {
         &self.vote
     }
 }
