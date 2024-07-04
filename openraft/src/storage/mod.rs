@@ -13,6 +13,7 @@ use std::ops::RangeBounds;
 pub use helper::StorageHelper;
 pub use log_store_ext::RaftLogReaderExt;
 use openraft_macros::add_async_trait;
+use openraft_macros::since;
 pub use snapshot_signature::SnapshotSignature;
 pub use v2::RaftLogStorage;
 pub use v2::RaftLogStorageExt;
@@ -169,6 +170,7 @@ where C: RaftTypeConfig
     /// It must not return empty result if the input range is not empty.
     ///
     /// The default implementation just returns the full range of log entries.
+    #[since(version = "0.10.0")]
     async fn limited_get_log_entries(
         &mut self,
         start: u64,

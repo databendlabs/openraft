@@ -1,6 +1,8 @@
 use std::future::Future;
 use std::time::Duration;
 
+use openraft_macros::since;
+
 use crate::type_config::alias::AsyncRuntimeOf;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::JoinHandleOf;
@@ -14,6 +16,7 @@ use crate::OptionalSend;
 use crate::RaftTypeConfig;
 
 /// Collection of utility methods to `RaftTypeConfig` function.
+#[since(version = "0.10.0")]
 pub trait TypeConfigExt: RaftTypeConfig {
     // Time related methods
 
