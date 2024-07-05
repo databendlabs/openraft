@@ -92,7 +92,7 @@ where C: RaftTypeConfig
 
     /// Delete logs that conflict with the leader from a follower/learner since log id `since`,
     /// inclusive.
-    DeleteConflictLog { since: LogId<C::NodeId> },
+    TruncateLog { since: LogId<C::NodeId> },
 
     // TODO(1): current it is only used to replace BuildSnapshot, InstallSnapshot, CancelSnapshot.
     /// A command send to state machine worker [`sm::worker::Worker`].
@@ -135,7 +135,7 @@ where
             (Command::SaveVote { vote },                       Command::SaveVote { vote: b })                                                  => vote == b,
             (Command::SendVote { vote_req },                   Command::SendVote { vote_req: b }, )                                            => vote_req == b,
             (Command::PurgeLog { upto },                       Command::PurgeLog { upto: b })                                                  => upto == b,
-            (Command::DeleteConflictLog { since },             Command::DeleteConflictLog { since: b }, )                                      => since == b,
+            (Command::TruncateLog { since },             Command::TruncateLog { since: b }, )                                      => since == b,
             (Command::Respond { when, resp: send },            Command::Respond { when: b_when, resp: b })                                     => send == b && when == b_when,
             (Command::StateMachine { command },                Command::StateMachine { command: b })                                           => command == b,
             _ => false,
@@ -158,7 +158,7 @@ where C: RaftTypeConfig
             Command::AppendInputEntries { .. }        => CommandKind::Log,
             Command::SaveVote { .. }                  => CommandKind::Log,
             Command::PurgeLog { .. }                  => CommandKind::Log,
-            Command::DeleteConflictLog { .. }         => CommandKind::Log,
+            Command::TruncateLog { .. }         => CommandKind::Log,
 
             Command::ReplicateCommitted { .. }        => CommandKind::Network,
             Command::Replicate { .. }                 => CommandKind::Network,
@@ -187,7 +187,7 @@ where C: RaftTypeConfig
             Command::SaveVote { .. }                  => None,
             Command::SendVote { .. }                  => None,
             Command::PurgeLog { .. }                  => None,
-            Command::DeleteConflictLog { .. }         => None,
+            Command::TruncateLog { .. }         => None,
             Command::Respond { when, .. }             => when.as_ref(),
             // TODO(1): 
             Command::StateMachine { .. }              => None,

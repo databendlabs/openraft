@@ -710,7 +710,7 @@ where
     {
         tracing::debug!("append_to_log");
 
-        let (tx, rx) = C::AsyncRuntime::oneshot();
+        let (tx, rx) = C::oneshot();
         let log_io_id = LogIOId::new(vote, Some(last_log_id));
 
         let callback = LogFlushed::new(log_io_id, tx);
@@ -1622,7 +1622,7 @@ where
                 self.log_store.purge(upto).await?;
                 self.engine.state.io_state_mut().update_purged(Some(upto));
             }
-            Command::DeleteConflictLog { since } => {
+            Command::TruncateLog { since } => {
                 self.log_store.truncate(since).await?;
 
                 // Inform clients waiting for logs to be applied.

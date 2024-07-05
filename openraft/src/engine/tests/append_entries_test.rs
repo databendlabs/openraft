@@ -157,7 +157,7 @@ fn test_append_entries_prev_log_id_conflict() -> anyhow::Result<()> {
             Command::SaveVote {
                 vote: Vote::new_committed(2, 1)
             },
-            Command::DeleteConflictLog { since: log_id(1, 1, 2) },
+            Command::TruncateLog { since: log_id(1, 1, 2) },
         ],
         eng.output.take_commands()
     );
@@ -197,7 +197,7 @@ fn test_append_entries_prev_log_id_is_committed() -> anyhow::Result<()> {
             Command::SaveVote {
                 vote: Vote::new_committed(2, 1)
             },
-            Command::DeleteConflictLog { since: log_id(1, 1, 2) },
+            Command::TruncateLog { since: log_id(1, 1, 2) },
             Command::AppendInputEntries {
                 vote: Vote::new_committed(2, 1),
                 entries: vec![blank_ent(2, 1, 2)]
@@ -291,7 +291,7 @@ fn test_append_entries_conflict() -> anyhow::Result<()> {
             Command::SaveVote {
                 vote: Vote::new_committed(2, 1)
             },
-            Command::DeleteConflictLog { since: log_id(2, 1, 3) },
+            Command::TruncateLog { since: log_id(2, 1, 3) },
             Command::AppendInputEntries {
                 vote: Vote::new_committed(2, 1),
                 entries: vec![Entry::new_membership(log_id(3, 1, 3), m34())]
