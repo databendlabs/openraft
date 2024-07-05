@@ -4,7 +4,6 @@ use maplit::btreeset;
 use pretty_assertions::assert_eq;
 
 use crate::engine::testing::UTConfig;
-use crate::engine::Command;
 use crate::engine::Engine;
 use crate::testing::log_id;
 use crate::utime::UTime;
@@ -47,18 +46,10 @@ fn test_update_server_state_if_changed() -> anyhow::Result<()> {
     {
         assert_eq!(ServerState::Leader, ssh.state.server_state);
 
-        ssh.output.clear_commands();
         ssh.state.vote = UTime::new(TokioInstant::now(), Vote::new(2, 100));
         ssh.update_server_state_if_changed();
 
         assert_eq!(ServerState::Follower, ssh.state.server_state);
-        assert_eq!(
-            vec![
-                //
-                Command::QuitLeader,
-            ],
-            ssh.output.take_commands()
-        );
     }
 
     // TODO(3): add more test,

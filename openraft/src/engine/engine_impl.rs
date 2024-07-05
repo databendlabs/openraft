@@ -32,6 +32,7 @@ use crate::error::NotInMembers;
 use crate::error::RejectAppendEntries;
 use crate::proposer::leader_state::CandidateState;
 use crate::proposer::Candidate;
+use crate::proposer::Leader;
 use crate::proposer::LeaderQuorumSet;
 use crate::proposer::LeaderState;
 use crate::raft::responder::Responder;
@@ -244,6 +245,14 @@ where C: RaftTypeConfig
         });
 
         self.server_state_handler().update_server_state_if_changed();
+    }
+
+    pub(crate) fn leader_ref(&self) -> Option<&Leader<C, LeaderQuorumSet<C>>> {
+        self.leader.as_deref()
+    }
+
+    pub(crate) fn leader_mut(&mut self) -> Option<&mut Leader<C, LeaderQuorumSet<C>>> {
+        self.leader.as_deref_mut()
     }
 
     pub(crate) fn candidate_ref(&self) -> Option<&Candidate<C, LeaderQuorumSet<C>>> {
@@ -799,7 +808,6 @@ where C: RaftTypeConfig
         ServerStateHandler {
             config: &self.config,
             state: &mut self.state,
-            output: &mut self.output,
         }
     }
     pub(crate) fn establish_handler(&mut self) -> EstablishHandler<C> {

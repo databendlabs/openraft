@@ -56,7 +56,6 @@ fn test_startup_as_leader_without_logs() -> anyhow::Result<()> {
     assert_eq!(
         vec![
             //
-            Command::BecomeLeader,
             Command::RebuildReplicationStreams {
                 targets: vec![(3, ProgressEntry {
                     matching: None,
@@ -101,7 +100,6 @@ fn test_startup_as_leader_with_proposed_logs() -> anyhow::Result<()> {
     assert_eq!(
         vec![
             //
-            Command::BecomeLeader,
             Command::RebuildReplicationStreams {
                 targets: vec![(3, ProgressEntry {
                     matching: None,

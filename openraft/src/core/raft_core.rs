@@ -136,22 +136,6 @@ impl<C: RaftTypeConfig> Debug for ApplyResult<C> {
     }
 }
 
-/// Data for a Leader.
-///
-/// It is created when RaftCore enters leader state, and will be dropped when it quits leader state.
-pub(crate) struct LeaderData<C: RaftTypeConfig> {
-    /// The time to send next heartbeat.
-    pub(crate) next_heartbeat: InstantOf<C>,
-}
-
-impl<C: RaftTypeConfig> LeaderData<C> {
-    pub(crate) fn new() -> Self {
-        Self {
-            next_heartbeat: C::now(),
-        }
-    }
-}
-
 // TODO: remove SM
 /// The core type implementing the Raft protocol.
 pub struct RaftCore<C, N, LS, SM>
@@ -185,8 +169,6 @@ where
 
     /// A mapping of node IDs the replication state of the target node.
     pub(crate) replications: BTreeMap<C::NodeId, ReplicationHandle<C>>,
-
-    pub(crate) leader_data: Option<LeaderData<C>>,
 
     #[allow(dead_code)]
     pub(crate) tx_api: mpsc::UnboundedSender<RaftMsg<C>>,
@@ -1258,9 +1240,8 @@ where
 
                 // TODO: test: fixture: make isolated_nodes a single-way isolating.
 
-                // TODO: check if it is Leader with Engine
                 // Leader send heartbeat
-                let heartbeat_at = self.leader_data.as_ref().map(|x| x.next_heartbeat);
+                let heartbeat_at = self.engine.leader_ref().map(|l| l.next_heartbeat);
                 if let Some(t) = heartbeat_at {
                     if now >= t {
                         if self.runtime_config.enable_heartbeat.load(Ordering::Relaxed) {
@@ -1268,7 +1249,7 @@ where
                         }
 
                         // Install next heartbeat
-                        if let Some(l) = &mut self.leader_data {
+                        if let Some(l) = self.engine.leader_mut() {
                             l.next_heartbeat = C::now() + Duration::from_millis(self.config.heartbeat_interval);
                         }
                     }
@@ -1588,13 +1569,6 @@ where
         }
 
         match cmd {
-            Command::BecomeLeader => {
-                debug_assert!(self.leader_data.is_none(), "can not become leader twice");
-                self.leader_data = Some(LeaderData::new());
-            }
-            Command::QuitLeader => {
-                self.leader_data = None;
-            }
             Command::AppendInputEntries { vote, entries } => {
                 let last_log_id = *entries.last().unwrap().get_log_id();
                 tracing::debug!("AppendInputEntries: {}", DisplaySlice::<_>(&entries),);

@@ -1,6 +1,4 @@
-use crate::engine::Command;
 use crate::engine::EngineConfig;
-use crate::engine::EngineOutput;
 use crate::RaftState;
 use crate::RaftTypeConfig;
 use crate::ServerState;
@@ -14,7 +12,6 @@ where C: RaftTypeConfig
 {
     pub(crate) config: &'st EngineConfig<C>,
     pub(crate) state: &'st mut RaftState<C>,
-    pub(crate) output: &'st mut EngineOutput<C>,
 }
 
 impl<'st, C> ServerStateHandler<'st, C>
@@ -41,10 +38,8 @@ where C: RaftTypeConfig
 
         if !was_leader && is_leader {
             tracing::info!(id = display(self.config.id), "become leader");
-            self.output.push_command(Command::BecomeLeader);
         } else if was_leader && !is_leader {
             tracing::info!(id = display(self.config.id), "quit leader");
-            self.output.push_command(Command::QuitLeader);
         } else {
             // nothing to do
         }
