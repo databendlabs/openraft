@@ -3,7 +3,6 @@ use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::fmt::Formatter;
-use std::marker::PhantomData;
 use std::ops::Deref;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -34,7 +33,6 @@ use crate::core::raft_msg::RaftMsg;
 use crate::core::raft_msg::ResultSender;
 use crate::core::raft_msg::VoteTx;
 use crate::core::sm;
-use crate::core::sm::handle;
 use crate::core::sm::CommandSeq;
 use crate::core::ServerState;
 use crate::display_ext::DisplayInstantExt;
@@ -88,12 +86,10 @@ use crate::runtime::RaftRuntime;
 use crate::storage::LogFlushed;
 use crate::storage::RaftLogReaderExt;
 use crate::storage::RaftLogStorage;
-use crate::storage::RaftStateMachine;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::OneshotReceiverOf;
 use crate::type_config::alias::ResponderOf;
 use crate::type_config::TypeConfigExt;
-use crate::AsyncRuntime;
 use crate::ChangeMembers;
 use crate::Instant;
 use crate::LogId;
@@ -136,14 +132,12 @@ impl<C: RaftTypeConfig> Debug for ApplyResult<C> {
     }
 }
 
-// TODO: remove SM
 /// The core type implementing the Raft protocol.
-pub struct RaftCore<C, N, LS, SM>
+pub struct RaftCore<C, NF, LS>
 where
     C: RaftTypeConfig,
-    N: RaftNetworkFactory<C>,
+    NF: RaftNetworkFactory<C>,
     LS: RaftLogStorage<C>,
-    SM: RaftStateMachine<C>,
 {
     /// This node's ID.
     pub(crate) id: C::NodeId,
@@ -154,13 +148,13 @@ where
     pub(crate) runtime_config: Arc<RuntimeConfig>,
 
     /// The `RaftNetworkFactory` implementation.
-    pub(crate) network: N,
+    pub(crate) network_factory: NF,
 
     /// The [`RaftLogStorage`] implementation.
     pub(crate) log_store: LS,
 
     /// A controlling handle to the [`RaftStateMachine`] worker.
-    pub(crate) sm_handle: handle::Handle<C>,
+    pub(crate) sm_handle: sm::handle::Handle<C>,
 
     pub(crate) engine: Engine<C>,
 
@@ -188,16 +182,13 @@ where
     pub(crate) command_state: CommandState,
 
     pub(crate) span: Span,
-
-    pub(crate) _p: PhantomData<SM>,
 }
 
-impl<C, N, LS, SM> RaftCore<C, N, LS, SM>
+impl<C, NF, LS> RaftCore<C, NF, LS>
 where
     C: RaftTypeConfig,
-    N: RaftNetworkFactory<C>,
+    NF: RaftNetworkFactory<C>,
     LS: RaftLogStorage<C>,
-    SM: RaftStateMachine<C>,
 {
     /// The main loop of the Raft protocol.
     pub(crate) async fn main(mut self, rx_shutdown: OneshotReceiverOf<C, ()>) -> Result<Infallible, Fatal<C>> {
@@ -315,12 +306,12 @@ where
 
             // Safe unwrap(): target is in membership
             let target_node = eff_mem.get_node(&target).unwrap().clone();
-            let mut client = self.network.new_client(target, &target_node).await;
+            let mut client = self.network_factory.new_client(target, &target_node).await;
 
             let option = RPCOption::new(ttl);
 
             let fu = async move {
-                let outer_res = C::AsyncRuntime::timeout(ttl, client.append_entries(rpc, option)).await;
+                let outer_res = C::timeout(ttl, client.append_entries(rpc, option)).await;
                 match outer_res {
                     Ok(append_res) => match append_res {
                         Ok(x) => Ok((target, x)),
@@ -340,7 +331,7 @@ where
             };
 
             let fu = fu.instrument(tracing::debug_span!("spawn_is_leader", target = target.to_string()));
-            let task = C::AsyncRuntime::spawn(fu).map_err(move |err| (target, err));
+            let task = C::spawn(fu).map_err(move |err| (target, err));
 
             pending.push(task);
         }
@@ -408,7 +399,7 @@ where
 
         // False positive lint warning(`non-binding `let` on a future`): https://github.com/rust-lang/rust-clippy/issues/9932
         #[allow(clippy::let_underscore_future)]
-        let _ = C::AsyncRuntime::spawn(waiting_fu.instrument(tracing::debug_span!("spawn_is_leader_waiting")));
+        let _ = C::spawn(waiting_fu.instrument(tracing::debug_span!("spawn_is_leader_waiting")));
     }
 
     /// Submit change-membership by writing a Membership log entry.
@@ -791,14 +782,14 @@ where
         let target_node = self.engine.state.membership_state.effective().get_node(&target).unwrap();
 
         let membership_log_id = self.engine.state.membership_state.effective().log_id();
-        let network = self.network.new_client(target, target_node).await;
-        let snapshot_network = self.network.new_client(target, target_node).await;
+        let network = self.network_factory.new_client(target, target_node).await;
+        let snapshot_network = self.network_factory.new_client(target, target_node).await;
 
         let leader = self.engine.leader.as_ref().unwrap();
 
         let session_id = ReplicationSessionId::new(leader.vote, *membership_log_id);
 
-        ReplicationCore::<C, N, LS>::spawn(
+        ReplicationCore::<C, NF, LS>::spawn(
             target,
             session_id,
             self.config.clone(),
@@ -1030,7 +1021,7 @@ where
 
             // Safe unwrap(): target must be in membership
             let target_node = self.engine.state.membership_state.effective().get_node(&target).unwrap().clone();
-            let mut client = self.network.new_client(target, &target_node).await;
+            let mut client = self.network_factory.new_client(target, &target_node).await;
 
             let tx = self.tx_notify.clone();
 
@@ -1040,9 +1031,9 @@ where
 
             // False positive lint warning(`non-binding `let` on a future`): https://github.com/rust-lang/rust-clippy/issues/9932
             #[allow(clippy::let_underscore_future)]
-            let _ = C::AsyncRuntime::spawn(
+            let _ = C::spawn(
                 async move {
-                    let tm_res = C::AsyncRuntime::timeout(ttl, client.vote(req, option)).await;
+                    let tm_res = C::timeout(ttl, client.vote(req, option)).await;
                     let res = match tm_res {
                         Ok(res) => res,
 
@@ -1528,12 +1519,11 @@ where
     }
 }
 
-impl<C, N, LS, SM> RaftRuntime<C> for RaftCore<C, N, LS, SM>
+impl<C, N, LS> RaftRuntime<C> for RaftCore<C, N, LS>
 where
     C: RaftTypeConfig,
     N: RaftNetworkFactory<C>,
     LS: RaftLogStorage<C>,
-    SM: RaftStateMachine<C>,
 {
     async fn run_command<'e>(&mut self, cmd: Command<C>) -> Result<Option<Command<C>>, StorageError<C>> {
         let condition = cmd.condition();

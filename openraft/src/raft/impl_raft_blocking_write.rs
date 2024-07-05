@@ -11,7 +11,7 @@ use crate::raft::message::ClientWriteResult;
 use crate::raft::responder::OneshotResponder;
 use crate::raft::ClientWriteResponse;
 use crate::type_config::alias::OneshotReceiverOf;
-use crate::AsyncRuntime;
+use crate::type_config::TypeConfigExt;
 use crate::ChangeMembers;
 use crate::Raft;
 use crate::RaftTypeConfig;
@@ -170,7 +170,7 @@ where C: RaftTypeConfig<Responder = OneshotResponder<C>>
 
 fn oneshot_channel<C>() -> (OneshotResponder<C>, OneshotReceiverOf<C, ClientWriteResult<C>>)
 where C: RaftTypeConfig {
-    let (tx, rx) = C::AsyncRuntime::oneshot();
+    let (tx, rx) = C::oneshot();
 
     let tx = OneshotResponder::new(tx);
 
