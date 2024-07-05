@@ -14,7 +14,7 @@ fn log_id(index: u64) -> LogId<u64> {
     }
 }
 
-fn inflight_logs(prev_index: u64, last_index: u64) -> Inflight<u64> {
+fn inflight_logs(prev_index: u64, last_index: u64) -> Inflight<UTConfig> {
     Inflight::logs(Some(log_id(prev_index)), Some(log_id(last_index)))
 }
 
@@ -100,7 +100,7 @@ impl LogState {
     }
 }
 
-impl LogStateReader<u64> for LogState {
+impl LogStateReader<UTConfig> for LogState {
     fn get_log_id(&self, index: u64) -> Option<LogId<u64>> {
         let x = Some(log_id(index));
         if x >= self.purged && x <= self.last {
