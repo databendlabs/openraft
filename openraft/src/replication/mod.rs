@@ -52,7 +52,6 @@ use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::JoinHandleOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::TypeConfigExt;
-use crate::AsyncRuntime;
 use crate::LogId;
 use crate::RaftLogId;
 use crate::RaftNetworkFactory;
@@ -198,7 +197,7 @@ where
             entries_hint: Default::default(),
         };
 
-        let join_handle = C::AsyncRuntime::spawn(this.main().instrument(span));
+        let join_handle = C::spawn(this.main().instrument(span));
 
         ReplicationHandle {
             join_handle,

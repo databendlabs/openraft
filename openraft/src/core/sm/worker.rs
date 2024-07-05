@@ -15,7 +15,7 @@ use crate::display_ext::DisplayOptionExt;
 use crate::entry::RaftPayload;
 use crate::storage::RaftStateMachine;
 use crate::type_config::alias::JoinHandleOf;
-use crate::AsyncRuntime;
+use crate::type_config::TypeConfigExt;
 use crate::RaftLogId;
 use crate::RaftSnapshotBuilder;
 use crate::RaftTypeConfig;
@@ -55,7 +55,7 @@ where
     }
 
     fn do_spawn(mut self) -> JoinHandleOf<C, ()> {
-        C::AsyncRuntime::spawn(async move {
+        C::spawn(async move {
             let res = self.worker_loop().await;
 
             if let Err(err) = res {
@@ -183,7 +183,7 @@ where
 
         let mut builder = self.state_machine.get_snapshot_builder().await;
 
-        let _handle = C::AsyncRuntime::spawn(async move {
+        let _handle = C::spawn(async move {
             let res = builder.build_snapshot().await;
             let res = res.map(|snap| Response::BuildSnapshot(snap.meta));
             let cmd_res = CommandResult::new(seq, res);
