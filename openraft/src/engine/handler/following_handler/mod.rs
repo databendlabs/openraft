@@ -197,7 +197,7 @@ where C: RaftTypeConfig
         };
 
         self.state.log_ids.truncate(since);
-        self.output.push_command(Command::DeleteConflictLog { since: since_log_id });
+        self.output.push_command(Command::TruncateLog { since: since_log_id });
 
         let changed = self.state.membership_state.truncate(since);
         if let Some(_c) = changed {

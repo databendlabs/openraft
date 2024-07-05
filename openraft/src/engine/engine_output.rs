@@ -57,7 +57,7 @@ where C: RaftTypeConfig
             Command::SaveVote { .. } => {}
             Command::SendVote { .. } => {}
             Command::PurgeLog { .. } => {}
-            Command::DeleteConflictLog { .. } => {}
+            Command::TruncateLog { .. } => {}
             Command::Respond { .. } => {}
         }
         self.commands.push_back(cmd)
