@@ -58,7 +58,7 @@ where
     ///
     /// When the Raft node is first started, it will call this interface to fetch the last known
     /// state from stable storage.
-    pub async fn get_initial_state(&mut self) -> Result<RaftState<C>, StorageError<C::NodeId>> {
+    pub async fn get_initial_state(&mut self) -> Result<RaftState<C>, StorageError<C>> {
         let vote = self.log_store.read_vote().await?;
         let vote = vote.unwrap_or_default();
 
@@ -186,7 +186,7 @@ where
     /// a follower only need to revert at most one membership log.
     ///
     /// Thus a raft node will only need to store at most two recent membership logs.
-    pub async fn get_membership(&mut self) -> Result<MembershipState<C>, StorageError<C::NodeId>> {
+    pub async fn get_membership(&mut self) -> Result<MembershipState<C>, StorageError<C>> {
         let (last_applied, sm_mem) = self.state_machine.applied_state().await?;
 
         let log_mem = self.last_membership_in_log(last_applied.next_index()).await?;
@@ -223,7 +223,7 @@ where
     pub async fn last_membership_in_log(
         &mut self,
         since_index: u64,
-    ) -> Result<Vec<StoredMembership<C>>, StorageError<C::NodeId>> {
+    ) -> Result<Vec<StoredMembership<C>>, StorageError<C>> {
         let st = self.log_store.get_log_state().await?;
 
         let mut end = st.last_log_id.next_index();

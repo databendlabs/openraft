@@ -153,13 +153,13 @@ where C: RaftTypeConfig
     async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + OptionalSend>(
         &mut self,
         range: RB,
-    ) -> Result<Vec<C::Entry>, StorageError<C::NodeId>>;
+    ) -> Result<Vec<C::Entry>, StorageError<C>>;
 
     /// Return the last saved vote by [`RaftLogStorage::save_vote`].
     ///
     /// A log reader must also be able to read the last saved vote by [`RaftLogStorage::save_vote`],
     /// See: [log-stream](`crate::docs::protocol::replication::log_stream`)
-    async fn read_vote(&mut self) -> Result<Option<Vote<C::NodeId>>, StorageError<C::NodeId>>;
+    async fn read_vote(&mut self) -> Result<Option<Vote<C::NodeId>>, StorageError<C>>;
 
     /// Returns log entries within range `[start, end)`, `end` is exclusive,
     /// potentially limited by implementation-defined constraints.
@@ -171,11 +171,7 @@ where C: RaftTypeConfig
     ///
     /// The default implementation just returns the full range of log entries.
     #[since(version = "0.10.0")]
-    async fn limited_get_log_entries(
-        &mut self,
-        start: u64,
-        end: u64,
-    ) -> Result<Vec<C::Entry>, StorageError<C::NodeId>> {
+    async fn limited_get_log_entries(&mut self, start: u64, end: u64) -> Result<Vec<C::Entry>, StorageError<C>> {
         self.try_get_log_entries(start..end).await
     }
 }
@@ -201,7 +197,7 @@ where C: RaftTypeConfig
     /// - Performing log compaction, e.g. merge log entries that operates on the same key, like a
     ///   LSM-tree does,
     /// - or by fetching a snapshot from the state machine.
-    async fn build_snapshot(&mut self) -> Result<Snapshot<C>, StorageError<C::NodeId>>;
+    async fn build_snapshot(&mut self) -> Result<Snapshot<C>, StorageError<C>>;
 
     // NOTES:
     // This interface is geared toward small file-based snapshots. However, not all snapshots can

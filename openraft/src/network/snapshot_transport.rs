@@ -319,7 +319,7 @@ where
     C::SnapshotData: tokio::io::AsyncWrite + tokio::io::AsyncSeek + Unpin,
 {
     /// Receive a chunk of snapshot data.
-    pub async fn receive(&mut self, req: InstallSnapshotRequest<C>) -> Result<bool, StorageError<C::NodeId>> {
+    pub async fn receive(&mut self, req: InstallSnapshotRequest<C>) -> Result<bool, StorageError<C>> {
         // TODO: check id?
 
         // Always seek to the target offset if not an exact match.

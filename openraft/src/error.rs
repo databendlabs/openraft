@@ -109,10 +109,10 @@ where
     }
 }
 
-impl<C, E> From<StorageError<C::NodeId>> for RaftError<C, E>
+impl<C, E> From<StorageError<C>> for RaftError<C, E>
 where C: RaftTypeConfig
 {
-    fn from(se: StorageError<C::NodeId>) -> Self {
+    fn from(se: StorageError<C>) -> Self {
         RaftError::Fatal(Fatal::from(se))
     }
 }
@@ -124,7 +124,7 @@ pub enum Fatal<C>
 where C: RaftTypeConfig
 {
     #[error(transparent)]
-    StorageError(#[from] StorageError<C::NodeId>),
+    StorageError(#[from] StorageError<C>),
 
     #[error("panicked")]
     Panicked,
@@ -235,7 +235,7 @@ where C: RaftTypeConfig
     // TODO(xp): two sub type: StorageError / TransportError
     // TODO(xp): a sub error for just append_entries()
     #[error(transparent)]
-    StorageError(#[from] StorageError<C::NodeId>),
+    StorageError(#[from] StorageError<C>),
 
     #[error(transparent)]
     RPCError(#[from] RPCError<C>),

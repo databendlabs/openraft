@@ -63,7 +63,7 @@ where C: RaftTypeConfig
     pub(crate) purged_next: u64,
 
     /// All log ids this node has.
-    pub log_ids: LogIdList<C::NodeId>,
+    pub log_ids: LogIdList<C>,
 
     /// The latest cluster membership configuration found, in log or in state machine.
     pub membership_state: MembershipState<C>,

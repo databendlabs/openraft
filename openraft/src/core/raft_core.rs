@@ -707,7 +707,7 @@ where
         entries: I,
         vote: Vote<C::NodeId>,
         last_log_id: LogId<C::NodeId>,
-    ) -> Result<(), StorageError<C::NodeId>>
+    ) -> Result<(), StorageError<C>>
     where
         I: IntoIterator<Item = C::Entry> + OptionalSend,
         I::IntoIter: OptionalSend,
@@ -732,7 +732,7 @@ where
         seq: CommandSeq,
         since: u64,
         upto_index: u64,
-    ) -> Result<(), StorageError<C::NodeId>> {
+    ) -> Result<(), StorageError<C>> {
         tracing::debug!(upto_index = display(upto_index), "{}", func_name!());
 
         let end = upto_index + 1;
@@ -864,7 +864,7 @@ where
     /// If there is a command that waits for a callback, just return and wait for
     /// next RaftMsg.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) async fn run_engine_commands(&mut self) -> Result<(), StorageError<C::NodeId>> {
+    pub(crate) async fn run_engine_commands(&mut self) -> Result<(), StorageError<C>> {
         if tracing::enabled!(Level::DEBUG) {
             tracing::debug!("queued commands: start...");
             for c in self.engine.output.iter_commands() {
@@ -1558,7 +1558,7 @@ where
     LS: RaftLogStorage<C>,
     SM: RaftStateMachine<C>,
 {
-    async fn run_command<'e>(&mut self, cmd: Command<C>) -> Result<Option<Command<C>>, StorageError<C::NodeId>> {
+    async fn run_command<'e>(&mut self, cmd: Command<C>) -> Result<Option<Command<C>>, StorageError<C>> {
         let condition = cmd.condition();
         tracing::debug!("condition: {:?}", condition);
 

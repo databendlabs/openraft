@@ -21,7 +21,7 @@ where C: RaftTypeConfig
     /// Blocking mode append log entries to the storage.
     ///
     /// It blocks until the callback is called by the underlying storage implementation.
-    async fn blocking_append<I>(&mut self, entries: I) -> Result<(), StorageError<C::NodeId>>
+    async fn blocking_append<I>(&mut self, entries: I) -> Result<(), StorageError<C>>
     where
         I: IntoIterator<Item = C::Entry> + OptionalSend,
         I::IntoIter: OptionalSend,

@@ -6,24 +6,25 @@ use anyerror::AnyError;
 use crate::storage::SnapshotSignature;
 use crate::LogId;
 use crate::NodeId;
+use crate::RaftTypeConfig;
 use crate::Vote;
 
 /// Convert error to StorageError::IO();
-pub trait ToStorageResult<NID, T>
-where NID: NodeId
+pub trait ToStorageResult<C, T>
+where C: RaftTypeConfig
 {
     /// Convert Result<T, E> to Result<T, StorageError::IO(StorageIOError)>
     ///
     /// `f` provides error context for building the StorageIOError.
-    fn sto_res<F>(self, f: F) -> Result<T, StorageError<NID>>
-    where F: FnOnce() -> (ErrorSubject<NID>, ErrorVerb);
+    fn sto_res<F>(self, f: F) -> Result<T, StorageError<C>>
+    where F: FnOnce() -> (ErrorSubject<C::NodeId>, ErrorVerb);
 }
 
-impl<NID, T> ToStorageResult<NID, T> for Result<T, std::io::Error>
-where NID: NodeId
+impl<C, T> ToStorageResult<C, T> for Result<T, std::io::Error>
+where C: RaftTypeConfig
 {
-    fn sto_res<F>(self, f: F) -> Result<T, StorageError<NID>>
-    where F: FnOnce() -> (ErrorSubject<NID>, ErrorVerb) {
+    fn sto_res<F>(self, f: F) -> Result<T, StorageError<C>>
+    where F: FnOnce() -> (ErrorSubject<C::NodeId>, ErrorVerb) {
         match self {
             Ok(x) => Ok(x),
             Err(e) => {
@@ -180,15 +181,15 @@ pub enum Violation<NID: NodeId> {
 /// further damage.
 #[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub enum StorageError<NID>
-where NID: NodeId
+pub enum StorageError<C>
+where C: RaftTypeConfig
 {
     /// An error raised by defensive check.
     #[error(transparent)]
     Defensive {
         #[from]
         #[cfg_attr(feature = "bt", backtrace)]
-        source: DefensiveError<NID>,
+        source: DefensiveError<C::NodeId>,
     },
 
     /// An error raised by io operation.
@@ -196,28 +197,28 @@ where NID: NodeId
     IO {
         #[from]
         #[cfg_attr(feature = "bt", backtrace)]
-        source: StorageIOError<NID>,
+        source: StorageIOError<C::NodeId>,
     },
 }
 
-impl<NID> StorageError<NID>
-where NID: NodeId
+impl<C> StorageError<C>
+where C: RaftTypeConfig
 {
-    pub fn into_defensive(self) -> Option<DefensiveError<NID>> {
+    pub fn into_defensive(self) -> Option<DefensiveError<C::NodeId>> {
         match self {
             StorageError::Defensive { source } => Some(source),
             _ => None,
         }
     }
 
-    pub fn into_io(self) -> Option<StorageIOError<NID>> {
+    pub fn into_io(self) -> Option<StorageIOError<C::NodeId>> {
         match self {
             StorageError::IO { source } => Some(source),
             _ => None,
         }
     }
 
-    pub fn from_io_error(subject: ErrorSubject<NID>, verb: ErrorVerb, io_error: std::io::Error) -> Self {
+    pub fn from_io_error(subject: ErrorSubject<C::NodeId>, verb: ErrorVerb, io_error: std::io::Error) -> Self {
         let sto_io_err = StorageIOError::new(subject, verb, AnyError::new(&io_error));
         StorageError::IO { source: sto_io_err }
     }
