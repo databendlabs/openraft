@@ -20,7 +20,7 @@ where C: RaftTypeConfig
 impl<C> Replicate<C>
 where C: RaftTypeConfig
 {
-    pub(crate) fn logs(id: RequestId, log_id_range: LogIdRange<C::NodeId>) -> Self {
+    pub(crate) fn logs(id: RequestId, log_id_range: LogIdRange<C>) -> Self {
         Self::Data(Data::new_logs(id, log_id_range))
     }
 
@@ -63,7 +63,7 @@ pub(crate) enum Data<C>
 where C: RaftTypeConfig
 {
     Heartbeat,
-    Logs(DataWithId<LogIdRange<C::NodeId>>),
+    Logs(DataWithId<LogIdRange<C>>),
     Snapshot(DataWithId<Option<LogIdOf<C>>>),
     SnapshotCallback(DataWithId<SnapshotCallback<C>>),
 }
@@ -121,7 +121,7 @@ where C: RaftTypeConfig
         Self::Heartbeat
     }
 
-    pub(crate) fn new_logs(request_id: RequestId, log_id_range: LogIdRange<C::NodeId>) -> Self {
+    pub(crate) fn new_logs(request_id: RequestId, log_id_range: LogIdRange<C>) -> Self {
         Self::Logs(DataWithId::new(request_id, log_id_range))
     }
 

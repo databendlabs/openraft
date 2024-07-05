@@ -359,7 +359,7 @@ where
     #[tracing::instrument(level = "debug", skip_all)]
     async fn send_log_entries(
         &mut self,
-        log_ids: DataWithId<LogIdRange<C::NodeId>>,
+        log_ids: DataWithId<LogIdRange<C>>,
     ) -> Result<Option<Data<C>>, ReplicationError<C>> {
         let request_id = log_ids.request_id();
 
@@ -833,7 +833,7 @@ where
         &mut self,
         matching: Option<LogId<C::NodeId>>,
         leader_time: InstantOf<C>,
-        log_ids: DataWithId<LogIdRange<C::NodeId>>,
+        log_ids: DataWithId<LogIdRange<C>>,
     ) -> Option<Data<C>> {
         self.send_progress(log_ids.request_id(), ReplicationResult::new(leader_time, Ok(matching)));
 
@@ -848,7 +848,7 @@ where
     }
 
     /// Check if partial success result(`matching`) is valid for a given log range to send.
-    fn debug_assert_partial_success(to_send: &LogIdRange<C::NodeId>, matching: &Option<LogId<C::NodeId>>) {
+    fn debug_assert_partial_success(to_send: &LogIdRange<C>, matching: &Option<LogId<C::NodeId>>) {
         debug_assert!(
             matching <= &to_send.last,
             "matching ({}) should be <= last_log_id ({})",

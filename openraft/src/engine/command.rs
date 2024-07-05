@@ -69,10 +69,7 @@ where C: RaftTypeConfig
     },
 
     /// Replicate log entries or snapshot to a target.
-    Replicate {
-        target: C::NodeId,
-        req: Inflight<C::NodeId>,
-    },
+    Replicate { target: C::NodeId, req: Inflight<C> },
 
     /// Membership config changed, need to update replication streams.
     /// The Runtime has to close all old replications and start new ones.

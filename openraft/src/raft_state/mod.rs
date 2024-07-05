@@ -77,7 +77,7 @@ where C: RaftTypeConfig
     /// The state of a Raft node, such as Leader or Follower.
     pub server_state: ServerState,
 
-    pub(crate) accepted: Accepted<C::NodeId>,
+    pub(crate) accepted: Accepted<C>,
 
     pub(crate) io_state: IOState<C>,
 
@@ -107,7 +107,7 @@ where C: RaftTypeConfig
     }
 }
 
-impl<C> LogStateReader<C::NodeId> for RaftState<C>
+impl<C> LogStateReader<C> for RaftState<C>
 where C: RaftTypeConfig
 {
     fn get_log_id(&self, index: u64) -> Option<LogId<C::NodeId>> {

@@ -28,7 +28,7 @@ where C: RaftTypeConfig
     /// The data being transmitted in flight.
     ///
     /// A non-none inflight expects a response when the data was successfully sent or failed.
-    pub(crate) inflight: Inflight<C::NodeId>,
+    pub(crate) inflight: Inflight<C>,
 
     /// One plus the max log index on the following node that might match the leader log.
     pub(crate) searching_end: u64,
@@ -68,7 +68,7 @@ where C: RaftTypeConfig
 
     // This method is only used by tests.
     #[allow(dead_code)]
-    pub(crate) fn with_inflight(mut self, inflight: Inflight<C::NodeId>) -> Self {
+    pub(crate) fn with_inflight(mut self, inflight: Inflight<C>) -> Self {
         debug_assert_eq!(self.inflight, Inflight::None);
 
         self.inflight = inflight;
@@ -172,9 +172,9 @@ where C: RaftTypeConfig
     #[allow(dead_code)]
     pub(crate) fn next_send(
         &mut self,
-        log_state: &impl LogStateReader<C::NodeId>,
+        log_state: &impl LogStateReader<C>,
         max_entries: u64,
-    ) -> Result<&Inflight<C::NodeId>, &Inflight<C::NodeId>> {
+    ) -> Result<&Inflight<C>, &Inflight<C>> {
         if !self.inflight.is_none() {
             return Err(&self.inflight);
         }
