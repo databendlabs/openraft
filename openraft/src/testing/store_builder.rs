@@ -23,5 +23,5 @@ where
     SM: RaftStateMachine<C>,
 {
     /// Build a [`RaftLogStorage`] and [`RaftStateMachine`] implementation
-    async fn build(&self) -> Result<(G, LS, SM), StorageError<C::NodeId>>;
+    async fn build(&self) -> Result<(G, LS, SM), StorageError<C>>;
 }

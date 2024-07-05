@@ -92,7 +92,7 @@ impl StateMachineStore {
 
 impl RaftSnapshotBuilder<TypeConfig> for Arc<StateMachineStore> {
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn build_snapshot(&mut self) -> Result<Snapshot<TypeConfig>, StorageError<NodeId>> {
+    async fn build_snapshot(&mut self) -> Result<Snapshot<TypeConfig>, StorageError<TypeConfig>> {
         let data;
         let last_applied_log;
         let last_membership;
@@ -152,13 +152,13 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
 
     async fn applied_state(
         &mut self,
-    ) -> Result<(Option<LogId<NodeId>>, StoredMembership<TypeConfig>), StorageError<NodeId>> {
+    ) -> Result<(Option<LogId<NodeId>>, StoredMembership<TypeConfig>), StorageError<TypeConfig>> {
         let state_machine = self.state_machine.lock().unwrap();
         Ok((state_machine.last_applied, state_machine.last_membership.clone()))
     }
 
     #[tracing::instrument(level = "trace", skip(self, entries))]
-    async fn apply<I>(&mut self, entries: I) -> Result<Vec<Response>, StorageError<NodeId>>
+    async fn apply<I>(&mut self, entries: I) -> Result<Vec<Response>, StorageError<TypeConfig>>
     where I: IntoIterator<Item = Entry<TypeConfig>> {
         let mut res = Vec::new(); //No `with_capacity`; do not know `len` of iterator
 
@@ -189,7 +189,7 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn begin_receiving_snapshot(&mut self) -> Result<Box<SnapshotDataOf<TypeConfig>>, StorageError<NodeId>> {
+    async fn begin_receiving_snapshot(&mut self) -> Result<Box<SnapshotDataOf<TypeConfig>>, StorageError<TypeConfig>> {
         Ok(Box::default())
     }
 
@@ -198,7 +198,7 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
         &mut self,
         meta: &SnapshotMeta<TypeConfig>,
         snapshot: Box<SnapshotDataOf<TypeConfig>>,
-    ) -> Result<(), StorageError<NodeId>> {
+    ) -> Result<(), StorageError<TypeConfig>> {
         tracing::info!("install snapshot");
 
         let new_snapshot = StoredSnapshot {
@@ -221,7 +221,7 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn get_current_snapshot(&mut self) -> Result<Option<Snapshot<TypeConfig>>, StorageError<NodeId>> {
+    async fn get_current_snapshot(&mut self) -> Result<Option<Snapshot<TypeConfig>>, StorageError<TypeConfig>> {
         match &*self.current_snapshot.lock().unwrap() {
             Some(snapshot) => {
                 let data = snapshot.data.clone();

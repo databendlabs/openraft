@@ -98,7 +98,7 @@ pub struct StateMachineData {
 }
 
 impl RaftSnapshotBuilder<TypeConfig> for StateMachineStore {
-    async fn build_snapshot(&mut self) -> Result<Snapshot<TypeConfig>, StorageError<NodeId>> {
+    async fn build_snapshot(&mut self) -> Result<Snapshot<TypeConfig>, StorageError<TypeConfig>> {
         let last_applied_log = self.data.last_applied_log_id;
         let last_membership = self.data.last_membership.clone();
 
@@ -134,7 +134,7 @@ impl RaftSnapshotBuilder<TypeConfig> for StateMachineStore {
 }
 
 impl StateMachineStore {
-    async fn new(db: Arc<DB>) -> Result<StateMachineStore, StorageError<NodeId>> {
+    async fn new(db: Arc<DB>) -> Result<StateMachineStore, StorageError<TypeConfig>> {
         let mut sm = Self {
             data: StateMachineData {
                 last_applied_log_id: None,
@@ -153,7 +153,7 @@ impl StateMachineStore {
         Ok(sm)
     }
 
-    async fn update_state_machine_(&mut self, snapshot: StoredSnapshot) -> Result<(), StorageError<NodeId>> {
+    async fn update_state_machine_(&mut self, snapshot: StoredSnapshot) -> Result<(), StorageError<TypeConfig>> {
         let kvs: BTreeMap<String, String> = serde_json::from_slice(&snapshot.data)
             .map_err(|e| StorageIOError::read_snapshot(Some(snapshot.meta.signature()), &e))?;
 
@@ -185,7 +185,7 @@ impl StateMachineStore {
         Ok(())
     }
 
-    fn flush(&self, subject: ErrorSubject<NodeId>, verb: ErrorVerb) -> Result<(), StorageIOError<NodeId>> {
+    fn flush(&self, subject: ErrorSubject<TypeConfig>, verb: ErrorVerb) -> Result<(), StorageIOError<TypeConfig>> {
         self.db.flush_wal(true).map_err(|e| StorageIOError::new(subject, verb, AnyError::new(&e)))?;
         Ok(())
     }
@@ -200,11 +200,11 @@ impl RaftStateMachine<TypeConfig> for StateMachineStore {
 
     async fn applied_state(
         &mut self,
-    ) -> Result<(Option<LogId<NodeId>>, StoredMembership<TypeConfig>), StorageError<NodeId>> {
+    ) -> Result<(Option<LogId<NodeId>>, StoredMembership<TypeConfig>), StorageError<TypeConfig>> {
         Ok((self.data.last_applied_log_id, self.data.last_membership.clone()))
     }
 
-    async fn apply<I>(&mut self, entries: I) -> Result<Vec<Response>, StorageError<NodeId>>
+    async fn apply<I>(&mut self, entries: I) -> Result<Vec<Response>, StorageError<TypeConfig>>
     where
         I: IntoIterator<Item = typ::Entry> + OptionalSend,
         I::IntoIter: OptionalSend,
@@ -242,7 +242,7 @@ impl RaftStateMachine<TypeConfig> for StateMachineStore {
         self.clone()
     }
 
-    async fn begin_receiving_snapshot(&mut self) -> Result<Box<Cursor<Vec<u8>>>, StorageError<NodeId>> {
+    async fn begin_receiving_snapshot(&mut self) -> Result<Box<Cursor<Vec<u8>>>, StorageError<TypeConfig>> {
         Ok(Box::new(Cursor::new(Vec::new())))
     }
 
@@ -250,7 +250,7 @@ impl RaftStateMachine<TypeConfig> for StateMachineStore {
         &mut self,
         meta: &SnapshotMeta<TypeConfig>,
         snapshot: Box<SnapshotData>,
-    ) -> Result<(), StorageError<NodeId>> {
+    ) -> Result<(), StorageError<TypeConfig>> {
         let new_snapshot = StoredSnapshot {
             meta: meta.clone(),
             data: snapshot.into_inner(),
@@ -263,7 +263,7 @@ impl RaftStateMachine<TypeConfig> for StateMachineStore {
         Ok(())
     }
 
-    async fn get_current_snapshot(&mut self) -> Result<Option<Snapshot<TypeConfig>>, StorageError<NodeId>> {
+    async fn get_current_snapshot(&mut self) -> Result<Option<Snapshot<TypeConfig>>, StorageError<TypeConfig>> {
         let x = self.get_current_snapshot_()?;
         Ok(x.map(|s| Snapshot {
             meta: s.meta.clone(),
@@ -276,7 +276,7 @@ impl RaftStateMachine<TypeConfig> for StateMachineStore {
 pub struct LogStore {
     db: Arc<DB>,
 }
-type StorageResult<T> = Result<T, StorageError<NodeId>>;
+type StorageResult<T> = Result<T, StorageError<TypeConfig>>;
 
 /// converts an id to a byte vector for storing in the database.
 /// Note that we're using big endian encoding to ensure correct sorting of keys
@@ -299,7 +299,7 @@ impl LogStore {
         self.db.cf_handle("logs").unwrap()
     }
 
-    fn flush(&self, subject: ErrorSubject<NodeId>, verb: ErrorVerb) -> Result<(), StorageIOError<NodeId>> {
+    fn flush(&self, subject: ErrorSubject<TypeConfig>, verb: ErrorVerb) -> Result<(), StorageIOError<TypeConfig>> {
         self.db.flush_wal(true).map_err(|e| StorageIOError::new(subject, verb, AnyError::new(&e)))?;
         Ok(())
     }
@@ -325,7 +325,7 @@ impl LogStore {
         Ok(())
     }
 
-    fn set_committed_(&self, committed: &Option<LogId<NodeId>>) -> Result<(), StorageIOError<NodeId>> {
+    fn set_committed_(&self, committed: &Option<LogId<NodeId>>) -> Result<(), StorageIOError<TypeConfig>> {
         let json = serde_json::to_vec(committed).unwrap();
 
         self.db.put_cf(self.store(), b"committed", json).map_err(|e| StorageIOError::write(&e))?;
@@ -393,7 +393,7 @@ impl RaftLogReader<TypeConfig> for LogStore {
             .collect()
     }
 
-    async fn read_vote(&mut self) -> Result<Option<Vote<NodeId>>, StorageError<NodeId>> {
+    async fn read_vote(&mut self) -> Result<Option<Vote<NodeId>>, StorageError<TypeConfig>> {
         self.get_vote_()
     }
 }
@@ -419,18 +419,18 @@ impl RaftLogStorage<TypeConfig> for LogStore {
         })
     }
 
-    async fn save_committed(&mut self, _committed: Option<LogId<NodeId>>) -> Result<(), StorageError<NodeId>> {
+    async fn save_committed(&mut self, _committed: Option<LogId<NodeId>>) -> Result<(), StorageError<TypeConfig>> {
         self.set_committed_(&_committed)?;
         Ok(())
     }
 
-    async fn read_committed(&mut self) -> Result<Option<LogId<NodeId>>, StorageError<NodeId>> {
+    async fn read_committed(&mut self) -> Result<Option<LogId<NodeId>>, StorageError<TypeConfig>> {
         let c = self.get_committed_()?;
         Ok(c)
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn save_vote(&mut self, vote: &Vote<NodeId>) -> Result<(), StorageError<NodeId>> {
+    async fn save_vote(&mut self, vote: &Vote<NodeId>) -> Result<(), StorageError<TypeConfig>> {
         self.set_vote_(vote)
     }
 
@@ -467,7 +467,7 @@ impl RaftLogStorage<TypeConfig> for LogStore {
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
-    async fn purge(&mut self, log_id: LogId<NodeId>) -> Result<(), StorageError<NodeId>> {
+    async fn purge(&mut self, log_id: LogId<NodeId>) -> Result<(), StorageError<TypeConfig>> {
         tracing::debug!("delete_log: [0, {:?}]", log_id);
 
         self.set_last_purged_(log_id)?;

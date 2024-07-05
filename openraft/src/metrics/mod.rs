@@ -46,6 +46,7 @@ pub use wait::Wait;
 pub use wait::WaitError;
 pub(crate) use wait_condition::Condition;
 
-use crate::LogId;
+use crate::type_config::alias::LogIdOf;
+use crate::type_config::alias::NodeIdOf;
 
-pub(crate) type ReplicationMetrics<NID> = BTreeMap<NID, Option<LogId<NID>>>;
+pub(crate) type ReplicationMetrics<C> = BTreeMap<NodeIdOf<C>, Option<LogIdOf<C>>>;

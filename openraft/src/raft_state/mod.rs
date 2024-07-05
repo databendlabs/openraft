@@ -63,7 +63,7 @@ where C: RaftTypeConfig
     pub(crate) purged_next: u64,
 
     /// All log ids this node has.
-    pub log_ids: LogIdList<C::NodeId>,
+    pub log_ids: LogIdList<C>,
 
     /// The latest cluster membership configuration found, in log or in state machine.
     pub membership_state: MembershipState<C>,
@@ -79,7 +79,7 @@ where C: RaftTypeConfig
 
     pub(crate) accepted: Accepted<C::NodeId>,
 
-    pub(crate) io_state: IOState<C::NodeId>,
+    pub(crate) io_state: IOState<C>,
 
     /// The log id upto which the next time it purges.
     ///
@@ -265,7 +265,7 @@ where C: RaftTypeConfig
         }
     }
 
-    pub(crate) fn io_state_mut(&mut self) -> &mut IOState<C::NodeId> {
+    pub(crate) fn io_state_mut(&mut self) -> &mut IOState<C> {
         &mut self.io_state
     }
 
@@ -279,7 +279,7 @@ where C: RaftTypeConfig
     ///
     /// Usually, when a client request is handled, [`RaftState`] is updated and several IO command
     /// is enqueued. And when the IO commands are completed, [`IOState`] is updated.
-    pub(crate) fn io_state(&self) -> &IOState<C::NodeId> {
+    pub(crate) fn io_state(&self) -> &IOState<C> {
         &self.io_state
     }
 

@@ -133,7 +133,7 @@ pub struct RocksLogStore {
     db: Arc<DB>,
 }
 
-type StorageResult<T> = Result<T, StorageError<RocksNodeId>>;
+type StorageResult<T> = Result<T, StorageError<TypeConfig>>;
 
 /// converts an id to a byte vector for storing in the database.
 /// Note that we're using big endian encoding to ensure correct sorting of keys
@@ -156,6 +156,7 @@ mod meta {
     use openraft::LogId;
 
     use crate::RocksNodeId;
+    use crate::TypeConfig;
 
     /// Defines metadata key and value
     pub(crate) trait StoreMeta {
@@ -166,7 +167,7 @@ mod meta {
         type Value: serde::Serialize + serde::de::DeserializeOwned;
 
         /// The subject this meta belongs to, and will be embedded into the returned storage error.
-        fn subject(v: Option<&Self::Value>) -> ErrorSubject<RocksNodeId>;
+        fn subject(v: Option<&Self::Value>) -> ErrorSubject<TypeConfig>;
     }
 
     pub(crate) struct LastPurged {}
@@ -176,7 +177,7 @@ mod meta {
         const KEY: &'static str = "last_purged_log_id";
         type Value = LogId<u64>;
 
-        fn subject(_v: Option<&Self::Value>) -> ErrorSubject<RocksNodeId> {
+        fn subject(_v: Option<&Self::Value>) -> ErrorSubject<TypeConfig> {
             ErrorSubject::Store
         }
     }
@@ -184,7 +185,7 @@ mod meta {
         const KEY: &'static str = "vote";
         type Value = openraft::Vote<RocksNodeId>;
 
-        fn subject(_v: Option<&Self::Value>) -> ErrorSubject<RocksNodeId> {
+        fn subject(_v: Option<&Self::Value>) -> ErrorSubject<TypeConfig> {
             ErrorSubject::Vote
         }
     }
@@ -202,7 +203,7 @@ impl RocksLogStore {
     /// Get a store metadata.
     ///
     /// It returns `None` if the store does not have such a metadata stored.
-    fn get_meta<M: meta::StoreMeta>(&self) -> Result<Option<M::Value>, StorageError<RocksNodeId>> {
+    fn get_meta<M: meta::StoreMeta>(&self) -> Result<Option<M::Value>, StorageError<TypeConfig>> {
         let v = self
             .db
             .get_cf(self.cf_meta(), M::KEY)
@@ -219,7 +220,7 @@ impl RocksLogStore {
     }
 
     /// Save a store metadata.
-    fn put_meta<M: meta::StoreMeta>(&self, value: &M::Value) -> Result<(), StorageError<RocksNodeId>> {
+    fn put_meta<M: meta::StoreMeta>(&self, value: &M::Value) -> Result<(), StorageError<TypeConfig>> {
         let json_value = serde_json::to_vec(value)
             .map_err(|e| StorageIOError::new(M::subject(Some(value)), ErrorVerb::Write, AnyError::new(&e)))?;
 
@@ -262,14 +263,14 @@ impl RaftLogReader<TypeConfig> for RocksLogStore {
         Ok(res)
     }
 
-    async fn read_vote(&mut self) -> Result<Option<Vote<RocksNodeId>>, StorageError<RocksNodeId>> {
+    async fn read_vote(&mut self) -> Result<Option<Vote<RocksNodeId>>, StorageError<TypeConfig>> {
         self.get_meta::<meta::Vote>()
     }
 }
 
 impl RaftSnapshotBuilder<TypeConfig> for RocksStateMachine {
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn build_snapshot(&mut self) -> Result<Snapshot<TypeConfig>, StorageError<RocksNodeId>> {
+    async fn build_snapshot(&mut self) -> Result<Snapshot<TypeConfig>, StorageError<TypeConfig>> {
         // Serialize the data of the state machine.
         let data = serde_json::to_vec(&self.sm).map_err(|e| StorageIOError::read_state_machine(&e))?;
 
@@ -338,7 +339,7 @@ impl RaftLogStorage<TypeConfig> for RocksLogStore {
         })
     }
 
-    async fn save_vote(&mut self, vote: &Vote<RocksNodeId>) -> Result<(), StorageError<RocksNodeId>> {
+    async fn save_vote(&mut self, vote: &Vote<RocksNodeId>) -> Result<(), StorageError<TypeConfig>> {
         self.put_meta::<meta::Vote>(vote)?;
         self.db.flush_wal(true).map_err(|e| StorageIOError::write_vote(&e))?;
         Ok(())
@@ -352,7 +353,7 @@ impl RaftLogStorage<TypeConfig> for RocksLogStore {
         &mut self,
         entries: I,
         callback: LogFlushed<TypeConfig>,
-    ) -> Result<(), StorageError<RocksNodeId>>
+    ) -> Result<(), StorageError<TypeConfig>>
     where
         I: IntoIterator<Item = Entry<TypeConfig>> + Send,
     {
@@ -375,7 +376,7 @@ impl RaftLogStorage<TypeConfig> for RocksLogStore {
         Ok(())
     }
 
-    async fn truncate(&mut self, log_id: LogId<RocksNodeId>) -> Result<(), StorageError<RocksNodeId>> {
+    async fn truncate(&mut self, log_id: LogId<RocksNodeId>) -> Result<(), StorageError<TypeConfig>> {
         tracing::debug!("truncate: [{:?}, +oo)", log_id);
 
         let from = id_to_bin(log_id.index);
@@ -386,7 +387,7 @@ impl RaftLogStorage<TypeConfig> for RocksLogStore {
         Ok(())
     }
 
-    async fn purge(&mut self, log_id: LogId<RocksNodeId>) -> Result<(), StorageError<RocksNodeId>> {
+    async fn purge(&mut self, log_id: LogId<RocksNodeId>) -> Result<(), StorageError<TypeConfig>> {
         tracing::debug!("delete_log: [0, {:?}]", log_id);
 
         // Write the last-purged log id before purging the logs.
@@ -408,11 +409,11 @@ impl RaftStateMachine<TypeConfig> for RocksStateMachine {
 
     async fn applied_state(
         &mut self,
-    ) -> Result<(Option<LogId<RocksNodeId>>, StoredMembership<TypeConfig>), StorageError<RocksNodeId>> {
+    ) -> Result<(Option<LogId<RocksNodeId>>, StoredMembership<TypeConfig>), StorageError<TypeConfig>> {
         Ok((self.sm.last_applied_log, self.sm.last_membership.clone()))
     }
 
-    async fn apply<I>(&mut self, entries: I) -> Result<Vec<RocksResponse>, StorageError<RocksNodeId>>
+    async fn apply<I>(&mut self, entries: I) -> Result<Vec<RocksResponse>, StorageError<TypeConfig>>
     where I: IntoIterator<Item = Entry<TypeConfig>> + Send {
         let entries_iter = entries.into_iter();
         let mut res = Vec::with_capacity(entries_iter.size_hint().0);
@@ -447,7 +448,7 @@ impl RaftStateMachine<TypeConfig> for RocksStateMachine {
         self.clone()
     }
 
-    async fn begin_receiving_snapshot(&mut self) -> Result<Box<SnapshotDataOf<TypeConfig>>, StorageError<RocksNodeId>> {
+    async fn begin_receiving_snapshot(&mut self) -> Result<Box<SnapshotDataOf<TypeConfig>>, StorageError<TypeConfig>> {
         Ok(Box::new(Cursor::new(Vec::new())))
     }
 
@@ -455,7 +456,7 @@ impl RaftStateMachine<TypeConfig> for RocksStateMachine {
         &mut self,
         meta: &SnapshotMeta<TypeConfig>,
         snapshot: Box<SnapshotDataOf<TypeConfig>>,
-    ) -> Result<(), StorageError<RocksNodeId>> {
+    ) -> Result<(), StorageError<TypeConfig>> {
         tracing::info!(
             { snapshot_size = snapshot.get_ref().len() },
             "decoding snapshot for installation"
@@ -485,7 +486,7 @@ impl RaftStateMachine<TypeConfig> for RocksStateMachine {
         Ok(())
     }
 
-    async fn get_current_snapshot(&mut self) -> Result<Option<Snapshot<TypeConfig>>, StorageError<RocksNodeId>> {
+    async fn get_current_snapshot(&mut self) -> Result<Option<Snapshot<TypeConfig>>, StorageError<TypeConfig>> {
         let x = self
             .db
             .get_cf(self.db.cf_handle("sm_meta").unwrap(), "snapshot")
@@ -525,7 +526,7 @@ pub async fn new<P: AsRef<Path>>(db_path: P) -> (RocksLogStore, RocksStateMachin
     (RocksLogStore { db: db.clone() }, RocksStateMachine::new(db).await)
 }
 
-fn read_logs_err(e: impl Error + 'static) -> StorageError<RocksNodeId> {
+fn read_logs_err(e: impl Error + 'static) -> StorageError<TypeConfig> {
     StorageError::IO {
         source: StorageIOError::read_logs(&e),
     }

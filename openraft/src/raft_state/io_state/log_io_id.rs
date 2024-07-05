@@ -3,7 +3,7 @@ use std::fmt;
 use crate::display_ext::DisplayOptionExt;
 use crate::CommittedLeaderId;
 use crate::LogId;
-use crate::NodeId;
+use crate::RaftTypeConfig;
 
 /// A monotonic increasing id for log io operation.
 ///
@@ -16,22 +16,31 @@ use crate::NodeId;
 #[derive(Debug, Clone, Copy)]
 #[derive(Default)]
 #[derive(PartialEq, Eq)]
-pub(crate) struct LogIOId<NID: NodeId> {
+pub(crate) struct LogIOId<C>
+where C: RaftTypeConfig
+{
     /// The id of the leader that performs the log io operation.
-    pub(crate) committed_leader_id: CommittedLeaderId<NID>,
+    pub(crate) committed_leader_id: CommittedLeaderId<C::NodeId>,
 
     /// The last log id that has been flushed to storage.
-    pub(crate) log_id: Option<LogId<NID>>,
+    pub(crate) log_id: Option<LogId<C::NodeId>>,
 }
 
-impl<NID: NodeId> fmt::Display for LogIOId<NID> {
+impl<C> fmt::Display for LogIOId<C>
+where C: RaftTypeConfig
+{
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "by_leader({}):{}", self.committed_leader_id, self.log_id.display())
     }
 }
 
-impl<NID: NodeId> LogIOId<NID> {
-    pub(crate) fn new(committed_leader_id: impl Into<CommittedLeaderId<NID>>, log_id: Option<LogId<NID>>) -> Self {
+impl<C> LogIOId<C>
+where C: RaftTypeConfig
+{
+    pub(crate) fn new(
+        committed_leader_id: impl Into<CommittedLeaderId<C::NodeId>>,
+        log_id: Option<LogId<C::NodeId>>,
+    ) -> Self {
         Self {
             committed_leader_id: committed_leader_id.into(),
             log_id,

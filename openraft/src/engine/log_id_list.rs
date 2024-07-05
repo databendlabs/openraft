@@ -2,7 +2,6 @@ use crate::log_id::RaftLogId;
 use crate::storage::RaftLogReaderExt;
 use crate::LogId;
 use crate::LogIdOptionExt;
-use crate::NodeId;
 use crate::RaftTypeConfig;
 use crate::StorageError;
 
@@ -15,12 +14,14 @@ use crate::StorageError;
 /// The last one may have the same leader id as the second last one.
 #[derive(Default, Debug, Clone)]
 #[derive(PartialEq, Eq)]
-pub struct LogIdList<NID: NodeId> {
-    key_log_ids: Vec<LogId<NID>>,
+pub struct LogIdList<C>
+where C: RaftTypeConfig
+{
+    key_log_ids: Vec<LogId<C::NodeId>>,
 }
 
-impl<NID> LogIdList<NID>
-where NID: NodeId
+impl<C> LogIdList<C>
+where C: RaftTypeConfig
 {
     /// Load all log ids that are the first one proposed by a leader.
     ///
@@ -42,13 +43,12 @@ where NID: NodeId
     /// A-------B-------C : find(A,B); find(B,C)   // both find `B`, need to de-dup
     /// A-------C-------C : find(A,C)
     /// ```
-    pub(crate) async fn load_log_ids<C, LRX>(
-        last_purged_log_id: Option<LogId<NID>>,
-        last_log_id: Option<LogId<NID>>,
+    pub(crate) async fn load_log_ids<LRX>(
+        last_purged_log_id: Option<LogId<C::NodeId>>,
+        last_log_id: Option<LogId<C::NodeId>>,
         sto: &mut LRX,
-    ) -> Result<LogIdList<NID>, StorageError<NID>>
+    ) -> Result<LogIdList<C>, StorageError<C>>
     where
-        C: RaftTypeConfig<NodeId = NID>,
         LRX: RaftLogReaderExt<C>,
     {
         let mut res = vec![];
@@ -118,8 +118,10 @@ where NID: NodeId
     }
 }
 
-impl<NID: NodeId> LogIdList<NID> {
-    pub fn new(key_log_ids: impl IntoIterator<Item = LogId<NID>>) -> Self {
+impl<C> LogIdList<C>
+where C: RaftTypeConfig
+{
+    pub fn new(key_log_ids: impl IntoIterator<Item = LogId<C::NodeId>>) -> Self {
         Self {
             key_log_ids: key_log_ids.into_iter().collect(),
         }
@@ -128,7 +130,7 @@ impl<NID: NodeId> LogIdList<NID> {
     /// Extends a list of `log_id` that are proposed by a same leader.
     ///
     /// The log ids in the input has to be continuous.
-    pub(crate) fn extend_from_same_leader<'a, LID: RaftLogId<NID> + 'a>(&mut self, new_ids: &[LID]) {
+    pub(crate) fn extend_from_same_leader<'a, LID: RaftLogId<C::NodeId> + 'a>(&mut self, new_ids: &[LID]) {
         if let Some(first) = new_ids.first() {
             let first_id = first.get_log_id();
             self.append(*first_id);
@@ -146,7 +148,7 @@ impl<NID: NodeId> LogIdList<NID> {
 
     /// Extends a list of `log_id`.
     #[allow(dead_code)]
-    pub(crate) fn extend<'a, LID: RaftLogId<NID> + 'a>(&mut self, new_ids: &[LID]) {
+    pub(crate) fn extend<'a, LID: RaftLogId<C::NodeId> + 'a>(&mut self, new_ids: &[LID]) {
         let mut prev = self.last().map(|x| x.leader_id);
 
         for x in new_ids.iter() {
@@ -176,7 +178,7 @@ impl<NID: NodeId> LogIdList<NID> {
     ///
     /// NOTE: The last two in `key_log_ids` may be with the same `leader_id`, because `last_log_id`
     /// always present in `log_ids`.
-    pub(crate) fn append(&mut self, new_log_id: LogId<NID>) {
+    pub(crate) fn append(&mut self, new_log_id: LogId<C::NodeId>) {
         let l = self.key_log_ids.len();
         if l == 0 {
             self.key_log_ids.push(new_log_id);
@@ -242,7 +244,7 @@ impl<NID: NodeId> LogIdList<NID> {
 
     /// Purge log ids upto the log with index `upto_index`, inclusive.
     #[allow(dead_code)]
-    pub(crate) fn purge(&mut self, upto: &LogId<NID>) {
+    pub(crate) fn purge(&mut self, upto: &LogId<C::NodeId>) {
         let last = self.last().cloned();
 
         // When installing  snapshot it may need to purge across the `last_log_id`.
@@ -274,7 +276,7 @@ impl<NID: NodeId> LogIdList<NID> {
     /// Get the log id at the specified index.
     ///
     /// It will return `last_purged_log_id` if index is at the last purged index.
-    pub(crate) fn get(&self, index: u64) -> Option<LogId<NID>> {
+    pub(crate) fn get(&self, index: u64) -> Option<LogId<C::NodeId>> {
         let res = self.key_log_ids.binary_search_by(|log_id| log_id.index.cmp(&index));
 
         match res {
@@ -289,15 +291,15 @@ impl<NID: NodeId> LogIdList<NID> {
         }
     }
 
-    pub(crate) fn first(&self) -> Option<&LogId<NID>> {
+    pub(crate) fn first(&self) -> Option<&LogId<C::NodeId>> {
         self.key_log_ids.first()
     }
 
-    pub(crate) fn last(&self) -> Option<&LogId<NID>> {
+    pub(crate) fn last(&self) -> Option<&LogId<C::NodeId>> {
         self.key_log_ids.last()
     }
 
-    pub(crate) fn key_log_ids(&self) -> &[LogId<NID>] {
+    pub(crate) fn key_log_ids(&self) -> &[LogId<C::NodeId>] {
         &self.key_log_ids
     }
 
@@ -306,7 +308,7 @@ impl<NID: NodeId> LogIdList<NID> {
     /// Note that the 0-th log does not belong to any leader(but a membership log to initialize a
     /// cluster) but this method does not differentiate between them.
     #[allow(dead_code)]
-    pub(crate) fn by_last_leader(&self) -> &[LogId<NID>] {
+    pub(crate) fn by_last_leader(&self) -> &[LogId<C::NodeId>] {
         let ks = &self.key_log_ids;
         let l = ks.len();
         if l < 2 {

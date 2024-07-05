@@ -15,17 +15,14 @@ use crate::StorageIOError;
 pub struct LogFlushed<C>
 where C: RaftTypeConfig
 {
-    log_io_id: LogIOId<C::NodeId>,
-    tx: OneshotSenderOf<C, Result<LogIOId<C::NodeId>, io::Error>>,
+    log_io_id: LogIOId<C>,
+    tx: OneshotSenderOf<C, Result<LogIOId<C>, io::Error>>,
 }
 
 impl<C> LogFlushed<C>
 where C: RaftTypeConfig
 {
-    pub(crate) fn new(
-        log_io_id: LogIOId<C::NodeId>,
-        tx: OneshotSenderOf<C, Result<LogIOId<C::NodeId>, io::Error>>,
-    ) -> Self {
+    pub(crate) fn new(log_io_id: LogIOId<C>, tx: OneshotSenderOf<C, Result<LogIOId<C>, io::Error>>) -> Self {
         Self { log_io_id, tx }
     }
 
@@ -51,7 +48,7 @@ pub struct LogApplied<C>
 where C: RaftTypeConfig
 {
     last_log_id: LogId<C::NodeId>,
-    tx: oneshot::Sender<Result<(LogId<C::NodeId>, Vec<C::R>), StorageIOError<C::NodeId>>>,
+    tx: oneshot::Sender<Result<(LogId<C::NodeId>, Vec<C::R>), StorageIOError<C>>>,
 }
 
 impl<C> LogApplied<C>
@@ -60,7 +57,7 @@ where C: RaftTypeConfig
     #[allow(dead_code)]
     pub(crate) fn new(
         last_log_id: LogId<C::NodeId>,
-        tx: oneshot::Sender<Result<(LogId<C::NodeId>, Vec<C::R>), StorageIOError<C::NodeId>>>,
+        tx: oneshot::Sender<Result<(LogId<C::NodeId>, Vec<C::R>), StorageIOError<C>>>,
     ) -> Self {
         Self { last_log_id, tx }
     }
@@ -69,7 +66,7 @@ where C: RaftTypeConfig
     ///
     /// It will be called when the log is successfully applied to the state machine or an error
     /// occurs.
-    pub fn completed(self, result: Result<Vec<C::R>, StorageIOError<C::NodeId>>) {
+    pub fn completed(self, result: Result<Vec<C::R>, StorageIOError<C>>) {
         let res = match result {
             Ok(x) => {
                 tracing::debug!("LogApplied upto {}", self.last_log_id);

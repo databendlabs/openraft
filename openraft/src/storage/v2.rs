@@ -51,7 +51,7 @@ where C: RaftTypeConfig
     /// `last_purged_log_id` if there is no entry at all.
     // NOTE: This can be made into sync, provided all state machines will use atomic read or the
     // like.
-    async fn get_log_state(&mut self) -> Result<LogState<C>, StorageError<C::NodeId>>;
+    async fn get_log_state(&mut self) -> Result<LogState<C>, StorageError<C>>;
 
     /// Get the log reader.
     ///
@@ -64,7 +64,7 @@ where C: RaftTypeConfig
     /// ### To ensure correctness:
     ///
     /// The vote must be persisted on disk before returning.
-    async fn save_vote(&mut self, vote: &Vote<C::NodeId>) -> Result<(), StorageError<C::NodeId>>;
+    async fn save_vote(&mut self, vote: &Vote<C::NodeId>) -> Result<(), StorageError<C>>;
 
     /// Saves the last committed log id to storage.
     ///
@@ -79,13 +79,13 @@ where C: RaftTypeConfig
     /// See: [`docs::data::log_pointers`].
     ///
     /// [`docs::data::log_pointers`]: `crate::docs::data::log_pointers#optionally-persisted-committed`
-    async fn save_committed(&mut self, _committed: Option<LogId<C::NodeId>>) -> Result<(), StorageError<C::NodeId>> {
+    async fn save_committed(&mut self, _committed: Option<LogId<C::NodeId>>) -> Result<(), StorageError<C>> {
         // By default `committed` log id is not saved
         Ok(())
     }
 
     /// Return the last saved committed log id by [`Self::save_committed`].
-    async fn read_committed(&mut self) -> Result<Option<LogId<C::NodeId>>, StorageError<C::NodeId>> {
+    async fn read_committed(&mut self) -> Result<Option<LogId<C::NodeId>>, StorageError<C>> {
         // By default `committed` log id is not saved and this method just return None.
         Ok(None)
     }
@@ -108,7 +108,7 @@ where C: RaftTypeConfig
     ///
     /// - There must not be a **hole** in logs. Because Raft only examine the last log id to ensure
     ///   correctness.
-    async fn append<I>(&mut self, entries: I, callback: LogFlushed<C>) -> Result<(), StorageError<C::NodeId>>
+    async fn append<I>(&mut self, entries: I, callback: LogFlushed<C>) -> Result<(), StorageError<C>>
     where
         I: IntoIterator<Item = C::Entry> + OptionalSend,
         I::IntoIter: OptionalSend;
@@ -118,14 +118,14 @@ where C: RaftTypeConfig
     /// ### To ensure correctness:
     ///
     /// - It must not leave a **hole** in logs.
-    async fn truncate(&mut self, log_id: LogId<C::NodeId>) -> Result<(), StorageError<C::NodeId>>;
+    async fn truncate(&mut self, log_id: LogId<C::NodeId>) -> Result<(), StorageError<C>>;
 
     /// Purge logs upto `log_id`, inclusive
     ///
     /// ### To ensure correctness:
     ///
     /// - It must not leave a **hole** in logs.
-    async fn purge(&mut self, log_id: LogId<C::NodeId>) -> Result<(), StorageError<C::NodeId>>;
+    async fn purge(&mut self, log_id: LogId<C::NodeId>) -> Result<(), StorageError<C>>;
 }
 
 /// API for state machine and snapshot.
@@ -153,9 +153,7 @@ where C: RaftTypeConfig
     /// last-applied-log-id.
     /// Because upon startup, the last membership will be loaded by scanning logs from the
     /// `last-applied-log-id`.
-    async fn applied_state(
-        &mut self,
-    ) -> Result<(Option<LogId<C::NodeId>>, StoredMembership<C>), StorageError<C::NodeId>>;
+    async fn applied_state(&mut self) -> Result<(Option<LogId<C::NodeId>>, StoredMembership<C>), StorageError<C>>;
 
     /// Apply the given payload of entries to the state machine.
     ///
@@ -183,7 +181,7 @@ where C: RaftTypeConfig
     /// - An implementation with persistent snapshot: `apply()` does not have to persist state on
     ///   disk. But every snapshot has to be persistent. And when starting up the application, the
     ///   state machine should be rebuilt from the last snapshot.
-    async fn apply<I>(&mut self, entries: I) -> Result<Vec<C::R>, StorageError<C::NodeId>>
+    async fn apply<I>(&mut self, entries: I) -> Result<Vec<C::R>, StorageError<C>>
     where
         I: IntoIterator<Item = C::Entry> + OptionalSend,
         I::IntoIter: OptionalSend;
@@ -206,7 +204,7 @@ where C: RaftTypeConfig
     /// See the [storage chapter of the guide][sto] for details on log compaction / snapshotting.
     ///
     /// [sto]: crate::docs::getting_started#3-implement-raftlogstorage-and-raftstatemachine
-    async fn begin_receiving_snapshot(&mut self) -> Result<Box<C::SnapshotData>, StorageError<C::NodeId>>;
+    async fn begin_receiving_snapshot(&mut self) -> Result<Box<C::SnapshotData>, StorageError<C>>;
 
     /// Install a snapshot which has finished streaming from the leader.
     ///
@@ -223,7 +221,7 @@ where C: RaftTypeConfig
         &mut self,
         meta: &SnapshotMeta<C>,
         snapshot: Box<C::SnapshotData>,
-    ) -> Result<(), StorageError<C::NodeId>>;
+    ) -> Result<(), StorageError<C>>;
 
     /// Get a readable handle to the current snapshot.
     ///
@@ -238,5 +236,5 @@ where C: RaftTypeConfig
     /// A proper snapshot implementation will store last-applied-log-id and the
     /// last-applied-membership config as part of the snapshot, which should be decoded for
     /// creating this method's response data.
-    async fn get_current_snapshot(&mut self) -> Result<Option<Snapshot<C>>, StorageError<C::NodeId>>;
+    async fn get_current_snapshot(&mut self) -> Result<Option<Snapshot<C>>, StorageError<C>>;
 }

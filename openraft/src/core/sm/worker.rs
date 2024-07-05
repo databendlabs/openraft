@@ -72,7 +72,7 @@ where
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn worker_loop(&mut self) -> Result<(), StorageError<C::NodeId>> {
+    async fn worker_loop(&mut self) -> Result<(), StorageError<C>> {
         loop {
             let cmd = self.cmd_rx.recv().await;
             let cmd = match cmd {
@@ -126,7 +126,7 @@ where
         }
     }
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn apply(&mut self, entries: Vec<C::Entry>) -> Result<ApplyResult<C>, StorageError<C::NodeId>> {
+    async fn apply(&mut self, entries: Vec<C::Entry>) -> Result<ApplyResult<C>, StorageError<C>> {
         // TODO: prepare response before apply,
         //       so that an Entry does not need to be Clone,
         //       and no references will be used by apply
@@ -193,7 +193,7 @@ where
     }
 
     #[tracing::instrument(level = "info", skip_all)]
-    async fn get_snapshot(&mut self, tx: ResultSender<C, Option<Snapshot<C>>>) -> Result<(), StorageError<C::NodeId>> {
+    async fn get_snapshot(&mut self, tx: ResultSender<C, Option<Snapshot<C>>>) -> Result<(), StorageError<C>> {
         tracing::info!("{}", func_name!());
 
         let snapshot = self.state_machine.get_current_snapshot().await?;
