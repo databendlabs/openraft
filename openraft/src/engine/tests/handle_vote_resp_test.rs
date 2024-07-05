@@ -206,7 +206,6 @@ fn test_handle_vote_resp_equal_vote() -> anyhow::Result<()> {
                 Command::SaveVote {
                     vote: Vote::new_committed(2, 1)
                 },
-                Command::BecomeLeader,
                 Command::AppendInputEntries {
                     vote: Vote::new_committed(2, 1),
                     entries: vec![Entry::<UTConfig>::new_blank(log_id(2, 1, 1))],

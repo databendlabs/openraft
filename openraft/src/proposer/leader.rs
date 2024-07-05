@@ -7,6 +7,7 @@ use crate::progress::VecProgress;
 use crate::quorum::QuorumSet;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::LogIdOf;
+use crate::type_config::TypeConfigExt;
 use crate::vote::CommittedVote;
 use crate::Instant;
 use crate::LogId;
@@ -38,6 +39,9 @@ where C: RaftTypeConfig
     ///
     /// `self.voting` may be in progress requesting vote for a higher vote.
     pub(crate) vote: CommittedVote<C>,
+
+    /// The time to send next heartbeat.
+    pub(crate) next_heartbeat: InstantOf<C>,
 
     last_log_id: Option<LogIdOf<C>>,
 
@@ -108,6 +112,7 @@ where
 
         Self {
             vote,
+            next_heartbeat: C::now(),
             last_log_id,
             noop_log_id,
             progress: VecProgress::new(

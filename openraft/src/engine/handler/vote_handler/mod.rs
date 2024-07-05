@@ -234,7 +234,6 @@ where C: RaftTypeConfig
         ServerStateHandler {
             config: self.config,
             state: self.state,
-            output: self.output,
         }
     }
 

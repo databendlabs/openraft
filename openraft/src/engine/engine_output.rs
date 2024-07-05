@@ -47,8 +47,6 @@ where C: RaftTypeConfig
                 tracing::debug!("next_seq: {}", seq);
                 command.set_seq(seq);
             }
-            Command::BecomeLeader => {}
-            Command::QuitLeader => {}
             Command::AppendInputEntries { .. } => {}
             Command::ReplicateCommitted { .. } => {}
             Command::Commit { .. } => {}

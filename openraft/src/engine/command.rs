@@ -25,13 +25,6 @@ use crate::Vote;
 pub(crate) enum Command<C>
 where C: RaftTypeConfig
 {
-    /// Becomes a leader, i.e., its `vote` is granted by a quorum.
-    /// The runtime initializes leader data when receives this command.
-    BecomeLeader,
-
-    /// No longer a leader. Clean up leader's data.
-    QuitLeader,
-
     /// Append a `range` of entries.
     AppendInputEntries {
         /// The vote of the leader that submits the entries to write.
@@ -125,8 +118,6 @@ where
     #[rustfmt::skip]
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (Command::BecomeLeader,                            Command::BecomeLeader)                                                          => true,
-            (Command::QuitLeader,                              Command::QuitLeader)                                                            => true,
             (Command::AppendInputEntries { vote, entries },    Command::AppendInputEntries { vote: vb, entries: b }, )                         => vote == vb && entries == b,
             (Command::ReplicateCommitted { committed },        Command::ReplicateCommitted { committed: b }, )                                 => committed == b,
             (Command::Commit { seq, already_committed, upto, }, Command::Commit { seq: b_seq, already_committed: b_committed, upto: b_upto, }, ) => seq == b_seq && already_committed == b_committed && upto == b_upto,
@@ -150,8 +141,6 @@ where C: RaftTypeConfig
     #[rustfmt::skip]
     pub(crate) fn kind(&self) -> CommandKind {
         match self {
-            Command::BecomeLeader                     => CommandKind::Main,
-            Command::QuitLeader                       => CommandKind::Main,
             Command::RebuildReplicationStreams { .. } => CommandKind::Main,
             Command::Respond { .. }                   => CommandKind::Main,
 
@@ -176,8 +165,6 @@ where C: RaftTypeConfig
     #[rustfmt::skip]
     pub(crate) fn condition(&self) -> Option<&Condition<C>> {
         match self {
-            Command::BecomeLeader                     => None,
-            Command::QuitLeader                       => None,
             Command::AppendInputEntries { .. }        => None,
             Command::ReplicateCommitted { .. }        => None,
             // TODO: Apply also write `committed` to log-store, which should be run in CommandKind::Log
