@@ -186,7 +186,7 @@ where C: RaftTypeConfig
                 // TODO: this is not gonna happen,
                 //       because `self.leader`(previous `internal_server_state`)
                 //       does not include Candidate any more.
-                l.vote = *self.state.vote_ref();
+                l.vote = self.state.vote_ref().into_committed();
                 self.server_state_handler().update_server_state_if_changed();
                 return;
             }

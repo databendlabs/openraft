@@ -4,6 +4,7 @@ use std::fmt::Debug;
 use std::fmt::Display;
 use std::fmt::Formatter;
 use std::marker::PhantomData;
+use std::ops::Deref;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
@@ -1507,7 +1508,7 @@ where
         // - Otherwise, it is sent by a Candidate, we check against the current in progress voting state.
         let my_vote = if sender_vote.is_committed() {
             let l = self.engine.leader.as_ref();
-            l.map(|x| x.vote)
+            l.map(|x| *x.vote.deref())
         } else {
             // If it finished voting, Candidate's vote is None.
             let candidate = self.engine.candidate_ref();

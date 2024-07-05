@@ -1,9 +1,11 @@
 use std::cmp::Ordering;
 use std::fmt::Formatter;
 
+use crate::vote::committed::CommittedVote;
 use crate::vote::leader_id::CommittedLeaderId;
 use crate::LeaderId;
 use crate::NodeId;
+use crate::RaftTypeConfig;
 
 /// `Vote` represent the privilege of a node.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -68,8 +70,15 @@ impl<NID: NodeId> Vote<NID> {
         }
     }
 
+    #[deprecated(note = "use `into_committed()` instead", since = "0.10.0")]
     pub fn commit(&mut self) {
         self.committed = true
+    }
+
+    /// Convert this vote into a `CommittedVote`
+    pub(crate) fn into_committed<C>(self) -> CommittedVote<C>
+    where C: RaftTypeConfig<NodeId = NID> {
+        CommittedVote::new(self)
     }
 
     pub fn is_committed(&self) -> bool {
@@ -81,16 +90,6 @@ impl<NID: NodeId> Vote<NID> {
     /// The leader may or may not be granted by a quorum.
     pub fn leader_id(&self) -> &LeaderId<NID> {
         &self.leader_id
-    }
-
-    /// Return a [`CommittedLeaderId`], which is granted by a quorum.
-    pub(crate) fn committed_leader_id(&self) -> Option<CommittedLeaderId<NID>> {
-        // Special case (term==0): when initializing the first log does not need vote to be committed.
-        if self.is_committed() || self.leader_id().term == 0 {
-            Some(self.leader_id().to_committed())
-        } else {
-            None
-        }
     }
 
     pub(crate) fn is_same_leader(&self, leader_id: &CommittedLeaderId<NID>) -> bool {
