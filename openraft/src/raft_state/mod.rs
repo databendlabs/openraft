@@ -383,7 +383,7 @@ where C: RaftTypeConfig
         let last_leader_log_ids = self.log_ids.by_last_leader();
 
         Leader::new(
-            *self.vote_ref(),
+            self.vote_ref().into_committed(),
             em.to_quorum_set(),
             em.learner_ids(),
             last_leader_log_ids,

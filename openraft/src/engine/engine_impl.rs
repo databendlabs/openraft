@@ -754,14 +754,12 @@ where C: RaftTypeConfig
             Some(x) => x,
         };
 
-        // This leader is not accepted by a quorum yet.
-        // Not a valid leader.
-        //
-        // Note that leading state is separated from local RaftState(which is used by the `Acceptor` part),
-        // and do not consider the vote in the local RaftState.
-        if !leader.vote.is_committed() {
-            return Err(self.state.forward_to_leader());
-        }
+        debug_assert!(
+            *leader.vote_ref() >= *self.state.vote_ref(),
+            "leader.vote({}) >= state.vote({})",
+            leader.vote_ref(),
+            self.state.vote_ref()
+        );
 
         Ok(LeaderHandler {
             config: &mut self.config,

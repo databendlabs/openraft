@@ -105,10 +105,9 @@ where
     pub(crate) fn into_leader(self) -> Leader<C, QS> {
         // Mark the vote as committed, i.e., being granted and saved by a quorum.
         let vote = {
-            let mut vote = *self.vote_ref();
+            let vote = *self.vote_ref();
             debug_assert!(!vote.is_committed());
-            vote.commit();
-            vote
+            vote.into_committed()
         };
 
         let last_leader_log_ids = self.last_log_id().copied().into_iter().collect::<Vec<_>>();
