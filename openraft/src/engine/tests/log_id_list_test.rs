@@ -1,9 +1,10 @@
+use crate::engine::testing::UTConfig;
 use crate::engine::LogIdList;
 use crate::testing::log_id;
 
 #[test]
 fn test_log_id_list_extend_from_same_leader() -> anyhow::Result<()> {
-    let mut ids = LogIdList::<u64>::default();
+    let mut ids = LogIdList::<UTConfig>::default();
 
     // Extend one log id to an empty LogIdList: Just store it directly
 
@@ -49,7 +50,7 @@ fn test_log_id_list_extend_from_same_leader() -> anyhow::Result<()> {
 
 #[test]
 fn test_log_id_list_extend() -> anyhow::Result<()> {
-    let mut ids = LogIdList::<u64>::default();
+    let mut ids = LogIdList::<UTConfig>::default();
 
     // Extend one log id to an empty LogIdList: Just store it directly
 
@@ -113,7 +114,7 @@ fn test_log_id_list_extend() -> anyhow::Result<()> {
 
 #[test]
 fn test_log_id_list_append() -> anyhow::Result<()> {
-    let mut ids = LogIdList::<u64>::default();
+    let mut ids = LogIdList::<UTConfig>::default();
 
     // Append log id one by one, check the internally constructed `key_log_id` as expected.
 
@@ -138,7 +139,7 @@ fn test_log_id_list_append() -> anyhow::Result<()> {
 fn test_log_id_list_truncate() -> anyhow::Result<()> {
     // Sample data for test
     let make_ids = || {
-        LogIdList::<u64>::new(vec![
+        LogIdList::<UTConfig>::new(vec![
             log_id(2, 1, 2), //
             log_id(3, 1, 3),
             log_id(6, 1, 6),
@@ -234,14 +235,14 @@ fn test_log_id_list_truncate() -> anyhow::Result<()> {
 fn test_log_id_list_purge() -> anyhow::Result<()> {
     // Purge on an empty log id list:
     {
-        let mut ids = LogIdList::<u64>::new(vec![]);
+        let mut ids = LogIdList::<UTConfig>::new(vec![]);
         ids.purge(&log_id(2, 1, 2));
         assert_eq!(vec![log_id(2, 1, 2)], ids.key_log_ids());
     }
 
     // Sample data for test
     let make_ids = || {
-        LogIdList::<u64>::new(vec![
+        LogIdList::<UTConfig>::new(vec![
             log_id(2, 1, 2), //
             log_id(3, 1, 3),
             log_id(6, 1, 6),
@@ -319,7 +320,7 @@ fn test_log_id_list_purge() -> anyhow::Result<()> {
 fn test_log_id_list_get_log_id() -> anyhow::Result<()> {
     // Get log id from empty list always returns `None`.
 
-    let ids = LogIdList::<u64>::default();
+    let ids = LogIdList::<UTConfig>::default();
 
     assert!(ids.get(0).is_none());
     assert!(ids.get(1).is_none());
@@ -327,7 +328,7 @@ fn test_log_id_list_get_log_id() -> anyhow::Result<()> {
 
     // Get log id that is a key log id or not.
 
-    let ids = LogIdList::<u64>::new(vec![
+    let ids = LogIdList::<UTConfig>::new(vec![
         log_id(1, 1, 1),
         log_id(1, 1, 2),
         log_id(3, 1, 3),
@@ -355,23 +356,23 @@ fn test_log_id_list_get_log_id() -> anyhow::Result<()> {
 #[test]
 fn test_log_id_list_by_last_leader() -> anyhow::Result<()> {
     // len == 0
-    let ids = LogIdList::<u64>::default();
+    let ids = LogIdList::<UTConfig>::default();
     assert_eq!(ids.by_last_leader(), &[]);
 
     // len == 1
-    let ids = LogIdList::<u64>::new([log_id(1, 1, 1)]);
+    let ids = LogIdList::<UTConfig>::new([log_id(1, 1, 1)]);
     assert_eq!(&[log_id(1, 1, 1)], ids.by_last_leader());
 
     // len == 2, the last leader has only one log
-    let ids = LogIdList::<u64>::new([log_id(1, 1, 1), log_id(3, 1, 3)]);
+    let ids = LogIdList::<UTConfig>::new([log_id(1, 1, 1), log_id(3, 1, 3)]);
     assert_eq!(&[log_id(3, 1, 3)], ids.by_last_leader());
 
     // len == 2, the last leader has two logs
-    let ids = LogIdList::<u64>::new([log_id(1, 1, 1), log_id(1, 1, 3)]);
+    let ids = LogIdList::<UTConfig>::new([log_id(1, 1, 1), log_id(1, 1, 3)]);
     assert_eq!(&[log_id(1, 1, 1), log_id(1, 1, 3)], ids.by_last_leader());
 
     // len > 2, the last leader has only more than one logs
-    let ids = LogIdList::<u64>::new([log_id(1, 1, 1), log_id(7, 1, 8), log_id(7, 1, 10)]);
+    let ids = LogIdList::<UTConfig>::new([log_id(1, 1, 1), log_id(7, 1, 8), log_id(7, 1, 10)]);
     assert_eq!(&[log_id(7, 1, 8), log_id(7, 1, 10)], ids.by_last_leader());
 
     Ok(())

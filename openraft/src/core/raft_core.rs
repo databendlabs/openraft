@@ -446,12 +446,7 @@ where
     //       membership logs. And it does not need to wait for the previous membership log to commit
     //       to propose the new membership log.
     #[tracing::instrument(level = "debug", skip(self, tx))]
-    pub(super) fn change_membership(
-        &mut self,
-        changes: ChangeMembers<C::NodeId, C::Node>,
-        retain: bool,
-        tx: ResponderOf<C>,
-    ) {
+    pub(super) fn change_membership(&mut self, changes: ChangeMembers<C>, retain: bool, tx: ResponderOf<C>) {
         let res = self.engine.state.membership_state.change_handler().apply(changes, retain);
         let new_membership = match res {
             Ok(x) => x,
@@ -529,7 +524,7 @@ where
 
     /// Report a metrics payload on the current state of the Raft node.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn report_metrics(&mut self, replication: Option<ReplicationMetrics<C::NodeId>>) {
+    pub(crate) fn report_metrics(&mut self, replication: Option<ReplicationMetrics<C>>) {
         let last_quorum_acked = self.last_quorum_acked_time();
         let millis_since_quorum_ack = last_quorum_acked.map(|t| t.elapsed().as_millis() as u64);
 
@@ -707,7 +702,7 @@ where
         entries: I,
         vote: Vote<C::NodeId>,
         last_log_id: LogId<C::NodeId>,
-    ) -> Result<(), StorageError<C::NodeId>>
+    ) -> Result<(), StorageError<C>>
     where
         I: IntoIterator<Item = C::Entry> + OptionalSend,
         I::IntoIter: OptionalSend,
@@ -732,7 +727,7 @@ where
         seq: CommandSeq,
         since: u64,
         upto_index: u64,
-    ) -> Result<(), StorageError<C::NodeId>> {
+    ) -> Result<(), StorageError<C>> {
         tracing::debug!(upto_index = display(upto_index), "{}", func_name!());
 
         let end = upto_index + 1;
@@ -864,7 +859,7 @@ where
     /// If there is a command that waits for a callback, just return and wait for
     /// next RaftMsg.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) async fn run_engine_commands(&mut self) -> Result<(), StorageError<C::NodeId>> {
+    pub(crate) async fn run_engine_commands(&mut self) -> Result<(), StorageError<C>> {
         if tracing::enabled!(Level::DEBUG) {
             tracing::debug!("queued commands: start...");
             for c in self.engine.output.iter_commands() {
@@ -1558,7 +1553,7 @@ where
     LS: RaftLogStorage<C>,
     SM: RaftStateMachine<C>,
 {
-    async fn run_command<'e>(&mut self, cmd: Command<C>) -> Result<Option<Command<C>>, StorageError<C::NodeId>> {
+    async fn run_command<'e>(&mut self, cmd: Command<C>) -> Result<Option<Command<C>>, StorageError<C>> {
         let condition = cmd.condition();
         tracing::debug!("condition: {:?}", condition);
 

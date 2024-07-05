@@ -62,5 +62,5 @@ pub(crate) trait RaftRuntime<C: RaftTypeConfig> {
     /// Run a command produced by the engine.
     ///
     /// If a command can not be run, i.e., waiting for some event, it will be returned
-    async fn run_command<'e>(&mut self, cmd: Command<C>) -> Result<Option<Command<C>>, StorageError<C::NodeId>>;
+    async fn run_command<'e>(&mut self, cmd: Command<C>) -> Result<Option<Command<C>>, StorageError<C>>;
 }

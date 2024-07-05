@@ -29,7 +29,7 @@ pub enum StreamingError<C: RaftTypeConfig, E: Error = Infallible> {
 
     /// Storage error occurs when reading local data.
     #[error(transparent)]
-    StorageError(#[from] StorageError<C::NodeId>),
+    StorageError(#[from] StorageError<C>),
 
     /// Timeout when streaming data to remote node.
     #[error(transparent)]

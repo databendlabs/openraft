@@ -76,7 +76,7 @@ pub struct RaftMetrics<C: RaftTypeConfig> {
     // --- replication ---
     // ---
     /// The replication states. It is Some() only when this node is leader.
-    pub replication: Option<ReplicationMetrics<C::NodeId>>,
+    pub replication: Option<ReplicationMetrics<C>>,
 }
 
 impl<C> fmt::Display for RaftMetrics<C>
@@ -164,7 +164,7 @@ pub struct RaftDataMetrics<C: RaftTypeConfig> {
     /// being partitioned from the cluster.
     pub millis_since_quorum_ack: Option<u64>,
 
-    pub replication: Option<ReplicationMetrics<C::NodeId>>,
+    pub replication: Option<ReplicationMetrics<C>>,
 }
 
 impl<C> fmt::Display for RaftDataMetrics<C>

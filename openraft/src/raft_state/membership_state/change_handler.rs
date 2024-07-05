@@ -30,7 +30,7 @@ where C: RaftTypeConfig
     /// configuration.
     pub(crate) fn apply(
         &self,
-        change: ChangeMembers<C::NodeId, C::Node>,
+        change: ChangeMembers<C>,
         retain: bool,
     ) -> Result<Membership<C>, ChangeMembershipError<C>> {
         self.ensure_committed()?;

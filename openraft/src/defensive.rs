@@ -13,7 +13,7 @@ use crate::Violation;
 pub fn check_range_matches_entries<C: RaftTypeConfig, RB: RangeBounds<u64> + Debug + OptionalSend>(
     range: RB,
     entries: &[C::Entry],
-) -> Result<(), StorageError<C::NodeId>> {
+) -> Result<(), StorageError<C>> {
     let want_first = match range.start_bound() {
         Bound::Included(i) => Some(*i),
         Bound::Excluded(i) => Some(*i + 1),

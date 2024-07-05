@@ -122,34 +122,34 @@ impl From<&ExampleStateMachine> for SerializableExampleStateMachine {
     }
 }
 
-fn read_sm_err<E: Error + 'static>(e: E) -> StorageIOError<ExampleNodeId> {
+fn read_sm_err<E: Error + 'static>(e: E) -> StorageIOError<TypeConfig> {
     StorageIOError::read_state_machine(&e)
 }
-fn write_sm_err<E: Error + 'static>(e: E) -> StorageIOError<ExampleNodeId> {
+fn write_sm_err<E: Error + 'static>(e: E) -> StorageIOError<TypeConfig> {
     StorageIOError::write_state_machine(&e)
 }
-fn read_snap_err<E: Error + 'static>(e: E) -> StorageIOError<ExampleNodeId> {
+fn read_snap_err<E: Error + 'static>(e: E) -> StorageIOError<TypeConfig> {
     StorageIOError::read(&e)
 }
-fn write_snap_err<E: Error + 'static>(e: E) -> StorageIOError<ExampleNodeId> {
+fn write_snap_err<E: Error + 'static>(e: E) -> StorageIOError<TypeConfig> {
     StorageIOError::write(&e)
 }
-fn read_vote_err<E: Error + 'static>(e: E) -> StorageIOError<ExampleNodeId> {
+fn read_vote_err<E: Error + 'static>(e: E) -> StorageIOError<TypeConfig> {
     StorageIOError::read_vote(&e)
 }
-fn write_vote_err<E: Error + 'static>(e: E) -> StorageIOError<ExampleNodeId> {
+fn write_vote_err<E: Error + 'static>(e: E) -> StorageIOError<TypeConfig> {
     StorageIOError::write_vote(&e)
 }
-fn read_logs_err<E: Error + 'static>(e: E) -> StorageIOError<ExampleNodeId> {
+fn read_logs_err<E: Error + 'static>(e: E) -> StorageIOError<TypeConfig> {
     StorageIOError::read_logs(&e)
 }
-fn write_logs_err<E: Error + 'static>(e: E) -> StorageIOError<ExampleNodeId> {
+fn write_logs_err<E: Error + 'static>(e: E) -> StorageIOError<TypeConfig> {
     StorageIOError::write_logs(&e)
 }
-fn read_err<E: Error + 'static>(e: E) -> StorageIOError<ExampleNodeId> {
+fn read_err<E: Error + 'static>(e: E) -> StorageIOError<TypeConfig> {
     StorageIOError::read(&e)
 }
-fn write_err<E: Error + 'static>(e: E) -> StorageIOError<ExampleNodeId> {
+fn write_err<E: Error + 'static>(e: E) -> StorageIOError<TypeConfig> {
     StorageIOError::write(&e)
 }
 
@@ -277,7 +277,7 @@ pub struct SledStore {
     pub state_machine: RwLock<ExampleStateMachine>,
 }
 
-type StorageResult<T> = Result<T, StorageError<ExampleNodeId>>;
+type StorageResult<T> = Result<T, StorageError<TypeConfig>>;
 
 /// converts an id to a byte vector for storing in the database.
 /// Note that we're using big endian encoding to ensure correct sorting of keys
@@ -335,7 +335,7 @@ impl SledStore {
         Ok(())
     }
 
-    async fn set_vote_(&self, vote: &Vote<ExampleNodeId>) -> Result<(), StorageError<ExampleNodeId>> {
+    async fn set_vote_(&self, vote: &Vote<ExampleNodeId>) -> Result<(), StorageError<TypeConfig>> {
         let store_tree = store(&self.db);
         let val = serde_json::to_vec(vote).unwrap();
         store_tree.insert(b"vote", val).map_err(write_vote_err)?;
@@ -418,14 +418,14 @@ impl RaftLogReader<TypeConfig> for Arc<SledStore> {
         logs
     }
 
-    async fn read_vote(&mut self) -> Result<Option<Vote<ExampleNodeId>>, StorageError<ExampleNodeId>> {
+    async fn read_vote(&mut self) -> Result<Option<Vote<ExampleNodeId>>, StorageError<TypeConfig>> {
         self.get_vote_()
     }
 }
 
 impl RaftSnapshotBuilder<TypeConfig> for Arc<SledStore> {
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn build_snapshot(&mut self) -> Result<Snapshot<TypeConfig>, StorageError<ExampleNodeId>> {
+    async fn build_snapshot(&mut self) -> Result<Snapshot<TypeConfig>, StorageError<TypeConfig>> {
         let data;
         let last_applied_log;
         let last_membership;
@@ -497,7 +497,7 @@ impl RaftLogStorage<TypeConfig> for Arc<SledStore> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn save_vote(&mut self, vote: &Vote<ExampleNodeId>) -> Result<(), StorageError<ExampleNodeId>> {
+    async fn save_vote(&mut self, vote: &Vote<ExampleNodeId>) -> Result<(), StorageError<TypeConfig>> {
         self.set_vote_(vote).await
     }
 
@@ -542,7 +542,7 @@ impl RaftLogStorage<TypeConfig> for Arc<SledStore> {
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
-    async fn purge(&mut self, log_id: LogId<ExampleNodeId>) -> Result<(), StorageError<ExampleNodeId>> {
+    async fn purge(&mut self, log_id: LogId<ExampleNodeId>) -> Result<(), StorageError<TypeConfig>> {
         tracing::debug!("delete_log: [0, {:?}]", log_id);
 
         self.set_last_purged_(log_id).await?;
@@ -567,7 +567,7 @@ impl RaftStateMachine<TypeConfig> for Arc<SledStore> {
 
     async fn applied_state(
         &mut self,
-    ) -> Result<(Option<LogId<ExampleNodeId>>, StoredMembership<TypeConfig>), StorageError<ExampleNodeId>> {
+    ) -> Result<(Option<LogId<ExampleNodeId>>, StoredMembership<TypeConfig>), StorageError<TypeConfig>> {
         let state_machine = self.state_machine.read().await;
         Ok((
             state_machine.get_last_applied_log()?,
@@ -576,7 +576,7 @@ impl RaftStateMachine<TypeConfig> for Arc<SledStore> {
     }
 
     #[tracing::instrument(level = "trace", skip(self, entries))]
-    async fn apply<I>(&mut self, entries: I) -> Result<Vec<ExampleResponse>, StorageError<ExampleNodeId>>
+    async fn apply<I>(&mut self, entries: I) -> Result<Vec<ExampleResponse>, StorageError<TypeConfig>>
     where
         I: IntoIterator<Item = Entry<TypeConfig>> + OptionalSend,
         I::IntoIter: OptionalSend,
@@ -625,9 +625,7 @@ impl RaftStateMachine<TypeConfig> for Arc<SledStore> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn begin_receiving_snapshot(
-        &mut self,
-    ) -> Result<Box<SnapshotDataOf<TypeConfig>>, StorageError<ExampleNodeId>> {
+    async fn begin_receiving_snapshot(&mut self) -> Result<Box<SnapshotDataOf<TypeConfig>>, StorageError<TypeConfig>> {
         Ok(Box::new(Cursor::new(Vec::new())))
     }
 
@@ -636,7 +634,7 @@ impl RaftStateMachine<TypeConfig> for Arc<SledStore> {
         &mut self,
         meta: &SnapshotMeta<TypeConfig>,
         snapshot: Box<SnapshotDataOf<TypeConfig>>,
-    ) -> Result<(), StorageError<ExampleNodeId>> {
+    ) -> Result<(), StorageError<TypeConfig>> {
         tracing::info!(
             { snapshot_size = snapshot.get_ref().len() },
             "decoding snapshot for installation"
@@ -660,7 +658,7 @@ impl RaftStateMachine<TypeConfig> for Arc<SledStore> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn get_current_snapshot(&mut self) -> Result<Option<Snapshot<TypeConfig>>, StorageError<ExampleNodeId>> {
+    async fn get_current_snapshot(&mut self) -> Result<Option<Snapshot<TypeConfig>>, StorageError<TypeConfig>> {
         match SledStore::get_current_snapshot_(self)? {
             Some(snapshot) => {
                 let data = snapshot.data.clone();

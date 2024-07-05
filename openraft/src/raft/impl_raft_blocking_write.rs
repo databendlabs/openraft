@@ -47,10 +47,10 @@ where C: RaftTypeConfig<Responder = OneshotResponder<C>>
     #[tracing::instrument(level = "info", skip_all)]
     pub async fn change_membership(
         &self,
-        members: impl Into<ChangeMembers<C::NodeId, C::Node>>,
+        members: impl Into<ChangeMembers<C>>,
         retain: bool,
     ) -> Result<ClientWriteResponse<C>, RaftError<C, ClientWriteError<C>>> {
-        let changes: ChangeMembers<C::NodeId, C::Node> = members.into();
+        let changes: ChangeMembers<C> = members.into();
 
         tracing::info!(
             changes = debug(&changes),

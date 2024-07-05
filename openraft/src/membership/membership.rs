@@ -274,11 +274,7 @@ where C: RaftTypeConfig
     ///
     /// `retain` specifies whether to retain the removed voters as a learners, i.e., nodes that
     /// continue to receive log replication from the leader.
-    pub(crate) fn change(
-        mut self,
-        change: ChangeMembers<C::NodeId, C::Node>,
-        retain: bool,
-    ) -> Result<Self, ChangeMembershipError<C>> {
+    pub(crate) fn change(mut self, change: ChangeMembers<C>, retain: bool) -> Result<Self, ChangeMembershipError<C>> {
         tracing::debug!(change = debug(&change), "{}", func_name!());
 
         let last = self.get_joint_config().last().unwrap().clone();

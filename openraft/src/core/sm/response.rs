@@ -28,13 +28,13 @@ where C: RaftTypeConfig
 {
     #[allow(dead_code)]
     pub(crate) command_seq: CommandSeq,
-    pub(crate) result: Result<Response<C>, StorageError<C::NodeId>>,
+    pub(crate) result: Result<Response<C>, StorageError<C>>,
 }
 
 impl<C> CommandResult<C>
 where C: RaftTypeConfig
 {
-    pub(crate) fn new(command_seq: CommandSeq, result: Result<Response<C>, StorageError<C::NodeId>>) -> Self {
+    pub(crate) fn new(command_seq: CommandSeq, result: Result<Response<C>, StorageError<C>>) -> Self {
         Self { command_seq, result }
     }
 }
