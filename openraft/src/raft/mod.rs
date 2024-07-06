@@ -271,7 +271,7 @@ where C: RaftTypeConfig
 
         let engine = Engine::new(state, eng_config);
 
-        let sm_handle = worker::Worker::spawn(state_machine, tx_notify.clone());
+        let sm_handle = worker::Worker::spawn(state_machine, log_store.get_log_reader().await, tx_notify.clone());
 
         let core: RaftCore<C, N, LS> = RaftCore {
             id,
