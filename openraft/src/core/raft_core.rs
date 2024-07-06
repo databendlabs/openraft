@@ -717,7 +717,7 @@ where
             return Ok(());
         }
 
-        let entries = self.log_store.get_log_entries(since..end).await?;
+        let entries = self.log_store.get_log_reader().await.get_log_entries(since..end).await?;
         tracing::debug!(
             entries = display(DisplaySlice::<_>(entries.as_slice())),
             "about to apply"

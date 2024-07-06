@@ -2,7 +2,7 @@
 
 mod callback;
 mod helper;
-mod log_store_ext;
+mod log_reader_ext;
 mod snapshot_signature;
 mod v2;
 
@@ -11,7 +11,7 @@ use std::fmt::Debug;
 use std::ops::RangeBounds;
 
 pub use helper::StorageHelper;
-pub use log_store_ext::RaftLogReaderExt;
+pub use log_reader_ext::RaftLogReaderExt;
 use openraft_macros::add_async_trait;
 use openraft_macros::since;
 pub use snapshot_signature::SnapshotSignature;
