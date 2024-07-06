@@ -84,7 +84,6 @@ use crate::replication::ReplicationHandle;
 use crate::replication::ReplicationSessionId;
 use crate::runtime::RaftRuntime;
 use crate::storage::LogFlushed;
-use crate::storage::RaftLogReaderExt;
 use crate::storage::RaftLogStorage;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::OneshotReceiverOf;
@@ -695,38 +694,25 @@ where
         Ok(())
     }
 
+    /// Apply log entries to the state machine, from the `first`(inclusive) to `last`(inclusive).
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) async fn apply_to_state_machine(
         &mut self,
         seq: CommandSeq,
-        since: u64,
-        upto_index: u64,
+        first: LogId<C::NodeId>,
+        last: LogId<C::NodeId>,
     ) -> Result<(), StorageError<C>> {
-        tracing::debug!(upto_index = display(upto_index), "{}", func_name!());
-
-        let end = upto_index + 1;
+        tracing::debug!("{}: {}..={}", func_name!(), first, last);
 
         debug_assert!(
-            since <= end,
-            "last_applied index {} should <= committed index {}",
-            since,
-            end
+            first.index <= last.index,
+            "first.index {} should <= last.index {}",
+            first.index,
+            last.index
         );
 
-        if since == end {
-            return Ok(());
-        }
-
-        let entries = self.log_store.get_log_reader().await.get_log_entries(since..end).await?;
-        tracing::debug!(
-            entries = display(DisplaySlice::<_>(entries.as_slice())),
-            "about to apply"
-        );
-
-        let last_applied = *entries[entries.len() - 1].get_log_id();
-
-        let cmd = sm::Command::apply(entries).with_seq(seq);
-        self.sm_handle.send(cmd).map_err(|e| StorageIOError::apply(last_applied, AnyError::error(e)))?;
+        let cmd = sm::Command::apply(first, last).with_seq(seq);
+        self.sm_handle.send(cmd).map_err(|e| StorageIOError::apply(last, AnyError::error(e)))?;
 
         Ok(())
     }
@@ -1619,11 +1605,13 @@ where
             }
             Command::Commit {
                 seq,
-                ref already_committed,
-                ref upto,
+                already_committed,
+                upto,
             } => {
-                self.log_store.save_committed(Some(*upto)).await?;
-                self.apply_to_state_machine(seq, already_committed.next_index(), upto.index).await?;
+                self.log_store.save_committed(Some(upto)).await?;
+
+                let first = self.engine.state.get_log_id(already_committed.next_index()).unwrap();
+                self.apply_to_state_machine(seq, first, upto).await?;
             }
             Command::Replicate { req, target } => {
                 let node = self.replications.get(&target).expect("replication to target node exists");

@@ -12,39 +12,54 @@ use crate::core::sm::Response;
 use crate::core::ApplyResult;
 use crate::core::ApplyingEntry;
 use crate::display_ext::DisplayOptionExt;
+use crate::display_ext::DisplaySliceExt;
 use crate::entry::RaftPayload;
+use crate::storage::RaftLogReaderExt;
 use crate::storage::RaftStateMachine;
 use crate::type_config::alias::JoinHandleOf;
+use crate::type_config::alias::LogIdOf;
 use crate::type_config::TypeConfigExt;
 use crate::RaftLogId;
+use crate::RaftLogReader;
 use crate::RaftSnapshotBuilder;
 use crate::RaftTypeConfig;
 use crate::Snapshot;
 use crate::StorageError;
 
-pub(crate) struct Worker<C, SM>
+pub(crate) struct Worker<C, SM, LR>
 where
     C: RaftTypeConfig,
     SM: RaftStateMachine<C>,
+    LR: RaftLogReader<C>,
 {
+    /// The application state machine implementation.
     state_machine: SM,
 
+    /// Read logs from the [`RaftLogStorage`] implementation to apply them to state machine.
+    ///
+    /// [`RaftLogStorage`]: `crate::storage::RaftLogStorage`
+    log_reader: LR,
+
+    /// Raed command from RaftCore to execute.
     cmd_rx: mpsc::UnboundedReceiver<Command<C>>,
 
+    /// Send back the result of the command to RaftCore.
     resp_tx: mpsc::UnboundedSender<Notify<C>>,
 }
 
-impl<C, SM> Worker<C, SM>
+impl<C, SM, LR> Worker<C, SM, LR>
 where
     C: RaftTypeConfig,
     SM: RaftStateMachine<C>,
+    LR: RaftLogReader<C>,
 {
     /// Spawn a new state machine worker, return a controlling handle.
-    pub(crate) fn spawn(state_machine: SM, resp_tx: mpsc::UnboundedSender<Notify<C>>) -> Handle<C> {
+    pub(crate) fn spawn(state_machine: SM, log_reader: LR, resp_tx: mpsc::UnboundedSender<Notify<C>>) -> Handle<C> {
         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
 
         let worker = Worker {
             state_machine,
+            log_reader,
             cmd_rx,
             resp_tx,
         };
@@ -117,8 +132,8 @@ where
                     let _ = tx.send(Ok(snapshot_data));
                     // No response to RaftCore
                 }
-                CommandPayload::Apply { entries } => {
-                    let resp = self.apply(entries).await?;
+                CommandPayload::Apply { first, last } => {
+                    let resp = self.apply(first, last).await?;
                     let res = CommandResult::new(cmd.seq, Ok(Response::Apply(resp)));
                     let _ = self.resp_tx.send(Notify::sm(res));
                 }
@@ -126,14 +141,18 @@ where
         }
     }
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn apply(&mut self, entries: Vec<C::Entry>) -> Result<ApplyResult<C>, StorageError<C>> {
+    async fn apply(&mut self, first: LogIdOf<C>, last: LogIdOf<C>) -> Result<ApplyResult<C>, StorageError<C>> {
         // TODO: prepare response before apply,
         //       so that an Entry does not need to be Clone,
         //       and no references will be used by apply
 
-        let since = entries.first().map(|x| x.get_log_id().index).unwrap();
-        let end = entries.last().map(|x| x.get_log_id().index + 1).unwrap();
-        let last_applied = entries.last().map(|x| *x.get_log_id()).unwrap();
+        let since = first.index;
+        let end = last.index + 1;
+
+        let entries = self.log_reader.get_log_entries(since..end).await?;
+        tracing::debug!(entries = display(entries.display()), "about to apply");
+
+        let last_applied = last;
 
         // Fake complain: avoid using `collect()` when not needed
         #[allow(clippy::needless_collect)]
@@ -142,11 +161,11 @@ where
             .map(|e| ApplyingEntry::new(*e.get_log_id(), e.get_membership().cloned()))
             .collect::<Vec<_>>();
 
-        let n_entries = applying_entries.len();
+        let n_entries = end - since;
 
         let apply_results = self.state_machine.apply(entries).await?;
 
-        let n_replies = apply_results.len();
+        let n_replies = apply_results.len() as u64;
 
         debug_assert_eq!(
             n_entries, n_replies,

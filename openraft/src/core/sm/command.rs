@@ -2,9 +2,8 @@ use std::fmt::Debug;
 use std::fmt::Formatter;
 
 use crate::core::raft_msg::ResultSender;
-use crate::display_ext::DisplaySlice;
 use crate::error::Infallible;
-use crate::log_id::RaftLogId;
+use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::SnapshotDataOf;
 use crate::RaftTypeConfig;
 use crate::Snapshot;
@@ -69,8 +68,9 @@ where C: RaftTypeConfig
         Command::new(payload)
     }
 
-    pub(crate) fn apply(entries: Vec<C::Entry>) -> Self {
-        let payload = CommandPayload::Apply { entries };
+    /// Applies log ids within the inclusive range `[first, last]`.
+    pub(crate) fn apply(first: LogIdOf<C>, last: LogIdOf<C>) -> Self {
+        let payload = CommandPayload::Apply { first, last };
         Command::new(payload)
     }
 }
@@ -104,7 +104,11 @@ where C: RaftTypeConfig
 
     /// Apply the log entries to the state machine.
     Apply {
-        entries: Vec<C::Entry>,
+        /// The first log id to apply, inclusive.
+        first: LogIdOf<C>,
+
+        /// The last log id to apply, inclusive.
+        last: LogIdOf<C>,
     },
 }
 
@@ -121,7 +125,7 @@ where C: RaftTypeConfig
             CommandPayload::BeginReceivingSnapshot { .. } => {
                 write!(f, "BeginReceivingSnapshot")
             }
-            CommandPayload::Apply { entries } => write!(f, "Apply: {}", DisplaySlice::<_>(entries)),
+            CommandPayload::Apply { first, last } => write!(f, "Apply: [{},{}]", first, last),
         }
     }
 }
@@ -139,12 +143,13 @@ where C: RaftTypeConfig
                 CommandPayload::InstallFullSnapshot { snapshot: s1 },
                 CommandPayload::InstallFullSnapshot { snapshot: s2 },
             ) => s1.meta == s2.meta,
-            (CommandPayload::Apply { entries: entries1 }, CommandPayload::Apply { entries: entries2 }) => {
-                // Entry may not be `Eq`, we just compare log id.
-                // This would be enough for testing.
-                entries1.iter().map(|e| *e.get_log_id()).collect::<Vec<_>>()
-                    == entries2.iter().map(|e| *e.get_log_id()).collect::<Vec<_>>()
-            }
+            (
+                CommandPayload::Apply { first, last },
+                CommandPayload::Apply {
+                    first: first2,
+                    last: last2,
+                },
+            ) => first == first2 && last == last2,
             _ => false,
         }
     }
