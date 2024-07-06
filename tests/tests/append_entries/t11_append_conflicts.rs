@@ -227,7 +227,7 @@ where
     C: RaftTypeConfig,
     LS: RaftLogStorage<C>,
 {
-    let logs = log_store.get_log_entries(..).await?;
+    let logs = log_store.get_log_reader().await.get_log_entries(..).await?;
     let skip = 0;
     let want: Vec<Entry<openraft_memstore::TypeConfig>> = terms
         .iter()

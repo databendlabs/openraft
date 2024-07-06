@@ -15,6 +15,7 @@ use crate::utime::UTime;
 use crate::EffectiveMembership;
 use crate::LogIdOptionExt;
 use crate::MembershipState;
+use crate::RaftLogReader;
 use crate::RaftSnapshotBuilder;
 use crate::RaftState;
 use crate::RaftTypeConfig;
@@ -59,7 +60,8 @@ where
     /// When the Raft node is first started, it will call this interface to fetch the last known
     /// state from stable storage.
     pub async fn get_initial_state(&mut self) -> Result<RaftState<C>, StorageError<C>> {
-        let vote = self.log_store.read_vote().await?;
+        let mut log_reader = self.log_store.get_log_reader().await;
+        let vote = log_reader.read_vote().await?;
         let vote = vote.unwrap_or_default();
 
         let mut committed = self.log_store.read_committed().await?;
@@ -92,7 +94,7 @@ where
 
             tracing::info!("re-apply log {}..{} to state machine", start, end);
 
-            let entries = self.log_store.get_log_entries(start..end).await?;
+            let entries = log_reader.get_log_entries(start..end).await?;
             self.state_machine.apply(entries).await?;
 
             last_applied = committed;
@@ -119,7 +121,7 @@ where
             last_purged_log_id.display(),
             last_log_id.display()
         );
-        let log_ids = LogIdList::load_log_ids(last_purged_log_id, last_log_id, self.log_store).await?;
+        let log_ids = LogIdList::load_log_ids(last_purged_log_id, last_log_id, &mut log_reader).await?;
 
         let snapshot = self.state_machine.get_current_snapshot().await?;
 
@@ -234,10 +236,11 @@ where
         let step = 64;
 
         let mut res = vec![];
+        let mut log_reader = self.log_store.get_log_reader().await;
 
         while start < end {
             let step_start = std::cmp::max(start, end.saturating_sub(step));
-            let entries = self.log_store.try_get_log_entries(step_start..end).await?;
+            let entries = log_reader.try_get_log_entries(step_start..end).await?;
 
             for ent in entries.iter().rev() {
                 if let Some(mem) = ent.get_membership() {

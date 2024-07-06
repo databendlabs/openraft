@@ -35,7 +35,7 @@ use crate::Vote;
 ///   write request before a former write request is completed. This rule applies to both `vote` and
 ///   `log` IO. E.g., Saving a vote and appending a log entry must be serialized too.
 #[add_async_trait]
-pub trait RaftLogStorage<C>: RaftLogReader<C> + OptionalSend + OptionalSync + 'static
+pub trait RaftLogStorage<C>: OptionalSend + OptionalSync + 'static
 where C: RaftTypeConfig
 {
     /// Log reader type.

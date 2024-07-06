@@ -2,6 +2,7 @@ use std::collections::BTreeSet;
 use std::fmt::Debug;
 use std::future::Future;
 use std::marker::PhantomData;
+use std::ops::RangeBounds;
 use std::time::Duration;
 
 use anyerror::AnyError;
@@ -26,6 +27,8 @@ use crate::LogId;
 use crate::Membership;
 use crate::NodeId;
 use crate::OptionalSend;
+use crate::OptionalSync;
+use crate::RaftLogReader;
 use crate::RaftSnapshotBuilder;
 use crate::RaftTypeConfig;
 use crate::StorageError;
@@ -43,6 +46,54 @@ macro_rules! btreeset {
         $( _set.insert($key.into()); )*
         _set
     }};
+}
+
+/// Allows [`RaftLogStorage`] to access methods provided by [`RaftLogReader`] in ths test.
+trait ReaderExt<C>: RaftLogStorage<C>
+where C: RaftTypeConfig
+{
+    /// Proxy method to invoke [`RaftLogReaderExt::get_log_id`].
+    async fn get_log_id(&mut self, log_index: u64) -> Result<LogId<C::NodeId>, StorageError<C>> {
+        self.get_log_reader().await.get_log_id(log_index).await
+    }
+
+    /// Proxy method to invoke [`RaftLogReaderExt::try_get_log_entry`].
+    async fn try_get_log_entry(&mut self, log_index: u64) -> Result<Option<C::Entry>, StorageError<C>> {
+        self.get_log_reader().await.try_get_log_entry(log_index).await
+    }
+
+    /// Proxy method to invoke [`RaftLogReaderExt::get_log_entries`].
+    async fn get_log_entries<RB: RangeBounds<u64> + Clone + Debug + OptionalSend + OptionalSync>(
+        &mut self,
+        range: RB,
+    ) -> Result<Vec<C::Entry>, StorageError<C>> {
+        self.get_log_reader().await.get_log_entries(range).await
+    }
+
+    /// Proxy method to invoke [`RaftLogReader::try_get_log_entries`].
+    async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + OptionalSend>(
+        &mut self,
+        range: RB,
+    ) -> Result<Vec<C::Entry>, StorageError<C>> {
+        self.get_log_reader().await.try_get_log_entries(range).await
+    }
+
+    /// Proxy method to invoke [`RaftLogReader::read_vote`].
+    async fn read_vote(&mut self) -> Result<Option<Vote<C::NodeId>>, StorageError<C>> {
+        self.get_log_reader().await.read_vote().await
+    }
+
+    /// Proxy method to invoke [`RaftLogReader::limited_get_log_entries`].
+    async fn limited_get_log_entries(&mut self, start: u64, end: u64) -> Result<Vec<C::Entry>, StorageError<C>> {
+        self.get_log_reader().await.limited_get_log_entries(start, end).await
+    }
+}
+
+impl<C, S> ReaderExt<C> for S
+where
+    C: RaftTypeConfig,
+    S: RaftLogStorage<C>,
+{
 }
 
 /// Test suite to ensure a `RaftStore` impl works as expected.
