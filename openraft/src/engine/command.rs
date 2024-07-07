@@ -1,6 +1,7 @@
+use std::fmt;
 use std::fmt::Debug;
 
-use crate::async_runtime::AsyncOneshotSendExt;
+use crate::async_runtime::OneshotSender;
 use crate::core::sm;
 use crate::engine::CommandKind;
 use crate::error::Infallible;
@@ -244,7 +245,6 @@ where C: RaftTypeConfig
     }
 }
 
-#[derive(Debug)]
 pub(crate) struct ValueSender<C, T>
 where
     T: Debug + PartialEq + Eq + OptionalSend,
@@ -252,6 +252,16 @@ where
 {
     value: T,
     tx: OneshotSenderOf<C, T>,
+}
+
+impl<C, T> Debug for ValueSender<C, T>
+where
+    T: Debug + PartialEq + Eq + OptionalSend,
+    C: RaftTypeConfig,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ValueSender").field("value", &self.value).finish()
+    }
 }
 
 impl<C, T> PartialEq for ValueSender<C, T>

@@ -4,7 +4,7 @@ use std::io;
 
 use tokio::sync::oneshot;
 
-use crate::async_runtime::AsyncOneshotSendExt;
+use crate::async_runtime::OneshotSender;
 use crate::raft_state::io_state::log_io_id::LogIOId;
 use crate::type_config::alias::OneshotSenderOf;
 use crate::LogId;

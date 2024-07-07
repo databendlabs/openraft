@@ -1,6 +1,6 @@
 use tokio::sync::mpsc;
 
-use crate::async_runtime::AsyncOneshotSendExt;
+use crate::async_runtime::OneshotSender;
 use crate::core::notify::Notify;
 use crate::core::raft_msg::ResultSender;
 use crate::core::sm::handle::Handle;
