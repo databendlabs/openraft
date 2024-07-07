@@ -3,11 +3,11 @@ use std::fmt::Debug;
 use std::future::Future;
 use std::sync::Arc;
 
-use tokio::sync::mpsc;
 use tokio::sync::watch;
 use tokio::sync::Mutex;
 use tracing::Level;
 
+use crate::async_runtime::MpscUnboundedSender;
 use crate::config::RuntimeConfig;
 use crate::core::raft_msg::external_command::ExternalCommand;
 use crate::core::raft_msg::RaftMsg;
@@ -17,6 +17,7 @@ use crate::error::RaftError;
 use crate::metrics::RaftDataMetrics;
 use crate::metrics::RaftServerMetrics;
 use crate::raft::core_state::CoreState;
+use crate::type_config::alias::MpscUnboundedSenderOf;
 use crate::type_config::alias::OneshotReceiverOf;
 use crate::type_config::alias::OneshotSenderOf;
 use crate::type_config::AsyncRuntime;
@@ -34,7 +35,7 @@ where C: RaftTypeConfig
     pub(in crate::raft) config: Arc<Config>,
     pub(in crate::raft) runtime_config: Arc<RuntimeConfig>,
     pub(in crate::raft) tick_handle: TickHandle<C>,
-    pub(in crate::raft) tx_api: mpsc::UnboundedSender<RaftMsg<C>>,
+    pub(in crate::raft) tx_api: MpscUnboundedSenderOf<C, RaftMsg<C>>,
     pub(in crate::raft) rx_metrics: watch::Receiver<RaftMetrics<C>>,
     pub(in crate::raft) rx_data_metrics: watch::Receiver<RaftDataMetrics<C>>,
     pub(in crate::raft) rx_server_metrics: watch::Receiver<RaftServerMetrics<C>>,

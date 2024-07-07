@@ -3,9 +3,13 @@ use std::time::Duration;
 
 use openraft_macros::since;
 
+use crate::async_runtime::MpscUnbounded;
 use crate::type_config::alias::AsyncRuntimeOf;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::JoinHandleOf;
+use crate::type_config::alias::MpscUnboundedOf;
+use crate::type_config::alias::MpscUnboundedReceiverOf;
+use crate::type_config::alias::MpscUnboundedSenderOf;
 use crate::type_config::alias::OneshotReceiverOf;
 use crate::type_config::alias::OneshotSenderOf;
 use crate::type_config::alias::SleepOf;
@@ -57,6 +61,16 @@ pub trait TypeConfigExt: RaftTypeConfig {
     fn oneshot<T>() -> (OneshotSenderOf<Self, T>, OneshotReceiverOf<Self, T>)
     where T: OptionalSend {
         AsyncRuntimeOf::<Self>::oneshot()
+    }
+
+    /// Creates an unbounded mpsc channel for communicating between asynchronous
+    /// tasks without backpressure.
+    ///
+    /// This is just a wrapper of
+    /// [`AsyncRuntime::MpscUnbounded::channel()`](`crate::async_runtime::MpscUnbounded::channel`).
+    fn mpsc_unbounded<T>() -> (MpscUnboundedSenderOf<Self, T>, MpscUnboundedReceiverOf<Self, T>)
+    where T: OptionalSend {
+        MpscUnboundedOf::<Self>::channel()
     }
 
     // Task methods

@@ -1,9 +1,12 @@
 //! State machine control handle
 
-use tokio::sync::mpsc;
-
+use crate::async_runtime::MpscUnboundedSender;
+use crate::async_runtime::MpscUnboundedWeakSender;
+use crate::async_runtime::SendError;
 use crate::core::sm;
 use crate::type_config::alias::JoinHandleOf;
+use crate::type_config::alias::MpscUnboundedSenderOf;
+use crate::type_config::alias::MpscUnboundedWeakSenderOf;
 use crate::type_config::TypeConfigExt;
 use crate::RaftTypeConfig;
 use crate::Snapshot;
@@ -12,7 +15,7 @@ use crate::Snapshot;
 pub(crate) struct Handle<C>
 where C: RaftTypeConfig
 {
-    pub(in crate::core::sm) cmd_tx: mpsc::UnboundedSender<sm::Command<C>>,
+    pub(in crate::core::sm) cmd_tx: MpscUnboundedSenderOf<C, sm::Command<C>>,
 
     #[allow(dead_code)]
     pub(in crate::core::sm) join_handle: JoinHandleOf<C, ()>,
@@ -21,7 +24,7 @@ where C: RaftTypeConfig
 impl<C> Handle<C>
 where C: RaftTypeConfig
 {
-    pub(crate) fn send(&mut self, cmd: sm::Command<C>) -> Result<(), mpsc::error::SendError<sm::Command<C>>> {
+    pub(crate) fn send(&mut self, cmd: sm::Command<C>) -> Result<(), SendError<sm::Command<C>>> {
         tracing::debug!("sending command to state machine worker: {:?}", cmd);
         self.cmd_tx.send(cmd)
     }
@@ -43,7 +46,7 @@ where C: RaftTypeConfig
     /// It is weak because the [`Worker`] watches the close event of this channel for shutdown.
     ///
     /// [`Worker`]: sm::worker::Worker
-    cmd_tx: mpsc::WeakUnboundedSender<sm::Command<C>>,
+    cmd_tx: MpscUnboundedWeakSenderOf<C, sm::Command<C>>,
 }
 
 impl<C> SnapshotReader<C>

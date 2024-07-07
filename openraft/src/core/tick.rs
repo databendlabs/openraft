@@ -7,14 +7,15 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use futures::future::Either;
-use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tracing::Instrument;
 use tracing::Level;
 use tracing::Span;
 
+use crate::async_runtime::MpscUnboundedSender;
 use crate::core::notify::Notify;
 use crate::type_config::alias::JoinHandleOf;
+use crate::type_config::alias::MpscUnboundedSenderOf;
 use crate::type_config::TypeConfigExt;
 use crate::RaftTypeConfig;
 
@@ -24,7 +25,7 @@ where C: RaftTypeConfig
 {
     interval: Duration,
 
-    tx: mpsc::UnboundedSender<Notify<C>>,
+    tx: MpscUnboundedSenderOf<C, Notify<C>>,
 
     /// Emit event or not
     enabled: Arc<AtomicBool>,
@@ -53,7 +54,7 @@ where C: RaftTypeConfig
 impl<C> Tick<C>
 where C: RaftTypeConfig
 {
-    pub(crate) fn spawn(interval: Duration, tx: mpsc::UnboundedSender<Notify<C>>, enabled: bool) -> TickHandle<C> {
+    pub(crate) fn spawn(interval: Duration, tx: MpscUnboundedSenderOf<C, Notify<C>>, enabled: bool) -> TickHandle<C> {
         let enabled = Arc::new(AtomicBool::from(enabled));
         let this = Self {
             interval,
@@ -180,7 +181,7 @@ mod tests {
     #[cfg(not(feature = "singlethreaded"))]
     #[tokio::test]
     async fn test_shutdown() -> anyhow::Result<()> {
-        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let (tx, mut rx) = TickUTConfig::mpsc_unbounded();
         let th = Tick::<TickUTConfig>::spawn(Duration::from_millis(100), tx, true);
 
         TickUTConfig::sleep(Duration::from_millis(500)).await;
