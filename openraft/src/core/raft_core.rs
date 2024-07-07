@@ -20,7 +20,7 @@ use tracing::Instrument;
 use tracing::Level;
 use tracing::Span;
 
-use crate::async_runtime::AsyncOneshotSendExt;
+use crate::async_runtime::OneshotSender;
 use crate::config::Config;
 use crate::config::RuntimeConfig;
 use crate::core::balancer::Balancer;

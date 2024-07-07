@@ -47,7 +47,7 @@ use tracing::trace_span;
 use tracing::Instrument;
 use tracing::Level;
 
-use crate::async_runtime::AsyncOneshotSendExt;
+use crate::async_runtime::OneshotSender;
 use crate::config::Config;
 use crate::config::RuntimeConfig;
 use crate::core::command_state::CommandState;

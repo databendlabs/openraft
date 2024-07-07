@@ -3,7 +3,6 @@ use std::time::Duration;
 use tokio::time::sleep;
 use tokio::time::Instant;
 
-use crate::async_runtime::AsyncOneshotSendExt;
 use crate::timer::timeout::RaftTimer;
 use crate::timer::Timeout;
 use crate::AsyncRuntime;

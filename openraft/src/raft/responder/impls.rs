@@ -1,4 +1,4 @@
-use crate::async_runtime::AsyncOneshotSendExt;
+use crate::async_runtime::OneshotSender;
 use crate::raft::message::ClientWriteResult;
 use crate::raft::responder::Responder;
 use crate::type_config::alias::OneshotReceiverOf;
