@@ -19,11 +19,13 @@ use request::Replicate;
 use response::ReplicationResult;
 pub(crate) use response::Response;
 use tokio::select;
-use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio::sync::Mutex;
 use tracing_futures::Instrument;
 
+use crate::async_runtime::MpscUnboundedReceiver;
+use crate::async_runtime::MpscUnboundedSender;
+use crate::async_runtime::MpscUnboundedWeakSender;
 use crate::config::Config;
 use crate::core::notify::Notify;
 use crate::core::sm::handle::SnapshotReader;
@@ -51,6 +53,9 @@ use crate::storage::Snapshot;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::JoinHandleOf;
 use crate::type_config::alias::LogIdOf;
+use crate::type_config::alias::MpscUnboundedReceiverOf;
+use crate::type_config::alias::MpscUnboundedSenderOf;
+use crate::type_config::alias::MpscUnboundedWeakSenderOf;
 use crate::type_config::TypeConfigExt;
 use crate::LogId;
 use crate::RaftLogId;
@@ -68,7 +73,7 @@ where C: RaftTypeConfig
     pub(crate) join_handle: JoinHandleOf<C, Result<(), ReplicationClosed>>,
 
     /// The channel used for communicating with the replication task.
-    pub(crate) tx_repl: mpsc::UnboundedSender<Replicate<C>>,
+    pub(crate) tx_repl: MpscUnboundedSenderOf<C, Replicate<C>>,
 }
 
 /// A task responsible for sending replication events to a target follower in the Raft cluster.
@@ -90,17 +95,17 @@ where
 
     /// A channel for sending events to the RaftCore.
     #[allow(clippy::type_complexity)]
-    tx_raft_core: mpsc::UnboundedSender<Notify<C>>,
+    tx_raft_core: MpscUnboundedSenderOf<C, Notify<C>>,
 
     /// A channel for receiving events from the RaftCore and snapshot transmitting task.
-    rx_event: mpsc::UnboundedReceiver<Replicate<C>>,
+    rx_event: MpscUnboundedReceiverOf<C, Replicate<C>>,
 
     /// A weak reference to the Sender for the separate sending-snapshot task to send callback.
     ///
     /// Because 1) ReplicationCore replies on the `close` event to shutdown.
     /// 2) ReplicationCore holds this tx; It is made a weak so that when
     /// RaftCore drops the only non-weak tx, the Receiver `rx_repl` will be closed.
-    weak_tx_event: mpsc::WeakUnboundedSender<Replicate<C>>,
+    weak_tx_event: MpscUnboundedWeakSenderOf<C, Replicate<C>>,
 
     /// The `RaftNetwork` interface for replicating logs and heartbeat.
     network: N::Network,
@@ -164,7 +169,7 @@ where
         snapshot_network: N::Network,
         log_reader: LS::LogReader,
         snapshot_reader: SnapshotReader<C>,
-        tx_raft_core: mpsc::UnboundedSender<Notify<C>>,
+        tx_raft_core: MpscUnboundedSenderOf<C, Notify<C>>,
         span: tracing::Span,
     ) -> ReplicationHandle<C> {
         tracing::debug!(
@@ -176,7 +181,7 @@ where
         );
 
         // other component to ReplicationStream
-        let (tx_event, rx_event) = mpsc::unbounded_channel();
+        let (tx_event, rx_event) = C::mpsc_unbounded();
 
         let this = Self {
             target,
@@ -757,7 +762,7 @@ where
         snapshot: Snapshot<C>,
         option: RPCOption,
         cancel: oneshot::Receiver<()>,
-        weak_tx: mpsc::WeakUnboundedSender<Replicate<C>>,
+        weak_tx: MpscUnboundedWeakSenderOf<C, Replicate<C>>,
     ) {
         let meta = snapshot.meta.clone();
 

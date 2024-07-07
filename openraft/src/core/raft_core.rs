@@ -14,13 +14,14 @@ use futures::StreamExt;
 use futures::TryFutureExt;
 use maplit::btreeset;
 use tokio::select;
-use tokio::sync::mpsc;
 use tokio::sync::watch;
 use tracing::Instrument;
 use tracing::Level;
 use tracing::Span;
 
+use crate::async_runtime::MpscUnboundedSender;
 use crate::async_runtime::OneshotSender;
+use crate::async_runtime::TryRecvError;
 use crate::config::Config;
 use crate::config::RuntimeConfig;
 use crate::core::balancer::Balancer;
@@ -86,8 +87,11 @@ use crate::runtime::RaftRuntime;
 use crate::storage::LogFlushed;
 use crate::storage::RaftLogStorage;
 use crate::type_config::alias::InstantOf;
+use crate::type_config::alias::MpscUnboundedReceiverOf;
+use crate::type_config::alias::MpscUnboundedSenderOf;
 use crate::type_config::alias::OneshotReceiverOf;
 use crate::type_config::alias::ResponderOf;
+use crate::type_config::async_runtime::MpscUnboundedReceiver;
 use crate::type_config::TypeConfigExt;
 use crate::ChangeMembers;
 use crate::Instant;
@@ -164,15 +168,15 @@ where
     pub(crate) replications: BTreeMap<C::NodeId, ReplicationHandle<C>>,
 
     #[allow(dead_code)]
-    pub(crate) tx_api: mpsc::UnboundedSender<RaftMsg<C>>,
-    pub(crate) rx_api: mpsc::UnboundedReceiver<RaftMsg<C>>,
+    pub(crate) tx_api: MpscUnboundedSenderOf<C, RaftMsg<C>>,
+    pub(crate) rx_api: MpscUnboundedReceiverOf<C, RaftMsg<C>>,
 
     /// A Sender to send callback by other components to [`RaftCore`], when an action is finished,
     /// such as flushing log to disk, or applying log entries to state machine.
-    pub(crate) tx_notify: mpsc::UnboundedSender<Notify<C>>,
+    pub(crate) tx_notify: MpscUnboundedSenderOf<C, Notify<C>>,
 
     /// A Receiver to receive callback from other components.
-    pub(crate) rx_notify: mpsc::UnboundedReceiver<Notify<C>>,
+    pub(crate) rx_notify: MpscUnboundedReceiverOf<C, Notify<C>>,
 
     pub(crate) tx_metrics: watch::Sender<RaftMetrics<C>>,
     pub(crate) tx_data_metrics: watch::Sender<RaftDataMetrics<C>>,
@@ -931,11 +935,11 @@ where
             let msg = match res {
                 Ok(msg) => msg,
                 Err(e) => match e {
-                    mpsc::error::TryRecvError::Empty => {
+                    TryRecvError::Empty => {
                         tracing::debug!("all RaftMsg are processed, wait for more");
                         return Ok(i + 1);
                     }
-                    mpsc::error::TryRecvError::Disconnected => {
+                    TryRecvError::Disconnected => {
                         tracing::debug!("rx_api is disconnected, quit");
                         return Err(Fatal::Stopped);
                     }
@@ -966,11 +970,11 @@ where
             let notify = match res {
                 Ok(msg) => msg,
                 Err(e) => match e {
-                    mpsc::error::TryRecvError::Empty => {
+                    TryRecvError::Empty => {
                         tracing::debug!("all Notify are processed, wait for more");
                         return Ok(i + 1);
                     }
-                    mpsc::error::TryRecvError::Disconnected => {
+                    TryRecvError::Disconnected => {
                         tracing::error!("rx_notify is disconnected, quit");
                         return Err(Fatal::Stopped);
                     }

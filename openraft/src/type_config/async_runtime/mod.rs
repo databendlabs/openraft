@@ -8,6 +8,7 @@ pub(crate) mod impls {
 
     pub use tokio_runtime::TokioRuntime;
 }
+pub mod mpsc_unbounded;
 mod oneshot;
 
 use std::fmt::Debug;
@@ -15,6 +16,12 @@ use std::fmt::Display;
 use std::future::Future;
 use std::time::Duration;
 
+pub use mpsc_unbounded::MpscUnbounded;
+pub use mpsc_unbounded::MpscUnboundedReceiver;
+pub use mpsc_unbounded::MpscUnboundedSender;
+pub use mpsc_unbounded::MpscUnboundedWeakSender;
+pub use mpsc_unbounded::SendError;
+pub use mpsc_unbounded::TryRecvError;
 pub use oneshot::OneshotSender;
 
 use crate::Instant;
@@ -107,4 +114,6 @@ pub trait AsyncRuntime: Debug + Default + PartialEq + Eq + OptionalSend + Option
     /// Each handle can be used on separate tasks.
     fn oneshot<T>() -> (Self::OneshotSender<T>, Self::OneshotReceiver<T>)
     where T: OptionalSend;
+
+    type MpscUnbounded: MpscUnbounded;
 }

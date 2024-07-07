@@ -9,6 +9,7 @@ pub(crate) mod util;
 use std::fmt::Debug;
 
 pub use async_runtime::AsyncRuntime;
+pub use async_runtime::MpscUnbounded;
 pub use async_runtime::OneshotSender;
 pub use util::TypeConfigExt;
 
@@ -93,6 +94,7 @@ pub trait RaftTypeConfig:
 ///
 /// [`type-alias`]: crate::docs::feature_flags#feature-flag-type-alias
 pub mod alias {
+    use crate::async_runtime::MpscUnbounded;
     use crate::raft::responder::Responder;
     use crate::type_config::AsyncRuntime;
     use crate::RaftTypeConfig;
@@ -118,6 +120,13 @@ pub mod alias {
     pub type OneshotSenderOf<C, T> = <Rt<C> as AsyncRuntime>::OneshotSender<T>;
     pub type OneshotReceiverErrorOf<C> = <Rt<C> as AsyncRuntime>::OneshotReceiverError;
     pub type OneshotReceiverOf<C, T> = <Rt<C> as AsyncRuntime>::OneshotReceiver<T>;
+    pub type MpscUnboundedOf<C> = <Rt<C> as AsyncRuntime>::MpscUnbounded;
+
+    type Mpsc<C> = MpscUnboundedOf<C>;
+
+    pub type MpscUnboundedSenderOf<C, T> = <Mpsc<C> as MpscUnbounded>::Sender<T>;
+    pub type MpscUnboundedReceiverOf<C, T> = <Mpsc<C> as MpscUnbounded>::Receiver<T>;
+    pub type MpscUnboundedWeakSenderOf<C, T> = <Mpsc<C> as MpscUnbounded>::WeakSender<T>;
 
     // Usually used types
     pub type LogIdOf<C> = crate::LogId<NodeIdOf<C>>;
