@@ -10,7 +10,7 @@ use crate::type_config::alias::OneshotReceiverOf;
 use crate::type_config::alias::OneshotSenderOf;
 use crate::type_config::alias::SleepOf;
 use crate::type_config::alias::TimeoutOf;
-use crate::AsyncRuntime;
+use crate::type_config::AsyncRuntime;
 use crate::Instant;
 use crate::OptionalSend;
 use crate::RaftTypeConfig;

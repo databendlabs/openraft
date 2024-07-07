@@ -3,10 +3,10 @@ use std::time::Duration;
 use tokio::time::sleep;
 use tokio::time::Instant;
 
+use crate::impls::TokioRuntime;
 use crate::timer::timeout::RaftTimer;
 use crate::timer::Timeout;
-use crate::AsyncRuntime;
-use crate::TokioRuntime;
+use crate::type_config::AsyncRuntime;
 
 #[cfg(not(feature = "singlethreaded"))]
 #[async_entry::test(worker_threads = 3)]

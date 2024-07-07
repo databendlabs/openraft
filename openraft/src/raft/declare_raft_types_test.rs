@@ -3,7 +3,7 @@
 use std::io::Cursor;
 
 use crate::declare_raft_types;
-use crate::TokioRuntime;
+use crate::impls::TokioRuntime;
 
 declare_raft_types!(
     All:

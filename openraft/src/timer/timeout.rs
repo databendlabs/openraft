@@ -11,7 +11,7 @@ use tokio::sync::oneshot::Sender;
 use tracing::trace_span;
 use tracing::Instrument;
 
-use crate::AsyncRuntime;
+use crate::type_config::AsyncRuntime;
 use crate::Instant;
 use crate::OptionalSend;
 

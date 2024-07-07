@@ -19,7 +19,7 @@ use crate::metrics::RaftServerMetrics;
 use crate::raft::core_state::CoreState;
 use crate::type_config::alias::OneshotReceiverOf;
 use crate::type_config::alias::OneshotSenderOf;
-use crate::AsyncRuntime;
+use crate::type_config::AsyncRuntime;
 use crate::Config;
 use crate::OptionalSend;
 use crate::RaftMetrics;
