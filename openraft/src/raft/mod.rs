@@ -40,13 +40,13 @@ pub use message::InstallSnapshotResponse;
 pub use message::SnapshotResponse;
 pub use message::VoteRequest;
 pub use message::VoteResponse;
-use tokio::sync::mpsc;
 use tokio::sync::watch;
 use tokio::sync::Mutex;
 use tracing::trace_span;
 use tracing::Instrument;
 use tracing::Level;
 
+use crate::async_runtime::MpscUnboundedSender;
 use crate::async_runtime::OneshotSender;
 use crate::config::Config;
 use crate::config::RuntimeConfig;
@@ -239,8 +239,8 @@ where C: RaftTypeConfig
         LS: RaftLogStorage<C>,
         SM: RaftStateMachine<C>,
     {
-        let (tx_api, rx_api) = mpsc::unbounded_channel();
-        let (tx_notify, rx_notify) = mpsc::unbounded_channel();
+        let (tx_api, rx_api) = C::mpsc_unbounded();
+        let (tx_notify, rx_notify) = C::mpsc_unbounded();
         let (tx_metrics, rx_metrics) = watch::channel(RaftMetrics::new_initial(id));
         let (tx_data_metrics, rx_data_metrics) = watch::channel(RaftDataMetrics::default());
         let (tx_server_metrics, rx_server_metrics) = watch::channel(RaftServerMetrics::default());

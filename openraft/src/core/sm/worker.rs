@@ -1,5 +1,5 @@
-use tokio::sync::mpsc;
-
+use crate::async_runtime::MpscUnboundedReceiver;
+use crate::async_runtime::MpscUnboundedSender;
 use crate::async_runtime::OneshotSender;
 use crate::core::notify::Notify;
 use crate::core::raft_msg::ResultSender;
@@ -18,6 +18,8 @@ use crate::storage::RaftLogReaderExt;
 use crate::storage::RaftStateMachine;
 use crate::type_config::alias::JoinHandleOf;
 use crate::type_config::alias::LogIdOf;
+use crate::type_config::alias::MpscUnboundedReceiverOf;
+use crate::type_config::alias::MpscUnboundedSenderOf;
 use crate::type_config::TypeConfigExt;
 use crate::RaftLogId;
 use crate::RaftLogReader;
@@ -41,10 +43,10 @@ where
     log_reader: LR,
 
     /// Raed command from RaftCore to execute.
-    cmd_rx: mpsc::UnboundedReceiver<Command<C>>,
+    cmd_rx: MpscUnboundedReceiverOf<C, Command<C>>,
 
     /// Send back the result of the command to RaftCore.
-    resp_tx: mpsc::UnboundedSender<Notify<C>>,
+    resp_tx: MpscUnboundedSenderOf<C, Notify<C>>,
 }
 
 impl<C, SM, LR> Worker<C, SM, LR>
@@ -54,8 +56,8 @@ where
     LR: RaftLogReader<C>,
 {
     /// Spawn a new state machine worker, return a controlling handle.
-    pub(crate) fn spawn(state_machine: SM, log_reader: LR, resp_tx: mpsc::UnboundedSender<Notify<C>>) -> Handle<C> {
-        let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
+    pub(crate) fn spawn(state_machine: SM, log_reader: LR, resp_tx: MpscUnboundedSenderOf<C, Notify<C>>) -> Handle<C> {
+        let (cmd_tx, cmd_rx) = C::mpsc_unbounded();
 
         let worker = Worker {
             state_machine,
@@ -193,7 +195,7 @@ where
     ///   as applying a log entry,
     /// - or it must be able to acquire a lock that prevents any write operations.
     #[tracing::instrument(level = "info", skip_all)]
-    async fn build_snapshot(&mut self, seq: CommandSeq, resp_tx: mpsc::UnboundedSender<Notify<C>>) {
+    async fn build_snapshot(&mut self, seq: CommandSeq, resp_tx: MpscUnboundedSenderOf<C, Notify<C>>) {
         // TODO: need to be abortable?
         // use futures::future::abortable;
         // let (fu, abort_handle) = abortable(async move { builder.build_snapshot().await });
