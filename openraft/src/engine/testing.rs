@@ -1,8 +1,8 @@
 use std::io::Cursor;
 
+use crate::impls::TokioRuntime;
 use crate::Node;
 use crate::RaftTypeConfig;
-use crate::TokioRuntime;
 
 /// Trivial Raft type config for Engine related unit tests,
 /// with an optional custom node type `N` for Node type.

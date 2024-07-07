@@ -3,10 +3,10 @@ use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
+use openraft::impls::TokioRuntime;
+use openraft::type_config::AsyncRuntime;
 use openraft::type_config::TypeConfigExt;
-use openraft::AsyncRuntime;
 use openraft::Config;
-use openraft::TokioRuntime;
 use openraft_memstore::TypeConfig;
 
 use crate::fixtures::init_default_ut_tracing;

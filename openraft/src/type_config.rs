@@ -3,10 +3,13 @@
 //! [`NodeId`]: `RaftTypeConfig::NodeId`
 //! [`Entry`]: `RaftTypeConfig::Entry`
 
+pub mod async_runtime;
 pub(crate) mod util;
 
 use std::fmt::Debug;
 
+pub use async_runtime::AsyncRuntime;
+pub use async_runtime::OneshotSender;
 pub use util::TypeConfigExt;
 
 use crate::entry::FromAppData;
@@ -14,7 +17,6 @@ use crate::entry::RaftEntry;
 use crate::raft::responder::Responder;
 use crate::AppData;
 use crate::AppDataResponse;
-use crate::AsyncRuntime;
 use crate::Node;
 use crate::NodeId;
 use crate::OptionalSend;
@@ -92,7 +94,7 @@ pub trait RaftTypeConfig:
 /// [`type-alias`]: crate::docs::feature_flags#feature-flag-type-alias
 pub mod alias {
     use crate::raft::responder::Responder;
-    use crate::AsyncRuntime;
+    use crate::type_config::AsyncRuntime;
     use crate::RaftTypeConfig;
 
     pub type DOf<C> = <C as RaftTypeConfig>::D;

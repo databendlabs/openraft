@@ -156,9 +156,9 @@ mod tests {
     use tokio::time::Duration;
 
     use crate::core::Tick;
+    use crate::impls::TokioRuntime;
     use crate::type_config::TypeConfigExt;
     use crate::RaftTypeConfig;
-    use crate::TokioRuntime;
 
     #[derive(Debug, Clone, Copy, Default, Eq, PartialEq, Ord, PartialOrd)]
     #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]

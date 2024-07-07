@@ -2,15 +2,24 @@
 //!
 //! `async` runtime is an abstraction over different asynchronous runtimes, such as `tokio`,
 //! `async-std`, etc.
+
+pub(crate) mod impls {
+    mod tokio_runtime;
+
+    pub use tokio_runtime::TokioRuntime;
+}
+mod oneshot;
+
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::future::Future;
 use std::time::Duration;
 
+pub use oneshot::OneshotSender;
+
 use crate::Instant;
 use crate::OptionalSend;
 use crate::OptionalSync;
-use crate::TokioInstant;
 
 /// A trait defining interfaces with an asynchronous runtime.
 ///
@@ -98,93 +107,4 @@ pub trait AsyncRuntime: Debug + Default + PartialEq + Eq + OptionalSend + Option
     /// Each handle can be used on separate tasks.
     fn oneshot<T>() -> (Self::OneshotSender<T>, Self::OneshotReceiver<T>)
     where T: OptionalSend;
-}
-
-/// `Tokio` is the default asynchronous executor.
-#[derive(Debug, Default, PartialEq, Eq)]
-pub struct TokioRuntime;
-
-impl AsyncRuntime for TokioRuntime {
-    type JoinError = tokio::task::JoinError;
-    type JoinHandle<T: OptionalSend + 'static> = tokio::task::JoinHandle<T>;
-    type Sleep = tokio::time::Sleep;
-    type Instant = TokioInstant;
-    type TimeoutError = tokio::time::error::Elapsed;
-    type Timeout<R, T: Future<Output = R> + OptionalSend> = tokio::time::Timeout<T>;
-    type ThreadLocalRng = rand::rngs::ThreadRng;
-    type OneshotSender<T: OptionalSend> = tokio::sync::oneshot::Sender<T>;
-    type OneshotReceiver<T: OptionalSend> = tokio::sync::oneshot::Receiver<T>;
-    type OneshotReceiverError = tokio::sync::oneshot::error::RecvError;
-
-    #[inline]
-    fn spawn<T>(future: T) -> Self::JoinHandle<T::Output>
-    where
-        T: Future + OptionalSend + 'static,
-        T::Output: OptionalSend + 'static,
-    {
-        #[cfg(feature = "singlethreaded")]
-        {
-            tokio::task::spawn_local(future)
-        }
-        #[cfg(not(feature = "singlethreaded"))]
-        {
-            tokio::task::spawn(future)
-        }
-    }
-
-    #[inline]
-    fn sleep(duration: Duration) -> Self::Sleep {
-        tokio::time::sleep(duration)
-    }
-
-    #[inline]
-    fn sleep_until(deadline: Self::Instant) -> Self::Sleep {
-        tokio::time::sleep_until(deadline)
-    }
-
-    #[inline]
-    fn timeout<R, F: Future<Output = R> + OptionalSend>(duration: Duration, future: F) -> Self::Timeout<R, F> {
-        tokio::time::timeout(duration, future)
-    }
-
-    #[inline]
-    fn timeout_at<R, F: Future<Output = R> + OptionalSend>(deadline: Self::Instant, future: F) -> Self::Timeout<R, F> {
-        tokio::time::timeout_at(deadline, future)
-    }
-
-    #[inline]
-    fn is_panic(join_error: &Self::JoinError) -> bool {
-        join_error.is_panic()
-    }
-
-    #[inline]
-    fn thread_rng() -> Self::ThreadLocalRng {
-        rand::thread_rng()
-    }
-
-    #[inline]
-    fn oneshot<T>() -> (Self::OneshotSender<T>, Self::OneshotReceiver<T>)
-    where T: OptionalSend {
-        let (tx, rx) = tokio::sync::oneshot::channel();
-        (tx, rx)
-    }
-}
-
-pub trait OneshotSender<T> {
-    /// Attempts to send a value on this channel, returning it back if it could
-    /// not be sent.
-    ///
-    /// This method consumes `self` as only one value may ever be sent on a `oneshot`
-    /// channel. It is not marked async because sending a message to an `oneshot`
-    /// channel never requires any form of waiting.  Because of this, the `send`
-    /// method can be used in both synchronous and asynchronous code without
-    /// problems.
-    fn send(self, t: T) -> Result<(), T>;
-}
-
-impl<T> OneshotSender<T> for tokio::sync::oneshot::Sender<T> {
-    #[inline]
-    fn send(self, t: T) -> Result<(), T> {
-        self.send(t)
-    }
 }

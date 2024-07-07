@@ -48,7 +48,6 @@ pub(crate) mod raft_state;
 pub(crate) mod timer;
 pub(crate) mod utime;
 
-pub mod async_runtime;
 #[cfg(feature = "compat")]
 pub mod compat;
 pub mod docs;
@@ -70,9 +69,10 @@ mod feature_serde_test;
 pub use anyerror;
 pub use anyerror::AnyError;
 pub use openraft_macros::add_async_trait;
+pub use type_config::async_runtime;
+pub use type_config::async_runtime::impls::TokioRuntime;
+pub use type_config::AsyncRuntime;
 
-pub use crate::async_runtime::AsyncRuntime;
-pub use crate::async_runtime::TokioRuntime;
 pub use crate::change_members::ChangeMembers;
 pub use crate::config::Config;
 pub use crate::config::ConfigError;
