@@ -11,7 +11,7 @@ and an in-process network that uses function calls to simulate RPC.
 
 | clients | put/s        | ns/op      |
 | --:     | --:          | --:        |
-| 256     | **1014,000** |      985   |
+| 256     | **1,014,000** |      985   |
 |  64     |  **730,000** |    1,369   |
 |   1     |     70,000   | **14,273** |
 
