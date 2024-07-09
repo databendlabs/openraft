@@ -3,7 +3,6 @@ use std::time::Duration;
 
 use maplit::btreemap;
 use maplit::btreeset;
-use tokio::sync::watch;
 use tokio::time::sleep;
 
 use crate::core::ServerState;
@@ -13,6 +12,8 @@ use crate::metrics::Wait;
 use crate::metrics::WaitError;
 use crate::testing::log_id;
 use crate::type_config::alias::NodeIdOf;
+use crate::type_config::alias::WatchSenderOf;
+use crate::type_config::TypeConfigExt;
 use crate::vote::CommittedLeaderId;
 use crate::LogId;
 use crate::Membership;
@@ -242,7 +243,7 @@ async fn test_wait_purged() -> anyhow::Result<()> {
     Ok(())
 }
 
-pub(crate) type InitResult<C> = (RaftMetrics<C>, Wait<C>, watch::Sender<RaftMetrics<C>>);
+pub(crate) type InitResult<C> = (RaftMetrics<C>, Wait<C>, WatchSenderOf<C, RaftMetrics<C>>);
 
 /// Build a initial state for testing of Wait:
 /// Returns init metrics, Wait, and the tx to send an updated metrics.
@@ -265,7 +266,7 @@ where C: RaftTypeConfig {
         snapshot: None,
         replication: None,
     };
-    let (tx, rx) = watch::channel(init.clone());
+    let (tx, rx) = C::watch_channel(init.clone());
     let w = Wait {
         timeout: Duration::from_millis(100),
         rx,

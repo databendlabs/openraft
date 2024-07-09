@@ -14,11 +14,11 @@ use futures::StreamExt;
 use futures::TryFutureExt;
 use maplit::btreeset;
 use tokio::select;
-use tokio::sync::watch;
 use tracing::Instrument;
 use tracing::Level;
 use tracing::Span;
 
+use crate::async_runtime::watch::WatchSender;
 use crate::async_runtime::MpscUnboundedSender;
 use crate::async_runtime::OneshotSender;
 use crate::async_runtime::TryRecvError;
@@ -92,6 +92,7 @@ use crate::type_config::alias::MpscUnboundedReceiverOf;
 use crate::type_config::alias::MpscUnboundedSenderOf;
 use crate::type_config::alias::OneshotReceiverOf;
 use crate::type_config::alias::ResponderOf;
+use crate::type_config::alias::WatchSenderOf;
 use crate::type_config::async_runtime::MpscUnboundedReceiver;
 use crate::type_config::TypeConfigExt;
 use crate::ChangeMembers;
@@ -179,9 +180,9 @@ where
     /// A Receiver to receive callback from other components.
     pub(crate) rx_notify: MpscUnboundedReceiverOf<C, Notify<C>>,
 
-    pub(crate) tx_metrics: watch::Sender<RaftMetrics<C>>,
-    pub(crate) tx_data_metrics: watch::Sender<RaftDataMetrics<C>>,
-    pub(crate) tx_server_metrics: watch::Sender<RaftServerMetrics<C>>,
+    pub(crate) tx_metrics: WatchSenderOf<C, RaftMetrics<C>>,
+    pub(crate) tx_data_metrics: WatchSenderOf<C, RaftDataMetrics<C>>,
+    pub(crate) tx_server_metrics: WatchSenderOf<C, RaftServerMetrics<C>>,
 
     pub(crate) command_state: CommandState,
 
@@ -213,7 +214,7 @@ where
 
         tracing::debug!("update the metrics for shutdown");
         {
-            let mut curr = self.tx_metrics.borrow().clone();
+            let mut curr = self.tx_metrics.borrow_watched().clone();
             curr.state = ServerState::Shutdown;
             curr.running_state = Err(err.clone());
 

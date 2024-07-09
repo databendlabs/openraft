@@ -40,12 +40,12 @@ pub use message::InstallSnapshotResponse;
 pub use message::SnapshotResponse;
 pub use message::VoteRequest;
 pub use message::VoteResponse;
-use tokio::sync::watch;
 use tokio::sync::Mutex;
 use tracing::trace_span;
 use tracing::Instrument;
 use tracing::Level;
 
+use crate::async_runtime::watch::WatchReceiver;
 use crate::async_runtime::MpscUnboundedSender;
 use crate::async_runtime::OneshotSender;
 use crate::config::Config;
@@ -81,6 +81,7 @@ use crate::type_config::alias::JoinErrorOf;
 use crate::type_config::alias::ResponderOf;
 use crate::type_config::alias::ResponderReceiverOf;
 use crate::type_config::alias::SnapshotDataOf;
+use crate::type_config::alias::WatchReceiverOf;
 use crate::type_config::TypeConfigExt;
 use crate::LogId;
 use crate::LogIdOptionExt;
@@ -241,9 +242,9 @@ where C: RaftTypeConfig
     {
         let (tx_api, rx_api) = C::mpsc_unbounded();
         let (tx_notify, rx_notify) = C::mpsc_unbounded();
-        let (tx_metrics, rx_metrics) = watch::channel(RaftMetrics::new_initial(id));
-        let (tx_data_metrics, rx_data_metrics) = watch::channel(RaftDataMetrics::default());
-        let (tx_server_metrics, rx_server_metrics) = watch::channel(RaftServerMetrics::default());
+        let (tx_metrics, rx_metrics) = C::watch_channel(RaftMetrics::new_initial(id));
+        let (tx_data_metrics, rx_data_metrics) = C::watch_channel(RaftDataMetrics::default());
+        let (tx_server_metrics, rx_server_metrics) = C::watch_channel(RaftServerMetrics::default());
         let (tx_shutdown, rx_shutdown) = C::oneshot();
 
         let tick_handle = Tick::spawn(
@@ -478,7 +479,7 @@ where C: RaftTypeConfig
     /// reads. This method is perfect for making decisions on where to route client requests.
     #[tracing::instrument(level = "debug", skip(self))]
     pub async fn current_leader(&self) -> Option<C::NodeId> {
-        self.metrics().borrow().current_leader
+        self.metrics().borrow_watched().current_leader
     }
 
     /// Check to ensure this node is still the cluster leader, in order to guard against stale reads
@@ -777,17 +778,17 @@ where C: RaftTypeConfig
     }
 
     /// Get a handle to the metrics channel.
-    pub fn metrics(&self) -> watch::Receiver<RaftMetrics<C>> {
+    pub fn metrics(&self) -> WatchReceiverOf<C, RaftMetrics<C>> {
         self.inner.rx_metrics.clone()
     }
 
     /// Get a handle to the data metrics channel.
-    pub fn data_metrics(&self) -> watch::Receiver<RaftDataMetrics<C>> {
+    pub fn data_metrics(&self) -> WatchReceiverOf<C, RaftDataMetrics<C>> {
         self.inner.rx_data_metrics.clone()
     }
 
     /// Get a handle to the server metrics channel.
-    pub fn server_metrics(&self) -> watch::Receiver<RaftServerMetrics<C>> {
+    pub fn server_metrics(&self) -> WatchReceiverOf<C, RaftServerMetrics<C>> {
         self.inner.rx_server_metrics.clone()
     }
 

@@ -3,7 +3,6 @@ use std::fmt::Debug;
 use std::future::Future;
 use std::sync::Arc;
 
-use tokio::sync::watch;
 use tokio::sync::Mutex;
 use tracing::Level;
 
@@ -20,6 +19,7 @@ use crate::raft::core_state::CoreState;
 use crate::type_config::alias::MpscUnboundedSenderOf;
 use crate::type_config::alias::OneshotReceiverOf;
 use crate::type_config::alias::OneshotSenderOf;
+use crate::type_config::alias::WatchReceiverOf;
 use crate::type_config::AsyncRuntime;
 use crate::Config;
 use crate::OptionalSend;
@@ -36,9 +36,9 @@ where C: RaftTypeConfig
     pub(in crate::raft) runtime_config: Arc<RuntimeConfig>,
     pub(in crate::raft) tick_handle: TickHandle<C>,
     pub(in crate::raft) tx_api: MpscUnboundedSenderOf<C, RaftMsg<C>>,
-    pub(in crate::raft) rx_metrics: watch::Receiver<RaftMetrics<C>>,
-    pub(in crate::raft) rx_data_metrics: watch::Receiver<RaftDataMetrics<C>>,
-    pub(in crate::raft) rx_server_metrics: watch::Receiver<RaftServerMetrics<C>>,
+    pub(in crate::raft) rx_metrics: WatchReceiverOf<C, RaftMetrics<C>>,
+    pub(in crate::raft) rx_data_metrics: WatchReceiverOf<C, RaftDataMetrics<C>>,
+    pub(in crate::raft) rx_server_metrics: WatchReceiverOf<C, RaftServerMetrics<C>>,
 
     // TODO(xp): it does not need to be a async mutex.
     #[allow(clippy::type_complexity)]

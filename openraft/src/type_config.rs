@@ -94,6 +94,7 @@ pub trait RaftTypeConfig:
 ///
 /// [`type-alias`]: crate::docs::feature_flags#feature-flag-type-alias
 pub mod alias {
+    use crate::async_runtime::watch;
     use crate::async_runtime::MpscUnbounded;
     use crate::raft::responder::Responder;
     use crate::type_config::AsyncRuntime;
@@ -127,6 +128,10 @@ pub mod alias {
     pub type MpscUnboundedSenderOf<C, T> = <Mpsc<C> as MpscUnbounded>::Sender<T>;
     pub type MpscUnboundedReceiverOf<C, T> = <Mpsc<C> as MpscUnbounded>::Receiver<T>;
     pub type MpscUnboundedWeakSenderOf<C, T> = <Mpsc<C> as MpscUnbounded>::WeakSender<T>;
+
+    pub type WatchOf<C> = <Rt<C> as AsyncRuntime>::Watch;
+    pub type WatchSenderOf<C, T> = <WatchOf<C> as watch::Watch>::Sender<T>;
+    pub type WatchReceiverOf<C, T> = <WatchOf<C> as watch::Watch>::Receiver<T>;
 
     // Usually used types
     pub type LogIdOf<C> = crate::LogId<NodeIdOf<C>>;
