@@ -40,6 +40,7 @@ use crate::display_ext::DisplayInstantExt;
 use crate::display_ext::DisplayOption;
 use crate::display_ext::DisplayOptionExt;
 use crate::display_ext::DisplaySlice;
+use crate::engine::handler::replication_handler::SendNone;
 use crate::engine::Command;
 use crate::engine::Condition;
 use crate::engine::Engine;
@@ -922,6 +923,12 @@ where
                     balancer.increase_raft_msg();
                 }
             }
+
+            // Keep replicating to a target if the replication stream to it is idle.
+            if let Ok(mut lh) = self.engine.leader_handler() {
+                lh.replication_handler().initiate_replication(SendNone::False);
+            }
+            self.run_engine_commands().await?;
         }
     }
 

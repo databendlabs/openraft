@@ -1,5 +1,3 @@
-use std::ops::Deref;
-
 use crate::display_ext::DisplayOptionExt;
 use crate::engine::handler::log_handler::LogHandler;
 use crate::engine::handler::snapshot_handler::SnapshotHandler;
@@ -308,21 +306,6 @@ where C: RaftTypeConfig
         // The purge job may be postponed because a replication task is using them.
         // Thus we just try again to purge when progress is updated.
         self.try_purge_log();
-
-        // initialize next replication to this target
-
-        {
-            let p = self.leader.progress.get_mut(&target).unwrap();
-
-            let r = p.next_send(self.state.deref(), self.config.max_payload_entries);
-            tracing::debug!(next_send_res = debug(&r), "next_send");
-
-            if let Ok(inflight) = r {
-                Self::send_to_target(self.output, &target, inflight);
-            } else {
-                tracing::debug!("nothing to send to target={target}, progress:{}", p);
-            }
-        }
     }
 
     /// Update replication streams to reflect replication progress change.
