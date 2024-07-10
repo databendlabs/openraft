@@ -2,7 +2,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
-use futures::stream::StreamExt;
 use maplit::btreemap;
 use maplit::btreeset;
 use openraft::testing::log_id;
@@ -70,16 +69,11 @@ async fn leader_metrics() -> Result<()> {
     router.new_raft_node(4).await;
 
     tracing::info!(log_index, "--- adding 4 new nodes to cluster");
-
     {
-        let mut new_nodes = futures::stream::FuturesUnordered::new();
-        new_nodes.push(router.add_learner(0, 1));
-        new_nodes.push(router.add_learner(0, 2));
-        new_nodes.push(router.add_learner(0, 3));
-        new_nodes.push(router.add_learner(0, 4));
-        while let Some(inner) = new_nodes.next().await {
-            inner?;
-        }
+        router.add_learner(0, 1).await?;
+        router.add_learner(0, 2).await?;
+        router.add_learner(0, 3).await?;
+        router.add_learner(0, 4).await?;
     }
     log_index += 4; // 4 add_learner log
     router.wait_for_log(&c01234, Some(log_index), timeout(), "add learner 1,2,3,4").await?;

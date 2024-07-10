@@ -20,7 +20,7 @@ use byteorder::BigEndian;
 use byteorder::ReadBytesExt;
 use byteorder::WriteBytesExt;
 use openraft::alias::SnapshotDataOf;
-use openraft::storage::LogFlushed;
+use openraft::storage::IOFlushed;
 use openraft::storage::LogState;
 use openraft::storage::RaftLogStorage;
 use openraft::storage::RaftStateMachine;
@@ -349,14 +349,8 @@ impl RaftLogStorage<TypeConfig> for RocksLogStore {
         self.clone()
     }
 
-    async fn append<I>(
-        &mut self,
-        entries: I,
-        callback: LogFlushed<TypeConfig>,
-    ) -> Result<(), StorageError<TypeConfig>>
-    where
-        I: IntoIterator<Item = Entry<TypeConfig>> + Send,
-    {
+    async fn append<I>(&mut self, entries: I, callback: IOFlushed<TypeConfig>) -> Result<(), StorageError<TypeConfig>>
+    where I: IntoIterator<Item = Entry<TypeConfig>> + Send {
         for entry in entries {
             let id = id_to_bin(entry.log_id.index);
             assert_eq!(bin_to_id(&id), entry.log_id.index);
@@ -372,7 +366,7 @@ impl RaftLogStorage<TypeConfig> for RocksLogStore {
         self.db.flush_wal(true).map_err(|e| StorageIOError::write_logs(&e))?;
 
         // If there is error, the callback will be dropped.
-        callback.log_io_completed(Ok(()));
+        callback.io_completed(Ok(()));
         Ok(())
     }
 
