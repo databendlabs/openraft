@@ -1,12 +1,12 @@
 use core::time::Duration;
 use std::collections::BTreeSet;
 
-use tokio::sync::watch;
-
+use crate::async_runtime::watch::WatchReceiver;
 use crate::core::ServerState;
 use crate::metrics::Condition;
 use crate::metrics::Metric;
 use crate::metrics::RaftMetrics;
+use crate::type_config::alias::WatchReceiverOf;
 use crate::type_config::TypeConfigExt;
 use crate::LogId;
 use crate::OptionalSend;
@@ -27,7 +27,7 @@ pub enum WaitError {
 /// some condition.
 pub struct Wait<C: RaftTypeConfig> {
     pub timeout: Duration,
-    pub rx: watch::Receiver<RaftMetrics<C>>,
+    pub rx: WatchReceiverOf<C, RaftMetrics<C>>,
 }
 
 impl<C> Wait<C>
@@ -41,7 +41,7 @@ where C: RaftTypeConfig
 
         let mut rx = self.rx.clone();
         loop {
-            let latest = rx.borrow().clone();
+            let latest = rx.borrow_watched().clone();
 
             tracing::debug!("id={} wait {:} latest: {}", latest.id, msg.to_string(), latest);
 

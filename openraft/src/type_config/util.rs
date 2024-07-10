@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use openraft_macros::since;
 
+use crate::async_runtime::watch::Watch;
 use crate::async_runtime::MpscUnbounded;
 use crate::type_config::alias::AsyncRuntimeOf;
 use crate::type_config::alias::InstantOf;
@@ -14,9 +15,13 @@ use crate::type_config::alias::OneshotReceiverOf;
 use crate::type_config::alias::OneshotSenderOf;
 use crate::type_config::alias::SleepOf;
 use crate::type_config::alias::TimeoutOf;
+use crate::type_config::alias::WatchOf;
+use crate::type_config::alias::WatchReceiverOf;
+use crate::type_config::alias::WatchSenderOf;
 use crate::type_config::AsyncRuntime;
 use crate::Instant;
 use crate::OptionalSend;
+use crate::OptionalSync;
 use crate::RaftTypeConfig;
 
 /// Collection of utility methods to `RaftTypeConfig` function.
@@ -71,6 +76,16 @@ pub trait TypeConfigExt: RaftTypeConfig {
     fn mpsc_unbounded<T>() -> (MpscUnboundedSenderOf<Self, T>, MpscUnboundedReceiverOf<Self, T>)
     where T: OptionalSend {
         MpscUnboundedOf::<Self>::channel()
+    }
+
+    /// Creates a watch channel for watching for changes to a value from multiple
+    /// points in the code base.
+    ///
+    /// This is just a wrapper of
+    /// [`AsyncRuntime::Watch::channel()`](`crate::async_runtime::Watch::channel`).
+    fn watch_channel<T>(init: T) -> (WatchSenderOf<Self, T>, WatchReceiverOf<Self, T>)
+    where T: OptionalSend + OptionalSync {
+        WatchOf::<Self>::channel(init)
     }
 
     // Task methods

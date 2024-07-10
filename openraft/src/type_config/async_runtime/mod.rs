@@ -10,6 +10,7 @@ pub(crate) mod impls {
 }
 pub mod mpsc_unbounded;
 mod oneshot;
+pub mod watch;
 
 use std::fmt::Debug;
 use std::fmt::Display;
@@ -23,6 +24,7 @@ pub use mpsc_unbounded::MpscUnboundedWeakSender;
 pub use mpsc_unbounded::SendError;
 pub use mpsc_unbounded::TryRecvError;
 pub use oneshot::OneshotSender;
+pub use watch::Watch;
 
 use crate::Instant;
 use crate::OptionalSend;
@@ -116,4 +118,6 @@ pub trait AsyncRuntime: Debug + Default + PartialEq + Eq + OptionalSend + Option
     where T: OptionalSend;
 
     type MpscUnbounded: MpscUnbounded;
+
+    type Watch: Watch;
 }

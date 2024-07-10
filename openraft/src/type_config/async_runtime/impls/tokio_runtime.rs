@@ -2,12 +2,15 @@ use std::future::Future;
 use std::time::Duration;
 
 use tokio::sync::mpsc;
+use tokio::sync::watch as tokio_watch;
 
 use crate::async_runtime::mpsc_unbounded;
 use crate::async_runtime::mpsc_unbounded::MpscUnbounded;
+use crate::async_runtime::watch;
 use crate::type_config::OneshotSender;
 use crate::AsyncRuntime;
 use crate::OptionalSend;
+use crate::OptionalSync;
 use crate::TokioInstant;
 
 /// `Tokio` is the default asynchronous executor.
@@ -80,6 +83,7 @@ impl AsyncRuntime for TokioRuntime {
     }
 
     type MpscUnbounded = TokioMpscUnbounded;
+    type Watch = TokioWatch;
 }
 
 impl<T> OneshotSender<T> for tokio::sync::oneshot::Sender<T> {
@@ -140,5 +144,47 @@ where T: OptionalSend
     #[inline]
     fn upgrade(&self) -> Option<<TokioMpscUnbounded as MpscUnbounded>::Sender<T>> {
         self.upgrade()
+    }
+}
+
+pub struct TokioWatch;
+
+impl watch::Watch for TokioWatch {
+    type Sender<T: OptionalSend + OptionalSync> = tokio_watch::Sender<T>;
+    type Receiver<T: OptionalSend + OptionalSync> = tokio_watch::Receiver<T>;
+
+    type Ref<'a, T: OptionalSend + 'a> = tokio_watch::Ref<'a, T>;
+
+    fn channel<T: OptionalSend + OptionalSync>(init: T) -> (Self::Sender<T>, Self::Receiver<T>) {
+        tokio_watch::channel(init)
+    }
+}
+
+impl<T> watch::WatchSender<TokioWatch, T> for tokio_watch::Sender<T>
+where T: OptionalSend + OptionalSync
+{
+    fn send(&self, value: T) -> Result<(), watch::SendError<T>> {
+        self.send(value).map_err(|e| watch::SendError(e.0))
+    }
+
+    fn send_if_modified<F>(&self, modify: F) -> bool
+    where F: FnOnce(&mut T) -> bool {
+        self.send_if_modified(modify)
+    }
+
+    fn borrow_watched(&self) -> <TokioWatch as watch::Watch>::Ref<'_, T> {
+        self.borrow()
+    }
+}
+
+impl<T> watch::WatchReceiver<TokioWatch, T> for tokio_watch::Receiver<T>
+where T: OptionalSend + OptionalSync
+{
+    async fn changed(&mut self) -> Result<(), watch::RecvError> {
+        self.changed().await.map_err(|_| watch::RecvError(()))
+    }
+
+    fn borrow_watched(&self) -> <TokioWatch as watch::Watch>::Ref<'_, T> {
+        self.borrow()
     }
 }
