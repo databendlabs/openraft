@@ -46,13 +46,17 @@ fn test_startup_as_leader_without_logs() -> anyhow::Result<()> {
     // self.id==2 is a voter:
     eng.state
         .membership_state
-        .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(2, 1, 3)), m23())));
+        .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(1, 1, 3)), m23())));
+    eng.state.log_ids = LogIdList::new([log_id(1, 1, 3)]);
     // Committed vote makes it a leader at startup.
-    eng.state.vote = UTime::new(TokioInstant::now(), Vote::new_committed(1, 2));
+    eng.state.vote = UTime::new(TokioInstant::now(), Vote::new_committed(2, 2));
 
     eng.startup();
 
     assert_eq!(ServerState::Leader, eng.state.server_state);
+    let leader = eng.leader_ref().unwrap();
+    assert_eq!(leader.noop_log_id(), Some(&log_id(2, 2, 4)));
+    assert_eq!(leader.last_log_id(), Some(&log_id(2, 2, 4)));
     assert_eq!(
         vec![
             //
@@ -61,16 +65,16 @@ fn test_startup_as_leader_without_logs() -> anyhow::Result<()> {
                     matching: None,
                     curr_inflight_id: 0,
                     inflight: Inflight::None,
-                    searching_end: 0
+                    searching_end: 4
                 })]
             },
             Command::AppendInputEntries {
-                vote: Vote::new_committed(1, 2),
-                entries: vec![Entry::<UTConfig>::new_blank(log_id(1, 2, 0))],
+                vote: Vote::new_committed(2, 2),
+                entries: vec![Entry::<UTConfig>::new_blank(log_id(2, 2, 4))],
             },
             Command::Replicate {
                 target: 3,
-                req: Inflight::logs(None, Some(log_id(1, 2, 0))).with_id(1)
+                req: Inflight::logs(None, Some(log_id(2, 2, 4))).with_id(1)
             }
         ],
         eng.output.take_commands()
@@ -95,8 +99,9 @@ fn test_startup_as_leader_with_proposed_logs() -> anyhow::Result<()> {
     eng.startup();
 
     assert_eq!(ServerState::Leader, eng.state.server_state);
-    assert_eq!(eng.leader.as_ref().unwrap().noop_log_id(), Some(&log_id(1, 2, 4)));
-    assert_eq!(eng.leader.as_ref().unwrap().last_log_id(), Some(&log_id(1, 2, 6)));
+    let leader = eng.leader_ref().unwrap();
+    assert_eq!(leader.noop_log_id(), Some(&log_id(1, 2, 4)));
+    assert_eq!(leader.last_log_id(), Some(&log_id(1, 2, 6)));
     assert_eq!(
         vec![
             //
