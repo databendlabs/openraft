@@ -24,8 +24,8 @@ pub use mpsc_unbounded::MpscUnboundedWeakSender;
 pub use mpsc_unbounded::SendError;
 pub use mpsc_unbounded::TryRecvError;
 pub use oneshot::OneshotSender;
+pub use watch::Watch;
 
-use crate::async_runtime::watch::Watch;
 use crate::Instant;
 use crate::OptionalSend;
 use crate::OptionalSync;

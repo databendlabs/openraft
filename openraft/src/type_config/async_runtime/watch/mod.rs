@@ -1,4 +1,6 @@
 mod watch_error;
+
+use openraft_macros::add_async_trait;
 pub use watch_error::RecvError;
 pub use watch_error::SendError;
 
@@ -26,6 +28,7 @@ where
     fn borrow_watched(&self) -> W::Ref<'_, T>;
 }
 
+#[add_async_trait]
 pub trait WatchReceiver<W, T>: OptionalSend + OptionalSync + Clone
 where
     W: Watch,
