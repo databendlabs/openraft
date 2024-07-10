@@ -15,7 +15,6 @@ use crate::engine::handler::following_handler::FollowingHandler;
 use crate::engine::handler::leader_handler::LeaderHandler;
 use crate::engine::handler::log_handler::LogHandler;
 use crate::engine::handler::replication_handler::ReplicationHandler;
-use crate::engine::handler::replication_handler::SendNone;
 use crate::engine::handler::server_state_handler::ServerStateHandler;
 use crate::engine::handler::snapshot_handler::SnapshotHandler;
 use crate::engine::handler::vote_handler::VoteHandler;
@@ -158,17 +157,10 @@ where C: RaftTypeConfig
             self.state.membership_state.effective().is_voter(&self.config.id)
         );
 
+        // TODO: replace all the following codes with one update_internal_server_state;
         // Previously it is a leader. restore it as leader at once
         if self.state.is_leader(&self.config.id) {
             self.vote_handler().update_internal_server_state();
-
-            let mut rh = self.replication_handler();
-
-            // Restore the progress about the local log
-            rh.update_local_progress(rh.state.last_log_id().copied());
-
-            rh.initiate_replication(SendNone::False);
-
             return;
         }
 

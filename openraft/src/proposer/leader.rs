@@ -110,7 +110,7 @@ where
 
         let last_log_id = last_leader_log_id.last().copied();
 
-        Self {
+        let mut leader = Self {
             vote,
             next_heartbeat: C::now(),
             last_log_id,
@@ -121,7 +121,14 @@ where
                 ProgressEntry::empty(last_log_id.next_index()),
             ),
             clock_progress: VecProgress::new(quorum_set, learner_ids, None),
-        }
+        };
+
+        // Update progress for this Leader.
+        // Note that Leader not being a voter is allowed.
+        let leader_node_id = vote.leader_id().voted_for().unwrap();
+        let _ = leader.progress.update(&leader_node_id, ProgressEntry::new(last_log_id));
+
+        leader
     }
 
     pub(crate) fn noop_log_id(&self) -> Option<&LogIdOf<C>> {

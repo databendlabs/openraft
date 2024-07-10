@@ -3,6 +3,7 @@ use std::fmt::Debug;
 use crate::core::raft_msg::ResultSender;
 use crate::engine::handler::leader_handler::LeaderHandler;
 use crate::engine::handler::replication_handler::ReplicationHandler;
+use crate::engine::handler::replication_handler::SendNone;
 use crate::engine::handler::server_state_handler::ServerStateHandler;
 use crate::engine::Command;
 use crate::engine::EngineConfig;
@@ -198,16 +199,23 @@ where C: RaftTypeConfig
         let leader = self.state.new_leader();
         *self.leader = Some(Box::new(leader));
 
+        let (last_log_id, noop_log_id) = {
+            let leader = self.leader.as_ref().unwrap();
+            (leader.last_log_id().copied(), leader.noop_log_id().copied())
+        };
+
         self.server_state_handler().update_server_state_if_changed();
 
-        self.replication_handler().rebuild_replication_streams();
+        let mut rh = self.replication_handler();
+        rh.rebuild_replication_streams();
 
-        let leader = self.leader.as_ref().unwrap();
-
-        // If the leader has not yet proposed any log, propose a blank log
-        if leader.last_log_id() < leader.noop_log_id() {
+        // If the leader has not yet proposed any log, propose a blank log and initiate replication;
+        // Otherwise, just initiate replication.
+        if last_log_id < noop_log_id {
             self.leader_handler()
                 .leader_append_entries(vec![C::Entry::new_blank(LogId::<C::NodeId>::default())]);
+        } else {
+            self.replication_handler().initiate_replication(SendNone::False);
         }
     }
 
