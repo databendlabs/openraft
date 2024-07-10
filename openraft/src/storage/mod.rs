@@ -21,7 +21,9 @@ pub use v2::RaftStateMachine;
 
 use crate::display_ext::DisplayOption;
 use crate::raft_types::SnapshotId;
+pub use crate::storage::callback::IOFlushed;
 pub use crate::storage::callback::LogApplied;
+#[allow(deprecated)]
 pub use crate::storage::callback::LogFlushed;
 use crate::LogId;
 use crate::OptionalSend;

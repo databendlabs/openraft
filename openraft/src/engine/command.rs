@@ -36,7 +36,8 @@ where C: RaftTypeConfig
         /// The leader id is used to generate a monotonic increasing IO id, such as: [`LogIOId`].
         /// Where [`LogIOId`] is `(leader_id, log_id)`.
         ///
-        /// [`LogIOId`]: crate::raft_state::io_state::log_io_id::LogIOId
+        /// [`LogIOId`]: crate::raft_state::io_state::io_id::IOId
+        // TODO: make it `CommittedVote`
         vote: Vote<C::NodeId>,
 
         entries: Vec<C::Entry>,

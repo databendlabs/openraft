@@ -16,7 +16,7 @@ use byteorder::BigEndian;
 use byteorder::ByteOrder;
 use byteorder::ReadBytesExt;
 use openraft::alias::SnapshotDataOf;
-use openraft::storage::LogFlushed;
+use openraft::storage::IOFlushed;
 use openraft::storage::LogState;
 use openraft::storage::RaftLogStorage;
 use openraft::storage::RaftStateMachine;
@@ -506,7 +506,7 @@ impl RaftLogStorage<TypeConfig> for Arc<SledStore> {
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
-    async fn append<I>(&mut self, entries: I, callback: LogFlushed<TypeConfig>) -> StorageResult<()>
+    async fn append<I>(&mut self, entries: I, callback: IOFlushed<TypeConfig>) -> StorageResult<()>
     where I: IntoIterator<Item = Entry<TypeConfig>> + OptionalSend {
         let logs_tree = logs(&self.db);
         let mut batch = sled::Batch::default();
@@ -519,7 +519,7 @@ impl RaftLogStorage<TypeConfig> for Arc<SledStore> {
         logs_tree.apply_batch(batch).map_err(write_logs_err)?;
 
         logs_tree.flush_async().await.map_err(write_logs_err)?;
-        callback.log_io_completed(Ok(()));
+        callback.io_completed(Ok(()));
         Ok(())
     }
 

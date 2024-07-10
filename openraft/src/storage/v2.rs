@@ -8,7 +8,7 @@ mod raft_log_storage_ext;
 use openraft_macros::add_async_trait;
 pub use raft_log_storage_ext::RaftLogStorageExt;
 
-use crate::storage::callback::LogFlushed;
+use crate::storage::callback::IOFlushed;
 use crate::LogId;
 use crate::LogState;
 use crate::OptionalSend;
@@ -108,7 +108,7 @@ where C: RaftTypeConfig
     ///
     /// - There must not be a **hole** in logs. Because Raft only examine the last log id to ensure
     ///   correctness.
-    async fn append<I>(&mut self, entries: I, callback: LogFlushed<C>) -> Result<(), StorageError<C>>
+    async fn append<I>(&mut self, entries: I, callback: IOFlushed<C>) -> Result<(), StorageError<C>>
     where
         I: IntoIterator<Item = C::Entry> + OptionalSend,
         I::IntoIter: OptionalSend;

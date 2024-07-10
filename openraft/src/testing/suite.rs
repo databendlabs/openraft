@@ -5,16 +5,18 @@ use std::marker::PhantomData;
 use std::ops::RangeBounds;
 use std::time::Duration;
 
-use anyerror::AnyError;
 use maplit::btreeset;
 
+use crate::async_runtime::MpscUnboundedReceiver;
+use crate::async_runtime::MpscUnboundedSender;
+use crate::core::notify::Notify;
 use crate::entry::RaftEntry;
 use crate::log_id::RaftLogId;
 use crate::membership::EffectiveMembership;
-use crate::raft_state::LogIOId;
+use crate::raft_state::io_state::io_id::IOId;
 use crate::raft_state::LogStateReader;
 use crate::raft_state::RaftState;
-use crate::storage::LogFlushed;
+use crate::storage::IOFlushed;
 use crate::storage::LogState;
 use crate::storage::RaftLogReaderExt;
 use crate::storage::RaftLogStorage;
@@ -32,7 +34,6 @@ use crate::RaftLogReader;
 use crate::RaftSnapshotBuilder;
 use crate::RaftTypeConfig;
 use crate::StorageError;
-use crate::StorageIOError;
 use crate::StoredMembership;
 use crate::Vote;
 
@@ -1339,13 +1340,21 @@ where
     I: IntoIterator<Item = C::Entry> + OptionalSend,
     I::IntoIter: OptionalSend,
 {
-    let (tx, rx) = C::oneshot();
+    let entries = entries.into_iter().collect::<Vec<_>>();
+
+    let last_log_id = *entries.last().unwrap().get_log_id();
+
+    let (tx, mut rx) = C::mpsc_unbounded();
 
     // Dummy log io id for blocking append
-    let log_io_id = LogIOId::<C>::new(Vote::<C::NodeId>::default(), None);
-    let cb = LogFlushed::new(log_io_id, tx);
+    let io_id = IOId::<C>::new_append_log(Vote::<C::NodeId>::default().into_committed(), last_log_id);
+    let notify = Notify::LocalIO { io_id };
+    let cb = IOFlushed::new(notify, tx.downgrade());
 
     store.append(entries, cb).await?;
-    rx.await.unwrap().map_err(|e| StorageIOError::write_logs(AnyError::error(e)))?;
+    let got = rx.recv().await.unwrap();
+    if let Notify::StorageError { error } = got {
+        return Err(error);
+    }
     Ok(())
 }

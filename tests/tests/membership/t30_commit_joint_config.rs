@@ -2,7 +2,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
-use futures::stream::StreamExt;
 use maplit::btreeset;
 use openraft::Config;
 use openraft::LogIdOptionExt;
@@ -43,12 +42,10 @@ async fn commit_joint_config_during_0_to_012() -> Result<()> {
     router.new_raft_node(1).await;
     router.new_raft_node(2).await;
 
-    tracing::info!(log_index, "--- adding new nodes to cluster");
-    let mut new_nodes = futures::stream::FuturesUnordered::new();
-    new_nodes.push(router.add_learner(0, 1));
-    new_nodes.push(router.add_learner(0, 2));
-    while let Some(inner) = new_nodes.next().await {
-        inner?;
+    tracing::info!(log_index, "--- adding new nodes 1,2 to cluster");
+    {
+        router.add_learner(0, 1).await?;
+        router.add_learner(0, 2).await?;
     }
     log_index += 2;
 
