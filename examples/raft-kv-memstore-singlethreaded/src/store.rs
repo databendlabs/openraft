@@ -7,7 +7,7 @@ use std::ops::RangeBounds;
 use std::rc::Rc;
 
 use openraft::alias::SnapshotDataOf;
-use openraft::storage::LogFlushed;
+use openraft::storage::IOFlushed;
 use openraft::storage::LogState;
 use openraft::storage::RaftLogStorage;
 use openraft::storage::RaftStateMachine;
@@ -318,20 +318,14 @@ impl RaftLogStorage<TypeConfig> for Rc<LogStore> {
     }
 
     #[tracing::instrument(level = "trace", skip(self, entries, callback))]
-    async fn append<I>(
-        &mut self,
-        entries: I,
-        callback: LogFlushed<TypeConfig>,
-    ) -> Result<(), StorageError<TypeConfig>>
-    where
-        I: IntoIterator<Item = Entry<TypeConfig>>,
-    {
+    async fn append<I>(&mut self, entries: I, callback: IOFlushed<TypeConfig>) -> Result<(), StorageError<TypeConfig>>
+    where I: IntoIterator<Item = Entry<TypeConfig>> {
         // Simple implementation that calls the flush-before-return `append_to_log`.
         let mut log = self.log.borrow_mut();
         for entry in entries {
             log.insert(entry.log_id.index, entry);
         }
-        callback.log_io_completed(Ok(()));
+        callback.io_completed(Ok(()));
 
         Ok(())
     }

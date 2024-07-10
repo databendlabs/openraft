@@ -1,14 +1,16 @@
-use anyerror::AnyError;
 use openraft_macros::add_async_trait;
 
-use crate::raft_state::LogIOId;
-use crate::storage::LogFlushed;
+use crate::async_runtime::MpscUnboundedReceiver;
+use crate::async_runtime::MpscUnboundedSender;
+use crate::core::notify::Notify;
+use crate::log_id::RaftLogId;
+use crate::raft_state::io_state::io_id::IOId;
+use crate::storage::IOFlushed;
 use crate::storage::RaftLogStorage;
 use crate::type_config::TypeConfigExt;
 use crate::OptionalSend;
 use crate::RaftTypeConfig;
 use crate::StorageError;
-use crate::StorageIOError;
 use crate::Vote;
 
 /// Extension trait for RaftLogStorage to provide utility methods.
@@ -26,16 +28,22 @@ where C: RaftTypeConfig
         I: IntoIterator<Item = C::Entry> + OptionalSend,
         I::IntoIter: OptionalSend,
     {
-        let (tx, rx) = C::oneshot();
+        let entries = entries.into_iter().collect::<Vec<_>>();
 
-        // dummy log_io_id
-        let log_io_id = LogIOId::<C>::new(Vote::<C::NodeId>::default(), None);
+        let last_log_id = *entries.last().unwrap().get_log_id();
 
-        let callback = LogFlushed::<C>::new(log_io_id, tx);
+        let (tx, mut rx) = C::mpsc_unbounded();
+
+        let io_id = IOId::<C>::new_append_log(Vote::<C::NodeId>::default().into_committed(), last_log_id);
+        let notify = Notify::LocalIO { io_id };
+
+        let callback = IOFlushed::<C>::new(notify, tx.downgrade());
         self.append(entries, callback).await?;
-        rx.await
-            .map_err(|e| StorageIOError::write_logs(AnyError::error(e)))?
-            .map_err(|e| StorageIOError::write_logs(AnyError::error(e)))?;
+
+        let got = rx.recv().await.unwrap();
+        if let Notify::StorageError { error } = got {
+            return Err(error);
+        }
 
         Ok(())
     }
