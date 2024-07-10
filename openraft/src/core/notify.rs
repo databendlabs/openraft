@@ -2,8 +2,10 @@ use std::fmt;
 
 use crate::core::sm;
 use crate::raft::VoteResponse;
+use crate::raft_state::IOId;
 use crate::replication;
 use crate::RaftTypeConfig;
+use crate::StorageError;
 use crate::Vote;
 
 /// A message coming from the internal components.
@@ -37,7 +39,14 @@ where C: RaftTypeConfig
         // membership_log_id: Option<LogId<C::NodeId>>,
     },
 
+    /// A storage error occurred in the local store.
+    StorageError { error: StorageError<C> },
+
+    /// Completion of an IO operation to local store.
+    LocalIO { io_id: IOId<C> },
+
     /// Result of executing a command sent from network worker.
+    // TODO: remove StorageError from replication::Response, use Notify::StorageError instead
     Network { response: replication::Response<C> },
 
     /// Result of executing a command sent from state machine worker.
@@ -81,6 +90,8 @@ where C: RaftTypeConfig
                     target, new_vote, vote
                 )
             }
+            Self::StorageError { error } => write!(f, "StorageError: {}", error),
+            Self::LocalIO { io_id } => write!(f, "LocalIO({}) done", io_id),
             Self::Network { response } => {
                 write!(f, "Replication command done: {}", response)
             }

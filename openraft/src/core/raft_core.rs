@@ -75,7 +75,7 @@ use crate::raft::AppendEntriesResponse;
 use crate::raft::ClientWriteResponse;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
-use crate::raft_state::LogIOId;
+use crate::raft_state::io_state::io_id::IOId;
 use crate::raft_state::LogStateReader;
 use crate::replication;
 use crate::replication::request::Replicate;
@@ -85,7 +85,7 @@ use crate::replication::ReplicationCore;
 use crate::replication::ReplicationHandle;
 use crate::replication::ReplicationSessionId;
 use crate::runtime::RaftRuntime;
-use crate::storage::LogFlushed;
+use crate::storage::IOFlushed;
 use crate::storage::RaftLogStorage;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::MpscUnboundedReceiverOf;
@@ -674,32 +674,6 @@ where
         self.engine.state.membership_state.effective().get_node(&leader_id).cloned()
     }
 
-    /// A temp wrapper to make non-blocking `append_to_log` a blocking.
-    #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) async fn append_to_log<I>(
-        &mut self,
-        entries: I,
-        vote: Vote<C::NodeId>,
-        last_log_id: LogId<C::NodeId>,
-    ) -> Result<(), StorageError<C>>
-    where
-        I: IntoIterator<Item = C::Entry> + OptionalSend,
-        I::IntoIter: OptionalSend,
-    {
-        tracing::debug!("append_to_log");
-
-        let (tx, rx) = C::oneshot();
-        let log_io_id = LogIOId::new(vote, Some(last_log_id));
-
-        let callback = LogFlushed::new(log_io_id, tx);
-
-        self.log_store.append(entries, callback).await?;
-        rx.await
-            .map_err(|e| StorageIOError::write_logs(AnyError::error(e)))?
-            .map_err(|e| StorageIOError::write_logs(AnyError::error(e)))?;
-        Ok(())
-    }
-
     /// Apply log entries to the state machine, from the `first`(inclusive) to `last`(inclusive).
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) async fn apply_to_state_machine(
@@ -1267,6 +1241,24 @@ where
                 }
             }
 
+            Notify::StorageError { error } => {
+                tracing::error!("RaftCore received Notify::StorageError: {}", error);
+                return Err(Fatal::StorageError(error));
+            }
+
+            Notify::LocalIO { io_id } => {
+                match io_id {
+                    IOId::AppendLog(append_log_io_id) => {
+                        // No need to check against membership change,
+                        // because not like removing-then-adding a remote node,
+                        // local log wont revert when membership changes.
+                        if self.does_vote_match(append_log_io_id.committed_vote.deref(), "LocalIO Notify: AppendLog") {
+                            self.engine.replication_handler().update_local_progress(Some(append_log_io_id.log_id));
+                        }
+                    }
+                }
+            }
+
             Notify::Network { response } => {
                 //
                 match response {
@@ -1561,13 +1553,12 @@ where
                 let last_log_id = *entries.last().unwrap().get_log_id();
                 tracing::debug!("AppendInputEntries: {}", DisplaySlice::<_>(&entries),);
 
-                self.append_to_log(entries, vote, last_log_id).await?;
+                let io_id = IOId::new_append_log(vote.into_committed(), last_log_id);
+                let notify = Notify::LocalIO { io_id };
+                let callback = IOFlushed::new(notify, self.tx_notify.downgrade());
 
-                // The leader may have changed.
-                // But reporting to a different leader is not a problem.
-                if let Ok(mut lh) = self.engine.leader_handler() {
-                    lh.replication_handler().update_local_progress(Some(last_log_id));
-                }
+                // Submit IO request, do not wait for the response.
+                self.log_store.append(entries, callback).await?;
             }
             Command::SaveVote { vote } => {
                 self.log_store.save_vote(&vote).await?;

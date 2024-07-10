@@ -4,41 +4,100 @@ use std::io;
 
 use tokio::sync::oneshot;
 
-use crate::async_runtime::OneshotSender;
-use crate::raft_state::io_state::log_io_id::LogIOId;
-use crate::type_config::alias::OneshotSenderOf;
+use crate::async_runtime::MpscUnboundedSender;
+use crate::async_runtime::MpscUnboundedWeakSender;
+use crate::core::notify::Notify;
+use crate::type_config::alias::MpscUnboundedWeakSenderOf;
+use crate::ErrorSubject;
+use crate::ErrorVerb;
 use crate::LogId;
 use crate::RaftTypeConfig;
+use crate::StorageError;
 use crate::StorageIOError;
 
-/// A oneshot callback for completion of log io operation.
-pub struct LogFlushed<C>
+#[deprecated(since = "0.10.0", note = "Use `IOFlushed` instead")]
+pub type LogFlushed<C> = IOFlushed<C>;
+
+/// A callback for completion of io operation to [`RaftLogStorage`].
+///
+/// [`RaftLogStorage`]: `crate::storage::RaftLogStorage`
+pub struct IOFlushed<C>
 where C: RaftTypeConfig
 {
-    log_io_id: LogIOId<C>,
-    tx: OneshotSenderOf<C, Result<LogIOId<C>, io::Error>>,
+    /// The notify to send when the IO complete.
+    notify: Notify<C>,
+
+    tx: MpscUnboundedWeakSenderOf<C, Notify<C>>,
 }
 
-impl<C> LogFlushed<C>
+impl<C> IOFlushed<C>
 where C: RaftTypeConfig
 {
-    pub(crate) fn new(log_io_id: LogIOId<C>, tx: OneshotSenderOf<C, Result<LogIOId<C>, io::Error>>) -> Self {
-        Self { log_io_id, tx }
+    pub(crate) fn new(notify: Notify<C>, tx: MpscUnboundedWeakSenderOf<C, Notify<C>>) -> Self {
+        Self { notify, tx }
+    }
+
+    #[deprecated(since = "0.10.0", note = "Use `io_completed` instead")]
+    pub fn log_io_completed(self, result: Result<(), io::Error>) {
+        self.io_completed(result)
     }
 
     /// Report log io completion event.
     ///
     /// It will be called when the log is successfully appended to the storage or an error occurs.
-    pub fn log_io_completed(self, result: Result<(), io::Error>) {
-        let res = if let Err(e) = result {
-            tracing::error!("LogFlush error: {}, while flushing upto {}", e, self.log_io_id);
-            self.tx.send(Err(e))
-        } else {
-            self.tx.send(Ok(self.log_io_id))
+    pub fn io_completed(self, result: Result<(), io::Error>) {
+        let Some(tx) = self.tx.upgrade() else {
+            tracing::warn!("failed to upgrade tx, RaftCore may have closed the receiver");
+            return;
         };
 
-        if let Err(e) = res {
-            tracing::error!("failed to send log io completion event: {:?}", e);
+        let send_res = match result {
+            Err(e) => {
+                tracing::error!(
+                    "{}: IOFlushed error: {}, while flushing IO: {}",
+                    func_name!(),
+                    e,
+                    self.notify
+                );
+
+                let sto_err = self.make_storage_error(e);
+                tx.send(Notify::StorageError { error: sto_err })
+            }
+            Ok(_) => {
+                tracing::debug!("{}: IOFlushed completed: {}", func_name!(), self.notify);
+                tx.send(self.notify)
+            }
+        };
+
+        if let Err(e) = send_res {
+            tracing::error!("failed to send log io completion event: {}", e.0);
+        }
+    }
+
+    /// Figure out the error subject and verb from the kind of response `Notify`.
+    fn make_storage_error(&self, e: io::Error) -> StorageError<C> {
+        match &self.notify {
+            Notify::VoteResponse { .. } => StorageError::from_io_error(ErrorSubject::Vote, ErrorVerb::Write, e),
+            Notify::HigherVote { .. } => {
+                unreachable!("")
+            }
+            Notify::StorageError { .. } => {
+                unreachable!("")
+            }
+            Notify::LocalIO { io_id } => {
+                let subject = io_id.subject();
+                let verb = io_id.verb();
+                StorageError::from_io_error(subject, verb, e)
+            }
+            Notify::Network { .. } => {
+                unreachable!("")
+            }
+            Notify::StateMachine { .. } => {
+                unreachable!("")
+            }
+            Notify::Tick { .. } => {
+                unreachable!("")
+            }
         }
     }
 }

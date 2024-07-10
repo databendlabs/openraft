@@ -13,7 +13,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use openraft::alias::SnapshotDataOf;
-use openraft::storage::LogFlushed;
+use openraft::storage::IOFlushed;
 use openraft::storage::LogState;
 use openraft::storage::RaftLogReader;
 use openraft::storage::RaftLogStorage;
@@ -364,14 +364,8 @@ impl RaftLogStorage<TypeConfig> for Arc<MemLogStore> {
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
-    async fn append<I>(
-        &mut self,
-        entries: I,
-        callback: LogFlushed<TypeConfig>,
-    ) -> Result<(), StorageError<TypeConfig>>
-    where
-        I: IntoIterator<Item = Entry<TypeConfig>> + OptionalSend,
-    {
+    async fn append<I>(&mut self, entries: I, callback: IOFlushed<TypeConfig>) -> Result<(), StorageError<TypeConfig>>
+    where I: IntoIterator<Item = Entry<TypeConfig>> + OptionalSend {
         let mut log = self.log.write().await;
         for entry in entries {
             let s =
@@ -379,7 +373,7 @@ impl RaftLogStorage<TypeConfig> for Arc<MemLogStore> {
             log.insert(entry.log_id.index, s);
         }
 
-        callback.log_io_completed(Ok(()));
+        callback.io_completed(Ok(()));
         Ok(())
     }
 
