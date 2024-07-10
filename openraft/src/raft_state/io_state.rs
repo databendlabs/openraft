@@ -1,11 +1,11 @@
-use log_io_id::LogIOId;
-
 use crate::display_ext::DisplayOption;
+use crate::raft_state::io_state::append_log_io_id::AppendLogIOId;
 use crate::LogId;
 use crate::RaftTypeConfig;
 use crate::Vote;
 
-pub(crate) mod log_io_id;
+pub(crate) mod append_log_io_id;
+pub(crate) mod io_id;
 
 /// IOState tracks the state of actually happened io including log flushed, applying log to state
 /// machine or snapshot building.
@@ -37,7 +37,7 @@ where C: RaftTypeConfig
 
     /// The last log id that has been flushed to storage.
     // TODO: this wont be used until we move log io into separate task.
-    pub(crate) flushed: LogIOId<C>,
+    pub(crate) flushed: Option<AppendLogIOId<C>>,
 
     /// The last log id that has been applied to state machine.
     pub(crate) applied: Option<LogId<C::NodeId>>,
@@ -58,7 +58,6 @@ where C: RaftTypeConfig
 {
     pub(crate) fn new(
         vote: Vote<C::NodeId>,
-        flushed: LogIOId<C>,
         applied: Option<LogId<C::NodeId>>,
         snapshot: Option<LogId<C::NodeId>>,
         purged: Option<LogId<C::NodeId>>,
@@ -66,7 +65,7 @@ where C: RaftTypeConfig
         Self {
             building_snapshot: false,
             vote,
-            flushed,
+            flushed: None,
             applied,
             snapshot,
             purged,

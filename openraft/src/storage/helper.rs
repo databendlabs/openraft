@@ -5,7 +5,6 @@ use crate::display_ext::DisplayOptionExt;
 use crate::engine::LogIdList;
 use crate::entry::RaftPayload;
 use crate::log_id::RaftLogId;
-use crate::raft_state::io_state::log_io_id::LogIOId;
 use crate::raft_state::IOState;
 use crate::storage::RaftLogReaderExt;
 use crate::storage::RaftLogStorage;
@@ -142,13 +141,7 @@ where
         let snapshot_meta = snapshot.map(|x| x.meta).unwrap_or_default();
 
         // TODO: `flushed` is not set.
-        let io_state = IOState::new(
-            vote,
-            LogIOId::default(),
-            last_applied,
-            snapshot_meta.last_log_id,
-            last_purged_log_id,
-        );
+        let io_state = IOState::new(vote, last_applied, snapshot_meta.last_log_id, last_purged_log_id);
 
         let now = C::now();
 

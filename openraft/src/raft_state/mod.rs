@@ -21,7 +21,7 @@ mod membership_state;
 mod vote_state_reader;
 
 #[allow(unused)]
-pub(crate) use io_state::log_io_id::LogIOId;
+pub(crate) use io_state::io_id::IOId;
 pub(crate) use io_state::IOState;
 
 #[cfg(test)]
