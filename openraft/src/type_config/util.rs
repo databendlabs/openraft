@@ -78,7 +78,7 @@ pub trait TypeConfigExt: RaftTypeConfig {
         MpscUnboundedOf::<Self>::channel()
     }
 
-    /// Creates an watch channel for watching for changes to a value from multiple
+    /// Creates a watch channel for watching for changes to a value from multiple
     /// points in the code base.
     ///
     /// This is just a wrapper of
