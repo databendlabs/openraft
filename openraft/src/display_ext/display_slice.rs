@@ -40,12 +40,19 @@ impl<'a, T: fmt::Display, const MAX: usize> fmt::Display for DisplaySlice<'a, T,
 
 pub(crate) trait DisplaySliceExt<'a, T: fmt::Display> {
     fn display(&'a self) -> DisplaySlice<'a, T>;
+
+    /// Display at most `MAX` elements.
+    fn display_n<const MAX: usize>(&'a self) -> DisplaySlice<'a, T, MAX>;
 }
 
 impl<T> DisplaySliceExt<'_, T> for [T]
 where T: fmt::Display
 {
     fn display(&self) -> DisplaySlice<T> {
+        DisplaySlice(self)
+    }
+
+    fn display_n<const MAX: usize>(&'_ self) -> DisplaySlice<'_, T, MAX> {
         DisplaySlice(self)
     }
 }

@@ -1,6 +1,8 @@
 use std::fmt;
 
+use crate::display_ext::DisplayInstantExt;
 use crate::display_ext::DisplayOptionExt;
+use crate::display_ext::DisplayResultExt;
 use crate::replication::request_id::RequestId;
 use crate::replication::ReplicationSessionId;
 use crate::type_config::alias::InstantOf;
@@ -80,12 +82,15 @@ where C: RaftTypeConfig
             } => {
                 write!(
                     f,
-                    "UpdateReplicationProgress: target: {}, id: {}, result: {:?}, session_id: {}",
-                    target, request_id, result, session_id
+                    "replication::Progress: target={}, request_id: {}, result: {}, session_id: {}",
+                    target,
+                    request_id,
+                    result.display(),
+                    session_id
                 )
             }
 
-            Self::StorageError { error } => write!(f, "ReplicationStorageError: {}", error),
+            Self::StorageError { error } => write!(f, "replication::StorageError: {}", error),
 
             Self::HigherVote {
                 target,
@@ -94,7 +99,7 @@ where C: RaftTypeConfig
             } => {
                 write!(
                     f,
-                    "Seen a higher vote: target: {}, vote: {}, server_state_vote: {}",
+                    "replication::Seen a higher vote: target={}, higher: {}, sender_vote: {}",
                     target, higher, sender_vote
                 )
             }
@@ -118,7 +123,7 @@ impl<C> fmt::Display for ReplicationResult<C>
 where C: RaftTypeConfig
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{{time:{:?}, result:", self.sending_time)?;
+        write!(f, "{{sending_time:{}, result:", self.sending_time.display())?;
 
         match &self.result {
             Ok(matching) => write!(f, "Match:{}", matching.display())?,

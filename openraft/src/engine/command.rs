@@ -3,11 +3,14 @@ use std::fmt::Debug;
 
 use crate::async_runtime::OneshotSender;
 use crate::core::sm;
+use crate::display_ext::DisplayOptionExt;
+use crate::display_ext::DisplayResultExt;
+use crate::display_ext::DisplaySliceExt;
+use crate::engine::replication_progress::ReplicationProgress;
 use crate::engine::CommandKind;
 use crate::error::Infallible;
 use crate::error::InitializeError;
 use crate::error::InstallSnapshotError;
-use crate::progress::entry::ProgressEntry;
 use crate::progress::Inflight;
 use crate::raft::AppendEntriesResponse;
 use crate::raft::InstallSnapshotResponse;
@@ -73,7 +76,7 @@ where C: RaftTypeConfig
     /// updated.
     RebuildReplicationStreams {
         /// Targets to replicate to.
-        targets: Vec<(C::NodeId, ProgressEntry<C>)>,
+        targets: Vec<ReplicationProgress<C>>,
     },
 
     /// Save vote to storage
@@ -101,6 +104,38 @@ where C: RaftTypeConfig
         when: Option<Condition<C>>,
         resp: Respond<C>,
     },
+}
+
+impl<C> fmt::Display for Command<C>
+where C: RaftTypeConfig
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Command::AppendInputEntries { vote, entries } => {
+                write!(f, "AppendInputEntries: vote: {}, entries: {}", vote, entries.display())
+            }
+            Command::ReplicateCommitted { committed } => {
+                write!(f, "ReplicateCommitted: {}", committed.display())
+            }
+            Command::Commit {
+                seq,
+                already_committed,
+                upto,
+            } => write!(f, "Commit: seq: {}, ({}, {}]", seq, already_committed.display(), upto),
+            Command::Replicate { target, req } => {
+                write!(f, "Replicate: target={}, req: {}", target, req)
+            }
+            Command::RebuildReplicationStreams { targets } => {
+                write!(f, "RebuildReplicationStreams: {}", targets.display_n::<10>())
+            }
+            Command::SaveVote { vote } => write!(f, "SaveVote: {}", vote),
+            Command::SendVote { vote_req } => write!(f, "SendVote: {}", vote_req),
+            Command::PurgeLog { upto } => write!(f, "PurgeLog: upto: {}", upto),
+            Command::TruncateLog { since } => write!(f, "TruncateLog: since: {}", since),
+            Command::StateMachine { command } => write!(f, "StateMachine: command: {}", command),
+            Command::Respond { when, resp } => write!(f, "Respond: when: {}, resp: {}", when.display(), resp),
+        }
+    }
 }
 
 impl<C> From<sm::Command<C>> for Command<C>
@@ -209,6 +244,22 @@ where C: RaftTypeConfig
     StateMachineCommand { command_seq: sm::CommandSeq },
 }
 
+impl<C> fmt::Display for Condition<C>
+where C: RaftTypeConfig
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Condition::LogFlushed { leader, log_id } => {
+                write!(f, "LogFlushed: leader: {}, log_id: {}", leader, log_id.display())
+            }
+            Condition::Applied { log_id } => write!(f, "Applied: log_id: {}", log_id.display()),
+            Condition::StateMachineCommand { command_seq } => {
+                write!(f, "StateMachineCommand: command_seq: {}", command_seq)
+            }
+        }
+    }
+}
+
 /// A command to send return value to the caller via a `oneshot::Sender`.
 #[derive(Debug, PartialEq, Eq)]
 #[derive(derive_more::From)]
@@ -221,6 +272,27 @@ where C: RaftTypeConfig
     InstallSnapshot(ValueSender<C, Result<InstallSnapshotResponse<C>, InstallSnapshotError>>),
     InstallFullSnapshot(ValueSender<C, Result<SnapshotResponse<C>, Infallible>>),
     Initialize(ValueSender<C, Result<(), InitializeError<C>>>),
+}
+
+impl<C> fmt::Display for Respond<C>
+where C: RaftTypeConfig
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Respond::Vote(vs) => write!(f, "Vote {}", vs.value().display()),
+            Respond::AppendEntries(vs) => write!(f, "AppendEntries {}", vs.value().display()),
+            Respond::ReceiveSnapshotChunk(vs) => {
+                write!(
+                    f,
+                    "ReceiveSnapshotChunk {}",
+                    vs.value().as_ref().map(|_x| "()").display()
+                )
+            }
+            Respond::InstallSnapshot(vs) => write!(f, "InstallSnapshot {}", vs.value().display()),
+            Respond::InstallFullSnapshot(vs) => write!(f, "InstallFullSnapshot {}", vs.value().display()),
+            Respond::Initialize(vs) => write!(f, "Initialize {}", vs.value().as_ref().map(|_x| "()").display()),
+        }
+    }
 }
 
 impl<C> Respond<C>
@@ -289,6 +361,10 @@ where
 {
     pub(crate) fn new(res: T, tx: OneshotSenderOf<C, T>) -> Self {
         Self { value: res, tx }
+    }
+
+    pub(crate) fn value(&self) -> &T {
+        &self.value
     }
 
     pub(crate) fn send(self) {

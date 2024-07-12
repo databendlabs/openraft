@@ -7,6 +7,7 @@ use crate::engine::testing::UTConfig;
 use crate::engine::Command;
 use crate::engine::Engine;
 use crate::engine::LogIdList;
+use crate::engine::ReplicationProgress;
 use crate::entry::RaftEntry;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::Inflight;
@@ -61,7 +62,7 @@ fn test_startup_as_leader_without_logs() -> anyhow::Result<()> {
         vec![
             //
             Command::RebuildReplicationStreams {
-                targets: vec![(3, ProgressEntry {
+                targets: vec![ReplicationProgress(3, ProgressEntry {
                     matching: None,
                     curr_inflight_id: 0,
                     inflight: Inflight::None,
@@ -106,7 +107,7 @@ fn test_startup_as_leader_with_proposed_logs() -> anyhow::Result<()> {
         vec![
             //
             Command::RebuildReplicationStreams {
-                targets: vec![(3, ProgressEntry {
+                targets: vec![ReplicationProgress(3, ProgressEntry {
                     matching: None,
                     curr_inflight_id: 0,
                     inflight: Inflight::None,

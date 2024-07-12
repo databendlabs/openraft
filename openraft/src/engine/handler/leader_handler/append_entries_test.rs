@@ -11,6 +11,7 @@ use pretty_assertions::assert_str_eq;
 use crate::engine::testing::UTConfig;
 use crate::engine::Command;
 use crate::engine::Engine;
+use crate::engine::ReplicationProgress;
 use crate::entry::RaftEntry;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::Inflight;
@@ -248,7 +249,7 @@ fn test_leader_append_entries_with_membership_log() -> anyhow::Result<()> {
                 ]
             },
             Command::RebuildReplicationStreams {
-                targets: vec![(2, ProgressEntry::empty(7))]
+                targets: vec![ReplicationProgress(2, ProgressEntry::empty(7))]
             },
             Command::Replicate {
                 target: 2,

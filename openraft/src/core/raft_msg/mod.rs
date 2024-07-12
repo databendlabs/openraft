@@ -125,7 +125,7 @@ where C: RaftTypeConfig
             }
             RaftMsg::ChangeMembership { changes, retain, .. } => {
                 // TODO: avoid using Debug
-                write!(f, "ChangeMembership: members: {:?}, retain: {}", changes, retain,)
+                write!(f, "ChangeMembership: {:?}, retain: {}", changes, retain,)
             }
             RaftMsg::ExternalCoreRequest { .. } => write!(f, "External Request"),
             RaftMsg::ExternalCommand { cmd } => {

@@ -1,5 +1,10 @@
+use std::fmt;
+use std::fmt::Formatter;
+
 use crate::core::sm::command::CommandSeq;
 use crate::core::ApplyResult;
+use crate::display_ext::display_result::DisplayResultExt;
+use crate::display_ext::DisplayOptionExt;
 use crate::RaftTypeConfig;
 use crate::SnapshotMeta;
 use crate::StorageError;
@@ -21,6 +26,24 @@ where C: RaftTypeConfig
     Apply(ApplyResult<C>),
 }
 
+impl<C> fmt::Display for Response<C>
+where C: RaftTypeConfig
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::BuildSnapshot(meta) => {
+                write!(f, "BuildSnapshot({})", meta)
+            }
+            Self::InstallSnapshot(meta) => {
+                write!(f, "InstallSnapshot({})", meta.display())
+            }
+            Self::Apply(result) => {
+                write!(f, "{}", result)
+            }
+        }
+    }
+}
+
 /// Container of result of a command.
 #[derive(Debug)]
 pub(crate) struct CommandResult<C>
@@ -29,6 +52,19 @@ where C: RaftTypeConfig
     #[allow(dead_code)]
     pub(crate) command_seq: CommandSeq,
     pub(crate) result: Result<Response<C>, StorageError<C>>,
+}
+
+impl<C> fmt::Display for CommandResult<C>
+where C: RaftTypeConfig
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "sm::Result(command_seq:{}, {})",
+            self.command_seq,
+            self.result.display()
+        )
+    }
 }
 
 impl<C> CommandResult<C>

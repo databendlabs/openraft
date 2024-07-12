@@ -1,8 +1,7 @@
 use std::borrow::Borrow;
 use std::collections::BTreeMap;
+use std::fmt;
 use std::fmt::Debug;
-use std::fmt::Display;
-use std::fmt::Formatter;
 use std::ops::Deref;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -36,6 +35,7 @@ use crate::core::raft_msg::VoteTx;
 use crate::core::sm;
 use crate::core::sm::CommandSeq;
 use crate::core::ServerState;
+use crate::display_ext::display_slice::DisplaySliceExt;
 use crate::display_ext::DisplayInstantExt;
 use crate::display_ext::DisplayOption;
 use crate::display_ext::DisplayOptionExt;
@@ -44,6 +44,7 @@ use crate::engine::handler::replication_handler::SendNone;
 use crate::engine::Command;
 use crate::engine::Condition;
 use crate::engine::Engine;
+use crate::engine::ReplicationProgress;
 use crate::engine::Respond;
 use crate::entry::FromAppData;
 use crate::entry::RaftEntry;
@@ -112,6 +113,18 @@ pub(crate) struct ApplyingEntry<C: RaftTypeConfig> {
     membership: Option<Membership<C>>,
 }
 
+impl<C> fmt::Display for ApplyingEntry<C>
+where C: RaftTypeConfig
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.log_id)?;
+        if let Some(m) = &self.membership {
+            write!(f, "(membership:{})", m)?;
+        }
+        Ok(())
+    }
+}
+
 impl<C: RaftTypeConfig> ApplyingEntry<C> {
     pub(crate) fn new(log_id: LogId<C::NodeId>, membership: Option<Membership<C>>) -> Self {
         Self { log_id, membership }
@@ -128,12 +141,25 @@ pub(crate) struct ApplyResult<C: RaftTypeConfig> {
 }
 
 impl<C: RaftTypeConfig> Debug for ApplyResult<C> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ApplyResult")
             .field("since", &self.since)
             .field("end", &self.end)
             .field("last_applied", &self.last_applied)
             .finish()
+    }
+}
+
+impl<C: RaftTypeConfig> fmt::Display for ApplyResult<C> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "ApplyResult([{}, {}), last_applied={}, entries={})",
+            self.since,
+            self.end,
+            self.last_applied,
+            self.applying_entries.display(),
+        )
     }
 }
 
@@ -474,7 +500,7 @@ where
     ///
     /// Currently heartbeat is a blank log
     #[tracing::instrument(level = "debug", skip_all, fields(id = display(self.id)))]
-    pub fn send_heartbeat(&mut self, emitter: impl Display) -> bool {
+    pub fn send_heartbeat(&mut self, emitter: impl fmt::Display) -> bool {
         tracing::debug!(now = debug(C::now()), "send_heartbeat");
 
         let mut lh = if let Some((lh, _)) = self.engine.get_leader_handler_or_reject(None) {
@@ -809,8 +835,6 @@ where
         }
 
         while let Some(cmd) = self.engine.output.pop_command() {
-            tracing::debug!("run command: {:?}", cmd);
-
             let res = self.run_command(cmd).await?;
 
             if let Some(cmd) = res {
@@ -1066,7 +1090,7 @@ where
     // TODO: Make this method non-async. It does not need to run any async command in it.
     #[tracing::instrument(level = "debug", skip(self, msg), fields(state = debug(self.engine.state.server_state), id=display(self.id)))]
     pub(crate) async fn handle_api_msg(&mut self, msg: RaftMsg<C>) {
-        tracing::debug!("recv from rx_api: {}", msg);
+        tracing::debug!("RAFT_event id={:<2}  input: {}", self.id, msg);
 
         match msg {
             RaftMsg::AppendEntries { rpc, tx } => {
@@ -1152,7 +1176,7 @@ where
     // TODO: Make this method non-async. It does not need to run any async command in it.
     #[tracing::instrument(level = "debug", skip_all, fields(state = debug(self.engine.state.server_state), id=display(self.id)))]
     pub(crate) fn handle_notification(&mut self, notify: Notification<C>) -> Result<(), Fatal<C>> {
-        tracing::debug!("recv from rx_notify: {}", notify);
+        tracing::debug!("RAFT_event id={:<2} notify: {}", self.id, notify);
 
         match notify {
             Notification::VoteResponse {
@@ -1463,7 +1487,7 @@ where
 
     /// If a message is sent by a previous server state but is received by current server state,
     /// it is a stale message and should be just ignored.
-    fn does_vote_match(&self, sender_vote: &Vote<C::NodeId>, msg: impl Display) -> bool {
+    fn does_vote_match(&self, sender_vote: &Vote<C::NodeId>, msg: impl fmt::Display) -> bool {
         // Get the current leading vote:
         // - If input `sender_vote` is committed, it is sent by a Leader. Therefore we check against current
         //   Leader's vote.
@@ -1491,7 +1515,11 @@ where
     }
     /// If a message is sent by a previous replication session but is received by current server
     /// state, it is a stale message and should be just ignored.
-    fn does_replication_session_match(&self, session_id: &ReplicationSessionId<C>, msg: impl Display + Copy) -> bool {
+    fn does_replication_session_match(
+        &self,
+        session_id: &ReplicationSessionId<C>,
+        msg: impl fmt::Display + Copy,
+    ) -> bool {
         if !self.does_vote_match(session_id.vote_ref(), msg) {
             return false;
         }
@@ -1516,6 +1544,8 @@ where
     LS: RaftLogStorage<C>,
 {
     async fn run_command<'e>(&mut self, cmd: Command<C>) -> Result<Option<Command<C>>, StorageError<C>> {
+        tracing::debug!("RAFT_event id={:<2}    cmd: {}", self.id, cmd);
+
         let condition = cmd.condition();
         tracing::debug!("condition: {:?}", condition);
 
@@ -1637,7 +1667,7 @@ where
             Command::RebuildReplicationStreams { targets } => {
                 self.remove_all_replication().await;
 
-                for (target, matching) in targets.iter() {
+                for ReplicationProgress(target, matching) in targets.iter() {
                     let handle = self.spawn_replication_stream(*target, *matching).await;
                     self.replications.insert(*target, handle);
                 }

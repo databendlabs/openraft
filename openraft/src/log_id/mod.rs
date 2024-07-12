@@ -42,7 +42,7 @@ impl<NID: NodeId> RaftLogId<NID> for LogId<NID> {
 
 impl<NID: NodeId> Display for LogId<NID> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}-{}", self.leader_id, self.index)
+        write!(f, "{}.{}", self.leader_id, self.index)
     }
 }
 
