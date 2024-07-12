@@ -8,6 +8,7 @@ use crate::engine::testing::UTConfig;
 use crate::engine::Command;
 use crate::engine::Engine;
 use crate::engine::LogIdList;
+use crate::engine::ReplicationProgress;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::Inflight;
 use crate::progress::Progress;
@@ -79,8 +80,11 @@ fn test_leader_append_membership_for_leader() -> anyhow::Result<()> {
         vec![
             //
             Command::RebuildReplicationStreams {
-                targets: vec![(3, ProgressEntry::empty(0)), (4, ProgressEntry::empty(0))], /* node-2 is leader,
-                                                                                            * won't be removed */
+                targets: vec![
+                    ReplicationProgress(3, ProgressEntry::empty(0)),
+                    ReplicationProgress(4, ProgressEntry::empty(0))
+                ], /* node-2 is leader,
+                    * won't be removed */
             }
         ],
         eng.output.take_commands()

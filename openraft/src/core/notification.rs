@@ -75,9 +75,13 @@ where C: RaftTypeConfig
             Self::VoteResponse {
                 target,
                 resp,
-                sender_vote: vote,
+                sender_vote,
             } => {
-                write!(f, "VoteResponse: from: {}: {}, res-vote: {}", target, resp, vote)
+                write!(
+                    f,
+                    "VoteResponse: from target={}, to sender_vote: {}, {}",
+                    target, sender_vote, resp
+                )
             }
             Self::HigherVote {
                 ref target,
@@ -91,12 +95,12 @@ where C: RaftTypeConfig
                 )
             }
             Self::StorageError { error } => write!(f, "StorageError: {}", error),
-            Self::LocalIO { io_id } => write!(f, "LocalIO({}) done", io_id),
+            Self::LocalIO { io_id } => write!(f, "{}", io_id),
             Self::Network { response } => {
-                write!(f, "Replication command done: {}", response)
+                write!(f, "{}", response)
             }
             Self::StateMachine { command_result } => {
-                write!(f, "StateMachine command done: {:?}", command_result)
+                write!(f, "{}", command_result)
             }
             Self::Tick { i } => {
                 write!(f, "Tick {}", i)

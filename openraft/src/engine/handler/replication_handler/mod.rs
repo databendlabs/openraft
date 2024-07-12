@@ -4,6 +4,7 @@ use crate::engine::handler::snapshot_handler::SnapshotHandler;
 use crate::engine::Command;
 use crate::engine::EngineConfig;
 use crate::engine::EngineOutput;
+use crate::engine::ReplicationProgress;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::Inflight;
 use crate::progress::Progress;
@@ -319,7 +320,7 @@ where C: RaftTypeConfig
                 // Reset and resend(by self.send_to_all()) replication requests.
                 prog_entry.inflight = Inflight::None;
 
-                targets.push((*target, *prog_entry));
+                targets.push(ReplicationProgress(*target, *prog_entry));
             }
         }
         self.output.push_command(Command::RebuildReplicationStreams { targets });

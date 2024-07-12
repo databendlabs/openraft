@@ -33,6 +33,7 @@ mod engine_config;
 mod engine_impl;
 mod engine_output;
 mod log_id_list;
+mod replication_progress;
 
 pub(crate) mod handler;
 pub(crate) mod time_state;
@@ -61,3 +62,4 @@ pub(crate) use engine_config::EngineConfig;
 pub(crate) use engine_impl::Engine;
 pub(crate) use engine_output::EngineOutput;
 pub use log_id_list::LogIdList;
+pub(crate) use replication_progress::ReplicationProgress;

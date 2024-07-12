@@ -33,7 +33,7 @@ impl<C> fmt::Display for AppendLogIOId<C>
 where C: RaftTypeConfig
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "by({}):{}", self.committed_vote, self.log_id)
+        write!(f, "by:{}, {}", self.committed_vote, self.log_id)
     }
 }
 

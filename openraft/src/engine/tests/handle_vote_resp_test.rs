@@ -9,6 +9,7 @@ use crate::engine::testing::UTConfig;
 use crate::engine::Command;
 use crate::engine::Engine;
 use crate::engine::LogIdList;
+use crate::engine::ReplicationProgress;
 use crate::entry::RaftEntry;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::Inflight;
@@ -201,7 +202,7 @@ fn test_handle_vote_resp_equal_vote() -> anyhow::Result<()> {
         assert_eq!(
             vec![
                 Command::RebuildReplicationStreams {
-                    targets: vec![(2, ProgressEntry::empty(1))]
+                    targets: vec![ReplicationProgress(2, ProgressEntry::empty(1))]
                 },
                 Command::SaveVote {
                     vote: Vote::new_committed(2, 1)

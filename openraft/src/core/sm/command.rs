@@ -1,3 +1,4 @@
+use std::fmt;
 use std::fmt::Debug;
 use std::fmt::Formatter;
 
@@ -19,11 +20,19 @@ where C: RaftTypeConfig
 impl<C> Debug for Command<C>
 where C: RaftTypeConfig
 {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.debug_struct("StateMachineCommand")
             .field("seq", &self.seq)
             .field("payload", &self.payload)
             .finish()
+    }
+}
+
+impl<C> fmt::Display for Command<C>
+where C: RaftTypeConfig
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "sm::Command: seq: {}, payload: {}", self.seq, self.payload)
     }
 }
 
@@ -115,12 +124,30 @@ where C: RaftTypeConfig
 impl<C> Debug for CommandPayload<C>
 where C: RaftTypeConfig
 {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             CommandPayload::BuildSnapshot => write!(f, "BuildSnapshot"),
             CommandPayload::GetSnapshot { .. } => write!(f, "GetSnapshot"),
             CommandPayload::InstallFullSnapshot { snapshot } => {
                 write!(f, "InstallFullSnapshot: meta: {:?}", snapshot.meta)
+            }
+            CommandPayload::BeginReceivingSnapshot { .. } => {
+                write!(f, "BeginReceivingSnapshot")
+            }
+            CommandPayload::Apply { first, last } => write!(f, "Apply: [{},{}]", first, last),
+        }
+    }
+}
+
+impl<C> fmt::Display for CommandPayload<C>
+where C: RaftTypeConfig
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            CommandPayload::BuildSnapshot => write!(f, "BuildSnapshot"),
+            CommandPayload::GetSnapshot { .. } => write!(f, "GetSnapshot"),
+            CommandPayload::InstallFullSnapshot { snapshot } => {
+                write!(f, "InstallFullSnapshot: meta: {}", snapshot.meta)
             }
             CommandPayload::BeginReceivingSnapshot { .. } => {
                 write!(f, "BeginReceivingSnapshot")
