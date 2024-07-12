@@ -16,7 +16,7 @@ pub trait Watch: Sized + OptionalSend {
     fn channel<T: OptionalSend + OptionalSync>(init: T) -> (Self::Sender<T>, Self::Receiver<T>);
 }
 
-pub trait WatchSender<W, T>: OptionalSend + Clone
+pub trait WatchSender<W, T>: OptionalSend
 where
     W: Watch,
     T: OptionalSend + OptionalSync,
