@@ -6,7 +6,7 @@ use tokio::sync::oneshot;
 
 use crate::async_runtime::MpscUnboundedSender;
 use crate::async_runtime::MpscUnboundedWeakSender;
-use crate::core::notify::Notify;
+use crate::core::notification::Notification;
 use crate::type_config::alias::MpscUnboundedWeakSenderOf;
 use crate::ErrorSubject;
 use crate::ErrorVerb;
@@ -25,16 +25,19 @@ pub struct IOFlushed<C>
 where C: RaftTypeConfig
 {
     /// The notify to send when the IO complete.
-    notify: Notify<C>,
+    notification: Notification<C>,
 
-    tx: MpscUnboundedWeakSenderOf<C, Notify<C>>,
+    tx: MpscUnboundedWeakSenderOf<C, Notification<C>>,
 }
 
 impl<C> IOFlushed<C>
 where C: RaftTypeConfig
 {
-    pub(crate) fn new(notify: Notify<C>, tx: MpscUnboundedWeakSenderOf<C, Notify<C>>) -> Self {
-        Self { notify, tx }
+    pub(crate) fn new(notify: Notification<C>, tx: MpscUnboundedWeakSenderOf<C, Notification<C>>) -> Self {
+        Self {
+            notification: notify,
+            tx,
+        }
     }
 
     #[deprecated(since = "0.10.0", note = "Use `io_completed` instead")]
@@ -57,15 +60,15 @@ where C: RaftTypeConfig
                     "{}: IOFlushed error: {}, while flushing IO: {}",
                     func_name!(),
                     e,
-                    self.notify
+                    self.notification
                 );
 
                 let sto_err = self.make_storage_error(e);
-                tx.send(Notify::StorageError { error: sto_err })
+                tx.send(Notification::StorageError { error: sto_err })
             }
             Ok(_) => {
-                tracing::debug!("{}: IOFlushed completed: {}", func_name!(), self.notify);
-                tx.send(self.notify)
+                tracing::debug!("{}: IOFlushed completed: {}", func_name!(), self.notification);
+                tx.send(self.notification)
             }
         };
 
@@ -76,19 +79,19 @@ where C: RaftTypeConfig
 
     /// Figure out the error subject and verb from the kind of response `Notify`.
     fn make_storage_error(&self, e: io::Error) -> StorageError<C> {
-        match &self.notify {
-            Notify::VoteResponse { .. } => StorageError::from_io_error(ErrorSubject::Vote, ErrorVerb::Write, e),
-            Notify::LocalIO { io_id } => {
+        match &self.notification {
+            Notification::VoteResponse { .. } => StorageError::from_io_error(ErrorSubject::Vote, ErrorVerb::Write, e),
+            Notification::LocalIO { io_id } => {
                 let subject = io_id.subject();
                 let verb = io_id.verb();
                 StorageError::from_io_error(subject, verb, e)
             }
-            Notify::HigherVote { .. }
-            | Notify::StorageError { .. }
-            | Notify::Network { .. }
-            | Notify::StateMachine { .. }
-            | Notify::Tick { .. } => {
-                unreachable!("Unexpected notification: {}", self.notify)
+            Notification::HigherVote { .. }
+            | Notification::StorageError { .. }
+            | Notification::Network { .. }
+            | Notification::StateMachine { .. }
+            | Notification::Tick { .. } => {
+                unreachable!("Unexpected notification: {}", self.notification)
             }
         }
     }

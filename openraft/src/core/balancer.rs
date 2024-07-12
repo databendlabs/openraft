@@ -24,11 +24,11 @@ impl Balancer {
         self.raft_msg
     }
 
-    pub(crate) fn notify(&self) -> u64 {
+    pub(crate) fn notification(&self) -> u64 {
         self.total - self.raft_msg
     }
 
-    pub(crate) fn increase_notify(&mut self) {
+    pub(crate) fn increase_notification(&mut self) {
         self.raft_msg = self.raft_msg * 15 / 16;
         if self.raft_msg == 0 {
             self.raft_msg = 1;

@@ -9,7 +9,7 @@ use crate::StorageError;
 use crate::Vote;
 
 /// A message coming from the internal components.
-pub(crate) enum Notify<C>
+pub(crate) enum Notification<C>
 where C: RaftTypeConfig
 {
     VoteResponse {
@@ -59,7 +59,7 @@ where C: RaftTypeConfig
     },
 }
 
-impl<C> Notify<C>
+impl<C> Notification<C>
 where C: RaftTypeConfig
 {
     pub(crate) fn sm(command_result: sm::CommandResult<C>) -> Self {
@@ -67,7 +67,7 @@ where C: RaftTypeConfig
     }
 }
 
-impl<C> fmt::Display for Notify<C>
+impl<C> fmt::Display for Notification<C>
 where C: RaftTypeConfig
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

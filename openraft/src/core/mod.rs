@@ -6,7 +6,7 @@
 
 pub(crate) mod balancer;
 pub(crate) mod command_state;
-pub(crate) mod notify;
+pub(crate) mod notification;
 mod raft_core;
 pub(crate) mod raft_msg;
 mod replication_state;

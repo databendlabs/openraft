@@ -9,7 +9,7 @@ use maplit::btreeset;
 
 use crate::async_runtime::MpscUnboundedReceiver;
 use crate::async_runtime::MpscUnboundedSender;
-use crate::core::notify::Notify;
+use crate::core::notification::Notification;
 use crate::entry::RaftEntry;
 use crate::log_id::RaftLogId;
 use crate::membership::EffectiveMembership;
@@ -1348,12 +1348,12 @@ where
 
     // Dummy log io id for blocking append
     let io_id = IOId::<C>::new_append_log(Vote::<C::NodeId>::default().into_committed(), last_log_id);
-    let notify = Notify::LocalIO { io_id };
+    let notify = Notification::LocalIO { io_id };
     let cb = IOFlushed::new(notify, tx.downgrade());
 
     store.append(entries, cb).await?;
     let got = rx.recv().await.unwrap();
-    if let Notify::StorageError { error } = got {
+    if let Notification::StorageError { error } = got {
         return Err(error);
     }
     Ok(())
