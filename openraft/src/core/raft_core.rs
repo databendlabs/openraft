@@ -26,7 +26,7 @@ use crate::config::Config;
 use crate::config::RuntimeConfig;
 use crate::core::balancer::Balancer;
 use crate::core::command_state::CommandState;
-use crate::core::notify::Notify;
+use crate::core::notification::Notification;
 use crate::core::raft_msg::external_command::ExternalCommand;
 use crate::core::raft_msg::AppendEntriesTx;
 use crate::core::raft_msg::ClientReadTx;
@@ -175,10 +175,10 @@ where
 
     /// A Sender to send callback by other components to [`RaftCore`], when an action is finished,
     /// such as flushing log to disk, or applying log entries to state machine.
-    pub(crate) tx_notify: MpscUnboundedSenderOf<C, Notify<C>>,
+    pub(crate) tx_notification: MpscUnboundedSenderOf<C, Notification<C>>,
 
     /// A Receiver to receive callback from other components.
-    pub(crate) rx_notify: MpscUnboundedReceiverOf<C, Notify<C>>,
+    pub(crate) rx_notification: MpscUnboundedReceiverOf<C, Notification<C>>,
 
     pub(crate) tx_metrics: WatchSenderOf<C, RaftMetrics<C>>,
     pub(crate) tx_data_metrics: WatchSenderOf<C, RaftDataMetrics<C>>,
@@ -278,7 +278,7 @@ where
         let my_vote = *self.engine.state.vote_ref();
         let ttl = Duration::from_millis(self.config.heartbeat_interval);
         let eff_mem = self.engine.state.membership_state.effective().clone();
-        let core_tx = self.tx_notify.clone();
+        let core_tx = self.tx_notification.clone();
 
         let mut granted = btreeset! {my_id};
 
@@ -366,7 +366,7 @@ where
                         vote
                     );
 
-                    let send_res = core_tx.send(Notify::HigherVote {
+                    let send_res = core_tx.send(Notification::HigherVote {
                         target,
                         higher: vote,
                         sender_vote: my_vote,
@@ -765,7 +765,7 @@ where
             snapshot_network,
             self.log_store.get_log_reader().await,
             self.sm_handle.new_snapshot_reader(),
-            self.tx_notify.clone(),
+            self.tx_notification.clone(),
             tracing::span!(parent: &self.span, Level::DEBUG, "replication", id=display(self.id), target=display(target)),
         )
     }
@@ -858,9 +858,9 @@ where
                     return Err(Fatal::Stopped);
                 }
 
-                notify_res = self.rx_notify.recv() => {
+                notify_res = self.rx_notification.recv() => {
                     match notify_res {
-                        Some(notify) => self.handle_notify(notify)?,
+                        Some(notify) => self.handle_notification(notify)?,
                         None => {
                             tracing::error!("all rx_notify senders are dropped");
                             return Err(Fatal::Stopped);
@@ -884,14 +884,14 @@ where
             // There is a message waking up the loop, process channels one by one.
 
             let raft_msg_processed = self.process_raft_msg(balancer.raft_msg()).await?;
-            let notify_processed = self.process_notify(balancer.notify()).await?;
+            let notify_processed = self.process_notification(balancer.notification()).await?;
 
             // If one of the channel consumed all its budget, re-balance the budget ratio.
 
             #[allow(clippy::collapsible_else_if)]
-            if notify_processed == balancer.notify() {
+            if notify_processed == balancer.notification() {
                 tracing::info!("there may be more Notify to process, increase Notify ratio");
-                balancer.increase_notify();
+                balancer.increase_notification();
             } else {
                 if raft_msg_processed == balancer.raft_msg() {
                     tracing::info!("there may be more RaftMsg to process, increase RaftMsg ratio");
@@ -946,9 +946,9 @@ where
     ///
     /// It returns the number of processed notifications.
     /// If the input channel is closed, it returns `Fatal::Stopped`.
-    async fn process_notify(&mut self, at_most: u64) -> Result<u64, Fatal<C>> {
+    async fn process_notification(&mut self, at_most: u64) -> Result<u64, Fatal<C>> {
         for i in 0..at_most {
-            let res = self.rx_notify.try_recv();
+            let res = self.rx_notification.try_recv();
             let notify = match res {
                 Ok(msg) => msg,
                 Err(e) => match e {
@@ -963,7 +963,7 @@ where
                 },
             };
 
-            self.handle_notify(notify)?;
+            self.handle_notification(notify)?;
 
             // TODO: does run_engine_commands() run too frequently?
             //       to run many commands in one shot, it is possible to batch more commands to gain
@@ -995,7 +995,7 @@ where
             let target_node = self.engine.state.membership_state.effective().get_node(&target).unwrap().clone();
             let mut client = self.network_factory.new_client(target, &target_node).await;
 
-            let tx = self.tx_notify.clone();
+            let tx = self.tx_notification.clone();
 
             let ttl = Duration::from_millis(self.config.election_timeout_min);
             let id = self.id;
@@ -1023,7 +1023,7 @@ where
 
                     match res {
                         Ok(resp) => {
-                            let _ = tx.send(Notify::VoteResponse {
+                            let _ = tx.send(Notification::VoteResponse {
                                 target,
                                 resp,
                                 sender_vote: vote,
@@ -1151,11 +1151,11 @@ where
 
     // TODO: Make this method non-async. It does not need to run any async command in it.
     #[tracing::instrument(level = "debug", skip_all, fields(state = debug(self.engine.state.server_state), id=display(self.id)))]
-    pub(crate) fn handle_notify(&mut self, notify: Notify<C>) -> Result<(), Fatal<C>> {
+    pub(crate) fn handle_notification(&mut self, notify: Notification<C>) -> Result<(), Fatal<C>> {
         tracing::debug!("recv from rx_notify: {}", notify);
 
         match notify {
-            Notify::VoteResponse {
+            Notification::VoteResponse {
                 target,
                 resp,
                 sender_vote,
@@ -1174,7 +1174,7 @@ where
                 }
             }
 
-            Notify::HigherVote {
+            Notification::HigherVote {
                 target,
                 higher,
                 sender_vote,
@@ -1193,7 +1193,7 @@ where
                 }
             }
 
-            Notify::Tick { i } => {
+            Notification::Tick { i } => {
                 // check every timer
 
                 let now = C::now();
@@ -1241,12 +1241,12 @@ where
                 }
             }
 
-            Notify::StorageError { error } => {
+            Notification::StorageError { error } => {
                 tracing::error!("RaftCore received Notify::StorageError: {}", error);
                 return Err(Fatal::StorageError(error));
             }
 
-            Notify::LocalIO { io_id } => {
+            Notification::LocalIO { io_id } => {
                 match io_id {
                     IOId::AppendLog(append_log_io_id) => {
                         // No need to check against membership change,
@@ -1259,7 +1259,7 @@ where
                 }
             }
 
-            Notify::Network { response } => {
+            Notification::Network { response } => {
                 //
                 match response {
                     replication::Response::Progress {
@@ -1306,7 +1306,7 @@ where
                 }
             }
 
-            Notify::StateMachine { command_result } => {
+            Notification::StateMachine { command_result } => {
                 tracing::debug!("sm::StateMachine command result: {:?}", command_result);
 
                 let seq = command_result.command_seq;
@@ -1554,8 +1554,8 @@ where
                 tracing::debug!("AppendInputEntries: {}", DisplaySlice::<_>(&entries),);
 
                 let io_id = IOId::new_append_log(vote.into_committed(), last_log_id);
-                let notify = Notify::LocalIO { io_id };
-                let callback = IOFlushed::new(notify, self.tx_notify.downgrade());
+                let notify = Notification::LocalIO { io_id };
+                let callback = IOFlushed::new(notify, self.tx_notification.downgrade());
 
                 // Submit IO request, do not wait for the response.
                 self.log_store.append(entries, callback).await?;
@@ -1564,7 +1564,7 @@ where
                 self.log_store.save_vote(&vote).await?;
                 self.engine.state.io_state_mut().update_vote(vote);
 
-                let _ = self.tx_notify.send(Notify::VoteResponse {
+                let _ = self.tx_notification.send(Notification::VoteResponse {
                     target: self.id,
                     // last_log_id is not used when sending VoteRequest to local node
                     resp: VoteResponse::new(vote, None),

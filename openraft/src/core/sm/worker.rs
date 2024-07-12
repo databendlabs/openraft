@@ -1,7 +1,7 @@
 use crate::async_runtime::MpscUnboundedReceiver;
 use crate::async_runtime::MpscUnboundedSender;
 use crate::async_runtime::OneshotSender;
-use crate::core::notify::Notify;
+use crate::core::notification::Notification;
 use crate::core::raft_msg::ResultSender;
 use crate::core::sm::handle::Handle;
 use crate::core::sm::Command;
@@ -46,7 +46,7 @@ where
     cmd_rx: MpscUnboundedReceiverOf<C, Command<C>>,
 
     /// Send back the result of the command to RaftCore.
-    resp_tx: MpscUnboundedSenderOf<C, Notify<C>>,
+    resp_tx: MpscUnboundedSenderOf<C, Notification<C>>,
 }
 
 impl<C, SM, LR> Worker<C, SM, LR>
@@ -56,7 +56,11 @@ where
     LR: RaftLogReader<C>,
 {
     /// Spawn a new state machine worker, return a controlling handle.
-    pub(crate) fn spawn(state_machine: SM, log_reader: LR, resp_tx: MpscUnboundedSenderOf<C, Notify<C>>) -> Handle<C> {
+    pub(crate) fn spawn(
+        state_machine: SM,
+        log_reader: LR,
+        resp_tx: MpscUnboundedSenderOf<C, Notification<C>>,
+    ) -> Handle<C> {
         let (cmd_tx, cmd_rx) = C::mpsc_unbounded();
 
         let worker = Worker {
@@ -78,7 +82,7 @@ where
             if let Err(err) = res {
                 tracing::error!("{} while execute state machine command", err,);
 
-                let _ = self.resp_tx.send(Notify::StateMachine {
+                let _ = self.resp_tx.send(Notification::StateMachine {
                     command_result: CommandResult {
                         command_seq: 0,
                         result: Err(err),
@@ -124,7 +128,7 @@ where
                     tracing::info!("Done install complete snapshot, meta: {}", meta);
 
                     let res = CommandResult::new(cmd.seq, Ok(Response::InstallSnapshot(Some(meta))));
-                    let _ = self.resp_tx.send(Notify::sm(res));
+                    let _ = self.resp_tx.send(Notification::sm(res));
                 }
                 CommandPayload::BeginReceivingSnapshot { tx } => {
                     tracing::info!("{}: BeginReceivingSnapshot", func_name!());
@@ -137,7 +141,7 @@ where
                 CommandPayload::Apply { first, last } => {
                     let resp = self.apply(first, last).await?;
                     let res = CommandResult::new(cmd.seq, Ok(Response::Apply(resp)));
-                    let _ = self.resp_tx.send(Notify::sm(res));
+                    let _ = self.resp_tx.send(Notification::sm(res));
                 }
             };
         }
@@ -195,7 +199,7 @@ where
     ///   as applying a log entry,
     /// - or it must be able to acquire a lock that prevents any write operations.
     #[tracing::instrument(level = "info", skip_all)]
-    async fn build_snapshot(&mut self, seq: CommandSeq, resp_tx: MpscUnboundedSenderOf<C, Notify<C>>) {
+    async fn build_snapshot(&mut self, seq: CommandSeq, resp_tx: MpscUnboundedSenderOf<C, Notification<C>>) {
         // TODO: need to be abortable?
         // use futures::future::abortable;
         // let (fu, abort_handle) = abortable(async move { builder.build_snapshot().await });
@@ -208,7 +212,7 @@ where
             let res = builder.build_snapshot().await;
             let res = res.map(|snap| Response::BuildSnapshot(snap.meta));
             let cmd_res = CommandResult::new(seq, res);
-            let _ = resp_tx.send(Notify::sm(cmd_res));
+            let _ = resp_tx.send(Notification::sm(cmd_res));
         });
         tracing::info!("{} returning; spawned building snapshot task", func_name!());
     }

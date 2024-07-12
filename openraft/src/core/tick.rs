@@ -13,7 +13,7 @@ use tracing::Level;
 use tracing::Span;
 
 use crate::async_runtime::MpscUnboundedSender;
-use crate::core::notify::Notify;
+use crate::core::notification::Notification;
 use crate::type_config::alias::JoinHandleOf;
 use crate::type_config::alias::MpscUnboundedSenderOf;
 use crate::type_config::TypeConfigExt;
@@ -25,7 +25,7 @@ where C: RaftTypeConfig
 {
     interval: Duration,
 
-    tx: MpscUnboundedSenderOf<C, Notify<C>>,
+    tx: MpscUnboundedSenderOf<C, Notification<C>>,
 
     /// Emit event or not
     enabled: Arc<AtomicBool>,
@@ -54,7 +54,11 @@ where C: RaftTypeConfig
 impl<C> Tick<C>
 where C: RaftTypeConfig
 {
-    pub(crate) fn spawn(interval: Duration, tx: MpscUnboundedSenderOf<C, Notify<C>>, enabled: bool) -> TickHandle<C> {
+    pub(crate) fn spawn(
+        interval: Duration,
+        tx: MpscUnboundedSenderOf<C, Notification<C>>,
+        enabled: bool,
+    ) -> TickHandle<C> {
         let enabled = Arc::new(AtomicBool::from(enabled));
         let this = Self {
             interval,
@@ -106,7 +110,7 @@ where C: RaftTypeConfig
 
             i += 1;
 
-            let send_res = self.tx.send(Notify::Tick { i });
+            let send_res = self.tx.send(Notification::Tick { i });
             if let Err(_e) = send_res {
                 tracing::info!("Stopping tick_loop(), main loop terminated");
                 break;

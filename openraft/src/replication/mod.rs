@@ -27,7 +27,7 @@ use crate::async_runtime::MpscUnboundedReceiver;
 use crate::async_runtime::MpscUnboundedSender;
 use crate::async_runtime::MpscUnboundedWeakSender;
 use crate::config::Config;
-use crate::core::notify::Notify;
+use crate::core::notification::Notification;
 use crate::core::sm::handle::SnapshotReader;
 use crate::display_ext::DisplayOptionExt;
 use crate::error::HigherVote;
@@ -95,7 +95,7 @@ where
 
     /// A channel for sending events to the RaftCore.
     #[allow(clippy::type_complexity)]
-    tx_raft_core: MpscUnboundedSenderOf<C, Notify<C>>,
+    tx_raft_core: MpscUnboundedSenderOf<C, Notification<C>>,
 
     /// A channel for receiving events from the RaftCore and snapshot transmitting task.
     rx_event: MpscUnboundedReceiverOf<C, Replicate<C>>,
@@ -169,7 +169,7 @@ where
         snapshot_network: N::Network,
         log_reader: LS::LogReader,
         snapshot_reader: SnapshotReader<C>,
-        tx_raft_core: MpscUnboundedSenderOf<C, Notify<C>>,
+        tx_raft_core: MpscUnboundedSenderOf<C, Notification<C>>,
         span: tracing::Span,
     ) -> ReplicationHandle<C> {
         tracing::debug!(
@@ -264,7 +264,7 @@ where
                             return Err(closed);
                         }
                         ReplicationError::HigherVote(h) => {
-                            let _ = self.tx_raft_core.send(Notify::Network {
+                            let _ = self.tx_raft_core.send(Notification::Network {
                                 response: Response::HigherVote {
                                     target: self.target,
                                     higher: h.higher,
@@ -277,7 +277,7 @@ where
                             tracing::error!(error=%error, "error replication to target={}", self.target);
 
                             // TODO: report this error
-                            let _ = self.tx_raft_core.send(Notify::Network {
+                            let _ = self.tx_raft_core.send(Notification::Network {
                                 response: Response::StorageError { error },
                             });
                             return Ok(());
@@ -498,7 +498,7 @@ where
     /// Send the error result to RaftCore.
     /// RaftCore will then submit another replication command.
     fn send_progress_error(&mut self, request_id: RequestId, err: RPCError<C>) {
-        let _ = self.tx_raft_core.send(Notify::Network {
+        let _ = self.tx_raft_core.send(Notification::Network {
             response: Response::Progress {
                 target: self.target,
                 request_id,
@@ -530,7 +530,7 @@ where
         }
 
         let _ = self.tx_raft_core.send({
-            Notify::Network {
+            Notification::Network {
                 response: Response::Progress {
                     session_id: self.session_id,
                     request_id,

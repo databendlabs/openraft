@@ -2,7 +2,7 @@ use openraft_macros::add_async_trait;
 
 use crate::async_runtime::MpscUnboundedReceiver;
 use crate::async_runtime::MpscUnboundedSender;
-use crate::core::notify::Notify;
+use crate::core::notification::Notification;
 use crate::log_id::RaftLogId;
 use crate::raft_state::io_state::io_id::IOId;
 use crate::storage::IOFlushed;
@@ -35,13 +35,13 @@ where C: RaftTypeConfig
         let (tx, mut rx) = C::mpsc_unbounded();
 
         let io_id = IOId::<C>::new_append_log(Vote::<C::NodeId>::default().into_committed(), last_log_id);
-        let notify = Notify::LocalIO { io_id };
+        let notify = Notification::LocalIO { io_id };
 
         let callback = IOFlushed::<C>::new(notify, tx.downgrade());
         self.append(entries, callback).await?;
 
         let got = rx.recv().await.unwrap();
-        if let Notify::StorageError { error } = got {
+        if let Notification::StorageError { error } = got {
             return Err(error);
         }
 

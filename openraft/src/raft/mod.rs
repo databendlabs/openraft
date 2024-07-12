@@ -291,8 +291,8 @@ where C: RaftTypeConfig
             tx_api: tx_api.clone(),
             rx_api,
 
-            tx_notify,
-            rx_notify,
+            tx_notification: tx_notify,
+            rx_notification: rx_notify,
 
             tx_metrics,
             tx_data_metrics,
