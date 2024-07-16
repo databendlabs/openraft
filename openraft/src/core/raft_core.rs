@@ -24,7 +24,6 @@ use crate::async_runtime::TryRecvError;
 use crate::config::Config;
 use crate::config::RuntimeConfig;
 use crate::core::balancer::Balancer;
-use crate::core::command_state::CommandState;
 use crate::core::notification::Notification;
 use crate::core::raft_msg::external_command::ExternalCommand;
 use crate::core::raft_msg::AppendEntriesTx;
@@ -33,13 +32,11 @@ use crate::core::raft_msg::RaftMsg;
 use crate::core::raft_msg::ResultSender;
 use crate::core::raft_msg::VoteTx;
 use crate::core::sm;
-use crate::core::sm::CommandSeq;
 use crate::core::ServerState;
-use crate::display_ext::display_slice::DisplaySliceExt;
 use crate::display_ext::DisplayInstantExt;
-use crate::display_ext::DisplayOption;
 use crate::display_ext::DisplayOptionExt;
 use crate::display_ext::DisplaySlice;
+use crate::display_ext::DisplaySliceExt;
 use crate::engine::handler::replication_handler::SendNone;
 use crate::engine::Command;
 use crate::engine::Condition;
@@ -185,6 +182,8 @@ where
     pub(crate) log_store: LS,
 
     /// A controlling handle to the [`RaftStateMachine`] worker.
+    ///
+    /// [`RaftStateMachine`]: `crate::storage::RaftStateMachine`
     pub(crate) sm_handle: sm::handle::Handle<C>,
 
     pub(crate) engine: Engine<C>,
@@ -209,8 +208,6 @@ where
     pub(crate) tx_metrics: WatchSenderOf<C, RaftMetrics<C>>,
     pub(crate) tx_data_metrics: WatchSenderOf<C, RaftDataMetrics<C>>,
     pub(crate) tx_server_metrics: WatchSenderOf<C, RaftServerMetrics<C>>,
-
-    pub(crate) command_state: CommandState,
 
     pub(crate) span: Span,
 }
@@ -544,7 +541,7 @@ where
 
             // --- data ---
             current_term: st.vote_ref().leader_id().get_term(),
-            vote: *st.io_state().vote(),
+            vote: st.io_state().io_progress.flushed().map(|x| *x.vote_ref()).unwrap_or_default(),
             last_log_index: st.last_log_id().index(),
             last_applied: st.io_applied().copied(),
             snapshot: st.io_snapshot_last_log_id().copied(),
@@ -571,7 +568,7 @@ where
 
         let server_metrics = RaftServerMetrics {
             id: self.id,
-            vote: *st.io_state().vote(),
+            vote: st.io_state().io_progress.flushed().map(|x| *x.vote_ref()).unwrap_or_default(),
             state: st.server_state,
             current_leader,
             membership_config,
@@ -624,8 +621,20 @@ where
 
         let entry = C::Entry::new_membership(LogId::default(), membership);
         let res = self.engine.initialize(entry);
+
+        // If there is an error, respond at once.
+        // Otherwise, wait until the membership config log at index 0 to be flushed to disk.
+        let condition = if res.is_err() {
+            None
+        } else {
+            // There is no Leader yet therefore use [`Condition::LogFlushed`] instead of
+            // [`Condition::IOFlushed`].
+            Some(Condition::LogFlushed {
+                log_id: self.engine.state.last_log_id().copied(),
+            })
+        };
         self.engine.output.push_command(Command::Respond {
-            when: None,
+            when: condition,
             resp: Respond::new(res, tx),
         });
     }
@@ -704,7 +713,6 @@ where
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) async fn apply_to_state_machine(
         &mut self,
-        seq: CommandSeq,
         first: LogId<C::NodeId>,
         last: LogId<C::NodeId>,
     ) -> Result<(), StorageError<C>> {
@@ -717,7 +725,7 @@ where
             last.index
         );
 
-        let cmd = sm::Command::apply(first, last).with_seq(seq);
+        let cmd = sm::Command::apply(first, last);
         self.sm_handle.send(cmd).map_err(|e| StorageIOError::apply(last, AnyError::error(e)))?;
 
         Ok(())
@@ -779,7 +787,7 @@ where
 
         let leader = self.engine.leader.as_ref().unwrap();
 
-        let session_id = ReplicationSessionId::new(leader.vote, *membership_log_id);
+        let session_id = ReplicationSessionId::new(leader.committed_vote, *membership_log_id);
 
         ReplicationCore::<C, NF, LS>::spawn(
             target,
@@ -838,7 +846,12 @@ where
             let res = self.run_command(cmd).await?;
 
             if let Some(cmd) = res {
-                tracing::debug!("early return: postpone command: {:?}", cmd);
+                tracing::debug!(
+                    "RAFT_stats id={:<2}    cmd: postpone command: {}, pending: {}",
+                    self.id,
+                    cmd,
+                    self.engine.output.len()
+                );
                 self.engine.output.postpone_command(cmd);
 
                 if tracing::enabled!(Level::DEBUG) {
@@ -864,6 +877,12 @@ where
 
         loop {
             self.flush_metrics();
+
+            tracing::debug!(
+                "RAFT_stats id={:<2} log_io: {}",
+                self.id,
+                self.engine.state.io_state.io_progress
+            );
 
             // In each loop, it does not have to check rx_shutdown and flush metrics for every RaftMsg
             // processed.
@@ -1070,8 +1089,11 @@ where
         tracing::info!(req = display(&req), func = func_name!());
 
         let resp = self.engine.handle_vote_req(req);
+        let condition = Some(Condition::IOFlushed {
+            io_id: IOId::new(*self.engine.state.vote_ref()),
+        });
         self.engine.output.push_command(Command::Respond {
-            when: None,
+            when: condition,
             resp: Respond::new(Ok(resp), tx),
         });
     }
@@ -1271,13 +1293,18 @@ where
             }
 
             Notification::LocalIO { io_id } => {
-                match io_id {
-                    IOId::AppendLog(append_log_io_id) => {
-                        // No need to check against membership change,
-                        // because not like removing-then-adding a remote node,
-                        // local log wont revert when membership changes.
-                        if self.does_vote_match(append_log_io_id.committed_vote.deref(), "LocalIO Notify: AppendLog") {
-                            self.engine.replication_handler().update_local_progress(Some(append_log_io_id.log_id));
+                self.engine.state.io_state.io_progress.flush(io_id);
+
+                // No need to check against membership change,
+                // because not like removing-then-adding a remote node,
+                // local log wont revert when membership changes.
+                if self.does_vote_match(io_id.vote_ref(), "LocalIO Notify") {
+                    match io_id {
+                        IOId::Log(log_io_id) => {
+                            self.engine.replication_handler().update_local_progress(log_io_id.log_id);
+                        }
+                        IOId::Vote(_vote) => {
+                            // nothing to do
                         }
                     }
                 }
@@ -1333,23 +1360,7 @@ where
             Notification::StateMachine { command_result } => {
                 tracing::debug!("sm::StateMachine command result: {:?}", command_result);
 
-                let seq = command_result.command_seq;
                 let res = command_result.result?;
-
-                match res {
-                    // BuildSnapshot is a read operation that does not have to be serialized by
-                    // sm::Worker. Thus it may finish out of order.
-                    sm::Response::BuildSnapshot(_) => {}
-                    _ => {
-                        debug_assert!(
-                            self.command_state.finished_sm_seq < seq,
-                            "sm::StateMachine command result is out of order: expect {} < {}",
-                            self.command_state.finished_sm_seq,
-                            seq
-                        );
-                    }
-                }
-                self.command_state.finished_sm_seq = seq;
 
                 match res {
                     sm::Response::BuildSnapshot(meta) => {
@@ -1368,12 +1379,15 @@ where
                         let st = self.engine.state.io_state_mut();
                         st.update_snapshot(last_log_id);
                     }
-                    sm::Response::InstallSnapshot(meta) => {
+                    sm::Response::InstallSnapshot((io_id, meta)) => {
                         tracing::info!(
-                            "sm::StateMachine command done: InstallSnapshot: {}: {}",
+                            "sm::StateMachine command done: InstallSnapshot: {}, io_id: {}: {}",
                             meta.display(),
+                            io_id,
                             func_name!()
                         );
+
+                        self.engine.state.io_state_mut().io_progress.flush(io_id);
 
                         if let Some(meta) = meta {
                             let st = self.engine.state.io_state_mut();
@@ -1494,7 +1508,7 @@ where
         // - Otherwise, it is sent by a Candidate, we check against the current in progress voting state.
         let my_vote = if sender_vote.is_committed() {
             let l = self.engine.leader.as_ref();
-            l.map(|x| *x.vote.deref())
+            l.map(|x| *x.committed_vote.deref())
         } else {
             // If it finished voting, Candidate's vote is None.
             let candidate = self.engine.candidate_ref();
@@ -1544,32 +1558,53 @@ where
     LS: RaftLogStorage<C>,
 {
     async fn run_command<'e>(&mut self, cmd: Command<C>) -> Result<Option<Command<C>>, StorageError<C>> {
-        tracing::debug!("RAFT_event id={:<2}    cmd: {}", self.id, cmd);
+        // tracing::debug!("RAFT_event id={:<2} trycmd: {}", self.id, cmd);
 
         let condition = cmd.condition();
         tracing::debug!("condition: {:?}", condition);
 
         if let Some(condition) = condition {
             match condition {
-                Condition::LogFlushed { .. } => {
-                    todo!()
-                }
-                Condition::Applied { log_id } => {
-                    if self.engine.state.io_applied() < log_id.as_ref() {
+                Condition::IOFlushed { io_id } => {
+                    let curr = self.engine.state.io_state().io_progress.flushed();
+                    if curr < Some(&io_id) {
                         tracing::debug!(
-                            "log_id: {} has not yet applied, postpone cmd: {:?}",
-                            DisplayOption(log_id),
+                            "io_id: {} has not yet flushed, currently flushed: {} postpone cmd: {}",
+                            io_id,
+                            curr.display(),
                             cmd
                         );
                         return Ok(Some(cmd));
                     }
                 }
-                Condition::StateMachineCommand { command_seq } => {
-                    if self.command_state.finished_sm_seq < *command_seq {
+                Condition::LogFlushed { log_id } => {
+                    let curr = self.engine.state.io_state().io_progress.flushed();
+                    let curr = curr.and_then(|x| x.last_log_id());
+                    if curr < log_id.as_ref() {
                         tracing::debug!(
-                            "sm::Command({}) has not yet finished({}), postpone cmd: {:?}",
-                            command_seq,
-                            self.command_state.finished_sm_seq,
+                            "log_id: {} has not yet flushed, currently flushed: {} postpone cmd: {}",
+                            log_id.display(),
+                            curr.display(),
+                            cmd
+                        );
+                        return Ok(Some(cmd));
+                    }
+                }
+                Condition::Applied { log_id } => {
+                    if self.engine.state.io_applied() < log_id.as_ref() {
+                        tracing::debug!(
+                            "log_id: {} has not yet applied, postpone cmd: {}",
+                            log_id.display(),
+                            cmd
+                        );
+                        return Ok(Some(cmd));
+                    }
+                }
+                Condition::Snapshot { log_id } => {
+                    if self.engine.state.io_state().snapshot() < log_id.as_ref() {
+                        tracing::debug!(
+                            "log_id: {} has not yet been in snapshot, postpone cmd: {}",
+                            log_id.display(),
                             cmd
                         );
                         return Ok(Some(cmd));
@@ -1578,21 +1613,45 @@ where
             }
         }
 
+        tracing::debug!("RAFT_event id={:<2}    cmd: {}", self.id, cmd);
+
         match cmd {
-            Command::AppendInputEntries { vote, entries } => {
+            Command::UpdateIOProgress { io_id, .. } => {
+                self.engine.state.io_state.io_progress.submit(io_id);
+
+                let notify = Notification::LocalIO { io_id };
+
+                let _ = self.tx_notification.send(notify);
+            }
+            Command::AppendInputEntries {
+                committed_vote: vote,
+                entries,
+            } => {
                 let last_log_id = *entries.last().unwrap().get_log_id();
                 tracing::debug!("AppendInputEntries: {}", DisplaySlice::<_>(&entries),);
 
-                let io_id = IOId::new_append_log(vote.into_committed(), last_log_id);
+                let io_id = IOId::new_log_io(vote.into_committed(), Some(last_log_id));
                 let notify = Notification::LocalIO { io_id };
                 let callback = IOFlushed::new(notify, self.tx_notification.downgrade());
+
+                // Mark this IO request as submitted,
+                // other commands relying on it can then be processed.
+                // For example,
+                // `Replicate` command can not run until this IO request is submitted(no need to be flushed),
+                // because it needs to read the log entry from the log store.
+                //
+                // The `submit` state must be updated before calling `append()`,
+                // because `append()` may call the callback before returning.
+                self.engine.state.io_state.io_progress.submit(io_id);
 
                 // Submit IO request, do not wait for the response.
                 self.log_store.append(entries, callback).await?;
             }
             Command::SaveVote { vote } => {
+                self.engine.state.io_state_mut().io_progress.submit(IOId::new(vote));
                 self.log_store.save_vote(&vote).await?;
-                self.engine.state.io_state_mut().update_vote(vote);
+
+                let _ = self.tx_notification.send(Notification::LocalIO { io_id: IOId::new(vote) });
 
                 let _ = self.tx_notification.send(Notification::VoteResponse {
                     target: self.id,
@@ -1637,14 +1696,13 @@ where
                 }
             }
             Command::Commit {
-                seq,
                 already_committed,
                 upto,
             } => {
                 self.log_store.save_committed(Some(upto)).await?;
 
                 let first = self.engine.state.get_log_id(already_committed.next_index()).unwrap();
-                self.apply_to_state_machine(seq, first, upto).await?;
+                self.apply_to_state_machine(first, upto).await?;
             }
             Command::Replicate { req, target } => {
                 let node = self.replications.get(&target).expect("replication to target node exists");
@@ -1673,6 +1731,12 @@ where
                 }
             }
             Command::StateMachine { command } => {
+                let io_id = command.get_submit_io();
+
+                if let Some(io_id) = io_id {
+                    self.engine.state.io_state.io_progress.submit(io_id);
+                }
+
                 // Just forward a state machine command to the worker.
                 self.sm_handle.send(command).map_err(|_e| {
                     StorageIOError::write_state_machine(AnyError::error("can not send to sm::Worker".to_string()))
