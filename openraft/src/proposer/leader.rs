@@ -14,7 +14,6 @@ use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::RaftLogId;
 use crate::RaftTypeConfig;
-use crate::Vote;
 
 /// Leading state data.
 ///
@@ -38,7 +37,7 @@ where C: RaftTypeConfig
     /// The vote this leader works in.
     ///
     /// `self.voting` may be in progress requesting vote for a higher vote.
-    pub(crate) vote: CommittedVote<C>,
+    pub(crate) committed_vote: CommittedVote<C>,
 
     /// The time to send next heartbeat.
     pub(crate) next_heartbeat: InstantOf<C>,
@@ -111,7 +110,7 @@ where
         let last_log_id = last_leader_log_id.last().copied();
 
         let mut leader = Self {
-            vote,
+            committed_vote: vote,
             next_heartbeat: C::now(),
             last_log_id,
             noop_log_id,
@@ -143,8 +142,8 @@ where
         self.last_log_id.as_ref()
     }
 
-    pub(crate) fn vote_ref(&self) -> &Vote<C::NodeId> {
-        &self.vote
+    pub(crate) fn committed_vote_ref(&self) -> &CommittedVote<C> {
+        &self.committed_vote
     }
 
     /// Assign log ids to the entries.
@@ -158,7 +157,7 @@ where
         &mut self,
         entries: impl IntoIterator<Item = &'a mut LID>,
     ) {
-        let committed_leader_id = self.vote.committed_leader_id();
+        let committed_leader_id = self.committed_vote.committed_leader_id();
 
         let first = LogId::new(committed_leader_id, self.last_log_id().next_index());
         let mut last = first;
@@ -192,7 +191,7 @@ where
         // Thus vote.voted_for() is this node.
 
         // Safe unwrap: voted_for() is always non-None in Openraft
-        let node_id = self.vote.leader_id().voted_for().unwrap();
+        let node_id = self.committed_vote.leader_id().voted_for().unwrap();
         let now = Instant::now();
 
         tracing::debug!(

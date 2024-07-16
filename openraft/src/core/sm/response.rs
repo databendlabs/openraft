@@ -1,10 +1,10 @@
 use std::fmt;
 use std::fmt::Formatter;
 
-use crate::core::sm::command::CommandSeq;
 use crate::core::ApplyResult;
 use crate::display_ext::display_result::DisplayResultExt;
 use crate::display_ext::DisplayOptionExt;
+use crate::raft_state::IOId;
 use crate::RaftTypeConfig;
 use crate::SnapshotMeta;
 use crate::StorageError;
@@ -20,7 +20,7 @@ where C: RaftTypeConfig
     /// When finishing installing a snapshot.
     ///
     /// It does not return any value to RaftCore.
-    InstallSnapshot(Option<SnapshotMeta<C>>),
+    InstallSnapshot((IOId<C>, Option<SnapshotMeta<C>>)),
 
     /// Send back applied result to RaftCore.
     Apply(ApplyResult<C>),
@@ -34,8 +34,8 @@ where C: RaftTypeConfig
             Self::BuildSnapshot(meta) => {
                 write!(f, "BuildSnapshot({})", meta)
             }
-            Self::InstallSnapshot(meta) => {
-                write!(f, "InstallSnapshot({})", meta.display())
+            Self::InstallSnapshot((io_id, meta)) => {
+                write!(f, "InstallSnapshot(io_id:{}, meta:{})", io_id, meta.display())
             }
             Self::Apply(result) => {
                 write!(f, "{}", result)
@@ -49,8 +49,6 @@ where C: RaftTypeConfig
 pub(crate) struct CommandResult<C>
 where C: RaftTypeConfig
 {
-    #[allow(dead_code)]
-    pub(crate) command_seq: CommandSeq,
     pub(crate) result: Result<Response<C>, StorageError<C>>,
 }
 
@@ -58,19 +56,14 @@ impl<C> fmt::Display for CommandResult<C>
 where C: RaftTypeConfig
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "sm::Result(command_seq:{}, {})",
-            self.command_seq,
-            self.result.display()
-        )
+        write!(f, "sm::Result({})", self.result.display())
     }
 }
 
 impl<C> CommandResult<C>
 where C: RaftTypeConfig
 {
-    pub(crate) fn new(command_seq: CommandSeq, result: Result<Response<C>, StorageError<C>>) -> Self {
-        Self { command_seq, result }
+    pub(crate) fn new(result: Result<Response<C>, StorageError<C>>) -> Self {
+        Self { result }
     }
 }

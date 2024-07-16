@@ -15,6 +15,7 @@ use crate::engine::ReplicationProgress;
 use crate::entry::RaftEntry;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::Inflight;
+use crate::raft_state::IOId;
 use crate::raft_state::LogStateReader;
 use crate::testing::blank_ent;
 use crate::testing::log_id;
@@ -72,6 +73,11 @@ fn test_leader_append_entries_empty() -> anyhow::Result<()> {
     eng.leader_handler()?.leader_append_entries(Vec::<Entry<UTConfig>>::new());
 
     assert_eq!(
+        None,
+        eng.state.accepted_io(),
+        "no accepted log updated for empty entries"
+    );
+    assert_eq!(
         &[
             log_id(1, 1, 1), //
             log_id(2, 1, 3),
@@ -104,11 +110,18 @@ fn test_leader_append_entries_normal() -> anyhow::Result<()> {
     ]);
 
     assert_eq!(
+        Some(&IOId::new_append_log(
+            Vote::new(3, 1).into_committed(),
+            Some(log_id(3, 1, 6))
+        )),
+        eng.state.accepted_io()
+    );
+    assert_eq!(
         &[
             log_id(1, 1, 1), //
             log_id(2, 1, 3),
-            LogId::new(CommittedLeaderId::new(3, 1), 4),
-            LogId::new(CommittedLeaderId::new(3, 1), 6),
+            log_id(3, 1, 4),
+            log_id(3, 1, 6),
         ],
         eng.state.log_ids.key_log_ids()
     );
@@ -126,7 +139,7 @@ fn test_leader_append_entries_normal() -> anyhow::Result<()> {
     assert_eq!(
         vec![
             Command::AppendInputEntries {
-                vote: Vote::new_committed(3, 1),
+                committed_vote: Vote::new(3, 1).into_committed(),
                 entries: vec![
                     blank_ent(3, 1, 4), //
                     blank_ent(3, 1, 5),
@@ -166,6 +179,13 @@ fn test_leader_append_entries_single_node_leader() -> anyhow::Result<()> {
     ]);
 
     assert_eq!(
+        Some(&IOId::new_append_log(
+            Vote::new(3, 1).into_committed(),
+            Some(log_id(3, 1, 6))
+        )),
+        eng.state.accepted_io()
+    );
+    assert_eq!(
         &[
             log_id(1, 1, 1), //
             log_id(2, 1, 3),
@@ -186,7 +206,7 @@ fn test_leader_append_entries_single_node_leader() -> anyhow::Result<()> {
 
     assert_eq!(
         vec![Command::AppendInputEntries {
-            vote: Vote::new_committed(3, 1),
+            committed_vote: Vote::new(3, 1).into_committed(),
             entries: vec![
                 blank_ent(3, 1, 4), //
                 blank_ent(3, 1, 5),
@@ -217,6 +237,13 @@ fn test_leader_append_entries_with_membership_log() -> anyhow::Result<()> {
     ]);
 
     assert_eq!(
+        Some(&IOId::new_append_log(
+            Vote::new(3, 1).into_committed(),
+            Some(log_id(3, 1, 6))
+        )),
+        eng.state.accepted_io()
+    );
+    assert_eq!(
         &[
             log_id(1, 1, 1), //
             log_id(2, 1, 3),
@@ -241,7 +268,7 @@ fn test_leader_append_entries_with_membership_log() -> anyhow::Result<()> {
     assert_eq!(
         vec![
             Command::AppendInputEntries {
-                vote: Vote::new_committed(3, 1),
+                committed_vote: Vote::new(3, 1).into_committed(),
                 entries: vec![
                     blank_ent(3, 1, 4), //
                     Entry::new_membership(log_id(3, 1, 5), m1_2()),

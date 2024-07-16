@@ -6,9 +6,11 @@ use pretty_assertions::assert_eq;
 use crate::core::ServerState;
 use crate::engine::testing::UTConfig;
 use crate::engine::Command;
+use crate::engine::Condition;
 use crate::engine::Engine;
 use crate::entry::RaftEntry;
 use crate::error::RejectAppendEntries;
+use crate::raft_state::IOId;
 use crate::raft_state::LogStateReader;
 use crate::testing::blank_ent;
 use crate::testing::log_id;
@@ -110,9 +112,17 @@ fn test_append_entries_prev_log_id_is_applied() -> anyhow::Result<()> {
     );
     assert_eq!(ServerState::Follower, eng.state.server_state);
     assert_eq!(
-        vec![Command::SaveVote {
-            vote: Vote::new_committed(2, 1)
-        },],
+        vec![
+            Command::SaveVote {
+                vote: Vote::new_committed(2, 1)
+            },
+            Command::UpdateIOProgress {
+                when: Some(Condition::IOFlushed {
+                    io_id: IOId::new_append_log(Vote::new(2, 1).into_committed(), None)
+                }),
+                io_id: IOId::new_append_log(Vote::new(2, 1).into_committed(), Some(log_id(0, 1, 0)))
+            }
+        ],
         eng.output.take_commands()
     );
 
@@ -199,7 +209,7 @@ fn test_append_entries_prev_log_id_is_committed() -> anyhow::Result<()> {
             },
             Command::TruncateLog { since: log_id(1, 1, 2) },
             Command::AppendInputEntries {
-                vote: Vote::new_committed(2, 1),
+                committed_vote: Vote::new(2, 1).into_committed(),
                 entries: vec![blank_ent(2, 1, 2)]
             },
         ],
@@ -293,7 +303,7 @@ fn test_append_entries_conflict() -> anyhow::Result<()> {
             },
             Command::TruncateLog { since: log_id(2, 1, 3) },
             Command::AppendInputEntries {
-                vote: Vote::new_committed(2, 1),
+                committed_vote: Vote::new(2, 1).into_committed(),
                 entries: vec![Entry::new_membership(log_id(3, 1, 3), m34())]
             },
         ],

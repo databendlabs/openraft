@@ -50,7 +50,6 @@ use crate::async_runtime::MpscUnboundedSender;
 use crate::async_runtime::OneshotSender;
 use crate::config::Config;
 use crate::config::RuntimeConfig;
-use crate::core::command_state::CommandState;
 use crate::core::raft_msg::external_command::ExternalCommand;
 use crate::core::raft_msg::RaftMsg;
 use crate::core::replication_lag;
@@ -298,7 +297,6 @@ where C: RaftTypeConfig
             tx_data_metrics,
             tx_server_metrics,
 
-            command_state: CommandState::default(),
             span: core_span,
         };
 

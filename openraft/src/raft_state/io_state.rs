@@ -1,11 +1,19 @@
+use std::error::Error;
+
+use validit::less_equal;
+use validit::Valid;
+use validit::Validate;
+
 use crate::display_ext::DisplayOption;
-use crate::raft_state::io_state::append_log_io_id::AppendLogIOId;
+use crate::raft_state::io_state::io_progress::IOProgress;
+use crate::raft_state::IOId;
 use crate::LogId;
 use crate::RaftTypeConfig;
 use crate::Vote;
 
-pub(crate) mod append_log_io_id;
 pub(crate) mod io_id;
+pub(crate) mod io_progress;
+pub(crate) mod log_io_id;
 
 /// IOState tracks the state of actually happened io including log flushed, applying log to state
 /// machine or snapshot building.
@@ -17,13 +25,38 @@ pub(crate) mod io_id;
 ///
 /// ```text
 /// | log ids
-/// | *------------+---------+---------+---------+------------------>
-/// |              |         |         |         `---> flushed
-/// |              |         |         `-------------> applied
-/// |              |         `-----------------------> snapshot
-/// |              `---------------------------------> purged
+/// | *------+-------+-------+-------+-------+-------+------------------>
+/// |        |       |       |       |       |       `---> accepted
+/// |        |       |       |       |       `-----------> submitted
+/// |        |       |       |       `-------------------> flushed
+/// |        |       |       `---------------------------> applied
+/// |        |       `-----------------------------------> snapshot
+/// |        `-------------------------------------------> purged
 /// ```
-#[derive(Debug, Clone, Copy)]
+///
+/// - `accepted`: Accepted log entries from the Leader but not yet submit to the storage.
+/// - `submitted`: AppendEntries IO request is submitted to `RaftLogStorage`, but not yet flushed.
+/// - `flushed`: The log entries are persisted in the `RaftLogStorage`.
+/// - `applied`: log entries are applied to state machine.
+/// - `snapshot`: log entries are included in a persisted snapshot.
+/// - `purged`: log entries are purged from `RaftLogStorage`.
+///
+/// Invariants:
+///
+/// ```text
+///                                RaftLogStorage
+/// .----------------------------------------------------------------------------.
+/// | purged ≤ -.                             flushed ≤ -+- submitted ≤ accepted |
+/// '-----------|----------------------------------------|-----------------------'
+///             |                                        |
+///             |                        .- committed ≤ -'
+///             |                        |
+///           .-|------------------------|-.
+///           | '- snapshot ≤ applied ≤ -' |
+///           '----------------------------'
+///                  RaftStateMachine
+/// ```
+#[derive(Debug, Clone)]
 #[derive(Default)]
 #[derive(PartialEq, Eq)]
 pub(crate) struct IOState<C>
@@ -32,12 +65,8 @@ where C: RaftTypeConfig
     /// Whether it is building a snapshot
     building_snapshot: bool,
 
-    /// The last flushed vote.
-    pub(crate) vote: Vote<C::NodeId>,
-
-    /// The last log id that has been flushed to storage.
-    // TODO: this wont be used until we move log io into separate task.
-    pub(crate) flushed: Option<AppendLogIOId<C>>,
+    /// Tracks the accepted, submitted and flushed IO to local storage.
+    pub(crate) io_progress: Valid<IOProgress<IOId<C>>>,
 
     /// The last log id that has been applied to state machine.
     pub(crate) applied: Option<LogId<C::NodeId>>,
@@ -53,6 +82,23 @@ where C: RaftTypeConfig
     pub(crate) purged: Option<LogId<C::NodeId>>,
 }
 
+impl<C> Validate for IOState<C>
+where C: RaftTypeConfig
+{
+    fn validate(&self) -> Result<(), Box<dyn Error>> {
+        self.io_progress.validate()?;
+
+        // TODO: enable this when get_initial_state() initialize the log io progress correctly
+        // let a = &self.append_log;
+        // Applied does not have to be flushed in local store.
+        // less_equal!(self.applied.as_ref(), a.submitted().and_then(|x| x.last_log_id()));
+
+        less_equal!(self.snapshot, self.applied);
+        less_equal!(self.purged, self.snapshot);
+        Ok(())
+    }
+}
+
 impl<C> IOState<C>
 where C: RaftTypeConfig
 {
@@ -62,22 +108,19 @@ where C: RaftTypeConfig
         snapshot: Option<LogId<C::NodeId>>,
         purged: Option<LogId<C::NodeId>>,
     ) -> Self {
+        let mut io_progress = Valid::new(IOProgress::default());
+
+        io_progress.accept(IOId::new(vote));
+        io_progress.submit(IOId::new(vote));
+        io_progress.flush(IOId::new(vote));
+
         Self {
             building_snapshot: false,
-            vote,
-            flushed: None,
+            io_progress,
             applied,
             snapshot,
             purged,
         }
-    }
-
-    pub(crate) fn update_vote(&mut self, vote: Vote<C::NodeId>) {
-        self.vote = vote;
-    }
-
-    pub(crate) fn vote(&self) -> &Vote<C::NodeId> {
-        &self.vote
     }
 
     pub(crate) fn update_applied(&mut self, log_id: Option<LogId<C::NodeId>>) {

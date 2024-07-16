@@ -14,6 +14,7 @@ use crate::entry::RaftEntry;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::Inflight;
 use crate::raft::VoteResponse;
+use crate::raft_state::IOId;
 use crate::testing::log_id;
 use crate::utime::UTime;
 use crate::CommittedLeaderId;
@@ -192,6 +193,17 @@ fn test_handle_vote_resp_equal_vote() -> anyhow::Result<()> {
         assert_eq!(Vote::new_committed(2, 1), eng.last_seen_vote);
 
         assert_eq!(Some(log_id(2, 1, 1)), eng.leader.as_ref().unwrap().noop_log_id);
+        assert_eq!(
+            Some(log_id(2, 1, 1)),
+            eng.leader.as_ref().unwrap().last_log_id().copied()
+        );
+        assert_eq!(
+            Some(&IOId::new_append_log(
+                Vote::new(2, 1).into_committed(),
+                Some(log_id(2, 1, 1))
+            )),
+            eng.state.accepted_io()
+        );
         assert!(
             eng.candidate_ref().is_none(),
             "candidate state is removed when becoming leader"
@@ -208,7 +220,7 @@ fn test_handle_vote_resp_equal_vote() -> anyhow::Result<()> {
                     vote: Vote::new_committed(2, 1)
                 },
                 Command::AppendInputEntries {
-                    vote: Vote::new_committed(2, 1),
+                    committed_vote: Vote::new(2, 1).into_committed(),
                     entries: vec![Entry::<UTConfig>::new_blank(log_id(2, 1, 1))],
                 },
                 Command::Replicate {

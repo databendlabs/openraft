@@ -95,7 +95,7 @@ where C: RaftTypeConfig
                 )
             }
             Self::StorageError { error } => write!(f, "StorageError: {}", error),
-            Self::LocalIO { io_id } => write!(f, "{}", io_id),
+            Self::LocalIO { io_id } => write!(f, "IOFlushed: {}", io_id),
             Self::Network { response } => {
                 write!(f, "{}", response)
             }

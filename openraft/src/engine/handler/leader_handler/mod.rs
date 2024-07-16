@@ -6,6 +6,7 @@ use crate::engine::EngineOutput;
 use crate::entry::RaftPayload;
 use crate::proposer::Leader;
 use crate::proposer::LeaderQuorumSet;
+use crate::raft_state::IOId;
 use crate::raft_state::LogStateReader;
 use crate::type_config::alias::LogIdOf;
 use crate::RaftLogId;
@@ -67,10 +68,15 @@ where C: RaftTypeConfig
             }
         }
 
+        self.state.accept_io(IOId::new_append_log(
+            self.state.vote_ref().into_committed(),
+            self.leader.last_log_id().copied(),
+        ));
+
         self.output.push_command(Command::AppendInputEntries {
             // A leader should always use the leader's vote.
             // It is allowed to be different from local vote.
-            vote: *self.leader.vote,
+            committed_vote: self.leader.committed_vote,
             entries,
         });
 
