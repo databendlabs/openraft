@@ -31,7 +31,7 @@ fn test_trigger_snapshot() -> anyhow::Result<()> {
     assert_eq!(
         vec![
             //
-            Command::from(sm::Command::build_snapshot().with_seq(1)),
+            Command::from(sm::Command::build_snapshot()),
         ],
         eng.output.take_commands()
     );

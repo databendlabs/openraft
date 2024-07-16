@@ -10,31 +10,65 @@ Inside Openraft, there are several pointers pointing to the raft-log:
 - `snapshot`:  the last log entry that has been included in the latest snapshot, inclusive.
   Openraft takes a snapshot of the state-machine periodically.
   Therefore, a snapshot is a compacted format of a continuous range of log entries.
- 
+
 - `applied`:   the last log entry that has been applied to the state machine, inclusive.
   In raft only committed log entry can be applied.
- 
+
 - `committed`: the last log entry that has been committed(granted by a quorum and at the leader's term) by the leader, inclusive.
 
-- `last_log`:  the last log entry in the log, inclusive.
+- `flushed`:  the last log entry that are persisted on disk, inclusive.
+
+- `submitted`: the last log entry that has submitted to [`RaftLogStorage`], but not yet flushed, inclusive.
+
+- `accepted`: the last log entry accepted from the Leader but not yet submit to the storage, inclusive.
+    `accepted` is also known as `last_log` in Openraft codebase.
 
 Within openraft, the log pointers mentioned above always hold that:
-`purged` ≤ `snapshot` ≤ `applied` ≤ `committed` ≤ `last_log`.
+`flushed` ≤ `submitted` ≤ `accepted`;
+`purged` ≤ `snapshot` ≤ `applied` ≤ `committed` ≤ `submitted`;
+
+- `committed` ≤ `flushed` does not have to hold,
+  because `committed` means a quorum flushed the log entry,
+  but the quorum does not have to include the local node.
+
+- `committed` ≤ `submitted` always hold
+  only because the replication mod needs to read log entries from local storage.
+
+Invariants:
+
+```text
+                               RaftLogStorage
+.----------------------------------------------------------------------------.
+| purged ≤ -.                             flushed ≤ -+- submitted ≤ accepted |
+'-----------|----------------------------------------|-----------------------'
+            |                                        |
+            |                        .- committed ≤ -'
+            |                        |
+          .-|------------------------|-.
+          | '- snapshot ≤ applied ≤ -' |
+          '----------------------------'
+                 RaftStateMachine
+```
 
 The log indexes of a follower are always behind or equal the leader's `last_log`.
 If a follower's `last_log` is lagging behind the leader's `purged`, it will be replicated using a snapshot.
 
 ```text
-       .- delayed follower
-       |
-øøøøøøøøøøøøøøøLLLLLLLLLLLLLLLLLLLLLLLLLL
--------+------+------+-----+------+-----+-----------> log index
-              |      |     |      |     |
-              |      |     |      |     ` last_log
-              |      |     |      ` committed
-              |      |     ` applied
-              |      ` snapshot
-              ` purged
+ø: inexistent log entry
+L: existent log entry
+P: existent and persisted log entry
+
+     .- delayed follower
+     |
+øøøøøøøøøøøøPPPPPPPPPPPPPPPPPPPPPPPPLLLLLLLLLLLL
+-----+-----+-----+-----+-----+-----+-----+-----+-----------> log index
+           |     |     |     |     |     |     ` accepted
+           |     |     |     |     |     ` submitted
+           |     |     |     |     ` flushed
+           |     |     |     ` committed
+           |     |     ` applied
+           |     ` snapshot
+           ` purged
 ```
 
 ## Optionally Persisted `committed`
@@ -71,4 +105,5 @@ A state machine that won't revert to a former state is easier to use:)
 
 The overhead introduced by calling `save_committed()` should be minimal: in average, it will be called for every `max_payload_entries` log entries. Meanwhile I do not quite worry about the penalty, unless there is a measurable overhead.
 
+[`RaftLogStorage`]: `crate::storage::RaftLogStorage`
 [`RaftLogStorage::save_committed`]: `crate::storage::RaftLogStorage::save_committed`

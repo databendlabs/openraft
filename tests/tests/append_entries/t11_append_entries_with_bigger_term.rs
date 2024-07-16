@@ -7,6 +7,7 @@ use openraft::network::RPCOption;
 use openraft::network::RaftNetwork;
 use openraft::network::RaftNetworkFactory;
 use openraft::raft::AppendEntriesRequest;
+use openraft::testing::log_id;
 use openraft::CommittedLeaderId;
 use openraft::Config;
 use openraft::LogId;
@@ -48,9 +49,9 @@ async fn append_entries_with_bigger_term() -> Result<()> {
     // append entries with term 2 and leader_id, this MUST cause hard state changed in node 0
     let req = AppendEntriesRequest::<openraft_memstore::TypeConfig> {
         vote: Vote::new_committed(2, 1),
-        prev_log_id: Some(LogId::new(CommittedLeaderId::new(1, 0), log_index)),
+        prev_log_id: Some(log_id(1, 0, log_index)),
         entries: vec![],
-        leader_commit: Some(LogId::new(CommittedLeaderId::new(1, 0), log_index)),
+        leader_commit: Some(log_id(1, 0, log_index)),
     };
 
     let option = RPCOption::new(Duration::from_millis(1_000));

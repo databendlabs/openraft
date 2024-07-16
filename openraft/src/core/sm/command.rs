@@ -4,6 +4,7 @@ use std::fmt::Formatter;
 
 use crate::core::raft_msg::ResultSender;
 use crate::error::Infallible;
+use crate::raft_state::IOId;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::SnapshotDataOf;
 use crate::RaftTypeConfig;
@@ -13,7 +14,6 @@ use crate::Snapshot;
 pub(crate) struct Command<C>
 where C: RaftTypeConfig
 {
-    pub(crate) seq: CommandSeq,
     pub(crate) payload: CommandPayload<C>,
 }
 
@@ -21,10 +21,7 @@ impl<C> Debug for Command<C>
 where C: RaftTypeConfig
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.debug_struct("StateMachineCommand")
-            .field("seq", &self.seq)
-            .field("payload", &self.payload)
-            .finish()
+        f.debug_struct("StateMachineCommand").field("payload", &self.payload).finish()
     }
 }
 
@@ -32,7 +29,7 @@ impl<C> fmt::Display for Command<C>
 where C: RaftTypeConfig
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "sm::Command: seq: {}, payload: {}", self.seq, self.payload)
+        write!(f, "sm::Command: payload: {}", self.payload)
     }
 }
 
@@ -40,21 +37,7 @@ impl<C> Command<C>
 where C: RaftTypeConfig
 {
     pub(crate) fn new(payload: CommandPayload<C>) -> Self {
-        Self { seq: 0, payload }
-    }
-
-    #[allow(dead_code)]
-    pub(crate) fn seq(&self) -> CommandSeq {
-        self.seq
-    }
-
-    pub(crate) fn with_seq(mut self, seq: CommandSeq) -> Self {
-        self.seq = seq;
-        self
-    }
-
-    pub(crate) fn set_seq(&mut self, seq: CommandSeq) {
-        self.seq = seq;
+        Self { payload }
     }
 
     pub(crate) fn build_snapshot() -> Self {
@@ -72,8 +55,8 @@ where C: RaftTypeConfig
         Command::new(payload)
     }
 
-    pub(crate) fn install_full_snapshot(snapshot: Snapshot<C>) -> Self {
-        let payload = CommandPayload::InstallFullSnapshot { snapshot };
+    pub(crate) fn install_full_snapshot(snapshot: Snapshot<C>, io_id: IOId<C>) -> Self {
+        let payload = CommandPayload::InstallFullSnapshot { io_id, snapshot };
         Command::new(payload)
     }
 
@@ -82,14 +65,18 @@ where C: RaftTypeConfig
         let payload = CommandPayload::Apply { first, last };
         Command::new(payload)
     }
-}
 
-// TODO: move to other mod, it is shared by log, sm and replication
-/// A sequence number of a state machine command.
-///
-/// It is used to identify and consume a submitted command when the command callback is received by
-/// RaftCore.
-pub(crate) type CommandSeq = u64;
+    /// Return the IOId if this command submit any IO.
+    pub(crate) fn get_submit_io(&self) -> Option<IOId<C>> {
+        match self.payload {
+            CommandPayload::BuildSnapshot => None,
+            CommandPayload::GetSnapshot { .. } => None,
+            CommandPayload::BeginReceivingSnapshot { .. } => None,
+            CommandPayload::InstallFullSnapshot { io_id, .. } => Some(io_id),
+            CommandPayload::Apply { .. } => None,
+        }
+    }
+}
 
 /// The payload of a state machine command.
 pub(crate) enum CommandPayload<C>
@@ -99,15 +86,18 @@ where C: RaftTypeConfig
     BuildSnapshot,
 
     /// Get the latest built snapshot.
-    GetSnapshot {
-        tx: ResultSender<C, Option<Snapshot<C>>>,
-    },
+    GetSnapshot { tx: ResultSender<C, Option<Snapshot<C>>> },
 
     BeginReceivingSnapshot {
         tx: ResultSender<C, Box<SnapshotDataOf<C>>, Infallible>,
     },
 
     InstallFullSnapshot {
+        /// The IO id used to update IO progress.
+        ///
+        /// Installing a snapshot is considered as an IO of AppendEntries `[0,
+        /// snapshot.last_log_id]`
+        io_id: IOId<C>,
         snapshot: Snapshot<C>,
     },
 
@@ -128,8 +118,8 @@ where C: RaftTypeConfig
         match self {
             CommandPayload::BuildSnapshot => write!(f, "BuildSnapshot"),
             CommandPayload::GetSnapshot { .. } => write!(f, "GetSnapshot"),
-            CommandPayload::InstallFullSnapshot { snapshot } => {
-                write!(f, "InstallFullSnapshot: meta: {:?}", snapshot.meta)
+            CommandPayload::InstallFullSnapshot { io_id, snapshot } => {
+                write!(f, "InstallFullSnapshot: meta: {:?}, io_id: {:?}", snapshot.meta, io_id)
             }
             CommandPayload::BeginReceivingSnapshot { .. } => {
                 write!(f, "BeginReceivingSnapshot")
@@ -146,8 +136,8 @@ where C: RaftTypeConfig
         match self {
             CommandPayload::BuildSnapshot => write!(f, "BuildSnapshot"),
             CommandPayload::GetSnapshot { .. } => write!(f, "GetSnapshot"),
-            CommandPayload::InstallFullSnapshot { snapshot } => {
-                write!(f, "InstallFullSnapshot: meta: {}", snapshot.meta)
+            CommandPayload::InstallFullSnapshot { io_id, snapshot } => {
+                write!(f, "InstallFullSnapshot: meta: {}, io_id: {}", snapshot.meta, io_id)
             }
             CommandPayload::BeginReceivingSnapshot { .. } => {
                 write!(f, "BeginReceivingSnapshot")
@@ -167,9 +157,15 @@ where C: RaftTypeConfig
             (CommandPayload::GetSnapshot { .. }, CommandPayload::GetSnapshot { .. }) => true,
             (CommandPayload::BeginReceivingSnapshot { .. }, CommandPayload::BeginReceivingSnapshot { .. }) => true,
             (
-                CommandPayload::InstallFullSnapshot { snapshot: s1 },
-                CommandPayload::InstallFullSnapshot { snapshot: s2 },
-            ) => s1.meta == s2.meta,
+                CommandPayload::InstallFullSnapshot {
+                    io_id: io1,
+                    snapshot: s1,
+                },
+                CommandPayload::InstallFullSnapshot {
+                    io_id: io2,
+                    snapshot: s2,
+                },
+            ) => s1.meta == s2.meta && io1 == io2,
             (
                 CommandPayload::Apply { first, last },
                 CommandPayload::Apply {

@@ -70,7 +70,7 @@ fn test_startup_as_leader_without_logs() -> anyhow::Result<()> {
                 })]
             },
             Command::AppendInputEntries {
-                vote: Vote::new_committed(2, 2),
+                vote: Vote::new(2, 2).into_committed(),
                 entries: vec![Entry::<UTConfig>::new_blank(log_id(2, 2, 4))],
             },
             Command::Replicate {
