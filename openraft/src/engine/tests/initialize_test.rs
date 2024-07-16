@@ -57,7 +57,7 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
         assert_eq!(
             vec![
                 Command::AppendInputEntries {
-                    vote: Vote::default(),
+                    vote: Vote::default().into_committed(),
                     entries: vec![Entry::<UTConfig>::new_membership(LogId::default(), m1())],
                 },
                 // When update the effective membership, the engine set it to Follower.
@@ -110,7 +110,7 @@ fn test_initialize() -> anyhow::Result<()> {
         assert_eq!(
             vec![
                 Command::AppendInputEntries {
-                    vote: Vote::default(),
+                    vote: Vote::default().into_committed(),
                     entries: vec![Entry::new_membership(LogId::default(), m12())],
                 },
                 // When update the effective membership, the engine set it to Follower.

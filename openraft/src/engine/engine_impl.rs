@@ -1,3 +1,4 @@
+use std::ops::Deref;
 use std::time::Duration;
 
 use validit::Valid;
@@ -8,7 +9,7 @@ use crate::core::sm;
 use crate::core::ServerState;
 use crate::display_ext::DisplayInstantExt;
 use crate::display_ext::DisplayOptionExt;
-use crate::display_ext::DisplaySlice;
+use crate::display_ext::DisplaySliceExt;
 use crate::engine::engine_config::EngineConfig;
 use crate::engine::handler::establish_handler::EstablishHandler;
 use crate::engine::handler::following_handler::FollowingHandler;
@@ -19,6 +20,7 @@ use crate::engine::handler::server_state_handler::ServerStateHandler;
 use crate::engine::handler::snapshot_handler::SnapshotHandler;
 use crate::engine::handler::vote_handler::VoteHandler;
 use crate::engine::Command;
+use crate::engine::Condition;
 use crate::engine::EngineOutput;
 use crate::engine::Respond;
 use crate::entry::RaftEntry;
@@ -39,6 +41,7 @@ use crate::raft::AppendEntriesResponse;
 use crate::raft::SnapshotResponse;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
+use crate::raft_state::IOId;
 use crate::raft_state::LogStateReader;
 use crate::raft_state::RaftState;
 use crate::type_config::alias::ResponderOf;
@@ -201,7 +204,14 @@ where C: RaftTypeConfig
         let m = entry.get_membership().expect("the only log entry for initializing has to be membership log");
         self.check_members_contain_me(m)?;
 
-        self.following_handler().do_append_entries(vec![entry], 0);
+        // FollowingHandler requires vote to be committed.
+        let vote = Vote {
+            committed: true,
+            ..Default::default()
+        };
+        self.last_seen_vote = vote;
+        self.state.vote.update(C::now(), vote);
+        self.following_handler().do_append_entries(vec![entry]);
 
         // With the new config, start to elect to become leader
         self.elect();
@@ -420,7 +430,7 @@ where C: RaftTypeConfig
         tracing::debug!(
             vote = display(vote),
             prev_log_id = display(prev_log_id.display()),
-            entries = display(DisplaySlice::<_>(&entries)),
+            entries = display(entries.display()),
             my_vote = display(self.state.vote_ref()),
             my_last_log_id = display(self.state.last_log_id().display()),
             "{}",
@@ -432,8 +442,17 @@ where C: RaftTypeConfig
 
         if let Some(tx) = tx {
             let resp: AppendEntriesResponse<C> = res.into();
+
+            let condition = if is_ok {
+                Some(Condition::IOFlushed {
+                    io_id: *self.state.accepted_io().unwrap(),
+                })
+            } else {
+                None
+            };
+
             self.output.push_command(Command::Respond {
-                when: None,
+                when: condition,
                 resp: Respond::new(Ok(resp), tx),
             });
         }
@@ -462,7 +481,7 @@ where C: RaftTypeConfig
     pub(crate) fn handle_commit_entries(&mut self, leader_committed: Option<LogId<C::NodeId>>) {
         tracing::debug!(
             leader_committed = display(leader_committed.display()),
-            my_accepted = display(self.state.accepted().display()),
+            my_accepted = display(self.state.accepted_io().display()),
             my_committed = display(self.state.committed().display()),
             "{}",
             func_name!()
@@ -646,7 +665,8 @@ where C: RaftTypeConfig
         // There may already be a Leader with higher vote
         let Some(leader) = leader else { return };
 
-        let vote = *leader.vote_ref();
+        let vote = *leader.committed_vote_ref();
+        let last_log_id = leader.last_log_id().copied();
 
         self.replication_handler().rebuild_replication_streams();
 
@@ -655,6 +675,8 @@ where C: RaftTypeConfig
         // once `state.vote` is changed to a value of other node.
         let _res = self.vote_handler().update_vote(&vote);
         debug_assert!(_res.is_ok(), "commit vote can not fail but: {:?}", _res);
+
+        self.state.accept_io(IOId::new_append_log(vote.into_committed(), last_log_id));
 
         self.leader_handler()
             .unwrap()
@@ -756,9 +778,9 @@ where C: RaftTypeConfig
         };
 
         debug_assert!(
-            *leader.vote_ref() >= *self.state.vote_ref(),
+            leader.committed_vote_ref().deref() >= self.state.vote_ref(),
             "leader.vote({}) >= state.vote({})",
-            leader.vote_ref(),
+            leader.committed_vote_ref(),
             self.state.vote_ref()
         );
 
@@ -789,7 +811,15 @@ where C: RaftTypeConfig
     pub(crate) fn following_handler(&mut self) -> FollowingHandler<C> {
         debug_assert!(self.leader.is_none());
 
+        let leader_vote = *self.state.vote_ref();
+        debug_assert!(
+            leader_vote.is_committed(),
+            "Expect the Leader vote to be committed: {}",
+            leader_vote
+        );
+
         FollowingHandler {
+            leader_vote: leader_vote.into_committed(),
             config: &mut self.config,
             state: &mut self.state,
             output: &mut self.output,

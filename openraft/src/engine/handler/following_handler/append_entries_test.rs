@@ -1,12 +1,17 @@
 use std::sync::Arc;
 
 use maplit::btreeset;
+use pretty_assertions::assert_eq;
 
 use crate::engine::testing::UTConfig;
+use crate::engine::Command;
+use crate::engine::Condition;
 use crate::engine::Engine;
+use crate::raft_state::IOId;
 use crate::raft_state::LogStateReader;
 use crate::testing::blank_ent;
 use crate::testing::log_id;
+use crate::utime::UTime;
 use crate::EffectiveMembership;
 use crate::Membership;
 use crate::MembershipState;
@@ -41,6 +46,8 @@ fn eng() -> Engine<UTConfig> {
 fn test_follower_append_entries_update_accepted() -> anyhow::Result<()> {
     let mut eng = eng();
 
+    eng.output.clear_commands();
+
     eng.following_handler().append_entries(Some(log_id(2, 1, 3)), vec![
         //
         blank_ent(3, 1, 4),
@@ -56,17 +63,64 @@ fn test_follower_append_entries_update_accepted() -> anyhow::Result<()> {
         ],
         eng.state.log_ids.key_log_ids()
     );
-    assert_eq!(Some(&log_id(3, 1, 5)), eng.state.accepted());
-
-    // Update again, accept should not decrease.
-
-    eng.following_handler().append_entries(Some(log_id(2, 1, 3)), vec![
+    assert_eq!(
+        Some(&IOId::new_append_log(
+            Vote::new(2, 1).into_committed(),
+            Some(log_id(3, 1, 5))
+        )),
+        eng.state.accepted_io()
+    );
+    assert_eq!(eng.output.take_commands(), vec![
         //
-        blank_ent(3, 1, 4),
+        Command::AppendInputEntries {
+            vote: Vote::new(2, 1).into_committed(),
+            entries: vec![blank_ent(3, 1, 4), blank_ent(3, 1, 5),],
+        }
     ]);
 
-    assert_eq!(Some(&log_id(3, 1, 5)), eng.state.last_log_id());
-    assert_eq!(Some(&log_id(3, 1, 5)), eng.state.accepted());
+    // Update to a new Leader and smaller log id
+    {
+        // Assume this node's Leader becomes T3-N1
+        eng.state.vote = UTime::new(TokioInstant::now(), Vote::new_committed(3, 1));
+        eng.following_handler().append_entries(Some(log_id(2, 1, 3)), vec![
+            //
+            blank_ent(3, 1, 4),
+        ]);
+        assert_eq!(Some(&log_id(3, 1, 5)), eng.state.last_log_id());
+        assert_eq!(
+            Some(&IOId::new_append_log(
+                Vote::new(3, 1).into_committed(),
+                Some(log_id(3, 1, 4))
+            )),
+            eng.state.accepted_io()
+        );
+        assert_eq!(eng.output.take_commands(), vec![
+            //
+            Command::UpdateIOProgress {
+                when: Some(Condition::IOFlushed {
+                    io_id: IOId::new_append_log(Vote::new(2, 1).into_committed(), Some(log_id(3, 1, 5)))
+                }),
+                io_id: IOId::new_append_log(Vote::new(3, 1).into_committed(), Some(log_id(3, 1, 4))),
+            }
+        ]);
+    }
+
+    // Update to a smaller value is ignored.
+    {
+        eng.following_handler().append_entries(Some(log_id(2, 1, 3)), vec![]);
+        assert_eq!(Some(&log_id(3, 1, 5)), eng.state.last_log_id());
+        assert_eq!(
+            Some(&IOId::new_append_log(
+                Vote::new(3, 1).into_committed(),
+                Some(log_id(3, 1, 4))
+            )),
+            eng.state.accepted_io()
+        );
+
+        assert_eq!(eng.output.take_commands(), vec![
+            //
+        ]);
+    }
 
     Ok(())
 }

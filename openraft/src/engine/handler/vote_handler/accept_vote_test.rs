@@ -6,10 +6,12 @@ use pretty_assertions::assert_eq;
 use crate::core::ServerState;
 use crate::engine::testing::UTConfig;
 use crate::engine::Command;
+use crate::engine::Condition;
 use crate::engine::Engine;
 use crate::engine::Respond;
 use crate::error::Infallible;
 use crate::raft::VoteResponse;
+use crate::raft_state::IOId;
 use crate::testing::log_id;
 use crate::type_config::TypeConfigExt;
 use crate::utime::UTime;
@@ -57,7 +59,9 @@ fn test_accept_vote_reject_smaller_vote() -> anyhow::Result<()> {
         vec![
             //
             Command::Respond {
-                when: None,
+                when: Some(Condition::IOFlushed {
+                    io_id: IOId::new(Vote::new(2, 1))
+                }),
                 resp: Respond::new(mk_res(), tx)
             },
         ],
