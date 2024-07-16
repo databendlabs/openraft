@@ -11,6 +11,7 @@ use crate::engine::Engine;
 use crate::engine::LogIdList;
 use crate::engine::Respond;
 use crate::raft::SnapshotResponse;
+use crate::raft_state::IOId;
 use crate::testing::log_id;
 use crate::type_config::TypeConfigExt;
 use crate::Membership;
@@ -138,20 +139,22 @@ fn test_handle_install_full_snapshot_no_conflict() -> anyhow::Result<()> {
     assert_eq!(
         vec![
             //
-            Command::from(
-                sm::Command::install_full_snapshot(Snapshot {
+            Command::from(sm::Command::install_full_snapshot(
+                Snapshot {
                     meta: SnapshotMeta {
                         last_log_id: Some(log_id(4, 1, 6)),
                         last_membership: StoredMembership::new(Some(log_id(1, 1, 1)), m1234()),
                         snapshot_id: "1-2-3-4".to_string(),
                     },
                     snapshot: Box::new(Cursor::new(vec![0u8])),
-                })
-                .with_seq(1)
-            ),
+                },
+                IOId::new_log_io(Vote::new(2, 1).into_committed(), Some(log_id(4, 1, 6)))
+            )),
             Command::PurgeLog { upto: log_id(4, 1, 6) },
             Command::Respond {
-                when: Some(Condition::StateMachineCommand { command_seq: 1 }),
+                when: Some(Condition::Snapshot {
+                    log_id: Some(log_id(4, 1, 6))
+                }),
                 resp: Respond::new(Ok(SnapshotResponse::new(curr_vote)), dummy_tx),
             },
         ],

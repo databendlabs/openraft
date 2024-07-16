@@ -5,12 +5,15 @@ use maplit::btreeset;
 use crate::engine::testing::UTConfig;
 use crate::engine::Command;
 use crate::engine::Engine;
-use crate::raft_state::Accepted;
+use crate::raft_state::IOId;
 use crate::raft_state::LogStateReader;
 use crate::testing::log_id;
+use crate::type_config::TypeConfigExt;
+use crate::utime::UTime;
 use crate::EffectiveMembership;
 use crate::Membership;
 use crate::MembershipState;
+use crate::Vote;
 
 fn m01() -> Membership<UTConfig> {
     Membership::new(vec![btreeset! {0,1}], None)
@@ -24,6 +27,7 @@ fn eng() -> Engine<UTConfig> {
     let mut eng = Engine::testing_default(0);
     eng.state.enable_validation(false); // Disable validation for incomplete state
 
+    eng.state.vote = UTime::new(UTConfig::<()>::now(), Vote::new_committed(2, 1));
     eng.state.committed = Some(log_id(1, 1, 1));
     eng.state.membership_state = MembershipState::new(
         Arc::new(EffectiveMembership::new(Some(log_id(1, 1, 1)), m01())),
@@ -54,8 +58,8 @@ fn test_following_handler_commit_entries_empty() -> anyhow::Result<()> {
 #[test]
 fn test_following_handler_commit_entries_ge_accepted() -> anyhow::Result<()> {
     let mut eng = eng();
-    let l = eng.state.vote_ref().leader_id();
-    eng.state.accepted = Accepted::new(*l, Some(log_id(1, 1, 2)));
+    let committed_vote = eng.state.vote_ref().into_committed();
+    eng.state.io_state.io_progress.accept(IOId::new_log_io(committed_vote, Some(log_id(1, 1, 2))));
 
     eng.following_handler().commit_entries(Some(log_id(2, 1, 3)));
 
@@ -69,7 +73,6 @@ fn test_following_handler_commit_entries_ge_accepted() -> anyhow::Result<()> {
     );
     assert_eq!(
         vec![Command::Commit {
-            seq: 1,
             already_committed: Some(log_id(1, 1, 1)),
             upto: log_id(1, 1, 2),
         }],
@@ -82,8 +85,8 @@ fn test_following_handler_commit_entries_ge_accepted() -> anyhow::Result<()> {
 #[test]
 fn test_following_handler_commit_entries_le_accepted() -> anyhow::Result<()> {
     let mut eng = eng();
-    let l = eng.state.vote_ref().leader_id();
-    eng.state.accepted = Accepted::new(*l, Some(log_id(3, 1, 4)));
+    let committed_vote = eng.state.vote_ref().into_committed();
+    eng.state.io_state.io_progress.accept(IOId::new_log_io(committed_vote, Some(log_id(3, 1, 4))));
 
     eng.following_handler().commit_entries(Some(log_id(2, 1, 3)));
 
@@ -99,7 +102,6 @@ fn test_following_handler_commit_entries_le_accepted() -> anyhow::Result<()> {
         vec![
             //
             Command::Commit {
-                seq: 1,
                 already_committed: Some(log_id(1, 1, 1)),
                 upto: log_id(2, 1, 3)
             },

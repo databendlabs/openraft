@@ -1,6 +1,8 @@
 use std::marker::PhantomData;
 use std::sync::Arc;
 
+use validit::Valid;
+
 use crate::display_ext::DisplayOptionExt;
 use crate::engine::LogIdList;
 use crate::entry::RaftPayload;
@@ -140,7 +142,6 @@ where
         };
         let snapshot_meta = snapshot.map(|x| x.meta).unwrap_or_default();
 
-        // TODO: `flushed` is not set.
         let io_state = IOState::new(vote, last_applied, snapshot_meta.last_log_id, last_purged_log_id);
 
         let now = C::now();
@@ -159,8 +160,7 @@ where
 
             // -- volatile fields: they are not persisted.
             server_state: Default::default(),
-            accepted: Default::default(),
-            io_state,
+            io_state: Valid::new(io_state),
             purge_upto: last_purged_log_id,
         })
     }
