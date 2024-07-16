@@ -5,9 +5,7 @@ use crate::core::notification::Notification;
 use crate::core::raft_msg::ResultSender;
 use crate::core::sm::handle::Handle;
 use crate::core::sm::Command;
-use crate::core::sm::CommandPayload;
 use crate::core::sm::CommandResult;
-use crate::core::sm::CommandSeq;
 use crate::core::sm::Response;
 use crate::core::ApplyResult;
 use crate::core::ApplyingEntry;
@@ -83,10 +81,7 @@ where
                 tracing::error!("{} while execute state machine command", err,);
 
                 let _ = self.resp_tx.send(Notification::StateMachine {
-                    command_result: CommandResult {
-                        command_seq: 0,
-                        result: Err(err),
-                    },
+                    command_result: CommandResult { result: Err(err) },
                 });
             }
         })
@@ -106,20 +101,20 @@ where
 
             tracing::debug!("{}: received command: {:?}", func_name!(), cmd);
 
-            match cmd.payload {
-                CommandPayload::BuildSnapshot => {
+            match cmd {
+                Command::BuildSnapshot => {
                     tracing::info!("{}: build snapshot", func_name!());
 
                     // It is a read operation and is spawned, and it responds in another task
-                    self.build_snapshot(cmd.seq, self.resp_tx.clone()).await;
+                    self.build_snapshot(self.resp_tx.clone()).await;
                 }
-                CommandPayload::GetSnapshot { tx } => {
+                Command::GetSnapshot { tx } => {
                     tracing::info!("{}: get snapshot", func_name!());
 
                     self.get_snapshot(tx).await?;
                     // GetSnapshot does not respond to RaftCore
                 }
-                CommandPayload::InstallFullSnapshot { snapshot } => {
+                Command::InstallFullSnapshot { io_id, snapshot } => {
                     tracing::info!("{}: install complete snapshot", func_name!());
 
                     let meta = snapshot.meta.clone();
@@ -127,10 +122,10 @@ where
 
                     tracing::info!("Done install complete snapshot, meta: {}", meta);
 
-                    let res = CommandResult::new(cmd.seq, Ok(Response::InstallSnapshot(Some(meta))));
+                    let res = CommandResult::new(Ok(Response::InstallSnapshot((io_id, Some(meta)))));
                     let _ = self.resp_tx.send(Notification::sm(res));
                 }
-                CommandPayload::BeginReceivingSnapshot { tx } => {
+                Command::BeginReceivingSnapshot { tx } => {
                     tracing::info!("{}: BeginReceivingSnapshot", func_name!());
 
                     let snapshot_data = self.state_machine.begin_receiving_snapshot().await?;
@@ -138,9 +133,9 @@ where
                     let _ = tx.send(Ok(snapshot_data));
                     // No response to RaftCore
                 }
-                CommandPayload::Apply { first, last } => {
+                Command::Apply { first, last } => {
                     let resp = self.apply(first, last).await?;
-                    let res = CommandResult::new(cmd.seq, Ok(Response::Apply(resp)));
+                    let res = CommandResult::new(Ok(Response::Apply(resp)));
                     let _ = self.resp_tx.send(Notification::sm(res));
                 }
             };
@@ -199,7 +194,7 @@ where
     ///   as applying a log entry,
     /// - or it must be able to acquire a lock that prevents any write operations.
     #[tracing::instrument(level = "info", skip_all)]
-    async fn build_snapshot(&mut self, seq: CommandSeq, resp_tx: MpscUnboundedSenderOf<C, Notification<C>>) {
+    async fn build_snapshot(&mut self, resp_tx: MpscUnboundedSenderOf<C, Notification<C>>) {
         // TODO: need to be abortable?
         // use futures::future::abortable;
         // let (fu, abort_handle) = abortable(async move { builder.build_snapshot().await });
@@ -211,7 +206,7 @@ where
         let _handle = C::spawn(async move {
             let res = builder.build_snapshot().await;
             let res = res.map(|snap| Response::BuildSnapshot(snap.meta));
-            let cmd_res = CommandResult::new(seq, res);
+            let cmd_res = CommandResult::new(res);
             let _ = resp_tx.send(Notification::sm(cmd_res));
         });
         tracing::info!("{} returning; spawned building snapshot task", func_name!());

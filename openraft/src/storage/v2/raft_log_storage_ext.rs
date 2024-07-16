@@ -34,7 +34,7 @@ where C: RaftTypeConfig
 
         let (tx, mut rx) = C::mpsc_unbounded();
 
-        let io_id = IOId::<C>::new_append_log(Vote::<C::NodeId>::default().into_committed(), last_log_id);
+        let io_id = IOId::<C>::new_log_io(Vote::<C::NodeId>::default().into_committed(), Some(last_log_id));
         let notify = Notification::LocalIO { io_id };
 
         let callback = IOFlushed::<C>::new(notify, tx.downgrade());

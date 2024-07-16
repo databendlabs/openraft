@@ -8,10 +8,13 @@ use crate::engine::Engine;
 use crate::engine::LogIdList;
 use crate::raft_state::LogStateReader;
 use crate::testing::log_id;
+use crate::type_config::TypeConfigExt;
+use crate::utime::UTime;
 use crate::EffectiveMembership;
 use crate::Membership;
 use crate::MembershipState;
 use crate::ServerState;
+use crate::Vote;
 
 fn m01() -> Membership<UTConfig> {
     Membership::<UTConfig>::new(vec![btreeset! {0,1}], None)
@@ -30,6 +33,7 @@ fn eng() -> Engine<UTConfig> {
     eng.state.enable_validation(false); // Disable validation for incomplete state
 
     eng.config.id = 2;
+    eng.state.vote = UTime::new(UTConfig::<()>::now(), Vote::new_committed(2, 1));
     eng.state.log_ids = LogIdList::new(vec![
         log_id(2, 1, 2), //
         log_id(4, 1, 4),

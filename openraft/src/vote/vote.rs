@@ -3,6 +3,7 @@ use std::fmt::Formatter;
 
 use crate::vote::committed::CommittedVote;
 use crate::vote::leader_id::CommittedLeaderId;
+use crate::vote::NonCommittedVote;
 use crate::LeaderId;
 use crate::NodeId;
 use crate::RaftTypeConfig;
@@ -75,6 +76,11 @@ impl<NID: NodeId> Vote<NID> {
     pub(crate) fn into_committed<C>(self) -> CommittedVote<C>
     where C: RaftTypeConfig<NodeId = NID> {
         CommittedVote::new(self)
+    }
+
+    pub(crate) fn into_non_committed<C>(self) -> NonCommittedVote<C>
+    where C: RaftTypeConfig<NodeId = NID> {
+        NonCommittedVote::new(self)
     }
 
     pub fn is_committed(&self) -> bool {

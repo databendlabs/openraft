@@ -445,6 +445,9 @@ where
         let initial = StorageHelper::new(&mut store, &mut sm).get_initial_state().await?;
         let mut want = RaftState::<C>::default();
         want.vote.update(initial.vote.utime().unwrap(), Vote::default());
+        want.io_state.io_progress.accept(IOId::new(Vote::default()));
+        want.io_state.io_progress.submit(IOId::new(Vote::default()));
+        want.io_state.io_progress.flush(IOId::new(Vote::default()));
 
         assert_eq!(want, initial, "uninitialized state");
         Ok(())
@@ -1347,7 +1350,7 @@ where
     let (tx, mut rx) = C::mpsc_unbounded();
 
     // Dummy log io id for blocking append
-    let io_id = IOId::<C>::new_append_log(Vote::<C::NodeId>::default().into_committed(), last_log_id);
+    let io_id = IOId::<C>::new_log_io(Vote::<C::NodeId>::default().into_committed(), Some(last_log_id));
     let notify = Notification::LocalIO { io_id };
     let cb = IOFlushed::new(notify, tx.downgrade());
 

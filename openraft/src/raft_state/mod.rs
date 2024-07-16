@@ -1,6 +1,7 @@
 use std::error::Error;
 use std::ops::Deref;
 
+use validit::Valid;
 use validit::Validate;
 
 use crate::engine::LogIdList;
@@ -14,7 +15,6 @@ use crate::ServerState;
 use crate::SnapshotMeta;
 use crate::Vote;
 
-mod accepted;
 pub(crate) mod io_state;
 mod log_state_reader;
 mod membership_state;
@@ -26,18 +26,17 @@ pub(crate) use io_state::IOState;
 
 #[cfg(test)]
 mod tests {
-    mod accepted_test;
     mod forward_to_leader_test;
     mod is_initialized_test;
     mod log_state_reader_test;
     mod validate_test;
 }
 
-pub(crate) use accepted::Accepted;
 pub(crate) use log_state_reader::LogStateReader;
 pub use membership_state::MembershipState;
 pub(crate) use vote_state_reader::VoteStateReader;
 
+use crate::display_ext::DisplayOptionExt;
 use crate::proposer::Leader;
 use crate::proposer::LeaderQuorumSet;
 use crate::type_config::alias::InstantOf;
@@ -77,9 +76,7 @@ where C: RaftTypeConfig
     /// The state of a Raft node, such as Leader or Follower.
     pub server_state: ServerState,
 
-    pub(crate) accepted: Accepted<C>,
-
-    pub(crate) io_state: IOState<C>,
+    pub(crate) io_state: Valid<IOState<C>>,
 
     /// The log id upto which the next time it purges.
     ///
@@ -100,8 +97,7 @@ where C: RaftTypeConfig
             membership_state: MembershipState::default(),
             snapshot_meta: SnapshotMeta::default(),
             server_state: ServerState::default(),
-            accepted: Accepted::default(),
-            io_state: IOState::default(),
+            io_state: Valid::new(IOState::default()),
             purge_upto: None,
         }
     }
@@ -181,6 +177,7 @@ where C: RaftTypeConfig
         validit::less_equal!(self.committed(), self.last_log_id());
 
         self.membership_state.validate()?;
+        self.io_state.validate()?;
 
         Ok(())
     }
@@ -214,28 +211,42 @@ where C: RaftTypeConfig
         false
     }
 
-    /// Return the accepted last log id of the current leader.
-    pub(crate) fn accepted(&self) -> Option<&LogId<C::NodeId>> {
-        self.accepted.last_accepted_log_id(self.vote_ref().leader_id())
+    /// Return the accepted IO request(which are going to be submitted and flushed).
+    ///
+    /// Such as SaveVote or AppendEntries
+    pub(crate) fn accepted_io(&self) -> Option<&IOId<C>> {
+        self.io_state.io_progress.accepted()
     }
 
-    /// Update the accepted log id for the current leader.
-    pub(crate) fn update_accepted(&mut self, accepted: Option<LogId<C::NodeId>>) {
-        debug_assert!(
-            self.vote_ref().is_committed(),
-            "vote must be committed: {}",
-            self.vote_ref()
-        );
-        debug_assert!(
-            self.vote_ref().leader_id() >= self.accepted.leader_id(),
-            "vote.leader_id: {} must be >= accepted.leader_id: {}",
-            self.vote_ref().leader_id(),
-            self.accepted.leader_id()
+    /// Updates the accepted IO, including Vote change or AppendEntries IO.
+    ///
+    /// Returns the previously accepted value.
+    pub(crate) fn accept_io(&mut self, accepted: IOId<C>) -> Option<IOId<C>> {
+        let curr_accepted = self.io_state.io_progress.accepted().copied();
+
+        tracing::debug!(
+            "{}: accept_log: current: {}, new_accepted: {}",
+            func_name!(),
+            curr_accepted.display(),
+            accepted
         );
 
-        if accepted.as_ref() > self.accepted.last_accepted_log_id(self.vote_ref().leader_id()) {
-            self.accepted = Accepted::new(*self.vote_ref().leader_id(), accepted);
+        if cfg!(debug_assertions) {
+            let new_vote = *accepted.vote_ref();
+            let current_vote = curr_accepted.map(|x| *x.vote_ref());
+            assert!(
+                Some(new_vote) >= current_vote,
+                "new accepted.committed_vote {} must be >= current accepted.committed_vote: {}",
+                new_vote,
+                current_vote.display(),
+            );
         }
+
+        if Some(accepted) > curr_accepted {
+            self.io_state.io_progress.accept(accepted);
+        }
+
+        curr_accepted
     }
 
     /// Append a list of `log_id`.

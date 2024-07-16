@@ -10,6 +10,7 @@ use crate::engine::Command;
 use crate::engine::Condition;
 use crate::engine::Engine;
 use crate::engine::LogIdList;
+use crate::raft_state::IOId;
 use crate::raft_state::LogStateReader;
 use crate::testing::log_id;
 use crate::EffectiveMembership;
@@ -127,7 +128,12 @@ fn test_install_snapshot_not_conflict() -> anyhow::Result<()> {
         snapshot: Box::new(Cursor::new(vec![0u8])),
     });
 
-    assert_eq!(Some(Condition::StateMachineCommand { command_seq: 1 }), cond);
+    assert_eq!(
+        Some(Condition::Snapshot {
+            log_id: Some(log_id(4, 1, 6))
+        }),
+        cond
+    );
 
     assert_eq!(
         SnapshotMeta {
@@ -146,17 +152,17 @@ fn test_install_snapshot_not_conflict() -> anyhow::Result<()> {
     assert_eq!(
         vec![
             //
-            Command::from(
-                sm::Command::install_full_snapshot(Snapshot {
+            Command::from(sm::Command::install_full_snapshot(
+                Snapshot {
                     meta: SnapshotMeta {
                         last_log_id: Some(log_id(4, 1, 6)),
                         last_membership: StoredMembership::new(Some(log_id(1, 1, 1)), m1234()),
                         snapshot_id: "1-2-3-4".to_string(),
                     },
                     snapshot: Box::new(Cursor::new(vec![0u8])),
-                })
-                .with_seq(1)
-            ),
+                },
+                IOId::new_log_io(Vote::new(2, 1).into_committed(), Some(log_id(4, 1, 6))),
+            )),
             Command::PurgeLog { upto: log_id(4, 1, 6) },
         ],
         eng.output.take_commands()
@@ -203,7 +209,12 @@ fn test_install_snapshot_conflict() -> anyhow::Result<()> {
         snapshot: Box::new(Cursor::new(vec![0u8])),
     });
 
-    assert_eq!(Some(Condition::StateMachineCommand { command_seq: 1 }), cond);
+    assert_eq!(
+        Some(Condition::Snapshot {
+            log_id: Some(log_id(5, 1, 6))
+        }),
+        cond
+    );
 
     assert_eq!(
         SnapshotMeta {
@@ -223,17 +234,17 @@ fn test_install_snapshot_conflict() -> anyhow::Result<()> {
         vec![
             //
             Command::TruncateLog { since: log_id(2, 1, 4) },
-            Command::from(
-                sm::Command::install_full_snapshot(Snapshot {
+            Command::from(sm::Command::install_full_snapshot(
+                Snapshot {
                     meta: SnapshotMeta {
                         last_log_id: Some(log_id(5, 1, 6)),
                         last_membership: StoredMembership::new(Some(log_id(1, 1, 1)), m1234()),
                         snapshot_id: "1-2-3-4".to_string(),
                     },
                     snapshot: Box::new(Cursor::new(vec![0u8])),
-                })
-                .with_seq(1)
-            ),
+                },
+                IOId::new_log_io(Vote::new(2, 1).into_committed(), Some(log_id(5, 1, 6)))
+            )),
             Command::PurgeLog { upto: log_id(5, 1, 6) },
         ],
         eng.output.take_commands()
@@ -256,7 +267,12 @@ fn test_install_snapshot_advance_last_log_id() -> anyhow::Result<()> {
         snapshot: Box::new(Cursor::new(vec![0u8])),
     });
 
-    assert_eq!(Some(Condition::StateMachineCommand { command_seq: 1 }), cond);
+    assert_eq!(
+        Some(Condition::Snapshot {
+            log_id: Some(log_id(100, 1, 100))
+        }),
+        cond
+    );
 
     assert_eq!(
         SnapshotMeta {
@@ -278,17 +294,17 @@ fn test_install_snapshot_advance_last_log_id() -> anyhow::Result<()> {
     );
     assert_eq!(
         vec![
-            Command::from(
-                sm::Command::install_full_snapshot(Snapshot {
+            Command::from(sm::Command::install_full_snapshot(
+                Snapshot {
                     meta: SnapshotMeta {
                         last_log_id: Some(log_id(100, 1, 100)),
                         last_membership: StoredMembership::new(Some(log_id(1, 1, 1)), m1234()),
                         snapshot_id: "1-2-3-4".to_string(),
                     },
                     snapshot: Box::new(Cursor::new(vec![0u8])),
-                })
-                .with_seq(1)
-            ),
+                },
+                IOId::new_log_io(Vote::new(2, 1).into_committed(), Some(log_id(100, 1, 100)))
+            )),
             Command::PurgeLog {
                 upto: log_id(100, 1, 100)
             },
@@ -313,9 +329,20 @@ fn test_install_snapshot_update_accepted() -> anyhow::Result<()> {
         snapshot: Box::new(Cursor::new(vec![0u8])),
     });
 
-    assert_eq!(Some(Condition::StateMachineCommand { command_seq: 1 }), cond);
+    assert_eq!(
+        Some(Condition::Snapshot {
+            log_id: Some(log_id(100, 1, 100))
+        }),
+        cond
+    );
 
-    assert_eq!(Some(&log_id(100, 1, 100)), eng.state.accepted());
+    assert_eq!(
+        Some(&IOId::new_log_io(
+            Vote::new(2, 1).into_committed(),
+            Some(log_id(100, 1, 100))
+        )),
+        eng.state.accepted_io()
+    );
 
     Ok(())
 }

@@ -6,6 +6,7 @@ use crate::engine::handler::replication_handler::ReplicationHandler;
 use crate::engine::handler::replication_handler::SendNone;
 use crate::engine::handler::server_state_handler::ServerStateHandler;
 use crate::engine::Command;
+use crate::engine::Condition;
 use crate::engine::EngineConfig;
 use crate::engine::EngineOutput;
 use crate::engine::Respond;
@@ -14,6 +15,7 @@ use crate::entry::RaftEntry;
 use crate::error::RejectVoteRequest;
 use crate::proposer::CandidateState;
 use crate::proposer::LeaderState;
+use crate::raft_state::IOId;
 use crate::raft_state::LogStateReader;
 use crate::type_config::TypeConfigExt;
 use crate::LogId;
@@ -24,6 +26,8 @@ use crate::Vote;
 
 #[cfg(test)]
 mod accept_vote_test;
+#[cfg(test)]
+mod become_leader_test;
 #[cfg(test)]
 mod handle_message_vote_test;
 
@@ -71,8 +75,12 @@ where C: RaftTypeConfig
         if let Err(e) = vote_res {
             let res = f(self.state, e);
 
+            let condition = Some(Condition::IOFlushed {
+                io_id: IOId::new(*self.state.vote_ref()),
+            });
+
             self.output.push_command(Command::Respond {
-                when: None,
+                when: condition,
                 resp: Respond::new(res, tx),
             });
 
@@ -134,6 +142,7 @@ where C: RaftTypeConfig
             tracing::info!("vote is changing from {} to {}", self.state.vote_ref(), vote);
 
             self.state.vote.update(C::now(), *vote);
+            self.state.accept_io(IOId::new(*vote));
             self.output.push_command(Command::SaveVote { vote: *vote });
         } else {
             self.state.vote.touch(C::now());
@@ -176,9 +185,9 @@ where C: RaftTypeConfig
         );
 
         if let Some(l) = self.leader.as_mut() {
-            tracing::debug!("leading vote: {}", l.vote,);
+            tracing::debug!("leading vote: {}", l.committed_vote,);
 
-            if l.vote.leader_id() == self.state.vote_ref().leader_id() {
+            if l.committed_vote.leader_id() == self.state.vote_ref().leader_id() {
                 tracing::debug!(
                     "vote still belongs to the same leader. Just updating vote is enough: node-{}, {}",
                     self.config.id,
@@ -187,7 +196,7 @@ where C: RaftTypeConfig
                 // TODO: this is not gonna happen,
                 //       because `self.leader`(previous `internal_server_state`)
                 //       does not include Candidate any more.
-                l.vote = self.state.vote_ref().into_committed();
+                l.committed_vote = self.state.vote_ref().into_committed();
                 self.server_state_handler().update_server_state_if_changed();
                 return;
             }
@@ -197,12 +206,15 @@ where C: RaftTypeConfig
         // Re-create a new Leader instance.
 
         let leader = self.state.new_leader();
+        let leader_vote = *leader.committed_vote_ref();
         *self.leader = Some(Box::new(leader));
 
         let (last_log_id, noop_log_id) = {
             let leader = self.leader.as_ref().unwrap();
             (leader.last_log_id().copied(), leader.noop_log_id().copied())
         };
+
+        self.state.accept_io(IOId::new_log_io(leader_vote, last_log_id));
 
         self.server_state_handler().update_server_state_if_changed();
 
