@@ -5,6 +5,7 @@ use crate::core::ServerState;
 use crate::display_ext::DisplayOption;
 use crate::display_ext::DisplayOptionExt;
 use crate::error::Fatal;
+use crate::metrics::HeartbeatMetrics;
 use crate::metrics::ReplicationMetrics;
 use crate::LogId;
 use crate::RaftTypeConfig;
@@ -72,6 +73,9 @@ pub struct RaftMetrics<C: RaftTypeConfig> {
     /// The current membership config of the cluster.
     pub membership_config: Arc<StoredMembership<C>>,
 
+    /// The heartbeats states. It is Some() only when this node is leader.
+    pub heartbeats: Option<HeartbeatMetrics<C>>,
+
     // ---
     // --- replication ---
     // ---
@@ -136,6 +140,7 @@ where C: RaftTypeConfig
             millis_since_quorum_ack: None,
             membership_config: Arc::new(StoredMembership::default()),
             replication: None,
+            heartbeats: None,
         }
     }
 }
@@ -165,6 +170,7 @@ pub struct RaftDataMetrics<C: RaftTypeConfig> {
     pub millis_since_quorum_ack: Option<u64>,
 
     pub replication: Option<ReplicationMetrics<C>>,
+    pub heartbeat: Option<HeartbeatMetrics<C>>,
 }
 
 impl<C> fmt::Display for RaftDataMetrics<C>

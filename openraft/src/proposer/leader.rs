@@ -126,7 +126,7 @@ where
         // Update progress for this Leader.
         // Note that Leader not being a voter is allowed.
         let leader_node_id = vote.leader_id().voted_for().unwrap();
-        let _ = leader.progress.update(&leader_node_id, ProgressEntry::new(last_log_id));
+        let _ = leader.progress.update(&leader_node_id, ProgressEntry::new(last_log_id, None));
 
         leader
     }
