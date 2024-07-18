@@ -574,7 +574,7 @@ where
             current_leader,
             millis_since_quorum_ack,
             membership_config: membership_config.clone(),
-            heartbeats: heartbeat.clone(),
+            heartbeat: heartbeat.clone(),
 
             // --- replication ---
             replication: replication.clone(),

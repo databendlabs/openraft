@@ -74,7 +74,7 @@ pub struct RaftMetrics<C: RaftTypeConfig> {
     pub membership_config: Arc<StoredMembership<C>>,
 
     /// The heartbeats states. It is Some() only when this node is leader.
-    pub heartbeats: Option<HeartbeatMetrics<C>>,
+    pub heartbeat: Option<HeartbeatMetrics<C>>,
 
     // ---
     // --- replication ---
@@ -140,7 +140,7 @@ where C: RaftTypeConfig
             millis_since_quorum_ack: None,
             membership_config: Arc::new(StoredMembership::default()),
             replication: None,
-            heartbeats: None,
+            heartbeat: None,
         }
     }
 }

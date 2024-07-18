@@ -45,7 +45,7 @@ fn test_update_matching_no_leader() -> anyhow::Result<()> {
 
     let res = std::panic::catch_unwind(move || {
         let mut eng = eng();
-        eng.replication_handler().update_matching(3, 0, Some(log_id(1, 1, 2)), None);
+        eng.replication_handler().update_matching(3, 0, Some(log_id(1, 1, 2)));
     });
     tracing::info!("res: {:?}", res);
     assert!(res.is_err());
