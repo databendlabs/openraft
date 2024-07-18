@@ -10,7 +10,6 @@ use crate::display_ext::DisplayOptionExt;
 use crate::progress::inflight::Inflight;
 use crate::progress::inflight::InflightError;
 use crate::raft_state::LogStateReader;
-use crate::type_config::alias::InstantOf;
 use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::RaftTypeConfig;
@@ -23,7 +22,6 @@ where C: RaftTypeConfig
 {
     /// The id of the last matching log on the target following node.
     pub(crate) matching: Option<LogId<C::NodeId>>,
-    pub(crate) time: Option<InstantOf<C>>,
 
     pub(crate) curr_inflight_id: u64,
 
@@ -40,10 +38,9 @@ impl<C> ProgressEntry<C>
 where C: RaftTypeConfig
 {
     #[allow(dead_code)]
-    pub(crate) fn new(matching: Option<LogId<C::NodeId>>, time: Option<InstantOf<C>>) -> Self {
+    pub(crate) fn new(matching: Option<LogId<C::NodeId>>) -> Self {
         Self {
             matching,
-            time,
             curr_inflight_id: 0,
             inflight: Inflight::None,
             searching_end: matching.next_index(),
@@ -56,7 +53,6 @@ where C: RaftTypeConfig
     pub(crate) fn empty(end: u64) -> Self {
         Self {
             matching: None,
-            time: None,
             curr_inflight_id: 0,
             inflight: Inflight::None,
             searching_end: end,
@@ -97,7 +93,6 @@ where C: RaftTypeConfig
         &mut self,
         request_id: u64,
         matching: Option<LogId<C::NodeId>>,
-        time: Option<InstantOf<C>>,
     ) -> Result<(), InflightError> {
         tracing::debug!(
             self = display(&self),
@@ -110,7 +105,6 @@ where C: RaftTypeConfig
 
         debug_assert!(matching >= self.matching);
         self.matching = matching;
-        self.time = time;
 
         let matching_next = self.matching.next_index();
         self.searching_end = std::cmp::max(self.searching_end, matching_next);
@@ -246,10 +240,6 @@ where C: RaftTypeConfig
         let d = end - matching_next;
         let offset = d / 16 * 8;
         matching_next + offset
-    }
-
-    pub(crate) fn get_time(&self) -> &Option<InstantOf<C>> {
-        &self.time
     }
 }
 

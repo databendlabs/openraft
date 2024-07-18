@@ -46,9 +46,8 @@ pub use wait::Wait;
 pub use wait::WaitError;
 pub(crate) use wait_condition::Condition;
 
-use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::NodeIdOf;
 
 pub(crate) type ReplicationMetrics<C> = BTreeMap<NodeIdOf<C>, Option<LogIdOf<C>>>;
-pub(crate) type HeartbeatMetrics<C> = BTreeMap<NodeIdOf<C>, Option<InstantOf<C>>>;
+pub(crate) type HeartbeatMetrics<C> = BTreeMap<NodeIdOf<C>, Option<u64>>;

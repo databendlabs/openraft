@@ -520,9 +520,20 @@ where
     #[tracing::instrument(level = "debug", skip_all)]
     pub fn flush_metrics(&mut self) {
         let (replication, heartbeat) = if let Some(leader) = self.engine.leader.as_ref() {
-            let prog = &leader.progress;
-            let replication = Some(prog.iter().map(|(id, p)| (*id, *p.borrow())).collect());
-            let heartbeat = Some(prog.iter().map(|(id, p)| (*id, *p.get_time())).collect());
+            let replication_prog = &leader.progress;
+            let replication = Some(replication_prog.iter().map(|(id, p)| (*id, *p.borrow())).collect());
+
+            let clock_prog = &leader.clock_progress;
+            let heartbeat = Some(
+                clock_prog
+                    .iter()
+                    .map(|(id, opt_t)| {
+                        let millis_since_last_ack = opt_t.map(|t| t.elapsed().as_millis() as u64);
+
+                        (*id, millis_since_last_ack)
+                    })
+                    .collect(),
+            );
 
             (replication, heartbeat)
         } else {

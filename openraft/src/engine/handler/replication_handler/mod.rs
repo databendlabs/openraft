@@ -135,7 +135,7 @@ where C: RaftTypeConfig
 
         match result.result {
             Ok(matching) => {
-                self.update_matching(target, id, matching, Some(result.sending_time));
+                self.update_matching(target, id, matching);
             }
             Err(conflict) => {
                 self.update_conflicting(target, id, conflict);
@@ -176,13 +176,7 @@ where C: RaftTypeConfig
     /// Update progress when replicated data(logs or snapshot) matches on follower/learner and is
     /// accepted.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn update_matching(
-        &mut self,
-        node_id: C::NodeId,
-        inflight_id: u64,
-        log_id: Option<LogId<C::NodeId>>,
-        time: Option<InstantOf<C>>,
-    ) {
+    pub(crate) fn update_matching(&mut self, node_id: C::NodeId, inflight_id: u64, log_id: Option<LogId<C::NodeId>>) {
         tracing::debug!(
             node_id = display(node_id),
             inflight_id = display(inflight_id),
@@ -199,7 +193,7 @@ where C: RaftTypeConfig
             .leader
             .progress
             .update_with(&node_id, |prog_entry| {
-                let res = prog_entry.update_matching(inflight_id, log_id, time);
+                let res = prog_entry.update_matching(inflight_id, log_id);
                 if let Err(e) = &res {
                     tracing::error!(error = display(e), "update_matching");
                     panic!("update_matching error: {}", e);
@@ -450,7 +444,7 @@ where C: RaftTypeConfig
             prog_entry.inflight = Inflight::logs(None, upto);
 
             let inflight_id = prog_entry.inflight.get_id().unwrap();
-            self.update_matching(id, inflight_id, upto, None);
+            self.update_matching(id, inflight_id, upto);
         }
     }
 
