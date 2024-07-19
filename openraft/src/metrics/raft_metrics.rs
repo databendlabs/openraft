@@ -199,7 +199,7 @@ where C: RaftTypeConfig
 
         write!(
             f,
-            "last_log:{}, last_applied:{}, snapshot:{}, purged:{}, quorum_acked(leader):{} ms before, replication:{{{}}}, heartbeat: {{{}}}",
+            "last_log:{}, last_applied:{}, snapshot:{}, purged:{}, quorum_acked(leader):{} ms before, replication:{{{}}}, heartbeat:{{{}}}",
             DisplayOption(&self.last_log),
             DisplayOption(&self.last_applied),
             DisplayOption(&self.snapshot),
