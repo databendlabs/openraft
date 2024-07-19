@@ -13,13 +13,20 @@ pub(crate) struct DisplayBTreeMapOptValue<'a, K: fmt::Display, V: fmt::Display>(
 
 impl<'a, K: fmt::Display, V: fmt::Display> fmt::Display for DisplayBTreeMapOptValue<'a, K, V> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let idx_of_last_one = self.0.len() - 1;
-        for (idx, (key, value)) in self.0.iter().enumerate() {
-            write!(f, "{}:{}", key, DisplayOption(value))?;
-            if idx != idx_of_last_one {
-                write!(f, ",")?;
+        let opt_idx_of_last_one = self.0.len().checked_sub(1);
+
+        match opt_idx_of_last_one {
+            Some(idx_of_last_one) => {
+                for (idx, (key, value)) in self.0.iter().enumerate() {
+                    write!(f, "{}:{}", key, DisplayOption(value))?;
+                    if idx != idx_of_last_one {
+                        write!(f, ",")?;
+                    }
+                }
             }
+            None => { /* do nothing, as map length is 0 */ }
         }
+
         Ok(())
     }
 }
@@ -48,5 +55,32 @@ mod tests {
         let display = DisplayBTreeMapOptValue(&map);
 
         assert_eq!(display.to_string(), "1:1,2:2,3:3");
+    }
+
+    #[test]
+    fn test_display_empty_map() {
+        let map = BTreeMap::<i32, Option<i32>>::new();
+        let display = DisplayBTreeMapOptValue(&map);
+
+        assert_eq!(display.to_string(), "");
+    }
+
+    #[test]
+    fn test_display_btreemap_opt_value_with_1_item() {
+        let map = (1..=1).map(|num| (num, Some(num))).collect::<BTreeMap<_, _>>();
+        let display = DisplayBTreeMapOptValue(&map);
+
+        assert_eq!(display.to_string(), "1:1");
+    }
+
+    #[test]
+    fn test_display_btreemap_opt_value_with_none() {
+        let mut map = BTreeMap::new();
+        map.insert(1, Some(1));
+        map.insert(2, None);
+        map.insert(3, Some(3));
+        let display = DisplayBTreeMapOptValue(&map);
+
+        assert_eq!(display.to_string(), "1:1,2:None,3:3");
     }
 }
