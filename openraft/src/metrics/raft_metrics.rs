@@ -111,15 +111,15 @@ where C: RaftTypeConfig
         write!(f, ", ")?;
         write!(
             f,
-            "membership:{}, heartbeat:{{{}}}, snapshot:{}, purged:{}, replication:{{{}}}",
+            "membership:{}, snapshot:{}, purged:{}, replication:{{{}}}, heartbeat:{{{}}}",
             self.membership_config,
-            self.heartbeat
-                .as_ref()
-                .map(|x| { x.iter().map(|(k, v)| format!("{}:{}", k, DisplayOption(v))).collect::<Vec<_>>().join(",") })
-                .unwrap_or_default(),
             DisplayOption(&self.snapshot),
             DisplayOption(&self.purged),
             self.replication
+                .as_ref()
+                .map(|x| { x.iter().map(|(k, v)| format!("{}:{}", k, DisplayOption(v))).collect::<Vec<_>>().join(",") })
+                .unwrap_or_default(),
+            self.heartbeat
                 .as_ref()
                 .map(|x| { x.iter().map(|(k, v)| format!("{}:{}", k, DisplayOption(v))).collect::<Vec<_>>().join(",") })
                 .unwrap_or_default(),
