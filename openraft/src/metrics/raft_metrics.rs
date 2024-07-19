@@ -111,8 +111,12 @@ where C: RaftTypeConfig
         write!(f, ", ")?;
         write!(
             f,
-            "membership:{}, snapshot:{}, purged:{}, replication:{{{}}}",
+            "membership:{}, heartbeat:{{{}}}, snapshot:{}, purged:{}, replication:{{{}}}",
             self.membership_config,
+            self.heartbeat
+                .as_ref()
+                .map(|x| { x.iter().map(|(k, v)| format!("{}:{}", k, DisplayOption(v))).collect::<Vec<_>>().join(",") })
+                .unwrap_or_default(),
             DisplayOption(&self.snapshot),
             DisplayOption(&self.purged),
             self.replication
@@ -195,13 +199,17 @@ where C: RaftTypeConfig
 
         write!(
             f,
-            "last_log:{}, last_applied:{}, snapshot:{}, purged:{}, quorum_acked(leader):{} ms before, replication:{{{}}}",
+            "last_log:{}, last_applied:{}, snapshot:{}, purged:{}, quorum_acked(leader):{} ms before, replication:{{{}}}, heartbeat: {{{}}}",
             DisplayOption(&self.last_log),
             DisplayOption(&self.last_applied),
             DisplayOption(&self.snapshot),
             DisplayOption(&self.purged),
             self.millis_since_quorum_ack.display(),
             self.replication
+                .as_ref()
+                .map(|x| { x.iter().map(|(k, v)| format!("{}:{}", k, DisplayOption(v))).collect::<Vec<_>>().join(",") })
+                .unwrap_or_default(),
+            self.heartbeat
                 .as_ref()
                 .map(|x| { x.iter().map(|(k, v)| format!("{}:{}", k, DisplayOption(v))).collect::<Vec<_>>().join(",") })
                 .unwrap_or_default(),
