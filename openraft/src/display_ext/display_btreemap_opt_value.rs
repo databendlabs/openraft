@@ -43,7 +43,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_display_btreemap() {
+    fn test_display_btreemap_opt_value() {
         let map = (1..=3).map(|num| (num, Some(num))).collect::<BTreeMap<_, _>>();
         let display = DisplayBTreeMapOptValue(&map);
 
