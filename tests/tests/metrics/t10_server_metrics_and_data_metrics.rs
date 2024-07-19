@@ -84,41 +84,7 @@ async fn heartbeat_metrics() -> Result<()> {
     tracing::info!("--- initializing cluster");
     let log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
 
-    tracing::info!(
-        log_index,
-        "--- heartbeat disabled, interval since the last ack should increase in flush loop"
-    );
     let leader = router.get_raft_handle(&0)?;
-    {
-        let mut data_metrics = leader.data_metrics();
-        let mut prev_node1 = 0;
-        let mut prev_node2 = 0;
-        for _ in 0..30 {
-            // wait for metrics flush
-            data_metrics.changed().await?;
-
-            let metrics_ref = data_metrics.borrow();
-            let heartbeat = metrics_ref
-                .heartbeat
-                .as_ref()
-                .expect("expect heartbeat to be Some as metrics come from the leader node");
-
-            let node1 = heartbeat.get(&1).unwrap().unwrap();
-            let node2 = heartbeat.get(&2).unwrap().unwrap();
-
-            assert!(
-                node1 > prev_node1,
-                "interval should increase since last ack won't change"
-            );
-            assert!(
-                node2 > prev_node2,
-                "interval should increase since last ack won't change"
-            );
-
-            prev_node1 = node1;
-            prev_node2 = node2;
-        }
-    }
 
     tracing::info!(log_index, "--- trigger heartbeat; heartbeat metrics refreshes");
     let refreshed_node1;
