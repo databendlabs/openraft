@@ -73,7 +73,13 @@ pub struct RaftMetrics<C: RaftTypeConfig> {
     /// The current membership config of the cluster.
     pub membership_config: Arc<StoredMembership<C>>,
 
-    /// The heartbeats states. It is Some() only when this node is leader.
+    /// Heartbeat metrics. It is Some() only when this node is leader.
+    ///
+    /// This field records a mapping between a node's ID and milliseconds since
+    /// the last acknowledged heartbeat or replication to this node.
+    ///
+    /// This duration can be used by applications to guess if a follwer/learner
+    /// node is offline, longer duration suggests higher possibility of that.
     pub heartbeat: Option<HeartbeatMetrics<C>>,
 
     // ---
@@ -170,6 +176,14 @@ pub struct RaftDataMetrics<C: RaftTypeConfig> {
     pub millis_since_quorum_ack: Option<u64>,
 
     pub replication: Option<ReplicationMetrics<C>>,
+
+    /// Heartbeat metrics. It is Some() only when this node is leader.
+    ///
+    /// This field records a mapping between a node's ID and milliseconds since
+    /// the last acknowledged heartbeat or replication to this node.
+    ///
+    /// This duration can be used by applications to guess if a follwer/learner
+    /// node is offline, longer duration suggests higher possibility of that.
     pub heartbeat: Option<HeartbeatMetrics<C>>,
 }
 
