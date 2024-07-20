@@ -168,8 +168,11 @@ where C: RaftTypeConfig
     /// Initialize a replication action: sending log entries or sending snapshot.
     ///
     /// If there is an action in progress, i.e., `inflight` is not None, it returns an `Err`
-    /// containing the current `inflight` data
-    #[allow(dead_code)]
+    /// containing the current `inflight` data.
+    ///
+    /// See: [Algorithm to find the last matching log id on a Follower][algo].
+    ///
+    /// [algo]: crate::docs::protocol::replication::log_replication#algorithm-to-find-the-last-matching-log-id-on-a-follower
     pub(crate) fn next_send(
         &mut self,
         log_state: &impl LogStateReader<C>,

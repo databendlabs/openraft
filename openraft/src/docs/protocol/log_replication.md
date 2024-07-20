@@ -127,3 +127,54 @@ R2 | 1-1  1-2  3-3
   applies `2-3`.
 
 
+## Algorithm to find the last matching log id on a Follower
+
+When a Leader is established, it does not know which log entries are present on
+Followers and Learners. Therefore, it must determine the last matching log ID on
+each Follower before sending append-entries.
+
+This process utilizes a binary search:
+
+The Leader uses a span `[matching_log_id, first_conflict_index]` to search:
+- The left bound is the last known matching log ID.
+- The right bound is the index of the first known log that the Follower does not have.
+
+This span is defined in `ProgressEntry`, which the Leader uses to track
+replication progress for each Follower/Learner.
+
+```rust,ignore
+pub(crate) struct ProgressEntry<C> {
+    // Left bound
+    pub(crate) matching: Option<LogId<C::NodeId>>,
+    // Right bound
+    pub(crate) searching_end: u64,
+}
+```
+
+### Algorithm steps:
+
+- The Leader initializes the span as `[None, leader_last_log_index + 1]`.
+  Because the Leader is assumed to have all committed logs. Any logs after
+  `leader_last_log_index` are uncommitted and can be safely deleted.
+
+- The Leader sends the log entry at the midpoint of `[ProgressEntry.matching.next_index(), ProgressEntry.searching_end]` to the Follower.
+
+- If the log entry is accepted, update `ProgressEntry.matching` to the current log ID.
+
+- If the log entry is rejected, update `ProgressEntry.searching_end` to the current log index.
+
+- Repeat the process until `matching.next_index() == searching_end`.
+
+By following these steps, the Leader can efficiently find the last matching log
+ID on a Follower using binary search.
+
+Notes:
+
+- `ProgressEntry.matching.next_index()` refers to the index right after the last
+  known matching log ID.
+
+
+[`ProgressEntry`]: crate::progress::entry::ProgressEntry
+
+
+[binary search]: https://en.wikipedia.org/wiki/Binary_search_algorithm
