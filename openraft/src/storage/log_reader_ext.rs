@@ -1,12 +1,7 @@
-use std::fmt::Debug;
-use std::ops::RangeBounds;
-
+use anyerror::AnyError;
 use openraft_macros::add_async_trait;
 
-use crate::defensive::check_range_matches_entries;
 use crate::LogId;
-use crate::OptionalSend;
-use crate::OptionalSync;
 use crate::RaftLogId;
 use crate::RaftLogReader;
 use crate::RaftTypeConfig;
@@ -24,24 +19,16 @@ where C: RaftTypeConfig
         Ok(res.pop())
     }
 
-    /// Get a series of log entries from storage.
-    ///
-    /// Similar to `try_get_log_entries` except an error will be returned if there is an entry not
-    /// found in the specified range.
-    async fn get_log_entries<RB: RangeBounds<u64> + Clone + Debug + OptionalSend + OptionalSync>(
-        &mut self,
-        range: RB,
-    ) -> Result<Vec<C::Entry>, StorageError<C>> {
-        let res = self.try_get_log_entries(range.clone()).await?;
-
-        check_range_matches_entries::<C, _>(range, &res)?;
-
-        Ok(res)
-    }
-
     /// Get the log id of the entry at `index`.
     async fn get_log_id(&mut self, log_index: u64) -> Result<LogId<C::NodeId>, StorageError<C>> {
-        let entries = self.get_log_entries(log_index..=log_index).await?;
+        let entries = self.try_get_log_entries(log_index..=log_index).await?;
+
+        if entries.is_empty() {
+            return Err(StorageError::read_log_at_index(
+                log_index,
+                AnyError::error("log entry not found"),
+            ));
+        }
 
         Ok(*entries[0].get_log_id())
     }

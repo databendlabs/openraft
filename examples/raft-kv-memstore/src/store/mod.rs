@@ -14,7 +14,6 @@ use openraft::LogId;
 use openraft::RaftSnapshotBuilder;
 use openraft::SnapshotMeta;
 use openraft::StorageError;
-use openraft::StorageIOError;
 use openraft::StoredMembership;
 use serde::Deserialize;
 use serde::Serialize;
@@ -93,7 +92,7 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<StateMachineStore> {
     async fn build_snapshot(&mut self) -> Result<Snapshot<TypeConfig>, StorageError<TypeConfig>> {
         // Serialize the data of the state machine.
         let state_machine = self.state_machine.read().await;
-        let data = serde_json::to_vec(&state_machine.data).map_err(|e| StorageIOError::read_state_machine(&e))?;
+        let data = serde_json::to_vec(&state_machine.data).map_err(|e| StorageError::read_state_machine(&e))?;
 
         let last_applied_log = state_machine.last_applied_log;
         let last_membership = state_machine.last_membership.clone();
@@ -194,7 +193,7 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
 
         // Update the state machine.
         let updated_state_machine_data = serde_json::from_slice(&new_snapshot.data)
-            .map_err(|e| StorageIOError::read_snapshot(Some(new_snapshot.meta.signature()), &e))?;
+            .map_err(|e| StorageError::read_snapshot(Some(new_snapshot.meta.signature()), &e))?;
         let updated_state_machine = StateMachineData {
             last_applied_log: meta.last_log_id,
             last_membership: meta.last_membership.clone(),

@@ -62,7 +62,6 @@ use crate::RaftLogId;
 use crate::RaftNetworkFactory;
 use crate::RaftTypeConfig;
 use crate::StorageError;
-use crate::StorageIOError;
 use crate::Vote;
 
 /// The handle to a spawned replication stream.
@@ -725,8 +724,7 @@ where
 
         let snapshot = match snapshot {
             None => {
-                let io_err = StorageIOError::read_snapshot(None, AnyError::error("snapshot not found"));
-                let sto_err = StorageError::IO { source: io_err };
+                let sto_err = StorageError::read_snapshot(None, AnyError::error("snapshot not found"));
                 return Err(ReplicationError::StorageError(sto_err));
             }
             Some(x) => x,

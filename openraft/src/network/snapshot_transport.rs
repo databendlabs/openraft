@@ -30,7 +30,6 @@ use crate::RaftTypeConfig;
 use crate::Snapshot;
 use crate::SnapshotId;
 use crate::StorageError;
-use crate::StorageIOError;
 use crate::ToStorageResult;
 use crate::Vote;
 
@@ -265,10 +264,10 @@ where C::SnapshotData: tokio::io::AsyncRead + tokio::io::AsyncWrite + tokio::io:
             let streaming = streaming.take().unwrap();
             let mut data = streaming.into_snapshot_data();
 
-            data.as_mut().shutdown().await.map_err(|e| {
-                let io_err = StorageIOError::write_snapshot(Some(snapshot_meta.signature()), &e);
-                StorageError::from(io_err)
-            })?;
+            data.as_mut()
+                .shutdown()
+                .await
+                .map_err(|e| StorageError::write_snapshot(Some(snapshot_meta.signature()), &e))?;
 
             tracing::info!("finished streaming snapshot: {:?}", snapshot_meta);
             return Ok(Some(Snapshot::new(snapshot_meta, data)));

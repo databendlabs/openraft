@@ -36,7 +36,6 @@ use openraft::RaftLogReader;
 use openraft::RaftSnapshotBuilder;
 use openraft::SnapshotMeta;
 use openraft::StorageError;
-use openraft::StorageIOError;
 use openraft::StoredMembership;
 use openraft::Vote;
 use rand::Rng;
@@ -72,9 +71,6 @@ pub enum RocksRequest {
  * Here you will defined what type of answer you expect from reading the data of a node.
  * In this example it will return a optional value from a given key in
  * the `RocksRequest.Set`.
- *
- * TODO: Should we explain how to create multiple `AppDataResponse`?
- *
  */
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct RocksResponse {
@@ -207,13 +203,13 @@ impl RocksLogStore {
         let v = self
             .db
             .get_cf(self.cf_meta(), M::KEY)
-            .map_err(|e| StorageIOError::new(M::subject(None), ErrorVerb::Read, AnyError::new(&e)))?;
+            .map_err(|e| StorageError::new(M::subject(None), ErrorVerb::Read, AnyError::new(&e)))?;
 
         let t = match v {
             None => None,
             Some(bytes) => Some(
                 serde_json::from_slice(&bytes)
-                    .map_err(|e| StorageIOError::new(M::subject(None), ErrorVerb::Read, AnyError::new(&e)))?,
+                    .map_err(|e| StorageError::new(M::subject(None), ErrorVerb::Read, AnyError::new(&e)))?,
             ),
         };
         Ok(t)
@@ -222,11 +218,11 @@ impl RocksLogStore {
     /// Save a store metadata.
     fn put_meta<M: meta::StoreMeta>(&self, value: &M::Value) -> Result<(), StorageError<TypeConfig>> {
         let json_value = serde_json::to_vec(value)
-            .map_err(|e| StorageIOError::new(M::subject(Some(value)), ErrorVerb::Write, AnyError::new(&e)))?;
+            .map_err(|e| StorageError::new(M::subject(Some(value)), ErrorVerb::Write, AnyError::new(&e)))?;
 
         self.db
             .put_cf(self.cf_meta(), M::KEY, json_value)
-            .map_err(|e| StorageIOError::new(M::subject(Some(value)), ErrorVerb::Write, AnyError::new(&e)))?;
+            .map_err(|e| StorageError::new(M::subject(Some(value)), ErrorVerb::Write, AnyError::new(&e)))?;
 
         Ok(())
     }
@@ -272,7 +268,7 @@ impl RaftSnapshotBuilder<TypeConfig> for RocksStateMachine {
     #[tracing::instrument(level = "trace", skip(self))]
     async fn build_snapshot(&mut self) -> Result<Snapshot<TypeConfig>, StorageError<TypeConfig>> {
         // Serialize the data of the state machine.
-        let data = serde_json::to_vec(&self.sm).map_err(|e| StorageIOError::read_state_machine(&e))?;
+        let data = serde_json::to_vec(&self.sm).map_err(|e| StorageError::read_state_machine(&e))?;
 
         let last_applied_log = self.sm.last_applied_log;
         let last_membership = self.sm.last_membership.clone();
@@ -298,11 +294,11 @@ impl RaftSnapshotBuilder<TypeConfig> for RocksStateMachine {
         };
 
         let serialized_snapshot = serde_json::to_vec(&snapshot)
-            .map_err(|e| StorageIOError::write_snapshot(Some(meta.signature()), AnyError::new(&e)))?;
+            .map_err(|e| StorageError::write_snapshot(Some(meta.signature()), AnyError::new(&e)))?;
 
         self.db
             .put_cf(self.db.cf_handle("sm_meta").unwrap(), "snapshot", serialized_snapshot)
-            .map_err(|e| StorageIOError::write_snapshot(Some(meta.signature()), AnyError::new(&e)))?;
+            .map_err(|e| StorageError::write_snapshot(Some(meta.signature()), AnyError::new(&e)))?;
 
         Ok(Snapshot {
             meta,
@@ -341,7 +337,7 @@ impl RaftLogStorage<TypeConfig> for RocksLogStore {
 
     async fn save_vote(&mut self, vote: &Vote<RocksNodeId>) -> Result<(), StorageError<TypeConfig>> {
         self.put_meta::<meta::Vote>(vote)?;
-        self.db.flush_wal(true).map_err(|e| StorageIOError::write_vote(&e))?;
+        self.db.flush_wal(true).map_err(|e| StorageError::write_vote(&e))?;
         Ok(())
     }
 
@@ -358,12 +354,12 @@ impl RaftLogStorage<TypeConfig> for RocksLogStore {
                 .put_cf(
                     self.cf_logs(),
                     id,
-                    serde_json::to_vec(&entry).map_err(|e| StorageIOError::write_logs(&e))?,
+                    serde_json::to_vec(&entry).map_err(|e| StorageError::write_logs(&e))?,
                 )
-                .map_err(|e| StorageIOError::write_logs(&e))?;
+                .map_err(|e| StorageError::write_logs(&e))?;
         }
 
-        self.db.flush_wal(true).map_err(|e| StorageIOError::write_logs(&e))?;
+        self.db.flush_wal(true).map_err(|e| StorageError::write_logs(&e))?;
 
         // If there is error, the callback will be dropped.
         callback.io_completed(Ok(()));
@@ -375,9 +371,9 @@ impl RaftLogStorage<TypeConfig> for RocksLogStore {
 
         let from = id_to_bin(log_id.index);
         let to = id_to_bin(0xff_ff_ff_ff_ff_ff_ff_ff);
-        self.db.delete_range_cf(self.cf_logs(), &from, &to).map_err(|e| StorageIOError::write_logs(&e))?;
+        self.db.delete_range_cf(self.cf_logs(), &from, &to).map_err(|e| StorageError::write_logs(&e))?;
 
-        self.db.flush_wal(true).map_err(|e| StorageIOError::write_logs(&e))?;
+        self.db.flush_wal(true).map_err(|e| StorageError::write_logs(&e))?;
         Ok(())
     }
 
@@ -391,7 +387,7 @@ impl RaftLogStorage<TypeConfig> for RocksLogStore {
 
         let from = id_to_bin(0);
         let to = id_to_bin(log_id.index + 1);
-        self.db.delete_range_cf(self.cf_logs(), &from, &to).map_err(|e| StorageIOError::write_logs(&e))?;
+        self.db.delete_range_cf(self.cf_logs(), &from, &to).map_err(|e| StorageError::write_logs(&e))?;
 
         // Purging does not need to be persistent.
         Ok(())
@@ -463,20 +459,20 @@ impl RaftStateMachine<TypeConfig> for RocksStateMachine {
 
         // Update the state machine.
         let updated_state_machine: StateMachine = serde_json::from_slice(&new_snapshot.data)
-            .map_err(|e| StorageIOError::read_snapshot(Some(new_snapshot.meta.signature()), &e))?;
+            .map_err(|e| StorageError::read_snapshot(Some(new_snapshot.meta.signature()), &e))?;
 
         self.sm = updated_state_machine;
 
         // Save snapshot
 
         let serialized_snapshot = serde_json::to_vec(&new_snapshot)
-            .map_err(|e| StorageIOError::write_snapshot(Some(meta.signature()), AnyError::new(&e)))?;
+            .map_err(|e| StorageError::write_snapshot(Some(meta.signature()), AnyError::new(&e)))?;
 
         self.db
             .put_cf(self.db.cf_handle("sm_meta").unwrap(), "snapshot", serialized_snapshot)
-            .map_err(|e| StorageIOError::write_snapshot(Some(meta.signature()), AnyError::new(&e)))?;
+            .map_err(|e| StorageError::write_snapshot(Some(meta.signature()), AnyError::new(&e)))?;
 
-        self.db.flush_wal(true).map_err(|e| StorageIOError::write_snapshot(Some(meta.signature()), &e))?;
+        self.db.flush_wal(true).map_err(|e| StorageError::write_snapshot(Some(meta.signature()), &e))?;
         Ok(())
     }
 
@@ -484,7 +480,7 @@ impl RaftStateMachine<TypeConfig> for RocksStateMachine {
         let x = self
             .db
             .get_cf(self.db.cf_handle("sm_meta").unwrap(), "snapshot")
-            .map_err(|e| StorageIOError::write_snapshot(None, AnyError::new(&e)))?;
+            .map_err(|e| StorageError::write_snapshot(None, AnyError::new(&e)))?;
 
         let bytes = match x {
             Some(x) => x,
@@ -492,7 +488,7 @@ impl RaftStateMachine<TypeConfig> for RocksStateMachine {
         };
 
         let snapshot: RocksSnapshot =
-            serde_json::from_slice(&bytes).map_err(|e| StorageIOError::write_snapshot(None, AnyError::new(&e)))?;
+            serde_json::from_slice(&bytes).map_err(|e| StorageError::write_snapshot(None, AnyError::new(&e)))?;
 
         let data = snapshot.data.clone();
 
@@ -521,7 +517,5 @@ pub async fn new<P: AsRef<Path>>(db_path: P) -> (RocksLogStore, RocksStateMachin
 }
 
 fn read_logs_err(e: impl Error + 'static) -> StorageError<TypeConfig> {
-    StorageError::IO {
-        source: StorageIOError::read_logs(&e),
-    }
+    StorageError::read_logs(&e)
 }

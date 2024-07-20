@@ -4,13 +4,13 @@ use std::time::Duration;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::raft::AppendEntriesRequest;
-use openraft::storage::RaftLogReaderExt;
 use openraft::storage::RaftLogStorage;
 use openraft::testing::blank_ent;
 use openraft::CommittedLeaderId;
 use openraft::Config;
 use openraft::Entry;
 use openraft::LogId;
+use openraft::RaftLogReader;
 use openraft::RaftTypeConfig;
 use openraft::ServerState;
 use openraft::Vote;
@@ -227,7 +227,7 @@ where
     C: RaftTypeConfig,
     LS: RaftLogStorage<C>,
 {
-    let logs = log_store.get_log_reader().await.get_log_entries(..).await?;
+    let logs = log_store.get_log_reader().await.try_get_log_entries(..).await?;
     let skip = 0;
     let want: Vec<Entry<openraft_memstore::TypeConfig>> = terms
         .iter()

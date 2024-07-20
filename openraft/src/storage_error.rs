@@ -1,20 +1,18 @@
 use std::fmt;
-use std::ops::Bound;
 
 use anyerror::AnyError;
 
 use crate::storage::SnapshotSignature;
 use crate::LogId;
 use crate::RaftTypeConfig;
-use crate::Vote;
 
 /// Convert error to StorageError::IO();
 pub trait ToStorageResult<C, T>
 where C: RaftTypeConfig
 {
-    /// Convert Result<T, E> to Result<T, StorageError::IO(StorageIOError)>
+    /// Convert `Result<T, E>` to `Result<T, StorageError>`
     ///
-    /// `f` provides error context for building the StorageIOError.
+    /// `f` provides error context for building the StorageError.
     fn sto_res<F>(self, f: F) -> Result<T, StorageError<C>>
     where F: FnOnce() -> (ErrorSubject<C>, ErrorVerb);
 }
@@ -28,46 +26,10 @@ where C: RaftTypeConfig
             Ok(x) => Ok(x),
             Err(e) => {
                 let (subject, verb) = f();
-                let io_err = StorageIOError::new(subject, verb, AnyError::new(&e));
-                Err(io_err.into())
+                let io_err = StorageError::new(subject, verb, AnyError::new(&e));
+                Err(io_err)
             }
         }
-    }
-}
-
-/// An error that occurs when the RaftStore impl runs defensive check of input or output.
-/// E.g. re-applying an log entry is a violation that may be a potential bug.
-#[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub struct DefensiveError<C>
-where C: RaftTypeConfig
-{
-    /// The subject that violates store defensive check, e.g. hard-state, log or state machine.
-    pub subject: ErrorSubject<C>,
-
-    /// The description of the violation.
-    pub violation: Violation<C>,
-
-    pub backtrace: Option<String>,
-}
-
-impl<C> DefensiveError<C>
-where C: RaftTypeConfig
-{
-    pub fn new(subject: ErrorSubject<C>, violation: Violation<C>) -> Self {
-        Self {
-            subject,
-            violation,
-            backtrace: anyerror::backtrace_str(),
-        }
-    }
-}
-
-impl<C> fmt::Display for DefensiveError<C>
-where C: RaftTypeConfig
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "'{:?}' violates: '{}'", self.subject, self.violation)
     }
 }
 
@@ -121,113 +83,20 @@ impl fmt::Display for ErrorVerb {
     }
 }
 
-/// Violations a store would return when running defensive check.
-#[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub enum Violation<C>
-where C: RaftTypeConfig
-{
-    #[error("term can only be change to a greater value, current: {curr}, change to {to}")]
-    VoteNotAscending { curr: Vote<C::NodeId>, to: Vote<C::NodeId> },
-
-    #[error("voted_for can not change from Some() to other Some(), current: {curr:?}, change to {to:?}")]
-    NonIncrementalVote { curr: Vote<C::NodeId>, to: Vote<C::NodeId> },
-
-    #[error("log at higher index is obsolete: {higher_index_log_id:?} should GT {lower_index_log_id:?}")]
-    DirtyLog {
-        higher_index_log_id: LogId<C::NodeId>,
-        lower_index_log_id: LogId<C::NodeId>,
-    },
-
-    #[error("try to get log at index {want} but got {got:?}")]
-    LogIndexNotFound { want: u64, got: Option<u64> },
-
-    #[error("range is empty: start: {start:?}, end: {end:?}")]
-    RangeEmpty { start: Option<u64>, end: Option<u64> },
-
-    #[error("range is not half-open: start: {start:?}, end: {end:?}")]
-    RangeNotHalfOpen { start: Bound<u64>, end: Bound<u64> },
-
-    // TODO(xp): rename this to some input related error name.
-    #[error("empty log vector")]
-    LogsEmpty,
-
-    #[error("all logs are removed. It requires at least one log to track continuity")]
-    StoreLogsEmpty,
-
-    #[error("logs are not consecutive, prev: {prev:?}, next: {next}")]
-    LogsNonConsecutive {
-        prev: Option<LogId<C::NodeId>>,
-        next: LogId<C::NodeId>,
-    },
-
-    #[error("invalid next log to apply: prev: {prev:?}, next: {next}")]
-    ApplyNonConsecutive {
-        prev: Option<LogId<C::NodeId>>,
-        next: LogId<C::NodeId>,
-    },
-
-    #[error("applied log can not conflict, last_applied: {last_applied:?}, delete since: {first_conflict_log_id}")]
-    AppliedWontConflict {
-        last_applied: Option<LogId<C::NodeId>>,
-        first_conflict_log_id: LogId<C::NodeId>,
-    },
-
-    #[error("not allowed to purge non-applied logs, last_applied: {last_applied:?}, purge upto: {purge_upto}")]
-    PurgeNonApplied {
-        last_applied: Option<LogId<C::NodeId>>,
-        purge_upto: LogId<C::NodeId>,
-    },
-}
-
-/// A storage error could be either a defensive check error or an error occurred when doing the
-/// actual io operation.
-///
-/// It indicates a data crash.
-/// An application returning this error will shutdown the Openraft node immediately to prevent
-/// further damage.
-#[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub enum StorageError<C>
-where C: RaftTypeConfig
-{
-    /// An error raised by defensive check.
-    #[error(transparent)]
-    Defensive {
-        #[from]
-        #[cfg_attr(feature = "bt", backtrace)]
-        source: DefensiveError<C>,
-    },
-
-    /// An error raised by io operation.
-    #[error(transparent)]
-    IO {
-        #[from]
-        #[cfg_attr(feature = "bt", backtrace)]
-        source: StorageIOError<C>,
-    },
-}
+/// Backward compatible with old application using `StorageIOError`
+pub type StorageIOError<C> = StorageError<C>;
 
 impl<C> StorageError<C>
 where C: RaftTypeConfig
 {
-    pub fn into_defensive(self) -> Option<DefensiveError<C>> {
-        match self {
-            StorageError::Defensive { source } => Some(source),
-            _ => None,
-        }
-    }
-
-    pub fn into_io(self) -> Option<StorageIOError<C>> {
-        match self {
-            StorageError::IO { source } => Some(source),
-            _ => None,
-        }
+    /// Backward compatible with old form `StorageError::IO{ source: StorageError }`
+    #[deprecated(note = "no need to call this method", since = "0.10.0")]
+    pub fn into_io(self) -> Option<StorageError<C>> {
+        Some(self)
     }
 
     pub fn from_io_error(subject: ErrorSubject<C>, verb: ErrorVerb, io_error: std::io::Error) -> Self {
-        let sto_io_err = StorageIOError::new(subject, verb, AnyError::new(&io_error));
-        StorageError::IO { source: sto_io_err }
+        StorageError::new(subject, verb, AnyError::new(&io_error))
     }
 }
 
@@ -238,7 +107,7 @@ where C: RaftTypeConfig
 /// further damage.
 #[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub struct StorageIOError<C>
+pub struct StorageError<C>
 where C: RaftTypeConfig
 {
     subject: ErrorSubject<C>,
@@ -247,7 +116,7 @@ where C: RaftTypeConfig
     backtrace: Option<String>,
 }
 
-impl<C> fmt::Display for StorageIOError<C>
+impl<C> fmt::Display for StorageError<C>
 where C: RaftTypeConfig
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -255,7 +124,7 @@ where C: RaftTypeConfig
     }
 }
 
-impl<C> StorageIOError<C>
+impl<C> StorageError<C>
 where C: RaftTypeConfig
 {
     pub fn new(subject: ErrorSubject<C>, verb: ErrorVerb, source: impl Into<AnyError>) -> Self {
@@ -269,6 +138,10 @@ where C: RaftTypeConfig
 
     pub fn write_log_entry(log_id: LogId<C::NodeId>, source: impl Into<AnyError>) -> Self {
         Self::new(ErrorSubject::Log(log_id), ErrorVerb::Write, source)
+    }
+
+    pub fn read_log_at_index(log_index: u64, source: impl Into<AnyError>) -> Self {
+        Self::new(ErrorSubject::LogIndex(log_index), ErrorVerb::Read, source)
     }
 
     pub fn read_log_entry(log_id: LogId<C::NodeId>, source: impl Into<AnyError>) -> Self {

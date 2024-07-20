@@ -1,3 +1,5 @@
+use anyerror::AnyError;
+
 use crate::async_runtime::MpscUnboundedReceiver;
 use crate::async_runtime::MpscUnboundedSender;
 use crate::async_runtime::OneshotSender;
@@ -12,7 +14,6 @@ use crate::core::ApplyingEntry;
 use crate::display_ext::DisplayOptionExt;
 use crate::display_ext::DisplaySliceExt;
 use crate::entry::RaftPayload;
-use crate::storage::RaftLogReaderExt;
 use crate::storage::RaftStateMachine;
 use crate::type_config::alias::JoinHandleOf;
 use crate::type_config::alias::LogIdOf;
@@ -150,7 +151,15 @@ where
         let since = first.index;
         let end = last.index + 1;
 
-        let entries = self.log_reader.get_log_entries(since..end).await?;
+        let entries = self.log_reader.try_get_log_entries(since..end).await?;
+        if entries.len() != (end - since) as usize {
+            return Err(StorageError::read_logs(AnyError::error(format!(
+                "returned log entries count({}) does not match the input([{}, {}]))",
+                entries.len(),
+                since,
+                end
+            ))));
+        }
         tracing::debug!(entries = display(entries.display()), "about to apply");
 
         let last_applied = last;

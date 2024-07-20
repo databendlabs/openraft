@@ -100,7 +100,6 @@ use crate::Membership;
 use crate::OptionalSend;
 use crate::RaftTypeConfig;
 use crate::StorageError;
-use crate::StorageIOError;
 use crate::Vote;
 
 /// A temp struct to hold the data for a node that is being applied.
@@ -726,7 +725,7 @@ where
         );
 
         let cmd = sm::Command::apply(first, last);
-        self.sm_handle.send(cmd).map_err(|e| StorageIOError::apply(last, AnyError::error(e)))?;
+        self.sm_handle.send(cmd).map_err(|e| StorageError::apply(last, AnyError::error(e)))?;
 
         Ok(())
     }
@@ -1717,7 +1716,7 @@ where
                     Inflight::Snapshot { id, last_log_id } => {
                         // unwrap: The replication channel must not be dropped or it is a bug.
                         node.tx_repl.send(Replicate::snapshot(RequestId::new_snapshot(id), last_log_id)).map_err(
-                            |_e| StorageIOError::read_snapshot(None, AnyError::error("replication channel closed")),
+                            |_e| StorageError::read_snapshot(None, AnyError::error("replication channel closed")),
                         )?;
                     }
                 }
@@ -1739,7 +1738,7 @@ where
 
                 // Just forward a state machine command to the worker.
                 self.sm_handle.send(command).map_err(|_e| {
-                    StorageIOError::write_state_machine(AnyError::error("can not send to sm::Worker".to_string()))
+                    StorageError::write_state_machine(AnyError::error("can not send to sm::Worker".to_string()))
                 })?;
             }
             Command::Respond { resp: send, .. } => {
