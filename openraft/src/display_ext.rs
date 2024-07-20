@@ -6,8 +6,8 @@ pub(crate) mod display_option;
 pub(crate) mod display_result;
 pub(crate) mod display_slice;
 
-#[allow(unused_imports)]
 pub(crate) use display_btreemap_opt_value::DisplayBTreeMapOptValue;
+#[allow(unused_imports)]
 pub(crate) use display_btreemap_opt_value::DisplayBtreeMapOptValueExt;
 #[allow(unused_imports)]
 pub(crate) use display_instant::DisplayInstant;

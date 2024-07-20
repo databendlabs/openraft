@@ -2,7 +2,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use crate::core::ServerState;
-use crate::display_ext::DisplayBtreeMapOptValueExt;
+use crate::display_ext::DisplayBTreeMapOptValue;
 use crate::display_ext::DisplayOption;
 use crate::display_ext::DisplayOptionExt;
 use crate::error::Fatal;
@@ -116,8 +116,8 @@ where C: RaftTypeConfig
             self.membership_config,
             DisplayOption(&self.snapshot),
             DisplayOption(&self.purged),
-            DisplayOption(&self.replication.as_ref().map(DisplayBtreeMapOptValueExt::display)),
-            DisplayOption(&self.heartbeat.as_ref().map(DisplayBtreeMapOptValueExt::display)),
+            DisplayOption(&self.replication.as_ref().map(DisplayBTreeMapOptValue)),
+            DisplayOption(&self.heartbeat.as_ref().map(DisplayBTreeMapOptValue)),
         )?;
 
         write!(f, "}}")?;
@@ -200,8 +200,8 @@ where C: RaftTypeConfig
             DisplayOption(&self.snapshot),
             DisplayOption(&self.purged),
             self.millis_since_quorum_ack.display(),
-            DisplayOption(&self.replication.as_ref().map(DisplayBtreeMapOptValueExt::display)),
-            DisplayOption(&self.heartbeat.as_ref().map(DisplayBtreeMapOptValueExt::display)),
+            DisplayOption(&self.replication.as_ref().map(DisplayBTreeMapOptValue)),
+            DisplayOption(&self.heartbeat.as_ref().map(DisplayBTreeMapOptValue)),
         )?;
 
         write!(f, "}}")?;

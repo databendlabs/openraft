@@ -13,24 +13,19 @@ pub(crate) struct DisplayBTreeMapOptValue<'a, K: fmt::Display, V: fmt::Display>(
 
 impl<'a, K: fmt::Display, V: fmt::Display> fmt::Display for DisplayBTreeMapOptValue<'a, K, V> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let opt_idx_of_last_one = self.0.len().checked_sub(1);
-
-        match opt_idx_of_last_one {
-            Some(idx_of_last_one) => {
-                for (idx, (key, value)) in self.0.iter().enumerate() {
-                    write!(f, "{}:{}", key, DisplayOption(value))?;
-                    if idx != idx_of_last_one {
-                        write!(f, ",")?;
-                    }
-                }
+        let len = self.0.len();
+        for (idx, (key, value)) in self.0.iter().enumerate() {
+            write!(f, "{}:{}", key, DisplayOption(value))?;
+            if idx + 1 != len {
+                write!(f, ",")?;
             }
-            None => { /* do nothing, as map length is 0 */ }
         }
 
         Ok(())
     }
 }
 
+#[allow(unused)]
 pub(crate) trait DisplayBtreeMapOptValueExt<'a, K: fmt::Display, V: fmt::Display> {
     fn display(&'a self) -> DisplayBTreeMapOptValue<'a, K, V>;
 }
