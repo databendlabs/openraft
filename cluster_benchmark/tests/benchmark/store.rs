@@ -23,7 +23,6 @@ use openraft::OptionalSend;
 use openraft::RaftLogId;
 use openraft::SnapshotMeta;
 use openraft::StorageError;
-use openraft::StorageIOError;
 use openraft::StoredMembership;
 use openraft::Vote;
 use serde::Deserialize;
@@ -132,7 +131,7 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<StateMachineStore> {
         {
             // Serialize the data of the state machine.
             let sm = self.sm.read().await;
-            data = serde_json::to_vec(&*sm).map_err(|e| StorageIOError::read_state_machine(&e))?;
+            data = serde_json::to_vec(&*sm).map_err(|e| StorageError::read_state_machine(&e))?;
 
             last_applied_log = sm.last_applied_log;
             last_membership = sm.last_membership.clone();
@@ -291,7 +290,7 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
         // Update the state machine.
         {
             let new_sm: StateMachine = serde_json::from_slice(&new_snapshot.data)
-                .map_err(|e| StorageIOError::read_snapshot(Some(new_snapshot.meta.signature()), &e))?;
+                .map_err(|e| StorageError::read_snapshot(Some(new_snapshot.meta.signature()), &e))?;
             let mut sm = self.sm.write().await;
             *sm = new_sm;
         }

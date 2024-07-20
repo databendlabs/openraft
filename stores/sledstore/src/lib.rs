@@ -31,7 +31,6 @@ use openraft::RaftLogReader;
 use openraft::RaftSnapshotBuilder;
 use openraft::SnapshotMeta;
 use openraft::StorageError;
-use openraft::StorageIOError;
 use openraft::StoredMembership;
 use openraft::Vote;
 use serde::Deserialize;
@@ -62,9 +61,6 @@ pub enum ExampleRequest {
  * Here you will defined what type of answer you expect from reading the data of a node.
  * In this example it will return a optional value from a given key in
  * the `ExampleRequest.Set`.
- *
- * TODO: Should we explain how to create multiple `AppDataResponse`?
- *
  */
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ExampleResponse {
@@ -122,35 +118,35 @@ impl From<&ExampleStateMachine> for SerializableExampleStateMachine {
     }
 }
 
-fn read_sm_err<E: Error + 'static>(e: E) -> StorageIOError<TypeConfig> {
-    StorageIOError::read_state_machine(&e)
+fn read_sm_err<E: Error + 'static>(e: E) -> StorageError<TypeConfig> {
+    StorageError::read_state_machine(&e)
 }
-fn write_sm_err<E: Error + 'static>(e: E) -> StorageIOError<TypeConfig> {
-    StorageIOError::write_state_machine(&e)
+fn write_sm_err<E: Error + 'static>(e: E) -> StorageError<TypeConfig> {
+    StorageError::write_state_machine(&e)
 }
-fn read_snap_err<E: Error + 'static>(e: E) -> StorageIOError<TypeConfig> {
-    StorageIOError::read(&e)
+fn read_snap_err<E: Error + 'static>(e: E) -> StorageError<TypeConfig> {
+    StorageError::read(&e)
 }
-fn write_snap_err<E: Error + 'static>(e: E) -> StorageIOError<TypeConfig> {
-    StorageIOError::write(&e)
+fn write_snap_err<E: Error + 'static>(e: E) -> StorageError<TypeConfig> {
+    StorageError::write(&e)
 }
-fn read_vote_err<E: Error + 'static>(e: E) -> StorageIOError<TypeConfig> {
-    StorageIOError::read_vote(&e)
+fn read_vote_err<E: Error + 'static>(e: E) -> StorageError<TypeConfig> {
+    StorageError::read_vote(&e)
 }
-fn write_vote_err<E: Error + 'static>(e: E) -> StorageIOError<TypeConfig> {
-    StorageIOError::write_vote(&e)
+fn write_vote_err<E: Error + 'static>(e: E) -> StorageError<TypeConfig> {
+    StorageError::write_vote(&e)
 }
-fn read_logs_err<E: Error + 'static>(e: E) -> StorageIOError<TypeConfig> {
-    StorageIOError::read_logs(&e)
+fn read_logs_err<E: Error + 'static>(e: E) -> StorageError<TypeConfig> {
+    StorageError::read_logs(&e)
 }
-fn write_logs_err<E: Error + 'static>(e: E) -> StorageIOError<TypeConfig> {
-    StorageIOError::write_logs(&e)
+fn write_logs_err<E: Error + 'static>(e: E) -> StorageError<TypeConfig> {
+    StorageError::write_logs(&e)
 }
-fn read_err<E: Error + 'static>(e: E) -> StorageIOError<TypeConfig> {
-    StorageIOError::read(&e)
+fn read_err<E: Error + 'static>(e: E) -> StorageError<TypeConfig> {
+    StorageError::read(&e)
 }
-fn write_err<E: Error + 'static>(e: E) -> StorageIOError<TypeConfig> {
-    StorageIOError::write(&e)
+fn write_err<E: Error + 'static>(e: E) -> StorageError<TypeConfig> {
+    StorageError::write(&e)
 }
 
 fn conflictable_txn_err<E: Error + 'static>(e: E) -> sled::transaction::ConflictableTransactionError<AnyError> {
@@ -250,7 +246,7 @@ impl ExampleStateMachine {
         data_tree
             .get(key)
             .map(|value| value.map(|value| String::from_utf8(value.to_vec()).expect("invalid data")))
-            .map_err(|e| StorageIOError::read(&e).into())
+            .map_err(|e| StorageError::read(&e))
     }
     pub fn get_all(&self) -> StorageResult<Vec<String>> {
         let data_tree = data(&self.db);
@@ -374,14 +370,14 @@ impl SledStore {
         let store_tree = store(&self.db);
         let val = serde_json::to_vec(&snap).unwrap();
         let meta = snap.meta.clone();
-        store_tree.insert(b"snapshot", val.as_slice()).map_err(|e| StorageError::IO {
-            source: StorageIOError::write_snapshot(Some(snap.meta.signature()), &e),
-        })?;
+        store_tree
+            .insert(b"snapshot", val.as_slice())
+            .map_err(|e| StorageError::write_snapshot(Some(snap.meta.signature()), &e))?;
 
         store_tree
             .flush_async()
             .await
-            .map_err(|e| StorageIOError::write_snapshot(Some(meta.signature()), &e).into())
+            .map_err(|e| StorageError::write_snapshot(Some(meta.signature()), &e))
             .map(|_| ())
     }
 }
@@ -404,9 +400,8 @@ impl RaftLogReader<TypeConfig> for Arc<SledStore> {
                 let el = el_res.expect("Failed read log entry");
                 let id = el.0;
                 let val = el.1;
-                let entry: StorageResult<Entry<_>> = serde_json::from_slice(&val).map_err(|e| StorageError::IO {
-                    source: StorageIOError::read_logs(&e),
-                });
+                let entry: StorageResult<Entry<_>> =
+                    serde_json::from_slice(&val).map_err(|e| StorageError::read_logs(&e));
                 let id = bin_to_id(&id);
 
                 assert_eq!(Ok(id), entry.as_ref().map(|e| e.log_id.index));
@@ -433,7 +428,7 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<SledStore> {
         {
             // Serialize the data of the state machine.
             let state_machine = SerializableExampleStateMachine::from(&*self.state_machine.read().await);
-            data = serde_json::to_vec(&state_machine).map_err(|e| StorageIOError::read_state_machine(&e))?;
+            data = serde_json::to_vec(&state_machine).map_err(|e| StorageError::read_state_machine(&e))?;
 
             last_applied_log = state_machine.last_applied_log;
             last_membership = state_machine.last_membership;
@@ -614,9 +609,9 @@ impl RaftStateMachine<TypeConfig> for Arc<SledStore> {
             }
             Ok(res)
         });
-        let result_vec = trans_res.map_err(|e| StorageIOError::write(&e))?;
+        let result_vec = trans_res.map_err(|e| StorageError::write(&e))?;
 
-        self.db.flush_async().await.map_err(|e| StorageIOError::write_logs(&e))?;
+        self.db.flush_async().await.map_err(|e| StorageError::write_logs(&e))?;
         Ok(result_vec)
     }
 
@@ -648,7 +643,7 @@ impl RaftStateMachine<TypeConfig> for Arc<SledStore> {
         // Update the state machine.
         {
             let updated_state_machine: SerializableExampleStateMachine = serde_json::from_slice(&new_snapshot.data)
-                .map_err(|e| StorageIOError::read_snapshot(Some(new_snapshot.meta.signature()), &e))?;
+                .map_err(|e| StorageError::read_snapshot(Some(new_snapshot.meta.signature()), &e))?;
             let mut state_machine = self.state_machine.write().await;
             *state_machine = ExampleStateMachine::from_serializable(updated_state_machine, self.db.clone()).await?;
         }

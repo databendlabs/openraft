@@ -8,7 +8,6 @@ use crate::engine::LogIdList;
 use crate::entry::RaftPayload;
 use crate::log_id::RaftLogId;
 use crate::raft_state::IOState;
-use crate::storage::RaftLogReaderExt;
 use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
 use crate::type_config::TypeConfigExt;
@@ -95,7 +94,7 @@ where
 
             tracing::info!("re-apply log {}..{} to state machine", start, end);
 
-            let entries = log_reader.get_log_entries(start..end).await?;
+            let entries = log_reader.try_get_log_entries(start..end).await?;
             self.state_machine.apply(entries).await?;
 
             last_applied = committed;

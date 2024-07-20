@@ -29,7 +29,6 @@ use crate::LogId;
 use crate::Membership;
 use crate::NodeId;
 use crate::OptionalSend;
-use crate::OptionalSync;
 use crate::RaftLogReader;
 use crate::RaftSnapshotBuilder;
 use crate::RaftTypeConfig;
@@ -61,14 +60,6 @@ where C: RaftTypeConfig
     /// Proxy method to invoke [`RaftLogReaderExt::try_get_log_entry`].
     async fn try_get_log_entry(&mut self, log_index: u64) -> Result<Option<C::Entry>, StorageError<C>> {
         self.get_log_reader().await.try_get_log_entry(log_index).await
-    }
-
-    /// Proxy method to invoke [`RaftLogReaderExt::get_log_entries`].
-    async fn get_log_entries<RB: RangeBounds<u64> + Clone + Debug + OptionalSend + OptionalSync>(
-        &mut self,
-        range: RB,
-    ) -> Result<Vec<C::Entry>, StorageError<C>> {
-        self.get_log_reader().await.get_log_entries(range).await
     }
 
     /// Proxy method to invoke [`RaftLogReader::try_get_log_entries`].
@@ -748,13 +739,13 @@ where
 
         tracing::info!("--- get start == stop");
         {
-            let logs = store.get_log_entries(3..3).await?;
+            let logs = store.try_get_log_entries(3..3).await?;
             assert_eq!(logs.len(), 0, "expected no logs to be returned");
         }
 
         tracing::info!("--- get start < stop");
         {
-            let logs = store.get_log_entries(5..7).await?;
+            let logs = store.try_get_log_entries(5..7).await?;
 
             assert_eq!(logs.len(), 2);
             assert_eq!(*logs[0].get_log_id(), log_id_0(1, 5));

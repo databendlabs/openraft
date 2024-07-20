@@ -27,7 +27,6 @@ use openraft::OptionalSend;
 use openraft::RaftLogId;
 use openraft::SnapshotMeta;
 use openraft::StorageError;
-use openraft::StorageIOError;
 use openraft::StoredMembership;
 use openraft::Vote;
 use serde::Deserialize;
@@ -232,7 +231,7 @@ impl RaftLogReader<TypeConfig> for Arc<MemLogStore> {
         {
             let log = self.log.read().await;
             for (_, serialized) in log.range(range.clone()) {
-                let ent = serde_json::from_str(serialized).map_err(|e| StorageIOError::read_logs(&e))?;
+                let ent = serde_json::from_str(serialized).map_err(|e| StorageError::read_logs(&e))?;
                 entries.push(ent);
             }
         };
@@ -260,7 +259,7 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<MemStateMachine> {
         {
             // Serialize the data of the state machine.
             let sm = self.sm.read().await;
-            data = serde_json::to_vec(&*sm).map_err(|e| StorageIOError::read_state_machine(&e))?;
+            data = serde_json::to_vec(&*sm).map_err(|e| StorageError::read_state_machine(&e))?;
 
             last_applied_log = sm.last_applied_log;
             last_membership = sm.last_membership.clone();
@@ -321,7 +320,7 @@ impl RaftLogStorage<TypeConfig> for Arc<MemLogStore> {
             None => None,
             Some(serialized) => {
                 let ent: Entry<TypeConfig> =
-                    serde_json::from_str(serialized).map_err(|e| StorageIOError::read_logs(&e))?;
+                    serde_json::from_str(serialized).map_err(|e| StorageError::read_logs(&e))?;
                 Some(*ent.get_log_id())
             }
         };
@@ -369,7 +368,7 @@ impl RaftLogStorage<TypeConfig> for Arc<MemLogStore> {
         let mut log = self.log.write().await;
         for entry in entries {
             let s =
-                serde_json::to_string(&entry).map_err(|e| StorageIOError::write_log_entry(*entry.get_log_id(), &e))?;
+                serde_json::to_string(&entry).map_err(|e| StorageError::write_log_entry(*entry.get_log_id(), &e))?;
             log.insert(entry.log_id.index, s);
         }
 
@@ -503,7 +502,7 @@ impl RaftStateMachine<TypeConfig> for Arc<MemStateMachine> {
         // Update the state machine.
         {
             let new_sm: MemStoreStateMachine = serde_json::from_slice(&new_snapshot.data)
-                .map_err(|e| StorageIOError::read_snapshot(Some(new_snapshot.meta.signature()), &e))?;
+                .map_err(|e| StorageError::read_snapshot(Some(new_snapshot.meta.signature()), &e))?;
             let mut sm = self.sm.write().await;
             *sm = new_sm;
         }

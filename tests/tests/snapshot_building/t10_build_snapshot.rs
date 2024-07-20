@@ -7,7 +7,6 @@ use openraft::network::RPCOption;
 use openraft::network::RaftNetwork;
 use openraft::network::RaftNetworkFactory;
 use openraft::raft::AppendEntriesRequest;
-use openraft::storage::RaftLogReaderExt;
 use openraft::storage::RaftLogStorageExt;
 use openraft::testing::blank_ent;
 use openraft::CommittedLeaderId;
@@ -16,6 +15,7 @@ use openraft::Entry;
 use openraft::EntryPayload;
 use openraft::LogId;
 use openraft::Membership;
+use openraft::RaftLogReader;
 use openraft::SnapshotPolicy;
 use openraft::Vote;
 
@@ -106,7 +106,7 @@ async fn build_snapshot() -> Result<()> {
     );
     {
         let (mut sto, _sm) = router.get_storage_handle(&1)?;
-        let logs = sto.get_log_entries(..).await?;
+        let logs = sto.try_get_log_entries(..).await?;
         assert_eq!(2, logs.len());
         assert_eq!(LogId::new(CommittedLeaderId::new(1, 0), log_index - 1), logs[0].log_id)
     }

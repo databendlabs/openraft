@@ -3,11 +3,11 @@ use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
-use openraft::storage::RaftLogReaderExt;
 use openraft::storage::RaftLogStorage;
 use openraft::storage::RaftLogStorageExt;
 use openraft::testing::blank_ent;
 use openraft::Config;
+use openraft::RaftLogReader;
 use openraft::ServerState;
 use openraft::Vote;
 
@@ -111,7 +111,7 @@ async fn append_inconsistent_log() -> Result<()> {
         .applied_index_at_least(Some(log_index), "sync log to node 0")
         .await?;
 
-    let logs = sto0.get_log_entries(60..=60).await?;
+    let logs = sto0.try_get_log_entries(60..=60).await?;
     assert_eq!(
         3,
         logs.first().unwrap().log_id.leader_id.term,
