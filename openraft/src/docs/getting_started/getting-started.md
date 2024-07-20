@@ -45,30 +45,67 @@ These two types are entirely application-specific and are mainly related to the
 state machine implementation in [`RaftStateMachine`].
 
 
-## 2. Define types for the application
+## 2. Define types config for the application
 
 Openraft is a generic implementation of Raft. It requires the application to define
 concrete types for its generic arguments. Most types are parameterized by
-[`RaftTypeConfig`] and will be used to create a `Raft` instance:
-
-```ignore
-pub struct TypeConfig {}
-impl openraft::RaftTypeConfig for TypeConfig {
-    type D = Request;
-    type R = Response;
-    type NodeId = NodeId;
-    type Node = BasicNode;
-    type Entry = openraft::Entry<TypeConfig>;
-    type SnapshotData = Cursor<Vec<u8>>;
-    type AsyncRuntime = TokioRuntime;
-}
-```
+[`RaftTypeConfig`] and will be used to create a `Raft` instance.
 
 ```ignore
 pub struct Raft<C: RaftTypeConfig> {}
 ```
 
-Openraft provides default implementations for `Node` ([`EmptyNode`] and [`BasicNode`]) and log `Entry` ([`Entry`]).
+The simplest way to define your types config for example `TypeConfig`
+is using [`declare_raft_types!`] macro:
+
+```ignore
+openraft::declare_raft_types!(
+   pub TypeConfig: D = Request, R = Response
+);
+```
+
+This macro call adds the above `Request` and `Response` to the `TypeConfig` struct.
+- `D = Request` is the raft-log payload(usually some command to run)
+  that will be replicated by the raft protocol,
+  and will be applied to the state machine, i.e., your implementation of [`RaftStateMachine`].
+- `R = Response` is the response that the state machine returns to the client after applying a `Request`.
+
+There are several more generic types that could be defined in [`RaftTypeConfig`].
+The above macro call sets these absent types to the default values,
+and it generates the following type definitions:
+
+```ignore
+pub struct TypeConfig {}
+
+impl openraft::RaftTypeConfig for TypeConfig {
+    type D            = Request;
+    type R            = Response;
+    
+    // Following are absent in `declare_raft_types` and filled with default values:
+    type NodeId       = u64;
+    type Node         = openraft::impls::BasicNode;
+    type Entry        = openraft::impls::Entry<TypeConfig>;
+    type Responder    = openraft::impls::OneshotResponder<TypeConfig>,
+    type AsyncRuntime = openraft::impls::TokioRuntime;
+    type SnapshotData = Cursor<Vec<u8>>;
+}
+```
+
+> In the above `TypeConfig` declaration, 
+> - `NodeId` is the identifier of a node in the cluster, which implements [`NodeId`] trait.
+> - `Node` is the node type that contains the node's address, etc., which implements [`Node`] trait.
+> - `Entry` is the log entry type that will be stored in the raft log,
+>   which includes the payload and log id, which implements [`RaftEntry`] trait.
+> - `Responder` is the type that will be used to respond to the client, which implements [`Responder`] trait.
+> - `AsyncRuntime` is the async runtime that will be used to run the raft instance, which implements [`AsyncRuntime`] trait.
+> - `SnapshotData` is the type that will be used to store the snapshot data.
+
+Openraft provides default implementations for mostly used types:
+- `Node`: [`EmptyNode`] and [`BasicNode`],
+- log `Entry`: [`Entry`],
+- `AsyncRuntime`: [`TokioRuntime`], which is a wrapper of tokio runtime,
+- `Responder`: [`OneshotResponder`], which is a wrapper of oneshot sender and receiver provided by [`AsyncRuntime`].
+
 You can use these implementations directly or define your own custom types.
 
 A [`RaftTypeConfig`] is also used by other components such as [`RaftLogStorage`], [`RaftStateMachine`],
@@ -361,6 +398,8 @@ Additionally, two test scripts for setting up a cluster are available:
 - [test_cluster.rs](https://github.com/datafuselabs/openraft/blob/main/examples/raft-kv-memstore/tests/cluster/test_cluster.rs)
   uses the `ExampleClient` to set up a cluster, write data, and read it back.
 
+
+[`declare_raft_types!`]:                `crate::declare_raft_types`
 [`Raft`]:                               `crate::Raft`
 [`Raft::append_entries()`]:             `crate::Raft::append_entries`
 [`Raft::vote()`]:                       `crate::Raft::vote`
@@ -371,9 +410,18 @@ Additionally, two test scripts for setting up a cluster are available:
 [`VoteRequest`]:                        `crate::raft::VoteRequest`
 [`InstallSnapshotRequest`]:             `crate::raft::InstallSnapshotRequest`
 
+[`RaftTypeConfig`]:                     `crate::RaftTypeConfig`
+[`AsyncRuntime`]:                       `crate::AsyncRuntime`
 [`AppData`]:                            `crate::AppData`
 [`AppDataResponse`]:                    `crate::AppDataResponse`
-[`RaftTypeConfig`]:                     `crate::RaftTypeConfig`
+[`RaftEntry`]:                          `crate::entry::RaftEntry`
+[`Node`]:                               `crate::node::Node`
+[`NodeId`]:                             `crate::node::NodeId`
+[`Responder`]:                          `crate::raft::responder::Responder`
+
+[`TokioRuntime`]:                       `crate::impls::TokioRuntime`
+[`OneshotResponder`]:                   `crate::impls::OneshotResponder`
+
 [`LogId`]:                              `crate::LogId`
 [`Membership`]:                         `crate::Membership`
 [`EmptyNode`]:                          `crate::EmptyNode`

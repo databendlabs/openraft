@@ -26,7 +26,7 @@ openraft::declare_raft_types!(
         D = Request,
         R = Response,
         // In this example, snapshot is a path pointing to a file stored in shared storage.
-        SnapshotData = String,
+        SnapshotData = String
 );
 
 pub type LogStore = store::LogStore;
