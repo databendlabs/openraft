@@ -22,7 +22,7 @@ by calling [`Raft::metrics()`][].
 The following code snippet provides an example of how to wait for changes in `RaftMetrics` until a leader is elected:
 
 ```ignore
-let mut rx = self.raft.metrics();
+let mut rx = raft.metrics();
 loop {
     if let Some(l) = rx.borrow().current_leader {
         return Ok(Some(l));
@@ -35,7 +35,28 @@ loop {
 The second example calls a function when the current node becomes the leader:
 
 ```ignore
-let mut rx = self.raft.metrics();
+let mut rx = raft.metrics();
+loop {
+    if rx.borrow().state == ServerState::Leader {
+         app_init_leader();
+    }
+
+    rx.changed().await?;
+}
+```
+
+There is also:
+- a [`RaftServerMetrics`][] struct that provides only server/cluster related metrics,
+  including node id, vote, server state, current leader, etc.,
+- and a [`RaftDataMetrics`][] struct that provides only data related metrics,
+  such as log, snapshot etc.
+
+If you are only interested in server metrics, but not data metrics,
+subscribe [`RaftServerMetrics`][] with [`Raft::server_metrics()`][] instead.
+For example:
+
+```ignore
+let mut rx = raft.server_metrics();
 loop {
     if rx.borrow().state == ServerState::Leader {
          app_init_leader();
@@ -239,4 +260,8 @@ pub(crate) fn following_handler(&mut self) -> FollowingHandler<C> {
 
 
 [`RaftMetrics`]: `crate::metrics::RaftMetrics`
+[`RaftServerMetrics`]: `crate::metrics::RaftServerMetrics`
+[`RaftDataMetrics`]: `crate::metrics::RaftDataMetrics`
 [`Raft::metrics()`]: `crate::Raft::metrics`
+[`Raft::server_metrics()`]: `crate::Raft::server_metrics`
+[`Raft::data_metrics()`]: `crate::Raft::data_metrics`
