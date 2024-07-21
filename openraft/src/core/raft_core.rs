@@ -871,7 +871,7 @@ where
     /// It always returns a [`Fatal`] error upon returning.
     #[tracing::instrument(level="debug", skip_all, fields(id=display(self.id)))]
     async fn runtime_loop(&mut self, mut rx_shutdown: OneshotReceiverOf<C, ()>) -> Result<Infallible, Fatal<C>> {
-        // Ratio control the ratio of number of RaftMsg to process to number of Notify to process.
+        // Ratio control the ratio of number of RaftMsg to process to number of Notification to process.
         let mut balancer = Balancer::new(10_000);
 
         loop {
@@ -932,7 +932,7 @@ where
 
             #[allow(clippy::collapsible_else_if)]
             if notify_processed == balancer.notification() {
-                tracing::info!("there may be more Notify to process, increase Notify ratio");
+                tracing::info!("there may be more Notification to process, increase Notification ratio");
                 balancer.increase_notification();
             } else {
                 if raft_msg_processed == balancer.raft_msg() {
@@ -984,7 +984,7 @@ where
         Ok(at_most)
     }
 
-    /// Process Notify as many as possible.
+    /// Process Notification as many as possible.
     ///
     /// It returns the number of processed notifications.
     /// If the input channel is closed, it returns `Fatal::Stopped`.
@@ -995,7 +995,7 @@ where
                 Ok(msg) => msg,
                 Err(e) => match e {
                     TryRecvError::Empty => {
-                        tracing::debug!("all Notify are processed, wait for more");
+                        tracing::debug!("all Notification are processed, wait for more");
                         return Ok(i + 1);
                     }
                     TryRecvError::Disconnected => {
@@ -1014,7 +1014,10 @@ where
             self.run_engine_commands().await?;
         }
 
-        tracing::debug!("at_most({}) reached, there are more queued Notify to process", at_most);
+        tracing::debug!(
+            "at_most({}) reached, there are more queued Notification to process",
+            at_most
+        );
 
         Ok(at_most)
     }
@@ -1194,7 +1197,6 @@ where
         };
     }
 
-    // TODO: Make this method non-async. It does not need to run any async command in it.
     #[tracing::instrument(level = "debug", skip_all, fields(state = debug(self.engine.state.server_state), id=display(self.id)))]
     pub(crate) fn handle_notification(&mut self, notify: Notification<C>) -> Result<(), Fatal<C>> {
         tracing::debug!("RAFT_event id={:<2} notify: {}", self.id, notify);
@@ -1210,7 +1212,7 @@ where
                 tracing::info!(
                     now = display(now.display()),
                     resp = display(&resp),
-                    "received Notify::VoteResponse: {}",
+                    "received Notification::VoteResponse: {}",
                     func_name!()
                 );
 
@@ -1228,7 +1230,7 @@ where
                     target = display(target),
                     higher_vote = display(&higher),
                     sending_vote = display(&sender_vote),
-                    "received Notify::HigherVote: {}",
+                    "received Notification::HigherVote: {}",
                     func_name!()
                 );
 
@@ -1287,7 +1289,7 @@ where
             }
 
             Notification::StorageError { error } => {
-                tracing::error!("RaftCore received Notify::StorageError: {}", error);
+                tracing::error!("RaftCore received Notification::StorageError: {}", error);
                 return Err(Fatal::StorageError(error));
             }
 
@@ -1297,7 +1299,7 @@ where
                 // No need to check against membership change,
                 // because not like removing-then-adding a remote node,
                 // local log wont revert when membership changes.
-                if self.does_vote_match(io_id.vote_ref(), "LocalIO Notify") {
+                if self.does_vote_match(io_id.vote_ref(), "LocalIO Notification") {
                     match io_id {
                         IOId::Log(log_io_id) => {
                             self.engine.replication_handler().update_local_progress(log_io_id.log_id);
@@ -1325,16 +1327,6 @@ where
                         }
                     }
 
-                    replication::Response::StorageError { error } => {
-                        tracing::error!(
-                            error = display(&error),
-                            "received Notify::ReplicationStorageError: {}",
-                            func_name!()
-                        );
-
-                        return Err(Fatal::from(error));
-                    }
-
                     replication::Response::HigherVote {
                         target,
                         higher,
@@ -1344,7 +1336,7 @@ where
                             target = display(target),
                             higher_vote = display(&higher),
                             sender_vote = display(&sender_vote),
-                            "received Notify::HigherVote: {}",
+                            "received Notification::HigherVote: {}",
                             func_name!()
                         );
 
