@@ -173,7 +173,6 @@ where C: RaftTypeConfig
 
         if let Some(prev_committed) = self.state.update_committed(&committed) {
             self.output.push_command(Command::Commit {
-                // TODO(xp): when restart, commit is reset to None. Use last_applied instead.
                 already_committed: prev_committed,
                 upto: committed.unwrap(),
             });
@@ -269,7 +268,7 @@ where C: RaftTypeConfig
     /// It returns an `Option<Condition<C>>` indicating the next action:
     /// - `Some(Condition::StateMachineCommand { command_seq })` if the snapshot will be installed.
     ///   Further commands that depend on snapshot state should use this condition so that these
-    ///   command block until the condition is satisfied(`RaftCore` receives a `Notify`).
+    ///   command block until the condition is satisfied(`RaftCore` receives a `Notification`).
     /// - Otherwise `None` if the snapshot will not be installed (e.g., if it is not newer than the
     ///   current state).
     #[tracing::instrument(level = "debug", skip_all)]

@@ -8,7 +8,6 @@ use crate::replication::ReplicationSessionId;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::LogIdOf;
 use crate::RaftTypeConfig;
-use crate::StorageError;
 use crate::Vote;
 
 /// The response of replication command.
@@ -47,11 +46,6 @@ where C: RaftTypeConfig
         session_id: ReplicationSessionId<C>,
     },
 
-    /// [`StorageError`] error has taken place locally(not on remote node) when replicating, and
-    /// [`RaftCore`](`crate::core::RaftCore`) needs to shutdown. Sent by a replication task
-    /// [`crate::replication::ReplicationCore`].
-    StorageError { error: StorageError<C> },
-
     /// ReplicationCore has seen a higher `vote`.
     /// Sent by a replication task `ReplicationCore`.
     HigherVote {
@@ -89,8 +83,6 @@ where C: RaftTypeConfig
                     session_id
                 )
             }
-
-            Self::StorageError { error } => write!(f, "replication::StorageError: {}", error),
 
             Self::HigherVote {
                 target,

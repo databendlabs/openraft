@@ -76,7 +76,7 @@ where C: RaftTypeConfig
         }
     }
 
-    /// Figure out the error subject and verb from the kind of response `Notify`.
+    /// Figure out the error subject and verb from the kind of response `Notification`.
     fn make_storage_error(&self, e: io::Error) -> StorageError<C> {
         match &self.notification {
             Notification::VoteResponse { .. } => StorageError::from_io_error(ErrorSubject::Vote, ErrorVerb::Write, e),

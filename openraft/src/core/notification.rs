@@ -39,14 +39,14 @@ where C: RaftTypeConfig
         // membership_log_id: Option<LogId<C::NodeId>>,
     },
 
-    /// A storage error occurred in the local store.
+    /// [`StorageError`] error has taken place locally(not on remote node),
+    /// and [`RaftCore`](`crate::core::RaftCore`) needs to shutdown.
     StorageError { error: StorageError<C> },
 
     /// Completion of an IO operation to local store.
     LocalIO { io_id: IOId<C> },
 
     /// Result of executing a command sent from network worker.
-    // TODO: remove StorageError from replication::Response, use Notify::StorageError instead
     Network { response: replication::Response<C> },
 
     /// Result of executing a command sent from state machine worker.

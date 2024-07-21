@@ -275,10 +275,7 @@ where
                         ReplicationError::StorageError(error) => {
                             tracing::error!(error=%error, "error replication to target={}", self.target);
 
-                            // TODO: report this error
-                            let _ = self.tx_raft_core.send(Notification::Network {
-                                response: Response::StorageError { error },
-                            });
+                            let _ = self.tx_raft_core.send(Notification::StorageError { error });
                             return Ok(());
                         }
                         ReplicationError::RPCError(err) => {
