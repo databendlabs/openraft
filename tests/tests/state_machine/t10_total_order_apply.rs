@@ -9,11 +9,12 @@ use openraft::LogIdOptionExt;
 use openraft::ServerState;
 use tokio::sync::watch;
 
-use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 
 /// The logs have to be applied in log index order.
-#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 #[ignore]
 async fn total_order_apply() -> Result<()> {
     let config = Arc::new(

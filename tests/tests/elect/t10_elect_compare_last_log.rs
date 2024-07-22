@@ -11,14 +11,15 @@ use openraft::Config;
 use openraft::ServerState;
 use openraft::Vote;
 
-use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 
 /// The last_log in a vote request must be greater or equal than the local one.
 ///
 /// - Fake a cluster with two node: with last log {2,1} and {1,1}.
 /// - Bring up the cluster and only node 0 can become leader.
-#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn elect_compare_last_log() -> Result<()> {
     let config = Arc::new(
         Config {

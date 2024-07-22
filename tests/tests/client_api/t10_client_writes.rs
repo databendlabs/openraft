@@ -12,13 +12,14 @@ use openraft_memstore::ClientRequest;
 use openraft_memstore::IntoMemClientRequest;
 use openraft_memstore::TypeConfig;
 
-use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 
 /// - create a stable 3-node cluster.
 /// - write a lot of data to it.
 /// - assert that the cluster stayed stable and has all of the expected data.
-#[async_entry::test(worker_threads = 4, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn client_writes() -> Result<()> {
     let config = Arc::new(
         Config {
@@ -67,7 +68,8 @@ async fn client_writes() -> Result<()> {
 /// Test Raft::client_write_ff,
 ///
 /// Manually receive the client-write response via the returned `Responder::Receiver`
-#[async_entry::test(worker_threads = 4, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn client_write_ff() -> Result<()> {
     let config = Arc::new(
         Config {

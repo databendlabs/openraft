@@ -9,11 +9,12 @@ use openraft::LogIdOptionExt;
 use openraft::RaftLogReader;
 use openraft::ServerState;
 
-use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 
 /// When a change-membership log is committed, the `RaftState.membership_state` should be updated.
-#[async_entry::test(worker_threads = 3, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn update_membership_state() -> anyhow::Result<()> {
     let config = Arc::new(
         Config {
@@ -50,7 +51,8 @@ async fn update_membership_state() -> anyhow::Result<()> {
     Ok(())
 }
 
-#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn change_with_new_learner_blocking() -> anyhow::Result<()> {
     // Add a member without adding it as learner, in blocking mode it should finish successfully.
 
@@ -100,7 +102,8 @@ async fn change_with_new_learner_blocking() -> anyhow::Result<()> {
     Ok(())
 }
 
-#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn change_without_adding_learner() -> anyhow::Result<()> {
     let config = Arc::new(Config { ..Default::default() }.validate()?);
     let mut router = RaftRouter::new(config.clone());
@@ -147,7 +150,8 @@ async fn change_without_adding_learner() -> anyhow::Result<()> {
     Ok(())
 }
 
-#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn change_with_turn_removed_voter_to_learner() -> anyhow::Result<()> {
     // Add a member without adding it as learner, in blocking mode it should finish successfully.
 

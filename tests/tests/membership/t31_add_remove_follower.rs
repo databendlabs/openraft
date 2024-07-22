@@ -6,7 +6,7 @@ use maplit::btreeset;
 use openraft::Config;
 use openraft::ServerState;
 
-use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 
 /// When a node is removed from cluster, replication to it should be stopped.
@@ -16,7 +16,8 @@ use crate::fixtures::RaftRouter;
 ///   successfully replicated the payload.
 /// - remove one follower: node-4
 /// - asserts node-4 becomes learner and the leader stops sending logs to it.
-#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn add_remove_voter() -> Result<()> {
     let c01234 = btreeset![0, 1, 2, 3, 4];
     let c0123 = btreeset![0, 1, 2, 3];

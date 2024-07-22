@@ -13,13 +13,14 @@ use openraft::Config;
 use openraft::Vote;
 use openraft_memstore::BlockOperation;
 
-use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 
 /// When building a snapshot, applying-entries request should not be blocked.
 ///
 /// Issue: https://github.com/datafuselabs/openraft/issues/596
-#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn building_snapshot_does_not_block_apply() -> Result<()> {
     let config = Arc::new(
         Config {

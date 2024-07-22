@@ -1,4 +1,5 @@
 use anyerror::AnyError;
+use tracing_futures::Instrument;
 
 use crate::async_runtime::MpscUnboundedReceiver;
 use crate::async_runtime::MpscUnboundedSender;
@@ -59,6 +60,7 @@ where
         state_machine: SM,
         log_reader: LR,
         resp_tx: MpscUnboundedSenderOf<C, Notification<C>>,
+        span: tracing::Span,
     ) -> Handle<C> {
         let (cmd_tx, cmd_rx) = C::mpsc_unbounded();
 
@@ -69,13 +71,13 @@ where
             resp_tx,
         };
 
-        let join_handle = worker.do_spawn();
+        let join_handle = worker.do_spawn(span);
 
         Handle { cmd_tx, join_handle }
     }
 
-    fn do_spawn(mut self) -> JoinHandleOf<C, ()> {
-        C::spawn(async move {
+    fn do_spawn(mut self, span: tracing::Span) -> JoinHandleOf<C, ()> {
+        let fu = async move {
             let res = self.worker_loop().await;
 
             if let Err(err) = res {
@@ -85,7 +87,8 @@ where
                     command_result: CommandResult { result: Err(err) },
                 });
             }
-        })
+        };
+        C::spawn(fu.instrument(span))
     }
 
     #[tracing::instrument(level = "debug", skip_all)]

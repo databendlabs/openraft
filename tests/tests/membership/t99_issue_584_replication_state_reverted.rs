@@ -5,10 +5,11 @@ use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
 
-use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 
-#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn t99_issue_584_replication_state_reverted() -> Result<()> {
     // - Add a learner and replicate all logs to it.
     // - Add the learner as a voter. When membership changes, openraft internally restarts all

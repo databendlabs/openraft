@@ -6,11 +6,12 @@ use maplit::btreeset;
 use openraft::Config;
 use openraft::LogIdOptionExt;
 
-use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 
 /// Replication should stop after a follower is removed from membership.
-#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn stop_replication_to_removed_follower() -> Result<()> {
     let config = Arc::new(
         Config {

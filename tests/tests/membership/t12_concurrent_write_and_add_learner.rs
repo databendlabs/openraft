@@ -8,8 +8,9 @@ use openraft::Config;
 use openraft::LogIdOptionExt;
 use openraft::ServerState;
 use openraft::Vote;
+use tracing::Instrument;
 
-use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 
 /// Cluster concurrent_write_and_add_learner test.
@@ -35,7 +36,8 @@ use crate::fixtures::RaftRouter;
 /// - brings a 3 candidates cluster online.
 /// - add another learner and at the same time write a log.
 /// - asserts that all of the leader, followers and the learner receives all logs.
-#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn concurrent_write_and_add_learner() -> Result<()> {
     let candidates = btreeset![0, 1, 2];
 

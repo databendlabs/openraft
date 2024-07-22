@@ -21,14 +21,17 @@ layout {
             pane {
                 command "cargo"
                 args "test" "--lib"
+                close_on_exit true
             }
             pane {
                 command "cargo"
                 args "test" "--test" "*"
+                close_on_exit true
             }
             pane {
                 command "cargo"
                 args "clippy" "--no-deps" "--all-targets" "--" "-D" "warnings"
+                close_on_exit true
             }
         }
         // status-bar

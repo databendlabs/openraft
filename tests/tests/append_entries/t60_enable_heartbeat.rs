@@ -9,11 +9,12 @@ use openraft::type_config::TypeConfigExt;
 use openraft::Config;
 use openraft_memstore::TypeConfig;
 
-use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 
 /// Enable heartbeat, heartbeat should be replicated.
-#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn enable_heartbeat() -> Result<()> {
     // Setup test dependencies.
     let config = Arc::new(

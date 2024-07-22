@@ -7,7 +7,7 @@ use openraft::CommittedLeaderId;
 use openraft::Config;
 use openraft::LogId;
 
-use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 
 /// Single-node cluster initialization test.
@@ -19,7 +19,8 @@ use crate::fixtures::RaftRouter;
 /// - initializes the cluster with membership config including just the one node.
 /// - asserts that the cluster was able to come online, and that the one node became leader.
 /// - asserts that the leader was able to successfully commit its initial payload.
-#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn single_node() -> Result<()> {
     // Setup test dependencies.
     let config = Arc::new(

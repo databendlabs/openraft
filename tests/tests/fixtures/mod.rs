@@ -81,6 +81,33 @@ pub type MemStateMachine = Arc<SMInner>;
 /// A concrete Raft type used during testing.
 pub type MemRaft = Raft<MemConfig>;
 
+/// Create a harness that sets up tracing and a tokio runtime for testing.
+pub fn ut_harness<F, Fut>(f: F) -> anyhow::Result<()>
+where
+    F: FnOnce() -> Fut + Send + 'static,
+    Fut: std::future::Future<Output = anyhow::Result<()>> + 'static,
+{
+    fn func_name<F: std::any::Any>() -> &'static str {
+        let full_name = std::any::type_name::<F>();
+        full_name.rsplit("::").find(|name| *name != "{{closure}}").unwrap()
+    }
+
+    #[allow(clippy::let_unit_value)]
+    let _g = init_default_ut_tracing();
+
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(8)
+        .enable_all()
+        .build()
+        .expect("Failed building the Runtime");
+
+    let res = rt.block_on(f());
+    if let Err(e) = &res {
+        tracing::error!("{} error: {:?}", func_name::<F>(), e);
+    }
+    res
+}
+
 pub fn init_default_ut_tracing() {
     static START: Once = Once::new();
 

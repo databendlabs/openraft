@@ -19,7 +19,7 @@ use openraft::RaftLogReader;
 use openraft::SnapshotPolicy;
 use openraft::Vote;
 
-use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 
 /// Compaction test.
@@ -29,7 +29,8 @@ use crate::fixtures::RaftRouter;
 /// - build a stable single node cluster.
 /// - send enough requests to the node that log compaction will be triggered.
 /// - add new nodes and assert that they receive the snapshot.
-#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn build_snapshot() -> Result<()> {
     let snapshot_threshold: u64 = 50;
 

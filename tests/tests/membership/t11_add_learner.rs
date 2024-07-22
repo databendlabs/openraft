@@ -16,10 +16,11 @@ use openraft::RaftLogReader;
 use openraft::StorageHelper;
 use tokio::time::sleep;
 
-use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 
-#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn add_learner_basic() -> Result<()> {
     //
     // - Add leader, expect NoChange
@@ -96,7 +97,8 @@ async fn add_learner_basic() -> Result<()> {
     Ok(())
 }
 
-#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn add_learner_non_blocking() -> Result<()> {
     //
     // - Add leader, expect NoChange
@@ -158,7 +160,8 @@ async fn add_learner_non_blocking() -> Result<()> {
     Ok(())
 }
 
-#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn add_learner_with_set_nodes() -> Result<()> {
     // Add learners and update nodes with ChangeMembers::SetNodes
     // Node updating is ensured by unit tests of ChangeMembers
@@ -197,7 +200,8 @@ async fn add_learner_with_set_nodes() -> Result<()> {
 ///
 /// Because adding learner is also a change-membership operation, a new membership config log will
 /// let raft consider the previous membership config log as committed, which is actually not.
-#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn add_learner_when_previous_membership_not_committed() -> Result<()> {
     let config = Arc::new(
         Config {
@@ -245,7 +249,8 @@ async fn add_learner_when_previous_membership_not_committed() -> Result<()> {
 
 /// add a learner, then shutdown the leader to make leader transferred,
 /// check after new leader come, the learner can receive new log.
-#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn check_learner_after_leader_transferred() -> Result<()> {
     // TODO(1): flaky with --features single-term-leader
 

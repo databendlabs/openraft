@@ -8,14 +8,15 @@ use openraft::RaftLogReader;
 use openraft::ServerState;
 use openraft::Vote;
 
-use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 
 /// Brings up a cluster of 1 node and restart it, when it is a follower.
 ///
 /// The single follower should become leader very quickly. Because it does not need to wait for an
 /// active leader to replicate to it.
-#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn single_follower_restart() -> anyhow::Result<()> {
     let config = Arc::new(
         Config {

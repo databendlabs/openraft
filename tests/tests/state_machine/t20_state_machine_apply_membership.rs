@@ -10,7 +10,7 @@ use openraft::LogIdOptionExt;
 use openraft::Membership;
 use openraft::StoredMembership;
 
-use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 
 /// All log should be applied to state machine.
@@ -20,7 +20,8 @@ use crate::fixtures::RaftRouter;
 /// - bring a cluster with 3 voter and 2 learner.
 /// - check last_membership in state machine.
 
-#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn state_machine_apply_membership() -> Result<()> {
     let config = Arc::new(
         Config {

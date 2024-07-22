@@ -7,7 +7,7 @@ use openraft::Config;
 use openraft::Raft;
 use openraft::ServerState;
 
-use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 
 /// Cluster learner_restart test.
@@ -20,7 +20,8 @@ use crate::fixtures::RaftRouter;
 ///   learner has successfully replicated the payload.
 /// - shutdown all and restart the learner node.
 /// - asserts the learner stays in non-voter state.
-#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn learner_restart() -> Result<()> {
     // Setup test dependencies.
     let config = Arc::new(

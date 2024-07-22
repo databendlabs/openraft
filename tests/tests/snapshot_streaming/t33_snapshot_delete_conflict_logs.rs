@@ -27,7 +27,7 @@ use openraft::SnapshotPolicy;
 use openraft::StorageHelper;
 use openraft::Vote;
 
-use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 
 /// Installing snapshot on a node that has logs conflict with snapshot.meta.last_log_id will delete
@@ -37,7 +37,8 @@ use crate::fixtures::RaftRouter;
 /// - Init node-1 with conflicting log.
 /// - Send snapshot to node-1 to override its conflicting logs.
 /// - ensure that snapshot overrides the existent membership and conflicting logs are deleted.
-#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn snapshot_delete_conflicting_logs() -> Result<()> {
     let snapshot_threshold: u64 = 10;
 

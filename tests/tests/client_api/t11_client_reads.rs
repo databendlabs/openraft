@@ -10,7 +10,7 @@ use openraft::Config;
 use openraft::LogIdOptionExt;
 use openraft::RPCTypes;
 
-use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::ut_harness;
 use crate::fixtures::RPCRequest;
 use crate::fixtures::RaftRouter;
 
@@ -21,7 +21,8 @@ use crate::fixtures::RaftRouter;
 /// - create a stable 3-node cluster.
 /// - call the ensure_linearizable interface on the leader, and assert success.
 /// - call the ensure_linearizable interface on the followers, and assert failure.
-#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn client_reads() -> Result<()> {
     let config = Arc::new(
         Config {
@@ -68,7 +69,8 @@ async fn client_reads() -> Result<()> {
 /// - A leader that has not yet committed any log entries returns leader initialization log id(blank
 ///   log id).
 /// - Return the last committed log id if the leader has committed any log entries.
-#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn get_read_log_id() -> Result<()> {
     let config = Arc::new(
         Config {

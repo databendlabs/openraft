@@ -8,7 +8,7 @@ use openraft::Config;
 use openraft::SnapshotMeta;
 use openraft::Vote;
 
-use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 
 ///  API test: install_snapshot with various arguments.
@@ -17,7 +17,8 @@ use crate::fixtures::RaftRouter;
 ///
 /// - build a stable single node cluster.
 /// - send install_snapshot request with matched/mismatched id and offset
-#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn snapshot_arguments() -> Result<()> {
     let config = Arc::new(
         Config {

@@ -4,7 +4,7 @@ use std::time::Duration;
 use maplit::btreeset;
 use openraft::Config;
 
-use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 
 /// Brings up a cluster of 1 node and restart it.
@@ -12,7 +12,8 @@ use crate::fixtures::RaftRouter;
 /// Assert that `RaftCore.engine.state.server_state` and `RaftCore.leader_data` are consistent:
 /// `server_state == Leader && leader_data.is_some() || server_state != Leader &&
 /// leader_data.is_none()`.
-#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn single_restart() -> anyhow::Result<()> {
     let config = Arc::new(
         Config {

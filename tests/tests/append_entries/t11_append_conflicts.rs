@@ -15,13 +15,14 @@ use openraft::RaftTypeConfig;
 use openraft::ServerState;
 use openraft::Vote;
 
-use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 
 /// Test append-entries response in every case.
 ///
 /// - bring up a learner and send to it append_entries request. Check the response in every case.
-#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn append_conflicts() -> Result<()> {
     let config = Arc::new(
         Config {

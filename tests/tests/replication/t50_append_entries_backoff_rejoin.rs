@@ -6,14 +6,15 @@ use maplit::btreeset;
 use openraft::Config;
 use openraft::ServerState;
 
-use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 
 /// A restarted unreachable node should recover correctly, and catch up with the leader:
 /// - Setup cluster {0,1,2}, Shutdown leader node-0;
 /// - Elect node-1, write some logs;
 /// - Restart node-0, it should receive append-entries from node-1 and catch up.
-#[async_entry::test(worker_threads = 4, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn append_entries_backoff_rejoin() -> Result<()> {
     let config = Arc::new(
         Config {

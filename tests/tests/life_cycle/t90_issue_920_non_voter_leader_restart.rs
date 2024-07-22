@@ -6,12 +6,13 @@ use openraft::Config;
 use openraft::ServerState;
 use openraft::Vote;
 
-use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 
 /// Special case: A leader that is not a member(neither a voter or non-voter) should be started too,
 /// as a learner.
-#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn issue_920_non_member_leader_restart() -> anyhow::Result<()> {
     let config = Arc::new(
         Config {

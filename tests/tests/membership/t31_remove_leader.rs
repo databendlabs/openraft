@@ -11,14 +11,15 @@ use openraft::ServerState;
 use openraft_memstore::ClientRequest;
 use openraft_memstore::IntoMemClientRequest;
 
-use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 
 /// Change membership from {0,1} to {1,2,3}.
 ///
 /// - Then the leader should step down after joint log is committed.
 /// - Check logs on other node.
-#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn remove_leader() -> Result<()> {
     // TODO(1): flaky with --features single-term-leader
 
@@ -112,7 +113,8 @@ async fn remove_leader() -> Result<()> {
 /// Change membership from {0,1} to {1,2,3}, keep node-0 as learner;
 ///
 /// - The leader should NOT step down after joint log is committed.
-#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn remove_leader_and_convert_to_learner() -> Result<()> {
     let config = Arc::new(
         Config {
@@ -175,7 +177,8 @@ async fn remove_leader_and_convert_to_learner() -> Result<()> {
 /// Change membership from {0,1,2} to {2}. Access {2} at once.
 ///
 /// It should not respond a ForwardToLeader error that pointing to the removed leader.
-#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn remove_leader_access_new_cluster() -> Result<()> {
     // Setup test dependencies.
     let config = Arc::new(

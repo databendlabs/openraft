@@ -5,7 +5,7 @@ use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
 
-use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 
 /// Ensures the stale value of ReplicationCore.last_log_id won't affect replication.
@@ -15,7 +15,8 @@ use crate::fixtures::RaftRouter;
 /// TODO(xp): `max_applied_log_to_keep` to be 0 makes it very easy to enter snapshot replication and
 /// it will keeps           replicating every log by snapshot and get timeout.
 ///           Thus it is disabled until we find another way to test it.
-#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 #[ignore]
 async fn stale_last_log_id() -> Result<()> {
     // Setup test dependencies.

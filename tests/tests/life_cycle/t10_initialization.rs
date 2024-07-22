@@ -19,7 +19,7 @@ use openraft::ServerState;
 use openraft::StoredMembership;
 use openraft::Vote;
 
-use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 
 /// Cluster initialization test.
@@ -33,7 +33,8 @@ use crate::fixtures::RaftRouter;
 /// - asserts that the cluster was able to come online, elect a leader and maintain a stable state.
 /// - asserts that the leader was able to successfully commit its initial payload and that all
 ///   followers have successfully replicated the payload.
-#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn initialization() -> anyhow::Result<()> {
     let config = Arc::new(
         Config {
@@ -177,7 +178,8 @@ async fn initialization() -> anyhow::Result<()> {
     Ok(())
 }
 
-#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn initialize_err_target_not_include_target() -> anyhow::Result<()> {
     // Initialize a node with membership config that does not include the target node that accepts
     // the `initialize` request.
@@ -212,7 +214,8 @@ async fn initialize_err_target_not_include_target() -> anyhow::Result<()> {
     Ok(())
 }
 
-#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn initialize_err_not_allowed() -> anyhow::Result<()> {
     // Initialize a node with membership config that does not include the target node that accepts
     // the `initialize` request.

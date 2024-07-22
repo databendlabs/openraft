@@ -4,11 +4,12 @@ use std::time::Duration;
 use maplit::btreeset;
 use openraft::Config;
 
-use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 
 /// A follower that restarted should not interrupt a stable cluster by a too quick election.
-#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn follower_restart_does_not_interrupt() -> anyhow::Result<()> {
     let config = Arc::new(
         Config {
