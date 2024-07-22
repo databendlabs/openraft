@@ -235,9 +235,6 @@ where C: RaftTypeConfig
     ///
     /// This node then becomes raft-follower or raft-learner.
     pub(crate) fn become_following(&mut self) {
-        // TODO: entering following needs to check last-log-id on other node to decide the election
-        // timeout.
-
         debug_assert!(
             self.state.vote_ref().leader_id().voted_for() != Some(self.config.id)
                 || !self.state.membership_state.effective().membership().is_voter(&self.config.id),

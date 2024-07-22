@@ -106,7 +106,6 @@ where C: RaftTypeConfig
     /// inclusive.
     TruncateLog { since: LogId<C::NodeId> },
 
-    // TODO(1): current it is only used to replace BuildSnapshot, InstallSnapshot, CancelSnapshot.
     /// A command send to state machine worker [`sm::worker::Worker`].
     ///
     /// The runtime(`RaftCore`) will just forward this command to [`sm::worker::Worker`].
