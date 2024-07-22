@@ -1,6 +1,7 @@
 use std::backtrace::Backtrace;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
+#[allow(deprecated)] // since nightly 1.82
 use std::panic::PanicInfo;
 use std::time::Duration;
 
@@ -13,6 +14,7 @@ use tokio::task;
 use tokio::task::LocalSet;
 use tracing_subscriber::EnvFilter;
 
+#[allow(deprecated)] // PanicInfo deprecated since nightly 1.82
 pub fn log_panic(panic: &PanicInfo) {
     let backtrace = format!("{:?}", Backtrace::force_capture());
 
