@@ -7,7 +7,11 @@ use std::task::Poll;
 
 use crate::async_runtime::watch::WatchReceiver;
 use crate::async_runtime::watch::WatchSender;
+use crate::async_runtime::Mpsc;
+use crate::async_runtime::MpscReceiver;
+use crate::async_runtime::MpscSender;
 use crate::async_runtime::MpscUnboundedWeakSender;
+use crate::async_runtime::MpscWeakSender;
 use crate::instant::Instant;
 use crate::type_config::async_runtime::mpsc_unbounded::MpscUnbounded;
 use crate::type_config::async_runtime::mpsc_unbounded::MpscUnboundedReceiver;
@@ -43,11 +47,19 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         Self::test_sleep_until().await;
         Self::test_timeout().await;
         Self::test_timeout_at().await;
+
+        Self::test_mpsc_recv_empty().await;
+        Self::test_mpsc_recv_channel_closed().await;
+        Self::test_mpsc_weak_sender_wont_prevent_channel_close().await;
+        Self::test_mpsc_weak_sender_upgrade().await;
+        Self::test_mpsc_send().await;
+
         Self::test_unbounded_mpsc_recv_empty().await;
         Self::test_unbounded_mpsc_recv_channel_closed().await;
         Self::test_unbounded_mpsc_weak_sender_wont_prevent_channel_close().await;
         Self::test_unbounded_mpsc_weak_sender_upgrade().await;
         Self::test_unbounded_mpsc_send().await;
+
         Self::test_watch_init_value().await;
         Self::test_watch_overwrite_init_value().await;
         Self::test_watch_send_error_no_receiver().await;
@@ -129,6 +141,77 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         })
         .await;
         assert!(timeout_result.is_err());
+    }
+
+    pub async fn test_mpsc_recv_empty() {
+        let (_tx, mut rx) = Rt::Mpsc::channel::<()>(5);
+        let recv_err = rx.try_recv().unwrap_err();
+        assert!(matches!(recv_err, TryRecvError::Empty));
+    }
+
+    pub async fn test_mpsc_recv_channel_closed() {
+        let (_, mut rx) = Rt::Mpsc::channel::<()>(5);
+        let recv_err = rx.try_recv().unwrap_err();
+        assert!(matches!(recv_err, TryRecvError::Disconnected));
+
+        let recv_result = rx.recv().await;
+        assert!(recv_result.is_none());
+    }
+
+    pub async fn test_mpsc_weak_sender_wont_prevent_channel_close() {
+        let (tx, mut rx) = Rt::Mpsc::channel::<()>(5);
+
+        let _weak_tx = tx.downgrade();
+        drop(tx);
+        let recv_err = rx.try_recv().unwrap_err();
+        assert!(matches!(recv_err, TryRecvError::Disconnected));
+
+        let recv_result = rx.recv().await;
+        assert!(recv_result.is_none());
+    }
+
+    pub async fn test_mpsc_weak_sender_upgrade() {
+        let (tx, _rx) = Rt::Mpsc::channel::<()>(5);
+
+        let weak_tx = tx.downgrade();
+        let opt_tx = weak_tx.upgrade();
+        assert!(opt_tx.is_some());
+
+        drop(tx);
+        drop(opt_tx);
+        // now there is no Sender instances alive
+
+        let opt_tx = weak_tx.upgrade();
+        assert!(opt_tx.is_none());
+    }
+
+    pub async fn test_mpsc_send() {
+        let (tx, mut rx) = Rt::Mpsc::channel::<usize>(5);
+        let tx = Arc::new(tx);
+
+        let n_senders = 10_usize;
+        let recv_expected = (0..n_senders).collect::<Vec<_>>();
+
+        for idx in 0..n_senders {
+            let tx = tx.clone();
+            // no need to wait for senders here, we wait by recv()ing
+            let _handle = Rt::spawn(async move {
+                tx.send(idx).await.unwrap();
+            });
+        }
+
+        let mut recv = Vec::with_capacity(n_senders);
+        while let Some(recv_number) = rx.recv().await {
+            recv.push(recv_number);
+
+            if recv.len() == n_senders {
+                break;
+            }
+        }
+
+        recv.sort();
+
+        assert_eq!(recv_expected, recv);
     }
 
     pub async fn test_unbounded_mpsc_recv_empty() {

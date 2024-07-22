@@ -95,6 +95,7 @@ pub trait RaftTypeConfig:
 /// [`type-alias`]: crate::docs::feature_flags#feature-flag-type-alias
 pub mod alias {
     use crate::async_runtime::watch;
+    use crate::async_runtime::Mpsc;
     use crate::async_runtime::MpscUnbounded;
     use crate::async_runtime::Oneshot;
     use crate::raft::responder::Responder;
@@ -125,13 +126,23 @@ pub mod alias {
     pub type OneshotReceiverErrorOf<C> = <OneshotOf<C> as Oneshot>::ReceiverError;
     pub type OneshotReceiverOf<C, T> = <OneshotOf<C> as Oneshot>::Receiver<T>;
 
+    pub type MpscOf<C> = <Rt<C> as AsyncRuntime>::Mpsc;
+
+    // MPSC bounded
+    type MpscB<C> = MpscOf<C>;
+
+    pub type MpscSenderOf<C, T> = <MpscB<C> as Mpsc>::Sender<T>;
+    pub type MpscReceiverOf<C, T> = <MpscB<C> as Mpsc>::Receiver<T>;
+    pub type MpscWeakSenderOf<C, T> = <MpscB<C> as Mpsc>::WeakSender<T>;
+
     pub type MpscUnboundedOf<C> = <Rt<C> as AsyncRuntime>::MpscUnbounded;
 
-    type Mpsc<C> = MpscUnboundedOf<C>;
+    // MPSC unbounded
+    type MpscUB<C> = MpscUnboundedOf<C>;
 
-    pub type MpscUnboundedSenderOf<C, T> = <Mpsc<C> as MpscUnbounded>::Sender<T>;
-    pub type MpscUnboundedReceiverOf<C, T> = <Mpsc<C> as MpscUnbounded>::Receiver<T>;
-    pub type MpscUnboundedWeakSenderOf<C, T> = <Mpsc<C> as MpscUnbounded>::WeakSender<T>;
+    pub type MpscUnboundedSenderOf<C, T> = <MpscUB<C> as MpscUnbounded>::Sender<T>;
+    pub type MpscUnboundedReceiverOf<C, T> = <MpscUB<C> as MpscUnbounded>::Receiver<T>;
+    pub type MpscUnboundedWeakSenderOf<C, T> = <MpscUB<C> as MpscUnbounded>::WeakSender<T>;
 
     pub type WatchOf<C> = <Rt<C> as AsyncRuntime>::Watch;
     pub type WatchSenderOf<C, T> = <WatchOf<C> as watch::Watch>::Sender<T>;
