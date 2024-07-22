@@ -2,9 +2,11 @@ use std::fmt;
 use std::sync::Arc;
 
 use crate::core::ServerState;
+use crate::display_ext::DisplayBTreeMapOptValue;
 use crate::display_ext::DisplayOption;
 use crate::display_ext::DisplayOptionExt;
 use crate::error::Fatal;
+use crate::metrics::HeartbeatMetrics;
 use crate::metrics::ReplicationMetrics;
 use crate::LogId;
 use crate::RaftTypeConfig;
@@ -72,6 +74,15 @@ pub struct RaftMetrics<C: RaftTypeConfig> {
     /// The current membership config of the cluster.
     pub membership_config: Arc<StoredMembership<C>>,
 
+    /// Heartbeat metrics. It is Some() only when this node is leader.
+    ///
+    /// This field records a mapping between a node's ID and milliseconds since
+    /// the last acknowledged heartbeat or replication to this node.
+    ///
+    /// This duration can be used by applications to guess if a follwer/learner
+    /// node is offline, longer duration suggests higher possibility of that.
+    pub heartbeat: Option<HeartbeatMetrics<C>>,
+
     // ---
     // --- replication ---
     // ---
@@ -101,14 +112,12 @@ where C: RaftTypeConfig
         write!(f, ", ")?;
         write!(
             f,
-            "membership:{}, snapshot:{}, purged:{}, replication:{{{}}}",
+            "membership:{}, snapshot:{}, purged:{}, replication:{{{}}}, heartbeat:{{{}}}",
             self.membership_config,
             DisplayOption(&self.snapshot),
             DisplayOption(&self.purged),
-            self.replication
-                .as_ref()
-                .map(|x| { x.iter().map(|(k, v)| format!("{}:{}", k, DisplayOption(v))).collect::<Vec<_>>().join(",") })
-                .unwrap_or_default(),
+            DisplayOption(&self.replication.as_ref().map(DisplayBTreeMapOptValue)),
+            DisplayOption(&self.heartbeat.as_ref().map(DisplayBTreeMapOptValue)),
         )?;
 
         write!(f, "}}")?;
@@ -136,6 +145,7 @@ where C: RaftTypeConfig
             millis_since_quorum_ack: None,
             membership_config: Arc::new(StoredMembership::default()),
             replication: None,
+            heartbeat: None,
         }
     }
 }
@@ -165,6 +175,15 @@ pub struct RaftDataMetrics<C: RaftTypeConfig> {
     pub millis_since_quorum_ack: Option<u64>,
 
     pub replication: Option<ReplicationMetrics<C>>,
+
+    /// Heartbeat metrics. It is Some() only when this node is leader.
+    ///
+    /// This field records a mapping between a node's ID and milliseconds since
+    /// the last acknowledged heartbeat or replication to this node.
+    ///
+    /// This duration can be used by applications to guess if a follwer/learner
+    /// node is offline, longer duration suggests higher possibility of that.
+    pub heartbeat: Option<HeartbeatMetrics<C>>,
 }
 
 impl<C> fmt::Display for RaftDataMetrics<C>
@@ -175,16 +194,14 @@ where C: RaftTypeConfig
 
         write!(
             f,
-            "last_log:{}, last_applied:{}, snapshot:{}, purged:{}, quorum_acked(leader):{} ms before, replication:{{{}}}",
+            "last_log:{}, last_applied:{}, snapshot:{}, purged:{}, quorum_acked(leader):{} ms before, replication:{{{}}}, heartbeat:{{{}}}",
             DisplayOption(&self.last_log),
             DisplayOption(&self.last_applied),
             DisplayOption(&self.snapshot),
             DisplayOption(&self.purged),
             self.millis_since_quorum_ack.display(),
-            self.replication
-                .as_ref()
-                .map(|x| { x.iter().map(|(k, v)| format!("{}:{}", k, DisplayOption(v))).collect::<Vec<_>>().join(",") })
-                .unwrap_or_default(),
+            DisplayOption(&self.replication.as_ref().map(DisplayBTreeMapOptValue)),
+            DisplayOption(&self.heartbeat.as_ref().map(DisplayBTreeMapOptValue)),
         )?;
 
         write!(f, "}}")?;
