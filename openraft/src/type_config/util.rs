@@ -5,11 +5,15 @@ use openraft_macros::since;
 
 use crate::async_runtime::mutex::Mutex;
 use crate::async_runtime::watch::Watch;
+use crate::async_runtime::Mpsc;
 use crate::async_runtime::MpscUnbounded;
 use crate::async_runtime::Oneshot;
 use crate::type_config::alias::AsyncRuntimeOf;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::JoinHandleOf;
+use crate::type_config::alias::MpscOf;
+use crate::type_config::alias::MpscReceiverOf;
+use crate::type_config::alias::MpscSenderOf;
 use crate::type_config::alias::MpscUnboundedOf;
 use crate::type_config::alias::MpscUnboundedReceiverOf;
 use crate::type_config::alias::MpscUnboundedSenderOf;
@@ -70,6 +74,16 @@ pub trait TypeConfigExt: RaftTypeConfig {
     fn oneshot<T>() -> (OneshotSenderOf<Self, T>, OneshotReceiverOf<Self, T>)
     where T: OptionalSend {
         OneshotOf::<Self>::channel()
+    }
+
+    /// Creates a mpsc channel for communicating between asynchronous
+    /// tasks with backpressure.
+    ///
+    /// This is just a wrapper of
+    /// [`AsyncRuntime::Mpsc::channel()`](`crate::async_runtime::Mpsc::channel`).
+    fn mpsc<T>(buffer: usize) -> (MpscSenderOf<Self, T>, MpscReceiverOf<Self, T>)
+    where T: OptionalSend {
+        MpscOf::<Self>::channel(buffer)
     }
 
     /// Creates an unbounded mpsc channel for communicating between asynchronous

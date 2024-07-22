@@ -9,6 +9,7 @@ pub(crate) mod tokio_impls {
     mod tokio_runtime;
     pub use tokio_runtime::TokioRuntime;
 }
+pub mod mpsc;
 pub mod mpsc_unbounded;
 pub mod mutex;
 pub mod oneshot;
@@ -19,6 +20,10 @@ use std::fmt::Display;
 use std::future::Future;
 use std::time::Duration;
 
+pub use mpsc::Mpsc;
+pub use mpsc::MpscReceiver;
+pub use mpsc::MpscSender;
+pub use mpsc::MpscWeakSender;
 pub use mpsc_unbounded::MpscUnbounded;
 pub use mpsc_unbounded::MpscUnboundedReceiver;
 pub use mpsc_unbounded::MpscUnboundedSender;
@@ -98,6 +103,8 @@ pub trait AsyncRuntime: Debug + Default + PartialEq + Eq + OptionalSend + Option
     /// This is a per-thread instance, which cannot be shared across threads or
     /// sent to another thread.
     fn thread_rng() -> Self::ThreadLocalRng;
+
+    type Mpsc: Mpsc;
 
     type MpscUnbounded: MpscUnbounded;
 
