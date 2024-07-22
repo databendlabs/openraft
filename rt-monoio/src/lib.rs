@@ -86,7 +86,8 @@ impl AsyncRuntime for MonoioRuntime {
         rand::thread_rng()
     }
 
-    type MpscUnbounded = mpsc_mod::TokioMpscUnbounded;
+    type Mpsc = mpsc_mod::MonoioMpsc;
+    type MpscUnbounded = mpsc_unbounded_mod::TokioMpscUnbounded;
     type Watch = watch_mod::TokioWatch;
     type Oneshot = oneshot_mod::MonoioOneshot;
     type Mutex<T: OptionalSend + 'static> = mutex_mod::TokioMutex<T>;
@@ -203,7 +204,104 @@ mod oneshot_mod {
 
 // Put the wrapper types in a private module to make them `pub` but not
 // exposed to the user.
+/// MPSC channel is implemented with tokio MPSC channels.
+///
+/// Tokio MPSC channel are runtime independent.
 mod mpsc_mod {
+    //! Unbounded MPSC channel wrapper types and their trait impl.
+
+    use std::future::Future;
+
+    use futures::TryFutureExt;
+    use openraft::async_runtime::Mpsc;
+    use openraft::async_runtime::MpscReceiver;
+    use openraft::async_runtime::MpscSender;
+    use openraft::async_runtime::MpscWeakSender;
+    use openraft::async_runtime::SendError;
+    use openraft::async_runtime::TryRecvError;
+    use openraft::OptionalSend;
+    use tokio::sync::mpsc as tokio_mpsc;
+
+    pub struct MonoioMpsc;
+
+    pub struct MonoioMpscSender<T>(tokio_mpsc::Sender<T>);
+
+    impl<T> Clone for MonoioMpscSender<T> {
+        #[inline]
+        fn clone(&self) -> Self {
+            Self(self.0.clone())
+        }
+    }
+
+    pub struct MonoioMpscReceiver<T>(tokio_mpsc::Receiver<T>);
+
+    pub struct MonoioMpscWeakSender<T>(tokio_mpsc::WeakSender<T>);
+
+    impl<T> Clone for MonoioMpscWeakSender<T> {
+        #[inline]
+        fn clone(&self) -> Self {
+            Self(self.0.clone())
+        }
+    }
+
+    impl Mpsc for MonoioMpsc {
+        type Sender<T: OptionalSend> = MonoioMpscSender<T>;
+        type Receiver<T: OptionalSend> = MonoioMpscReceiver<T>;
+        type WeakSender<T: OptionalSend> = MonoioMpscWeakSender<T>;
+
+        #[inline]
+        fn channel<T: OptionalSend>(buffer: usize) -> (Self::Sender<T>, Self::Receiver<T>) {
+            let (tx, rx) = tokio_mpsc::channel(buffer);
+            let tx_wrapper = MonoioMpscSender(tx);
+            let rx_wrapper = MonoioMpscReceiver(rx);
+
+            (tx_wrapper, rx_wrapper)
+        }
+    }
+
+    impl<T> MpscSender<MonoioMpsc, T> for MonoioMpscSender<T>
+    where T: OptionalSend
+    {
+        #[inline]
+        fn send(&self, msg: T) -> impl Future<Output = Result<(), SendError<T>>> {
+            self.0.send(msg).map_err(|e| SendError(e.0))
+        }
+
+        #[inline]
+        fn downgrade(&self) -> <MonoioMpsc as Mpsc>::WeakSender<T> {
+            let inner = self.0.downgrade();
+            MonoioMpscWeakSender(inner)
+        }
+    }
+
+    impl<T> MpscReceiver<T> for MonoioMpscReceiver<T> {
+        #[inline]
+        fn recv(&mut self) -> impl Future<Output = Option<T>> {
+            self.0.recv()
+        }
+
+        #[inline]
+        fn try_recv(&mut self) -> Result<T, TryRecvError> {
+            self.0.try_recv().map_err(|e| match e {
+                tokio_mpsc::error::TryRecvError::Empty => TryRecvError::Empty,
+                tokio_mpsc::error::TryRecvError::Disconnected => TryRecvError::Disconnected,
+            })
+        }
+    }
+
+    impl<T> MpscWeakSender<MonoioMpsc, T> for MonoioMpscWeakSender<T>
+    where T: OptionalSend
+    {
+        #[inline]
+        fn upgrade(&self) -> Option<<MonoioMpsc as Mpsc>::Sender<T>> {
+            self.0.upgrade().map(MonoioMpscSender)
+        }
+    }
+}
+
+// Put the wrapper types in a private module to make them `pub` but not
+// exposed to the user.
+mod mpsc_unbounded_mod {
     //! Unbounded MPSC channel wrapper types and their trait impl.
 
     use openraft::type_config::async_runtime::mpsc_unbounded;

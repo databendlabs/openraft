@@ -18,6 +18,9 @@ repository = "https://github.com/datafuselabs/openraft"
 openraft = { path = "../openraft", version = "0.10.0", default-features = false, features = ["singlethreaded"] }
 
 rand = "0.8"
-tokio = { version = "1.22", features = ["sync"] }
-monoio = "0.2.3"
+
+futures = { version = "0.3" }
 local-sync = "0.1.1"
+
+monoio = "0.2.3"
+tokio = { version = "1.22", features = ["sync"] }
