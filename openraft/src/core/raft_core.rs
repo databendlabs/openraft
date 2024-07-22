@@ -55,6 +55,7 @@ use crate::error::RPCError;
 use crate::error::Timeout;
 use crate::log_id::LogIdOptionExt;
 use crate::log_id::RaftLogId;
+use crate::metrics::HeartbeatMetrics;
 use crate::metrics::RaftDataMetrics;
 use crate::metrics::RaftMetrics;
 use crate::metrics::RaftServerMetrics;
@@ -223,7 +224,7 @@ where
         let res = self.do_main(rx_shutdown).instrument(span).await;
 
         // Flush buffered metrics
-        self.report_metrics(None);
+        self.report_metrics(None, None);
 
         // Safe unwrap: res is Result<Infallible, _>
         let err = res.unwrap_err();
@@ -257,7 +258,7 @@ where
         self.run_engine_commands().await?;
 
         // Initialize metrics.
-        self.report_metrics(None);
+        self.report_metrics(None, None);
 
         self.runtime_loop(rx_shutdown).await
     }
@@ -514,18 +515,36 @@ where
 
     #[tracing::instrument(level = "debug", skip_all)]
     pub fn flush_metrics(&mut self) {
-        let leader_metrics = if let Some(leader) = self.engine.leader.as_ref() {
-            let prog = &leader.progress;
-            Some(prog.iter().map(|(id, p)| (*id, *p.borrow())).collect())
+        let (replication, heartbeat) = if let Some(leader) = self.engine.leader.as_ref() {
+            let replication_prog = &leader.progress;
+            let replication = Some(replication_prog.iter().map(|(id, p)| (*id, *p.borrow())).collect());
+
+            let clock_prog = &leader.clock_progress;
+            let heartbeat = Some(
+                clock_prog
+                    .iter()
+                    .map(|(id, opt_t)| {
+                        let millis_since_last_ack = opt_t.map(|t| t.elapsed().as_millis() as u64);
+
+                        (*id, millis_since_last_ack)
+                    })
+                    .collect(),
+            );
+
+            (replication, heartbeat)
         } else {
-            None
+            (None, None)
         };
-        self.report_metrics(leader_metrics);
+        self.report_metrics(replication, heartbeat);
     }
 
     /// Report a metrics payload on the current state of the Raft node.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn report_metrics(&mut self, replication: Option<ReplicationMetrics<C>>) {
+    pub(crate) fn report_metrics(
+        &mut self,
+        replication: Option<ReplicationMetrics<C>>,
+        heartbeat: Option<HeartbeatMetrics<C>>,
+    ) {
         let last_quorum_acked = self.last_quorum_acked_time();
         let millis_since_quorum_ack = last_quorum_acked.map(|t| t.elapsed().as_millis() as u64);
 
@@ -551,6 +570,7 @@ where
             current_leader,
             millis_since_quorum_ack,
             membership_config: membership_config.clone(),
+            heartbeat: heartbeat.clone(),
 
             // --- replication ---
             replication: replication.clone(),
@@ -563,6 +583,7 @@ where
             purged: st.io_purged().copied(),
             millis_since_quorum_ack,
             replication,
+            heartbeat,
         };
 
         let server_metrics = RaftServerMetrics {
