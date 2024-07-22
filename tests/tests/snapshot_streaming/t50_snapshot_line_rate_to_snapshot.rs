@@ -8,7 +8,7 @@ use openraft::Config;
 use openraft::LogId;
 use openraft::SnapshotPolicy;
 
-use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 
 /// Test replication when switching line rate to snapshotting.
@@ -22,7 +22,8 @@ use crate::fixtures::RaftRouter;
 /// - restore replication.
 /// - ensure that replication is switched from line-rate mode to snapshotting mode, on absence of
 ///   logs.
-#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn snapshot_line_rate_to_snapshot() -> Result<()> {
     let snapshot_threshold: u64 = 10;
 

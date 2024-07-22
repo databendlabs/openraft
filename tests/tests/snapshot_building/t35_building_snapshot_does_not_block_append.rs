@@ -13,11 +13,12 @@ use openraft::Config;
 use openraft::Vote;
 use openraft_memstore::BlockOperation;
 
-use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 
 /// When building a snapshot, append-entries request should not be blocked.
-#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn building_snapshot_does_not_block_append() -> Result<()> {
     let config = Arc::new(
         Config {

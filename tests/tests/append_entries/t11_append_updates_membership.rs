@@ -14,14 +14,15 @@ use openraft::Membership;
 use openraft::ServerState;
 use openraft::Vote;
 
-use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 
 /// append-entries should update membership correctly when adding new logs and deleting
 /// inconsistent logs.
 ///
 /// - bring up a learner and send to it append_entries request. Check the membership updated.
-#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn append_updates_membership() -> Result<()> {
     let config = Arc::new(
         Config {

@@ -6,11 +6,12 @@ use openraft::error::Fatal;
 use openraft::testing::log_id;
 use openraft::Config;
 
-use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 
 /// Access Raft state via `Raft::with_raft_state()`
-#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn with_raft_state() -> Result<()> {
     let config = Arc::new(
         Config {

@@ -4,7 +4,7 @@ use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
 
-use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 
 /// When adding learner and waiting for the learner to become up to date,
@@ -14,7 +14,8 @@ use crate::fixtures::RaftRouter;
 /// - Brings up 1 leader.
 /// - Add learner at once.
 /// - It should not panic.
-#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn adding_learner_do_not_use_matched_leader_id() -> Result<()> {
     let config = Arc::new(
         Config {

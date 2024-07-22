@@ -5,7 +5,7 @@ use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
 
-use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 
 /// Test replication to learner that is not in membership should not block.
@@ -15,7 +15,8 @@ use crate::fixtures::RaftRouter;
 /// - bring on a cluster of 1 voter and 1 learner.
 /// - isolate replication to node 1.
 /// - client write should not be blocked.
-#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn replication_1_voter_to_isolated_learner() -> Result<()> {
     let config = Arc::new(
         Config {

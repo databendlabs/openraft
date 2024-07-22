@@ -15,11 +15,12 @@ use openraft::Vote;
 use openraft_memstore::ClientRequest;
 use tokio::time::sleep;
 
-use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 
 /// A leader reverts to follower if a higher vote is seen when append-entries.
-#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn append_sees_higher_vote() -> Result<()> {
     let config = Arc::new(
         Config {

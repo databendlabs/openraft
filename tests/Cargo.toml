@@ -30,6 +30,7 @@ lazy_static        = { workspace = true }
 maplit             = { workspace = true }
 pretty_assertions  = { workspace = true }
 rand               = { workspace = true }
+test-harness       = { workspace = true }
 tokio              = { workspace = true }
 tracing            = { workspace = true }
 tracing-appender   = { workspace = true }

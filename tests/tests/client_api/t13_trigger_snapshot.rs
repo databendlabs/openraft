@@ -6,11 +6,12 @@ use openraft::CommittedLeaderId;
 use openraft::Config;
 use openraft::LogId;
 
-use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 
 /// Manually trigger a snapshot with `Raft::trigger_snapshot()` on Leader and Follower.
-#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn trigger_snapshot() -> anyhow::Result<()> {
     let config = Arc::new(
         Config {

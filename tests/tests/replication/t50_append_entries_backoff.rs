@@ -9,11 +9,12 @@ use openraft::error::Unreachable;
 use openraft::Config;
 use openraft::RPCTypes;
 
-use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 
 /// Append-entries should backoff when a `Unreachable` error is found.
-#[async_entry::test(worker_threads = 4, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn append_entries_backoff() -> Result<()> {
     let config = Arc::new(
         Config {

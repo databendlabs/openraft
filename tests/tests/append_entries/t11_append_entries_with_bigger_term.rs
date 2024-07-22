@@ -13,7 +13,7 @@ use openraft::Config;
 use openraft::LogId;
 use openraft::Vote;
 
-use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 
 /// append-entries should update the vote when adding new logs with greater vote.
@@ -21,7 +21,8 @@ use crate::fixtures::RaftRouter;
 /// - Bring up a learner and send to it append_entries request.
 ///
 /// Check the vote updated.
-#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn append_entries_with_bigger_term() -> Result<()> {
     // Setup test dependencies.
     let config = Arc::new(

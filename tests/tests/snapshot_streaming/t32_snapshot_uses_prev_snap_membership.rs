@@ -11,7 +11,7 @@ use openraft::RaftLogReader;
 use openraft::SnapshotPolicy;
 use openraft::StorageHelper;
 
-use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 
 /// Test a second compaction should not lose membership.
@@ -27,7 +27,8 @@ use crate::fixtures::RaftRouter;
 /// - send just enough request to trigger another snapshot.
 /// - ensure membership is still valid.
 
-#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn snapshot_uses_prev_snap_membership() -> Result<()> {
     let snapshot_threshold: u64 = 10;
 

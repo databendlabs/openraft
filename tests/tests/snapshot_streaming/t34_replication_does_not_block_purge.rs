@@ -9,7 +9,7 @@ use openraft::LogId;
 use openraft::RaftLogReader;
 use tokio::time::sleep;
 
-use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 
 /// Replication blocks purge, but it should not purge for ever.
@@ -20,7 +20,8 @@ use crate::fixtures::RaftRouter;
 /// - Trigger snapshot on the leader, logs should be able to be purged. Because replication should
 ///   avoid using a log id `i` that is `RaftState.last_purged_log_id() <= i <=
 ///   RaftState.purge_upto()`.
-#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn replication_does_not_block_purge() -> Result<()> {
     let max_keep = 2;
 

@@ -7,7 +7,7 @@ use openraft::Config;
 use openraft::LogId;
 use openraft::SnapshotPolicy;
 
-use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 
 /// A leader switch to snapshot replication if a log a follower/learner needs but is already purged.
@@ -15,7 +15,8 @@ use crate::fixtures::RaftRouter;
 /// - build a stable single node cluster.
 /// - send enough requests to the node that log compaction will be triggered.
 /// - add learner and assert that they receive the snapshot and logs.
-#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn switch_to_snapshot_replication_when_lacking_log() -> Result<()> {
     let snapshot_threshold: u64 = 20;
     let log_cnt = snapshot_threshold + 11;

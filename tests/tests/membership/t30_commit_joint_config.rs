@@ -5,8 +5,9 @@ use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
 use openraft::LogIdOptionExt;
+use tracing::Instrument;
 
-use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 
 /// A leader must wait for learner to commit member-change from [0] to [0,1,2].
@@ -16,7 +17,8 @@ use crate::fixtures::RaftRouter;
 /// - Init 1 leader and 2 learner.
 /// - Isolate learner.
 /// - Asserts that membership change won't success.
-#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn commit_joint_config_during_0_to_012() -> Result<()> {
     // Setup test dependencies.
     let config = Arc::new(
@@ -90,7 +92,8 @@ async fn commit_joint_config_during_0_to_012() -> Result<()> {
 /// - bring a cluster of node 0,1,2 online.
 /// - isolate 3,4; change config to 2,3,4
 /// - since new config can not form a quorum, the joint config should not be committed.
-#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn commit_joint_config_during_012_to_234() -> Result<()> {
     // Setup test dependencies.
     let config = Arc::new(

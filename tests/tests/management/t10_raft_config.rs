@@ -4,11 +4,12 @@ use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
 
-use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 
 /// Get config via [`Raft::config`](openraft::Raft::config)
-#[async_entry::test(worker_threads = 4, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn raft_config() -> Result<()> {
     let config = Arc::new(
         Config {

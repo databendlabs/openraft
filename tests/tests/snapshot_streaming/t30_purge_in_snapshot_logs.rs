@@ -9,13 +9,14 @@ use openraft::LogId;
 use openraft::RaftLogReader;
 use tokio::time::sleep;
 
-use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 
 /// Leader logs should be deleted upto snapshot.last_log_id-max_in_snapshot_log_to_keep after
 /// building snapshot; Follower/learner should delete upto snapshot.last_log_id after installing
 /// snapshot.
-#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn purge_in_snapshot_logs() -> Result<()> {
     let max_keep = 2;
 

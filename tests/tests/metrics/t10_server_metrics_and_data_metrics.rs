@@ -11,11 +11,12 @@ use pretty_assertions::assert_eq;
 #[allow(unused_imports)]
 use pretty_assertions::assert_ne;
 
-use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 
 /// Server metrics and data metrics method should work.
-#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn server_metrics_and_data_metrics() -> Result<()> {
     // Setup test dependencies.
     let config = Arc::new(
@@ -67,7 +68,8 @@ async fn server_metrics_and_data_metrics() -> Result<()> {
 }
 
 /// Test if heartbeat metrics work
-#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn heartbeat_metrics() -> Result<()> {
     // Setup test dependencies.
     let config = Arc::new(

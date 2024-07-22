@@ -14,14 +14,15 @@ use openraft_memstore::ClientRequest;
 use openraft_memstore::IntoMemClientRequest;
 use tokio::sync::oneshot;
 
-use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 
 /// Client write will receive a [`ForwardToLeader`] error because of log reversion, when leader
 /// quit, even after log is appended.
 ///
 /// [`ForwardToLeader`]: openraft::error::ForwardToLeader
-#[async_entry::test(worker_threads = 4, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn write_when_leader_quit_and_log_revert() -> Result<()> {
     let config = Arc::new(
         Config {
@@ -95,7 +96,8 @@ async fn write_when_leader_quit_and_log_revert() -> Result<()> {
 /// switched.
 ///
 /// [`ForwardToLeader`]: openraft::error::ForwardToLeader
-#[async_entry::test(worker_threads = 4, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn write_when_leader_switched() -> Result<()> {
     let config = Arc::new(
         Config {

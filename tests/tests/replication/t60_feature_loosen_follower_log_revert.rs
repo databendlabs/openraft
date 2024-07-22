@@ -5,12 +5,13 @@ use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
 
-use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 
 /// With "--features loosen-follower-log-revert", the leader allows follower to revert its log to an
 /// earlier state.
-#[async_entry::test(worker_threads = 4, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn feature_loosen_follower_log_revert() -> Result<()> {
     let config = Arc::new(
         Config {

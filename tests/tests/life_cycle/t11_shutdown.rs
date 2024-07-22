@@ -6,11 +6,12 @@ use openraft::error::Fatal;
 use openraft::Config;
 use openraft::ServerState;
 
-use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 
 /// Shutdown raft node and check the metrics change.
-#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn shutdown() -> Result<()> {
     let config = Arc::new(
         Config {
@@ -37,7 +38,8 @@ async fn shutdown() -> Result<()> {
 }
 
 /// A panicked RaftCore should also return a proper error the next time accessing the `Raft`.
-#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn return_error_after_panic() -> Result<()> {
     let config = Arc::new(
         Config {
@@ -74,7 +76,8 @@ async fn return_error_after_panic() -> Result<()> {
 }
 
 /// After shutdown(), access to Raft should return a Fatal::Stopped error.
-#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn return_error_after_shutdown() -> Result<()> {
     let config = Arc::new(
         Config {

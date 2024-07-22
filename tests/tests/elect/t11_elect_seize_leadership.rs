@@ -6,11 +6,12 @@ use maplit::btreeset;
 use openraft::Config;
 use openraft::ServerState;
 
-use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 
 /// A node with higher term takes leadership from the current leader.
-#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn elect_seize_leadership() -> Result<()> {
     let config = Arc::new(
         Config {

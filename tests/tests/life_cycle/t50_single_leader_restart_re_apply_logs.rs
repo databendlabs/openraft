@@ -5,7 +5,7 @@ use maplit::btreeset;
 use openraft::Config;
 use openraft::ServerState;
 
-use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::ut_harness;
 use crate::fixtures::MemLogStore;
 use crate::fixtures::MemRaft;
 use crate::fixtures::MemStateMachine;
@@ -13,7 +13,8 @@ use crate::fixtures::RaftRouter;
 
 /// A single leader should re-apply all logs upon startup,
 /// because itself is a quorum.
-#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn single_leader_restart_re_apply_logs() -> anyhow::Result<()> {
     let config = Arc::new(
         Config {

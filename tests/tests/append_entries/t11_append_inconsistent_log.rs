@@ -11,7 +11,7 @@ use openraft::RaftLogReader;
 use openraft::ServerState;
 use openraft::Vote;
 
-use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 
 /// Too many inconsistent log should not block replication.
@@ -31,7 +31,8 @@ use crate::fixtures::RaftRouter;
 ///
 /// - Start the cluster and node 2 start to replicate logs.
 /// - test the log should be replicated to node 0.
-#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn append_inconsistent_log() -> Result<()> {
     // Setup test dependencies.
     let config = Arc::new(

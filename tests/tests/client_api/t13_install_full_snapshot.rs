@@ -6,10 +6,11 @@ use openraft::testing::log_id;
 use openraft::Config;
 use openraft::Vote;
 
-use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 
-#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn install_full_snapshot() -> anyhow::Result<()> {
     let config = Arc::new(
         Config {

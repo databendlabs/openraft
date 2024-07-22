@@ -10,14 +10,15 @@ use openraft::raft::AppendEntriesRequest;
 use openraft::Config;
 use openraft::RPCTypes;
 
-use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 
 /// If append-entries returns PayloadTooLarge, Openraft should split the request into smaller
 /// chunks.
 /// In this test, RaftNetwork::append_entries() returns PayloadTooLarge if the number of entries is
 /// greater than 1.
-#[async_entry::test(worker_threads = 4, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn append_entries_too_large() -> Result<()> {
     let config = Arc::new(
         Config {

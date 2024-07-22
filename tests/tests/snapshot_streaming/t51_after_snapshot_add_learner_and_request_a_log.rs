@@ -9,11 +9,12 @@ use openraft::Config;
 use openraft::LogId;
 use openraft::SnapshotPolicy;
 
-use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 
 /// Test log replication after snapshot replication.
-#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn after_snapshot_add_learner_and_request_a_log() -> Result<()> {
     let snapshot_threshold: u64 = 10;
 

@@ -6,7 +6,7 @@ use maplit::btreeset;
 use openraft::Config;
 use openraft::ServerState;
 
-use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 
 /// Cluster metrics_state_machine_consistency test.
@@ -17,7 +17,8 @@ use crate::fixtures::RaftRouter;
 /// - write one log to the leader.
 /// - asserts that when metrics.last_applied is upto date, the state machine should be upto date
 ///   too.
-#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
 async fn metrics_state_machine_consistency() -> Result<()> {
     let config = Arc::new(
         Config {
