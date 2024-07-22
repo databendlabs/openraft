@@ -113,6 +113,7 @@ pub use crate::storage::StorageHelper;
 pub use crate::storage_error::ErrorSubject;
 pub use crate::storage_error::ErrorVerb;
 pub use crate::storage_error::StorageError;
+#[allow(deprecated)]
 pub use crate::storage_error::StorageIOError;
 pub use crate::storage_error::ToStorageResult;
 pub use crate::summary::MessageSummary;

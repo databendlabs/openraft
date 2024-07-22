@@ -84,6 +84,7 @@ impl fmt::Display for ErrorVerb {
 }
 
 /// Backward compatible with old application using `StorageIOError`
+#[deprecated(note = "use StorageError instead", since = "0.10.0")]
 pub type StorageIOError<C> = StorageError<C>;
 
 impl<C> StorageError<C>
