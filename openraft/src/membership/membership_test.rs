@@ -293,3 +293,28 @@ fn test_membership_next_coherent_with_nodes() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn test_membership_next_coherent_retain_false_keeps_existing_learners() -> anyhow::Result<()> {
+    let node = |s: u64| TestNode {
+        addr: s.to_string(),
+        data: Default::default(),
+    };
+
+    let c1 = || btreeset! {1};
+    let c2 = || btreeset! {2};
+
+    let initial = Membership::<UTConfig<TestNode>>::new_unchecked(
+        vec![c1(), c2()],
+        btreemap! {1=>node(1), 2=>node(2), 3=>node(3)},
+    );
+
+    let res = initial.next_coherent(btreeset! {2}, false);
+    assert_eq!(&vec![btreeset! {2}], res.get_joint_config());
+    assert_eq!(
+        btreemap! {2=>node(2), 3=>node(3)},
+        res.nodes().map(|(nid, n)| (*nid, n.clone())).collect::<BTreeMap<_, _>>()
+    );
+
+    Ok(())
+}
