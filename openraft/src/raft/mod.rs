@@ -643,7 +643,9 @@ where C: RaftTypeConfig
     /// in Learner state — as if either of those constraints are false, it indicates that the
     /// cluster is already formed and in motion. If `InitializeError::NotAllowed` is returned
     /// from this function, it is safe to ignore, as it simply indicates that the cluster is
-    /// already up and running, which is ultimately the goal of this function.
+    /// already up and running, which is ultimately the goal of this function. You can check
+    /// if the cluster is initialized with [`Raft::is_initialized()`] and then avoid re-initialize
+    /// it in case you want to get rid of this error.
     ///
     /// This command will work for single-node or multi-node cluster formation. This command
     /// should be called with all discovered nodes which need to be part of cluster, and as such
