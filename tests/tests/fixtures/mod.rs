@@ -132,8 +132,10 @@ pub fn init_global_tracing(app_name: &str, dir: &str, level: &str) -> WorkerGuar
 }
 
 pub fn set_panic_hook() {
-    std::panic::set_hook(Box::new(|panic| {
+    let prev_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |panic| {
         log_panic(panic);
+        prev_hook(panic);
     }));
 }
 
@@ -150,22 +152,17 @@ pub fn log_panic(panic: &PanicInfo) {
         }
     };
 
-    eprintln!("{}", panic);
-
     if let Some(location) = panic.location() {
         tracing::error!(
-            message = %panic,
+            message = %panic.to_string().replace("\n", " "),
             backtrace = %backtrace,
             panic.file = location.file(),
             panic.line = location.line(),
             panic.column = location.column(),
         );
-        eprintln!("{}:{}:{}", location.file(), location.line(), location.column());
     } else {
-        tracing::error!(message = %panic, backtrace = %backtrace);
+        tracing::error!(message = %panic.to_string().replace("\n", " "), backtrace = %backtrace);
     }
-
-    eprintln!("{}", backtrace);
 }
 
 #[derive(Debug, Clone, Copy)]
