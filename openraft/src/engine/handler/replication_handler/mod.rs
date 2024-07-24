@@ -1,4 +1,6 @@
+use crate::display_ext::DisplayInstantExt;
 use crate::display_ext::DisplayOptionExt;
+use crate::display_ext::DisplayResultExt;
 use crate::engine::handler::log_handler::LogHandler;
 use crate::engine::handler::snapshot_handler::SnapshotHandler;
 use crate::engine::Command;
@@ -147,7 +149,7 @@ where C: RaftTypeConfig
     /// accepted.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn update_leader_clock(&mut self, node_id: C::NodeId, t: InstantOf<C>) {
-        tracing::debug!(target = display(node_id), t = debug(t), "{}", func_name!());
+        tracing::debug!(target = display(node_id), t = display(t.display()), "{}", func_name!());
 
         let granted = *self
             .leader
@@ -156,7 +158,7 @@ where C: RaftTypeConfig
             .expect("it should always update existing progress");
 
         tracing::debug!(
-            granted = debug(granted),
+            granted = display(granted.as_ref().map(|x| x.display()).display()),
             clock_progress = debug(&self.leader.clock_progress),
             "granted leader vote clock after updating"
         );
@@ -267,7 +269,7 @@ where C: RaftTypeConfig
         tracing::debug!(
             target = display(target),
             request_id = display(request_id),
-            result = debug(&repl_res),
+            result = display(repl_res.display()),
             progress = display(&self.leader.progress),
             "{}",
             func_name!()

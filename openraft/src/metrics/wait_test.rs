@@ -249,6 +249,7 @@ pub(crate) type InitResult<C> = (RaftMetrics<C>, Wait<C>, WatchSenderOf<C, RaftM
 /// Returns init metrics, Wait, and the tx to send an updated metrics.
 fn init_wait_test<C>() -> InitResult<C>
 where C: RaftTypeConfig {
+    #[allow(deprecated)]
     let init = RaftMetrics {
         running_state: Ok(()),
         id: NodeIdOf::<C>::default(),
@@ -261,6 +262,7 @@ where C: RaftTypeConfig {
 
         current_leader: None,
         millis_since_quorum_ack: None,
+        last_quorum_acked: None,
         membership_config: Arc::new(StoredMembership::new(None, Membership::new(vec![btreeset! {}], None))),
         heartbeat: None,
 
