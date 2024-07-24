@@ -92,7 +92,9 @@ async fn heartbeat_metrics() -> Result<()> {
     let refreshed_node1;
     let refreshed_node2;
     {
+        let now = TypeConfig::now();
         leader.trigger().heartbeat().await?;
+
         let metrics = leader
             .wait(timeout())
             .metrics(
@@ -104,7 +106,7 @@ async fn heartbeat_metrics() -> Result<()> {
                     let node1 = heartbeat.get(&1).unwrap().unwrap();
                     let node2 = heartbeat.get(&2).unwrap().unwrap();
 
-                    (node1 < 100) && (node2 < 100)
+                    (*node1 >= now) && (*node2 >= now)
                 },
                 "millis_since_quorum_ack refreshed",
             )
@@ -118,7 +120,7 @@ async fn heartbeat_metrics() -> Result<()> {
         refreshed_node2 = heartbeat.get(&2).unwrap().unwrap();
     }
 
-    tracing::info!(log_index, "--- sleep 500 ms, the interval should extend");
+    tracing::info!(log_index, "--- sleep 500 ms, the acked time should not change");
     {
         TypeConfig::sleep(Duration::from_millis(500)).await;
 
@@ -129,11 +131,11 @@ async fn heartbeat_metrics() -> Result<()> {
             .as_ref()
             .expect("expect heartbeat to be Some as metrics come from the leader node");
 
-        let greater_node1 = heartbeat.get(&1).unwrap().unwrap();
-        let greater_node2 = heartbeat.get(&2).unwrap().unwrap();
+        let got_node1 = heartbeat.get(&1).unwrap().unwrap();
+        let got_node2 = heartbeat.get(&2).unwrap().unwrap();
 
-        assert!(greater_node1 > refreshed_node1);
-        assert!(greater_node2 > refreshed_node2);
+        assert!(got_node1 == refreshed_node1);
+        assert!(got_node2 == refreshed_node2);
     }
 
     Ok(())

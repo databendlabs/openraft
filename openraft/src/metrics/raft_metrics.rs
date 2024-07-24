@@ -9,6 +9,7 @@ use crate::metrics::HeartbeatMetrics;
 use crate::metrics::ReplicationMetrics;
 use crate::metrics::SerdeInstant;
 use crate::type_config::alias::InstantOf;
+use crate::type_config::alias::SerdeInstantOf;
 use crate::Instant;
 use crate::LogId;
 use crate::RaftTypeConfig;
@@ -90,7 +91,7 @@ pub struct RaftMetrics<C: RaftTypeConfig> {
     /// lost synchronization with the cluster.
     /// An older value may suggest a higher probability of the leader being partitioned from the
     /// cluster.
-    pub last_quorum_acked: Option<SerdeInstant<InstantOf<C>>>,
+    pub last_quorum_acked: Option<SerdeInstantOf<C>>,
 
     /// The current membership config of the cluster.
     pub membership_config: Arc<StoredMembership<C>>,
