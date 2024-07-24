@@ -17,6 +17,9 @@ use crate::RaftTypeConfig;
 /// It is monotonic increasing because:
 /// - Leader id increase monotonically in the entire cluster.
 /// - Leader propose or replicate log entries in order.
+///
+/// See: [LogId Appended Multiple
+/// Times](crate::docs::protocol::replication::log_replication#logid-appended-multiple-times).
 #[derive(Debug, Clone, Copy)]
 #[derive(PartialEq, Eq)]
 #[derive(PartialOrd, Ord)]

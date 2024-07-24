@@ -174,6 +174,63 @@ Notes:
   known matching log ID.
 
 
+## LogId Appended Multiple Times
+
+Consider a scenario where a specific `LogId` is truncated and appended more than once.
+
+The following discussion is in Raft terminology, a `term` and `LogId` are represented as `(term, index)`.
+
+```text
+Ni: Node
+i-j: log with term i and index j
+
+N1 | 1-1 1-2
+N2 | 1-1 1-2
+N3 | 3-1
+N4 | 4-1
+N5 |
+N6 |
+N7 |
+-------------------------> log index
+```
+
+Given the initial cluster state built with the following steps:
+
+1. **N1 as Leader**:
+    - N1 established itself as the leader with a quorum of `N1, N5, N6, N7`.
+    - N1 appended logs `1-1` and `1-2`, replicating only to N2.
+2. **N3 as Leader**:
+    - N3 became the leader with a quorum of `N3, N5, N6, N7`.
+    - N3 appended log `3-1` but failed to replicate any logs to other nodes.
+3. **N4 as Leader**:
+    - N4 became the leader with a quorum of `N4, N5, N6, N7`.
+    - N4 appended log `4-1` but also failed to replicate any logs.
+
+As a result, N1's log will be truncated and appended multiple times:
+
+- **Initial State**:
+    - N1's term and logs are `1; 1-1, 1-2`.
+- **N3 as Leader at Term 5**:
+    - N3 established itself as the leader with a quorum of `N3, N5, N6, N7`.
+    - N3 truncated all logs on N1 and replicated log `3-1` to N1 before crashing.
+    - N1's term and log become `5; 3-1`.
+- **N2 as Leader at Term 6**:
+    - N2 established itself as the leader with a quorum of `N2, N5, N6, N7`.
+    - N2 truncated all logs on N1 and replicated logs `1-1, 1-2` to N1 before crashing.
+    - N1's term and logs become `6; 1-1, 1-2`.
+- **N4 as Leader at Term 7**:
+    - N4 established itself as the leader with a quorum of `N4, N5, N6, N7`.
+    - N4 truncated all logs on N1 and replicated log `4-1` to N1 before crashing.
+    - N1's term and log become `7; 4-1`.
+
+This scenario can repeat, where a log entry with the same `LogId` is truncated and appended multiple times if there are enough nodes in the cluster.
+
+However, it's important to note that a specific `LogId` can only be truncated and appended by a leader with a higher term.
+
+Therefore, the pointer for an IO operation must be represented as `term, LogId(term, index)`.
+In Openraft, the `LogIOId` is `(CommittedLeaderId, LogId)`.
+
+
 [`ProgressEntry`]: crate::progress::entry::ProgressEntry
 
 
