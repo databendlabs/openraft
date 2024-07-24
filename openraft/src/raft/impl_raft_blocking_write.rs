@@ -36,13 +36,14 @@ where C: RaftTypeConfig<Responder = OneshotResponder<C>>
     /// Existing learners will not be affected.
     ///
     /// Example of `retain` usage:
-    /// If the original membership is `{"voter":{1,2,3}, "learners":{1,2,3,4,5}}`,
-    /// and call `change_membership` with `voters={2,3,4}`, then:
+    /// If the original membership is `{"voter":{1,2,3}, "nodes":{1,2,3,4,5}}`, where `nodes`
+    /// includes node information of both voters and learners. In this case, `4,5` are learners.
+    /// Call `change_membership` with `voters={2,3,4}`, then:
     ///    - If `retain` is `true`, the committed new membership is
-    ///     `{"voters":{2,3,4}, "learners":{1,2,3,4,5}}`.
+    ///     `{"voters":{2,3,4}, "nodes":{1,2,3,4,5}}`, node `1` is turned into a learner.
     ///    - Otherwise if `retain` is `false`, then the new membership is `{"voters":{2,3,4},
-    ///      "learners":{2,3,4,5}}`, in which the removed voters `1` are removed from the cluster.
-    ///      `5` is not affected.
+    ///      "nodes":{2,3,4,5}}`, in which the removed voters `1` are removed from the cluster. `5`
+    ///      is not affected.
     ///
     /// If it loses leadership or crashed before committing the second **uniform** config log, the
     /// cluster is left in the **joint** config.
