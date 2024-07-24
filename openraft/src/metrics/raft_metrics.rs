@@ -4,10 +4,12 @@ use std::sync::Arc;
 use crate::core::ServerState;
 use crate::display_ext::DisplayBTreeMapOptValue;
 use crate::display_ext::DisplayOption;
-use crate::display_ext::DisplayOptionExt;
 use crate::error::Fatal;
 use crate::metrics::HeartbeatMetrics;
 use crate::metrics::ReplicationMetrics;
+use crate::metrics::SerdeInstant;
+use crate::type_config::alias::InstantOf;
+use crate::Instant;
 use crate::LogId;
 use crate::RaftTypeConfig;
 use crate::StoredMembership;
@@ -69,7 +71,26 @@ pub struct RaftMetrics<C: RaftTypeConfig> {
     /// synchronization with the cluster.
     /// A longer duration without acknowledgment may suggest a higher probability of the leader
     /// being partitioned from the cluster.
+    ///
+    /// Use `last_quorum_acked` instead, which is absolute timestamp.
+    /// This value relates to the time when metrics is reported, which may behind the current time
+    /// by an unknown duration(although it should be very small).
+    #[deprecated(since = "0.10.0", note = "use `last_quorum_acked` instead.")]
     pub millis_since_quorum_ack: Option<u64>,
+
+    /// For a leader, it is the most recently acknowledged timestamp by a quorum.
+    ///
+    /// It is `None` if this node is not leader, or the leader is not yet acknowledged by a quorum.
+    /// Being acknowledged means receiving a reply of
+    /// `AppendEntries`(`AppendEntriesRequest.vote.committed == true`).
+    /// Receiving a reply of `RequestVote`(`RequestVote.vote.committed == false`) does not count,
+    /// because a node will not maintain a lease for a vote with `committed == false`.
+    ///
+    /// This timestamp can be used by the application to assess the likelihood that the leader has
+    /// lost synchronization with the cluster.
+    /// An older value may suggest a higher probability of the leader being partitioned from the
+    /// cluster.
+    pub last_quorum_acked: Option<SerdeInstant<InstantOf<C>>>,
 
     /// The current membership config of the cluster.
     pub membership_config: Arc<StoredMembership<C>>,
@@ -98,7 +119,7 @@ where C: RaftTypeConfig
 
         write!(
             f,
-            "id:{}, {:?}, term:{}, vote:{}, last_log:{}, last_applied:{}, leader:{}(since_last_ack:{} ms)",
+            "id:{}, {:?}, term:{}, vote:{}, last_log:{}, last_applied:{}, leader:{}",
             self.id,
             self.state,
             self.current_term,
@@ -106,8 +127,18 @@ where C: RaftTypeConfig
             DisplayOption(&self.last_log_index),
             DisplayOption(&self.last_applied),
             DisplayOption(&self.current_leader),
-            DisplayOption(&self.millis_since_quorum_ack),
         )?;
+
+        if let Some(quorum_acked) = &self.last_quorum_acked {
+            write!(
+                f,
+                "(quorum_acked_time:{}, {:?} ago)",
+                quorum_acked,
+                quorum_acked.elapsed()
+            )?;
+        } else {
+            write!(f, "(quorum_acked_time:None)")?;
+        }
 
         write!(f, ", ")?;
         write!(
@@ -129,6 +160,7 @@ impl<C> RaftMetrics<C>
 where C: RaftTypeConfig
 {
     pub fn new_initial(id: C::NodeId) -> Self {
+        #[allow(deprecated)]
         Self {
             running_state: Ok(()),
             id,
@@ -143,6 +175,7 @@ where C: RaftTypeConfig
             state: ServerState::Follower,
             current_leader: None,
             millis_since_quorum_ack: None,
+            last_quorum_acked: None,
             membership_config: Arc::new(StoredMembership::default()),
             replication: None,
             heartbeat: None,
@@ -172,7 +205,22 @@ pub struct RaftDataMetrics<C: RaftTypeConfig> {
     /// synchronization with the cluster.
     /// A longer duration without acknowledgment may suggest a higher probability of the leader
     /// being partitioned from the cluster.
+    #[deprecated(since = "0.10.0", note = "use `last_quorum_acked` instead.")]
     pub millis_since_quorum_ack: Option<u64>,
+
+    /// For a leader, it is the most recently acknowledged timestamp by a quorum.
+    ///
+    /// It is `None` if this node is not leader, or the leader is not yet acknowledged by a quorum.
+    /// Being acknowledged means receiving a reply of
+    /// `AppendEntries`(`AppendEntriesRequest.vote.committed == true`).
+    /// Receiving a reply of `RequestVote`(`RequestVote.vote.committed == false`) does not count,
+    /// because a node will not maintain a lease for a vote with `committed == false`.
+    ///
+    /// This timestamp can be used by the application to assess the likelihood that the leader has
+    /// lost synchronization with the cluster.
+    /// An older value may suggest a higher probability of the leader being partitioned from the
+    /// cluster.
+    pub last_quorum_acked: Option<SerdeInstant<InstantOf<C>>>,
 
     pub replication: Option<ReplicationMetrics<C>>,
 
@@ -194,12 +242,27 @@ where C: RaftTypeConfig
 
         write!(
             f,
-            "last_log:{}, last_applied:{}, snapshot:{}, purged:{}, quorum_acked(leader):{} ms before, replication:{{{}}}, heartbeat:{{{}}}",
+            "last_log:{}, last_applied:{}, snapshot:{}, purged:{}",
             DisplayOption(&self.last_log),
             DisplayOption(&self.last_applied),
             DisplayOption(&self.snapshot),
             DisplayOption(&self.purged),
-            self.millis_since_quorum_ack.display(),
+        )?;
+
+        if let Some(quorum_acked) = &self.last_quorum_acked {
+            write!(
+                f,
+                ", quorum_acked_time:({}, {:?} ago)",
+                quorum_acked,
+                quorum_acked.elapsed()
+            )?;
+        } else {
+            write!(f, ", quorum_acked_time:None")?;
+        }
+
+        write!(
+            f,
+            ", replication:{{{}}}, heartbeat:{{{}}}",
             DisplayOption(&self.replication.as_ref().map(DisplayBTreeMapOptValue)),
             DisplayOption(&self.heartbeat.as_ref().map(DisplayBTreeMapOptValue)),
         )?;

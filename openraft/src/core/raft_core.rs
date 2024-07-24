@@ -60,6 +60,7 @@ use crate::metrics::RaftDataMetrics;
 use crate::metrics::RaftMetrics;
 use crate::metrics::RaftServerMetrics;
 use crate::metrics::ReplicationMetrics;
+use crate::metrics::SerdeInstant;
 use crate::network::v2::RaftNetworkV2;
 use crate::network::RPCOption;
 use crate::network::RPCTypes;
@@ -553,6 +554,7 @@ where
         let membership_config = st.membership_state.effective().stored_membership().clone();
         let current_leader = self.current_leader();
 
+        #[allow(deprecated)]
         let m = RaftMetrics {
             running_state: Ok(()),
             id: self.id,
@@ -569,6 +571,7 @@ where
             state: st.server_state,
             current_leader,
             millis_since_quorum_ack,
+            last_quorum_acked: last_quorum_acked.map(SerdeInstant::new),
             membership_config: membership_config.clone(),
             heartbeat: heartbeat.clone(),
 
@@ -576,12 +579,14 @@ where
             replication: replication.clone(),
         };
 
+        #[allow(deprecated)]
         let data_metrics = RaftDataMetrics {
             last_log: st.last_log_id().copied(),
             last_applied: st.io_applied().copied(),
             snapshot: st.io_snapshot_last_log_id().copied(),
             purged: st.io_purged().copied(),
             millis_since_quorum_ack,
+            last_quorum_acked: last_quorum_acked.map(SerdeInstant::new),
             replication,
             heartbeat,
         };
