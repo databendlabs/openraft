@@ -5,6 +5,7 @@
 use maplit::btreemap;
 
 use crate::core::raft_msg::RaftMsg;
+use crate::display_ext::DisplayResult;
 use crate::error::ClientWriteError;
 use crate::error::RaftError;
 use crate::raft::message::ClientWriteResult;
@@ -165,7 +166,10 @@ where C: RaftTypeConfig<Responder = OneshotResponder<C>>
             )
             .await;
 
-        tracing::info!(wait_res = debug(&wait_res), "waiting for replication to new learner");
+        tracing::info!(
+            wait_res = display(DisplayResult(&wait_res)),
+            "waiting for replication to new learner"
+        );
 
         Ok(resp)
     }
