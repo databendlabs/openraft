@@ -147,7 +147,7 @@ mod serde_impl {
 
         use super::SerdeInstant;
         use crate::engine::testing::UTConfig;
-        use crate::type_config::alias::InstantOf;
+        use crate::type_config::alias::SerdeInstantOf;
         use crate::type_config::TypeConfigExt;
 
         #[test]
@@ -158,7 +158,7 @@ mod serde_impl {
             println!("json: {}", json);
             println!("Now: {:?}", now);
 
-            let deserialized: SerdeInstant<InstantOf<UTConfig>> = serde_json::from_str(&json).unwrap();
+            let deserialized: SerdeInstantOf<UTConfig> = serde_json::from_str(&json).unwrap();
             println!("Des: {:?}", *deserialized);
 
             // Convert Instant to SerdeInstant is inaccurate.
@@ -171,7 +171,7 @@ mod serde_impl {
             // Test serialization format
 
             let nano = "1721829051211301916";
-            let deserialized: SerdeInstant<InstantOf<UTConfig>> = serde_json::from_str(nano).unwrap();
+            let deserialized: SerdeInstantOf<UTConfig> = serde_json::from_str(nano).unwrap();
             let serialized = serde_json::to_string(&deserialized).unwrap();
 
             assert_eq!(
