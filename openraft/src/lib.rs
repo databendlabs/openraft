@@ -47,7 +47,6 @@ pub(crate) mod engine;
 pub(crate) mod log_id_range;
 pub(crate) mod proposer;
 pub(crate) mod raft_state;
-pub(crate) mod timer;
 pub(crate) mod utime;
 
 #[cfg(feature = "compat")]
