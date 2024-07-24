@@ -29,6 +29,7 @@ use crate::async_runtime::MpscUnboundedWeakSender;
 use crate::config::Config;
 use crate::core::notification::Notification;
 use crate::core::sm::handle::SnapshotReader;
+use crate::display_ext::DisplayInstantExt;
 use crate::display_ext::DisplayOptionExt;
 use crate::error::HigherVote;
 use crate::error::PayloadTooLarge;
@@ -425,7 +426,7 @@ where
         // Send the payload.
         tracing::debug!(
             payload = display(&payload),
-            now = debug(leader_time),
+            now = display(leader_time.display()),
             "start sending append_entries, timeout: {:?}",
             self.config.heartbeat_interval
         );

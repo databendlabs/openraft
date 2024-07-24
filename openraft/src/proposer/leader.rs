@@ -1,5 +1,6 @@
 use std::fmt;
 
+use crate::display_ext::DisplayInstantExt;
 use crate::display_ext::DisplaySliceExt;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::Progress;
@@ -9,7 +10,6 @@ use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::TypeConfigExt;
 use crate::vote::CommittedVote;
-use crate::Instant;
 use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::RaftLogId;
@@ -192,11 +192,11 @@ where
 
         // Safe unwrap: voted_for() is always non-None in Openraft
         let node_id = self.committed_vote.leader_id().voted_for().unwrap();
-        let now = Instant::now();
+        let now = C::now();
 
         tracing::debug!(
             leader_id = display(node_id),
-            now = debug(now),
+            now = display(now.display()),
             "{}: update with leader's local time, before retrieving quorum acked clock",
             func_name!()
         );

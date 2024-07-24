@@ -1,6 +1,7 @@
 use std::fmt::Debug;
 
 use crate::core::raft_msg::ResultSender;
+use crate::display_ext::DisplayInstantExt;
 use crate::engine::handler::leader_handler::LeaderHandler;
 use crate::engine::handler::replication_handler::ReplicationHandler;
 use crate::engine::handler::replication_handler::SendNone;
@@ -150,7 +151,7 @@ where C: RaftTypeConfig
 
         // Update vote related timer and lease.
 
-        tracing::debug!(now = debug(C::now()), "{}", func_name!());
+        tracing::debug!(now = display(C::now().display()), "{}", func_name!());
 
         self.update_internal_server_state();
 

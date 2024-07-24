@@ -35,6 +35,7 @@ use crate::core::sm;
 use crate::core::ServerState;
 use crate::display_ext::DisplayInstantExt;
 use crate::display_ext::DisplayOptionExt;
+use crate::display_ext::DisplayResultExt;
 use crate::display_ext::DisplaySlice;
 use crate::display_ext::DisplaySliceExt;
 use crate::engine::handler::replication_handler::SendNone;
@@ -60,6 +61,7 @@ use crate::metrics::RaftDataMetrics;
 use crate::metrics::RaftMetrics;
 use crate::metrics::RaftServerMetrics;
 use crate::metrics::ReplicationMetrics;
+use crate::metrics::SerdeInstant;
 use crate::network::v2::RaftNetworkV2;
 use crate::network::RPCOption;
 use crate::network::RPCTypes;
@@ -498,12 +500,16 @@ where
     /// Currently heartbeat is a blank log
     #[tracing::instrument(level = "debug", skip_all, fields(id = display(self.id)))]
     pub fn send_heartbeat(&mut self, emitter: impl fmt::Display) -> bool {
-        tracing::debug!(now = debug(C::now()), "send_heartbeat");
+        tracing::debug!(now = display(C::now().display()), "send_heartbeat");
 
         let mut lh = if let Some((lh, _)) = self.engine.get_leader_handler_or_reject(None) {
             lh
         } else {
-            tracing::debug!(now = debug(C::now()), "{} failed to send heartbeat", emitter);
+            tracing::debug!(
+                now = display(C::now().display()),
+                "{} failed to send heartbeat",
+                emitter
+            );
             return false;
         };
 
@@ -553,6 +559,7 @@ where
         let membership_config = st.membership_state.effective().stored_membership().clone();
         let current_leader = self.current_leader();
 
+        #[allow(deprecated)]
         let m = RaftMetrics {
             running_state: Ok(()),
             id: self.id,
@@ -569,6 +576,7 @@ where
             state: st.server_state,
             current_leader,
             millis_since_quorum_ack,
+            last_quorum_acked: last_quorum_acked.map(SerdeInstant::new),
             membership_config: membership_config.clone(),
             heartbeat: heartbeat.clone(),
 
@@ -576,12 +584,14 @@ where
             replication: replication.clone(),
         };
 
+        #[allow(deprecated)]
         let data_metrics = RaftDataMetrics {
             last_log: st.last_log_id().copied(),
             last_applied: st.io_applied().copied(),
             snapshot: st.io_snapshot_last_log_id().copied(),
             purged: st.io_purged().copied(),
             millis_since_quorum_ack,
+            last_quorum_acked: last_quorum_acked.map(SerdeInstant::new),
             replication,
             heartbeat,
         };
@@ -1265,7 +1275,7 @@ where
                 // check every timer
 
                 let now = C::now();
-                tracing::debug!("received tick: {}, now: {:?}", i, now);
+                tracing::debug!("received tick: {}, now: {}", i, now.display());
 
                 self.handle_tick_election();
 
@@ -1422,7 +1432,7 @@ where
     fn handle_tick_election(&mut self) {
         let now = C::now();
 
-        tracing::debug!("try to trigger election by tick, now: {:?}", now);
+        tracing::debug!("try to trigger election by tick, now: {}", now.display());
 
         // TODO: leader lease should be extended. Or it has to examine if it is leader
         //       before electing.
@@ -1494,7 +1504,7 @@ where
         tracing::debug!(
             target = display(target),
             request_id = display(request_id),
-            result = debug(&result),
+            result = display(result.display()),
             "handle_replication_progress"
         );
 
