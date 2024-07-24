@@ -30,17 +30,19 @@ where C: RaftTypeConfig<Responder = OneshotResponder<C>>
     /// - It proposes a **joint** config.
     /// - When the **joint** config is committed, it proposes a uniform config.
     ///
-    /// If `retain` is true, then all the members which not exists in the new membership,
+    /// If `retain` is `true`, then all the members which not exists in the new membership,
     /// will be turned into learners, otherwise will be removed.
+    /// If `retain` is `false`, the removed voter will be removed from the cluster.
+    /// Existing learners will not be affected.
     ///
     /// Example of `retain` usage:
-    /// If the original membership is {"voter":{1,2,3}, "learners":{}}, and call
-    /// `change_membership` with `voters` {3,4,5}, then:
-    ///    - If `retain` is `true`, the committed new membership is {"voters":{3,4,5},
-    ///      "learners":{1,2}}.
-    ///    - Otherwise if `retain` is `false`, then the new membership is {"voters":{3,4,5},
-    ///      "learners":{}}, in which the voters not exists in the new membership just be removed
-    ///      from the cluster.
+    /// If the original membership is `{"voter":{1,2,3}, "learners":{1,2,3,4,5}}`,
+    /// and call `change_membership` with `voters={2,3,4}`, then:
+    ///    - If `retain` is `true`, the committed new membership is
+    ///     `{"voters":{2,3,4}, "learners":{1,2,3,4,5}}`.
+    ///    - Otherwise if `retain` is `false`, then the new membership is `{"voters":{2,3,4},
+    ///      "learners":{2,3,4,5}}`, in which the removed voters `1` are removed from the cluster.
+    ///      `5` is not affected.
     ///
     /// If it loses leadership or crashed before committing the second **uniform** config log, the
     /// cluster is left in the **joint** config.
