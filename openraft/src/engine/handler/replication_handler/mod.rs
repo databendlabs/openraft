@@ -102,19 +102,19 @@ where C: RaftTypeConfig
 
         {
             let end = self.state.last_log_id().next_index();
-            let default_v = ProgressEntry::empty(end);
+            let default_v = || ProgressEntry::empty(end);
 
             let old_progress = self.leader.progress.clone();
 
             self.leader.progress =
-                old_progress.upgrade_quorum_set(em.membership().to_quorum_set(), &learner_ids, default_v);
+                old_progress.upgrade_quorum_set(em.membership().to_quorum_set(), learner_ids.clone(), default_v);
         }
 
         {
             let old_progress = self.leader.clock_progress.clone();
 
             self.leader.clock_progress =
-                old_progress.upgrade_quorum_set(em.membership().to_quorum_set(), &learner_ids, None);
+                old_progress.upgrade_quorum_set(em.membership().to_quorum_set(), learner_ids, || None);
         }
     }
 
@@ -159,7 +159,12 @@ where C: RaftTypeConfig
 
         tracing::debug!(
             granted = display(granted.as_ref().map(|x| x.display()).display()),
-            clock_progress = debug(&self.leader.clock_progress),
+            clock_progress = display(
+                &self
+                    .leader
+                    .clock_progress
+                    .display_with(|f, id, v| { write!(f, "{}: {}", id, v.as_ref().map(|x| x.display()).display()) })
+            ),
             "granted leader vote clock after updating"
         );
 

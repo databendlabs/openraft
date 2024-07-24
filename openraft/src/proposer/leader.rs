@@ -114,12 +114,10 @@ where
             next_heartbeat: C::now(),
             last_log_id,
             noop_log_id,
-            progress: VecProgress::new(
-                quorum_set.clone(),
-                learner_ids.iter().copied(),
-                ProgressEntry::empty(last_log_id.next_index()),
-            ),
-            clock_progress: VecProgress::new(quorum_set, learner_ids, None),
+            progress: VecProgress::new(quorum_set.clone(), learner_ids.iter().copied(), || {
+                ProgressEntry::empty(last_log_id.next_index())
+            }),
+            clock_progress: VecProgress::new(quorum_set, learner_ids, || None),
         };
 
         // Update progress for this Leader.

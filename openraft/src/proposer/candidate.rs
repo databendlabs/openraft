@@ -69,7 +69,7 @@ where
             starting_time,
             vote,
             last_log_id,
-            progress: VecProgress::new(quorum_set.clone(), [], false),
+            progress: VecProgress::new(quorum_set.clone(), [], || false),
             quorum_set,
             learner_ids: learner_ids.into_iter().collect::<Vec<_>>(),
         }

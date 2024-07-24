@@ -526,16 +526,7 @@ where
             let replication = Some(replication_prog.iter().map(|(id, p)| (*id, *p.borrow())).collect());
 
             let clock_prog = &leader.clock_progress;
-            let heartbeat = Some(
-                clock_prog
-                    .iter()
-                    .map(|(id, opt_t)| {
-                        let millis_since_last_ack = opt_t.map(|t| t.elapsed().as_millis() as u64);
-
-                        (*id, millis_since_last_ack)
-                    })
-                    .collect(),
-            );
+            let heartbeat = Some(clock_prog.iter().map(|(id, opt_t)| (*id, opt_t.map(SerdeInstant::new))).collect());
 
             (replication, heartbeat)
         } else {
