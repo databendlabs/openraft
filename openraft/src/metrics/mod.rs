@@ -32,6 +32,7 @@ mod raft_metrics;
 mod wait;
 
 mod metric_display;
+mod serde_instant;
 mod wait_condition;
 #[cfg(test)]
 mod wait_test;
@@ -42,6 +43,7 @@ pub use metric::Metric;
 pub use raft_metrics::RaftDataMetrics;
 pub use raft_metrics::RaftMetrics;
 pub use raft_metrics::RaftServerMetrics;
+pub use serde_instant::SerdeInstant;
 pub use wait::Wait;
 pub use wait::WaitError;
 pub(crate) use wait_condition::Condition;
