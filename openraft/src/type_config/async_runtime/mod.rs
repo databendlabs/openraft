@@ -9,7 +9,7 @@ pub(crate) mod impls {
     pub use tokio_runtime::TokioRuntime;
 }
 pub mod mpsc_unbounded;
-mod oneshot;
+pub mod oneshot;
 pub mod watch;
 
 use std::fmt::Debug;
