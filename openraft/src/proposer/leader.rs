@@ -148,10 +148,6 @@ where
 
     /// Assign log ids to the entries.
     ///
-    /// Return `()` if successful.
-    /// Otherwise, return `Err(current_vote)` if this Leader is not yet established(by being
-    /// accepted by a quorum).
-    ///
     /// This method update the `self.last_log_id`.
     pub(crate) fn assign_log_ids<'a, LID: RaftLogId<C::NodeId> + 'a>(
         &mut self,
