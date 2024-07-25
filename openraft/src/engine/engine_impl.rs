@@ -265,7 +265,7 @@ where C: RaftTypeConfig
         self.candidate.as_mut()
     }
 
-    /// Get a LeaderHandler for handling leader's operation. If it is not a leader, it send back a
+    /// Get a LeaderHandler for handling leader's operation. If it is not a leader, it sends back a
     /// ForwardToLeader error through the tx.
     ///
     /// If tx is None, no response will be sent.
@@ -294,10 +294,11 @@ where C: RaftTypeConfig
     pub(crate) fn handle_vote_req(&mut self, req: VoteRequest<C>) -> VoteResponse<C> {
         let now = C::now();
         let lease = self.config.timer_config.leader_lease;
-        let vote = self.state.vote_ref();
+        let local_vote = self.state.vote_ref();
 
         // Make default vote-last-modified a low enough value, that expires leader lease.
-        let vote_utime = self.state.vote_last_modified().unwrap_or_else(|| now - lease - Duration::from_millis(1));
+        let local_vote_utime =
+            self.state.vote_last_modified().unwrap_or_else(|| now - lease - Duration::from_millis(1));
 
         tracing::info!(req = display(&req), "Engine::handle_vote_req");
         tracing::info!(
@@ -308,21 +309,21 @@ where C: RaftTypeConfig
         tracing::info!(
             "now; {}, vote is updated at: {}, vote is updated before {:?}, leader lease({:?}) will expire after {:?}",
             now.display(),
-            vote_utime.display(),
-            now - vote_utime,
+            local_vote_utime.display(),
+            now - local_vote_utime,
             lease,
-            vote_utime + lease - now
+            local_vote_utime + lease - now
         );
 
-        if vote.is_committed() {
+        if local_vote.is_committed() {
             // Current leader lease has not yet expired, reject voting request
-            if now <= vote_utime + lease {
+            if now <= local_vote_utime + lease {
                 tracing::info!(
-                    "reject vote-request: leader lease has not yet expire; now; {:?}, vote is updatd at: {:?}, leader lease({:?}) will expire after {:?}",
+                    "reject vote-request: leader lease has not yet expire; now; {:?}, vote is update at: {:?}, leader lease({:?}) will expire after {:?}",
                     now,
-                    vote_utime,
+                    local_vote_utime,
                     lease,
-                    vote_utime + lease - now
+                    local_vote_utime + lease - now
                 );
 
                 return VoteResponse::new(self.state.vote_ref(), self.state.last_log_id().copied());
@@ -704,7 +705,7 @@ where C: RaftTypeConfig
         })
     }
 
-    /// When initialize, the node that accept initialize request has to be a member of the initial
+    /// When initialized, the node that accept initialize request has to be a member of the initial
     /// config.
     fn check_members_contain_me(&self, m: &Membership<C>) -> Result<(), NotInMembers<C>> {
         if !m.is_voter(&self.config.id) {
