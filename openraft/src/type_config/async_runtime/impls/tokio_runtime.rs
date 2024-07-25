@@ -6,6 +6,7 @@ use tokio::sync::watch as tokio_watch;
 
 use crate::async_runtime::mpsc_unbounded;
 use crate::async_runtime::mpsc_unbounded::MpscUnbounded;
+use crate::async_runtime::oneshot;
 use crate::async_runtime::watch;
 use crate::type_config::OneshotSender;
 use crate::AsyncRuntime;
@@ -25,9 +26,6 @@ impl AsyncRuntime for TokioRuntime {
     type TimeoutError = tokio::time::error::Elapsed;
     type Timeout<R, T: Future<Output = R> + OptionalSend> = tokio::time::Timeout<T>;
     type ThreadLocalRng = rand::rngs::ThreadRng;
-    type OneshotSender<T: OptionalSend> = tokio::sync::oneshot::Sender<T>;
-    type OneshotReceiver<T: OptionalSend> = tokio::sync::oneshot::Receiver<T>;
-    type OneshotReceiverError = tokio::sync::oneshot::error::RecvError;
 
     #[inline]
     fn spawn<T>(future: T) -> Self::JoinHandle<T::Output>
@@ -75,22 +73,9 @@ impl AsyncRuntime for TokioRuntime {
         rand::thread_rng()
     }
 
-    #[inline]
-    fn oneshot<T>() -> (Self::OneshotSender<T>, Self::OneshotReceiver<T>)
-    where T: OptionalSend {
-        let (tx, rx) = tokio::sync::oneshot::channel();
-        (tx, rx)
-    }
-
     type MpscUnbounded = TokioMpscUnbounded;
     type Watch = TokioWatch;
-}
-
-impl<T> OneshotSender<T> for tokio::sync::oneshot::Sender<T> {
-    #[inline]
-    fn send(self, t: T) -> Result<(), T> {
-        self.send(t)
-    }
+    type Oneshot = TokioOneshot;
 }
 
 pub struct TokioMpscUnbounded;
@@ -186,5 +171,29 @@ where T: OptionalSend + OptionalSync
 
     fn borrow_watched(&self) -> <TokioWatch as watch::Watch>::Ref<'_, T> {
         self.borrow()
+    }
+}
+
+pub struct TokioOneshot;
+
+impl oneshot::Oneshot for TokioOneshot {
+    type Sender<T: OptionalSend> = tokio::sync::oneshot::Sender<T>;
+    type Receiver<T: OptionalSend> = tokio::sync::oneshot::Receiver<T>;
+    type ReceiverError = tokio::sync::oneshot::error::RecvError;
+
+    #[inline]
+    fn channel<T>() -> (Self::Sender<T>, Self::Receiver<T>)
+    where T: OptionalSend {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        (tx, rx)
+    }
+}
+
+impl<T> OneshotSender<T> for tokio::sync::oneshot::Sender<T>
+where T: OptionalSend
+{
+    #[inline]
+    fn send(self, t: T) -> Result<(), T> {
+        self.send(t)
     }
 }

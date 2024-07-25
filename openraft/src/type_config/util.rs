@@ -5,12 +5,14 @@ use openraft_macros::since;
 
 use crate::async_runtime::watch::Watch;
 use crate::async_runtime::MpscUnbounded;
+use crate::async_runtime::Oneshot;
 use crate::type_config::alias::AsyncRuntimeOf;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::JoinHandleOf;
 use crate::type_config::alias::MpscUnboundedOf;
 use crate::type_config::alias::MpscUnboundedReceiverOf;
 use crate::type_config::alias::MpscUnboundedSenderOf;
+use crate::type_config::alias::OneshotOf;
 use crate::type_config::alias::OneshotReceiverOf;
 use crate::type_config::alias::OneshotSenderOf;
 use crate::type_config::alias::SleepOf;
@@ -62,10 +64,10 @@ pub trait TypeConfigExt: RaftTypeConfig {
     /// Creates a new one-shot channel for sending single values.
     ///
     /// This is just a wrapper of
-    /// [`AsyncRuntime::oneshot`](`crate::async_runtime::AsyncRuntime::oneshot`).
+    /// [`AsyncRuntime::Oneshot::channel()`](`crate::async_runtime::Oneshot::channel`).
     fn oneshot<T>() -> (OneshotSenderOf<Self, T>, OneshotReceiverOf<Self, T>)
     where T: OptionalSend {
-        AsyncRuntimeOf::<Self>::oneshot()
+        OneshotOf::<Self>::channel()
     }
 
     /// Creates an unbounded mpsc channel for communicating between asynchronous

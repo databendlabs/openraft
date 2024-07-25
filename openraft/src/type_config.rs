@@ -96,6 +96,7 @@ pub trait RaftTypeConfig:
 pub mod alias {
     use crate::async_runtime::watch;
     use crate::async_runtime::MpscUnbounded;
+    use crate::async_runtime::Oneshot;
     use crate::raft::responder::Responder;
     use crate::type_config::AsyncRuntime;
     use crate::RaftTypeConfig;
@@ -118,9 +119,12 @@ pub mod alias {
     pub type InstantOf<C> = <Rt<C> as AsyncRuntime>::Instant;
     pub type TimeoutErrorOf<C> = <Rt<C> as AsyncRuntime>::TimeoutError;
     pub type TimeoutOf<C, R, F> = <Rt<C> as AsyncRuntime>::Timeout<R, F>;
-    pub type OneshotSenderOf<C, T> = <Rt<C> as AsyncRuntime>::OneshotSender<T>;
-    pub type OneshotReceiverErrorOf<C> = <Rt<C> as AsyncRuntime>::OneshotReceiverError;
-    pub type OneshotReceiverOf<C, T> = <Rt<C> as AsyncRuntime>::OneshotReceiver<T>;
+
+    pub type OneshotOf<C> = <Rt<C> as AsyncRuntime>::Oneshot;
+    pub type OneshotSenderOf<C, T> = <OneshotOf<C> as Oneshot>::Sender<T>;
+    pub type OneshotReceiverErrorOf<C> = <OneshotOf<C> as Oneshot>::ReceiverError;
+    pub type OneshotReceiverOf<C, T> = <OneshotOf<C> as Oneshot>::Receiver<T>;
+
     pub type MpscUnboundedOf<C> = <Rt<C> as AsyncRuntime>::MpscUnbounded;
 
     type Mpsc<C> = MpscUnboundedOf<C>;
