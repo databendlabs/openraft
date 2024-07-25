@@ -23,6 +23,7 @@ pub use mpsc_unbounded::MpscUnboundedSender;
 pub use mpsc_unbounded::MpscUnboundedWeakSender;
 pub use mpsc_unbounded::SendError;
 pub use mpsc_unbounded::TryRecvError;
+pub use oneshot::Oneshot;
 pub use oneshot::OneshotSender;
 pub use watch::Watch;
 
@@ -66,18 +67,6 @@ pub trait AsyncRuntime: Debug + Default + PartialEq + Eq + OptionalSend + Option
     /// Type of a thread-local random number generator.
     type ThreadLocalRng: rand::Rng;
 
-    /// Type of a `oneshot` sender.
-    type OneshotSender<T: OptionalSend>: OneshotSender<T> + OptionalSend + OptionalSync + Sized;
-
-    /// Type of a `oneshot` receiver error.
-    type OneshotReceiverError: std::error::Error + OptionalSend;
-
-    /// Type of a `oneshot` receiver.
-    type OneshotReceiver<T: OptionalSend>: OptionalSend
-        + OptionalSync
-        + Future<Output = Result<T, Self::OneshotReceiverError>>
-        + Unpin;
-
     /// Spawn a new task.
     fn spawn<T>(future: T) -> Self::JoinHandle<T::Output>
     where
@@ -107,17 +96,9 @@ pub trait AsyncRuntime: Debug + Default + PartialEq + Eq + OptionalSend + Option
     /// sent to another thread.
     fn thread_rng() -> Self::ThreadLocalRng;
 
-    /// Creates a new one-shot channel for sending single values.
-    ///
-    /// The function returns separate "send" and "receive" handles. The `Sender`
-    /// handle is used by the producer to send the value. The `Receiver` handle is
-    /// used by the consumer to receive the value.
-    ///
-    /// Each handle can be used on separate tasks.
-    fn oneshot<T>() -> (Self::OneshotSender<T>, Self::OneshotReceiver<T>)
-    where T: OptionalSend;
-
     type MpscUnbounded: MpscUnbounded;
 
     type Watch: Watch;
+
+    type Oneshot: Oneshot;
 }

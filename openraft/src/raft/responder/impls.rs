@@ -20,9 +20,9 @@ where C: RaftTypeConfig
 impl<C> OneshotResponder<C>
 where C: RaftTypeConfig
 {
-    /// Create a new instance from a [`AsyncRuntime::OneshotSender`].
+    /// Create a new instance from a [`AsyncRuntime::Oneshot::Sender`].
     ///
-    /// [`AsyncRuntime::OneshotSender`]: `crate::async_runtime::AsyncRuntime::OneshotSender`
+    /// [`AsyncRuntime::Oneshot::Sender`]: `crate::async_runtime::Oneshot::Sender`
     pub fn new(tx: OneshotSenderOf<C, ClientWriteResult<C>>) -> Self {
         Self { tx }
     }
