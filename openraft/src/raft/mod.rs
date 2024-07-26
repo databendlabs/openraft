@@ -768,9 +768,9 @@ where C: RaftTypeConfig
 
     /// Send a request to the Raft core loop in a fire-and-forget manner.
     ///
-    /// The request functor will be called with a mutable reference to both the state machine
-    /// and the network factory and serialized with other Raft core loop processing (e.g., client
-    /// requests or general state changes). The current state of the system is passed as well.
+    /// The request functor will be called with an immutable reference to the [`RaftState`]
+    /// and serialized with other Raft core loop processing (e.g., client requests
+    /// or general state changes).
     ///
     /// If a response is required, then the caller can store the sender of a one-shot channel
     /// in the closure of the request functor, which can then be used to send the response
