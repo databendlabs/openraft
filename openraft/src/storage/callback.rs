@@ -2,12 +2,12 @@
 
 use std::io;
 
-use tokio::sync::oneshot;
-
 use crate::async_runtime::MpscUnboundedSender;
 use crate::async_runtime::MpscUnboundedWeakSender;
 use crate::core::notification::Notification;
 use crate::type_config::alias::MpscUnboundedWeakSenderOf;
+use crate::type_config::alias::OneshotSenderOf;
+use crate::type_config::async_runtime::oneshot::OneshotSender;
 use crate::ErrorSubject;
 use crate::ErrorVerb;
 use crate::LogId;
@@ -101,7 +101,7 @@ pub struct LogApplied<C>
 where C: RaftTypeConfig
 {
     last_log_id: LogId<C::NodeId>,
-    tx: oneshot::Sender<Result<(LogId<C::NodeId>, Vec<C::R>), StorageError<C>>>,
+    tx: OneshotSenderOf<C, Result<(LogId<C::NodeId>, Vec<C::R>), StorageError<C>>>,
 }
 
 impl<C> LogApplied<C>
@@ -110,7 +110,7 @@ where C: RaftTypeConfig
     #[allow(dead_code)]
     pub(crate) fn new(
         last_log_id: LogId<C::NodeId>,
-        tx: oneshot::Sender<Result<(LogId<C::NodeId>, Vec<C::R>), StorageError<C>>>,
+        tx: OneshotSenderOf<C, Result<(LogId<C::NodeId>, Vec<C::R>), StorageError<C>>>,
     ) -> Self {
         Self { last_log_id, tx }
     }

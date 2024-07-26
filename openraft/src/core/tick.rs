@@ -7,7 +7,6 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use futures::future::Either;
-use tokio::sync::oneshot;
 use tracing::Instrument;
 use tracing::Level;
 use tracing::Span;
@@ -16,6 +15,9 @@ use crate::async_runtime::MpscUnboundedSender;
 use crate::core::notification::Notification;
 use crate::type_config::alias::JoinHandleOf;
 use crate::type_config::alias::MpscUnboundedSenderOf;
+use crate::type_config::alias::OneshotReceiverOf;
+use crate::type_config::alias::OneshotSenderOf;
+use crate::type_config::async_runtime::oneshot::OneshotSender;
 use crate::type_config::TypeConfigExt;
 use crate::RaftTypeConfig;
 
@@ -35,7 +37,7 @@ pub(crate) struct TickHandle<C>
 where C: RaftTypeConfig
 {
     enabled: Arc<AtomicBool>,
-    shutdown: Mutex<Option<oneshot::Sender<()>>>,
+    shutdown: Mutex<Option<OneshotSenderOf<C, ()>>>,
     join_handle: Mutex<Option<JoinHandleOf<C, ()>>>,
 }
 
@@ -66,7 +68,7 @@ where C: RaftTypeConfig
             tx,
         };
 
-        let (shutdown, shutdown_rx) = oneshot::channel();
+        let (shutdown, shutdown_rx) = C::oneshot();
 
         let shutdown = Mutex::new(Some(shutdown));
 
@@ -83,7 +85,7 @@ where C: RaftTypeConfig
         }
     }
 
-    pub(crate) async fn tick_loop(self, mut cancel_rx: oneshot::Receiver<()>) {
+    pub(crate) async fn tick_loop(self, mut cancel_rx: OneshotReceiverOf<C, ()>) {
         let mut i = 0;
 
         let mut cancel = std::pin::pin!(cancel_rx);
