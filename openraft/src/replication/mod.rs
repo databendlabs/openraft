@@ -19,7 +19,6 @@ use request::Replicate;
 use response::ReplicationResult;
 pub(crate) use response::Response;
 use tokio::select;
-use tokio::sync::oneshot;
 use tokio::sync::Mutex;
 use tracing_futures::Instrument;
 
@@ -57,6 +56,8 @@ use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::MpscUnboundedReceiverOf;
 use crate::type_config::alias::MpscUnboundedSenderOf;
 use crate::type_config::alias::MpscUnboundedWeakSenderOf;
+use crate::type_config::alias::OneshotReceiverOf;
+use crate::type_config::alias::OneshotSenderOf;
 use crate::type_config::TypeConfigExt;
 use crate::LogId;
 use crate::RaftLogId;
@@ -120,7 +121,7 @@ where
     /// It includes a cancel signaler and the join handle of the snapshot replication task.
     /// When ReplicationCore is dropped, this Sender is dropped, the snapshot task will be notified
     /// to quit.
-    snapshot_state: Option<(oneshot::Sender<()>, JoinHandleOf<C, ()>)>,
+    snapshot_state: Option<(OneshotSenderOf<C, ()>, JoinHandleOf<C, ()>)>,
 
     /// The backoff policy if an [`Unreachable`](`crate::error::Unreachable`) error is returned.
     /// It will be reset to `None` when an successful response is received.
@@ -731,7 +732,7 @@ where
         let mut option = RPCOption::new(self.config.install_snapshot_timeout());
         option.snapshot_chunk_size = Some(self.config.snapshot_max_chunk_size as usize);
 
-        let (tx_cancel, rx_cancel) = oneshot::channel();
+        let (tx_cancel, rx_cancel) = <C as TypeConfigExt>::oneshot();
 
         let jh = C::spawn(Self::send_snapshot(
             request_id,
@@ -757,7 +758,7 @@ where
         vote: Vote<C::NodeId>,
         snapshot: Snapshot<C>,
         option: RPCOption,
-        cancel: oneshot::Receiver<()>,
+        cancel: OneshotReceiverOf<C, ()>,
         weak_tx: MpscUnboundedWeakSenderOf<C, Replicate<C>>,
     ) {
         let meta = snapshot.meta.clone();
