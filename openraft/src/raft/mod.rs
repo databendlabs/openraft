@@ -30,6 +30,7 @@ use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
 
+use async_lock::Mutex;
 use core_state::CoreState;
 pub use message::AppendEntriesRequest;
 pub use message::AppendEntriesResponse;
@@ -40,7 +41,6 @@ pub use message::InstallSnapshotResponse;
 pub use message::SnapshotResponse;
 pub use message::VoteRequest;
 pub use message::VoteResponse;
-use tokio::sync::Mutex;
 use tracing::trace_span;
 use tracing::Instrument;
 use tracing::Level;
@@ -168,7 +168,7 @@ macro_rules! declare_raft_types {
                 (NodeId       , , u64                                   ),
                 (Node         , , $crate::impls::BasicNode              ),
                 (Entry        , , $crate::impls::Entry<Self>            ),
-                (SnapshotData , , Cursor<Vec<u8>>                       ),
+                (SnapshotData , , std::io::Cursor<Vec<u8>>                       ),
                 (Responder    , , $crate::impls::OneshotResponder<Self> ),
                 (AsyncRuntime , , $crate::impls::TokioRuntime           ),
             );
@@ -437,6 +437,7 @@ where C: RaftTypeConfig
     /// If receiving is finished `done == true`, it installs the snapshot to the state machine.
     /// Nothing will be done if the input snapshot is older than the state machine.
     #[tracing::instrument(level = "debug", skip_all)]
+    #[cfg(feature = "tokio-rt")]
     pub async fn install_snapshot(
         &self,
         req: InstallSnapshotRequest<C>,

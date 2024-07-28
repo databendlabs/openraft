@@ -49,8 +49,10 @@ pub trait Instant:
     }
 }
 
+#[cfg(feature = "tokio-rt")]
 pub type TokioInstant = tokio::time::Instant;
 
+#[cfg(feature = "tokio-rt")]
 impl Instant for tokio::time::Instant {
     #[inline]
     fn now() -> Self {

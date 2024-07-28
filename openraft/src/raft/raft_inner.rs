@@ -3,7 +3,7 @@ use std::fmt::Debug;
 use std::future::Future;
 use std::sync::Arc;
 
-use tokio::sync::Mutex;
+use async_lock::Mutex;
 use tracing::Level;
 
 use crate::async_runtime::MpscUnboundedSender;
@@ -46,6 +46,8 @@ where C: RaftTypeConfig
     pub(in crate::raft) core_state: Mutex<CoreState<C>>,
 
     /// The ongoing snapshot transmission.
+    #[cfg_attr(not(feature = "tokio-rt"), allow(dead_code))]
+    // This field will only be read when feature tokio-rt is on
     pub(in crate::raft) snapshot: Mutex<Option<crate::network::snapshot_transport::Streaming<C>>>,
 }
 

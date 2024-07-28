@@ -1,6 +1,8 @@
 use core::time::Duration;
 use std::collections::BTreeSet;
 
+use futures::FutureExt;
+
 use crate::async_runtime::watch::WatchReceiver;
 use crate::core::ServerState;
 use crate::metrics::Condition;
@@ -62,12 +64,12 @@ where C: RaftTypeConfig
             tracing::debug!(?sleep_time, "wait timeout");
             let delay = C::sleep(sleep_time);
 
-            tokio::select! {
-                _ = delay => {
+            futures::select_biased! {
+                _ = delay.fuse() => {
                 tracing::debug!( "id={} timeout wait {:} latest: {}", latest.id, msg.to_string(), latest );
                     return Err(WaitError::Timeout(self.timeout, format!("{} latest: {}", msg.to_string(), latest)));
                 }
-                changed = rx.changed() => {
+                changed = rx.changed().fuse() => {
                     match changed {
                         Ok(_) => {
                             // metrics changed, continue the waiting loop
