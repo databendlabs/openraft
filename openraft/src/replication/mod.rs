@@ -19,7 +19,6 @@ use request::Replicate;
 use response::ReplicationResult;
 pub(crate) use response::Response;
 use tokio::select;
-use tokio::sync::Mutex;
 use tracing_futures::Instrument;
 
 use crate::async_runtime::MpscUnboundedReceiver;
@@ -50,6 +49,7 @@ use crate::replication::request_id::RequestId;
 use crate::storage::RaftLogReader;
 use crate::storage::RaftLogStorage;
 use crate::storage::Snapshot;
+use crate::sync::Mutex;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::JoinHandleOf;
 use crate::type_config::alias::LogIdOf;
@@ -114,7 +114,7 @@ where
     /// Another `RaftNetwork` specific for snapshot replication.
     ///
     /// Snapshot transmitting is a long running task, and is processed in a separate task.
-    snapshot_network: Arc<Mutex<N::Network>>,
+    snapshot_network: Arc<Mutex<C, N::Network>>,
 
     /// The current snapshot replication state.
     ///
@@ -754,7 +754,7 @@ where
 
     async fn send_snapshot(
         request_id: RequestId,
-        network: Arc<Mutex<N::Network>>,
+        network: Arc<Mutex<C, N::Network>>,
         vote: Vote<C::NodeId>,
         snapshot: Snapshot<C>,
         option: RPCOption,

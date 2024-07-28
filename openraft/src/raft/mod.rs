@@ -37,7 +37,6 @@ pub use message::InstallSnapshotResponse;
 pub use message::SnapshotResponse;
 pub use message::VoteRequest;
 pub use message::VoteResponse;
-use tokio::sync::Mutex;
 use tracing::trace_span;
 use tracing::Instrument;
 use tracing::Level;
@@ -78,6 +77,7 @@ pub use crate::raft::runtime_config_handle::RuntimeConfigHandle;
 use crate::raft::trigger::Trigger;
 use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
+use crate::sync::Mutex;
 use crate::type_config::alias::JoinErrorOf;
 use crate::type_config::alias::ResponderOf;
 use crate::type_config::alias::ResponderReceiverOf;
@@ -318,7 +318,7 @@ where C: RaftTypeConfig
             rx_metrics,
             rx_data_metrics,
             rx_server_metrics,
-            tx_shutdown: Mutex::new(Some(tx_shutdown)),
+            tx_shutdown: std::sync::Mutex::new(Some(tx_shutdown)),
             core_state: Mutex::new(CoreState::Running(core_handle)),
 
             snapshot: Mutex::new(None),
@@ -919,7 +919,7 @@ where C: RaftTypeConfig
     ///
     /// It sends a shutdown signal and waits until `RaftCore` returns.
     pub async fn shutdown(&self) -> Result<(), JoinErrorOf<C>> {
-        if let Some(tx) = self.inner.tx_shutdown.lock().await.take() {
+        if let Some(tx) = self.inner.tx_shutdown.lock().unwrap().take() {
             // A failure to send means the RaftCore is already shutdown. Continue to check the task
             // return value.
             let send_res = tx.send(());

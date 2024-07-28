@@ -3,7 +3,6 @@ use std::fmt::Debug;
 use std::future::Future;
 use std::sync::Arc;
 
-use tokio::sync::Mutex;
 use tracing::Level;
 
 use crate::async_runtime::MpscUnboundedSender;
@@ -16,6 +15,7 @@ use crate::error::RaftError;
 use crate::metrics::RaftDataMetrics;
 use crate::metrics::RaftServerMetrics;
 use crate::raft::core_state::CoreState;
+use crate::sync::Mutex;
 use crate::type_config::alias::MpscUnboundedSenderOf;
 use crate::type_config::alias::OneshotReceiverOf;
 use crate::type_config::alias::OneshotSenderOf;
@@ -40,13 +40,12 @@ where C: RaftTypeConfig
     pub(in crate::raft) rx_data_metrics: WatchReceiverOf<C, RaftDataMetrics<C>>,
     pub(in crate::raft) rx_server_metrics: WatchReceiverOf<C, RaftServerMetrics<C>>,
 
-    // TODO(xp): it does not need to be a async mutex.
     #[allow(clippy::type_complexity)]
-    pub(in crate::raft) tx_shutdown: Mutex<Option<OneshotSenderOf<C, ()>>>,
-    pub(in crate::raft) core_state: Mutex<CoreState<C>>,
+    pub(in crate::raft) tx_shutdown: std::sync::Mutex<Option<OneshotSenderOf<C, ()>>>,
+    pub(in crate::raft) core_state: Mutex<C, CoreState<C>>,
 
     /// The ongoing snapshot transmission.
-    pub(in crate::raft) snapshot: Mutex<Option<crate::network::snapshot_transport::Streaming<C>>>,
+    pub(in crate::raft) snapshot: Mutex<C, Option<crate::network::snapshot_transport::Streaming<C>>>,
 }
 
 impl<C> RaftInner<C>
