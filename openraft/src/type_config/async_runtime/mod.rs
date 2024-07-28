@@ -4,8 +4,10 @@
 //! `async-std`, etc.
 
 pub(crate) mod impls {
+    #[cfg(feature = "tokio-rt")]
     mod tokio_runtime;
 
+    #[cfg(feature = "tokio-rt")]
     pub use tokio_runtime::TokioRuntime;
 }
 pub mod mpsc_unbounded;

@@ -299,6 +299,7 @@ where C: RaftTypeConfig
         self.key_log_ids.last()
     }
 
+    #[cfg(feature = "tokio-rt")]
     pub(crate) fn key_log_ids(&self) -> &[LogId<C::NodeId>] {
         &self.key_log_ids
     }

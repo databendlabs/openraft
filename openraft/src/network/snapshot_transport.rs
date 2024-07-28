@@ -2,17 +2,24 @@
 //! AsyncWrite + AsyncRead + AsyncSeek + Unpin.
 
 use std::future::Future;
+#[cfg(feature = "tokio-rt")]
 use std::io::SeekFrom;
+#[cfg(feature = "tokio-rt")]
 use std::time::Duration;
 
+#[cfg(feature = "tokio-rt")]
 use futures::FutureExt;
 use openraft_macros::add_async_trait;
+#[cfg(feature = "tokio-rt")]
 use tokio::io::AsyncReadExt;
+#[cfg(feature = "tokio-rt")]
 use tokio::io::AsyncSeekExt;
+#[cfg(feature = "tokio-rt")]
 use tokio::io::AsyncWriteExt;
 
 use crate::error::Fatal;
 use crate::error::InstallSnapshotError;
+#[cfg(feature = "tokio-rt")]
 use crate::error::RPCError;
 use crate::error::RaftError;
 use crate::error::ReplicationClosed;
@@ -20,8 +27,11 @@ use crate::error::StreamingError;
 use crate::network::RPCOption;
 use crate::raft::InstallSnapshotRequest;
 use crate::raft::SnapshotResponse;
+#[cfg(feature = "tokio-rt")]
 use crate::type_config::TypeConfigExt;
+#[cfg(feature = "tokio-rt")]
 use crate::ErrorSubject;
+#[cfg(feature = "tokio-rt")]
 use crate::ErrorVerb;
 use crate::OptionalSend;
 use crate::Raft;
@@ -29,7 +39,9 @@ use crate::RaftNetwork;
 use crate::RaftTypeConfig;
 use crate::Snapshot;
 use crate::SnapshotId;
+#[cfg(feature = "tokio-rt")]
 use crate::StorageError;
+#[cfg(feature = "tokio-rt")]
 use crate::ToStorageResult;
 use crate::Vote;
 
@@ -94,6 +106,7 @@ pub trait SnapshotTransport<C: RaftTypeConfig> {
 pub struct Chunked {}
 
 /// This chunk based implementation requires `SnapshotData` to be `AsyncRead + AsyncSeek`.
+#[cfg(feature = "tokio-rt")]
 impl<C: RaftTypeConfig> SnapshotTransport<C> for Chunked
 where C::SnapshotData: tokio::io::AsyncRead + tokio::io::AsyncWrite + tokio::io::AsyncSeek + Unpin
 {
@@ -282,6 +295,8 @@ pub struct Streaming<C>
 where C: RaftTypeConfig
 {
     /// The offset of the last byte written to the snapshot.
+    #[cfg_attr(not(feature = "tokio-rt"), allow(dead_code))]
+    // This field will only be read when feature tokio-rt is on
     offset: u64,
 
     /// The ID of the snapshot being written.
@@ -312,6 +327,7 @@ where C: RaftTypeConfig
     }
 }
 
+#[cfg(feature = "tokio-rt")]
 impl<C> Streaming<C>
 where
     C: RaftTypeConfig,

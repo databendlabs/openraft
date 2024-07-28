@@ -62,6 +62,7 @@ pub mod metrics;
 pub mod network;
 pub mod raft;
 pub mod storage;
+#[cfg(feature = "tokio-rt")]
 pub mod testing;
 pub mod type_config;
 
@@ -72,6 +73,7 @@ pub use anyerror;
 pub use anyerror::AnyError;
 pub use openraft_macros::add_async_trait;
 pub use type_config::async_runtime;
+#[cfg(feature = "tokio-rt")]
 pub use type_config::async_runtime::impls::TokioRuntime;
 pub use type_config::AsyncRuntime;
 
@@ -86,6 +88,7 @@ pub use crate::core::ServerState;
 pub use crate::entry::Entry;
 pub use crate::entry::EntryPayload;
 pub use crate::instant::Instant;
+#[cfg(feature = "tokio-rt")]
 pub use crate::instant::TokioInstant;
 pub use crate::log_id::LogId;
 pub use crate::log_id::LogIdOptionExt;
