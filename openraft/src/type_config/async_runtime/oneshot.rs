@@ -25,6 +25,8 @@ pub trait Oneshot {
     where T: OptionalSend;
 }
 
+/// This `Sender` must implement `Drop` to notify the [`Oneshot::Receiver`] that the sending end has
+/// been dropped, causing the receiver to return a [`Oneshot::ReceiverError`].
 pub trait OneshotSender<T>: OptionalSend + OptionalSync + Sized
 where T: OptionalSend
 {

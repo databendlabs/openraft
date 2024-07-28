@@ -62,6 +62,7 @@ pub mod metrics;
 pub mod network;
 pub mod raft;
 pub mod storage;
+pub mod sync;
 pub mod testing;
 pub mod type_config;
 

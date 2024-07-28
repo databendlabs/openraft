@@ -3,7 +3,6 @@ use std::fmt::Debug;
 use std::future::Future;
 use std::sync::Arc;
 
-use tokio::sync::Mutex;
 use tracing::Level;
 
 use crate::async_runtime::watch::WatchReceiver;
@@ -18,6 +17,7 @@ use crate::error::RaftError;
 use crate::metrics::RaftDataMetrics;
 use crate::metrics::RaftServerMetrics;
 use crate::raft::core_state::CoreState;
+use crate::sync::Mutex;
 use crate::type_config::alias::AsyncRuntimeOf;
 use crate::type_config::alias::MpscUnboundedSenderOf;
 use crate::type_config::alias::OneshotReceiverOf;
@@ -48,7 +48,7 @@ where C: RaftTypeConfig
     pub(in crate::raft) core_state: std::sync::Mutex<CoreState<C>>,
 
     /// The ongoing snapshot transmission.
-    pub(in crate::raft) snapshot: Mutex<Option<crate::network::snapshot_transport::Streaming<C>>>,
+    pub(in crate::raft) snapshot: Mutex<C, Option<crate::network::snapshot_transport::Streaming<C>>>,
 }
 
 impl<C> RaftInner<C>
