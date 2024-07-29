@@ -73,7 +73,7 @@ pub use anyerror::AnyError;
 pub use openraft_macros::add_async_trait;
 pub use type_config::async_runtime;
 #[cfg(feature = "tokio-rt")]
-pub use type_config::async_runtime::impls::TokioRuntime;
+pub use type_config::async_runtime::tokio_impls::TokioRuntime;
 pub use type_config::AsyncRuntime;
 
 pub use crate::change_members::ChangeMembers;
