@@ -40,9 +40,7 @@ where C: RaftTypeConfig
     pub(in crate::raft) rx_data_metrics: WatchReceiverOf<C, RaftDataMetrics<C>>,
     pub(in crate::raft) rx_server_metrics: WatchReceiverOf<C, RaftServerMetrics<C>>,
 
-    // TODO(xp): it does not need to be a async mutex.
-    #[allow(clippy::type_complexity)]
-    pub(in crate::raft) tx_shutdown: Mutex<Option<OneshotSenderOf<C, ()>>>,
+    pub(in crate::raft) tx_shutdown: std::sync::Mutex<Option<OneshotSenderOf<C, ()>>>,
     pub(in crate::raft) core_state: Mutex<CoreState<C>>,
 
     /// The ongoing snapshot transmission.
