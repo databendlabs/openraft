@@ -97,8 +97,6 @@ pub struct MemStoreStateMachine {
 
     pub last_membership: StoredMembership<TypeConfig>,
 
-    /// A mapping of client IDs to their state info.
-    pub client_serial_responses: HashMap<String, (u64, Option<String>)>,
     /// The current status of a client by ID.
     pub client_status: HashMap<String, String>,
 }
@@ -448,14 +446,7 @@ impl RaftStateMachine<TypeConfig> for Arc<MemStateMachine> {
             match entry.payload {
                 EntryPayload::Blank => res.push(ClientResponse(None)),
                 EntryPayload::Normal(ref data) => {
-                    if let Some((serial, r)) = sm.client_serial_responses.get(&data.client) {
-                        if serial == &data.serial {
-                            res.push(ClientResponse(r.clone()));
-                            continue;
-                        }
-                    }
                     let previous = sm.client_status.insert(data.client.clone(), data.status.clone());
-                    sm.client_serial_responses.insert(data.client.clone(), (data.serial, previous.clone()));
                     res.push(ClientResponse(previous));
                 }
                 EntryPayload::Membership(ref mem) => {
