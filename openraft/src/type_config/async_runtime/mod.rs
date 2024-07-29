@@ -3,11 +3,10 @@
 //! `async` runtime is an abstraction over different asynchronous runtimes, such as `tokio`,
 //! `async-std`, etc.
 
-pub(crate) mod impls {
-    #[cfg(feature = "tokio-rt")]
-    mod tokio_runtime;
+pub(crate) mod tokio_impls {
+    #![cfg(feature = "tokio-rt")]
 
-    #[cfg(feature = "tokio-rt")]
+    mod tokio_runtime;
     pub use tokio_runtime::TokioRuntime;
 }
 pub mod mpsc_unbounded;
