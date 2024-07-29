@@ -66,7 +66,7 @@ where C: RaftTypeConfig
 
             futures::select_biased! {
                 _ = delay.fuse() => {
-                tracing::debug!( "id={} timeout wait {:} latest: {}", latest.id, msg.to_string(), latest );
+                    tracing::debug!( "id={} timeout wait {:} latest: {}", latest.id, msg.to_string(), latest );
                     return Err(WaitError::Timeout(self.timeout, format!("{} latest: {}", msg.to_string(), latest)));
                 }
                 changed = rx.changed().fuse() => {
