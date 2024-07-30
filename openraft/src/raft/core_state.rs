@@ -1,6 +1,7 @@
 use crate::error::Fatal;
 use crate::error::Infallible;
 use crate::type_config::alias::JoinHandleOf;
+use crate::type_config::alias::WatchReceiverOf;
 use crate::RaftTypeConfig;
 
 /// The running state of RaftCore
@@ -9,6 +10,9 @@ where C: RaftTypeConfig
 {
     /// The RaftCore task is still running.
     Running(JoinHandleOf<C, Result<Infallible, Fatal<C>>>),
+
+    /// The RaftCore task is waiting for a signal to finish joining.
+    Joining(WatchReceiverOf<C, bool>),
 
     /// The RaftCore task has finished. The return value of the task is stored.
     Done(Result<Infallible, Fatal<C>>),
