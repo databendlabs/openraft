@@ -319,7 +319,7 @@ where C: RaftTypeConfig
             rx_data_metrics,
             rx_server_metrics,
             tx_shutdown: std::sync::Mutex::new(Some(tx_shutdown)),
-            core_state: Mutex::new(CoreState::Running(core_handle)),
+            core_state: std::sync::Mutex::new(CoreState::Running(core_handle)),
 
             snapshot: Mutex::new(None),
         };
@@ -828,7 +828,7 @@ where C: RaftTypeConfig
         tracing::debug!("{} receives result is error: {:?}", func_name!(), recv_res.is_err());
 
         let Ok(v) = recv_res else {
-            if self.inner.is_core_running().await {
+            if self.inner.is_core_running() {
                 return Ok(Err(InvalidStateMachineType::new::<SM>()));
             } else {
                 let fatal = self.inner.get_core_stopped_error("receiving rx from RaftCore", None::<&'static str>).await;
