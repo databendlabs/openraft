@@ -6,6 +6,8 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::Level;
 
+use crate::async_runtime::watch::WatchReceiver;
+use crate::async_runtime::watch::WatchSender;
 use crate::async_runtime::MpscUnboundedSender;
 use crate::config::RuntimeConfig;
 use crate::core::raft_msg::external_command::ExternalCommand;
@@ -16,11 +18,13 @@ use crate::error::RaftError;
 use crate::metrics::RaftDataMetrics;
 use crate::metrics::RaftServerMetrics;
 use crate::raft::core_state::CoreState;
+use crate::type_config::alias::AsyncRuntimeOf;
 use crate::type_config::alias::MpscUnboundedSenderOf;
 use crate::type_config::alias::OneshotReceiverOf;
 use crate::type_config::alias::OneshotSenderOf;
 use crate::type_config::alias::WatchReceiverOf;
 use crate::type_config::AsyncRuntime;
+use crate::type_config::TypeConfigExt;
 use crate::Config;
 use crate::OptionalSend;
 use crate::RaftMetrics;
@@ -41,7 +45,7 @@ where C: RaftTypeConfig
     pub(in crate::raft) rx_server_metrics: WatchReceiverOf<C, RaftServerMetrics<C>>,
 
     pub(in crate::raft) tx_shutdown: std::sync::Mutex<Option<OneshotSenderOf<C, ()>>>,
-    pub(in crate::raft) core_state: Mutex<CoreState<C>>,
+    pub(in crate::raft) core_state: std::sync::Mutex<CoreState<C>>,
 
     /// The ongoing snapshot transmission.
     pub(in crate::raft) snapshot: Mutex<Option<crate::network::snapshot_transport::Streaming<C>>>,
@@ -129,8 +133,8 @@ where C: RaftTypeConfig
         Ok(())
     }
 
-    pub(in crate::raft) async fn is_core_running(&self) -> bool {
-        let state = self.core_state.lock().await;
+    pub(in crate::raft) fn is_core_running(&self) -> bool {
+        let state = self.core_state.lock().unwrap();
         state.is_running()
     }
 
@@ -145,7 +149,7 @@ where C: RaftTypeConfig
 
         // Retrieve the result.
         let core_res = {
-            let state = self.core_state.lock().await;
+            let state = self.core_state.lock().unwrap();
             if let CoreState::Done(core_task_res) = &*state {
                 core_task_res.clone()
             } else {
@@ -170,15 +174,40 @@ where C: RaftTypeConfig
     /// Wait for `RaftCore` task to finish and record the returned value from the task.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(in crate::raft) async fn join_core_task(&self) {
-        let mut state = self.core_state.lock().await;
-        match &mut *state {
-            CoreState::Running(handle) => {
-                let res = handle.await;
-                tracing::info!(res = debug(&res), "RaftCore exited");
+        // Get the Running state of RaftCore,
+        // or an error if RaftCore has been in Joining state.
+        let running_res = {
+            let mut state = self.core_state.lock().unwrap();
 
-                let core_task_res = match res {
+            match &*state {
+                CoreState::Running(_) => {
+                    let (tx, rx) = C::watch_channel::<bool>(false);
+
+                    let prev = std::mem::replace(&mut *state, CoreState::Joining(rx));
+
+                    let CoreState::Running(join_handle) = prev else {
+                        unreachable!()
+                    };
+
+                    Ok((join_handle, tx))
+                }
+                CoreState::Joining(watch_rx) => Err(watch_rx.clone()),
+                CoreState::Done(_) => {
+                    // RaftCore has already finished exiting, nothing to do
+                    return;
+                }
+            }
+        };
+
+        match running_res {
+            Ok((join_handle, tx)) => {
+                let join_res = join_handle.await;
+
+                tracing::info!(res = debug(&join_res), "RaftCore exited");
+
+                let core_task_res = match join_res {
                     Err(err) => {
-                        if C::AsyncRuntime::is_panic(&err) {
+                        if AsyncRuntimeOf::<C>::is_panic(&err) {
                             Err(Fatal::Panicked)
                         } else {
                             Err(Fatal::Stopped)
@@ -187,10 +216,15 @@ where C: RaftTypeConfig
                     Ok(returned_res) => returned_res,
                 };
 
-                *state = CoreState::Done(core_task_res);
+                {
+                    let mut state = self.core_state.lock().unwrap();
+                    *state = CoreState::Done(core_task_res);
+                }
+                tx.send(true).ok();
             }
-            CoreState::Done(_) => {
-                // RaftCore has already quit, nothing to do
+            Err(mut rx) => {
+                // Other thread is waiting for the core to finish.
+                let _ = rx.changed().await;
             }
         }
     }
