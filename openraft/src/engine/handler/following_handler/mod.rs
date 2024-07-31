@@ -172,7 +172,11 @@ where C: RaftTypeConfig
         );
 
         if let Some(prev_committed) = self.state.update_committed(&committed) {
-            self.output.push_command(Command::Commit {
+            self.output.push_command(Command::SaveCommitted {
+                committed: committed.unwrap(),
+            });
+
+            self.output.push_command(Command::Apply {
                 already_committed: prev_committed,
                 upto: committed.unwrap(),
             });

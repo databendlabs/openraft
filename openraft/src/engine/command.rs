@@ -65,6 +65,12 @@ where C: RaftTypeConfig
     /// Replicate the committed log id to other nodes
     ReplicateCommitted { committed: Option<LogId<C::NodeId>> },
 
+    /// Save the committed log id to [`RaftLogStorage`].
+    ///
+    /// Upon startup, the saved committed log ids will be re-applied to state machine to restore the
+    /// latest state.
+    SaveCommitted { committed: LogId<C::NodeId> },
+
     /// Commit log entries that are already persisted in the store, upto `upto`, inclusive.
     ///
     /// To `commit` logs, [`RaftLogStorage::save_committed()`] is called. And then committed logs
@@ -74,8 +80,7 @@ where C: RaftTypeConfig
     ///
     /// [`RaftLogStorage::save_committed()`]: crate::storage::RaftLogStorage::save_committed
     /// [`RaftStateMachine::apply()`]: crate::storage::RaftStateMachine::apply
-    Commit {
-        // TODO: pass the log id list or entries?
+    Apply {
         already_committed: Option<LogId<C::NodeId>>,
         upto: LogId<C::NodeId>,
     },
@@ -136,10 +141,11 @@ where C: RaftTypeConfig
             Command::ReplicateCommitted { committed } => {
                 write!(f, "ReplicateCommitted: {}", committed.display())
             }
-            Command::Commit {
+            Command::SaveCommitted { committed } => write!(f, "SaveCommitted: {}", committed),
+            Command::Apply {
                 already_committed,
                 upto,
-            } => write!(f, "Commit: ({}, {}]", already_committed.display(), upto),
+            } => write!(f, "Apply: ({}, {}]", already_committed.display(), upto),
             Command::Replicate { target, req } => {
                 write!(f, "Replicate: target={}, req: {}", target, req)
             }
@@ -176,7 +182,8 @@ where
             (Command::UpdateIOProgress { when, io_id },        Command::UpdateIOProgress { when: wb, io_id: ab }, )                  => when == wb && io_id == ab,
             (Command::AppendInputEntries { committed_vote: vote, entries },    Command::AppendInputEntries { committed_vote: vb, entries: b }, )               => vote == vb && entries == b,
             (Command::ReplicateCommitted { committed },        Command::ReplicateCommitted { committed: b }, )                       => committed == b,
-            (Command::Commit { already_committed, upto, },     Command::Commit { already_committed: b_committed, upto: b_upto, }, )  => already_committed == b_committed && upto == b_upto,
+            (Command::SaveCommitted { committed },             Command::SaveCommitted { committed: b })                              => committed == b,
+            (Command::Apply { already_committed, upto, },      Command::Apply { already_committed: b_committed, upto: b_upto, }, )  => already_committed == b_committed && upto == b_upto,
             (Command::Replicate { target, req },               Command::Replicate { target: b_target, req: other_req, }, )           => target == b_target && req == other_req,
             (Command::RebuildReplicationStreams { targets },   Command::RebuildReplicationStreams { targets: b }, )                  => targets == b,
             (Command::SaveVote { vote },                       Command::SaveVote { vote: b })                                        => vote == b,
@@ -199,21 +206,23 @@ where C: RaftTypeConfig
         match self {
             Command::RebuildReplicationStreams { .. } => CommandKind::Main,
             Command::Respond { .. }                   => CommandKind::Main,
+            // Apply is firstly handled by RaftCore, then forwarded to state machine worker.
+            // TODO: Apply also write `committed` to log-store, which should be run in CommandKind::Log
 
-            Command::UpdateIOProgress { .. }            => CommandKind::Log,
+            Command::UpdateIOProgress { .. }          => CommandKind::Log,
             Command::AppendInputEntries { .. }        => CommandKind::Log,
             Command::SaveVote { .. }                  => CommandKind::Log,
-            Command::PurgeLog { .. }                  => CommandKind::Log,
             Command::TruncateLog { .. }               => CommandKind::Log,
+            Command::SaveCommitted { .. }             => CommandKind::Log,
+
+            Command::PurgeLog { .. }                  => CommandKind::Log,
 
             Command::ReplicateCommitted { .. }        => CommandKind::Network,
             Command::Replicate { .. }                 => CommandKind::Network,
             Command::SendVote { .. }                  => CommandKind::Network,
 
+            Command::Apply { .. }                     => CommandKind::StateMachine,
             Command::StateMachine { .. }              => CommandKind::StateMachine,
-            // Apply is firstly handled by RaftCore, then forwarded to state machine worker.
-            // TODO: Apply also write `committed` to log-store, which should be run in CommandKind::Log
-            Command::Commit { .. }                    => CommandKind::Main,
         }
     }
 
@@ -221,18 +230,22 @@ where C: RaftTypeConfig
     #[rustfmt::skip]
     pub(crate) fn condition(&self) -> Option<Condition<C>> {
         match self {
+            Command::RebuildReplicationStreams { .. } => None,
+            Command::Respond { when, .. }             => *when,
+
             Command::UpdateIOProgress { when, .. }    => *when,
             Command::AppendInputEntries { .. }        => None,
-            Command::ReplicateCommitted { .. }        => None,
-            // TODO: Apply also write `committed` to log-store, which should be run in CommandKind::Log
-            Command::Commit { .. }                    => None,
-            Command::Replicate { .. }                 => None,
-            Command::RebuildReplicationStreams { .. } => None,
             Command::SaveVote { .. }                  => None,
-            Command::SendVote { .. }                  => None,
-            Command::PurgeLog { upto }                => Some(Condition::Snapshot { log_id: Some(*upto) }),
             Command::TruncateLog { .. }               => None,
-            Command::Respond { when, .. }             => *when,
+            Command::SaveCommitted { .. }             => None,
+
+            Command::PurgeLog { upto }                => Some(Condition::Snapshot { log_id: Some(*upto) }),
+
+            Command::ReplicateCommitted { .. }        => None,
+            Command::Replicate { .. }                 => None,
+            Command::SendVote { .. }                  => None,
+
+            Command::Apply { .. }                     => None,
             Command::StateMachine { .. }              => None,
         }
     }

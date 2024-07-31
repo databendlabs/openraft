@@ -37,6 +37,7 @@ pub use message::InstallSnapshotResponse;
 pub use message::SnapshotResponse;
 pub use message::VoteRequest;
 pub use message::VoteResponse;
+use openraft_macros::since;
 use tracing::trace_span;
 use tracing::Instrument;
 use tracing::Level;
@@ -807,6 +808,7 @@ where C: RaftTypeConfig
     ///     async move { sm.last_applied().await }
     /// }).await?;
     /// ```
+    #[since(version = "0.10.0")]
     pub async fn with_state_machine<F, SM, V>(&self, func: F) -> Result<Result<V, InvalidStateMachineType>, Fatal<C>>
     where
         SM: RaftStateMachine<C>,
@@ -849,6 +851,7 @@ where C: RaftTypeConfig
     /// destroyed right away and not called at all.
     ///
     /// If the input `SM` is different from the one in `RaftCore`, it just silently ignores it.
+    #[since(version = "0.10.0")]
     pub fn external_state_machine_request<F, SM>(&self, req: F)
     where
         SM: 'static,
