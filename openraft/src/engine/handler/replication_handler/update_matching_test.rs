@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use maplit::btreeset;
 use pretty_assertions::assert_eq;
@@ -10,11 +11,11 @@ use crate::progress::Inflight;
 use crate::progress::Progress;
 use crate::raft_state::LogStateReader;
 use crate::testing::log_id;
-use crate::utime::UTime;
+use crate::type_config::TypeConfigExt;
+use crate::utime::Leased;
 use crate::EffectiveMembership;
 use crate::Membership;
 use crate::MembershipState;
-use crate::TokioInstant;
 use crate::Vote;
 
 fn m01() -> Membership<UTConfig> {
@@ -30,7 +31,11 @@ fn eng() -> Engine<UTConfig> {
     eng.state.enable_validation(false); // Disable validation for incomplete state
 
     eng.config.id = 2;
-    eng.state.vote = UTime::new(TokioInstant::now(), Vote::new_committed(2, 1));
+    eng.state.vote = Leased::new(
+        UTConfig::<()>::now(),
+        Duration::from_millis(500),
+        Vote::new_committed(2, 1),
+    );
     eng.state.membership_state = MembershipState::new(
         Arc::new(EffectiveMembership::new(Some(log_id(1, 1, 1)), m01())),
         Arc::new(EffectiveMembership::new(Some(log_id(2, 1, 3)), m123())),

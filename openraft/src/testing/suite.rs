@@ -435,7 +435,11 @@ where
     pub async fn get_initial_state_without_init(mut store: LS, mut sm: SM) -> Result<(), StorageError<C>> {
         let initial = StorageHelper::new(&mut store, &mut sm).get_initial_state().await?;
         let mut want = RaftState::<C>::default();
-        want.vote.update(initial.vote.utime().unwrap(), Vote::default());
+        want.vote.update(
+            initial.vote.last_update().unwrap(),
+            Duration::default(),
+            Vote::default(),
+        );
         want.io_state.io_progress.accept(IOId::new(Vote::default()));
         want.io_state.io_progress.submit(IOId::new(Vote::default()));
         want.io_state.io_progress.flush(IOId::new(Vote::default()));

@@ -7,7 +7,7 @@ use validit::Validate;
 use crate::engine::LogIdList;
 use crate::error::ForwardToLeader;
 use crate::log_id::RaftLogId;
-use crate::utime::UTime;
+use crate::utime::Leased;
 use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::RaftTypeConfig;
@@ -49,7 +49,7 @@ pub struct RaftState<C>
 where C: RaftTypeConfig
 {
     /// The vote state of this node.
-    pub(crate) vote: UTime<Vote<C::NodeId>, InstantOf<C>>,
+    pub(crate) vote: Leased<Vote<C::NodeId>, InstantOf<C>>,
 
     /// The LogId of the last log committed(AKA applied) to the state machine.
     ///
@@ -90,7 +90,7 @@ where C: RaftTypeConfig
 {
     fn default() -> Self {
         Self {
-            vote: UTime::default(),
+            vote: Leased::default(),
             committed: None,
             purged_next: 0,
             log_ids: LogIdList::default(),
@@ -193,7 +193,7 @@ where C: RaftTypeConfig
 
     /// Return the last updated time of the vote.
     pub fn vote_last_modified(&self) -> Option<InstantOf<C>> {
-        self.vote.utime()
+        self.vote.last_update()
     }
 
     pub(crate) fn is_initialized(&self) -> bool {

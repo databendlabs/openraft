@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use maplit::btreeset;
 use pretty_assertions::assert_eq;
@@ -11,11 +12,11 @@ use crate::raft_state::IOId;
 use crate::raft_state::LogStateReader;
 use crate::testing::blank_ent;
 use crate::testing::log_id;
-use crate::utime::UTime;
+use crate::type_config::TypeConfigExt;
+use crate::utime::Leased;
 use crate::EffectiveMembership;
 use crate::Membership;
 use crate::MembershipState;
-use crate::TokioInstant;
 use crate::Vote;
 
 fn m01() -> Membership<UTConfig> {
@@ -31,7 +32,11 @@ fn eng() -> Engine<UTConfig> {
     eng.state.enable_validation(false); // Disable validation for incomplete state
 
     eng.config.id = 2;
-    eng.state.vote.update(TokioInstant::now(), Vote::new_committed(2, 1));
+    eng.state.vote.update(
+        UTConfig::<()>::now(),
+        Duration::from_millis(500),
+        Vote::new_committed(2, 1),
+    );
     eng.state.log_ids.append(log_id(1, 1, 1));
     eng.state.log_ids.append(log_id(2, 1, 3));
     eng.state.membership_state = MembershipState::new(
@@ -81,7 +86,11 @@ fn test_follower_append_entries_update_accepted() -> anyhow::Result<()> {
     // Update to a new Leader and smaller log id
     {
         // Assume this node's Leader becomes T3-N1
-        eng.state.vote = UTime::new(TokioInstant::now(), Vote::new_committed(3, 1));
+        eng.state.vote = Leased::new(
+            UTConfig::<()>::now(),
+            Duration::from_millis(500),
+            Vote::new_committed(3, 1),
+        );
         eng.following_handler().append_entries(Some(log_id(2, 1, 3)), vec![
             //
             blank_ent(3, 1, 4),

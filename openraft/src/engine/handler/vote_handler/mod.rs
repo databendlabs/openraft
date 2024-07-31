@@ -139,14 +139,17 @@ where C: RaftTypeConfig
 
         // Grant the vote
 
+        // TODO: Leader decide the lease.
+        let leader_lease = self.config.timer_config.leader_lease;
+
         if vote > self.state.vote_ref() {
             tracing::info!("vote is changing from {} to {}", self.state.vote_ref(), vote);
 
-            self.state.vote.update(C::now(), *vote);
+            self.state.vote.update(C::now(), leader_lease, *vote);
             self.state.accept_io(IOId::new(*vote));
             self.output.push_command(Command::SaveVote { vote: *vote });
         } else {
-            self.state.vote.touch(C::now());
+            self.state.vote.touch(C::now(), leader_lease);
         }
 
         // Update vote related timer and lease.

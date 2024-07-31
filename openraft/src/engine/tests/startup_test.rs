@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use maplit::btreeset;
 use pretty_assertions::assert_eq;
@@ -12,12 +13,12 @@ use crate::entry::RaftEntry;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::Inflight;
 use crate::testing::log_id;
-use crate::utime::UTime;
+use crate::type_config::TypeConfigExt;
+use crate::utime::Leased;
 use crate::EffectiveMembership;
 use crate::Entry;
 use crate::Membership;
 use crate::ServerState;
-use crate::TokioInstant;
 use crate::Vote;
 
 fn m_empty() -> Membership<UTConfig> {
@@ -50,7 +51,11 @@ fn test_startup_as_leader_without_logs() -> anyhow::Result<()> {
         .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(1, 1, 3)), m23())));
     eng.state.log_ids = LogIdList::new([log_id(1, 1, 3)]);
     // Committed vote makes it a leader at startup.
-    eng.state.vote = UTime::new(TokioInstant::now(), Vote::new_committed(2, 2));
+    eng.state.vote = Leased::new(
+        UTConfig::<()>::now(),
+        Duration::from_millis(500),
+        Vote::new_committed(2, 2),
+    );
 
     eng.startup();
 
@@ -95,7 +100,11 @@ fn test_startup_as_leader_with_proposed_logs() -> anyhow::Result<()> {
     // Fake existing log ids
     eng.state.log_ids = LogIdList::new([log_id(1, 1, 2), log_id(1, 2, 4), log_id(1, 2, 6)]);
     // Committed vote makes it a leader at startup.
-    eng.state.vote = UTime::new(TokioInstant::now(), Vote::new_committed(1, 2));
+    eng.state.vote = Leased::new(
+        UTConfig::<()>::now(),
+        Duration::from_millis(500),
+        Vote::new_committed(1, 2),
+    );
 
     eng.startup();
 
@@ -134,7 +143,11 @@ fn test_startup_as_leader_not_voter_issue_920() -> anyhow::Result<()> {
         .membership_state
         .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(2, 1, 3)), m_empty())));
     // Committed vote makes it a leader at startup.
-    eng.state.vote = UTime::new(TokioInstant::now(), Vote::new_committed(1, 2));
+    eng.state.vote = Leased::new(
+        UTConfig::<()>::now(),
+        Duration::from_millis(500),
+        Vote::new_committed(1, 2),
+    );
 
     eng.startup();
 
@@ -152,7 +165,7 @@ fn test_startup_candidate_becomes_follower() -> anyhow::Result<()> {
         .membership_state
         .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(2, 1, 3)), m23())));
     // Non-committed vote makes it a candidate at startup.
-    eng.state.vote = UTime::new(TokioInstant::now(), Vote::new(1, 2));
+    eng.state.vote = Leased::new(UTConfig::<()>::now(), Duration::from_millis(500), Vote::new(1, 2));
 
     eng.startup();
 

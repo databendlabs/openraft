@@ -1,4 +1,5 @@
 use std::io::Cursor;
+use std::time::Duration;
 
 use maplit::btreeset;
 use pretty_assertions::assert_eq;
@@ -18,7 +19,6 @@ use crate::Membership;
 use crate::Snapshot;
 use crate::SnapshotMeta;
 use crate::StoredMembership;
-use crate::TokioInstant;
 use crate::Vote;
 
 fn m12() -> Membership<UTConfig> {
@@ -33,7 +33,11 @@ fn eng() -> Engine<UTConfig> {
     let mut eng = Engine::testing_default(0);
     eng.state.enable_validation(false); // Disable validation for incomplete state
 
-    eng.state.vote.update(TokioInstant::now(), Vote::new_committed(2, 1));
+    eng.state.vote.update(
+        UTConfig::<()>::now(),
+        Duration::from_millis(500),
+        Vote::new_committed(2, 1),
+    );
     eng.state.committed = Some(log_id(4, 1, 5));
     eng.state.log_ids = LogIdList::new(vec![
         //
