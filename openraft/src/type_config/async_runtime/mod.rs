@@ -104,5 +104,5 @@ pub trait AsyncRuntime: Debug + Default + PartialEq + Eq + OptionalSend + Option
 
     type Oneshot: Oneshot;
 
-    type Mutex<T: OptionalSend>: Mutex<T>;
+    type Mutex<T: OptionalSend + 'static>: Mutex<T>;
 }
