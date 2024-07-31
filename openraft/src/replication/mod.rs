@@ -19,7 +19,6 @@ use request::Replicate;
 use response::ReplicationResult;
 pub(crate) use response::Response;
 use tokio::select;
-use tokio::sync::Mutex;
 use tracing_futures::Instrument;
 
 use crate::async_runtime::MpscUnboundedReceiver;
@@ -56,8 +55,10 @@ use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::MpscUnboundedReceiverOf;
 use crate::type_config::alias::MpscUnboundedSenderOf;
 use crate::type_config::alias::MpscUnboundedWeakSenderOf;
+use crate::type_config::alias::MutexOf;
 use crate::type_config::alias::OneshotReceiverOf;
 use crate::type_config::alias::OneshotSenderOf;
+use crate::type_config::async_runtime::mutex::Mutex;
 use crate::type_config::TypeConfigExt;
 use crate::LogId;
 use crate::RaftLogId;
@@ -114,7 +115,7 @@ where
     /// Another `RaftNetwork` specific for snapshot replication.
     ///
     /// Snapshot transmitting is a long running task, and is processed in a separate task.
-    snapshot_network: Arc<Mutex<N::Network>>,
+    snapshot_network: Arc<MutexOf<C, N::Network>>,
 
     /// The current snapshot replication state.
     ///
@@ -188,7 +189,7 @@ where
             target,
             session_id,
             network,
-            snapshot_network: Arc::new(Mutex::new(snapshot_network)),
+            snapshot_network: Arc::new(C::mutex_lock(snapshot_network)),
             snapshot_state: None,
             backoff: None,
             log_reader,
@@ -754,7 +755,7 @@ where
 
     async fn send_snapshot(
         request_id: RequestId,
-        network: Arc<Mutex<N::Network>>,
+        network: Arc<MutexOf<C, N::Network>>,
         vote: Vote<C::NodeId>,
         snapshot: Snapshot<C>,
         option: RPCOption,

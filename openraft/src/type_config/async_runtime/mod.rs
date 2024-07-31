@@ -9,6 +9,7 @@ pub(crate) mod impls {
     pub use tokio_runtime::TokioRuntime;
 }
 pub mod mpsc_unbounded;
+pub mod mutex;
 pub mod oneshot;
 pub mod watch;
 
@@ -23,6 +24,7 @@ pub use mpsc_unbounded::MpscUnboundedSender;
 pub use mpsc_unbounded::MpscUnboundedWeakSender;
 pub use mpsc_unbounded::SendError;
 pub use mpsc_unbounded::TryRecvError;
+pub use mutex::Mutex;
 pub use oneshot::Oneshot;
 pub use oneshot::OneshotSender;
 pub use watch::Watch;
@@ -101,4 +103,6 @@ pub trait AsyncRuntime: Debug + Default + PartialEq + Eq + OptionalSend + Option
     type Watch: Watch;
 
     type Oneshot: Oneshot;
+
+    type Mutex<T: OptionalSend>: Mutex<T>;
 }

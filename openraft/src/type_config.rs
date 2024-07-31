@@ -137,6 +137,8 @@ pub mod alias {
     pub type WatchSenderOf<C, T> = <WatchOf<C> as watch::Watch>::Sender<T>;
     pub type WatchReceiverOf<C, T> = <WatchOf<C> as watch::Watch>::Receiver<T>;
 
+    pub type MutexOf<C, T> = <Rt<C> as AsyncRuntime>::Mutex<T>;
+
     // Usually used types
     pub type LogIdOf<C> = crate::LogId<NodeIdOf<C>>;
     pub type VoteOf<C> = crate::Vote<NodeIdOf<C>>;

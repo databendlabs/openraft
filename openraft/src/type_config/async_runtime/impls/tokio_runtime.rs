@@ -6,6 +6,7 @@ use tokio::sync::watch as tokio_watch;
 
 use crate::async_runtime::mpsc_unbounded;
 use crate::async_runtime::mpsc_unbounded::MpscUnbounded;
+use crate::async_runtime::mutex;
 use crate::async_runtime::oneshot;
 use crate::async_runtime::watch;
 use crate::type_config::OneshotSender;
@@ -76,6 +77,7 @@ impl AsyncRuntime for TokioRuntime {
     type MpscUnbounded = TokioMpscUnbounded;
     type Watch = TokioWatch;
     type Oneshot = TokioOneshot;
+    type Mutex<T: OptionalSend> = TokioMutex<T>;
 }
 
 pub struct TokioMpscUnbounded;
@@ -195,5 +197,23 @@ where T: OptionalSend
     #[inline]
     fn send(self, t: T) -> Result<(), T> {
         self.send(t)
+    }
+}
+
+type TokioMutex<T> = tokio::sync::Mutex<T>;
+
+impl<T> mutex::Mutex<T> for TokioMutex<T>
+where T: OptionalSend
+{
+    type Guard<'a> = tokio::sync::MutexGuard<'a, T>
+    where T:'a;
+
+    fn new(value: T) -> Self {
+        TokioMutex::new(value)
+    }
+
+    fn lock<'a>(&'a self) -> impl Future<Output = Self::Guard<'a>> + OptionalSend
+    where T: 'a {
+        self.lock()
     }
 }
