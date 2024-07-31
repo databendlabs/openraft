@@ -77,7 +77,7 @@ impl AsyncRuntime for TokioRuntime {
     type MpscUnbounded = TokioMpscUnbounded;
     type Watch = TokioWatch;
     type Oneshot = TokioOneshot;
-    type Mutex<T: OptionalSend + OptionalSync + 'static> = TokioMutex<T>;
+    type Mutex<T: OptionalSend + 'static> = TokioMutex<T>;
 }
 
 pub struct TokioMpscUnbounded;
@@ -203,7 +203,7 @@ where T: OptionalSend
 type TokioMutex<T> = tokio::sync::Mutex<T>;
 
 impl<T> mutex::Mutex<T> for TokioMutex<T>
-where T: OptionalSend + OptionalSync + 'static
+where T: OptionalSend + 'static
 {
     type Guard<'a> = tokio::sync::MutexGuard<'a, T>;
 

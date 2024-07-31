@@ -5,7 +5,7 @@ use crate::OptionalSend;
 use crate::OptionalSync;
 
 /// Represents an implementation of an asynchronous Mutex.
-pub trait Mutex<T: OptionalSend + OptionalSync + 'static>: OptionalSend + OptionalSync {
+pub trait Mutex<T: OptionalSend + 'static>: OptionalSend + OptionalSync {
     /// Handle to an acquired lock, should release it when dropped.
     type Guard<'a>: DerefMut<Target = T> + OptionalSend + OptionalSync
     where Self: 'a;
