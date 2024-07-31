@@ -1714,12 +1714,13 @@ where
                     let _ = node.tx_repl.send(Replicate::Committed(committed));
                 }
             }
-            Command::Commit {
+            Command::SaveCommitted { committed } => {
+                self.log_store.save_committed(Some(committed)).await?;
+            }
+            Command::Apply {
                 already_committed,
                 upto,
             } => {
-                self.log_store.save_committed(Some(upto)).await?;
-
                 let first = self.engine.state.get_log_id(already_committed.next_index()).unwrap();
                 self.apply_to_state_machine(first, upto).await?;
             }
