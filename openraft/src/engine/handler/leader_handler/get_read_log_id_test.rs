@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use maplit::btreeset;
 #[allow(unused_imports)]
@@ -11,11 +12,11 @@ use pretty_assertions::assert_str_eq;
 use crate::engine::testing::UTConfig;
 use crate::engine::Engine;
 use crate::testing::log_id;
-use crate::utime::UTime;
+use crate::type_config::TypeConfigExt;
+use crate::utime::Leased;
 use crate::EffectiveMembership;
 use crate::Membership;
 use crate::MembershipState;
-use crate::TokioInstant;
 use crate::Vote;
 
 fn m01() -> Membership<UTConfig> {
@@ -32,7 +33,11 @@ fn eng() -> Engine<UTConfig> {
 
     eng.config.id = 1;
     eng.state.committed = Some(log_id(0, 1, 0));
-    eng.state.vote = UTime::new(TokioInstant::now(), Vote::new_committed(3, 1));
+    eng.state.vote = Leased::new(
+        UTConfig::<()>::now(),
+        Duration::from_millis(500),
+        Vote::new_committed(3, 1),
+    );
     eng.state.log_ids.append(log_id(1, 1, 1));
     eng.state.log_ids.append(log_id(2, 1, 3));
     eng.state.membership_state = MembershipState::new(

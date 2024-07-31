@@ -1,5 +1,6 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
+use std::time::Duration;
 
 use maplit::btreeset;
 use pretty_assertions::assert_eq;
@@ -11,12 +12,12 @@ use crate::engine::Engine;
 use crate::engine::LogIdList;
 use crate::raft::VoteRequest;
 use crate::testing::log_id;
-use crate::utime::UTime;
+use crate::type_config::TypeConfigExt;
+use crate::utime::Leased;
 use crate::CommittedLeaderId;
 use crate::EffectiveMembership;
 use crate::LogId;
 use crate::Membership;
-use crate::TokioInstant;
 use crate::Vote;
 
 fn m1() -> Membership<UTConfig> {
@@ -81,7 +82,11 @@ fn test_elect_single_node_elect_again() -> anyhow::Result<()> {
             .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(0, 1, 1)), m1())));
 
         // Build in-progress election state
-        eng.state.vote = UTime::new(TokioInstant::now(), Vote::new_committed(1, 2));
+        eng.state.vote = Leased::new(
+            UTConfig::<()>::now(),
+            Duration::from_millis(500),
+            Vote::new_committed(1, 2),
+        );
         eng.last_seen_vote = *eng.state.vote_ref();
         eng.testing_new_leader();
         eng.candidate_mut().map(|candidate| candidate.grant_by(&1));

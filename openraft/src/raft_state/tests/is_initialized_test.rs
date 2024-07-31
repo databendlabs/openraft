@@ -1,9 +1,11 @@
+use std::time::Duration;
+
 use crate::engine::testing::UTConfig;
 use crate::engine::LogIdList;
 use crate::testing::log_id;
-use crate::utime::UTime;
+use crate::type_config::TypeConfigExt;
+use crate::utime::Leased;
 use crate::RaftState;
-use crate::TokioInstant;
 use crate::Vote;
 
 #[test]
@@ -18,7 +20,7 @@ fn test_is_initialized() {
     // Vote is set but is default
     {
         let rs = RaftState::<UTConfig> {
-            vote: UTime::new(TokioInstant::now(), Vote::default()),
+            vote: Leased::new(UTConfig::<()>::now(), Duration::from_millis(500), Vote::default()),
             ..Default::default()
         };
 
@@ -28,7 +30,7 @@ fn test_is_initialized() {
     // Vote is non-default value
     {
         let rs = RaftState::<UTConfig> {
-            vote: UTime::new(TokioInstant::now(), Vote::new(1, 2)),
+            vote: Leased::new(UTConfig::<()>::now(), Duration::from_millis(500), Vote::new(1, 2)),
             ..Default::default()
         };
 

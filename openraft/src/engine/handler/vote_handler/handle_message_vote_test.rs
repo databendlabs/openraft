@@ -11,7 +11,8 @@ use crate::engine::Engine;
 use crate::engine::LogIdList;
 use crate::error::RejectVoteRequest;
 use crate::testing::log_id;
-use crate::utime::UTime;
+use crate::type_config::TypeConfigExt;
+use crate::utime::Leased;
 use crate::EffectiveMembership;
 use crate::Membership;
 use crate::TokioInstant;
@@ -26,7 +27,7 @@ fn eng() -> Engine<UTConfig> {
     eng.state.enable_validation(false); // Disable validation for incomplete state
 
     eng.config.id = 0;
-    eng.state.vote = UTime::new(TokioInstant::now(), Vote::new(2, 1));
+    eng.state.vote = Leased::new(UTConfig::<()>::now(), Duration::from_millis(500), Vote::new(2, 1));
     eng.state.server_state = ServerState::Candidate;
     eng.state
         .membership_state
@@ -39,7 +40,11 @@ fn eng() -> Engine<UTConfig> {
 #[test]
 fn test_handle_message_vote_reject_smaller_vote() -> anyhow::Result<()> {
     let mut eng = eng();
-    eng.state.vote = UTime::new(TokioInstant::now(), Vote::new_committed(2, 1));
+    eng.state.vote = Leased::new(
+        UTConfig::<()>::now(),
+        Duration::from_millis(500),
+        Vote::new_committed(2, 1),
+    );
     eng.testing_new_leader();
 
     let resp = eng.vote_handler().update_vote(&Vote::new(1, 2));

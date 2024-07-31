@@ -1,53 +1,41 @@
 use core::fmt;
 use std::ops::Deref;
 use std::ops::DerefMut;
+use std::time::Duration;
 
 use crate::display_ext::DisplayInstantExt;
 use crate::Instant;
 
-/// Record the last update time for an object
-#[derive(Debug)]
-pub(crate) struct UTime<T, I: Instant> {
+/// Stores an object along with its last update time and lease duration.
+/// The lease duration specifies how long the object remains valid.
+#[derive(Debug, Clone)]
+#[derive(PartialEq, Eq)]
+pub(crate) struct Leased<T, I: Instant> {
     data: T,
-    utime: Option<I>,
+    last_update: Option<I>,
+    lease: Duration,
 }
 
-impl<T: fmt::Display, I: Instant> fmt::Display for UTime<T, I> {
+impl<T: fmt::Display, I: Instant> fmt::Display for Leased<T, I> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.utime {
-            Some(utime) => write!(f, "{}@{}", self.data, utime.display()),
+        match self.last_update {
+            Some(utime) => write!(f, "{}@{}+{:?}", self.data, utime.display(), self.lease),
             None => write!(f, "{}", self.data),
         }
     }
 }
 
-impl<T: Clone, I: Instant> Clone for UTime<T, I> {
-    fn clone(&self) -> Self {
-        Self {
-            data: self.data.clone(),
-            utime: self.utime,
-        }
-    }
-}
-
-impl<T: Default, I: Instant> Default for UTime<T, I> {
+impl<T: Default, I: Instant> Default for Leased<T, I> {
     fn default() -> Self {
         Self {
             data: T::default(),
-            utime: None,
+            last_update: None,
+            lease: Default::default(),
         }
     }
 }
 
-impl<T: PartialEq, I: Instant> PartialEq for UTime<T, I> {
-    fn eq(&self, other: &Self) -> bool {
-        self.data == other.data && self.utime == other.utime
-    }
-}
-
-impl<T: PartialEq + Eq, I: Instant> Eq for UTime<T, I> {}
-
-impl<T, I: Instant> Deref for UTime<T, I> {
+impl<T, I: Instant> Deref for Leased<T, I> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -55,27 +43,71 @@ impl<T, I: Instant> Deref for UTime<T, I> {
     }
 }
 
-impl<T, I: Instant> DerefMut for UTime<T, I> {
+impl<T, I: Instant> DerefMut for Leased<T, I> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.data
     }
 }
 
-impl<T, I: Instant> UTime<T, I> {
+impl<T, I: Instant> Leased<T, I> {
     /// Creates a new object that keeps track of the time when it was last updated.
-    pub(crate) fn new(now: I, data: T) -> Self {
-        Self { data, utime: Some(now) }
+    pub(crate) fn new(now: I, lease: Duration, data: T) -> Self {
+        Self {
+            data,
+            last_update: Some(now),
+            lease,
+        }
     }
 
     /// Creates a new object that has no last-updated time.
     #[allow(dead_code)]
-    pub(crate) fn without_utime(data: T) -> Self {
-        Self { data, utime: None }
+    pub(crate) fn without_last_update(data: T) -> Self {
+        Self {
+            data,
+            last_update: None,
+            lease: Duration::default(),
+        }
     }
 
     /// Return the last updated time of this object.
-    pub(crate) fn utime(&self) -> Option<I> {
-        self.utime
+    pub(crate) fn last_update(&self) -> Option<I> {
+        self.last_update
+    }
+
+    /// Return a Display instance that shows the last updated time and lease duration relative to
+    /// `now`.
+    pub(crate) fn time_info(&self, now: I) -> impl fmt::Display + '_ {
+        struct DisplayTimeInfo<'a, T, I: Instant> {
+            now: I,
+            leased: &'a Leased<T, I>,
+        }
+
+        impl<'a, T, I> fmt::Display for DisplayTimeInfo<'a, T, I>
+        where I: Instant
+        {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                match &self.leased.last_update {
+                    Some(utime) => {
+                        let expire_at = *utime + self.leased.lease;
+                        write!(
+                            f,
+                            "now: {}, last_update: {}({:?} ago), lease: {:?}, expire at: {}({:?} since now)",
+                            self.now.display(),
+                            utime.display(),
+                            self.now.saturating_duration_since(*utime),
+                            self.leased.lease,
+                            expire_at.display(),
+                            expire_at.saturating_duration_since(self.now)
+                        )
+                    }
+                    None => {
+                        write!(f, "last_update: None")
+                    }
+                }
+            }
+        }
+
+        DisplayTimeInfo { now, leased: self }
     }
 
     /// Consumes this object and returns the inner data.
@@ -85,20 +117,35 @@ impl<T, I: Instant> UTime<T, I> {
     }
 
     /// Update the content of the object and the last updated time.
-    pub(crate) fn update(&mut self, now: I, data: T) {
+    pub(crate) fn update(&mut self, now: I, lease: Duration, data: T) {
         self.data = data;
-        self.utime = Some(now);
+        self.last_update = Some(now);
+        self.lease = lease;
+    }
+
+    /// Reset the lease duration, so that the object expire at once.
+    #[allow(dead_code)]
+    pub(crate) fn reset_lease(&mut self) {
+        self.lease = Duration::default();
+    }
+
+    pub(crate) fn is_expired(&self, now: I) -> bool {
+        match self.last_update {
+            Some(utime) => now > utime + self.lease,
+            None => true,
+        }
     }
 
     /// Update the last updated time.
-    pub(crate) fn touch(&mut self, now: I) {
+    pub(crate) fn touch(&mut self, now: I, lease: Duration) {
         debug_assert!(
-            Some(now) >= self.utime,
+            Some(now) >= self.last_update,
             "expect now: {}, must >= self.utime: {}, {:?}",
             now.display(),
-            self.utime.unwrap().display(),
-            self.utime.unwrap() - now,
+            self.last_update.unwrap().display(),
+            self.last_update.unwrap() - now,
         );
-        self.utime = Some(now);
+        self.last_update = Some(now);
+        self.lease = lease;
     }
 }

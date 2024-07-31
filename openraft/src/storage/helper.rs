@@ -1,5 +1,6 @@
 use std::marker::PhantomData;
 use std::sync::Arc;
+use std::time::Duration;
 
 use validit::Valid;
 
@@ -11,7 +12,7 @@ use crate::raft_state::IOState;
 use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
 use crate::type_config::TypeConfigExt;
-use crate::utime::UTime;
+use crate::utime::Leased;
 use crate::EffectiveMembership;
 use crate::LogIdOptionExt;
 use crate::MembershipState;
@@ -151,7 +152,12 @@ where
             // See: [Conditions for initialization][precondition]
             //
             // [precondition]: crate::docs::cluster_control::cluster_formation#preconditions-for-initialization
-            vote: UTime::new(now, vote),
+            //
+            // TODO: If the lease reverted upon restart,
+            //       the lease based linearizable read consistency will be broken.
+            //       When lease based read is added, the restarted node must sleep for a while,
+            //       before serving.
+            vote: Leased::new(now, Duration::default(), vote),
             purged_next: last_purged_log_id.next_index(),
             log_ids,
             membership_state: mem_state,

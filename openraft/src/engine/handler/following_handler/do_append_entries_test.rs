@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use maplit::btreeset;
 
@@ -11,7 +12,7 @@ use crate::raft_state::LogStateReader;
 use crate::testing::blank_ent;
 use crate::testing::log_id;
 use crate::type_config::TypeConfigExt;
-use crate::utime::UTime;
+use crate::utime::Leased;
 use crate::EffectiveMembership;
 use crate::Entry;
 use crate::EntryPayload;
@@ -40,7 +41,11 @@ fn eng() -> Engine<UTConfig> {
     eng.state.enable_validation(false); // Disable validation for incomplete state
 
     eng.config.id = 2;
-    eng.state.vote = UTime::new(UTConfig::<()>::now(), Vote::new_committed(2, 1));
+    eng.state.vote = Leased::new(
+        UTConfig::<()>::now(),
+        Duration::from_millis(500),
+        Vote::new_committed(2, 1),
+    );
     eng.state.log_ids.append(log_id(1, 1, 1));
     eng.state.log_ids.append(log_id(2, 1, 3));
     eng.state.membership_state = MembershipState::new(
@@ -54,7 +59,7 @@ fn eng() -> Engine<UTConfig> {
 #[test]
 fn test_follower_do_append_entries_no_membership_entries() -> anyhow::Result<()> {
     let mut eng = eng();
-    eng.state.vote = UTime::without_utime(Vote::new_committed(1, 1));
+    eng.state.vote = Leased::without_last_update(Vote::new_committed(1, 1));
 
     eng.following_handler().do_append_entries(vec![blank_ent(3, 1, 4)]);
 
@@ -96,7 +101,7 @@ fn test_follower_do_append_entries_one_membership_entry() -> anyhow::Result<()> 
     // - Follower become Learner, since it is not in the new effective membership.
     let mut eng = eng();
     eng.config.id = 2; // make it a member, the become learner
-    eng.state.vote = UTime::without_utime(Vote::new_committed(1, 1));
+    eng.state.vote = Leased::without_last_update(Vote::new_committed(1, 1));
 
     eng.following_handler().do_append_entries(vec![blank_ent(3, 1, 4), Entry::<UTConfig> {
         log_id: log_id(3, 1, 5),
@@ -152,7 +157,7 @@ fn test_follower_do_append_entries_three_membership_entries() -> anyhow::Result<
     let mut eng = eng();
     eng.config.id = 5; // make it a learner, then become follower
     eng.state.server_state = eng.calc_server_state();
-    eng.state.vote = UTime::without_utime(Vote::new_committed(1, 1));
+    eng.state.vote = Leased::without_last_update(Vote::new_committed(1, 1));
 
     eng.following_handler().do_append_entries(vec![
         blank_ent(3, 1, 4),

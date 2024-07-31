@@ -47,6 +47,16 @@ pub trait Instant:
             Duration::from_secs(0)
         }
     }
+
+    /// Returns the amount of time elapsed from another instant to this one, or zero duration if
+    /// that instant is later than this one.
+    fn saturating_duration_since(&self, earlier: Self) -> Duration {
+        if *self > earlier {
+            *self - earlier
+        } else {
+            Duration::from_secs(0)
+        }
+    }
 }
 
 pub type TokioInstant = tokio::time::Instant;

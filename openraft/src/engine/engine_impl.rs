@@ -7,7 +7,6 @@ use crate::core::raft_msg::AppendEntriesTx;
 use crate::core::raft_msg::ResultSender;
 use crate::core::sm;
 use crate::core::ServerState;
-use crate::display_ext::DisplayInstantExt;
 use crate::display_ext::DisplayOptionExt;
 use crate::display_ext::DisplaySliceExt;
 use crate::engine::engine_config::EngineConfig;
@@ -210,7 +209,7 @@ where C: RaftTypeConfig
             ..Default::default()
         };
         self.last_seen_vote = vote;
-        self.state.vote.update(C::now(), vote);
+        self.state.vote.update(C::now(), Duration::default(), vote);
         self.following_handler().do_append_entries(vec![entry]);
 
         // With the new config, start to elect to become leader
@@ -293,37 +292,22 @@ where C: RaftTypeConfig
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn handle_vote_req(&mut self, req: VoteRequest<C>) -> VoteResponse<C> {
         let now = C::now();
-        let lease = self.config.timer_config.leader_lease;
-        let local_vote = self.state.vote_ref();
-
-        // Make default vote-last-modified a low enough value, that expires leader lease.
-        let local_vote_utime =
-            self.state.vote_last_modified().unwrap_or_else(|| now - lease - Duration::from_millis(1));
+        let local_leased_vote = &self.state.vote;
 
         tracing::info!(req = display(&req), "Engine::handle_vote_req");
         tracing::info!(
-            my_vote = display(self.state.vote_ref()),
+            my_vote = display(&**local_leased_vote),
             my_last_log_id = display(self.state.last_log_id().display()),
+            lease = display(local_leased_vote.time_info(now)),
             "Engine::handle_vote_req"
         );
-        tracing::info!(
-            "now; {}, vote is updated at: {}, vote is updated before {:?}, leader lease({:?}) will expire after {:?}",
-            now.display(),
-            local_vote_utime.display(),
-            now - local_vote_utime,
-            lease,
-            local_vote_utime + lease - now
-        );
 
-        if local_vote.is_committed() {
+        if local_leased_vote.is_committed() {
             // Current leader lease has not yet expired, reject voting request
-            if now <= local_vote_utime + lease {
+            if !local_leased_vote.is_expired(now) {
                 tracing::info!(
-                    "reject vote-request: leader lease has not yet expire; now; {:?}, vote is update at: {:?}, leader lease({:?}) will expire after {:?}",
-                    now,
-                    local_vote_utime,
-                    lease,
-                    local_vote_utime + lease - now
+                    "reject vote-request: leader lease has not yet expire: {}",
+                    local_leased_vote.time_info(now)
                 );
 
                 return VoteResponse::new(self.state.vote_ref(), self.state.last_log_id().copied());

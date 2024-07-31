@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use maplit::btreeset;
 use pretty_assertions::assert_eq;
 
@@ -13,12 +15,12 @@ use crate::error::NotInMembers;
 use crate::raft::VoteRequest;
 use crate::raft_state::LogStateReader;
 use crate::testing::log_id;
-use crate::utime::UTime;
+use crate::type_config::TypeConfigExt;
+use crate::utime::Leased;
 use crate::vote::CommittedLeaderId;
 use crate::Entry;
 use crate::LogId;
 use crate::Membership;
-use crate::TokioInstant;
 use crate::Vote;
 
 #[test]
@@ -148,7 +150,7 @@ fn test_initialize() -> anyhow::Result<()> {
     tracing::info!("--- not allowed because of vote");
     {
         let mut eng = eng();
-        eng.state.vote = UTime::new(TokioInstant::now(), Vote::new(0, 1));
+        eng.state.vote = Leased::new(UTConfig::<()>::now(), Duration::from_millis(500), Vote::new(0, 1));
 
         assert_eq!(
             Err(InitializeError::NotAllowed(NotAllowed {

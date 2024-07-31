@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use maplit::btreeset;
 use pretty_assertions::assert_eq;
@@ -14,12 +15,12 @@ use crate::raft_state::IOId;
 use crate::raft_state::LogStateReader;
 use crate::testing::blank_ent;
 use crate::testing::log_id;
-use crate::utime::UTime;
+use crate::type_config::TypeConfigExt;
+use crate::utime::Leased;
 use crate::EffectiveMembership;
 use crate::Entry;
 use crate::Membership;
 use crate::MembershipState;
-use crate::TokioInstant;
 use crate::Vote;
 
 fn m01() -> Membership<UTConfig> {
@@ -39,7 +40,7 @@ fn eng() -> Engine<UTConfig> {
     eng.state.enable_validation(false); // Disable validation for incomplete state
 
     eng.config.id = 2;
-    eng.state.vote = UTime::new(TokioInstant::now(), Vote::new(2, 1));
+    eng.state.vote = Leased::new(UTConfig::<()>::now(), Duration::from_millis(500), Vote::new(2, 1));
     eng.state.log_ids.append(log_id(1, 1, 1));
     eng.state.log_ids.append(log_id(2, 1, 3));
     eng.state.committed = Some(log_id(0, 1, 0));
@@ -84,7 +85,7 @@ fn test_append_entries_vote_is_rejected() -> anyhow::Result<()> {
 fn test_append_entries_prev_log_id_is_applied() -> anyhow::Result<()> {
     // An applied log id has to be committed thus
     let mut eng = eng();
-    eng.state.vote = UTime::new(TokioInstant::now(), Vote::new(1, 2));
+    eng.state.vote = Leased::new(UTConfig::<()>::now(), Duration::from_millis(500), Vote::new(1, 2));
     eng.output.take_commands();
 
     let res = eng.append_entries(
@@ -222,7 +223,7 @@ fn test_append_entries_prev_log_id_is_committed() -> anyhow::Result<()> {
 #[test]
 fn test_append_entries_prev_log_id_not_exists() -> anyhow::Result<()> {
     let mut eng = eng();
-    eng.state.vote = UTime::new(TokioInstant::now(), Vote::new(1, 2));
+    eng.state.vote = Leased::new(UTConfig::<()>::now(), Duration::from_millis(500), Vote::new(1, 2));
     eng.output.take_commands();
 
     let res = eng.append_entries(&Vote::new_committed(2, 1), Some(log_id(2, 1, 4)), vec![
