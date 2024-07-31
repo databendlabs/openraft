@@ -97,7 +97,7 @@ pub trait TypeConfigExt: RaftTypeConfig {
     /// This is just a wrapper of
     /// [`AsyncRuntime::Mutex::new()`](`crate::async_runtime::Mutex::new`).
     fn mutex<T>(value: T) -> MutexOf<Self, T>
-    where T: OptionalSend {
+    where T: OptionalSend + OptionalSync {
         MutexOf::<Self, T>::new(value)
     }
 

@@ -72,7 +72,7 @@ pub trait RaftTypeConfig:
     /// See the [storage chapter of the guide][sto] for details on log compaction / snapshotting.
     ///
     /// [sto]: crate::docs::getting_started#3-implement-raftlogstorage-and-raftstatemachine
-    type SnapshotData: OptionalSend + 'static;
+    type SnapshotData: OptionalSend + OptionalSync + 'static;
 
     /// Asynchronous runtime type.
     type AsyncRuntime: AsyncRuntime;
