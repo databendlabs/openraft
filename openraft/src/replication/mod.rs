@@ -189,7 +189,7 @@ where
             target,
             session_id,
             network,
-            snapshot_network: Arc::new(C::mutex_lock(snapshot_network)),
+            snapshot_network: Arc::new(C::mutex(snapshot_network)),
             snapshot_state: None,
             backoff: None,
             log_reader,

@@ -321,7 +321,7 @@ where C: RaftTypeConfig
             tx_shutdown: std::sync::Mutex::new(Some(tx_shutdown)),
             core_state: std::sync::Mutex::new(CoreState::Running(core_handle)),
 
-            snapshot: C::mutex_lock(None),
+            snapshot: C::mutex(None),
         };
 
         Ok(Self { inner: Arc::new(inner) })
