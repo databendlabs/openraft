@@ -37,11 +37,11 @@ pub use message::InstallSnapshotResponse;
 pub use message::SnapshotResponse;
 pub use message::VoteRequest;
 pub use message::VoteResponse;
-use tokio::sync::Mutex;
 use tracing::trace_span;
 use tracing::Instrument;
 use tracing::Level;
 
+use crate::async_runtime::mutex::Mutex;
 use crate::async_runtime::watch::WatchReceiver;
 use crate::async_runtime::MpscUnboundedSender;
 use crate::async_runtime::OneshotSender;
@@ -321,7 +321,7 @@ where C: RaftTypeConfig
             tx_shutdown: std::sync::Mutex::new(Some(tx_shutdown)),
             core_state: std::sync::Mutex::new(CoreState::Running(core_handle)),
 
-            snapshot: Mutex::new(None),
+            snapshot: C::mutex(None),
         };
 
         Ok(Self { inner: Arc::new(inner) })

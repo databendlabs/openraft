@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use openraft_macros::since;
 
+use crate::async_runtime::mutex::Mutex;
 use crate::async_runtime::watch::Watch;
 use crate::async_runtime::MpscUnbounded;
 use crate::async_runtime::Oneshot;
@@ -12,6 +13,7 @@ use crate::type_config::alias::JoinHandleOf;
 use crate::type_config::alias::MpscUnboundedOf;
 use crate::type_config::alias::MpscUnboundedReceiverOf;
 use crate::type_config::alias::MpscUnboundedSenderOf;
+use crate::type_config::alias::MutexOf;
 use crate::type_config::alias::OneshotOf;
 use crate::type_config::alias::OneshotReceiverOf;
 use crate::type_config::alias::OneshotSenderOf;
@@ -88,6 +90,15 @@ pub trait TypeConfigExt: RaftTypeConfig {
     fn watch_channel<T>(init: T) -> (WatchSenderOf<Self, T>, WatchReceiverOf<Self, T>)
     where T: OptionalSend + OptionalSync {
         WatchOf::<Self>::channel(init)
+    }
+
+    /// Creates a Mutex lock.
+    ///
+    /// This is just a wrapper of
+    /// [`AsyncRuntime::Mutex::new()`](`crate::async_runtime::Mutex::new`).
+    fn mutex<T>(value: T) -> MutexOf<Self, T>
+    where T: OptionalSend {
+        MutexOf::<Self, T>::new(value)
     }
 
     // Task methods
