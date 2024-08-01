@@ -42,8 +42,6 @@ use tracing::trace_span;
 use tracing::Instrument;
 use tracing::Level;
 
-#[cfg(feature = "tokio-rt")]
-use crate::async_runtime::mutex::Mutex;
 use crate::async_runtime::watch::WatchReceiver;
 use crate::async_runtime::MpscUnboundedSender;
 use crate::async_runtime::OneshotSender;
@@ -447,6 +445,8 @@ where C: RaftTypeConfig
     where
         C::SnapshotData: tokio::io::AsyncRead + tokio::io::AsyncWrite + tokio::io::AsyncSeek + Unpin,
     {
+        use crate::async_runtime::mutex::Mutex;
+
         tracing::debug!(req = display(&req), "Raft::install_snapshot()");
 
         let req_vote = req.vote;
