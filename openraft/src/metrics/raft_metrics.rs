@@ -31,7 +31,7 @@ pub struct RaftMetrics<C: RaftTypeConfig> {
     /// The current term of the Raft node.
     pub current_term: u64,
 
-    /// The last accepted vote.
+    /// The last flushed vote.
     pub vote: Vote<C::NodeId>,
 
     /// The last log index has been appended to this Raft node's log.

@@ -95,6 +95,17 @@ where C: RaftTypeConfig
         req: BoxOnce<'static, RaftState<C>>,
     },
 
+    /// Transfer Leader to another node.
+    ///
+    /// If this node is `to`, reset Leader lease and start election.
+    /// Otherwise, just reset Leader lease so that the node `to` can become Leader.
+    TransferLeader {
+        /// The vote of the Leader that is transferring the leadership.
+        from: Vote<C::NodeId>,
+        /// The assigned node to be the next Leader.
+        to: C::NodeId,
+    },
+
     ExternalCommand {
         cmd: ExternalCommand<C>,
     },
@@ -129,6 +140,9 @@ where C: RaftTypeConfig
                 write!(f, "ChangeMembership: {:?}, retain: {}", changes, retain,)
             }
             RaftMsg::ExternalCoreRequest { .. } => write!(f, "External Request"),
+            RaftMsg::TransferLeader { from, to } => {
+                write!(f, "TransferLeader: from_leader: vote={}, to: {}", from, to)
+            }
             RaftMsg::ExternalCommand { cmd } => {
                 write!(f, "ExternalCommand: {}", cmd)
             }

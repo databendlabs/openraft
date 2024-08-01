@@ -14,13 +14,16 @@ pub(crate) struct Leased<T, I: Instant> {
     data: T,
     last_update: Option<I>,
     lease: Duration,
+    lease_enabled: bool,
 }
 
 impl<T: fmt::Display, I: Instant> fmt::Display for Leased<T, I> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let enabled = if self.lease_enabled { "enabled" } else { "disabled" };
+
         match self.last_update {
-            Some(utime) => write!(f, "{}@{}+{:?}", self.data, utime.display(), self.lease),
-            None => write!(f, "{}", self.data),
+            Some(utime) => write!(f, "{}@{}+{:?}({})", self.data, utime.display(), self.lease, enabled),
+            None => write!(f, "{}({})", self.data, enabled),
         }
     }
 }
@@ -31,6 +34,7 @@ impl<T: Default, I: Instant> Default for Leased<T, I> {
             data: T::default(),
             last_update: None,
             lease: Default::default(),
+            lease_enabled: true,
         }
     }
 }
@@ -56,6 +60,7 @@ impl<T, I: Instant> Leased<T, I> {
             data,
             last_update: Some(now),
             lease,
+            lease_enabled: true,
         }
     }
 
@@ -66,6 +71,7 @@ impl<T, I: Instant> Leased<T, I> {
             data,
             last_update: None,
             lease: Duration::default(),
+            lease_enabled: true,
         }
     }
 
@@ -121,12 +127,14 @@ impl<T, I: Instant> Leased<T, I> {
         self.data = data;
         self.last_update = Some(now);
         self.lease = lease;
+        self.lease_enabled = true;
     }
 
     /// Reset the lease duration, so that the object expire at once.
-    #[allow(dead_code)]
-    pub(crate) fn reset_lease(&mut self) {
+    /// And until the next `update()`, [`Self::touch()`] wont update the lease.
+    pub(crate) fn disable_lease(&mut self) {
         self.lease = Duration::default();
+        self.lease_enabled = false;
     }
 
     /// Checks if the value is expired based on the provided `now` timestamp.
@@ -148,6 +156,8 @@ impl<T, I: Instant> Leased<T, I> {
             self.last_update.unwrap() - now,
         );
         self.last_update = Some(now);
-        self.lease = lease;
+        if self.lease_enabled {
+            self.lease = lease;
+        }
     }
 }
