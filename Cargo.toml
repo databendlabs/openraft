@@ -55,6 +55,7 @@ members = [
     "stores/memstore",
     "stores/rocksstore",
     "stores/sledstore",
+    "rt-monoio",
 ]
 exclude = [
     "cluster_benchmark",
