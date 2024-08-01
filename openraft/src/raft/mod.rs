@@ -58,6 +58,7 @@ use crate::core::sm;
 use crate::core::sm::worker;
 use crate::core::RaftCore;
 use crate::core::Tick;
+use crate::display_ext::DisplayOptionExt;
 use crate::engine::Engine;
 use crate::engine::EngineConfig;
 use crate::error::CheckIsLeaderError;
@@ -87,6 +88,7 @@ use crate::type_config::alias::WatchReceiverOf;
 use crate::type_config::TypeConfigExt;
 use crate::LogId;
 use crate::LogIdOptionExt;
+use crate::LogIndexOptionExt;
 use crate::OptionalSend;
 use crate::RaftNetworkFactory;
 use crate::RaftState;
@@ -628,6 +630,75 @@ where C: RaftTypeConfig
         self.inner.send_msg(RaftMsg::ClientWriteRequest { app_data, tx }).await?;
 
         Ok(rx)
+    }
+
+    /// Submits LeaderTransfer command to this Raft node.
+    ///
+    /// If this node is the `to` node, it resets the Leader lease and triggers an election when the
+    /// expected log entries are flushed.
+    /// Otherwise, it just resets the Leader lease to allow the `to` node to become the Leader.
+    ///
+    /// To implement Leader transfer, Call this method on every node in the cluster with the same
+    /// arguments.
+    // TODO: Explain what the `from` Leader node do.
+    pub async fn transfer_leader(
+        &self,
+        from: Vote<C::NodeId>,
+        to: C::NodeId,
+        flushed_log: Option<LogId<C::NodeId>>,
+    ) -> Result<(), Fatal<C>> {
+        // Reset the Leader lease at once and quit, if this is not the assigned next leader.
+        // Only the assigned next Leader waits for the log to be flushed.
+        if to != self.inner.id {
+            self.inner.send_msg(RaftMsg::TransferLeader { from, to }).await?;
+            return Ok(());
+        }
+
+        // If the next Leader is this node, wait for the log to be flushed to make sure the
+        // RequestVote.last_log_id is upto date.
+
+        // Condition satisfied to become Leader
+        let ok = |m: &RaftMetrics<C>| (from == m.vote && m.last_log_index.next_index() >= flushed_log.next_index());
+
+        // Condition failed to become Leader
+        #[allow(clippy::neg_cmp_op_on_partial_ord)]
+        let fail = |m: &RaftMetrics<C>| !(from >= m.vote);
+
+        let timeout = Some(Duration::from_millis(self.inner.config.election_timeout_min));
+        let metrics_res =
+            self.wait(timeout).metrics(|st| ok(st) || fail(st), "transfer_leader await flushed log").await;
+
+        match metrics_res {
+            Ok(metrics) => {
+                if fail(&metrics) {
+                    tracing::warn!(
+                        "Vote changed, give up Leader-transfer; expected vote: {}, metrics: {}",
+                        from,
+                        metrics
+                    );
+                    return Ok(());
+                }
+                tracing::info!(
+                    "Leader-transfer condition satisfied, submit Leader-transfer message; \
+                     expected: (vote: {}, flushed_log: {})",
+                    from,
+                    flushed_log.display(),
+                );
+            }
+            Err(err) => {
+                tracing::warn!(
+                    "Leader-transfer condition fail to satisfy, still submit Leader-transfer; \
+                    expected: (vote: {}; flushed_log: {}), error: {}",
+                    from,
+                    flushed_log.display(),
+                    err
+                );
+            }
+        };
+
+        self.inner.send_msg(RaftMsg::TransferLeader { from, to }).await?;
+
+        Ok(())
     }
 
     /// Return `true` if this node is already initialized and can not be initialized again with
