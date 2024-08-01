@@ -54,7 +54,7 @@ where C: RaftTypeConfig
             if now >= timeout_at {
                 return Err(WaitError::Timeout(
                     self.timeout,
-                    format!("{} latest: {:?}", msg.to_string(), latest),
+                    format!("{} latest: {}", msg.to_string(), latest),
                 ));
             }
 
