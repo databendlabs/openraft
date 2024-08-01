@@ -1453,35 +1453,23 @@ where
         } else {
             tracing::debug!("there are multiple voter, check election timeout");
 
-            let current_vote = self.engine.state.vote_ref();
-            let utime = self.engine.state.vote_last_modified();
+            let local_vote = &self.engine.state.vote;
             let timer_config = &self.engine.config.timer_config;
 
-            let mut election_timeout = if current_vote.is_committed() {
-                timer_config.leader_lease + timer_config.election_timeout
-            } else {
-                timer_config.election_timeout
-            };
+            let mut election_timeout = timer_config.election_timeout;
 
             if self.engine.is_there_greater_log() {
                 election_timeout += timer_config.smaller_log_timeout;
             }
 
-            tracing::debug!(
-                "vote utime: {:?}, current_vote: {}, now-utime:{:?}, election_timeout: {:?}",
-                utime,
-                current_vote,
-                utime.map(|x| now - x),
-                election_timeout,
-            );
+            tracing::debug!("local vote: {}, election_timeout: {:?}", local_vote, election_timeout,);
 
-            // Follower/Candidate timer: next election
-            if utime > Some(now - election_timeout) {
+            if local_vote.is_expired(now, election_timeout) {
+                tracing::info!("election timeout passed, about to elect");
+            } else {
                 tracing::debug!("election timeout has not yet passed",);
                 return;
             }
-
-            tracing::info!("election timeout passed, check if it is a voter for election");
         }
 
         // Every time elect, reset this flag.

@@ -129,9 +129,11 @@ impl<T, I: Instant> Leased<T, I> {
         self.lease = Duration::default();
     }
 
-    pub(crate) fn is_expired(&self, now: I) -> bool {
+    /// Checks if the value is expired based on the provided `now` timestamp.
+    /// An additional `timeout` parameter can be used to extend the lease under various situations.
+    pub(crate) fn is_expired(&self, now: I, timeout: Duration) -> bool {
         match self.last_update {
-            Some(utime) => now > utime + self.lease,
+            Some(utime) => now > utime + self.lease + timeout,
             None => true,
         }
     }

@@ -304,7 +304,7 @@ where C: RaftTypeConfig
 
         if local_leased_vote.is_committed() {
             // Current leader lease has not yet expired, reject voting request
-            if !local_leased_vote.is_expired(now) {
+            if !local_leased_vote.is_expired(now, Duration::from_millis(0)) {
                 tracing::info!(
                     "reject vote-request: leader lease has not yet expire: {}",
                     local_leased_vote.time_info(now)
