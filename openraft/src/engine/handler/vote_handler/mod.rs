@@ -1,7 +1,7 @@
 use std::fmt::Debug;
+use std::time::Duration;
 
 use crate::core::raft_msg::ResultSender;
-use crate::display_ext::DisplayInstantExt;
 use crate::engine::handler::leader_handler::LeaderHandler;
 use crate::engine::handler::replication_handler::ReplicationHandler;
 use crate::engine::handler::replication_handler::SendNone;
@@ -127,7 +127,7 @@ where C: RaftTypeConfig
         self.update_last_seen(vote);
 
         // Partial ord compare:
-        // Vote does not has to be total ord.
+        // Vote does not have to be total ord.
         // `!(a >= b)` does not imply `a < b`.
         if vote >= self.state.vote_ref() {
             // Ok
@@ -140,7 +140,14 @@ where C: RaftTypeConfig
         // Grant the vote
 
         // TODO: Leader decide the lease.
-        let leader_lease = self.config.timer_config.leader_lease;
+
+        // If the vote is committed, it's an established Leader.
+        // Otherwise, it's a Candidate and does not have Leader lease.
+        let leader_lease = if vote.is_committed() {
+            self.config.timer_config.leader_lease
+        } else {
+            Duration::default()
+        };
 
         if vote > self.state.vote_ref() {
             tracing::info!("vote is changing from {} to {}", self.state.vote_ref(), vote);
@@ -151,10 +158,6 @@ where C: RaftTypeConfig
         } else {
             self.state.vote.touch(C::now(), leader_lease);
         }
-
-        // Update vote related timer and lease.
-
-        tracing::debug!(now = display(C::now().display()), "{}", func_name!());
 
         self.update_internal_server_state();
 
