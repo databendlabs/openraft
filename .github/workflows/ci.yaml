@@ -206,6 +206,33 @@ jobs:
           RUST_LOG: debug
           RUST_BACKTRACE: full
 
+
+  # Test external crate.
+  rt-monoio:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Setup | Checkout
+        uses: actions/checkout@v2
+
+
+      - name: Setup | Toolchain
+        uses: actions-rs/toolchain@v1.0.6
+        with:
+          toolchain: "nightly"
+          override: true
+
+
+      - name: Unit Tests
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --tests --manifest-path "rt-monoio/Cargo.toml"
+        env:
+          RUST_LOG: debug
+          RUST_BACKTRACE: full
+
+
   # Feature "serde" will be enabled if one of the member crates enables
   # "serde", such as `memstore`, when building a cargo workspace.
   #
