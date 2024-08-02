@@ -9,10 +9,10 @@ use std::time::Duration;
 
 use anyerror::AnyError;
 use futures::stream::FuturesUnordered;
+use futures::FutureExt;
 use futures::StreamExt;
 use futures::TryFutureExt;
 use maplit::btreeset;
-use tokio::select;
 use tracing::Instrument;
 use tracing::Level;
 use tracing::Span;
@@ -910,19 +910,17 @@ where
             // In each loop, the first step is blocking waiting for any message from any channel.
             // Then if there is any message, process as many as possible to maximize throughput.
 
-            select! {
-                // Check shutdown in each loop first so that a message flood in `tx_api` won't block shutting down.
-                // `select!` without `biased` provides a random fairness.
-                // We want to check shutdown prior to other channels.
-                // See: https://docs.rs/tokio/latest/tokio/macro.select.html#fairness
-                biased;
-
-                _ = &mut rx_shutdown => {
+            // Check shutdown in each loop first so that a message flood in `tx_api` won't block shutting down.
+            // `select!` without `biased` provides a random fairness.
+            // We want to check shutdown prior to other channels.
+            // See: https://docs.rs/tokio/latest/tokio/macro.select.html#fairness
+            futures::select_biased! {
+                _ = (&mut rx_shutdown).fuse() => {
                     tracing::info!("recv from rx_shutdown");
                     return Err(Fatal::Stopped);
                 }
 
-                notify_res = self.rx_notification.recv() => {
+                notify_res = self.rx_notification.recv().fuse() => {
                     match notify_res {
                         Some(notify) => self.handle_notification(notify)?,
                         None => {
@@ -932,7 +930,7 @@ where
                     };
                 }
 
-                msg_res = self.rx_api.recv() => {
+                msg_res = self.rx_api.recv().fuse() => {
                     match msg_res {
                         Some(msg) => self.handle_api_msg(msg).await,
                         None => {
