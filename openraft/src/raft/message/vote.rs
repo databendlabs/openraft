@@ -36,12 +36,12 @@ where C: RaftTypeConfig
 pub struct VoteResponse<C: RaftTypeConfig> {
     /// vote after a node handling vote-request.
     /// Thus `resp.vote >= req.vote` always holds.
+    ///
+    /// `vote` that equals the candidate.vote does not mean the vote is granted.
+    /// The `vote` may be updated when a previous Leader sees a higher vote.
     pub vote: Vote<C::NodeId>,
 
-    /// Previously, it is true if a node accepted and saved the VoteRequest.
-    /// Now, it is no longer used and is always false.
-    /// If `vote` is the same as the Candidate, the Vote is granted.
-    #[deprecated(note = "use new() and is_granted_to() instead", since = "0.10.0")]
+    /// It is true if a node accepted and saved the VoteRequest.
     pub vote_granted: bool,
 
     /// The last log id stored on the remote voter.
@@ -51,11 +51,10 @@ pub struct VoteResponse<C: RaftTypeConfig> {
 impl<C> VoteResponse<C>
 where C: RaftTypeConfig
 {
-    pub fn new(vote: impl Borrow<Vote<C::NodeId>>, last_log_id: Option<LogId<C::NodeId>>) -> Self {
-        #[allow(deprecated)]
+    pub fn new(vote: impl Borrow<Vote<C::NodeId>>, last_log_id: Option<LogId<C::NodeId>>, granted: bool) -> Self {
         Self {
             vote: *vote.borrow(),
-            vote_granted: false,
+            vote_granted: granted,
             last_log_id: last_log_id.map(|x| *x.borrow()),
         }
     }

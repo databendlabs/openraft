@@ -87,7 +87,6 @@ fn test_elect_single_node_elect_again() -> anyhow::Result<()> {
             Duration::from_millis(500),
             Vote::new_committed(1, 2),
         );
-        eng.last_seen_vote = *eng.state.vote_ref();
         eng.testing_new_leader();
         eng.candidate_mut().map(|candidate| candidate.grant_by(&1));
 

@@ -1676,7 +1676,7 @@ where
                 let _ = self.tx_notification.send(Notification::VoteResponse {
                     target: self.id,
                     // last_log_id is not used when sending VoteRequest to local node
-                    resp: VoteResponse::new(vote, None),
+                    resp: VoteResponse::new(vote, None, true),
                     sender_vote: vote,
                 });
             }
