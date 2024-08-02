@@ -458,6 +458,9 @@ impl fmt::Display for PayloadTooLarge {
             RPCTypes::InstallSnapshot => {
                 write!(f, "bytes:{}", self.bytes_hint)?;
             }
+            RPCTypes::TransferLeader => {
+                unreachable!("TransferLeader rpc should not have payload")
+            }
         }
         write!(f, ")")?;
 

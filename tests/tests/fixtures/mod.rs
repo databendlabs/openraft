@@ -9,6 +9,7 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::env;
 use std::fmt;
+use std::future::Future;
 use std::panic::PanicInfo;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
@@ -25,22 +26,22 @@ use openraft::error::CheckIsLeaderError;
 use openraft::error::ClientWriteError;
 use openraft::error::Fatal;
 use openraft::error::Infallible;
-use openraft::error::InstallSnapshotError;
 use openraft::error::NetworkError;
 use openraft::error::PayloadTooLarge;
 use openraft::error::RPCError;
 use openraft::error::RaftError;
-use openraft::error::RemoteError;
+use openraft::error::ReplicationClosed;
+use openraft::error::StreamingError;
 use openraft::error::Unreachable;
 use openraft::metrics::Wait;
 use openraft::network::RPCOption;
-use openraft::network::RaftNetwork;
 use openraft::network::RaftNetworkFactory;
 use openraft::raft::AppendEntriesRequest;
 use openraft::raft::AppendEntriesResponse;
 use openraft::raft::ClientWriteResponse;
 use openraft::raft::InstallSnapshotRequest;
-use openraft::raft::InstallSnapshotResponse;
+use openraft::raft::SnapshotResponse;
+use openraft::raft::TransferLeaderRequest;
 use openraft::raft::VoteRequest;
 use openraft::raft::VoteResponse;
 use openraft::storage::RaftLogStorage;
@@ -48,6 +49,7 @@ use openraft::storage::RaftStateMachine;
 use openraft::Config;
 use openraft::LogId;
 use openraft::LogIdOptionExt;
+use openraft::OptionalSend;
 use openraft::RPCTypes;
 use openraft::Raft;
 use openraft::RaftLogId;
@@ -56,6 +58,7 @@ use openraft::RaftMetrics;
 use openraft::RaftState;
 use openraft::RaftTypeConfig;
 use openraft::ServerState;
+use openraft::Snapshot;
 use openraft::Vote;
 use openraft_memstore::ClientRequest;
 use openraft_memstore::ClientResponse;
@@ -182,6 +185,7 @@ impl fmt::Display for Direction {
     }
 }
 
+use openraft::network::v2::RaftNetworkV2;
 use Direction::NetRecv;
 use Direction::NetSend;
 
@@ -196,11 +200,8 @@ pub enum RPCErrorType {
 }
 
 impl RPCErrorType {
-    fn make_error<C, E>(&self, id: C::NodeId, dir: Direction) -> RPCError<C, RaftError<C, E>>
-    where
-        C: RaftTypeConfig,
-        E: std::error::Error,
-    {
+    fn make_error<C>(&self, id: C::NodeId, dir: Direction) -> RPCError<C>
+    where C: RaftTypeConfig {
         let msg = format!("error {} id={}", dir, id);
 
         match self {
@@ -214,6 +215,9 @@ impl RPCErrorType {
                 RPCTypes::InstallSnapshot => {
                     unreachable!("InstallSnapshot RPC should not be too large")
                 }
+                RPCTypes::TransferLeader => {
+                    unreachable!("TransferLeader RPC should not be too large")
+                }
             },
         }
     }
@@ -226,7 +230,9 @@ pub type PreHookResult = Result<(), RPCError<MemConfig, Infallible>>;
 pub enum RPCRequest<C: RaftTypeConfig> {
     AppendEntries(AppendEntriesRequest<C>),
     InstallSnapshot(InstallSnapshotRequest<C>),
+    InstallFullSnapshot(Snapshot<C>),
     Vote(VoteRequest<C>),
+    TransferLeader(TransferLeaderRequest<C>),
 }
 
 impl<C: RaftTypeConfig> RPCRequest<C> {
@@ -234,7 +240,9 @@ impl<C: RaftTypeConfig> RPCRequest<C> {
         match self {
             RPCRequest::AppendEntries(_) => RPCTypes::AppendEntries,
             RPCRequest::InstallSnapshot(_) => RPCTypes::InstallSnapshot,
+            RPCRequest::InstallFullSnapshot(_) => RPCTypes::InstallSnapshot,
             RPCRequest::Vote(_) => RPCTypes::Vote,
+            RPCRequest::TransferLeader(_) => RPCTypes::TransferLeader,
         }
     }
 }
@@ -966,14 +974,7 @@ impl TypedRaftRouter {
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
-    pub fn emit_rpc_error<E>(
-        &self,
-        id: MemNodeId,
-        target: MemNodeId,
-    ) -> Result<(), RPCError<MemConfig, RaftError<MemConfig, E>>>
-    where
-        E: std::error::Error,
-    {
+    pub fn emit_rpc_error(&self, id: MemNodeId, target: MemNodeId) -> Result<(), RPCError<MemConfig>> {
         let fails = self.fail_rpc.lock().unwrap();
 
         for key in [(id, NetSend), (target, NetRecv)] {
@@ -1002,13 +1003,13 @@ pub struct RaftRouterNetwork {
     owner: TypedRaftRouter,
 }
 
-impl RaftNetwork<MemConfig> for RaftRouterNetwork {
+impl RaftNetworkV2<MemConfig> for RaftRouterNetwork {
     /// Send an AppendEntries RPC to the target Raft node (§5).
     async fn append_entries(
         &mut self,
         mut rpc: AppendEntriesRequest<MemConfig>,
         _option: RPCOption,
-    ) -> Result<AppendEntriesResponse<MemConfig>, RPCError<MemConfig, RaftError<MemConfig>>> {
+    ) -> Result<AppendEntriesResponse<MemConfig>, RPCError<MemConfig>> {
         let from_id = rpc.vote.leader_id().voted_for().unwrap();
 
         tracing::debug!("append_entries to id={} {}", self.target, rpc);
@@ -1054,7 +1055,12 @@ impl RaftNetwork<MemConfig> for RaftRouterNetwork {
         let resp = node.append_entries(rpc).await;
 
         tracing::debug!("append_entries: recv resp from id={} {:?}", self.target, resp);
-        let resp = resp.map_err(|e| RemoteError::new(self.target, e))?;
+        let resp = resp.map_err(|e| {
+            RPCError::Unreachable(Unreachable::new(&AnyError::error(format!(
+                "error: {} target={}",
+                e, self.target
+            ))))
+        })?;
 
         // If entries are truncated by quota, return an partial success response.
         if let Some(truncated) = truncated {
@@ -1067,24 +1073,29 @@ impl RaftNetwork<MemConfig> for RaftRouterNetwork {
         }
     }
 
-    /// Send an InstallSnapshot RPC to the target Raft node (§7).
-    async fn install_snapshot(
+    async fn full_snapshot(
         &mut self,
-        rpc: InstallSnapshotRequest<MemConfig>,
+        vote: Vote<MemNodeId>,
+        snapshot: Snapshot<MemConfig>,
+        _cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
         _option: RPCOption,
-    ) -> Result<InstallSnapshotResponse<MemConfig>, RPCError<MemConfig, RaftError<MemConfig, InstallSnapshotError>>>
-    {
-        let from_id = rpc.vote.leader_id().voted_for().unwrap();
+    ) -> Result<SnapshotResponse<MemConfig>, StreamingError<MemConfig>> {
+        let from_id = vote.leader_id().voted_for().unwrap();
 
         self.owner.count_rpc(RPCTypes::InstallSnapshot);
-        self.owner.call_rpc_pre_hook(rpc.clone(), from_id, self.target)?;
+        self.owner.call_rpc_pre_hook(snapshot.clone(), from_id, self.target)?;
         self.owner.emit_rpc_error(from_id, self.target)?;
         self.owner.rand_send_delay().await;
 
         let node = self.owner.get_raft_handle(&self.target)?;
 
-        let resp = node.install_snapshot(rpc).await;
-        let resp = resp.map_err(|e| RemoteError::new(self.target, e))?;
+        let resp = node.install_full_snapshot(vote, snapshot).await;
+        let resp = resp.map_err(|e| {
+            RPCError::Unreachable(Unreachable::new(&AnyError::error(format!(
+                "error: {} target={}",
+                e, self.target
+            ))))
+        })?;
 
         Ok(resp)
     }
@@ -1094,7 +1105,7 @@ impl RaftNetwork<MemConfig> for RaftRouterNetwork {
         &mut self,
         rpc: VoteRequest<MemConfig>,
         _option: RPCOption,
-    ) -> Result<VoteResponse<MemConfig>, RPCError<MemConfig, RaftError<MemConfig>>> {
+    ) -> Result<VoteResponse<MemConfig>, RPCError<MemConfig>> {
         let from_id = rpc.vote.leader_id().voted_for().unwrap();
 
         self.owner.count_rpc(RPCTypes::Vote);
@@ -1105,9 +1116,37 @@ impl RaftNetwork<MemConfig> for RaftRouterNetwork {
         let node = self.owner.get_raft_handle(&self.target)?;
 
         let resp = node.vote(rpc).await;
-        let resp = resp.map_err(|e| RemoteError::new(self.target, e))?;
+        let resp = resp.map_err(|e| {
+            RPCError::Unreachable(Unreachable::new(&AnyError::error(format!(
+                "error: {} target={}",
+                e, self.target
+            ))))
+        })?;
 
         Ok(resp)
+    }
+
+    async fn transfer_leader(
+        &mut self,
+        rpc: TransferLeaderRequest<MemConfig>,
+        _option: RPCOption,
+    ) -> Result<(), RPCError<MemConfig>> {
+        let from_id = rpc.from().leader_id().voted_for().unwrap();
+
+        self.owner.count_rpc(RPCTypes::TransferLeader);
+        self.owner.call_rpc_pre_hook(rpc.clone(), from_id, self.target)?;
+        self.owner.emit_rpc_error(from_id, self.target)?;
+        self.owner.rand_send_delay().await;
+
+        let node = self.owner.get_raft_handle(&self.target)?;
+
+        let resp = node.handle_transfer_leader(rpc).await;
+        resp.map_err(|e| {
+            RPCError::Unreachable(Unreachable::new(&AnyError::error(format!(
+                "error: {} target={}",
+                e, self.target
+            ))))
+        })
     }
 }
 

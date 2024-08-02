@@ -80,15 +80,21 @@ impl<T, I: Instant> Leased<T, I> {
         self.last_update
     }
 
+    /// Return a tuple of the last updated time, lease duration, and whether the lease is enabled.
+    #[allow(dead_code)]
+    pub(crate) fn lease_info(&self) -> (Option<I>, Duration, bool) {
+        (self.last_update, self.lease, self.lease_enabled)
+    }
+
     /// Return a Display instance that shows the last updated time and lease duration relative to
     /// `now`.
-    pub(crate) fn time_info(&self, now: I) -> impl fmt::Display + '_ {
-        struct DisplayTimeInfo<'a, T, I: Instant> {
+    pub(crate) fn display_lease_info(&self, now: I) -> impl fmt::Display + '_ {
+        struct DisplayLeaseInfo<'a, T, I: Instant> {
             now: I,
             leased: &'a Leased<T, I>,
         }
 
-        impl<'a, T, I> fmt::Display for DisplayTimeInfo<'a, T, I>
+        impl<'a, T, I> fmt::Display for DisplayLeaseInfo<'a, T, I>
         where I: Instant
         {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -113,7 +119,7 @@ impl<T, I: Instant> Leased<T, I> {
             }
         }
 
-        DisplayTimeInfo { now, leased: self }
+        DisplayLeaseInfo { now, leased: self }
     }
 
     /// Consumes this object and returns the inner data.

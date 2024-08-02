@@ -279,7 +279,7 @@ where C: RaftTypeConfig
         tracing::info!(
             my_vote = display(&**local_leased_vote),
             my_last_log_id = display(self.state.last_log_id().display()),
-            lease = display(local_leased_vote.time_info(now)),
+            lease = display(local_leased_vote.display_lease_info(now)),
             "Engine::handle_vote_req"
         );
 
@@ -288,7 +288,7 @@ where C: RaftTypeConfig
             if !local_leased_vote.is_expired(now, Duration::from_millis(0)) {
                 tracing::info!(
                     "reject vote-request: leader lease has not yet expire: {}",
-                    local_leased_vote.time_info(now)
+                    local_leased_vote.display_lease_info(now)
                 );
 
                 return VoteResponse::new(self.state.vote_ref(), self.state.last_log_id().copied(), false);
@@ -604,6 +604,21 @@ where C: RaftTypeConfig
 
         self.log_handler().update_purge_upto(log_id);
         self.try_purge_log();
+    }
+
+    pub(crate) fn trigger_transfer_leader(&mut self, to: C::NodeId) {
+        tracing::info!(to = display(to), "{}", func_name!());
+
+        let Some((mut lh, _)) = self.get_leader_handler_or_reject(None) else {
+            tracing::info!(
+                to = display(to),
+                "{}: this node is not a Leader, ignore transfer Leader",
+                func_name!()
+            );
+            return;
+        };
+
+        lh.transfer_leader(to);
     }
 }
 

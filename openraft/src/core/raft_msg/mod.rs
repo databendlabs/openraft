@@ -99,7 +99,7 @@ where C: RaftTypeConfig
     ///
     /// If this node is `to`, reset Leader lease and start election.
     /// Otherwise, just reset Leader lease so that the node `to` can become Leader.
-    TransferLeader {
+    HandleTransferLeader {
         /// The vote of the Leader that is transferring the leadership.
         from: Vote<C::NodeId>,
         /// The assigned node to be the next Leader.
@@ -140,7 +140,7 @@ where C: RaftTypeConfig
                 write!(f, "ChangeMembership: {:?}, retain: {}", changes, retain,)
             }
             RaftMsg::ExternalCoreRequest { .. } => write!(f, "External Request"),
-            RaftMsg::TransferLeader { from, to } => {
+            RaftMsg::HandleTransferLeader { from, to } => {
                 write!(f, "TransferLeader: from_leader: vote={}, to: {}", from, to)
             }
             RaftMsg::ExternalCommand { cmd } => {

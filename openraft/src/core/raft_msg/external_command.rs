@@ -33,6 +33,9 @@ pub(crate) enum ExternalCommand<C: RaftTypeConfig> {
     /// [`max_in_snapshot_log_to_keep`]: `crate::Config::max_in_snapshot_log_to_keep`
     PurgeLog { upto: u64 },
 
+    /// Submit a command to inform RaftCore to transfer leadership to the specified node.
+    TriggerTransferLeader { to: C::NodeId },
+
     /// Send a [`sm::Command`] to [`sm::worker::Worker`].
     /// This command is run in the sm task.
     StateMachineCommand { sm_cmd: sm::Command<C> },
@@ -65,6 +68,9 @@ where C: RaftTypeConfig
             }
             ExternalCommand::PurgeLog { upto } => {
                 write!(f, "PurgeLog[..={}]", upto)
+            }
+            ExternalCommand::TriggerTransferLeader { to } => {
+                write!(f, "TriggerTransferLeader: to {}", to)
             }
             ExternalCommand::StateMachineCommand { sm_cmd } => {
                 write!(f, "StateMachineCommand: {}", sm_cmd)

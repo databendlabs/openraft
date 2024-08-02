@@ -12,6 +12,7 @@ use crate::error::Infallible;
 use crate::error::InitializeError;
 use crate::error::InstallSnapshotError;
 use crate::progress::Inflight;
+use crate::raft::message::TransferLeaderRequest;
 use crate::raft::AppendEntriesResponse;
 use crate::raft::InstallSnapshotResponse;
 use crate::raft::SnapshotResponse;
@@ -69,6 +70,8 @@ where C: RaftTypeConfig
     ///
     /// Upon startup, the saved committed log ids will be re-applied to state machine to restore the
     /// latest state.
+    ///
+    /// [`RaftLogStorage`]: crate::storage::RaftLogStorage
     SaveCommitted { committed: LogId<C::NodeId> },
 
     /// Commit log entries that are already persisted in the store, upto `upto`, inclusive.
@@ -87,6 +90,9 @@ where C: RaftTypeConfig
 
     /// Replicate log entries or snapshot to a target.
     Replicate { target: C::NodeId, req: Inflight<C> },
+
+    /// Broadcast transfer Leader message to all other nodes.
+    BroadcastTransferLeader { req: TransferLeaderRequest<C> },
 
     /// Membership config changed, need to update replication streams.
     /// The Runtime has to close all old replications and start new ones.
@@ -149,6 +155,7 @@ where C: RaftTypeConfig
             Command::Replicate { target, req } => {
                 write!(f, "Replicate: target={}, req: {}", target, req)
             }
+            Command::BroadcastTransferLeader { req } => write!(f, "TransferLeader: {}", req),
             Command::RebuildReplicationStreams { targets } => {
                 write!(f, "RebuildReplicationStreams: {}", targets.display_n::<10>())
             }
@@ -185,6 +192,7 @@ where
             (Command::SaveCommitted { committed },             Command::SaveCommitted { committed: b })                              => committed == b,
             (Command::Apply { already_committed, upto, },      Command::Apply { already_committed: b_committed, upto: b_upto, }, )  => already_committed == b_committed && upto == b_upto,
             (Command::Replicate { target, req },               Command::Replicate { target: b_target, req: other_req, }, )           => target == b_target && req == other_req,
+            (Command::BroadcastTransferLeader { req },         Command::BroadcastTransferLeader { req: b, }, )                       => req == b,
             (Command::RebuildReplicationStreams { targets },   Command::RebuildReplicationStreams { targets: b }, )                  => targets == b,
             (Command::SaveVote { vote },                       Command::SaveVote { vote: b })                                        => vote == b,
             (Command::SendVote { vote_req },                   Command::SendVote { vote_req: b }, )                                  => vote_req == b,
@@ -219,6 +227,7 @@ where C: RaftTypeConfig
 
             Command::ReplicateCommitted { .. }        => CommandKind::Network,
             Command::Replicate { .. }                 => CommandKind::Network,
+            Command::BroadcastTransferLeader { .. }            => CommandKind::Network,
             Command::SendVote { .. }                  => CommandKind::Network,
 
             Command::Apply { .. }                     => CommandKind::StateMachine,
@@ -243,6 +252,7 @@ where C: RaftTypeConfig
 
             Command::ReplicateCommitted { .. }        => None,
             Command::Replicate { .. }                 => None,
+            Command::BroadcastTransferLeader { .. }            => None,
             Command::SendVote { .. }                  => None,
 
             Command::Apply { .. }                     => None,

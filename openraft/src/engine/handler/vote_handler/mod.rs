@@ -98,8 +98,6 @@ where C: RaftTypeConfig
     ///
     /// Note: This method does not check last-log-id. handle-vote-request has to deal with
     /// last-log-id itself.
-    ///
-    /// This method also implies calling [`Self::update_last_seen`].
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn update_vote(&mut self, vote: &Vote<C::NodeId>) -> Result<(), RejectVoteRequest<C>> {
         // Partial ord compare:
