@@ -6,7 +6,7 @@ use pretty_assertions::assert_eq;
 
 use crate::engine::testing::UTConfig;
 use crate::engine::Engine;
-use crate::testing::log_id;
+use crate::testing::log::log_id;
 use crate::type_config::TypeConfigExt;
 use crate::utime::Leased;
 use crate::EffectiveMembership;

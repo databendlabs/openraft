@@ -10,7 +10,7 @@ use crate::engine::Command;
 use crate::engine::Engine;
 use crate::engine::LogIdList;
 use crate::error::RejectVoteRequest;
-use crate::testing::log_id;
+use crate::testing::log::log_id;
 use crate::type_config::TypeConfigExt;
 use crate::utime::Leased;
 use crate::EffectiveMembership;

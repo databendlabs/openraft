@@ -14,7 +14,7 @@ use crate::engine::Command;
 use crate::engine::Engine;
 use crate::progress::Inflight;
 use crate::progress::Progress;
-use crate::testing::log_id;
+use crate::testing::log::log_id;
 use crate::type_config::TypeConfigExt;
 use crate::utime::Leased;
 use crate::EffectiveMembership;

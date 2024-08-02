@@ -10,7 +10,7 @@ use crate::engine::testing::UTConfig;
 use crate::log_id::LogIdOptionExt;
 use crate::metrics::Wait;
 use crate::metrics::WaitError;
-use crate::testing::log_id;
+use crate::testing::log::log_id;
 use crate::type_config::alias::NodeIdOf;
 use crate::type_config::alias::WatchSenderOf;
 use crate::type_config::TypeConfigExt;

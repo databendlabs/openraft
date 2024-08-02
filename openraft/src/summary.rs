@@ -85,7 +85,7 @@ mod tests {
     fn test_display() {
         use crate::MessageSummary;
 
-        let lid = crate::testing::log_id(1, 2, 3);
+        let lid = crate::testing::log::log_id(1, 2, 3);
         assert_eq!("T1-N2.3", lid.to_string());
         assert_eq!("T1-N2.3", lid.summary());
         assert_eq!("Some(T1-N2.3)", Some(&lid).summary());

@@ -211,8 +211,8 @@ mod tests {
     use crate::entry::RaftEntry;
     use crate::progress::Progress;
     use crate::proposer::Leader;
-    use crate::testing::blank_ent;
-    use crate::testing::log_id;
+    use crate::testing::log::blank_ent;
+    use crate::testing::log::log_id;
     use crate::type_config::TypeConfigExt;
     use crate::Entry;
     use crate::RaftLogId;
