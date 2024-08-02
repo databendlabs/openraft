@@ -18,7 +18,6 @@ use request::DataWithId;
 use request::Replicate;
 use response::ReplicationResult;
 pub(crate) use response::Response;
-use tokio::select;
 use tracing_futures::Instrument;
 
 use crate::async_runtime::MpscUnboundedReceiver;
@@ -591,12 +590,12 @@ where
 
             tracing::debug!("backoff timeout: {:?}", sleep_duration);
 
-            select! {
-                _ = sleep => {
+            futures::select! {
+                _ = sleep.fuse() => {
                     tracing::debug!("backoff timeout");
                     return Ok(());
                 }
-                recv_res = recv => {
+                recv_res = recv.fuse() => {
                     let event = recv_res.ok_or(ReplicationClosed::new("RaftCore closed replication"))?;
                     self.process_event(event);
                 }

@@ -43,7 +43,6 @@ use tracing::trace_span;
 use tracing::Instrument;
 use tracing::Level;
 
-use crate::async_runtime::mutex::Mutex;
 use crate::async_runtime::watch::WatchReceiver;
 use crate::async_runtime::MpscUnboundedSender;
 use crate::async_runtime::OneshotSender;
@@ -174,7 +173,7 @@ macro_rules! declare_raft_types {
                 (NodeId       , , u64                                   ),
                 (Node         , , $crate::impls::BasicNode              ),
                 (Entry        , , $crate::impls::Entry<Self>            ),
-                (SnapshotData , , Cursor<Vec<u8>>                       ),
+                (SnapshotData , , std::io::Cursor<Vec<u8>>                       ),
                 (Responder    , , $crate::impls::OneshotResponder<Self> ),
                 (AsyncRuntime , , $crate::impls::TokioRuntime           ),
             );
@@ -441,6 +440,7 @@ where C: RaftTypeConfig
     /// If receiving is finished `done == true`, it installs the snapshot to the state machine.
     /// Nothing will be done if the input snapshot is older than the state machine.
     #[tracing::instrument(level = "debug", skip_all)]
+    #[cfg(feature = "tokio-rt")]
     pub async fn install_snapshot(
         &self,
         req: InstallSnapshotRequest<C>,
@@ -448,6 +448,8 @@ where C: RaftTypeConfig
     where
         C::SnapshotData: tokio::io::AsyncRead + tokio::io::AsyncWrite + tokio::io::AsyncSeek + Unpin,
     {
+        use crate::async_runtime::mutex::Mutex;
+
         tracing::debug!(req = display(&req), "Raft::install_snapshot()");
 
         let req_vote = req.vote;
