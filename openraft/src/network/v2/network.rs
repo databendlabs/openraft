@@ -1,14 +1,17 @@
 use std::future::Future;
 use std::time::Duration;
 
+use anyerror::AnyError;
 use openraft_macros::add_async_trait;
 use openraft_macros::since;
 
 use crate::error::RPCError;
 use crate::error::ReplicationClosed;
 use crate::error::StreamingError;
+use crate::error::Unreachable;
 use crate::network::Backoff;
 use crate::network::RPCOption;
+use crate::raft::message::TransferLeaderRequest;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
 use crate::raft::SnapshotResponse;
@@ -64,10 +67,12 @@ where C: RaftTypeConfig
     ///
     /// The `vote` is the leader vote which is used to check if the leader is still valid by a
     /// follower.
-    /// When the follower finished receiving snapshot, it calls `Raft::install_full_snapshot()`
+    /// When the follower finished receiving snapshot, it calls [`Raft::install_full_snapshot()`]
     /// with this vote.
     ///
     /// `cancel` get `Ready` when the caller decides to cancel this snapshot transmission.
+    ///
+    /// [`Raft::install_full_snapshot()`]: crate::raft::Raft::install_full_snapshot
     async fn full_snapshot(
         &mut self,
         vote: Vote<C::NodeId>,
@@ -75,6 +80,22 @@ where C: RaftTypeConfig
         cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
         option: RPCOption,
     ) -> Result<SnapshotResponse<C>, StreamingError<C>>;
+
+    /// Send TransferLeader message to the target node.
+    ///
+    /// The node received this message should pass it to [`Raft::handle_transfer_leader()`].
+    ///
+    /// This method provide a default implementation that just return [`Unreachable`] error to
+    /// ignore it. In case the application did not implement it, other nodes just wait for the
+    /// Leader lease to timeout and then restart election.
+    ///
+    /// [`Raft::handle_transfer_leader()`]: crate::raft::Raft::handle_transfer_leader
+    #[since(version = "0.10.0")]
+    async fn transfer_leader(&mut self, _req: TransferLeaderRequest<C>, _option: RPCOption) -> Result<(), RPCError<C>> {
+        return Err(RPCError::Unreachable(Unreachable::new(&AnyError::error(
+            "transfer_leader not implemented",
+        ))));
+    }
 
     /// Build a backoff instance if the target node is temporarily(or permanently) unreachable.
     ///

@@ -6,6 +6,7 @@ use crate::engine::EngineOutput;
 use crate::entry::RaftPayload;
 use crate::proposer::Leader;
 use crate::proposer::LeaderQuorumSet;
+use crate::raft::message::TransferLeaderRequest;
 use crate::raft_state::IOId;
 use crate::raft_state::LogStateReader;
 use crate::type_config::alias::LogIdOf;
@@ -19,6 +20,8 @@ mod append_entries_test;
 mod get_read_log_id_test;
 #[cfg(test)]
 mod send_heartbeat_test;
+#[cfg(test)]
+mod transfer_leader_test;
 
 /// Handle leader operations.
 ///
@@ -105,6 +108,16 @@ where C: RaftTypeConfig
         let committed = self.state.committed().copied();
         // noop log id is the first log this leader proposed.
         std::cmp::max(self.leader.noop_log_id, committed)
+    }
+
+    /// Disable proposing new logs for this Leader, and transfer Leader to another node
+    pub(crate) fn transfer_leader(&mut self, to: C::NodeId) {
+        self.leader.mark_transfer(to);
+        self.state.vote.disable_lease();
+
+        self.output.push_command(Command::BroadcastTransferLeader {
+            req: TransferLeaderRequest::new(*self.leader.committed_vote, to, self.leader.last_log_id().copied()),
+        });
     }
 
     pub(crate) fn replication_handler(&mut self) -> ReplicationHandler<C> {

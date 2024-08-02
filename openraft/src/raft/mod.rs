@@ -35,6 +35,7 @@ pub use message::ClientWriteResult;
 pub use message::InstallSnapshotRequest;
 pub use message::InstallSnapshotResponse;
 pub use message::SnapshotResponse;
+pub use message::TransferLeaderRequest;
 pub use message::VoteRequest;
 pub use message::VoteResponse;
 use openraft_macros::since;
@@ -638,32 +639,44 @@ where C: RaftTypeConfig
     /// expected log entries are flushed.
     /// Otherwise, it just resets the Leader lease to allow the `to` node to become the Leader.
     ///
-    /// To implement Leader transfer, Call this method on every node in the cluster with the same
-    /// arguments.
-    // TODO: Explain what the `from` Leader node do.
+    /// The application calls
+    /// [`Raft::trigger().transfer_leader()`](crate::raft::trigger::Trigger::transfer_leader) to
+    /// submit Transfer Leader command. Then, the current Leader will broadcast it to every node in
+    /// the cluster via [`RaftNetworkV2::transfer_leader`] and the implementation on the remote node
+    /// responds to transfer leader request by calling this method.
+    ///
+    /// [`RaftNetworkV2::transfer_leader`]: crate::network::v2::RaftNetworkV2::transfer_leader
     #[since(version = "0.10.0")]
-    pub async fn transfer_leader(
-        &self,
-        from: Vote<C::NodeId>,
-        to: C::NodeId,
-        flushed_log: Option<LogId<C::NodeId>>,
-    ) -> Result<(), Fatal<C>> {
+    pub async fn handle_transfer_leader(&self, req: TransferLeaderRequest<C>) -> Result<(), Fatal<C>> {
         // Reset the Leader lease at once and quit, if this is not the assigned next leader.
         // Only the assigned next Leader waits for the log to be flushed.
-        if to != self.inner.id {
-            self.inner.send_msg(RaftMsg::TransferLeader { from, to }).await?;
-            return Ok(());
+        if req.to == self.inner.id {
+            self.ensure_log_flushed_for_transfer_leader(&req).await?;
         }
 
+        let raft_msg = RaftMsg::HandleTransferLeader {
+            from: req.from,
+            to: req.to,
+        };
+
+        self.inner.send_msg(raft_msg).await?;
+
+        Ok(())
+    }
+
+    /// Wait for the log to be flushed to make sure the RequestVote.last_log_id is upto date, then
+    /// TransferLeader will be able to proceed.
+    async fn ensure_log_flushed_for_transfer_leader(&self, req: &TransferLeaderRequest<C>) -> Result<(), Fatal<C>> {
         // If the next Leader is this node, wait for the log to be flushed to make sure the
         // RequestVote.last_log_id is upto date.
 
         // Condition satisfied to become Leader
-        let ok = |m: &RaftMetrics<C>| (from == m.vote && m.last_log_index.next_index() >= flushed_log.next_index());
+        let ok =
+            |m: &RaftMetrics<C>| (req.from == m.vote && m.last_log_index.next_index() >= req.last_log_id.next_index());
 
         // Condition failed to become Leader
         #[allow(clippy::neg_cmp_op_on_partial_ord)]
-        let fail = |m: &RaftMetrics<C>| !(from >= m.vote);
+        let fail = |m: &RaftMetrics<C>| !(req.from >= m.vote);
 
         let timeout = Some(Duration::from_millis(self.inner.config.election_timeout_min));
         let metrics_res =
@@ -674,7 +687,7 @@ where C: RaftTypeConfig
                 if fail(&metrics) {
                     tracing::warn!(
                         "Vote changed, give up Leader-transfer; expected vote: {}, metrics: {}",
-                        from,
+                        req.from,
                         metrics
                     );
                     return Ok(());
@@ -682,22 +695,20 @@ where C: RaftTypeConfig
                 tracing::info!(
                     "Leader-transfer condition satisfied, submit Leader-transfer message; \
                      expected: (vote: {}, flushed_log: {})",
-                    from,
-                    flushed_log.display(),
+                    req.from,
+                    req.last_log_id.display(),
                 );
             }
             Err(err) => {
                 tracing::warn!(
                     "Leader-transfer condition fail to satisfy, still submit Leader-transfer; \
                     expected: (vote: {}; flushed_log: {}), error: {}",
-                    from,
-                    flushed_log.display(),
+                    req.from,
+                    req.last_log_id.display(),
                     err
                 );
             }
         };
-
-        self.inner.send_msg(RaftMsg::TransferLeader { from, to }).await?;
 
         Ok(())
     }

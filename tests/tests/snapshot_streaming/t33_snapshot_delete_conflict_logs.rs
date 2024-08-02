@@ -3,11 +3,10 @@ use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
+use openraft::network::v2::RaftNetworkV2;
 use openraft::network::RPCOption;
-use openraft::network::RaftNetwork;
 use openraft::network::RaftNetworkFactory;
 use openraft::raft::AppendEntriesRequest;
-use openraft::raft::InstallSnapshotRequest;
 use openraft::storage::RaftLogStorage;
 use openraft::storage::RaftLogStorageExt;
 use openraft::storage::RaftStateMachine;
@@ -148,18 +147,15 @@ async fn snapshot_delete_conflicting_logs() -> Result<()> {
             b.build_snapshot().await?
         };
 
-        let req = InstallSnapshotRequest {
-            vote: sto0.read_vote().await?.unwrap(),
-            meta: snap.meta.clone(),
-            offset: 0,
-            data: snap.snapshot.into_inner(),
-            done: true,
-        };
-
+        let vote = sto0.read_vote().await?.unwrap();
         let option = RPCOption::new(Duration::from_millis(1_000));
 
         #[allow(deprecated)]
-        router.new_client(1, &()).await.install_snapshot(req, option).await?;
+        router
+            .new_client(1, &())
+            .await
+            .full_snapshot(vote, snap, futures::future::pending(), option)
+            .await?;
 
         tracing::info!(log_index, "--- DONE installing snapshot");
 

@@ -409,16 +409,22 @@ where C: RaftTypeConfig
             // Safe unwrap(): vote that is committed has to already have voted for some node.
             let id = vote.leader_id().voted_for().unwrap();
 
-            // leader may not step down after being removed from `voters`.
-            // It does not have to be a voter, being in membership is just enough
-            let node = self.membership_state.effective().get_node(&id);
-            if let Some(n) = node {
-                return ForwardToLeader::new(id, n.clone());
-            } else {
-                tracing::debug!("id={} is not in membership, when getting leader id", id);
-            }
-        };
+            return self.new_forward_to_leader(id);
+        }
 
         ForwardToLeader::empty()
+    }
+
+    pub(crate) fn new_forward_to_leader(&self, to: C::NodeId) -> ForwardToLeader<C> {
+        // leader may not step down after being removed from `voters`.
+        // It does not have to be a voter, being in membership is just enough
+        let node = self.membership_state.effective().get_node(&to);
+
+        if let Some(n) = node {
+            ForwardToLeader::new(to, n.clone())
+        } else {
+            tracing::debug!("id={} is not in membership, when getting leader id", to);
+            ForwardToLeader::empty()
+        }
     }
 }
