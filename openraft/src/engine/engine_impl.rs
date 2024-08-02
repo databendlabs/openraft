@@ -80,15 +80,6 @@ where C: RaftTypeConfig
     /// should be greater.
     pub(crate) seen_greater_log: bool,
 
-    /// The greatest vote this node has ever seen.
-    ///
-    /// It could be greater than `self.state.vote`,
-    /// because `self.state.vote` is update only when a node granted a vote,
-    /// i.e., the Leader with this vote is legal: has a greater log and vote.
-    ///
-    /// This vote value is used for election.
-    pub(crate) last_seen_vote: Vote<C::NodeId>,
-
     /// Represents the Leader state.
     pub(crate) leader: LeaderState<C>,
 
@@ -107,12 +98,10 @@ impl<C> Engine<C>
 where C: RaftTypeConfig
 {
     pub(crate) fn new(init_state: RaftState<C>, config: EngineConfig<C>) -> Self {
-        let vote = *init_state.vote_ref();
         Self {
             config,
             state: Valid::new(init_state),
             seen_greater_log: false,
-            last_seen_vote: vote,
             leader: None,
             candidate: None,
             output: EngineOutput::new(4096),
@@ -208,7 +197,6 @@ where C: RaftTypeConfig
             committed: true,
             ..Default::default()
         };
-        self.last_seen_vote = vote;
         self.state.vote.update(C::now(), Duration::default(), vote);
         self.following_handler().do_append_entries(vec![entry]);
 
@@ -221,14 +209,7 @@ where C: RaftTypeConfig
     /// Start to elect this node as leader
     #[tracing::instrument(level = "debug", skip(self))]
     pub(crate) fn elect(&mut self) {
-        debug_assert!(
-            self.last_seen_vote >= *self.state.vote_ref(),
-            "expect: last_seen_vote({}) >= state.vote({}), when elect()",
-            self.last_seen_vote,
-            self.state.vote_ref()
-        );
-
-        let new_term = self.last_seen_vote.leader_id().term + 1;
+        let new_term = self.state.vote.leader_id().term + 1;
         let new_vote = Vote::new(new_term, self.config.id);
 
         let candidate = self.new_candidate(new_vote);
@@ -310,7 +291,7 @@ where C: RaftTypeConfig
                     local_leased_vote.time_info(now)
                 );
 
-                return VoteResponse::new(self.state.vote_ref(), self.state.last_log_id().copied());
+                return VoteResponse::new(self.state.vote_ref(), self.state.last_log_id().copied(), false);
             }
         }
 
@@ -329,7 +310,7 @@ where C: RaftTypeConfig
 
             // Return the updated vote, this way the candidate knows which vote is granted, in case
             // the candidate's vote is changed after sending the vote request.
-            return VoteResponse::new(self.state.vote_ref(), self.state.last_log_id().copied());
+            return VoteResponse::new(self.state.vote_ref(), self.state.last_log_id().copied(), false);
         }
 
         // Then check vote just as it does for every incoming event.
@@ -340,7 +321,7 @@ where C: RaftTypeConfig
 
         // Return the updated vote, this way the candidate knows which vote is granted, in case
         // the candidate's vote is changed after sending the vote request.
-        VoteResponse::new(self.state.vote_ref(), self.state.last_log_id().copied())
+        VoteResponse::new(self.state.vote_ref(), self.state.last_log_id().copied(), res.is_ok())
     }
 
     #[tracing::instrument(level = "debug", skip(self, resp))]
@@ -354,24 +335,14 @@ where C: RaftTypeConfig
             func_name!()
         );
 
-        // Update the last seen vote, but not `state.vote`.
-        // `state.vote` is updated only when the vote is granted
-        // (allows the vote owner to be a Leader).
-        //
-        // But in this case, the responded greater vote is not yet granted
-        // because the remote peer may have smaller log.
-        // And even when the remote peer has greater log, it does not have to grant the vote,
-        // if greater logs does not form a quorum.
-        self.vote_handler().update_last_seen(&resp.vote);
-
         let Some(candidate) = self.candidate_mut() else {
             // If the voting process has finished or canceled,
             // just ignore the delayed vote_resp.
             return;
         };
 
-        // A vote request is granted iff the replied vote is the same as the requested vote.
-        if &resp.vote == candidate.vote_ref() {
+        // If resp.vote is different, it may be a delay response to previous voting.
+        if resp.vote_granted && &resp.vote == candidate.vote_ref() {
             let quorum_granted = candidate.grant_by(&target);
             if quorum_granted {
                 tracing::info!("a quorum granted my vote");
@@ -379,8 +350,6 @@ where C: RaftTypeConfig
             }
             return;
         }
-
-        // TODO: resp.granted is never used.
 
         // If not equal, vote is rejected:
 
@@ -399,6 +368,9 @@ where C: RaftTypeConfig
             );
             self.set_greater_log();
         }
+
+        // Update if resp.vote is greater.
+        let _ = self.vote_handler().update_vote(&resp.vote);
     }
 
     /// Append entries to follower/learner.
@@ -732,7 +704,6 @@ where C: RaftTypeConfig
             config: &mut self.config,
             state: &mut self.state,
             output: &mut self.output,
-            last_seen_vote: &mut self.last_seen_vote,
             leader: &mut self.leader,
             candidate: &mut self.candidate,
         }
