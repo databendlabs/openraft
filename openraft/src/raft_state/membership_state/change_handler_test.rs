@@ -8,7 +8,7 @@ use crate::error::ChangeMembershipError;
 use crate::error::EmptyMembership;
 use crate::error::InProgress;
 use crate::error::LearnerNotFound;
-use crate::testing::log_id;
+use crate::testing::log::log_id;
 use crate::ChangeMembers;
 use crate::EffectiveMembership;
 use crate::Membership;

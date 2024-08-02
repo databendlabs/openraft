@@ -14,7 +14,7 @@ use crate::error::NotAllowed;
 use crate::error::NotInMembers;
 use crate::raft::VoteRequest;
 use crate::raft_state::LogStateReader;
-use crate::testing::log_id;
+use crate::testing::log::log_id;
 use crate::type_config::TypeConfigExt;
 use crate::utime::Leased;
 use crate::vote::CommittedLeaderId;

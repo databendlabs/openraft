@@ -3,7 +3,7 @@ use std::sync::Arc;
 use maplit::btreeset;
 
 use crate::engine::testing::UTConfig;
-use crate::testing::log_id;
+use crate::testing::log::log_id;
 use crate::EffectiveMembership;
 use crate::Membership;
 use crate::MembershipState;
