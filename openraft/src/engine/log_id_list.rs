@@ -299,6 +299,8 @@ where C: RaftTypeConfig
         self.key_log_ids.last()
     }
 
+    // This method will only be used under feature tokio-rt
+    #[cfg_attr(not(feature = "tokio-rt"), allow(dead_code))]
     pub(crate) fn key_log_ids(&self) -> &[LogId<C::NodeId>] {
         &self.key_log_ids
     }
