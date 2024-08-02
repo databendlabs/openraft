@@ -70,6 +70,7 @@ use crate::progress::entry::ProgressEntry;
 use crate::progress::Inflight;
 use crate::progress::Progress;
 use crate::quorum::QuorumSet;
+use crate::raft::message::TransferLeaderRequest;
 use crate::raft::responder::Responder;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
@@ -472,14 +473,21 @@ where
     /// The result of applying it to state machine is sent to `resp_tx`, if it is not `None`.
     /// The calling side may not receive a result from `resp_tx`, if raft is shut down.
     #[tracing::instrument(level = "debug", skip_all, fields(id = display(self.id)))]
-    pub fn write_entry(&mut self, entry: C::Entry, resp_tx: Option<ResponderOf<C>>) -> bool {
+    pub fn write_entry(&mut self, entry: C::Entry, resp_tx: Option<ResponderOf<C>>) {
         tracing::debug!(payload = display(&entry), "write_entry");
 
-        let (mut lh, tx) = if let Some((lh, tx)) = self.engine.get_leader_handler_or_reject(resp_tx) {
-            (lh, tx)
-        } else {
-            return false;
+        let Some((mut lh, tx)) = self.engine.get_leader_handler_or_reject(resp_tx) else {
+            return;
         };
+
+        // If the leader is transferring leadership, forward writes to the new leader.
+        if let Some(to) = lh.leader.get_transfer_to() {
+            if let Some(tx) = tx {
+                let err = lh.state.new_forward_to_leader(*to);
+                tx.send(Err(ClientWriteError::ForwardToLeader(err)));
+            }
+            return;
+        }
 
         let entries = vec![entry];
         // TODO: it should returns membership config error etc. currently this is done by the
@@ -491,27 +499,30 @@ where
         if let Some(tx) = tx {
             self.client_resp_channels.insert(index, tx);
         }
-
-        true
     }
 
-    /// Send a heartbeat message to every followers/learners.
-    ///
-    /// Currently heartbeat is a blank log
+    /// Send a heartbeat message to every follower/learners.
     #[tracing::instrument(level = "debug", skip_all, fields(id = display(self.id)))]
-    pub fn send_heartbeat(&mut self, emitter: impl fmt::Display) -> bool {
+    pub(crate) fn send_heartbeat(&mut self, emitter: impl fmt::Display) -> bool {
         tracing::debug!(now = display(C::now().display()), "send_heartbeat");
 
-        let mut lh = if let Some((lh, _)) = self.engine.get_leader_handler_or_reject(None) {
-            lh
-        } else {
+        let Some((mut lh, _)) = self.engine.get_leader_handler_or_reject(None) else {
             tracing::debug!(
                 now = display(C::now().display()),
-                "{} failed to send heartbeat",
+                "{} failed to send heartbeat, not a Leader",
                 emitter
             );
             return false;
         };
+
+        if lh.leader.get_transfer_to().is_some() {
+            tracing::debug!(
+                now = display(C::now().display()),
+                "{} is transferring leadership, skip sending heartbeat",
+                emitter
+            );
+            return false;
+        }
 
         lh.send_heartbeat();
 
@@ -1108,6 +1119,54 @@ where
         }
     }
 
+    /// Spawn parallel vote requests to all cluster members.
+    #[tracing::instrument(level = "trace", skip_all)]
+    async fn broadcast_transfer_leader(&mut self, req: TransferLeaderRequest<C>) {
+        let voter_ids = self.engine.state.membership_state.effective().voter_ids();
+
+        for target in voter_ids {
+            if target == self.id {
+                continue;
+            }
+
+            let r = req.clone();
+
+            // Safe unwrap(): target must be in membership
+            let target_node = self.engine.state.membership_state.effective().get_node(&target).unwrap().clone();
+            let mut client = self.network_factory.new_client(target, &target_node).await;
+
+            let ttl = Duration::from_millis(self.config.election_timeout_min);
+            let option = RPCOption::new(ttl);
+
+            let fut = async move {
+                let tm_res = C::timeout(ttl, client.transfer_leader(r, option)).await;
+                let res = match tm_res {
+                    Ok(res) => res,
+                    Err(timeout) => {
+                        tracing::error!({error = display(timeout), target = display(target)}, "timeout sending transfer_leader");
+                        return;
+                    }
+                };
+
+                if let Err(e) = res {
+                    tracing::error!({error = display(e), target = display(target)}, "error sending transfer_leader");
+                } else {
+                    tracing::info!("Done transfer_leader sent to {}", target);
+                }
+            };
+
+            let span = tracing::debug_span!(
+                parent: &Span::current(),
+                "send_transfer_leader",
+                target = display(target)
+            );
+
+            // False positive lint warning(`non-binding `let` on a future`): https://github.com/rust-lang/rust-clippy/issues/9932
+            #[allow(clippy::let_underscore_future)]
+            let _ = C::spawn(fut.instrument(span));
+        }
+    }
+
     #[tracing::instrument(level = "debug", skip_all)]
     pub(super) fn handle_vote_request(&mut self, req: VoteRequest<C>, tx: VoteTx<C>) {
         tracing::info!(req = display(&req), func = func_name!());
@@ -1187,7 +1246,7 @@ where
             RaftMsg::ExternalCoreRequest { req } => {
                 req(&self.engine.state);
             }
-            RaftMsg::TransferLeader {
+            RaftMsg::HandleTransferLeader {
                 from: current_leader_vote,
                 to,
             } => {
@@ -1226,6 +1285,9 @@ where
                     }
                     ExternalCommand::PurgeLog { upto } => {
                         self.engine.trigger_purge_log(upto);
+                    }
+                    ExternalCommand::TriggerTransferLeader { to } => {
+                        self.engine.trigger_transfer_leader(to);
                     }
                     ExternalCommand::StateMachineCommand { sm_cmd } => {
                         let res = self.sm_handle.send(sm_cmd);
@@ -1743,6 +1805,8 @@ where
                     }
                 }
             }
+            Command::BroadcastTransferLeader { req } => self.broadcast_transfer_leader(req).await,
+
             Command::RebuildReplicationStreams { targets } => {
                 self.remove_all_replication().await;
 

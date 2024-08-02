@@ -77,4 +77,13 @@ where C: RaftTypeConfig
     pub async fn purge_log(&self, upto: u64) -> Result<(), Fatal<C>> {
         self.raft_inner.send_external_command(ExternalCommand::PurgeLog { upto }, "purge_log").await
     }
+
+    /// Submit a command to inform RaftCore to transfer leadership to the specified node.
+    ///
+    /// If this node is not a Leader, it is just ignored.
+    pub async fn transfer_leader(&self, to: C::NodeId) -> Result<(), Fatal<C>> {
+        self.raft_inner
+            .send_external_command(ExternalCommand::TriggerTransferLeader { to }, "transfer_leader")
+            .await
+    }
 }

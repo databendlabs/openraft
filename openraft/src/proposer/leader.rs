@@ -34,6 +34,15 @@ use crate::RaftTypeConfig;
 pub(crate) struct Leader<C, QS: QuorumSet<C::NodeId>>
 where C: RaftTypeConfig
 {
+    /// Whether this Leader is marked as transferring to another node.
+    ///
+    /// Proposing is disabled when Leader has been transferring to another node.
+    /// Indicates whether the current Leader is in the process of transferring leadership to another
+    /// node.
+    ///
+    /// Leadership transfers disable proposing new logs.
+    transfer_to: Option<C::NodeId>,
+
     /// The vote this leader works in.
     ///
     /// `self.voting` may be in progress requesting vote for a higher vote.
@@ -110,6 +119,7 @@ where
         let last_log_id = last_leader_log_id.last().copied();
 
         let mut leader = Self {
+            transfer_to: None,
             committed_vote: vote,
             next_heartbeat: C::now(),
             last_log_id,
@@ -144,6 +154,14 @@ where
         &self.committed_vote
     }
 
+    pub(crate) fn mark_transfer(&mut self, to: C::NodeId) {
+        self.transfer_to = Some(to);
+    }
+
+    pub(crate) fn get_transfer_to(&self) -> Option<&C::NodeId> {
+        self.transfer_to.as_ref()
+    }
+
     /// Assign log ids to the entries.
     ///
     /// This method update the `self.last_log_id`.
@@ -151,6 +169,8 @@ where
         &mut self,
         entries: impl IntoIterator<Item = &'a mut LID>,
     ) {
+        debug_assert!(self.transfer_to.is_none(), "leader is disabled to propose new log");
+
         let committed_leader_id = self.committed_vote.committed_leader_id();
 
         let first = LogId::new(committed_leader_id, self.last_log_id().next_index());

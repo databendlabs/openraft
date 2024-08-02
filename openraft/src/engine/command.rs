@@ -12,6 +12,7 @@ use crate::error::Infallible;
 use crate::error::InitializeError;
 use crate::error::InstallSnapshotError;
 use crate::progress::Inflight;
+use crate::raft::message::TransferLeaderRequest;
 use crate::raft::AppendEntriesResponse;
 use crate::raft::InstallSnapshotResponse;
 use crate::raft::SnapshotResponse;
@@ -88,6 +89,9 @@ where C: RaftTypeConfig
     /// Replicate log entries or snapshot to a target.
     Replicate { target: C::NodeId, req: Inflight<C> },
 
+    /// Broadcast transfer Leader message to all other nodes.
+    BroadcastTransferLeader { req: TransferLeaderRequest<C> },
+
     /// Membership config changed, need to update replication streams.
     /// The Runtime has to close all old replications and start new ones.
     /// Because a replication stream should only report state for one membership config.
@@ -149,6 +153,7 @@ where C: RaftTypeConfig
             Command::Replicate { target, req } => {
                 write!(f, "Replicate: target={}, req: {}", target, req)
             }
+            Command::BroadcastTransferLeader { req } => write!(f, "TransferLeader: {}", req),
             Command::RebuildReplicationStreams { targets } => {
                 write!(f, "RebuildReplicationStreams: {}", targets.display_n::<10>())
             }
@@ -219,6 +224,7 @@ where C: RaftTypeConfig
 
             Command::ReplicateCommitted { .. }        => CommandKind::Network,
             Command::Replicate { .. }                 => CommandKind::Network,
+            Command::BroadcastTransferLeader { .. }            => CommandKind::Network,
             Command::SendVote { .. }                  => CommandKind::Network,
 
             Command::Apply { .. }                     => CommandKind::StateMachine,
@@ -243,6 +249,7 @@ where C: RaftTypeConfig
 
             Command::ReplicateCommitted { .. }        => None,
             Command::Replicate { .. }                 => None,
+            Command::BroadcastTransferLeader { .. }            => None,
             Command::SendVote { .. }                  => None,
 
             Command::Apply { .. }                     => None,

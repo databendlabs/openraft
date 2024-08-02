@@ -350,6 +350,9 @@ where
                 // TODO: handle too large
                 tracing::error!("InstallSnapshot RPC is too large, but it is not supported yet");
             }
+            RPCTypes::TransferLeader => {
+                unreachable!("TransferLeader RPC should not be too large")
+            }
         }
     }
 
