@@ -1317,8 +1317,11 @@ where
                     func_name!()
                 );
 
-                if self.does_vote_match(&sender_vote, "VoteResponse") {
-                    self.engine.handle_vote_resp(target, resp);
+                #[allow(clippy::collapsible_if)]
+                if self.engine.candidate.is_some() {
+                    if self.does_vote_match(&sender_vote, "VoteResponse") {
+                        self.engine.handle_vote_resp(target, resp);
+                    }
                 }
             }
 
@@ -1397,17 +1400,20 @@ where
             Notification::LocalIO { io_id } => {
                 self.engine.state.io_state.io_progress.flush(io_id);
 
-                // No need to check against membership change,
-                // because not like removing-then-adding a remote node,
-                // local log wont revert when membership changes.
-                if self.does_vote_match(io_id.vote_ref(), "LocalIO Notification") {
-                    match io_id {
-                        IOId::Log(log_io_id) => {
-                            self.engine.replication_handler().update_local_progress(log_io_id.log_id);
+                match io_id {
+                    IOId::Log(log_io_id) => {
+                        // No need to check against membership change,
+                        // because not like removing-then-adding a remote node,
+                        // local log wont revert when membership changes.
+                        #[allow(clippy::collapsible_if)]
+                        if self.engine.leader.is_some() {
+                            if self.does_vote_match(io_id.vote_ref(), "LocalIO Notification") {
+                                self.engine.replication_handler().update_local_progress(log_io_id.log_id);
+                            }
                         }
-                        IOId::Vote(_vote) => {
-                            // nothing to do
-                        }
+                    }
+                    IOId::Vote(_vote) => {
+                        // nothing to do
                     }
                 }
             }
@@ -1607,6 +1613,7 @@ where
             true
         }
     }
+
     /// If a message is sent by a previous replication session but is received by current server
     /// state, it is a stale message and should be just ignored.
     fn does_replication_session_match(
