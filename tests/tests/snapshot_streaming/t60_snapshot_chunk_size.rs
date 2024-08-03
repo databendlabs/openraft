@@ -3,16 +3,15 @@ use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
-use openraft::CommittedLeaderId;
+use openraft::testing::log_id;
 use openraft::Config;
-use openraft::LogId;
 use openraft::ServerState;
 use openraft::SnapshotPolicy;
 
 use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 
-/// Test transfer snapshot in small chnuks
+/// Test transfer snapshot in small chunks
 ///
 /// What does this test do?
 ///
@@ -29,6 +28,7 @@ async fn snapshot_chunk_size() -> Result<()> {
             snapshot_policy: SnapshotPolicy::LogsSinceLast(snapshot_threshold),
             snapshot_max_chunk_size: 10,
             enable_heartbeat: false,
+            max_in_snapshot_log_to_keep: 0,
             ..Default::default()
         }
         .validate()?,
@@ -65,22 +65,14 @@ async fn snapshot_chunk_size() -> Result<()> {
                 "send log to trigger snapshot",
             )
             .await?;
+        router.wait_for_snapshot(&btreeset![0], log_id(1, 0, log_index), timeout(), "snapshot").await?;
+        router.assert_storage_state(1, log_index, Some(0), log_id(1, 0, log_index), want_snap).await?;
+
+        let n0 = router.get_raft_handle(&0)?;
+        n0.trigger().purge_log(log_index).await?;
         router
-            .wait_for_snapshot(
-                &btreeset![0],
-                LogId::new(CommittedLeaderId::new(1, 0), log_index),
-                None,
-                "snapshot",
-            )
-            .await?;
-        router
-            .assert_storage_state(
-                1,
-                log_index,
-                Some(0),
-                LogId::new(CommittedLeaderId::new(1, 0), log_index),
-                want_snap,
-            )
+            .wait(&0, timeout())
+            .purged(Some(log_id(1, 0, 9)), "purge Leader-0 all in snapshot logs")
             .await?;
     }
 
@@ -90,24 +82,9 @@ async fn snapshot_chunk_size() -> Result<()> {
         router.add_learner(0, 1).await.expect("failed to add new node as learner");
         log_index += 1;
 
-        router.wait_for_log(&btreeset![0, 1], Some(log_index), None, "add learner").await?;
-        router
-            .wait_for_snapshot(
-                &btreeset![1],
-                LogId::new(CommittedLeaderId::new(1, 0), log_index),
-                None,
-                "",
-            )
-            .await?;
-
-        router
-            .wait_for_snapshot(
-                &btreeset![0],
-                LogId::new(CommittedLeaderId::new(1, 0), log_index - 1),
-                None,
-                "",
-            )
-            .await?;
+        router.wait_for_log(&btreeset![0, 1], Some(log_index), timeout(), "add learner").await?;
+        router.wait(&1, timeout()).applied_index(Some(log_index), "sync all data to learner-1").await?;
+        router.wait(&1, timeout()).snapshot(log_id(1, 0, log_index - 1), "learner-1 snapshot").await?;
 
         // after add_learner, log_index + 1,
         // leader has only log_index log in snapshot, cause it has compacted before add_learner
@@ -120,13 +97,11 @@ async fn snapshot_chunk_size() -> Result<()> {
                 1,
                 log_index,
                 Some(0),
-                LogId::new(CommittedLeaderId::new(1, 0), log_index),
+                log_id(1, 0, log_index),
                 &Some(((log_index - 1).into(), 1)),
             )
             .await?;
 
-        // learner has log_index + 1 log in snapshot, cause it do compact after add_learner,
-        // so learner's snapshot include add_learner log
         let (mut store, mut sm) = router.get_storage_handle(&1)?;
         router
             .assert_storage_state_with_sto(
@@ -136,8 +111,8 @@ async fn snapshot_chunk_size() -> Result<()> {
                 1,
                 log_index,
                 Some(0),
-                LogId::new(CommittedLeaderId::new(1, 0), log_index),
-                &Some(((log_index).into(), 1)),
+                log_id(1, 0, log_index),
+                &Some(((log_index - 1).into(), 1)),
             )
             .await?;
     }
@@ -146,5 +121,5 @@ async fn snapshot_chunk_size() -> Result<()> {
 }
 
 fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(1000))
+    Some(Duration::from_millis(1_000))
 }
