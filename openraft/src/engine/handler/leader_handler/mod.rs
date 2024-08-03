@@ -1,5 +1,4 @@
 use crate::engine::handler::replication_handler::ReplicationHandler;
-use crate::engine::handler::replication_handler::SendNone;
 use crate::engine::Command;
 use crate::engine::EngineConfig;
 use crate::engine::EngineOutput;
@@ -9,6 +8,7 @@ use crate::proposer::LeaderQuorumSet;
 use crate::raft::message::TransferLeaderRequest;
 use crate::raft_state::IOId;
 use crate::raft_state::LogStateReader;
+use crate::replication::ReplicationSessionId;
 use crate::type_config::alias::LogIdOf;
 use crate::RaftLogId;
 use crate::RaftState;
@@ -92,13 +92,18 @@ where C: RaftTypeConfig
             rh.append_membership(&log_id, &m);
         }
 
-        rh.initiate_replication(SendNone::False);
+        rh.initiate_replication();
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn send_heartbeat(&mut self) -> () {
-        let mut rh = self.replication_handler();
-        rh.initiate_replication(SendNone::True);
+    pub(crate) fn send_heartbeat(&mut self) {
+        let membership_log_id = self.state.membership_state.effective().log_id();
+        let session_id = ReplicationSessionId::new(self.leader.committed_vote, *membership_log_id);
+
+        self.output.push_command(Command::BroadcastHeartbeat {
+            session_id,
+            committed: self.state.committed().copied(),
+        });
     }
 
     /// Get the log id for a linearizable read.

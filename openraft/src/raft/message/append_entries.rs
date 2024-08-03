@@ -7,6 +7,12 @@ use crate::RaftTypeConfig;
 use crate::Vote;
 
 /// An RPC sent by a cluster leader to replicate log entries (§5.3), and as a heartbeat (§5.2).
+///
+/// In Openraft a heartbeat [`AppendEntriesRequest`] message could have `prev_log_id=None` and
+/// `entries` empty. Which means: to append nothing at the very beginning position on the Follower,
+/// which is always valid. Because `prev_log_id` is used to assert `entries` to be consecutive with
+/// the previous log entries, and `prev_log_id=None` is the very beginning position and there are no
+/// previous log entries.
 #[derive(Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct AppendEntriesRequest<C: RaftTypeConfig> {

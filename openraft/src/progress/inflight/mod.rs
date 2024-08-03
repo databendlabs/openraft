@@ -9,7 +9,6 @@ use validit::Validate;
 
 use crate::display_ext::DisplayOptionExt;
 use crate::log_id_range::LogIdRange;
-use crate::replication::request_id::RequestId;
 use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::RaftTypeConfig;
@@ -115,11 +114,11 @@ where C: RaftTypeConfig
         }
     }
 
-    pub(crate) fn is_my_id(&self, res_id: RequestId) -> bool {
+    pub(crate) fn is_my_id(&self, res_id: u64) -> bool {
         match self {
             Inflight::None => false,
-            Inflight::Logs { id, .. } => RequestId::AppendEntries { id: *id } == res_id,
-            Inflight::Snapshot { id, .. } => RequestId::Snapshot { id: *id } == res_id,
+            Inflight::Logs { id, .. } => *id == res_id,
+            Inflight::Snapshot { id, .. } => *id == res_id,
         }
     }
 

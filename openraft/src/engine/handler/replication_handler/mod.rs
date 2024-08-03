@@ -13,7 +13,6 @@ use crate::progress::Progress;
 use crate::proposer::Leader;
 use crate::proposer::LeaderQuorumSet;
 use crate::raft_state::LogStateReader;
-use crate::replication::request_id::RequestId;
 use crate::replication::response::ReplicationResult;
 use crate::type_config::alias::InstantOf;
 use crate::EffectiveMembership;
@@ -44,16 +43,6 @@ where C: RaftTypeConfig
     pub(crate) leader: &'x mut Leader<C, LeaderQuorumSet<C>>,
     pub(crate) state: &'x mut RaftState<C>,
     pub(crate) output: &'x mut EngineOutput<C>,
-}
-
-/// An option about whether to send an RPC to follower/learner even when there is no data to send.
-///
-/// Sending none data serves as a heartbeat.
-#[derive(Debug)]
-#[derive(PartialEq, Eq)]
-pub(crate) enum SendNone {
-    False,
-    True,
 }
 
 impl<'x, C> ReplicationHandler<'x, C>
@@ -88,7 +77,7 @@ where C: RaftTypeConfig
 
         self.rebuild_progresses();
         self.rebuild_replication_streams();
-        self.initiate_replication(SendNone::False);
+        self.initiate_replication();
     }
 
     /// Rebuild leader's replication progress to reflect replication changes.
@@ -115,33 +104,6 @@ where C: RaftTypeConfig
 
             self.leader.clock_progress =
                 old_progress.upgrade_quorum_set(em.membership().to_quorum_set(), learner_ids, || None);
-        }
-    }
-
-    /// Update replication progress when a successful response is received.
-    #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn update_success_progress(
-        &mut self,
-        target: C::NodeId,
-        request_id: RequestId,
-        result: ReplicationResult<C>,
-    ) {
-        // No matter what the result is, the validity of the leader is granted by a follower.
-        self.update_leader_clock(target, result.sending_time);
-
-        let id = request_id.request_id();
-        let Some(id) = id else {
-            tracing::debug!(request_id = display(request_id), "no data for this request, return");
-            return;
-        };
-
-        match result.result {
-            Ok(matching) => {
-                self.update_matching(target, id, matching);
-            }
-            Err(conflict) => {
-                self.update_conflicting(target, id, conflict);
-            }
         }
     }
 
@@ -272,7 +234,7 @@ where C: RaftTypeConfig
     pub(crate) fn update_progress(
         &mut self,
         target: C::NodeId,
-        request_id: RequestId,
+        request_id: u64,
         repl_res: Result<ReplicationResult<C>, String>,
     ) {
         tracing::debug!(
@@ -285,9 +247,14 @@ where C: RaftTypeConfig
         );
 
         match repl_res {
-            Ok(p) => {
-                self.update_success_progress(target, request_id, p);
-            }
+            Ok(p) => match p.0 {
+                Ok(matching) => {
+                    self.update_matching(target, request_id, matching);
+                }
+                Err(conflict) => {
+                    self.update_conflicting(target, request_id, conflict);
+                }
+            },
             Err(err_str) => {
                 tracing::warn!(
                     request_id = display(request_id),
@@ -295,21 +262,17 @@ where C: RaftTypeConfig
                     "update progress error"
                 );
 
-                if request_id == RequestId::HeartBeat {
-                    tracing::warn!("heartbeat error: {}, no update to inflight data", err_str);
-                } else {
-                    // Reset inflight state and it will retry.
-                    let p = self.leader.progress.get_mut(&target).unwrap();
+                // Reset inflight state and it will retry.
+                let p = self.leader.progress.get_mut(&target).unwrap();
 
-                    debug_assert!(
-                        p.inflight.is_my_id(request_id),
-                        "inflight({:?}) id should match: {}",
-                        p.inflight,
-                        request_id
-                    );
+                debug_assert!(
+                    p.inflight.is_my_id(request_id),
+                    "inflight({:?}) id should match: {}",
+                    p.inflight,
+                    request_id
+                );
 
-                    p.inflight = Inflight::None;
-                }
+                p.inflight = Inflight::None;
             }
         };
 
@@ -339,7 +302,7 @@ where C: RaftTypeConfig
     ///
     /// `send_none` specifies whether to force to send a message even when there is no data to send.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn initiate_replication(&mut self, send_none: SendNone) {
+    pub(crate) fn initiate_replication(&mut self) {
         tracing::debug!(progress = debug(&self.leader.progress), "{}", func_name!());
 
         for (id, prog_entry) in self.leader.progress.iter_mut() {
@@ -357,19 +320,7 @@ where C: RaftTypeConfig
                     Self::send_to_target(self.output, id, inflight);
                 }
                 Err(e) => {
-                    tracing::debug!(
-                        "no data to replicate for node-{}: current inflight: {:?}, send_none: {:?}",
-                        id,
-                        e,
-                        send_none
-                    );
-
-                    #[allow(clippy::collapsible_if)]
-                    if e == &Inflight::None {
-                        if send_none == SendNone::True {
-                            Self::send_to_target(self.output, id, e);
-                        }
-                    }
+                    tracing::debug!("no data to replicate for node-{}: current inflight: {:?}", id, e,);
                 }
             }
         }
