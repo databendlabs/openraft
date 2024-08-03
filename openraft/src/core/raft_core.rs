@@ -24,6 +24,8 @@ use crate::async_runtime::TryRecvError;
 use crate::config::Config;
 use crate::config::RuntimeConfig;
 use crate::core::balancer::Balancer;
+use crate::core::heartbeat::event::HeartbeatEvent;
+use crate::core::heartbeat::handle::HeartbeatWorkersHandle;
 use crate::core::notification::Notification;
 use crate::core::raft_msg::external_command::ExternalCommand;
 use crate::core::raft_msg::AppendEntriesTx;
@@ -38,7 +40,6 @@ use crate::display_ext::DisplayOptionExt;
 use crate::display_ext::DisplayResultExt;
 use crate::display_ext::DisplaySlice;
 use crate::display_ext::DisplaySliceExt;
-use crate::engine::handler::replication_handler::SendNone;
 use crate::engine::Command;
 use crate::engine::Condition;
 use crate::engine::Engine;
@@ -79,7 +80,6 @@ use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::raft_state::io_state::io_id::IOId;
 use crate::raft_state::LogStateReader;
-use crate::replication;
 use crate::replication::request::Replicate;
 use crate::replication::request_id::RequestId;
 use crate::replication::response::ReplicationResult;
@@ -196,6 +196,8 @@ where
 
     /// A mapping of node IDs the replication state of the target node.
     pub(crate) replications: BTreeMap<C::NodeId, ReplicationHandle<C>>,
+
+    pub(crate) heartbeat_handle: HeartbeatWorkersHandle<C>,
 
     #[allow(dead_code)]
     pub(crate) tx_api: MpscUnboundedSenderOf<C, RaftMsg<C>>,
@@ -841,6 +843,8 @@ where
     pub async fn remove_all_replication(&mut self) {
         tracing::info!("remove all replication");
 
+        self.heartbeat_handle.shutdown();
+
         let nodes = std::mem::take(&mut self.replications);
 
         tracing::debug!(
@@ -974,7 +978,7 @@ where
 
             // Keep replicating to a target if the replication stream to it is idle.
             if let Ok(mut lh) = self.engine.leader_handler() {
-                lh.replication_handler().initiate_replication(SendNone::False);
+                lh.replication_handler().initiate_replication();
             }
             self.run_engine_commands().await?;
         }
@@ -1418,39 +1422,28 @@ where
                 }
             }
 
-            Notification::Network { response } => {
-                //
-                match response {
-                    replication::Response::Progress {
-                        target,
-                        request_id: id,
-                        result,
-                        session_id,
-                    } => {
-                        // If vote or membership changes, ignore the message.
-                        // There is chance delayed message reports a wrong state.
-                        if self.does_replication_session_match(&session_id, "UpdateReplicationMatched") {
-                            self.handle_replication_progress(target, id, result);
-                        }
-                    }
+            Notification::ReplicationProgress { progress } => {
+                // If vote or membership changes, ignore the message.
+                // There is chance delayed message reports a wrong state.
+                if self.does_replication_session_match(&progress.session_id, "ReplicationProgress") {
+                    self.handle_replication_progress(progress.target, progress.request_id, progress.result);
+                }
+            }
 
-                    replication::Response::HigherVote {
-                        target,
-                        higher,
-                        sender_vote,
-                    } => {
-                        tracing::info!(
-                            target = display(target),
-                            higher_vote = display(&higher),
-                            sender_vote = display(&sender_vote),
-                            "received Notification::HigherVote: {}",
-                            func_name!()
-                        );
-
-                        if self.does_vote_match(&sender_vote, "HigherVote") {
-                            // Rejected vote change is ok.
-                            let _ = self.engine.vote_handler().update_vote(&higher);
-                        }
+            Notification::HeartbeatProgress {
+                session_id,
+                sending_time,
+                target,
+            } => {
+                if self.does_replication_session_match(&session_id, "HeartbeatProgress") {
+                    tracing::debug!(
+                        session_id = display(session_id),
+                        target = display(target),
+                        sending_time = display(sending_time.display()),
+                        "HeartbeatProgress"
+                    );
+                    if self.engine.leader.is_some() {
+                        self.engine.replication_handler().update_leader_clock(target, sending_time);
                     }
                 }
             }
@@ -1562,7 +1555,7 @@ where
     fn handle_replication_progress(
         &mut self,
         target: C::NodeId,
-        request_id: RequestId,
+        request_id: u64,
         result: Result<ReplicationResult<C>, String>,
     ) {
         tracing::debug!(
@@ -1782,6 +1775,9 @@ where
                     let _ = node.tx_repl.send(Replicate::Committed(committed));
                 }
             }
+            Command::BroadcastHeartbeat { session_id, committed } => {
+                self.heartbeat_handle.broadcast(HeartbeatEvent::new(C::now(), session_id, committed))
+            }
             Command::SaveCommitted { committed } => {
                 self.log_store.save_committed(Some(committed)).await?;
             }
@@ -1819,6 +1815,15 @@ where
                     let handle = self.spawn_replication_stream(*target, *matching).await;
                     self.replications.insert(*target, handle);
                 }
+
+                let effective = self.engine.state.membership_state.effective().clone();
+
+                let nodes = targets.into_iter().map(|p| {
+                    let node_id = p.0;
+                    (node_id, effective.get_node(&node_id).unwrap().clone())
+                });
+
+                self.heartbeat_handle.spawn_workers(&mut self.network_factory, &self.tx_notification, nodes).await;
             }
             Command::StateMachine { command } => {
                 let io_id = command.get_submit_io();

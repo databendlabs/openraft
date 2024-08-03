@@ -30,11 +30,12 @@ use crate::Vote;
 /// But the delayed message `{target=c, matched=log_id-1}` may be process by raft core and make raft
 /// core believe node `c` already has `log_id=1`, and commit it.
 #[derive(Debug, Clone, Copy)]
+#[derive(PartialEq, Eq)]
 pub(crate) struct ReplicationSessionId<C>
 where C: RaftTypeConfig
 {
     /// The Leader or Candidate this replication belongs to.
-    pub(crate) vote: CommittedVote<C>,
+    pub(crate) leader_vote: CommittedVote<C>,
 
     /// The log id of the membership log this replication works for.
     pub(crate) membership_log_id: Option<LogId<C::NodeId>>,
@@ -44,7 +45,12 @@ impl<C> Display for ReplicationSessionId<C>
 where C: RaftTypeConfig
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}/{}", self.vote, self.membership_log_id.display())
+        write!(
+            f,
+            "(leader_vote:{}, membership_log_id:{})",
+            self.leader_vote,
+            self.membership_log_id.display()
+        )
     }
 }
 
@@ -53,12 +59,12 @@ where C: RaftTypeConfig
 {
     pub(crate) fn new(vote: CommittedVote<C>, membership_log_id: Option<LogId<C::NodeId>>) -> Self {
         Self {
-            vote,
+            leader_vote: vote,
             membership_log_id,
         }
     }
 
     pub(crate) fn vote_ref(&self) -> &Vote<C::NodeId> {
-        &self.vote
+        &self.leader_vote
     }
 }
