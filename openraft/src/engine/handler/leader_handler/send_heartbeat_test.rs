@@ -2,18 +2,12 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use maplit::btreeset;
-#[allow(unused_imports)]
 use pretty_assertions::assert_eq;
-#[allow(unused_imports)]
-use pretty_assertions::assert_ne;
-#[allow(unused_imports)]
-use pretty_assertions::assert_str_eq;
 
 use crate::engine::testing::UTConfig;
 use crate::engine::Command;
 use crate::engine::Engine;
-use crate::progress::Inflight;
-use crate::progress::Progress;
+use crate::replication::ReplicationSessionId;
 use crate::testing::log_id;
 use crate::type_config::TypeConfigExt;
 use crate::utime::Leased;
@@ -63,47 +57,31 @@ fn test_leader_send_heartbeat() -> anyhow::Result<()> {
         eng.leader_handler()?.send_heartbeat();
         assert_eq!(
             vec![
-                Command::Replicate {
-                    target: 2,
-                    req: Inflight::logs(None, Some(log_id(2, 1, 3))).with_id(1),
-                },
-                Command::Replicate {
-                    target: 3,
-                    req: Inflight::logs(None, Some(log_id(2, 1, 3))).with_id(1),
+                //
+                Command::BroadcastHeartbeat {
+                    session_id: ReplicationSessionId::new(Vote::new(3, 1).into_committed(), Some(log_id(2, 1, 3))),
+                    committed: Some(log_id(0, 1, 0))
                 },
             ],
             eng.output.take_commands()
         );
     }
 
-    // No RPC will be sent if there are inflight RPC
+    // Heartbeat will be resent
     {
         eng.output.clear_commands();
         eng.leader_handler()?.send_heartbeat();
-        assert!(eng.output.take_commands().is_empty());
+        assert_eq!(
+            vec![
+                //
+                Command::BroadcastHeartbeat {
+                    session_id: ReplicationSessionId::new(Vote::new(3, 1).into_committed(), Some(log_id(2, 1, 3))),
+                    committed: Some(log_id(0, 1, 0))
+                },
+            ],
+            eng.output.take_commands()
+        );
     }
-
-    // No data to send, sending a heartbeat is to send empty RPC:
-    {
-        let l = eng.leader_handler()?;
-        let _ = l.leader.progress.update_with(&2, |ent| ent.update_matching(1, Some(log_id(2, 1, 3))).unwrap());
-        let _ = l.leader.progress.update_with(&3, |ent| ent.update_matching(1, Some(log_id(2, 1, 3))).unwrap());
-    }
-    eng.output.clear_commands();
-    eng.leader_handler()?.send_heartbeat();
-    assert_eq!(
-        vec![
-            Command::Replicate {
-                target: 2,
-                req: Inflight::logs(Some(log_id(2, 1, 3)), Some(log_id(2, 1, 3))).with_id(1),
-            },
-            Command::Replicate {
-                target: 3,
-                req: Inflight::logs(Some(log_id(2, 1, 3)), Some(log_id(2, 1, 3))).with_id(1),
-            },
-        ],
-        eng.output.take_commands()
-    );
 
     Ok(())
 }

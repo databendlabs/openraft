@@ -87,7 +87,8 @@ where C: RaftTypeConfig
             }
             Notification::HigherVote { .. }
             | Notification::StorageError { .. }
-            | Notification::Network { .. }
+            | Notification::ReplicationProgress { .. }
+            | Notification::HeartbeatProgress { .. }
             | Notification::StateMachine { .. }
             | Notification::Tick { .. } => {
                 unreachable!("Unexpected notification: {}", self.notification)

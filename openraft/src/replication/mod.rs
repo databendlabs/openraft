@@ -16,8 +16,8 @@ pub(crate) use replication_session_id::ReplicationSessionId;
 use request::Data;
 use request::DataWithId;
 use request::Replicate;
+pub(crate) use response::Progress;
 use response::ReplicationResult;
-pub(crate) use response::Response;
 use tracing_futures::Instrument;
 
 use crate::async_runtime::MpscUnboundedReceiver;
@@ -265,12 +265,10 @@ where
                             return Err(closed);
                         }
                         ReplicationError::HigherVote(h) => {
-                            let _ = self.tx_raft_core.send(Notification::Network {
-                                response: Response::HigherVote {
-                                    target: self.target,
-                                    higher: h.higher,
-                                    sender_vote: *self.session_id.vote_ref(),
-                                },
+                            let _ = self.tx_raft_core.send(Notification::HigherVote {
+                                target: self.target,
+                                higher: h.higher,
+                                sender_vote: *self.session_id.vote_ref(),
                             });
                             return Ok(());
                         }
@@ -461,14 +459,21 @@ where
 
         match append_resp {
             AppendEntriesResponse::Success => {
+                self.notify_heartbeat_progress(leader_time);
+
                 let matching = sending_range.last;
-                let next = self.finish_success_append(matching, leader_time, log_ids);
-                Ok(next)
+                self.notify_progress(log_ids.request_id(), ReplicationResult(Ok(matching)));
+
+                Ok(self.next_action_to_send(matching, log_ids))
             }
             AppendEntriesResponse::PartialSuccess(matching) => {
                 Self::debug_assert_partial_success(&sending_range, &matching);
-                let next = self.finish_success_append(matching, leader_time, log_ids);
-                Ok(next)
+
+                self.notify_heartbeat_progress(leader_time);
+
+                self.notify_progress(log_ids.request_id(), ReplicationResult(Ok(matching)));
+
+                Ok(self.next_action_to_send(matching, log_ids))
             }
             AppendEntriesResponse::HigherVote(vote) => {
                 debug_assert!(
@@ -489,7 +494,10 @@ where
                 debug_assert!(conflict.is_some(), "prev_log_id=None never conflict");
 
                 let conflict = conflict.unwrap();
-                self.send_progress(request_id, ReplicationResult::new(leader_time, Err(conflict)));
+
+                // Conflict is also a successful replication RPC, because the leadership is acknowledged.
+                self.notify_heartbeat_progress(leader_time);
+                self.notify_progress(request_id, ReplicationResult(Err(conflict)));
 
                 Ok(None)
             }
@@ -499,8 +507,12 @@ where
     /// Send the error result to RaftCore.
     /// RaftCore will then submit another replication command.
     fn send_progress_error(&mut self, request_id: RequestId, err: RPCError<C>) {
-        let _ = self.tx_raft_core.send(Notification::Network {
-            response: Response::Progress {
+        // If there is no id, it is a heartbeat and do not need to notify RaftCore
+        let Some(request_id) = request_id.request_id() else {
+            return;
+        };
+        let _ = self.tx_raft_core.send(Notification::ReplicationProgress {
+            progress: Progress {
                 target: self.target,
                 request_id,
                 result: Err(err.to_string()),
@@ -509,8 +521,22 @@ where
         });
     }
 
-    /// Send the success replication result(log matching or conflict) to RaftCore.
-    fn send_progress(&mut self, request_id: RequestId, replication_result: ReplicationResult<C>) {
+    /// A successful replication implies a successful heartbeat.
+    /// This method notify [`RaftCore`] with a heartbeat progress.
+    ///
+    /// [`RaftCore`]: crate::core::RaftCore
+    fn notify_heartbeat_progress(&mut self, sending_time: InstantOf<C>) {
+        let _ = self.tx_raft_core.send({
+            Notification::HeartbeatProgress {
+                session_id: self.session_id,
+                target: self.target,
+                sending_time,
+            }
+        });
+    }
+
+    /// Notify RaftCore with the success replication result(log matching or conflict).
+    fn notify_progress(&mut self, request_id: RequestId, replication_result: ReplicationResult<C>) {
         tracing::debug!(
             request_id = display(request_id),
             target = display(self.target),
@@ -520,7 +546,7 @@ where
             func_name!()
         );
 
-        match replication_result.result {
+        match replication_result.0 {
             Ok(matching) => {
                 self.validate_matching(matching);
                 self.matching = matching;
@@ -530,9 +556,15 @@ where
             }
         }
 
+        // If there is no request id, it is a heartbeat RPC,
+        // no need to notify RaftCore with progress.
+        let Some(request_id) = request_id.request_id() else {
+            return;
+        };
+
         let _ = self.tx_raft_core.send({
-            Notification::Network {
-                response: Response::Progress {
+            Notification::ReplicationProgress {
+                progress: Progress {
                     session_id: self.session_id,
                     request_id,
                     target: self.target,
@@ -822,25 +854,18 @@ where
             }));
         }
 
-        self.send_progress(
-            request_id,
-            ReplicationResult::new(start_time, Ok(snapshot_meta.last_log_id)),
-        );
+        self.notify_heartbeat_progress(start_time);
+        self.notify_progress(request_id, ReplicationResult(Ok(snapshot_meta.last_log_id)));
 
         Ok(None)
     }
 
-    /// Update matching and build a return value for a successful append-entries RPC.
-    ///
     /// If there are more logs to send, it returns a new `Some(Data::Logs)` to send.
-    fn finish_success_append(
+    fn next_action_to_send(
         &mut self,
         matching: Option<LogId<C::NodeId>>,
-        leader_time: InstantOf<C>,
         log_ids: DataWithId<LogIdRange<C>>,
     ) -> Option<Data<C>> {
-        self.send_progress(log_ids.request_id(), ReplicationResult::new(leader_time, Ok(matching)));
-
         if matching < log_ids.data().last {
             Some(Data::new_logs(
                 log_ids.request_id(),

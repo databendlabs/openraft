@@ -51,6 +51,7 @@ use crate::base::BoxFuture;
 use crate::base::BoxOnce;
 use crate::config::Config;
 use crate::config::RuntimeConfig;
+use crate::core::heartbeat::handle::HeartbeatWorkersHandle;
 use crate::core::raft_msg::external_command::ExternalCommand;
 use crate::core::raft_msg::RaftMsg;
 use crate::core::replication_lag;
@@ -297,6 +298,7 @@ where C: RaftTypeConfig
 
             replications: Default::default(),
 
+            heartbeat_handle: HeartbeatWorkersHandle::new(id, config.clone()),
             tx_api: tx_api.clone(),
             rx_api,
 

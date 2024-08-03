@@ -19,6 +19,7 @@ use crate::raft::SnapshotResponse;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::raft_state::IOId;
+use crate::replication::ReplicationSessionId;
 use crate::type_config::alias::OneshotSenderOf;
 use crate::vote::CommittedVote;
 use crate::LogId;
@@ -65,6 +66,12 @@ where C: RaftTypeConfig
 
     /// Replicate the committed log id to other nodes
     ReplicateCommitted { committed: Option<LogId<C::NodeId>> },
+
+    /// Broadcast heartbeat to all other nodes.
+    BroadcastHeartbeat {
+        session_id: ReplicationSessionId<C>,
+        committed: Option<LogId<C::NodeId>>,
+    },
 
     /// Save the committed log id to [`RaftLogStorage`].
     ///
@@ -147,6 +154,14 @@ where C: RaftTypeConfig
             Command::ReplicateCommitted { committed } => {
                 write!(f, "ReplicateCommitted: {}", committed.display())
             }
+            Command::BroadcastHeartbeat { session_id, committed } => {
+                write!(
+                    f,
+                    "BroadcastHeartbeat: session_id:{}, committed:{}",
+                    session_id,
+                    committed.display()
+                )
+            }
             Command::SaveCommitted { committed } => write!(f, "SaveCommitted: {}", committed),
             Command::Apply {
                 already_committed,
@@ -188,7 +203,8 @@ where
         match (self, other) {
             (Command::UpdateIOProgress { when, io_id },        Command::UpdateIOProgress { when: wb, io_id: ab }, )                  => when == wb && io_id == ab,
             (Command::AppendInputEntries { committed_vote: vote, entries },    Command::AppendInputEntries { committed_vote: vb, entries: b }, )               => vote == vb && entries == b,
-            (Command::ReplicateCommitted { committed },        Command::ReplicateCommitted { committed: b }, )                       => committed == b,
+            (Command::ReplicateCommitted { committed },        Command::ReplicateCommitted { committed: b }, )                       =>  committed == b,
+            (Command::BroadcastHeartbeat { session_id, committed }, Command::BroadcastHeartbeat { session_id: sb, committed: b }, )  => session_id == sb && committed == b,
             (Command::SaveCommitted { committed },             Command::SaveCommitted { committed: b })                              => committed == b,
             (Command::Apply { already_committed, upto, },      Command::Apply { already_committed: b_committed, upto: b_upto, }, )  => already_committed == b_committed && upto == b_upto,
             (Command::Replicate { target, req },               Command::Replicate { target: b_target, req: other_req, }, )           => target == b_target && req == other_req,
@@ -226,6 +242,7 @@ where C: RaftTypeConfig
             Command::PurgeLog { .. }                  => CommandKind::Log,
 
             Command::ReplicateCommitted { .. }        => CommandKind::Network,
+            Command::BroadcastHeartbeat { .. }        => CommandKind::Network,
             Command::Replicate { .. }                 => CommandKind::Network,
             Command::BroadcastTransferLeader { .. }            => CommandKind::Network,
             Command::SendVote { .. }                  => CommandKind::Network,
@@ -251,6 +268,7 @@ where C: RaftTypeConfig
             Command::PurgeLog { upto }                => Some(Condition::Snapshot { log_id: Some(*upto) }),
 
             Command::ReplicateCommitted { .. }        => None,
+            Command::BroadcastHeartbeat { .. }        => None,
             Command::Replicate { .. }                 => None,
             Command::BroadcastTransferLeader { .. }            => None,
             Command::SendVote { .. }                  => None,
