@@ -16,8 +16,8 @@ pub(crate) use replication_session_id::ReplicationSessionId;
 use request::Data;
 use request::DataWithId;
 use request::Replicate;
+pub(crate) use response::Progress;
 use response::ReplicationResult;
-pub(crate) use response::Response;
 use tracing_futures::Instrument;
 
 use crate::async_runtime::MpscUnboundedReceiver;
@@ -265,12 +265,10 @@ where
                             return Err(closed);
                         }
                         ReplicationError::HigherVote(h) => {
-                            let _ = self.tx_raft_core.send(Notification::Network {
-                                response: Response::HigherVote {
-                                    target: self.target,
-                                    higher: h.higher,
-                                    sender_vote: *self.session_id.vote_ref(),
-                                },
+                            let _ = self.tx_raft_core.send(Notification::HigherVote {
+                                target: self.target,
+                                higher: h.higher,
+                                sender_vote: *self.session_id.vote_ref(),
                             });
                             return Ok(());
                         }
@@ -499,8 +497,8 @@ where
     /// Send the error result to RaftCore.
     /// RaftCore will then submit another replication command.
     fn send_progress_error(&mut self, request_id: RequestId, err: RPCError<C>) {
-        let _ = self.tx_raft_core.send(Notification::Network {
-            response: Response::Progress {
+        let _ = self.tx_raft_core.send(Notification::ReplicationProgress {
+            progress: Progress {
                 target: self.target,
                 request_id,
                 result: Err(err.to_string()),
@@ -531,8 +529,8 @@ where
         }
 
         let _ = self.tx_raft_core.send({
-            Notification::Network {
-                response: Response::Progress {
+            Notification::ReplicationProgress {
+                progress: Progress {
                     session_id: self.session_id,
                     request_id,
                     target: self.target,

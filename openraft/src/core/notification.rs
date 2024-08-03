@@ -47,7 +47,7 @@ where C: RaftTypeConfig
     LocalIO { io_id: IOId<C> },
 
     /// Result of executing a command sent from network worker.
-    Network { response: replication::Response<C> },
+    ReplicationProgress { progress: replication::Progress<C> },
 
     /// Result of executing a command sent from state machine worker.
     StateMachine { command_result: sm::CommandResult<C> },
@@ -96,8 +96,8 @@ where C: RaftTypeConfig
             }
             Self::StorageError { error } => write!(f, "StorageError: {}", error),
             Self::LocalIO { io_id } => write!(f, "IOFlushed: {}", io_id),
-            Self::Network { response } => {
-                write!(f, "{}", response)
+            Self::ReplicationProgress { progress } => {
+                write!(f, "{}", progress)
             }
             Self::StateMachine { command_result } => {
                 write!(f, "{}", command_result)

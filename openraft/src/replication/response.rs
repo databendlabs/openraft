@@ -8,94 +8,53 @@ use crate::replication::ReplicationSessionId;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::LogIdOf;
 use crate::RaftTypeConfig;
-use crate::Vote;
 
 /// The response of replication command.
+///
+/// Update the `matched` log id of a replication target.
+/// Sent by a replication task `ReplicationCore`.
 #[derive(Debug)]
-pub(crate) enum Response<C>
+pub(crate) struct Progress<C>
 where C: RaftTypeConfig
 {
-    // /// Logs that are submitted to append has been persisted to disk.
-    // LogPersisted {},
-    /// Update the `matched` log id of a replication target.
-    /// Sent by a replication task `ReplicationCore`.
-    Progress {
-        /// The ID of the target node for which the match index is to be updated.
-        target: C::NodeId,
+    /// The ID of the target node for which the match index is to be updated.
+    pub(crate) target: C::NodeId,
 
-        /// The id of the subject that submit this replication action.
-        request_id: RequestId,
+    /// The id of the subject that submit this replication action.
+    pub(crate) request_id: RequestId,
 
-        /// The request by this leader has been successfully handled by the target node,
-        /// or an error in string.
-        ///
-        /// A successful result can still be log matching or log conflicting.
-        /// In either case, the request is considered accepted, i.e., this leader is still valid to
-        /// the target node.
-        ///
-        /// The result also track the time when this request is sent.
-        result: Result<ReplicationResult<C>, String>,
+    /// The request by this leader has been successfully handled by the target node,
+    /// or an error in string.
+    ///
+    /// A successful result can still be log matching or log conflicting.
+    /// In either case, the request is considered accepted, i.e., this leader is still valid to
+    /// the target node.
+    ///
+    /// The result also track the time when this request is sent.
+    pub(crate) result: Result<ReplicationResult<C>, String>,
 
-        /// In which session this message is sent.
-        ///
-        /// This session id identifies a certain leader(by vote) that is replicating to a certain
-        /// group of nodes.
-        ///
-        /// A message should be discarded if it does not match the present vote and
-        /// membership_log_id.
-        session_id: ReplicationSessionId<C>,
-    },
-
-    /// ReplicationCore has seen a higher `vote`.
-    /// Sent by a replication task `ReplicationCore`.
-    HigherVote {
-        /// The ID of the target node from which the new term was observed.
-        target: C::NodeId,
-
-        /// The higher vote observed.
-        higher: Vote<C::NodeId>,
-
-        /// Which state(a Leader or Candidate) sent this message
-        sender_vote: Vote<C::NodeId>,
-        // TODO: need this?
-        // /// The cluster this replication works for.
-        // membership_log_id: Option<LogId<C::NodeId>>,
-    },
+    /// In which session this message is sent.
+    ///
+    /// This session id identifies a certain leader(by vote) that is replicating to a certain
+    /// group of nodes.
+    ///
+    /// A message should be discarded if it does not match the present vote and
+    /// membership_log_id.
+    pub(crate) session_id: ReplicationSessionId<C>,
 }
 
-impl<C> fmt::Display for Response<C>
+impl<C> fmt::Display for Progress<C>
 where C: RaftTypeConfig
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Progress {
-                target,
-                request_id,
-                result,
-                session_id,
-            } => {
-                write!(
-                    f,
-                    "replication::Progress: target={}, request_id: {}, result: {}, session_id: {}",
-                    target,
-                    request_id,
-                    result.display(),
-                    session_id
-                )
-            }
-
-            Self::HigherVote {
-                target,
-                higher,
-                sender_vote,
-            } => {
-                write!(
-                    f,
-                    "replication::Seen a higher vote: target={}, higher: {}, sender_vote: {}",
-                    target, higher, sender_vote
-                )
-            }
-        }
+        write!(
+            f,
+            "replication::Progress: target={}, request_id: {}, result: {}, session_id: {}",
+            self.target,
+            self.request_id,
+            self.result.display(),
+            self.session_id
+        )
     }
 }
 

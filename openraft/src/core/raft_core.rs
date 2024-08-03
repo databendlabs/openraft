@@ -79,7 +79,6 @@ use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::raft_state::io_state::io_id::IOId;
 use crate::raft_state::LogStateReader;
-use crate::replication;
 use crate::replication::request::Replicate;
 use crate::replication::request_id::RequestId;
 use crate::replication::response::ReplicationResult;
@@ -1418,40 +1417,11 @@ where
                 }
             }
 
-            Notification::Network { response } => {
-                //
-                match response {
-                    replication::Response::Progress {
-                        target,
-                        request_id: id,
-                        result,
-                        session_id,
-                    } => {
-                        // If vote or membership changes, ignore the message.
-                        // There is chance delayed message reports a wrong state.
-                        if self.does_replication_session_match(&session_id, "UpdateReplicationMatched") {
-                            self.handle_replication_progress(target, id, result);
-                        }
-                    }
-
-                    replication::Response::HigherVote {
-                        target,
-                        higher,
-                        sender_vote,
-                    } => {
-                        tracing::info!(
-                            target = display(target),
-                            higher_vote = display(&higher),
-                            sender_vote = display(&sender_vote),
-                            "received Notification::HigherVote: {}",
-                            func_name!()
-                        );
-
-                        if self.does_vote_match(&sender_vote, "HigherVote") {
-                            // Rejected vote change is ok.
-                            let _ = self.engine.vote_handler().update_vote(&higher);
-                        }
-                    }
+            Notification::ReplicationProgress { progress } => {
+                // If vote or membership changes, ignore the message.
+                // There is chance delayed message reports a wrong state.
+                if self.does_replication_session_match(&progress.session_id, "UpdateReplicationMatched") {
+                    self.handle_replication_progress(progress.target, progress.request_id, progress.result);
                 }
             }
 
