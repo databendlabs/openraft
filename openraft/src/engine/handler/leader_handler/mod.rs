@@ -1,5 +1,4 @@
 use crate::engine::handler::replication_handler::ReplicationHandler;
-use crate::engine::handler::replication_handler::SendNone;
 use crate::engine::Command;
 use crate::engine::EngineConfig;
 use crate::engine::EngineOutput;
@@ -92,13 +91,15 @@ where C: RaftTypeConfig
             rh.append_membership(&log_id, &m);
         }
 
-        rh.initiate_replication(SendNone::False);
+        rh.initiate_replication();
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn send_heartbeat(&mut self) -> () {
-        let mut rh = self.replication_handler();
-        rh.initiate_replication(SendNone::True);
+        self.output.push_command(Command::BroadcastHeartbeat {
+            leader_vote: self.leader.committed_vote,
+            committed: self.state.committed().copied(),
+        });
     }
 
     /// Get the log id for a linearizable read.

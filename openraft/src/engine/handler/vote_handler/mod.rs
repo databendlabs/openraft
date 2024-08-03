@@ -4,7 +4,6 @@ use std::time::Duration;
 use crate::core::raft_msg::ResultSender;
 use crate::engine::handler::leader_handler::LeaderHandler;
 use crate::engine::handler::replication_handler::ReplicationHandler;
-use crate::engine::handler::replication_handler::SendNone;
 use crate::engine::handler::server_state_handler::ServerStateHandler;
 use crate::engine::Command;
 use crate::engine::Condition;
@@ -208,7 +207,7 @@ where C: RaftTypeConfig
             self.leader_handler()
                 .leader_append_entries(vec![C::Entry::new_blank(LogId::<C::NodeId>::default())]);
         } else {
-            self.replication_handler().initiate_replication(SendNone::False);
+            self.replication_handler().initiate_replication();
         }
     }
 

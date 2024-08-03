@@ -1,9 +1,12 @@
 use std::fmt;
 
 use crate::core::sm;
+use crate::display_ext::DisplayInstantExt;
 use crate::raft::VoteResponse;
 use crate::raft_state::IOId;
 use crate::replication;
+use crate::type_config::alias::InstantOf;
+use crate::vote::CommittedVote;
 use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::Vote;
@@ -48,6 +51,12 @@ where C: RaftTypeConfig
 
     /// Result of executing a command sent from network worker.
     ReplicationProgress { progress: replication::Progress<C> },
+
+    HeartbeatProgress {
+        leader_vote: CommittedVote<C>,
+        sending_time: InstantOf<C>,
+        target: C::NodeId,
+    },
 
     /// Result of executing a command sent from state machine worker.
     StateMachine { command_result: sm::CommandResult<C> },
@@ -98,6 +107,19 @@ where C: RaftTypeConfig
             Self::LocalIO { io_id } => write!(f, "IOFlushed: {}", io_id),
             Self::ReplicationProgress { progress } => {
                 write!(f, "{}", progress)
+            }
+            Self::HeartbeatProgress {
+                leader_vote,
+                sending_time,
+                target,
+            } => {
+                write!(
+                    f,
+                    "HeartbeatProgress: target={}, leader_vote: {}, sending_time: {}",
+                    target,
+                    leader_vote,
+                    sending_time.display(),
+                )
             }
             Self::StateMachine { command_result } => {
                 write!(f, "{}", command_result)
