@@ -45,7 +45,8 @@ pub trait TypeConfigExt: RaftTypeConfig {
 
     /// Wait until `deadline` is reached.
     fn sleep_until(deadline: InstantOf<Self>) -> SleepOf<Self> {
-        AsyncRuntimeOf::<Self>::sleep_until(deadline)
+        let duration = deadline.saturating_duration_since(Self::now());
+        AsyncRuntimeOf::<Self>::sleep(duration)
     }
 
     /// Require a [`Future`] to complete before the specified duration has elapsed.
@@ -58,7 +59,8 @@ pub trait TypeConfigExt: RaftTypeConfig {
         deadline: InstantOf<Self>,
         future: F,
     ) -> TimeoutOf<Self, R, F> {
-        AsyncRuntimeOf::<Self>::timeout_at(deadline, future)
+        let duration = deadline.saturating_duration_since(Self::now());
+        AsyncRuntimeOf::<Self>::timeout(duration, future)
     }
 
     // Synchronization methods

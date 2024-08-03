@@ -50,18 +50,8 @@ impl AsyncRuntime for TokioRuntime {
     }
 
     #[inline]
-    fn sleep_until(deadline: Self::Instant) -> Self::Sleep {
-        tokio::time::sleep_until(deadline)
-    }
-
-    #[inline]
     fn timeout<R, F: Future<Output = R> + OptionalSend>(duration: Duration, future: F) -> Self::Timeout<R, F> {
         tokio::time::timeout(duration, future)
-    }
-
-    #[inline]
-    fn timeout_at<R, F: Future<Output = R> + OptionalSend>(deadline: Self::Instant, future: F) -> Self::Timeout<R, F> {
-        tokio::time::timeout_at(deadline, future)
     }
 
     #[inline]
