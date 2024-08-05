@@ -46,6 +46,9 @@ use rocksdb::Options;
 use rocksdb::DB;
 use serde::Deserialize;
 use serde::Serialize;
+// #![deny(unused_crate_dependencies)]
+// To make the above rule happy, tokio is used, but only in tests
+use tokio as _;
 
 pub type RocksNodeId = u64;
 

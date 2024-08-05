@@ -10,9 +10,9 @@ use crate::TypeConfig;
 
 struct SledBuilder {}
 
-#[test]
-pub fn test_sled_store() -> Result<(), StorageError<TypeConfig>> {
-    Suite::test_all(SledBuilder {})
+#[async_std::test]
+pub async fn test_sled_store() -> Result<(), StorageError<TypeConfig>> {
+    Suite::test_all(SledBuilder {}).await
 }
 
 type LogStore = Arc<SledStore>;

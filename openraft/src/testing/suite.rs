@@ -118,49 +118,49 @@ where
     B: StoreBuilder<C, LS, SM, G>,
     G: Send + Sync,
 {
-    pub fn test_all(builder: B) -> Result<(), StorageError<C>> {
-        Suite::test_store(&builder)?;
+    pub async fn test_all(builder: B) -> Result<(), StorageError<C>> {
+        Suite::test_store(&builder).await?;
         Ok(())
     }
 
-    pub fn test_store(builder: &B) -> Result<(), StorageError<C>> {
-        run_fut(run_test(builder, Self::last_membership_in_log_initial))?;
-        run_fut(run_test(builder, Self::last_membership_in_log))?;
-        run_fut(run_test(builder, Self::last_membership_in_log_multi_step))?;
-        run_fut(run_test(builder, Self::get_membership_initial))?;
-        run_fut(run_test(builder, Self::get_membership_from_log_and_empty_sm))?;
-        run_fut(run_test(builder, Self::get_membership_from_empty_log_and_sm))?;
-        run_fut(run_test(builder, Self::get_membership_from_log_le_sm_last_applied))?;
-        run_fut(run_test(builder, Self::get_membership_from_log_gt_sm_last_applied_1))?;
-        run_fut(run_test(builder, Self::get_membership_from_log_gt_sm_last_applied_2))?;
-        run_fut(run_test(builder, Self::get_initial_state_without_init))?;
-        run_fut(run_test(builder, Self::get_initial_state_membership_from_log_and_sm))?;
-        run_fut(run_test(builder, Self::get_initial_state_with_state))?;
-        run_fut(run_test(builder, Self::get_initial_state_last_log_gt_sm))?;
-        run_fut(run_test(builder, Self::get_initial_state_last_log_lt_sm))?;
-        run_fut(run_test(builder, Self::get_initial_state_log_ids))?;
-        run_fut(run_test(builder, Self::get_initial_state_re_apply_committed))?;
-        run_fut(run_test(builder, Self::save_vote))?;
-        run_fut(run_test(builder, Self::get_log_entries))?;
-        run_fut(run_test(builder, Self::limited_get_log_entries))?;
-        run_fut(run_test(builder, Self::try_get_log_entry))?;
-        run_fut(run_test(builder, Self::initial_logs))?;
-        run_fut(run_test(builder, Self::get_log_state))?;
-        run_fut(run_test(builder, Self::get_log_id))?;
-        run_fut(run_test(builder, Self::last_id_in_log))?;
-        run_fut(run_test(builder, Self::last_applied_state))?;
-        run_fut(run_test(builder, Self::purge_logs_upto_0))?;
-        run_fut(run_test(builder, Self::purge_logs_upto_5))?;
-        run_fut(run_test(builder, Self::purge_logs_upto_20))?;
-        run_fut(run_test(builder, Self::delete_logs_since_11))?;
-        run_fut(run_test(builder, Self::delete_logs_since_0))?;
-        run_fut(run_test(builder, Self::append_to_log))?;
-        run_fut(run_test(builder, Self::snapshot_meta))?;
+    pub async fn test_store(builder: &B) -> Result<(), StorageError<C>> {
+        run_test(builder, Self::last_membership_in_log_initial).await?;
+        run_test(builder, Self::last_membership_in_log).await?;
+        run_test(builder, Self::last_membership_in_log_multi_step).await?;
+        run_test(builder, Self::get_membership_initial).await?;
+        run_test(builder, Self::get_membership_from_log_and_empty_sm).await?;
+        run_test(builder, Self::get_membership_from_empty_log_and_sm).await?;
+        run_test(builder, Self::get_membership_from_log_le_sm_last_applied).await?;
+        run_test(builder, Self::get_membership_from_log_gt_sm_last_applied_1).await?;
+        run_test(builder, Self::get_membership_from_log_gt_sm_last_applied_2).await?;
+        run_test(builder, Self::get_initial_state_without_init).await?;
+        run_test(builder, Self::get_initial_state_membership_from_log_and_sm).await?;
+        run_test(builder, Self::get_initial_state_with_state).await?;
+        run_test(builder, Self::get_initial_state_last_log_gt_sm).await?;
+        run_test(builder, Self::get_initial_state_last_log_lt_sm).await?;
+        run_test(builder, Self::get_initial_state_log_ids).await?;
+        run_test(builder, Self::get_initial_state_re_apply_committed).await?;
+        run_test(builder, Self::save_vote).await?;
+        run_test(builder, Self::get_log_entries).await?;
+        run_test(builder, Self::limited_get_log_entries).await?;
+        run_test(builder, Self::try_get_log_entry).await?;
+        run_test(builder, Self::initial_logs).await?;
+        run_test(builder, Self::get_log_state).await?;
+        run_test(builder, Self::get_log_id).await?;
+        run_test(builder, Self::last_id_in_log).await?;
+        run_test(builder, Self::last_applied_state).await?;
+        run_test(builder, Self::purge_logs_upto_0).await?;
+        run_test(builder, Self::purge_logs_upto_5).await?;
+        run_test(builder, Self::purge_logs_upto_20).await?;
+        run_test(builder, Self::delete_logs_since_11).await?;
+        run_test(builder, Self::delete_logs_since_0).await?;
+        run_test(builder, Self::append_to_log).await?;
+        run_test(builder, Self::snapshot_meta).await?;
 
-        run_fut(run_test(builder, Self::apply_single))?;
-        run_fut(run_test(builder, Self::apply_multiple))?;
+        run_test(builder, Self::apply_single).await?;
+        run_test(builder, Self::apply_multiple).await?;
 
-        run_fut(Self::transfer_snapshot(builder))?;
+        Self::transfer_snapshot(builder).await?;
 
         // TODO(xp): test: do_log_compaction
 
@@ -787,7 +787,7 @@ where
 
         // `purge()` does not have to do the purge at once.
         // The implementation may choose to do it in the background.
-        tokio::time::sleep(Duration::from_millis(1_000)).await;
+        C::sleep(Duration::from_millis(1_000)).await;
 
         let ent = store.try_get_log_entry(3).await?;
         assert_eq!(Some(log_id_0(1, 3)), ent.map(|x| *x.get_log_id()));
@@ -855,7 +855,7 @@ where
 
             // `purge()` does not have to do the purge at once.
             // The implementation may choose to do it in the background.
-            tokio::time::sleep(Duration::from_millis(1_000)).await;
+            C::sleep(Duration::from_millis(1_000)).await;
 
             let st = store.get_log_state().await?;
             assert_eq!(Some(log_id_0(2, 3)), st.last_purged_log_id);
@@ -872,7 +872,7 @@ where
 
         // `purge()` does not have to do the purge at once.
         // The implementation may choose to do it in the background.
-        tokio::time::sleep(Duration::from_millis(1_000)).await;
+        C::sleep(Duration::from_millis(1_000)).await;
 
         let res = store.get_log_id(0).await;
         assert!(res.is_err());
@@ -922,7 +922,7 @@ where
 
             // `purge()` does not have to do the purge at once.
             // The implementation may choose to do it in the background.
-            tokio::time::sleep(Duration::from_millis(1_000)).await;
+            C::sleep(Duration::from_millis(1_000)).await;
 
             let last_log_id = store.get_log_state().await?.last_log_id;
             assert_eq!(Some(log_id_0(1, 2)), last_log_id);
@@ -972,7 +972,7 @@ where
 
         // `purge()` does not have to do the purge at once.
         // The implementation may choose to do it in the background.
-        tokio::time::sleep(Duration::from_millis(1_000)).await;
+        C::sleep(Duration::from_millis(1_000)).await;
 
         let logs = store.try_get_log_entries(0..100).await?;
         assert_eq!(logs.len(), 10);
@@ -997,7 +997,7 @@ where
 
         // `purge()` does not have to do the purge at once.
         // The implementation may choose to do it in the background.
-        tokio::time::sleep(Duration::from_millis(1_000)).await;
+        C::sleep(Duration::from_millis(1_000)).await;
 
         let logs = store.try_get_log_entries(0..100).await?;
         assert_eq!(logs.len(), 5);
@@ -1022,7 +1022,7 @@ where
 
         // `purge()` does not have to do the purge at once.
         // The implementation may choose to do it in the background.
-        tokio::time::sleep(Duration::from_millis(1_000)).await;
+        C::sleep(Duration::from_millis(1_000)).await;
 
         let logs = store.try_get_log_entries(0..100).await?;
         assert_eq!(logs.len(), 0);
@@ -1085,7 +1085,7 @@ where
 
         // `purge()` does not have to do the purge at once.
         // The implementation may choose to do it in the background.
-        tokio::time::sleep(Duration::from_millis(1_000)).await;
+        C::sleep(Duration::from_millis(1_000)).await;
 
         append(&mut store, [blank_ent_0::<C>(2, 11)]).await?;
 
@@ -1289,19 +1289,6 @@ where C::NodeId: From<u64> {
 fn membership_ent_0<C: RaftTypeConfig>(term: u64, index: u64, bs: BTreeSet<C::NodeId>) -> C::Entry
 where C::NodeId: From<u64> {
     C::Entry::new_membership(log_id_0(term, index), Membership::new(vec![bs], ()))
-}
-
-/// Block until a future is finished.
-/// The future will be running in a clean tokio runtime, to prevent an unfinished task affecting the
-/// test.
-pub fn run_fut<C, F>(f: F) -> Result<(), StorageError<C>>
-where
-    C: RaftTypeConfig,
-    F: Future<Output = Result<(), StorageError<C>>>,
-{
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    rt.block_on(f)?;
-    Ok(())
 }
 
 /// Build a `RaftLogStorage` and `RaftStateMachine` implementation and run a test on it.

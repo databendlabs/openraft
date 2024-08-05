@@ -23,9 +23,11 @@ openraft = { path= "../../openraft", version = "0.10.0", features=["serde", "typ
 rocksdb = "0.22.0"
 rand = "*"
 byteorder = "1.4.3"
-serde = { version = "1.0.114", features = ["derive"] }
-serde_json = "1.0.57"
-tracing = "0.1.29"
+
+serde           = { workspace = true, features = ["derive"] }
+serde_json      = { workspace = true }
+tokio           = { workspace = true }
+tracing         = { workspace = true }
 
 [dev-dependencies]
 tempfile = { version = "3.4.0" }
