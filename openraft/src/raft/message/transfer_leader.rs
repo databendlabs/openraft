@@ -12,12 +12,12 @@ pub struct TransferLeaderRequest<C>
 where C: RaftTypeConfig
 {
     /// The vote of the Leader that is transferring the leadership.
-    pub(crate) from: Vote<C::NodeId>,
+    pub(crate) from_leader: Vote<C::NodeId>,
 
     /// The assigned node to be the next Leader.
-    pub(crate) to: C::NodeId,
+    pub(crate) to_node_id: C::NodeId,
 
-    /// The last log id the `to` node should at least have to become Leader.
+    /// The last log id the `to_node_id` node should at least have to become Leader.
     pub(crate) last_log_id: Option<LogId<C::NodeId>>,
 }
 
@@ -25,17 +25,26 @@ impl<C> TransferLeaderRequest<C>
 where C: RaftTypeConfig
 {
     pub fn new(from: Vote<C::NodeId>, to: C::NodeId, last_log_id: Option<LogId<C::NodeId>>) -> Self {
-        Self { from, to, last_log_id }
+        Self {
+            from_leader: from,
+            to_node_id: to,
+            last_log_id,
+        }
     }
 
-    pub fn from(&self) -> &Vote<C::NodeId> {
-        &self.from
+    /// From which Leader the leadership is transferred.
+    pub fn from_leader(&self) -> &Vote<C::NodeId> {
+        &self.from_leader
     }
 
-    pub fn to(&self) -> &C::NodeId {
-        &self.to
+    /// To which node the leadership is transferred.
+    pub fn to_node_id(&self) -> &C::NodeId {
+        &self.to_node_id
     }
 
+    /// The last log id on the `to_node_id` node should at least have to become Leader.
+    ///
+    /// This is the last log id on the Leader when the leadership is transferred.
     pub fn last_log_id(&self) -> Option<&LogId<C::NodeId>> {
         self.last_log_id.as_ref()
     }
@@ -47,9 +56,9 @@ where C: RaftTypeConfig
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "(from={}, to={}, last_log_id={})",
-            self.from,
-            self.to,
+            "(from_leader={}, to={}, last_log_id={})",
+            self.from_leader,
+            self.to_node_id,
             self.last_log_id.display()
         )
     }
