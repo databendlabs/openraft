@@ -1,7 +1,9 @@
 //! Suite for testing implementations of [`AsyncRuntime`].
 
 use std::pin::pin;
+use std::pin::Pin;
 use std::sync::Arc;
+use std::task::Poll;
 
 use crate::async_runtime::watch::WatchReceiver;
 use crate::async_runtime::watch::WatchSender;
@@ -53,6 +55,7 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         Self::test_oneshot_drop_tx().await;
         Self::test_oneshot().await;
         Self::test_mutex().await;
+        Self::test_mutex_contention().await;
     }
 
     pub async fn test_spawn_join_handle() {
@@ -209,16 +212,6 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
     }
 
     pub async fn test_watch_overwrite_init_value() {
-        use std::pin::Pin;
-        use std::task::Poll;
-
-        /// A helper function to peek a future's state.
-        fn poll_in_place<F: std::future::Future>(fut: Pin<&mut F>) -> Poll<F::Output> {
-            let waker = futures::task::noop_waker();
-            let mut cx = futures::task::Context::from_waker(&waker);
-            fut.poll(&mut cx)
-        }
-
         let init_value = 1;
         let overwrite = 3;
         assert_ne!(init_value, overwrite);
@@ -320,7 +313,7 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         assert_eq!(number_to_send, number_received);
     }
 
-    pub async fn test_mutex() {
+    pub async fn test_mutex_contention() {
         let counter = Arc::new(Rt::Mutex::new(0_u32));
         let n_task = 100;
         let mut handles = Vec::new();
@@ -342,4 +335,33 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         let value = counter.lock().await;
         assert_eq!(*value, n_task);
     }
+
+    pub async fn test_mutex() {
+        let lock = Rt::Mutex::new(());
+        let mut guard_fut = lock.lock();
+        let pinned_guard_fut = pin!(guard_fut);
+
+        let poll_result = poll_in_place(pinned_guard_fut);
+        let guard = match poll_result {
+            Poll::Ready(guard) => guard,
+            Poll::Pending => panic!("first lock() should succeed"),
+        };
+
+        let another_guard_fut = lock.lock();
+        let mut pinned_another_guard_fut = pin!(another_guard_fut);
+        assert!(matches!(
+            poll_in_place(pinned_another_guard_fut.as_mut()),
+            Poll::Pending
+        ));
+
+        drop(guard);
+        assert!(matches!(poll_in_place(pinned_another_guard_fut), Poll::Ready(_)));
+    }
+}
+
+/// A helper function to peek a future's state.
+fn poll_in_place<F: std::future::Future>(fut: Pin<&mut F>) -> Poll<F::Output> {
+    let waker = futures::task::noop_waker();
+    let mut cx = futures::task::Context::from_waker(&waker);
+    fut.poll(&mut cx)
 }
