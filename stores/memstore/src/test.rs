@@ -17,8 +17,8 @@ impl StoreBuilder<TypeConfig, Arc<MemLogStore>, Arc<MemStateMachine>, ()> for Me
     }
 }
 
-#[test]
-pub fn test_mem_store() -> Result<(), StorageError<TypeConfig>> {
-    Suite::test_all(MemStoreBuilder {})?;
+#[tokio::test]
+pub async fn test_mem_store() -> Result<(), StorageError<TypeConfig>> {
+    Suite::test_all(MemStoreBuilder {}).await?;
     Ok(())
 }

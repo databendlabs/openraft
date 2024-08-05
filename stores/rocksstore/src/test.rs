@@ -32,11 +32,12 @@ impl StoreBuilder<TypeConfig, RocksLogStore, RocksStateMachine, TempDir> for Roc
 /// }
 /// #[test]
 /// pub fn test_mem_store() -> anyhow::Result<()> {
-///     Suite::test_all(MemStoreBuilder {})
+///     let rt = YourRuntime::new();
+///     rt.block_on(Suite::test_all(MemStoreBuilder {}));
 /// }
 /// ```
-#[test]
-pub fn test_rocks_store() -> Result<(), StorageError<TypeConfig>> {
-    Suite::test_all(RocksBuilder {})?;
+#[tokio::test]
+pub async fn test_rocks_store() -> Result<(), StorageError<TypeConfig>> {
+    Suite::test_all(RocksBuilder {}).await?;
     Ok(())
 }

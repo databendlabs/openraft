@@ -16,8 +16,8 @@ impl StoreBuilder<TypeConfig, LogStore, Arc<StateMachineStore>, ()> for MemKVSto
     }
 }
 
-#[test]
-pub fn test_mem_store() -> Result<(), StorageError<TypeConfig>> {
-    Suite::test_all(MemKVStoreBuilder {})?;
+#[tokio::test]
+pub async fn test_mem_store() -> Result<(), StorageError<TypeConfig>> {
+    Suite::test_all(MemKVStoreBuilder {}).await?;
     Ok(())
 }

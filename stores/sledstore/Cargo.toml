@@ -18,10 +18,10 @@ openraft = { path= "../../openraft", version = "0.10.0", features=["serde", "typ
 
 sled = "0.34.7"
 byteorder = "1.4.3"
-serde = { version = "1.0.114", features = ["derive"] }
-serde_json = "1.0.57"
 async-std = { version = "1.12.0", features = ["attributes", "tokio1"] }
-tracing = "0.1.29"
+serde           = { workspace = true, features = ["derive"] }
+serde_json      = { workspace = true }
+tracing         = { workspace = true }
 
 [dev-dependencies]
 tempfile = { version = "3.4.0" }

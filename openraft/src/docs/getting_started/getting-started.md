@@ -178,23 +178,10 @@ Most of the APIs are quite straightforward, except two indirect APIs:
 
 There is a [Test suite for RaftLogStorage and RaftStateMachine][`Suite`] available in Openraft.
 If your implementation passes the tests, Openraft should work well with it.
-To test your implementation, you have two options:
+To test your implementation, run `Suite::test_all()` with a [`StoreBuilder`] implementation,
+as shown in the [`RocksStore` test](https://github.com/datafuselabs/openraft/blob/main/stores/rocksstore/src/test.rs).
 
-1. Run `Suite::test_all()` with an `async fn()` that creates a new pair of [`RaftLogStorage`] and [`RaftStateMachine`],
-   as shown in the [`MemStore` test](https://github.com/datafuselabs/openraft/blob/main/stores/memstore/src/test.rs):
-
-  ```ignore
-  #[test]
-  pub fn test_mem_store() -> Result<(), StorageError<MemNodeId>> {
-      Suite::test_all(MemStoreBuilder {})?;
-      Ok(())
-  }
-  ```
-
-2. Alternatively, run `Suite::test_all()` with a [`StoreBuilder`] implementation,
-   as shown in the [`RocksStore` test](https://github.com/datafuselabs/openraft/blob/main/rocksstore/src/test.rs).
-
-By following either of these approaches, you can ensure that your custom storage implementation can work correctly in a distributed system.
+Once all tests pass, you can ensure that your custom storage implementation can work correctly in a distributed system.
 
 
 ### An implementation has to guarantee data durability.

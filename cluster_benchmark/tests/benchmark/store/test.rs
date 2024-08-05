@@ -18,8 +18,8 @@ impl StoreBuilder<TypeConfig, Arc<LogStore>, Arc<StateMachineStore>> for Builder
     }
 }
 
-#[test]
-pub fn test_store() -> Result<(), StorageError<TypeConfig>> {
-    Suite::test_all(Builder {})?;
+#[tokio::test]
+pub async fn test_store() -> Result<(), StorageError<TypeConfig>> {
+    Suite::test_all(Builder {}).await?;
     Ok(())
 }
