@@ -64,43 +64,43 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
 
     pub async fn test_sleep() {
         let start_time = std::time::Instant::now();
-        let dur_100ms = std::time::Duration::from_millis(100);
-        Rt::sleep(dur_100ms).await;
+        let dur_10ms = std::time::Duration::from_millis(10);
+        Rt::sleep(dur_10ms).await;
         let elapsed = start_time.elapsed();
 
-        assert!(elapsed > dur_100ms);
+        assert!(elapsed >= dur_10ms);
     }
 
     pub async fn test_instant() {
         let start_time = Rt::Instant::now();
-        let dur_100ms = std::time::Duration::from_millis(100);
-        Rt::sleep(dur_100ms).await;
+        let dur_10ms = std::time::Duration::from_millis(10);
+        Rt::sleep(dur_10ms).await;
         let elapsed = start_time.elapsed();
 
-        assert!(elapsed > dur_100ms);
+        assert!(elapsed >= dur_10ms);
     }
 
     pub async fn test_sleep_until() {
         let start_time = Rt::Instant::now();
-        let dur_100ms = std::time::Duration::from_millis(100);
-        let end_time = start_time + dur_100ms;
+        let dur_10ms = std::time::Duration::from_millis(10);
+        let end_time = start_time + dur_10ms;
         Rt::sleep_until(end_time).await;
         let elapsed = start_time.elapsed();
-        assert!(elapsed > dur_100ms);
+        assert!(elapsed >= dur_10ms);
     }
 
     pub async fn test_timeout() {
         let ret_number = 1;
 
         // Won't time out
-        let dur_100ms = std::time::Duration::from_millis(100);
-        let ret_value = Rt::timeout(dur_100ms, async move { ret_number }).await.unwrap();
+        let dur_10ms = std::time::Duration::from_millis(10);
+        let ret_value = Rt::timeout(dur_10ms, async move { ret_number }).await.unwrap();
         assert_eq!(ret_value, ret_number);
 
         // Will time out
-        let dur_150ms = std::time::Duration::from_millis(150);
-        let timeout_result = Rt::timeout(dur_100ms, async {
-            Rt::sleep(dur_150ms).await;
+        let dur_1s = std::time::Duration::from_secs(1);
+        let timeout_result = Rt::timeout(dur_10ms, async {
+            Rt::sleep(dur_1s).await;
             ret_number
         })
         .await;
@@ -111,16 +111,16 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         let ret_number = 1;
 
         // Won't time out
-        let dur_100ms = std::time::Duration::from_millis(100);
-        let ddl = Rt::Instant::now() + dur_100ms;
+        let dur_10ms = std::time::Duration::from_millis(10);
+        let ddl = Rt::Instant::now() + dur_10ms;
         let ret_value = Rt::timeout_at(ddl, async move { ret_number }).await.unwrap();
         assert_eq!(ret_value, ret_number);
 
         // Will time out
-        let dur_150ms = std::time::Duration::from_millis(150);
-        let ddl = Rt::Instant::now() + dur_100ms;
+        let dur_1s = std::time::Duration::from_secs(1);
+        let ddl = Rt::Instant::now() + dur_10ms;
         let timeout_result = Rt::timeout_at(ddl, async {
-            Rt::sleep(dur_150ms).await;
+            Rt::sleep(dur_1s).await;
             ret_number
         })
         .await;
