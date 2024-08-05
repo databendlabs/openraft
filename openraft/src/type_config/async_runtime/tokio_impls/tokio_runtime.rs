@@ -222,7 +222,8 @@ mod tests {
     use crate::testing::runtime::Suite;
 
     #[test]
-    fn test_tokio_rt() {
+    #[cfg(not(feature = "singlethreaded"))]
+    fn test_tokio_rt_not_singlethreaded() {
         let rt = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(8)
             .enable_all()
@@ -230,5 +231,19 @@ mod tests {
             .expect("Failed building the runtime");
 
         rt.block_on(Suite::<TokioRuntime>::test_all());
+    }
+
+    #[test]
+    #[cfg(feature = "singlethreaded")]
+    fn test_tokio_rt_singlethreaded() {
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(8)
+            .enable_all()
+            .build()
+            .expect("Failed building the runtime");
+        // `spawn_local` needs to be called called from inside of a `task::LocalSet`
+        let local = tokio::task::LocalSet::new();
+
+        local.block_on(&rt, Suite::<TokioRuntime>::test_all());
     }
 }

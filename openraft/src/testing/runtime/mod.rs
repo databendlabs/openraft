@@ -179,7 +179,7 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         for idx in 0..n_senders {
             let tx = Arc::clone(&tx);
             // no need to wait for senders here, we wait by recv()ing
-            let _ = Rt::spawn(async move {
+            let _handle = Rt::spawn(async move {
                 tx.send(idx).unwrap();
             });
         }
@@ -292,7 +292,7 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         let number_to_send = 1;
         let (tx, rx) = Rt::Oneshot::channel::<i32>();
         // no need to join the task, this test only works iff the sender task finishes its job
-        let _ = Rt::spawn(async move {
+        let _handle = Rt::spawn(async move {
             tx.send(number_to_send).unwrap();
         });
         let number_received = rx.await.unwrap();
