@@ -177,7 +177,7 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         let recv_expected = (0..n_senders).collect::<Vec<_>>();
 
         for idx in 0..n_senders {
-            let tx = Arc::clone(&tx);
+            let tx = tx.clone();
             // no need to wait for senders here, we wait by recv()ing
             let _handle = Rt::spawn(async move {
                 tx.send(idx).unwrap();
@@ -306,7 +306,7 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         let mut handles = Vec::new();
 
         for _ in 0..n_task {
-            let counter = Arc::clone(&counter);
+            let counter = counter.clone();
             let handle = Rt::spawn(async move {
                 let mut guard = counter.lock().await;
                 *guard += 1;
