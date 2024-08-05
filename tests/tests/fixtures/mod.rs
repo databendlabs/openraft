@@ -1131,7 +1131,7 @@ impl RaftNetworkV2<MemConfig> for RaftRouterNetwork {
         rpc: TransferLeaderRequest<MemConfig>,
         _option: RPCOption,
     ) -> Result<(), RPCError<MemConfig>> {
-        let from_id = rpc.from().leader_id().voted_for().unwrap();
+        let from_id = rpc.from_leader().leader_id().voted_for().unwrap();
 
         self.owner.count_rpc(RPCTypes::TransferLeader);
         self.owner.call_rpc_pre_hook(rpc.clone(), from_id, self.target)?;

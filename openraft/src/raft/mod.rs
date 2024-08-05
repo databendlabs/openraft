@@ -652,13 +652,13 @@ where C: RaftTypeConfig
     pub async fn handle_transfer_leader(&self, req: TransferLeaderRequest<C>) -> Result<(), Fatal<C>> {
         // Reset the Leader lease at once and quit, if this is not the assigned next leader.
         // Only the assigned next Leader waits for the log to be flushed.
-        if req.to == self.inner.id {
+        if req.to_node_id == self.inner.id {
             self.ensure_log_flushed_for_transfer_leader(&req).await?;
         }
 
         let raft_msg = RaftMsg::HandleTransferLeader {
-            from: req.from,
-            to: req.to,
+            from: req.from_leader,
+            to: req.to_node_id,
         };
 
         self.inner.send_msg(raft_msg).await?;
@@ -673,12 +673,13 @@ where C: RaftTypeConfig
         // RequestVote.last_log_id is upto date.
 
         // Condition satisfied to become Leader
-        let ok =
-            |m: &RaftMetrics<C>| (req.from == m.vote && m.last_log_index.next_index() >= req.last_log_id.next_index());
+        let ok = |m: &RaftMetrics<C>| {
+            req.from_leader() == &m.vote && m.last_log_index.next_index() >= req.last_log_id().next_index()
+        };
 
         // Condition failed to become Leader
         #[allow(clippy::neg_cmp_op_on_partial_ord)]
-        let fail = |m: &RaftMetrics<C>| !(req.from >= m.vote);
+        let fail = |m: &RaftMetrics<C>| !(req.from_leader >= m.vote);
 
         let timeout = Some(Duration::from_millis(self.inner.config.election_timeout_min));
         let metrics_res =
@@ -689,7 +690,7 @@ where C: RaftTypeConfig
                 if fail(&metrics) {
                     tracing::warn!(
                         "Vote changed, give up Leader-transfer; expected vote: {}, metrics: {}",
-                        req.from,
+                        req.from_leader,
                         metrics
                     );
                     return Ok(());
@@ -697,7 +698,7 @@ where C: RaftTypeConfig
                 tracing::info!(
                     "Leader-transfer condition satisfied, submit Leader-transfer message; \
                      expected: (vote: {}, flushed_log: {})",
-                    req.from,
+                    req.from_leader,
                     req.last_log_id.display(),
                 );
             }
@@ -705,7 +706,7 @@ where C: RaftTypeConfig
                 tracing::warn!(
                     "Leader-transfer condition fail to satisfy, still submit Leader-transfer; \
                     expected: (vote: {}; flushed_log: {}), error: {}",
-                    req.from,
+                    req.from_leader,
                     req.last_log_id.display(),
                     err
                 );
