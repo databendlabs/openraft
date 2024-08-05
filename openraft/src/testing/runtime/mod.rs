@@ -17,7 +17,18 @@ use crate::type_config::async_runtime::watch::Watch;
 use crate::type_config::async_runtime::AsyncRuntime;
 
 /// Test suite to ensure a runtime impl works as expected.
+///
+/// ```rust,ignore
+/// struct MyCustomRuntime;
+/// impl openraft::AsyncRuntime for MyCustomRuntime { /* omitted */ }
+///
+/// // Build a runtime
+/// let rt = MyCustomRuntime::new();
+/// // Run all the tests
+/// rt.block_on(Suite::<MyCustomRuntime>::test_all());
+/// ```
 pub struct Suite<Rt: AsyncRuntime> {
+    /// `Rt` needs to be used to make linter happy.
     _marker: std::marker::PhantomData<Rt>,
 }
 

@@ -13,7 +13,7 @@ use crate::engine::Respond;
 use crate::error::Infallible;
 use crate::raft::VoteResponse;
 use crate::raft_state::IOId;
-use crate::testing::log::log_id;
+use crate::testing::log_id;
 use crate::type_config::TypeConfigExt;
 use crate::utime::Leased;
 use crate::EffectiveMembership;

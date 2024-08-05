@@ -3,7 +3,7 @@ use crate::engine::Command;
 use crate::engine::Engine;
 use crate::engine::LogIdList;
 use crate::raft_state::LogStateReader;
-use crate::testing::log::log_id;
+use crate::testing::log_id;
 
 fn eng() -> Engine<UTConfig> {
     let mut eng = Engine::testing_default(0);

@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use crate::engine::testing::UTConfig;
 use crate::engine::LogIdList;
-use crate::testing::log::log_id;
+use crate::testing::log_id;
 use crate::type_config::TypeConfigExt;
 use crate::utime::Leased;
 use crate::RaftState;

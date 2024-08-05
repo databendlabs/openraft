@@ -138,7 +138,7 @@ where C: RaftTypeConfig
 mod tests {
     use crate::engine::testing::UTConfig;
     use crate::replication::response::ReplicationResult;
-    use crate::testing::log::log_id;
+    use crate::testing::log_id;
     use crate::type_config::TypeConfigExt;
 
     #[test]

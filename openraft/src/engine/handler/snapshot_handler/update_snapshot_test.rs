@@ -3,7 +3,7 @@ use pretty_assertions::assert_eq;
 
 use crate::engine::testing::UTConfig;
 use crate::engine::Engine;
-use crate::testing::log::log_id;
+use crate::testing::log_id;
 use crate::Membership;
 use crate::SnapshotMeta;
 use crate::StoredMembership;
