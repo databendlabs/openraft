@@ -1,5 +1,6 @@
 //! Suite for testing implementations of [`AsyncRuntime`].
 
+use std::pin::pin;
 use std::sync::Arc;
 
 use crate::async_runtime::watch::WatchReceiver;
@@ -208,6 +209,16 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
     }
 
     pub async fn test_watch_overwrite_init_value() {
+        use std::pin::Pin;
+        use std::task::Poll;
+
+        /// A helper function to peek a future's state.
+        fn poll_in_place<F: std::future::Future>(fut: Pin<&mut F>) -> Poll<F::Output> {
+            let waker = futures::task::noop_waker();
+            let mut cx = futures::task::Context::from_waker(&waker);
+            fut.poll(&mut cx)
+        }
+
         let init_value = 1;
         let overwrite = 3;
         assert_ne!(init_value, overwrite);
@@ -223,8 +234,17 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         drop(value_from_rx);
         drop(value_from_tx);
 
-        tx.send(overwrite).unwrap();
-        rx.changed().await.unwrap();
+        // macro `pin!` creates a temporary mutable reference to `rx`, move them
+        // into a block so that they can be dropped before invoking `.borrow_watched()`,
+        // which needs an immutable reference to `rx`.
+        {
+            let mut changed_fut = rx.changed();
+            let mut pinned_changed_fut = pin!(changed_fut);
+            assert!(matches!(poll_in_place(pinned_changed_fut.as_mut()), Poll::Pending));
+            tx.send(overwrite).unwrap();
+            assert!(matches!(poll_in_place(pinned_changed_fut), Poll::Ready(_)));
+        }
+
         let value_from_rx = rx.borrow_watched();
         let value_from_tx = tx.borrow_watched();
         assert_eq!(*value_from_rx, overwrite);
