@@ -62,7 +62,6 @@ pub mod metrics;
 pub mod network;
 pub mod raft;
 pub mod storage;
-#[cfg(feature = "tokio-rt")]
 pub mod testing;
 pub mod type_config;
 
