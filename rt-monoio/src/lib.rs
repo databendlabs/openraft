@@ -401,3 +401,16 @@ mod mutex_mod {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use openraft::testing::runtime::Suite;
+
+    use super::*;
+
+    #[test]
+    fn test_monoio_rt() {
+        let mut rt = monoio::RuntimeBuilder::<monoio::FusionDriver>::new().enable_all().build().unwrap();
+        rt.block_on(Suite::<MonoioRuntime>::test_all());
+    }
+}
