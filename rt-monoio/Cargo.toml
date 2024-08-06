@@ -3,21 +3,21 @@ name = "openraft-rt-monoio"
 description = "monoio AsyncRuntime support for Openraft"
 documentation = "https://docs.rs/openraft-rt-monoio"
 readme = "README.md"
-
-version       = { workspace = true }
-edition       = { workspace = true }
-authors       = { workspace = true }
-categories    = { workspace = true }
-homepage      = { workspace = true }
-keywords      = { workspace = true }
-license       = { workspace = true }
-repository    = { workspace = true }
+version = "0.10.0"
+edition = "2021"
+authors = [
+    "Databend Authors <opensource@datafuselabs.com>",
+]
+categories = ["algorithms", "asynchronous", "data-structures"]
+homepage = "https://github.com/datafuselabs/openraft"
+keywords = ["raft", "consensus"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/datafuselabs/openraft"
 
 [dependencies]
-openraft = { path= "../openraft", version = "0.10.0", features = ["singlethreaded"] }
+openraft = { path = "../openraft", version = "0.10.0", features = ["singlethreaded"] }
 
-rand     = { workspace = true }
-tokio    = { workspace = true, features = ["sync"] }
-
+rand = "0.8"
+tokio = { version = "1.22", features = ["sync"] }
 monoio = "0.2.3"
 local-sync = "0.1.1"
