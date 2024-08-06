@@ -22,7 +22,7 @@ use crate::storage::RaftLogReaderExt;
 use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
 use crate::storage::StorageHelper;
-use crate::testing::StoreBuilder;
+use crate::testing::log::StoreBuilder;
 use crate::type_config::TypeConfigExt;
 use crate::vote::CommittedLeaderId;
 use crate::LogId;

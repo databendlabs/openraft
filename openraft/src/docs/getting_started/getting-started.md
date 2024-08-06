@@ -176,7 +176,7 @@ Most of the APIs are quite straightforward, except two indirect APIs:
 
 ### Ensure the storage implementation is correct
 
-There is a [Test suite for RaftLogStorage and RaftStateMachine][`Suite`] available in Openraft.
+There is a [Test suite for RaftLogStorage and RaftStateMachine][`LogSuite`] available in Openraft.
 If your implementation passes the tests, Openraft should work well with it.
 To test your implementation, run `Suite::test_all()` with a [`StoreBuilder`] implementation,
 as shown in the [`RocksStore` test](https://github.com/datafuselabs/openraft/blob/main/stores/rocksstore/src/test.rs).
@@ -456,7 +456,7 @@ Additionally, two test scripts for setting up a cluster are available:
 [`build_snapshot()`]:                   `crate::storage::RaftSnapshotBuilder::build_snapshot`
 [`Snapshot`]:                           `crate::storage::Snapshot`
 
-[`StoreBuilder`]:                       `crate::testing::StoreBuilder`
-[`Suite`]:                              `crate::testing::Suite`
+[`StoreBuilder`]:                       `crate::testing::log::StoreBuilder`
+[`LogSuite`]:                              `crate::testing::log::Suite`
 
 [`docs::connect-to-correct-node`]:      `crate::docs::cluster_control::dynamic_membership#ensure-connection-to-the-correct-node`
