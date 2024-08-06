@@ -55,7 +55,6 @@ members = [
     "stores/memstore",
     "stores/rocksstore",
     "stores/sledstore",
-    "rt-monoio",
 ]
 exclude = [
     "cluster_benchmark",
@@ -65,4 +64,5 @@ exclude = [
     "examples/raft-kv-memstore-network-v2",
     "examples/raft-kv-memstore-opendal-snapshot-data",
     "examples/raft-kv-rocksdb",
+    "rt-monoio"
 ]
