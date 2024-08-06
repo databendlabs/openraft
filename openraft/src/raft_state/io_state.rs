@@ -145,7 +145,7 @@ where C: RaftTypeConfig
         tracing::debug!(snapshot = display(DisplayOption(&log_id)), "{}", func_name!());
 
         debug_assert!(
-            log_id > self.snapshot,
+            log_id >= self.snapshot,
             "snapshot log id should be monotonically increasing: current: {:?}, update: {:?}",
             self.snapshot,
             log_id
