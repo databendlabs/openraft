@@ -59,7 +59,7 @@ async fn test_cluster() {
 
     // This test only use memory service for simplicity.
     // Feel free to test against fs or s3.
-    let op = opendal::Operator::via_map(opendal::Scheme::Memory, HashMap::default()).unwrap();
+    let op = opendal::Operator::via_iter(opendal::Scheme::Memory, HashMap::<String, String>::default()).unwrap();
 
     let router = Router::default();
 

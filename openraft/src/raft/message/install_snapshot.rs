@@ -41,7 +41,7 @@ impl<C: RaftTypeConfig> fmt::Display for InstallSnapshotRequest<C> {
 #[derive(Debug)]
 #[derive(PartialEq, Eq)]
 #[derive(derive_more::Display)]
-#[display(fmt = "{{vote:{}}}", vote)]
+#[display("{{vote:{}}}", vote)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct InstallSnapshotResponse<C: RaftTypeConfig> {
     pub vote: Vote<C::NodeId>,
@@ -51,7 +51,7 @@ pub struct InstallSnapshotResponse<C: RaftTypeConfig> {
 #[derive(Debug)]
 #[derive(PartialEq, Eq)]
 #[derive(derive_more::Display)]
-#[display(fmt = "SnapshotResponse{{vote:{}}}", vote)]
+#[display("SnapshotResponse{{vote:{}}}", vote)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct SnapshotResponse<C: RaftTypeConfig> {
     pub vote: Vote<C::NodeId>,

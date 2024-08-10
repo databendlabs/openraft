@@ -10,6 +10,7 @@
 #![deny(unused_qualifications)]
 // TODO: Enable this when doc is complete
 // #![warn(missing_docs)]
+#![allow(rustdoc::redundant_explicit_links)]
 
 macro_rules! func_name {
     () => {{

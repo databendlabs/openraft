@@ -226,7 +226,7 @@ impl RPCErrorType {
 /// Pre-hook result, which does not return remote Error.
 pub type PreHookResult = Result<(), RPCError<MemConfig, Infallible>>;
 
-#[derive(derive_more::From, derive_more::TryInto)]
+#[derive(derive_more::From, derive_more::TryInto, derive_more::Debug)]
 pub enum RPCRequest<C: RaftTypeConfig> {
     AppendEntries(AppendEntriesRequest<C>),
     InstallSnapshot(InstallSnapshotRequest<C>),
