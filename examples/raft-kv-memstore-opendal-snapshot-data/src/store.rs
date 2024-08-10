@@ -209,7 +209,7 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
         // Update the state machine.
         {
             let bs = self.storage.read(&new_snapshot.data).await.unwrap();
-            let updated_state_machine: StateMachineData = decode(&String::from_utf8_lossy(&bs));
+            let updated_state_machine: StateMachineData = decode(&String::from_utf8_lossy(bs.to_vec().as_slice()));
             let mut state_machine = self.state_machine.lock().unwrap();
             *state_machine = updated_state_machine;
         }

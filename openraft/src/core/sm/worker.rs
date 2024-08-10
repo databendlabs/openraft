@@ -43,7 +43,7 @@ where
     /// [`RaftLogStorage`]: `crate::storage::RaftLogStorage`
     log_reader: LR,
 
-    /// Raed command from RaftCore to execute.
+    /// Read command from RaftCore to execute.
     cmd_rx: MpscUnboundedReceiverOf<C, Command<C>>,
 
     /// Send back the result of the command to RaftCore.
