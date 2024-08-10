@@ -5,9 +5,9 @@ readme = "README.md"
 
 edition = "2021"
 authors = [
-    "drdr xp <drdr.xp@gmail.com>",
-    "Pedro Paulo de Amorim <pepa.amorim@gmail.com>",
-    "The Tremor Team",
+  "drdr xp <drdr.xp@gmail.com>",
+  "Pedro Paulo de Amorim <pepa.amorim@gmail.com>",
+  "The Tremor Team",
 ]
 categories = ["algorithms", "asynchronous", "data-structures"]
 description = "An example distributed key-value store built upon `openraft`."
@@ -26,14 +26,14 @@ openraft = { path = "../../openraft", features = ["serde", "type-alias"] }
 tokio = { version = "1.35.1", features = ["full"] }
 byteorder = "1.4.3"
 clap = { version = "4.1.11", features = ["derive", "env"] }
-reqwest = { version = "0.11.9", features = ["json"] }
+reqwest = { version = "0.12.5", features = ["json"] }
 rocksdb = "0.22.0"
 serde = { version = "1.0.114", features = ["derive"] }
 serde_json = "1.0.57"
 tide = { version = "0.16" }
 # for toy-rpc, use `serde_json` instead of the default `serde_bincode`:
 # bincode which enabled by default by toy-rpc, does not support `#[serde(flatten)]`: https://docs.rs/bincode/2.0.0-alpha.1/bincode/serde/index.html#known-issues
-toy-rpc = { version = "0.8.6", features = [
+toy-rpc = { version = "0.10.0", features = [
   "ws_tokio",
   "server",
   "client",
