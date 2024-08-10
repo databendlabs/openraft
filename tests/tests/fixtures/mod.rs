@@ -226,8 +226,11 @@ impl RPCErrorType {
 /// Pre-hook result, which does not return remote Error.
 pub type PreHookResult = Result<(), RPCError<MemConfig, Infallible>>;
 
+#[derive(Debug)]
 #[derive(derive_more::From, derive_more::TryInto)]
-pub enum RPCRequest<C: RaftTypeConfig> {
+pub enum RPCRequest<C: RaftTypeConfig>
+where C::SnapshotData: fmt::Debug
+{
     AppendEntries(AppendEntriesRequest<C>),
     InstallSnapshot(InstallSnapshotRequest<C>),
     InstallFullSnapshot(Snapshot<C>),
@@ -235,7 +238,9 @@ pub enum RPCRequest<C: RaftTypeConfig> {
     TransferLeader(TransferLeaderRequest<C>),
 }
 
-impl<C: RaftTypeConfig> RPCRequest<C> {
+impl<C: RaftTypeConfig> RPCRequest<C>
+where C::SnapshotData: fmt::Debug
+{
     pub fn get_type(&self) -> RPCTypes {
         match self {
             RPCRequest::AppendEntries(_) => RPCTypes::AppendEntries,

@@ -48,7 +48,7 @@ macro_rules! btreeset {
     }};
 }
 
-/// Allows [`RaftLogStorage`] to access methods provided by [`RaftLogReader`] in ths test.
+/// Allows [`RaftLogStorage`] to access methods provided by [`RaftLogReader`] in this test.
 trait ReaderExt<C>: RaftLogStorage<C>
 where C: RaftTypeConfig
 {

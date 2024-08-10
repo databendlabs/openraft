@@ -1,3 +1,4 @@
+#![allow(rustdoc::redundant_explicit_links)]
 #![doc = include_str!("docs.md")]
 
 #[rustfmt::skip]
