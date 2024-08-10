@@ -26,9 +26,7 @@ pub struct AppendEntriesRequest<C: RaftTypeConfig> {
     pub leader_commit: Option<LogId<C::NodeId>>,
 }
 
-impl<C: RaftTypeConfig> fmt::Debug for AppendEntriesRequest<C>
-where C::D: fmt::Debug
-{
+impl<C: RaftTypeConfig> fmt::Debug for AppendEntriesRequest<C> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("AppendEntriesRequest")
             .field("vote", &self.vote)

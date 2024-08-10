@@ -9,6 +9,7 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::env;
 use std::fmt;
+#[allow(deprecated)]
 use std::panic::PanicInfo;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
@@ -114,6 +115,7 @@ pub fn set_panic_hook() {
     }));
 }
 
+#[allow(deprecated)]
 pub fn log_panic(panic: &PanicInfo) {
     let backtrace = {
         #[cfg(feature = "bt")]
@@ -203,14 +205,19 @@ impl RPCErrorType {
 /// Pre-hook result, which does not return remote Error.
 pub type PreHookResult = Result<(), RPCError<MemNodeId, (), Infallible>>;
 
+#[derive(Debug)]
 #[derive(derive_more::From, derive_more::TryInto)]
-pub enum RPCRequest<C: RaftTypeConfig> {
+pub enum RPCRequest<C: RaftTypeConfig>
+where C::SnapshotData: fmt::Debug
+{
     AppendEntries(AppendEntriesRequest<C>),
     InstallSnapshot(InstallSnapshotRequest<C>),
     Vote(VoteRequest<C::NodeId>),
 }
 
-impl<C: RaftTypeConfig> RPCRequest<C> {
+impl<C: RaftTypeConfig> RPCRequest<C>
+where C::SnapshotData: fmt::Debug
+{
     pub fn get_type(&self) -> RPCTypes {
         match self {
             RPCRequest::AppendEntries(_) => RPCTypes::AppendEntries,
@@ -560,6 +567,7 @@ impl TypedRaftRouter {
                         RPCError::Unreachable(e) => e.into(),
                         RPCError::PayloadTooLarge(e) => e.into(),
                         RPCError::Network(e) => e.into(),
+                        #[allow(unreachable_patterns)]
                         RPCError::RemoteError(e) => {
                             unreachable!("unexpected RemoteError: {:?}", e);
                         }

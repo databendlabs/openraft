@@ -1,5 +1,6 @@
 use std::backtrace::Backtrace;
 use std::collections::BTreeMap;
+#[allow(deprecated)]
 use std::panic::PanicInfo;
 use std::thread;
 use std::time::Duration;
@@ -13,6 +14,7 @@ use raft_kv_rocksdb::Node;
 use tokio::runtime::Handle;
 use tracing_subscriber::EnvFilter;
 
+#[allow(deprecated)]
 pub fn log_panic(panic: &PanicInfo) {
     let backtrace = { format!("{:?}", Backtrace::force_capture()) };
 

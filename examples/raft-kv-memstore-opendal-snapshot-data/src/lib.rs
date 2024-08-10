@@ -3,6 +3,8 @@
 
 use std::sync::Arc;
 
+use bytes::Buf;
+use opendal::Buffer;
 use opendal::Operator;
 use openraft::Config;
 
@@ -67,6 +69,10 @@ pub fn encode<T: serde::Serialize>(t: T) -> String {
 
 pub fn decode<T: serde::de::DeserializeOwned>(s: &str) -> T {
     serde_json::from_str(s).unwrap()
+}
+
+pub fn decode_buffer<T: serde::de::DeserializeOwned>(b: Buffer) -> T {
+    serde_json::from_reader(b.reader()).unwrap()
 }
 
 pub async fn new_raft(node_id: NodeId, router: Router, op: Operator) -> (typ::Raft, App) {

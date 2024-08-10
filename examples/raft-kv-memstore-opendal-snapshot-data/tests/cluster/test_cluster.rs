@@ -1,6 +1,7 @@
 use std::backtrace::Backtrace;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
+#[allow(deprecated)]
 use std::panic::PanicInfo;
 use std::time::Duration;
 
@@ -13,6 +14,7 @@ use tokio::task;
 use tokio::task::LocalSet;
 use tracing_subscriber::EnvFilter;
 
+#[allow(deprecated)]
 pub fn log_panic(panic: &PanicInfo) {
     let backtrace = format!("{:?}", Backtrace::force_capture());
 
@@ -57,7 +59,7 @@ async fn test_cluster() {
 
     // This test only use memory service for simplicity.
     // Feel free to test against fs or s3.
-    let op = opendal::Operator::via_map(opendal::Scheme::Memory, HashMap::default()).unwrap();
+    let op = opendal::Operator::via_iter(opendal::Scheme::Memory, HashMap::<String, String>::default()).unwrap();
 
     let router = Router::default();
 

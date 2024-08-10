@@ -66,6 +66,7 @@ impl<C: RaftTypeConfig> From<StreamingError<C, Fatal<C::NodeId>>> for Replicatio
 
 impl<C: RaftTypeConfig> From<StreamingError<C>> for ReplicationError<C::NodeId, C::Node> {
     fn from(e: StreamingError<C>) -> Self {
+        #[allow(unreachable_patterns)]
         match e {
             StreamingError::Closed(e) => ReplicationError::Closed(e),
             StreamingError::StorageError(e) => ReplicationError::StorageError(e),

@@ -27,14 +27,11 @@ maplit          = { workspace = true }
 rand            = { workspace = true }
 serde           = { workspace = true, optional = true }
 serde_json      = { workspace = true, optional = true }
-tempfile        = { workspace = true, optional = true }
 thiserror       = { workspace = true }
 tokio           = { workspace = true }
 tracing         = { workspace = true }
 tracing-futures = { workspace = true }
 validit         = { workspace = true }
-
-or07 = { package = "openraft", version = "0.7.4", optional = true }
 
 [dev-dependencies]
 anyhow             = { workspace = true }

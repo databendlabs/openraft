@@ -1,6 +1,7 @@
 //! Raft runtime configuration.
 
 use std::ops::Deref;
+use std::str::FromStr;
 use std::sync::atomic::AtomicBool;
 use std::time::Duration;
 
@@ -54,7 +55,7 @@ fn parse_bytes_with_unit(src: &str) -> Result<u64, ConfigError> {
         reason: e.to_string(),
     })?;
 
-    Ok(res.get_bytes() as u64)
+    Ok(res.as_u64())
 }
 
 fn parse_snapshot_policy(src: &str) -> Result<SnapshotPolicy, ConfigError> {

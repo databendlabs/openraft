@@ -49,7 +49,7 @@ impl<C: RaftTypeConfig> MessageSummary<InstallSnapshotRequest<C>> for InstallSna
 #[derive(Debug)]
 #[derive(PartialEq, Eq)]
 #[derive(derive_more::Display)]
-#[display(fmt = "{{vote:{}}}", vote)]
+#[display("{{vote:{}}}", vote)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct InstallSnapshotResponse<NID: NodeId> {
     pub vote: Vote<NID>,
@@ -59,7 +59,7 @@ pub struct InstallSnapshotResponse<NID: NodeId> {
 #[derive(Debug)]
 #[derive(PartialEq, Eq)]
 #[derive(derive_more::Display)]
-#[display(fmt = "SnapshotResponse{{vote:{}}}", vote)]
+#[display("SnapshotResponse{{vote:{}}}", vote)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct SnapshotResponse<NID: NodeId> {
     pub vote: Vote<NID>,
