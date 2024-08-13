@@ -12,10 +12,11 @@ use crate::engine::Engine;
 use crate::engine::LogIdList;
 use crate::engine::ReplicationProgress;
 use crate::entry::RaftEntry;
+use crate::log_id_range::LogIdRange;
 use crate::progress::entry::ProgressEntry;
-use crate::progress::Inflight;
 use crate::raft::VoteResponse;
 use crate::raft_state::IOId;
+use crate::replication::request::Replicate;
 use crate::testing::log_id;
 use crate::type_config::TypeConfigExt;
 use crate::utime::Leased;
@@ -218,7 +219,7 @@ fn test_handle_vote_resp_equal_vote() -> anyhow::Result<()> {
                 },
                 Command::Replicate {
                     target: 2,
-                    req: Inflight::logs(None, Some(log_id(2, 1, 1))).with_id(1),
+                    req: Replicate::logs(LogIdRange::new(None, Some(log_id(2, 1, 1))))
                 },
             ],
             eng.output.take_commands()

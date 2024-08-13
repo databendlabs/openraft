@@ -10,8 +10,10 @@ use crate::engine::Engine;
 use crate::engine::LogIdList;
 use crate::engine::ReplicationProgress;
 use crate::entry::RaftEntry;
+use crate::log_id_range::LogIdRange;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::Inflight;
+use crate::replication::request::Replicate;
 use crate::testing::log_id;
 use crate::type_config::TypeConfigExt;
 use crate::utime::Leased;
@@ -69,7 +71,6 @@ fn test_startup_as_leader_without_logs() -> anyhow::Result<()> {
             Command::RebuildReplicationStreams {
                 targets: vec![ReplicationProgress(3, ProgressEntry {
                     matching: None,
-                    curr_inflight_id: 0,
                     inflight: Inflight::None,
                     searching_end: 4
                 })]
@@ -80,7 +81,7 @@ fn test_startup_as_leader_without_logs() -> anyhow::Result<()> {
             },
             Command::Replicate {
                 target: 3,
-                req: Inflight::logs(None, Some(log_id(2, 2, 4))).with_id(1)
+                req: Replicate::logs(LogIdRange::new(None, Some(log_id(2, 2, 4))))
             }
         ],
         eng.output.take_commands()
@@ -118,14 +119,13 @@ fn test_startup_as_leader_with_proposed_logs() -> anyhow::Result<()> {
             Command::RebuildReplicationStreams {
                 targets: vec![ReplicationProgress(3, ProgressEntry {
                     matching: None,
-                    curr_inflight_id: 0,
                     inflight: Inflight::None,
                     searching_end: 7
                 })]
             },
             Command::Replicate {
                 target: 3,
-                req: Inflight::logs(None, Some(log_id(1, 2, 6))).with_id(1)
+                req: Replicate::logs(LogIdRange::new(None, Some(log_id(1, 2, 6))))
             }
         ],
         eng.output.take_commands()

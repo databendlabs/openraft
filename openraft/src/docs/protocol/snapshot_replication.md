@@ -112,7 +112,7 @@ Installing snapshot includes two steps:
 The final step is to purge logs up to [`snapshot_meta.last_log_id`].
 This step is necessary because:
 
-- 1) A local log that is <= [`snapshot_meta.last_log_id`] may conflict with the leader, and can not be used anymore.
+- 1) A local log that is `<=` [`snapshot_meta.last_log_id`] may conflict with the leader, and can not be used anymore.
 
 - 2) There may be a hole in the logs, if `snapshot_last_log_id > local_last_log_id`:
 

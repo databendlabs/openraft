@@ -37,7 +37,6 @@ use crate::core::sm;
 use crate::core::ServerState;
 use crate::display_ext::DisplayInstantExt;
 use crate::display_ext::DisplayOptionExt;
-use crate::display_ext::DisplayResultExt;
 use crate::display_ext::DisplaySlice;
 use crate::display_ext::DisplaySliceExt;
 use crate::engine::Command;
@@ -68,7 +67,6 @@ use crate::network::RPCOption;
 use crate::network::RPCTypes;
 use crate::network::RaftNetworkFactory;
 use crate::progress::entry::ProgressEntry;
-use crate::progress::Inflight;
 use crate::progress::Progress;
 use crate::quorum::QuorumSet;
 use crate::raft::message::TransferLeaderRequest;
@@ -81,8 +79,6 @@ use crate::raft::VoteResponse;
 use crate::raft_state::io_state::io_id::IOId;
 use crate::raft_state::LogStateReader;
 use crate::replication::request::Replicate;
-use crate::replication::request_id::RequestId;
-use crate::replication::response::ReplicationResult;
 use crate::replication::ReplicationCore;
 use crate::replication::ReplicationHandle;
 use crate::replication::ReplicationSessionId;
@@ -1426,7 +1422,11 @@ where
                 // If vote or membership changes, ignore the message.
                 // There is chance delayed message reports a wrong state.
                 if self.does_replication_session_match(&progress.session_id, "ReplicationProgress") {
-                    self.handle_replication_progress(progress.target, progress.request_id, progress.result);
+                    tracing::debug!(progress = display(&progress), "recv Notification::ReplicationProgress");
+
+                    // replication_handler() won't panic because:
+                    // The leader is still valid because progress.session_id.leader_vote does not change.
+                    self.engine.replication_handler().update_progress(progress.target, progress.result);
                 }
             }
 
@@ -1442,9 +1442,9 @@ where
                         sending_time = display(sending_time.display()),
                         "HeartbeatProgress"
                     );
-                    if self.engine.leader.is_some() {
-                        self.engine.replication_handler().update_leader_clock(target, sending_time);
-                    }
+                    // replication_handler() won't panic because:
+                    // The leader is still valid because progress.session_id.leader_vote does not change.
+                    self.engine.replication_handler().update_leader_clock(target, sending_time);
                 }
             }
 
@@ -1549,33 +1549,6 @@ where
 
         tracing::info!("do trigger election");
         self.engine.elect();
-    }
-
-    #[tracing::instrument(level = "debug", skip_all)]
-    fn handle_replication_progress(
-        &mut self,
-        target: C::NodeId,
-        request_id: u64,
-        result: Result<ReplicationResult<C>, String>,
-    ) {
-        tracing::debug!(
-            target = display(target),
-            request_id = display(request_id),
-            result = display(result.display()),
-            "handle_replication_progress"
-        );
-
-        #[allow(clippy::collapsible_if)]
-        if tracing::enabled!(Level::DEBUG) {
-            if !self.replications.contains_key(&target) {
-                tracing::warn!("leader has removed target: {}", target);
-            };
-        }
-
-        // A leader may have stepped down.
-        if self.engine.leader.is_some() {
-            self.engine.replication_handler().update_progress(target, request_id, result);
-        }
     }
 
     /// If a message is sent by a previous server state but is received by current server state,
@@ -1790,21 +1763,7 @@ where
             }
             Command::Replicate { req, target } => {
                 let node = self.replications.get(&target).expect("replication to target node exists");
-
-                match req {
-                    Inflight::None => {
-                        let _ = node.tx_repl.send(Replicate::Heartbeat);
-                    }
-                    Inflight::Logs { id, log_id_range } => {
-                        let _ = node.tx_repl.send(Replicate::logs(RequestId::new_append_entries(id), log_id_range));
-                    }
-                    Inflight::Snapshot { id, last_log_id } => {
-                        // unwrap: The replication channel must not be dropped or it is a bug.
-                        node.tx_repl.send(Replicate::snapshot(RequestId::new_snapshot(id), last_log_id)).map_err(
-                            |_e| StorageError::read_snapshot(None, AnyError::error("replication channel closed")),
-                        )?;
-                    }
-                }
+                let _ = node.tx_repl.send(req);
             }
             Command::BroadcastTransferLeader { req } => self.broadcast_transfer_leader(req).await,
 

@@ -9,6 +9,7 @@ use crate::SnapshotMeta;
 
 /// Callback payload when a snapshot transmission finished, successfully or not.
 #[derive(Debug)]
+#[derive(PartialEq, Eq)]
 pub(crate) struct SnapshotCallback<C: RaftTypeConfig> {
     // TODO: Remove `start_time`.
     //       Because sending snapshot is a long lasting process,
