@@ -11,7 +11,6 @@ use crate::engine::CommandKind;
 use crate::error::Infallible;
 use crate::error::InitializeError;
 use crate::error::InstallSnapshotError;
-use crate::progress::Inflight;
 use crate::raft::message::TransferLeaderRequest;
 use crate::raft::AppendEntriesResponse;
 use crate::raft::InstallSnapshotResponse;
@@ -19,6 +18,7 @@ use crate::raft::SnapshotResponse;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::raft_state::IOId;
+use crate::replication::request::Replicate;
 use crate::replication::ReplicationSessionId;
 use crate::type_config::alias::OneshotSenderOf;
 use crate::vote::CommittedVote;
@@ -96,7 +96,7 @@ where C: RaftTypeConfig
     },
 
     /// Replicate log entries or snapshot to a target.
-    Replicate { target: C::NodeId, req: Inflight<C> },
+    Replicate { target: C::NodeId, req: Replicate<C> },
 
     /// Broadcast transfer Leader message to all other nodes.
     BroadcastTransferLeader { req: TransferLeaderRequest<C> },

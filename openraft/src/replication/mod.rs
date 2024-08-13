@@ -4,7 +4,6 @@ pub(crate) mod callbacks;
 pub(crate) mod hint;
 mod replication_session_id;
 pub(crate) mod request;
-pub(crate) mod request_id;
 pub(crate) mod response;
 
 use std::sync::Arc;
@@ -14,7 +13,6 @@ use anyerror::AnyError;
 use futures::future::FutureExt;
 pub(crate) use replication_session_id::ReplicationSessionId;
 use request::Data;
-use request::DataWithId;
 use request::Replicate;
 pub(crate) use response::Progress;
 use response::ReplicationResult;
@@ -44,7 +42,6 @@ use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
 use crate::replication::callbacks::SnapshotCallback;
 use crate::replication::hint::ReplicationHint;
-use crate::replication::request_id::RequestId;
 use crate::storage::RaftLogReader;
 use crate::storage::RaftLogStorage;
 use crate::storage::Snapshot;
@@ -226,20 +223,20 @@ where
 
             tracing::debug!(replication_data = display(&d), "{} send replication RPC", func_name!());
 
-            let request_id = d.request_id();
+            // If an RPC response is expected by RaftCore
+            let need_notify = d.has_payload();
 
             let res = match d {
-                Data::Heartbeat => {
+                Data::Committed => {
                     let m = &self.matching;
-                    // request_id==None will be ignored by RaftCore.
-                    let d = DataWithId::new(RequestId::new_heartbeat(), LogIdRange::new(*m, *m));
+                    let d = LogIdRange::new(*m, *m);
 
-                    log_data = Some(d.clone());
-                    self.send_log_entries(d).await
+                    log_data = Some(d);
+                    self.send_log_entries(d, false).await
                 }
                 Data::Logs(log) => {
-                    log_data = Some(log.clone());
-                    self.send_log_entries(log).await
+                    log_data = Some(log);
+                    self.send_log_entries(log, true).await
                 }
                 Data::Snapshot(snap) => self.stream_snapshot(snap).await,
                 Data::SnapshotCallback(resp) => self.handle_snapshot_callback(resp),
@@ -306,7 +303,12 @@ where
                             if retry {
                                 debug_assert!(self.next_action.is_some(), "next_action must be Some");
                             } else {
-                                self.send_progress_error(request_id, err);
+                                // If there is no id, it is a heartbeat and do not need to notify RaftCore
+                                if need_notify {
+                                    self.send_progress_error(err);
+                                } else {
+                                    tracing::warn!("heartbeat RPC failed, do not send any response to RaftCore");
+                                };
                             }
                         }
                     };
@@ -359,22 +361,20 @@ where
     /// configured heartbeat interval.
     ///
     /// If an RPC is made but not completely finished, it returns the next action expected to do.
+    ///
+    /// `has_payload` indicates if there are any data(AppendEntries) to send, or it is a heartbeat.
+    /// `has_payload` decides if it needs to send back notification to RaftCore.
     #[tracing::instrument(level = "debug", skip_all)]
     async fn send_log_entries(
         &mut self,
-        log_ids: DataWithId<LogIdRange<C>>,
+        log_ids: LogIdRange<C>,
+        has_payload: bool,
     ) -> Result<Option<Data<C>>, ReplicationError<C>> {
-        let request_id = log_ids.request_id();
-
-        tracing::debug!(
-            request_id = display(request_id),
-            log_id_range = display(log_ids.data()),
-            "send_log_entries",
-        );
+        tracing::debug!(log_id_range = display(log_ids), "send_log_entries",);
 
         // Series of logs to send, and the last log id to send
         let (logs, sending_range) = {
-            let rng = log_ids.data();
+            let rng = &log_ids;
 
             // The log index start and end to send.
             let (start, end) = {
@@ -462,18 +462,24 @@ where
                 self.notify_heartbeat_progress(leader_time);
 
                 let matching = sending_range.last;
-                self.notify_progress(log_ids.request_id(), ReplicationResult(Ok(matching)));
-
-                Ok(self.next_action_to_send(matching, log_ids))
+                if has_payload {
+                    self.notify_progress(ReplicationResult(Ok(matching)));
+                    Ok(self.next_action_to_send(matching, log_ids))
+                } else {
+                    Ok(None)
+                }
             }
             AppendEntriesResponse::PartialSuccess(matching) => {
                 Self::debug_assert_partial_success(&sending_range, &matching);
 
                 self.notify_heartbeat_progress(leader_time);
 
-                self.notify_progress(log_ids.request_id(), ReplicationResult(Ok(matching)));
-
-                Ok(self.next_action_to_send(matching, log_ids))
+                if has_payload {
+                    self.notify_progress(ReplicationResult(Ok(matching)));
+                    Ok(self.next_action_to_send(matching, log_ids))
+                } else {
+                    Ok(None)
+                }
             }
             AppendEntriesResponse::HigherVote(vote) => {
                 debug_assert!(
@@ -497,7 +503,9 @@ where
 
                 // Conflict is also a successful replication RPC, because the leadership is acknowledged.
                 self.notify_heartbeat_progress(leader_time);
-                self.notify_progress(request_id, ReplicationResult(Err(conflict)));
+                if has_payload {
+                    self.notify_progress(ReplicationResult(Err(conflict)));
+                }
 
                 Ok(None)
             }
@@ -506,15 +514,10 @@ where
 
     /// Send the error result to RaftCore.
     /// RaftCore will then submit another replication command.
-    fn send_progress_error(&mut self, request_id: RequestId, err: RPCError<C>) {
-        // If there is no id, it is a heartbeat and do not need to notify RaftCore
-        let Some(request_id) = request_id.request_id() else {
-            return;
-        };
+    fn send_progress_error(&mut self, err: RPCError<C>) {
         let _ = self.tx_raft_core.send(Notification::ReplicationProgress {
             progress: Progress {
                 target: self.target,
-                request_id,
                 result: Err(err.to_string()),
                 session_id: self.session_id,
             },
@@ -536,9 +539,8 @@ where
     }
 
     /// Notify RaftCore with the success replication result(log matching or conflict).
-    fn notify_progress(&mut self, request_id: RequestId, replication_result: ReplicationResult<C>) {
+    fn notify_progress(&mut self, replication_result: ReplicationResult<C>) {
         tracing::debug!(
-            request_id = display(request_id),
             target = display(self.target),
             curr_matching = display(self.matching.display()),
             result = display(&replication_result),
@@ -556,17 +558,10 @@ where
             }
         }
 
-        // If there is no request id, it is a heartbeat RPC,
-        // no need to notify RaftCore with progress.
-        let Some(request_id) = request_id.request_id() else {
-            return;
-        };
-
         let _ = self.tx_raft_core.send({
             Notification::ReplicationProgress {
                 progress: Progress {
                     session_id: self.session_id,
-                    request_id,
                     target: self.target,
                     result: Ok(replication_result),
                 },
@@ -696,13 +691,7 @@ where
 
                 // If there is no action, fill in an heartbeat action to send committed index.
                 if self.next_action.is_none() {
-                    self.next_action = Some(Data::new_heartbeat());
-                }
-            }
-            Replicate::Heartbeat => {
-                // Never overwrite action with payload.
-                if self.next_action.is_none() {
-                    self.next_action = Some(Data::new_heartbeat());
+                    self.next_action = Some(Data::new_committed());
                 }
             }
             Replicate::Data(d) => {
@@ -739,11 +728,9 @@ where
     #[tracing::instrument(level = "info", skip_all)]
     async fn stream_snapshot(
         &mut self,
-        snapshot_req: DataWithId<Option<LogIdOf<C>>>,
+        _snapshot_req: Option<LogIdOf<C>>,
     ) -> Result<Option<Data<C>>, ReplicationError<C>> {
-        let request_id = snapshot_req.request_id();
-
-        tracing::info!(request_id = display(request_id), "{}", func_name!());
+        tracing::info!("{}", func_name!());
 
         let snapshot = self.snapshot_reader.get_snapshot().await.map_err(|reason| {
             tracing::warn!(error = display(&reason), "failed to get snapshot from state machine");
@@ -751,8 +738,7 @@ where
         })?;
 
         tracing::info!(
-            "received snapshot: request_id={}; meta:{}",
-            request_id,
+            "received snapshot: meta:{}",
             snapshot.as_ref().map(|x| &x.meta).display()
         );
 
@@ -770,7 +756,6 @@ where
         let (tx_cancel, rx_cancel) = C::oneshot();
 
         let jh = C::spawn(Self::send_snapshot(
-            request_id,
             self.snapshot_network.clone(),
             *self.session_id.vote_ref(),
             snapshot,
@@ -788,7 +773,6 @@ where
     }
 
     async fn send_snapshot(
-        request_id: RequestId,
         network: Arc<MutexOf<C, N::Network>>,
         vote: Vote<C::NodeId>,
         snapshot: Snapshot<C>,
@@ -813,7 +797,7 @@ where
         }
 
         if let Some(tx_noty) = weak_tx.upgrade() {
-            let data = Data::new_snapshot_callback(request_id, start_time, meta, res);
+            let data = Data::new_snapshot_callback(start_time, meta, res);
             let send_res = tx_noty.send(Replicate::new_data(data));
             if send_res.is_err() {
                 tracing::warn!("weak_tx failed to send snapshot result to ReplicationCore");
@@ -825,23 +809,21 @@ where
 
     fn handle_snapshot_callback(
         &mut self,
-        callback: DataWithId<SnapshotCallback<C>>,
+        callback: SnapshotCallback<C>,
     ) -> Result<Option<Data<C>>, ReplicationError<C>> {
         tracing::debug!(
-            request_id = debug(callback.request_id()),
-            response = display(callback.data()),
+            response = display(&callback),
             matching = display(self.matching.display()),
             "handle_snapshot_response"
         );
 
         self.snapshot_state = None;
 
-        let request_id = callback.request_id();
         let SnapshotCallback {
             start_time,
             result,
             snapshot_meta,
-        } = callback.into_data();
+        } = callback;
 
         let resp = result?;
 
@@ -855,22 +837,15 @@ where
         }
 
         self.notify_heartbeat_progress(start_time);
-        self.notify_progress(request_id, ReplicationResult(Ok(snapshot_meta.last_log_id)));
+        self.notify_progress(ReplicationResult(Ok(snapshot_meta.last_log_id)));
 
         Ok(None)
     }
 
     /// If there are more logs to send, it returns a new `Some(Data::Logs)` to send.
-    fn next_action_to_send(
-        &mut self,
-        matching: Option<LogId<C::NodeId>>,
-        log_ids: DataWithId<LogIdRange<C>>,
-    ) -> Option<Data<C>> {
-        if matching < log_ids.data().last {
-            Some(Data::new_logs(
-                log_ids.request_id(),
-                LogIdRange::new(matching, log_ids.data().last),
-            ))
+    fn next_action_to_send(&mut self, matching: Option<LogId<C::NodeId>>, log_ids: LogIdRange<C>) -> Option<Data<C>> {
+        if matching < log_ids.last {
+            Some(Data::new_logs(LogIdRange::new(matching, log_ids.last)))
         } else {
             None
         }

@@ -8,7 +8,6 @@ use validit::Validate;
 
 use crate::display_ext::DisplayOptionExt;
 use crate::progress::inflight::Inflight;
-use crate::progress::inflight::InflightError;
 use crate::raft_state::LogStateReader;
 use crate::LogId;
 use crate::LogIdOptionExt;
@@ -22,8 +21,6 @@ where C: RaftTypeConfig
 {
     /// The id of the last matching log on the target following node.
     pub(crate) matching: Option<LogId<C::NodeId>>,
-
-    pub(crate) curr_inflight_id: u64,
 
     /// The data being transmitted in flight.
     ///
@@ -41,7 +38,6 @@ where C: RaftTypeConfig
     pub(crate) fn new(matching: Option<LogId<C::NodeId>>) -> Self {
         Self {
             matching,
-            curr_inflight_id: 0,
             inflight: Inflight::None,
             searching_end: matching.next_index(),
         }
@@ -53,17 +49,9 @@ where C: RaftTypeConfig
     pub(crate) fn empty(end: u64) -> Self {
         Self {
             matching: None,
-            curr_inflight_id: 0,
             inflight: Inflight::None,
             searching_end: end,
         }
-    }
-
-    // This method is only used by tests.
-    #[allow(dead_code)]
-    pub(crate) fn with_curr_inflight_id(mut self, v: u64) -> Self {
-        self.curr_inflight_id = v;
-        self
     }
 
     // This method is only used by tests.
@@ -89,27 +77,20 @@ where C: RaftTypeConfig
         }
     }
 
-    pub(crate) fn update_matching(
-        &mut self,
-        request_id: u64,
-        matching: Option<LogId<C::NodeId>>,
-    ) -> Result<(), InflightError> {
+    pub(crate) fn update_matching(&mut self, matching: Option<LogId<C::NodeId>>) {
         tracing::debug!(
             self = display(&self),
-            request_id = display(request_id),
             matching = display(matching.display()),
             "update_matching"
         );
 
-        self.inflight.ack(request_id, matching)?;
+        self.inflight.ack(matching);
 
         debug_assert!(matching >= self.matching);
         self.matching = matching;
 
         let matching_next = self.matching.next_index();
         self.searching_end = std::cmp::max(self.searching_end, matching_next);
-
-        Ok(())
     }
 
     /// Update conflicting log index.
@@ -124,15 +105,10 @@ where C: RaftTypeConfig
     /// To allow a follower to clean its data, enable feature flag [`loosen-follower-log-revert`] .
     ///
     /// [`loosen-follower-log-revert`]: crate::docs::feature_flags#feature_flag_loosen_follower_log_revert
-    pub(crate) fn update_conflicting(&mut self, request_id: u64, conflict: u64) -> Result<(), InflightError> {
-        tracing::debug!(
-            self = debug(&self),
-            request_id = display(request_id),
-            conflict = display(conflict),
-            "update_conflict"
-        );
+    pub(crate) fn update_conflicting(&mut self, conflict: u64) {
+        tracing::debug!(self = debug(&self), conflict = display(conflict), "update_conflict");
 
-        self.inflight.conflict(request_id, conflict)?;
+        self.inflight.conflict(conflict);
 
         debug_assert!(conflict < self.searching_end);
         self.searching_end = conflict;
@@ -162,7 +138,6 @@ where C: RaftTypeConfig
                 conflict
             );
         }
-        Ok(())
     }
 
     /// Initialize a replication action: sending log entries or sending snapshot.
@@ -200,9 +175,8 @@ where C: RaftTypeConfig
         // The log the follower needs is purged.
         // Replicate by snapshot.
         if self.searching_end < purge_upto_next {
-            self.curr_inflight_id += 1;
             let snapshot_last = log_state.snapshot_last_log_id();
-            self.inflight = Inflight::snapshot(snapshot_last.copied()).with_id(self.curr_inflight_id);
+            self.inflight = Inflight::snapshot(snapshot_last.copied());
             return Ok(&self.inflight);
         }
 
@@ -223,8 +197,7 @@ where C: RaftTypeConfig
         let prev = log_state.prev_log_id(start);
         let last = log_state.prev_log_id(end);
 
-        self.curr_inflight_id += 1;
-        self.inflight = Inflight::logs(prev, last).with_id(self.curr_inflight_id);
+        self.inflight = Inflight::logs(prev, last);
 
         Ok(&self.inflight)
     }

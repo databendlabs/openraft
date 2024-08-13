@@ -13,19 +13,6 @@ use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::RaftTypeConfig;
 
-#[derive(Debug)]
-#[derive(thiserror::Error)]
-pub(crate) enum InflightError {
-    #[error("got invalid request id, mine={mine:?}, received={received}")]
-    InvalidRequestId { mine: Option<u64>, received: u64 },
-}
-
-impl InflightError {
-    pub(crate) fn invalid_request_id(mine: Option<u64>, received: u64) -> Self {
-        Self::InvalidRequestId { mine, received }
-    }
-}
-
 /// The inflight data being transmitting from leader to a follower/learner.
 ///
 /// If inflight data is non-None, it's waiting for responses from a follower/learner.
@@ -39,15 +26,11 @@ where C: RaftTypeConfig
 
     /// Being replicating a series of logs.
     Logs {
-        id: u64,
-
         log_id_range: LogIdRange<C>,
     },
 
     /// Being replicating a snapshot.
     Snapshot {
-        id: u64,
-
         /// The last log id snapshot includes.
         ///
         /// It is None, if the snapshot is empty.
@@ -73,9 +56,9 @@ where C: RaftTypeConfig
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Inflight::None => write!(f, "None"),
-            Inflight::Logs { id, log_id_range: r } => write!(f, "Logs(id={}):{}", id, r),
-            Inflight::Snapshot { id, last_log_id } => {
-                write!(f, "Snapshot(id={}):{}", id, last_log_id.display())
+            Inflight::Logs { log_id_range: r } => write!(f, "Logs:{}", r),
+            Inflight::Snapshot { last_log_id } => {
+                write!(f, "Snapshot:{}", last_log_id.display())
             }
         }
     }
@@ -91,7 +74,6 @@ where C: RaftTypeConfig
             Self::None
         } else {
             Self::Logs {
-                id: 0,
                 log_id_range: LogIdRange::new(prev, last),
             }
         }
@@ -100,56 +82,8 @@ where C: RaftTypeConfig
     /// Create inflight state for sending snapshot.
     pub(crate) fn snapshot(snapshot_last_log_id: Option<LogId<C::NodeId>>) -> Self {
         Self::Snapshot {
-            id: 0,
             last_log_id: snapshot_last_log_id,
         }
-    }
-
-    /// Set a request id for identifying response.
-    pub(crate) fn with_id(self, id: u64) -> Self {
-        match self {
-            Inflight::None => Inflight::None,
-            Inflight::Logs { id: _, log_id_range } => Inflight::Logs { id, log_id_range },
-            Inflight::Snapshot { id: _, last_log_id } => Inflight::Snapshot { id, last_log_id },
-        }
-    }
-
-    pub(crate) fn is_my_id(&self, res_id: u64) -> bool {
-        match self {
-            Inflight::None => false,
-            Inflight::Logs { id, .. } => *id == res_id,
-            Inflight::Snapshot { id, .. } => *id == res_id,
-        }
-    }
-
-    pub(crate) fn assert_my_id(&self, res_id: u64) -> Result<(), InflightError> {
-        match self {
-            Inflight::None => return Err(InflightError::invalid_request_id(None, res_id)),
-            Inflight::Logs { id, .. } => {
-                if *id != res_id {
-                    return Err(InflightError::invalid_request_id(Some(*id), res_id));
-                }
-            }
-            Inflight::Snapshot { id, .. } => {
-                if *id != res_id {
-                    return Err(InflightError::invalid_request_id(Some(*id), res_id));
-                }
-            }
-        }
-        Ok(())
-    }
-
-    pub(crate) fn get_id(&self) -> Option<u64> {
-        match self {
-            Inflight::None => None,
-            Inflight::Logs { id, .. } => Some(*id),
-            Inflight::Snapshot { id, .. } => Some(*id),
-        }
-    }
-
-    #[allow(unused)]
-    pub(crate) fn id(&self) -> u64 {
-        self.get_id().unwrap()
     }
 
     pub(crate) fn is_none(&self) -> bool {
@@ -169,58 +103,39 @@ where C: RaftTypeConfig
     }
 
     /// Update inflight state when log upto `upto` is acknowledged by a follower/learner.
-    pub(crate) fn ack(&mut self, request_id: u64, upto: Option<LogId<C::NodeId>>) -> Result<(), InflightError> {
-        let res = self.assert_my_id(request_id);
-        if let Err(e) = &res {
-            tracing::error!("inflight ack error: {}", e);
-            return res;
-        }
-
+    pub(crate) fn ack(&mut self, upto: Option<LogId<C::NodeId>>) {
         match self {
             Inflight::None => {
                 unreachable!("no inflight data")
             }
-            Inflight::Logs { id, log_id_range } => {
+            Inflight::Logs { log_id_range } => {
                 *self = {
                     debug_assert!(upto >= log_id_range.prev);
                     debug_assert!(upto <= log_id_range.last);
-                    Inflight::logs(upto, log_id_range.last).with_id(*id)
+                    Inflight::logs(upto, log_id_range.last)
                 }
             }
-            Inflight::Snapshot { id: _, last_log_id } => {
+            Inflight::Snapshot { last_log_id } => {
                 debug_assert_eq!(&upto, last_log_id);
                 *self = Inflight::None;
             }
         }
-
-        Ok(())
     }
 
     /// Update inflight state when a conflicting log id is responded by a follower/learner.
-    pub(crate) fn conflict(&mut self, request_id: u64, conflict: u64) -> Result<(), InflightError> {
-        let res = self.assert_my_id(request_id);
-        if let Err(e) = &res {
-            tracing::error!("inflight ack error: {}", e);
-            return res;
-        }
-
+    pub(crate) fn conflict(&mut self, conflict: u64) {
         match self {
             Inflight::None => {
                 unreachable!("no inflight data")
             }
-            Inflight::Logs {
-                id: _,
-                log_id_range: logs,
-            } => {
+            Inflight::Logs { log_id_range: logs } => {
                 // if prev_log_id==None, it will never conflict
                 debug_assert_eq!(Some(conflict), logs.prev.index());
                 *self = Inflight::None
             }
-            Inflight::Snapshot { id: _, last_log_id: _ } => {
+            Inflight::Snapshot { last_log_id: _ } => {
                 unreachable!("sending snapshot should not conflict");
             }
-        };
-
-        Ok(())
+        }
     }
 }

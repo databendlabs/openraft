@@ -14,10 +14,11 @@ use crate::engine::Command;
 use crate::engine::Engine;
 use crate::engine::ReplicationProgress;
 use crate::entry::RaftEntry;
+use crate::log_id_range::LogIdRange;
 use crate::progress::entry::ProgressEntry;
-use crate::progress::Inflight;
 use crate::raft_state::IOId;
 use crate::raft_state::LogStateReader;
+use crate::replication::request::Replicate;
 use crate::testing::blank_ent;
 use crate::testing::log_id;
 use crate::type_config::TypeConfigExt;
@@ -153,11 +154,11 @@ fn test_leader_append_entries_normal() -> anyhow::Result<()> {
             },
             Command::Replicate {
                 target: 2,
-                req: Inflight::logs(None, Some(log_id(3, 1, 6))).with_id(1),
+                req: Replicate::logs(LogIdRange::new(None, Some(log_id(3, 1, 6)))),
             },
             Command::Replicate {
                 target: 3,
-                req: Inflight::logs(None, Some(log_id(3, 1, 6))).with_id(1),
+                req: Replicate::logs(LogIdRange::new(None, Some(log_id(3, 1, 6)))),
             },
         ],
         eng.output.take_commands()
@@ -285,7 +286,7 @@ fn test_leader_append_entries_with_membership_log() -> anyhow::Result<()> {
             },
             Command::Replicate {
                 target: 2,
-                req: Inflight::logs(None, Some(log_id(3, 1, 6))).with_id(1),
+                req: Replicate::logs(LogIdRange::new(None, Some(log_id(3, 1, 6))))
             },
         ],
         eng.output.take_commands()

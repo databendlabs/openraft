@@ -13,6 +13,7 @@ use crate::progress::Progress;
 use crate::proposer::Leader;
 use crate::proposer::LeaderQuorumSet;
 use crate::raft_state::LogStateReader;
+use crate::replication::request::Replicate;
 use crate::replication::response::ReplicationResult;
 use crate::type_config::alias::InstantOf;
 use crate::EffectiveMembership;
@@ -145,10 +146,9 @@ where C: RaftTypeConfig
     /// Update progress when replicated data(logs or snapshot) matches on follower/learner and is
     /// accepted.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn update_matching(&mut self, node_id: C::NodeId, inflight_id: u64, log_id: Option<LogId<C::NodeId>>) {
+    pub(crate) fn update_matching(&mut self, node_id: C::NodeId, log_id: Option<LogId<C::NodeId>>) {
         tracing::debug!(
             node_id = display(node_id),
-            inflight_id = display(inflight_id),
             log_id = display(log_id.display()),
             "{}",
             func_name!()
@@ -161,13 +161,7 @@ where C: RaftTypeConfig
         let quorum_accepted = *self
             .leader
             .progress
-            .update_with(&node_id, |prog_entry| {
-                let res = prog_entry.update_matching(inflight_id, log_id);
-                if let Err(e) = &res {
-                    tracing::error!(error = display(e), "update_matching");
-                    panic!("update_matching error: {}", e);
-                }
-            })
+            .update_with(&node_id, |prog_entry| prog_entry.update_matching(log_id))
             .expect("it should always update existing progress");
 
         tracing::debug!(
@@ -213,33 +207,19 @@ where C: RaftTypeConfig
     /// Update progress when replicated data(logs or snapshot) does not match follower/learner state
     /// and is rejected.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn update_conflicting(&mut self, target: C::NodeId, inflight_id: u64, conflict: LogId<C::NodeId>) {
+    pub(crate) fn update_conflicting(&mut self, target: C::NodeId, conflict: LogId<C::NodeId>) {
         // TODO(2): test it?
 
         let prog_entry = self.leader.progress.get_mut(&target).unwrap();
 
-        debug_assert_eq!(
-            prog_entry.inflight.get_id(),
-            Some(inflight_id),
-            "inflight({:?}) id should match: {}",
-            prog_entry.inflight,
-            inflight_id
-        );
-
-        prog_entry.update_conflicting(inflight_id, conflict.index).unwrap();
+        prog_entry.update_conflicting(conflict.index);
     }
 
     /// Update replication progress when a response is received.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn update_progress(
-        &mut self,
-        target: C::NodeId,
-        request_id: u64,
-        repl_res: Result<ReplicationResult<C>, String>,
-    ) {
+    pub(crate) fn update_progress(&mut self, target: C::NodeId, repl_res: Result<ReplicationResult<C>, String>) {
         tracing::debug!(
             target = display(target),
-            request_id = display(request_id),
             result = display(repl_res.display()),
             progress = display(&self.leader.progress),
             "{}",
@@ -249,29 +229,17 @@ where C: RaftTypeConfig
         match repl_res {
             Ok(p) => match p.0 {
                 Ok(matching) => {
-                    self.update_matching(target, request_id, matching);
+                    self.update_matching(target, matching);
                 }
                 Err(conflict) => {
-                    self.update_conflicting(target, request_id, conflict);
+                    self.update_conflicting(target, conflict);
                 }
             },
             Err(err_str) => {
-                tracing::warn!(
-                    request_id = display(request_id),
-                    result = display(&err_str),
-                    "update progress error"
-                );
+                tracing::warn!(result = display(&err_str), "update progress error");
 
                 // Reset inflight state and it will retry.
                 let p = self.leader.progress.get_mut(&target).unwrap();
-
-                debug_assert!(
-                    p.inflight.is_my_id(request_id),
-                    "inflight({:?}) id should match: {}",
-                    p.inflight,
-                    request_id
-                );
-
                 p.inflight = Inflight::None;
             }
         };
@@ -328,10 +296,12 @@ where C: RaftTypeConfig
 
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn send_to_target(output: &mut EngineOutput<C>, target: &C::NodeId, inflight: &Inflight<C>) {
-        output.push_command(Command::Replicate {
-            target: *target,
-            req: *inflight,
-        });
+        let req = match inflight {
+            Inflight::None => unreachable!("no data to send"),
+            Inflight::Logs { log_id_range } => Replicate::logs(*log_id_range),
+            Inflight::Snapshot { last_log_id } => Replicate::snapshot(*last_log_id),
+        };
+        output.push_command(Command::Replicate { target: *target, req });
     }
 
     /// Try to run a pending purge job, if no tasks are using the logs to be purged.
@@ -403,8 +373,7 @@ where C: RaftTypeConfig
             // TODO: It should be self.state.last_log_id() but None is ok.
             prog_entry.inflight = Inflight::logs(None, upto);
 
-            let inflight_id = prog_entry.inflight.get_id().unwrap();
-            self.update_matching(id, inflight_id, upto);
+            self.update_matching(id, upto);
         }
     }
 

@@ -17,9 +17,6 @@ where C: RaftTypeConfig
     /// The ID of the target node for which the match index is to be updated.
     pub(crate) target: C::NodeId,
 
-    /// The id of the subject that submit this replication action.
-    pub(crate) request_id: u64,
-
     /// The request by this leader has been successfully handled by the target node,
     /// or an error in string.
     ///
@@ -46,9 +43,8 @@ where C: RaftTypeConfig
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "replication::Progress: target={}, request_id: {}, result: {}, session_id: {}",
+            "replication::Progress: target={}, result: {}, session_id: {}",
             self.target,
-            self.request_id,
             self.result.display(),
             self.session_id
         )
