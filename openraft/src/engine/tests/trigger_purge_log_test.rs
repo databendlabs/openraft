@@ -9,6 +9,7 @@ use crate::engine::Command;
 use crate::engine::Engine;
 use crate::engine::LogIdList;
 use crate::progress::Progress;
+use crate::storage::SnapshotMeta;
 use crate::testing::log_id;
 use crate::type_config::TypeConfigExt;
 use crate::utime::Leased;
@@ -17,7 +18,6 @@ use crate::EffectiveMembership;
 use crate::LogId;
 use crate::Membership;
 use crate::MembershipState;
-use crate::SnapshotMeta;
 use crate::StoredMembership;
 use crate::Vote;
 

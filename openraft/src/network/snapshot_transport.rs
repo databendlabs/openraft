@@ -27,6 +27,7 @@ mod tokio_rt {
     use crate::network::RPCOption;
     use crate::raft::InstallSnapshotRequest;
     use crate::raft::SnapshotResponse;
+    use crate::storage::Snapshot;
     use crate::type_config::TypeConfigExt;
     use crate::ErrorSubject;
     use crate::ErrorVerb;
@@ -34,7 +35,6 @@ mod tokio_rt {
     use crate::Raft;
     use crate::RaftNetwork;
     use crate::RaftTypeConfig;
-    use crate::Snapshot;
     use crate::StorageError;
     use crate::ToStorageResult;
     use crate::Vote;
@@ -271,11 +271,11 @@ use crate::error::StreamingError;
 use crate::network::RPCOption;
 use crate::raft::InstallSnapshotRequest;
 use crate::raft::SnapshotResponse;
+use crate::storage::Snapshot;
 use crate::OptionalSend;
 use crate::Raft;
 use crate::RaftNetwork;
 use crate::RaftTypeConfig;
-use crate::Snapshot;
 use crate::SnapshotId;
 use crate::Vote;
 
@@ -395,10 +395,10 @@ mod tests {
     use crate::raft::InstallSnapshotResponse;
     use crate::raft::VoteRequest;
     use crate::raft::VoteResponse;
+    use crate::storage::Snapshot;
+    use crate::storage::SnapshotMeta;
     use crate::RaftNetwork;
     use crate::RaftTypeConfig;
-    use crate::Snapshot;
-    use crate::SnapshotMeta;
     use crate::StoredMembership;
     use crate::Vote;
 

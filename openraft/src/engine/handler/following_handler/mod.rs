@@ -15,6 +15,7 @@ use crate::entry::RaftPayload;
 use crate::error::RejectAppendEntries;
 use crate::raft_state::IOId;
 use crate::raft_state::LogStateReader;
+use crate::storage::Snapshot;
 use crate::vote::CommittedVote;
 use crate::EffectiveMembership;
 use crate::LogId;
@@ -22,7 +23,6 @@ use crate::LogIdOptionExt;
 use crate::RaftLogId;
 use crate::RaftState;
 use crate::RaftTypeConfig;
-use crate::Snapshot;
 use crate::StoredMembership;
 
 #[cfg(test)]

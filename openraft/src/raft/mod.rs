@@ -81,6 +81,7 @@ pub use crate::raft::runtime_config_handle::RuntimeConfigHandle;
 use crate::raft::trigger::Trigger;
 use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
+use crate::storage::Snapshot;
 use crate::type_config::alias::JoinErrorOf;
 use crate::type_config::alias::ResponderOf;
 use crate::type_config::alias::ResponderReceiverOf;
@@ -94,7 +95,6 @@ use crate::OptionalSend;
 use crate::RaftNetworkFactory;
 use crate::RaftState;
 pub use crate::RaftTypeConfig;
-use crate::Snapshot;
 use crate::StorageHelper;
 use crate::Vote;
 

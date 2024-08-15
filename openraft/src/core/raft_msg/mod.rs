@@ -11,6 +11,7 @@ use crate::raft::AppendEntriesResponse;
 use crate::raft::SnapshotResponse;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
+use crate::storage::Snapshot;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::OneshotSenderOf;
 use crate::type_config::alias::ResponderOf;
@@ -18,7 +19,6 @@ use crate::type_config::alias::SnapshotDataOf;
 use crate::ChangeMembers;
 use crate::RaftState;
 use crate::RaftTypeConfig;
-use crate::Snapshot;
 use crate::Vote;
 
 pub(crate) mod external_command;
