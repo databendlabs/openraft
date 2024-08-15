@@ -12,10 +12,10 @@ use crate::raft::AppendEntriesResponse;
 use crate::raft::SnapshotResponse;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
+use crate::storage::Snapshot;
 use crate::OptionalSend;
 use crate::RaftNetwork;
 use crate::RaftTypeConfig;
-use crate::Snapshot;
 use crate::Vote;
 
 impl<C, V1> RaftNetworkV2<C> for V1

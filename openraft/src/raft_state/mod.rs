@@ -7,12 +7,12 @@ use validit::Validate;
 use crate::engine::LogIdList;
 use crate::error::ForwardToLeader;
 use crate::log_id::RaftLogId;
+use crate::storage::SnapshotMeta;
 use crate::utime::Leased;
 use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::RaftTypeConfig;
 use crate::ServerState;
-use crate::SnapshotMeta;
 use crate::Vote;
 
 pub(crate) mod io_state;

@@ -13,11 +13,11 @@ use crate::engine::LogIdList;
 use crate::engine::Respond;
 use crate::raft::SnapshotResponse;
 use crate::raft_state::IOId;
+use crate::storage::Snapshot;
+use crate::storage::SnapshotMeta;
 use crate::testing::log_id;
 use crate::type_config::TypeConfigExt;
 use crate::Membership;
-use crate::Snapshot;
-use crate::SnapshotMeta;
 use crate::StoredMembership;
 use crate::Vote;
 

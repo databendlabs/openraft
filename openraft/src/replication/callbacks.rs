@@ -3,9 +3,9 @@ use core::fmt;
 
 use crate::error::StreamingError;
 use crate::raft::SnapshotResponse;
+use crate::storage::SnapshotMeta;
 use crate::type_config::alias::InstantOf;
 use crate::RaftTypeConfig;
-use crate::SnapshotMeta;
 
 /// Callback payload when a snapshot transmission finished, successfully or not.
 #[derive(Debug)]

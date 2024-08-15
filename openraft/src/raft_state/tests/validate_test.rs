@@ -2,10 +2,10 @@ use validit::Validate;
 
 use crate::engine::testing::UTConfig;
 use crate::engine::LogIdList;
+use crate::storage::SnapshotMeta;
 use crate::CommittedLeaderId;
 use crate::LogId;
 use crate::RaftState;
-use crate::SnapshotMeta;
 
 fn log_id(term: u64, index: u64) -> LogId<u64> {
     LogId::<u64> {
