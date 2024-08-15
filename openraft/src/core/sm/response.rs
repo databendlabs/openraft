@@ -5,8 +5,8 @@ use crate::core::ApplyResult;
 use crate::display_ext::display_result::DisplayResultExt;
 use crate::display_ext::DisplayOptionExt;
 use crate::raft_state::IOId;
+use crate::storage::SnapshotMeta;
 use crate::RaftTypeConfig;
-use crate::SnapshotMeta;
 use crate::StorageError;
 
 /// The Ok part of a state machine command result.

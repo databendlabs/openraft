@@ -43,6 +43,8 @@ use crate::raft::VoteResponse;
 use crate::raft_state::IOId;
 use crate::raft_state::LogStateReader;
 use crate::raft_state::RaftState;
+use crate::storage::Snapshot;
+use crate::storage::SnapshotMeta;
 use crate::type_config::alias::ResponderOf;
 use crate::type_config::alias::SnapshotDataOf;
 use crate::type_config::TypeConfigExt;
@@ -51,8 +53,6 @@ use crate::LogIdOptionExt;
 use crate::Membership;
 use crate::RaftLogId;
 use crate::RaftTypeConfig;
-use crate::Snapshot;
-use crate::SnapshotMeta;
 use crate::Vote;
 
 /// Raft protocol algorithm.

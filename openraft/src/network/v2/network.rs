@@ -17,10 +17,10 @@ use crate::raft::AppendEntriesResponse;
 use crate::raft::SnapshotResponse;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
+use crate::storage::Snapshot;
 use crate::OptionalSend;
 use crate::OptionalSync;
 use crate::RaftTypeConfig;
-use crate::Snapshot;
 use crate::Vote;
 
 /// A trait defining the interface for a Raft network between cluster members.

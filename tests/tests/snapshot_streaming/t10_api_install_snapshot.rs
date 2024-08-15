@@ -3,9 +3,9 @@ use std::sync::Arc;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::raft::InstallSnapshotRequest;
+use openraft::storage::SnapshotMeta;
 use openraft::testing::log_id;
 use openraft::Config;
-use openraft::SnapshotMeta;
 use openraft::Vote;
 
 use crate::fixtures::ut_harness;

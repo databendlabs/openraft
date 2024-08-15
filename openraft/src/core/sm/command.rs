@@ -6,10 +6,10 @@ use crate::base::BoxAny;
 use crate::core::raft_msg::ResultSender;
 use crate::error::Infallible;
 use crate::raft_state::IOId;
+use crate::storage::Snapshot;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::SnapshotDataOf;
 use crate::RaftTypeConfig;
-use crate::Snapshot;
 
 /// The payload of a state machine command.
 pub(crate) enum Command<C>
