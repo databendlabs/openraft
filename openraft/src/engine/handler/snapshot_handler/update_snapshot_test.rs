@@ -3,9 +3,9 @@ use pretty_assertions::assert_eq;
 
 use crate::engine::testing::UTConfig;
 use crate::engine::Engine;
+use crate::storage::SnapshotMeta;
 use crate::testing::log_id;
 use crate::Membership;
-use crate::SnapshotMeta;
 use crate::StoredMembership;
 
 fn m12() -> Membership<UTConfig> {

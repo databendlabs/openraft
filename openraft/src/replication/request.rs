@@ -45,10 +45,10 @@ use crate::error::StreamingError;
 use crate::log_id_range::LogIdRange;
 use crate::raft::SnapshotResponse;
 use crate::replication::callbacks::SnapshotCallback;
+use crate::storage::SnapshotMeta;
 use crate::type_config::alias::InstantOf;
 use crate::LogId;
 use crate::RaftTypeConfig;
-use crate::SnapshotMeta;
 
 /// Request to replicate a chunk of data, logs or snapshot.
 ///

@@ -17,6 +17,7 @@ use crate::display_ext::DisplayOptionExt;
 use crate::display_ext::DisplaySliceExt;
 use crate::entry::RaftPayload;
 use crate::storage::RaftStateMachine;
+use crate::storage::Snapshot;
 use crate::type_config::alias::JoinHandleOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::MpscUnboundedReceiverOf;
@@ -26,7 +27,6 @@ use crate::RaftLogId;
 use crate::RaftLogReader;
 use crate::RaftSnapshotBuilder;
 use crate::RaftTypeConfig;
-use crate::Snapshot;
 use crate::StorageError;
 
 pub(crate) struct Worker<C, SM, LR>

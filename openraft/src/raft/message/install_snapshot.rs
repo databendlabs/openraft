@@ -1,7 +1,7 @@
 use std::fmt;
 
+use crate::storage::SnapshotMeta;
 use crate::RaftTypeConfig;
-use crate::SnapshotMeta;
 use crate::Vote;
 
 /// An RPC sent by the Raft leader to send chunks of a snapshot to a follower (§7).
