@@ -38,7 +38,6 @@ where C: RaftTypeConfig
     pub(crate) config: &'st mut EngineConfig<C::NodeId>,
     pub(crate) state: &'st mut RaftState<C::NodeId, C::Node, <C::AsyncRuntime as AsyncRuntime>::Instant>,
     pub(crate) output: &'st mut EngineOutput<C>,
-    pub(crate) last_seen_vote: &'st mut Vote<C::NodeId>,
     pub(crate) leader: &'st mut LeaderState<C>,
     pub(crate) candidate: &'st mut CandidateState<C>,
 }
@@ -82,27 +81,6 @@ where C: RaftTypeConfig
         Some(tx)
     }
 
-    /// Update the `last_seen_vote` to a greater value.
-    ///
-    /// Return the replaced value if it is updated.
-    /// Return None if not updated.
-    pub(crate) fn update_last_seen(&mut self, vote: &Vote<C::NodeId>) -> Option<Vote<C::NodeId>> {
-        tracing::debug!(
-            "about to update last_seen_vote from {} to {}",
-            self.last_seen_vote,
-            vote
-        );
-
-        if vote >= self.last_seen_vote {
-            tracing::info!("updated last_seen_vote from {} to {}", self.last_seen_vote, vote);
-            let last = *self.last_seen_vote;
-            *self.last_seen_vote = *vote;
-            Some(last)
-        } else {
-            None
-        }
-    }
-
     /// Check and update the local vote and related state for every message received.
     ///
     /// This is used by all incoming event, such as the three RPC append-entries, vote,
@@ -112,12 +90,8 @@ where C: RaftTypeConfig
     ///
     /// Note: This method does not check last-log-id. handle-vote-request has to deal with
     /// last-log-id itself.
-    ///
-    /// This method also implies calling [`Self::update_last_seen`].
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn update_vote(&mut self, vote: &Vote<C::NodeId>) -> Result<(), RejectVoteRequest<C::NodeId>> {
-        self.update_last_seen(vote);
-
         // Partial ord compare:
         // Vote does not has to be total ord.
         // `!(a >= b)` does not imply `a < b`.

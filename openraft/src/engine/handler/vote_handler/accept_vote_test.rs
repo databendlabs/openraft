@@ -23,8 +23,8 @@ fn m01() -> Membership<u64, ()> {
 }
 
 /// Make a sample VoteResponse
-fn mk_res() -> Result<VoteResponse<u64>, Infallible> {
-    Ok::<VoteResponse<u64>, Infallible>(VoteResponse::new(Vote::new(2, 1), None))
+fn mk_res(granted: bool) -> Result<VoteResponse<u64>, Infallible> {
+    Ok::<VoteResponse<u64>, Infallible>(VoteResponse::new(Vote::new(2, 1), None, granted))
 }
 
 fn eng() -> Engine<UTConfig> {
@@ -48,7 +48,7 @@ fn test_accept_vote_reject_smaller_vote() -> anyhow::Result<()> {
     eng.output.take_commands();
 
     let (tx, _rx) = UTConfig::oneshot();
-    let resp = eng.vote_handler().accept_vote(&Vote::new(1, 2), tx, |_state, _err| mk_res());
+    let resp = eng.vote_handler().accept_vote(&Vote::new(1, 2), tx, |_state, _err| mk_res(false));
 
     assert!(resp.is_none());
 
@@ -58,7 +58,7 @@ fn test_accept_vote_reject_smaller_vote() -> anyhow::Result<()> {
             //
             Command::Respond {
                 when: None,
-                resp: Respond::new(mk_res(), tx)
+                resp: Respond::new(mk_res(false), tx)
             },
         ],
         eng.output.take_commands()
@@ -74,7 +74,7 @@ fn test_accept_vote_granted_greater_vote() -> anyhow::Result<()> {
     eng.output.take_commands();
 
     let (tx, _rx) = UTConfig::oneshot();
-    let resp = eng.vote_handler().accept_vote(&Vote::new(3, 3), tx, |_state, _err| mk_res());
+    let resp = eng.vote_handler().accept_vote(&Vote::new(3, 3), tx, |_state, _err| mk_res(true));
 
     assert!(resp.is_some());
 
