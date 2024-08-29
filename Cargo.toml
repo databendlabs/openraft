@@ -51,6 +51,9 @@ tracing-futures = "0.2.4"
 tracing-subscriber = { version = "0.3.3", features = ["env-filter"] }
 validit = { version = "0.2.2" }
 
+# make minimal versions happy
+rust_decimal = "1.17"
+
 [workspace]
 
 resolver = "2"

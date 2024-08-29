@@ -33,6 +33,9 @@ tracing         = { workspace = true }
 tracing-futures = { workspace = true }
 validit         = { workspace = true }
 
+# make minimal versions happy
+rust_decimal    = { workspace = true }
+
 
 [dev-dependencies]
 anyhow             = { workspace = true }
