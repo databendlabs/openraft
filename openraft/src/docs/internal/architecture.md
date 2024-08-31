@@ -27,6 +27,17 @@ The major components inside Openraft include:
     to replicate logs or snapshots. It communicates with `RaftCore` through
     channels.
 
+-   **`HeartbeatWorkersHandle`**: This control handle manages all heartbeat
+    tasks: `HeartbeatWorker`.
+
+-   **`HeartbeatWorker`**: This specialized task is solely responsible for
+    sending heartbeat messages (in the form of an empty
+    [`AppendEntriesRequest`]) to a specific target node.  This task, separate
+    from the `ReplicationCore`, is responsible for sending heartbeats. This
+    design prevents intensive log entry replication from blocking heartbeat
+    acknowledgments, which could otherwise lead to the Leader's lease expiration
+    and subsequent step down.
+
 -   **[`RaftNetwork`]**: This is a user-provided component that implements the
     network transport layer, e.g., sending logs to a remote node or sending a
     [`VoteRequest`] to a remote node.
@@ -41,14 +52,15 @@ The major components inside Openraft include:
 
 
 
-[`Raft`]:              `crate::raft::Raft`
-[`client_write`]:      `crate::raft::Raft::client_write`
-[`RaftLogStorage`]:    `crate::storage::RaftLogStorage`
-[`RaftStateMachine`]:  `crate::storage::RaftStateMachine`
-[`Adapter`]:           `crate::storage::Adapter`
-[`RaftNetwork`]:       `crate::network::RaftNetwork`
-[`append_entries`]:    `crate::network::RaftNetwork::append_entries`
-[`VoteRequest`]:       `crate::raft::VoteRequest`
+[`Raft`]:                 `crate::raft::Raft`
+[`client_write`]:         `crate::raft::Raft::client_write`
+[`RaftLogStorage`]:       `crate::storage::RaftLogStorage`
+[`RaftStateMachine`]:     `crate::storage::RaftStateMachine`
+[`Adapter`]:              `crate::storage::Adapter`
+[`RaftNetwork`]:          `crate::network::RaftNetwork`
+[`append_entries`]:       `crate::network::RaftNetwork::append_entries`
+[`VoteRequest`]:          `crate::raft::VoteRequest`
+[`AppendEntriesRequest`]: `crate::raft::message::AppendEntriesRequest`
 
 [//]: # (private)
 [//]: # ([`RaftMsg`]:           `crate::raft::RaftMsg`)
@@ -65,48 +77,54 @@ The major components inside Openraft include:
         !          User                   !
         !          o                      !
         !          |                      !
-        !          |                      !
-        !          | "client_write(impl AppData) -> impl AppDataResponse"
-        !          | "is_leader()"        !
+        !          | "client_write(impl AppData)"
+        !          | "ensure_linearizable()"         
         !          | "change_membership()"!
         !          v                      !
-        !          Raft                   !                      .-----> Raft o---.
-        '~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~'                      |                |       
-                   |                                             |                |       
-                   | enum RaftMes                                |                |       
-                   |                                             |                |       
-           .~~~~~~~|~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~.             |         .~~~~~~|~~~~~~~~~~~~.
-           !       v                               !             |         !      v            !
-.----------------o RaftCore ---------------------------.         |         !      RaftCore     !
-|          !          o                            !   |         |         !                   !
-|          !          |                            !   |         |         '~~~~~~~~~~~~~~~~~~~'
-|          !       .--+--------.                   !   |         |                                                  
-|          !       v           v                   !   |         |                                                       
-|          ! ReplicationHandle ReplicationHandle   !   |         |                                                       
-|          !  |                |                   !   |         |    
-|          '~~|~~~~~~~~~~~~~~~~|~~~~~~~~~~~~~~~~~~~'   |         |                                                       
-|             |                |                       |         |    
-|  .~~~~~~~~~~|~~~~~~~~~~.  .~~|~~~~~~~~~~~~~~~~~~~.   |         | RPC:                      
-|  !          v          !  !  v                   !   |         |   "vote()"                
-|  ! ReplicationCore     !  !  ReplicationCore     !   |         |   "append_entries()"      
-|  ! o                   !  !  o  o                !   |         |   "install_snapshot()"    
-|  '~|~~~~~~~~~~~~~~~~~~~'  !  |  |                !   |         |    
-|    |                      !  |  v                !   |         |    
-|    |                      !  |  RaftNetwork--------------------'    
-|    |                      '~~|~~~~~~~~~~~~~~~~~~~'   |
-|    |                         |                       | "apply()"
-|    `------------+------------'                       | "build_snapshot()"
-|                 | "get_log()"            .-----------' "install_snapshot()"
-| "append_log()"  |                        | 
-| "..."           |             .~~~~~~~~~~|~~~~~~~~~~. 
-`--------.        |             !          v          ! 
-         |        |             !   RaftStateMachine  ! 
-         |        |             !          o          ! 
-         |        |             !          |          ! 
-         |        |             '~~~~~~~~~~|~~~~~~~~~~' 
-         v        v                        |            
-         RaftLogStorage                    |            
+        !          Raft                   !                  .-----> Raft ----.
+        '~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~'                  |                |       
+                   |                                         |                |       
+                   | enum RaftMes                            |                |       
+                   |                                         |                |       
+           .~~~~~~~|~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~.         |         .~~~~~~|~~~~~~~~~~~~.
+"append()" !       v                               !         |         !      v            !
+      .------o RaftCore -------------------------------.     |         !      RaftCore     !
+      |    !   ReplicationHandle                   !   |     |         !                   !
+      |    !   |  ReplicationHandle                !   |     |         '~~~~~~~~~~~~~~~~~~~'
+      |    !   |  |  HeartbeatWorkersHandle        !   |     |    
+      |    !   |  |       |                        !   |     |                                                       
+      |    '~~~|~~|~~~~~~~|~~~~~~~~~~~~~~~~~~~~~~~~'   |     |                                                       
+      |        |  |       |                            |     |    
+      |        |  |       |     .~~~~~~~~~~~~~~~~~.    |     |                       
+      |        |  |       +------>HeartbeatWorker !    |     |                       
+      |        |  |       |     !  RaftNetwork---------------+                       
+      |        |  |       |     '~~~~~~~~~~~~~~~~~'    |     |                       
+      |        |  |       |     .~~~~~~~~~~~~~~~~~.    |     | RPC:                      
+      |        |  |       `------>HeartbeatWorker !    |     |   "vote()"                
+      |        |  |             !  RaftNetwork    !    |     |   "append_entries()"      
+      |        |  |             '~~~~~~~~~~~~~~~~~'    |     |   "snapshot()"    
+      |        |  |                                    |     |   "transfer_leader()"
+      |        |  |     .~~~~~~~~~~~~~~~~~.            |     |    
+      |        |  `------>ReplicationCore !            |     |    
+      |   .----|--------!-o  RaftNetwork---------------------+    
+      |   |    |        '~~~~~~~~~~~~~~~~~'            |     |    
+      |   |    |        .~~~~~~~~~~~~~~~~~.            |     |    
+      |   |    `--------->ReplicationCore !            |     |    
+      |   +-------------!-o  RaftNetwork---------------------'    
+      |   |             '~~~~~~~~~~~~~~~~~'            |          
+      |   |                                            | "apply()"
+      |   |                                            | "build_snapshot()"
+      |   | "try_get_log_entries()"        .-----------' "install_snapshot()"
+      |   |                                |                   
+      |   |                     .~~~~~~~~~~|~~~~~~~~~~. 
+      |   |                     !          v          ! 
+      |   |                     !   RaftStateMachine  ! 
+      |   |                     !          o          ! 
+      |   |                     '~~~~~~~~~~|~~~~~~~~~~' 
+      v   v                                |            
+     RaftLogStorage                        |            
            o                               |            
+           |                               |            
            |                               |            
            v                               v            
        local-disk                     local-disk        
