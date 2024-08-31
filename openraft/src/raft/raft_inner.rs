@@ -166,11 +166,8 @@ where C: RaftTypeConfig
             message_summary.unwrap_or_default()
         );
 
-        match core_res {
-            // A normal quit is still an unexpected "stop" to the caller.
-            Ok(_) => Fatal::Stopped,
-            Err(e) => e,
-        }
+        // Safe unwrap: core_res is always an error
+        core_res.unwrap_err()
     }
 
     /// Wait for `RaftCore` task to finish and record the returned value from the task.

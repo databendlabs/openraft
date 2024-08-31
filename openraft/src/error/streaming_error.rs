@@ -66,6 +66,7 @@ impl<C: RaftTypeConfig> From<StreamingError<C, Fatal<C>>> for ReplicationError<C
 
 impl<C: RaftTypeConfig> From<RPCError<C>> for StreamingError<C> {
     fn from(value: RPCError<C>) -> Self {
+        #[allow(unreachable_patterns)]
         match value {
             RPCError::Timeout(e) => StreamingError::Timeout(e),
             RPCError::Unreachable(e) => StreamingError::Unreachable(e),
@@ -80,6 +81,7 @@ impl<C: RaftTypeConfig> From<RPCError<C>> for StreamingError<C> {
 
 impl<C: RaftTypeConfig> From<StreamingError<C>> for ReplicationError<C> {
     fn from(e: StreamingError<C>) -> Self {
+        #[allow(unreachable_patterns)]
         match e {
             StreamingError::Closed(e) => ReplicationError::Closed(e),
             StreamingError::StorageError(e) => ReplicationError::StorageError(e),
