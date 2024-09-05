@@ -1,3 +1,22 @@
+## v0.9.16
+
+Summary:
+
+- Fixed:
+    -   [2d6441a1](https://github.com/datafuselabs/openraft/commit/2d6441a1a5dbfad0261df1794d2ebbe0eea0f715) Prevent panic when calling `Raft::change_membership()` on uninitialized node.
+
+Detail:
+
+### Fixed:
+
+-   Fixed: [2d6441a1](https://github.com/datafuselabs/openraft/commit/2d6441a1a5dbfad0261df1794d2ebbe0eea0f715) Prevent panic when calling `Raft::change_membership()` on uninitialized node; by 张炎泼; 2024-09-05
+
+    Previously, `change_membership()` assumed the current membership config was
+    always non-empty and used the last config entry. However, uninitialized
+    nodes lack a membership config, leading to panics.
+
+    This commit adds checks to prevent `change_membership()` from panicking
+
 ## v0.9.15
 
 Summary:
