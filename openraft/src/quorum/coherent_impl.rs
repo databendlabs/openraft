@@ -69,7 +69,12 @@ where
         if self.is_coherent_with(&other) {
             Joint::from(vec![other])
         } else {
-            Joint::from(vec![self.children().last().unwrap().clone(), other])
+            let last = self.children().last();
+            if let Some(last) = last {
+                Joint::from(vec![last.clone(), other])
+            } else {
+                Joint::from(vec![other])
+            }
         }
     }
 }
