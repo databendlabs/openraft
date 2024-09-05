@@ -306,7 +306,7 @@ where
     ) -> Result<Self, ChangeMembershipError<NID>> {
         tracing::debug!(change = debug(&change), "{}", func_name!());
 
-        let last = self.get_joint_config().last().unwrap().clone();
+        let last = self.get_joint_config().last().cloned().unwrap_or_default();
 
         let new_membership = match change {
             ChangeMembers::AddVoterIds(add_voter_ids) => {
