@@ -27,6 +27,11 @@ Currently, openraft is the consensus engine of meta-service cluster in [databend
     - [Openraft docs](https://docs.rs/openraft/latest/openraft/docs/index.html) for more in-depth details,
     - [Openraft FAQ](https://docs.rs/openraft/latest/openraft/docs/faq/index.html) explains some common questions.
 
+- 💡 **Example Applications**:
+
+    - [Examples with Openraft 0.9](https://github.com/datafuselabs/openraft/tree/release-0.9/examples) require Openraft 0.9 on [crate.io/openraft](https://crates.io/crates/openraft)
+    - [Examples with Openraft 0.10](https://github.com/datafuselabs/openraft/tree/release-0.10/examples) require Openraft 0.10, which is not yet published on crate.io;
+
 - 🙌 **Questions**?
     - Why not take a peek at our [FAQ](https://docs.rs/openraft/latest/openraft/docs/faq/index.html)? You might find just what you need.
     - Wanna chat? Come hang out with us on [Discord](https://discord.gg/ZKw3WG7FQ9)!
