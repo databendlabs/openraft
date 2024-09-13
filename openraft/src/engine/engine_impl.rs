@@ -650,6 +650,9 @@ where C: RaftTypeConfig
 
         self.state.accept_io(IOId::new_log_io(vote.into_committed(), last_log_id));
 
+        // No need to submit UpdateIOProgress command,
+        // IO progress is updated by the new blank log
+
         self.leader_handler()
             .unwrap()
             .leader_append_entries(vec![C::Entry::new_blank(LogId::<C::NodeId>::default())]);

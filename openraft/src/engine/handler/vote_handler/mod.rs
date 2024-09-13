@@ -196,6 +196,11 @@ where C: RaftTypeConfig
 
         self.state.accept_io(IOId::new_log_io(leader_vote, last_log_id));
 
+        self.output.push_command(Command::UpdateIOProgress {
+            when: None,
+            io_id: IOId::new_log_io(leader_vote, last_log_id),
+        });
+
         self.server_state_handler().update_server_state_if_changed();
 
         let mut rh = self.replication_handler();
