@@ -9,6 +9,8 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use std::io::Cursor;
 use std::ops::RangeBounds;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
 
@@ -117,6 +119,11 @@ pub enum BlockOperation {
 pub struct MemStore {
     last_purged_log_id: RwLock<Option<LogId<MemNodeId>>>,
 
+    /// Saving committed log id is optional in Openraft.
+    ///
+    /// This flag switches on the saving for testing purposes.
+    pub enable_saving_committed: AtomicBool,
+
     committed: RwLock<Option<LogId<MemNodeId>>>,
 
     /// The Raft log. Logs are stored in serialized json.
@@ -146,6 +153,7 @@ impl MemStore {
 
         Self {
             last_purged_log_id: RwLock::new(None),
+            enable_saving_committed: AtomicBool::new(true),
             committed: RwLock::new(None),
             log,
             sm,
@@ -325,13 +333,23 @@ impl RaftStorage<TypeConfig> for Arc<MemStore> {
     }
 
     async fn save_committed(&mut self, committed: Option<LogId<MemNodeId>>) -> Result<(), StorageError<MemNodeId>> {
-        tracing::debug!(?committed, "save_committed");
+        let enabled = self.enable_saving_committed.load(Ordering::Relaxed);
+        tracing::debug!(?committed, "save_committed, enabled: {}", enabled);
+        if !enabled {
+            return Ok(());
+        }
         let mut c = self.committed.write().await;
         *c = committed;
         Ok(())
     }
 
     async fn read_committed(&mut self) -> Result<Option<LogId<MemNodeId>>, StorageError<MemNodeId>> {
+        let enabled = self.enable_saving_committed.load(Ordering::Relaxed);
+        tracing::debug!("read_committed, enabled: {}", enabled);
+        if !enabled {
+            return Ok(None);
+        }
+
         Ok(*self.committed.read().await)
     }
 

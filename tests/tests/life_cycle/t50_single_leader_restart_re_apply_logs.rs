@@ -13,6 +13,9 @@ use crate::fixtures::RaftRouter;
 
 /// A single leader should re-apply all logs upon startup,
 /// because itself is a quorum.
+///
+/// This test disables save_committed() to ensure that logs are still re-applied because the leader
+/// itself forms a quorum.
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn single_leader_restart_re_apply_logs() -> anyhow::Result<()> {
     let config = Arc::new(
@@ -24,6 +27,7 @@ async fn single_leader_restart_re_apply_logs() -> anyhow::Result<()> {
     );
 
     let mut router = RaftRouter::new(config.clone());
+    router.enable_saving_committed = false;
 
     tracing::info!("--- bring up cluster of 1 node");
     let mut log_index = router.new_cluster(btreeset! {0}, btreeset! {}).await?;

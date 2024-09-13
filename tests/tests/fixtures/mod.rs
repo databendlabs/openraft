@@ -241,6 +241,9 @@ pub struct TypedRaftRouter {
     #[allow(clippy::type_complexity)]
     nodes: Arc<Mutex<BTreeMap<MemNodeId, (MemRaft, MemLogStore, MemStateMachine)>>>,
 
+    /// Whether to save the committed entries to the RaftLogStorage.
+    pub enable_saving_committed: bool,
+
     /// Whether to fail a network RPC that is sent from/to a node.
     /// And it defines what kind of error to return.
     fail_rpc: Arc<Mutex<HashMap<(MemNodeId, Direction), RPCErrorType>>>,
@@ -290,6 +293,7 @@ impl Builder {
         TypedRaftRouter {
             config: self.config,
             nodes: Default::default(),
+            enable_saving_committed: true,
             fail_rpc: Default::default(),
             send_delay: Arc::new(AtomicU64::new(send_delay)),
             append_entries_quota: Arc::new(Mutex::new(None)),
@@ -449,7 +453,9 @@ impl TypedRaftRouter {
 
     pub fn new_store(&mut self) -> (MemLogStore, MemStateMachine) {
         let store = Arc::new(MemStore::default());
-        Adaptor::new(store)
+        store.enable_saving_committed.store(self.enable_saving_committed, Ordering::Relaxed);
+        let (log, sm) = Adaptor::new(store);
+        (log, sm)
     }
 
     #[tracing::instrument(level = "debug", skip_all)]

@@ -40,6 +40,7 @@ fn eng() -> Engine<UTConfig> {
     eng
 }
 
+/// It is a Leader but not yet append any logs.
 #[test]
 fn test_startup_as_leader_without_logs() -> anyhow::Result<()> {
     let mut eng = eng();
