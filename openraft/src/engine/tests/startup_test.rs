@@ -13,6 +13,7 @@ use crate::entry::RaftEntry;
 use crate::log_id_range::LogIdRange;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::Inflight;
+use crate::raft_state::IOId;
 use crate::replication::request::Replicate;
 use crate::testing::log_id;
 use crate::type_config::TypeConfigExt;
@@ -44,6 +45,7 @@ fn eng() -> Engine<UTConfig> {
     eng
 }
 
+/// It is a Leader but not yet append any logs.
 #[test]
 fn test_startup_as_leader_without_logs() -> anyhow::Result<()> {
     let mut eng = eng();
@@ -67,7 +69,10 @@ fn test_startup_as_leader_without_logs() -> anyhow::Result<()> {
     assert_eq!(leader.last_log_id(), Some(&log_id(2, 2, 4)));
     assert_eq!(
         vec![
-            //
+            Command::UpdateIOProgress {
+                when: None,
+                io_id: IOId::new_log_io(Vote::new(2, 2).into_committed(), Some(log_id(1, 1, 3)))
+            },
             Command::RebuildReplicationStreams {
                 targets: vec![ReplicationProgress(3, ProgressEntry {
                     matching: None,
@@ -115,7 +120,10 @@ fn test_startup_as_leader_with_proposed_logs() -> anyhow::Result<()> {
     assert_eq!(leader.last_log_id(), Some(&log_id(1, 2, 6)));
     assert_eq!(
         vec![
-            //
+            Command::UpdateIOProgress {
+                when: None,
+                io_id: IOId::new_log_io(Vote::new(1, 2).into_committed(), Some(log_id(1, 2, 6)))
+            },
             Command::RebuildReplicationStreams {
                 targets: vec![ReplicationProgress(3, ProgressEntry {
                     matching: None,

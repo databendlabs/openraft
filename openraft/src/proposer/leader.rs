@@ -118,7 +118,7 @@ where
 
         let last_log_id = last_leader_log_id.last().copied();
 
-        let mut leader = Self {
+        let leader = Self {
             transfer_to: None,
             committed_vote: vote,
             next_heartbeat: C::now(),
@@ -129,11 +129,6 @@ where
             }),
             clock_progress: VecProgress::new(quorum_set, learner_ids, || None),
         };
-
-        // Update progress for this Leader.
-        // Note that Leader not being a voter is allowed.
-        let leader_node_id = vote.leader_id().voted_for().unwrap();
-        let _ = leader.progress.update(&leader_node_id, ProgressEntry::new(last_log_id));
 
         leader
     }

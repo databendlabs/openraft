@@ -12,6 +12,7 @@ use crate::engine::ReplicationProgress;
 use crate::entry::RaftEntry;
 use crate::log_id_range::LogIdRange;
 use crate::progress::entry::ProgressEntry;
+use crate::raft_state::IOId;
 use crate::replication::request::Replicate;
 use crate::testing::log_id;
 use crate::type_config::alias::EntryOf;
@@ -57,6 +58,10 @@ fn test_become_leader() -> anyhow::Result<()> {
     assert_eq!(ServerState::Leader, eng.state.server_state);
 
     assert_eq!(eng.output.take_commands(), vec![
+        Command::UpdateIOProgress {
+            when: None,
+            io_id: IOId::new_log_io(Vote::new(2, 1).into_committed(), None)
+        },
         Command::RebuildReplicationStreams {
             targets: vec![ReplicationProgress(0, ProgressEntry::empty(0))]
         },
