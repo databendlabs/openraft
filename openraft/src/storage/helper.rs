@@ -1,13 +1,14 @@
 use std::marker::PhantomData;
 use std::sync::Arc;
 
+use anyerror::AnyError;
+
 use crate::display_ext::DisplayOptionExt;
 use crate::engine::LogIdList;
 use crate::entry::RaftPayload;
 use crate::log_id::RaftLogId;
 use crate::raft_state::io_state::log_io_id::LogIOId;
 use crate::raft_state::IOState;
-use crate::storage::RaftLogReaderExt;
 use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
 use crate::type_config::TypeConfigExt;
@@ -16,10 +17,12 @@ use crate::AsyncRuntime;
 use crate::EffectiveMembership;
 use crate::LogIdOptionExt;
 use crate::MembershipState;
+use crate::RaftLogReader;
 use crate::RaftSnapshotBuilder;
 use crate::RaftState;
 use crate::RaftTypeConfig;
 use crate::StorageError;
+use crate::StorageIOError;
 use crate::StoredMembership;
 
 /// StorageHelper provides additional methods to access a [`RaftLogStorage`] and
@@ -94,10 +97,7 @@ where
             let start = last_applied.next_index();
             let end = committed.next_index();
 
-            tracing::info!("re-apply log {}..{} to state machine", start, end);
-
-            let entries = self.log_store.get_log_entries(start..end).await?;
-            self.state_machine.apply(entries).await?;
+            self.reapply_committed(start, end).await?;
 
             last_applied = committed;
         }
@@ -172,6 +172,57 @@ where
             io_state,
             purge_upto: last_purged_log_id,
         })
+    }
+
+    /// Read log entries from [`RaftLogReader`] in chunks, and apply them to the state machine.
+    pub(crate) async fn reapply_committed(&mut self, mut start: u64, end: u64) -> Result<(), StorageError<C::NodeId>> {
+        let chunk_size = 64;
+
+        tracing::info!(
+            "re-apply log [{}..{}) in {} item chunks to state machine",
+            chunk_size,
+            start,
+            end
+        );
+
+        let mut log_reader = self.log_store.get_log_reader().await;
+
+        while start < end {
+            let chunk_end = std::cmp::min(end, start + chunk_size);
+            let entries = log_reader.try_get_log_entries(start..chunk_end).await?;
+
+            let first = entries.first().map(|x| x.get_log_id().index);
+            let last = entries.last().map(|x| x.get_log_id().index);
+
+            let make_err = || {
+                let err = AnyError::error(format!(
+                    "Failed to get log entries, expected index: [{}, {}), got [{:?}, {:?})",
+                    start, chunk_end, first, last
+                ));
+
+                tracing::error!("{}", err);
+                err
+            };
+
+            if first != Some(start) {
+                return Err(StorageIOError::read_log_at_index(start, make_err()).into());
+            }
+            if last != Some(chunk_end - 1) {
+                return Err(StorageIOError::read_log_at_index(chunk_end - 1, make_err()).into());
+            }
+
+            tracing::info!(
+                "re-apply {} log entries: [{}, {}),",
+                chunk_end - start,
+                start,
+                chunk_end
+            );
+            self.state_machine.apply(entries).await?;
+
+            start = chunk_end;
+        }
+
+        Ok(())
     }
 
     /// Returns the last 2 membership config found in log or state machine.

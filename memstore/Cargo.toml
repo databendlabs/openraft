@@ -24,6 +24,7 @@ tracing         = { workspace = true }
 [dev-dependencies]
 
 [features]
+bt = ["openraft/bt"]
 
 [package.metadata.docs.rs]
 all-features = true

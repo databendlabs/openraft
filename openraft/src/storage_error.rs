@@ -263,6 +263,10 @@ where NID: NodeId
         Self::new(ErrorSubject::Log(log_id), ErrorVerb::Write, source)
     }
 
+    pub fn read_log_at_index(log_index: u64, source: impl Into<AnyError>) -> Self {
+        Self::new(ErrorSubject::LogIndex(log_index), ErrorVerb::Read, source)
+    }
+
     pub fn read_log_entry(log_id: LogId<NID>, source: impl Into<AnyError>) -> Self {
         Self::new(ErrorSubject::Log(log_id), ErrorVerb::Read, source)
     }
