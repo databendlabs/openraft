@@ -32,5 +32,8 @@ tracing         = { workspace = true }
 [dev-dependencies]
 tempfile = { version = "3.4.0" }
 
+[features]
+bt = ["openraft/bt"]
+
 [package.metadata.docs.rs]
 all-features = true
