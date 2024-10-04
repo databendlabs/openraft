@@ -64,7 +64,11 @@ where C: RaftTypeConfig
         }
     }
 
-    pub(crate) fn vote_ref(&self) -> &Vote<C::NodeId> {
-        &self.leader_vote
+    pub(crate) fn committed_vote(&self) -> CommittedVote<C> {
+        self.leader_vote
+    }
+
+    pub(crate) fn vote(&self) -> Vote<C::NodeId> {
+        self.leader_vote.into_vote()
     }
 }

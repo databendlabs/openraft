@@ -167,7 +167,7 @@ where C: RaftTypeConfig
         if let Some(l) = self.leader.as_mut() {
             tracing::debug!("leading vote: {}", l.committed_vote,);
 
-            if l.committed_vote.leader_id() == self.state.vote_ref().leader_id() {
+            if l.committed_vote.into_vote().leader_id() == self.state.vote_ref().leader_id() {
                 tracing::debug!(
                     "vote still belongs to the same leader. Just updating vote is enough: node-{}, {}",
                     self.config.id,
