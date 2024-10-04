@@ -3,6 +3,8 @@ use std::fmt::Formatter;
 
 use crate::vote::committed::CommittedVote;
 use crate::vote::leader_id::CommittedLeaderId;
+use crate::vote::ref_vote::RefVote;
+use crate::vote::vote_status::VoteStatus;
 use crate::vote::NonCommittedVote;
 use crate::LeaderId;
 use crate::NodeId;
@@ -18,26 +20,10 @@ pub struct Vote<NID: NodeId> {
     pub committed: bool,
 }
 
-// Commit vote have a total order relation with all other votes
 impl<NID: NodeId> PartialOrd for Vote<NID> {
     #[inline]
     fn partial_cmp(&self, other: &Vote<NID>) -> Option<Ordering> {
-        match PartialOrd::partial_cmp(&self.leader_id, &other.leader_id) {
-            Some(Ordering::Equal) => PartialOrd::partial_cmp(&self.committed, &other.committed),
-            None => {
-                // If two leader_id are not comparable, they won't both be granted(committed).
-                // Therefore use `committed` to determine greatness to minimize election conflict.
-                match (self.committed, other.committed) {
-                    (false, false) => None,
-                    (true, false) => Some(Ordering::Greater),
-                    (false, true) => Some(Ordering::Less),
-                    (true, true) => {
-                        unreachable!("two incomparable leaders can not be both committed: {} {}", self, other)
-                    }
-                }
-            }
-            cmp => cmp,
-        }
+        PartialOrd::partial_cmp(&self.as_ref_vote(), &other.as_ref_vote())
     }
 }
 
@@ -72,6 +58,10 @@ impl<NID: NodeId> Vote<NID> {
         self.committed = true
     }
 
+    pub(crate) fn as_ref_vote(&self) -> RefVote<'_, NID> {
+        RefVote::new(&self.leader_id, self.committed)
+    }
+
     /// Convert this vote into a `CommittedVote`
     pub(crate) fn into_committed<C>(self) -> CommittedVote<C>
     where C: RaftTypeConfig<NodeId = NID> {
@@ -81,6 +71,15 @@ impl<NID: NodeId> Vote<NID> {
     pub(crate) fn into_non_committed<C>(self) -> NonCommittedVote<C>
     where C: RaftTypeConfig<NodeId = NID> {
         NonCommittedVote::new(self)
+    }
+
+    pub(crate) fn into_vote_status<C>(self) -> VoteStatus<C>
+    where C: RaftTypeConfig<NodeId = NID> {
+        if self.committed {
+            VoteStatus::Committed(self.into_committed())
+        } else {
+            VoteStatus::Pending(self.into_non_committed())
+        }
     }
 
     pub fn is_committed(&self) -> bool {

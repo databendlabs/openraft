@@ -1,5 +1,4 @@
 use std::fmt;
-use std::ops::Deref;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -83,7 +82,7 @@ where
             let option = RPCOption::new(timeout);
 
             let payload = AppendEntriesRequest {
-                vote: *heartbeat.session_id.leader_vote.deref(),
+                vote: heartbeat.session_id.leader_vote.into_vote(),
                 prev_log_id: None,
                 leader_commit: heartbeat.committed,
                 entries: vec![],

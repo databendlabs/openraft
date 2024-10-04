@@ -2,7 +2,6 @@ use std::borrow::Borrow;
 use std::collections::BTreeMap;
 use std::fmt;
 use std::fmt::Debug;
-use std::ops::Deref;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
@@ -93,6 +92,9 @@ use crate::type_config::alias::ResponderOf;
 use crate::type_config::alias::WatchSenderOf;
 use crate::type_config::async_runtime::MpscUnboundedReceiver;
 use crate::type_config::TypeConfigExt;
+use crate::vote::vote_status::VoteStatus;
+use crate::vote::CommittedVote;
+use crate::vote::NonCommittedVote;
 use crate::ChangeMembers;
 use crate::Instant;
 use crate::LogId;
@@ -100,7 +102,6 @@ use crate::Membership;
 use crate::OptionalSend;
 use crate::RaftTypeConfig;
 use crate::StorageError;
-use crate::Vote;
 
 /// A temp struct to hold the data for a node that is being applied.
 #[derive(Debug)]
@@ -393,7 +394,7 @@ where
                     let send_res = core_tx.send(Notification::HigherVote {
                         target,
                         higher: vote,
-                        sender_vote: my_vote,
+                        leader_vote: my_vote.into_committed(),
                     });
 
                     if let Err(_e) = send_res {
@@ -566,7 +567,7 @@ where
 
             // --- data ---
             current_term: st.vote_ref().leader_id().get_term(),
-            vote: st.io_state().io_progress.flushed().map(|x| *x.vote_ref()).unwrap_or_default(),
+            vote: st.io_state().io_progress.flushed().map(|io_id| io_id.to_vote()).unwrap_or_default(),
             last_log_index: st.last_log_id().index(),
             last_applied: st.io_applied().copied(),
             snapshot: st.io_snapshot_last_log_id().copied(),
@@ -598,7 +599,7 @@ where
 
         let server_metrics = RaftServerMetrics {
             id: self.id,
-            vote: st.io_state().io_progress.flushed().map(|x| *x.vote_ref()).unwrap_or_default(),
+            vote: st.io_state().io_progress.flushed().map(|io_id| io_id.to_vote()).unwrap_or_default(),
             state: st.server_state,
             current_leader,
             membership_config,
@@ -1102,7 +1103,7 @@ where
                             let _ = tx.send(Notification::VoteResponse {
                                 target,
                                 resp,
-                                sender_vote: vote,
+                                candidate_vote: vote.into_non_committed(),
                             });
                         }
                         Err(err) => tracing::error!({error=%err, target=display(target)}, "while requesting vote"),
@@ -1306,7 +1307,7 @@ where
             Notification::VoteResponse {
                 target,
                 resp,
-                sender_vote,
+                candidate_vote,
             } => {
                 let now = C::now();
 
@@ -1319,7 +1320,7 @@ where
 
                 #[allow(clippy::collapsible_if)]
                 if self.engine.candidate.is_some() {
-                    if self.does_vote_match(&sender_vote, "VoteResponse") {
+                    if self.does_candidate_vote_match(&candidate_vote, "VoteResponse") {
                         self.engine.handle_vote_resp(target, resp);
                     }
                 }
@@ -1328,17 +1329,17 @@ where
             Notification::HigherVote {
                 target,
                 higher,
-                sender_vote,
+                leader_vote,
             } => {
                 tracing::info!(
                     target = display(target),
                     higher_vote = display(&higher),
-                    sending_vote = display(&sender_vote),
+                    sending_vote = display(&leader_vote),
                     "received Notification::HigherVote: {}",
                     func_name!()
                 );
 
-                if self.does_vote_match(&sender_vote, "HigherVote") {
+                if self.does_leader_vote_match(&leader_vote, "HigherVote") {
                     // Rejected vote change is ok.
                     let _ = self.engine.vote_handler().update_vote(&higher);
                 }
@@ -1407,7 +1408,7 @@ where
                         // local log wont revert when membership changes.
                         #[allow(clippy::collapsible_if)]
                         if self.engine.leader.is_some() {
-                            if self.does_vote_match(io_id.vote_ref(), "LocalIO Notification") {
+                            if self.does_leader_vote_match(&log_io_id.committed_vote, "LocalIO Notification") {
                                 self.engine.replication_handler().update_local_progress(log_io_id.log_id);
                             }
                         }
@@ -1551,27 +1552,53 @@ where
         self.engine.elect();
     }
 
-    /// If a message is sent by a previous server state but is received by current server state,
+    /// If a message is sent by a previous Candidate but is received by current Candidate,
     /// it is a stale message and should be just ignored.
-    fn does_vote_match(&self, sender_vote: &Vote<C::NodeId>, msg: impl fmt::Display) -> bool {
-        // Get the current leading vote:
-        // - If input `sender_vote` is committed, it is sent by a Leader. Therefore we check against current
-        //   Leader's vote.
-        // - Otherwise, it is sent by a Candidate, we check against the current in progress voting state.
-        let my_vote = if sender_vote.is_committed() {
-            let l = self.engine.leader.as_ref();
-            l.map(|x| *x.committed_vote.deref())
-        } else {
-            // If it finished voting, Candidate's vote is None.
-            let candidate = self.engine.candidate_ref();
-            candidate.map(|x| *x.vote_ref())
+    fn does_candidate_vote_match(&self, candidate_vote: &NonCommittedVote<C>, msg: impl fmt::Display) -> bool {
+        // If it finished voting, Candidate's vote is None.
+        let Some(my_vote) = self.engine.candidate_ref().map(|x| *x.vote_ref()) else {
+            tracing::warn!(
+                "A message will be ignored because this node is no longer Candidate: \
+                 msg sent by vote: {}; when ({})",
+                candidate_vote,
+                msg
+            );
+            return false;
         };
 
-        if Some(*sender_vote) != my_vote {
+        if candidate_vote.leader_id() != my_vote.leader_id() {
             tracing::warn!(
-                "A message will be ignored because vote changed: msg sent by vote: {}; current my vote: {}; when ({})",
-                sender_vote,
-                my_vote.display(),
+                "A message will be ignored because vote changed: \
+                msg sent by vote: {}; current my vote: {}; when ({})",
+                candidate_vote,
+                my_vote,
+                msg
+            );
+            false
+        } else {
+            true
+        }
+    }
+
+    /// If a message is sent by a previous Leader but is received by current Leader,
+    /// it is a stale message and should be just ignored.
+    fn does_leader_vote_match(&self, leader_vote: &CommittedVote<C>, msg: impl fmt::Display) -> bool {
+        let Some(my_vote) = self.engine.leader.as_ref().map(|x| x.committed_vote) else {
+            tracing::warn!(
+                "A message will be ignored because this node is no longer Leader: \
+                msg sent by vote: {}; when ({})",
+                leader_vote,
+                msg
+            );
+            return false;
+        };
+
+        if leader_vote != &my_vote {
+            tracing::warn!(
+                "A message will be ignored because vote changed: \
+                msg sent by vote: {}; current my vote: {}; when ({})",
+                leader_vote,
+                my_vote,
                 msg
             );
             false
@@ -1587,7 +1614,7 @@ where
         session_id: &ReplicationSessionId<C>,
         msg: impl fmt::Display + Copy,
     ) -> bool {
-        if !self.does_vote_match(session_id.vote_ref(), msg) {
+        if !self.does_leader_vote_match(&session_id.committed_vote(), msg) {
             return false;
         }
 
@@ -1683,7 +1710,7 @@ where
                 let last_log_id = *entries.last().unwrap().get_log_id();
                 tracing::debug!("AppendInputEntries: {}", DisplaySlice::<_>(&entries),);
 
-                let io_id = IOId::new_log_io(vote.into_committed(), Some(last_log_id));
+                let io_id = IOId::new_log_io(vote, Some(last_log_id));
                 let notify = Notification::LocalIO { io_id };
                 let callback = IOFlushed::new(notify, self.tx_notification.downgrade());
 
@@ -1706,12 +1733,16 @@ where
 
                 let _ = self.tx_notification.send(Notification::LocalIO { io_id: IOId::new(vote) });
 
-                let _ = self.tx_notification.send(Notification::VoteResponse {
-                    target: self.id,
-                    // last_log_id is not used when sending VoteRequest to local node
-                    resp: VoteResponse::new(vote, None, true),
-                    sender_vote: vote,
-                });
+                // If a non-committed vote is saved,
+                // there may be a candidate waiting for the response.
+                if let VoteStatus::Pending(non_committed) = vote.into_vote_status() {
+                    let _ = self.tx_notification.send(Notification::VoteResponse {
+                        target: self.id,
+                        // last_log_id is not used when sending VoteRequest to local node
+                        resp: VoteResponse::new(vote, None, true),
+                        candidate_vote: non_committed,
+                    });
+                }
             }
             Command::PurgeLog { upto } => {
                 self.log_store.purge(upto).await?;

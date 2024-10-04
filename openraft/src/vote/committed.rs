@@ -1,8 +1,8 @@
 use std::cmp::Ordering;
 use std::fmt;
-use std::ops::Deref;
 
 use crate::type_config::alias::NodeIdOf;
+use crate::vote::ref_vote::RefVote;
 use crate::CommittedLeaderId;
 use crate::RaftTypeConfig;
 use crate::Vote;
@@ -41,18 +41,17 @@ where C: RaftTypeConfig
         vote.committed = true;
         Self { vote }
     }
+
     pub(crate) fn committed_leader_id(&self) -> CommittedLeaderId<C::NodeId> {
-        self.leader_id().to_committed()
+        self.vote.leader_id().to_committed()
     }
-}
 
-impl<C> Deref for CommittedVote<C>
-where C: RaftTypeConfig
-{
-    type Target = Vote<NodeIdOf<C>>;
+    pub(crate) fn into_vote(self) -> Vote<NodeIdOf<C>> {
+        self.vote
+    }
 
-    fn deref(&self) -> &Self::Target {
-        &self.vote
+    pub(crate) fn as_ref_vote(&self) -> RefVote<'_, C::NodeId> {
+        RefVote::new(&self.vote.leader_id, true)
     }
 }
 

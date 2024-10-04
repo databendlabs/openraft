@@ -1,4 +1,3 @@
-use std::ops::Deref;
 use std::time::Duration;
 
 use validit::Valid;
@@ -645,10 +644,10 @@ where C: RaftTypeConfig
         // Before sending any log, update the vote.
         // This could not fail because `internal_server_state` will be cleared
         // once `state.vote` is changed to a value of other node.
-        let _res = self.vote_handler().update_vote(&vote);
+        let _res = self.vote_handler().update_vote(&vote.into_vote());
         debug_assert!(_res.is_ok(), "commit vote can not fail but: {:?}", _res);
 
-        self.state.accept_io(IOId::new_log_io(vote.into_committed(), last_log_id));
+        self.state.accept_io(IOId::new_log_io(vote, last_log_id));
 
         // No need to submit UpdateIOProgress command,
         // IO progress is updated by the new blank log
@@ -752,7 +751,7 @@ where C: RaftTypeConfig
         };
 
         debug_assert!(
-            leader.committed_vote_ref().deref() >= self.state.vote_ref(),
+            leader.committed_vote_ref().into_vote() >= *self.state.vote_ref(),
             "leader.vote({}) >= state.vote({})",
             leader.committed_vote_ref(),
             self.state.vote_ref()

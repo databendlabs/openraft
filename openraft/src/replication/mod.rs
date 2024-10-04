@@ -265,7 +265,7 @@ where
                             let _ = self.tx_raft_core.send(Notification::HigherVote {
                                 target: self.target,
                                 higher: h.higher,
-                                sender_vote: *self.session_id.vote_ref(),
+                                leader_vote: self.session_id.committed_vote(),
                             });
                             return Ok(());
                         }
@@ -419,7 +419,7 @@ where
 
         // Build the heartbeat frame to be sent to the follower.
         let payload = AppendEntriesRequest {
-            vote: *self.session_id.vote_ref(),
+            vote: self.session_id.vote(),
             prev_log_id: sending_range.prev,
             leader_commit: self.committed,
             entries: logs,
@@ -442,7 +442,7 @@ where
         let append_res = res.map_err(|_e| {
             let to = Timeout {
                 action: RPCTypes::AppendEntries,
-                id: self.session_id.vote_ref().leader_id().voted_for().unwrap(),
+                id: self.session_id.vote().leader_id().voted_for().unwrap(),
                 target: self.target,
                 timeout: the_timeout,
             };
@@ -483,16 +483,16 @@ where
             }
             AppendEntriesResponse::HigherVote(vote) => {
                 debug_assert!(
-                    &vote > self.session_id.vote_ref(),
+                    vote > self.session_id.vote(),
                     "higher vote({}) should be greater than leader's vote({})",
                     vote,
-                    self.session_id.vote_ref(),
+                    self.session_id.vote(),
                 );
                 tracing::debug!(%vote, "append entries failed. converting to follower");
 
                 Err(ReplicationError::HigherVote(HigherVote {
                     higher: vote,
-                    sender_vote: *self.session_id.vote_ref(),
+                    sender_vote: self.session_id.vote(),
                 }))
             }
             AppendEntriesResponse::Conflict => {
@@ -757,7 +757,7 @@ where
 
         let jh = C::spawn(Self::send_snapshot(
             self.snapshot_network.clone(),
-            *self.session_id.vote_ref(),
+            self.session_id.vote(),
             snapshot,
             option,
             rx_cancel,
@@ -828,7 +828,7 @@ where
         let resp = result?;
 
         // Handle response conditions.
-        let sender_vote = *self.session_id.vote_ref();
+        let sender_vote = self.session_id.vote();
         if resp.vote > sender_vote {
             return Err(ReplicationError::HigherVote(HigherVote {
                 higher: resp.vote,
