@@ -31,7 +31,7 @@ where C: RaftTypeConfig
 
         if let Some(l) = self.leader.as_ref() {
             #[allow(clippy::neg_cmp_op_on_partial_ord)]
-            if !(&vote > l.committed_vote_ref()) {
+            if !(vote > l.committed_vote_ref().into_vote()) {
                 tracing::warn!(
                     "vote is not greater than current existing leader vote. Do not establish new leader and quit"
                 );

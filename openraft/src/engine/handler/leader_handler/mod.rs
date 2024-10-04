@@ -121,7 +121,11 @@ where C: RaftTypeConfig
         self.state.vote.disable_lease();
 
         self.output.push_command(Command::BroadcastTransferLeader {
-            req: TransferLeaderRequest::new(*self.leader.committed_vote, to, self.leader.last_log_id().copied()),
+            req: TransferLeaderRequest::new(
+                self.leader.committed_vote.into_vote(),
+                to,
+                self.leader.last_log_id().copied(),
+            ),
         });
     }
 

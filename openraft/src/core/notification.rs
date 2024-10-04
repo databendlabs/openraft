@@ -7,6 +7,8 @@ use crate::raft_state::IOId;
 use crate::replication;
 use crate::replication::ReplicationSessionId;
 use crate::type_config::alias::InstantOf;
+use crate::vote::CommittedVote;
+use crate::vote::NonCommittedVote;
 use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::Vote;
@@ -22,10 +24,10 @@ where C: RaftTypeConfig
         /// The candidate that sent the vote request.
         ///
         /// A vote identifies a unique server state.
-        sender_vote: Vote<C::NodeId>,
+        candidate_vote: NonCommittedVote<C>,
     },
 
-    /// Seen a higher `vote`.
+    /// A Leader sees a higher `vote` when replicating.
     HigherVote {
         /// The ID of the target node from which the new term was observed.
         target: C::NodeId,
@@ -33,10 +35,8 @@ where C: RaftTypeConfig
         /// The higher vote observed.
         higher: Vote<C::NodeId>,
 
-        /// The candidate or leader that sent the vote request.
-        ///
-        /// A vote identifies a unique server state.
-        sender_vote: Vote<C::NodeId>,
+        /// The Leader that sent replication request.
+        leader_vote: CommittedVote<C>,
         // TODO: need this?
         // /// The cluster this replication works for.
         // membership_log_id: Option<LogId<C::NodeId>>,
@@ -84,18 +84,18 @@ where C: RaftTypeConfig
             Self::VoteResponse {
                 target,
                 resp,
-                sender_vote,
+                candidate_vote,
             } => {
                 write!(
                     f,
-                    "VoteResponse: from target={}, to sender_vote: {}, {}",
-                    target, sender_vote, resp
+                    "VoteResponse: from target={}, to candidate_vote: {}, {}",
+                    target, candidate_vote, resp
                 )
             }
             Self::HigherVote {
                 ref target,
                 higher: ref new_vote,
-                sender_vote: ref vote,
+                leader_vote: ref vote,
             } => {
                 write!(
                     f,

@@ -1,8 +1,8 @@
 use std::cmp::Ordering;
 use std::fmt;
-use std::ops::Deref;
 
 use crate::raft_state::io_state::log_io_id::LogIOId;
+use crate::vote::ref_vote::RefVote;
 use crate::vote::CommittedVote;
 use crate::vote::NonCommittedVote;
 use crate::ErrorSubject;
@@ -56,7 +56,7 @@ impl<C> PartialOrd for IOId<C>
 where C: RaftTypeConfig
 {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        let res = self.vote_ref().partial_cmp(other.vote_ref())?;
+        let res = self.as_ref_vote().partial_cmp(&other.as_ref_vote())?;
         match res {
             Ordering::Less => Some(Ordering::Less),
             Ordering::Greater => Some(Ordering::Greater),
@@ -84,12 +84,23 @@ where C: RaftTypeConfig
         Self::Log(LogIOId::new(committed_vote, last_log_id))
     }
 
-    pub(crate) fn vote_ref(&self) -> &Vote<C::NodeId> {
+    /// Returns the vote the io operation is submitted by.
+    #[allow(clippy::wrong_self_convention)]
+    // The above lint is disabled because in future Vote may not be `Copy`
+    pub(crate) fn to_vote(&self) -> Vote<C::NodeId> {
         match self {
-            Self::Vote(vote) => vote.deref(),
-            Self::Log(log_io_id) => log_io_id.committed_vote.deref(),
+            Self::Vote(non_committed_vote) => non_committed_vote.into_vote(),
+            Self::Log(log_io_id) => log_io_id.committed_vote.into_vote(),
         }
     }
+
+    pub(crate) fn as_ref_vote(&self) -> RefVote<'_, C::NodeId> {
+        match self {
+            Self::Vote(non_committed_vote) => non_committed_vote.as_ref_vote(),
+            Self::Log(log_io_id) => log_io_id.committed_vote.as_ref_vote(),
+        }
+    }
+
     pub(crate) fn last_log_id(&self) -> Option<&LogId<C::NodeId>> {
         match self {
             Self::Vote(_) => None,
