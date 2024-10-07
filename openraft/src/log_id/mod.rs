@@ -19,7 +19,7 @@ use crate::NodeId;
 ///
 /// The log id serves as unique identifier for a log entry across the system. It is composed of two
 /// parts: a leader id, which refers to the leader that proposed this log, and an integer index.
-#[derive(Debug, Default, Copy, Clone, PartialOrd, Ord, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, PartialOrd, Ord, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct LogId<NID: NodeId> {
     /// The id of the leader that proposed this log
@@ -30,13 +30,15 @@ pub struct LogId<NID: NodeId> {
     pub index: u64,
 }
 
+impl<NID> Copy for LogId<NID> where NID: NodeId + Copy {}
+
 impl<NID: NodeId> RaftLogId<NID> for LogId<NID> {
     fn get_log_id(&self) -> &LogId<NID> {
         self
     }
 
     fn set_log_id(&mut self, log_id: &LogId<NID>) {
-        *self = *log_id
+        *self = log_id.clone()
     }
 }
 

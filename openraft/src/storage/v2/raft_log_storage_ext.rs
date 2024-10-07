@@ -30,7 +30,7 @@ where C: RaftTypeConfig
     {
         let entries = entries.into_iter().collect::<Vec<_>>();
 
-        let last_log_id = *entries.last().unwrap().get_log_id();
+        let last_log_id = entries.last().unwrap().get_log_id().clone();
 
         let (tx, mut rx) = C::mpsc_unbounded();
 

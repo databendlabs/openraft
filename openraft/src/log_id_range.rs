@@ -38,7 +38,7 @@ impl<C> Validate for LogIdRange<C>
 where C: RaftTypeConfig
 {
     fn validate(&self) -> Result<(), Box<dyn Error>> {
-        validit::less_equal!(self.prev, self.last);
+        validit::less_equal!(&self.prev, &self.last);
         Ok(())
     }
 }

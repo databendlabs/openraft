@@ -30,7 +30,7 @@ where C: RaftTypeConfig
             ));
         }
 
-        Ok(*entries[0].get_log_id())
+        Ok(entries[0].get_log_id().clone())
     }
 }
 

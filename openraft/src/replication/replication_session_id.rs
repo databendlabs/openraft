@@ -29,7 +29,7 @@ use crate::Vote;
 /// Now node `c` is a new empty node, no log is replicated to it.
 /// But the delayed message `{target=c, matched=log_id-1}` may be process by raft core and make raft
 /// core believe node `c` already has `log_id=1`, and commit it.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 #[derive(PartialEq, Eq)]
 pub(crate) struct ReplicationSessionId<C>
 where C: RaftTypeConfig
@@ -65,10 +65,10 @@ where C: RaftTypeConfig
     }
 
     pub(crate) fn committed_vote(&self) -> CommittedVote<C> {
-        self.leader_vote
+        self.leader_vote.clone()
     }
 
     pub(crate) fn vote(&self) -> Vote<C::NodeId> {
-        self.leader_vote.into_vote()
+        self.leader_vote.clone().into_vote()
     }
 }
