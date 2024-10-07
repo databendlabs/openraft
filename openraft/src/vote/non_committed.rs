@@ -9,13 +9,20 @@ use crate::Vote;
 /// Represents a non-committed Vote that has **NOT** been granted by a quorum.
 ///
 /// The inner `Vote`'s attribute `committed` is always set to `false`
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 #[derive(PartialEq, Eq)]
 #[derive(PartialOrd)]
 pub(crate) struct NonCommittedVote<C>
 where C: RaftTypeConfig
 {
     vote: Vote<NodeIdOf<C>>,
+}
+
+impl<C> Copy for NonCommittedVote<C>
+where
+    C: RaftTypeConfig,
+    C::NodeId: Copy,
+{
 }
 
 impl<C> NonCommittedVote<C>

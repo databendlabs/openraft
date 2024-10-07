@@ -245,7 +245,7 @@ where C: RaftTypeConfig
     {
         let (tx_api, rx_api) = C::mpsc_unbounded();
         let (tx_notify, rx_notify) = C::mpsc_unbounded();
-        let (tx_metrics, rx_metrics) = C::watch_channel(RaftMetrics::new_initial(id));
+        let (tx_metrics, rx_metrics) = C::watch_channel(RaftMetrics::new_initial(id.clone()));
         let (tx_data_metrics, rx_data_metrics) = C::watch_channel(RaftDataMetrics::default());
         let (tx_server_metrics, rx_server_metrics) = C::watch_channel(RaftServerMetrics::default());
         let (tx_shutdown, rx_shutdown) = C::oneshot();
@@ -262,11 +262,11 @@ where C: RaftTypeConfig
             parent: tracing::Span::current(),
             Level::DEBUG,
             "RaftCore",
-            id = display(id),
+            id = display(&id),
             cluster = display(&config.cluster_name)
         );
 
-        let eng_config = EngineConfig::new(id, config.as_ref());
+        let eng_config = EngineConfig::new(id.clone(), config.as_ref());
 
         let state = {
             let mut helper = StorageHelper::new(&mut log_store, &mut state_machine);
@@ -285,7 +285,7 @@ where C: RaftTypeConfig
         );
 
         let core: RaftCore<C, N, LS> = RaftCore {
-            id,
+            id: id.clone(),
             config: config.clone(),
             runtime_config: runtime_config.clone(),
             network_factory: network,
@@ -298,7 +298,7 @@ where C: RaftTypeConfig
 
             replications: Default::default(),
 
-            heartbeat_handle: HeartbeatWorkersHandle::new(id, config.clone()),
+            heartbeat_handle: HeartbeatWorkersHandle::new(id.clone(), config.clone()),
             tx_api: tx_api.clone(),
             rx_api,
 
@@ -454,9 +454,9 @@ where C: RaftTypeConfig
 
         tracing::debug!(req = display(&req), "Raft::install_snapshot()");
 
-        let req_vote = req.vote;
-        let my_vote = self.with_raft_state(|state| *state.vote_ref()).await?;
-        let resp = InstallSnapshotResponse { vote: my_vote };
+        let req_vote = req.vote.clone();
+        let my_vote = self.with_raft_state(|state| state.vote_ref().clone()).await?;
+        let resp = InstallSnapshotResponse { vote: my_vote.clone() };
 
         // Check vote.
         // It is not mandatory because it is just a read operation
@@ -492,7 +492,7 @@ where C: RaftTypeConfig
     /// reads. This method is perfect for making decisions on where to route client requests.
     #[tracing::instrument(level = "debug", skip(self))]
     pub async fn current_leader(&self) -> Option<C::NodeId> {
-        self.metrics().borrow_watched().current_leader
+        self.metrics().borrow_watched().current_leader.clone()
     }
 
     /// Check to ensure this node is still the cluster leader, in order to guard against stale reads
@@ -771,15 +771,15 @@ where C: RaftTypeConfig
     fn check_replication_upto_date(
         &self,
         metrics: &RaftMetrics<C>,
-        node_id: C::NodeId,
-        membership_log_id: Option<LogId<C::NodeId>>,
+        node_id: &C::NodeId,
+        membership_log_id: Option<&LogId<C::NodeId>>,
     ) -> Result<Option<LogId<C::NodeId>>, ()> {
-        if metrics.membership_config.log_id() < &membership_log_id {
+        if metrics.membership_config.log_id().as_ref() < membership_log_id {
             // Waiting for the latest metrics to report.
             return Err(());
         }
 
-        if metrics.membership_config.membership().get_node(&node_id).is_none() {
+        if metrics.membership_config.membership().get_node(node_id).is_none() {
             // This learner has been removed.
             return Ok(None);
         }
@@ -793,7 +793,7 @@ where C: RaftTypeConfig
         };
 
         let replication_metrics = repl;
-        let target_metrics = match replication_metrics.get(&node_id) {
+        let target_metrics = match replication_metrics.get(node_id) {
             None => {
                 // Maybe replication is not reported yet. Keep waiting.
                 return Err(());
@@ -801,7 +801,7 @@ where C: RaftTypeConfig
             Some(x) => x,
         };
 
-        let matched = *target_metrics;
+        let matched = target_metrics.clone();
 
         let distance = replication_lag(&matched.index(), &metrics.last_log_index);
 

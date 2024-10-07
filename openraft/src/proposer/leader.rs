@@ -85,13 +85,13 @@ where
         last_leader_log_id: &[LogIdOf<C>],
     ) -> Self {
         debug_assert!(
-            Some(vote.committed_leader_id()) >= last_leader_log_id.last().map(|x| *x.committed_leader_id()),
+            Some(vote.committed_leader_id()) >= last_leader_log_id.last().map(|x| x.committed_leader_id().clone()),
             "vote {} must GE last_leader_log_id.last() {}",
             vote,
             last_leader_log_id.display()
         );
         debug_assert!(
-            Some(vote.committed_leader_id()) >= last_leader_log_id.first().map(|x| *x.committed_leader_id()),
+            Some(vote.committed_leader_id()) >= last_leader_log_id.first().map(|x| x.committed_leader_id().clone()),
             "vote {} must GE last_leader_log_id.first() {}",
             vote,
             last_leader_log_id.display()
@@ -102,12 +102,12 @@ where
         let vote_leader_id = vote.committed_leader_id();
         let first = last_leader_log_id.first();
 
-        let noop_log_id = if first.map(|x| *x.committed_leader_id()) == Some(vote_leader_id) {
+        let noop_log_id = if first.map(|x| x.committed_leader_id()) == Some(&vote_leader_id) {
             // There is already log id proposed by the this leader.
             // E.g. the Leader is restarted without losing leadership.
             //
             // Set to the first log id proposed by this Leader.
-            first.copied()
+            first.cloned()
         } else {
             // Set to a log id that will be proposed.
             Some(LogId::new(
@@ -116,15 +116,15 @@ where
             ))
         };
 
-        let last_log_id = last_leader_log_id.last().copied();
+        let last_log_id = last_leader_log_id.last().cloned();
 
         let leader = Self {
             transfer_to: None,
             committed_vote: vote,
             next_heartbeat: C::now(),
-            last_log_id,
+            last_log_id: last_log_id.clone(),
             noop_log_id,
-            progress: VecProgress::new(quorum_set.clone(), learner_ids.iter().copied(), || {
+            progress: VecProgress::new(quorum_set.clone(), learner_ids.iter().cloned(), || {
                 ProgressEntry::empty(last_log_id.next_index())
             }),
             clock_progress: VecProgress::new(quorum_set, learner_ids, || None),
@@ -169,7 +169,7 @@ where
         let committed_leader_id = self.committed_vote.committed_leader_id();
 
         let first = LogId::new(committed_leader_id, self.last_log_id().next_index());
-        let mut last = first;
+        let mut last = first.clone();
 
         for entry in entries {
             entry.set_log_id(&last);
@@ -200,11 +200,11 @@ where
         // Thus vote.voted_for() is this node.
 
         // Safe unwrap: voted_for() is always non-None in Openraft
-        let node_id = self.committed_vote.into_vote().leader_id().voted_for().unwrap();
+        let node_id = self.committed_vote.clone().into_vote().leader_id().voted_for().unwrap();
         let now = C::now();
 
         tracing::debug!(
-            leader_id = display(node_id),
+            leader_id = display(&node_id),
             now = display(now.display()),
             "{}: update with leader's local time, before retrieving quorum acked clock",
             func_name!()

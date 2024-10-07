@@ -222,7 +222,7 @@ where C: RaftTypeConfig
     ///
     /// Returns the previously accepted value.
     pub(crate) fn accept_io(&mut self, accepted: IOId<C>) -> Option<IOId<C>> {
-        let curr_accepted = self.io_state.io_progress.accepted().copied();
+        let curr_accepted = self.io_state.io_progress.accepted().cloned();
 
         tracing::debug!(
             "{}: accept_log: current: {}, new_accepted: {}",
@@ -233,17 +233,17 @@ where C: RaftTypeConfig
 
         if cfg!(debug_assertions) {
             let new_vote = accepted.to_vote();
-            let current_vote = curr_accepted.map(|io_id| io_id.to_vote());
+            let current_vote = curr_accepted.clone().map(|io_id| io_id.to_vote());
             assert!(
-                Some(new_vote) >= current_vote,
+                Some(&new_vote) >= current_vote.as_ref(),
                 "new accepted.committed_vote {} must be >= current accepted.committed_vote: {}",
                 new_vote,
                 current_vote.display(),
             );
         }
 
-        if Some(accepted) > curr_accepted {
-            self.io_state.io_progress.accept(accepted);
+        if Some(accepted.clone()) > curr_accepted {
+            self.io_state.io_progress.accept(accepted.clone());
         }
 
         curr_accepted
@@ -265,9 +265,9 @@ where C: RaftTypeConfig
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn update_committed(&mut self, committed: &Option<LogIdOf<C>>) -> Option<Option<LogIdOf<C>>> {
         if committed.as_ref() > self.committed() {
-            let prev = self.committed().copied();
+            let prev = self.committed().cloned();
 
-            self.committed = *committed;
+            self.committed = committed.clone();
             self.membership_state.commit(committed);
 
             Some(prev)
@@ -394,7 +394,7 @@ where C: RaftTypeConfig
         let last_leader_log_ids = self.log_ids.by_last_leader();
 
         Leader::new(
-            self.vote_ref().into_committed(),
+            self.vote_ref().clone().into_committed(),
             em.to_quorum_set(),
             em.learner_ids(),
             last_leader_log_ids,

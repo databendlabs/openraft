@@ -41,7 +41,7 @@ where C: RaftTypeConfig
             return;
         }
 
-        let upto = *purge_upto.unwrap();
+        let upto = purge_upto.unwrap().clone();
 
         st.purge_log(&upto);
         self.output.push_command(Command::PurgeLog { upto });
@@ -82,7 +82,7 @@ where C: RaftTypeConfig
         let purge_end = self.state.snapshot_meta.last_log_id.next_index().saturating_sub(max_keep);
 
         tracing::debug!(
-            snapshot_last_log_id = debug(self.state.snapshot_meta.last_log_id),
+            snapshot_last_log_id = debug(self.state.snapshot_meta.last_log_id.clone()),
             max_keep,
             "try purge: (-oo, {})",
             purge_end
@@ -90,7 +90,7 @@ where C: RaftTypeConfig
 
         if st.last_purged_log_id().next_index() + batch_size > purge_end {
             tracing::debug!(
-                snapshot_last_log_id = debug(self.state.snapshot_meta.last_log_id),
+                snapshot_last_log_id = debug(self.state.snapshot_meta.last_log_id.clone()),
                 max_keep,
                 last_purged_log_id = display(st.last_purged_log_id().display()),
                 batch_size,

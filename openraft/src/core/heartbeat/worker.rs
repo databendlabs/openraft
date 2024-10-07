@@ -71,7 +71,7 @@ where
                 _ = self.rx.changed().fuse() => {},
             }
 
-            let heartbeat: Option<HeartbeatEvent<C>> = *self.rx.borrow_watched();
+            let heartbeat: Option<HeartbeatEvent<C>> = self.rx.borrow_watched().clone();
 
             // None is the initial value of the WatchReceiver, ignore it.
             let Some(heartbeat) = heartbeat else {
@@ -82,9 +82,9 @@ where
             let option = RPCOption::new(timeout);
 
             let payload = AppendEntriesRequest {
-                vote: heartbeat.session_id.leader_vote.into_vote(),
+                vote: heartbeat.session_id.leader_vote.clone().into_vote(),
                 prev_log_id: None,
-                leader_commit: heartbeat.committed,
+                leader_commit: heartbeat.committed.clone(),
                 entries: vec![],
             };
 
@@ -94,9 +94,9 @@ where
             match res {
                 Ok(Ok(_)) => {
                     let res = self.tx_notification.send(Notification::HeartbeatProgress {
-                        session_id: heartbeat.session_id,
+                        session_id: heartbeat.session_id.clone(),
                         sending_time: heartbeat.time,
-                        target: self.target,
+                        target: self.target.clone(),
                     });
 
                     if res.is_err() {

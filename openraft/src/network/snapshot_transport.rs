@@ -87,7 +87,7 @@ mod tokio_rt {
 
                 let done = (offset + n_read as u64) == end;
                 let req = InstallSnapshotRequest {
-                    vote,
+                    vote: vote.clone(),
                     meta: snapshot.meta.clone(),
                     offset,
                     data: buf,

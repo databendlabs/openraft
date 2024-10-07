@@ -58,7 +58,7 @@ where
     LID: RaftLogId<C::NodeId>,
 {
     fn from(v: (&LID, Membership<C>)) -> Self {
-        EffectiveMembership::new(Some(*v.0.get_log_id()), v.1)
+        EffectiveMembership::new(Some(v.0.get_log_id().clone()), v.1)
     }
 }
 
@@ -75,7 +75,7 @@ where C: RaftTypeConfig
         let configs = membership.get_joint_config();
         let mut joint = vec![];
         for c in configs {
-            joint.push(c.iter().copied().collect::<Vec<_>>());
+            joint.push(c.iter().cloned().collect::<Vec<_>>());
         }
 
         let quorum_set = Joint::from(joint);
@@ -88,7 +88,7 @@ where C: RaftTypeConfig
     }
 
     pub(crate) fn new_from_stored_membership(stored: StoredMembership<C>) -> Self {
-        Self::new(*stored.log_id(), stored.membership().clone())
+        Self::new(stored.log_id().clone(), stored.membership().clone())
     }
 
     pub(crate) fn stored_membership(&self) -> &Arc<StoredMembership<C>> {
@@ -115,7 +115,7 @@ where C: RaftTypeConfig
 
     /// Returns an Iterator of all voter node ids. Learners are not included.
     pub fn voter_ids(&self) -> impl Iterator<Item = C::NodeId> + '_ {
-        self.voter_ids.iter().copied()
+        self.voter_ids.iter().cloned()
     }
 
     /// Returns an Iterator of all learner node ids. Voters are not included.

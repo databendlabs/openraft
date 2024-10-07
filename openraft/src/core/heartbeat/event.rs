@@ -8,7 +8,7 @@ use crate::LogId;
 use crate::RaftTypeConfig;
 
 /// The information for broadcasting a heartbeat.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 #[derive(PartialEq, Eq)]
 pub struct HeartbeatEvent<C>
 where C: RaftTypeConfig

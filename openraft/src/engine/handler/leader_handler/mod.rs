@@ -67,19 +67,19 @@ where C: RaftTypeConfig
                     membership_entry.is_none(),
                     "only one membership entry is allowed in a batch"
                 );
-                membership_entry = Some((*entry.get_log_id(), m.clone()));
+                membership_entry = Some((entry.get_log_id().clone(), m.clone()));
             }
         }
 
         self.state.accept_io(IOId::new_log_io(
-            self.leader.committed_vote,
-            self.leader.last_log_id().copied(),
+            self.leader.committed_vote.clone(),
+            self.leader.last_log_id().cloned(),
         ));
 
         self.output.push_command(Command::AppendInputEntries {
             // A leader should always use the leader's vote.
             // It is allowed to be different from local vote.
-            committed_vote: self.leader.committed_vote,
+            committed_vote: self.leader.committed_vote.clone(),
             entries,
         });
 
@@ -98,11 +98,11 @@ where C: RaftTypeConfig
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn send_heartbeat(&mut self) {
         let membership_log_id = self.state.membership_state.effective().log_id();
-        let session_id = ReplicationSessionId::new(self.leader.committed_vote, *membership_log_id);
+        let session_id = ReplicationSessionId::new(self.leader.committed_vote.clone(), membership_log_id.clone());
 
         self.output.push_command(Command::BroadcastHeartbeat {
             session_id,
-            committed: self.state.committed().copied(),
+            committed: self.state.committed().cloned(),
         });
     }
 
@@ -110,21 +110,21 @@ where C: RaftTypeConfig
     ///
     /// See: [Read Operation](crate::docs::protocol::read)
     pub(crate) fn get_read_log_id(&self) -> Option<LogIdOf<C>> {
-        let committed = self.state.committed().copied();
+        let committed = self.state.committed().cloned();
         // noop log id is the first log this leader proposed.
-        std::cmp::max(self.leader.noop_log_id, committed)
+        std::cmp::max(self.leader.noop_log_id.clone(), committed)
     }
 
     /// Disable proposing new logs for this Leader, and transfer Leader to another node
     pub(crate) fn transfer_leader(&mut self, to: C::NodeId) {
-        self.leader.mark_transfer(to);
+        self.leader.mark_transfer(to.clone());
         self.state.vote.disable_lease();
 
         self.output.push_command(Command::BroadcastTransferLeader {
             req: TransferLeaderRequest::new(
-                self.leader.committed_vote.into_vote(),
+                self.leader.committed_vote.clone().into_vote(),
                 to,
-                self.leader.last_log_id().copied(),
+                self.leader.last_log_id().cloned(),
             ),
         });
     }

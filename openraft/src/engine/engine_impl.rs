@@ -113,7 +113,7 @@ where C: RaftTypeConfig
     /// [`RaftState`]
     pub(crate) fn new_candidate(&mut self, vote: Vote<C::NodeId>) -> &mut Candidate<C, LeaderQuorumSet<C>> {
         let now = C::now();
-        let last_log_id = self.state.last_log_id().copied();
+        let last_log_id = self.state.last_log_id().cloned();
 
         let membership = self.state.membership_state.effective().membership();
 
@@ -209,13 +209,13 @@ where C: RaftTypeConfig
     #[tracing::instrument(level = "debug", skip(self))]
     pub(crate) fn elect(&mut self) {
         let new_term = self.state.vote.leader_id().term + 1;
-        let new_vote = Vote::new(new_term, self.config.id);
+        let new_vote = Vote::new(new_term, self.config.id.clone());
 
-        let candidate = self.new_candidate(new_vote);
+        let candidate = self.new_candidate(new_vote.clone());
 
         tracing::info!("{}, new candidate: {}", func_name!(), candidate);
 
-        let last_log_id = candidate.last_log_id().copied();
+        let last_log_id = candidate.last_log_id().cloned();
 
         // Simulate sending RequestVote RPC to local node.
         // Safe unwrap(): it won't reject itself ˙–˙
@@ -290,7 +290,7 @@ where C: RaftTypeConfig
                     local_leased_vote.display_lease_info(now)
                 );
 
-                return VoteResponse::new(self.state.vote_ref(), self.state.last_log_id().copied(), false);
+                return VoteResponse::new(self.state.vote_ref(), self.state.last_log_id().cloned(), false);
             }
         }
 
@@ -309,7 +309,7 @@ where C: RaftTypeConfig
 
             // Return the updated vote, this way the candidate knows which vote is granted, in case
             // the candidate's vote is changed after sending the vote request.
-            return VoteResponse::new(self.state.vote_ref(), self.state.last_log_id().copied(), false);
+            return VoteResponse::new(self.state.vote_ref(), self.state.last_log_id().cloned(), false);
         }
 
         // Then check vote just as it does for every incoming event.
@@ -320,14 +320,14 @@ where C: RaftTypeConfig
 
         // Return the updated vote, this way the candidate knows which vote is granted, in case
         // the candidate's vote is changed after sending the vote request.
-        VoteResponse::new(self.state.vote_ref(), self.state.last_log_id().copied(), res.is_ok())
+        VoteResponse::new(self.state.vote_ref(), self.state.last_log_id().cloned(), res.is_ok())
     }
 
     #[tracing::instrument(level = "debug", skip(self, resp))]
     pub(crate) fn handle_vote_resp(&mut self, target: C::NodeId, resp: VoteResponse<C>) {
         tracing::info!(
             resp = display(&resp),
-            target = display(target),
+            target = display(&target),
             my_vote = display(self.state.vote_ref()),
             my_last_log_id = display(self.state.last_log_id().display()),
             "{}",
@@ -401,7 +401,7 @@ where C: RaftTypeConfig
 
             let condition = if is_ok {
                 Some(Condition::IOFlushed {
-                    io_id: *self.state.accepted_io().unwrap(),
+                    io_id: self.state.accepted_io().unwrap().clone(),
                 })
             } else {
                 None
@@ -426,7 +426,7 @@ where C: RaftTypeConfig
         // Vote is legal.
 
         let mut fh = self.following_handler();
-        fh.ensure_log_consecutive(prev_log_id)?;
+        fh.ensure_log_consecutive(prev_log_id.as_ref())?;
         fh.append_entries(prev_log_id, entries);
 
         Ok(())
@@ -455,10 +455,10 @@ where C: RaftTypeConfig
         snapshot: Snapshot<C>,
         tx: ResultSender<C, SnapshotResponse<C>>,
     ) {
-        tracing::info!(vote = display(vote), snapshot = display(&snapshot), "{}", func_name!());
+        tracing::info!(vote = display(&vote), snapshot = display(&snapshot), "{}", func_name!());
 
         let vote_res = self.vote_handler().accept_vote(&vote, tx, |state, _rejected| {
-            Ok(SnapshotResponse::new(*state.vote_ref()))
+            Ok(SnapshotResponse::new(state.vote_ref().clone()))
         });
 
         let Some(tx) = vote_res else {
@@ -471,7 +471,7 @@ where C: RaftTypeConfig
         // In this case, the response can only be sent when the snapshot is installed.
         let cond = fh.install_full_snapshot(snapshot);
         let res = Ok(SnapshotResponse {
-            vote: *self.state.vote_ref(),
+            vote: self.state.vote_ref().clone(),
         });
 
         self.output.push_command(Command::Respond {
@@ -569,8 +569,8 @@ where C: RaftTypeConfig
         tracing::info!(index = display(index), "{}", func_name!());
 
         let snapshot_last_log_id = self.state.snapshot_last_log_id();
-        let snapshot_last_log_id = if let Some(x) = snapshot_last_log_id {
-            *x
+        let snapshot_last_log_id = if let Some(log_id) = snapshot_last_log_id {
+            log_id.clone()
         } else {
             tracing::info!("no snapshot, can not purge");
             return;
@@ -599,14 +599,14 @@ where C: RaftTypeConfig
         // Safe unwrap: `index` is ensured to be present in the above code.
         let log_id = self.state.get_log_id(index).unwrap();
 
-        tracing::info!(purge_upto = display(log_id), "{}", func_name!());
+        tracing::info!(purge_upto = display(&log_id), "{}", func_name!());
 
         self.log_handler().update_purge_upto(log_id);
         self.try_purge_log();
     }
 
     pub(crate) fn trigger_transfer_leader(&mut self, to: C::NodeId) {
-        tracing::info!(to = display(to), "{}", func_name!());
+        tracing::info!(to = display(&to), "{}", func_name!());
 
         let Some((mut lh, _)) = self.get_leader_handler_or_reject(None) else {
             tracing::info!(
@@ -636,15 +636,15 @@ where C: RaftTypeConfig
         // There may already be a Leader with higher vote
         let Some(leader) = leader else { return };
 
-        let vote = *leader.committed_vote_ref();
-        let last_log_id = leader.last_log_id().copied();
+        let vote = leader.committed_vote_ref().clone();
+        let last_log_id = leader.last_log_id().cloned();
 
         self.replication_handler().rebuild_replication_streams();
 
         // Before sending any log, update the vote.
         // This could not fail because `internal_server_state` will be cleared
         // once `state.vote` is changed to a value of other node.
-        let _res = self.vote_handler().update_vote(&vote.into_vote());
+        let _res = self.vote_handler().update_vote(&vote.clone().into_vote());
         debug_assert!(_res.is_ok(), "commit vote can not fail but: {:?}", _res);
 
         self.state.accept_io(IOId::new_log_io(vote, last_log_id));
@@ -673,8 +673,8 @@ where C: RaftTypeConfig
         );
 
         Err(NotAllowed {
-            last_log_id: self.state.last_log_id().copied(),
-            vote: *self.state.vote_ref(),
+            last_log_id: self.state.last_log_id().cloned(),
+            vote: self.state.vote_ref().clone(),
         })
     }
 
@@ -683,7 +683,7 @@ where C: RaftTypeConfig
     fn check_members_contain_me(&self, m: &Membership<C>) -> Result<(), NotInMembers<C>> {
         if !m.is_voter(&self.config.id) {
             let e = NotInMembers {
-                node_id: self.config.id,
+                node_id: self.config.id.clone(),
                 membership: m.clone(),
             };
             Err(e)
@@ -751,7 +751,7 @@ where C: RaftTypeConfig
         };
 
         debug_assert!(
-            leader.committed_vote_ref().into_vote() >= *self.state.vote_ref(),
+            leader.committed_vote_ref().clone().into_vote() >= *self.state.vote_ref(),
             "leader.vote({}) >= state.vote({})",
             leader.committed_vote_ref(),
             self.state.vote_ref()
@@ -784,7 +784,7 @@ where C: RaftTypeConfig
     pub(crate) fn following_handler(&mut self) -> FollowingHandler<C> {
         debug_assert!(self.leader.is_none());
 
-        let leader_vote = *self.state.vote_ref();
+        let leader_vote = self.state.vote_ref().clone();
         debug_assert!(
             leader_vote.is_committed(),
             "Expect the Leader vote to be committed: {}",
