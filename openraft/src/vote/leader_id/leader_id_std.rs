@@ -52,7 +52,7 @@ impl<NID: NodeId> LeaderId<NID> {
     }
 
     pub fn voted_for(&self) -> Option<NID> {
-        self.voted_for
+        self.voted_for.clone()
     }
 
     #[allow(clippy::wrong_self_convention)]

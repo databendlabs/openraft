@@ -10,13 +10,21 @@ use crate::Vote;
 /// Represents a committed Vote that has been accepted by a quorum.
 ///
 /// The inner `Vote`'s attribute `committed` is always set to `true`
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
+#[derive(dupit::Duplicate)]
 #[derive(PartialEq, Eq)]
 #[derive(PartialOrd)]
 pub(crate) struct CommittedVote<C>
 where C: RaftTypeConfig
 {
     vote: Vote<NodeIdOf<C>>,
+}
+
+impl<C> Copy for CommittedVote<C>
+where
+    C: RaftTypeConfig,
+    C::NodeId: Copy,
+{
 }
 
 /// The `CommittedVote` is totally ordered.

@@ -21,6 +21,7 @@ byte-unit       = { workspace = true }
 chrono          = { workspace = true }
 clap            = { workspace = true }
 derive_more     = { workspace = true }
+dupit           = { workspace = true }
 futures         = { workspace = true }
 openraft-macros = { path = "../macros", version = "0.10.0" }
 maplit          = { workspace = true }

@@ -19,7 +19,6 @@ pub trait NodeIdEssential:
     + Debug
     + Display
     + Hash
-    + Copy
     + Clone
     + Default
     + 'static

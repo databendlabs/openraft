@@ -1,6 +1,8 @@
 use std::cmp::Ordering;
 use std::fmt;
 
+use dupit::Duplicate;
+
 use crate::raft_state::io_state::log_io_id::LogIOId;
 use crate::vote::ref_vote::RefVote;
 use crate::vote::CommittedVote;
@@ -26,7 +28,7 @@ use crate::Vote;
 /// [`append()`]: `crate::storage::RaftLogStorage::append()`
 /// [`truncate()`]: `crate::storage::RaftLogStorage::truncate()`
 /// [`purge()`]: `crate::storage::RaftLogStorage::purge()`
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 #[derive(PartialEq, Eq)]
 pub(crate) enum IOId<C>
 where C: RaftTypeConfig
@@ -36,6 +38,13 @@ where C: RaftTypeConfig
 
     /// Saving log entries by a Leader, which is identified by a committed vote.
     Log(LogIOId<C>),
+}
+
+impl<C> Copy for IOId<C>
+where
+    C: RaftTypeConfig,
+    C::NodeId: Copy,
+{
 }
 
 impl<C> fmt::Display for IOId<C>
@@ -68,11 +77,11 @@ where C: RaftTypeConfig
 impl<C> IOId<C>
 where C: RaftTypeConfig
 {
-    pub(crate) fn new(vote: Vote<C::NodeId>) -> Self {
+    pub(crate) fn new(vote: &Vote<C::NodeId>) -> Self {
         if vote.is_committed() {
-            Self::new_log_io(vote.into_committed(), None)
+            Self::new_log_io(vote.clone().into_committed(), None)
         } else {
-            Self::new_vote_io(vote.into_non_committed())
+            Self::new_vote_io(vote.clone().into_non_committed())
         }
     }
 
@@ -89,8 +98,8 @@ where C: RaftTypeConfig
     // The above lint is disabled because in future Vote may not be `Copy`
     pub(crate) fn to_vote(&self) -> Vote<C::NodeId> {
         match self {
-            Self::Vote(non_committed_vote) => non_committed_vote.into_vote(),
-            Self::Log(log_io_id) => log_io_id.committed_vote.into_vote(),
+            Self::Vote(non_committed_vote) => non_committed_vote.dup().into_vote(),
+            Self::Log(log_io_id) => log_io_id.committed_vote.dup().into_vote(),
         }
     }
 
@@ -113,8 +122,8 @@ where C: RaftTypeConfig
         match self {
             Self::Vote(_vote) => ErrorSubject::Vote,
             Self::Log(log_io_id) => {
-                if let Some(log_id) = log_io_id.log_id {
-                    ErrorSubject::Log(log_id)
+                if let Some(log_id) = &log_io_id.log_id {
+                    ErrorSubject::Log(log_id.clone())
                 } else {
                     ErrorSubject::Logs
                 }

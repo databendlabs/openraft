@@ -72,10 +72,10 @@ where C: RaftTypeConfig
             debug_assert!(x.get_log_id().index == prev_log_id.next_index());
         }
 
-        let last_log_id = entries.last().map(|x| *x.get_log_id());
+        let last_log_id = entries.last().map(|x| x.get_log_id().clone());
         let last_log_id = std::cmp::max(prev_log_id, last_log_id);
 
-        let prev_accepted = self.state.accept_io(IOId::new_log_io(self.leader_vote, last_log_id));
+        let prev_accepted = self.state.accept_io(IOId::new_log_io(self.leader_vote.clone(), last_log_id.clone()));
 
         let l = entries.len();
         let since = self.state.first_conflicting_index(&entries);
@@ -92,9 +92,9 @@ where C: RaftTypeConfig
             // No actual IO is needed, but just need to update IO state,
             // after all preceding IO flushed.
 
-            let to_submit = IOId::new_log_io(self.leader_vote, last_log_id);
+            let to_submit = IOId::new_log_io(self.leader_vote.clone(), last_log_id);
 
-            if Some(to_submit) <= prev_accepted {
+            if Some(&to_submit) <= prev_accepted.as_ref() {
                 // No io state to update.
                 return;
             }
@@ -113,15 +113,18 @@ where C: RaftTypeConfig
     /// If not, truncate the local log and return an error.
     pub(crate) fn ensure_log_consecutive(
         &mut self,
-        prev_log_id: Option<LogId<C::NodeId>>,
+        prev_log_id: Option<&LogId<C::NodeId>>,
     ) -> Result<(), RejectAppendEntries<C>> {
-        if let Some(ref prev) = prev_log_id {
+        if let Some(prev) = prev_log_id {
             if !self.state.has_log_id(prev) {
                 let local = self.state.get_log_id(prev.index);
                 tracing::debug!(local = display(DisplayOption(&local)), "prev_log_id does not match");
 
                 self.truncate_logs(prev.index);
-                return Err(RejectAppendEntries::ByConflictingLogId { local, expect: *prev });
+                return Err(RejectAppendEntries::ByConflictingLogId {
+                    local,
+                    expect: prev.clone(),
+                });
             }
         }
 
@@ -151,7 +154,7 @@ where C: RaftTypeConfig
 
         self.output.push_command(Command::AppendInputEntries {
             // A follower should always use the node's vote.
-            committed_vote: self.leader_vote,
+            committed_vote: self.leader_vote.clone(),
             entries,
         });
     }
@@ -159,9 +162,9 @@ where C: RaftTypeConfig
     /// Commit entries that are already committed by the leader.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn commit_entries(&mut self, leader_committed: Option<LogId<C::NodeId>>) {
-        let accepted = self.state.accepted_io().copied();
-        let accepted = accepted.and_then(|x| x.last_log_id().copied());
-        let committed = std::cmp::min(accepted, leader_committed);
+        let accepted = self.state.accepted_io().cloned();
+        let accepted = accepted.and_then(|x| x.last_log_id().cloned());
+        let committed = std::cmp::min(accepted.clone(), leader_committed.clone());
 
         tracing::debug!(
             leader_committed = display(DisplayOption(&leader_committed)),
@@ -173,7 +176,7 @@ where C: RaftTypeConfig
 
         if let Some(prev_committed) = self.state.update_committed(&committed) {
             self.output.push_command(Command::SaveCommitted {
-                committed: committed.unwrap(),
+                committed: committed.clone().unwrap(),
             });
 
             self.output.push_command(Command::Apply {
@@ -280,7 +283,7 @@ where C: RaftTypeConfig
         let meta = &snapshot.meta;
         tracing::info!("install_full_snapshot: meta:{:?}", meta);
 
-        let snap_last_log_id = meta.last_log_id;
+        let snap_last_log_id = meta.last_log_id.clone();
 
         if snap_last_log_id.as_ref() <= self.state.committed() {
             tracing::info!(
@@ -312,16 +315,16 @@ where C: RaftTypeConfig
             }
         }
 
-        let io_id = IOId::new_log_io(self.leader_vote, Some(snap_last_log_id));
-        self.state.accept_io(io_id);
-        self.state.committed = Some(snap_last_log_id);
+        let io_id = IOId::new_log_io(self.leader_vote.clone(), Some(snap_last_log_id.clone()));
+        self.state.accept_io(io_id.clone());
+        self.state.committed = Some(snap_last_log_id.clone());
         self.update_committed_membership(EffectiveMembership::new_from_stored_membership(
             meta.last_membership.clone(),
         ));
 
         self.output.push_command(Command::from(sm::Command::install_full_snapshot(snapshot, io_id)));
 
-        self.state.purge_upto = Some(snap_last_log_id);
+        self.state.purge_upto = Some(snap_last_log_id.clone());
         self.log_handler().purge_log();
 
         Some(Condition::Snapshot {
@@ -340,7 +343,7 @@ where C: RaftTypeConfig
         // Find the last 2 membership config entries: the committed and the effective.
         for ent in entries.rev() {
             if let Some(m) = ent.get_membership() {
-                memberships.insert(0, StoredMembership::new(Some(*ent.get_log_id()), m.clone()));
+                memberships.insert(0, StoredMembership::new(Some(ent.get_log_id().clone()), m.clone()));
                 if memberships.len() == 2 {
                     break;
                 }

@@ -14,7 +14,7 @@ use crate::LogIdOptionExt;
 use crate::RaftTypeConfig;
 
 /// State of replication to a target node.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 #[derive(PartialEq, Eq)]
 pub(crate) struct ProgressEntry<C>
 where C: RaftTypeConfig
@@ -31,13 +31,20 @@ where C: RaftTypeConfig
     pub(crate) searching_end: u64,
 }
 
+impl<C> Copy for ProgressEntry<C>
+where
+    C: RaftTypeConfig,
+    C::NodeId: Copy,
+{
+}
+
 impl<C> ProgressEntry<C>
 where C: RaftTypeConfig
 {
     #[allow(dead_code)]
     pub(crate) fn new(matching: Option<LogId<C::NodeId>>) -> Self {
         Self {
-            matching,
+            matching: matching.clone(),
             inflight: Inflight::None,
             searching_end: matching.next_index(),
         }
@@ -70,8 +77,8 @@ where C: RaftTypeConfig
         match &self.inflight {
             Inflight::None => false,
             Inflight::Logs { log_id_range, .. } => {
-                let lid = Some(*upto);
-                lid > log_id_range.prev
+                let lid = Some(upto);
+                lid > log_id_range.prev.as_ref()
             }
             Inflight::Snapshot { last_log_id: _, .. } => false,
         }
@@ -84,7 +91,7 @@ where C: RaftTypeConfig
             "update_matching"
         );
 
-        self.inflight.ack(matching);
+        self.inflight.ack(matching.clone());
 
         debug_assert!(matching >= self.matching);
         self.matching = matching;
@@ -176,7 +183,7 @@ where C: RaftTypeConfig
         // Replicate by snapshot.
         if self.searching_end < purge_upto_next {
             let snapshot_last = log_state.snapshot_last_log_id();
-            self.inflight = Inflight::snapshot(snapshot_last.copied());
+            self.inflight = Inflight::snapshot(snapshot_last.cloned());
             return Ok(&self.inflight);
         }
 
@@ -249,17 +256,17 @@ where C: RaftTypeConfig
 
         self.inflight.validate()?;
 
-        match self.inflight {
+        match &self.inflight {
             Inflight::None => {}
             Inflight::Logs { log_id_range, .. } => {
                 // matching <= prev_log_id              <= last_log_id
                 //             prev_log_id.next_index() <= searching_end
-                validit::less_equal!(self.matching, log_id_range.prev);
+                validit::less_equal!(&self.matching, &log_id_range.prev);
                 validit::less_equal!(log_id_range.prev.next_index(), self.searching_end);
             }
             Inflight::Snapshot { last_log_id, .. } => {
                 // There is no need to send a snapshot smaller than last matching.
-                validit::less!(self.matching, last_log_id);
+                validit::less!(&self.matching, last_log_id);
             }
         }
         Ok(())

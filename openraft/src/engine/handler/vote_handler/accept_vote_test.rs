@@ -60,7 +60,7 @@ fn test_accept_vote_reject_smaller_vote() -> anyhow::Result<()> {
             //
             Command::Respond {
                 when: Some(Condition::IOFlushed {
-                    io_id: IOId::new(Vote::new(2, 1))
+                    io_id: IOId::new(&Vote::new(2, 1))
                 }),
                 resp: Respond::new(mk_res(false), tx)
             },
