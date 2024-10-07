@@ -21,17 +21,17 @@ where C: RaftTypeConfig
         self,
         candidate: Candidate<C, LeaderQuorumSet<C>>,
     ) -> Option<&'x mut Leader<C, LeaderQuorumSet<C>>> {
-        let vote = *candidate.vote_ref();
+        let vote = candidate.vote_ref().clone();
 
         debug_assert_eq!(
             vote.leader_id().voted_for(),
-            Some(self.config.id),
+            Some(self.config.id.clone()),
             "it can only commit its own vote"
         );
 
         if let Some(l) = self.leader.as_ref() {
             #[allow(clippy::neg_cmp_op_on_partial_ord)]
-            if !(vote > l.committed_vote_ref().into_vote()) {
+            if !(vote > l.committed_vote_ref().clone().into_vote()) {
                 tracing::warn!(
                     "vote is not greater than current existing leader vote. Do not establish new leader and quit"
                 );

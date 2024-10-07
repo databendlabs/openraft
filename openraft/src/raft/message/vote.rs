@@ -53,9 +53,9 @@ where C: RaftTypeConfig
 {
     pub fn new(vote: impl Borrow<Vote<C::NodeId>>, last_log_id: Option<LogId<C::NodeId>>, granted: bool) -> Self {
         Self {
-            vote: *vote.borrow(),
+            vote: vote.borrow().clone(),
             vote_granted: granted,
-            last_log_id: last_log_id.map(|x| *x.borrow()),
+            last_log_id: last_log_id.map(|x| x.borrow().clone()),
         }
     }
 
@@ -74,7 +74,7 @@ where C: RaftTypeConfig
             f,
             "{{{}, last_log:{:?}}}",
             self.vote,
-            self.last_log_id.map(|x| x.to_string())
+            self.last_log_id.as_ref().map(|x| x.to_string())
         )
     }
 }

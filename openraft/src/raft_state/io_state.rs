@@ -93,8 +93,8 @@ where C: RaftTypeConfig
         // Applied does not have to be flushed in local store.
         // less_equal!(self.applied.as_ref(), a.submitted().and_then(|x| x.last_log_id()));
 
-        less_equal!(self.snapshot, self.applied);
-        less_equal!(self.purged, self.snapshot);
+        less_equal!(&self.snapshot, &self.applied);
+        less_equal!(&self.purged, &self.snapshot);
         Ok(())
     }
 }
@@ -103,7 +103,7 @@ impl<C> IOState<C>
 where C: RaftTypeConfig
 {
     pub(crate) fn new(
-        vote: Vote<C::NodeId>,
+        vote: &Vote<C::NodeId>,
         applied: Option<LogId<C::NodeId>>,
         snapshot: Option<LogId<C::NodeId>>,
         purged: Option<LogId<C::NodeId>>,

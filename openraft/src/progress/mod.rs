@@ -35,7 +35,7 @@ pub(crate) trait Progress<ID, V, P, QS>
 where
     ID: PartialEq + 'static,
     V: Borrow<P>,
-    P: PartialOrd + Copy,
+    P: PartialOrd + Clone,
     QS: QuorumSet<ID>,
 {
     /// Update one of the scalar value and re-calculate the committed value with provided function.
@@ -144,10 +144,10 @@ where
 
 impl<ID, V, P, QS> Display for VecProgress<ID, V, P, QS>
 where
-    ID: PartialEq + Debug + Copy + 'static,
-    V: Copy + 'static,
+    ID: PartialEq + Debug + Clone + 'static,
+    V: Clone + 'static,
     V: Borrow<P>,
-    P: PartialOrd + Ord + Copy + 'static,
+    P: PartialOrd + Ord + Clone + 'static,
     QS: QuorumSet<ID> + 'static,
     ID: Display,
     V: Display,
@@ -211,7 +211,7 @@ where
     ID: 'static,
     V: Borrow<P>,
     QS: QuorumSet<ID>,
-    P: Copy,
+    P: Clone,
 {
     pub(crate) fn new(quorum_set: QS, learner_ids: impl IntoIterator<Item = ID>, default_v: impl Fn() -> V) -> Self {
         let mut vector = quorum_set.ids().map(|id| (id, default_v())).collect::<Vec<_>>();
@@ -222,7 +222,7 @@ where
 
         Self {
             quorum_set,
-            granted: *default_v().borrow(),
+            granted: default_v().borrow().clone(),
             voter_count,
             vector,
             stat: Default::default(),
@@ -281,7 +281,7 @@ impl<ID, V, P, QS> Progress<ID, V, P, QS> for VecProgress<ID, V, P, QS>
 where
     ID: PartialEq + 'static,
     V: Borrow<P>,
-    P: PartialOrd + Copy,
+    P: PartialOrd + Clone,
     QS: QuorumSet<ID>,
 {
     /// Update one of the scalar value and re-calculate the committed value.
@@ -333,7 +333,7 @@ where
 
         let elt = &mut self.vector[index];
 
-        let prev_progress = *elt.1.borrow();
+        let prev_progress = elt.1.borrow().clone();
 
         f(&mut elt.1);
 
@@ -374,7 +374,7 @@ where
                 self.stat.is_quorum_count += 1;
 
                 if self.quorum_set.is_quorum(it) {
-                    self.granted = *prog;
+                    self.granted = prog.clone();
                     break;
                 }
             }

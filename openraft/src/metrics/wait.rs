@@ -101,7 +101,7 @@ where C: RaftTypeConfig
     #[tracing::instrument(level = "trace", skip(self), fields(msg=msg.to_string().as_str()))]
     pub async fn current_leader(&self, leader_id: C::NodeId, msg: impl ToString) -> Result<RaftMetrics<C>, WaitError> {
         self.metrics(
-            |m| m.current_leader == Some(leader_id),
+            |m| m.current_leader.as_ref() == Some(&leader_id),
             &format!("{} .current_leader == {}", msg.to_string(), leader_id),
         )
         .await

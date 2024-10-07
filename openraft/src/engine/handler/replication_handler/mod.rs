@@ -65,7 +65,7 @@ where C: RaftTypeConfig
             "Only leader is allowed to call update_effective_membership()"
         );
 
-        self.state.membership_state.append(EffectiveMembership::new_arc(Some(*log_id), m.clone()));
+        self.state.membership_state.append(EffectiveMembership::new_arc(Some(log_id.clone()), m.clone()));
 
         // TODO(9): currently only a leader has replication setup.
         //       It's better to setup replication for both leader and candidate.
@@ -112,7 +112,7 @@ where C: RaftTypeConfig
     /// accepted.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn update_leader_clock(&mut self, node_id: C::NodeId, t: InstantOf<C>) {
-        tracing::debug!(target = display(node_id), t = display(t.display()), "{}", func_name!());
+        tracing::debug!(target = display(&node_id), t = display(t.display()), "{}", func_name!());
 
         let granted = *self
             .leader
@@ -148,7 +148,7 @@ where C: RaftTypeConfig
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn update_matching(&mut self, node_id: C::NodeId, log_id: Option<LogId<C::NodeId>>) {
         tracing::debug!(
-            node_id = display(node_id),
+            node_id = display(&node_id),
             log_id = display(log_id.display()),
             "{}",
             func_name!()
@@ -158,11 +158,12 @@ where C: RaftTypeConfig
 
         // The value granted by a quorum may not yet be a committed.
         // A committed is **granted** and also is in current term.
-        let quorum_accepted = *self
+        let quorum_accepted = self
             .leader
             .progress
             .update_with(&node_id, |prog_entry| prog_entry.update_matching(log_id))
-            .expect("it should always update existing progress");
+            .expect("it should always update existing progress")
+            .clone();
 
         tracing::debug!(
             quorum_accepted = display(quorum_accepted.display()),
@@ -178,7 +179,7 @@ where C: RaftTypeConfig
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn try_commit_quorum_accepted(&mut self, granted: Option<LogId<C::NodeId>>) {
         // Only when the log id is proposed by current leader, it is committed.
-        if let Some(c) = granted {
+        if let Some(ref c) = granted {
             if !self.state.vote_ref().is_same_leader(c.committed_leader_id()) {
                 return;
             }
@@ -186,16 +187,16 @@ where C: RaftTypeConfig
 
         if let Some(prev_committed) = self.state.update_committed(&granted) {
             self.output.push_command(Command::ReplicateCommitted {
-                committed: self.state.committed().copied(),
+                committed: self.state.committed().cloned(),
             });
 
             self.output.push_command(Command::SaveCommitted {
-                committed: self.state.committed().copied().unwrap(),
+                committed: self.state.committed().cloned().unwrap(),
             });
 
             self.output.push_command(Command::Apply {
                 already_committed: prev_committed,
-                upto: self.state.committed().copied().unwrap(),
+                upto: self.state.committed().cloned().unwrap(),
             });
 
             if self.config.snapshot_policy.should_snapshot(&self.state) {
@@ -219,7 +220,7 @@ where C: RaftTypeConfig
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn update_progress(&mut self, target: C::NodeId, repl_res: Result<ReplicationResult<C>, String>) {
         tracing::debug!(
-            target = display(target),
+            target = display(&target),
             result = display(repl_res.display()),
             progress = display(&self.leader.progress),
             "{}",
@@ -260,7 +261,7 @@ where C: RaftTypeConfig
                 // Reset and resend(by self.send_to_all()) replication requests.
                 prog_entry.inflight = Inflight::None;
 
-                targets.push(ReplicationProgress(*target, *prog_entry));
+                targets.push(ReplicationProgress(target.clone(), prog_entry.clone()));
             }
         }
         self.output.push_command(Command::RebuildReplicationStreams { targets });
@@ -281,7 +282,7 @@ where C: RaftTypeConfig
             }
 
             let t = prog_entry.next_send(self.state, self.config.max_payload_entries);
-            tracing::debug!(target = display(*id), send = debug(&t), "next send");
+            tracing::debug!(target = display(&*id), send = debug(&t), "next send");
 
             match t {
                 Ok(inflight) => {
@@ -298,10 +299,13 @@ where C: RaftTypeConfig
     pub(crate) fn send_to_target(output: &mut EngineOutput<C>, target: &C::NodeId, inflight: &Inflight<C>) {
         let req = match inflight {
             Inflight::None => unreachable!("no data to send"),
-            Inflight::Logs { log_id_range } => Replicate::logs(*log_id_range),
-            Inflight::Snapshot { last_log_id } => Replicate::snapshot(*last_log_id),
+            Inflight::Logs { log_id_range } => Replicate::logs(log_id_range.clone()),
+            Inflight::Snapshot { last_log_id } => Replicate::snapshot(last_log_id.clone()),
         };
-        output.push_command(Command::Replicate { target: *target, req });
+        output.push_command(Command::Replicate {
+            target: target.clone(),
+            req,
+        });
     }
 
     /// Try to run a pending purge job, if no tasks are using the logs to be purged.
@@ -325,7 +329,7 @@ where C: RaftTypeConfig
         }
 
         // Safe unwrap(): it greater than an Option thus it must be a Some()
-        let purge_upto = *self.state.purge_upto().unwrap();
+        let purge_upto = self.state.purge_upto().unwrap().clone();
 
         // Check if any replication task is going to use the log that are going to purge.
         let mut in_use = false;
@@ -358,7 +362,7 @@ where C: RaftTypeConfig
             return;
         }
 
-        let id = self.config.id;
+        let id = self.config.id.clone();
 
         // The leader may not be in membership anymore
         if let Some(prog_entry) = self.leader.progress.get_mut(&id) {
@@ -371,7 +375,7 @@ where C: RaftTypeConfig
                 return;
             }
             // TODO: It should be self.state.last_log_id() but None is ok.
-            prog_entry.inflight = Inflight::logs(None, upto);
+            prog_entry.inflight = Inflight::logs(None, upto.clone());
 
             self.update_matching(id, upto);
         }

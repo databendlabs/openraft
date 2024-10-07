@@ -86,7 +86,7 @@ where
         // TODO: It is possible `committed < last_applied` because when installing snapshot,
         //       new committed should be saved, but not yet.
         if committed < last_applied {
-            committed = last_applied;
+            committed = last_applied.clone();
         }
 
         // Re-apply log entries to recover SM to latest state.
@@ -96,7 +96,7 @@ where
 
             self.reapply_committed(start, end).await?;
 
-            last_applied = committed;
+            last_applied = committed.clone();
         }
 
         let mem_state = self.get_membership().await?;
@@ -110,9 +110,9 @@ where
                 last_applied.display(),
             );
 
-            self.log_store.purge(last_applied.unwrap()).await?;
-            last_log_id = last_applied;
-            last_purged_log_id = last_applied;
+            self.log_store.purge(last_applied.clone().unwrap()).await?;
+            last_log_id = last_applied.clone();
+            last_purged_log_id = last_applied.clone();
         }
 
         tracing::info!(
@@ -120,7 +120,7 @@ where
             last_purged_log_id.display(),
             last_log_id.display()
         );
-        let log_ids = LogIdList::load_log_ids(last_purged_log_id, last_log_id, &mut log_reader).await?;
+        let log_ids = LogIdList::load_log_ids(last_purged_log_id.clone(), last_log_id, &mut log_reader).await?;
 
         let snapshot = self.state_machine.get_current_snapshot().await?;
 
@@ -140,7 +140,12 @@ where
         };
         let snapshot_meta = snapshot.map(|x| x.meta).unwrap_or_default();
 
-        let io_state = IOState::new(vote, last_applied, snapshot_meta.last_log_id, last_purged_log_id);
+        let io_state = IOState::new(
+            &vote,
+            last_applied.clone(),
+            snapshot_meta.last_log_id.clone(),
+            last_purged_log_id.clone(),
+        );
 
         let now = C::now();
 
@@ -291,7 +296,7 @@ where
 
             for ent in entries.iter().rev() {
                 if let Some(mem) = ent.get_membership() {
-                    let em = StoredMembership::new(Some(*ent.get_log_id()), mem.clone());
+                    let em = StoredMembership::new(Some(ent.get_log_id().clone()), mem.clone());
                     res.insert(0, em);
                     if res.len() == 2 {
                         return Ok(res);

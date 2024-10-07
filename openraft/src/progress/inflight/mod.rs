@@ -112,7 +112,7 @@ where C: RaftTypeConfig
                 *self = {
                     debug_assert!(upto >= log_id_range.prev);
                     debug_assert!(upto <= log_id_range.last);
-                    Inflight::logs(upto, log_id_range.last)
+                    Inflight::logs(upto, log_id_range.last.clone())
                 }
             }
             Inflight::Snapshot { last_log_id } => {

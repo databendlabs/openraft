@@ -69,19 +69,19 @@ where C: RaftTypeConfig
     {
         for (target, node) in targets {
             tracing::debug!("id={} spawn HeartbeatWorker target={}", self.id, target);
-            let network = network_factory.new_client(target, &node).await;
+            let network = network_factory.new_client(target.clone(), &node).await;
 
             let worker = HeartbeatWorker {
-                id: self.id,
+                id: self.id.clone(),
                 rx: self.rx.clone(),
                 network,
-                target,
+                target: target.clone(),
                 node,
                 config: self.config.clone(),
                 tx_notification: tx_notification.clone(),
             };
 
-            let span = tracing::span!(parent: &Span::current(), Level::DEBUG, "heartbeat", id=display(self.id), target=display(target));
+            let span = tracing::span!(parent: &Span::current(), Level::DEBUG, "heartbeat", id=display(&self.id), target=display(&target));
 
             let (tx_shutdown, rx_shutdown) = C::oneshot();
 
