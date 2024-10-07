@@ -10,7 +10,7 @@ use crate::Vote;
 /// Represents a committed Vote that has been accepted by a quorum.
 ///
 /// The inner `Vote`'s attribute `committed` is always set to `true`
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 #[derive(PartialEq, Eq)]
 #[derive(PartialOrd)]
 pub(crate) struct CommittedVote<C>

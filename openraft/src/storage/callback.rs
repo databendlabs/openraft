@@ -124,7 +124,7 @@ where C: RaftTypeConfig
         let res = match result {
             Ok(x) => {
                 tracing::debug!("LogApplied upto {}", self.last_log_id);
-                let resp = (self.last_log_id, x);
+                let resp = (self.last_log_id.clone(), x);
                 self.tx.send(Ok(resp))
             }
             Err(e) => {

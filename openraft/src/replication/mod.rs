@@ -154,7 +154,7 @@ where
     LS: RaftLogStorage<C>,
 {
     /// Spawn a new replication task for the target node.
-    #[tracing::instrument(level = "trace", skip_all,fields(target=display(target), session_id=display(session_id)))]
+    #[tracing::instrument(level = "trace", skip_all,fields(target=display(&target), session_id=display(&session_id)))]
     #[allow(clippy::type_complexity)]
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn spawn(
@@ -208,7 +208,7 @@ where
         }
     }
 
-    #[tracing::instrument(level="debug", skip(self), fields(session=%self.session_id, target=display(self.target), cluster=%self.config.cluster_name))]
+    #[tracing::instrument(level="debug", skip(self), fields(session=%self.session_id, target=display(&self.target), cluster=%self.config.cluster_name))]
     async fn main(mut self) -> Result<(), ReplicationClosed> {
         loop {
             let action = self.next_action.take();
@@ -229,13 +229,13 @@ where
             let res = match d {
                 Data::Committed => {
                     let m = &self.matching;
-                    let d = LogIdRange::new(*m, *m);
+                    let d = LogIdRange::new(m.clone(), m.clone());
 
-                    log_data = Some(d);
+                    log_data = Some(d.clone());
                     self.send_log_entries(d, false).await
                 }
                 Data::Logs(log) => {
-                    log_data = Some(log);
+                    log_data = Some(log.clone());
                     self.send_log_entries(log, true).await
                 }
                 Data::Snapshot(snap) => self.stream_snapshot(snap).await,
@@ -370,7 +370,7 @@ where
         log_ids: LogIdRange<C>,
         has_payload: bool,
     ) -> Result<Option<Data<C>>, ReplicationError<C>> {
-        tracing::debug!(log_id_range = display(log_ids), "send_log_entries",);
+        tracing::debug!(log_id_range = display(&log_ids), "send_log_entries",);
 
         // Series of logs to send, and the last log id to send
         let (logs, sending_range) = {
@@ -391,14 +391,14 @@ where
 
             if start == end {
                 // Heartbeat RPC, no logs to send, last log id is the same as prev_log_id
-                let r = LogIdRange::new(rng.prev, rng.prev);
+                let r = LogIdRange::new(rng.prev.clone(), rng.prev.clone());
                 (vec![], r)
             } else {
                 // limited_get_log_entries will return logs smaller than the range [start, end).
                 let logs = self.log_reader.limited_get_log_entries(start, end).await?;
 
-                let first = *logs.first().map(|x| x.get_log_id()).unwrap();
-                let last = *logs.last().map(|x| x.get_log_id()).unwrap();
+                let first = logs.first().map(|x| x.get_log_id()).unwrap();
+                let last = logs.last().map(|x| x.get_log_id().clone()).unwrap();
 
                 debug_assert!(
                     !logs.is_empty() && logs.len() <= (end - start) as usize,
@@ -410,7 +410,7 @@ where
                     last
                 );
 
-                let r = LogIdRange::new(rng.prev, Some(last));
+                let r = LogIdRange::new(rng.prev.clone(), Some(last));
                 (logs, r)
             }
         };
@@ -420,8 +420,8 @@ where
         // Build the heartbeat frame to be sent to the follower.
         let payload = AppendEntriesRequest {
             vote: self.session_id.vote(),
-            prev_log_id: sending_range.prev,
-            leader_commit: self.committed,
+            prev_log_id: sending_range.prev.clone(),
+            leader_commit: self.committed.clone(),
             entries: logs,
         };
 
@@ -443,7 +443,7 @@ where
             let to = Timeout {
                 action: RPCTypes::AppendEntries,
                 id: self.session_id.vote().leader_id().voted_for().unwrap(),
-                target: self.target,
+                target: self.target.clone(),
                 timeout: the_timeout,
             };
             RPCError::Timeout(to)
@@ -461,10 +461,10 @@ where
             AppendEntriesResponse::Success => {
                 self.notify_heartbeat_progress(leader_time);
 
-                let matching = sending_range.last;
+                let matching = &sending_range.last;
                 if has_payload {
-                    self.notify_progress(ReplicationResult(Ok(matching)));
-                    Ok(self.next_action_to_send(matching, log_ids))
+                    self.notify_progress(ReplicationResult(Ok(matching.clone())));
+                    Ok(self.next_action_to_send(matching.clone(), log_ids))
                 } else {
                     Ok(None)
                 }
@@ -475,8 +475,8 @@ where
                 self.notify_heartbeat_progress(leader_time);
 
                 if has_payload {
-                    self.notify_progress(ReplicationResult(Ok(matching)));
-                    Ok(self.next_action_to_send(matching, log_ids))
+                    self.notify_progress(ReplicationResult(Ok(matching.clone())));
+                    Ok(self.next_action_to_send(matching.clone(), log_ids))
                 } else {
                     Ok(None)
                 }
@@ -517,9 +517,9 @@ where
     fn send_progress_error(&mut self, err: RPCError<C>) {
         let _ = self.tx_raft_core.send(Notification::ReplicationProgress {
             progress: Progress {
-                target: self.target,
+                target: self.target.clone(),
                 result: Err(err.to_string()),
-                session_id: self.session_id,
+                session_id: self.session_id.clone(),
             },
         });
     }
@@ -531,8 +531,8 @@ where
     fn notify_heartbeat_progress(&mut self, sending_time: InstantOf<C>) {
         let _ = self.tx_raft_core.send({
             Notification::HeartbeatProgress {
-                session_id: self.session_id,
-                target: self.target,
+                session_id: self.session_id.clone(),
+                target: self.target.clone(),
                 sending_time,
             }
         });
@@ -541,17 +541,17 @@ where
     /// Notify RaftCore with the success replication result(log matching or conflict).
     fn notify_progress(&mut self, replication_result: ReplicationResult<C>) {
         tracing::debug!(
-            target = display(self.target),
+            target = display(self.target.clone()),
             curr_matching = display(self.matching.display()),
             result = display(&replication_result),
             "{}",
             func_name!()
         );
 
-        match replication_result.0 {
+        match &replication_result.0 {
             Ok(matching) => {
                 self.validate_matching(matching);
-                self.matching = matching;
+                self.matching = matching.clone();
             }
             Err(_conflict) => {
                 // Conflict is not allowed to be less than the current matching.
@@ -561,9 +561,9 @@ where
         let _ = self.tx_raft_core.send({
             Notification::ReplicationProgress {
                 progress: Progress {
-                    session_id: self.session_id,
-                    target: self.target,
-                    result: Ok(replication_result),
+                    session_id: self.session_id.clone(),
+                    target: self.target.clone(),
+                    result: Ok(replication_result.clone()),
                 },
             }
         });
@@ -576,9 +576,9 @@ where
     /// - otherwise panic, consider it as a bug.
     ///
     /// [`loosen-follower-log-revert`]: crate::docs::feature_flags#feature_flag_loosen_follower_log_revert
-    fn validate_matching(&self, matching: Option<LogId<C::NodeId>>) {
+    fn validate_matching(&self, matching: &Option<LogId<C::NodeId>>) {
         if cfg!(feature = "loosen-follower-log-revert") {
-            if self.matching > matching {
+            if &self.matching > matching {
                 tracing::warn!(
                     "follower log is reverted from {} to {}; with 'loosen-follower-log-revert' enabled, this is allowed",
                     self.matching.display(),
@@ -587,7 +587,7 @@ where
             }
         } else {
             debug_assert!(
-                self.matching <= matching,
+                &self.matching <= matching,
                 "follower log is reverted from {} to {}",
                 self.matching.display(),
                 matching.display(),

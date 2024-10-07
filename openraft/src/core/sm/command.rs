@@ -85,7 +85,7 @@ where C: RaftTypeConfig
             Command::BuildSnapshot => None,
             Command::GetSnapshot { .. } => None,
             Command::BeginReceivingSnapshot { .. } => None,
-            Command::InstallFullSnapshot { io_id, .. } => Some(*io_id),
+            Command::InstallFullSnapshot { io_id, .. } => Some(io_id.clone()),
             Command::Apply { .. } => None,
             Command::Func { .. } => None,
         }

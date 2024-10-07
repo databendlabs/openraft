@@ -75,7 +75,7 @@ where C: RaftTypeConfig
             let res = f(self.state, e);
 
             let condition = Some(Condition::IOFlushed {
-                io_id: IOId::new(*self.state.vote_ref()),
+                io_id: IOId::new(self.state.vote_ref()),
             });
 
             self.output.push_command(Command::Respond {
@@ -106,7 +106,7 @@ where C: RaftTypeConfig
             // Ok
         } else {
             tracing::info!("vote {} is rejected by local vote: {}", vote, self.state.vote_ref());
-            return Err(RejectVoteRequest::ByVote(*self.state.vote_ref()));
+            return Err(RejectVoteRequest::ByVote(self.state.vote_ref().clone()));
         }
         tracing::debug!(%vote, "vote is changing to" );
 
@@ -125,9 +125,9 @@ where C: RaftTypeConfig
         if vote > self.state.vote_ref() {
             tracing::info!("vote is changing from {} to {}", self.state.vote_ref(), vote);
 
-            self.state.vote.update(C::now(), leader_lease, *vote);
-            self.state.accept_io(IOId::new(*vote));
-            self.output.push_command(Command::SaveVote { vote: *vote });
+            self.state.vote.update(C::now(), leader_lease, vote.clone());
+            self.state.accept_io(IOId::new(vote));
+            self.output.push_command(Command::SaveVote { vote: vote.clone() });
         } else {
             self.state.vote.touch(C::now(), leader_lease);
         }
@@ -161,13 +161,13 @@ where C: RaftTypeConfig
             "become leader: node-{}, my vote: {}, last-log-id: {}",
             self.config.id,
             self.state.vote_ref(),
-            self.state.last_log_id().copied().unwrap_or_default()
+            self.state.last_log_id().cloned().unwrap_or_default()
         );
 
         if let Some(l) = self.leader.as_mut() {
             tracing::debug!("leading vote: {}", l.committed_vote,);
 
-            if l.committed_vote.into_vote().leader_id() == self.state.vote_ref().leader_id() {
+            if l.committed_vote.clone().into_vote().leader_id() == self.state.vote_ref().leader_id() {
                 tracing::debug!(
                     "vote still belongs to the same leader. Just updating vote is enough: node-{}, {}",
                     self.config.id,
@@ -176,7 +176,7 @@ where C: RaftTypeConfig
                 // TODO: this is not gonna happen,
                 //       because `self.leader`(previous `internal_server_state`)
                 //       does not include Candidate any more.
-                l.committed_vote = self.state.vote_ref().into_committed();
+                l.committed_vote = self.state.vote_ref().clone().into_committed();
                 self.server_state_handler().update_server_state_if_changed();
                 return;
             }
@@ -186,19 +186,19 @@ where C: RaftTypeConfig
         // Re-create a new Leader instance.
 
         let leader = self.state.new_leader();
-        let leader_vote = *leader.committed_vote_ref();
+        let leader_vote = leader.committed_vote_ref().clone();
         *self.leader = Some(Box::new(leader));
 
         let (last_log_id, noop_log_id) = {
             let leader = self.leader.as_ref().unwrap();
-            (leader.last_log_id().copied(), leader.noop_log_id().copied())
+            (leader.last_log_id().cloned(), leader.noop_log_id().cloned())
         };
 
-        self.state.accept_io(IOId::new_log_io(leader_vote, last_log_id));
+        self.state.accept_io(IOId::new_log_io(leader_vote.clone(), last_log_id.clone()));
 
         self.output.push_command(Command::UpdateIOProgress {
             when: None,
-            io_id: IOId::new_log_io(leader_vote, last_log_id),
+            io_id: IOId::new_log_io(leader_vote, last_log_id.clone()),
         });
 
         self.server_state_handler().update_server_state_if_changed();
@@ -221,7 +221,7 @@ where C: RaftTypeConfig
     /// This node then becomes raft-follower or raft-learner.
     pub(crate) fn become_following(&mut self) {
         debug_assert!(
-            self.state.vote_ref().leader_id().voted_for() != Some(self.config.id)
+            self.state.vote_ref().leader_id().voted_for().as_ref() != Some(&self.config.id)
                 || !self.state.membership_state.effective().membership().is_voter(&self.config.id),
             "It must hold: vote is not mine, or I am not a voter(leader just left the cluster)"
         );
