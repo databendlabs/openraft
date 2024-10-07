@@ -31,12 +31,12 @@ impl<NID: NodeId> LeaderId<NID> {
     }
 
     pub fn voted_for(&self) -> Option<NID> {
-        Some(self.node_id)
+        Some(self.node_id.clone())
     }
 
     #[allow(clippy::wrong_self_convention)]
     pub(crate) fn to_committed(&self) -> CommittedLeaderId<NID> {
-        *self
+        self.clone()
     }
 
     /// Return if it is the same leader as the committed leader id.

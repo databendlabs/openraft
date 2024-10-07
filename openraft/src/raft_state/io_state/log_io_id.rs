@@ -20,7 +20,7 @@ use crate::RaftTypeConfig;
 ///
 /// See: [LogId Appended Multiple
 /// Times](crate::docs::protocol::replication::log_replication#logid-appended-multiple-times).
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 #[derive(PartialEq, Eq)]
 #[derive(PartialOrd, Ord)]
 pub(crate) struct LogIOId<C>

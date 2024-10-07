@@ -257,15 +257,15 @@ where C: RaftTypeConfig
     pub(crate) fn condition(&self) -> Option<Condition<C>> {
         match self {
             Command::RebuildReplicationStreams { .. } => None,
-            Command::Respond { when, .. }             => *when,
+            Command::Respond { when, .. }             => when.clone(),
 
-            Command::UpdateIOProgress { when, .. }    => *when,
+            Command::UpdateIOProgress { when, .. }    => when.clone(),
             Command::AppendInputEntries { .. }        => None,
             Command::SaveVote { .. }                  => None,
             Command::TruncateLog { .. }               => None,
             Command::SaveCommitted { .. }             => None,
 
-            Command::PurgeLog { upto }                => Some(Condition::Snapshot { log_id: Some(*upto) }),
+            Command::PurgeLog { upto }                => Some(Condition::Snapshot { log_id: Some(upto.clone()) }),
 
             Command::ReplicateCommitted { .. }        => None,
             Command::BroadcastHeartbeat { .. }        => None,
@@ -280,7 +280,7 @@ where C: RaftTypeConfig
 }
 
 /// A condition to wait for before running a command.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 #[derive(PartialEq, Eq)]
 pub(crate) enum Condition<C>
 where C: RaftTypeConfig

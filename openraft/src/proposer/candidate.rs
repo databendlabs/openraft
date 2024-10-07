@@ -99,18 +99,18 @@ where
     /// Return the node ids that has granted this vote.
     #[allow(dead_code)]
     pub(crate) fn granters(&self) -> impl Iterator<Item = C::NodeId> + '_ {
-        self.progress().iter().filter(|(_, granted)| *granted).map(|(target, _)| *target)
+        self.progress().iter().filter(|(_, granted)| *granted).map(|(target, _)| target.clone())
     }
 
     pub(crate) fn into_leader(self) -> Leader<C, QS> {
         // Mark the vote as committed, i.e., being granted and saved by a quorum.
         let vote = {
-            let vote = *self.vote_ref();
+            let vote = self.vote_ref().clone();
             debug_assert!(!vote.is_committed());
             vote.into_committed()
         };
 
-        let last_leader_log_ids = self.last_log_id().copied().into_iter().collect::<Vec<_>>();
+        let last_leader_log_ids = self.last_log_id().cloned().into_iter().collect::<Vec<_>>();
 
         Leader::new(vote, self.quorum_set.clone(), self.learner_ids, &last_leader_log_ids)
     }

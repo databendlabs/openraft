@@ -186,7 +186,7 @@ where
         #[allow(clippy::needless_collect)]
         let applying_entries = entries
             .iter()
-            .map(|e| ApplyingEntry::new(*e.get_log_id(), e.get_membership().cloned()))
+            .map(|e| ApplyingEntry::new(e.get_log_id().clone(), e.get_membership().cloned()))
             .collect::<Vec<_>>();
 
         let n_entries = end - since;

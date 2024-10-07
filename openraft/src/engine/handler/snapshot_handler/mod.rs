@@ -53,7 +53,7 @@ where C: RaftTypeConfig
     pub(crate) fn update_snapshot(&mut self, meta: SnapshotMeta<C>) -> bool {
         tracing::info!("update_snapshot: {:?}", meta);
 
-        if meta.last_log_id <= self.state.snapshot_last_log_id().copied() {
+        if meta.last_log_id <= self.state.snapshot_last_log_id().cloned() {
             tracing::info!(
                 "No need to install a smaller snapshot: current snapshot last_log_id({}), new snapshot last_log_id({})",
                 self.state.snapshot_last_log_id().display(),

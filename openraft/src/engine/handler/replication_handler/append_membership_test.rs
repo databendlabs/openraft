@@ -128,15 +128,15 @@ fn test_leader_append_membership_update_learner_process() -> anyhow::Result<()> 
         assert_eq!(&ProgressEntry::empty(11), l.progress.get(&5));
 
         let p = ProgressEntry::new(Some(log_id(1, 1, 4)));
-        let _ = l.progress.update(&4, p);
+        let _ = l.progress.update(&4, p.clone());
         assert_eq!(&p, l.progress.get(&4));
 
         let p = ProgressEntry::new(Some(log_id(1, 1, 5)));
-        let _ = l.progress.update(&5, p);
+        let _ = l.progress.update(&5, p.clone());
         assert_eq!(&p, l.progress.get(&5));
 
         let p = ProgressEntry::new(Some(log_id(1, 1, 3)));
-        let _ = l.progress.update(&3, p);
+        let _ = l.progress.update(&3, p.clone());
         assert_eq!(&p, l.progress.get(&3));
     } else {
         unreachable!("leader should not be None");

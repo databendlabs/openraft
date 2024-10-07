@@ -251,7 +251,7 @@ where
         Err(err)
     }
 
-    #[tracing::instrument(level="trace", skip_all, fields(id=display(self.id), cluster=%self.config.cluster_name))]
+    #[tracing::instrument(level="trace", skip_all, fields(id=display(&self.id), cluster=%self.config.cluster_name))]
     async fn do_main(&mut self, rx_shutdown: OneshotReceiverOf<C, ()>) -> Result<Infallible, Fatal<C>> {
         tracing::debug!("raft node is initializing");
 
@@ -294,18 +294,18 @@ where
 
             // TODO: this applied is a little stale when being returned to client.
             //       Fix this when the following heartbeats are replaced with calling RaftNetwork.
-            let applied = self.engine.state.io_applied().copied();
+            let applied = self.engine.state.io_applied().cloned();
 
             (read_log_id, applied)
         };
 
-        let my_id = self.id;
-        let my_vote = *self.engine.state.vote_ref();
+        let my_id = self.id.clone();
+        let my_vote = self.engine.state.vote_ref().clone();
         let ttl = Duration::from_millis(self.config.heartbeat_interval);
         let eff_mem = self.engine.state.membership_state.effective().clone();
         let core_tx = self.tx_notification.clone();
 
-        let mut granted = btreeset! {my_id};
+        let mut granted = btreeset! {my_id.clone()};
 
         if eff_mem.is_quorum(granted.iter()) {
             let _ = tx.send(Ok(resp));
@@ -321,41 +321,46 @@ where
         };
 
         for (target, progress) in voter_progresses {
-            let target = *target;
+            let target = target.clone();
 
             if target == my_id {
                 continue;
             }
 
             let rpc = AppendEntriesRequest {
-                vote: my_vote,
-                prev_log_id: progress.matching,
+                vote: my_vote.clone(),
+                prev_log_id: progress.matching.clone(),
                 entries: vec![],
-                leader_commit: self.engine.state.committed().copied(),
+                leader_commit: self.engine.state.committed().cloned(),
             };
 
             // Safe unwrap(): target is in membership
             let target_node = eff_mem.get_node(&target).unwrap().clone();
-            let mut client = self.network_factory.new_client(target, &target_node).await;
+            let mut client = self.network_factory.new_client(target.clone(), &target_node).await;
 
             let option = RPCOption::new(ttl);
 
-            let fu = async move {
-                let outer_res = C::timeout(ttl, client.append_entries(rpc, option)).await;
-                match outer_res {
-                    Ok(append_res) => match append_res {
-                        Ok(x) => Ok((target, x)),
-                        Err(err) => Err((target, err)),
-                    },
-                    Err(_timeout) => {
-                        let timeout_err = Timeout {
-                            action: RPCTypes::AppendEntries,
-                            id: my_id,
-                            target,
-                            timeout: ttl,
-                        };
+            let fu = {
+                let my_id = my_id.clone();
+                let target = target.clone();
 
-                        Err((target, RPCError::Timeout(timeout_err)))
+                async move {
+                    let outer_res = C::timeout(ttl, client.append_entries(rpc, option)).await;
+                    match outer_res {
+                        Ok(append_res) => match append_res {
+                            Ok(x) => Ok((target, x)),
+                            Err(err) => Err((target, err)),
+                        },
+                        Err(_timeout) => {
+                            let timeout_err = Timeout {
+                                action: RPCTypes::AppendEntries,
+                                id: my_id,
+                                target: target.clone(),
+                                timeout: ttl,
+                            };
+
+                            Err((target, RPCError::Timeout(timeout_err)))
+                        }
                     }
                 }
             };
@@ -471,7 +476,7 @@ where
     ///
     /// The result of applying it to state machine is sent to `resp_tx`, if it is not `None`.
     /// The calling side may not receive a result from `resp_tx`, if raft is shut down.
-    #[tracing::instrument(level = "debug", skip_all, fields(id = display(self.id)))]
+    #[tracing::instrument(level = "debug", skip_all, fields(id = display(&self.id)))]
     pub fn write_entry(&mut self, entry: C::Entry, resp_tx: Option<ResponderOf<C>>) {
         tracing::debug!(payload = display(&entry), "write_entry");
 
@@ -482,7 +487,7 @@ where
         // If the leader is transferring leadership, forward writes to the new leader.
         if let Some(to) = lh.leader.get_transfer_to() {
             if let Some(tx) = tx {
-                let err = lh.state.new_forward_to_leader(*to);
+                let err = lh.state.new_forward_to_leader(to.clone());
                 tx.send(Err(ClientWriteError::ForwardToLeader(err)));
             }
             return;
@@ -501,7 +506,7 @@ where
     }
 
     /// Send a heartbeat message to every follower/learners.
-    #[tracing::instrument(level = "debug", skip_all, fields(id = display(self.id)))]
+    #[tracing::instrument(level = "debug", skip_all, fields(id = display(&self.id)))]
     pub(crate) fn send_heartbeat(&mut self, emitter: impl fmt::Display) -> bool {
         tracing::debug!(now = display(C::now().display()), "send_heartbeat");
 
@@ -533,10 +538,21 @@ where
     pub fn flush_metrics(&mut self) {
         let (replication, heartbeat) = if let Some(leader) = self.engine.leader.as_ref() {
             let replication_prog = &leader.progress;
-            let replication = Some(replication_prog.iter().map(|(id, p)| (*id, *p.borrow())).collect());
+            let replication = Some(
+                replication_prog
+                    .iter()
+                    .map(|(id, p)| {
+                        (
+                            id.clone(),
+                            <ProgressEntry<C> as Borrow<Option<LogId<C::NodeId>>>>::borrow(p).clone(),
+                        )
+                    })
+                    .collect(),
+            );
 
             let clock_prog = &leader.clock_progress;
-            let heartbeat = Some(clock_prog.iter().map(|(id, opt_t)| (*id, opt_t.map(SerdeInstant::new))).collect());
+            let heartbeat =
+                Some(clock_prog.iter().map(|(id, opt_t)| (id.clone(), opt_t.map(SerdeInstant::new))).collect());
 
             (replication, heartbeat)
         } else {
@@ -563,19 +579,19 @@ where
         #[allow(deprecated)]
         let m = RaftMetrics {
             running_state: Ok(()),
-            id: self.id,
+            id: self.id.clone(),
 
             // --- data ---
             current_term: st.vote_ref().leader_id().get_term(),
             vote: st.io_state().io_progress.flushed().map(|io_id| io_id.to_vote()).unwrap_or_default(),
             last_log_index: st.last_log_id().index(),
-            last_applied: st.io_applied().copied(),
-            snapshot: st.io_snapshot_last_log_id().copied(),
-            purged: st.io_purged().copied(),
+            last_applied: st.io_applied().cloned(),
+            snapshot: st.io_snapshot_last_log_id().cloned(),
+            purged: st.io_purged().cloned(),
 
             // --- cluster ---
             state: st.server_state,
-            current_leader,
+            current_leader: current_leader.clone(),
             millis_since_quorum_ack,
             last_quorum_acked: last_quorum_acked.map(SerdeInstant::new),
             membership_config: membership_config.clone(),
@@ -587,10 +603,10 @@ where
 
         #[allow(deprecated)]
         let data_metrics = RaftDataMetrics {
-            last_log: st.last_log_id().copied(),
-            last_applied: st.io_applied().copied(),
-            snapshot: st.io_snapshot_last_log_id().copied(),
-            purged: st.io_purged().copied(),
+            last_log: st.last_log_id().cloned(),
+            last_applied: st.io_applied().cloned(),
+            snapshot: st.io_snapshot_last_log_id().cloned(),
+            purged: st.io_purged().cloned(),
             millis_since_quorum_ack,
             last_quorum_acked: last_quorum_acked.map(SerdeInstant::new),
             replication,
@@ -598,7 +614,7 @@ where
         };
 
         let server_metrics = RaftServerMetrics {
-            id: self.id,
+            id: self.id.clone(),
             vote: st.io_state().io_progress.flushed().map(|io_id| io_id.to_vote()).unwrap_or_default(),
             state: st.server_state,
             current_leader,
@@ -630,7 +646,7 @@ where
         let res = self.tx_metrics.send(m);
 
         if let Err(err) = res {
-            tracing::error!(error=%err, id=display(self.id), "error reporting metrics");
+            tracing::error!(error=%err, id=display(&self.id), "error reporting metrics");
         }
     }
 
@@ -661,7 +677,7 @@ where
             // There is no Leader yet therefore use [`Condition::LogFlushed`] instead of
             // [`Condition::IOFlushed`].
             Some(Condition::LogFlushed {
-                log_id: self.engine.state.last_log_id().copied(),
+                log_id: self.engine.state.last_log_id().cloned(),
             })
         };
         self.engine.output.push_command(Command::Respond {
@@ -682,7 +698,7 @@ where
     pub(crate) fn reject_with_forward_to_leader<T: OptionalSend, E>(&self, tx: ResultSender<C, T, E>)
     where E: From<ForwardToLeader<C>> + OptionalSend {
         let mut leader_id = self.current_leader();
-        let leader_node = self.get_leader_node(leader_id);
+        let leader_node = self.get_leader_node(leader_id.clone());
 
         // Leader is no longer a node in the membership config.
         if leader_node.is_none() {
@@ -697,7 +713,7 @@ where
     #[tracing::instrument(level = "debug", skip(self))]
     pub(crate) fn current_leader(&self) -> Option<C::NodeId> {
         tracing::debug!(
-            self_id = display(self.id),
+            self_id = display(&self.id),
             vote = display(self.engine.state.vote_ref()),
             "get current_leader"
         );
@@ -756,7 +772,7 @@ where
             last.index
         );
 
-        let cmd = sm::Command::apply(first, last);
+        let cmd = sm::Command::apply(first, last.clone());
         self.sm_handle.send(cmd).map_err(|e| StorageError::apply(last, AnyError::error(e)))?;
 
         Ok(())
@@ -813,25 +829,25 @@ where
         let target_node = self.engine.state.membership_state.effective().get_node(&target).unwrap();
 
         let membership_log_id = self.engine.state.membership_state.effective().log_id();
-        let network = self.network_factory.new_client(target, target_node).await;
-        let snapshot_network = self.network_factory.new_client(target, target_node).await;
+        let network = self.network_factory.new_client(target.clone(), target_node).await;
+        let snapshot_network = self.network_factory.new_client(target.clone(), target_node).await;
 
         let leader = self.engine.leader.as_ref().unwrap();
 
-        let session_id = ReplicationSessionId::new(leader.committed_vote, *membership_log_id);
+        let session_id = ReplicationSessionId::new(leader.committed_vote.clone(), membership_log_id.clone());
 
         ReplicationCore::<C, NF, LS>::spawn(
-            target,
+            target.clone(),
             session_id,
             self.config.clone(),
-            self.engine.state.committed().copied(),
+            self.engine.state.committed().cloned(),
             progress_entry.matching,
             network,
             snapshot_network,
             self.log_store.get_log_reader().await,
             self.sm_handle.new_snapshot_reader(),
             self.tx_notification.clone(),
-            tracing::span!(parent: &self.span, Level::DEBUG, "replication", id=display(self.id), target=display(target)),
+            tracing::span!(parent: &self.span, Level::DEBUG, "replication", id=display(&self.id), target=display(&target)),
         )
     }
 
@@ -845,7 +861,7 @@ where
         let nodes = std::mem::take(&mut self.replications);
 
         tracing::debug!(
-            targets = debug(nodes.iter().map(|x| *x.0).collect::<Vec<_>>()),
+            targets = debug(nodes.iter().map(|x| x.0.clone()).collect::<Vec<_>>()),
             "remove all targets from replication_metrics"
         );
 
@@ -903,7 +919,7 @@ where
     /// Run an event handling loop
     ///
     /// It always returns a [`Fatal`] error upon returning.
-    #[tracing::instrument(level="debug", skip_all, fields(id=display(self.id)))]
+    #[tracing::instrument(level="debug", skip_all, fields(id=display(&self.id)))]
     async fn runtime_loop(&mut self, mut rx_shutdown: OneshotReceiverOf<C, ()>) -> Result<Infallible, Fatal<C>> {
         // Ratio control the ratio of number of RaftMsg to process to number of Notification to process.
         let mut balancer = Balancer::new(10_000);
@@ -1059,7 +1075,7 @@ where
     async fn spawn_parallel_vote_requests(&mut self, vote_req: &VoteRequest<C>) {
         let members = self.engine.state.membership_state.effective().voter_ids();
 
-        let vote = vote_req.vote;
+        let vote = vote_req.vote.clone();
 
         for target in members {
             if target == self.id {
@@ -1070,49 +1086,54 @@ where
 
             // Safe unwrap(): target must be in membership
             let target_node = self.engine.state.membership_state.effective().get_node(&target).unwrap().clone();
-            let mut client = self.network_factory.new_client(target, &target_node).await;
+            let mut client = self.network_factory.new_client(target.clone(), &target_node).await;
 
             let tx = self.tx_notification.clone();
 
             let ttl = Duration::from_millis(self.config.election_timeout_min);
-            let id = self.id;
+            let id = self.id.clone();
             let option = RPCOption::new(ttl);
+
+            let vote = vote.clone();
 
             // False positive lint warning(`non-binding `let` on a future`): https://github.com/rust-lang/rust-clippy/issues/9932
             #[allow(clippy::let_underscore_future)]
             let _ = C::spawn(
-                async move {
-                    let tm_res = C::timeout(ttl, client.vote(req, option)).await;
-                    let res = match tm_res {
-                        Ok(res) => res,
+                {
+                    let target = target.clone();
+                    async move {
+                        let tm_res = C::timeout(ttl, client.vote(req, option)).await;
+                        let res = match tm_res {
+                            Ok(res) => res,
 
-                        Err(_timeout) => {
-                            let timeout_err = Timeout::<C> {
-                                action: RPCTypes::Vote,
-                                id,
-                                target,
-                                timeout: ttl,
-                            };
-                            tracing::error!({error = %timeout_err, target = display(target)}, "timeout");
-                            return;
-                        }
-                    };
+                            Err(_timeout) => {
+                                let timeout_err = Timeout::<C> {
+                                    action: RPCTypes::Vote,
+                                    id,
+                                    target: target.clone(),
+                                    timeout: ttl,
+                                };
+                                tracing::error!({error = %timeout_err}, "timeout");
+                                return;
+                            }
+                        };
 
-                    match res {
-                        Ok(resp) => {
-                            let _ = tx.send(Notification::VoteResponse {
-                                target,
-                                resp,
-                                candidate_vote: vote.into_non_committed(),
-                            });
+                        match res {
+                            Ok(resp) => {
+                                let _ = tx.send(Notification::VoteResponse {
+                                    target,
+                                    resp,
+                                    candidate_vote: vote.into_non_committed(),
+                                });
+                            }
+                            Err(err) => tracing::error!({error=%err, target=display(&target)}, "while requesting vote"),
                         }
-                        Err(err) => tracing::error!({error=%err, target=display(target)}, "while requesting vote"),
                     }
                 }
                 .instrument(tracing::debug_span!(
                     parent: &Span::current(),
                     "send_vote_req",
-                    target = display(target)
+                    target = display(&target)
                 )),
             );
         }
@@ -1132,32 +1153,35 @@ where
 
             // Safe unwrap(): target must be in membership
             let target_node = self.engine.state.membership_state.effective().get_node(&target).unwrap().clone();
-            let mut client = self.network_factory.new_client(target, &target_node).await;
+            let mut client = self.network_factory.new_client(target.clone(), &target_node).await;
 
             let ttl = Duration::from_millis(self.config.election_timeout_min);
             let option = RPCOption::new(ttl);
 
-            let fut = async move {
-                let tm_res = C::timeout(ttl, client.transfer_leader(r, option)).await;
-                let res = match tm_res {
-                    Ok(res) => res,
-                    Err(timeout) => {
-                        tracing::error!({error = display(timeout), target = display(target)}, "timeout sending transfer_leader");
-                        return;
-                    }
-                };
+            let fut = {
+                let target = target.clone();
+                async move {
+                    let tm_res = C::timeout(ttl, client.transfer_leader(r, option)).await;
+                    let res = match tm_res {
+                        Ok(res) => res,
+                        Err(timeout) => {
+                            tracing::error!({error = display(timeout), target = display(&target)}, "timeout sending transfer_leader");
+                            return;
+                        }
+                    };
 
-                if let Err(e) = res {
-                    tracing::error!({error = display(e), target = display(target)}, "error sending transfer_leader");
-                } else {
-                    tracing::info!("Done transfer_leader sent to {}", target);
+                    if let Err(e) = res {
+                        tracing::error!({error = display(e), target = display(&target)}, "error sending transfer_leader");
+                    } else {
+                        tracing::info!("Done transfer_leader sent to {}", target);
+                    }
                 }
             };
 
             let span = tracing::debug_span!(
                 parent: &Span::current(),
                 "send_transfer_leader",
-                target = display(target)
+                target = display(&target)
             );
 
             // False positive lint warning(`non-binding `let` on a future`): https://github.com/rust-lang/rust-clippy/issues/9932
@@ -1172,7 +1196,7 @@ where
 
         let resp = self.engine.handle_vote_req(req);
         let condition = Some(Condition::IOFlushed {
-            io_id: IOId::new(*self.engine.state.vote_ref()),
+            io_id: IOId::new(self.engine.state.vote_ref()),
         });
         self.engine.output.push_command(Command::Respond {
             when: condition,
@@ -1192,7 +1216,7 @@ where
     }
 
     // TODO: Make this method non-async. It does not need to run any async command in it.
-    #[tracing::instrument(level = "debug", skip(self, msg), fields(state = debug(self.engine.state.server_state), id=display(self.id)))]
+    #[tracing::instrument(level = "debug", skip(self, msg), fields(state = debug(self.engine.state.server_state), id=display(&self.id)))]
     pub(crate) async fn handle_api_msg(&mut self, msg: RaftMsg<C>) {
         tracing::debug!("RAFT_event id={:<2}  input: {}", self.id, msg);
 
@@ -1299,7 +1323,7 @@ where
         };
     }
 
-    #[tracing::instrument(level = "debug", skip_all, fields(state = debug(self.engine.state.server_state), id=display(self.id)))]
+    #[tracing::instrument(level = "debug", skip_all, fields(state = debug(self.engine.state.server_state), id=display(&self.id)))]
     pub(crate) fn handle_notification(&mut self, notify: Notification<C>) -> Result<(), Fatal<C>> {
         tracing::debug!("RAFT_event id={:<2} notify: {}", self.id, notify);
 
@@ -1399,7 +1423,7 @@ where
             }
 
             Notification::LocalIO { io_id } => {
-                self.engine.state.io_state.io_progress.flush(io_id);
+                self.engine.state.io_state.io_progress.flush(io_id.clone());
 
                 match io_id {
                     IOId::Log(log_io_id) => {
@@ -1438,8 +1462,8 @@ where
             } => {
                 if self.does_replication_session_match(&session_id, "HeartbeatProgress") {
                     tracing::debug!(
-                        session_id = display(session_id),
-                        target = display(target),
+                        session_id = display(&session_id),
+                        target = display(&target),
                         sending_time = display(sending_time.display()),
                         "HeartbeatProgress"
                     );
@@ -1465,7 +1489,7 @@ where
                         // Update in-memory state first, then the io state.
                         // In-memory state should always be ahead or equal to the io state.
 
-                        let last_log_id = meta.last_log_id;
+                        let last_log_id = meta.last_log_id.clone();
                         self.engine.finish_building_snapshot(meta);
 
                         let st = self.engine.state.io_state_mut();
@@ -1483,12 +1507,12 @@ where
 
                         if let Some(meta) = meta {
                             let st = self.engine.state.io_state_mut();
-                            st.update_applied(meta.last_log_id);
+                            st.update_applied(meta.last_log_id.clone());
                             st.update_snapshot(meta.last_log_id);
                         }
                     }
                     sm::Response::Apply(res) => {
-                        self.engine.state.io_state_mut().update_applied(Some(res.last_applied));
+                        self.engine.state.io_state_mut().update_applied(Some(res.last_applied.clone()));
 
                         self.handle_apply_result(res);
                     }
@@ -1556,7 +1580,7 @@ where
     /// it is a stale message and should be just ignored.
     fn does_candidate_vote_match(&self, candidate_vote: &NonCommittedVote<C>, msg: impl fmt::Display) -> bool {
         // If it finished voting, Candidate's vote is None.
-        let Some(my_vote) = self.engine.candidate_ref().map(|x| *x.vote_ref()) else {
+        let Some(my_vote) = self.engine.candidate_ref().map(|x| x.vote_ref().clone()) else {
             tracing::warn!(
                 "A message will be ignored because this node is no longer Candidate: \
                  msg sent by vote: {}; when ({})",
@@ -1583,7 +1607,7 @@ where
     /// If a message is sent by a previous Leader but is received by current Leader,
     /// it is a stale message and should be just ignored.
     fn does_leader_vote_match(&self, leader_vote: &CommittedVote<C>, msg: impl fmt::Display) -> bool {
-        let Some(my_vote) = self.engine.leader.as_ref().map(|x| x.committed_vote) else {
+        let Some(my_vote) = self.engine.leader.as_ref().map(|x| x.committed_vote.clone()) else {
             tracing::warn!(
                 "A message will be ignored because this node is no longer Leader: \
                 msg sent by vote: {}; when ({})",
@@ -1697,9 +1721,9 @@ where
 
         match cmd {
             Command::UpdateIOProgress { io_id, .. } => {
-                self.engine.state.io_state.io_progress.submit(io_id);
+                self.engine.state.io_state.io_progress.submit(io_id.clone());
 
-                let notify = Notification::LocalIO { io_id };
+                let notify = Notification::LocalIO { io_id: io_id.clone() };
 
                 let _ = self.tx_notification.send(notify);
             }
@@ -1707,11 +1731,11 @@ where
                 committed_vote: vote,
                 entries,
             } => {
-                let last_log_id = *entries.last().unwrap().get_log_id();
+                let last_log_id = entries.last().unwrap().get_log_id();
                 tracing::debug!("AppendInputEntries: {}", DisplaySlice::<_>(&entries),);
 
-                let io_id = IOId::new_log_io(vote, Some(last_log_id));
-                let notify = Notification::LocalIO { io_id };
+                let io_id = IOId::new_log_io(vote, Some(last_log_id.clone()));
+                let notify = Notification::LocalIO { io_id: io_id.clone() };
                 let callback = IOFlushed::new(notify, self.tx_notification.downgrade());
 
                 // Mark this IO request as submitted,
@@ -1728,16 +1752,18 @@ where
                 self.log_store.append(entries, callback).await?;
             }
             Command::SaveVote { vote } => {
-                self.engine.state.io_state_mut().io_progress.submit(IOId::new(vote));
+                self.engine.state.io_state_mut().io_progress.submit(IOId::new(&vote));
                 self.log_store.save_vote(&vote).await?;
 
-                let _ = self.tx_notification.send(Notification::LocalIO { io_id: IOId::new(vote) });
+                let _ = self.tx_notification.send(Notification::LocalIO {
+                    io_id: IOId::new(&vote),
+                });
 
                 // If a non-committed vote is saved,
                 // there may be a candidate waiting for the response.
-                if let VoteStatus::Pending(non_committed) = vote.into_vote_status() {
+                if let VoteStatus::Pending(non_committed) = vote.clone().into_vote_status() {
                     let _ = self.tx_notification.send(Notification::VoteResponse {
-                        target: self.id,
+                        target: self.id.clone(),
                         // last_log_id is not used when sending VoteRequest to local node
                         resp: VoteResponse::new(vote, None, true),
                         candidate_vote: non_committed,
@@ -1745,24 +1771,24 @@ where
                 }
             }
             Command::PurgeLog { upto } => {
-                self.log_store.purge(upto).await?;
+                self.log_store.purge(upto.clone()).await?;
                 self.engine.state.io_state_mut().update_purged(Some(upto));
             }
             Command::TruncateLog { since } => {
-                self.log_store.truncate(since).await?;
+                self.log_store.truncate(since.clone()).await?;
 
                 // Inform clients waiting for logs to be applied.
                 let removed = self.client_resp_channels.split_off(&since.index);
                 if !removed.is_empty() {
                     let leader_id = self.current_leader();
-                    let leader_node = self.get_leader_node(leader_id);
+                    let leader_node = self.get_leader_node(leader_id.clone());
 
                     // False positive lint warning(`non-binding `let` on a future`): https://github.com/rust-lang/rust-clippy/issues/9932
                     #[allow(clippy::let_underscore_future)]
                     let _ = C::spawn(async move {
                         for (log_index, tx) in removed.into_iter() {
                             tx.send(Err(ClientWriteError::ForwardToLeader(ForwardToLeader {
-                                leader_id,
+                                leader_id: leader_id.clone(),
                                 leader_node: leader_node.clone(),
                             })));
 
@@ -1776,7 +1802,7 @@ where
             }
             Command::ReplicateCommitted { committed } => {
                 for node in self.replications.values() {
-                    let _ = node.tx_repl.send(Replicate::Committed(committed));
+                    let _ = node.tx_repl.send(Replicate::Committed(committed.clone()));
                 }
             }
             Command::BroadcastHeartbeat { session_id, committed } => {
@@ -1802,15 +1828,15 @@ where
                 self.remove_all_replication().await;
 
                 for ReplicationProgress(target, matching) in targets.iter() {
-                    let handle = self.spawn_replication_stream(*target, *matching).await;
-                    self.replications.insert(*target, handle);
+                    let handle = self.spawn_replication_stream(target.clone(), matching.clone()).await;
+                    self.replications.insert(target.clone(), handle);
                 }
 
                 let effective = self.engine.state.membership_state.effective().clone();
 
                 let nodes = targets.into_iter().map(|p| {
                     let node_id = p.0;
-                    (node_id, effective.get_node(&node_id).unwrap().clone())
+                    (node_id.clone(), effective.get_node(&node_id).unwrap().clone())
                 });
 
                 self.heartbeat_handle.spawn_workers(&mut self.network_factory, &self.tx_notification, nodes).await;
