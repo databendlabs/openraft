@@ -148,6 +148,7 @@ For benchmark detail, go to the [./cluster_benchmark](./cluster_benchmark) folde
 - [yuyang0/rrqlite](https://github.com/yuyang0/rrqlite) - A rust implementation of [rqlite](https://github.com/rqlite/rqlite).
 - [raymondshe/matchengine-raft](https://github.com/raymondshe/matchengine-raft) - A example to demonstrate how openraft persists snapshots/logs to disk.
 - [Helyim](https://github.com/helyim/helyim) - [SeaweedFS](https://github.com/seaweedfs/seaweedfs) implemented in pure Rust.
+- [robustmq/robustmq](https://github.com/robustmq/robustmq) - Next generation cloud-native converged message queue.
 
 # Contributing
 
