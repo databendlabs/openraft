@@ -216,6 +216,31 @@ where C: RaftTypeConfig
         prog_entry.update_conflicting(conflict.index);
     }
 
+    /// Enable one-time replication reset for a specific node upon log reversion detection.
+    ///
+    /// This method sets a flag to allow the replication process to be reset once for the specified
+    /// target node when a log reversion is detected. This is typically used to handle scenarios
+    /// where a follower node's log has unexpectedly reverted to a previous state.
+    ///
+    /// # Behavior
+    ///
+    /// - Sets the `reset_on_reversion` flag to `true` for the specified node in the leader's
+    ///   progress tracker.
+    /// - This flag will be consumed upon the next log reversion detection, allowing for a one-time
+    ///   reset.
+    /// - If the node is not found in the progress tracker, this method ignore it.
+    pub(crate) fn allow_next_revert(&mut self, target: C::NodeId, allow: bool) {
+        let Some(prog_entry) = self.leader.progress.get_mut(&target) else {
+            tracing::warn!(
+                "target node {} not found in progress tracker, when {}",
+                target,
+                func_name!()
+            );
+            return;
+        };
+        prog_entry.reset_on_reversion = allow;
+    }
+
     /// Update replication progress when a response is received.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn update_progress(&mut self, target: C::NodeId, repl_res: Result<ReplicationResult<C>, String>) {

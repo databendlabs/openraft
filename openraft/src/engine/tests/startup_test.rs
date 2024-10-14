@@ -77,7 +77,8 @@ fn test_startup_as_leader_without_logs() -> anyhow::Result<()> {
                 targets: vec![ReplicationProgress(3, ProgressEntry {
                     matching: None,
                     inflight: Inflight::None,
-                    searching_end: 4
+                    searching_end: 4,
+                    reset_on_reversion: false,
                 })]
             },
             Command::AppendInputEntries {
@@ -128,7 +129,8 @@ fn test_startup_as_leader_with_proposed_logs() -> anyhow::Result<()> {
                 targets: vec![ReplicationProgress(3, ProgressEntry {
                     matching: None,
                     inflight: Inflight::None,
-                    searching_end: 7
+                    searching_end: 7,
+                    reset_on_reversion: false,
                 })]
             },
             Command::Replicate {

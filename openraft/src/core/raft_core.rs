@@ -1312,6 +1312,13 @@ where
                     ExternalCommand::TriggerTransferLeader { to } => {
                         self.engine.trigger_transfer_leader(to);
                     }
+                    ExternalCommand::AllowNextRevert { to, allow } => {
+                        if let Ok(mut l) = self.engine.leader_handler() {
+                            l.replication_handler().allow_next_revert(to, allow);
+                        } else {
+                            tracing::warn!("AllowNextRevert: current node is not a Leader");
+                        }
+                    }
                     ExternalCommand::StateMachineCommand { sm_cmd } => {
                         let res = self.sm_handle.send(sm_cmd);
                         if let Err(e) = res {
