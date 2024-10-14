@@ -77,7 +77,7 @@ where C: RaftTypeConfig
             "prev_log_id matches, skip matching entries",
         );
 
-        let last_log_id = entries.last().map(|x| *x.get_log_id());
+        let last_log_id = entries.last().map(|x| x.get_log_id().clone());
 
         self.state.update_accepted(std::cmp::max(prev_log_id, last_log_id));
 
@@ -107,7 +107,10 @@ where C: RaftTypeConfig
                 tracing::debug!(local = display(DisplayOption(&local)), "prev_log_id does not match");
 
                 self.truncate_logs(prev.index);
-                return Err(RejectAppendEntries::ByConflictingLogId { local, expect: *prev });
+                return Err(RejectAppendEntries::ByConflictingLogId {
+                    local,
+                    expect: prev.clone(),
+                });
             }
         }
 
@@ -145,7 +148,7 @@ where C: RaftTypeConfig
 
         self.output.push_command(Command::AppendInputEntries {
             // A follower should always use the node's vote.
-            vote: *self.state.vote_ref(),
+            vote: self.state.vote_ref().clone(),
             entries,
         });
     }
@@ -153,8 +156,8 @@ where C: RaftTypeConfig
     /// Commit entries that are already committed by the leader.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn commit_entries(&mut self, leader_committed: Option<LogId<C::NodeId>>) {
-        let accepted = self.state.accepted().copied();
-        let committed = std::cmp::min(accepted, leader_committed);
+        let accepted = self.state.accepted().cloned();
+        let committed = std::cmp::min(accepted.clone(), leader_committed.clone());
 
         tracing::debug!(
             leader_committed = display(DisplayOption(&leader_committed)),
@@ -272,7 +275,7 @@ where C: RaftTypeConfig
         let meta = &snapshot.meta;
         tracing::info!("install_full_snapshot: meta:{:?}", meta);
 
-        let snap_last_log_id = meta.last_log_id;
+        let snap_last_log_id = meta.last_log_id.clone();
 
         if snap_last_log_id.as_ref() <= self.state.committed() {
             tracing::info!(
@@ -304,8 +307,8 @@ where C: RaftTypeConfig
             }
         }
 
-        self.state.update_accepted(Some(snap_last_log_id));
-        self.state.committed = Some(snap_last_log_id);
+        self.state.update_accepted(Some(snap_last_log_id.clone()));
+        self.state.committed = Some(snap_last_log_id.clone());
         self.update_committed_membership(EffectiveMembership::new_from_stored_membership(
             meta.last_membership.clone(),
         ));
@@ -334,7 +337,7 @@ where C: RaftTypeConfig
         // Find the last 2 membership config entries: the committed and the effective.
         for ent in entries.rev() {
             if let Some(m) = ent.get_membership() {
-                memberships.insert(0, StoredMembership::new(Some(*ent.get_log_id()), m.clone()));
+                memberships.insert(0, StoredMembership::new(Some(ent.get_log_id().clone()), m.clone()));
                 if memberships.len() == 2 {
                     break;
                 }

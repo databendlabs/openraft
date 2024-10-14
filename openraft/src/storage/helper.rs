@@ -89,7 +89,7 @@ where
         // TODO: It is possible `committed < last_applied` because when installing snapshot,
         //       new committed should be saved, but not yet.
         if committed < last_applied {
-            committed = last_applied;
+            committed = last_applied.clone();
         }
 
         // Re-apply log entries to recover SM to latest state.
@@ -113,9 +113,9 @@ where
                 last_applied.display(),
             );
 
-            self.log_store.purge(last_applied.unwrap()).await?;
-            last_log_id = last_applied;
-            last_purged_log_id = last_applied;
+            self.log_store.purge(last_applied.clone().unwrap()).await?;
+            last_log_id = last_applied.clone();
+            last_purged_log_id = last_applied.clone();
         }
 
         tracing::info!(
@@ -123,7 +123,7 @@ where
             last_purged_log_id.display(),
             last_log_id.display()
         );
-        let log_ids = LogIdList::load_log_ids(last_purged_log_id, last_log_id, self.log_store).await?;
+        let log_ids = LogIdList::load_log_ids(last_purged_log_id.clone(), last_log_id, self.log_store).await?;
 
         let snapshot = self.state_machine.get_current_snapshot().await?;
 
@@ -145,11 +145,11 @@ where
 
         // TODO: `flushed` is not set.
         let io_state = IOState::new(
-            vote,
+            vote.clone(),
             LogIOId::default(),
-            last_applied,
-            snapshot_meta.last_log_id,
-            last_purged_log_id,
+            last_applied.clone(),
+            snapshot_meta.last_log_id.clone(),
+            last_purged_log_id.clone(),
         );
 
         let now = C::now();
@@ -296,7 +296,7 @@ where
 
             for ent in entries.iter().rev() {
                 if let Some(mem) = ent.get_membership() {
-                    let em = StoredMembership::new(Some(*ent.get_log_id()), mem.clone());
+                    let em = StoredMembership::new(Some(ent.get_log_id().clone()), mem.clone());
                     res.insert(0, em);
                     if res.len() == 2 {
                         return Ok(res);

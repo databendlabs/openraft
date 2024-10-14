@@ -133,13 +133,13 @@ where
 
         let since = entries.first().map(|x| x.get_log_id().index).unwrap();
         let end = entries.last().map(|x| x.get_log_id().index + 1).unwrap();
-        let last_applied = entries.last().map(|x| *x.get_log_id()).unwrap();
+        let last_applied = entries.last().map(|x| x.get_log_id().clone()).unwrap();
 
         // Fake complain: avoid using `collect()` when not needed
         #[allow(clippy::needless_collect)]
         let applying_entries = entries
             .iter()
-            .map(|e| ApplyingEntry::new(*e.get_log_id(), e.get_membership().cloned()))
+            .map(|e| ApplyingEntry::new(e.get_log_id().clone(), e.get_membership().cloned()))
             .collect::<Vec<_>>();
 
         let n_entries = applying_entries.len();

@@ -37,7 +37,7 @@ impl<NID: NodeId> RaftLogId<NID> for LogId<NID> {
     }
 
     fn set_log_id(&mut self, log_id: &LogId<NID>) {
-        *self = *log_id
+        *self = log_id.clone()
     }
 }
 

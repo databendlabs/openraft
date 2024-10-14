@@ -142,7 +142,7 @@ where C::SnapshotData: tokio::io::AsyncRead + tokio::io::AsyncWrite + tokio::io:
 
             let done = (offset + n_read as u64) == end;
             let req = InstallSnapshotRequest {
-                vote,
+                vote: vote.clone(),
                 meta: snapshot.meta.clone(),
                 offset,
                 data: buf,

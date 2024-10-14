@@ -57,8 +57,8 @@ where
             Ok(())
         } else {
             Err(InProgress {
-                committed: *committed.log_id(),
-                membership_log_id: *effective.log_id(),
+                committed: committed.log_id().clone(),
+                membership_log_id: effective.log_id().clone(),
             })
         }
     }

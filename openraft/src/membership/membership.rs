@@ -170,7 +170,7 @@ where
 
     /// Returns an Iterator of all learner node ids. Voters are not included.
     pub fn learner_ids(&self) -> impl Iterator<Item = NID> + '_ {
-        self.nodes.keys().filter(|x| !self.is_voter(x)).copied()
+        self.nodes.keys().filter(|x| !self.is_voter(x)).cloned()
     }
 }
 
@@ -213,7 +213,7 @@ where
             if res.contains_key(k) {
                 continue;
             }
-            res.insert(*k, v.clone());
+            res.insert(k.clone(), v.clone());
         }
 
         res
@@ -310,19 +310,19 @@ where
 
         let new_membership = match change {
             ChangeMembers::AddVoterIds(add_voter_ids) => {
-                let new_voter_ids = last.union(&add_voter_ids).copied().collect::<BTreeSet<_>>();
+                let new_voter_ids = last.union(&add_voter_ids).cloned().collect::<BTreeSet<_>>();
                 self.next_coherent(new_voter_ids, retain)
             }
             ChangeMembers::AddVoters(add_voters) => {
                 // Add nodes without overriding existent
                 self.nodes = Self::extend_nodes(self.nodes, &add_voters);
 
-                let add_voter_ids = add_voters.keys().copied().collect::<BTreeSet<_>>();
-                let new_voter_ids = last.union(&add_voter_ids).copied().collect::<BTreeSet<_>>();
+                let add_voter_ids = add_voters.keys().cloned().collect::<BTreeSet<_>>();
+                let new_voter_ids = last.union(&add_voter_ids).cloned().collect::<BTreeSet<_>>();
                 self.next_coherent(new_voter_ids, retain)
             }
             ChangeMembers::RemoveVoters(remove_voter_ids) => {
-                let new_voter_ids = last.difference(&remove_voter_ids).copied().collect::<BTreeSet<_>>();
+                let new_voter_ids = last.difference(&remove_voter_ids).cloned().collect::<BTreeSet<_>>();
                 self.next_coherent(new_voter_ids, retain)
             }
             ChangeMembers::ReplaceAllVoters(all_voter_ids) => self.next_coherent(all_voter_ids, retain),
@@ -362,7 +362,7 @@ where
     pub(crate) fn to_quorum_set(&self) -> Joint<NID, Vec<NID>, Vec<Vec<NID>>> {
         let mut qs = vec![];
         for c in self.get_joint_config().iter() {
-            qs.push(c.iter().copied().collect::<Vec<_>>());
+            qs.push(c.iter().cloned().collect::<Vec<_>>());
         }
         Joint::new(qs)
     }

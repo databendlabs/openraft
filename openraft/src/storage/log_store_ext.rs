@@ -43,7 +43,7 @@ where C: RaftTypeConfig
     async fn get_log_id(&mut self, log_index: u64) -> Result<LogId<C::NodeId>, StorageError<C::NodeId>> {
         let entries = self.get_log_entries(log_index..=log_index).await?;
 
-        Ok(*entries[0].get_log_id())
+        Ok(entries[0].get_log_id().clone())
     }
 }
 

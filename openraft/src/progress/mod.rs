@@ -138,10 +138,10 @@ where
 
 impl<ID, V, P, QS> Display for VecProgress<ID, V, P, QS>
 where
-    ID: PartialEq + Debug + Copy + 'static,
-    V: Copy + 'static,
+    ID: PartialEq + Debug + Clone + 'static,
+    V: Clone + 'static,
     V: Borrow<P>,
-    P: PartialOrd + Ord + Copy + 'static,
+    P: PartialOrd + Ord + Clone + 'static,
     QS: QuorumSet<ID> + 'static,
     ID: Display,
     V: Display,
@@ -170,22 +170,22 @@ pub(crate) struct Stat {
 
 impl<ID, V, P, QS> VecProgress<ID, V, P, QS>
 where
-    ID: PartialEq + Copy + Debug + 'static,
-    V: Copy + 'static,
+    ID: PartialEq + Clone + Debug + 'static,
+    V: Clone + 'static,
     V: Borrow<P>,
-    P: PartialOrd + Ord + Copy + 'static,
+    P: PartialOrd + Ord + Clone + 'static,
     QS: QuorumSet<ID>,
 {
     pub(crate) fn new(quorum_set: QS, learner_ids: impl IntoIterator<Item = ID>, default_v: V) -> Self {
-        let mut vector = quorum_set.ids().map(|id| (id, default_v)).collect::<Vec<_>>();
+        let mut vector = quorum_set.ids().map(|id| (id, default_v.clone())).collect::<Vec<_>>();
 
         let voter_count = vector.len();
 
-        vector.extend(learner_ids.into_iter().map(|id| (id, default_v)));
+        vector.extend(learner_ids.into_iter().map(|id| (id, default_v.clone())));
 
         Self {
             quorum_set,
-            granted: *default_v.borrow(),
+            granted: default_v.borrow().clone(),
             voter_count,
             vector,
             stat: Default::default(),
@@ -231,10 +231,10 @@ where
 
 impl<ID, V, P, QS> Progress<ID, V, P, QS> for VecProgress<ID, V, P, QS>
 where
-    ID: PartialEq + Debug + Copy + 'static,
-    V: Copy + 'static,
+    ID: PartialEq + Debug + Clone + 'static,
+    V: Clone + 'static,
     V: Borrow<P>,
-    P: PartialOrd + Ord + Copy + 'static,
+    P: PartialOrd + Ord + Clone + 'static,
     QS: QuorumSet<ID> + 'static,
 {
     /// Update one of the scalar value and re-calculate the committed value.
@@ -283,7 +283,7 @@ where
 
         let elt = &mut self.vector[index];
 
-        let prev_progress = *elt.1.borrow();
+        let prev_progress = elt.1.borrow().clone();
 
         f(&mut elt.1);
 
@@ -324,7 +324,7 @@ where
                 self.stat.is_quorum_count += 1;
 
                 if self.quorum_set.is_quorum(it) {
-                    self.granted = *prog;
+                    self.granted = prog.clone();
                     break;
                 }
             }
@@ -365,12 +365,12 @@ where
     }
 
     fn upgrade_quorum_set(self, quorum_set: QS, leaner_ids: &[ID], default_v: V) -> Self {
-        let mut new_prog = Self::new(quorum_set, leaner_ids.iter().copied(), default_v);
+        let mut new_prog = Self::new(quorum_set, leaner_ids.iter().cloned(), default_v);
 
         new_prog.stat = self.stat.clone();
 
         for (id, v) in self.iter() {
-            let _ = new_prog.update(id, *v);
+            let _ = new_prog.update(id, v.clone());
         }
         new_prog
     }

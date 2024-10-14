@@ -82,7 +82,7 @@ where C: RaftTypeConfig<Responder = OneshotResponder<C>>
 
         tracing::debug!("res of first step: {}", res.summary());
 
-        let (log_id, joint) = (res.log_id, res.membership.clone().unwrap());
+        let (log_id, joint) = (res.log_id.clone(), res.membership.clone().unwrap());
 
         if joint.get_joint_config().len() == 1 {
             return Ok(res);
@@ -121,7 +121,7 @@ where C: RaftTypeConfig<Responder = OneshotResponder<C>>
     ///
     /// A `node` is able to store the network address of a node. Thus an application does not
     /// need another store for mapping node-id to ip-addr when implementing the RaftNetwork.
-    #[tracing::instrument(level = "debug", skip(self, id), fields(target=display(id)))]
+    #[tracing::instrument(level = "debug", skip(self, id), fields(target=display(&id)))]
     pub async fn add_learner(
         &self,
         id: C::NodeId,
@@ -131,7 +131,7 @@ where C: RaftTypeConfig<Responder = OneshotResponder<C>>
         let (tx, rx) = oneshot_channel::<C>();
 
         let msg = RaftMsg::ChangeMembership {
-            changes: ChangeMembers::AddNodes(btreemap! {id=>node}),
+            changes: ChangeMembers::AddNodes(btreemap! {id.clone()=>node}),
             retain: true,
             tx,
         };
@@ -149,12 +149,12 @@ where C: RaftTypeConfig<Responder = OneshotResponder<C>>
         // Otherwise, blocks until the replication to the new learner becomes up to date.
 
         // The log id of the membership that contains the added learner.
-        let membership_log_id = resp.log_id;
+        let membership_log_id = resp.log_id.clone();
 
         let wait_res = self
             .wait(None)
             .metrics(
-                |metrics| match self.check_replication_upto_date(metrics, id, Some(membership_log_id)) {
+                |metrics| match self.check_replication_upto_date(metrics, id.clone(), Some(membership_log_id.clone())) {
                     Ok(_matching) => true,
                     // keep waiting
                     Err(_) => false,

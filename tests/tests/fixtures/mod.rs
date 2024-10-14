@@ -486,7 +486,7 @@ impl TypedRaftRouter {
         };
 
         tracing::info!(
-            node_id = display(node_id),
+            node_id = display(&node_id),
             members = debug(&members),
             "initializing cluster"
         );

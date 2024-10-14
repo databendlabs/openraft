@@ -121,7 +121,7 @@ where
     #[tracing::instrument(level = "trace", skip(self), fields(msg=msg.to_string().as_str()))]
     pub async fn current_leader(&self, leader_id: NID, msg: impl ToString) -> Result<RaftMetrics<NID, N>, WaitError> {
         self.metrics(
-            |m| m.current_leader == Some(leader_id),
+            |m| m.current_leader.as_ref() == Some(&leader_id),
             &format!("{} .current_leader == {}", msg.to_string(), leader_id),
         )
         .await

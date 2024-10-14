@@ -60,12 +60,12 @@ impl<C: RaftTypeConfig> LogStoreInner<C> {
     }
 
     async fn get_log_state(&mut self) -> Result<LogState<C>, StorageError<C::NodeId>> {
-        let last = self.log.iter().next_back().map(|(_, ent)| *ent.get_log_id());
+        let last = self.log.iter().next_back().map(|(_, ent)| ent.get_log_id().clone());
 
-        let last_purged = self.last_purged_log_id;
+        let last_purged = self.last_purged_log_id.clone();
 
         let last = match last {
-            None => last_purged,
+            None => last_purged.clone(),
             Some(x) => Some(x),
         };
 
@@ -81,16 +81,16 @@ impl<C: RaftTypeConfig> LogStoreInner<C> {
     }
 
     async fn read_committed(&mut self) -> Result<Option<LogId<C::NodeId>>, StorageError<C::NodeId>> {
-        Ok(self.committed)
+        Ok(self.committed.clone())
     }
 
     async fn save_vote(&mut self, vote: &Vote<C::NodeId>) -> Result<(), StorageError<C::NodeId>> {
-        self.vote = Some(*vote);
+        self.vote = Some(vote.clone());
         Ok(())
     }
 
     async fn read_vote(&mut self) -> Result<Option<Vote<C::NodeId>>, StorageError<C::NodeId>> {
-        Ok(self.vote)
+        Ok(self.vote.clone())
     }
 
     async fn append<I>(&mut self, entries: I, callback: LogFlushed<C>) -> Result<(), StorageError<C::NodeId>>
@@ -116,8 +116,8 @@ impl<C: RaftTypeConfig> LogStoreInner<C> {
     async fn purge(&mut self, log_id: LogId<C::NodeId>) -> Result<(), StorageError<C::NodeId>> {
         {
             let ld = &mut self.last_purged_log_id;
-            assert!(*ld <= Some(log_id));
-            *ld = Some(log_id);
+            assert!(ld.as_ref() <= Some(&log_id));
+            *ld = Some(log_id.clone());
         }
 
         {

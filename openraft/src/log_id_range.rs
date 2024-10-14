@@ -32,7 +32,7 @@ impl<NID: NodeId> Display for LogIdRange<NID> {
 
 impl<NID: NodeId> Validate for LogIdRange<NID> {
     fn validate(&self) -> Result<(), Box<dyn Error>> {
-        validit::less_equal!(self.prev, self.last);
+        validit::less_equal!(&self.prev, &self.last);
         Ok(())
     }
 }

@@ -35,7 +35,7 @@ where
 {
     fn clone(&self) -> Self {
         Self {
-            log_id: self.log_id,
+            log_id: self.log_id.clone(),
             payload: self.payload.clone(),
         }
     }
@@ -114,7 +114,7 @@ where C: RaftTypeConfig
     }
 
     fn set_log_id(&mut self, log_id: &LogId<C::NodeId>) {
-        self.log_id = *log_id;
+        self.log_id = log_id.clone();
     }
 }
 

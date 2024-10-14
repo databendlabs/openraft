@@ -99,7 +99,7 @@ where C: RaftTypeConfig
             // Ok
         } else {
             tracing::info!("vote {} is rejected by local vote: {}", vote, self.state.vote_ref());
-            return Err(RejectVoteRequest::ByVote(*self.state.vote_ref()));
+            return Err(RejectVoteRequest::ByVote(self.state.vote_ref().clone()));
         }
         tracing::debug!(%vote, "vote is changing to" );
 
@@ -108,8 +108,8 @@ where C: RaftTypeConfig
         if vote > self.state.vote_ref() {
             tracing::info!("vote is changing from {} to {}", self.state.vote_ref(), vote);
 
-            self.state.vote.update(C::now(), *vote);
-            self.output.push_command(Command::SaveVote { vote: *vote });
+            self.state.vote.update(C::now(), vote.clone());
+            self.output.push_command(Command::SaveVote { vote: vote.clone() });
         } else {
             self.state.vote.touch(C::now());
         }
@@ -147,7 +147,7 @@ where C: RaftTypeConfig
             "become leader: node-{}, my vote: {}, last-log-id: {}",
             self.config.id,
             self.state.vote_ref(),
-            self.state.last_log_id().copied().unwrap_or_default()
+            self.state.last_log_id().cloned().unwrap_or_default()
         );
 
         if let Some(l) = self.leader.as_mut() {
@@ -162,7 +162,7 @@ where C: RaftTypeConfig
                 // TODO: this is not gonna happen,
                 //       because `self.leader`(previous `internal_server_state`)
                 //       does not include Candidate any more.
-                l.vote = *self.state.vote_ref();
+                l.vote = self.state.vote_ref().clone();
                 self.server_state_handler().update_server_state_if_changed();
                 return;
             }
@@ -195,7 +195,7 @@ where C: RaftTypeConfig
         // timeout.
 
         debug_assert!(
-            self.state.vote_ref().leader_id().voted_for() != Some(self.config.id)
+            self.state.vote_ref().leader_id().voted_for() != Some(self.config.id.clone())
                 || !self.state.membership_state.effective().membership().is_voter(&self.config.id),
             "It must hold: vote is not mine, or I am not a voter(leader just left the cluster)"
         );

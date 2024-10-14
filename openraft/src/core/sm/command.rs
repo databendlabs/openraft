@@ -142,8 +142,8 @@ where C: RaftTypeConfig
             (CommandPayload::Apply { entries: entries1 }, CommandPayload::Apply { entries: entries2 }) => {
                 // Entry may not be `Eq`, we just compare log id.
                 // This would be enough for testing.
-                entries1.iter().map(|e| *e.get_log_id()).collect::<Vec<_>>()
-                    == entries2.iter().map(|e| *e.get_log_id()).collect::<Vec<_>>()
+                entries1.iter().map(|e| e.get_log_id().clone()).collect::<Vec<_>>()
+                    == entries2.iter().map(|e| e.get_log_id().clone()).collect::<Vec<_>>()
             }
             _ => false,
         }

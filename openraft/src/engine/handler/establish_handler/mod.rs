@@ -21,11 +21,11 @@ where C: RaftTypeConfig
         self,
         candidate: Candidate<C, LeaderQuorumSet<C::NodeId>>,
     ) -> Option<&'x mut Leader<C, LeaderQuorumSet<C::NodeId>>> {
-        let vote = *candidate.vote_ref();
+        let vote = candidate.vote_ref().clone();
 
         debug_assert_eq!(
-            vote.leader_id().voted_for(),
-            Some(self.config.id),
+            vote.leader_id().voted_for().as_ref(),
+            Some(&self.config.id),
             "it can only commit its own vote"
         );
 

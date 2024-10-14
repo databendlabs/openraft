@@ -94,8 +94,8 @@ where
 {
     pub fn signature(&self) -> SnapshotSignature<NID> {
         SnapshotSignature {
-            last_log_id: self.last_log_id,
-            last_membership_log_id: *self.last_membership.log_id(),
+            last_log_id: self.last_log_id.clone(),
+            last_membership_log_id: self.last_membership.log_id().clone(),
             snapshot_id: self.snapshot_id.clone(),
         }
     }

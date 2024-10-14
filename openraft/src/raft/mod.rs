@@ -242,7 +242,7 @@ where C: RaftTypeConfig
     {
         let (tx_api, rx_api) = mpsc::unbounded_channel();
         let (tx_notify, rx_notify) = mpsc::unbounded_channel();
-        let (tx_metrics, rx_metrics) = watch::channel(RaftMetrics::new_initial(id));
+        let (tx_metrics, rx_metrics) = watch::channel(RaftMetrics::new_initial(id.clone()));
         let (tx_data_metrics, rx_data_metrics) = watch::channel(RaftDataMetrics::default());
         let (tx_server_metrics, rx_server_metrics) = watch::channel(RaftServerMetrics::default());
         let (tx_shutdown, rx_shutdown) = C::AsyncRuntime::oneshot();
@@ -259,11 +259,11 @@ where C: RaftTypeConfig
             parent: tracing::Span::current(),
             Level::DEBUG,
             "RaftCore",
-            id = display(id),
+            id = display(&id),
             cluster = display(&config.cluster_name)
         );
 
-        let eng_config = EngineConfig::new::<C::AsyncRuntime>(id, config.as_ref());
+        let eng_config = EngineConfig::new::<C::AsyncRuntime>(id.clone(), config.as_ref());
 
         let state = {
             let mut helper = StorageHelper::new(&mut log_store, &mut state_machine);
@@ -275,7 +275,7 @@ where C: RaftTypeConfig
         let sm_handle = worker::Worker::spawn(state_machine, tx_notify.clone());
 
         let core: RaftCore<C, N, LS, SM> = RaftCore {
-            id,
+            id: id.clone(),
             config: config.clone(),
             runtime_config: runtime_config.clone(),
             network,
@@ -492,9 +492,9 @@ where C: RaftTypeConfig
     {
         tracing::debug!(req = display(&req), "Raft::install_snapshot()");
 
-        let req_vote = req.vote;
-        let my_vote = self.with_raft_state(|state| *state.vote_ref()).await?;
-        let resp = InstallSnapshotResponse { vote: my_vote };
+        let req_vote = req.vote.clone();
+        let my_vote = self.with_raft_state(|state| state.vote_ref().clone()).await?;
+        let resp = InstallSnapshotResponse { vote: my_vote.clone() };
 
         // Check vote.
         // It is not mandatory because it is just a read operation
@@ -530,7 +530,7 @@ where C: RaftTypeConfig
     /// reads. This method is perfect for making decisions on where to route client requests.
     #[tracing::instrument(level = "debug", skip(self))]
     pub async fn current_leader(&self) -> Option<C::NodeId> {
-        self.metrics().borrow().current_leader
+        self.metrics().borrow().current_leader.clone()
     }
 
     /// Check to ensure this node is still the cluster leader, in order to guard against stale reads
@@ -766,7 +766,7 @@ where C: RaftTypeConfig
             Some(x) => x,
         };
 
-        let matched = *target_metrics;
+        let matched = target_metrics.clone();
 
         let distance = replication_lag(&matched.index(), &metrics.last_log_index);
 

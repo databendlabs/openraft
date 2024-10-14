@@ -177,7 +177,7 @@ impl<NID: NodeId> Inflight<NID> {
                 *self = {
                     debug_assert!(upto >= log_id_range.prev);
                     debug_assert!(upto <= log_id_range.last);
-                    Inflight::logs(upto, log_id_range.last).with_id(*id)
+                    Inflight::logs(upto, log_id_range.last.clone()).with_id(*id)
                 }
             }
             Inflight::Snapshot { id: _, last_log_id } => {

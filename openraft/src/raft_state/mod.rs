@@ -253,7 +253,7 @@ where
         );
 
         if accepted.as_ref() > self.accepted.last_accepted_log_id(self.vote_ref().leader_id()) {
-            self.accepted = Accepted::new(*self.vote_ref().leader_id(), accepted);
+            self.accepted = Accepted::new(self.vote_ref().leader_id().clone(), accepted);
         }
     }
 
@@ -273,9 +273,9 @@ where
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn update_committed(&mut self, committed: &Option<LogId<NID>>) -> Option<Option<LogId<NID>>> {
         if committed.as_ref() > self.committed() {
-            let prev = self.committed().copied();
+            let prev = self.committed().cloned();
 
-            self.committed = *committed;
+            self.committed = committed.clone();
             self.membership_state.commit(committed);
 
             Some(prev)
@@ -403,7 +403,7 @@ where
         let last_leader_log_ids = self.log_ids.by_last_leader();
 
         Leader::new(
-            *self.vote_ref(),
+            self.vote_ref().clone(),
             em.to_quorum_set(),
             em.learner_ids(),
             last_leader_log_ids,

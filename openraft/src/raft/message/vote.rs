@@ -56,7 +56,7 @@ impl<NID: NodeId> MessageSummary<VoteResponse<NID>> for VoteResponse<NID> {
         format!(
             "{{{}, last_log:{:?}}}",
             self.vote,
-            self.last_log_id.map(|x| x.to_string())
+            self.last_log_id.as_ref().map(|x| x.to_string())
         )
     }
 }
@@ -66,9 +66,9 @@ where NID: NodeId
 {
     pub fn new(vote: impl Borrow<Vote<NID>>, last_log_id: Option<LogId<NID>>, granted: bool) -> Self {
         Self {
-            vote: *vote.borrow(),
+            vote: vote.borrow().clone(),
             vote_granted: granted,
-            last_log_id: last_log_id.map(|x| *x.borrow()),
+            last_log_id: last_log_id.map(|x| x.borrow().clone()),
         }
     }
 
@@ -87,7 +87,7 @@ where NID: NodeId
             f,
             "{{{}, last_log:{:?}}}",
             self.vote,
-            self.last_log_id.map(|x| x.to_string())
+            self.last_log_id.as_ref().map(|x| x.to_string())
         )
     }
 }

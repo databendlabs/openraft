@@ -62,7 +62,7 @@ where C: RaftTypeConfig
                     membership_entry.is_none(),
                     "only one membership entry is allowed in a batch"
                 );
-                membership_entry = Some((*entry.get_log_id(), m.clone()));
+                membership_entry = Some((entry.get_log_id().clone(), m.clone()));
             }
         }
 
@@ -88,7 +88,7 @@ where C: RaftTypeConfig
         self.output.push_command(Command::AppendInputEntries {
             // A leader should always use the leader's vote.
             // It is allowed to be different from local vote.
-            vote: self.leader.vote,
+            vote: self.leader.vote.clone(),
             entries,
         });
 
@@ -114,9 +114,9 @@ where C: RaftTypeConfig
     ///
     /// See: [Read Operation](crate::docs::protocol::read)
     pub(crate) fn get_read_log_id(&self) -> Option<LogIdOf<C>> {
-        let committed = self.state.committed().copied();
+        let committed = self.state.committed().cloned();
         // noop log id is the first log this leader proposed.
-        std::cmp::max(self.leader.noop_log_id, committed)
+        std::cmp::max(self.leader.noop_log_id.clone(), committed)
     }
 
     pub(crate) fn replication_handler(&mut self) -> ReplicationHandler<C> {
