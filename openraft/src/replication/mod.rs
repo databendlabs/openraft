@@ -550,7 +550,6 @@ where
 
         match &replication_result.0 {
             Ok(matching) => {
-                self.validate_matching(matching);
                 self.matching = matching.clone();
             }
             Err(_conflict) => {
@@ -567,32 +566,6 @@ where
                 },
             }
         });
-    }
-
-    /// Validate the value for updating matching log id.
-    ///
-    /// If the matching log id is reverted to a smaller value:
-    /// - log a warning message if [`loosen-follower-log-revert`] feature flag is enabled;
-    /// - otherwise panic, consider it as a bug.
-    ///
-    /// [`loosen-follower-log-revert`]: crate::docs::feature_flags#feature_flag_loosen_follower_log_revert
-    fn validate_matching(&self, matching: &Option<LogId<C::NodeId>>) {
-        if cfg!(feature = "loosen-follower-log-revert") {
-            if &self.matching > matching {
-                tracing::warn!(
-                    "follower log is reverted from {} to {}; with 'loosen-follower-log-revert' enabled, this is allowed",
-                    self.matching.display(),
-                    matching.display(),
-                );
-            }
-        } else {
-            debug_assert!(
-                &self.matching <= matching,
-                "follower log is reverted from {} to {}",
-                self.matching.display(),
-                matching.display(),
-            );
-        }
     }
 
     /// Drain all events in the channel in backoff mode, i.e., there was an un-retry-able error and

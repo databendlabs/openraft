@@ -7,6 +7,8 @@ use crate::engine::Command;
 use crate::engine::EngineConfig;
 use crate::engine::EngineOutput;
 use crate::engine::ReplicationProgress;
+use crate::error::NodeNotFound;
+use crate::error::Operation;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::Inflight;
 use crate::progress::Progress;
@@ -214,6 +216,34 @@ where C: RaftTypeConfig
         let prog_entry = self.leader.progress.get_mut(&target).unwrap();
 
         prog_entry.update_conflicting(conflict.index);
+    }
+
+    /// Enable one-time replication reset for a specific node upon log reversion detection.
+    ///
+    /// This method sets a flag to allow the replication process to be reset once for the specified
+    /// target node when a log reversion is detected. This is typically used to handle scenarios
+    /// where a follower node's log has unexpectedly reverted to a previous state.
+    ///
+    /// # Behavior
+    ///
+    /// - Sets the `reset_on_reversion` flag to `true` for the specified node in the leader's
+    ///   progress tracker.
+    /// - This flag will be consumed upon the next log reversion detection, allowing for a one-time
+    ///   reset.
+    /// - If the node is not found in the progress tracker, this method ignore it.
+    pub(crate) fn allow_next_revert(&mut self, target: C::NodeId, allow: bool) -> Result<(), NodeNotFound<C>> {
+        let Some(prog_entry) = self.leader.progress.get_mut(&target) else {
+            tracing::warn!(
+                "target node {} not found in progress tracker, when {}",
+                target,
+                func_name!()
+            );
+            return Err(NodeNotFound::new(target, Operation::AllowNextRevert));
+        };
+
+        prog_entry.reset_on_reversion = allow;
+
+        Ok(())
     }
 
     /// Update replication progress when a response is received.
