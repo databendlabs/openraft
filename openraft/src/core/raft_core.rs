@@ -45,6 +45,7 @@ use crate::engine::ReplicationProgress;
 use crate::engine::Respond;
 use crate::entry::FromAppData;
 use crate::entry::RaftEntry;
+use crate::error::AllowNextRevertError;
 use crate::error::ClientWriteError;
 use crate::error::Fatal;
 use crate::error::ForwardToLeader;
@@ -1311,6 +1312,20 @@ where
                     }
                     ExternalCommand::TriggerTransferLeader { to } => {
                         self.engine.trigger_transfer_leader(to);
+                    }
+                    ExternalCommand::AllowNextRevert { to, allow, tx } => {
+                        //
+                        let res = match self.engine.leader_handler() {
+                            Ok(mut l) => {
+                                let res = l.replication_handler().allow_next_revert(to, allow);
+                                res.map_err(AllowNextRevertError::from)
+                            }
+                            Err(e) => {
+                                tracing::warn!("AllowNextRevert: current node is not a Leader");
+                                Err(AllowNextRevertError::from(e))
+                            }
+                        };
+                        let _ = tx.send(res);
                     }
                     ExternalCommand::StateMachineCommand { sm_cmd } => {
                         let res = self.sm_handle.send(sm_cmd);
