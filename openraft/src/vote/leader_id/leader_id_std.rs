@@ -99,12 +99,13 @@ impl<NID: NodeId> CommittedLeaderId<NID> {
 #[cfg(test)]
 #[allow(clippy::nonminimal_bool)]
 mod tests {
-    use crate::CommittedLeaderId;
     use crate::LeaderId;
 
     #[cfg(feature = "serde")]
     #[test]
     fn test_committed_leader_id_serde() -> anyhow::Result<()> {
+        use crate::CommittedLeaderId;
+
         let c = CommittedLeaderId::<u32>::new(5, 10);
         let s = serde_json::to_string(&c)?;
         assert_eq!(r#"5"#, s);

@@ -156,6 +156,10 @@ where C: RaftTypeConfig
     }
 }
 
+// AsyncRuntime::spawn is `spawn_local` with singlethreaded enabled.
+// It will result in a panic:
+// `spawn_local` called from outside of a `task::LocalSet`.
+#[cfg(not(feature = "singlethreaded"))]
 #[cfg(test)]
 mod tests {
     use std::io::Cursor;
@@ -181,10 +185,6 @@ mod tests {
         type Responder = crate::impls::OneshotResponder<Self>;
     }
 
-    // AsyncRuntime::spawn is `spawn_local` with singlethreaded enabled.
-    // It will result in a panic:
-    // `spawn_local` called from outside of a `task::LocalSet`.
-    #[cfg(not(feature = "singlethreaded"))]
     #[tokio::test]
     async fn test_shutdown() -> anyhow::Result<()> {
         let (tx, mut rx) = TickUTConfig::mpsc_unbounded();
