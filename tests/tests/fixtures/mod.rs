@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use std::env;
 use std::fmt;
 use std::future::Future;
-use std::panic::PanicInfo;
+use std::panic::PanicHookInfo;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -142,7 +142,7 @@ pub fn set_panic_hook() {
     }));
 }
 
-pub fn log_panic(panic: &PanicInfo) {
+pub fn log_panic(panic: &PanicHookInfo) {
     let backtrace = {
         #[cfg(feature = "bt")]
         {

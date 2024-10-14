@@ -314,7 +314,7 @@ pub trait SnapshotTransport<C: RaftTypeConfig> {
     ///
     /// - The receiving state `streaming` is maintained by the caller.
     /// - And it depends on `Raft::begin_receiving_snapshot()` to create a `SnapshotData` for
-    /// receiving data.
+    ///   receiving data.
     ///
     /// Example usage:
     /// ```ignore
