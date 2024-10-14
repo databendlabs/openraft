@@ -1,7 +1,6 @@
 use std::backtrace::Backtrace;
 use std::collections::BTreeMap;
-#[allow(deprecated)] // since nightly 1.82
-use std::panic::PanicInfo;
+use std::panic::PanicHookInfo;
 use std::thread;
 use std::time::Duration;
 
@@ -14,8 +13,7 @@ use raft_kv_memstore::store::Request;
 use tokio::runtime::Runtime;
 use tracing_subscriber::EnvFilter;
 
-#[allow(deprecated)] // PanicInfo deprecated since nightly 1.82
-pub fn log_panic(panic: &PanicInfo) {
+pub fn log_panic(panic: &PanicHookInfo) {
     let backtrace = {
         format!("{:?}", Backtrace::force_capture())
         // #[cfg(feature = "bt")]

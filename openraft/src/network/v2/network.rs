@@ -92,9 +92,9 @@ where C: RaftTypeConfig
     /// [`Raft::handle_transfer_leader()`]: crate::raft::Raft::handle_transfer_leader
     #[since(version = "0.10.0")]
     async fn transfer_leader(&mut self, _req: TransferLeaderRequest<C>, _option: RPCOption) -> Result<(), RPCError<C>> {
-        return Err(RPCError::Unreachable(Unreachable::new(&AnyError::error(
+        Err(RPCError::Unreachable(Unreachable::new(&AnyError::error(
             "transfer_leader not implemented",
-        ))));
+        ))))
     }
 
     /// Build a backoff instance if the target node is temporarily(or permanently) unreachable.
