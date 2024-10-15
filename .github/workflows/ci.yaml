@@ -19,7 +19,7 @@ jobs:
 
     steps:
       - name: Setup | Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
 
       - name: Setup | Toolchain
@@ -46,7 +46,7 @@ jobs:
 
     steps:
       - name: Setup | Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
 
       - name: Setup | Toolchain
@@ -88,7 +88,7 @@ jobs:
 
     steps:
       - name: Setup | Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
 
       - name: Setup | Toolchain
@@ -149,7 +149,7 @@ jobs:
 
     steps:
       - name: Setup | Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
 
       - name: Setup | Toolchain
@@ -187,7 +187,7 @@ jobs:
 
     steps:
       - name: Setup | Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
 
       - name: Setup | Toolchain
@@ -213,7 +213,7 @@ jobs:
 
     steps:
       - name: Setup | Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
 
       - name: Setup | Toolchain
@@ -268,7 +268,7 @@ jobs:
 
     steps:
       - name: Setup | Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
 
       - name: Setup | Toolchain
@@ -319,7 +319,7 @@ jobs:
 
     steps:
       - name: Setup | Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
 
       - name: Setup | Toolchain
@@ -353,7 +353,7 @@ jobs:
     name: lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - uses: actions-rs/toolchain@v1.0.6
         with:
           components: rustfmt, clippy
@@ -404,7 +404,7 @@ jobs:
           - "raft-kv-rocksdb"
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
 
       - uses: actions-rs/toolchain@v1.0.6

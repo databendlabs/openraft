@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-18.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Install mdbook
         uses: drmingdrmer/mdbook-full@main
