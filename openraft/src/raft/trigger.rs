@@ -86,4 +86,41 @@ where C: RaftTypeConfig
             .send_external_command(ExternalCommand::TriggerTransferLeader { to }, "transfer_leader")
             .await
     }
+
+    /// Request the RaftCore to allow to reset replication for a specific node when log revert is
+    /// detected.
+    ///
+    /// - `allow=true`: This method instructs the RaftCore to allow the target node's log to revert
+    ///   to a previous state for one time.
+    /// - `allow=false`: This method instructs the RaftCore to panic if the target node's log revert
+    ///
+    /// ### Behavior
+    ///
+    /// - If this node is the Leader, it will attempt to replicate logs to the target node from the
+    ///   beginning.
+    /// - If this node is not the Leader, the request is ignored.
+    /// - If the target node is not found, the request is ignored.
+    ///
+    /// ### Automatic Replication Reset
+    ///
+    /// When the [`loosen-follower-log-revert`](`crate::docs::feature_flags#
+    /// feature-flag-loosen-follower-log-revert) feature flag is enabled, the Leader automatically
+    /// reset replication if it detects that the target node's log has reverted. This
+    /// feature is primarily useful in testing environments.
+    ///
+    /// ### Production Considerations
+    ///
+    /// In production environments, state reversion is a critical issue that should not be
+    /// automatically handled. However, there may be scenarios where a Follower's data is
+    /// intentionally removed and needs to rejoin the cluster(without membership changes). In such
+    /// cases, the Leader should reinitialize replication for that node with the following steps:
+    /// - Shut down the target node.
+    /// - call [`Self::allow_next_revert`] on the Leader.
+    /// - Clear the target node's data directory.
+    /// - Restart the target node.
+    pub async fn allow_next_revert(&self, to: &C::NodeId, allow: bool) -> Result<(), Fatal<C>> {
+        self.raft_inner
+            .send_external_command(ExternalCommand::AllowNextRevert { to: to.clone(), allow }, func_name!())
+            .await
+    }
 }

@@ -36,6 +36,9 @@ pub(crate) enum ExternalCommand<C: RaftTypeConfig> {
     /// Submit a command to inform RaftCore to transfer leadership to the specified node.
     TriggerTransferLeader { to: C::NodeId },
 
+    /// Allow or not the next revert of the replication to the specified node.
+    AllowNextRevert { to: C::NodeId, allow: bool },
+
     /// Send a [`sm::Command`] to [`sm::worker::Worker`].
     /// This command is run in the sm task.
     StateMachineCommand { sm_cmd: sm::Command<C> },
@@ -71,6 +74,14 @@ where C: RaftTypeConfig
             }
             ExternalCommand::TriggerTransferLeader { to } => {
                 write!(f, "TriggerTransferLeader: to {}", to)
+            }
+            ExternalCommand::AllowNextRevert { to, allow } => {
+                write!(
+                    f,
+                    "{}-on-next-log-revert: to {}",
+                    if *allow { "AllowReset" } else { "Panic" },
+                    to
+                )
             }
             ExternalCommand::StateMachineCommand { sm_cmd } => {
                 write!(f, "StateMachineCommand: {}", sm_cmd)

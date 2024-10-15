@@ -10,3 +10,4 @@ mod t50_append_entries_backoff_rejoin;
 mod t51_append_entries_too_large;
 #[cfg(feature = "loosen-follower-log-revert")]
 mod t60_feature_loosen_follower_log_revert;
+mod t61_allow_follower_log_revert;

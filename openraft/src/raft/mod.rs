@@ -352,7 +352,8 @@ where C: RaftTypeConfig
         &self.inner.config
     }
 
-    /// Return a handle to manually trigger raft actions, such as elect or build snapshot.
+    /// Return a [`Trigger`] handle to manually trigger raft actions, such as elect or build
+    /// snapshot.
     ///
     /// Example:
     /// ```ignore

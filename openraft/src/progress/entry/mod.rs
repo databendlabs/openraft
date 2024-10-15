@@ -29,6 +29,15 @@ where C: RaftTypeConfig
 
     /// One plus the max log index on the following node that might match the leader log.
     pub(crate) searching_end: u64,
+
+    /// If true, reset the progress, by setting [`Self::matching`] to `None`, when the follower's
+    /// log is found reverted to an early state.
+    ///
+    /// This allows the target node to clean its data and wait for the leader to replicate all data
+    /// to it.
+    ///
+    /// This flag will be cleared after the progress entry is reset.
+    pub(crate) reset_on_reversion: bool,
 }
 
 impl<C> ProgressEntry<C>
@@ -40,6 +49,7 @@ where C: RaftTypeConfig
             matching: matching.clone(),
             inflight: Inflight::None,
             searching_end: matching.next_index(),
+            reset_on_reversion: false,
         }
     }
 
@@ -51,6 +61,7 @@ where C: RaftTypeConfig
             matching: None,
             inflight: Inflight::None,
             searching_end: end,
+            reset_on_reversion: false,
         }
     }
 
@@ -117,8 +128,14 @@ where C: RaftTypeConfig
         //
         // - If log reversion is allowed, just restart the binary search from the beginning.
         // - Otherwise, panic it.
-        {
-            #[cfg(feature = "loosen-follower-log-revert")]
+
+        let allow_reset = if cfg!(feature = "loosen-follower-log-revert") {
+            true
+        } else {
+            self.reset_on_reversion
+        };
+
+        if allow_reset {
             if conflict < self.matching.next_index() {
                 tracing::warn!(
                     "conflict {} < last matching {}: follower log is reverted; with 'loosen-follower-log-revert' enabled, this is allowed.",
@@ -127,8 +144,9 @@ where C: RaftTypeConfig
                 );
 
                 self.matching = None;
+                self.reset_on_reversion = false;
             }
-
+        } else {
             debug_assert!(
                 conflict >= self.matching.next_index(),
                 "follower log reversion is not allowed \
