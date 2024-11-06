@@ -134,7 +134,9 @@ where
         run_test(builder, Self::get_membership_from_log_gt_sm_last_applied_1).await?;
         run_test(builder, Self::get_membership_from_log_gt_sm_last_applied_2).await?;
         run_test(builder, Self::get_initial_state_without_init).await?;
-        run_test(builder, Self::get_initial_state_membership_from_log_and_sm).await?;
+        run_test(builder, Self::get_initial_state_membership_from_empty_log_and_sm).await?;
+        run_test(builder, Self::get_initial_state_membership_from_sm_inlog_is_smaller).await?;
+        run_test(builder, Self::get_initial_state_membership_from_log_insm_is_smaller).await?;
         run_test(builder, Self::get_initial_state_with_state).await?;
         run_test(builder, Self::get_initial_state_last_log_gt_sm).await?;
         run_test(builder, Self::get_initial_state_last_log_lt_sm).await?;
@@ -480,15 +482,13 @@ where
         Ok(())
     }
 
-    pub async fn get_initial_state_membership_from_log_and_sm(
+    pub async fn get_initial_state_membership_from_empty_log_and_sm(
         mut store: LS,
         mut sm: SM,
     ) -> Result<(), StorageError<C>> {
         // It should never return membership from logs that are included in state machine present.
 
         Self::default_vote(&mut store).await?;
-
-        // copy the test from get_membership_config
 
         tracing::info!("--- no log, read membership from state machine");
         {
@@ -506,8 +506,25 @@ where
             );
         }
 
+        Ok(())
+    }
+
+    pub async fn get_initial_state_membership_from_sm_inlog_is_smaller(
+        mut store: LS,
+        mut sm: SM,
+    ) -> Result<(), StorageError<C>> {
+        // It should never return membership from logs that are included in state machine present.
+
+        Self::default_vote(&mut store).await?;
+
         tracing::info!("--- membership presents in log, but smaller than last_applied, read from state machine");
         {
+            apply(&mut sm, [
+                blank_ent_0::<C>(1, 1),
+                membership_ent_0::<C>(1, 2, btreeset! {3,4,5}),
+            ])
+            .await?;
+
             append(&mut store, [membership_ent_0::<C>(1, 1, btreeset! {1,2,3})]).await?;
 
             let initial = StorageHelper::new(&mut store, &mut sm).get_initial_state().await?;
@@ -518,8 +535,26 @@ where
             );
         }
 
+        Ok(())
+    }
+
+    pub async fn get_initial_state_membership_from_log_insm_is_smaller(
+        mut store: LS,
+        mut sm: SM,
+    ) -> Result<(), StorageError<C>> {
+        // It should never return membership from logs that are included in state machine present.
+
+        Self::default_vote(&mut store).await?;
+
         tracing::info!("--- membership presents in log and > sm.last_applied, read from log");
         {
+            apply(&mut sm, [
+                blank_ent_0::<C>(1, 1),
+                membership_ent_0::<C>(1, 2, btreeset! {3,4,5}),
+            ])
+            .await?;
+
+            store.purge(log_id_0(1, 2)).await?;
             append(&mut store, [membership_ent_0::<C>(1, 3, btreeset! {1,2,3})]).await?;
 
             let initial = StorageHelper::new(&mut store, &mut sm).get_initial_state().await?;
