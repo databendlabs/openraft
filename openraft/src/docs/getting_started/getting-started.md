@@ -289,53 +289,41 @@ Finally, we put these parts together and boot up a raft node
 :
 
 ```ignore
-// Define the types used in the application.
-pub struct TypeConfig {}
-impl openraft::RaftTypeConfig for TypeConfig {
-    type D = Request;
-    type R = Response;
-    type NodeId = NodeId;
-    type Node = BasicNode;
-    type Entry = openraft::Entry<TypeConfig>;
-    type SnapshotData = Cursor<Vec<u8>>;
-}
+openraft::declare_raft_types!(
+    pub TypeConfig:
+        D = Request,
+        R = Response,
+);
 
-#[tokio::main]
-async fn main() {
-  #[actix_web::main]
-  async fn main() -> std::io::Result<()> {
-    // Setup the logger
-    env_logger::init_from_env(Env::default().default_filter_or("info"));
+#[actix_web::main]
+async fn main() -> std::io::Result<()> {
 
-    // Parse the parameters passed by arguments.
-    let options = Opt::parse();
-    let node_id = options.id;
-
-    // Create a configuration for the raft instance.
+    let node_id = 1;
     let config = Arc::new(Config::default().validate().unwrap());
 
-    // Create a instance of where the Raft data will be stored.
-    let store = Arc::new(ExampleStore::default());
+    let log_store = LogStore::default();
+    let state_machine_store = Arc::new(StateMachineStore::default());
+    let network = Network {};
 
-    let (log_store, state_machine) = Adaptor::new(store.clone());
+    let raft = openraft::Raft::new(
+        node_id,
+        config.clone(),
+        network,
+        log_store.clone(),
+        state_machine_store.clone(),
+    )
+    .await
+    .unwrap();
 
-    // Create the network layer that will connect and communicate the raft instances and
-    // will be used in conjunction with the store created above.
-    let network = Arc::new(ExampleNetwork {});
-
-    // Create a local raft instance.
-    let raft = openraft::Raft::new(node_id, config.clone(), network, log_store, state_machine).await.unwrap();
-
-    // Create an application that will store all the instances created above, this will
-    // be later used on the actix-web services.
-    let app = Data::new(ExampleApp {
-      id: options.id,
-      raft,
-      store,
-      config,
+    let app_data = Data::new(App {
+        id: node_id,
+        addr: "127.0.0.1:9999".to_string(),
+        raft,
+        log_store,
+        state_machine_store,
+        config,
     });
 
-    // Start the actix-web server.
     HttpServer::new(move || {
       App::new()
               .wrap(Logger::default())
@@ -356,10 +344,9 @@ async fn main() {
               // application API
               .service(api::write).service(api::read)
     })
-            .bind(options.http_addr)?
-            .run()
-            .await
-  }
+    .bind(options.http_addr)?
+    .run()
+    .await
 }
 
 ```
