@@ -1,5 +1,6 @@
 use std::fmt::Debug;
 use std::ops::RangeBounds;
+use std::ops::RangeInclusive;
 
 use openraft_macros::add_async_trait;
 use openraft_macros::since;
@@ -95,8 +96,7 @@ where C: RaftTypeConfig
     ///
     /// # Arguments
     ///
-    /// - `first`: the first log id to return.
-    /// - `last`: the last log id to return.
+    /// - `range`: range of the log id to return, inclusive. Such as `(1, 10)..=(2, 20)`.
     ///
     /// # Returns
     ///
@@ -106,9 +106,8 @@ where C: RaftTypeConfig
     #[since(version = "0.10.0")]
     async fn get_key_log_ids(
         &mut self,
-        first: LogId<C::NodeId>,
-        last: LogId<C::NodeId>,
+        range: RangeInclusive<LogId<C::NodeId>>,
     ) -> Result<Vec<LogId<C::NodeId>>, StorageError<C>> {
-        LogIdList::get_key_log_ids(first, last, self).await
+        LogIdList::get_key_log_ids(range, self).await
     }
 }

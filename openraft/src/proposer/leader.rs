@@ -243,7 +243,7 @@ mod tests {
                 vote,
                 vec![1, 2, 3],
                 vec![],
-                LeaderLogIds::new2(log_id(1, 2, 1), log_id(1, 2, 3)),
+                LeaderLogIds::new_start_end(log_id(1, 2, 1), log_id(1, 2, 3)),
             );
 
             assert_eq!(leader.noop_log_id(), Some(&log_id(2, 2, 4)));
@@ -257,7 +257,7 @@ mod tests {
                 vote,
                 vec![1, 2, 3],
                 vec![],
-                LeaderLogIds::new2(log_id(1, 2, 1), log_id(1, 2, 3)),
+                LeaderLogIds::new_start_end(log_id(1, 2, 1), log_id(1, 2, 3)),
             );
 
             assert_eq!(leader.noop_log_id(), Some(&log_id(1, 2, 1)));
@@ -267,7 +267,8 @@ mod tests {
         tracing::info!("--- vote equals last log id, reuse noop_log_id, last_leader_log_id.len()==1");
         {
             let vote = Vote::new(1, 2).into_committed();
-            let leader = Leader::<UTConfig, _>::new(vote, vec![1, 2, 3], vec![], LeaderLogIds::new1(log_id(1, 2, 3)));
+            let leader =
+                Leader::<UTConfig, _>::new(vote, vec![1, 2, 3], vec![], LeaderLogIds::new_single(log_id(1, 2, 3)));
 
             assert_eq!(leader.noop_log_id(), Some(&log_id(1, 2, 3)));
             assert_eq!(leader.last_log_id(), Some(&log_id(1, 2, 3)));
@@ -286,7 +287,8 @@ mod tests {
     #[test]
     fn test_leader_established() {
         let vote = Vote::new(2, 2).into_committed();
-        let mut leader = Leader::<UTConfig, _>::new(vote, vec![1, 2, 3], vec![], LeaderLogIds::new1(log_id(1, 2, 3)));
+        let mut leader =
+            Leader::<UTConfig, _>::new(vote, vec![1, 2, 3], vec![], LeaderLogIds::new_single(log_id(1, 2, 3)));
 
         let mut entries = vec![Entry::<UTConfig>::new_blank(log_id(5, 5, 2))];
         leader.assign_log_ids(&mut entries);
@@ -314,7 +316,8 @@ mod tests {
     #[test]
     fn test_no_entries_provided() {
         let vote = Vote::new(2, 2).into_committed();
-        let mut leading = Leader::<UTConfig, _>::new(vote, vec![1, 2, 3], vec![], LeaderLogIds::new1(log_id(1, 1, 8)));
+        let mut leading =
+            Leader::<UTConfig, _>::new(vote, vec![1, 2, 3], vec![], LeaderLogIds::new_single(log_id(1, 1, 8)));
 
         let mut entries: Vec<Entry<UTConfig>> = vec![];
         leading.assign_log_ids(&mut entries);
@@ -324,7 +327,8 @@ mod tests {
     #[test]
     fn test_multiple_entries() {
         let vote = Vote::new(2, 2).into_committed();
-        let mut leading = Leader::<UTConfig, _>::new(vote, vec![1, 2, 3], [], LeaderLogIds::new1(log_id(1, 1, 8)));
+        let mut leading =
+            Leader::<UTConfig, _>::new(vote, vec![1, 2, 3], [], LeaderLogIds::new_single(log_id(1, 1, 8)));
 
         let mut entries: Vec<Entry<UTConfig>> = vec![blank_ent(1, 1, 1), blank_ent(1, 1, 1), blank_ent(1, 1, 1)];
 

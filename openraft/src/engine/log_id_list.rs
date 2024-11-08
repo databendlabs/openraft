@@ -1,3 +1,5 @@
+use std::ops::RangeInclusive;
+
 use crate::engine::leader_log_ids::LeaderLogIds;
 use crate::log_id::RaftLogId;
 use crate::storage::RaftLogReaderExt;
@@ -47,13 +49,15 @@ where C: RaftTypeConfig
     /// A-------C-------C : find(A,C)
     /// ```
     pub(crate) async fn get_key_log_ids<LR>(
-        first: LogId<C::NodeId>,
-        last: LogId<C::NodeId>,
+        range: RangeInclusive<LogId<C::NodeId>>,
         sto: &mut LR,
     ) -> Result<Vec<LogIdOf<C>>, StorageError<C>>
     where
         LR: RaftLogReader<C> + ?Sized,
     {
+        let first = range.start().clone();
+        let last = range.end().clone();
+
         let mut res: Vec<LogIdOf<C>> = vec![];
 
         // Recursion stack

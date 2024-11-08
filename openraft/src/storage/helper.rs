@@ -335,7 +335,7 @@ where
 
         let first = log_reader.get_log_id(purged.next_index()).await?;
 
-        let mut log_ids = log_reader.get_key_log_ids(first, last).await?;
+        let mut log_ids = log_reader.get_key_log_ids(first..=last).await?;
 
         if !log_ids.is_empty() {
             if let Some(purged) = purged {
