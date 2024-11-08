@@ -10,8 +10,10 @@ use crate::engine::LogIdList;
 use crate::entry::RaftPayload;
 use crate::log_id::RaftLogId;
 use crate::raft_state::IOState;
+use crate::storage::log_reader_ext::RaftLogReaderExt;
 use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
+use crate::type_config::alias::LogIdOf;
 use crate::type_config::TypeConfigExt;
 use crate::utime::Leased;
 use crate::EffectiveMembership;
@@ -120,7 +122,8 @@ where
             last_purged_log_id.display(),
             last_log_id.display()
         );
-        let log_ids = LogIdList::load_log_ids(last_purged_log_id.clone(), last_log_id, &mut log_reader).await?;
+
+        let log_id_list = self.get_key_log_ids(last_purged_log_id.clone(), last_log_id.clone()).await?;
 
         let snapshot = self.state_machine.get_current_snapshot().await?;
 
@@ -162,7 +165,7 @@ where
             //       before serving.
             vote: Leased::new(now, Duration::default(), vote),
             purged_next: last_purged_log_id.next_index(),
-            log_ids,
+            log_ids: log_id_list,
             membership_state: mem_state,
             snapshot_meta,
 
@@ -308,5 +311,43 @@ where
         }
 
         Ok(res)
+    }
+
+    // TODO: store purged: Option<LogId> separately.
+    async fn get_key_log_ids(
+        &mut self,
+        purged: Option<LogIdOf<C>>,
+        last: Option<LogIdOf<C>>,
+    ) -> Result<LogIdList<C>, StorageError<C>> {
+        let mut log_reader = self.log_store.get_log_reader().await;
+
+        let last = match last {
+            None => return Ok(LogIdList::new(vec![])),
+            Some(x) => x,
+        };
+
+        if purged.index() == Some(last.index) {
+            return Ok(LogIdList::new(vec![last]));
+        }
+
+        let first = log_reader.get_log_id(purged.next_index()).await?;
+
+        let mut log_ids = log_reader.get_key_log_ids(first, last).await?;
+
+        if !log_ids.is_empty() {
+            if let Some(purged) = purged {
+                if purged.leader_id() == log_ids[0].leader_id() {
+                    if log_ids.len() >= 2 {
+                        log_ids[0] = purged;
+                    } else {
+                        log_ids.insert(0, purged);
+                    }
+                } else {
+                    log_ids.insert(0, purged);
+                }
+            }
+        }
+
+        Ok(LogIdList::new(log_ids))
     }
 }
