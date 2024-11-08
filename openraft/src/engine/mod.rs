@@ -31,11 +31,11 @@ mod command_kind;
 mod engine_config;
 mod engine_impl;
 mod engine_output;
-mod log_id_list;
 mod replication_progress;
 
 pub(crate) mod command;
 pub(crate) mod handler;
+pub(crate) mod log_id_list;
 pub(crate) mod time_state;
 
 #[cfg(test)]

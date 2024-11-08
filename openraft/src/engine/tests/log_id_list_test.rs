@@ -1,3 +1,4 @@
+use crate::engine::log_id_list::LeaderLogIds;
 use crate::engine::testing::UTConfig;
 use crate::engine::LogIdList;
 use crate::testing::log_id;
@@ -357,23 +358,29 @@ fn test_log_id_list_get_log_id() -> anyhow::Result<()> {
 fn test_log_id_list_by_last_leader() -> anyhow::Result<()> {
     // len == 0
     let ids = LogIdList::<UTConfig>::default();
-    assert_eq!(ids.by_last_leader(), &[]);
+    assert_eq!(ids.by_last_leader(), LeaderLogIds::new(None));
 
     // len == 1
     let ids = LogIdList::<UTConfig>::new([log_id(1, 1, 1)]);
-    assert_eq!(&[log_id(1, 1, 1)], ids.by_last_leader());
+    assert_eq!(LeaderLogIds::new1(log_id(1, 1, 1)), ids.by_last_leader());
 
     // len == 2, the last leader has only one log
     let ids = LogIdList::<UTConfig>::new([log_id(1, 1, 1), log_id(3, 1, 3)]);
-    assert_eq!(&[log_id(3, 1, 3)], ids.by_last_leader());
+    assert_eq!(LeaderLogIds::new1(log_id(3, 1, 3)), ids.by_last_leader());
 
     // len == 2, the last leader has two logs
     let ids = LogIdList::<UTConfig>::new([log_id(1, 1, 1), log_id(1, 1, 3)]);
-    assert_eq!(&[log_id(1, 1, 1), log_id(1, 1, 3)], ids.by_last_leader());
+    assert_eq!(
+        LeaderLogIds::new2(log_id(1, 1, 1), log_id(1, 1, 3)),
+        ids.by_last_leader()
+    );
 
     // len > 2, the last leader has only more than one logs
     let ids = LogIdList::<UTConfig>::new([log_id(1, 1, 1), log_id(7, 1, 8), log_id(7, 1, 10)]);
-    assert_eq!(&[log_id(7, 1, 8), log_id(7, 1, 10)], ids.by_last_leader());
+    assert_eq!(
+        LeaderLogIds::new2(log_id(7, 1, 8), log_id(7, 1, 10)),
+        ids.by_last_leader()
+    );
 
     Ok(())
 }

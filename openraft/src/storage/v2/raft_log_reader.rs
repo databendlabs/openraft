@@ -4,6 +4,8 @@ use std::ops::RangeBounds;
 use openraft_macros::add_async_trait;
 use openraft_macros::since;
 
+use crate::engine::LogIdList;
+use crate::LogId;
 use crate::OptionalSend;
 use crate::OptionalSync;
 use crate::RaftTypeConfig;
@@ -61,5 +63,52 @@ where C: RaftTypeConfig
     #[since(version = "0.10.0")]
     async fn limited_get_log_entries(&mut self, start: u64, end: u64) -> Result<Vec<C::Entry>, StorageError<C>> {
         self.try_get_log_entries(start..end).await
+    }
+
+    /// Retrieves a list of key log ids that mark the beginning of each Leader.
+    ///
+    /// This method returns log entries that represent leadership transitions in the log history,
+    /// including:
+    /// - The first log entry (regardless of Leader);
+    /// - The first log entry from each Leader;
+    /// - The last log entry (regardless of Leader);
+    ///
+    /// # Example
+    ///
+    /// Given:
+    /// Log entries: `[(2,2), (2,3), (5,4), (5,5)]` (format: `(term, index)`)
+    ///
+    /// Returns: `[(2,2), (5,4), (5,5)]`
+    ///
+    /// # Usage
+    ///
+    /// This method is called only during node startup to build an initial log index.
+    ///
+    /// # Implementation Notes
+    ///
+    /// - Optional method: If your [`RaftLogStorage`] implementation doesn't maintain this
+    ///   information, you can use the default implementation.
+    /// - Default implementation: Uses a binary search algorithm to find key log entries
+    /// - Time complexity: `O(k * log(n))` where:
+    ///   - `k` = average number of unique Leaders
+    ///   - `n` = average number of logs per Leader
+    ///
+    /// # Arguments
+    ///
+    /// - `first`: the first log id to return.
+    /// - `last`: the last log id to return.
+    ///
+    /// # Returns
+    ///
+    /// Returns a vector of log entries marking leadership transitions and boundaries.
+    ///
+    /// [`RaftLogStorage`]: crate::storage::RaftLogStorage
+    #[since(version = "0.10.0")]
+    async fn get_key_log_ids(
+        &mut self,
+        first: LogId<C::NodeId>,
+        last: LogId<C::NodeId>,
+    ) -> Result<Vec<LogId<C::NodeId>>, StorageError<C>> {
+        LogIdList::get_key_log_ids(first, last, self).await
     }
 }
