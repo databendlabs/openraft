@@ -2,6 +2,7 @@ use std::fmt;
 
 use crate::display_ext::DisplayInstantExt;
 use crate::display_ext::DisplayOptionExt;
+use crate::engine::leader_log_ids::LeaderLogIds;
 use crate::progress::Progress;
 use crate::progress::VecProgress;
 use crate::proposer::Leader;
@@ -110,8 +111,13 @@ where
             vote.into_committed()
         };
 
-        let last_leader_log_ids = self.last_log_id().cloned().into_iter().collect::<Vec<_>>();
+        // TODO: tricky: the new LeaderId is different from the last log id
+        //       Thus only the last().index is used.
+        //       Thus the first() is ignored.
+        //       But we should not fake the first() there.
+        let last = self.last_log_id();
+        let last_leader_log_ids = LeaderLogIds::new(last.map(|last| (last.clone(), last.clone())));
 
-        Leader::new(vote, self.quorum_set.clone(), self.learner_ids, &last_leader_log_ids)
+        Leader::new(vote, self.quorum_set.clone(), self.learner_ids, last_leader_log_ids)
     }
 }
