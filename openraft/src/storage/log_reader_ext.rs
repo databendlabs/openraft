@@ -37,6 +37,6 @@ where C: RaftTypeConfig
 impl<C, LR> RaftLogReaderExt<C> for LR
 where
     C: RaftTypeConfig,
-    LR: RaftLogReader<C>,
+    LR: RaftLogReader<C> + ?Sized,
 {
 }
