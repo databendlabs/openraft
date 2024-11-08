@@ -719,12 +719,43 @@ where
             );
         }
 
-        tracing::info!("--- log terms: [x,x,x,x,x,x,x], last_purged_log_id: (3,6), e.g., all purged expect [(3,6)]");
+        tracing::info!("--- (case: purge(T1),T2,T2) log terms: [x,x,x,x,x,3,3], last_purged_log_id: (2,4), expect [(2,4),(3,5),(3,6)]");
+        {
+            store.purge(log_id(2, 0, 4)).await?;
+
+            let initial = StorageHelper::new(&mut store, &mut sm).get_initial_state().await?;
+            assert_eq!(
+                vec![log_id(2, 0, 4), log_id(3, 0, 5), log_id(3, 0, 6)],
+                initial.log_ids.key_log_ids()
+            );
+        }
+
+        tracing::info!(
+            "--- (case: purge(T2),T2) log terms: [x,x,x,x,x,x,3], last_purged_log_id: (3,5), expect [(3,5),(3,6)]"
+        );
+        {
+            store.purge(log_id(3, 0, 5)).await?;
+
+            let initial = StorageHelper::new(&mut store, &mut sm).get_initial_state().await?;
+            assert_eq!(vec![log_id(3, 0, 5), log_id(3, 0, 6)], initial.log_ids.key_log_ids());
+        }
+
+        tracing::info!("--- (case: purge(T2)) log terms: [x,x,x,x,x,x,x], last_purged_log_id: (3,6), e.g., all purged expect [(3,6)]");
         {
             store.purge(log_id(3, 0, 6)).await?;
 
             let initial = StorageHelper::new(&mut store, &mut sm).get_initial_state().await?;
             assert_eq!(vec![log_id(3, 0, 6)], initial.log_ids.key_log_ids());
+        }
+
+        tracing::info!(
+            "--- (case: purge(T2),T2,T2) log terms: [x,x,x,x,x,x,x,3,3], last_purged_log_id: (3,6), e.g., all purged expect [(3,6),(3,8)]"
+        );
+        {
+            append(&mut store, [blank_ent_0::<C>(3, 7), blank_ent_0::<C>(3, 8)]).await?;
+
+            let initial = StorageHelper::new(&mut store, &mut sm).get_initial_state().await?;
+            assert_eq!(vec![log_id(3, 0, 6), log_id(3, 0, 8)], initial.log_ids.key_log_ids());
         }
 
         Ok(())

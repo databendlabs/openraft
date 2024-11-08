@@ -1,7 +1,12 @@
+use std::ops::RangeInclusive;
+
+use crate::engine::leader_log_ids::LeaderLogIds;
 use crate::log_id::RaftLogId;
 use crate::storage::RaftLogReaderExt;
+use crate::type_config::alias::LogIdOf;
 use crate::LogId;
 use crate::LogIdOptionExt;
+use crate::RaftLogReader;
 use crate::RaftTypeConfig;
 use crate::StorageError;
 
@@ -43,24 +48,17 @@ where C: RaftTypeConfig
     /// A-------B-------C : find(A,B); find(B,C)   // both find `B`, need to de-dup
     /// A-------C-------C : find(A,C)
     /// ```
-    pub(crate) async fn load_log_ids<LRX>(
-        last_purged_log_id: Option<LogId<C::NodeId>>,
-        last_log_id: Option<LogId<C::NodeId>>,
-        sto: &mut LRX,
-    ) -> Result<LogIdList<C>, StorageError<C>>
+    pub(crate) async fn get_key_log_ids<LR>(
+        range: RangeInclusive<LogId<C::NodeId>>,
+        sto: &mut LR,
+    ) -> Result<Vec<LogIdOf<C>>, StorageError<C>>
     where
-        LRX: RaftLogReaderExt<C>,
+        LR: RaftLogReader<C> + ?Sized,
     {
-        let mut res = vec![];
+        let first = range.start().clone();
+        let last = range.end().clone();
 
-        let last = match last_log_id {
-            None => return Ok(LogIdList::new(res)),
-            Some(x) => x,
-        };
-        let first = match last_purged_log_id {
-            None => sto.get_log_id(0).await?,
-            Some(x) => x,
-        };
+        let mut res: Vec<LogIdOf<C>> = vec![];
 
         // Recursion stack
         let mut stack = vec![(first, last.clone())];
@@ -114,13 +112,16 @@ where C: RaftTypeConfig
             res.push(last);
         }
 
-        Ok(LogIdList::new(res))
+        Ok(res)
     }
 }
 
 impl<C> LogIdList<C>
 where C: RaftTypeConfig
 {
+    /// Create a new `LogIdList`.
+    ///
+    /// It stores the last purged log id, and a series of key log ids.
     pub fn new(key_log_ids: impl IntoIterator<Item = LogId<C::NodeId>>) -> Self {
         Self {
             key_log_ids: key_log_ids.into_iter().collect(),
@@ -310,18 +311,20 @@ where C: RaftTypeConfig
     /// Note that the 0-th log does not belong to any leader(but a membership log to initialize a
     /// cluster) but this method does not differentiate between them.
     #[allow(dead_code)]
-    pub(crate) fn by_last_leader(&self) -> &[LogId<C::NodeId>] {
+    pub(crate) fn by_last_leader(&self) -> LeaderLogIds<C> {
         let ks = &self.key_log_ids;
         let l = ks.len();
         if l < 2 {
-            return ks;
+            let last = self.last();
+            return LeaderLogIds::new(last.map(|x| x.clone()..=x.clone()));
         }
 
         // There are at most two(adjacent) key log ids with the same leader_id
         if ks[l - 1].leader_id() == ks[l - 2].leader_id() {
-            &ks[l - 2..]
+            LeaderLogIds::new_start_end(ks[l - 2].clone(), ks[l - 1].clone())
         } else {
-            &ks[l - 1..]
+            let last = self.last().cloned().unwrap();
+            LeaderLogIds::new_single(last)
         }
     }
 }
