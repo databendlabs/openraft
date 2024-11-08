@@ -1,3 +1,5 @@
+use std::ops::RangeInclusive;
+
 use crate::engine::leader_log_ids::LeaderLogIds;
 use crate::log_id::RaftLogId;
 use crate::storage::RaftLogReaderExt;
@@ -47,13 +49,15 @@ where C: RaftTypeConfig
     /// A-------C-------C : find(A,C)
     /// ```
     pub(crate) async fn get_key_log_ids<LR>(
-        first: LogId<C::NodeId>,
-        last: LogId<C::NodeId>,
+        range: RangeInclusive<LogId<C::NodeId>>,
         sto: &mut LR,
     ) -> Result<Vec<LogIdOf<C>>, StorageError<C>>
     where
         LR: RaftLogReader<C> + ?Sized,
     {
+        let first = range.start().clone();
+        let last = range.end().clone();
+
         let mut res: Vec<LogIdOf<C>> = vec![];
 
         // Recursion stack
@@ -312,15 +316,15 @@ where C: RaftTypeConfig
         let l = ks.len();
         if l < 2 {
             let last = self.last();
-            return LeaderLogIds::new(last.map(|x| (x.clone(), x.clone())));
+            return LeaderLogIds::new(last.map(|x| x.clone()..=x.clone()));
         }
 
         // There are at most two(adjacent) key log ids with the same leader_id
         if ks[l - 1].leader_id() == ks[l - 2].leader_id() {
-            LeaderLogIds::new(Some((ks[l - 2].clone(), ks[l - 1].clone())))
+            LeaderLogIds::new_start_end(ks[l - 2].clone(), ks[l - 1].clone())
         } else {
             let last = self.last().cloned().unwrap();
-            LeaderLogIds::new(Some((last.clone(), last)))
+            LeaderLogIds::new_single(last)
         }
     }
 }

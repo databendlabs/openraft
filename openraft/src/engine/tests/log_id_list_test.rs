@@ -362,23 +362,23 @@ fn test_log_id_list_by_last_leader() -> anyhow::Result<()> {
 
     // len == 1
     let ids = LogIdList::<UTConfig>::new([log_id(1, 1, 1)]);
-    assert_eq!(LeaderLogIds::new1(log_id(1, 1, 1)), ids.by_last_leader());
+    assert_eq!(LeaderLogIds::new_single(log_id(1, 1, 1)), ids.by_last_leader());
 
     // len == 2, the last leader has only one log
     let ids = LogIdList::<UTConfig>::new([log_id(1, 1, 1), log_id(3, 1, 3)]);
-    assert_eq!(LeaderLogIds::new1(log_id(3, 1, 3)), ids.by_last_leader());
+    assert_eq!(LeaderLogIds::new_single(log_id(3, 1, 3)), ids.by_last_leader());
 
     // len == 2, the last leader has two logs
     let ids = LogIdList::<UTConfig>::new([log_id(1, 1, 1), log_id(1, 1, 3)]);
     assert_eq!(
-        LeaderLogIds::new2(log_id(1, 1, 1), log_id(1, 1, 3)),
+        LeaderLogIds::new_start_end(log_id(1, 1, 1), log_id(1, 1, 3)),
         ids.by_last_leader()
     );
 
     // len > 2, the last leader has only more than one logs
     let ids = LogIdList::<UTConfig>::new([log_id(1, 1, 1), log_id(7, 1, 8), log_id(7, 1, 10)]);
     assert_eq!(
-        LeaderLogIds::new2(log_id(7, 1, 8), log_id(7, 1, 10)),
+        LeaderLogIds::new_start_end(log_id(7, 1, 8), log_id(7, 1, 10)),
         ids.by_last_leader()
     );
 
