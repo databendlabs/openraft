@@ -5,6 +5,8 @@ use crate::LeaderId;
 use crate::NodeId;
 
 /// Same as [`Vote`] but with a reference to the [`LeaderId`].
+///
+/// [`Vote`]: crate::vote::Vote
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct RefVote<'a, NID: NodeId> {
     pub(crate) leader_id: &'a LeaderId<NID>,

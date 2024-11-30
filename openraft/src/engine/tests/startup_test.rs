@@ -78,7 +78,7 @@ fn test_startup_as_leader_without_logs() -> anyhow::Result<()> {
                     matching: None,
                     inflight: Inflight::None,
                     searching_end: 4,
-                    reset_on_reversion: false,
+                    allow_log_reversion: false,
                 })]
             },
             Command::AppendInputEntries {
@@ -130,7 +130,7 @@ fn test_startup_as_leader_with_proposed_logs() -> anyhow::Result<()> {
                     matching: None,
                     inflight: Inflight::None,
                     searching_end: 7,
-                    reset_on_reversion: false,
+                    allow_log_reversion: false,
                 })]
             },
             Command::Replicate {

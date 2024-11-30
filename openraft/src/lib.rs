@@ -25,6 +25,12 @@ macro_rules! func_name {
     }};
 }
 
+#[cfg(feature = "loosen-follower-log-revert")]
+compile_error!(
+    "The feature flag `loosen-follower-log-revert` is removed since `0.10.0`. \
+     Use `Config::allow_log_reversion` instead."
+);
+
 pub extern crate openraft_macros;
 
 mod change_members;
