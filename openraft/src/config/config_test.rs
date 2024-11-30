@@ -162,3 +162,31 @@ fn test_config_enable_elect() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn test_config_allow_log_reversion() -> anyhow::Result<()> {
+    let config = Config::build(&["foo", "--allow-log-reversion=false"])?;
+    assert_eq!(Some(false), config.allow_log_reversion);
+
+    let config = Config::build(&["foo", "--allow-log-reversion=true"])?;
+    assert_eq!(Some(true), config.allow_log_reversion);
+
+    let config = Config::build(&["foo", "--allow-log-reversion"])?;
+    assert_eq!(Some(true), config.allow_log_reversion);
+
+    let mut config = Config::build(&["foo"])?;
+    assert_eq!(None, config.allow_log_reversion);
+
+    // test allow_log_reversion method
+
+    config.allow_log_reversion = None;
+    assert_eq!(false, config.get_allow_log_reversion());
+
+    config.allow_log_reversion = Some(true);
+    assert_eq!(true, config.get_allow_log_reversion());
+
+    config.allow_log_reversion = Some(false);
+    assert_eq!(false, config.get_allow_log_reversion());
+
+    Ok(())
+}

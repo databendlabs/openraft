@@ -1,6 +1,7 @@
 use std::borrow::Borrow;
 
 use crate::engine::testing::UTConfig;
+use crate::engine::EngineConfig;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::inflight::Inflight;
 use crate::raft_state::LogStateReader;
@@ -38,16 +39,18 @@ fn test_is_log_range_inflight() -> anyhow::Result<()> {
 
 #[test]
 fn test_update_matching() -> anyhow::Result<()> {
+    let engine_config = EngineConfig::new_default(1);
+
     // Update matching and inflight
     {
         let mut pe = ProgressEntry::<UTConfig>::empty(20);
         pe.inflight = inflight_logs(5, 10);
-        pe.update_matching(Some(log_id(6)));
+        pe.new_updater(&engine_config).update_matching(Some(log_id(6)));
         assert_eq!(inflight_logs(6, 10), pe.inflight);
         assert_eq!(Some(log_id(6)), pe.matching);
         assert_eq!(20, pe.searching_end);
 
-        pe.update_matching(Some(log_id(10)));
+        pe.new_updater(&engine_config).update_matching(Some(log_id(10)));
         assert_eq!(Inflight::None, pe.inflight);
         assert_eq!(Some(log_id(10)), pe.matching);
         assert_eq!(20, pe.searching_end);
@@ -59,7 +62,7 @@ fn test_update_matching() -> anyhow::Result<()> {
         pe.matching = Some(log_id(6));
         pe.inflight = inflight_logs(5, 20);
 
-        pe.update_matching(Some(log_id(20)));
+        pe.new_updater(&engine_config).update_matching(Some(log_id(20)));
         assert_eq!(21, pe.searching_end);
     }
 
@@ -71,7 +74,10 @@ fn test_update_conflicting() -> anyhow::Result<()> {
     let mut pe = ProgressEntry::<UTConfig>::empty(20);
     pe.matching = Some(log_id(3));
     pe.inflight = inflight_logs(5, 10);
-    pe.update_conflicting(5);
+
+    let engine_config = EngineConfig::new_default(1);
+    pe.new_updater(&engine_config).update_conflicting(5);
+
     assert_eq!(Inflight::None, pe.inflight);
     assert_eq!(&Some(log_id(3)), pe.borrow());
     assert_eq!(5, pe.searching_end);

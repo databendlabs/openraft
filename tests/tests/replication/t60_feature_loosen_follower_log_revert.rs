@@ -8,7 +8,7 @@ use openraft::Config;
 use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 
-/// With "--features loosen-follower-log-revert", the leader allows follower to revert its log to an
+/// With "allow_log_reversion", the leader allows follower to revert its log to an
 /// earlier state.
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
@@ -19,6 +19,7 @@ async fn feature_loosen_follower_log_revert() -> Result<()> {
             enable_heartbeat: false,
             // Make sure the replication is done in more than one steps
             max_payload_entries: 1,
+            allow_log_reversion: Some(true),
             ..Default::default()
         }
         .validate()?,

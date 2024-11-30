@@ -93,6 +93,8 @@ singlethreaded = ["openraft-macros/singlethreaded"]
 # useful for testing or other special scenarios.
 # For instance, in an even number nodes cluster, erasing a node's data and then
 # rebooting it(log reverts to empty) will not result in data loss.
+#
+# This feature is removed since `0.10.0`. Use `Config::allow_log_reversion` instead.
 loosen-follower-log-revert = []
 
 
@@ -110,7 +112,6 @@ tracing-log = [ "tracing/log" ]
 features = [
     "bt",
     "compat",
-    "loosen-follower-log-revert",
     "serde",
     "tracing-log",
 ]

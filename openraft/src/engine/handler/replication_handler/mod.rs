@@ -9,6 +9,7 @@ use crate::engine::EngineOutput;
 use crate::engine::ReplicationProgress;
 use crate::error::NodeNotFound;
 use crate::error::Operation;
+use crate::progress;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::Inflight;
 use crate::progress::Progress;
@@ -163,7 +164,9 @@ where C: RaftTypeConfig
         let quorum_accepted = self
             .leader
             .progress
-            .update_with(&node_id, |prog_entry| prog_entry.update_matching(log_id))
+            .update_with(&node_id, |prog_entry| {
+                prog_entry.new_updater(&*self.config).update_matching(log_id)
+            })
             .expect("it should always update existing progress")
             .clone();
 
@@ -215,7 +218,9 @@ where C: RaftTypeConfig
 
         let prog_entry = self.leader.progress.get_mut(&target).unwrap();
 
-        prog_entry.update_conflicting(conflict.index);
+        let mut updater = progress::entry::update::Updater::new(self.config, prog_entry);
+
+        updater.update_conflicting(conflict.index);
     }
 
     /// Enable one-time replication reset for a specific node upon log reversion detection.
@@ -241,7 +246,7 @@ where C: RaftTypeConfig
             return Err(NodeNotFound::new(target, Operation::AllowNextRevert));
         };
 
-        prog_entry.reset_on_reversion = allow;
+        prog_entry.allow_log_reversion = allow;
 
         Ok(())
     }

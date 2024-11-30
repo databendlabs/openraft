@@ -17,15 +17,6 @@ This feature works ONLY with nightly rust, because it requires unstable feature 
 
 Enables compatibility supporting types.
 
-## feature-flag `loosen-follower-log-revert`
-
-Permit the follower's log to roll back to an earlier state without causing the leader to panic.
-Although log state reversion is typically seen as a bug, enabling it can be useful for testing or other special scenarios.
-For instance, in an even number nodes cluster,
-erasing a node's data and then rebooting it(log reverts to empty) will not result in data loss.
-
-**Do not use it unless you know what you are doing**.
-
 ## feature-flag `serde`
 
 Derives `serde::Serialize, serde::Deserialize` for type that are used
