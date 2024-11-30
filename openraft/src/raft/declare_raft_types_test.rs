@@ -1,5 +1,7 @@
 //! Test the `declare_raft_types` macro with default values
 
+#![allow(dead_code)]
+
 use std::io::Cursor;
 
 use crate::declare_raft_types;
