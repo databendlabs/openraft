@@ -48,6 +48,7 @@ tempfile = { version = "3.4.0" }
 
 
 [features]
+serde = []
 
 [package.metadata.docs.rs]
 all-features = true

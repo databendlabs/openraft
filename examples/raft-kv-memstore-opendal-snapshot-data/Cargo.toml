@@ -32,6 +32,7 @@ opendal = "0.48.0"
 maplit = "1.0.2"
 
 [features]
+serde = []
 
 [package.metadata.docs.rs]
 all-features = true

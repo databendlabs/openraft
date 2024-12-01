@@ -29,6 +29,7 @@ tracing-subscriber = { version = "0.3.0", features = ["env-filter"] }
 maplit = "1.0.2"
 
 [features]
+serde = []
 
 [package.metadata.docs.rs]
 all-features = true
