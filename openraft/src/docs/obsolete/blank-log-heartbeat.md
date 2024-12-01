@@ -1,6 +1,6 @@
 # Obsolete: blank log heartbeat
 
-[Issue-698](https://github.com/datafuselabs/openraft/issues/698)
+[Issue-698](https://github.com/databendlabs/openraft/issues/698)
 
 The original design of using a blank log as a heartbeat message is described in the following chapter.
 

@@ -103,7 +103,7 @@ to_display = {
         'ci': False,
 }
 
-commit_url_ptn = 'https://github.com/datafuselabs/openraft/commit/{hash}'
+commit_url_ptn = 'https://github.com/databendlabs/openraft/commit/{hash}'
 
 def cmd(cmds):
     subproc = subprocess.Popen(cmds,

@@ -1,7 +1,7 @@
 <div align="center">
     <h1>Openraft</h1>
     <h4>
-        Advanced <a href="https://raft.github.io/">Raft</a> in 🦀 Rust using <a href="https://tokio.rs/">Tokio</a>. Please ⭐ on <a href="https://github.com/datafuselabs/openraft">github</a>!
+        Advanced <a href="https://raft.github.io/">Raft</a> in 🦀 Rust using <a href="https://tokio.rs/">Tokio</a>. Please ⭐ on <a href="https://github.com/databendlabs/openraft">github</a>!
     </h4>
 
 
@@ -10,7 +10,7 @@
 [![guides](https://img.shields.io/badge/guide-%E2%86%97-brightgreen)](https://docs.rs/openraft/latest/openraft/docs/index.html)
 [![Discord Chat](https://img.shields.io/discord/1015845055434588200?logo=discord)](https://discord.gg/ZKw3WG7FQ9)
 <br/>
-[![CI](https://github.com/datafuselabs/openraft/actions/workflows/ci.yaml/badge.svg)](https://github.com/datafuselabs/openraft/actions/workflows/ci.yaml)
+[![CI](https://github.com/databendlabs/openraft/actions/workflows/ci.yaml/badge.svg)](https://github.com/databendlabs/openraft/actions/workflows/ci.yaml)
 ![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue)
 ![Crates.io](https://img.shields.io/crates/d/openraft.svg)
 ![Crates.io](https://img.shields.io/crates/dv/openraft.svg)
@@ -19,7 +19,7 @@
 
 This project intends to improve raft as the next-generation consensus protocol for distributed data storage systems (SQL, NoSQL, KV, Streaming, Graph ... or maybe something more exotic).
 
-Currently, openraft is the consensus engine of meta-service cluster in [databend](https://github.com/datafuselabs/databend).
+Currently, openraft is the consensus engine of meta-service cluster in [databend](https://github.com/databendlabs/databend).
 
 
 - 🚀 **Get started**:
@@ -29,19 +29,19 @@ Currently, openraft is the consensus engine of meta-service cluster in [databend
 
 - 💡 **Example Applications**:
 
-    - [Examples with Openraft 0.9](https://github.com/datafuselabs/openraft/tree/release-0.9/examples) require Openraft 0.9 on [crate.io/openraft](https://crates.io/crates/openraft)
-    - [Examples with Openraft 0.10](https://github.com/datafuselabs/openraft/tree/release-0.10/examples) require Openraft 0.10, which is not yet published on crate.io;
+    - [Examples with Openraft 0.9](https://github.com/databendlabs/openraft/tree/release-0.9/examples) require Openraft 0.9 on [crate.io/openraft](https://crates.io/crates/openraft)
+    - [Examples with Openraft 0.10](https://github.com/databendlabs/openraft/tree/release-0.10/examples) require Openraft 0.10, which is not yet published on crate.io;
 
 - 🙌 **Questions**?
     - Why not take a peek at our [FAQ](https://docs.rs/openraft/latest/openraft/docs/faq/index.html)? You might find just what you need.
     - Wanna chat? Come hang out with us on [Discord](https://discord.gg/ZKw3WG7FQ9)!
-    - Or start a new discussion over on [GitHub](https://github.com/datafuselabs/openraft/discussions/new).
+    - Or start a new discussion over on [GitHub](https://github.com/databendlabs/openraft/discussions/new).
     - Or join our [Feishu group](https://applink.feishu.cn/client/chat/chatter/add_by_link?link_token=d20l9084-6d36-4470-bac5-4bad7378d003).
     - And hey, if you're on WeChat, add us: `drmingdrmer`. Let's get the conversation started!
 
 Whatever your style, we're here to support you. 🚀 Let's make something awesome together!
 
-- Openraft is derived from [async-raft](https://docs.rs/crate/async-raft/latest) with several bugs fixed: [Fixed bugs](https://github.com/datafuselabs/openraft/blob/main/derived-from-async-raft.md).
+- Openraft is derived from [async-raft](https://docs.rs/crate/async-raft/latest) with several bugs fixed: [Fixed bugs](https://github.com/databendlabs/openraft/blob/main/derived-from-async-raft.md).
 
 
 # Status
@@ -55,7 +55,7 @@ Whatever your style, we're here to support you. 🚀 Let's make something awesom
 ## API status
 
 - **Openraft API is not stable yet**. Before `1.0.0`, an upgrade may contain incompatible changes.
-  Check our [change-log](https://github.com/datafuselabs/openraft/blob/main/change-log.md). A commit message starts with a keyword to indicate the modification type of the commit:
+  Check our [change-log](https://github.com/databendlabs/openraft/blob/main/change-log.md). A commit message starts with a keyword to indicate the modification type of the commit:
 
   - `DataChange:` on-disk data types changes, which may require manual upgrade.
   - `Change:` if it introduces incompatible changes.
@@ -65,25 +65,25 @@ Whatever your style, we're here to support you. 🚀 Let's make something awesom
 ## Versions
 
 - **Branch main** has been under active development.
-    The main branch is for the [release-0.10](https://github.com/datafuselabs/openraft/tree/release-0.10).
+    The main branch is for the [release-0.10](https://github.com/databendlabs/openraft/tree/release-0.10).
 
-- **Branch [release-0.9](https://github.com/datafuselabs/openraft/tree/release-0.9)**:
-  Latest: ( [v0.9.0](https://github.com/datafuselabs/openraft/tree/v0.9.0) | [Change log](https://github.com/datafuselabs/openraft/blob/release-0.9/change-log.md#v090) );
+- **Branch [release-0.9](https://github.com/databendlabs/openraft/tree/release-0.9)**:
+  Latest: ( [v0.9.0](https://github.com/databendlabs/openraft/tree/v0.9.0) | [Change log](https://github.com/databendlabs/openraft/blob/release-0.9/change-log.md#v090) );
   Upgrade guide: ⬆️  [0.8 to 0.9](https://docs.rs/openraft/0.9.0/openraft/docs/upgrade_guide/upgrade_08_09/index.html);
   `release-0.9` **Won't** accept new features but only bug fixes.
 
-- **Branch [release-0.8](https://github.com/datafuselabs/openraft/tree/release-0.8)**:
-  Latest: ( [v0.8.8](https://github.com/datafuselabs/openraft/tree/v0.8.8) | [Change log](https://github.com/datafuselabs/openraft/blob/release-0.8/change-log.md#v088) );
+- **Branch [release-0.8](https://github.com/databendlabs/openraft/tree/release-0.8)**:
+  Latest: ( [v0.8.8](https://github.com/databendlabs/openraft/tree/v0.8.8) | [Change log](https://github.com/databendlabs/openraft/blob/release-0.8/change-log.md#v088) );
   Upgrade guide: ⬆️  [0.7 to 0.8](https://docs.rs/openraft/0.8.4/openraft/docs/upgrade_guide/upgrade_07_08/index.html), ⬆️  [0.8.3 to 0.8.4](https://docs.rs/openraft/0.8.4/openraft/docs/upgrade_guide/upgrade_083_084/index.html);
   `release-0.8` **Won't** accept new features but only bug fixes.
 
-- **Branch [release-0.7](https://github.com/datafuselabs/openraft/tree/release-0.7)**:
-  Latest: ( [v0.7.6](https://github.com/datafuselabs/openraft/tree/v0.7.6) | [Change log](https://github.com/datafuselabs/openraft/blob/release-0.7/change-log.md#v076) );
+- **Branch [release-0.7](https://github.com/databendlabs/openraft/tree/release-0.7)**:
+  Latest: ( [v0.7.6](https://github.com/databendlabs/openraft/tree/v0.7.6) | [Change log](https://github.com/databendlabs/openraft/blob/release-0.7/change-log.md#v076) );
   Upgrade guide: ⬆️  [0.6 to 0.7](https://docs.rs/openraft/0.8.4/openraft/docs/upgrade_guide/upgrade_06_07/index.html);
   `release-0.7` **Won't** accept new features but only bug fixes.
 
-- **Branch [release-0.6](https://github.com/datafuselabs/openraft/tree/release-0.6)**:
-  Latest: ( [v0.6.8](https://github.com/datafuselabs/openraft/tree/v0.6.8) | [Change log](https://github.com/datafuselabs/openraft/blob/release-0.6/change-log.md) );
+- **Branch [release-0.6](https://github.com/databendlabs/openraft/tree/release-0.6)**:
+  Latest: ( [v0.6.8](https://github.com/databendlabs/openraft/tree/v0.6.8) | [Change log](https://github.com/databendlabs/openraft/blob/release-0.6/change-log.md) );
   `release-0.6` **won't** accept new features but only bug fixes.
 
 # Roadmap
@@ -93,7 +93,7 @@ Whatever your style, we're here to support you. 🚀 Let's make something awesom
   See: [Openraft Vote design](https://docs.rs/openraft/latest/openraft/docs/data/vote/index.html);
   Or use standard raft mode with [feature flag `single-term-leader`](https://docs.rs/openraft/latest/openraft/docs/feature_flags/index.html).
 - [x] **2023-04-26** Goal performance is 1,000,000 put/sec.
-- [ ] Reduce the complexity of vote and pre-vote: [get rid of pre-vote RPC](https://github.com/datafuselabs/openraft/discussions/15);
+- [ ] Reduce the complexity of vote and pre-vote: [get rid of pre-vote RPC](https://github.com/databendlabs/openraft/discussions/15);
 - [ ] Support flexible quorum, e.g.: [Hierarchical Quorums](https://zookeeper.apache.org/doc/r3.5.9/zookeeperHierarchicalQuorums.html)
 - [ ] Consider introducing read-quorum and write-quorum,
   improve efficiency with a cluster with an even number of nodes.
@@ -143,7 +143,7 @@ For benchmark detail, go to the [./cluster_benchmark](./cluster_benchmark) folde
 
 # Who use it
 
-- [Databend](https://github.com/datafuselabs/databend) - The Next-Gen Cloud [Data+AI] Analytics
+- [Databend](https://github.com/databendlabs/databend) - The Next-Gen Cloud [Data+AI] Analytics
 - [CnosDB](https://github.com/cnosdb/cnosdb) - A cloud-native open source distributed time series database.
 - [yuyang0/rrqlite](https://github.com/yuyang0/rrqlite) - A rust implementation of [rqlite](https://github.com/rqlite/rqlite).
 - [raymondshe/matchengine-raft](https://github.com/raymondshe/matchengine-raft) - A example to demonstrate how openraft persists snapshots/logs to disk.
@@ -152,13 +152,13 @@ For benchmark detail, go to the [./cluster_benchmark](./cluster_benchmark) folde
 
 # Contributing
 
-Check out the [CONTRIBUTING.md](https://github.com/datafuselabs/openraft/blob/main/CONTRIBUTING.md)
+Check out the [CONTRIBUTING.md](https://github.com/databendlabs/openraft/blob/main/CONTRIBUTING.md)
 guide for more details on getting started with contributing to this project.
 
 ## Contributors
 
-<a href="https://github.com/datafuselabs/openraft/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=datafuselabs/openraft"/>
+<a href="https://github.com/databendlabs/openraft/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=databendlabs/openraft"/>
 </a>
 
 Made with [contributors-img](https://contrib.rocks).

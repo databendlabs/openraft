@@ -9,7 +9,7 @@ use crate::fixtures::RaftRouter;
 
 /// When adding learner and waiting for the learner to become up to date,
 /// it should not try to use `matched.leader_id` which may be uninitialized, i.e., `(0,0)`.
-/// https://github.com/datafuselabs/openraft/issues/471
+/// https://github.com/databendlabs/openraft/issues/471
 ///
 /// - Brings up 1 leader.
 /// - Add learner at once.
