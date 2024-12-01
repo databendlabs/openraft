@@ -1,6 +1,6 @@
-# Guide for upgrading from [v0.8](https://github.com/datafuselabs/openraft/tree/v0.8.9) to [v0.9](https://github.com/datafuselabs/openraft/tree/release-0.9):
+# Guide for upgrading from [v0.8](https://github.com/databendlabs/openraft/tree/v0.8.9) to [v0.9](https://github.com/databendlabs/openraft/tree/release-0.9):
 
-[Change log v0.9.0](https://github.com/datafuselabs/openraft/blob/release-0.9/change-log.md)
+[Change log v0.9.0](https://github.com/databendlabs/openraft/blob/release-0.9/change-log.md)
 
 
 ## Major changes:
@@ -137,7 +137,7 @@ To use arbitrary snapshot data, the application needs to:
   }
   ``` 
   
-  Refer to: [the default chunk-based snapshot sending](https://github.com/datafuselabs/openraft/blob/2cc7170ffaf87c674e5ca13370402528f8ab3958/openraft/src/network/network.rs#L129)
+  Refer to: [the default chunk-based snapshot sending](https://github.com/databendlabs/openraft/blob/2cc7170ffaf87c674e5ca13370402528f8ab3958/openraft/src/network/network.rs#L129)
 
 - On the receiving end,
   when the application finished receiving the snapshot data,
@@ -172,7 +172,7 @@ To use arbitrary snapshot data, the application needs to:
   }
   ```
   
-  Refer to: [the default chunk-based snapshot receiving](https://github.com/datafuselabs/openraft/blob/c9a463f5ce73d1e7dd66eabfe909fe8d5a087f0e/openraft/src/raft/mod.rs#L447)
+  Refer to: [the default chunk-based snapshot receiving](https://github.com/databendlabs/openraft/blob/c9a463f5ce73d1e7dd66eabfe909fe8d5a087f0e/openraft/src/raft/mod.rs#L447)
   
   Note that the application is responsible for maintaining a streaming state [`Streaming`][]
   during receiving chunks.

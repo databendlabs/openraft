@@ -8,7 +8,7 @@
 
 **Openraft API is currently unstable**.
 Incompatibilities may arise in upgrades prior to `1.0.0`.
-Refer to our [Change-Log](https://github.com/datafuselabs/openraft/blob/main/change-log.md) for details.
+Refer to our [Change-Log](https://github.com/databendlabs/openraft/blob/main/change-log.md) for details.
 [Upgrade Guides](crate::docs::upgrade_guide) explains how to upgrade.
 
 Each commit message begins with a keyword indicating the type of change:

@@ -52,7 +52,7 @@ client.add_learner((3, get_addr(3)?)).await?;
 client.change_membership(&btreeset! {1,2,3}, true).await?;
 ```
 
-A complete snippet of adding voters can be found in [Mem KV cluster example](https://github.com/datafuselabs/openraft/blob/d041202a9f30b704116c324a6adc4f2ec28029fa/examples/raft-kv-memstore/tests/cluster/test_cluster.rs#L75-L103).
+A complete snippet of adding voters can be found in [Mem KV cluster example](https://github.com/databendlabs/openraft/blob/d041202a9f30b704116c324a6adc4f2ec28029fa/examples/raft-kv-memstore/tests/cluster/test_cluster.rs#L75-L103).
 
 
 ## Remove a voter node

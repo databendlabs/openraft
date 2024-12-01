@@ -15,7 +15,7 @@ use crate::fixtures::RaftRouter;
 
 /// Cluster members_leader_fix_partial test.
 /// TODO(xp): in discussion: whether a leader should auto commit a uniform membership config:
-/// https://github.com/datafuselabs/openraft/discussions/17
+/// https://github.com/databendlabs/openraft/discussions/17
 ///
 /// - brings up 1 leader.
 /// - manually append a joint config log.

@@ -1,5 +1,5 @@
 [book]
-authors = ["datafuselabs"]
+authors = ["databendlabs"]
 language = "en"
 multilingual = false
 src = "guide/src"

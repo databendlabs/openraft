@@ -18,7 +18,7 @@ use crate::fixtures::RaftRouter;
 
 /// When building a snapshot, applying-entries request should not be blocked.
 ///
-/// Issue: https://github.com/datafuselabs/openraft/issues/596
+/// Issue: https://github.com/databendlabs/openraft/issues/596
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn building_snapshot_does_not_block_apply() -> Result<()> {

@@ -2,10 +2,10 @@
 
 In this chapter, we will build a key-value store cluster using Openraft.
 
-1. [examples/raft-kv-memstore](https://github.com/datafuselabs/openraft/tree/main/examples/raft-kv-memstore)
+1. [examples/raft-kv-memstore](https://github.com/databendlabs/openraft/tree/main/examples/raft-kv-memstore)
    is a complete example application that includes the server, client, and a demo cluster. This example uses an in-memory store for data storage.
 
-1. [examples/raft-kv-rocksdb](https://github.com/datafuselabs/openraft/tree/main/examples/raft-kv-rocksdb)
+1. [examples/raft-kv-rocksdb](https://github.com/databendlabs/openraft/tree/main/examples/raft-kv-rocksdb)
    is another complete example application that includes the server, client, and a demo cluster. This example uses RocksDB for persistent storage.
 
 You can use these examples as a starting point for building your own key-value
@@ -120,7 +120,7 @@ It could be a wrapper for a local key-value store like [RocksDB](https://docs.rs
 The trait [`RaftStateMachine`] defines how log is interpreted. Usually it is an in memory state machine with or without on-disk data backed.
 
 There is a good example,
-[`Mem KV Store`](https://github.com/datafuselabs/openraft/blob/main/examples/raft-kv-memstore/src/store/mod.rs),
+[`Mem KV Store`](https://github.com/databendlabs/openraft/blob/main/examples/raft-kv-memstore/src/store/mod.rs),
 that demonstrates what should be done when a method is called. The storage methods are listed as the below.
 Follow the link to method document to see the details.
 
@@ -179,7 +179,7 @@ Most of the APIs are quite straightforward, except two indirect APIs:
 There is a [Test suite for RaftLogStorage and RaftStateMachine][`LogSuite`] available in Openraft.
 If your implementation passes the tests, Openraft should work well with it.
 To test your implementation, run `Suite::test_all()` with a [`StoreBuilder`] implementation,
-as shown in the [`RocksStore` test](https://github.com/datafuselabs/openraft/blob/main/stores/rocksstore/src/test.rs).
+as shown in the [`RocksStore` test](https://github.com/databendlabs/openraft/blob/main/stores/rocksstore/src/test.rs).
 
 Once all tests pass, you can ensure that your custom storage implementation can work correctly in a distributed system.
 
@@ -223,14 +223,14 @@ Here is the list of methods that need to be implemented for the [`RaftNetwork`] 
 | [`install_snapshot()`] | [`InstallSnapshotRequest`] | remote node [`Raft::install_snapshot()`]      |
 | [`full_snapshot()`]    | [`Snapshot`]               | remote node [`Raft::install_full_snapshot()`] |
 
-[Mem KV Network](https://github.com/datafuselabs/openraft/blob/main/examples/raft-kv-memstore/src/network/raft_network_impl.rs)
+[Mem KV Network](https://github.com/databendlabs/openraft/blob/main/examples/raft-kv-memstore/src/network/raft_network_impl.rs)
 demonstrates how to forward messages to other Raft nodes using [`reqwest`](https://docs.rs/reqwest/latest/reqwest/) as network transport layer.
 
 To receive and handle these requests, there should be a server endpoint for each of these RPCs.
 When the server receives a Raft RPC, it simply passes it to its `raft` instance and replies with the returned result:
-[Mem KV Server](https://github.com/datafuselabs/openraft/blob/main/examples/raft-kv-memstore/src/network/raft.rs).
+[Mem KV Server](https://github.com/databendlabs/openraft/blob/main/examples/raft-kv-memstore/src/network/raft.rs).
 
-For a real-world implementation, you may want to use [Tonic gRPC](https://github.com/hyperium/tonic) to handle gRPC-based communication between Raft nodes. The [databend-meta](https://github.com/datafuselabs/databend/blob/6603392a958ba8593b1f4b01410bebedd484c6a9/metasrv/src/network.rs#L89) project provides an excellent real-world example of a Tonic gRPC-based Raft network implementation.
+For a real-world implementation, you may want to use [Tonic gRPC](https://github.com/hyperium/tonic) to handle gRPC-based communication between Raft nodes. The [databend-meta](https://github.com/databendlabs/databend/blob/6603392a958ba8593b1f4b01410bebedd484c6a9/metasrv/src/network.rs#L89) project provides an excellent real-world example of a Tonic gRPC-based Raft network implementation.
 
 
 ### Implement [`RaftNetworkFactory`].
@@ -285,7 +285,7 @@ See: [Ensure connection to the correct node][`docs::connect-to-correct-node`]
 ## 5. Put everything together
 
 Finally, we put these parts together and boot up a raft node
-[main.rs](https://github.com/datafuselabs/openraft/blob/main/examples/raft-kv-memstore/src/lib.rs)
+[main.rs](https://github.com/databendlabs/openraft/blob/main/examples/raft-kv-memstore/src/lib.rs)
 :
 
 ```ignore
@@ -360,16 +360,16 @@ To set up a demo Raft cluster, follow these steps:
 1. Add more Raft nodes to the cluster.
 1. Update the membership configuration.
 
-The [examples/raft-kv-memstore](https://github.com/datafuselabs/openraft/tree/main/examples/raft-kv-memstore)
+The [examples/raft-kv-memstore](https://github.com/databendlabs/openraft/tree/main/examples/raft-kv-memstore)
 directory provides a detailed description of these steps.
 
 Additionally, two test scripts for setting up a cluster are available:
 
-- [test-cluster.sh](https://github.com/datafuselabs/openraft/blob/main/examples/raft-kv-memstore/test-cluster.sh)
+- [test-cluster.sh](https://github.com/databendlabs/openraft/blob/main/examples/raft-kv-memstore/test-cluster.sh)
   is a minimal Bash script that uses `curl` to communicate with the Raft
   cluster. It demonstrates the plain HTTP messages being sent and received.
 
-- [test_cluster.rs](https://github.com/datafuselabs/openraft/blob/main/examples/raft-kv-memstore/tests/cluster/test_cluster.rs)
+- [test_cluster.rs](https://github.com/databendlabs/openraft/blob/main/examples/raft-kv-memstore/tests/cluster/test_cluster.rs)
   uses the `ExampleClient` to set up a cluster, write data, and read it back.
 
 
