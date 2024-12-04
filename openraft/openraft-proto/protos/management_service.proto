@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package openraftpb;
+
+import "common.proto";
+
+service ManagementService {
+  rpc Init(InitRequest) returns (InitResponse);
+  rpc AddLearner(AddLearnerRequest) returns (RaftReply);
+  rpc ChangeMembership(ChangeMembershipRequest) returns (RaftReply);
+  rpc Metrics(MetricsRequest) returns (RaftReply);
+}
+
+message InitRequest { repeated BasicNode nodes = 1; }
+
+message BasicNode {
+  uint64 id = 1;
+  string addr = 2;
+}
+
+message InitResponse { Status status = 1; }
+
+message AddLearnerRequest {
+  BasicNode node = 1;
+  bool is_blocking = 2;
+}
+
+message ChangeMembershipRequest { repeated BasicNode nodes = 1; }
+
+message MetricsRequest {}

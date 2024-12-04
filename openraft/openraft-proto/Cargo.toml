@@ -1,0 +1,18 @@
+[package]
+name = "openraft-proto"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+prost = "0.13.3"
+tokio = { workspace = true, features = ["full"] }
+tonic = "0.12.3"
+tracing.workspace = true
+tracing-subscriber.workspace = true
+openraft = { version = "0.10.0", path = "../../openraft/" , features = ["serde"] }
+serde_json.workspace = true
+serde = { workspace = true, features = ["derive"] }
+anyhow.workspace = true
+
+[build-dependencies]
+tonic-build = "0.12.3"

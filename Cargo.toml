@@ -62,11 +62,14 @@ members = [
     "stores/memstore",
     "stores/rocksstore",
     "stores/sledstore",
+    "openraft/openraft-proto",
+    "examples/raft-kv-memstore-grpc",
 ]
 exclude = [
     "cluster_benchmark",
     "examples/memstore",
     "examples/raft-kv-memstore",
+    "examples/raft-kv-memstore-grpc",
     "examples/raft-kv-memstore-singlethreaded",
     "examples/raft-kv-memstore-network-v2",
     "examples/raft-kv-memstore-opendal-snapshot-data",
