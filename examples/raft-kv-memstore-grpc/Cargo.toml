@@ -1,0 +1,38 @@
+[package]
+name = "raft-kv-memstore-grpc"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+categories.workspace = true
+description.workspace = true
+documentation.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "raft-key-value"
+path = "src/bin/main.rs"
+
+[dependencies]
+memstore = { path = "../memstore", features = [] }
+openraft = { path = "../../openraft", features = ["serde", "type-alias"] }
+openraft-proto= { path = "../../openraft/openraft-proto/", features = [] }
+
+clap = { version = "4.1.11", features = ["derive", "env"] }
+tokio = { version = "1.0", default-features = false, features = ["sync"] }
+tracing = "0.1.29"
+tracing-subscriber = { version = "0.3.0", features = ["env-filter"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+tonic = "0.12.3"
+
+[dev-dependencies]
+anyhow = "1.0.63"
+maplit = "1.0.2"
+
+[features]
+
+[package.metadata.docs.rs]
+all-features = true

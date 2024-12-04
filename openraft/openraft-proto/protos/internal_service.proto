@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package openraftpb;
+
+import "common.proto";
+
+service InternalService {
+  rpc Vote(RaftRequest) returns (RaftReply);
+  rpc AppendEntries(RaftRequest) returns (RaftReply);
+  rpc InstallSnapshot(SnapshotChunkRequest) returns (RaftReply);
+}
+
+message SnapshotChunkRequest {
+  uint64 ver = 100;
+
+  // json serialized meta data, including vote and snapshot_meta.
+  // ```text
+  // (Vote, SnapshotMeta)
+  // ```
+  string rpc_meta = 10;
+
+  SnapshotChunkV1 chunk = 20;
+}
+
+message SnapshotChunkV1 {
+  uint64 offset = 10;
+  bool done = 11;
+  bytes data = 12;
+}
