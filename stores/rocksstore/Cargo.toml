@@ -10,10 +10,10 @@ authors = [
     "drdr xp <drdr.xp@gmail.com>",
 ]
 categories = ["algorithms", "asynchronous", "data-structures"]
-homepage = "https://github.com/datafuselabs/openraft"
+homepage = "https://github.com/databendlabs/openraft"
 keywords = ["raft", "consensus"]
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/datafuselabs/openraft"
+repository = "https://github.com/databendlabs/openraft"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

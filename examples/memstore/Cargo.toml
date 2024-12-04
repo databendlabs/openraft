@@ -9,10 +9,10 @@ authors = [
 ]
 categories = ["algorithms", "asynchronous", "data-structures"]
 description = "An example in-memory storage for `openraft`."
-homepage = "https://github.com/datafuselabs/openraft"
+homepage = "https://github.com/databendlabs/openraft"
 keywords = ["raft", "consensus"]
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/datafuselabs/openraft"
+repository = "https://github.com/databendlabs/openraft"
 
 [dependencies]
 openraft = { path = "../../openraft", features = ["serde", "type-alias"] }

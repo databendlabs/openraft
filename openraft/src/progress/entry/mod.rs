@@ -1,3 +1,5 @@
+pub(crate) mod update;
+
 use std::borrow::Borrow;
 use std::error::Error;
 use std::fmt::Debug;
@@ -7,6 +9,8 @@ use std::fmt::Formatter;
 use validit::Validate;
 
 use crate::display_ext::DisplayOptionExt;
+use crate::engine::EngineConfig;
+use crate::progress::entry::update::Updater;
 use crate::progress::inflight::Inflight;
 use crate::raft_state::LogStateReader;
 use crate::LogId;
@@ -37,7 +41,7 @@ where C: RaftTypeConfig
     /// to it.
     ///
     /// This flag will be cleared after the progress entry is reset.
-    pub(crate) reset_on_reversion: bool,
+    pub(crate) allow_log_reversion: bool,
 }
 
 impl<C> ProgressEntry<C>
@@ -49,7 +53,7 @@ where C: RaftTypeConfig
             matching: matching.clone(),
             inflight: Inflight::None,
             searching_end: matching.next_index(),
-            reset_on_reversion: false,
+            allow_log_reversion: false,
         }
     }
 
@@ -61,7 +65,7 @@ where C: RaftTypeConfig
             matching: None,
             inflight: Inflight::None,
             searching_end: end,
-            reset_on_reversion: false,
+            allow_log_reversion: false,
         }
     }
 
@@ -72,6 +76,10 @@ where C: RaftTypeConfig
 
         self.inflight = inflight;
         self
+    }
+
+    pub(crate) fn new_updater<'a>(&'a mut self, engine_config: &'a EngineConfig<C>) -> Updater<'a, C> {
+        Updater::new(engine_config, self)
     }
 
     /// Return if a range of log id `..=log_id` is inflight sending.
@@ -85,76 +93,6 @@ where C: RaftTypeConfig
                 lid > log_id_range.prev.as_ref()
             }
             Inflight::Snapshot { last_log_id: _, .. } => false,
-        }
-    }
-
-    pub(crate) fn update_matching(&mut self, matching: Option<LogId<C::NodeId>>) {
-        tracing::debug!(
-            self = display(&self),
-            matching = display(matching.display()),
-            "update_matching"
-        );
-
-        self.inflight.ack(matching.clone());
-
-        debug_assert!(matching >= self.matching);
-        self.matching = matching;
-
-        let matching_next = self.matching.next_index();
-        self.searching_end = std::cmp::max(self.searching_end, matching_next);
-    }
-
-    /// Update conflicting log index.
-    ///
-    /// Conflicting log index is the last found log index on a follower that is not matching the
-    /// leader log.
-    ///
-    /// Usually if follower's data is lost, `conflict` is always greater than or equal `matching`.
-    /// But for testing purpose, a follower is allowed to clean its data and wait for leader to
-    /// replicate all data to it.
-    ///
-    /// To allow a follower to clean its data, enable feature flag [`loosen-follower-log-revert`] .
-    ///
-    /// [`loosen-follower-log-revert`]: crate::docs::feature_flags#feature_flag_loosen_follower_log_revert
-    pub(crate) fn update_conflicting(&mut self, conflict: u64) {
-        tracing::debug!(self = debug(&self), conflict = display(conflict), "update_conflict");
-
-        self.inflight.conflict(conflict);
-
-        debug_assert!(conflict < self.searching_end);
-        self.searching_end = conflict;
-
-        // An already matching log id is found lost:
-        //
-        // - If log reversion is allowed, just restart the binary search from the beginning.
-        // - Otherwise, panic it.
-
-        let allow_reset = if cfg!(feature = "loosen-follower-log-revert") {
-            true
-        } else {
-            self.reset_on_reversion
-        };
-
-        if allow_reset {
-            if conflict < self.matching.next_index() {
-                tracing::warn!(
-                    "conflict {} < last matching {}: follower log is reverted; with 'loosen-follower-log-revert' enabled, this is allowed.",
-                    conflict,
-                    self.matching.display(),
-                );
-
-                self.matching = None;
-                self.reset_on_reversion = false;
-            }
-        } else {
-            debug_assert!(
-                conflict >= self.matching.next_index(),
-                "follower log reversion is not allowed \
-                without `--features loosen-follower-log-revert`; \
-                matching: {}; conflict: {}",
-                self.matching.display(),
-                conflict
-            );
         }
     }
 

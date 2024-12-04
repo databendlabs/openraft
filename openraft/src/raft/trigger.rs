@@ -9,7 +9,7 @@ use crate::RaftTypeConfig;
 
 /// Trigger is an interface to trigger an action to RaftCore by external caller.
 ///
-/// It is create with [`Raft::trigger()`].
+/// It is created with [`Raft::trigger()`].
 ///
 /// For example, to trigger an election at once, you can use the following code
 /// ```ignore
@@ -111,8 +111,7 @@ where C: RaftTypeConfig
     ///
     /// ### Automatic Replication Reset
     ///
-    /// When the [`loosen-follower-log-revert`](`crate::docs::feature_flags#
-    /// feature-flag-loosen-follower-log-revert) feature flag is enabled, the Leader automatically
+    /// When the [`Config::allow_log_reversion`] is enabled, the Leader automatically
     /// reset replication if it detects that the target node's log has reverted. This
     /// feature is primarily useful in testing environments.
     ///
@@ -126,6 +125,8 @@ where C: RaftTypeConfig
     /// - call [`Self::allow_next_revert`] on the Leader.
     /// - Clear the target node's data directory.
     /// - Restart the target node.
+    ///
+    /// [`Config::allow_log_reversion`]: `crate::Config::allow_log_reversion`
     pub async fn allow_next_revert(
         &self,
         to: &C::NodeId,

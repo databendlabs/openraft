@@ -25,6 +25,8 @@ pub(crate) struct EngineConfig<C: RaftTypeConfig> {
     /// The maximum number of entries per payload allowed to be transmitted during replication
     pub(crate) max_payload_entries: u64,
 
+    pub(crate) allow_log_reversion: bool,
+
     pub(crate) timer_config: time_state::Config,
 }
 
@@ -39,6 +41,8 @@ where C: RaftTypeConfig
             max_in_snapshot_log_to_keep: config.max_in_snapshot_log_to_keep,
             purge_batch_size: config.purge_batch_size,
             max_payload_entries: config.max_payload_entries,
+            allow_log_reversion: config.get_allow_log_reversion(),
+
             timer_config: time_state::Config {
                 election_timeout,
                 smaller_log_timeout: Duration::from_millis(config.election_timeout_max * 2),
@@ -55,6 +59,7 @@ where C: RaftTypeConfig
             max_in_snapshot_log_to_keep: 1000,
             purge_batch_size: 256,
             max_payload_entries: 300,
+            allow_log_reversion: false,
             timer_config: time_state::Config::default(),
         }
     }

@@ -184,7 +184,7 @@ behavior is **undefined**.
 ### Can I wipe out the data of ONE node and wait for the leader to replicate all data to it again?
 
 Avoid doing this. Doing so will panic the leader. But it is permitted
-if [`loosen-follower-log-revert`] feature flag is enabled.
+with config [`Config::allow_log_reversion`] enabled.
 
 In a raft cluster, although logs are replicated to multiple nodes,
 wiping out a node and restarting it is still possible to cause data loss.
@@ -211,7 +211,7 @@ N5 |                 elect  L2
 
 But for even number nodes cluster, Erasing **exactly one** node won't cause data loss.
 Thus, in a special scenario like this, or for testing purpose, you can use
-`--feature loosen-follower-log-revert` to permit erasing a node.
+[`Config::allow_log_reversion`] to permit erasing a node.
 
 
 ### Is Openraft resilient to incorrectly configured clusters?
@@ -237,7 +237,6 @@ pub(crate) fn following_handler(&mut self) -> FollowingHandler<C> {
 ```
 
 
-[`loosen-follower-log-revert`]: `crate::docs::feature_flags#loosen_follower_log_revert`
 [`single-term-leader`]:         `crate::docs::feature_flags#single_term_leader`
 
 [`Linearizable Read`]: `crate::docs::protocol::read`
@@ -245,6 +244,8 @@ pub(crate) fn following_handler(&mut self) -> FollowingHandler<C> {
 
 [`BasicNode`]:        `crate::node::BasicNode`
 [`RaftTypeConfig`]:   `crate::RaftTypeConfig`
+
+[`Config::allow_log_reversion`]: `crate::config::Config::allow_log_reversion`
 
 [`RaftLogStorage::save_committed()`]: `crate::storage::RaftLogStorage::save_committed`
 

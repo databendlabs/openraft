@@ -228,6 +228,26 @@ pub struct Config {
            default_missing_value = "true"
     )]
     pub enable_elect: bool,
+
+    /// Whether to allow to reset the replication progress to `None`, when the
+    /// follower's log is found reverted to an early state. **Do not enable this in production**
+    /// unless you know what you are doing.
+    ///
+    /// Although log state reversion is typically seen as a bug, enabling it can be
+    /// useful for testing or other special scenarios.
+    /// For instance, in an even number nodes cluster, erasing a node's data and then
+    /// rebooting it(log reverts to empty) will not result in data loss.
+    ///
+    /// For one-shot log reversion, use
+    /// [`Raft::trigger().allow_next_revert()`](crate::raft::trigger::Trigger::allow_next_revert).
+    ///
+    /// Since: 0.10.0
+    #[clap(long,
+           action = clap::ArgAction::Set,
+           num_args = 0..=1,
+           default_missing_value = "true"
+    )]
+    pub allow_log_reversion: Option<bool>,
 }
 
 /// Updatable config for a raft runtime.
@@ -274,6 +294,14 @@ impl Config {
         } else {
             self.install_snapshot_timeout()
         }
+    }
+
+    /// Whether to allow the replication to reset the state to `None` when a log state reversion is
+    /// detected.
+    ///
+    /// By default, it does not allow log reversion, because it might indicate a bug in the system.
+    pub(crate) fn get_allow_log_reversion(&self) -> bool {
+        self.allow_log_reversion.unwrap_or(false)
     }
 
     /// Build a `Config` instance from a series of command line arguments.
