@@ -61,7 +61,6 @@ members = [
     "tests",
     "stores/memstore",
     "stores/rocksstore",
-    "stores/sledstore",
 ]
 exclude = [
     "cluster_benchmark",
