@@ -1,0 +1,115 @@
+use std::sync::Arc;
+
+use openraft::Raft;
+use tonic::Request;
+use tonic::Response;
+use tonic::Status;
+use tracing::debug;
+
+use crate::protobuf::api_service_server::ApiService;
+use crate::protobuf::GetRequest;
+use crate::protobuf::GetResponse;
+use crate::protobuf::SetRequest;
+use crate::protobuf::SetResponse;
+use crate::store::Request as StoreRequest;
+use crate::store::StateMachineStore;
+use crate::TypeConfig;
+
+/// External API service implementation providing key-value store operations.
+/// This service handles client requests for getting and setting values in the distributed store.
+///
+/// # Responsibilities
+/// - Handle key-value get operations
+/// - Handle key-value set operations
+/// - Ensure consistency through Raft consensus
+///
+/// # Protocol Safety
+/// This service implements the client-facing API and should validate all inputs
+/// before processing them through the Raft consensus protocol.
+pub struct ApiServiceImpl {
+    /// The Raft node instance for consensus operations
+    raft_node: Raft<TypeConfig>,
+    /// The state machine store for direct reads
+    state_machine_store: Arc<StateMachineStore>,
+}
+
+impl ApiServiceImpl {
+    /// Creates a new instance of the API service
+    ///
+    /// # Arguments
+    /// * `raft_node` - The Raft node instance this service will use
+    /// * `state_machine_store` - The state machine store for reading data
+    pub fn new(raft_node: Raft<TypeConfig>, state_machine_store: Arc<StateMachineStore>) -> Self {
+        ApiServiceImpl {
+            raft_node,
+            state_machine_store,
+        }
+    }
+
+    /// Validates a key-value request
+    fn validate_request(&self, key: &str, value: Option<&str>) -> Result<(), Status> {
+        if key.is_empty() {
+            return Err(Status::internal("Key cannot be empty"));
+        }
+        if let Some(val) = value {
+            if val.is_empty() {
+                return Err(Status::internal("Value cannot be empty"));
+            }
+        }
+        Ok(())
+    }
+}
+
+#[tonic::async_trait]
+impl ApiService for ApiServiceImpl {
+    /// Sets a value for a given key in the distributed store
+    ///
+    /// # Arguments
+    /// * `request` - Contains the key and value to set
+    ///
+    /// # Returns
+    /// * `Ok(Response)` - Success response after the value is set
+    /// * `Err(Status)` - Error status if the set operation fails
+    async fn set(&self, request: Request<SetRequest>) -> Result<Response<SetResponse>, Status> {
+        let req = request.into_inner();
+        debug!("Processing set request for key: {}", req.key);
+
+        self.validate_request(&req.key, Some(&req.value))?;
+
+        self.raft_node
+            .client_write(StoreRequest::Set {
+                key: req.key.clone(),
+                value: req.value.clone(),
+            })
+            .await
+            .map_err(|e| Status::internal(format!("Failed to write to store: {}", e)))?;
+
+        debug!("Successfully set value for key: {}", req.key);
+        Ok(Response::new(SetResponse {}))
+    }
+
+    /// Gets a value for a given key from the distributed store
+    ///
+    /// # Arguments
+    /// * `request` - Contains the key to retrieve
+    ///
+    /// # Returns
+    /// * `Ok(Response)` - Success response containing the value
+    /// * `Err(Status)` - Error status if the get operation fails
+    async fn get(&self, request: Request<GetRequest>) -> Result<Response<GetResponse>, Status> {
+        let req = request.into_inner();
+        debug!("Processing get request for key: {}", req.key);
+
+        self.validate_request(&req.key, None)?;
+
+        let sm = self.state_machine_store.state_machine.read().await;
+        let value = sm
+            .data
+            .get(&req.key)
+            .ok_or_else(|| Status::internal(format!("Key not found: {}", req.key)))?
+            .to_string();
+
+        debug!("Successfully retrieved value for key: {}", req.key);
+        Ok(Response::new(GetResponse { value }))
+    }
+}

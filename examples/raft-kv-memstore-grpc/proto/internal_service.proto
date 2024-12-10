@@ -1,0 +1,24 @@
+syntax = "proto3";
+package openraftpb;
+
+// InternalService handles internal Raft cluster communication
+service InternalService {
+  // Vote handles vote requests between Raft nodes during leader election
+  rpc Vote(RaftRequestBytes) returns (RaftReplyBytes) {}
+
+  // Append handles call related to append entries RPC
+  rpc Append(RaftRequestBytes) returns (RaftReplyBytes) {}
+
+  // Snapshot handles install snapshot RPC
+  rpc Snapshot(RaftRequestBytes) returns (RaftReplyBytes) {}
+}
+
+// RaftRequestBytes encapsulates binary Raft request data
+message RaftRequestBytes {
+  bytes value = 1;  // Serialized Raft request data
+}
+
+// RaftReplyBytes encapsulates binary Raft response data
+message RaftReplyBytes {
+  bytes value = 1;  // Serialized Raft response data
+}
