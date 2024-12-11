@@ -182,9 +182,9 @@ where
 
         tracing::info!(
             "re-apply log [{}..{}) in {} item chunks to state machine",
-            chunk_size,
             start,
-            end
+            end,
+            chunk_size,
         );
 
         let mut log_reader = self.log_store.get_log_reader().await;

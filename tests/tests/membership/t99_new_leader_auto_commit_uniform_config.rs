@@ -42,9 +42,9 @@ async fn new_leader_auto_commit_uniform_config() -> Result<()> {
     {
         sto.blocking_append([Entry {
             log_id: log_id(1, 0, log_index + 1),
-            payload: EntryPayload::Membership(Membership::new(
+            payload: EntryPayload::Membership(Membership::new_with_defaults(
                 vec![btreeset! {0}, btreeset! {0,1,2}],
-                Some(btreeset! {}),
+                btreeset! {},
             )),
         }])
         .await?;

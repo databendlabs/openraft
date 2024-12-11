@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
+use std::collections::HashMap;
 
 use maplit::btreemap;
 
@@ -28,26 +29,11 @@ where
     }
 }
 
-impl<NID, N> IntoNodes<NID, N> for BTreeSet<NID>
-where
-    N: Node,
-    NID: NodeId,
+impl<NID> IntoNodes<NID, ()> for BTreeSet<NID>
+where NID: NodeId
 {
-    fn into_nodes(self) -> BTreeMap<NID, N> {
-        self.into_iter().map(|node_id| (node_id, N::default())).collect()
-    }
-}
-
-impl<NID, N> IntoNodes<NID, N> for Option<BTreeSet<NID>>
-where
-    N: Node,
-    NID: NodeId,
-{
-    fn into_nodes(self) -> BTreeMap<NID, N> {
-        match self {
-            None => BTreeMap::new(),
-            Some(s) => s.into_iter().map(|node_id| (node_id, N::default())).collect(),
-        }
+    fn into_nodes(self) -> BTreeMap<NID, ()> {
+        self.into_iter().map(|node_id| (node_id, ())).collect()
     }
 }
 
@@ -58,5 +44,15 @@ where
 {
     fn into_nodes(self) -> BTreeMap<NID, N> {
         self
+    }
+}
+
+impl<NID, N> IntoNodes<NID, N> for HashMap<NID, N>
+where
+    N: Node,
+    NID: NodeId,
+{
+    fn into_nodes(self) -> BTreeMap<NID, N> {
+        self.into_iter().collect()
     }
 }

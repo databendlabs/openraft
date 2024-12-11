@@ -79,12 +79,12 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
         let m = StorageHelper::new(&mut sto0, &mut sm0).get_membership().await?;
 
         assert_eq!(
-            &Membership::new(vec![btreeset! {0,1}], None),
+            &Membership::new_with_defaults(vec![btreeset! {0,1}], []),
             m.committed().membership(),
             "membership "
         );
         assert_eq!(
-            &Membership::new(vec![btreeset! {0,1}], None),
+            &Membership::new_with_defaults(vec![btreeset! {0,1}], []),
             m.effective().membership(),
             "membership "
         );
@@ -115,12 +115,12 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
         let m = StorageHelper::new(&mut sto0, &mut sm0).get_membership().await?;
 
         assert_eq!(
-            &Membership::new(vec![btreeset! {0,1}], None),
+            &Membership::new_with_defaults(vec![btreeset! {0,1}], []),
             m.committed().membership(),
             "membership "
         );
         assert_eq!(
-            &Membership::new(vec![btreeset! {0,1}], None),
+            &Membership::new_with_defaults(vec![btreeset! {0,1}], []),
             m.effective().membership(),
             "membership "
         );

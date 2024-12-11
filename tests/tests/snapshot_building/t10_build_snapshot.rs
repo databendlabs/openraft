@@ -83,7 +83,7 @@ async fn build_snapshot() -> Result<()> {
     let (mut sto1, sm1) = router.new_store();
     sto1.blocking_append([blank_ent(0, 0, 0), Entry {
         log_id: LogId::new(CommittedLeaderId::new(1, 0), 1),
-        payload: EntryPayload::Membership(Membership::new(vec![btreeset! {0}], None)),
+        payload: EntryPayload::Membership(Membership::new_with_defaults(vec![btreeset! {0}], [])),
     }])
     .await?;
 

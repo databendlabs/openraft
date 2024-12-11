@@ -4,7 +4,9 @@ use std::collections::BTreeSet;
 
 use crate::error::ChangeMembershipError;
 use crate::error::EmptyMembership;
-use crate::error::LearnerNotFound;
+use crate::error::MembershipError;
+use crate::error::NodeNotFound;
+use crate::error::Operation;
 use crate::membership::IntoNodes;
 use crate::quorum::AsJoint;
 use crate::quorum::FindCoherent;
@@ -25,12 +27,12 @@ where C: RaftTypeConfig
     /// Multi configs of members.
     ///
     /// AKA a joint config in original raft paper.
-    configs: Vec<BTreeSet<C::NodeId>>,
+    pub(crate) configs: Vec<BTreeSet<C::NodeId>>,
 
     /// Additional info of all nodes, e.g., the connecting host and port.
     ///
     /// A node-id key that is in `nodes` but is not in `configs` is a **learner**.
-    nodes: BTreeMap<C::NodeId, C::Node>,
+    pub(crate) nodes: BTreeMap<C::NodeId, C::Node>,
 }
 
 impl<C> From<BTreeMap<C::NodeId, C::Node>> for Membership<C>
@@ -101,17 +103,41 @@ where C: RaftTypeConfig
     ///
     /// A node id that is in `nodes` but is not in `config` is a **learner**.
     ///
-    /// A node presents in `config` but not in `nodes` is filled with default value.
+    /// A node presents in `config` but not in `nodes` result in an error return.
     ///
-    /// The `nodes` can be:
-    /// - a simple `()`, if there are no learner nodes,
-    /// - `BTreeSet<NodeId>` provides learner node ids whose `Node` data are `Node::default()`,
-    /// - `BTreeMap<NodeId, Node>` provides nodes for every node id. Node ids that are not in
-    ///   `configs` are learners.
-    pub fn new<T>(config: Vec<BTreeSet<C::NodeId>>, nodes: T) -> Self
+    /// The `nodes` implements [`IntoNodes`] thus it can be `BTreeMap<NodeId, Node>` or
+    /// `HashMap<NodeId,Node>` including all Voter and Learner nodes.
+    pub fn new<T>(config: Vec<BTreeSet<C::NodeId>>, nodes: T) -> Result<Self, MembershipError<C>>
     where T: IntoNodes<C::NodeId, C::Node> {
-        let voter_ids = config.as_joint().ids().collect::<BTreeSet<_>>();
-        let nodes = Self::extend_nodes(nodes.into_nodes(), &voter_ids.into_nodes());
+        let m = Membership {
+            configs: config,
+            nodes: nodes.into_nodes(),
+        };
+
+        m.ensure_valid()?;
+        Ok(m)
+    }
+
+    /// Create a new Membership with default nodes from voter configurations and a collection of all
+    /// the node ids.
+    ///
+    /// A new [`Membership`] instance is built with `Node::default()`.
+    ///
+    /// # Arguments
+    ///
+    /// - `config`: Joint configuration containing sets of voter node IDs
+    /// - `nodes`: Iterator of all node IDs in the cluster
+    pub fn new_with_defaults<T>(config: Vec<BTreeSet<C::NodeId>>, nodes: T) -> Self
+    where
+        T: IntoIterator<Item = C::NodeId>,
+        C::Node: Default,
+    {
+        let voter_nodes = config.as_joint().ids().map(|x| (x, C::Node::default())).collect::<BTreeMap<_, _>>();
+
+        let nodes = Self::extend_nodes(
+            nodes.into_iter().map(|x| (x, C::Node::default())).collect(),
+            &voter_nodes,
+        );
 
         Membership { configs: config, nodes }
     }
@@ -132,7 +158,7 @@ where C: RaftTypeConfig
         self.nodes.iter()
     }
 
-    /// Get a the node(either voter or learner) by node id.
+    /// Get the node(either voter or learner) by node id.
     pub fn get_node(&self, node_id: &C::NodeId) -> Option<&C::Node> {
         self.nodes.get(node_id)
     }
@@ -166,8 +192,9 @@ where C: RaftTypeConfig
         false
     }
 
-    /// Create a new Membership the same as [`Self::new()`], but does not add default value
-    /// `Node::default()` if a voter id is not in `nodes`. Thus it may create an invalid instance.
+    /// Create a new Membership the same as [`Self::new()`], but does not add default
+    /// value `Node::default()` if a voter id is not in `nodes`. Thus it may create an invalid
+    /// instance.
     pub(crate) fn new_unchecked<T>(configs: Vec<BTreeSet<C::NodeId>>, nodes: T) -> Self
     where T: IntoNodes<C::NodeId, C::Node> {
         let nodes = nodes.into_nodes();
@@ -197,9 +224,9 @@ where C: RaftTypeConfig
     /// Ensure the membership config is valid:
     /// - No empty sub-config in it.
     /// - Every voter has a corresponding Node.
-    pub(crate) fn ensure_valid(&self) -> Result<(), ChangeMembershipError<C>> {
+    pub(crate) fn ensure_valid(&self) -> Result<(), MembershipError<C>> {
         self.ensure_non_empty_config()?;
-        self.ensure_voter_nodes().map_err(|nid| LearnerNotFound { node_id: nid })?;
+        self.ensure_voter_nodes().map_err(|nid| NodeNotFound::new(nid, Operation::None))?;
         Ok(())
     }
 

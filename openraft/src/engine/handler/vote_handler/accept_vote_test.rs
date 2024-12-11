@@ -21,7 +21,7 @@ use crate::Membership;
 use crate::Vote;
 
 fn m01() -> Membership<UTConfig> {
-    Membership::<UTConfig>::new(vec![btreeset! {0,1}], None)
+    Membership::<UTConfig>::new_with_defaults(vec![btreeset! {0,1}], [])
 }
 
 /// Make a sample VoteResponse

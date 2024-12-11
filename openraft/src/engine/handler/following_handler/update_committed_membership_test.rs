@@ -15,15 +15,15 @@ use crate::MembershipState;
 use crate::Vote;
 
 fn m01() -> Membership<UTConfig> {
-    Membership::<UTConfig>::new(vec![btreeset! {0,1}], None)
+    Membership::<UTConfig>::new_with_defaults(vec![btreeset! {0,1}], [])
 }
 
 fn m23() -> Membership<UTConfig> {
-    Membership::<UTConfig>::new(vec![btreeset! {2,3}], None)
+    Membership::<UTConfig>::new_with_defaults(vec![btreeset! {2,3}], [])
 }
 
 fn m34() -> Membership<UTConfig> {
-    Membership::<UTConfig>::new(vec![btreeset! {3,4}], None)
+    Membership::<UTConfig>::new_with_defaults(vec![btreeset! {3,4}], [])
 }
 
 fn eng() -> Engine<UTConfig> {

@@ -15,15 +15,15 @@ fn effmem(term: u64, index: u64, m: Membership<UTConfig>) -> Arc<EffectiveMember
 }
 
 fn m1() -> Membership<UTConfig> {
-    Membership::new(vec![btreeset! {1}], None)
+    Membership::new_with_defaults(vec![btreeset! {1}], [])
 }
 
 fn m12() -> Membership<UTConfig> {
-    Membership::new(vec![btreeset! {1,2}], None)
+    Membership::new_with_defaults(vec![btreeset! {1,2}], [])
 }
 
 fn m123_345() -> Membership<UTConfig> {
-    Membership::new(vec![btreeset! {1,2,3}, btreeset! {3,4,5}], None)
+    Membership::new_with_defaults(vec![btreeset! {1,2,3}, btreeset! {3,4,5}], [])
 }
 
 #[test]

@@ -1,6 +1,6 @@
 use std::fmt;
 
-/// Operations that can be executed on a Raft node.
+/// API level operation that can be executed on a Raft node.
 ///
 /// These commands represent operations that affect the Raft node's behavior or state. They are
 /// primarily used in error reporting to provide context about what operation was attempted when an
@@ -8,6 +8,9 @@ use std::fmt;
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub enum Operation {
+    /// An unknown operation.
+    None,
+
     /// Set a flag to allow a target replication state to revert to a previous state for one time.
     AllowNextRevert,
 
@@ -36,6 +39,7 @@ pub enum Operation {
 impl fmt::Display for Operation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Operation::None => write!(f, "(unknown operation)"),
             Operation::AllowNextRevert => write!(f, "set flag to allow replication revert for once"),
             Operation::TransferLeader => write!(f, "transfer leadership"),
             Operation::SendHeartbeat => write!(f, "send heartbeat"),

@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use maplit::btreemap;
 use maplit::btreeset;
 
 use crate::engine::testing::UTConfig;
@@ -21,15 +20,15 @@ fn effmem(term: u64, index: u64, m: Membership<UTConfig>) -> Arc<EffectiveMember
 }
 
 fn m1() -> Membership<UTConfig> {
-    Membership::new(vec![btreeset! {1}], None)
+    Membership::new_with_defaults(vec![btreeset! {1}], [])
 }
 
 fn m12() -> Membership<UTConfig> {
-    Membership::new(vec![btreeset! {1,2}], None)
+    Membership::new_with_defaults(vec![btreeset! {1,2}], [])
 }
 
 fn m123_345() -> Membership<UTConfig> {
-    Membership::new(vec![btreeset! {1,2,3}, btreeset! {3,4,5}], None)
+    Membership::new_with_defaults(vec![btreeset! {1,2,3}, btreeset! {3,4,5}], [])
 }
 
 #[test]
@@ -78,17 +77,14 @@ fn test_apply_retain_learner() -> anyhow::Result<()> {
     // Do not leave removed voters as learner
     let res = new().change_handler().apply(ChangeMembers::RemoveVoters(btreeset! {1,2}), false);
     assert_eq!(
-        Ok(Membership::new(vec![btreeset! {3,4,5}], btreemap! {3=>(),4=>(),5=>()})),
+        Ok(Membership::new_with_defaults(vec![btreeset! {3,4,5}], [3, 4, 5])),
         res
     );
 
     // Leave removed voters as learner
     let res = new().change_handler().apply(ChangeMembers::RemoveVoters(btreeset! {1,2}), true);
     assert_eq!(
-        Ok(Membership::new(
-            vec![btreeset! {3,4,5}],
-            btreemap! {1=>(),2=>(),3=>(),4=>(),5=>()}
-        )),
+        Ok(Membership::new_with_defaults(vec![btreeset! {3,4,5}], [1, 2, 3, 4, 5])),
         res
     );
 

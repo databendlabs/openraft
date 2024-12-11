@@ -32,20 +32,20 @@ use crate::MembershipState;
 use crate::Vote;
 
 fn m01() -> Membership<UTConfig> {
-    Membership::<UTConfig>::new(vec![btreeset! {0,1}], None)
+    Membership::<UTConfig>::new_with_defaults(vec![btreeset! {0,1}], [])
 }
 
 fn m1() -> Membership<UTConfig> {
-    Membership::<UTConfig>::new(vec![btreeset! {1}], None)
+    Membership::<UTConfig>::new_with_defaults(vec![btreeset! {1}], [])
 }
 
 /// members: {1}, learners: {2}
 fn m1_2() -> Membership<UTConfig> {
-    Membership::<UTConfig>::new(vec![btreeset! {1}], Some(btreeset! {2}))
+    Membership::<UTConfig>::new_with_defaults(vec![btreeset! {1}], btreeset! {2})
 }
 
 fn m23() -> Membership<UTConfig> {
-    Membership::<UTConfig>::new(vec![btreeset! {2,3}], btreeset! {1,2,3})
+    Membership::<UTConfig>::new_with_defaults(vec![btreeset! {2,3}], btreeset! {1,2,3})
 }
 
 fn eng() -> Engine<UTConfig> {
