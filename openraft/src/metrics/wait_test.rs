@@ -1,7 +1,6 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use maplit::btreemap;
 use maplit::btreeset;
 use tokio::time::sleep;
 
@@ -95,7 +94,7 @@ async fn test_wait() -> anyhow::Result<()> {
             let mut update = init.clone();
             update.membership_config = Arc::new(StoredMembership::new(
                 None,
-                Membership::new(vec![btreeset! {1,2}], btreemap! {3=>()}),
+                Membership::new_with_defaults(vec![btreeset! {1,2}], [3]),
             ));
             let rst = tx.send(update);
             assert!(rst.is_ok());
@@ -263,7 +262,10 @@ where C: RaftTypeConfig {
         current_leader: None,
         millis_since_quorum_ack: None,
         last_quorum_acked: None,
-        membership_config: Arc::new(StoredMembership::new(None, Membership::new(vec![btreeset! {}], None))),
+        membership_config: Arc::new(StoredMembership::new(
+            None,
+            Membership::new_with_defaults(vec![btreeset! {}], []),
+        )),
         heartbeat: None,
 
         snapshot: None,

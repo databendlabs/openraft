@@ -99,7 +99,7 @@ async fn snapshot_delete_conflicting_logs() -> Result<()> {
                 // conflict membership will be replaced with membership in snapshot
                 Entry {
                     log_id: LogId::new(CommittedLeaderId::new(1, 0), 2),
-                    payload: EntryPayload::Membership(Membership::new(vec![btreeset! {2,3}], None)),
+                    payload: EntryPayload::Membership(Membership::new_with_defaults(vec![btreeset! {2,3}], [])),
                 },
                 blank_ent(1, 0, 3),
                 blank_ent(1, 0, 4),
@@ -112,7 +112,7 @@ async fn snapshot_delete_conflicting_logs() -> Result<()> {
                 // another conflict membership, will be removed
                 Entry {
                     log_id: LogId::new(CommittedLeaderId::new(1, 0), 11),
-                    payload: EntryPayload::Membership(Membership::new(vec![btreeset! {4,5}], None)),
+                    payload: EntryPayload::Membership(Membership::new_with_defaults(vec![btreeset! {4,5}], [])),
                 },
             ],
             leader_commit: Some(LogId::new(CommittedLeaderId::new(1, 0), 2)),
@@ -128,11 +128,11 @@ async fn snapshot_delete_conflicting_logs() -> Result<()> {
 
             tracing::info!("got membership of node-1: {:?}", m);
             assert_eq!(
-                &Membership::new(vec![btreeset! {2,3}], None),
+                &Membership::new_with_defaults(vec![btreeset! {2,3}], []),
                 m.committed().membership()
             );
             assert_eq!(
-                &Membership::new(vec![btreeset! {4,5}], None),
+                &Membership::new_with_defaults(vec![btreeset! {4,5}], []),
                 m.effective().membership()
             );
         }
@@ -173,12 +173,12 @@ async fn snapshot_delete_conflicting_logs() -> Result<()> {
 
         tracing::info!("got membership of node-1: {:?}", m);
         assert_eq!(
-            &Membership::new(vec![btreeset! {0}], None),
+            &Membership::new_with_defaults(vec![btreeset! {0}], []),
             m.committed().membership(),
             "membership should be overridden by the snapshot"
         );
         assert_eq!(
-            &Membership::new(vec![btreeset! {0}], None),
+            &Membership::new_with_defaults(vec![btreeset! {0}], []),
             m.effective().membership(),
             "conflicting effective membership does not have to be clear"
         );

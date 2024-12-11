@@ -28,11 +28,11 @@ use crate::Membership;
 use crate::Vote;
 
 fn m12() -> Membership<UTConfig> {
-    Membership::<UTConfig>::new(vec![btreeset! {1,2}], None)
+    Membership::<UTConfig>::new_with_defaults(vec![btreeset! {1,2}], [])
 }
 
 fn m1234() -> Membership<UTConfig> {
-    Membership::<UTConfig>::new(vec![btreeset! {1,2,3,4}], None)
+    Membership::<UTConfig>::new_with_defaults(vec![btreeset! {1,2,3,4}], [])
 }
 
 fn eng() -> Engine<UTConfig> {

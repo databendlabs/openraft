@@ -4,6 +4,7 @@ mod allow_next_revert_error;
 pub mod decompose;
 pub mod into_ok;
 mod invalid_sm;
+mod membership_error;
 mod node_not_found;
 mod operation;
 mod replication_closed;
@@ -19,6 +20,7 @@ use anyerror::AnyError;
 
 pub use self::allow_next_revert_error::AllowNextRevertError;
 pub use self::invalid_sm::InvalidStateMachineType;
+pub use self::membership_error::MembershipError;
 pub use self::node_not_found::NodeNotFound;
 pub use self::operation::Operation;
 pub use self::replication_closed::ReplicationClosed;

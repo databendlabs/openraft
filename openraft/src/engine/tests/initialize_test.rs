@@ -38,7 +38,7 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
         index: 0,
     };
 
-    let m1 = || Membership::<UTConfig>::new(vec![btreeset! {1}], None);
+    let m1 = || Membership::<UTConfig>::new_with_defaults(vec![btreeset! {1}], []);
     let entry = Entry::<UTConfig>::new_membership(LogId::default(), m1());
 
     tracing::info!("--- ok: init empty node 1 with membership(1,2)");
@@ -91,7 +91,7 @@ fn test_initialize() -> anyhow::Result<()> {
         index: 0,
     };
 
-    let m12 = || Membership::<UTConfig>::new(vec![btreeset! {1,2}], None);
+    let m12 = || Membership::<UTConfig>::new_with_defaults(vec![btreeset! {1,2}], []);
     let entry = || Entry::<UTConfig>::new_membership(LogId::default(), m12());
 
     tracing::info!("--- ok: init empty node 1 with membership(1,2)");

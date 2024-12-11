@@ -666,10 +666,10 @@ where C: RaftTypeConfig
             return Ok(());
         }
 
-        tracing::error!(
+        tracing::info!(
             last_log_id = display(self.state.last_log_id().display()),
             vote = display(self.state.vote_ref()),
-            "Can not initialize"
+            "Engine::check_initialize(): can not initialize"
         );
 
         Err(NotAllowed {

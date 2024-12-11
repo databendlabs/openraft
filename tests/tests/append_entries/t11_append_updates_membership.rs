@@ -52,12 +52,12 @@ async fn append_updates_membership() -> Result<()> {
                 blank_ent(1, 0, 1),
                 Entry {
                     log_id: LogId::new(CommittedLeaderId::new(1, 0), 2),
-                    payload: EntryPayload::Membership(Membership::new(vec![btreeset! {1,2}], None)),
+                    payload: EntryPayload::Membership(Membership::new_with_defaults(vec![btreeset! {1,2}], [])),
                 },
                 blank_ent(1, 0, 3),
                 Entry {
                     log_id: LogId::new(CommittedLeaderId::new(1, 0), 4),
-                    payload: EntryPayload::Membership(Membership::new(vec![btreeset! {1,2,3,4}], None)),
+                    payload: EntryPayload::Membership(Membership::new_with_defaults(vec![btreeset! {1,2,3,4}], [])),
                 },
                 blank_ent(1, 0, 5),
             ],

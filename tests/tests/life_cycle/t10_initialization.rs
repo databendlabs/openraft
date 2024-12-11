@@ -105,7 +105,7 @@ async fn initialization() -> anyhow::Result<()> {
         router.external_request(node_id, move |s| {
             let want = EffectiveMembership::new(
                 Some(LogId::new(CommittedLeaderId::new(0, 0), 0)),
-                Membership::new(vec![btreeset! {0,1,2}], None),
+                Membership::new_with_defaults(vec![btreeset! {0,1,2}], []),
             );
             let want = Arc::new(want);
             assert_eq!(
@@ -145,7 +145,7 @@ async fn initialization() -> anyhow::Result<()> {
         assert_eq!(
             StoredMembership::new(
                 Some(LogId::new(CommittedLeaderId::new(0, 0), 0)),
-                Membership::new(vec![btreeset! {0,1,2}], None)
+                Membership::new_with_defaults(vec![btreeset! {0,1,2}], [])
             ),
             sm_mem
         );
@@ -205,7 +205,7 @@ async fn initialize_err_target_not_include_target() -> anyhow::Result<()> {
         assert_eq!(
             InitializeError::NotInMembers(NotInMembers {
                 node_id,
-                membership: Membership::new(vec![btreeset! {9}], None)
+                membership: Membership::new_with_defaults(vec![btreeset! {9}], [])
             }),
             err.into_api_error().unwrap()
         );

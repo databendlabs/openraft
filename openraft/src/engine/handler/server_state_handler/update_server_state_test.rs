@@ -16,11 +16,11 @@ use crate::ServerState;
 use crate::Vote;
 
 fn m01() -> Membership<UTConfig> {
-    Membership::<UTConfig>::new(vec![btreeset! {0,1}], None)
+    Membership::<UTConfig>::new_with_defaults(vec![btreeset! {0,1}], [])
 }
 
 fn m123() -> Membership<UTConfig> {
-    Membership::<UTConfig>::new(vec![btreeset! {1,2,3}], None)
+    Membership::<UTConfig>::new_with_defaults(vec![btreeset! {1,2,3}], [])
 }
 
 fn eng() -> Engine<UTConfig> {

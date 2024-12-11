@@ -25,15 +25,15 @@ use crate::ServerState;
 use crate::Vote;
 
 fn m_empty() -> Membership<UTConfig> {
-    Membership::<UTConfig>::new(vec![btreeset! {}], None)
+    Membership::<UTConfig>::new_with_defaults(vec![btreeset! {}], [])
 }
 
 fn m23() -> Membership<UTConfig> {
-    Membership::<UTConfig>::new(vec![btreeset! {2,3}], None)
+    Membership::<UTConfig>::new_with_defaults(vec![btreeset! {2,3}], [])
 }
 
 fn m34() -> Membership<UTConfig> {
-    Membership::<UTConfig>::new(vec![btreeset! {3,4}], None)
+    Membership::<UTConfig>::new_with_defaults(vec![btreeset! {3,4}], [])
 }
 
 fn eng() -> Engine<UTConfig> {

@@ -8,7 +8,7 @@ use crate::Membership;
 #[test]
 fn test_effective_membership_majority() -> anyhow::Result<()> {
     {
-        let m12345 = Membership::<UTConfig>::new(vec![btreeset! {1,2,3,4,5 }], None);
+        let m12345 = Membership::<UTConfig>::new_with_defaults(vec![btreeset! {1,2,3,4,5 }], []);
         let m = EffectiveMembership::<UTConfig>::new(None, m12345);
 
         assert!(!m.is_quorum([0].iter()));
@@ -20,7 +20,7 @@ fn test_effective_membership_majority() -> anyhow::Result<()> {
     }
 
     {
-        let m12345_678 = Membership::<UTConfig>::new(vec![btreeset! {1,2,3,4,5 }, btreeset! {6,7,8}], None);
+        let m12345_678 = Membership::<UTConfig>::new_with_defaults(vec![btreeset! {1,2,3,4,5 }, btreeset! {6,7,8}], []);
         let m = EffectiveMembership::<UTConfig>::new(None, m12345_678);
 
         assert!(!m.is_quorum([0].iter()));

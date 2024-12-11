@@ -41,7 +41,7 @@ async fn state_machine_apply_membership() -> Result<()> {
         assert_eq!(
             StoredMembership::new(
                 Some(LogId::new(CommittedLeaderId::new(0, 0), 0)),
-                Membership::new(vec![btreeset! {0}], None)
+                Membership::new_with_defaults(vec![btreeset! {0}], [])
             ),
             sm.applied_state().await?.1
         );
@@ -89,7 +89,7 @@ async fn state_machine_apply_membership() -> Result<()> {
         assert_eq!(
             StoredMembership::new(
                 Some(LogId::new(CommittedLeaderId::new(1, 0), log_index)),
-                Membership::new(vec![btreeset! {0, 1, 2}], Some(btreeset! {3,4}))
+                Membership::new_with_defaults(vec![btreeset! {0, 1, 2}], btreeset! {3,4})
             ),
             last_membership
         );

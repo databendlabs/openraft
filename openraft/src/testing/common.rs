@@ -29,6 +29,6 @@ pub fn membership_ent<C: RaftTypeConfig>(
 ) -> crate::Entry<C> {
     crate::Entry::new_membership(
         LogId::new(CommittedLeaderId::new(term, node_id), index),
-        crate::Membership::new(config, None),
+        crate::Membership::new_with_defaults(config, []),
     )
 }

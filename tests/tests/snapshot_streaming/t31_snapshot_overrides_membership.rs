@@ -94,7 +94,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
                 prev_log_id: None,
                 entries: vec![blank_ent(0, 0, 0), Entry {
                     log_id: LogId::new(CommittedLeaderId::new(1, 0), 1),
-                    payload: EntryPayload::Membership(Membership::new(vec![btreeset! {2,3}], None)),
+                    payload: EntryPayload::Membership(Membership::new_with_defaults(vec![btreeset! {2,3}], [])),
                 }],
                 leader_commit: Some(LogId::new(CommittedLeaderId::new(0, 0), 0)),
             };
@@ -108,7 +108,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
 
                 assert_eq!(&EffectiveMembership::default(), m.committed().as_ref());
                 assert_eq!(
-                    &Membership::new(vec![btreeset! {2,3}], None),
+                    &Membership::new_with_defaults(vec![btreeset! {2,3}], []),
                     m.effective().membership()
                 );
             }
@@ -151,12 +151,12 @@ async fn snapshot_overrides_membership() -> Result<()> {
             let m = StorageHelper::new(&mut sto, &mut sm).get_membership().await?;
 
             assert_eq!(
-                &Membership::new(vec![btreeset! {0}], Some(btreeset! {1})),
+                &Membership::new_with_defaults(vec![btreeset! {0}], btreeset! {1}),
                 m.committed().membership(),
                 "membership should be overridden by the snapshot"
             );
             assert_eq!(
-                &Membership::new(vec![btreeset! {0}], Some(btreeset! {1})),
+                &Membership::new_with_defaults(vec![btreeset! {0}], btreeset! {1}),
                 m.effective().membership(),
                 "membership should be overridden by the snapshot"
             );
