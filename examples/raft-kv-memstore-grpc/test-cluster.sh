@@ -98,11 +98,11 @@ echo "Adding node 4 and node 5 as learners, to receive log from leader node 1"
 
 sleep 1
 echo
-rpc 5051 AddLearner       '{"blocking":true,"node":{"node_id":"4","rpc_addr":"127.0.0.1:5054"}}'
+rpc 5051 AddLearner       '{"node":{"node_id":"4","rpc_addr":"127.0.0.1:5054"}}'
 echo "Node 4 added as learner"
 sleep 1
 echo
-rpc 5051 AddLearner       '{"blocking":true,"node":{"node_id":"5","rpc_addr":"127.0.0.1:5055"}}'
+rpc 5051 AddLearner       '{"node":{"node_id":"5","rpc_addr":"127.0.0.1:5055"}}'
 echo "Node 5 added as learner"
 sleep 1
 

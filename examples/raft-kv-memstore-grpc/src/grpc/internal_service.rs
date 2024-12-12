@@ -1,14 +1,21 @@
 use bincode::deserialize;
 use bincode::serialize;
+use futures::StreamExt;
 use openraft::Raft;
+use openraft::Snapshot;
 use tonic::Request;
 use tonic::Response;
 use tonic::Status;
+use tonic::Streaming;
 use tracing::debug;
 
 use crate::protobuf::internal_service_server::InternalService;
 use crate::protobuf::RaftReplyBytes;
 use crate::protobuf::RaftRequestBytes;
+use crate::protobuf::SnapshotRequest;
+use crate::protobuf::VoteRequest;
+use crate::protobuf::VoteResponse;
+use crate::store::StateMachineData;
 use crate::TypeConfig;
 
 /// Internal gRPC service implementation for Raft protocol communications.
@@ -67,12 +74,12 @@ impl InternalService for InternalServiceImpl {
     /// # Protocol Details
     /// This implements the RequestVote RPC from the Raft protocol.
     /// Nodes vote for candidates based on log completeness and term numbers.
-    async fn vote(&self, request: Request<RaftRequestBytes>) -> Result<Response<RaftReplyBytes>, Status> {
+    async fn vote(&self, request: Request<VoteRequest>) -> Result<Response<VoteResponse>, Status> {
         debug!("Processing vote request");
         let req = request.into_inner();
 
         // Deserialize the vote request
-        let vote_req = Self::deserialize_request(&req.value)?;
+        let vote_req = req.into();
 
         // Process the vote request
         let vote_resp = self
@@ -82,7 +89,7 @@ impl InternalService for InternalServiceImpl {
             .map_err(|e| Status::internal(format!("Vote operation failed: {}", e)))?;
 
         debug!("Vote request processed successfully");
-        Self::create_response(vote_resp)
+        Ok(Response::new(vote_resp.into()))
     }
 
     /// Handles append entries requests for log replication.
@@ -97,7 +104,7 @@ impl InternalService for InternalServiceImpl {
     /// # Protocol Details
     /// This implements the AppendEntries RPC from the Raft protocol.
     /// Used for both log replication and as heartbeat mechanism.
-    async fn append(&self, request: Request<RaftRequestBytes>) -> Result<Response<RaftReplyBytes>, Status> {
+    async fn append_entries(&self, request: Request<RaftRequestBytes>) -> Result<Response<RaftReplyBytes>, Status> {
         debug!("Processing append entries request");
         let req = request.into_inner();
 
@@ -115,33 +122,57 @@ impl InternalService for InternalServiceImpl {
         Self::create_response(append_resp)
     }
 
-    /// Handles snapshot installation requests for state transfer.
+    /// Handles snapshot installation requests for state transfer using streaming.
     ///
     /// # Arguments
-    /// * `request` - The snapshot installation request containing state data
+    /// * `request` - Stream of snapshot chunks with metadata
     ///
     /// # Returns
     /// * `Ok(Response)` - Response indicating success/failure of snapshot installation
     /// * `Err(Status)` - Error status if the snapshot operation fails
-    ///
-    /// # Protocol Details
-    /// This implements the InstallSnapshot RPC from the Raft protocol.
-    /// Used to bring lagging followers up to date more efficiently than regular log replication.
-    async fn snapshot(&self, request: Request<RaftRequestBytes>) -> Result<Response<RaftReplyBytes>, Status> {
-        debug!("Processing snapshot installation request");
-        let req = request.into_inner();
+    async fn snapshot(&self, request: Request<Streaming<SnapshotRequest>>) -> Result<Response<RaftReplyBytes>, Status> {
+        debug!("Processing streaming snapshot installation request");
+        let mut stream = request.into_inner();
 
-        // Deserialize the snapshot request
-        let snapshot_req = Self::deserialize_request(&req.value)?;
+        // Get the first chunk which contains metadata
+        let first_chunk = stream.next().await.ok_or_else(|| Status::invalid_argument("Empty snapshot stream"))??;
 
-        // Process the snapshot request
+        // Deserialize the metadata from the first chunk
+        let (vote, snapshot_meta) = Self::deserialize_request(&first_chunk.rpc_meta)?;
+
+        // Prepare to collect snapshot data
+        let mut snapshot_data_bytes = Vec::new();
+
+        // Collect remaining chunks
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk.map_err(|e| Status::internal(format!("Failed to receive snapshot chunk: {}", e)))?;
+
+            // Append non-empty chunks to snapshot data
+            if !chunk.chunk.is_empty() {
+                snapshot_data_bytes.extend_from_slice(&chunk.chunk);
+            }
+        }
+
+        // Reconstruct StateMachineData from bytes
+        let snapshot_data = match StateMachineData::from_bytes(&snapshot_data_bytes) {
+            Ok(data) => data,
+            Err(e) => return Err(Status::internal(format!("Failed to reconstruct snapshot data: {}", e))),
+        };
+
+        // Create snapshot from collected data
+        let snapshot = Snapshot {
+            meta: snapshot_meta,
+            snapshot: Box::new(snapshot_data),
+        };
+
+        // Install the full snapshot
         let snapshot_resp = self
             .raft_node
-            .install_snapshot(snapshot_req)
+            .install_full_snapshot(vote, snapshot)
             .await
             .map_err(|e| Status::internal(format!("Snapshot installation failed: {}", e)))?;
 
-        debug!("Snapshot installation request processed successfully");
+        debug!("Streaming snapshot installation request processed successfully");
         Self::create_response(snapshot_resp)
     }
 }

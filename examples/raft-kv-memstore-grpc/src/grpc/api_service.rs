@@ -102,7 +102,11 @@ impl ApiService for ApiServiceImpl {
 
         self.validate_request(&req.key, None)?;
 
-        let sm = self.state_machine_store.state_machine.read().await;
+        let sm = self
+            .state_machine_store
+            .state_machine
+            .lock()
+            .map_err(|e| Status::internal(format!("error getting lock on sm: {}", e)))?;
         let value = sm
             .data
             .get(&req.key)

@@ -107,7 +107,7 @@ impl ManagementService for ManagementServiceImpl {
 
         let result = self
             .raft_node
-            .add_learner(node.node_id, raft_node, req.blocking)
+            .add_learner(node.node_id, raft_node, true)
             .await
             .map_err(|e| Status::internal(format!("Failed to add learner node: {}", e)))?;
 
