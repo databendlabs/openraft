@@ -145,7 +145,6 @@ jobs:
         include:
           - store: "stores/memstore"
           - store: "stores/rocksstore"
-          - store: "stores/sledstore"
 
     steps:
       - name: Setup | Checkout
