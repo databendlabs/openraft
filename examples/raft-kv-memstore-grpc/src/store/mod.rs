@@ -3,6 +3,7 @@ use std::fmt::Debug;
 use std::sync::Arc;
 use std::sync::Mutex;
 
+use bincode;
 use openraft::alias::SnapshotDataOf;
 use openraft::storage::RaftStateMachine;
 use openraft::storage::Snapshot;
@@ -15,32 +16,13 @@ use openraft::StorageError;
 use openraft::StoredMembership;
 use serde::Deserialize;
 use serde::Serialize;
-use bincode;
 
+use crate::protobuf::Response;
 use crate::typ;
 use crate::NodeId;
 use crate::TypeConfig;
 
 pub type LogStore = memstore::LogStore<TypeConfig>;
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub enum Request {
-    Set { key: String, value: String },
-}
-
-impl Request {
-    pub fn set(key: impl ToString, value: impl ToString) -> Self {
-        Self::Set {
-            key: key.to_string(),
-            value: value.to_string(),
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Response {
-    pub value: Option<String>,
-}
 
 #[derive(Debug)]
 pub struct StoredSnapshot {
@@ -163,14 +145,10 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
 
             match entry.payload {
                 EntryPayload::Blank => res.push(Response { value: None }),
-                EntryPayload::Normal(ref req) => match req {
-                    Request::Set { key, value, .. } => {
-                        sm.data.insert(key.clone(), value.clone());
-                        res.push(Response {
-                            value: Some(value.clone()),
-                        })
-                    }
-                },
+                EntryPayload::Normal(req) => {
+                    sm.data.insert(req.key, req.value.clone());
+                    res.push(Response { value: Some(req.value) });
+                }
                 EntryPayload::Membership(ref mem) => {
                     sm.last_membership = StoredMembership::new(Some(entry.log_id), mem.clone());
                     res.push(Response { value: None })

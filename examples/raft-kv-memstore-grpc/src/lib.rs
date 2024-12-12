@@ -6,8 +6,8 @@ use openraft::LeaderId;
 use openraft::LogId;
 
 use crate::protobuf::Node;
-use crate::store::Request;
-use crate::store::Response;
+use crate::protobuf::Response;
+use crate::protobuf::SetRequest;
 use crate::store::StateMachineData;
 
 pub mod grpc;
@@ -21,7 +21,7 @@ pub type NodeId = u64;
 openraft::declare_raft_types!(
     /// Declare the type configuration for example K/V store.
     pub TypeConfig:
-        D = Request,
+        D = SetRequest,
         R = Response,
         Node = Node,
         SnapshotData = StateMachineData,

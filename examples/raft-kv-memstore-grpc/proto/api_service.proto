@@ -4,27 +4,24 @@ package openraftpb;
 // ApiService provides the key-value store API operations
 service ApiService {
   // Get retrieves the value associated with a given key
-  rpc Get(GetRequest) returns (GetResponse) {}
+  rpc Get(GetRequest) returns (Response) {}
 
   // Set stores a key-value pair in the distributed store
-  rpc Set(SetRequest) returns (SetResponse) {}
+  rpc Set(SetRequest) returns (Response) {}
 }
 
 // GetRequest represents a key lookup request
 message GetRequest {
-  string key = 1;  // Key to look up
+  string key = 1; // Key to look up
 }
 
 // GetResponse contains the value associated with the requested key
-message GetResponse {
-  string value = 1;  // Retrieved value
+message Response {
+  optional string value = 1; // Retrieved value
 }
 
 // SetRequest represents a key-value pair to be stored
 message SetRequest {
-  string key = 1;    // Key to store
-  string value = 2;  // Value to associate with the key
+  string key = 1;   // Key to store
+  string value = 2; // Value to associate with the key
 }
-
-// SetResponse indicates the result of a Set operation
-message SetResponse {}

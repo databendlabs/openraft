@@ -8,10 +8,8 @@ use tracing::debug;
 
 use crate::protobuf::api_service_server::ApiService;
 use crate::protobuf::GetRequest;
-use crate::protobuf::GetResponse;
+use crate::protobuf::Response as PbResponse;
 use crate::protobuf::SetRequest;
-use crate::protobuf::SetResponse;
-use crate::store::Request as StoreRequest;
 use crate::store::StateMachineStore;
 use crate::TypeConfig;
 
@@ -45,19 +43,6 @@ impl ApiServiceImpl {
             state_machine_store,
         }
     }
-
-    /// Validates a key-value request
-    fn validate_request(&self, key: &str, value: Option<&str>) -> Result<(), Status> {
-        if key.is_empty() {
-            return Err(Status::internal("Key cannot be empty"));
-        }
-        if let Some(val) = value {
-            if val.is_empty() {
-                return Err(Status::internal("Value cannot be empty"));
-            }
-        }
-        Ok(())
-    }
 }
 
 #[tonic::async_trait]
@@ -70,22 +55,18 @@ impl ApiService for ApiServiceImpl {
     /// # Returns
     /// * `Ok(Response)` - Success response after the value is set
     /// * `Err(Status)` - Error status if the set operation fails
-    async fn set(&self, request: Request<SetRequest>) -> Result<Response<SetResponse>, Status> {
+    async fn set(&self, request: Request<SetRequest>) -> Result<Response<PbResponse>, Status> {
         let req = request.into_inner();
-        debug!("Processing set request for key: {}", req.key);
+        debug!("Processing set request for key: {}", req.key.clone());
 
-        self.validate_request(&req.key, Some(&req.value))?;
-
-        self.raft_node
-            .client_write(StoreRequest::Set {
-                key: req.key.clone(),
-                value: req.value.clone(),
-            })
+        let res = self
+            .raft_node
+            .client_write(req.clone())
             .await
             .map_err(|e| Status::internal(format!("Failed to write to store: {}", e)))?;
 
         debug!("Successfully set value for key: {}", req.key);
-        Ok(Response::new(SetResponse {}))
+        Ok(Response::new(res.data))
     }
 
     /// Gets a value for a given key from the distributed store
@@ -96,11 +77,9 @@ impl ApiService for ApiServiceImpl {
     /// # Returns
     /// * `Ok(Response)` - Success response containing the value
     /// * `Err(Status)` - Error status if the get operation fails
-    async fn get(&self, request: Request<GetRequest>) -> Result<Response<GetResponse>, Status> {
+    async fn get(&self, request: Request<GetRequest>) -> Result<Response<PbResponse>, Status> {
         let req = request.into_inner();
         debug!("Processing get request for key: {}", req.key);
-
-        self.validate_request(&req.key, None)?;
 
         let sm = self
             .state_machine_store
@@ -114,6 +93,6 @@ impl ApiService for ApiServiceImpl {
             .to_string();
 
         debug!("Successfully retrieved value for key: {}", req.key);
-        Ok(Response::new(GetResponse { value }))
+        Ok(Response::new(PbResponse { value: Some(value) }))
     }
 }
