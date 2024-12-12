@@ -1,0 +1,75 @@
+syntax = "proto3";
+package openraftpb;
+
+// LeaderId represents the leader identifier in Raft
+message LeaderId {
+  uint64 term = 1;
+  uint64 node_id = 2;
+}
+
+// Vote represents the voting information in Raft leader election
+message Vote {
+  LeaderId leader_id = 1;
+  bool committed = 2;
+}
+
+// LogId represents the log identifier in Raft
+message LogId {
+  uint64 index = 1;
+  LeaderId leader_id = 2;
+}
+
+// VoteRequest represents a request for votes during leader election
+message VoteRequest {
+  Vote vote = 1;
+  LogId last_log_id = 2;
+}
+
+// VoteResponse represents the response to a vote request
+message VoteResponse {
+  Vote vote = 1;
+  bool vote_granted = 2;
+  LogId last_log_id = 3;
+}
+
+// InternalService handles internal Raft cluster communication
+service InternalService {
+  // Vote handles vote requests between Raft nodes during leader election
+  rpc Vote(VoteRequest) returns (VoteResponse) {}
+
+  // AppendEntries handles call related to append entries RPC
+  rpc AppendEntries(RaftRequestBytes) returns (RaftReplyBytes) {}
+
+  // Snapshot handles install snapshot RPC
+  rpc Snapshot(stream SnapshotRequest) returns (RaftReplyBytes) {}
+}
+
+// RaftRequestBytes encapsulates binary Raft request data
+message RaftRequestBytes {
+  bytes value = 1; // Serialized Raft request data
+}
+
+// RaftReplyBytes encapsulates binary Raft response data
+message RaftReplyBytes {
+  bytes value = 1; // Serialized Raft response data
+}
+
+// The item of snapshot chunk stream.
+//
+// The first item contains `rpc_meta`,
+// including the application defined format of this snapshot data,
+// the leader vote and snapshot-meta.
+//
+// Since the second item, the `rpc_meta` should be empty and will be ignored by
+// the receiving end.
+message SnapshotRequest {
+
+  // bytes serialized meta data, including vote and snapshot_meta.
+  // ```text
+  // (SnapshotFormat, Vote, SnapshotMeta)
+  // ```
+  bytes rpc_meta = 1;
+
+  // Snapshot data chunk
+  bytes chunk = 2;
+}
