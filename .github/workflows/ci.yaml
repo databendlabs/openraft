@@ -394,6 +394,7 @@ jobs:
         example:
           - "memstore"
           - "raft-kv-memstore"
+          - "raft-kv-memstore-grpc"
           - "raft-kv-memstore-network-v2"
           - "raft-kv-memstore-opendal-snapshot-data"
           - "raft-kv-memstore-singlethreaded"
