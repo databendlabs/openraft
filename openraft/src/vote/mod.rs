@@ -11,3 +11,5 @@ pub use leader_id::CommittedLeaderId;
 pub use leader_id::LeaderId;
 pub(crate) use non_committed::NonCommittedVote;
 pub use vote::Vote;
+
+pub mod raft_term;

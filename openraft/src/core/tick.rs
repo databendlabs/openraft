@@ -179,6 +179,7 @@ mod tests {
         type R = ();
         type NodeId = u64;
         type Node = ();
+        type Term = u64;
         type Entry = crate::Entry<TickUTConfig>;
         type SnapshotData = Cursor<Vec<u8>>;
         type AsyncRuntime = TokioRuntime;

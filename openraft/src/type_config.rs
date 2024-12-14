@@ -16,6 +16,7 @@ pub use util::TypeConfigExt;
 use crate::entry::FromAppData;
 use crate::entry::RaftEntry;
 use crate::raft::responder::Responder;
+use crate::vote::raft_term::RaftTerm;
 use crate::AppData;
 use crate::AppDataResponse;
 use crate::Node;
@@ -43,6 +44,7 @@ use crate::OptionalSync;
 ///        R            = ClientResponse,
 ///        NodeId       = u64,
 ///        Node         = openraft::BasicNode,
+///        Term         = u64,
 ///        Entry        = openraft::Entry<TypeConfig>,
 ///        SnapshotData = Cursor<Vec<u8>>,
 ///        AsyncRuntime = openraft::TokioRuntime,
@@ -66,6 +68,16 @@ pub trait RaftTypeConfig:
 
     /// Raft log entry, which can be built from an AppData.
     type Entry: RaftEntry<Self> + FromAppData<Self::D>;
+
+    /// Type representing a Raft term number.
+    ///
+    /// A term is a logical clock in Raft that is used to detect obsolete information,
+    /// such as old leaders. It must be totally ordered and monotonically increasing.
+    ///
+    /// Common implementations are provided for standard integer types like `u64`, `i64` etc.
+    ///
+    /// See: [`RaftTerm`] for the required methods.
+    type Term: RaftTerm;
 
     /// Snapshot data for exposing a snapshot for reading & writing.
     ///
@@ -106,6 +118,7 @@ pub mod alias {
     pub type ROf<C> = <C as RaftTypeConfig>::R;
     pub type NodeIdOf<C> = <C as RaftTypeConfig>::NodeId;
     pub type NodeOf<C> = <C as RaftTypeConfig>::Node;
+    pub type TermOf<C> = <C as RaftTypeConfig>::Term;
     pub type EntryOf<C> = <C as RaftTypeConfig>::Entry;
     pub type SnapshotDataOf<C> = <C as RaftTypeConfig>::SnapshotData;
     pub type AsyncRuntimeOf<C> = <C as RaftTypeConfig>::AsyncRuntime;

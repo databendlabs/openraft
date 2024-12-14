@@ -111,6 +111,7 @@ where
     C: RaftTypeConfig,
     C::D: Debug,
     C::R: Debug,
+    C::Term: From<u64>,
     C::NodeId: From<u64>,
     C::Node: Default,
     LS: RaftLogStorage<C>,
@@ -499,7 +500,7 @@ where
             "unexpected value for last applied log"
         );
         assert_eq!(
-            Vote::new(1, NODE_ID.into()),
+            Vote::new(1u64.into(), NODE_ID.into()),
             *initial.vote_ref(),
             "unexpected value for default hard state"
         );
@@ -632,8 +633,8 @@ where
     }
 
     pub async fn get_initial_state_log_ids(mut store: LS, mut sm: SM) -> Result<(), StorageError<C>> {
-        let log_id = |t, n: u64, i| LogId::<C> {
-            leader_id: CommittedLeaderId::new(t, n.into()),
+        let log_id = |t: u64, n: u64, i| LogId::<C> {
+            leader_id: CommittedLeaderId::<C>::new(t.into(), n.into()),
             index: i,
         };
 
@@ -820,11 +821,11 @@ where
     }
 
     pub async fn save_vote(mut store: LS, mut sm: SM) -> Result<(), StorageError<C>> {
-        store.save_vote(&Vote::new(100, NODE_ID.into())).await?;
+        store.save_vote(&Vote::new(100.into(), NODE_ID.into())).await?;
 
         let got = store.read_vote().await?;
 
-        assert_eq!(Some(Vote::new(100, NODE_ID.into())), got,);
+        assert_eq!(Some(Vote::new(100.into(), NODE_ID.into())), got,);
         Ok(())
     }
 
@@ -873,7 +874,7 @@ where
     pub async fn try_get_log_entry(mut store: LS, mut sm: SM) -> Result<(), StorageError<C>> {
         Self::feed_10_logs_vote_self(&mut store).await?;
 
-        store.purge(LogId::new(CommittedLeaderId::new(0, C::NodeId::default()), 0)).await?;
+        store.purge(log_id(0, 0, 0)).await?;
 
         // `purge()` does not have to do the purge at once.
         // The implementation may choose to do it in the background.
@@ -923,10 +924,7 @@ where
             store.purge(log_id_0(0, 0)).await?;
 
             let st = store.get_log_state().await?;
-            assert_eq!(
-                Some(LogId::new(CommittedLeaderId::new(0, C::NodeId::default()), 0)),
-                st.last_purged_log_id
-            );
+            assert_eq!(Some(log_id(0, 0, 0)), st.last_purged_log_id);
             assert_eq!(Some(log_id_0(1, 2)), st.last_log_id);
         }
 
@@ -1368,33 +1366,37 @@ where
     }
 
     pub async fn default_vote(sto: &mut LS) -> Result<(), StorageError<C>> {
-        sto.save_vote(&Vote::new(1, NODE_ID.into())).await?;
+        sto.save_vote(&Vote::new(1u64.into(), NODE_ID.into())).await?;
 
         Ok(())
     }
 }
 
 /// Create a log id with node id 0 for testing.
-fn log_id_0<C>(term: u64, index: u64) -> LogId<C>
+fn log_id_0<C>(term: impl Into<C::Term>, index: u64) -> LogId<C>
 where
     C: RaftTypeConfig,
     C::NodeId: From<u64>,
 {
     LogId {
-        leader_id: CommittedLeaderId::new(term, NODE_ID.into()),
+        leader_id: CommittedLeaderId::new(term.into(), NODE_ID.into()),
         index,
     }
 }
 
 /// Create a blank log entry with node_id 0 for test.
 fn blank_ent_0<C: RaftTypeConfig>(term: u64, index: u64) -> C::Entry
-where C::NodeId: From<u64> {
-    C::Entry::new_blank(log_id_0(term, index))
+where
+    C::Term: From<u64>,
+    C::NodeId: From<u64>,
+{
+    C::Entry::new_blank(log_id(term, 0, index))
 }
 
 /// Create a membership entry with node_id 0 for test.
-fn membership_ent_0<C: RaftTypeConfig>(term: u64, index: u64, bs: BTreeSet<C::NodeId>) -> C::Entry
+fn membership_ent_0<C>(term: impl Into<C::Term>, index: u64, bs: BTreeSet<C::NodeId>) -> C::Entry
 where
+    C: RaftTypeConfig,
     C::NodeId: From<u64>,
     C::Node: Default,
 {
@@ -1452,4 +1454,16 @@ where
         return Err(error);
     }
     Ok(())
+}
+
+fn log_id<C>(term: u64, node_id: u64, index: u64) -> LogId<C>
+where
+    C: RaftTypeConfig,
+    C::Term: From<u64>,
+    C::NodeId: From<u64>,
+{
+    LogId {
+        leader_id: CommittedLeaderId::new(term.into(), node_id.into()),
+        index,
+    }
 }
