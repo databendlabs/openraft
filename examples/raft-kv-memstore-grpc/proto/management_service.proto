@@ -1,0 +1,50 @@
+syntax = "proto3";
+package openraftpb;
+
+// ManagementService handles Raft cluster management operations
+service ManagementService {
+  // Init initializes a new Raft cluster with the given nodes
+  rpc Init(InitRequest) returns (RaftReplyString) {}
+
+  // AddLearner adds a new learner node to the Raft cluster
+  rpc AddLearner(AddLearnerRequest) returns (RaftReplyString) {}
+
+  // ChangeMembership modifies the cluster membership configuration
+  rpc ChangeMembership(ChangeMembershipRequest) returns (RaftReplyString) {}
+
+  // Metrics retrieves cluster metrics and status information
+  rpc Metrics(RaftRequestString) returns (RaftReplyString) {}
+}
+
+// InitRequest contains the initial set of nodes for cluster initialization
+message InitRequest {
+  repeated Node nodes = 1; // List of initial cluster nodes
+}
+
+// Node represents a single node in the Raft cluster
+message Node {
+  string rpc_addr = 1; // RPC address for node communication
+  uint64 node_id = 2;  // Unique identifier for the node
+}
+
+// AddLearnerRequest specifies parameters for adding a learner node
+message AddLearnerRequest {
+  Node node = 1; // Node to be added as a learner
+}
+
+// RaftRequestString represents a string-based Raft request
+message RaftRequestString {
+  string data = 1; // Request data in string format
+}
+
+// RaftReplyString represents a string-based Raft response
+message RaftReplyString {
+  string data = 1;  // Response data
+  string error = 2; // Error message, if any
+}
+
+// ChangeMembershipRequest specifies parameters for modifying cluster membership
+message ChangeMembershipRequest {
+  repeated uint64 members = 1; // New set of member node IDs
+  bool retain = 2;             // Whether to retain existing configuration
+}

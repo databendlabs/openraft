@@ -394,6 +394,7 @@ jobs:
         example:
           - "memstore"
           - "raft-kv-memstore"
+          - "raft-kv-memstore-grpc"
           - "raft-kv-memstore-network-v2"
           - "raft-kv-memstore-opendal-snapshot-data"
           - "raft-kv-memstore-singlethreaded"
@@ -408,6 +409,11 @@ jobs:
           toolchain: "${{ matrix.toolchain }}"
           override: true
           components: rustfmt, clippy
+
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          version: "23.x"
 
 
       # Run the following steps in the exmple dir in order to reuse the `./target` dir.
