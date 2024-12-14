@@ -46,11 +46,11 @@ impl<T> NodeId for T where T: Sized
 /// network address, but the used [`Node`] implementation can be customized to include additional
 /// information.
 pub trait Node
-where Self: Sized + OptionalFeatures + Eq + PartialEq + Debug + Clone + Default + 'static
+where Self: Sized + OptionalFeatures + Eq + PartialEq + Debug + Clone + 'static
 {
 }
 
-impl<T> Node for T where T: Sized + OptionalFeatures + Eq + PartialEq + Debug + Clone + Default + 'static {}
+impl<T> Node for T where T: Sized + OptionalFeatures + Eq + PartialEq + Debug + Clone + 'static {}
 
 /// EmptyNode is an implementation of trait [`Node`] that contains nothing.
 ///

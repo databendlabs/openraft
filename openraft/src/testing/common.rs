@@ -26,7 +26,10 @@ pub fn membership_ent<C: RaftTypeConfig>(
     node_id: C::NodeId,
     index: u64,
     config: Vec<BTreeSet<C::NodeId>>,
-) -> crate::Entry<C> {
+) -> crate::Entry<C>
+where
+    C::Node: Default,
+{
     crate::Entry::new_membership(
         LogId::new(CommittedLeaderId::new(term, node_id), index),
         crate::Membership::new_with_defaults(config, []),

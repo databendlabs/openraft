@@ -19,7 +19,7 @@ use crate::RaftTypeConfig;
 ///
 /// It could be a joint of one, two or more configs, i.e., a quorum is a node set that is superset
 /// of a majority of every config.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct Membership<C>
 where C: RaftTypeConfig
@@ -33,6 +33,17 @@ where C: RaftTypeConfig
     ///
     /// A node-id key that is in `nodes` but is not in `configs` is a **learner**.
     pub(crate) nodes: BTreeMap<C::NodeId, C::Node>,
+}
+
+impl<C> Default for Membership<C>
+where C: RaftTypeConfig
+{
+    fn default() -> Self {
+        Membership {
+            configs: vec![],
+            nodes: BTreeMap::new(),
+        }
+    }
 }
 
 impl<C> From<BTreeMap<C::NodeId, C::Node>> for Membership<C>
