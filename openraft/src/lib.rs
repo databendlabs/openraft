@@ -46,7 +46,6 @@ mod runtime;
 mod storage_error;
 mod summary;
 mod try_as_ref;
-mod vote;
 
 pub(crate) mod engine;
 pub(crate) mod log_id_range;
@@ -70,6 +69,7 @@ pub mod raft;
 pub mod storage;
 pub mod testing;
 pub mod type_config;
+pub mod vote;
 
 #[cfg(test)]
 mod feature_serde_test;

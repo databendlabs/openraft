@@ -10,7 +10,7 @@ use crate::RaftTypeConfig;
 pub struct LeaderId<C>
 where C: RaftTypeConfig
 {
-    pub term: u64,
+    pub term: C::Term,
 
     pub voted_for: Option<C::NodeId>,
 }
@@ -44,14 +44,14 @@ where C: RaftTypeConfig
 impl<C> LeaderId<C>
 where C: RaftTypeConfig
 {
-    pub fn new(term: u64, node_id: C::NodeId) -> Self {
+    pub fn new(term: C::Term, node_id: C::NodeId) -> Self {
         Self {
             term,
             voted_for: Some(node_id),
         }
     }
 
-    pub fn get_term(&self) -> u64 {
+    pub fn get_term(&self) -> C::Term {
         self.term
     }
 
@@ -84,8 +84,10 @@ where C: RaftTypeConfig
 #[derive(PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 #[cfg_attr(feature = "serde", serde(transparent))]
-pub struct CommittedLeaderId<C> {
-    pub term: u64,
+pub struct CommittedLeaderId<C>
+where C: RaftTypeConfig
+{
+    pub term: C::Term,
     p: PhantomData<C>,
 }
 
@@ -100,7 +102,7 @@ where C: RaftTypeConfig
 impl<C> CommittedLeaderId<C>
 where C: RaftTypeConfig
 {
-    pub fn new(term: u64, node_id: C::NodeId) -> Self {
+    pub fn new(term: C::Term, node_id: C::NodeId) -> Self {
         let _ = node_id;
         Self { term, p: PhantomData }
     }
