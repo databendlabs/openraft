@@ -14,9 +14,13 @@ mod threaded {
     use std::future::Future;
     use std::pin::Pin;
 
+    /// A trait that is empty if the `singlethreaded` feature flag is enabled,
+    /// otherwise it extends `Send`.
     pub trait OptionalSend: Send {}
     impl<T: Send + ?Sized> OptionalSend for T {}
 
+    /// A trait that is empty if the `singlethreaded` feature flag is enabled,
+    /// otherwise it extends `Sync`.
     pub trait OptionalSync: Sync {}
     impl<T: Sync + ?Sized> OptionalSync for T {}
 
@@ -32,9 +36,13 @@ mod threaded {
     use std::future::Future;
     use std::pin::Pin;
 
+    /// A trait that is empty if the `singlethreaded` feature flag is enabled,
+    /// otherwise it extends `Send`.
     pub trait OptionalSend {}
     impl<T: ?Sized> OptionalSend for T {}
 
+    /// A trait that is empty if the `singlethreaded` feature flag is enabled,
+    /// otherwise it extends `Sync`.
     pub trait OptionalSync {}
     impl<T: ?Sized> OptionalSync for T {}
 
@@ -46,14 +54,21 @@ mod threaded {
 
 #[cfg(not(feature = "serde"))]
 mod serde_able {
-    #[doc(hidden)]
+    /// A trait that extends `Serialize` and `Deserialize` if the `serde` feature flag
+    /// is enabled, otherwise it is empty trait.
     pub trait OptionalSerde {}
     impl<T> OptionalSerde for T {}
 }
 
 #[cfg(feature = "serde")]
 mod serde_able {
-    #[doc(hidden)]
+    /// A trait that extends `Serialize` and `Deserialize` if the `serde` feature flag
+    /// is enabled, otherwise it is empty trait.
     pub trait OptionalSerde: serde::Serialize + for<'a> serde::Deserialize<'a> {}
     impl<T> OptionalSerde for T where T: serde::Serialize + for<'a> serde::Deserialize<'a> {}
 }
+
+/// A trait that combines all optional features.
+pub trait OptionalFeatures: OptionalSend + OptionalSync + OptionalSerde {}
+
+impl<T> OptionalFeatures for T where T: OptionalSend + OptionalSync + OptionalSerde {}

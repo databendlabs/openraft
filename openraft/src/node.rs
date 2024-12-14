@@ -3,31 +3,29 @@ use std::fmt::Display;
 use std::fmt::Formatter;
 use std::hash::Hash;
 
-use crate::OptionalSend;
-use crate::OptionalSync;
+use crate::base::OptionalFeatures;
 
-/// Essential trait bound for node-id, except serde.
-#[doc(hidden)]
-pub trait NodeIdEssential:
-    Sized
-    + OptionalSend
-    + OptionalSync
-    + Eq
-    + PartialEq
-    + Ord
-    + PartialOrd
-    + Debug
-    + Display
-    + Hash
-    + Clone
-    + Default
-    + 'static
+/// A Raft node's ID.
+///
+/// A `NodeId` uniquely identifies a node in the Raft cluster.
+pub trait NodeId
+where Self: Sized
+        + OptionalFeatures
+        + Eq
+        + PartialEq
+        + Ord
+        + PartialOrd
+        + Debug
+        + Display
+        + Hash
+        + Clone
+        + Default
+        + 'static
 {
 }
 
-impl<T> NodeIdEssential for T where T: Sized
-        + OptionalSend
-        + OptionalSync
+impl<T> NodeId for T where T: Sized
+        + OptionalFeatures
         + Eq
         + PartialEq
         + Ord
@@ -42,45 +40,17 @@ impl<T> NodeIdEssential for T where T: Sized
 {
 }
 
-/// A Raft node's ID.
-///
-/// A `NodeId` uniquely identifies a node in the Raft cluster.
-#[cfg(feature = "serde")]
-pub trait NodeId: NodeIdEssential + serde::Serialize + for<'a> serde::Deserialize<'a> {}
-
-#[cfg(feature = "serde")]
-impl<T> NodeId for T where T: NodeIdEssential + serde::Serialize + for<'a> serde::Deserialize<'a> {}
-
-#[cfg(not(feature = "serde"))]
-pub trait NodeId: NodeIdEssential {}
-
-#[cfg(not(feature = "serde"))]
-impl<T> NodeId for T where T: NodeIdEssential {}
-
-/// Essential trait bound for application level node-data, except serde.
-pub trait NodeEssential:
-    Sized + OptionalSend + OptionalSync + Eq + PartialEq + Debug + Clone + Default + 'static
-{
-}
-impl<T> NodeEssential for T where T: Sized + OptionalSend + OptionalSync + Eq + PartialEq + Debug + Clone + Default + 'static
-{}
-
 /// A Raft `Node`, this trait holds all relevant node information.
 ///
-/// For the most generic case `BasicNode` provides an example implementation including the node's
-/// network address, but the used `Node` implementation can be customized to include additional
+/// For the most generic case [`BasicNode`] provides an example implementation including the node's
+/// network address, but the used [`Node`] implementation can be customized to include additional
 /// information.
-#[cfg(feature = "serde")]
-pub trait Node: NodeEssential + serde::Serialize + for<'a> serde::Deserialize<'a> {}
+pub trait Node
+where Self: Sized + OptionalFeatures + Eq + PartialEq + Debug + Clone + Default + 'static
+{
+}
 
-#[cfg(feature = "serde")]
-impl<T> Node for T where T: NodeEssential + serde::Serialize + for<'a> serde::Deserialize<'a> {}
-
-#[cfg(not(feature = "serde"))]
-pub trait Node: NodeEssential {}
-
-#[cfg(not(feature = "serde"))]
-impl<T> Node for T where T: NodeEssential {}
+impl<T> Node for T where T: Sized + OptionalFeatures + Eq + PartialEq + Debug + Clone + Default + 'static {}
 
 /// EmptyNode is an implementation of trait [`Node`] that contains nothing.
 ///
