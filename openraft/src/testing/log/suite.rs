@@ -113,6 +113,7 @@ where
     C::D: Debug,
     C::R: Debug,
     C::NodeId: From<u64>,
+    C::Node: Default,
     LS: RaftLogStorage<C>,
     SM: RaftStateMachine<C>,
     B: StoreBuilder<C, LS, SM, G>,
@@ -1391,7 +1392,10 @@ where C::NodeId: From<u64> {
 
 /// Create a membership entry with node_id 0 for test.
 fn membership_ent_0<C: RaftTypeConfig>(term: u64, index: u64, bs: BTreeSet<C::NodeId>) -> C::Entry
-where C::NodeId: From<u64> {
+where
+    C::NodeId: From<u64>,
+    C::Node: Default,
+{
     C::Entry::new_membership(log_id_0(term, index), Membership::new_with_defaults(vec![bs], []))
 }
 

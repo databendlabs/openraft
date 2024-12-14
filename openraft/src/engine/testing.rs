@@ -6,10 +6,18 @@ use crate::RaftTypeConfig;
 
 /// Trivial Raft type config for Engine related unit tests,
 /// with an optional custom node type `N` for Node type.
-#[derive(Debug, Default, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Debug, Eq, PartialEq, Ord, PartialOrd)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub(crate) struct UTConfig<N = ()> {
     _p: std::marker::PhantomData<N>,
+}
+
+impl<N> Default for UTConfig<N> {
+    fn default() -> Self {
+        Self {
+            _p: std::marker::PhantomData,
+        }
+    }
 }
 
 impl<N> Clone for UTConfig<N> {

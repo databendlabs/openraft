@@ -262,10 +262,7 @@ where C: RaftTypeConfig {
         current_leader: None,
         millis_since_quorum_ack: None,
         last_quorum_acked: None,
-        membership_config: Arc::new(StoredMembership::new(
-            None,
-            Membership::new_with_defaults(vec![btreeset! {}], []),
-        )),
+        membership_config: Arc::new(StoredMembership::new(None, Membership::default())),
         heartbeat: None,
 
         snapshot: None,
