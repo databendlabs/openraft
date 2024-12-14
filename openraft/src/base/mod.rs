@@ -57,3 +57,9 @@ mod serde_able {
     pub trait OptionalSerde: serde::Serialize + for<'a> serde::Deserialize<'a> {}
     impl<T> OptionalSerde for T where T: serde::Serialize + for<'a> serde::Deserialize<'a> {}
 }
+
+/// A trait that combines all optional features.
+#[doc(hidden)]
+pub trait OptionalFeatures: OptionalSend + OptionalSync + OptionalSerde {}
+
+impl<T> OptionalFeatures for T where T: OptionalSend + OptionalSync + OptionalSerde {}
