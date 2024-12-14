@@ -51,14 +51,14 @@ where C: RaftTypeConfig
 impl<C> Vote<C>
 where C: RaftTypeConfig
 {
-    pub fn new(term: u64, node_id: C::NodeId) -> Self {
+    pub fn new(term: C::Term, node_id: C::NodeId) -> Self {
         Self {
             leader_id: LeaderId::new(term, node_id),
             committed: false,
         }
     }
 
-    pub fn new_committed(term: u64, node_id: C::NodeId) -> Self {
+    pub fn new_committed(term: C::Term, node_id: C::NodeId) -> Self {
         Self {
             leader_id: LeaderId::new(term, node_id),
             committed: true,

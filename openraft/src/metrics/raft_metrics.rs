@@ -29,7 +29,7 @@ pub struct RaftMetrics<C: RaftTypeConfig> {
     // --- data ---
     // ---
     /// The current term of the Raft node.
-    pub current_term: u64,
+    pub current_term: C::Term,
 
     /// The last flushed vote.
     pub vote: Vote<C>,
@@ -167,7 +167,7 @@ where C: RaftTypeConfig
             running_state: Ok(()),
             id,
 
-            current_term: 0,
+            current_term: Default::default(),
             vote: Vote::default(),
             last_log_index: None,
             last_applied: None,

@@ -114,6 +114,7 @@ use crate::Vote;
 ///        R            = ClientResponse,
 ///        NodeId       = u64,
 ///        Node         = openraft::BasicNode,
+///        Term         = u64,
 ///        Entry        = openraft::Entry<TypeConfig>,
 ///        SnapshotData = Cursor<Vec<u8>>,
 ///        Responder    = openraft::impls::OneshotResponder<TypeConfig>,
@@ -172,8 +173,9 @@ macro_rules! declare_raft_types {
                 (R            , , String                                ),
                 (NodeId       , , u64                                   ),
                 (Node         , , $crate::impls::BasicNode              ),
+                (Term         , , u64                                   ),
                 (Entry        , , $crate::impls::Entry<Self>            ),
-                (SnapshotData , , std::io::Cursor<Vec<u8>>                       ),
+                (SnapshotData , , std::io::Cursor<Vec<u8>>              ),
                 (Responder    , , $crate::impls::OneshotResponder<Self> ),
                 (AsyncRuntime , , $crate::impls::TokioRuntime           ),
             );

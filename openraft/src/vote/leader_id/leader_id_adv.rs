@@ -17,18 +17,18 @@ use crate::RaftTypeConfig;
 pub struct LeaderId<C>
 where C: RaftTypeConfig
 {
-    pub term: u64,
+    pub term: C::Term,
     pub node_id: C::NodeId,
 }
 
 impl<C> LeaderId<C>
 where C: RaftTypeConfig
 {
-    pub fn new(term: u64, node_id: C::NodeId) -> Self {
+    pub fn new(term: C::Term, node_id: C::NodeId) -> Self {
         Self { term, node_id }
     }
 
-    pub fn get_term(&self) -> u64 {
+    pub fn get_term(&self) -> C::Term {
         self.term
     }
 

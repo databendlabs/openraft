@@ -14,7 +14,7 @@ use crate::Vote;
 pub enum Metric<C>
 where C: RaftTypeConfig
 {
-    Term(u64),
+    Term(C::Term),
     Vote(Vote<C>),
     LastLogIndex(Option<u64>),
     Applied(Option<LogId<C>>),
