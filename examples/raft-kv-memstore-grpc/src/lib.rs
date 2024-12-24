@@ -56,7 +56,7 @@ pub mod typ {
     pub type ClientWriteResponse = openraft::raft::ClientWriteResponse<TypeConfig>;
 }
 
-impl From<protobuf::LeaderId> for LeaderId<NodeId> {
+impl From<protobuf::LeaderId> for LeaderId<TypeConfig> {
     fn from(proto_leader_id: protobuf::LeaderId) -> Self {
         LeaderId::new(proto_leader_id.term, proto_leader_id.node_id)
     }
@@ -64,7 +64,7 @@ impl From<protobuf::LeaderId> for LeaderId<NodeId> {
 
 impl From<protobuf::Vote> for typ::Vote {
     fn from(proto_vote: protobuf::Vote) -> Self {
-        let leader_id: LeaderId<NodeId> = proto_vote.leader_id.unwrap().into();
+        let leader_id: LeaderId<TypeConfig> = proto_vote.leader_id.unwrap().into();
         if proto_vote.committed {
             typ::Vote::new_committed(leader_id.term, leader_id.node_id)
         } else {
@@ -75,7 +75,7 @@ impl From<protobuf::Vote> for typ::Vote {
 
 impl From<protobuf::LogId> for LogId<TypeConfig> {
     fn from(proto_log_id: protobuf::LogId) -> Self {
-        let leader_id: LeaderId<NodeId> = proto_log_id.leader_id.unwrap().into();
+        let leader_id: LeaderId<TypeConfig> = proto_log_id.leader_id.unwrap().into();
         LogId::new(leader_id, proto_log_id.index)
     }
 }
@@ -96,8 +96,8 @@ impl From<protobuf::VoteResponse> for VoteResponse<TypeConfig> {
     }
 }
 
-impl From<LeaderId<NodeId>> for protobuf::LeaderId {
-    fn from(leader_id: LeaderId<NodeId>) -> Self {
+impl From<LeaderId<TypeConfig>> for protobuf::LeaderId {
+    fn from(leader_id: LeaderId<TypeConfig>) -> Self {
         protobuf::LeaderId {
             term: leader_id.term,
             node_id: leader_id.node_id,

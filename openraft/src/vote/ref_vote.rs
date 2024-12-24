@@ -11,14 +11,14 @@ use crate::RaftTypeConfig;
 pub(crate) struct RefVote<'a, C>
 where C: RaftTypeConfig
 {
-    pub(crate) leader_id: &'a LeaderId<C::NodeId>,
+    pub(crate) leader_id: &'a LeaderId<C>,
     pub(crate) committed: bool,
 }
 
 impl<'a, C> RefVote<'a, C>
 where C: RaftTypeConfig
 {
-    pub(crate) fn new(leader_id: &'a LeaderId<C::NodeId>, committed: bool) -> Self {
+    pub(crate) fn new(leader_id: &'a LeaderId<C>, committed: bool) -> Self {
         Self { leader_id, committed }
     }
 

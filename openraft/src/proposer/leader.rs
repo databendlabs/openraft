@@ -78,6 +78,8 @@ where
     /// Create a new Leader.
     ///
     /// `last_leader_log_id` is the first and last log id proposed by the last leader.
+    // leader_id: Copy is feature gated
+    #[allow(clippy::clone_on_copy)]
     pub(crate) fn new(
         vote: CommittedVote<C>,
         quorum_set: QS,

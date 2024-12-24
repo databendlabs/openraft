@@ -153,7 +153,7 @@ pub mod alias {
     // Usually used types
     pub type LogIdOf<C> = crate::LogId<C>;
     pub type VoteOf<C> = crate::Vote<C>;
-    pub type LeaderIdOf<C> = crate::LeaderId<NodeIdOf<C>>;
-    pub type CommittedLeaderIdOf<C> = crate::CommittedLeaderId<NodeIdOf<C>>;
+    pub type LeaderIdOf<C> = crate::LeaderId<C>;
+    pub type CommittedLeaderIdOf<C> = crate::CommittedLeaderId<C>;
     pub type SerdeInstantOf<C> = crate::metrics::SerdeInstant<InstantOf<C>>;
 }
