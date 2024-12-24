@@ -83,9 +83,10 @@ mod tests {
     #[cfg(not(feature = "single-term-leader"))]
     #[test]
     fn test_display() {
+        use crate::engine::testing::UTConfig;
         use crate::MessageSummary;
 
-        let lid = crate::testing::log_id(1, 2, 3);
+        let lid = crate::testing::log_id::<UTConfig>(1, 2, 3);
         assert_eq!("T1-N2.3", lid.to_string());
         assert_eq!("T1-N2.3", lid.summary());
         assert_eq!("Some(T1-N2.3)", Some(&lid).summary());

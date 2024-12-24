@@ -57,7 +57,7 @@ where C: RaftTypeConfig
     ///   of the leader.
     ///
     /// - A quorum could be a uniform quorum or joint quorum.
-    pub committed: Option<LogId<C::NodeId>>,
+    pub committed: Option<LogId<C>>,
 
     pub(crate) purged_next: u64,
 
@@ -82,7 +82,7 @@ where C: RaftTypeConfig
     ///
     /// If a log is in use by a replication task, the purge is postponed and is stored in this
     /// field.
-    pub(crate) purge_upto: Option<LogId<C::NodeId>>,
+    pub(crate) purge_upto: Option<LogId<C>>,
 }
 
 impl<C> Default for RaftState<C>
@@ -106,39 +106,39 @@ where C: RaftTypeConfig
 impl<C> LogStateReader<C> for RaftState<C>
 where C: RaftTypeConfig
 {
-    fn get_log_id(&self, index: u64) -> Option<LogId<C::NodeId>> {
+    fn get_log_id(&self, index: u64) -> Option<LogId<C>> {
         self.log_ids.get(index)
     }
 
-    fn last_log_id(&self) -> Option<&LogId<C::NodeId>> {
+    fn last_log_id(&self) -> Option<&LogId<C>> {
         self.log_ids.last()
     }
 
-    fn committed(&self) -> Option<&LogId<C::NodeId>> {
+    fn committed(&self) -> Option<&LogId<C>> {
         self.committed.as_ref()
     }
 
-    fn io_applied(&self) -> Option<&LogId<C::NodeId>> {
+    fn io_applied(&self) -> Option<&LogId<C>> {
         self.io_state.applied()
     }
 
-    fn io_snapshot_last_log_id(&self) -> Option<&LogId<C::NodeId>> {
+    fn io_snapshot_last_log_id(&self) -> Option<&LogId<C>> {
         self.io_state.snapshot()
     }
 
-    fn io_purged(&self) -> Option<&LogId<C::NodeId>> {
+    fn io_purged(&self) -> Option<&LogId<C>> {
         self.io_state.purged()
     }
 
-    fn snapshot_last_log_id(&self) -> Option<&LogId<C::NodeId>> {
+    fn snapshot_last_log_id(&self) -> Option<&LogId<C>> {
         self.snapshot_meta.last_log_id.as_ref()
     }
 
-    fn purge_upto(&self) -> Option<&LogId<C::NodeId>> {
+    fn purge_upto(&self) -> Option<&LogId<C>> {
         self.purge_upto.as_ref()
     }
 
-    fn last_purged_log_id(&self) -> Option<&LogId<C::NodeId>> {
+    fn last_purged_log_id(&self) -> Option<&LogId<C>> {
         if self.purged_next == 0 {
             return None;
         }
@@ -252,11 +252,11 @@ where C: RaftTypeConfig
     /// Append a list of `log_id`.
     ///
     /// The log ids in the input has to be continuous.
-    pub(crate) fn extend_log_ids_from_same_leader<'a, LID: RaftLogId<C::NodeId> + 'a>(&mut self, new_log_ids: &[LID]) {
+    pub(crate) fn extend_log_ids_from_same_leader<'a, LID: RaftLogId<C> + 'a>(&mut self, new_log_ids: &[LID]) {
         self.log_ids.extend_from_same_leader(new_log_ids)
     }
 
-    pub(crate) fn extend_log_ids<'a, LID: RaftLogId<C::NodeId> + 'a>(&mut self, new_log_id: &[LID]) {
+    pub(crate) fn extend_log_ids<'a, LID: RaftLogId<C> + 'a>(&mut self, new_log_id: &[LID]) {
         self.log_ids.extend(new_log_id)
     }
 
@@ -297,7 +297,7 @@ where C: RaftTypeConfig
     /// Find the first entry in the input that does not exist on local raft-log,
     /// by comparing the log id.
     pub(crate) fn first_conflicting_index<Ent>(&self, entries: &[Ent]) -> usize
-    where Ent: RaftLogId<C::NodeId> {
+    where Ent: RaftLogId<C> {
         let l = entries.len();
 
         for (i, ent) in entries.iter().enumerate() {

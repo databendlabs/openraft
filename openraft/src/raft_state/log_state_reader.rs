@@ -9,7 +9,7 @@ pub(crate) trait LogStateReader<C>
 where C: RaftTypeConfig
 {
     /// Get previous log id, i.e., the log id at index - 1
-    fn prev_log_id(&self, index: u64) -> Option<LogId<C::NodeId>> {
+    fn prev_log_id(&self, index: u64) -> Option<LogId<C>> {
         if index == 0 {
             None
         } else {
@@ -20,7 +20,7 @@ where C: RaftTypeConfig
     /// Return if a log id exists.
     ///
     /// It assumes a committed log will always get positive return value, according to raft spec.
-    fn has_log_id(&self, log_id: &LogId<C::NodeId>) -> bool {
+    fn has_log_id(&self, log_id: &LogId<C>) -> bool {
         if log_id.index < self.committed().next_index() {
             debug_assert!(Some(log_id) <= self.committed());
             return true;
@@ -39,40 +39,40 @@ where C: RaftTypeConfig
     /// It will return `last_purged_log_id` if index is at the last purged index.
     /// If the log at the specified index is smaller than `last_purged_log_id`, or greater than
     /// `last_log_id`, it returns None.
-    fn get_log_id(&self, index: u64) -> Option<LogId<C::NodeId>>;
+    fn get_log_id(&self, index: u64) -> Option<LogId<C>>;
 
     /// The last known log id in the store.
     ///
     /// The range of all stored log ids are `(last_purged_log_id(), last_log_id()]`, left open right
     /// close.
-    fn last_log_id(&self) -> Option<&LogId<C::NodeId>>;
+    fn last_log_id(&self) -> Option<&LogId<C>>;
 
     /// The last known committed log id, i.e., the id of the log that is accepted by a quorum of
     /// voters.
-    fn committed(&self) -> Option<&LogId<C::NodeId>>;
+    fn committed(&self) -> Option<&LogId<C>>;
 
     /// The last known applied log id, i.e., the id of the log that is applied to state machine.
     ///
     /// This is actually happened io-state which might fall behind committed log id.
-    fn io_applied(&self) -> Option<&LogId<C::NodeId>>;
+    fn io_applied(&self) -> Option<&LogId<C>>;
 
     /// The last log id in the last persisted snapshot.
     ///
     /// This is actually happened io-state which might fall behind `Self::snapshot_last_log_id()`.
-    fn io_snapshot_last_log_id(&self) -> Option<&LogId<C::NodeId>>;
+    fn io_snapshot_last_log_id(&self) -> Option<&LogId<C>>;
 
     /// The last known purged log id, inclusive.
     ///
     /// This is actually purged log id from storage.
-    fn io_purged(&self) -> Option<&LogId<C::NodeId>>;
+    fn io_purged(&self) -> Option<&LogId<C>>;
 
     /// Return the last log id the snapshot includes.
-    fn snapshot_last_log_id(&self) -> Option<&LogId<C::NodeId>>;
+    fn snapshot_last_log_id(&self) -> Option<&LogId<C>>;
 
     /// Return the log id it wants to purge up to.
     ///
     /// Logs may not be able to be purged at once because they are in use by replication tasks.
-    fn purge_upto(&self) -> Option<&LogId<C::NodeId>>;
+    fn purge_upto(&self) -> Option<&LogId<C>>;
 
     /// The greatest log id that has been purged after being applied to state machine, i.e., the
     /// oldest known log id.
@@ -81,5 +81,5 @@ where C: RaftTypeConfig
     /// left open and right close.
     ///
     /// `last_purged_log_id == last_log_id` means there is no log entry in the storage.
-    fn last_purged_log_id(&self) -> Option<&LogId<C::NodeId>>;
+    fn last_purged_log_id(&self) -> Option<&LogId<C>>;
 }

@@ -20,7 +20,7 @@ pub type ClientWriteResult<C> = Result<ClientWriteResponse<C>, ClientWriteError<
 )]
 pub struct ClientWriteResponse<C: RaftTypeConfig> {
     /// The id of the log that is applied.
-    pub log_id: LogId<C::NodeId>,
+    pub log_id: LogId<C>,
 
     /// Application specific response data.
     pub data: C::R,
@@ -35,7 +35,7 @@ where C: RaftTypeConfig
     /// Create a new instance of `ClientWriteResponse`.
     #[allow(dead_code)]
     #[since(version = "0.9.5")]
-    pub(crate) fn new_app_response(log_id: LogId<C::NodeId>, data: C::R) -> Self {
+    pub(crate) fn new_app_response(log_id: LogId<C>, data: C::R) -> Self {
         Self {
             log_id,
             data,
@@ -44,7 +44,7 @@ where C: RaftTypeConfig
     }
 
     #[since(version = "0.9.5")]
-    pub fn log_id(&self) -> &LogId<C::NodeId> {
+    pub fn log_id(&self) -> &LogId<C> {
         &self.log_id
     }
 

@@ -61,7 +61,7 @@ where C: RaftTypeConfig
 
     /// Update the log id it expect to purge up to. It won't trigger purge immediately.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn update_purge_upto(&mut self, purge_upto: LogId<C::NodeId>) {
+    pub(crate) fn update_purge_upto(&mut self, purge_upto: LogId<C>) {
         debug_assert!(self.state.purge_upto() <= Some(&purge_upto));
         self.state.purge_upto = Some(purge_upto);
     }
@@ -74,7 +74,7 @@ where C: RaftTypeConfig
     /// `max_keep` specifies the number of applied logs to keep.
     /// `max_keep==0` means every applied log can be purged.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn calc_purge_upto(&self) -> Option<LogId<C::NodeId>> {
+    pub(crate) fn calc_purge_upto(&self) -> Option<LogId<C>> {
         let st = &self.state;
         let max_keep = self.config.max_in_snapshot_log_to_keep;
         let batch_size = self.config.purge_batch_size;

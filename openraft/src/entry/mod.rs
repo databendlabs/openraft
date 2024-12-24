@@ -21,7 +21,7 @@ pub use traits::RaftPayload;
 pub struct Entry<C>
 where C: RaftTypeConfig
 {
-    pub log_id: LogId<C::NodeId>,
+    pub log_id: LogId<C>,
 
     /// This entry's payload.
     pub payload: EntryPayload<C>,
@@ -97,14 +97,14 @@ where C: RaftTypeConfig
     }
 }
 
-impl<C> RaftLogId<C::NodeId> for Entry<C>
+impl<C> RaftLogId<C> for Entry<C>
 where C: RaftTypeConfig
 {
-    fn get_log_id(&self) -> &LogId<C::NodeId> {
+    fn get_log_id(&self) -> &LogId<C> {
         &self.log_id
     }
 
-    fn set_log_id(&mut self, log_id: &LogId<C::NodeId>) {
+    fn set_log_id(&mut self, log_id: &LogId<C>) {
         self.log_id = log_id.clone();
     }
 }
@@ -112,14 +112,14 @@ where C: RaftTypeConfig
 impl<C> RaftEntry<C> for Entry<C>
 where C: RaftTypeConfig
 {
-    fn new_blank(log_id: LogId<C::NodeId>) -> Self {
+    fn new_blank(log_id: LogId<C>) -> Self {
         Self {
             log_id,
             payload: EntryPayload::Blank,
         }
     }
 
-    fn new_membership(log_id: LogId<C::NodeId>, m: Membership<C>) -> Self {
+    fn new_membership(log_id: LogId<C>, m: Membership<C>) -> Self {
         Self {
             log_id,
             payload: EntryPayload::Membership(m),

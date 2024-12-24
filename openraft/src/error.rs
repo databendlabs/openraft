@@ -587,8 +587,8 @@ pub struct QuorumNotEnough<C: RaftTypeConfig> {
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 #[error("the cluster is already undergoing a configuration change at log {membership_log_id:?}, last committed membership log id: {committed:?}")]
 pub struct InProgress<C: RaftTypeConfig> {
-    pub committed: Option<LogId<C::NodeId>>,
-    pub membership_log_id: Option<LogId<C::NodeId>>,
+    pub committed: Option<LogId<C>>,
+    pub membership_log_id: Option<LogId<C>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -602,7 +602,7 @@ pub struct LearnerNotFound<C: RaftTypeConfig> {
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 #[error("not allowed to initialize due to current raft state: last_log_id: {last_log_id:?} vote: {vote}")]
 pub struct NotAllowed<C: RaftTypeConfig> {
-    pub last_log_id: Option<LogId<C::NodeId>>,
+    pub last_log_id: Option<LogId<C>>,
     pub vote: Vote<C>,
 }
 
@@ -640,7 +640,7 @@ pub(crate) enum RejectVoteRequest<C: RaftTypeConfig> {
 
     #[allow(dead_code)]
     #[error("reject vote request by a greater last-log-id: {0:?}")]
-    ByLastLogId(Option<LogId<C::NodeId>>),
+    ByLastLogId(Option<LogId<C>>),
 }
 
 impl<C> From<RejectVoteRequest<C>> for AppendEntriesResponse<C>
@@ -662,10 +662,7 @@ pub(crate) enum RejectAppendEntries<C: RaftTypeConfig> {
     ByVote(Vote<C>),
 
     #[error("reject AppendEntries because of conflicting log-id: {local:?}; expect to be: {expect:?}")]
-    ByConflictingLogId {
-        expect: LogId<C::NodeId>,
-        local: Option<LogId<C::NodeId>>,
-    },
+    ByConflictingLogId { expect: LogId<C>, local: Option<LogId<C>> },
 }
 
 impl<C> From<RejectVoteRequest<C>> for RejectAppendEntries<C>

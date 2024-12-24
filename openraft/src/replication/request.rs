@@ -9,7 +9,7 @@ pub(crate) enum Replicate<C>
 where C: RaftTypeConfig
 {
     /// Inform replication stream to forward the committed log id to followers/learners.
-    Committed(Option<LogId<C::NodeId>>),
+    Committed(Option<LogId<C>>),
 
     /// Send a chunk of data, e.g., logs or snapshot.
     Data(Data<C>),

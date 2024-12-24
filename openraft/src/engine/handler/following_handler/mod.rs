@@ -59,7 +59,7 @@ where C: RaftTypeConfig
     ///
     /// Also clean conflicting entries and update membership state.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn append_entries(&mut self, prev_log_id: Option<LogId<C::NodeId>>, mut entries: Vec<C::Entry>) {
+    pub(crate) fn append_entries(&mut self, prev_log_id: Option<LogId<C>>, mut entries: Vec<C::Entry>) {
         tracing::debug!(
             "{}: local last_log_id: {}, request: prev_log_id: {}, entries: {}",
             func_name!(),
@@ -113,7 +113,7 @@ where C: RaftTypeConfig
     /// If not, truncate the local log and return an error.
     pub(crate) fn ensure_log_consecutive(
         &mut self,
-        prev_log_id: Option<&LogId<C::NodeId>>,
+        prev_log_id: Option<&LogId<C>>,
     ) -> Result<(), RejectAppendEntries<C>> {
         if let Some(prev) = prev_log_id {
             if !self.state.has_log_id(prev) {
@@ -161,7 +161,7 @@ where C: RaftTypeConfig
 
     /// Commit entries that are already committed by the leader.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn commit_entries(&mut self, leader_committed: Option<LogId<C::NodeId>>) {
+    pub(crate) fn commit_entries(&mut self, leader_committed: Option<LogId<C>>) {
         let accepted = self.state.accepted_io().cloned();
         let accepted = accepted.and_then(|x| x.last_log_id().cloned());
         let committed = std::cmp::min(accepted.clone(), leader_committed.clone());

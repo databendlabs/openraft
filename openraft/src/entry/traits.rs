@@ -21,7 +21,7 @@ where C: RaftTypeConfig
 }
 
 /// Defines operations on an entry.
-pub trait RaftEntry<C>: RaftPayload<C> + RaftLogId<C::NodeId>
+pub trait RaftEntry<C>: RaftPayload<C> + RaftLogId<C>
 where
     C: RaftTypeConfig,
     Self: OptionalSerde + Debug + Display + OptionalSend + OptionalSync,
@@ -29,12 +29,12 @@ where
     /// Create a new blank log entry.
     ///
     /// The returned instance must return `true` for `Self::is_blank()`.
-    fn new_blank(log_id: LogId<C::NodeId>) -> Self;
+    fn new_blank(log_id: LogId<C>) -> Self;
 
     /// Create a new membership log entry.
     ///
     /// The returned instance must return `Some()` for `Self::get_membership()`.
-    fn new_membership(log_id: LogId<C::NodeId>, m: Membership<C>) -> Self;
+    fn new_membership(log_id: LogId<C>, m: Membership<C>) -> Self;
 }
 
 /// Build a raft log entry from app data.

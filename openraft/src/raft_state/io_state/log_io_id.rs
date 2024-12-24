@@ -30,7 +30,7 @@ where C: RaftTypeConfig
     pub(crate) committed_vote: CommittedVote<C>,
 
     /// The last log id that has been flushed to storage.
-    pub(crate) log_id: Option<LogId<C::NodeId>>,
+    pub(crate) log_id: Option<LogId<C>>,
 }
 
 impl<C> fmt::Display for LogIOId<C>
@@ -44,7 +44,7 @@ where C: RaftTypeConfig
 impl<C> LogIOId<C>
 where C: RaftTypeConfig
 {
-    pub(crate) fn new(committed_vote: CommittedVote<C>, log_id: Option<LogId<C::NodeId>>) -> Self {
+    pub(crate) fn new(committed_vote: CommittedVote<C>, log_id: Option<LogId<C>>) -> Self {
         Self { committed_vote, log_id }
     }
 }

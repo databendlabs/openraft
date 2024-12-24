@@ -6,7 +6,7 @@ use crate::progress::Inflight;
 use crate::CommittedLeaderId;
 use crate::LogId;
 
-fn log_id(index: u64) -> LogId<u64> {
+fn log_id(index: u64) -> LogId<UTConfig> {
     LogId {
         leader_id: CommittedLeaderId::new(1, 1),
         index,

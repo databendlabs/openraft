@@ -52,14 +52,14 @@ pub struct StoredSnapshot {
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct StateMachine {
-    pub last_applied_log: Option<LogId<NodeId>>,
+    pub last_applied_log: Option<LogId<TypeConfig>>,
     pub last_membership: StoredMembership<TypeConfig>,
 }
 
 pub struct LogStore {
     vote: RwLock<Option<Vote<TypeConfig>>>,
     log: RwLock<BTreeMap<u64, Entry<TypeConfig>>>,
-    last_purged_log_id: RwLock<Option<LogId<NodeId>>>,
+    last_purged_log_id: RwLock<Option<LogId<TypeConfig>>>,
 }
 
 impl LogStore {
@@ -203,7 +203,7 @@ impl RaftLogStorage<TypeConfig> for Arc<LogStore> {
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
-    async fn truncate(&mut self, log_id: LogId<NodeId>) -> Result<(), StorageError<TypeConfig>> {
+    async fn truncate(&mut self, log_id: LogId<TypeConfig>) -> Result<(), StorageError<TypeConfig>> {
         let mut log = self.log.write().await;
         log.split_off(&log_id.index);
 
@@ -211,7 +211,7 @@ impl RaftLogStorage<TypeConfig> for Arc<LogStore> {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn purge(&mut self, log_id: LogId<NodeId>) -> Result<(), StorageError<TypeConfig>> {
+    async fn purge(&mut self, log_id: LogId<TypeConfig>) -> Result<(), StorageError<TypeConfig>> {
         {
             let mut p = self.last_purged_log_id.write().await;
             *p = Some(log_id);
@@ -244,7 +244,7 @@ impl RaftLogStorage<TypeConfig> for Arc<LogStore> {
 impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
     async fn applied_state(
         &mut self,
-    ) -> Result<(Option<LogId<NodeId>>, StoredMembership<TypeConfig>), StorageError<TypeConfig>> {
+    ) -> Result<(Option<LogId<TypeConfig>>, StoredMembership<TypeConfig>), StorageError<TypeConfig>> {
         let sm = self.sm.read().await;
         Ok((sm.last_applied_log, sm.last_membership.clone()))
     }

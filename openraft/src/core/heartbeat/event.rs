@@ -30,17 +30,13 @@ where C: RaftTypeConfig
     ///
     /// When there are no new logs to replicate, the Leader sends a heartbeat to replicate committed
     /// log id to followers to update their committed log id.
-    pub(crate) committed: Option<LogId<C::NodeId>>,
+    pub(crate) committed: Option<LogId<C>>,
 }
 
 impl<C> HeartbeatEvent<C>
 where C: RaftTypeConfig
 {
-    pub(crate) fn new(
-        time: InstantOf<C>,
-        session_id: ReplicationSessionId<C>,
-        committed: Option<LogId<C::NodeId>>,
-    ) -> Self {
+    pub(crate) fn new(time: InstantOf<C>, session_id: ReplicationSessionId<C>, committed: Option<LogId<C>>) -> Self {
         Self {
             time,
             session_id,

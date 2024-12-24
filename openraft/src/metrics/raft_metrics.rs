@@ -38,17 +38,17 @@ pub struct RaftMetrics<C: RaftTypeConfig> {
     pub last_log_index: Option<u64>,
 
     /// The last log index has been applied to this Raft node's state machine.
-    pub last_applied: Option<LogId<C::NodeId>>,
+    pub last_applied: Option<LogId<C>>,
 
     /// The id of the last log included in snapshot.
     /// If there is no snapshot, it is (0,0).
-    pub snapshot: Option<LogId<C::NodeId>>,
+    pub snapshot: Option<LogId<C>>,
 
     /// The last log id that has purged from storage, inclusive.
     ///
     /// `purged` is also the first log id Openraft knows, although the corresponding log entry has
     /// already been deleted.
-    pub purged: Option<LogId<C::NodeId>>,
+    pub purged: Option<LogId<C>>,
 
     // ---
     // --- cluster ---
@@ -189,10 +189,10 @@ where C: RaftTypeConfig
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct RaftDataMetrics<C: RaftTypeConfig> {
-    pub last_log: Option<LogId<C::NodeId>>,
-    pub last_applied: Option<LogId<C::NodeId>>,
-    pub snapshot: Option<LogId<C::NodeId>>,
-    pub purged: Option<LogId<C::NodeId>>,
+    pub last_log: Option<LogId<C>>,
+    pub last_applied: Option<LogId<C>>,
+    pub snapshot: Option<LogId<C>>,
+    pub purged: Option<LogId<C>>,
 
     /// For a leader, it is the elapsed time in milliseconds since the most recently acknowledged
     /// timestamp by a quorum.

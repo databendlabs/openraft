@@ -17,10 +17,10 @@ where C: RaftTypeConfig
     Term(u64),
     Vote(Vote<C>),
     LastLogIndex(Option<u64>),
-    Applied(Option<LogId<C::NodeId>>),
+    Applied(Option<LogId<C>>),
     AppliedIndex(Option<u64>),
-    Snapshot(Option<LogId<C::NodeId>>),
-    Purged(Option<LogId<C::NodeId>>),
+    Snapshot(Option<LogId<C>>),
+    Purged(Option<LogId<C>>),
 }
 
 impl<C> Metric<C>

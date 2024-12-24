@@ -104,10 +104,7 @@ where C: RaftTypeConfig
     ///
     /// [`RaftLogStorage`]: crate::storage::RaftLogStorage
     #[since(version = "0.10.0")]
-    async fn get_key_log_ids(
-        &mut self,
-        range: RangeInclusive<LogId<C::NodeId>>,
-    ) -> Result<Vec<LogId<C::NodeId>>, StorageError<C>> {
+    async fn get_key_log_ids(&mut self, range: RangeInclusive<LogId<C>>) -> Result<Vec<LogId<C>>, StorageError<C>> {
         LogIdList::get_key_log_ids(range, self).await
     }
 }

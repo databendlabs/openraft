@@ -14,16 +14,23 @@ use crate::RaftTypeConfig;
 /// A log id range of continuous series of log entries.
 ///
 /// The range of log to send is left open right close: `(prev, last]`.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 #[derive(PartialEq, Eq)]
 pub(crate) struct LogIdRange<C>
 where C: RaftTypeConfig
 {
     /// The prev log id before the first to send, exclusive.
-    pub(crate) prev: Option<LogId<C::NodeId>>,
+    pub(crate) prev: Option<LogId<C>>,
 
     /// The last log id to send, inclusive.
-    pub(crate) last: Option<LogId<C::NodeId>>,
+    pub(crate) last: Option<LogId<C>>,
+}
+
+impl<C> Copy for LogIdRange<C>
+where
+    C: RaftTypeConfig,
+    C::NodeId: Copy,
+{
 }
 
 impl<C> Display for LogIdRange<C>
@@ -46,7 +53,7 @@ where C: RaftTypeConfig
 impl<C> LogIdRange<C>
 where C: RaftTypeConfig
 {
-    pub(crate) fn new(prev: Option<LogId<C::NodeId>>, last: Option<LogId<C::NodeId>>) -> Self {
+    pub(crate) fn new(prev: Option<LogId<C>>, last: Option<LogId<C>>) -> Self {
         Self { prev, last }
     }
 
@@ -65,7 +72,7 @@ mod tests {
     use crate::CommittedLeaderId;
     use crate::LogId;
 
-    fn log_id(index: u64) -> LogId<u64> {
+    fn log_id(index: u64) -> LogId<UTConfig> {
         LogId {
             leader_id: CommittedLeaderId::new(1, 1),
             index,

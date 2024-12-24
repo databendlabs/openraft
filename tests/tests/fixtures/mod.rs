@@ -725,7 +725,7 @@ impl TypedRaftRouter {
     pub async fn wait_for_snapshot(
         &self,
         node_ids: &BTreeSet<MemNodeId>,
-        want: LogId<MemNodeId>,
+        want: LogId<TypeConfig>,
         timeout: Option<Duration>,
         msg: &str,
     ) -> anyhow::Result<()> {
@@ -863,7 +863,7 @@ impl TypedRaftRouter {
         expect_term: u64,
         expect_last_log: u64,
         expect_voted_for: Option<MemNodeId>,
-        expect_sm_last_applied_log: LogId<MemNodeId>,
+        expect_sm_last_applied_log: LogId<TypeConfig>,
         expect_snapshot: &Option<(ValueTest<u64>, u64)>,
     ) -> anyhow::Result<()> {
         let last_log_id = storage.get_log_state().await?.last_log_id;
@@ -955,7 +955,7 @@ impl TypedRaftRouter {
         expect_term: u64,
         expect_last_log: u64,
         expect_voted_for: Option<MemNodeId>,
-        expect_sm_last_applied_log: LogId<MemNodeId>,
+        expect_sm_last_applied_log: LogId<TypeConfig>,
         expect_snapshot: Option<(ValueTest<u64>, u64)>,
     ) -> anyhow::Result<()> {
         let node_ids = {

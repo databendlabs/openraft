@@ -160,7 +160,7 @@ where
     /// Assign log ids to the entries.
     ///
     /// This method update the `self.last_log_id`.
-    pub(crate) fn assign_log_ids<'a, LID: RaftLogId<C::NodeId> + 'a>(
+    pub(crate) fn assign_log_ids<'a, LID: RaftLogId<C> + 'a>(
         &mut self,
         entries: impl IntoIterator<Item = &'a mut LID>,
     ) {

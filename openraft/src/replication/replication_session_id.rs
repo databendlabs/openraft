@@ -38,7 +38,7 @@ where C: RaftTypeConfig
     pub(crate) leader_vote: CommittedVote<C>,
 
     /// The log id of the membership log this replication works for.
-    pub(crate) membership_log_id: Option<LogId<C::NodeId>>,
+    pub(crate) membership_log_id: Option<LogId<C>>,
 }
 
 impl<C> Display for ReplicationSessionId<C>
@@ -57,7 +57,7 @@ where C: RaftTypeConfig
 impl<C> ReplicationSessionId<C>
 where C: RaftTypeConfig
 {
-    pub(crate) fn new(vote: CommittedVote<C>, membership_log_id: Option<LogId<C::NodeId>>) -> Self {
+    pub(crate) fn new(vote: CommittedVote<C>, membership_log_id: Option<LogId<C>>) -> Self {
         Self {
             leader_vote: vote,
             membership_log_id,

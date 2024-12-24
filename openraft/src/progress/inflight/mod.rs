@@ -17,7 +17,7 @@ use crate::RaftTypeConfig;
 ///
 /// If inflight data is non-None, it's waiting for responses from a follower/learner.
 /// The follower/learner respond with `ack()` or `conflict()` to update the state of inflight data.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 #[derive(PartialEq, Eq)]
 pub(crate) enum Inflight<C>
 where C: RaftTypeConfig
@@ -34,8 +34,15 @@ where C: RaftTypeConfig
         /// The last log id snapshot includes.
         ///
         /// It is None, if the snapshot is empty.
-        last_log_id: Option<LogId<C::NodeId>>,
+        last_log_id: Option<LogId<C>>,
     },
+}
+
+impl<C> Copy for Inflight<C>
+where
+    C: RaftTypeConfig,
+    C::NodeId: Copy,
+{
 }
 
 impl<C> Validate for Inflight<C>
@@ -68,7 +75,7 @@ impl<C> Inflight<C>
 where C: RaftTypeConfig
 {
     /// Create inflight state for sending logs.
-    pub(crate) fn logs(prev: Option<LogId<C::NodeId>>, last: Option<LogId<C::NodeId>>) -> Self {
+    pub(crate) fn logs(prev: Option<LogId<C>>, last: Option<LogId<C>>) -> Self {
         #![allow(clippy::nonminimal_bool)]
         if !(prev < last) {
             Self::None
@@ -80,7 +87,7 @@ where C: RaftTypeConfig
     }
 
     /// Create inflight state for sending snapshot.
-    pub(crate) fn snapshot(snapshot_last_log_id: Option<LogId<C::NodeId>>) -> Self {
+    pub(crate) fn snapshot(snapshot_last_log_id: Option<LogId<C>>) -> Self {
         Self::Snapshot {
             last_log_id: snapshot_last_log_id,
         }
@@ -103,7 +110,7 @@ where C: RaftTypeConfig
     }
 
     /// Update inflight state when log upto `upto` is acknowledged by a follower/learner.
-    pub(crate) fn ack(&mut self, upto: Option<LogId<C::NodeId>>) {
+    pub(crate) fn ack(&mut self, upto: Option<LogId<C>>) {
         match self {
             Inflight::None => {
                 unreachable!("no inflight data")

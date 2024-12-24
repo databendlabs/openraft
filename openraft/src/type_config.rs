@@ -151,7 +151,7 @@ pub mod alias {
     pub type MutexOf<C, T> = <Rt<C> as AsyncRuntime>::Mutex<T>;
 
     // Usually used types
-    pub type LogIdOf<C> = crate::LogId<NodeIdOf<C>>;
+    pub type LogIdOf<C> = crate::LogId<C>;
     pub type VoteOf<C> = crate::Vote<C>;
     pub type LeaderIdOf<C> = crate::LeaderId<NodeIdOf<C>>;
     pub type CommittedLeaderIdOf<C> = crate::CommittedLeaderId<NodeIdOf<C>>;
