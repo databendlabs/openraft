@@ -418,7 +418,7 @@ where C: RaftTypeConfig
     #[tracing::instrument(level = "debug", skip_all)]
     pub async fn install_full_snapshot(
         &self,
-        vote: Vote<C::NodeId>,
+        vote: Vote<C>,
         snapshot: Snapshot<C>,
     ) -> Result<SnapshotResponse<C>, Fatal<C>> {
         tracing::info!("Raft::install_full_snapshot()");

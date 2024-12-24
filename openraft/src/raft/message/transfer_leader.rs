@@ -12,7 +12,7 @@ pub struct TransferLeaderRequest<C>
 where C: RaftTypeConfig
 {
     /// The vote of the Leader that is transferring the leadership.
-    pub(crate) from_leader: Vote<C::NodeId>,
+    pub(crate) from_leader: Vote<C>,
 
     /// The assigned node to be the next Leader.
     pub(crate) to_node_id: C::NodeId,
@@ -24,7 +24,7 @@ where C: RaftTypeConfig
 impl<C> TransferLeaderRequest<C>
 where C: RaftTypeConfig
 {
-    pub fn new(from: Vote<C::NodeId>, to: C::NodeId, last_log_id: Option<LogId<C::NodeId>>) -> Self {
+    pub fn new(from: Vote<C>, to: C::NodeId, last_log_id: Option<LogId<C::NodeId>>) -> Self {
         Self {
             from_leader: from,
             to_node_id: to,
@@ -33,7 +33,7 @@ where C: RaftTypeConfig
     }
 
     /// From which Leader the leadership is transferred.
-    pub fn from_leader(&self) -> &Vote<C::NodeId> {
+    pub fn from_leader(&self) -> &Vote<C> {
         &self.from_leader
     }
 

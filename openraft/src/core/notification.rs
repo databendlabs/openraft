@@ -33,7 +33,7 @@ where C: RaftTypeConfig
         target: C::NodeId,
 
         /// The higher vote observed.
-        higher: Vote<C::NodeId>,
+        higher: Vote<C>,
 
         /// The Leader that sent replication request.
         leader_vote: CommittedVote<C>,

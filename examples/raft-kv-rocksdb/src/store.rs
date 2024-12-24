@@ -337,7 +337,7 @@ impl LogStore {
             .and_then(|v| serde_json::from_slice(&v).ok()))
     }
 
-    fn set_vote_(&self, vote: &Vote<NodeId>) -> StorageResult<()> {
+    fn set_vote_(&self, vote: &Vote<TypeConfig>) -> StorageResult<()> {
         self.db
             .put_cf(self.store(), b"vote", serde_json::to_vec(vote).unwrap())
             .map_err(|e| StorageError::write_vote(&e))?;
@@ -346,7 +346,7 @@ impl LogStore {
         Ok(())
     }
 
-    fn get_vote_(&self) -> StorageResult<Option<Vote<NodeId>>> {
+    fn get_vote_(&self) -> StorageResult<Option<Vote<TypeConfig>>> {
         Ok(self
             .db
             .get_cf(self.store(), b"vote")
@@ -381,7 +381,7 @@ impl RaftLogReader<TypeConfig> for LogStore {
             .collect()
     }
 
-    async fn read_vote(&mut self) -> Result<Option<Vote<NodeId>>, StorageError<TypeConfig>> {
+    async fn read_vote(&mut self) -> Result<Option<Vote<TypeConfig>>, StorageError<TypeConfig>> {
         self.get_vote_()
     }
 }
@@ -418,7 +418,7 @@ impl RaftLogStorage<TypeConfig> for LogStore {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn save_vote(&mut self, vote: &Vote<NodeId>) -> Result<(), StorageError<TypeConfig>> {
+    async fn save_vote(&mut self, vote: &Vote<TypeConfig>) -> Result<(), StorageError<TypeConfig>> {
         self.set_vote_(vote)
     }
 

@@ -49,7 +49,7 @@ pub struct RaftState<C>
 where C: RaftTypeConfig
 {
     /// The vote state of this node.
-    pub(crate) vote: Leased<Vote<C::NodeId>, InstantOf<C>>,
+    pub(crate) vote: Leased<Vote<C>, InstantOf<C>>,
 
     /// The LogId of the last log committed(AKA applied) to the state machine.
     ///
@@ -146,10 +146,10 @@ where C: RaftTypeConfig
     }
 }
 
-impl<C> VoteStateReader<C::NodeId> for RaftState<C>
+impl<C> VoteStateReader<C> for RaftState<C>
 where C: RaftTypeConfig
 {
-    fn vote_ref(&self) -> &Vote<C::NodeId> {
+    fn vote_ref(&self) -> &Vote<C> {
         self.vote.deref()
     }
 }
@@ -187,7 +187,7 @@ impl<C> RaftState<C>
 where C: RaftTypeConfig
 {
     /// Get a reference to the current vote.
-    pub fn vote_ref(&self) -> &Vote<C::NodeId> {
+    pub fn vote_ref(&self) -> &Vote<C> {
         self.vote.deref()
     }
 

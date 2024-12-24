@@ -32,7 +32,7 @@ pub struct RaftMetrics<C: RaftTypeConfig> {
     pub current_term: u64,
 
     /// The last flushed vote.
-    pub vote: Vote<C::NodeId>,
+    pub vote: Vote<C>,
 
     /// The last log index has been appended to this Raft node's log.
     pub last_log_index: Option<u64>,
@@ -280,7 +280,7 @@ where C: RaftTypeConfig
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct RaftServerMetrics<C: RaftTypeConfig> {
     pub id: C::NodeId,
-    pub vote: Vote<C::NodeId>,
+    pub vote: Vote<C>,
     pub state: ServerState,
     pub current_leader: Option<C::NodeId>,
 

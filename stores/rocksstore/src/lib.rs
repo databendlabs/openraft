@@ -154,7 +154,6 @@ mod meta {
     use openraft::ErrorSubject;
     use openraft::LogId;
 
-    use crate::RocksNodeId;
     use crate::TypeConfig;
 
     /// Defines metadata key and value
@@ -182,7 +181,7 @@ mod meta {
     }
     impl StoreMeta for Vote {
         const KEY: &'static str = "vote";
-        type Value = openraft::Vote<RocksNodeId>;
+        type Value = openraft::Vote<TypeConfig>;
 
         fn subject(_v: Option<&Self::Value>) -> ErrorSubject<TypeConfig> {
             ErrorSubject::Vote
@@ -262,7 +261,7 @@ impl RaftLogReader<TypeConfig> for RocksLogStore {
         Ok(res)
     }
 
-    async fn read_vote(&mut self) -> Result<Option<Vote<RocksNodeId>>, StorageError<TypeConfig>> {
+    async fn read_vote(&mut self) -> Result<Option<Vote<TypeConfig>>, StorageError<TypeConfig>> {
         self.get_meta::<meta::Vote>()
     }
 }
@@ -338,7 +337,7 @@ impl RaftLogStorage<TypeConfig> for RocksLogStore {
         })
     }
 
-    async fn save_vote(&mut self, vote: &Vote<RocksNodeId>) -> Result<(), StorageError<TypeConfig>> {
+    async fn save_vote(&mut self, vote: &Vote<TypeConfig>) -> Result<(), StorageError<TypeConfig>> {
         self.put_meta::<meta::Vote>(vote)?;
         self.db.flush_wal(true).map_err(|e| StorageError::write_vote(&e))?;
         Ok(())

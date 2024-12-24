@@ -68,7 +68,7 @@ where C: RaftTypeConfig
 impl<C> IOId<C>
 where C: RaftTypeConfig
 {
-    pub(crate) fn new(vote: &Vote<C::NodeId>) -> Self {
+    pub(crate) fn new(vote: &Vote<C>) -> Self {
         if vote.is_committed() {
             Self::new_log_io(vote.clone().into_committed(), None)
         } else {
@@ -87,14 +87,14 @@ where C: RaftTypeConfig
     /// Returns the vote the io operation is submitted by.
     #[allow(clippy::wrong_self_convention)]
     // The above lint is disabled because in future Vote may not be `Copy`
-    pub(crate) fn to_vote(&self) -> Vote<C::NodeId> {
+    pub(crate) fn to_vote(&self) -> Vote<C> {
         match self {
             Self::Vote(non_committed_vote) => non_committed_vote.clone().into_vote(),
             Self::Log(log_io_id) => log_io_id.committed_vote.clone().into_vote(),
         }
     }
 
-    pub(crate) fn as_ref_vote(&self) -> RefVote<'_, C::NodeId> {
+    pub(crate) fn as_ref_vote(&self) -> RefVote<'_, C> {
         match self {
             Self::Vote(non_committed_vote) => non_committed_vote.as_ref_vote(),
             Self::Log(log_io_id) => log_io_id.committed_vote.as_ref_vote(),

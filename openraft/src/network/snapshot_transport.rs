@@ -45,7 +45,7 @@ mod tokio_rt {
     {
         async fn send_snapshot<Net>(
             net: &mut Net,
-            vote: Vote<C::NodeId>,
+            vote: Vote<C>,
             mut snapshot: Snapshot<C>,
             mut cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
             option: RPCOption,
@@ -299,7 +299,7 @@ pub trait SnapshotTransport<C: RaftTypeConfig> {
     // TODO: consider removing dependency on RaftNetwork
     async fn send_snapshot<Net>(
         net: &mut Net,
-        vote: Vote<C::NodeId>,
+        vote: Vote<C>,
         snapshot: Snapshot<C>,
         cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
         option: RPCOption,

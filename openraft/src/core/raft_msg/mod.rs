@@ -52,7 +52,7 @@ where C: RaftTypeConfig
     },
 
     InstallFullSnapshot {
-        vote: Vote<C::NodeId>,
+        vote: Vote<C>,
         snapshot: Snapshot<C>,
         tx: ResultSender<C, SnapshotResponse<C>>,
     },
@@ -101,7 +101,7 @@ where C: RaftTypeConfig
     /// Otherwise, just reset Leader lease so that the node `to` can become Leader.
     HandleTransferLeader {
         /// The vote of the Leader that is transferring the leadership.
-        from: Vote<C::NodeId>,
+        from: Vote<C>,
         /// The assigned node to be the next Leader.
         to: C::NodeId,
     },

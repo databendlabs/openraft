@@ -16,7 +16,7 @@ use crate::Vote;
 #[derive(Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct AppendEntriesRequest<C: RaftTypeConfig> {
-    pub vote: Vote<C::NodeId>,
+    pub vote: Vote<C>,
 
     pub prev_log_id: Option<LogId<C::NodeId>>,
 
@@ -95,7 +95,7 @@ pub enum AppendEntriesResponse<C: RaftTypeConfig> {
     /// Seen a vote `v` that does not hold `mine_vote >= v`.
     /// And a leader's vote(committed vote) must be total order with other vote.
     /// Therefore it has to be a higher vote: `mine_vote < v`
-    HigherVote(Vote<C::NodeId>),
+    HigherVote(Vote<C>),
 }
 
 impl<C> AppendEntriesResponse<C>

@@ -112,7 +112,7 @@ where C: RaftTypeConfig
     },
 
     /// Save vote to storage
-    SaveVote { vote: Vote<C::NodeId> },
+    SaveVote { vote: Vote<C> },
 
     /// Send vote to all other members
     SendVote { vote_req: VoteRequest<C> },

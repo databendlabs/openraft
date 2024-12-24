@@ -78,7 +78,7 @@ impl RaftNetworkV2<TypeConfig> for NetworkConnection {
 
     async fn full_snapshot(
         &mut self,
-        vote: openraft::Vote<<TypeConfig as openraft::RaftTypeConfig>::NodeId>,
+        vote: openraft::Vote<TypeConfig>,
         snapshot: openraft::Snapshot<TypeConfig>,
         _cancel: impl std::future::Future<Output = openraft::error::ReplicationClosed> + openraft::OptionalSend + 'static,
         _option: RPCOption,
