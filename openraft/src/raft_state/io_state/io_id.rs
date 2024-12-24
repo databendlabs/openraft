@@ -80,7 +80,7 @@ where C: RaftTypeConfig
         Self::Vote(vote)
     }
 
-    pub(crate) fn new_log_io(committed_vote: CommittedVote<C>, last_log_id: Option<LogId<C::NodeId>>) -> Self {
+    pub(crate) fn new_log_io(committed_vote: CommittedVote<C>, last_log_id: Option<LogId<C>>) -> Self {
         Self::Log(LogIOId::new(committed_vote, last_log_id))
     }
 
@@ -101,7 +101,7 @@ where C: RaftTypeConfig
         }
     }
 
-    pub(crate) fn last_log_id(&self) -> Option<&LogId<C::NodeId>> {
+    pub(crate) fn last_log_id(&self) -> Option<&LogId<C>> {
         match self {
             Self::Vote(_) => None,
             Self::Log(log_io_id) => log_io_id.log_id.as_ref(),

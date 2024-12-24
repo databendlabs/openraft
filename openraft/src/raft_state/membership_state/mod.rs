@@ -80,7 +80,7 @@ where C: RaftTypeConfig
     }
 
     /// Update membership state if the specified committed_log_id is greater than `self.effective`
-    pub(crate) fn commit(&mut self, committed_log_id: &Option<LogId<C::NodeId>>) {
+    pub(crate) fn commit(&mut self, committed_log_id: &Option<LogId<C>>) {
         if committed_log_id >= self.effective().log_id() {
             debug_assert!(committed_log_id.index() >= self.effective().log_id().index());
             self.committed = self.effective.clone();

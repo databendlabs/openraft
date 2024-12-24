@@ -73,7 +73,7 @@ impl From<protobuf::Vote> for typ::Vote {
     }
 }
 
-impl From<protobuf::LogId> for LogId<NodeId> {
+impl From<protobuf::LogId> for LogId<TypeConfig> {
     fn from(proto_log_id: protobuf::LogId) -> Self {
         let leader_id: LeaderId<NodeId> = proto_log_id.leader_id.unwrap().into();
         LogId::new(leader_id, proto_log_id.index)
@@ -116,8 +116,8 @@ impl From<typ::Vote> for protobuf::Vote {
         }
     }
 }
-impl From<LogId<NodeId>> for protobuf::LogId {
-    fn from(log_id: LogId<NodeId>) -> Self {
+impl From<LogId<TypeConfig>> for protobuf::LogId {
+    fn from(log_id: LogId<TypeConfig>) -> Self {
         protobuf::LogId {
             index: log_id.index,
             leader_id: Some(log_id.leader_id.into()),

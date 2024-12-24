@@ -36,7 +36,6 @@ use serde::Serialize;
 use tokio::sync::RwLock;
 
 use crate::typ;
-use crate::NodeId;
 use crate::SnapshotData;
 use crate::TypeConfig;
 
@@ -88,7 +87,7 @@ pub struct StateMachineStore {
 
 #[derive(Debug, Clone)]
 pub struct StateMachineData {
-    pub last_applied_log_id: Option<LogId<NodeId>>,
+    pub last_applied_log_id: Option<LogId<TypeConfig>>,
 
     pub last_membership: StoredMembership<TypeConfig>,
 
@@ -195,7 +194,7 @@ impl RaftStateMachine<TypeConfig> for StateMachineStore {
 
     async fn applied_state(
         &mut self,
-    ) -> Result<(Option<LogId<NodeId>>, StoredMembership<TypeConfig>), StorageError<TypeConfig>> {
+    ) -> Result<(Option<LogId<TypeConfig>>, StoredMembership<TypeConfig>), StorageError<TypeConfig>> {
         Ok((self.data.last_applied_log_id, self.data.last_membership.clone()))
     }
 
@@ -299,7 +298,7 @@ impl LogStore {
         Ok(())
     }
 
-    fn get_last_purged_(&self) -> StorageResult<Option<LogId<u64>>> {
+    fn get_last_purged_(&self) -> StorageResult<Option<LogId<TypeConfig>>> {
         Ok(self
             .db
             .get_cf(self.store(), b"last_purged_log_id")
@@ -307,7 +306,7 @@ impl LogStore {
             .and_then(|v| serde_json::from_slice(&v).ok()))
     }
 
-    fn set_last_purged_(&self, log_id: LogId<u64>) -> StorageResult<()> {
+    fn set_last_purged_(&self, log_id: LogId<TypeConfig>) -> StorageResult<()> {
         self.db
             .put_cf(
                 self.store(),
@@ -320,7 +319,7 @@ impl LogStore {
         Ok(())
     }
 
-    fn set_committed_(&self, committed: &Option<LogId<NodeId>>) -> Result<(), StorageError<TypeConfig>> {
+    fn set_committed_(&self, committed: &Option<LogId<TypeConfig>>) -> Result<(), StorageError<TypeConfig>> {
         let json = serde_json::to_vec(committed).unwrap();
 
         self.db.put_cf(self.store(), b"committed", json).map_err(|e| StorageError::write(&e))?;
@@ -329,7 +328,7 @@ impl LogStore {
         Ok(())
     }
 
-    fn get_committed_(&self) -> StorageResult<Option<LogId<NodeId>>> {
+    fn get_committed_(&self) -> StorageResult<Option<LogId<TypeConfig>>> {
         Ok(self
             .db
             .get_cf(self.store(), b"committed")
@@ -407,12 +406,12 @@ impl RaftLogStorage<TypeConfig> for LogStore {
         })
     }
 
-    async fn save_committed(&mut self, _committed: Option<LogId<NodeId>>) -> Result<(), StorageError<TypeConfig>> {
+    async fn save_committed(&mut self, _committed: Option<LogId<TypeConfig>>) -> Result<(), StorageError<TypeConfig>> {
         self.set_committed_(&_committed)?;
         Ok(())
     }
 
-    async fn read_committed(&mut self) -> Result<Option<LogId<NodeId>>, StorageError<TypeConfig>> {
+    async fn read_committed(&mut self) -> Result<Option<LogId<TypeConfig>>, StorageError<TypeConfig>> {
         let c = self.get_committed_()?;
         Ok(c)
     }
@@ -446,7 +445,7 @@ impl RaftLogStorage<TypeConfig> for LogStore {
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
-    async fn truncate(&mut self, log_id: LogId<NodeId>) -> StorageResult<()> {
+    async fn truncate(&mut self, log_id: LogId<TypeConfig>) -> StorageResult<()> {
         tracing::debug!("delete_log: [{:?}, +oo)", log_id);
 
         let from = id_to_bin(log_id.index);
@@ -455,7 +454,7 @@ impl RaftLogStorage<TypeConfig> for LogStore {
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
-    async fn purge(&mut self, log_id: LogId<NodeId>) -> Result<(), StorageError<TypeConfig>> {
+    async fn purge(&mut self, log_id: LogId<TypeConfig>) -> Result<(), StorageError<TypeConfig>> {
         tracing::debug!("delete_log: [0, {:?}]", log_id);
 
         self.set_last_purged_(log_id)?;

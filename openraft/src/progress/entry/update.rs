@@ -76,7 +76,7 @@ where C: RaftTypeConfig
         }
     }
 
-    pub(crate) fn update_matching(&mut self, matching: Option<LogId<C::NodeId>>) {
+    pub(crate) fn update_matching(&mut self, matching: Option<LogId<C>>) {
         tracing::debug!(
             "update_matching: current progress_entry: {}; matching: {}",
             self.entry,

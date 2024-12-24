@@ -532,7 +532,7 @@ where C: RaftTypeConfig
     /// ```
     /// Read more about how it works: [Read Operation](crate::docs::protocol::read)
     #[tracing::instrument(level = "debug", skip(self))]
-    pub async fn ensure_linearizable(&self) -> Result<Option<LogId<C::NodeId>>, RaftError<C, CheckIsLeaderError<C>>> {
+    pub async fn ensure_linearizable(&self) -> Result<Option<LogId<C>>, RaftError<C, CheckIsLeaderError<C>>> {
         let (read_log_id, applied) = self.get_read_log_id().await?;
 
         if read_log_id.index() > applied.index() {
@@ -581,7 +581,7 @@ where C: RaftTypeConfig
     #[tracing::instrument(level = "debug", skip(self))]
     pub async fn get_read_log_id(
         &self,
-    ) -> Result<(Option<LogId<C::NodeId>>, Option<LogId<C::NodeId>>), RaftError<C, CheckIsLeaderError<C>>> {
+    ) -> Result<(Option<LogId<C>>, Option<LogId<C>>), RaftError<C, CheckIsLeaderError<C>>> {
         let (tx, rx) = C::oneshot();
         let (read_log_id, applied) = self.inner.call_core(RaftMsg::CheckIsLeaderRequest { tx }, rx).await?;
         Ok((read_log_id, applied))
@@ -772,8 +772,8 @@ where C: RaftTypeConfig
         &self,
         metrics: &RaftMetrics<C>,
         node_id: &C::NodeId,
-        membership_log_id: Option<&LogId<C::NodeId>>,
-    ) -> Result<Option<LogId<C::NodeId>>, ()> {
+        membership_log_id: Option<&LogId<C>>,
+    ) -> Result<Option<LogId<C>>, ()> {
         if metrics.membership_config.log_id().as_ref() < membership_log_id {
             // Waiting for the latest metrics to report.
             return Err(());

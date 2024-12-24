@@ -14,6 +14,7 @@ use openraft::LogId;
 use openraft::Membership;
 use openraft::RaftLogReader;
 use openraft::StorageHelper;
+use openraft_memstore::TypeConfig;
 use tokio::time::sleep;
 
 use crate::fixtures::ut_harness;
@@ -345,8 +346,8 @@ fn timeout() -> Option<Duration> {
     Some(Duration::from_millis(3_000))
 }
 
-pub fn log_id(term: u64, node_id: u64, index: u64) -> LogId<u64> {
-    LogId::<u64> {
+pub fn log_id(term: u64, node_id: u64, index: u64) -> LogId<TypeConfig> {
+    LogId {
         leader_id: CommittedLeaderId::new(term, node_id),
         index,
     }

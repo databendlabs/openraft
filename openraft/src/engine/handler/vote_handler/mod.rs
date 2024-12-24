@@ -209,8 +209,7 @@ where C: RaftTypeConfig
         // If the leader has not yet proposed any log, propose a blank log and initiate replication;
         // Otherwise, just initiate replication.
         if last_log_id < noop_log_id {
-            self.leader_handler()
-                .leader_append_entries(vec![C::Entry::new_blank(LogId::<C::NodeId>::default())]);
+            self.leader_handler().leader_append_entries(vec![C::Entry::new_blank(LogId::<C>::default())]);
         } else {
             self.replication_handler().initiate_replication();
         }

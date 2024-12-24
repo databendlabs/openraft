@@ -80,7 +80,7 @@ where
         &self.vote
     }
 
-    pub(crate) fn last_log_id(&self) -> Option<&LogId<C::NodeId>> {
+    pub(crate) fn last_log_id(&self) -> Option<&LogId<C>> {
         self.last_log_id.as_ref()
     }
 

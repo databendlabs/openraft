@@ -101,8 +101,8 @@ where C: RaftTypeConfig
 pub struct LogApplied<C>
 where C: RaftTypeConfig
 {
-    last_log_id: LogId<C::NodeId>,
-    tx: OneshotSenderOf<C, Result<(LogId<C::NodeId>, Vec<C::R>), StorageError<C>>>,
+    last_log_id: LogId<C>,
+    tx: OneshotSenderOf<C, Result<(LogId<C>, Vec<C::R>), StorageError<C>>>,
 }
 
 impl<C> LogApplied<C>
@@ -110,8 +110,8 @@ where C: RaftTypeConfig
 {
     #[allow(dead_code)]
     pub(crate) fn new(
-        last_log_id: LogId<C::NodeId>,
-        tx: OneshotSenderOf<C, Result<(LogId<C::NodeId>, Vec<C::R>), StorageError<C>>>,
+        last_log_id: LogId<C>,
+        tx: OneshotSenderOf<C, Result<(LogId<C>, Vec<C::R>), StorageError<C>>>,
     ) -> Self {
         Self { last_log_id, tx }
     }

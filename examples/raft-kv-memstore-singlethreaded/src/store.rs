@@ -24,7 +24,6 @@ use openraft::Vote;
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::NodeId;
 use crate::TypeConfig;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -85,7 +84,7 @@ pub struct StoredSnapshot {
 /// and value as String, but you could set any type of value that has the serialization impl.
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct StateMachineData {
-    pub last_applied: Option<LogId<NodeId>>,
+    pub last_applied: Option<LogId<TypeConfig>>,
 
     pub last_membership: StoredMembership<TypeConfig>,
 
@@ -108,12 +107,12 @@ pub struct StateMachineStore {
 
 #[derive(Debug, Default)]
 pub struct LogStore {
-    last_purged_log_id: RefCell<Option<LogId<NodeId>>>,
+    last_purged_log_id: RefCell<Option<LogId<TypeConfig>>>,
 
     /// The Raft log.
     log: RefCell<BTreeMap<u64, Entry<TypeConfig>>>,
 
-    committed: RefCell<Option<LogId<NodeId>>>,
+    committed: RefCell<Option<LogId<TypeConfig>>>,
 
     /// The current granted vote.
     vote: RefCell<Option<Vote<TypeConfig>>>,
@@ -190,7 +189,7 @@ impl RaftStateMachine<TypeConfig> for Rc<StateMachineStore> {
 
     async fn applied_state(
         &mut self,
-    ) -> Result<(Option<LogId<NodeId>>, StoredMembership<TypeConfig>), StorageError<TypeConfig>> {
+    ) -> Result<(Option<LogId<TypeConfig>>, StoredMembership<TypeConfig>), StorageError<TypeConfig>> {
         let state_machine = self.state_machine.borrow();
         Ok((state_machine.last_applied, state_machine.last_membership.clone()))
     }
@@ -300,13 +299,13 @@ impl RaftLogStorage<TypeConfig> for Rc<LogStore> {
         })
     }
 
-    async fn save_committed(&mut self, committed: Option<LogId<NodeId>>) -> Result<(), StorageError<TypeConfig>> {
+    async fn save_committed(&mut self, committed: Option<LogId<TypeConfig>>) -> Result<(), StorageError<TypeConfig>> {
         let mut c = self.committed.borrow_mut();
         *c = committed;
         Ok(())
     }
 
-    async fn read_committed(&mut self) -> Result<Option<LogId<NodeId>>, StorageError<TypeConfig>> {
+    async fn read_committed(&mut self) -> Result<Option<LogId<TypeConfig>>, StorageError<TypeConfig>> {
         let committed = self.committed.borrow();
         Ok(*committed)
     }
@@ -332,7 +331,7 @@ impl RaftLogStorage<TypeConfig> for Rc<LogStore> {
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
-    async fn truncate(&mut self, log_id: LogId<NodeId>) -> Result<(), StorageError<TypeConfig>> {
+    async fn truncate(&mut self, log_id: LogId<TypeConfig>) -> Result<(), StorageError<TypeConfig>> {
         tracing::debug!("delete_log: [{:?}, +oo)", log_id);
 
         let mut log = self.log.borrow_mut();
@@ -345,7 +344,7 @@ impl RaftLogStorage<TypeConfig> for Rc<LogStore> {
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
-    async fn purge(&mut self, log_id: LogId<NodeId>) -> Result<(), StorageError<TypeConfig>> {
+    async fn purge(&mut self, log_id: LogId<TypeConfig>) -> Result<(), StorageError<TypeConfig>> {
         tracing::debug!("delete_log: (-oo, {:?}]", log_id);
 
         {

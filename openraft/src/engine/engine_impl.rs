@@ -379,7 +379,7 @@ where C: RaftTypeConfig
     pub(crate) fn handle_append_entries(
         &mut self,
         vote: &Vote<C>,
-        prev_log_id: Option<LogId<C::NodeId>>,
+        prev_log_id: Option<LogId<C>>,
         entries: Vec<C::Entry>,
         tx: Option<AppendEntriesTx<C>>,
     ) -> bool {
@@ -418,7 +418,7 @@ where C: RaftTypeConfig
     pub(crate) fn append_entries(
         &mut self,
         vote: &Vote<C>,
-        prev_log_id: Option<LogId<C::NodeId>>,
+        prev_log_id: Option<LogId<C>>,
         entries: Vec<C::Entry>,
     ) -> Result<(), RejectAppendEntries<C>> {
         self.vote_handler().update_vote(vote)?;
@@ -434,7 +434,7 @@ where C: RaftTypeConfig
 
     /// Commit entries for follower/learner.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn handle_commit_entries(&mut self, leader_committed: Option<LogId<C::NodeId>>) {
+    pub(crate) fn handle_commit_entries(&mut self, leader_committed: Option<LogId<C>>) {
         tracing::debug!(
             leader_committed = display(leader_committed.display()),
             my_accepted = display(self.state.accepted_io().display()),
@@ -654,7 +654,7 @@ where C: RaftTypeConfig
 
         self.leader_handler()
             .unwrap()
-            .leader_append_entries(vec![C::Entry::new_blank(LogId::<C::NodeId>::default())]);
+            .leader_append_entries(vec![C::Entry::new_blank(LogId::<C>::default())]);
     }
 
     /// Check if a raft node is in a state that allows to initialize.

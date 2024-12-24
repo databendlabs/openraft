@@ -35,7 +35,7 @@ where C: RaftTypeConfig
     /// last-applied-log-id.
     /// Because upon startup, the last membership will be loaded by scanning logs from the
     /// `last-applied-log-id`.
-    async fn applied_state(&mut self) -> Result<(Option<LogId<C::NodeId>>, StoredMembership<C>), StorageError<C>>;
+    async fn applied_state(&mut self) -> Result<(Option<LogId<C>>, StoredMembership<C>), StorageError<C>>;
 
     /// Apply the given payload of entries to the state machine.
     ///

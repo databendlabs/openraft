@@ -69,17 +69,17 @@ where C: RaftTypeConfig
     pub(crate) io_progress: Valid<IOProgress<IOId<C>>>,
 
     /// The last log id that has been applied to state machine.
-    pub(crate) applied: Option<LogId<C::NodeId>>,
+    pub(crate) applied: Option<LogId<C>>,
 
     /// The last log id in the currently persisted snapshot.
-    pub(crate) snapshot: Option<LogId<C::NodeId>>,
+    pub(crate) snapshot: Option<LogId<C>>,
 
     /// The last log id that has been purged from storage.
     ///
     /// `RaftState::last_purged_log_id()`
     /// is just the log id that is going to be purged, i.e., there is a `PurgeLog` command queued to
     /// be executed, and it may not be the actually purged log id.
-    pub(crate) purged: Option<LogId<C::NodeId>>,
+    pub(crate) purged: Option<LogId<C>>,
 }
 
 impl<C> Validate for IOState<C>
@@ -104,9 +104,9 @@ where C: RaftTypeConfig
 {
     pub(crate) fn new(
         vote: &Vote<C>,
-        applied: Option<LogId<C::NodeId>>,
-        snapshot: Option<LogId<C::NodeId>>,
-        purged: Option<LogId<C::NodeId>>,
+        applied: Option<LogId<C>>,
+        snapshot: Option<LogId<C>>,
+        purged: Option<LogId<C>>,
     ) -> Self {
         let mut io_progress = Valid::new(IOProgress::default());
 
@@ -123,7 +123,7 @@ where C: RaftTypeConfig
         }
     }
 
-    pub(crate) fn update_applied(&mut self, log_id: Option<LogId<C::NodeId>>) {
+    pub(crate) fn update_applied(&mut self, log_id: Option<LogId<C>>) {
         tracing::debug!(applied = display(DisplayOption(&log_id)), "{}", func_name!());
 
         // TODO: should we update flushed if applied is newer?
@@ -137,11 +137,11 @@ where C: RaftTypeConfig
         self.applied = log_id;
     }
 
-    pub(crate) fn applied(&self) -> Option<&LogId<C::NodeId>> {
+    pub(crate) fn applied(&self) -> Option<&LogId<C>> {
         self.applied.as_ref()
     }
 
-    pub(crate) fn update_snapshot(&mut self, log_id: Option<LogId<C::NodeId>>) {
+    pub(crate) fn update_snapshot(&mut self, log_id: Option<LogId<C>>) {
         tracing::debug!(snapshot = display(DisplayOption(&log_id)), "{}", func_name!());
 
         debug_assert!(
@@ -154,7 +154,7 @@ where C: RaftTypeConfig
         self.snapshot = log_id;
     }
 
-    pub(crate) fn snapshot(&self) -> Option<&LogId<C::NodeId>> {
+    pub(crate) fn snapshot(&self) -> Option<&LogId<C>> {
         self.snapshot.as_ref()
     }
 
@@ -166,11 +166,11 @@ where C: RaftTypeConfig
         self.building_snapshot
     }
 
-    pub(crate) fn update_purged(&mut self, log_id: Option<LogId<C::NodeId>>) {
+    pub(crate) fn update_purged(&mut self, log_id: Option<LogId<C>>) {
         self.purged = log_id;
     }
 
-    pub(crate) fn purged(&self) -> Option<&LogId<C::NodeId>> {
+    pub(crate) fn purged(&self) -> Option<&LogId<C>> {
         self.purged.as_ref()
     }
 }

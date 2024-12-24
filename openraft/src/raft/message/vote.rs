@@ -11,7 +11,7 @@ use crate::Vote;
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct VoteRequest<C: RaftTypeConfig> {
     pub vote: Vote<C>,
-    pub last_log_id: Option<LogId<C::NodeId>>,
+    pub last_log_id: Option<LogId<C>>,
 }
 
 impl<C> fmt::Display for VoteRequest<C>
@@ -25,7 +25,7 @@ where C: RaftTypeConfig
 impl<C> VoteRequest<C>
 where C: RaftTypeConfig
 {
-    pub fn new(vote: Vote<C>, last_log_id: Option<LogId<C::NodeId>>) -> Self {
+    pub fn new(vote: Vote<C>, last_log_id: Option<LogId<C>>) -> Self {
         Self { vote, last_log_id }
     }
 }
@@ -45,13 +45,13 @@ pub struct VoteResponse<C: RaftTypeConfig> {
     pub vote_granted: bool,
 
     /// The last log id stored on the remote voter.
-    pub last_log_id: Option<LogId<C::NodeId>>,
+    pub last_log_id: Option<LogId<C>>,
 }
 
 impl<C> VoteResponse<C>
 where C: RaftTypeConfig
 {
-    pub fn new(vote: impl Borrow<Vote<C>>, last_log_id: Option<LogId<C::NodeId>>, granted: bool) -> Self {
+    pub fn new(vote: impl Borrow<Vote<C>>, last_log_id: Option<LogId<C>>, granted: bool) -> Self {
         Self {
             vote: vote.borrow().clone(),
             vote_granted: granted,

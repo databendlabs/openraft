@@ -107,7 +107,7 @@ use crate::StorageError;
 /// A temp struct to hold the data for a node that is being applied.
 #[derive(Debug)]
 pub(crate) struct ApplyingEntry<C: RaftTypeConfig> {
-    log_id: LogId<C::NodeId>,
+    log_id: LogId<C>,
     membership: Option<Membership<C>>,
 }
 
@@ -124,7 +124,7 @@ where C: RaftTypeConfig
 }
 
 impl<C: RaftTypeConfig> ApplyingEntry<C> {
-    pub(crate) fn new(log_id: LogId<C::NodeId>, membership: Option<Membership<C>>) -> Self {
+    pub(crate) fn new(log_id: LogId<C>, membership: Option<Membership<C>>) -> Self {
         Self { log_id, membership }
     }
 }
@@ -133,7 +133,7 @@ impl<C: RaftTypeConfig> ApplyingEntry<C> {
 pub(crate) struct ApplyResult<C: RaftTypeConfig> {
     pub(crate) since: u64,
     pub(crate) end: u64,
-    pub(crate) last_applied: LogId<C::NodeId>,
+    pub(crate) last_applied: LogId<C>,
     pub(crate) applying_entries: Vec<ApplyingEntry<C>>,
     pub(crate) apply_results: Vec<C::R>,
 }
@@ -545,7 +545,7 @@ where
                     .map(|(id, p)| {
                         (
                             id.clone(),
-                            <ProgressEntry<C> as Borrow<Option<LogId<C::NodeId>>>>::borrow(p).clone(),
+                            <ProgressEntry<C> as Borrow<Option<LogId<C>>>>::borrow(p).clone(),
                         )
                     })
                     .collect(),
@@ -761,8 +761,8 @@ where
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) async fn apply_to_state_machine(
         &mut self,
-        first: LogId<C::NodeId>,
-        last: LogId<C::NodeId>,
+        first: LogId<C>,
+        last: LogId<C>,
     ) -> Result<(), StorageError<C>> {
         tracing::debug!("{}: {}..={}", func_name!(), first, last);
 

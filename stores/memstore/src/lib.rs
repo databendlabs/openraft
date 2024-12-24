@@ -95,7 +95,7 @@ pub struct MemStoreSnapshot {
 /// The state machine of the `MemStore`.
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct MemStoreStateMachine {
-    pub last_applied_log: Option<LogId<MemNodeId>>,
+    pub last_applied_log: Option<LogId<TypeConfig>>,
 
     pub last_membership: StoredMembership<TypeConfig>,
 
@@ -139,14 +139,14 @@ impl BlockConfig {
 
 /// An in-memory log storage implementing the `RaftLogStorage` trait.
 pub struct MemLogStore {
-    last_purged_log_id: RwLock<Option<LogId<MemNodeId>>>,
+    last_purged_log_id: RwLock<Option<LogId<TypeConfig>>>,
 
     /// Saving committed log id is optional in Openraft.
     ///
     /// This flag switches on the saving for testing purposes.
     pub enable_saving_committed: AtomicBool,
 
-    committed: RwLock<Option<LogId<MemNodeId>>>,
+    committed: RwLock<Option<LogId<TypeConfig>>>,
 
     /// The Raft log. Logs are stored in serialized json.
     log: RwLock<BTreeMap<u64, String>>,
@@ -357,7 +357,7 @@ impl RaftLogStorage<TypeConfig> for Arc<MemLogStore> {
         Ok(())
     }
 
-    async fn save_committed(&mut self, committed: Option<LogId<MemNodeId>>) -> Result<(), StorageError<TypeConfig>> {
+    async fn save_committed(&mut self, committed: Option<LogId<TypeConfig>>) -> Result<(), StorageError<TypeConfig>> {
         let enabled = self.enable_saving_committed.load(Ordering::Relaxed);
         tracing::debug!(?committed, "save_committed, enabled: {}", enabled);
         if !enabled {
@@ -368,7 +368,7 @@ impl RaftLogStorage<TypeConfig> for Arc<MemLogStore> {
         Ok(())
     }
 
-    async fn read_committed(&mut self) -> Result<Option<LogId<MemNodeId>>, StorageError<TypeConfig>> {
+    async fn read_committed(&mut self) -> Result<Option<LogId<TypeConfig>>, StorageError<TypeConfig>> {
         let enabled = self.enable_saving_committed.load(Ordering::Relaxed);
         tracing::debug!("read_committed, enabled: {}", enabled);
         if !enabled {
@@ -393,7 +393,7 @@ impl RaftLogStorage<TypeConfig> for Arc<MemLogStore> {
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
-    async fn truncate(&mut self, log_id: LogId<MemNodeId>) -> Result<(), StorageError<TypeConfig>> {
+    async fn truncate(&mut self, log_id: LogId<TypeConfig>) -> Result<(), StorageError<TypeConfig>> {
         tracing::debug!("delete_log: [{:?}, +oo)", log_id);
 
         {
@@ -409,7 +409,7 @@ impl RaftLogStorage<TypeConfig> for Arc<MemLogStore> {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn purge(&mut self, log_id: LogId<MemNodeId>) -> Result<(), StorageError<TypeConfig>> {
+    async fn purge(&mut self, log_id: LogId<TypeConfig>) -> Result<(), StorageError<TypeConfig>> {
         tracing::debug!("purge_log_upto: {:?}", log_id);
 
         if let Some(d) = self.block.get_blocking(&BlockOperation::PurgeLog) {
@@ -441,7 +441,7 @@ impl RaftStateMachine<TypeConfig> for Arc<MemStateMachine> {
 
     async fn applied_state(
         &mut self,
-    ) -> Result<(Option<LogId<MemNodeId>>, StoredMembership<TypeConfig>), StorageError<TypeConfig>> {
+    ) -> Result<(Option<LogId<TypeConfig>>, StoredMembership<TypeConfig>), StorageError<TypeConfig>> {
         let sm = self.sm.read().await;
         Ok((sm.last_applied_log, sm.last_membership.clone()))
     }

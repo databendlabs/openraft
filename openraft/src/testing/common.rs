@@ -8,8 +8,9 @@ use crate::LogId;
 use crate::RaftTypeConfig;
 
 /// Builds a log id, for testing purposes.
-pub fn log_id<NID: crate::NodeId>(term: u64, node_id: NID, index: u64) -> LogId<NID> {
-    LogId::<NID> {
+pub fn log_id<C>(term: u64, node_id: C::NodeId, index: u64) -> LogId<C>
+where C: RaftTypeConfig {
+    LogId::<C> {
         leader_id: CommittedLeaderId::new(term, node_id),
         index,
     }

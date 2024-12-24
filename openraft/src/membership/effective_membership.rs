@@ -55,7 +55,7 @@ where C: RaftTypeConfig
 impl<C, LID> From<(&LID, Membership<C>)> for EffectiveMembership<C>
 where
     C: RaftTypeConfig,
-    LID: RaftLogId<C::NodeId>,
+    LID: RaftLogId<C>,
 {
     fn from(v: (&LID, Membership<C>)) -> Self {
         EffectiveMembership::new(Some(v.0.get_log_id().clone()), v.1)
@@ -65,11 +65,11 @@ where
 impl<C> EffectiveMembership<C>
 where C: RaftTypeConfig
 {
-    pub(crate) fn new_arc(log_id: Option<LogId<C::NodeId>>, membership: Membership<C>) -> Arc<Self> {
+    pub(crate) fn new_arc(log_id: Option<LogId<C>>, membership: Membership<C>) -> Arc<Self> {
         Arc::new(Self::new(log_id, membership))
     }
 
-    pub fn new(log_id: Option<LogId<C::NodeId>>, membership: Membership<C>) -> Self {
+    pub fn new(log_id: Option<LogId<C>>, membership: Membership<C>) -> Self {
         let voter_ids = membership.voter_ids().collect();
 
         let configs = membership.get_joint_config();
@@ -95,7 +95,7 @@ where C: RaftTypeConfig
         &self.stored_membership
     }
 
-    pub fn log_id(&self) -> &Option<LogId<C::NodeId>> {
+    pub fn log_id(&self) -> &Option<LogId<C>> {
         self.stored_membership.log_id()
     }
 

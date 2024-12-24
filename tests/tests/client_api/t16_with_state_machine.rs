@@ -16,7 +16,6 @@ use openraft::RaftTypeConfig;
 use openraft::StorageError;
 use openraft::StoredMembership;
 use openraft_memstore::ClientResponse;
-use openraft_memstore::MemNodeId;
 use openraft_memstore::TypeConfig;
 
 use crate::fixtures::ut_harness;
@@ -99,7 +98,7 @@ async fn with_state_machine_wrong_sm_type() -> Result<()> {
         impl RaftStateMachine<TC> for FooSM {
             type SnapshotBuilder = Self;
 
-            async fn applied_state(&mut self) -> Result<(Option<LogId<MemNodeId>>, StoredMembership<TC>), Err> {
+            async fn applied_state(&mut self) -> Result<(Option<LogId<TypeConfig>>, StoredMembership<TC>), Err> {
                 todo!()
             }
 

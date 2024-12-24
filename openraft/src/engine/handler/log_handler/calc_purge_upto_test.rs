@@ -4,8 +4,8 @@ use crate::engine::LogIdList;
 use crate::CommittedLeaderId;
 use crate::LogId;
 
-fn log_id(term: u64, index: u64) -> LogId<u64> {
-    LogId::<u64> {
+fn log_id(term: u64, index: u64) -> LogId<UTConfig> {
+    LogId {
         leader_id: CommittedLeaderId::new(term, 0),
         index,
     }

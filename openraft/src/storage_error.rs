@@ -48,13 +48,13 @@ where C: RaftTypeConfig
     Logs,
 
     /// Error about a single log entry
-    Log(LogId<C::NodeId>),
+    Log(LogId<C>),
 
     /// Error about a single log entry without knowing the log term.
     LogIndex(u64),
 
     /// Error happened when applying a log entry
-    Apply(LogId<C::NodeId>),
+    Apply(LogId<C>),
 
     /// Error happened when operating state machine.
     StateMachine,
@@ -137,7 +137,7 @@ where C: RaftTypeConfig
         }
     }
 
-    pub fn write_log_entry(log_id: LogId<C::NodeId>, source: impl Into<AnyError>) -> Self {
+    pub fn write_log_entry(log_id: LogId<C>, source: impl Into<AnyError>) -> Self {
         Self::new(ErrorSubject::Log(log_id), ErrorVerb::Write, source)
     }
 
@@ -145,7 +145,7 @@ where C: RaftTypeConfig
         Self::new(ErrorSubject::LogIndex(log_index), ErrorVerb::Read, source)
     }
 
-    pub fn read_log_entry(log_id: LogId<C::NodeId>, source: impl Into<AnyError>) -> Self {
+    pub fn read_log_entry(log_id: LogId<C>, source: impl Into<AnyError>) -> Self {
         Self::new(ErrorSubject::Log(log_id), ErrorVerb::Read, source)
     }
 
@@ -165,7 +165,7 @@ where C: RaftTypeConfig
         Self::new(ErrorSubject::Vote, ErrorVerb::Read, source)
     }
 
-    pub fn apply(log_id: LogId<C::NodeId>, source: impl Into<AnyError>) -> Self {
+    pub fn apply(log_id: LogId<C>, source: impl Into<AnyError>) -> Self {
         Self::new(ErrorSubject::Apply(log_id), ErrorVerb::Write, source)
     }
 

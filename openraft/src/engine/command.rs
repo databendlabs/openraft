@@ -65,12 +65,12 @@ where C: RaftTypeConfig
     },
 
     /// Replicate the committed log id to other nodes
-    ReplicateCommitted { committed: Option<LogId<C::NodeId>> },
+    ReplicateCommitted { committed: Option<LogId<C>> },
 
     /// Broadcast heartbeat to all other nodes.
     BroadcastHeartbeat {
         session_id: ReplicationSessionId<C>,
-        committed: Option<LogId<C::NodeId>>,
+        committed: Option<LogId<C>>,
     },
 
     /// Save the committed log id to [`RaftLogStorage`].
@@ -79,7 +79,7 @@ where C: RaftTypeConfig
     /// latest state.
     ///
     /// [`RaftLogStorage`]: crate::storage::RaftLogStorage
-    SaveCommitted { committed: LogId<C::NodeId> },
+    SaveCommitted { committed: LogId<C> },
 
     /// Commit log entries that are already persisted in the store, upto `upto`, inclusive.
     ///
@@ -91,8 +91,8 @@ where C: RaftTypeConfig
     /// [`RaftLogStorage::save_committed()`]: crate::storage::RaftLogStorage::save_committed
     /// [`RaftStateMachine::apply()`]: crate::storage::RaftStateMachine::apply
     Apply {
-        already_committed: Option<LogId<C::NodeId>>,
-        upto: LogId<C::NodeId>,
+        already_committed: Option<LogId<C>>,
+        upto: LogId<C>,
     },
 
     /// Replicate log entries or snapshot to a target.
@@ -118,11 +118,11 @@ where C: RaftTypeConfig
     SendVote { vote_req: VoteRequest<C> },
 
     /// Purge log from the beginning to `upto`, inclusive.
-    PurgeLog { upto: LogId<C::NodeId> },
+    PurgeLog { upto: LogId<C> },
 
     /// Delete logs that conflict with the leader from a follower/learner since log id `since`,
     /// inclusive.
-    TruncateLog { since: LogId<C::NodeId> },
+    TruncateLog { since: LogId<C> },
 
     /// A command send to state machine worker [`sm::worker::Worker`].
     ///
@@ -296,14 +296,14 @@ where C: RaftTypeConfig
     /// This is only used by [`Raft::initialize()`], because when initializing there is no leader.
     ///
     /// [`Raft::initialize()`]: `crate::Raft::initialize()`
-    LogFlushed { log_id: Option<LogId<C::NodeId>> },
+    LogFlushed { log_id: Option<LogId<C>> },
 
     /// Wait until the log is applied to the state machine.
     #[allow(dead_code)]
-    Applied { log_id: Option<LogId<C::NodeId>> },
+    Applied { log_id: Option<LogId<C>> },
 
     /// Wait until snapshot is built and includes the log id.
-    Snapshot { log_id: Option<LogId<C::NodeId>> },
+    Snapshot { log_id: Option<LogId<C>> },
 }
 
 impl<C> fmt::Display for Condition<C>

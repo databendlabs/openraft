@@ -9,10 +9,10 @@ pub struct SnapshotSignature<C>
 where C: RaftTypeConfig
 {
     /// Log entries upto which this snapshot includes, inclusive.
-    pub last_log_id: Option<LogId<C::NodeId>>,
+    pub last_log_id: Option<LogId<C>>,
 
     /// The last applied membership log id.
-    pub last_membership_log_id: Option<LogId<C::NodeId>>,
+    pub last_membership_log_id: Option<LogId<C>>,
 
     /// To identify a snapshot when transferring.
     pub snapshot_id: SnapshotId,

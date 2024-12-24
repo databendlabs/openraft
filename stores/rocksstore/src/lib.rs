@@ -92,7 +92,7 @@ pub struct RocksSnapshot {
 #[derive(Default)]
 #[derive(Serialize, Deserialize)]
 pub struct StateMachine {
-    pub last_applied_log: Option<LogId<RocksNodeId>>,
+    pub last_applied_log: Option<LogId<TypeConfig>>,
 
     pub last_membership: StoredMembership<TypeConfig>,
 
@@ -173,7 +173,7 @@ mod meta {
 
     impl StoreMeta for LastPurged {
         const KEY: &'static str = "last_purged_log_id";
-        type Value = LogId<u64>;
+        type Value = LogId<TypeConfig>;
 
         fn subject(_v: Option<&Self::Value>) -> ErrorSubject<TypeConfig> {
             ErrorSubject::Store
@@ -368,7 +368,7 @@ impl RaftLogStorage<TypeConfig> for RocksLogStore {
         Ok(())
     }
 
-    async fn truncate(&mut self, log_id: LogId<RocksNodeId>) -> Result<(), StorageError<TypeConfig>> {
+    async fn truncate(&mut self, log_id: LogId<TypeConfig>) -> Result<(), StorageError<TypeConfig>> {
         tracing::debug!("truncate: [{:?}, +oo)", log_id);
 
         let from = id_to_bin(log_id.index);
@@ -379,7 +379,7 @@ impl RaftLogStorage<TypeConfig> for RocksLogStore {
         Ok(())
     }
 
-    async fn purge(&mut self, log_id: LogId<RocksNodeId>) -> Result<(), StorageError<TypeConfig>> {
+    async fn purge(&mut self, log_id: LogId<TypeConfig>) -> Result<(), StorageError<TypeConfig>> {
         tracing::debug!("delete_log: [0, {:?}]", log_id);
 
         // Write the last-purged log id before purging the logs.
@@ -401,7 +401,7 @@ impl RaftStateMachine<TypeConfig> for RocksStateMachine {
 
     async fn applied_state(
         &mut self,
-    ) -> Result<(Option<LogId<RocksNodeId>>, StoredMembership<TypeConfig>), StorageError<TypeConfig>> {
+    ) -> Result<(Option<LogId<TypeConfig>>, StoredMembership<TypeConfig>), StorageError<TypeConfig>> {
         Ok((self.sm.last_applied_log, self.sm.last_membership.clone()))
     }
 

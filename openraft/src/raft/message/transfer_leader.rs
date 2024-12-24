@@ -18,13 +18,13 @@ where C: RaftTypeConfig
     pub(crate) to_node_id: C::NodeId,
 
     /// The last log id the `to_node_id` node should at least have to become Leader.
-    pub(crate) last_log_id: Option<LogId<C::NodeId>>,
+    pub(crate) last_log_id: Option<LogId<C>>,
 }
 
 impl<C> TransferLeaderRequest<C>
 where C: RaftTypeConfig
 {
-    pub fn new(from: Vote<C>, to: C::NodeId, last_log_id: Option<LogId<C::NodeId>>) -> Self {
+    pub fn new(from: Vote<C>, to: C::NodeId, last_log_id: Option<LogId<C>>) -> Self {
         Self {
             from_leader: from,
             to_node_id: to,
@@ -45,7 +45,7 @@ where C: RaftTypeConfig
     /// The last log id on the `to_node_id` node should at least have to become Leader.
     ///
     /// This is the last log id on the Leader when the leadership is transferred.
-    pub fn last_log_id(&self) -> Option<&LogId<C::NodeId>> {
+    pub fn last_log_id(&self) -> Option<&LogId<C>> {
         self.last_log_id.as_ref()
     }
 }

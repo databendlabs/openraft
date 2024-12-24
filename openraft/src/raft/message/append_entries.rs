@@ -18,7 +18,7 @@ use crate::Vote;
 pub struct AppendEntriesRequest<C: RaftTypeConfig> {
     pub vote: Vote<C>,
 
-    pub prev_log_id: Option<LogId<C::NodeId>>,
+    pub prev_log_id: Option<LogId<C>>,
 
     /// The new log entries to store.
     ///
@@ -27,7 +27,7 @@ pub struct AppendEntriesRequest<C: RaftTypeConfig> {
     pub entries: Vec<C::Entry>,
 
     /// The leader's committed log id.
-    pub leader_commit: Option<LogId<C::NodeId>>,
+    pub leader_commit: Option<LogId<C>>,
 }
 
 impl<C: RaftTypeConfig> fmt::Debug for AppendEntriesRequest<C> {
@@ -86,7 +86,7 @@ pub enum AppendEntriesResponse<C: RaftTypeConfig> {
     ///
     /// [`RPCError`]: crate::error::RPCError
     /// [`RaftNetwork::append_entries`]: crate::network::RaftNetwork::append_entries
-    PartialSuccess(Option<LogId<C::NodeId>>),
+    PartialSuccess(Option<LogId<C>>),
 
     /// The first log id([`AppendEntriesRequest::prev_log_id`]) of the entries to send does not
     /// match on the remote target node.

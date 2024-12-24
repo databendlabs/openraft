@@ -20,7 +20,7 @@ where C: RaftTypeConfig
     }
 
     /// Get the log id of the entry at `index`.
-    async fn get_log_id(&mut self, log_index: u64) -> Result<LogId<C::NodeId>, StorageError<C>> {
+    async fn get_log_id(&mut self, log_index: u64) -> Result<LogId<C>, StorageError<C>> {
         let entries = self.try_get_log_entries(log_index..=log_index).await?;
 
         if entries.is_empty() {
