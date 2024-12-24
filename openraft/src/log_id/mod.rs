@@ -25,7 +25,7 @@ pub struct LogId<C>
 where C: RaftTypeConfig
 {
     /// The id of the leader that proposed this log
-    pub leader_id: CommittedLeaderId<C::NodeId>,
+    pub leader_id: CommittedLeaderId<C>,
     /// The index of a log in the storage.
     ///
     /// Log index is a consecutive integer.
@@ -63,12 +63,12 @@ impl<C> LogId<C>
 where C: RaftTypeConfig
 {
     /// Creates a log id proposed by a committed leader with `leader_id` at the given index.
-    pub fn new(leader_id: CommittedLeaderId<C::NodeId>, index: u64) -> Self {
+    pub fn new(leader_id: CommittedLeaderId<C>, index: u64) -> Self {
         LogId { leader_id, index }
     }
 
     /// Returns the leader id that proposed this log.
-    pub fn committed_leader_id(&self) -> &CommittedLeaderId<C::NodeId> {
+    pub fn committed_leader_id(&self) -> &CommittedLeaderId<C> {
         &self.leader_id
     }
 }

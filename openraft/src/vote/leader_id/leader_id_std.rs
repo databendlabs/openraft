@@ -3,19 +3,21 @@ use std::fmt;
 use std::marker::PhantomData;
 
 use crate::display_ext::DisplayOptionExt;
-use crate::NodeId;
+use crate::RaftTypeConfig;
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub struct LeaderId<NID>
-where NID: NodeId
+pub struct LeaderId<C>
+where C: RaftTypeConfig
 {
     pub term: u64,
 
-    pub voted_for: Option<NID>,
+    pub voted_for: Option<C::NodeId>,
 }
 
-impl<NID: NodeId> PartialOrd for LeaderId<NID> {
+impl<C> PartialOrd for LeaderId<C>
+where C: RaftTypeConfig
+{
     #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         match PartialOrd::partial_cmp(&self.term, &other.term) {
@@ -39,8 +41,10 @@ impl<NID: NodeId> PartialOrd for LeaderId<NID> {
     }
 }
 
-impl<NID: NodeId> LeaderId<NID> {
-    pub fn new(term: u64, node_id: NID) -> Self {
+impl<C> LeaderId<C>
+where C: RaftTypeConfig
+{
+    pub fn new(term: u64, node_id: C::NodeId) -> Self {
         Self {
             term,
             voted_for: Some(node_id),
@@ -51,24 +55,26 @@ impl<NID: NodeId> LeaderId<NID> {
         self.term
     }
 
-    pub fn voted_for(&self) -> Option<NID> {
+    pub fn voted_for(&self) -> Option<C::NodeId> {
         self.voted_for.clone()
     }
 
     #[allow(clippy::wrong_self_convention)]
-    pub(crate) fn to_committed(&self) -> CommittedLeaderId<NID> {
-        CommittedLeaderId::new(self.term, NID::default())
+    pub(crate) fn to_committed(&self) -> CommittedLeaderId<C> {
+        CommittedLeaderId::new(self.term, C::NodeId::default())
     }
 
     /// Return if it is the same leader as the committed leader id.
     ///
     /// A committed leader may have less info than a non-committed.
-    pub(crate) fn is_same_as_committed(&self, other: &CommittedLeaderId<NID>) -> bool {
+    pub(crate) fn is_same_as_committed(&self, other: &CommittedLeaderId<C>) -> bool {
         self.term == other.term
     }
 }
 
-impl<NID: NodeId> fmt::Display for LeaderId<NID> {
+impl<C> fmt::Display for LeaderId<C>
+where C: RaftTypeConfig
+{
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "T{}-N{}", self.term, self.voted_for.display())
     }
@@ -78,19 +84,23 @@ impl<NID: NodeId> fmt::Display for LeaderId<NID> {
 #[derive(PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 #[cfg_attr(feature = "serde", serde(transparent))]
-pub struct CommittedLeaderId<NID> {
+pub struct CommittedLeaderId<C> {
     pub term: u64,
-    p: PhantomData<NID>,
+    p: PhantomData<C>,
 }
 
-impl<NID: NodeId> fmt::Display for CommittedLeaderId<NID> {
+impl<C> fmt::Display for CommittedLeaderId<C>
+where C: RaftTypeConfig
+{
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.term)
     }
 }
 
-impl<NID: NodeId> CommittedLeaderId<NID> {
-    pub fn new(term: u64, node_id: NID) -> Self {
+impl<C> CommittedLeaderId<C>
+where C: RaftTypeConfig
+{
+    pub fn new(term: u64, node_id: C::NodeId) -> Self {
         let _ = node_id;
         Self { term, p: PhantomData }
     }
@@ -99,6 +109,7 @@ impl<NID: NodeId> CommittedLeaderId<NID> {
 #[cfg(test)]
 #[allow(clippy::nonminimal_bool)]
 mod tests {
+    use crate::engine::testing::UTConfig;
     use crate::LeaderId;
 
     #[cfg(feature = "serde")]
@@ -106,11 +117,11 @@ mod tests {
     fn test_committed_leader_id_serde() -> anyhow::Result<()> {
         use crate::CommittedLeaderId;
 
-        let c = CommittedLeaderId::<u32>::new(5, 10);
+        let c = CommittedLeaderId::<UTConfig>::new(5, 10);
         let s = serde_json::to_string(&c)?;
         assert_eq!(r#"5"#, s);
 
-        let c2: CommittedLeaderId<u32> = serde_json::from_str(&s)?;
+        let c2: CommittedLeaderId<UTConfig> = serde_json::from_str(&s)?;
         assert_eq!(CommittedLeaderId::new(5, 0), c2);
 
         Ok(())
@@ -120,9 +131,9 @@ mod tests {
     #[allow(clippy::neg_cmp_op_on_partial_ord)]
     fn test_leader_id_partial_order() -> anyhow::Result<()> {
         #[allow(clippy::redundant_closure)]
-        let lid = |term, node_id| LeaderId::<u64>::new(term, node_id);
+        let lid = |term, node_id| LeaderId::<UTConfig>::new(term, node_id);
 
-        let lid_none = |term| LeaderId::<u64> { term, voted_for: None };
+        let lid_none = |term| LeaderId::<UTConfig> { term, voted_for: None };
 
         // Compare term first
         assert!(lid(2, 2) > lid(1, 2));

@@ -148,7 +148,8 @@ where C: RaftTypeConfig
     }
 
     /// Extends a list of `log_id`.
-    #[allow(dead_code)]
+    // leader_id: Copy is feature gated
+    #[allow(clippy::clone_on_copy)]
     pub(crate) fn extend<'a, LID: RaftLogId<C> + 'a>(&mut self, new_ids: &[LID]) {
         let mut prev = self.last().map(|x| x.leader_id.clone());
 
@@ -217,7 +218,8 @@ where C: RaftTypeConfig
     }
 
     /// Delete log ids from `at`, inclusive.
-    #[allow(dead_code)]
+    // leader_id: Copy is feature gated
+    #[allow(clippy::clone_on_copy)]
     pub(crate) fn truncate(&mut self, at: u64) {
         let res = self.key_log_ids.binary_search_by(|log_id| log_id.index.cmp(&at));
 
@@ -277,6 +279,8 @@ where C: RaftTypeConfig
     /// Get the log id at the specified index.
     ///
     /// It will return `last_purged_log_id` if index is at the last purged index.
+    // leader_id: Copy is feature gated
+    #[allow(clippy::clone_on_copy)]
     pub(crate) fn get(&self, index: u64) -> Option<LogId<C>> {
         let res = self.key_log_ids.binary_search_by(|log_id| log_id.index.cmp(&index));
 

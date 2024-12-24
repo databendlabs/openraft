@@ -41,7 +41,7 @@ where C: RaftTypeConfig
         Self { vote }
     }
 
-    pub(crate) fn committed_leader_id(&self) -> CommittedLeaderId<C::NodeId> {
+    pub(crate) fn committed_leader_id(&self) -> CommittedLeaderId<C> {
         self.vote.leader_id().to_committed()
     }
 

@@ -10,13 +10,20 @@ use crate::LeaderId;
 use crate::RaftTypeConfig;
 
 /// `Vote` represent the privilege of a node.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct Vote<C: RaftTypeConfig> {
     /// The id of the node that tries to become the leader.
-    pub leader_id: LeaderId<C::NodeId>,
+    pub leader_id: LeaderId<C>,
 
     pub committed: bool,
+}
+
+impl<C> Copy for Vote<C>
+where
+    C: RaftTypeConfig,
+    C::NodeId: Copy,
+{
 }
 
 impl<C> PartialOrd for Vote<C>
@@ -91,11 +98,11 @@ where C: RaftTypeConfig
     /// Return the [`LeaderId`] this vote represents for.
     ///
     /// The leader may or may not be granted by a quorum.
-    pub fn leader_id(&self) -> &LeaderId<C::NodeId> {
+    pub fn leader_id(&self) -> &LeaderId<C> {
         &self.leader_id
     }
 
-    pub(crate) fn is_same_leader(&self, leader_id: &CommittedLeaderId<C::NodeId>) -> bool {
+    pub(crate) fn is_same_leader(&self, leader_id: &CommittedLeaderId<C>) -> bool {
         self.leader_id().is_same_as_committed(leader_id)
     }
 }
