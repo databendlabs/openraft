@@ -9,6 +9,7 @@ use validit::Validate;
 
 use crate::display_ext::DisplayOptionExt;
 use crate::log_id_range::LogIdRange;
+use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::RaftTypeConfig;
@@ -41,7 +42,7 @@ where C: RaftTypeConfig
 impl<C> Copy for Inflight<C>
 where
     C: RaftTypeConfig,
-    C::NodeId: Copy,
+    CommittedLeaderIdOf<C>: Copy,
 {
 }
 

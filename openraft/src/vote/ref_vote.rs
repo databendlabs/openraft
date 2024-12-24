@@ -1,24 +1,23 @@
 use std::cmp::Ordering;
 use std::fmt::Formatter;
 
-use crate::LeaderId;
 use crate::RaftTypeConfig;
 
-/// Same as [`Vote`] but with a reference to the [`LeaderId`].
+/// Same as [`Vote`] but with a reference to the `LeaderId`.
 ///
 /// [`Vote`]: crate::vote::Vote
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct RefVote<'a, C>
 where C: RaftTypeConfig
 {
-    pub(crate) leader_id: &'a LeaderId<C>,
+    pub(crate) leader_id: &'a C::LeaderId,
     pub(crate) committed: bool,
 }
 
 impl<'a, C> RefVote<'a, C>
 where C: RaftTypeConfig
 {
-    pub(crate) fn new(leader_id: &'a LeaderId<C>, committed: bool) -> Self {
+    pub(crate) fn new(leader_id: &'a C::LeaderId, committed: bool) -> Self {
         Self { leader_id, committed }
     }
 

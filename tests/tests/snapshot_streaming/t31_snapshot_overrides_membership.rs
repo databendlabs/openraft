@@ -9,12 +9,11 @@ use openraft::network::RaftNetworkFactory;
 use openraft::raft::AppendEntriesRequest;
 use openraft::storage::StorageHelper;
 use openraft::testing::blank_ent;
-use openraft::CommittedLeaderId;
+use openraft::testing::log_id;
 use openraft::Config;
 use openraft::EffectiveMembership;
 use openraft::Entry;
 use openraft::EntryPayload;
-use openraft::LogId;
 use openraft::Membership;
 use openraft::SnapshotPolicy;
 use openraft::Vote;
@@ -62,20 +61,13 @@ async fn snapshot_overrides_membership() -> Result<()> {
             )
             .await?;
 
-        router
-            .wait_for_snapshot(
-                &btreeset![0],
-                LogId::new(CommittedLeaderId::new(1, 0), log_index),
-                timeout(),
-                "snapshot",
-            )
-            .await?;
+        router.wait_for_snapshot(&btreeset![0], log_id(1, 0, log_index), timeout(), "snapshot").await?;
         router
             .assert_storage_state(
                 1,
                 log_index,
                 Some(0),
-                LogId::new(CommittedLeaderId::new(1, 0), log_index),
+                log_id(1, 0, log_index),
                 Some((log_index.into(), 1)),
             )
             .await?;
@@ -93,10 +85,10 @@ async fn snapshot_overrides_membership() -> Result<()> {
                 vote: Vote::new_committed(1, 0),
                 prev_log_id: None,
                 entries: vec![blank_ent(0, 0, 0), Entry {
-                    log_id: LogId::new(CommittedLeaderId::new(1, 0), 1),
+                    log_id: log_id(1, 0, 1),
                     payload: EntryPayload::Membership(Membership::new_with_defaults(vec![btreeset! {2,3}], [])),
                 }],
-                leader_commit: Some(LogId::new(CommittedLeaderId::new(0, 0), 0)),
+                leader_commit: Some(log_id(0, 0, 0)),
             };
             let option = RPCOption::new(Duration::from_millis(1_000));
 
@@ -127,14 +119,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
             tracing::info!(log_index, "--- DONE add learner");
 
             router.wait_for_log(&btreeset![0, 1], Some(log_index), timeout(), "add learner").await?;
-            router
-                .wait_for_snapshot(
-                    &btreeset![1],
-                    LogId::new(CommittedLeaderId::new(1, 0), snapshot_index),
-                    timeout(),
-                    "",
-                )
-                .await?;
+            router.wait_for_snapshot(&btreeset![1], log_id(1, 0, snapshot_index), timeout(), "").await?;
 
             let expected_snap = Some((snapshot_index.into(), 1));
 
@@ -143,7 +128,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
                     1,
                     log_index,
                     None, /* learner does not vote */
-                    LogId::new(CommittedLeaderId::new(1, 0), log_index),
+                    log_id(1, 0, log_index),
                     expected_snap,
                 )
                 .await?;

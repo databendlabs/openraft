@@ -20,10 +20,8 @@ use crate::replication::request::Replicate;
 use crate::testing::log_id;
 use crate::type_config::TypeConfigExt;
 use crate::utime::Leased;
-use crate::CommittedLeaderId;
 use crate::EffectiveMembership;
 use crate::Entry;
-use crate::LogId;
 use crate::Membership;
 use crate::Vote;
 
@@ -39,7 +37,7 @@ fn eng() -> Engine<UTConfig> {
     let mut eng = Engine::testing_default(0);
     eng.state.enable_validation(false); // Disable validation for incomplete state
 
-    eng.state.log_ids = LogIdList::new([LogId::new(CommittedLeaderId::new(0, 0), 0)]);
+    eng.state.log_ids = LogIdList::new([log_id(0, 0, 0)]);
     eng
 }
 

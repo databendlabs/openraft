@@ -6,10 +6,9 @@ use maplit::btreeset;
 use openraft::raft::AppendEntriesRequest;
 use openraft::storage::RaftLogStorage;
 use openraft::testing::blank_ent;
-use openraft::CommittedLeaderId;
+use openraft::testing::log_id;
 use openraft::Config;
 use openraft::Entry;
-use openraft::LogId;
 use openraft::RaftLogReader;
 use openraft::RaftTypeConfig;
 use openraft::ServerState;
@@ -49,7 +48,7 @@ async fn append_conflicts() -> Result<()> {
         vote: Vote::new_committed(1, 2),
         prev_log_id: None,
         entries: vec![],
-        leader_commit: Some(LogId::new(CommittedLeaderId::new(1, 0), 2)),
+        leader_commit: Some(log_id(1, 0, 2)),
     };
 
     let resp = r0.append_entries(req).await?;
@@ -63,7 +62,7 @@ async fn append_conflicts() -> Result<()> {
         vote: Vote::new_committed(1, 2),
         prev_log_id: None,
         entries: vec![blank_ent(0, 0, 0)],
-        leader_commit: Some(LogId::new(CommittedLeaderId::new(1, 0), 2)),
+        leader_commit: Some(log_id(1, 0, 2)),
     };
 
     let resp = r0.append_entries(req).await?;
@@ -74,9 +73,9 @@ async fn append_conflicts() -> Result<()> {
 
     let req = AppendEntriesRequest {
         vote: Vote::new_committed(1, 2),
-        prev_log_id: Some(LogId::new(CommittedLeaderId::new(0, 0), 0)),
+        prev_log_id: Some(log_id(0, 0, 0)),
         entries: vec![],
-        leader_commit: Some(LogId::new(CommittedLeaderId::new(1, 0), 2)),
+        leader_commit: Some(log_id(1, 0, 2)),
     };
 
     let resp = r0.append_entries(req).await?;
@@ -89,7 +88,7 @@ async fn append_conflicts() -> Result<()> {
 
     let req = || AppendEntriesRequest {
         vote: Vote::new_committed(1, 2),
-        prev_log_id: Some(LogId::new(CommittedLeaderId::new(0, 0), 0)),
+        prev_log_id: Some(log_id(0, 0, 0)),
         entries: vec![
             blank_ent(1, 0, 1),
             blank_ent(1, 0, 2),
@@ -97,7 +96,7 @@ async fn append_conflicts() -> Result<()> {
             blank_ent(1, 0, 4),
         ],
         // this set the last_applied to 2
-        leader_commit: Some(LogId::new(CommittedLeaderId::new(1, 0), 2)),
+        leader_commit: Some(log_id(1, 0, 2)),
     };
 
     let resp = r0.append_entries(req()).await?;
@@ -119,9 +118,9 @@ async fn append_conflicts() -> Result<()> {
 
     let req = AppendEntriesRequest {
         vote: Vote::new_committed(1, 2),
-        prev_log_id: Some(LogId::new(CommittedLeaderId::new(1, 0), 1)),
+        prev_log_id: Some(log_id(1, 0, 1)),
         entries: vec![blank_ent(1, 0, 2)],
-        leader_commit: Some(LogId::new(CommittedLeaderId::new(1, 0), 2)),
+        leader_commit: Some(log_id(1, 0, 2)),
     };
 
     let resp = r0.append_entries(req).await?;
@@ -134,10 +133,10 @@ async fn append_conflicts() -> Result<()> {
 
     let req = AppendEntriesRequest {
         vote: Vote::new_committed(1, 2),
-        prev_log_id: Some(LogId::new(CommittedLeaderId::new(1, 0), 2)),
+        prev_log_id: Some(log_id(1, 0, 2)),
         entries: vec![blank_ent(2, 0, 3)],
         // this set the last_applied to 2
-        leader_commit: Some(LogId::new(CommittedLeaderId::new(1, 0), 2)),
+        leader_commit: Some(log_id(1, 0, 2)),
     };
 
     let resp = r0.append_entries(req).await?;
@@ -149,9 +148,9 @@ async fn append_conflicts() -> Result<()> {
     // check last_log_id is updated:
     let req = AppendEntriesRequest {
         vote: Vote::new_committed(1, 2),
-        prev_log_id: Some(LogId::new(CommittedLeaderId::new(1, 0), 2000)),
+        prev_log_id: Some(log_id(1, 0, 2000)),
         entries: vec![],
-        leader_commit: Some(LogId::new(CommittedLeaderId::new(1, 0), 2)),
+        leader_commit: Some(log_id(1, 0, 2)),
     };
 
     let resp = r0.append_entries(req).await?;
@@ -164,9 +163,9 @@ async fn append_conflicts() -> Result<()> {
 
     let req = AppendEntriesRequest {
         vote: Vote::new_committed(1, 2),
-        prev_log_id: Some(LogId::new(CommittedLeaderId::new(3, 0), 3)),
+        prev_log_id: Some(log_id(3, 0, 3)),
         entries: vec![],
-        leader_commit: Some(LogId::new(CommittedLeaderId::new(1, 0), 2)),
+        leader_commit: Some(log_id(1, 0, 2)),
     };
 
     let resp = r0.append_entries(req).await?;
@@ -179,9 +178,9 @@ async fn append_conflicts() -> Result<()> {
     // refill logs
     let req = AppendEntriesRequest {
         vote: Vote::new_committed(1, 2),
-        prev_log_id: Some(LogId::new(CommittedLeaderId::new(1, 0), 2)),
+        prev_log_id: Some(log_id(1, 0, 2)),
         entries: vec![blank_ent(2, 0, 3), blank_ent(2, 0, 4), blank_ent(2, 0, 5)],
-        leader_commit: Some(LogId::new(CommittedLeaderId::new(1, 0), 2)),
+        leader_commit: Some(log_id(1, 0, 2)),
     };
 
     let resp = r0.append_entries(req).await?;
@@ -194,9 +193,9 @@ async fn append_conflicts() -> Result<()> {
     // prev_log_id matches
     let req = AppendEntriesRequest {
         vote: Vote::new_committed(1, 2),
-        prev_log_id: Some(LogId::new(CommittedLeaderId::new(2, 0), 3)),
+        prev_log_id: Some(log_id(2, 0, 3)),
         entries: vec![blank_ent(3, 0, 4)],
-        leader_commit: Some(LogId::new(CommittedLeaderId::new(1, 0), 2)),
+        leader_commit: Some(log_id(1, 0, 2)),
     };
 
     let resp = r0.append_entries(req).await?;
@@ -210,9 +209,9 @@ async fn append_conflicts() -> Result<()> {
     // refill logs
     let req = AppendEntriesRequest {
         vote: Vote::new_committed(1, 2),
-        prev_log_id: Some(LogId::new(CommittedLeaderId::new(1, 0), 200)),
+        prev_log_id: Some(log_id(1, 0, 200)),
         entries: vec![],
-        leader_commit: Some(LogId::new(CommittedLeaderId::new(1, 0), 2)),
+        leader_commit: Some(log_id(1, 0, 2)),
     };
 
     let resp = r0.append_entries(req).await?;

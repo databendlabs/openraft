@@ -3,9 +3,8 @@ use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
-use openraft::CommittedLeaderId;
+use openraft::testing::log_id;
 use openraft::Config;
-use openraft::LogId;
 use openraft::RaftLogReader;
 use tokio::time::sleep;
 
@@ -42,13 +41,7 @@ async fn purge_in_snapshot_logs() -> Result<()> {
     {
         log_index += router.client_request_many(0, "0", 10).await?;
         leader.trigger().snapshot().await?;
-        leader
-            .wait(timeout())
-            .snapshot(
-                LogId::new(CommittedLeaderId::new(1, 0), log_index),
-                "building 1st snapshot",
-            )
-            .await?;
+        leader.wait(timeout()).snapshot(log_id(1, 0, log_index), "building 1st snapshot").await?;
         let (mut sto0, mut _sm0) = router.get_storage_handle(&0)?;
 
         // Wait for purge to complete.
@@ -68,13 +61,7 @@ async fn purge_in_snapshot_logs() -> Result<()> {
         router.wait(&0, timeout()).applied_index(Some(log_index), "write another 5 logs").await?;
 
         leader.trigger().snapshot().await?;
-        leader
-            .wait(timeout())
-            .snapshot(
-                LogId::new(CommittedLeaderId::new(1, 0), log_index),
-                "building 2nd snapshot",
-            )
-            .await?;
+        leader.wait(timeout()).snapshot(log_id(1, 0, log_index), "building 2nd snapshot").await?;
     }
 
     // There may be a cached append-entries request that already loads log 10..15 from the store,
@@ -88,13 +75,7 @@ async fn purge_in_snapshot_logs() -> Result<()> {
     {
         router.set_network_error(1, false);
 
-        learner
-            .wait(timeout())
-            .snapshot(
-                LogId::new(CommittedLeaderId::new(1, 0), log_index),
-                "learner install snapshot",
-            )
-            .await?;
+        learner.wait(timeout()).snapshot(log_id(1, 0, log_index), "learner install snapshot").await?;
 
         let (mut sto1, mut _sm) = router.get_storage_handle(&1)?;
         let logs = sto1.try_get_log_entries(..).await?;

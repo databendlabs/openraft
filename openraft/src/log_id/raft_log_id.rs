@@ -1,4 +1,4 @@
-use crate::CommittedLeaderId;
+use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::LogId;
 use crate::RaftTypeConfig;
 
@@ -12,7 +12,7 @@ where C: RaftTypeConfig
     /// For example, a leader id in standard raft is `(term, node_id)`, but a log id does not have
     /// to store the `node_id`, because in standard raft there is at most one leader that can be
     /// established.
-    fn leader_id(&self) -> &CommittedLeaderId<C> {
+    fn leader_id(&self) -> &CommittedLeaderIdOf<C> {
         self.get_log_id().committed_leader_id()
     }
 

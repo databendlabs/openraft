@@ -1,5 +1,7 @@
 use std::fmt;
 
+use crate::vote::RaftCommittedLeaderId;
+use crate::vote::RaftLeaderId;
 use crate::RaftTypeConfig;
 
 /// LeaderId is identifier of a `leader`.
@@ -19,34 +21,6 @@ where C: RaftTypeConfig
 {
     pub term: C::Term,
     pub node_id: C::NodeId,
-}
-
-impl<C> LeaderId<C>
-where C: RaftTypeConfig
-{
-    pub fn new(term: C::Term, node_id: C::NodeId) -> Self {
-        Self { term, node_id }
-    }
-
-    pub fn get_term(&self) -> C::Term {
-        self.term
-    }
-
-    pub fn voted_for(&self) -> Option<C::NodeId> {
-        Some(self.node_id.clone())
-    }
-
-    #[allow(clippy::wrong_self_convention)]
-    pub(crate) fn to_committed(&self) -> CommittedLeaderId<C> {
-        self.clone()
-    }
-
-    /// Return if it is the same leader as the committed leader id.
-    ///
-    /// A committed leader may have less info than a non-committed.
-    pub(crate) fn is_same_as_committed(&self, other: &CommittedLeaderId<C>) -> bool {
-        self == other
-    }
 }
 
 impl<C> fmt::Display for LeaderId<C>
@@ -71,22 +45,49 @@ where C: RaftTypeConfig
 /// standard raft stores just a `term` in log entry.
 pub type CommittedLeaderId<C> = LeaderId<C>;
 
+impl<C> RaftLeaderId<C> for LeaderId<C>
+where C: RaftTypeConfig
+{
+    type Committed = Self;
+
+    fn new(term: C::Term, node_id: C::NodeId) -> Self {
+        Self { term, node_id }
+    }
+
+    fn term(&self) -> C::Term {
+        self.term
+    }
+
+    fn node_id_ref(&self) -> Option<&C::NodeId> {
+        Some(&self.node_id)
+    }
+
+    fn to_committed(&self) -> Self::Committed {
+        self.clone()
+    }
+}
+
+impl<C> RaftCommittedLeaderId<C> for LeaderId<C> where C: RaftTypeConfig {}
+
 #[cfg(test)]
 mod tests {
     use crate::engine::testing::UTConfig;
+    use crate::vote::RaftLeaderId;
     use crate::LeaderId;
 
     #[cfg(feature = "serde")]
     #[test]
     fn test_committed_leader_id_serde() -> anyhow::Result<()> {
-        use crate::CommittedLeaderId;
+        use crate::type_config::alias::CommittedLeaderIdOf;
+        use crate::type_config::alias::LeaderIdOf;
+        use crate::vote::RaftLeaderIdExt;
 
-        let c = CommittedLeaderId::<UTConfig>::new(5, 10);
+        let c = LeaderIdOf::<UTConfig>::new_committed(5, 10);
         let s = serde_json::to_string(&c)?;
         assert_eq!(r#"{"term":5,"node_id":10}"#, s);
 
-        let c2: CommittedLeaderId<UTConfig> = serde_json::from_str(&s)?;
-        assert_eq!(CommittedLeaderId::new(5, 10), c2);
+        let c2: CommittedLeaderIdOf<UTConfig> = serde_json::from_str(&s)?;
+        assert_eq!(LeaderIdOf::<UTConfig>::new_committed(5, 10), c2);
 
         Ok(())
     }

@@ -4,9 +4,8 @@ use anyhow::Result;
 use futures::prelude::*;
 use maplit::btreeset;
 use openraft::raft::ClientWriteResponse;
-use openraft::CommittedLeaderId;
+use openraft::testing::log_id;
 use openraft::Config;
-use openraft::LogId;
 use openraft::SnapshotPolicy;
 use openraft_memstore::ClientRequest;
 use openraft_memstore::IntoMemClientRequest;
@@ -57,7 +56,7 @@ async fn client_writes() -> Result<()> {
             1,
             log_index,
             Some(0),
-            LogId::new(CommittedLeaderId::new(1, 0), log_index),
+            log_id(1, 0, log_index),
             Some(((499..600).into(), 1)),
         )
         .await?;

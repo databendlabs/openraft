@@ -7,11 +7,10 @@ use openraft::network::RPCOption;
 use openraft::network::RaftNetworkFactory;
 use openraft::raft::AppendEntriesRequest;
 use openraft::testing::blank_ent;
-use openraft::CommittedLeaderId;
+use openraft::testing::log_id;
 use openraft::Config;
 use openraft::Entry;
 use openraft::EntryPayload;
-use openraft::LogId;
 use openraft::Vote;
 use openraft_memstore::ClientRequest;
 
@@ -55,9 +54,9 @@ async fn conflict_with_empty_entries() -> Result<()> {
 
     let rpc = AppendEntriesRequest::<openraft_memstore::TypeConfig> {
         vote: Vote::new_committed(1, 1),
-        prev_log_id: Some(LogId::new(CommittedLeaderId::new(1, 0), 5)),
+        prev_log_id: Some(log_id(1, 0, 5)),
         entries: vec![],
-        leader_commit: Some(LogId::new(CommittedLeaderId::new(1, 0), 5)),
+        leader_commit: Some(log_id(1, 0, 5)),
     };
 
     let option = RPCOption::new(Duration::from_millis(1_000));
@@ -71,14 +70,14 @@ async fn conflict_with_empty_entries() -> Result<()> {
         vote: Vote::new_committed(1, 1),
         prev_log_id: None,
         entries: vec![blank_ent(0, 0, 0), blank_ent(1, 0, 1), Entry {
-            log_id: LogId::new(CommittedLeaderId::new(1, 0), 2),
+            log_id: log_id(1, 0, 2),
             payload: EntryPayload::Normal(ClientRequest {
                 client: "foo".to_string(),
                 serial: 1,
                 status: "bar".to_string(),
             }),
         }],
-        leader_commit: Some(LogId::new(CommittedLeaderId::new(1, 0), 5)),
+        leader_commit: Some(log_id(1, 0, 5)),
     };
 
     let option = RPCOption::new(Duration::from_millis(1_000));
@@ -91,9 +90,9 @@ async fn conflict_with_empty_entries() -> Result<()> {
 
     let rpc = AppendEntriesRequest::<openraft_memstore::TypeConfig> {
         vote: Vote::new_committed(1, 1),
-        prev_log_id: Some(LogId::new(CommittedLeaderId::new(1, 0), 3)),
+        prev_log_id: Some(log_id(1, 0, 3)),
         entries: vec![],
-        leader_commit: Some(LogId::new(CommittedLeaderId::new(1, 0), 5)),
+        leader_commit: Some(log_id(1, 0, 5)),
     };
 
     let option = RPCOption::new(Duration::from_millis(1_000));

@@ -3,9 +3,8 @@ use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
-use openraft::CommittedLeaderId;
+use openraft::testing::log_id;
 use openraft::Config;
-use openraft::LogId;
 
 use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
@@ -38,15 +37,7 @@ async fn single_node() -> Result<()> {
     // Write some data to the single node cluster.
     log_index += router.client_request_many(0, "0", 1000).await?;
     router.wait_for_log(&btreeset![0], Some(log_index), timeout(), "client_request_many").await?;
-    router
-        .assert_storage_state(
-            1,
-            log_index,
-            Some(0),
-            LogId::new(CommittedLeaderId::new(1, 0), log_index),
-            None,
-        )
-        .await?;
+    router.assert_storage_state(1, log_index, Some(0), log_id(1, 0, log_index), None).await?;
 
     // Read some data from the single node cluster.
     router.ensure_linearizable(0).await?;

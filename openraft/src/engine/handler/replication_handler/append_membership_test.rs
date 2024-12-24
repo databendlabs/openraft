@@ -16,9 +16,7 @@ use crate::progress::Progress;
 use crate::testing::log_id;
 use crate::type_config::TypeConfigExt;
 use crate::utime::Leased;
-use crate::CommittedLeaderId;
 use crate::EffectiveMembership;
-use crate::LogId;
 use crate::Membership;
 use crate::MembershipState;
 use crate::Vote;
@@ -110,11 +108,7 @@ fn test_leader_append_membership_update_learner_process() -> anyhow::Result<()> 
     // learner or vice versa.
 
     let mut eng = eng();
-    eng.state.log_ids = LogIdList::new([
-        LogId::new(CommittedLeaderId::new(0, 0), 0),
-        log_id(1, 1, 1),
-        log_id(5, 1, 10),
-    ]);
+    eng.state.log_ids = LogIdList::new([log_id(0, 0, 0), log_id(1, 1, 1), log_id(5, 1, 10)]);
 
     eng.state
         .membership_state

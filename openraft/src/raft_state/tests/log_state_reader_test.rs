@@ -1,15 +1,12 @@
 use crate::engine::testing::UTConfig;
 use crate::engine::LogIdList;
 use crate::raft_state::LogStateReader;
-use crate::CommittedLeaderId;
+use crate::testing;
 use crate::LogId;
 use crate::RaftState;
 
 fn log_id(term: u64, index: u64) -> LogId<UTConfig> {
-    LogId {
-        leader_id: CommittedLeaderId::new(term, 0),
-        index,
-    }
+    testing::log_id(term, 0, index)
 }
 
 #[test]

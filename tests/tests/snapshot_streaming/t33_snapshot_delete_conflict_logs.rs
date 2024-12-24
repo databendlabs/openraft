@@ -13,11 +13,9 @@ use openraft::storage::RaftStateMachine;
 use openraft::testing::blank_ent;
 use openraft::testing::log_id;
 use openraft::testing::membership_ent;
-use openraft::CommittedLeaderId;
 use openraft::Config;
 use openraft::Entry;
 use openraft::EntryPayload;
-use openraft::LogId;
 use openraft::Membership;
 use openraft::RaftLogReader;
 use openraft::RaftSnapshotBuilder;
@@ -80,10 +78,7 @@ async fn snapshot_delete_conflicting_logs() -> Result<()> {
         log_index = snapshot_threshold - 1;
 
         router.wait(&0, timeout()).applied_index(Some(log_index), "trigger snapshot").await?;
-        router
-            .wait(&0, timeout())
-            .snapshot(LogId::new(CommittedLeaderId::new(5, 0), log_index), "build snapshot")
-            .await?;
+        router.wait(&0, timeout()).snapshot(log_id(5, 0, log_index), "build snapshot").await?;
     }
 
     tracing::info!(log_index, "--- create node-1 and add conflicting logs");
@@ -98,7 +93,7 @@ async fn snapshot_delete_conflicting_logs() -> Result<()> {
                 blank_ent(1, 0, 1),
                 // conflict membership will be replaced with membership in snapshot
                 Entry {
-                    log_id: LogId::new(CommittedLeaderId::new(1, 0), 2),
+                    log_id: log_id(1, 0, 2),
                     payload: EntryPayload::Membership(Membership::new_with_defaults(vec![btreeset! {2,3}], [])),
                 },
                 blank_ent(1, 0, 3),
@@ -111,11 +106,11 @@ async fn snapshot_delete_conflicting_logs() -> Result<()> {
                 blank_ent(1, 0, 10),
                 // another conflict membership, will be removed
                 Entry {
-                    log_id: LogId::new(CommittedLeaderId::new(1, 0), 11),
+                    log_id: log_id(1, 0, 11),
                     payload: EntryPayload::Membership(Membership::new_with_defaults(vec![btreeset! {4,5}], [])),
                 },
             ],
-            leader_commit: Some(LogId::new(CommittedLeaderId::new(1, 0), 2)),
+            leader_commit: Some(log_id(1, 0, 2)),
         };
         let option = RPCOption::new(Duration::from_millis(1_000));
 
@@ -185,12 +180,12 @@ async fn snapshot_delete_conflicting_logs() -> Result<()> {
 
         let log_st = sto1.get_log_state().await?;
         assert_eq!(
-            Some(LogId::new(CommittedLeaderId::new(5, 0), snapshot_threshold - 1)),
+            Some(log_id(5, 0, snapshot_threshold - 1)),
             log_st.last_purged_log_id,
             "purge up to last log id in snapshot"
         );
         assert_eq!(
-            Some(LogId::new(CommittedLeaderId::new(5, 0), snapshot_threshold - 1)),
+            Some(log_id(5, 0, snapshot_threshold - 1)),
             log_st.last_log_id,
             "reverted to last log id in snapshot"
         );

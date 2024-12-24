@@ -18,6 +18,7 @@ use crate::proposer::LeaderState;
 use crate::raft_state::IOId;
 use crate::raft_state::LogStateReader;
 use crate::type_config::TypeConfigExt;
+use crate::vote::RaftLeaderId;
 use crate::LogId;
 use crate::OptionalSend;
 use crate::RaftState;
@@ -220,7 +221,7 @@ where C: RaftTypeConfig
     /// This node then becomes raft-follower or raft-learner.
     pub(crate) fn become_following(&mut self) {
         debug_assert!(
-            self.state.vote_ref().leader_id().voted_for().as_ref() != Some(&self.config.id)
+            self.state.vote_ref().leader_id().node_id_ref() != Some(&self.config.id)
                 || !self.state.membership_state.effective().membership().is_voter(&self.config.id),
             "It must hold: vote is not mine, or I am not a voter(leader just left the cluster)"
         );

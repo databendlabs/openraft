@@ -3,6 +3,8 @@ use std::fmt;
 use std::marker::PhantomData;
 
 use crate::display_ext::DisplayOptionExt;
+use crate::vote::RaftCommittedLeaderId;
+use crate::vote::RaftLeaderId;
 use crate::RaftTypeConfig;
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -41,42 +43,36 @@ where C: RaftTypeConfig
     }
 }
 
-impl<C> LeaderId<C>
+impl<C> fmt::Display for LeaderId<C>
 where C: RaftTypeConfig
 {
-    pub fn new(term: C::Term, node_id: C::NodeId) -> Self {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "T{}-N{}", self.term, self.voted_for.display())
+    }
+}
+
+impl<C> RaftLeaderId<C> for LeaderId<C>
+where C: RaftTypeConfig
+{
+    type Committed = CommittedLeaderId<C>;
+
+    fn new(term: C::Term, node_id: C::NodeId) -> Self {
         Self {
             term,
             voted_for: Some(node_id),
         }
     }
 
-    pub fn get_term(&self) -> C::Term {
+    fn term(&self) -> C::Term {
         self.term
     }
 
-    pub fn voted_for(&self) -> Option<C::NodeId> {
-        self.voted_for.clone()
+    fn node_id_ref(&self) -> Option<&C::NodeId> {
+        self.voted_for.as_ref()
     }
 
-    #[allow(clippy::wrong_self_convention)]
-    pub(crate) fn to_committed(&self) -> CommittedLeaderId<C> {
+    fn to_committed(&self) -> Self::Committed {
         CommittedLeaderId::new(self.term, C::NodeId::default())
-    }
-
-    /// Return if it is the same leader as the committed leader id.
-    ///
-    /// A committed leader may have less info than a non-committed.
-    pub(crate) fn is_same_as_committed(&self, other: &CommittedLeaderId<C>) -> bool {
-        self.term == other.term
-    }
-}
-
-impl<C> fmt::Display for LeaderId<C>
-where C: RaftTypeConfig
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "T{}-N{}", self.term, self.voted_for.display())
     }
 }
 
@@ -107,6 +103,8 @@ where C: RaftTypeConfig
         Self { term, p: PhantomData }
     }
 }
+
+impl<C> RaftCommittedLeaderId<C> for CommittedLeaderId<C> where C: RaftTypeConfig {}
 
 #[cfg(test)]
 #[allow(clippy::nonminimal_bool)]

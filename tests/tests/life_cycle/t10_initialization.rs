@@ -8,11 +8,10 @@ use openraft::error::InitializeError;
 use openraft::error::NotAllowed;
 use openraft::error::NotInMembers;
 use openraft::storage::RaftStateMachine;
-use openraft::CommittedLeaderId;
+use openraft::testing::log_id;
 use openraft::Config;
 use openraft::EffectiveMembership;
 use openraft::EntryPayload;
-use openraft::LogId;
 use openraft::Membership;
 use openraft::RaftLogReader;
 use openraft::ServerState;
@@ -104,7 +103,7 @@ async fn initialization() -> anyhow::Result<()> {
     for node_id in [0, 1, 2] {
         router.external_request(node_id, move |s| {
             let want = EffectiveMembership::new(
-                Some(LogId::new(CommittedLeaderId::new(0, 0), 0)),
+                Some(log_id(0, 0, 0)),
                 Membership::new_with_defaults(vec![btreeset! {0,1,2}], []),
             );
             let want = Arc::new(want);
@@ -144,7 +143,7 @@ async fn initialization() -> anyhow::Result<()> {
         let sm_mem = sm.applied_state().await?.1;
         assert_eq!(
             StoredMembership::new(
-                Some(LogId::new(CommittedLeaderId::new(0, 0), 0)),
+                Some(log_id(0, 0, 0)),
                 Membership::new_with_defaults(vec![btreeset! {0,1,2}], [])
             ),
             sm_mem
@@ -247,10 +246,7 @@ async fn initialize_err_not_allowed() -> anyhow::Result<()> {
 
         assert_eq!(
             InitializeError::NotAllowed(NotAllowed {
-                last_log_id: Some(LogId {
-                    leader_id: CommittedLeaderId::new(1, 0),
-                    index: 1
-                }),
+                last_log_id: Some(log_id(1, 0, 1)),
                 vote: Vote::new_committed(1, 0)
             }),
             err.into_api_error().unwrap()

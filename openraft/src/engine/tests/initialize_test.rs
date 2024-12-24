@@ -17,7 +17,6 @@ use crate::raft_state::LogStateReader;
 use crate::testing::log_id;
 use crate::type_config::TypeConfigExt;
 use crate::utime::Leased;
-use crate::vote::CommittedLeaderId;
 use crate::Entry;
 use crate::LogId;
 use crate::Membership;
@@ -33,10 +32,7 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
         eng
     };
 
-    let log_id0 = LogId {
-        leader_id: CommittedLeaderId::new(0, 0),
-        index: 0,
-    };
+    let log_id0 = log_id(0, 0, 0);
 
     let m1 = || Membership::<UTConfig>::new_with_defaults(vec![btreeset! {1}], []);
     let entry = Entry::<UTConfig>::new_membership(LogId::default(), m1());
@@ -86,10 +82,7 @@ fn test_initialize() -> anyhow::Result<()> {
         eng
     };
 
-    let log_id0 = LogId {
-        leader_id: CommittedLeaderId::new(0, 0),
-        index: 0,
-    };
+    let log_id0 = log_id(0, 0, 0);
 
     let m12 = || Membership::<UTConfig>::new_with_defaults(vec![btreeset! {1,2}], []);
     let entry = || Entry::<UTConfig>::new_membership(LogId::default(), m12());
@@ -122,10 +115,7 @@ fn test_initialize() -> anyhow::Result<()> {
                 Command::SendVote {
                     vote_req: VoteRequest {
                         vote: Vote::new(1, 1),
-                        last_log_id: Some(LogId {
-                            leader_id: CommittedLeaderId::new(0, 0),
-                            index: 0,
-                        },),
+                        last_log_id: Some(log_id(0, 0, 0))
                     },
                 },
             ],

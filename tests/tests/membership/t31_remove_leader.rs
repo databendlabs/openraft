@@ -4,9 +4,8 @@ use std::time::Duration;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::error::ClientWriteError;
-use openraft::CommittedLeaderId;
+use openraft::testing::log_id;
 use openraft::Config;
-use openraft::LogId;
 use openraft::ServerState;
 use openraft_memstore::ClientRequest;
 use openraft_memstore::IntoMemClientRequest;
@@ -100,7 +99,7 @@ async fn remove_leader() -> Result<()> {
 
         assert_eq!(metrics.current_term, 1);
         assert_eq!(metrics.last_log_index, Some(8));
-        assert_eq!(metrics.last_applied, Some(LogId::new(CommittedLeaderId::new(1, 0), 8)));
+        assert_eq!(metrics.last_applied, Some(log_id(1, 0, 8)));
         assert_eq!(metrics.membership_config.membership().get_joint_config().clone(), vec![
             btreeset![1, 2, 3]
         ]);

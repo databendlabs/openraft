@@ -1,12 +1,12 @@
 use std::cmp::Ordering;
 use std::fmt::Formatter;
 
+use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::vote::committed::CommittedVote;
-use crate::vote::leader_id::CommittedLeaderId;
 use crate::vote::ref_vote::RefVote;
 use crate::vote::vote_status::VoteStatus;
 use crate::vote::NonCommittedVote;
-use crate::LeaderId;
+use crate::vote::RaftLeaderId;
 use crate::RaftTypeConfig;
 
 /// `Vote` represent the privilege of a node.
@@ -14,7 +14,7 @@ use crate::RaftTypeConfig;
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct Vote<C: RaftTypeConfig> {
     /// The id of the node that tries to become the leader.
-    pub leader_id: LeaderId<C>,
+    pub leader_id: C::LeaderId,
 
     pub committed: bool,
 }
@@ -22,7 +22,7 @@ pub struct Vote<C: RaftTypeConfig> {
 impl<C> Copy for Vote<C>
 where
     C: RaftTypeConfig,
-    C::NodeId: Copy,
+    C::LeaderId: Copy,
 {
 }
 
@@ -53,14 +53,14 @@ where C: RaftTypeConfig
 {
     pub fn new(term: C::Term, node_id: C::NodeId) -> Self {
         Self {
-            leader_id: LeaderId::new(term, node_id),
+            leader_id: C::LeaderId::new(term, node_id),
             committed: false,
         }
     }
 
     pub fn new_committed(term: C::Term, node_id: C::NodeId) -> Self {
         Self {
-            leader_id: LeaderId::new(term, node_id),
+            leader_id: C::LeaderId::new(term, node_id),
             committed: true,
         }
     }
@@ -95,15 +95,16 @@ where C: RaftTypeConfig
         self.committed
     }
 
-    /// Return the [`LeaderId`] this vote represents for.
+    /// Return the `LeaderId` this vote represents for.
     ///
     /// The leader may or may not be granted by a quorum.
-    pub fn leader_id(&self) -> &LeaderId<C> {
+    pub fn leader_id(&self) -> &C::LeaderId {
         &self.leader_id
     }
 
-    pub(crate) fn is_same_leader(&self, leader_id: &CommittedLeaderId<C>) -> bool {
-        self.leader_id().is_same_as_committed(leader_id)
+    // TODO: remove this method
+    pub(crate) fn is_same_leader(&self, leader_id: &CommittedLeaderIdOf<C>) -> bool {
+        self.leader_id().to_committed() == *leader_id
     }
 }
 

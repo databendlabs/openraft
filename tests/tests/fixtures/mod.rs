@@ -186,6 +186,8 @@ impl fmt::Display for Direction {
 }
 
 use openraft::network::v2::RaftNetworkV2;
+use openraft::vote::RaftLeaderId;
+use openraft::vote::RaftLeaderIdExt;
 use Direction::NetRecv;
 use Direction::NetSend;
 
@@ -880,7 +882,7 @@ impl TypedRaftRouter {
         let vote = storage.read_vote().await?.unwrap_or_else(|| panic!("no hard state found for node {}", id));
 
         assert_eq!(
-            vote.leader_id().get_term(),
+            vote.leader_id().term(),
             expect_term,
             "expected node {} to have term {}, got {:?}",
             id,
@@ -890,8 +892,8 @@ impl TypedRaftRouter {
 
         if let Some(voted_for) = &expect_voted_for {
             assert_eq!(
-                vote.leader_id().voted_for(),
-                Some(*voted_for),
+                vote.leader_id().node_id_ref(),
+                Some(voted_for),
                 "expected node {} to have voted for {}, got {:?}",
                 id,
                 voted_for,
@@ -1020,7 +1022,7 @@ impl RaftNetworkV2<MemConfig> for RaftRouterNetwork {
         mut rpc: AppendEntriesRequest<MemConfig>,
         _option: RPCOption,
     ) -> Result<AppendEntriesResponse<MemConfig>, RPCError<MemConfig>> {
-        let from_id = rpc.vote.leader_id().voted_for().unwrap();
+        let from_id = rpc.vote.leader_id().node_id_ref().cloned().unwrap();
 
         tracing::debug!("append_entries to id={} {}", self.target, rpc);
         self.owner.count_rpc(RPCTypes::AppendEntries);
@@ -1090,7 +1092,7 @@ impl RaftNetworkV2<MemConfig> for RaftRouterNetwork {
         _cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
         _option: RPCOption,
     ) -> Result<SnapshotResponse<MemConfig>, StreamingError<MemConfig>> {
-        let from_id = vote.leader_id().voted_for().unwrap();
+        let from_id = vote.leader_id().node_id().unwrap();
 
         self.owner.count_rpc(RPCTypes::InstallSnapshot);
         self.owner.call_rpc_pre_hook(snapshot.clone(), from_id, self.target)?;
@@ -1116,7 +1118,7 @@ impl RaftNetworkV2<MemConfig> for RaftRouterNetwork {
         rpc: VoteRequest<MemConfig>,
         _option: RPCOption,
     ) -> Result<VoteResponse<MemConfig>, RPCError<MemConfig>> {
-        let from_id = rpc.vote.leader_id().voted_for().unwrap();
+        let from_id = rpc.vote.leader_id().node_id().unwrap();
 
         self.owner.count_rpc(RPCTypes::Vote);
         self.owner.call_rpc_pre_hook(rpc.clone(), from_id, self.target)?;
@@ -1141,7 +1143,7 @@ impl RaftNetworkV2<MemConfig> for RaftRouterNetwork {
         rpc: TransferLeaderRequest<MemConfig>,
         _option: RPCOption,
     ) -> Result<(), RPCError<MemConfig>> {
-        let from_id = rpc.from_leader().leader_id().voted_for().unwrap();
+        let from_id = rpc.from_leader().leader_id().node_id().unwrap();
 
         self.owner.count_rpc(RPCTypes::TransferLeader);
         self.owner.call_rpc_pre_hook(rpc.clone(), from_id, self.target)?;

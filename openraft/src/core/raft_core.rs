@@ -96,6 +96,7 @@ use crate::type_config::TypeConfigExt;
 use crate::vote::vote_status::VoteStatus;
 use crate::vote::CommittedVote;
 use crate::vote::NonCommittedVote;
+use crate::vote::RaftLeaderId;
 use crate::ChangeMembers;
 use crate::Instant;
 use crate::LogId;
@@ -583,7 +584,7 @@ where
             id: self.id.clone(),
 
             // --- data ---
-            current_term: st.vote_ref().leader_id().get_term(),
+            current_term: st.vote_ref().leader_id().term(),
             vote: st.io_state().io_progress.flushed().map(|io_id| io_id.to_vote()).unwrap_or_default(),
             last_log_index: st.last_log_id().index(),
             last_applied: st.io_applied().cloned(),
@@ -726,7 +727,7 @@ where
         }
 
         // Safe unwrap(): vote that is committed has to already have voted for some node.
-        let id = vote.leader_id().voted_for().unwrap();
+        let id = vote.leader_id().node_id_ref().cloned().unwrap();
 
         // TODO: `is_voter()` is slow, maybe cache `current_leader`,
         //       e.g., only update it when membership or vote changes

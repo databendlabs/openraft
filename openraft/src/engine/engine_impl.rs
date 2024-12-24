@@ -48,6 +48,7 @@ use crate::type_config::alias::ResponderOf;
 use crate::type_config::alias::SnapshotDataOf;
 use crate::type_config::TypeConfigExt;
 use crate::vote::raft_term::RaftTerm;
+use crate::vote::RaftLeaderId;
 use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::Membership;
@@ -209,7 +210,7 @@ where C: RaftTypeConfig
     /// Start to elect this node as leader
     #[tracing::instrument(level = "debug", skip(self))]
     pub(crate) fn elect(&mut self) {
-        let new_term = self.state.vote.leader_id().term.next();
+        let new_term = self.state.vote.leader_id().term().next();
         let new_vote = Vote::new(new_term, self.config.id.clone());
 
         let candidate = self.new_candidate(new_vote.clone());

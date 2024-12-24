@@ -7,9 +7,8 @@ use openraft::network::v2::RaftNetworkV2;
 use openraft::network::RPCOption;
 use openraft::network::RaftNetworkFactory;
 use openraft::raft::VoteRequest;
-use openraft::CommittedLeaderId;
+use openraft::testing::log_id;
 use openraft::Config;
-use openraft::LogId;
 use openraft::ServerState;
 use openraft::Vote;
 use openraft_memstore::ClientRequest;
@@ -50,7 +49,7 @@ async fn append_sees_higher_vote() -> Result<()> {
             .vote(
                 VoteRequest {
                     vote: Vote::new(10, 1),
-                    last_log_id: Some(LogId::new(CommittedLeaderId::new(10, 1), 5)),
+                    last_log_id: Some(log_id(10, 1, 5)),
                 },
                 option,
             )

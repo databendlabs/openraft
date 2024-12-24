@@ -43,16 +43,6 @@ declare_raft_types!(
         AsyncRuntime = TokioRuntime,
 );
 
-// This raise an compile error:
-// > error: Type not in its expected position : NodeId = u64, D = (), types must present
-// > in this order : D, R, NodeId, Node, Entry, SnapshotData, AsyncRuntime
-// declare_raft_types!(
-//     Foo:
-//         Node = (),
-//         NodeId = u64,
-//         D = (),
-// );
-
 declare_raft_types!(EmptyWithColon:);
 
 declare_raft_types!(Empty);
