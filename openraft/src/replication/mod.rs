@@ -747,7 +747,7 @@ where
 
     async fn send_snapshot(
         network: Arc<MutexOf<C, N::Network>>,
-        vote: Vote<C::NodeId>,
+        vote: Vote<C>,
         snapshot: Snapshot<C>,
         option: RPCOption,
         cancel: OneshotReceiverOf<C, ()>,

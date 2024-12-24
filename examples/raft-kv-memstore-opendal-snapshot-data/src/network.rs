@@ -48,7 +48,7 @@ impl RaftNetworkV2<TypeConfig> for Connection {
     /// A real application should replace this method with customized implementation.
     async fn full_snapshot(
         &mut self,
-        vote: Vote<NodeId>,
+        vote: Vote<TypeConfig>,
         snapshot: Snapshot<TypeConfig>,
         _cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
         _option: RPCOption,

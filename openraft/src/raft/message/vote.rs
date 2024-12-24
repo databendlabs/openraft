@@ -10,7 +10,7 @@ use crate::Vote;
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct VoteRequest<C: RaftTypeConfig> {
-    pub vote: Vote<C::NodeId>,
+    pub vote: Vote<C>,
     pub last_log_id: Option<LogId<C::NodeId>>,
 }
 
@@ -25,7 +25,7 @@ where C: RaftTypeConfig
 impl<C> VoteRequest<C>
 where C: RaftTypeConfig
 {
-    pub fn new(vote: Vote<C::NodeId>, last_log_id: Option<LogId<C::NodeId>>) -> Self {
+    pub fn new(vote: Vote<C>, last_log_id: Option<LogId<C::NodeId>>) -> Self {
         Self { vote, last_log_id }
     }
 }
@@ -39,7 +39,7 @@ pub struct VoteResponse<C: RaftTypeConfig> {
     ///
     /// `vote` that equals the candidate.vote does not mean the vote is granted.
     /// The `vote` may be updated when a previous Leader sees a higher vote.
-    pub vote: Vote<C::NodeId>,
+    pub vote: Vote<C>,
 
     /// It is true if a node accepted and saved the VoteRequest.
     pub vote_granted: bool,
@@ -51,7 +51,7 @@ pub struct VoteResponse<C: RaftTypeConfig> {
 impl<C> VoteResponse<C>
 where C: RaftTypeConfig
 {
-    pub fn new(vote: impl Borrow<Vote<C::NodeId>>, last_log_id: Option<LogId<C::NodeId>>, granted: bool) -> Self {
+    pub fn new(vote: impl Borrow<Vote<C>>, last_log_id: Option<LogId<C::NodeId>>, granted: bool) -> Self {
         Self {
             vote: vote.borrow().clone(),
             vote_granted: granted,
@@ -61,7 +61,7 @@ where C: RaftTypeConfig
 
     /// Returns `true` if the response indicates that the target node has granted a vote to the
     /// candidate.
-    pub fn is_granted_to(&self, candidate_vote: &Vote<C::NodeId>) -> bool {
+    pub fn is_granted_to(&self, candidate_vote: &Vote<C>) -> bool {
         &self.vote == candidate_vote
     }
 }

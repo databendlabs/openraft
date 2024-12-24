@@ -25,7 +25,7 @@ where
     starting_time: InstantOf<C>,
 
     /// The vote.
-    vote: Vote<C::NodeId>,
+    vote: Vote<C>,
 
     last_log_id: Option<LogIdOf<C>>,
 
@@ -61,7 +61,7 @@ where
 {
     pub(crate) fn new(
         starting_time: InstantOf<C>,
-        vote: Vote<C::NodeId>,
+        vote: Vote<C>,
         last_log_id: Option<LogIdOf<C>>,
         quorum_set: QS,
         learner_ids: impl IntoIterator<Item = C::NodeId>,
@@ -76,7 +76,7 @@ where
         }
     }
 
-    pub(crate) fn vote_ref(&self) -> &Vote<C::NodeId> {
+    pub(crate) fn vote_ref(&self) -> &Vote<C> {
         &self.vote
     }
 

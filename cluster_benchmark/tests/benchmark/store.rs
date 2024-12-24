@@ -57,7 +57,7 @@ pub struct StateMachine {
 }
 
 pub struct LogStore {
-    vote: RwLock<Option<Vote<NodeId>>>,
+    vote: RwLock<Option<Vote<TypeConfig>>>,
     log: RwLock<BTreeMap<u64, Entry<TypeConfig>>>,
     last_purged_log_id: RwLock<Option<LogId<NodeId>>>,
 }
@@ -116,7 +116,7 @@ impl RaftLogReader<TypeConfig> for Arc<LogStore> {
         Ok(entries)
     }
 
-    async fn read_vote(&mut self) -> Result<Option<Vote<NodeId>>, StorageError<TypeConfig>> {
+    async fn read_vote(&mut self) -> Result<Option<Vote<TypeConfig>>, StorageError<TypeConfig>> {
         Ok(self.vote.read().await.clone())
     }
 }
@@ -196,7 +196,7 @@ impl RaftLogStorage<TypeConfig> for Arc<LogStore> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn save_vote(&mut self, vote: &Vote<NodeId>) -> Result<(), StorageError<TypeConfig>> {
+    async fn save_vote(&mut self, vote: &Vote<TypeConfig>) -> Result<(), StorageError<TypeConfig>> {
         let mut v = self.vote.write().await;
         *v = Some(*vote);
         Ok(())

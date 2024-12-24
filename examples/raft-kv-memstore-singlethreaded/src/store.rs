@@ -116,7 +116,7 @@ pub struct LogStore {
     committed: RefCell<Option<LogId<NodeId>>>,
 
     /// The current granted vote.
-    vote: RefCell<Option<Vote<NodeId>>>,
+    vote: RefCell<Option<Vote<TypeConfig>>>,
 }
 
 impl RaftLogReader<TypeConfig> for Rc<LogStore> {
@@ -129,7 +129,7 @@ impl RaftLogReader<TypeConfig> for Rc<LogStore> {
         Ok(response)
     }
 
-    async fn read_vote(&mut self) -> Result<Option<Vote<NodeId>>, StorageError<TypeConfig>> {
+    async fn read_vote(&mut self) -> Result<Option<Vote<TypeConfig>>, StorageError<TypeConfig>> {
         Ok(*self.vote.borrow())
     }
 }
@@ -312,7 +312,7 @@ impl RaftLogStorage<TypeConfig> for Rc<LogStore> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn save_vote(&mut self, vote: &Vote<NodeId>) -> Result<(), StorageError<TypeConfig>> {
+    async fn save_vote(&mut self, vote: &Vote<TypeConfig>) -> Result<(), StorageError<TypeConfig>> {
         let mut v = self.vote.borrow_mut();
         *v = Some(*vote);
         Ok(())

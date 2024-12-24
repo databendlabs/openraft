@@ -15,7 +15,7 @@ pub enum Metric<C>
 where C: RaftTypeConfig
 {
     Term(u64),
-    Vote(Vote<C::NodeId>),
+    Vote(Vote<C>),
     LastLogIndex(Option<u64>),
     Applied(Option<LogId<C::NodeId>>),
     AppliedIndex(Option<u64>),

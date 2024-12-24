@@ -93,7 +93,7 @@ where C: RaftTypeConfig
 
     /// Wait for `vote` to become `want` or timeout.
     #[tracing::instrument(level = "trace", skip(self), fields(msg=msg.to_string().as_str()))]
-    pub async fn vote(&self, want: Vote<C::NodeId>, msg: impl ToString) -> Result<RaftMetrics<C>, WaitError> {
+    pub async fn vote(&self, want: Vote<C>, msg: impl ToString) -> Result<RaftMetrics<C>, WaitError> {
         self.eq(Metric::Vote(want), msg).await
     }
 

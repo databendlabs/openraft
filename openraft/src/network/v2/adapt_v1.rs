@@ -38,7 +38,7 @@ where
 
     async fn full_snapshot(
         &mut self,
-        vote: Vote<C::NodeId>,
+        vote: Vote<C>,
         snapshot: Snapshot<C>,
         cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
         option: RPCOption,

@@ -68,7 +68,7 @@ where C: RaftTypeConfig
         self.leader_vote.clone()
     }
 
-    pub(crate) fn vote(&self) -> Vote<C::NodeId> {
+    pub(crate) fn vote(&self) -> Vote<C> {
         self.leader_vote.clone().into_vote()
     }
 }

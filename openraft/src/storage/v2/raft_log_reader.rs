@@ -50,7 +50,7 @@ where C: RaftTypeConfig
     /// See: [log-stream](`crate::docs::protocol::replication::log_stream`)
     ///
     /// [`RaftLogStorage::save_vote`]: crate::storage::RaftLogStorage::save_vote
-    async fn read_vote(&mut self) -> Result<Option<Vote<C::NodeId>>, StorageError<C>>;
+    async fn read_vote(&mut self) -> Result<Option<Vote<C>>, StorageError<C>>;
 
     /// Returns log entries within range `[start, end)`, `end` is exclusive,
     /// potentially limited by implementation-defined constraints.

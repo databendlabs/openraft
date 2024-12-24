@@ -155,7 +155,7 @@ pub struct MemLogStore {
     block: BlockConfig,
 
     /// The current hard state.
-    vote: RwLock<Option<Vote<MemNodeId>>>,
+    vote: RwLock<Option<Vote<TypeConfig>>>,
 }
 
 impl MemLogStore {
@@ -245,7 +245,7 @@ impl RaftLogReader<TypeConfig> for Arc<MemLogStore> {
         Ok(entries)
     }
 
-    async fn read_vote(&mut self) -> Result<Option<Vote<MemNodeId>>, StorageError<TypeConfig>> {
+    async fn read_vote(&mut self) -> Result<Option<Vote<TypeConfig>>, StorageError<TypeConfig>> {
         Ok(*self.vote.read().await)
     }
 }
@@ -349,7 +349,7 @@ impl RaftLogStorage<TypeConfig> for Arc<MemLogStore> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn save_vote(&mut self, vote: &Vote<MemNodeId>) -> Result<(), StorageError<TypeConfig>> {
+    async fn save_vote(&mut self, vote: &Vote<TypeConfig>) -> Result<(), StorageError<TypeConfig>> {
         tracing::debug!(?vote, "save_vote");
         let mut h = self.vote.write().await;
 

@@ -103,7 +103,7 @@ impl<C> IOState<C>
 where C: RaftTypeConfig
 {
     pub(crate) fn new(
-        vote: &Vote<C::NodeId>,
+        vote: &Vote<C>,
         applied: Option<LogId<C::NodeId>>,
         snapshot: Option<LogId<C::NodeId>>,
         purged: Option<LogId<C::NodeId>>,

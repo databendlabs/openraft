@@ -1085,7 +1085,7 @@ impl RaftNetworkV2<MemConfig> for RaftRouterNetwork {
 
     async fn full_snapshot(
         &mut self,
-        vote: Vote<MemNodeId>,
+        vote: Vote<MemConfig>,
         snapshot: Snapshot<MemConfig>,
         _cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
         _option: RPCOption,

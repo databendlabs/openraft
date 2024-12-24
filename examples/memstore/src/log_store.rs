@@ -33,7 +33,7 @@ pub struct LogStoreInner<C: RaftTypeConfig> {
     committed: Option<LogId<C::NodeId>>,
 
     /// The current granted vote.
-    vote: Option<Vote<C::NodeId>>,
+    vote: Option<Vote<C>>,
 }
 
 impl<C: RaftTypeConfig> Default for LogStoreInner<C> {
@@ -84,12 +84,12 @@ impl<C: RaftTypeConfig> LogStoreInner<C> {
         Ok(self.committed.clone())
     }
 
-    async fn save_vote(&mut self, vote: &Vote<C::NodeId>) -> Result<(), StorageError<C>> {
+    async fn save_vote(&mut self, vote: &Vote<C>) -> Result<(), StorageError<C>> {
         self.vote = Some(vote.clone());
         Ok(())
     }
 
-    async fn read_vote(&mut self) -> Result<Option<Vote<C::NodeId>>, StorageError<C>> {
+    async fn read_vote(&mut self) -> Result<Option<Vote<C>>, StorageError<C>> {
         Ok(self.vote.clone())
     }
 
@@ -157,7 +157,7 @@ mod impl_log_store {
             inner.try_get_log_entries(range).await
         }
 
-        async fn read_vote(&mut self) -> Result<Option<Vote<C::NodeId>>, StorageError<C>> {
+        async fn read_vote(&mut self) -> Result<Option<Vote<C>>, StorageError<C>> {
             let mut inner = self.inner.lock().await;
             inner.read_vote().await
         }
@@ -183,7 +183,7 @@ mod impl_log_store {
             inner.read_committed().await
         }
 
-        async fn save_vote(&mut self, vote: &Vote<C::NodeId>) -> Result<(), StorageError<C>> {
+        async fn save_vote(&mut self, vote: &Vote<C>) -> Result<(), StorageError<C>> {
             let mut inner = self.inner.lock().await;
             inner.save_vote(vote).await
         }

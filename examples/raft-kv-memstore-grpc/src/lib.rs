@@ -37,10 +37,9 @@ pub mod protobuf {
 
 pub mod typ {
 
-    use crate::NodeId;
     use crate::TypeConfig;
 
-    pub type Vote = openraft::Vote<NodeId>;
+    pub type Vote = openraft::Vote<TypeConfig>;
     pub type SnapshotMeta = openraft::SnapshotMeta<TypeConfig>;
     pub type SnapshotData = <TypeConfig as openraft::RaftTypeConfig>::SnapshotData;
     pub type Snapshot = openraft::Snapshot<TypeConfig>;
