@@ -3,12 +3,13 @@ use validit::Validate;
 use crate::engine::testing::UTConfig;
 use crate::log_id_range::LogIdRange;
 use crate::progress::Inflight;
-use crate::CommittedLeaderId;
+use crate::type_config::alias::LeaderIdOf;
+use crate::vote::RaftLeaderIdExt;
 use crate::LogId;
 
 fn log_id(index: u64) -> LogId<UTConfig> {
     LogId {
-        leader_id: CommittedLeaderId::new(1, 1),
+        leader_id: LeaderIdOf::<UTConfig>::new_committed(1, 1),
         index,
     }
 }

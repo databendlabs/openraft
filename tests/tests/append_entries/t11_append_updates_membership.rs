@@ -5,11 +5,10 @@ use anyhow::Result;
 use maplit::btreeset;
 use openraft::raft::AppendEntriesRequest;
 use openraft::testing::blank_ent;
-use openraft::CommittedLeaderId;
+use openraft::testing::log_id;
 use openraft::Config;
 use openraft::Entry;
 use openraft::EntryPayload;
-use openraft::LogId;
 use openraft::Membership;
 use openraft::ServerState;
 use openraft::Vote;
@@ -51,17 +50,17 @@ async fn append_updates_membership() -> Result<()> {
                 blank_ent(0, 0, 0),
                 blank_ent(1, 0, 1),
                 Entry {
-                    log_id: LogId::new(CommittedLeaderId::new(1, 0), 2),
+                    log_id: log_id(1, 0, 2),
                     payload: EntryPayload::Membership(Membership::new_with_defaults(vec![btreeset! {1,2}], [])),
                 },
                 blank_ent(1, 0, 3),
                 Entry {
-                    log_id: LogId::new(CommittedLeaderId::new(1, 0), 4),
+                    log_id: log_id(1, 0, 4),
                     payload: EntryPayload::Membership(Membership::new_with_defaults(vec![btreeset! {1,2,3,4}], [])),
                 },
                 blank_ent(1, 0, 5),
             ],
-            leader_commit: Some(LogId::new(CommittedLeaderId::new(0, 0), 0)),
+            leader_commit: Some(log_id(0, 0, 0)),
         };
 
         let resp = r0.append_entries(req).await?;
@@ -75,9 +74,9 @@ async fn append_updates_membership() -> Result<()> {
     {
         let req = AppendEntriesRequest {
             vote: Vote::new_committed(2, 2),
-            prev_log_id: Some(LogId::new(CommittedLeaderId::new(1, 0), 2)),
+            prev_log_id: Some(log_id(1, 0, 2)),
             entries: vec![blank_ent(2, 0, 3)],
-            leader_commit: Some(LogId::new(CommittedLeaderId::new(0, 0), 0)),
+            leader_commit: Some(log_id(0, 0, 0)),
         };
 
         let resp = r0.append_entries(req).await?;

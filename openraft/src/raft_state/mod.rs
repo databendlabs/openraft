@@ -41,6 +41,7 @@ use crate::proposer::Leader;
 use crate::proposer::LeaderQuorumSet;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::LogIdOf;
+use crate::vote::RaftLeaderId;
 
 /// A struct used to represent the raft state which a Raft node needs.
 #[derive(Clone, Debug)]
@@ -367,7 +368,7 @@ where C: RaftTypeConfig
     ///
     /// [Determine Server State]: crate::docs::data::vote#vote-and-membership-define-the-server-state
     pub(crate) fn is_leading(&self, id: &C::NodeId) -> bool {
-        self.membership_state.contains(id) && self.vote.leader_id().voted_for().as_ref() == Some(id)
+        self.membership_state.contains(id) && self.vote.leader_id().node_id_ref() == Some(id)
     }
 
     /// The node is leader
@@ -407,7 +408,7 @@ where C: RaftTypeConfig
 
         if vote.is_committed() {
             // Safe unwrap(): vote that is committed has to already have voted for some node.
-            let id = vote.leader_id().voted_for().unwrap();
+            let id = vote.leader_id().node_id_ref().cloned().unwrap();
 
             return self.new_forward_to_leader(id);
         }

@@ -3,9 +3,8 @@ use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
-use openraft::CommittedLeaderId;
+use openraft::testing::log_id;
 use openraft::Config;
-use openraft::LogId;
 use openraft::RaftLogReader;
 use tokio::time::sleep;
 
@@ -48,10 +47,7 @@ async fn replication_does_not_block_purge() -> Result<()> {
         log_index += router.client_request_many(0, "0", 10).await?;
 
         leader.trigger().snapshot().await?;
-        leader
-            .wait(timeout())
-            .snapshot(LogId::new(CommittedLeaderId::new(1, 0), log_index), "built snapshot")
-            .await?;
+        leader.wait(timeout()).snapshot(log_id(1, 0, log_index), "built snapshot").await?;
 
         sleep(Duration::from_millis(500)).await;
 

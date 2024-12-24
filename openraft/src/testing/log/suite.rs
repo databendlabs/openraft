@@ -24,7 +24,7 @@ use crate::storage::RaftStateMachine;
 use crate::storage::StorageHelper;
 use crate::testing::log::StoreBuilder;
 use crate::type_config::TypeConfigExt;
-use crate::vote::CommittedLeaderId;
+use crate::vote::RaftLeaderIdExt;
 use crate::LogId;
 use crate::Membership;
 use crate::OptionalSend;
@@ -634,7 +634,7 @@ where
 
     pub async fn get_initial_state_log_ids(mut store: LS, mut sm: SM) -> Result<(), StorageError<C>> {
         let log_id = |t: u64, n: u64, i| LogId::<C> {
-            leader_id: CommittedLeaderId::<C>::new(t.into(), n.into()),
+            leader_id: C::LeaderId::new_committed(t.into(), n.into()),
             index: i,
         };
 
@@ -1379,7 +1379,7 @@ where
     C::NodeId: From<u64>,
 {
     LogId {
-        leader_id: CommittedLeaderId::new(term.into(), NODE_ID.into()),
+        leader_id: C::LeaderId::new_committed(term.into(), NODE_ID.into()),
         index,
     }
 }
@@ -1463,7 +1463,7 @@ where
     C::NodeId: From<u64>,
 {
     LogId {
-        leader_id: CommittedLeaderId::new(term.into(), node_id.into()),
+        leader_id: C::LeaderId::new_committed(term.into(), node_id.into()),
         index,
     }
 }

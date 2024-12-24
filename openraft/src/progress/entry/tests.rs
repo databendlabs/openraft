@@ -5,12 +5,13 @@ use crate::engine::EngineConfig;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::inflight::Inflight;
 use crate::raft_state::LogStateReader;
-use crate::CommittedLeaderId;
+use crate::type_config::alias::LeaderIdOf;
+use crate::vote::RaftLeaderIdExt;
 use crate::LogId;
 
 fn log_id(index: u64) -> LogId<UTConfig> {
     LogId {
-        leader_id: CommittedLeaderId::new(1, 1),
+        leader_id: LeaderIdOf::<UTConfig>::new_committed(1, 1),
         index,
     }
 }

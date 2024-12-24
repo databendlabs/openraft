@@ -13,9 +13,7 @@ use crate::storage::SnapshotMeta;
 use crate::testing::log_id;
 use crate::type_config::TypeConfigExt;
 use crate::utime::Leased;
-use crate::CommittedLeaderId;
 use crate::EffectiveMembership;
-use crate::LogId;
 use crate::Membership;
 use crate::MembershipState;
 use crate::StoredMembership;
@@ -33,7 +31,7 @@ fn eng() -> Engine<UTConfig> {
         EffectiveMembership::new_arc(Some(log_id(1, 0, 1)), m12()),
     );
 
-    eng.state.log_ids = LogIdList::new([LogId::new(CommittedLeaderId::new(0, 0), 0)]);
+    eng.state.log_ids = LogIdList::new([log_id(0, 0, 0)]);
     eng
 }
 

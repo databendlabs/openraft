@@ -2,9 +2,8 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use maplit::btreeset;
-use openraft::CommittedLeaderId;
+use openraft::testing::log_id;
 use openraft::Config;
-use openraft::LogId;
 use openraft::SnapshotPolicy;
 
 use crate::fixtures::ut_harness;
@@ -42,20 +41,13 @@ async fn switch_to_snapshot_replication_when_lacking_log() -> Result<()> {
 
         router.wait_for_log(&btreeset![0], Some(log_index), None, "send log to trigger snapshot").await?;
 
-        router
-            .wait_for_snapshot(
-                &btreeset![0],
-                LogId::new(CommittedLeaderId::new(1, 0), log_index),
-                None,
-                "snapshot",
-            )
-            .await?;
+        router.wait_for_snapshot(&btreeset![0], log_id(1, 0, log_index), None, "snapshot").await?;
         router
             .assert_storage_state(
                 1,
                 log_index,
                 Some(0),
-                LogId::new(CommittedLeaderId::new(1, 0), log_index),
+                log_id(1, 0, log_index),
                 Some((log_index.into(), 1)),
             )
             .await?;
@@ -77,21 +69,14 @@ async fn switch_to_snapshot_replication_when_lacking_log() -> Result<()> {
         log_index += 1;
 
         router.wait_for_log(&btreeset![0, 1], Some(log_index), None, "add learner").await?;
-        router
-            .wait_for_snapshot(
-                &btreeset![1],
-                LogId::new(CommittedLeaderId::new(1, 0), snapshot_threshold - 1),
-                None,
-                "",
-            )
-            .await?;
+        router.wait_for_snapshot(&btreeset![1], log_id(1, 0, snapshot_threshold - 1), None, "").await?;
         let expected_snap = Some(((snapshot_threshold - 1).into(), 1));
         router
             .assert_storage_state(
                 1,
                 log_index,
                 None, /* learner does not vote */
-                LogId::new(CommittedLeaderId::new(1, 0), log_index),
+                log_id(1, 0, log_index),
                 expected_snap,
             )
             .await?;

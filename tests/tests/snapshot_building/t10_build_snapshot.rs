@@ -9,11 +9,10 @@ use openraft::network::RaftNetworkFactory;
 use openraft::raft::AppendEntriesRequest;
 use openraft::storage::RaftLogStorageExt;
 use openraft::testing::blank_ent;
-use openraft::CommittedLeaderId;
+use openraft::testing::log_id;
 use openraft::Config;
 use openraft::Entry;
 use openraft::EntryPayload;
-use openraft::LogId;
 use openraft::Membership;
 use openraft::RaftLogReader;
 use openraft::SnapshotPolicy;
@@ -60,21 +59,14 @@ async fn build_snapshot() -> Result<()> {
     tracing::info!(log_index, "--- log_index: {}", log_index);
 
     router.wait_for_log(&btreeset![0], Some(log_index), timeout(), "write").await?;
-    router
-        .wait_for_snapshot(
-            &btreeset![0],
-            LogId::new(CommittedLeaderId::new(1, 0), log_index),
-            None,
-            "snapshot",
-        )
-        .await?;
+    router.wait_for_snapshot(&btreeset![0], log_id(1, 0, log_index), None, "snapshot").await?;
 
     router
         .assert_storage_state(
             1,
             log_index,
             Some(0),
-            LogId::new(CommittedLeaderId::new(1, 0), log_index),
+            log_id(1, 0, log_index),
             Some((log_index.into(), 1)),
         )
         .await?;
@@ -82,7 +74,7 @@ async fn build_snapshot() -> Result<()> {
     // Add a new node and assert that it received the same snapshot.
     let (mut sto1, sm1) = router.new_store();
     sto1.blocking_append([blank_ent(0, 0, 0), Entry {
-        log_id: LogId::new(CommittedLeaderId::new(1, 0), 1),
+        log_id: log_id(1, 0, 1),
         payload: EntryPayload::Membership(Membership::new_with_defaults(vec![btreeset! {0}], [])),
     }])
     .await?;
@@ -109,7 +101,7 @@ async fn build_snapshot() -> Result<()> {
         let (mut sto, _sm) = router.get_storage_handle(&1)?;
         let logs = sto.try_get_log_entries(..).await?;
         assert_eq!(2, logs.len());
-        assert_eq!(LogId::new(CommittedLeaderId::new(1, 0), log_index - 1), logs[0].log_id)
+        assert_eq!(log_id(1, 0, log_index - 1), logs[0].log_id)
     }
 
     // log 0 counts
@@ -119,7 +111,7 @@ async fn build_snapshot() -> Result<()> {
             1,
             log_index,
             None, /* learner does not vote */
-            LogId::new(CommittedLeaderId::new(1, 0), log_index),
+            log_id(1, 0, log_index),
             expected_snap,
         )
         .await?;
@@ -136,9 +128,9 @@ async fn build_snapshot() -> Result<()> {
             .append_entries(
                 AppendEntriesRequest {
                     vote: Vote::new_committed(1, 0),
-                    prev_log_id: Some(LogId::new(CommittedLeaderId::new(1, 0), 2)),
+                    prev_log_id: Some(log_id(1, 0, 2)),
                     entries: vec![],
-                    leader_commit: Some(LogId::new(CommittedLeaderId::new(0, 0), 0)),
+                    leader_commit: Some(log_id(0, 0, 0)),
                 },
                 option,
             )

@@ -56,6 +56,7 @@ use crate::type_config::alias::OneshotReceiverOf;
 use crate::type_config::alias::OneshotSenderOf;
 use crate::type_config::async_runtime::mutex::Mutex;
 use crate::type_config::TypeConfigExt;
+use crate::vote::RaftLeaderId;
 use crate::LogId;
 use crate::RaftLogId;
 use crate::RaftNetworkFactory;
@@ -442,7 +443,7 @@ where
         let append_res = res.map_err(|_e| {
             let to = Timeout {
                 action: RPCTypes::AppendEntries,
-                id: self.session_id.vote().leader_id().voted_for().unwrap(),
+                id: self.session_id.vote().leader_id().node_id_ref().cloned().unwrap(),
                 target: self.target.clone(),
                 timeout: the_timeout,
             };

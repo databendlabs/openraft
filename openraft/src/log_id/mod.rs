@@ -12,7 +12,7 @@ pub use log_id_option_ext::LogIdOptionExt;
 pub use log_index_option_ext::LogIndexOptionExt;
 pub use raft_log_id::RaftLogId;
 
-use crate::CommittedLeaderId;
+use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::RaftTypeConfig;
 
 /// The identity of a raft log.
@@ -25,7 +25,7 @@ pub struct LogId<C>
 where C: RaftTypeConfig
 {
     /// The id of the leader that proposed this log
-    pub leader_id: CommittedLeaderId<C>,
+    pub leader_id: CommittedLeaderIdOf<C>,
     /// The index of a log in the storage.
     ///
     /// Log index is a consecutive integer.
@@ -35,7 +35,7 @@ where C: RaftTypeConfig
 impl<C> Copy for LogId<C>
 where
     C: RaftTypeConfig,
-    C::NodeId: Copy,
+    CommittedLeaderIdOf<C>: Copy,
 {
 }
 
@@ -63,12 +63,12 @@ impl<C> LogId<C>
 where C: RaftTypeConfig
 {
     /// Creates a log id proposed by a committed leader with `leader_id` at the given index.
-    pub fn new(leader_id: CommittedLeaderId<C>, index: u64) -> Self {
+    pub fn new(leader_id: CommittedLeaderIdOf<C>, index: u64) -> Self {
         LogId { leader_id, index }
     }
 
     /// Returns the leader id that proposed this log.
-    pub fn committed_leader_id(&self) -> &CommittedLeaderId<C> {
+    pub fn committed_leader_id(&self) -> &CommittedLeaderIdOf<C> {
         &self.leader_id
     }
 }

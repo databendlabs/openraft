@@ -8,9 +8,7 @@ use openraft::network::RPCOption;
 use openraft::network::RaftNetworkFactory;
 use openraft::raft::AppendEntriesRequest;
 use openraft::testing::log_id;
-use openraft::CommittedLeaderId;
 use openraft::Config;
-use openraft::LogId;
 use openraft::Vote;
 
 use crate::fixtures::ut_harness;
@@ -37,15 +35,7 @@ async fn append_entries_with_bigger_term() -> Result<()> {
     let log_index = router.new_cluster(btreeset! {0}, btreeset! {1}).await?;
 
     // before append entries, check hard state in term 1 and vote for node 0
-    router
-        .assert_storage_state(
-            1,
-            log_index,
-            Some(0),
-            LogId::new(CommittedLeaderId::new(1, 0), log_index),
-            None,
-        )
-        .await?;
+    router.assert_storage_state(1, log_index, Some(0), log_id(1, 0, log_index), None).await?;
 
     // append entries with term 2 and leader_id, this MUST cause hard state changed in node 0
     let req = AppendEntriesRequest::<openraft_memstore::TypeConfig> {
@@ -71,7 +61,7 @@ async fn append_entries_with_bigger_term() -> Result<()> {
             2,
             log_index,
             Some(1),
-            LogId::new(CommittedLeaderId::new(1, 0), log_index),
+            log_id(1, 0, log_index),
             &None,
         )
         .await?;

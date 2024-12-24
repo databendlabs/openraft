@@ -3,7 +3,7 @@
 use std::collections::BTreeSet;
 
 use crate::entry::RaftEntry;
-use crate::CommittedLeaderId;
+use crate::vote::RaftLeaderIdExt;
 use crate::LogId;
 use crate::RaftTypeConfig;
 
@@ -14,7 +14,7 @@ where
     C::Term: From<u64>,
 {
     LogId::<C> {
-        leader_id: CommittedLeaderId::new(term.into(), node_id),
+        leader_id: C::LeaderId::new_committed(term.into(), node_id),
         index,
     }
 }

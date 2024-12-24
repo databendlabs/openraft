@@ -17,6 +17,7 @@ use crate::entry::FromAppData;
 use crate::entry::RaftEntry;
 use crate::raft::responder::Responder;
 use crate::vote::raft_term::RaftTerm;
+use crate::vote::RaftLeaderId;
 use crate::AppData;
 use crate::AppDataResponse;
 use crate::Node;
@@ -45,6 +46,7 @@ use crate::OptionalSync;
 ///        NodeId       = u64,
 ///        Node         = openraft::BasicNode,
 ///        Term         = u64,
+///        LeaderId     = openraft::impls::LeaderId,
 ///        Entry        = openraft::Entry<TypeConfig>,
 ///        SnapshotData = Cursor<Vec<u8>>,
 ///        AsyncRuntime = openraft::TokioRuntime,
@@ -66,9 +68,6 @@ pub trait RaftTypeConfig:
     /// Raft application level node data
     type Node: Node;
 
-    /// Raft log entry, which can be built from an AppData.
-    type Entry: RaftEntry<Self> + FromAppData<Self::D>;
-
     /// Type representing a Raft term number.
     ///
     /// A term is a logical clock in Raft that is used to detect obsolete information,
@@ -78,6 +77,12 @@ pub trait RaftTypeConfig:
     ///
     /// See: [`RaftTerm`] for the required methods.
     type Term: RaftTerm;
+
+    /// A Leader identifier in a cluster.
+    type LeaderId: RaftLeaderId<Self>;
+
+    /// Raft log entry, which can be built from an AppData.
+    type Entry: RaftEntry<Self> + FromAppData<Self::D>;
 
     /// Snapshot data for exposing a snapshot for reading & writing.
     ///
@@ -112,6 +117,7 @@ pub mod alias {
     use crate::async_runtime::Oneshot;
     use crate::raft::responder::Responder;
     use crate::type_config::AsyncRuntime;
+    use crate::vote::RaftLeaderId;
     use crate::RaftTypeConfig;
 
     pub type DOf<C> = <C as RaftTypeConfig>::D;
@@ -119,6 +125,7 @@ pub mod alias {
     pub type NodeIdOf<C> = <C as RaftTypeConfig>::NodeId;
     pub type NodeOf<C> = <C as RaftTypeConfig>::Node;
     pub type TermOf<C> = <C as RaftTypeConfig>::Term;
+    pub type LeaderIdOf<C> = <C as RaftTypeConfig>::LeaderId;
     pub type EntryOf<C> = <C as RaftTypeConfig>::Entry;
     pub type SnapshotDataOf<C> = <C as RaftTypeConfig>::SnapshotData;
     pub type AsyncRuntimeOf<C> = <C as RaftTypeConfig>::AsyncRuntime;
@@ -166,7 +173,6 @@ pub mod alias {
     // Usually used types
     pub type LogIdOf<C> = crate::LogId<C>;
     pub type VoteOf<C> = crate::Vote<C>;
-    pub type LeaderIdOf<C> = crate::LeaderId<C>;
-    pub type CommittedLeaderIdOf<C> = crate::CommittedLeaderId<C>;
+    pub type CommittedLeaderIdOf<C> = <LeaderIdOf<C> as RaftLeaderId<C>>::Committed;
     pub type SerdeInstantOf<C> = crate::metrics::SerdeInstant<InstantOf<C>>;
 }

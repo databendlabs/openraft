@@ -4,9 +4,7 @@ use std::time::Duration;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::testing::log_id;
-use openraft::CommittedLeaderId;
 use openraft::Config;
-use openraft::LogId;
 use openraft::SnapshotPolicy;
 
 use crate::fixtures::ut_harness;
@@ -78,10 +76,7 @@ async fn after_snapshot_add_learner_and_request_a_log() -> Result<()> {
 
         router
             .wait(&1, timeout())
-            .snapshot(
-                LogId::new(CommittedLeaderId::new(1, 0), snapshot_index),
-                "learner-1 receives snapshot",
-            )
+            .snapshot(log_id(1, 0, snapshot_index), "learner-1 receives snapshot")
             .await?;
 
         log_index += router.client_request_many(0, "0", 1).await?;
@@ -103,7 +98,7 @@ async fn after_snapshot_add_learner_and_request_a_log() -> Result<()> {
                 1,
                 log_index,
                 None, /* learner does not vote */
-                LogId::new(CommittedLeaderId::new(1, 0), log_index),
+                log_id(1, 0, log_index),
                 expected_snap,
             )
             .await?;

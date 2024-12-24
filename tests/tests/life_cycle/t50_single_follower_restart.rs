@@ -3,6 +3,8 @@ use std::time::Duration;
 
 use maplit::btreeset;
 use openraft::storage::RaftLogStorage;
+use openraft::vote::RaftLeaderId;
+use openraft::vote::RaftLeaderIdExt;
 use openraft::Config;
 use openraft::RaftLogReader;
 use openraft::ServerState;
@@ -46,7 +48,7 @@ async fn single_follower_restart() -> anyhow::Result<()> {
         let v = sto.read_vote().await?.unwrap_or_default();
 
         // Set a non-committed vote so that the node restarts as a follower.
-        sto.save_vote(&Vote::new(v.leader_id.get_term() + 1, v.leader_id.voted_for().unwrap())).await?;
+        sto.save_vote(&Vote::new(v.leader_id.term() + 1, v.leader_id.node_id().unwrap())).await?;
 
         tracing::info!(log_index, "--- restart node-0");
 

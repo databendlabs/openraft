@@ -7,14 +7,12 @@ use maplit::btreeset;
 use openraft::error::ChangeMembershipError;
 use openraft::error::ClientWriteError;
 use openraft::error::InProgress;
+use openraft::testing::log_id;
 use openraft::ChangeMembers;
-use openraft::CommittedLeaderId;
 use openraft::Config;
-use openraft::LogId;
 use openraft::Membership;
 use openraft::RaftLogReader;
 use openraft::StorageHelper;
-use openraft_memstore::TypeConfig;
 use tokio::time::sleep;
 
 use crate::fixtures::ut_harness;
@@ -344,11 +342,4 @@ async fn check_learner_after_leader_transferred() -> Result<()> {
 
 fn timeout() -> Option<Duration> {
     Some(Duration::from_millis(3_000))
-}
-
-pub fn log_id(term: u64, node_id: u64, index: u64) -> LogId<TypeConfig> {
-    LogId {
-        leader_id: CommittedLeaderId::new(term, node_id),
-        index,
-    }
 }

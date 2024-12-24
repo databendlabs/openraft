@@ -3,9 +3,8 @@ use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
-use openraft::CommittedLeaderId;
+use openraft::testing::log_id;
 use openraft::Config;
-use openraft::LogId;
 use openraft::SnapshotPolicy;
 
 use crate::fixtures::ut_harness;
@@ -71,12 +70,7 @@ async fn snapshot_line_rate_to_snapshot() -> Result<()> {
             )
             .await?;
         router
-            .wait_for_snapshot(
-                &btreeset![0],
-                LogId::new(CommittedLeaderId::new(1, 0), log_index),
-                timeout(),
-                "snapshot on node 0",
-            )
+            .wait_for_snapshot(&btreeset![0], log_id(1, 0, log_index), timeout(), "snapshot on node 0")
             .await?;
     }
 
@@ -86,12 +80,7 @@ async fn snapshot_line_rate_to_snapshot() -> Result<()> {
 
         router.wait_for_log(&btreeset![1], Some(log_index), timeout(), "replicate by snapshot").await?;
         router
-            .wait_for_snapshot(
-                &btreeset![1],
-                LogId::new(CommittedLeaderId::new(1, 0), log_index),
-                timeout(),
-                "snapshot on node 1",
-            )
+            .wait_for_snapshot(&btreeset![1], log_id(1, 0, log_index), timeout(), "snapshot on node 1")
             .await?;
     }
 

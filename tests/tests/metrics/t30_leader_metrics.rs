@@ -5,9 +5,7 @@ use anyhow::Result;
 use maplit::btreemap;
 use maplit::btreeset;
 use openraft::testing::log_id;
-use openraft::CommittedLeaderId;
 use openraft::Config;
-use openraft::LogId;
 use openraft::ServerState;
 #[allow(unused_imports)]
 use pretty_assertions::assert_eq;
@@ -87,7 +85,7 @@ async fn leader_metrics() -> Result<()> {
 
     router.wait_for_log(&c01234, Some(log_index), timeout(), "change members to 0,1,2,3,4").await?;
 
-    let ww = Some(LogId::new(CommittedLeaderId::new(1, 0), log_index));
+    let ww = Some(log_id(1, 0, log_index));
     let want_repl = btreemap! { 0u64=>ww, 1u64=>ww, 2=>ww, 3=>ww, 4=>ww, };
     router
         .wait_for_metrics(
@@ -129,7 +127,7 @@ async fn leader_metrics() -> Result<()> {
         "--- replication metrics should reflect the replication state"
     );
     {
-        let ww = Some(LogId::new(CommittedLeaderId::new(1, 0), log_index));
+        let ww = Some(log_id(1, 0, log_index));
         let want_repl = btreemap! { 0=>ww, 1=>ww, 2=>ww, 3=>ww};
         router
             .wait_for_metrics(

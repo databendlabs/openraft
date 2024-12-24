@@ -2,9 +2,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use maplit::btreeset;
-use openraft::CommittedLeaderId;
+use openraft::testing::log_id;
 use openraft::Config;
-use openraft::LogId;
 
 use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
@@ -31,10 +30,7 @@ async fn trigger_snapshot() -> anyhow::Result<()> {
         let n1 = router.get_raft_handle(&1)?;
         n1.trigger().snapshot().await?;
 
-        router
-            .wait(&1, timeout())
-            .snapshot(LogId::new(CommittedLeaderId::new(1, 0), log_index), "node-1 snapshot")
-            .await?;
+        router.wait(&1, timeout()).snapshot(log_id(1, 0, log_index), "node-1 snapshot").await?;
     }
 
     tracing::info!(log_index, "--- send some logs");
@@ -51,10 +47,7 @@ async fn trigger_snapshot() -> anyhow::Result<()> {
         let n0 = router.get_raft_handle(&0)?;
         n0.trigger().snapshot().await?;
 
-        router
-            .wait(&0, timeout())
-            .snapshot(LogId::new(CommittedLeaderId::new(1, 0), log_index), "node-0 snapshot")
-            .await?;
+        router.wait(&0, timeout()).snapshot(log_id(1, 0, log_index), "node-0 snapshot").await?;
     }
 
     Ok(())

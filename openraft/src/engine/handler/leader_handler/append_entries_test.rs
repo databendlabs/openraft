@@ -23,10 +23,8 @@ use crate::testing::blank_ent;
 use crate::testing::log_id;
 use crate::type_config::TypeConfigExt;
 use crate::utime::Leased;
-use crate::vote::CommittedLeaderId;
 use crate::EffectiveMembership;
 use crate::Entry;
-use crate::LogId;
 use crate::Membership;
 use crate::MembershipState;
 use crate::Vote;
@@ -131,10 +129,7 @@ fn test_leader_append_entries_normal() -> anyhow::Result<()> {
         ],
         eng.state.log_ids.key_log_ids()
     );
-    assert_eq!(
-        Some(&LogId::new(CommittedLeaderId::new(3, 1), 6)),
-        eng.state.last_log_id()
-    );
+    assert_eq!(Some(&log_id(3, 1, 6)), eng.state.last_log_id());
     assert_eq!(
         MembershipState::new(
             Arc::new(EffectiveMembership::new(Some(log_id(1, 1, 1)), m01())),
@@ -258,10 +253,7 @@ fn test_leader_append_entries_with_membership_log() -> anyhow::Result<()> {
         ],
         eng.state.log_ids.key_log_ids()
     );
-    assert_eq!(
-        Some(&LogId::new(CommittedLeaderId::new(3, 1), 6)),
-        eng.state.last_log_id()
-    );
+    assert_eq!(Some(&log_id(3, 1, 6)), eng.state.last_log_id());
     assert_eq!(
         MembershipState::new(
             Arc::new(EffectiveMembership::new(Some(log_id(2, 1, 3)), m1())),

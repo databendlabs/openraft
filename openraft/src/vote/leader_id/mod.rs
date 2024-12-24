@@ -1,7 +1,7 @@
 #[cfg(not(feature = "single-term-leader"))]
-mod leader_id_adv;
+pub(crate) mod leader_id_adv;
 #[cfg(feature = "single-term-leader")]
-mod leader_id_std;
+pub(crate) mod leader_id_std;
 
 #[cfg(not(feature = "single-term-leader"))]
 pub use leader_id_adv::CommittedLeaderId;
@@ -12,4 +12,5 @@ pub use leader_id_std::CommittedLeaderId;
 #[cfg(feature = "single-term-leader")]
 pub use leader_id_std::LeaderId;
 
-mod impl_into_leader_id;
+pub(crate) mod raft_committed_leader_id;
+pub(crate) mod raft_leader_id;

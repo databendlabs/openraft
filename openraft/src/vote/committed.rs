@@ -1,8 +1,9 @@
 use std::cmp::Ordering;
 use std::fmt;
 
+use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::vote::ref_vote::RefVote;
-use crate::CommittedLeaderId;
+use crate::vote::RaftLeaderId;
 use crate::RaftTypeConfig;
 use crate::Vote;
 
@@ -41,7 +42,7 @@ where C: RaftTypeConfig
         Self { vote }
     }
 
-    pub(crate) fn committed_leader_id(&self) -> CommittedLeaderId<C> {
+    pub(crate) fn committed_leader_id(&self) -> CommittedLeaderIdOf<C> {
         self.vote.leader_id().to_committed()
     }
 

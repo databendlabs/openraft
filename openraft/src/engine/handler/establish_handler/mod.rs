@@ -3,6 +3,7 @@ use crate::proposer::Candidate;
 use crate::proposer::Leader;
 use crate::proposer::LeaderQuorumSet;
 use crate::proposer::LeaderState;
+use crate::vote::RaftLeaderId;
 use crate::RaftTypeConfig;
 
 /// Establish a leader for the Engine, when Candidate finishes voting stage.
@@ -24,8 +25,8 @@ where C: RaftTypeConfig
         let vote = candidate.vote_ref().clone();
 
         debug_assert_eq!(
-            vote.leader_id().voted_for(),
-            Some(self.config.id.clone()),
+            vote.leader_id().node_id_ref(),
+            Some(&self.config.id),
             "it can only commit its own vote"
         );
 
