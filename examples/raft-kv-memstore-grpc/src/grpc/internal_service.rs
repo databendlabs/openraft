@@ -1,7 +1,6 @@
 use bincode::deserialize;
 use bincode::serialize;
 use futures::StreamExt;
-use openraft::Raft;
 use openraft::Snapshot;
 use tonic::Request;
 use tonic::Response;
@@ -16,7 +15,7 @@ use crate::protobuf::SnapshotRequest;
 use crate::protobuf::VoteRequest;
 use crate::protobuf::VoteResponse;
 use crate::store::StateMachineData;
-use crate::TypeConfig;
+use crate::typ::*;
 
 /// Internal gRPC service implementation for Raft protocol communications.
 /// This service handles the core Raft consensus protocol operations between cluster nodes.
@@ -31,7 +30,7 @@ use crate::TypeConfig;
 /// exposed to other trusted Raft cluster nodes, never to external clients.
 pub struct InternalServiceImpl {
     /// The local Raft node instance that this service operates on
-    raft_node: Raft<TypeConfig>,
+    raft_node: Raft,
 }
 
 impl InternalServiceImpl {
@@ -39,7 +38,7 @@ impl InternalServiceImpl {
     ///
     /// # Arguments
     /// * `raft_node` - The Raft node instance this service will operate on
-    pub fn new(raft_node: Raft<TypeConfig>) -> Self {
+    pub fn new(raft_node: Raft) -> Self {
         InternalServiceImpl { raft_node }
     }
 

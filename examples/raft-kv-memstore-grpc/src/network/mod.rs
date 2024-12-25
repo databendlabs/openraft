@@ -4,10 +4,6 @@ use openraft::error::NetworkError;
 use openraft::error::Unreachable;
 use openraft::network::v2::RaftNetworkV2;
 use openraft::network::RPCOption;
-use openraft::raft::AppendEntriesRequest;
-use openraft::raft::AppendEntriesResponse;
-use openraft::raft::VoteRequest;
-use openraft::raft::VoteResponse;
 use openraft::RaftNetworkFactory;
 use tonic::transport::Channel;
 
@@ -17,6 +13,7 @@ use crate::protobuf::SnapshotRequest;
 use crate::protobuf::VoteRequest as PbVoteRequest;
 use crate::protobuf::VoteResponse as PbVoteResponse;
 use crate::typ::RPCError;
+use crate::typ::*;
 use crate::Node;
 use crate::NodeId;
 use crate::TypeConfig;
@@ -56,9 +53,9 @@ impl NetworkConnection {
 impl RaftNetworkV2<TypeConfig> for NetworkConnection {
     async fn append_entries(
         &mut self,
-        req: AppendEntriesRequest<TypeConfig>,
+        req: AppendEntriesRequest,
         _option: RPCOption,
-    ) -> Result<AppendEntriesResponse<TypeConfig>, RPCError> {
+    ) -> Result<AppendEntriesResponse, RPCError> {
         let server_addr = self.target_node.rpc_addr.clone();
         let channel = match Channel::builder(format!("http://{}", server_addr).parse().unwrap()).connect().await {
             Ok(channel) => channel,
@@ -78,11 +75,11 @@ impl RaftNetworkV2<TypeConfig> for NetworkConnection {
 
     async fn full_snapshot(
         &mut self,
-        vote: openraft::Vote<TypeConfig>,
-        snapshot: openraft::Snapshot<TypeConfig>,
+        vote: Vote,
+        snapshot: Snapshot,
         _cancel: impl std::future::Future<Output = openraft::error::ReplicationClosed> + openraft::OptionalSend + 'static,
         _option: RPCOption,
-    ) -> Result<openraft::raft::SnapshotResponse<TypeConfig>, crate::typ::StreamingError> {
+    ) -> Result<SnapshotResponse, crate::typ::StreamingError> {
         let server_addr = self.target_node.rpc_addr.clone();
         let channel = match Channel::builder(format!("http://{}", server_addr).parse().unwrap()).connect().await {
             Ok(channel) => channel,
@@ -128,11 +125,7 @@ impl RaftNetworkV2<TypeConfig> for NetworkConnection {
         Ok(result)
     }
 
-    async fn vote(
-        &mut self,
-        req: VoteRequest<TypeConfig>,
-        _option: RPCOption,
-    ) -> Result<VoteResponse<TypeConfig>, RPCError> {
+    async fn vote(&mut self, req: VoteRequest, _option: RPCOption) -> Result<VoteResponse, RPCError> {
         let server_addr = self.target_node.rpc_addr.clone();
         let channel = match Channel::builder(format!("http://{}", server_addr).parse().unwrap()).connect().await {
             Ok(channel) => channel,

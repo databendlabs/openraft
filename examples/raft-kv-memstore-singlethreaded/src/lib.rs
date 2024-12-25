@@ -52,24 +52,9 @@ openraft::declare_raft_types!(
 
 pub type LogStore = store::LogStore;
 pub type StateMachineStore = store::StateMachineStore;
-pub type Raft = openraft::Raft<TypeConfig>;
 
-pub mod typ {
-
-    use crate::TypeConfig;
-
-    pub type RaftError<E = openraft::error::Infallible> = openraft::error::RaftError<TypeConfig, E>;
-    pub type RPCError<E = openraft::error::Infallible> = openraft::error::RPCError<TypeConfig, RaftError<E>>;
-
-    pub type RaftMetrics = openraft::RaftMetrics<TypeConfig>;
-
-    pub type ClientWriteError = openraft::error::ClientWriteError<TypeConfig>;
-    pub type CheckIsLeaderError = openraft::error::CheckIsLeaderError<TypeConfig>;
-    pub type ForwardToLeader = openraft::error::ForwardToLeader<TypeConfig>;
-    pub type InitializeError = openraft::error::InitializeError<TypeConfig>;
-
-    pub type ClientWriteResponse = openraft::raft::ClientWriteResponse<TypeConfig>;
-}
+#[path = "../../utils/declare_types.rs"]
+pub mod typ;
 
 pub fn encode<T: serde::Serialize>(t: T) -> String {
     serde_json::to_string(&t).unwrap()

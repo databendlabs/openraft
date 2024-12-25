@@ -2,7 +2,6 @@
 #![deny(unused_qualifications)]
 
 use std::fmt::Display;
-use std::io::Cursor;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -37,8 +36,6 @@ impl Display for Node {
     }
 }
 
-pub type SnapshotData = Cursor<Vec<u8>>;
-
 openraft::declare_raft_types!(
     pub TypeConfig:
         D = Request,
@@ -46,25 +43,8 @@ openraft::declare_raft_types!(
         Node = Node,
 );
 
-pub mod typ {
-    use openraft::error::Infallible;
-
-    use crate::TypeConfig;
-
-    pub type Entry = openraft::Entry<TypeConfig>;
-
-    pub type RaftError<E = Infallible> = openraft::error::RaftError<TypeConfig, E>;
-    pub type RPCError<E = Infallible> = openraft::error::RPCError<TypeConfig, RaftError<E>>;
-
-    pub type ClientWriteError = openraft::error::ClientWriteError<TypeConfig>;
-    pub type CheckIsLeaderError = openraft::error::CheckIsLeaderError<TypeConfig>;
-    pub type ForwardToLeader = openraft::error::ForwardToLeader<TypeConfig>;
-    pub type InitializeError = openraft::error::InitializeError<TypeConfig>;
-
-    pub type ClientWriteResponse = openraft::raft::ClientWriteResponse<TypeConfig>;
-}
-
-pub type ExampleRaft = openraft::Raft<TypeConfig>;
+#[path = "../../utils/declare_types.rs"]
+pub mod typ;
 
 type Server = tide::Server<Arc<App>>;
 

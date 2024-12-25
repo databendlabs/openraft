@@ -5,8 +5,8 @@ use tokio::sync::oneshot;
 
 use crate::api;
 use crate::router::Router;
+use crate::typ::Raft;
 use crate::NodeId;
-use crate::Raft;
 use crate::StateMachineStore;
 
 pub type Path = String;

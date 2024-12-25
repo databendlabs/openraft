@@ -1,14 +1,10 @@
 #![allow(clippy::uninlined_format_args)]
 
-use openraft::raft::VoteRequest;
-use openraft::raft::VoteResponse;
-use openraft::LeaderId;
-use openraft::LogId;
-
 use crate::protobuf::Node;
 use crate::protobuf::Response;
 use crate::protobuf::SetRequest;
 use crate::store::StateMachineData;
+use crate::typ::*;
 
 pub mod grpc;
 pub mod network;
@@ -29,34 +25,15 @@ openraft::declare_raft_types!(
 
 pub type LogStore = store::LogStore;
 pub type StateMachineStore = store::StateMachineStore;
-pub type Raft = openraft::Raft<TypeConfig>;
 
 pub mod protobuf {
     tonic::include_proto!("openraftpb");
 }
 
-pub mod typ {
+#[path = "../../utils/declare_types.rs"]
+pub mod typ;
 
-    use crate::TypeConfig;
-
-    pub type Vote = openraft::Vote<TypeConfig>;
-    pub type SnapshotMeta = openraft::SnapshotMeta<TypeConfig>;
-    pub type SnapshotData = <TypeConfig as openraft::RaftTypeConfig>::SnapshotData;
-    pub type Snapshot = openraft::Snapshot<TypeConfig>;
-
-    pub type RaftError<E = openraft::error::Infallible> = openraft::error::RaftError<TypeConfig, E>;
-    pub type RPCError = openraft::error::RPCError<TypeConfig>;
-    pub type StreamingError = openraft::error::StreamingError<TypeConfig>;
-
-    pub type ClientWriteError = openraft::error::ClientWriteError<TypeConfig>;
-    pub type CheckIsLeaderError = openraft::error::CheckIsLeaderError<TypeConfig>;
-    pub type ForwardToLeader = openraft::error::ForwardToLeader<TypeConfig>;
-    pub type InitializeError = openraft::error::InitializeError<TypeConfig>;
-
-    pub type ClientWriteResponse = openraft::raft::ClientWriteResponse<TypeConfig>;
-}
-
-impl From<protobuf::LeaderId> for LeaderId<TypeConfig> {
+impl From<protobuf::LeaderId> for LeaderId {
     fn from(proto_leader_id: protobuf::LeaderId) -> Self {
         LeaderId::new(proto_leader_id.term, proto_leader_id.node_id)
     }
@@ -64,7 +41,7 @@ impl From<protobuf::LeaderId> for LeaderId<TypeConfig> {
 
 impl From<protobuf::Vote> for typ::Vote {
     fn from(proto_vote: protobuf::Vote) -> Self {
-        let leader_id: LeaderId<TypeConfig> = proto_vote.leader_id.unwrap().into();
+        let leader_id: LeaderId = proto_vote.leader_id.unwrap().into();
         if proto_vote.committed {
             typ::Vote::new_committed(leader_id.term, leader_id.node_id)
         } else {
@@ -73,14 +50,14 @@ impl From<protobuf::Vote> for typ::Vote {
     }
 }
 
-impl From<protobuf::LogId> for LogId<TypeConfig> {
+impl From<protobuf::LogId> for LogId {
     fn from(proto_log_id: protobuf::LogId) -> Self {
-        let leader_id: LeaderId<TypeConfig> = proto_log_id.leader_id.unwrap().into();
+        let leader_id: LeaderId = proto_log_id.leader_id.unwrap().into();
         LogId::new(leader_id, proto_log_id.index)
     }
 }
 
-impl From<protobuf::VoteRequest> for VoteRequest<TypeConfig> {
+impl From<protobuf::VoteRequest> for VoteRequest {
     fn from(proto_vote_req: protobuf::VoteRequest) -> Self {
         let vote: typ::Vote = proto_vote_req.vote.unwrap().into();
         let last_log_id = proto_vote_req.last_log_id.map(|log_id| log_id.into());
@@ -88,7 +65,7 @@ impl From<protobuf::VoteRequest> for VoteRequest<TypeConfig> {
     }
 }
 
-impl From<protobuf::VoteResponse> for VoteResponse<TypeConfig> {
+impl From<protobuf::VoteResponse> for VoteResponse {
     fn from(proto_vote_resp: protobuf::VoteResponse) -> Self {
         let vote: typ::Vote = proto_vote_resp.vote.unwrap().into();
         let last_log_id = proto_vote_resp.last_log_id.map(|log_id| log_id.into());
@@ -96,8 +73,8 @@ impl From<protobuf::VoteResponse> for VoteResponse<TypeConfig> {
     }
 }
 
-impl From<LeaderId<TypeConfig>> for protobuf::LeaderId {
-    fn from(leader_id: LeaderId<TypeConfig>) -> Self {
+impl From<LeaderId> for protobuf::LeaderId {
+    fn from(leader_id: LeaderId) -> Self {
         protobuf::LeaderId {
             term: leader_id.term,
             node_id: leader_id.node_id,
@@ -116,8 +93,8 @@ impl From<typ::Vote> for protobuf::Vote {
         }
     }
 }
-impl From<LogId<TypeConfig>> for protobuf::LogId {
-    fn from(log_id: LogId<TypeConfig>) -> Self {
+impl From<LogId> for protobuf::LogId {
+    fn from(log_id: LogId) -> Self {
         protobuf::LogId {
             index: log_id.index,
             leader_id: Some(log_id.leader_id.into()),
@@ -125,8 +102,8 @@ impl From<LogId<TypeConfig>> for protobuf::LogId {
     }
 }
 
-impl From<VoteRequest<TypeConfig>> for protobuf::VoteRequest {
-    fn from(vote_req: VoteRequest<TypeConfig>) -> Self {
+impl From<VoteRequest> for protobuf::VoteRequest {
+    fn from(vote_req: VoteRequest) -> Self {
         protobuf::VoteRequest {
             vote: Some(vote_req.vote.into()),
             last_log_id: vote_req.last_log_id.map(|log_id| log_id.into()),
@@ -134,8 +111,8 @@ impl From<VoteRequest<TypeConfig>> for protobuf::VoteRequest {
     }
 }
 
-impl From<VoteResponse<TypeConfig>> for protobuf::VoteResponse {
-    fn from(vote_resp: VoteResponse<TypeConfig>) -> Self {
+impl From<VoteResponse> for protobuf::VoteResponse {
+    fn from(vote_resp: VoteResponse) -> Self {
         protobuf::VoteResponse {
             vote: Some(vote_resp.vote.into()),
             vote_granted: vote_resp.vote_granted,
