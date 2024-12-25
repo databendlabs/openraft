@@ -125,7 +125,7 @@ echo
 rpc 5051 Metrics '{}'
 sleep 1
 
-echo "Write foo=zoo on node-3"
+echo "Write foo=zoo on node-1"
 sleep 1
 echo
 rpc 5051 Set '{"key":"foo","value":"zoo"}' true
@@ -133,7 +133,7 @@ sleep 1
 echo "Data written"
 sleep 1
 
-echo "Read foo=zoo from node-3"
+echo "Read foo=zoo from node-2"
 sleep 1
 echo "Read from node 2"
 echo
