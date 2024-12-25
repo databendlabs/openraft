@@ -15,7 +15,7 @@ use openraft::BasicNode;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
-use crate::typ;
+use crate::typ::*;
 use crate::NodeId;
 use crate::TypeConfig;
 
@@ -85,7 +85,7 @@ impl RaftNetwork<TypeConfig> for NetworkConnection {
         &mut self,
         req: AppendEntriesRequest<TypeConfig>,
         _option: RPCOption,
-    ) -> Result<AppendEntriesResponse<TypeConfig>, typ::RPCError> {
+    ) -> Result<AppendEntriesResponse<TypeConfig>, RPCError<RaftError>> {
         self.owner.send_rpc(self.target, &self.target_node, "raft-append", req).await
     }
 
@@ -93,7 +93,7 @@ impl RaftNetwork<TypeConfig> for NetworkConnection {
         &mut self,
         req: InstallSnapshotRequest<TypeConfig>,
         _option: RPCOption,
-    ) -> Result<InstallSnapshotResponse<TypeConfig>, typ::RPCError<InstallSnapshotError>> {
+    ) -> Result<InstallSnapshotResponse<TypeConfig>, RPCError<RaftError<InstallSnapshotError>>> {
         self.owner.send_rpc(self.target, &self.target_node, "raft-snapshot", req).await
     }
 
@@ -101,7 +101,7 @@ impl RaftNetwork<TypeConfig> for NetworkConnection {
         &mut self,
         req: VoteRequest<TypeConfig>,
         _option: RPCOption,
-    ) -> Result<VoteResponse<TypeConfig>, typ::RPCError> {
+    ) -> Result<VoteResponse<TypeConfig>, RPCError<RaftError>> {
         self.owner.send_rpc(self.target, &self.target_node, "raft-vote", req).await
     }
 }

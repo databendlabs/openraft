@@ -3,17 +3,16 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use openraft::error::Infallible;
-use openraft::RaftMetrics;
 use tide::Body;
 use tide::Request;
 use tide::Response;
 use tide::StatusCode;
 
 use crate::app::App;
+use crate::typ::*;
 use crate::Node;
 use crate::NodeId;
 use crate::Server;
-use crate::TypeConfig;
 
 // --- Cluster management
 
@@ -61,6 +60,6 @@ async fn init(req: Request<Arc<App>>) -> tide::Result {
 async fn metrics(req: Request<Arc<App>>) -> tide::Result {
     let metrics = req.state().raft.metrics().borrow().clone();
 
-    let res: Result<RaftMetrics<TypeConfig>, Infallible> = Ok(metrics);
+    let res: Result<RaftMetrics, Infallible> = Ok(metrics);
     Ok(Response::builder(StatusCode::Ok).body(Body::from_json(&res)?).build())
 }

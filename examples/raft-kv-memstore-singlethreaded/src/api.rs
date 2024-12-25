@@ -3,17 +3,14 @@
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
-use openraft::error::CheckIsLeaderError;
 use openraft::error::Infallible;
-use openraft::error::RaftError;
 use openraft::BasicNode;
-use openraft::RaftMetrics;
 
 use crate::app::App;
 use crate::decode;
 use crate::encode;
+use crate::typ::*;
 use crate::NodeId;
-use crate::TypeConfig;
 
 pub async fn write(app: &mut App, req: String) -> String {
     let res = app.raft.client_write(decode(&req)).await;
@@ -30,8 +27,7 @@ pub async fn read(app: &mut App, req: String) -> String {
             let state_machine = app.state_machine.state_machine.borrow();
             let value = state_machine.data.get(&key).cloned();
 
-            let res: Result<String, RaftError<TypeConfig, CheckIsLeaderError<TypeConfig>>> =
-                Ok(value.unwrap_or_default());
+            let res: Result<String, RaftError<CheckIsLeaderError>> = Ok(value.unwrap_or_default());
             res
         }
         Err(e) => Err(e),
@@ -52,7 +48,8 @@ pub async fn append(app: &mut App, req: String) -> String {
 }
 
 pub async fn snapshot(app: &mut App, req: String) -> String {
-    let res = app.raft.install_snapshot(decode(&req)).await;
+    let req = decode(&req);
+    let res = app.raft.install_snapshot(req).await;
     encode(res)
 }
 
@@ -89,6 +86,6 @@ pub async fn init(app: &mut App) -> String {
 pub async fn metrics(app: &mut App) -> String {
     let metrics = app.raft.metrics().borrow().clone();
 
-    let res: Result<RaftMetrics<TypeConfig>, Infallible> = Ok(metrics);
+    let res: Result<RaftMetrics, Infallible> = Ok(metrics);
     encode(res)
 }

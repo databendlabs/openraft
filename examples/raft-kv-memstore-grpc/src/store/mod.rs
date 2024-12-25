@@ -4,31 +4,24 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use bincode;
-use openraft::alias::SnapshotDataOf;
 use openraft::storage::RaftStateMachine;
-use openraft::storage::Snapshot;
-use openraft::Entry;
 use openraft::EntryPayload;
-use openraft::LogId;
 use openraft::RaftSnapshotBuilder;
-use openraft::SnapshotMeta;
-use openraft::StorageError;
-use openraft::StoredMembership;
 use serde::Deserialize;
 use serde::Serialize;
 
 use crate::protobuf::Response;
-use crate::typ;
+use crate::typ::*;
 use crate::TypeConfig;
 
 pub type LogStore = memstore::LogStore<TypeConfig>;
 
 #[derive(Debug)]
 pub struct StoredSnapshot {
-    pub meta: SnapshotMeta<TypeConfig>,
+    pub meta: SnapshotMeta,
 
     /// The data of the state machine at the time of this snapshot.
-    pub data: Box<typ::SnapshotData>,
+    pub data: Box<SnapshotData>,
 }
 
 /// Data contained in the Raft state machine.
@@ -38,9 +31,9 @@ pub struct StoredSnapshot {
 /// and value as String, but you could set any type of value that has the serialization impl.
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct StateMachineData {
-    pub last_applied: Option<LogId<TypeConfig>>,
+    pub last_applied: Option<LogId>,
 
-    pub last_membership: StoredMembership<TypeConfig>,
+    pub last_membership: StoredMembership,
 
     /// Application data.
     pub data: BTreeMap<String, String>,
@@ -71,7 +64,7 @@ pub struct StateMachineStore {
 
 impl RaftSnapshotBuilder<TypeConfig> for Arc<StateMachineStore> {
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn build_snapshot(&mut self) -> Result<Snapshot<TypeConfig>, StorageError<TypeConfig>> {
+    async fn build_snapshot(&mut self) -> Result<Snapshot, StorageError> {
         let data;
         let last_applied_log;
         let last_membership;
@@ -123,16 +116,14 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<StateMachineStore> {
 impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
     type SnapshotBuilder = Self;
 
-    async fn applied_state(
-        &mut self,
-    ) -> Result<(Option<LogId<TypeConfig>>, StoredMembership<TypeConfig>), StorageError<TypeConfig>> {
+    async fn applied_state(&mut self) -> Result<(Option<LogId>, StoredMembership), StorageError> {
         let state_machine = self.state_machine.lock().unwrap();
         Ok((state_machine.last_applied, state_machine.last_membership.clone()))
     }
 
     #[tracing::instrument(level = "trace", skip(self, entries))]
-    async fn apply<I>(&mut self, entries: I) -> Result<Vec<Response>, StorageError<TypeConfig>>
-    where I: IntoIterator<Item = Entry<TypeConfig>> {
+    async fn apply<I>(&mut self, entries: I) -> Result<Vec<Response>, StorageError>
+    where I: IntoIterator<Item = Entry> {
         let mut res = Vec::new(); //No `with_capacity`; do not know `len` of iterator
 
         let mut sm = self.state_machine.lock().unwrap();
@@ -158,16 +149,12 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn begin_receiving_snapshot(&mut self) -> Result<Box<SnapshotDataOf<TypeConfig>>, StorageError<TypeConfig>> {
+    async fn begin_receiving_snapshot(&mut self) -> Result<Box<SnapshotData>, StorageError> {
         Ok(Box::default())
     }
 
     #[tracing::instrument(level = "trace", skip(self, snapshot))]
-    async fn install_snapshot(
-        &mut self,
-        meta: &SnapshotMeta<TypeConfig>,
-        snapshot: Box<SnapshotDataOf<TypeConfig>>,
-    ) -> Result<(), StorageError<TypeConfig>> {
+    async fn install_snapshot(&mut self, meta: &SnapshotMeta, snapshot: Box<SnapshotData>) -> Result<(), StorageError> {
         tracing::info!("install snapshot");
 
         let new_snapshot = StoredSnapshot {
@@ -189,7 +176,7 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn get_current_snapshot(&mut self) -> Result<Option<Snapshot<TypeConfig>>, StorageError<TypeConfig>> {
+    async fn get_current_snapshot(&mut self) -> Result<Option<Snapshot>, StorageError> {
         match &*self.current_snapshot.lock().unwrap() {
             Some(snapshot) => {
                 let data = snapshot.data.clone();

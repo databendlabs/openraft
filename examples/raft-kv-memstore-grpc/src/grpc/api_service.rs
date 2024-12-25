@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use openraft::Raft;
 use tonic::Request;
 use tonic::Response;
 use tonic::Status;
@@ -11,7 +10,7 @@ use crate::protobuf::GetRequest;
 use crate::protobuf::Response as PbResponse;
 use crate::protobuf::SetRequest;
 use crate::store::StateMachineStore;
-use crate::TypeConfig;
+use crate::typ::*;
 
 /// External API service implementation providing key-value store operations.
 /// This service handles client requests for getting and setting values in the distributed store.
@@ -26,7 +25,7 @@ use crate::TypeConfig;
 /// before processing them through the Raft consensus protocol.
 pub struct ApiServiceImpl {
     /// The Raft node instance for consensus operations
-    raft_node: Raft<TypeConfig>,
+    raft_node: Raft,
     /// The state machine store for direct reads
     state_machine_store: Arc<StateMachineStore>,
 }
@@ -37,7 +36,7 @@ impl ApiServiceImpl {
     /// # Arguments
     /// * `raft_node` - The Raft node instance this service will use
     /// * `state_machine_store` - The state machine store for reading data
-    pub fn new(raft_node: Raft<TypeConfig>, state_machine_store: Arc<StateMachineStore>) -> Self {
+    pub fn new(raft_node: Raft, state_machine_store: Arc<StateMachineStore>) -> Self {
         ApiServiceImpl {
             raft_node,
             state_machine_store,

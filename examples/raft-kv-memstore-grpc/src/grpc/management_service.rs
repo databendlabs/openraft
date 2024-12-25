@@ -1,6 +1,5 @@
 use std::collections::BTreeMap;
 
-use openraft::Raft;
 use tonic::Request;
 use tonic::Response;
 use tonic::Status;
@@ -12,8 +11,8 @@ use crate::protobuf::ChangeMembershipRequest;
 use crate::protobuf::InitRequest;
 use crate::protobuf::RaftReplyString;
 use crate::protobuf::RaftRequestString;
+use crate::typ::*;
 use crate::Node;
-use crate::TypeConfig;
 
 /// Management service implementation for Raft cluster administration.
 /// Handles cluster initialization, membership changes, and metrics collection.
@@ -24,7 +23,7 @@ use crate::TypeConfig;
 /// - Changing cluster membership
 /// - Collecting metrics
 pub struct ManagementServiceImpl {
-    raft_node: Raft<TypeConfig>,
+    raft_node: Raft,
 }
 
 impl ManagementServiceImpl {
@@ -32,7 +31,7 @@ impl ManagementServiceImpl {
     ///
     /// # Arguments
     /// * `raft_node` - The Raft node instance this service will manage
-    pub fn new(raft_node: Raft<TypeConfig>) -> Self {
+    pub fn new(raft_node: Raft) -> Self {
         ManagementServiceImpl { raft_node }
     }
 

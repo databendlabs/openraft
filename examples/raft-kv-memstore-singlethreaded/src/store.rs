@@ -6,24 +6,14 @@ use std::marker::PhantomData;
 use std::ops::RangeBounds;
 use std::rc::Rc;
 
-use openraft::alias::SnapshotDataOf;
-use openraft::storage::IOFlushed;
-use openraft::storage::LogState;
 use openraft::storage::RaftLogStorage;
 use openraft::storage::RaftStateMachine;
-use openraft::storage::Snapshot;
-use openraft::Entry;
-use openraft::EntryPayload;
-use openraft::LogId;
 use openraft::RaftLogReader;
 use openraft::RaftSnapshotBuilder;
-use openraft::SnapshotMeta;
-use openraft::StorageError;
-use openraft::StoredMembership;
-use openraft::Vote;
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::typ::*;
 use crate::TypeConfig;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -71,7 +61,7 @@ pub struct Response {
 
 #[derive(Debug)]
 pub struct StoredSnapshot {
-    pub meta: SnapshotMeta<TypeConfig>,
+    pub meta: SnapshotMeta,
 
     /// The data of the state machine at the time of this snapshot.
     pub data: Vec<u8>,
@@ -84,9 +74,9 @@ pub struct StoredSnapshot {
 /// and value as String, but you could set any type of value that has the serialization impl.
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct StateMachineData {
-    pub last_applied: Option<LogId<TypeConfig>>,
+    pub last_applied: Option<LogId>,
 
-    pub last_membership: StoredMembership<TypeConfig>,
+    pub last_membership: StoredMembership,
 
     /// Application data.
     pub data: BTreeMap<String, String>,
@@ -107,35 +97,35 @@ pub struct StateMachineStore {
 
 #[derive(Debug, Default)]
 pub struct LogStore {
-    last_purged_log_id: RefCell<Option<LogId<TypeConfig>>>,
+    last_purged_log_id: RefCell<Option<LogId>>,
 
     /// The Raft log.
-    log: RefCell<BTreeMap<u64, Entry<TypeConfig>>>,
+    log: RefCell<BTreeMap<u64, Entry>>,
 
-    committed: RefCell<Option<LogId<TypeConfig>>>,
+    committed: RefCell<Option<LogId>>,
 
     /// The current granted vote.
-    vote: RefCell<Option<Vote<TypeConfig>>>,
+    vote: RefCell<Option<Vote>>,
 }
 
 impl RaftLogReader<TypeConfig> for Rc<LogStore> {
     async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug>(
         &mut self,
         range: RB,
-    ) -> Result<Vec<Entry<TypeConfig>>, StorageError<TypeConfig>> {
+    ) -> Result<Vec<Entry>, StorageError> {
         let log = self.log.borrow();
         let response = log.range(range.clone()).map(|(_, val)| val.clone()).collect::<Vec<_>>();
         Ok(response)
     }
 
-    async fn read_vote(&mut self) -> Result<Option<Vote<TypeConfig>>, StorageError<TypeConfig>> {
+    async fn read_vote(&mut self) -> Result<Option<Vote>, StorageError> {
         Ok(*self.vote.borrow())
     }
 }
 
 impl RaftSnapshotBuilder<TypeConfig> for Rc<StateMachineStore> {
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn build_snapshot(&mut self) -> Result<Snapshot<TypeConfig>, StorageError<TypeConfig>> {
+    async fn build_snapshot(&mut self) -> Result<Snapshot, StorageError> {
         let data;
         let last_applied_log;
         let last_membership;
@@ -187,16 +177,14 @@ impl RaftSnapshotBuilder<TypeConfig> for Rc<StateMachineStore> {
 impl RaftStateMachine<TypeConfig> for Rc<StateMachineStore> {
     type SnapshotBuilder = Self;
 
-    async fn applied_state(
-        &mut self,
-    ) -> Result<(Option<LogId<TypeConfig>>, StoredMembership<TypeConfig>), StorageError<TypeConfig>> {
+    async fn applied_state(&mut self) -> Result<(Option<LogId>, StoredMembership), StorageError> {
         let state_machine = self.state_machine.borrow();
         Ok((state_machine.last_applied, state_machine.last_membership.clone()))
     }
 
     #[tracing::instrument(level = "trace", skip(self, entries))]
-    async fn apply<I>(&mut self, entries: I) -> Result<Vec<Response>, StorageError<TypeConfig>>
-    where I: IntoIterator<Item = Entry<TypeConfig>> {
+    async fn apply<I>(&mut self, entries: I) -> Result<Vec<Response>, StorageError>
+    where I: IntoIterator<Item = Entry> {
         let mut res = Vec::new(); //No `with_capacity`; do not know `len` of iterator
 
         let mut sm = self.state_machine.borrow_mut();
@@ -226,16 +214,12 @@ impl RaftStateMachine<TypeConfig> for Rc<StateMachineStore> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn begin_receiving_snapshot(&mut self) -> Result<Box<SnapshotDataOf<TypeConfig>>, StorageError<TypeConfig>> {
+    async fn begin_receiving_snapshot(&mut self) -> Result<Box<SnapshotData>, StorageError> {
         Ok(Box::new(Cursor::new(Vec::new())))
     }
 
     #[tracing::instrument(level = "trace", skip(self, snapshot))]
-    async fn install_snapshot(
-        &mut self,
-        meta: &SnapshotMeta<TypeConfig>,
-        snapshot: Box<SnapshotDataOf<TypeConfig>>,
-    ) -> Result<(), StorageError<TypeConfig>> {
+    async fn install_snapshot(&mut self, meta: &SnapshotMeta, snapshot: Box<SnapshotData>) -> Result<(), StorageError> {
         tracing::info!(
             { snapshot_size = snapshot.get_ref().len() },
             "decoding snapshot for installation"
@@ -261,7 +245,7 @@ impl RaftStateMachine<TypeConfig> for Rc<StateMachineStore> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn get_current_snapshot(&mut self) -> Result<Option<Snapshot<TypeConfig>>, StorageError<TypeConfig>> {
+    async fn get_current_snapshot(&mut self) -> Result<Option<Snapshot>, StorageError> {
         match &*self.current_snapshot.borrow() {
             Some(snapshot) => {
                 let data = snapshot.data.clone();
@@ -282,7 +266,7 @@ impl RaftStateMachine<TypeConfig> for Rc<StateMachineStore> {
 impl RaftLogStorage<TypeConfig> for Rc<LogStore> {
     type LogReader = Self;
 
-    async fn get_log_state(&mut self) -> Result<LogState<TypeConfig>, StorageError<TypeConfig>> {
+    async fn get_log_state(&mut self) -> Result<LogState, StorageError> {
         let log = self.log.borrow();
         let last = log.iter().next_back().map(|(_, ent)| ent.log_id);
 
@@ -299,27 +283,27 @@ impl RaftLogStorage<TypeConfig> for Rc<LogStore> {
         })
     }
 
-    async fn save_committed(&mut self, committed: Option<LogId<TypeConfig>>) -> Result<(), StorageError<TypeConfig>> {
+    async fn save_committed(&mut self, committed: Option<LogId>) -> Result<(), StorageError> {
         let mut c = self.committed.borrow_mut();
         *c = committed;
         Ok(())
     }
 
-    async fn read_committed(&mut self) -> Result<Option<LogId<TypeConfig>>, StorageError<TypeConfig>> {
+    async fn read_committed(&mut self) -> Result<Option<LogId>, StorageError> {
         let committed = self.committed.borrow();
         Ok(*committed)
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn save_vote(&mut self, vote: &Vote<TypeConfig>) -> Result<(), StorageError<TypeConfig>> {
+    async fn save_vote(&mut self, vote: &Vote) -> Result<(), StorageError> {
         let mut v = self.vote.borrow_mut();
         *v = Some(*vote);
         Ok(())
     }
 
     #[tracing::instrument(level = "trace", skip(self, entries, callback))]
-    async fn append<I>(&mut self, entries: I, callback: IOFlushed<TypeConfig>) -> Result<(), StorageError<TypeConfig>>
-    where I: IntoIterator<Item = Entry<TypeConfig>> {
+    async fn append<I>(&mut self, entries: I, callback: IOFlushed) -> Result<(), StorageError>
+    where I: IntoIterator<Item = Entry> {
         // Simple implementation that calls the flush-before-return `append_to_log`.
         let mut log = self.log.borrow_mut();
         for entry in entries {
@@ -331,7 +315,7 @@ impl RaftLogStorage<TypeConfig> for Rc<LogStore> {
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
-    async fn truncate(&mut self, log_id: LogId<TypeConfig>) -> Result<(), StorageError<TypeConfig>> {
+    async fn truncate(&mut self, log_id: LogId) -> Result<(), StorageError> {
         tracing::debug!("delete_log: [{:?}, +oo)", log_id);
 
         let mut log = self.log.borrow_mut();
@@ -344,7 +328,7 @@ impl RaftLogStorage<TypeConfig> for Rc<LogStore> {
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
-    async fn purge(&mut self, log_id: LogId<TypeConfig>) -> Result<(), StorageError<TypeConfig>> {
+    async fn purge(&mut self, log_id: LogId) -> Result<(), StorageError> {
         tracing::debug!("delete_log: (-oo, {:?}]", log_id);
 
         {
