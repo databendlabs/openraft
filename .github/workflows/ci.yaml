@@ -144,7 +144,6 @@ jobs:
       matrix:
         include:
           - store: "stores/memstore"
-          - store: "stores/rocksstore"
 
     steps:
       - name: Setup | Checkout
@@ -393,6 +392,7 @@ jobs:
           - "nightly"
         example:
           - "memstore"
+          - "rocksstore"
           - "raft-kv-memstore"
           - "raft-kv-memstore-grpc"
           - "raft-kv-memstore-network-v2"
