@@ -5,43 +5,33 @@
 #![deny(unused_crate_dependencies)]
 #![deny(unused_qualifications)]
 
+pub mod log_store;
+
 #[cfg(test)]
 mod test;
 
 use std::collections::BTreeMap;
-use std::error::Error;
 use std::fmt::Debug;
 use std::io::Cursor;
-use std::ops::RangeBounds;
 use std::path::Path;
 use std::sync::Arc;
 
-use byteorder::BigEndian;
-use byteorder::ReadBytesExt;
-use byteorder::WriteBytesExt;
+use log_store::RocksLogStore;
 use openraft::alias::SnapshotDataOf;
-use openraft::storage::IOFlushed;
-use openraft::storage::LogState;
-use openraft::storage::RaftLogStorage;
 use openraft::storage::RaftStateMachine;
 use openraft::storage::Snapshot;
 use openraft::AnyError;
 use openraft::Entry;
 use openraft::EntryPayload;
-use openraft::ErrorVerb;
 use openraft::LogId;
-use openraft::OptionalSend;
 use openraft::RaftLogId;
-use openraft::RaftLogReader;
 use openraft::RaftSnapshotBuilder;
+use openraft::RaftTypeConfig;
 use openraft::SnapshotMeta;
 use openraft::StorageError;
 use openraft::StoredMembership;
-use openraft::Vote;
 use rand::Rng;
-use rocksdb::ColumnFamily;
 use rocksdb::ColumnFamilyDescriptor;
-use rocksdb::Direction;
 use rocksdb::Options;
 use rocksdb::DB;
 use serde::Deserialize;
@@ -127,145 +117,6 @@ impl RocksStateMachine {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct RocksLogStore {
-    db: Arc<DB>,
-}
-
-type StorageResult<T> = Result<T, StorageError<TypeConfig>>;
-
-/// converts an id to a byte vector for storing in the database.
-/// Note that we're using big endian encoding to ensure correct sorting of keys
-fn id_to_bin(id: u64) -> Vec<u8> {
-    let mut buf = Vec::with_capacity(8);
-    buf.write_u64::<BigEndian>(id).unwrap();
-    buf
-}
-
-fn bin_to_id(buf: &[u8]) -> u64 {
-    (&buf[0..8]).read_u64::<BigEndian>().unwrap()
-}
-
-/// Meta data of a raft-store.
-///
-/// In raft, except logs and state machine, the store also has to store several piece of metadata.
-/// This sub mod defines the key-value pairs of these metadata.
-mod meta {
-    use openraft::ErrorSubject;
-    use openraft::LogId;
-
-    use crate::TypeConfig;
-
-    /// Defines metadata key and value
-    pub(crate) trait StoreMeta {
-        /// The key used to store in rocksdb
-        const KEY: &'static str;
-
-        /// The type of the value to store
-        type Value: serde::Serialize + serde::de::DeserializeOwned;
-
-        /// The subject this meta belongs to, and will be embedded into the returned storage error.
-        fn subject(v: Option<&Self::Value>) -> ErrorSubject<TypeConfig>;
-    }
-
-    pub(crate) struct LastPurged {}
-    pub(crate) struct Vote {}
-
-    impl StoreMeta for LastPurged {
-        const KEY: &'static str = "last_purged_log_id";
-        type Value = LogId<TypeConfig>;
-
-        fn subject(_v: Option<&Self::Value>) -> ErrorSubject<TypeConfig> {
-            ErrorSubject::Store
-        }
-    }
-    impl StoreMeta for Vote {
-        const KEY: &'static str = "vote";
-        type Value = openraft::Vote<TypeConfig>;
-
-        fn subject(_v: Option<&Self::Value>) -> ErrorSubject<TypeConfig> {
-            ErrorSubject::Vote
-        }
-    }
-}
-
-impl RocksLogStore {
-    fn cf_meta(&self) -> &ColumnFamily {
-        self.db.cf_handle("meta").unwrap()
-    }
-
-    fn cf_logs(&self) -> &ColumnFamily {
-        self.db.cf_handle("logs").unwrap()
-    }
-
-    /// Get a store metadata.
-    ///
-    /// It returns `None` if the store does not have such a metadata stored.
-    fn get_meta<M: meta::StoreMeta>(&self) -> Result<Option<M::Value>, StorageError<TypeConfig>> {
-        let v = self
-            .db
-            .get_cf(self.cf_meta(), M::KEY)
-            .map_err(|e| StorageError::new(M::subject(None), ErrorVerb::Read, AnyError::new(&e)))?;
-
-        let t = match v {
-            None => None,
-            Some(bytes) => Some(
-                serde_json::from_slice(&bytes)
-                    .map_err(|e| StorageError::new(M::subject(None), ErrorVerb::Read, AnyError::new(&e)))?,
-            ),
-        };
-        Ok(t)
-    }
-
-    /// Save a store metadata.
-    fn put_meta<M: meta::StoreMeta>(&self, value: &M::Value) -> Result<(), StorageError<TypeConfig>> {
-        let json_value = serde_json::to_vec(value)
-            .map_err(|e| StorageError::new(M::subject(Some(value)), ErrorVerb::Write, AnyError::new(&e)))?;
-
-        self.db
-            .put_cf(self.cf_meta(), M::KEY, json_value)
-            .map_err(|e| StorageError::new(M::subject(Some(value)), ErrorVerb::Write, AnyError::new(&e)))?;
-
-        Ok(())
-    }
-}
-
-impl RaftLogReader<TypeConfig> for RocksLogStore {
-    async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + OptionalSend>(
-        &mut self,
-        range: RB,
-    ) -> StorageResult<Vec<Entry<TypeConfig>>> {
-        let start = match range.start_bound() {
-            std::ops::Bound::Included(x) => id_to_bin(*x),
-            std::ops::Bound::Excluded(x) => id_to_bin(*x + 1),
-            std::ops::Bound::Unbounded => id_to_bin(0),
-        };
-
-        let mut res = Vec::new();
-
-        let it = self.db.iterator_cf(self.cf_logs(), rocksdb::IteratorMode::From(&start, Direction::Forward));
-        for item_res in it {
-            let (id, val) = item_res.map_err(read_logs_err)?;
-
-            let id = bin_to_id(&id);
-            if !range.contains(&id) {
-                break;
-            }
-
-            let entry: Entry<_> = serde_json::from_slice(&val).map_err(read_logs_err)?;
-
-            assert_eq!(id, entry.log_id.index);
-
-            res.push(entry);
-        }
-        Ok(res)
-    }
-
-    async fn read_vote(&mut self) -> Result<Option<Vote<TypeConfig>>, StorageError<TypeConfig>> {
-        self.get_meta::<meta::Vote>()
-    }
-}
-
 impl RaftSnapshotBuilder<TypeConfig> for RocksStateMachine {
     #[tracing::instrument(level = "trace", skip(self))]
     async fn build_snapshot(&mut self) -> Result<Snapshot<TypeConfig>, StorageError<TypeConfig>> {
@@ -306,93 +157,6 @@ impl RaftSnapshotBuilder<TypeConfig> for RocksStateMachine {
             meta,
             snapshot: Box::new(Cursor::new(data)),
         })
-    }
-}
-
-impl RaftLogStorage<TypeConfig> for RocksLogStore {
-    type LogReader = Self;
-
-    async fn get_log_state(&mut self) -> StorageResult<LogState<TypeConfig>> {
-        let last = self.db.iterator_cf(self.cf_logs(), rocksdb::IteratorMode::End).next();
-
-        let last_log_id = match last {
-            None => None,
-            Some(res) => {
-                let (_log_index, entry_bytes) = res.map_err(read_logs_err)?;
-                let ent = serde_json::from_slice::<Entry<TypeConfig>>(&entry_bytes).map_err(read_logs_err)?;
-                Some(ent.log_id)
-            }
-        };
-
-        let last_purged_log_id = self.get_meta::<meta::LastPurged>()?;
-
-        let last_log_id = match last_log_id {
-            None => last_purged_log_id,
-            Some(x) => Some(x),
-        };
-
-        Ok(LogState {
-            last_purged_log_id,
-            last_log_id,
-        })
-    }
-
-    async fn save_vote(&mut self, vote: &Vote<TypeConfig>) -> Result<(), StorageError<TypeConfig>> {
-        self.put_meta::<meta::Vote>(vote)?;
-        self.db.flush_wal(true).map_err(|e| StorageError::write_vote(&e))?;
-        Ok(())
-    }
-
-    async fn get_log_reader(&mut self) -> Self::LogReader {
-        self.clone()
-    }
-
-    async fn append<I>(&mut self, entries: I, callback: IOFlushed<TypeConfig>) -> Result<(), StorageError<TypeConfig>>
-    where I: IntoIterator<Item = Entry<TypeConfig>> + Send {
-        for entry in entries {
-            let id = id_to_bin(entry.log_id.index);
-            assert_eq!(bin_to_id(&id), entry.log_id.index);
-            self.db
-                .put_cf(
-                    self.cf_logs(),
-                    id,
-                    serde_json::to_vec(&entry).map_err(|e| StorageError::write_logs(&e))?,
-                )
-                .map_err(|e| StorageError::write_logs(&e))?;
-        }
-
-        self.db.flush_wal(true).map_err(|e| StorageError::write_logs(&e))?;
-
-        // If there is error, the callback will be dropped.
-        callback.io_completed(Ok(()));
-        Ok(())
-    }
-
-    async fn truncate(&mut self, log_id: LogId<TypeConfig>) -> Result<(), StorageError<TypeConfig>> {
-        tracing::debug!("truncate: [{:?}, +oo)", log_id);
-
-        let from = id_to_bin(log_id.index);
-        let to = id_to_bin(0xff_ff_ff_ff_ff_ff_ff_ff);
-        self.db.delete_range_cf(self.cf_logs(), &from, &to).map_err(|e| StorageError::write_logs(&e))?;
-
-        self.db.flush_wal(true).map_err(|e| StorageError::write_logs(&e))?;
-        Ok(())
-    }
-
-    async fn purge(&mut self, log_id: LogId<TypeConfig>) -> Result<(), StorageError<TypeConfig>> {
-        tracing::debug!("delete_log: [0, {:?}]", log_id);
-
-        // Write the last-purged log id before purging the logs.
-        // The logs at and before last-purged log id will be ignored by openraft.
-        // Therefore there is no need to do it in a transaction.
-        self.put_meta::<meta::LastPurged>(&log_id)?;
-
-        let from = id_to_bin(0);
-        let to = id_to_bin(log_id.index + 1);
-        self.db.delete_range_cf(self.cf_logs(), &from, &to).map_err(|e| StorageError::write_logs(&e))?;
-
-        // Purging does not need to be persistent.
-        Ok(())
     }
 }
 
@@ -503,7 +267,8 @@ impl RaftStateMachine<TypeConfig> for RocksStateMachine {
 
 /// Create a pair of `RocksLogStore` and `RocksStateMachine` that are backed by a same rocks db
 /// instance.
-pub async fn new<P: AsRef<Path>>(db_path: P) -> (RocksLogStore, RocksStateMachine) {
+pub async fn new<C, P: AsRef<Path>>(db_path: P) -> (RocksLogStore<C>, RocksStateMachine)
+where C: RaftTypeConfig {
     let mut db_opts = Options::default();
     db_opts.create_missing_column_families(true);
     db_opts.create_if_missing(true);
@@ -515,9 +280,5 @@ pub async fn new<P: AsRef<Path>>(db_path: P) -> (RocksLogStore, RocksStateMachin
     let db = DB::open_cf_descriptors(&db_opts, db_path, vec![meta, sm_meta, logs]).unwrap();
 
     let db = Arc::new(db);
-    (RocksLogStore { db: db.clone() }, RocksStateMachine::new(db).await)
-}
-
-fn read_logs_err(e: impl Error + 'static) -> StorageError<TypeConfig> {
-    StorageError::read_logs(&e)
+    (RocksLogStore::new(db.clone()), RocksStateMachine::new(db).await)
 }

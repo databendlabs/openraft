@@ -22,6 +22,7 @@ path = "src/bin/main.rs"
 
 [dependencies]
 openraft = { path = "../../openraft", features = ["serde", "type-alias"] }
+openraft-rocksstore = { path = "../rocksstore" }
 
 tokio = { version = "1.35.1", features = ["full"] }
 byteorder = "1.4.3"
