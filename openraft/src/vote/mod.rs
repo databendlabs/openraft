@@ -1,3 +1,5 @@
+//! Defines election related types.
+
 pub(crate) mod committed;
 pub(crate) mod leader_id;
 pub(crate) mod non_committed;
@@ -6,13 +8,13 @@ pub(crate) mod ref_vote;
 mod vote;
 pub(crate) mod vote_status;
 
-pub(crate) use committed::CommittedVote;
+pub(crate) mod raft_term;
+
 pub use leader_id::raft_committed_leader_id::RaftCommittedLeaderId;
 pub use leader_id::raft_leader_id::RaftLeaderId;
 pub use leader_id::raft_leader_id::RaftLeaderIdExt;
-pub use leader_id::CommittedLeaderId;
-pub use leader_id::LeaderId;
-pub(crate) use non_committed::NonCommittedVote;
-pub use vote::Vote;
+pub use raft_term::RaftTerm;
 
-pub mod raft_term;
+pub use self::leader_id::leader_id_adv;
+pub use self::leader_id::leader_id_std;
+pub use self::vote::Vote;

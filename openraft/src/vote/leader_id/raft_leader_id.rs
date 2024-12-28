@@ -46,6 +46,9 @@ where
     fn to_committed(&self) -> Self::Committed;
 }
 
+/// Extension methods for [`RaftLeaderId`].
+///
+/// This trait is implemented for all types that implement [`RaftLeaderId`].
 pub trait RaftLeaderIdExt<C>
 where
     C: RaftTypeConfig,

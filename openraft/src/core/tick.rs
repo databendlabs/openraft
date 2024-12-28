@@ -180,7 +180,7 @@ mod tests {
         type NodeId = u64;
         type Node = ();
         type Term = u64;
-        type LeaderId = crate::impls::LeaderId<Self>;
+        type LeaderId = crate::impls::leader_id_adv::LeaderId<Self>;
         type Entry = crate::Entry<TickUTConfig>;
         type SnapshotData = Cursor<Vec<u8>>;
         type AsyncRuntime = TokioRuntime;

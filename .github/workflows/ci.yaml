@@ -63,8 +63,52 @@ jobs:
           args: --features bench nothing-to-run --manifest-path openraft/Cargo.toml
 
 
-  # Run openraft unit test `openraft/` and integration test `tests/`.
-  openraft-test:
+  # Run openraft unit test `openraft/`
+  test-crate-openraft:
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - toolchain: "stable"
+            features: ""
+
+          - toolchain: "nightly"
+            features: ""
+
+    steps:
+      - name: Setup | Checkout
+        uses: actions/checkout@v4
+
+
+      - name: Setup | Toolchain
+        uses: actions-rs/toolchain@v1.0.6
+        with:
+          toolchain: "${{ matrix.toolchain }}"
+          override: true
+
+
+      - name: Test crate `openraft/`
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --features "${{ matrix.features }}" --manifest-path openraft/Cargo.toml
+        env:
+          RUST_LOG: debug
+          RUST_BACKTRACE: full
+
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        if: failure()
+        with:
+          name: "ut-openraft-${{ matrix.toolchain }}-${{ matrix.features }}"
+          path: |
+            openraft/_log/
+
+  # Run integration test `tests/`.
+  test-crate-tests:
     runs-on: ubuntu-latest
 
     strategy:
@@ -98,21 +142,6 @@ jobs:
           override: true
 
 
-      # - A store with defensive checks returns error when unexpected accesses are sent to RaftStore.
-      # - Raft should not depend on defensive error to work correctly.
-      - name: Test crate `openraft/`
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --features "${{ matrix.features }}" --manifest-path openraft/Cargo.toml
-        env:
-          # Parallel tests block each other and result in timeout.
-          RUST_TEST_THREADS: 2
-          RUST_LOG: debug
-          RUST_BACKTRACE: full
-          OPENRAFT_NETWORK_SEND_DELAY: ${{ matrix.send_delay }}
-
-
       - name: Test crate `tests/`
         uses: actions-rs/cargo@v1
         with:
@@ -130,9 +159,8 @@ jobs:
         uses: actions/upload-artifact@v3
         if: failure()
         with:
-          name: "ut-${{ matrix.toolchain }}-${{ matrix.features }}-${{ matrix.send_delay }}"
+          name: "ut-tests-${{ matrix.toolchain }}-${{ matrix.features }}-${{ matrix.send_delay }}"
           path: |
-            openraft/_log/
             tests/_log/
 
 
@@ -252,16 +280,8 @@ jobs:
           - toolchain: "nightly"
             features: "serde"
 
-          # Some test requires feature single-term-leader on and serde off.
-          # This can only be tested without building another crate that enables
-          # `serde`.
-          # Move this test to unit-test when the snapshot API is upgraded to
-          # non-serde-dependent.
           - toolchain: "nightly"
-            features: "single-term-leader"
-
-          - toolchain: "nightly"
-            features: "single-term-leader,serde,singlethreaded"
+            features: "serde,singlethreaded"
 
 
     steps:
@@ -364,7 +384,7 @@ jobs:
         shell: bash
         run: |
           cargo clippy --no-deps --workspace --all-targets                -- -D warnings
-          cargo clippy --no-deps --workspace --all-targets --features "bt,serde,bench,single-term-leader,compat" -- -D warnings
+          cargo clippy --no-deps --workspace --all-targets --features "bt,serde,bench,compat" -- -D warnings
 
 
       - name: Build-doc

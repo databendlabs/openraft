@@ -25,6 +25,7 @@ tracing         = { workspace = true }
 
 [features]
 bt = ["openraft/bt"]
+single-term-leader = []
 
 [package.metadata.docs.rs]
 all-features = true

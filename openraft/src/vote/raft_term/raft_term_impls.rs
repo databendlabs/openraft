@@ -1,4 +1,4 @@
-use crate::vote::raft_term::RaftTerm;
+use crate::vote::RaftTerm;
 
 macro_rules! impl_raft_term {
     ($($t:ty),*) => {

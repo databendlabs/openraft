@@ -76,8 +76,6 @@ mod tests {
 
     #[test]
     fn test_replication_result_display() {
-        // NOTE that with single-term-leader, log id is `1-3`
-
         let result = ReplicationResult::<UTConfig>(Ok(Some(log_id(1, 2, 3))));
         let want = format!("(Match:{})", log_id::<UTConfig>(1, 2, 3));
         assert!(result.to_string().ends_with(&want), "{}", result.to_string());
