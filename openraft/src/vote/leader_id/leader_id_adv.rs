@@ -4,15 +4,11 @@ use crate::vote::RaftCommittedLeaderId;
 use crate::vote::RaftLeaderId;
 use crate::RaftTypeConfig;
 
-/// LeaderId is identifier of a `leader`.
+/// ID of a `leader`, allowing multiple leaders per term.
 ///
-/// In raft spec that in a term there is at most one leader, thus a `term` is enough to
-/// differentiate leaders. That is why raft uses `(term, index)` to uniquely identify a log
-/// entry.
+/// It includes the `term` and the `node_id`.
 ///
-/// Under this dirty simplification, a `Leader` is actually identified by `(term,
-/// voted_for:Option<node_id>)`.
-/// By introducing `LeaderId {term, node_id}`, things become easier to understand.
+/// This is totally ordered to enable multiple leaders per term.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 #[derive(PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
@@ -71,9 +67,9 @@ impl<C> RaftCommittedLeaderId<C> for LeaderId<C> where C: RaftTypeConfig {}
 
 #[cfg(test)]
 mod tests {
+    use super::LeaderId;
     use crate::engine::testing::UTConfig;
     use crate::vote::RaftLeaderId;
-    use crate::LeaderId;
 
     #[cfg(feature = "serde")]
     #[test]

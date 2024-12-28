@@ -37,11 +37,20 @@ pub struct ClientResponse {}
 
 pub type NodeId = u64;
 
+/// Choose a LeaderId implementation by feature flag.
+mod leader_id_mode {
+    #[cfg(not(feature = "single-term-leader"))]
+    pub use openraft::impls::leader_id_adv::LeaderId;
+    #[cfg(feature = "single-term-leader")]
+    pub use openraft::impls::leader_id_std::LeaderId;
+}
+
 openraft::declare_raft_types!(
     pub TypeConfig:
         D = ClientRequest,
         R = ClientResponse,
         Node = (),
+        LeaderId = leader_id_mode::LeaderId<TypeConfig>,
 );
 
 #[derive(Debug)]

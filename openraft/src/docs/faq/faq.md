@@ -237,8 +237,6 @@ pub(crate) fn following_handler(&mut self) -> FollowingHandler<C> {
 ```
 
 
-[`single-term-leader`]:         `crate::docs::feature_flags#single_term_leader`
-
 [`Linearizable Read`]: `crate::docs::protocol::read`
 [`leader_id`]:         `crate::docs::data::leader_id`
 

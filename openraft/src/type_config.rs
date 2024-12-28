@@ -16,8 +16,8 @@ pub use util::TypeConfigExt;
 use crate::entry::FromAppData;
 use crate::entry::RaftEntry;
 use crate::raft::responder::Responder;
-use crate::vote::raft_term::RaftTerm;
 use crate::vote::RaftLeaderId;
+use crate::vote::RaftTerm;
 use crate::AppData;
 use crate::AppDataResponse;
 use crate::Node;
@@ -46,8 +46,8 @@ use crate::OptionalSync;
 ///        NodeId       = u64,
 ///        Node         = openraft::BasicNode,
 ///        Term         = u64,
-///        LeaderId     = openraft::impls::LeaderId,
-///        Entry        = openraft::Entry<TypeConfig>,
+///        LeaderId     = openraft::impls::leader_id_adv::LeaderId<TypeConfig>,
+///        Entry        = openraft::impls::Entry<TypeConfig>,
 ///        SnapshotData = Cursor<Vec<u8>>,
 ///        AsyncRuntime = openraft::TokioRuntime,
 /// );

@@ -17,6 +17,8 @@ declare_raft_types!(
         #[allow(dead_code)]
         #[allow(dead_code)]
         R = (),
+        Term = u64,
+        LeaderId = crate::impls::leader_id_std::LeaderId<Self>,
         Entry = crate::Entry<Self>,
         SnapshotData = Cursor<Vec<u8>>,
         AsyncRuntime = TokioRuntime,

@@ -1,7 +1,7 @@
 use std::fmt;
 
 use crate::display_ext::DisplayOptionExt;
-use crate::vote::CommittedVote;
+use crate::vote::committed::CommittedVote;
 use crate::LogId;
 use crate::RaftTypeConfig;
 

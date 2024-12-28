@@ -24,6 +24,9 @@ in storage and network, such as `Vote` or `AppendEntriesRequest`.
 
 ## feature-flag `single-term-leader`
 
+**This feature flag is removed**.
+User [`leader_id_std::LeaderId`] in [`RaftTypeConfig`] instead.
+
 Allows only one leader to be elected in each `term`.
 This is the standard raft policy, which increases election conflict rate
 but reduce `LogId` size(`(term, node_id, index)` to `(term, index)`).
@@ -72,3 +75,6 @@ let snapshot_data: <MyTypeConfig as RaftTypeConfig>::SnapshotData;
 Note that the type shortcuts are not stable and may be changed in the future.
 It is also a good idea to copy the type shortcuts to your own codebase if you
 want to use them.
+
+[`RaftTypeConfig`]: crate::RaftTypeConfig
+[`leader_id_std::LeaderId`]: crate::impls::leader_id_std::LeaderId

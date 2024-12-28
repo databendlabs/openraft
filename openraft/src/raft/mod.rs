@@ -115,7 +115,7 @@ use crate::Vote;
 ///        NodeId       = u64,
 ///        Node         = openraft::BasicNode,
 ///        Term         = u64,
-///        LeaderId     = openraft::impls::LeaderId<TypeConfig>,
+///        LeaderId     = openraft::impls::leader_id_adv::LeaderId<TypeConfig>,
 ///        Entry        = openraft::Entry<TypeConfig>,
 ///        SnapshotData = Cursor<Vec<u8>>,
 ///        Responder    = openraft::impls::OneshotResponder<TypeConfig>,
@@ -128,6 +128,8 @@ use crate::Vote;
 /// - `R`:            `String`
 /// - `NodeId`:       `u64`
 /// - `Node`:         `::openraft::impls::BasicNode`
+/// - `Term`:         `u64`
+/// - `LeaderId`:     `::openraft::impls::leader_id_adv::LeaderId<Self>`
 /// - `Entry`:        `::openraft::impls::Entry<Self>`
 /// - `SnapshotData`: `Cursor<Vec<u8>>`
 /// - `Responder`:    `::openraft::impls::OneshotResponder<Self>`
@@ -170,16 +172,16 @@ macro_rules! declare_raft_types {
                 $(($type_id, $(#[$inner])*, $type),)*
 
                 // Default types:
-                (D            , , String                                ),
-                (R            , , String                                ),
-                (NodeId       , , u64                                   ),
-                (Node         , , $crate::impls::BasicNode              ),
-                (Term         , , u64                                   ),
-                (LeaderId     , , $crate::impls::LeaderId<Self>         ),
-                (Entry        , , $crate::impls::Entry<Self>            ),
-                (SnapshotData , , std::io::Cursor<Vec<u8>>              ),
-                (Responder    , , $crate::impls::OneshotResponder<Self> ),
-                (AsyncRuntime , , $crate::impls::TokioRuntime           ),
+                (D            , , String                                       ),
+                (R            , , String                                       ),
+                (NodeId       , , u64                                          ),
+                (Node         , , $crate::impls::BasicNode                     ),
+                (Term         , , u64                                          ),
+                (LeaderId     , , $crate::impls::leader_id_adv::LeaderId<Self> ),
+                (Entry        , , $crate::impls::Entry<Self>                   ),
+                (SnapshotData , , std::io::Cursor<Vec<u8>>                     ),
+                (Responder    , , $crate::impls::OneshotResponder<Self>        ),
+                (AsyncRuntime , , $crate::impls::TokioRuntime                  ),
             );
 
         }

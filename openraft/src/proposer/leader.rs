@@ -9,7 +9,7 @@ use crate::quorum::QuorumSet;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::TypeConfigExt;
-use crate::vote::CommittedVote;
+use crate::vote::committed::CommittedVote;
 use crate::vote::RaftLeaderId;
 use crate::LogId;
 use crate::LogIdOptionExt;

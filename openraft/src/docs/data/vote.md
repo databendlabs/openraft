@@ -34,8 +34,10 @@ i.e., it is legal that `!(vote_a => vote_b) && !(vote_a <= vote_b)`.
 Because `Vote.leader_id` may be a partial order value:
 
 Openraft provides two election modes.
-- the default mode: every term may have more than one leader.
-- and the standard Raft mode: every term has only one leader(enabled by [`single-term-leader`]),
+- the default mode: every term may have more than one leader
+  (enabled by default, or explicitly by setting [`RaftTypeConfig::LeaderId`] to [`leader_id_adv::LeaderId`]).
+- and the standard Raft mode: every term has only one leader
+  (enabled by setting [`RaftTypeConfig::LeaderId`] to [`leader_id_std::LeaderId`]),
 
 The only difference between these two modes is the definition of `LeaderId`, and the `PartialOrd` implementation of it.
 See: [`leader-id`].
@@ -79,5 +81,7 @@ For node-2:
 
 
 [`Vote`]: `crate::vote::Vote`
-[`single-term-leader`]: `crate::docs::feature_flags`
+[`RaftTypeConfig::LeaderId`]: `crate::RaftTypeConfig::LeaderId`
+[`leader_id_adv::LeaderId`]: `crate::impls::leader_id_adv::LeaderId`
+[`leader_id_std::LeaderId`]: `crate::impls::leader_id_std::LeaderId`
 [`leader-id`]: `crate::docs::data::leader_id`

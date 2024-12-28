@@ -7,6 +7,12 @@ use crate::vote::RaftCommittedLeaderId;
 use crate::vote::RaftLeaderId;
 use crate::RaftTypeConfig;
 
+/// ID of a `leader`, enforcing single leader per term.
+///
+/// It includes the `term` and the `node_id`.
+///
+/// Raft specifies that in a term there is at most one leader, thus Leader ID is partially order as
+/// defined below.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct LeaderId<C>
@@ -76,8 +82,20 @@ where C: RaftTypeConfig
     }
 }
 
+/// The unique identifier of a leader that is already granted by a quorum in phase-1(voting).
+///
+/// [`CommittedLeaderId`] contain less information than [`LeaderId`], because it implies the
+/// constraint that **a quorum has granted it**.
+///
+/// For a partial order `LeaderId`, we know that all the committed leader-id must be a total order
+/// set. Therefor once it is granted by a quorum, it only keeps the information that makes
+/// leader-ids a correct total order set, e.g., in standard raft, `voted_for: Option<node_id>` can
+/// be removed from `(term, voted_for)` once it is granted. This is why standard Raft stores just a
+/// `term` in log entry to identify the Leader proposing the log entry.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 #[derive(PartialOrd, Ord)]
+#[derive(derive_more::Display)]
+#[display("{}", term)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 #[cfg_attr(feature = "serde", serde(transparent))]
 pub struct CommittedLeaderId<C>
@@ -85,14 +103,6 @@ where C: RaftTypeConfig
 {
     pub term: C::Term,
     p: PhantomData<C>,
-}
-
-impl<C> fmt::Display for CommittedLeaderId<C>
-where C: RaftTypeConfig
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.term)
-    }
 }
 
 impl<C> CommittedLeaderId<C>
@@ -109,13 +119,14 @@ impl<C> RaftCommittedLeaderId<C> for CommittedLeaderId<C> where C: RaftTypeConfi
 #[cfg(test)]
 #[allow(clippy::nonminimal_bool)]
 mod tests {
+    use super::LeaderId;
     use crate::engine::testing::UTConfig;
-    use crate::LeaderId;
+    use crate::vote::RaftLeaderId;
 
     #[cfg(feature = "serde")]
     #[test]
     fn test_committed_leader_id_serde() -> anyhow::Result<()> {
-        use crate::CommittedLeaderId;
+        use super::CommittedLeaderId;
 
         let c = CommittedLeaderId::<UTConfig>::new(5, 10);
         let s = serde_json::to_string(&c)?;

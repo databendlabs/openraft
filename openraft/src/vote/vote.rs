@@ -3,9 +3,9 @@ use std::fmt::Formatter;
 
 use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::vote::committed::CommittedVote;
+use crate::vote::non_committed::NonCommittedVote;
 use crate::vote::ref_vote::RefVote;
 use crate::vote::vote_status::VoteStatus;
-use crate::vote::NonCommittedVote;
 use crate::vote::RaftLeaderId;
 use crate::RaftTypeConfig;
 
@@ -111,7 +111,6 @@ where C: RaftTypeConfig
 #[cfg(test)]
 #[allow(clippy::nonminimal_bool)]
 mod tests {
-    #[cfg(not(feature = "single-term-leader"))]
     mod feature_no_single_term_leader {
         use crate::engine::testing::UTConfig;
         use crate::Vote;
@@ -156,13 +155,14 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "single-term-leader")]
     mod feature_single_term_leader {
         use std::panic::UnwindSafe;
 
-        use crate::engine::testing::UTConfig;
-        use crate::LeaderId;
+        use crate::declare_raft_types;
+        use crate::vote::leader_id_std::LeaderId;
         use crate::Vote;
+
+        declare_raft_types!(TC: D=(),R=(),LeaderId=LeaderId<TC>);
 
         #[cfg(feature = "serde")]
         #[test]
@@ -171,7 +171,7 @@ mod tests {
             let s = serde_json::to_string(&v)?;
             assert_eq!(r#"{"leader_id":{"term":1,"voted_for":2},"committed":false}"#, s);
 
-            let v2: Vote<UTConfig> = serde_json::from_str(&s)?;
+            let v2: Vote<TC> = serde_json::from_str(&s)?;
             assert_eq!(v, v2);
 
             Ok(())
@@ -181,15 +181,15 @@ mod tests {
         #[allow(clippy::neg_cmp_op_on_partial_ord)]
         fn test_vote_partial_order() -> anyhow::Result<()> {
             #[allow(clippy::redundant_closure)]
-            let vote = |term, node_id| Vote::<UTConfig>::new(term, node_id);
+            let vote = |term, node_id| Vote::<TC>::new(term, node_id);
 
-            let none = |term| Vote::<UTConfig> {
+            let none = |term| Vote::<TC> {
                 leader_id: LeaderId { term, voted_for: None },
                 committed: false,
             };
 
             #[allow(clippy::redundant_closure)]
-            let committed = |term, node_id| Vote::<UTConfig>::new_committed(term, node_id);
+            let committed = |term, node_id| Vote::<TC>::new_committed(term, node_id);
 
             // Compare term first
             assert!(vote(2, 2) > vote(1, 2));

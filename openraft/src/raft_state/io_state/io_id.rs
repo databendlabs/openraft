@@ -2,9 +2,9 @@ use std::cmp::Ordering;
 use std::fmt;
 
 use crate::raft_state::io_state::log_io_id::LogIOId;
+use crate::vote::committed::CommittedVote;
+use crate::vote::non_committed::NonCommittedVote;
 use crate::vote::ref_vote::RefVote;
-use crate::vote::CommittedVote;
-use crate::vote::NonCommittedVote;
 use crate::ErrorSubject;
 use crate::ErrorVerb;
 use crate::LogId;

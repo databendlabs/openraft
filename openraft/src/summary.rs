@@ -79,8 +79,6 @@ where T: MessageSummary<T>
 #[cfg(test)]
 mod tests {
 
-    // With `single-term-leader`, log id is a two-element tuple
-    #[cfg(not(feature = "single-term-leader"))]
     #[test]
     fn test_display() {
         use crate::engine::testing::UTConfig;

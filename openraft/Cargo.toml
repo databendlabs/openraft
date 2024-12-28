@@ -62,17 +62,9 @@ bt  = ["anyerror/backtrace", "anyhow/backtrace"]
 # If you'd like to use `serde` to serialize messages.
 serde = ["dep:serde"]
 
-# Turn on this feature it allows at most ONE quorum-granted leader for each term.
-# This is the way standard raft does, by making the LeaderId a partial order value.
-#
-# - With this feature on:
-#   It is more likely to conflict during election. But every log only needs to store one `term` in it.
-#
-# - With this feature off:
-#   Election conflict rate will be reduced, but every log has to store a `LeaderId{ term, node_id}`,
-#   which may be costly if an application uses a big NodeId type.
-#
-# This feature is disabled by default.
+# This feature is removed.
+# Use `openraft::impls::leader_id_std::Leader` for `RaftTypeConfig`
+# to enable standard Raft leader election.
 single-term-leader = []
 
 # Enable this feature to use `openraft::alias::*` type shortcuts.
@@ -102,8 +94,6 @@ loosen-follower-log-revert = []
 # record.
 # See: https://docs.rs/tracing/latest/tracing/#emitting-log-records
 tracing-log = [ "tracing/log" ]
-
-# default = ["single-term-leader"]
 
 [package.metadata.docs.rs]
 

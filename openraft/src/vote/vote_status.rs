@@ -1,5 +1,5 @@
-use crate::vote::CommittedVote;
-use crate::vote::NonCommittedVote;
+use crate::vote::committed::CommittedVote;
+use crate::vote::non_committed::NonCommittedVote;
 use crate::RaftTypeConfig;
 
 #[derive(Debug, Clone, PartialEq, Eq)]

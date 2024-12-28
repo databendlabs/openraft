@@ -21,7 +21,7 @@ use crate::raft_state::IOId;
 use crate::replication::request::Replicate;
 use crate::replication::ReplicationSessionId;
 use crate::type_config::alias::OneshotSenderOf;
-use crate::vote::CommittedVote;
+use crate::vote::committed::CommittedVote;
 use crate::LogId;
 use crate::OptionalSend;
 use crate::RaftTypeConfig;

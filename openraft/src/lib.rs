@@ -132,8 +132,6 @@ pub use crate::try_as_ref::TryAsRef;
 #[cfg(feature = "type-alias")]
 pub use crate::type_config::alias;
 pub use crate::type_config::RaftTypeConfig;
-pub use crate::vote::CommittedLeaderId;
-pub use crate::vote::LeaderId;
 pub use crate::vote::Vote;
 
 /// A trait defining application specific data.

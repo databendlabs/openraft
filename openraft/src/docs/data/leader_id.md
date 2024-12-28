@@ -1,8 +1,13 @@
 ## Leader-id in Advanced mode and Standard mode
 
-Openraft provides two `LeaderId` types to switch between these two modes with feature [`single-term-leader`] :
+Openraft provides two `LeaderId` types to switch between these two modes:
+- the default mode: every term may have more than one leader
+  (enabled by default, or explicitly by setting [`RaftTypeConfig::LeaderId`] to [`leader_id_adv::LeaderId`]).
+- and the standard Raft mode: every term has only one leader
+  (enabled by setting [`RaftTypeConfig::LeaderId`] to [`leader_id_std::LeaderId`]).
 
-The feature [`single-term-leader`] affects the `PartialOrd` implementation of `LeaderId`, where `LeaderId` is defined as a tuple `(term, node_id)`.
+[`leader_id_adv::LeaderId`] is totally ordered.
+[`leader_id_std::LeaderId`] is `PartialOrd`.
 
 ### Definition of `LeaderId`
 
@@ -15,27 +20,26 @@ Within Openraft, and also implicitly in the standard Raft, `LeaderId` is utilize
   `A.term > B.term ↔ A > B`.
   <br/><br/>
 
-- Conversely, in Openraft, with the [`single-term-leader`] feature disabled by default, `LeaderId` follows a `total order` based on lexicographical comparison:
+- Conversely, in Openraft, with [`leader_id_adv::LeaderId`], `LeaderId` follows a `total order` based on lexicographical comparison:
 
   `A.term > B.term || (A.term == B.term && A.node_id > B.node_id) ↔ A > B`.
 
-Activating the `single-term-leader` feature makes `LeaderId` conform to the `partial order` seen in standard Raft.
+Using [`leader_id_std::LeaderId`] makes `LeaderId` conform to the `partial order` seen in standard Raft.
 
 ### Usage of `LeaderId`
 
 When handling `VoteRequest`, both Openraft and standard Raft (though not explicitly detailed) rely on the ordering of `LeaderId` to decide whether to grant a vote:
 **a node will grant a vote with a `LeaderId` that is greater than any it has previously granted**.
 
-Consequently, by default in Openraft (with `single-term-leader` disabled), it is possible to elect multiple `Leader`s within the same term, with the last elected `Leader` being recognized as valid. In contrast, under standard Raft protocol, only a single `Leader` is elected per `term`.
+Consequently, by default in Openraft (with [`leader_id_adv::LeaderId`]), it is possible to elect multiple `Leader`s within the same term, with the last elected `Leader` being recognized as valid. In contrast, under standard Raft protocol, only a single `Leader` is elected per `term`.
 
 ### Default: advanced mode
 
-`cargo build` without [`single-term-leader`][], is the advanced mode, the default mode:
+Use `openraft::impls::leader_id_adv::LeaderId` for [`RaftTypeConfig::LeaderId`] or leave it to default to switch to advanced mode.
 `LeaderId` is defined as the following, and it is a **totally ordered** value(two or more leaders can be granted in the same term):
 
 ```ignore
 // Advanced mode(default):
-#[cfg(not(feature = "single-term-leader"))]
 #[derive(PartialOrd, Ord)]
 pub struct LeaderId<NID: NodeId>
 {
@@ -57,12 +61,11 @@ elected(although only the last is valid and can commit logs).
 
 #### Standard mode
 
-`cargo build --features "single-term-leader"` builds openraft in standard raft mode.
+Use `openraft::impls::leader_id_std::LeaderId` for [`RaftTypeConfig::LeaderId`] to switch to standard mode.
 In the standard mode, `LeaderId` is defined as the following, and it is a **partially ordered** value(no two leaders can be granted in the same term):
 
 ```ignore
 // Standard raft mode:
-#[cfg(feature = "single-term-leader")]
 pub struct LeaderId<NID: NodeId>
 {
   pub term: u64,
@@ -125,4 +128,6 @@ So let a committed `Vote` override a incomparable non-committed is safe.
 - Cons: election conflicting rate may increase.
 
 
-[`single-term-leader`]: crate::docs::feature_flags
+[`RaftTypeConfig::LeaderId`]: crate::RaftTypeConfig::LeaderId
+[`leader_id_adv::LeaderId`]: `crate::impls::leader_id_adv::LeaderId`
+[`leader_id_std::LeaderId`]: `crate::impls::leader_id_std::LeaderId`
