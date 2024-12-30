@@ -16,26 +16,7 @@ impl StoreBuilder<TypeConfig, RocksLogStore<TypeConfig>, RocksStateMachine, Temp
         Ok((td, log_store, sm))
     }
 }
-/// To customize a builder:
-///
-/// ```ignore
-/// use openraft::testing::StoreBuilder;
-/// use crate::ClientRequest;
-/// use crate::ClientResponse;
-///
-/// struct MemStoreBuilder {}
-///
-/// impl StoreBuilder<ClientRequest, ClientResponse, RocksLogStore, RocksStateMachine> for MemStoreBuilder {
-///     async fn build(&self) -> _ {
-///         // ...
-///     }
-/// }
-/// #[test]
-/// pub fn test_mem_store() -> anyhow::Result<()> {
-///     let rt = YourRuntime::new();
-///     rt.block_on(Suite::test_all(MemStoreBuilder {}));
-/// }
-/// ```
+
 #[tokio::test]
 pub async fn test_rocks_store() -> Result<(), StorageError<TypeConfig>> {
     Suite::test_all(RocksBuilder {}).await?;
