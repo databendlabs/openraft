@@ -7,6 +7,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "proto/management_service.proto",
         "proto/api_service.proto",
     ];
+
+    // TODO: remove serde
+
     tonic_build::configure()
         .type_attribute("openraftpb.Node", "#[derive(Eq, serde::Serialize, serde::Deserialize)]")
         .type_attribute(
@@ -15,6 +18,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .type_attribute(
             "openraftpb.Response",
+            "#[derive(Eq, serde::Serialize, serde::Deserialize)]",
+        )
+        .type_attribute(
+            "openraftpb.LeaderId",
             "#[derive(Eq, serde::Serialize, serde::Deserialize)]",
         )
         .compile_protos_with_config(config, &proto_files, &["proto"])?;

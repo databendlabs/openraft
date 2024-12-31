@@ -43,3 +43,10 @@ where
     Self: OptionalFeatures + Ord + Clone + Debug + Display + Default + 'static,
 {
 }
+
+impl<C, T> RaftCommittedLeaderId<C> for T
+where
+    C: RaftTypeConfig,
+    T: OptionalFeatures + Ord + Clone + Debug + Display + Default + 'static,
+{
+}

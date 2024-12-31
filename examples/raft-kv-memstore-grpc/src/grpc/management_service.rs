@@ -5,6 +5,7 @@ use tonic::Response;
 use tonic::Status;
 use tracing::debug;
 
+use crate::pb;
 use crate::protobuf::management_service_server::ManagementService;
 use crate::protobuf::AddLearnerRequest;
 use crate::protobuf::ChangeMembershipRequest;
@@ -12,7 +13,6 @@ use crate::protobuf::InitRequest;
 use crate::protobuf::RaftReplyString;
 use crate::protobuf::RaftRequestString;
 use crate::typ::*;
-use crate::Node;
 
 /// Management service implementation for Raft cluster administration.
 /// Handles cluster initialization, membership changes, and metrics collection.
@@ -62,11 +62,11 @@ impl ManagementService for ManagementServiceImpl {
         let req = request.into_inner();
 
         // Convert nodes into required format
-        let nodes_map: BTreeMap<u64, Node> = req
+        let nodes_map: BTreeMap<u64, pb::Node> = req
             .nodes
             .into_iter()
             .map(|node| {
-                (node.node_id, Node {
+                (node.node_id, pb::Node {
                     rpc_addr: node.rpc_addr,
                     node_id: node.node_id,
                 })

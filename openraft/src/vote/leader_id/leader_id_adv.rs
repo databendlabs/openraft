@@ -1,6 +1,7 @@
+//! [`RaftLeaderId`] implementation that allows multiple leaders per term.
+
 use std::fmt;
 
-use crate::vote::RaftCommittedLeaderId;
 use crate::vote::RaftLeaderId;
 use crate::RaftTypeConfig;
 
@@ -42,7 +43,7 @@ where C: RaftTypeConfig
 pub type CommittedLeaderId<C> = LeaderId<C>;
 
 impl<C> RaftLeaderId<C> for LeaderId<C>
-where C: RaftTypeConfig
+where C: RaftTypeConfig<LeaderId = Self>
 {
     type Committed = Self;
 
@@ -62,8 +63,6 @@ where C: RaftTypeConfig
         self.clone()
     }
 }
-
-impl<C> RaftCommittedLeaderId<C> for LeaderId<C> where C: RaftTypeConfig {}
 
 #[cfg(test)]
 mod tests {
@@ -89,7 +88,7 @@ mod tests {
     }
 
     #[test]
-    fn test_leader_id_partial_order() -> anyhow::Result<()> {
+    fn test_adv_leader_id_partial_order() -> anyhow::Result<()> {
         #[allow(clippy::redundant_closure)]
         let lid = |term, node_id| LeaderId::<UTConfig>::new(term, node_id);
 
