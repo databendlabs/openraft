@@ -10,6 +10,8 @@ pub type Entry = openraft::Entry<TypeConfig>;
 pub type EntryPayload = openraft::EntryPayload<TypeConfig>;
 pub type StoredMembership = openraft::StoredMembership<TypeConfig>;
 
+pub type Node = <TypeConfig as openraft::RaftTypeConfig>::Node;
+
 pub type LogState = openraft::storage::LogState<TypeConfig>;
 
 pub type SnapshotMeta = openraft::SnapshotMeta<TypeConfig>;
