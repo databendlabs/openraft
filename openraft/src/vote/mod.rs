@@ -16,5 +16,6 @@ pub use leader_id::raft_leader_id::RaftLeaderIdExt;
 pub use raft_term::RaftTerm;
 
 pub use self::leader_id::leader_id_adv;
+pub use self::leader_id::leader_id_cmp::LeaderIdCompare;
 pub use self::leader_id::leader_id_std;
 pub use self::vote::Vote;

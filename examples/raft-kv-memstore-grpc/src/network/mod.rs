@@ -7,6 +7,7 @@ use openraft::network::RPCOption;
 use openraft::RaftNetworkFactory;
 use tonic::transport::Channel;
 
+use crate::protobuf as pb;
 use crate::protobuf::internal_service_client::InternalServiceClient;
 use crate::protobuf::RaftRequestBytes;
 use crate::protobuf::SnapshotRequest;
@@ -14,7 +15,6 @@ use crate::protobuf::VoteRequest as PbVoteRequest;
 use crate::protobuf::VoteResponse as PbVoteResponse;
 use crate::typ::RPCError;
 use crate::typ::*;
-use crate::Node;
 use crate::NodeId;
 use crate::TypeConfig;
 
@@ -38,7 +38,7 @@ impl RaftNetworkFactory<TypeConfig> for Network {
 /// Represents an active network connection to a remote Raft node.
 /// Handles serialization and deserialization of Raft messages over gRPC.
 pub struct NetworkConnection {
-    target_node: Node,
+    target_node: pb::Node,
 }
 
 impl NetworkConnection {

@@ -1,9 +1,12 @@
+//! [`RaftLeaderId`] implementation that enforces standard Raft behavior of at most one leader per
+//! term.
+
 use std::cmp::Ordering;
 use std::fmt;
 use std::marker::PhantomData;
 
 use crate::display_ext::DisplayOptionExt;
-use crate::vote::RaftCommittedLeaderId;
+use crate::vote::LeaderIdCompare;
 use crate::vote::RaftLeaderId;
 use crate::RaftTypeConfig;
 
@@ -28,24 +31,7 @@ where C: RaftTypeConfig
 {
     #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        match PartialOrd::partial_cmp(&self.term, &other.term) {
-            Some(Ordering::Equal) => {
-                //
-                match (&self.voted_for, &other.voted_for) {
-                    (None, None) => Some(Ordering::Equal),
-                    (Some(_), None) => Some(Ordering::Greater),
-                    (None, Some(_)) => Some(Ordering::Less),
-                    (Some(a), Some(b)) => {
-                        if a == b {
-                            Some(Ordering::Equal)
-                        } else {
-                            None
-                        }
-                    }
-                }
-            }
-            cmp => cmp,
-        }
+        LeaderIdCompare::<C>::std(self, other)
     }
 }
 
@@ -114,8 +100,6 @@ where C: RaftTypeConfig
     }
 }
 
-impl<C> RaftCommittedLeaderId<C> for CommittedLeaderId<C> where C: RaftTypeConfig {}
-
 #[cfg(test)]
 #[allow(clippy::nonminimal_bool)]
 mod tests {
@@ -140,7 +124,7 @@ mod tests {
 
     #[test]
     #[allow(clippy::neg_cmp_op_on_partial_ord)]
-    fn test_leader_id_partial_order() -> anyhow::Result<()> {
+    fn test_std_leader_id_partial_order() -> anyhow::Result<()> {
         #[allow(clippy::redundant_closure)]
         let lid = |term, node_id| LeaderId::<UTConfig>::new(term, node_id);
 

@@ -25,7 +25,7 @@ in storage and network, such as `Vote` or `AppendEntriesRequest`.
 ## feature-flag `single-term-leader`
 
 **This feature flag is removed**.
-User [`leader_id_std::LeaderId`] in [`RaftTypeConfig`] instead.
+Use [`leader_id_std::LeaderId`] in [`RaftTypeConfig`] instead.
 
 Allows only one leader to be elected in each `term`.
 This is the standard raft policy, which increases election conflict rate
