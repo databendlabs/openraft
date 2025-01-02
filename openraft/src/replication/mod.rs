@@ -54,6 +54,7 @@ use crate::type_config::alias::MpscUnboundedWeakSenderOf;
 use crate::type_config::alias::MutexOf;
 use crate::type_config::alias::OneshotReceiverOf;
 use crate::type_config::alias::OneshotSenderOf;
+use crate::type_config::alias::VoteOf;
 use crate::type_config::async_runtime::mutex::Mutex;
 use crate::type_config::TypeConfigExt;
 use crate::vote::RaftLeaderId;
@@ -62,7 +63,6 @@ use crate::RaftLogId;
 use crate::RaftNetworkFactory;
 use crate::RaftTypeConfig;
 use crate::StorageError;
-use crate::Vote;
 
 /// The handle to a spawned replication stream.
 pub(crate) struct ReplicationHandle<C>
@@ -748,7 +748,7 @@ where
 
     async fn send_snapshot(
         network: Arc<MutexOf<C, N::Network>>,
-        vote: Vote<C>,
+        vote: VoteOf<C>,
         snapshot: Snapshot<C>,
         option: RPCOption,
         cancel: OneshotReceiverOf<C, ()>,

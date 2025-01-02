@@ -2,10 +2,10 @@ use std::cmp::Ordering;
 use std::fmt;
 
 use crate::type_config::alias::CommittedLeaderIdOf;
+use crate::type_config::alias::VoteOf;
 use crate::vote::ref_vote::RefVote;
 use crate::vote::RaftLeaderId;
 use crate::RaftTypeConfig;
-use crate::Vote;
 
 /// Represents a committed Vote that has been accepted by a quorum.
 ///
@@ -16,7 +16,7 @@ use crate::Vote;
 pub(crate) struct CommittedVote<C>
 where C: RaftTypeConfig
 {
-    vote: Vote<C>,
+    vote: VoteOf<C>,
 }
 
 /// The `CommittedVote` is totally ordered.
@@ -37,7 +37,7 @@ where C: RaftTypeConfig
 impl<C> CommittedVote<C>
 where C: RaftTypeConfig
 {
-    pub(crate) fn new(mut vote: Vote<C>) -> Self {
+    pub(crate) fn new(mut vote: VoteOf<C>) -> Self {
         vote.committed = true;
         Self { vote }
     }
@@ -46,7 +46,7 @@ where C: RaftTypeConfig
         self.vote.leader_id().to_committed()
     }
 
-    pub(crate) fn into_vote(self) -> Vote<C> {
+    pub(crate) fn into_vote(self) -> VoteOf<C> {
         self.vote
     }
 

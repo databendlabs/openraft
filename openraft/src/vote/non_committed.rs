@@ -1,9 +1,9 @@
 use std::fmt;
 
 use crate::type_config::alias::LeaderIdOf;
+use crate::type_config::alias::VoteOf;
 use crate::vote::ref_vote::RefVote;
 use crate::RaftTypeConfig;
-use crate::Vote;
 
 /// Represents a non-committed Vote that has **NOT** been granted by a quorum.
 ///
@@ -14,13 +14,13 @@ use crate::Vote;
 pub(crate) struct NonCommittedVote<C>
 where C: RaftTypeConfig
 {
-    vote: Vote<C>,
+    vote: VoteOf<C>,
 }
 
 impl<C> NonCommittedVote<C>
 where C: RaftTypeConfig
 {
-    pub(crate) fn new(vote: Vote<C>) -> Self {
+    pub(crate) fn new(vote: VoteOf<C>) -> Self {
         debug_assert!(!vote.committed);
         Self { vote }
     }
@@ -29,7 +29,7 @@ where C: RaftTypeConfig
         &self.vote.leader_id
     }
 
-    pub(crate) fn into_vote(self) -> Vote<C> {
+    pub(crate) fn into_vote(self) -> VoteOf<C> {
         self.vote
     }
 

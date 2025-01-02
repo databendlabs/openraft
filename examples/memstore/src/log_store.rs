@@ -6,13 +6,13 @@ use std::fmt::Debug;
 use std::ops::RangeBounds;
 use std::sync::Arc;
 
+use openraft::alias::VoteOf;
 use openraft::storage::IOFlushed;
 use openraft::LogId;
 use openraft::LogState;
 use openraft::RaftLogId;
 use openraft::RaftTypeConfig;
 use openraft::StorageError;
-use openraft::Vote;
 use tokio::sync::Mutex;
 
 /// RaftLogStore implementation with a in-memory storage
@@ -33,7 +33,7 @@ pub struct LogStoreInner<C: RaftTypeConfig> {
     committed: Option<LogId<C>>,
 
     /// The current granted vote.
-    vote: Option<Vote<C>>,
+    vote: Option<VoteOf<C>>,
 }
 
 impl<C: RaftTypeConfig> Default for LogStoreInner<C> {
@@ -84,12 +84,12 @@ impl<C: RaftTypeConfig> LogStoreInner<C> {
         Ok(self.committed.clone())
     }
 
-    async fn save_vote(&mut self, vote: &Vote<C>) -> Result<(), StorageError<C>> {
+    async fn save_vote(&mut self, vote: &VoteOf<C>) -> Result<(), StorageError<C>> {
         self.vote = Some(vote.clone());
         Ok(())
     }
 
-    async fn read_vote(&mut self) -> Result<Option<Vote<C>>, StorageError<C>> {
+    async fn read_vote(&mut self) -> Result<Option<VoteOf<C>>, StorageError<C>> {
         Ok(self.vote.clone())
     }
 
@@ -135,6 +135,7 @@ mod impl_log_store {
     use std::fmt::Debug;
     use std::ops::RangeBounds;
 
+    use openraft::alias::VoteOf;
     use openraft::storage::IOFlushed;
     use openraft::storage::RaftLogStorage;
     use openraft::LogId;
@@ -142,7 +143,6 @@ mod impl_log_store {
     use openraft::RaftLogReader;
     use openraft::RaftTypeConfig;
     use openraft::StorageError;
-    use openraft::Vote;
 
     use crate::log_store::LogStore;
 
@@ -157,7 +157,7 @@ mod impl_log_store {
             inner.try_get_log_entries(range).await
         }
 
-        async fn read_vote(&mut self) -> Result<Option<Vote<C>>, StorageError<C>> {
+        async fn read_vote(&mut self) -> Result<Option<VoteOf<C>>, StorageError<C>> {
             let mut inner = self.inner.lock().await;
             inner.read_vote().await
         }
@@ -183,7 +183,7 @@ mod impl_log_store {
             inner.read_committed().await
         }
 
-        async fn save_vote(&mut self, vote: &Vote<C>) -> Result<(), StorageError<C>> {
+        async fn save_vote(&mut self, vote: &VoteOf<C>) -> Result<(), StorageError<C>> {
             let mut inner = self.inner.lock().await;
             inner.save_vote(vote).await
         }

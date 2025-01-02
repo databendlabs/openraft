@@ -41,6 +41,7 @@ use crate::proposer::Leader;
 use crate::proposer::LeaderQuorumSet;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::LogIdOf;
+use crate::type_config::alias::VoteOf;
 use crate::vote::RaftLeaderId;
 
 /// A struct used to represent the raft state which a Raft node needs.
@@ -50,7 +51,7 @@ pub struct RaftState<C>
 where C: RaftTypeConfig
 {
     /// The vote state of this node.
-    pub(crate) vote: Leased<Vote<C>, InstantOf<C>>,
+    pub(crate) vote: Leased<VoteOf<C>, InstantOf<C>>,
 
     /// The LogId of the last log committed(AKA applied) to the state machine.
     ///
@@ -150,7 +151,7 @@ where C: RaftTypeConfig
 impl<C> VoteStateReader<C> for RaftState<C>
 where C: RaftTypeConfig
 {
-    fn vote_ref(&self) -> &Vote<C> {
+    fn vote_ref(&self) -> &VoteOf<C> {
         self.vote.deref()
     }
 }
@@ -188,7 +189,7 @@ impl<C> RaftState<C>
 where C: RaftTypeConfig
 {
     /// Get a reference to the current vote.
-    pub fn vote_ref(&self) -> &Vote<C> {
+    pub fn vote_ref(&self) -> &VoteOf<C> {
         self.vote.deref()
     }
 

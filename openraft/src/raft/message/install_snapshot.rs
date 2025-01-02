@@ -1,15 +1,15 @@
 use std::fmt;
 
 use crate::storage::SnapshotMeta;
+use crate::type_config::alias::VoteOf;
 use crate::RaftTypeConfig;
-use crate::Vote;
 
 /// An RPC sent by the Raft leader to send chunks of a snapshot to a follower (§7).
 #[derive(Clone, Debug)]
 #[derive(PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct InstallSnapshotRequest<C: RaftTypeConfig> {
-    pub vote: Vote<C>,
+    pub vote: VoteOf<C>,
 
     /// Metadata of a snapshot: snapshot_id, last_log_ed membership etc.
     pub meta: SnapshotMeta<C>,
@@ -44,7 +44,7 @@ impl<C: RaftTypeConfig> fmt::Display for InstallSnapshotRequest<C> {
 #[display("{{vote:{}}}", vote)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct InstallSnapshotResponse<C: RaftTypeConfig> {
-    pub vote: Vote<C>,
+    pub vote: VoteOf<C>,
 }
 
 /// The response to `Raft::install_full_snapshot` API.
@@ -54,11 +54,11 @@ pub struct InstallSnapshotResponse<C: RaftTypeConfig> {
 #[display("SnapshotResponse{{vote:{}}}", vote)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct SnapshotResponse<C: RaftTypeConfig> {
-    pub vote: Vote<C>,
+    pub vote: VoteOf<C>,
 }
 
 impl<C: RaftTypeConfig> SnapshotResponse<C> {
-    pub fn new(vote: Vote<C>) -> Self {
+    pub fn new(vote: VoteOf<C>) -> Self {
         Self { vote }
     }
 }

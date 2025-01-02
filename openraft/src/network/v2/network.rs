@@ -18,10 +18,10 @@ use crate::raft::SnapshotResponse;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::storage::Snapshot;
+use crate::type_config::alias::VoteOf;
 use crate::OptionalSend;
 use crate::OptionalSync;
 use crate::RaftTypeConfig;
-use crate::Vote;
 
 /// A trait defining the interface for a Raft network between cluster members.
 ///
@@ -75,7 +75,7 @@ where C: RaftTypeConfig
     /// [`Raft::install_full_snapshot()`]: crate::raft::Raft::install_full_snapshot
     async fn full_snapshot(
         &mut self,
-        vote: Vote<C>,
+        vote: VoteOf<C>,
         snapshot: Snapshot<C>,
         cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
         option: RPCOption,

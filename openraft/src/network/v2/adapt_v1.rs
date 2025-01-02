@@ -13,10 +13,10 @@ use crate::raft::SnapshotResponse;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::storage::Snapshot;
+use crate::type_config::alias::VoteOf;
 use crate::OptionalSend;
 use crate::RaftNetwork;
 use crate::RaftTypeConfig;
-use crate::Vote;
 
 impl<C, V1> RaftNetworkV2<C> for V1
 where
@@ -38,7 +38,7 @@ where
 
     async fn full_snapshot(
         &mut self,
-        vote: Vote<C>,
+        vote: VoteOf<C>,
         snapshot: Snapshot<C>,
         cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
         option: RPCOption,

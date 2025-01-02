@@ -17,13 +17,13 @@ use crate::proposer::CandidateState;
 use crate::proposer::LeaderState;
 use crate::raft_state::IOId;
 use crate::raft_state::LogStateReader;
+use crate::type_config::alias::VoteOf;
 use crate::type_config::TypeConfigExt;
 use crate::vote::RaftLeaderId;
 use crate::LogId;
 use crate::OptionalSend;
 use crate::RaftState;
 use crate::RaftTypeConfig;
-use crate::Vote;
 
 #[cfg(test)]
 mod accept_vote_test;
@@ -60,7 +60,7 @@ where C: RaftTypeConfig
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn accept_vote<T, E, F>(
         &mut self,
-        vote: &Vote<C>,
+        vote: &VoteOf<C>,
         tx: ResultSender<C, T, E>,
         f: F,
     ) -> Option<ResultSender<C, T, E>>
@@ -99,7 +99,7 @@ where C: RaftTypeConfig
     /// Note: This method does not check last-log-id. handle-vote-request has to deal with
     /// last-log-id itself.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn update_vote(&mut self, vote: &Vote<C>) -> Result<(), RejectVoteRequest<C>> {
+    pub(crate) fn update_vote(&mut self, vote: &VoteOf<C>) -> Result<(), RejectVoteRequest<C>> {
         // Partial ord compare:
         // Vote does not have to be total ord.
         // `!(a >= b)` does not imply `a < b`.

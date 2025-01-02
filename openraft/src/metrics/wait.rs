@@ -8,12 +8,12 @@ use crate::core::ServerState;
 use crate::metrics::Condition;
 use crate::metrics::Metric;
 use crate::metrics::RaftMetrics;
+use crate::type_config::alias::VoteOf;
 use crate::type_config::alias::WatchReceiverOf;
 use crate::type_config::TypeConfigExt;
 use crate::LogId;
 use crate::OptionalSend;
 use crate::RaftTypeConfig;
-use crate::Vote;
 
 // Error variants related to metrics.
 #[derive(Debug, thiserror::Error)]
@@ -93,7 +93,7 @@ where C: RaftTypeConfig
 
     /// Wait for `vote` to become `want` or timeout.
     #[tracing::instrument(level = "trace", skip(self), fields(msg=msg.to_string().as_str()))]
-    pub async fn vote(&self, want: Vote<C>, msg: impl ToString) -> Result<RaftMetrics<C>, WaitError> {
+    pub async fn vote(&self, want: VoteOf<C>, msg: impl ToString) -> Result<RaftMetrics<C>, WaitError> {
         self.eq(Metric::Vote(want), msg).await
     }
 

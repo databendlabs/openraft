@@ -2,13 +2,13 @@ use openraft_macros::add_async_trait;
 
 use crate::storage::IOFlushed;
 use crate::storage::LogState;
+use crate::type_config::alias::VoteOf;
 use crate::LogId;
 use crate::OptionalSend;
 use crate::OptionalSync;
 use crate::RaftLogReader;
 use crate::RaftTypeConfig;
 use crate::StorageError;
-use crate::Vote;
 
 /// API for log store.
 ///
@@ -52,7 +52,7 @@ where C: RaftTypeConfig
     /// ### To ensure correctness:
     ///
     /// The vote must be persisted on disk before returning.
-    async fn save_vote(&mut self, vote: &Vote<C>) -> Result<(), StorageError<C>>;
+    async fn save_vote(&mut self, vote: &VoteOf<C>) -> Result<(), StorageError<C>>;
 
     /// Saves the last committed log id to storage.
     ///

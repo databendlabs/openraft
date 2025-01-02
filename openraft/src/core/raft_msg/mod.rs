@@ -16,10 +16,10 @@ use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::OneshotSenderOf;
 use crate::type_config::alias::ResponderOf;
 use crate::type_config::alias::SnapshotDataOf;
+use crate::type_config::alias::VoteOf;
 use crate::ChangeMembers;
 use crate::RaftState;
 use crate::RaftTypeConfig;
-use crate::Vote;
 
 pub(crate) mod external_command;
 
@@ -52,7 +52,7 @@ where C: RaftTypeConfig
     },
 
     InstallFullSnapshot {
-        vote: Vote<C>,
+        vote: VoteOf<C>,
         snapshot: Snapshot<C>,
         tx: ResultSender<C, SnapshotResponse<C>>,
     },
@@ -101,7 +101,7 @@ where C: RaftTypeConfig
     /// Otherwise, just reset Leader lease so that the node `to` can become Leader.
     HandleTransferLeader {
         /// The vote of the Leader that is transferring the leadership.
-        from: Vote<C>,
+        from: VoteOf<C>,
         /// The assigned node to be the next Leader.
         to: C::NodeId,
     },

@@ -7,11 +7,11 @@ use crate::log_id::RaftLogId;
 use crate::raft_state::io_state::io_id::IOId;
 use crate::storage::IOFlushed;
 use crate::storage::RaftLogStorage;
+use crate::type_config::alias::VoteOf;
 use crate::type_config::TypeConfigExt;
 use crate::OptionalSend;
 use crate::RaftTypeConfig;
 use crate::StorageError;
-use crate::Vote;
 
 /// Extension trait for RaftLogStorage to provide utility methods.
 ///
@@ -34,7 +34,7 @@ where C: RaftTypeConfig
 
         let (tx, mut rx) = C::mpsc_unbounded();
 
-        let io_id = IOId::<C>::new_log_io(Vote::<C>::default().into_committed(), Some(last_log_id));
+        let io_id = IOId::<C>::new_log_io(VoteOf::<C>::default().into_committed(), Some(last_log_id));
         let notify = Notification::LocalIO { io_id };
 
         let callback = IOFlushed::<C>::new(notify, tx.downgrade());

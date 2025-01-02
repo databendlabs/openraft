@@ -1,11 +1,11 @@
 use std::cmp::Ordering;
 
 use crate::metrics::metric_display::MetricDisplay;
+use crate::type_config::alias::VoteOf;
 use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::RaftMetrics;
 use crate::RaftTypeConfig;
-use crate::Vote;
 
 /// A metric entry of a Raft node.
 ///
@@ -15,7 +15,7 @@ pub enum Metric<C>
 where C: RaftTypeConfig
 {
     Term(C::Term),
-    Vote(Vote<C>),
+    Vote(VoteOf<C>),
     LastLogIndex(Option<u64>),
     Applied(Option<LogId<C>>),
     AppliedIndex(Option<u64>),
