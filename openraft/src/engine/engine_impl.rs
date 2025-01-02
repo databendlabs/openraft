@@ -2,6 +2,7 @@ use std::time::Duration;
 
 use validit::Valid;
 
+use crate::base::ord_by::OrdBy;
 use crate::core::raft_msg::AppendEntriesTx;
 use crate::core::raft_msg::ResultSender;
 use crate::core::sm;
@@ -44,18 +45,20 @@ use crate::raft_state::LogStateReader;
 use crate::raft_state::RaftState;
 use crate::storage::Snapshot;
 use crate::storage::SnapshotMeta;
+use crate::type_config::alias::LeaderIdOf;
 use crate::type_config::alias::ResponderOf;
 use crate::type_config::alias::SnapshotDataOf;
 use crate::type_config::alias::VoteOf;
 use crate::type_config::TypeConfigExt;
+use crate::vote::raft_vote::RaftVoteExt;
 use crate::vote::RaftLeaderId;
 use crate::vote::RaftTerm;
+use crate::vote::RaftVote;
 use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::Membership;
 use crate::RaftLogId;
 use crate::RaftTypeConfig;
-use crate::Vote;
 
 /// Raft protocol algorithm.
 ///
@@ -195,10 +198,7 @@ where C: RaftTypeConfig
         self.check_members_contain_me(m)?;
 
         // FollowingHandler requires vote to be committed.
-        let vote = Vote {
-            committed: true,
-            ..Default::default()
-        };
+        let vote = <VoteOf<C> as RaftVote<C>>::from_leader_id(Default::default(), true);
         self.state.vote.update(C::now(), Duration::default(), vote);
         self.following_handler().do_append_entries(vec![entry]);
 
@@ -211,8 +211,9 @@ where C: RaftTypeConfig
     /// Start to elect this node as leader
     #[tracing::instrument(level = "debug", skip(self))]
     pub(crate) fn elect(&mut self) {
-        let new_term = self.state.vote.leader_id().term().next();
-        let new_vote = Vote::new(new_term, self.config.id.clone());
+        let new_term = self.state.vote.term().next();
+        let leader_id = LeaderIdOf::<C>::new(new_term, self.config.id.clone());
+        let new_vote = VoteOf::<C>::from_leader_id(leader_id, false);
 
         let candidate = self.new_candidate(new_vote.clone());
 
@@ -754,7 +755,7 @@ where C: RaftTypeConfig
         };
 
         debug_assert!(
-            leader.committed_vote_ref().clone().into_vote() >= *self.state.vote_ref(),
+            leader.committed_vote_ref().ord_by() >= self.state.vote_ref().ord_by(),
             "leader.vote({}) >= state.vote({})",
             leader.committed_vote_ref(),
             self.state.vote_ref()

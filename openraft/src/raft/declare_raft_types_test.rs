@@ -20,6 +20,7 @@ declare_raft_types!(
         Term = u64,
         LeaderId = crate::impls::leader_id_std::LeaderId<Self>,
         Entry = crate::Entry<Self>,
+        Vote = crate::impls::Vote<Self>,
         SnapshotData = Cursor<Vec<u8>>,
         AsyncRuntime = TokioRuntime,
         Responder = crate::impls::OneshotResponder<Self>,

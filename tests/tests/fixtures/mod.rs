@@ -185,9 +185,11 @@ impl fmt::Display for Direction {
     }
 }
 
+use openraft::alias::VoteOf;
 use openraft::network::v2::RaftNetworkV2;
 use openraft::vote::RaftLeaderId;
 use openraft::vote::RaftLeaderIdExt;
+use openraft::vote::RaftVote;
 use Direction::NetRecv;
 use Direction::NetSend;
 
@@ -416,7 +418,7 @@ impl TypedRaftRouter {
         tracing::info!(log_index, "--- wait for init node to become leader");
 
         self.wait_for_log(&btreeset![leader_id], Some(log_index), timeout(), "init").await?;
-        self.wait(&leader_id, timeout()).vote(Vote::new_committed(1, 0), "init vote").await?;
+        self.wait(&leader_id, timeout()).vote(VoteOf::<MemConfig>::new_committed(1, 0), "init vote").await?;
 
         for id in voter_ids.iter() {
             if *id == leader_id {
@@ -892,7 +894,7 @@ impl TypedRaftRouter {
 
         if let Some(voted_for) = &expect_voted_for {
             assert_eq!(
-                vote.leader_id().node_id(),
+                vote.leader_node_id(),
                 Some(voted_for),
                 "expected node {} to have voted for {}, got {:?}",
                 id,
@@ -1022,7 +1024,7 @@ impl RaftNetworkV2<MemConfig> for RaftRouterNetwork {
         mut rpc: AppendEntriesRequest<MemConfig>,
         _option: RPCOption,
     ) -> Result<AppendEntriesResponse<MemConfig>, RPCError<MemConfig>> {
-        let from_id = rpc.vote.leader_id().node_id().cloned().unwrap();
+        let from_id = rpc.vote.to_leader_node_id().unwrap();
 
         tracing::debug!("append_entries to id={} {}", self.target, rpc);
         self.owner.count_rpc(RPCTypes::AppendEntries);
@@ -1181,4 +1183,73 @@ impl<T> From<std::ops::Range<T>> for ValueTest<T> {
 
 fn timeout() -> Option<Duration> {
     Some(Duration::from_millis(5_000))
+}
+
+/// A trait for extending the functionality of a Raft vote.
+///
+/// This is used for testing.
+pub(crate) trait TestingVoteExt<C>
+where
+    C: RaftTypeConfig,
+    Self: RaftVote<C>,
+{
+    /// Creates a new vote for a node in a specific term, with uncommitted status.
+    fn from_term_node_id(term: C::Term, node_id: C::NodeId) -> Self {
+        let leader_id = C::LeaderId::new(term, node_id);
+        Self::from_leader_id(leader_id, false)
+    }
+
+    /// Gets the node ID of the leader this vote is for, if present.
+    fn to_leader_node_id(&self) -> Option<C::NodeId> {
+        self.leader_node_id().cloned()
+    }
+
+    /// Gets a reference to the node ID of the leader this vote is for, if present.
+    fn leader_node_id(&self) -> Option<&C::NodeId> {
+        self.leader_id().and_then(|x| x.node_id())
+    }
+
+    // /// Gets the leader ID this vote is associated with.
+    // fn to_leader_id(&self) -> C::LeaderId {
+    //     self.leader_id().clone()
+    // }
+    //
+    // /// Creates a reference view of this vote.
+    // ///
+    // /// Returns a lightweight `RefVote` that borrows the data from this vote.
+    // fn as_ref_vote(&self) -> RefVote<'_, C> {
+    //     RefVote::new(self.leader_id(), self.is_committed())
+    // }
+    //
+    // /// Create a [`CommittedVote`] with the same leader id.
+    // fn to_committed(&self) -> CommittedVote<C> {
+    //     CommittedVote::new(self.to_leader_id())
+    // }
+    //
+    // /// Create a [`NonCommittedVote`] with the same leader id.
+    // fn to_non_committed(&self) -> NonCommittedVote<C> {
+    //     NonCommittedVote::new(self.to_leader_id())
+    // }
+    //
+    // /// Convert this vote into a [`CommittedVote`]
+    // fn into_committed(self) -> CommittedVote<C> {
+    //     CommittedVote::new(self.to_leader_id())
+    // }
+    //
+    // /// Convert this vote into a [`NonCommittedVote`]
+    // fn into_non_committed(self) -> NonCommittedVote<C> {
+    //     NonCommittedVote::new(self.to_leader_id())
+    // }
+    //
+    // /// Checks if this vote is for the same leader as specified by the given committed leader ID.
+    // fn is_same_leader(&self, leader_id: &CommittedLeaderIdOf<C>) -> bool {
+    //     self.leader_id().to_committed() == *leader_id
+    // }
+}
+
+impl<C, T> TestingVoteExt<C> for T
+where
+    C: RaftTypeConfig,
+    T: RaftVote<C>,
+{
 }

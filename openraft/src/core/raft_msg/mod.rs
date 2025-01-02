@@ -61,7 +61,7 @@ where C: RaftTypeConfig
     ///
     /// Returns a snapshot data handle for receiving data.
     ///
-    /// It does not check [`Vote`] because it is a read operation
+    /// It does not check `Vote` because it is a read operation
     /// and does not break raft protocol.
     BeginReceivingSnapshot {
         tx: ResultSender<C, Box<SnapshotDataOf<C>>, Infallible>,

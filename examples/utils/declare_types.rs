@@ -3,7 +3,7 @@ use super::TypeConfig;
 
 pub type Raft = openraft::Raft<TypeConfig>;
 
-pub type Vote = openraft::Vote<TypeConfig>;
+pub type Vote = <TypeConfig as openraft::RaftTypeConfig>::Vote;
 pub type LeaderId = <TypeConfig as openraft::RaftTypeConfig>::LeaderId;
 pub type LogId = openraft::LogId<TypeConfig>;
 pub type Entry = openraft::Entry<TypeConfig>;

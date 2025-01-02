@@ -18,6 +18,7 @@ use crate::testing::log_id;
 use crate::type_config::alias::EntryOf;
 use crate::type_config::TypeConfigExt;
 use crate::utime::Leased;
+use crate::vote::raft_vote::RaftVoteExt;
 use crate::EffectiveMembership;
 use crate::Membership;
 use crate::Vote;

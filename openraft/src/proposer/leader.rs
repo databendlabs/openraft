@@ -10,7 +10,7 @@ use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::TypeConfigExt;
 use crate::vote::committed::CommittedVote;
-use crate::vote::RaftLeaderId;
+use crate::vote::raft_vote::RaftVoteExt;
 use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::RaftLogId;
@@ -203,7 +203,7 @@ where
         // Thus vote.voted_for() is this node.
 
         // Safe unwrap: voted_for() is always non-None in Openraft
-        let node_id = self.committed_vote.clone().into_vote().leader_id().node_id().cloned().unwrap();
+        let node_id = self.committed_vote.to_leader_node_id().unwrap();
         let now = C::now();
 
         tracing::debug!(
@@ -233,6 +233,7 @@ mod tests {
     use crate::testing::blank_ent;
     use crate::testing::log_id;
     use crate::type_config::TypeConfigExt;
+    use crate::vote::raft_vote::RaftVoteExt;
     use crate::Entry;
     use crate::RaftLogId;
     use crate::Vote;

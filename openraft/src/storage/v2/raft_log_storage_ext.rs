@@ -9,6 +9,7 @@ use crate::storage::IOFlushed;
 use crate::storage::RaftLogStorage;
 use crate::type_config::alias::VoteOf;
 use crate::type_config::TypeConfigExt;
+use crate::vote::raft_vote::RaftVoteExt;
 use crate::OptionalSend;
 use crate::RaftTypeConfig;
 use crate::StorageError;

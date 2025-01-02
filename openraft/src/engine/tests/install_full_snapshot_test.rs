@@ -17,6 +17,7 @@ use crate::storage::Snapshot;
 use crate::storage::SnapshotMeta;
 use crate::testing::log_id;
 use crate::type_config::TypeConfigExt;
+use crate::vote::raft_vote::RaftVoteExt;
 use crate::Membership;
 use crate::StoredMembership;
 use crate::Vote;
@@ -30,7 +31,7 @@ fn m1234() -> Membership<UTConfig> {
 }
 
 fn eng() -> Engine<UTConfig> {
-    let mut eng = Engine::testing_default(0);
+    let mut eng: Engine<UTConfig> = Engine::testing_default(0);
     eng.state.enable_validation(false); // Disable validation for incomplete state
 
     eng.state.vote.update(

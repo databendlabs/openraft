@@ -1,23 +1,25 @@
 use std::cmp::Ordering;
 use std::fmt::Formatter;
 
+use crate::display_ext::DisplayOptionExt;
 use crate::RaftTypeConfig;
 
-/// Same as [`Vote`] but with a reference to the `LeaderId`.
+/// Similar to [`Vote`] but with a reference to the `LeaderId`, and provide ordering and display
+/// implementation.
 ///
 /// [`Vote`]: crate::vote::Vote
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct RefVote<'a, C>
 where C: RaftTypeConfig
 {
-    pub(crate) leader_id: &'a C::LeaderId,
+    pub(crate) leader_id: Option<&'a C::LeaderId>,
     pub(crate) committed: bool,
 }
 
 impl<'a, C> RefVote<'a, C>
 where C: RaftTypeConfig
 {
-    pub(crate) fn new(leader_id: &'a C::LeaderId, committed: bool) -> Self {
+    pub(crate) fn new(leader_id: Option<&'a C::LeaderId>, committed: bool) -> Self {
         Self { leader_id, committed }
     }
 
@@ -32,7 +34,7 @@ where C: RaftTypeConfig
 {
     #[inline]
     fn partial_cmp(&self, other: &RefVote<'a, C>) -> Option<Ordering> {
-        match PartialOrd::partial_cmp(self.leader_id, other.leader_id) {
+        match PartialOrd::partial_cmp(&self.leader_id, &other.leader_id) {
             Some(Ordering::Equal) => PartialOrd::partial_cmp(&self.committed, &other.committed),
             None => {
                 // If two leader_id are not comparable, they won't both be granted(committed).
@@ -59,7 +61,7 @@ where C: RaftTypeConfig
         write!(
             f,
             "<{}:{}>",
-            self.leader_id,
+            self.leader_id.display(),
             if self.is_committed() { "Q" } else { "-" }
         )
     }

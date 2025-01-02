@@ -1,29 +1,19 @@
 use std::cmp::Ordering;
 use std::fmt::Formatter;
 
-use crate::type_config::alias::CommittedLeaderIdOf;
-use crate::vote::committed::CommittedVote;
-use crate::vote::non_committed::NonCommittedVote;
-use crate::vote::ref_vote::RefVote;
-use crate::vote::vote_status::VoteStatus;
+use crate::vote::raft_vote::RaftVoteExt;
 use crate::vote::RaftLeaderId;
+use crate::vote::RaftVote;
 use crate::RaftTypeConfig;
 
 /// `Vote` represent the privilege of a node.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct Vote<C: RaftTypeConfig> {
     /// The id of the node that tries to become the leader.
     pub leader_id: C::LeaderId,
 
     pub committed: bool,
-}
-
-impl<C> Copy for Vote<C>
-where
-    C: RaftTypeConfig,
-    C::LeaderId: Copy,
-{
 }
 
 impl<C> PartialOrd for Vote<C>
@@ -39,12 +29,23 @@ impl<C> std::fmt::Display for Vote<C>
 where C: RaftTypeConfig
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "<{}:{}>",
-            self.leader_id,
-            if self.is_committed() { "Q" } else { "-" }
-        )
+        self.as_ref_vote().fmt(f)
+    }
+}
+
+impl<C> RaftVote<C> for Vote<C>
+where C: RaftTypeConfig
+{
+    fn from_leader_id(leader_id: C::LeaderId, committed: bool) -> Self {
+        Self { leader_id, committed }
+    }
+
+    fn leader_id(&self) -> Option<&C::LeaderId> {
+        Some(&self.leader_id)
+    }
+
+    fn is_committed(&self) -> bool {
+        self.committed
     }
 }
 
@@ -70,27 +71,6 @@ where C: RaftTypeConfig
         self.committed = true
     }
 
-    pub(crate) fn as_ref_vote(&self) -> RefVote<'_, C> {
-        RefVote::new(&self.leader_id, self.committed)
-    }
-
-    /// Convert this vote into a `CommittedVote`
-    pub(crate) fn into_committed(self) -> CommittedVote<C> {
-        CommittedVote::new(self)
-    }
-
-    pub(crate) fn into_non_committed(self) -> NonCommittedVote<C> {
-        NonCommittedVote::new(self)
-    }
-
-    pub(crate) fn into_vote_status(self) -> VoteStatus<C> {
-        if self.committed {
-            VoteStatus::Committed(self.into_committed())
-        } else {
-            VoteStatus::Pending(self.into_non_committed())
-        }
-    }
-
     pub fn is_committed(&self) -> bool {
         self.committed
     }
@@ -100,11 +80,6 @@ where C: RaftTypeConfig
     /// The leader may or may not be granted by a quorum.
     pub fn leader_id(&self) -> &C::LeaderId {
         &self.leader_id
-    }
-
-    // TODO: remove this method
-    pub(crate) fn is_same_leader(&self, leader_id: &CommittedLeaderIdOf<C>) -> bool {
-        self.leader_id().to_committed() == *leader_id
     }
 }
 
