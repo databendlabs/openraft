@@ -23,6 +23,7 @@ use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
 use crate::storage::StorageHelper;
 use crate::testing::log::StoreBuilder;
+use crate::type_config::alias::VoteOf;
 use crate::type_config::TypeConfigExt;
 use crate::vote::RaftLeaderIdExt;
 use crate::LogId;
@@ -70,7 +71,7 @@ where C: RaftTypeConfig
     }
 
     /// Proxy method to invoke [`RaftLogReader::read_vote`].
-    async fn read_vote(&mut self) -> Result<Option<Vote<C>>, StorageError<C>> {
+    async fn read_vote(&mut self) -> Result<Option<VoteOf<C>>, StorageError<C>> {
         self.get_log_reader().await.read_vote().await
     }
 
@@ -1444,7 +1445,7 @@ where
     let (tx, mut rx) = C::mpsc_unbounded();
 
     // Dummy log io id for blocking append
-    let io_id = IOId::<C>::new_log_io(Vote::<C>::default().into_committed(), Some(last_log_id));
+    let io_id = IOId::<C>::new_log_io(VoteOf::<C>::default().into_committed(), Some(last_log_id));
     let notify = Notification::LocalIO { io_id };
     let cb = IOFlushed::new(notify, tx.downgrade());
 

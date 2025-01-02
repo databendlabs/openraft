@@ -46,6 +46,7 @@ use crate::storage::Snapshot;
 use crate::storage::SnapshotMeta;
 use crate::type_config::alias::ResponderOf;
 use crate::type_config::alias::SnapshotDataOf;
+use crate::type_config::alias::VoteOf;
 use crate::type_config::TypeConfigExt;
 use crate::vote::RaftLeaderId;
 use crate::vote::RaftTerm;
@@ -113,7 +114,7 @@ where C: RaftTypeConfig
     ///
     /// The candidate `last_log_id` is initialized with the attributes of Acceptor part:
     /// [`RaftState`]
-    pub(crate) fn new_candidate(&mut self, vote: Vote<C>) -> &mut Candidate<C, LeaderQuorumSet<C>> {
+    pub(crate) fn new_candidate(&mut self, vote: VoteOf<C>) -> &mut Candidate<C, LeaderQuorumSet<C>> {
         let now = C::now();
         let last_log_id = self.state.last_log_id().cloned();
 
@@ -380,7 +381,7 @@ where C: RaftTypeConfig
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn handle_append_entries(
         &mut self,
-        vote: &Vote<C>,
+        vote: &VoteOf<C>,
         prev_log_id: Option<LogId<C>>,
         entries: Vec<C::Entry>,
         tx: Option<AppendEntriesTx<C>>,
@@ -419,7 +420,7 @@ where C: RaftTypeConfig
 
     pub(crate) fn append_entries(
         &mut self,
-        vote: &Vote<C>,
+        vote: &VoteOf<C>,
         prev_log_id: Option<LogId<C>>,
         entries: Vec<C::Entry>,
     ) -> Result<(), RejectAppendEntries<C>> {
@@ -453,7 +454,7 @@ where C: RaftTypeConfig
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn handle_install_full_snapshot(
         &mut self,
-        vote: Vote<C>,
+        vote: VoteOf<C>,
         snapshot: Snapshot<C>,
         tx: ResultSender<C, SnapshotResponse<C>>,
     ) {

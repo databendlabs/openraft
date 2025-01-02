@@ -7,9 +7,9 @@ use validit::Validate;
 use crate::display_ext::DisplayOption;
 use crate::raft_state::io_state::io_progress::IOProgress;
 use crate::raft_state::IOId;
+use crate::type_config::alias::VoteOf;
 use crate::LogId;
 use crate::RaftTypeConfig;
-use crate::Vote;
 
 pub(crate) mod io_id;
 pub(crate) mod io_progress;
@@ -103,7 +103,7 @@ impl<C> IOState<C>
 where C: RaftTypeConfig
 {
     pub(crate) fn new(
-        vote: &Vote<C>,
+        vote: &VoteOf<C>,
         applied: Option<LogId<C>>,
         snapshot: Option<LogId<C>>,
         purged: Option<LogId<C>>,

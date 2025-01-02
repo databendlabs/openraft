@@ -1,9 +1,9 @@
 use std::fmt;
 
 use crate::display_ext::DisplayOptionExt;
+use crate::type_config::alias::VoteOf;
 use crate::LogId;
 use crate::RaftTypeConfig;
-use crate::Vote;
 
 #[derive(Clone, Debug)]
 #[derive(PartialEq, Eq)]
@@ -12,7 +12,7 @@ pub struct TransferLeaderRequest<C>
 where C: RaftTypeConfig
 {
     /// The vote of the Leader that is transferring the leadership.
-    pub(crate) from_leader: Vote<C>,
+    pub(crate) from_leader: VoteOf<C>,
 
     /// The assigned node to be the next Leader.
     pub(crate) to_node_id: C::NodeId,
@@ -24,7 +24,7 @@ where C: RaftTypeConfig
 impl<C> TransferLeaderRequest<C>
 where C: RaftTypeConfig
 {
-    pub fn new(from: Vote<C>, to: C::NodeId, last_log_id: Option<LogId<C>>) -> Self {
+    pub fn new(from: VoteOf<C>, to: C::NodeId, last_log_id: Option<LogId<C>>) -> Self {
         Self {
             from_leader: from,
             to_node_id: to,
@@ -33,7 +33,7 @@ where C: RaftTypeConfig
     }
 
     /// From which Leader the leadership is transferred.
-    pub fn from_leader(&self) -> &Vote<C> {
+    pub fn from_leader(&self) -> &VoteOf<C> {
         &self.from_leader
     }
 

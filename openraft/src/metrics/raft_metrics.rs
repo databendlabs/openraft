@@ -10,6 +10,7 @@ use crate::metrics::ReplicationMetrics;
 use crate::metrics::SerdeInstant;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::SerdeInstantOf;
+use crate::type_config::alias::VoteOf;
 use crate::Instant;
 use crate::LogId;
 use crate::RaftTypeConfig;
@@ -32,7 +33,7 @@ pub struct RaftMetrics<C: RaftTypeConfig> {
     pub current_term: C::Term,
 
     /// The last flushed vote.
-    pub vote: Vote<C>,
+    pub vote: VoteOf<C>,
 
     /// The last log index has been appended to this Raft node's log.
     pub last_log_index: Option<u64>,
@@ -280,7 +281,7 @@ where C: RaftTypeConfig
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct RaftServerMetrics<C: RaftTypeConfig> {
     pub id: C::NodeId,
-    pub vote: Vote<C>,
+    pub vote: VoteOf<C>,
     pub state: ServerState,
     pub current_leader: Option<C::NodeId>,
 

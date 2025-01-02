@@ -9,9 +9,9 @@ use crate::proposer::Leader;
 use crate::quorum::QuorumSet;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::LogIdOf;
+use crate::type_config::alias::VoteOf;
 use crate::LogId;
 use crate::RaftTypeConfig;
-use crate::Vote;
 
 /// Candidate: voting state.
 #[derive(Clone, Debug)]
@@ -25,7 +25,7 @@ where
     starting_time: InstantOf<C>,
 
     /// The vote.
-    vote: Vote<C>,
+    vote: VoteOf<C>,
 
     last_log_id: Option<LogIdOf<C>>,
 
@@ -61,7 +61,7 @@ where
 {
     pub(crate) fn new(
         starting_time: InstantOf<C>,
-        vote: Vote<C>,
+        vote: VoteOf<C>,
         last_log_id: Option<LogIdOf<C>>,
         quorum_set: QS,
         learner_ids: impl IntoIterator<Item = C::NodeId>,
@@ -76,7 +76,7 @@ where
         }
     }
 
-    pub(crate) fn vote_ref(&self) -> &Vote<C> {
+    pub(crate) fn vote_ref(&self) -> &VoteOf<C> {
         &self.vote
     }
 

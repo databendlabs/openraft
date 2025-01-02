@@ -7,11 +7,11 @@ use crate::raft_state::IOId;
 use crate::replication;
 use crate::replication::ReplicationSessionId;
 use crate::type_config::alias::InstantOf;
+use crate::type_config::alias::VoteOf;
 use crate::vote::committed::CommittedVote;
 use crate::vote::non_committed::NonCommittedVote;
 use crate::RaftTypeConfig;
 use crate::StorageError;
-use crate::Vote;
 
 /// A message coming from the internal components.
 pub(crate) enum Notification<C>
@@ -33,7 +33,7 @@ where C: RaftTypeConfig
         target: C::NodeId,
 
         /// The higher vote observed.
-        higher: Vote<C>,
+        higher: VoteOf<C>,
 
         /// The Leader that sent replication request.
         leader_vote: CommittedVote<C>,

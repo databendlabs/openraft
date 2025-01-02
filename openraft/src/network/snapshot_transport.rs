@@ -28,6 +28,7 @@ mod tokio_rt {
     use crate::raft::InstallSnapshotRequest;
     use crate::raft::SnapshotResponse;
     use crate::storage::Snapshot;
+    use crate::type_config::alias::VoteOf;
     use crate::type_config::TypeConfigExt;
     use crate::ErrorSubject;
     use crate::ErrorVerb;
@@ -37,7 +38,6 @@ mod tokio_rt {
     use crate::RaftTypeConfig;
     use crate::StorageError;
     use crate::ToStorageResult;
-    use crate::Vote;
 
     /// This chunk based implementation requires `SnapshotData` to be `AsyncRead + AsyncSeek`.
     impl<C: RaftTypeConfig> SnapshotTransport<C> for Chunked
@@ -45,7 +45,7 @@ mod tokio_rt {
     {
         async fn send_snapshot<Net>(
             net: &mut Net,
-            vote: Vote<C>,
+            vote: VoteOf<C>,
             mut snapshot: Snapshot<C>,
             mut cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
             option: RPCOption,
@@ -272,12 +272,12 @@ use crate::network::RPCOption;
 use crate::raft::InstallSnapshotRequest;
 use crate::raft::SnapshotResponse;
 use crate::storage::Snapshot;
+use crate::type_config::alias::VoteOf;
 use crate::OptionalSend;
 use crate::Raft;
 use crate::RaftNetwork;
 use crate::RaftTypeConfig;
 use crate::SnapshotId;
-use crate::Vote;
 
 /// Send and Receive snapshot by chunks.
 pub struct Chunked {}
@@ -299,7 +299,7 @@ pub trait SnapshotTransport<C: RaftTypeConfig> {
     // TODO: consider removing dependency on RaftNetwork
     async fn send_snapshot<Net>(
         net: &mut Net,
-        vote: Vote<C>,
+        vote: VoteOf<C>,
         snapshot: Snapshot<C>,
         cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
         option: RPCOption,

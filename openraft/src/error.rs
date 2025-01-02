@@ -29,11 +29,11 @@ use crate::network::RPCTypes;
 use crate::raft::AppendEntriesResponse;
 use crate::raft_types::SnapshotSegmentId;
 use crate::try_as_ref::TryAsRef;
+use crate::type_config::alias::VoteOf;
 use crate::LogId;
 use crate::Membership;
 use crate::RaftTypeConfig;
 use crate::StorageError;
-use crate::Vote;
 
 /// RaftError is returned by API methods of `Raft`.
 ///
@@ -346,8 +346,8 @@ where
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 #[error("seen a higher vote: {higher} GT mine: {sender_vote}")]
 pub(crate) struct HigherVote<C: RaftTypeConfig> {
-    pub(crate) higher: Vote<C>,
-    pub(crate) sender_vote: Vote<C>,
+    pub(crate) higher: VoteOf<C>,
+    pub(crate) sender_vote: VoteOf<C>,
 }
 
 /// Error that indicates a **temporary** network error and when it is returned, Openraft will retry
@@ -603,7 +603,7 @@ pub struct LearnerNotFound<C: RaftTypeConfig> {
 #[error("not allowed to initialize due to current raft state: last_log_id: {last_log_id:?} vote: {vote}")]
 pub struct NotAllowed<C: RaftTypeConfig> {
     pub last_log_id: Option<LogId<C>>,
-    pub vote: Vote<C>,
+    pub vote: VoteOf<C>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -636,7 +636,7 @@ pub enum NoForward {}
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub(crate) enum RejectVoteRequest<C: RaftTypeConfig> {
     #[error("reject vote request by a greater vote: {0}")]
-    ByVote(Vote<C>),
+    ByVote(VoteOf<C>),
 
     #[allow(dead_code)]
     #[error("reject vote request by a greater last-log-id: {0:?}")]
@@ -659,7 +659,7 @@ where C: RaftTypeConfig
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub(crate) enum RejectAppendEntries<C: RaftTypeConfig> {
     #[error("reject AppendEntries by a greater vote: {0}")]
-    ByVote(Vote<C>),
+    ByVote(VoteOf<C>),
 
     #[error("reject AppendEntries because of conflicting log-id: {local:?}; expect to be: {expect:?}")]
     ByConflictingLogId { expect: LogId<C>, local: Option<LogId<C>> },

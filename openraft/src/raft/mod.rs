@@ -86,6 +86,7 @@ use crate::type_config::alias::JoinErrorOf;
 use crate::type_config::alias::ResponderOf;
 use crate::type_config::alias::ResponderReceiverOf;
 use crate::type_config::alias::SnapshotDataOf;
+use crate::type_config::alias::VoteOf;
 use crate::type_config::alias::WatchReceiverOf;
 use crate::type_config::TypeConfigExt;
 use crate::LogId;
@@ -96,7 +97,6 @@ use crate::RaftNetworkFactory;
 use crate::RaftState;
 pub use crate::RaftTypeConfig;
 use crate::StorageHelper;
-use crate::Vote;
 
 /// Define types for a Raft type configuration.
 ///
@@ -424,7 +424,7 @@ where C: RaftTypeConfig
     #[tracing::instrument(level = "debug", skip_all)]
     pub async fn install_full_snapshot(
         &self,
-        vote: Vote<C>,
+        vote: VoteOf<C>,
         snapshot: Snapshot<C>,
     ) -> Result<SnapshotResponse<C>, Fatal<C>> {
         tracing::info!("Raft::install_full_snapshot()");

@@ -2,9 +2,9 @@ use std::fmt;
 
 use crate::display_ext::DisplayOptionExt;
 use crate::display_ext::DisplaySlice;
+use crate::type_config::alias::VoteOf;
 use crate::LogId;
 use crate::RaftTypeConfig;
-use crate::Vote;
 
 /// An RPC sent by a cluster leader to replicate log entries (§5.3), and as a heartbeat (§5.2).
 ///
@@ -16,7 +16,7 @@ use crate::Vote;
 #[derive(Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct AppendEntriesRequest<C: RaftTypeConfig> {
-    pub vote: Vote<C>,
+    pub vote: VoteOf<C>,
 
     pub prev_log_id: Option<LogId<C>>,
 
@@ -95,7 +95,7 @@ pub enum AppendEntriesResponse<C: RaftTypeConfig> {
     /// Seen a vote `v` that does not hold `mine_vote >= v`.
     /// And a leader's vote(committed vote) must be total order with other vote.
     /// Therefore it has to be a higher vote: `mine_vote < v`
-    HigherVote(Vote<C>),
+    HigherVote(VoteOf<C>),
 }
 
 impl<C> AppendEntriesResponse<C>

@@ -6,12 +6,12 @@ use openraft_macros::add_async_trait;
 use openraft_macros::since;
 
 use crate::engine::LogIdList;
+use crate::type_config::alias::VoteOf;
 use crate::LogId;
 use crate::OptionalSend;
 use crate::OptionalSync;
 use crate::RaftTypeConfig;
 use crate::StorageError;
-use crate::Vote;
 /// A trait defining the interface for a Raft log subsystem.
 ///
 /// This interface is accessed read-only by replication sub task: `ReplicationCore`.
@@ -50,7 +50,7 @@ where C: RaftTypeConfig
     /// See: [log-stream](`crate::docs::protocol::replication::log_stream`)
     ///
     /// [`RaftLogStorage::save_vote`]: crate::storage::RaftLogStorage::save_vote
-    async fn read_vote(&mut self) -> Result<Option<Vote<C>>, StorageError<C>>;
+    async fn read_vote(&mut self) -> Result<Option<VoteOf<C>>, StorageError<C>>;
 
     /// Returns log entries within range `[start, end)`, `end` is exclusive,
     /// potentially limited by implementation-defined constraints.

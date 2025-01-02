@@ -2,6 +2,7 @@ use std::cmp::Ordering;
 use std::fmt;
 
 use crate::raft_state::io_state::log_io_id::LogIOId;
+use crate::type_config::alias::VoteOf;
 use crate::vote::committed::CommittedVote;
 use crate::vote::non_committed::NonCommittedVote;
 use crate::vote::ref_vote::RefVote;
@@ -9,7 +10,6 @@ use crate::ErrorSubject;
 use crate::ErrorVerb;
 use crate::LogId;
 use crate::RaftTypeConfig;
-use crate::Vote;
 
 /// An ID to uniquely identify a monotonic increasing io operation to [`RaftLogStorage`].
 ///
@@ -68,7 +68,7 @@ where C: RaftTypeConfig
 impl<C> IOId<C>
 where C: RaftTypeConfig
 {
-    pub(crate) fn new(vote: &Vote<C>) -> Self {
+    pub(crate) fn new(vote: &VoteOf<C>) -> Self {
         if vote.is_committed() {
             Self::new_log_io(vote.clone().into_committed(), None)
         } else {
@@ -87,7 +87,7 @@ where C: RaftTypeConfig
     /// Returns the vote the io operation is submitted by.
     #[allow(clippy::wrong_self_convention)]
     // The above lint is disabled because in future Vote may not be `Copy`
-    pub(crate) fn to_vote(&self) -> Vote<C> {
+    pub(crate) fn to_vote(&self) -> VoteOf<C> {
         match self {
             Self::Vote(non_committed_vote) => non_committed_vote.clone().into_vote(),
             Self::Log(log_io_id) => log_io_id.committed_vote.clone().into_vote(),

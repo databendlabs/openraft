@@ -21,11 +21,11 @@ use crate::raft_state::IOId;
 use crate::replication::request::Replicate;
 use crate::replication::ReplicationSessionId;
 use crate::type_config::alias::OneshotSenderOf;
+use crate::type_config::alias::VoteOf;
 use crate::vote::committed::CommittedVote;
 use crate::LogId;
 use crate::OptionalSend;
 use crate::RaftTypeConfig;
-use crate::Vote;
 
 /// Commands to send to `RaftRuntime` to execute, to update the application state.
 #[derive(Debug)]
@@ -112,7 +112,7 @@ where C: RaftTypeConfig
     },
 
     /// Save vote to storage
-    SaveVote { vote: Vote<C> },
+    SaveVote { vote: VoteOf<C> },
 
     /// Send vote to all other members
     SendVote { vote_req: VoteRequest<C> },
