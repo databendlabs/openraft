@@ -1,6 +1,7 @@
 use std::fmt::Debug;
 use std::time::Duration;
 
+use crate::base::cmp::CompareByKey;
 use crate::core::raft_msg::ResultSender;
 use crate::engine::handler::leader_handler::LeaderHandler;
 use crate::engine::handler::replication_handler::ReplicationHandler;
@@ -19,7 +20,9 @@ use crate::raft_state::IOId;
 use crate::raft_state::LogStateReader;
 use crate::type_config::alias::VoteOf;
 use crate::type_config::TypeConfigExt;
+use crate::vote::raft_vote::RaftVoteExt;
 use crate::vote::RaftLeaderId;
+use crate::vote::RaftVote;
 use crate::LogId;
 use crate::OptionalSend;
 use crate::RaftState;
@@ -103,7 +106,7 @@ where C: RaftTypeConfig
         // Partial ord compare:
         // Vote does not have to be total ord.
         // `!(a >= b)` does not imply `a < b`.
-        if vote >= self.state.vote_ref() {
+        if vote.cmp_key() >= self.state.vote_ref().cmp_key() {
             // Ok
         } else {
             tracing::info!("vote {} is rejected by local vote: {}", vote, self.state.vote_ref());
@@ -123,7 +126,7 @@ where C: RaftTypeConfig
             Duration::default()
         };
 
-        if vote > self.state.vote_ref() {
+        if vote.cmp_key() > self.state.vote_ref().cmp_key() {
             tracing::info!("vote is changing from {} to {}", self.state.vote_ref(), vote);
 
             self.state.vote.update(C::now(), leader_lease, vote.clone());
@@ -168,7 +171,7 @@ where C: RaftTypeConfig
         if let Some(l) = self.leader.as_mut() {
             tracing::debug!("leading vote: {}", l.committed_vote,);
 
-            if l.committed_vote.clone().into_vote().leader_id() == self.state.vote_ref().leader_id() {
+            if l.committed_vote.clone().into_vote().leader_id_ref() == self.state.vote_ref().leader_id_ref() {
                 tracing::debug!(
                     "vote still belongs to the same leader. Just updating vote is enough: node-{}, {}",
                     self.config.id,
@@ -177,7 +180,7 @@ where C: RaftTypeConfig
                 // TODO: this is not gonna happen,
                 //       because `self.leader`(previous `internal_server_state`)
                 //       does not include Candidate any more.
-                l.committed_vote = self.state.vote_ref().clone().into_committed();
+                l.committed_vote = self.state.vote_ref().to_committed();
                 self.server_state_handler().update_server_state_if_changed();
                 return;
             }

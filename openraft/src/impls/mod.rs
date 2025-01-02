@@ -16,3 +16,11 @@ pub mod leader_id_adv {
 pub mod leader_id_std {
     pub use crate::vote::leader_id::leader_id_std::LeaderId;
 }
+
+/// Default [`RaftVote`] implementation for both standard Raft mode and multi-leader-per-term mode.
+///
+/// The difference between the two modes is the implementation of [`RaftLeaderId`].
+///
+/// [`RaftVote`]: crate::vote::raft_vote::RaftVote
+/// [`RaftLeaderId`]: crate::vote::RaftLeaderId
+pub use crate::vote::Vote;

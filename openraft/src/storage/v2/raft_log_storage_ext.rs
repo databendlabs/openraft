@@ -1,5 +1,6 @@
 use openraft_macros::add_async_trait;
 
+use crate::alias::VoteOf;
 use crate::async_runtime::MpscUnboundedReceiver;
 use crate::async_runtime::MpscUnboundedSender;
 use crate::core::notification::Notification;
@@ -7,8 +8,8 @@ use crate::log_id::RaftLogId;
 use crate::raft_state::io_state::io_id::IOId;
 use crate::storage::IOFlushed;
 use crate::storage::RaftLogStorage;
-use crate::type_config::alias::VoteOf;
 use crate::type_config::TypeConfigExt;
+use crate::vote::raft_vote::RaftVoteExt;
 use crate::OptionalSend;
 use crate::RaftTypeConfig;
 use crate::StorageError;

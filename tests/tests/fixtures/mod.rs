@@ -185,6 +185,7 @@ impl fmt::Display for Direction {
     }
 }
 
+use openraft::alias::VoteOf;
 use openraft::network::v2::RaftNetworkV2;
 use openraft::vote::RaftLeaderId;
 use openraft::vote::RaftLeaderIdExt;
@@ -416,7 +417,7 @@ impl TypedRaftRouter {
         tracing::info!(log_index, "--- wait for init node to become leader");
 
         self.wait_for_log(&btreeset![leader_id], Some(log_index), timeout(), "init").await?;
-        self.wait(&leader_id, timeout()).vote(Vote::new_committed(1, 0), "init vote").await?;
+        self.wait(&leader_id, timeout()).vote(VoteOf::<MemConfig>::new_committed(1, 0), "init vote").await?;
 
         for id in voter_ids.iter() {
             if *id == leader_id {

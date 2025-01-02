@@ -1,9 +1,11 @@
+use crate::base::cmp::CompareByKey;
 use crate::engine::EngineConfig;
 use crate::proposer::Candidate;
 use crate::proposer::Leader;
 use crate::proposer::LeaderQuorumSet;
 use crate::proposer::LeaderState;
 use crate::vote::RaftLeaderId;
+use crate::vote::RaftVote;
 use crate::RaftTypeConfig;
 
 /// Establish a leader for the Engine, when Candidate finishes voting stage.
@@ -25,14 +27,14 @@ where C: RaftTypeConfig
         let vote = candidate.vote_ref().clone();
 
         debug_assert_eq!(
-            vote.leader_id().node_id(),
+            vote.leader_id_ref().node_id(),
             Some(&self.config.id),
             "it can only commit its own vote"
         );
 
         if let Some(l) = self.leader.as_ref() {
             #[allow(clippy::neg_cmp_op_on_partial_ord)]
-            if !(vote > l.committed_vote_ref().clone().into_vote()) {
+            if !(vote.cmp_key() > l.committed_vote_ref().cmp_key()) {
                 tracing::warn!(
                     "vote is not greater than current existing leader vote. Do not establish new leader and quit"
                 );

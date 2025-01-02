@@ -252,7 +252,7 @@ where C: RaftTypeConfig {
         id: NodeIdOf::<C>::default(),
         state: ServerState::Learner,
         current_term: Default::default(),
-        vote: Vote::default(),
+        vote: Default::default(),
         last_log_index: None,
         last_applied: None,
         purged: None,

@@ -3,7 +3,8 @@ use std::fmt::Formatter;
 
 use crate::RaftTypeConfig;
 
-/// Same as [`Vote`] but with a reference to the `LeaderId`.
+/// Similar to [`Vote`] but with a reference to the `LeaderId`, and provide ordering and display
+/// implementation.
 ///
 /// [`Vote`]: crate::vote::Vote
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

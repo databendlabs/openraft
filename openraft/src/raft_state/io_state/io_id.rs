@@ -5,7 +5,9 @@ use crate::raft_state::io_state::log_io_id::LogIOId;
 use crate::type_config::alias::VoteOf;
 use crate::vote::committed::CommittedVote;
 use crate::vote::non_committed::NonCommittedVote;
+use crate::vote::raft_vote::RaftVoteExt;
 use crate::vote::ref_vote::RefVote;
+use crate::vote::RaftVote;
 use crate::ErrorSubject;
 use crate::ErrorVerb;
 use crate::LogId;
@@ -70,9 +72,9 @@ where C: RaftTypeConfig
 {
     pub(crate) fn new(vote: &VoteOf<C>) -> Self {
         if vote.is_committed() {
-            Self::new_log_io(vote.clone().into_committed(), None)
+            Self::new_log_io(vote.to_committed(), None)
         } else {
-            Self::new_vote_io(vote.clone().into_non_committed())
+            Self::new_vote_io(vote.to_non_committed())
         }
     }
 

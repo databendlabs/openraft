@@ -17,6 +17,7 @@ use crate::raft_state::LogStateReader;
 use crate::testing::log_id;
 use crate::type_config::TypeConfigExt;
 use crate::utime::Leased;
+use crate::vote::raft_vote::RaftVoteExt;
 use crate::Entry;
 use crate::LogId;
 use crate::Membership;
