@@ -15,7 +15,6 @@ use crate::Instant;
 use crate::LogId;
 use crate::RaftTypeConfig;
 use crate::StoredMembership;
-use crate::Vote;
 
 /// A set of metrics describing the current state of a Raft node.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -169,7 +168,7 @@ where C: RaftTypeConfig
             id,
 
             current_term: Default::default(),
-            vote: Vote::default(),
+            vote: Default::default(),
             last_log_index: None,
             last_applied: None,
             snapshot: None,

@@ -25,6 +25,7 @@ use crate::storage::StorageHelper;
 use crate::testing::log::StoreBuilder;
 use crate::type_config::alias::VoteOf;
 use crate::type_config::TypeConfigExt;
+use crate::vote::raft_vote::RaftVoteExt;
 use crate::vote::RaftLeaderIdExt;
 use crate::LogId;
 use crate::Membership;
@@ -34,7 +35,6 @@ use crate::RaftSnapshotBuilder;
 use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::StoredMembership;
-use crate::Vote;
 
 const NODE_ID: u64 = 0;
 
@@ -466,11 +466,11 @@ where
         want.vote.update(
             initial.vote.last_update().unwrap(),
             Duration::default(),
-            Vote::default(),
+            VoteOf::<C>::default(),
         );
-        want.io_state.io_progress.accept(IOId::new(&Vote::default()));
-        want.io_state.io_progress.submit(IOId::new(&Vote::default()));
-        want.io_state.io_progress.flush(IOId::new(&Vote::default()));
+        want.io_state.io_progress.accept(IOId::new(&VoteOf::<C>::default()));
+        want.io_state.io_progress.submit(IOId::new(&VoteOf::<C>::default()));
+        want.io_state.io_progress.flush(IOId::new(&VoteOf::<C>::default()));
 
         assert_eq!(want, initial, "uninitialized state");
         Ok(())
@@ -501,7 +501,7 @@ where
             "unexpected value for last applied log"
         );
         assert_eq!(
-            Vote::new(1u64.into(), NODE_ID.into()),
+            VoteOf::<C>::from_term_node_id(1u64.into(), NODE_ID.into()),
             *initial.vote_ref(),
             "unexpected value for default hard state"
         );
@@ -822,11 +822,11 @@ where
     }
 
     pub async fn save_vote(mut store: LS, mut sm: SM) -> Result<(), StorageError<C>> {
-        store.save_vote(&Vote::new(100.into(), NODE_ID.into())).await?;
+        store.save_vote(&VoteOf::<C>::from_term_node_id(100.into(), NODE_ID.into())).await?;
 
         let got = store.read_vote().await?;
 
-        assert_eq!(Some(Vote::new(100.into(), NODE_ID.into())), got,);
+        assert_eq!(Some(VoteOf::<C>::from_term_node_id(100.into(), NODE_ID.into())), got,);
         Ok(())
     }
 
@@ -1367,7 +1367,7 @@ where
     }
 
     pub async fn default_vote(sto: &mut LS) -> Result<(), StorageError<C>> {
-        sto.save_vote(&Vote::new(1u64.into(), NODE_ID.into())).await?;
+        sto.save_vote(&VoteOf::<C>::from_term_node_id(1u64.into(), NODE_ID.into())).await?;
 
         Ok(())
     }

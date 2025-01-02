@@ -24,6 +24,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "openraftpb.LeaderId",
             "#[derive(Eq, serde::Serialize, serde::Deserialize)]",
         )
+        .type_attribute("openraftpb.Vote", "#[derive(Eq, serde::Serialize, serde::Deserialize)]")
         .compile_protos_with_config(config, &proto_files, &["proto"])?;
     Ok(())
 }

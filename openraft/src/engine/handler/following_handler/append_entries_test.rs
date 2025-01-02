@@ -12,8 +12,10 @@ use crate::raft_state::IOId;
 use crate::raft_state::LogStateReader;
 use crate::testing::blank_ent;
 use crate::testing::log_id;
+use crate::type_config::alias::VoteOf;
 use crate::type_config::TypeConfigExt;
 use crate::utime::Leased;
+use crate::vote::raft_vote::RaftVoteExt;
 use crate::EffectiveMembership;
 use crate::Membership;
 use crate::MembershipState;
@@ -28,15 +30,13 @@ fn m23() -> Membership<UTConfig> {
 }
 
 fn eng() -> Engine<UTConfig> {
-    let mut eng = Engine::testing_default(0);
+    let mut eng: Engine<UTConfig> = Engine::testing_default(0);
     eng.state.enable_validation(false); // Disable validation for incomplete state
 
     eng.config.id = 2;
-    eng.state.vote.update(
-        UTConfig::<()>::now(),
-        Duration::from_millis(500),
-        Vote::new_committed(2, 1),
-    );
+    let vote = VoteOf::<UTConfig>::new_committed(2, 1);
+    let now = UTConfig::<()>::now();
+    eng.state.vote.update(now, Duration::from_millis(500), vote);
     eng.state.log_ids.append(log_id(1, 1, 1));
     eng.state.log_ids.append(log_id(2, 1, 3));
     eng.state.membership_state = MembershipState::new(

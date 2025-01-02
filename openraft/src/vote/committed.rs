@@ -2,21 +2,24 @@ use std::cmp::Ordering;
 use std::fmt;
 
 use crate::type_config::alias::CommittedLeaderIdOf;
+use crate::type_config::alias::LeaderIdOf;
 use crate::type_config::alias::VoteOf;
-use crate::vote::ref_vote::RefVote;
+use crate::vote::raft_vote::RaftVoteExt;
 use crate::vote::RaftLeaderId;
+use crate::vote::RaftVote;
 use crate::RaftTypeConfig;
 
 /// Represents a committed Vote that has been accepted by a quorum.
 ///
 /// The inner `Vote`'s attribute `committed` is always set to `true`
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 #[derive(PartialEq, Eq)]
 #[derive(PartialOrd)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub(crate) struct CommittedVote<C>
 where C: RaftTypeConfig
 {
-    vote: VoteOf<C>,
+    leader_id: LeaderIdOf<C>,
 }
 
 /// The `CommittedVote` is totally ordered.
@@ -30,28 +33,23 @@ impl<C> Ord for CommittedVote<C>
 where C: RaftTypeConfig
 {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.vote.partial_cmp(&other.vote).unwrap()
+        self.as_ref_vote().partial_cmp(&other.as_ref_vote()).unwrap()
     }
 }
 
 impl<C> CommittedVote<C>
 where C: RaftTypeConfig
 {
-    pub(crate) fn new(mut vote: VoteOf<C>) -> Self {
-        vote.committed = true;
-        Self { vote }
+    pub(crate) fn new(leader_id: LeaderIdOf<C>) -> Self {
+        Self { leader_id }
     }
 
     pub(crate) fn committed_leader_id(&self) -> CommittedLeaderIdOf<C> {
-        self.vote.leader_id().to_committed()
+        self.leader_id().map_or_else(Default::default, RaftLeaderId::to_committed)
     }
 
     pub(crate) fn into_vote(self) -> VoteOf<C> {
-        self.vote
-    }
-
-    pub(crate) fn as_ref_vote(&self) -> RefVote<'_, C> {
-        RefVote::new(&self.vote.leader_id, true)
+        VoteOf::<C>::from_leader_id(self.leader_id, true)
     }
 }
 
@@ -59,6 +57,22 @@ impl<C> fmt::Display for CommittedVote<C>
 where C: RaftTypeConfig
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.vote.fmt(f)
+        self.as_ref_vote().fmt(f)
+    }
+}
+
+impl<C> RaftVote<C> for CommittedVote<C>
+where C: RaftTypeConfig
+{
+    fn from_leader_id(_leader_id: C::LeaderId, _committed: bool) -> Self {
+        unimplemented!()
+    }
+
+    fn leader_id(&self) -> Option<&LeaderIdOf<C>> {
+        Some(&self.leader_id)
+    }
+
+    fn is_committed(&self) -> bool {
+        true
     }
 }

@@ -46,6 +46,7 @@ use tracing::Level;
 use crate::async_runtime::watch::WatchReceiver;
 use crate::async_runtime::MpscUnboundedSender;
 use crate::async_runtime::OneshotSender;
+use crate::base::ord_by::OrdBy;
 use crate::base::BoxAsyncOnceMut;
 use crate::base::BoxFuture;
 use crate::base::BoxOnce;
@@ -116,6 +117,7 @@ use crate::StorageHelper;
 ///        Node         = openraft::BasicNode,
 ///        Term         = u64,
 ///        LeaderId     = openraft::impls::leader_id_adv::LeaderId<TypeConfig>,
+///        Vote         = openraft::impls::Vote<TypeConfig>,
 ///        Entry        = openraft::Entry<TypeConfig>,
 ///        SnapshotData = Cursor<Vec<u8>>,
 ///        Responder    = openraft::impls::OneshotResponder<TypeConfig>,
@@ -130,6 +132,7 @@ use crate::StorageHelper;
 /// - `Node`:         `::openraft::impls::BasicNode`
 /// - `Term`:         `u64`
 /// - `LeaderId`:     `::openraft::impls::leader_id_adv::LeaderId<Self>`
+/// - `Vote`:         `::openraft::impls::Vote<Self>`
 /// - `Entry`:        `::openraft::impls::Entry<Self>`
 /// - `SnapshotData`: `Cursor<Vec<u8>>`
 /// - `Responder`:    `::openraft::impls::OneshotResponder<Self>`
@@ -178,6 +181,7 @@ macro_rules! declare_raft_types {
                 (Node         , , $crate::impls::BasicNode                     ),
                 (Term         , , u64                                          ),
                 (LeaderId     , , $crate::impls::leader_id_adv::LeaderId<Self> ),
+                (Vote         , , $crate::impls::Vote<Self>                    ),
                 (Entry        , , $crate::impls::Entry<Self>                   ),
                 (SnapshotData , , std::io::Cursor<Vec<u8>>                     ),
                 (Responder    , , $crate::impls::OneshotResponder<Self>        ),
@@ -468,7 +472,7 @@ where C: RaftTypeConfig
         // It is not mandatory because it is just a read operation
         // but prevent unnecessary snapshot transfer early.
         {
-            if req_vote >= my_vote {
+            if req_vote.ord_by() >= my_vote.ord_by() {
                 // Ok
             } else {
                 tracing::info!("vote {} is rejected by local vote: {}", req_vote, my_vote);
@@ -687,7 +691,7 @@ where C: RaftTypeConfig
 
         // Condition failed to become Leader
         #[allow(clippy::neg_cmp_op_on_partial_ord)]
-        let fail = |m: &RaftMetrics<C>| !(req.from_leader >= m.vote);
+        let fail = |m: &RaftMetrics<C>| !(req.from_leader.ord_by() >= m.vote.ord_by());
 
         let timeout = Some(Duration::from_millis(self.inner.config.election_timeout_min));
         let metrics_res =

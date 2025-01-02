@@ -13,7 +13,6 @@ use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::RaftTypeConfig;
 use crate::ServerState;
-use crate::Vote;
 
 pub(crate) mod io_state;
 mod log_state_reader;
@@ -36,13 +35,16 @@ pub(crate) use log_state_reader::LogStateReader;
 pub use membership_state::MembershipState;
 pub(crate) use vote_state_reader::VoteStateReader;
 
+use crate::base::ord_by::OrdBy;
 use crate::display_ext::DisplayOptionExt;
 use crate::proposer::Leader;
 use crate::proposer::LeaderQuorumSet;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::VoteOf;
+use crate::vote::raft_vote::RaftVoteExt;
 use crate::vote::RaftLeaderId;
+use crate::vote::RaftVote;
 
 /// A struct used to represent the raft state which a Raft node needs.
 #[derive(Clone, Debug)]
@@ -206,7 +208,7 @@ where C: RaftTypeConfig
         }
 
         // If it received a request-vote from other node, it is already initialized.
-        if self.vote_ref() != &Vote::default() {
+        if self.vote_ref() != &VoteOf::<C>::default() {
             return true;
         }
 
@@ -237,7 +239,7 @@ where C: RaftTypeConfig
             let new_vote = accepted.to_vote();
             let current_vote = curr_accepted.clone().map(|io_id| io_id.to_vote());
             assert!(
-                Some(&new_vote) >= current_vote.as_ref(),
+                Some(new_vote.ord_by()) >= current_vote.as_ref().map(|x| x.ord_by()),
                 "new accepted.committed_vote {} must be >= current accepted.committed_vote: {}",
                 new_vote,
                 current_vote.display(),
@@ -369,7 +371,7 @@ where C: RaftTypeConfig
     ///
     /// [Determine Server State]: crate::docs::data::vote#vote-and-membership-define-the-server-state
     pub(crate) fn is_leading(&self, id: &C::NodeId) -> bool {
-        self.membership_state.contains(id) && self.vote.leader_id().node_id() == Some(id)
+        self.membership_state.contains(id) && self.vote.leader_node_id() == Some(id)
     }
 
     /// The node is leader
@@ -396,7 +398,7 @@ where C: RaftTypeConfig
         let last_leader_log_ids = self.log_ids.by_last_leader();
 
         Leader::new(
-            self.vote_ref().clone().into_committed(),
+            self.vote_ref().to_committed(),
             em.to_quorum_set(),
             em.learner_ids(),
             last_leader_log_ids,
@@ -409,7 +411,7 @@ where C: RaftTypeConfig
 
         if vote.is_committed() {
             // Safe unwrap(): vote that is committed has to already have voted for some node.
-            let id = vote.leader_id().node_id().cloned().unwrap();
+            let id = vote.to_leader_id().node_id().cloned().unwrap();
 
             return self.new_forward_to_leader(id);
         }
