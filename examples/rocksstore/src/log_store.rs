@@ -11,11 +11,11 @@ use meta::StoreMeta;
 use openraft::alias::EntryOf;
 use openraft::alias::LogIdOf;
 use openraft::alias::VoteOf;
+use openraft::entry::RaftEntryExt;
 use openraft::storage::IOFlushed;
 use openraft::storage::RaftLogStorage;
 use openraft::LogState;
 use openraft::OptionalSend;
-use openraft::RaftLogId;
 use openraft::RaftLogReader;
 use openraft::RaftTypeConfig;
 use openraft::StorageError;
@@ -103,7 +103,7 @@ where C: RaftTypeConfig
 
             let entry: EntryOf<C> = serde_json::from_slice(&val).map_err(read_logs_err)?;
 
-            assert_eq!(id, entry.get_log_id().index());
+            assert_eq!(id, entry.index());
 
             res.push(entry);
         }
@@ -128,7 +128,7 @@ where C: RaftTypeConfig
             Some(res) => {
                 let (_log_index, entry_bytes) = res.map_err(read_logs_err)?;
                 let ent = serde_json::from_slice::<EntryOf<C>>(&entry_bytes).map_err(read_logs_err)?;
-                Some(ent.get_log_id().clone())
+                Some(ent.to_log_id())
             }
         };
 
@@ -158,8 +158,8 @@ where C: RaftTypeConfig
     async fn append<I>(&mut self, entries: I, callback: IOFlushed<C>) -> Result<(), StorageError<C>>
     where I: IntoIterator<Item = EntryOf<C>> + Send {
         for entry in entries {
-            let id = id_to_bin(entry.get_log_id().index());
-            assert_eq!(bin_to_id(&id), entry.get_log_id().index());
+            let id = id_to_bin(entry.index());
+            assert_eq!(bin_to_id(&id), entry.index());
             self.db
                 .put_cf(
                     self.cf_logs(),
