@@ -727,7 +727,7 @@ where
         }
 
         // Safe unwrap(): vote that is committed has to already have voted for some node.
-        let id = vote.leader_id().node_id_ref().cloned().unwrap();
+        let id = vote.leader_id().node_id().cloned().unwrap();
 
         // TODO: `is_voter()` is slow, maybe cache `current_leader`,
         //       e.g., only update it when membership or vote changes

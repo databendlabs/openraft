@@ -55,7 +55,7 @@ where C: RaftTypeConfig<LeaderId = Self>
         self.term
     }
 
-    fn node_id_ref(&self) -> Option<&C::NodeId> {
+    fn node_id(&self) -> Option<&C::NodeId> {
         Some(&self.node_id)
     }
 

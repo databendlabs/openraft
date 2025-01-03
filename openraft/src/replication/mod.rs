@@ -443,7 +443,7 @@ where
         let append_res = res.map_err(|_e| {
             let to = Timeout {
                 action: RPCTypes::AppendEntries,
-                id: self.session_id.vote().leader_id().node_id_ref().cloned().unwrap(),
+                id: self.session_id.vote().leader_id().node_id().cloned().unwrap(),
                 target: self.target.clone(),
                 timeout: the_timeout,
             };

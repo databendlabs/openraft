@@ -59,7 +59,7 @@ where C: RaftTypeConfig
         self.term
     }
 
-    fn node_id_ref(&self) -> Option<&C::NodeId> {
+    fn node_id(&self) -> Option<&C::NodeId> {
         self.voted_for.as_ref()
     }
 
