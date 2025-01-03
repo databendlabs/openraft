@@ -13,7 +13,6 @@ use crate::vote::committed::CommittedVote;
 use crate::vote::raft_vote::RaftVoteExt;
 use crate::LogId;
 use crate::LogIdOptionExt;
-use crate::RaftLogId;
 use crate::RaftTypeConfig;
 
 /// Leading state data.
@@ -163,7 +162,7 @@ where
     /// Assign log ids to the entries.
     ///
     /// This method update the `self.last_log_id`.
-    pub(crate) fn assign_log_ids<'a, LID: RaftLogId<C> + 'a>(
+    pub(crate) fn assign_log_ids<'a, LID: AsMut<LogIdOf<C>> + 'a>(
         &mut self,
         entries: impl IntoIterator<Item = &'a mut LID>,
     ) {
@@ -175,7 +174,7 @@ where
         let mut last = first.clone();
 
         for entry in entries {
-            entry.set_log_id(&last);
+            *entry.as_mut() = last.clone();
             tracing::debug!("assign log id: {}", last);
             last.index += 1;
         }
@@ -228,6 +227,7 @@ mod tests {
     use crate::engine::leader_log_ids::LeaderLogIds;
     use crate::engine::testing::UTConfig;
     use crate::entry::RaftEntry;
+    use crate::entry::RaftEntryExt;
     use crate::progress::Progress;
     use crate::proposer::Leader;
     use crate::testing::blank_ent;
@@ -235,7 +235,6 @@ mod tests {
     use crate::type_config::TypeConfigExt;
     use crate::vote::raft_vote::RaftVoteExt;
     use crate::Entry;
-    use crate::RaftLogId;
     use crate::Vote;
 
     #[test]
@@ -298,7 +297,7 @@ mod tests {
         leader.assign_log_ids(&mut entries);
 
         assert_eq!(
-            entries[0].get_log_id(),
+            entries[0].log_id(),
             &log_id(2, 2, 4),
             "entry log id assigned following last-log-id"
         );
@@ -313,7 +312,7 @@ mod tests {
         let mut entries: Vec<Entry<UTConfig>> = vec![blank_ent(1, 1, 1)];
         leading.assign_log_ids(&mut entries);
 
-        assert_eq!(entries[0].get_log_id(), &log_id(0, 0, 0),);
+        assert_eq!(entries[0].log_id(), &log_id(0, 0, 0),);
         assert_eq!(Some(log_id(0, 0, 0)), leading.last_log_id);
     }
 
@@ -337,9 +336,9 @@ mod tests {
         let mut entries: Vec<Entry<UTConfig>> = vec![blank_ent(1, 1, 1), blank_ent(1, 1, 1), blank_ent(1, 1, 1)];
 
         leading.assign_log_ids(&mut entries);
-        assert_eq!(entries[0].get_log_id(), &log_id(2, 2, 9));
-        assert_eq!(entries[1].get_log_id(), &log_id(2, 2, 10));
-        assert_eq!(entries[2].get_log_id(), &log_id(2, 2, 11));
+        assert_eq!(entries[0].log_id(), &log_id(2, 2, 9));
+        assert_eq!(entries[1].log_id(), &log_id(2, 2, 10));
+        assert_eq!(entries[2].log_id(), &log_id(2, 2, 11));
         assert_eq!(Some(log_id(2, 2, 11)), leading.last_log_id);
     }
 

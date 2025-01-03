@@ -59,6 +59,22 @@ where C: RaftTypeConfig
     }
 }
 
+impl<C> AsRef<LogId<C>> for LogId<C>
+where C: RaftTypeConfig
+{
+    fn as_ref(&self) -> &LogId<C> {
+        self
+    }
+}
+
+impl<C> AsMut<LogId<C>> for LogId<C>
+where C: RaftTypeConfig
+{
+    fn as_mut(&mut self) -> &mut LogId<C> {
+        self
+    }
+}
+
 impl<C> LogId<C>
 where C: RaftTypeConfig
 {

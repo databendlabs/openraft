@@ -23,6 +23,7 @@ use crate::engine::Condition;
 use crate::engine::EngineOutput;
 use crate::engine::Respond;
 use crate::entry::RaftEntry;
+use crate::entry::RaftEntryExt;
 use crate::entry::RaftPayload;
 use crate::error::ForwardToLeader;
 use crate::error::Infallible;
@@ -57,7 +58,6 @@ use crate::vote::RaftVote;
 use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::Membership;
-use crate::RaftLogId;
 use crate::RaftTypeConfig;
 
 /// Raft protocol algorithm.
