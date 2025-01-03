@@ -203,7 +203,7 @@ where
         // Thus vote.voted_for() is this node.
 
         // Safe unwrap: voted_for() is always non-None in Openraft
-        let node_id = self.committed_vote.clone().into_vote().leader_id().node_id_ref().cloned().unwrap();
+        let node_id = self.committed_vote.clone().into_vote().leader_id().node_id().cloned().unwrap();
         let now = C::now();
 
         tracing::debug!(

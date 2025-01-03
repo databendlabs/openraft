@@ -38,7 +38,7 @@ where
     fn term(&self) -> C::Term;
 
     /// Get the node ID of this leader, if one is set
-    fn node_id_ref(&self) -> Option<&C::NodeId>;
+    fn node_id(&self) -> Option<&C::NodeId>;
 
     /// Convert this leader ID to a committed leader ID.
     ///
@@ -58,8 +58,8 @@ where
         Self::new(term, node_id).to_committed()
     }
 
-    fn node_id(&self) -> Option<C::NodeId> {
-        self.node_id_ref().cloned()
+    fn to_node_id(&self) -> Option<C::NodeId> {
+        self.node_id().cloned()
     }
 }
 

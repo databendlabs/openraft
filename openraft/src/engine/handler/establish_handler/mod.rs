@@ -25,7 +25,7 @@ where C: RaftTypeConfig
         let vote = candidate.vote_ref().clone();
 
         debug_assert_eq!(
-            vote.leader_id().node_id_ref(),
+            vote.leader_id().node_id(),
             Some(&self.config.id),
             "it can only commit its own vote"
         );

@@ -41,7 +41,7 @@ impl RaftLeaderId<TypeConfig> for pb::LeaderId {
         self.term
     }
 
-    fn node_id_ref(&self) -> Option<&u64> {
+    fn node_id(&self) -> Option<&u64> {
         Some(&self.node_id)
     }
 

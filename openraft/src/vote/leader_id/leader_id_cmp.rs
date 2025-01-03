@@ -19,7 +19,7 @@ where C: RaftTypeConfig
     pub fn std<LID>(a: &LID, b: &LID) -> Option<Ordering>
     where LID: RaftLeaderId<C> {
         match a.term().cmp(&b.term()) {
-            Ordering::Equal => match (a.node_id_ref(), b.node_id_ref()) {
+            Ordering::Equal => match (a.node_id(), b.node_id()) {
                 (None, None) => Some(Ordering::Equal),
                 (Some(_), None) => Some(Ordering::Greater),
                 (None, Some(_)) => Some(Ordering::Less),
@@ -38,7 +38,7 @@ where C: RaftTypeConfig
     /// Implements [`PartialOrd`] for LeaderId to allow multiple leaders per term.
     pub fn adv<LID>(a: &LID, b: &LID) -> Option<Ordering>
     where LID: RaftLeaderId<C> {
-        let res = (a.term(), a.node_id_ref()).cmp(&(b.term(), b.node_id_ref()));
+        let res = (a.term(), a.node_id()).cmp(&(b.term(), b.node_id()));
         Some(res)
     }
 }
@@ -66,7 +66,7 @@ mod tests {
             self.0
         }
 
-        fn node_id_ref(&self) -> Option<&u64> {
+        fn node_id(&self) -> Option<&u64> {
             self.1.as_ref()
         }
 
