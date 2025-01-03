@@ -130,13 +130,13 @@ where C: RaftTypeConfig
     /// Extends a list of `log_id` that are proposed by a same leader.
     ///
     /// The log ids in the input has to be continuous.
-    pub(crate) fn extend_from_same_leader<'a, LID: RaftLogId<C> + 'a>(&mut self, new_ids: &[LID]) {
+    pub(crate) fn extend_from_same_leader<'a, LID: AsRef<LogIdOf<C>> + 'a>(&mut self, new_ids: &[LID]) {
         if let Some(first) = new_ids.first() {
-            let first_id = first.get_log_id();
+            let first_id = first.as_ref();
             self.append(first_id.clone());
 
             if let Some(last) = new_ids.last() {
-                let last_id = last.get_log_id();
+                let last_id = last.as_ref();
                 assert_eq!(last_id.leader_id, first_id.leader_id);
 
                 if last_id != first_id {
@@ -149,11 +149,11 @@ where C: RaftTypeConfig
     /// Extends a list of `log_id`.
     // leader_id: Copy is feature gated
     #[allow(clippy::clone_on_copy)]
-    pub(crate) fn extend<'a, LID: RaftLogId<C> + 'a>(&mut self, new_ids: &[LID]) {
+    pub(crate) fn extend<'a, LID: AsRef<LogIdOf<C>> + 'a>(&mut self, new_ids: &[LID]) {
         let mut prev = self.last().map(|x| x.leader_id.clone());
 
         for x in new_ids.iter() {
-            let log_id = x.get_log_id();
+            let log_id = x.as_ref();
 
             if prev.as_ref() != Some(&log_id.leader_id) {
                 self.append(log_id.clone());
@@ -163,7 +163,7 @@ where C: RaftTypeConfig
         }
 
         if let Some(last) = new_ids.last() {
-            let log_id = last.get_log_id();
+            let log_id = last.as_ref();
 
             if self.last() != Some(log_id) {
                 self.append(log_id.clone());

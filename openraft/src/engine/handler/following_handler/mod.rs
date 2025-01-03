@@ -11,6 +11,7 @@ use crate::engine::Command;
 use crate::engine::Condition;
 use crate::engine::EngineConfig;
 use crate::engine::EngineOutput;
+use crate::entry::RaftEntryExt;
 use crate::entry::RaftPayload;
 use crate::error::RejectAppendEntries;
 use crate::raft_state::IOId;
@@ -20,7 +21,6 @@ use crate::type_config::alias::LogIdOf;
 use crate::vote::committed::CommittedVote;
 use crate::EffectiveMembership;
 use crate::LogIdOptionExt;
-use crate::RaftLogId;
 use crate::RaftState;
 use crate::RaftTypeConfig;
 use crate::StoredMembership;
@@ -69,10 +69,10 @@ where C: RaftTypeConfig
         );
 
         if let Some(x) = entries.first() {
-            debug_assert!(x.get_log_id().index == prev_log_id.next_index());
+            debug_assert!(x.index() == prev_log_id.next_index());
         }
 
-        let last_log_id = entries.last().map(|x| x.get_log_id().clone());
+        let last_log_id = entries.last().map(|x| x.to_log_id());
         let last_log_id = std::cmp::max(prev_log_id, last_log_id);
 
         let prev_accepted = self.state.accept_io(IOId::new_log_io(self.leader_vote.clone(), last_log_id.clone()));
@@ -84,7 +84,7 @@ where C: RaftTypeConfig
             // the entries after it has to be deleted first.
             // Raft requires log ids are in total order by (term,index).
             // Otherwise the log id with max index makes committed entry invisible in election.
-            self.truncate_logs(entries[since].get_log_id().index);
+            self.truncate_logs(entries[since].index());
 
             let entries = entries.split_off(since);
             self.do_append_entries(entries);
@@ -143,11 +143,8 @@ where C: RaftTypeConfig
     #[tracing::instrument(level = "debug", skip(self, entries))]
     pub(crate) fn do_append_entries(&mut self, entries: Vec<C::Entry>) {
         debug_assert!(!entries.is_empty());
-        debug_assert_eq!(
-            entries[0].get_log_id().index,
-            self.state.log_ids.last().cloned().next_index(),
-        );
-        debug_assert!(Some(entries[0].get_log_id()) > self.state.log_ids.last());
+        debug_assert_eq!(entries[0].index(), self.state.log_ids.last().cloned().next_index(),);
+        debug_assert!(Some(entries[0].log_id()) > self.state.log_ids.last());
 
         self.state.extend_log_ids(&entries);
         self.append_membership(entries.iter());
@@ -343,7 +340,7 @@ where C: RaftTypeConfig
         // Find the last 2 membership config entries: the committed and the effective.
         for ent in entries.rev() {
             if let Some(m) = ent.get_membership() {
-                memberships.insert(0, StoredMembership::new(Some(ent.get_log_id().clone()), m.clone()));
+                memberships.insert(0, StoredMembership::new(Some(ent.to_log_id()), m.clone()));
                 if memberships.len() == 2 {
                     break;
                 }

@@ -1,12 +1,11 @@
 use std::fmt::Debug;
 use std::fmt::Display;
 
+use crate::base::OptionalFeatures;
 use crate::log_id::RaftLogId;
+use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::type_config::alias::LogIdOf;
 use crate::Membership;
-use crate::OptionalSend;
-use crate::OptionalSerde;
-use crate::OptionalSync;
 use crate::RaftTypeConfig;
 
 /// Defines operations on an entry payload.
@@ -21,15 +20,19 @@ where C: RaftTypeConfig
 }
 
 /// Defines operations on an entry.
-pub trait RaftEntry<C>: RaftPayload<C> + RaftLogId<C>
+pub trait RaftEntry<C>
 where
     C: RaftTypeConfig,
-    Self: OptionalSerde + Debug + Display + OptionalSend + OptionalSync,
+    Self: OptionalFeatures + Debug + Display,
+    Self: RaftPayload<C> + AsRef<LogIdOf<C>> + AsMut<LogIdOf<C>>,
 {
     /// Create a new blank log entry.
     ///
     /// The returned instance must return `true` for `Self::is_blank()`.
     fn new_blank(log_id: LogIdOf<C>) -> Self;
+
+    /// Create a new normal log entry that contains application data.
+    fn new_normal(log_id: LogIdOf<C>, data: C::D) -> Self;
 
     /// Create a new membership log entry.
     ///
@@ -37,10 +40,38 @@ where
     fn new_membership(log_id: LogIdOf<C>, m: Membership<C>) -> Self;
 }
 
-/// Build a raft log entry from app data.
-///
-/// A concrete Entry should implement this trait to let openraft create an entry when needed.
-pub trait FromAppData<T> {
-    /// Build a raft log entry from app data.
-    fn from_app_data(t: T) -> Self;
+pub trait RaftEntryExt<C>: RaftEntry<C>
+where C: RaftTypeConfig
+{
+    fn log_id(&self) -> &LogIdOf<C> {
+        AsRef::<LogIdOf<C>>::as_ref(self)
+    }
+
+    fn to_log_id(&self) -> LogIdOf<C> {
+        self.log_id().clone()
+    }
+
+    fn committed_leader_id(&self) -> &CommittedLeaderIdOf<C> {
+        AsRef::<LogIdOf<C>>::as_ref(self).leader_id()
+    }
+
+    fn to_committed_leader_id(&self) -> CommittedLeaderIdOf<C> {
+        self.committed_leader_id().clone()
+    }
+
+    fn index(&self) -> u64 {
+        AsRef::<LogIdOf<C>>::as_ref(self).index
+    }
+
+    fn set_log_id(&mut self, new: &LogIdOf<C>) {
+        let log_id = AsMut::<LogIdOf<C>>::as_mut(self);
+        *log_id = new.clone();
+    }
+}
+
+impl<C, T> RaftEntryExt<C> for T
+where
+    C: RaftTypeConfig,
+    T: RaftEntry<C>,
+{
 }

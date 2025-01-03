@@ -15,6 +15,7 @@ use crate::core::ApplyResult;
 use crate::core::ApplyingEntry;
 use crate::display_ext::DisplayOptionExt;
 use crate::display_ext::DisplaySliceExt;
+use crate::entry::RaftEntryExt;
 use crate::entry::RaftPayload;
 use crate::storage::RaftStateMachine;
 use crate::storage::Snapshot;
@@ -23,7 +24,6 @@ use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::MpscUnboundedReceiverOf;
 use crate::type_config::alias::MpscUnboundedSenderOf;
 use crate::type_config::TypeConfigExt;
-use crate::RaftLogId;
 use crate::RaftLogReader;
 use crate::RaftSnapshotBuilder;
 use crate::RaftTypeConfig;
@@ -186,7 +186,7 @@ where
         #[allow(clippy::needless_collect)]
         let applying_entries = entries
             .iter()
-            .map(|e| ApplyingEntry::new(e.get_log_id().clone(), e.get_membership().cloned()))
+            .map(|e| ApplyingEntry::new(e.to_log_id(), e.get_membership().cloned()))
             .collect::<Vec<_>>();
 
         let n_entries = end - since;
