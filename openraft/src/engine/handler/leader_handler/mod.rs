@@ -2,6 +2,7 @@ use crate::engine::handler::replication_handler::ReplicationHandler;
 use crate::engine::Command;
 use crate::engine::EngineConfig;
 use crate::engine::EngineOutput;
+use crate::entry::traits::RaftEntryExt;
 use crate::entry::RaftPayload;
 use crate::proposer::Leader;
 use crate::proposer::LeaderQuorumSet;
@@ -10,7 +11,6 @@ use crate::raft_state::IOId;
 use crate::raft_state::LogStateReader;
 use crate::replication::ReplicationSessionId;
 use crate::type_config::alias::LogIdOf;
-use crate::RaftLogId;
 use crate::RaftState;
 use crate::RaftTypeConfig;
 
@@ -67,7 +67,7 @@ where C: RaftTypeConfig
                     membership_entry.is_none(),
                     "only one membership entry is allowed in a batch"
                 );
-                membership_entry = Some((entry.get_log_id().clone(), m.clone()));
+                membership_entry = Some((entry.to_log_id(), m.clone()));
             }
         }
 

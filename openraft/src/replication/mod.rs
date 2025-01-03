@@ -27,6 +27,7 @@ use crate::core::notification::Notification;
 use crate::core::sm::handle::SnapshotReader;
 use crate::display_ext::DisplayInstantExt;
 use crate::display_ext::DisplayOptionExt;
+use crate::entry::traits::RaftEntryExt;
 use crate::error::HigherVote;
 use crate::error::PayloadTooLarge;
 use crate::error::RPCError;
@@ -60,7 +61,6 @@ use crate::type_config::async_runtime::mutex::Mutex;
 use crate::type_config::TypeConfigExt;
 use crate::vote::raft_vote::RaftVoteExt;
 use crate::LogId;
-use crate::RaftLogId;
 use crate::RaftNetworkFactory;
 use crate::RaftTypeConfig;
 use crate::StorageError;
@@ -399,8 +399,8 @@ where
                 // limited_get_log_entries will return logs smaller than the range [start, end).
                 let logs = self.log_reader.limited_get_log_entries(start, end).await?;
 
-                let first = logs.first().map(|x| x.get_log_id()).unwrap();
-                let last = logs.last().map(|x| x.get_log_id().clone()).unwrap();
+                let first = logs.first().map(|x| x.log_id()).unwrap();
+                let last = logs.last().map(|x| x.to_log_id()).unwrap();
 
                 debug_assert!(
                     !logs.is_empty() && logs.len() <= (end - start) as usize,

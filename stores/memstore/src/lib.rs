@@ -15,6 +15,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use openraft::alias::SnapshotDataOf;
+use openraft::entry::RaftEntryExt;
 use openraft::storage::IOFlushed;
 use openraft::storage::LogState;
 use openraft::storage::RaftLogReader;
@@ -26,7 +27,6 @@ use openraft::Entry;
 use openraft::EntryPayload;
 use openraft::LogId;
 use openraft::OptionalSend;
-use openraft::RaftLogId;
 use openraft::SnapshotMeta;
 use openraft::StorageError;
 use openraft::StoredMembership;
@@ -336,7 +336,7 @@ impl RaftLogStorage<TypeConfig> for Arc<MemLogStore> {
             Some(serialized) => {
                 let ent: Entry<TypeConfig> =
                     serde_json::from_str(serialized).map_err(|e| StorageError::read_logs(&e))?;
-                Some(*ent.get_log_id())
+                Some(ent.to_log_id())
             }
         };
 
@@ -392,8 +392,7 @@ impl RaftLogStorage<TypeConfig> for Arc<MemLogStore> {
     where I: IntoIterator<Item = Entry<TypeConfig>> + OptionalSend {
         let mut log = self.log.write().await;
         for entry in entries {
-            let s =
-                serde_json::to_string(&entry).map_err(|e| StorageError::write_log_entry(*entry.get_log_id(), &e))?;
+            let s = serde_json::to_string(&entry).map_err(|e| StorageError::write_log_entry(entry.to_log_id(), &e))?;
             log.insert(entry.log_id.index, s);
         }
 
