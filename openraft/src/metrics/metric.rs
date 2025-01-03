@@ -1,5 +1,6 @@
 use std::cmp::Ordering;
 
+use crate::base::cmp::CompareByKey;
 use crate::metrics::metric_display::MetricDisplay;
 use crate::type_config::alias::VoteOf;
 use crate::LogId;
@@ -67,7 +68,7 @@ where C: RaftTypeConfig
     fn partial_cmp(&self, other: &Metric<C>) -> Option<Ordering> {
         match other {
             Metric::Term(v) => Some(self.current_term.cmp(v)),
-            Metric::Vote(v) => self.vote.partial_cmp(v),
+            Metric::Vote(v) => self.vote.cmp_key().partial_cmp(&v.cmp_key()),
             Metric::LastLogIndex(v) => Some(self.last_log_index.cmp(v)),
             Metric::Applied(v) => Some(self.last_applied.cmp(v)),
             Metric::AppliedIndex(v) => Some(self.last_applied.index().cmp(v)),

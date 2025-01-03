@@ -10,6 +10,8 @@ use crate::quorum::QuorumSet;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::VoteOf;
+use crate::vote::raft_vote::RaftVoteExt;
+use crate::vote::RaftVote;
 use crate::LogId;
 use crate::RaftTypeConfig;
 

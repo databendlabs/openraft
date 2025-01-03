@@ -95,8 +95,10 @@ use crate::type_config::async_runtime::MpscUnboundedReceiver;
 use crate::type_config::TypeConfigExt;
 use crate::vote::committed::CommittedVote;
 use crate::vote::non_committed::NonCommittedVote;
+use crate::vote::raft_vote::RaftVoteExt;
 use crate::vote::vote_status::VoteStatus;
 use crate::vote::RaftLeaderId;
+use crate::vote::RaftVote;
 use crate::ChangeMembers;
 use crate::Instant;
 use crate::LogId;
@@ -392,7 +394,7 @@ where
                 // request.
                 if let AppendEntriesResponse::HigherVote(vote) = append_res {
                     debug_assert!(
-                        vote > my_vote,
+                        vote.as_ref_vote() > my_vote.as_ref_vote(),
                         "committed vote({}) has total order relation with other votes({})",
                         my_vote,
                         vote

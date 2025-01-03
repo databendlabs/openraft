@@ -16,7 +16,9 @@ use crate::raft_state::LogStateReader;
 use crate::storage::Snapshot;
 use crate::storage::SnapshotMeta;
 use crate::testing::log_id;
+use crate::type_config::alias::VoteOf;
 use crate::type_config::TypeConfigExt;
+use crate::vote::raft_vote::RaftVoteExt;
 use crate::EffectiveMembership;
 use crate::Membership;
 use crate::StoredMembership;
@@ -31,14 +33,12 @@ fn m1234() -> Membership<UTConfig> {
 }
 
 fn eng() -> Engine<UTConfig> {
-    let mut eng = Engine::testing_default(0);
+    let mut eng: Engine<UTConfig> = Engine::testing_default(0);
     eng.state.enable_validation(false); // Disable validation for incomplete state
 
-    eng.state.vote.update(
-        UTConfig::<()>::now(),
-        Duration::from_millis(500),
-        Vote::new_committed(2, 1),
-    );
+    let now = UTConfig::<()>::now();
+    let vote = VoteOf::<UTConfig>::new_committed(2, 1);
+    eng.state.vote.update(now, Duration::from_millis(500), vote);
     eng.state.committed = Some(log_id(4, 1, 5));
     eng.state.log_ids = LogIdList::new(vec![
         //

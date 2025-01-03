@@ -13,6 +13,7 @@ use crate::testing::blank_ent;
 use crate::testing::log_id;
 use crate::type_config::TypeConfigExt;
 use crate::utime::Leased;
+use crate::vote::raft_vote::RaftVoteExt;
 use crate::EffectiveMembership;
 use crate::Entry;
 use crate::EntryPayload;

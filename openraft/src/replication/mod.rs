@@ -21,6 +21,7 @@ use tracing_futures::Instrument;
 use crate::async_runtime::MpscUnboundedReceiver;
 use crate::async_runtime::MpscUnboundedSender;
 use crate::async_runtime::MpscUnboundedWeakSender;
+use crate::base::cmp::CompareByKey;
 use crate::config::Config;
 use crate::core::notification::Notification;
 use crate::core::sm::handle::SnapshotReader;
@@ -58,6 +59,7 @@ use crate::type_config::alias::VoteOf;
 use crate::type_config::async_runtime::mutex::Mutex;
 use crate::type_config::TypeConfigExt;
 use crate::vote::RaftLeaderId;
+use crate::vote::RaftVote;
 use crate::LogId;
 use crate::RaftLogId;
 use crate::RaftNetworkFactory;
@@ -443,7 +445,7 @@ where
         let append_res = res.map_err(|_e| {
             let to = Timeout {
                 action: RPCTypes::AppendEntries,
-                id: self.session_id.vote().leader_id().node_id().cloned().unwrap(),
+                id: self.session_id.vote().leader_id_ref().node_id().cloned().unwrap(),
                 target: self.target.clone(),
                 timeout: the_timeout,
             };
@@ -484,7 +486,7 @@ where
             }
             AppendEntriesResponse::HigherVote(vote) => {
                 debug_assert!(
-                    vote > self.session_id.vote(),
+                    vote.cmp_key() > self.session_id.vote().cmp_key(),
                     "higher vote({}) should be greater than leader's vote({})",
                     vote,
                     self.session_id.vote(),
@@ -803,7 +805,7 @@ where
 
         // Handle response conditions.
         let sender_vote = self.session_id.vote();
-        if resp.vote > sender_vote {
+        if resp.vote.cmp_key() > sender_vote.cmp_key() {
             return Err(ReplicationError::HigherVote(HigherVote {
                 higher: resp.vote,
                 sender_vote,

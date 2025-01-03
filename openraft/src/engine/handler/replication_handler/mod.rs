@@ -19,6 +19,7 @@ use crate::raft_state::LogStateReader;
 use crate::replication::request::Replicate;
 use crate::replication::response::ReplicationResult;
 use crate::type_config::alias::InstantOf;
+use crate::vote::raft_vote::RaftVoteExt;
 use crate::EffectiveMembership;
 use crate::LogId;
 use crate::LogIdOptionExt;
