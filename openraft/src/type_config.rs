@@ -13,7 +13,6 @@ pub use async_runtime::MpscUnbounded;
 pub use async_runtime::OneshotSender;
 pub use util::TypeConfigExt;
 
-use crate::entry::FromAppData;
 use crate::entry::RaftEntry;
 use crate::raft::responder::Responder;
 use crate::vote::raft_vote::RaftVote;
@@ -89,7 +88,7 @@ pub trait RaftTypeConfig:
     type Vote: RaftVote<Self>;
 
     /// Raft log entry, which can be built from an AppData.
-    type Entry: RaftEntry<Self> + FromAppData<Self::D>;
+    type Entry: RaftEntry<Self>;
 
     /// Snapshot data for exposing a snapshot for reading & writing.
     ///
@@ -129,6 +128,8 @@ pub mod alias {
 
     pub type DOf<C> = <C as RaftTypeConfig>::D;
     pub type ROf<C> = <C as RaftTypeConfig>::R;
+    pub type AppDataOf<C> = <C as RaftTypeConfig>::D;
+    pub type AppResponseOf<C> = <C as RaftTypeConfig>::R;
     pub type NodeIdOf<C> = <C as RaftTypeConfig>::NodeId;
     pub type NodeOf<C> = <C as RaftTypeConfig>::Node;
     pub type TermOf<C> = <C as RaftTypeConfig>::Term;

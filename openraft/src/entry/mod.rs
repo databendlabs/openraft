@@ -3,7 +3,6 @@
 use std::fmt;
 use std::fmt::Debug;
 
-use crate::log_id::RaftLogId;
 use crate::Membership;
 use crate::RaftTypeConfig;
 
@@ -11,10 +10,11 @@ pub mod payload;
 mod traits;
 
 pub use payload::EntryPayload;
-pub use traits::FromAppData;
 pub use traits::RaftEntry;
+pub use traits::RaftEntryExt;
 pub use traits::RaftPayload;
 
+use crate::type_config::alias::AppDataOf;
 use crate::type_config::alias::LogIdOf;
 
 /// A Raft log entry.
@@ -98,15 +98,19 @@ where C: RaftTypeConfig
     }
 }
 
-impl<C> RaftLogId<C> for Entry<C>
+impl<C> AsRef<LogIdOf<C>> for Entry<C>
 where C: RaftTypeConfig
 {
-    fn get_log_id(&self) -> &LogIdOf<C> {
+    fn as_ref(&self) -> &LogIdOf<C> {
         &self.log_id
     }
+}
 
-    fn set_log_id(&mut self, log_id: &LogIdOf<C>) {
-        self.log_id = log_id.clone();
+impl<C> AsMut<LogIdOf<C>> for Entry<C>
+where C: RaftTypeConfig
+{
+    fn as_mut(&mut self) -> &mut LogIdOf<C> {
+        &mut self.log_id
     }
 }
 
@@ -120,21 +124,17 @@ where C: RaftTypeConfig
         }
     }
 
+    fn new_normal(log_id: LogIdOf<C>, data: AppDataOf<C>) -> Self {
+        Entry {
+            log_id,
+            payload: EntryPayload::Normal(data),
+        }
+    }
+
     fn new_membership(log_id: LogIdOf<C>, m: Membership<C>) -> Self {
         Self {
             log_id,
             payload: EntryPayload::Membership(m),
-        }
-    }
-}
-
-impl<C> FromAppData<C::D> for Entry<C>
-where C: RaftTypeConfig
-{
-    fn from_app_data(d: C::D) -> Self {
-        Entry {
-            log_id: LogIdOf::<C>::default(),
-            payload: EntryPayload::Normal(d),
         }
     }
 }
