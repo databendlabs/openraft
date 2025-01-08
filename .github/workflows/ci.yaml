@@ -369,9 +369,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+
       - uses: actions-rs/toolchain@v1.0.6
         with:
           components: rustfmt, clippy
+
 
       - name: Format
         uses: actions-rs/cargo@v1
@@ -394,6 +397,10 @@ jobs:
           args: --all --no-deps
         env:
           RUSTDOCFLAGS: "-D warnings"
+
+
+      - shell: bash
+        run: cargo install cargo-audit
 
 
       - name: Audit dependencies
