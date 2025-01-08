@@ -15,11 +15,11 @@ use crate::error::NotInMembers;
 use crate::raft::VoteRequest;
 use crate::raft_state::LogStateReader;
 use crate::testing::log_id;
+use crate::type_config::alias::LogIdOf;
 use crate::type_config::TypeConfigExt;
 use crate::utime::Leased;
 use crate::vote::raft_vote::RaftVoteExt;
 use crate::Entry;
-use crate::LogId;
 use crate::Membership;
 use crate::Vote;
 
@@ -36,7 +36,7 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
     let log_id0 = log_id(0, 0, 0);
 
     let m1 = || Membership::<UTConfig>::new_with_defaults(vec![btreeset! {1}], []);
-    let entry = Entry::<UTConfig>::new_membership(LogId::default(), m1());
+    let entry = Entry::<UTConfig>::new_membership(LogIdOf::<UTConfig>::default(), m1());
 
     tracing::info!("--- ok: init empty node 1 with membership(1,2)");
     tracing::info!("--- expect OK result, check output commands and state changes");
@@ -57,7 +57,7 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
             vec![
                 Command::AppendInputEntries {
                     committed_vote: Vote::default().into_committed(),
-                    entries: vec![Entry::<UTConfig>::new_membership(LogId::default(), m1())],
+                    entries: vec![Entry::<UTConfig>::new_membership(LogIdOf::<UTConfig>::default(), m1())],
                 },
                 // When update the effective membership, the engine set it to Follower.
                 // But when initializing, it will switch to Candidate at once, in the last output
@@ -86,7 +86,7 @@ fn test_initialize() -> anyhow::Result<()> {
     let log_id0 = log_id(0, 0, 0);
 
     let m12 = || Membership::<UTConfig>::new_with_defaults(vec![btreeset! {1,2}], []);
-    let entry = || Entry::<UTConfig>::new_membership(LogId::default(), m12());
+    let entry = || Entry::<UTConfig>::new_membership(LogIdOf::<UTConfig>::default(), m12());
 
     tracing::info!("--- ok: init empty node 1 with membership(1,2)");
     tracing::info!("--- expect OK result, check output commands and state changes");
@@ -107,7 +107,7 @@ fn test_initialize() -> anyhow::Result<()> {
             vec![
                 Command::AppendInputEntries {
                     committed_vote: Vote::default().into_committed(),
-                    entries: vec![Entry::new_membership(LogId::default(), m12())],
+                    entries: vec![Entry::new_membership(LogIdOf::<UTConfig>::default(), m12())],
                 },
                 // When update the effective membership, the engine set it to Follower.
                 // But when initializing, it will switch to Candidate at once, in the last output

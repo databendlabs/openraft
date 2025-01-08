@@ -7,7 +7,7 @@ use crate::display_ext::DisplayOptionExt;
 use crate::log_id::RaftLogId;
 use crate::quorum::Joint;
 use crate::quorum::QuorumSet;
-use crate::LogId;
+use crate::type_config::alias::LogIdOf;
 use crate::Membership;
 use crate::RaftTypeConfig;
 use crate::StoredMembership;
@@ -65,11 +65,11 @@ where
 impl<C> EffectiveMembership<C>
 where C: RaftTypeConfig
 {
-    pub(crate) fn new_arc(log_id: Option<LogId<C>>, membership: Membership<C>) -> Arc<Self> {
+    pub(crate) fn new_arc(log_id: Option<LogIdOf<C>>, membership: Membership<C>) -> Arc<Self> {
         Arc::new(Self::new(log_id, membership))
     }
 
-    pub fn new(log_id: Option<LogId<C>>, membership: Membership<C>) -> Self {
+    pub fn new(log_id: Option<LogIdOf<C>>, membership: Membership<C>) -> Self {
         let voter_ids = membership.voter_ids().collect();
 
         let configs = membership.get_joint_config();
@@ -95,7 +95,7 @@ where C: RaftTypeConfig
         &self.stored_membership
     }
 
-    pub fn log_id(&self) -> &Option<LogId<C>> {
+    pub fn log_id(&self) -> &Option<LogIdOf<C>> {
         self.stored_membership.log_id()
     }
 

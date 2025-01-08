@@ -2,7 +2,7 @@ use openraft_macros::add_async_trait;
 
 use crate::storage::Snapshot;
 use crate::storage::SnapshotMeta;
-use crate::LogId;
+use crate::type_config::alias::LogIdOf;
 use crate::OptionalSend;
 use crate::OptionalSync;
 use crate::RaftSnapshotBuilder;
@@ -35,7 +35,7 @@ where C: RaftTypeConfig
     /// last-applied-log-id.
     /// Because upon startup, the last membership will be loaded by scanning logs from the
     /// `last-applied-log-id`.
-    async fn applied_state(&mut self) -> Result<(Option<LogId<C>>, StoredMembership<C>), StorageError<C>>;
+    async fn applied_state(&mut self) -> Result<(Option<LogIdOf<C>>, StoredMembership<C>), StorageError<C>>;
 
     /// Apply the given payload of entries to the state machine.
     ///

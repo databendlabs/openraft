@@ -1,4 +1,4 @@
-use crate::LogId;
+use crate::type_config::alias::LogIdOf;
 use crate::RaftTypeConfig;
 use crate::SnapshotId;
 
@@ -9,10 +9,10 @@ pub struct SnapshotSignature<C>
 where C: RaftTypeConfig
 {
     /// Log entries upto which this snapshot includes, inclusive.
-    pub last_log_id: Option<LogId<C>>,
+    pub last_log_id: Option<LogIdOf<C>>,
 
     /// The last applied membership log id.
-    pub last_membership_log_id: Option<LogId<C>>,
+    pub last_membership_log_id: Option<LogIdOf<C>>,
 
     /// To identify a snapshot when transferring.
     pub snapshot_id: SnapshotId,

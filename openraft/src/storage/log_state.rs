@@ -1,4 +1,4 @@
-use crate::LogId;
+use crate::type_config::alias::LogIdOf;
 use crate::RaftTypeConfig;
 
 /// The state about logs.
@@ -7,9 +7,9 @@ use crate::RaftTypeConfig;
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct LogState<C: RaftTypeConfig> {
     /// The greatest log id that has been purged after being applied to state machine.
-    pub last_purged_log_id: Option<LogId<C>>,
+    pub last_purged_log_id: Option<LogIdOf<C>>,
 
     /// The log id of the last present entry if there are any entries.
     /// Otherwise the same value as `last_purged_log_id`.
-    pub last_log_id: Option<LogId<C>>,
+    pub last_log_id: Option<LogIdOf<C>>,
 }

@@ -2,8 +2,8 @@ use std::cmp::Ordering;
 
 use crate::base::ord_by::OrdBy;
 use crate::metrics::metric_display::MetricDisplay;
+use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::VoteOf;
-use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::RaftMetrics;
 use crate::RaftTypeConfig;
@@ -18,10 +18,10 @@ where C: RaftTypeConfig
     Term(C::Term),
     Vote(VoteOf<C>),
     LastLogIndex(Option<u64>),
-    Applied(Option<LogId<C>>),
+    Applied(Option<LogIdOf<C>>),
     AppliedIndex(Option<u64>),
-    Snapshot(Option<LogId<C>>),
-    Purged(Option<LogId<C>>),
+    Snapshot(Option<LogIdOf<C>>),
+    Purged(Option<LogIdOf<C>>),
 }
 
 impl<C> Metric<C>

@@ -3,7 +3,7 @@ use crate::engine::Command;
 use crate::engine::EngineConfig;
 use crate::engine::EngineOutput;
 use crate::raft_state::LogStateReader;
-use crate::LogId;
+use crate::type_config::alias::LogIdOf;
 use crate::LogIdOptionExt;
 use crate::RaftState;
 use crate::RaftTypeConfig;
@@ -61,7 +61,7 @@ where C: RaftTypeConfig
 
     /// Update the log id it expect to purge up to. It won't trigger purge immediately.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn update_purge_upto(&mut self, purge_upto: LogId<C>) {
+    pub(crate) fn update_purge_upto(&mut self, purge_upto: LogIdOf<C>) {
         debug_assert!(self.state.purge_upto() <= Some(&purge_upto));
         self.state.purge_upto = Some(purge_upto);
     }
@@ -74,7 +74,7 @@ where C: RaftTypeConfig
     /// `max_keep` specifies the number of applied logs to keep.
     /// `max_keep==0` means every applied log can be purged.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn calc_purge_upto(&self) -> Option<LogId<C>> {
+    pub(crate) fn calc_purge_upto(&self) -> Option<LogIdOf<C>> {
         let st = &self.state;
         let max_keep = self.config.max_in_snapshot_log_to_keep;
         let batch_size = self.config.purge_batch_size;

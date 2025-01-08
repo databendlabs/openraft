@@ -1,7 +1,7 @@
 use std::fmt;
 
 use crate::display_ext::DisplayOption;
-use crate::LogId;
+use crate::type_config::alias::LogIdOf;
 use crate::Membership;
 use crate::RaftTypeConfig;
 
@@ -21,7 +21,7 @@ pub struct StoredMembership<C>
 where C: RaftTypeConfig
 {
     /// The id of the log that stores this membership config
-    log_id: Option<LogId<C>>,
+    log_id: Option<LogIdOf<C>>,
 
     /// Membership config
     membership: Membership<C>,
@@ -30,11 +30,11 @@ where C: RaftTypeConfig
 impl<C> StoredMembership<C>
 where C: RaftTypeConfig
 {
-    pub fn new(log_id: Option<LogId<C>>, membership: Membership<C>) -> Self {
+    pub fn new(log_id: Option<LogIdOf<C>>, membership: Membership<C>) -> Self {
         Self { log_id, membership }
     }
 
-    pub fn log_id(&self) -> &Option<LogId<C>> {
+    pub fn log_id(&self) -> &Option<LogIdOf<C>> {
         &self.log_id
     }
 

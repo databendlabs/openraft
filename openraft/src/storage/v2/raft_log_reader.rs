@@ -6,8 +6,8 @@ use openraft_macros::add_async_trait;
 use openraft_macros::since;
 
 use crate::engine::LogIdList;
+use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::VoteOf;
-use crate::LogId;
 use crate::OptionalSend;
 use crate::OptionalSync;
 use crate::RaftTypeConfig;
@@ -104,7 +104,7 @@ where C: RaftTypeConfig
     ///
     /// [`RaftLogStorage`]: crate::storage::RaftLogStorage
     #[since(version = "0.10.0")]
-    async fn get_key_log_ids(&mut self, range: RangeInclusive<LogId<C>>) -> Result<Vec<LogId<C>>, StorageError<C>> {
+    async fn get_key_log_ids(&mut self, range: RangeInclusive<LogIdOf<C>>) -> Result<Vec<LogIdOf<C>>, StorageError<C>> {
         LogIdList::get_key_log_ids(range, self).await
     }
 }

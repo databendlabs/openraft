@@ -59,7 +59,6 @@ use crate::type_config::alias::VoteOf;
 use crate::type_config::async_runtime::mutex::Mutex;
 use crate::type_config::TypeConfigExt;
 use crate::vote::raft_vote::RaftVoteExt;
-use crate::LogId;
 use crate::RaftLogId;
 use crate::RaftNetworkFactory;
 use crate::RaftTypeConfig;
@@ -136,10 +135,10 @@ where
     config: Arc<Config>,
 
     /// The log id of the highest log entry which is known to be committed in the cluster.
-    committed: Option<LogId<C>>,
+    committed: Option<LogIdOf<C>>,
 
     /// Last matching log id on a follower/learner
-    matching: Option<LogId<C>>,
+    matching: Option<LogIdOf<C>>,
 
     /// Next replication action to run.
     next_action: Option<Data<C>>,
@@ -163,8 +162,8 @@ where
         target: C::NodeId,
         session_id: ReplicationSessionId<C>,
         config: Arc<Config>,
-        committed: Option<LogId<C>>,
-        matching: Option<LogId<C>>,
+        committed: Option<LogIdOf<C>>,
+        matching: Option<LogIdOf<C>>,
         network: N::Network,
         snapshot_network: N::Network,
         log_reader: LS::LogReader,
@@ -818,7 +817,7 @@ where
     }
 
     /// If there are more logs to send, it returns a new `Some(Data::Logs)` to send.
-    fn next_action_to_send(&mut self, matching: Option<LogId<C>>, log_ids: LogIdRange<C>) -> Option<Data<C>> {
+    fn next_action_to_send(&mut self, matching: Option<LogIdOf<C>>, log_ids: LogIdRange<C>) -> Option<Data<C>> {
         if matching < log_ids.last {
             Some(Data::new_logs(LogIdRange::new(matching, log_ids.last)))
         } else {
@@ -827,7 +826,7 @@ where
     }
 
     /// Check if partial success result(`matching`) is valid for a given log range to send.
-    fn debug_assert_partial_success(to_send: &LogIdRange<C>, matching: &Option<LogId<C>>) {
+    fn debug_assert_partial_success(to_send: &LogIdRange<C>, matching: &Option<LogIdOf<C>>) {
         debug_assert!(
             matching <= &to_send.last,
             "matching ({}) should be <= last_log_id ({})",

@@ -9,7 +9,6 @@ use crate::error::ForwardToLeader;
 use crate::log_id::RaftLogId;
 use crate::storage::SnapshotMeta;
 use crate::utime::Leased;
-use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::RaftTypeConfig;
 use crate::ServerState;
@@ -61,7 +60,7 @@ where C: RaftTypeConfig
     ///   of the leader.
     ///
     /// - A quorum could be a uniform quorum or joint quorum.
-    pub committed: Option<LogId<C>>,
+    pub committed: Option<LogIdOf<C>>,
 
     pub(crate) purged_next: u64,
 
@@ -86,7 +85,7 @@ where C: RaftTypeConfig
     ///
     /// If a log is in use by a replication task, the purge is postponed and is stored in this
     /// field.
-    pub(crate) purge_upto: Option<LogId<C>>,
+    pub(crate) purge_upto: Option<LogIdOf<C>>,
 }
 
 impl<C> Default for RaftState<C>
@@ -110,39 +109,39 @@ where C: RaftTypeConfig
 impl<C> LogStateReader<C> for RaftState<C>
 where C: RaftTypeConfig
 {
-    fn get_log_id(&self, index: u64) -> Option<LogId<C>> {
+    fn get_log_id(&self, index: u64) -> Option<LogIdOf<C>> {
         self.log_ids.get(index)
     }
 
-    fn last_log_id(&self) -> Option<&LogId<C>> {
+    fn last_log_id(&self) -> Option<&LogIdOf<C>> {
         self.log_ids.last()
     }
 
-    fn committed(&self) -> Option<&LogId<C>> {
+    fn committed(&self) -> Option<&LogIdOf<C>> {
         self.committed.as_ref()
     }
 
-    fn io_applied(&self) -> Option<&LogId<C>> {
+    fn io_applied(&self) -> Option<&LogIdOf<C>> {
         self.io_state.applied()
     }
 
-    fn io_snapshot_last_log_id(&self) -> Option<&LogId<C>> {
+    fn io_snapshot_last_log_id(&self) -> Option<&LogIdOf<C>> {
         self.io_state.snapshot()
     }
 
-    fn io_purged(&self) -> Option<&LogId<C>> {
+    fn io_purged(&self) -> Option<&LogIdOf<C>> {
         self.io_state.purged()
     }
 
-    fn snapshot_last_log_id(&self) -> Option<&LogId<C>> {
+    fn snapshot_last_log_id(&self) -> Option<&LogIdOf<C>> {
         self.snapshot_meta.last_log_id.as_ref()
     }
 
-    fn purge_upto(&self) -> Option<&LogId<C>> {
+    fn purge_upto(&self) -> Option<&LogIdOf<C>> {
         self.purge_upto.as_ref()
     }
 
-    fn last_purged_log_id(&self) -> Option<&LogId<C>> {
+    fn last_purged_log_id(&self) -> Option<&LogIdOf<C>> {
         if self.purged_next == 0 {
             return None;
         }

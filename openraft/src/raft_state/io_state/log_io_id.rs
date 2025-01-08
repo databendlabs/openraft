@@ -1,8 +1,8 @@
 use std::fmt;
 
 use crate::display_ext::DisplayOptionExt;
+use crate::type_config::alias::LogIdOf;
 use crate::vote::committed::CommittedVote;
-use crate::LogId;
 use crate::RaftTypeConfig;
 
 /// A monotonic increasing id for log append io operation.
@@ -30,7 +30,7 @@ where C: RaftTypeConfig
     pub(crate) committed_vote: CommittedVote<C>,
 
     /// The last log id that has been flushed to storage.
-    pub(crate) log_id: Option<LogId<C>>,
+    pub(crate) log_id: Option<LogIdOf<C>>,
 }
 
 impl<C> fmt::Display for LogIOId<C>
@@ -44,7 +44,7 @@ where C: RaftTypeConfig
 impl<C> LogIOId<C>
 where C: RaftTypeConfig
 {
-    pub(crate) fn new(committed_vote: CommittedVote<C>, log_id: Option<LogId<C>>) -> Self {
+    pub(crate) fn new(committed_vote: CommittedVote<C>, log_id: Option<LogIdOf<C>>) -> Self {
         Self { committed_vote, log_id }
     }
 }

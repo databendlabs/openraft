@@ -1,7 +1,7 @@
 use crate::display_ext::DisplayOptionExt;
 use crate::engine::EngineConfig;
 use crate::progress::entry::ProgressEntry;
-use crate::LogId;
+use crate::type_config::alias::LogIdOf;
 use crate::LogIdOptionExt;
 use crate::RaftTypeConfig;
 
@@ -76,7 +76,7 @@ where C: RaftTypeConfig
         }
     }
 
-    pub(crate) fn update_matching(&mut self, matching: Option<LogId<C>>) {
+    pub(crate) fn update_matching(&mut self, matching: Option<LogIdOf<C>>) {
         tracing::debug!(
             "update_matching: current progress_entry: {}; matching: {}",
             self.entry,

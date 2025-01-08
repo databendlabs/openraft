@@ -12,7 +12,6 @@ use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::VoteOf;
 use crate::vote::raft_vote::RaftVoteExt;
 use crate::vote::RaftVote;
-use crate::LogId;
 use crate::RaftTypeConfig;
 
 /// Candidate: voting state.
@@ -82,7 +81,7 @@ where
         &self.vote
     }
 
-    pub(crate) fn last_log_id(&self) -> Option<&LogId<C>> {
+    pub(crate) fn last_log_id(&self) -> Option<&LogIdOf<C>> {
         self.last_log_id.as_ref()
     }
 

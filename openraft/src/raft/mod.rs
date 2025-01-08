@@ -84,13 +84,13 @@ use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
 use crate::storage::Snapshot;
 use crate::type_config::alias::JoinErrorOf;
+use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::ResponderOf;
 use crate::type_config::alias::ResponderReceiverOf;
 use crate::type_config::alias::SnapshotDataOf;
 use crate::type_config::alias::VoteOf;
 use crate::type_config::alias::WatchReceiverOf;
 use crate::type_config::TypeConfigExt;
-use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::LogIndexOptionExt;
 use crate::OptionalSend;
@@ -542,7 +542,7 @@ where C: RaftTypeConfig
     /// ```
     /// Read more about how it works: [Read Operation](crate::docs::protocol::read)
     #[tracing::instrument(level = "debug", skip(self))]
-    pub async fn ensure_linearizable(&self) -> Result<Option<LogId<C>>, RaftError<C, CheckIsLeaderError<C>>> {
+    pub async fn ensure_linearizable(&self) -> Result<Option<LogIdOf<C>>, RaftError<C, CheckIsLeaderError<C>>> {
         let (read_log_id, applied) = self.get_read_log_id().await?;
 
         if read_log_id.index() > applied.index() {
@@ -591,7 +591,7 @@ where C: RaftTypeConfig
     #[tracing::instrument(level = "debug", skip(self))]
     pub async fn get_read_log_id(
         &self,
-    ) -> Result<(Option<LogId<C>>, Option<LogId<C>>), RaftError<C, CheckIsLeaderError<C>>> {
+    ) -> Result<(Option<LogIdOf<C>>, Option<LogIdOf<C>>), RaftError<C, CheckIsLeaderError<C>>> {
         let (tx, rx) = C::oneshot();
         let (read_log_id, applied) = self.inner.call_core(RaftMsg::CheckIsLeaderRequest { tx }, rx).await?;
         Ok((read_log_id, applied))
@@ -782,8 +782,8 @@ where C: RaftTypeConfig
         &self,
         metrics: &RaftMetrics<C>,
         node_id: &C::NodeId,
-        membership_log_id: Option<&LogId<C>>,
-    ) -> Result<Option<LogId<C>>, ()> {
+        membership_log_id: Option<&LogIdOf<C>>,
+    ) -> Result<Option<LogIdOf<C>>, ()> {
         if metrics.membership_config.log_id().as_ref() < membership_log_id {
             // Waiting for the latest metrics to report.
             return Err(());

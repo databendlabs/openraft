@@ -13,7 +13,7 @@ use crate::engine::EngineConfig;
 use crate::progress::entry::update::Updater;
 use crate::progress::inflight::Inflight;
 use crate::raft_state::LogStateReader;
-use crate::LogId;
+use crate::type_config::alias::LogIdOf;
 use crate::LogIdOptionExt;
 use crate::RaftTypeConfig;
 
@@ -24,7 +24,7 @@ pub(crate) struct ProgressEntry<C>
 where C: RaftTypeConfig
 {
     /// The id of the last matching log on the target following node.
-    pub(crate) matching: Option<LogId<C>>,
+    pub(crate) matching: Option<LogIdOf<C>>,
 
     /// The data being transmitted in flight.
     ///
@@ -48,7 +48,7 @@ impl<C> ProgressEntry<C>
 where C: RaftTypeConfig
 {
     #[allow(dead_code)]
-    pub(crate) fn new(matching: Option<LogId<C>>) -> Self {
+    pub(crate) fn new(matching: Option<LogIdOf<C>>) -> Self {
         Self {
             matching: matching.clone(),
             inflight: Inflight::None,
@@ -85,7 +85,7 @@ where C: RaftTypeConfig
     /// Return if a range of log id `..=log_id` is inflight sending.
     ///
     /// `prev_log_id` is never inflight.
-    pub(crate) fn is_log_range_inflight(&self, upto: &LogId<C>) -> bool {
+    pub(crate) fn is_log_range_inflight(&self, upto: &LogIdOf<C>) -> bool {
         match &self.inflight {
             Inflight::None => false,
             Inflight::Logs { log_id_range, .. } => {
@@ -175,10 +175,10 @@ where C: RaftTypeConfig
     }
 }
 
-impl<C> Borrow<Option<LogId<C>>> for ProgressEntry<C>
+impl<C> Borrow<Option<LogIdOf<C>>> for ProgressEntry<C>
 where C: RaftTypeConfig
 {
-    fn borrow(&self) -> &Option<LogId<C>> {
+    fn borrow(&self) -> &Option<LogIdOf<C>> {
         &self.matching
     }
 }

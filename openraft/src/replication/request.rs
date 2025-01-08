@@ -9,7 +9,7 @@ pub(crate) enum Replicate<C>
 where C: RaftTypeConfig
 {
     /// Inform replication stream to forward the committed log id to followers/learners.
-    Committed(Option<LogId<C>>),
+    Committed(Option<LogIdOf<C>>),
 
     /// Send a chunk of data, e.g., logs or snapshot.
     Data(Data<C>),
@@ -47,7 +47,6 @@ use crate::raft::SnapshotResponse;
 use crate::replication::callbacks::SnapshotCallback;
 use crate::storage::SnapshotMeta;
 use crate::type_config::alias::InstantOf;
-use crate::LogId;
 use crate::RaftTypeConfig;
 
 /// Request to replicate a chunk of data, logs or snapshot.

@@ -10,7 +10,7 @@ use validit::Validate;
 use crate::display_ext::DisplayOptionExt;
 use crate::log_id_range::LogIdRange;
 use crate::type_config::alias::CommittedLeaderIdOf;
-use crate::LogId;
+use crate::type_config::alias::LogIdOf;
 use crate::LogIdOptionExt;
 use crate::RaftTypeConfig;
 
@@ -35,7 +35,7 @@ where C: RaftTypeConfig
         /// The last log id snapshot includes.
         ///
         /// It is None, if the snapshot is empty.
-        last_log_id: Option<LogId<C>>,
+        last_log_id: Option<LogIdOf<C>>,
     },
 }
 
@@ -76,7 +76,7 @@ impl<C> Inflight<C>
 where C: RaftTypeConfig
 {
     /// Create inflight state for sending logs.
-    pub(crate) fn logs(prev: Option<LogId<C>>, last: Option<LogId<C>>) -> Self {
+    pub(crate) fn logs(prev: Option<LogIdOf<C>>, last: Option<LogIdOf<C>>) -> Self {
         #![allow(clippy::nonminimal_bool)]
         if !(prev < last) {
             Self::None
@@ -88,7 +88,7 @@ where C: RaftTypeConfig
     }
 
     /// Create inflight state for sending snapshot.
-    pub(crate) fn snapshot(snapshot_last_log_id: Option<LogId<C>>) -> Self {
+    pub(crate) fn snapshot(snapshot_last_log_id: Option<LogIdOf<C>>) -> Self {
         Self::Snapshot {
             last_log_id: snapshot_last_log_id,
         }
@@ -111,7 +111,7 @@ where C: RaftTypeConfig
     }
 
     /// Update inflight state when log upto `upto` is acknowledged by a follower/learner.
-    pub(crate) fn ack(&mut self, upto: Option<LogId<C>>) {
+    pub(crate) fn ack(&mut self, upto: Option<LogIdOf<C>>) {
         match self {
             Inflight::None => {
                 unreachable!("no inflight data")

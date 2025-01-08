@@ -86,6 +86,7 @@ use crate::runtime::RaftRuntime;
 use crate::storage::IOFlushed;
 use crate::storage::RaftLogStorage;
 use crate::type_config::alias::InstantOf;
+use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::MpscUnboundedReceiverOf;
 use crate::type_config::alias::MpscUnboundedSenderOf;
 use crate::type_config::alias::OneshotReceiverOf;
@@ -101,7 +102,6 @@ use crate::vote::RaftLeaderId;
 use crate::vote::RaftVote;
 use crate::ChangeMembers;
 use crate::Instant;
-use crate::LogId;
 use crate::Membership;
 use crate::OptionalSend;
 use crate::RaftTypeConfig;
@@ -110,7 +110,7 @@ use crate::StorageError;
 /// A temp struct to hold the data for a node that is being applied.
 #[derive(Debug)]
 pub(crate) struct ApplyingEntry<C: RaftTypeConfig> {
-    log_id: LogId<C>,
+    log_id: LogIdOf<C>,
     membership: Option<Membership<C>>,
 }
 
@@ -127,7 +127,7 @@ where C: RaftTypeConfig
 }
 
 impl<C: RaftTypeConfig> ApplyingEntry<C> {
-    pub(crate) fn new(log_id: LogId<C>, membership: Option<Membership<C>>) -> Self {
+    pub(crate) fn new(log_id: LogIdOf<C>, membership: Option<Membership<C>>) -> Self {
         Self { log_id, membership }
     }
 }
@@ -136,7 +136,7 @@ impl<C: RaftTypeConfig> ApplyingEntry<C> {
 pub(crate) struct ApplyResult<C: RaftTypeConfig> {
     pub(crate) since: u64,
     pub(crate) end: u64,
-    pub(crate) last_applied: LogId<C>,
+    pub(crate) last_applied: LogIdOf<C>,
     pub(crate) applying_entries: Vec<ApplyingEntry<C>>,
     pub(crate) apply_results: Vec<C::R>,
 }
@@ -469,7 +469,7 @@ where
             }
         };
 
-        let ent = C::Entry::new_membership(LogId::default(), new_membership);
+        let ent = C::Entry::new_membership(LogIdOf::<C>::default(), new_membership);
         self.write_entry(ent, Some(tx));
     }
 
@@ -548,7 +548,7 @@ where
                     .map(|(id, p)| {
                         (
                             id.clone(),
-                            <ProgressEntry<C> as Borrow<Option<LogId<C>>>>::borrow(p).clone(),
+                            <ProgressEntry<C> as Borrow<Option<LogIdOf<C>>>>::borrow(p).clone(),
                         )
                     })
                     .collect(),
@@ -670,7 +670,7 @@ where
 
         let membership = Membership::from(member_nodes);
 
-        let entry = C::Entry::new_membership(LogId::default(), membership);
+        let entry = C::Entry::new_membership(LogIdOf::<C>::default(), membership);
         let res = self.engine.initialize(entry);
 
         // If there is an error, respond at once.
@@ -761,8 +761,8 @@ where
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) async fn apply_to_state_machine(
         &mut self,
-        first: LogId<C>,
-        last: LogId<C>,
+        first: LogIdOf<C>,
+        last: LogIdOf<C>,
     ) -> Result<(), StorageError<C>> {
         tracing::debug!("{}: {}..={}", func_name!(), first, last);
 

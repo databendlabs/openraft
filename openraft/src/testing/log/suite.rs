@@ -23,6 +23,7 @@ use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
 use crate::storage::StorageHelper;
 use crate::testing::log::StoreBuilder;
+use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::VoteOf;
 use crate::type_config::TypeConfigExt;
 use crate::vote::raft_vote::RaftVoteExt;
@@ -53,7 +54,7 @@ trait ReaderExt<C>: RaftLogStorage<C>
 where C: RaftTypeConfig
 {
     /// Proxy method to invoke [`RaftLogReaderExt::get_log_id`].
-    async fn get_log_id(&mut self, log_index: u64) -> Result<LogId<C>, StorageError<C>> {
+    async fn get_log_id(&mut self, log_index: u64) -> Result<LogIdOf<C>, StorageError<C>> {
         self.get_log_reader().await.get_log_id(log_index).await
     }
 
@@ -642,7 +643,7 @@ where
         tracing::info!("--- empty store, expect []");
         {
             let initial = StorageHelper::new(&mut store, &mut sm).get_initial_state().await?;
-            assert_eq!(Vec::<LogId<C>>::new(), initial.log_ids.key_log_ids());
+            assert_eq!(Vec::<LogIdOf<C>>::new(), initial.log_ids.key_log_ids());
         }
 
         tracing::info!("--- log terms: [0], last_purged_log_id is None, expect [(0,0)]");
@@ -1374,7 +1375,7 @@ where
 }
 
 /// Create a log id with node id 0 for testing.
-fn log_id_0<C>(term: impl Into<C::Term>, index: u64) -> LogId<C>
+fn log_id_0<C>(term: impl Into<C::Term>, index: u64) -> LogIdOf<C>
 where
     C: RaftTypeConfig,
     C::NodeId: From<u64>,
@@ -1457,7 +1458,7 @@ where
     Ok(())
 }
 
-fn log_id<C>(term: u64, node_id: u64, index: u64) -> LogId<C>
+fn log_id<C>(term: u64, node_id: u64, index: u64) -> LogIdOf<C>
 where
     C: RaftTypeConfig,
     C::Term: From<u64>,
