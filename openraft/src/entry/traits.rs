@@ -2,7 +2,7 @@ use std::fmt::Debug;
 use std::fmt::Display;
 
 use crate::log_id::RaftLogId;
-use crate::LogId;
+use crate::type_config::alias::LogIdOf;
 use crate::Membership;
 use crate::OptionalSend;
 use crate::OptionalSerde;
@@ -29,12 +29,12 @@ where
     /// Create a new blank log entry.
     ///
     /// The returned instance must return `true` for `Self::is_blank()`.
-    fn new_blank(log_id: LogId<C>) -> Self;
+    fn new_blank(log_id: LogIdOf<C>) -> Self;
 
     /// Create a new membership log entry.
     ///
     /// The returned instance must return `Some()` for `Self::get_membership()`.
-    fn new_membership(log_id: LogId<C>, m: Membership<C>) -> Self;
+    fn new_membership(log_id: LogIdOf<C>, m: Membership<C>) -> Self;
 }
 
 /// Build a raft log entry from app data.

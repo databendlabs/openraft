@@ -8,10 +8,10 @@ use crate::core::ServerState;
 use crate::metrics::Condition;
 use crate::metrics::Metric;
 use crate::metrics::RaftMetrics;
+use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::VoteOf;
 use crate::type_config::alias::WatchReceiverOf;
 use crate::type_config::TypeConfigExt;
-use crate::LogId;
 use crate::OptionalSend;
 use crate::RaftTypeConfig;
 
@@ -212,7 +212,7 @@ where C: RaftTypeConfig
     #[tracing::instrument(level = "trace", skip(self), fields(msg=msg.to_string().as_str()))]
     pub async fn snapshot(
         &self,
-        snapshot_last_log_id: LogId<C>,
+        snapshot_last_log_id: LogIdOf<C>,
         msg: impl ToString,
     ) -> Result<RaftMetrics<C>, WaitError> {
         self.eq(Metric::Snapshot(Some(snapshot_last_log_id)), msg).await
@@ -220,7 +220,7 @@ where C: RaftTypeConfig
 
     /// Wait for `purged` to become `want` or timeout.
     #[tracing::instrument(level = "trace", skip(self), fields(msg=msg.to_string().as_str()))]
-    pub async fn purged(&self, want: Option<LogId<C>>, msg: impl ToString) -> Result<RaftMetrics<C>, WaitError> {
+    pub async fn purged(&self, want: Option<LogIdOf<C>>, msg: impl ToString) -> Result<RaftMetrics<C>, WaitError> {
         self.eq(Metric::Purged(want), msg).await
     }
 

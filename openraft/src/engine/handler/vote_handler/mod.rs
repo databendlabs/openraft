@@ -18,12 +18,12 @@ use crate::proposer::CandidateState;
 use crate::proposer::LeaderState;
 use crate::raft_state::IOId;
 use crate::raft_state::LogStateReader;
+use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::VoteOf;
 use crate::type_config::TypeConfigExt;
 use crate::vote::raft_vote::RaftVoteExt;
 use crate::vote::RaftLeaderId;
 use crate::vote::RaftVote;
-use crate::LogId;
 use crate::OptionalSend;
 use crate::RaftState;
 use crate::RaftTypeConfig;
@@ -213,7 +213,7 @@ where C: RaftTypeConfig
         // If the leader has not yet proposed any log, propose a blank log and initiate replication;
         // Otherwise, just initiate replication.
         if last_log_id < noop_log_id {
-            self.leader_handler().leader_append_entries(vec![C::Entry::new_blank(LogId::<C>::default())]);
+            self.leader_handler().leader_append_entries(vec![C::Entry::new_blank(LogIdOf::<C>::default())]);
         } else {
             self.replication_handler().initiate_replication();
         }

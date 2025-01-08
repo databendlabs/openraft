@@ -46,6 +46,7 @@ use crate::raft_state::RaftState;
 use crate::storage::Snapshot;
 use crate::storage::SnapshotMeta;
 use crate::type_config::alias::LeaderIdOf;
+use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::ResponderOf;
 use crate::type_config::alias::SnapshotDataOf;
 use crate::type_config::alias::VoteOf;
@@ -54,7 +55,6 @@ use crate::vote::raft_vote::RaftVoteExt;
 use crate::vote::RaftLeaderId;
 use crate::vote::RaftTerm;
 use crate::vote::RaftVote;
-use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::Membership;
 use crate::RaftLogId;
@@ -192,7 +192,7 @@ where C: RaftTypeConfig
         self.check_initialize()?;
 
         // The very first log id
-        entry.set_log_id(&LogId::default());
+        entry.set_log_id(&LogIdOf::<C>::default());
 
         let m = entry.get_membership().expect("the only log entry for initializing has to be membership log");
         self.check_members_contain_me(m)?;
@@ -383,7 +383,7 @@ where C: RaftTypeConfig
     pub(crate) fn handle_append_entries(
         &mut self,
         vote: &VoteOf<C>,
-        prev_log_id: Option<LogId<C>>,
+        prev_log_id: Option<LogIdOf<C>>,
         entries: Vec<C::Entry>,
         tx: Option<AppendEntriesTx<C>>,
     ) -> bool {
@@ -422,7 +422,7 @@ where C: RaftTypeConfig
     pub(crate) fn append_entries(
         &mut self,
         vote: &VoteOf<C>,
-        prev_log_id: Option<LogId<C>>,
+        prev_log_id: Option<LogIdOf<C>>,
         entries: Vec<C::Entry>,
     ) -> Result<(), RejectAppendEntries<C>> {
         self.vote_handler().update_vote(vote)?;
@@ -438,7 +438,7 @@ where C: RaftTypeConfig
 
     /// Commit entries for follower/learner.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn handle_commit_entries(&mut self, leader_committed: Option<LogId<C>>) {
+    pub(crate) fn handle_commit_entries(&mut self, leader_committed: Option<LogIdOf<C>>) {
         tracing::debug!(
             leader_committed = display(leader_committed.display()),
             my_accepted = display(self.state.accepted_io().display()),
@@ -658,7 +658,7 @@ where C: RaftTypeConfig
 
         self.leader_handler()
             .unwrap()
-            .leader_append_entries(vec![C::Entry::new_blank(LogId::<C>::default())]);
+            .leader_append_entries(vec![C::Entry::new_blank(LogIdOf::<C>::default())]);
     }
 
     /// Check if a raft node is in a state that allows to initialize.

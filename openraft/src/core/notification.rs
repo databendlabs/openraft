@@ -39,7 +39,7 @@ where C: RaftTypeConfig
         leader_vote: CommittedVote<C>,
         // TODO: need this?
         // /// The cluster this replication works for.
-        // membership_log_id: Option<LogId<C>>,
+        // membership_log_id: Option<LogIdOf<C>>,
     },
 
     /// [`StorageError`] error has taken place locally(not on remote node),

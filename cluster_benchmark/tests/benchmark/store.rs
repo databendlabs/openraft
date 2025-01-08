@@ -8,6 +8,7 @@ use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
+use openraft::alias::LogIdOf;
 use openraft::alias::SnapshotDataOf;
 use openraft::storage::IOFlushed;
 use openraft::storage::LogState;
@@ -18,7 +19,6 @@ use openraft::storage::RaftStateMachine;
 use openraft::storage::Snapshot;
 use openraft::Entry;
 use openraft::EntryPayload;
-use openraft::LogId;
 use openraft::OptionalSend;
 use openraft::RaftLogId;
 use openraft::SnapshotMeta;
@@ -61,14 +61,14 @@ pub struct StoredSnapshot {
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct StateMachine {
-    pub last_applied_log: Option<LogId<TypeConfig>>,
+    pub last_applied_log: Option<LogIdOf<TypeConfig>>,
     pub last_membership: StoredMembership<TypeConfig>,
 }
 
 pub struct LogStore {
     vote: RwLock<Option<Vote<TypeConfig>>>,
     log: RwLock<BTreeMap<u64, Entry<TypeConfig>>>,
-    last_purged_log_id: RwLock<Option<LogId<TypeConfig>>>,
+    last_purged_log_id: RwLock<Option<LogIdOf<TypeConfig>>>,
 }
 
 impl LogStore {
@@ -212,7 +212,7 @@ impl RaftLogStorage<TypeConfig> for Arc<LogStore> {
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
-    async fn truncate(&mut self, log_id: LogId<TypeConfig>) -> Result<(), StorageError<TypeConfig>> {
+    async fn truncate(&mut self, log_id: LogIdOf<TypeConfig>) -> Result<(), StorageError<TypeConfig>> {
         let mut log = self.log.write().await;
         log.split_off(&log_id.index);
 
@@ -220,7 +220,7 @@ impl RaftLogStorage<TypeConfig> for Arc<LogStore> {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn purge(&mut self, log_id: LogId<TypeConfig>) -> Result<(), StorageError<TypeConfig>> {
+    async fn purge(&mut self, log_id: LogIdOf<TypeConfig>) -> Result<(), StorageError<TypeConfig>> {
         {
             let mut p = self.last_purged_log_id.write().await;
             *p = Some(log_id);
@@ -253,7 +253,7 @@ impl RaftLogStorage<TypeConfig> for Arc<LogStore> {
 impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
     async fn applied_state(
         &mut self,
-    ) -> Result<(Option<LogId<TypeConfig>>, StoredMembership<TypeConfig>), StorageError<TypeConfig>> {
+    ) -> Result<(Option<LogIdOf<TypeConfig>>, StoredMembership<TypeConfig>), StorageError<TypeConfig>> {
         let sm = self.sm.read().await;
         Ok((sm.last_applied_log, sm.last_membership.clone()))
     }

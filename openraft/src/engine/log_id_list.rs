@@ -4,7 +4,6 @@ use crate::engine::leader_log_ids::LeaderLogIds;
 use crate::log_id::RaftLogId;
 use crate::storage::RaftLogReaderExt;
 use crate::type_config::alias::LogIdOf;
-use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::RaftLogReader;
 use crate::RaftTypeConfig;
@@ -22,7 +21,7 @@ use crate::StorageError;
 pub struct LogIdList<C>
 where C: RaftTypeConfig
 {
-    key_log_ids: Vec<LogId<C>>,
+    key_log_ids: Vec<LogIdOf<C>>,
 }
 
 impl<C> LogIdList<C>
@@ -49,7 +48,7 @@ where C: RaftTypeConfig
     /// A-------C-------C : find(A,C)
     /// ```
     pub(crate) async fn get_key_log_ids<LR>(
-        range: RangeInclusive<LogId<C>>,
+        range: RangeInclusive<LogIdOf<C>>,
         sto: &mut LR,
     ) -> Result<Vec<LogIdOf<C>>, StorageError<C>>
     where
@@ -122,7 +121,7 @@ where C: RaftTypeConfig
     /// Create a new `LogIdList`.
     ///
     /// It stores the last purged log id, and a series of key log ids.
-    pub fn new(key_log_ids: impl IntoIterator<Item = LogId<C>>) -> Self {
+    pub fn new(key_log_ids: impl IntoIterator<Item = LogIdOf<C>>) -> Self {
         Self {
             key_log_ids: key_log_ids.into_iter().collect(),
         }
@@ -180,7 +179,7 @@ where C: RaftTypeConfig
     ///
     /// NOTE: The last two in `key_log_ids` may be with the same `leader_id`, because `last_log_id`
     /// always present in `log_ids`.
-    pub(crate) fn append(&mut self, new_log_id: LogId<C>) {
+    pub(crate) fn append(&mut self, new_log_id: LogIdOf<C>) {
         let l = self.key_log_ids.len();
         if l == 0 {
             self.key_log_ids.push(new_log_id);
@@ -240,14 +239,14 @@ where C: RaftTypeConfig
         if let Some(last) = last {
             let (last_leader_id, last_index) = (last.leader_id.clone(), last.index);
             if last_index < at - 1 {
-                self.append(LogId::new(last_leader_id, at - 1));
+                self.append(LogIdOf::<C>::new(last_leader_id, at - 1));
             }
         }
     }
 
     /// Purge log ids upto the log with index `upto_index`, inclusive.
     #[allow(dead_code)]
-    pub(crate) fn purge(&mut self, upto: &LogId<C>) {
+    pub(crate) fn purge(&mut self, upto: &LogIdOf<C>) {
         let last = self.last().cloned();
 
         // When installing  snapshot it may need to purge across the `last_log_id`.
@@ -281,32 +280,32 @@ where C: RaftTypeConfig
     /// It will return `last_purged_log_id` if index is at the last purged index.
     // leader_id: Copy is feature gated
     #[allow(clippy::clone_on_copy)]
-    pub(crate) fn get(&self, index: u64) -> Option<LogId<C>> {
+    pub(crate) fn get(&self, index: u64) -> Option<LogIdOf<C>> {
         let res = self.key_log_ids.binary_search_by(|log_id| log_id.index.cmp(&index));
 
         match res {
-            Ok(i) => Some(LogId::new(self.key_log_ids[i].leader_id.clone(), index)),
+            Ok(i) => Some(LogIdOf::<C>::new(self.key_log_ids[i].leader_id.clone(), index)),
             Err(i) => {
                 if i == 0 || i == self.key_log_ids.len() {
                     None
                 } else {
-                    Some(LogId::new(self.key_log_ids[i - 1].leader_id.clone(), index))
+                    Some(LogIdOf::<C>::new(self.key_log_ids[i - 1].leader_id.clone(), index))
                 }
             }
         }
     }
 
-    pub(crate) fn first(&self) -> Option<&LogId<C>> {
+    pub(crate) fn first(&self) -> Option<&LogIdOf<C>> {
         self.key_log_ids.first()
     }
 
-    pub(crate) fn last(&self) -> Option<&LogId<C>> {
+    pub(crate) fn last(&self) -> Option<&LogIdOf<C>> {
         self.key_log_ids.last()
     }
 
     // This method will only be used under feature tokio-rt
     #[cfg_attr(not(feature = "tokio-rt"), allow(dead_code))]
-    pub(crate) fn key_log_ids(&self) -> &[LogId<C>] {
+    pub(crate) fn key_log_ids(&self) -> &[LogIdOf<C>] {
         &self.key_log_ids
     }
 

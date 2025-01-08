@@ -9,10 +9,10 @@ use crate::metrics::HeartbeatMetrics;
 use crate::metrics::ReplicationMetrics;
 use crate::metrics::SerdeInstant;
 use crate::type_config::alias::InstantOf;
+use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::SerdeInstantOf;
 use crate::type_config::alias::VoteOf;
 use crate::Instant;
-use crate::LogId;
 use crate::RaftTypeConfig;
 use crate::StoredMembership;
 
@@ -38,17 +38,17 @@ pub struct RaftMetrics<C: RaftTypeConfig> {
     pub last_log_index: Option<u64>,
 
     /// The last log index has been applied to this Raft node's state machine.
-    pub last_applied: Option<LogId<C>>,
+    pub last_applied: Option<LogIdOf<C>>,
 
     /// The id of the last log included in snapshot.
     /// If there is no snapshot, it is (0,0).
-    pub snapshot: Option<LogId<C>>,
+    pub snapshot: Option<LogIdOf<C>>,
 
     /// The last log id that has purged from storage, inclusive.
     ///
     /// `purged` is also the first log id Openraft knows, although the corresponding log entry has
     /// already been deleted.
-    pub purged: Option<LogId<C>>,
+    pub purged: Option<LogIdOf<C>>,
 
     // ---
     // --- cluster ---
@@ -189,10 +189,10 @@ where C: RaftTypeConfig
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct RaftDataMetrics<C: RaftTypeConfig> {
-    pub last_log: Option<LogId<C>>,
-    pub last_applied: Option<LogId<C>>,
-    pub snapshot: Option<LogId<C>>,
-    pub purged: Option<LogId<C>>,
+    pub last_log: Option<LogIdOf<C>>,
+    pub last_applied: Option<LogIdOf<C>>,
+    pub snapshot: Option<LogIdOf<C>>,
+    pub purged: Option<LogIdOf<C>>,
 
     /// For a leader, it is the elapsed time in milliseconds since the most recently acknowledged
     /// timestamp by a quorum.

@@ -48,7 +48,6 @@ use openraft::storage::RaftLogStorage;
 use openraft::storage::RaftStateMachine;
 use openraft::storage::Snapshot;
 use openraft::Config;
-use openraft::LogId;
 use openraft::LogIdOptionExt;
 use openraft::OptionalSend;
 use openraft::RPCTypes;
@@ -185,6 +184,7 @@ impl fmt::Display for Direction {
     }
 }
 
+use openraft::alias::LogIdOf;
 use openraft::alias::VoteOf;
 use openraft::network::v2::RaftNetworkV2;
 use openraft::vote::RaftLeaderId;
@@ -729,7 +729,7 @@ impl TypedRaftRouter {
     pub async fn wait_for_snapshot(
         &self,
         node_ids: &BTreeSet<MemNodeId>,
-        want: LogId<TypeConfig>,
+        want: LogIdOf<TypeConfig>,
         timeout: Option<Duration>,
         msg: &str,
     ) -> anyhow::Result<()> {
@@ -867,7 +867,7 @@ impl TypedRaftRouter {
         expect_term: u64,
         expect_last_log: u64,
         expect_voted_for: Option<MemNodeId>,
-        expect_sm_last_applied_log: LogId<TypeConfig>,
+        expect_sm_last_applied_log: LogIdOf<TypeConfig>,
         expect_snapshot: &Option<(ValueTest<u64>, u64)>,
     ) -> anyhow::Result<()> {
         let last_log_id = storage.get_log_state().await?.last_log_id;
@@ -959,7 +959,7 @@ impl TypedRaftRouter {
         expect_term: u64,
         expect_last_log: u64,
         expect_voted_for: Option<MemNodeId>,
-        expect_sm_last_applied_log: LogId<TypeConfig>,
+        expect_sm_last_applied_log: LogIdOf<TypeConfig>,
         expect_snapshot: Option<(ValueTest<u64>, u64)>,
     ) -> anyhow::Result<()> {
         let node_ids = {

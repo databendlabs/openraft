@@ -5,12 +5,12 @@ use std::io;
 use crate::async_runtime::MpscUnboundedSender;
 use crate::async_runtime::MpscUnboundedWeakSender;
 use crate::core::notification::Notification;
+use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::MpscUnboundedWeakSenderOf;
 use crate::type_config::alias::OneshotSenderOf;
 use crate::type_config::async_runtime::oneshot::OneshotSender;
 use crate::ErrorSubject;
 use crate::ErrorVerb;
-use crate::LogId;
 use crate::RaftTypeConfig;
 use crate::StorageError;
 
@@ -101,8 +101,8 @@ where C: RaftTypeConfig
 pub struct LogApplied<C>
 where C: RaftTypeConfig
 {
-    last_log_id: LogId<C>,
-    tx: OneshotSenderOf<C, Result<(LogId<C>, Vec<C::R>), StorageError<C>>>,
+    last_log_id: LogIdOf<C>,
+    tx: OneshotSenderOf<C, Result<(LogIdOf<C>, Vec<C::R>), StorageError<C>>>,
 }
 
 impl<C> LogApplied<C>
@@ -110,8 +110,8 @@ where C: RaftTypeConfig
 {
     #[allow(dead_code)]
     pub(crate) fn new(
-        last_log_id: LogId<C>,
-        tx: OneshotSenderOf<C, Result<(LogId<C>, Vec<C::R>), StorageError<C>>>,
+        last_log_id: LogIdOf<C>,
+        tx: OneshotSenderOf<C, Result<(LogIdOf<C>, Vec<C::R>), StorageError<C>>>,
     ) -> Self {
         Self { last_log_id, tx }
     }

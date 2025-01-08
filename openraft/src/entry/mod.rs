@@ -4,7 +4,6 @@ use std::fmt;
 use std::fmt::Debug;
 
 use crate::log_id::RaftLogId;
-use crate::LogId;
 use crate::Membership;
 use crate::RaftTypeConfig;
 
@@ -16,12 +15,14 @@ pub use traits::FromAppData;
 pub use traits::RaftEntry;
 pub use traits::RaftPayload;
 
+use crate::type_config::alias::LogIdOf;
+
 /// A Raft log entry.
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct Entry<C>
 where C: RaftTypeConfig
 {
-    pub log_id: LogId<C>,
+    pub log_id: LogIdOf<C>,
 
     /// This entry's payload.
     pub payload: EntryPayload<C>,
@@ -53,7 +54,7 @@ where C: RaftTypeConfig
 {
     fn default() -> Self {
         Self {
-            log_id: LogId::default(),
+            log_id: LogIdOf::<C>::default(),
             payload: EntryPayload::Blank,
         }
     }
@@ -100,11 +101,11 @@ where C: RaftTypeConfig
 impl<C> RaftLogId<C> for Entry<C>
 where C: RaftTypeConfig
 {
-    fn get_log_id(&self) -> &LogId<C> {
+    fn get_log_id(&self) -> &LogIdOf<C> {
         &self.log_id
     }
 
-    fn set_log_id(&mut self, log_id: &LogId<C>) {
+    fn set_log_id(&mut self, log_id: &LogIdOf<C>) {
         self.log_id = log_id.clone();
     }
 }
@@ -112,14 +113,14 @@ where C: RaftTypeConfig
 impl<C> RaftEntry<C> for Entry<C>
 where C: RaftTypeConfig
 {
-    fn new_blank(log_id: LogId<C>) -> Self {
+    fn new_blank(log_id: LogIdOf<C>) -> Self {
         Self {
             log_id,
             payload: EntryPayload::Blank,
         }
     }
 
-    fn new_membership(log_id: LogId<C>, m: Membership<C>) -> Self {
+    fn new_membership(log_id: LogIdOf<C>, m: Membership<C>) -> Self {
         Self {
             log_id,
             payload: EntryPayload::Membership(m),
@@ -132,7 +133,7 @@ where C: RaftTypeConfig
 {
     fn from_app_data(d: C::D) -> Self {
         Entry {
-            log_id: LogId::default(),
+            log_id: LogIdOf::<C>::default(),
             payload: EntryPayload::Normal(d),
         }
     }
