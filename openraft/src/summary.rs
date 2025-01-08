@@ -39,8 +39,8 @@ where T: fmt::Display
     }
 }
 
-impl<'a, T> MessageSummary<T> for &[T]
-where T: MessageSummary<T> + 'a
+impl<T> MessageSummary<T> for &[T]
+where T: MessageSummary<T>
 {
     fn summary(&self) -> String {
         if self.is_empty() {

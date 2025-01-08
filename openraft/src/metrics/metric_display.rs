@@ -12,7 +12,7 @@ where C: RaftTypeConfig
     pub(crate) metric: &'a Metric<C>,
 }
 
-impl<'a, C> fmt::Display for MetricDisplay<'a, C>
+impl<C> fmt::Display for MetricDisplay<'_, C>
 where C: RaftTypeConfig
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {

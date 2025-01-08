@@ -5,7 +5,7 @@ use std::fmt;
 /// It outputs `"Ok(...)"` or `"Err(...)"`.
 pub(crate) struct DisplayResult<'a, T: fmt::Display, E: fmt::Display>(pub &'a Result<T, E>);
 
-impl<'a, T, E> fmt::Display for DisplayResult<'a, T, E>
+impl<T, E> fmt::Display for DisplayResult<'_, T, E>
 where
     T: fmt::Display,
     E: fmt::Display,

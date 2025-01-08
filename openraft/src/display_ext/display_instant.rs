@@ -36,7 +36,7 @@ impl<'a, T, const SIMPLE: bool, const LOCAL: bool> DisplayInstant<'a, T, SIMPLE,
     }
 }
 
-impl<'a, T, const SIMPLE: bool, const LOCAL: bool> fmt::Display for DisplayInstant<'a, T, SIMPLE, LOCAL>
+impl<T, const SIMPLE: bool, const LOCAL: bool> fmt::Display for DisplayInstant<'_, T, SIMPLE, LOCAL>
 where T: Instant
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

@@ -19,13 +19,13 @@ where
     C: RaftTypeConfig,
     Self: OptionalFeatures + Eq + Clone + Debug + Display + Default + 'static,
 {
-    /// Create a new vote for the specified leader with optional quorum commitment
+    /// Create a new vote for the specified leader with optional quorum commitment.
     fn from_leader_id(leader_id: C::LeaderId, committed: bool) -> Self;
 
-    /// Get a reference to this vote's LeaderId([`RaftLeaderId`] implementation)
+    /// Get a reference to this vote's LeaderId([`RaftLeaderId`] implementation).
     fn leader_id(&self) -> Option<&C::LeaderId>;
 
-    /// Whether this vote has been committed by a quorum
+    /// Whether this vote has been committed by a quorum.
     fn is_committed(&self) -> bool;
 }
 

@@ -54,7 +54,7 @@ where C: RaftTypeConfig
     }
 }
 
-impl<'a, C> std::fmt::Display for RefVote<'a, C>
+impl<C> std::fmt::Display for RefVote<'_, C>
 where C: RaftTypeConfig
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {

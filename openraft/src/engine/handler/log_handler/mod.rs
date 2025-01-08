@@ -22,7 +22,7 @@ where C: RaftTypeConfig
     pub(crate) output: &'x mut EngineOutput<C>,
 }
 
-impl<'x, C> LogHandler<'x, C>
+impl<C> LogHandler<'_, C>
 where C: RaftTypeConfig
 {
     /// Purge log entries upto `RaftState.purge_upto()`, inclusive.
