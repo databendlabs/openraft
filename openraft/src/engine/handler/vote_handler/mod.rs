@@ -49,7 +49,7 @@ where C: RaftTypeConfig
     pub(crate) candidate: &'st mut CandidateState<C>,
 }
 
-impl<'st, C> VoteHandler<'st, C>
+impl<C> VoteHandler<'_, C>
 where C: RaftTypeConfig
 {
     /// Validate and accept the input `vote` and send result via `tx`.

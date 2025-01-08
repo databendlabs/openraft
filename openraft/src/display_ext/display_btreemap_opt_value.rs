@@ -11,7 +11,7 @@ use super::DisplayOption;
 /// For how to format the `opt_value`, see [`DisplayOption`].
 pub(crate) struct DisplayBTreeMapOptValue<'a, K: fmt::Display, V: fmt::Display>(pub &'a BTreeMap<K, Option<V>>);
 
-impl<'a, K: fmt::Display, V: fmt::Display> fmt::Display for DisplayBTreeMapOptValue<'a, K, V> {
+impl<K: fmt::Display, V: fmt::Display> fmt::Display for DisplayBTreeMapOptValue<'_, K, V> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let len = self.0.len();
         for (idx, (key, value)) in self.0.iter().enumerate() {

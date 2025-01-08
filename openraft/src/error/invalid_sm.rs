@@ -4,7 +4,6 @@
      It may have used a different type \
      of state machine from the one in RaftCore (`{actual_type}`)"
 )]
-
 pub struct InvalidStateMachineType {
     pub actual_type: &'static str,
 }

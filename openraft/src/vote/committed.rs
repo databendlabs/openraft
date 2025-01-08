@@ -65,7 +65,7 @@ impl<C> RaftVote<C> for CommittedVote<C>
 where C: RaftTypeConfig
 {
     fn from_leader_id(_leader_id: C::LeaderId, _committed: bool) -> Self {
-        unimplemented!()
+        unreachable!("CommittedVote should only be built from a Vote")
     }
 
     fn leader_id(&self) -> Option<&LeaderIdOf<C>> {

@@ -22,7 +22,7 @@ where C: RaftTypeConfig
     pub(crate) output: &'out mut EngineOutput<C>,
 }
 
-impl<'st, 'out, C> SnapshotHandler<'st, 'out, C>
+impl<C> SnapshotHandler<'_, '_, C>
 where C: RaftTypeConfig
 {
     /// Trigger building snapshot if there is no pending building job.

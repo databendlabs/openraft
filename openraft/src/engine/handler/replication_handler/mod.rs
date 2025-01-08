@@ -50,7 +50,7 @@ where C: RaftTypeConfig
     pub(crate) output: &'x mut EngineOutput<C>,
 }
 
-impl<'x, C> ReplicationHandler<'x, C>
+impl<C> ReplicationHandler<'_, C>
 where C: RaftTypeConfig
 {
     /// Append a new membership and update related state such as replication streams.

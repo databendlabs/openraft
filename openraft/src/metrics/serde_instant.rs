@@ -112,7 +112,7 @@ mod serde_impl {
         where D: Deserializer<'de> {
             struct InstantVisitor<II: Instant>(PhantomData<II>);
 
-            impl<'de, II: Instant> Visitor<'de> for InstantVisitor<II> {
+            impl<II: Instant> Visitor<'_> for InstantVisitor<II> {
                 type Value = SerdeInstant<II>;
 
                 fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {

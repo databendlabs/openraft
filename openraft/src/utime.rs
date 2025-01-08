@@ -94,7 +94,7 @@ impl<T, I: Instant> Leased<T, I> {
             leased: &'a Leased<T, I>,
         }
 
-        impl<'a, T, I> fmt::Display for DisplayLeaseInfo<'a, T, I>
+        impl<T, I> fmt::Display for DisplayLeaseInfo<'_, T, I>
         where I: Instant
         {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
