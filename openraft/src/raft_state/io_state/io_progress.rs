@@ -80,7 +80,7 @@ where
     /// Update the `accept` cursor of the I/O progress.
     pub(crate) fn accept(&mut self, new_accepted: T) {
         debug_assert!(
-            self.accepted.as_ref().map_or(true, |accepted| accepted <= &new_accepted),
+            self.accepted.as_ref().is_none_or(|accepted| accepted <= &new_accepted),
             "expect accepted:{} < new_accepted:{}",
             self.accepted.display(),
             new_accepted,
@@ -92,7 +92,7 @@ where
     /// Update the `submit` cursor of the I/O progress.
     pub(crate) fn submit(&mut self, new_submitted: T) {
         debug_assert!(
-            self.submitted.as_ref().map_or(true, |submitted| submitted <= &new_submitted),
+            self.submitted.as_ref().is_none_or(|submitted| submitted <= &new_submitted),
             "expect submitted:{} < new_submitted:{}",
             self.submitted.display(),
             new_submitted,
@@ -104,7 +104,7 @@ where
     /// Update the `flush` cursor of the I/O progress.
     pub(crate) fn flush(&mut self, new_flushed: T) {
         debug_assert!(
-            self.flushed.as_ref().map_or(true, |flushed| flushed <= &new_flushed),
+            self.flushed.as_ref().is_none_or(|flushed| flushed <= &new_flushed),
             "expect flushed:{} < new_flushed:{}",
             self.flushed.display(),
             new_flushed,

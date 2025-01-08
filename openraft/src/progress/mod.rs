@@ -176,7 +176,7 @@ where
     f: Fmt,
 }
 
-impl<'a, ID, V, P, QS, Fmt> Display for DisplayVecProgress<'a, ID, V, P, QS, Fmt>
+impl<ID, V, P, QS, Fmt> Display for DisplayVecProgress<'_, ID, V, P, QS, Fmt>
 where
     ID: PartialEq + 'static,
     V: Borrow<P>,

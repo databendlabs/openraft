@@ -14,7 +14,7 @@ where C: RaftTypeConfig
     pub(crate) state: &'st mut RaftState<C>,
 }
 
-impl<'st, C> ServerStateHandler<'st, C>
+impl<C> ServerStateHandler<'_, C>
 where C: RaftTypeConfig
 {
     /// Re-calculate the server-state, if it changed, update the `server_state` field and dispatch

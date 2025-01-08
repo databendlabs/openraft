@@ -14,7 +14,7 @@ where C: RaftTypeConfig
     pub(crate) state: &'m MembershipState<C>,
 }
 
-impl<'m, C> ChangeHandler<'m, C>
+impl<C> ChangeHandler<'_, C>
 where C: RaftTypeConfig
 {
     /// Builds a new membership configuration by applying changes to the current configuration.

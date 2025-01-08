@@ -52,7 +52,7 @@ where C: RaftTypeConfig
     pub(crate) output: &'x mut EngineOutput<C>,
 }
 
-impl<'x, C> FollowingHandler<'x, C>
+impl<C> FollowingHandler<'_, C>
 where C: RaftTypeConfig
 {
     /// Append entries to follower/learner.
