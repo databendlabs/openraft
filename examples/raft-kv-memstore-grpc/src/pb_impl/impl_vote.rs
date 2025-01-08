@@ -27,7 +27,7 @@ impl fmt::Display for Vote {
         write!(
             f,
             "<{}:{}>",
-            self.leader_id.as_ref().unwrap(),
+            self.leader_id.as_ref().unwrap_or(&Default::default()),
             if self.is_committed() { "Q" } else { "-" }
         )
     }
