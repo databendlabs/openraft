@@ -2,8 +2,8 @@ use std::fmt;
 
 use crate::display_ext::DisplayOptionExt;
 use crate::display_ext::DisplaySlice;
+use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::VoteOf;
-use crate::LogId;
 use crate::RaftTypeConfig;
 
 /// An RPC sent by a cluster leader to replicate log entries (§5.3), and as a heartbeat (§5.2).
@@ -18,7 +18,7 @@ use crate::RaftTypeConfig;
 pub struct AppendEntriesRequest<C: RaftTypeConfig> {
     pub vote: VoteOf<C>,
 
-    pub prev_log_id: Option<LogId<C>>,
+    pub prev_log_id: Option<LogIdOf<C>>,
 
     /// The new log entries to store.
     ///
@@ -27,7 +27,7 @@ pub struct AppendEntriesRequest<C: RaftTypeConfig> {
     pub entries: Vec<C::Entry>,
 
     /// The leader's committed log id.
-    pub leader_commit: Option<LogId<C>>,
+    pub leader_commit: Option<LogIdOf<C>>,
 }
 
 impl<C: RaftTypeConfig> fmt::Debug for AppendEntriesRequest<C> {
@@ -86,7 +86,7 @@ pub enum AppendEntriesResponse<C: RaftTypeConfig> {
     ///
     /// [`RPCError`]: crate::error::RPCError
     /// [`RaftNetwork::append_entries`]: crate::network::RaftNetwork::append_entries
-    PartialSuccess(Option<LogId<C>>),
+    PartialSuccess(Option<LogIdOf<C>>),
 
     /// The first log id([`AppendEntriesRequest::prev_log_id`]) of the entries to send does not
     /// match on the remote target node.

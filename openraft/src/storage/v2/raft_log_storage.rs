@@ -2,8 +2,8 @@ use openraft_macros::add_async_trait;
 
 use crate::storage::IOFlushed;
 use crate::storage::LogState;
+use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::VoteOf;
-use crate::LogId;
 use crate::OptionalSend;
 use crate::OptionalSync;
 use crate::RaftLogReader;
@@ -67,13 +67,13 @@ where C: RaftTypeConfig
     /// See: [`docs::data::log_pointers`].
     ///
     /// [`docs::data::log_pointers`]: `crate::docs::data::log_pointers#optionally-persisted-committed`
-    async fn save_committed(&mut self, _committed: Option<LogId<C>>) -> Result<(), StorageError<C>> {
+    async fn save_committed(&mut self, _committed: Option<LogIdOf<C>>) -> Result<(), StorageError<C>> {
         // By default `committed` log id is not saved
         Ok(())
     }
 
     /// Return the last saved committed log id by [`Self::save_committed`].
-    async fn read_committed(&mut self) -> Result<Option<LogId<C>>, StorageError<C>> {
+    async fn read_committed(&mut self) -> Result<Option<LogIdOf<C>>, StorageError<C>> {
         // By default `committed` log id is not saved and this method just return None.
         Ok(None)
     }
@@ -106,12 +106,12 @@ where C: RaftTypeConfig
     /// ### To ensure correctness:
     ///
     /// - It must not leave a **hole** in logs.
-    async fn truncate(&mut self, log_id: LogId<C>) -> Result<(), StorageError<C>>;
+    async fn truncate(&mut self, log_id: LogIdOf<C>) -> Result<(), StorageError<C>>;
 
     /// Purge logs upto `log_id`, inclusive
     ///
     /// ### To ensure correctness:
     ///
     /// - It must not leave a **hole** in logs.
-    async fn purge(&mut self, log_id: LogId<C>) -> Result<(), StorageError<C>>;
+    async fn purge(&mut self, log_id: LogIdOf<C>) -> Result<(), StorageError<C>>;
 }

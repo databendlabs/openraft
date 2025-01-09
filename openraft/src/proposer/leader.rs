@@ -11,7 +11,6 @@ use crate::type_config::alias::LogIdOf;
 use crate::type_config::TypeConfigExt;
 use crate::vote::committed::CommittedVote;
 use crate::vote::raft_vote::RaftVoteExt;
-use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::RaftLogId;
 use crate::RaftTypeConfig;
@@ -113,7 +112,7 @@ where
             first.cloned()
         } else {
             // Set to a log id that will be proposed.
-            Some(LogId::new(
+            Some(LogIdOf::<C>::new(
                 vote.committed_leader_id(),
                 last_leader_log_id.last().next_index(),
             ))
@@ -171,7 +170,7 @@ where
 
         let committed_leader_id = self.committed_vote.committed_leader_id();
 
-        let first = LogId::new(committed_leader_id, self.last_log_id().next_index());
+        let first = LogIdOf::<C>::new(committed_leader_id, self.last_log_id().next_index());
         let mut last = first.clone();
 
         for entry in entries {

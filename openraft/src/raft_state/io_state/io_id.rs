@@ -2,6 +2,7 @@ use std::cmp::Ordering;
 use std::fmt;
 
 use crate::raft_state::io_state::log_io_id::LogIOId;
+use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::VoteOf;
 use crate::vote::committed::CommittedVote;
 use crate::vote::non_committed::NonCommittedVote;
@@ -10,7 +11,6 @@ use crate::vote::ref_vote::RefVote;
 use crate::vote::RaftVote;
 use crate::ErrorSubject;
 use crate::ErrorVerb;
-use crate::LogId;
 use crate::RaftTypeConfig;
 
 /// An ID to uniquely identify a monotonic increasing io operation to [`RaftLogStorage`].
@@ -82,7 +82,7 @@ where C: RaftTypeConfig
         Self::Vote(vote)
     }
 
-    pub(crate) fn new_log_io(committed_vote: CommittedVote<C>, last_log_id: Option<LogId<C>>) -> Self {
+    pub(crate) fn new_log_io(committed_vote: CommittedVote<C>, last_log_id: Option<LogIdOf<C>>) -> Self {
         Self::Log(LogIOId::new(committed_vote, last_log_id))
     }
 
@@ -103,7 +103,7 @@ where C: RaftTypeConfig
         }
     }
 
-    pub(crate) fn last_log_id(&self) -> Option<&LogId<C>> {
+    pub(crate) fn last_log_id(&self) -> Option<&LogIdOf<C>> {
         match self {
             Self::Vote(_) => None,
             Self::Log(log_io_id) => log_io_id.log_id.as_ref(),

@@ -2,10 +2,11 @@ use crate::engine::testing::UTConfig;
 use crate::engine::Engine;
 use crate::engine::LogIdList;
 use crate::type_config::alias::LeaderIdOf;
+use crate::type_config::alias::LogIdOf;
 use crate::vote::RaftLeaderIdExt;
 use crate::LogId;
 
-fn log_id(term: u64, index: u64) -> LogId<UTConfig> {
+fn log_id(term: u64, index: u64) -> LogIdOf<UTConfig> {
     LogId {
         leader_id: LeaderIdOf::<UTConfig>::new_committed(term, 0),
         index,

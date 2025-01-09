@@ -6,7 +6,7 @@ use validit::Validate;
 
 use crate::display_ext::DisplayOptionExt;
 use crate::type_config::alias::CommittedLeaderIdOf;
-use crate::LogId;
+use crate::type_config::alias::LogIdOf;
 use crate::LogIdOptionExt;
 use crate::RaftTypeConfig;
 
@@ -21,10 +21,10 @@ pub(crate) struct LogIdRange<C>
 where C: RaftTypeConfig
 {
     /// The prev log id before the first to send, exclusive.
-    pub(crate) prev: Option<LogId<C>>,
+    pub(crate) prev: Option<LogIdOf<C>>,
 
     /// The last log id to send, inclusive.
-    pub(crate) last: Option<LogId<C>>,
+    pub(crate) last: Option<LogIdOf<C>>,
 }
 
 impl<C> Copy for LogIdRange<C>
@@ -54,7 +54,7 @@ where C: RaftTypeConfig
 impl<C> LogIdRange<C>
 where C: RaftTypeConfig
 {
-    pub(crate) fn new(prev: Option<LogId<C>>, last: Option<LogId<C>>) -> Self {
+    pub(crate) fn new(prev: Option<LogIdOf<C>>, last: Option<LogIdOf<C>>) -> Self {
         Self { prev, last }
     }
 
@@ -71,9 +71,9 @@ mod tests {
     use crate::engine::testing::UTConfig;
     use crate::log_id_range::LogIdRange;
     use crate::testing;
-    use crate::LogId;
+    use crate::type_config::alias::LogIdOf;
 
-    fn log_id(index: u64) -> LogId<UTConfig> {
+    fn log_id(index: u64) -> LogIdOf<UTConfig> {
         testing::log_id(1, 1, index)
     }
 

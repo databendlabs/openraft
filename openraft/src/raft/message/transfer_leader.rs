@@ -1,8 +1,8 @@
 use std::fmt;
 
 use crate::display_ext::DisplayOptionExt;
+use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::VoteOf;
-use crate::LogId;
 use crate::RaftTypeConfig;
 
 #[derive(Clone, Debug)]
@@ -18,13 +18,13 @@ where C: RaftTypeConfig
     pub(crate) to_node_id: C::NodeId,
 
     /// The last log id the `to_node_id` node should at least have to become Leader.
-    pub(crate) last_log_id: Option<LogId<C>>,
+    pub(crate) last_log_id: Option<LogIdOf<C>>,
 }
 
 impl<C> TransferLeaderRequest<C>
 where C: RaftTypeConfig
 {
-    pub fn new(from: VoteOf<C>, to: C::NodeId, last_log_id: Option<LogId<C>>) -> Self {
+    pub fn new(from: VoteOf<C>, to: C::NodeId, last_log_id: Option<LogIdOf<C>>) -> Self {
         Self {
             from_leader: from,
             to_node_id: to,
@@ -45,7 +45,7 @@ where C: RaftTypeConfig
     /// The last log id on the `to_node_id` node should at least have to become Leader.
     ///
     /// This is the last log id on the Leader when the leadership is transferred.
-    pub fn last_log_id(&self) -> Option<&LogId<C>> {
+    pub fn last_log_id(&self) -> Option<&LogIdOf<C>> {
         self.last_log_id.as_ref()
     }
 }

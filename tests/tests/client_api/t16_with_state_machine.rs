@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use maplit::btreeset;
+use openraft::alias::LogIdOf;
 use openraft::error::Fatal;
 use openraft::storage::RaftStateMachine;
 use openraft::storage::Snapshot;
@@ -9,7 +10,6 @@ use openraft::storage::SnapshotMeta;
 use openraft::testing::log_id;
 use openraft::Config;
 use openraft::Entry;
-use openraft::LogId;
 use openraft::OptionalSend;
 use openraft::RaftSnapshotBuilder;
 use openraft::RaftTypeConfig;
@@ -98,7 +98,7 @@ async fn with_state_machine_wrong_sm_type() -> Result<()> {
         impl RaftStateMachine<TC> for FooSM {
             type SnapshotBuilder = Self;
 
-            async fn applied_state(&mut self) -> Result<(Option<LogId<TypeConfig>>, StoredMembership<TC>), Err> {
+            async fn applied_state(&mut self) -> Result<(Option<LogIdOf<TypeConfig>>, StoredMembership<TC>), Err> {
                 todo!()
             }
 

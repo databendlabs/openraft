@@ -1,4 +1,4 @@
-use crate::LogId;
+use crate::type_config::alias::LogIdOf;
 use crate::RaftTypeConfig;
 
 /// This helper trait extracts information from an `Option<LogId>`.
@@ -12,7 +12,7 @@ pub trait LogIdOptionExt {
     fn next_index(&self) -> u64;
 }
 
-impl<C> LogIdOptionExt for Option<LogId<C>>
+impl<C> LogIdOptionExt for Option<LogIdOf<C>>
 where C: RaftTypeConfig
 {
     fn index(&self) -> Option<u64> {
@@ -27,7 +27,7 @@ where C: RaftTypeConfig
     }
 }
 
-impl<C> LogIdOptionExt for Option<&LogId<C>>
+impl<C> LogIdOptionExt for Option<&LogIdOf<C>>
 where C: RaftTypeConfig
 {
     fn index(&self) -> Option<u64> {

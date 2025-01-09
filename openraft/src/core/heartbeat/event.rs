@@ -4,7 +4,7 @@ use crate::display_ext::DisplayInstantExt;
 use crate::display_ext::DisplayOptionExt;
 use crate::replication::ReplicationSessionId;
 use crate::type_config::alias::InstantOf;
-use crate::LogId;
+use crate::type_config::alias::LogIdOf;
 use crate::RaftTypeConfig;
 
 /// The information for broadcasting a heartbeat.
@@ -30,13 +30,13 @@ where C: RaftTypeConfig
     ///
     /// When there are no new logs to replicate, the Leader sends a heartbeat to replicate committed
     /// log id to followers to update their committed log id.
-    pub(crate) committed: Option<LogId<C>>,
+    pub(crate) committed: Option<LogIdOf<C>>,
 }
 
 impl<C> HeartbeatEvent<C>
 where C: RaftTypeConfig
 {
-    pub(crate) fn new(time: InstantOf<C>, session_id: ReplicationSessionId<C>, committed: Option<LogId<C>>) -> Self {
+    pub(crate) fn new(time: InstantOf<C>, session_id: ReplicationSessionId<C>, committed: Option<LogIdOf<C>>) -> Self {
         Self {
             time,
             session_id,

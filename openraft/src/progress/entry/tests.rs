@@ -6,10 +6,11 @@ use crate::progress::entry::ProgressEntry;
 use crate::progress::inflight::Inflight;
 use crate::raft_state::LogStateReader;
 use crate::type_config::alias::LeaderIdOf;
+use crate::type_config::alias::LogIdOf;
 use crate::vote::RaftLeaderIdExt;
 use crate::LogId;
 
-fn log_id(index: u64) -> LogId<UTConfig> {
+fn log_id(index: u64) -> LogIdOf<UTConfig> {
     LogId {
         leader_id: LeaderIdOf::<UTConfig>::new_committed(1, 1),
         index,
@@ -88,10 +89,10 @@ fn test_update_conflicting() -> anyhow::Result<()> {
 
 /// LogStateReader impl for testing
 struct LogState {
-    last: Option<LogId<UTConfig>>,
-    snap_last: Option<LogId<UTConfig>>,
-    purge_upto: Option<LogId<UTConfig>>,
-    purged: Option<LogId<UTConfig>>,
+    last: Option<LogIdOf<UTConfig>>,
+    snap_last: Option<LogIdOf<UTConfig>>,
+    purge_upto: Option<LogIdOf<UTConfig>>,
+    purged: Option<LogIdOf<UTConfig>>,
 }
 
 impl LogState {
@@ -108,7 +109,7 @@ impl LogState {
 }
 
 impl LogStateReader<UTConfig> for LogState {
-    fn get_log_id(&self, index: u64) -> Option<LogId<UTConfig>> {
+    fn get_log_id(&self, index: u64) -> Option<LogIdOf<UTConfig>> {
         let x = Some(log_id(index));
         if x >= self.purged && x <= self.last {
             x
@@ -117,35 +118,35 @@ impl LogStateReader<UTConfig> for LogState {
         }
     }
 
-    fn last_log_id(&self) -> Option<&LogId<UTConfig>> {
+    fn last_log_id(&self) -> Option<&LogIdOf<UTConfig>> {
         self.last.as_ref()
     }
 
-    fn committed(&self) -> Option<&LogId<UTConfig>> {
+    fn committed(&self) -> Option<&LogIdOf<UTConfig>> {
         unimplemented!("testing")
     }
 
-    fn io_applied(&self) -> Option<&LogId<UTConfig>> {
+    fn io_applied(&self) -> Option<&LogIdOf<UTConfig>> {
         todo!()
     }
 
-    fn io_snapshot_last_log_id(&self) -> Option<&LogId<UTConfig>> {
+    fn io_snapshot_last_log_id(&self) -> Option<&LogIdOf<UTConfig>> {
         todo!()
     }
 
-    fn io_purged(&self) -> Option<&LogId<UTConfig>> {
+    fn io_purged(&self) -> Option<&LogIdOf<UTConfig>> {
         todo!()
     }
 
-    fn snapshot_last_log_id(&self) -> Option<&LogId<UTConfig>> {
+    fn snapshot_last_log_id(&self) -> Option<&LogIdOf<UTConfig>> {
         self.snap_last.as_ref()
     }
 
-    fn purge_upto(&self) -> Option<&LogId<UTConfig>> {
+    fn purge_upto(&self) -> Option<&LogIdOf<UTConfig>> {
         self.purge_upto.as_ref()
     }
 
-    fn last_purged_log_id(&self) -> Option<&LogId<UTConfig>> {
+    fn last_purged_log_id(&self) -> Option<&LogIdOf<UTConfig>> {
         self.purged.as_ref()
     }
 }

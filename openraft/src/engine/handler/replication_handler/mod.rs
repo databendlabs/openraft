@@ -19,9 +19,9 @@ use crate::raft_state::LogStateReader;
 use crate::replication::request::Replicate;
 use crate::replication::response::ReplicationResult;
 use crate::type_config::alias::InstantOf;
+use crate::type_config::alias::LogIdOf;
 use crate::vote::raft_vote::RaftVoteExt;
 use crate::EffectiveMembership;
-use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::Membership;
 use crate::RaftState;
@@ -57,7 +57,7 @@ where C: RaftTypeConfig
     ///
     /// It is called by the leader when a new membership log is appended to log store.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn append_membership(&mut self, log_id: &LogId<C>, m: &Membership<C>) {
+    pub(crate) fn append_membership(&mut self, log_id: &LogIdOf<C>, m: &Membership<C>) {
         tracing::debug!("update effective membership: log_id:{} {}", log_id, m);
 
         debug_assert!(
@@ -150,7 +150,7 @@ where C: RaftTypeConfig
     /// Update progress when replicated data(logs or snapshot) matches on follower/learner and is
     /// accepted.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn update_matching(&mut self, node_id: C::NodeId, log_id: Option<LogId<C>>) {
+    pub(crate) fn update_matching(&mut self, node_id: C::NodeId, log_id: Option<LogIdOf<C>>) {
         tracing::debug!(
             node_id = display(&node_id),
             log_id = display(log_id.display()),
@@ -183,7 +183,7 @@ where C: RaftTypeConfig
     ///
     /// In raft a log that is granted and in the leader term is committed.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn try_commit_quorum_accepted(&mut self, granted: Option<LogId<C>>) {
+    pub(crate) fn try_commit_quorum_accepted(&mut self, granted: Option<LogIdOf<C>>) {
         // Only when the log id is proposed by current leader, it is committed.
         if let Some(ref c) = granted {
             if !self.state.vote_ref().is_same_leader(c.committed_leader_id()) {
@@ -214,7 +214,7 @@ where C: RaftTypeConfig
     /// Update progress when replicated data(logs or snapshot) does not match follower/learner state
     /// and is rejected.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn update_conflicting(&mut self, target: C::NodeId, conflict: LogId<C>) {
+    pub(crate) fn update_conflicting(&mut self, target: C::NodeId, conflict: LogIdOf<C>) {
         // TODO(2): test it?
 
         let prog_entry = self.leader.progress.get_mut(&target).unwrap();
@@ -391,7 +391,7 @@ where C: RaftTypeConfig
     ///
     /// Writing to local log store does not have to wait for a replication response from remote
     /// node. Thus it can just be done in a fast-path.
-    pub(crate) fn update_local_progress(&mut self, upto: Option<LogId<C>>) {
+    pub(crate) fn update_local_progress(&mut self, upto: Option<LogIdOf<C>>) {
         tracing::debug!(upto = display(upto.display()), "{}", func_name!());
 
         if upto.is_none() {

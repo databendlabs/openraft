@@ -6,9 +6,9 @@ use std::fmt::Debug;
 use std::ops::RangeBounds;
 use std::sync::Arc;
 
+use openraft::alias::LogIdOf;
 use openraft::alias::VoteOf;
 use openraft::storage::IOFlushed;
-use openraft::LogId;
 use openraft::LogState;
 use openraft::RaftLogId;
 use openraft::RaftTypeConfig;
@@ -24,13 +24,13 @@ pub struct LogStore<C: RaftTypeConfig> {
 #[derive(Debug)]
 pub struct LogStoreInner<C: RaftTypeConfig> {
     /// The last purged log id.
-    last_purged_log_id: Option<LogId<C>>,
+    last_purged_log_id: Option<LogIdOf<C>>,
 
     /// The Raft log.
     log: BTreeMap<u64, C::Entry>,
 
     /// The commit log id.
-    committed: Option<LogId<C>>,
+    committed: Option<LogIdOf<C>>,
 
     /// The current granted vote.
     vote: Option<VoteOf<C>>,
@@ -75,12 +75,12 @@ impl<C: RaftTypeConfig> LogStoreInner<C> {
         })
     }
 
-    async fn save_committed(&mut self, committed: Option<LogId<C>>) -> Result<(), StorageError<C>> {
+    async fn save_committed(&mut self, committed: Option<LogIdOf<C>>) -> Result<(), StorageError<C>> {
         self.committed = committed;
         Ok(())
     }
 
-    async fn read_committed(&mut self) -> Result<Option<LogId<C>>, StorageError<C>> {
+    async fn read_committed(&mut self) -> Result<Option<LogIdOf<C>>, StorageError<C>> {
         Ok(self.committed.clone())
     }
 
@@ -104,7 +104,7 @@ impl<C: RaftTypeConfig> LogStoreInner<C> {
         Ok(())
     }
 
-    async fn truncate(&mut self, log_id: LogId<C>) -> Result<(), StorageError<C>> {
+    async fn truncate(&mut self, log_id: LogIdOf<C>) -> Result<(), StorageError<C>> {
         let keys = self.log.range(log_id.index..).map(|(k, _v)| *k).collect::<Vec<_>>();
         for key in keys {
             self.log.remove(&key);
@@ -113,7 +113,7 @@ impl<C: RaftTypeConfig> LogStoreInner<C> {
         Ok(())
     }
 
-    async fn purge(&mut self, log_id: LogId<C>) -> Result<(), StorageError<C>> {
+    async fn purge(&mut self, log_id: LogIdOf<C>) -> Result<(), StorageError<C>> {
         {
             let ld = &mut self.last_purged_log_id;
             assert!(ld.as_ref() <= Some(&log_id));
@@ -135,10 +135,10 @@ mod impl_log_store {
     use std::fmt::Debug;
     use std::ops::RangeBounds;
 
+    use openraft::alias::LogIdOf;
     use openraft::alias::VoteOf;
     use openraft::storage::IOFlushed;
     use openraft::storage::RaftLogStorage;
-    use openraft::LogId;
     use openraft::LogState;
     use openraft::RaftLogReader;
     use openraft::RaftTypeConfig;
@@ -173,12 +173,12 @@ mod impl_log_store {
             inner.get_log_state().await
         }
 
-        async fn save_committed(&mut self, committed: Option<LogId<C>>) -> Result<(), StorageError<C>> {
+        async fn save_committed(&mut self, committed: Option<LogIdOf<C>>) -> Result<(), StorageError<C>> {
             let mut inner = self.inner.lock().await;
             inner.save_committed(committed).await
         }
 
-        async fn read_committed(&mut self) -> Result<Option<LogId<C>>, StorageError<C>> {
+        async fn read_committed(&mut self) -> Result<Option<LogIdOf<C>>, StorageError<C>> {
             let mut inner = self.inner.lock().await;
             inner.read_committed().await
         }
@@ -194,12 +194,12 @@ mod impl_log_store {
             inner.append(entries, callback).await
         }
 
-        async fn truncate(&mut self, log_id: LogId<C>) -> Result<(), StorageError<C>> {
+        async fn truncate(&mut self, log_id: LogIdOf<C>) -> Result<(), StorageError<C>> {
             let mut inner = self.inner.lock().await;
             inner.truncate(log_id).await
         }
 
-        async fn purge(&mut self, log_id: LogId<C>) -> Result<(), StorageError<C>> {
+        async fn purge(&mut self, log_id: LogIdOf<C>) -> Result<(), StorageError<C>> {
             let mut inner = self.inner.lock().await;
             inner.purge(log_id).await
         }

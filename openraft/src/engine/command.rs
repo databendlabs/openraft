@@ -20,10 +20,10 @@ use crate::raft::VoteResponse;
 use crate::raft_state::IOId;
 use crate::replication::request::Replicate;
 use crate::replication::ReplicationSessionId;
+use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::OneshotSenderOf;
 use crate::type_config::alias::VoteOf;
 use crate::vote::committed::CommittedVote;
-use crate::LogId;
 use crate::OptionalSend;
 use crate::RaftTypeConfig;
 
@@ -65,12 +65,12 @@ where C: RaftTypeConfig
     },
 
     /// Replicate the committed log id to other nodes
-    ReplicateCommitted { committed: Option<LogId<C>> },
+    ReplicateCommitted { committed: Option<LogIdOf<C>> },
 
     /// Broadcast heartbeat to all other nodes.
     BroadcastHeartbeat {
         session_id: ReplicationSessionId<C>,
-        committed: Option<LogId<C>>,
+        committed: Option<LogIdOf<C>>,
     },
 
     /// Save the committed log id to [`RaftLogStorage`].
@@ -79,7 +79,7 @@ where C: RaftTypeConfig
     /// latest state.
     ///
     /// [`RaftLogStorage`]: crate::storage::RaftLogStorage
-    SaveCommitted { committed: LogId<C> },
+    SaveCommitted { committed: LogIdOf<C> },
 
     /// Commit log entries that are already persisted in the store, upto `upto`, inclusive.
     ///
@@ -91,8 +91,8 @@ where C: RaftTypeConfig
     /// [`RaftLogStorage::save_committed()`]: crate::storage::RaftLogStorage::save_committed
     /// [`RaftStateMachine::apply()`]: crate::storage::RaftStateMachine::apply
     Apply {
-        already_committed: Option<LogId<C>>,
-        upto: LogId<C>,
+        already_committed: Option<LogIdOf<C>>,
+        upto: LogIdOf<C>,
     },
 
     /// Replicate log entries or snapshot to a target.
@@ -118,11 +118,11 @@ where C: RaftTypeConfig
     SendVote { vote_req: VoteRequest<C> },
 
     /// Purge log from the beginning to `upto`, inclusive.
-    PurgeLog { upto: LogId<C> },
+    PurgeLog { upto: LogIdOf<C> },
 
     /// Delete logs that conflict with the leader from a follower/learner since log id `since`,
     /// inclusive.
-    TruncateLog { since: LogId<C> },
+    TruncateLog { since: LogIdOf<C> },
 
     /// A command send to state machine worker [`sm::worker::Worker`].
     ///
@@ -296,14 +296,14 @@ where C: RaftTypeConfig
     /// This is only used by [`Raft::initialize()`], because when initializing there is no leader.
     ///
     /// [`Raft::initialize()`]: `crate::Raft::initialize()`
-    LogFlushed { log_id: Option<LogId<C>> },
+    LogFlushed { log_id: Option<LogIdOf<C>> },
 
     /// Wait until the log is applied to the state machine.
     #[allow(dead_code)]
-    Applied { log_id: Option<LogId<C>> },
+    Applied { log_id: Option<LogIdOf<C>> },
 
     /// Wait until snapshot is built and includes the log id.
-    Snapshot { log_id: Option<LogId<C>> },
+    Snapshot { log_id: Option<LogIdOf<C>> },
 }
 
 impl<C> fmt::Display for Condition<C>

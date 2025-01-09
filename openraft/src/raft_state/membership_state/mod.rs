@@ -5,7 +5,6 @@ use std::sync::Arc;
 use validit::Validate;
 
 use crate::EffectiveMembership;
-use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::RaftTypeConfig;
 
@@ -16,6 +15,8 @@ mod change_handler_test;
 mod membership_state_test;
 
 pub(crate) use change_handler::ChangeHandler;
+
+use crate::type_config::alias::LogIdOf;
 
 /// The state of membership configs a raft node needs to know.
 ///
@@ -80,7 +81,7 @@ where C: RaftTypeConfig
     }
 
     /// Update membership state if the specified committed_log_id is greater than `self.effective`
-    pub(crate) fn commit(&mut self, committed_log_id: &Option<LogId<C>>) {
+    pub(crate) fn commit(&mut self, committed_log_id: &Option<LogIdOf<C>>) {
         if committed_log_id >= self.effective().log_id() {
             debug_assert!(committed_log_id.index() >= self.effective().log_id().index());
             self.committed = self.effective.clone();

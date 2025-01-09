@@ -1,5 +1,5 @@
 use crate::type_config::alias::CommittedLeaderIdOf;
-use crate::LogId;
+use crate::type_config::alias::LogIdOf;
 use crate::RaftTypeConfig;
 
 /// Defines API to operate an object that contains a log-id, such as a log entry or a log id.
@@ -17,8 +17,8 @@ where C: RaftTypeConfig
     }
 
     /// Return a reference to the log-id it stores.
-    fn get_log_id(&self) -> &LogId<C>;
+    fn get_log_id(&self) -> &LogIdOf<C>;
 
     /// Update the log id it contains.
-    fn set_log_id(&mut self, log_id: &LogId<C>);
+    fn set_log_id(&mut self, log_id: &LogIdOf<C>);
 }

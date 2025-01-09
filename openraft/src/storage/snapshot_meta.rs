@@ -2,7 +2,7 @@ use std::fmt;
 
 use crate::display_ext::DisplayOption;
 use crate::storage::SnapshotSignature;
-use crate::LogId;
+use crate::type_config::alias::LogIdOf;
 use crate::RaftTypeConfig;
 use crate::SnapshotId;
 use crate::StoredMembership;
@@ -18,7 +18,7 @@ pub struct SnapshotMeta<C>
 where C: RaftTypeConfig
 {
     /// Log entries upto which this snapshot includes, inclusive.
-    pub last_log_id: Option<LogId<C>>,
+    pub last_log_id: Option<LogIdOf<C>>,
 
     /// The last applied membership config.
     pub last_membership: StoredMembership<C>,
@@ -55,7 +55,7 @@ where C: RaftTypeConfig
     }
 
     /// Returns a ref to the id of the last log that is included in this snapshot.
-    pub fn last_log_id(&self) -> Option<&LogId<C>> {
+    pub fn last_log_id(&self) -> Option<&LogIdOf<C>> {
         self.last_log_id.as_ref()
     }
 }
