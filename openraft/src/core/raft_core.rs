@@ -1,4 +1,3 @@
-use std::borrow::Borrow;
 use std::collections::BTreeMap;
 use std::fmt;
 use std::fmt::Debug;
@@ -54,6 +53,7 @@ use crate::error::InitializeError;
 use crate::error::QuorumNotEnough;
 use crate::error::RPCError;
 use crate::error::Timeout;
+use crate::log_id::raft_log_id_ext::RaftLogIdExt;
 use crate::log_id::LogIdOptionExt;
 use crate::metrics::HeartbeatMetrics;
 use crate::metrics::RaftDataMetrics;
@@ -103,6 +103,7 @@ use crate::ChangeMembers;
 use crate::Instant;
 use crate::Membership;
 use crate::OptionalSend;
+use crate::RaftLogId;
 use crate::RaftTypeConfig;
 use crate::StorageError;
 
@@ -541,17 +542,8 @@ where
     pub fn flush_metrics(&mut self) {
         let (replication, heartbeat) = if let Some(leader) = self.engine.leader.as_ref() {
             let replication_prog = &leader.progress;
-            let replication = Some(
-                replication_prog
-                    .iter()
-                    .map(|(id, p)| {
-                        (
-                            id.clone(),
-                            <ProgressEntry<C> as Borrow<Option<LogIdOf<C>>>>::borrow(p).clone(),
-                        )
-                    })
-                    .collect(),
-            );
+            let replication =
+                Some(replication_prog.iter().map(|(id, p)| (id.clone(), p.matching().cloned())).collect());
 
             let clock_prog = &leader.clock_progress;
             let heartbeat =
@@ -841,7 +833,7 @@ where
             session_id,
             self.config.clone(),
             self.engine.state.committed().cloned(),
-            progress_entry.matching().cloned(),
+            progress_entry.matching.map(|x| x.into_inner()),
             network,
             snapshot_network,
             self.log_store.get_log_reader().await,
@@ -1245,7 +1237,7 @@ where
                 self.handle_check_is_leader_request(tx).await;
             }
             RaftMsg::ClientWriteRequest { app_data, tx } => {
-                self.write_entry(C::Entry::new_normal(Default::default(), app_data), Some(tx));
+                self.write_entry(C::Entry::new_normal(LogIdOf::<C>::default(), app_data), Some(tx));
             }
             RaftMsg::Initialize { members, tx } => {
                 tracing::info!(
@@ -1426,7 +1418,9 @@ where
                 //       applied.
                 //       ---
                 //       A better way is to make leader step down a command that waits for the log to be applied.
-                if self.engine.state.io_applied() >= self.engine.state.membership_state.effective().log_id().as_ref() {
+                if self.engine.state.io_applied().ord_by()
+                    >= self.engine.state.membership_state.effective().log_id().ord_by()
+                {
                     self.engine.leader_step_down();
                 }
             }
@@ -1698,7 +1692,7 @@ where
                 Condition::LogFlushed { log_id } => {
                     let curr = self.engine.state.io_state().io_progress.flushed();
                     let curr = curr.and_then(|x| x.last_log_id());
-                    if curr < log_id.as_ref() {
+                    if curr.ord_by() < log_id.ord_by() {
                         tracing::debug!(
                             "log_id: {} has not yet flushed, currently flushed: {} postpone cmd: {}",
                             log_id.display(),
@@ -1709,7 +1703,7 @@ where
                     }
                 }
                 Condition::Applied { log_id } => {
-                    if self.engine.state.io_applied() < log_id.as_ref() {
+                    if self.engine.state.io_applied().ord_by() < log_id.ord_by() {
                         tracing::debug!(
                             "log_id: {} has not yet applied, postpone cmd: {}",
                             log_id.display(),
@@ -1719,7 +1713,7 @@ where
                     }
                 }
                 Condition::Snapshot { log_id } => {
-                    if self.engine.state.io_state().snapshot() < log_id.as_ref() {
+                    if self.engine.state.io_state().snapshot().ord_by() < log_id.ord_by() {
                         tracing::debug!(
                             "log_id: {} has not yet been in snapshot, postpone cmd: {}",
                             log_id.display(),

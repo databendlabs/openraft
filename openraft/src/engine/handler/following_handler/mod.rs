@@ -15,6 +15,7 @@ use crate::entry::RaftEntry;
 use crate::entry::RaftEntryExt;
 use crate::entry::RaftPayload;
 use crate::error::RejectAppendEntries;
+use crate::log_id::raft_log_id::RaftLogId;
 use crate::raft_state::IOId;
 use crate::raft_state::LogStateReader;
 use crate::storage::Snapshot;
@@ -74,7 +75,7 @@ where C: RaftTypeConfig
         }
 
         let last_log_id = entries.last().map(|x| x.to_log_id());
-        let last_log_id = std::cmp::max(prev_log_id, last_log_id);
+        let last_log_id = std::cmp::max_by_key(prev_log_id, last_log_id, |x| x.ord_by());
 
         let prev_accepted = self.state.accept_io(IOId::new_log_io(self.leader_vote.clone(), last_log_id.clone()));
 
@@ -145,7 +146,7 @@ where C: RaftTypeConfig
     pub(crate) fn do_append_entries(&mut self, entries: Vec<C::Entry>) {
         debug_assert!(!entries.is_empty());
         debug_assert_eq!(entries[0].index(), self.state.log_ids.last().cloned().next_index(),);
-        debug_assert!(Some(entries[0].ref_log_id()) > self.state.log_ids.last());
+        debug_assert!(Some(entries[0].ref_log_id()) > self.state.log_ids.last().ord_by());
 
         self.state.extend_log_ids(&entries);
         self.append_membership(entries.iter());
@@ -162,7 +163,7 @@ where C: RaftTypeConfig
     pub(crate) fn commit_entries(&mut self, leader_committed: Option<LogIdOf<C>>) {
         let accepted = self.state.accepted_io().cloned();
         let accepted = accepted.and_then(|x| x.last_log_id().cloned());
-        let committed = std::cmp::min(accepted.clone(), leader_committed.clone());
+        let committed = std::cmp::min_by_key(accepted.clone(), leader_committed.clone(), |x| x.ord_by());
 
         tracing::debug!(
             leader_committed = display(DisplayOption(&leader_committed)),
@@ -283,7 +284,7 @@ where C: RaftTypeConfig
 
         let snap_last_log_id = meta.last_log_id.clone();
 
-        if snap_last_log_id.as_ref() <= self.state.committed() {
+        if snap_last_log_id.ord_by() <= self.state.committed().ord_by() {
             tracing::info!(
                 "No need to install snapshot; snapshot last_log_id({}) <= committed({})",
                 snap_last_log_id.display(),

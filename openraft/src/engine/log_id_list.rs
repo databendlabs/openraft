@@ -81,7 +81,7 @@ where C: RaftTypeConfig
 
             // Two adjacent logs with different leader_id, no need to binary search
             if first.index() + 1 == last.index() {
-                if res.last().map(|x| x.leader_id()) < Some(first.leader_id()) {
+                if res.last().leader_id() < Some(first.leader_id()) {
                     res.push(first);
                 }
                 res.push(last);
@@ -92,7 +92,7 @@ where C: RaftTypeConfig
 
             if first.leader_id() == mid.leader_id() {
                 // Case AAC
-                if res.last().map(|x| x.leader_id()) < Some(first.leader_id()) {
+                if res.last().leader_id() < Some(first.leader_id()) {
                     res.push(first);
                 }
                 stack.push((mid, last));

@@ -9,7 +9,6 @@ use validit::Validate;
 
 use crate::display_ext::DisplayOptionExt;
 use crate::log_id_range::LogIdRange;
-use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::type_config::alias::LogIdOf;
 use crate::LogIdOptionExt;
 use crate::RaftTypeConfig;
@@ -42,7 +41,7 @@ where C: RaftTypeConfig
 impl<C> Copy for Inflight<C>
 where
     C: RaftTypeConfig,
-    CommittedLeaderIdOf<C>: Copy,
+    LogIdOf<C>: Copy,
 {
 }
 
@@ -78,7 +77,7 @@ where C: RaftTypeConfig
     /// Create inflight state for sending logs.
     pub(crate) fn logs(prev: Option<LogIdOf<C>>, last: Option<LogIdOf<C>>) -> Self {
         #![allow(clippy::nonminimal_bool)]
-        if !(prev < last) {
+        if !(prev.ord_by() < last.ord_by()) {
             Self::None
         } else {
             Self::Logs {
@@ -118,8 +117,8 @@ where C: RaftTypeConfig
             }
             Inflight::Logs { log_id_range } => {
                 *self = {
-                    debug_assert!(upto >= log_id_range.prev);
-                    debug_assert!(upto <= log_id_range.last);
+                    debug_assert!(upto.ord_by() >= log_id_range.prev.ord_by());
+                    debug_assert!(upto.ord_by() <= log_id_range.last.ord_by());
                     Inflight::logs(upto, log_id_range.last.clone())
                 }
             }
