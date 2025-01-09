@@ -2,6 +2,7 @@ use crate::log_id::option_ref_log_id_ext::OptionRefLogIdExt;
 use crate::log_id::ref_log_id::RefLogId;
 use crate::type_config::alias::LogIdOf;
 use crate::LogIdOptionExt;
+use crate::RaftLogId;
 use crate::RaftTypeConfig;
 
 /// APIs to get significant log ids reflecting the raft state.
@@ -24,7 +25,7 @@ where C: RaftTypeConfig
     /// It assumes a committed log will always get positive return value, according to raft spec.
     fn has_log_id(&self, log_id: &LogIdOf<C>) -> bool {
         if log_id.index() < self.committed().next_index() {
-            debug_assert!(Some(log_id) <= self.committed());
+            debug_assert!(Some(log_id).ord_by() <= self.committed().ord_by());
             return true;
         }
 

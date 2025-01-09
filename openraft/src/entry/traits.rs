@@ -62,7 +62,7 @@ where C: RaftTypeConfig
     }
 
     fn index(&self) -> u64 {
-        AsRef::<LogIdOf<C>>::as_ref(self).index
+        AsRef::<LogIdOf<C>>::as_ref(self).index()
     }
 }
 

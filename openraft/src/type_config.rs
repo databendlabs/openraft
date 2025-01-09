@@ -13,6 +13,7 @@ pub use async_runtime::MpscUnbounded;
 pub use async_runtime::OneshotSender;
 pub use util::TypeConfigExt;
 
+use crate::base::OptionalFeatures;
 use crate::entry::RaftEntry;
 use crate::raft::responder::Responder;
 use crate::vote::raft_vote::RaftVote;
@@ -24,6 +25,7 @@ use crate::Node;
 use crate::NodeId;
 use crate::OptionalSend;
 use crate::OptionalSync;
+use crate::RaftLogId;
 
 /// Configuration of types used by the [`Raft`] core engine.
 ///
@@ -44,11 +46,12 @@ use crate::OptionalSync;
 ///        D            = ClientRequest,
 ///        R            = ClientResponse,
 ///        NodeId       = u64,
-///        Node         = openraft::BasicNode,
+///        Node         = openraft::impls::BasicNode,
 ///        Term         = u64,
-///        LeaderId     = openraft::impls::leader_id_adv::LeaderId<TypeConfig>,
-///        Vote         = openraft::impls::Vote<TypeConfig>,
-///        Entry        = openraft::impls::Entry<TypeConfig>,
+///        LeaderId     = openraft::impls::leader_id_adv::LeaderId<Self>,
+///        Vote         = openraft::impls::Vote<Self>,
+///        LogId        = openraft::impls::LogId<Self>,
+///        Entry        = openraft::impls::Entry<Self>,
 ///        SnapshotData = Cursor<Vec<u8>>,
 ///        AsyncRuntime = openraft::TokioRuntime,
 /// );
@@ -87,6 +90,9 @@ pub trait RaftTypeConfig:
     /// It represents a candidate's vote or a leader's vote that has been granted by a quorum.
     type Vote: RaftVote<Self>;
 
+    /// Raft log identifier.
+    type LogId: RaftLogId<Self> + OptionalFeatures;
+
     /// Raft log entry, which can be built from an AppData.
     type Entry: RaftEntry<Self>;
 
@@ -121,6 +127,7 @@ pub mod alias {
     use crate::async_runtime::Mpsc;
     use crate::async_runtime::MpscUnbounded;
     use crate::async_runtime::Oneshot;
+    use crate::log_id::ord_log_id::OrdLogId;
     use crate::raft::responder::Responder;
     use crate::type_config::AsyncRuntime;
     use crate::vote::RaftLeaderId;
@@ -135,6 +142,9 @@ pub mod alias {
     pub type TermOf<C> = <C as RaftTypeConfig>::Term;
     pub type LeaderIdOf<C> = <C as RaftTypeConfig>::LeaderId;
     pub type VoteOf<C> = <C as RaftTypeConfig>::Vote;
+    pub type LogIdOf<C> = <C as RaftTypeConfig>::LogId;
+    pub(crate) type OptLogIdOf<C> = Option<<C as RaftTypeConfig>::LogId>;
+    pub(crate) type OrdLogIdOf<C> = Option<OrdLogId<C>>;
     pub type EntryOf<C> = <C as RaftTypeConfig>::Entry;
     pub type SnapshotDataOf<C> = <C as RaftTypeConfig>::SnapshotData;
     pub type AsyncRuntimeOf<C> = <C as RaftTypeConfig>::AsyncRuntime;
@@ -180,7 +190,6 @@ pub mod alias {
     pub type MutexOf<C, T> = <Rt<C> as AsyncRuntime>::Mutex<T>;
 
     // Usually used types
-    pub type LogIdOf<C> = crate::LogId<C>;
     pub type CommittedLeaderIdOf<C> = <LeaderIdOf<C> as RaftLeaderId<C>>::Committed;
     pub type SerdeInstantOf<C> = crate::metrics::SerdeInstant<InstantOf<C>>;
 }

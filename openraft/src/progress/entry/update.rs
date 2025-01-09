@@ -85,8 +85,8 @@ where C: RaftTypeConfig
 
         self.entry.inflight.ack(matching.clone());
 
-        debug_assert!(matching >= self.entry.matching);
-        self.entry.matching = matching;
+        debug_assert!(matching.ord_by() >= self.entry.matching().ord_by());
+        self.entry.matching = matching.into_ordered();
 
         let matching_next = self.entry.matching().next_index();
         self.entry.searching_end = std::cmp::max(self.entry.searching_end, matching_next);

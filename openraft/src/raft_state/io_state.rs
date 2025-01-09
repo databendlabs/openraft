@@ -9,6 +9,7 @@ use crate::raft_state::io_state::io_progress::IOProgress;
 use crate::raft_state::IOId;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::VoteOf;
+use crate::LogIdOptionExt;
 use crate::RaftTypeConfig;
 
 pub(crate) mod io_id;
@@ -93,8 +94,8 @@ where C: RaftTypeConfig
         // Applied does not have to be flushed in local store.
         // less_equal!(self.applied.as_ref(), a.submitted().and_then(|x| x.last_log_id()));
 
-        less_equal!(&self.snapshot, &self.applied);
-        less_equal!(&self.purged, &self.snapshot);
+        less_equal!(&self.snapshot.ord_by(), &self.applied.ord_by());
+        less_equal!(&self.purged.ord_by(), &self.snapshot.ord_by());
         Ok(())
     }
 }
@@ -128,7 +129,7 @@ where C: RaftTypeConfig
 
         // TODO: should we update flushed if applied is newer?
         debug_assert!(
-            log_id > self.applied,
+            log_id.ord_by() > self.applied.ord_by(),
             "applied log id should be monotonically increasing: current: {:?}, update: {:?}",
             self.applied,
             log_id
@@ -145,7 +146,7 @@ where C: RaftTypeConfig
         tracing::debug!(snapshot = display(DisplayOption(&log_id)), "{}", func_name!());
 
         debug_assert!(
-            log_id >= self.snapshot,
+            log_id.ord_by() >= self.snapshot.ord_by(),
             "snapshot log id should be monotonically increasing: current: {:?}, update: {:?}",
             self.snapshot,
             log_id
