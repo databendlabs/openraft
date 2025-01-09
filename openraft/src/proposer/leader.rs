@@ -8,6 +8,7 @@ use crate::progress::VecProgress;
 use crate::quorum::QuorumSet;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::LogIdOf;
+use crate::type_config::alias::OrdLogIdOf;
 use crate::type_config::TypeConfigExt;
 use crate::vote::committed::CommittedVote;
 use crate::vote::raft_vote::RaftVoteExt;
@@ -59,7 +60,7 @@ where C: RaftTypeConfig
     pub(crate) noop_log_id: Option<LogIdOf<C>>,
 
     /// Tracks the replication progress and committed index
-    pub(crate) progress: VecProgress<C::NodeId, ProgressEntry<C>, Option<LogIdOf<C>>, QS>,
+    pub(crate) progress: VecProgress<C::NodeId, ProgressEntry<C>, OrdLogIdOf<C>, QS>,
 
     /// Tracks the clock time acknowledged by other nodes.
     ///

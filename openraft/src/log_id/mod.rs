@@ -3,7 +3,10 @@
 
 mod log_id_option_ext;
 mod log_index_option_ext;
-mod raft_log_id;
+pub(crate) mod ord_log_id;
+pub(crate) mod raft_log_id;
+pub(crate) mod raft_log_id_ext;
+pub(crate) mod ref_log_id;
 
 pub(crate) mod option_ref_log_id_ext;
 pub(crate) mod ref_log_id;
@@ -45,12 +48,16 @@ where
 impl<C> RaftLogId<C> for LogId<C>
 where C: RaftTypeConfig
 {
-    fn get_log_id(&self) -> &LogId<C> {
-        self
+    fn new(leader_id: CommittedLeaderIdOf<C>, index: u64) -> Self {
+        LogId { leader_id, index }
     }
 
-    fn set_log_id(&mut self, log_id: &LogId<C>) {
-        *self = log_id.clone()
+    fn leader_id(&self) -> &CommittedLeaderIdOf<C> {
+        &self.leader_id
+    }
+
+    fn index(&self) -> u64 {
+        self.index
     }
 }
 
@@ -59,22 +66,6 @@ where C: RaftTypeConfig
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}.{}", self.leader_id(), self.index())
-    }
-}
-
-impl<C> AsRef<LogId<C>> for LogId<C>
-where C: RaftTypeConfig
-{
-    fn as_ref(&self) -> &LogId<C> {
-        self
-    }
-}
-
-impl<C> AsMut<LogId<C>> for LogId<C>
-where C: RaftTypeConfig
-{
-    fn as_mut(&mut self) -> &mut LogId<C> {
-        self
     }
 }
 

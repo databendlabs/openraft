@@ -4,7 +4,6 @@ use std::fmt::Debug;
 use std::sync::Arc;
 
 use crate::display_ext::DisplayOptionExt;
-use crate::log_id::RaftLogId;
 use crate::quorum::Joint;
 use crate::quorum::QuorumSet;
 use crate::type_config::alias::LogIdOf;
@@ -52,13 +51,11 @@ where C: RaftTypeConfig
     }
 }
 
-impl<C, LID> From<(&LID, Membership<C>)> for EffectiveMembership<C>
-where
-    C: RaftTypeConfig,
-    LID: RaftLogId<C>,
+impl<C> From<(&LogIdOf<C>, Membership<C>)> for EffectiveMembership<C>
+where C: RaftTypeConfig
 {
-    fn from(v: (&LID, Membership<C>)) -> Self {
-        EffectiveMembership::new(Some(v.0.get_log_id().clone()), v.1)
+    fn from(v: (&LogIdOf<C>, Membership<C>)) -> Self {
+        EffectiveMembership::new(Some(v.0.clone()), v.1)
     }
 }
 

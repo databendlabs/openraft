@@ -9,6 +9,7 @@ use crate::error::ForwardToLeader;
 use crate::storage::SnapshotMeta;
 use crate::utime::Leased;
 use crate::LogIdOptionExt;
+use crate::RaftLogId;
 use crate::RaftTypeConfig;
 use crate::ServerState;
 
@@ -168,17 +169,17 @@ where C: RaftTypeConfig
             validit::equal!(self.purged_next, self.log_ids.first().next_index());
         }
 
-        validit::less_equal!(self.last_purged_log_id(), self.purge_upto());
+        validit::less_equal!(self.last_purged_log_id().ord_by(), self.purge_upto().ord_by());
         if self.snapshot_last_log_id().is_none() {
             // There is no snapshot, it is possible the application does not store snapshot, and
             // just restarted. it is just ok.
             // In such a case, we assert the monotonic relation without  snapshot-last-log-id
-            validit::less_equal!(self.purge_upto(), self.committed());
+            validit::less_equal!(self.purge_upto().ord_by(), self.committed().ord_by());
         } else {
-            validit::less_equal!(self.purge_upto(), self.snapshot_last_log_id());
+            validit::less_equal!(self.purge_upto().ord_by(), self.snapshot_last_log_id().ord_by());
         }
-        validit::less_equal!(self.snapshot_last_log_id(), self.committed());
-        validit::less_equal!(self.committed(), self.last_log_id());
+        validit::less_equal!(self.snapshot_last_log_id().ord_by(), self.committed().ord_by());
+        validit::less_equal!(self.committed().ord_by(), self.last_log_id().ord_by());
 
         self.membership_state.validate()?;
         self.io_state.validate()?;
@@ -268,7 +269,7 @@ where C: RaftTypeConfig
     /// If updated, it returns the previous value in a `Some()`.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn update_committed(&mut self, committed: &Option<LogIdOf<C>>) -> Option<Option<LogIdOf<C>>> {
-        if committed.as_ref() > self.committed() {
+        if committed.ord_by() > self.committed().ord_by() {
             let prev = self.committed().cloned();
 
             self.committed = committed.clone();

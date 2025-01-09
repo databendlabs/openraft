@@ -38,7 +38,7 @@ where C: RaftTypeConfig
             "purge_log"
         );
 
-        if purge_upto <= st.last_purged_log_id() {
+        if purge_upto.ord_by() <= st.last_purged_log_id().ord_by() {
             return;
         }
 
@@ -63,7 +63,7 @@ where C: RaftTypeConfig
     /// Update the log id it expect to purge up to. It won't trigger purge immediately.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn update_purge_upto(&mut self, purge_upto: LogIdOf<C>) {
-        debug_assert!(self.state.purge_upto() <= Some(&purge_upto));
+        debug_assert!(self.state.purge_upto().ord_by() <= Some(&purge_upto).ord_by());
         self.state.purge_upto = Some(purge_upto);
     }
 
