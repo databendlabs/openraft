@@ -19,6 +19,7 @@ declare_raft_types!(
         R = (),
         Term = u64,
         LeaderId = crate::impls::leader_id_std::LeaderId<Self>,
+        LogId = crate::impls::LogId<Self>,
         Entry = crate::Entry<Self>,
         Vote = crate::impls::Vote<Self>,
         SnapshotData = Cursor<Vec<u8>>,

@@ -88,12 +88,12 @@ where
 
         // TODO: It is possible `committed < last_applied` because when installing snapshot,
         //       new committed should be saved, but not yet.
-        if committed < last_applied {
+        if committed.ord_by() < last_applied.ord_by() {
             committed = last_applied.clone();
         }
 
         // Re-apply log entries to recover SM to latest state.
-        if last_applied < committed {
+        if last_applied.ord_by() < committed.ord_by() {
             let start = last_applied.next_index();
             let end = committed.next_index();
 
@@ -105,7 +105,7 @@ where
         let mem_state = self.get_membership().await?;
 
         // Clean up dirty state: snapshot is installed but logs are not cleaned.
-        if last_log_id < last_applied {
+        if last_log_id.ord_by() < last_applied.ord_by() {
             tracing::info!(
                 "Clean the hole between last_log_id({}) and last_applied({}) by purging logs to {}",
                 last_log_id.display(),

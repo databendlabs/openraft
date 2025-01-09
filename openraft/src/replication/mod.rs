@@ -656,7 +656,7 @@ where
             Replicate::Committed(c) => {
                 // RaftCore may send a committed equals to the initial value.
                 debug_assert!(
-                    c >= self.committed,
+                    c.ord_by() >= self.committed.ord_by(),
                     "expect new committed {} > self.committed {}",
                     c.display(),
                     self.committed.display()
@@ -819,7 +819,7 @@ where
 
     /// If there are more logs to send, it returns a new `Some(Data::Logs)` to send.
     fn next_action_to_send(&mut self, matching: Option<LogIdOf<C>>, log_ids: LogIdRange<C>) -> Option<Data<C>> {
-        if matching < log_ids.last {
+        if matching.ord_by() < log_ids.last.ord_by() {
             Some(Data::new_logs(LogIdRange::new(matching, log_ids.last)))
         } else {
             None
@@ -829,7 +829,7 @@ where
     /// Check if partial success result(`matching`) is valid for a given log range to send.
     fn debug_assert_partial_success(to_send: &LogIdRange<C>, matching: &Option<LogIdOf<C>>) {
         debug_assert!(
-            matching <= &to_send.last,
+            matching.ord_by() <= to_send.last.ord_by(),
             "matching ({}) should be <= last_log_id ({})",
             matching.display(),
             to_send.last.display()
@@ -841,7 +841,7 @@ where
             to_send.last.index().display()
         );
         debug_assert!(
-            matching >= &to_send.prev,
+            matching.ord_by() >= to_send.prev.ord_by(),
             "matching ({}) should be >= prev_log_id ({})",
             matching.display(),
             to_send.prev.display()

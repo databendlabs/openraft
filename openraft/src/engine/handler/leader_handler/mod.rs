@@ -11,6 +11,7 @@ use crate::raft_state::IOId;
 use crate::raft_state::LogStateReader;
 use crate::replication::ReplicationSessionId;
 use crate::type_config::alias::LogIdOf;
+use crate::LogIdOptionExt;
 use crate::RaftState;
 use crate::RaftTypeConfig;
 
@@ -112,7 +113,7 @@ where C: RaftTypeConfig
     pub(crate) fn get_read_log_id(&self) -> Option<LogIdOf<C>> {
         let committed = self.state.committed().cloned();
         // noop log id is the first log this leader proposed.
-        std::cmp::max(self.leader.noop_log_id.clone(), committed)
+        std::cmp::max_by_key(self.leader.noop_log_id.clone(), committed, |x| x.ord_by())
     }
 
     /// Disable proposing new logs for this Leader, and transfer Leader to another node
