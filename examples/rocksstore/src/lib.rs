@@ -130,7 +130,7 @@ impl RaftSnapshotBuilder<TypeConfig> for RocksStateMachine {
         let snapshot_idx: u64 = rand::thread_rng().gen_range(0..1000);
 
         let snapshot_id = if let Some(last) = last_applied_log {
-            format!("{}-{}-{}", last.leader_id, last.index(), snapshot_idx)
+            format!("{}-{}-{}", last.leader_id(), last.index(), snapshot_idx)
         } else {
             format!("--{}", snapshot_idx)
         };

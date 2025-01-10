@@ -89,7 +89,7 @@ impl RaftSnapshotBuilder<TypeConfig> for StateMachineStore {
         };
 
         let snapshot_id = if let Some(last) = last_applied_log {
-            format!("{}-{}-{}", last.leader_id, last.index(), self.snapshot_idx)
+            format!("{}-{}-{}", last.leader_id(), last.index(), self.snapshot_idx)
         } else {
             format!("--{}", self.snapshot_idx)
         };

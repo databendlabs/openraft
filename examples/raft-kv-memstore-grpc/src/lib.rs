@@ -60,7 +60,7 @@ impl From<pb::VoteResponse> for VoteResponse {
 impl From<LogId> for pb::LogId {
     fn from(log_id: LogId) -> Self {
         pb::LogId {
-            term: log_id.leader_id,
+            term: *log_id.leader_id(),
             index: log_id.index(),
         }
     }
