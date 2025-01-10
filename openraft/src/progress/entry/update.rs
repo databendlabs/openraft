@@ -52,13 +52,13 @@ where C: RaftTypeConfig
         let allow_reset = self.entry.allow_log_reversion || self.engine_config.allow_log_reversion;
 
         if allow_reset {
-            if conflict < self.entry.matching.next_index() {
+            if conflict < self.entry.matching().next_index() {
                 tracing::warn!(
                     "conflict {} < last matching {}: \
                     follower log is reverted; \
                     with 'allow_log_reversion' enabled, this is allowed.",
                     conflict,
-                    self.entry.matching.display(),
+                    self.entry.matching().display(),
                 );
 
                 self.entry.matching = None;
@@ -66,11 +66,11 @@ where C: RaftTypeConfig
             }
         } else {
             debug_assert!(
-                conflict >= self.entry.matching.next_index(),
+                conflict >= self.entry.matching().next_index(),
                 "follower log reversion is not allowed \
                 without `allow_log_reversion` enabled; \
                 matching: {}; conflict: {}",
-                self.entry.matching.display(),
+                self.entry.matching().display(),
                 conflict
             );
         }
@@ -88,7 +88,7 @@ where C: RaftTypeConfig
         debug_assert!(matching >= self.entry.matching);
         self.entry.matching = matching;
 
-        let matching_next = self.entry.matching.next_index();
+        let matching_next = self.entry.matching().next_index();
         self.entry.searching_end = std::cmp::max(self.entry.searching_end, matching_next);
     }
 }

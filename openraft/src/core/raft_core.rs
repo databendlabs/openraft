@@ -333,7 +333,7 @@ where
 
             let rpc = AppendEntriesRequest {
                 vote: my_vote.clone(),
-                prev_log_id: progress.matching.clone(),
+                prev_log_id: progress.matching().cloned(),
                 entries: vec![],
                 leader_commit: self.engine.state.committed().cloned(),
             };
@@ -842,7 +842,7 @@ where
             session_id,
             self.config.clone(),
             self.engine.state.committed().cloned(),
-            progress_entry.matching,
+            progress_entry.matching().cloned(),
             network,
             snapshot_network,
             self.log_store.get_log_reader().await,

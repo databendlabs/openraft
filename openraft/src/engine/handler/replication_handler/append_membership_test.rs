@@ -94,7 +94,7 @@ fn test_leader_append_membership_for_leader() -> anyhow::Result<()> {
     );
 
     assert!(
-        eng.leader.as_ref().unwrap().progress.get(&4).matching.is_none(),
+        eng.leader.as_ref().unwrap().progress.get(&4).matching().is_none(),
         "exists, but it is a None"
     );
 
