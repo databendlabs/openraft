@@ -294,7 +294,7 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<MemStateMachine> {
         };
 
         let snapshot_id = if let Some(last) = last_applied_log {
-            format!("{}-{}-{}", last.leader_id, last.index, snapshot_idx)
+            format!("{}-{}-{}", last.leader_id, last.index(), snapshot_idx)
         } else {
             format!("--{}", snapshot_idx)
         };
@@ -394,7 +394,7 @@ impl RaftLogStorage<TypeConfig> for Arc<MemLogStore> {
         for entry in entries {
             let s =
                 serde_json::to_string(&entry).map_err(|e| StorageError::write_log_entry(*entry.get_log_id(), &e))?;
-            log.insert(entry.log_id.index, s);
+            log.insert(entry.log_id.index(), s);
         }
 
         callback.io_completed(Ok(()));
@@ -408,7 +408,7 @@ impl RaftLogStorage<TypeConfig> for Arc<MemLogStore> {
         {
             let mut log = self.log.write().await;
 
-            let keys = log.range(log_id.index..).map(|(k, _v)| *k).collect::<Vec<_>>();
+            let keys = log.range(log_id.index()..).map(|(k, _v)| *k).collect::<Vec<_>>();
             for key in keys {
                 log.remove(&key);
             }
@@ -435,7 +435,7 @@ impl RaftLogStorage<TypeConfig> for Arc<MemLogStore> {
         {
             let mut log = self.log.write().await;
 
-            let keys = log.range(..=log_id.index).map(|(k, _v)| *k).collect::<Vec<_>>();
+            let keys = log.range(..=log_id.index()).map(|(k, _v)| *k).collect::<Vec<_>>();
             for key in keys {
                 log.remove(&key);
             }

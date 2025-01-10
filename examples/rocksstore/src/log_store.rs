@@ -103,7 +103,7 @@ where C: RaftTypeConfig
 
             let entry: EntryOf<C> = serde_json::from_slice(&val).map_err(read_logs_err)?;
 
-            assert_eq!(id, entry.get_log_id().index);
+            assert_eq!(id, entry.get_log_id().index());
 
             res.push(entry);
         }
@@ -158,8 +158,8 @@ where C: RaftTypeConfig
     async fn append<I>(&mut self, entries: I, callback: IOFlushed<C>) -> Result<(), StorageError<C>>
     where I: IntoIterator<Item = EntryOf<C>> + Send {
         for entry in entries {
-            let id = id_to_bin(entry.get_log_id().index);
-            assert_eq!(bin_to_id(&id), entry.get_log_id().index);
+            let id = id_to_bin(entry.get_log_id().index());
+            assert_eq!(bin_to_id(&id), entry.get_log_id().index());
             self.db
                 .put_cf(
                     self.cf_logs(),
@@ -179,7 +179,7 @@ where C: RaftTypeConfig
     async fn truncate(&mut self, log_id: LogIdOf<C>) -> Result<(), StorageError<C>> {
         tracing::debug!("truncate: [{:?}, +oo)", log_id);
 
-        let from = id_to_bin(log_id.index);
+        let from = id_to_bin(log_id.index());
         let to = id_to_bin(0xff_ff_ff_ff_ff_ff_ff_ff);
         self.db.delete_range_cf(self.cf_logs(), &from, &to).map_err(|e| StorageError::write_logs(&e))?;
 
@@ -196,7 +196,7 @@ where C: RaftTypeConfig
         self.put_meta::<meta::LastPurged>(&log_id)?;
 
         let from = id_to_bin(0);
-        let to = id_to_bin(log_id.index + 1);
+        let to = id_to_bin(log_id.index() + 1);
         self.db.delete_range_cf(self.cf_logs(), &from, &to).map_err(|e| StorageError::write_logs(&e))?;
 
         // Purging does not need to be persistent.

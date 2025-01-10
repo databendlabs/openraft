@@ -591,13 +591,13 @@ where C: RaftTypeConfig
             return;
         }
 
-        if index > snapshot_last_log_id.index {
+        if index > snapshot_last_log_id.index() {
             tracing::info!(
                 "can not purge logs not in a snapshot; index: {}, last in snapshot log id: {}",
                 index,
                 snapshot_last_log_id
             );
-            index = snapshot_last_log_id.index;
+            index = snapshot_last_log_id.index();
         }
 
         // Safe unwrap: `index` is ensured to be present in the above code.

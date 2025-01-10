@@ -45,7 +45,7 @@ async fn add_learner_basic() -> Result<()> {
         let res = router.add_learner(0, 0).await?;
         log_index += 1;
 
-        assert_eq!(log_index, res.log_id.index);
+        assert_eq!(log_index, res.log_id.index());
         router.wait(&0, timeout()).applied_index(Some(log_index), "commit re-adding leader log").await?;
     }
 
@@ -72,7 +72,7 @@ async fn add_learner_basic() -> Result<()> {
 
             let logs = sto1.try_get_log_entries(..).await?;
 
-            assert_eq!(log_index, logs[logs.len() - 1].log_id.index);
+            assert_eq!(log_index, logs[logs.len() - 1].log_id.index());
             // 0-th log
             assert_eq!(log_index + 1, logs.len() as u64);
 
@@ -85,7 +85,7 @@ async fn add_learner_basic() -> Result<()> {
         let res = router.add_learner(0, 1).await?;
         log_index += 1;
 
-        assert_eq!(log_index, res.log_id.index);
+        assert_eq!(log_index, res.log_id.index());
         router.wait(&0, timeout()).applied_index(Some(log_index), "commit re-adding node-1 log").await?;
 
         let metrics = router.get_raft_handle(&0)?.metrics().borrow().clone();

@@ -79,7 +79,7 @@ where C: RaftTypeConfig
             }
 
             // Two adjacent logs with different leader_id, no need to binary search
-            if first.index + 1 == last.index {
+            if first.index() + 1 == last.index() {
                 if res.last().map(|x| &x.leader_id) < Some(&first.leader_id) {
                     res.push(first);
                 }
@@ -87,7 +87,7 @@ where C: RaftTypeConfig
                 continue;
             }
 
-            let mid = sto.get_log_id((first.index + last.index) / 2).await?;
+            let mid = sto.get_log_id((first.index() + last.index()) / 2).await?;
 
             if first.leader_id == mid.leader_id {
                 // Case AAC
@@ -220,7 +220,7 @@ where C: RaftTypeConfig
     // leader_id: Copy is feature gated
     #[allow(clippy::clone_on_copy)]
     pub(crate) fn truncate(&mut self, at: u64) {
-        let res = self.key_log_ids.binary_search_by(|log_id| log_id.index.cmp(&at));
+        let res = self.key_log_ids.binary_search_by(|log_id| log_id.index().cmp(&at));
 
         let i = match res {
             Ok(i) => i,
@@ -237,7 +237,7 @@ where C: RaftTypeConfig
         // Add key log id if there is a gap between last.index and at - 1.
         let last = self.key_log_ids.last();
         if let Some(last) = last {
-            let (last_leader_id, last_index) = (last.leader_id.clone(), last.index);
+            let (last_leader_id, last_index) = (last.leader_id.clone(), last.index());
             if last_index < at - 1 {
                 self.append(LogIdOf::<C>::new(last_leader_id, at - 1));
             }
@@ -250,17 +250,17 @@ where C: RaftTypeConfig
         let last = self.last().cloned();
 
         // When installing  snapshot it may need to purge across the `last_log_id`.
-        if upto.index >= last.next_index() {
+        if upto.index() >= last.next_index() {
             debug_assert!(Some(upto) > self.last());
             self.key_log_ids = vec![upto.clone()];
             return;
         }
 
-        if upto.index < self.key_log_ids[0].index {
+        if upto.index() < self.key_log_ids[0].index() {
             return;
         }
 
-        let res = self.key_log_ids.binary_search_by(|log_id| log_id.index.cmp(&upto.index));
+        let res = self.key_log_ids.binary_search_by(|log_id| log_id.index().cmp(&upto.index()));
 
         match res {
             Ok(i) => {
@@ -270,7 +270,7 @@ where C: RaftTypeConfig
             }
             Err(i) => {
                 self.key_log_ids = self.key_log_ids.split_off(i - 1);
-                self.key_log_ids[0].index = upto.index;
+                self.key_log_ids[0].index = upto.index();
             }
         }
     }
@@ -281,7 +281,7 @@ where C: RaftTypeConfig
     // leader_id: Copy is feature gated
     #[allow(clippy::clone_on_copy)]
     pub(crate) fn get(&self, index: u64) -> Option<LogIdOf<C>> {
-        let res = self.key_log_ids.binary_search_by(|log_id| log_id.index.cmp(&index));
+        let res = self.key_log_ids.binary_search_by(|log_id| log_id.index().cmp(&index));
 
         match res {
             Ok(i) => Some(LogIdOf::<C>::new(self.key_log_ids[i].leader_id.clone(), index)),

@@ -69,7 +69,7 @@ where C: RaftTypeConfig
         );
 
         if let Some(x) = entries.first() {
-            debug_assert!(x.get_log_id().index == prev_log_id.next_index());
+            debug_assert!(x.get_log_id().index() == prev_log_id.next_index());
         }
 
         let last_log_id = entries.last().map(|x| x.get_log_id().clone());
@@ -84,7 +84,7 @@ where C: RaftTypeConfig
             // the entries after it has to be deleted first.
             // Raft requires log ids are in total order by (term,index).
             // Otherwise the log id with max index makes committed entry invisible in election.
-            self.truncate_logs(entries[since].get_log_id().index);
+            self.truncate_logs(entries[since].get_log_id().index());
 
             let entries = entries.split_off(since);
             self.do_append_entries(entries);
@@ -117,10 +117,10 @@ where C: RaftTypeConfig
     ) -> Result<(), RejectAppendEntries<C>> {
         if let Some(prev) = prev_log_id {
             if !self.state.has_log_id(prev) {
-                let local = self.state.get_log_id(prev.index);
+                let local = self.state.get_log_id(prev.index());
                 tracing::debug!(local = display(DisplayOption(&local)), "prev_log_id does not match");
 
-                self.truncate_logs(prev.index);
+                self.truncate_logs(prev.index());
                 return Err(RejectAppendEntries::ByConflictingLogId {
                     local,
                     expect: prev.clone(),
@@ -144,7 +144,7 @@ where C: RaftTypeConfig
     pub(crate) fn do_append_entries(&mut self, entries: Vec<C::Entry>) {
         debug_assert!(!entries.is_empty());
         debug_assert_eq!(
-            entries[0].get_log_id().index,
+            entries[0].get_log_id().index(),
             self.state.log_ids.last().cloned().next_index(),
         );
         debug_assert!(Some(entries[0].get_log_id()) > self.state.log_ids.last());
@@ -307,7 +307,7 @@ where C: RaftTypeConfig
             return None;
         }
 
-        let local = self.state.get_log_id(snap_last_log_id.index);
+        let local = self.state.get_log_id(snap_last_log_id.index());
         if let Some(local) = local {
             if local != snap_last_log_id {
                 // Conflict, delete all non-committed logs.

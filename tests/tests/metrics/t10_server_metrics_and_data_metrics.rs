@@ -51,7 +51,7 @@ async fn server_metrics_and_data_metrics() -> Result<()> {
 
     router.wait(&0, timeout()).applied_index(Some(log_index), "applied log index").await?;
 
-    let last_log_index = data_metrics.borrow().last_log.unwrap_or_default().index;
+    let last_log_index = data_metrics.borrow().last_log.unwrap_or_default().index();
     assert_eq!(last_log_index, log_index, "last_log_index should be {:?}", log_index);
 
     let sm = server_metrics.borrow();

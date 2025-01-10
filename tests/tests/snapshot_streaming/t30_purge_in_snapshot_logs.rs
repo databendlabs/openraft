@@ -86,7 +86,7 @@ async fn purge_in_snapshot_logs() -> Result<()> {
     let logs = sto0.try_get_log_entries(..).await?;
     assert_eq!(
         log_index + 1 - max_keep,
-        logs[0].log_id.index,
+        logs[0].log_id.index(),
         "leader's local logs are purged"
     );
 

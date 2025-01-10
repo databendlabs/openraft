@@ -179,7 +179,7 @@ where
             last.index += 1;
         }
 
-        if last.index > first.index {
+        if last.index() > first.index() {
             last.index -= 1;
             self.last_log_id = Some(last);
         }
