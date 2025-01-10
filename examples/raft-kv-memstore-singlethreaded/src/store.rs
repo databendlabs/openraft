@@ -146,7 +146,7 @@ impl RaftSnapshotBuilder<TypeConfig> for Rc<StateMachineStore> {
         };
 
         let snapshot_id = if let Some(last) = last_applied_log {
-            format!("{}-{}-{}", last.leader_id, last.index(), snapshot_idx)
+            format!("{}-{}-{}", last.leader_id(), last.index(), snapshot_idx)
         } else {
             format!("--{}", snapshot_idx)
         };

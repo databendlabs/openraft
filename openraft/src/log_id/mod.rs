@@ -55,7 +55,7 @@ impl<C> Display for LogId<C>
 where C: RaftTypeConfig
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}.{}", self.leader_id, self.index())
+        write!(f, "{}.{}", self.leader_id(), self.index())
     }
 }
 

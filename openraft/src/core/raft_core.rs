@@ -586,7 +586,7 @@ where
             id: self.id.clone(),
 
             // --- data ---
-            current_term: st.vote_ref().to_leader_id().term(),
+            current_term: st.vote_ref().term(),
             vote: st.io_state().io_progress.flushed().map(|io_id| io_id.to_vote()).unwrap_or_default(),
             last_log_index: st.last_log_id().index(),
             last_applied: st.io_applied().cloned(),
