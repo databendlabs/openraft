@@ -193,8 +193,8 @@ where
             let chunk_end = std::cmp::min(end, start + chunk_size);
             let entries = log_reader.try_get_log_entries(start..chunk_end).await?;
 
-            let first = entries.first().map(|x| x.get_log_id().index);
-            let last = entries.last().map(|x| x.get_log_id().index);
+            let first = entries.first().map(|x| x.get_log_id().index());
+            let last = entries.last().map(|x| x.get_log_id().index());
 
             let make_err = || {
                 let err = AnyError::error(format!(
@@ -329,7 +329,7 @@ where
             Some(x) => x,
         };
 
-        if purged.index() == Some(last.index) {
+        if purged.index() == Some(last.index()) {
             return Ok(LogIdList::new(vec![last]));
         }
 

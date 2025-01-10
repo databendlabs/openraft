@@ -16,13 +16,13 @@ impl<C> LogIdOptionExt for Option<LogIdOf<C>>
 where C: RaftTypeConfig
 {
     fn index(&self) -> Option<u64> {
-        self.as_ref().map(|x| x.index)
+        self.as_ref().map(|x| x.index())
     }
 
     fn next_index(&self) -> u64 {
         match self {
             None => 0,
-            Some(log_id) => log_id.index + 1,
+            Some(log_id) => log_id.index() + 1,
         }
     }
 }
@@ -31,13 +31,13 @@ impl<C> LogIdOptionExt for Option<&LogIdOf<C>>
 where C: RaftTypeConfig
 {
     fn index(&self) -> Option<u64> {
-        self.map(|x| x.index)
+        self.map(|x| x.index())
     }
 
     fn next_index(&self) -> u64 {
         match self {
             None => 0,
-            Some(log_id) => log_id.index + 1,
+            Some(log_id) => log_id.index() + 1,
         }
     }
 }

@@ -146,7 +146,7 @@ impl RaftSnapshotBuilder<TypeConfig> for Rc<StateMachineStore> {
         };
 
         let snapshot_id = if let Some(last) = last_applied_log {
-            format!("{}-{}-{}", last.leader_id, last.index, snapshot_idx)
+            format!("{}-{}-{}", last.leader_id, last.index(), snapshot_idx)
         } else {
             format!("--{}", snapshot_idx)
         };
@@ -307,7 +307,7 @@ impl RaftLogStorage<TypeConfig> for Rc<LogStore> {
         // Simple implementation that calls the flush-before-return `append_to_log`.
         let mut log = self.log.borrow_mut();
         for entry in entries {
-            log.insert(entry.log_id.index, entry);
+            log.insert(entry.log_id.index(), entry);
         }
         callback.io_completed(Ok(()));
 
@@ -319,7 +319,7 @@ impl RaftLogStorage<TypeConfig> for Rc<LogStore> {
         tracing::debug!("delete_log: [{:?}, +oo)", log_id);
 
         let mut log = self.log.borrow_mut();
-        let keys = log.range(log_id.index..).map(|(k, _v)| *k).collect::<Vec<_>>();
+        let keys = log.range(log_id.index()..).map(|(k, _v)| *k).collect::<Vec<_>>();
         for key in keys {
             log.remove(&key);
         }
@@ -340,7 +340,7 @@ impl RaftLogStorage<TypeConfig> for Rc<LogStore> {
         {
             let mut log = self.log.borrow_mut();
 
-            let keys = log.range(..=log_id.index).map(|(k, _v)| *k).collect::<Vec<_>>();
+            let keys = log.range(..=log_id.index()).map(|(k, _v)| *k).collect::<Vec<_>>();
             for key in keys {
                 log.remove(&key);
             }

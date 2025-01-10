@@ -55,7 +55,7 @@ impl<C> Display for LogId<C>
 where C: RaftTypeConfig
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}.{}", self.leader_id, self.index)
+        write!(f, "{}.{}", self.leader_id, self.index())
     }
 }
 
@@ -70,5 +70,13 @@ where C: RaftTypeConfig
     /// Returns the leader id that proposed this log.
     pub fn committed_leader_id(&self) -> &CommittedLeaderIdOf<C> {
         &self.leader_id
+    }
+
+    pub fn leader_id(&self) -> &CommittedLeaderIdOf<C> {
+        &self.leader_id
+    }
+
+    pub fn index(&self) -> u64 {
+        self.index
     }
 }

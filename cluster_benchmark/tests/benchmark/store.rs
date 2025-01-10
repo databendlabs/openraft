@@ -151,7 +151,7 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<StateMachineStore> {
         let snapshot_idx = self.snapshot_idx.fetch_add(1, Ordering::Relaxed);
 
         let snapshot_id = if let Some(last) = last_applied_log {
-            format!("{}-{}-{}", last.leader_id, last.index, snapshot_idx)
+            format!("{}-{}-{}", last.leader_id, last.index(), snapshot_idx)
         } else {
             format!("--{}", snapshot_idx)
         };
@@ -214,7 +214,7 @@ impl RaftLogStorage<TypeConfig> for Arc<LogStore> {
     #[tracing::instrument(level = "debug", skip(self))]
     async fn truncate(&mut self, log_id: LogIdOf<TypeConfig>) -> Result<(), StorageError<TypeConfig>> {
         let mut log = self.log.write().await;
-        log.split_off(&log_id.index);
+        log.split_off(&log_id.index());
 
         Ok(())
     }
@@ -227,7 +227,7 @@ impl RaftLogStorage<TypeConfig> for Arc<LogStore> {
         }
 
         let mut log = self.log.write().await;
-        *log = log.split_off(&(log_id.index + 1));
+        *log = log.split_off(&(log_id.index() + 1));
 
         Ok(())
     }
@@ -237,7 +237,7 @@ impl RaftLogStorage<TypeConfig> for Arc<LogStore> {
     where I: IntoIterator<Item = Entry<TypeConfig>> + Send {
         {
             let mut log = self.log.write().await;
-            log.extend(entries.into_iter().map(|entry| (entry.get_log_id().index, entry)));
+            log.extend(entries.into_iter().map(|entry| (entry.get_log_id().index(), entry)));
         }
         callback.io_completed(Ok(()));
         Ok(())

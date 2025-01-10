@@ -93,7 +93,7 @@ async fn change_with_new_learner_blocking() -> anyhow::Result<()> {
         for node_id in 0..2 {
             let (mut sto, _sm) = router.get_storage_handle(&node_id)?;
             let logs = sto.try_get_log_entries(..).await?;
-            assert_eq!(log_index, logs[logs.len() - 1].log_id.index, "node: {}", node_id);
+            assert_eq!(log_index, logs[logs.len() - 1].log_id.index(), "node: {}", node_id);
             // 0-th log
             assert_eq!(log_index + 1, logs.len() as u64, "node: {}", node_id);
         }

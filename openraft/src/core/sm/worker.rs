@@ -166,8 +166,8 @@ where
         //       so that an Entry does not need to be Clone,
         //       and no references will be used by apply
 
-        let since = first.index;
-        let end = last.index + 1;
+        let since = first.index();
+        let end = last.index() + 1;
 
         let entries = self.log_reader.try_get_log_entries(since..end).await?;
         if entries.len() != (end - since) as usize {

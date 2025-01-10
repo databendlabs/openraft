@@ -322,7 +322,7 @@ where C: RaftTypeConfig
 
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn purge_log(&mut self, upto: &LogIdOf<C>) {
-        self.purged_next = upto.index + 1;
+        self.purged_next = upto.index() + 1;
         self.log_ids.purge(upto);
     }
 

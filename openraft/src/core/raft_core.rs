@@ -501,7 +501,7 @@ where
         // TODO: it should returns membership config error etc. currently this is done by the
         //       caller.
         lh.leader_append_entries(entries);
-        let index = lh.state.last_log_id().unwrap().index;
+        let index = lh.state.last_log_id().unwrap().index();
 
         // Install callback channels.
         if let Some(tx) = tx {
@@ -767,10 +767,10 @@ where
         tracing::debug!("{}: {}..={}", func_name!(), first, last);
 
         debug_assert!(
-            first.index <= last.index,
+            first.index() <= last.index(),
             "first.index {} should <= last.index {}",
-            first.index,
-            last.index
+            first.index(),
+            last.index()
         );
 
         let cmd = sm::Command::apply(first, last.clone());
@@ -1793,7 +1793,7 @@ where
                 self.log_store.truncate(since.clone()).await?;
 
                 // Inform clients waiting for logs to be applied.
-                let removed = self.client_resp_channels.split_off(&since.index);
+                let removed = self.client_resp_channels.split_off(&since.index());
                 if !removed.is_empty() {
                     let leader_id = self.current_leader();
                     let leader_node = self.get_leader_node(leader_id.clone());

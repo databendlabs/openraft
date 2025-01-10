@@ -97,7 +97,7 @@ impl<C: RaftTypeConfig> LogStoreInner<C> {
     where I: IntoIterator<Item = C::Entry> {
         // Simple implementation that calls the flush-before-return `append_to_log`.
         for entry in entries {
-            self.log.insert(entry.get_log_id().index, entry);
+            self.log.insert(entry.get_log_id().index(), entry);
         }
         callback.io_completed(Ok(()));
 
@@ -105,7 +105,7 @@ impl<C: RaftTypeConfig> LogStoreInner<C> {
     }
 
     async fn truncate(&mut self, log_id: LogIdOf<C>) -> Result<(), StorageError<C>> {
-        let keys = self.log.range(log_id.index..).map(|(k, _v)| *k).collect::<Vec<_>>();
+        let keys = self.log.range(log_id.index()..).map(|(k, _v)| *k).collect::<Vec<_>>();
         for key in keys {
             self.log.remove(&key);
         }
@@ -121,7 +121,7 @@ impl<C: RaftTypeConfig> LogStoreInner<C> {
         }
 
         {
-            let keys = self.log.range(..=log_id.index).map(|(k, _v)| *k).collect::<Vec<_>>();
+            let keys = self.log.range(..=log_id.index()).map(|(k, _v)| *k).collect::<Vec<_>>();
             for key in keys {
                 self.log.remove(&key);
             }

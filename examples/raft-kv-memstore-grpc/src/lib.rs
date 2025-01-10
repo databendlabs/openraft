@@ -61,7 +61,7 @@ impl From<LogId> for pb::LogId {
     fn from(log_id: LogId) -> Self {
         pb::LogId {
             term: log_id.leader_id,
-            index: log_id.index,
+            index: log_id.index(),
         }
     }
 }

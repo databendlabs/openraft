@@ -21,13 +21,13 @@ where C: RaftTypeConfig
     ///
     /// It assumes a committed log will always get positive return value, according to raft spec.
     fn has_log_id(&self, log_id: &LogIdOf<C>) -> bool {
-        if log_id.index < self.committed().next_index() {
+        if log_id.index() < self.committed().next_index() {
             debug_assert!(Some(log_id) <= self.committed());
             return true;
         }
 
         // The local log id exists at the index and is same as the input.
-        if let Some(local) = self.get_log_id(log_id.index) {
+        if let Some(local) = self.get_log_id(log_id.index()) {
             *log_id == local
         } else {
             false

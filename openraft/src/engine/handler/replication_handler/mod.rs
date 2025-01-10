@@ -221,7 +221,7 @@ where C: RaftTypeConfig
 
         let mut updater = progress::entry::update::Updater::new(self.config, prog_entry);
 
-        updater.update_conflicting(conflict.index);
+        updater.update_conflicting(conflict.index());
     }
 
     /// Enable one-time replication reset for a specific node upon log reversion detection.

@@ -1072,7 +1072,7 @@ where
 
         let logs = store.try_get_log_entries(0..100).await?;
         assert_eq!(logs.len(), 10);
-        assert_eq!(logs[0].get_log_id().index, 1);
+        assert_eq!(logs[0].get_log_id().index(), 1);
 
         assert_eq!(
             LogState {
@@ -1097,7 +1097,7 @@ where
 
         let logs = store.try_get_log_entries(0..100).await?;
         assert_eq!(logs.len(), 5);
-        assert_eq!(logs[0].get_log_id().index, 6);
+        assert_eq!(logs[0].get_log_id().index(), 6);
 
         assert_eq!(
             LogState {

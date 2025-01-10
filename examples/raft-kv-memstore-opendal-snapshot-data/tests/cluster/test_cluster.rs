@@ -114,8 +114,8 @@ async fn run_test(rafts: &[typ::Raft], router: Router) {
     {
         let metrics = raft1.metrics().borrow().clone();
         println!("node 1 metrics: {:#?}", metrics);
-        assert_eq!(Some(3), metrics.snapshot.map(|x| x.index));
-        assert_eq!(Some(3), metrics.purged.map(|x| x.index));
+        assert_eq!(Some(3), metrics.snapshot.map(|x| x.index()));
+        assert_eq!(Some(3), metrics.purged.map(|x| x.index()));
     }
 
     println!("=== add-learner node-2");
@@ -132,8 +132,8 @@ async fn run_test(rafts: &[typ::Raft], router: Router) {
     {
         let metrics = raft2.metrics().borrow().clone();
         println!("node 2 metrics: {:#?}", metrics);
-        assert_eq!(Some(3), metrics.snapshot.map(|x| x.index));
-        assert_eq!(Some(3), metrics.purged.map(|x| x.index));
+        assert_eq!(Some(3), metrics.snapshot.map(|x| x.index()));
+        assert_eq!(Some(3), metrics.purged.map(|x| x.index()));
     }
 
     // In this example, the snapshot is just a copy of the state machine.
