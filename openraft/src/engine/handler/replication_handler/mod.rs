@@ -403,11 +403,11 @@ where C: RaftTypeConfig
         // The leader may not be in membership anymore
         if let Some(prog_entry) = self.leader.progress.get_mut(&id) {
             tracing::debug!(
-                self_matching = display(prog_entry.matching.display()),
+                self_matching = display(prog_entry.matching().display()),
                 "update progress"
             );
 
-            if prog_entry.matching >= upto {
+            if prog_entry.matching() >= upto.as_ref() {
                 return;
             }
             // TODO: It should be self.state.last_log_id() but None is ok.

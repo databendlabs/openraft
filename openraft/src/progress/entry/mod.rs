@@ -82,6 +82,10 @@ where C: RaftTypeConfig
         Updater::new(engine_config, self)
     }
 
+    pub(crate) fn matching(&self) -> Option<&LogIdOf<C>> {
+        self.matching.as_ref()
+    }
+
     /// Return if a range of log id `..=log_id` is inflight sending.
     ///
     /// `prev_log_id` is never inflight.
@@ -138,7 +142,7 @@ where C: RaftTypeConfig
 
         // Replicate by logs.
         // Run a binary search to find the matching log id, if matching log id is not determined.
-        let mut start = Self::calc_mid(self.matching.next_index(), self.searching_end);
+        let mut start = Self::calc_mid(self.matching().next_index(), self.searching_end);
         if start < purge_upto_next {
             start = purge_upto_next;
         }
@@ -163,7 +167,7 @@ where C: RaftTypeConfig
     /// The returned range is left close and right close.
     #[allow(dead_code)]
     pub(crate) fn sending_start(&self) -> (u64, u64) {
-        let mid = Self::calc_mid(self.matching.next_index(), self.searching_end);
+        let mid = Self::calc_mid(self.matching().next_index(), self.searching_end);
         (mid, self.searching_end)
     }
 
@@ -190,7 +194,7 @@ where C: RaftTypeConfig
         write!(
             f,
             "{{[{}, {}), inflight:{}}}",
-            self.matching.display(),
+            self.matching().display(),
             self.searching_end,
             self.inflight
         )
@@ -201,7 +205,7 @@ impl<C> Validate for ProgressEntry<C>
 where C: RaftTypeConfig
 {
     fn validate(&self) -> Result<(), Box<dyn Error>> {
-        validit::less_equal!(self.matching.next_index(), self.searching_end);
+        validit::less_equal!(self.matching().next_index(), self.searching_end);
 
         self.inflight.validate()?;
 
