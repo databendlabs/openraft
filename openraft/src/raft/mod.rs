@@ -952,7 +952,7 @@ where C: RaftTypeConfig
     #[since(version = "0.10.0")]
     pub fn external_state_machine_request<F, SM>(&self, req: F)
     where
-        SM: 'static,
+        SM: RaftStateMachine<C>,
         F: FnOnce(&mut SM) -> BoxFuture<()> + OptionalSend + 'static,
     {
         let input_sm_type = std::any::type_name::<SM>();
