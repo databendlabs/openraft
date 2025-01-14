@@ -11,6 +11,7 @@ use crate::engine::Command;
 use crate::engine::Condition;
 use crate::engine::EngineConfig;
 use crate::engine::EngineOutput;
+use crate::entry::RaftEntry;
 use crate::entry::RaftEntryExt;
 use crate::entry::RaftPayload;
 use crate::error::RejectAppendEntries;
@@ -144,7 +145,7 @@ where C: RaftTypeConfig
     pub(crate) fn do_append_entries(&mut self, entries: Vec<C::Entry>) {
         debug_assert!(!entries.is_empty());
         debug_assert_eq!(entries[0].index(), self.state.log_ids.last().cloned().next_index(),);
-        debug_assert!(Some(entries[0].log_id()) > self.state.log_ids.last());
+        debug_assert!(Some(entries[0].ref_log_id()) > self.state.log_ids.last());
 
         self.state.extend_log_ids(&entries);
         self.append_membership(entries.iter());
