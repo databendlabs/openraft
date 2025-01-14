@@ -11,6 +11,7 @@ use crate::engine::Command;
 use crate::engine::Condition;
 use crate::engine::EngineConfig;
 use crate::engine::EngineOutput;
+use crate::entry::RaftEntry;
 use crate::entry::RaftEntryExt;
 use crate::entry::RaftPayload;
 use crate::error::RejectAppendEntries;

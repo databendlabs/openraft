@@ -24,7 +24,7 @@ pub trait RaftEntry<C>
 where
     C: RaftTypeConfig,
     Self: OptionalFeatures + Debug + Display,
-    Self: RaftPayload<C> + AsRef<LogIdOf<C>> + AsMut<LogIdOf<C>>,
+    Self: RaftPayload<C>,
 {
     /// Create a new blank log entry.
     ///
@@ -38,15 +38,15 @@ where
     ///
     /// The returned instance must return `Some()` for `Self::get_membership()`.
     fn new_membership(log_id: LogIdOf<C>, m: Membership<C>) -> Self;
+
+    fn log_id(&self) -> &LogIdOf<C>;
+
+    fn set_log_id(&mut self, new: &LogIdOf<C>);
 }
 
 pub trait RaftEntryExt<C>: RaftEntry<C>
 where C: RaftTypeConfig
 {
-    fn log_id(&self) -> &LogIdOf<C> {
-        AsRef::<LogIdOf<C>>::as_ref(self)
-    }
-
     fn to_log_id(&self) -> LogIdOf<C> {
         self.log_id().clone()
     }
@@ -61,11 +61,6 @@ where C: RaftTypeConfig
 
     fn index(&self) -> u64 {
         AsRef::<LogIdOf<C>>::as_ref(self).index
-    }
-
-    fn set_log_id(&mut self, new: &LogIdOf<C>) {
-        let log_id = AsMut::<LogIdOf<C>>::as_mut(self);
-        *log_id = new.clone();
     }
 }
 

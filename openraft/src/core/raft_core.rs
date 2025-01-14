@@ -44,7 +44,6 @@ use crate::engine::Engine;
 use crate::engine::ReplicationProgress;
 use crate::engine::Respond;
 use crate::entry::RaftEntry;
-use crate::entry::RaftEntryExt;
 use crate::error::AllowNextRevertError;
 use crate::error::ClientWriteError;
 use crate::error::Fatal;

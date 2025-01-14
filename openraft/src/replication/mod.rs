@@ -27,6 +27,7 @@ use crate::core::notification::Notification;
 use crate::core::sm::handle::SnapshotReader;
 use crate::display_ext::DisplayInstantExt;
 use crate::display_ext::DisplayOptionExt;
+use crate::entry::RaftEntry;
 use crate::entry::RaftEntryExt;
 use crate::error::HigherVote;
 use crate::error::PayloadTooLarge;

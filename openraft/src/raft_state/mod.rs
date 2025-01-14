@@ -36,6 +36,7 @@ pub(crate) use vote_state_reader::VoteStateReader;
 use crate::base::ord_by::OrdBy;
 use crate::display_ext::DisplayOptionExt;
 use crate::log_id::ref_log_id::RefLogId;
+use crate::entry::RaftEntry;
 use crate::proposer::Leader;
 use crate::proposer::LeaderQuorumSet;
 use crate::type_config::alias::InstantOf;
@@ -300,7 +301,7 @@ where C: RaftTypeConfig
     /// Find the first entry in the input that does not exist on local raft-log,
     /// by comparing the log id.
     pub(crate) fn first_conflicting_index<Ent>(&self, entries: &[Ent]) -> usize
-    where Ent: AsRef<LogIdOf<C>> {
+    where Ent: RaftEntry<C> {
         let l = entries.len();
 
         for (i, ent) in entries.iter().enumerate() {
