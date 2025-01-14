@@ -27,6 +27,7 @@ use crate::core::notification::Notification;
 use crate::core::sm::handle::SnapshotReader;
 use crate::display_ext::DisplayInstantExt;
 use crate::display_ext::DisplayOptionExt;
+use crate::entry::RaftEntry;
 use crate::entry::RaftEntryExt;
 use crate::error::HigherVote;
 use crate::error::PayloadTooLarge;
@@ -398,7 +399,7 @@ where
                 // limited_get_log_entries will return logs smaller than the range [start, end).
                 let logs = self.log_reader.limited_get_log_entries(start, end).await?;
 
-                let first = logs.first().map(|x| x.log_id()).unwrap();
+                let first = logs.first().map(|x| x.ref_log_id()).unwrap();
                 let last = logs.last().map(|x| x.to_log_id()).unwrap();
 
                 debug_assert!(

@@ -14,6 +14,7 @@ pub use traits::RaftEntry;
 pub use traits::RaftEntryExt;
 pub use traits::RaftPayload;
 
+use crate::log_id::ref_log_id::RefLogId;
 use crate::type_config::alias::AppDataOf;
 use crate::type_config::alias::LogIdOf;
 
@@ -98,22 +99,6 @@ where C: RaftTypeConfig
     }
 }
 
-impl<C> AsRef<LogIdOf<C>> for Entry<C>
-where C: RaftTypeConfig
-{
-    fn as_ref(&self) -> &LogIdOf<C> {
-        &self.log_id
-    }
-}
-
-impl<C> AsMut<LogIdOf<C>> for Entry<C>
-where C: RaftTypeConfig
-{
-    fn as_mut(&mut self) -> &mut LogIdOf<C> {
-        &mut self.log_id
-    }
-}
-
 impl<C> RaftEntry<C> for Entry<C>
 where C: RaftTypeConfig
 {
@@ -136,5 +121,13 @@ where C: RaftTypeConfig
             log_id,
             payload: EntryPayload::Membership(m),
         }
+    }
+
+    fn ref_log_id(&self) -> RefLogId<C> {
+        todo!()
+    }
+
+    fn set_log_id(&mut self, new: &LogIdOf<C>) {
+        todo!()
     }
 }

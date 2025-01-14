@@ -2,6 +2,7 @@ use std::fmt::Debug;
 use std::fmt::Display;
 
 use crate::base::OptionalFeatures;
+use crate::log_id::ref_log_id::RefLogId;
 use crate::log_id::RaftLogId;
 use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::type_config::alias::LogIdOf;
@@ -24,7 +25,7 @@ pub trait RaftEntry<C>
 where
     C: RaftTypeConfig,
     Self: OptionalFeatures + Debug + Display,
-    Self: RaftPayload<C> + AsRef<LogIdOf<C>> + AsMut<LogIdOf<C>>,
+    Self: RaftPayload<C>,
 {
     /// Create a new blank log entry.
     ///
@@ -38,17 +39,18 @@ where
     ///
     /// The returned instance must return `Some()` for `Self::get_membership()`.
     fn new_membership(log_id: LogIdOf<C>, m: Membership<C>) -> Self;
+
+    /// Creates a lightweight [`RefLogId`] that references the log id information.
+    fn ref_log_id(&self) -> RefLogId<'_, C>;
+
+    fn set_log_id(&mut self, new: &LogIdOf<C>);
 }
 
 pub trait RaftEntryExt<C>: RaftEntry<C>
 where C: RaftTypeConfig
 {
-    fn log_id(&self) -> &LogIdOf<C> {
-        AsRef::<LogIdOf<C>>::as_ref(self)
-    }
-
     fn to_log_id(&self) -> LogIdOf<C> {
-        self.log_id().clone()
+        self.ref_log_id().to_log_id()
     }
 
     fn committed_leader_id(&self) -> &CommittedLeaderIdOf<C> {
@@ -61,11 +63,6 @@ where C: RaftTypeConfig
 
     fn index(&self) -> u64 {
         AsRef::<LogIdOf<C>>::as_ref(self).index
-    }
-
-    fn set_log_id(&mut self, new: &LogIdOf<C>) {
-        let log_id = AsMut::<LogIdOf<C>>::as_mut(self);
-        *log_id = new.clone();
     }
 }
 

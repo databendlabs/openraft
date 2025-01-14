@@ -23,7 +23,6 @@ use crate::engine::Condition;
 use crate::engine::EngineOutput;
 use crate::engine::Respond;
 use crate::entry::RaftEntry;
-use crate::entry::RaftEntryExt;
 use crate::entry::RaftPayload;
 use crate::error::ForwardToLeader;
 use crate::error::Infallible;
