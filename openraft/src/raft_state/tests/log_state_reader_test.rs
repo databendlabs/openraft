@@ -1,12 +1,11 @@
 use crate::engine::testing::UTConfig;
 use crate::engine::LogIdList;
 use crate::raft_state::LogStateReader;
-use crate::testing;
 use crate::type_config::alias::LogIdOf;
 use crate::RaftState;
 
 fn log_id(term: u64, index: u64) -> LogIdOf<UTConfig> {
-    testing::log_id(term, 0, index)
+    crate::engine::testing::log_id(term, 0, index)
 }
 
 #[test]
@@ -44,7 +43,7 @@ fn test_raft_state_prev_log_id() -> anyhow::Result<()> {
 fn test_raft_state_has_log_id_empty() -> anyhow::Result<()> {
     let rs = RaftState::<UTConfig>::default();
 
-    assert!(!rs.has_log_id(&log_id(0, 0)));
+    assert!(!rs.has_log_id(log_id(0, 0)));
 
     Ok(())
 }
@@ -56,9 +55,9 @@ fn test_raft_state_has_log_id_committed_gets_true() -> anyhow::Result<()> {
         ..Default::default()
     };
 
-    assert!(rs.has_log_id(&log_id(0, 0)));
-    assert!(rs.has_log_id(&log_id(2, 1)));
-    assert!(!rs.has_log_id(&log_id(2, 2)));
+    assert!(rs.has_log_id(log_id(0, 0)));
+    assert!(rs.has_log_id(log_id(2, 1)));
+    assert!(!rs.has_log_id(log_id(2, 2)));
 
     Ok(())
 }
@@ -71,14 +70,14 @@ fn test_raft_state_has_log_id_in_log_id_list() -> anyhow::Result<()> {
         ..Default::default()
     };
 
-    assert!(rs.has_log_id(&log_id(0, 0)));
-    assert!(rs.has_log_id(&log_id(2, 1)));
-    assert!(rs.has_log_id(&log_id(1, 3)));
-    assert!(rs.has_log_id(&log_id(3, 4)));
+    assert!(rs.has_log_id(log_id(0, 0)));
+    assert!(rs.has_log_id(log_id(2, 1)));
+    assert!(rs.has_log_id(log_id(1, 3)));
+    assert!(rs.has_log_id(log_id(3, 4)));
 
-    assert!(!rs.has_log_id(&log_id(2, 3)));
-    assert!(!rs.has_log_id(&log_id(2, 4)));
-    assert!(!rs.has_log_id(&log_id(3, 5)));
+    assert!(!rs.has_log_id(log_id(2, 3)));
+    assert!(!rs.has_log_id(log_id(2, 4)));
+    assert!(!rs.has_log_id(log_id(3, 5)));
 
     Ok(())
 }

@@ -34,3 +34,15 @@ pub(crate) trait OrdBy<C> {
     /// Returns the key used for comparing this value.
     fn ord_by(&self) -> Self::By<'_>;
 }
+
+// impl<C, T> OrdBy<C> for &T
+// where T: OrdBy<C>
+// {
+//     type By<'k>
+//         = T::By<'k>
+//     where Self: 'k;
+//
+//     fn ord_by(&self) -> Self::By<'_> {
+//         (*self).ord_by()
+//     }
+// }

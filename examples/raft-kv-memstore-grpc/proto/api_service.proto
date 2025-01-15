@@ -1,4 +1,5 @@
 syntax = "proto3";
+import "internal_service.proto";
 package openraftpb;
 
 // ApiService provides the key-value store API operations
@@ -20,8 +21,3 @@ message Response {
   optional string value = 1; // Retrieved value
 }
 
-// SetRequest represents a key-value pair to be stored
-message SetRequest {
-  string key = 1;   // Key to store
-  string value = 2; // Value to associate with the key
-}
