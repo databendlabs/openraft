@@ -2,6 +2,7 @@ use crate::engine::leader_log_ids::LeaderLogIds;
 use crate::engine::testing::log_id;
 use crate::engine::testing::UTConfig;
 use crate::engine::LogIdList;
+use crate::log_id::option_ref_log_id_ext::OptionRefLogIdExt;
 
 #[test]
 fn test_log_id_list_extend_from_same_leader() -> anyhow::Result<()> {
@@ -338,17 +339,17 @@ fn test_log_id_list_get_log_id() -> anyhow::Result<()> {
         log_id(7, 1, 10),
     ]);
 
-    assert_eq!(None, ids.get(0));
-    assert_eq!(Some(log_id(1, 1, 1)), ids.get(1));
-    assert_eq!(Some(log_id(1, 1, 2)), ids.get(2));
-    assert_eq!(Some(log_id(3, 1, 3)), ids.get(3));
-    assert_eq!(Some(log_id(3, 1, 4)), ids.get(4));
-    assert_eq!(Some(log_id(3, 1, 5)), ids.get(5));
-    assert_eq!(Some(log_id(5, 1, 6)), ids.get(6));
-    assert_eq!(Some(log_id(5, 1, 7)), ids.get(7));
-    assert_eq!(Some(log_id(7, 1, 8)), ids.get(8));
-    assert_eq!(Some(log_id(7, 1, 9)), ids.get(9));
-    assert_eq!(Some(log_id(7, 1, 10)), ids.get(10));
+    assert_eq!(None, ids.get(0).to_log_id());
+    assert_eq!(Some(log_id(1, 1, 1)), ids.get(1).to_log_id());
+    assert_eq!(Some(log_id(1, 1, 2)), ids.get(2).to_log_id());
+    assert_eq!(Some(log_id(3, 1, 3)), ids.get(3).to_log_id());
+    assert_eq!(Some(log_id(3, 1, 4)), ids.get(4).to_log_id());
+    assert_eq!(Some(log_id(3, 1, 5)), ids.get(5).to_log_id());
+    assert_eq!(Some(log_id(5, 1, 6)), ids.get(6).to_log_id());
+    assert_eq!(Some(log_id(5, 1, 7)), ids.get(7).to_log_id());
+    assert_eq!(Some(log_id(7, 1, 8)), ids.get(8).to_log_id());
+    assert_eq!(Some(log_id(7, 1, 9)), ids.get(9).to_log_id());
+    assert_eq!(Some(log_id(7, 1, 10)), ids.get(10).to_log_id());
     assert_eq!(None, ids.get(11));
 
     Ok(())
