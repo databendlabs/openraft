@@ -1,6 +1,7 @@
 use std::ops::RangeInclusive;
 
 use crate::engine::leader_log_ids::LeaderLogIds;
+use crate::log_id::ref_log_id::RefLogId;
 use crate::log_id::RaftLogId;
 use crate::storage::RaftLogReaderExt;
 use crate::type_config::alias::LogIdOf;
@@ -275,24 +276,30 @@ where C: RaftTypeConfig
         }
     }
 
-    /// Get the log id at the specified index.
+    /// Get the log id at the specified index in a [`RefLogId`].
     ///
     /// It will return `last_purged_log_id` if index is at the last purged index.
-    // leader_id: Copy is feature gated
     #[allow(clippy::clone_on_copy)]
-    pub(crate) fn get(&self, index: u64) -> Option<LogIdOf<C>> {
+    pub(crate) fn get(&self, index: u64) -> Option<RefLogId<'_, C>> {
         let res = self.key_log_ids.binary_search_by(|log_id| log_id.index().cmp(&index));
 
-        match res {
-            Ok(i) => Some(LogIdOf::<C>::new(self.key_log_ids[i].leader_id().clone(), index)),
+        // Index of the leadership change point that covers the target index.
+        // It points to either:
+        // - The exact matching log entry if found, or
+        // - The most recent change point before the target index
+        let change_point = match res {
+            Ok(i) => i,
             Err(i) => {
+                // i - 1 is the last one that is smaller than the input.
                 if i == 0 || i == self.key_log_ids.len() {
-                    None
+                    return None;
                 } else {
-                    Some(LogIdOf::<C>::new(self.key_log_ids[i - 1].leader_id().clone(), index))
+                    i - 1
                 }
             }
-        }
+        };
+
+        Some(RefLogId::new(self.key_log_ids[change_point].leader_id(), index))
     }
 
     pub(crate) fn first(&self) -> Option<&LogIdOf<C>> {
