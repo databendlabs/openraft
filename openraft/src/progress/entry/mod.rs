@@ -187,6 +187,14 @@ where C: RaftTypeConfig
     }
 }
 
+// impl<C> Borrow<OrdLogIdOf<C>> for ProgressEntry<C>
+// where C: RaftTypeConfig
+// {
+//     fn borrow(&self) -> &OrdLogIdOf<C> {
+//         &self.matching
+//     }
+// }
+
 impl<C> Display for ProgressEntry<C>
 where C: RaftTypeConfig
 {
@@ -214,12 +222,12 @@ where C: RaftTypeConfig
             Inflight::Logs { log_id_range, .. } => {
                 // matching <= prev_log_id              <= last_log_id
                 //             prev_log_id.next_index() <= searching_end
-                validit::less_equal!(&self.matching, &log_id_range.prev);
+                validit::less_equal!(self.matching(), log_id_range.prev.as_ref());
                 validit::less_equal!(log_id_range.prev.next_index(), self.searching_end);
             }
             Inflight::Snapshot { last_log_id, .. } => {
                 // There is no need to send a snapshot smaller than last matching.
-                validit::less!(&self.matching, last_log_id);
+                validit::less!(self.matching(), last_log_id.as_ref());
             }
         }
         Ok(())

@@ -1,5 +1,6 @@
 //! Basic types used in the Raft implementation.
 
+pub(crate) mod finalized;
 pub(crate) mod ord_by;
 
 pub use serde_able::OptionalSerde;

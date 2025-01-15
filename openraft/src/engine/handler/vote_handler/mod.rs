@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use crate::base::ord_by::OrdBy;
 use crate::core::raft_msg::ResultSender;
+use crate::display_ext::DisplayOptionExt;
 use crate::engine::handler::leader_handler::LeaderHandler;
 use crate::engine::handler::replication_handler::ReplicationHandler;
 use crate::engine::handler::server_state_handler::ServerStateHandler;
@@ -165,7 +166,7 @@ where C: RaftTypeConfig
             "become leader: node-{}, my vote: {}, last-log-id: {}",
             self.config.id,
             self.state.vote_ref(),
-            self.state.last_log_id().cloned().unwrap_or_default()
+            self.state.last_log_id().display()
         );
 
         if let Some(l) = self.leader.as_mut() {
