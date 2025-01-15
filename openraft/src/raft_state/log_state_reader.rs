@@ -1,3 +1,5 @@
+use crate::log_id::option_ref_log_id_ext::OptionRefLogIdExt;
+use crate::log_id::ref_log_id::RefLogId;
 use crate::type_config::alias::LogIdOf;
 use crate::LogIdOptionExt;
 use crate::RaftTypeConfig;
@@ -34,12 +36,16 @@ where C: RaftTypeConfig
         }
     }
 
+    fn get_log_id(&self, index: u64) -> Option<LogIdOf<C>> {
+        self.ref_log_id(index).to_log_id()
+    }
+
     /// Get the log id at the specified index.
     ///
     /// It will return `last_purged_log_id` if index is at the last purged index.
     /// If the log at the specified index is smaller than `last_purged_log_id`, or greater than
     /// `last_log_id`, it returns None.
-    fn get_log_id(&self, index: u64) -> Option<LogIdOf<C>>;
+    fn ref_log_id(&self, index: u64) -> Option<RefLogId<'_, C>>;
 
     /// The last known log id in the store.
     ///

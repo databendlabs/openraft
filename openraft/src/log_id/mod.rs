@@ -5,6 +5,9 @@ mod log_id_option_ext;
 mod log_index_option_ext;
 mod raft_log_id;
 
+pub(crate) mod option_ref_log_id_ext;
+pub(crate) mod ref_log_id;
+
 use std::fmt::Display;
 use std::fmt::Formatter;
 
