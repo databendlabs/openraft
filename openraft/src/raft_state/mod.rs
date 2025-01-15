@@ -36,6 +36,7 @@ pub(crate) use vote_state_reader::VoteStateReader;
 
 use crate::base::ord_by::OrdBy;
 use crate::display_ext::DisplayOptionExt;
+use crate::log_id::ref_log_id::RefLogId;
 use crate::proposer::Leader;
 use crate::proposer::LeaderQuorumSet;
 use crate::type_config::alias::InstantOf;
@@ -109,7 +110,7 @@ where C: RaftTypeConfig
 impl<C> LogStateReader<C> for RaftState<C>
 where C: RaftTypeConfig
 {
-    fn get_log_id(&self, index: u64) -> Option<LogIdOf<C>> {
+    fn ref_log_id(&self, index: u64) -> Option<RefLogId<'_, C>> {
         self.log_ids.get(index)
     }
 
