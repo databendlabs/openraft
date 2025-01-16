@@ -44,6 +44,7 @@ use crate::engine::Engine;
 use crate::engine::ReplicationProgress;
 use crate::engine::Respond;
 use crate::entry::RaftEntry;
+use crate::entry::RaftEntryExt;
 use crate::error::AllowNextRevertError;
 use crate::error::ClientWriteError;
 use crate::error::Fatal;
@@ -1744,10 +1745,10 @@ where
                 committed_vote: vote,
                 entries,
             } => {
-                let last_log_id = entries.last().unwrap().log_id();
+                let last_log_id = entries.last().unwrap().to_log_id();
                 tracing::debug!("AppendInputEntries: {}", DisplaySlice::<_>(&entries),);
 
-                let io_id = IOId::new_log_io(vote, Some(last_log_id.clone()));
+                let io_id = IOId::new_log_io(vote, Some(last_log_id));
                 let notify = Notification::LocalIO { io_id: io_id.clone() };
                 let callback = IOFlushed::new(notify, self.tx_notification.downgrade());
 

@@ -2,6 +2,7 @@ use std::fmt::Debug;
 use std::fmt::Display;
 
 use crate::base::OptionalFeatures;
+use crate::log_id::ref_log_id::RefLogId;
 use crate::log_id::RaftLogId;
 use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::type_config::alias::LogIdOf;
@@ -39,7 +40,8 @@ where
     /// The returned instance must return `Some()` for `Self::get_membership()`.
     fn new_membership(log_id: LogIdOf<C>, m: Membership<C>) -> Self;
 
-    fn log_id(&self) -> &LogIdOf<C>;
+    /// Creates a lightweight [`RefLogId`] that references the log id information.
+    fn ref_log_id(&self) -> RefLogId<'_, C>;
 
     fn set_log_id(&mut self, new: &LogIdOf<C>);
 }
@@ -48,7 +50,7 @@ pub trait RaftEntryExt<C>: RaftEntry<C>
 where C: RaftTypeConfig
 {
     fn to_log_id(&self) -> LogIdOf<C> {
-        self.log_id().clone()
+        self.ref_log_id().to_log_id()
     }
 
     fn committed_leader_id(&self) -> &CommittedLeaderIdOf<C> {
