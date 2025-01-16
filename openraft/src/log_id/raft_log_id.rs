@@ -20,7 +20,7 @@ where
     /// For example, a leader id in standard raft is `(term, node_id)`, but a log id does not have
     /// to store the `node_id`, because in standard raft there is at most one leader that can be
     /// established.
-    fn leader_id(&self) -> &CommittedLeaderIdOf<C>;
+    fn committed_leader_id(&self) -> &CommittedLeaderIdOf<C>;
 
     /// Returns the index of the log id.
     fn index(&self) -> u64;
@@ -35,8 +35,8 @@ where
         unreachable!("This method should not be called on a reference.")
     }
 
-    fn leader_id(&self) -> &CommittedLeaderIdOf<C> {
-        T::leader_id(self)
+    fn committed_leader_id(&self) -> &CommittedLeaderIdOf<C> {
+        T::committed_leader_id(self)
     }
 
     fn index(&self) -> u64 {

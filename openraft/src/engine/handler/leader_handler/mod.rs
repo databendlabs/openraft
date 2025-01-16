@@ -2,6 +2,7 @@ use crate::engine::handler::replication_handler::ReplicationHandler;
 use crate::engine::Command;
 use crate::engine::EngineConfig;
 use crate::engine::EngineOutput;
+use crate::entry::RaftEntry;
 use crate::entry::RaftEntryExt;
 use crate::entry::RaftPayload;
 use crate::proposer::Leader;
@@ -59,7 +60,7 @@ where C: RaftTypeConfig
 
         self.leader.assign_log_ids(&mut entries);
 
-        self.state.extend_log_ids_from_same_leader(&entries);
+        self.state.extend_log_ids_from_same_leader(entries.iter().map(|x| x.ref_log_id()));
 
         let mut membership_entry = None;
         for entry in entries.iter() {
@@ -113,7 +114,9 @@ where C: RaftTypeConfig
     pub(crate) fn get_read_log_id(&self) -> Option<LogIdOf<C>> {
         let committed = self.state.committed().cloned();
         // noop log id is the first log this leader proposed.
-        std::cmp::max_by_key(self.leader.noop_log_id.clone(), committed, |x| x.ord_by())
+        std::cmp::max_by(self.leader.noop_log_id.clone(), committed, |x, y| {
+            Ord::cmp(&x.ord_by(), &y.ord_by())
+        })
     }
 
     /// Disable proposing new logs for this Leader, and transfer Leader to another node

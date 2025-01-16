@@ -27,13 +27,9 @@ where
 }
 
 /// Create a membership log entry without learner config for test.
-pub fn membership_ent<C: RaftTypeConfig>(
-    term: u64,
-    node_id: C::NodeId,
-    index: u64,
-    config: Vec<BTreeSet<C::NodeId>>,
-) -> crate::Entry<C>
+pub fn membership_ent<C>(term: u64, node_id: C::NodeId, index: u64, config: Vec<BTreeSet<C::NodeId>>) -> crate::Entry<C>
 where
+    C: RaftTypeConfig,
     C::Term: From<u64>,
     C::Node: Default,
 {

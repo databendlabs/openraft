@@ -6,6 +6,7 @@ use crate::engine::Command;
 use crate::engine::EngineOutput;
 use crate::raft_state::LogStateReader;
 use crate::storage::SnapshotMeta;
+use crate::LogIdOptionExt;
 use crate::RaftState;
 use crate::RaftTypeConfig;
 
@@ -53,7 +54,7 @@ where C: RaftTypeConfig
     pub(crate) fn update_snapshot(&mut self, meta: SnapshotMeta<C>) -> bool {
         tracing::info!("update_snapshot: {:?}", meta);
 
-        if meta.last_log_id <= self.state.snapshot_last_log_id().cloned() {
+        if meta.last_log_id.ord_by() <= self.state.snapshot_last_log_id().ord_by() {
             tracing::info!(
                 "No need to install a smaller snapshot: current snapshot last_log_id({}), new snapshot last_log_id({})",
                 self.state.snapshot_last_log_id().display(),

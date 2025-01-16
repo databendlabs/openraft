@@ -10,7 +10,7 @@ fn test_log_id_list_extend_from_same_leader() -> anyhow::Result<()> {
 
     // Extend one log id to an empty LogIdList: Just store it directly
 
-    ids.extend_from_same_leader(&[log_id(1, 1, 2)]);
+    ids.extend_from_same_leader([log_id(1, 1, 2)]);
     assert_eq!(vec![log_id(1, 1, 2)], ids.key_log_ids());
 
     // Extend two log ids that are adjacent to the last stored one.
@@ -56,7 +56,7 @@ fn test_log_id_list_extend() -> anyhow::Result<()> {
 
     // Extend one log id to an empty LogIdList: Just store it directly
 
-    ids.extend(&[log_id(1, 1, 2)]);
+    ids.extend([log_id(1, 1, 2)]);
     assert_eq!(vec![log_id(1, 1, 2)], ids.key_log_ids());
 
     // Extend two log ids that are adjacent to the last stored one.
