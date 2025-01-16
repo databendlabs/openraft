@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use crate::base::ord_by::OrdBy;
 use crate::core::raft_msg::ResultSender;
+use crate::display_ext::DisplayOptionExt;
 use crate::engine::handler::leader_handler::LeaderHandler;
 use crate::engine::handler::replication_handler::ReplicationHandler;
 use crate::engine::handler::server_state_handler::ServerStateHandler;
@@ -14,6 +15,8 @@ use crate::engine::Respond;
 use crate::engine::ValueSender;
 use crate::entry::RaftEntry;
 use crate::error::RejectVoteRequest;
+use crate::log_id::raft_log_id_ext::RaftLogIdExt;
+use crate::log_id::LogIdOptionExt;
 use crate::proposer::CandidateState;
 use crate::proposer::LeaderState;
 use crate::raft_state::IOId;
@@ -165,7 +168,7 @@ where C: RaftTypeConfig
             "become leader: node-{}, my vote: {}, last-log-id: {}",
             self.config.id,
             self.state.vote_ref(),
-            self.state.last_log_id().cloned().unwrap_or_default()
+            self.state.last_log_id().display()
         );
 
         if let Some(l) = self.leader.as_mut() {
@@ -212,7 +215,7 @@ where C: RaftTypeConfig
 
         // If the leader has not yet proposed any log, propose a blank log and initiate replication;
         // Otherwise, just initiate replication.
-        if last_log_id < noop_log_id {
+        if last_log_id.ord_by() < noop_log_id.ord_by() {
             self.leader_handler().leader_append_entries(vec![C::Entry::new_blank(LogIdOf::<C>::default())]);
         } else {
             self.replication_handler().initiate_replication();

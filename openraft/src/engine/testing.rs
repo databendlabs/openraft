@@ -1,5 +1,8 @@
 use std::io::Cursor;
 
+use crate::alias::LeaderIdOf;
+use crate::alias::LogIdOf;
+use crate::alias::NodeIdOf;
 use crate::impls::TokioRuntime;
 use crate::type_config::alias::LeaderIdOf;
 use crate::type_config::alias::LogIdOf;
@@ -43,7 +46,7 @@ where N: Node + Ord
     type LeaderId = crate::impls::leader_id_adv::LeaderId<Self>;
     type Vote = crate::impls::Vote<Self>;
     type LogId = crate::impls::LogId<Self>;
-    type Entry = crate::Entry<Self>;
+    type Entry = crate::impls::Entry<Self>;
     type SnapshotData = Cursor<Vec<u8>>;
     type AsyncRuntime = TokioRuntime;
     type Responder = crate::impls::OneshotResponder<Self>;

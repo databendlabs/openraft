@@ -11,6 +11,7 @@ use crate::vote::ref_vote::RefVote;
 use crate::vote::RaftVote;
 use crate::ErrorSubject;
 use crate::ErrorVerb;
+use crate::LogIdOptionExt;
 use crate::RaftTypeConfig;
 
 /// An ID to uniquely identify a monotonic increasing io operation to [`RaftLogStorage`].
@@ -62,7 +63,7 @@ where C: RaftTypeConfig
         match res {
             Ordering::Less => Some(Ordering::Less),
             Ordering::Greater => Some(Ordering::Greater),
-            Ordering::Equal => self.last_log_id().partial_cmp(&other.last_log_id()),
+            Ordering::Equal => self.last_log_id().ord_by().partial_cmp(&other.last_log_id().ord_by()),
         }
     }
 }
