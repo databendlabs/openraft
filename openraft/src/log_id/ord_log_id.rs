@@ -3,6 +3,7 @@ use std::fmt;
 
 use crate::alias::CommittedLeaderIdOf;
 use crate::alias::LogIdOf;
+use crate::log_id::raft_log_id_ext::RaftLogIdExt;
 use crate::RaftLogId;
 use crate::RaftTypeConfig;
 
@@ -51,6 +52,14 @@ where C: RaftTypeConfig
     }
 }
 
+impl<C> Ord for OrdLogId<C>
+where C: RaftTypeConfig
+{
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.inner.ord_by().cmp(&other.inner.ord_by())
+    }
+}
+
 impl<C> fmt::Display for OrdLogId<C>
 where C: RaftTypeConfig
 {
@@ -68,8 +77,8 @@ where C: RaftTypeConfig
         }
     }
 
-    fn leader_id(&self) -> &CommittedLeaderIdOf<C> {
-        self.inner.leader_id()
+    fn committed_leader_id(&self) -> &CommittedLeaderIdOf<C> {
+        self.inner.committed_leader_id()
     }
 
     fn index(&self) -> u64 {

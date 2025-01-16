@@ -2,6 +2,7 @@ use std::fmt;
 
 use crate::display_ext::DisplayInstantExt;
 use crate::engine::leader_log_ids::LeaderLogIds;
+use crate::entry::RaftEntry;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::Progress;
 use crate::progress::VecProgress;
@@ -13,6 +14,7 @@ use crate::type_config::TypeConfigExt;
 use crate::vote::committed::CommittedVote;
 use crate::vote::raft_vote::RaftVoteExt;
 use crate::LogIdOptionExt;
+use crate::RaftLogId;
 use crate::RaftTypeConfig;
 
 /// Leading state data.
@@ -162,27 +164,32 @@ where
     /// Assign log ids to the entries.
     ///
     /// This method update the `self.last_log_id`.
-    pub(crate) fn assign_log_ids<'a, LID: AsMut<LogIdOf<C>> + 'a>(
-        &mut self,
-        entries: impl IntoIterator<Item = &'a mut LID>,
-    ) {
+    pub(crate) fn assign_log_ids<'a, Ent, I>(&mut self, entries: I)
+    where
+        Ent: RaftEntry<C> + 'a,
+        I: IntoIterator<Item = &'a mut Ent>,
+        <I as IntoIterator>::IntoIter: ExactSizeIterator,
+    {
         debug_assert!(self.transfer_to.is_none(), "leader is disabled to propose new log");
+
+        let it = entries.into_iter();
+        let len = it.len();
+        if len == 0 {
+            return;
+        }
 
         let committed_leader_id = self.committed_vote.committed_leader_id();
 
-        let first = LogIdOf::<C>::new(committed_leader_id, self.last_log_id().next_index());
-        let mut last = first.clone();
+        let mut index = self.last_log_id().next_index();
 
-        for entry in entries {
-            *entry.as_mut() = last.clone();
-            tracing::debug!("assign log id: {}", last);
-            last.index += 1;
+        for entry in it {
+            entry.set_log_id(LogIdOf::<C>::new(committed_leader_id.clone(), index));
+            tracing::debug!("assign log id: {}", entry.ref_log_id());
+            index += 1;
         }
 
-        if last.index() > first.index() {
-            last.index -= 1;
-            self.last_log_id = Some(last);
-        }
+        index -= 1;
+        self.last_log_id = Some(LogIdOf::<C>::new(committed_leader_id.clone(), index));
     }
 
     /// Get the last timestamp acknowledged by a quorum.
@@ -228,7 +235,7 @@ mod tests {
     use crate::engine::testing::log_id;
     use crate::engine::testing::UTConfig;
     use crate::entry::RaftEntry;
-    use crate::entry::RaftEntryExt;
+    use crate::log_id::raft_log_id_ext::RaftLogIdExt;
     use crate::progress::Progress;
     use crate::proposer::Leader;
     use crate::testing::blank_ent;
@@ -298,7 +305,7 @@ mod tests {
 
         assert_eq!(
             entries[0].ref_log_id(),
-            &log_id(2, 2, 4),
+            log_id(2, 2, 4).ref_log_id(),
             "entry log id assigned following last-log-id"
         );
         assert_eq!(Some(log_id(2, 2, 4)), leader.last_log_id);
@@ -312,7 +319,7 @@ mod tests {
         let mut entries: Vec<Entry<UTConfig>> = vec![blank_ent(1, 1, 1)];
         leading.assign_log_ids(&mut entries);
 
-        assert_eq!(entries[0].ref_log_id(), &log_id(0, 0, 0),);
+        assert_eq!(entries[0].ref_log_id(), log_id(0, 0, 0).ref_log_id(),);
         assert_eq!(Some(log_id(0, 0, 0)), leading.last_log_id);
     }
 
@@ -336,9 +343,9 @@ mod tests {
         let mut entries: Vec<Entry<UTConfig>> = vec![blank_ent(1, 1, 1), blank_ent(1, 1, 1), blank_ent(1, 1, 1)];
 
         leading.assign_log_ids(&mut entries);
-        assert_eq!(entries[0].ref_log_id(), &log_id(2, 2, 9));
-        assert_eq!(entries[1].ref_log_id(), &log_id(2, 2, 10));
-        assert_eq!(entries[2].ref_log_id(), &log_id(2, 2, 11));
+        assert_eq!(entries[0].ref_log_id(), log_id(2, 2, 9).ref_log_id());
+        assert_eq!(entries[1].ref_log_id(), log_id(2, 2, 10).ref_log_id());
+        assert_eq!(entries[2].ref_log_id(), log_id(2, 2, 11).ref_log_id());
         assert_eq!(Some(log_id(2, 2, 11)), leading.last_log_id);
     }
 

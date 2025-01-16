@@ -7,7 +7,6 @@ use openraft::error::Fatal;
 use openraft::storage::RaftStateMachine;
 use openraft::storage::Snapshot;
 use openraft::storage::SnapshotMeta;
-use openraft::testing::log_id;
 use openraft::Config;
 use openraft::Entry;
 use openraft::OptionalSend;
@@ -18,6 +17,7 @@ use openraft::StoredMembership;
 use openraft_memstore::ClientResponse;
 use openraft_memstore::TypeConfig;
 
+use crate::fixtures::log_id;
 use crate::fixtures::ut_harness;
 use crate::fixtures::MemStateMachine;
 use crate::fixtures::RaftRouter;

@@ -4,7 +4,6 @@ use std::time::Duration;
 use anyhow::Result;
 use maplit::btreemap;
 use maplit::btreeset;
-use openraft::testing::log_id;
 use openraft::Config;
 use openraft::ServerState;
 #[allow(unused_imports)]
@@ -13,6 +12,7 @@ use pretty_assertions::assert_eq;
 use pretty_assertions::assert_ne;
 use tokio::time::sleep;
 
+use crate::fixtures::log_id;
 use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 

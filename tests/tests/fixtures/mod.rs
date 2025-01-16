@@ -82,6 +82,13 @@ pub type MemStateMachine = Arc<SMInner>;
 /// A concrete Raft type used during testing.
 pub type MemRaft = Raft<MemConfig>;
 
+pub fn log_id(term: u64, node_id: u64, index: u64) -> LogIdOf<TypeConfig> {
+    LogIdOf::<TypeConfig>::new(
+        <TypeConfig as RaftTypeConfig>::LeaderId::new_committed(term, node_id),
+        index,
+    )
+}
+
 /// Create a harness that sets up tracing and a tokio runtime for testing.
 pub fn ut_harness<F, Fut>(f: F) -> anyhow::Result<()>
 where

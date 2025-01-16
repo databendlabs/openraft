@@ -7,13 +7,13 @@ use openraft::network::v2::RaftNetworkV2;
 use openraft::network::RPCOption;
 use openraft::network::RaftNetworkFactory;
 use openraft::raft::VoteRequest;
-use openraft::testing::log_id;
 use openraft::Config;
 use openraft::ServerState;
 use openraft::Vote;
 use openraft_memstore::ClientRequest;
 use tokio::time::sleep;
 
+use crate::fixtures::log_id;
 use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 

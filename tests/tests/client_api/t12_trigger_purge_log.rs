@@ -2,10 +2,10 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use maplit::btreeset;
-use openraft::testing::log_id;
 use openraft::Config;
 use openraft::SnapshotPolicy;
 
+use crate::fixtures::log_id;
 use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 

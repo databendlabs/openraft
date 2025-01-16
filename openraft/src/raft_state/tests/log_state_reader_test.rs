@@ -1,12 +1,11 @@
 use crate::engine::testing::UTConfig;
 use crate::engine::LogIdList;
 use crate::raft_state::LogStateReader;
-use crate::testing;
 use crate::type_config::alias::LogIdOf;
 use crate::RaftState;
 
 fn log_id(term: u64, index: u64) -> LogIdOf<UTConfig> {
-    testing::log_id(term, 0, index)
+    crate::engine::testing::log_id(term, 0, index)
 }
 
 #[test]

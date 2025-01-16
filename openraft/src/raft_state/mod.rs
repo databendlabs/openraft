@@ -6,6 +6,7 @@ use validit::Validate;
 
 use crate::engine::LogIdList;
 use crate::error::ForwardToLeader;
+use crate::log_id::to_option_ref_log_id::ToOptionRefLogId;
 use crate::storage::SnapshotMeta;
 use crate::utime::Leased;
 use crate::LogIdOptionExt;
@@ -36,8 +37,8 @@ pub(crate) use vote_state_reader::VoteStateReader;
 
 use crate::base::ord_by::OrdBy;
 use crate::display_ext::DisplayOptionExt;
-use crate::log_id::ref_log_id::RefLogId;
 use crate::entry::RaftEntry;
+use crate::log_id::ref_log_id::RefLogId;
 use crate::proposer::Leader;
 use crate::proposer::LeaderQuorumSet;
 use crate::type_config::alias::InstantOf;
@@ -169,17 +170,17 @@ where C: RaftTypeConfig
             validit::equal!(self.purged_next, self.log_ids.first().next_index());
         }
 
-        validit::less_equal!(self.last_purged_log_id().ord_by(), self.purge_upto().ord_by());
+        validit::less_equal!(self.last_purged_log_id().to_ref(), self.purge_upto().to_ref());
         if self.snapshot_last_log_id().is_none() {
             // There is no snapshot, it is possible the application does not store snapshot, and
             // just restarted. it is just ok.
             // In such a case, we assert the monotonic relation without  snapshot-last-log-id
-            validit::less_equal!(self.purge_upto().ord_by(), self.committed().ord_by());
+            validit::less_equal!(self.purge_upto().to_ref(), self.committed().to_ref());
         } else {
-            validit::less_equal!(self.purge_upto().ord_by(), self.snapshot_last_log_id().ord_by());
+            validit::less_equal!(self.purge_upto().to_ref(), self.snapshot_last_log_id().to_ref());
         }
-        validit::less_equal!(self.snapshot_last_log_id().ord_by(), self.committed().ord_by());
-        validit::less_equal!(self.committed().ord_by(), self.last_log_id().ord_by());
+        validit::less_equal!(self.snapshot_last_log_id().to_ref(), self.committed().to_ref());
+        validit::less_equal!(self.committed().to_ref(), self.last_log_id().to_ref());
 
         self.membership_state.validate()?;
         self.io_state.validate()?;
@@ -257,11 +258,20 @@ where C: RaftTypeConfig
     /// Append a list of `log_id`.
     ///
     /// The log ids in the input has to be continuous.
-    pub(crate) fn extend_log_ids_from_same_leader<'a, LID: AsRef<LogIdOf<C>> + 'a>(&mut self, new_log_ids: &[LID]) {
+    pub(crate) fn extend_log_ids_from_same_leader<'a, I>(&mut self, new_log_ids: I)
+    where
+        I: IntoIterator<Item = RefLogId<'a, C>>,
+        <I as IntoIterator>::IntoIter: DoubleEndedIterator,
+    {
         self.log_ids.extend_from_same_leader(new_log_ids)
     }
 
-    pub(crate) fn extend_log_ids<'a, LID: AsRef<LogIdOf<C>> + 'a>(&mut self, new_log_id: &[LID]) {
+    pub(crate) fn extend_log_ids<LID, I>(&mut self, new_log_id: I)
+    where
+        LID: RaftLogId<C>,
+        I: IntoIterator<Item = LID>,
+        <I as IntoIterator>::IntoIter: ExactSizeIterator,
+    {
         self.log_ids.extend(new_log_id)
     }
 
@@ -306,7 +316,7 @@ where C: RaftTypeConfig
         let l = entries.len();
 
         for (i, ent) in entries.iter().enumerate() {
-            let log_id = ent.as_ref();
+            let log_id = ent.ref_log_id();
 
             if !self.has_log_id(log_id) {
                 tracing::debug!(

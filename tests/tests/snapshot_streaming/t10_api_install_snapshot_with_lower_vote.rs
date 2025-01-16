@@ -7,10 +7,10 @@ use openraft::raft::AppendEntriesRequest;
 use openraft::raft::InstallSnapshotRequest;
 use openraft::storage::Snapshot;
 use openraft::storage::SnapshotMeta;
-use openraft::testing::log_id;
 use openraft::Config;
 use openraft::Vote;
 
+use crate::fixtures::log_id;
 use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 
