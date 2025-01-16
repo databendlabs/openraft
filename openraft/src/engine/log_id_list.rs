@@ -180,7 +180,7 @@ where C: RaftTypeConfig
     ///
     /// NOTE: The last two in `key_log_ids` may be with the same `leader_id`, because `last_log_id`
     /// always present in `log_ids`.
-    pub(crate) fn append(&mut self, new_log_id: LogIdOf<C>) {
+    pub(crate) fn append(&mut self, new_log_id: RaftLogId<C>) {
         let l = self.key_log_ids.len();
         if l == 0 {
             self.key_log_ids.push(new_log_id);
