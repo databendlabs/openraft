@@ -50,7 +50,7 @@ fn test_update_matching() -> anyhow::Result<()> {
         pe.inflight = inflight_logs(5, 10);
         pe.new_updater(&engine_config).update_matching(Some(log_id(6)));
         assert_eq!(inflight_logs(6, 10), pe.inflight);
-        assert_eq!(Some(log_id(6)), pe.matching());
+        assert_eq!(Some(&log_id(6)), pe.matching());
         assert_eq!(20, pe.searching_end);
 
         pe.new_updater(&engine_config).update_matching(Some(log_id(10)));

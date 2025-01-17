@@ -6,7 +6,7 @@ use crate::type_config::alias::LogIdOf;
 use crate::RaftTypeConfig;
 
 /// A reference to a log id, combining a reference to a committed leader ID and an index.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct RefLogId<'k, C>
 where C: RaftTypeConfig
 {

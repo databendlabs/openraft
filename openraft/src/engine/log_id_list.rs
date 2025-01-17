@@ -1,5 +1,6 @@
 use std::ops::RangeInclusive;
 
+use crate::alias::CommittedLeaderIdOf;
 use crate::engine::leader_log_ids::LeaderLogIds;
 use crate::log_id::ref_log_id::RefLogId;
 use crate::log_id::RaftLogId;
@@ -131,43 +132,41 @@ where C: RaftTypeConfig
     /// Extends a list of `log_id` that are proposed by a same leader.
     ///
     /// The log ids in the input has to be continuous.
-    pub(crate) fn extend_from_same_leader<'a, LID: AsRef<LogIdOf<C>> + 'a>(&mut self, new_ids: &[LID]) {
-        if let Some(first) = new_ids.first() {
-            let first_id = first.as_ref();
-            self.append(first_id.clone());
+    pub(crate) fn extend_from_same_leader<'a, I>(&mut self, new_ids: I)
+    where
+        I: IntoIterator<Item = RefLogId<'a, C>>,
+        <I as IntoIterator>::IntoIter: DoubleEndedIterator,
+    {
+        let mut it = new_ids.into_iter();
+        if let Some(first) = it.next() {
+            self.append(first.to_log_id());
 
-            if let Some(last) = new_ids.last() {
-                let last_id = last.as_ref();
-                assert_eq!(last_id.leader_id(), first_id.leader_id());
+            if let Some(last) = it.next_back() {
+                assert_eq!(last.committed_leader_id(), first.committed_leader_id());
 
-                if last_id != first_id {
-                    self.append(last_id.clone());
+                if last != first {
+                    self.append(last.to_log_id());
                 }
             }
         }
     }
 
     /// Extends a list of `log_id`.
-    // leader_id: Copy is feature gated
-    #[allow(clippy::clone_on_copy)]
-    pub(crate) fn extend<'a, LID: AsRef<LogIdOf<C>> + 'a>(&mut self, new_ids: &[LID]) {
-        let mut prev = self.last().map(|x| x.leader_id().clone());
+    pub(crate) fn extend<'a, I>(&mut self, new_ids: I)
+    where I: IntoIterator<Item = RefLogId<'a, C>> {
+        let mut last_appended = None;
 
-        for x in new_ids.iter() {
-            let log_id = x.as_ref();
+        for log_id in new_ids.into_iter() {
+            last_appended = Some(log_id);
 
-            if prev.as_ref() != Some(log_id.leader_id()) {
-                self.append(log_id.clone());
-
-                prev = Some(log_id.leader_id().clone());
+            if self.last_leader_id() != Some(log_id.leader_id()) {
+                self.append(log_id.to_log_id());
             }
         }
 
-        if let Some(last) = new_ids.last() {
-            let log_id = last.as_ref();
-
+        if let Some(log_id) = last_appended {
             if self.last() != Some(log_id) {
-                self.append(log_id.clone());
+                self.append(log_id.to_log_id());
             }
         }
     }
@@ -180,7 +179,7 @@ where C: RaftTypeConfig
     ///
     /// NOTE: The last two in `key_log_ids` may be with the same `leader_id`, because `last_log_id`
     /// always present in `log_ids`.
-    pub(crate) fn append(&mut self, new_log_id: RaftLogId<C>) {
+    pub(crate) fn append(&mut self, new_log_id: LogIdOf<C>) {
         let l = self.key_log_ids.len();
         if l == 0 {
             self.key_log_ids.push(new_log_id);
@@ -308,6 +307,10 @@ where C: RaftTypeConfig
 
     pub(crate) fn last(&self) -> Option<&LogIdOf<C>> {
         self.key_log_ids.last()
+    }
+
+    pub(crate) fn last_leader_id(&self) -> Option<&CommittedLeaderIdOf<C>> {
+        self.last().map(|x| x.leader_id())
     }
 
     // This method will only be used under feature tokio-rt

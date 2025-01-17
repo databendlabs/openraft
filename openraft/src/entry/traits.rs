@@ -43,7 +43,7 @@ where
     /// Creates a lightweight [`RefLogId`] that references the log id information.
     fn ref_log_id(&self) -> RefLogId<'_, C>;
 
-    fn set_log_id(&mut self, new: &LogIdOf<C>);
+    fn set_log_id(&mut self, new: LogIdOf<C>);
 }
 
 pub trait RaftEntryExt<C>: RaftEntry<C>

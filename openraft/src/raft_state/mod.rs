@@ -36,8 +36,8 @@ pub(crate) use vote_state_reader::VoteStateReader;
 
 use crate::base::ord_by::OrdBy;
 use crate::display_ext::DisplayOptionExt;
-use crate::log_id::ref_log_id::RefLogId;
 use crate::entry::RaftEntry;
+use crate::log_id::ref_log_id::RefLogId;
 use crate::proposer::Leader;
 use crate::proposer::LeaderQuorumSet;
 use crate::type_config::alias::InstantOf;
@@ -257,11 +257,16 @@ where C: RaftTypeConfig
     /// Append a list of `log_id`.
     ///
     /// The log ids in the input has to be continuous.
-    pub(crate) fn extend_log_ids_from_same_leader<'a, LID: AsRef<LogIdOf<C>> + 'a>(&mut self, new_log_ids: &[LID]) {
+    pub(crate) fn extend_log_ids_from_same_leader<'a, I>(&mut self, new_log_ids: I)
+    where
+        I: IntoIterator<Item = RefLogId<'a, C>>,
+        <I as IntoIterator>::IntoIter: DoubleEndedIterator,
+    {
         self.log_ids.extend_from_same_leader(new_log_ids)
     }
 
-    pub(crate) fn extend_log_ids<'a, LID: AsRef<LogIdOf<C>> + 'a>(&mut self, new_log_id: &[LID]) {
+    pub(crate) fn extend_log_ids<'a, I>(&mut self, new_log_id: I)
+    where I: IntoIterator<Item = RefLogId<'a, C>> {
         self.log_ids.extend(new_log_id)
     }
 

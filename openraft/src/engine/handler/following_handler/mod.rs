@@ -148,7 +148,7 @@ where C: RaftTypeConfig
         debug_assert_eq!(entries[0].index(), self.state.log_ids.last().cloned().next_index(),);
         debug_assert!(Some(entries[0].ref_log_id()) > self.state.log_ids.last().ord_by());
 
-        self.state.extend_log_ids(&entries);
+        self.state.extend_log_ids(entries.iter().map(|x| x.ref_log_id()));
         self.append_membership(entries.iter());
 
         self.output.push_command(Command::AppendInputEntries {
