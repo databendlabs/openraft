@@ -1,8 +1,12 @@
+use std::cmp::Ordering;
 use std::fmt;
 
 use crate::display_ext::DisplayOptionExt;
+use crate::log_id::raft_log_id_ext::RaftLogIdExt;
+use crate::raft_state::io_state::ref_log_io_id::RefLogIOId;
 use crate::type_config::alias::LogIdOf;
 use crate::vote::committed::CommittedVote;
+use crate::LogIdOptionExt;
 use crate::RaftTypeConfig;
 
 /// A monotonic increasing id for log append io operation.
@@ -22,7 +26,6 @@ use crate::RaftTypeConfig;
 /// Times](crate::docs::protocol::replication::log_replication#logid-appended-multiple-times).
 #[derive(Debug, Clone)]
 #[derive(PartialEq, Eq)]
-#[derive(PartialOrd, Ord)]
 pub(crate) struct LogIOId<C>
 where C: RaftTypeConfig
 {
@@ -41,10 +44,30 @@ where C: RaftTypeConfig
     }
 }
 
+impl<C> PartialOrd for LogIOId<C>
+where C: RaftTypeConfig
+{
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        PartialOrd::partial_cmp(&self.as_ref_log_io_id(), &other.as_ref_log_io_id())
+    }
+}
+
+impl<C> Ord for LogIOId<C>
+where C: RaftTypeConfig
+{
+    fn cmp(&self, other: &Self) -> Ordering {
+        Ord::cmp(&self.as_ref_log_io_id(), &other.as_ref_log_io_id())
+    }
+}
+
 impl<C> LogIOId<C>
 where C: RaftTypeConfig
 {
     pub(crate) fn new(committed_vote: CommittedVote<C>, log_id: Option<LogIdOf<C>>) -> Self {
         Self { committed_vote, log_id }
+    }
+
+    pub(crate) fn as_ref_log_io_id(&self) -> RefLogIOId<'_, C> {
+        RefLogIOId::new(&self.committed_vote, self.log_id.as_ref().map(|x| x.ref_log_id()))
     }
 }

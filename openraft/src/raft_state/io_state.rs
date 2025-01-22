@@ -15,6 +15,7 @@ use crate::RaftTypeConfig;
 pub(crate) mod io_id;
 pub(crate) mod io_progress;
 pub(crate) mod log_io_id;
+pub(crate) mod ref_log_io_id;
 
 /// IOState tracks the state of actually happened io including log flushed, applying log to state
 /// machine or snapshot building.

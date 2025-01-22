@@ -8,7 +8,7 @@ use crate::RaftTypeConfig;
 
 /// A wrapper type that implements [`PartialOrd`] and [`PartialEq`] based on the ordering key of the
 /// inner type.
-#[derive(Debug, Clone, Eq)]
+#[derive(Debug, Clone, Eq, Ord)]
 pub(crate) struct OrdLogId<C>
 where C: RaftTypeConfig
 {
@@ -68,8 +68,8 @@ where C: RaftTypeConfig
         }
     }
 
-    fn leader_id(&self) -> &CommittedLeaderIdOf<C> {
-        self.inner.leader_id()
+    fn committed_leader_id(&self) -> &CommittedLeaderIdOf<C> {
+        self.inner.committed_leader_id()
     }
 
     fn index(&self) -> u64 {

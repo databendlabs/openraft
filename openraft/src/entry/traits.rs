@@ -54,7 +54,7 @@ where C: RaftTypeConfig
     }
 
     fn committed_leader_id(&self) -> &CommittedLeaderIdOf<C> {
-        AsRef::<LogIdOf<C>>::as_ref(self).leader_id()
+        self.ref_log_id().committed_leader_id()
     }
 
     fn to_committed_leader_id(&self) -> CommittedLeaderIdOf<C> {
@@ -62,7 +62,7 @@ where C: RaftTypeConfig
     }
 
     fn index(&self) -> u64 {
-        AsRef::<LogIdOf<C>>::as_ref(self).index()
+        self.ref_log_id().index()
     }
 }
 

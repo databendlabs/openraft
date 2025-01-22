@@ -311,7 +311,7 @@ where C: RaftTypeConfig
         let l = entries.len();
 
         for (i, ent) in entries.iter().enumerate() {
-            let log_id = ent.as_ref();
+            let log_id = ent.ref_log_id();
 
             if !self.has_log_id(log_id) {
                 tracing::debug!(

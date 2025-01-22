@@ -13,21 +13,21 @@ where
         Self::new(CommittedLeaderIdOf::<C>::default(), 0)
     }
 
-    fn as_ref_log_id(&self) -> RefLogId<'_, C> {
+    fn ref_log_id(&self) -> RefLogId<'_, C> {
         RefLogId {
-            leader_id: self.leader_id(),
+            leader_id: self.committed_leader_id(),
             index: self.index(),
         }
     }
 
     /// Returns the key used for comparing this value.
     fn ord_by(&self) -> RefLogId<'_, C> {
-        self.as_ref_log_id()
+        self.ref_log_id()
     }
 
     /// Returns a wrapped value that implements [`PartialOrd`] and [`PartialEq`] based on the
     /// ordering key.
-    fn ordered(self) -> OrdLogId<C>
+    fn into_ordered(self) -> OrdLogId<C>
     where
         Self: Sized,
         C: RaftTypeConfig<LogId = Self>,

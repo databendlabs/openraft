@@ -2,6 +2,7 @@ use std::borrow::Borrow;
 
 use crate::engine::testing::UTConfig;
 use crate::engine::EngineConfig;
+use crate::log_id::ord_log_id::OrdLogId;
 use crate::log_id::ref_log_id::RefLogId;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::inflight::Inflight;
@@ -16,6 +17,14 @@ fn log_id(index: u64) -> LogIdOf<UTConfig> {
         leader_id: LeaderIdOf::<UTConfig>::new_committed(1, 1),
         index,
     }
+}
+
+fn ord_log_id(index: u64) -> OrdLogId<UTConfig> {
+    let lid = LogId {
+        leader_id: LeaderIdOf::<UTConfig>::new_committed(1, 1),
+        index,
+    };
+    OrdLogId { inner: lid }
 }
 
 fn inflight_logs(prev_index: u64, last_index: u64) -> Inflight<UTConfig> {
@@ -62,7 +71,7 @@ fn test_update_matching() -> anyhow::Result<()> {
     // `searching_end` should be updated
     {
         let mut pe = ProgressEntry::<UTConfig>::empty(20);
-        pe.matching = Some(log_id(6));
+        pe.matching = Some(ord_log_id(6));
         pe.inflight = inflight_logs(5, 20);
 
         pe.new_updater(&engine_config).update_matching(Some(log_id(20)));
@@ -75,14 +84,14 @@ fn test_update_matching() -> anyhow::Result<()> {
 #[test]
 fn test_update_conflicting() -> anyhow::Result<()> {
     let mut pe = ProgressEntry::<UTConfig>::empty(20);
-    pe.matching = Some(log_id(3));
+    pe.matching = Some(ord_log_id(3));
     pe.inflight = inflight_logs(5, 10);
 
     let engine_config = EngineConfig::new_default(1);
     pe.new_updater(&engine_config).update_conflicting(5);
 
     assert_eq!(Inflight::None, pe.inflight);
-    assert_eq!(&Some(log_id(3)), pe.borrow());
+    assert_eq!(&Some(ord_log_id(3)), pe.borrow());
     assert_eq!(5, pe.searching_end);
 
     Ok(())
@@ -175,7 +184,7 @@ fn test_next_send() -> anyhow::Result<()> {
         //      6      10    20
 
         let mut pe = ProgressEntry::<UTConfig>::empty(4);
-        pe.matching = Some(log_id(4));
+        pe.matching = Some(ord_log_id(4));
 
         let res = pe.next_send(&LogState::new(6, 10, 20), 100);
         assert_eq!(Ok(&Inflight::snapshot(Some(log_id(10)))), res);
@@ -189,7 +198,7 @@ fn test_next_send() -> anyhow::Result<()> {
         //      6      10    20
 
         let mut pe = ProgressEntry::<UTConfig>::empty(6);
-        pe.matching = Some(log_id(4));
+        pe.matching = Some(ord_log_id(4));
 
         let res = pe.next_send(&LogState::new(6, 10, 20), 100);
         assert_eq!(Ok(&Inflight::snapshot(Some(log_id(10)))), res);
@@ -204,7 +213,7 @@ fn test_next_send() -> anyhow::Result<()> {
         //      6      10    20
 
         let mut pe = ProgressEntry::<UTConfig>::empty(7);
-        pe.matching = Some(log_id(4));
+        pe.matching = Some(ord_log_id(4));
 
         let res = pe.next_send(&LogState::new(6, 10, 20), 100);
         assert_eq!(Ok(&inflight_logs(6, 20)), res);
@@ -219,7 +228,7 @@ fn test_next_send() -> anyhow::Result<()> {
         //      6      10    20
 
         let mut pe = ProgressEntry::<UTConfig>::empty(20);
-        pe.matching = Some(log_id(4));
+        pe.matching = Some(ord_log_id(4));
 
         let res = pe.next_send(&LogState::new(6, 10, 20), 100);
         assert_eq!(Ok(&inflight_logs(6, 20)), res);
@@ -236,7 +245,7 @@ fn test_next_send() -> anyhow::Result<()> {
         //      6      10    20
 
         let mut pe = ProgressEntry::<UTConfig>::empty(7);
-        pe.matching = Some(log_id(6));
+        pe.matching = Some(ord_log_id(6));
 
         let res = pe.next_send(&LogState::new(6, 10, 20), 100);
         assert_eq!(Ok(&inflight_logs(6, 20)), res);
@@ -251,7 +260,7 @@ fn test_next_send() -> anyhow::Result<()> {
         //      6      10    20
 
         let mut pe = ProgressEntry::<UTConfig>::empty(8);
-        pe.matching = Some(log_id(6));
+        pe.matching = Some(ord_log_id(6));
 
         let res = pe.next_send(&LogState::new(6, 10, 20), 100);
         assert_eq!(Ok(&inflight_logs(6, 20)), res);
@@ -266,7 +275,7 @@ fn test_next_send() -> anyhow::Result<()> {
         //      6      10    20
 
         let mut pe = ProgressEntry::<UTConfig>::empty(20);
-        pe.matching = Some(log_id(6));
+        pe.matching = Some(ord_log_id(6));
 
         let res = pe.next_send(&LogState::new(6, 10, 20), 100);
         assert_eq!(Ok(&inflight_logs(6, 20)), res);
@@ -281,7 +290,7 @@ fn test_next_send() -> anyhow::Result<()> {
         //      6      10    20
 
         let mut pe = ProgressEntry::<UTConfig>::empty(20);
-        pe.matching = Some(log_id(7));
+        pe.matching = Some(ord_log_id(7));
 
         let res = pe.next_send(&LogState::new(6, 10, 20), 100);
         assert_eq!(Ok(&inflight_logs(7, 20)), res);
@@ -296,7 +305,7 @@ fn test_next_send() -> anyhow::Result<()> {
         //      6      10    20
 
         let mut pe = ProgressEntry::<UTConfig>::empty(8);
-        pe.matching = Some(log_id(7));
+        pe.matching = Some(ord_log_id(7));
 
         let res = pe.next_send(&LogState::new(6, 10, 20), 100);
         assert_eq!(Ok(&inflight_logs(7, 20)), res);
@@ -311,7 +320,7 @@ fn test_next_send() -> anyhow::Result<()> {
         //      6      10    20
 
         let mut pe = ProgressEntry::<UTConfig>::empty(21);
-        pe.matching = Some(log_id(20));
+        pe.matching = Some(ord_log_id(20));
 
         let res = pe.next_send(&LogState::new(6, 10, 20), 100);
         assert_eq!(Err(&Inflight::None), res, "nothing to send");
@@ -327,7 +336,7 @@ fn test_next_send() -> anyhow::Result<()> {
         //      6      10    20
 
         let mut pe = ProgressEntry::<UTConfig>::empty(20);
-        pe.matching = Some(log_id(7));
+        pe.matching = Some(ord_log_id(7));
 
         let res = pe.next_send(&LogState::new(6, 10, 20), 5);
         assert_eq!(Ok(&inflight_logs(7, 12)), res);

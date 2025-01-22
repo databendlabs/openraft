@@ -50,7 +50,7 @@ where C: RaftTypeConfig
         LogId { leader_id, index }
     }
 
-    fn leader_id(&self) -> &CommittedLeaderIdOf<C> {
+    fn committed_leader_id(&self) -> &CommittedLeaderIdOf<C> {
         &self.leader_id
     }
 

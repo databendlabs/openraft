@@ -24,6 +24,7 @@ use crate::vote::raft_vote::RaftVoteExt;
 use crate::EffectiveMembership;
 use crate::LogIdOptionExt;
 use crate::Membership;
+use crate::RaftLogId;
 use crate::RaftState;
 use crate::RaftTypeConfig;
 use crate::ServerState;
@@ -176,7 +177,7 @@ where C: RaftTypeConfig
             "after updating progress"
         );
 
-        self.try_commit_quorum_accepted(quorum_accepted);
+        self.try_commit_quorum_accepted(quorum_accepted.map(|x| x.to_inner()));
     }
 
     /// Commit the log id that is granted(accepted) by a quorum of voters.
@@ -359,7 +360,7 @@ where C: RaftTypeConfig
             "try_purge_log"
         );
 
-        if self.state.purge_upto() <= self.state.last_purged_log_id() {
+        if self.state.purge_upto().ord_by() <= self.state.last_purged_log_id().ord_by() {
             tracing::debug!("no need to purge, return");
             return;
         }
@@ -407,7 +408,7 @@ where C: RaftTypeConfig
                 "update progress"
             );
 
-            if prog_entry.matching() >= upto.as_ref() {
+            if prog_entry.matching().ord_by() >= upto.ord_by() {
                 return;
             }
             // TODO: It should be self.state.last_log_id() but None is ok.

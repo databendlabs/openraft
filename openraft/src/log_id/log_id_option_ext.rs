@@ -2,6 +2,7 @@ use std::cmp::Ordering;
 
 use crate::alias::CommittedLeaderIdOf;
 use crate::log_id::ord_log_id::OrdLogId;
+use crate::log_id::raft_log_id_ext::RaftLogIdExt;
 use crate::log_id::ref_log_id::RefLogId;
 use crate::RaftLogId;
 use crate::RaftTypeConfig;
@@ -23,11 +24,16 @@ where C: RaftTypeConfig
     /// Returns the ordering key of the log id.
     fn ord_by(&self) -> Option<RefLogId<'_, C>>;
 
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.ord_by().cmp(&other.ord_by())
+    fn ref_log_id(&self) -> Option<RefLogId<'_, C>> {
+        self.ord_by()
     }
 
-    fn to_ordered(&self) -> Option<OrdLogId<C>> {
+    fn cmp(&self, other: &Self) -> Ordering {
+        Ord::cmp(&self.ord_by(), &other.ord_by())
+    }
+
+    fn to_ordered(&self) -> Option<OrdLogId<C>>
+    where Self: Sized {
         self.clone().into_ordered()
     }
 
@@ -37,7 +43,7 @@ where C: RaftTypeConfig
 
 impl<C, T> LogIdOptionExt<C> for Option<T>
 where
-    C: RaftTypeConfig,
+    C: RaftTypeConfig<LogId = T>,
     T: RaftLogId<C>,
 {
     fn index(&self) -> Option<u64> {
@@ -52,7 +58,7 @@ where
     }
 
     fn leader_id(&self) -> Option<&CommittedLeaderIdOf<C>> {
-        self.as_ref().map(|x| x.leader_id())
+        self.as_ref().map(|x| x.committed_leader_id())
     }
 
     fn ord_by(&self) -> Option<RefLogId<'_, C>> {
@@ -61,6 +67,6 @@ where
 
     fn into_ordered(self) -> Option<OrdLogId<C>>
     where Self: Sized {
-        self.map(|x| x.ordered())
+        self.map(|x| x.into_ordered())
     }
 }
