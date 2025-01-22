@@ -31,19 +31,11 @@ where C: RaftTypeConfig
     fn cmp(&self, other: &Self) -> Ordering {
         Ord::cmp(&self.ord_by(), &other.ord_by())
     }
-
-    fn to_ordered(&self) -> Option<OrdLogId<C>>
-    where Self: Sized {
-        self.clone().into_ordered()
-    }
-
-    fn into_ordered(self) -> Option<OrdLogId<C>>
-    where Self: Sized;
 }
 
 impl<C, T> LogIdOptionExt<C> for Option<T>
 where
-    C: RaftTypeConfig<LogId = T>,
+    C: RaftTypeConfig,
     T: RaftLogId<C>,
 {
     fn index(&self) -> Option<u64> {
@@ -63,10 +55,5 @@ where
 
     fn ord_by(&self) -> Option<RefLogId<'_, C>> {
         self.as_ref().map(|x| x.ord_by())
-    }
-
-    fn into_ordered(self) -> Option<OrdLogId<C>>
-    where Self: Sized {
-        self.map(|x| x.into_ordered())
     }
 }

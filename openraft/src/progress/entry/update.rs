@@ -1,5 +1,6 @@
 use crate::display_ext::DisplayOptionExt;
 use crate::engine::EngineConfig;
+use crate::log_id::option_log_id_to_ordered::OptionLogIdToOrdered;
 use crate::progress::entry::ProgressEntry;
 use crate::type_config::alias::LogIdOf;
 use crate::LogIdOptionExt;

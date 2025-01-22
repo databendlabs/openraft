@@ -1,6 +1,10 @@
 use std::io::Cursor;
 
+use crate::alias::LeaderIdOf;
+use crate::alias::LogIdOf;
+use crate::alias::NodeIdOf;
 use crate::impls::TokioRuntime;
+use crate::vote::RaftLeaderIdExt;
 use crate::Node;
 use crate::RaftTypeConfig;
 
@@ -39,8 +43,13 @@ where N: Node + Ord
     type LeaderId = crate::impls::leader_id_adv::LeaderId<Self>;
     type Vote = crate::impls::Vote<Self>;
     type LogId = crate::impls::LogId<Self>;
-    type Entry = crate::Entry<Self>;
+    type Entry = crate::impls::Entry<Self>;
     type SnapshotData = Cursor<Vec<u8>>;
     type AsyncRuntime = TokioRuntime;
     type Responder = crate::impls::OneshotResponder<Self>;
+}
+
+/// Builds a log id, for testing purposes.
+pub(crate) fn log_id(term: u64, node_id: NodeIdOf<UTConfig>, index: u64) -> LogIdOf<UTConfig> {
+    LogIdOf::<UTConfig>::new(LeaderIdOf::<UTConfig>::new_committed(term, node_id), index)
 }

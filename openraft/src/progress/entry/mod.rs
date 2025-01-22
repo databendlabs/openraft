@@ -11,6 +11,7 @@ use validit::Validate;
 use crate::alias::OrdLogIdOf;
 use crate::display_ext::DisplayOptionExt;
 use crate::engine::EngineConfig;
+use crate::log_id::option_log_id_to_ordered::OptionLogIdToOrdered;
 use crate::progress::entry::update::Updater;
 use crate::progress::inflight::Inflight;
 use crate::raft_state::LogStateReader;

@@ -1,9 +1,9 @@
+use crate::engine::testing::log_id;
 use crate::engine::testing::UTConfig;
 use crate::engine::Command;
 use crate::engine::Engine;
 use crate::engine::LogIdList;
 use crate::raft_state::LogStateReader;
-use crate::testing::log_id;
 
 fn eng() -> Engine<UTConfig> {
     let mut eng = Engine::testing_default(0);

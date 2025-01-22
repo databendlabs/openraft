@@ -3,12 +3,13 @@ use std::fmt;
 
 use crate::alias::CommittedLeaderIdOf;
 use crate::alias::LogIdOf;
+use crate::log_id::raft_log_id_ext::RaftLogIdExt;
 use crate::RaftLogId;
 use crate::RaftTypeConfig;
 
 /// A wrapper type that implements [`PartialOrd`] and [`PartialEq`] based on the ordering key of the
 /// inner type.
-#[derive(Debug, Clone, Eq, Ord)]
+#[derive(Debug, Clone, Eq)]
 pub(crate) struct OrdLogId<C>
 where C: RaftTypeConfig
 {
@@ -48,6 +49,14 @@ where C: RaftTypeConfig
 {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         self.inner.ord_by().partial_cmp(&other.inner.ord_by())
+    }
+}
+
+impl<C> Ord for OrdLogId<C>
+where C: RaftTypeConfig
+{
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.inner.ord_by().cmp(&other.inner.ord_by())
     }
 }
 

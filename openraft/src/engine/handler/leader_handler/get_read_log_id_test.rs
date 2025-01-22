@@ -9,9 +9,9 @@ use pretty_assertions::assert_ne;
 #[allow(unused_imports)]
 use pretty_assertions::assert_str_eq;
 
+use crate::engine::testing::log_id;
 use crate::engine::testing::UTConfig;
 use crate::engine::Engine;
-use crate::testing::log_id;
 use crate::type_config::TypeConfigExt;
 use crate::utime::Leased;
 use crate::EffectiveMembership;
