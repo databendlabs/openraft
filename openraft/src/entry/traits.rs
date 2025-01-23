@@ -3,7 +3,6 @@ use std::fmt::Display;
 
 use crate::base::OptionalFeatures;
 use crate::log_id::ref_log_id::RefLogId;
-use crate::log_id::RaftLogId;
 use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::type_config::alias::LogIdOf;
 use crate::Membership;

@@ -1,8 +1,9 @@
 use crate::engine::leader_log_ids::LeaderLogIds;
+use crate::engine::testing::log_id;
 use crate::engine::testing::UTConfig;
 use crate::engine::LogIdList;
 use crate::log_id::option_ref_log_id_ext::OptionRefLogIdExt;
-use crate::testing::log_id;
+use crate::log_id::raft_log_id_ext::RaftLogIdExt;
 
 #[test]
 fn test_log_id_list_extend_from_same_leader() -> anyhow::Result<()> {
@@ -10,7 +11,7 @@ fn test_log_id_list_extend_from_same_leader() -> anyhow::Result<()> {
 
     // Extend one log id to an empty LogIdList: Just store it directly
 
-    ids.extend_from_same_leader(&[log_id(1, 1, 2)]);
+    ids.extend_from_same_leader([log_id(1, 1, 2)]);
     assert_eq!(vec![log_id(1, 1, 2)], ids.key_log_ids());
 
     // Extend two log ids that are adjacent to the last stored one.

@@ -4,6 +4,7 @@ use std::time::Duration;
 use maplit::btreeset;
 use pretty_assertions::assert_eq;
 
+use crate::engine::testing::log_id;
 use crate::engine::testing::UTConfig;
 use crate::engine::Command;
 use crate::engine::Condition;
@@ -11,7 +12,6 @@ use crate::engine::Engine;
 use crate::raft_state::IOId;
 use crate::raft_state::LogStateReader;
 use crate::testing::blank_ent;
-use crate::testing::log_id;
 use crate::type_config::alias::VoteOf;
 use crate::type_config::TypeConfigExt;
 use crate::utime::Leased;
@@ -37,11 +37,11 @@ fn eng() -> Engine<UTConfig> {
     let vote = VoteOf::<UTConfig>::new_committed(2, 1);
     let now = UTConfig::<()>::now();
     eng.state.vote.update(now, Duration::from_millis(500), vote);
-    eng.state.log_ids.append(log_id::<UTConfig>(1, 1, 1));
-    eng.state.log_ids.append(log_id::<UTConfig>(2, 1, 3));
+    eng.state.log_ids.append(log_id(1, 1, 1));
+    eng.state.log_ids.append(log_id(2, 1, 3));
     eng.state.membership_state = MembershipState::new(
-        Arc::new(EffectiveMembership::new(Some(log_id::<UTConfig>(1, 1, 1)), m01())),
-        Arc::new(EffectiveMembership::new(Some(log_id::<UTConfig>(2, 1, 3)), m23())),
+        Arc::new(EffectiveMembership::new(Some(log_id(1, 1, 1)), m01())),
+        Arc::new(EffectiveMembership::new(Some(log_id(2, 1, 3)), m23())),
     );
     eng.state.server_state = eng.calc_server_state();
     eng
@@ -53,7 +53,7 @@ fn test_follower_append_entries_update_accepted() -> anyhow::Result<()> {
 
     eng.output.clear_commands();
 
-    eng.following_handler().append_entries(Some(log_id::<UTConfig>(2, 1, 3)), vec![
+    eng.following_handler().append_entries(Some(log_id(2, 1, 3)), vec![
         //
         blank_ent(3, 1, 4),
         blank_ent(3, 1, 5),
@@ -61,17 +61,17 @@ fn test_follower_append_entries_update_accepted() -> anyhow::Result<()> {
 
     assert_eq!(
         &[
-            log_id::<UTConfig>(1, 1, 1), //
-            log_id::<UTConfig>(2, 1, 3),
-            log_id::<UTConfig>(3, 1, 4),
-            log_id::<UTConfig>(3, 1, 5),
+            log_id(1, 1, 1), //
+            log_id(2, 1, 3),
+            log_id(3, 1, 4),
+            log_id(3, 1, 5),
         ],
         eng.state.log_ids.key_log_ids()
     );
     assert_eq!(
         Some(&IOId::new_log_io(
             Vote::new(2, 1).into_committed(),
-            Some(log_id::<UTConfig>(3, 1, 5))
+            Some(log_id(3, 1, 5))
         )),
         eng.state.accepted_io()
     );
@@ -91,15 +91,15 @@ fn test_follower_append_entries_update_accepted() -> anyhow::Result<()> {
             Duration::from_millis(500),
             Vote::new_committed(3, 1),
         );
-        eng.following_handler().append_entries(Some(log_id::<UTConfig>(2, 1, 3)), vec![
+        eng.following_handler().append_entries(Some(log_id(2, 1, 3)), vec![
             //
             blank_ent(3, 1, 4),
         ]);
-        assert_eq!(Some(&log_id::<UTConfig>(3, 1, 5)), eng.state.last_log_id());
+        assert_eq!(Some(&log_id(3, 1, 5)), eng.state.last_log_id());
         assert_eq!(
             Some(&IOId::new_log_io(
                 Vote::new(3, 1).into_committed(),
-                Some(log_id::<UTConfig>(3, 1, 4))
+                Some(log_id(3, 1, 4))
             )),
             eng.state.accepted_io()
         );
@@ -107,21 +107,21 @@ fn test_follower_append_entries_update_accepted() -> anyhow::Result<()> {
             //
             Command::UpdateIOProgress {
                 when: Some(Condition::IOFlushed {
-                    io_id: IOId::new_log_io(Vote::new(2, 1).into_committed(), Some(log_id::<UTConfig>(3, 1, 5)))
+                    io_id: IOId::new_log_io(Vote::new(2, 1).into_committed(), Some(log_id(3, 1, 5)))
                 }),
-                io_id: IOId::new_log_io(Vote::new(3, 1).into_committed(), Some(log_id::<UTConfig>(3, 1, 4))),
+                io_id: IOId::new_log_io(Vote::new(3, 1).into_committed(), Some(log_id(3, 1, 4))),
             }
         ]);
     }
 
     // Update to a smaller value is ignored.
     {
-        eng.following_handler().append_entries(Some(log_id::<UTConfig>(2, 1, 3)), vec![]);
-        assert_eq!(Some(&log_id::<UTConfig>(3, 1, 5)), eng.state.last_log_id());
+        eng.following_handler().append_entries(Some(log_id(2, 1, 3)), vec![]);
+        assert_eq!(Some(&log_id(3, 1, 5)), eng.state.last_log_id());
         assert_eq!(
             Some(&IOId::new_log_io(
                 Vote::new(3, 1).into_committed(),
-                Some(log_id::<UTConfig>(3, 1, 4))
+                Some(log_id(3, 1, 4))
             )),
             eng.state.accepted_io()
         );

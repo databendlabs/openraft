@@ -6,7 +6,6 @@ use crate::log_id::raft_log_id_ext::RaftLogIdExt;
 use crate::raft_state::io_state::ref_log_io_id::RefLogIOId;
 use crate::type_config::alias::LogIdOf;
 use crate::vote::committed::CommittedVote;
-use crate::LogIdOptionExt;
 use crate::RaftTypeConfig;
 
 /// A monotonic increasing id for log append io operation.

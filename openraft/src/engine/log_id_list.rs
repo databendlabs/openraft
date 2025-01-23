@@ -133,9 +133,10 @@ where C: RaftTypeConfig
     /// Extends a list of `log_id` that are proposed by a same leader.
     ///
     /// The log ids in the input has to be continuous.
-    pub(crate) fn extend_from_same_leader<'a, I>(&mut self, new_ids: I)
+    pub(crate) fn extend_from_same_leader<LID, I>(&mut self, new_ids: I)
     where
-        I: IntoIterator<Item = RefLogId<'a, C>>,
+        LID: RaftLogId<C>,
+        I: IntoIterator<Item = LID>,
         <I as IntoIterator>::IntoIter: DoubleEndedIterator,
     {
         let mut it = new_ids.into_iter();
@@ -143,7 +144,7 @@ where C: RaftTypeConfig
             self.append(first.to_log_id());
 
             if let Some(last) = it.next_back() {
-                assert_eq!(last.committed_leader_id(), first.committed_leader_id());
+                debug_assert_eq!(last.committed_leader_id(), first.committed_leader_id());
 
                 if last != first {
                     self.append(last.to_log_id());
@@ -153,8 +154,11 @@ where C: RaftTypeConfig
     }
 
     /// Extends a list of `log_id`.
-    pub(crate) fn extend<'a, I>(&mut self, new_ids: I)
-    where I: IntoIterator<Item = RefLogId<'a, C>> {
+    pub(crate) fn extend<LID, I>(&mut self, new_ids: I)
+    where
+        LID: RaftLogId<C>,
+        I: IntoIterator<Item = LID>,
+    {
         let mut last_appended = None;
 
         for log_id in new_ids.into_iter() {
@@ -166,7 +170,7 @@ where C: RaftTypeConfig
         }
 
         if let Some(log_id) = last_appended {
-            if self.last().ref_log_id() != Some(log_id) {
+            if self.last().ref_log_id() != Some(log_id.ref_log_id()) {
                 self.append(log_id.to_log_id());
             }
         }

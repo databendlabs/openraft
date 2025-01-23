@@ -22,7 +22,7 @@ where C: RaftTypeConfig
         RefLogId { leader_id, index }
     }
 
-    pub(crate) fn committed_leader_id(&self) -> &CommittedLeaderIdOf<C> {
+    pub(crate) fn committed_leader_id(&self) -> &'l CommittedLeaderIdOf<C> {
         self.leader_id
     }
 
