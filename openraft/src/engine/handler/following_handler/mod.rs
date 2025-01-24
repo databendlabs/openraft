@@ -75,7 +75,9 @@ where C: RaftTypeConfig
         }
 
         let last_log_id = entries.last().map(|x| x.to_log_id());
-        let last_log_id = std::cmp::max_by_key(prev_log_id, last_log_id, |x| x.ord_by());
+        // let last_log_id = std::cmp::max_by_key(prev_log_id, last_log_id, |x: &Option<LogIdOf<C>>|
+        // x.ord_by());
+        let last_log_id = std::cmp::max_by(prev_log_id, last_log_id, |x, y| Ord::cmp(&x.ord_by(), &y.ord_by()));
 
         let prev_accepted = self.state.accept_io(IOId::new_log_io(self.leader_vote.clone(), last_log_id.clone()));
 
@@ -163,7 +165,9 @@ where C: RaftTypeConfig
     pub(crate) fn commit_entries(&mut self, leader_committed: Option<LogIdOf<C>>) {
         let accepted = self.state.accepted_io().cloned();
         let accepted = accepted.and_then(|x| x.last_log_id().cloned());
-        let committed = std::cmp::min_by_key(accepted.clone(), leader_committed.clone(), |x| x.ord_by());
+        let committed = std::cmp::min_by(accepted.clone(), leader_committed.clone(), |x, y| {
+            Ord::cmp(&x.ord_by(), &y.ord_by())
+        });
 
         tracing::debug!(
             leader_committed = display(DisplayOption(&leader_committed)),

@@ -114,7 +114,9 @@ where C: RaftTypeConfig
     pub(crate) fn get_read_log_id(&self) -> Option<LogIdOf<C>> {
         let committed = self.state.committed().cloned();
         // noop log id is the first log this leader proposed.
-        std::cmp::max_by_key(self.leader.noop_log_id.clone(), committed, |x| x.ord_by())
+        std::cmp::max_by(self.leader.noop_log_id.clone(), committed, |x, y| {
+            Ord::cmp(&x.ord_by(), &y.ord_by())
+        })
     }
 
     /// Disable proposing new logs for this Leader, and transfer Leader to another node

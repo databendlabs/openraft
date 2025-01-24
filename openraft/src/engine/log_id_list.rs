@@ -158,20 +158,20 @@ where C: RaftTypeConfig
     where
         LID: RaftLogId<C>,
         I: IntoIterator<Item = LID>,
+        <I as IntoIterator>::IntoIter: ExactSizeIterator,
     {
-        let mut last_appended = None;
+        let it = new_ids.into_iter();
+        let len = it.len();
 
-        for log_id in new_ids.into_iter() {
-            last_appended = Some(log_id);
-
+        for (i, log_id) in it.enumerate() {
             if self.last_leader_id() != Some(log_id.committed_leader_id()) {
                 self.append(log_id.to_log_id());
             }
-        }
 
-        if let Some(log_id) = last_appended {
-            if self.last().ref_log_id() != Some(log_id.ref_log_id()) {
-                self.append(log_id.to_log_id());
+            if i == len - 1 {
+                if self.ref_last() != Some(log_id.ref_log_id()) {
+                    self.append(log_id.to_log_id());
+                }
             }
         }
     }
@@ -316,6 +316,10 @@ where C: RaftTypeConfig
 
     pub(crate) fn last(&self) -> Option<&LogIdOf<C>> {
         self.key_log_ids.last()
+    }
+
+    pub(crate) fn ref_last(&self) -> Option<RefLogId<'_, C>> {
+        self.last().map(|x| x.ref_log_id())
     }
 
     pub(crate) fn last_leader_id(&self) -> Option<&CommittedLeaderIdOf<C>> {

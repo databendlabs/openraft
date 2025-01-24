@@ -182,7 +182,7 @@ where
 
         let mut index = self.last_log_id().next_index();
 
-        for entry in entries {
+        for entry in it {
             entry.set_log_id(LogIdOf::<C>::new(committed_leader_id.clone(), index));
             tracing::debug!("assign log id: {}", entry.ref_log_id());
             index += 1;
@@ -232,13 +232,13 @@ where
 #[cfg(test)]
 mod tests {
     use crate::engine::leader_log_ids::LeaderLogIds;
+    use crate::engine::testing::log_id;
     use crate::engine::testing::UTConfig;
     use crate::entry::RaftEntry;
-    use crate::entry::RaftEntryExt;
+    use crate::log_id::raft_log_id_ext::RaftLogIdExt;
     use crate::progress::Progress;
     use crate::proposer::Leader;
     use crate::testing::blank_ent;
-    use crate::testing::log_id;
     use crate::type_config::TypeConfigExt;
     use crate::vote::raft_vote::RaftVoteExt;
     use crate::Entry;
@@ -305,7 +305,7 @@ mod tests {
 
         assert_eq!(
             entries[0].ref_log_id(),
-            &log_id(2, 2, 4),
+            log_id(2, 2, 4).ref_log_id(),
             "entry log id assigned following last-log-id"
         );
         assert_eq!(Some(log_id(2, 2, 4)), leader.last_log_id);
@@ -319,7 +319,7 @@ mod tests {
         let mut entries: Vec<Entry<UTConfig>> = vec![blank_ent(1, 1, 1)];
         leading.assign_log_ids(&mut entries);
 
-        assert_eq!(entries[0].ref_log_id(), &log_id(0, 0, 0),);
+        assert_eq!(entries[0].ref_log_id(), log_id(0, 0, 0).ref_log_id(),);
         assert_eq!(Some(log_id(0, 0, 0)), leading.last_log_id);
     }
 
@@ -343,9 +343,9 @@ mod tests {
         let mut entries: Vec<Entry<UTConfig>> = vec![blank_ent(1, 1, 1), blank_ent(1, 1, 1), blank_ent(1, 1, 1)];
 
         leading.assign_log_ids(&mut entries);
-        assert_eq!(entries[0].ref_log_id(), &log_id(2, 2, 9));
-        assert_eq!(entries[1].ref_log_id(), &log_id(2, 2, 10));
-        assert_eq!(entries[2].ref_log_id(), &log_id(2, 2, 11));
+        assert_eq!(entries[0].ref_log_id(), log_id(2, 2, 9).ref_log_id());
+        assert_eq!(entries[1].ref_log_id(), log_id(2, 2, 10).ref_log_id());
+        assert_eq!(entries[2].ref_log_id(), log_id(2, 2, 11).ref_log_id());
         assert_eq!(Some(log_id(2, 2, 11)), leading.last_log_id);
     }
 

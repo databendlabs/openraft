@@ -265,8 +265,12 @@ where C: RaftTypeConfig
         self.log_ids.extend_from_same_leader(new_log_ids)
     }
 
-    pub(crate) fn extend_log_ids<'a, I>(&mut self, new_log_id: I)
-    where I: IntoIterator<Item = RefLogId<'a, C>> {
+    pub(crate) fn extend_log_ids<LID, I>(&mut self, new_log_id: I)
+    where
+        LID: RaftLogId<C>,
+        I: IntoIterator<Item = LID>,
+        <I as IntoIterator>::IntoIter: ExactSizeIterator,
+    {
         self.log_ids.extend(new_log_id)
     }
 
