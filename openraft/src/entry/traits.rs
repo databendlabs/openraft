@@ -39,10 +39,17 @@ where
     /// The returned instance must return `Some()` for `Self::get_membership()`.
     fn new_membership(log_id: LogIdOf<C>, m: Membership<C>) -> Self;
 
-    /// Returns a lightweight [`RefLogId`] that contains the log id information.
-    fn ref_log_id(&self) -> RefLogId<'_, C>;
-
-    // fn ref_log_id2(&self) -> (&CommittedLeaderIdOf<C>, u64);
+    /// Returns references to the components of this entry's log ID: the committed leader ID and
+    /// index.
+    ///
+    /// The returned tuple contains:
+    /// - A reference to the committed leader ID that proposed this log entry.
+    /// - The index position of this entry in the log.
+    ///
+    /// Note: Although these components constitute a `LogId`, this method returns them separately
+    /// rather than as a reference to `LogId`. This allows implementations to store these
+    /// components directly without requiring a `LogId` field in their data structure.
+    fn log_id_parts(&self) -> (&CommittedLeaderIdOf<C>, u64);
 
     fn set_log_id(&mut self, new: LogIdOf<C>);
 }
@@ -50,6 +57,12 @@ where
 pub trait RaftEntryExt<C>: RaftEntry<C>
 where C: RaftTypeConfig
 {
+    /// Returns a lightweight [`RefLogId`] that contains the log id information.
+    fn ref_log_id(&self) -> RefLogId<'_, C> {
+        let (leader_id, index) = self.log_id_parts();
+        RefLogId::new(leader_id, index)
+    }
+
     fn to_log_id(&self) -> LogIdOf<C> {
         self.ref_log_id().to_log_id()
     }
