@@ -183,7 +183,6 @@ macro_rules! declare_raft_types {
                 (Term         , , u64                                          ),
                 (LeaderId     , , $crate::impls::leader_id_adv::LeaderId<Self> ),
                 (Vote         , , $crate::impls::Vote<Self>                    ),
-                (LogId        , , $crate::impls::LogId<Self>                   ),
                 (Entry        , , $crate::impls::Entry<Self>                   ),
                 (SnapshotData , , std::io::Cursor<Vec<u8>>                     ),
                 (Responder    , , $crate::impls::OneshotResponder<Self>        ),
@@ -786,7 +785,7 @@ where C: RaftTypeConfig
         node_id: &C::NodeId,
         membership_log_id: Option<&LogIdOf<C>>,
     ) -> Result<Option<LogIdOf<C>>, ()> {
-        if metrics.membership_config.log_id().ord_by() < membership_log_id.ord_by() {
+        if metrics.membership_config.log_id().as_ref() < membership_log_id {
             // Waiting for the latest metrics to report.
             return Err(());
         }

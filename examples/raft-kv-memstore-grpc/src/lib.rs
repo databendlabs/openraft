@@ -21,6 +21,7 @@ openraft::declare_raft_types!(
         R = pb::Response,
         LeaderId = pb::LeaderId,
         Vote = pb::Vote,
+        Entry = pb::Entry,
         Node = pb::Node,
         SnapshotData = StateMachineData,
 );

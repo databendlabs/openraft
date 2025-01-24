@@ -77,7 +77,7 @@ where C: RaftTypeConfig
     /// Create inflight state for sending logs.
     pub(crate) fn logs(prev: Option<LogIdOf<C>>, last: Option<LogIdOf<C>>) -> Self {
         #![allow(clippy::nonminimal_bool)]
-        if !(prev.ord_by() < last.ord_by()) {
+        if !(prev < last) {
             Self::None
         } else {
             Self::Logs {
@@ -117,8 +117,8 @@ where C: RaftTypeConfig
             }
             Inflight::Logs { log_id_range } => {
                 *self = {
-                    debug_assert!(upto.ord_by() >= log_id_range.prev.ord_by());
-                    debug_assert!(upto.ord_by() <= log_id_range.last.ord_by());
+                    debug_assert!(upto >= log_id_range.prev);
+                    debug_assert!(upto <= log_id_range.last);
                     Inflight::logs(upto, log_id_range.last.clone())
                 }
             }

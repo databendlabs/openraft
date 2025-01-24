@@ -188,7 +188,7 @@ impl RaftLogStorage<TypeConfig> for Arc<LogStore> {
 
         let last = match last_serialized {
             None => None,
-            Some(ent) => Some(ent.to_log_id()),
+            Some(ent) => Some(ent.log_id()),
         };
 
         let last_purged = self.last_purged_log_id.read().await.clone();

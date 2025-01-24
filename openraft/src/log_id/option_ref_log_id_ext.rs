@@ -5,6 +5,7 @@ use crate::RaftTypeConfig;
 pub(crate) trait OptionRefLogIdExt<C>
 where C: RaftTypeConfig
 {
+    /// Creates a new owned [`LogId`] from the reference log ID.
     fn to_log_id(&self) -> Option<LogIdOf<C>>;
 }
 

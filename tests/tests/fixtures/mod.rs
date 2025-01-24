@@ -192,7 +192,7 @@ impl fmt::Display for Direction {
 
 use openraft::alias::LogIdOf;
 use openraft::alias::VoteOf;
-use openraft::entry::RaftEntryExt;
+use openraft::entry::RaftEntry;
 use openraft::network::v2::RaftNetworkV2;
 use openraft::vote::RaftLeaderId;
 use openraft::vote::RaftLeaderIdExt;
@@ -1052,7 +1052,7 @@ impl RaftNetworkV2<MemConfig> for RaftRouterNetwork {
                     rpc.entries.truncate(quota as usize);
                     *x = Some(0);
                     if let Some(last) = rpc.entries.last() {
-                        Some(Some(last.to_log_id()))
+                        Some(Some(last.log_id()))
                     } else {
                         Some(rpc.prev_log_id)
                     }
