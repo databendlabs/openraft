@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use openraft::alias::LogIdOf;
 use openraft::alias::VoteOf;
-use openraft::entry::RaftEntryExt;
+use openraft::entry::RaftEntry;
 use openraft::storage::IOFlushed;
 use openraft::LogState;
 use openraft::RaftTypeConfig;
@@ -60,7 +60,7 @@ impl<C: RaftTypeConfig> LogStoreInner<C> {
     }
 
     async fn get_log_state(&mut self) -> Result<LogState<C>, StorageError<C>> {
-        let last = self.log.iter().next_back().map(|(_, ent)| ent.to_log_id());
+        let last = self.log.iter().next_back().map(|(_, ent)| ent.log_id());
 
         let last_purged = self.last_purged_log_id.clone();
 
@@ -97,7 +97,7 @@ impl<C: RaftTypeConfig> LogStoreInner<C> {
     where I: IntoIterator<Item = C::Entry> {
         // Simple implementation that calls the flush-before-return `append_to_log`.
         for entry in entries {
-            self.log.insert(entry.to_log_id().index, entry);
+            self.log.insert(entry.log_id().index, entry);
         }
         callback.io_completed(Ok(()));
 

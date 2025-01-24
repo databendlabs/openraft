@@ -2,7 +2,7 @@ use std::fmt::Debug;
 use std::fmt::Display;
 
 use crate::base::OptionalFeatures;
-use crate::log_id::ref_log_id::RefLogId;
+use crate::entry::raft_entry_ext::RaftEntryExt;
 use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::type_config::alias::LogIdOf;
 use crate::Membership;
@@ -51,38 +51,11 @@ where
     /// components directly without requiring a `LogId` field in their data structure.
     fn log_id_parts(&self) -> (&CommittedLeaderIdOf<C>, u64);
 
+    /// Set the log ID of this entry.
     fn set_log_id(&mut self, new: LogIdOf<C>);
-}
 
-pub trait RaftEntryExt<C>: RaftEntry<C>
-where C: RaftTypeConfig
-{
-    /// Returns a lightweight [`RefLogId`] that contains the log id information.
-    fn ref_log_id(&self) -> RefLogId<'_, C> {
-        let (leader_id, index) = self.log_id_parts();
-        RefLogId::new(leader_id, index)
-    }
-
-    fn to_log_id(&self) -> LogIdOf<C> {
+    /// Returns the `LogId` of this entry.
+    fn log_id(&self) -> LogIdOf<C> {
         self.ref_log_id().to_log_id()
     }
-
-    fn committed_leader_id(&self) -> &CommittedLeaderIdOf<C> {
-        self.ref_log_id().committed_leader_id()
-    }
-
-    fn to_committed_leader_id(&self) -> CommittedLeaderIdOf<C> {
-        self.committed_leader_id().clone()
-    }
-
-    fn index(&self) -> u64 {
-        self.ref_log_id().index()
-    }
-}
-
-impl<C, T> RaftEntryExt<C> for T
-where
-    C: RaftTypeConfig,
-    T: RaftEntry<C>,
-{
 }

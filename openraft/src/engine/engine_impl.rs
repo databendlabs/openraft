@@ -30,7 +30,6 @@ use crate::error::InitializeError;
 use crate::error::NotAllowed;
 use crate::error::NotInMembers;
 use crate::error::RejectAppendEntries;
-use crate::log_id::raft_log_id_ext::RaftLogIdExt;
 use crate::proposer::leader_state::CandidateState;
 use crate::proposer::Candidate;
 use crate::proposer::Leader;
@@ -58,7 +57,6 @@ use crate::vote::RaftTerm;
 use crate::vote::RaftVote;
 use crate::LogIdOptionExt;
 use crate::Membership;
-use crate::RaftLogId;
 use crate::RaftTypeConfig;
 
 /// Raft protocol algorithm.
@@ -301,7 +299,7 @@ where C: RaftTypeConfig
 
         // The first step is to check log. If the candidate has less log, nothing needs to be done.
 
-        if req.last_log_id.ord_by() >= self.state.last_log_id().ord_by() {
+        if req.last_log_id.as_ref() >= self.state.last_log_id() {
             // Ok
         } else {
             tracing::info!(
@@ -364,7 +362,7 @@ where C: RaftTypeConfig
         // In any case, no need to proceed.
 
         // Seen a higher log. Record it so that the next election will be delayed for a while.
-        if resp.last_log_id.ord_by() > self.state.last_log_id().ord_by() {
+        if resp.last_log_id.as_ref() > self.state.last_log_id() {
             tracing::info!(
                 greater_log_id = display(resp.last_log_id.display()),
                 "seen a greater log id when {}",
@@ -511,7 +509,7 @@ where C: RaftTypeConfig
         );
 
         #[allow(clippy::collapsible_if)]
-        if em.log_id().ord_by() <= self.state.committed().ord_by() {
+        if em.log_id().as_ref() <= self.state.committed() {
             self.vote_handler().update_internal_server_state();
         }
     }

@@ -11,18 +11,17 @@ use crate::engine::Command;
 use crate::engine::Condition;
 use crate::engine::EngineConfig;
 use crate::engine::EngineOutput;
+use crate::entry::raft_entry_ext::RaftEntryExt;
 use crate::entry::RaftEntry;
-use crate::entry::RaftEntryExt;
 use crate::entry::RaftPayload;
 use crate::error::RejectAppendEntries;
-use crate::log_id::raft_log_id::RaftLogId;
+use crate::log_id::option_raft_log_id_ext::OptionRaftLogIdExt;
 use crate::raft_state::IOId;
 use crate::raft_state::LogStateReader;
 use crate::storage::Snapshot;
 use crate::type_config::alias::LogIdOf;
 use crate::vote::committed::CommittedVote;
 use crate::EffectiveMembership;
-use crate::LogIdOptionExt;
 use crate::RaftState;
 use crate::RaftTypeConfig;
 use crate::StoredMembership;
@@ -74,10 +73,10 @@ where C: RaftTypeConfig
             debug_assert!(x.index() == prev_log_id.next_index());
         }
 
-        let last_log_id = entries.last().map(|x| x.to_log_id());
+        let last_log_id = entries.last().map(|x| x.log_id());
         // let last_log_id = std::cmp::max_by_key(prev_log_id, last_log_id, |x: &Option<LogIdOf<C>>|
         // x.ord_by());
-        let last_log_id = std::cmp::max_by(prev_log_id, last_log_id, |x, y| Ord::cmp(&x.ord_by(), &y.ord_by()));
+        let last_log_id = std::cmp::max(prev_log_id, last_log_id);
 
         let prev_accepted = self.state.accept_io(IOId::new_log_io(self.leader_vote.clone(), last_log_id.clone()));
 
@@ -148,7 +147,7 @@ where C: RaftTypeConfig
     pub(crate) fn do_append_entries(&mut self, entries: Vec<C::Entry>) {
         debug_assert!(!entries.is_empty());
         debug_assert_eq!(entries[0].index(), self.state.log_ids.last().cloned().next_index(),);
-        debug_assert!(Some(entries[0].ref_log_id()) > self.state.log_ids.last().ord_by());
+        debug_assert!(Some(entries[0].ref_log_id()) > self.state.log_ids.last().to_ref());
 
         self.state.extend_log_ids(entries.iter().map(|x| x.ref_log_id()));
         self.append_membership(entries.iter());
@@ -165,9 +164,7 @@ where C: RaftTypeConfig
     pub(crate) fn commit_entries(&mut self, leader_committed: Option<LogIdOf<C>>) {
         let accepted = self.state.accepted_io().cloned();
         let accepted = accepted.and_then(|x| x.last_log_id().cloned());
-        let committed = std::cmp::min_by(accepted.clone(), leader_committed.clone(), |x, y| {
-            Ord::cmp(&x.ord_by(), &y.ord_by())
-        });
+        let committed = std::cmp::min(accepted.clone(), leader_committed.clone());
 
         tracing::debug!(
             leader_committed = display(DisplayOption(&leader_committed)),
@@ -288,7 +285,7 @@ where C: RaftTypeConfig
 
         let snap_last_log_id = meta.last_log_id.clone();
 
-        if snap_last_log_id.ord_by() <= self.state.committed().ord_by() {
+        if snap_last_log_id.as_ref() <= self.state.committed() {
             tracing::info!(
                 "No need to install snapshot; snapshot last_log_id({}) <= committed({})",
                 snap_last_log_id.display(),
@@ -346,7 +343,7 @@ where C: RaftTypeConfig
         // Find the last 2 membership config entries: the committed and the effective.
         for ent in entries.rev() {
             if let Some(m) = ent.get_membership() {
-                memberships.insert(0, StoredMembership::new(Some(ent.to_log_id()), m));
+                memberships.insert(0, StoredMembership::new(Some(ent.log_id()), m));
                 if memberships.len() == 2 {
                     break;
                 }

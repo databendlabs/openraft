@@ -5,7 +5,6 @@ use std::collections::BTreeSet;
 use crate::entry::RaftEntry;
 use crate::type_config::alias::LogIdOf;
 use crate::vote::RaftLeaderIdExt;
-use crate::RaftLogId;
 use crate::RaftTypeConfig;
 
 /// Builds a log id, for testing purposes.

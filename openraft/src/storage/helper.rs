@@ -7,9 +7,9 @@ use validit::Valid;
 
 use crate::display_ext::DisplayOptionExt;
 use crate::engine::LogIdList;
-use crate::entry::RaftEntryExt;
+use crate::entry::raft_entry_ext::RaftEntryExt;
+use crate::entry::RaftEntry;
 use crate::entry::RaftPayload;
-use crate::log_id::RaftLogId;
 use crate::raft_state::IOState;
 use crate::storage::log_reader_ext::RaftLogReaderExt;
 use crate::storage::RaftLogStorage;
@@ -88,12 +88,12 @@ where
 
         // TODO: It is possible `committed < last_applied` because when installing snapshot,
         //       new committed should be saved, but not yet.
-        if committed.ord_by() < last_applied.ord_by() {
+        if committed < last_applied {
             committed = last_applied.clone();
         }
 
         // Re-apply log entries to recover SM to latest state.
-        if last_applied.ord_by() < committed.ord_by() {
+        if last_applied < committed {
             let start = last_applied.next_index();
             let end = committed.next_index();
 
@@ -105,7 +105,7 @@ where
         let mem_state = self.get_membership().await?;
 
         // Clean up dirty state: snapshot is installed but logs are not cleaned.
-        if last_log_id.ord_by() < last_applied.ord_by() {
+        if last_log_id < last_applied {
             tracing::info!(
                 "Clean the hole between last_log_id({}) and last_applied({}) by purging logs to {}",
                 last_log_id.display(),
@@ -300,7 +300,7 @@ where
 
             for ent in entries.iter().rev() {
                 if let Some(mem) = ent.get_membership() {
-                    let em = StoredMembership::new(Some(ent.to_log_id()), mem);
+                    let em = StoredMembership::new(Some(ent.log_id()), mem);
                     res.insert(0, em);
                     if res.len() == 2 {
                         return Ok(res);

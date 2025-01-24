@@ -1,7 +1,7 @@
 use anyerror::AnyError;
 use openraft_macros::add_async_trait;
 
-use crate::entry::RaftEntryExt;
+use crate::entry::RaftEntry;
 use crate::type_config::alias::LogIdOf;
 use crate::RaftLogReader;
 use crate::RaftTypeConfig;
@@ -30,7 +30,7 @@ where C: RaftTypeConfig
             ));
         }
 
-        Ok(entries[0].to_log_id())
+        Ok(entries[0].log_id())
     }
 }
 

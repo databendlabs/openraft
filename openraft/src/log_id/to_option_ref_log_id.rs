@@ -16,6 +16,6 @@ where
     T: RaftLogId<C>,
 {
     fn to_ref(self) -> Option<RefLogId<'l, C>> {
-        self.map(|x| x.ord_by())
+        self.map(|x| x.to_ref())
     }
 }

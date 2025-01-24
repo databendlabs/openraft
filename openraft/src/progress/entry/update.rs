@@ -1,6 +1,5 @@
 use crate::display_ext::DisplayOptionExt;
 use crate::engine::EngineConfig;
-use crate::log_id::option_log_id_to_ordered::OptionLogIdToOrdered;
 use crate::progress::entry::ProgressEntry;
 use crate::type_config::alias::LogIdOf;
 use crate::LogIdOptionExt;
@@ -86,8 +85,8 @@ where C: RaftTypeConfig
 
         self.entry.inflight.ack(matching.clone());
 
-        debug_assert!(matching.ord_by() >= self.entry.matching().ord_by());
-        self.entry.matching = matching.into_ordered();
+        debug_assert!(matching.as_ref() >= self.entry.matching());
+        self.entry.matching = matching;
 
         let matching_next = self.entry.matching().next_index();
         self.entry.searching_end = std::cmp::max(self.entry.searching_end, matching_next);

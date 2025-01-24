@@ -37,6 +37,7 @@ pub(crate) use vote_state_reader::VoteStateReader;
 
 use crate::base::ord_by::OrdBy;
 use crate::display_ext::DisplayOptionExt;
+use crate::entry::raft_entry_ext::RaftEntryExt;
 use crate::entry::RaftEntry;
 use crate::log_id::ref_log_id::RefLogId;
 use crate::proposer::Leader;
@@ -279,7 +280,7 @@ where C: RaftTypeConfig
     /// If updated, it returns the previous value in a `Some()`.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn update_committed(&mut self, committed: &Option<LogIdOf<C>>) -> Option<Option<LogIdOf<C>>> {
-        if committed.ord_by() > self.committed().ord_by() {
+        if committed.as_ref() > self.committed() {
             let prev = self.committed().cloned();
 
             self.committed = committed.clone();

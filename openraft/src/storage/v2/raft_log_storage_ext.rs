@@ -3,7 +3,7 @@ use openraft_macros::add_async_trait;
 use crate::async_runtime::MpscUnboundedReceiver;
 use crate::async_runtime::MpscUnboundedSender;
 use crate::core::notification::Notification;
-use crate::entry::RaftEntryExt;
+use crate::entry::RaftEntry;
 use crate::raft_state::io_state::io_id::IOId;
 use crate::storage::IOFlushed;
 use crate::storage::RaftLogStorage;
@@ -31,7 +31,7 @@ where C: RaftTypeConfig
     {
         let entries = entries.into_iter().collect::<Vec<_>>();
 
-        let last_log_id = entries.last().unwrap().to_log_id();
+        let last_log_id = entries.last().unwrap().log_id();
 
         let (tx, mut rx) = C::mpsc_unbounded();
 
