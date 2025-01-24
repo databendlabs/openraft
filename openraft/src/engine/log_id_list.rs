@@ -2,12 +2,12 @@ use std::ops::RangeInclusive;
 
 use crate::alias::CommittedLeaderIdOf;
 use crate::engine::leader_log_ids::LeaderLogIds;
+use crate::log_id::option_raft_log_id_ext::OptionRaftLogIdExt;
 use crate::log_id::raft_log_id_ext::RaftLogIdExt;
 use crate::log_id::ref_log_id::RefLogId;
 use crate::log_id::RaftLogId;
 use crate::storage::RaftLogReaderExt;
 use crate::type_config::alias::LogIdOf;
-use crate::LogIdOptionExt;
 use crate::RaftLogReader;
 use crate::RaftTypeConfig;
 use crate::StorageError;
@@ -83,7 +83,7 @@ where C: RaftTypeConfig
 
             // Two adjacent logs with different leader_id, no need to binary search
             if first.index() + 1 == last.index() {
-                if res.last().leader_id() < Some(first.committed_leader_id()) {
+                if res.last().committed_leader_id() < Some(first.committed_leader_id()) {
                     res.push(first);
                 }
                 res.push(last);
@@ -94,7 +94,7 @@ where C: RaftTypeConfig
 
             if first.committed_leader_id() == mid.committed_leader_id() {
                 // Case AAC
-                if res.last().leader_id() < Some(first.committed_leader_id()) {
+                if res.last().committed_leader_id() < Some(first.committed_leader_id()) {
                     res.push(first);
                 }
                 stack.push((mid, last));
@@ -169,7 +169,7 @@ where C: RaftTypeConfig
             }
 
             if i == len - 1 {
-                if self.ref_last() != Some(log_id.ref_log_id()) {
+                if self.ref_last() != Some(log_id.to_ref()) {
                     self.append(log_id.to_log_id());
                 }
             }
@@ -194,7 +194,7 @@ where C: RaftTypeConfig
         // l >= 1
 
         debug_assert!(
-            new_log_id.ord_by() > self.key_log_ids[l - 1].ord_by(),
+            new_log_id > self.key_log_ids[l - 1],
             "new_log_id: {}, last: {}",
             new_log_id,
             self.key_log_ids[l - 1]
@@ -256,7 +256,7 @@ where C: RaftTypeConfig
 
         // When installing  snapshot it may need to purge across the `last_log_id`.
         if upto.index() >= last.next_index() {
-            debug_assert!(Some(upto).ord_by() > self.last().ord_by());
+            debug_assert!(Some(upto) > self.last());
             self.key_log_ids = vec![upto.clone()];
             return;
         }
@@ -319,7 +319,7 @@ where C: RaftTypeConfig
     }
 
     pub(crate) fn ref_last(&self) -> Option<RefLogId<'_, C>> {
-        self.last().map(|x| x.ref_log_id())
+        self.last().map(|x| x.to_ref())
     }
 
     pub(crate) fn last_leader_id(&self) -> Option<&CommittedLeaderIdOf<C>> {

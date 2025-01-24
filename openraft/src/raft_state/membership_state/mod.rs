@@ -82,7 +82,7 @@ where C: RaftTypeConfig
 
     /// Update membership state if the specified committed_log_id is greater than `self.effective`
     pub(crate) fn commit(&mut self, committed_log_id: &Option<LogIdOf<C>>) {
-        if committed_log_id.ord_by() >= self.effective().log_id().ord_by() {
+        if committed_log_id >= self.effective().log_id() {
             debug_assert!(committed_log_id.index() >= self.effective().log_id().index());
             self.committed = self.effective.clone();
         }
@@ -118,7 +118,7 @@ where C: RaftTypeConfig
             }
         }
 
-        if c.log_id().ord_by() > self.committed.log_id().ord_by() {
+        if c.log_id() > self.committed.log_id() {
             self.committed = c
         }
 
@@ -137,7 +137,7 @@ where C: RaftTypeConfig
     ///   received from the leader.
     pub(crate) fn append(&mut self, m: Arc<EffectiveMembership<C>>) {
         debug_assert!(
-            m.log_id().ord_by() > self.effective.log_id().ord_by(),
+            m.log_id() > self.effective.log_id(),
             "new membership has to have a greater log_id"
         );
         debug_assert!(
@@ -220,7 +220,7 @@ impl<C> Validate for MembershipState<C>
 where C: RaftTypeConfig
 {
     fn validate(&self) -> Result<(), Box<dyn Error>> {
-        validit::less_equal!(self.committed.log_id().ord_by(), self.effective.log_id().ord_by());
+        validit::less_equal!(self.committed.log_id(), self.effective.log_id());
         validit::less_equal!(self.committed.log_id().index(), self.effective.log_id().index());
         Ok(())
     }

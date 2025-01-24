@@ -1,5 +1,18 @@
 syntax = "proto3";
+import "google/protobuf/empty.proto";
 package openraftpb;
+
+// SetRequest represents a key-value pair to be stored
+message SetRequest {
+  string key = 1;   // Key to store
+  string value = 2; // Value to associate with the key
+}
+
+// Node represents a single node in the Raft cluster
+message Node {
+  string rpc_addr = 1; // RPC address for node communication
+  uint64 node_id = 2;  // Unique identifier for the node
+}
 
 // LeaderId represents the leader identifier in Raft
 message LeaderId {
@@ -11,6 +24,25 @@ message LeaderId {
 message Vote {
   LeaderId leader_id = 1;
   bool committed = 2;
+}
+
+message Entry {
+  uint64 term = 1;
+  uint64 index = 2;
+  oneof payload {
+    SetRequest normal = 12;
+    Membership membership = 13;
+  }
+}
+
+
+message NodeIds {
+  map<uint64, google.protobuf.Empty> node_ids = 1;
+}
+
+message Membership {
+  repeated NodeIds configs = 1;
+  map<uint64, Node> nodes = 2;
 }
 
 // LogId represents the log identifier in Raft

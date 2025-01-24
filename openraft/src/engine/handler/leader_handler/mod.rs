@@ -2,8 +2,8 @@ use crate::engine::handler::replication_handler::ReplicationHandler;
 use crate::engine::Command;
 use crate::engine::EngineConfig;
 use crate::engine::EngineOutput;
+use crate::entry::raft_entry_ext::RaftEntryExt;
 use crate::entry::RaftEntry;
-use crate::entry::RaftEntryExt;
 use crate::entry::RaftPayload;
 use crate::proposer::Leader;
 use crate::proposer::LeaderQuorumSet;
@@ -12,7 +12,6 @@ use crate::raft_state::IOId;
 use crate::raft_state::LogStateReader;
 use crate::replication::ReplicationSessionId;
 use crate::type_config::alias::LogIdOf;
-use crate::LogIdOptionExt;
 use crate::RaftState;
 use crate::RaftTypeConfig;
 
@@ -69,7 +68,7 @@ where C: RaftTypeConfig
                     membership_entry.is_none(),
                     "only one membership entry is allowed in a batch"
                 );
-                membership_entry = Some((entry.to_log_id(), m.clone()));
+                membership_entry = Some((entry.log_id(), m.clone()));
             }
         }
 
@@ -114,9 +113,7 @@ where C: RaftTypeConfig
     pub(crate) fn get_read_log_id(&self) -> Option<LogIdOf<C>> {
         let committed = self.state.committed().cloned();
         // noop log id is the first log this leader proposed.
-        std::cmp::max_by(self.leader.noop_log_id.clone(), committed, |x, y| {
-            Ord::cmp(&x.ord_by(), &y.ord_by())
-        })
+        std::cmp::max(self.leader.noop_log_id.clone(), committed)
     }
 
     /// Disable proposing new logs for this Leader, and transfer Leader to another node
