@@ -177,7 +177,7 @@ where C: RaftTypeConfig
             "after updating progress"
         );
 
-        self.try_commit_quorum_accepted(quorum_accepted.map(|x| x.to_inner()));
+        self.try_commit_quorum_accepted(quorum_accepted);
     }
 
     /// Commit the log id that is granted(accepted) by a quorum of voters.

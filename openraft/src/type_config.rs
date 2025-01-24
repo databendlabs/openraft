@@ -90,9 +90,6 @@ pub trait RaftTypeConfig:
     /// It represents a candidate's vote or a leader's vote that has been granted by a quorum.
     type Vote: RaftVote<Self>;
 
-    /// Raft log identifier.
-    type LogId: RaftLogId<Self> + OptionalFeatures;
-
     /// Raft log entry, which can be built from an AppData.
     type Entry: RaftEntry<Self>;
 
@@ -131,6 +128,7 @@ pub mod alias {
     use crate::raft::responder::Responder;
     use crate::type_config::AsyncRuntime;
     use crate::vote::RaftLeaderId;
+    use crate::LogId;
     use crate::RaftTypeConfig;
 
     pub type DOf<C> = <C as RaftTypeConfig>::D;
@@ -142,8 +140,7 @@ pub mod alias {
     pub type TermOf<C> = <C as RaftTypeConfig>::Term;
     pub type LeaderIdOf<C> = <C as RaftTypeConfig>::LeaderId;
     pub type VoteOf<C> = <C as RaftTypeConfig>::Vote;
-    pub type LogIdOf<C> = <C as RaftTypeConfig>::LogId;
-    pub(crate) type OptLogIdOf<C> = Option<<C as RaftTypeConfig>::LogId>;
+    pub(crate) type OptLogIdOf<C> = Option<LogIdOf<C>>;
     pub(crate) type OrdLogIdOf<C> = Option<OrdLogId<C>>;
     pub type EntryOf<C> = <C as RaftTypeConfig>::Entry;
     pub type SnapshotDataOf<C> = <C as RaftTypeConfig>::SnapshotData;
@@ -190,6 +187,7 @@ pub mod alias {
     pub type MutexOf<C, T> = <Rt<C> as AsyncRuntime>::Mutex<T>;
 
     // Usually used types
+    pub type LogIdOf<C> = LogId<C>;
     pub type CommittedLeaderIdOf<C> = <LeaderIdOf<C> as RaftLeaderId<C>>::Committed;
     pub type SerdeInstantOf<C> = crate::metrics::SerdeInstant<InstantOf<C>>;
 }

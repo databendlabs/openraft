@@ -14,6 +14,7 @@ pub use traits::RaftEntry;
 pub use traits::RaftEntryExt;
 pub use traits::RaftPayload;
 
+use crate::alias::CommittedLeaderIdOf;
 use crate::log_id::raft_log_id_ext::RaftLogIdExt;
 use crate::log_id::ref_log_id::RefLogId;
 use crate::type_config::alias::AppDataOf;
@@ -124,8 +125,8 @@ where C: RaftTypeConfig
         }
     }
 
-    fn ref_log_id(&self) -> RefLogId<'_, C> {
-        self.log_id.ref_log_id()
+    fn log_id_parts(&self) -> (&CommittedLeaderIdOf<C>, u64) {
+        (&self.log_id.leader_id, self.log_id.index)
     }
 
     fn set_log_id(&mut self, new: LogIdOf<C>) {

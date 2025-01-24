@@ -833,7 +833,7 @@ where
             session_id,
             self.config.clone(),
             self.engine.state.committed().cloned(),
-            progress_entry.matching.map(|x| x.into_inner()),
+            progress_entry.matching.clone(),
             network,
             snapshot_network,
             self.log_store.get_log_reader().await,

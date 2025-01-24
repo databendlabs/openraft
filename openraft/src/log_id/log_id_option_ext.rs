@@ -26,10 +26,6 @@ where C: RaftTypeConfig
     fn ref_log_id(&self) -> Option<RefLogId<'_, C>> {
         self.ord_by()
     }
-
-    fn cmp(&self, other: &Self) -> Ordering {
-        Ord::cmp(&self.ord_by(), &other.ord_by())
-    }
 }
 
 impl<C, T> LogIdOptionExt<C> for Option<T>

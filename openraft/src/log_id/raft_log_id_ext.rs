@@ -29,16 +29,6 @@ where
     fn ord_by(&self) -> RefLogId<'_, C> {
         self.ref_log_id()
     }
-
-    /// Returns a wrapped value that implements [`PartialOrd`] and [`PartialEq`] based on the
-    /// ordering key.
-    fn into_ordered(self) -> OrdLogId<C>
-    where
-        Self: Sized,
-        C: RaftTypeConfig<LogId = Self>,
-    {
-        OrdLogId { inner: self }
-    }
 }
 
 impl<C, T> RaftLogIdExt<C> for T

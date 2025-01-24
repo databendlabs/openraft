@@ -3,6 +3,7 @@ use std::fmt;
 use crate::display_ext::DisplayInstantExt;
 use crate::engine::leader_log_ids::LeaderLogIds;
 use crate::entry::RaftEntry;
+use crate::entry::RaftEntryExt;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::Progress;
 use crate::progress::VecProgress;
@@ -62,7 +63,7 @@ where C: RaftTypeConfig
     pub(crate) noop_log_id: Option<LogIdOf<C>>,
 
     /// Tracks the replication progress and committed index
-    pub(crate) progress: VecProgress<C::NodeId, ProgressEntry<C>, OrdLogIdOf<C>, QS>,
+    pub(crate) progress: VecProgress<C::NodeId, ProgressEntry<C>, Option<LogIdOf<C>>, QS>,
 
     /// Tracks the clock time acknowledged by other nodes.
     ///
@@ -235,6 +236,7 @@ mod tests {
     use crate::engine::testing::log_id;
     use crate::engine::testing::UTConfig;
     use crate::entry::RaftEntry;
+    use crate::entry::RaftEntryExt;
     use crate::log_id::raft_log_id_ext::RaftLogIdExt;
     use crate::progress::Progress;
     use crate::proposer::Leader;
@@ -304,8 +306,8 @@ mod tests {
         leader.assign_log_ids(&mut entries);
 
         assert_eq!(
-            entries[0].ref_log_id(),
-            log_id(2, 2, 4).ref_log_id(),
+            entries[0].to_log_id(),
+            log_id(2, 2, 4),
             "entry log id assigned following last-log-id"
         );
         assert_eq!(Some(log_id(2, 2, 4)), leader.last_log_id);

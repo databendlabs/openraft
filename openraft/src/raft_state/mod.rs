@@ -38,6 +38,7 @@ pub(crate) use vote_state_reader::VoteStateReader;
 use crate::base::ord_by::OrdBy;
 use crate::display_ext::DisplayOptionExt;
 use crate::entry::RaftEntry;
+use crate::entry::RaftEntryExt;
 use crate::log_id::ref_log_id::RefLogId;
 use crate::proposer::Leader;
 use crate::proposer::LeaderQuorumSet;

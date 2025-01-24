@@ -8,10 +8,8 @@ use std::fmt::Formatter;
 
 use validit::Validate;
 
-use crate::alias::OrdLogIdOf;
 use crate::display_ext::DisplayOptionExt;
 use crate::engine::EngineConfig;
-use crate::log_id::option_log_id_to_ordered::OptionLogIdToOrdered;
 use crate::log_id::raft_log_id_ext::RaftLogIdExt;
 use crate::log_id::ref_log_id::RefLogId;
 use crate::progress::entry::update::Updater;
@@ -28,7 +26,7 @@ pub(crate) struct ProgressEntry<C>
 where C: RaftTypeConfig
 {
     /// The id of the last matching log on the target following node.
-    pub(crate) matching: OrdLogIdOf<C>,
+    pub(crate) matching: Option<LogIdOf<C>>,
 
     /// The data being transmitted in flight.
     ///
@@ -54,7 +52,7 @@ where C: RaftTypeConfig
     #[allow(dead_code)]
     pub(crate) fn new(matching: Option<LogIdOf<C>>) -> Self {
         Self {
-            matching: matching.to_ordered(),
+            matching: matching.clone(),
             inflight: Inflight::None,
             searching_end: matching.next_index(),
             allow_log_reversion: false,
@@ -87,7 +85,7 @@ where C: RaftTypeConfig
     }
 
     pub(crate) fn matching(&self) -> Option<&LogIdOf<C>> {
-        self.matching.as_ref().map(|x| x.inner())
+        self.matching.as_ref()
     }
 
     /// Return the [`RefLogId`] of the matching log id.
@@ -188,21 +186,21 @@ where C: RaftTypeConfig
     }
 }
 
-// impl<C> Borrow<Option<LogIdOf<C>>> for ProgressEntry<C>
-// where C: RaftTypeConfig
-// {
-//     fn borrow(&self) -> &Option<LogIdOf<C>> {
-//         &self.matching
-//     }
-// }
-//
-impl<C> Borrow<OrdLogIdOf<C>> for ProgressEntry<C>
+impl<C> Borrow<Option<LogIdOf<C>>> for ProgressEntry<C>
 where C: RaftTypeConfig
 {
-    fn borrow(&self) -> &OrdLogIdOf<C> {
+    fn borrow(&self) -> &Option<LogIdOf<C>> {
         &self.matching
     }
 }
+
+// impl<C> Borrow<OrdLogIdOf<C>> for ProgressEntry<C>
+// where C: RaftTypeConfig
+// {
+//     fn borrow(&self) -> &OrdLogIdOf<C> {
+//         &self.matching
+//     }
+// }
 
 impl<C> Display for ProgressEntry<C>
 where C: RaftTypeConfig
