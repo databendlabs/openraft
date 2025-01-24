@@ -9,7 +9,6 @@ use crate::display_ext::DisplayOptionExt;
 use crate::engine::LogIdList;
 use crate::entry::RaftEntryExt;
 use crate::entry::RaftPayload;
-use crate::log_id::RaftLogId;
 use crate::raft_state::IOState;
 use crate::storage::log_reader_ext::RaftLogReaderExt;
 use crate::storage::RaftLogStorage;

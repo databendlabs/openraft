@@ -15,7 +15,6 @@ use crate::engine::Respond;
 use crate::engine::ValueSender;
 use crate::entry::RaftEntry;
 use crate::error::RejectVoteRequest;
-use crate::log_id::raft_log_id_ext::RaftLogIdExt;
 use crate::log_id::LogIdOptionExt;
 use crate::proposer::CandidateState;
 use crate::proposer::LeaderState;

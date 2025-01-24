@@ -30,7 +30,6 @@ use crate::error::InitializeError;
 use crate::error::NotAllowed;
 use crate::error::NotInMembers;
 use crate::error::RejectAppendEntries;
-use crate::log_id::raft_log_id_ext::RaftLogIdExt;
 use crate::proposer::leader_state::CandidateState;
 use crate::proposer::Candidate;
 use crate::proposer::Leader;
@@ -58,7 +57,6 @@ use crate::vote::RaftTerm;
 use crate::vote::RaftVote;
 use crate::LogIdOptionExt;
 use crate::Membership;
-use crate::RaftLogId;
 use crate::RaftTypeConfig;
 
 /// Raft protocol algorithm.

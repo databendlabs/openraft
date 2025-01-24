@@ -13,7 +13,6 @@ pub use async_runtime::MpscUnbounded;
 pub use async_runtime::OneshotSender;
 pub use util::TypeConfigExt;
 
-use crate::base::OptionalFeatures;
 use crate::entry::RaftEntry;
 use crate::raft::responder::Responder;
 use crate::vote::raft_vote::RaftVote;
@@ -25,7 +24,6 @@ use crate::Node;
 use crate::NodeId;
 use crate::OptionalSend;
 use crate::OptionalSync;
-use crate::RaftLogId;
 
 /// Configuration of types used by the [`Raft`] core engine.
 ///
@@ -124,7 +122,6 @@ pub mod alias {
     use crate::async_runtime::Mpsc;
     use crate::async_runtime::MpscUnbounded;
     use crate::async_runtime::Oneshot;
-    use crate::log_id::ord_log_id::OrdLogId;
     use crate::raft::responder::Responder;
     use crate::type_config::AsyncRuntime;
     use crate::vote::RaftLeaderId;
@@ -141,7 +138,6 @@ pub mod alias {
     pub type LeaderIdOf<C> = <C as RaftTypeConfig>::LeaderId;
     pub type VoteOf<C> = <C as RaftTypeConfig>::Vote;
     pub(crate) type OptLogIdOf<C> = Option<LogIdOf<C>>;
-    pub(crate) type OrdLogIdOf<C> = Option<OrdLogId<C>>;
     pub type EntryOf<C> = <C as RaftTypeConfig>::Entry;
     pub type SnapshotDataOf<C> = <C as RaftTypeConfig>::SnapshotData;
     pub type AsyncRuntimeOf<C> = <C as RaftTypeConfig>::AsyncRuntime;

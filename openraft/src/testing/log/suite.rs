@@ -30,7 +30,6 @@ use crate::vote::raft_vote::RaftVoteExt;
 use crate::vote::RaftLeaderIdExt;
 use crate::Membership;
 use crate::OptionalSend;
-use crate::RaftLogId;
 use crate::RaftLogReader;
 use crate::RaftSnapshotBuilder;
 use crate::RaftTypeConfig;

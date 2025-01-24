@@ -15,8 +15,6 @@ pub use traits::RaftEntryExt;
 pub use traits::RaftPayload;
 
 use crate::alias::CommittedLeaderIdOf;
-use crate::log_id::raft_log_id_ext::RaftLogIdExt;
-use crate::log_id::ref_log_id::RefLogId;
 use crate::type_config::alias::AppDataOf;
 use crate::type_config::alias::LogIdOf;
 

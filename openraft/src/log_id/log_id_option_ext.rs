@@ -1,5 +1,3 @@
-use std::cmp::Ordering;
-
 use crate::alias::CommittedLeaderIdOf;
 use crate::log_id::raft_log_id_ext::RaftLogIdExt;
 use crate::log_id::ref_log_id::RefLogId;

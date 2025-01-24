@@ -24,7 +24,6 @@ use crate::vote::raft_vote::RaftVoteExt;
 use crate::EffectiveMembership;
 use crate::LogIdOptionExt;
 use crate::Membership;
-use crate::RaftLogId;
 use crate::RaftState;
 use crate::RaftTypeConfig;
 use crate::ServerState;

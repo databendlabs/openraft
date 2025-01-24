@@ -1,4 +1,3 @@
-use crate::log_id::ord_log_id::OrdLogId;
 use crate::log_id::ref_log_id::RefLogId;
 use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::type_config::alias::LogIdOf;

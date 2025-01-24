@@ -53,7 +53,6 @@ use crate::error::InitializeError;
 use crate::error::QuorumNotEnough;
 use crate::error::RPCError;
 use crate::error::Timeout;
-use crate::log_id::raft_log_id_ext::RaftLogIdExt;
 use crate::log_id::LogIdOptionExt;
 use crate::metrics::HeartbeatMetrics;
 use crate::metrics::RaftDataMetrics;
@@ -103,7 +102,6 @@ use crate::ChangeMembers;
 use crate::Instant;
 use crate::Membership;
 use crate::OptionalSend;
-use crate::RaftLogId;
 use crate::RaftTypeConfig;
 use crate::StorageError;
 

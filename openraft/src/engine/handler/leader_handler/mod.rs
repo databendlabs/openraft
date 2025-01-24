@@ -2,7 +2,6 @@ use crate::engine::handler::replication_handler::ReplicationHandler;
 use crate::engine::Command;
 use crate::engine::EngineConfig;
 use crate::engine::EngineOutput;
-use crate::entry::RaftEntry;
 use crate::entry::RaftEntryExt;
 use crate::entry::RaftPayload;
 use crate::proposer::Leader;
