@@ -124,11 +124,11 @@ where C: RaftTypeConfig
         }
     }
 
-    fn ref_log_id(&self) -> RefLogId<C> {
-        todo!()
+    fn ref_log_id(&self) -> RefLogId<'_, C> {
+        self.log_id.ref_log_id()
     }
 
     fn set_log_id(&mut self, new: LogIdOf<C>) {
-        todo!()
+        self.log_id = new;
     }
 }

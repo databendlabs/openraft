@@ -7,9 +7,7 @@ pub(crate) trait OptionLogIdToOrdered<C>
 where C: RaftTypeConfig
 {
     fn to_ordered(&self) -> Option<OrdLogId<C>>
-    where Self: Sized {
-        self.clone().into_ordered()
-    }
+    where Self: Sized;
 
     fn into_ordered(self) -> Option<OrdLogId<C>>
     where Self: Sized;
@@ -20,6 +18,11 @@ where
     C: RaftTypeConfig<LogId = T>,
     T: RaftLogId<C>,
 {
+    fn to_ordered(&self) -> Option<OrdLogId<C>>
+    where Self: Sized {
+        self.clone().into_ordered()
+    }
+
     fn into_ordered(self) -> Option<OrdLogId<C>>
     where Self: Sized {
         self.map(|x| x.into_ordered())

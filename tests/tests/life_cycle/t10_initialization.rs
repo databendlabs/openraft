@@ -8,7 +8,6 @@ use openraft::error::InitializeError;
 use openraft::error::NotAllowed;
 use openraft::error::NotInMembers;
 use openraft::storage::RaftStateMachine;
-use openraft::testing::log_id;
 use openraft::Config;
 use openraft::EffectiveMembership;
 use openraft::EntryPayload;
@@ -18,6 +17,7 @@ use openraft::ServerState;
 use openraft::StoredMembership;
 use openraft::Vote;
 
+use crate::fixtures::log_id;
 use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 

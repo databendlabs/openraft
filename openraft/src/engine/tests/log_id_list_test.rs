@@ -3,7 +3,6 @@ use crate::engine::testing::log_id;
 use crate::engine::testing::UTConfig;
 use crate::engine::LogIdList;
 use crate::log_id::option_ref_log_id_ext::OptionRefLogIdExt;
-use crate::log_id::raft_log_id_ext::RaftLogIdExt;
 
 #[test]
 fn test_log_id_list_extend_from_same_leader() -> anyhow::Result<()> {

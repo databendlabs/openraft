@@ -3,13 +3,13 @@ use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
-use openraft::testing::log_id;
 use openraft::Config;
 use openraft::Membership;
 use openraft::RaftLogReader;
 use openraft::SnapshotPolicy;
 use openraft::StorageHelper;
 
+use crate::fixtures::log_id;
 use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 

@@ -46,11 +46,8 @@ where C: RaftTypeConfig
 impl<C> RaftLogId<C> for RefLogId<'_, C>
 where C: RaftTypeConfig
 {
-    fn new(leader_id: CommittedLeaderIdOf<C>, index: u64) -> Self {
-        RefLogId {
-            leader_id: &leader_id,
-            index,
-        }
+    fn new(_leader_id: CommittedLeaderIdOf<C>, _index: u64) -> Self {
+        unreachable!("RefLogId does not own the leader id, so it cannot be created from it.")
     }
 
     fn committed_leader_id(&self) -> &CommittedLeaderIdOf<C> {

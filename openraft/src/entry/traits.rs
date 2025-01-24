@@ -39,8 +39,10 @@ where
     /// The returned instance must return `Some()` for `Self::get_membership()`.
     fn new_membership(log_id: LogIdOf<C>, m: Membership<C>) -> Self;
 
-    /// Creates a lightweight [`RefLogId`] that references the log id information.
+    /// Returns a lightweight [`RefLogId`] that contains the log id information.
     fn ref_log_id(&self) -> RefLogId<'_, C>;
+
+    // fn ref_log_id2(&self) -> (&CommittedLeaderIdOf<C>, u64);
 
     fn set_log_id(&mut self, new: LogIdOf<C>);
 }

@@ -7,13 +7,13 @@ use openraft::error::ClientWriteError;
 use openraft::error::ForwardToLeader;
 use openraft::error::RaftError;
 use openraft::raft::AppendEntriesRequest;
-use openraft::testing::log_id;
 use openraft::Config;
 use openraft::Vote;
 use openraft_memstore::ClientRequest;
 use openraft_memstore::IntoMemClientRequest;
 use tokio::sync::oneshot;
 
+use crate::fixtures::log_id;
 use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 

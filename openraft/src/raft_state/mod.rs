@@ -6,6 +6,7 @@ use validit::Validate;
 
 use crate::engine::LogIdList;
 use crate::error::ForwardToLeader;
+use crate::log_id::to_option_ref_log_id::ToOptionRefLogId;
 use crate::storage::SnapshotMeta;
 use crate::utime::Leased;
 use crate::LogIdOptionExt;
@@ -169,17 +170,17 @@ where C: RaftTypeConfig
             validit::equal!(self.purged_next, self.log_ids.first().next_index());
         }
 
-        validit::less_equal!(self.last_purged_log_id().ord_by(), self.purge_upto().ord_by());
+        validit::less_equal!(self.last_purged_log_id().to_ref(), self.purge_upto().to_ref());
         if self.snapshot_last_log_id().is_none() {
             // There is no snapshot, it is possible the application does not store snapshot, and
             // just restarted. it is just ok.
             // In such a case, we assert the monotonic relation without  snapshot-last-log-id
-            validit::less_equal!(self.purge_upto().ord_by(), self.committed().ord_by());
+            validit::less_equal!(self.purge_upto().to_ref(), self.committed().to_ref());
         } else {
-            validit::less_equal!(self.purge_upto().ord_by(), self.snapshot_last_log_id().ord_by());
+            validit::less_equal!(self.purge_upto().to_ref(), self.snapshot_last_log_id().to_ref());
         }
-        validit::less_equal!(self.snapshot_last_log_id().ord_by(), self.committed().ord_by());
-        validit::less_equal!(self.committed().ord_by(), self.last_log_id().ord_by());
+        validit::less_equal!(self.snapshot_last_log_id().to_ref(), self.committed().to_ref());
+        validit::less_equal!(self.committed().to_ref(), self.last_log_id().to_ref());
 
         self.membership_state.validate()?;
         self.io_state.validate()?;

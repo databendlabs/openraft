@@ -3,13 +3,13 @@ use std::sync::Arc;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::storage::RaftLogStorageExt;
-use openraft::testing::log_id;
 use openraft::Config;
 use openraft::Entry;
 use openraft::EntryPayload;
 use openraft::Membership;
 use openraft::Raft;
 
+use crate::fixtures::log_id;
 use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 

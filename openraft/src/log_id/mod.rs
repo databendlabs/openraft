@@ -9,6 +9,7 @@ pub(crate) mod ord_log_id;
 pub(crate) mod raft_log_id;
 pub(crate) mod raft_log_id_ext;
 pub(crate) mod ref_log_id;
+pub(crate) mod to_option_ref_log_id;
 
 use std::fmt::Display;
 use std::fmt::Formatter;
