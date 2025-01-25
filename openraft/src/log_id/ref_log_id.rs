@@ -1,9 +1,9 @@
 use std::fmt::Display;
 use std::fmt::Formatter;
 
+use crate::log_id::raft_log_id::RaftLogId;
 use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::type_config::alias::LogIdOf;
-use crate::RaftLogId;
 use crate::RaftTypeConfig;
 
 /// A reference to a log id, combining a reference to a committed leader ID and an index.
