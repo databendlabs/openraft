@@ -319,7 +319,7 @@ mod tests {
         let mut entries: Vec<Entry<UTConfig>> = vec![blank_ent(1, 1, 1)];
         leading.assign_log_ids(&mut entries);
 
-        assert_eq!(entries[0].ref_log_id(), log_id(0, 0, 0).ref_log_id(),);
+        assert_eq!(entries[0].ref_log_id(), log_id(0, 0, 0).to_ref(),);
         assert_eq!(Some(log_id(0, 0, 0)), leading.last_log_id);
     }
 
@@ -343,9 +343,9 @@ mod tests {
         let mut entries: Vec<Entry<UTConfig>> = vec![blank_ent(1, 1, 1), blank_ent(1, 1, 1), blank_ent(1, 1, 1)];
 
         leading.assign_log_ids(&mut entries);
-        assert_eq!(entries[0].ref_log_id(), log_id(2, 2, 9).ref_log_id());
-        assert_eq!(entries[1].ref_log_id(), log_id(2, 2, 10).ref_log_id());
-        assert_eq!(entries[2].ref_log_id(), log_id(2, 2, 11).ref_log_id());
+        assert_eq!(entries[0].ref_log_id(), log_id(2, 2, 9).to_ref());
+        assert_eq!(entries[1].ref_log_id(), log_id(2, 2, 10).to_ref());
+        assert_eq!(entries[2].ref_log_id(), log_id(2, 2, 11).to_ref());
         assert_eq!(Some(log_id(2, 2, 11)), leading.last_log_id);
     }
 

@@ -1,6 +1,3 @@
-use crate::alias::CommittedLeaderIdOf;
-use crate::log_id::raft_log_id_ext::RaftLogIdExt;
-use crate::log_id::ref_log_id::RefLogId;
 use crate::RaftLogId;
 use crate::RaftTypeConfig;
 
@@ -15,10 +12,6 @@ where C: RaftTypeConfig
     ///
     /// If self is `None`, it returns 0.
     fn next_index(&self) -> u64;
-
-    fn leader_id(&self) -> Option<&CommittedLeaderIdOf<C>>;
-
-    fn ref_log_id(&self) -> Option<RefLogId<'_, C>>;
 }
 
 impl<C, T> LogIdOptionExt<C> for Option<T>
@@ -35,13 +28,5 @@ where
             None => 0,
             Some(log_id) => log_id.index() + 1,
         }
-    }
-
-    fn leader_id(&self) -> Option<&CommittedLeaderIdOf<C>> {
-        self.as_ref().map(|x| x.committed_leader_id())
-    }
-
-    fn ref_log_id(&self) -> Option<RefLogId<'_, C>> {
-        self.as_ref().map(|x| x.ref_log_id())
     }
 }
