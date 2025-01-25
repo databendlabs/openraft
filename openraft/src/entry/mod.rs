@@ -14,8 +14,8 @@ pub use payload::EntryPayload;
 pub use traits::RaftEntry;
 pub use traits::RaftPayload;
 
-use crate::alias::CommittedLeaderIdOf;
 use crate::type_config::alias::AppDataOf;
+use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::type_config::alias::LogIdOf;
 
 /// A Raft log entry.

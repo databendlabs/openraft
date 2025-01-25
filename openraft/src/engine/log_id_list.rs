@@ -1,12 +1,12 @@
 use std::ops::RangeInclusive;
 
-use crate::alias::CommittedLeaderIdOf;
 use crate::engine::leader_log_ids::LeaderLogIds;
 use crate::log_id::option_raft_log_id_ext::OptionRaftLogIdExt;
 use crate::log_id::raft_log_id::RaftLogId;
 use crate::log_id::raft_log_id_ext::RaftLogIdExt;
 use crate::log_id::ref_log_id::RefLogId;
 use crate::storage::RaftLogReaderExt;
+use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::type_config::alias::LogIdOf;
 use crate::RaftLogReader;
 use crate::RaftTypeConfig;
@@ -168,6 +168,7 @@ where C: RaftTypeConfig
                 self.append(log_id.to_log_id());
             }
 
+            #[allow(clippy::collapsible_if)]
             if i == len - 1 {
                 if self.ref_last() != Some(log_id.to_ref()) {
                     self.append(log_id.to_log_id());

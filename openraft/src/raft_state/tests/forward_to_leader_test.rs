@@ -4,11 +4,11 @@ use std::time::Duration;
 use maplit::btreemap;
 use maplit::btreeset;
 
-use crate::alias::LeaderIdOf;
-use crate::alias::LogIdOf;
-use crate::alias::NodeIdOf;
 use crate::engine::testing::UTConfig;
 use crate::error::ForwardToLeader;
+use crate::type_config::alias::LeaderIdOf;
+use crate::type_config::alias::LogIdOf;
+use crate::type_config::alias::NodeIdOf;
 use crate::type_config::TypeConfigExt;
 use crate::utime::Leased;
 use crate::vote::RaftLeaderIdExt;

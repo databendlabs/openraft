@@ -4,13 +4,13 @@ use crate::log_id::ref_log_id::RefLogId;
 use crate::RaftTypeConfig;
 
 /// Convert `Option<&impl RaftLogId>` to `Option<RefLogId>`.
-pub(crate) trait ToOptionRefLogId<'l, C>
+pub(crate) trait OptionBorrowedRaftLogIdExt<'l, C>
 where C: RaftTypeConfig
 {
     fn to_ref(self) -> Option<RefLogId<'l, C>>;
 }
 
-impl<'l, C, T> ToOptionRefLogId<'l, C> for Option<&'l T>
+impl<'l, C, T> OptionBorrowedRaftLogIdExt<'l, C> for Option<&'l T>
 where
     C: RaftTypeConfig,
     T: RaftLogId<C>,

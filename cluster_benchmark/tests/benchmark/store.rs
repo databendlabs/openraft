@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use openraft::alias::LogIdOf;
 use openraft::alias::SnapshotDataOf;
-use openraft::entry::RaftEntryExt;
+use openraft::entry::RaftEntry;
 use openraft::storage::IOFlushed;
 use openraft::storage::LogState;
 use openraft::storage::RaftLogReader;
@@ -237,7 +237,7 @@ impl RaftLogStorage<TypeConfig> for Arc<LogStore> {
     where I: IntoIterator<Item = Entry<TypeConfig>> + Send {
         {
             let mut log = self.log.write().await;
-            log.extend(entries.into_iter().map(|entry| (entry.index(), entry)));
+            log.extend(entries.into_iter().map(|entry| (entry.log_id_parts().1, entry)));
         }
         callback.io_completed(Ok(()));
         Ok(())
