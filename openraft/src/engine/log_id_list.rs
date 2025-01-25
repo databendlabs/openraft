@@ -168,6 +168,7 @@ where C: RaftTypeConfig
                 self.append(log_id.to_log_id());
             }
 
+            #[allow(clippy::collapsible_if)]
             if i == len - 1 {
                 if self.ref_last() != Some(log_id.to_ref()) {
                     self.append(log_id.to_log_id());

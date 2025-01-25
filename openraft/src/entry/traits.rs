@@ -2,7 +2,6 @@ use std::fmt::Debug;
 use std::fmt::Display;
 
 use crate::base::OptionalFeatures;
-use crate::entry::raft_entry_ext::RaftEntryExt;
 use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::type_config::alias::LogIdOf;
 use crate::Membership;
@@ -56,6 +55,7 @@ where
 
     /// Returns the `LogId` of this entry.
     fn log_id(&self) -> LogIdOf<C> {
-        self.ref_log_id().to_log_id()
+        let (leader_id, index) = self.log_id_parts();
+        LogIdOf::<C>::new(leader_id.clone(), index)
     }
 }
