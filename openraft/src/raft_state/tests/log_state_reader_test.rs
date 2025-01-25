@@ -43,7 +43,7 @@ fn test_raft_state_prev_log_id() -> anyhow::Result<()> {
 fn test_raft_state_has_log_id_empty() -> anyhow::Result<()> {
     let rs = RaftState::<UTConfig>::default();
 
-    assert!(!rs.has_log_id(&log_id(0, 0)));
+    assert!(!rs.has_log_id(log_id(0, 0)));
 
     Ok(())
 }
@@ -55,9 +55,9 @@ fn test_raft_state_has_log_id_committed_gets_true() -> anyhow::Result<()> {
         ..Default::default()
     };
 
-    assert!(rs.has_log_id(&log_id(0, 0)));
-    assert!(rs.has_log_id(&log_id(2, 1)));
-    assert!(!rs.has_log_id(&log_id(2, 2)));
+    assert!(rs.has_log_id(log_id(0, 0)));
+    assert!(rs.has_log_id(log_id(2, 1)));
+    assert!(!rs.has_log_id(log_id(2, 2)));
 
     Ok(())
 }
@@ -70,14 +70,14 @@ fn test_raft_state_has_log_id_in_log_id_list() -> anyhow::Result<()> {
         ..Default::default()
     };
 
-    assert!(rs.has_log_id(&log_id(0, 0)));
-    assert!(rs.has_log_id(&log_id(2, 1)));
-    assert!(rs.has_log_id(&log_id(1, 3)));
-    assert!(rs.has_log_id(&log_id(3, 4)));
+    assert!(rs.has_log_id(log_id(0, 0)));
+    assert!(rs.has_log_id(log_id(2, 1)));
+    assert!(rs.has_log_id(log_id(1, 3)));
+    assert!(rs.has_log_id(log_id(3, 4)));
 
-    assert!(!rs.has_log_id(&log_id(2, 3)));
-    assert!(!rs.has_log_id(&log_id(2, 4)));
-    assert!(!rs.has_log_id(&log_id(3, 5)));
+    assert!(!rs.has_log_id(log_id(2, 3)));
+    assert!(!rs.has_log_id(log_id(2, 4)));
+    assert!(!rs.has_log_id(log_id(3, 5)));
 
     Ok(())
 }
