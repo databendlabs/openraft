@@ -7,7 +7,6 @@ use maplit::btreeset;
 use openraft::error::ChangeMembershipError;
 use openraft::error::ClientWriteError;
 use openraft::error::InProgress;
-use openraft::testing::log_id;
 use openraft::ChangeMembers;
 use openraft::Config;
 use openraft::Membership;
@@ -15,6 +14,7 @@ use openraft::RaftLogReader;
 use openraft::StorageHelper;
 use tokio::time::sleep;
 
+use crate::fixtures::log_id;
 use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 

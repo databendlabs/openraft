@@ -7,13 +7,13 @@ use openraft::network::RPCOption;
 use openraft::network::RaftNetworkFactory;
 use openraft::raft::AppendEntriesRequest;
 use openraft::testing::blank_ent;
-use openraft::testing::log_id;
 use openraft::Config;
 use openraft::Entry;
 use openraft::EntryPayload;
 use openraft::Vote;
 use openraft_memstore::ClientRequest;
 
+use crate::fixtures::log_id;
 use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 
