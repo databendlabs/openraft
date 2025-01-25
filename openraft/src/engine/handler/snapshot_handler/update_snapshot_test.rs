@@ -1,10 +1,10 @@
 use maplit::btreeset;
 use pretty_assertions::assert_eq;
 
+use crate::engine::testing::log_id;
 use crate::engine::testing::UTConfig;
 use crate::engine::Engine;
 use crate::storage::SnapshotMeta;
-use crate::testing::log_id;
 use crate::Membership;
 use crate::StoredMembership;
 

@@ -5,6 +5,7 @@ use maplit::btreeset;
 use pretty_assertions::assert_eq;
 
 use crate::core::ServerState;
+use crate::engine::testing::log_id;
 use crate::engine::testing::UTConfig;
 use crate::engine::Command;
 use crate::engine::Condition;
@@ -13,7 +14,6 @@ use crate::engine::Respond;
 use crate::error::Infallible;
 use crate::raft::VoteResponse;
 use crate::raft_state::IOId;
-use crate::testing::log_id;
 use crate::type_config::TypeConfigExt;
 use crate::utime::Leased;
 use crate::EffectiveMembership;

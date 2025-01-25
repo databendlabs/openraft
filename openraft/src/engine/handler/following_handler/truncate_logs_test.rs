@@ -3,12 +3,12 @@ use std::time::Duration;
 
 use maplit::btreeset;
 
+use crate::engine::testing::log_id;
 use crate::engine::testing::UTConfig;
 use crate::engine::Command;
 use crate::engine::Engine;
 use crate::engine::LogIdList;
 use crate::raft_state::LogStateReader;
-use crate::testing::log_id;
 use crate::type_config::TypeConfigExt;
 use crate::utime::Leased;
 use crate::EffectiveMembership;

@@ -4,13 +4,13 @@ use std::time::Duration;
 use maplit::btreeset;
 
 use crate::core::ServerState;
+use crate::engine::testing::log_id;
 use crate::engine::testing::UTConfig;
 use crate::engine::Command;
 use crate::engine::Engine;
 use crate::entry::RaftEntry;
 use crate::raft_state::LogStateReader;
 use crate::testing::blank_ent;
-use crate::testing::log_id;
 use crate::type_config::TypeConfigExt;
 use crate::utime::Leased;
 use crate::vote::raft_vote::RaftVoteExt;
