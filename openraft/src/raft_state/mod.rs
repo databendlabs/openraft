@@ -6,11 +6,11 @@ use validit::Validate;
 
 use crate::engine::LogIdList;
 use crate::error::ForwardToLeader;
+use crate::log_id::raft_log_id::RaftLogId;
 use crate::log_id::to_option_ref_log_id::ToOptionRefLogId;
 use crate::storage::SnapshotMeta;
 use crate::utime::Leased;
 use crate::LogIdOptionExt;
-use crate::RaftLogId;
 use crate::RaftTypeConfig;
 use crate::ServerState;
 

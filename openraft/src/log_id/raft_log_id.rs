@@ -6,12 +6,14 @@ use crate::RaftTypeConfig;
 /// Log id is the globally unique identifier of a log entry.
 ///
 /// Equal log id means the same log entry.
-pub trait RaftLogId<C>
+pub(crate) trait RaftLogId<C>
 where
     C: RaftTypeConfig,
     Self: Eq + Clone + fmt::Debug + fmt::Display,
 {
     /// Creates a log id proposed by a committed leader `leader_id` at the given index.
+    // This is only used internally
+    #[allow(dead_code)]
     fn new(leader_id: CommittedLeaderIdOf<C>, index: u64) -> Self;
 
     /// Returns a reference to the leader id that proposed this log id.  
