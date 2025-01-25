@@ -1,12 +1,10 @@
 use std::fmt::Debug;
 use std::fmt::Display;
 
+use crate::base::OptionalFeatures;
 use crate::log_id::RaftLogId;
 use crate::type_config::alias::LogIdOf;
 use crate::Membership;
-use crate::OptionalSend;
-use crate::OptionalSerde;
-use crate::OptionalSync;
 use crate::RaftTypeConfig;
 
 /// Defines operations on an entry payload.
@@ -21,10 +19,11 @@ where C: RaftTypeConfig
 }
 
 /// Defines operations on an entry.
-pub trait RaftEntry<C>: RaftPayload<C> + RaftLogId<C>
+pub trait RaftEntry<C>
 where
     C: RaftTypeConfig,
-    Self: OptionalSerde + Debug + Display + OptionalSend + OptionalSync,
+    Self: OptionalFeatures + Debug + Display,
+    Self: RaftPayload<C> + RaftLogId<C>,
 {
     /// Create a new blank log entry.
     ///
