@@ -1,9 +1,9 @@
 use std::io::Cursor;
 
-use crate::alias::LeaderIdOf;
-use crate::alias::LogIdOf;
-use crate::alias::NodeIdOf;
 use crate::impls::TokioRuntime;
+use crate::type_config::alias::LeaderIdOf;
+use crate::type_config::alias::LogIdOf;
+use crate::type_config::alias::NodeIdOf;
 use crate::vote::RaftLeaderIdExt;
 use crate::Node;
 use crate::RaftTypeConfig;
