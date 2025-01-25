@@ -10,7 +10,6 @@ use maplit::btreeset;
 use crate::async_runtime::MpscUnboundedReceiver;
 use crate::async_runtime::MpscUnboundedSender;
 use crate::core::notification::Notification;
-use crate::entry::raft_entry_ext::RaftEntryExt;
 use crate::entry::RaftEntry;
 use crate::membership::EffectiveMembership;
 use crate::raft_state::io_state::io_id::IOId;

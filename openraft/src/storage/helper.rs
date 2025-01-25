@@ -7,7 +7,6 @@ use validit::Valid;
 
 use crate::display_ext::DisplayOptionExt;
 use crate::engine::LogIdList;
-use crate::entry::raft_entry_ext::RaftEntryExt;
 use crate::entry::RaftEntry;
 use crate::entry::RaftPayload;
 use crate::raft_state::IOState;
