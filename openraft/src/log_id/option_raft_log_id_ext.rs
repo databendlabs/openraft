@@ -17,8 +17,11 @@ where C: RaftTypeConfig
     fn next_index(&self) -> u64;
 
     /// Returns the leader id that proposed this log id.
+    ///
+    /// In standard raft, committed leader id is just `term`.
     fn committed_leader_id(&self) -> Option<&CommittedLeaderIdOf<C>>;
 
+    /// Converts `&Option<T>` to `Option<RefLogId>`.
     fn to_ref(&self) -> Option<RefLogId<'_, C>>;
 }
 
