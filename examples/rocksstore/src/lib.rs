@@ -179,7 +179,7 @@ impl RaftStateMachine<TypeConfig> for RocksStateMachine {
         for entry in entries_iter {
             tracing::debug!(%entry.log_id, "replicate to sm");
 
-            sm.last_applied_log = Some(entry.to_log_id());
+            sm.last_applied_log = Some(entry.log_id());
 
             match entry.payload {
                 EntryPayload::Blank => res.push(RocksResponse { value: None }),

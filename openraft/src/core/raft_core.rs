@@ -43,7 +43,6 @@ use crate::engine::Engine;
 use crate::engine::ReplicationProgress;
 use crate::engine::Respond;
 use crate::entry::RaftEntry;
-use crate::entry::RaftEntryExt;
 use crate::error::AllowNextRevertError;
 use crate::error::ClientWriteError;
 use crate::error::Fatal;
@@ -1416,9 +1415,7 @@ where
                 //       applied.
                 //       ---
                 //       A better way is to make leader step down a command that waits for the log to be applied.
-                if self.engine.state.io_applied().ord_by()
-                    >= self.engine.state.membership_state.effective().log_id().ord_by()
-                {
+                if self.engine.state.io_applied() >= self.engine.state.membership_state.effective().log_id().as_ref() {
                     self.engine.leader_step_down();
                 }
             }
@@ -1690,7 +1687,7 @@ where
                 Condition::LogFlushed { log_id } => {
                     let curr = self.engine.state.io_state().io_progress.flushed();
                     let curr = curr.and_then(|x| x.last_log_id());
-                    if curr.ord_by() < log_id.ord_by() {
+                    if curr < log_id.as_ref() {
                         tracing::debug!(
                             "log_id: {} has not yet flushed, currently flushed: {} postpone cmd: {}",
                             log_id.display(),
@@ -1701,7 +1698,7 @@ where
                     }
                 }
                 Condition::Applied { log_id } => {
-                    if self.engine.state.io_applied().ord_by() < log_id.ord_by() {
+                    if self.engine.state.io_applied() < log_id.as_ref() {
                         tracing::debug!(
                             "log_id: {} has not yet applied, postpone cmd: {}",
                             log_id.display(),
@@ -1711,7 +1708,7 @@ where
                     }
                 }
                 Condition::Snapshot { log_id } => {
-                    if self.engine.state.io_state().snapshot().ord_by() < log_id.ord_by() {
+                    if self.engine.state.io_state().snapshot() < log_id.as_ref() {
                         tracing::debug!(
                             "log_id: {} has not yet been in snapshot, postpone cmd: {}",
                             log_id.display(),
@@ -1737,7 +1734,7 @@ where
                 committed_vote: vote,
                 entries,
             } => {
-                let last_log_id = entries.last().unwrap().to_log_id();
+                let last_log_id = entries.last().unwrap().log_id();
                 tracing::debug!("AppendInputEntries: {}", DisplaySlice::<_>(&entries),);
 
                 let io_id = IOId::new_log_io(vote, Some(last_log_id));

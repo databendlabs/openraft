@@ -10,8 +10,8 @@ use maplit::btreeset;
 use crate::async_runtime::MpscUnboundedReceiver;
 use crate::async_runtime::MpscUnboundedSender;
 use crate::core::notification::Notification;
+use crate::entry::raft_entry_ext::RaftEntryExt;
 use crate::entry::RaftEntry;
-use crate::entry::RaftEntryExt;
 use crate::membership::EffectiveMembership;
 use crate::raft_state::io_state::io_id::IOId;
 use crate::raft_state::LogStateReader;
@@ -845,8 +845,8 @@ where
             let logs = store.try_get_log_entries(5..7).await?;
 
             assert_eq!(logs.len(), 2);
-            assert_eq!(logs[0].to_log_id(), log_id_0::<C>(1, 5));
-            assert_eq!(logs[1].to_log_id(), log_id_0::<C>(1, 6));
+            assert_eq!(logs[0].log_id(), log_id_0::<C>(1, 5));
+            assert_eq!(logs[1].log_id(), log_id_0::<C>(1, 6));
         }
 
         Ok(())
@@ -867,7 +867,7 @@ where
 
             assert!(!logs.is_empty());
             assert!(logs.len() <= 2);
-            assert_eq!(logs[0].to_log_id(), log_id_0::<C>(1, 5));
+            assert_eq!(logs[0].log_id(), log_id_0::<C>(1, 5));
         }
 
         Ok(())
@@ -883,13 +883,13 @@ where
         C::sleep(Duration::from_millis(1_000)).await;
 
         let ent = store.try_get_log_entry(3).await?;
-        assert_eq!(Some(log_id_0::<C>(1, 3)), ent.map(|x| x.to_log_id()));
+        assert_eq!(Some(log_id_0::<C>(1, 3)), ent.map(|x| x.log_id()));
 
         let ent = store.try_get_log_entry(0).await?;
-        assert_eq!(None, ent.map(|x| x.to_log_id()));
+        assert_eq!(None, ent.map(|x| x.log_id()));
 
         let ent = store.try_get_log_entry(11).await?;
-        assert_eq!(None, ent.map(|x| x.to_log_id()));
+        assert_eq!(None, ent.map(|x| x.log_id()));
 
         Ok(())
     }
@@ -1189,7 +1189,7 @@ where
         let last = store.try_get_log_entries(0..).await?.into_iter().last().unwrap();
 
         assert_eq!(l, 11, "expected 11 entries to exist in the log");
-        assert_eq!(last.to_log_id(), log_id_0::<C>(2, 11), "unexpected log id");
+        assert_eq!(last.log_id(), log_id_0::<C>(2, 11), "unexpected log id");
         Ok(())
     }
 
@@ -1438,7 +1438,7 @@ where
 {
     let entries = entries.into_iter().collect::<Vec<_>>();
 
-    let last_log_id = entries.last().unwrap().to_log_id();
+    let last_log_id = entries.last().unwrap().log_id();
 
     let (tx, mut rx) = C::mpsc_unbounded();
 

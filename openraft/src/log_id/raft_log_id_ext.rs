@@ -1,5 +1,4 @@
 use crate::log_id::ref_log_id::RefLogId;
-use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::type_config::alias::LogIdOf;
 use crate::RaftLogId;
 use crate::RaftTypeConfig;
@@ -9,10 +8,6 @@ where
     C: RaftTypeConfig,
     Self: RaftLogId<C>,
 {
-    fn default() -> Self {
-        Self::new(CommittedLeaderIdOf::<C>::default(), 0)
-    }
-
     fn to_log_id(&self) -> LogIdOf<C> {
         self.ref_log_id().to_log_id()
     }

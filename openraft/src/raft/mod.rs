@@ -785,7 +785,7 @@ where C: RaftTypeConfig
         node_id: &C::NodeId,
         membership_log_id: Option<&LogIdOf<C>>,
     ) -> Result<Option<LogIdOf<C>>, ()> {
-        if metrics.membership_config.log_id().ord_by() < membership_log_id.ord_by() {
+        if metrics.membership_config.log_id().as_ref() < membership_log_id {
             // Waiting for the latest metrics to report.
             return Err(());
         }

@@ -1,11 +1,9 @@
 use std::fmt;
-use std::fmt::write;
 
 use openraft::alias::LogIdOf;
 use openraft::entry::RaftEntry;
 use openraft::entry::RaftPayload;
 use openraft::Membership;
-use openraft::RaftNetwork;
 
 use crate::protobuf as pb;
 use crate::TypeConfig;
@@ -21,8 +19,11 @@ impl RaftPayload<TypeConfig> for pb::Entry {
         self.payload.is_none()
     }
 
-    fn get_membership(&self) -> Option<&Membership<TypeConfig>> {
-        todo!()
+    fn get_membership(&self) -> Option<Membership<TypeConfig>> {
+        match &self.payload {
+            Some(pb::entry::Payload::Membership(m)) => Some(m.clone().into()),
+            _ => None,
+        }
     }
 }
 

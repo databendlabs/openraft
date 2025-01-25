@@ -67,9 +67,9 @@ impl<C: RaftTypeConfig> RaftPayload<C> for EntryPayload<C> {
         matches!(self, EntryPayload::Blank)
     }
 
-    fn get_membership(&self) -> Option<&Membership<C>> {
+    fn get_membership(&self) -> Option<Membership<C>> {
         if let EntryPayload::Membership(m) = self {
-            Some(m)
+            Some(m.clone())
         } else {
             None
         }

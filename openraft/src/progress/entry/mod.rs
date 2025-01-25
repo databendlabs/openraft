@@ -10,8 +10,6 @@ use validit::Validate;
 
 use crate::display_ext::DisplayOptionExt;
 use crate::engine::EngineConfig;
-use crate::log_id::raft_log_id_ext::RaftLogIdExt;
-use crate::log_id::ref_log_id::RefLogId;
 use crate::progress::entry::update::Updater;
 use crate::progress::inflight::Inflight;
 use crate::raft_state::LogStateReader;
@@ -88,11 +86,6 @@ where C: RaftTypeConfig
         self.matching.as_ref()
     }
 
-    /// Return the [`RefLogId`] of the matching log id.
-    pub(crate) fn ref_matching(&self) -> Option<RefLogId<'_, C>> {
-        self.matching.as_ref().map(|x| x.ref_log_id())
-    }
-
     /// Return if a range of log id `..=log_id` is inflight sending.
     ///
     /// `prev_log_id` is never inflight.
@@ -101,7 +94,7 @@ where C: RaftTypeConfig
             Inflight::None => false,
             Inflight::Logs { log_id_range, .. } => {
                 let lid = Some(upto);
-                lid.ord_by() > log_id_range.prev.ord_by()
+                lid > log_id_range.prev.as_ref()
             }
             Inflight::Snapshot { last_log_id: _, .. } => false,
         }
@@ -229,12 +222,12 @@ where C: RaftTypeConfig
             Inflight::Logs { log_id_range, .. } => {
                 // matching <= prev_log_id              <= last_log_id
                 //             prev_log_id.next_index() <= searching_end
-                validit::less_equal!(self.ref_matching(), log_id_range.prev.ord_by());
+                validit::less_equal!(self.matching(), log_id_range.prev.as_ref());
                 validit::less_equal!(log_id_range.prev.next_index(), self.searching_end);
             }
             Inflight::Snapshot { last_log_id, .. } => {
                 // There is no need to send a snapshot smaller than last matching.
-                validit::less!(self.ref_matching(), last_log_id.ord_by());
+                validit::less!(self.matching(), last_log_id.as_ref());
             }
         }
         Ok(())

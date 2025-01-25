@@ -2,8 +2,8 @@ use std::fmt;
 
 use crate::display_ext::DisplayInstantExt;
 use crate::engine::leader_log_ids::LeaderLogIds;
+use crate::entry::raft_entry_ext::RaftEntryExt;
 use crate::entry::RaftEntry;
-use crate::entry::RaftEntryExt;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::Progress;
 use crate::progress::VecProgress;
@@ -233,8 +233,8 @@ mod tests {
     use crate::engine::leader_log_ids::LeaderLogIds;
     use crate::engine::testing::log_id;
     use crate::engine::testing::UTConfig;
+    use crate::entry::raft_entry_ext::RaftEntryExt;
     use crate::entry::RaftEntry;
-    use crate::entry::RaftEntryExt;
     use crate::log_id::raft_log_id_ext::RaftLogIdExt;
     use crate::progress::Progress;
     use crate::proposer::Leader;
@@ -304,7 +304,7 @@ mod tests {
         leader.assign_log_ids(&mut entries);
 
         assert_eq!(
-            entries[0].to_log_id(),
+            entries[0].log_id(),
             log_id(2, 2, 4),
             "entry log id assigned following last-log-id"
         );

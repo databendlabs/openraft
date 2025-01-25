@@ -7,11 +7,11 @@ use crate::Membership;
 use crate::RaftTypeConfig;
 
 pub mod payload;
+pub(crate) mod raft_entry_ext;
 mod traits;
 
 pub use payload::EntryPayload;
 pub use traits::RaftEntry;
-pub use traits::RaftEntryExt;
 pub use traits::RaftPayload;
 
 use crate::alias::CommittedLeaderIdOf;
@@ -94,7 +94,7 @@ where C: RaftTypeConfig
         self.payload.is_blank()
     }
 
-    fn get_membership(&self) -> Option<&Membership<C>> {
+    fn get_membership(&self) -> Option<Membership<C>> {
         self.payload.get_membership()
     }
 }

@@ -18,12 +18,7 @@ where C: RaftTypeConfig
 
     fn leader_id(&self) -> Option<&CommittedLeaderIdOf<C>>;
 
-    /// Returns the ordering key of the log id.
-    fn ord_by(&self) -> Option<RefLogId<'_, C>>;
-
-    fn ref_log_id(&self) -> Option<RefLogId<'_, C>> {
-        self.ord_by()
-    }
+    fn ref_log_id(&self) -> Option<RefLogId<'_, C>>;
 }
 
 impl<C, T> LogIdOptionExt<C> for Option<T>
@@ -46,7 +41,7 @@ where
         self.as_ref().map(|x| x.committed_leader_id())
     }
 
-    fn ord_by(&self) -> Option<RefLogId<'_, C>> {
-        self.as_ref().map(|x| x.ord_by())
+    fn ref_log_id(&self) -> Option<RefLogId<'_, C>> {
+        self.as_ref().map(|x| x.ref_log_id())
     }
 }

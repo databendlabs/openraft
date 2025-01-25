@@ -359,7 +359,7 @@ where C: RaftTypeConfig
             "try_purge_log"
         );
 
-        if self.state.purge_upto().ord_by() <= self.state.last_purged_log_id().ord_by() {
+        if self.state.purge_upto() <= self.state.last_purged_log_id() {
             tracing::debug!("no need to purge, return");
             return;
         }
@@ -407,7 +407,7 @@ where C: RaftTypeConfig
                 "update progress"
             );
 
-            if prog_entry.matching().ord_by() >= upto.ord_by() {
+            if prog_entry.matching() >= upto.as_ref() {
                 return;
             }
             // TODO: It should be self.state.last_log_id() but None is ok.

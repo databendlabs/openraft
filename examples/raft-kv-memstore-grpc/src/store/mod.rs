@@ -4,9 +4,8 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use bincode;
-use openraft::entry::RaftEntryExt;
+use openraft::entry::RaftEntry;
 use openraft::storage::RaftStateMachine;
-use openraft::EntryPayload;
 use openraft::RaftSnapshotBuilder;
 use serde::Deserialize;
 use serde::Serialize;
@@ -131,7 +130,7 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
         let mut sm = self.state_machine.lock().unwrap();
 
         for entry in entries {
-            let log_id = entry.to_log_id();
+            let log_id = entry.log_id();
 
             tracing::debug!("replicate to sm: {}", log_id);
 

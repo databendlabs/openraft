@@ -128,7 +128,7 @@ where C: RaftTypeConfig
             Some(res) => {
                 let (_log_index, entry_bytes) = res.map_err(read_logs_err)?;
                 let ent = serde_json::from_slice::<EntryOf<C>>(&entry_bytes).map_err(read_logs_err)?;
-                Some(ent.to_log_id())
+                Some(ent.log_id())
             }
         };
 

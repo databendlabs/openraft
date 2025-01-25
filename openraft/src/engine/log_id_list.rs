@@ -256,7 +256,7 @@ where C: RaftTypeConfig
 
         // When installing  snapshot it may need to purge across the `last_log_id`.
         if upto.index() >= last.next_index() {
-            debug_assert!(Some(upto).ord_by() > self.last().ord_by());
+            debug_assert!(Some(upto) > self.last());
             self.key_log_ids = vec![upto.clone()];
             return;
         }
