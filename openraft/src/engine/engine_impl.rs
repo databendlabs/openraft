@@ -195,7 +195,7 @@ where C: RaftTypeConfig
         entry.set_log_id(&LogIdOf::<C>::default());
 
         let m = entry.get_membership().expect("the only log entry for initializing has to be membership log");
-        self.check_members_contain_me(m)?;
+        self.check_members_contain_me(&m)?;
 
         // FollowingHandler requires vote to be committed.
         let vote = <VoteOf<C> as RaftVote<C>>::from_leader_id(Default::default(), true);

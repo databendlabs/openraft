@@ -299,7 +299,7 @@ where
 
             for ent in entries.iter().rev() {
                 if let Some(mem) = ent.get_membership() {
-                    let em = StoredMembership::new(Some(ent.get_log_id().clone()), mem.clone());
+                    let em = StoredMembership::new(Some(ent.get_log_id().clone()), mem);
                     res.insert(0, em);
                     if res.len() == 2 {
                         return Ok(res);
