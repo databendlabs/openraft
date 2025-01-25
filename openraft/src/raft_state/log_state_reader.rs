@@ -1,9 +1,9 @@
 use crate::log_id::option_raft_log_id_ext::OptionRaftLogIdExt;
 use crate::log_id::option_ref_log_id_ext::OptionRefLogIdExt;
+use crate::log_id::raft_log_id::RaftLogId;
 use crate::log_id::raft_log_id_ext::RaftLogIdExt;
 use crate::log_id::ref_log_id::RefLogId;
 use crate::type_config::alias::LogIdOf;
-use crate::RaftLogId;
 use crate::RaftTypeConfig;
 
 /// APIs to get significant log ids reflecting the raft state.
