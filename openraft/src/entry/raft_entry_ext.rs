@@ -10,10 +10,6 @@ where C: RaftTypeConfig
         let (leader_id, index) = self.log_id_parts();
         RefLogId::new(leader_id, index)
     }
-
-    fn index(&self) -> u64 {
-        self.ref_log_id().index()
-    }
 }
 
 impl<C, T> RaftEntryExt<C> for T

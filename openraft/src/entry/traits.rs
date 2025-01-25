@@ -58,4 +58,9 @@ where
         let (leader_id, index) = self.log_id_parts();
         LogIdOf::<C>::new(leader_id.clone(), index)
     }
+
+    /// Returns the index of this log entry.
+    fn index(&self) -> u64 {
+        self.log_id_parts().1
+    }
 }

@@ -18,7 +18,7 @@ use std::sync::Arc;
 
 use log_store::RocksLogStore;
 use openraft::alias::SnapshotDataOf;
-use openraft::entry::RaftEntryExt;
+use openraft::entry::RaftEntry;
 use openraft::storage::RaftStateMachine;
 use openraft::storage::Snapshot;
 use openraft::AnyError;

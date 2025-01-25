@@ -11,7 +11,7 @@ use meta::StoreMeta;
 use openraft::alias::EntryOf;
 use openraft::alias::LogIdOf;
 use openraft::alias::VoteOf;
-use openraft::entry::RaftEntryExt;
+use openraft::entry::RaftEntry;
 use openraft::storage::IOFlushed;
 use openraft::storage::RaftLogStorage;
 use openraft::LogState;
