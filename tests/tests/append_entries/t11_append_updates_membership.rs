@@ -5,7 +5,6 @@ use anyhow::Result;
 use maplit::btreeset;
 use openraft::raft::AppendEntriesRequest;
 use openraft::testing::blank_ent;
-use openraft::testing::log_id;
 use openraft::Config;
 use openraft::Entry;
 use openraft::EntryPayload;
@@ -13,6 +12,7 @@ use openraft::Membership;
 use openraft::ServerState;
 use openraft::Vote;
 
+use crate::fixtures::log_id;
 use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 

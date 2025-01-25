@@ -7,10 +7,10 @@ use openraft::network::v2::RaftNetworkV2;
 use openraft::network::RPCOption;
 use openraft::network::RaftNetworkFactory;
 use openraft::raft::AppendEntriesRequest;
-use openraft::testing::log_id;
 use openraft::Config;
 use openraft::Vote;
 
+use crate::fixtures::log_id;
 use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 

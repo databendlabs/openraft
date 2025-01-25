@@ -4,13 +4,13 @@ use anyhow::Result;
 use futures::prelude::*;
 use maplit::btreeset;
 use openraft::raft::ClientWriteResponse;
-use openraft::testing::log_id;
 use openraft::Config;
 use openraft::SnapshotPolicy;
 use openraft_memstore::ClientRequest;
 use openraft_memstore::IntoMemClientRequest;
 use openraft_memstore::TypeConfig;
 
+use crate::fixtures::log_id;
 use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 

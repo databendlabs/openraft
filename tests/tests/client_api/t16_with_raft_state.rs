@@ -3,9 +3,9 @@ use std::sync::Arc;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::error::Fatal;
-use openraft::testing::log_id;
 use openraft::Config;
 
+use crate::fixtures::log_id;
 use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 
