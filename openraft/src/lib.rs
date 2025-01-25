@@ -88,6 +88,7 @@ pub use self::storage::RaftSnapshotBuilder;
 pub use self::storage::Snapshot;
 pub use self::storage::SnapshotMeta;
 pub use self::storage::StorageHelper;
+use crate::base::OptionalFeatures;
 pub use crate::base::OptionalSend;
 pub use crate::base::OptionalSerde;
 pub use crate::base::OptionalSync;
@@ -146,9 +147,9 @@ pub use crate::vote::Vote;
 /// ## Note
 ///
 /// The trait is automatically implemented for all types which satisfy its supertraits.
-pub trait AppData: OptionalSend + OptionalSync + 'static + OptionalSerde {}
+pub trait AppData: OptionalFeatures + 'static {}
 
-impl<T> AppData for T where T: OptionalSend + OptionalSync + 'static + OptionalSerde {}
+impl<T> AppData for T where T: OptionalFeatures + 'static {}
 
 /// A trait defining application specific response data.
 ///
@@ -167,6 +168,6 @@ impl<T> AppData for T where T: OptionalSend + OptionalSync + 'static + OptionalS
 /// ## Note
 ///
 /// The trait is automatically implemented for all types which satisfy its supertraits.
-pub trait AppDataResponse: OptionalSend + OptionalSync + 'static + OptionalSerde {}
+pub trait AppDataResponse: OptionalFeatures + 'static {}
 
-impl<T> AppDataResponse for T where T: OptionalSend + OptionalSync + 'static + OptionalSerde {}
+impl<T> AppDataResponse for T where T: OptionalFeatures + 'static {}
