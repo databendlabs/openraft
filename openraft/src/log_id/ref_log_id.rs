@@ -30,7 +30,7 @@ where C: RaftTypeConfig
         self.index
     }
 
-    pub(crate) fn to_log_id(&self) -> LogIdOf<C> {
+    pub(crate) fn to_log_id(self) -> LogIdOf<C> {
         LogIdOf::<C>::new(self.leader_id.clone(), self.index)
     }
 }

@@ -16,7 +16,7 @@ fn test_log_id_list_extend_from_same_leader() -> anyhow::Result<()> {
     // Extend two log ids that are adjacent to the last stored one.
     // It should append only one log id as the new ending log id.
 
-    ids.extend_from_same_leader(&[
+    ids.extend_from_same_leader([
         log_id(1, 1, 3), //
         log_id(1, 1, 4),
     ]);
@@ -32,7 +32,7 @@ fn test_log_id_list_extend_from_same_leader() -> anyhow::Result<()> {
     // Extend 3 log id with new leader id.
     // It should just store every log id for each leader, plus one last-log-id.
 
-    ids.extend_from_same_leader(&[
+    ids.extend_from_same_leader([
         log_id(2, 1, 5), //
         log_id(2, 1, 6),
         log_id(2, 1, 7),
@@ -62,7 +62,7 @@ fn test_log_id_list_extend() -> anyhow::Result<()> {
     // Extend two log ids that are adjacent to the last stored one.
     // It should append only one log id as the new ending log id.
 
-    ids.extend(&[
+    ids.extend([
         log_id(1, 1, 3), //
         log_id(1, 1, 4),
     ]);
@@ -78,7 +78,7 @@ fn test_log_id_list_extend() -> anyhow::Result<()> {
     // Extend 3 log id with different leader id.
     // Last two has the same leader id.
 
-    ids.extend(&[
+    ids.extend([
         log_id(1, 1, 5), //
         log_id(2, 1, 6),
         log_id(2, 1, 7),
@@ -96,7 +96,7 @@ fn test_log_id_list_extend() -> anyhow::Result<()> {
     // Extend 3 log id with different leader id.
     // Last two have different leader id.
 
-    ids.extend(&[
+    ids.extend([
         log_id(2, 1, 8), //
         log_id(2, 1, 9),
         log_id(3, 1, 10),
