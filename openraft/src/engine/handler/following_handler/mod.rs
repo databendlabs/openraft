@@ -343,7 +343,7 @@ where C: RaftTypeConfig
         // Find the last 2 membership config entries: the committed and the effective.
         for ent in entries.rev() {
             if let Some(m) = ent.get_membership() {
-                memberships.insert(0, StoredMembership::new(Some(ent.get_log_id().clone()), m.clone()));
+                memberships.insert(0, StoredMembership::new(Some(ent.get_log_id().clone()), m));
                 if memberships.len() == 2 {
                     break;
                 }

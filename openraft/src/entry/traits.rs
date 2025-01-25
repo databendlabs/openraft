@@ -14,8 +14,8 @@ where C: RaftTypeConfig
     /// Return `true` if the entry payload is blank.
     fn is_blank(&self) -> bool;
 
-    /// Return `Some(&Membership)` if the entry payload is a membership payload.
-    fn get_membership(&self) -> Option<&Membership<C>>;
+    /// Return `Some(Membership)` if the entry payload is a membership payload.
+    fn get_membership(&self) -> Option<Membership<C>>;
 }
 
 /// Defines operations on an entry.

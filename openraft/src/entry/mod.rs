@@ -93,7 +93,7 @@ where C: RaftTypeConfig
         self.payload.is_blank()
     }
 
-    fn get_membership(&self) -> Option<&Membership<C>> {
+    fn get_membership(&self) -> Option<Membership<C>> {
         self.payload.get_membership()
     }
 }

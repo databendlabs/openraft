@@ -67,7 +67,7 @@ where C: RaftTypeConfig
                     membership_entry.is_none(),
                     "only one membership entry is allowed in a batch"
                 );
-                membership_entry = Some((entry.get_log_id().clone(), m.clone()));
+                membership_entry = Some((entry.get_log_id().clone(), m));
             }
         }
 
