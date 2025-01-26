@@ -1,6 +1,7 @@
 use std::fmt::Debug;
 use std::fmt::Display;
 
+use crate::base::finalized::Final;
 use crate::base::OptionalFeatures;
 use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::type_config::alias::LogIdOf;
@@ -23,23 +24,6 @@ where
     Self: OptionalFeatures + Debug + Display,
     Self: RaftPayload<C>,
 {
-    /// Create a new blank log entry.
-    fn new_blank(log_id: LogIdOf<C>) -> Self {
-        Self::new(log_id, EntryPayload::Blank)
-    }
-
-    /// Create a new normal log entry that contains application data.
-    fn new_normal(log_id: LogIdOf<C>, data: C::D) -> Self {
-        Self::new(log_id, EntryPayload::Normal(data))
-    }
-
-    /// Create a new membership log entry.
-    ///
-    /// The returned instance must return `Some()` for `Self::get_membership()`.
-    fn new_membership(log_id: LogIdOf<C>, m: Membership<C>) -> Self {
-        Self::new(log_id, EntryPayload::Membership(m))
-    }
-
     /// Create a new log entry with log id and payload of application data or membership config.
     fn new(log_id: LogIdOf<C>, payload: EntryPayload<C>) -> Self;
 
@@ -58,14 +42,36 @@ where
     /// Set the log ID of this entry.
     fn set_log_id(&mut self, new: LogIdOf<C>);
 
+    /// Create a new blank log entry.
+    fn new_blank(log_id: LogIdOf<C>) -> Self
+    where Self: Final {
+        Self::new(log_id, EntryPayload::Blank)
+    }
+
+    /// Create a new normal log entry that contains application data.
+    fn new_normal(log_id: LogIdOf<C>, data: C::D) -> Self
+    where Self: Final {
+        Self::new(log_id, EntryPayload::Normal(data))
+    }
+
+    /// Create a new membership log entry.
+    ///
+    /// The returned instance must return `Some()` for `Self::get_membership()`.
+    fn new_membership(log_id: LogIdOf<C>, m: Membership<C>) -> Self
+    where Self: Final {
+        Self::new(log_id, EntryPayload::Membership(m))
+    }
+
     /// Returns the `LogId` of this entry.
-    fn log_id(&self) -> LogIdOf<C> {
+    fn log_id(&self) -> LogIdOf<C>
+    where Self: Final {
         let (leader_id, index) = self.log_id_parts();
         LogIdOf::<C>::new(leader_id.clone(), index)
     }
 
     /// Returns the index of this log entry.
-    fn index(&self) -> u64 {
+    fn index(&self) -> u64
+    where Self: Final {
         self.log_id_parts().1
     }
 }
