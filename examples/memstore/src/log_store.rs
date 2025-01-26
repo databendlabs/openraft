@@ -97,7 +97,7 @@ impl<C: RaftTypeConfig> LogStoreInner<C> {
     where I: IntoIterator<Item = C::Entry> {
         // Simple implementation that calls the flush-before-return `append_to_log`.
         for entry in entries {
-            self.log.insert(entry.log_id().index, entry);
+            self.log.insert(entry.index(), entry);
         }
         callback.io_completed(Ok(()));
 
