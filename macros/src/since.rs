@@ -11,6 +11,8 @@ use crate::utils;
 pub struct Since {
     pub(crate) version: Option<String>,
     pub(crate) date: Option<String>,
+    /// The change message.
+    pub(crate) change: Vec<String>,
 }
 
 impl Since {
@@ -19,6 +21,7 @@ impl Since {
         let mut since = Since {
             version: None,
             date: None,
+            change: vec![],
         };
 
         type AttributeArgs = syn::punctuated::Punctuated<syn::Meta, syn::Token![,]>;
@@ -42,6 +45,10 @@ impl Since {
 
                         "date" => {
                             since.set_date(namevalue.value.clone(), Spanned::span(&namevalue.value))?;
+                        }
+
+                        "change" => {
+                            since.set_change(namevalue.value.clone(), Spanned::span(&namevalue.value))?;
                         }
 
                         name => {
@@ -132,6 +139,10 @@ impl Since {
         if let Some(date) = &self.date {
             s.push_str(&format!(", Date({})", date));
         }
+
+        if !self.change.is_empty() {
+            s.push_str(&format!(": {}", self.change.join("; ")));
+        }
         s
     }
 
@@ -168,6 +179,14 @@ impl Since {
         })?;
 
         self.date = Some(date_str);
+
+        Ok(())
+    }
+
+    pub(crate) fn set_change(&mut self, change_lit: syn::Expr, span: Span) -> Result<(), syn::Error> {
+        let change_str = Self::parse_str(change_lit, "change", span)?;
+
+        self.change.push(change_str);
 
         Ok(())
     }
