@@ -4,6 +4,7 @@ use std::fmt::Display;
 use crate::base::OptionalFeatures;
 use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::type_config::alias::LogIdOf;
+use crate::EntryPayload;
 use crate::Membership;
 use crate::RaftTypeConfig;
 
@@ -11,13 +12,10 @@ use crate::RaftTypeConfig;
 pub trait RaftPayload<C>
 where C: RaftTypeConfig
 {
-    /// Return `true` if the entry payload is blank.
-    fn is_blank(&self) -> bool;
-
     /// Return the reference to the application data.
     fn app_data(&self) -> Option<&C::D>;
 
-    /// Return `Some(&Membership)` if the entry payload is a membership payload.
+    /// Return `Some(Membership)` if the entry payload contains a membership payload.
     fn get_membership(&self) -> Option<Membership<C>>;
 }
 
@@ -29,17 +27,24 @@ where
     Self: RaftPayload<C>,
 {
     /// Create a new blank log entry.
-    ///
-    /// The returned instance must return `true` for `Self::is_blank()`.
-    fn new_blank(log_id: LogIdOf<C>) -> Self;
+    fn new_blank(log_id: LogIdOf<C>) -> Self {
+        Self::new(log_id, EntryPayload::Blank)
+    }
 
     /// Create a new normal log entry that contains application data.
-    fn new_normal(log_id: LogIdOf<C>, data: C::D) -> Self;
+    fn new_normal(log_id: LogIdOf<C>, data: C::D) -> Self {
+        Self::new(log_id, EntryPayload::Normal(data))
+    }
 
     /// Create a new membership log entry.
     ///
     /// The returned instance must return `Some()` for `Self::get_membership()`.
-    fn new_membership(log_id: LogIdOf<C>, m: Membership<C>) -> Self;
+    fn new_membership(log_id: LogIdOf<C>, m: Membership<C>) -> Self {
+        Self::new(log_id, EntryPayload::Membership(m))
+    }
+
+    /// Create a new log entry with log id and payload of application data or membership config.
+    fn new(log_id: LogIdOf<C>, payload: EntryPayload<C>) -> Self;
 
     /// Returns references to the components of this entry's log ID: the committed leader ID and
     /// index.

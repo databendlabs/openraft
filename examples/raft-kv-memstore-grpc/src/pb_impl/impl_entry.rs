@@ -3,6 +3,7 @@ use std::fmt;
 use openraft::alias::LogIdOf;
 use openraft::entry::RaftEntry;
 use openraft::entry::RaftPayload;
+use openraft::EntryPayload;
 use openraft::Membership;
 
 use crate::protobuf as pb;
@@ -15,40 +16,30 @@ impl fmt::Display for pb::Entry {
 }
 
 impl RaftPayload<TypeConfig> for pb::Entry {
-    fn is_blank(&self) -> bool {
-        self.payload.is_none()
+    fn app_data(&self) -> Option<&pb::SetRequest> {
+        self.app_data.as_ref()
     }
 
     fn get_membership(&self) -> Option<Membership<TypeConfig>> {
-        match &self.payload {
-            Some(pb::entry::Payload::Membership(m)) => Some(m.clone().into()),
-            _ => None,
-        }
+        self.membership.clone().map(Into::into)
     }
 }
 
 impl RaftEntry<TypeConfig> for pb::Entry {
-    fn new_blank(log_id: LogIdOf<TypeConfig>) -> Self {
-        Self {
-            term: log_id.leader_id,
-            index: log_id.index,
-            payload: None,
+    fn new(log_id: LogIdOf<TypeConfig>, payload: EntryPayload<TypeConfig>) -> Self {
+        let mut app_data = None;
+        let mut membership = None;
+        match payload {
+            EntryPayload::Blank => {}
+            EntryPayload::Normal(data) => app_data = Some(data),
+            EntryPayload::Membership(m) => membership = Some(m.into()),
         }
-    }
 
-    fn new_normal(log_id: LogIdOf<TypeConfig>, data: pb::SetRequest) -> Self {
         Self {
             term: log_id.leader_id,
             index: log_id.index,
-            payload: Some(pb::entry::Payload::Normal(data)),
-        }
-    }
-
-    fn new_membership(log_id: LogIdOf<TypeConfig>, m: Membership<TypeConfig>) -> Self {
-        Self {
-            term: log_id.leader_id,
-            index: log_id.index,
-            payload: Some(pb::entry::Payload::Membership(m.into())),
+            app_data,
+            membership,
         }
     }
 

@@ -29,10 +29,12 @@ message Vote {
 message Entry {
   uint64 term = 1;
   uint64 index = 2;
-  oneof payload {
-    SetRequest normal = 12;
-    Membership membership = 13;
-  }
+
+  // Optional Application data
+  SetRequest app_data = 12;
+
+  // Optional Membership config
+  Membership membership = 13;
 }
 
 
