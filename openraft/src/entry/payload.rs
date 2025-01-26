@@ -63,8 +63,12 @@ where C: RaftTypeConfig
 }
 
 impl<C: RaftTypeConfig> RaftPayload<C> for EntryPayload<C> {
-    fn is_blank(&self) -> bool {
-        matches!(self, EntryPayload::Blank)
+    fn app_data(&self) -> Option<&C::D> {
+        if let EntryPayload::Normal(data) = self {
+            Some(data)
+        } else {
+            None
+        }
     }
 
     fn get_membership(&self) -> Option<Membership<C>> {

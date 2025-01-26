@@ -14,7 +14,6 @@ pub use payload::EntryPayload;
 pub use traits::RaftEntry;
 pub use traits::RaftPayload;
 
-use crate::type_config::alias::AppDataOf;
 use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::type_config::alias::LogIdOf;
 
@@ -90,8 +89,8 @@ where C: RaftTypeConfig
 impl<C> RaftPayload<C> for Entry<C>
 where C: RaftTypeConfig
 {
-    fn is_blank(&self) -> bool {
-        self.payload.is_blank()
+    fn app_data(&self) -> Option<&C::D> {
+        self.payload.app_data()
     }
 
     fn get_membership(&self) -> Option<Membership<C>> {
@@ -102,25 +101,8 @@ where C: RaftTypeConfig
 impl<C> RaftEntry<C> for Entry<C>
 where C: RaftTypeConfig
 {
-    fn new_blank(log_id: LogIdOf<C>) -> Self {
-        Self {
-            log_id,
-            payload: EntryPayload::Blank,
-        }
-    }
-
-    fn new_normal(log_id: LogIdOf<C>, data: AppDataOf<C>) -> Self {
-        Entry {
-            log_id,
-            payload: EntryPayload::Normal(data),
-        }
-    }
-
-    fn new_membership(log_id: LogIdOf<C>, m: Membership<C>) -> Self {
-        Self {
-            log_id,
-            payload: EntryPayload::Membership(m),
-        }
+    fn new(log_id: LogIdOf<C>, payload: EntryPayload<C>) -> Self {
+        Self { log_id, payload }
     }
 
     fn log_id_parts(&self) -> (&CommittedLeaderIdOf<C>, u64) {

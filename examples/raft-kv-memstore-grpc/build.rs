@@ -39,10 +39,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "#[derive(Eq, serde::Serialize, serde::Deserialize)]",
         )
         .type_attribute(
-            "openraftpb.Entry.payload",
-            "#[derive(Eq, serde::Serialize, serde::Deserialize)]",
-        )
-        .type_attribute(
             "openraftpb.Entry",
             "#[derive(Eq, serde::Serialize, serde::Deserialize)]",
         )

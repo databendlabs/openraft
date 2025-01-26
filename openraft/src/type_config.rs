@@ -125,6 +125,7 @@ pub mod alias {
     use crate::raft::responder::Responder;
     use crate::type_config::AsyncRuntime;
     use crate::vote::RaftLeaderId;
+    use crate::EntryPayload;
     use crate::LogId;
     use crate::RaftTypeConfig;
 
@@ -185,5 +186,6 @@ pub mod alias {
     // Usually used types
     pub type LogIdOf<C> = LogId<C>;
     pub type CommittedLeaderIdOf<C> = <LeaderIdOf<C> as RaftLeaderId<C>>::Committed;
+    pub type EntryPayloadOf<C> = EntryPayload<C>;
     pub type SerdeInstantOf<C> = crate::metrics::SerdeInstant<InstantOf<C>>;
 }
