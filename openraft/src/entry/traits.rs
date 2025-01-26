@@ -12,9 +12,6 @@ use crate::RaftTypeConfig;
 pub trait RaftPayload<C>
 where C: RaftTypeConfig
 {
-    /// Return the reference to the application data.
-    fn app_data(&self) -> Option<&C::D>;
-
     /// Return `Some(Membership)` if the entry payload contains a membership payload.
     fn get_membership(&self) -> Option<Membership<C>>;
 }

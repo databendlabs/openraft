@@ -89,10 +89,6 @@ where C: RaftTypeConfig
 impl<C> RaftPayload<C> for Entry<C>
 where C: RaftTypeConfig
 {
-    fn app_data(&self) -> Option<&C::D> {
-        self.payload.app_data()
-    }
-
     fn get_membership(&self) -> Option<Membership<C>> {
         self.payload.get_membership()
     }

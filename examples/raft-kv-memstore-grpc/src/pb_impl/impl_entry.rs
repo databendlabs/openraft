@@ -16,10 +16,6 @@ impl fmt::Display for pb::Entry {
 }
 
 impl RaftPayload<TypeConfig> for pb::Entry {
-    fn app_data(&self) -> Option<&pb::SetRequest> {
-        self.app_data.as_ref()
-    }
-
     fn get_membership(&self) -> Option<Membership<TypeConfig>> {
         self.membership.clone().map(Into::into)
     }
