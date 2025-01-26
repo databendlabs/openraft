@@ -10,7 +10,6 @@ use openraft::RaftSnapshotBuilder;
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::pb;
 use crate::protobuf::Response;
 use crate::typ::*;
 use crate::TypeConfig;
@@ -136,17 +135,17 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
 
             sm.last_applied = Some(log_id);
 
-            match entry.payload {
-                None => res.push(Response { value: None }),
-                Some(pb::entry::Payload::Normal(req)) => {
-                    sm.data.insert(req.key, req.value.clone());
-                    res.push(Response { value: Some(req.value) });
-                }
-                Some(pb::entry::Payload::Membership(mem)) => {
-                    sm.last_membership = StoredMembership::new(Some(log_id), mem.into());
-                    res.push(Response { value: None })
-                }
+            let value = if let Some(req) = entry.app_data {
+                sm.data.insert(req.key, req.value.clone());
+                Some(req.value)
+            } else if let Some(mem) = entry.membership {
+                sm.last_membership = StoredMembership::new(Some(log_id), mem.into());
+                None
+            } else {
+                None
             };
+
+            res.push(Response { value });
         }
         Ok(res)
     }

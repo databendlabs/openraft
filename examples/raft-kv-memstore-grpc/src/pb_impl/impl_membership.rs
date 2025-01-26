@@ -27,7 +27,7 @@ impl From<Membership<TypeConfig>> for pb::Membership {
             for nid in c.iter() {
                 node_ids.insert(*nid, ());
             }
-            configs.push(pb::NodeIds { node_ids });
+            configs.push(pb::NodeIdSet { node_ids });
         }
         let nodes = value.nodes().map(|(nid, n)| (*nid, n.clone())).collect();
         pb::Membership { configs, nodes }

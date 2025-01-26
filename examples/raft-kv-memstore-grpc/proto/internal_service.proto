@@ -38,12 +38,18 @@ message Entry {
 }
 
 
-message NodeIds {
+// NodeIds is a set of NodeIds
+message NodeIdSet {
   map<uint64, google.protobuf.Empty> node_ids = 1;
 }
 
+// Membership config
 message Membership {
-  repeated NodeIds configs = 1;
+  // Joint(includes more than one NodeIdSet) or uniform(one NodeIdSet) config.
+  repeated NodeIdSet configs = 1;
+
+  // All of the nodes in the cluster, including voters and learners.
+  // A node id that is included in `configs` is a voter, otherwise it is a learner.
   map<uint64, Node> nodes = 2;
 }
 

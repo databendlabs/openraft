@@ -237,7 +237,7 @@ impl RaftLogStorage<TypeConfig> for Arc<LogStore> {
     where I: IntoIterator<Item = Entry<TypeConfig>> + Send {
         {
             let mut log = self.log.write().await;
-            log.extend(entries.into_iter().map(|entry| (entry.log_id_parts().1, entry)));
+            log.extend(entries.into_iter().map(|entry| (entry.index(), entry)));
         }
         callback.io_completed(Ok(()));
         Ok(())

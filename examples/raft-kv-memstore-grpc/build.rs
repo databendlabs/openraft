@@ -31,7 +31,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "#[derive(Eq, serde::Serialize, serde::Deserialize)]",
         )
         .type_attribute(
-            "openraftpb.NodeIds",
+            "openraftpb.NodeIdSet",
             "#[derive(Eq, serde::Serialize, serde::Deserialize)]",
         )
         .type_attribute(
