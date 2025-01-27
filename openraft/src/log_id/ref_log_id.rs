@@ -3,7 +3,6 @@ use std::fmt::Formatter;
 
 use crate::log_id::raft_log_id::RaftLogId;
 use crate::type_config::alias::CommittedLeaderIdOf;
-use crate::type_config::alias::LogIdOf;
 use crate::LogId;
 use crate::RaftTypeConfig;
 
@@ -31,7 +30,7 @@ where C: RaftTypeConfig
         self.index
     }
 
-    pub(crate) fn to_owned(self) -> LogId<C> {
+    pub(crate) fn into_owned(self) -> LogId<C> {
         LogId::<C>::new(self.leader_id.clone(), self.index)
     }
 }

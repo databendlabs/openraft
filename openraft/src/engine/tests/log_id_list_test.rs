@@ -2,7 +2,6 @@ use crate::engine::leader_log_ids::LeaderLogIds;
 use crate::engine::testing::log_id;
 use crate::engine::testing::UTConfig;
 use crate::engine::LogIdList;
-use crate::log_id::option_ref_log_id_ext::OptionRefLogIdExt;
 
 #[test]
 fn test_log_id_list_extend_from_same_leader() -> anyhow::Result<()> {
@@ -324,9 +323,9 @@ fn test_log_id_list_get_log_id() -> anyhow::Result<()> {
 
     let ids = LogIdList::<UTConfig>::default();
 
-    assert!(ids.ref_at(0).is_none());
-    assert!(ids.ref_at(1).is_none());
-    assert!(ids.ref_at(2).is_none());
+    assert!(ids.get(0).is_none());
+    assert!(ids.get(1).is_none());
+    assert!(ids.get(2).is_none());
 
     // Get log id that is a key log id or not.
 

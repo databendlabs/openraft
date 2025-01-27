@@ -10,7 +10,7 @@ where
 {
     /// Creates a new owned [`LogId`] from this log ID implementation.
     fn to_log_id(&self) -> LogIdOf<C> {
-        self.to_ref().to_owned()
+        self.to_ref().into_owned()
     }
 
     /// Creates a reference view of this log ID implementation via a [`RefLogId`].

@@ -233,9 +233,7 @@ mod tests {
     use crate::engine::leader_log_ids::LeaderLogIds;
     use crate::engine::testing::log_id;
     use crate::engine::testing::UTConfig;
-    use crate::entry::raft_entry_ext::RaftEntryExt;
     use crate::entry::RaftEntry;
-    use crate::log_id::raft_log_id_ext::RaftLogIdExt;
     use crate::progress::Progress;
     use crate::proposer::Leader;
     use crate::testing::blank_ent;

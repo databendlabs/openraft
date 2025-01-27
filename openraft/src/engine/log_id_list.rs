@@ -2,7 +2,6 @@ use std::ops::RangeInclusive;
 
 use crate::engine::leader_log_ids::LeaderLogIds;
 use crate::log_id::option_raft_log_id_ext::OptionRaftLogIdExt;
-use crate::log_id::option_ref_log_id_ext::OptionRefLogIdExt;
 use crate::log_id::raft_log_id::RaftLogId;
 use crate::log_id::raft_log_id_ext::RaftLogIdExt;
 use crate::log_id::ref_log_id::RefLogId;
@@ -283,8 +282,10 @@ where C: RaftTypeConfig
         }
     }
 
+    // This method is only used in tests
+    #[allow(dead_code)]
     pub(crate) fn get(&self, index: u64) -> Option<LogIdOf<C>> {
-        self.ref_at(index).map(|x| x.to_owned())
+        self.ref_at(index).map(|x| x.into_owned())
     }
 
     /// Get the log id at the specified index in a [`RefLogId`].
