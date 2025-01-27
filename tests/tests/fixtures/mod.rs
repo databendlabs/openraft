@@ -937,7 +937,7 @@ impl TypedRaftRouter {
             }
 
             assert_eq!(
-                &snap.meta.last_log_id.unwrap_or_default().leader_id().term,
+                &snap.meta.last_log_id.unwrap_or_default().committed_leader_id().term,
                 term,
                 "expected node {} to have snapshot with term {}, got {:?}",
                 id,

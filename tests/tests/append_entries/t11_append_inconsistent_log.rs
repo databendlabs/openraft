@@ -115,7 +115,7 @@ async fn append_inconsistent_log() -> Result<()> {
     let logs = sto0.try_get_log_entries(60..=60).await?;
     assert_eq!(
         3,
-        logs.first().unwrap().log_id.leader_id().term,
+        logs.first().unwrap().log_id.committed_leader_id().term,
         "log is overridden by leader logs"
     );
 

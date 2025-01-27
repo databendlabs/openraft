@@ -339,7 +339,7 @@ where
 
         if !log_ids.is_empty() {
             if let Some(purged) = purged {
-                if purged.leader_id() == log_ids[0].leader_id() {
+                if purged.committed_leader_id() == log_ids[0].committed_leader_id() {
                     if log_ids.len() >= 2 {
                         log_ids[0] = purged;
                     } else {
