@@ -75,15 +75,10 @@ impl InternalService for InternalServiceImpl {
     /// Nodes vote for candidates based on log completeness and term numbers.
     async fn vote(&self, request: Request<VoteRequest>) -> Result<Response<VoteResponse>, Status> {
         debug!("Processing vote request");
-        let req = request.into_inner();
 
-        // Deserialize the vote request
-        let vote_req = req.into();
-
-        // Process the vote request
         let vote_resp = self
             .raft_node
-            .vote(vote_req)
+            .vote(request.into_inner().into())
             .await
             .map_err(|e| Status::internal(format!("Vote operation failed: {}", e)))?;
 
@@ -108,14 +103,10 @@ impl InternalService for InternalServiceImpl {
         request: Request<pb::AppendEntriesRequest>,
     ) -> Result<Response<pb::AppendEntriesResponse>, Status> {
         debug!("Processing append entries request");
-        let req = request.into_inner();
 
-        let req: AppendEntriesRequest = req.into();
-
-        // Process the append request
         let append_resp = self
             .raft_node
-            .append_entries(req)
+            .append_entries(request.into_inner().into())
             .await
             .map_err(|e| Status::internal(format!("Append entries operation failed: {}", e)))?;
 
