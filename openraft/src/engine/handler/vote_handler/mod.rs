@@ -1,7 +1,6 @@
 use std::fmt::Debug;
 use std::time::Duration;
 
-use crate::base::ord_by::OrdBy;
 use crate::core::raft_msg::ResultSender;
 use crate::display_ext::DisplayOptionExt;
 use crate::engine::handler::leader_handler::LeaderHandler;
@@ -107,7 +106,7 @@ where C: RaftTypeConfig
         // Partial ord compare:
         // Vote does not have to be total ord.
         // `!(a >= b)` does not imply `a < b`.
-        if vote.ord_by() >= self.state.vote_ref().ord_by() {
+        if vote.as_ref_vote() >= self.state.vote_ref().as_ref_vote() {
             // Ok
         } else {
             tracing::info!("vote {} is rejected by local vote: {}", vote, self.state.vote_ref());
@@ -127,7 +126,7 @@ where C: RaftTypeConfig
             Duration::default()
         };
 
-        if vote.ord_by() > self.state.vote_ref().ord_by() {
+        if vote.as_ref_vote() > self.state.vote_ref().as_ref_vote() {
             tracing::info!("vote is changing from {} to {}", self.state.vote_ref(), vote);
 
             self.state.vote.update(C::now(), leader_lease, vote.clone());

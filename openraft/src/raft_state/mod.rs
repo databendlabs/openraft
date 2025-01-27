@@ -34,7 +34,6 @@ pub(crate) use log_state_reader::LogStateReader;
 pub use membership_state::MembershipState;
 pub(crate) use vote_state_reader::VoteStateReader;
 
-use crate::base::ord_by::OrdBy;
 use crate::display_ext::DisplayOptionExt;
 use crate::entry::raft_entry_ext::RaftEntryExt;
 use crate::entry::RaftEntry;
@@ -241,7 +240,7 @@ where C: RaftTypeConfig
             let new_vote = accepted.to_vote();
             let current_vote = curr_accepted.clone().map(|io_id| io_id.to_vote());
             assert!(
-                Some(new_vote.ord_by()) >= current_vote.as_ref().map(|x| x.ord_by()),
+                Some(new_vote.as_ref_vote()) >= current_vote.as_ref().map(|x| x.as_ref_vote()),
                 "new accepted.committed_vote {} must be >= current accepted.committed_vote: {}",
                 new_vote,
                 current_vote.display(),

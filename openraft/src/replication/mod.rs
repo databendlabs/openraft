@@ -21,7 +21,6 @@ use tracing_futures::Instrument;
 use crate::async_runtime::MpscUnboundedReceiver;
 use crate::async_runtime::MpscUnboundedSender;
 use crate::async_runtime::MpscUnboundedWeakSender;
-use crate::base::ord_by::OrdBy;
 use crate::config::Config;
 use crate::core::notification::Notification;
 use crate::core::sm::handle::SnapshotReader;
@@ -485,7 +484,7 @@ where
             }
             AppendEntriesResponse::HigherVote(vote) => {
                 debug_assert!(
-                    vote.ord_by() > self.session_id.vote().ord_by(),
+                    vote.as_ref_vote() > self.session_id.vote().as_ref_vote(),
                     "higher vote({}) should be greater than leader's vote({})",
                     vote,
                     self.session_id.vote(),
@@ -804,7 +803,7 @@ where
 
         // Handle response conditions.
         let sender_vote = self.session_id.vote();
-        if resp.vote.ord_by() > sender_vote.ord_by() {
+        if resp.vote.as_ref_vote() > sender_vote.as_ref_vote() {
             return Err(ReplicationError::HigherVote(HigherVote {
                 higher: resp.vote,
                 sender_vote,
