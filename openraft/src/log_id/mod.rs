@@ -3,15 +3,19 @@
 
 mod log_id_option_ext;
 mod log_index_option_ext;
-mod raft_log_id;
+pub(crate) mod option_raft_log_id_ext;
+pub(crate) mod option_ref_log_id_ext;
+pub(crate) mod raft_log_id;
+pub(crate) mod raft_log_id_ext;
+pub(crate) mod ref_log_id;
 
 use std::fmt::Display;
 use std::fmt::Formatter;
 
 pub use log_id_option_ext::LogIdOptionExt;
 pub use log_index_option_ext::LogIndexOptionExt;
-pub use raft_log_id::RaftLogId;
 
+use crate::log_id::raft_log_id::RaftLogId;
 use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::RaftTypeConfig;
 
@@ -42,12 +46,16 @@ where
 impl<C> RaftLogId<C> for LogId<C>
 where C: RaftTypeConfig
 {
-    fn get_log_id(&self) -> &LogId<C> {
-        self
+    fn new(leader_id: CommittedLeaderIdOf<C>, index: u64) -> Self {
+        LogId { leader_id, index }
     }
 
-    fn set_log_id(&mut self, log_id: &LogId<C>) {
-        *self = log_id.clone()
+    fn committed_leader_id(&self) -> &CommittedLeaderIdOf<C> {
+        &self.leader_id
+    }
+
+    fn index(&self) -> u64 {
+        self.index
     }
 }
 

@@ -42,7 +42,7 @@ where N: Node + Ord
     type Term = u64;
     type LeaderId = crate::impls::leader_id_adv::LeaderId<Self>;
     type Vote = crate::impls::Vote<Self>;
-    type Entry = crate::Entry<Self>;
+    type Entry = crate::impls::Entry<Self>;
     type SnapshotData = Cursor<Vec<u8>>;
     type AsyncRuntime = TokioRuntime;
     type Responder = crate::impls::OneshotResponder<Self>;
