@@ -316,12 +316,12 @@ where C: RaftTypeConfig
         let l = entries.len();
 
         for (i, ent) in entries.iter().enumerate() {
-            let log_id = ent.ref_log_id();
+            let ref_log_id = ent.ref_log_id();
 
-            if !self.has_log_id(log_id) {
+            if !self.has_log_id(ref_log_id) {
                 tracing::debug!(
                     at = display(i),
-                    entry_log_id = display(log_id),
+                    entry_log_id = display(ref_log_id),
                     "found nonexistent log id"
                 );
                 return i;

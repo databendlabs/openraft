@@ -6,6 +6,8 @@ pub(crate) trait OptionRefLogIdExt<C>
 where C: RaftTypeConfig
 {
     /// Creates a new owned [`LogId`] from the reference log ID.
+    ///
+    /// [`LogId`]: crate::log_id::LogId
     fn to_log_id(&self) -> Option<LogIdOf<C>>;
 }
 
