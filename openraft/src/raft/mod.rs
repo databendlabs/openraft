@@ -46,7 +46,6 @@ use tracing::Level;
 use crate::async_runtime::watch::WatchReceiver;
 use crate::async_runtime::MpscUnboundedSender;
 use crate::async_runtime::OneshotSender;
-use crate::base::ord_by::OrdBy;
 use crate::base::BoxAsyncOnceMut;
 use crate::base::BoxFuture;
 use crate::base::BoxOnce;
@@ -91,6 +90,7 @@ use crate::type_config::alias::SnapshotDataOf;
 use crate::type_config::alias::VoteOf;
 use crate::type_config::alias::WatchReceiverOf;
 use crate::type_config::TypeConfigExt;
+use crate::vote::raft_vote::RaftVoteExt;
 use crate::LogIdOptionExt;
 use crate::LogIndexOptionExt;
 use crate::OptionalSend;
@@ -472,7 +472,7 @@ where C: RaftTypeConfig
         // It is not mandatory because it is just a read operation
         // but prevent unnecessary snapshot transfer early.
         {
-            if req_vote.ord_by() >= my_vote.ord_by() {
+            if req_vote.as_ref_vote() >= my_vote.as_ref_vote() {
                 // Ok
             } else {
                 tracing::info!("vote {} is rejected by local vote: {}", req_vote, my_vote);
@@ -691,7 +691,7 @@ where C: RaftTypeConfig
 
         // Condition failed to become Leader
         #[allow(clippy::neg_cmp_op_on_partial_ord)]
-        let fail = |m: &RaftMetrics<C>| !(req.from_leader.ord_by() >= m.vote.ord_by());
+        let fail = |m: &RaftMetrics<C>| !(req.from_leader.as_ref_vote() >= m.vote.as_ref_vote());
 
         let timeout = Some(Duration::from_millis(self.inner.config.election_timeout_min));
         let metrics_res =
