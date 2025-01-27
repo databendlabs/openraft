@@ -1,7 +1,5 @@
 //! Basic types used in the Raft implementation.
 
-pub(crate) mod ord_by;
-
 pub use serde_able::OptionalSerde;
 pub use threaded::BoxAny;
 pub use threaded::BoxAsyncOnceMut;

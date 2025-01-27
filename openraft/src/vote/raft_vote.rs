@@ -1,7 +1,6 @@
 use std::fmt::Debug;
 use std::fmt::Display;
 
-use crate::base::ord_by::OrdBy;
 use crate::base::OptionalFeatures;
 use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::vote::committed::CommittedVote;
@@ -106,18 +105,4 @@ where
     C: RaftTypeConfig,
     T: RaftVote<C>,
 {
-}
-
-impl<C, T> OrdBy<C> for T
-where
-    C: RaftTypeConfig,
-    T: RaftVote<C>,
-{
-    type By<'k>
-        = RefVote<'k, C>
-    where Self: 'k;
-
-    fn ord_by(&self) -> Self::By<'_> {
-        self.as_ref_vote()
-    }
 }

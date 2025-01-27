@@ -2,7 +2,6 @@ use std::time::Duration;
 
 use validit::Valid;
 
-use crate::base::ord_by::OrdBy;
 use crate::core::raft_msg::AppendEntriesTx;
 use crate::core::raft_msg::ResultSender;
 use crate::core::sm;
@@ -755,7 +754,7 @@ where C: RaftTypeConfig
         };
 
         debug_assert!(
-            leader.committed_vote_ref().ord_by() >= self.state.vote_ref().ord_by(),
+            leader.committed_vote_ref().as_ref_vote() >= self.state.vote_ref().as_ref_vote(),
             "leader.vote({}) >= state.vote({})",
             leader.committed_vote_ref(),
             self.state.vote_ref()

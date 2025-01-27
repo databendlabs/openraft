@@ -1,4 +1,3 @@
-use crate::base::ord_by::OrdBy;
 use crate::engine::EngineConfig;
 use crate::proposer::Candidate;
 use crate::proposer::Leader;
@@ -33,7 +32,7 @@ where C: RaftTypeConfig
 
         if let Some(l) = self.leader.as_ref() {
             #[allow(clippy::neg_cmp_op_on_partial_ord)]
-            if !(vote.ord_by() > l.committed_vote_ref().ord_by()) {
+            if !(vote.as_ref_vote() > l.committed_vote_ref().as_ref_vote()) {
                 tracing::warn!(
                     "vote is not greater than current existing leader vote. Do not establish new leader and quit"
                 );
