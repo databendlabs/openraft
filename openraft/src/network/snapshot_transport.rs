@@ -18,7 +18,6 @@ mod tokio_rt {
     use super::Chunked;
     use super::SnapshotTransport;
     use super::Streaming;
-    use crate::base::ord_by::OrdBy;
     use crate::error::Fatal;
     use crate::error::InstallSnapshotError;
     use crate::error::RPCError;
@@ -31,6 +30,7 @@ mod tokio_rt {
     use crate::storage::Snapshot;
     use crate::type_config::alias::VoteOf;
     use crate::type_config::TypeConfigExt;
+    use crate::vote::raft_vote::RaftVoteExt;
     use crate::ErrorSubject;
     use crate::ErrorVerb;
     use crate::OptionalSend;
@@ -149,7 +149,7 @@ mod tokio_rt {
                     }
                 };
 
-                if resp.vote.ord_by() > vote.ord_by() {
+                if resp.vote.as_ref_vote() > vote.as_ref_vote() {
                     // Unfinished, return a response with a higher vote.
                     // The caller checks the vote and return a HigherVote error.
                     return Ok(SnapshotResponse::new(resp.vote));
