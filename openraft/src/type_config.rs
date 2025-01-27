@@ -45,11 +45,11 @@ use crate::OptionalSync;
 ///        D            = ClientRequest,
 ///        R            = ClientResponse,
 ///        NodeId       = u64,
-///        Node         = openraft::BasicNode,
+///        Node         = openraft::impls::BasicNode,
 ///        Term         = u64,
-///        LeaderId     = openraft::impls::leader_id_adv::LeaderId<TypeConfig>,
-///        Vote         = openraft::impls::Vote<TypeConfig>,
-///        Entry        = openraft::impls::Entry<TypeConfig>,
+///        LeaderId     = openraft::impls::leader_id_adv::LeaderId<Self>,
+///        Vote         = openraft::impls::Vote<Self>,
+///        Entry        = openraft::impls::Entry<Self>,
 ///        SnapshotData = Cursor<Vec<u8>>,
 ///        AsyncRuntime = openraft::TokioRuntime,
 /// );
@@ -125,10 +125,14 @@ pub mod alias {
     use crate::raft::responder::Responder;
     use crate::type_config::AsyncRuntime;
     use crate::vote::RaftLeaderId;
+    use crate::EntryPayload;
+    use crate::LogId;
     use crate::RaftTypeConfig;
 
     pub type DOf<C> = <C as RaftTypeConfig>::D;
     pub type ROf<C> = <C as RaftTypeConfig>::R;
+    pub type AppDataOf<C> = <C as RaftTypeConfig>::D;
+    pub type AppResponseOf<C> = <C as RaftTypeConfig>::R;
     pub type NodeIdOf<C> = <C as RaftTypeConfig>::NodeId;
     pub type NodeOf<C> = <C as RaftTypeConfig>::Node;
     pub type TermOf<C> = <C as RaftTypeConfig>::Term;
@@ -179,7 +183,8 @@ pub mod alias {
     pub type MutexOf<C, T> = <Rt<C> as AsyncRuntime>::Mutex<T>;
 
     // Usually used types
-    pub type LogIdOf<C> = crate::LogId<C>;
+    pub type LogIdOf<C> = LogId<C>;
     pub type CommittedLeaderIdOf<C> = <LeaderIdOf<C> as RaftLeaderId<C>>::Committed;
+    pub type EntryPayloadOf<C> = EntryPayload<C>;
     pub type SerdeInstantOf<C> = crate::metrics::SerdeInstant<InstantOf<C>>;
 }

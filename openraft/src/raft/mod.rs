@@ -116,11 +116,11 @@ use crate::StorageHelper;
 ///        NodeId       = u64,
 ///        Node         = openraft::BasicNode,
 ///        Term         = u64,
-///        LeaderId     = openraft::impls::leader_id_adv::LeaderId<TypeConfig>,
-///        Vote         = openraft::impls::Vote<TypeConfig>,
-///        Entry        = openraft::Entry<TypeConfig>,
+///        LeaderId     = openraft::impls::leader_id_adv::LeaderId<Self>,
+///        Vote         = openraft::impls::Vote<Self>,
+///        Entry        = openraft::Entry<Self>,
 ///        SnapshotData = Cursor<Vec<u8>>,
-///        Responder    = openraft::impls::OneshotResponder<TypeConfig>,
+///        Responder    = openraft::impls::OneshotResponder<Self>,
 ///        AsyncRuntime = openraft::TokioRuntime,
 /// );
 /// ```
