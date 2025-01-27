@@ -50,14 +50,14 @@ where
     /// Create a new blank log entry.
     #[since(version = "0.10.0", change = "become a default method")]
     fn new_blank(log_id: LogIdOf<C>) -> Self
-    where Self: Final {
+    where Self: Final + Sized {
         Self::new(log_id, EntryPayload::Blank)
     }
 
     /// Create a new normal log entry that contains application data.
     #[since(version = "0.10.0", change = "become a default method")]
     fn new_normal(log_id: LogIdOf<C>, data: C::D) -> Self
-    where Self: Final {
+    where Self: Final + Sized {
         Self::new(log_id, EntryPayload::Normal(data))
     }
 
@@ -66,7 +66,7 @@ where
     /// The returned instance must return `Some()` for `Self::get_membership()`.
     #[since(version = "0.10.0", change = "become a default method")]
     fn new_membership(log_id: LogIdOf<C>, m: Membership<C>) -> Self
-    where Self: Final {
+    where Self: Final + Sized {
         Self::new(log_id, EntryPayload::Membership(m))
     }
 
