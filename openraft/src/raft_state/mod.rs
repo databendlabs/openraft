@@ -113,7 +113,7 @@ impl<C> LogStateReader<C> for RaftState<C>
 where C: RaftTypeConfig
 {
     fn ref_log_id(&self, index: u64) -> Option<RefLogId<'_, C>> {
-        self.log_ids.get(index)
+        self.log_ids.ref_at(index)
     }
 
     fn last_log_id(&self) -> Option<&LogIdOf<C>> {

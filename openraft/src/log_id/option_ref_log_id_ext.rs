@@ -15,6 +15,6 @@ impl<C> OptionRefLogIdExt<C> for Option<RefLogId<'_, C>>
 where C: RaftTypeConfig
 {
     fn to_log_id(&self) -> Option<LogIdOf<C>> {
-        self.as_ref().map(|r| r.to_log_id())
+        self.as_ref().map(|r| r.to_owned())
     }
 }

@@ -2,6 +2,7 @@ use std::ops::RangeInclusive;
 
 use crate::engine::leader_log_ids::LeaderLogIds;
 use crate::log_id::option_raft_log_id_ext::OptionRaftLogIdExt;
+use crate::log_id::option_ref_log_id_ext::OptionRefLogIdExt;
 use crate::log_id::raft_log_id::RaftLogId;
 use crate::log_id::raft_log_id_ext::RaftLogIdExt;
 use crate::log_id::ref_log_id::RefLogId;
@@ -282,11 +283,15 @@ where C: RaftTypeConfig
         }
     }
 
+    pub(crate) fn get(&self, index: u64) -> Option<LogIdOf<C>> {
+        self.ref_at(index).map(|x| x.to_owned())
+    }
+
     /// Get the log id at the specified index in a [`RefLogId`].
     ///
     /// It will return `last_purged_log_id` if index is at the last purged index.
     #[allow(clippy::clone_on_copy)]
-    pub(crate) fn get(&self, index: u64) -> Option<RefLogId<'_, C>> {
+    pub(crate) fn ref_at(&self, index: u64) -> Option<RefLogId<'_, C>> {
         let res = self.key_log_ids.binary_search_by(|log_id| log_id.index().cmp(&index));
 
         // Index of the leadership change point that covers the target index.

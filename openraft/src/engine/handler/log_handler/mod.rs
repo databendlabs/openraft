@@ -101,7 +101,7 @@ where C: RaftTypeConfig
             return None;
         }
 
-        let log_id = self.state.log_ids.get(purge_end - 1);
+        let log_id = self.state.log_ids.ref_at(purge_end - 1);
         debug_assert!(
             log_id.is_some(),
             "log id not found at {}, engine.state:{:?}",

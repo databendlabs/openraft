@@ -4,6 +4,7 @@ use std::fmt::Formatter;
 use crate::log_id::raft_log_id::RaftLogId;
 use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::type_config::alias::LogIdOf;
+use crate::LogId;
 use crate::RaftTypeConfig;
 
 /// A reference to a log id, combining a reference to a committed leader ID and an index.
@@ -30,8 +31,8 @@ where C: RaftTypeConfig
         self.index
     }
 
-    pub(crate) fn to_log_id(self) -> LogIdOf<C> {
-        LogIdOf::<C>::new(self.leader_id.clone(), self.index)
+    pub(crate) fn to_owned(self) -> LogId<C> {
+        LogId::<C>::new(self.leader_id.clone(), self.index)
     }
 }
 
