@@ -9,6 +9,8 @@ where
     Self: RaftLogId<C>,
 {
     /// Creates a new owned [`LogId`] from this log ID implementation.
+    ///
+    /// [`LogId`]: crate::log_id::LogId
     fn to_log_id(&self) -> LogIdOf<C> {
         self.to_ref().into_owned()
     }
