@@ -85,7 +85,7 @@ where C: RaftTypeConfig
 
         self.entry.inflight.ack(matching.clone());
 
-        debug_assert!(matching >= self.entry.matching);
+        debug_assert!(matching.as_ref() >= self.entry.matching());
         self.entry.matching = matching;
 
         let matching_next = self.entry.matching().next_index();
