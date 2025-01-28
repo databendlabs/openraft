@@ -1,6 +1,9 @@
 use std::fmt::Debug;
 use std::fmt::Display;
 
+use openraft_macros::since;
+
+use crate::base::finalized::Final;
 use crate::base::OptionalFeatures;
 use crate::log_id::RaftLogId;
 use crate::type_config::alias::LogIdOf;
@@ -34,6 +37,20 @@ where
     ///
     /// The returned instance must return `Some()` for `Self::get_membership()`.
     fn new_membership(log_id: LogIdOf<C>, m: Membership<C>) -> Self;
+
+    /// Returns the `LogId` of this entry.
+    #[since(version = "0.10.0")]
+    fn log_id(&self) -> LogIdOf<C>
+    where Self: Final {
+        self.get_log_id().clone()
+    }
+
+    /// Returns the index of this log entry.
+    #[since(version = "0.10.0")]
+    fn index(&self) -> u64
+    where Self: Final {
+        self.get_log_id().index()
+    }
 }
 
 /// Build a raft log entry from app data.

@@ -7,8 +7,8 @@ use validit::Valid;
 
 use crate::display_ext::DisplayOptionExt;
 use crate::engine::LogIdList;
+use crate::entry::RaftEntry;
 use crate::entry::RaftPayload;
-use crate::log_id::RaftLogId;
 use crate::raft_state::IOState;
 use crate::storage::log_reader_ext::RaftLogReaderExt;
 use crate::storage::RaftLogStorage;
@@ -193,8 +193,8 @@ where
             let chunk_end = std::cmp::min(end, start + chunk_size);
             let entries = log_reader.try_get_log_entries(start..chunk_end).await?;
 
-            let first = entries.first().map(|x| x.get_log_id().index());
-            let last = entries.last().map(|x| x.get_log_id().index());
+            let first = entries.first().map(|ent| ent.index());
+            let last = entries.last().map(|ent| ent.index());
 
             let make_err = || {
                 let err = AnyError::error(format!(
@@ -299,7 +299,7 @@ where
 
             for ent in entries.iter().rev() {
                 if let Some(mem) = ent.get_membership() {
-                    let em = StoredMembership::new(Some(ent.get_log_id().clone()), mem);
+                    let em = StoredMembership::new(Some(ent.log_id()), mem);
                     res.insert(0, em);
                     if res.len() == 2 {
                         return Ok(res);

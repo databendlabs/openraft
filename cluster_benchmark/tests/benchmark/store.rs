@@ -10,6 +10,7 @@ use std::sync::Arc;
 
 use openraft::alias::LogIdOf;
 use openraft::alias::SnapshotDataOf;
+use openraft::entry::RaftEntry;
 use openraft::storage::IOFlushed;
 use openraft::storage::LogState;
 use openraft::storage::RaftLogReader;
@@ -188,7 +189,7 @@ impl RaftLogStorage<TypeConfig> for Arc<LogStore> {
 
         let last = match last_serialized {
             None => None,
-            Some(ent) => Some(*ent.get_log_id()),
+            Some(ent) => Some(ent.log_id()),
         };
 
         let last_purged = self.last_purged_log_id.read().await.clone();
@@ -237,7 +238,7 @@ impl RaftLogStorage<TypeConfig> for Arc<LogStore> {
     where I: IntoIterator<Item = Entry<TypeConfig>> + Send {
         {
             let mut log = self.log.write().await;
-            log.extend(entries.into_iter().map(|entry| (entry.get_log_id().index(), entry)));
+            log.extend(entries.into_iter().map(|entry| (entry.index(), entry)));
         }
         callback.io_completed(Ok(()));
         Ok(())
