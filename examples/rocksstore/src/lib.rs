@@ -18,13 +18,13 @@ use std::sync::Arc;
 
 use log_store::RocksLogStore;
 use openraft::alias::SnapshotDataOf;
+use openraft::entry::RaftEntry;
 use openraft::storage::RaftStateMachine;
 use openraft::storage::Snapshot;
 use openraft::AnyError;
 use openraft::Entry;
 use openraft::EntryPayload;
 use openraft::LogId;
-use openraft::RaftLogId;
 use openraft::RaftSnapshotBuilder;
 use openraft::RaftTypeConfig;
 use openraft::SnapshotMeta;
@@ -179,7 +179,7 @@ impl RaftStateMachine<TypeConfig> for RocksStateMachine {
         for entry in entries_iter {
             tracing::debug!(%entry.log_id, "replicate to sm");
 
-            sm.last_applied_log = Some(*entry.get_log_id());
+            sm.last_applied_log = Some(entry.log_id());
 
             match entry.payload {
                 EntryPayload::Blank => res.push(RocksResponse { value: None }),
