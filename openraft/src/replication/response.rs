@@ -70,18 +70,18 @@ where C: RaftTypeConfig
 
 #[cfg(test)]
 mod tests {
+    use crate::engine::testing::log_id;
     use crate::engine::testing::UTConfig;
     use crate::replication::response::ReplicationResult;
-    use crate::testing::log_id;
 
     #[test]
     fn test_replication_result_display() {
         let result = ReplicationResult::<UTConfig>(Ok(Some(log_id(1, 2, 3))));
-        let want = format!("(Match:{})", log_id::<UTConfig>(1, 2, 3));
+        let want = format!("(Match:{})", log_id(1, 2, 3));
         assert!(result.to_string().ends_with(&want), "{}", result.to_string());
 
         let result = ReplicationResult::<UTConfig>(Err(log_id(1, 2, 3)));
-        let want = format!("(Conflict:{})", log_id::<UTConfig>(1, 2, 3));
+        let want = format!("(Conflict:{})", log_id(1, 2, 3));
         assert!(result.to_string().ends_with(&want), "{}", result.to_string());
     }
 }
