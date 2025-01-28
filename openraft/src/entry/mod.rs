@@ -89,10 +89,6 @@ where C: RaftTypeConfig
 impl<C> RaftPayload<C> for Entry<C>
 where C: RaftTypeConfig
 {
-    fn is_blank(&self) -> bool {
-        self.payload.is_blank()
-    }
-
     fn get_membership(&self) -> Option<Membership<C>> {
         self.payload.get_membership()
     }
