@@ -68,11 +68,11 @@ where C: RaftTypeConfig
             entries.display(),
         );
 
-        if let Some(x) = entries.first() {
-            debug_assert!(x.get_log_id().index() == prev_log_id.next_index());
+        if let Some(first_ent) = entries.first() {
+            debug_assert!(first_ent.get_log_id().index() == prev_log_id.next_index());
         }
 
-        let last_log_id = entries.last().map(|x| x.get_log_id().clone());
+        let last_log_id = entries.last().map(|ent| ent.get_log_id().clone());
         let last_log_id = std::cmp::max(prev_log_id, last_log_id);
 
         let prev_accepted = self.state.accept_io(IOId::new_log_io(self.leader_vote.clone(), last_log_id.clone()));
