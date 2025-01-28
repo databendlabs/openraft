@@ -70,11 +70,10 @@ mod tests {
 
     use crate::engine::testing::UTConfig;
     use crate::log_id_range::LogIdRange;
-    use crate::testing;
     use crate::type_config::alias::LogIdOf;
 
     fn log_id(index: u64) -> LogIdOf<UTConfig> {
-        testing::log_id(1, 1, index)
+        crate::engine::testing::log_id(1, 1, index)
     }
 
     #[test]
