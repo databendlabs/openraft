@@ -2,6 +2,7 @@ use crate::display_ext::DisplayOptionExt;
 use crate::engine::Command;
 use crate::engine::EngineConfig;
 use crate::engine::EngineOutput;
+use crate::log_id::option_ref_log_id_ext::OptionRefLogIdExt;
 use crate::raft_state::LogStateReader;
 use crate::type_config::alias::LogIdOf;
 use crate::LogIdOptionExt;
@@ -100,7 +101,7 @@ where C: RaftTypeConfig
             return None;
         }
 
-        let log_id = self.state.log_ids.get(purge_end - 1);
+        let log_id = self.state.log_ids.ref_at(purge_end - 1);
         debug_assert!(
             log_id.is_some(),
             "log id not found at {}, engine.state:{:?}",
@@ -108,6 +109,6 @@ where C: RaftTypeConfig
             st
         );
 
-        log_id
+        log_id.to_log_id()
     }
 }

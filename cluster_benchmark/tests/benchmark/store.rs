@@ -21,7 +21,6 @@ use openraft::storage::Snapshot;
 use openraft::Entry;
 use openraft::EntryPayload;
 use openraft::OptionalSend;
-use openraft::RaftLogId;
 use openraft::SnapshotMeta;
 use openraft::StorageError;
 use openraft::StoredMembership;

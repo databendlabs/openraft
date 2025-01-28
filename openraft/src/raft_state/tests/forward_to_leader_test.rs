@@ -6,22 +6,29 @@ use maplit::btreeset;
 
 use crate::engine::testing::UTConfig;
 use crate::error::ForwardToLeader;
-use crate::testing::log_id;
+use crate::type_config::alias::LeaderIdOf;
+use crate::type_config::alias::LogIdOf;
+use crate::type_config::alias::NodeIdOf;
 use crate::type_config::TypeConfigExt;
 use crate::utime::Leased;
+use crate::vote::RaftLeaderIdExt;
 use crate::EffectiveMembership;
 use crate::Membership;
 use crate::MembershipState;
 use crate::RaftState;
 use crate::Vote;
 
-fn m12() -> Membership<UTConfig> {
+fn log_id(term: u64, node_id: NodeIdOf<UTConfig<u64>>, index: u64) -> LogIdOf<UTConfig<u64>> {
+    LogIdOf::<UTConfig<u64>>::new(LeaderIdOf::<UTConfig<u64>>::new_committed(term, node_id), index)
+}
+
+fn m12() -> Membership<UTConfig<u64>> {
     Membership::new_with_defaults(vec![btreeset! {1,2}], [])
 }
 
 #[test]
 fn test_forward_to_leader_vote_not_committed() {
-    let rs = RaftState::<UTConfig> {
+    let rs = RaftState::<UTConfig<u64>> {
         vote: Leased::new(UTConfig::<()>::now(), Duration::from_millis(500), Vote::new(1, 2)),
         membership_state: MembershipState::new(
             Arc::new(EffectiveMembership::new(Some(log_id(1, 0, 1)), m12())),
@@ -35,7 +42,7 @@ fn test_forward_to_leader_vote_not_committed() {
 
 #[test]
 fn test_forward_to_leader_not_a_member() {
-    let rs = RaftState::<UTConfig> {
+    let rs = RaftState::<UTConfig<u64>> {
         vote: Leased::new(
             UTConfig::<()>::now(),
             Duration::from_millis(500),

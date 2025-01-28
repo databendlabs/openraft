@@ -63,10 +63,6 @@ where C: RaftTypeConfig
 }
 
 impl<C: RaftTypeConfig> RaftPayload<C> for EntryPayload<C> {
-    fn is_blank(&self) -> bool {
-        matches!(self, EntryPayload::Blank)
-    }
-
     fn get_membership(&self) -> Option<Membership<C>> {
         if let EntryPayload::Membership(m) = self {
             Some(m.clone())

@@ -1,4 +1,3 @@
-use std::borrow::Borrow;
 use std::collections::BTreeMap;
 use std::fmt;
 use std::fmt::Debug;
@@ -43,7 +42,6 @@ use crate::engine::Condition;
 use crate::engine::Engine;
 use crate::engine::ReplicationProgress;
 use crate::engine::Respond;
-use crate::entry::FromAppData;
 use crate::entry::RaftEntry;
 use crate::error::AllowNextRevertError;
 use crate::error::ClientWriteError;
@@ -54,8 +52,7 @@ use crate::error::InitializeError;
 use crate::error::QuorumNotEnough;
 use crate::error::RPCError;
 use crate::error::Timeout;
-use crate::log_id::LogIdOptionExt;
-use crate::log_id::RaftLogId;
+use crate::log_id::option_raft_log_id_ext::OptionRaftLogIdExt;
 use crate::metrics::HeartbeatMetrics;
 use crate::metrics::RaftDataMetrics;
 use crate::metrics::RaftMetrics;
@@ -542,17 +539,8 @@ where
     pub fn flush_metrics(&mut self) {
         let (replication, heartbeat) = if let Some(leader) = self.engine.leader.as_ref() {
             let replication_prog = &leader.progress;
-            let replication = Some(
-                replication_prog
-                    .iter()
-                    .map(|(id, p)| {
-                        (
-                            id.clone(),
-                            <ProgressEntry<C> as Borrow<Option<LogIdOf<C>>>>::borrow(p).clone(),
-                        )
-                    })
-                    .collect(),
-            );
+            let replication =
+                Some(replication_prog.iter().map(|(id, p)| (id.clone(), p.matching().cloned())).collect());
 
             let clock_prog = &leader.clock_progress;
             let heartbeat =
@@ -842,7 +830,7 @@ where
             session_id,
             self.config.clone(),
             self.engine.state.committed().cloned(),
-            progress_entry.matching().cloned(),
+            progress_entry.matching.clone(),
             network,
             snapshot_network,
             self.log_store.get_log_reader().await,
@@ -1246,7 +1234,7 @@ where
                 self.handle_check_is_leader_request(tx).await;
             }
             RaftMsg::ClientWriteRequest { app_data, tx } => {
-                self.write_entry(C::Entry::from_app_data(app_data), Some(tx));
+                self.write_entry(C::Entry::new_normal(LogIdOf::<C>::default(), app_data), Some(tx));
             }
             RaftMsg::Initialize { members, tx } => {
                 tracing::info!(
@@ -1746,10 +1734,10 @@ where
                 committed_vote: vote,
                 entries,
             } => {
-                let last_log_id = entries.last().unwrap().get_log_id();
+                let last_log_id = entries.last().unwrap().log_id();
                 tracing::debug!("AppendInputEntries: {}", DisplaySlice::<_>(&entries),);
 
-                let io_id = IOId::new_log_io(vote, Some(last_log_id.clone()));
+                let io_id = IOId::new_log_io(vote, Some(last_log_id));
                 let notify = Notification::LocalIO { io_id: io_id.clone() };
                 let callback = IOFlushed::new(notify, self.tx_notification.downgrade());
 

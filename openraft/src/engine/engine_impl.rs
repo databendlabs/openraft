@@ -56,7 +56,6 @@ use crate::vote::RaftTerm;
 use crate::vote::RaftVote;
 use crate::LogIdOptionExt;
 use crate::Membership;
-use crate::RaftLogId;
 use crate::RaftTypeConfig;
 
 /// Raft protocol algorithm.
@@ -191,7 +190,7 @@ where C: RaftTypeConfig
         self.check_initialize()?;
 
         // The very first log id
-        entry.set_log_id(&LogIdOf::<C>::default());
+        entry.set_log_id(LogIdOf::<C>::default());
 
         let m = entry.get_membership().expect("the only log entry for initializing has to be membership log");
         self.check_members_contain_me(&m)?;

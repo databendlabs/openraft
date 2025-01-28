@@ -9,7 +9,6 @@ use tonic::transport::Channel;
 
 use crate::protobuf as pb;
 use crate::protobuf::internal_service_client::InternalServiceClient;
-use crate::protobuf::RaftRequestBytes;
 use crate::protobuf::SnapshotRequest;
 use crate::protobuf::VoteRequest as PbVoteRequest;
 use crate::protobuf::VoteResponse as PbVoteResponse;
@@ -65,12 +64,12 @@ impl RaftNetworkV2<TypeConfig> for NetworkConnection {
         };
         let mut client = InternalServiceClient::new(channel);
 
-        let value = serialize(&req).map_err(|e| RPCError::Network(NetworkError::new(&e)))?;
-        let request = RaftRequestBytes { value };
-        let response = client.append_entries(request).await.map_err(|e| RPCError::Network(NetworkError::new(&e)))?;
-        let message = response.into_inner();
-        let result = deserialize(&message.value).map_err(|e| RPCError::Network(NetworkError::new(&e)))?;
-        Ok(result)
+        let response = client
+            .append_entries(pb::AppendEntriesRequest::from(req))
+            .await
+            .map_err(|e| RPCError::Network(NetworkError::new(&e)))?;
+        let response = response.into_inner();
+        Ok(AppendEntriesResponse::from(response))
     }
 
     async fn full_snapshot(

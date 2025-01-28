@@ -5,7 +5,6 @@ use std::fmt::Formatter;
 use validit::Validate;
 
 use crate::display_ext::DisplayOptionExt;
-use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::type_config::alias::LogIdOf;
 use crate::LogIdOptionExt;
 use crate::RaftTypeConfig;
@@ -30,7 +29,7 @@ where C: RaftTypeConfig
 impl<C> Copy for LogIdRange<C>
 where
     C: RaftTypeConfig,
-    CommittedLeaderIdOf<C>: Copy,
+    LogIdOf<C>: Copy,
 {
 }
 
@@ -70,11 +69,10 @@ mod tests {
 
     use crate::engine::testing::UTConfig;
     use crate::log_id_range::LogIdRange;
-    use crate::testing;
     use crate::type_config::alias::LogIdOf;
 
     fn log_id(index: u64) -> LogIdOf<UTConfig> {
-        testing::log_id(1, 1, index)
+        crate::engine::testing::log_id(1, 1, index)
     }
 
     #[test]

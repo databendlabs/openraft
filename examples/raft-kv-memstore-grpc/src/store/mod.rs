@@ -4,8 +4,8 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use bincode;
+use openraft::entry::RaftEntry;
 use openraft::storage::RaftStateMachine;
-use openraft::EntryPayload;
 use openraft::RaftSnapshotBuilder;
 use serde::Deserialize;
 use serde::Serialize;
@@ -129,21 +129,23 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
         let mut sm = self.state_machine.lock().unwrap();
 
         for entry in entries {
-            tracing::debug!(%entry.log_id, "replicate to sm");
+            let log_id = entry.log_id();
 
-            sm.last_applied = Some(entry.log_id);
+            tracing::debug!("replicate to sm: {}", log_id);
 
-            match entry.payload {
-                EntryPayload::Blank => res.push(Response { value: None }),
-                EntryPayload::Normal(req) => {
-                    sm.data.insert(req.key, req.value.clone());
-                    res.push(Response { value: Some(req.value) });
-                }
-                EntryPayload::Membership(ref mem) => {
-                    sm.last_membership = StoredMembership::new(Some(entry.log_id), mem.clone());
-                    res.push(Response { value: None })
-                }
+            sm.last_applied = Some(log_id);
+
+            let value = if let Some(req) = entry.app_data {
+                sm.data.insert(req.key, req.value.clone());
+                Some(req.value)
+            } else if let Some(mem) = entry.membership {
+                sm.last_membership = StoredMembership::new(Some(log_id), mem.into());
+                None
+            } else {
+                None
             };
+
+            res.push(Response { value });
         }
         Ok(res)
     }

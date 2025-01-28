@@ -11,6 +11,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // TODO: remove serde
 
     tonic_build::configure()
+        .btree_map(["."])
         .type_attribute("openraftpb.Node", "#[derive(Eq, serde::Serialize, serde::Deserialize)]")
         .type_attribute(
             "openraftpb.SetRequest",
@@ -25,6 +26,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "#[derive(Eq, serde::Serialize, serde::Deserialize)]",
         )
         .type_attribute("openraftpb.Vote", "#[derive(Eq, serde::Serialize, serde::Deserialize)]")
+        .type_attribute(
+            "google.protobuf.Empty",
+            "#[derive(Eq, serde::Serialize, serde::Deserialize)]",
+        )
+        .type_attribute(
+            "openraftpb.NodeIdSet",
+            "#[derive(Eq, serde::Serialize, serde::Deserialize)]",
+        )
+        .type_attribute(
+            "openraftpb.Membership",
+            "#[derive(Eq, serde::Serialize, serde::Deserialize)]",
+        )
+        .type_attribute(
+            "openraftpb.Entry",
+            "#[derive(Eq, serde::Serialize, serde::Deserialize)]",
+        )
         .compile_protos_with_config(config, &proto_files, &["proto"])?;
     Ok(())
 }
