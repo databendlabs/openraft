@@ -3,18 +3,18 @@
 use std::fmt;
 use std::fmt::Debug;
 
-use crate::log_id::RaftLogId;
 use crate::Membership;
 use crate::RaftTypeConfig;
 
 pub mod payload;
+pub(crate) mod raft_entry_ext;
 mod traits;
 
 pub use payload::EntryPayload;
-pub use traits::FromAppData;
 pub use traits::RaftEntry;
 pub use traits::RaftPayload;
 
+use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::type_config::alias::LogIdOf;
 
 /// A Raft log entry.
@@ -94,43 +94,18 @@ where C: RaftTypeConfig
     }
 }
 
-impl<C> RaftLogId<C> for Entry<C>
-where C: RaftTypeConfig
-{
-    fn get_log_id(&self) -> &LogIdOf<C> {
-        &self.log_id
-    }
-
-    fn set_log_id(&mut self, log_id: &LogIdOf<C>) {
-        self.log_id = log_id.clone();
-    }
-}
-
 impl<C> RaftEntry<C> for Entry<C>
 where C: RaftTypeConfig
 {
-    fn new_blank(log_id: LogIdOf<C>) -> Self {
-        Self {
-            log_id,
-            payload: EntryPayload::Blank,
-        }
+    fn new(log_id: LogIdOf<C>, payload: EntryPayload<C>) -> Self {
+        Self { log_id, payload }
     }
 
-    fn new_membership(log_id: LogIdOf<C>, m: Membership<C>) -> Self {
-        Self {
-            log_id,
-            payload: EntryPayload::Membership(m),
-        }
+    fn log_id_parts(&self) -> (&CommittedLeaderIdOf<C>, u64) {
+        (&self.log_id.leader_id, self.log_id.index)
     }
-}
 
-impl<C> FromAppData<C::D> for Entry<C>
-where C: RaftTypeConfig
-{
-    fn from_app_data(d: C::D) -> Self {
-        Entry {
-            log_id: LogIdOf::<C>::default(),
-            payload: EntryPayload::Normal(d),
-        }
+    fn set_log_id(&mut self, new: LogIdOf<C>) {
+        self.log_id = new;
     }
 }

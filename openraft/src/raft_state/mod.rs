@@ -6,7 +6,7 @@ use validit::Validate;
 
 use crate::engine::LogIdList;
 use crate::error::ForwardToLeader;
-use crate::log_id::RaftLogId;
+use crate::log_id::raft_log_id::RaftLogId;
 use crate::storage::SnapshotMeta;
 use crate::utime::Leased;
 use crate::LogIdOptionExt;
@@ -35,6 +35,9 @@ pub use membership_state::MembershipState;
 pub(crate) use vote_state_reader::VoteStateReader;
 
 use crate::display_ext::DisplayOptionExt;
+use crate::entry::raft_entry_ext::RaftEntryExt;
+use crate::entry::RaftEntry;
+use crate::log_id::ref_log_id::RefLogId;
 use crate::proposer::Leader;
 use crate::proposer::LeaderQuorumSet;
 use crate::type_config::alias::InstantOf;
@@ -108,8 +111,8 @@ where C: RaftTypeConfig
 impl<C> LogStateReader<C> for RaftState<C>
 where C: RaftTypeConfig
 {
-    fn get_log_id(&self, index: u64) -> Option<LogIdOf<C>> {
-        self.log_ids.get(index)
+    fn ref_log_id(&self, index: u64) -> Option<RefLogId<'_, C>> {
+        self.log_ids.ref_at(index)
     }
 
     fn last_log_id(&self) -> Option<&LogIdOf<C>> {
@@ -254,11 +257,20 @@ where C: RaftTypeConfig
     /// Append a list of `log_id`.
     ///
     /// The log ids in the input has to be continuous.
-    pub(crate) fn extend_log_ids_from_same_leader<'a, LID: RaftLogId<C> + 'a>(&mut self, new_log_ids: &[LID]) {
+    pub(crate) fn extend_log_ids_from_same_leader<'a, I>(&mut self, new_log_ids: I)
+    where
+        I: IntoIterator<Item = RefLogId<'a, C>>,
+        <I as IntoIterator>::IntoIter: DoubleEndedIterator,
+    {
         self.log_ids.extend_from_same_leader(new_log_ids)
     }
 
-    pub(crate) fn extend_log_ids<'a, LID: RaftLogId<C> + 'a>(&mut self, new_log_id: &[LID]) {
+    pub(crate) fn extend_log_ids<LID, I>(&mut self, new_log_id: I)
+    where
+        LID: RaftLogId<C>,
+        I: IntoIterator<Item = LID>,
+        <I as IntoIterator>::IntoIter: ExactSizeIterator,
+    {
         self.log_ids.extend(new_log_id)
     }
 
@@ -299,16 +311,16 @@ where C: RaftTypeConfig
     /// Find the first entry in the input that does not exist on local raft-log,
     /// by comparing the log id.
     pub(crate) fn first_conflicting_index<Ent>(&self, entries: &[Ent]) -> usize
-    where Ent: RaftLogId<C> {
+    where Ent: RaftEntry<C> {
         let l = entries.len();
 
         for (i, ent) in entries.iter().enumerate() {
-            let log_id = ent.get_log_id();
+            let ref_log_id = ent.ref_log_id();
 
-            if !self.has_log_id(log_id) {
+            if !self.has_log_id(ref_log_id) {
                 tracing::debug!(
                     at = display(i),
-                    entry_log_id = display(log_id),
+                    entry_log_id = display(ref_log_id),
                     "found nonexistent log id"
                 );
                 return i;
