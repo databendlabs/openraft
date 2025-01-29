@@ -27,7 +27,6 @@ use crate::type_config::alias::VoteOf;
 use crate::type_config::TypeConfigExt;
 use crate::vote::raft_vote::RaftVoteExt;
 use crate::vote::RaftLeaderIdExt;
-use crate::LogId;
 use crate::Membership;
 use crate::OptionalSend;
 use crate::RaftLogReader;
@@ -634,10 +633,7 @@ where
     }
 
     pub async fn get_initial_state_log_ids(mut store: LS, mut sm: SM) -> Result<(), StorageError<C>> {
-        let log_id = |t: u64, n: u64, i| LogId::<C> {
-            leader_id: C::LeaderId::new_committed(t.into(), n.into()),
-            index: i,
-        };
+        let log_id = |t: u64, n: u64, i| LogIdOf::<C>::new(C::LeaderId::new_committed(t.into(), n.into()), i);
 
         tracing::info!("--- empty store, expect []");
         {
@@ -875,7 +871,7 @@ where
     pub async fn try_get_log_entry(mut store: LS, mut sm: SM) -> Result<(), StorageError<C>> {
         Self::feed_10_logs_vote_self(&mut store).await?;
 
-        store.purge(log_id(0, 0, 0)).await?;
+        store.purge(log_id::<C>(0, 0, 0)).await?;
 
         // `purge()` does not have to do the purge at once.
         // The implementation may choose to do it in the background.
@@ -925,7 +921,7 @@ where
             store.purge(log_id_0(0, 0)).await?;
 
             let st = store.get_log_state().await?;
-            assert_eq!(Some(log_id(0, 0, 0)), st.last_purged_log_id);
+            assert_eq!(Some(log_id::<C>(0, 0, 0)), st.last_purged_log_id);
             assert_eq!(Some(log_id_0(1, 2)), st.last_log_id);
         }
 
@@ -1379,7 +1375,7 @@ where
     C: RaftTypeConfig,
     C::NodeId: From<u64>,
 {
-    LogId::new(C::LeaderId::new_committed(term.into(), NODE_ID.into()), index)
+    LogIdOf::<C>::new(C::LeaderId::new_committed(term.into(), NODE_ID.into()), index)
 }
 
 /// Create a blank log entry with node_id 0 for test.
@@ -1388,7 +1384,7 @@ where
     C::Term: From<u64>,
     C::NodeId: From<u64>,
 {
-    C::Entry::new_blank(log_id(term, 0, index))
+    C::Entry::new_blank(log_id::<C>(term, 0, index))
 }
 
 /// Create a membership entry with node_id 0 for test.

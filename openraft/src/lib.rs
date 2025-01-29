@@ -105,7 +105,6 @@ pub use crate::instant::TokioInstant;
 pub use crate::log_id::LogId;
 pub use crate::log_id::LogIdOptionExt;
 pub use crate::log_id::LogIndexOptionExt;
-pub use crate::log_id::RaftLogId;
 pub use crate::membership::EffectiveMembership;
 pub use crate::membership::Membership;
 pub use crate::membership::StoredMembership;
