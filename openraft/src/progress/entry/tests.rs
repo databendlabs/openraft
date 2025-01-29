@@ -2,6 +2,7 @@ use std::borrow::Borrow;
 
 use crate::engine::testing::UTConfig;
 use crate::engine::EngineConfig;
+use crate::log_id::ref_log_id::RefLogId;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::inflight::Inflight;
 use crate::raft_state::LogStateReader;
@@ -116,6 +117,10 @@ impl LogStateReader<UTConfig> for LogState {
         } else {
             None
         }
+    }
+
+    fn ref_log_id(&self, _index: u64) -> Option<RefLogId<'_, UTConfig>> {
+        unimplemented!("testing")
     }
 
     fn last_log_id(&self) -> Option<&LogIdOf<UTConfig>> {

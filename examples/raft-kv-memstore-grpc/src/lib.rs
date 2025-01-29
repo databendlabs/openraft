@@ -1,7 +1,6 @@
 #![allow(clippy::uninlined_format_args)]
 
 use crate::protobuf as pb;
-use crate::store::StateMachineData;
 use crate::typ::*;
 
 pub mod grpc;
@@ -21,8 +20,9 @@ openraft::declare_raft_types!(
         R = pb::Response,
         LeaderId = pb::LeaderId,
         Vote = pb::Vote,
+        Entry = pb::Entry,
         Node = pb::Node,
-        SnapshotData = StateMachineData,
+        SnapshotData = Vec<u8>,
 );
 
 pub type LogStore = store::LogStore;
@@ -54,6 +54,73 @@ impl From<pb::VoteResponse> for VoteResponse {
         let vote = proto_vote_resp.vote.unwrap();
         let last_log_id = proto_vote_resp.last_log_id.map(|log_id| log_id.into());
         VoteResponse::new(vote, last_log_id, proto_vote_resp.vote_granted)
+    }
+}
+
+impl From<pb::AppendEntriesRequest> for AppendEntriesRequest {
+    fn from(proto_req: pb::AppendEntriesRequest) -> Self {
+        AppendEntriesRequest {
+            vote: proto_req.vote.unwrap(),
+            prev_log_id: proto_req.prev_log_id.map(|log_id| log_id.into()),
+            entries: proto_req.entries,
+            leader_commit: proto_req.leader_commit.map(|log_id| log_id.into()),
+        }
+    }
+}
+
+impl From<AppendEntriesRequest> for pb::AppendEntriesRequest {
+    fn from(value: AppendEntriesRequest) -> Self {
+        pb::AppendEntriesRequest {
+            vote: Some(value.vote),
+            prev_log_id: value.prev_log_id.map(|log_id| log_id.into()),
+            entries: value.entries,
+            leader_commit: value.leader_commit.map(|log_id| log_id.into()),
+        }
+    }
+}
+
+impl From<pb::AppendEntriesResponse> for AppendEntriesResponse {
+    fn from(r: pb::AppendEntriesResponse) -> Self {
+        if let Some(higher) = r.rejected_by {
+            return AppendEntriesResponse::HigherVote(higher);
+        }
+
+        if r.conflict {
+            return AppendEntriesResponse::Conflict;
+        }
+
+        if let Some(log_id) = r.last_log_id {
+            AppendEntriesResponse::PartialSuccess(Some(log_id.into()))
+        } else {
+            AppendEntriesResponse::Success
+        }
+    }
+}
+
+impl From<AppendEntriesResponse> for pb::AppendEntriesResponse {
+    fn from(r: AppendEntriesResponse) -> Self {
+        match r {
+            AppendEntriesResponse::Success => pb::AppendEntriesResponse {
+                rejected_by: None,
+                conflict: false,
+                last_log_id: None,
+            },
+            AppendEntriesResponse::PartialSuccess(p) => pb::AppendEntriesResponse {
+                rejected_by: None,
+                conflict: false,
+                last_log_id: p.map(|log_id| log_id.into()),
+            },
+            AppendEntriesResponse::Conflict => pb::AppendEntriesResponse {
+                rejected_by: None,
+                conflict: true,
+                last_log_id: None,
+            },
+            AppendEntriesResponse::HigherVote(v) => pb::AppendEntriesResponse {
+                rejected_by: Some(v),
+                conflict: false,
+                last_log_id: None,
+            },
+        }
     }
 }
 
