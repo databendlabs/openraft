@@ -398,8 +398,8 @@ where
                 // limited_get_log_entries will return logs smaller than the range [start, end).
                 let logs = self.log_reader.limited_get_log_entries(start, end).await?;
 
-                let first = logs.first().map(|x| x.get_log_id()).unwrap();
-                let last = logs.last().map(|x| x.log_id()).unwrap();
+                let first = logs.first().map(|ent| ent.get_log_id()).unwrap();
+                let last = logs.last().map(|ent| ent.log_id()).unwrap();
 
                 debug_assert!(
                     !logs.is_empty() && logs.len() <= (end - start) as usize,

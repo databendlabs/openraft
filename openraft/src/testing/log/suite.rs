@@ -1379,10 +1379,7 @@ where
     C: RaftTypeConfig,
     C::NodeId: From<u64>,
 {
-    LogId {
-        leader_id: C::LeaderId::new_committed(term.into(), NODE_ID.into()),
-        index,
-    }
+    LogId::new(C::LeaderId::new_committed(term.into(), NODE_ID.into()), index)
 }
 
 /// Create a blank log entry with node_id 0 for test.
@@ -1463,8 +1460,5 @@ where
     C::Term: From<u64>,
     C::NodeId: From<u64>,
 {
-    LogId {
-        leader_id: C::LeaderId::new_committed(term.into(), node_id.into()),
-        index,
-    }
+    LogIdOf::<C>::new(C::LeaderId::new_committed(term.into(), node_id.into()), index)
 }
