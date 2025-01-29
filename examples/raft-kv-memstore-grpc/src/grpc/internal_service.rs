@@ -8,9 +8,9 @@ use tonic::Status;
 use tonic::Streaming;
 use tracing::debug;
 
+use crate::protobuf as pb;
 use crate::protobuf::internal_service_server::InternalService;
 use crate::protobuf::RaftReplyBytes;
-use crate::protobuf::RaftRequestBytes;
 use crate::protobuf::SnapshotRequest;
 use crate::protobuf::VoteRequest;
 use crate::protobuf::VoteResponse;
@@ -75,15 +75,10 @@ impl InternalService for InternalServiceImpl {
     /// Nodes vote for candidates based on log completeness and term numbers.
     async fn vote(&self, request: Request<VoteRequest>) -> Result<Response<VoteResponse>, Status> {
         debug!("Processing vote request");
-        let req = request.into_inner();
 
-        // Deserialize the vote request
-        let vote_req = req.into();
-
-        // Process the vote request
         let vote_resp = self
             .raft_node
-            .vote(vote_req)
+            .vote(request.into_inner().into())
             .await
             .map_err(|e| Status::internal(format!("Vote operation failed: {}", e)))?;
 
@@ -103,22 +98,20 @@ impl InternalService for InternalServiceImpl {
     /// # Protocol Details
     /// This implements the AppendEntries RPC from the Raft protocol.
     /// Used for both log replication and as heartbeat mechanism.
-    async fn append_entries(&self, request: Request<RaftRequestBytes>) -> Result<Response<RaftReplyBytes>, Status> {
+    async fn append_entries(
+        &self,
+        request: Request<pb::AppendEntriesRequest>,
+    ) -> Result<Response<pb::AppendEntriesResponse>, Status> {
         debug!("Processing append entries request");
-        let req = request.into_inner();
 
-        // Deserialize the append request
-        let append_req = Self::deserialize_request(&req.value)?;
-
-        // Process the append request
         let append_resp = self
             .raft_node
-            .append_entries(append_req)
+            .append_entries(request.into_inner().into())
             .await
             .map_err(|e| Status::internal(format!("Append entries operation failed: {}", e)))?;
 
         debug!("Append entries request processed successfully");
-        Self::create_response(append_resp)
+        Ok(Response::new(append_resp.into()))
     }
 
     /// Handles snapshot installation requests for state transfer using streaming.
