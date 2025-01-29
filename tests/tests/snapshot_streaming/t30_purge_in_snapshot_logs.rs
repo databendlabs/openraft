@@ -3,7 +3,6 @@ use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
-use openraft::entry::RaftEntry;
 use openraft::Config;
 use openraft::RaftLogReader;
 use tokio::time::sleep;
@@ -87,7 +86,7 @@ async fn purge_in_snapshot_logs() -> Result<()> {
     let logs = sto0.try_get_log_entries(..).await?;
     assert_eq!(
         log_index + 1 - max_keep,
-        logs[0].index(),
+        logs[0].log_id.index(),
         "leader's local logs are purged"
     );
 

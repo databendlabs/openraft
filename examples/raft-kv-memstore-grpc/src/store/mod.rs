@@ -1,15 +1,12 @@
-use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-use bincode;
+use openraft::entry::RaftEntry;
 use openraft::storage::RaftStateMachine;
-use openraft::EntryPayload;
 use openraft::RaftSnapshotBuilder;
-use serde::Deserialize;
-use serde::Serialize;
 
+use crate::protobuf as pb;
 use crate::protobuf::Response;
 use crate::typ::*;
 use crate::TypeConfig;
@@ -24,37 +21,12 @@ pub struct StoredSnapshot {
     pub data: Box<SnapshotData>,
 }
 
-/// Data contained in the Raft state machine.
-///
-/// Note that we are using `serde` to serialize the
-/// `data`, which has a implementation to be serialized. Note that for this test we set both the key
-/// and value as String, but you could set any type of value that has the serialization impl.
-#[derive(Serialize, Deserialize, Debug, Default, Clone)]
-pub struct StateMachineData {
-    pub last_applied: Option<LogId>,
-
-    pub last_membership: StoredMembership,
-
-    /// Application data.
-    pub data: BTreeMap<String, String>,
-}
-
-impl StateMachineData {
-    pub fn to_bytes(&self) -> Vec<u8> {
-        bincode::serialize(self).expect("Failed to serialize StateMachineData")
-    }
-
-    pub fn from_bytes(bytes: &[u8]) -> Result<Self, bincode::Error> {
-        bincode::deserialize(bytes)
-    }
-}
-
 /// Defines a state machine for the Raft cluster. This state machine represents a copy of the
 /// data for this node. Additionally, it is responsible for storing the last snapshot of the data.
 #[derive(Debug, Default)]
 pub struct StateMachineStore {
     /// The Raft state machine.
-    pub state_machine: Mutex<StateMachineData>,
+    pub state_machine: Mutex<pb::StateMachineData>,
 
     snapshot_idx: Mutex<u64>,
 
@@ -66,16 +38,19 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<StateMachineStore> {
     #[tracing::instrument(level = "trace", skip(self))]
     async fn build_snapshot(&mut self) -> Result<Snapshot, StorageError> {
         let data;
-        let last_applied_log;
+        let last_applied: Option<LogId>;
         let last_membership;
 
         {
             // Serialize the data of the state machine.
             let state_machine = self.state_machine.lock().unwrap().clone();
 
-            last_applied_log = state_machine.last_applied;
-            last_membership = state_machine.last_membership.clone();
-            data = state_machine;
+            last_applied = state_machine.last_applied.map(From::from);
+            let last_membership_log_id = state_machine.last_membership_log_id.map(|log_id| log_id.into());
+            let membership = state_machine.last_membership.clone().unwrap_or_default().into();
+            last_membership = StoredMembership::new(last_membership_log_id, membership);
+
+            data = prost::Message::encode_to_vec(&state_machine);
         }
 
         let snapshot_idx = {
@@ -84,26 +59,27 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<StateMachineStore> {
             *l
         };
 
-        let snapshot_id = if let Some(last) = last_applied_log {
+        let snapshot_id = if let Some(last) = &last_applied {
             format!("{}-{}-{}", last.committed_leader_id(), last.index(), snapshot_idx)
         } else {
             format!("--{}", snapshot_idx)
         };
 
         let meta = SnapshotMeta {
-            last_log_id: last_applied_log,
+            last_log_id: last_applied,
             last_membership,
             snapshot_id,
         };
 
-        let snapshot = StoredSnapshot {
+        let stored = StoredSnapshot {
             meta: meta.clone(),
             data: Box::new(data.clone()),
         };
 
+        // Emulation of storing snapshot locally
         {
             let mut current_snapshot = self.current_snapshot.lock().unwrap();
-            *current_snapshot = Some(snapshot);
+            *current_snapshot = Some(stored);
         }
 
         Ok(Snapshot {
@@ -117,8 +93,16 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
     type SnapshotBuilder = Self;
 
     async fn applied_state(&mut self) -> Result<(Option<LogId>, StoredMembership), StorageError> {
-        let state_machine = self.state_machine.lock().unwrap();
-        Ok((state_machine.last_applied, state_machine.last_membership.clone()))
+        let sm = self.state_machine.lock().unwrap();
+
+        let last_applied = sm.last_applied.map(|x| x.into());
+
+        let mem = StoredMembership::new(
+            sm.last_membership_log_id.map(|x| x.into()),
+            sm.last_membership.clone().unwrap_or_default().into(),
+        );
+
+        Ok((last_applied, mem))
     }
 
     #[tracing::instrument(level = "trace", skip(self, entries))]
@@ -129,21 +113,24 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
         let mut sm = self.state_machine.lock().unwrap();
 
         for entry in entries {
-            tracing::debug!(%entry.log_id, "replicate to sm");
+            let log_id = entry.log_id();
 
-            sm.last_applied = Some(entry.log_id);
+            tracing::debug!("replicate to sm: {}", log_id);
 
-            match entry.payload {
-                EntryPayload::Blank => res.push(Response { value: None }),
-                EntryPayload::Normal(req) => {
-                    sm.data.insert(req.key, req.value.clone());
-                    res.push(Response { value: Some(req.value) });
-                }
-                EntryPayload::Membership(ref mem) => {
-                    sm.last_membership = StoredMembership::new(Some(entry.log_id), mem.clone());
-                    res.push(Response { value: None })
-                }
+            sm.last_applied = Some(log_id.into());
+
+            let value = if let Some(req) = entry.app_data {
+                sm.data.insert(req.key, req.value.clone());
+                Some(req.value)
+            } else if let Some(mem) = entry.membership {
+                sm.last_membership_log_id = Some(log_id.into());
+                sm.last_membership = Some(mem);
+                None
+            } else {
+                None
             };
+
+            res.push(Response { value });
         }
         Ok(res)
     }
@@ -164,9 +151,11 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
 
         // Update the state machine.
         {
-            let updated_state_machine: StateMachineData = *new_snapshot.data.clone();
+            let d: pb::StateMachineData = prost::Message::decode(new_snapshot.data.as_ref().as_ref())
+                .map_err(|e| StorageError::read_snapshot(None, &e))?;
+
             let mut state_machine = self.state_machine.lock().unwrap();
-            *state_machine = updated_state_machine;
+            *state_machine = d;
         }
 
         // Update current snapshot.

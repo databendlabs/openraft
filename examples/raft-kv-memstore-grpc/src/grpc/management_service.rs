@@ -7,11 +7,6 @@ use tracing::debug;
 
 use crate::pb;
 use crate::protobuf::management_service_server::ManagementService;
-use crate::protobuf::AddLearnerRequest;
-use crate::protobuf::ChangeMembershipRequest;
-use crate::protobuf::InitRequest;
-use crate::protobuf::RaftReplyString;
-use crate::protobuf::RaftRequestString;
 use crate::typ::*;
 
 /// Management service implementation for Raft cluster administration.
@@ -34,17 +29,6 @@ impl ManagementServiceImpl {
     pub fn new(raft_node: Raft) -> Self {
         ManagementServiceImpl { raft_node }
     }
-
-    /// Helper function to create a standard response
-    fn create_response<T: serde::Serialize>(data: T) -> Result<Response<RaftReplyString>, Status> {
-        let data = serde_json::to_string(&data)
-            .map_err(|e| Status::internal(format!("Failed to serialize response: {}", e)))?;
-
-        Ok(Response::new(RaftReplyString {
-            data,
-            error: Default::default(),
-        }))
-    }
 }
 
 #[tonic::async_trait]
@@ -57,7 +41,7 @@ impl ManagementService for ManagementServiceImpl {
     /// # Returns
     /// * Success response with initialization details
     /// * Error if initialization fails
-    async fn init(&self, request: Request<InitRequest>) -> Result<Response<RaftReplyString>, Status> {
+    async fn init(&self, request: Request<pb::InitRequest>) -> Result<Response<()>, Status> {
         debug!("Initializing Raft cluster");
         let req = request.into_inner();
 
@@ -81,7 +65,7 @@ impl ManagementService for ManagementServiceImpl {
             .map_err(|e| Status::internal(format!("Failed to initialize cluster: {}", e)))?;
 
         debug!("Cluster initialization successful");
-        Self::create_response(result)
+        Ok(Response::new(result))
     }
 
     /// Adds a learner node to the Raft cluster
@@ -92,7 +76,10 @@ impl ManagementService for ManagementServiceImpl {
     /// # Returns
     /// * Success response with learner addition details
     /// * Error if the operation fails
-    async fn add_learner(&self, request: Request<AddLearnerRequest>) -> Result<Response<RaftReplyString>, Status> {
+    async fn add_learner(
+        &self,
+        request: Request<pb::AddLearnerRequest>,
+    ) -> Result<Response<pb::ClientWriteResponse>, Status> {
         let req = request.into_inner();
 
         let node = req.node.ok_or_else(|| Status::internal("Node information is required"))?;
@@ -111,7 +98,7 @@ impl ManagementService for ManagementServiceImpl {
             .map_err(|e| Status::internal(format!("Failed to add learner node: {}", e)))?;
 
         debug!("Successfully added learner node {}", node.node_id);
-        Self::create_response(result)
+        Ok(Response::new(result.into()))
     }
 
     /// Changes the membership of the Raft cluster
@@ -124,8 +111,8 @@ impl ManagementService for ManagementServiceImpl {
     /// * Error if the operation fails
     async fn change_membership(
         &self,
-        request: Request<ChangeMembershipRequest>,
-    ) -> Result<Response<RaftReplyString>, Status> {
+        request: Request<pb::ChangeMembershipRequest>,
+    ) -> Result<Response<pb::ClientWriteResponse>, Status> {
         let req = request.into_inner();
 
         debug!(
@@ -140,17 +127,14 @@ impl ManagementService for ManagementServiceImpl {
             .map_err(|e| Status::internal(format!("Failed to change membership: {}", e)))?;
 
         debug!("Successfully changed cluster membership");
-        Self::create_response(result)
+        Ok(Response::new(result.into()))
     }
 
     /// Retrieves metrics about the Raft node
-    ///
-    /// # Returns
-    /// * Success response with metrics data
-    /// * Error if metrics collection fails
-    async fn metrics(&self, _request: Request<RaftRequestString>) -> Result<Response<RaftReplyString>, Status> {
+    async fn metrics(&self, _request: Request<()>) -> Result<Response<String>, Status> {
         debug!("Collecting metrics");
         let metrics = self.raft_node.metrics().borrow().clone();
-        Self::create_response(metrics).map_err(|e| Status::internal(format!("Failed to collect metrics: {}", e)))
+        let resp = metrics.to_string();
+        Ok(Response::new(resp))
     }
 }

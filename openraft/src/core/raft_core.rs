@@ -42,7 +42,6 @@ use crate::engine::Condition;
 use crate::engine::Engine;
 use crate::engine::ReplicationProgress;
 use crate::engine::Respond;
-use crate::entry::FromAppData;
 use crate::entry::RaftEntry;
 use crate::error::AllowNextRevertError;
 use crate::error::ClientWriteError;
@@ -53,7 +52,7 @@ use crate::error::InitializeError;
 use crate::error::QuorumNotEnough;
 use crate::error::RPCError;
 use crate::error::Timeout;
-use crate::log_id::LogIdOptionExt;
+use crate::log_id::option_raft_log_id_ext::OptionRaftLogIdExt;
 use crate::metrics::HeartbeatMetrics;
 use crate::metrics::RaftDataMetrics;
 use crate::metrics::RaftMetrics;
@@ -831,7 +830,7 @@ where
             session_id,
             self.config.clone(),
             self.engine.state.committed().cloned(),
-            progress_entry.matching().cloned(),
+            progress_entry.matching.clone(),
             network,
             snapshot_network,
             self.log_store.get_log_reader().await,
@@ -1235,7 +1234,7 @@ where
                 self.handle_check_is_leader_request(tx).await;
             }
             RaftMsg::ClientWriteRequest { app_data, tx } => {
-                self.write_entry(C::Entry::from_app_data(app_data), Some(tx));
+                self.write_entry(C::Entry::new_normal(LogIdOf::<C>::default(), app_data), Some(tx));
             }
             RaftMsg::Initialize { members, tx } => {
                 tracing::info!(
