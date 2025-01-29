@@ -6,7 +6,6 @@ use std::marker::PhantomData;
 use std::ops::RangeBounds;
 use std::rc::Rc;
 
-use openraft::entry::RaftEntry;
 use openraft::storage::RaftLogStorage;
 use openraft::storage::RaftStateMachine;
 use openraft::RaftLogReader;
@@ -308,7 +307,7 @@ impl RaftLogStorage<TypeConfig> for Rc<LogStore> {
         // Simple implementation that calls the flush-before-return `append_to_log`.
         let mut log = self.log.borrow_mut();
         for entry in entries {
-            log.insert(entry.index(), entry);
+            log.insert(entry.log_id.index(), entry);
         }
         callback.io_completed(Ok(()));
 
