@@ -393,7 +393,7 @@ impl RaftLogStorage<TypeConfig> for Arc<MemLogStore> {
         let mut log = self.log.write().await;
         for entry in entries {
             let s = serde_json::to_string(&entry).map_err(|e| StorageError::write_log_entry(entry.log_id(), &e))?;
-            log.insert(entry.log_id.index(), s);
+            log.insert(entry.index(), s);
         }
 
         callback.io_completed(Ok(()));
