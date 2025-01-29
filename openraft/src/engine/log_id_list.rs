@@ -1,10 +1,13 @@
 use std::ops::RangeInclusive;
 
 use crate::engine::leader_log_ids::LeaderLogIds;
-use crate::log_id::RaftLogId;
+use crate::log_id::option_raft_log_id_ext::OptionRaftLogIdExt;
+use crate::log_id::raft_log_id::RaftLogId;
+use crate::log_id::raft_log_id_ext::RaftLogIdExt;
+use crate::log_id::ref_log_id::RefLogId;
 use crate::storage::RaftLogReaderExt;
+use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::type_config::alias::LogIdOf;
-use crate::LogIdOptionExt;
 use crate::RaftLogReader;
 use crate::RaftTypeConfig;
 use crate::StorageError;
@@ -80,7 +83,7 @@ where C: RaftTypeConfig
 
             // Two adjacent logs with different leader_id, no need to binary search
             if first.index() + 1 == last.index() {
-                if res.last().map(|x| x.committed_leader_id()) < Some(first.committed_leader_id()) {
+                if res.last().committed_leader_id() < Some(first.committed_leader_id()) {
                     res.push(first);
                 }
                 res.push(last);
@@ -91,7 +94,7 @@ where C: RaftTypeConfig
 
             if first.committed_leader_id() == mid.committed_leader_id() {
                 // Case AAC
-                if res.last().map(|x| x.committed_leader_id()) < Some(first.committed_leader_id()) {
+                if res.last().committed_leader_id() < Some(first.committed_leader_id()) {
                     res.push(first);
                 }
                 stack.push((mid, last));
@@ -130,43 +133,46 @@ where C: RaftTypeConfig
     /// Extends a list of `log_id` that are proposed by a same leader.
     ///
     /// The log ids in the input has to be continuous.
-    pub(crate) fn extend_from_same_leader<'a, LID: RaftLogId<C> + 'a>(&mut self, new_ids: &[LID]) {
-        if let Some(first) = new_ids.first() {
-            let first_id = first.get_log_id();
-            self.append(first_id.clone());
+    pub(crate) fn extend_from_same_leader<LID, I>(&mut self, new_ids: I)
+    where
+        LID: RaftLogId<C>,
+        I: IntoIterator<Item = LID>,
+        <I as IntoIterator>::IntoIter: DoubleEndedIterator,
+    {
+        let mut it = new_ids.into_iter();
+        if let Some(first) = it.next() {
+            self.append(first.to_log_id());
 
-            if let Some(last) = new_ids.last() {
-                let last_id = last.get_log_id();
-                assert_eq!(last_id.committed_leader_id(), first_id.committed_leader_id());
+            if let Some(last) = it.next_back() {
+                debug_assert_eq!(last.committed_leader_id(), first.committed_leader_id());
 
-                if last_id != first_id {
-                    self.append(last_id.clone());
+                if last != first {
+                    self.append(last.to_log_id());
                 }
             }
         }
     }
 
     /// Extends a list of `log_id`.
-    // leader_id: Copy is feature gated
-    #[allow(clippy::clone_on_copy)]
-    pub(crate) fn extend<'a, LID: RaftLogId<C> + 'a>(&mut self, new_ids: &[LID]) {
-        let mut prev = self.last().map(|x| x.committed_leader_id().clone());
+    pub(crate) fn extend<LID, I>(&mut self, new_ids: I)
+    where
+        LID: RaftLogId<C>,
+        I: IntoIterator<Item = LID>,
+        <I as IntoIterator>::IntoIter: ExactSizeIterator,
+    {
+        let it = new_ids.into_iter();
+        let len = it.len();
 
-        for x in new_ids.iter() {
-            let log_id = x.get_log_id();
-
-            if prev.as_ref() != Some(log_id.committed_leader_id()) {
-                self.append(log_id.clone());
-
-                prev = Some(log_id.committed_leader_id().clone());
+        for (i, log_id) in it.enumerate() {
+            if self.last_committed_leader_id() != Some(log_id.committed_leader_id()) {
+                self.append(log_id.to_log_id());
             }
-        }
 
-        if let Some(last) = new_ids.last() {
-            let log_id = last.get_log_id();
-
-            if self.last() != Some(log_id) {
-                self.append(log_id.clone());
+            #[allow(clippy::collapsible_if)]
+            if i == len - 1 {
+                if self.last_ref() != Some(log_id.to_ref()) {
+                    self.append(log_id.to_log_id());
+                }
             }
         }
     }
@@ -275,30 +281,39 @@ where C: RaftTypeConfig
         }
     }
 
-    /// Get the log id at the specified index.
+    // This method is only used in tests
+    #[allow(dead_code)]
+    pub(crate) fn get(&self, index: u64) -> Option<LogIdOf<C>> {
+        self.ref_at(index).map(|r| r.into_log_id())
+    }
+
+    /// Get the log id at the specified index in a [`RefLogId`].
     ///
     /// It will return `last_purged_log_id` if index is at the last purged index.
-    // leader_id: Copy is feature gated
     #[allow(clippy::clone_on_copy)]
-    pub(crate) fn get(&self, index: u64) -> Option<LogIdOf<C>> {
+    pub(crate) fn ref_at(&self, index: u64) -> Option<RefLogId<'_, C>> {
         let res = self.key_log_ids.binary_search_by(|log_id| log_id.index().cmp(&index));
 
-        match res {
-            Ok(i) => Some(LogIdOf::<C>::new(
-                self.key_log_ids[i].committed_leader_id().clone(),
-                index,
-            )),
+        // Index of the leadership change point that covers the target index.
+        // It points to either:
+        // - The exact matching log entry if found, or
+        // - The most recent change point before the target index
+        let change_point = match res {
+            Ok(i) => i,
             Err(i) => {
+                // i - 1 is the last one that is smaller than the input.
                 if i == 0 || i == self.key_log_ids.len() {
-                    None
+                    return None;
                 } else {
-                    Some(LogIdOf::<C>::new(
-                        self.key_log_ids[i - 1].committed_leader_id().clone(),
-                        index,
-                    ))
+                    i - 1
                 }
             }
-        }
+        };
+
+        Some(RefLogId::new(
+            self.key_log_ids[change_point].committed_leader_id(),
+            index,
+        ))
     }
 
     pub(crate) fn first(&self) -> Option<&LogIdOf<C>> {
@@ -307,6 +322,14 @@ where C: RaftTypeConfig
 
     pub(crate) fn last(&self) -> Option<&LogIdOf<C>> {
         self.key_log_ids.last()
+    }
+
+    pub(crate) fn last_ref(&self) -> Option<RefLogId<'_, C>> {
+        self.last().map(|x| x.to_ref())
+    }
+
+    pub(crate) fn last_committed_leader_id(&self) -> Option<&CommittedLeaderIdOf<C>> {
+        self.last().map(|x| x.committed_leader_id())
     }
 
     // This method will only be used under feature tokio-rt

@@ -15,11 +15,13 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/databendlabs/openraft"
 
 [dependencies]
-openraft = { path = "../../openraft", features = ["serde", "type-alias"] }
+openraft = { path = "../../openraft", features = ["type-alias"] }
 
 tokio = { version = "1.0", default-features = false, features = ["sync"] }
 
 [features]
+
+serde = ["openraft/serde"]
 
 [package.metadata.docs.rs]
 all-features = true

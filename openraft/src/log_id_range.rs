@@ -5,7 +5,6 @@ use std::fmt::Formatter;
 use validit::Validate;
 
 use crate::display_ext::DisplayOptionExt;
-use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::type_config::alias::LogIdOf;
 use crate::LogIdOptionExt;
 use crate::RaftTypeConfig;
@@ -30,7 +29,7 @@ where C: RaftTypeConfig
 impl<C> Copy for LogIdRange<C>
 where
     C: RaftTypeConfig,
-    CommittedLeaderIdOf<C>: Copy,
+    LogIdOf<C>: Copy,
 {
 }
 

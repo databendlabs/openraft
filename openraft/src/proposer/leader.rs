@@ -2,6 +2,8 @@ use std::fmt;
 
 use crate::display_ext::DisplayInstantExt;
 use crate::engine::leader_log_ids::LeaderLogIds;
+use crate::entry::raft_entry_ext::RaftEntryExt;
+use crate::entry::RaftEntry;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::Progress;
 use crate::progress::VecProgress;
@@ -12,7 +14,6 @@ use crate::type_config::TypeConfigExt;
 use crate::vote::committed::CommittedVote;
 use crate::vote::raft_vote::RaftVoteExt;
 use crate::LogIdOptionExt;
-use crate::RaftLogId;
 use crate::RaftTypeConfig;
 
 /// Leading state data.
@@ -162,27 +163,32 @@ where
     /// Assign log ids to the entries.
     ///
     /// This method update the `self.last_log_id`.
-    pub(crate) fn assign_log_ids<'a, LID: RaftLogId<C> + 'a>(
-        &mut self,
-        entries: impl IntoIterator<Item = &'a mut LID>,
-    ) {
+    pub(crate) fn assign_log_ids<'a, Ent, I>(&mut self, entries: I)
+    where
+        Ent: RaftEntry<C> + 'a,
+        I: IntoIterator<Item = &'a mut Ent>,
+        <I as IntoIterator>::IntoIter: ExactSizeIterator,
+    {
         debug_assert!(self.transfer_to.is_none(), "leader is disabled to propose new log");
+
+        let it = entries.into_iter();
+        let len = it.len();
+        if len == 0 {
+            return;
+        }
 
         let committed_leader_id = self.committed_vote.committed_leader_id();
 
-        let first = LogIdOf::<C>::new(committed_leader_id, self.last_log_id().next_index());
-        let mut last = first.clone();
+        let mut index = self.last_log_id().next_index();
 
-        for entry in entries {
-            entry.set_log_id(&last);
-            tracing::debug!("assign log id: {}", last);
-            last.index += 1;
+        for entry in it {
+            entry.set_log_id(LogIdOf::<C>::new(committed_leader_id.clone(), index));
+            tracing::debug!("assign log id: {}", entry.ref_log_id());
+            index += 1;
         }
 
-        if last.index() > first.index() {
-            last.index -= 1;
-            self.last_log_id = Some(last);
-        }
+        index -= 1;
+        self.last_log_id = Some(LogIdOf::<C>::new(committed_leader_id.clone(), index));
     }
 
     /// Get the last timestamp acknowledged by a quorum.
