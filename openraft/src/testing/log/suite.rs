@@ -27,7 +27,6 @@ use crate::type_config::alias::VoteOf;
 use crate::type_config::TypeConfigExt;
 use crate::vote::raft_vote::RaftVoteExt;
 use crate::vote::RaftLeaderIdExt;
-use crate::LogId;
 use crate::Membership;
 use crate::OptionalSend;
 use crate::RaftLogReader;
@@ -634,7 +633,7 @@ where
     }
 
     pub async fn get_initial_state_log_ids(mut store: LS, mut sm: SM) -> Result<(), StorageError<C>> {
-        let log_id = |t: u64, n: u64, i| LogId::<C>::new(C::LeaderId::new_committed(t.into(), n.into()), i);
+        let log_id = |t: u64, n: u64, i| LogIdOf::<C>::new(C::LeaderId::new_committed(t.into(), n.into()), i);
 
         tracing::info!("--- empty store, expect []");
         {

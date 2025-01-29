@@ -1,5 +1,18 @@
 syntax = "proto3";
+import "google/protobuf/empty.proto";
 package openraftpb;
+
+// SetRequest represents a key-value pair to be stored
+message SetRequest {
+  string key = 1;   // Key to store
+  string value = 2; // Value to associate with the key
+}
+
+// Node represents a single node in the Raft cluster
+message Node {
+  string rpc_addr = 1; // RPC address for node communication
+  uint64 node_id = 2;  // Unique identifier for the node
+}
 
 // LeaderId represents the leader identifier in Raft
 message LeaderId {
@@ -13,10 +26,52 @@ message Vote {
   bool committed = 2;
 }
 
+message Entry {
+  uint64 term = 1;
+  uint64 index = 2;
+
+  // Optional Application data
+  SetRequest app_data = 12;
+
+  // Optional Membership config
+  Membership membership = 13;
+}
+
+
+// NodeIds is a set of NodeIds
+message NodeIdSet {
+  map<uint64, google.protobuf.Empty> node_ids = 1;
+}
+
+// Membership config
+message Membership {
+  // Joint(includes more than one NodeIdSet) or uniform(one NodeIdSet) config.
+  repeated NodeIdSet configs = 1;
+
+  // All of the nodes in the cluster, including voters and learners.
+  // A node id that is included in `configs` is a voter, otherwise it is a learner.
+  map<uint64, Node> nodes = 2;
+}
+
 // LogId represents the log identifier in Raft
 message LogId {
   uint64 term = 1;
   uint64 index = 2;
+}
+
+// All the data in a state machine, including user defined data and membership data.
+message StateMachineData {
+  // The last log id that has been applied to the state machine
+  LogId last_applied = 1;
+
+  // User data in a map
+  map<string, string> data = 2;
+
+  // The id of the last membership config log entry that is applied.
+  LogId last_membership_log_id = 3;
+
+  // The last membership config that is applied.
+  Membership last_membership = 4;
 }
 
 // VoteRequest represents a request for votes during leader election
@@ -32,26 +87,47 @@ message VoteResponse {
   LogId last_log_id = 3;
 }
 
-// InternalService handles internal Raft cluster communication
-service InternalService {
-  // Vote handles vote requests between Raft nodes during leader election
-  rpc Vote(VoteRequest) returns (VoteResponse) {}
+message AppendEntriesRequest {
+  // The leader's vote, used to identify the leader, and must be committed
+  Vote vote = 1;
 
-  // AppendEntries handles call related to append entries RPC
-  rpc AppendEntries(RaftRequestBytes) returns (RaftReplyBytes) {}
+  // The previous log id the leader has sent to the follower
+  LogId prev_log_id = 2;
 
-  // Snapshot handles install snapshot RPC
-  rpc Snapshot(stream SnapshotRequest) returns (RaftReplyBytes) {}
+  // The entries to be appended to the follower's log
+  repeated Entry entries = 3;
+
+  // The leader's last committed log id
+  LogId leader_commit = 4;
 }
 
-// RaftRequestBytes encapsulates binary Raft request data
-message RaftRequestBytes {
-  bytes value = 1; // Serialized Raft request data
+message AppendEntriesResponse {
+  // If not None, the follower rejected the AppendEntries request due to having a higher vote.
+  // All other fields are valid only when this field is None
+  Vote rejected_by = 1;
+
+  // The follower accepts this AppendEntries request's vote, but the prev_log_id conflicts with
+  // the follower's log. The leader should retry with a smaller prev_log_id that matches the
+  // follower's log. All subsequent fields are valid only when this field is false
+  bool conflict = 2;
+
+  // The last log id the follower accepted from this request.
+  // If None, all input entries were accepted and persisted.
+  // Otherwise, only entries up to and including this id were accepted
+  LogId last_log_id = 3;
 }
 
-// RaftReplyBytes encapsulates binary Raft response data
-message RaftReplyBytes {
-  bytes value = 1; // Serialized Raft response data
+// The first chunk of snapshot transmission, which contains the snapshot meta.
+message SnapshotRequestMeta {
+  Vote vote = 1;
+
+  LogId last_log_id = 2;
+
+  LogId last_membership_log_id = 3;
+
+  Membership last_membership = 4;
+
+  string snapshot_id = 5;
 }
 
 // The item of snapshot chunk stream.
@@ -63,13 +139,25 @@ message RaftReplyBytes {
 // Since the second item, the `rpc_meta` should be empty and will be ignored by
 // the receiving end.
 message SnapshotRequest {
-
-  // bytes serialized meta data, including vote and snapshot_meta.
-  // ```text
-  // (SnapshotFormat, Vote, SnapshotMeta)
-  // ```
-  bytes rpc_meta = 1;
-
-  // Snapshot data chunk
-  bytes chunk = 2;
+  oneof payload {
+    SnapshotRequestMeta meta = 1;
+    bytes chunk = 2;
+  }
 }
+
+message SnapshotResponse {
+  Vote vote = 1;
+}
+
+// InternalService handles internal Raft cluster communication
+service InternalService {
+  // Vote handles vote requests between Raft nodes during leader election
+  rpc Vote(VoteRequest) returns (VoteResponse) {}
+
+  // AppendEntries handles call related to append entries RPC
+  rpc AppendEntries(AppendEntriesRequest) returns (AppendEntriesResponse) {}
+
+  // Snapshot handles install snapshot RPC
+  rpc Snapshot(stream SnapshotRequest) returns (SnapshotResponse) {}
+}
+
