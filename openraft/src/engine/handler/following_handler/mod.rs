@@ -11,17 +11,17 @@ use crate::engine::Command;
 use crate::engine::Condition;
 use crate::engine::EngineConfig;
 use crate::engine::EngineOutput;
+use crate::entry::raft_entry_ext::RaftEntryExt;
 use crate::entry::RaftEntry;
 use crate::entry::RaftPayload;
 use crate::error::RejectAppendEntries;
+use crate::log_id::option_raft_log_id_ext::OptionRaftLogIdExt;
 use crate::raft_state::IOId;
 use crate::raft_state::LogStateReader;
 use crate::storage::Snapshot;
 use crate::type_config::alias::LogIdOf;
 use crate::vote::committed::CommittedVote;
 use crate::EffectiveMembership;
-use crate::LogIdOptionExt;
-use crate::RaftLogId;
 use crate::RaftState;
 use crate::RaftTypeConfig;
 use crate::StoredMembership;
@@ -145,9 +145,9 @@ where C: RaftTypeConfig
     pub(crate) fn do_append_entries(&mut self, entries: Vec<C::Entry>) {
         debug_assert!(!entries.is_empty());
         debug_assert_eq!(entries[0].index(), self.state.log_ids.last().cloned().next_index(),);
-        debug_assert!(Some(entries[0].get_log_id()) > self.state.log_ids.last());
+        debug_assert!(Some(entries[0].ref_log_id()) > self.state.log_ids.last().to_ref());
 
-        self.state.extend_log_ids(&entries);
+        self.state.extend_log_ids(entries.iter().map(|x| x.ref_log_id()));
         self.append_membership(entries.iter());
 
         self.output.push_command(Command::AppendInputEntries {
