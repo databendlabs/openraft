@@ -100,7 +100,7 @@ jobs:
 
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: "ut-openraft-${{ matrix.toolchain }}-${{ matrix.features }}"
@@ -156,7 +156,7 @@ jobs:
 
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: "ut-tests-${{ matrix.toolchain }}-${{ matrix.features }}-${{ matrix.send_delay }}"
@@ -309,7 +309,7 @@ jobs:
 
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: openraft-feature-test
@@ -357,7 +357,7 @@ jobs:
 
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: tests-feature-test
