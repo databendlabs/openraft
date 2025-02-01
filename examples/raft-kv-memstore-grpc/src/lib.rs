@@ -1,7 +1,6 @@
 #![allow(clippy::uninlined_format_args)]
 
 use crate::protobuf as pb;
-use crate::store::StateMachineData;
 use crate::typ::*;
 
 pub mod grpc;
@@ -23,7 +22,7 @@ openraft::declare_raft_types!(
         Vote = pb::Vote,
         Entry = pb::Entry,
         Node = pb::Node,
-        SnapshotData = StateMachineData,
+        SnapshotData = Vec<u8>,
 );
 
 pub type LogStore = store::LogStore;

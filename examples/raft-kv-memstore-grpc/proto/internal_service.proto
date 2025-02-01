@@ -59,6 +59,17 @@ message LogId {
   uint64 index = 2;
 }
 
+message StateMachineData {
+  // The last log id that has been applied to the state machine
+  LogId last_applied = 1;
+
+  map<string, string> data = 2;
+
+  LogId last_membership_log_id = 3;
+
+  Membership last_membership = 4;
+}
+
 // VoteRequest represents a request for votes during leader election
 message VoteRequest {
   Vote vote = 1;
@@ -102,21 +113,16 @@ message AppendEntriesResponse {
   LogId last_log_id = 3;
 }
 
-// InternalService handles internal Raft cluster communication
-service InternalService {
-  // Vote handles vote requests between Raft nodes during leader election
-  rpc Vote(VoteRequest) returns (VoteResponse) {}
+message SnapshotRequestMeta {
+  Vote vote = 1;
 
-  // AppendEntries handles call related to append entries RPC
-  rpc AppendEntries(AppendEntriesRequest) returns (AppendEntriesResponse) {}
+  LogId last_log_id = 2;
 
-  // Snapshot handles install snapshot RPC
-  rpc Snapshot(stream SnapshotRequest) returns (RaftReplyBytes) {}
-}
+  LogId last_membership_log_id = 3;
 
-// RaftReplyBytes encapsulates binary Raft response data
-message RaftReplyBytes {
-  bytes value = 1; // Serialized Raft response data
+  Membership last_membership = 4;
+
+  string snapshot_id = 5;
 }
 
 // The item of snapshot chunk stream.
@@ -128,13 +134,25 @@ message RaftReplyBytes {
 // Since the second item, the `rpc_meta` should be empty and will be ignored by
 // the receiving end.
 message SnapshotRequest {
-
-  // bytes serialized meta data, including vote and snapshot_meta.
-  // ```text
-  // (SnapshotFormat, Vote, SnapshotMeta)
-  // ```
-  bytes rpc_meta = 1;
-
-  // Snapshot data chunk
-  bytes chunk = 2;
+  oneof payload {
+    SnapshotRequestMeta meta = 1;
+    bytes chunk = 2;
+  }
 }
+
+message SnapshotResponse {
+  Vote vote = 1;
+}
+
+// InternalService handles internal Raft cluster communication
+service InternalService {
+  // Vote handles vote requests between Raft nodes during leader election
+  rpc Vote(VoteRequest) returns (VoteResponse) {}
+
+  // AppendEntries handles call related to append entries RPC
+  rpc AppendEntries(AppendEntriesRequest) returns (AppendEntriesResponse) {}
+
+  // Snapshot handles install snapshot RPC
+  rpc Snapshot(stream SnapshotRequest) returns (SnapshotResponse) {}
+}
+
