@@ -221,12 +221,12 @@ async fn test_cluster() -> Result<(), Box<dyn std::error::Error>> {
     let x = client3.read(&("foo".to_string())).await?;
     assert_eq!("wow", x);
 
-    println!("=== consistent_read `foo` on node 1");
-    let x = leader.consistent_read(&("foo".to_string())).await?;
+    println!("=== linearizable_read `foo` on node 1");
+    let x = leader.linearizable_read(&("foo".to_string())).await?;
     assert_eq!("wow", x);
 
-    println!("=== consistent_read `foo` on node 2 MUST return CheckIsLeaderError");
-    let x = client2.consistent_read(&("foo".to_string())).await;
+    println!("=== linearizable_read `foo` on node 2 MUST return CheckIsLeaderError");
+    let x = client2.linearizable_read(&("foo".to_string())).await;
     match x {
         Err(e) => {
             let s = e.to_string();

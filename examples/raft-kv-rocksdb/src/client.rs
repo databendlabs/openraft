@@ -58,8 +58,8 @@ impl ExampleClient {
     /// Consistent Read value by key, in an inconsistent mode.
     ///
     /// This method MUST return consistent value or CheckIsLeaderError.
-    pub async fn consistent_read(&self, req: &String) -> Result<String, RPCError<RaftError<CheckIsLeaderError>>> {
-        self.do_send_rpc_to_leader("api/consistent_read", Some(req)).await
+    pub async fn linearizable_read(&self, req: &String) -> Result<String, RPCError<RaftError<CheckIsLeaderError>>> {
+        self.do_send_rpc_to_leader("api/linearizable_read", Some(req)).await
     }
 
     // --- Cluster management API
