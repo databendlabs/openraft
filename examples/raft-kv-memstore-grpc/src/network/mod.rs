@@ -8,7 +8,7 @@ use tonic::codegen::tokio_stream::wrappers::ReceiverStream;
 use tonic::transport::Channel;
 
 use crate::protobuf as pb;
-use crate::protobuf::internal_service_client::InternalServiceClient;
+use crate::protobuf::raft_service_client::RaftServiceClient;
 use crate::protobuf::VoteRequest as PbVoteRequest;
 use crate::protobuf::VoteResponse as PbVoteResponse;
 use crate::typ::*;
@@ -60,7 +60,7 @@ impl RaftNetworkV2<TypeConfig> for NetworkConnection {
                 return Err(RPCError::Unreachable(Unreachable::new(&e)));
             }
         };
-        let mut client = InternalServiceClient::new(channel);
+        let mut client = RaftServiceClient::new(channel);
 
         let response = client
             .append_entries(pb::AppendEntriesRequest::from(req))
@@ -88,7 +88,7 @@ impl RaftNetworkV2<TypeConfig> for NetworkConnection {
         let (tx, rx) = tokio::sync::mpsc::channel(1024);
         let strm = ReceiverStream::new(rx);
 
-        let mut client = InternalServiceClient::new(channel);
+        let mut client = RaftServiceClient::new(channel);
         let response = client.snapshot(strm).await.map_err(|e| NetworkError::new(&e))?;
 
         // 1. Send meta chunk
@@ -136,7 +136,7 @@ impl RaftNetworkV2<TypeConfig> for NetworkConnection {
                 return Err(RPCError::Unreachable(Unreachable::new(&e)));
             }
         };
-        let mut client = InternalServiceClient::new(channel);
+        let mut client = RaftServiceClient::new(channel);
 
         // Convert the openraft VoteRequest to protobuf VoteRequest
         let proto_vote_req: PbVoteRequest = req.into();

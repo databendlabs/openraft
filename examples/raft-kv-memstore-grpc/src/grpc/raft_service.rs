@@ -7,7 +7,7 @@ use tonic::Streaming;
 use tracing::debug;
 
 use crate::protobuf as pb;
-use crate::protobuf::internal_service_server::InternalService;
+use crate::protobuf::raft_service_server::RaftService;
 use crate::protobuf::VoteRequest;
 use crate::protobuf::VoteResponse;
 use crate::typ::*;
@@ -23,23 +23,23 @@ use crate::typ::*;
 /// # Protocol Safety
 /// This service implements critical consensus protocol operations and should only be
 /// exposed to other trusted Raft cluster nodes, never to external clients.
-pub struct InternalServiceImpl {
+pub struct RaftServiceImpl {
     /// The local Raft node instance that this service operates on
     raft_node: Raft,
 }
 
-impl InternalServiceImpl {
+impl RaftServiceImpl {
     /// Creates a new instance of the internal service
     ///
     /// # Arguments
     /// * `raft_node` - The Raft node instance this service will operate on
     pub fn new(raft_node: Raft) -> Self {
-        InternalServiceImpl { raft_node }
+        RaftServiceImpl { raft_node }
     }
 }
 
 #[tonic::async_trait]
-impl InternalService for InternalServiceImpl {
+impl RaftService for RaftServiceImpl {
     /// Handles vote requests during leader election.
     ///
     /// # Arguments
