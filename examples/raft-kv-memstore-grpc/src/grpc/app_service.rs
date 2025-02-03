@@ -5,7 +5,7 @@ use tonic::Response;
 use tonic::Status;
 use tracing::debug;
 
-use crate::protobuf::api_service_server::ApiService;
+use crate::protobuf::app_service_server::AppService;
 use crate::protobuf::GetRequest;
 use crate::protobuf::Response as PbResponse;
 use crate::protobuf::SetRequest;
@@ -23,21 +23,21 @@ use crate::typ::*;
 /// # Protocol Safety
 /// This service implements the client-facing API and should validate all inputs
 /// before processing them through the Raft consensus protocol.
-pub struct ApiServiceImpl {
+pub struct AppServiceImpl {
     /// The Raft node instance for consensus operations
     raft_node: Raft,
     /// The state machine store for direct reads
     state_machine_store: Arc<StateMachineStore>,
 }
 
-impl ApiServiceImpl {
+impl AppServiceImpl {
     /// Creates a new instance of the API service
     ///
     /// # Arguments
     /// * `raft_node` - The Raft node instance this service will use
     /// * `state_machine_store` - The state machine store for reading data
     pub fn new(raft_node: Raft, state_machine_store: Arc<StateMachineStore>) -> Self {
-        ApiServiceImpl {
+        AppServiceImpl {
             raft_node,
             state_machine_store,
         }
@@ -45,7 +45,7 @@ impl ApiServiceImpl {
 }
 
 #[tonic::async_trait]
-impl ApiService for ApiServiceImpl {
+impl AppService for AppServiceImpl {
     /// Sets a value for a given key in the distributed store
     ///
     /// # Arguments

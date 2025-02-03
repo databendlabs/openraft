@@ -1,12 +1,9 @@
 syntax = "proto3";
-import "google/protobuf/empty.proto";
-package openraftpb;
 
-// SetRequest represents a key-value pair to be stored
-message SetRequest {
-  string key = 1;   // Key to store
-  string value = 2; // Value to associate with the key
-}
+import "google/protobuf/empty.proto";
+import "app.proto";
+
+package openraftpb;
 
 // Node represents a single node in the Raft cluster
 message Node {
@@ -37,7 +34,6 @@ message Entry {
   Membership membership = 13;
 }
 
-
 // NodeIds is a set of NodeIds
 message NodeIdSet {
   map<uint64, google.protobuf.Empty> node_ids = 1;
@@ -57,21 +53,6 @@ message Membership {
 message LogId {
   uint64 term = 1;
   uint64 index = 2;
-}
-
-// All the data in a state machine, including user defined data and membership data.
-message StateMachineData {
-  // The last log id that has been applied to the state machine
-  LogId last_applied = 1;
-
-  // User data in a map
-  map<string, string> data = 2;
-
-  // The id of the last membership config log entry that is applied.
-  LogId last_membership_log_id = 3;
-
-  // The last membership config that is applied.
-  Membership last_membership = 4;
 }
 
 // VoteRequest represents a request for votes during leader election
@@ -132,12 +113,9 @@ message SnapshotRequestMeta {
 
 // The item of snapshot chunk stream.
 //
-// The first item contains `rpc_meta`,
-// including the application defined format of this snapshot data,
-// the leader vote and snapshot-meta.
+// The first item contains `meta`, including the leader vote and snapshot-meta.
 //
-// Since the second item, the `rpc_meta` should be empty and will be ignored by
-// the receiving end.
+// Since the second item, the chunk contains the snapshot data.
 message SnapshotRequest {
   oneof payload {
     SnapshotRequestMeta meta = 1;
@@ -149,8 +127,23 @@ message SnapshotResponse {
   Vote vote = 1;
 }
 
+// All the data in a state machine, including user defined data and membership data.
+message StateMachineData {
+  // The last log id that has been applied to the state machine
+  LogId last_applied = 1;
+
+  // User data in a map
+  map<string, string> data = 2;
+
+  // The id of the last membership config log entry that is applied.
+  LogId last_membership_log_id = 3;
+
+  // The last membership config that is applied.
+  Membership last_membership = 4;
+}
+
 // InternalService handles internal Raft cluster communication
-service InternalService {
+service RaftService {
   // Vote handles vote requests between Raft nodes during leader election
   rpc Vote(VoteRequest) returns (VoteResponse) {}
 
@@ -160,4 +153,3 @@ service InternalService {
   // Snapshot handles install snapshot RPC
   rpc Snapshot(stream SnapshotRequest) returns (SnapshotResponse) {}
 }
-
