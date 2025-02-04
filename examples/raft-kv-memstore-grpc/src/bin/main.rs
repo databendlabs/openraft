@@ -3,11 +3,9 @@ use std::sync::Arc;
 use clap::Parser;
 use openraft::Config;
 use raft_kv_memstore_grpc::grpc::app_service::AppServiceImpl;
-use raft_kv_memstore_grpc::grpc::management_service::ManagementServiceImpl;
 use raft_kv_memstore_grpc::grpc::raft_service::RaftServiceImpl;
 use raft_kv_memstore_grpc::network::Network;
 use raft_kv_memstore_grpc::protobuf::app_service_server::AppServiceServer;
-use raft_kv_memstore_grpc::protobuf::management_service_server::ManagementServiceServer;
 use raft_kv_memstore_grpc::protobuf::raft_service_server::RaftServiceServer;
 use raft_kv_memstore_grpc::typ::Raft;
 use raft_kv_memstore_grpc::LogStore;
@@ -60,13 +58,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let raft = Raft::new(node_id, config.clone(), network, log_store, state_machine_store.clone()).await?;
 
     // Create the management service with raft instance
-    let management_service = ManagementServiceImpl::new(raft.clone());
     let internal_service = RaftServiceImpl::new(raft.clone());
     let api_service = AppServiceImpl::new(raft, state_machine_store);
 
     // Start server
     let server_future = Server::builder()
-        .add_service(ManagementServiceServer::new(management_service))
         .add_service(RaftServiceServer::new(internal_service))
         .add_service(AppServiceServer::new(api_service))
         .serve(addr.parse()?);

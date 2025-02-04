@@ -1,14 +1,16 @@
 syntax = "proto3";
 
 import "google/protobuf/empty.proto";
-import "app.proto";
+import "app_types.proto";
 
 package openraftpb;
 
 // Node represents a single node in the Raft cluster
 message Node {
-  string rpc_addr = 1; // RPC address for node communication
-  uint64 node_id = 2;  // Unique identifier for the node
+  // Unique identifier for the node
+  uint64 node_id = 1;
+  // RPC address for node communication
+  string rpc_addr = 2;
 }
 
 // LeaderId represents the leader identifier in Raft
