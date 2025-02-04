@@ -2,6 +2,21 @@
 
 A distributed key-value store built using `openraft` and gRPC, demonstrating a robust, replicated storage system.
 
+This example stores Raft logs in a in-memory storage, state-machine in a
+protobuf defined in-memory struct `StateMachineData`, and use gRPC for
+inter-node Raft-protocol communication and the communication between app client
+and the cluster.
+
+This example provide two testing scenarios:
+
+- `./tests/test_cluster.rs` brings up a 3 node cluster in a single process to
+    prove functions, including, initialize, add-learner, change-membership and
+    write/read.
+
+- `./test-cluster.sh` provides a more realistic scenario: it brings up a 3
+    process to form a cluster, and run the similar steps: initialize,
+    add-learner, change-membership and write/read.
+
 ## Modules
 
 The application is structured into key modules:
@@ -9,13 +24,13 @@ The application is structured into key modules:
  - `src/bin`: Contains the `main()` function for server setup in [main.rs](./src/bin/main.rs)
  - `src/network`: For routing calls to their respective grpc RPCs
  - `src/grpc`:
-   - `api_service.rs`: gRPC service implementations for key value store(application APIs)
-   - `internal_service.rs`: Raft-specific gRPC internal network communication
-   - `management_service.rs`: Administrative gRPC endpoints for cluster management
+   - `api_service.rs`: gRPC service implementations for key value store(application APIs) and managements
+   - `raft_service.rs`: Raft-specific gRPC internal network communication
  - `protos`: Protocol buffers specifications for above services
  - `src/store`: Implements the key-value store logic in [store/mod.rs](./src/store/mod.rs)
 
 ## Running the Cluster
+
 
 ### Build the Application
 
@@ -45,7 +60,6 @@ Start additional nodes by changing the `id` and `grpc-addr`:
 ## Data Storage
 
 Data is stored in state machines, with Raft ensuring data synchronization across all nodes. 
-See the [ExampleStateMachine](./src/store/mod.rs) for implementation details.
 
 ## Cluster Management
 

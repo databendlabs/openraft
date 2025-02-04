@@ -1,28 +1,71 @@
 syntax = "proto3";
 
+import "google/protobuf/empty.proto";
+import "google/protobuf/wrappers.proto";
+import "raft.proto";
+import "app_types.proto";
+
 package openraftpb;
 
-// SetRequest represents a key-value pair to be stored
-message SetRequest {
-  string key = 1;   // Key to store
-  string value = 2; // Value to associate with the key
+// InitRequest contains the initial set of nodes for cluster initialization
+message InitRequest {
+  // List of initial cluster nodes
+  repeated Node nodes = 1;
 }
 
-// GetRequest represents a key lookup request
-message GetRequest {
-  string key = 1; // Key to look up
+// AddLearnerRequest specifies parameters for adding a learner node
+message AddLearnerRequest {
+  // Node to be added as a learner
+  Node node = 1;
 }
 
-// GetResponse contains the value associated with the requested key
-message Response {
-  optional string value = 1; // Retrieved value
+// ChangeMembershipRequest specifies parameters for modifying cluster membership
+message ChangeMembershipRequest {
+  // New set of voter node IDs
+  repeated uint64 members = 1;
+  // Whether to retain existing configuration
+  bool retain = 2;
 }
 
-// ApiService provides the key-value store API operations
+message ClientWriteResponse {
+  // The log id of the committed log entry.
+  LogId log_id = 1;
+
+  // If the committed log entry is a normal one.
+  Response data = 2;
+
+  // If the committed log entry is a change-membership entry.
+  Membership membership = 3;
+}
+
+message MetricsResponse {
+  // Cluster membership config
+  Membership membership = 1;
+
+  // In this example, only membership is used.
+  // Other metrics are just encoded in string for simplicity.
+  // In real-world scenarios, metrics should be encoded in a more structured format.
+  string other_metrics = 2;
+}
+
+// ApiService provides the key-value store API operations and Raft cluster management operations
 service AppService {
   // Get retrieves the value associated with a given key
   rpc Get(GetRequest) returns (Response) {}
 
   // Set stores a key-value pair in the distributed store
   rpc Set(SetRequest) returns (Response) {}
+
+  // Init initializes a new Raft cluster with the given nodes
+  rpc Init(InitRequest) returns (google.protobuf.Empty) {}
+
+  // AddLearner adds a new learner node to the Raft cluster
+  rpc AddLearner(AddLearnerRequest) returns (ClientWriteResponse) {}
+
+  // ChangeMembership modifies the cluster membership configuration
+  rpc ChangeMembership(ChangeMembershipRequest) returns (ClientWriteResponse) {}
+
+  // Metrics retrieves cluster metrics and status information
+  rpc Metrics(google.protobuf.Empty) returns (MetricsResponse) {}
 }
+

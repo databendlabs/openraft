@@ -1,5 +1,6 @@
 #![allow(clippy::uninlined_format_args)]
 
+pub mod app;
 pub mod grpc;
 pub mod network;
 pub mod store;

@@ -34,6 +34,10 @@ dashmap = "6.1.0"
 prost = "0.13.4"
 futures = "0.3.31"
 
+[dev-dependencies]
+anyhow = "1.0.63"
+maplit = "1.0.2"
+
 [features]
 
 [build-dependencies]
