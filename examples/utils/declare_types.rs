@@ -1,3 +1,5 @@
+//! Declare the Raft type with the TypeConfig.
+
 // Reference the containing module's type config.
 use super::TypeConfig;
 
