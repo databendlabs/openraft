@@ -18,7 +18,6 @@ mod tokio_rt {
     use super::Chunked;
     use super::SnapshotTransport;
     use super::Streaming;
-    use crate::error::Fatal;
     use crate::error::InstallSnapshotError;
     use crate::error::RPCError;
     use crate::error::RaftError;
@@ -50,7 +49,7 @@ mod tokio_rt {
             mut snapshot: Snapshot<C>,
             mut cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
             option: RPCOption,
-        ) -> Result<SnapshotResponse<C>, StreamingError<C, Fatal<C>>>
+        ) -> Result<SnapshotResponse<C>, StreamingError<C>>
         where
             Net: RaftNetwork<C> + ?Sized,
         {
@@ -264,7 +263,6 @@ use std::future::Future;
 
 use openraft_macros::add_async_trait;
 
-use crate::error::Fatal;
 use crate::error::InstallSnapshotError;
 use crate::error::RaftError;
 use crate::error::ReplicationClosed;
@@ -304,7 +302,7 @@ pub trait SnapshotTransport<C: RaftTypeConfig> {
         snapshot: Snapshot<C>,
         cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
         option: RPCOption,
-    ) -> Result<SnapshotResponse<C>, StreamingError<C, Fatal<C>>>
+    ) -> Result<SnapshotResponse<C>, StreamingError<C>>
     where
         Net: RaftNetwork<C> + ?Sized;
 

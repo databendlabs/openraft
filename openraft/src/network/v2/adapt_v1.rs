@@ -46,7 +46,7 @@ where
         use crate::network::snapshot_transport::Chunked;
         use crate::network::snapshot_transport::SnapshotTransport;
 
-        let resp = Chunked::send_snapshot(self, vote, snapshot, cancel, option).await.decompose_infallible()?;
+        let resp = Chunked::send_snapshot(self, vote, snapshot, cancel, option).await?;
         Ok(resp)
     }
 
