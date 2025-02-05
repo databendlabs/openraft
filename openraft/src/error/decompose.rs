@@ -1,11 +1,9 @@
 use std::error::Error;
 
 use crate::error::into_ok::into_ok;
-use crate::error::Fatal;
 use crate::error::Infallible;
 use crate::error::RPCError;
 use crate::error::RaftError;
-use crate::error::StreamingError;
 use crate::error::Unreachable;
 use crate::RaftTypeConfig;
 
@@ -68,27 +66,6 @@ where
                     RaftError::APIError(e) => Ok(Err(e)),
                     RaftError::Fatal(e) => Err(RPCError::Unreachable(Unreachable::new(&e))),
                 },
-            },
-        }
-    }
-}
-
-impl<C, R> DecomposeResult<C, R, StreamingError<C>> for Result<R, StreamingError<C, Fatal<C>>>
-where C: RaftTypeConfig
-{
-    type InnerError = Infallible;
-
-    /// `Fatal` is considered as `RPCError::Unreachable`.
-    fn decompose(self) -> Result<Result<R, Self::InnerError>, StreamingError<C>> {
-        match self {
-            Ok(r) => Ok(Ok(r)),
-            Err(e) => match e {
-                StreamingError::Closed(e) => Err(StreamingError::Closed(e)),
-                StreamingError::StorageError(e) => Err(StreamingError::StorageError(e)),
-                StreamingError::Timeout(e) => Err(StreamingError::Timeout(e)),
-                StreamingError::Unreachable(e) => Err(StreamingError::Unreachable(e)),
-                StreamingError::Network(e) => Err(StreamingError::Network(e)),
-                StreamingError::RemoteError(e) => Err(StreamingError::Unreachable(Unreachable::new(&e.source))),
             },
         }
     }
