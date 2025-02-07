@@ -155,7 +155,7 @@ impl RaftSnapshotBuilder<TypeConfig> for RocksStateMachine {
 
         Ok(Snapshot {
             meta,
-            snapshot: Box::new(Cursor::new(data)),
+            snapshot: Cursor::new(data),
         })
     }
 }
@@ -204,14 +204,14 @@ impl RaftStateMachine<TypeConfig> for RocksStateMachine {
         self.clone()
     }
 
-    async fn begin_receiving_snapshot(&mut self) -> Result<Box<SnapshotDataOf<TypeConfig>>, StorageError<TypeConfig>> {
-        Ok(Box::new(Cursor::new(Vec::new())))
+    async fn begin_receiving_snapshot(&mut self) -> Result<SnapshotDataOf<TypeConfig>, StorageError<TypeConfig>> {
+        Ok(Cursor::new(Vec::new()))
     }
 
     async fn install_snapshot(
         &mut self,
         meta: &SnapshotMeta<TypeConfig>,
-        snapshot: Box<SnapshotDataOf<TypeConfig>>,
+        snapshot: SnapshotDataOf<TypeConfig>,
     ) -> Result<(), StorageError<TypeConfig>> {
         tracing::info!(
             { snapshot_size = snapshot.get_ref().len() },
@@ -260,7 +260,7 @@ impl RaftStateMachine<TypeConfig> for RocksStateMachine {
 
         Ok(Some(Snapshot {
             meta: snapshot.meta,
-            snapshot: Box::new(Cursor::new(data)),
+            snapshot: Cursor::new(data),
         }))
     }
 }

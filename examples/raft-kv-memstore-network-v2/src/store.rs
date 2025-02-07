@@ -38,7 +38,7 @@ pub struct StoredSnapshot {
     pub meta: SnapshotMeta,
 
     /// The data of the state machine at the time of this snapshot.
-    pub data: Box<SnapshotData>,
+    pub data: SnapshotData,
 }
 
 /// Data contained in the Raft state machine.
@@ -105,7 +105,7 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<StateMachineStore> {
 
         let snapshot = StoredSnapshot {
             meta: meta.clone(),
-            data: Box::new(data.clone()),
+            data: data.clone(),
         };
 
         {
@@ -113,10 +113,7 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<StateMachineStore> {
             *current_snapshot = Some(snapshot);
         }
 
-        Ok(Snapshot {
-            meta,
-            snapshot: Box::new(data),
-        })
+        Ok(Snapshot { meta, snapshot: data })
     }
 }
 
@@ -160,12 +157,12 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn begin_receiving_snapshot(&mut self) -> Result<Box<SnapshotData>, StorageError> {
-        Ok(Box::default())
+    async fn begin_receiving_snapshot(&mut self) -> Result<SnapshotData, StorageError> {
+        Ok(Default::default())
     }
 
     #[tracing::instrument(level = "trace", skip(self, snapshot))]
-    async fn install_snapshot(&mut self, meta: &SnapshotMeta, snapshot: Box<SnapshotData>) -> Result<(), StorageError> {
+    async fn install_snapshot(&mut self, meta: &SnapshotMeta, snapshot: SnapshotData) -> Result<(), StorageError> {
         tracing::info!("install snapshot");
 
         let new_snapshot = StoredSnapshot {
@@ -175,7 +172,7 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
 
         // Update the state machine.
         {
-            let updated_state_machine: StateMachineData = *new_snapshot.data.clone();
+            let updated_state_machine: StateMachineData = new_snapshot.data.clone();
             let mut state_machine = self.state_machine.lock().unwrap();
             *state_machine = updated_state_machine;
         }

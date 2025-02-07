@@ -51,7 +51,7 @@ pub async fn snapshot(app: &mut App, req: String) -> String {
     let (vote, snapshot_meta, snapshot_data): (Vote, SnapshotMeta, SnapshotData) = decode(&req);
     let snapshot = Snapshot {
         meta: snapshot_meta,
-        snapshot: Box::new(snapshot_data),
+        snapshot: snapshot_data,
     };
     let res = app.raft.install_full_snapshot(vote, snapshot).await.map_err(RaftError::<Infallible>::Fatal);
     encode(res)

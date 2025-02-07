@@ -81,7 +81,7 @@ async fn install_snapshot_lower_vote() -> Result<()> {
         let got = n0
             .install_full_snapshot(Vote::new_committed(1, 1), Snapshot {
                 meta: Default::default(),
-                snapshot: Box::new(Cursor::new(vec![])),
+                snapshot: Cursor::new(vec![]),
             })
             .await?;
         assert_eq!(Vote::new_committed(2, 1), got.vote);

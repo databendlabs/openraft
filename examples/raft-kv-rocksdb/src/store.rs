@@ -109,7 +109,7 @@ impl RaftSnapshotBuilder<TypeConfig> for StateMachineStore {
 
         Ok(Snapshot {
             meta,
-            snapshot: Box::new(Cursor::new(kv_json)),
+            snapshot: Cursor::new(kv_json),
         })
     }
 }
@@ -217,11 +217,11 @@ impl RaftStateMachine<TypeConfig> for StateMachineStore {
         self.clone()
     }
 
-    async fn begin_receiving_snapshot(&mut self) -> Result<Box<Cursor<Vec<u8>>>, StorageError> {
-        Ok(Box::new(Cursor::new(Vec::new())))
+    async fn begin_receiving_snapshot(&mut self) -> Result<Cursor<Vec<u8>>, StorageError> {
+        Ok(Cursor::new(Vec::new()))
     }
 
-    async fn install_snapshot(&mut self, meta: &SnapshotMeta, snapshot: Box<SnapshotData>) -> Result<(), StorageError> {
+    async fn install_snapshot(&mut self, meta: &SnapshotMeta, snapshot: SnapshotData) -> Result<(), StorageError> {
         let new_snapshot = StoredSnapshot {
             meta: meta.clone(),
             data: snapshot.into_inner(),
@@ -238,7 +238,7 @@ impl RaftStateMachine<TypeConfig> for StateMachineStore {
         let x = self.get_current_snapshot_()?;
         Ok(x.map(|s| Snapshot {
             meta: s.meta.clone(),
-            snapshot: Box::new(Cursor::new(s.data.clone())),
+            snapshot: Cursor::new(s.data.clone()),
         }))
     }
 }
