@@ -23,3 +23,7 @@ pub mod extended_membership {
 pub mod effective_membership {
     #![doc = include_str!("effective-membership.md")]
 }
+
+pub mod replication_session {
+    #![doc = include_str!("replication-session.md")]
+}
