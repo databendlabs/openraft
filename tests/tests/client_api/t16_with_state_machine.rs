@@ -114,14 +114,14 @@ async fn with_state_machine_wrong_sm_type() -> Result<()> {
                 todo!()
             }
 
-            async fn begin_receiving_snapshot(&mut self) -> Result<Box<<TC as RaftTypeConfig>::SnapshotData>, Err> {
+            async fn begin_receiving_snapshot(&mut self) -> Result<<TC as RaftTypeConfig>::SnapshotData, Err> {
                 todo!()
             }
 
             async fn install_snapshot(
                 &mut self,
                 _meta: &SnapshotMeta<TC>,
-                _snapshot: Box<<TC as RaftTypeConfig>::SnapshotData>,
+                _snapshot: <TC as RaftTypeConfig>::SnapshotData,
             ) -> Result<(), Err> {
                 todo!()
             }

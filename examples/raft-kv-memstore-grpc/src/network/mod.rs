@@ -110,7 +110,7 @@ impl RaftNetworkV2<TypeConfig> for NetworkConnection {
         // 2. Send data chunks
 
         let chunk_size = 1024 * 1024;
-        for chunk in snapshot.snapshot.as_ref().chunks(chunk_size) {
+        for chunk in snapshot.snapshot.chunks(chunk_size) {
             let request = pb::SnapshotRequest {
                 payload: Some(pb::snapshot_request::Payload::Chunk(chunk.to_vec())),
             };

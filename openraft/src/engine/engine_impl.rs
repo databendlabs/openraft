@@ -484,7 +484,7 @@ where C: RaftTypeConfig
 
     /// Install a completely received snapshot on a follower.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn handle_begin_receiving_snapshot(&mut self, tx: ResultSender<C, Box<SnapshotDataOf<C>>, Infallible>) {
+    pub(crate) fn handle_begin_receiving_snapshot(&mut self, tx: ResultSender<C, SnapshotDataOf<C>, Infallible>) {
         tracing::info!("{}", func_name!());
         self.output.push_command(Command::from(sm::Command::begin_receiving_snapshot(tx)));
     }

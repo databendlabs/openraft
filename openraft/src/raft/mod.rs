@@ -411,8 +411,9 @@ where C: RaftTypeConfig
     }
 
     /// Get a snapshot data for receiving snapshot from the leader.
+    #[since(version = "0.10.0", change = "SnapshotData without Box")]
     #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn begin_receiving_snapshot(&self) -> Result<Box<SnapshotDataOf<C>>, RaftError<C, Infallible>> {
+    pub async fn begin_receiving_snapshot(&self) -> Result<SnapshotDataOf<C>, RaftError<C, Infallible>> {
         tracing::info!("Raft::begin_receiving_snapshot()");
 
         let (tx, rx) = C::oneshot();

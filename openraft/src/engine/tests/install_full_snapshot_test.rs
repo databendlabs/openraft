@@ -78,7 +78,7 @@ fn test_handle_install_full_snapshot_lt_last_snapshot() -> anyhow::Result<()> {
                 last_membership: StoredMembership::new(Some(log_id(1, 1, 1)), m1234()),
                 snapshot_id: "1-2-3-4".to_string(),
             },
-            snapshot: Box::new(Cursor::new(vec![0u8])),
+            snapshot: Cursor::new(vec![0u8]),
         },
         tx,
     );
@@ -126,7 +126,7 @@ fn test_handle_install_full_snapshot_no_conflict() -> anyhow::Result<()> {
                 last_membership: StoredMembership::new(Some(log_id(1, 1, 1)), m1234()),
                 snapshot_id: "1-2-3-4".to_string(),
             },
-            snapshot: Box::new(Cursor::new(vec![0u8])),
+            snapshot: Cursor::new(vec![0u8]),
         },
         tx,
     );
@@ -151,7 +151,7 @@ fn test_handle_install_full_snapshot_no_conflict() -> anyhow::Result<()> {
                         last_membership: StoredMembership::new(Some(log_id(1, 1, 1)), m1234()),
                         snapshot_id: "1-2-3-4".to_string(),
                     },
-                    snapshot: Box::new(Cursor::new(vec![0u8])),
+                    snapshot: Cursor::new(vec![0u8]),
                 },
                 IOId::new_log_io(Vote::new(2, 1).into_committed(), Some(log_id(4, 1, 6)))
             )),

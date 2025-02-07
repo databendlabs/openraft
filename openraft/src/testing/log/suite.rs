@@ -1333,10 +1333,7 @@ where
         );
 
         tracing::info!("--- install snapshot on follower state machine");
-        let mut ss2_box = sm_f.begin_receiving_snapshot().await?;
-        *ss2_box = *ss1_cur.snapshot;
-
-        sm_f.install_snapshot(&ss1_cur.meta, ss2_box).await?;
+        sm_f.install_snapshot(&ss1_cur.meta, ss1_cur.snapshot).await?;
 
         tracing::info!("--- check correctness of installed snapshot");
         // ... by requesting whole snapshot
