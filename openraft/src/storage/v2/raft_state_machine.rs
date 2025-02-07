@@ -1,4 +1,5 @@
 use openraft_macros::add_async_trait;
+use openraft_macros::since;
 
 use crate::storage::Snapshot;
 use crate::storage::SnapshotMeta;
@@ -86,7 +87,8 @@ where C: RaftTypeConfig
     /// See the [storage chapter of the guide][sto] for details on log compaction / snapshotting.
     ///
     /// [sto]: crate::docs::getting_started#3-implement-raftlogstorage-and-raftstatemachine
-    async fn begin_receiving_snapshot(&mut self) -> Result<Box<C::SnapshotData>, StorageError<C>>;
+    #[since(version = "0.10.0", change = "SnapshotData without Box")]
+    async fn begin_receiving_snapshot(&mut self) -> Result<C::SnapshotData, StorageError<C>>;
 
     /// Install a snapshot which has finished streaming from the leader.
     ///
@@ -99,10 +101,11 @@ where C: RaftTypeConfig
     ///
     /// A snapshot created from an earlier call to `begin_receiving_snapshot` which provided the
     /// snapshot.
+    #[since(version = "0.10.0", change = "SnapshotData without Box")]
     async fn install_snapshot(
         &mut self,
         meta: &SnapshotMeta<C>,
-        snapshot: Box<C::SnapshotData>,
+        snapshot: C::SnapshotData,
     ) -> Result<(), StorageError<C>>;
 
     /// Get a readable handle to the current snapshot.

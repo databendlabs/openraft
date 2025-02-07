@@ -143,7 +143,7 @@ impl RaftService for RaftServiceImpl {
 
         let snapshot = Snapshot {
             meta: snapshot_meta,
-            snapshot: Box::new(snapshot_data_bytes),
+            snapshot: snapshot_data_bytes,
         };
 
         // Install the full snapshot

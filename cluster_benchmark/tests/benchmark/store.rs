@@ -176,7 +176,7 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<StateMachineStore> {
 
         Ok(Snapshot {
             meta,
-            snapshot: Box::new(Cursor::new(data)),
+            snapshot: Cursor::new(data),
         })
     }
 }
@@ -281,15 +281,15 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn begin_receiving_snapshot(&mut self) -> Result<Box<SnapshotDataOf<TypeConfig>>, StorageError<TypeConfig>> {
-        Ok(Box::new(Cursor::new(Vec::new())))
+    async fn begin_receiving_snapshot(&mut self) -> Result<SnapshotDataOf<TypeConfig>, StorageError<TypeConfig>> {
+        Ok(Cursor::new(Vec::new()))
     }
 
     #[tracing::instrument(level = "trace", skip(self, snapshot))]
     async fn install_snapshot(
         &mut self,
         meta: &SnapshotMeta<TypeConfig>,
-        snapshot: Box<SnapshotDataOf<TypeConfig>>,
+        snapshot: SnapshotDataOf<TypeConfig>,
     ) -> Result<(), StorageError<TypeConfig>> {
         let new_snapshot = StoredSnapshot {
             meta: meta.clone(),
@@ -317,7 +317,7 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
                 let data = snapshot.data.clone();
                 Ok(Some(Snapshot {
                     meta: snapshot.meta.clone(),
-                    snapshot: Box::new(Cursor::new(data)),
+                    snapshot: Cursor::new(data),
                 }))
             }
             None => Ok(None),

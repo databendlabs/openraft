@@ -18,7 +18,7 @@ pub struct StoredSnapshot {
     pub meta: SnapshotMeta,
 
     /// The data of the state machine at the time of this snapshot.
-    pub data: Box<SnapshotData>,
+    pub data: SnapshotData,
 }
 
 /// Defines a state machine for the Raft cluster. This state machine represents a copy of the
@@ -73,7 +73,7 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<StateMachineStore> {
 
         let stored = StoredSnapshot {
             meta: meta.clone(),
-            data: Box::new(data.clone()),
+            data: data.clone(),
         };
 
         // Emulation of storing snapshot locally
@@ -82,10 +82,7 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<StateMachineStore> {
             *current_snapshot = Some(stored);
         }
 
-        Ok(Snapshot {
-            meta,
-            snapshot: Box::new(data),
-        })
+        Ok(Snapshot { meta, snapshot: data })
     }
 }
 
@@ -136,12 +133,12 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn begin_receiving_snapshot(&mut self) -> Result<Box<SnapshotData>, StorageError> {
-        Ok(Box::default())
+    async fn begin_receiving_snapshot(&mut self) -> Result<SnapshotData, StorageError> {
+        Ok(Default::default())
     }
 
     #[tracing::instrument(level = "trace", skip(self, snapshot))]
-    async fn install_snapshot(&mut self, meta: &SnapshotMeta, snapshot: Box<SnapshotData>) -> Result<(), StorageError> {
+    async fn install_snapshot(&mut self, meta: &SnapshotMeta, snapshot: SnapshotData) -> Result<(), StorageError> {
         tracing::info!("install snapshot");
 
         let new_snapshot = StoredSnapshot {
@@ -151,7 +148,7 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
 
         // Update the state machine.
         {
-            let d: pb::StateMachineData = prost::Message::decode(new_snapshot.data.as_ref().as_ref())
+            let d: pb::StateMachineData = prost::Message::decode(new_snapshot.data.as_ref())
                 .map_err(|e| StorageError::read_snapshot(None, &e))?;
 
             let mut state_machine = self.state_machine.lock().unwrap();

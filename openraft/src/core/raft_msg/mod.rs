@@ -64,7 +64,7 @@ where C: RaftTypeConfig
     /// It does not check `Vote` because it is a read operation
     /// and does not break raft protocol.
     BeginReceivingSnapshot {
-        tx: ResultSender<C, Box<SnapshotDataOf<C>>, Infallible>,
+        tx: ResultSender<C, SnapshotDataOf<C>, Infallible>,
     },
 
     ClientWriteRequest {

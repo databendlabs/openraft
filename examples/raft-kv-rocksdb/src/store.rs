@@ -221,7 +221,7 @@ impl RaftStateMachine<TypeConfig> for StateMachineStore {
         Ok(Box::new(Cursor::new(Vec::new())))
     }
 
-    async fn install_snapshot(&mut self, meta: &SnapshotMeta, snapshot: Box<SnapshotData>) -> Result<(), StorageError> {
+    async fn install_snapshot(&mut self, meta: &SnapshotMeta, snapshot: SnapshotData) -> Result<(), StorageError> {
         let new_snapshot = StoredSnapshot {
             meta: meta.clone(),
             data: snapshot.into_inner(),

@@ -210,8 +210,7 @@ mod tokio_rt {
                 let streaming = streaming.take().unwrap();
                 let mut data = streaming.into_snapshot_data();
 
-                data.as_mut()
-                    .shutdown()
+                data.shutdown()
                     .await
                     .map_err(|e| StorageError::write_snapshot(Some(snapshot_meta.signature()), &e))?;
 
@@ -234,7 +233,7 @@ mod tokio_rt {
 
             // Always seek to the target offset if not an exact match.
             if req.offset != self.offset {
-                if let Err(err) = self.snapshot_data.as_mut().seek(SeekFrom::Start(req.offset)).await {
+                if let Err(err) = self.snapshot_data.seek(SeekFrom::Start(req.offset)).await {
                     return Err(StorageError::from_io_error(
                         ErrorSubject::Snapshot(Some(req.meta.signature())),
                         ErrorVerb::Seek,
@@ -245,7 +244,7 @@ mod tokio_rt {
             }
 
             // Write the next segment & update offset.
-            let res = self.snapshot_data.as_mut().write_all(&req.data).await;
+            let res = self.snapshot_data.write_all(&req.data).await;
             if let Err(err) = res {
                 return Err(StorageError::from_io_error(
                     ErrorSubject::Snapshot(Some(req.meta.signature())),
@@ -262,6 +261,7 @@ mod tokio_rt {
 use std::future::Future;
 
 use openraft_macros::add_async_trait;
+use openraft_macros::since;
 
 use crate::error::InstallSnapshotError;
 use crate::error::RaftError;
@@ -339,6 +339,7 @@ pub trait SnapshotTransport<C: RaftTypeConfig> {
 }
 
 /// The Raft node is streaming in a snapshot from the leader.
+#[since(version = "0.10.0", change = "SnapshotData without Box")]
 pub struct Streaming<C>
 where C: RaftTypeConfig
 {
@@ -351,13 +352,14 @@ where C: RaftTypeConfig
     snapshot_id: SnapshotId,
 
     /// A handle to the snapshot writer.
-    snapshot_data: Box<C::SnapshotData>,
+    snapshot_data: C::SnapshotData,
 }
 
 impl<C> Streaming<C>
 where C: RaftTypeConfig
 {
-    pub fn new(snapshot_id: SnapshotId, snapshot_data: Box<C::SnapshotData>) -> Self {
+    #[since(version = "0.10.0", change = "SnapshotData without Box")]
+    pub fn new(snapshot_id: SnapshotId, snapshot_data: C::SnapshotData) -> Self {
         Self {
             offset: 0,
             snapshot_id,
@@ -370,7 +372,7 @@ where C: RaftTypeConfig
     }
 
     /// Consumes the `Streaming` and returns the snapshot data.
-    pub fn into_snapshot_data(self) -> Box<C::SnapshotData> {
+    pub fn into_snapshot_data(self) -> C::SnapshotData {
         self.snapshot_data
     }
 }
@@ -480,7 +482,7 @@ mod tests {
                     last_membership: StoredMembership::default(),
                     snapshot_id: "1-1-1-1".to_string(),
                 },
-                Box::new(Cursor::new(vec![1, 2, 3])),
+                Cursor::new(vec![1, 2, 3]),
             ),
             cancel,
             opt,

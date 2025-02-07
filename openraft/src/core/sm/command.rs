@@ -22,7 +22,7 @@ where C: RaftTypeConfig
     GetSnapshot { tx: ResultSender<C, Option<Snapshot<C>>> },
 
     BeginReceivingSnapshot {
-        tx: ResultSender<C, Box<SnapshotDataOf<C>>, Infallible>,
+        tx: ResultSender<C, SnapshotDataOf<C>, Infallible>,
     },
 
     InstallFullSnapshot {
@@ -66,7 +66,7 @@ where C: RaftTypeConfig
         Command::GetSnapshot { tx }
     }
 
-    pub(crate) fn begin_receiving_snapshot(tx: ResultSender<C, Box<SnapshotDataOf<C>>, Infallible>) -> Self {
+    pub(crate) fn begin_receiving_snapshot(tx: ResultSender<C, SnapshotDataOf<C>, Infallible>) -> Self {
         Command::BeginReceivingSnapshot { tx }
     }
 
