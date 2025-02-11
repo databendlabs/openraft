@@ -21,11 +21,7 @@ rpc() {
     local port=$1
     local method=$2
     local body="$3"
-    local isApiService="$4"
-    local cmd="grpcurl -plaintext -proto ./proto/management_service.proto -d $body -import-path ./proto localhost:$port openraftpb.ManagementService/$method"
-    if [ "$isApiService" = "true" ]; then
-        cmd="grpcurl -plaintext -proto ./proto/api_service.proto -d $body -import-path ./proto localhost:$port openraftpb.ApiService/$method"
-    fi
+    local cmd="grpcurl -plaintext -proto ./proto/app.proto -d $body -import-path ./proto localhost:$port openraftpb.AppService/$method"
 
     echo '---'" rpc(127.0.0.1:$port/$method, $body)"
 
@@ -128,7 +124,7 @@ sleep 1
 echo "Write foo=zoo on node-1"
 sleep 1
 echo
-rpc 5051 Set '{"key":"foo","value":"zoo"}' true
+rpc 5051 Set '{"key":"foo","value":"zoo"}'
 sleep 1
 echo "Data written"
 sleep 1
@@ -137,7 +133,7 @@ echo "Read foo=zoo from node-2"
 sleep 1
 echo "Read from node 2"
 echo
-rpc 5052 Get '{"key":"foo"}' true
+rpc 5052 Get '{"key":"foo"}'
 echo
 
 
