@@ -179,7 +179,7 @@ Most of the APIs are quite straightforward, except two indirect APIs:
 There is a [Test suite for RaftLogStorage and RaftStateMachine][`LogSuite`] available in Openraft.
 If your implementation passes the tests, Openraft should work well with it.
 To test your implementation, run `Suite::test_all()` with a [`StoreBuilder`] implementation,
-as shown in the [`RocksStore` test](https://github.com/databendlabs/openraft/blob/main/stores/rocksstore/src/test.rs).
+as shown in the [`RocksStore` test](https://github.com/databendlabs/openraft/blob/main/examples/rocksstore/src/test.rs).
 
 Once all tests pass, you can ensure that your custom storage implementation can work correctly in a distributed system.
 
