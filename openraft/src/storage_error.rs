@@ -113,7 +113,7 @@ where C: RaftTypeConfig
 {
     subject: ErrorSubject<C>,
     verb: ErrorVerb,
-    source: AnyError,
+    source: Box<AnyError>,
     backtrace: Option<String>,
 }
 
@@ -132,7 +132,7 @@ where C: RaftTypeConfig
         Self {
             subject,
             verb,
-            source: source.into(),
+            source: Box::new(source.into()),
             backtrace: anyerror::backtrace_str(),
         }
     }

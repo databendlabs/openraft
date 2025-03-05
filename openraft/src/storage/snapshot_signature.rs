@@ -12,7 +12,7 @@ where C: RaftTypeConfig
     pub last_log_id: Option<LogIdOf<C>>,
 
     /// The last applied membership log id.
-    pub last_membership_log_id: Option<LogIdOf<C>>,
+    pub last_membership_log_id: Option<Box<LogIdOf<C>>>,
 
     /// To identify a snapshot when transferring.
     pub snapshot_id: SnapshotId,
@@ -30,7 +30,7 @@ mod tests {
 
         let sig = SnapshotSignature {
             last_log_id: Some(log_id(1, 2, 3)),
-            last_membership_log_id: Some(log_id(4, 5, 6)),
+            last_membership_log_id: Some(Box::new(log_id(4, 5, 6))),
             snapshot_id: "test".to_string(),
         };
         let s = serde_json::to_string(&sig).unwrap();
