@@ -195,3 +195,23 @@ where C: RaftTypeConfig
         Self::new(ErrorSubject::Store, ErrorVerb::Write, source)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    #[cfg(feature = "serde")]
+    #[test]
+    fn test_storage_error_serde() {
+        use super::StorageError;
+        use crate::engine::testing::log_id;
+        use crate::engine::testing::UTConfig;
+
+        let err = StorageError::write_log_entry(log_id(1, 2, 3), super::AnyError::error("test"));
+        let s = serde_json::to_string(&err).unwrap();
+        assert_eq!(
+            s,
+            r#"{"subject":{"Log":{"leader_id":{"term":1,"node_id":2},"index":3}},"verb":"Write","source":{"typ":null,"msg":"test","source":null,"context":[],"backtrace":null},"backtrace":null}"#
+        );
+        let err2: StorageError<UTConfig> = serde_json::from_str(&s).unwrap();
+        assert_eq!(err, err2);
+    }
+}
