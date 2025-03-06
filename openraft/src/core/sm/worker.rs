@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use anyerror::AnyError;
 use tracing_futures::Instrument;
 
@@ -17,12 +19,15 @@ use crate::display_ext::DisplayOptionExt;
 use crate::display_ext::DisplaySliceExt;
 use crate::entry::RaftEntry;
 use crate::entry::RaftPayload;
+use crate::raft::responder::Responder;
+use crate::raft::ClientWriteResponse;
 use crate::storage::RaftStateMachine;
 use crate::storage::Snapshot;
 use crate::type_config::alias::JoinHandleOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::MpscUnboundedReceiverOf;
 use crate::type_config::alias::MpscUnboundedSenderOf;
+use crate::type_config::alias::ResponderOf;
 use crate::type_config::TypeConfigExt;
 use crate::RaftLogReader;
 use crate::RaftSnapshotBuilder;
@@ -138,8 +143,12 @@ where
                     let _ = tx.send(Ok(snapshot_data));
                     // No response to RaftCore
                 }
-                Command::Apply { first, last } => {
-                    let resp = self.apply(first, last).await?;
+                Command::Apply {
+                    first,
+                    last,
+                    client_resp_channels,
+                } => {
+                    let resp = self.apply(first, last, client_resp_channels).await?;
                     let res = CommandResult::new(Ok(Response::Apply(resp)));
                     let _ = self.resp_tx.send(Notification::sm(res));
                 }
@@ -161,7 +170,12 @@ where
         }
     }
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn apply(&mut self, first: LogIdOf<C>, last: LogIdOf<C>) -> Result<ApplyResult<C>, StorageError<C>> {
+    async fn apply(
+        &mut self,
+        first: LogIdOf<C>,
+        last: LogIdOf<C>,
+        client_resp_channels: BTreeMap<u64, ResponderOf<C>>,
+    ) -> Result<ApplyResult<C>, StorageError<C>> {
         // TODO: prepare response before apply,
         //       so that an Entry does not need to be Clone,
         //       and no references will be used by apply
@@ -199,12 +213,32 @@ where
             n_entries, n_replies
         );
 
+        let mut results = apply_results.into_iter();
+        let mut applying_entries = applying_entries.into_iter();
+        let mut client_resp_channels = client_resp_channels;
+        for log_index in since..end {
+            let entry = applying_entries.next().unwrap();
+            let resp = results.next().unwrap();
+            let tx = client_resp_channels.remove(&log_index);
+            tracing::debug!(entry = debug(&entry), "send_response");
+
+            if let Some(tx) = tx {
+                let membership = entry.membership;
+
+                let res = Ok(ClientWriteResponse {
+                    log_id: entry.log_id,
+                    data: resp,
+                    membership,
+                });
+
+                tx.send(res);
+            }
+        }
+
         let resp = ApplyResult {
             since,
             end,
             last_applied,
-            applying_entries,
-            apply_results,
         };
 
         Ok(resp)

@@ -36,7 +36,6 @@ use crate::core::ServerState;
 use crate::display_ext::DisplayInstantExt;
 use crate::display_ext::DisplayOptionExt;
 use crate::display_ext::DisplaySlice;
-use crate::display_ext::DisplaySliceExt;
 use crate::engine::Command;
 use crate::engine::Condition;
 use crate::engine::Engine;
@@ -107,8 +106,8 @@ use crate::StorageError;
 /// A temp struct to hold the data for a node that is being applied.
 #[derive(Debug)]
 pub(crate) struct ApplyingEntry<C: RaftTypeConfig> {
-    log_id: LogIdOf<C>,
-    membership: Option<Membership<C>>,
+    pub(crate) log_id: LogIdOf<C>,
+    pub(crate) membership: Option<Membership<C>>,
 }
 
 impl<C> fmt::Display for ApplyingEntry<C>
@@ -134,8 +133,6 @@ pub(crate) struct ApplyResult<C: RaftTypeConfig> {
     pub(crate) since: u64,
     pub(crate) end: u64,
     pub(crate) last_applied: LogIdOf<C>,
-    pub(crate) applying_entries: Vec<ApplyingEntry<C>>,
-    pub(crate) apply_results: Vec<C::R>,
 }
 
 impl<C: RaftTypeConfig> Debug for ApplyResult<C> {
@@ -152,11 +149,8 @@ impl<C: RaftTypeConfig> fmt::Display for ApplyResult<C> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "ApplyResult([{}, {}), last_applied={}, entries={})",
-            self.since,
-            self.end,
-            self.last_applied,
-            self.applying_entries.display(),
+            "ApplyResult([{}, {}), last_applied={})",
+            self.since, self.end, self.last_applied,
         )
     }
 }
@@ -761,7 +755,16 @@ where
             last.index()
         );
 
-        let cmd = sm::Command::apply(first, last.clone());
+        let mut client_resp_channels = BTreeMap::new();
+        let since = first.index();
+        let end = last.index() + 1;
+        for log_index in since..end {
+            if let Some(tx) = self.client_resp_channels.remove(&log_index) {
+                client_resp_channels.insert(log_index, tx);
+            }
+        }
+
+        let cmd = sm::Command::apply(first, last.clone(), client_resp_channels);
         self.sm_handle.send(cmd).map_err(|e| StorageError::apply(last, AnyError::error(e)))?;
 
         Ok(())
@@ -772,17 +775,6 @@ where
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn handle_apply_result(&mut self, res: ApplyResult<C>) {
         tracing::debug!(last_applied = display(res.last_applied), "{}", func_name!());
-
-        let mut results = res.apply_results.into_iter();
-        let mut applying_entries = res.applying_entries.into_iter();
-
-        for log_index in res.since..res.end {
-            let ent = applying_entries.next().unwrap();
-            let apply_res = results.next().unwrap();
-            let tx = self.client_resp_channels.remove(&log_index);
-
-            Self::send_response(ent, apply_res, tx);
-        }
     }
 
     /// Send result of applying a log entry to its client.
