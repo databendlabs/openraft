@@ -31,9 +31,17 @@ where C: RaftTypeConfig
 {
     /// Get a series of log entries from storage.
     ///
+    /// This method retrieves log entries within the specified range. The range is defined by
+    /// any type that implements `RangeBounds<u64>`, such as `start..end` or `start..=end`.
+    ///
     /// ### Correctness requirements
     ///
-    /// - The absence of an entry is tolerated only at the beginning or end of the range. Missing
+    /// - All log entries in the range must be returned. Unlike
+    ///   [`limited_get_log_entries()`](Self::limited_get_log_entries), which may return only the
+    ///   first several log entries.
+    ///
+    /// - If the log doesn't contain all the requested entries, return the existing entries. The
+    ///   absence of an entry is tolerated only at the beginning or end of the range. Missing
     ///   entries within the range (i.e., holes) are not permitted and should result in a
     ///   `StorageError`.
     ///
