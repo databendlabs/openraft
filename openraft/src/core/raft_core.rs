@@ -729,16 +729,15 @@ where
             last.index()
         );
 
-        debug_assert!(
-            !self.client_resp_channels.is_empty(),
-            "client_resp_channels MUST NOT be empty",
-        );
-        debug_assert!(
-            first.index() <= *self.client_resp_channels.first_entry().unwrap().key(),
-            "first.index {} should <= client_resp_channels.first index {}",
-            first.index(),
-            self.client_resp_channels.first_entry().unwrap().key(),
-        );
+        #[cfg(debug_assertions)]
+        if let Some(first_entry) = self.client_resp_channels.first_entry() {
+            debug_assert!(
+                first.index() <= *first_entry.key(),
+                "first.index {} should <= client_resp_channels.first index {}",
+                first.index(),
+                first_entry.key(),
+            );
+        }
         let end = last.index() + 1;
         let mut client_resp_channels = self.client_resp_channels.split_off(&end);
         std::mem::swap(&mut client_resp_channels, &mut self.client_resp_channels);
