@@ -145,9 +145,9 @@ where
                 Command::Apply {
                     first,
                     last,
-                    client_resp_channels,
+                    mut client_resp_channels,
                 } => {
-                    let resp = self.apply(first, last, client_resp_channels).await?;
+                    let resp = self.apply(first, last, &mut client_resp_channels).await?;
                     let res = CommandResult::new(Ok(Response::Apply(resp)));
                     let _ = self.resp_tx.send(Notification::sm(res));
                 }
@@ -173,7 +173,7 @@ where
         &mut self,
         first: LogIdOf<C>,
         last: LogIdOf<C>,
-        client_resp_channels: BTreeMap<u64, ResponderOf<C>>,
+        client_resp_channels: &mut BTreeMap<u64, ResponderOf<C>>,
     ) -> Result<ApplyResult<C>, StorageError<C>> {
         // TODO: prepare response before apply,
         //       so that an Entry does not need to be Clone,
@@ -213,7 +213,6 @@ where
 
         let mut results = apply_results.into_iter();
         let mut applying_entries = applying_entries.into_iter();
-        let mut client_resp_channels = client_resp_channels;
         for log_index in since..end {
             let (log_id, membership) = applying_entries.next().unwrap();
             let resp = results.next().unwrap();

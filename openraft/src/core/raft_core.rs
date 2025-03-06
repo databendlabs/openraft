@@ -748,13 +748,6 @@ where
         Ok(())
     }
 
-    /// When received results of applying log entries to the state machine, send back responses to
-    /// the callers that proposed the entries.
-    #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn handle_apply_result(&mut self, res: ApplyResult<C>) {
-        tracing::debug!(last_applied = display(res.last_applied), "{}", func_name!());
-    }
-
     /// Spawn a new replication stream returning its replication state handle.
     #[tracing::instrument(level = "debug", skip(self))]
     #[allow(clippy::type_complexity)]
@@ -1465,8 +1458,6 @@ where
                     }
                     sm::Response::Apply(res) => {
                         self.engine.state.io_state_mut().update_applied(Some(res.last_applied.clone()));
-
-                        self.handle_apply_result(res);
                     }
                 }
             }
