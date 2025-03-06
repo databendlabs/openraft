@@ -69,7 +69,6 @@ use crate::raft::message::TransferLeaderRequest;
 use crate::raft::responder::Responder;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
-use crate::raft::ClientWriteResponse;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::raft_state::io_state::io_id::IOId;
@@ -102,31 +101,6 @@ use crate::Membership;
 use crate::OptionalSend;
 use crate::RaftTypeConfig;
 use crate::StorageError;
-
-/// A temp struct to hold the data for a node that is being applied.
-#[derive(Debug)]
-pub(crate) struct ApplyingEntry<C: RaftTypeConfig> {
-    pub(crate) log_id: LogIdOf<C>,
-    pub(crate) membership: Option<Membership<C>>,
-}
-
-impl<C> fmt::Display for ApplyingEntry<C>
-where C: RaftTypeConfig
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.log_id)?;
-        if let Some(m) = &self.membership {
-            write!(f, "(membership:{})", m)?;
-        }
-        Ok(())
-    }
-}
-
-impl<C: RaftTypeConfig> ApplyingEntry<C> {
-    pub(crate) fn new(log_id: LogIdOf<C>, membership: Option<Membership<C>>) -> Self {
-        Self { log_id, membership }
-    }
-}
 
 /// The result of applying log entries to state machine.
 pub(crate) struct ApplyResult<C: RaftTypeConfig> {
@@ -755,14 +729,19 @@ where
             last.index()
         );
 
-        let mut client_resp_channels = BTreeMap::new();
-        let since = first.index();
+        debug_assert!(
+            !self.client_resp_channels.is_empty(),
+            "client_resp_channels MUST NOT be empty",
+        );
+        debug_assert!(
+            first.index() <= *self.client_resp_channels.first_entry().unwrap().key(),
+            "first.index {} should <= client_resp_channels.first index {}",
+            first.index(),
+            self.client_resp_channels.first_entry().unwrap().key(),
+        );
         let end = last.index() + 1;
-        for log_index in since..end {
-            if let Some(tx) = self.client_resp_channels.remove(&log_index) {
-                client_resp_channels.insert(log_index, tx);
-            }
-        }
+        let mut client_resp_channels = self.client_resp_channels.split_off(&end);
+        std::mem::swap(&mut client_resp_channels, &mut self.client_resp_channels);
 
         let cmd = sm::Command::apply(first, last.clone(), client_resp_channels);
         self.sm_handle.send(cmd).map_err(|e| StorageError::apply(last, AnyError::error(e)))?;
@@ -775,27 +754,6 @@ where
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn handle_apply_result(&mut self, res: ApplyResult<C>) {
         tracing::debug!(last_applied = display(res.last_applied), "{}", func_name!());
-    }
-
-    /// Send result of applying a log entry to its client.
-    #[tracing::instrument(level = "debug", skip_all)]
-    pub(super) fn send_response(entry: ApplyingEntry<C>, resp: C::R, tx: Option<ResponderOf<C>>) {
-        tracing::debug!(entry = debug(&entry), "send_response");
-
-        let tx = match tx {
-            None => return,
-            Some(x) => x,
-        };
-
-        let membership = entry.membership;
-
-        let res = Ok(ClientWriteResponse {
-            log_id: entry.log_id,
-            data: resp,
-            membership,
-        });
-
-        tx.send(res);
     }
 
     /// Spawn a new replication stream returning its replication state handle.

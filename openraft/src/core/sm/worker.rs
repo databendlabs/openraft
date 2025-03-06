@@ -14,7 +14,6 @@ use crate::core::sm::Command;
 use crate::core::sm::CommandResult;
 use crate::core::sm::Response;
 use crate::core::ApplyResult;
-use crate::core::ApplyingEntry;
 use crate::display_ext::DisplayOptionExt;
 use crate::display_ext::DisplaySliceExt;
 use crate::entry::RaftEntry;
@@ -198,8 +197,7 @@ where
 
         // Fake complain: avoid using `collect()` when not needed
         #[allow(clippy::needless_collect)]
-        let applying_entries =
-            entries.iter().map(|e| ApplyingEntry::new(e.log_id(), e.get_membership())).collect::<Vec<_>>();
+        let applying_entries = entries.iter().map(|e| (e.log_id(), e.get_membership())).collect::<Vec<_>>();
 
         let n_entries = end - since;
 
@@ -217,16 +215,20 @@ where
         let mut applying_entries = applying_entries.into_iter();
         let mut client_resp_channels = client_resp_channels;
         for log_index in since..end {
-            let entry = applying_entries.next().unwrap();
+            let (log_id, membership) = applying_entries.next().unwrap();
             let resp = results.next().unwrap();
             let tx = client_resp_channels.remove(&log_index);
-            tracing::debug!(entry = debug(&entry), "send_response");
+            tracing::debug!(
+                log_id = debug(&log_id),
+                membership = debug(&membership),
+                "send_response"
+            );
 
             if let Some(tx) = tx {
-                let membership = entry.membership;
+                let membership = membership;
 
                 let res = Ok(ClientWriteResponse {
-                    log_id: entry.log_id,
+                    log_id,
                     data: resp,
                     membership,
                 });
