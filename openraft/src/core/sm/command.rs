@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::fmt;
 use std::fmt::Debug;
 use std::fmt::Formatter;
@@ -8,6 +9,7 @@ use crate::error::Infallible;
 use crate::raft_state::IOId;
 use crate::storage::Snapshot;
 use crate::type_config::alias::LogIdOf;
+use crate::type_config::alias::ResponderOf;
 use crate::type_config::alias::SnapshotDataOf;
 use crate::RaftTypeConfig;
 
@@ -41,6 +43,8 @@ where C: RaftTypeConfig
 
         /// The last log id to apply, inclusive.
         last: LogIdOf<C>,
+
+        client_resp_channels: BTreeMap<u64, ResponderOf<C>>,
     },
 
     /// Apply a custom function to the state machine.
@@ -75,8 +79,16 @@ where C: RaftTypeConfig
     }
 
     /// Applies log ids within the inclusive range `[first, last]`.
-    pub(crate) fn apply(first: LogIdOf<C>, last: LogIdOf<C>) -> Self {
-        Command::Apply { first, last }
+    pub(crate) fn apply(
+        first: LogIdOf<C>,
+        last: LogIdOf<C>,
+        client_resp_channels: BTreeMap<u64, ResponderOf<C>>,
+    ) -> Self {
+        Command::Apply {
+            first,
+            last,
+            client_resp_channels,
+        }
     }
 
     /// Return the IOId if this command submit any IO.
@@ -105,7 +117,7 @@ where C: RaftTypeConfig
             Command::BeginReceivingSnapshot { .. } => {
                 write!(f, "BeginReceivingSnapshot")
             }
-            Command::Apply { first, last } => write!(f, "Apply: [{},{}]", first, last),
+            Command::Apply { first, last, .. } => write!(f, "Apply: [{},{}]", first, last),
             Command::Func { .. } => write!(f, "Func"),
         }
     }
@@ -124,7 +136,7 @@ where C: RaftTypeConfig
             Command::BeginReceivingSnapshot { .. } => {
                 write!(f, "BeginReceivingSnapshot")
             }
-            Command::Apply { first, last } => write!(f, "Apply: [{},{}]", first, last),
+            Command::Apply { first, last, .. } => write!(f, "Apply: [{},{}]", first, last),
             Command::Func { .. } => write!(f, "Func"),
         }
     }
@@ -150,10 +162,11 @@ where C: RaftTypeConfig
                 },
             ) => s1.meta == s2.meta && io1 == io2,
             (
-                Command::Apply { first, last },
+                Command::Apply { first, last, .. },
                 Command::Apply {
                     first: first2,
                     last: last2,
+                    ..
                 },
             ) => first == first2 && last == last2,
             (Command::Func { .. }, Command::Func { .. }) => false,
