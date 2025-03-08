@@ -10,7 +10,6 @@ use crate::engine::Command;
 use crate::engine::Engine;
 use crate::progress::Inflight;
 use crate::progress::Progress;
-use crate::raft_state::LogStateReader;
 use crate::type_config::TypeConfigExt;
 use crate::utime::Leased;
 use crate::EffectiveMembership;

@@ -9,7 +9,6 @@ use crate::proposer::Leader;
 use crate::proposer::LeaderQuorumSet;
 use crate::raft::message::TransferLeaderRequest;
 use crate::raft_state::IOId;
-use crate::raft_state::LogStateReader;
 use crate::replication::ReplicationSessionId;
 use crate::type_config::alias::LogIdOf;
 use crate::RaftState;

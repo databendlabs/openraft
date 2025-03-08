@@ -13,7 +13,6 @@ use crate::engine::Condition;
 use crate::engine::Engine;
 use crate::engine::LogIdList;
 use crate::raft_state::IOId;
-use crate::raft_state::LogStateReader;
 use crate::storage::Snapshot;
 use crate::storage::SnapshotMeta;
 use crate::type_config::alias::VoteOf;
@@ -39,7 +38,7 @@ fn eng() -> Engine<UTConfig> {
     let now = UTConfig::<()>::now();
     let vote = VoteOf::<UTConfig>::new_committed(2, 1);
     eng.state.vote.update(now, Duration::from_millis(500), vote);
-    eng.state.committed = Some(log_id(4, 1, 5));
+    eng.state.io_state_mut().update_committed(log_id(4, 1, 5));
     eng.state.log_ids = LogIdList::new(vec![
         //
         log_id(2, 1, 2),
@@ -189,7 +188,7 @@ fn test_install_snapshot_conflict() -> anyhow::Result<()> {
             Duration::from_millis(500),
             Vote::new_committed(2, 1),
         );
-        eng.state.committed = Some(log_id(2, 1, 3));
+        eng.state.io_state_mut().update_committed(log_id(2, 1, 3));
         eng.state.log_ids = LogIdList::new(vec![
             //
             log_id(2, 1, 2),
