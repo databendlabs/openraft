@@ -9,6 +9,7 @@ use crate::error::ForwardToLeader;
 use crate::log_id::raft_log_id::RaftLogId;
 use crate::storage::SnapshotMeta;
 use crate::utime::Leased;
+use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::RaftTypeConfig;
 use crate::ServerState;
@@ -56,14 +57,6 @@ where C: RaftTypeConfig
     /// The vote state of this node.
     pub(crate) vote: Leased<VoteOf<C>, InstantOf<C>>,
 
-    /// The LogId of the last log committed(AKA applied) to the state machine.
-    ///
-    /// - Committed means: a log that is replicated to a quorum of the cluster and it is of the term
-    ///   of the leader.
-    ///
-    /// - A quorum could be a uniform quorum or joint quorum.
-    pub committed: Option<LogIdOf<C>>,
-
     pub(crate) purged_next: u64,
 
     /// All log ids this node has.
@@ -96,7 +89,6 @@ where C: RaftTypeConfig
     fn default() -> Self {
         Self {
             vote: Leased::default(),
-            committed: None,
             purged_next: 0,
             log_ids: LogIdList::default(),
             membership_state: MembershipState::default(),
@@ -120,7 +112,7 @@ where C: RaftTypeConfig
     }
 
     fn committed(&self) -> Option<&LogIdOf<C>> {
-        self.committed.as_ref()
+        self.io_state.committed()
     }
 
     fn io_applied(&self) -> Option<&LogIdOf<C>> {
@@ -201,6 +193,10 @@ where C: RaftTypeConfig
         self.vote.last_update()
     }
 
+    pub fn committed(&self) -> Option<&LogId<C>> {
+        self.io_state().committed()
+    }
+
     pub(crate) fn is_initialized(&self) -> bool {
         // initialize() writes a membership config log entry.
         // If there are logs, it is already initialized.
@@ -220,14 +216,14 @@ where C: RaftTypeConfig
     ///
     /// Such as SaveVote or AppendEntries
     pub(crate) fn accepted_io(&self) -> Option<&IOId<C>> {
-        self.io_state.io_progress.accepted()
+        self.io_state.log_progress.accepted()
     }
 
     /// Updates the accepted IO, including Vote change or AppendEntries IO.
     ///
     /// Returns the previously accepted value.
     pub(crate) fn accept_io(&mut self, accepted: IOId<C>) -> Option<IOId<C>> {
-        let curr_accepted = self.io_state.io_progress.accepted().cloned();
+        let curr_accepted = self.io_state.log_progress.accepted().cloned();
 
         tracing::debug!(
             "{}: accept_log: current: {}, new_accepted: {}",
@@ -248,7 +244,7 @@ where C: RaftTypeConfig
         }
 
         if Some(&accepted) > curr_accepted.as_ref() {
-            self.io_state.io_progress.accept(accepted);
+            self.io_state.log_progress.accept(accepted);
         }
 
         curr_accepted
@@ -281,7 +277,8 @@ where C: RaftTypeConfig
         if committed.as_ref() > self.committed() {
             let prev = self.committed().cloned();
 
-            self.committed = committed.clone();
+            // Safe unwrap(): committed > self.committed(), implies it can not be None
+            self.io_state.update_committed(committed.clone().unwrap());
             self.membership_state.commit(committed);
 
             Some(prev)

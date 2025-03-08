@@ -77,6 +77,21 @@ where
     T: PartialOrd + fmt::Debug,
     T: fmt::Display,
 {
+    /// Create a new IOProgress with all three cursors (accepted, submitted, flushed) set to the
+    /// same value.
+    ///
+    /// This creates a synchronized state where all IO operations (accepted, submitted, and flushed)
+    /// are considered complete up to the specified point. This is typically used for initialization
+    /// or when a snapshot is installed, ensuring all IO tracking is aligned.
+    pub(crate) fn new_synchronized(v: Option<T>) -> Self
+    where T: Clone {
+        Self {
+            accepted: v.clone(),
+            submitted: v.clone(),
+            flushed: v.clone(),
+        }
+    }
+
     /// Update the `accept` cursor of the I/O progress.
     pub(crate) fn accept(&mut self, new_accepted: T) {
         debug_assert!(
