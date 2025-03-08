@@ -90,6 +90,22 @@ where C: RaftTypeConfig
             Command::Func { .. } => None,
         }
     }
+
+    /// Return the last applied log id if this command updates the `last_applied` of the state
+    /// machine.
+    ///
+    /// The caller can use this information to update the `apply_progress.submitted()` in `IOState`,
+    /// which tracks the highest log id that has been submitted to be applied to the state machine.
+    pub(crate) fn get_apply_progress(&self) -> Option<LogIdOf<C>> {
+        match self {
+            Command::BuildSnapshot => None,
+            Command::GetSnapshot { .. } => None,
+            Command::BeginReceivingSnapshot { .. } => None,
+            Command::InstallFullSnapshot { io_id, .. } => io_id.last_log_id().cloned(),
+            Command::Apply { last, .. } => Some(last.clone()),
+            Command::Func { .. } => None,
+        }
+    }
 }
 
 impl<C> Debug for Command<C>

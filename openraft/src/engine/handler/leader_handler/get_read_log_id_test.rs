@@ -32,7 +32,7 @@ fn eng() -> Engine<UTConfig> {
     eng.state.enable_validation(false); // Disable validation for incomplete state
 
     eng.config.id = 1;
-    eng.state.committed = Some(log_id(0, 1, 0));
+    eng.state.io_state_mut().update_committed(log_id(0, 1, 0));
     eng.state.vote = Leased::new(
         UTConfig::<()>::now(),
         Duration::from_millis(500),
@@ -54,13 +54,13 @@ fn eng() -> Engine<UTConfig> {
 fn test_get_read_log_id() -> anyhow::Result<()> {
     let mut eng = eng();
 
-    eng.state.committed = Some(log_id(0, 1, 0));
+    eng.state.io_state_mut().update_committed(log_id(0, 1, 0));
     eng.leader.as_mut().unwrap().noop_log_id = Some(log_id(1, 1, 2));
 
     let got = eng.leader_handler()?.get_read_log_id();
     assert_eq!(Some(log_id(1, 1, 2)), got);
 
-    eng.state.committed = Some(log_id(2, 1, 3));
+    eng.state.io_state_mut().update_committed(log_id(2, 1, 3));
     let got = eng.leader_handler()?.get_read_log_id();
     assert_eq!(Some(log_id(2, 1, 3)), got);
 

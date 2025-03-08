@@ -9,6 +9,7 @@ use crate::raft_state::io_state::io_progress::IOProgress;
 use crate::raft_state::IOId;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::VoteOf;
+use crate::LogId;
 use crate::RaftTypeConfig;
 
 pub(crate) mod io_id;
@@ -65,11 +66,27 @@ where C: RaftTypeConfig
     /// Whether it is building a snapshot
     building_snapshot: bool,
 
-    /// Tracks the accepted, submitted and flushed IO to local storage.
-    pub(crate) io_progress: Valid<IOProgress<IOId<C>>>,
+    /// Tracks the accepted, submitted and flushed log IO to local storage.
+    ///
+    /// Note that log id includes the vote state.
+    pub(crate) log_progress: Valid<IOProgress<IOId<C>>>,
 
-    /// The last log id that has been applied to state machine.
-    pub(crate) applied: Option<LogIdOf<C>>,
+    /// The io progress of applying log to state machine.
+    ///
+    /// - The `apply_progress.accepted()` log id is also the committed, i.e., persisted in a quorum
+    ///   and can be chosen by next Leader. A quorum is either a uniform quorum or a joint quorum.
+    ///   This is the highest log id that is safe to apply to the state machine.
+    ///
+    /// - The `apply_progress.submitted()` is the last log id that has been sent to state machine
+    ///   task to apply.
+    ///
+    /// - The `apply_progress.flushed()` is the last log id that has been already applied to state
+    ///   machine.
+    ///
+    /// Note that depending on the implementation of the state machine,
+    /// the `flushed()` log id may not be persisted in storage(the state machine may periodically
+    /// build a snapshot to persist the state).
+    pub(crate) apply_progress: Valid<IOProgress<LogId<C>>>,
 
     /// The last log id in the currently persisted snapshot.
     pub(crate) snapshot: Option<LogIdOf<C>>,
@@ -86,14 +103,14 @@ impl<C> Validate for IOState<C>
 where C: RaftTypeConfig
 {
     fn validate(&self) -> Result<(), Box<dyn Error>> {
-        self.io_progress.validate()?;
+        self.log_progress.validate()?;
 
         // TODO: enable this when get_initial_state() initialize the log io progress correctly
         // let a = &self.append_log;
         // Applied does not have to be flushed in local store.
         // less_equal!(self.applied.as_ref(), a.submitted().and_then(|x| x.last_log_id()));
 
-        less_equal!(&self.snapshot, &self.applied);
+        less_equal!(self.snapshot.as_ref(), self.applied());
         less_equal!(&self.purged, &self.snapshot);
         Ok(())
     }
@@ -108,19 +125,23 @@ where C: RaftTypeConfig
         snapshot: Option<LogIdOf<C>>,
         purged: Option<LogIdOf<C>>,
     ) -> Self {
-        let mut io_progress = Valid::new(IOProgress::default());
-
-        io_progress.accept(IOId::new(vote));
-        io_progress.submit(IOId::new(vote));
-        io_progress.flush(IOId::new(vote));
-
         Self {
             building_snapshot: false,
-            io_progress,
-            applied,
+            log_progress: Valid::new(IOProgress::new_aligned(Some(IOId::new(vote)))),
+            apply_progress: Valid::new(IOProgress::new_aligned(applied)),
             snapshot,
             purged,
         }
+    }
+
+    pub(crate) fn update_committed(&mut self, log_id: LogId<C>) {
+        // The committed log id represents the highest log entry that is safe to apply to the state machine.
+        // Here we update the accepted cursor in apply_progress to track this commitment point.
+        self.apply_progress.accept(log_id);
+    }
+
+    pub(crate) fn committed(&self) -> Option<&LogIdOf<C>> {
+        self.apply_progress.accepted()
     }
 
     pub(crate) fn update_applied(&mut self, log_id: Option<LogIdOf<C>>) {
@@ -128,17 +149,18 @@ where C: RaftTypeConfig
 
         // TODO: should we update flushed if applied is newer?
         debug_assert!(
-            log_id > self.applied,
+            log_id.as_ref() > self.applied(),
             "applied log id should be monotonically increasing: current: {:?}, update: {:?}",
-            self.applied,
+            self.applied(),
             log_id
         );
 
-        self.applied = log_id;
+        // Safe unwrap(): log_id > self.applied(), implies it can not be None
+        self.apply_progress.flush(log_id.unwrap());
     }
 
     pub(crate) fn applied(&self) -> Option<&LogIdOf<C>> {
-        self.applied.as_ref()
+        self.apply_progress.flushed()
     }
 
     pub(crate) fn update_snapshot(&mut self, log_id: Option<LogIdOf<C>>) {

@@ -315,7 +315,7 @@ where C: RaftTypeConfig
 
         let io_id = IOId::new_log_io(self.leader_vote.clone(), Some(snap_last_log_id.clone()));
         self.state.accept_io(io_id.clone());
-        self.state.committed = Some(snap_last_log_id.clone());
+        self.state.io_state.update_committed(snap_last_log_id.clone());
         self.update_committed_membership(EffectiveMembership::new_from_stored_membership(
             meta.last_membership.clone(),
         ));
