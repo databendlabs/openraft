@@ -50,10 +50,9 @@ fn test_raft_state_has_log_id_empty() -> anyhow::Result<()> {
 
 #[test]
 fn test_raft_state_has_log_id_committed_gets_true() -> anyhow::Result<()> {
-    let rs = RaftState::<UTConfig> {
-        committed: Some(log_id(2, 1)),
-        ..Default::default()
-    };
+    let mut rs = RaftState::<UTConfig>::default();
+
+    rs.io_state_mut().update_committed(log_id(2, 1));
 
     assert!(rs.has_log_id(log_id(0, 0)));
     assert!(rs.has_log_id(log_id(2, 1)));
@@ -64,11 +63,12 @@ fn test_raft_state_has_log_id_committed_gets_true() -> anyhow::Result<()> {
 
 #[test]
 fn test_raft_state_has_log_id_in_log_id_list() -> anyhow::Result<()> {
-    let rs = RaftState::<UTConfig> {
-        committed: Some(log_id(2, 1)),
+    let mut rs = RaftState::<UTConfig> {
         log_ids: LogIdList::new(vec![log_id(1, 2), log_id(3, 4)]),
         ..Default::default()
     };
+
+    rs.io_state_mut().update_committed(log_id(2, 1));
 
     assert!(rs.has_log_id(log_id(0, 0)));
     assert!(rs.has_log_id(log_id(2, 1)));

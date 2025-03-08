@@ -30,7 +30,7 @@ fn eng() -> Engine<UTConfig> {
     eng.state.enable_validation(false); // Disable validation for incomplete state
 
     eng.config.id = 1;
-    eng.state.committed = Some(log_id(0, 1, 0));
+    eng.state.io_state_mut().update_committed(log_id(0, 1, 0));
     eng.state.vote = Leased::new(
         UTConfig::<()>::now(),
         Duration::from_millis(500),
