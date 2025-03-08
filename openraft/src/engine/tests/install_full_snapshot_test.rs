@@ -39,7 +39,7 @@ fn eng() -> Engine<UTConfig> {
         Duration::from_millis(500),
         Vote::new_committed(2, 1),
     );
-    eng.state.committed = Some(log_id(4, 1, 5));
+    eng.state.io_state_mut().update_committed(log_id(4, 1, 5));
     eng.state.log_ids = LogIdList::new(vec![
         //
         log_id(2, 1, 2),
