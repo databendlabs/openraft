@@ -50,6 +50,7 @@ categories = {
         'feature:':      typs['new-feature'],
         'Features:':     typs['new-feature'],
         'features:':     typs['new-feature'],
+        'feat:':         typs['new-feature'],
         'new-features:': typs['new-feature'],
         'docs:':         typs['doc'],
         'fix:':          typs['fixbug'],
@@ -57,6 +58,8 @@ categories = {
         'fixup:':        typs['fixbug'],
 
         'test:':         typs['test'],
+        'Dep:':          typs['dep'],
+        'deps:':         typs['dep'],
         'build(deps):':  typs['dep'],
         'Build(deps):':  typs['dep'],
 
