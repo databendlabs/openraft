@@ -149,6 +149,7 @@ async fn get_read_log_id() -> Result<()> {
         log_index += 1;
 
         log_index += router.client_request_many(1, "foo", 1).await?;
+        n1.wait(timeout()).applied_index(Some(log_index), "log applied to state-machine").await?;
 
         let (read_log_id, applied) = n1.get_read_log_id().await?;
         assert_eq!(read_log_id.index(), Some(log_index), "read-log-id is the committed log");
