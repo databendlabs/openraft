@@ -153,7 +153,6 @@ where
         let now = C::now();
 
         Ok(RaftState {
-            committed: last_applied,
             // The initial value for `vote` is the minimal possible value.
             // See: [Conditions for initialization][precondition]
             //
