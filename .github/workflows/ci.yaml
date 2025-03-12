@@ -19,7 +19,7 @@ jobs:
 
     steps:
       - name: Setup | Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
 
       - name: Setup | Toolchain
@@ -46,7 +46,7 @@ jobs:
 
     steps:
       - name: Setup | Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
 
       - name: Setup | Toolchain
@@ -77,7 +77,7 @@ jobs:
 
     steps:
       - name: Setup | Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
 
       - name: Setup | Toolchain
@@ -126,7 +126,7 @@ jobs:
 
     steps:
       - name: Setup | Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
 
       - name: Setup | Toolchain
@@ -165,7 +165,7 @@ jobs:
 
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: "ut-${{ matrix.toolchain }}-${{ matrix.features }}-${{ matrix.send_delay }}"
@@ -187,7 +187,7 @@ jobs:
 
     steps:
       - name: Setup | Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
 
       - name: Setup | Toolchain
@@ -224,7 +224,7 @@ jobs:
 
     steps:
       - name: Setup | Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
 
       - name: Setup | Toolchain
@@ -259,7 +259,7 @@ jobs:
 
     steps:
       - name: Setup | Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
 
       - name: Setup | Toolchain
@@ -313,7 +313,7 @@ jobs:
 
     steps:
       - name: Setup | Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
 
       - name: Setup | Toolchain
@@ -336,7 +336,7 @@ jobs:
 
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: openraft-feature-test
@@ -364,7 +364,7 @@ jobs:
 
     steps:
       - name: Setup | Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
 
       - name: Setup | Toolchain
@@ -387,7 +387,7 @@ jobs:
 
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: tests-feature-test
@@ -398,7 +398,7 @@ jobs:
     name: lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - uses: actions-rs/toolchain@v1.0.6
         with:
           components: rustfmt, clippy
@@ -426,6 +426,10 @@ jobs:
           RUSTDOCFLAGS: "-D warnings"
 
 
+      - shell: bash
+        run: cargo install cargo-audit
+
+
       - name: Audit dependencies
         shell: bash
         # if: "!contains(github.event.head_commit.message, 'skip audit')"
@@ -449,7 +453,7 @@ jobs:
           - "raft-kv-rocksdb"
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
 
       - uses: actions-rs/toolchain@v1.0.6
