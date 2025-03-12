@@ -193,6 +193,7 @@ jobs:
       - name: Setup | Toolchain
         uses: actions-rs/toolchain@v1.0.6
         with:
+          components: rustfmt, clippy
           toolchain: "nightly"
           override: true
 

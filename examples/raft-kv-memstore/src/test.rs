@@ -17,6 +17,7 @@ impl StoreBuilder<TypeConfig, LogStore, Arc<StateMachineStore>, ()> for MemKVSto
     }
 }
 
+#[allow(clippy::result_large_err)]
 #[test]
 pub fn test_mem_store() -> Result<(), StorageError<NodeId>> {
     Suite::test_all(MemKVStoreBuilder {})?;
