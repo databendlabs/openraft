@@ -57,7 +57,7 @@ pub(crate) enum SendNone {
     True,
 }
 
-impl<'x, C> ReplicationHandler<'x, C>
+impl<C> ReplicationHandler<'_, C>
 where C: RaftTypeConfig
 {
     /// Append a new membership and update related state such as replication streams.

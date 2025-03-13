@@ -6,7 +6,7 @@ use std::fmt;
 /// implementation for T.
 pub(crate) struct DisplayOption<'a, T: fmt::Display>(pub &'a Option<T>);
 
-impl<'a, T: fmt::Display> fmt::Display for DisplayOption<'a, T> {
+impl<T: fmt::Display> fmt::Display for DisplayOption<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.0 {
             None => {

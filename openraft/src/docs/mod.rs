@@ -2,8 +2,6 @@
 #![doc = include_str!("docs.md")]
 
 #[rustfmt::skip]
-
-
 pub mod faq;
 
 pub mod getting_started;

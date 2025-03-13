@@ -716,10 +716,7 @@ where
     }
 
     pub(crate) fn get_leader_node(&self, leader_id: Option<C::NodeId>) -> Option<C::Node> {
-        let leader_id = match leader_id {
-            None => return None,
-            Some(x) => x,
-        };
+        let leader_id = leader_id?;
 
         self.engine.state.membership_state.effective().get_node(&leader_id).cloned()
     }
@@ -1594,7 +1591,7 @@ where
     LS: RaftLogStorage<C>,
     SM: RaftStateMachine<C>,
 {
-    async fn run_command<'e>(&mut self, cmd: Command<C>) -> Result<Option<Command<C>>, StorageError<C::NodeId>> {
+    async fn run_command(&mut self, cmd: Command<C>) -> Result<Option<Command<C>>, StorageError<C::NodeId>> {
         let condition = cmd.condition();
         tracing::debug!("condition: {:?}", condition);
 

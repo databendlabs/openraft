@@ -12,7 +12,7 @@ where NID: NodeId
     pub(crate) metric: &'a Metric<NID>,
 }
 
-impl<'a, NID> fmt::Display for MetricDisplay<'a, NID>
+impl<NID> fmt::Display for MetricDisplay<'_, NID>
 where NID: NodeId
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {

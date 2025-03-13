@@ -3,8 +3,8 @@ pub trait MessageSummary<M> {
     fn summary(&self) -> String;
 }
 
-impl<'a, T> MessageSummary<T> for &[&T]
-where T: MessageSummary<T> + 'a
+impl<T> MessageSummary<T> for &[&T]
+where T: MessageSummary<T>
 {
     fn summary(&self) -> String {
         if self.is_empty() {
@@ -26,8 +26,8 @@ where T: MessageSummary<T> + 'a
         }
     }
 }
-impl<'a, T> MessageSummary<T> for &[T]
-where T: MessageSummary<T> + 'a
+impl<T> MessageSummary<T> for &[T]
+where T: MessageSummary<T>
 {
     fn summary(&self) -> String {
         let u = self.iter().collect::<Vec<_>>();

@@ -17,7 +17,7 @@ where
     pub(crate) state: &'m MembershipState<NID, N>,
 }
 
-impl<'m, NID, N> ChangeHandler<'m, NID, N>
+impl<NID, N> ChangeHandler<'_, NID, N>
 where
     NID: NodeId,
     N: Node,
