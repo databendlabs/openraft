@@ -83,7 +83,7 @@ impl AsyncRuntime for MonoioRuntime {
 
     #[inline]
     fn thread_rng() -> Self::ThreadLocalRng {
-        rand::thread_rng()
+        rand::rng()
     }
 
     type Mpsc = mpsc_mod::MonoioMpsc;

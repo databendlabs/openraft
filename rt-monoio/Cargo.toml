@@ -17,7 +17,7 @@ repository = "https://github.com/databendlabs/openraft"
 [dependencies]
 openraft = { path = "../openraft", version = "0.10.0", default-features = false, features = ["singlethreaded"] }
 
-rand = "0.8"
+rand = "0.9"
 
 futures = { version = "0.3" }
 local-sync = "0.1.1"

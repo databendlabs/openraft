@@ -127,7 +127,7 @@ impl RaftSnapshotBuilder<TypeConfig> for RocksStateMachine {
         let last_membership = self.sm.last_membership.clone();
 
         // Generate a random snapshot index.
-        let snapshot_idx: u64 = rand::thread_rng().gen_range(0..1000);
+        let snapshot_idx: u64 = rand::rng().random_range(0..1000);
 
         let snapshot_id = if let Some(last) = last_applied_log {
             format!("{}-{}-{}", last.committed_leader_id(), last.index(), snapshot_idx)

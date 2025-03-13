@@ -274,7 +274,7 @@ impl Default for Config {
 impl Config {
     /// Generate a new random election timeout within the configured min & max.
     pub fn new_rand_election_timeout<RT: AsyncRuntime>(&self) -> u64 {
-        RT::thread_rng().gen_range(self.election_timeout_min..self.election_timeout_max)
+        RT::thread_rng().random_range(self.election_timeout_min..self.election_timeout_max)
     }
 
     /// Get the timeout for sending and installing the last snapshot segment.

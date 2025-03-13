@@ -71,7 +71,7 @@ impl AsyncRuntime for TokioRuntime {
 
     #[inline]
     fn thread_rng() -> Self::ThreadLocalRng {
-        rand::thread_rng()
+        rand::rng()
     }
 
     type Mpsc = mpsc_impl::TokioMpsc;
