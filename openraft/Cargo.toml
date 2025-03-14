@@ -74,6 +74,11 @@ type-alias = []
 # Provide basic compatible types
 compat = []
 
+# Enable this feature to automatically implement `RaftNetworkV2` for `RaftNetworkV1` implementations.
+# If this is enabled, the blanket implementation of `RaftNetworkV2` may cause problems for downstream
+# generic implementations.
+adapt-v1 = []
+
 # Disallows applications to share a raft instance with multiple threads.
 singlethreaded = ["openraft-macros/singlethreaded"]
 
