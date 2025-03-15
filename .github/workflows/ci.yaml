@@ -63,8 +63,8 @@ jobs:
           args: --features bench nothing-to-run --manifest-path openraft/Cargo.toml
 
 
-  # Run openraft unit test `openraft/`
-  test-crate-openraft:
+  # Test crate `openraft/` and `macros/`
+  test-openraft-core-crates:
     runs-on: ubuntu-latest
 
     strategy:
@@ -87,6 +87,20 @@ jobs:
         with:
           toolchain: "${{ matrix.toolchain }}"
           override: true
+
+
+      - name: Install cargo-expand
+        run: cargo install cargo-expand
+
+
+      - name: Test crate `macros/`
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --features "${{ matrix.features }}" --manifest-path macros/Cargo.toml
+        env:
+          RUST_LOG: debug
+          RUST_BACKTRACE: full
 
 
       - name: Test crate `openraft/`
