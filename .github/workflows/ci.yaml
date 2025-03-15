@@ -136,6 +136,20 @@ jobs:
           override: true
 
 
+      - name: Install cargo-expand
+        run: cargo install cargo-expand
+
+
+      - name: Test crate `macros/`
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --features "${{ matrix.features }}" --manifest-path macros/Cargo.toml
+        env:
+          RUST_LOG: debug
+          RUST_BACKTRACE: full
+
+
       # - A store with defensive checks returns error when unexpected accesses are sent to RaftStore.
       # - Raft should not depend on defensive error to work correctly.
       - name: Test crate `openraft/`
