@@ -11,6 +11,7 @@
 [![Discord Chat](https://img.shields.io/discord/1015845055434588200?logo=discord)](https://discord.gg/ZKw3WG7FQ9)
 <br/>
 [![CI](https://github.com/datafuselabs/openraft/actions/workflows/ci.yaml/badge.svg)](https://github.com/datafuselabs/openraft/actions/workflows/ci.yaml)
+[![Coverage Status](https://coveralls.io/repos/github/databendlabs/openraft/badge.svg?branch=release-0.9)](https://coveralls.io/github/databendlabs/openraft?branch=release-0.9)
 ![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue)
 ![Crates.io](https://img.shields.io/crates/d/openraft.svg)
 ![Crates.io](https://img.shields.io/crates/dv/openraft.svg)
