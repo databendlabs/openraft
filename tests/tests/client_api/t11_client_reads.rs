@@ -9,6 +9,7 @@ use openraft::error::RPCError;
 use openraft::Config;
 use openraft::LogIdOptionExt;
 use openraft::RPCTypes;
+use openraft::ServerState;
 
 use crate::fixtures::ut_harness;
 use crate::fixtures::RPCRequest;
@@ -122,6 +123,8 @@ async fn get_read_log_id() -> Result<()> {
     let n1 = router.get_raft_handle(&1).unwrap();
     n1.trigger().elect().await?;
 
+    n1.wait(timeout()).state(ServerState::Leader, "node 1 becomes leader").await?;
+
     tracing::info!(log_index = log_index, "--- node 1 appends blank log but can not commit");
     {
         let res = n1.wait(timeout()).applied_index_at_least(Some(log_index + 1), "blank log can not commit").await;
@@ -179,7 +182,7 @@ async fn get_read_log_id() -> Result<()> {
             Some(last_committed),
             "read-log-id is the committed log"
         );
-    }
+    };
 
     Ok(())
 }
