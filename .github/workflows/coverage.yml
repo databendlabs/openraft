@@ -9,38 +9,33 @@ jobs:
   coverage:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v1
+      - uses: actions/checkout@v4
 
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: nightly
           override: true
+          components: llvm-tools-preview
 
-      - uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --no-fail-fast -p openraft
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+
+
+      - name: Install cargo-expand
+        run: cargo install cargo-expand
+
+
+      - name: Generate coverage report
+        # To test with all features:
+        # run: cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info
+        run: cargo llvm-cov --workspace --lcov --output-path lcov.info
         env:
           RUST_TEST_THREADS: 2
-          CARGO_INCREMENTAL: '0'
-          # RUSTFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off -Cpanic=abort -Zpanic_abort_tests'
-          # RUSTDOCFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off -Cpanic=abort -Zpanic_abort_tests'
-          RUSTFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off -Zpanic_abort_tests'
-          RUSTDOCFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off -Zpanic_abort_tests'
 
-      - uses: actions-rs/grcov@v0.1
-        id: coverage
 
-      - name: Coveralls upload
-        uses: coverallsapp/github-action@master
+      - name: Upload to Coveralls
+        uses: coverallsapp/github-action@v2
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          path-to-lcov: ${{ steps.coverage.outputs.report }}
-
-      - name: Upload artifact for coverage
-        uses: actions/upload-artifact@v4
-        if: failure()
-        with:
-          path: |
-            openraft/_log/
-
+          path-to-lcov: lcov.info
