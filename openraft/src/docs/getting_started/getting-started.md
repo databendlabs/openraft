@@ -233,6 +233,19 @@ When the server receives a Raft RPC, it simply passes it to its `raft` instance 
 For a real-world implementation, you may want to use [Tonic gRPC](https://github.com/hyperium/tonic) to handle gRPC-based communication between Raft nodes. The [databend-meta](https://github.com/databendlabs/databend/blob/6603392a958ba8593b1f4b01410bebedd484c6a9/metasrv/src/network.rs#L89) project provides an excellent real-world example of a Tonic gRPC-based Raft network implementation.
 
 
+Note: when implementing `RaftNetworkV2<T>` where `T` is a supertype of `RaftTypeConfig` (for instance, `impl<T: MySuperType> RaftNetworkV2<T> for YourNetworkType<T>`), the compiler may complain with the following error:
+
+```text
+conflicting implementations of trait `RaftNetworkV2<_>` for type `YourNetworkType<_>`
+conflicting implementation in crate `openraft`:
+- impl<C, V1> RaftNetworkV2<C> for V1
+  where C: RaftTypeConfig, V1: RaftNetwork<C>, <C as RaftTypeConfig>::SnapshotData: tokio::io::async_read::AsyncRead, <C as RaftTypeConfig>::SnapshotData: tokio::io::async_write::AsyncWrite, <C as RaftTypeConfig>::SnapshotData: tokio::io::async_seek::AsyncSeek, <C as RaftTypeConfig>::SnapshotData: Unpin;
+downstream crates may implement trait `openraft::RaftNetwork<_>` for type `YourNetworkType<_>`
+```
+
+If so, you will want to disable the feature `adapt-network-v1`, which will remove forward compatibility for V1 implementations, but will also fix this error.
+
+
 ### Implement [`RaftNetworkFactory`].
 
 [`RaftNetworkFactory`] is a singleton responsible for creating [`RaftNetworkV2`] instances for each replication target node.
