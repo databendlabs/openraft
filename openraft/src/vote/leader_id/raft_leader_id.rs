@@ -30,7 +30,7 @@ where
     /// The committed version of this leader ID.
     ///
     /// A simple implementation of this trait would return `Self` as the committed version.
-    type Committed: RaftCommittedLeaderId<C>;
+    type Committed: RaftCommittedLeaderId;
 
     fn new(term: C::Term, node_id: C::NodeId) -> Self;
 

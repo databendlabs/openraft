@@ -1,8 +1,9 @@
 use std::fmt::Debug;
 use std::fmt::Display;
 
+use openraft_macros::since;
+
 use crate::base::OptionalFeatures;
-use crate::RaftTypeConfig;
 
 /// A Leader identifier that has been granted and committed by a quorum of the cluster.
 ///
@@ -37,16 +38,10 @@ use crate::RaftTypeConfig;
 ///   dropped since it's no longer needed for ordering)
 ///
 /// [`RaftLeaderId`]: crate::vote::RaftLeaderId
-pub trait RaftCommittedLeaderId<C>
-where
-    C: RaftTypeConfig,
-    Self: OptionalFeatures + Ord + Clone + Debug + Display + Default + 'static,
+#[since(version = "0.10.0")]
+pub trait RaftCommittedLeaderId
+where Self: OptionalFeatures + Ord + Clone + Debug + Display + Default + 'static
 {
 }
 
-impl<C, T> RaftCommittedLeaderId<C> for T
-where
-    C: RaftTypeConfig,
-    T: OptionalFeatures + Ord + Clone + Debug + Display + Default + 'static,
-{
-}
+impl<T> RaftCommittedLeaderId for T where T: OptionalFeatures + Ord + Clone + Debug + Display + Default + 'static {}
