@@ -1,5 +1,33 @@
 
-By default openraft enables no features.
+By default openraft enables `["tokio-rt", "adapt-network-v1"]`.
+
+
+## feature-flag `adapt-network-v1`
+
+When implementing [`RaftNetworkV2<T>`][`RaftNetworkV2`] for a generic type parameter `T`, you might
+encounter a compiler error about conflicting implementations. This happens
+because Openraft provides a blanket implementation that adapts `RaftNetwork`
+implementations to [`RaftNetworkV2`]. For example:
+
+```rust,ignore
+pub trait RaftTypeConfigExt: openraft::RaftTypeConfig {}
+pub struct YourNetworkType {}
+impl<T: RaftTypeConfigExt> RaftNetworkV2<T> for YourNetworkType {}
+```
+
+You might encounter the following error:
+
+```text
+conflicting implementations of trait `RaftNetworkV2<_>` for type `YourNetworkType`
+conflicting implementation in crate `openraft`:
+- impl<C, V1> RaftNetworkV2<C> for V1
+```
+
+If you encounter this error, you can disable the feature `adapt-network-v1` to
+remvoe the default implementation for [`RaftNetworkV2`].
+
+[`RaftNetworkV2`]: crate::network::v2::RaftNetworkV2
+
 
 ## feature-flag `bench`
 
@@ -35,6 +63,7 @@ Read more about how it is implemented in:
 [`leader_id`](crate::docs::data::leader_id)
 and [`vote`](crate::docs::data::vote).
 
+
 ## feature-flag `singlethreaded`
 
 Removes `Send` and `Sync` bounds from `AppData`, `AppDataResponse`, `RaftEntry`, `SnapshotData`
@@ -43,6 +72,13 @@ This is for any single-threaded application that never allows a raft instance to
 This feature relies on the `async_fn_in_trait` language feature that is officially supported from Rust 1.75.0.
 If the feature is enabled, affected asynchronous trait methods will not require `Send` bounds.
 In order to use the feature, `AsyncRuntime::spawn` should invoke `tokio::task::spawn_local` or equivalents.
+
+
+## feature-flag `tokio-rt`
+
+Using `tokio` as the default runtime implementation.
+With this feature disabled, application should implement and set the
+async-runtime to `AsyncRuntime` mannually in [`RaftTypeconfig`] implementation.
 
 
 ## feature-flag `tracing-log`

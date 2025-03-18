@@ -74,10 +74,17 @@ type-alias = []
 # Provide basic compatible types
 compat = []
 
-# Enable this feature to automatically implement `RaftNetworkV2` for `RaftNetworkV1` implementations.
+# Enable this feature to automatically implement `RaftNetworkV2` for `RaftNetwork` implementations.
 # This helps to migrate to `RaftNetworkV2` without changing your existing implementation.
 # However, if this is enabled, the blanket implementation of `RaftNetworkV2` may result in
-# conflicting implementations in certain cases.
+# conflicting if the application tries to implement `RaftNetworkV2<T>` where `T`
+# is a generic type. For example a conflict in application with this feature on:
+# ```
+# pub trait RaftTypeConfigExt: openraft::RaftTypeConfig {}
+# pub struct NetworkConnection2 {}
+# impl<T> RaftNetworkV2<T> for NetworkConnection2
+# where T: RaftTypeConfigExt + Send + Sync + 'static {/*...*/}
+# ```
 adapt-network-v1 = []
 
 # Disallows applications to share a raft instance with multiple threads.
