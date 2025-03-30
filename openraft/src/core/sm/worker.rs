@@ -20,6 +20,8 @@ use crate::entry::RaftEntry;
 use crate::entry::RaftPayload;
 use crate::raft::responder::Responder;
 use crate::raft::ClientWriteResponse;
+#[cfg(doc)]
+use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
 use crate::storage::Snapshot;
 use crate::type_config::alias::JoinHandleOf;
@@ -43,8 +45,6 @@ where
     state_machine: SM,
 
     /// Read logs from the [`RaftLogStorage`] implementation to apply them to state machine.
-    ///
-    /// [`RaftLogStorage`]: `crate::storage::RaftLogStorage`
     log_reader: LR,
 
     /// Read command from RaftCore to execute.

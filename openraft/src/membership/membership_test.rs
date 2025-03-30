@@ -141,14 +141,17 @@ fn test_membership_add_learner() -> anyhow::Result<()> {
     // Add learner that presents in old cluster has no effect.
 
     let res = m_1_2.clone().change(ChangeMembers::AddNodes(btreemap! {1=>node("3")}), true)?;
-    assert_eq!(m_1_2, res);
+    assert_eq!(
+        Membership::<UTConfig<TestNode>>::new_unchecked(vec![btreeset! {2}], btreemap! {1=>node("1"), 2=>node("2")},),
+        res
+    );
 
     // Success to add a learner
 
     let m_1_2_3 = m_1_2.change(ChangeMembers::AddNodes(btreemap! {3=>node("3")}), true)?;
     assert_eq!(
         Membership::<UTConfig<TestNode>>::new_unchecked(
-            vec![btreeset! {1}, btreeset! {2}],
+            vec![btreeset! {2}],
             btreemap! {1=>node("1"), 2=>node("2"), 3=>node("3")}
         ),
         m_1_2_3
@@ -172,7 +175,7 @@ fn test_membership_update_nodes() -> anyhow::Result<()> {
     let m_1_2_3 = m_1_2.change(ChangeMembers::SetNodes(btreemap! {2=>node("20"), 3=>node("30")}), true)?;
     assert_eq!(
         Membership::<UTConfig<TestNode>>::new_unchecked(
-            vec![btreeset! {1}, btreeset! {2}],
+            vec![btreeset! {2}],
             btreemap! {1=>node("1"), 2=>node("20"), 3=>node("30")}
         ),
         m_1_2_3
