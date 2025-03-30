@@ -55,6 +55,12 @@ where C: RaftTypeConfig
     /// Every voter has to have a corresponding node in the new
     /// set, otherwise it returns [`error::LearnerNotFound`](`crate::error::LearnerNotFound`) error.
     ReplaceAllNodes(BTreeMap<C::NodeId, C::Node>),
+
+    /// Apply multiple changes to membership config.
+    ///
+    /// The changes are applied in the order they are given.
+    /// And it still finish in a two step joint config change.
+    Batch(Vec<ChangeMembers<C>>),
 }
 
 /// Convert a series of ids to a `Replace` operation.

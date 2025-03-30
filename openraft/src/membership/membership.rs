@@ -315,12 +315,42 @@ where C: RaftTypeConfig
     pub(crate) fn change(mut self, change: ChangeMembers<C>, retain: bool) -> Result<Self, ChangeMembershipError<C>> {
         tracing::debug!(change = debug(&change), "{}", func_name!());
 
+        let goal = self.clone().compute_target_membership(change);
+
+        let Membership { mut configs, nodes } = goal;
+
+        // Safe unwrap(): `calculate_goal()` yields a uniform config.
+        let goal_voter_ids = configs.pop().unwrap();
+
+        self.nodes = nodes;
+        let new_membership = self.next_coherent(goal_voter_ids, retain);
+
+        tracing::debug!(new_membership = display(&new_membership), "new membership");
+
+        new_membership.ensure_valid()?;
+
+        Ok(new_membership)
+    }
+
+    /// Compute the target membership configuration by applying a membership change.
+    ///
+    /// This method:
+    /// - Uses only the last config entry from the current membership. If there are multiple
+    ///   entries, it indicates an ongoing joint consensus change. The last entry represents the
+    ///   target configuration toward which the cluster is transitioning.
+    /// - Applies the specified membership change to create a new target configuration
+    /// - Returns a new `Membership` with the target voter IDs and nodes
+    ///
+    /// Note: This is an intermediate step in membership changes. The result may need to be
+    /// transformed into a coherent configuration before being applied.
+    fn compute_target_membership(mut self, change: ChangeMembers<C>) -> Membership<C> {
         let last = self.get_joint_config().last().cloned().unwrap_or_default();
 
-        let new_membership = match change {
+        match change {
             ChangeMembers::AddVoterIds(add_voter_ids) => {
                 let new_voter_ids = last.union(&add_voter_ids).cloned().collect::<BTreeSet<_>>();
-                self.next_coherent(new_voter_ids, retain)
+                self.configs = vec![new_voter_ids];
+                self
             }
             ChangeMembers::AddVoters(add_voters) => {
                 // Add nodes without overriding existent
@@ -328,13 +358,18 @@ where C: RaftTypeConfig
 
                 let add_voter_ids = add_voters.keys().cloned().collect::<BTreeSet<_>>();
                 let new_voter_ids = last.union(&add_voter_ids).cloned().collect::<BTreeSet<_>>();
-                self.next_coherent(new_voter_ids, retain)
+                self.configs = vec![new_voter_ids];
+                self
             }
             ChangeMembers::RemoveVoters(remove_voter_ids) => {
                 let new_voter_ids = last.difference(&remove_voter_ids).cloned().collect::<BTreeSet<_>>();
-                self.next_coherent(new_voter_ids, retain)
+                self.configs = vec![new_voter_ids];
+                self
             }
-            ChangeMembers::ReplaceAllVoters(all_voter_ids) => self.next_coherent(all_voter_ids, retain),
+            ChangeMembers::ReplaceAllVoters(all_voter_ids) => {
+                self.configs = vec![all_voter_ids];
+                self
+            }
             ChangeMembers::AddNodes(add_nodes) => {
                 // When adding nodes, do not override existing node
                 for (node_id, node) in add_nodes.into_iter() {
@@ -358,13 +393,13 @@ where C: RaftTypeConfig
                 self.nodes = all_nodes;
                 self
             }
-        };
-
-        tracing::debug!(new_membership = display(&new_membership), "new membership");
-
-        new_membership.ensure_valid()?;
-
-        Ok(new_membership)
+            ChangeMembers::Batch(batch) => {
+                for change in batch {
+                    self = self.compute_target_membership(change);
+                }
+                self
+            }
+        }
     }
 
     /// Build a QuorumSet from current joint config
@@ -594,6 +629,41 @@ mod tests {
                 res
             );
         }
+
+        Ok(())
+    }
+
+    /// Test membership change desribed by a batch operations.
+    ///
+    /// The batch operations add one voter and remove another.
+    /// It still finish in a two step joint config change.
+    #[test]
+    fn test_membership_change_batch() -> anyhow::Result<()> {
+        let m = || Membership::<UTConfig> {
+            configs: vec![btreeset! {1,2}],
+            nodes: btreemap! {1=>(),2=>(),3=>()},
+        };
+
+        let rm_2_add_5 = || {
+            ChangeMembers::Batch(vec![
+                ChangeMembers::RemoveVoters(btreeset! {2}),
+                ChangeMembers::AddVoters(btreemap! {5=>()}),
+            ])
+        };
+
+        let step1 = m().change(rm_2_add_5(), false)?;
+
+        assert_eq!(step1, Membership::<UTConfig> {
+            configs: vec![btreeset! {1,2}, btreeset! {1,5}],
+            nodes: btreemap! {1=>(),2=>(),3=>(),5=>()}
+        });
+
+        let step2 = step1.change(rm_2_add_5(), false)?;
+
+        assert_eq!(step2, Membership::<UTConfig> {
+            configs: vec![btreeset! {1,5}],
+            nodes: btreemap! {1=>(),3=>(), 5=>()}
+        });
 
         Ok(())
     }
