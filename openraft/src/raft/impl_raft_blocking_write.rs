@@ -28,6 +28,9 @@ where C: RaftTypeConfig
     /// - It proposes a **joint** config.
     /// - When the **joint** config is committed, it proposes a uniform config.
     ///
+    /// Read more about the behavior of [joint
+    /// consensus](crate::docs::cluster_control::joint_consensus).
+    ///
     /// If `retain` is `true`, then all the members which not exists in the new membership,
     /// will be turned into learners, otherwise will be removed.
     /// If `retain` is `false`, the removed voter will be removed from the cluster.

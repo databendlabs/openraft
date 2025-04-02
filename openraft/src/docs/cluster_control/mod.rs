@@ -8,6 +8,10 @@ pub mod dynamic_membership {
     #![doc = include_str!("dynamic-membership.md")]
 }
 
+pub mod joint_consensus {
+    #![doc = include_str!("joint-consensus.md")]
+}
+
 pub mod node_lifecycle {
     #![doc = include_str!("node-lifecycle.md")]
 }

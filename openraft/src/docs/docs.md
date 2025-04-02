@@ -8,6 +8,7 @@ To maintain an Openraft cluster, e.g., add or remove nodes, refer to
 - [`cluster_control`](crate::docs::cluster_control) :
   - [`cluster_formation`](`crate::docs::cluster_control::cluster_formation`) describes how to form a cluster;
   - [`dynamic membership`](`crate::docs::cluster_control::dynamic_membership`) describes how to add or remove nodes without downtime;
+  - [`joint_consensus`](`crate::docs::cluster_control::joint_consensus`) describes detail of joint consensus implementation;
   - [`node lifecycle`](`crate::docs::cluster_control::node_lifecycle`) describes the transition of a node's state;
 
 When upgrading an Openraft application, consult:

@@ -107,6 +107,8 @@ where C: RaftTypeConfig
 
         let (tx, rx) = oneshot_channel::<C>();
 
+        // The second step, send a NOOP change to flatten the joint config.
+        let changes = ChangeMembers::AddVoterIds(Default::default());
         let client_write_result = self.inner.call_core(RaftMsg::ChangeMembership { changes, retain, tx }, rx).await?;
 
         tracing::info!(
