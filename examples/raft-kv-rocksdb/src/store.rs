@@ -13,6 +13,8 @@ use openraft::RaftSnapshotBuilder;
 use openraft_rocksstore::log_store::RocksLogStore;
 use rocksdb::ColumnFamily;
 use rocksdb::ColumnFamilyDescriptor;
+use rocksdb::Direction;
+use rocksdb::IteratorMode;
 use rocksdb::Options;
 use rocksdb::DB;
 use serde::Deserialize;
@@ -100,17 +102,14 @@ impl RaftSnapshotBuilder<TypeConfig> for StateMachineStore {
             snapshot_id,
         };
 
-        let snapshot = StoredSnapshot {
-            meta: meta.clone(),
-            data: kv_json.clone(),
-        };
-
-        self.set_current_snapshot_(snapshot)?;
-
-        Ok(Snapshot {
+        let snapshot = Snapshot {
             meta,
             snapshot: Cursor::new(kv_json),
-        })
+        };
+
+        self.save_snapshot(&snapshot).await?;
+
+        Ok(snapshot)
     }
 }
 
@@ -146,18 +145,49 @@ impl StateMachineStore {
         Ok(())
     }
 
+    /// List all snapshots in the db, returns the last
     fn get_current_snapshot_(&self) -> StorageResult<Option<StoredSnapshot>> {
-        Ok(self
-            .db
-            .get_cf(self.store(), b"snapshot")
-            .map_err(|e| StorageError::read(&e))?
-            .and_then(|v| serde_json::from_slice(&v).ok()))
+        let mut last_snapshot_key = None;
+
+        let it = self.db.iterator_cf(self.store(), IteratorMode::From(b"snapshot-", Direction::Forward));
+
+        for kv in it {
+            let (key, _value) = kv.map_err(|e| StorageError::read(&e))?;
+            if key.starts_with(b"snapshot-") {
+                last_snapshot_key = Some(key.to_vec());
+            } else {
+                break;
+            }
+        }
+        let Some(key) = last_snapshot_key else {
+            return Ok(None);
+        };
+
+        let data = self.db.get_cf(self.store(), &key).map_err(|e| StorageError::read(&e))?.unwrap();
+
+        let snap: StoredSnapshot = serde_json::from_slice(&data).map_err(|e| StorageError::read_snapshot(None, &e))?;
+
+        Ok(Some(snap))
     }
 
+    /// Save snapshot by last-log-id and when reading, get the last one as the current.
+    ///
+    /// So that writing an old one won't overwrite the newer one.
+    /// In a real world application, the old ones should be cleaned.
     fn set_current_snapshot_(&self, snap: StoredSnapshot) -> StorageResult<()> {
+        let last_log_id = snap.meta.last_log_id.as_ref();
+
+        let id_str = Self::order_preserved_log_id_string(last_log_id);
+
+        let key = format!("snapshot-{id_str}");
         self.db
-            .put_cf(self.store(), b"snapshot", serde_json::to_vec(&snap).unwrap().as_slice())
+            .put_cf(
+                self.store(),
+                key.as_bytes(),
+                serde_json::to_vec(&snap).unwrap().as_slice(),
+            )
             .map_err(|e| StorageError::write_snapshot(Some(snap.meta.signature()), &e))?;
+
         self.flush(ErrorSubject::Snapshot(Some(snap.meta.signature())), ErrorVerb::Write)?;
         Ok(())
     }
@@ -169,6 +199,14 @@ impl StateMachineStore {
 
     fn store(&self) -> &ColumnFamily {
         self.db.cf_handle("store").unwrap()
+    }
+
+    fn order_preserved_log_id_string(log_id: Option<&LogId>) -> String {
+        let term = log_id.map(|l| l.committed_leader_id().term).unwrap_or_default();
+        let node_id = log_id.map(|l| l.committed_leader_id().node_id).unwrap_or_default();
+        let index = log_id.map(|l| l.index).unwrap_or_default();
+
+        format!("{:020}-{:020}-{:020}", term, node_id, index)
     }
 }
 
@@ -227,7 +265,16 @@ impl RaftStateMachine<TypeConfig> for StateMachineStore {
             data: snapshot.into_inner(),
         };
 
-        self.update_state_machine_(new_snapshot.clone()).await?;
+        self.update_state_machine_(new_snapshot).await?;
+
+        Ok(())
+    }
+
+    async fn save_snapshot(&mut self, snapshot: &Snapshot) -> Result<(), StorageError> {
+        let new_snapshot = StoredSnapshot {
+            meta: snapshot.meta.clone(),
+            data: snapshot.snapshot.clone().into_inner(),
+        };
 
         self.set_current_snapshot_(new_snapshot)?;
 
