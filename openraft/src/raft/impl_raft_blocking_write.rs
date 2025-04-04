@@ -31,6 +31,9 @@ where C: RaftTypeConfig<Responder = OneshotResponder<C>>
     /// - It proposes a **joint** config.
     /// - When the **joint** config is committed, it proposes a uniform config.
     ///
+    /// Read more about the behavior of [joint
+    /// consensus](crate::docs::cluster_control::joint_consensus).
+    ///
     /// If `retain` is `true`, then all the members which not exists in the new membership,
     /// will be turned into learners, otherwise will be removed.
     /// If `retain` is `false`, the removed voter will be removed from the cluster.
@@ -96,7 +99,19 @@ where C: RaftTypeConfig<Responder = OneshotResponder<C>>
 
         let (tx, rx) = oneshot_channel::<C>();
 
-        let res = self.inner.call_core(RaftMsg::ChangeMembership { changes, retain, tx }, rx).await;
+        // The second step, send a NOOP change to flatten the joint config.
+
+        let res = self
+            .inner
+            .call_core(
+                RaftMsg::ChangeMembership {
+                    changes: ChangeMembers::AddVoterIds(Default::default()),
+                    retain,
+                    tx,
+                },
+                rx,
+            )
+            .await;
 
         if let Err(e) = &res {
             tracing::error!("the second step error: {}", e);
