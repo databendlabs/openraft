@@ -41,6 +41,7 @@ use crate::entry::RaftEntry;
 use crate::log_id::ref_log_id::RefLogId;
 use crate::proposer::Leader;
 use crate::proposer::LeaderQuorumSet;
+use crate::raft_state::io_state::io_progress::IOProgress;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::VoteOf;
@@ -112,7 +113,7 @@ where C: RaftTypeConfig
     }
 
     fn committed(&self) -> Option<&LogIdOf<C>> {
-        self.io_state.committed()
+        self.apply_progress().accepted()
     }
 
     fn io_applied(&self) -> Option<&LogIdOf<C>> {
@@ -194,7 +195,7 @@ where C: RaftTypeConfig
     }
 
     pub fn committed(&self) -> Option<&LogId<C>> {
-        self.io_state().committed()
+        self.apply_progress().accepted()
     }
 
     pub(crate) fn is_initialized(&self) -> bool {
@@ -215,15 +216,15 @@ where C: RaftTypeConfig
     /// Return the accepted IO request(which are going to be submitted and flushed).
     ///
     /// Such as SaveVote or AppendEntries
-    pub(crate) fn accepted_io(&self) -> Option<&IOId<C>> {
-        self.io_state.log_progress.accepted()
+    pub(crate) fn accepted_log_io(&self) -> Option<&IOId<C>> {
+        self.log_progress().accepted()
     }
 
     /// Updates the accepted IO, including Vote change or AppendEntries IO.
     ///
     /// Returns the previously accepted value.
-    pub(crate) fn accept_io(&mut self, accepted: IOId<C>) -> Option<IOId<C>> {
-        let curr_accepted = self.io_state.log_progress.accepted().cloned();
+    pub(crate) fn accept_log_io(&mut self, accepted: IOId<C>) -> Option<IOId<C>> {
+        let curr_accepted = self.log_progress().accepted().cloned();
 
         tracing::debug!(
             "{}: accept_log: current: {}, new_accepted: {}",
@@ -244,7 +245,7 @@ where C: RaftTypeConfig
         }
 
         if Some(&accepted) > curr_accepted.as_ref() {
-            self.io_state.log_progress.accept(accepted);
+            self.log_progress_mut().accept(accepted);
         }
 
         curr_accepted
@@ -278,13 +279,28 @@ where C: RaftTypeConfig
             let prev = self.committed().cloned();
 
             // Safe unwrap(): committed > self.committed(), implies it can not be None
-            self.io_state.update_committed(committed.clone().unwrap());
+            self.apply_progress_mut().accept(committed.clone().unwrap());
             self.membership_state.commit(committed);
 
             Some(prev)
         } else {
             None
         }
+    }
+
+    pub(crate) fn log_progress(&self) -> &IOProgress<IOId<C>> {
+        &self.io_state().log_progress
+    }
+
+    pub(crate) fn log_progress_mut(&mut self) -> &mut IOProgress<IOId<C>> {
+        &mut self.io_state_mut().log_progress
+    }
+
+    pub(crate) fn apply_progress(&self) -> &IOProgress<LogId<C>> {
+        &self.io_state().apply_progress
+    }
+    pub(crate) fn apply_progress_mut(&mut self) -> &mut IOProgress<LogId<C>> {
+        &mut self.io_state_mut().apply_progress
     }
 
     pub(crate) fn io_state_mut(&mut self) -> &mut IOState<C> {

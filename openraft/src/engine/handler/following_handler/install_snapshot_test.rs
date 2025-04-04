@@ -38,7 +38,7 @@ fn eng() -> Engine<UTConfig> {
     let now = UTConfig::<()>::now();
     let vote = VoteOf::<UTConfig>::new_committed(2, 1);
     eng.state.vote.update(now, Duration::from_millis(500), vote);
-    eng.state.io_state_mut().update_committed(log_id(4, 1, 5));
+    eng.state.apply_progress_mut().accept(log_id(4, 1, 5));
     eng.state.log_ids = LogIdList::new(vec![
         //
         log_id(2, 1, 2),
@@ -188,7 +188,7 @@ fn test_install_snapshot_conflict() -> anyhow::Result<()> {
             Duration::from_millis(500),
             Vote::new_committed(2, 1),
         );
-        eng.state.io_state_mut().update_committed(log_id(2, 1, 3));
+        eng.state.apply_progress_mut().accept(log_id(2, 1, 3));
         eng.state.log_ids = LogIdList::new(vec![
             //
             log_id(2, 1, 2),
@@ -349,7 +349,7 @@ fn test_install_snapshot_update_accepted() -> anyhow::Result<()> {
             Vote::new(2, 1).into_committed(),
             Some(log_id(100, 1, 100))
         )),
-        eng.state.accepted_io()
+        eng.state.accepted_log_io()
     );
 
     Ok(())

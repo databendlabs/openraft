@@ -73,7 +73,7 @@ fn test_follower_append_entries_update_accepted() -> anyhow::Result<()> {
             Vote::new(2, 1).into_committed(),
             Some(log_id(3, 1, 5))
         )),
-        eng.state.accepted_io()
+        eng.state.accepted_log_io()
     );
     assert_eq!(eng.output.take_commands(), vec![
         //
@@ -101,7 +101,7 @@ fn test_follower_append_entries_update_accepted() -> anyhow::Result<()> {
                 Vote::new(3, 1).into_committed(),
                 Some(log_id(3, 1, 4))
             )),
-            eng.state.accepted_io()
+            eng.state.accepted_log_io()
         );
         assert_eq!(eng.output.take_commands(), vec![
             //
@@ -123,7 +123,7 @@ fn test_follower_append_entries_update_accepted() -> anyhow::Result<()> {
                 Vote::new(3, 1).into_committed(),
                 Some(log_id(3, 1, 4))
             )),
-            eng.state.accepted_io()
+            eng.state.accepted_log_io()
         );
 
         assert_eq!(eng.output.take_commands(), vec![

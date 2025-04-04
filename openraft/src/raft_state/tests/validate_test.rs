@@ -23,7 +23,7 @@ fn test_raft_state_validate_snapshot_is_none() -> anyhow::Result<()> {
         ..Default::default()
     };
 
-    rs.io_state_mut().update_committed(log_id(1, 1));
+    rs.apply_progress_mut().accept(log_id(1, 1));
 
     assert!(rs.validate().is_ok());
 

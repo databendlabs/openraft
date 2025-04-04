@@ -32,6 +32,7 @@ where T: PartialOrd + fmt::Debug
     accepted: Option<T>,
     submitted: Option<T>,
     flushed: Option<T>,
+    name: &'static str,
 }
 
 impl<T> Validate for IOProgress<T>
@@ -44,18 +45,6 @@ where T: PartialOrd + fmt::Debug
     }
 }
 
-impl<T> Default for IOProgress<T>
-where T: PartialOrd + fmt::Debug
-{
-    fn default() -> Self {
-        Self {
-            accepted: None,
-            submitted: None,
-            flushed: None,
-        }
-    }
-}
-
 impl<T> fmt::Display for IOProgress<T>
 where
     T: PartialOrd + fmt::Debug,
@@ -64,7 +53,8 @@ where
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "flushed/submitted:({}, {}], accepted: {}",
+            "{}:(flushed/submitted:({}, {}], accepted: {})",
+            self.name,
             self.flushed.display(),
             self.submitted.display(),
             self.accepted.display(),
@@ -83,12 +73,13 @@ where
     /// This creates a synchronized state where all IO operations (accepted, submitted, and flushed)
     /// are considered complete up to the specified point. This is typically used for initialization
     /// or when a snapshot is installed, ensuring all IO tracking is aligned.
-    pub(crate) fn new_synchronized(v: Option<T>) -> Self
+    pub(crate) fn new_synchronized(v: Option<T>, name: &'static str) -> Self
     where T: Clone {
         Self {
             accepted: v.clone(),
             submitted: v.clone(),
             flushed: v.clone(),
+            name,
         }
     }
 

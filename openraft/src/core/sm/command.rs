@@ -91,8 +91,11 @@ where C: RaftTypeConfig
         }
     }
 
-    /// Return the IOId if this command submit any IO.
-    pub(crate) fn get_submit_io(&self) -> Option<IOId<C>> {
+    /// Return the [`IOId`] of the log-related I/O progress to submit, if this command submits any
+    /// log I/O.
+    ///
+    /// Log-related I/O progress includes both Vote and AppendEntries operations.
+    pub(crate) fn get_log_progress(&self) -> Option<IOId<C>> {
         match self {
             Command::BuildSnapshot => None,
             Command::GetSnapshot { .. } => None,

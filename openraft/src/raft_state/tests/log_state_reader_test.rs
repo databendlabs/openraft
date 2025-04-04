@@ -52,7 +52,7 @@ fn test_raft_state_has_log_id_empty() -> anyhow::Result<()> {
 fn test_raft_state_has_log_id_committed_gets_true() -> anyhow::Result<()> {
     let mut rs = RaftState::<UTConfig>::default();
 
-    rs.io_state_mut().update_committed(log_id(2, 1));
+    rs.apply_progress_mut().accept(log_id(2, 1));
 
     assert!(rs.has_log_id(log_id(0, 0)));
     assert!(rs.has_log_id(log_id(2, 1)));
@@ -68,7 +68,7 @@ fn test_raft_state_has_log_id_in_log_id_list() -> anyhow::Result<()> {
         ..Default::default()
     };
 
-    rs.io_state_mut().update_committed(log_id(2, 1));
+    rs.apply_progress_mut().accept(log_id(2, 1));
 
     assert!(rs.has_log_id(log_id(0, 0)));
     assert!(rs.has_log_id(log_id(2, 1)));

@@ -467,9 +467,9 @@ where
             Duration::default(),
             VoteOf::<C>::default(),
         );
-        want.io_state.log_progress.accept(IOId::new(&VoteOf::<C>::default()));
-        want.io_state.log_progress.submit(IOId::new(&VoteOf::<C>::default()));
-        want.io_state.log_progress.flush(IOId::new(&VoteOf::<C>::default()));
+        want.log_progress_mut().accept(IOId::new(&VoteOf::<C>::default()));
+        want.log_progress_mut().submit(IOId::new(&VoteOf::<C>::default()));
+        want.log_progress_mut().flush(IOId::new(&VoteOf::<C>::default()));
 
         assert_eq!(want, initial, "uninitialized state");
         Ok(())

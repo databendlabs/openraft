@@ -403,7 +403,7 @@ where C: RaftTypeConfig
 
             let condition = if is_ok {
                 Some(Condition::IOFlushed {
-                    io_id: self.state.accepted_io().unwrap().clone(),
+                    io_id: self.state.accepted_log_io().unwrap().clone(),
                 })
             } else {
                 None
@@ -439,7 +439,7 @@ where C: RaftTypeConfig
     pub(crate) fn handle_commit_entries(&mut self, leader_committed: Option<LogIdOf<C>>) {
         tracing::debug!(
             leader_committed = display(leader_committed.display()),
-            my_accepted = display(self.state.accepted_io().display()),
+            my_accepted = display(self.state.accepted_log_io().display()),
             my_committed = display(self.state.committed().display()),
             "{}",
             func_name!()
@@ -649,7 +649,7 @@ where C: RaftTypeConfig
         let _res = self.vote_handler().update_vote(&vote.clone().into_vote());
         debug_assert!(_res.is_ok(), "commit vote can not fail but: {:?}", _res);
 
-        self.state.accept_io(IOId::new_log_io(vote, last_log_id));
+        self.state.accept_log_io(IOId::new_log_io(vote, last_log_id));
 
         // No need to submit UpdateIOProgress command,
         // IO progress is updated by the new blank log

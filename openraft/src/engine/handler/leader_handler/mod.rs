@@ -71,7 +71,7 @@ where C: RaftTypeConfig
             }
         }
 
-        self.state.accept_io(IOId::new_log_io(
+        self.state.accept_log_io(IOId::new_log_io(
             self.leader.committed_vote.clone(),
             self.leader.last_log_id().cloned(),
         ));

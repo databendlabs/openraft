@@ -58,7 +58,6 @@ pub(crate) mod log_io_id;
 ///                  RaftStateMachine
 /// ```
 #[derive(Debug, Clone)]
-#[derive(Default)]
 #[derive(PartialEq, Eq)]
 pub(crate) struct IOState<C>
 where C: RaftTypeConfig
@@ -99,6 +98,23 @@ where C: RaftTypeConfig
     pub(crate) purged: Option<LogIdOf<C>>,
 }
 
+const LOG_PROGRESS_NAME: &str = "LogIO";
+const APPLY_PROGRESS_NAME: &str = "Apply";
+
+impl<C> Default for IOState<C>
+where C: RaftTypeConfig
+{
+    fn default() -> Self {
+        Self {
+            building_snapshot: false,
+            log_progress: Valid::new(IOProgress::new_synchronized(None, LOG_PROGRESS_NAME)),
+            apply_progress: Valid::new(IOProgress::new_synchronized(None, APPLY_PROGRESS_NAME)),
+            snapshot: None,
+            purged: None,
+        }
+    }
+}
+
 impl<C> Validate for IOState<C>
 where C: RaftTypeConfig
 {
@@ -127,36 +143,11 @@ where C: RaftTypeConfig
     ) -> Self {
         Self {
             building_snapshot: false,
-            log_progress: Valid::new(IOProgress::new_synchronized(Some(IOId::new(vote)))),
-            apply_progress: Valid::new(IOProgress::new_synchronized(applied)),
+            log_progress: Valid::new(IOProgress::new_synchronized(Some(IOId::new(vote)), LOG_PROGRESS_NAME)),
+            apply_progress: Valid::new(IOProgress::new_synchronized(applied, APPLY_PROGRESS_NAME)),
             snapshot,
             purged,
         }
-    }
-
-    pub(crate) fn update_committed(&mut self, log_id: LogId<C>) {
-        // The committed log id represents the highest log entry that is safe to apply to the state machine.
-        // Here we update the accepted cursor in apply_progress to track this commitment point.
-        self.apply_progress.accept(log_id);
-    }
-
-    pub(crate) fn committed(&self) -> Option<&LogIdOf<C>> {
-        self.apply_progress.accepted()
-    }
-
-    pub(crate) fn update_applied(&mut self, log_id: Option<LogIdOf<C>>) {
-        tracing::debug!(applied = display(DisplayOption(&log_id)), "{}", func_name!());
-
-        // TODO: should we update flushed if applied is newer?
-        debug_assert!(
-            log_id.as_ref() > self.applied(),
-            "applied log id should be monotonically increasing: current: {:?}, update: {:?}",
-            self.applied(),
-            log_id
-        );
-
-        // Safe unwrap(): log_id > self.applied(), implies it can not be None
-        self.apply_progress.flush(log_id.unwrap());
     }
 
     pub(crate) fn applied(&self) -> Option<&LogIdOf<C>> {

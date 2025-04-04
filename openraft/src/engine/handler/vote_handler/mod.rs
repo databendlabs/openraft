@@ -130,7 +130,7 @@ where C: RaftTypeConfig
             tracing::info!("vote is changing from {} to {}", self.state.vote_ref(), vote);
 
             self.state.vote.update(C::now(), leader_lease, vote.clone());
-            self.state.accept_io(IOId::new(vote));
+            self.state.accept_log_io(IOId::new(vote));
             self.output.push_command(Command::SaveVote { vote: vote.clone() });
         } else {
             self.state.vote.touch(C::now(), leader_lease);
@@ -198,7 +198,7 @@ where C: RaftTypeConfig
             (leader.last_log_id().cloned(), leader.noop_log_id().cloned())
         };
 
-        self.state.accept_io(IOId::new_log_io(leader_vote.clone(), last_log_id.clone()));
+        self.state.accept_log_io(IOId::new_log_io(leader_vote.clone(), last_log_id.clone()));
 
         self.output.push_command(Command::UpdateIOProgress {
             when: None,

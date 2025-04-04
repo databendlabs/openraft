@@ -543,7 +543,7 @@ where
 
             // --- data ---
             current_term: st.vote_ref().term(),
-            vote: st.io_state().log_progress.flushed().map(|io_id| io_id.to_vote()).unwrap_or_default(),
+            vote: st.log_progress().flushed().map(|io_id| io_id.to_vote()).unwrap_or_default(),
             last_log_index: st.last_log_id().index(),
             last_applied: st.io_applied().cloned(),
             snapshot: st.io_snapshot_last_log_id().cloned(),
@@ -575,7 +575,7 @@ where
 
         let server_metrics = RaftServerMetrics {
             id: self.id.clone(),
-            vote: st.io_state().log_progress.flushed().map(|io_id| io_id.to_vote()).unwrap_or_default(),
+            vote: st.log_progress().flushed().map(|io_id| io_id.to_vote()).unwrap_or_default(),
             state: st.server_state,
             current_leader,
             membership_config,
@@ -861,7 +861,7 @@ where
             tracing::debug!(
                 "RAFT_stats id={:<2} log_io: {}",
                 self.id,
-                self.engine.state.io_state.log_progress
+                self.engine.state.log_progress()
             );
 
             // In each loop, it does not have to check rx_shutdown and flush metrics for every RaftMsg
@@ -1368,7 +1368,7 @@ where
             }
 
             Notification::LocalIO { io_id } => {
-                self.engine.state.io_state.log_progress.flush(io_id.clone());
+                self.engine.state.log_progress_mut().flush(io_id.clone());
 
                 match io_id {
                     IOId::Log(log_io_id) => {
@@ -1448,16 +1448,18 @@ where
                             func_name!()
                         );
 
-                        self.engine.state.io_state_mut().log_progress.flush(io_id);
+                        self.engine.state.log_progress_mut().flush(io_id);
 
                         if let Some(meta) = meta {
+                            if let Some(last) = &meta.last_log_id {
+                                self.engine.state.apply_progress_mut().flush(last.clone());
+                            }
                             let st = self.engine.state.io_state_mut();
-                            st.update_applied(meta.last_log_id.clone());
                             st.update_snapshot(meta.last_log_id);
                         }
                     }
                     sm::Response::Apply(res) => {
-                        self.engine.state.io_state_mut().update_applied(Some(res.last_applied.clone()));
+                        self.engine.state.apply_progress_mut().flush(res.last_applied);
                     }
                 }
             }
@@ -1613,7 +1615,7 @@ where
         if let Some(condition) = condition {
             match condition {
                 Condition::IOFlushed { io_id } => {
-                    let curr = self.engine.state.io_state().log_progress.flushed();
+                    let curr = self.engine.state.log_progress().flushed();
                     if curr < Some(&io_id) {
                         tracing::debug!(
                             "io_id: {} has not yet flushed, currently flushed: {} postpone cmd: {}",
@@ -1625,7 +1627,7 @@ where
                     }
                 }
                 Condition::LogFlushed { log_id } => {
-                    let curr = self.engine.state.io_state().log_progress.flushed();
+                    let curr = self.engine.state.log_progress().flushed();
                     let curr = curr.and_then(|x| x.last_log_id());
                     if curr < log_id.as_ref() {
                         tracing::debug!(
@@ -1664,7 +1666,7 @@ where
 
         match cmd {
             Command::UpdateIOProgress { io_id, .. } => {
-                self.engine.state.io_state.log_progress.submit(io_id.clone());
+                self.engine.state.log_progress_mut().submit(io_id.clone());
 
                 let notify = Notification::LocalIO { io_id: io_id.clone() };
 
@@ -1689,13 +1691,13 @@ where
                 //
                 // The `submit` state must be updated before calling `append()`,
                 // because `append()` may call the callback before returning.
-                self.engine.state.io_state.log_progress.submit(io_id);
+                self.engine.state.log_progress_mut().submit(io_id);
 
                 // Submit IO request, do not wait for the response.
                 self.log_store.append(entries, callback).await?;
             }
             Command::SaveVote { vote } => {
-                self.engine.state.io_state_mut().log_progress.submit(IOId::new(&vote));
+                self.engine.state.log_progress_mut().submit(IOId::new(&vote));
                 self.log_store.save_vote(&vote).await?;
 
                 let _ = self.tx_notification.send(Notification::LocalIO {
@@ -1758,7 +1760,7 @@ where
                 already_committed,
                 upto,
             } => {
-                self.engine.state.io_state.apply_progress.submit(upto.clone());
+                self.engine.state.apply_progress_mut().submit(upto.clone());
                 let first = self.engine.state.get_log_id(already_committed.next_index()).unwrap();
                 self.apply_to_state_machine(first, upto).await?;
             }
@@ -1786,15 +1788,15 @@ where
                 self.heartbeat_handle.spawn_workers(&mut self.network_factory, &self.tx_notification, nodes).await;
             }
             Command::StateMachine { command } => {
-                let io_id = command.get_submit_io();
+                let io_id = command.get_log_progress();
 
                 if let Some(io_id) = io_id {
-                    self.engine.state.io_state.log_progress.submit(io_id);
+                    self.engine.state.log_progress_mut().submit(io_id);
                 }
 
                 // If this command update the last-applied log id, mark it as submitted(to state machine).
                 if let Some(log_id) = command.get_apply_progress() {
-                    self.engine.state.io_state.apply_progress.submit(log_id);
+                    self.engine.state.apply_progress_mut().submit(log_id);
                 }
 
                 // Just forward a state machine command to the worker.

@@ -52,7 +52,7 @@ fn eng() -> Engine<UTConfig> {
     eng.state.enable_validation(false); // Disable validation for incomplete state
 
     eng.config.id = 1;
-    eng.state.io_state_mut().update_committed(log_id(0, 1, 0));
+    eng.state.apply_progress_mut().accept(log_id(0, 1, 0));
     eng.state.vote = Leased::new(
         UTConfig::<()>::now(),
         Duration::from_millis(500),
@@ -79,7 +79,7 @@ fn test_leader_append_entries_empty() -> anyhow::Result<()> {
 
     assert_eq!(
         None,
-        eng.state.accepted_io(),
+        eng.state.accepted_log_io(),
         "no accepted log updated for empty entries"
     );
     assert_eq!(
@@ -119,7 +119,7 @@ fn test_leader_append_entries_normal() -> anyhow::Result<()> {
             Vote::new(3, 1).into_committed(),
             Some(log_id(3, 1, 6))
         )),
-        eng.state.accepted_io()
+        eng.state.accepted_log_io()
     );
     assert_eq!(
         &[
@@ -185,7 +185,7 @@ fn test_leader_append_entries_single_node_leader() -> anyhow::Result<()> {
             Vote::new(3, 1).into_committed(),
             Some(log_id(3, 1, 6))
         )),
-        eng.state.accepted_io()
+        eng.state.accepted_log_io()
     );
     assert_eq!(
         &[
@@ -243,7 +243,7 @@ fn test_leader_append_entries_with_membership_log() -> anyhow::Result<()> {
             Vote::new(3, 1).into_committed(),
             Some(log_id(3, 1, 6))
         )),
-        eng.state.accepted_io()
+        eng.state.accepted_log_io()
     );
     assert_eq!(
         &[

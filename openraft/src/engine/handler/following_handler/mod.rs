@@ -76,7 +76,7 @@ where C: RaftTypeConfig
         let last_log_id = entries.last().map(|ent| ent.log_id());
         let last_log_id = std::cmp::max(prev_log_id, last_log_id);
 
-        let prev_accepted = self.state.accept_io(IOId::new_log_io(self.leader_vote.clone(), last_log_id.clone()));
+        let prev_accepted = self.state.accept_log_io(IOId::new_log_io(self.leader_vote.clone(), last_log_id.clone()));
 
         let l = entries.len();
         let since = self.state.first_conflicting_index(&entries);
@@ -160,7 +160,7 @@ where C: RaftTypeConfig
     /// Commit entries that are already committed by the leader.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn commit_entries(&mut self, leader_committed: Option<LogIdOf<C>>) {
-        let accepted = self.state.accepted_io().cloned();
+        let accepted = self.state.accepted_log_io().cloned();
         let accepted = accepted.and_then(|x| x.last_log_id().cloned());
         let committed = std::cmp::min(accepted.clone(), leader_committed.clone());
 
@@ -314,8 +314,10 @@ where C: RaftTypeConfig
         }
 
         let io_id = IOId::new_log_io(self.leader_vote.clone(), Some(snap_last_log_id.clone()));
-        self.state.accept_io(io_id.clone());
-        self.state.io_state.update_committed(snap_last_log_id.clone());
+        self.state.accept_log_io(io_id.clone());
+
+        self.state.apply_progress_mut().accept(snap_last_log_id.clone());
+
         self.update_committed_membership(EffectiveMembership::new_from_stored_membership(
             meta.last_membership.clone(),
         ));

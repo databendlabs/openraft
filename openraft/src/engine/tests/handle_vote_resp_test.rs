@@ -195,7 +195,7 @@ fn test_handle_vote_resp_equal_vote() -> anyhow::Result<()> {
                 Vote::new(2, 1).into_committed(),
                 Some(log_id(2, 1, 1))
             )),
-            eng.state.accepted_io()
+            eng.state.accepted_log_io()
         );
         assert!(
             eng.candidate_ref().is_none(),

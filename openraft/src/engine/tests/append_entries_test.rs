@@ -44,7 +44,7 @@ fn eng() -> Engine<UTConfig> {
     eng.state.vote = Leased::new(UTConfig::<()>::now(), Duration::from_millis(500), Vote::new(2, 1));
     eng.state.log_ids.append(log_id(1, 1, 1));
     eng.state.log_ids.append(log_id(2, 1, 3));
-    eng.state.io_state_mut().update_committed(log_id(0, 1, 0));
+    eng.state.apply_progress_mut().accept(log_id(0, 1, 0));
     eng.state.membership_state = MembershipState::new(
         Arc::new(EffectiveMembership::new(Some(log_id(1, 1, 1)), m01())),
         Arc::new(EffectiveMembership::new(Some(log_id(2, 1, 3)), m23())),

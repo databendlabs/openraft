@@ -33,7 +33,7 @@ fn eng() -> Engine<UTConfig> {
         Duration::from_millis(500),
         Vote::new_committed(2, 1),
     );
-    eng.state.io_state.update_committed(log_id(1, 1, 1));
+    eng.state.apply_progress_mut().accept(log_id(1, 1, 1));
     eng.state.membership_state = MembershipState::new(
         Arc::new(EffectiveMembership::new(Some(log_id(1, 1, 1)), m01())),
         Arc::new(EffectiveMembership::new(Some(log_id(2, 1, 3)), m23())),
@@ -64,7 +64,7 @@ fn test_following_handler_commit_entries_empty() -> anyhow::Result<()> {
 fn test_following_handler_commit_entries_ge_accepted() -> anyhow::Result<()> {
     let mut eng = eng();
     let committed_vote = eng.state.vote_ref().into_committed();
-    eng.state.io_state.log_progress.accept(IOId::new_log_io(committed_vote, Some(log_id(1, 1, 2))));
+    eng.state.log_progress_mut().accept(IOId::new_log_io(committed_vote, Some(log_id(1, 1, 2))));
 
     eng.following_handler().commit_entries(Some(log_id(2, 1, 3)));
 
@@ -96,7 +96,7 @@ fn test_following_handler_commit_entries_ge_accepted() -> anyhow::Result<()> {
 fn test_following_handler_commit_entries_le_accepted() -> anyhow::Result<()> {
     let mut eng = eng();
     let committed_vote = eng.state.vote_ref().into_committed();
-    eng.state.io_state.log_progress.accept(IOId::new_log_io(committed_vote, Some(log_id(3, 1, 4))));
+    eng.state.log_progress_mut().accept(IOId::new_log_io(committed_vote, Some(log_id(3, 1, 4))));
 
     eng.following_handler().commit_entries(Some(log_id(2, 1, 3)));
 
