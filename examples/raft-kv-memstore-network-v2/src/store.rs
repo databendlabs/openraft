@@ -165,21 +165,40 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
     async fn install_snapshot(&mut self, meta: &SnapshotMeta, snapshot: SnapshotData) -> Result<(), StorageError> {
         tracing::info!("install snapshot");
 
-        let new_snapshot = StoredSnapshot {
-            meta: meta.clone(),
-            data: snapshot,
-        };
-
         // Update the state machine.
         {
-            let updated_state_machine: StateMachineData = new_snapshot.data.clone();
+            let updated_state_machine: StateMachineData = snapshot.clone();
             let mut state_machine = self.state_machine.lock().unwrap();
             *state_machine = updated_state_machine;
         }
 
-        // Update current snapshot.
-        let mut current_snapshot = self.current_snapshot.lock().unwrap();
-        *current_snapshot = Some(new_snapshot);
+        let snapshot = Snapshot {
+            meta: meta.clone(),
+            snapshot: Cursor::new(snapshot),
+        };
+
+        self.save_snapshot(&snapshot).await?;
+
+        Ok(())
+    }
+
+    async fn save_snapshot(&mut self, snapshot: &Snapshot) -> Result<(), StorageError> {
+        let new_snapshot = StoredSnapshot {
+            meta: snapshot.meta.clone(),
+            data: snapshot.snapshot.clone().into_inner(),
+        };
+
+        let mut current = self.current_snapshot.lock().unwrap();
+
+        // Only save it if the new snapshot contains more recent data than the current snapshot.
+
+        let current_last = current.as_ref().and_then(|s| s.meta.last_log_id);
+        if new_snapshot.meta.last_log_id <= current_last {
+            return Ok(());
+        }
+
+        *current = Some(new_snapshot);
+
         Ok(())
     }
 

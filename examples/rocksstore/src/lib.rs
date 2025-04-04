@@ -12,6 +12,7 @@ mod test;
 
 use std::collections::BTreeMap;
 use std::fmt::Debug;
+use std::future::Future;
 use std::io::Cursor;
 use std::path::Path;
 use std::sync::Arc;
@@ -32,6 +33,8 @@ use openraft::StorageError;
 use openraft::StoredMembership;
 use rand::Rng;
 use rocksdb::ColumnFamilyDescriptor;
+use rocksdb::Direction;
+use rocksdb::IteratorMode;
 use rocksdb::Options;
 use rocksdb::DB;
 use serde::Deserialize;
@@ -115,6 +118,14 @@ impl RocksStateMachine {
 
         state_machine
     }
+
+    fn order_preserved_log_id_string(log_id: Option<&LogId>) -> String {
+        let term = log_id.map(|l| l.committed_leader_id().term).unwrap_or_default();
+        let node_id = log_id.map(|l| l.committed_leader_id().node_id).unwrap_or_default();
+        let index = log_id.map(|l| l.index).unwrap_or_default();
+
+        format!("{:020}-{:020}-{:020}", term, node_id, index)
+    }
 }
 
 impl RaftSnapshotBuilder<TypeConfig> for RocksStateMachine {
@@ -141,22 +152,14 @@ impl RaftSnapshotBuilder<TypeConfig> for RocksStateMachine {
             snapshot_id,
         };
 
-        let snapshot = RocksSnapshot {
+        let snapshot = Snapshot {
             meta: meta.clone(),
-            data: data.clone(),
+            snapshot: Cursor::new(data),
         };
 
-        let serialized_snapshot = serde_json::to_vec(&snapshot)
-            .map_err(|e| StorageError::write_snapshot(Some(meta.signature()), AnyError::new(&e)))?;
+        self.save_snapshot(&snapshot).await?;
 
-        self.db
-            .put_cf(self.db.cf_handle("sm_meta").unwrap(), "snapshot", serialized_snapshot)
-            .map_err(|e| StorageError::write_snapshot(Some(meta.signature()), AnyError::new(&e)))?;
-
-        Ok(Snapshot {
-            meta,
-            snapshot: Cursor::new(data),
-        })
+        Ok(snapshot)
     }
 }
 
@@ -229,13 +232,33 @@ impl RaftStateMachine<TypeConfig> for RocksStateMachine {
 
         self.sm = updated_state_machine;
 
-        // Save snapshot
+        self.db.flush_wal(true).map_err(|e| StorageError::write_snapshot(Some(meta.signature()), &e))?;
+        Ok(())
+    }
+
+    async fn save_snapshot(&mut self, snapshot: &Snapshot<TypeConfig>) -> Result<(), StorageError<TypeConfig>> {
+        let last_log_id = snapshot.meta.last_log_id.as_ref();
+
+        let id_str = Self::order_preserved_log_id_string(last_log_id);
+
+        let key = format!("snapshot-{id_str}");
+
+        let meta = snapshot.meta.clone();
+
+        let new_snapshot = RocksSnapshot {
+            meta: meta.clone(),
+            data: snapshot.snapshot.clone().into_inner(),
+        };
 
         let serialized_snapshot = serde_json::to_vec(&new_snapshot)
             .map_err(|e| StorageError::write_snapshot(Some(meta.signature()), AnyError::new(&e)))?;
 
         self.db
-            .put_cf(self.db.cf_handle("sm_meta").unwrap(), "snapshot", serialized_snapshot)
+            .put_cf(
+                self.db.cf_handle("sm_meta").unwrap(),
+                key.as_bytes(),
+                serialized_snapshot,
+            )
             .map_err(|e| StorageError::write_snapshot(Some(meta.signature()), AnyError::new(&e)))?;
 
         self.db.flush_wal(true).map_err(|e| StorageError::write_snapshot(Some(meta.signature()), &e))?;
@@ -243,24 +266,36 @@ impl RaftStateMachine<TypeConfig> for RocksStateMachine {
     }
 
     async fn get_current_snapshot(&mut self) -> Result<Option<Snapshot<TypeConfig>>, StorageError<TypeConfig>> {
-        let x = self
-            .db
-            .get_cf(self.db.cf_handle("sm_meta").unwrap(), "snapshot")
-            .map_err(|e| StorageError::write_snapshot(None, AnyError::new(&e)))?;
+        let mut last_snapshot_key = None;
 
-        let bytes = match x {
-            Some(x) => x,
-            None => return Ok(None),
+        let it = self.db.iterator_cf(
+            self.db.cf_handle("sm_meta").unwrap(),
+            IteratorMode::From(b"snapshot-", Direction::Forward),
+        );
+
+        for kv in it {
+            let (key, _value) = kv.map_err(|e| StorageError::read(&e))?;
+            if key.starts_with(b"snapshot-") {
+                last_snapshot_key = Some(key.to_vec());
+            } else {
+                break;
+            }
+        }
+        let Some(key) = last_snapshot_key else {
+            return Ok(None);
         };
 
-        let snapshot: RocksSnapshot =
-            serde_json::from_slice(&bytes).map_err(|e| StorageError::write_snapshot(None, AnyError::new(&e)))?;
+        let data = self
+            .db
+            .get_cf(self.db.cf_handle("sm_meta").unwrap(), &key)
+            .map_err(|e| StorageError::read(&e))?
+            .unwrap();
 
-        let data = snapshot.data.clone();
+        let snap: RocksSnapshot = serde_json::from_slice(&data).map_err(|e| StorageError::read_snapshot(None, &e))?;
 
         Ok(Some(Snapshot {
-            meta: snapshot.meta,
-            snapshot: Cursor::new(data),
+            meta: snap.meta,
+            snapshot: Cursor::new(snap.data),
         }))
     }
 }
