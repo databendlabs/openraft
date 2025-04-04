@@ -98,9 +98,6 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<StateMachineStore> {
         let last_applied_log = state_machine.last_applied_log;
         let last_membership = state_machine.last_membership.clone();
 
-        // Lock the current snapshot before releasing the lock on the state machine, to avoid a race
-        // condition on the written snapshot
-        let mut current_snapshot = self.current_snapshot.write().await;
         drop(state_machine);
 
         let snapshot_idx = self.snapshot_idx.fetch_add(1, Ordering::Relaxed) + 1;
@@ -116,17 +113,14 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<StateMachineStore> {
             snapshot_id,
         };
 
-        let snapshot = StoredSnapshot {
+        let snapshot = Snapshot {
             meta: meta.clone(),
-            data: data.clone(),
+            snapshot: Cursor::new(data.clone()),
         };
 
-        *current_snapshot = Some(snapshot);
+        self.save_snapshot(&snapshot).await?;
 
-        Ok(Snapshot {
-            meta,
-            snapshot: Cursor::new(data),
-        })
+        Ok(snapshot)
     }
 }
 
@@ -203,13 +197,26 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
         let mut state_machine = self.state_machine.write().await;
         *state_machine = updated_state_machine;
 
-        // Lock the current snapshot before releasing the lock on the state machine, to avoid a race
-        // condition on the written snapshot
-        let mut current_snapshot = self.current_snapshot.write().await;
-        drop(state_machine);
+        Ok(())
+    }
 
-        // Update current snapshot.
-        *current_snapshot = Some(new_snapshot);
+    async fn save_snapshot(&mut self, snapshot: &Snapshot<TypeConfig>) -> Result<(), StorageError<TypeConfig>> {
+        let new_snapshot = StoredSnapshot {
+            meta: snapshot.meta.clone(),
+            data: snapshot.snapshot.clone().into_inner(),
+        };
+
+        let mut current = self.current_snapshot.write().await;
+
+        // Only save it if the new snapshot contains more recent data than the current snapshot.
+
+        let current_last = current.as_ref().and_then(|s| s.meta.last_log_id.clone());
+        if new_snapshot.meta.last_log_id <= current_last {
+            return Ok(());
+        }
+
+        *current = Some(new_snapshot);
+
         Ok(())
     }
 

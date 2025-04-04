@@ -101,12 +101,48 @@ where C: RaftTypeConfig
     ///
     /// A snapshot created from an earlier call to `begin_receiving_snapshot` which provided the
     /// snapshot.
+    #[since(
+        version = "0.10.0",
+        date = "2025-04-04",
+        change = "no need to save snapshot in this method, implement [`Self::save_snapshot`] instead"
+    )]
     #[since(version = "0.10.0", change = "SnapshotData without Box")]
     async fn install_snapshot(
         &mut self,
         meta: &SnapshotMeta<C>,
         snapshot: C::SnapshotData,
     ) -> Result<(), StorageError<C>>;
+
+    /// Inform state machine to save a snapshot.
+    ///
+    /// The saved snapshot should then be retrievable with [`Self::get_current_snapshot`].
+    ///
+    /// This method is called when a snapshot has a higher last-log-id than the current one but
+    /// smaller than the last-applied-log-id of the state machine. In this case, the state machine
+    /// only needs to persist the provided new snapshot, without replacing the state machine's
+    /// current state(without calling [`Self::install_snapshot`]).
+    ///
+    /// ### When this method is called
+    ///
+    /// When a snapshot needs to be both saved and used to replace the state machine, OpenRaft will:
+    /// - First call this method to persist the snapshot
+    /// - Then call [`Self::install_snapshot`] to replace the state machine with the new snapshot
+    ///
+    /// When a snapshot needs to be saved but is not newer than the state machine (e.g., when a
+    /// leader replicates an already built snapshot to a follower with an up-to-date state machine):
+    /// - Only this method will be called
+    ///
+    /// ### Implementation notes
+    ///
+    /// Before this method is added, [`Self::install_snapshot`] is responsible to replace the
+    /// state machine and save the snapshot.
+    ///
+    /// By implementing this method, [`Self::install_snapshot`] no longer needs to save the
+    /// snapshot, since OpenRaft will always call this method first, then
+    /// [`Self::install_snapshot`] when a snapshot needs to be both saved and used to replace
+    /// the state machine.
+    #[since(version = "0.10.0")]
+    async fn save_snapshot(&mut self, snapshot: &Snapshot<C>) -> Result<(), StorageError<C>>;
 
     /// Get a readable handle to the current snapshot.
     ///
