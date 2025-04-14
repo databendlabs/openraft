@@ -3,7 +3,9 @@
 use crate::async_runtime::MpscUnboundedSender;
 use crate::async_runtime::MpscUnboundedWeakSender;
 use crate::async_runtime::SendError;
+use crate::core::notification::Notification;
 use crate::core::sm;
+use crate::storage::RaftStateMachineCommand;
 use crate::storage::Snapshot;
 use crate::type_config::alias::JoinHandleOf;
 use crate::type_config::alias::MpscUnboundedSenderOf;
@@ -15,7 +17,9 @@ use crate::RaftTypeConfig;
 pub(crate) struct Handle<C>
 where C: RaftTypeConfig
 {
-    pub(in crate::core::sm) cmd_tx: MpscUnboundedSenderOf<C, sm::Command<C>>,
+    pub(in crate::core::sm) cmd_tx: MpscUnboundedSenderOf<C, RaftStateMachineCommand<C>>,
+
+    pub(in crate::core::sm) tx_notification: MpscUnboundedSenderOf<C, Notification<C>>,
 
     #[allow(dead_code)]
     pub(in crate::core::sm) join_handle: JoinHandleOf<C, ()>,
@@ -24,15 +28,20 @@ where C: RaftTypeConfig
 impl<C> Handle<C>
 where C: RaftTypeConfig
 {
-    pub(crate) fn send(&mut self, cmd: sm::Command<C>) -> Result<(), SendError<sm::Command<C>>> {
+    pub(crate) fn send(&mut self, cmd: sm::Command<C>) -> Result<(), SendError<RaftStateMachineCommand<C>>> {
         tracing::debug!("sending command to state machine worker: {:?}", cmd);
+        let cmd = RaftStateMachineCommand::new(cmd, &self.tx_notification);
         self.cmd_tx.send(cmd)
     }
 
     /// Create a [`SnapshotReader`] to get the current snapshot from the state machine.
-    pub(crate) fn new_snapshot_reader(&self) -> SnapshotReader<C> {
+    pub(crate) fn new_snapshot_reader(
+        &self,
+        tx_notification: MpscUnboundedSenderOf<C, Notification<C>>,
+    ) -> SnapshotReader<C> {
         SnapshotReader {
             cmd_tx: self.cmd_tx.downgrade(),
+            tx_notification,
         }
     }
 }
@@ -46,7 +55,9 @@ where C: RaftTypeConfig
     /// It is weak because the [`Worker`] watches the close event of this channel for shutdown.
     ///
     /// [`Worker`]: sm::worker::Worker
-    cmd_tx: MpscUnboundedWeakSenderOf<C, sm::Command<C>>,
+    cmd_tx: MpscUnboundedWeakSenderOf<C, RaftStateMachineCommand<C>>,
+
+    tx_notification: MpscUnboundedSenderOf<C, Notification<C>>,
 }
 
 impl<C> SnapshotReader<C>
@@ -68,7 +79,7 @@ where C: RaftTypeConfig
         };
 
         // If fail to send command, cmd is dropped and tx will be dropped.
-        let _ = cmd_tx.send(cmd);
+        let _ = cmd_tx.send(RaftStateMachineCommand::new(cmd, &self.tx_notification));
 
         let got = match rx.await {
             Ok(x) => x,
