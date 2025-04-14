@@ -123,7 +123,7 @@ async fn initialization() -> anyhow::Result<()> {
     }
 
     for i in [0, 1, 2] {
-        let (mut sto, mut sm) = router.get_storage_handle(&1)?;
+        let (sto, mut sm) = router.get_storage_handle(&1)?;
         let first = sto.try_get_log_entries(0..2).await?.into_iter().next();
 
         tracing::info!(
