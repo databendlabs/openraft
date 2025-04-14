@@ -60,7 +60,7 @@ Candidate servers campaign to become the cluster leader using the RequestVote RP
 - if the term in the RPC is smaller than the candidate's current term, then the candidate rejects the RPC and continues in candidate state. §5.2
 
 #### stalemate elections (split vote)
-- if the candidate timesout before receiving enough votes, and before another leader comes to power, start a new election by incrementing the term and initiating another round of RequestVote RPCs.
+- if the candidate times out before receiving enough votes, and before another leader comes to power, start a new election by incrementing the term and initiating another round of RequestVote RPCs.
 
 #### receiver implementation: RequestVote RPC
 1. Reply false if term < currentTerm (§5.1) or if a heartbeat was received from the leader within the election timeout minimum window (§6).
