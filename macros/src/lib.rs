@@ -69,14 +69,10 @@ fn allow_non_send_bounds(item: TokenStream) -> TokenStream {
 }
 
 fn add_send_bounds(item: TokenStream) -> TokenStream {
-    let send_bound = parse_str("Send").unwrap();
     let default_return_type: Box<Type> = parse_str("impl std::future::Future<Output = ()> + Send").unwrap();
 
     match parse_macro_input!(item) {
         Item::Trait(mut input) => {
-            // add `Send` bound to the trait
-            input.supertraits.push(send_bound);
-
             for item in input.items.iter_mut() {
                 // for each async function definition
                 let TraitItem::Fn(function) = item else { continue };
