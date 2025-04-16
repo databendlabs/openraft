@@ -231,7 +231,4 @@ Therefore, the pointer for an IO operation must be represented as `term, LogId(t
 In Openraft, the `LogIOId` is `(CommittedLeaderId, LogId)`.
 
 
-[`ProgressEntry`]: crate::progress::entry::ProgressEntry
-
-
 [binary search]: https://en.wikipedia.org/wiki/Binary_search_algorithm

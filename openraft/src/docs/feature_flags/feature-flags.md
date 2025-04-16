@@ -88,7 +88,7 @@ emit log record.
 See: [tracing doc: emitting-log-records](https://docs.rs/tracing/latest/tracing/#emitting-log-records)
 
 
-[`RaftNetwork::full_snapshot()`]: crate::network::RaftNetwork::full_snapshot
+[`RaftNetwork::full_snapshot()`]: crate::network::v2::RaftNetworkV2::full_snapshot
 [`RaftNetwork::install_snapshot()`]: crate::network::RaftNetwork::install_snapshot
 
 

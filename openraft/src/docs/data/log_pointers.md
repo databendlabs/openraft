@@ -21,7 +21,7 @@ Inside Openraft, there are several pointers pointing to the raft-log:
 - `submitted`: the last log entry that has submitted to [`RaftLogStorage`], but not yet flushed, inclusive.
 
 - `accepted`: the last log entry accepted from the Leader but not yet submit to the storage, inclusive.
-    `accepted` is also known as `last_log` in Openraft codebase.
+  `accepted` is also known as `last_log` in Openraft codebase.
 
 Within openraft, the log pointers mentioned above always hold that:
 `flushed` ≤ `submitted` ≤ `accepted`;
