@@ -426,7 +426,6 @@ Additionally, two test scripts for setting up a cluster are available:
 [`EmptyNode`]:                          `crate::EmptyNode`
 [`BasicNode`]:                          `crate::BasicNode`
 [`Entry`]:                              `crate::entry::Entry`
-[`docs::Vote`]:                         `crate::docs::data::Vote`
 [`Vote`]:                               `crate::vote::Vote`
 [`LogState`]:                           `crate::storage::LogState`
 
@@ -435,7 +434,6 @@ Additionally, two test scripts for setting up a cluster are available:
 [`read_vote()`]:                        `crate::storage::RaftLogReader::read_vote`
 
 
-[`RaftLogStorage::SnapshotBuilder`]:    `crate::storage::RaftLogStorage::SnapshotBuilder`
 
 [`RaftLogStorage`]:                     `crate::storage::RaftLogStorage`
 [`RaftLogStorage::LogReader`]:          `crate::storage::RaftLogStorage::LogReader`
@@ -447,6 +445,7 @@ Additionally, two test scripts for setting up a cluster are available:
 [`get_log_reader()`]:                   `crate::storage::RaftLogStorage::get_log_reader`
 
 [`RaftStateMachine`]:                   `crate::storage::RaftStateMachine`
+[`RaftStateMachine::SnapshotBuilder`]:  `crate::storage::RaftStateMachine::SnapshotBuilder`
 [`applied_state()`]:                    `crate::storage::RaftStateMachine::applied_state`
 [`apply()`]:                            `crate::storage::RaftStateMachine::apply`
 [`get_current_snapshot()`]:             `crate::storage::RaftStateMachine::get_current_snapshot`

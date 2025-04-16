@@ -88,10 +88,6 @@ emit log record.
 See: [tracing doc: emitting-log-records](https://docs.rs/tracing/latest/tracing/#emitting-log-records)
 
 
-[`RaftNetwork::full_snapshot()`]: crate::network::RaftNetwork::full_snapshot
-[`RaftNetwork::install_snapshot()`]: crate::network::RaftNetwork::install_snapshot
-
-
 ## feature-flag `type-alias`
 
 Enable this feature to use type shortcuts defined in `openraft::alias::*`

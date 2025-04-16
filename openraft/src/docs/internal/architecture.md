@@ -56,7 +56,6 @@ The major components inside Openraft include:
 [`client_write`]:         `crate::raft::Raft::client_write`
 [`RaftLogStorage`]:       `crate::storage::RaftLogStorage`
 [`RaftStateMachine`]:     `crate::storage::RaftStateMachine`
-[`Adapter`]:              `crate::storage::Adapter`
 [`RaftNetwork`]:          `crate::network::RaftNetwork`
 [`append_entries`]:       `crate::network::RaftNetwork::append_entries`
 [`VoteRequest`]:          `crate::raft::VoteRequest`
