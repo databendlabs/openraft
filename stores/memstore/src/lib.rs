@@ -285,8 +285,6 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<MemStateMachine> {
             }
         }
 
-        let snapshot_size = data.len();
-
         let snapshot_idx = {
             let mut l = self.snapshot_idx.lock().unwrap();
             *l += 1;
@@ -305,22 +303,14 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<MemStateMachine> {
             snapshot_id,
         };
 
-        let snapshot = MemStoreSnapshot {
+        let snapshot = Snapshot {
             meta: meta.clone(),
-            data: data.clone(),
+            snapshot: Cursor::new(data.clone()),
         };
 
-        {
-            let mut current_snapshot = self.current_snapshot.write().await;
-            *current_snapshot = Some(snapshot);
-        }
+        self.save_snapshot(&snapshot).await?;
 
-        tracing::info!(snapshot_size, "log compaction complete");
-
-        Ok(Snapshot {
-            meta,
-            snapshot: Cursor::new(data),
-        })
+        Ok(snapshot)
     }
 }
 
@@ -524,9 +514,26 @@ impl RaftStateMachine<TypeConfig> for Arc<MemStateMachine> {
             *sm = new_sm;
         }
 
-        // Update current snapshot.
-        let mut current_snapshot = self.current_snapshot.write().await;
-        *current_snapshot = Some(new_snapshot);
+        Ok(())
+    }
+
+    async fn save_snapshot(&mut self, snapshot: &Snapshot<TypeConfig>) -> Result<(), StorageError<TypeConfig>> {
+        let stored = MemStoreSnapshot {
+            meta: snapshot.meta.clone(),
+            data: snapshot.snapshot.clone().into_inner(),
+        };
+
+        let mut current = self.current_snapshot.write().await;
+
+        // Only save it if the new snapshot contains more recent data than the current snapshot.
+
+        let current_last = current.as_ref().and_then(|s| s.meta.last_log_id);
+        if stored.meta.last_log_id <= current_last {
+            return Ok(());
+        }
+
+        *current = Some(stored);
+
         Ok(())
     }
 
