@@ -98,7 +98,7 @@ async fn build_snapshot() -> Result<()> {
         "--- logs should be deleted after installing snapshot; left only the last one"
     );
     {
-        let (mut sto, _sm) = router.get_storage_handle(&1)?;
+        let (sto, _sm) = router.get_storage_handle(&1)?;
         let logs = sto.try_get_log_entries(..).await?;
         assert_eq!(2, logs.len());
         assert_eq!(log_id(1, 0, log_index - 1), logs[0].log_id)

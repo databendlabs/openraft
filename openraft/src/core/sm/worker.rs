@@ -3,14 +3,11 @@ use std::collections::BTreeMap;
 use anyerror::AnyError;
 use tracing_futures::Instrument;
 
-use crate::async_runtime::MpscUnboundedReceiver;
 use crate::async_runtime::MpscUnboundedSender;
 use crate::async_runtime::OneshotSender;
-use crate::base::BoxAsyncOnceMut;
 use crate::core::notification::Notification;
 use crate::core::raft_msg::ResultSender;
 use crate::core::sm::handle::Handle;
-use crate::core::sm::Command;
 use crate::core::sm::CommandResult;
 use crate::core::sm::Response;
 use crate::core::ApplyResult;
@@ -23,6 +20,7 @@ use crate::raft::ClientWriteResponse;
 #[cfg(doc)]
 use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
+use crate::storage::RaftStateMachineCommand;
 use crate::storage::Snapshot;
 use crate::type_config::alias::JoinHandleOf;
 use crate::type_config::alias::LogIdOf;
@@ -48,7 +46,7 @@ where
     log_reader: LR,
 
     /// Read command from RaftCore to execute.
-    cmd_rx: MpscUnboundedReceiverOf<C, Command<C>>,
+    cmd_rx: MpscUnboundedReceiverOf<C, RaftStateMachineCommand<C>>,
 
     /// Send back the result of the command to RaftCore.
     resp_tx: MpscUnboundedSenderOf<C, Notification<C>>,
@@ -68,6 +66,7 @@ where
         span: tracing::Span,
     ) -> Handle<C> {
         let (cmd_tx, cmd_rx) = C::mpsc_unbounded();
+        let tx_notification = resp_tx.clone();
 
         let worker = Worker {
             state_machine,
@@ -78,7 +77,11 @@ where
 
         let join_handle = worker.do_spawn(span);
 
-        Handle { cmd_tx, join_handle }
+        Handle {
+            cmd_tx,
+            tx_notification,
+            join_handle,
+        }
     }
 
     fn do_spawn(mut self, span: tracing::Span) -> JoinHandleOf<C, ()> {
@@ -98,76 +101,9 @@ where
 
     #[tracing::instrument(level = "debug", skip_all)]
     async fn worker_loop(&mut self) -> Result<(), StorageError<C>> {
-        loop {
-            let cmd = self.cmd_rx.recv().await;
-            let cmd = match cmd {
-                None => {
-                    tracing::info!("{}: rx closed, state machine worker quit", func_name!());
-                    return Ok(());
-                }
-                Some(x) => x,
-            };
-
-            tracing::debug!("{}: received command: {:?}", func_name!(), cmd);
-
-            match cmd {
-                Command::BuildSnapshot => {
-                    tracing::info!("{}: build snapshot", func_name!());
-
-                    // It is a read operation and is spawned, and it responds in another task
-                    self.build_snapshot(self.resp_tx.clone()).await;
-                }
-                Command::GetSnapshot { tx } => {
-                    tracing::info!("{}: get snapshot", func_name!());
-
-                    self.get_snapshot(tx).await?;
-                    // GetSnapshot does not respond to RaftCore
-                }
-                Command::InstallFullSnapshot { io_id, snapshot } => {
-                    tracing::info!("{}: install complete snapshot", func_name!());
-
-                    let meta = snapshot.meta.clone();
-                    self.state_machine.install_snapshot(&meta, snapshot.snapshot).await?;
-
-                    tracing::info!("Done install complete snapshot, meta: {}", meta);
-
-                    let res = CommandResult::new(Ok(Response::InstallSnapshot((io_id, Some(meta)))));
-                    let _ = self.resp_tx.send(Notification::sm(res));
-                }
-                Command::BeginReceivingSnapshot { tx } => {
-                    tracing::info!("{}: BeginReceivingSnapshot", func_name!());
-
-                    let snapshot_data = self.state_machine.begin_receiving_snapshot().await?;
-
-                    let _ = tx.send(Ok(snapshot_data));
-                    // No response to RaftCore
-                }
-                Command::Apply {
-                    first,
-                    last,
-                    mut client_resp_channels,
-                } => {
-                    let resp = self.apply(first, last, &mut client_resp_channels).await?;
-                    let res = CommandResult::new(Ok(Response::Apply(resp)));
-                    let _ = self.resp_tx.send(Notification::sm(res));
-                }
-                Command::Func { func, input_sm_type } => {
-                    tracing::debug!("{}: run user defined Func", func_name!());
-
-                    let res: Result<Box<BoxAsyncOnceMut<'static, SM>>, _> = func.downcast();
-                    if let Ok(f) = res {
-                        f(&mut self.state_machine).await;
-                    } else {
-                        tracing::warn!(
-                            "User-defined SM function uses incorrect state machine type, expected: {}, got: {}",
-                            std::any::type_name::<SM>(),
-                            input_sm_type
-                        );
-                    };
-                }
-            };
-        }
+        self.state_machine.worker(&mut self.cmd_rx, &self.log_reader).await
     }
+
     #[tracing::instrument(level = "debug", skip_all)]
     async fn apply(
         &mut self,

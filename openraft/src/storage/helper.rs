@@ -186,7 +186,7 @@ where
             chunk_size,
         );
 
-        let mut log_reader = self.log_store.get_log_reader().await;
+        let log_reader = self.log_store.get_log_reader().await;
 
         while start < end {
             let chunk_end = std::cmp::min(end, start + chunk_size);
@@ -290,7 +290,7 @@ where
         let step = 64;
 
         let mut res = vec![];
-        let mut log_reader = self.log_store.get_log_reader().await;
+        let log_reader = self.log_store.get_log_reader().await;
 
         while start < end {
             let step_start = std::cmp::max(start, end.saturating_sub(step));
