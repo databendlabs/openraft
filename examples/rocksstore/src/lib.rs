@@ -4,6 +4,7 @@
 //! These data will be flushed to disk when a snapshot is created.
 #![deny(unused_crate_dependencies)]
 #![deny(unused_qualifications)]
+#![allow(clippy::uninlined_format_args)]
 
 pub mod log_store;
 

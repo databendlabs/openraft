@@ -1,6 +1,7 @@
 //! Fixtures for testing Raft.
 
 #![allow(dead_code)]
+#![allow(clippy::uninlined_format_args)]
 
 #[cfg(feature = "bt")]
 use std::backtrace::Backtrace;

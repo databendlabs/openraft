@@ -1,4 +1,5 @@
 #![doc = include_str!("lib_readme.md")]
+#![allow(clippy::uninlined_format_args)]
 
 mod expand;
 mod since;

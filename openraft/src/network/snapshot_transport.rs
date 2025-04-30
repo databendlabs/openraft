@@ -47,7 +47,7 @@ mod tokio_rt {
             net: &mut Net,
             vote: VoteOf<C>,
             mut snapshot: Snapshot<C>,
-            mut cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
+            cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
             option: RPCOption,
         ) -> Result<SnapshotResponse<C>, StreamingError<C>>
         where

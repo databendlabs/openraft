@@ -1,3 +1,4 @@
+#![allow(clippy::uninlined_format_args)]
 use std::backtrace::Backtrace;
 use std::panic::PanicHookInfo;
 use std::thread;

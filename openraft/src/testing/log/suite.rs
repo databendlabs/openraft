@@ -1181,7 +1181,7 @@ where
         append(&mut store, [blank_ent_0::<C>(2, 11)]).await?;
 
         let l = store.try_get_log_entries(0..).await?.len();
-        let last = store.try_get_log_entries(0..).await?.into_iter().last().unwrap();
+        let last = store.try_get_log_entries(0..).await?.into_iter().next_back().unwrap();
 
         assert_eq!(l, 11, "expected 11 entries to exist in the log");
         assert_eq!(last.log_id(), log_id_0(2, 11), "unexpected log id");

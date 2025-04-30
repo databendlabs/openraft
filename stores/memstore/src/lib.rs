@@ -1,6 +1,6 @@
 #![deny(unused_crate_dependencies)]
 #![deny(unused_qualifications)]
-
+#![allow(clippy::uninlined_format_args)]
 #[cfg(test)]
 mod test;
 

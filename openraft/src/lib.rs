@@ -7,6 +7,7 @@
 // TODO: `clippy::result-large-err`: StorageError is 136 bytes, try to reduce the size.
 #![allow(clippy::result_large_err)]
 #![allow(clippy::type_complexity)]
+#![allow(clippy::uninlined_format_args)]
 #![deny(unused_qualifications)]
 // TODO: Enable this when doc is complete
 // #![warn(missing_docs)]

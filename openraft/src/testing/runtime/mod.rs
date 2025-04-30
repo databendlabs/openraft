@@ -314,7 +314,7 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         // into a block so that they can be dropped before invoking `.borrow_watched()`,
         // which needs an immutable reference to `rx`.
         {
-            let mut changed_fut = rx.changed();
+            let changed_fut = rx.changed();
             let mut pinned_changed_fut = pin!(changed_fut);
             assert!(matches!(poll_in_place(pinned_changed_fut.as_mut()), Poll::Pending));
             tx.send(overwrite).unwrap();
@@ -421,7 +421,7 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
 
     pub async fn test_mutex() {
         let lock = Rt::Mutex::new(());
-        let mut guard_fut = lock.lock();
+        let guard_fut = lock.lock();
         let pinned_guard_fut = pin!(guard_fut);
 
         let poll_result = poll_in_place(pinned_guard_fut);
