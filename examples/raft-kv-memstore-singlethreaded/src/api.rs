@@ -5,6 +5,7 @@ use std::collections::BTreeSet;
 
 use openraft::error::Infallible;
 use openraft::BasicNode;
+use openraft::ReadPolicy;
 
 use crate::app::App;
 use crate::decode;
@@ -20,7 +21,7 @@ pub async fn write(app: &mut App, req: String) -> String {
 pub async fn read(app: &mut App, req: String) -> String {
     let key: String = decode(&req);
 
-    let ret = app.raft.ensure_linearizable().await;
+    let ret = app.raft.ensure_linearizable(ReadPolicy::ReadIndex).await;
 
     let res = match ret {
         Ok(_) => {

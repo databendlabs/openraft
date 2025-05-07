@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use openraft::error::Infallible;
+use openraft::ReadPolicy;
 use tide::Body;
 use tide::Request;
 use tide::Response;
@@ -41,7 +42,7 @@ async fn read(mut req: Request<Arc<App>>) -> tide::Result {
 }
 
 async fn linearizable_read(mut req: Request<Arc<App>>) -> tide::Result {
-    let ret = req.state().raft.ensure_linearizable().await;
+    let ret = req.state().raft.ensure_linearizable(ReadPolicy::ReadIndex).await;
 
     match ret {
         Ok(_) => {

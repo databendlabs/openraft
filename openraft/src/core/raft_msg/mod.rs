@@ -8,6 +8,7 @@ use crate::error::Infallible;
 use crate::error::InitializeError;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
+use crate::raft::ReadPolicy;
 use crate::raft::SnapshotResponse;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
@@ -73,6 +74,7 @@ where C: RaftTypeConfig
     },
 
     CheckIsLeaderRequest {
+        read_policy: ReadPolicy,
         tx: ClientReadTx<C>,
     },
 
@@ -130,7 +132,9 @@ where C: RaftTypeConfig
                 write!(f, "InstallFullSnapshot: vote: {}, snapshot: {}", vote, snapshot)
             }
             RaftMsg::ClientWriteRequest { .. } => write!(f, "ClientWriteRequest"),
-            RaftMsg::CheckIsLeaderRequest { .. } => write!(f, "CheckIsLeaderRequest"),
+            RaftMsg::CheckIsLeaderRequest { read_policy, .. } => {
+                write!(f, "CheckIsLeaderRequest with read policy: {}", read_policy)
+            }
             RaftMsg::Initialize { members, .. } => {
                 // TODO: avoid using Debug
                 write!(f, "Initialize: {:?}", members)
