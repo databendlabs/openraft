@@ -50,6 +50,7 @@ use crate::base::BoxAsyncOnceMut;
 use crate::base::BoxFuture;
 use crate::base::BoxOnce;
 use crate::config::Config;
+use crate::config::ReadPolicy;
 use crate::config::RuntimeConfig;
 use crate::core::heartbeat::handle::HeartbeatWorkersHandle;
 use crate::core::raft_msg::external_command::ExternalCommand;
@@ -515,36 +516,51 @@ where C: RaftTypeConfig
     #[tracing::instrument(level = "debug", skip(self))]
     pub async fn is_leader(&self) -> Result<(), RaftError<C, CheckIsLeaderError<C>>> {
         let (tx, rx) = C::oneshot();
-        let _ = self.inner.call_core(RaftMsg::CheckIsLeaderRequest { tx }, rx).await?;
+        let _ = self
+            .inner
+            .call_core(
+                RaftMsg::CheckIsLeaderRequest {
+                    read_policy: ReadPolicy::ReadIndex,
+                    tx,
+                },
+                rx,
+            )
+            .await?;
         Ok(())
     }
 
-    /// Ensures a read operation performed following this method are linearizable across the
-    /// cluster.
+    /// Ensures reads performed after this method are linearizable across the cluster
+    /// using an explicitly provided policy.
     ///
-    /// This method is just a shorthand for calling [`get_read_log_id()`](Raft::get_read_log_id) and
-    /// then calling [Raft::wait].
-    ///
-    /// This method confirms the node's leadership at the time of invocation by sending
-    /// heartbeats to a quorum of followers, and the state machine is up to date.
-    /// This method blocks until all these conditions are met.
+    /// The policy can be one of:
+    /// - `ReadOnlyPolicy::ReadIndex`: Provides strongest consistency guarantees by confirming
+    ///   leadership with a quorum before serving reads, but incurs higher latency due to network
+    ///   communication.
+    /// - `ReadOnlyPolicy::LeaseRead`: Uses leadership lease to avoid network round-trips, providing
+    ///   better performance but slightly weaker consistency guarantees (assumes minimal clock drift
+    ///   between nodes).
     ///
     /// Returns:
-    /// - `Ok(read_log_id)` on successful confirmation that the node is the leader. `read_log_id`
-    ///   represents the log id up to which the state machine has applied to ensure a linearizable
-    ///   read.
-    /// - `Err(RaftError<CheckIsLeaderError>)` if it detects a higher term, or if it fails to
-    ///   communicate with a quorum of followers.
+    /// - `Ok(read_log_id)` when successfully confirming leadership according to the provided
+    ///   policy. `read_log_id` represents the log ID up to which the state machine has applied.
+    /// - `Err(RaftError<CheckIsLeaderError>)` if a higher term is detected or if it fails to meet
+    ///   the requirements of the provided policy.
     ///
     /// # Examples
     /// ```ignore
-    /// my_raft.ensure_linearizable().await?;
-    /// // Proceed with the state machine read
+    /// // Use a strict policy for this specific critical read
+    /// my_raft.ensure_linearizable_with_policy(ReadOnlyPolicy::ReadIndex).await?;
+    /// // Or use a more performant policy when consistency requirements are less strict
+    /// my_raft.ensure_linearizable_with_policy(ReadOnlyPolicy::LeaseRead).await?;
+    /// // Then proceed with the state machine read
     /// ```
     /// Read more about how it works: [Read Operation](crate::docs::protocol::read)
     #[tracing::instrument(level = "debug", skip(self))]
-    pub async fn ensure_linearizable(&self) -> Result<Option<LogIdOf<C>>, RaftError<C, CheckIsLeaderError<C>>> {
-        let (read_log_id, applied) = self.get_read_log_id().await?;
+    pub async fn ensure_linearizable(
+        &self,
+        read_policy: ReadPolicy,
+    ) -> Result<Option<LogIdOf<C>>, RaftError<C, CheckIsLeaderError<C>>> {
+        let (read_log_id, applied) = self.get_read_log_id(read_policy).await?;
 
         if read_log_id.index() > applied.index() {
             self.wait(None)
@@ -595,9 +611,11 @@ where C: RaftTypeConfig
     #[tracing::instrument(level = "debug", skip(self))]
     pub async fn get_read_log_id(
         &self,
+        read_policy: ReadPolicy,
     ) -> Result<(Option<LogIdOf<C>>, Option<LogIdOf<C>>), RaftError<C, CheckIsLeaderError<C>>> {
         let (tx, rx) = C::oneshot();
-        let (read_log_id, applied) = self.inner.call_core(RaftMsg::CheckIsLeaderRequest { tx }, rx).await?;
+        let (read_log_id, applied) =
+            self.inner.call_core(RaftMsg::CheckIsLeaderRequest { read_policy, tx }, rx).await?;
         Ok((read_log_id, applied))
     }
 

@@ -6,6 +6,7 @@ mod error;
 mod config_test;
 
 pub use config::Config;
+pub use config::ReadPolicy;
 pub(crate) use config::RuntimeConfig;
 pub use config::SnapshotPolicy;
 pub use error::ConfigError;
