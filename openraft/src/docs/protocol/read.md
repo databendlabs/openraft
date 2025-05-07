@@ -12,29 +12,37 @@ Openraft also use `read_log_id` instead of `read_index`.
 
 ## Ensuring linearizability
 
-To ensure linearizability, read operations must perform a [`get_read_log_id()`] operation on the leader before proceeding.
+To ensure linearizability, read operations must perform a [`get_read_log_id(read_policy)`] operation on the leader before proceeding.
 
 This method confirms that this node is the leader at the time of invocation by sending heartbeats to a quorum of followers, and returns `(read_log_id, last_applied_log_id)`:
 - `read_log_id` represents the log id up to which the state machine should apply to ensure a
   linearizable read,
 - `last_applied_log_id` is the last applied log id.
 
+The policy can be one of:
+- `ReadOnlyPolicy::ReadIndex`: Provides strongest consistency guarantees by confirming
+  leadership with a quorum before serving reads, but incurs higher latency due to network
+  communication.
+- `ReadOnlyPolicy::LeaseRead`: Uses leadership lease to avoid network round-trips, providing
+  better performance but slightly weaker consistency guarantees (assumes minimal clock drift
+  between nodes).
+
 The caller then wait for `last_applied_log_id` to catch up `read_log_id`, which can be done by subscribing to [`Raft::metrics`],
 and at last, proceed with the state machine read.
 
-The above steps are encapsulated in the [`ensure_linearizable()`] method.
+The above steps are encapsulated in the [`ensure_linearizable(read_policy)`] method.
 
 ## Examples
 
 ```ignore
-my_raft.ensure_linearizable().await?;
+my_raft.ensure_linearizable(read_policy).await?;
 proceed_with_state_machine_read();
 ```
 
 The above snippet does the same as the following:
 
 ```ignore
-let (read_log_id, applied) = self.get_read_log_id().await?;
+let (read_log_id, applied) = self.get_read_log_id(read_policy).await?;
 
 if read_log_id.index() > applied.index() {
     self.wait(None).applied_index_at_least(read_log_id.index(), "").await?
@@ -60,7 +68,7 @@ the state machine contains all state upto `A`. Therefore, a linearizable read is
 when `last_applied_log_id >= read_log_id`.
 
 
-## Ensuring Linearizability with `read_index`
+## Ensuring Linearizability with `read_index` or `lease_read`
 
 And it is also legal by comparing `last_applied_log_id.index() >= read_log_id.index()`
 due to the guarantee that committed logs will not be lost.

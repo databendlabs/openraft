@@ -69,6 +69,7 @@ use crate::raft::message::TransferLeaderRequest;
 use crate::raft::responder::Responder;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
+use crate::raft::ReadPolicy;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::raft_state::io_state::io_id::IOId;
@@ -246,7 +247,7 @@ where
     // TODO: the second condition is such a read request can only read from state machine only when the last log it sees
     //       at `T1` is committed.
     #[tracing::instrument(level = "trace", skip(self, tx))]
-    pub(super) async fn handle_check_is_leader_request(&mut self, tx: ClientReadTx<C>) {
+    pub(super) async fn handle_check_is_leader_request(&mut self, read_policy: ReadPolicy, tx: ClientReadTx<C>) {
         // Setup sentinel values to track when we've received majority confirmation of leadership.
 
         let resp = {
@@ -268,6 +269,22 @@ where
             (read_log_id, applied)
         };
 
+        if read_policy == ReadPolicy::LeaseRead {
+            let now = C::now();
+            // Check if the lease is expired.
+            if let Some(last_quorum_acked_time) = self.last_quorum_acked_time() {
+                if now < last_quorum_acked_time + self.engine.config.timer_config.leader_lease {
+                    let _ = tx.send(Ok(resp));
+                    return;
+                }
+            }
+            tracing::debug!("{}: lease expired when do lease read", self.id);
+            // we may no longer leader so error out early
+            let err = ForwardToLeader::empty();
+            let _ = tx.send(Err(err.into()));
+            return;
+        }
+
         let my_id = self.id.clone();
         let my_vote = self.engine.state.vote_ref().clone();
         let ttl = Duration::from_millis(self.config.heartbeat_interval);
@@ -276,6 +293,7 @@ where
 
         let mut granted = btreeset! {my_id.clone()};
 
+        // single-node quorum, fast path, return quickly.
         if eff_mem.is_quorum(granted.iter()) {
             let _ = tx.send(Ok(resp));
             return;
@@ -1172,8 +1190,8 @@ where
             RaftMsg::InstallFullSnapshot { vote, snapshot, tx } => {
                 self.engine.handle_install_full_snapshot(vote, snapshot, tx);
             }
-            RaftMsg::CheckIsLeaderRequest { tx } => {
-                self.handle_check_is_leader_request(tx).await;
+            RaftMsg::CheckIsLeaderRequest { read_policy, tx } => {
+                self.handle_check_is_leader_request(read_policy, tx).await;
             }
             RaftMsg::ClientWriteRequest { app_data, tx } => {
                 self.write_entry(C::Entry::new_normal(LogIdOf::<C>::default(), app_data), Some(tx));
