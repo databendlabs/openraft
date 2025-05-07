@@ -15,10 +15,16 @@ pub(crate) struct Config {
     /// Note that this value should be greater than the `election_timeout` of every other node.
     pub(crate) smaller_log_timeout: Duration,
 
-    /// The duration of an active leader's lease.
+    /// The duration of an active leader's lease for a follower.
     ///
     /// When a follower or learner perceives an active leader, such as by receiving an AppendEntries
-    /// message, it should not grant another candidate to become the leader during this period.
+    /// message(including heartbeat), it should not grant vote to another candidate during this
+    /// period. This prevents unnecessary elections when the leader is still active and helps
+    /// maintain cluster stability.
+    ///
+    /// The leader uses this value to determine how long it can safely assume leadership without
+    /// sending heartbeats. A leader tracks the clock time acknowledged by followers to establish
+    /// a quorum-acknowledged time, ensuring no new leader can be elected before this lease expires.
     pub(crate) leader_lease: Duration,
 }
 
