@@ -96,6 +96,7 @@ pub use crate::base::OptionalSync;
 pub use crate::change_members::ChangeMembers;
 pub use crate::config::Config;
 pub use crate::config::ConfigError;
+pub use crate::config::ReadOnlyPolicy;
 pub use crate::config::SnapshotPolicy;
 pub use crate::core::ServerState;
 pub use crate::entry::Entry;

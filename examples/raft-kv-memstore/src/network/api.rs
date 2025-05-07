@@ -5,6 +5,7 @@ use actix_web::Responder;
 use openraft::error::CheckIsLeaderError;
 use openraft::error::Infallible;
 use openraft::error::RaftError;
+use openraft::ReadOnlyPolicy;
 use web::Json;
 
 use crate::app::App;
@@ -38,7 +39,7 @@ pub async fn read(app: Data<App>, req: Json<String>) -> actix_web::Result<impl R
 
 #[post("/linearizable_read")]
 pub async fn linearizable_read(app: Data<App>, req: Json<String>) -> actix_web::Result<impl Responder> {
-    let ret = app.raft.ensure_linearizable().await;
+    let ret = app.raft.ensure_linearizable(ReadOnlyPolicy::ReadIndex).await;
 
     match ret {
         Ok(_) => {

@@ -20,7 +20,7 @@ pub async fn write(app: &mut App, req: String) -> String {
 pub async fn read(app: &mut App, req: String) -> String {
     let key: String = decode(&req);
 
-    let ret = app.raft.ensure_linearizable().await;
+    let ret = app.raft.ensure_linearizable(ReadOnlyPolicy::ReadIndex).await;
 
     let res = match ret {
         Ok(_) => {
