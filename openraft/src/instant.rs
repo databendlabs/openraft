@@ -69,3 +69,9 @@ impl Instant for tokio::time::Instant {
         tokio::time::Instant::now()
     }
 }
+
+impl Instant for std::time::Instant {
+    fn now() -> Self {
+        std::time::Instant::now()
+    }
+}
