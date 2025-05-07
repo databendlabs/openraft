@@ -3,10 +3,9 @@ name: ci
 on:
   push:
   pull_request:
-  schedule: [cron: "40 1 * * *"]
+  schedule: [cron: '40 1 * * *']
 
 jobs:
-
   test-release-build:
     name: Build
     runs-on: ubuntu-latest
@@ -14,20 +13,18 @@ jobs:
     strategy:
       matrix:
         include:
-          - toolchain: "nightly"
-            features: "bench,serde,bt,singlethreaded"
+          - toolchain: 'nightly'
+            features: 'bench,serde,bt,singlethreaded'
 
     steps:
       - name: Setup | Checkout
         uses: actions/checkout@v4
 
-
       - name: Setup | Toolchain
         uses: actions-rs/toolchain@v1.0.6
         with:
-          toolchain: "${{ matrix.toolchain }}"
+          toolchain: '${{ matrix.toolchain }}'
           override: true
-
 
       - name: Build | Release Mode
         uses: actions-rs/cargo@v1
@@ -35,33 +32,29 @@ jobs:
           command: build
           args: --release --features "${{ matrix.features }}" --manifest-path openraft/Cargo.toml
 
-
   openraft-test-bench:
     runs-on: ubuntu-latest
 
     strategy:
       matrix:
         include:
-          - toolchain: "nightly"
+          - toolchain: 'nightly'
 
     steps:
       - name: Setup | Checkout
         uses: actions/checkout@v4
 
-
       - name: Setup | Toolchain
         uses: actions-rs/toolchain@v1.0.6
         with:
-          toolchain: "${{ matrix.toolchain }}"
+          toolchain: '${{ matrix.toolchain }}'
           override: true
-
 
       - name: Test build for benchmark
         uses: actions-rs/cargo@v1
         with:
           command: bench
           args: --features bench nothing-to-run --manifest-path openraft/Cargo.toml
-
 
   # Test crate `openraft/` and `macros/`
   test-openraft-core-crates:
@@ -71,27 +64,24 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - toolchain: "stable"
-            features: ""
+          - toolchain: 'stable'
+            features: ''
 
-          - toolchain: "nightly"
-            features: ""
+          - toolchain: 'nightly'
+            features: ''
 
     steps:
       - name: Setup | Checkout
         uses: actions/checkout@v4
 
-
       - name: Setup | Toolchain
         uses: actions-rs/toolchain@v1.0.6
         with:
-          toolchain: "${{ matrix.toolchain }}"
+          toolchain: '${{ matrix.toolchain }}'
           override: true
-
 
       - name: Install cargo-expand
         run: cargo install cargo-expand
-
 
       - name: Test crate `macros/`
         uses: actions-rs/cargo@v1
@@ -102,7 +92,6 @@ jobs:
           RUST_LOG: debug
           RUST_BACKTRACE: full
 
-
       - name: Test crate `openraft/`
         uses: actions-rs/cargo@v1
         with:
@@ -112,12 +101,11 @@ jobs:
           RUST_LOG: debug
           RUST_BACKTRACE: full
 
-
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: "ut-openraft-${{ matrix.toolchain }}-${{ matrix.features }}"
+          name: 'ut-openraft-${{ matrix.toolchain }}-${{ matrix.features }}'
           path: |
             openraft/_log/
 
@@ -129,32 +117,29 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - toolchain: "stable"
-            send_delay: "0"
-            features: ""
+          - toolchain: 'stable'
+            send_delay: '0'
+            features: ''
 
           # With network delay
-          - toolchain: "nightly"
-            send_delay: "30"
-            features: ""
+          - toolchain: 'nightly'
+            send_delay: '30'
+            features: ''
 
           # Feature-flag: Standard raft term
-          - toolchain: "nightly"
-            send_delay: "0"
-            features: "single-term-leader"
-
+          - toolchain: 'nightly'
+            send_delay: '0'
+            features: 'single-term-leader'
 
     steps:
       - name: Setup | Checkout
         uses: actions/checkout@v4
 
-
       - name: Setup | Toolchain
         uses: actions-rs/toolchain@v1.0.6
         with:
-          toolchain: "${{ matrix.toolchain }}"
+          toolchain: '${{ matrix.toolchain }}'
           override: true
-
 
       - name: Test crate `tests/`
         uses: actions-rs/cargo@v1
@@ -168,15 +153,13 @@ jobs:
           RUST_BACKTRACE: full
           OPENRAFT_NETWORK_SEND_DELAY: ${{ matrix.send_delay }}
 
-
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: "ut-tests-${{ matrix.toolchain }}-${{ matrix.features }}-${{ matrix.send_delay }}"
+          name: 'ut-tests-${{ matrix.toolchain }}-${{ matrix.features }}-${{ matrix.send_delay }}'
           path: |
             tests/_log/
-
 
   stores:
     runs-on: ubuntu-latest
@@ -185,19 +168,17 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - store: "stores/memstore"
+          - store: 'stores/memstore'
 
     steps:
       - name: Setup | Checkout
         uses: actions/checkout@v4
 
-
       - name: Setup | Toolchain
         uses: actions-rs/toolchain@v1.0.6
         with:
-          toolchain: "nightly"
+          toolchain: 'nightly'
           override: true
-
 
       # - A store with defensive checks returns error when unexpected accesses are sent to RaftStore.
       # - Raft should not depend on defensive error to work correctly.
@@ -213,7 +194,6 @@ jobs:
           RUST_BACKTRACE: full
           OPENRAFT_STORE_DEFENSIVE: on
 
-
   # Test external crate.
   # cluster_benchmark is a standalone crate for benchmarking openraft cluster.
   cluster-benchmark:
@@ -223,19 +203,17 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - crate: "cluster_benchmark"
+          - crate: 'cluster_benchmark'
 
     steps:
       - name: Setup | Checkout
         uses: actions/checkout@v4
 
-
       - name: Setup | Toolchain
         uses: actions-rs/toolchain@v1.0.6
         with:
-          toolchain: "nightly"
+          toolchain: 'nightly'
           override: true
-
 
       - name: Unit Tests
         uses: actions-rs/cargo@v1
@@ -246,7 +224,6 @@ jobs:
           RUST_LOG: debug
           RUST_BACKTRACE: full
 
-
   # Test external crate.
   rt-monoio:
     runs-on: ubuntu-latest
@@ -255,13 +232,11 @@ jobs:
       - name: Setup | Checkout
         uses: actions/checkout@v4
 
-
       - name: Setup | Toolchain
         uses: actions-rs/toolchain@v1.0.6
         with:
-          toolchain: "nightly"
+          toolchain: 'nightly'
           override: true
-
 
       - name: Unit Tests
         uses: actions-rs/cargo@v1
@@ -272,6 +247,27 @@ jobs:
           RUST_LOG: debug
           RUST_BACKTRACE: full
 
+  rt-compio:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Setup | Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup | Toolchain
+        uses: actions-rs/toolchain@v1.0.6
+        with:
+          toolchain: 'nightly'
+          override: true
+
+      - name: Unit Tests
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --tests --manifest-path "rt-compio/Cargo.toml"
+        env:
+          RUST_LOG: debug
+          RUST_BACKTRACE: full
 
   # Feature "serde" will be enabled if one of the member crates enables
   # "serde", such as `memstore`, when building a cargo workspace.
@@ -287,28 +283,25 @@ jobs:
       matrix:
         include:
           # No feature flags are enabled
-          - toolchain: "nightly"
-            features: ""
+          - toolchain: 'nightly'
+            features: ''
 
           # Enable "serde"
-          - toolchain: "nightly"
-            features: "serde"
+          - toolchain: 'nightly'
+            features: 'serde'
 
-          - toolchain: "nightly"
-            features: "serde,singlethreaded"
-
+          - toolchain: 'nightly'
+            features: 'serde,singlethreaded'
 
     steps:
       - name: Setup | Checkout
         uses: actions/checkout@v4
 
-
       - name: Setup | Toolchain
         uses: actions-rs/toolchain@v1.0.6
         with:
-          toolchain: "${{ matrix.toolchain }}"
+          toolchain: '${{ matrix.toolchain }}'
           override: true
-
 
       - name: Test crate `openraft/`
         uses: actions-rs/cargo@v1
@@ -321,7 +314,6 @@ jobs:
           RUST_LOG: debug
           RUST_BACKTRACE: full
 
-
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         if: failure()
@@ -329,7 +321,6 @@ jobs:
           name: openraft-feature-test
           path: |
             openraft/_log/
-
 
   # Integration tests with various features.
   tests-feature-test:
@@ -339,24 +330,21 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - toolchain: "nightly"
-            features: ""
+          - toolchain: 'nightly'
+            features: ''
 
-          - toolchain: "nightly"
-            features: "single-term-leader"
-
+          - toolchain: 'nightly'
+            features: 'single-term-leader'
 
     steps:
       - name: Setup | Checkout
         uses: actions/checkout@v4
 
-
       - name: Setup | Toolchain
         uses: actions-rs/toolchain@v1.0.6
         with:
-          toolchain: "${{ matrix.toolchain }}"
+          toolchain: '${{ matrix.toolchain }}'
           override: true
-
 
       - name: Test crate `tests/`
         uses: actions-rs/cargo@v1
@@ -368,7 +356,6 @@ jobs:
           RUST_TEST_THREADS: 2
           RUST_LOG: debug
           RUST_BACKTRACE: full
-
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -384,11 +371,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-
       - uses: actions-rs/toolchain@v1.0.6
         with:
           components: rustfmt, clippy
-
 
       - name: Format
         uses: actions-rs/cargo@v1
@@ -396,13 +381,11 @@ jobs:
           command: fmt
           args: --all -- --check
 
-
       - name: clippy
         shell: bash
         run: |
           cargo clippy --no-deps --workspace --all-targets                -- -D warnings
           cargo clippy --no-deps --workspace --all-targets --features "bt,serde,bench,compat" -- -D warnings
-
 
       - name: Build-doc
         uses: actions-rs/cargo@v1
@@ -410,18 +393,15 @@ jobs:
           command: doc
           args: --all --no-deps
         env:
-          RUSTDOCFLAGS: "-D warnings"
-
+          RUSTDOCFLAGS: '-D warnings'
 
       - shell: bash
         run: cargo install cargo-audit
-
 
       - name: Audit dependencies
         shell: bash
         # if: "!contains(github.event.head_commit.message, 'skip audit')"
         run: cargo audit --db ./target/advisory-db
-
 
   examples:
     runs-on: ubuntu-latest
@@ -429,36 +409,33 @@ jobs:
       fail-fast: false
       matrix:
         toolchain:
-          - "stable"
-          - "nightly"
+          - 'stable'
+          - 'nightly'
         example:
-          - "memstore"
-          - "rocksstore"
-          - "raft-kv-memstore"
-          - "raft-kv-memstore-grpc"
-          - "raft-kv-memstore-network-v2"
-          - "raft-kv-memstore-opendal-snapshot-data"
-          - "raft-kv-memstore-singlethreaded"
-          - "raft-kv-rocksdb"
+          - 'memstore'
+          - 'rocksstore'
+          - 'raft-kv-memstore'
+          - 'raft-kv-memstore-grpc'
+          - 'raft-kv-memstore-network-v2'
+          - 'raft-kv-memstore-opendal-snapshot-data'
+          - 'raft-kv-memstore-singlethreaded'
+          - 'raft-kv-rocksdb'
 
     steps:
       - uses: actions/checkout@v4
 
-
       - uses: actions-rs/toolchain@v1.0.6
         with:
-          toolchain: "${{ matrix.toolchain }}"
+          toolchain: '${{ matrix.toolchain }}'
           override: true
           components: rustfmt, clippy
 
       - name: Install Protoc
         uses: arduino/setup-protoc@v3
         with:
-          version: "23.x"
-
+          version: '23.x'
 
       # Run the following steps in the exmple dir in order to reuse the `./target` dir.
-
 
       - name: Test examples/${{ matrix.example }}
         shell: bash
@@ -467,7 +444,6 @@ jobs:
           cargo test
         env:
           RUST_LOG: debug
-
 
       - name: Test demo script of examples/${{ matrix.example }}
         # The script is not meant for testing. Just to ensure it works but do not
@@ -479,7 +455,6 @@ jobs:
           cd examples/${{ matrix.example }}
           ./test-cluster.sh
 
-
       - name: Format
         # clippy/format produces different result with stable and nightly. Only with nightly.
         if: ${{ matrix.toolchain == 'nightly' }}
@@ -488,7 +463,6 @@ jobs:
         run: |
           cd examples/${{ matrix.example }}
           cargo fmt --all -- --check
-
 
       - name: Clippy
         # clippy/format produces different result with stable and nightly. Only with nightly.
