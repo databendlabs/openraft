@@ -50,6 +50,7 @@ use crate::base::BoxAsyncOnceMut;
 use crate::base::BoxFuture;
 use crate::base::BoxOnce;
 use crate::config::Config;
+use crate::config::ReadOnlyPolicy;
 use crate::config::RuntimeConfig;
 use crate::core::heartbeat::handle::HeartbeatWorkersHandle;
 use crate::core::raft_msg::external_command::ExternalCommand;
@@ -515,7 +516,16 @@ where C: RaftTypeConfig
     #[tracing::instrument(level = "debug", skip(self))]
     pub async fn is_leader(&self) -> Result<(), RaftError<C, CheckIsLeaderError<C>>> {
         let (tx, rx) = C::oneshot();
-        let _ = self.inner.call_core(RaftMsg::CheckIsLeaderRequest { tx }, rx).await?;
+        let _ = self
+            .inner
+            .call_core(
+                RaftMsg::CheckIsLeaderRequest {
+                    read_only_policy: ReadOnlyPolicy::ReadIndex,
+                    tx,
+                },
+                rx,
+            )
+            .await?;
         Ok(())
     }
 
@@ -543,8 +553,11 @@ where C: RaftTypeConfig
     /// ```
     /// Read more about how it works: [Read Operation](crate::docs::protocol::read)
     #[tracing::instrument(level = "debug", skip(self))]
-    pub async fn ensure_linearizable(&self) -> Result<Option<LogIdOf<C>>, RaftError<C, CheckIsLeaderError<C>>> {
-        let (read_log_id, applied) = self.get_read_log_id().await?;
+    pub async fn ensure_linearizable(
+        &self,
+        read_only_policy: ReadOnlyPolicy,
+    ) -> Result<Option<LogIdOf<C>>, RaftError<C, CheckIsLeaderError<C>>> {
+        let (read_log_id, applied) = self.get_read_log_id(ReadOnlyPolicy::ReadIndex).await?;
 
         if read_log_id.index() > applied.index() {
             self.wait(None)
@@ -592,9 +605,11 @@ where C: RaftTypeConfig
     #[tracing::instrument(level = "debug", skip(self))]
     pub async fn get_read_log_id(
         &self,
+        read_only_policy: ReadOnlyPolicy,
     ) -> Result<(Option<LogIdOf<C>>, Option<LogIdOf<C>>), RaftError<C, CheckIsLeaderError<C>>> {
         let (tx, rx) = C::oneshot();
-        let (read_log_id, applied) = self.inner.call_core(RaftMsg::CheckIsLeaderRequest { tx }, rx).await?;
+        let (read_log_id, applied) =
+            self.inner.call_core(RaftMsg::CheckIsLeaderRequest { read_only_policy, tx }, rx).await?;
         Ok((read_log_id, applied))
     }
 

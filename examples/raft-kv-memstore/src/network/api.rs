@@ -9,6 +9,7 @@ use web::Json;
 
 use crate::app::App;
 use crate::store::Request;
+use crate::typ::ReadOnlyPolicy;
 use crate::TypeConfig;
 
 /**
@@ -38,7 +39,7 @@ pub async fn read(app: Data<App>, req: Json<String>) -> actix_web::Result<impl R
 
 #[post("/linearizable_read")]
 pub async fn linearizable_read(app: Data<App>, req: Json<String>) -> actix_web::Result<impl Responder> {
-    let ret = app.raft.ensure_linearizable().await;
+    let ret = app.raft.ensure_linearizable(ReadOnlyPolicy::ReadIndex).await;
 
     match ret {
         Ok(_) => {

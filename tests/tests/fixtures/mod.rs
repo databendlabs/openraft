@@ -57,6 +57,7 @@ use openraft::RaftLogReader;
 use openraft::RaftMetrics;
 use openraft::RaftState;
 use openraft::RaftTypeConfig;
+use openraft::ReadOnlyPolicy;
 use openraft::ServerState;
 use openraft::Vote;
 use openraft_memstore::ClientRequest;
@@ -769,9 +770,13 @@ impl TypedRaftRouter {
     }
 
     /// Ensure read linearizability.
-    pub async fn ensure_linearizable(&self, target: MemNodeId) -> Result<(), CheckIsLeaderError<MemConfig>> {
+    pub async fn ensure_linearizable(
+        &self,
+        target: MemNodeId,
+        read_only_policy: ReadOnlyPolicy,
+    ) -> Result<(), CheckIsLeaderError<MemConfig>> {
         let n = self.get_raft_handle(&target).unwrap();
-        n.ensure_linearizable().await.map_err(|e| e.into_api_error().unwrap())?;
+        n.ensure_linearizable(read_only_policy).await.map_err(|e| e.into_api_error().unwrap())?;
         Ok(())
     }
 

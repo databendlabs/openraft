@@ -4,6 +4,7 @@ use std::time::Duration;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
+use openraft::ReadOnlyPolicy;
 
 use crate::fixtures::log_id;
 use crate::fixtures::ut_harness;
@@ -40,7 +41,7 @@ async fn single_node() -> Result<()> {
     router.assert_storage_state(1, log_index, Some(0), log_id(1, 0, log_index), None).await?;
 
     // Read some data from the single node cluster.
-    router.ensure_linearizable(0).await?;
+    router.ensure_linearizable(0, ReadOnlyPolicy::ReadIndex).await?;
 
     Ok(())
 }

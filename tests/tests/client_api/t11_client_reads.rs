@@ -9,6 +9,7 @@ use openraft::error::RPCError;
 use openraft::Config;
 use openraft::LogIdOptionExt;
 use openraft::RPCTypes;
+use openraft::ReadOnlyPolicy;
 use openraft::ServerState;
 
 use crate::fixtures::ut_harness;
@@ -44,22 +45,28 @@ async fn client_reads() -> Result<()> {
     let leader = router.leader().expect("leader not found");
     assert_eq!(leader, 0, "expected leader to be node 0, got {}", leader);
     router
-        .ensure_linearizable(leader)
+        .ensure_linearizable(leader, ReadOnlyPolicy::ReadIndex)
         .await
         .unwrap_or_else(|_| panic!("ensure_linearizable to succeed for cluster leader {}", leader));
 
-    router.ensure_linearizable(1).await.expect_err("ensure_linearizable on follower node 1 to fail");
-    router.ensure_linearizable(2).await.expect_err("ensure_linearizable on follower node 2 to fail");
+    router
+        .ensure_linearizable(1, ReadOnlyPolicy::ReadIndex)
+        .await
+        .expect_err("ensure_linearizable on follower node 1 to fail");
+    router
+        .ensure_linearizable(2, ReadOnlyPolicy::ReadIndex)
+        .await
+        .expect_err("ensure_linearizable on follower node 2 to fail");
 
     tracing::info!(log_index, "--- isolate node 1 then ensure_linearizable should work");
 
     router.set_network_error(1, true);
-    router.ensure_linearizable(leader).await?;
+    router.ensure_linearizable(leader, ReadOnlyPolicy::ReadIndex).await?;
 
     tracing::info!(log_index, "--- isolate node 2 then ensure_linearizable should fail");
 
     router.set_network_error(2, true);
-    let rst = router.ensure_linearizable(leader).await;
+    let rst = router.ensure_linearizable(leader, ReadOnlyPolicy::ReadIndex).await;
     tracing::debug!(?rst, "ensure_linearizable with majority down");
 
     assert!(rst.is_err());
@@ -135,7 +142,7 @@ async fn get_read_log_id() -> Result<()> {
 
     tracing::info!("--- get_read_log_id returns blank log id");
     {
-        let (read_log_id, applied) = n1.get_read_log_id().await?;
+        let (read_log_id, applied) = n1.get_read_log_id(ReadOnlyPolicy::ReadIndex).await?;
         assert_eq!(
             read_log_id.index(),
             Some(blank_log_index),
@@ -154,7 +161,7 @@ async fn get_read_log_id() -> Result<()> {
         log_index += router.client_request_many(1, "foo", 1).await?;
         n1.wait(timeout()).applied_index(Some(log_index), "log applied to state-machine").await?;
 
-        let (read_log_id, applied) = n1.get_read_log_id().await?;
+        let (read_log_id, applied) = n1.get_read_log_id(ReadOnlyPolicy::ReadIndex).await?;
         assert_eq!(read_log_id.index(), Some(log_index), "read-log-id is the committed log");
         assert_eq!(applied.index(), Some(log_index));
     }
@@ -176,7 +183,7 @@ async fn get_read_log_id() -> Result<()> {
         log_index += 1;
         n1.wait(timeout()).log_index(Some(log_index), "log appended, but not committed").await?;
 
-        let (read_log_id, _applied) = n1.get_read_log_id().await?;
+        let (read_log_id, _applied) = n1.get_read_log_id(ReadOnlyPolicy::ReadIndex).await?;
         assert_eq!(
             read_log_id.index(),
             Some(last_committed),
