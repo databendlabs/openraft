@@ -7,6 +7,8 @@ use std::time::Duration;
 
 use anyerror::AnyError;
 use clap::Parser;
+use clap::ValueEnum;
+use derive_more::Display;
 use rand::Rng;
 
 use crate::config::error::ConfigError;
@@ -85,6 +87,33 @@ fn parse_snapshot_policy(src: &str) -> Result<SnapshotPolicy, ConfigError> {
     Ok(SnapshotPolicy::LogsSinceLast(n_logs))
 }
 
+/// Policy that determines how to handle read operations in a Raft cluster.
+///
+/// This enum defines strategies for ensuring linearizable reads in distributed systems
+/// while balancing between consistency guarantees and performance.
+#[derive(Clone, Debug, Display, PartialEq, Eq, ValueEnum)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+pub enum ReadOnlyPolicy {
+    /// Uses leader lease to avoid network round-trips for read operations.
+    ///
+    /// With `LeaseRead`, the leader can serve reads locally without contacting followers
+    /// as long as it believes its leadership lease is still valid. This provides better
+    /// performance compared to `ReadIndex` but assumes clock drift between nodes is negligible.
+    ///
+    /// Note: This offers slightly weaker consistency guarantees than `ReadIndex` in exchange
+    /// for lower latency.
+    LeaseRead,
+
+    /// Implements the ReadIndex protocol to ensure linearizable reads.
+    ///
+    /// With `ReadIndex`, the leader confirms its leadership status by contacting a quorum
+    /// of followers before serving read requests. This ensures strong consistency but incurs
+    /// the cost of network communication for each read operation.
+    ///
+    /// This is the safer option that provides the strongest consistency guarantees.
+    ReadIndex,
+}
+
 /// The runtime configuration for a Raft node.
 ///
 /// The default values used by this type should generally work well for Raft clusters which will
@@ -127,6 +156,26 @@ pub struct Config {
     /// The heartbeat interval in milliseconds at which leaders will send heartbeats to followers
     #[clap(long, default_value = "50")]
     pub heartbeat_interval: u64,
+
+    /// Leader lease time's ratio of `election_timeout`, mainly for clock drift.
+    /// To minimize the effects of clock drift, we should make that:
+    ///  clock drift + leader_lease < election_timeout
+    /// The range of `leader_lease_ratio` is (0, 100], default value is 90.
+    #[clap(long, default_value = "90")]
+    pub leader_lease_ratio: u64,
+
+    /// Specifies the policy for handling read operations in the Raft cluster.
+    ///
+    /// This setting determines how read requests are processed to balance between
+    /// consistency guarantees and performance:
+    /// - `ReadIndex`: Ensures linearizable reads by confirming leadership with a quorum before
+    ///   serving reads. Provides strongest consistency at the cost of higher latency.
+    /// - `LeaseRead`: Uses leadership lease to avoid network round-trips for reads, providing
+    ///   better performance but slightly weaker consistency guarantees.
+    ///
+    /// Defaults to `ReadIndex` for maximum safety.
+    #[clap(long, value_enum, default_value_t = ReadOnlyPolicy::ReadIndex)]
+    pub read_only_policy: ReadOnlyPolicy,
 
     /// The timeout for sending then installing the last snapshot segment,
     /// in millisecond. It is also used as the timeout for sending a non-last segment, if
@@ -280,6 +329,11 @@ impl Config {
     /// Get the timeout for sending and installing the last snapshot segment.
     pub fn install_snapshot_timeout(&self) -> Duration {
         Duration::from_millis(self.install_snapshot_timeout)
+    }
+
+    /// Get the leader lease timeout.
+    pub fn leader_lease_timeout(&self, rand_election_timeout: u64) -> Duration {
+        Duration::from_millis(rand_election_timeout * self.leader_lease_ratio / 100)
     }
 
     /// Get the timeout for sending a non-last snapshot segment.

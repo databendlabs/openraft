@@ -34,7 +34,8 @@ impl<C> EngineConfig<C>
 where C: RaftTypeConfig
 {
     pub(crate) fn new(id: C::NodeId, config: &Config) -> Self {
-        let election_timeout = Duration::from_millis(config.new_rand_election_timeout::<AsyncRuntimeOf<C>>());
+        let rand_election_timeout = config.new_rand_election_timeout::<AsyncRuntimeOf<C>>();
+        let election_timeout = Duration::from_millis(rand_election_timeout);
         Self {
             id,
             snapshot_policy: config.snapshot_policy.clone(),
@@ -46,7 +47,7 @@ where C: RaftTypeConfig
             timer_config: time_state::Config {
                 election_timeout,
                 smaller_log_timeout: Duration::from_millis(config.election_timeout_max * 2),
-                leader_lease: Duration::from_millis(config.election_timeout_max),
+                leader_lease: config.leader_lease_timeout(rand_election_timeout),
             },
         }
     }

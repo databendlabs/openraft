@@ -50,6 +50,7 @@ use crate::base::BoxAsyncOnceMut;
 use crate::base::BoxFuture;
 use crate::base::BoxOnce;
 use crate::config::Config;
+use crate::config::ReadOnlyPolicy;
 use crate::config::RuntimeConfig;
 use crate::core::heartbeat::handle::HeartbeatWorkersHandle;
 use crate::core::raft_msg::external_command::ExternalCommand;
@@ -515,26 +516,34 @@ where C: RaftTypeConfig
     #[tracing::instrument(level = "debug", skip(self))]
     pub async fn is_leader(&self) -> Result<(), RaftError<C, CheckIsLeaderError<C>>> {
         let (tx, rx) = C::oneshot();
-        let _ = self.inner.call_core(RaftMsg::CheckIsLeaderRequest { tx }, rx).await?;
+        let _ = self
+            .inner
+            .call_core(
+                RaftMsg::CheckIsLeaderRequest {
+                    read_only_policy: ReadOnlyPolicy::ReadIndex,
+                    tx,
+                },
+                rx,
+            )
+            .await?;
         Ok(())
     }
 
-    /// Ensures a read operation performed following this method are linearizable across the
-    /// cluster.
+    /// Ensures reads performed after this method are linearizable across the cluster.
     ///
-    /// This method is just a shorthand for calling [`get_read_log_id()`](Raft::get_read_log_id) and
-    /// then calling [Raft::wait].
+    /// This is a shorthand for calling [`get_read_log_id()`](Raft::get_read_log_id) and then
+    /// [`wait()`](Raft::wait).
     ///
-    /// This method confirms the node's leadership at the time of invocation by sending
-    /// heartbeats to a quorum of followers, and the state machine is up to date.
-    /// This method blocks until all these conditions are met.
+    /// This method uses the `ReadOnlyPolicy` configured in the Raft instance to confirm
+    /// the node's leadership status. It may send heartbeats to a quorum of followers
+    /// and ensure the state machine is up to date, depending on the policy.
+    /// Blocks until all required conditions are met.
     ///
     /// Returns:
-    /// - `Ok(read_log_id)` on successful confirmation that the node is the leader. `read_log_id`
-    ///   represents the log id up to which the state machine has applied to ensure a linearizable
-    ///   read.
-    /// - `Err(RaftError<CheckIsLeaderError>)` if it detects a higher term, or if it fails to
-    ///   communicate with a quorum of followers.
+    /// - `Ok(read_log_id)` when successfully confirming leadership. `read_log_id` represents the
+    ///   log ID up to which the state machine has applied, ensuring linearizable read.
+    /// - `Err(RaftError<CheckIsLeaderError>)` if a higher term is detected or if it fails to
+    ///   communicate with a quorum of followers when required by the policy.
     ///
     /// # Examples
     /// ```ignore
@@ -544,7 +553,45 @@ where C: RaftTypeConfig
     /// Read more about how it works: [Read Operation](crate::docs::protocol::read)
     #[tracing::instrument(level = "debug", skip(self))]
     pub async fn ensure_linearizable(&self) -> Result<Option<LogIdOf<C>>, RaftError<C, CheckIsLeaderError<C>>> {
-        let (read_log_id, applied) = self.get_read_log_id().await?;
+        self.do_ensure_linearizable(self.inner.config.read_only_policy.clone()).await
+    }
+
+    /// Ensures reads performed after this method are linearizable across the cluster
+    /// using an explicitly provided policy.
+    ///
+    /// Similar to [`ensure_linearizable()`](Raft::ensure_linearizable), but overrides the
+    /// configured `ReadOnlyPolicy` with the one provided as an argument.
+    ///
+    /// This allows temporarily using a different policy than what's configured in the Raft
+    /// instance. For example, you might use a more strict policy for specific critical reads
+    /// while keeping a more performant policy for general operations.
+    ///
+    /// Returns:
+    /// - `Ok(read_log_id)` when successfully confirming leadership according to the provided
+    ///   policy. `read_log_id` represents the log ID up to which the state machine has applied.
+    /// - `Err(RaftError<CheckIsLeaderError>)` if a higher term is detected or if it fails to meet
+    ///   the requirements of the provided policy.
+    ///
+    /// # Examples
+    /// ```ignore
+    /// // Use a strict policy for this specific read
+    /// my_raft.ensure_linearizable_with_policy(ReadOnlyPolicy::Safe).await?;
+    /// // Proceed with the state machine read
+    /// ```
+    /// Read more about how it works: [Read Operation](crate::docs::protocol::read)
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub async fn ensure_linearizable_with_policy(
+        &self,
+        read_only_policy: ReadOnlyPolicy,
+    ) -> Result<Option<LogIdOf<C>>, RaftError<C, CheckIsLeaderError<C>>> {
+        self.do_ensure_linearizable(read_only_policy).await
+    }
+
+    async fn do_ensure_linearizable(
+        &self,
+        read_only_policy: ReadOnlyPolicy,
+    ) -> Result<Option<LogIdOf<C>>, RaftError<C, CheckIsLeaderError<C>>> {
+        let (read_log_id, applied) = self.get_read_log_id(read_only_policy).await?;
 
         if read_log_id.index() > applied.index() {
             self.wait(None)
@@ -595,9 +642,11 @@ where C: RaftTypeConfig
     #[tracing::instrument(level = "debug", skip(self))]
     pub async fn get_read_log_id(
         &self,
+        read_only_policy: ReadOnlyPolicy,
     ) -> Result<(Option<LogIdOf<C>>, Option<LogIdOf<C>>), RaftError<C, CheckIsLeaderError<C>>> {
         let (tx, rx) = C::oneshot();
-        let (read_log_id, applied) = self.inner.call_core(RaftMsg::CheckIsLeaderRequest { tx }, rx).await?;
+        let (read_log_id, applied) =
+            self.inner.call_core(RaftMsg::CheckIsLeaderRequest { read_only_policy, tx }, rx).await?;
         Ok((read_log_id, applied))
     }
 

@@ -47,3 +47,4 @@ pub type InstallSnapshotRequest = openraft::raft::InstallSnapshotRequest<TypeCon
 pub type InstallSnapshotResponse = openraft::raft::InstallSnapshotResponse<TypeConfig>;
 pub type SnapshotResponse = openraft::raft::SnapshotResponse<TypeConfig>;
 pub type ClientWriteResponse = openraft::raft::ClientWriteResponse<TypeConfig>;
+pub type ReadOnlyPolicy = openraft::ReadOnlyPolicy;

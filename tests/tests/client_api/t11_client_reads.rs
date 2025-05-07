@@ -9,6 +9,7 @@ use openraft::error::RPCError;
 use openraft::Config;
 use openraft::LogIdOptionExt;
 use openraft::RPCTypes;
+use openraft::ReadOnlyPolicy;
 use openraft::ServerState;
 
 use crate::fixtures::ut_harness;
@@ -135,7 +136,7 @@ async fn get_read_log_id() -> Result<()> {
 
     tracing::info!("--- get_read_log_id returns blank log id");
     {
-        let (read_log_id, applied) = n1.get_read_log_id().await?;
+        let (read_log_id, applied) = n1.get_read_log_id(ReadOnlyPolicy::ReadIndex).await?;
         assert_eq!(
             read_log_id.index(),
             Some(blank_log_index),
@@ -154,7 +155,7 @@ async fn get_read_log_id() -> Result<()> {
         log_index += router.client_request_many(1, "foo", 1).await?;
         n1.wait(timeout()).applied_index(Some(log_index), "log applied to state-machine").await?;
 
-        let (read_log_id, applied) = n1.get_read_log_id().await?;
+        let (read_log_id, applied) = n1.get_read_log_id(ReadOnlyPolicy::ReadIndex).await?;
         assert_eq!(read_log_id.index(), Some(log_index), "read-log-id is the committed log");
         assert_eq!(applied.index(), Some(log_index));
     }
@@ -176,13 +177,161 @@ async fn get_read_log_id() -> Result<()> {
         log_index += 1;
         n1.wait(timeout()).log_index(Some(log_index), "log appended, but not committed").await?;
 
-        let (read_log_id, _applied) = n1.get_read_log_id().await?;
+        let (read_log_id, _applied) = n1.get_read_log_id(ReadOnlyPolicy::ReadIndex).await?;
         assert_eq!(
             read_log_id.index(),
             Some(last_committed),
             "read-log-id is the committed log"
         );
     };
+
+    Ok(())
+}
+
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
+async fn ensure_linearizable_different_policies() -> Result<()> {
+    // test ReadIndex policy
+
+    let config = Arc::new(
+        Config {
+            enable_heartbeat: false,
+            enable_elect: false,
+            heartbeat_interval: 100,
+            election_timeout_min: 101,
+            election_timeout_max: 102,
+            ..Default::default()
+        }
+        .validate()?,
+    );
+
+    let mut router = RaftRouter::new(config.clone());
+    router.network_send_delay(0);
+
+    tracing::info!("--- initializing cluster");
+    let log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+
+    // Get the ID of the leader
+    let leader = router.leader().expect("leader not found");
+    assert_eq!(leader, 0, "expected leader to be node 0, got {}", leader);
+
+    tracing::info!("--- testing ReadIndex policy");
+    {
+        let rpc_count_before = router.get_rpc_count();
+        let append_entries_count_before = *rpc_count_before.get(&RPCTypes::AppendEntries).unwrap_or(&0);
+
+        router
+            .ensure_linearizable_with_policy(leader, ReadOnlyPolicy::ReadIndex)
+            .await
+            .unwrap_or_else(|_| panic!("ensure_linearizable with ReadIndex failed for leader {}", leader));
+
+        // check RPC count, leader should send heartbeat with ReadIndex policy
+        let rpc_count_after = router.get_rpc_count();
+        let append_entries_count_after = *rpc_count_after.get(&RPCTypes::AppendEntries).unwrap_or(&0);
+
+        assert!(
+            append_entries_count_after > append_entries_count_before,
+            "ReadIndex policy should send heartbeats: before={}, after={}",
+            append_entries_count_before,
+            append_entries_count_after
+        );
+
+        tracing::info!(
+            log_index,
+            "--- isolate node 1 then ensure_linearizable with `ReadIndex` should work"
+        );
+
+        router.set_network_error(1, true);
+        router.ensure_linearizable_with_policy(leader, ReadOnlyPolicy::ReadIndex).await?;
+
+        tracing::info!(
+            log_index,
+            "--- isolate node 2 then ensure_linearizable with `ReadIndex` should work"
+        );
+
+        router.set_network_error(2, true);
+        let rst = router.ensure_linearizable_with_policy(leader, ReadOnlyPolicy::ReadIndex).await;
+        tracing::debug!(?rst, "ensure_linearizable with majority down");
+
+        assert!(rst.is_err());
+    }
+
+    // test LeaseRead policy
+
+    let config = Arc::new(
+        Config {
+            enable_heartbeat: false,
+            enable_elect: false,
+            heartbeat_interval: 1000,
+            election_timeout_min: 1001,
+            election_timeout_max: 1002,
+            ..Default::default()
+        }
+        .validate()?,
+    );
+
+    let mut router = RaftRouter::new(config.clone());
+    router.network_send_delay(0);
+
+    tracing::info!("--- initializing cluster");
+    let log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+
+    // Get the ID of the leader, and assert that ensure_linearizable succeeds.
+    let leader = router.leader().expect("leader not found");
+    assert_eq!(leader, 0, "expected leader to be node 0, got {}", leader);
+
+    tracing::info!("--- testing LeaseRead policy");
+    {
+        let rpc_count_before = router.get_rpc_count();
+        let append_entries_count_before = *rpc_count_before.get(&RPCTypes::AppendEntries).unwrap_or(&0);
+
+        router
+            .ensure_linearizable_with_policy(leader, ReadOnlyPolicy::LeaseRead)
+            .await
+            .unwrap_or_else(|_| panic!("ensure_linearizable with `LeaseRead` failed for leader {}", leader));
+
+        // check RPC count, leader should **NOT** send heartbeat with LeaseRead policy
+        let rpc_count_after = router.get_rpc_count();
+        let append_entries_count_after = *rpc_count_after.get(&RPCTypes::AppendEntries).unwrap_or(&0);
+
+        assert_eq!(
+            append_entries_count_after, append_entries_count_before,
+            "Lease policy should not send heartbeats: before={}, after={}",
+            append_entries_count_before, append_entries_count_after
+        );
+
+        tracing::info!(
+            log_index,
+            "--- isolate node 1 then ensure_linearizable with `LeaseRead` should work"
+        );
+
+        router.set_network_error(1, true);
+        router.ensure_linearizable_with_policy(leader, ReadOnlyPolicy::LeaseRead).await?;
+
+        tracing::info!(
+            log_index,
+            "--- isolate node 2 then ensure_linearizable with `LeaseRead` should work"
+        );
+
+        router.set_network_error(2, true);
+        router.ensure_linearizable_with_policy(leader, ReadOnlyPolicy::LeaseRead).await?;
+    }
+
+    // test follower nodes with different policies
+    tracing::info!("--- testing followers with different policies");
+    {
+        // ReadIndex from follower node 1 should fail
+        router
+            .ensure_linearizable_with_policy(1, ReadOnlyPolicy::ReadIndex)
+            .await
+            .expect_err("ensure_linearizable with ReadIndex on follower node 1 should fail");
+
+        // LeaseRead from follower node 1 should fail
+        router
+            .ensure_linearizable_with_policy(1, ReadOnlyPolicy::LeaseRead)
+            .await
+            .expect_err("ensure_linearizable with LeaseRead on follower node 1 should fail");
+    }
 
     Ok(())
 }
