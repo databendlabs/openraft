@@ -4,6 +4,7 @@ use std::fmt::Display;
 use std::fmt::Error;
 use std::fmt::Formatter;
 use std::future::Future;
+use std::mem::ManuallyDrop;
 use std::pin::Pin;
 use std::task::Context;
 use std::task::Poll;
@@ -35,7 +36,14 @@ impl Display for CompioJoinError {
     }
 }
 
-pub struct CompioJoinHandle<T>(pub compio::runtime::JoinHandle<T>);
+pub struct CompioJoinHandle<T>(pub ManuallyDrop<compio::runtime::JoinHandle<T>>);
+
+impl<T> CompioJoinHandle<T> {
+    pub fn cancel(mut self) {
+        // SAFETY: We are not using the JoinHandle anymore, so we can safely drop it.
+        unsafe { ManuallyDrop::drop(&mut self.0) }
+    }
+}
 
 impl<T> Future for CompioJoinHandle<T> {
     type Output = Result<T, CompioJoinError>;
@@ -49,9 +57,6 @@ impl<T> Future for CompioJoinHandle<T> {
         }
     }
 }
-
-pub struct FuturesOneShotSender<T: OptionalSend>(pub futures::channel::oneshot::Sender<T>);
-pub struct FuturesOneShotReceiver<T: OptionalSend>(pub futures::channel::oneshot::Receiver<T>);
 
 pub type BoxedFuture<T> = Pin<Box<dyn Future<Output = T>>>;
 
@@ -103,7 +108,7 @@ impl AsyncRuntime for CompioRuntime {
         T: Future + OptionalSend + 'static,
         T::Output: OptionalSend + 'static,
     {
-        CompioJoinHandle(compio::runtime::spawn(fut))
+        CompioJoinHandle(ManuallyDrop::new(compio::runtime::spawn(fut)))
     }
 
     fn sleep(duration: std::time::Duration) -> Self::Sleep {
@@ -127,12 +132,25 @@ impl AsyncRuntime for CompioRuntime {
         CompioTimeout { future, delay }
     }
 
-    /// Task only returns `JoinError` if the spawned future panics.
     fn is_panic(_: &Self::JoinError) -> bool {
+        // Task only returns `JoinError` if the spawned future panics.
         true
     }
 
     fn thread_rng() -> Self::ThreadLocalRng {
         rand::rng()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use openraft::testing::runtime::Suite;
+
+    use super::*;
+
+    #[test]
+    fn test_compio_rt() {
+        let rt = compio::runtime::Runtime::new().unwrap();
+        rt.block_on(Suite::<CompioRuntime>::test_all());
     }
 }

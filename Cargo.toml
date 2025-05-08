@@ -60,6 +60,7 @@ members = [
     "macros",
     "tests",
     "stores/memstore",
+    "rt-compio"
 ]
 exclude = [
     "cluster_benchmark",
@@ -72,5 +73,4 @@ exclude = [
     "examples/raft-kv-memstore-opendal-snapshot-data",
     "examples/raft-kv-rocksdb",
     "rt-monoio",
-    "rt-compio"
 ]

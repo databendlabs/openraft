@@ -19,3 +19,6 @@ tokio = { version = "1.22", features = ["sync"], default-features = false }
 rand = "0.9"
 futures = "0.3"
 pin-project-lite = "0.2.16"
+
+[dev-dependencies]
+compio = { version = "0.14.0", features = ["macros"] }
