@@ -571,12 +571,13 @@ where C: RaftTypeConfig
     /// - `Ok((read_log_id, last_applied_log_id))` on successful confirmation that the node is the
     ///   leader. `read_log_id` represents the log id up to which the state machine should apply to
     ///   ensure a linearizable read.
-    /// - `Err(RaftError<CheckIsLeaderError>)` if it detects a higher term, or if it fails to
-    ///   communicate with a quorum of followers.
+    /// - `Err(RaftError<CheckIsLeaderError>)` if this node fail to ensure its leadership, for
+    ///   example, it detects a higher term, or fails to communicate with a quorum.
     ///
-    /// The caller should then wait for `last_applied_log_id` to catch up, which can be done by
-    /// subscribing to [`Raft::metrics`] and waiting for `last_applied_log_id` to
-    /// reach `read_log_id`.
+    /// Once returned, the caller should wait for the state machine to apply entries up to
+    /// `read_log_id`. This can be done by using the [`wait()`] as shown in the example
+    /// below, or by directly monitoring `last_applied` in [`Raft::metrics`] until it reaches or
+    /// exceeds `read_log_id`.
     ///
     /// # Examples
     /// ```ignore
@@ -589,6 +590,8 @@ where C: RaftTypeConfig
     /// The comparison `read_log_id > applied_log_id` would also be valid in the above example.
     ///
     /// See: [Read Operation](crate::docs::protocol::read)
+    ///
+    /// [`wait()`]: Raft::wait
     #[tracing::instrument(level = "debug", skip(self))]
     pub async fn get_read_log_id(
         &self,
@@ -639,6 +642,7 @@ where C: RaftTypeConfig
     /// `_ff` means fire and forget.
     ///
     /// It is same as [`Raft::client_write`] but does not wait for the response.
+    #[since(version = "0.10.0")]
     #[tracing::instrument(level = "debug", skip(self, app_data))]
     pub async fn client_write_ff(&self, app_data: C::D) -> Result<ResponderReceiverOf<C>, Fatal<C>> {
         let (app_data, tx, rx) = ResponderOf::<C>::from_app_data(app_data);
