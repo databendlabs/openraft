@@ -21,13 +21,14 @@ jobs:
           excludeDescription: 'true' # optional: this excludes the description body of a pull request
           excludeTitle: 'true' # optional: this excludes the title of a pull request
           accessToken: ${{ secrets.GITHUB_TOKEN }}
-          pattern: '^(DataChange:|Change:|Feature:|Improve:|Perf:|Dep:|Doc:|Test:|CI:|Refactor:|Fix:|Fixdoc:|Fixup:|Merge|BumpVer:|Chore:|fix:|feat:|perf:|refactor:|test:|docs:|deps:|chore:|ci:|Build\(deps\):) .+$'
+          pattern: '^(DataChange:|Change:|change:|Feature:|Improve:|Perf:|Dep:|Doc:|Test:|CI:|Refactor:|Fix:|Fixdoc:|Fixup:|Merge|BumpVer:|Chore:|fix:|feat:|perf:|refactor:|test:|docs:|deps:|chore:|ci:|Build\(deps\):) .+$'
           flags: 'gm'
           error: |
             Subject line has to contain a commit type, e.g.: "Change: blabla" or a merge commit e.g.: "Merge xxx".
             Valid types are:
               DataChange    - Persistent data change
               Change        - API breaking change
+              change        - API breaking change
               Feature       - API compatible new feature
               feat          - API compatible new feature
               Improve       - Become better without functional changes
