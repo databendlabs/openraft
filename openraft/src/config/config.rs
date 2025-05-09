@@ -7,6 +7,8 @@ use std::time::Duration;
 
 use anyerror::AnyError;
 use clap::Parser;
+use clap::ValueEnum;
+use derive_more::Display;
 use rand::Rng;
 
 use crate::config::error::ConfigError;
@@ -85,6 +87,14 @@ fn parse_snapshot_policy(src: &str) -> Result<SnapshotPolicy, ConfigError> {
     Ok(SnapshotPolicy::LogsSinceLast(n_logs))
 }
 
+#[derive(Clone, Debug, Display, PartialEq, Eq, ValueEnum)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+pub enum ReadOnlyPolicy {
+    None,
+    LeaseRead,
+    ReadIndex,
+}
+
 /// The runtime configuration for a Raft node.
 ///
 /// The default values used by this type should generally work well for Raft clusters which will
@@ -127,6 +137,16 @@ pub struct Config {
     /// The heartbeat interval in milliseconds at which leaders will send heartbeats to followers
     #[clap(long, default_value = "50")]
     pub heartbeat_interval: u64,
+
+    /// Leader lease time's ratio of `election_timeout`.
+    /// To minimize the effects of clock drift, we should make that:
+    ///  clock drift + leader_lease < election_timeout
+    /// The range of `leader_lease_ratio` is (0, 100], default value is 90.
+    #[clap(long, default_value = "90")]
+    pub leader_lease_ratio: u64,
+
+    #[clap(long, value_enum, default_value_t = ReadOnlyPolicy::None)]
+    pub read_only_policy: ReadOnlyPolicy,
 
     /// The timeout for sending then installing the last snapshot segment,
     /// in millisecond. It is also used as the timeout for sending a non-last segment, if
@@ -280,6 +300,10 @@ impl Config {
     /// Get the timeout for sending and installing the last snapshot segment.
     pub fn install_snapshot_timeout(&self) -> Duration {
         Duration::from_millis(self.install_snapshot_timeout)
+    }
+
+    pub fn leader_lease_timeout(&self, rand_election_timeout: u64) -> Duration {
+        Duration::from_millis(rand_election_timeout * self.leader_lease_ratio / 100)
     }
 
     /// Get the timeout for sending a non-last snapshot segment.

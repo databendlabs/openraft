@@ -41,7 +41,7 @@ async fn read(mut req: Request<Arc<App>>) -> tide::Result {
 }
 
 async fn linearizable_read(mut req: Request<Arc<App>>) -> tide::Result {
-    let ret = req.state().raft.ensure_linearizable().await;
+    let ret = req.state().raft.ensure_linearizable(ReadOnlyPolicy::ReadIndex).await;
 
     match ret {
         Ok(_) => {

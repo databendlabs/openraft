@@ -33,7 +33,7 @@ impl Default for Config {
         Self {
             election_timeout: Duration::from_millis(150),
             smaller_log_timeout: Duration::from_millis(200),
-            leader_lease: Duration::from_millis(150),
+            leader_lease: Duration::from_millis(135),
         }
     }
 }

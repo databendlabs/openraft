@@ -20,6 +20,7 @@ use crate::type_config::alias::VoteOf;
 use crate::ChangeMembers;
 use crate::RaftState;
 use crate::RaftTypeConfig;
+use crate::ReadOnlyPolicy;
 
 pub(crate) mod external_command;
 
@@ -73,6 +74,7 @@ where C: RaftTypeConfig
     },
 
     CheckIsLeaderRequest {
+        read_only_policy: ReadOnlyPolicy,
         tx: ClientReadTx<C>,
     },
 
@@ -130,7 +132,9 @@ where C: RaftTypeConfig
                 write!(f, "InstallFullSnapshot: vote: {}, snapshot: {}", vote, snapshot)
             }
             RaftMsg::ClientWriteRequest { .. } => write!(f, "ClientWriteRequest"),
-            RaftMsg::CheckIsLeaderRequest { .. } => write!(f, "CheckIsLeaderRequest"),
+            RaftMsg::CheckIsLeaderRequest { read_only_policy, .. } => {
+                write!(f, "CheckIsLeaderRequest with read only policy: {}", read_only_policy)
+            }
             RaftMsg::Initialize { members, .. } => {
                 // TODO: avoid using Debug
                 write!(f, "Initialize: {:?}", members)
