@@ -239,7 +239,7 @@ pub fn new_mem_store() -> (Arc<MemLogStore>, Arc<MemStateMachine>) {
 
 impl RaftLogReader<TypeConfig> for Arc<MemLogStore> {
     async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + OptionalSend>(
-        &mut self,
+        &self,
         range: RB,
     ) -> Result<Vec<Entry<TypeConfig>>, StorageError<TypeConfig>> {
         let mut entries = vec![];

@@ -51,7 +51,7 @@ async fn replication_does_not_block_purge() -> Result<()> {
 
         sleep(Duration::from_millis(500)).await;
 
-        let (mut sto0, mut _sm0) = router.get_storage_handle(&0)?;
+        let (sto0, mut _sm0) = router.get_storage_handle(&0)?;
         let logs = sto0.try_get_log_entries(..).await?;
         assert_eq!(max_keep as usize, logs.len(), "leader's local logs are purged");
     }
