@@ -1,5 +1,5 @@
 <div align="center">
-    <h1>Openraft</h1>
+    <h1>OpenRaft</h1>
     <h4>
         Advanced <a href="https://raft.github.io/">Raft</a> in 🦀 Rust using <a href="https://tokio.rs/">Tokio</a>. Please ⭐ on <a href="https://github.com/databendlabs/openraft">github</a>!
     </h4>
@@ -7,6 +7,7 @@
 
 [![Crates.io](https://img.shields.io/crates/v/openraft.svg)](https://crates.io/crates/openraft)
 [![docs.rs](https://docs.rs/openraft/badge.svg)](https://docs.rs/openraft)
+[![DeepWiki](https://img.shields.io/badge/DeepWiki-openraft-blue.svg?logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACwAAAAyCAYAAAAnWDnqAAAAAXNSR0IArs4c6QAAA05JREFUaEPtmUtyEzEQhtWTQyQLHNak2AB7ZnyXZMEjXMGeK/AIi+QuHrMnbChYY7MIh8g01fJoopFb0uhhEqqcbWTp06/uv1saEDv4O3n3dV60RfP947Mm9/SQc0ICFQgzfc4CYZoTPAswgSJCCUJUnAAoRHOAUOcATwbmVLWdGoH//PB8mnKqScAhsD0kYP3j/Yt5LPQe2KvcXmGvRHcDnpxfL2zOYJ1mFwrryWTz0advv1Ut4CJgf5uhDuDj5eUcAUoahrdY/56ebRWeraTjMt/00Sh3UDtjgHtQNHwcRGOC98BJEAEymycmYcWwOprTgcB6VZ5JK5TAJ+fXGLBm3FDAmn6oPPjR4rKCAoJCal2eAiQp2x0vxTPB3ALO2CRkwmDy5WohzBDwSEFKRwPbknEggCPB/imwrycgxX2NzoMCHhPkDwqYMr9tRcP5qNrMZHkVnOjRMWwLCcr8ohBVb1OMjxLwGCvjTikrsBOiA6fNyCrm8V1rP93iVPpwaE+gO0SsWmPiXB+jikdf6SizrT5qKasx5j8ABbHpFTx+vFXp9EnYQmLx02h1QTTrl6eDqxLnGjporxl3NL3agEvXdT0WmEost648sQOYAeJS9Q7bfUVoMGnjo4AZdUMQku50McDcMWcBPvr0SzbTAFDfvJqwLzgxwATnCgnp4wDl6Aa+Ax283gghmj+vj7feE2KBBRMW3FzOpLOADl0Isb5587h/U4gGvkt5v60Z1VLG8BhYjbzRwyQZemwAd6cCR5/XFWLYZRIMpX39AR0tjaGGiGzLVyhse5C9RKC6ai42ppWPKiBagOvaYk8lO7DajerabOZP46Lby5wKjw1HCRx7p9sVMOWGzb/vA1hwiWc6jm3MvQDTogQkiqIhJV0nBQBTU+3okKCFDy9WwferkHjtxib7t3xIUQtHxnIwtx4mpg26/HfwVNVDb4oI9RHmx5WGelRVlrtiw43zboCLaxv46AZeB3IlTkwouebTr1y2NjSpHz68WNFjHvupy3q8TFn3Hos2IAk4Ju5dCo8B3wP7VPr/FGaKiG+T+v+TQqIrOqMTL1VdWV1DdmcbO8KXBz6esmYWYKPwDL5b5FA1a0hwapHiom0r/cKaoqr+27/XcrS5UwSMbQAAAABJRU5ErkJggg==)](https://deepwiki.com/databendlabs/openraft)
 [![guides](https://img.shields.io/badge/guide-%E2%86%97-brightgreen)](https://docs.rs/openraft/latest/openraft/docs/index.html)
 [![Discord Chat](https://img.shields.io/discord/1015845055434588200?logo=discord)](https://discord.gg/ZKw3WG7FQ9)
 <br/>
@@ -24,14 +25,15 @@ Currently, openraft is the consensus engine of meta-service cluster in [databend
 
 
 - 🚀 **Get started**:
-    - [Openraft guide](https://docs.rs/openraft/latest/openraft/docs/getting_started/index.html) is the best place to get started,
-    - [Openraft docs](https://docs.rs/openraft/latest/openraft/docs/index.html) for more in-depth details,
-    - [Openraft FAQ](https://docs.rs/openraft/latest/openraft/docs/faq/index.html) explains some common questions.
+    - [OpenRaft guide](https://docs.rs/openraft/latest/openraft/docs/getting_started/index.html) is the best place to get started,
+    - [OpenRaft docs](https://docs.rs/openraft/latest/openraft/docs/index.html) for more in-depth details,
+    - [OpenRaft FAQ](https://docs.rs/openraft/latest/openraft/docs/faq/index.html) explains some common questions.
+    - [OpenRaft on DeepWiki](https://deepwiki.com/databendlabs/openraft) provides detailed architectural documentation to help understand OpenRaft internals.
 
 - 💡 **Example Applications**:
 
-    - [Examples with Openraft 0.9](https://github.com/databendlabs/openraft/tree/release-0.9/examples) require Openraft 0.9 on [crate.io/openraft](https://crates.io/crates/openraft)
-    - [Examples with Openraft 0.10](https://github.com/databendlabs/openraft/tree/release-0.10/examples) require Openraft 0.10, which is not yet published on crate.io;
+    - [Examples with OpenRaft 0.9](https://github.com/databendlabs/openraft/tree/release-0.9/examples) require OpenRaft 0.9 on [crate.io/openraft](https://crates.io/crates/openraft)
+    - [Examples with OpenRaft 0.10](https://github.com/databendlabs/openraft/tree/release-0.10/examples) require OpenRaft 0.10, which is not yet published on crate.io;
 
 - 🙌 **Questions**?
     - Why not take a peek at our [FAQ](https://docs.rs/openraft/latest/openraft/docs/faq/index.html)? You might find just what you need.
@@ -42,7 +44,7 @@ Currently, openraft is the consensus engine of meta-service cluster in [databend
 
 Whatever your style, we're here to support you. 🚀 Let's make something awesome together!
 
-- Openraft is derived from [async-raft](https://docs.rs/crate/async-raft/latest) with several bugs fixed: [Fixed bugs](https://github.com/databendlabs/openraft/blob/main/derived-from-async-raft.md).
+- OpenRaft is derived from [async-raft](https://docs.rs/crate/async-raft/latest) with several bugs fixed: [Fixed bugs](https://github.com/databendlabs/openraft/blob/main/derived-from-async-raft.md).
 
 
 # Status
@@ -55,7 +57,7 @@ Whatever your style, we're here to support you. 🚀 Let's make something awesom
 
 ## API status
 
-- **Openraft API is not stable yet**. Before `1.0.0`, an upgrade may contain incompatible changes.
+- **OpenRaft API is not stable yet**. Before `1.0.0`, an upgrade may contain incompatible changes.
   Check our [change-log](https://github.com/databendlabs/openraft/blob/main/change-log.md). A commit message starts with a keyword to indicate the modification type of the commit:
 
   - `DataChange:` on-disk data types changes, which may require manual upgrade.
@@ -91,7 +93,7 @@ Whatever your style, we're here to support you. 🚀 Let's make something awesom
 
 - [x] **2022-10-31** [Extended joint membership](https://docs.rs/openraft/latest/openraft/docs/data/extended_membership/index.html)
 - [x] **2023-02-14** Minimize confliction rate when electing;
-  See: [Openraft Vote design](https://docs.rs/openraft/latest/openraft/docs/data/vote/index.html);
+  See: [OpenRaft Vote design](https://docs.rs/openraft/latest/openraft/docs/data/vote/index.html);
   Or use standard raft mode with [feature flag `single-term-leader`](https://docs.rs/openraft/latest/openraft/docs/feature_flags/index.html).
 - [x] **2023-04-26** Goal performance is 1,000,000 put/sec.
 - [ ] Reduce the complexity of vote and pre-vote: [get rid of pre-vote RPC](https://github.com/databendlabs/openraft/discussions/15);
@@ -108,7 +110,7 @@ Whatever your style, we're here to support you. 🚀 Let's make something awesom
 
 # Performance
 
-The benchmark is focused on the Openraft framework itself and is run on a
+The benchmark is focused on the OpenRaft framework itself and is run on a
 minimized store and network. This is **NOT a real world** application benchmark!!!
 
 | clients | put/s         | ns/op      |
@@ -166,7 +168,7 @@ Made with [contributors-img](https://contrib.rocks).
 
 # License
 
-Openraft is licensed under the terms of the [MIT License](https://en.wikipedia.org/wiki/MIT_License#License_terms)
+OpenRaft is licensed under the terms of the [MIT License](https://en.wikipedia.org/wiki/MIT_License#License_terms)
 or the [Apache License 2.0](http://www.apache.org/licenses/LICENSE-2.0), at your choosing.
 
 

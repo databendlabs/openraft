@@ -65,6 +65,14 @@ where C: RaftTypeConfig
 
     /// Tracks the clock time acknowledged by other nodes.
     ///
+    /// Tracks the sending time(not receiving time) of the last heartbeat RPC to each follower.
+    /// The leader's own entry is always updated with the current time when calculating
+    /// the quorum-acknowledged time, as the leader is assumed to have the most up-to-date
+    /// clock time. When a follower receives a heartbeat RPC, it resets its election timeout
+    /// and won't start an election for at least the duration of `leader_lease`. If we denote
+    /// the sending time of the heartbeat as `t`, then the leader can be sure that no follower
+    /// can become a leader until `t + leader_lease`. This is the basis for the leader lease
+    ///
     /// See [`docs::leader_lease`] for more details.
     ///
     /// [`docs::leader_lease`]: `crate::docs::protocol::replication::leader_lease`
