@@ -60,6 +60,7 @@ members = [
     "macros",
     "tests",
     "stores/memstore",
+    "rt-compio"
 ]
 exclude = [
     "cluster_benchmark",
