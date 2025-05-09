@@ -24,6 +24,7 @@ pub(in crate::raft) mod core_state;
 
 use std::fmt::Debug;
 use std::future::Future;
+use std::future::IntoFuture;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -190,6 +191,42 @@ macro_rules! declare_raft_types {
 
         }
     };
+}
+
+type LinearizableResult<C> = Result<Option<LogIdOf<C>>, RaftError<C, CheckIsLeaderError<C>>>;
+
+pub struct Linearizable<C, F>
+where
+    C: RaftTypeConfig,
+    F: Future<Output = LinearizableResult<C>>,
+{
+    use_leader_lease: bool,
+    raft: Raft<C>,
+    func: fn(Raft<C>) -> F,
+}
+
+impl<C, F> Linearizable<C, F>
+where
+    C: RaftTypeConfig,
+    F: Future<Output = LinearizableResult<C>>,
+{
+    pub fn use_leader_lease(mut self, yes: bool) -> Self {
+        self.use_leader_lease = yes;
+        self
+    }
+}
+
+impl<C, F> IntoFuture for Linearizable<C, F>
+where
+    C: RaftTypeConfig,
+    F: Future<Output = LinearizableResult<C>>,
+{
+    type Output = LinearizableResult<C>;
+    type IntoFuture = F;
+
+    fn into_future(self) -> Self::IntoFuture {
+        (self.func)(self.raft)
+    }
 }
 
 /// The Raft API.
@@ -542,8 +579,16 @@ where C: RaftTypeConfig
     /// // Proceed with the state machine read
     /// ```
     /// Read more about how it works: [Read Operation](crate::docs::protocol::read)
-    #[tracing::instrument(level = "debug", skip(self))]
-    pub async fn ensure_linearizable(&self) -> Result<Option<LogIdOf<C>>, RaftError<C, CheckIsLeaderError<C>>> {
+    // #[tracing::instrument(level = "debug", skip(self))]
+    pub fn ensure_linearizable(&self) -> Linearizable<C, impl Future<Output = LinearizableResult<C>>> {
+        Linearizable {
+            use_leader_lease: false,
+            raft: self.clone(),
+            func: |raft: Raft<C>| async move { Self::foo(&raft).await },
+        }
+    }
+
+    async fn foo(&self) -> LinearizableResult<C> {
         let (read_log_id, applied) = self.get_read_log_id().await?;
 
         if read_log_id.index() > applied.index() {
