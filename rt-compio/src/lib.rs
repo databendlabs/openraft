@@ -4,13 +4,13 @@ use std::fmt::Display;
 use std::fmt::Error;
 use std::fmt::Formatter;
 use std::future::Future;
-use std::mem::ManuallyDrop;
 use std::pin::Pin;
 use std::task::Context;
 use std::task::Poll;
 
 pub use compio;
 pub use futures;
+use futures::future::FusedFuture;
 use futures::FutureExt;
 pub use openraft;
 use openraft::AsyncRuntime;
@@ -36,12 +36,21 @@ impl Display for CompioJoinError {
     }
 }
 
-pub struct CompioJoinHandle<T>(pub ManuallyDrop<compio::runtime::JoinHandle<T>>);
+pub struct CompioJoinHandle<T>(pub Option<compio::runtime::JoinHandle<T>>);
 
 impl<T> CompioJoinHandle<T> {
     pub fn cancel(mut self) {
-        // SAFETY: We are not using the JoinHandle anymore, so we can safely drop it.
-        unsafe { ManuallyDrop::drop(&mut self.0) }
+        if let Some(task) = self.0.take() {
+            task.cancel();
+        }
+    }
+}
+
+impl<T> Drop for CompioJoinHandle<T> {
+    fn drop(&mut self) {
+        if let Some(task) = self.0.take() {
+            task.detach();
+        }
     }
 }
 
@@ -50,11 +59,18 @@ impl<T> Future for CompioJoinHandle<T> {
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.get_mut();
-        match this.0.poll_unpin(cx) {
+        let task = this.0.as_mut().expect("Task has been cancelled");
+        match task.poll_unpin(cx) {
             Poll::Ready(Ok(v)) => Poll::Ready(Ok(v)),
             Poll::Ready(Err(e)) => Poll::Ready(Err(CompioJoinError(e))),
             Poll::Pending => Poll::Pending,
         }
+    }
+}
+
+impl<T> FusedFuture for CompioJoinHandle<T> {
+    fn is_terminated(&self) -> bool {
+        self.0.is_none()
     }
 }
 
@@ -108,7 +124,7 @@ impl AsyncRuntime for CompioRuntime {
         T: Future + OptionalSend + 'static,
         T::Output: OptionalSend + 'static,
     {
-        CompioJoinHandle(ManuallyDrop::new(compio::runtime::spawn(fut)))
+        CompioJoinHandle(Some(compio::runtime::spawn(fut)))
     }
 
     fn sleep(duration: std::time::Duration) -> Self::Sleep {
