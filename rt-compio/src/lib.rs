@@ -28,7 +28,7 @@ mod watch;
 pub struct CompioRuntime;
 
 #[derive(Debug)]
-pub struct CompioJoinError(pub Box<dyn Any + Send>);
+pub struct CompioJoinError(Box<dyn Any + Send>);
 
 impl Display for CompioJoinError {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
@@ -36,21 +36,14 @@ impl Display for CompioJoinError {
     }
 }
 
-pub struct CompioJoinHandle<T>(pub Option<compio::runtime::JoinHandle<T>>);
-
-impl<T> CompioJoinHandle<T> {
-    pub fn cancel(mut self) {
-        if let Some(task) = self.0.take() {
-            task.cancel();
-        }
-    }
-}
+pub struct CompioJoinHandle<T>(Option<compio::runtime::JoinHandle<T>>);
 
 impl<T> Drop for CompioJoinHandle<T> {
     fn drop(&mut self) {
-        if let Some(task) = self.0.take() {
-            task.detach();
+        let Some(j) = self.0.take() else {
+            return;
         }
+        j.detach();
     }
 }
 
@@ -65,12 +58,6 @@ impl<T> Future for CompioJoinHandle<T> {
             Poll::Ready(Err(e)) => Poll::Ready(Err(CompioJoinError(e))),
             Poll::Pending => Poll::Pending,
         }
-    }
-}
-
-impl<T> FusedFuture for CompioJoinHandle<T> {
-    fn is_terminated(&self) -> bool {
-        self.0.is_none()
     }
 }
 
