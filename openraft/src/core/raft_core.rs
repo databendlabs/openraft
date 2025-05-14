@@ -794,7 +794,7 @@ where
             network,
             snapshot_network,
             self.log_store.get_log_reader().await,
-            self.sm_handle.new_snapshot_reader(),
+            self.sm_handle.new_snapshot_reader(self.tx_notification.clone()),
             self.tx_notification.clone(),
             tracing::span!(parent: &self.span, Level::DEBUG, "replication", id=display(&self.id), target=display(&target)),
         )

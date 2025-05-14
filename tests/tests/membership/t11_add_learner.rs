@@ -68,7 +68,7 @@ async fn add_learner_basic() -> Result<()> {
 
         tracing::info!(log_index, "--- add_learner blocks until the replication catches up");
         {
-            let (mut sto1, _sm1) = router.get_storage_handle(&1)?;
+            let (sto1, _sm1) = router.get_storage_handle(&1)?;
 
             let logs = sto1.try_get_log_entries(..).await?;
 

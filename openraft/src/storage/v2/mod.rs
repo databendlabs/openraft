@@ -13,4 +13,8 @@ pub use self::raft_log_reader::RaftLogReader;
 pub use self::raft_log_storage::RaftLogStorage;
 pub use self::raft_log_storage_ext::RaftLogStorageExt;
 pub use self::raft_snapshot_builder::RaftSnapshotBuilder;
+pub use self::raft_state_machine::ApplyResultSender;
+pub use self::raft_state_machine::BuildSnapshotResultSender;
+pub use self::raft_state_machine::InstallSnapshotResultSender;
 pub use self::raft_state_machine::RaftStateMachine;
+pub use self::raft_state_machine::RaftStateMachineCommand;

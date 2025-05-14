@@ -48,7 +48,7 @@ where C: RaftTypeConfig
     /// - The read operation must be transactional. That is, it should not reflect any state changes
     ///   that occur after the read operation has commenced.
     async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + OptionalSend>(
-        &mut self,
+        &self,
         range: RB,
     ) -> Result<Vec<C::Entry>, StorageError<C>>;
 
@@ -70,7 +70,7 @@ where C: RaftTypeConfig
     ///
     /// The default implementation just returns the full range of log entries.
     #[since(version = "0.10.0")]
-    async fn limited_get_log_entries(&mut self, start: u64, end: u64) -> Result<Vec<C::Entry>, StorageError<C>> {
+    async fn limited_get_log_entries(&self, start: u64, end: u64) -> Result<Vec<C::Entry>, StorageError<C>> {
         self.try_get_log_entries(start..end).await
     }
 
