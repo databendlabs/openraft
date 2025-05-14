@@ -4,11 +4,10 @@ use std::fmt::Debug;
 use std::fmt::Formatter;
 
 use crate::base::BoxAny;
-use crate::core::raft_msg::ResultSender;
-use crate::error::Infallible;
 use crate::raft_state::IOId;
 use crate::storage::Snapshot;
 use crate::type_config::alias::LogIdOf;
+use crate::type_config::alias::OneshotSenderOf;
 use crate::type_config::alias::ResponderOf;
 use crate::type_config::alias::SnapshotDataOf;
 use crate::RaftTypeConfig;
@@ -21,10 +20,12 @@ where C: RaftTypeConfig
     BuildSnapshot,
 
     /// Get the latest built snapshot.
-    GetSnapshot { tx: ResultSender<C, Option<Snapshot<C>>> },
+    GetSnapshot {
+        tx: OneshotSenderOf<C, Option<Snapshot<C>>>,
+    },
 
     BeginReceivingSnapshot {
-        tx: ResultSender<C, SnapshotDataOf<C>, Infallible>,
+        tx: OneshotSenderOf<C, SnapshotDataOf<C>>,
     },
 
     InstallFullSnapshot {
@@ -66,11 +67,11 @@ where C: RaftTypeConfig
         Command::BuildSnapshot
     }
 
-    pub(crate) fn get_snapshot(tx: ResultSender<C, Option<Snapshot<C>>>) -> Self {
+    pub(crate) fn get_snapshot(tx: OneshotSenderOf<C, Option<Snapshot<C>>>) -> Self {
         Command::GetSnapshot { tx }
     }
 
-    pub(crate) fn begin_receiving_snapshot(tx: ResultSender<C, SnapshotDataOf<C>, Infallible>) -> Self {
+    pub(crate) fn begin_receiving_snapshot(tx: OneshotSenderOf<C, SnapshotDataOf<C>>) -> Self {
         Command::BeginReceivingSnapshot { tx }
     }
 

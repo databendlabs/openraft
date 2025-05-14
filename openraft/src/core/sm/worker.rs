@@ -8,7 +8,6 @@ use crate::async_runtime::MpscUnboundedSender;
 use crate::async_runtime::OneshotSender;
 use crate::base::BoxAsyncOnceMut;
 use crate::core::notification::Notification;
-use crate::core::raft_msg::ResultSender;
 use crate::core::sm::handle::Handle;
 use crate::core::sm::Command;
 use crate::core::sm::CommandResult;
@@ -28,6 +27,7 @@ use crate::type_config::alias::JoinHandleOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::MpscUnboundedReceiverOf;
 use crate::type_config::alias::MpscUnboundedSenderOf;
+use crate::type_config::alias::OneshotSenderOf;
 use crate::type_config::alias::ResponderOf;
 use crate::type_config::TypeConfigExt;
 use crate::RaftLogReader;
@@ -139,7 +139,7 @@ where
 
                     let snapshot_data = self.state_machine.begin_receiving_snapshot().await?;
 
-                    let _ = tx.send(Ok(snapshot_data));
+                    let _ = tx.send(snapshot_data);
                     // No response to RaftCore
                 }
                 Command::Apply {
@@ -273,7 +273,7 @@ where
     }
 
     #[tracing::instrument(level = "info", skip_all)]
-    async fn get_snapshot(&mut self, tx: ResultSender<C, Option<Snapshot<C>>>) -> Result<(), StorageError<C>> {
+    async fn get_snapshot(&mut self, tx: OneshotSenderOf<C, Option<Snapshot<C>>>) -> Result<(), StorageError<C>> {
         tracing::info!("{}", func_name!());
 
         let snapshot = self.state_machine.get_current_snapshot().await?;
@@ -282,7 +282,7 @@ where
             "sending back snapshot: meta: {}",
             snapshot.as_ref().map(|s| &s.meta).display()
         );
-        let _ = tx.send(Ok(snapshot));
+        let _ = tx.send(snapshot);
         Ok(())
     }
 }

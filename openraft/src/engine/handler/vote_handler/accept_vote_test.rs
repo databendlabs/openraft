@@ -11,7 +11,6 @@ use crate::engine::Command;
 use crate::engine::Condition;
 use crate::engine::Engine;
 use crate::engine::Respond;
-use crate::error::Infallible;
 use crate::raft::VoteResponse;
 use crate::raft_state::IOId;
 use crate::type_config::TypeConfigExt;
@@ -25,8 +24,8 @@ fn m01() -> Membership<UTConfig> {
 }
 
 /// Make a sample VoteResponse
-fn mk_res(granted: bool) -> Result<VoteResponse<UTConfig>, Infallible> {
-    Ok::<VoteResponse<UTConfig>, Infallible>(VoteResponse::new(Vote::new(2, 1), None, granted))
+fn mk_res(granted: bool) -> VoteResponse<UTConfig> {
+    VoteResponse::new(Vote::new(2, 1), None, granted)
 }
 
 fn eng() -> Engine<UTConfig> {

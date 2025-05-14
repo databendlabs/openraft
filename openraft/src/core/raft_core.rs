@@ -1149,7 +1149,7 @@ where
         });
         self.engine.output.push_command(Command::Respond {
             when: condition,
-            resp: Respond::new(Ok(resp), tx),
+            resp: Respond::new(resp, tx),
         });
     }
 

@@ -70,16 +70,13 @@ where C: RaftTypeConfig
         // If fail to send command, cmd is dropped and tx will be dropped.
         let _ = cmd_tx.send(cmd);
 
-        let got = match rx.await {
+        let snapshot = match rx.await {
             Ok(x) => x,
             Err(_e) => {
                 tracing::error!("failed to receive snapshot, sm::Worker may have shutdown");
                 return Err("failed to receive snapshot, sm::Worker may have shutdown");
             }
         };
-
-        // Safe unwrap(): error is Infallible.
-        let snapshot = got.unwrap();
 
         Ok(snapshot)
     }

@@ -109,19 +109,19 @@ async fn test_cluster() -> anyhow::Result<()> {
     //        After init(), the single node cluster will be fully functional.
 
     println!("=== init single node cluster");
-    client.init().await?;
+    client.init().await??;
 
     println!("=== metrics after init");
-    let _x = client.metrics().await?;
+    client.metrics().await?;
 
     // --- 2. Add node 2 and 3 to the cluster as `Learner`, to let them start to receive log replication
     // from the        leader.
 
     println!("=== add-learner 2");
-    let _x = client.add_learner((2, get_addr(2)?)).await?;
+    client.add_learner((2, get_addr(2)?)).await??;
 
     println!("=== add-learner 3");
-    let _x = client.add_learner((3, get_addr(3)?)).await?;
+    client.add_learner((3, get_addr(3)?)).await??;
 
     println!("=== metrics after add-learner");
     let x = client.metrics().await?;
@@ -142,7 +142,7 @@ async fn test_cluster() -> anyhow::Result<()> {
     // --- 3. Turn the two learners to members. A member node can vote or elect itself as leader.
 
     println!("=== change-membership to 1,2,3");
-    let _x = client.change_membership(&btreeset! {1,2,3}).await?;
+    client.change_membership(&btreeset! {1,2,3}).await??;
 
     // --- After change-membership, some cluster state will be seen in the metrics.
     //
@@ -169,12 +169,12 @@ async fn test_cluster() -> anyhow::Result<()> {
     // --- Try to write some application data through the leader.
 
     println!("=== write `foo=bar`");
-    let _x = client
+    client
         .write(&Request::Set {
             key: "foo".to_string(),
             value: "bar".to_string(),
         })
-        .await?;
+        .await??;
 
     // --- Wait for a while to let the replication get done.
 
@@ -199,12 +199,12 @@ async fn test_cluster() -> anyhow::Result<()> {
     // --- A write to non-leader will be automatically forwarded to a known leader
 
     println!("=== read `foo` on node 2");
-    let _x = client2
+    client2
         .write(&Request::Set {
             key: "foo".to_string(),
             value: "wow".to_string(),
         })
-        .await?;
+        .await??;
 
     tokio::time::sleep(Duration::from_millis(1_000)).await;
 
@@ -225,15 +225,16 @@ async fn test_cluster() -> anyhow::Result<()> {
     assert_eq!("wow", x);
 
     println!("=== linearizable_read `foo` on node 1");
-    let x = client.linearizable_read(&("foo".to_string())).await?;
+    let x = client.linearizable_read(&("foo".to_string())).await??;
     assert_eq!("wow", x);
 
     println!("=== linearizable_read `foo` on node 2 MUST return CheckIsLeaderError");
-    let x = client2.linearizable_read(&("foo".to_string())).await;
+    let x = client2.linearizable_read(&("foo".to_string())).await?;
     match x {
         Err(e) => {
             let s = e.to_string();
-            let expect_err:String = "error occur on remote peer 2: has to forward request to: Some(1), Some(BasicNode { addr: \"127.0.0.1:21001\" })".to_string();
+            let expect_err: String =
+                "has to forward request to: Some(1), Some(BasicNode { addr: \"127.0.0.1:21001\" })".to_string();
 
             assert_eq!(s, expect_err);
         }
@@ -243,7 +244,7 @@ async fn test_cluster() -> anyhow::Result<()> {
     // --- Remove node 1,2 from the cluster.
 
     println!("=== change-membership to 3, ");
-    let _x = client.change_membership(&btreeset! {3}).await?;
+    client.change_membership(&btreeset! {3}).await??;
 
     tokio::time::sleep(Duration::from_millis(8_000)).await;
 
@@ -252,12 +253,12 @@ async fn test_cluster() -> anyhow::Result<()> {
     assert_eq!(&vec![btreeset![3]], x.membership_config.membership().get_joint_config());
 
     println!("=== write `foo=zoo` to node-3");
-    let _x = client3
+    client3
         .write(&Request::Set {
             key: "foo".to_string(),
             value: "zoo".to_string(),
         })
-        .await?;
+        .await??;
 
     println!("=== read `foo=zoo` to node-3");
     let got = client3.read(&"foo".to_string()).await?;

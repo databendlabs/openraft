@@ -4,7 +4,13 @@ It is an example of how to build a real-world key-value store with `openraft`.
 Includes:
 - An in-memory `RaftLogStorage` and `RaftStateMachine` implementation [store](./src/store/store.rs).
 
-- A server is based on [actix-web](https://docs.rs/actix-web/4.0.0-rc.2).  
+- A server is based on [actix-web](https://docs.rs/actix-web/4.0.0-rc.2).
+  All service endpoints accept a `Json<I>` input argument,
+  and return a JSON-encoded `Result<T, E>` response,
+  where `T` and `E` are API-specific types.
+  For example, the `/write` endpoint accepts a user-defined `Request`
+  and returns a `Result<WriteResponse, ClientWriteError>`.
+
   Includes:
   - raft-internal network APIs for replication and voting.
   - Admin APIs to add nodes, change-membership etc.

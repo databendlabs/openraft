@@ -193,7 +193,7 @@ mod tokio_rt {
                 // Changed to another stream. re-init snapshot state.
                 let snapshot_data = raft.begin_receiving_snapshot().await.map_err(|e| {
                     // Safe unwrap: `RaftError<Infallible>` is always a Fatal.
-                    RaftError::Fatal(e.into_fatal().unwrap())
+                    RaftError::Fatal(e.unwrap_fatal())
                 })?;
 
                 *streaming = Some(Streaming::new(snapshot_id.clone(), snapshot_data));

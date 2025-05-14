@@ -2,9 +2,9 @@ use actix_web::post;
 use actix_web::web;
 use actix_web::web::Data;
 use actix_web::Responder;
+use openraft::error::decompose::DecomposeResult;
 use openraft::error::CheckIsLeaderError;
 use openraft::error::Infallible;
-use openraft::error::RaftError;
 use openraft::ReadPolicy;
 use web::Json;
 
@@ -23,7 +23,7 @@ use crate::TypeConfig;
  */
 #[post("/write")]
 pub async fn write(app: Data<App>, req: Json<Request>) -> actix_web::Result<impl Responder> {
-    let response = app.raft.client_write(req.0).await;
+    let response = app.raft.client_write(req.0).await.decompose().unwrap();
     Ok(Json(response))
 }
 
@@ -39,7 +39,7 @@ pub async fn read(app: Data<App>, req: Json<String>) -> actix_web::Result<impl R
 
 #[post("/linearizable_read")]
 pub async fn linearizable_read(app: Data<App>, req: Json<String>) -> actix_web::Result<impl Responder> {
-    let ret = app.raft.ensure_linearizable(ReadPolicy::ReadIndex).await;
+    let ret = app.raft.ensure_linearizable(ReadPolicy::ReadIndex).await.decompose().unwrap();
 
     match ret {
         Ok(_) => {
@@ -47,8 +47,7 @@ pub async fn linearizable_read(app: Data<App>, req: Json<String>) -> actix_web::
             let key = req.0;
             let value = state_machine.data.get(&key).cloned();
 
-            let res: Result<String, RaftError<TypeConfig, CheckIsLeaderError<TypeConfig>>> =
-                Ok(value.unwrap_or_default());
+            let res: Result<String, CheckIsLeaderError<TypeConfig>> = Ok(value.unwrap_or_default());
             Ok(Json(res))
         }
         Err(e) => Ok(Json(Err(e))),

@@ -1,7 +1,6 @@
-use std::fmt;
-use std::fmt::Debug;
 use std::future::Future;
 use std::sync::Arc;
+use std::time::Duration;
 
 use tracing::Level;
 
@@ -12,10 +11,11 @@ use crate::config::RuntimeConfig;
 use crate::core::raft_msg::external_command::ExternalCommand;
 use crate::core::raft_msg::RaftMsg;
 use crate::core::TickHandle;
+use crate::display_ext::DisplayOptionExt;
 use crate::error::Fatal;
-use crate::error::RaftError;
 use crate::metrics::RaftDataMetrics;
 use crate::metrics::RaftServerMetrics;
+use crate::metrics::Wait;
 use crate::raft::core_state::CoreState;
 use crate::type_config::alias::AsyncRuntimeOf;
 use crate::type_config::alias::MpscUnboundedSenderOf;
@@ -56,15 +56,41 @@ where C: RaftTypeConfig
 impl<C> RaftInner<C>
 where C: RaftTypeConfig
 {
-    /// Send a RaftMsg to RaftCore
+    pub(crate) fn id(&self) -> &C::NodeId {
+        &self.id
+    }
+
+    pub(crate) fn config(&self) -> &Config {
+        self.config.as_ref()
+    }
+
     pub(crate) async fn send_msg(&self, mes: RaftMsg<C>) -> Result<(), Fatal<C>> {
         let send_res = self.tx_api.send(mes);
 
         if let Err(e) = send_res {
-            let fatal = self.get_core_stopped_error("sending RaftMsg to RaftCore", Some(e.0.to_string())).await;
+            let msg = e.0;
+
+            let fatal = self.get_core_stop_error().await;
+            tracing::error!("Failed to send RaftMsg: {msg} to RaftCore; error: {fatal}",);
             return Err(fatal);
         }
         Ok(())
+    }
+
+    /// Invoke RaftCore by sending a RaftMsg and blocks waiting for response.
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub(crate) async fn call_core<T>(&self, mes: RaftMsg<C>, rx: OneshotReceiverOf<C, T>) -> Result<T, Fatal<C>>
+    where T: OptionalSend {
+        let sum = if tracing::enabled!(Level::DEBUG) {
+            Some(mes.to_string())
+        } else {
+            None
+        };
+
+        self.send_msg(mes).await?;
+        self.recv_msg(rx).await.inspect_err(|_e| {
+            tracing::error!("Failed to receive from RaftCore: error when {}", sum.display());
+        })
     }
 
     /// Receive a message from RaftCore, return error if RaftCore has stopped.
@@ -79,41 +105,9 @@ where C: RaftTypeConfig
         match recv_res {
             Ok(x) => Ok(x),
             Err(_) => {
-                let fatal = self.get_core_stopped_error("receiving rx from RaftCore", None::<&'static str>).await;
+                let fatal = self.get_core_stop_error().await;
                 tracing::error!(error = debug(&fatal), "error when {}", func_name!());
                 Err(fatal)
-            }
-        }
-    }
-
-    /// Invoke RaftCore by sending a RaftMsg and blocks waiting for response.
-    #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) async fn call_core<T, E>(
-        &self,
-        mes: RaftMsg<C>,
-        rx: OneshotReceiverOf<C, Result<T, E>>,
-    ) -> Result<T, RaftError<C, E>>
-    where
-        E: Debug + OptionalSend,
-        T: OptionalSend,
-    {
-        let sum = if tracing::enabled!(Level::DEBUG) {
-            Some(mes.to_string())
-        } else {
-            None
-        };
-
-        self.send_msg(mes).await?;
-
-        let recv_res = rx.await;
-        tracing::debug!("call_core receives result is error: {:?}", recv_res.is_err());
-
-        match recv_res {
-            Ok(x) => x.map_err(|e| RaftError::APIError(e)),
-            Err(_) => {
-                let fatal = self.get_core_stopped_error("receiving rx from RaftCore", sum).await;
-                tracing::error!(error = debug(&fatal), "core_call fatal error");
-                Err(RaftError::Fatal(fatal))
             }
         }
     }
@@ -121,15 +115,11 @@ where C: RaftTypeConfig
     /// Send an [`ExternalCommand`] to RaftCore to execute in the `RaftCore` thread.
     ///
     /// It returns at once.
-    pub(in crate::raft) async fn send_external_command(
-        &self,
-        cmd: ExternalCommand<C>,
-        cmd_desc: impl fmt::Display + Default,
-    ) -> Result<(), Fatal<C>> {
+    pub(in crate::raft) async fn send_external_command(&self, cmd: ExternalCommand<C>) -> Result<(), Fatal<C>> {
         let send_res = self.tx_api.send(RaftMsg::ExternalCommand { cmd });
 
         if send_res.is_err() {
-            let fatal = self.get_core_stopped_error("sending external command to RaftCore", Some(cmd_desc)).await;
+            let fatal = self.get_core_stop_error().await;
             return Err(fatal);
         }
         Ok(())
@@ -141,11 +131,7 @@ where C: RaftTypeConfig
     }
 
     /// Get the error that caused RaftCore to stop.
-    pub(in crate::raft) async fn get_core_stopped_error(
-        &self,
-        when: impl fmt::Display,
-        message_summary: Option<impl fmt::Display + Default>,
-    ) -> Fatal<C> {
+    pub(crate) async fn get_core_stop_error(&self) -> Fatal<C> {
         // Wait for the core task to finish.
         self.join_core_task().await;
 
@@ -158,13 +144,6 @@ where C: RaftTypeConfig
                 unreachable!("RaftCore should have already quit")
             }
         };
-
-        tracing::error!(
-            core_result = debug(&core_res),
-            "failure {}; message: {}",
-            when,
-            message_summary.unwrap_or_default()
-        );
 
         // Safe unwrap: core_res is always an error
         core_res.unwrap_err()
@@ -233,6 +212,15 @@ where C: RaftTypeConfig
                     }
                 }
             }
+        }
+    }
+
+    pub(crate) fn wait(&self, timeout: Option<Duration>) -> Wait<C> {
+        let timeout = timeout.unwrap_or_else(|| Duration::from_secs(86400 * 365 * 100));
+
+        Wait {
+            timeout,
+            rx: self.rx_metrics.clone(),
         }
     }
 }

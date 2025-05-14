@@ -28,10 +28,10 @@ pub(crate) mod external_command;
 pub(crate) type ResultSender<C, T, E = Infallible> = OneshotSenderOf<C, Result<T, E>>;
 
 /// TX for Vote Response
-pub(crate) type VoteTx<C> = ResultSender<C, VoteResponse<C>>;
+pub(crate) type VoteTx<C> = OneshotSenderOf<C, VoteResponse<C>>;
 
 /// TX for Append Entries Response
-pub(crate) type AppendEntriesTx<C> = ResultSender<C, AppendEntriesResponse<C>>;
+pub(crate) type AppendEntriesTx<C> = OneshotSenderOf<C, AppendEntriesResponse<C>>;
 
 /// TX for Linearizable Read Response
 pub(crate) type ClientReadTx<C> = ResultSender<C, (Option<LogIdOf<C>>, Option<LogIdOf<C>>), CheckIsLeaderError<C>>;
@@ -55,7 +55,7 @@ where C: RaftTypeConfig
     InstallFullSnapshot {
         vote: VoteOf<C>,
         snapshot: Snapshot<C>,
-        tx: ResultSender<C, SnapshotResponse<C>>,
+        tx: OneshotSenderOf<C, SnapshotResponse<C>>,
     },
 
     /// Begin receiving a snapshot from the leader.
@@ -65,7 +65,7 @@ where C: RaftTypeConfig
     /// It does not check `Vote` because it is a read operation
     /// and does not break raft protocol.
     BeginReceivingSnapshot {
-        tx: ResultSender<C, SnapshotDataOf<C>, Infallible>,
+        tx: OneshotSenderOf<C, SnapshotDataOf<C>>,
     },
 
     ClientWriteRequest {

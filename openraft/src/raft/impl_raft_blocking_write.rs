@@ -2,17 +2,13 @@
 //! Blocking mode write API blocks until the write operation is completed,
 //! where [`RaftTypeConfig::Responder`] is a [`OneshotResponder`].
 
-use maplit::btreemap;
-
-use crate::core::raft_msg::RaftMsg;
-use crate::display_ext::DisplayResult;
+use crate::error::into_raft_result::IntoRaftResult;
 use crate::error::ClientWriteError;
 use crate::error::RaftError;
-use crate::raft::message::ClientWriteResult;
 use crate::raft::responder::OneshotResponder;
 use crate::raft::ClientWriteResponse;
-use crate::type_config::alias::OneshotReceiverOf;
-use crate::type_config::TypeConfigExt;
+#[cfg(doc)]
+use crate::raft::ManagementApi;
 use crate::ChangeMembers;
 use crate::Raft;
 use crate::RaftTypeConfig;
@@ -54,58 +50,7 @@ where C: RaftTypeConfig<Responder = OneshotResponder<C>>
         members: impl Into<ChangeMembers<C>>,
         retain: bool,
     ) -> Result<ClientWriteResponse<C>, RaftError<C, ClientWriteError<C>>> {
-        let changes: ChangeMembers<C> = members.into();
-
-        tracing::info!(
-            changes = debug(&changes),
-            retain = display(retain),
-            "change_membership: start to commit joint config"
-        );
-
-        let (tx, rx) = oneshot_channel::<C>();
-
-        // res is error if membership can not be changed.
-        // If no error, it will enter a joint state
-        let res = self
-            .inner
-            .call_core(
-                RaftMsg::ChangeMembership {
-                    changes: changes.clone(),
-                    retain,
-                    tx,
-                },
-                rx,
-            )
-            .await;
-
-        if let Err(e) = &res {
-            tracing::error!("the first step error: {}", e);
-        }
-        let res = res?;
-
-        tracing::debug!("res of first step: {}", res);
-
-        let (log_id, joint) = (&res.log_id, res.membership.clone().unwrap());
-
-        if joint.get_joint_config().len() == 1 {
-            return Ok(res);
-        }
-
-        tracing::debug!("committed a joint config: {} {:?}", log_id, joint);
-        tracing::debug!("the second step is to change to uniform config: {:?}", changes);
-
-        let (tx, rx) = oneshot_channel::<C>();
-
-        let res = self.inner.call_core(RaftMsg::ChangeMembership { changes, retain, tx }, rx).await;
-
-        if let Err(e) = &res {
-            tracing::error!("the second step error: {}", e);
-        }
-        let res = res?;
-
-        tracing::info!("res of second step of do_change_membership: {}", res);
-
-        Ok(res)
+        self.management_api().change_membership(members, retain).await.into_raft_result()
     }
 
     /// Add a new learner raft node, optionally, blocking until up-to-speed.
@@ -131,55 +76,6 @@ where C: RaftTypeConfig<Responder = OneshotResponder<C>>
         node: C::Node,
         blocking: bool,
     ) -> Result<ClientWriteResponse<C>, RaftError<C, ClientWriteError<C>>> {
-        let (tx, rx) = oneshot_channel::<C>();
-
-        let msg = RaftMsg::ChangeMembership {
-            changes: ChangeMembers::AddNodes(btreemap! {id.clone()=>node}),
-            retain: true,
-            tx,
-        };
-
-        let resp = self.inner.call_core(msg, rx).await?;
-
-        if !blocking {
-            return Ok(resp);
-        }
-
-        if self.inner.id == id {
-            return Ok(resp);
-        }
-
-        // Otherwise, blocks until the replication to the new learner becomes up to date.
-
-        // The log id of the membership that contains the added learner.
-        let membership_log_id = &resp.log_id;
-
-        let wait_res = self
-            .wait(None)
-            .metrics(
-                |metrics| match self.check_replication_upto_date(metrics, &id, Some(membership_log_id)) {
-                    Ok(_matching) => true,
-                    // keep waiting
-                    Err(_) => false,
-                },
-                "wait new learner to become line-rate",
-            )
-            .await;
-
-        tracing::info!(
-            wait_res = display(DisplayResult(&wait_res)),
-            "waiting for replication to new learner"
-        );
-
-        Ok(resp)
+        self.management_api().add_learner(id, node, blocking).await.into_raft_result()
     }
-}
-
-fn oneshot_channel<C>() -> (OneshotResponder<C>, OneshotReceiverOf<C, ClientWriteResult<C>>)
-where C: RaftTypeConfig {
-    let (tx, rx) = C::oneshot();
-
-    let tx = OneshotResponder::new(tx);
-
-    (tx, rx)
 }

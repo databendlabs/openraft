@@ -3,7 +3,6 @@ use std::time::Duration;
 use validit::Valid;
 
 use crate::core::raft_msg::AppendEntriesTx;
-use crate::core::raft_msg::ResultSender;
 use crate::core::sm;
 use crate::core::ServerState;
 use crate::display_ext::DisplayOptionExt;
@@ -24,7 +23,6 @@ use crate::engine::Respond;
 use crate::entry::RaftEntry;
 use crate::entry::RaftPayload;
 use crate::error::ForwardToLeader;
-use crate::error::Infallible;
 use crate::error::InitializeError;
 use crate::error::NotAllowed;
 use crate::error::NotInMembers;
@@ -46,6 +44,7 @@ use crate::storage::Snapshot;
 use crate::storage::SnapshotMeta;
 use crate::type_config::alias::LeaderIdOf;
 use crate::type_config::alias::LogIdOf;
+use crate::type_config::alias::OneshotSenderOf;
 use crate::type_config::alias::ResponderOf;
 use crate::type_config::alias::SnapshotDataOf;
 use crate::type_config::alias::VoteOf;
@@ -411,7 +410,7 @@ where C: RaftTypeConfig
 
             self.output.push_command(Command::Respond {
                 when: condition,
-                resp: Respond::new(Ok(resp), tx),
+                resp: Respond::new(resp, tx),
             });
         }
         is_ok
@@ -455,12 +454,12 @@ where C: RaftTypeConfig
         &mut self,
         vote: VoteOf<C>,
         snapshot: Snapshot<C>,
-        tx: ResultSender<C, SnapshotResponse<C>>,
+        tx: OneshotSenderOf<C, SnapshotResponse<C>>,
     ) {
         tracing::info!(vote = display(&vote), snapshot = display(&snapshot), "{}", func_name!());
 
         let vote_res = self.vote_handler().accept_vote(&vote, tx, |state, _rejected| {
-            Ok(SnapshotResponse::new(state.vote_ref().clone()))
+            SnapshotResponse::new(state.vote_ref().clone())
         });
 
         let Some(tx) = vote_res else {
@@ -472,9 +471,9 @@ where C: RaftTypeConfig
         // The condition to satisfy before running other command that depends on the snapshot.
         // In this case, the response can only be sent when the snapshot is installed.
         let cond = fh.install_full_snapshot(snapshot);
-        let res = Ok(SnapshotResponse {
+        let res = SnapshotResponse {
             vote: self.state.vote_ref().clone(),
-        });
+        };
 
         self.output.push_command(Command::Respond {
             when: cond,
@@ -484,7 +483,7 @@ where C: RaftTypeConfig
 
     /// Install a completely received snapshot on a follower.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn handle_begin_receiving_snapshot(&mut self, tx: ResultSender<C, SnapshotDataOf<C>, Infallible>) {
+    pub(crate) fn handle_begin_receiving_snapshot(&mut self, tx: OneshotSenderOf<C, SnapshotDataOf<C>>) {
         tracing::info!("{}", func_name!());
         self.output.push_command(Command::from(sm::Command::begin_receiving_snapshot(tx)));
     }

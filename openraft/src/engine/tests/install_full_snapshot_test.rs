@@ -98,7 +98,7 @@ fn test_handle_install_full_snapshot_lt_last_snapshot() -> anyhow::Result<()> {
             //
             Command::Respond {
                 when: None,
-                resp: Respond::new(Ok(SnapshotResponse::new(curr_vote)), dummy_tx),
+                resp: Respond::new(SnapshotResponse::new(curr_vote), dummy_tx),
             },
         ],
         eng.output.take_commands()
@@ -160,7 +160,7 @@ fn test_handle_install_full_snapshot_no_conflict() -> anyhow::Result<()> {
                 when: Some(Condition::Snapshot {
                     log_id: Some(log_id(4, 1, 6))
                 }),
-                resp: Respond::new(Ok(SnapshotResponse::new(curr_vote)), dummy_tx),
+                resp: Respond::new(SnapshotResponse::new(curr_vote), dummy_tx),
             },
         ],
         eng.output.take_commands()

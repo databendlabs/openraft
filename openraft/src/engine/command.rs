@@ -8,7 +8,6 @@ use crate::display_ext::DisplayResultExt;
 use crate::display_ext::DisplaySliceExt;
 use crate::engine::replication_progress::ReplicationProgress;
 use crate::engine::CommandKind;
-use crate::error::Infallible;
 use crate::error::InitializeError;
 use crate::error::InstallSnapshotError;
 use crate::raft::message::TransferLeaderRequest;
@@ -329,11 +328,11 @@ where C: RaftTypeConfig
 pub(crate) enum Respond<C>
 where C: RaftTypeConfig
 {
-    Vote(ValueSender<C, Result<VoteResponse<C>, Infallible>>),
-    AppendEntries(ValueSender<C, Result<AppendEntriesResponse<C>, Infallible>>),
+    Vote(ValueSender<C, VoteResponse<C>>),
+    AppendEntries(ValueSender<C, AppendEntriesResponse<C>>),
     ReceiveSnapshotChunk(ValueSender<C, Result<(), InstallSnapshotError>>),
     InstallSnapshot(ValueSender<C, Result<InstallSnapshotResponse<C>, InstallSnapshotError>>),
-    InstallFullSnapshot(ValueSender<C, Result<SnapshotResponse<C>, Infallible>>),
+    InstallFullSnapshot(ValueSender<C, SnapshotResponse<C>>),
     Initialize(ValueSender<C, Result<(), InitializeError<C>>>),
 }
 
@@ -342,8 +341,8 @@ where C: RaftTypeConfig
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Respond::Vote(vs) => write!(f, "Vote {}", vs.value().display()),
-            Respond::AppendEntries(vs) => write!(f, "AppendEntries {}", vs.value().display()),
+            Respond::Vote(vs) => write!(f, "Vote {}", vs.value()),
+            Respond::AppendEntries(vs) => write!(f, "AppendEntries {}", vs.value()),
             Respond::ReceiveSnapshotChunk(vs) => {
                 write!(
                     f,
@@ -352,7 +351,7 @@ where C: RaftTypeConfig
                 )
             }
             Respond::InstallSnapshot(vs) => write!(f, "InstallSnapshot {}", vs.value().display()),
-            Respond::InstallFullSnapshot(vs) => write!(f, "InstallFullSnapshot {}", vs.value().display()),
+            Respond::InstallFullSnapshot(vs) => write!(f, "InstallFullSnapshot {}", vs.value()),
             Respond::Initialize(vs) => write!(f, "Initialize {}", vs.value().as_ref().map(|_x| "()").display()),
         }
     }

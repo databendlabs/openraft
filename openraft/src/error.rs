@@ -3,6 +3,7 @@
 mod allow_next_revert_error;
 pub mod decompose;
 pub mod into_ok;
+pub(crate) mod into_raft_result;
 mod invalid_sm;
 mod membership_error;
 mod node_not_found;
@@ -17,6 +18,7 @@ use std::fmt::Debug;
 use std::time::Duration;
 
 use anyerror::AnyError;
+use openraft_macros::since;
 
 pub use self::allow_next_revert_error::AllowNextRevertError;
 pub use self::invalid_sm::InvalidStateMachineType;
@@ -51,6 +53,17 @@ where C: RaftTypeConfig
     #[cfg_attr(feature = "serde", serde(bound = ""))]
     #[error(transparent)]
     Fatal(#[from] Fatal<C>),
+}
+
+impl<C> RaftError<C, Infallible>
+where C: RaftTypeConfig
+{
+    /// Convert to a [`Fatal`] error if its `APIError` variant is [`Infallible`],
+    /// otherwise panic.
+    #[since(version = "0.10.0")]
+    pub fn unwrap_fatal(self) -> Fatal<C> {
+        self.into_fatal().unwrap()
+    }
 }
 
 impl<C, E> RaftError<C, E>

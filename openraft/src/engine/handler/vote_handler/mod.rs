@@ -1,7 +1,6 @@
 use std::fmt::Debug;
 use std::time::Duration;
 
-use crate::core::raft_msg::ResultSender;
 use crate::display_ext::DisplayOptionExt;
 use crate::engine::handler::leader_handler::LeaderHandler;
 use crate::engine::handler::replication_handler::ReplicationHandler;
@@ -19,6 +18,7 @@ use crate::proposer::LeaderState;
 use crate::raft_state::IOId;
 use crate::raft_state::LogStateReader;
 use crate::type_config::alias::LogIdOf;
+use crate::type_config::alias::OneshotSenderOf;
 use crate::type_config::alias::VoteOf;
 use crate::type_config::TypeConfigExt;
 use crate::vote::raft_vote::RaftVoteExt;
@@ -61,17 +61,16 @@ where C: RaftTypeConfig
     ///
     /// The `f` is used to create the error response.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn accept_vote<T, E, F>(
+    pub(crate) fn accept_vote<T, F>(
         &mut self,
         vote: &VoteOf<C>,
-        tx: ResultSender<C, T, E>,
+        tx: OneshotSenderOf<C, T>,
         f: F,
-    ) -> Option<ResultSender<C, T, E>>
+    ) -> Option<OneshotSenderOf<C, T>>
     where
         T: Debug + Eq + OptionalSend,
-        E: Debug + Eq + OptionalSend,
-        Respond<C>: From<ValueSender<C, Result<T, E>>>,
-        F: Fn(&RaftState<C>, RejectVoteRequest<C>) -> Result<T, E>,
+        Respond<C>: From<ValueSender<C, T>>,
+        F: Fn(&RaftState<C>, RejectVoteRequest<C>) -> T,
     {
         let vote_res = self.update_vote(vote);
 
