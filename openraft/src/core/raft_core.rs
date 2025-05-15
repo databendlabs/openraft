@@ -51,6 +51,7 @@ use crate::error::InitializeError;
 use crate::error::QuorumNotEnough;
 use crate::error::RPCError;
 use crate::error::Timeout;
+use crate::impls::OneshotResponder;
 use crate::log_id::option_raft_log_id_ext::OptionRaftLogIdExt;
 use crate::metrics::HeartbeatMetrics;
 use crate::metrics::RaftDataMetrics;
@@ -66,6 +67,7 @@ use crate::progress::entry::ProgressEntry;
 use crate::progress::Progress;
 use crate::quorum::QuorumSet;
 use crate::raft::message::TransferLeaderRequest;
+use crate::raft::responder::either::OneshotOrUserDefined;
 use crate::raft::responder::Responder;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
@@ -159,7 +161,7 @@ where
     pub(crate) engine: Engine<C>,
 
     /// Channels to send result back to client when logs are applied.
-    pub(crate) client_resp_channels: BTreeMap<u64, ResponderOf<C>>,
+    pub(crate) client_resp_channels: BTreeMap<u64, OneshotOrUserDefined<C>>,
 
     /// A mapping of node IDs the replication state of the target node.
     pub(crate) replications: BTreeMap<C::NodeId, ReplicationHandle<C>>,
@@ -442,7 +444,7 @@ where
     //       membership logs. And it does not need to wait for the previous membership log to commit
     //       to propose the new membership log.
     #[tracing::instrument(level = "debug", skip(self, tx))]
-    pub(super) fn change_membership(&mut self, changes: ChangeMembers<C>, retain: bool, tx: ResponderOf<C>) {
+    pub(super) fn change_membership(&mut self, changes: ChangeMembers<C>, retain: bool, tx: OneshotResponder<C>) {
         let res = self.engine.state.membership_state.change_handler().apply(changes, retain);
         let new_membership = match res {
             Ok(x) => x,
@@ -453,7 +455,7 @@ where
         };
 
         let ent = C::Entry::new_membership(LogIdOf::<C>::default(), new_membership);
-        self.write_entry(ent, Some(tx));
+        self.write_entry(ent, Some(OneshotOrUserDefined::Oneshot(tx)));
     }
 
     /// Write a log entry to the cluster through raft protocol.
@@ -463,8 +465,14 @@ where
     ///
     /// The result of applying it to state machine is sent to `resp_tx`, if it is not `None`.
     /// The calling side may not receive a result from `resp_tx`, if raft is shut down.
+    ///
+    /// The responder `R` for `resp_tx` is either [`C::Responder`] (application-defined) or
+    /// [`OneshotResponder`] (general-purpose); the former is for application-defined
+    /// entries like user data, the latter is for membership configuration changes.
+    ///
+    /// [`OneshotResponder`]: crate::raft::responder::OneshotResponder
     #[tracing::instrument(level = "debug", skip_all, fields(id = display(&self.id)))]
-    pub fn write_entry(&mut self, entry: C::Entry, resp_tx: Option<ResponderOf<C>>) {
+    pub fn write_entry(&mut self, entry: C::Entry, resp_tx: Option<OneshotOrUserDefined<C>>) {
         tracing::debug!(payload = display(&entry), "write_entry");
 
         let Some((mut lh, tx)) = self.engine.get_leader_handler_or_reject(resp_tx) else {
@@ -497,7 +505,7 @@ where
     pub(crate) fn send_heartbeat(&mut self, emitter: impl fmt::Display) -> bool {
         tracing::debug!(now = display(C::now().display()), "send_heartbeat");
 
-        let Some((mut lh, _)) = self.engine.get_leader_handler_or_reject(None) else {
+        let Some((mut lh, _)) = self.engine.get_leader_handler_or_reject(None::<ResponderOf<C>>) else {
             tracing::debug!(
                 now = display(C::now().display()),
                 "{} failed to send heartbeat, not a Leader",
@@ -1194,7 +1202,10 @@ where
                 self.handle_check_is_leader_request(read_policy, tx).await;
             }
             RaftMsg::ClientWriteRequest { app_data, tx } => {
-                self.write_entry(C::Entry::new_normal(LogIdOf::<C>::default(), app_data), Some(tx));
+                self.write_entry(
+                    C::Entry::new_normal(LogIdOf::<C>::default(), app_data),
+                    Some(OneshotOrUserDefined::UserDefined(tx)),
+                );
             }
             RaftMsg::Initialize { members, tx } => {
                 tracing::info!(

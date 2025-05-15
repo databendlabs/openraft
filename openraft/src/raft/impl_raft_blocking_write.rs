@@ -5,7 +5,6 @@
 use crate::error::into_raft_result::IntoRaftResult;
 use crate::error::ClientWriteError;
 use crate::error::RaftError;
-use crate::raft::responder::OneshotResponder;
 use crate::raft::ClientWriteResponse;
 #[cfg(doc)]
 use crate::raft::ManagementApi;
@@ -16,7 +15,7 @@ use crate::RaftTypeConfig;
 /// Implement blocking mode write operations those reply on oneshot channel for communication
 /// between Raft core and client.
 impl<C> Raft<C>
-where C: RaftTypeConfig<Responder = OneshotResponder<C>>
+where C: RaftTypeConfig
 {
     /// Propose a cluster configuration change.
     ///
@@ -67,7 +66,7 @@ where C: RaftTypeConfig<Responder = OneshotResponder<C>>
     ///
     /// If the node to add is already a voter or learner, it will still re-add it.
     ///
-    /// A `node` is able to store the network address of a node. Thus an application does not
+    /// A `node` is able to store the network address of a node. Thus, an application does not
     /// need another store for mapping node-id to ip-addr when implementing the RaftNetwork.
     #[tracing::instrument(level = "debug", skip(self, id), fields(target=display(&id)))]
     pub async fn add_learner(
