@@ -6,6 +6,7 @@ use crate::core::raft_msg::external_command::ExternalCommand;
 use crate::error::CheckIsLeaderError;
 use crate::error::Infallible;
 use crate::error::InitializeError;
+use crate::impls::OneshotResponder;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
 use crate::raft::ReadPolicy;
@@ -90,7 +91,7 @@ where C: RaftTypeConfig
         /// config will be converted into learners, otherwise they will be removed.
         retain: bool,
 
-        tx: ResponderOf<C>,
+        tx: OneshotResponder<C>,
     },
 
     ExternalCoreRequest {

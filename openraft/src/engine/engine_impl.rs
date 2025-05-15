@@ -248,12 +248,16 @@ where C: RaftTypeConfig
     /// Get a LeaderHandler for handling leader's operation. If it is not a leader, it sends back a
     /// ForwardToLeader error through the tx.
     ///
-    /// If tx is None, no response will be sent.
+    /// If `tx` is None, no response will be sent.
+    ///
+    /// The `tx` is a [`Responder`] instance, but it does not have to be the [`C::Responder`].
+    /// The generic `R` allows any responder type to be used, while [`C::Responder`] is specifically
+    /// designed for client write operations.
+    ///
+    /// [`C::Responder`]: RaftTypeConfig::Responder
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn get_leader_handler_or_reject(
-        &mut self,
-        tx: Option<ResponderOf<C>>,
-    ) -> Option<(LeaderHandler<C>, Option<ResponderOf<C>>)> {
+    pub(crate) fn get_leader_handler_or_reject<R>(&mut self, tx: Option<R>) -> Option<(LeaderHandler<C>, Option<R>)>
+    where R: Responder<C> {
         let res = self.leader_handler();
         let forward_err = match res {
             Ok(lh) => {
@@ -609,7 +613,7 @@ where C: RaftTypeConfig
     pub(crate) fn trigger_transfer_leader(&mut self, to: C::NodeId) {
         tracing::info!(to = display(&to), "{}", func_name!());
 
-        let Some((mut lh, _)) = self.get_leader_handler_or_reject(None) else {
+        let Some((mut lh, _)) = self.get_leader_handler_or_reject(None::<ResponderOf<C>>) else {
             tracing::info!(
                 to = display(to),
                 "{}: this node is not a Leader, ignore transfer Leader",

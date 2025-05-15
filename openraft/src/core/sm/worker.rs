@@ -17,6 +17,7 @@ use crate::display_ext::DisplayOptionExt;
 use crate::display_ext::DisplaySliceExt;
 use crate::entry::RaftEntry;
 use crate::entry::RaftPayload;
+use crate::raft::responder::either::OneshotOrUserDefined;
 use crate::raft::responder::Responder;
 use crate::raft::ClientWriteResponse;
 #[cfg(doc)]
@@ -28,7 +29,6 @@ use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::MpscUnboundedReceiverOf;
 use crate::type_config::alias::MpscUnboundedSenderOf;
 use crate::type_config::alias::OneshotSenderOf;
-use crate::type_config::alias::ResponderOf;
 use crate::type_config::TypeConfigExt;
 use crate::RaftLogReader;
 use crate::RaftSnapshotBuilder;
@@ -173,7 +173,7 @@ where
         &mut self,
         first: LogIdOf<C>,
         last: LogIdOf<C>,
-        client_resp_channels: &mut BTreeMap<u64, ResponderOf<C>>,
+        client_resp_channels: &mut BTreeMap<u64, OneshotOrUserDefined<C>>,
     ) -> Result<ApplyResult<C>, StorageError<C>> {
         // TODO: prepare response before apply,
         //       so that an Entry does not need to be Clone,

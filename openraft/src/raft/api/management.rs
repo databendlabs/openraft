@@ -61,10 +61,7 @@ where C: RaftTypeConfig
         &self,
         members: impl Into<ChangeMembers<C>>,
         retain: bool,
-    ) -> Result<ClientWriteResult<C>, Fatal<C>>
-    where
-        C: RaftTypeConfig<Responder = OneshotResponder<C>>,
-    {
+    ) -> Result<ClientWriteResult<C>, Fatal<C>> {
         let changes: ChangeMembers<C> = members.into();
 
         tracing::info!(
@@ -131,10 +128,7 @@ where C: RaftTypeConfig
         id: C::NodeId,
         node: C::Node,
         blocking: bool,
-    ) -> Result<ClientWriteResult<C>, Fatal<C>>
-    where
-        C: RaftTypeConfig<Responder = OneshotResponder<C>>,
-    {
+    ) -> Result<ClientWriteResult<C>, Fatal<C>> {
         let (tx, rx) = oneshot_channel::<C>();
 
         let msg = RaftMsg::ChangeMembership {
