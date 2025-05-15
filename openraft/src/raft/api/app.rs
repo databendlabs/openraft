@@ -21,6 +21,10 @@ use crate::OptionalSend;
 use crate::RaftTypeConfig;
 use crate::ReadPolicy;
 
+/// Provides application-facing APIs for interacting with the Raft system.
+///
+/// This module contains methods for client operations such as linearizable reads
+/// and writes to the replicated state machine.
 #[since(version = "0.10.0")]
 pub(crate) struct AppApi<'a, C>
 where C: RaftTypeConfig

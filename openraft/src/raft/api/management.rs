@@ -21,6 +21,10 @@ use crate::LogIdOptionExt;
 use crate::RaftMetrics;
 use crate::RaftTypeConfig;
 
+/// Provides management APIs for the Raft system.
+///
+/// This module contains methods for managing the Raft cluster, including
+/// membership changes and node additions.
 #[since(version = "0.10.0")]
 pub(crate) struct ManagementApi<'a, C>
 where C: RaftTypeConfig
