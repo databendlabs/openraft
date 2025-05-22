@@ -20,10 +20,12 @@ pub async fn write(app: &mut App, req: String) -> String {
 pub async fn read(app: &mut App, req: String) -> String {
     let key: String = decode(&req);
 
-    let ret = app.raft.ensure_linearizable(ReadPolicy::ReadIndex).await;
+    let ret = app.raft.get_read_log_id(ReadPolicy::ReadIndex).await;
 
     let res = match ret {
-        Ok(_) => {
+        Ok((read_log_id, applied)) => {
+            app.raft.wait_for_apply(read_log_id, applied, None).await.unwrap();
+
             let state_machine = app.state_machine.state_machine.lock().unwrap();
             let value = state_machine.data.get(&key).cloned();
 
