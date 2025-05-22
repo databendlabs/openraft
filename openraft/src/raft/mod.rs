@@ -532,6 +532,11 @@ where C: RaftTypeConfig
     /// Ensures reads performed after this method are linearizable across the cluster
     /// using an explicitly provided policy.
     ///
+    /// **NOTE**: Calling this method on a non-leader node will get a `ForwardToLeader` error.
+    /// If you want to do linearizable read on a non-leader node, you can fire a rpc request
+    /// `get_read_log_id` from leader, Then call [`wait_apply()`](Raft::wait_apply) to wait for
+    /// the state machine to apply to the log id you specified.
+    ///
     /// This method is just a shorthand for calling [`get_read_log_id()`](Raft::get_read_log_id) and
     /// then calling [Raft::wait].
     ///
@@ -560,7 +565,7 @@ where C: RaftTypeConfig
     /// ```
     /// Read more about how it works: [Read Operation](crate::docs::protocol::read)
     #[since(version = "0.9.0")]
-    #[tracing::instrument(level = "debug", skip_all)]
+    #[tracing::instrument(level = "debug", skip(self))]
     pub async fn ensure_linearizable(
         &self,
         read_policy: ReadPolicy,
@@ -610,12 +615,28 @@ where C: RaftTypeConfig
     ///
     /// [`wait()`]: Raft::wait
     #[since(version = "0.9.0")]
-    #[tracing::instrument(level = "debug", skip_all)]
+    #[tracing::instrument(level = "debug", skip(self))]
     pub async fn get_read_log_id(
         &self,
         read_policy: ReadPolicy,
     ) -> Result<(Option<LogIdOf<C>>, Option<LogIdOf<C>>), RaftError<C, CheckIsLeaderError<C>>> {
         self.app_api().get_read_log_id(read_policy).await.into_raft_result()
+    }
+
+    /// `wait_apply` wait for the state machine to apply entries up to
+    /// `read_log_id`. The `applied` should be current node's `last_applied`.
+    ///
+    /// If `timeout` is `None`, then it will wait forever(10 years).
+    /// If `timeout` is `Some`, then it will wait for the specified duration.
+    #[since(version = "0.11.0")]
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub async fn wait_apply(
+        &self,
+        read_log_id: Option<LogIdOf<C>>,
+        applied: Option<LogIdOf<C>>,
+        timeout: Option<Duration>,
+    ) -> Result<Option<LogIdOf<C>>, RaftError<C>> {
+        self.app_api().wait_apply(read_log_id, applied, timeout).await.into_raft_result()
     }
 
     /// Submit a mutating client request to Raft to update the state of the system (§5.1).

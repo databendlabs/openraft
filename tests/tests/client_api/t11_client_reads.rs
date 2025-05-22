@@ -358,7 +358,7 @@ async fn ensure_linearizable_with_lease_read() -> Result<()> {
 
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
-async fn ensure_linearizable_process_from_followers() -> Result<()> {
+async fn ensure_linearizable_not_process_from_followers() -> Result<()> {
     let config = Arc::new(
         Config {
             enable_heartbeat: false,
@@ -395,6 +395,107 @@ async fn ensure_linearizable_process_from_followers() -> Result<()> {
             .ensure_linearizable(1, ReadPolicy::LeaseRead)
             .await
             .expect_err("ensure_linearizable with LeaseRead on follower node 1 should fail");
+    }
+
+    Ok(())
+}
+
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
+async fn ensure_linearizable_process_from_followers() -> Result<()> {
+    let config = Arc::new(
+        Config {
+            enable_heartbeat: false,
+            enable_elect: false,
+            heartbeat_interval: 100,
+            election_timeout_min: 101,
+            election_timeout_max: 102,
+            ..Default::default()
+        }
+        .validate()?,
+    );
+
+    let mut router = RaftRouter::new(config.clone());
+
+    tracing::info!("--- initializing cluster");
+    let mut log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+
+    // Blocks append-entries to node 0, but let heartbeat pass.
+    let block_to_n0 = |_router: &_, req, _id, target| {
+        if target == 0 {
+            match req {
+                RPCRequest::AppendEntries(a) => {
+                    // Heartbeat is not blocked.
+                    if a.entries.is_empty() {
+                        return Ok(());
+                    }
+                }
+                _ => {
+                    unreachable!();
+                }
+            }
+
+            // Block append-entries to block commit.
+            let any_err = AnyError::error("block append-entries to node 0");
+            Err(RPCError::Network(NetworkError::new(&any_err)))
+        } else {
+            Ok(())
+        }
+    };
+
+    tracing::info!("--- block append-entries to node 0");
+
+    // Expire current leader
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    tracing::info!("--- let node 1 to become leader, append a blank log");
+    let n1 = router.get_raft_handle(&1).unwrap();
+    n1.trigger().elect().await?;
+
+    n1.wait(timeout()).state(ServerState::Leader, "node 1 becomes leader").await?;
+
+    tracing::info!("--- node 1 become leader, append logs");
+    {
+        n1.wait(timeout()).applied_index(Some(log_index + 1), "commit blank log").await?;
+        log_index += 1;
+
+        log_index += router.client_request_many(1, "foo", 1).await?;
+        n1.wait(timeout()).applied_index(Some(log_index), "log applied to state-machine").await?;
+
+        let (read_log_id, applied) = n1.get_read_log_id(ReadPolicy::ReadIndex).await?;
+        assert_eq!(read_log_id.index(), Some(log_index), "read-log-id is the committed log");
+        assert_eq!(applied.index(), Some(log_index));
+    }
+
+    tracing::info!("--- block n0, write another log, n0 unable to apply last log");
+    {
+        router.set_rpc_pre_hook(RPCTypes::AppendEntries, block_to_n0);
+        log_index += router.client_request_many(1, "foo", 1).await?;
+        n1.wait(timeout()).applied_index(Some(log_index), "log applied to state-machine").await?;
+
+        let (read_log_id, applied) = n1.get_read_log_id(ReadPolicy::ReadIndex).await?;
+        assert_eq!(read_log_id.index(), Some(log_index), "read-log-id is the committed log");
+        assert_eq!(applied.index(), Some(log_index));
+
+        let n0 = router.get_raft_handle(&0).unwrap();
+        let metrics = n0.metrics().borrow().clone();
+        let n0_applied = metrics.last_applied;
+        let result = n0.wait_apply(read_log_id, n0_applied, Some(Duration::from_secs(1))).await?;
+        assert_eq!(result, None, "n0 should wait timeout");
+    }
+
+    tracing::info!("--- stop blocking, write another log, n0 will apply last log");
+    {
+        router.rpc_pre_hook(RPCTypes::AppendEntries, None);
+        let (read_log_id, applied) = n1.get_read_log_id(ReadPolicy::ReadIndex).await?;
+        assert_eq!(read_log_id.index(), Some(log_index), "read-log-id is the committed log");
+        assert_eq!(applied.index(), Some(log_index));
+
+        let n0 = router.get_raft_handle(&0).unwrap();
+        let metrics = n0.metrics().borrow().clone();
+        let n0_applied = metrics.last_applied;
+        let result = n0.wait_apply(read_log_id, n0_applied, None).await?;
+        assert_eq!(result.index(), Some(log_index), "n0 should wait timeout");
     }
 
     Ok(())
