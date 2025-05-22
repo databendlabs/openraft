@@ -532,7 +532,8 @@ where C: RaftTypeConfig
     }
 
     /// Ensures reads performed after this method are linearizable across the cluster
-    /// using an explicitly provided policy.
+    /// using an explicitly provided policy. This method is just a shorthand for calling
+    /// [`get_read_log_id()`](Raft::get_read_log_id) and then calling [Raft::wait].
     ///
     /// This method is just a shorthand for combining calling
     /// [`Raft::get_read_linearizer()`](Self::get_read_linearizer) and
@@ -565,7 +566,7 @@ where C: RaftTypeConfig
     /// ```
     /// Read more about how it works: [Read Operation](crate::docs::protocol::read)
     #[since(version = "0.9.0")]
-    #[tracing::instrument(level = "debug", skip_all)]
+    #[tracing::instrument(level = "debug", skip(self))]
     pub async fn ensure_linearizable(
         &self,
         read_policy: ReadPolicy,
@@ -585,7 +586,7 @@ where C: RaftTypeConfig
     ///
     /// See [`Raft::get_read_linearizer`] for full documentation.
     #[since(version = "0.9.0")]
-    #[tracing::instrument(level = "debug", skip_all)]
+    #[tracing::instrument(level = "debug", skip(self))]
     pub async fn get_read_log_id(
         &self,
         read_policy: ReadPolicy,

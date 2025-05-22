@@ -42,10 +42,12 @@ async fn read(mut req: Request<Arc<App>>) -> tide::Result {
 }
 
 async fn linearizable_read(mut req: Request<Arc<App>>) -> tide::Result {
-    let ret = req.state().raft.ensure_linearizable(ReadPolicy::ReadIndex).await;
+    let ret = req.state().raft.get_read_linearizer(ReadPolicy::ReadIndex).await;
 
     match ret {
-        Ok(_) => {
+        Ok(linearizer) => {
+            linearizer.await_ready(&req.state().raft).await.unwrap();
+
             let key: String = req.body_json().await?;
             let kvs = req.state().key_values.read().await;
 
@@ -54,6 +56,10 @@ async fn linearizable_read(mut req: Request<Arc<App>>) -> tide::Result {
             let res: Result<String, CheckIsLeaderError> = Ok(value.cloned().unwrap_or_default());
             Ok(Response::builder(StatusCode::Ok).body(Body::from_json(&res)?).build())
         }
-        e => Ok(Response::builder(StatusCode::Ok).body(Body::from_json(&e)?).build()),
+        Err(e) => {
+            // The Ok variant is not use.
+            let err = Err::<u64, _>(e);
+            Ok(Response::builder(StatusCode::Ok).body(Body::from_json(&err)?).build())
+        }
     }
 }

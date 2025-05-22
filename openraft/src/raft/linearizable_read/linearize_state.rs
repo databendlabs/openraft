@@ -4,7 +4,6 @@ use openraft_macros::since;
 
 use crate::display_ext::DisplayOptionExt;
 use crate::LogId;
-use crate::LogIdOptionExt;
 use crate::RaftTypeConfig;
 
 /// Represents the state after awaiting the applied log entries for a linearizable read.
@@ -26,6 +25,8 @@ use crate::RaftTypeConfig;
 pub struct LinearizeState<C>
 where C: RaftTypeConfig
 {
+    /// The node from which this Linearizer collects the applied log ID.
+    node_id: C::NodeId,
     read_log_id: LogId<C>,
     applied: Option<LogId<C>>,
 }
@@ -34,17 +35,7 @@ impl<C> fmt::Display for LinearizeState<C>
 where C: RaftTypeConfig
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "LinearizeState",)?;
-
-        if self.is_ready() {
-            write!(f, "(ready)")?;
-        } else {
-            write!(
-                f,
-                "(waiting, {} behind)",
-                self.read_log_id.index() + 1 - self.applied.next_index()
-            )?;
-        };
+        write!(f, "LinearizeState[id={}]", self.node_id)?;
 
         write!(
             f,
@@ -58,12 +49,17 @@ where C: RaftTypeConfig
 impl<C> LinearizeState<C>
 where C: RaftTypeConfig
 {
-    pub(crate) fn new(read_log_id: LogId<C>, applied: Option<LogId<C>>) -> Self {
-        Self { read_log_id, applied }
+    pub(crate) fn new(node_id: C::NodeId, read_log_id: LogId<C>, applied: Option<LogId<C>>) -> Self {
+        Self {
+            node_id,
+            read_log_id,
+            applied,
+        }
     }
 
     /// Updates the applied log ID and returns the modified state.
-    pub(crate) fn with_applied(mut self, applied: Option<LogId<C>>) -> Self {
+    pub(crate) fn with_applied(mut self, node_id: C::NodeId, applied: Option<LogId<C>>) -> Self {
+        self.node_id = node_id;
         self.applied = applied;
         self
     }
@@ -74,9 +70,16 @@ where C: RaftTypeConfig
     /// the linearizability requirement. It returns `true` when `applied >= read_log_id`,
     /// meaning the state machine has caught up to the point where a linearizable read
     /// can be safely performed.
+    ///
+    /// If the local_node_id is different, the `applied` is unknown.
+    pub(crate) fn is_ready_on_node(&self, node_id: &C::NodeId) -> bool {
+        self.node_id == *node_id && self.applied.as_ref() >= Some(&self.read_log_id)
+    }
+
+    /// Return the node id on which the linearizer is created.
     #[since(version = "0.10.0")]
-    pub fn is_ready(&self) -> bool {
-        self.applied.as_ref() >= Some(&self.read_log_id)
+    pub fn node_id(&self) -> &C::NodeId {
+        &self.node_id
     }
 
     /// Return the `read_log_id` of this read operation.
@@ -102,16 +105,16 @@ mod tests {
 
     #[test]
     fn test_display() {
-        let state = LinearizeState::new(log_id(1, 1, 1), Some(log_id(1, 1, 0)));
+        let state = LinearizeState::new(1, log_id(1, 1, 1), Some(log_id(1, 1, 0)));
         assert_eq!(
             format!("{}", state),
-            "LinearizeState(waiting, 1 behind){ read_log_id: T1-N1.1, applied: T1-N1.0 }"
+            "LinearizeState[id=1]{ read_log_id: T1-N1.1, applied: T1-N1.0 }"
         );
 
-        let state = state.with_applied(Some(log_id(3, 3, 3)));
+        let state = state.with_applied(2, Some(log_id(3, 3, 3)));
         assert_eq!(
             format!("{}", state),
-            "LinearizeState(ready){ read_log_id: T1-N1.1, applied: T3-N3.3 }"
+            "LinearizeState[id=2]{ read_log_id: T1-N1.1, applied: T3-N3.3 }"
         );
     }
 }

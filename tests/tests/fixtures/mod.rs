@@ -770,14 +770,21 @@ impl TypedRaftRouter {
     }
 
     /// Ensure read linearizability with user-specified policy.
-    pub async fn ensure_linearizable(
+    pub async fn ensure_linearizable(&self, target: MemNodeId, read_policy: ReadPolicy) -> anyhow::Result<()> {
+        let n = self.get_raft_handle(&target)?;
+        let linearizer = n.get_read_linearizer(read_policy).await?;
+        linearizer.await_ready(&n).await?;
+        Ok(())
+    }
+
+    /// Get `read_log_id` and last `applied` log
+    pub async fn get_read_log_id(
         &self,
         target: MemNodeId,
         read_policy: ReadPolicy,
-    ) -> Result<(), CheckIsLeaderError<MemConfig>> {
+    ) -> Result<(Option<LogIdOf<MemConfig>>, Option<LogIdOf<MemConfig>>), CheckIsLeaderError<MemConfig>> {
         let n = self.get_raft_handle(&target).unwrap();
-        n.ensure_linearizable(read_policy).await.map_err(|e| e.into_api_error().unwrap())?;
-        Ok(())
+        n.get_read_log_id(read_policy).await.map_err(|e| e.into_api_error().unwrap())
     }
 
     /// Send a client request to the target node, causing test failure on error.
