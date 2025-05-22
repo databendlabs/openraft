@@ -269,7 +269,7 @@ where
             //       Fix this when the following heartbeats are replaced with calling RaftNetwork.
             let applied = self.engine.state.io_applied().cloned();
 
-            Linearizer::new(read_log_id, applied)
+            Linearizer::new(self.id.clone(), read_log_id, applied)
         };
 
         if read_policy == ReadPolicy::LeaseRead {

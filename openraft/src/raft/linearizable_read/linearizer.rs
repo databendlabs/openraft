@@ -49,9 +49,9 @@ impl<C> Linearizer<C>
 where C: RaftTypeConfig
 {
     #[since(version = "0.10.0")]
-    pub fn new(read_log_id: LogId<C>, applied: Option<LogId<C>>) -> Self {
+    pub fn new(node_id: C::NodeId, read_log_id: LogId<C>, applied: Option<LogId<C>>) -> Self {
         Self {
-            state: LinearizeState::new(read_log_id, applied),
+            state: LinearizeState::new(node_id, read_log_id, applied),
         }
     }
 
@@ -101,8 +101,9 @@ where C: RaftTypeConfig
         raft: &Raft<C>,
         timeout: Option<Duration>,
     ) -> Result<Result<LinearizeState<C>, LinearizeState<C>>, Fatal<C>> {
-        // TODO: test timeout
-        if self.state.is_ready() {
+        let this_id = raft.inner.id();
+
+        if self.state.is_ready_on_node(this_id) {
             return Ok(Ok(self.state));
         }
 
@@ -111,15 +112,15 @@ where C: RaftTypeConfig
         let res = raft.inner.wait(timeout).applied_index_at_least(expected, "Linearizer::try_await_ready").await;
 
         match res {
-            Ok(metrics) => Ok(Ok(self.state.with_applied(metrics.last_applied))),
+            Ok(metrics) => Ok(Ok(self.state.with_applied(this_id.clone(), metrics.last_applied))),
             Err(e) => match e {
                 WaitError::Timeout(_, _) => {
                     let metrics_rx = raft.metrics();
                     let ref_metrics = metrics_rx.borrow_watched();
                     let applied = ref_metrics.last_applied.clone();
 
-                    let state = self.state.with_applied(applied);
-                    if state.is_ready() {
+                    let state = self.state.with_applied(this_id.clone(), applied);
+                    if state.is_ready_on_node(this_id) {
                         Ok(Ok(state))
                     } else {
                         Ok(Err(state))

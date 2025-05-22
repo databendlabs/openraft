@@ -42,10 +42,12 @@ async fn read(mut req: Request<Arc<App>>) -> tide::Result {
 }
 
 async fn linearizable_read(mut req: Request<Arc<App>>) -> tide::Result {
-    let ret = req.state().raft.ensure_linearizable(ReadPolicy::ReadIndex).await;
+    let ret = req.state().raft.get_read_linearizer(ReadPolicy::ReadIndex).await;
 
     match ret {
-        Ok(_) => {
+        Ok(linearizer) => {
+            linearizer.await_ready(&req.state().raft).await.unwrap();
+
             let key: String = req.body_json().await?;
             let kvs = req.state().key_values.read().await;
 

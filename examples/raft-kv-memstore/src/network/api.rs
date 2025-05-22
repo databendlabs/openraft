@@ -39,10 +39,12 @@ pub async fn read(app: Data<App>, req: Json<String>) -> actix_web::Result<impl R
 
 #[post("/linearizable_read")]
 pub async fn linearizable_read(app: Data<App>, req: Json<String>) -> actix_web::Result<impl Responder> {
-    let ret = app.raft.ensure_linearizable(ReadPolicy::ReadIndex).await.decompose().unwrap();
+    let ret = app.raft.get_read_linearizer(ReadPolicy::ReadIndex).await.decompose().unwrap();
 
     match ret {
-        Ok(_) => {
+        Ok(linearizer) => {
+            linearizer.await_ready(&app.raft).await.unwrap();
+
             let state_machine = app.state_machine_store.state_machine.read().await;
             let key = req.0;
             let value = state_machine.data.get(&key).cloned();

@@ -358,7 +358,7 @@ async fn ensure_linearizable_with_lease_read() -> Result<()> {
 
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
-async fn ensure_linearizable_process_from_followers() -> Result<()> {
+async fn ensure_linearizable_not_process_from_followers() -> Result<()> {
     let config = Arc::new(
         Config {
             enable_heartbeat: false,
@@ -395,6 +395,124 @@ async fn ensure_linearizable_process_from_followers() -> Result<()> {
             .ensure_linearizable(1, ReadPolicy::LeaseRead)
             .await
             .expect_err("ensure_linearizable with LeaseRead on follower node 1 should fail");
+    }
+
+    Ok(())
+}
+
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
+async fn ensure_linearizable_process_from_followers() -> Result<()> {
+    let config = Arc::new(
+        Config {
+            enable_heartbeat: false,
+            enable_elect: false,
+            heartbeat_interval: 100,
+            election_timeout_min: 101,
+            election_timeout_max: 102,
+            ..Default::default()
+        }
+        .validate()?,
+    );
+
+    let mut router = RaftRouter::new(config.clone());
+    router.network_send_delay(0);
+
+    tracing::info!("--- initializing cluster");
+    let mut log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+
+    // Get the ID of the leader
+    let leader_node_id = router.leader().expect("leader not found");
+    assert_eq!(
+        leader_node_id, 0,
+        "expected leader to be node 0, got {}",
+        leader_node_id
+    );
+    let leader = router.get_raft_handle(&leader_node_id).unwrap();
+
+    // Blocks append-entries to node 1, but let heartbeat pass.
+    let block_to_follower_n1 = |_router: &_, req, _id, target| {
+        if target == 1 {
+            match req {
+                RPCRequest::AppendEntries(a) => {
+                    // Heartbeat is not blocked.
+                    if a.entries.is_empty() {
+                        return Ok(());
+                    }
+                }
+                _ => {
+                    unreachable!();
+                }
+            }
+
+            // Block append-entries to block commit.
+            let any_err = AnyError::error("block append-entries to node 0");
+            Err(RPCError::Network(NetworkError::new(&any_err)))
+        } else {
+            Ok(())
+        }
+    };
+
+    tracing::info!("--- block follower n1, leader write a log, n1 unable to apply last log, but n2 does");
+    {
+        router.set_rpc_pre_hook(RPCTypes::AppendEntries, block_to_follower_n1);
+        log_index += router.client_request_many(leader_node_id, "foo", 1).await?;
+        // leader.wait(timeout()).applied_index(Some(log_index), "log applied to state-machine").await?;
+
+        let linearizer = leader.get_read_linearizer(ReadPolicy::ReadIndex).await?;
+        assert_eq!(
+            linearizer.read_log_id().index(),
+            log_index,
+            "read-log-id is the committed log"
+        );
+        assert_eq!(linearizer.applied().index(), Some(log_index));
+
+        let follower_n1 = router.get_raft_handle(&1).unwrap();
+        let metrics = follower_n1.metrics().borrow().clone();
+        let follower_n1_applied = metrics.last_applied;
+        assert!(
+            follower_n1_applied.as_ref() < linearizer.applied(),
+            "follower applied should less than leader applied"
+        );
+        let res = linearizer.clone().try_await_ready(&follower_n1, Some(Duration::from_secs(1))).await?;
+        println!("follower n1 res: {:?}", res);
+        assert!(res.is_err(), "follower n1 should not be able to apply the last log");
+        assert_eq!(
+            res.unwrap_err().applied().index(),
+            Some(log_index - 1),
+            "follower n1 applied to {}",
+            log_index - 1
+        );
+
+        let follower_n2 = router.get_raft_handle(&2).unwrap();
+        let state = linearizer.await_ready(&follower_n2).await?;
+
+        assert_eq!(
+            state.applied().index(),
+            Some(log_index),
+            "follower n2 applied should catch up leader's applied"
+        );
+    }
+
+    tracing::info!("--- stop blocking, follower n1 will apply last log");
+    {
+        router.rpc_pre_hook(RPCTypes::AppendEntries, None);
+
+        let linearizer = leader.get_read_linearizer(ReadPolicy::ReadIndex).await?;
+        assert_eq!(
+            linearizer.read_log_id().index(),
+            log_index,
+            "read-log-id is the committed log"
+        );
+        assert_eq!(linearizer.applied().index(), Some(log_index));
+
+        let follower_n1 = router.get_raft_handle(&1).unwrap();
+        let state = linearizer.await_ready(&follower_n1).await?;
+        assert_eq!(
+            state.applied().index(),
+            Some(log_index),
+            "follower n1 applied should catch up leader's applied"
+        );
     }
 
     Ok(())
