@@ -252,6 +252,28 @@ where
     pub(super) async fn handle_check_is_leader_request(&mut self, read_policy: ReadPolicy, tx: ClientReadTx<C>) {
         // Setup sentinel values to track when we've received majority confirmation of leadership.
 
+        #[cfg(feature = "follower_read")]
+        if self.engine.state.server_state.is_follower() {
+            let leader_id = self.current_leader();
+            let leader_node = self.get_leader_node(leader_id.clone()).unwrap();
+            let mut client = self.network_factory.new_client(leader_id.unwrap(), &leader_node).await;
+            let res = client.get_read_log_id(GetReadLogIdRequest { read_policy }).await;
+            match res {
+                Ok(r) if r.is_none() => {
+                    let err = ForwardToLeader::empty();
+                    let _ = tx.send(Err(err.into()));
+                }
+                Ok(r) => {
+                    let _ = tx.send(Ok(r.into()));
+                }
+                Err(_) => {
+                    let err = ForwardToLeader::empty();
+                    let _ = tx.send(Err(err.into()));
+                }
+            }
+            return;
+        }
+
         let resp = {
             let l = self.engine.leader_handler();
             let lh = match l {

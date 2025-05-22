@@ -14,6 +14,10 @@ use crate::network::RPCOption;
 use crate::raft::message::TransferLeaderRequest;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
+#[cfg(feature = "follower_read")]
+use crate::raft::GetReadLogIdRequest;
+#[cfg(feature = "follower_read")]
+use crate::raft::GetReadLogIdResponse;
 use crate::raft::SnapshotResponse;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
@@ -113,4 +117,7 @@ where C: RaftTypeConfig
     fn backoff(&self) -> Backoff {
         Backoff::new(std::iter::repeat(Duration::from_millis(500)))
     }
+
+    #[cfg(feature = "follower_read")]
+    async fn get_read_log_id(&mut self, req: GetReadLogIdRequest) -> Result<GetReadLogIdResponse<C>, RPCError<C>>;
 }

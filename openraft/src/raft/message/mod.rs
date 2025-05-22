@@ -9,11 +9,14 @@ mod transfer_leader;
 mod vote;
 
 mod client_write;
+mod get_read_log_id;
 
 pub use append_entries::AppendEntriesRequest;
 pub use append_entries::AppendEntriesResponse;
 pub use client_write::ClientWriteResponse;
 pub use client_write::ClientWriteResult;
+pub use get_read_log_id::GetReadLogIdRequest;
+pub use get_read_log_id::GetReadLogIdResponse;
 pub use install_snapshot::InstallSnapshotRequest;
 pub use install_snapshot::InstallSnapshotResponse;
 pub use install_snapshot::SnapshotResponse;

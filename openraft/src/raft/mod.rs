@@ -38,6 +38,8 @@ pub use message::AppendEntriesRequest;
 pub use message::AppendEntriesResponse;
 pub use message::ClientWriteResponse;
 pub use message::ClientWriteResult;
+pub use message::GetReadLogIdRequest;
+pub use message::GetReadLogIdResponse;
 pub use message::InstallSnapshotRequest;
 pub use message::InstallSnapshotResponse;
 pub use message::SnapshotResponse;
@@ -196,6 +198,7 @@ macro_rules! declare_raft_types {
 /// This enum defines strategies for ensuring linearizable reads in distributed systems
 /// while balancing between consistency guarantees and performance.
 #[derive(Clone, Debug, Display, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub enum ReadPolicy {
     /// Uses leader lease to avoid network round-trips for read operations.
     ///

@@ -108,6 +108,8 @@ loosen-follower-log-revert = []
 # See: https://docs.rs/tracing/latest/tracing/#emitting-log-records
 tracing-log = [ "tracing/log" ]
 
+follower_read = []
+
 [package.metadata.docs.rs]
 
 # Enable these feature flags to show all types/mods,

@@ -8,6 +8,8 @@ use crate::display_ext::DisplayOptionExt;
 #[cfg(doc)]
 use crate::error::into_raft_result::IntoRaftResult;
 use crate::error::Fatal;
+use crate::raft::message::GetReadLogIdRequest;
+use crate::raft::message::GetReadLogIdResponse;
 use crate::raft::raft_inner::RaftInner;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
@@ -139,6 +141,33 @@ where C: RaftTypeConfig
         self.inner.send_msg(raft_msg).await?;
 
         Ok(())
+    }
+
+    #[allow(unused)]
+    pub(crate) async fn handle_get_read_log_id(
+        &self,
+        req: GetReadLogIdRequest,
+    ) -> Result<GetReadLogIdResponse<C>, Fatal<C>> {
+        tracing::debug!(req = display(&req), "Raft::ensure_linearizable");
+
+        let (tx, rx) = C::oneshot();
+        let res = self
+            .inner
+            .call_core(
+                RaftMsg::CheckIsLeaderRequest {
+                    read_policy: req.read_policy,
+                    tx,
+                },
+                rx,
+            )
+            .await?;
+
+        let (read_log_id, applied) = match res {
+            Ok(x) => x,
+            Err(_) => return Ok(GetReadLogIdResponse::from((None, None))),
+        };
+
+        Ok(GetReadLogIdResponse::from((read_log_id, applied)))
     }
 
     /// Wait for the log to be flushed to make sure the RequestVote.last_log_id is upto date, then

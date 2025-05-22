@@ -9,6 +9,10 @@ use crate::network::Backoff;
 use crate::network::RPCOption;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
+#[cfg(feature = "follower_read")]
+use crate::raft::GetReadLogIdRequest;
+#[cfg(feature = "follower_read")]
+use crate::raft::GetReadLogIdResponse;
 use crate::raft::SnapshotResponse;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
@@ -52,5 +56,10 @@ where
 
     fn backoff(&self) -> Backoff {
         RaftNetwork::<C>::backoff(self)
+    }
+
+    #[cfg(feature = "follower_read")]
+    async fn get_read_log_id(&mut self, _req: GetReadLogIdRequest) -> Result<GetReadLogIdResponse<C>, RPCError<C>> {
+        unimplemented!("get_read_log_id not implemented")
     }
 }
