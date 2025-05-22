@@ -1,5 +1,6 @@
 use std::error::Error;
 use std::future::Future;
+use std::time::Duration;
 
 use openraft_macros::since;
 
@@ -74,6 +75,22 @@ where C: RaftTypeConfig
     ) -> Result<Result<(Option<LogIdOf<C>>, Option<LogIdOf<C>>), CheckIsLeaderError<C>>, Fatal<C>> {
         let (tx, rx) = C::oneshot();
         self.inner.call_core(RaftMsg::CheckIsLeaderRequest { read_policy, tx }, rx).await
+    }
+
+    #[since(version = "0.10.0")]
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub(crate) async fn wait_for_apply(
+        &self,
+        read_log_id: Option<LogIdOf<C>>,
+        timeout: Option<Duration>,
+    ) -> Result<Option<LogIdOf<C>>, Fatal<C>> {
+        match self.inner.wait(timeout).applied_index_at_least(read_log_id.index(), "wait for apply").await {
+            Ok(_) => Ok(read_log_id),
+            Err(e) => match e {
+                WaitError::Timeout(_, _) => Ok(None),
+                WaitError::ShuttingDown => Err(Fatal::Stopped),
+            },
+        }
     }
 
     #[since(version = "0.10.0")]

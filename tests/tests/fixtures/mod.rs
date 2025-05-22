@@ -770,13 +770,32 @@ impl TypedRaftRouter {
     }
 
     /// Ensure read linearizability with user-specified policy.
-    pub async fn ensure_linearizable(
+    pub async fn ensure_linearizable(&self, target: MemNodeId, read_policy: ReadPolicy) -> anyhow::Result<()> {
+        let n = self.get_raft_handle(&target)?;
+        let (read_log_id, _) = n.get_read_log_id(read_policy).await?;
+        n.wait_for_apply(read_log_id, None).await?;
+        Ok(())
+    }
+
+    /// Get `read_log_id` and last `applied` log
+    pub async fn get_read_log_id(
         &self,
         target: MemNodeId,
         read_policy: ReadPolicy,
-    ) -> Result<(), CheckIsLeaderError<MemConfig>> {
+    ) -> Result<(Option<LogIdOf<MemConfig>>, Option<LogIdOf<MemConfig>>), CheckIsLeaderError<MemConfig>> {
         let n = self.get_raft_handle(&target).unwrap();
-        n.ensure_linearizable(read_policy).await.map_err(|e| e.into_api_error().unwrap())?;
+        n.get_read_log_id(read_policy).await.map_err(|e| e.into_api_error().unwrap())
+    }
+
+    /// Wait local sm applied at least of `read_log_id`
+    pub async fn wait_for_apply(
+        &self,
+        target: MemNodeId,
+        read_log_id: Option<LogIdOf<MemConfig>>,
+        timeout: Option<Duration>,
+    ) -> anyhow::Result<()> {
+        let n = self.get_raft_handle(&target)?;
+        n.wait_for_apply(read_log_id, timeout).await?;
         Ok(())
     }
 
