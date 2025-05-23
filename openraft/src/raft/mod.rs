@@ -73,6 +73,7 @@ use crate::error::Fatal;
 use crate::error::InitializeError;
 use crate::error::InvalidStateMachineType;
 use crate::error::RaftError;
+use crate::error::WaitTimeoutError;
 use crate::membership::IntoNodes;
 use crate::metrics::RaftDataMetrics;
 use crate::metrics::RaftMetrics;
@@ -635,7 +636,7 @@ where C: RaftTypeConfig
         &self,
         read_log_id: Option<LogIdOf<C>>,
         timeout: Option<Duration>,
-    ) -> Result<Option<LogIdOf<C>>, RaftError<C>> {
+    ) -> Result<Option<LogIdOf<C>>, RaftError<C, WaitTimeoutError>> {
         self.app_api().wait_for_apply(read_log_id, timeout).await.into_raft_result()
     }
 

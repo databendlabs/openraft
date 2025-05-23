@@ -190,6 +190,19 @@ where C: RaftTypeConfig
     }
 }
 
+#[derive(Debug, thiserror::Error)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
+#[error("wait timeout: {timeout:?}")]
+pub struct WaitTimeoutError {
+    pub timeout: Duration,
+}
+
+impl WaitTimeoutError {
+    pub fn new(timeout: Duration) -> Self {
+        Self { timeout }
+    }
+}
+
 /// An error related to a client write request.
 #[derive(Debug, Clone, thiserror::Error, derive_more::TryInto)]
 #[derive(PartialEq, Eq)]

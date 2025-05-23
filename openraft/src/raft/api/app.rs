@@ -8,6 +8,7 @@ use crate::core::raft_msg::RaftMsg;
 use crate::error::CheckIsLeaderError;
 use crate::error::ClientWriteError;
 use crate::error::Fatal;
+use crate::error::WaitTimeoutError;
 use crate::metrics::WaitError;
 use crate::raft::raft_inner::RaftInner;
 use crate::raft::responder::Responder;
@@ -83,11 +84,11 @@ where C: RaftTypeConfig
         &self,
         read_log_id: Option<LogIdOf<C>>,
         timeout: Option<Duration>,
-    ) -> Result<Option<LogIdOf<C>>, Fatal<C>> {
+    ) -> Result<Result<Option<LogIdOf<C>>, WaitTimeoutError>, Fatal<C>> {
         match self.inner.wait(timeout).applied_index_at_least(read_log_id.index(), "wait for apply").await {
-            Ok(_) => Ok(read_log_id),
+            Ok(_) => Ok(Ok(read_log_id)),
             Err(e) => match e {
-                WaitError::Timeout(_, _) => Ok(None),
+                WaitError::Timeout(t, _) => Ok(Err(WaitTimeoutError::new(t))),
                 WaitError::ShuttingDown => Err(Fatal::Stopped),
             },
         }

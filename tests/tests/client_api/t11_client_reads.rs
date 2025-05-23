@@ -480,8 +480,10 @@ async fn ensure_linearizable_process_from_followers() -> Result<()> {
             follower_n1_applied < leader_applied,
             "follower applied should less than leader applied"
         );
-        let result = follower_n1.wait_for_apply(read_log_id, Some(Duration::from_secs(1))).await?;
-        assert_eq!(result, None, "follower n1 should wait timeout");
+        follower_n1
+            .wait_for_apply(read_log_id, Some(Duration::from_secs(1)))
+            .await
+            .expect_err("follower n1 should wait timeout");
 
         let follower_n2 = router.get_raft_handle(&2).unwrap();
         let result = follower_n2.wait_for_apply(read_log_id, Some(Duration::from_secs(1))).await?;
