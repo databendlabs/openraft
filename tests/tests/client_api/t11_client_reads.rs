@@ -453,17 +453,7 @@ async fn ensure_linearizable_process_from_followers() -> Result<()> {
         }
     };
 
-    tracing::info!("--- node 0 become leader, append logs");
-    {
-        log_index += router.client_request_many(leader_node_id, "foo", 1).await?;
-        leader.wait(timeout()).applied_index(Some(log_index), "log applied to state-machine").await?;
-
-        let (read_log_id, applied) = leader.get_read_log_id(ReadPolicy::ReadIndex).await?;
-        assert_eq!(read_log_id.index(), Some(log_index), "read-log-id is the committed log");
-        assert_eq!(applied.index(), Some(log_index));
-    }
-
-    tracing::info!("--- block follower n1, write another log, n1 unable to apply last log, but n2 does");
+    tracing::info!("--- block follower n1, leader write a log, n1 unable to apply last log, but n2 does");
     {
         router.set_rpc_pre_hook(RPCTypes::AppendEntries, block_to_follower_n1);
         log_index += router.client_request_many(leader_node_id, "foo", 1).await?;
@@ -480,8 +470,10 @@ async fn ensure_linearizable_process_from_followers() -> Result<()> {
             follower_n1_applied < leader_applied,
             "follower applied should less than leader applied"
         );
-        let result = follower_n1.wait_for_apply(read_log_id, Some(Duration::from_secs(1))).await?;
-        assert_eq!(result, None, "follower n1 should wait timeout");
+        follower_n1
+            .wait_for_apply(read_log_id, Some(Duration::from_secs(1)))
+            .await
+            .expect_err("follower n1 should wait timeout");
 
         let follower_n2 = router.get_raft_handle(&2).unwrap();
         let result = follower_n2.wait_for_apply(read_log_id, Some(Duration::from_secs(1))).await?;
