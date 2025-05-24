@@ -12,6 +12,7 @@ pub(crate) mod api;
 #[cfg(test)]
 mod declare_raft_types_test;
 mod impl_raft_blocking_write;
+pub mod linearizable_read;
 pub(crate) mod message;
 mod raft_inner;
 pub mod responder;
@@ -34,6 +35,7 @@ use std::time::Duration;
 
 use core_state::CoreState;
 use derive_more::Display;
+use linearizable_read::Linearizer;
 pub use message::AppendEntriesRequest;
 pub use message::AppendEntriesResponse;
 pub use message::ClientWriteResponse;
@@ -532,30 +534,33 @@ where C: RaftTypeConfig
     /// Ensures reads performed after this method are linearizable across the cluster
     /// using an explicitly provided policy.
     ///
-    /// This method is just a shorthand for calling [`get_read_log_id()`](Raft::get_read_log_id) and
-    /// then calling [Raft::wait].
+    /// This method is just a shorthand for combining calling
+    /// [`Raft::get_read_linearizer()`](Self::get_read_linearizer) and
+    /// [`Linearizer::await_applied()`](Linearizer::await_applied), i.e., it is equivalent to:
+    /// ```ignore
+    /// my_raft.get_read_linearizer(read_policy).await?.await_applied(&my_raft, None).await?;
+    /// ```
     ///
-    /// The policy can be one of:
-    /// - `ReadPolicy::ReadIndex`: Provides strongest consistency guarantees by confirming
-    ///   leadership with a quorum before serving reads, but incurs higher latency due to network
-    ///   communication.
-    /// - `ReadPolicy::LeaseRead`: Uses leadership lease to avoid network round-trips, providing
-    ///   better performance but slightly weaker consistency guarantees (assumes minimal clock drift
-    ///   between nodes).
+    /// To support follower read, i.e., get `read_log_id` on a remote leader then read on local
+    /// state machine, see [`Raft::get_read_linearizer`].
+    ///
+    /// The `read_policy` defines the policy to ensure leadership. See: [`ReadPolicy`].
     ///
     /// Returns:
     /// - `Ok(read_log_id)` on successful confirmation that the node is the leader. `read_log_id`
     ///   represents the log id up to which the state machine has applied to ensure a linearizable
     ///   read.
-    /// - `Err(RaftError<CheckIsLeaderError>)` if it detects a higher term, or if it fails to
-    ///   communicate with a quorum of followers.
+    /// - `Err(RaftError<CheckIsLeaderError>)` if fails to assert leadership.
     ///
     /// # Examples
+    ///
     /// ```ignore
     /// // Use a strict policy for this specific critical read
-    /// my_raft.ensure_linearizable_with_policy(ReadPolicy::ReadIndex).await?;
+    /// my_raft.ensure_linearizable(ReadPolicy::ReadIndex).await?;
+    ///
     /// // Or use a more performant policy when consistency requirements are less strict
-    /// my_raft.ensure_linearizable_with_policy(ReadPolicy::LeaseRead).await?;
+    /// my_raft.ensure_linearizable(ReadPolicy::LeaseRead).await?;
+    ///
     /// // Then proceed with the state machine read
     /// ```
     /// Read more about how it works: [Read Operation](crate::docs::protocol::read)
@@ -565,57 +570,84 @@ where C: RaftTypeConfig
         &self,
         read_policy: ReadPolicy,
     ) -> Result<Option<LogIdOf<C>>, RaftError<C, CheckIsLeaderError<C>>> {
-        self.app_api().ensure_linearizable(read_policy).await.into_raft_result()
+        let linearizer = self.app_api().get_read_linearizer(read_policy).await.into_raft_result()?;
+
+        // Safe unwrap: it never times out.
+        let state = linearizer.await_applied(self, None).await?.unwrap();
+        Ok(Some(state.read_log_id().clone()))
     }
 
-    /// Ensures this node is leader and returns the log id up to which the state machine should
-    /// apply to ensure a read can be linearizable across the cluster using an explicitly provided
-    /// policy.
+    /// Legacy method that returns log IDs directly. Use
+    /// [`Raft::get_read_linearizer`] instead.
     ///
-    /// The leadership is ensured by sending heartbeats to a quorum of followers.
-    /// Note that this is just the first step for linearizable read. The second step is to wait for
-    /// state machine to reach the returned `read_log_id`.
+    /// This method extracts log IDs from a [`Linearizer`] and returns them as a tuple.
+    /// **For new code, use [`Raft::get_read_linearizer`]** which provides a better API.
     ///
-    /// The policy can be one of:
-    /// - `ReadPolicy::ReadIndex`: Provides strongest consistency guarantees by confirming
-    ///   leadership with a quorum before serving reads, but incurs higher latency due to network
-    ///   communication.
-    /// - `ReadPolicy::LeaseRead`: Uses leadership lease to avoid network round-trips, providing
-    ///   better performance but slightly weaker consistency guarantees (assumes minimal clock drift
-    ///   between nodes).
-    ///
-    /// Returns:
-    /// - `Ok((read_log_id, last_applied_log_id))` on successful confirmation that the node is the
-    ///   leader. `read_log_id` represents the log id up to which the state machine should apply to
-    ///   ensure a linearizable read.
-    /// - `Err(RaftError<CheckIsLeaderError>)` if this node fail to ensure its leadership, for
-    ///   example, it detects a higher term, or fails to communicate with a quorum.
-    ///
-    /// Once returned, the caller should wait for the state machine to apply entries up to
-    /// `read_log_id`. This can be done by using the [`wait()`] as shown in the example
-    /// below, or by directly monitoring `last_applied` in [`Raft::metrics`] until it reaches or
-    /// exceeds `read_log_id`.
-    ///
-    /// # Examples
-    /// ```ignore
-    /// let (read_log_id, applied_log_id) = my_raft.get_read_log_id().await?;
-    /// if read_log_id.index() > applied_log_id.index() {
-    ///     my_raft.wait(None).applied_index_at_least(read_log_id.index()).await?;
-    /// }
-    /// // Proceed with the state machine read
-    /// ```
-    /// The comparison `read_log_id > applied_log_id` would also be valid in the above example.
-    ///
-    /// See: [Read Operation](crate::docs::protocol::read)
-    ///
-    /// [`wait()`]: Raft::wait
+    /// See [`Raft::get_read_linearizer`] for full documentation.
     #[since(version = "0.9.0")]
     #[tracing::instrument(level = "debug", skip_all)]
     pub async fn get_read_log_id(
         &self,
         read_policy: ReadPolicy,
     ) -> Result<(Option<LogIdOf<C>>, Option<LogIdOf<C>>), RaftError<C, CheckIsLeaderError<C>>> {
-        self.app_api().get_read_log_id(read_policy).await.into_raft_result()
+        let linearizer = self.app_api().get_read_linearizer(read_policy).await.into_raft_result()?;
+
+        let read_log_id = linearizer.read_log_id();
+        let applied = linearizer.applied();
+
+        Ok((Some(read_log_id.clone()), applied.cloned()))
+    }
+
+    /// Ensures this node is leader and returns a [`Linearizer`] to linearize reads.
+    ///
+    /// This method confirms leadership and provides the necessary information to linearize reads
+    /// across the cluster. The leadership is ensured by sending heartbeats or by lease according
+    /// to the specified policy. See: [`ReadPolicy`].
+    ///
+    /// Returns:
+    /// - `Ok(Linearizer<C>)` on successful confirmation that the node is the leader. The
+    ///   [`Linearizer`] contains the `read_log_id` up to which the state machine should apply to
+    ///   linearize reads, and the last `applied` log id.
+    /// - `Err(RaftError<CheckIsLeaderError>)` if this node fails to ensure its leadership, for
+    ///   example, it detects a higher term, or fails to communicate with a quorum.
+    ///
+    /// Once returned, the caller should block until the state machine to apply up to `read_log_id`
+    /// using [`Linearizer::await_applied`].
+    ///
+    /// # Examples
+    /// ```ignore
+    /// let linearizer = my_raft.get_read_linearizer(ReadPolicy::ReadIndex).await?;
+    /// let _ = linearizer.await_applied(&my_raft, None).await?.unwrap();
+    ///
+    /// // Following read from state machine is linearized across the cluster
+    /// let val = my_raft.with_state_machine(|sm| { sm.read("foo") }).await?;
+    /// ```
+    ///
+    /// # Follower Read
+    ///
+    /// For follower reads, obtain the `read_log_id` from the leader via application-defined RPC,
+    /// then use [`Linearizer::await_applied`] to wait for local state machine to catch up.
+    ///
+    /// ```ignore
+    /// // Application defined RPC to get the `read_log_id` from the remote leader
+    /// let leader_id = my_raft.current_leader().await?.unwrap();
+    /// let linearizer = my_app_rpc.get_read_linearizer(leader_id, ReadPolicy::ReadIndex).await?;
+    ///
+    /// // Block waiting local state machine to apply upto to the `read_log_id`
+    /// let _ = linearizer.await_applied(&my_raft, None).await?.unwrap();
+    ///
+    /// // Following read from state machine is linearized across the cluster
+    /// let val = my_raft.with_state_machine(|sm| { sm.read("foo") }).await?;
+    /// ```
+    ///
+    /// See: [Read Operation](crate::docs::protocol::read)
+    #[since(version = "0.10.0")]
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub async fn get_read_linearizer(
+        &self,
+        read_policy: ReadPolicy,
+    ) -> Result<Linearizer<C>, RaftError<C, CheckIsLeaderError<C>>> {
+        self.app_api().get_read_linearizer(read_policy).await.into_raft_result()
     }
 
     /// Submit a mutating client request to Raft to update the state of the system (§5.1).
