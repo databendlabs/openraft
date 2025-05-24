@@ -52,7 +52,7 @@ fn test_become_leader() -> anyhow::Result<()> {
     eng.vote_handler().become_leader();
 
     let leader = eng.leader.as_ref().unwrap();
-    assert_eq!(leader.noop_log_id, Some(log_id(2, 1, 0)));
+    assert_eq!(leader.noop_log_id, log_id(2, 1, 0));
     assert_eq!(leader.last_log_id(), Some(&log_id(2, 1, 0)));
     assert_eq!(*leader.committed_vote_ref(), Vote::new(2, 1).into_committed());
 
