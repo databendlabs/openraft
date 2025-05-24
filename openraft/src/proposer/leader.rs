@@ -58,7 +58,7 @@ where C: RaftTypeConfig
     /// i.e., the `noop` log(AKA blank log) after leader established.
     ///
     /// It is set when leader established.
-    pub(crate) noop_log_id: Option<LogIdOf<C>>,
+    pub(crate) noop_log_id: LogIdOf<C>,
 
     /// Tracks the replication progress and committed index
     pub(crate) progress: VecProgress<C::NodeId, ProgressEntry<C>, Option<LogIdOf<C>>, QS>,
@@ -114,17 +114,16 @@ where
         let first = last_leader_log_id.first();
 
         let noop_log_id = if first.map(|x| x.committed_leader_id()) == Some(&vote_leader_id) {
-            // There is already log id proposed by the this leader.
+            // There is already log id proposed by this leader.
             // E.g. the Leader is restarted without losing leadership.
             //
             // Set to the first log id proposed by this Leader.
-            first.cloned()
+            //
+            // Safe unwrap: first.map() == Some() is checked above.
+            first.unwrap().clone()
         } else {
             // Set to a log id that will be proposed.
-            Some(LogIdOf::<C>::new(
-                vote.committed_leader_id(),
-                last_leader_log_id.last().next_index(),
-            ))
+            LogIdOf::<C>::new(vote.committed_leader_id(), last_leader_log_id.last().next_index())
         };
 
         let last_log_id = last_leader_log_id.last().cloned();
@@ -144,8 +143,8 @@ where
         leader
     }
 
-    pub(crate) fn noop_log_id(&self) -> Option<&LogIdOf<C>> {
-        self.noop_log_id.as_ref()
+    pub(crate) fn noop_log_id(&self) -> &LogIdOf<C> {
+        &self.noop_log_id
     }
 
     /// Return the last log id this leader knows of.
@@ -262,7 +261,7 @@ mod tests {
                 LeaderLogIds::new_start_end(log_id(1, 2, 1), log_id(1, 2, 3)),
             );
 
-            assert_eq!(leader.noop_log_id(), Some(&log_id(2, 2, 4)));
+            assert_eq!(leader.noop_log_id(), &log_id(2, 2, 4));
             assert_eq!(leader.last_log_id(), Some(&log_id(1, 2, 3)));
         }
 
@@ -276,7 +275,7 @@ mod tests {
                 LeaderLogIds::new_start_end(log_id(1, 2, 1), log_id(1, 2, 3)),
             );
 
-            assert_eq!(leader.noop_log_id(), Some(&log_id(1, 2, 1)));
+            assert_eq!(leader.noop_log_id(), &log_id(1, 2, 1));
             assert_eq!(leader.last_log_id(), Some(&log_id(1, 2, 3)));
         }
 
@@ -286,7 +285,7 @@ mod tests {
             let leader =
                 Leader::<UTConfig, _>::new(vote, vec![1, 2, 3], vec![], LeaderLogIds::new_single(log_id(1, 2, 3)));
 
-            assert_eq!(leader.noop_log_id(), Some(&log_id(1, 2, 3)));
+            assert_eq!(leader.noop_log_id(), &log_id(1, 2, 3));
             assert_eq!(leader.last_log_id(), Some(&log_id(1, 2, 3)));
         }
 
@@ -295,7 +294,7 @@ mod tests {
             let vote = Vote::new(1, 2).into_committed();
             let leader = Leader::<UTConfig, _>::new(vote, vec![1, 2, 3], vec![], LeaderLogIds::new(None));
 
-            assert_eq!(leader.noop_log_id(), Some(&log_id(1, 2, 0)));
+            assert_eq!(leader.noop_log_id(), &log_id(1, 2, 0));
             assert_eq!(leader.last_log_id(), None);
         }
     }

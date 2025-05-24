@@ -66,7 +66,7 @@ fn test_startup_as_leader_without_logs() -> anyhow::Result<()> {
 
     assert_eq!(ServerState::Leader, eng.state.server_state);
     let leader = eng.leader_ref().unwrap();
-    assert_eq!(leader.noop_log_id(), Some(&log_id(2, 2, 4)));
+    assert_eq!(leader.noop_log_id(), &log_id(2, 2, 4));
     assert_eq!(leader.last_log_id(), Some(&log_id(2, 2, 4)));
     assert_eq!(
         vec![
@@ -118,7 +118,7 @@ fn test_startup_as_leader_with_proposed_logs() -> anyhow::Result<()> {
 
     assert_eq!(ServerState::Leader, eng.state.server_state);
     let leader = eng.leader_ref().unwrap();
-    assert_eq!(leader.noop_log_id(), Some(&log_id(1, 2, 4)));
+    assert_eq!(leader.noop_log_id(), &log_id(1, 2, 4));
     assert_eq!(leader.last_log_id(), Some(&log_id(1, 2, 6)));
     assert_eq!(
         vec![

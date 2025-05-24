@@ -66,6 +66,7 @@ use crate::network::RaftNetworkFactory;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::Progress;
 use crate::quorum::QuorumSet;
+use crate::raft::linearizable_read::Linearizer;
 use crate::raft::message::TransferLeaderRequest;
 use crate::raft::responder::either::OneshotOrUserDefined;
 use crate::raft::responder::Responder;
@@ -268,7 +269,7 @@ where
             //       Fix this when the following heartbeats are replaced with calling RaftNetwork.
             let applied = self.engine.state.io_applied().cloned();
 
-            (read_log_id, applied)
+            Linearizer::new(read_log_id, applied)
         };
 
         if read_policy == ReadPolicy::LeaseRead {

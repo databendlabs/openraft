@@ -185,7 +185,7 @@ fn test_handle_vote_resp_equal_vote() -> anyhow::Result<()> {
 
         assert_eq!(Vote::new_committed(2, 1), *eng.state.vote_ref(),);
 
-        assert_eq!(Some(log_id(2, 1, 1)), eng.leader.as_ref().unwrap().noop_log_id);
+        assert_eq!(log_id(2, 1, 1), eng.leader.as_ref().unwrap().noop_log_id);
         assert_eq!(
             Some(log_id(2, 1, 1)),
             eng.leader.as_ref().unwrap().last_log_id().copied()
