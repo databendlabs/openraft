@@ -7,6 +7,7 @@ use crate::error::CheckIsLeaderError;
 use crate::error::Infallible;
 use crate::error::InitializeError;
 use crate::impls::OneshotResponder;
+use crate::raft::linearizable_read::Linearizer;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
 use crate::raft::ReadPolicy;
@@ -14,7 +15,6 @@ use crate::raft::SnapshotResponse;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::storage::Snapshot;
-use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::OneshotSenderOf;
 use crate::type_config::alias::ResponderOf;
 use crate::type_config::alias::SnapshotDataOf;
@@ -35,7 +35,7 @@ pub(crate) type VoteTx<C> = OneshotSenderOf<C, VoteResponse<C>>;
 pub(crate) type AppendEntriesTx<C> = OneshotSenderOf<C, AppendEntriesResponse<C>>;
 
 /// TX for Linearizable Read Response
-pub(crate) type ClientReadTx<C> = ResultSender<C, (Option<LogIdOf<C>>, Option<LogIdOf<C>>), CheckIsLeaderError<C>>;
+pub(crate) type ClientReadTx<C> = ResultSender<C, Linearizer<C>, CheckIsLeaderError<C>>;
 
 /// A message sent by application to the [`RaftCore`].
 ///

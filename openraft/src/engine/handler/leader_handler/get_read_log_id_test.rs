@@ -55,14 +55,14 @@ fn test_get_read_log_id() -> anyhow::Result<()> {
     let mut eng = eng();
 
     eng.state.apply_progress_mut().accept(log_id(0, 1, 0));
-    eng.leader.as_mut().unwrap().noop_log_id = Some(log_id(1, 1, 2));
+    eng.leader.as_mut().unwrap().noop_log_id = log_id(1, 1, 2);
 
     let got = eng.leader_handler()?.get_read_log_id();
-    assert_eq!(Some(log_id(1, 1, 2)), got);
+    assert_eq!(log_id(1, 1, 2), got);
 
     eng.state.apply_progress_mut().accept(log_id(2, 1, 3));
     let got = eng.leader_handler()?.get_read_log_id();
-    assert_eq!(Some(log_id(2, 1, 3)), got);
+    assert_eq!(log_id(2, 1, 3), got);
 
     Ok(())
 }
