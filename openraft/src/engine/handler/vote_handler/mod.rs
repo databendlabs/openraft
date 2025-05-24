@@ -194,7 +194,7 @@ where C: RaftTypeConfig
 
         let (last_log_id, noop_log_id) = {
             let leader = self.leader.as_ref().unwrap();
-            (leader.last_log_id().cloned(), leader.noop_log_id().cloned())
+            (leader.last_log_id().cloned(), leader.noop_log_id().clone())
         };
 
         self.state.accept_log_io(IOId::new_log_io(leader_vote.clone(), last_log_id.clone()));
@@ -211,7 +211,7 @@ where C: RaftTypeConfig
 
         // If the leader has not yet proposed any log, propose a blank log and initiate replication;
         // Otherwise, just initiate replication.
-        if last_log_id < noop_log_id {
+        if last_log_id.as_ref() < Some(&noop_log_id) {
             self.leader_handler().leader_append_entries(vec![C::Entry::new_blank(LogIdOf::<C>::default())]);
         } else {
             self.replication_handler().initiate_replication();
