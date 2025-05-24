@@ -109,8 +109,12 @@ where C: RaftTypeConfig
     /// Get the log id for a linearizable read.
     ///
     /// See: [Read Operation](crate::docs::protocol::read)
-    pub(crate) fn get_read_log_id(&self) -> Option<LogIdOf<C>> {
+    pub(crate) fn get_read_log_id(&self) -> LogIdOf<C> {
         let committed = self.state.committed().cloned();
+        let Some(committed) = committed else {
+            return self.leader.noop_log_id.clone();
+        };
+
         // noop log id is the first log this leader proposed.
         std::cmp::max(self.leader.noop_log_id.clone(), committed)
     }
