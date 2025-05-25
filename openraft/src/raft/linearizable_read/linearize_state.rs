@@ -4,11 +4,12 @@ use openraft_macros::since;
 
 use crate::display_ext::DisplayOptionExt;
 use crate::LogId;
+use crate::LogIdOptionExt;
 use crate::RaftTypeConfig;
 
 /// Represents the state after awaiting the applied log entries for a linearizable read.
 ///
-/// This is returned by [`Linearizer::await_applied()`] after waiting for the state
+/// This is returned by [`Linearizer::try_await_ready()`] after waiting for the state
 /// machine to apply all necessary log entries for a linearizable read.
 ///
 /// This struct contains the log IDs that were used to ensure linearizability:
@@ -19,7 +20,7 @@ use crate::RaftTypeConfig;
 /// If the state is not ready(timeout waiting for the applied log entries), it is guaranteed
 /// `applied < read_log_id`.
 ///
-/// [`Linearizer::await_applied()`]: crate::raft::linearizable_read::Linearizer::await_applied
+/// [`Linearizer::try_await_ready()`]: crate::raft::linearizable_read::Linearizer::try_await_ready
 #[since(version = "0.10.0")]
 #[derive(Debug, Clone)]
 pub struct LinearizeState<C>
@@ -33,10 +34,21 @@ impl<C> fmt::Display for LinearizeState<C>
 where C: RaftTypeConfig
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let ready = if self.is_ready() { "ready" } else { "not_ready" };
+        write!(f, "LinearizeState",)?;
+
+        if self.is_ready() {
+            write!(f, "(ready)")?;
+        } else {
+            write!(
+                f,
+                "(waiting, {} behind)",
+                self.read_log_id.index() + 1 - self.applied.next_index()
+            )?;
+        };
+
         write!(
             f,
-            "LinearizeState({ready}){{ read_log_id: {}, applied: {} }}",
+            "{{ read_log_id: {}, applied: {} }}",
             self.read_log_id,
             self.applied.display()
         )
@@ -93,7 +105,7 @@ mod tests {
         let state = LinearizeState::new(log_id(1, 1, 1), Some(log_id(1, 1, 0)));
         assert_eq!(
             format!("{}", state),
-            "LinearizeState(not_ready){ read_log_id: T1-N1.1, applied: T1-N1.0 }"
+            "LinearizeState(waiting, 1 behind){ read_log_id: T1-N1.1, applied: T1-N1.0 }"
         );
 
         let state = state.with_applied(Some(log_id(3, 3, 3)));

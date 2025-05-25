@@ -536,9 +536,10 @@ where C: RaftTypeConfig
     ///
     /// This method is just a shorthand for combining calling
     /// [`Raft::get_read_linearizer()`](Self::get_read_linearizer) and
-    /// [`Linearizer::await_applied()`](Linearizer::await_applied), i.e., it is equivalent to:
+    /// [`Linearizer::try_await_ready()`](Linearizer::try_await_ready), i.e., it is
+    /// equivalent to:
     /// ```ignore
-    /// my_raft.get_read_linearizer(read_policy).await?.await_applied(&my_raft, None).await?;
+    /// my_raft.get_read_linearizer(read_policy).await?.try_await_ready(&my_raft, None).await?;
     /// ```
     ///
     /// To support follower read, i.e., get `read_log_id` on a remote leader then read on local
@@ -553,7 +554,6 @@ where C: RaftTypeConfig
     /// - `Err(RaftError<CheckIsLeaderError>)` if fails to assert leadership.
     ///
     /// # Examples
-    ///
     /// ```ignore
     /// // Use a strict policy for this specific critical read
     /// my_raft.ensure_linearizable(ReadPolicy::ReadIndex).await?;
@@ -573,7 +573,7 @@ where C: RaftTypeConfig
         let linearizer = self.app_api().get_read_linearizer(read_policy).await.into_raft_result()?;
 
         // Safe unwrap: it never times out.
-        let state = linearizer.await_applied(self, None).await?.unwrap();
+        let state = linearizer.await_ready(self).await?;
         Ok(Some(state.read_log_id().clone()))
     }
 
@@ -612,12 +612,12 @@ where C: RaftTypeConfig
     ///   example, it detects a higher term, or fails to communicate with a quorum.
     ///
     /// Once returned, the caller should block until the state machine to apply up to `read_log_id`
-    /// using [`Linearizer::await_applied`].
+    /// using [`Linearizer::try_await_ready`].
     ///
     /// # Examples
     /// ```ignore
     /// let linearizer = my_raft.get_read_linearizer(ReadPolicy::ReadIndex).await?;
-    /// let _ = linearizer.await_applied(&my_raft, None).await?.unwrap();
+    /// let _ = linearizer.try_await_ready(&my_raft, None).await?.unwrap();
     ///
     /// // Following read from state machine is linearized across the cluster
     /// let val = my_raft.with_state_machine(|sm| { sm.read("foo") }).await?;
@@ -626,7 +626,8 @@ where C: RaftTypeConfig
     /// # Follower Read
     ///
     /// For follower reads, obtain the `read_log_id` from the leader via application-defined RPC,
-    /// then use [`Linearizer::await_applied`] to wait for local state machine to catch up.
+    /// then use [`Linearizer::try_await_ready`] to wait for local state machine to catch
+    /// up.
     ///
     /// ```ignore
     /// // Application defined RPC to get the `read_log_id` from the remote leader
@@ -634,7 +635,7 @@ where C: RaftTypeConfig
     /// let linearizer = my_app_rpc.get_read_linearizer(leader_id, ReadPolicy::ReadIndex).await?;
     ///
     /// // Block waiting local state machine to apply upto to the `read_log_id`
-    /// let _ = linearizer.await_applied(&my_raft, None).await?.unwrap();
+    /// let _ = linearizer.try_await_ready(&my_raft, None).await?.unwrap();
     ///
     /// // Following read from state machine is linearized across the cluster
     /// let val = my_raft.with_state_machine(|sm| { sm.read("foo") }).await?;

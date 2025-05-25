@@ -34,7 +34,7 @@ depending on the `read_policy` [`ReadPolicy`].  The `read_policy` can be one of:
 - `last_applied_log_id` is the last applied log id.
 
 The caller then wait for `last_applied_log_id` to catch up `read_log_id`,
-by calling [`Linearizer::await_applied()`],
+by calling [`Linearizer::try_await_ready()`], or [`Linearizer::await_ready()`] for simplicity without timeout,
 and at last, proceed with the state machine read.
 
 The above steps are encapsulated in the [`ensure_linearizable(read_policy)`][`ensure_linearizable()`] method.
@@ -51,7 +51,7 @@ The above snippet does the same as the following:
 ```ignore
 let linearizer = my_raft.get_read_linearizer(ReadPolicy::ReadIndex).await?;
 
-linearizer.await_applied(&my_raft, None).await?.unwrap();
+linearizer.await_ready(&my_raft, None).await?;
 
 // Following read from state machine is linearized across the cluster
 let val = my_raft.with_state_machine(|sm| { sm.read("foo") }).await?;
@@ -78,7 +78,7 @@ let leader_id = my_raft.current_leader().await?.unwrap();
 let linearizer = my_app_rpc.get_read_linearizer(leader_id, ReadPolicy::ReadIndex).await?;
 
 // Block waiting local state machine to apply upto to the `read_log_id`
-let linearized_state = linearizer.await_applied(&my_raft, None).await?.unwrap();
+let linearized_state = linearizer.try_await_ready(&my_raft, None).await?.unwrap();
 
 // Following read from state machine is linearized across the cluster
 let val = my_raft.with_state_machine(|sm| { sm.read("foo") }).await?;
@@ -112,7 +112,8 @@ at least as large as any committed log, once `last_applied_log_id.index() >= rea
 [`get_read_linearizer()`]: crate::Raft::get_read_linearizer
 [`Raft::metrics`]: crate::Raft::metrics
 [`Linearizer`]: crate::raft::linearizable_read::Linearizer
-[`Linearizer::await_applied()`]: crate::raft::linearizable_read::Linearizer::await_applied
+[`Linearizer::await_ready()`]: crate::raft::linearizable_read::Linearizer::await_ready
+[`Linearizer::try_await_ready()`]: crate::raft::linearizable_read::Linearizer::try_await_ready
 [`ReadPolicy`]: crate::raft::ReadPolicy
 [`ReadPolicy::ReadIndex`]: crate::raft::ReadPolicy::ReadIndex
 [`ReadPolicy::LeaseRead`]: crate::raft::ReadPolicy::LeaseRead

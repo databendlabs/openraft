@@ -17,7 +17,7 @@ use crate::RaftTypeConfig;
 ///
 /// This struct is the result returned from [`Raft::get_read_linearizer()`],
 /// which is the implementation of awaiting the applied log entries.
-/// The application calls [`Linearizer::await_applied()`](Self::await_applied) to ensure its
+/// The application calls [`Linearizer::try_await_ready()`](Self::try_await_ready) to ensure its
 /// following reads are linearized.
 ///
 /// It contains:
@@ -26,7 +26,7 @@ use crate::RaftTypeConfig;
 ///
 /// [`Raft::get_read_linearizer()`]: Raft::get_read_linearizer
 #[since(version = "0.10.0")]
-#[must_use = "call `await_applied()` to ensure linearizability"]
+#[must_use = "call `try_await_ready()` to ensure linearizability"]
 #[derive(Debug, Clone)]
 pub struct Linearizer<C>
 where C: RaftTypeConfig
@@ -55,6 +55,26 @@ where C: RaftTypeConfig
         }
     }
 
+    /// Waits indefinitely for the state machine to apply all required log entries for linearizable
+    /// reads.
+    ///
+    /// This is a convenience method that calls [`try_await_ready(_, None)`](Self::try_await_ready)
+    /// with no timeout and unwraps the result.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let linearizer = raft.get_read_linearizer().await?;
+    /// let state = linearizer.await_ready(&raft).await?;
+    /// // Now safe to perform linearizable reads
+    /// ```
+    #[since(version = "0.10.0")]
+    pub async fn await_ready(self, raft: &Raft<C>) -> Result<LinearizeState<C>, Fatal<C>> {
+        let state_res = self.try_await_ready(raft, None).await?;
+        // Safe unwrap: No timeout error.
+        Ok(state_res.unwrap())
+    }
+
     /// Waits for the state machine to apply all required log entries for linearizable reads.
     ///
     /// This method ensures linearizability by waiting for the state machine to apply all log
@@ -72,11 +92,11 @@ where C: RaftTypeConfig
     ///
     /// ```ignore
     /// let linearizer = raft.get_read_linearizer().await?;
-    /// let state = linearizer.await_applied(&raft, Some(Duration::from_secs(1))).await??;
+    /// let state = linearizer.try_await_ready(&raft, Some(Duration::from_secs(1))).await??;
     /// // Now safe to perform linearizable reads
     /// ```
     #[since(version = "0.10.0")]
-    pub async fn await_applied(
+    pub async fn try_await_ready(
         self,
         raft: &Raft<C>,
         timeout: Option<Duration>,
@@ -88,7 +108,7 @@ where C: RaftTypeConfig
 
         let expected = Some(self.state.read_log_id().index());
 
-        let res = raft.inner.wait(timeout).applied_index_at_least(expected, "Linearizer::await_applied").await;
+        let res = raft.inner.wait(timeout).applied_index_at_least(expected, "Linearizer::try_await_ready").await;
 
         match res {
             Ok(metrics) => Ok(Ok(self.state.with_applied(metrics.last_applied))),
