@@ -11,7 +11,7 @@ use crate::LogId;
 use crate::Raft;
 use crate::RaftTypeConfig;
 
-/// Linearizer represents a linearization operation for read.
+/// Represents a linearization operation for read.
 ///
 /// See the [read protocol documentation](crate::docs::protocol::read) for more details.
 ///

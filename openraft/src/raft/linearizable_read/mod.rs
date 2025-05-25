@@ -1,3 +1,5 @@
+//! Defines the linearizable read protocol.
+
 mod linearize_state;
 mod linearizer;
 

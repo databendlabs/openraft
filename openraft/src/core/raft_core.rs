@@ -467,11 +467,10 @@ where
     /// The result of applying it to state machine is sent to `resp_tx`, if it is not `None`.
     /// The calling side may not receive a result from `resp_tx`, if raft is shut down.
     ///
-    /// The responder `R` for `resp_tx` is either [`C::Responder`] (application-defined) or
-    /// [`OneshotResponder`] (general-purpose); the former is for application-defined
-    /// entries like user data, the latter is for membership configuration changes.
-    ///
-    /// [`OneshotResponder`]: crate::raft::responder::OneshotResponder
+    /// The responder `R` for `resp_tx` is either [`RaftTypeConfig::Responder`]
+    /// (application-defined) or [`OneshotResponder`] (general-purpose); the former is for
+    /// application-defined entries like user data, the latter is for membership configuration
+    /// changes.
     #[tracing::instrument(level = "debug", skip_all, fields(id = display(&self.id)))]
     pub fn write_entry(&mut self, entry: C::Entry, resp_tx: Option<OneshotOrUserDefined<C>>) {
         tracing::debug!(payload = display(&entry), "write_entry");

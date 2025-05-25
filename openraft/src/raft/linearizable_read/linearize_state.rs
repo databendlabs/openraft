@@ -6,7 +6,7 @@ use crate::display_ext::DisplayOptionExt;
 use crate::LogId;
 use crate::RaftTypeConfig;
 
-/// LinearizeState represents the state after await the applied log entries for a linearizable read.
+/// Represents the state after awaiting the applied log entries for a linearizable read.
 ///
 /// This is returned by [`Linearizer::await_applied()`] after waiting for the state
 /// machine to apply all necessary log entries for a linearizable read.

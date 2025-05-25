@@ -5,6 +5,8 @@
 use crate::error::into_raft_result::IntoRaftResult;
 use crate::error::ClientWriteError;
 use crate::error::RaftError;
+#[cfg(doc)]
+use crate::impls::OneshotResponder;
 use crate::raft::ClientWriteResponse;
 #[cfg(doc)]
 use crate::raft::ManagementApi;
