@@ -58,16 +58,16 @@ fi
 
 echo "Start 3 uninitialized raft-key-value-rocks servers..."
 
-${bin} --id 1 --http-addr 127.0.0.1:21001 --rpc-addr 127.0.0.1:22001 2>&1 > n1.log &
+${bin} --id 1 --addr 127.0.0.1:21001 2>&1 > n1.log &
 PID1=$!
 sleep 1
 echo "Server 1 started"
 
-nohup ${bin} --id 2 --http-addr 127.0.0.1:21002 --rpc-addr 127.0.0.1:22002 > n2.log &
+nohup ${bin} --id 2 --addr 127.0.0.1:21002  > n2.log &
 sleep 1
 echo "Server 2 started"
 
-nohup ${bin} --id 3 --http-addr 127.0.0.1:21003 --rpc-addr 127.0.0.1:22003 > n3.log &
+nohup ${bin} --id 3 --addr 127.0.0.1:21003  > n3.log &
 sleep 1
 echo "Server 3 started"
 sleep 1
@@ -188,7 +188,7 @@ sleep 1
 echo "Restart node 1"
 echo
 
-${bin} --id 1 --http-addr 127.0.0.1:21001 --rpc-addr 127.0.0.1:22001 2>&1 >> n1.log &
+${bin} --id 1 --addr 127.0.0.1:21001  2>&1 >> n1.log &
 sleep 1
 echo "Server 1 started"
 

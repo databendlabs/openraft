@@ -46,17 +46,16 @@ impl Network {
             // If the error is a connection error, we return `Unreachable` so that connection isn't retried
             // immediately.
             if e.is_connect() {
-                return openraft::error::RPCError::Unreachable(Unreachable::new(&e));
+                return RPCError::Unreachable(Unreachable::new(&e));
             }
-            openraft::error::RPCError::Network(NetworkError::new(&e))
+            RPCError::Network(NetworkError::new(&e))
         })?;
 
         tracing::debug!("client.post() is sent");
 
-        let res: Result<Resp, Err> =
-            resp.json().await.map_err(|e| openraft::error::RPCError::Network(NetworkError::new(&e)))?;
+        let res: Result<Resp, Err> = resp.json().await.map_err(|e| RPCError::Network(NetworkError::new(&e)))?;
 
-        res.map_err(|e| openraft::error::RPCError::RemoteError(RemoteError::new(target, e)))
+        res.map_err(|e| RPCError::RemoteError(RemoteError::new(target, e)))
     }
 }
 

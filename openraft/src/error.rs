@@ -311,6 +311,21 @@ where
     }
 }
 
+impl<C> RPCError<C>
+where C: RaftTypeConfig
+{
+    /// Convert to a [`RPCError`] with [`RaftError`] as the error type.
+    pub fn with_raft_error<E: Error>(self) -> RPCError<C, RaftError<C, E>> {
+        match self {
+            RPCError::Timeout(e) => RPCError::Timeout(e),
+            RPCError::Unreachable(e) => RPCError::Unreachable(e),
+            RPCError::PayloadTooLarge(e) => RPCError::PayloadTooLarge(e),
+            RPCError::Network(e) => RPCError::Network(e),
+            RPCError::RemoteError(_infallible) => unreachable!(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[error("error occur on remote peer {target}: {source}")]

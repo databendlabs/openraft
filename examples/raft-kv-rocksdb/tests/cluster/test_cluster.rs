@@ -63,14 +63,6 @@ async fn test_cluster() -> Result<(), Box<dyn std::error::Error>> {
             _ => panic!("node not found"),
         }
     }
-    fn get_rpc_addr(node_id: u32) -> String {
-        match node_id {
-            1 => "127.0.0.1:32001".to_string(),
-            2 => "127.0.0.1:32002".to_string(),
-            3 => "127.0.0.1:32003".to_string(),
-            _ => panic!("node not found"),
-        }
-    }
 
     // --- Start 3 raft node in 3 threads.
     let d1 = tempfile::TempDir::new()?;
@@ -80,18 +72,18 @@ async fn test_cluster() -> Result<(), Box<dyn std::error::Error>> {
     let handle = Handle::current();
     let handle_clone = handle.clone();
     let _h1 = thread::spawn(move || {
-        let x = handle_clone.block_on(start_example_raft_node(1, d1.path(), get_addr(1), get_rpc_addr(1)));
+        let x = handle_clone.block_on(start_example_raft_node(1, d1.path(), get_addr(1)));
         println!("x: {:?}", x);
     });
 
     let handle_clone = handle.clone();
     let _h2 = thread::spawn(move || {
-        let x = handle_clone.block_on(start_example_raft_node(2, d2.path(), get_addr(2), get_rpc_addr(2)));
+        let x = handle_clone.block_on(start_example_raft_node(2, d2.path(), get_addr(2)));
         println!("x: {:?}", x);
     });
 
     let _h3 = thread::spawn(move || {
-        let x = handle.block_on(start_example_raft_node(3, d3.path(), get_addr(3), get_rpc_addr(3)));
+        let x = handle.block_on(start_example_raft_node(3, d3.path(), get_addr(3)));
         println!("x: {:?}", x);
     });
 
@@ -106,19 +98,19 @@ async fn test_cluster() -> Result<(), Box<dyn std::error::Error>> {
     //        After init(), the single node cluster will be fully functional.
 
     println!("=== init single node cluster");
-    leader.init().await?;
+    leader.init().await??;
 
     println!("=== metrics after init");
-    let _x = leader.metrics().await?;
+    leader.metrics().await?;
 
     // --- 2. Add node 2 and 3 to the cluster as `Learner`, to let them start to receive log replication
     // from the        leader.
 
     println!("=== add-learner 2");
-    let _x = leader.add_learner((2, get_addr(2), get_rpc_addr(2))).await?;
+    leader.add_learner((2, get_addr(2))).await??;
 
     println!("=== add-learner 3");
-    let _x = leader.add_learner((3, get_addr(3), get_rpc_addr(3))).await?;
+    leader.add_learner((3, get_addr(3))).await??;
 
     println!("=== metrics after add-learner");
     let x = leader.metrics().await?;
@@ -129,9 +121,9 @@ async fn test_cluster() -> Result<(), Box<dyn std::error::Error>> {
         x.membership_config.nodes().map(|(nid, node)| (*nid, node.clone())).collect::<BTreeMap<_, _>>();
     assert_eq!(
         btreemap! {
-            1 => Node{rpc_addr: get_rpc_addr(1), api_addr: get_addr(1)},
-            2 => Node{rpc_addr: get_rpc_addr(2), api_addr: get_addr(2)},
-            3 => Node{rpc_addr: get_rpc_addr(3), api_addr: get_addr(3)},
+            1 => Node{addr: get_addr(1)},
+            2 => Node{addr: get_addr(2)},
+            3 => Node{addr: get_addr(3)},
         },
         nodes_in_cluster
     );
@@ -139,7 +131,7 @@ async fn test_cluster() -> Result<(), Box<dyn std::error::Error>> {
     // --- 3. Turn the two learners to members. A member node can vote or elect itself as leader.
 
     println!("=== change-membership to 1,2,3");
-    let _x = leader.change_membership(&btreeset! {1,2,3}).await?;
+    leader.change_membership(&btreeset! {1,2,3}).await??;
 
     // --- After change-membership, some cluster state will be seen in the metrics.
     //
@@ -166,12 +158,12 @@ async fn test_cluster() -> Result<(), Box<dyn std::error::Error>> {
     // --- Try to write some application data through the leader.
 
     println!("=== write `foo=bar`");
-    let _x = leader
+    leader
         .write(&Request::Set {
             key: "foo".to_string(),
             value: "bar".to_string(),
         })
-        .await?;
+        .await??;
 
     // --- Wait for a while to let the replication get done.
 
@@ -196,12 +188,12 @@ async fn test_cluster() -> Result<(), Box<dyn std::error::Error>> {
     // --- A write to non-leader will be automatically forwarded to a known leader
 
     println!("=== read `foo` on node 2");
-    let _x = client2
+    client2
         .write(&Request::Set {
             key: "foo".to_string(),
             value: "wow".to_string(),
         })
-        .await?;
+        .await??;
 
     tokio::time::sleep(Duration::from_millis(500)).await;
 
@@ -222,20 +214,26 @@ async fn test_cluster() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!("wow", x);
 
     println!("=== linearizable_read `foo` on node 1");
-    let x = leader.linearizable_read(&("foo".to_string())).await?;
+    let x = leader.linearizable_read(&("foo".to_string())).await??;
     assert_eq!("wow", x);
 
     println!("=== linearizable_read `foo` on node 2 MUST return CheckIsLeaderError");
-    let x = client2.linearizable_read(&("foo".to_string())).await;
+    let x = client2.linearizable_read(&("foo".to_string())).await?;
+    println!("=== linearize_read on node 2 result: {:?}", x);
     match x {
         Err(e) => {
             let s = e.to_string();
-            let expect_err:String = "error occur on remote peer 2: has to forward request to: Some(1), Some(Node { rpc_addr: \"127.0.0.1:32001\", api_addr: \"127.0.0.1:31001\" })".to_string();
+            let expect_err: String =
+                "has to forward request to: Some(1), Some(Node { addr: \"127.0.0.1:31001\" })".to_string();
 
             assert_eq!(s, expect_err);
         }
         Ok(_) => panic!("MUST return CheckIsLeaderError"),
     }
+
+    println!("=== linearizable_read_auto_forward `foo` on node 2 returns value");
+    let x = client2.linearizable_read_auto_forward(&("foo".to_string())).await?;
+    assert_eq!(x.unwrap(), "wow");
 
     Ok(())
 }

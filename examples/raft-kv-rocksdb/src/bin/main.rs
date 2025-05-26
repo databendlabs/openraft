@@ -9,13 +9,10 @@ pub struct Opt {
     pub id: u64,
 
     #[clap(long)]
-    pub http_addr: String,
-
-    #[clap(long)]
-    pub rpc_addr: String,
+    pub addr: String,
 }
 
-#[tokio::main]
+#[actix_web::main]
 async fn main() -> std::io::Result<()> {
     // Setup the logger
     tracing_subscriber::fmt()
@@ -29,11 +26,5 @@ async fn main() -> std::io::Result<()> {
     // Parse the parameters passed by arguments.
     let options = Opt::parse();
 
-    start_example_raft_node(
-        options.id,
-        format!("{}.db", options.rpc_addr),
-        options.http_addr,
-        options.rpc_addr,
-    )
-    .await
+    start_example_raft_node(options.id, format!("{}.db", options.addr), options.addr).await
 }

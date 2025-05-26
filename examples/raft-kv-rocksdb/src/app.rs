@@ -11,8 +11,7 @@ use crate::NodeId;
 // instances of raft, store and more.
 pub struct App {
     pub id: NodeId,
-    pub api_addr: String,
-    pub rpc_addr: String,
+    pub addr: String,
     pub raft: Raft,
     pub key_values: Arc<RwLock<BTreeMap<String, String>>>,
     pub config: Arc<Config>,

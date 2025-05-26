@@ -585,6 +585,7 @@ impl TypedRaftRouter {
     }
 
     /// Call pre-hook before an RPC is sent.
+    #[allow(clippy::result_large_err)]
     fn call_rpc_pre_hook<E>(
         &self,
         request: impl Into<RPCRequest<TypeConfig>>,
