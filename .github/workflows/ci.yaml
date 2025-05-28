@@ -412,7 +412,7 @@ jobs:
           - 'stable'
           - 'nightly'
         example:
-          - 'memstore'
+          - 'mem-log'
           - 'rocksstore'
           - 'raft-kv-memstore'
           - 'raft-kv-memstore-grpc'

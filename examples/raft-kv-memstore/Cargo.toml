@@ -20,7 +20,7 @@ name = "raft-key-value"
 path = "src/bin/main.rs"
 
 [dependencies]
-memstore = { path = "../memstore", features = [] }
+mem-log = { path = "../mem-log", features = [] }
 openraft = { path = "../../openraft", features = ["serde", "type-alias"] }
 
 actix-web = "4.0.0-rc.2"

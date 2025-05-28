@@ -16,19 +16,23 @@ This directory contains example applications demonstrating different implementat
 
 | Example | Log | State Machine | RaftNetwork Impl | RaftNetwork | Client | Server | Special Features |
 |---------|-----|---------------|------------------|-------------|--------|--------|------------------|
-| [raft-kv-memstore] | [memstore] | in-memory | HTTP/reqwest | RaftNetwork | reqwest | actix-web | Basic example |
+| [raft-kv-memstore] | [mem-log] | in-memory | HTTP/reqwest | RaftNetwork | reqwest | actix-web | Basic example |
 | [raft-kv-rocksdb] | [rocksstore] | [rocksstore] | HTTP/reqwest([network-v1]) | RaftNetwork | reqwest | actix-web | Persistent storage |
-| [raft-kv-memstore-network-v2] | [memstore] | in-memory | HTTP/reqwest | RaftNetworkV2 | reqwest | actix-web | Network V2 interface |
-| [raft-kv-memstore-grpc] | [memstore] | in-memory | gRPC/tonic | RaftNetwork | tonic | tonic | gRPC transport |
-| [raft-kv-memstore-singlethreaded] | memstore | in-memory | HTTP/reqwest | RaftNetwork | reqwest | actix-web | Single-threaded runtime |
-| [raft-kv-memstore-opendal-snapshot-data] | [memstore] | in-memory+OpenDAL | HTTP/reqwest | RaftNetwork | reqwest | actix-web | OpenDAL snapshot storage |
+| [raft-kv-memstore-network-v2] | [mem-log] | in-memory | HTTP/reqwest | RaftNetworkV2 | reqwest | actix-web | Network V2 interface |
+| [raft-kv-memstore-grpc] | [mem-log] | in-memory | gRPC/tonic | RaftNetwork | tonic | tonic | gRPC transport |
+| [raft-kv-memstore-singlethreaded] | [mem-log] | in-memory | HTTP/reqwest | RaftNetwork | reqwest | actix-web | Single-threaded runtime |
+| [raft-kv-memstore-opendal-snapshot-data] | [mem-log] | in-memory+OpenDAL | HTTP/reqwest | RaftNetwork | reqwest | actix-web | OpenDAL snapshot storage |
 
 
 ## Component Implementations
 
 ### Storage Implementations
-- **[memstore]** - In-memory LogStore and StateMachine using `std::collections::HashMap` and `Vec`
+- **[mem-log]** - In-memory Raft Log Store using `std::collections::BTreeMap`
 - **[rocksstore]** - RocksDB-based persistent storage using `rocksdb` crate
+
+Deprecated:
+
+- **[memstore]** - is an alias for [mem-log] for backward compatibility.
 
 ### Network Implementations
 - **[network-v1]** - HTTP-based RaftNetwork interface V1 using `reqwest` crate
@@ -43,7 +47,9 @@ This directory contains example applications demonstrating different implementat
 [raft-kv-memstore-grpc]: raft-kv-memstore-grpc/
 [raft-kv-memstore-singlethreaded]: raft-kv-memstore-singlethreaded/
 [raft-kv-memstore-opendal-snapshot-data]: raft-kv-memstore-opendal-snapshot-data/
-[memstore]: memstore/
+[mem-log]: mem-log/
 [rocksstore]: rocksstore/
 [network-v1]: network-v1/
 [utils]: utils/
+
+[memstore]: memstore/

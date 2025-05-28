@@ -14,7 +14,7 @@ use crate::encode;
 use crate::typ::*;
 use crate::TypeConfig;
 
-pub type LogStore = memstore::LogStore<TypeConfig>;
+pub type LogStore = mem_log::LogStore<TypeConfig>;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Request {

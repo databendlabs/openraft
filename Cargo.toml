@@ -63,7 +63,7 @@ members = [
 ]
 exclude = [
     "cluster_benchmark",
-    "examples/memstore",
+    "examples/mem-log",
     "examples/network-v1",
     "examples/rocksstore",
     "examples/raft-kv-memstore",
