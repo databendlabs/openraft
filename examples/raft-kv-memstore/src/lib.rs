@@ -13,7 +13,6 @@ use crate::app::App;
 use crate::network::api;
 use crate::network::management;
 use crate::network::raft;
-use crate::network::Network;
 use crate::store::Request;
 use crate::store::Response;
 
@@ -58,7 +57,7 @@ pub async fn start_example_raft_node(node_id: NodeId, http_addr: String) -> std:
 
     // Create the network layer that will connect and communicate the raft instances and
     // will be used in conjunction with the store created above.
-    let network = Network {};
+    let network = network_v1::NetworkFactory {};
 
     // Create a local raft instance.
     let raft = openraft::Raft::new(
