@@ -1,0 +1,30 @@
+[package]
+name = "network-v1"
+version = "0.1.0"
+readme = "README.md"
+
+edition = "2021"
+authors = [
+  "drdr xp <drdr.xp@gmail.com>",
+]
+categories = ["algorithms", "asynchronous", "data-structures"]
+description = "An example network implementation v1 built upon `openraft`."
+homepage = "https://github.com/databendlabs/openraft"
+keywords = ["raft", "consensus", "network"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/databendlabs/openraft"
+
+[dependencies]
+openraft = { path = "../../openraft", features = ["serde", "type-alias"] }
+
+reqwest = { version = "0.12.5", features = ["json"] }
+serde = { version = "1.0.114", features = ["derive"] }
+serde_json = "1.0.57"
+tokio = { version = "1.35.1", features = ["full"] }
+tracing = "0.1.40"
+
+[features]
+default = []
+
+[package.metadata.docs.rs]
+all-features = true

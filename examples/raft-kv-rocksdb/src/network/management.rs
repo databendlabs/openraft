@@ -11,7 +11,6 @@ use openraft::error::Infallible;
 
 use crate::app::App;
 use crate::typ::*;
-use crate::Node;
 use crate::NodeId;
 
 // --- Cluster management

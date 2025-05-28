@@ -6,10 +6,10 @@ use std::time::Duration;
 
 use maplit::btreemap;
 use maplit::btreeset;
+use openraft::BasicNode;
 use raft_kv_rocksdb::client::ExampleClient;
 use raft_kv_rocksdb::start_example_raft_node;
 use raft_kv_rocksdb::store::Request;
-use raft_kv_rocksdb::Node;
 use tokio::runtime::Handle;
 use tracing_subscriber::EnvFilter;
 
@@ -121,9 +121,9 @@ async fn test_cluster() -> Result<(), Box<dyn std::error::Error>> {
         x.membership_config.nodes().map(|(nid, node)| (*nid, node.clone())).collect::<BTreeMap<_, _>>();
     assert_eq!(
         btreemap! {
-            1 => Node{addr: get_addr(1)},
-            2 => Node{addr: get_addr(2)},
-            3 => Node{addr: get_addr(3)},
+            1 => BasicNode::new(get_addr(1)),
+            2 => BasicNode::new(get_addr(2)),
+            3 => BasicNode::new(get_addr(3)),
         },
         nodes_in_cluster
     );
@@ -224,7 +224,7 @@ async fn test_cluster() -> Result<(), Box<dyn std::error::Error>> {
         Err(e) => {
             let s = e.to_string();
             let expect_err: String =
-                "has to forward request to: Some(1), Some(Node { addr: \"127.0.0.1:31001\" })".to_string();
+                "has to forward request to: Some(1), Some(BasicNode { addr: \"127.0.0.1:31001\" })".to_string();
 
             assert_eq!(s, expect_err);
         }

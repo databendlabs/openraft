@@ -119,8 +119,7 @@ impl ExampleClient {
     /// Send RPC to specified node.
     ///
     /// It sends out a POST request if `req` is Some. Otherwise a GET request.
-    /// The remote endpoint must respond a reply in form of `Result<T, E>`.
-    /// An `Err` happened on remote will be wrapped in an [`RPCError::RemoteError`].
+    /// The remote endpoint must respond a reply in form of `Result<Resp, Err>`.
     async fn do_send_rpc_to_leader<Req, Resp, Err>(
         &self,
         uri: &str,
@@ -153,9 +152,10 @@ impl ExampleClient {
         .map_err(|e| {
             if e.is_connect() {
                 // `Unreachable` informs the caller to backoff for a short while to avoid error log flush.
-                return RPCError::Unreachable(Unreachable::new(&e));
+                RPCError::Unreachable(Unreachable::new(&e))
+            } else {
+                RPCError::Network(NetworkError::new(&e))
             }
-            RPCError::Network(NetworkError::new(&e))
         })?;
 
         let res: Result<Resp, Err> = resp.json().await.map_err(|e| RPCError::Network(NetworkError::new(&e)))?;

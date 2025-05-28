@@ -1,7 +1,6 @@
 #![allow(clippy::uninlined_format_args)]
 #![deny(unused_qualifications)]
 
-use std::fmt::Display;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -15,7 +14,6 @@ use crate::app::App;
 use crate::network::api;
 use crate::network::management;
 use crate::network::raft;
-use crate::network::Network;
 use crate::store::new_storage;
 use crate::store::Request;
 use crate::store::Response;
@@ -27,22 +25,10 @@ pub mod store;
 
 pub type NodeId = u64;
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq, Default)]
-pub struct Node {
-    pub addr: String,
-}
-
-impl Display for Node {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Node {{ addr: {} }}", self.addr)
-    }
-}
-
 openraft::declare_raft_types!(
     pub TypeConfig:
         D = Request,
         R = Response,
-        Node = Node,
 );
 
 pub type LogStore = openraft_rocksstore::log_store::RocksLogStore<TypeConfig>;
@@ -67,9 +53,8 @@ where P: AsRef<Path> {
 
     let kvs = state_machine_store.data.kvs.clone();
 
-    // Create the network layer that will connect and communicate the raft instances and
-    // will be used in conjunction with the store created above.
-    let network = Network {};
+    // Create the network layer using network-v1 crate
+    let network = network_v1::NetworkFactory {};
 
     // Create a local raft instance.
     let raft = openraft::Raft::new(node_id, config.clone(), network, log_store, state_machine_store).await.unwrap();
