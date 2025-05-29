@@ -17,7 +17,6 @@ use crate::store::Request;
 use crate::store::Response;
 
 pub mod app;
-pub mod client;
 pub mod network;
 pub mod store;
 #[cfg(test)]

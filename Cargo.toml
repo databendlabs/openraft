@@ -63,15 +63,20 @@ members = [
 ]
 exclude = [
     "cluster_benchmark",
-    "examples/mem-log",
+
+    "examples/client-http",
     "examples/network-v1-http",
+
+    "examples/mem-log",
     "examples/rocksstore",
+
     "examples/raft-kv-memstore",
     "examples/raft-kv-memstore-grpc",
     "examples/raft-kv-memstore-singlethreaded",
     "examples/raft-kv-memstore-network-v2",
     "examples/raft-kv-memstore-opendal-snapshot-data",
     "examples/raft-kv-rocksdb",
+
     "rt-monoio",
     "rt-compio"
 ]

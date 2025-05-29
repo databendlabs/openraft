@@ -8,6 +8,7 @@ use actix_web::web::Json;
 use actix_web::Responder;
 use openraft::error::decompose::DecomposeResult;
 use openraft::error::Infallible;
+use openraft::BasicNode;
 
 use crate::app::App;
 use crate::typ::*;
@@ -36,13 +37,17 @@ pub async fn change_membership(app: Data<App>, req: Json<BTreeSet<NodeId>>) -> a
     Ok(Json(res))
 }
 
-/// Initialize a single-node cluster.
+/// Initialize a cluster.
 #[post("/init")]
-pub async fn init(app: Data<App>) -> actix_web::Result<impl Responder> {
+pub async fn init(app: Data<App>, req: Json<Vec<(NodeId, String)>>) -> actix_web::Result<impl Responder> {
     let mut nodes = BTreeMap::new();
-    let node = Node { addr: app.addr.clone() };
-
-    nodes.insert(app.id, node);
+    if req.0.is_empty() {
+        nodes.insert(app.id, BasicNode { addr: app.addr.clone() });
+    } else {
+        for (id, addr) in req.0.into_iter() {
+            nodes.insert(id, BasicNode { addr });
+        }
+    };
     let res = app.raft.initialize(nodes).await.decompose().unwrap();
     Ok(Json(res))
 }

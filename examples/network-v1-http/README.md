@@ -1,4 +1,4 @@
-# Network-v1
+# Network-v1-HTTP
 
 An OpenRaft network layer implementation example that demonstrates the **RaftNetwork interface V1** using HTTP and `reqwest` as the transport mechanism.
 
