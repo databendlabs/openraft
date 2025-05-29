@@ -13,8 +13,18 @@ test:
 	cargo test --features bt
 	cargo test --features serde
 	cargo test --features single-term-leader
+	$(MAKE) test-examples
+
+
+test-examples:
+	cargo test --manifest-path examples/mem-log/Cargo.toml
 	cargo test --manifest-path examples/raft-kv-memstore/Cargo.toml
+	cargo test --manifest-path examples/raft-kv-memstore-grpc/Cargo.toml
+	cargo test --manifest-path examples/raft-kv-memstore-network-v2/Cargo.toml
+	cargo test --manifest-path examples/raft-kv-memstore-opendal-snapshot-data/Cargo.toml
+	cargo test --manifest-path examples/raft-kv-memstore-singlethreaded/Cargo.toml
 	cargo test --manifest-path examples/raft-kv-rocksdb/Cargo.toml
+	cargo test --manifest-path examples/rocksstore/Cargo.toml
 
 bench:
 	cargo bench --features bench

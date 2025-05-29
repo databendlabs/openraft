@@ -54,7 +54,7 @@ where P: AsRef<Path> {
     let kvs = state_machine_store.data.kvs.clone();
 
     // Create the network layer using network-v1 crate
-    let network = network_v1::NetworkFactory {};
+    let network = network_v1_http::NetworkFactory {};
 
     // Create a local raft instance.
     let raft = openraft::Raft::new(node_id, config.clone(), network, log_store, state_machine_store).await.unwrap();

@@ -198,7 +198,8 @@ where C: RaftTypeConfig
 
 #[cfg(test)]
 mod tests {
-    #[cfg(feature = "serde")]
+    /// If `bt` feature is enabled, `backtrace` field is included in the serialized error.
+    #[cfg(all(feature = "serde", not(feature = "bt")))]
     #[test]
     fn test_storage_error_serde() {
         use super::StorageError;

@@ -1,5 +1,5 @@
 [package]
-name = "network-v1"
+name = "network-v1-http"
 version = "0.1.0"
 readme = "README.md"
 

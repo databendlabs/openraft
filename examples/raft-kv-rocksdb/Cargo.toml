@@ -23,7 +23,7 @@ path = "src/bin/main.rs"
 [dependencies]
 openraft = { path = "../../openraft", features = ["serde", "type-alias"] }
 openraft-rocksstore = { path = "../rocksstore" }
-network-v1 = { path = "../network-v1" }
+network-v1-http = { path = "../network-v1-http" }
 
 actix-web = "4.0.0-rc.2"
 tokio = { version = "1.35.1", features = ["full"] }

@@ -205,7 +205,7 @@ network-v1 = { path = "../network-v1" }
 ### Use in Application
 
 ```rust
-use network_v1::NetworkFactory;
+use network_v1_http::NetworkFactory;
 
 // Create network factory
 let network = NetworkFactory {};

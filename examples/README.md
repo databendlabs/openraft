@@ -49,7 +49,7 @@ Deprecated:
 [raft-kv-memstore-opendal-snapshot-data]: raft-kv-memstore-opendal-snapshot-data/
 [mem-log]: mem-log/
 [rocksstore]: rocksstore/
-[network-v1]: network-v1/
+[network-v1]: network-v1-http/
 [utils]: utils/
 
 [memstore]: memstore/

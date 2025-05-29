@@ -22,7 +22,7 @@ path = "src/bin/main.rs"
 [dependencies]
 openraft = { path = "../../openraft", features = ["serde", "type-alias"] }
 mem-log = { path = "../mem-log", features = [] }
-network-v1 = { path = "../network-v1" }
+network-v1-http = { path = "../network-v1-http" }
 
 
 actix-web = "4.0.0-rc.2"

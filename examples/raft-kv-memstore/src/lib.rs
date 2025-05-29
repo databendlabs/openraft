@@ -57,7 +57,7 @@ pub async fn start_example_raft_node(node_id: NodeId, http_addr: String) -> std:
 
     // Create the network layer that will connect and communicate the raft instances and
     // will be used in conjunction with the store created above.
-    let network = network_v1::NetworkFactory {};
+    let network = network_v1_http::NetworkFactory {};
 
     // Create a local raft instance.
     let raft = openraft::Raft::new(
