@@ -33,7 +33,6 @@ impl<T> NodeId for T where T: Sized
         + Debug
         + Display
         + Hash
-        + Copy
         + Clone
         + Default
         + 'static
@@ -99,5 +98,31 @@ impl BasicNode {
 impl Display for BasicNode {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.addr)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fmt;
+
+    use crate::NodeId;
+
+    #[test]
+    fn node_id_default_impl() {
+        /// Automatically implemented trait [`NodeId`] for this struct.
+        #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+        #[derive(Debug, Clone, PartialEq, Eq, Hash, Default, Ord, PartialOrd)]
+        struct AutoNodeId;
+
+        impl fmt::Display for AutoNodeId {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                write!(f, "FooNodeId")
+            }
+        }
+
+        /// Assert a value implements the trait [`NodeId`].
+        fn assert_node_id<NID: NodeId>(_nid: &NID) {}
+
+        assert_node_id(&AutoNodeId);
     }
 }
