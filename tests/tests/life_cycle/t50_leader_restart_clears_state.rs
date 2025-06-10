@@ -29,7 +29,7 @@ async fn leader_restart_clears_state() -> anyhow::Result<()> {
     let mut router = RaftRouter::new(config.clone());
     router.enable_saving_committed = false;
 
-    let mut log_index = 0;
+    let mut log_index;
 
     // It must initialize a 3-nodes cluster so that it won't become leader in term-1, without election,
     // but instead, it becomes leader in term-2 after a round of election.
@@ -43,11 +43,7 @@ async fn leader_restart_clears_state() -> anyhow::Result<()> {
         tracing::info!("--- initialize node-0 wiht [0,1,2]");
         let n0 = router.get_raft_handle(&0)?;
         n0.initialize(btreemap! {0 => (), 1=>(), 2=>()}).await?;
-        // log_index == 0;
-
-        tracing::info!("--- trigger election for node-0");
-        n0.trigger().elect().await?;
-        log_index += 1;
+        log_index = 1; // 0 for initialization, 1 for leader noop log
 
         n0.wait(timeout()).state(ServerState::Leader, "node-0 should become leader").await?;
         n0.wait(timeout()).applied_index(Some(log_index), "node-0 applied log").await?;
