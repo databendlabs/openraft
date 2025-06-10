@@ -373,8 +373,21 @@ where C: RaftTypeConfig
             self.set_greater_log();
         }
 
+        // When vote request is rejected, only update to the non-committed version of the vote.
+        //
+        // This prevents a dangerous scenario when state reversion is allowed:
+        // 1. A node was a leader but its state reverted to a previous version
+        // 2. The node restarts and begins election
+        // 3. It receives a vote response containing its own previous leader vote
+        // 4. Without this protection, it would update to that committed vote and become leader again
+        // 5. However, it lacks the necessary logs, causing committed entries to be lost or inconsistent
+        //
+        // By using the non-committed version, we prevent this reverted node from becoming leader
+        // while still allowing proper vote updates for legitimate cases.
+        let vote = resp.vote.to_non_committed().into_vote();
+
         // Update if resp.vote is greater.
-        let _ = self.vote_handler().update_vote(&resp.vote);
+        let _ = self.vote_handler().update_vote(&vote);
     }
 
     /// Append entries to follower/learner.
