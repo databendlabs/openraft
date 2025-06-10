@@ -102,7 +102,6 @@ use crate::vote::RaftVote;
 use crate::ChangeMembers;
 use crate::Instant;
 use crate::Membership;
-use crate::OptionalSend;
 use crate::RaftTypeConfig;
 use crate::StorageError;
 
@@ -677,23 +676,6 @@ where
     pub(crate) fn trigger_snapshot(&mut self) {
         tracing::debug!("{}", func_name!());
         self.engine.snapshot_handler().trigger_snapshot();
-    }
-
-    /// Reject a request due to the Raft node being in a state which prohibits the request.
-    #[tracing::instrument(level = "trace", skip(self, tx))]
-    pub(crate) fn reject_with_forward_to_leader<T: OptionalSend, E>(&self, tx: ResultSender<C, T, E>)
-    where E: From<ForwardToLeader<C>> + OptionalSend {
-        let mut leader_id = self.current_leader();
-        let leader_node = self.get_leader_node(leader_id.clone());
-
-        // Leader is no longer a node in the membership config.
-        if leader_node.is_none() {
-            leader_id = None;
-        }
-
-        let err = ForwardToLeader { leader_id, leader_node };
-
-        let _ = tx.send(Err(err.into()));
     }
 
     #[tracing::instrument(level = "debug", skip(self))]

@@ -1008,6 +1008,7 @@ impl TypedRaftRouter {
         Ok(())
     }
 
+    #[allow(clippy::result_large_err)]
     #[tracing::instrument(level = "debug", skip(self))]
     pub fn emit_rpc_error(&self, id: MemNodeId, target: MemNodeId) -> Result<(), RPCError<MemConfig>> {
         let fails = self.fail_rpc.lock().unwrap();
