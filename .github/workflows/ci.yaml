@@ -101,6 +101,47 @@ jobs:
           RUST_BACKTRACE: full
 
 
+  # Run `macros` crate unit test
+  macros-test:
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - toolchain: "stable"
+            features: ""
+
+          - toolchain: "nightly"
+            features: ""
+
+
+    steps:
+      - name: Setup | Checkout
+        uses: actions/checkout@v4
+
+
+      - name: Setup | Toolchain
+        uses: actions-rs/toolchain@v1.0.6
+        with:
+          toolchain: "${{ matrix.toolchain }}"
+          override: true
+
+
+      - name: Install cargo-expand
+        run: cargo install cargo-expand
+
+
+      - name: Test crate `macros/`
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --features "${{ matrix.features }}" --manifest-path macros/Cargo.toml
+        env:
+          RUST_LOG: debug
+          RUST_BACKTRACE: full
+
+
   # Run openraft unit test `openraft/` and integration test `tests/`.
   openraft-test:
     runs-on: ubuntu-latest
@@ -138,16 +179,6 @@ jobs:
 
       - name: Install cargo-expand
         run: cargo install cargo-expand
-
-
-      - name: Test crate `macros/`
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --features "${{ matrix.features }}" --manifest-path macros/Cargo.toml
-        env:
-          RUST_LOG: debug
-          RUST_BACKTRACE: full
 
 
       # - A store with defensive checks returns error when unexpected accesses are sent to RaftStore.
