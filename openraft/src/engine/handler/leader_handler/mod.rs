@@ -105,7 +105,7 @@ where C: RaftTypeConfig
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn send_heartbeat(&mut self) -> () {
+    pub(crate) fn send_heartbeat(&mut self) {
         let mut rh = self.replication_handler();
         rh.initiate_replication(SendNone::True);
     }
