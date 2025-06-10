@@ -10,6 +10,7 @@ mod fixtures;
 mod t10_initialization;
 mod t11_shutdown;
 mod t50_follower_restart_does_not_interrupt;
+mod t50_leader_restart_clears_state;
 mod t50_single_follower_restart;
 mod t50_single_leader_restart_re_apply_logs;
 mod t90_issue_607_single_restart;
