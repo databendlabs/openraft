@@ -10,7 +10,6 @@ use validit::Validate;
 use crate::display_ext::DisplayOptionExt;
 use crate::log_id_range::LogIdRange;
 use crate::type_config::alias::LogIdOf;
-use crate::LogIdOptionExt;
 use crate::RaftTypeConfig;
 
 /// The inflight data being transmitting from leader to a follower/learner.
@@ -130,16 +129,12 @@ where C: RaftTypeConfig
     }
 
     /// Update inflight state when a conflicting log id is responded by a follower/learner.
-    pub(crate) fn conflict(&mut self, conflict: u64) {
+    pub(crate) fn conflict(&mut self, _conflict: u64) {
         match self {
             Inflight::None => {
                 unreachable!("no inflight data")
             }
-            Inflight::Logs { log_id_range: logs } => {
-                // if prev_log_id==None, it will never conflict
-                debug_assert_eq!(Some(conflict), logs.prev.index());
-                *self = Inflight::None
-            }
+            Inflight::Logs { log_id_range: _ } => *self = Inflight::None,
             Inflight::Snapshot { last_log_id: _ } => {
                 unreachable!("sending snapshot should not conflict");
             }

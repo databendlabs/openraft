@@ -10,3 +10,4 @@ mod t50_append_entries_backoff_rejoin;
 mod t51_append_entries_too_large;
 mod t60_feature_loosen_follower_log_revert;
 mod t61_allow_follower_log_revert;
+mod t62_follower_clear_restart_recover;

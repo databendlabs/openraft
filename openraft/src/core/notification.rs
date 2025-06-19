@@ -50,7 +50,13 @@ where C: RaftTypeConfig
     LocalIO { io_id: IOId<C> },
 
     /// Result of executing a command sent from network worker.
-    ReplicationProgress { progress: replication::Progress<C> },
+    ReplicationProgress {
+        /// If this progress from RPC with payload.
+        ///
+        /// `has_payload`: contain payload and should reset `inflight` state if conflict.
+        has_payload: bool,
+        progress: replication::Progress<C>,
+    },
 
     HeartbeatProgress {
         session_id: ReplicationSessionId<C>,
@@ -105,8 +111,9 @@ where C: RaftTypeConfig
             }
             Self::StorageError { error } => write!(f, "StorageError: {}", error),
             Self::LocalIO { io_id } => write!(f, "IOFlushed: {}", io_id),
-            Self::ReplicationProgress { progress } => {
-                write!(f, "{}", progress)
+            Self::ReplicationProgress { has_payload, progress } => {
+                let payload = if *has_payload { "no-payload" } else { "has-payload" };
+                write!(f, "{payload}: {}", progress)
             }
             Self::HeartbeatProgress {
                 session_id: leader_vote,

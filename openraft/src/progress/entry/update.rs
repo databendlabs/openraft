@@ -20,28 +20,42 @@ where C: RaftTypeConfig
         Self { engine_config, entry }
     }
 
-    /// Update conflicting log index.
+    /// Update the conflicting log index for this follower.
     ///
-    /// Conflicting log index is the last found log index on a follower that is not matching the
-    /// leader log.
+    /// The conflicting log index is the last log index found on a follower that does not match
+    /// the leader's log at that position.
     ///
-    /// Usually if follower's data is not lost, `conflict` is always greater than or equal
-    /// `matching`. But for testing purpose, a follower is allowed to clean its data and wait
-    /// for leader to replicate all data to it.
+    /// If `has_payload` is true, the `inflight` state is reset because AppendEntries RPC
+    /// manages the inflight state.
     ///
-    /// To allow a follower to clean its data, set the config [`Config::allow_log_reversion`] .
+    /// Normally, the `conflict` index should be greater than or equal to the `matching` index
+    /// when follower data is intact. However, for testing purposes, a follower may clean its
+    /// data and require the leader to replicate all data from the beginning.
+    ///
+    /// To allow follower log reversion, enable [`Config::allow_log_reversion`].
     ///
     /// [`Config::allow_log_reversion`]: `crate::config::Config::allow_log_reversion`
-    pub(crate) fn update_conflicting(&mut self, conflict: u64) {
+    pub(crate) fn update_conflicting(&mut self, conflict: u64, has_payload: bool) {
         tracing::debug!(
             "update_conflict: current progress_entry: {}; conflict: {}",
             self.entry,
             conflict
         );
 
-        self.entry.inflight.conflict(conflict);
+        // The inflight may be None if the conflict is caused by a heartbeat response.
+        if has_payload {
+            self.entry.inflight.conflict(conflict);
+        }
 
-        debug_assert!(conflict < self.entry.searching_end);
+        if conflict >= self.entry.searching_end {
+            tracing::debug!(
+                "conflict {} >= searching_end {}; no need to update",
+                conflict,
+                self.entry.searching_end
+            );
+            return;
+        }
+
         self.entry.searching_end = conflict;
 
         // An already matching log id is found lost:

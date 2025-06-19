@@ -464,7 +464,7 @@ where
 
                 let matching = &sending_range.last;
                 if has_payload {
-                    self.notify_progress(ReplicationResult(Ok(matching.clone())));
+                    self.notify_progress(ReplicationResult(Ok(matching.clone())), has_payload);
                     Ok(self.next_action_to_send(matching.clone(), log_ids))
                 } else {
                     Ok(None)
@@ -476,7 +476,7 @@ where
                 self.notify_heartbeat_progress(leader_time);
 
                 if has_payload {
-                    self.notify_progress(ReplicationResult(Ok(matching.clone())));
+                    self.notify_progress(ReplicationResult(Ok(matching.clone())), has_payload);
                     Ok(self.next_action_to_send(matching.clone(), log_ids))
                 } else {
                     Ok(None)
@@ -504,9 +504,10 @@ where
 
                 // Conflict is also a successful replication RPC, because the leadership is acknowledged.
                 self.notify_heartbeat_progress(leader_time);
-                if has_payload {
-                    self.notify_progress(ReplicationResult(Err(conflict)));
-                }
+
+                // Conflict should always be sent to RaftCore, ignoring `has_payload`
+                // because a heartbeat could also cause a conflict if the follower's state reverts.
+                self.notify_progress(ReplicationResult(Err(conflict)), has_payload);
 
                 Ok(None)
             }
@@ -517,6 +518,8 @@ where
     /// RaftCore will then submit another replication command.
     fn send_progress_error(&mut self, err: RPCError<C>) {
         let _ = self.tx_raft_core.send(Notification::ReplicationProgress {
+            // If `result` is Err, `has_payload` is not used.
+            has_payload: true,
             progress: Progress {
                 target: self.target.clone(),
                 result: Err(err.to_string()),
@@ -540,7 +543,7 @@ where
     }
 
     /// Notify RaftCore with the success replication result(log matching or conflict).
-    fn notify_progress(&mut self, replication_result: ReplicationResult<C>) {
+    fn notify_progress(&mut self, replication_result: ReplicationResult<C>, has_payload: bool) {
         tracing::debug!(
             target = display(self.target.clone()),
             curr_matching = display(self.matching.display()),
@@ -560,6 +563,7 @@ where
 
         let _ = self.tx_raft_core.send({
             Notification::ReplicationProgress {
+                has_payload,
                 progress: Progress {
                     session_id: self.session_id.clone(),
                     target: self.target.clone(),
@@ -811,7 +815,7 @@ where
         }
 
         self.notify_heartbeat_progress(start_time);
-        self.notify_progress(ReplicationResult(Ok(snapshot_meta.last_log_id)));
+        self.notify_progress(ReplicationResult(Ok(snapshot_meta.last_log_id)), true);
 
         Ok(None)
     }

@@ -126,24 +126,6 @@ fn test_inflight_conflict() -> anyhow::Result<()> {
 
     {
         let res = std::panic::catch_unwind(|| {
-            let mut f = Inflight::<UTConfig>::logs(Some(log_id(5)), Some(log_id(10)));
-            f.conflict(4);
-        });
-        tracing::info!("res: {:?}", res);
-        assert!(res.is_err(), "non-matching conflict < prev_log_id");
-    }
-
-    {
-        let res = std::panic::catch_unwind(|| {
-            let mut f = Inflight::<UTConfig>::logs(Some(log_id(5)), Some(log_id(10)));
-            f.conflict(6);
-        });
-        tracing::info!("res: {:?}", res);
-        assert!(res.is_err(), "non-matching conflict > prev_log_id");
-    }
-
-    {
-        let res = std::panic::catch_unwind(|| {
             let mut f = Inflight::<UTConfig>::snapshot(Some(log_id(5)));
             f.conflict(5);
         });

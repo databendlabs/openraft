@@ -1399,7 +1399,7 @@ where
                 }
             }
 
-            Notification::ReplicationProgress { progress } => {
+            Notification::ReplicationProgress { has_payload, progress } => {
                 // If vote or membership changes, ignore the message.
                 // There is chance delayed message reports a wrong state.
                 if self.does_replication_session_match(&progress.session_id, "ReplicationProgress") {
@@ -1407,7 +1407,7 @@ where
 
                     // replication_handler() won't panic because:
                     // The leader is still valid because progress.session_id.leader_vote does not change.
-                    self.engine.replication_handler().update_progress(progress.target, progress.result);
+                    self.engine.replication_handler().update_progress(progress.target, progress.result, has_payload);
                 }
             }
 

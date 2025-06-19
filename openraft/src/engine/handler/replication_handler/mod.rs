@@ -213,15 +213,18 @@ where C: RaftTypeConfig
 
     /// Update progress when replicated data(logs or snapshot) does not match follower/learner state
     /// and is rejected.
+    ///
+    /// If `has_payload` is true, the `inflight` state is reset because AppendEntries RPC
+    /// manages the inflight state.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn update_conflicting(&mut self, target: C::NodeId, conflict: LogIdOf<C>) {
+    pub(crate) fn update_conflicting(&mut self, target: C::NodeId, conflict: LogIdOf<C>, has_payload: bool) {
         // TODO(2): test it?
 
         let prog_entry = self.leader.progress.get_mut(&target).unwrap();
 
         let mut updater = progress::entry::update::Updater::new(self.config, prog_entry);
 
-        updater.update_conflicting(conflict.index());
+        updater.update_conflicting(conflict.index(), has_payload);
     }
 
     /// Enable one-time replication reset for a specific node upon log reversion detection.
@@ -254,13 +257,17 @@ where C: RaftTypeConfig
 
     /// Update replication progress when a response is received.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn update_progress(&mut self, target: C::NodeId, repl_res: Result<ReplicationResult<C>, String>) {
+    pub(crate) fn update_progress(
+        &mut self,
+        target: C::NodeId,
+        repl_res: Result<ReplicationResult<C>, String>,
+        has_payload: bool,
+    ) {
         tracing::debug!(
-            target = display(&target),
-            result = display(repl_res.display()),
-            progress = display(&self.leader.progress),
-            "{}",
-            func_name!()
+            "{}: target={target}, result={}, has_payload={has_payload}, current progresses={}",
+            func_name!(),
+            repl_res.display(),
+            self.leader.progress
         );
 
         match repl_res {
@@ -269,7 +276,7 @@ where C: RaftTypeConfig
                     self.update_matching(target, matching);
                 }
                 Err(conflict) => {
-                    self.update_conflicting(target, conflict);
+                    self.update_conflicting(target, conflict, has_payload);
                 }
             },
             Err(err_str) => {

@@ -79,7 +79,7 @@ fn test_update_conflicting() -> anyhow::Result<()> {
     pe.inflight = inflight_logs(5, 10);
 
     let engine_config = EngineConfig::new_default(1);
-    pe.new_updater(&engine_config).update_conflicting(5);
+    pe.new_updater(&engine_config).update_conflicting(5, true);
 
     assert_eq!(Inflight::None, pe.inflight);
     assert_eq!(&Some(log_id(3)), pe.borrow());
