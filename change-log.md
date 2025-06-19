@@ -1,3 +1,26 @@
+## v0.9.20
+
+Summary:
+
+- Fixed:
+    -   [33fde29d](https://github.com/datafuselabs/openraft/commit/33fde29d03c172b1514e2f91d854bc5b6aa9be09) reset progress when heartbeat response indicates conflict.
+
+Detail:
+
+### Fixed:
+
+-   Fixed: [33fde29d](https://github.com/datafuselabs/openraft/commit/33fde29d03c172b1514e2f91d854bc5b6aa9be09) reset progress when heartbeat response indicates conflict; by Zhang Yanpo; 2025-06-19
+
+    With `loosen-follower-log-revert` enabled:
+
+    Before this fix, `RaftCore` ignored `conflict` messages from `Heartbeat` RPCs,
+    preventing leaders from discovering follower state changes. When a follower's
+    state reverted and responded with a conflict message, the leader wouldn't
+    retransmit necessary data to the follower.
+
+    This commit ensures `conflict` responses are always processed properly and
+    progress is reset to trigger data retransmission to the follower.
+
 ## v0.9.19
 
 Summary:
