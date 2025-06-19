@@ -114,6 +114,9 @@ impl<NID: NodeId> ProgressEntry<NID> {
     /// Conflicting log index is the last found log index on a follower that is not matching the
     /// leader log.
     ///
+    /// `request_id` is `None` for a Heartbeat request, meaning there is no inflight data, and
+    /// `Some(request_id)` for a normal AppendEntries request.
+    ///
     /// Usually if follower's data is lost, `conflict` is always greater than or equal `matching`.
     /// But for testing purpose, a follower is allowed to clean its data and wait for leader to
     /// replicate all data to it.
@@ -121,15 +124,17 @@ impl<NID: NodeId> ProgressEntry<NID> {
     /// To allow a follower to clean its data, enable feature flag [`loosen-follower-log-revert`] .
     ///
     /// [`loosen-follower-log-revert`]: crate::docs::feature_flags#feature_flag_loosen_follower_log_revert
-    pub(crate) fn update_conflicting(&mut self, request_id: u64, conflict: u64) -> Result<(), InflightError> {
+    pub(crate) fn update_conflicting(&mut self, request_id: Option<u64>, conflict: u64) -> Result<(), InflightError> {
         tracing::debug!(
-            self = debug(&self),
-            request_id = display(request_id),
-            conflict = display(conflict),
-            "update_conflict"
+            "update_conflict: current_progress={}, request_id={}, conflict={}",
+            self,
+            request_id.display(),
+            conflict
         );
 
-        self.inflight.conflict(request_id, conflict)?;
+        if let Some(request_id) = request_id {
+            self.inflight.conflict(request_id, conflict)?;
+        }
 
         debug_assert!(conflict < self.searching_end);
         self.searching_end = conflict;

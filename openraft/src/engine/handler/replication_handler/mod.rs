@@ -131,13 +131,16 @@ where C: RaftTypeConfig
         self.update_leader_clock(target.clone(), result.sending_time);
 
         let id = request_id.request_id();
-        let Some(id) = id else {
-            tracing::debug!(request_id = display(request_id), "no data for this request, return");
-            return;
-        };
 
+        // If request id is `None`, it means there is not data in the request payload, thus no need to
+        // update the matching pointer.
+        // But conflict should always be handled, e.g., especially in scenario the follower state reverted.
         match result.result {
             Ok(matching) => {
+                let Some(id) = id else {
+                    tracing::debug!(request_id = display(request_id), "no data for this request, return");
+                    return;
+                };
                 self.update_matching(target.clone(), id, matching);
             }
             Err(conflict) => {
@@ -246,18 +249,15 @@ where C: RaftTypeConfig
     /// Update progress when replicated data(logs or snapshot) does not match follower/learner state
     /// and is rejected.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn update_conflicting(&mut self, target: C::NodeId, inflight_id: u64, conflict: LogId<C::NodeId>) {
+    pub(crate) fn update_conflicting(
+        &mut self,
+        target: C::NodeId,
+        inflight_id: Option<u64>,
+        conflict: LogId<C::NodeId>,
+    ) {
         // TODO(2): test it?
 
         let prog_entry = self.leader.progress.get_mut(&target).unwrap();
-
-        debug_assert_eq!(
-            prog_entry.inflight.get_id(),
-            Some(inflight_id),
-            "inflight({:?}) id should match: {}",
-            prog_entry.inflight,
-            inflight_id
-        );
 
         prog_entry.update_conflicting(inflight_id, conflict.index).unwrap();
     }

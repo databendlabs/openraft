@@ -70,7 +70,7 @@ fn test_update_conflicting() -> anyhow::Result<()> {
     let mut pe = ProgressEntry::empty(20);
     pe.matching = Some(log_id(3));
     pe.inflight = inflight_logs(5, 10);
-    pe.update_conflicting(pe.inflight.id(), 5)?;
+    pe.update_conflicting(Some(pe.inflight.id()), 5)?;
     assert_eq!(Inflight::None, pe.inflight);
     assert_eq!(&Some(log_id(3)), pe.borrow());
     assert_eq!(5, pe.searching_end);
