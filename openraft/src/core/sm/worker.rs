@@ -124,7 +124,19 @@ where
                     // GetSnapshot does not respond to RaftCore
                 }
                 Command::InstallFullSnapshot { io_id, snapshot } => {
-                    tracing::info!("{}: install complete snapshot", func_name!());
+                    tracing::info!(
+                        "{}: install snapshot step-1(save): save snapshot: {}",
+                        func_name!(),
+                        snapshot.meta
+                    );
+
+                    self.state_machine.save_snapshot(&snapshot).await?;
+
+                    tracing::info!(
+                        "{}: install snapshot step-2(install): replace state machine with snapshot: {}",
+                        func_name!(),
+                        snapshot.meta
+                    );
 
                     let meta = snapshot.meta.clone();
                     self.state_machine.install_snapshot(&meta, snapshot.snapshot).await?;
