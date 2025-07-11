@@ -123,7 +123,7 @@ impl<NID: NodeId> ProgressEntry<NID> {
     ///
     /// To allow a follower to clean its data, enable feature flag [`loosen-follower-log-revert`] .
     ///
-    /// [`loosen-follower-log-revert`]: crate::docs::feature_flags#feature_flag_loosen_follower_log_revert
+    /// [`loosen-follower-log-revert`]: crate::docs::feature_flags#feature-flag-loosen-follower-log-revert
     pub(crate) fn update_conflicting(&mut self, request_id: Option<u64>, conflict: u64) -> Result<(), InflightError> {
         tracing::debug!(
             "update_conflict: current_progress={}, request_id={}, conflict={}",

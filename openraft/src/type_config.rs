@@ -68,6 +68,14 @@ pub trait RaftTypeConfig:
     ///
     /// See the [storage chapter of the guide][sto] for details on log compaction / snapshotting.
     ///
+    /// To use a more generic snapshot transmission, you can use the `generic-snapshot-data`
+    /// feature. Enabling this feature allows you to send any type of snapshot data, by removing the
+    /// `AsyncWrite + AsyncSeek` bounds on the `SnapshotData` type.
+    /// This is useful when a snapshot is a more complex data structure than a single file.
+    /// See the [generic snapshot
+    /// data](crate::docs::feature_flags#feature-flag-generic-snapshot-data) chapter for
+    /// details.
+    ///
     /// [sto]: crate::docs::getting_started#3-implement-raftlogstorage-and-raftstatemachine
     #[cfg(not(feature = "generic-snapshot-data"))]
     type SnapshotData: tokio::io::AsyncRead
@@ -76,6 +84,12 @@ pub trait RaftTypeConfig:
         + OptionalSend
         + Unpin
         + 'static;
+
+    /// Snapshot data for exposing a snapshot for reading & writing.
+    ///
+    /// See the [storage chapter of the guide][sto] for details on log compaction / snapshotting.
+    ///
+    /// [sto]: crate::docs::getting_started#3-implement-raftlogstorage-and-raftstatemachine
     #[cfg(feature = "generic-snapshot-data")]
     type SnapshotData: OptionalSend + 'static;
 

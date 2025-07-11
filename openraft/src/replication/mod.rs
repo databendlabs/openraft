@@ -545,7 +545,7 @@ where
     /// - log a warning message if [`loosen-follower-log-revert`] feature flag is enabled;
     /// - otherwise panic, consider it as a bug.
     ///
-    /// [`loosen-follower-log-revert`]: crate::docs::feature_flags#feature_flag_loosen_follower_log_revert
+    /// [`loosen-follower-log-revert`]: crate::docs::feature_flags#feature-flag-loosen-follower-log-revert
     fn validate_matching(&self, matching: Option<LogId<C::NodeId>>) {
         if cfg!(feature = "loosen-follower-log-revert") {
             if self.matching > matching {

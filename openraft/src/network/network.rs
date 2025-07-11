@@ -94,6 +94,12 @@ where C: RaftTypeConfig
     /// with this vote.
     ///
     /// `cancel` get `Ready` when the caller decides to cancel this snapshot transmission.
+    ///
+    /// To implement a more generic snapshot transmission, you can use the `generic-snapshot-data`
+    /// feature. Enabling this feature allows you to send any type of snapshot data.
+    /// See the [generic snapshot
+    /// data](crate::docs::feature_flags#feature-flag-generic-snapshot-data) chapter for
+    /// details.
     #[cfg(feature = "generic-snapshot-data")]
     async fn full_snapshot(
         &mut self,
@@ -118,6 +124,12 @@ where C: RaftTypeConfig
     /// with this vote.
     ///
     /// `cancel` get `Ready` when the caller decides to cancel this snapshot transmission.
+    ///
+    /// To implement a more generic snapshot transmission, you can use the `generic-snapshot-data`
+    /// feature. Enabling this feature allows you to send any type of snapshot data.
+    /// See the [generic snapshot
+    /// data](crate::docs::feature_flags#feature-flag-generic-snapshot-data) chapter for
+    /// details.
     // If generic-snapshot-data disabled,
     // provide a default implementation that relies on AsyncRead + AsyncSeek + Unpin
     #[cfg(not(feature = "generic-snapshot-data"))]
