@@ -136,7 +136,14 @@ impl<NID: NodeId> ProgressEntry<NID> {
             self.inflight.conflict(request_id, conflict)?;
         }
 
-        debug_assert!(conflict < self.searching_end);
+        if conflict >= self.searching_end {
+            tracing::debug!(
+                "conflict {} >= searching_end {}; no need to update",
+                conflict,
+                self.searching_end
+            );
+            return Ok(());
+        }
         self.searching_end = conflict;
 
         // An already matching log id is found lost:
