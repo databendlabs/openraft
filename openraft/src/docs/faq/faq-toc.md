@@ -6,6 +6,8 @@
   * [Why is log id a tuple of `(term, node_id, log_index)`?](#why-is-log-id-a-tuple-of-term-node_id-log_index)
 - [Replication](#replication)
   * [How to minimize error logging when a follower is offline](#how-to-minimize-error-logging-when-a-follower-is-offline)
+- [Node management](#node-management)
+  * [How to customize snapshot building policy?](#how-to-customize-snapshot-building-policy)
 - [Cluster management](#cluster-management)
   * [How to initialize a cluster?](#how-to-initialize-a-cluster)
   * [Are there any issues with running a single node service?](#are-there-any-issues-with-running-a-single-node-service)

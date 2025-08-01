@@ -86,6 +86,23 @@ See: [`leader-id`](`crate::docs::data::leader_id`) for details.
 Excessive error logging, like `ERROR openraft::replication: 248: RPCError err=NetworkError: ...`, occurs when a follower node becomes unresponsive. To alleviate this, implement a mechanism within [`RaftNetwork`][] that returns a [`Unreachable`][] error instead of a [`NetworkError`][] when immediate replication retries to the affected node are not advised.
 
 
+## Node management
+
+
+### How to customize snapshot building policy?
+
+OpenRaft provides a default snapshot building policy that triggers snapshots
+when the log count exceeds a threshold. Configure this via [`Config::snapshot_policy`] 
+set to [`SnapshotPolicy::LogsSinceLast(n)`][`SnapshotPolicy::LogsSinceLast`].
+
+To customize snapshot behavior:
+
+- **Disable automatic snapshots**: Set [`Config::snapshot_policy`] to [`SnapshotPolicy::Never`]
+- **Manual snapshot triggers**: Use [`Raft::trigger().snapshot()`][`Trigger::snapshot`] to build snapshots on demand
+
+This allows full control over when snapshots are created based on your application's specific requirements.
+
+
 ## Cluster management
 
 
@@ -305,6 +322,10 @@ OpenRaft intentionally supports this behavior because:
 [`RaftTypeConfig`]:   `crate::RaftTypeConfig`
 
 [`Config::allow_log_reversion`]: `crate::config::Config::allow_log_reversion`
+[`Config::snapshot_policy`]: `crate::config::Config::snapshot_policy`
+
+[`SnapshotPolicy::LogsSinceLast`]: `crate::config::SnapshotPolicy::LogsSinceLast`
+[`SnapshotPolicy::Never`]: `crate::config::SnapshotPolicy::Never`
 
 [`RaftLogStorage::save_committed()`]: `crate::storage::RaftLogStorage::save_committed`
 
@@ -325,3 +346,5 @@ OpenRaft intentionally supports this behavior because:
 [`Raft::metrics()`]: `crate::Raft::metrics`
 [`Raft::server_metrics()`]: `crate::Raft::server_metrics`
 [`Raft::data_metrics()`]: `crate::Raft::data_metrics`
+
+[`Trigger::snapshot`]: `crate::raft::trigger::Trigger::snapshot`
