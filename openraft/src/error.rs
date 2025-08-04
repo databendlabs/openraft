@@ -321,7 +321,6 @@ where C: RaftTypeConfig
             RPCError::Unreachable(e) => RPCError::Unreachable(e),
             RPCError::PayloadTooLarge(e) => RPCError::PayloadTooLarge(e),
             RPCError::Network(e) => RPCError::Network(e),
-            RPCError::RemoteError(_infallible) => unreachable!(),
         }
     }
 }

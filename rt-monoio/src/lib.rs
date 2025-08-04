@@ -74,11 +74,8 @@ impl AsyncRuntime for MonoioRuntime {
     }
 
     #[inline]
-    fn is_panic(_join_error: &Self::JoinError) -> bool {
-        // Given that joining a task will never fail, i.e., `Self::JoinError`
-        // will never be constructed, and it is impossible to construct an
-        // enum like `Infallible`, this function could never be invoked.
-        unreachable!("unreachable since argument `join_error` could never be constructed")
+    fn is_panic(join_error: &Self::JoinError) -> bool {
+        match *join_error {}
     }
 
     #[inline]

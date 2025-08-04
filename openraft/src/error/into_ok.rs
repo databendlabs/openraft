@@ -11,7 +11,11 @@ where E: Into<Infallible>
     fn into_ok(self) -> T {
         match self {
             Ok(t) => t,
-            Err(_) => unreachable!(),
+            Err(e) => {
+                // NOTE: `allow` required because of buggy reachability detection by rust compiler
+                #[allow(unreachable_code)]
+                match e.into() {}
+            }
         }
     }
 }

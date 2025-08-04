@@ -48,7 +48,6 @@ impl<C: RaftTypeConfig> From<StreamingError<C>> for ReplicationError<C> {
 
 impl<C: RaftTypeConfig> From<RPCError<C>> for StreamingError<C> {
     fn from(value: RPCError<C>) -> Self {
-        #[allow(unreachable_patterns)]
         match value {
             RPCError::Timeout(e) => StreamingError::Timeout(e),
             RPCError::Unreachable(e) => StreamingError::Unreachable(e),
@@ -56,9 +55,6 @@ impl<C: RaftTypeConfig> From<RPCError<C>> for StreamingError<C> {
                 unreachable!("PayloadTooLarge should not be converted to StreamingError")
             }
             RPCError::Network(e) => StreamingError::Network(e),
-            RPCError::RemoteError(_e) => {
-                unreachable!("Infallible error should not be produced at all")
-            }
         }
     }
 }
