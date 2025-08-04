@@ -34,6 +34,8 @@ compile_error!(
 
 pub extern crate openraft_macros;
 
+mod foo;
+
 mod change_members;
 mod config;
 mod core;
