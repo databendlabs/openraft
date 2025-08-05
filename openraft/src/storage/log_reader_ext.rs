@@ -11,7 +11,7 @@ use crate::StorageError;
 pub trait RaftLogReaderExt<C>: RaftLogReader<C>
 where C: RaftTypeConfig
 {
-    /// Try to get an log entry.
+    /// Try to get a log entry.
     ///
     /// It does not return an error if the log entry at `log_index` is not found.
     async fn try_get_log_entry(&mut self, log_index: u64) -> Result<Option<C::Entry>, StorageError<C>> {

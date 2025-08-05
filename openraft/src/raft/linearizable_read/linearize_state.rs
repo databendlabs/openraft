@@ -16,7 +16,7 @@ use crate::RaftTypeConfig;
 /// - `applied`: the actual log ID that was applied to satisfy the linearizability requirement
 ///
 /// If the state is ready, it is guaranteed `applied >= read_log_id`.
-/// If the state is not ready(timeout waiting for the applied log entries), it is guaranteed
+/// If the state is not ready (timeout waiting for the applied log entries), it is guaranteed
 /// `applied < read_log_id`.
 ///
 /// [`Linearizer::try_await_ready()`]: crate::raft::linearizable_read::Linearizer::try_await_ready

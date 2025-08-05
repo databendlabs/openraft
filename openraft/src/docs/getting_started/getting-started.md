@@ -65,7 +65,7 @@ openraft::declare_raft_types!(
 ```
 
 This macro call adds the above `Request` and `Response` to the `TypeConfig` struct.
-- `D = Request` is the raft-log payload(usually some command to run)
+- `D = Request` is the raft-log payload (usually some command to run)
   that will be replicated by the raft protocol,
   and will be applied to the state machine, i.e., your implementation of [`RaftStateMachine`].
 - `R = Response` is the response that the state machine returns to the client after applying a `Request`.
@@ -122,7 +122,7 @@ The trait [`RaftStateMachine`] defines how log is interpreted. Usually it is an 
 There is a good example,
 [`Mem KV Store`](https://github.com/databendlabs/openraft/blob/main/examples/raft-kv-memstore/src/store/mod.rs),
 that demonstrates what should be done when a method is called. The storage methods are listed as the below.
-Follow the link to method document to see the details.
+Follow the links to method documentations to see the details.
 
 | Kind       | [`RaftLogStorage`] method | Return value                 | Description                           |
 |------------|---------------------------|------------------------------|---------------------------------------|
@@ -233,7 +233,7 @@ When the server receives a Raft RPC, it simply passes it to its `raft` instance 
 For a real-world implementation, you may want to use [Tonic gRPC](https://github.com/hyperium/tonic) to handle gRPC-based communication between Raft nodes. The [databend-meta](https://github.com/databendlabs/databend/blob/6603392a958ba8593b1f4b01410bebedd484c6a9/metasrv/src/network.rs#L89) project provides an excellent real-world example of a Tonic gRPC-based Raft network implementation.
 
 
-> ### Trouble shooting: implementation conflicts
+> ### Troubleshooting: implementation conflicts
 >
 > When implementing `RaftNetworkV2<T>` for a generic type parameter `T`, you might
 > encounter a compiler error about conflicting implementations. This happens
@@ -255,7 +255,7 @@ For a real-world implementation, you may want to use [Tonic gRPC](https://github
 > ```
 >
 > If you encounter this error, you can disable the feature `adapt-network-v1` to
-> remvoe the default implementation for `RaftNetworkV2`.
+> remove the default implementation for `RaftNetworkV2`.
 
 
 ### Implement [`RaftNetworkFactory`].

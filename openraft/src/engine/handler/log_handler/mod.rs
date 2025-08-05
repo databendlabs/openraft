@@ -26,7 +26,7 @@ where C: RaftTypeConfig
 impl<C> LogHandler<'_, C>
 where C: RaftTypeConfig
 {
-    /// Purge log entries upto `RaftState.purge_upto()`, inclusive.
+    /// Purge log entries up to `RaftState.purge_upto()`, inclusive.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn purge_log(&mut self) {
         let st = &mut self.state;
@@ -42,17 +42,17 @@ where C: RaftTypeConfig
             return;
         }
 
-        let upto = purge_upto.unwrap().clone();
+        let up to = purge_upto.unwrap().clone();
 
         st.purge_log(&upto);
         self.output.push_command(Command::PurgeLog { upto });
     }
 
-    /// Update the next log id to purge upto, if more logs can be purged, according to configured
+    /// Update the next log id to purge up to, if more logs can be purged, according to the configured
     /// policy.
     ///
-    /// This method is called after building a snapshot, because openraft only purge logs that are
-    /// already included in snapshot.
+    /// This method is called after building a snapshot because openraft only purges logs that are
+    /// already included in the snapshot.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn schedule_policy_based_purge(&mut self) {
         if let Some(purge_upto) = self.calc_purge_upto() {
@@ -60,7 +60,7 @@ where C: RaftTypeConfig
         }
     }
 
-    /// Update the log id it expect to purge up to. It won't trigger purge immediately.
+    /// Update the log id it expects to purge up to. It won't trigger the purge immediately.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn update_purge_upto(&mut self, purge_upto: LogIdOf<C>) {
         debug_assert!(self.state.purge_upto() <= Some(&purge_upto));
@@ -69,7 +69,7 @@ where C: RaftTypeConfig
 
     /// Calculate the log id up to which to purge, inclusive.
     ///
-    /// Only log included in snapshot will be purged.
+    /// Only logs included in the snapshot will be purged.
     /// It may return None if there is no log to purge.
     ///
     /// `max_keep` specifies the number of applied logs to keep.

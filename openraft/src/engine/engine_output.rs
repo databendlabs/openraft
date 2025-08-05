@@ -8,7 +8,7 @@ use crate::RaftTypeConfig;
 pub(crate) struct EngineOutput<C>
 where C: RaftTypeConfig
 {
-    /// Command queue that need to be executed by `RaftRuntime`.
+    /// Command queue that needs to be executed by `RaftRuntime`.
     pub(crate) commands: VecDeque<Command<C>>,
 }
 

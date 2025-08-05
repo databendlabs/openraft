@@ -57,7 +57,7 @@ mod threaded {
 #[cfg(not(feature = "serde"))]
 mod serde_able {
     /// A trait that extends `Serialize` and `Deserialize` if the `serde` feature flag
-    /// is enabled, otherwise it is empty trait.
+    /// is enabled, otherwise it is an empty trait.
     pub trait OptionalSerde {}
     impl<T> OptionalSerde for T {}
 }
@@ -65,7 +65,7 @@ mod serde_able {
 #[cfg(feature = "serde")]
 mod serde_able {
     /// A trait that extends `Serialize` and `Deserialize` if the `serde` feature flag
-    /// is enabled, otherwise it is empty trait.
+    /// is enabled, otherwise it is an empty trait.
     pub trait OptionalSerde: serde::Serialize + for<'a> serde::Deserialize<'a> {}
     impl<T> OptionalSerde for T where T: serde::Serialize + for<'a> serde::Deserialize<'a> {}
 }

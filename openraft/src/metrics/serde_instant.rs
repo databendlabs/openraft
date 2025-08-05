@@ -7,11 +7,11 @@ use crate::Instant;
 
 /// A wrapper for [`Instant`] that supports serialization and deserialization.
 ///
-/// This struct serializes an `Instant` into a i64 which is the number of non-leap-nanoseconds since
+/// This struct serializes an `Instant` into an `i64` which is the number of non-leap-nanoseconds since
 /// January 1, 1970 UTC.
 ///
 /// Note: Serialization and deserialization are not perfectly accurate and can be indeterministic,
-/// resulting in minor variations each time. These deviations(could be smaller or greater) are
+/// resulting in minor variations each time. These deviations (could be smaller or greater) are
 /// typically less than a microsecond (10^-6 seconds).
 #[derive(Debug, Clone, Copy)]
 #[derive(PartialEq, Eq)]
@@ -177,7 +177,7 @@ mod serde_impl {
             assert_eq!(
                 nano[0..nano.len() - 6],
                 serialized[0..serialized.len() - 6],
-                "compare upto milli seconds: {}",
+                "compare up to milli seconds: {}",
                 &nano[0..nano.len() - 6]
             );
         }

@@ -13,16 +13,16 @@ This design has two problems:
 - Although `(term, log_index)` serves as a pseudo time in Raft, measuring whether a node has caught up with the leader and is capable of becoming a new leader, leadership is not solely determined by this pseudo time.
   Wall clock time is also taken into account.
 
-  There may be a case where the pseudo time is not upto date but the clock time is, and the node should not become the leader.
-  For example, in a cluster of three nodes, if the leader (node-1) is busy sending a snapshot to node-2(it has not yet replicated the latest logs to a quorum, but node-2 received message from the leader(node-1), thus it knew there is an active leader), node-3 should not seize leadership from node-1.
+  There may be a case where the pseudo time is not up to date, but the clock time is, and the node should not become the leader.
+  For example, in a cluster of three nodes, if the leader (node-1) is busy sending a snapshot to node-2(it has not yet replicated the latest logs to a quorum, but node-2 received a message from the leader (node-1), thus it knew there is an active leader), node-3 should not seize leadership from node-1.
   This is why there needs to be two types of time, pseudo time `(term, log_index)` and wall clock time, to protect leadership.
 
-  In the follow graph:
+  In the following graph:
     - node-1 is the leader, has 4 log entries, and is sending a snapshot to
       node-2,
     - node-2 received several chunks of snapshot, and it perceived an active
       leader thus extended leader lease.
-    - node-3 tried to send vote request to node-2, although node-2 do not have
+    - node-3 tried to send a vote request to node-2, although node-2 does not have
       as many logs as node-3, it should still reject node-3's vote request
       because the leader lease has not yet expired.
 
@@ -54,7 +54,7 @@ The original document is presented below for reference.
 ## Heartbeat in standard raft
 
 Heartbeat in standard raft is the way for a leader to assert it is still alive:
-- A leader send heartbeat at a regular interval.
+- A leader sends heartbeats at a regular interval.
 - A follower that receives a heartbeat believes there is an active leader thus it rejects election request(`send_vote`) from another node unreachable to the leader, for a short period.
 
 ## Openraft heartbeat is a blank log
@@ -73,7 +73,7 @@ To refuse the election by a node that does not receive recent messages from the 
 just let the active leader send a **blank log** to increase the **pseudo time** on a quorum.
 
 Because the leader must have the greatest **pseudo time**,
-thus by comparing the **pseudo time**, a follower automatically refuse election request from a node unreachable to the leader.
+thus by comparing the **pseudo time**, a follower automatically refuses election requests from a node unreachable to the leader.
 
 And comparing the **pseudo time** is already done by `handle_vote_request()`,
 there is no need to add another timer for the active leader.
@@ -84,15 +84,15 @@ Thus making heartbeat request a blank log is the simplest way.
 
 - Simple, get rid of a timer.
 
-  Without heartbeat log(the way standard raft does), when handling a vote
+  Without heartbeat log (the way standard raft does), when handling a vote
   request, except `vote` itself, it has to examine two values to determine if
   the vote request is valid:
     - Whether the last heartbeat has expired by clock time.
     - Whether the `(last_term, last_log_index)` in the request is greater or equal to the local value. This is the pseudo time Raft defines.
 
-  With heartbeat log(the way openraft does), when handling a vote request, it only needs to examine one value: the raft time: `(last_term, last_log_index)`. This makes the logic simpler and the test easier to write.
+  With heartbeat log (the way openraft does), when handling a vote request, it only needs to examine one value: the raft time: `(last_term, last_log_index)`. This makes the logic simpler and the test easier to write.
 
-- Easy to prove, and reduce code complexity.
+- Easy to prove and reduce code complexity.
 
 
 ## Concerns
@@ -104,10 +104,10 @@ Thus making heartbeat request a blank log is the simplest way.
   **Why it is not a problem**:
 
     1. Assume that most consensus domains are busy, and as a domain is busy, it is possible to merge multiple `append-entry` calls into one call to the storage layer.
-       Thus if a domain swallows `10` business log entries per `50 ms`, it's likely to merge these 10 entries into one or a few IO calls.
+       Thus, if a domain swallows `10` business log entries per `50 ms`, it's likely to merge these 10 entries into one or a few IO calls.
        The IO amplification should be smaller as IOPS gets more.
 
-       Merging entries into one IO call is naturally done on followers(because the leader sends entries in a batch).
-       On the leader, it's not done yet(2022 Sep 13). It can be done when the Engine oriented refactoring is ready: (.
+       Merging entries into one IO call is naturally done on followers (because the leader sends entries in a batch).
+       On the leader, it's not done yet(2022 Sep 13). It can be done when the Engine-oriented refactoring is ready :(.
 
     2. If a consensus domain swallows `1` business log entry per `50 ms`. It does not need another heartbeat. A normal append-entry can be considered a heartbeat.

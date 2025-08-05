@@ -68,7 +68,7 @@ use crate::StorageError;
 pub(crate) struct ReplicationHandle<C>
 where C: RaftTypeConfig
 {
-    /// The spawn handle the `ReplicationCore` task.
+    /// The spawn handle of the `ReplicationCore` task.
     pub(crate) join_handle: JoinHandleOf<C, Result<(), ReplicationClosed>>,
 
     /// The channel used for communicating with the replication task.
@@ -101,8 +101,8 @@ where
 
     /// A weak reference to the Sender for the separate sending-snapshot task to send callback.
     ///
-    /// Because 1) ReplicationCore replies on the `close` event to shutdown.
-    /// 2) ReplicationCore holds this tx; It is made a weak so that when
+    /// Because 1) ReplicationCore replies on the `close` event to shut down.
+    /// 2) ReplicationCore holds this tx; It is made a weak sender so that when
     /// RaftCore drops the only non-weak tx, the Receiver `rx_repl` will be closed.
     weak_tx_event: MpscUnboundedWeakSenderOf<C, Replicate<C>>,
 
@@ -111,7 +111,7 @@ where
 
     /// Another `RaftNetwork` specific for snapshot replication.
     ///
-    /// Snapshot transmitting is a long running task, and is processed in a separate task.
+    /// Snapshot transmitting is a long-running task and is processed in a separate task.
     snapshot_network: Arc<MutexOf<C, N::Network>>,
 
     /// The current snapshot replication state.
@@ -122,13 +122,13 @@ where
     snapshot_state: Option<(OneshotSenderOf<C, ()>, JoinHandleOf<C, ()>)>,
 
     /// The backoff policy if an [`Unreachable`](`crate::error::Unreachable`) error is returned.
-    /// It will be reset to `None` when an successful response is received.
+    /// It will be reset to `None` when a successful response is received.
     backoff: Option<Backoff>,
 
     /// The [`RaftLogStorage::LogReader`] interface.
     log_reader: LS::LogReader,
 
-    /// The handle to get a snapshot directly from state machine.
+    /// The handle to get a snapshot directly from the state machine.
     snapshot_reader: SnapshotReader<C>,
 
     /// The Raft's runtime config.
@@ -143,7 +143,7 @@ where
     /// Next replication action to run.
     next_action: Option<Data<C>>,
 
-    /// Appropriate number of entries to send.
+    /// An appropriate number of entries to send.
     /// This is only used by AppendEntries RPC.
     entries_hint: ReplicationHint,
 }
@@ -179,7 +179,7 @@ where
             "spawn replication"
         );
 
-        // other component to ReplicationStream
+        // Another component to ReplicationStream
         let (tx_event, rx_event) = C::mpsc_unbounded();
 
         let this = Self {
@@ -358,13 +358,13 @@ where
 
     /// Send an AppendEntries RPC to the target.
     ///
-    /// This request will timeout if no response is received within the
+    /// This request will time out if no response is received within the
     /// configured heartbeat interval.
     ///
     /// If an RPC is made but not completely finished, it returns the next action expected to do.
     ///
     /// `has_payload` indicates if there are any data(AppendEntries) to send, or it is a heartbeat.
-    /// `has_payload` decides if it needs to send back notification to RaftCore.
+    /// `has_payload` decides if it needs to send back notifications to RaftCore.
     #[tracing::instrument(level = "debug", skip_all)]
     async fn send_log_entries(
         &mut self,
@@ -529,7 +529,7 @@ where
     }
 
     /// A successful replication implies a successful heartbeat.
-    /// This method notify [`RaftCore`] with a heartbeat progress.
+    /// This method notifies [`RaftCore`] with a heartbeat progress.
     ///
     /// [`RaftCore`]: crate::core::RaftCore
     fn notify_heartbeat_progress(&mut self, sending_time: InstantOf<C>) {
@@ -542,7 +542,7 @@ where
         });
     }
 
-    /// Notify RaftCore with the success replication result(log matching or conflict).
+    /// Notify RaftCore with the success replication result (log matching or conflict).
     fn notify_progress(&mut self, replication_result: ReplicationResult<C>, has_payload: bool) {
         tracing::debug!(
             target = display(self.target.clone()),
@@ -574,9 +574,9 @@ where
     }
 
     /// Drain all events in the channel in backoff mode, i.e., there was an un-retry-able error and
-    /// should not send out anything before backoff interval expired.
+    /// should not send out anything before the backoff interval expired.
     ///
-    /// In the backoff period, we should not send out any RPCs, but we should still receive events,
+    /// In the backoff period, we should not send out any RPCs, but we should still receive events
     /// in case the channel is closed, it should quit at once.
     #[tracing::instrument(level = "debug", skip(self))]
     pub async fn backoff_drain_events(&mut self, until: InstantOf<C>) -> Result<(), ReplicationClosed> {
@@ -608,7 +608,7 @@ where
         }
     }
 
-    /// Receive and process events from RaftCore, until `next_action` is filled.
+    /// Receive and process events from RaftCore until `next_action` is filled.
     ///
     /// It blocks until at least one event is received.
     #[tracing::instrument(level = "trace", skip_all)]
@@ -677,7 +677,7 @@ where
                 //       actions without waiting for the previous to finish.
                 debug_assert!(
                     !self.next_action.as_ref().map(|d| d.has_payload()).unwrap_or(false),
-                    "there can not be two actions with payload in flight, curr: {}",
+                    "there cannot be two actions with payload in flight, curr: {}",
                     self.next_action.as_ref().map(|d| d.to_string()).display()
                 );
 
@@ -692,7 +692,7 @@ where
                         _ => {
                             debug_assert!(
                                 self.snapshot_state.is_none(),
-                                "can not send other data while sending snapshot"
+                                "cannot send other data while sending snapshot"
                             );
                         }
                     }

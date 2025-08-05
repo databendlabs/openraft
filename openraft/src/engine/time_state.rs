@@ -18,7 +18,7 @@ pub(crate) struct Config {
     /// The duration of an active leader's lease for a follower.
     ///
     /// When a follower or learner perceives an active leader, such as by receiving an AppendEntries
-    /// message(including heartbeat), it should not grant vote to another candidate during this
+    /// message(including heartbeat), it should not grant the vote to another candidate during this
     /// period. This prevents unnecessary elections when the leader is still active and helps
     /// maintain cluster stability.
     ///

@@ -93,7 +93,7 @@ where C: RaftTypeConfig
         })
     }
 
-    /// Receive a message from RaftCore, return error if RaftCore has stopped.
+    /// Receive a message from RaftCore, return an error if RaftCore has stopped.
     pub(crate) async fn recv_msg<T, E>(&self, rx: impl Future<Output = Result<T, E>>) -> Result<T, Fatal<C>>
     where
         T: OptionalSend,
@@ -201,7 +201,7 @@ where C: RaftTypeConfig
                 tx.send(true).ok();
             }
             Err(mut rx) => {
-                // Other thread is waiting for the core to finish.
+                // Another thread is waiting for the core to finish.
                 loop {
                     let res = rx.changed().await;
                     if res.is_err() {

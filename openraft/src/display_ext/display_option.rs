@@ -2,7 +2,7 @@ use std::fmt;
 
 /// Implement `Display` for `Option<T>` if T is `Display`.
 ///
-/// It outputs a literal string `"None"` if it is None. Otherwise it invokes the Display
+/// It outputs a literal string `"None"` if it is None, otherwise it invokes the Display
 /// implementation for T.
 pub(crate) struct DisplayOption<'a, T: fmt::Display>(pub &'a Option<T>);
 

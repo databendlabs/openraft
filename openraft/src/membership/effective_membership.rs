@@ -29,7 +29,7 @@ where C: RaftTypeConfig
     /// The quorum set built from `membership`.
     quorum_set: Joint<C::NodeId, Vec<C::NodeId>, Vec<Vec<C::NodeId>>>,
 
-    /// Cache of union of all members
+    /// Cache of the union of all members
     voter_ids: BTreeSet<C::NodeId>,
 }
 
@@ -124,12 +124,12 @@ where C: RaftTypeConfig
         self.membership().learner_ids()
     }
 
-    /// Get a the node(either voter or learner) by node id.
+    /// Get the node (either voter or learner) by node id.
     pub fn get_node(&self, node_id: &C::NodeId) -> Option<&C::Node> {
         self.membership().get_node(node_id)
     }
 
-    /// Returns an Iterator of all nodes(voters and learners).
+    /// Returns an Iterator of all nodes (voters and learners).
     pub fn nodes(&self) -> impl Iterator<Item = (&C::NodeId, &C::Node)> {
         self.membership().nodes()
     }

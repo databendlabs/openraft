@@ -39,7 +39,7 @@ mod tokio_rt {
     use crate::StorageError;
     use crate::ToStorageResult;
 
-    /// This chunk based implementation requires `SnapshotData` to be `AsyncRead + AsyncSeek`.
+    /// This chunk-based implementation requires `SnapshotData` to be `AsyncRead + AsyncSeek`.
     impl<C: RaftTypeConfig> SnapshotTransport<C> for Chunked
     where C::SnapshotData: tokio::io::AsyncRead + tokio::io::AsyncWrite + tokio::io::AsyncSeek + Unpin
     {
@@ -294,7 +294,7 @@ pub trait SnapshotTransport<C: RaftTypeConfig> {
     ///
     /// `cancel` is a future that is polled by this function to check if the caller decides to
     /// cancel.
-    /// It return `Ready` if the caller decide to cancel this snapshot transmission.
+    /// It returns `Ready` if the caller decides to cancel this snapshot transmission.
     // TODO: consider removing dependency on RaftNetwork
     async fn send_snapshot<Net>(
         net: &mut Net,
@@ -308,7 +308,7 @@ pub trait SnapshotTransport<C: RaftTypeConfig> {
 
     /// Receive a chunk of snapshot. If the snapshot is done receiving, return the snapshot.
     ///
-    /// This method provide a default implementation for chunk based snapshot transport,
+    /// This method provides a default implementation for chunk-based snapshot transport
     /// and requires the caller to provide two things:
     ///
     /// - The receiving state `streaming` is maintained by the caller.
@@ -458,7 +458,7 @@ mod tests {
         }
     }
 
-    /// Test that `Chunked` should reset the offset to 0 to re-send all data,
+    /// Test that `Chunked` should reset the offset to 0 to re-send all data
     /// if a [`SnapshotMismatch`] error is received.
     #[tokio::test]
     async fn test_chunked_reset_offset_if_snapshot_id_mismatch() {

@@ -32,7 +32,7 @@ where
     fn send(&self, msg: T) -> impl Future<Output = Result<(), SendError<T>>> + OptionalSend;
 
     /// Converts the [`MpscSender`] to a [`MpscWeakSender`] that does not count
-    /// towards RAII semantics, i.e. if all `Sender` instances of the
+    /// towards RAII semantics, i.e., if all `Sender` instances of the
     /// channel were dropped and only `WeakSender` instances remain,
     /// the channel is closed.
     fn downgrade(&self) -> MU::WeakSender<T>;

@@ -39,7 +39,7 @@ use crate::StorageError;
 
 /// RaftError is returned by API methods of `Raft`.
 ///
-/// It is either a Fatal error indicating that `Raft` is no longer running, such as underlying IO
+/// It is either a Fatal error indicating that `Raft` is no longer running, such as an underlying IO
 /// error, or an API error `E`.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
@@ -166,7 +166,7 @@ pub enum InstallSnapshotError {
     SnapshotMismatch(#[from] SnapshotMismatch),
 }
 
-/// An error related to a is_leader request.
+/// An error related to an is_leader request.
 #[derive(Debug, Clone, thiserror::Error, derive_more::TryInto)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub enum CheckIsLeaderError<C>
@@ -380,7 +380,7 @@ pub(crate) struct HigherVote<C: RaftTypeConfig> {
 /// Error that indicates a **temporary** network error and when it is returned, Openraft will retry
 /// immediately.
 ///
-/// Unlike [`Unreachable`], which indicates a error that should backoff before retrying.
+/// Unlike [`Unreachable`], which indicates an error that should backoff before retrying.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[error("NetworkError: {source}")]
@@ -429,12 +429,12 @@ impl Unreachable {
 /// A [`RaftNetwork`] implementation returns this error to inform Openraft to divide an
 /// [`AppendEntriesRequest`] into smaller chunks.
 /// Openraft will immediately retry sending in smaller chunks.
-/// If the request cannot be divided(contains only one entry), Openraft interprets it as
+/// If the request cannot be divided (contains only one entry), Openraft interprets it as
 /// [`Unreachable`].
 ///
 /// A hint can be provided to help Openraft in splitting the request.
 ///
-/// The application should also set an appropriate value for [`Config::max_payload_entries`]  to
+/// The application should also set an appropriate value for [`Config::max_payload_entries`] to
 /// avoid returning this error if possible.
 ///
 /// Example:
@@ -544,7 +544,7 @@ impl PayloadTooLarge {
         self.action
     }
 
-    /// Get the hint for entries number.
+    /// Get the hint for the entries number.
     pub fn entries_hint(&self) -> u64 {
         self.entries_hint
     }
@@ -645,7 +645,7 @@ where C: RaftTypeConfig
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-#[error("new membership can not be empty")]
+#[error("new membership cannot be empty")]
 pub struct EmptyMembership {}
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -653,7 +653,7 @@ pub struct EmptyMembership {}
 #[error("infallible")]
 pub enum Infallible {}
 
-/// A place holder to mark RaftError won't have a ForwardToLeader variant.
+/// A placeholder to mark RaftError won't have a ForwardToLeader variant.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[error("no-forward")]

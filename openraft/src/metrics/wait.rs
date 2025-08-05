@@ -87,7 +87,7 @@ where C: RaftTypeConfig
                         }
                     }
                 }
-            };
+            }
         }
     }
 
@@ -126,13 +126,13 @@ where C: RaftTypeConfig
         self.ge(Metric::AppliedIndex(want_log), msg.to_string()).await
     }
 
-    /// Block until the last log index becomes exactly `index`(inclusive) or timeout.
+    /// Block until the last log index becomes exactly `index` (inclusive) or timeout.
     #[tracing::instrument(level = "trace", skip(self), fields(msg=msg.to_string().as_str()))]
     pub async fn log_index(&self, index: Option<u64>, msg: impl ToString) -> Result<RaftMetrics<C>, WaitError> {
         self.eq(Metric::LastLogIndex(index), msg).await
     }
 
-    /// Block until the last log index becomes at least `index`(inclusive) or timeout.
+    /// Block until the last log index becomes at least `index` (inclusive) or timeout.
     #[tracing::instrument(level = "trace", skip(self), fields(msg=msg.to_string().as_str()))]
     pub async fn log_index_at_least(
         &self,
@@ -142,13 +142,13 @@ where C: RaftTypeConfig
         self.ge(Metric::LastLogIndex(index), msg).await
     }
 
-    /// Block until the applied index becomes exactly `index`(inclusive) or timeout.
+    /// Block until the applied index becomes exactly `index` (inclusive) or timeout.
     #[tracing::instrument(level = "trace", skip(self), fields(msg=msg.to_string().as_str()))]
     pub async fn applied_index(&self, index: Option<u64>, msg: impl ToString) -> Result<RaftMetrics<C>, WaitError> {
         self.eq(Metric::AppliedIndex(index), msg).await
     }
 
-    /// Block until the last applied log index become at least `index`(inclusive) or timeout.
+    /// Block until the last applied log index become at least `index` (inclusive) or timeout.
     /// Note that this also implies `last_log_id >= index`.
     #[tracing::instrument(level = "trace", skip(self), fields(msg=msg.to_string().as_str()))]
     pub async fn applied_index_at_least(

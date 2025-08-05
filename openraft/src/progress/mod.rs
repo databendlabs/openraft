@@ -1,7 +1,7 @@
 //! Progress tracks replication state, i.e., it can be considered a map of node id to already
 //! replicated log id.
 //!
-//! A progress internally is a vector of scalar values.
+//! The "progress" internally is a vector of scalar values.
 //! The scalar value is monotonically incremental. Decreasing it is not allowed.
 //! Optimization on calculating the committed log id is done on this assumption.
 
@@ -24,11 +24,11 @@ pub(crate) use inflight::Inflight;
 
 use crate::quorum::QuorumSet;
 
-/// Track progress of several incremental values.
+/// Track the progress of several incremental values.
 ///
-/// When one of the value is updated, it uses a `QuorumSet` to calculate the committed value.
+/// When one of the values is updated, it uses a `QuorumSet` to calculate the committed value.
 /// `ID` is the identifier of every progress value.
-/// `V` is type of progress entry.
+/// `V` is a type of progress entry.
 /// `P` is the progress data of `V`, a progress entry `V` could contain other user data.
 /// `QS` is a quorum set implementation.
 pub(crate) trait Progress<ID, V, P, QS>
@@ -38,14 +38,14 @@ where
     P: PartialOrd + Clone,
     QS: QuorumSet<ID>,
 {
-    /// Update one of the scalar value and re-calculate the committed value with provided function.
+    /// Update one of the scalar values and re-calculate the committed value with the provided function.
     ///
     /// It returns Err(committed) if the `id` is not found.
-    /// The provided function `f` update the value of `id`.
+    /// The provided function `f` updates the value of `id`.
     fn update_with<F>(&mut self, id: &ID, f: F) -> Result<&P, &P>
     where F: FnOnce(&mut V);
 
-    /// Update one of the scalar value and re-calculate the committed value.
+    /// Update one of the scalar values and re-calculate the committed value.
     ///
     /// It returns Err(committed) if the `id` is not found.
     fn update(&mut self, id: &ID, value: V) -> Result<&P, &P> {
@@ -110,7 +110,7 @@ where
 
 /// A Progress implementation with vector as storage.
 ///
-/// Suitable for small quorum set.
+/// Suitable for a small quorum set.
 #[derive(Clone, Debug)]
 #[derive(PartialEq, Eq)]
 pub(crate) struct VecProgress<ID, V, P, QS>
@@ -134,7 +134,7 @@ where
     ///
     /// The first `voter_count` elements are voters, the left are learners.
     /// Learner elements are always still.
-    /// A voter element will be moved up to keep them in descending order, when a new value is
+    /// A voter element will be moved up to keep them in descending order when a new value is
     /// updated.
     vector: Vec<(ID, V)>,
 
@@ -284,21 +284,21 @@ where
     P: PartialOrd + Clone,
     QS: QuorumSet<ID>,
 {
-    /// Update one of the scalar value and re-calculate the committed value.
+    /// Update one of the scalar values and re-calculate the committed value.
     ///
-    /// Re-updating with a same V will do nothing.
+    /// Re-updating with the same V will do nothing.
     ///
     /// # Algorithm
     ///
-    /// Only when the **previous value** is less or equal the committed,
-    /// and the **new value** is greater than the committed,
+    /// Only when the **previous value** is less than or equal to the committed,
+    /// and the **new value** is greater than the committed
     /// there is possibly an update to the committed.
     ///
-    /// This way it gets rid of a portion of unnecessary re-calculation of committed,
-    /// and avoids unnecessary sorting: progresses are kept in order and only values greater than
+    /// This way it gets rid of a portion of unnecessary re-calculation of committed
+    /// and avoids unnecessary sorting: progresses are kept in order, and only values greater than
     /// committed need to sort.
     ///
-    /// E.g., given 3 ids with value `1,3,5`, as shown in the figure below:
+    /// E.g., given 3 ids with values `1,3,5`, as shown in the figure below:
     ///
     /// ```text
     /// a -----------+-------->

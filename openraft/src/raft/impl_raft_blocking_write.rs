@@ -1,5 +1,5 @@
-//! Implement blocking mode write operations for Raft.
-//! Blocking mode write API blocks until the write operation is completed,
+//! Implement blocking-mode write operations for Raft.
+//! Blocking-mode write API blocks until the write operation is completed,
 //! where [`RaftTypeConfig::Responder`] is a [`OneshotResponder`].
 
 use crate::error::into_raft_result::IntoRaftResult;
@@ -31,7 +31,7 @@ where C: RaftTypeConfig
     /// Read more about the behavior of [joint
     /// consensus](crate::docs::cluster_control::joint_consensus).
     ///
-    /// If `retain` is `true`, then all the members which not exists in the new membership,
+    /// If `retain` is `true`, then all the members not existing in the new membership
     /// will be turned into learners, otherwise will be removed.
     /// If `retain` is `false`, the removed voter will be removed from the cluster.
     /// Existing learners will not be affected.
@@ -63,7 +63,7 @@ where C: RaftTypeConfig
     /// - Setup replication from leader to it.
     ///
     /// If `blocking` is `true`, this function blocks until the leader believes the logs on the new
-    /// node is up to date, i.e., ready to join the cluster, as a voter, by calling
+    /// node are up to date, i.e., ready to join the cluster, as a voter, by calling
     /// `change_membership`.
     ///
     /// If blocking is `false`, this function returns at once as successfully setting up the

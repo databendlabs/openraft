@@ -41,7 +41,7 @@ use crate::Snapshot;
 /// To convert the nested `Result<Result<_,E>,Fatal>` to a single `Result<_,RaftError<C,E>>`,
 /// use the [`into_raft_result()`](IntoRaftResult::into_raft_result) method.
 ///
-/// This struct provides methods for processing core Raft protocol messages such as:
+/// This struct provides methods for processing core Raft protocol messages such as
 /// - Vote requests (RequestVote RPCs)
 /// - AppendEntries RPCs (for log replication and heartbeats)
 /// - Snapshot-related operations
@@ -125,7 +125,7 @@ where C: RaftTypeConfig
 
     #[since(version = "0.10.0")]
     pub(crate) async fn handle_transfer_leader(&self, req: TransferLeaderRequest<C>) -> Result<(), Fatal<C>> {
-        // Reset the Leader lease at once and quit, if this is not the assigned next leader.
+        // Reset the Leader lease at once and quit if this is not the assigned next leader.
         // Only the assigned next Leader waits for the log to be flushed.
         if &req.to_node_id == self.inner.id() {
             self.ensure_log_flushed_for_transfer_leader(&req).await?;
@@ -141,11 +141,11 @@ where C: RaftTypeConfig
         Ok(())
     }
 
-    /// Wait for the log to be flushed to make sure the RequestVote.last_log_id is upto date, then
+    /// Wait for the log to be flushed to make sure the RequestVote.last_log_id is up to date, then
     /// TransferLeader will be able to proceed.
     async fn ensure_log_flushed_for_transfer_leader(&self, req: &TransferLeaderRequest<C>) -> Result<(), Fatal<C>> {
         // If the next Leader is this node, wait for the log to be flushed to make sure the
-        // RequestVote.last_log_id is upto date.
+        // RequestVote.last_log_id is up to date.
 
         // Condition satisfied to become Leader
         let ok = |m: &RaftMetrics<C>| {
