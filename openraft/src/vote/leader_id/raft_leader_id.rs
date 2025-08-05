@@ -5,7 +5,7 @@ use crate::base::OptionalFeatures;
 use crate::vote::leader_id::raft_committed_leader_id::RaftCommittedLeaderId;
 use crate::RaftTypeConfig;
 
-/// A Leader identifier in a OpenRaft cluster.
+/// A Leader identifier in an OpenRaft cluster.
 ///
 /// In OpenRaft, a `LeaderId` represents either:
 /// - A granted leader that received votes from a quorum (a `Leader` in standard Raft)
@@ -37,7 +37,7 @@ where
     /// Get the term number of this leader
     fn term(&self) -> C::Term;
 
-    /// Get the node ID of this leader, if one is set
+    /// Get the node ID of this leader if one is set
     fn node_id(&self) -> Option<&C::NodeId>;
 
     /// Convert this leader ID to a committed leader ID.

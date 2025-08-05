@@ -12,7 +12,7 @@ use crate::RaftTypeConfig;
 // TODO: OptionSerde can be removed after all types are made trait based.
 
 /// Represents a vote in Raft consensus, including both votes for leader candidates
-/// and committed leader(a leader granted by a quorum).
+/// and committed leader (a leader granted by a quorum).
 pub trait RaftVote<C>
 where
     C: RaftTypeConfig,

@@ -27,7 +27,7 @@ There are several threads, also known as tokio-tasks, in this Raft implementatio
 
 -   **StateMachine**:
     Handles all state-machine read and write operations, such as applying a committed log
-    entry, or constructing a snapshot.
+    entry or constructing a snapshot.
 
     **Lifecycle**:
     - Spawned when the `RaftCore` is initialized, and continues running until
@@ -35,7 +35,7 @@ There are several threads, also known as tokio-tasks, in this Raft implementatio
 
 
 -   **Snapshot building task**:
-    Is a short term task for building a snapshot.
+    Is a short-term task for building a snapshot.
 
     **Lifecycle**:
       - The snapshot building task is spawned by [`StateMachine task`] when a

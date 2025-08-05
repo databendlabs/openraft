@@ -36,7 +36,7 @@ The [`RaftStateMachine`] encapsulates several critical responsibilities:
   involves first rebuilding the state machine from the snapshot and then
   reapplying any logs that are not included in the snapshot.
 
-  Afterwards, Raft log entries are applied to update the state machine to its
+  Afterward, Raft log entries are applied to update the state machine to its
   current state.
 
 - **Distinct Management of Membership and Normal Logs**:

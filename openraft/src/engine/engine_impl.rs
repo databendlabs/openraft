@@ -581,7 +581,7 @@ where C: RaftTypeConfig
         }
     }
 
-    /// This is a to user API that triggers log purging upto `index`, inclusive.
+    /// This is a to user API that triggers log purging up to `index`, inclusive.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn trigger_purge_log(&mut self, mut index: u64) {
         tracing::info!(index = display(index), "{}", func_name!());
@@ -590,7 +590,7 @@ where C: RaftTypeConfig
         let snapshot_last_log_id = if let Some(log_id) = snapshot_last_log_id {
             log_id.clone()
         } else {
-            tracing::info!("no snapshot, can not purge");
+            tracing::info!("no snapshot, cannot purge");
             return;
         };
 
@@ -607,7 +607,7 @@ where C: RaftTypeConfig
 
         if index > snapshot_last_log_id.index() {
             tracing::info!(
-                "can not purge logs not in a snapshot; index: {}, last in snapshot log id: {}",
+                "cannot purge logs not in a snapshot; index: {}, last in snapshot log id: {}",
                 index,
                 snapshot_last_log_id
             );
@@ -663,7 +663,7 @@ where C: RaftTypeConfig
         // This could not fail because `internal_server_state` will be cleared
         // once `state.vote` is changed to a value of other node.
         let _res = self.vote_handler().update_vote(&vote.clone().into_vote());
-        debug_assert!(_res.is_ok(), "commit vote can not fail but: {:?}", _res);
+        debug_assert!(_res.is_ok(), "commit vote cannot fail but: {:?}", _res);
 
         self.state.accept_log_io(IOId::new_log_io(vote, last_log_id));
 
@@ -687,7 +687,7 @@ where C: RaftTypeConfig
         tracing::info!(
             last_log_id = display(self.state.last_log_id().display()),
             vote = display(self.state.vote_ref()),
-            "Engine::check_initialize(): can not initialize"
+            "Engine::check_initialize(): cannot initialize"
         );
 
         Err(NotAllowed {
@@ -786,7 +786,7 @@ where C: RaftTypeConfig
     pub(crate) fn replication_handler(&mut self) -> ReplicationHandler<C> {
         let leader = match self.leader.as_mut() {
             None => {
-                unreachable!("There is no leader, can not handle replication");
+                unreachable!("There is no leader, cannot handle replication");
             }
             Some(x) => x,
         };

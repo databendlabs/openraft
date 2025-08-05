@@ -91,7 +91,7 @@ async fn commit_joint_config_during_0_to_012() -> Result<()> {
 ///
 /// - bring a cluster of node 0,1,2 online.
 /// - isolate 3,4; change config to 2,3,4
-/// - since new config can not form a quorum, the joint config should not be committed.
+/// - since new config cannot form a quorum, the joint config should not be committed.
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn commit_joint_config_during_012_to_234() -> Result<()> {
@@ -137,7 +137,7 @@ async fn commit_joint_config_during_012_to_234() -> Result<()> {
 
     let wait_rst = router.wait_for_log(&btreeset![0], Some(log_index), timeout(), "cluster of joint").await;
 
-    // the first step of joint should not pass because the new config can not constitute a quorum
+    // the first step of joint should not pass because the new config cannot constitute a quorum
     assert!(wait_rst.is_err());
 
     Ok(())

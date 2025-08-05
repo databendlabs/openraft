@@ -35,7 +35,7 @@ where C: RaftTypeConfig
         /// The higher vote observed.
         higher: VoteOf<C>,
 
-        /// The Leader that sent replication request.
+        /// The Leader that sent the replication request.
         leader_vote: CommittedVote<C>,
         // TODO: need this?
         // /// The cluster this replication works for.
@@ -64,7 +64,7 @@ where C: RaftTypeConfig
         target: C::NodeId,
     },
 
-    /// Result of executing a command sent from state machine worker.
+    /// Result of executing a command sent from a state machine worker.
     StateMachine { command_result: sm::CommandResult<C> },
 
     /// A tick event to wake up RaftCore to check timeout etc.

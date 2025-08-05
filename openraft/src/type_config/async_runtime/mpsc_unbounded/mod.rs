@@ -23,12 +23,12 @@ where
 {
     /// Attempts to send a message without blocking.
     ///
-    /// If the receive half of the channel is closed, this
+    /// If the receiving half of the channel is closed, this
     /// function returns an error. The error includes the value passed to `send`.
     fn send(&self, msg: T) -> Result<(), SendError<T>>;
 
     /// Converts the [`MpscUnboundedSender`] to a [`MpscUnboundedWeakSender`] that does not count
-    /// towards RAII semantics, i.e. if all `Sender` instances of the
+    /// towards RAII semantics, i.e., if all `Sender` instances of the
     /// channel were dropped and only `WeakSender` instances remain,
     /// the channel is closed.
     fn downgrade(&self) -> MU::WeakSender<T>;

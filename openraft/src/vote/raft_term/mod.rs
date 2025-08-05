@@ -12,7 +12,7 @@ use crate::base::OptionalFeatures;
 /// A term is a logical clock in Raft that is used to detect obsolete information,
 /// such as old leaders. It must be totally ordered and monotonically increasing.
 ///
-/// Common implementations are provided for standard integer types like `u64`, `i64` etc.
+/// Common implementations are provided for standard integer types like `u64`, `i64`, etc.
 #[since(version = "0.10.0")]
 pub trait RaftTerm
 where Self: OptionalFeatures + Ord + Debug + Display + Copy + Default + 'static

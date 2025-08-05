@@ -43,7 +43,7 @@ async fn append_entries_partial_success() -> Result<()> {
         router.wait(&0, timeout()).applied_index(Some(log_index), format!("{} writes", quota)).await?;
 
         log_index += 1;
-        tracing::info!(log_index, "--- can not send log at index {}", log_index,);
+        tracing::info!(log_index, "--- cannot send log at index {}", log_index,);
 
         let res = router
             .wait(&0, timeout())

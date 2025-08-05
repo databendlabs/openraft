@@ -20,7 +20,7 @@ where C: RaftTypeConfig
 
     /// Convert `Result<R, CompositeErr>`
     /// to `Result<R, E>`,
-    /// if `Self::InnerError` is a infallible type.
+    /// if `Self::InnerError` is an infallible type.
     fn decompose_infallible(self) -> Result<R, OuterError>
     where
         Self::InnerError: Into<Infallible>,

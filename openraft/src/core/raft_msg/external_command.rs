@@ -14,7 +14,7 @@ use crate::Snapshot;
 /// Typically, openraft handles actions automatically.
 ///
 /// An application can also disable these policy-based triggering and use these commands manually,
-/// for testing or administrative purpose.
+/// for testing or administrative purposes.
 pub(crate) enum ExternalCommand<C: RaftTypeConfig> {
     /// Initiate an election at once.
     Elect,

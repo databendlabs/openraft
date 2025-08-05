@@ -11,11 +11,11 @@ use crate::RaftTypeConfig;
 /// For example, Leader-1 appends log `[2,3]` and then Leader-2 truncate log `[2,3]` then append log
 /// `[2]` But `(LeaderId, LogId)` is monotonic increasing.
 ///
-/// The leader could be a local leader that appends entries to the local log store,
+/// The leader could be a local leader that appends entries to the local log store
 /// or a remote leader that replicates entries to this follower.
 ///
 /// It is monotonic increasing because:
-/// - Leader id increase monotonically in the entire cluster.
+/// - Leader id increases monotonically in the entire cluster.
 /// - Leader propose or replicate log entries in order.
 ///
 /// See: [LogId Appended Multiple

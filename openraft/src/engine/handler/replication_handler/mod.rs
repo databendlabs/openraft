@@ -36,11 +36,11 @@ mod update_matching_test;
 /// Handle replication operations.
 ///
 /// - Writing local log store;
-/// - Replicating log to remote node;
+/// - Replicating log to a remote node;
 /// - Tracking membership changes and update related state;
 /// - Tracking replication progress and commit;
 /// - Purging in-snapshot logs;
-/// - etc
+/// - etc.
 pub(crate) struct ReplicationHandler<'x, C>
 where C: RaftTypeConfig
 {
@@ -55,7 +55,7 @@ where C: RaftTypeConfig
 {
     /// Append a new membership and update related state such as replication streams.
     ///
-    /// It is called by the leader when a new membership log is appended to log store.
+    /// It is called by the leader when a new membership log is appended to the log store.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn append_membership(&mut self, log_id: &LogIdOf<C>, m: &Membership<C>) {
         tracing::debug!("update effective membership: log_id:{} {}", log_id, m);
@@ -87,7 +87,7 @@ where C: RaftTypeConfig
 
     /// Rebuild leader's replication progress to reflect replication changes.
     ///
-    /// E.g. when adding/removing a follower/learner.
+    /// E.g., when adding/removing a follower/learner.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn rebuild_progresses(&mut self) {
         let em = self.state.membership_state.effective();
@@ -161,7 +161,7 @@ where C: RaftTypeConfig
         debug_assert!(log_id.is_some(), "a valid update can never set matching to None");
 
         // The value granted by a quorum may not yet be a committed.
-        // A committed is **granted** and also is in current term.
+        // A committed is **granted** and also is in the current term.
         let quorum_accepted = self
             .leader
             .progress
@@ -184,7 +184,7 @@ where C: RaftTypeConfig
     /// In raft a log that is granted and in the leader term is committed.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn try_commit_quorum_accepted(&mut self, granted: Option<LogIdOf<C>>) {
-        // Only when the log id is proposed by current leader, it is committed.
+        // Only when the log id is proposed by the current leader, it is committed.
         if let Some(ref c) = granted {
             if !self.state.vote_ref().is_same_leader(c.committed_leader_id()) {
                 return;
@@ -211,7 +211,7 @@ where C: RaftTypeConfig
         }
     }
 
-    /// Update progress when replicated data(logs or snapshot) does not match follower/learner state
+    /// Update progress when replicated data(logs or snapshot) does not match the follower/learner state
     /// and is rejected.
     ///
     /// If `has_payload` is true, the `inflight` state is reset because AppendEntries RPC
@@ -289,7 +289,7 @@ where C: RaftTypeConfig
         };
 
         // The purge job may be postponed because a replication task is using them.
-        // Thus we just try again to purge when progress is updated.
+        // Thus, we just try again to purge when progress is updated.
         self.try_purge_log();
     }
 
@@ -298,10 +298,10 @@ where C: RaftTypeConfig
     pub(crate) fn rebuild_replication_streams(&mut self) {
         let mut targets = vec![];
 
-        // TODO: maybe it's better to update leader's matching when update_repliation() is called.
+        // TODO: maybe it's better to update leader's matching when update_replication() is called.
         for (target, prog_entry) in self.leader.progress.iter_mut() {
             if target != &self.config.id {
-                // Reset and resend(by self.send_to_all()) replication requests.
+                // Reset and resend (by self.send_to_all()) replication requests.
                 prog_entry.inflight = Inflight::None;
 
                 targets.push(ReplicationProgress(target.clone(), prog_entry.clone()));
@@ -351,10 +351,10 @@ where C: RaftTypeConfig
         });
     }
 
-    /// Try to run a pending purge job, if no tasks are using the logs to be purged.
+    /// Try to run a pending purge job if no tasks are using the logs to be purged.
     ///
-    /// Purging logs involves concurrent log accesses by replication tasks and purging task.
-    /// Therefor it is a method of ReplicationHandler.
+    /// Purging logs involves concurrent log accesses by replication tasks and purging tasks.
+    /// Therefore, it is a method of ReplicationHandler.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn try_purge_log(&mut self) {
         // TODO refactor this
@@ -374,7 +374,7 @@ where C: RaftTypeConfig
         // Safe unwrap(): it greater than an Option thus it must be a Some()
         let purge_upto = self.state.purge_upto().unwrap().clone();
 
-        // Check if any replication task is going to use the log that are going to purge.
+        // Check if any replication task is going to use the log that is going to purge.
         let mut in_use = false;
         for (id, prog_entry) in self.leader.progress.iter() {
             if prog_entry.is_log_range_inflight(&purge_upto) {
@@ -385,7 +385,7 @@ where C: RaftTypeConfig
 
         if in_use {
             // Logs to purge is in use, postpone purging.
-            tracing::debug!("can not purge: {} is in use", purge_upto);
+            tracing::debug!("cannot purge: {} is in use", purge_upto);
             return;
         }
 
@@ -397,7 +397,7 @@ where C: RaftTypeConfig
     /// Update the progress of local log to `upto`(inclusive).
     ///
     /// Writing to local log store does not have to wait for a replication response from remote
-    /// node. Thus it can just be done in a fast-path.
+    /// nodes. Thus, it can just be done in a fast-path.
     pub(crate) fn update_local_progress(&mut self, upto: Option<LogIdOf<C>>) {
         tracing::debug!(upto = display(upto.display()), "{}", func_name!());
 

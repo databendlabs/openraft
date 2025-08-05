@@ -24,7 +24,7 @@ conflicting implementation in crate `openraft`:
 ```
 
 If you encounter this error, you can disable the feature `adapt-network-v1` to
-remvoe the default implementation for [`RaftNetworkV2`].
+remove the default implementation for [`RaftNetworkV2`].
 
 [`RaftNetworkV2`]: crate::network::v2::RaftNetworkV2
 
@@ -32,7 +32,7 @@ remvoe the default implementation for [`RaftNetworkV2`].
 ## feature-flag `bench`
 
 Enables benchmarks in unittest. Benchmark in openraft depends on the unstable feature
-`test` thus it can not be used with stable rust. In order to run the benchmark with stable
+`test` thus it cannot be used with stable rust. In order to run the benchmark with stable
 toolchain, the unstable features have to be enabled explicitly with environment variable
 `RUSTC_BOOTSTRAP=1`.
 
@@ -67,7 +67,7 @@ and [`vote`](crate::docs::data::vote).
 ## feature-flag `singlethreaded`
 
 Removes `Send` and `Sync` bounds from `AppData`, `AppDataResponse`, `RaftEntry`, `SnapshotData`
-and other types to force the  asynchronous runtime to spawn any tasks in the current thread.
+and other types to force the asynchronous runtime to spawn any tasks in the current thread.
 This is for any single-threaded application that never allows a raft instance to be shared among multiple threads.
 This feature relies on the `async_fn_in_trait` language feature that is officially supported from Rust 1.75.0.
 If the feature is enabled, affected asynchronous trait methods will not require `Send` bounds.
@@ -78,7 +78,7 @@ In order to use the feature, `AsyncRuntime::spawn` should invoke `tokio::task::s
 
 Using `tokio` as the default runtime implementation.
 With this feature disabled, application should implement and set the
-async-runtime to `AsyncRuntime` mannually in [`RaftTypeconfig`] implementation.
+async-runtime to `AsyncRuntime` manually in [`RaftTypeconfig`] implementation.
 
 
 ## feature-flag `tracing-log`

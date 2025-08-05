@@ -35,7 +35,7 @@ where C: RaftTypeConfig
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct VoteResponse<C: RaftTypeConfig> {
     /// vote after a node handling vote-request.
-    /// Thus `resp.vote >= req.vote` always holds.
+    /// Thus, `resp.vote >= req.vote` always holds.
     ///
     /// `vote` that equals the candidate.vote does not mean the vote is granted.
     /// The `vote` may be updated when a previous Leader sees a higher vote.

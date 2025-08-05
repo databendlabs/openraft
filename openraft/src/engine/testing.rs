@@ -8,8 +8,8 @@ use crate::vote::RaftLeaderIdExt;
 use crate::Node;
 use crate::RaftTypeConfig;
 
-/// Trivial Raft type config for Engine related unit tests,
-/// with an optional custom node type `N` for Node type.
+/// Trivial Raft type config for Engine-related unit tests,
+/// with an optional custom node type `N` for the Node type.
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub(crate) struct UTConfig<N = ()> {
