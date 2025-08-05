@@ -19,7 +19,7 @@ use crate::RaftTypeConfig;
 /// Leading state data.
 ///
 /// Openraft leading state is the combination of Leader and Candidate in original raft.
-/// A node becomes Leading at once when starting election, although at this time, it can not propose
+/// A node becomes Leading at once when starting election, although at this time, it cannot propose
 /// any new log, because its `vote` has not yet been granted by a quorum. I.e., A leader without
 /// commit vote is a Candidate in original raft.
 ///

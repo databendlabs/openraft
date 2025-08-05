@@ -685,7 +685,7 @@ impl TypedRaftRouter {
         node.wait(timeout)
     }
 
-    /// Wait for specified nodes until they applied upto `want_log`(inclusive) logs.
+    /// Wait for specified nodes until they applied up to `want_log`(inclusive) logs.
     #[tracing::instrument(level = "info", skip(self))]
     pub async fn wait_for_log(
         &self,
@@ -822,7 +822,7 @@ impl TypedRaftRouter {
         }
 
         unreachable!(
-            "Max retry times exceeded. Can not finish client_request, target={}, client_id={} serial={}",
+            "Max retry times exceeded. cannot finish client_request, target={}, client_id={} serial={}",
             target, client_id, serial
         )
     }

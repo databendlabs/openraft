@@ -16,10 +16,10 @@ pub(crate) struct SnapshotCallback<C: RaftTypeConfig> {
     //       we should not rely on the start time to extend leader lease.
     /// The time when the snapshot replication started on leader.
     ///
-    /// This time is used to extend lease of the leader on leader. like a heartbeat.
+    /// This time is used to extend the lease of the leader on leader. like a heartbeat.
     pub(crate) start_time: InstantOf<C>,
 
-    /// Meta data of the snapshot to be replicated.
+    /// Metadata of the snapshot to be replicated.
     pub(crate) snapshot_meta: SnapshotMeta<C>,
 
     /// The result of the snapshot replication.

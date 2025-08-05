@@ -9,7 +9,7 @@ use crate::StoredMembership;
 
 /// The metadata of a snapshot.
 ///
-/// Including the last log id that included in this snapshot,
+/// Including the last log id that is included in this snapshot,
 /// the last membership included,
 /// and a snapshot id.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -17,14 +17,14 @@ use crate::StoredMembership;
 pub struct SnapshotMeta<C>
 where C: RaftTypeConfig
 {
-    /// Log entries upto which this snapshot includes, inclusive.
+    /// Log entries up to which this snapshot includes, inclusive.
     pub last_log_id: Option<LogIdOf<C>>,
 
     /// The last applied membership config.
     pub last_membership: StoredMembership<C>,
 
     /// To identify a snapshot when transferring.
-    /// Caveat: even when two snapshot is built with the same `last_log_id`, they still could be
+    /// Caveat: even when two snapshots are built with the same `last_log_id`, they still could be
     /// different in bytes.
     pub snapshot_id: SnapshotId,
 }

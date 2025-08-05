@@ -136,7 +136,7 @@ pub use crate::type_config::alias;
 pub use crate::type_config::RaftTypeConfig;
 pub use crate::vote::Vote;
 
-/// A trait defining application specific data.
+/// A trait defining application-specific data.
 ///
 /// The intention of this trait is that applications which are using this crate will be able to
 /// use their own concrete data types throughout their application without having to serialize and
@@ -147,28 +147,28 @@ pub use crate::vote::Vote;
 ///
 /// ## Note
 ///
-/// The trait is automatically implemented for all types which satisfy its supertraits.
+/// The trait is automatically implemented for all types that satisfy its supertraits.
 pub trait AppData: OptionalFeatures + 'static {}
 
 impl<T> AppData for T where T: OptionalFeatures + 'static {}
 
-/// A trait defining application specific response data.
+/// A trait defining application-specific response data.
 ///
 /// The intention of this trait is that applications which are using this crate will be able to
 /// use their own concrete data types for returning response data from the storage layer when an
 /// entry is applied to the state machine as part of a client request (this is not used during
-/// replication). This allows applications to seamlessly return application specific data from
+/// replication). This allows applications to seamlessly return application-specific data from
 /// their storage layer, up through Raft, and back into their application for returning
 /// data to clients.
 ///
-/// This type must encapsulate both success and error responses, as application specific logic
-/// related to the success or failure of a client request — application specific validation logic,
+/// This type must encapsulate both success and error responses, as application-specific logic
+/// related to the success or failure of a client request — application-specific validation logic,
 /// enforcing of data constraints, and anything of that nature — are expressly out of the realm of
 /// the Raft consensus protocol.
 ///
 /// ## Note
 ///
-/// The trait is automatically implemented for all types which satisfy its supertraits.
+/// The trait is automatically implemented for all types that satisfy its supertraits.
 pub trait AppDataResponse: OptionalFeatures + 'static {}
 
 impl<T> AppDataResponse for T where T: OptionalFeatures + 'static {}

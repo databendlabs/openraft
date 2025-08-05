@@ -8,7 +8,7 @@ use crate::SnapshotId;
 pub struct SnapshotSignature<C>
 where C: RaftTypeConfig
 {
-    /// Log entries upto which this snapshot includes, inclusive.
+    /// Log entries up to which this snapshot includes, inclusive.
     pub last_log_id: Option<LogIdOf<C>>,
 
     /// The last applied membership log id.

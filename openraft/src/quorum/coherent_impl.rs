@@ -59,7 +59,7 @@ where
     }
 }
 
-/// Impl to build a intermediate quorum set that is coherent with a joint and a uniform quorum set.
+/// Impl to build an intermediate quorum set that is coherent with a joint and a uniform quorum set.
 impl<ID, QS> FindCoherent<ID, QS> for Joint<ID, QS, Vec<QS>>
 where
     ID: PartialOrd + Ord + 'static,

@@ -110,7 +110,7 @@ impl<C> Membership<C>
 where C: RaftTypeConfig
 {
     /// Create a new Membership from a joint config of voter-ids and a collection of all
-    /// `Node`(voter nodes and learner nodes).
+    /// `Node` (voter nodes and learner nodes).
     ///
     /// A node id that is in `nodes` but is not in `config` is a **learner**.
     ///
@@ -158,7 +158,7 @@ where C: RaftTypeConfig
     /// Membership is defined by a joint of multiple configs.
     /// Each config is a vec of node-id.
     ///
-    /// The returned `Vec` contains one or more configs(currently it is two). If there is only one
+    /// The returned `Vec` contains one or more configs (currently it is two). If there is only one
     /// config, it is in a uniform config, otherwise, it is in a joint consensus.
     pub fn get_joint_config(&self) -> &Vec<BTreeSet<C::NodeId>> {
         &self.configs
@@ -169,7 +169,7 @@ where C: RaftTypeConfig
         self.nodes.iter()
     }
 
-    /// Get the node(either voter or learner) by node id.
+    /// Get the node (either voter or learner) by node id.
     pub fn get_node(&self, node_id: &C::NodeId) -> Option<&C::Node> {
         self.nodes.get(node_id)
     }
@@ -188,7 +188,7 @@ where C: RaftTypeConfig
 impl<C> Membership<C>
 where C: RaftTypeConfig
 {
-    /// Return true if the given node id is an either voter or learner.
+    /// Return true if the given node id is either a voter or a learner.
     pub(crate) fn contains(&self, node_id: &C::NodeId) -> bool {
         self.nodes.contains_key(node_id)
     }
@@ -203,8 +203,8 @@ where C: RaftTypeConfig
         false
     }
 
-    /// Create a new Membership the same as [`Self::new()`], but does not add default
-    /// value `Node::default()` if a voter id is not in `nodes`. Thus it may create an invalid
+    /// Create a new Membership the same as [`Self::new()`], but does not add the default
+    /// value `Node::default()` if a voter id is not in `nodes`. Thus, it may create an invalid
     /// instance.
     pub(crate) fn new_unchecked<T>(configs: Vec<BTreeSet<C::NodeId>>, nodes: T) -> Self
     where T: IntoNodes<C::NodeId, C::Node> {
@@ -215,7 +215,7 @@ where C: RaftTypeConfig
     /// Extends nodes btreemap with another.
     ///
     /// Node that present in `old` will **NOT** be replaced because changing the address of a node
-    /// potentially breaks consensus guarantee.
+    /// potentially breaks consensus guarantees.
     pub(crate) fn extend_nodes(
         old: BTreeMap<C::NodeId, C::Node>,
         new: &BTreeMap<C::NodeId, C::Node>,
@@ -241,7 +241,7 @@ where C: RaftTypeConfig
         Ok(())
     }
 
-    /// Ensures that none of the sub config in this joint config are empty.
+    /// Ensures that none of the sub-configs in this joint config are empty.
     pub(crate) fn ensure_non_empty_config(&self) -> Result<(), EmptyMembership> {
         for c in self.get_joint_config().iter() {
             if c.is_empty() {
@@ -271,7 +271,7 @@ where C: RaftTypeConfig
     /// Returns the next coherent membership to change to, while the expected final membership is
     /// `goal`.
     ///
-    /// `retain` specifies whether to retain the removed voters as a learners, i.e., nodes that
+    /// `retain` specifies whether to retain the removed voters as learners, i.e., nodes that
     /// continue to receive log replication from the leader.
     ///
     /// E.g.(`cicj` is a joint membership of `ci` and `cj`):
@@ -310,7 +310,7 @@ where C: RaftTypeConfig
     ///
     /// It ensures that the returned instance is valid.
     ///
-    /// `retain` specifies whether to retain the removed voters as a learners, i.e., nodes that
+    /// `retain` specifies whether to retain the removed voters as learners, i.e., nodes that
     /// continue to receive log replication from the leader.
     pub(crate) fn change(mut self, change: ChangeMembers<C>, retain: bool) -> Result<Self, ChangeMembershipError<C>> {
         tracing::debug!(change = debug(&change), "{}", func_name!());
@@ -595,7 +595,7 @@ mod tests {
             );
         }
 
-        // RemoveNodes: can not remove node for voter
+        // RemoveNodes: cannot remove node for voter
         {
             let res = m().change(ChangeMembers::RemoveNodes(btreeset! {2}), false);
             assert_eq!(
@@ -631,10 +631,10 @@ mod tests {
         Ok(())
     }
 
-    /// Test membership change desribed by a batch operations.
+    /// Test membership change described by a batch operation.
     ///
     /// The batch operations add one voter and remove another.
-    /// It still finish in a two step joint config change.
+    /// It still finishes in a two-step joint config change.
     #[test]
     fn test_membership_change_batch() -> anyhow::Result<()> {
         let m = || Membership::<UTConfig> {

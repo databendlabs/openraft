@@ -73,7 +73,7 @@ async fn trigger_purge_log() -> anyhow::Result<()> {
             .wait(&0, timeout())
             .purged(
                 Some(log_id(1, 0, snapshot_index)),
-                format_args!("node-0 purged upto {}", snapshot_index),
+                format_args!("node-0 purged up to {}", snapshot_index),
             )
             .await?;
 
@@ -82,11 +82,11 @@ async fn trigger_purge_log() -> anyhow::Result<()> {
             .wait(&0, timeout())
             .purged(
                 Some(log_id(1, 0, log_index)),
-                format_args!("node-0 wont purged upto {}", log_index),
+                format_args!("node-0 wont purged up to {}", log_index),
             )
             .await;
 
-        assert!(res.is_err(), "can not purge logs not in snapshot");
+        assert!(res.is_err(), "cannot purge logs not in snapshot");
     }
 
     Ok(())

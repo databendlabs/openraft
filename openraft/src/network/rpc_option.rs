@@ -25,10 +25,10 @@ impl RPCOption {
 
     /// The moderate max interval an RPC should last for.
     ///
-    /// The [`hard_ttl()`] and `soft_ttl()` of `RPCOption` sets the hard limit and the moderate
-    /// limit of the duration for which an RPC should run. Once the `soft_ttl()` ends, the RPC
-    /// implementation should start to gracefully cancel the RPC, and once the `hard_ttl()` ends,
-    /// Openraft will terminate the ongoing RPC at once.
+    /// The [`hard_ttl()`] and `soft_ttl()` methods of `RPCOption` set the hard limit and the
+    /// moderate limit of the duration for which an RPC should run. Once the `soft_ttl()` ends,
+    /// the RPC implementation should start to gracefully cancel the RPC, and once the
+    /// `hard_ttl()` ends, Openraft will terminate the ongoing RPC at once.
     ///
     /// `soft_ttl` is smaller than [`hard_ttl()`] so that the RPC implementation can cancel the RPC
     /// gracefully after `soft_ttl` and before `hard_ttl`.

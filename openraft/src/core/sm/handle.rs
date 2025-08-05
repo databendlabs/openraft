@@ -55,7 +55,7 @@ where C: RaftTypeConfig
     /// Get a snapshot from the state machine.
     ///
     /// If the state machine worker has shutdown, it will return an error.
-    /// If there is not snapshot available, it will return `Ok(None)`.
+    /// If there is no snapshot available, it will return `Ok(None)`.
     pub(crate) async fn get_snapshot(&self) -> Result<Option<Snapshot<C>>, &'static str> {
         let (tx, rx) = C::oneshot();
 

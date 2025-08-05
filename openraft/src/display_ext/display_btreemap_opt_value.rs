@@ -5,7 +5,7 @@ use super::DisplayOption;
 
 /// Implement `Display` for `BTreeMap<K, Option<V>>` if `K` and `V` are `Display`.
 ///
-/// It formats a key-value pair in a string like "{key}:{opt_value}", and
+/// It formats a key-value pair in a string like "{key}:{opt_value}" and
 /// concatenates the key-value pairs with comma.
 ///
 /// For how to format the `opt_value`, see [`DisplayOption`].

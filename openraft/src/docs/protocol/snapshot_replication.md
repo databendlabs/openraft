@@ -56,7 +56,7 @@ Delete all non-committed logs then install snapshot.
 4) Snapshot last log id is after local last log id:
 
 Delete all non-committed logs then install snapshot.
-Because any log before snapshot.last_log_id are committed(store on a quorum),
+Because any log before snapshot.last_log_id are committed (store on a quorum),
 thus are safe to delete.
 
 ```text
@@ -81,7 +81,7 @@ Although the node with conflicting logs won't become a leader at once,
 but it could become a leader when it receives more logs and stores them after
 [`snapshot_meta.last_log_id`].
 
-Because the logs(which might be conflicting) before
+Because the logs (which might be conflicting) before
 [`snapshot_meta.last_log_id`] is not deleted, there's a chance that this node
 becomes the leader and uses these logs for replication.
 
@@ -95,7 +95,7 @@ becomes the leader and uses these logs for replication.
 ### Safe to Remove All Non-Committed Logs
 
 For this reason, Openraft truncates **ALL** non-committed logs and this is safe,
-because: `snapshot_meta.last_log_id` is committed (or it can not be in a
+because: `snapshot_meta.last_log_id` is committed (or it cannot be in a
 snapshot). If the local log ID conflicts with `snapshot_meta.last_log_id`, a
 quorum must exist that contains `snapshot_meta.last_log_id`. Therefore, it is
 **safe to remove all logs** on this node.
@@ -112,7 +112,7 @@ Installing snapshot includes two steps:
 The final step is to purge logs up to [`snapshot_meta.last_log_id`].
 This step is necessary because:
 
-- 1) A local log that is `<=` [`snapshot_meta.last_log_id`] may conflict with the leader, and can not be used anymore.
+- 1) A local log that is `<=` [`snapshot_meta.last_log_id`] may conflict with the leader, and cannot be used anymore.
 
 - 2) There may be a hole in the logs, if `snapshot_last_log_id > local_last_log_id`:
 

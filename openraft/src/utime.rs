@@ -136,8 +136,8 @@ impl<T, I: Instant> Leased<T, I> {
         self.lease_enabled = true;
     }
 
-    /// Reset the lease duration, so that the object expire at once.
-    /// And until the next `update()`, [`Self::touch()`] wont update the lease.
+    /// Reset the lease duration so that the object expires at once.
+    /// And until the next `update()`, [`Self::touch()`] won't update the lease.
     pub(crate) fn disable_lease(&mut self) {
         self.lease = Duration::default();
         self.lease_enabled = false;

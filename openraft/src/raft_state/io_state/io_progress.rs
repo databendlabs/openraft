@@ -18,7 +18,7 @@ use crate::display_ext::DisplayOptionExt;
 /// `submitted`: The id of the last IO operation submitted to the queue.
 /// `flushed`: The id of the last IO operation successfully flushed to storage.
 ///
-/// `(flushed, submitted]` represent the window of I/O operations in progress.
+/// `(flushed, submitted]` represents the window of I/O operations in progress.
 ///
 /// Invariants:
 /// ```text

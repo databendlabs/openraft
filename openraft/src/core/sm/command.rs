@@ -92,7 +92,7 @@ where C: RaftTypeConfig
         }
     }
 
-    /// Return the [`IOId`] of the log-related I/O progress to submit, if this command submits any
+    /// Return the [`IOId`] of the log-related I/O progress to submit if this command submits any
     /// log I/O.
     ///
     /// Log-related I/O progress includes both Vote and AppendEntries operations.
@@ -107,7 +107,7 @@ where C: RaftTypeConfig
         }
     }
 
-    /// Return the last applied log id if this command updates the `last_applied` of the state
+    /// Return the last-applied log id if this command updates the `last_applied` of the state
     /// machine.
     ///
     /// The caller can use this information to update the `apply_progress.submitted()` in `IOState`,

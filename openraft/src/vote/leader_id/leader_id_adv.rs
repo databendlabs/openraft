@@ -36,10 +36,10 @@ where C: RaftTypeConfig
 /// For a total order `LeaderId`, the [`CommittedLeaderId`] is the same.
 ///
 /// For a partial order `LeaderId`, we know that all the granted
-/// leader-id must be a total order set. Therefor once it is granted by a quorum, it only keeps the
-/// information that makes leader-ids a correct total order set, e.g., in standard raft, `voted_for:
-/// Option<node_id>` can be removed from `(term, voted_for)` once it is granted. This is why
-/// standard raft stores just a `term` in log entry.
+/// leader-id must be a total order set. Therefore, once it is granted by a quorum, it only keeps
+/// the information that makes leader-ids a correct total order set, e.g., in standard raft,
+/// `voted_for: Option<node_id>` can be removed from `(term, voted_for)` once it is granted. This is
+/// why standard raft stores just a `term` in log entry.
 pub type CommittedLeaderId<C> = LeaderId<C>;
 
 impl<C> RaftLeaderId<C> for LeaderId<C>

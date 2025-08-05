@@ -73,8 +73,8 @@ where
     /// borrow.
     ///
     /// Receivers are only notified if the closure returned `true`. If the
-    /// closure has modified the value but returned `false` this results
-    /// in a *silent modification*, i.e. the modified value will be visible
+    /// closure has modified the value but returned `false`, this results
+    /// in a *silent modification*, i.e., the modified value will be visible
     /// in subsequent calls to `borrow_watched`, but receivers will not receive
     /// a change notification.
     fn send_if_modified<F>(&self, modify: F) -> bool

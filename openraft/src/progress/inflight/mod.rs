@@ -15,7 +15,8 @@ use crate::RaftTypeConfig;
 /// The inflight data being transmitting from leader to a follower/learner.
 ///
 /// If inflight data is non-None, it's waiting for responses from a follower/learner.
-/// The follower/learner respond with `ack()` or `conflict()` to update the state of inflight data.
+/// The follower/learner responds with either `ack()` or `conflict()` to update the state of
+/// inflight data.
 #[derive(Clone, Debug)]
 #[derive(PartialEq, Eq)]
 pub(crate) enum Inflight<C>
@@ -108,7 +109,7 @@ where C: RaftTypeConfig
         matches!(self, Inflight::Snapshot { .. })
     }
 
-    /// Update inflight state when log upto `upto` is acknowledged by a follower/learner.
+    /// Update inflight state when log up to `upto` is acknowledged by a follower/learner.
     pub(crate) fn ack(&mut self, upto: Option<LogIdOf<C>>) {
         match self {
             Inflight::None => {

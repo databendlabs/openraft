@@ -7,7 +7,7 @@ use crate::RaftTypeConfig;
 
 /// RuntimeConfigHandle is an interface to update runtime config.
 ///
-/// These config are mainly designed for testing purpose and special use cases.
+/// These configs are mainly designed for testing purposes and special use cases.
 /// Usually you don't need to change runtime config.
 pub struct RuntimeConfigHandle<'r, C>
 where C: RaftTypeConfig
@@ -29,10 +29,10 @@ where C: RaftTypeConfig
         self.raft_inner.tick_handle.enable(enabled);
     }
 
-    /// Enable or disable heartbeat message when a leader has no more log to replicate.
+    /// Enable or disable heartbeat messages when a leader has no more log to replicate.
     ///
-    /// Note that the follower's leader-lease will not be renewed if it does receive message from
-    /// the leader, and it will start election(if `Self::elect()` is enabled) when the lease timed
+    /// Note that the follower's leader-lease will not be renewed if it does receive messages from
+    /// the leader, and it will start election (if `Self::elect()` is enabled) when the lease timed
     /// out.
     pub fn heartbeat(&self, enabled: bool) {
         self.raft_inner.runtime_config.enable_heartbeat.store(enabled, Ordering::Relaxed);

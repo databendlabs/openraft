@@ -8,7 +8,7 @@ use crate::RaftTypeConfig;
 
 /// A [`Responder`] implementation that sends the response via a oneshot channel.
 ///
-/// This could be used when the [`Raft::client_write`] caller want to wait for the response.
+/// This could be used when the [`Raft::client_write`] caller wants to wait for the response.
 ///
 /// [`Raft::client_write`]: `crate::raft::Raft::client_write`
 pub struct OneshotResponder<C>

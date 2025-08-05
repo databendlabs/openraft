@@ -65,7 +65,7 @@ pub struct RaftMetrics<C: RaftTypeConfig> {
     /// It is `None` if this node is not leader, or the leader is not yet acknowledged by a quorum.
     /// Being acknowledged means receiving a reply of
     /// `AppendEntries`(`AppendEntriesRequest.vote.committed == true`).
-    /// Receiving a reply of `RequestVote`(`RequestVote.vote.committed == false`) does not count,
+    /// Receiving a reply of `RequestVote`(`RequestVote.vote.committed == false`) does not count
     /// because a node will not maintain a lease for a vote with `committed == false`.
     ///
     /// This duration is used by the application to assess the likelihood that the leader has lost
@@ -73,9 +73,9 @@ pub struct RaftMetrics<C: RaftTypeConfig> {
     /// A longer duration without acknowledgment may suggest a higher probability of the leader
     /// being partitioned from the cluster.
     ///
-    /// Use `last_quorum_acked` instead, which is absolute timestamp.
-    /// This value relates to the time when metrics is reported, which may behind the current time
-    /// by an unknown duration(although it should be very small).
+    /// Use `last_quorum_acked` instead, which is an absolute timestamp.
+    /// This value relates to the time when metrics are reported, which may behind the current time
+    /// by an unknown duration (although it should be very small).
     #[deprecated(since = "0.10.0", note = "use `last_quorum_acked` instead.")]
     pub millis_since_quorum_ack: Option<u64>,
 
@@ -84,7 +84,7 @@ pub struct RaftMetrics<C: RaftTypeConfig> {
     /// It is `None` if this node is not leader, or the leader is not yet acknowledged by a quorum.
     /// Being acknowledged means receiving a reply of
     /// `AppendEntries`(`AppendEntriesRequest.vote.committed == true`).
-    /// Receiving a reply of `RequestVote`(`RequestVote.vote.committed == false`) does not count,
+    /// Receiving a reply of `RequestVote`(`RequestVote.vote.committed == false`) does not count
     /// because a node will not maintain a lease for a vote with `committed == false`.
     ///
     /// This timestamp can be used by the application to assess the likelihood that the leader has
@@ -102,8 +102,8 @@ pub struct RaftMetrics<C: RaftTypeConfig> {
     /// last acknowledged heartbeat or replication to this node.
     ///
     /// This duration since the recorded time can be used by applications to
-    /// guess if a follwer/learner node is offline, longer duration suggests
-    /// higher possibility of that.
+    /// guess if a follower/learner node is offline, longer duration suggests
+    /// a higher possibility of that.
     pub heartbeat: Option<HeartbeatMetrics<C>>,
 
     // ---
@@ -200,7 +200,7 @@ pub struct RaftDataMetrics<C: RaftTypeConfig> {
     /// It is `None` if this node is not leader, or the leader is not yet acknowledged by a quorum.
     /// Being acknowledged means receiving a reply of
     /// `AppendEntries`(`AppendEntriesRequest.vote.committed == true`).
-    /// Receiving a reply of `RequestVote`(`RequestVote.vote.committed == false`) does not count,
+    /// Receiving a reply of `RequestVote`(`RequestVote.vote.committed == false`) does not count
     /// because a node will not maintain a lease for a vote with `committed == false`.
     ///
     /// This duration is used by the application to assess the likelihood that the leader has lost
@@ -215,7 +215,7 @@ pub struct RaftDataMetrics<C: RaftTypeConfig> {
     /// It is `None` if this node is not leader, or the leader is not yet acknowledged by a quorum.
     /// Being acknowledged means receiving a reply of
     /// `AppendEntries`(`AppendEntriesRequest.vote.committed == true`).
-    /// Receiving a reply of `RequestVote`(`RequestVote.vote.committed == false`) does not count,
+    /// Receiving a reply of `RequestVote`(`RequestVote.vote.committed == false`) does not count
     /// because a node will not maintain a lease for a vote with `committed == false`.
     ///
     /// This timestamp can be used by the application to assess the likelihood that the leader has
@@ -232,8 +232,8 @@ pub struct RaftDataMetrics<C: RaftTypeConfig> {
     /// last acknowledged heartbeat or replication to this node.
     ///
     /// This duration since the recorded time can be used by applications to
-    /// guess if a follwer/learner node is offline, longer duration suggests
-    /// higher possibility of that.
+    /// guess if a follower/learner node is offline, longer duration suggests
+    /// a higher possibility of that.
     pub heartbeat: Option<HeartbeatMetrics<C>>,
 }
 

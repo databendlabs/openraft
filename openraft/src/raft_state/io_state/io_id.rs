@@ -16,7 +16,7 @@ use crate::RaftTypeConfig;
 /// An ID to uniquely identify a monotonic increasing io operation to [`RaftLogStorage`].
 ///
 /// Not all IO to [`RaftLogStorage`] are included by this struct:
-/// only the IOs make progress in the raft log are included.
+/// only the IOs that make progress in the raft log are included.
 /// Including [`save_vote()`] and [`append()`] logs.
 ///
 /// [`purge()`] and [`truncate()`] are not included,

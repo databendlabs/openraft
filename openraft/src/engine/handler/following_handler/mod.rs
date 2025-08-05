@@ -45,7 +45,7 @@ mod update_committed_membership_test;
 pub(crate) struct FollowingHandler<'x, C>
 where C: RaftTypeConfig
 {
-    /// The Leader this Acceptor(Follower/Leaner) currently following.
+    /// The Leader this Acceptor (Follower/Leaner) currently following.
     pub(crate) leader_vote: CommittedVote<C>,
 
     pub(crate) config: &'x mut EngineConfig<C>,
@@ -81,16 +81,16 @@ where C: RaftTypeConfig
         let l = entries.len();
         let since = self.state.first_conflicting_index(&entries);
         if since < l {
-            // Before appending, if an entry overrides an conflicting one,
+            // Before appending, if an entry overrides a conflicting one,
             // the entries after it has to be deleted first.
             // Raft requires log ids are in total order by (term,index).
-            // Otherwise the log id with max index makes committed entry invisible in election.
+            // Otherwise, the log id with max index makes the committed entry invisible in election.
             self.truncate_logs(entries[since].index());
 
             let entries = entries.split_off(since);
             self.do_append_entries(entries);
         } else {
-            // No actual IO is needed, but just need to update IO state,
+            // No actual IO is needed, but just need to update I/O state,
             // after all preceding IO flushed.
 
             let to_submit = IOId::new_log_io(self.leader_vote.clone(), last_log_id);
@@ -267,12 +267,12 @@ where C: RaftTypeConfig
     /// on the snapshot's metadata. It checks if the `snapshot` is newer than the currently
     /// committed snapshot. If not, it does nothing.
     ///
-    /// It returns the condition about when the snapshot is installed and can proceed the commands
-    /// that depends on the state of snapshot.
+    /// It returns the condition about when the snapshot is installed and can proceed with the
+    /// commands that depend on the state of the snapshot.
     ///
     /// It returns an `Option<Condition<C>>` indicating the next action:
     /// - `Some(Condition::StateMachineCommand { command_seq })` if the snapshot will be installed.
-    ///   Further commands that depend on snapshot state should use this condition so that these
+    ///   Further commands that depend on the snapshot state should use this condition so that these
     ///   command block until the condition is satisfied(`RaftCore` receives a `Notification`).
     /// - Otherwise `None` if the snapshot will not be installed (e.g., if it is not newer than the
     ///   current state).
@@ -292,7 +292,7 @@ where C: RaftTypeConfig
             return None;
         }
 
-        // snapshot_last_log_id can not be None
+        // snapshot_last_log_id cannot be None
         let snap_last_log_id = snap_last_log_id.unwrap();
 
         // 1. Truncate all logs if conflict.
@@ -334,7 +334,7 @@ where C: RaftTypeConfig
 
     /// Find the last 2 membership entries in a list of entries.
     ///
-    /// A follower/learner reverts the effective membership to the previous one,
+    /// A follower/learner reverts the effective membership to the previous one
     /// when conflicting logs are found.
     fn last_two_memberships<'a>(entries: impl DoubleEndedIterator<Item = &'a C::Entry>) -> Vec<StoredMembership<C>>
     where C::Entry: 'a {
