@@ -17,14 +17,14 @@ where C: RaftTypeConfig
     /// The ID of the target node for which the match index is to be updated.
     pub(crate) target: C::NodeId,
 
-    /// The request by this leader has been successfully handled by the target node,
+    /// The request by this leader has been successfully handled by the target node
     /// or an error in string.
     ///
     /// A successful result can still be log matching or log conflicting.
     /// In either case, the request is considered accepted, i.e., this leader is still valid to
     /// the target node.
     ///
-    /// The result also track the time when this request is sent.
+    /// The result also tracks the time when this request is sent.
     pub(crate) result: Result<ReplicationResult<C>, String>,
 
     /// In which session this message is sent.

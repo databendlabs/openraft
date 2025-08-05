@@ -11,7 +11,7 @@ use crate::RaftTypeConfig;
 pub struct InstallSnapshotRequest<C: RaftTypeConfig> {
     pub vote: VoteOf<C>,
 
-    /// Metadata of a snapshot: snapshot_id, last_log_ed membership etc.
+    /// Metadata of a snapshot: snapshot_id, last_log_ed membership, etc.
     pub meta: SnapshotMeta<C>,
 
     /// The byte offset where this chunk of data is positioned in the snapshot file.

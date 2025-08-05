@@ -15,11 +15,11 @@ where C: RaftTypeConfig
 {
     /// The timestamp when this heartbeat is sent.
     ///
-    /// The Leader use this sending time to calculate the quorum acknowledge time, but not the
+    /// The Leader uses this sending time to calculate the quorum acknowledge time, but not the
     /// receiving timestamp.
     pub(crate) time: InstantOf<C>,
 
-    /// The vote of the Leader that submit this heartbeat and the log id of the cluster config.
+    /// The vote of the Leader that submits this heartbeat and the log id of the cluster config.
     ///
     /// The response that matches this session id is considered as a valid response.
     /// Otherwise, it is considered as an outdated response from older leader or older cluster

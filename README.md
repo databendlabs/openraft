@@ -1,7 +1,7 @@
 <div align="center">
     <h1>OpenRaft</h1>
     <h4>
-        Advanced <a href="https://raft.github.io/">Raft</a> in 🦀 Rust using <a href="https://tokio.rs/">Tokio</a>. Please ⭐ on <a href="https://github.com/databendlabs/openraft">github</a>!
+        Advanced <a href="https://raft.github.io/">Raft</a> in 🦀 Rust using <a href="https://tokio.rs/">Tokio</a>. Please ⭐ on <a href="https://github.com/databendlabs/openraft">GitHub</a>!
     </h4>
 
 
@@ -50,7 +50,7 @@ Whatever your style, we're here to support you. 🚀 Let's make something awesom
 # Status
 
 - The features are almost complete for building an application.
-- Performance: Supports 70,000 writes/sec for single writer, and 1,000,000 writes/sec for 256 writers. See: [Performance](#performance)
+- Performance: Supports 70,000 writes/sec for a single writer, and 1,000,000 writes/sec for 256 writers. See: [Performance](#performance)
 - Unit test coverage stands at 92%.
 - The chaos test has not yet been completed, and further testing is needed to ensure the application's robustness and reliability.
 
@@ -103,7 +103,7 @@ Whatever your style, we're here to support you. 🚀 Let's make something awesom
 
 
 <!--
-   - - [ ] Consider to separate log storage and log order storage.
+   - - [ ] Consider separating log storage and log order storage.
    -   Leader only determines and replicates the index of log entries, not log
    -   payload.
       -->
@@ -144,14 +144,14 @@ For benchmark detail, go to the [./cluster_benchmark](./cluster_benchmark) folde
 - ✅ Purge log by policy or manually: [`purge_log()`][].
 
 
-# Who use it
+# Who uses it
 
-- [Databend](https://github.com/databendlabs/databend) - The Next-Gen Cloud [Data+AI] Analytics
-- [CnosDB](https://github.com/cnosdb/cnosdb) - A cloud-native open source distributed time series database.
-- [yuyang0/rrqlite](https://github.com/yuyang0/rrqlite) - A rust implementation of [rqlite](https://github.com/rqlite/rqlite).
-- [raymondshe/matchengine-raft](https://github.com/raymondshe/matchengine-raft) - A example to demonstrate how openraft persists snapshots/logs to disk.
-- [Helyim](https://github.com/helyim/helyim) - [SeaweedFS](https://github.com/seaweedfs/seaweedfs) implemented in pure Rust.
-- [RobustMQ](https://github.com/robustmq/robustmq) - Next generation cloud-native converged message queue.
+- [Databend](https://github.com/databendlabs/databend) – The Next-Gen Cloud [Data+AI] Analytics
+- [CnosDB](https://github.com/cnosdb/cnosdb) – A cloud-native open source distributed time series database.
+- [yuyang0/rrqlite](https://github.com/yuyang0/rrqlite) – A rust implementation of [rqlite](https://github.com/rqlite/rqlite).
+- [raymondshe/matchengine-raft](https://github.com/raymondshe/matchengine-raft) – A example to demonstrate how openraft persists snapshots/logs to disk.
+- [Helyim](https://github.com/helyim/helyim) – [SeaweedFS](https://github.com/seaweedfs/seaweedfs) implemented in pure Rust.
+- [RobustMQ](https://github.com/robustmq/robustmq) – Next generation cloud-native converged message queue.
 
 # Contributing
 

@@ -25,9 +25,9 @@
 
 - New feature flags:
 
-    - [`singlethreaded`][]: Run Openraft in a single threaded environment, i.e., without requiring `Send` bound.
+    - [`singlethreaded`][]: Run Openraft in a single-threaded environment, i.e., without requiring `Send` bound.
     - [`loosen-follower-log-revert`][]: Allows cleaning a follower's data, useful for testing.
-    - [`generic-snapshot-data`][]: Remove `AsyncRead + AsyncWrite` bound from snapshot data. Let application define its own snapshot data transfer.
+    - [`generic-snapshot-data`][]: Remove `AsyncRead + AsyncWrite` bound from snapshot data. Let the application define its own snapshot data transfer.
 
 
 ## Upgrade for API changes 
@@ -62,7 +62,7 @@ Follow the following steps to update your application to pass compilation with v
 ## Upgrade `RaftTypeConfig`
 
 - Add `AsyncRuntime` to `RaftTypeConfig` to specify the async runtime to use.
-  Openraft provides a default implementations: `TokioRuntime`.
+  Openraft provides a default implementation: `TokioRuntime`.
   For example:
   ```ignore
   openraft::declare_raft_types!(

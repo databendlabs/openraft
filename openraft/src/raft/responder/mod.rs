@@ -11,10 +11,10 @@ use crate::RaftTypeConfig;
 /// A trait that lets `RaftCore` send the response or an error of a client write request back to the
 /// client or to somewhere else.
 ///
-/// It is created for each request [`AppData`], and is sent to `RaftCore`.
+/// It is created for each request [`AppData`] and is sent to `RaftCore`.
 /// Once the request is completed,
-/// the `RaftCore` send the result [`ClientWriteResult`] via it.
-/// The implementation of the trait then forward the response to application.
+/// the `RaftCore` sends the result [`ClientWriteResult`] via it.
+/// The implementation of the trait then forwards the response to the application.
 /// There could optionally be a receiver to wait for the response.
 ///
 /// Usually an implementation of [`Responder`] is a oneshot channel Sender,

@@ -3,7 +3,7 @@
 
 ### What are the differences between Openraft and standard Raft?
 
-- Optionally, In one term there could be more than one leaders to be established, in order to reduce election conflict. See: std mode and adv mode leader id: [`leader_id`][];
+- Optionally, In one term there could be more than one leader to be established, in order to reduce election conflict. See: std mode and adv mode leader id: [`leader_id`][];
 - Openraft stores committed log id: See: [`RaftLogStorage::save_committed()`][];
 - Openraft optimized `ReadIndex`: no `blank log` check: [`Linearizable Read`][].
 - A restarted Leader will stay in Leader state if possible;
@@ -49,7 +49,7 @@ There is also:
 - a [`RaftServerMetrics`][] struct that provides only server/cluster related metrics,
   including node id, vote, server state, current leader, etc.,
 - and a [`RaftDataMetrics`][] struct that provides only data related metrics,
-  such as log, snapshot etc.
+  such as log, snapshot, etc.
 
 If you are only interested in server metrics, but not data metrics,
 subscribe [`RaftServerMetrics`][] with [`Raft::server_metrics()`][] instead.
@@ -74,7 +74,7 @@ loop {
 
 In standard Raft log id is `(term, log_index)`, in Openraft he log id `(term,
 node_id, log_index)` is used to minimize the chance of election conflicts.
-This way in every term there could be more than one leaders elected, and the last one is valid.
+This way in every term there could be more than one leader elected, and the last one is valid.
 See: [`leader-id`](`crate::docs::data::leader_id`) for details.
 
 
@@ -115,7 +115,7 @@ a list of active nodes without modifying cluster membership.
 ## Node management
 
 
-### How to customize snapshot building policy?
+### How to customize snapshot-building policy?
 
 OpenRaft provides a default snapshot building policy that triggers snapshots
 when the log count exceeds a threshold. Configure this via [`Config::snapshot_policy`] 
@@ -139,7 +139,7 @@ There are two ways to initialize a raft cluster, assuming there are three nodes,
 
 1. Single-step method:
    Call `Raft::initialize()` on any one of the nodes with the configuration of
-   all 3 nodes, e.g. `n2.initialize(btreeset! {1,2,3})`.
+   all three nodes, e.g. `n2.initialize(btreeset! {1,2,3})`.
 
 2. Incremental method:
    First, call `Raft::initialize()` on `n1` with configuration containing `n1`
@@ -201,7 +201,7 @@ Use `MyRaftConfig` in your Raft setup to utilize the custom node structure.
 None. No calls, e.g., to either [`add_learner()`][] or [`change_membership()`][]
 are necessary.
 
-Openraft maintains the membership configuration in [`Membership`][] for for all
+Openraft maintains the membership configuration in [`Membership`][] for all
 nodes in the cluster, including voters and non-voters (learners).  When a
 `follower` or `learner` restarts, the leader will automatically re-establish
 replication.
@@ -227,7 +227,7 @@ wiping out a node and restarting it is still possible to cause data loss.
 Assumes the leader is `N1`, followers are `N2, N3, N4, N5`:
 - A log(`a`) that is replicated by `N1` to `N2, N3` is considered committed.
 - At this point, if `N3` is replaced with an empty node, and at once the leader
-  `N1` is crashed. Then `N5` may elected as a new  leader with granted vote by
+  `N1` is crashed. Then `N5` may elected as a new leader with vote granted by
   `N3, N4`;
 - Then the new leader `N5` will not have log `a`.
 
@@ -254,7 +254,7 @@ Thus, in a special scenario like this, or for testing purpose, you can use
 
 No, Openraft, like standard raft, cannot identify errors in cluster configuration.
 
-A common error is the assigning a wrong network addresses to a node. In such
+A common error is the assigning incorrect network addresses to a node. In such
 a scenario, if this node becomes the leader, it will attempt to replicate
 logs to itself. This will cause Openraft to panic because replication
 messages can only be received by a follower.

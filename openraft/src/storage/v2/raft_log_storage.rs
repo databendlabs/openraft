@@ -12,7 +12,7 @@ use crate::StorageError;
 
 /// API for log store.
 ///
-/// `vote` API are also included because in raft, vote is part to the log: `vote` is about **when**,
+/// `vote` API is also included because in raft, vote is part of the log: `vote` is about **when**,
 /// while `log` is about **what**. A distributed consensus is about **at what a time, happened what
 /// a event**.
 ///
@@ -74,13 +74,13 @@ where C: RaftTypeConfig
 
     /// Return the last saved committed log id by [`Self::save_committed`].
     async fn read_committed(&mut self) -> Result<Option<LogIdOf<C>>, StorageError<C>> {
-        // By default `committed` log id is not saved and this method just return None.
+        // By default `committed` log id is not saved and this method just returns None.
         Ok(None)
     }
 
     /// Append log entries and call the `callback` once logs are persisted on disk.
     ///
-    /// It should returns immediately after saving the input log entries in memory, and calls the
+    /// It should return immediately after saving the input log entries in memory and calls the
     /// `callback` when the entries are persisted on disk, i.e., avoid blocking.
     ///
     /// This method is still async because preparing the IO is usually async.
@@ -94,7 +94,7 @@ where C: RaftTypeConfig
     ///
     ///   NOTE that: the `callback` can be called either before or after this method returns.
     ///
-    /// - There must not be a **hole** in logs. Because Raft only examine the last log id to ensure
+    /// - There must not be a **hole** in logs. Because Raft only examines the last log id to ensure
     ///   correctness.
     async fn append<I>(&mut self, entries: I, callback: IOFlushed<C>) -> Result<(), StorageError<C>>
     where
@@ -108,7 +108,7 @@ where C: RaftTypeConfig
     /// - It must not leave a **hole** in logs.
     async fn truncate(&mut self, log_id: LogIdOf<C>) -> Result<(), StorageError<C>>;
 
-    /// Purge logs upto `log_id`, inclusive
+    /// Purge logs up to `log_id`, inclusive
     ///
     /// ### To ensure correctness:
     ///

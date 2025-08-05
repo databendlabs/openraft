@@ -11,7 +11,8 @@ Openraft provides two `LeaderId` types to switch between these two modes:
 
 ### Definition of `LeaderId`
 
-Within Openraft, and also implicitly in the standard Raft, `LeaderId` is utilized to uniquely identify a leader. The `LeaderId` could either be a confirmed leader, one that has been granted by a `Quorum`, or a potential `Leader`, such as a `Candidate`.
+Within Openraft, and also implicitly in the standard Raft, `LeaderId` is used to uniquely identify a leader.
+The `LeaderId` could either be a confirmed leader, one that has been granted by a `Quorum`, or a potential `Leader`, such as a `Candidate`.
 
 - In standard Raft, the definition of `LeaderId` as `(term, node_id)` implies a **`partial order`**, although it is not explicitly articulated in the original paper.
 
@@ -28,15 +29,18 @@ Using [`leader_id_std::LeaderId`] makes `LeaderId` conform to the `partial order
 
 ### Usage of `LeaderId`
 
-When handling `VoteRequest`, both Openraft and standard Raft (though not explicitly detailed) rely on the ordering of `LeaderId` to decide whether to grant a vote:
+When handling `VoteRequest`, both Openraft and standard Raft (though not explicitly detailed) rely on the ordering of
+`LeaderId` to decide whether to grant a vote:
 **a node will grant a vote with a `LeaderId` that is greater than any it has previously granted**.
 
-Consequently, by default in Openraft (with [`leader_id_adv::LeaderId`]), it is possible to elect multiple `Leader`s within the same term, with the last elected `Leader` being recognized as valid. In contrast, under standard Raft protocol, only a single `Leader` is elected per `term`.
+Consequently, by default in Openraft (with [`leader_id_adv::LeaderId`]), it is possible to elect multiple `Leader`s
+within the same term, with the last elected `Leader` being recognized as valid. In contrast, under standard Raft protocol,
+only a single `Leader` is elected per `term`.
 
 ### Default: advanced mode
 
 Use `openraft::impls::leader_id_adv::LeaderId` for [`RaftTypeConfig::LeaderId`] or leave it to default to switch to advanced mode.
-`LeaderId` is defined as the following, and it is a **totally ordered** value(two or more leaders can be granted in the same term):
+`LeaderId` is defined as the following, and it is a **totally ordered** value (two or more leaders can be granted in the same term):
 
 ```ignore
 // Advanced mode(default):
@@ -48,8 +52,8 @@ pub struct LeaderId<NID: NodeId>
 }
 ```
 
-Which means, in a single `term`, there could be more than one leaders
-elected(although only the last is valid and can commit logs).
+Which means, in a single `term`, there could be more than one leader
+elected (although only the last is valid and can commit logs).
 
 - Pros: election conflict is minimized,
 
@@ -62,7 +66,7 @@ elected(although only the last is valid and can commit logs).
 #### Standard mode
 
 Use `openraft::impls::leader_id_std::LeaderId` for [`RaftTypeConfig::LeaderId`] to switch to standard mode.
-In the standard mode, `LeaderId` is defined as the following, and it is a **partially ordered** value(no two leaders can be granted in the same term):
+In the standard mode, `LeaderId` is defined as the following, and it is a **partially ordered** value (no two leaders can be granted in the same term):
 
 ```ignore
 // Standard raft mode:
@@ -120,8 +124,8 @@ comparable(`!(a.leader_id>=b.leader_id) && !(a.leader_id<=b.leader_id)`), use
 field `committed` to determine the order between `a` and `b`.
 
 Because a leader must be granted by a quorum before committing any log, two
-incomparable `leader_id` can not both be granted.
-So let a committed `Vote` override a incomparable non-committed is safe.
+incomparable `leader_id` cannot both be granted.
+So letting a committed `Vote` override an incomparable non-committed vote is safe.
 
 - Pros: `LogId` just store a `term`.
 

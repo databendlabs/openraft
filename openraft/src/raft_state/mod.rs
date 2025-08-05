@@ -77,7 +77,7 @@ where C: RaftTypeConfig
 
     pub(crate) io_state: Valid<IOState<C>>,
 
-    /// The log id upto which the next time it purges.
+    /// The log id up to which the next time it purges.
     ///
     /// If a log is in use by a replication task, the purge is postponed and is stored in this
     /// field.
@@ -278,7 +278,7 @@ where C: RaftTypeConfig
         if committed.as_ref() > self.committed() {
             let prev = self.committed().cloned();
 
-            // Safe unwrap(): committed > self.committed(), implies it can not be None
+            // Safe unwrap(): committed > self.committed(), implies it cannot be None
             self.apply_progress_mut().accept(committed.clone().unwrap());
             self.membership_state.commit(committed);
 

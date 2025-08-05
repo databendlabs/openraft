@@ -4,7 +4,7 @@ use crate::quorum::QuorumSet;
 /// B`.
 /// A distributed consensus protocol such as openraft is only allowed to switch membership
 /// between two **coherent** quorum sets. Being coherent is one of the two restrictions. The other
-/// restriction is to disable other smaller candidate to elect.
+/// restriction is to disable another smaller candidate to elect.
 pub(crate) trait Coherent<ID, Other>
 where
     ID: PartialOrd + Ord + 'static,

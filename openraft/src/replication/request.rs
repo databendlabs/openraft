@@ -8,7 +8,7 @@ use crate::type_config::alias::LogIdOf;
 pub(crate) enum Replicate<C>
 where C: RaftTypeConfig
 {
-    /// Inform replication stream to forward the committed log id to followers/learners.
+    /// Inform the replication stream to forward the committed log id to followers/learners.
     Committed(Option<LogIdOf<C>>),
 
     /// Send a chunk of data, e.g., logs or snapshot.
@@ -53,7 +53,7 @@ use crate::RaftTypeConfig;
 ///
 /// It defines what data to send to a follower/learner and an id to identify who is sending this
 /// data.
-/// Thd data is either a series of logs or a snapshot.
+/// The data is either a series of logs or a snapshot.
 #[derive(PartialEq, Eq)]
 pub(crate) enum Data<C>
 where C: RaftTypeConfig

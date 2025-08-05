@@ -20,8 +20,8 @@ use crate::type_config::alias::LogIdOf;
 
 /// The state of membership configs a raft node needs to know.
 ///
-/// A raft node needs to store at most 2 membership config log:
-/// - The first(committed) one must have been committed, because (1): raft allows to propose new
+/// A raft node needs to store at most 2 membership config logs:
+/// - The first(committed) one must have been committed, because (1): raft allows proposing new
 ///   membership only when the previous one is committed.
 /// - The second(effective) may be committed or not.
 ///
@@ -37,9 +37,9 @@ use crate::type_config::alias::LogIdOf;
 ///
 /// From (3) and (4), a follower needs to revert the effective membership to the previous one.
 ///
-/// From (2), a follower only need to revert at most one membership log.
+/// From (2), a follower only needs to revert at most one membership log.
 ///
-/// Thus a raft node will only need to store at most two recent membership logs.
+/// Thus, a raft node will only need to store at most two recent membership logs.
 #[derive(Debug, Clone, Default)]
 #[derive(PartialEq, Eq)]
 pub struct MembershipState<C>
@@ -70,7 +70,7 @@ where C: RaftTypeConfig
         Self { committed, effective }
     }
 
-    /// Return true if the given node id is an either voter or learner.
+    /// Return true if the given node id is either a voter or a learner.
     pub(crate) fn contains(&self, id: &C::NodeId) -> bool {
         self.effective.membership().contains(id)
     }
@@ -80,7 +80,7 @@ where C: RaftTypeConfig
         self.effective.membership().is_voter(id)
     }
 
-    /// Update membership state if the specified committed_log_id is greater than `self.effective`
+    /// Update the membership state if the specified committed_log_id is greater than `self.effective`
     pub(crate) fn commit(&mut self, committed_log_id: &Option<LogIdOf<C>>) {
         if committed_log_id >= self.effective().log_id() {
             debug_assert!(committed_log_id.index() >= self.effective().log_id().index());
@@ -88,7 +88,7 @@ where C: RaftTypeConfig
         }
     }
 
-    /// A committed membership log is found and the either of `self.committed` and `self.effective`
+    /// A committed membership log is found, and either of `self.committed` and `self.effective`
     /// should be updated if it is smaller than the new one.
     ///
     /// If `self.effective` changed, it returns a reference to the new one.
@@ -97,7 +97,7 @@ where C: RaftTypeConfig
         let mut changed = false;
 
         // The local effective membership may conflict with the leader.
-        // Thus it has to compare by log-index, e.g.:
+        // Thus, it has to compare by log-index, e.g.:
         //   membership.log_id       = (10, 5);
         //   local_effective.log_id = (2, 10);
         if c.log_id().index() >= self.effective.log_id().index() {
@@ -151,11 +151,11 @@ where C: RaftTypeConfig
         self.effective = m;
     }
 
-    /// Truncate membership state if log is truncated since `since`(inclusive).
+    /// Truncate membership state if the log is truncated since `since`(inclusive).
     ///
     /// It returns the updated effective membership config if it is changed.
     ///
-    /// It will reset `self.effective` to `self.committed`. Only the effective could be truncated,
+    /// It will reset `self.effective` to `self.committed`. Only the effective could be truncated
     /// when a new leader tries to truncate follower logs that the leader does not have.
     ///
     /// If the effective membership is from a conflicting log,
@@ -172,7 +172,7 @@ where C: RaftTypeConfig
     pub(crate) fn truncate(&mut self, since: u64) -> Option<Arc<EffectiveMembership<C>>> {
         debug_assert!(
             since >= self.committed().log_id().next_index(),
-            "committed log should never be truncated: committed membership can not conflict with the leader"
+            "committed log should never be truncated: committed membership cannot conflict with the leader"
         );
 
         if Some(since) <= self.effective().log_id().index() {
