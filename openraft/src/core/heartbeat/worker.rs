@@ -23,7 +23,7 @@ use crate::type_config::TypeConfigExt;
 use crate::Config;
 use crate::RaftTypeConfig;
 
-/// A dedicate worker sending heartbeat to a specific follower.
+/// A dedicated worker sending heartbeat to a specific follower.
 pub struct HeartbeatWorker<C, N>
 where
     C: RaftTypeConfig,

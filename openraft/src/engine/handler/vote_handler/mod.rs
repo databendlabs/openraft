@@ -35,10 +35,10 @@ mod become_leader_test;
 #[cfg(test)]
 mod handle_message_vote_test;
 
-/// Handle raft vote related operations
+/// Handle raft vote-related operations
 ///
-/// A `vote` defines the state of a openraft node.
-/// See [`RaftState::calc_server_state`] .
+/// A `vote` defines the state of an openraft node.
+/// See [`RaftState::calc_server_state`].
 pub(crate) struct VoteHandler<'st, C>
 where C: RaftTypeConfig
 {
@@ -52,12 +52,12 @@ where C: RaftTypeConfig
 impl<C> VoteHandler<'_, C>
 where C: RaftTypeConfig
 {
-    /// Validate and accept the input `vote` and send result via `tx`.
+    /// Validate and accept the input `vote` and send the result via `tx`.
     ///
-    /// If the vote is not GE the local vote, it sends an caller defined response via `tx` and
+    /// If the vote is not GE the local vote, it sends a caller-defined response via `tx` and
     /// returns `None` to inform the caller about the invalid vote.
     ///
-    /// Otherwise it returns `Some(tx)`.
+    /// Otherwise, it returns `Some(tx)`.
     ///
     /// The `f` is used to create the error response.
     #[tracing::instrument(level = "debug", skip_all)]
@@ -93,7 +93,7 @@ where C: RaftTypeConfig
 
     /// Check and update the local vote and related state for every message received.
     ///
-    /// This is used by all incoming event, such as the three RPC append-entries, vote,
+    /// This is used by all incoming events, such as the three RPC append-entries, vote,
     /// install-snapshot to check the `vote` field.
     ///
     /// It grants the input vote and persists it if `input_vote >= my_vote`.
@@ -151,7 +151,7 @@ where C: RaftTypeConfig
         }
     }
 
-    /// Enter Leader state(vote.node_id == self.id && vote.committed == true) .
+    /// Enter Leader state(vote.node_id == self.id && vote.committed == true).
     ///
     /// Note that this is called when the Leader state changes caused by
     /// the change of vote in the **Acceptor** part `engine.state.vote`.
@@ -218,7 +218,7 @@ where C: RaftTypeConfig
         }
     }
 
-    /// Enter following state(vote.node_id != self.id or self is not a voter).
+    /// Enter following state (vote.node_id != self.id or self is not a voter).
     ///
     /// This node then becomes raft-follower or raft-learner.
     pub(crate) fn become_following(&mut self) {

@@ -55,7 +55,7 @@ async fn building_snapshot_does_not_block_apply() -> Result<()> {
             .wait(&1, Some(Duration::from_millis(500)))
             .snapshot(log_id(1, 0, log_index), "building snapshot is blocked")
             .await;
-        assert!(res.is_err(), "snapshot should be blocked and can not finish");
+        assert!(res.is_err(), "snapshot should be blocked and cannot finish");
     }
 
     tracing::info!(

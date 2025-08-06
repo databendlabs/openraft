@@ -41,7 +41,7 @@ fn test_trigger_purge_log_no_snapshot() -> anyhow::Result<()> {
 
     eng.trigger_purge_log(1);
 
-    assert_eq!(None, eng.state.purge_upto, "no snapshot, can not purge");
+    assert_eq!(None, eng.state.purge_upto, "no snapshot, cannot purge");
 
     assert_eq!(0, eng.output.take_commands().len());
 

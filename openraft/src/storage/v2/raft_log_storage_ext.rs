@@ -16,12 +16,12 @@ use crate::StorageError;
 
 /// Extension trait for RaftLogStorage to provide utility methods.
 ///
-/// All methods in this trait are provided with default implementation.
+/// All methods in this trait are provided with a default implementation.
 #[add_async_trait]
 pub trait RaftLogStorageExt<C>: RaftLogStorage<C>
 where C: RaftTypeConfig
 {
-    /// Blocking mode append log entries to the storage.
+    /// Blocking mode appends log entries to the storage.
     ///
     /// It blocks until the callback is called by the underlying storage implementation.
     async fn blocking_append<I>(&mut self, entries: I) -> Result<(), StorageError<C>>

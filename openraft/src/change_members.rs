@@ -28,7 +28,7 @@ where C: RaftTypeConfig
 
     /// Add nodes to membership, as learners.
     ///
-    /// it **WONT** replace existing node.
+    /// it **WON'T** replace existing node.
     ///
     /// Prefer using this variant instead of `SetNodes` whenever possible, as `AddNodes` ensures
     /// safety, whereas incorrect usage of `SetNodes` can result in a brain split.
@@ -37,7 +37,7 @@ where C: RaftTypeConfig
 
     /// Add or replace nodes in membership config.
     ///
-    /// it **WILL** replace existing node.
+    /// it **WILL** replace an existing node.
     ///
     /// Prefer using `AddNodes` instead of `SetNodes` whenever possible, as `AddNodes` ensures
     /// safety, whereas incorrect usage of `SetNodes` can result in a brain split.

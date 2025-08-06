@@ -14,7 +14,7 @@ use crate::StorageError;
 
 /// Efficient storage for log ids.
 ///
-/// It stores only the ids of log that have a new leader_id. And the `last_log_id` at the end.
+/// It stores only the ids of logs that have a new leader_id. And the `last_log_id` at the end.
 /// I.e., the oldest log id belonging to every leader.
 ///
 /// If it is not empty, the first one is `last_purged_log_id` and the last one is `last_log_id`.
@@ -32,8 +32,8 @@ where C: RaftTypeConfig
 {
     /// Load all log ids that are the first one proposed by a leader.
     ///
-    /// E.g., log ids with the same leader id will be got rid of, except the smallest.
-    /// The `last_log_id` will always present at the end, to simplify searching.
+    /// E.g., log ids with the same leader id will be discarded, except the smallest.
+    /// The `last_log_id` will always be present at the end to simplify searching.
     ///
     /// Given an example with the logs `[(2,2),(2,3),(5,4),(5,5)]`, and the `last_purged_log_id` is
     /// (1,1). This function returns `[(1,1),(2,2),(5,4),(5,5)]`.
@@ -130,9 +130,9 @@ where C: RaftTypeConfig
         }
     }
 
-    /// Extends a list of `log_id` that are proposed by a same leader.
+    /// Extends a list of `log_id` that are proposed by the same leader.
     ///
-    /// The log ids in the input has to be continuous.
+    /// The log ids in the input have to be continuous.
     pub(crate) fn extend_from_same_leader<LID, I>(&mut self, new_ids: I)
     where
         LID: RaftLogId<C>,
@@ -180,11 +180,11 @@ where C: RaftTypeConfig
     /// Append a new `log_id`.
     ///
     /// The log id to append does not have to be the next to the last one in `key_log_ids`.
-    /// In such case, it fills the gap at index `i` with `LogId{leader_id: prev_log_id.leader,
+    /// In such a case it fills the gap at index `i` with `LogId{leader_id: prev_log_id.leader,
     /// index: i}`.
     ///
     /// NOTE: The last two in `key_log_ids` may be with the same `leader_id`, because `last_log_id`
-    /// always present in `log_ids`.
+    /// is always present in `log_ids`.
     pub(crate) fn append(&mut self, new_log_id: LogIdOf<C>) {
         let l = self.key_log_ids.len();
         if l == 0 {
@@ -250,12 +250,12 @@ where C: RaftTypeConfig
         }
     }
 
-    /// Purge log ids upto the log with index `upto_index`, inclusive.
+    /// Purge log ids up to the log with index `upto_index`, inclusive.
     #[allow(dead_code)]
     pub(crate) fn purge(&mut self, upto: &LogIdOf<C>) {
         let last = self.last().cloned();
 
-        // When installing  snapshot it may need to purge across the `last_log_id`.
+        // When installing snapshot it may need to purge across the `last_log_id`.
         if upto.index() >= last.next_index() {
             debug_assert!(Some(upto) > self.last());
             self.key_log_ids = vec![upto.clone()];
@@ -289,7 +289,7 @@ where C: RaftTypeConfig
 
     /// Get the log id at the specified index in a [`RefLogId`].
     ///
-    /// It will return `last_purged_log_id` if index is at the last purged index.
+    /// It will return `last_purged_log_id` if the index is at the last purged index.
     #[allow(clippy::clone_on_copy)]
     pub(crate) fn ref_at(&self, index: u64) -> Option<RefLogId<'_, C>> {
         let res = self.key_log_ids.binary_search_by(|log_id| log_id.index().cmp(&index));
@@ -340,8 +340,8 @@ where C: RaftTypeConfig
 
     /// Returns key log ids appended by the last leader.
     ///
-    /// Note that the 0-th log does not belong to any leader(but a membership log to initialize a
-    /// cluster) but this method does not differentiate between them.
+    /// Note that the 0-th log does not belong to any leader (but a membership log to initialize a
+    /// cluster), but this method does not differentiate between them.
     #[allow(dead_code)]
     pub(crate) fn by_last_leader(&self) -> LeaderLogIds<C> {
         let ks = &self.key_log_ids;

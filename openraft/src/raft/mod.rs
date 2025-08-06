@@ -635,7 +635,7 @@ where C: RaftTypeConfig
     /// let leader_id = my_raft.current_leader().await?.unwrap();
     /// let linearizer = my_app_rpc.get_read_linearizer(leader_id, ReadPolicy::ReadIndex).await?;
     ///
-    /// // Block waiting local state machine to apply upto to the `read_log_id`
+    /// // Block waiting local state machine to apply up to to the `read_log_id`
     /// let _ = linearizer.try_await_ready(&my_raft, None).await?.unwrap();
     ///
     /// // Following read from state machine is linearized across the cluster
@@ -712,7 +712,7 @@ where C: RaftTypeConfig
         self.protocol_api().handle_transfer_leader(req).await
     }
 
-    /// Return `true` if this node is already initialized and can not be initialized again with
+    /// Return `true` if this node is already initialized and cannot be initialized again with
     /// [`Raft::initialize`]
     #[since(version = "0.10.0")]
     pub async fn is_initialized(&self) -> Result<bool, Fatal<C>> {

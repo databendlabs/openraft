@@ -1,4 +1,4 @@
-//! Defines election related types.
+//! Defines election-related types.
 
 pub(crate) mod committed;
 pub(crate) mod leader_id;

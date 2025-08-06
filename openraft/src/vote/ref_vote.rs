@@ -28,7 +28,7 @@ where C: RaftTypeConfig
     }
 }
 
-// Commit vote have a total order relation with all other votes
+// Commit votes have a total order relation with all other votes
 impl<'a, C> PartialOrd for RefVote<'a, C>
 where C: RaftTypeConfig
 {
@@ -44,7 +44,7 @@ where C: RaftTypeConfig
                     (true, false) => Some(Ordering::Greater),
                     (false, true) => Some(Ordering::Less),
                     (true, true) => {
-                        unreachable!("two incomparable leaders can not be both committed: {} {}", self, other)
+                        unreachable!("two incomparable leaders cannot be both committed: {} {}", self, other)
                     }
                 }
             }

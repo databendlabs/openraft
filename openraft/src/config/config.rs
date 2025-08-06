@@ -17,7 +17,7 @@ use crate::RaftTypeConfig;
 
 /// Log compaction and snapshot policy.
 ///
-/// This governs when periodic snapshots will be taken, and also governs the conditions which
+/// This governs when periodic snapshots will be taken, as well as the conditions which
 /// would cause a leader to send an `InstallSnapshot` RPC to a follower based on replication lag.
 ///
 /// Additional policies may become available in the future.
@@ -112,7 +112,7 @@ fn parse_snapshot_policy(src: &str) -> Result<SnapshotPolicy, ConfigError> {
 #[derive(Clone, Debug, Parser)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub struct Config {
-    /// The application specific name of this Raft cluster
+    /// The application-specific name of this Raft cluster
     #[clap(long, default_value = "foo")]
     pub cluster_name: String,
 
@@ -129,14 +129,14 @@ pub struct Config {
     pub heartbeat_interval: u64,
 
     /// The timeout for sending then installing the last snapshot segment,
-    /// in millisecond. It is also used as the timeout for sending a non-last segment, if
+    /// in millisecond. It is also used as the timeout for sending a non-last segment if
     /// `send_snapshot_timeout` is 0.
     #[clap(long, default_value = "200")]
     pub install_snapshot_timeout: u64,
 
     /// The timeout for sending a **non-last** snapshot segment, in milliseconds.
     ///
-    /// It is disabled by default, by setting it to `0`.
+    /// It is disabled by default by setting it to `0`.
     /// The timeout for sending every segment is `install_snapshot_timeout`.
     #[deprecated(
         since = "0.9.0",
@@ -154,8 +154,8 @@ pub struct Config {
 
     /// The distance behind in log replication a follower must fall before it is considered lagging
     ///
-    /// A follower falls behind this index are replicated with snapshot.
-    /// A follower falls within this index are replicated with log entries.
+    /// - Followers that fall behind this index are replicated with a snapshot.
+    /// - Followers that fall within this index are replicated with log entries.
     ///
     /// This value should be greater than snapshot_policy.SnapshotPolicy.LogsSinceLast, otherwise
     /// transmitting a snapshot may not fix the lagging.
@@ -176,7 +176,7 @@ pub struct Config {
 
     /// The maximum number of logs to keep that are already included in **snapshot**.
     ///
-    /// Logs that are not in snapshot will never be purged.
+    /// Logs that are not in a snapshot will never be purged.
     #[clap(long, default_value = "1000")]
     pub max_in_snapshot_log_to_keep: u64,
 
@@ -186,12 +186,12 @@ pub struct Config {
 
     /// Enable or disable tick.
     ///
-    /// If ticking is disabled, timeout based events are all disabled:
+    /// If ticking is disabled, timeout-based events are all disabled:
     /// a follower won't wake up to enter candidate state,
     /// and a leader won't send heartbeat.
     ///
-    /// This flag is mainly used for test, or to build a consensus system that does not depend on
-    /// wall clock. The value of this config is evaluated as follow:
+    /// This flag is mainly used for testing or to build a consensus system that does not depend on
+    /// wall clock. The value of this config is evaluated as follows:
     /// - being absent: true
     /// - `--enable-tick`: true
     /// - `--enable-tick=true`: true
@@ -206,7 +206,7 @@ pub struct Config {
     )]
     pub enable_tick: bool,
 
-    /// Whether a leader sends heartbeat log to following nodes, i.e., followers and learners.
+    /// Whether a leader sends heartbeat logs to following nodes, i.e., followers and learners.
     // clap 4 requires `num_args = 0..=1`, or it complains about missing arg error
     // https://github.com/clap-rs/clap/discussions/4374
     #[clap(long,
@@ -217,7 +217,7 @@ pub struct Config {
     )]
     pub enable_heartbeat: bool,
 
-    /// Whether a follower will enter candidate state if it does not receive message from the
+    /// Whether a follower will enter candidate state if it does not receive any messages from the
     /// leader for a while.
     // clap 4 requires `num_args = 0..=1`, or it complains about missing arg error
     // https://github.com/clap-rs/clap/discussions/4374
@@ -272,7 +272,7 @@ impl Default for Config {
 }
 
 impl Config {
-    /// Generate a new random election timeout within the configured min & max.
+    /// Generate a new random election timeout within the configured min and max values.
     pub fn new_rand_election_timeout<RT: AsyncRuntime>(&self) -> u64 {
         RT::thread_rng().random_range(self.election_timeout_min..self.election_timeout_max)
     }

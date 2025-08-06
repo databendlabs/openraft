@@ -7,7 +7,7 @@ There are issues to address to provide consecutivity on the remote end.
 In a stream log replication protocol, Raft logs are read through multiple local
 IO operations.
 To ensure the integrity of log replication to remote nodes, addressing potential
-disruptions in log entry sequence is crucial.
+disruptions in the log entry sequence is crucial.
 
 
 ## Problem Description
@@ -72,7 +72,7 @@ consecutivity.
 
 ## Conclusion
 
-The current release(upto 0.9) mitigates this issue by immediately halting communication
+The current release (up to 0.9) mitigates this issue by immediately halting communication
 with `ReplicationCore` to prevent any new replication commands from being
 processed.
 

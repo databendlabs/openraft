@@ -19,10 +19,10 @@ pub(crate) mod log_io_id;
 /// IOState tracks the state of actually happened io including log flushed, applying log to state
 /// machine or snapshot building.
 ///
-/// These states are updated only when the io complete and thus may fall behind to the state stored
-/// in [`RaftState`](`crate::RaftState`),.
+/// These states are updated only when the I/O completes and thus may fall behind to the state stored
+/// in [`RaftState`](`crate::RaftState`).
 ///
-/// The log ids that are tracked includes:
+/// The log ids that are tracked include:
 ///
 /// ```text
 /// | log ids
@@ -73,17 +73,17 @@ where C: RaftTypeConfig
     /// The io progress of applying log to state machine.
     ///
     /// - The `apply_progress.accepted()` log id is also the committed, i.e., persisted in a quorum
-    ///   and can be chosen by next Leader. A quorum is either a uniform quorum or a joint quorum.
+    ///   and can be chosen by the next Leader. A quorum is either a uniform quorum or a joint quorum.
     ///   This is the highest log id that is safe to apply to the state machine.
     ///
-    /// - The `apply_progress.submitted()` is the last log id that has been sent to state machine
+    /// - The `apply_progress.submitted()` is the last log id that has been sent to the state machine
     ///   task to apply.
     ///
     /// - The `apply_progress.flushed()` is the last log id that has been already applied to state
     ///   machine.
     ///
     /// Note that depending on the implementation of the state machine,
-    /// the `flushed()` log id may not be persisted in storage(the state machine may periodically
+    /// the `flushed()` log id may not be persisted in storage (the state machine may periodically
     /// build a snapshot to persist the state).
     pub(crate) apply_progress: Valid<IOProgress<LogId<C>>>,
 

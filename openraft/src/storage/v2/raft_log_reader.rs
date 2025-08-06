@@ -14,14 +14,14 @@ use crate::RaftTypeConfig;
 use crate::StorageError;
 /// A trait defining the interface for a Raft log subsystem.
 ///
-/// This interface is accessed read-only by replication sub task: `ReplicationCore`.
+/// This interface is accessed read-only by replication sub-task: `ReplicationCore`.
 ///
 /// A log reader must also be able to read the last saved vote by [`RaftLogStorage::save_vote`],
 /// See: [log-stream](`crate::docs::protocol::replication::log_stream`).
 ///
 /// Typically, the log reader implementation as such will be hidden behind an `Arc<T>` and
 /// this interface implemented on the `Arc<T>`. It can be co-implemented with [`RaftLogStorage`]
-/// interface on the same cloneable object, if the underlying state machine is anyway synchronized.
+/// interface on the same cloneable object if the underlying state machine is anyway synchronized.
 ///
 /// [`RaftLogStorage`]: crate::storage::RaftLogStorage
 /// [`RaftLogStorage::save_vote`]: crate::storage::RaftLogStorage::save_vote
@@ -66,7 +66,7 @@ where C: RaftTypeConfig
     /// If the specified range is too large, the implementation may return only the first few log
     /// entries to ensure the result is not excessively large.
     ///
-    /// It must not return empty result if the input range is not empty.
+    /// It must not return an empty result if the input range is not empty.
     ///
     /// The default implementation just returns the full range of log entries.
     #[since(version = "0.10.0")]
@@ -77,7 +77,7 @@ where C: RaftTypeConfig
     /// Retrieves a list of key log ids that mark the beginning of each Leader.
     ///
     /// This method returns log entries that represent leadership transitions in the log history,
-    /// including:
+    /// including
     /// - The first log entry in the storage (regardless of Leader);
     /// - The first log entry from each Leader;
     /// - The last log entry in the storage (regardless of Leader);

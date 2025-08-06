@@ -74,7 +74,7 @@ pub trait RaftTypeConfig:
     /// A term is a logical clock in Raft that is used to detect obsolete information,
     /// such as old leaders. It must be totally ordered and monotonically increasing.
     ///
-    /// Common implementations are provided for standard integer types like `u64`, `i64` etc.
+    /// Common implementations are provided for standard integer types like `u64`, `i64`, etc.
     ///
     /// See: [`RaftTerm`] for the required methods.
     type Term: RaftTerm;
@@ -102,8 +102,8 @@ pub trait RaftTypeConfig:
 
     /// Send the response or error of a client write request([`WriteResult`]).
     ///
-    /// For example, return [`WriteResult`] the to the caller of [`Raft::client_write`], or send to
-    /// some application defined channel.
+    /// For example, return [`WriteResult`] to the caller of [`Raft::client_write`], or send to
+    /// some application-defined channel.
     ///
     /// [`Raft::client_write`]: `crate::raft::Raft::client_write`
     /// [`WriteResult`]: `crate::raft::message::ClientWriteResult`
@@ -113,7 +113,7 @@ pub trait RaftTypeConfig:
 #[allow(dead_code)]
 /// Type alias for types used in `RaftTypeConfig`.
 ///
-/// Alias are enabled by feature flag [`type-alias`].
+/// Aliases are enabled by the feature flag [`type-alias`].
 ///
 /// [`type-alias`]: crate::docs::feature_flags#feature-flag-type-alias
 pub mod alias {

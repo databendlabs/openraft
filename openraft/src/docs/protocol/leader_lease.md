@@ -2,7 +2,7 @@
 
 Leader lease is a mechanism to prevent split-brain scenarios in which multiple leaders are elected in a cluster.
 
-It is implemented by the leader sending heartbeats(append-entries and install-snapshot request
+It is implemented by the leader sending heartbeats (append-entries and install-snapshot request
 can be considered as heartbeat too) to the followers.
 If the followers do not receive any heartbeats within a certain time period `lease`,
 they will start an election to elect a new leader.

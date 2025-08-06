@@ -30,7 +30,7 @@ where
 
     last_log_id: Option<LogIdOf<C>>,
 
-    /// Which nodes have granted the the vote at certain time point.
+    /// Which nodes have granted the vote at certain time point.
     progress: VecProgress<C::NodeId, bool, bool, QS>,
 
     quorum_set: QS,
@@ -98,7 +98,7 @@ where
         granted
     }
 
-    /// Return the node ids that has granted this vote.
+    /// Return the node ids that have granted this vote.
     #[allow(dead_code)]
     pub(crate) fn granters(&self) -> impl Iterator<Item = C::NodeId> + '_ {
         self.progress().iter().filter(|(_, granted)| *granted).map(|(target, _)| target.clone())

@@ -47,9 +47,9 @@ See: [`leader-id`].
 
 In the default mode, the `Vote` defines the server state (leader, candidate, follower or learner).
 A server state has a unique corresponding `vote`, thus `vote` can be used to identify different server
-states, i.e, if the `vote` changes, the server state must have changed.
+states, i.e., if the `vote` changes, the server state must have changed.
 
-Note: follower and learner in Openraft is almost the same. The only difference
+Note: follower and learner in Openraft are almost the same. The only difference
 is a learner does not try to elect itself.
 
 Note: a follower will switch to a learner and vice versa without changing the `vote`, when a

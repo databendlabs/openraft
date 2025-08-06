@@ -1,4 +1,4 @@
-//! Trigger an action to RaftCore by external caller.
+//! Trigger an action to RaftCore by an external caller.
 
 use crate::core::raft_msg::external_command::ExternalCommand;
 use crate::error::AllowNextRevertError;
@@ -16,7 +16,7 @@ use crate::RaftTypeConfig;
 /// raft.trigger().elect().await?;
 /// ```
 ///
-/// Or to fire an heartbeat, building a snapshot, or purging logs:
+/// Or to fire a heartbeat, building a snapshot, or purging logs:
 ///
 /// ```ignore
 /// raft.trigger().heartbeat().await?;
@@ -40,7 +40,7 @@ where C: RaftTypeConfig
 
     /// Trigger election at once and return at once.
     ///
-    /// Returns error when RaftCore has [`Fatal`] error, e.g. shut down or having storage error.
+    /// Returns error when RaftCore has [`Fatal`] error, e.g., shut down or having storage error.
     /// It is not affected by `Raft::enable_elect(false)`.
     pub async fn elect(&self) -> Result<(), Fatal<C>> {
         self.raft_inner.send_external_command(ExternalCommand::Elect).await
@@ -48,7 +48,7 @@ where C: RaftTypeConfig
 
     /// Trigger a heartbeat at once and return at once.
     ///
-    /// Returns error when RaftCore has [`Fatal`] error, e.g. shut down or having storage error.
+    /// Returns error when RaftCore has [`Fatal`] error, e.g., shut down or having storage error.
     /// It is not affected by `Raft::enable_heartbeat(false)`.
     pub async fn heartbeat(&self) -> Result<(), Fatal<C>> {
         self.raft_inner.send_external_command(ExternalCommand::Heartbeat).await
@@ -56,7 +56,7 @@ where C: RaftTypeConfig
 
     /// Trigger to build a snapshot at once and return at once.
     ///
-    /// Returns error when RaftCore has [`Fatal`] error, e.g. shut down or having storage error.
+    /// Returns error when RaftCore has [`Fatal`] error, e.g., shut down or having storage error.
     pub async fn snapshot(&self) -> Result<(), Fatal<C>> {
         self.raft_inner.send_external_command(ExternalCommand::Snapshot).await
     }
@@ -64,14 +64,14 @@ where C: RaftTypeConfig
     /// Initiate the log purge up to and including the given `upto` log index.
     ///
     /// Logs that are not included in a snapshot will **NOT** be purged.
-    /// In such scenario it will delete as many log as possible.
+    /// In such a scenario it will delete as many logs as possible.
     /// The [`max_in_snapshot_log_to_keep`] config is not taken into account
     /// when purging logs.
     ///
-    /// It returns error only when RaftCore has [`Fatal`] error, e.g. shut down or having storage
+    /// It returns an error only when RaftCore has [`Fatal`] error, e.g., shut down or having storage
     /// error.
     ///
-    /// Openraft won't purge logs at once, e.g. it may be delayed by several seconds, because if it
+    /// Openraft won't purge logs at once, e.g., it may be delayed by several seconds, because if it
     /// is a leader and a replication task has been replicating the logs to a follower, the logs
     /// can't be purged until the replication task is finished.
     ///
@@ -94,9 +94,9 @@ where C: RaftTypeConfig
     ///   to a previous state for one time.
     /// - `allow=false`: This method instructs the RaftCore to panic if the target node's log revert
     ///
-    /// This method returns [`Fatal`] error if failed to send the request to RaftCore, e.g. when
+    /// This method returns a [`Fatal`] error if it failed to send the request to RaftCore, e.g., when
     /// RaftCore is shut down.
-    /// Otherwise, it returns a `Ok(Result<_,_>)`, the inner result is:
+    /// Otherwise, it returns an `Ok(Result<_,_>)`, the inner result is:
     /// - `Ok(())` if the request is successfully processed,
     /// - or `Err(AllowNextRevertError)` explaining why the request is rejected.
     ///
@@ -110,7 +110,7 @@ where C: RaftTypeConfig
     /// ### Automatic Replication Reset
     ///
     /// When the [`Config::allow_log_reversion`] is enabled, the Leader automatically
-    /// reset replication if it detects that the target node's log has reverted. This
+    /// resets replication if it detects that the target node's log has reverted. This
     /// feature is primarily useful in testing environments.
     ///
     /// ### Production Considerations

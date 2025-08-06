@@ -34,7 +34,7 @@ where C: RaftTypeConfig
     /// One plus the max log index on the following node that might match the leader log.
     pub(crate) searching_end: u64,
 
-    /// If true, reset the progress, by setting [`Self::matching`] to `None`, when the follower's
+    /// If true, reset the progress by setting [`Self::matching`] to `None` when the follower's
     /// log is found reverted to an early state.
     ///
     /// This allows the target node to clean its data and wait for the leader to replicate all data
@@ -162,7 +162,7 @@ where C: RaftTypeConfig
         Ok(&self.inflight)
     }
 
-    /// Return the index range(`[start,end]`) of the first log in the next AppendEntries.
+    /// Return the index range (`[start,end]`) of the first log in the next AppendEntries.
     ///
     /// The returned range is left close and right close.
     #[allow(dead_code)]
@@ -218,7 +218,7 @@ where C: RaftTypeConfig
                 validit::less_equal!(log_id_range.prev.next_index(), self.searching_end);
             }
             Inflight::Snapshot { last_log_id, .. } => {
-                // There is no need to send a snapshot smaller than last matching.
+                // There is no need to send a snapshot smaller than the last matching.
                 validit::less!(self.matching(), last_log_id.as_ref());
             }
         }

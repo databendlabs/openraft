@@ -27,7 +27,7 @@ mod transfer_leader_test;
 ///
 /// - Append new logs;
 /// - Change membership;
-/// - etc
+/// - etc.
 pub(crate) struct LeaderHandler<'x, C>
 where C: RaftTypeConfig
 {
@@ -87,7 +87,7 @@ where C: RaftTypeConfig
 
         // Since this entry, the condition to commit has been changed.
         // But we only need to commit in the new membership config.
-        // Because any quorum in the new one intersect with one in the previous membership config.
+        // Because any quorum in the new one intersects with one in the previous membership config.
         if let Some((log_id, m)) = membership_entry {
             rh.append_membership(&log_id, &m);
         }
@@ -119,7 +119,7 @@ where C: RaftTypeConfig
         std::cmp::max(self.leader.noop_log_id.clone(), committed)
     }
 
-    /// Disable proposing new logs for this Leader, and transfer Leader to another node
+    /// Disable proposing new logs for this Leader and transfer Leader to another node
     pub(crate) fn transfer_leader(&mut self, to: C::NodeId) {
         self.leader.mark_transfer(to.clone());
         self.state.vote.disable_lease();

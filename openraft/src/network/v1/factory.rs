@@ -23,7 +23,7 @@ where C: RaftTypeConfig
     /// Create a new network instance sending RPCs to the target node.
     ///
     /// This function should **not** create a connection but rather a client that will connect when
-    /// required. Therefore there is chance it will build a client that is unable to send out
+    /// required. Therefore, there is a chance it will build a client that is unable to send out
     /// anything, e.g., in case the Node network address is configured incorrectly. But this method
     /// does not return an error because openraft can only ignore it.
     ///

@@ -132,9 +132,9 @@ async fn get_read_log_id() -> Result<()> {
 
     n1.wait(timeout()).state(ServerState::Leader, "node 1 becomes leader").await?;
 
-    tracing::info!(log_index = log_index, "--- node 1 appends blank log but can not commit");
+    tracing::info!(log_index = log_index, "--- node 1 appends blank log but cannot commit");
     {
-        let res = n1.wait(timeout()).applied_index_at_least(Some(log_index + 1), "blank log can not commit").await;
+        let res = n1.wait(timeout()).applied_index_at_least(Some(log_index + 1), "blank log cannot commit").await;
         assert!(res.is_err());
     }
 

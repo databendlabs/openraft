@@ -10,7 +10,7 @@ Openraft provides the following mechanisms for managing member node lifecycles:
 
 ### [`Raft::add_learner(node_id, node, blocking)`][`Raft::add_learner()`]
 
-This method adds a learner to the cluster,
+This method adds a learner to the cluster
 and immediately starts synchronizing logs from the leader.
 
 - A **Learner** does not vote for leadership.
@@ -33,7 +33,7 @@ otherwise, it is converted to a `Learner` if `retain=true`.
 Given the original membership as `{"members":{1,2,3}, "learners":{}}`,
 call `change_membership` with `members={3,4,5}`, then:
 
-- If `retain=true`,  the new membership is `{"members":{3,4,5}, "learners":{1,2}}`.
+- If `retain=true`, the new membership is `{"members":{3,4,5}, "learners":{1,2}}`.
 - If `retain=false`, the new membership is `{"members":{3,4,5}, "learners":{}}`.
 
 

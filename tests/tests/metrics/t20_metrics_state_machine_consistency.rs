@@ -15,7 +15,7 @@ use crate::fixtures::RaftRouter;
 ///
 /// - brings 2 nodes online: one leader and one learner.
 /// - write one log to the leader.
-/// - asserts that when metrics.last_applied is upto date, the state machine should be upto date
+/// - asserts that when metrics.last_applied is up to date, the state machine should be up to date
 ///   too.
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]

@@ -25,7 +25,7 @@ where C: RaftTypeConfig
 impl<C> SnapshotHandler<'_, '_, C>
 where C: RaftTypeConfig
 {
-    /// Trigger building snapshot if there is no pending building job.
+    /// Trigger building a snapshot if there is no pending building job.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn trigger_snapshot(&mut self) -> bool {
         tracing::debug!("{}", func_name!());

@@ -72,7 +72,7 @@ where C: RaftTypeConfig
 
         let (tx, rx) = oneshot_channel::<C>();
 
-        // res is error if membership can not be changed.
+        // res is error if membership cannot be changed.
         // If no error, it will enter a joint state
         let client_write_result = self
             .inner

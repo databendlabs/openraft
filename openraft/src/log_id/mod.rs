@@ -21,7 +21,7 @@ use crate::RaftTypeConfig;
 
 /// The identity of a raft log.
 ///
-/// The log id serves as unique identifier for a log entry across the system. It is composed of two
+/// The log id serves as a unique identifier for a log entry across the system. It is composed of two
 /// parts: a leader id, which refers to the leader that proposed this log, and an integer index.
 #[derive(Debug, Default, Clone, PartialOrd, Ord, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]

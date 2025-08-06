@@ -5,7 +5,7 @@ use crate::RaftTypeConfig;
 
 /// Either an oneshot responder or a user-defined responder.
 ///
-/// It is used in RaftCore to enqueue responder to client.
+/// It is used in RaftCore to enqueue responder to the client.
 pub(crate) enum OneshotOrUserDefined<C>
 where C: RaftTypeConfig
 {

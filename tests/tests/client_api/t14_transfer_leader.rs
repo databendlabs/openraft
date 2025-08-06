@@ -49,7 +49,7 @@ async fn transfer_leader() -> anyhow::Result<()> {
         n0.wait(timeout()).state(ServerState::Follower, "node-0 become follower").await?;
     }
 
-    tracing::info!("--- can NOT transfer Leader from 2 to 0 with an old vote");
+    tracing::info!("--- cannot transfer Leader from 2 to 0 with an old vote");
     {
         let req = TransferLeaderRequest::new(leader_vote, 0, last_log_id);
 
@@ -58,7 +58,7 @@ async fn transfer_leader() -> anyhow::Result<()> {
 
         let n0_res = n0
             .wait(Some(Duration::from_millis(1_000)))
-            .state(ServerState::Leader, "node-0 can not become leader with old leader vote")
+            .state(ServerState::Leader, "node-0 cannot become leader with old leader vote")
             .await;
 
         assert!(n0_res.is_err());

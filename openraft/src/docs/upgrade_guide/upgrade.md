@@ -8,7 +8,7 @@ A commit message starting with these keywords needs attention:
   A data migration tool or a compatible layer is required for the upgrade. See below.
 
 - Change: introduces breaking changes. Your application needs adjustment to pass compilation.
-  If storage related data structure changed too, a data migration tool is required for the upgrade. See below.
+  If storage-related data structures changed too, a data migration tool is required for the upgrade. See below.
 
 - Feature: introduces non-breaking new features. Your application should compile without modification.
 
@@ -45,7 +45,7 @@ A commit message starting with these keywords needs attention:
 
 [Change log v0.6.6](https://github.com/databendlabs/openraft/blob/release-0.6/change-log.md#v066)
 
-just modify application code to pass compile.
+just modify application code to pass compilation.
 
 - API changes: struct fields changed in `StorageIOError` and `Violation`.
 - Data changes: none.

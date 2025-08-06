@@ -2,7 +2,7 @@ use crate::quorum::AsJoint;
 use crate::quorum::Joint;
 use crate::quorum::QuorumSet;
 
-/// Use a vec of some impl of `QuorumSet` as a joint quorum set.
+/// Use a vec of some implementation of `QuorumSet` as a joint quorum set.
 impl<'d, ID, QS> AsJoint<'d, ID, QS, &'d [QS]> for Vec<QS>
 where
     ID: 'static,

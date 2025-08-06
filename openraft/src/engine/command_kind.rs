@@ -1,6 +1,6 @@
 /// Command kind is used to categorize commands.
 ///
-/// Commands of the different kinds can be paralleled.
+/// Commands of different kinds can be parallelized.
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy)]
 #[derive(PartialEq, Eq)]

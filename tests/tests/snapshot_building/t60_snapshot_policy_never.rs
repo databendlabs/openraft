@@ -65,7 +65,7 @@ async fn snapshot_policy_never() -> Result<()> {
     tracing::info!(log_index, "--- log_index: {}", log_index);
     router
         .wait(&0, timeout())
-        .applied_index(Some(log_index), format_args!("write log upto {}", log_index))
+        .applied_index(Some(log_index), format_args!("write log up to {}", log_index))
         .await?;
 
     let wait_snapshot_res = router

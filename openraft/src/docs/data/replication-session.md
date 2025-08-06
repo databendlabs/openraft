@@ -42,7 +42,7 @@ pub struct ReplicationSessionId {
 The structure contains two core elements:
 
 1. **`leader_vote`**
-   This field identifies the Leader that owns this replication session.When a
+   This field identifies the Leader that owns this replication session. When a
    new Leader is elected, the previous replication session becomes invalid,
    preventing state mixing between different Leaders.
 

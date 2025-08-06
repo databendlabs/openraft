@@ -20,7 +20,7 @@ use crate::base::OptionalFeatures;
 ///
 /// Unlike [`RaftLeaderId`], this type implements `Ord` because committed leader IDs
 /// have a total ordering as they must be agreed upon by a quorum, and two incomparable
-/// [`RaftLeaderId`] can not both be committed by two quorums, because only a **greater**
+/// [`RaftLeaderId`] cannot both be committed by two quorums, because only a **greater**
 /// [`RaftLeaderId`] can override an existing value.
 ///
 /// A [`RaftCommittedLeaderId`] may contain less information than the corresponding

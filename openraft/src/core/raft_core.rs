@@ -1697,7 +1697,7 @@ where
                 // Mark this IO request as submitted,
                 // other commands relying on it can then be processed.
                 // For example,
-                // `Replicate` command can not run until this IO request is submitted(no need to be flushed),
+                // `Replicate` command cannot run until this IO request is submitted(no need to be flushed),
                 // because it needs to read the log entry from the log store.
                 //
                 // The `submit` state must be updated before calling `append()`,
@@ -1812,7 +1812,7 @@ where
 
                 // Just forward a state machine command to the worker.
                 self.sm_handle.send(command).map_err(|_e| {
-                    StorageError::write_state_machine(AnyError::error("can not send to sm::Worker".to_string()))
+                    StorageError::write_state_machine(AnyError::error("cannot send to sm::Worker".to_string()))
                 })?;
             }
             Command::Respond { resp: send, .. } => {

@@ -103,7 +103,7 @@ where
 
         let mem_state = self.get_membership().await?;
 
-        // Clean up dirty state: snapshot is installed but logs are not cleaned.
+        // Clean up dirty state: snapshot is installed, but logs are not cleaned.
         if last_log_id < last_applied {
             tracing::info!(
                 "Clean the hole between last_log_id({}) and last_applied({}) by purging logs to {}",
@@ -175,7 +175,7 @@ where
         })
     }
 
-    /// Read log entries from [`RaftLogReader`] in chunks, and apply them to the state machine.
+    /// Read log entries from [`RaftLogReader`] in chunks and apply them to the state machine.
     pub(crate) async fn reapply_committed(&mut self, mut start: u64, end: u64) -> Result<(), StorageError<C>> {
         let chunk_size = 64;
 
@@ -226,10 +226,10 @@ where
         Ok(())
     }
 
-    /// Returns the last 2 membership config found in log or state machine.
+    /// Returns the last two membership configs found in log or state machine.
     ///
-    /// A raft node needs to store at most 2 membership config log:
-    /// - The first one must be committed, because raft allows to propose new membership only when
+    /// A raft node needs to store at most 2 membership config logs:
+    /// - The first one must be committed, because raft allows proposing new membership only when
     ///   the previous one is committed.
     /// - The second may be committed or not.
     ///
@@ -239,9 +239,9 @@ where
     /// a follower needs to revert the effective membership to a previous one.
     ///
     /// And because (3) there is at most one outstanding, uncommitted membership log,
-    /// a follower only need to revert at most one membership log.
+    /// a follower only needs to revert at most one membership log.
     ///
-    /// Thus a raft node will only need to store at most two recent membership logs.
+    /// Thus, a raft node will only need to store at most two recent membership logs.
     pub async fn get_membership(&mut self) -> Result<MembershipState<C>, StorageError<C>> {
         let (last_applied, sm_mem) = self.state_machine.applied_state().await?;
 
@@ -272,7 +272,7 @@ where
 
     /// Get the last 2 membership configs found in the log.
     ///
-    /// This method returns at most membership logs with greatest log index which is
+    /// This method returns at most membership logs with the greatest log index which is
     /// `>=since_index`. If no such membership log is found, it returns `None`, e.g., when logs
     /// are cleaned after being applied.
     #[tracing::instrument(level = "trace", skip_all)]

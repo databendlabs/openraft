@@ -44,7 +44,7 @@ where
     /// The application state machine implementation.
     state_machine: SM,
 
-    /// Read logs from the [`RaftLogStorage`] implementation to apply them to state machine.
+    /// Read logs from the [`RaftLogStorage`] implementation to apply them to the state machine.
     log_reader: LR,
 
     /// Read command from RaftCore to execute.
@@ -248,7 +248,7 @@ where
     /// Build a snapshot from the state machine.
     ///
     /// Building snapshot is a read-only operation, so it can be run in another task in parallel.
-    /// This parallelization depends on the [`RaftSnapshotBuilder`] implementation returned  by
+    /// This parallelization depends on the [`RaftSnapshotBuilder`] implementation returned by
     /// [`get_snapshot_builder()`](`RaftStateMachine::get_snapshot_builder()`): The builder must:
     /// - hold a consistent view of the state machine that won't be affected by further writes such
     ///   as applying a log entry,

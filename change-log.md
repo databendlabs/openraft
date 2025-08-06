@@ -821,7 +821,7 @@ Detail:
     Most defensive checks are replaced with `debug_assert!` embedded in Engine.
     `StoreExt` as a `RaftStorage` wrapper that implements defensive checks
     are no longer needed. `StoreExt` are mainly used for testing and it is
-    very slow so that can not be used in production.
+    very slow so that cannot be used in production.
 
     - Remove structs: `StoreExt`, `DefensiveStoreBuilder`
     - Remove traits: `Wrapper`, `DefensiveCheckBase`, `DefensiveCheck`,
@@ -975,7 +975,7 @@ Detail:
     - Although `(term, log_index)` serves as a pseudo time in Raft, measuring whether a node has caught up with the leader and is capable of becoming a new leader, leadership is not solely determined by this pseudo time.
       Wall clock time is also taken into account.
 
-      There may be a case where the pseudo time is not upto date but the clock time is, and the node should not become the leader.
+      There may be a case where the pseudo time is not up to date but the clock time is, and the node should not become the leader.
       For example, in a cluster of three nodes, if the leader (node-1) is busy sending a snapshot to node-2(it has not yet replicated the latest logs to a quorum, but node-2 received message from the leader(node-1), thus it knew there is an active leader), node-3 should not seize leadership from node-1.
       This is why there needs to be two types of time, pseudo time `(term, log_index)` and wall clock time, to protect leadership.
 
@@ -1316,7 +1316,7 @@ Detail:
 -   Changed: [01a16d08](https://github.com/databendlabs/openraft/commit/01a16d0814f52ca05dbd2d7876d759bb3d696b33) remove `tx` from `spawn_replication_stream()`; by 张炎泼; 2022-07-01
 
     Replication should not be responsible invoke the callback when
-    replication become upto date. It makes the logic dirty.
+    replication become up to date. It makes the logic dirty.
     Such a job can be done by watching the metrics change.
 
     - Change: API: AddLearnerResponse has a new field `membership_log_id`
@@ -1561,7 +1561,7 @@ Detail:
 
     Because of the above change, And `AddLearnerError` will not include a
     NetworkError any more, because when adding a learner, the connectivity
-    can not be effectively detected.
+    cannot be effectively detected.
 
     Upgrade tip:
 
@@ -1797,7 +1797,7 @@ Detail:
 
     Upgrade tip:
 
-    If you manually serialize `Vote`, i.e. without using
+    If you manually serialize `Vote`, i.e., without using
     `serde`, the serialization part should be rewritten.
 
     Otherwise, nothing needs to be done.
@@ -1815,7 +1815,7 @@ Detail:
 -   Changed: [c6fe29d4](https://github.com/databendlabs/openraft/commit/c6fe29d4a53b47f6c43d83a24e1610788a4c0166) change-membership does not return error when replication lags; by 张炎泼; 2022-10-22
 
     If `blocking` is `true`, `Raft::change_membership(..., blocking)` will
-    block until repliication to new nodes become upto date.
+    block until repliication to new nodes become up to date.
     But it won't return an error when proposing change-membership log.
 
     - Change: remove two errors: `LearnerIsLagging` and `LearnerNotFound`.
@@ -2128,7 +2128,7 @@ Detail:
     Why:
 
     anyhow::Error is not enough to support the flow control in RaftCore.
-    It is typeless thus RaftCore can not decide what next to do
+    It is typeless thus RaftCore cannot decide what next to do
     depending on the returned error.
 
     Inside raft, anyhow::Error should never be used, although it could be used as
@@ -2385,7 +2385,7 @@ Detail:
 
     Another issue with this solution is that:
 
-    Because we can not just delete `log[prev_log_id.index..]`, the commit index:
+    Because we cannot just delete `log[prev_log_id.index..]`, the commit index:
     - must be update only after append-entries,
     - and must point to a log entry that is consistent to leader.
 
@@ -2808,7 +2808,7 @@ Detail:
     A leader adds all follower replication states to a hashset `nodes`, when
     the leader is established.
     But the leader does not do it when membership changed.
-    Thus when a follower is removed, the leader can not stop replication to
+    Thus when a follower is removed, the leader cannot stop replication to
     it because the follower is not in `nodes`.
 
     The solution is to move replication state from `non_voters` to `nodes`.

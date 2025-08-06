@@ -235,7 +235,7 @@ def build_ver_changelog(new_ver, commit="HEAD", since=None):
     Build change log for ``new_ver`` at ``commit``.
     It will find out all commit since the last tag that is less than ``new_ver``
 
-    If ``since`` is specified, build change log since ``since`` upto ``commit``.
+    If ``since`` is specified, build change log since ``since`` up to ``commit``.
     '''
 
     fn  = version_chaagelog_fn(new_ver)

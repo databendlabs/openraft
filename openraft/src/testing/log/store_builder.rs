@@ -11,9 +11,9 @@ use crate::StorageError;
 /// implementation,
 /// `LS` is the type that implements `RaftLogStorage`,
 /// `SM` is the type that implements `RaftStateMachine`,
-/// and `G` is a guard type that cleanup resource when being dropped.
+/// and `G` is a guard type that cleans up resources when being dropped.
 ///
-/// By default `G` is a trivial guard `()`. To test a store that is backed by a folder on disk, `G`
+/// By default, `G` is a trivial guard `()`. To test a store that is backed by a folder on disk, `G`
 /// could be the dropper of the temp-dir that stores data.
 #[add_async_trait]
 pub trait StoreBuilder<C, LS, SM, G = ()>: Send + Sync

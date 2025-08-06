@@ -14,7 +14,7 @@ This method will:
 
 - Transition to the `Candidate` state and initiate voting to become the leader.
 
-- The leader will commit an blank log to commit all previous logs.
+- The leader will commit a blank log to commit all previous logs.
 
 ### Errors and Failures
 

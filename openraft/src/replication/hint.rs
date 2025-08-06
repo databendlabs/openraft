@@ -1,4 +1,4 @@
-//! Defines config hint for replication RPC
+//! Defines config hints for replication RPC
 
 /// Temporary config hint for replication
 #[derive(Clone, Debug, Default)]

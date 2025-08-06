@@ -26,7 +26,7 @@ where C: RaftTypeConfig
 
     pub(crate) config: Arc<Config>,
 
-    /// Inform the heartbeat task to broadcast heartbeat message.
+    /// Inform the heartbeat task to broadcast a heartbeat message.
     ///
     /// A Leader will periodically update this value to trigger sending heartbeat messages.
     pub(crate) tx: WatchSenderOf<C, Option<HeartbeatEvent<C>>>,

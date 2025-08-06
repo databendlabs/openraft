@@ -44,7 +44,7 @@ where C: RaftTypeConfig
     /// HardState related error.
     Vote,
 
-    /// Error that is happened when operating a series of log entries
+    /// Error that happened when operating a series of log entries
     Logs,
 
     /// Error about a single log entry
@@ -56,10 +56,10 @@ where C: RaftTypeConfig
     /// Error happened when applying a log entry
     Apply(LogIdOf<C>),
 
-    /// Error happened when operating state machine.
+    /// Error that happened when operating state machine.
     StateMachine,
 
-    /// Error happened when operating snapshot.
+    /// Error that happened when operating snapshots.
     Snapshot(Option<SnapshotSignature<C>>),
 
     None,
@@ -104,7 +104,7 @@ where C: RaftTypeConfig
 /// Error that occurs when operating the store.
 ///
 /// It indicates a data crash.
-/// An application returning this error will shutdown the Openraft node immediately to prevent
+/// An application returning this error will shut down the Openraft node immediately to prevent
 /// further damage.
 #[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]

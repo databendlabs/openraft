@@ -1,4 +1,4 @@
-//! This mod is a upgrade helper that provides functionalities for a newer openraft application to
+//! This mod is an upgrade helper that provides functionalities for a newer openraft application to
 //! read data written by an older application.
 
 mod upgrade;

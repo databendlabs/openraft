@@ -68,7 +68,7 @@ can maintain consistency across all nodes.
      -----0--1--2---> log index
 ```
 
-## Caveat: Deleting all entries after `prev_log_id` may result in loss of committed logs
+## Warning: Deleting all entries after `prev_log_id` may result in loss of committed logs
 
 One mistake is that if [`prev_log_id`] is found, **delete all entries after `prev_log_id`** then append logs.
 Such a scenario can cause committed data loss because deleting and appending are not executed atomically:
@@ -108,7 +108,7 @@ committed logs are not lost during log replication.
 
 [`prev_log_id`]: `crate::raft::AppendEntriesRequest::prev_log_id`
 
-## Caveat: commit-index must not advance beyond the last known consistent log
+## Warning: commit-index must not advance beyond the last known consistent log
 
 The commit index must be updated only after append-entries and must point to a
 log entry that is **consistent** with the **current** leader.
@@ -133,7 +133,7 @@ When a Leader is established, it does not know which log entries are present on
 Followers and Learners. Therefore, it must determine the last matching log ID on
 each Follower before sending append-entries.
 
-This process utilizes a binary search:
+This process uses a binary search:
 
 The Leader uses a span `[matching_log_id, first_conflict_index]` to search:
 - The left bound is the last known matching log ID.

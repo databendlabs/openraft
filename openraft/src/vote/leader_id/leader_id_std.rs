@@ -10,7 +10,7 @@ use crate::vote::LeaderIdCompare;
 use crate::vote::RaftLeaderId;
 use crate::RaftTypeConfig;
 
-/// ID of a `leader`, enforcing single leader per term.
+/// ID of a `leader`, enforcing a single leader per term.
 ///
 /// It includes the `term` and the `node_id`.
 ///
@@ -70,11 +70,11 @@ where C: RaftTypeConfig
 
 /// The unique identifier of a leader that is already granted by a quorum in phase-1(voting).
 ///
-/// [`CommittedLeaderId`] contain less information than [`LeaderId`], because it implies the
+/// [`CommittedLeaderId`] contains less information than [`LeaderId`], because it implies the
 /// constraint that **a quorum has granted it**.
 ///
 /// For a partial order `LeaderId`, we know that all the committed leader-id must be a total order
-/// set. Therefor once it is granted by a quorum, it only keeps the information that makes
+/// set. Therefore, once it is granted by a quorum, it only keeps the information that makes
 /// leader-ids a correct total order set, e.g., in standard raft, `voted_for: Option<node_id>` can
 /// be removed from `(term, voted_for)` once it is granted. This is why standard Raft stores just a
 /// `term` in log entry to identify the Leader proposing the log entry.

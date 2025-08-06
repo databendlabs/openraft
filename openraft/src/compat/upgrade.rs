@@ -1,7 +1,7 @@
 /// Upgrade Self to type `To`.
 ///
 /// This trait is used to define types that can be directly upgraded from older versions of openraft
-/// to newer versions. For example, `LogId` can be upgrade: in openraft 0.7, `LogId` is `(term,
+/// to newer versions. For example, `LogId` can be upgraded: in openraft 0.7, `LogId` is `(term,
 /// index)`, which is upgraded to `(CommittedLeaderId, index)` in openraft 0.8.
 pub trait Upgrade<To> {
     /// Upgrades the current instance to type To.
@@ -13,7 +13,7 @@ pub trait Upgrade<To> {
     }
 }
 
-/// `Compat` is a serialization compatible type that can be deserialized from both an older type
+/// `Compat` is a serialization-compatible type that can be deserialized from both an older type
 /// and a newer type. It serves as an intermediate type container for newer programs to read old
 /// data.
 #[derive(Debug)]

@@ -1256,7 +1256,7 @@ where
             );
         }
 
-        // TODO: figure out how to test applying normal entry. `C::D` can not be built by Openraft
+        // TODO: figure out how to test applying normal entry. `C::D` cannot be built by Openraft
         // tracing::info!("--- apply normal entry");
         // {
         //     let entry = {

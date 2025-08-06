@@ -51,9 +51,9 @@ where Self: Sized + OptionalFeatures + Eq + PartialEq + Debug + Clone + 'static
 
 impl<T> Node for T where T: Sized + OptionalFeatures + Eq + PartialEq + Debug + Clone + 'static {}
 
-/// EmptyNode is an implementation of trait [`Node`] that contains nothing.
+/// EmptyNode is an implementation of the [`Node`] trait that contains nothing.
 ///
-/// Such a node store nothing but is just a place holder.
+/// Such a node stores nothing but is just a placeholder.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub struct EmptyNode {}
@@ -71,7 +71,7 @@ impl Display for EmptyNode {
     }
 }
 
-/// An implementation of trait [`Node`] that contains minimal node information.
+/// An implementation of the [`Node`] trait that contains minimal node information.
 ///
 /// The most common usage is to store the connecting address of a node.
 /// So that an application does not need an additional store to support its
@@ -82,9 +82,9 @@ impl Display for EmptyNode {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub struct BasicNode {
-    /// User defined string that represent the endpoint of the target node.
+    /// A user-defined string that represents the endpoint of the target node.
     ///
-    /// It is used by [`RaftNetwork`](crate::RaftNetwork) for connecting to target node.
+    /// It is used by [`RaftNetwork`](crate::RaftNetwork) for connecting to the target node.
     pub addr: String,
 }
 

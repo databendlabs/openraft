@@ -11,8 +11,8 @@ use crate::fixtures::log_id;
 use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
 
-/// Leader logs should be deleted upto snapshot.last_log_id-max_in_snapshot_log_to_keep after
-/// building snapshot; Follower/learner should delete upto snapshot.last_log_id after installing
+/// Leader logs should be deleted up to snapshot.last_log_id-max_in_snapshot_log_to_keep after
+/// building snapshot; Follower/learner should delete up to snapshot.last_log_id after installing
 /// snapshot.
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]

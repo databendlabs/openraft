@@ -16,7 +16,7 @@ where
     LogIdOf::<C>::new(C::LeaderId::new_committed(term.into(), node_id), index)
 }
 
-/// Create a blank log entry for test.
+/// Create a blank log entry for tests.
 pub fn blank_ent<C>(term: u64, node_id: C::NodeId, index: u64) -> crate::Entry<C>
 where
     C: RaftTypeConfig,

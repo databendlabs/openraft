@@ -72,7 +72,7 @@ pub trait AsyncRuntime: Debug + Default + PartialEq + Eq + OptionalSend + Option
     /// to await the outcome of a [`Future`].
     type Timeout<R, T: Future<Output = R> + OptionalSend>: Future<Output = Result<R, Self::TimeoutError>> + OptionalSend;
 
-    /// Type of a thread-local random number generator.
+    /// Type of thread-local random number generator.
     type ThreadLocalRng: rand::Rng;
 
     /// Spawn a new task.

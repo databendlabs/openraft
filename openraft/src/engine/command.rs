@@ -37,9 +37,9 @@ where C: RaftTypeConfig
     /// the second append does not need to submit to the log store,
     /// but it needs to update the IO progress from `Leader-1,Log-2` to `Leader-2,Log-2`.
     UpdateIOProgress {
-        /// This command is not submit to [`RaftLogStorage`]
-        /// thus it can not be queued in the log store.
-        /// Therefore we need to specify the condition to wait for to run it.
+        /// This command is not submitted to [`RaftLogStorage`],
+        /// thus it cannot be queued in the log store.
+        /// Therefore, we need to specify the condition to wait for to run it.
         /// Usually the condition is when the previous log is flushed to disk.
         ///
         /// [`RaftLogStorage`]: crate::storage::RaftLogStorage
@@ -51,10 +51,10 @@ where C: RaftTypeConfig
     AppendInputEntries {
         /// The vote of the leader that submits the entries to write.
         ///
-        /// The leader could be a local leader that appends entries to the local log store,
+        /// The leader could be a local leader that appends entries to the local log store
         /// or a remote leader that replicates entries to this follower.
         ///
-        /// The leader id is used to generate a monotonic increasing IO id, such as: [`LogIOId`].
+        /// The leader id is used to generate a monotonic increasing IO id, such as [`LogIOId`].
         /// Where [`LogIOId`] is `(leader_id, log_id)`.
         ///
         /// [`LogIOId`]: crate::raft_state::io_state::io_id::IOId
@@ -74,18 +74,18 @@ where C: RaftTypeConfig
 
     /// Save the committed log id to [`RaftLogStorage`].
     ///
-    /// Upon startup, the saved committed log ids will be re-applied to state machine to restore the
+    /// Upon startup, the saved committed log ids will be re-applied to the state machine to restore the
     /// latest state.
     ///
     /// [`RaftLogStorage`]: crate::storage::RaftLogStorage
     SaveCommitted { committed: LogIdOf<C> },
 
-    /// Commit log entries that are already persisted in the store, upto `upto`, inclusive.
+    /// Commit log entries that are already persisted in the store, up to `upto`, inclusive.
     ///
     /// To `commit` logs, [`RaftLogStorage::save_committed()`] is called. And then committed logs
     /// will be applied to the state machine by calling [`RaftStateMachine::apply()`].
     ///
-    /// And if it is leader, send applied result to the client that proposed the entry.
+    /// And if it is a leader, send the applied result to the client that proposed the entry.
     ///
     /// [`RaftLogStorage::save_committed()`]: crate::storage::RaftLogStorage::save_committed
     /// [`RaftStateMachine::apply()`]: crate::storage::RaftStateMachine::apply
@@ -119,11 +119,11 @@ where C: RaftTypeConfig
     /// Purge log from the beginning to `upto`, inclusive.
     PurgeLog { upto: LogIdOf<C> },
 
-    /// Delete logs that conflict with the leader from a follower/learner since log id `since`,
+    /// Delete logs that have conflicted with the leader from a follower/learner since log id `since`,
     /// inclusive.
     TruncateLog { since: LogIdOf<C> },
 
-    /// A command send to state machine worker [`sm::worker::Worker`].
+    /// A command sent to state machine worker [`sm::worker::Worker`].
     ///
     /// The runtime(`RaftCore`) will just forward this command to [`sm::worker::Worker`].
     /// The response will be sent back in a `RaftMsg::StateMachine` message to `RaftCore`.
@@ -287,10 +287,10 @@ where C: RaftTypeConfig
     /// Wait until the log is flushed to the disk.
     ///
     /// In raft, a log io can be uniquely identified by `(leader_id, log_id)`, not `log_id`.
-    /// A same log id can be written multiple times by different leaders.
+    /// The same log id can be written multiple times by different leaders.
     IOFlushed { io_id: IOId<C> },
 
-    /// A log without specific leader is flushed to disk.
+    /// A log without a specific leader is flushed to disk.
     ///
     /// This is only used by [`Raft::initialize()`], because when initializing there is no leader.
     ///
@@ -301,7 +301,7 @@ where C: RaftTypeConfig
     #[allow(dead_code)]
     Applied { log_id: Option<LogIdOf<C>> },
 
-    /// Wait until snapshot is built and includes the log id.
+    /// Wait until the snapshot is built and includes the log id.
     Snapshot { log_id: Option<LogIdOf<C>> },
 }
 

@@ -34,7 +34,7 @@ depending on the `read_policy` [`ReadPolicy`].  The `read_policy` can be one of:
 - `last_applied_log_id` is the last applied log id.
 
 The caller then wait for `last_applied_log_id` to catch up `read_log_id`,
-by calling [`Linearizer::try_await_ready()`], or [`Linearizer::await_ready()`] for simplicity without timeout,
+by calling [`Linearizer::try_await_ready()`], or [`Linearizer::await_ready()`] for simplicity without a timeout,
 and at last, proceed with the state machine read.
 
 The above steps are encapsulated in the [`ensure_linearizable(read_policy)`][`ensure_linearizable()`] method.
@@ -61,7 +61,7 @@ The above snippet shows how to perform a linearizable read on the leader.
 
 ### Follower Read
 
-It is also possible to perform linearizable reads on a follower, so that the read load is distributed across the cluster.
+It is also possible to perform linearizable reads on a follower so that the read load is distributed across the cluster.
 In this scenario:
 
 1. The follower obtains the `read_log_id` from the leader via application-defined RPC
@@ -77,7 +77,7 @@ A basic example of a follower read:
 let leader_id = my_raft.current_leader().await?.unwrap();
 let linearizer = my_app_rpc.get_read_linearizer(leader_id, ReadPolicy::ReadIndex).await?;
 
-// Block waiting local state machine to apply upto to the `read_log_id`
+// Block waiting local state machine to apply up to to the `read_log_id`
 let linearized_state = linearizer.try_await_ready(&my_raft, None).await?.unwrap();
 
 // Following read from state machine is linearized across the cluster
@@ -95,7 +95,7 @@ Since the leader has all committed entries up to its initial blank log entry,
 we have: `read_log_id >= A`.
 
 When the `last_applied_log_id` meets or exceeds `read_log_id`,
-the state machine contains all state upto `A`. Therefore, a linearizable read is assured
+the state machine contains all state up to `A`. Therefore, a linearizable read is assured
 when `last_applied_log_id >= read_log_id`.
 
 

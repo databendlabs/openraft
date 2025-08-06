@@ -13,7 +13,7 @@ one has been committed. Therefore, the Raft Engine only needs to maintain two
 membership configurations at most: the last one that has been committed and the
 effective one.
 
-The second to last membership log has to be committed.
+The second-to-last membership log has to be committed.
 
 > An alternative solution is to make the membership config log effective only
 > after it has been committed. However, this does not simplify the problem, as

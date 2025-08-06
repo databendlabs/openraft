@@ -10,6 +10,6 @@ pub struct LogState<C: RaftTypeConfig> {
     pub last_purged_log_id: Option<LogIdOf<C>>,
 
     /// The log id of the last present entry if there are any entries.
-    /// Otherwise the same value as `last_purged_log_id`.
+    /// Otherwise, the same value as `last_purged_log_id`.
     pub last_log_id: Option<LogIdOf<C>>,
 }

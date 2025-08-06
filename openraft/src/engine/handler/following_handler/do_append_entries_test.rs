@@ -99,7 +99,7 @@ fn test_follower_do_append_entries_no_membership_entries() -> anyhow::Result<()>
 fn test_follower_do_append_entries_one_membership_entry() -> anyhow::Result<()> {
     // - The membership entry in the input becomes effective membership. The previous effective becomes
     //   committed.
-    // - Follower become Learner, since it is not in the new effective membership.
+    // - Follower becomes Learner, since it is not in the new effective membership.
     let mut eng = eng();
     eng.config.id = 2; // make it a member, the become learner
     eng.state.vote = Leased::without_last_update(Vote::new_committed(1, 1));
@@ -153,7 +153,7 @@ fn test_follower_do_append_entries_one_membership_entry() -> anyhow::Result<()> 
 #[test]
 fn test_follower_do_append_entries_three_membership_entries() -> anyhow::Result<()> {
     // - The last 2 of the 3 membership entries take effect.
-    // - A learner become follower.
+    // - A learner becomes follower.
 
     let mut eng = eng();
     eng.config.id = 5; // make it a learner, then become follower

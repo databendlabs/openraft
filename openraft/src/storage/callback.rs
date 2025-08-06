@@ -23,7 +23,7 @@ pub type LogFlushed<C> = IOFlushed<C>;
 pub struct IOFlushed<C>
 where C: RaftTypeConfig
 {
-    /// The notify to send when the IO complete.
+    /// The notification to send when the IO complete.
     notification: Notification<C>,
 
     tx: MpscUnboundedWeakSenderOf<C, Notification<C>>,
@@ -97,7 +97,7 @@ where C: RaftTypeConfig
     }
 }
 
-/// A oneshot callback for completion of applying logs to state machine.
+/// A oneshot callback for completion of applying logs to the state machine.
 pub struct LogApplied<C>
 where C: RaftTypeConfig
 {
@@ -123,12 +123,12 @@ where C: RaftTypeConfig
     pub fn completed(self, result: Result<Vec<C::R>, StorageError<C>>) {
         let res = match result {
             Ok(x) => {
-                tracing::debug!("LogApplied upto {}", self.last_log_id);
+                tracing::debug!("LogApplied up to {}", self.last_log_id);
                 let resp = (self.last_log_id.clone(), x);
                 self.tx.send(Ok(resp))
             }
             Err(e) => {
-                tracing::error!("LogApplied error: {}, while applying upto {}", e, self.last_log_id);
+                tracing::error!("LogApplied error: {}, while applying up to {}", e, self.last_log_id);
                 self.tx.send(Err(e))
             }
         };

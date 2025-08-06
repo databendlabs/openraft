@@ -59,7 +59,7 @@ where C: RaftTypeConfig
 /// The response to an `AppendEntriesRequest`.
 ///
 /// [`RaftNetwork::append_entries`] returns this type only when received an RPC reply.
-/// Otherwise it should return [`RPCError`].
+/// Otherwise, it should return [`RPCError`].
 ///
 /// [`RPCError`]: crate::error::RPCError
 /// [`RaftNetwork::append_entries`]: crate::network::RaftNetwork::append_entries
@@ -74,7 +74,7 @@ pub enum AppendEntriesResponse<C: RaftTypeConfig> {
     ///
     /// [`RaftNetwork::append_entries`] can return a partial success.
     /// For example, it tries to send log entries `[1-2..3-10]`, the application is allowed to send
-    /// just `[1-2..1-3]` and return `PartialSuccess(1-3)`,
+    /// just `[1-2..1-3]` and return `PartialSuccess(1-3)`
     ///
     /// ### Caution
     ///
@@ -93,8 +93,8 @@ pub enum AppendEntriesResponse<C: RaftTypeConfig> {
     Conflict,
 
     /// Seen a vote `v` that does not hold `mine_vote >= v`.
-    /// And a leader's vote(committed vote) must be total order with other vote.
-    /// Therefore it has to be a higher vote: `mine_vote < v`
+    /// And a leader's vote(committed vote) must be total order with other votes.
+    /// Therefore, it has to be a higher vote: `mine_vote < v`
     HigherVote(VoteOf<C>),
 }
 

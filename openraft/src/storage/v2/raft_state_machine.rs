@@ -44,24 +44,24 @@ where C: RaftTypeConfig
     /// have been replicated to a quorum of the cluster, will be applied to the state machine.
     ///
     /// This is where the business logic of interacting with your application's state machine
-    /// should live. This is 100% application specific. Perhaps this is where an application
-    /// specific transaction is being started, or perhaps committed. This may be where a key/value
+    /// should live. This is 100% application-specific. Perhaps this is where an application-specific
+    /// transaction is being started, or perhaps committed. This may be where a key/value
     /// is being stored.
     ///
     /// For every entry to apply, an implementation should:
-    /// - Store the log id as last applied log id.
+    /// - Store the log id as last-applied log id.
     /// - Deal with the business logic log.
     /// - Store membership config if `RaftEntry::get_membership()` returns `Some`.
     ///
-    /// Note that for a membership log, the implementation need to do nothing about it, except
+    /// Note that for a membership log, the implementation needs to do nothing about it, except
     /// storing it.
     ///
     /// An implementation may choose to persist either the state machine or the snapshot:
     ///
-    /// - An implementation with persistent state machine: persists the state on disk before
+    /// - An implementation with a persistent state machine: persists the state on disk before
     ///   returning from `apply()`. So that a snapshot does not need to be persistent.
     ///
-    /// - An implementation with persistent snapshot: `apply()` does not have to persist state on
+    /// - An implementation with a persistent snapshot: `apply()` does not have to persist state on
     ///   disk. But every snapshot has to be persistent. And when starting up the application, the
     ///   state machine should be rebuilt from the last snapshot.
     async fn apply<I>(&mut self, entries: I) -> Result<Vec<C::R>, StorageError<C>>
