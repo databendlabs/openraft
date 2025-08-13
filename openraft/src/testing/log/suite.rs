@@ -1333,15 +1333,19 @@ where
         );
 
         tracing::info!("--- install snapshot on follower state machine");
-        sm_f.install_snapshot(&ss1_cur.meta, ss1_cur.snapshot).await?;
+        sm_f.save_snapshot(&ss1_cur).await?;
 
-        tracing::info!("--- check correctness of installed snapshot");
+        tracing::info!("--- check correctness of saved snapshot");
         // ... by requesting whole snapshot
         let ss2 = sm_f.get_current_snapshot().await?.expect("uninitialized snapshot");
         assert_eq!(
             ss2.meta, ss1.meta,
             "snapshot metadata not updated correctly on follower sm"
         );
+
+        // Replace the state machine with the snapshot
+        sm_f.install_snapshot(&ss1_cur.meta, ss1_cur.snapshot).await?;
+
         // ... by checking smstore state
         assert_eq!(sm_f.applied_state().await?, snapshot_applied_state);
         Ok(())
