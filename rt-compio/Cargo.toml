@@ -14,11 +14,11 @@ repository = "https://github.com/databendlabs/openraft"
 
 [dependencies]
 openraft = { path = "../openraft", version = "0.10.0", default-features = false, features = ["singlethreaded"] }
-compio = { version = "0.14.0", features = ["runtime", "time"] }
+compio = { version = ">=0.14.0", features = ["runtime", "time"] }
 tokio = { version = "1.22", features = ["sync"], default-features = false }
 rand = "0.9"
 futures = "0.3"
 pin-project-lite = "0.2.16"
 
 [dev-dependencies]
-compio = { version = "0.14.0", features = ["macros"] }
+compio = { version = ">=0.14.0", features = ["macros"] }
