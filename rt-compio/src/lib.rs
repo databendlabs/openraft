@@ -70,15 +70,25 @@ pin_project_lite::pin_project! {
     }
 }
 
+/// Time has elapsed
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+pub struct Elapsed(());
+
+impl std::fmt::Display for Elapsed {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Time has elapsed")
+    }
+}
+
 impl<F: Future> Future for CompioTimeout<F> {
-    type Output = Result<F::Output, compio::time::Elapsed>;
+    type Output = Result<F::Output, Elapsed>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.project();
         match this.delay.poll_unpin(cx) {
             Poll::Ready(()) => {
                 // The delay has elapsed, so we return an error.
-                Poll::Ready(Err(compio::time::Elapsed))
+                Poll::Ready(Err(Elapsed(())))
             }
             Poll::Pending => {
                 // The delay has not yet elapsed, so we poll the future.
@@ -96,7 +106,7 @@ impl AsyncRuntime for CompioRuntime {
     type JoinHandle<T: OptionalSend + 'static> = CompioJoinHandle<T>;
     type Sleep = BoxedFuture<()>;
     type Instant = std::time::Instant;
-    type TimeoutError = compio::time::Elapsed;
+    type TimeoutError = Elapsed;
     type Timeout<R, T: Future<Output = R> + OptionalSend> = CompioTimeout<T>;
     type ThreadLocalRng = ThreadRng;
     type Mpsc = mpsc::CompioMpsc;
