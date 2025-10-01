@@ -19,6 +19,7 @@ pub mod responder;
 mod runtime_config_handle;
 pub mod trigger;
 
+use std::any::Any;
 use std::collections::BTreeMap;
 use std::error::Error;
 
@@ -59,7 +60,6 @@ use crate::StorageHelper;
 use crate::async_runtime::MpscUnboundedSender;
 use crate::async_runtime::OneshotSender;
 use crate::async_runtime::watch::WatchReceiver;
-use crate::base::BoxAsyncOnceMut;
 use crate::base::BoxFuture;
 use crate::base::BoxOnce;
 use crate::config::Config;
@@ -881,12 +881,13 @@ where C: RaftTypeConfig
     {
         let input_sm_type = std::any::type_name::<SM>();
 
-        let func: BoxAsyncOnceMut<'static, SM> = Box::new(req);
-
-        // Erase the type so that to send through a channel without `SM` type parameter.
-        // `sm::Worker` will downcast it back to BoxAsyncOnce<SM>.
-        let func = Box::new(func);
-
+        // Erase the argument type to send through a channel without `SM` type parameter.
+        // the closure's body will downcast it internally
+        let func: Box<dyn FnOnce(&mut dyn Any) -> Option<BoxFuture<()>> + Send + 'static> =
+            Box::new(move |x: &mut dyn Any| {
+                let sm = x.downcast_mut::<SM>()?;
+                Some(req(sm))
+            });
         let sm_cmd = sm::Command::Func { func, input_sm_type };
         let raft_msg = RaftMsg::ExternalCommand {
             cmd: ExternalCommand::StateMachineCommand { sm_cmd },
