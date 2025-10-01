@@ -10,7 +10,6 @@ use crate::StorageError;
 use crate::async_runtime::MpscUnboundedReceiver;
 use crate::async_runtime::MpscUnboundedSender;
 use crate::async_runtime::OneshotSender;
-use crate::base::BoxAsyncOnceMut;
 use crate::core::ApplyResult;
 use crate::core::notification::Notification;
 use crate::core::sm::Command;
@@ -154,15 +153,16 @@ where
                 Command::Func { func, input_sm_type } => {
                     tracing::debug!("{}: run user defined Func", func_name!());
 
-                    let res: Result<Box<BoxAsyncOnceMut<'static, SM>>, _> = func.downcast();
-                    if let Ok(f) = res {
-                        f(&mut self.state_machine).await;
-                    } else {
-                        tracing::warn!(
-                            "User-defined SM function uses incorrect state machine type, expected: {}, got: {}",
-                            std::any::type_name::<SM>(),
-                            input_sm_type
-                        );
+                    let maybe_future = func(&mut self.state_machine);
+                    match maybe_future {
+                        Some(future) => future.await,
+                        None => {
+                            tracing::warn!(
+                                "User-defined SM function uses incorrect state machine type, expected: {}, got: {}",
+                                std::any::type_name::<SM>(),
+                                input_sm_type
+                            );
+                        }
                     };
                 }
             };

@@ -1,10 +1,11 @@
+use std::any::Any;
 use std::collections::BTreeMap;
 use std::fmt;
 use std::fmt::Debug;
 use std::fmt::Formatter;
 
 use crate::RaftTypeConfig;
-use crate::base::BoxAny;
+use crate::base::BoxMaybeAsyncOnceMut;
 use crate::raft::responder::either::OneshotOrUserDefined;
 use crate::raft_state::IOId;
 use crate::storage::Snapshot;
@@ -52,9 +53,11 @@ where C: RaftTypeConfig
     ///
     /// To erase the type parameter `SM`, it is a
     /// `Box<dyn FnOnce(&mut SM) -> Box<dyn Future<Output = ()>> + Send + 'static>`
-    /// wrapped in a `Box<dyn Any>`
+    /// where `SM` has been upcast to `Any`.
+    /// If the argument provided to `func` is not of type `SM`, it returns `None`, rather than
+    /// returning the user-provided future.
     Func {
-        func: BoxAny,
+        func: BoxMaybeAsyncOnceMut<'static, dyn Any>,
         /// The SM type user specified, for debug purpose.
         input_sm_type: &'static str,
     },
