@@ -12,17 +12,29 @@ use std::env;
 use std::fmt;
 use std::future::Future;
 use std::panic::PanicHookInfo;
-use std::sync::atomic::AtomicU64;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::Once;
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use anyerror::AnyError;
 use anyhow::Context;
 use lazy_static::lazy_static;
 use maplit::btreeset;
+use openraft::Config;
+use openraft::LogIdOptionExt;
+use openraft::OptionalSend;
+use openraft::RPCTypes;
+use openraft::Raft;
+use openraft::RaftLogReader;
+use openraft::RaftMetrics;
+use openraft::RaftState;
+use openraft::RaftTypeConfig;
+use openraft::ReadPolicy;
+use openraft::ServerState;
+use openraft::Vote;
 use openraft::error::CheckIsLeaderError;
 use openraft::error::ClientWriteError;
 use openraft::error::Fatal;
@@ -48,18 +60,6 @@ use openraft::raft::VoteResponse;
 use openraft::storage::RaftLogStorage;
 use openraft::storage::RaftStateMachine;
 use openraft::storage::Snapshot;
-use openraft::Config;
-use openraft::LogIdOptionExt;
-use openraft::OptionalSend;
-use openraft::RPCTypes;
-use openraft::Raft;
-use openraft::RaftLogReader;
-use openraft::RaftMetrics;
-use openraft::RaftState;
-use openraft::RaftTypeConfig;
-use openraft::ReadPolicy;
-use openraft::ServerState;
-use openraft::Vote;
 use openraft_memstore::ClientRequest;
 use openraft_memstore::ClientResponse;
 use openraft_memstore::IntoMemClientRequest;
@@ -192,6 +192,8 @@ impl fmt::Display for Direction {
     }
 }
 
+use Direction::NetRecv;
+use Direction::NetSend;
 use openraft::alias::LogIdOf;
 use openraft::alias::VoteOf;
 use openraft::entry::RaftEntry;
@@ -199,8 +201,6 @@ use openraft::network::v2::RaftNetworkV2;
 use openraft::vote::RaftLeaderId;
 use openraft::vote::RaftLeaderIdExt;
 use openraft::vote::RaftVote;
-use Direction::NetRecv;
-use Direction::NetSend;
 
 #[derive(Debug, Clone, Copy)]
 pub enum RPCErrorType {
@@ -985,8 +985,7 @@ impl TypedRaftRouter {
     ) -> anyhow::Result<()> {
         let node_ids = {
             let rt = self.nodes.lock().unwrap();
-            let node_ids = rt.keys().cloned().collect::<Vec<_>>();
-            node_ids
+            rt.keys().cloned().collect::<Vec<_>>()
         };
 
         for id in node_ids {

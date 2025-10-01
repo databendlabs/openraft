@@ -3,16 +3,16 @@ use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
-use openraft::type_config::TypeConfigExt;
 use openraft::Config;
+use openraft::type_config::TypeConfigExt;
 use openraft_memstore::TypeConfig;
 #[allow(unused_imports)]
 use pretty_assertions::assert_eq;
 #[allow(unused_imports)]
 use pretty_assertions::assert_ne;
 
-use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
+use crate::fixtures::ut_harness;
 
 /// Server metrics and data metrics method should work.
 #[tracing::instrument]

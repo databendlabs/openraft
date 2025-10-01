@@ -201,7 +201,7 @@ impl Since {
                     return Err(syn::Error::new(
                         span,
                         format!("Failed to parse value of `{}` as string.", field),
-                    ))
+                    ));
                 }
             },
             syn::Expr::Verbatim(s) => s.to_string(),
@@ -209,7 +209,7 @@ impl Since {
                 return Err(syn::Error::new(
                     span,
                     format!("Failed to parse value of `{}` as string.", field),
-                ))
+                ));
             }
         };
         Ok(s)

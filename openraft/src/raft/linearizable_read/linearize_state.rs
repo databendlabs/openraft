@@ -2,9 +2,9 @@ use std::fmt;
 
 use openraft_macros::since;
 
-use crate::display_ext::DisplayOptionExt;
 use crate::LogId;
 use crate::RaftTypeConfig;
+use crate::display_ext::DisplayOptionExt;
 
 /// Represents the state after awaiting the applied log entries for a linearizable read.
 ///

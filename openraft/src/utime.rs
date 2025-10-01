@@ -3,8 +3,8 @@ use std::ops::Deref;
 use std::ops::DerefMut;
 use std::time::Duration;
 
-use crate::display_ext::DisplayInstantExt;
 use crate::Instant;
+use crate::display_ext::DisplayInstantExt;
 
 /// Stores an object along with its last update time and lease duration.
 /// The lease duration specifies how long the object remains valid.

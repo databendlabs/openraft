@@ -4,9 +4,9 @@ use std::time::Duration;
 use maplit::btreeset;
 use openraft::Config;
 
+use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
 use crate::fixtures::ut_harness;
-use crate::fixtures::RaftRouter;
 
 /// Manually trigger a snapshot with `Raft::trigger_snapshot()` on Leader and Follower.
 #[tracing::instrument]

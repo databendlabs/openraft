@@ -2,8 +2,8 @@ use std::fmt;
 use std::fmt::Formatter;
 use std::ops::Deref;
 
-use crate::display_ext::DisplayInstantExt;
 use crate::Instant;
+use crate::display_ext::DisplayInstantExt;
 
 /// A wrapper for [`Instant`] that supports serialization and deserialization.
 ///
@@ -68,12 +68,12 @@ mod serde_impl {
 
     use chrono::DateTime;
     use chrono::Utc;
-    use serde::de;
-    use serde::de::Visitor;
     use serde::Deserialize;
     use serde::Deserializer;
     use serde::Serialize;
     use serde::Serializer;
+    use serde::de;
+    use serde::de::Visitor;
 
     use super::SerdeInstant;
     use crate::Instant;
@@ -147,8 +147,8 @@ mod serde_impl {
 
         use super::SerdeInstant;
         use crate::engine::testing::UTConfig;
-        use crate::type_config::alias::SerdeInstantOf;
         use crate::type_config::TypeConfigExt;
+        use crate::type_config::alias::SerdeInstantOf;
 
         #[test]
         fn test_serde_instant() {

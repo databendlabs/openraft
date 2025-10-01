@@ -4,19 +4,19 @@ use std::time::Duration;
 use anyhow::Result;
 use maplit::btreemap;
 use maplit::btreeset;
-use openraft::error::ChangeMembershipError;
-use openraft::error::ClientWriteError;
-use openraft::error::InProgress;
 use openraft::ChangeMembers;
 use openraft::Config;
 use openraft::Membership;
 use openraft::RaftLogReader;
 use openraft::StorageHelper;
+use openraft::error::ChangeMembershipError;
+use openraft::error::ClientWriteError;
+use openraft::error::InProgress;
 use tokio::time::sleep;
 
+use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
 use crate::fixtures::ut_harness;
-use crate::fixtures::RaftRouter;
 
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]

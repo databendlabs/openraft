@@ -1,20 +1,20 @@
 use std::fmt;
 
-use crate::display_ext::DisplayInstantExt;
-use crate::engine::leader_log_ids::LeaderLogIds;
-use crate::entry::raft_entry_ext::RaftEntryExt;
-use crate::entry::RaftEntry;
-use crate::progress::entry::ProgressEntry;
-use crate::progress::Progress;
-use crate::progress::VecProgress;
-use crate::quorum::QuorumSet;
-use crate::type_config::alias::InstantOf;
-use crate::type_config::alias::LogIdOf;
-use crate::type_config::TypeConfigExt;
-use crate::vote::committed::CommittedVote;
-use crate::vote::raft_vote::RaftVoteExt;
 use crate::LogIdOptionExt;
 use crate::RaftTypeConfig;
+use crate::display_ext::DisplayInstantExt;
+use crate::engine::leader_log_ids::LeaderLogIds;
+use crate::entry::RaftEntry;
+use crate::entry::raft_entry_ext::RaftEntryExt;
+use crate::progress::Progress;
+use crate::progress::VecProgress;
+use crate::progress::entry::ProgressEntry;
+use crate::quorum::QuorumSet;
+use crate::type_config::TypeConfigExt;
+use crate::type_config::alias::InstantOf;
+use crate::type_config::alias::LogIdOf;
+use crate::vote::committed::CommittedVote;
+use crate::vote::raft_vote::RaftVoteExt;
 
 /// Leading state data.
 ///
@@ -128,7 +128,7 @@ where
 
         let last_log_id = last_leader_log_id.last().cloned();
 
-        let leader = Self {
+        Self {
             transfer_to: None,
             committed_vote: vote,
             next_heartbeat: C::now(),
@@ -138,9 +138,7 @@ where
                 ProgressEntry::empty(last_log_id.next_index())
             }),
             clock_progress: VecProgress::new(quorum_set, learner_ids, || None),
-        };
-
-        leader
+        }
     }
 
     pub(crate) fn noop_log_id(&self) -> &LogIdOf<C> {
@@ -237,17 +235,17 @@ where
 
 #[cfg(test)]
 mod tests {
+    use crate::Entry;
+    use crate::Vote;
     use crate::engine::leader_log_ids::LeaderLogIds;
-    use crate::engine::testing::log_id;
     use crate::engine::testing::UTConfig;
+    use crate::engine::testing::log_id;
     use crate::entry::RaftEntry;
     use crate::progress::Progress;
     use crate::proposer::Leader;
     use crate::testing::blank_ent;
     use crate::type_config::TypeConfigExt;
     use crate::vote::raft_vote::RaftVoteExt;
-    use crate::Entry;
-    use crate::Vote;
 
     #[test]
     fn test_leader_new_with_proposed_log_id() {

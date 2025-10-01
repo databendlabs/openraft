@@ -3,15 +3,6 @@ use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
-use openraft::network::v2::RaftNetworkV2;
-use openraft::network::RPCOption;
-use openraft::network::RaftNetworkFactory;
-use openraft::raft::AppendEntriesRequest;
-use openraft::storage::RaftLogStorage;
-use openraft::storage::RaftLogStorageExt;
-use openraft::storage::RaftStateMachine;
-use openraft::testing::blank_ent;
-use openraft::testing::membership_ent;
 use openraft::Config;
 use openraft::Entry;
 use openraft::EntryPayload;
@@ -22,10 +13,19 @@ use openraft::ServerState;
 use openraft::SnapshotPolicy;
 use openraft::StorageHelper;
 use openraft::Vote;
+use openraft::network::RPCOption;
+use openraft::network::RaftNetworkFactory;
+use openraft::network::v2::RaftNetworkV2;
+use openraft::raft::AppendEntriesRequest;
+use openraft::storage::RaftLogStorage;
+use openraft::storage::RaftLogStorageExt;
+use openraft::storage::RaftStateMachine;
+use openraft::testing::blank_ent;
+use openraft::testing::membership_ent;
 
+use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
 use crate::fixtures::ut_harness;
-use crate::fixtures::RaftRouter;
 
 /// Installing snapshot on a node that has logs conflict with snapshot.meta.last_log_id will delete
 /// all conflict logs.

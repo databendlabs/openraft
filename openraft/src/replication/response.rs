@@ -1,10 +1,10 @@
 use std::fmt;
 
+use crate::RaftTypeConfig;
 use crate::display_ext::DisplayOptionExt;
 use crate::display_ext::DisplayResultExt;
 use crate::replication::ReplicationSessionId;
 use crate::type_config::alias::LogIdOf;
-use crate::RaftTypeConfig;
 
 /// The response of replication command.
 ///
@@ -70,8 +70,8 @@ where C: RaftTypeConfig
 
 #[cfg(test)]
 mod tests {
-    use crate::engine::testing::log_id;
     use crate::engine::testing::UTConfig;
+    use crate::engine::testing::log_id;
     use crate::replication::response::ReplicationResult;
 
     #[test]

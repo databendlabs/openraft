@@ -3,6 +3,7 @@ use std::fmt;
 use std::fmt::Debug;
 use std::fmt::Formatter;
 
+use crate::RaftTypeConfig;
 use crate::base::BoxAny;
 use crate::raft::responder::either::OneshotOrUserDefined;
 use crate::raft_state::IOId;
@@ -10,7 +11,6 @@ use crate::storage::Snapshot;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::OneshotSenderOf;
 use crate::type_config::alias::SnapshotDataOf;
-use crate::RaftTypeConfig;
 
 /// The payload of a state machine command.
 pub(crate) enum Command<C>

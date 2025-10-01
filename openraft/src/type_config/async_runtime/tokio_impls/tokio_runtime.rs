@@ -4,16 +4,16 @@ use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio::sync::watch as tokio_watch;
 
+use crate::AsyncRuntime;
+use crate::OptionalSend;
+use crate::OptionalSync;
+use crate::TokioInstant;
 use crate::async_runtime::mpsc_unbounded;
 use crate::async_runtime::mpsc_unbounded::MpscUnbounded;
 use crate::async_runtime::mutex;
 use crate::async_runtime::oneshot;
 use crate::async_runtime::watch;
 use crate::type_config::OneshotSender;
-use crate::AsyncRuntime;
-use crate::OptionalSend;
-use crate::OptionalSync;
-use crate::TokioInstant;
 
 /// `Tokio` is the default asynchronous executor.
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -141,13 +141,13 @@ mod mpsc_impl {
     use futures::TryFutureExt;
     use tokio::sync::mpsc;
 
+    use crate::OptionalSend;
     use crate::async_runtime::Mpsc;
     use crate::async_runtime::MpscReceiver;
     use crate::async_runtime::MpscSender;
     use crate::async_runtime::MpscWeakSender;
     use crate::async_runtime::SendError;
     use crate::async_runtime::TryRecvError;
-    use crate::OptionalSend;
 
     pub struct TokioMpsc;
 

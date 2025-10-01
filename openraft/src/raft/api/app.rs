@@ -3,21 +3,21 @@ use std::future::Future;
 
 use openraft_macros::since;
 
+use crate::OptionalSend;
+use crate::RaftTypeConfig;
+use crate::ReadPolicy;
 use crate::core::raft_msg::RaftMsg;
 use crate::error::CheckIsLeaderError;
 use crate::error::ClientWriteError;
 use crate::error::Fatal;
+use crate::raft::ClientWriteResponse;
+use crate::raft::ClientWriteResult;
 use crate::raft::linearizable_read::Linearizer;
 use crate::raft::raft_inner::RaftInner;
 use crate::raft::responder::Responder;
-use crate::raft::ClientWriteResponse;
-use crate::raft::ClientWriteResult;
+use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::ResponderOf;
 use crate::type_config::alias::ResponderReceiverOf;
-use crate::type_config::TypeConfigExt;
-use crate::OptionalSend;
-use crate::RaftTypeConfig;
-use crate::ReadPolicy;
 
 /// Provides application-facing APIs for interacting with the Raft system.
 ///

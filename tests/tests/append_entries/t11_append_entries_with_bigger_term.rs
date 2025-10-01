@@ -3,16 +3,16 @@ use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
-use openraft::network::v2::RaftNetworkV2;
-use openraft::network::RPCOption;
-use openraft::network::RaftNetworkFactory;
-use openraft::raft::AppendEntriesRequest;
 use openraft::Config;
 use openraft::Vote;
+use openraft::network::RPCOption;
+use openraft::network::RaftNetworkFactory;
+use openraft::network::v2::RaftNetworkV2;
+use openraft::raft::AppendEntriesRequest;
 
+use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
 use crate::fixtures::ut_harness;
-use crate::fixtures::RaftRouter;
 
 /// append-entries should update the vote when adding new logs with greater vote.
 ///

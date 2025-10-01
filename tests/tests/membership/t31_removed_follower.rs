@@ -6,8 +6,8 @@ use maplit::btreeset;
 use openraft::Config;
 use openraft::LogIdOptionExt;
 
-use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
+use crate::fixtures::ut_harness;
 
 /// Replication should stop after a follower is removed from membership.
 #[tracing::instrument]
@@ -72,7 +72,9 @@ async fn stop_replication_to_removed_follower() -> Result<()> {
 
         assert!(
             res1.is_ok() || res2.is_ok(),
-            "committing the first membership log only need to replication to one of node-1 and node-2. node-1 res: {:?}; node-2 res: {:?}",res1, res2
+            "committing the first membership log only need to replication to one of node-1 and node-2. node-1 res: {:?}; node-2 res: {:?}",
+            res1,
+            res2
         );
     }
 

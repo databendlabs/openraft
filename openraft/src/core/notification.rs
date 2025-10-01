@@ -1,5 +1,7 @@
 use std::fmt;
 
+use crate::RaftTypeConfig;
+use crate::StorageError;
 use crate::core::sm;
 use crate::display_ext::DisplayInstantExt;
 use crate::raft::VoteResponse;
@@ -10,8 +12,6 @@ use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::VoteOf;
 use crate::vote::committed::CommittedVote;
 use crate::vote::non_committed::NonCommittedVote;
-use crate::RaftTypeConfig;
-use crate::StorageError;
 
 /// A message coming from the internal components.
 pub(crate) enum Notification<C>
@@ -99,9 +99,9 @@ where C: RaftTypeConfig
                 )
             }
             Self::HigherVote {
-                ref target,
-                higher: ref new_vote,
-                leader_vote: ref vote,
+                target,
+                higher: new_vote,
+                leader_vote: vote,
             } => {
                 write!(
                     f,

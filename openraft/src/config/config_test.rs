@@ -1,8 +1,8 @@
 use core::time::Duration;
 
-use crate::config::error::ConfigError;
 use crate::Config;
 use crate::SnapshotPolicy;
+use crate::config::error::ConfigError;
 
 #[test]
 fn test_config_defaults() {

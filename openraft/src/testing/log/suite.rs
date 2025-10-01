@@ -7,26 +7,6 @@ use std::time::Duration;
 
 use maplit::btreeset;
 
-use crate::async_runtime::MpscUnboundedReceiver;
-use crate::async_runtime::MpscUnboundedSender;
-use crate::core::notification::Notification;
-use crate::entry::RaftEntry;
-use crate::membership::EffectiveMembership;
-use crate::raft_state::io_state::io_id::IOId;
-use crate::raft_state::LogStateReader;
-use crate::raft_state::RaftState;
-use crate::storage::IOFlushed;
-use crate::storage::LogState;
-use crate::storage::RaftLogReaderExt;
-use crate::storage::RaftLogStorage;
-use crate::storage::RaftStateMachine;
-use crate::storage::StorageHelper;
-use crate::testing::log::StoreBuilder;
-use crate::type_config::alias::LogIdOf;
-use crate::type_config::alias::VoteOf;
-use crate::type_config::TypeConfigExt;
-use crate::vote::raft_vote::RaftVoteExt;
-use crate::vote::RaftLeaderIdExt;
 use crate::Membership;
 use crate::OptionalSend;
 use crate::RaftLogReader;
@@ -34,6 +14,26 @@ use crate::RaftSnapshotBuilder;
 use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::StoredMembership;
+use crate::async_runtime::MpscUnboundedReceiver;
+use crate::async_runtime::MpscUnboundedSender;
+use crate::core::notification::Notification;
+use crate::entry::RaftEntry;
+use crate::membership::EffectiveMembership;
+use crate::raft_state::LogStateReader;
+use crate::raft_state::RaftState;
+use crate::raft_state::io_state::io_id::IOId;
+use crate::storage::IOFlushed;
+use crate::storage::LogState;
+use crate::storage::RaftLogReaderExt;
+use crate::storage::RaftLogStorage;
+use crate::storage::RaftStateMachine;
+use crate::storage::StorageHelper;
+use crate::testing::log::StoreBuilder;
+use crate::type_config::TypeConfigExt;
+use crate::type_config::alias::LogIdOf;
+use crate::type_config::alias::VoteOf;
+use crate::vote::RaftLeaderIdExt;
+use crate::vote::raft_vote::RaftVoteExt;
 
 const NODE_ID: u64 = 0;
 
@@ -242,7 +242,9 @@ where
             );
         }
 
-        tracing::info!("--- membership presents in log and > sm.last_applied, read from log but since_index is greater than the last");
+        tracing::info!(
+            "--- membership presents in log and > sm.last_applied, read from log but since_index is greater than the last"
+        );
         {
             let mem = StorageHelper::new(&mut store, &mut sm).last_membership_in_log(4).await?;
             assert!(mem.is_empty());
@@ -741,7 +743,9 @@ where
             );
         }
 
-        tracing::info!("--- (case: purge(T1),T2,T2) log terms: [x,x,x,x,x,3,3], last_purged_log_id: (2,4), expect [(2,4),(3,5),(3,6)]");
+        tracing::info!(
+            "--- (case: purge(T1),T2,T2) log terms: [x,x,x,x,x,3,3], last_purged_log_id: (2,4), expect [(2,4),(3,5),(3,6)]"
+        );
         {
             store.purge(log_id(2, 0, 4)).await?;
 
@@ -762,7 +766,9 @@ where
             assert_eq!(vec![log_id(3, 0, 5), log_id(3, 0, 6)], initial.log_ids.key_log_ids());
         }
 
-        tracing::info!("--- (case: purge(T2)) log terms: [x,x,x,x,x,x,x], last_purged_log_id: (3,6), e.g., all purged expect [(3,6)]");
+        tracing::info!(
+            "--- (case: purge(T2)) log terms: [x,x,x,x,x,x,x], last_purged_log_id: (3,6), e.g., all purged expect [(3,6)]"
+        );
         {
             store.purge(log_id(3, 0, 6)).await?;
 

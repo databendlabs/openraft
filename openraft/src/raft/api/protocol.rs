@@ -2,28 +2,28 @@ use std::time::Duration;
 
 use openraft_macros::since;
 
-use crate::core::raft_msg::external_command::ExternalCommand;
+use crate::LogIdOptionExt;
+use crate::LogIndexOptionExt;
+use crate::RaftMetrics;
+use crate::RaftTypeConfig;
+use crate::Snapshot;
 use crate::core::raft_msg::RaftMsg;
+use crate::core::raft_msg::external_command::ExternalCommand;
 use crate::display_ext::DisplayOptionExt;
+use crate::error::Fatal;
 #[cfg(doc)]
 use crate::error::into_raft_result::IntoRaftResult;
-use crate::error::Fatal;
-use crate::raft::raft_inner::RaftInner;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
 use crate::raft::SnapshotResponse;
 use crate::raft::TransferLeaderRequest;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
+use crate::raft::raft_inner::RaftInner;
+use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::SnapshotDataOf;
 use crate::type_config::alias::VoteOf;
-use crate::type_config::TypeConfigExt;
 use crate::vote::raft_vote::RaftVoteExt;
-use crate::LogIdOptionExt;
-use crate::LogIndexOptionExt;
-use crate::RaftMetrics;
-use crate::RaftTypeConfig;
-use crate::Snapshot;
 
 /// Handles Raft protocol requests from other nodes in the cluster.
 ///

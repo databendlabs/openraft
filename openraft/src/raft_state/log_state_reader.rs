@@ -1,10 +1,10 @@
+use crate::RaftTypeConfig;
 use crate::log_id::option_raft_log_id_ext::OptionRaftLogIdExt;
 use crate::log_id::option_ref_log_id_ext::OptionRefLogIdExt;
 use crate::log_id::raft_log_id::RaftLogId;
 use crate::log_id::raft_log_id_ext::RaftLogIdExt;
 use crate::log_id::ref_log_id::RefLogId;
 use crate::type_config::alias::LogIdOf;
-use crate::RaftTypeConfig;
 
 /// APIs to get significant log ids reflecting the raft state.
 ///
@@ -14,11 +14,7 @@ where C: RaftTypeConfig
 {
     /// Get previous log id, i.e., the log id at index - 1
     fn prev_log_id(&self, index: u64) -> Option<LogIdOf<C>> {
-        if index == 0 {
-            None
-        } else {
-            self.get_log_id(index - 1)
-        }
+        if index == 0 { None } else { self.get_log_id(index - 1) }
     }
 
     /// Return if a log id exists.

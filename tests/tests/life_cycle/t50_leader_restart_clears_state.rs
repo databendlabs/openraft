@@ -5,11 +5,11 @@ use maplit::btreemap;
 use openraft::Config;
 use openraft::ServerState;
 
-use crate::fixtures::ut_harness;
 use crate::fixtures::MemLogStore;
 use crate::fixtures::MemRaft;
 use crate::fixtures::MemStateMachine;
 use crate::fixtures::RaftRouter;
+use crate::fixtures::ut_harness;
 
 /// Test leader restart with complete state loss and recovery.
 ///

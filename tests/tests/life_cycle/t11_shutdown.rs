@@ -2,12 +2,12 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use maplit::btreeset;
-use openraft::error::Fatal;
 use openraft::Config;
 use openraft::ServerState;
+use openraft::error::Fatal;
 
-use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
+use crate::fixtures::ut_harness;
 
 /// Shutdown raft node and check the metrics change.
 #[tracing::instrument]

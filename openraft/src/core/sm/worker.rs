@@ -3,37 +3,37 @@ use std::collections::BTreeMap;
 use anyerror::AnyError;
 use tracing_futures::Instrument;
 
+use crate::RaftLogReader;
+use crate::RaftSnapshotBuilder;
+use crate::RaftTypeConfig;
+use crate::StorageError;
 use crate::async_runtime::MpscUnboundedReceiver;
 use crate::async_runtime::MpscUnboundedSender;
 use crate::async_runtime::OneshotSender;
 use crate::base::BoxAsyncOnceMut;
+use crate::core::ApplyResult;
 use crate::core::notification::Notification;
-use crate::core::sm::handle::Handle;
 use crate::core::sm::Command;
 use crate::core::sm::CommandResult;
 use crate::core::sm::Response;
-use crate::core::ApplyResult;
+use crate::core::sm::handle::Handle;
 use crate::display_ext::DisplayOptionExt;
 use crate::display_ext::DisplaySliceExt;
 use crate::entry::RaftEntry;
 use crate::entry::RaftPayload;
-use crate::raft::responder::either::OneshotOrUserDefined;
-use crate::raft::responder::Responder;
 use crate::raft::ClientWriteResponse;
+use crate::raft::responder::Responder;
+use crate::raft::responder::either::OneshotOrUserDefined;
 #[cfg(doc)]
 use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
 use crate::storage::Snapshot;
+use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::JoinHandleOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::MpscUnboundedReceiverOf;
 use crate::type_config::alias::MpscUnboundedSenderOf;
 use crate::type_config::alias::OneshotSenderOf;
-use crate::type_config::TypeConfigExt;
-use crate::RaftLogReader;
-use crate::RaftSnapshotBuilder;
-use crate::RaftTypeConfig;
-use crate::StorageError;
 
 pub(crate) struct Worker<C, SM, LR>
 where

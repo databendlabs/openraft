@@ -2,12 +2,12 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use maplit::btreeset;
-use openraft::error::Fatal;
 use openraft::Config;
+use openraft::error::Fatal;
 
+use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
 use crate::fixtures::ut_harness;
-use crate::fixtures::RaftRouter;
 
 /// Access Raft state via [`Raft::with_raft_state()`](openraft::Raft::with_raft_state)
 #[tracing::instrument]

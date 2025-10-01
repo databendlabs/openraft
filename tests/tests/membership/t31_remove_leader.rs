@@ -3,15 +3,15 @@ use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
-use openraft::error::ClientWriteError;
 use openraft::Config;
 use openraft::ServerState;
+use openraft::error::ClientWriteError;
 use openraft_memstore::ClientRequest;
 use openraft_memstore::IntoMemClientRequest;
 
+use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
 use crate::fixtures::ut_harness;
-use crate::fixtures::RaftRouter;
 
 /// Change membership from {0,1} to {1,2,3}.
 ///

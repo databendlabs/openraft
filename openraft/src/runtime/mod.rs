@@ -1,8 +1,8 @@
 use openraft_macros::add_async_trait;
 
-use crate::engine::Command;
 use crate::RaftTypeConfig;
 use crate::StorageError;
+use crate::engine::Command;
 
 /// Defines behaviors of a runtime to support the protocol engine.
 ///

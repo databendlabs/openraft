@@ -5,9 +5,9 @@ use maplit::btreeset;
 use openraft::Config;
 use openraft::SnapshotPolicy;
 
+use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
 use crate::fixtures::ut_harness;
-use crate::fixtures::RaftRouter;
 
 /// A leader switch to snapshot replication if a log a follower/learner needs but is already purged.
 ///

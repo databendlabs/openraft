@@ -40,6 +40,7 @@ impl<C: RaftTypeConfig> fmt::Display for Replicate<C> {
     }
 }
 
+use crate::RaftTypeConfig;
 use crate::display_ext::DisplayOptionExt;
 use crate::error::StreamingError;
 use crate::log_id_range::LogIdRange;
@@ -47,7 +48,6 @@ use crate::raft::SnapshotResponse;
 use crate::replication::callbacks::SnapshotCallback;
 use crate::storage::SnapshotMeta;
 use crate::type_config::alias::InstantOf;
-use crate::RaftTypeConfig;
 
 /// Request to replicate a chunk of data, logs or snapshot.
 ///

@@ -6,8 +6,8 @@ use maplit::btreeset;
 use openraft::Config;
 use openraft::ServerState;
 
-use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
+use crate::fixtures::ut_harness;
 
 /// A restarted unreachable node should recover correctly, and catch up with the leader:
 /// - Setup cluster {0,1,2}, Shutdown leader node-0;

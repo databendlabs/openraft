@@ -1,10 +1,10 @@
+use crate::RaftTypeConfig;
 use crate::async_runtime::OneshotSender;
 use crate::raft::message::ClientWriteResult;
 use crate::raft::responder::Responder;
+use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::OneshotReceiverOf;
 use crate::type_config::alias::OneshotSenderOf;
-use crate::type_config::TypeConfigExt;
-use crate::RaftTypeConfig;
 
 /// A [`Responder`] implementation that sends the response via a oneshot channel.
 ///

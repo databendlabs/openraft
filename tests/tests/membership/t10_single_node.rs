@@ -6,9 +6,9 @@ use maplit::btreeset;
 use openraft::Config;
 use openraft::ReadPolicy;
 
+use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
 use crate::fixtures::ut_harness;
-use crate::fixtures::RaftRouter;
 
 /// Single-node cluster initialization test.
 ///

@@ -78,10 +78,10 @@ mod feature_serde_test;
 pub use anyerror;
 pub use anyerror::AnyError;
 pub use openraft_macros::add_async_trait;
+pub use type_config::AsyncRuntime;
 pub use type_config::async_runtime;
 #[cfg(feature = "tokio-rt")]
 pub use type_config::async_runtime::tokio_impls::TokioRuntime;
-pub use type_config::AsyncRuntime;
 
 pub use self::storage::LogState;
 pub use self::storage::RaftLogReader;
@@ -131,9 +131,9 @@ pub use crate::storage_error::StorageIOError;
 pub use crate::storage_error::ToStorageResult;
 pub use crate::summary::MessageSummary;
 pub use crate::try_as_ref::TryAsRef;
+pub use crate::type_config::RaftTypeConfig;
 #[cfg(feature = "type-alias")]
 pub use crate::type_config::alias;
-pub use crate::type_config::RaftTypeConfig;
 pub use crate::vote::Vote;
 
 /// A trait defining application-specific data.

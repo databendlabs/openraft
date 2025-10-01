@@ -1,9 +1,9 @@
 use std::fmt;
 use std::fmt::Formatter;
 
+use crate::RaftTypeConfig;
 use crate::display_ext::DisplayOption;
 use crate::metrics::Metric;
-use crate::RaftTypeConfig;
 
 /// Display the value of a metric.
 pub(crate) struct MetricDisplay<'a, C>

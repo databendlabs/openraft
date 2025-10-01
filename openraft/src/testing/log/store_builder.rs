@@ -1,9 +1,9 @@
 use openraft_macros::add_async_trait;
 
-use crate::storage::RaftLogStorage;
-use crate::storage::RaftStateMachine;
 use crate::RaftTypeConfig;
 use crate::StorageError;
+use crate::storage::RaftLogStorage;
+use crate::storage::RaftStateMachine;
 
 /// The trait to build a [`RaftLogStorage`] and [`RaftStateMachine`] implementation.
 ///

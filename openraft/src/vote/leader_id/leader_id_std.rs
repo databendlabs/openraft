@@ -5,10 +5,10 @@ use std::cmp::Ordering;
 use std::fmt;
 use std::marker::PhantomData;
 
+use crate::RaftTypeConfig;
 use crate::display_ext::DisplayOptionExt;
 use crate::vote::LeaderIdCompare;
 use crate::vote::RaftLeaderId;
-use crate::RaftTypeConfig;
 
 /// ID of a `leader`, enforcing a single leader per term.
 ///

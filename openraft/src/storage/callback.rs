@@ -2,6 +2,10 @@
 
 use std::io;
 
+use crate::ErrorSubject;
+use crate::ErrorVerb;
+use crate::RaftTypeConfig;
+use crate::StorageError;
 use crate::async_runtime::MpscUnboundedSender;
 use crate::async_runtime::MpscUnboundedWeakSender;
 use crate::core::notification::Notification;
@@ -9,10 +13,6 @@ use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::MpscUnboundedWeakSenderOf;
 use crate::type_config::alias::OneshotSenderOf;
 use crate::type_config::async_runtime::oneshot::OneshotSender;
-use crate::ErrorSubject;
-use crate::ErrorVerb;
-use crate::RaftTypeConfig;
-use crate::StorageError;
 
 #[deprecated(since = "0.10.0", note = "Use `IOFlushed` instead")]
 pub type LogFlushed<C> = IOFlushed<C>;

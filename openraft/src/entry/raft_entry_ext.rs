@@ -1,6 +1,6 @@
+use crate::RaftTypeConfig;
 use crate::entry::RaftEntry;
 use crate::log_id::ref_log_id::RefLogId;
-use crate::RaftTypeConfig;
 
 pub(crate) trait RaftEntryExt<C>: RaftEntry<C>
 where C: RaftTypeConfig

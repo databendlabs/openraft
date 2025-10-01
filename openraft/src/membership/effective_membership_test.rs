@@ -1,9 +1,9 @@
 use maplit::btreeset;
 
-use crate::engine::testing::UTConfig;
-use crate::quorum::QuorumSet;
 use crate::EffectiveMembership;
 use crate::Membership;
+use crate::engine::testing::UTConfig;
+use crate::quorum::QuorumSet;
 
 #[test]
 fn test_effective_membership_majority() -> anyhow::Result<()> {

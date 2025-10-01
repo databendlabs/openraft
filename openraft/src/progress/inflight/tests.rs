@@ -1,12 +1,12 @@
 use validit::Validate;
 
+use crate::LogId;
 use crate::engine::testing::UTConfig;
 use crate::log_id_range::LogIdRange;
 use crate::progress::Inflight;
 use crate::type_config::alias::LeaderIdOf;
 use crate::type_config::alias::LogIdOf;
 use crate::vote::RaftLeaderIdExt;
-use crate::LogId;
 
 fn log_id(index: u64) -> LogIdOf<UTConfig> {
     LogId {

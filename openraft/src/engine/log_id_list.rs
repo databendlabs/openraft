@@ -1,5 +1,8 @@
 use std::ops::RangeInclusive;
 
+use crate::RaftLogReader;
+use crate::RaftTypeConfig;
+use crate::StorageError;
 use crate::engine::leader_log_ids::LeaderLogIds;
 use crate::log_id::option_raft_log_id_ext::OptionRaftLogIdExt;
 use crate::log_id::raft_log_id::RaftLogId;
@@ -8,9 +11,6 @@ use crate::log_id::ref_log_id::RefLogId;
 use crate::storage::RaftLogReaderExt;
 use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::type_config::alias::LogIdOf;
-use crate::RaftLogReader;
-use crate::RaftTypeConfig;
-use crate::StorageError;
 
 /// Efficient storage for log ids.
 ///

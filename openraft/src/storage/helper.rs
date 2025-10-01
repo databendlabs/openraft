@@ -5,17 +5,6 @@ use std::time::Duration;
 use anyerror::AnyError;
 use validit::Valid;
 
-use crate::display_ext::DisplayOptionExt;
-use crate::engine::LogIdList;
-use crate::entry::RaftEntry;
-use crate::entry::RaftPayload;
-use crate::raft_state::IOState;
-use crate::storage::log_reader_ext::RaftLogReaderExt;
-use crate::storage::RaftLogStorage;
-use crate::storage::RaftStateMachine;
-use crate::type_config::alias::LogIdOf;
-use crate::type_config::TypeConfigExt;
-use crate::utime::Leased;
 use crate::EffectiveMembership;
 use crate::LogIdOptionExt;
 use crate::MembershipState;
@@ -25,6 +14,17 @@ use crate::RaftState;
 use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::StoredMembership;
+use crate::display_ext::DisplayOptionExt;
+use crate::engine::LogIdList;
+use crate::entry::RaftEntry;
+use crate::entry::RaftPayload;
+use crate::raft_state::IOState;
+use crate::storage::RaftLogStorage;
+use crate::storage::RaftStateMachine;
+use crate::storage::log_reader_ext::RaftLogReaderExt;
+use crate::type_config::TypeConfigExt;
+use crate::type_config::alias::LogIdOf;
+use crate::utime::Leased;
 
 /// StorageHelper provides additional methods to access a [`RaftLogStorage`] and
 /// [`RaftStateMachine`] implementation.

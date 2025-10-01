@@ -2,10 +2,10 @@
 
 use std::collections::BTreeSet;
 
+use crate::RaftTypeConfig;
 use crate::entry::RaftEntry;
 use crate::type_config::alias::LogIdOf;
 use crate::vote::RaftLeaderIdExt;
-use crate::RaftTypeConfig;
 
 /// Builds a log id, for testing purposes.
 pub fn log_id<C>(term: u64, node_id: C::NodeId, index: u64) -> LogIdOf<C>

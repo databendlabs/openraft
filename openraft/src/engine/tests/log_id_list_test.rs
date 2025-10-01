@@ -1,7 +1,7 @@
-use crate::engine::leader_log_ids::LeaderLogIds;
-use crate::engine::testing::log_id;
-use crate::engine::testing::UTConfig;
 use crate::engine::LogIdList;
+use crate::engine::leader_log_ids::LeaderLogIds;
+use crate::engine::testing::UTConfig;
+use crate::engine::testing::log_id;
 
 #[test]
 fn test_log_id_list_extend_from_same_leader() -> anyhow::Result<()> {

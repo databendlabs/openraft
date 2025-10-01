@@ -1,18 +1,19 @@
 //! Suite for testing implementations of [`AsyncRuntime`].
 
-use std::pin::pin;
 use std::pin::Pin;
+use std::pin::pin;
 use std::sync::Arc;
 use std::task::Poll;
 
-use crate::async_runtime::watch::WatchReceiver;
-use crate::async_runtime::watch::WatchSender;
 use crate::async_runtime::Mpsc;
 use crate::async_runtime::MpscReceiver;
 use crate::async_runtime::MpscSender;
 use crate::async_runtime::MpscUnboundedWeakSender;
 use crate::async_runtime::MpscWeakSender;
+use crate::async_runtime::watch::WatchReceiver;
+use crate::async_runtime::watch::WatchSender;
 use crate::instant::Instant;
+use crate::type_config::async_runtime::AsyncRuntime;
 use crate::type_config::async_runtime::mpsc_unbounded::MpscUnbounded;
 use crate::type_config::async_runtime::mpsc_unbounded::MpscUnboundedReceiver;
 use crate::type_config::async_runtime::mpsc_unbounded::MpscUnboundedSender;
@@ -21,7 +22,6 @@ use crate::type_config::async_runtime::mutex::Mutex;
 use crate::type_config::async_runtime::oneshot::Oneshot;
 use crate::type_config::async_runtime::oneshot::OneshotSender;
 use crate::type_config::async_runtime::watch::Watch;
-use crate::type_config::async_runtime::AsyncRuntime;
 
 /// Test suite to ensure a runtime impl works as expected.
 ///
@@ -443,7 +443,7 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
 }
 
 /// Polls the future, and returns its current state.
-fn poll_in_place<F: std::future::Future>(fut: Pin<&mut F>) -> Poll<F::Output> {
+fn poll_in_place<F: Future>(fut: Pin<&mut F>) -> Poll<F::Output> {
     let waker = futures::task::noop_waker();
     let mut cx = futures::task::Context::from_waker(&waker);
     fut.poll(&mut cx)

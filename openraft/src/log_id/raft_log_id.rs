@@ -1,7 +1,7 @@
 use std::fmt;
 
-use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::RaftTypeConfig;
+use crate::type_config::alias::CommittedLeaderIdOf;
 
 /// Log id is the globally unique identifier of a log entry.
 ///

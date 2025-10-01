@@ -1,11 +1,11 @@
 use std::fmt;
 
+use crate::RaftTypeConfig;
 use crate::display_ext::DisplayInstantExt;
 use crate::display_ext::DisplayOptionExt;
 use crate::replication::ReplicationSessionId;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::LogIdOf;
-use crate::RaftTypeConfig;
 
 /// The information for broadcasting a heartbeat.
 #[derive(Debug, Clone)]

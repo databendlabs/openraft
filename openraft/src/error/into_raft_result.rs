@@ -1,7 +1,7 @@
+use crate::RaftTypeConfig;
 use crate::error::Fatal;
 use crate::error::Infallible;
 use crate::error::RaftError;
-use crate::RaftTypeConfig;
 
 /// Convert a `Result<_, Fatal<C>>` to a `Result<T, RaftError<C, E>>`
 ///

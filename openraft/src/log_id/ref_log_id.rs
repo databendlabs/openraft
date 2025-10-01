@@ -1,10 +1,10 @@
 use std::fmt::Display;
 use std::fmt::Formatter;
 
-use crate::log_id::raft_log_id::RaftLogId;
-use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::LogId;
 use crate::RaftTypeConfig;
+use crate::log_id::raft_log_id::RaftLogId;
+use crate::type_config::alias::CommittedLeaderIdOf;
 
 /// A reference to a log id, combining a reference to a committed leader ID and an index.
 /// Committed leader ID is the `term` in standard Raft.

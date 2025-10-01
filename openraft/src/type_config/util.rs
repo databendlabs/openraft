@@ -3,11 +3,16 @@ use std::time::Duration;
 
 use openraft_macros::since;
 
-use crate::async_runtime::mutex::Mutex;
-use crate::async_runtime::watch::Watch;
+use crate::Instant;
+use crate::OptionalSend;
+use crate::OptionalSync;
+use crate::RaftTypeConfig;
 use crate::async_runtime::Mpsc;
 use crate::async_runtime::MpscUnbounded;
 use crate::async_runtime::Oneshot;
+use crate::async_runtime::mutex::Mutex;
+use crate::async_runtime::watch::Watch;
+use crate::type_config::AsyncRuntime;
 use crate::type_config::alias::AsyncRuntimeOf;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::JoinHandleOf;
@@ -26,11 +31,6 @@ use crate::type_config::alias::TimeoutOf;
 use crate::type_config::alias::WatchOf;
 use crate::type_config::alias::WatchReceiverOf;
 use crate::type_config::alias::WatchSenderOf;
-use crate::type_config::AsyncRuntime;
-use crate::Instant;
-use crate::OptionalSend;
-use crate::OptionalSync;
-use crate::RaftTypeConfig;
 
 /// Collection of utility methods to `RaftTypeConfig` function.
 #[since(version = "0.10.0")]

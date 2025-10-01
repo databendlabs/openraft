@@ -3,14 +3,14 @@ use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
+use openraft::Config;
 use openraft::error::AllowNextRevertError;
 use openraft::error::ForwardToLeader;
 use openraft::error::NodeNotFound;
 use openraft::error::Operation;
-use openraft::Config;
 
-use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
+use crate::fixtures::ut_harness;
 
 /// With `Trigger::allow_next_revert()`  the leader allows follower to revert its log to an
 /// earlier state for one time.

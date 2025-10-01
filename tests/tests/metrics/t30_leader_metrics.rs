@@ -12,9 +12,9 @@ use pretty_assertions::assert_eq;
 use pretty_assertions::assert_ne;
 use tokio::time::sleep;
 
+use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
 use crate::fixtures::ut_harness;
-use crate::fixtures::RaftRouter;
 
 /// Cluster leader_metrics test.
 ///

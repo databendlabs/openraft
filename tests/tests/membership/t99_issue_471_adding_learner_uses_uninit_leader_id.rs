@@ -4,8 +4,8 @@ use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
 
-use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
+use crate::fixtures::ut_harness;
 
 /// When adding learner and waiting for the learner to become up to date,
 /// it should not try to use `matched.leader_id` which may be uninitialized, i.e., `(0,0)`.

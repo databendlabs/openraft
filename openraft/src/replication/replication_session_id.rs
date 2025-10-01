@@ -1,11 +1,11 @@
 use std::fmt::Display;
 use std::fmt::Formatter;
 
+use crate::RaftTypeConfig;
 use crate::display_ext::DisplayOptionExt;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::VoteOf;
 use crate::vote::committed::CommittedVote;
-use crate::RaftTypeConfig;
 
 /// Uniquely identifies a replication session.
 ///

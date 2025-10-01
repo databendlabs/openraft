@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 
-use crate::engine::Command;
 use crate::RaftTypeConfig;
+use crate::engine::Command;
 
 /// The entry of output from Engine to the runtime.
 #[derive(Debug, Default)]

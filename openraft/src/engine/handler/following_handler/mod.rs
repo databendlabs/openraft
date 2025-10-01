@@ -1,19 +1,23 @@
 use std::sync::Arc;
 
+use crate::EffectiveMembership;
+use crate::RaftState;
+use crate::RaftTypeConfig;
+use crate::StoredMembership;
 use crate::core::sm;
 use crate::display_ext::DisplayOption;
 use crate::display_ext::DisplayOptionExt;
 use crate::display_ext::DisplaySliceExt;
-use crate::engine::handler::log_handler::LogHandler;
-use crate::engine::handler::server_state_handler::ServerStateHandler;
-use crate::engine::handler::snapshot_handler::SnapshotHandler;
 use crate::engine::Command;
 use crate::engine::Condition;
 use crate::engine::EngineConfig;
 use crate::engine::EngineOutput;
-use crate::entry::raft_entry_ext::RaftEntryExt;
+use crate::engine::handler::log_handler::LogHandler;
+use crate::engine::handler::server_state_handler::ServerStateHandler;
+use crate::engine::handler::snapshot_handler::SnapshotHandler;
 use crate::entry::RaftEntry;
 use crate::entry::RaftPayload;
+use crate::entry::raft_entry_ext::RaftEntryExt;
 use crate::error::RejectAppendEntries;
 use crate::log_id::option_raft_log_id_ext::OptionRaftLogIdExt;
 use crate::raft_state::IOId;
@@ -21,10 +25,6 @@ use crate::raft_state::LogStateReader;
 use crate::storage::Snapshot;
 use crate::type_config::alias::LogIdOf;
 use crate::vote::committed::CommittedVote;
-use crate::EffectiveMembership;
-use crate::RaftState;
-use crate::RaftTypeConfig;
-use crate::StoredMembership;
 
 #[cfg(test)]
 mod append_entries_test;

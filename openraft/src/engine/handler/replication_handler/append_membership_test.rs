@@ -4,22 +4,22 @@ use std::time::Duration;
 use maplit::btreeset;
 use pretty_assertions::assert_eq;
 
-use crate::core::ServerState;
-use crate::engine::testing::log_id;
-use crate::engine::testing::UTConfig;
-use crate::engine::Command;
-use crate::engine::Engine;
-use crate::engine::LogIdList;
-use crate::engine::ReplicationProgress;
-use crate::progress::entry::ProgressEntry;
-use crate::progress::Inflight;
-use crate::progress::Progress;
-use crate::type_config::TypeConfigExt;
-use crate::utime::Leased;
 use crate::EffectiveMembership;
 use crate::Membership;
 use crate::MembershipState;
 use crate::Vote;
+use crate::core::ServerState;
+use crate::engine::Command;
+use crate::engine::Engine;
+use crate::engine::LogIdList;
+use crate::engine::ReplicationProgress;
+use crate::engine::testing::UTConfig;
+use crate::engine::testing::log_id;
+use crate::progress::Inflight;
+use crate::progress::Progress;
+use crate::progress::entry::ProgressEntry;
+use crate::type_config::TypeConfigExt;
+use crate::utime::Leased;
 
 fn m01() -> Membership<UTConfig> {
     Membership::<UTConfig>::new_with_defaults(vec![btreeset! {0,1}], [])

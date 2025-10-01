@@ -5,8 +5,8 @@ use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
 
-use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
+use crate::fixtures::ut_harness;
 
 /// RaftNetwork::append_entries can return a partial success.
 /// For example, it tries to send log entries `[1-2..2-10]`, the application is allowed to send just

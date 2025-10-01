@@ -1,5 +1,6 @@
 use std::fmt;
 
+use crate::RaftTypeConfig;
 use crate::display_ext::DisplayInstantExt;
 use crate::display_ext::DisplayOptionExt;
 use crate::engine::leader_log_ids::LeaderLogIds;
@@ -10,9 +11,8 @@ use crate::quorum::QuorumSet;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::VoteOf;
-use crate::vote::raft_vote::RaftVoteExt;
 use crate::vote::RaftVote;
-use crate::RaftTypeConfig;
+use crate::vote::raft_vote::RaftVoteExt;
 
 /// Candidate: voting state.
 #[derive(Clone, Debug)]

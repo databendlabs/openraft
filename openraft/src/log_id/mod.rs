@@ -15,9 +15,9 @@ use std::fmt::Formatter;
 pub use log_id_option_ext::LogIdOptionExt;
 pub use log_index_option_ext::LogIndexOptionExt;
 
+use crate::RaftTypeConfig;
 use crate::log_id::raft_log_id::RaftLogId;
 use crate::type_config::alias::CommittedLeaderIdOf;
-use crate::RaftTypeConfig;
 
 /// The identity of a raft log.
 ///

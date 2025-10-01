@@ -4,26 +4,26 @@ use std::time::Duration;
 use maplit::btreeset;
 use pretty_assertions::assert_eq;
 
-use crate::engine::testing::log_id;
-use crate::engine::testing::UTConfig;
-use crate::engine::Command;
-use crate::engine::Engine;
-use crate::engine::LogIdList;
-use crate::engine::ReplicationProgress;
-use crate::entry::RaftEntry;
-use crate::log_id_range::LogIdRange;
-use crate::progress::entry::ProgressEntry;
-use crate::progress::Inflight;
-use crate::raft_state::IOId;
-use crate::replication::request::Replicate;
-use crate::type_config::TypeConfigExt;
-use crate::utime::Leased;
-use crate::vote::raft_vote::RaftVoteExt;
 use crate::EffectiveMembership;
 use crate::Entry;
 use crate::Membership;
 use crate::ServerState;
 use crate::Vote;
+use crate::engine::Command;
+use crate::engine::Engine;
+use crate::engine::LogIdList;
+use crate::engine::ReplicationProgress;
+use crate::engine::testing::UTConfig;
+use crate::engine::testing::log_id;
+use crate::entry::RaftEntry;
+use crate::log_id_range::LogIdRange;
+use crate::progress::Inflight;
+use crate::progress::entry::ProgressEntry;
+use crate::raft_state::IOId;
+use crate::replication::request::Replicate;
+use crate::type_config::TypeConfigExt;
+use crate::utime::Leased;
+use crate::vote::raft_vote::RaftVoteExt;
 
 fn m_empty() -> Membership<UTConfig> {
     Membership::<UTConfig>::new_with_defaults(vec![btreeset! {}], [])

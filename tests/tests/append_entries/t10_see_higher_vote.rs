@@ -3,19 +3,19 @@ use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
-use openraft::network::v2::RaftNetworkV2;
-use openraft::network::RPCOption;
-use openraft::network::RaftNetworkFactory;
-use openraft::raft::VoteRequest;
 use openraft::Config;
 use openraft::ServerState;
 use openraft::Vote;
+use openraft::network::RPCOption;
+use openraft::network::RaftNetworkFactory;
+use openraft::network::v2::RaftNetworkV2;
+use openraft::raft::VoteRequest;
 use openraft_memstore::ClientRequest;
 use tokio::time::sleep;
 
+use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
 use crate::fixtures::ut_harness;
-use crate::fixtures::RaftRouter;
 
 /// A leader reverts to follower if a higher vote is seen when append-entries.
 #[tracing::instrument]

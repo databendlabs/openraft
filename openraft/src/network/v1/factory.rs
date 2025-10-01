@@ -1,9 +1,9 @@
 use openraft_macros::add_async_trait;
 
-use crate::network::v2::RaftNetworkV2;
 use crate::OptionalSend;
 use crate::OptionalSync;
 use crate::RaftTypeConfig;
+use crate::network::v2::RaftNetworkV2;
 
 /// A trait defining the interface for a Raft network factory to create connections between cluster
 /// members.

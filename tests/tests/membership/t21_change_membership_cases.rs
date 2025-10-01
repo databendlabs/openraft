@@ -8,8 +8,8 @@ use openraft::Config;
 use openraft::ServerState;
 use openraft_memstore::MemNodeId;
 
-use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
+use crate::fixtures::ut_harness;
 
 // --- change ---
 

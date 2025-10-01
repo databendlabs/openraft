@@ -3,6 +3,10 @@ use std::fmt::Debug;
 use maplit::btreemap;
 use openraft_macros::since;
 
+use crate::ChangeMembers;
+use crate::LogIdOptionExt;
+use crate::RaftMetrics;
+use crate::RaftTypeConfig;
 use crate::core::raft_msg::RaftMsg;
 use crate::core::replication_lag;
 use crate::display_ext::DisplayResult;
@@ -11,15 +15,11 @@ use crate::error::Fatal;
 use crate::error::InitializeError;
 use crate::impls::OneshotResponder;
 use crate::membership::IntoNodes;
-use crate::raft::raft_inner::RaftInner;
 use crate::raft::ClientWriteResult;
+use crate::raft::raft_inner::RaftInner;
+use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::OneshotReceiverOf;
-use crate::type_config::TypeConfigExt;
-use crate::ChangeMembers;
-use crate::LogIdOptionExt;
-use crate::RaftMetrics;
-use crate::RaftTypeConfig;
 
 /// Provides management APIs for the Raft system.
 ///

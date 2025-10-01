@@ -1,9 +1,9 @@
 use std::fmt::Debug;
 use std::fmt::Display;
 
+use crate::RaftTypeConfig;
 use crate::base::OptionalFeatures;
 use crate::vote::leader_id::raft_committed_leader_id::RaftCommittedLeaderId;
-use crate::RaftTypeConfig;
 
 /// A Leader identifier in an OpenRaft cluster.
 ///

@@ -5,13 +5,13 @@ use std::ops::RangeInclusive;
 use openraft_macros::add_async_trait;
 use openraft_macros::since;
 
-use crate::engine::LogIdList;
-use crate::type_config::alias::LogIdOf;
-use crate::type_config::alias::VoteOf;
 use crate::OptionalSend;
 use crate::OptionalSync;
 use crate::RaftTypeConfig;
 use crate::StorageError;
+use crate::engine::LogIdList;
+use crate::type_config::alias::LogIdOf;
+use crate::type_config::alias::VoteOf;
 /// A trait defining the interface for a Raft log subsystem.
 ///
 /// This interface is accessed read-only by replication sub-task: `ReplicationCore`.

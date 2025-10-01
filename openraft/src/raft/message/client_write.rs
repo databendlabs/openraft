@@ -3,11 +3,11 @@ use std::fmt::Debug;
 
 use openraft_macros::since;
 
+use crate::Membership;
+use crate::RaftTypeConfig;
 use crate::display_ext::DisplayOptionExt;
 use crate::error::ClientWriteError;
 use crate::type_config::alias::LogIdOf;
-use crate::Membership;
-use crate::RaftTypeConfig;
 
 /// The result of a write request to Raft.
 pub type ClientWriteResult<C> = Result<ClientWriteResponse<C>, ClientWriteError<C>>;

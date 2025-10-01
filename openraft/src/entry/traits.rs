@@ -3,13 +3,13 @@ use std::fmt::Display;
 
 use openraft_macros::since;
 
-use crate::base::finalized::Final;
-use crate::base::OptionalFeatures;
-use crate::type_config::alias::CommittedLeaderIdOf;
-use crate::type_config::alias::LogIdOf;
 use crate::EntryPayload;
 use crate::Membership;
 use crate::RaftTypeConfig;
+use crate::base::OptionalFeatures;
+use crate::base::finalized::Final;
+use crate::type_config::alias::CommittedLeaderIdOf;
+use crate::type_config::alias::LogIdOf;
 
 /// Defines operations on an entry payload.
 pub trait RaftPayload<C>

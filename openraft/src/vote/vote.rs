@@ -1,10 +1,10 @@
 use std::cmp::Ordering;
 use std::fmt::Formatter;
 
-use crate::vote::raft_vote::RaftVoteExt;
+use crate::RaftTypeConfig;
 use crate::vote::RaftLeaderId;
 use crate::vote::RaftVote;
-use crate::RaftTypeConfig;
+use crate::vote::raft_vote::RaftVoteExt;
 
 /// `Vote` represent the privilege of a node.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -87,8 +87,8 @@ where C: RaftTypeConfig
 #[allow(clippy::nonminimal_bool)]
 mod tests {
     mod feature_no_single_term_leader {
-        use crate::engine::testing::UTConfig;
         use crate::Vote;
+        use crate::engine::testing::UTConfig;
 
         #[cfg(feature = "serde")]
         #[test]
@@ -133,9 +133,9 @@ mod tests {
     mod feature_single_term_leader {
         use std::panic::UnwindSafe;
 
+        use crate::Vote;
         use crate::declare_raft_types;
         use crate::vote::leader_id_std::LeaderId;
-        use crate::Vote;
 
         declare_raft_types!(TC: D=(),R=(),LeaderId=LeaderId<TC>);
 

@@ -1,7 +1,7 @@
-use crate::engine::EngineConfig;
 use crate::RaftState;
 use crate::RaftTypeConfig;
 use crate::ServerState;
+use crate::engine::EngineConfig;
 
 #[cfg(test)]
 mod update_server_state_test;

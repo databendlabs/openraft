@@ -7,9 +7,9 @@ use openraft::Config;
 use openraft::RaftLogReader;
 use tokio::time::sleep;
 
+use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
 use crate::fixtures::ut_harness;
-use crate::fixtures::RaftRouter;
 
 /// Replication blocks purge, but it should not purge for ever.
 /// Every new replication action should avoid using a log that is scheduled to be purged.

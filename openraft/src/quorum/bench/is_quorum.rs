@@ -1,8 +1,8 @@
 extern crate test;
 
 use maplit::btreeset;
-use test::black_box;
 use test::Bencher;
+use test::black_box;
 
 use crate::quorum::AsJoint;
 use crate::quorum::QuorumSet;

@@ -1,9 +1,9 @@
 use maplit::btreeset;
 
+use crate::quorum::Joint;
 use crate::quorum::coherent::Coherent;
 use crate::quorum::coherent::FindCoherent;
 use crate::quorum::joint::AsJoint;
-use crate::quorum::Joint;
 
 #[test]
 fn test_is_coherent_vec() -> anyhow::Result<()> {

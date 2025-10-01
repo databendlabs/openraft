@@ -5,23 +5,23 @@ use anyerror::AnyError;
 use openraft_macros::add_async_trait;
 use openraft_macros::since;
 
+use crate::OptionalSend;
+use crate::OptionalSync;
+use crate::RaftTypeConfig;
 use crate::error::RPCError;
 use crate::error::ReplicationClosed;
 use crate::error::StreamingError;
 use crate::error::Unreachable;
 use crate::network::Backoff;
 use crate::network::RPCOption;
-use crate::raft::message::TransferLeaderRequest;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
 use crate::raft::SnapshotResponse;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
+use crate::raft::message::TransferLeaderRequest;
 use crate::storage::Snapshot;
 use crate::type_config::alias::VoteOf;
-use crate::OptionalSend;
-use crate::OptionalSync;
-use crate::RaftTypeConfig;
 
 /// A trait defining the interface for a Raft network between cluster members.
 ///

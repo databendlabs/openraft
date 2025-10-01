@@ -1,8 +1,8 @@
 use std::cmp::Ordering;
 use std::fmt::Formatter;
 
-use crate::display_ext::DisplayOptionExt;
 use crate::RaftTypeConfig;
+use crate::display_ext::DisplayOptionExt;
 
 /// Similar to [`Vote`] but with a reference to the `LeaderId`, and provide ordering and display
 /// implementation.

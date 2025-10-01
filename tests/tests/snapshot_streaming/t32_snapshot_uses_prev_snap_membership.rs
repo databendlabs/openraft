@@ -9,9 +9,9 @@ use openraft::RaftLogReader;
 use openraft::SnapshotPolicy;
 use openraft::StorageHelper;
 
+use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
 use crate::fixtures::ut_harness;
-use crate::fixtures::RaftRouter;
 
 /// Test a second compaction should not lose membership.
 /// To ensure the bug is fixed:

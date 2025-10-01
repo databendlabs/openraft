@@ -1,13 +1,13 @@
 use std::fmt;
 use std::fmt::Formatter;
 
-use crate::core::ApplyResult;
-use crate::display_ext::display_result::DisplayResultExt;
-use crate::display_ext::DisplayOptionExt;
-use crate::raft_state::IOId;
-use crate::storage::SnapshotMeta;
 use crate::RaftTypeConfig;
 use crate::StorageError;
+use crate::core::ApplyResult;
+use crate::display_ext::DisplayOptionExt;
+use crate::display_ext::display_result::DisplayResultExt;
+use crate::raft_state::IOId;
+use crate::storage::SnapshotMeta;
 
 /// The Ok part of a state machine command result.
 #[derive(Debug)]

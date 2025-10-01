@@ -7,8 +7,8 @@ use maplit::btreeset;
 use openraft::Config;
 use openraft::SnapshotPolicy;
 
-use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
+use crate::fixtures::ut_harness;
 
 /// Compaction test.
 ///

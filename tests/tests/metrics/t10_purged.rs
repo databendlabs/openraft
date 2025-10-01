@@ -3,12 +3,12 @@ use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
-use openraft::storage::RaftLogStorage;
 use openraft::Config;
+use openraft::storage::RaftLogStorage;
 
+use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
 use crate::fixtures::ut_harness;
-use crate::fixtures::RaftRouter;
 
 /// Metric `purged` should be the last purged log id.
 #[tracing::instrument]

@@ -2,8 +2,8 @@
 
 use std::sync::atomic::Ordering;
 
-use crate::raft::RaftInner;
 use crate::RaftTypeConfig;
+use crate::raft::RaftInner;
 
 /// RuntimeConfigHandle is an interface to update runtime config.
 ///

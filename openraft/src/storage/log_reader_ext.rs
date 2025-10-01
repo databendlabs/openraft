@@ -1,11 +1,11 @@
 use anyerror::AnyError;
 use openraft_macros::add_async_trait;
 
-use crate::entry::RaftEntry;
-use crate::type_config::alias::LogIdOf;
 use crate::RaftLogReader;
 use crate::RaftTypeConfig;
 use crate::StorageError;
+use crate::entry::RaftEntry;
+use crate::type_config::alias::LogIdOf;
 
 #[add_async_trait]
 pub trait RaftLogReaderExt<C>: RaftLogReader<C>

@@ -2,16 +2,16 @@ use std::sync::Arc;
 
 use maplit::btreeset;
 
-use crate::engine::testing::log_id;
-use crate::engine::testing::UTConfig;
-use crate::error::ChangeMembershipError;
-use crate::error::EmptyMembership;
-use crate::error::InProgress;
-use crate::error::LearnerNotFound;
 use crate::ChangeMembers;
 use crate::EffectiveMembership;
 use crate::Membership;
 use crate::MembershipState;
+use crate::engine::testing::UTConfig;
+use crate::engine::testing::log_id;
+use crate::error::ChangeMembershipError;
+use crate::error::EmptyMembership;
+use crate::error::InProgress;
+use crate::error::LearnerNotFound;
 
 /// Create an Arc<EffectiveMembership>
 fn effmem(term: u64, index: u64, m: Membership<UTConfig>) -> Arc<EffectiveMembership<UTConfig>> {

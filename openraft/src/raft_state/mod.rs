@@ -4,24 +4,24 @@ use std::ops::Deref;
 use validit::Valid;
 use validit::Validate;
 
+use crate::LogId;
+use crate::LogIdOptionExt;
+use crate::RaftTypeConfig;
+use crate::ServerState;
 use crate::engine::LogIdList;
 use crate::error::ForwardToLeader;
 use crate::log_id::raft_log_id::RaftLogId;
 use crate::storage::SnapshotMeta;
 use crate::utime::Leased;
-use crate::LogId;
-use crate::LogIdOptionExt;
-use crate::RaftTypeConfig;
-use crate::ServerState;
 
 pub(crate) mod io_state;
 mod log_state_reader;
 mod membership_state;
 mod vote_state_reader;
 
+pub(crate) use io_state::IOState;
 #[allow(unused)]
 pub(crate) use io_state::io_id::IOId;
-pub(crate) use io_state::IOState;
 
 #[cfg(test)]
 mod tests {
@@ -36,8 +36,8 @@ pub use membership_state::MembershipState;
 pub(crate) use vote_state_reader::VoteStateReader;
 
 use crate::display_ext::DisplayOptionExt;
-use crate::entry::raft_entry_ext::RaftEntryExt;
 use crate::entry::RaftEntry;
+use crate::entry::raft_entry_ext::RaftEntryExt;
 use crate::log_id::ref_log_id::RefLogId;
 use crate::proposer::Leader;
 use crate::proposer::LeaderQuorumSet;
@@ -45,9 +45,9 @@ use crate::raft_state::io_state::io_progress::IOProgress;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::VoteOf;
-use crate::vote::raft_vote::RaftVoteExt;
 use crate::vote::RaftLeaderId;
 use crate::vote::RaftVote;
+use crate::vote::raft_vote::RaftVoteExt;
 
 /// A struct used to represent the raft state which a Raft node needs.
 #[derive(Clone, Debug)]

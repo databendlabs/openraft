@@ -3,13 +3,13 @@ use std::time::Duration;
 
 use openraft_macros::since;
 
+use crate::LogId;
+use crate::Raft;
+use crate::RaftTypeConfig;
 use crate::async_runtime::watch::WatchReceiver;
 use crate::error::Fatal;
 use crate::metrics::WaitError;
 use crate::raft::linearizable_read::LinearizeState;
-use crate::LogId;
-use crate::Raft;
-use crate::RaftTypeConfig;
 
 /// Represents a linearization operation for read.
 ///

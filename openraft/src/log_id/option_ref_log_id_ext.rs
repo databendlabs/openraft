@@ -1,6 +1,6 @@
+use crate::RaftTypeConfig;
 use crate::log_id::ref_log_id::RefLogId;
 use crate::type_config::alias::LogIdOf;
-use crate::RaftTypeConfig;
 
 pub(crate) trait OptionRefLogIdExt<C>
 where C: RaftTypeConfig

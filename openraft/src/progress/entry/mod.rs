@@ -8,14 +8,14 @@ use std::fmt::Formatter;
 
 use validit::Validate;
 
+use crate::LogIdOptionExt;
+use crate::RaftTypeConfig;
 use crate::display_ext::DisplayOptionExt;
 use crate::engine::EngineConfig;
 use crate::progress::entry::update::Updater;
 use crate::progress::inflight::Inflight;
 use crate::raft_state::LogStateReader;
 use crate::type_config::alias::LogIdOf;
-use crate::LogIdOptionExt;
-use crate::RaftTypeConfig;
 
 /// State of replication to a target node.
 #[derive(Clone, Debug)]

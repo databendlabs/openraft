@@ -6,9 +6,9 @@ use maplit::btreeset;
 use openraft::Config;
 use openraft::SnapshotPolicy;
 
+use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
 use crate::fixtures::ut_harness;
-use crate::fixtures::RaftRouter;
 
 /// Test replication when switching line rate to snapshotting.
 ///

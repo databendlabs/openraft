@@ -3,12 +3,6 @@ use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
-use openraft::network::v2::RaftNetworkV2;
-use openraft::network::RPCOption;
-use openraft::network::RaftNetworkFactory;
-use openraft::raft::AppendEntriesRequest;
-use openraft::storage::StorageHelper;
-use openraft::testing::blank_ent;
 use openraft::Config;
 use openraft::EffectiveMembership;
 use openraft::Entry;
@@ -16,10 +10,16 @@ use openraft::EntryPayload;
 use openraft::Membership;
 use openraft::SnapshotPolicy;
 use openraft::Vote;
+use openraft::network::RPCOption;
+use openraft::network::RaftNetworkFactory;
+use openraft::network::v2::RaftNetworkV2;
+use openraft::raft::AppendEntriesRequest;
+use openraft::storage::StorageHelper;
+use openraft::testing::blank_ent;
 
+use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
 use crate::fixtures::ut_harness;
-use crate::fixtures::RaftRouter;
 
 /// Test membership info is sync correctly along with snapshot.
 ///

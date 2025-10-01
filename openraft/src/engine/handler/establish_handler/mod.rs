@@ -1,10 +1,10 @@
+use crate::RaftTypeConfig;
 use crate::engine::EngineConfig;
 use crate::proposer::Candidate;
 use crate::proposer::Leader;
 use crate::proposer::LeaderQuorumSet;
 use crate::proposer::LeaderState;
 use crate::vote::raft_vote::RaftVoteExt;
-use crate::RaftTypeConfig;
 
 /// Establish a leader for the Engine, when Candidate finishes voting stage.
 pub(crate) struct EstablishHandler<'x, C>

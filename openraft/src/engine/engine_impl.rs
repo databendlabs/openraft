@@ -2,11 +2,18 @@ use std::time::Duration;
 
 use validit::Valid;
 
+use crate::LogIdOptionExt;
+use crate::Membership;
+use crate::RaftTypeConfig;
+use crate::core::ServerState;
 use crate::core::raft_msg::AppendEntriesTx;
 use crate::core::sm;
-use crate::core::ServerState;
 use crate::display_ext::DisplayOptionExt;
 use crate::display_ext::DisplaySliceExt;
+use crate::engine::Command;
+use crate::engine::Condition;
+use crate::engine::EngineOutput;
+use crate::engine::Respond;
 use crate::engine::engine_config::EngineConfig;
 use crate::engine::handler::establish_handler::EstablishHandler;
 use crate::engine::handler::following_handler::FollowingHandler;
@@ -16,10 +23,6 @@ use crate::engine::handler::replication_handler::ReplicationHandler;
 use crate::engine::handler::server_state_handler::ServerStateHandler;
 use crate::engine::handler::snapshot_handler::SnapshotHandler;
 use crate::engine::handler::vote_handler::VoteHandler;
-use crate::engine::Command;
-use crate::engine::Condition;
-use crate::engine::EngineOutput;
-use crate::engine::Respond;
 use crate::entry::RaftEntry;
 use crate::entry::RaftPayload;
 use crate::error::ForwardToLeader;
@@ -27,35 +30,32 @@ use crate::error::InitializeError;
 use crate::error::NotAllowed;
 use crate::error::NotInMembers;
 use crate::error::RejectAppendEntries;
-use crate::proposer::leader_state::CandidateState;
 use crate::proposer::Candidate;
 use crate::proposer::Leader;
 use crate::proposer::LeaderQuorumSet;
 use crate::proposer::LeaderState;
-use crate::raft::responder::Responder;
+use crate::proposer::leader_state::CandidateState;
 use crate::raft::AppendEntriesResponse;
 use crate::raft::SnapshotResponse;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
+use crate::raft::responder::Responder;
 use crate::raft_state::IOId;
 use crate::raft_state::LogStateReader;
 use crate::raft_state::RaftState;
 use crate::storage::Snapshot;
 use crate::storage::SnapshotMeta;
+use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::LeaderIdOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::OneshotSenderOf;
 use crate::type_config::alias::ResponderOf;
 use crate::type_config::alias::SnapshotDataOf;
 use crate::type_config::alias::VoteOf;
-use crate::type_config::TypeConfigExt;
-use crate::vote::raft_vote::RaftVoteExt;
 use crate::vote::RaftLeaderId;
 use crate::vote::RaftTerm;
 use crate::vote::RaftVote;
-use crate::LogIdOptionExt;
-use crate::Membership;
-use crate::RaftTypeConfig;
+use crate::vote::raft_vote::RaftVoteExt;
 
 /// Raft protocol algorithm.
 ///
@@ -834,9 +834,9 @@ where C: RaftTypeConfig
 /// Supporting utilities for unit test
 #[cfg(test)]
 mod engine_testing {
+    use crate::RaftTypeConfig;
     use crate::engine::Engine;
     use crate::proposer::LeaderQuorumSet;
-    use crate::RaftTypeConfig;
 
     impl<C> Engine<C>
     where C: RaftTypeConfig

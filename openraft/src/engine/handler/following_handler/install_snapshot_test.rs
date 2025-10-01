@@ -5,23 +5,23 @@ use std::time::Duration;
 use maplit::btreeset;
 use pretty_assertions::assert_eq;
 
-use crate::core::sm;
-use crate::engine::testing::log_id;
-use crate::engine::testing::UTConfig;
-use crate::engine::Command;
-use crate::engine::Condition;
-use crate::engine::Engine;
-use crate::engine::LogIdList;
-use crate::raft_state::IOId;
-use crate::storage::Snapshot;
-use crate::storage::SnapshotMeta;
-use crate::type_config::alias::VoteOf;
-use crate::type_config::TypeConfigExt;
-use crate::vote::raft_vote::RaftVoteExt;
 use crate::EffectiveMembership;
 use crate::Membership;
 use crate::StoredMembership;
 use crate::Vote;
+use crate::core::sm;
+use crate::engine::Command;
+use crate::engine::Condition;
+use crate::engine::Engine;
+use crate::engine::LogIdList;
+use crate::engine::testing::UTConfig;
+use crate::engine::testing::log_id;
+use crate::raft_state::IOId;
+use crate::storage::Snapshot;
+use crate::storage::SnapshotMeta;
+use crate::type_config::TypeConfigExt;
+use crate::type_config::alias::VoteOf;
+use crate::vote::raft_vote::RaftVoteExt;
 
 fn m12() -> Membership<UTConfig> {
     Membership::<UTConfig>::new_with_defaults(vec![btreeset! {1,2}], [])

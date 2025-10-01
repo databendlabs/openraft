@@ -4,24 +4,24 @@ use std::time::Duration;
 
 use futures::FutureExt;
 
-use crate::async_runtime::watch::WatchReceiver;
+use crate::Config;
+use crate::RaftTypeConfig;
 use crate::async_runtime::MpscUnboundedSender;
+use crate::async_runtime::watch::WatchReceiver;
 use crate::core::heartbeat::errors::RaftCoreClosed;
 use crate::core::heartbeat::errors::Stopped;
 use crate::core::heartbeat::event::HeartbeatEvent;
 use crate::core::notification::Notification;
-use crate::network::v2::RaftNetworkV2;
 use crate::network::RPCOption;
+use crate::network::v2::RaftNetworkV2;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
-use crate::replication::response::ReplicationResult;
 use crate::replication::Progress;
+use crate::replication::response::ReplicationResult;
+use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::MpscUnboundedSenderOf;
 use crate::type_config::alias::OneshotReceiverOf;
 use crate::type_config::alias::WatchReceiverOf;
-use crate::type_config::TypeConfigExt;
-use crate::Config;
-use crate::RaftTypeConfig;
 
 /// A dedicated worker sending heartbeat to a specific follower.
 pub struct HeartbeatWorker<C, N>

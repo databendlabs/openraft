@@ -1,10 +1,10 @@
 use std::fmt;
 
+use crate::RaftTypeConfig;
 use crate::display_ext::DisplayOptionExt;
 use crate::display_ext::DisplaySlice;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::VoteOf;
-use crate::RaftTypeConfig;
 
 /// An RPC sent by a cluster leader to replicate log entries (§5.3), and as a heartbeat (§5.2).
 ///

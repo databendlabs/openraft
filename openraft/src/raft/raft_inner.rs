@@ -4,31 +4,31 @@ use std::time::Duration;
 
 use tracing::Level;
 
+use crate::Config;
+use crate::OptionalSend;
+use crate::RaftMetrics;
+use crate::RaftTypeConfig;
+use crate::async_runtime::MpscUnboundedSender;
 use crate::async_runtime::watch::WatchReceiver;
 use crate::async_runtime::watch::WatchSender;
-use crate::async_runtime::MpscUnboundedSender;
 use crate::config::RuntimeConfig;
-use crate::core::raft_msg::external_command::ExternalCommand;
-use crate::core::raft_msg::RaftMsg;
 use crate::core::TickHandle;
+use crate::core::raft_msg::RaftMsg;
+use crate::core::raft_msg::external_command::ExternalCommand;
 use crate::display_ext::DisplayOptionExt;
 use crate::error::Fatal;
 use crate::metrics::RaftDataMetrics;
 use crate::metrics::RaftServerMetrics;
 use crate::metrics::Wait;
 use crate::raft::core_state::CoreState;
+use crate::type_config::AsyncRuntime;
+use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::AsyncRuntimeOf;
 use crate::type_config::alias::MpscUnboundedSenderOf;
 use crate::type_config::alias::MutexOf;
 use crate::type_config::alias::OneshotReceiverOf;
 use crate::type_config::alias::OneshotSenderOf;
 use crate::type_config::alias::WatchReceiverOf;
-use crate::type_config::AsyncRuntime;
-use crate::type_config::TypeConfigExt;
-use crate::Config;
-use crate::OptionalSend;
-use crate::RaftMetrics;
-use crate::RaftTypeConfig;
 
 /// RaftInner is the internal handle and provides internally used APIs to communicate with
 /// `RaftCore`.

@@ -5,12 +5,12 @@ use std::fmt::Formatter;
 use maplit::btreemap;
 use maplit::btreeset;
 
+use crate::ChangeMembers;
+use crate::Membership;
 use crate::engine::testing::UTConfig;
 use crate::error::MembershipError;
 use crate::error::NodeNotFound;
 use crate::error::Operation;
-use crate::ChangeMembers;
-use crate::Membership;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]

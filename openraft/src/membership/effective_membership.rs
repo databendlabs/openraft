@@ -3,15 +3,15 @@ use std::fmt;
 use std::fmt::Debug;
 use std::sync::Arc;
 
+use crate::Membership;
+use crate::RaftTypeConfig;
+use crate::StoredMembership;
 use crate::display_ext::DisplayOptionExt;
 use crate::log_id::raft_log_id::RaftLogId;
 use crate::log_id::raft_log_id_ext::RaftLogIdExt;
 use crate::quorum::Joint;
 use crate::quorum::QuorumSet;
 use crate::type_config::alias::LogIdOf;
-use crate::Membership;
-use crate::RaftTypeConfig;
-use crate::StoredMembership;
 
 /// The currently active membership config.
 ///

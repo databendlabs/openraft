@@ -4,9 +4,9 @@ pub(crate) mod either;
 pub(crate) mod impls;
 pub use impls::OneshotResponder;
 
-use crate::raft::message::ClientWriteResult;
 use crate::OptionalSend;
 use crate::RaftTypeConfig;
+use crate::raft::message::ClientWriteResult;
 
 /// A trait that lets `RaftCore` send the response or an error of a client write request back to the
 /// client or to somewhere else.

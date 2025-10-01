@@ -7,9 +7,9 @@ use openraft::Config;
 use openraft::RaftLogReader;
 use tokio::time::sleep;
 
+use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
 use crate::fixtures::ut_harness;
-use crate::fixtures::RaftRouter;
 
 /// Leader logs should be deleted up to snapshot.last_log_id-max_in_snapshot_log_to_keep after
 /// building snapshot; Follower/learner should delete up to snapshot.last_log_id after installing

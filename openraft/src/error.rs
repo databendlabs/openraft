@@ -27,15 +27,15 @@ pub use self::node_not_found::NodeNotFound;
 pub use self::operation::Operation;
 pub use self::replication_closed::ReplicationClosed;
 pub use self::streaming_error::StreamingError;
+use crate::Membership;
+use crate::RaftTypeConfig;
+use crate::StorageError;
 use crate::network::RPCTypes;
 use crate::raft::AppendEntriesResponse;
 use crate::raft_types::SnapshotSegmentId;
 use crate::try_as_ref::TryAsRef;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::VoteOf;
-use crate::Membership;
-use crate::RaftTypeConfig;
-use crate::StorageError;
 
 /// RaftError is returned by API methods of `Raft`.
 ///
@@ -612,7 +612,9 @@ pub struct QuorumNotEnough<C: RaftTypeConfig> {
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-#[error("the cluster is already undergoing a configuration change at log {membership_log_id:?}, last committed membership log id: {committed:?}")]
+#[error(
+    "the cluster is already undergoing a configuration change at log {membership_log_id:?}, last committed membership log id: {committed:?}"
+)]
 pub struct InProgress<C: RaftTypeConfig> {
     pub committed: Option<LogIdOf<C>>,
     pub membership_log_id: Option<LogIdOf<C>>,

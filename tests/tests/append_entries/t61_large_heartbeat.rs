@@ -5,8 +5,8 @@ use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
 
-use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
+use crate::fixtures::ut_harness;
 
 /// Large heartbeat should not block replication.
 /// I.e., replication should not be driven by heartbeat.

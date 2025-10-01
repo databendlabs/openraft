@@ -1,6 +1,6 @@
 [workspace.package]
 version = "0.10.0"
-edition = "2021"
+edition = "2024"
 authors = [
     "Databend Authors <opensource@datafuselabs.com>",
     "Anthony Dodd <Dodd.AnthonyJosiah@gmail.com>",
@@ -53,7 +53,7 @@ validit = { version = "0.2.2" }
 
 [workspace]
 
-resolver = "2"
+resolver = "3"
 
 members = [
     "openraft",

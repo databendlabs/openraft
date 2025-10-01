@@ -1,7 +1,7 @@
-use crate::quorum::coherent::FindCoherent;
 use crate::quorum::Coherent;
 use crate::quorum::Joint;
 use crate::quorum::QuorumSet;
+use crate::quorum::coherent::FindCoherent;
 
 impl<ID, QS> Coherent<ID, Joint<ID, QS, Vec<QS>>> for Joint<ID, QS, Vec<QS>>
 where

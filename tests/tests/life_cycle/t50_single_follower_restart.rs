@@ -2,16 +2,16 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use maplit::btreeset;
-use openraft::storage::RaftLogStorage;
-use openraft::vote::RaftLeaderId;
-use openraft::vote::RaftLeaderIdExt;
 use openraft::Config;
 use openraft::RaftLogReader;
 use openraft::ServerState;
 use openraft::Vote;
+use openraft::storage::RaftLogStorage;
+use openraft::vote::RaftLeaderId;
+use openraft::vote::RaftLeaderIdExt;
 
-use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
+use crate::fixtures::ut_harness;
 
 /// Brings up a cluster of 1 node and restart it, when it is a follower.
 ///

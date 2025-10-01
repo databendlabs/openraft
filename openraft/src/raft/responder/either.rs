@@ -1,7 +1,7 @@
-use crate::impls::OneshotResponder;
-use crate::raft::responder::Responder;
-use crate::raft::ClientWriteResult;
 use crate::RaftTypeConfig;
+use crate::impls::OneshotResponder;
+use crate::raft::ClientWriteResult;
+use crate::raft::responder::Responder;
 
 /// Either an oneshot responder or a user-defined responder.
 ///

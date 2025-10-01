@@ -1,5 +1,5 @@
-use crate::type_config::alias::VoteOf;
 use crate::RaftTypeConfig;
+use crate::type_config::alias::VoteOf;
 
 // TODO: remove it?
 /// APIs to get vote.

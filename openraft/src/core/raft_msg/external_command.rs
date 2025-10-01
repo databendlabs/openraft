@@ -2,12 +2,12 @@
 
 use std::fmt;
 
+use crate::RaftTypeConfig;
+use crate::Snapshot;
 use crate::core::raft_msg::ResultSender;
 use crate::core::sm;
 use crate::error::AllowNextRevertError;
 use crate::type_config::alias::OneshotSenderOf;
-use crate::RaftTypeConfig;
-use crate::Snapshot;
 
 /// Application-triggered Raft actions for testing and administration.
 ///

@@ -1,15 +1,15 @@
 //! State machine control handle
 
+use crate::RaftTypeConfig;
 use crate::async_runtime::MpscUnboundedSender;
 use crate::async_runtime::MpscUnboundedWeakSender;
 use crate::async_runtime::SendError;
 use crate::core::sm;
 use crate::storage::Snapshot;
+use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::JoinHandleOf;
 use crate::type_config::alias::MpscUnboundedSenderOf;
 use crate::type_config::alias::MpscUnboundedWeakSenderOf;
-use crate::type_config::TypeConfigExt;
-use crate::RaftTypeConfig;
 
 /// State machine worker handle for sending command to it.
 pub(crate) struct Handle<C>

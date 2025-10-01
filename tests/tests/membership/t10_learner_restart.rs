@@ -7,8 +7,8 @@ use openraft::Config;
 use openraft::Raft;
 use openraft::ServerState;
 
-use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
+use crate::fixtures::ut_harness;
 
 /// Cluster learner_restart test.
 ///

@@ -5,9 +5,9 @@ use maplit::btreeset;
 use openraft::Config;
 use openraft::Vote;
 
+use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
 use crate::fixtures::ut_harness;
-use crate::fixtures::RaftRouter;
 
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]

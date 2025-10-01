@@ -3,19 +3,19 @@ use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
-use openraft::raft::AppendEntriesRequest;
-use openraft::storage::RaftLogStorage;
-use openraft::testing::blank_ent;
 use openraft::Config;
 use openraft::Entry;
 use openraft::RaftLogReader;
 use openraft::RaftTypeConfig;
 use openraft::ServerState;
 use openraft::Vote;
+use openraft::raft::AppendEntriesRequest;
+use openraft::storage::RaftLogStorage;
+use openraft::testing::blank_ent;
 
+use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
 use crate::fixtures::ut_harness;
-use crate::fixtures::RaftRouter;
 
 /// Test append-entries response in every case.
 ///

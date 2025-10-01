@@ -2,16 +2,16 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use maplit::btreeset;
-use openraft::storage::RaftLogStorageExt;
 use openraft::Config;
 use openraft::Entry;
 use openraft::EntryPayload;
 use openraft::Membership;
 use openraft::Raft;
+use openraft::storage::RaftLogStorageExt;
 
+use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
 use crate::fixtures::ut_harness;
-use crate::fixtures::RaftRouter;
 
 /// Cluster members_leader_fix_partial test.
 /// TODO(xp): in discussion: whether a leader should auto commit a uniform membership config:

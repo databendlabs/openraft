@@ -1,8 +1,8 @@
+use crate::RaftTypeConfig;
 use crate::log_id::raft_log_id::RaftLogId;
 use crate::log_id::raft_log_id_ext::RaftLogIdExt;
 use crate::log_id::ref_log_id::RefLogId;
 use crate::type_config::alias::CommittedLeaderIdOf;
-use crate::RaftTypeConfig;
 
 /// This helper trait extracts information from an `Option<T>` where T impls [`RaftLogId`].
 pub(crate) trait OptionRaftLogIdExt<C>

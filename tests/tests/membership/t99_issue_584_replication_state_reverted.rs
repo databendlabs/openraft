@@ -5,8 +5,8 @@ use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
 
-use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
+use crate::fixtures::ut_harness;
 
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]

@@ -3,16 +3,16 @@ use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
+use openraft::Config;
+use openraft::ServerState;
+use openraft::Vote;
 use openraft::storage::RaftLogStorage;
 use openraft::storage::RaftLogStorageExt;
 use openraft::testing::blank_ent;
 use openraft::testing::membership_ent;
-use openraft::Config;
-use openraft::ServerState;
-use openraft::Vote;
 
-use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
+use crate::fixtures::ut_harness;
 
 /// The last_log in a vote request must be greater or equal than the local one.
 ///

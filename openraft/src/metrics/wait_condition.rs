@@ -1,8 +1,8 @@
 use std::fmt;
 
-use crate::metrics::metric_display::MetricDisplay;
-use crate::metrics::Metric;
 use crate::RaftTypeConfig;
+use crate::metrics::Metric;
+use crate::metrics::metric_display::MetricDisplay;
 
 /// A condition that the application wait for.
 #[derive(Debug)]

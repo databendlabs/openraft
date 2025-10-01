@@ -2,8 +2,8 @@
 
 use std::fmt;
 
-use crate::vote::RaftLeaderId;
 use crate::RaftTypeConfig;
+use crate::vote::RaftLeaderId;
 
 /// ID of a `leader`, allowing multiple leaders per term.
 ///

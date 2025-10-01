@@ -2,17 +2,17 @@ use std::time::Duration;
 
 use openraft_macros::add_async_trait;
 
+use crate::OptionalSend;
+use crate::OptionalSync;
+use crate::RaftTypeConfig;
 use crate::error::RPCError;
 use crate::error::RaftError;
-use crate::network::rpc_option::RPCOption;
 use crate::network::Backoff;
+use crate::network::rpc_option::RPCOption;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
-use crate::OptionalSend;
-use crate::OptionalSync;
-use crate::RaftTypeConfig;
 
 /// A trait defining the interface for a Raft network between cluster members.
 ///

@@ -1,12 +1,12 @@
 use maplit::btreeset;
 use pretty_assertions::assert_eq;
 
-use crate::engine::testing::log_id;
-use crate::engine::testing::UTConfig;
-use crate::engine::Engine;
-use crate::storage::SnapshotMeta;
 use crate::Membership;
 use crate::StoredMembership;
+use crate::engine::Engine;
+use crate::engine::testing::UTConfig;
+use crate::engine::testing::log_id;
+use crate::storage::SnapshotMeta;
 
 fn m12() -> Membership<UTConfig> {
     Membership::<UTConfig>::new_with_defaults(vec![btreeset! {1,2}], [])

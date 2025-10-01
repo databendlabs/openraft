@@ -1,8 +1,8 @@
 use std::cmp::Ordering;
 use std::marker::PhantomData;
 
-use crate::vote::RaftLeaderId;
 use crate::RaftTypeConfig;
+use crate::vote::RaftLeaderId;
 
 /// Provide comparison functions for [`RaftLeaderId`] implementations.
 pub struct LeaderIdCompare<C>(PhantomData<C>);

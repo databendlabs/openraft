@@ -13,17 +13,17 @@ pub use async_runtime::MpscUnbounded;
 pub use async_runtime::OneshotSender;
 pub use util::TypeConfigExt;
 
-use crate::entry::RaftEntry;
-use crate::raft::responder::Responder;
-use crate::vote::raft_vote::RaftVote;
-use crate::vote::RaftLeaderId;
-use crate::vote::RaftTerm;
 use crate::AppData;
 use crate::AppDataResponse;
 use crate::Node;
 use crate::NodeId;
 use crate::OptionalSend;
 use crate::OptionalSync;
+use crate::entry::RaftEntry;
+use crate::raft::responder::Responder;
+use crate::vote::RaftLeaderId;
+use crate::vote::RaftTerm;
+use crate::vote::raft_vote::RaftVote;
 
 /// Configuration of types used by the [`Raft`] core engine.
 ///
@@ -117,16 +117,16 @@ pub trait RaftTypeConfig:
 ///
 /// [`type-alias`]: crate::docs::feature_flags#feature-flag-type-alias
 pub mod alias {
-    use crate::async_runtime::watch;
-    use crate::async_runtime::Mpsc;
-    use crate::async_runtime::MpscUnbounded;
-    use crate::async_runtime::Oneshot;
-    use crate::raft::responder::Responder;
-    use crate::type_config::AsyncRuntime;
-    use crate::vote::RaftLeaderId;
     use crate::EntryPayload;
     use crate::LogId;
     use crate::RaftTypeConfig;
+    use crate::async_runtime::Mpsc;
+    use crate::async_runtime::MpscUnbounded;
+    use crate::async_runtime::Oneshot;
+    use crate::async_runtime::watch;
+    use crate::raft::responder::Responder;
+    use crate::type_config::AsyncRuntime;
+    use crate::vote::RaftLeaderId;
 
     pub type DOf<C> = <C as RaftTypeConfig>::D;
     pub type ROf<C> = <C as RaftTypeConfig>::R;

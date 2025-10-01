@@ -10,8 +10,8 @@ use openraft::ServerState;
 use openraft::Vote;
 use tracing::Instrument;
 
-use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
+use crate::fixtures::ut_harness;
 
 /// Cluster concurrent_write_and_add_learner test.
 ///

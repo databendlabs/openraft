@@ -2,12 +2,12 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use maplit::btreeset;
-use openraft::raft::TransferLeaderRequest;
 use openraft::Config;
 use openraft::ServerState;
+use openraft::raft::TransferLeaderRequest;
 
-use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
+use crate::fixtures::ut_harness;
 
 /// Test handling of transfer leader request.
 ///

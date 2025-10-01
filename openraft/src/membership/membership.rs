@@ -2,6 +2,8 @@ use core::fmt;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
+use crate::ChangeMembers;
+use crate::RaftTypeConfig;
 use crate::error::ChangeMembershipError;
 use crate::error::EmptyMembership;
 use crate::error::MembershipError;
@@ -12,8 +14,6 @@ use crate::quorum::AsJoint;
 use crate::quorum::FindCoherent;
 use crate::quorum::Joint;
 use crate::quorum::QuorumSet;
-use crate::ChangeMembers;
-use crate::RaftTypeConfig;
 
 /// The membership configuration of the cluster.
 ///
@@ -415,12 +415,12 @@ mod tests {
     use maplit::btreemap;
     use maplit::btreeset;
 
+    use crate::ChangeMembers;
+    use crate::Membership;
     use crate::engine::testing::UTConfig;
     use crate::error::ChangeMembershipError;
     use crate::error::EmptyMembership;
     use crate::error::LearnerNotFound;
-    use crate::ChangeMembers;
-    use crate::Membership;
 
     #[test]
     fn test_membership_ensure_voter_nodes() -> anyhow::Result<()> {

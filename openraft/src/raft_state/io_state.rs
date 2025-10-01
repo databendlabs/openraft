@@ -1,16 +1,16 @@
 use std::error::Error;
 
-use validit::less_equal;
 use validit::Valid;
 use validit::Validate;
+use validit::less_equal;
 
-use crate::display_ext::DisplayOption;
-use crate::raft_state::io_state::io_progress::IOProgress;
-use crate::raft_state::IOId;
-use crate::type_config::alias::LogIdOf;
-use crate::type_config::alias::VoteOf;
 use crate::LogId;
 use crate::RaftTypeConfig;
+use crate::display_ext::DisplayOption;
+use crate::raft_state::IOId;
+use crate::raft_state::io_state::io_progress::IOProgress;
+use crate::type_config::alias::LogIdOf;
+use crate::type_config::alias::VoteOf;
 
 pub(crate) mod io_id;
 pub(crate) mod io_progress;

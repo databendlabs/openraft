@@ -1,9 +1,9 @@
 use std::fmt;
 use std::fmt::Formatter;
 
-use crate::entry::traits::RaftPayload;
 use crate::Membership;
 use crate::RaftTypeConfig;
+use crate::entry::traits::RaftPayload;
 
 /// Log entry payload variants.
 #[derive(PartialEq)]

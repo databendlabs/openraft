@@ -4,10 +4,10 @@ use std::fmt::Formatter;
 
 use validit::Validate;
 
-use crate::display_ext::DisplayOptionExt;
-use crate::type_config::alias::LogIdOf;
 use crate::LogIdOptionExt;
 use crate::RaftTypeConfig;
+use crate::display_ext::DisplayOptionExt;
+use crate::type_config::alias::LogIdOf;
 
 // TODO: I need just a range, but not a log id range.
 

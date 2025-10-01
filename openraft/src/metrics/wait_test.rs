@@ -4,20 +4,20 @@ use std::time::Duration;
 use maplit::btreeset;
 use tokio::time::sleep;
 
-use crate::core::ServerState;
-use crate::engine::testing::log_id;
-use crate::engine::testing::UTConfig;
-use crate::log_id::LogIdOptionExt;
-use crate::metrics::Wait;
-use crate::metrics::WaitError;
-use crate::type_config::alias::NodeIdOf;
-use crate::type_config::alias::WatchSenderOf;
-use crate::type_config::TypeConfigExt;
 use crate::Membership;
 use crate::RaftMetrics;
 use crate::RaftTypeConfig;
 use crate::StoredMembership;
 use crate::Vote;
+use crate::core::ServerState;
+use crate::engine::testing::UTConfig;
+use crate::engine::testing::log_id;
+use crate::log_id::LogIdOptionExt;
+use crate::metrics::Wait;
+use crate::metrics::WaitError;
+use crate::type_config::TypeConfigExt;
+use crate::type_config::alias::NodeIdOf;
+use crate::type_config::alias::WatchSenderOf;
 
 /// Test wait for different state changes
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]

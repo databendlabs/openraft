@@ -1,30 +1,30 @@
 use std::fmt;
 use std::fmt::Debug;
 
+use crate::OptionalSend;
+use crate::RaftTypeConfig;
 use crate::async_runtime::OneshotSender;
 use crate::core::sm;
 use crate::display_ext::DisplayOptionExt;
 use crate::display_ext::DisplayResultExt;
 use crate::display_ext::DisplaySliceExt;
-use crate::engine::replication_progress::ReplicationProgress;
 use crate::engine::CommandKind;
+use crate::engine::replication_progress::ReplicationProgress;
 use crate::error::InitializeError;
 use crate::error::InstallSnapshotError;
-use crate::raft::message::TransferLeaderRequest;
 use crate::raft::AppendEntriesResponse;
 use crate::raft::InstallSnapshotResponse;
 use crate::raft::SnapshotResponse;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
+use crate::raft::message::TransferLeaderRequest;
 use crate::raft_state::IOId;
-use crate::replication::request::Replicate;
 use crate::replication::ReplicationSessionId;
+use crate::replication::request::Replicate;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::OneshotSenderOf;
 use crate::type_config::alias::VoteOf;
 use crate::vote::committed::CommittedVote;
-use crate::OptionalSend;
-use crate::RaftTypeConfig;
 
 /// Commands to send to `RaftRuntime` to execute, to update the application state.
 #[derive(Debug)]

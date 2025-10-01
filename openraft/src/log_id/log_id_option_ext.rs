@@ -1,5 +1,5 @@
-use crate::log_id::raft_log_id::RaftLogId;
 use crate::RaftTypeConfig;
+use crate::log_id::raft_log_id::RaftLogId;
 
 /// This helper trait extracts information from an `Option<LogId>`.
 pub trait LogIdOptionExt<C>

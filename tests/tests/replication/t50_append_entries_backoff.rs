@@ -4,13 +4,13 @@ use std::time::Duration;
 use anyerror::AnyError;
 use anyhow::Result;
 use maplit::btreeset;
-use openraft::error::RPCError;
-use openraft::error::Unreachable;
 use openraft::Config;
 use openraft::RPCTypes;
+use openraft::error::RPCError;
+use openraft::error::Unreachable;
 
-use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
+use crate::fixtures::ut_harness;
 
 /// Append-entries should backoff when a `Unreachable` error is found.
 #[tracing::instrument]

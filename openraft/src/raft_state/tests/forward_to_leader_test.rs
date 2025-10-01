@@ -4,19 +4,19 @@ use std::time::Duration;
 use maplit::btreemap;
 use maplit::btreeset;
 
-use crate::engine::testing::UTConfig;
-use crate::error::ForwardToLeader;
-use crate::type_config::alias::LeaderIdOf;
-use crate::type_config::alias::LogIdOf;
-use crate::type_config::alias::NodeIdOf;
-use crate::type_config::TypeConfigExt;
-use crate::utime::Leased;
-use crate::vote::RaftLeaderIdExt;
 use crate::EffectiveMembership;
 use crate::Membership;
 use crate::MembershipState;
 use crate::RaftState;
 use crate::Vote;
+use crate::engine::testing::UTConfig;
+use crate::error::ForwardToLeader;
+use crate::type_config::TypeConfigExt;
+use crate::type_config::alias::LeaderIdOf;
+use crate::type_config::alias::LogIdOf;
+use crate::type_config::alias::NodeIdOf;
+use crate::utime::Leased;
+use crate::vote::RaftLeaderIdExt;
 
 fn log_id(term: u64, node_id: NodeIdOf<UTConfig<u64>>, index: u64) -> LogIdOf<UTConfig<u64>> {
     LogIdOf::<UTConfig<u64>>::new(LeaderIdOf::<UTConfig<u64>>::new_committed(term, node_id), index)

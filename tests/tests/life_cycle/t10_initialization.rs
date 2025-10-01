@@ -4,10 +4,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use maplit::btreeset;
-use openraft::error::InitializeError;
-use openraft::error::NotAllowed;
-use openraft::error::NotInMembers;
-use openraft::storage::RaftStateMachine;
 use openraft::Config;
 use openraft::EffectiveMembership;
 use openraft::EntryPayload;
@@ -16,10 +12,14 @@ use openraft::RaftLogReader;
 use openraft::ServerState;
 use openraft::StoredMembership;
 use openraft::Vote;
+use openraft::error::InitializeError;
+use openraft::error::NotAllowed;
+use openraft::error::NotInMembers;
+use openraft::storage::RaftStateMachine;
 
+use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
 use crate::fixtures::ut_harness;
-use crate::fixtures::RaftRouter;
 
 /// Cluster initialization test.
 ///

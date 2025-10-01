@@ -5,18 +5,18 @@ use tracing::Subscriber;
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_appender::rolling::RollingFileAppender;
 use tracing_appender::rolling::Rotation;
+use tracing_subscriber::EnvFilter;
+use tracing_subscriber::Registry;
 use tracing_subscriber::fmt;
-use tracing_subscriber::fmt::format::Writer;
-use tracing_subscriber::fmt::time::FormatTime;
-use tracing_subscriber::fmt::time::SystemTime;
 use tracing_subscriber::fmt::FmtContext;
 use tracing_subscriber::fmt::FormatEvent;
 use tracing_subscriber::fmt::FormatFields;
 use tracing_subscriber::fmt::FormattedFields;
+use tracing_subscriber::fmt::format::Writer;
+use tracing_subscriber::fmt::time::FormatTime;
+use tracing_subscriber::fmt::time::SystemTime;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::registry::LookupSpan;
-use tracing_subscriber::EnvFilter;
-use tracing_subscriber::Registry;
 
 pub struct EventFormatter {}
 

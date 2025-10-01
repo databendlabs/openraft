@@ -8,14 +8,14 @@ pub(crate) mod utils;
 use proc_macro::TokenStream;
 use quote::quote;
 use since::Since;
-use syn::parse2;
-use syn::parse_macro_input;
-use syn::parse_str;
-use syn::token::RArrow;
 use syn::Item;
 use syn::ReturnType;
 use syn::TraitItem;
 use syn::Type;
+use syn::parse_macro_input;
+use syn::parse_str;
+use syn::parse2;
+use syn::token::RArrow;
 
 /// This proc macro attribute optionally adds `Send` bounds to a trait.
 ///

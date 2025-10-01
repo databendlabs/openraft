@@ -3,14 +3,14 @@ use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
-use openraft::storage::RaftStateMachine;
 use openraft::Config;
 use openraft::LogIdOptionExt;
 use openraft::ServerState;
+use openraft::storage::RaftStateMachine;
 use tokio::sync::watch;
 
-use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
+use crate::fixtures::ut_harness;
 
 /// The logs have to be applied in log index order.
 #[tracing::instrument]

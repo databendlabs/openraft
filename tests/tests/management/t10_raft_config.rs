@@ -4,8 +4,8 @@ use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
 
-use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
+use crate::fixtures::ut_harness;
 
 /// Get config via [`Raft::config`](openraft::Raft::config)
 #[tracing::instrument]

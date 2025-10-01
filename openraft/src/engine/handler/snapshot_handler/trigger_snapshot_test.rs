@@ -1,9 +1,9 @@
 use pretty_assertions::assert_eq;
 
 use crate::core::sm;
-use crate::engine::testing::UTConfig;
 use crate::engine::Command;
 use crate::engine::Engine;
+use crate::engine::testing::UTConfig;
 
 fn eng() -> Engine<UTConfig> {
     let mut eng = Engine::testing_default(0);

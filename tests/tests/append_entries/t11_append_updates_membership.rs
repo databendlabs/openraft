@@ -3,18 +3,18 @@ use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
-use openraft::raft::AppendEntriesRequest;
-use openraft::testing::blank_ent;
 use openraft::Config;
 use openraft::Entry;
 use openraft::EntryPayload;
 use openraft::Membership;
 use openraft::ServerState;
 use openraft::Vote;
+use openraft::raft::AppendEntriesRequest;
+use openraft::testing::blank_ent;
 
+use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
 use crate::fixtures::ut_harness;
-use crate::fixtures::RaftRouter;
 
 /// append-entries should update membership correctly when adding new logs and deleting
 /// inconsistent logs.

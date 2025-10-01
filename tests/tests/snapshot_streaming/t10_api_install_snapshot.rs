@@ -2,14 +2,14 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use maplit::btreeset;
-use openraft::raft::InstallSnapshotRequest;
-use openraft::storage::SnapshotMeta;
 use openraft::Config;
 use openraft::Vote;
+use openraft::raft::InstallSnapshotRequest;
+use openraft::storage::SnapshotMeta;
 
+use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
 use crate::fixtures::ut_harness;
-use crate::fixtures::RaftRouter;
 
 ///  API test: install_snapshot with various arguments.
 ///

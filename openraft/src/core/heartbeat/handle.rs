@@ -5,19 +5,19 @@ use tracing::Instrument;
 use tracing::Level;
 use tracing::Span;
 
+use crate::Config;
+use crate::RaftNetworkFactory;
+use crate::RaftTypeConfig;
 use crate::async_runtime::watch::WatchSender;
 use crate::core::heartbeat::event::HeartbeatEvent;
 use crate::core::heartbeat::worker::HeartbeatWorker;
 use crate::core::notification::Notification;
+use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::JoinHandleOf;
 use crate::type_config::alias::MpscUnboundedSenderOf;
 use crate::type_config::alias::OneshotSenderOf;
 use crate::type_config::alias::WatchReceiverOf;
 use crate::type_config::alias::WatchSenderOf;
-use crate::type_config::TypeConfigExt;
-use crate::Config;
-use crate::RaftNetworkFactory;
-use crate::RaftTypeConfig;
 
 pub(crate) struct HeartbeatWorkersHandle<C>
 where C: RaftTypeConfig

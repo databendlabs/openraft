@@ -1,27 +1,27 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
+use crate::ChangeMembers;
+use crate::RaftState;
+use crate::RaftTypeConfig;
 use crate::base::BoxOnce;
 use crate::core::raft_msg::external_command::ExternalCommand;
 use crate::error::CheckIsLeaderError;
 use crate::error::Infallible;
 use crate::error::InitializeError;
 use crate::impls::OneshotResponder;
-use crate::raft::linearizable_read::Linearizer;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
 use crate::raft::ReadPolicy;
 use crate::raft::SnapshotResponse;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
+use crate::raft::linearizable_read::Linearizer;
 use crate::storage::Snapshot;
 use crate::type_config::alias::OneshotSenderOf;
 use crate::type_config::alias::ResponderOf;
 use crate::type_config::alias::SnapshotDataOf;
 use crate::type_config::alias::VoteOf;
-use crate::ChangeMembers;
-use crate::RaftState;
-use crate::RaftTypeConfig;
 
 pub(crate) mod external_command;
 

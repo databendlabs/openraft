@@ -5,8 +5,8 @@ use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
 
-use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
+use crate::fixtures::ut_harness;
 
 /// Ensures the stale value of ReplicationCore.last_log_id won't affect replication.
 /// If `ReplicationCore.last_log_id` is used, the end position of log for loading may underflow the

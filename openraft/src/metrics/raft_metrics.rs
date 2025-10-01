@@ -1,6 +1,9 @@
 use std::fmt;
 use std::sync::Arc;
 
+use crate::Instant;
+use crate::RaftTypeConfig;
+use crate::StoredMembership;
 use crate::core::ServerState;
 use crate::display_ext::DisplayBTreeMapOptValue;
 use crate::display_ext::DisplayOption;
@@ -12,9 +15,6 @@ use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::SerdeInstantOf;
 use crate::type_config::alias::VoteOf;
-use crate::Instant;
-use crate::RaftTypeConfig;
-use crate::StoredMembership;
 
 /// A set of metrics describing the current state of a Raft node.
 #[derive(Clone, Debug, PartialEq, Eq)]

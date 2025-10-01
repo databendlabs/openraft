@@ -1,10 +1,10 @@
 use std::borrow::Borrow;
 use std::fmt;
 
+use crate::RaftTypeConfig;
 use crate::display_ext::DisplayOptionExt;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::VoteOf;
-use crate::RaftTypeConfig;
 
 /// An RPC sent by candidates to gather votes (§5.2).
 #[derive(Debug, Clone, PartialEq, Eq)]

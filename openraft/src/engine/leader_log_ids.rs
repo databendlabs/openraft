@@ -1,8 +1,8 @@
 use std::fmt;
 use std::ops::RangeInclusive;
 
-use crate::type_config::alias::LogIdOf;
 use crate::RaftTypeConfig;
+use crate::type_config::alias::LogIdOf;
 
 /// The first and the last log id belonging to a Leader.
 #[derive(Debug, Clone, PartialEq, Eq)]

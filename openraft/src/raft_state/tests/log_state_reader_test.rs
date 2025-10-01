@@ -1,8 +1,8 @@
-use crate::engine::testing::UTConfig;
+use crate::RaftState;
 use crate::engine::LogIdList;
+use crate::engine::testing::UTConfig;
 use crate::raft_state::LogStateReader;
 use crate::type_config::alias::LogIdOf;
-use crate::RaftState;
 
 fn log_id(term: u64, index: u64) -> LogIdOf<UTConfig> {
     crate::engine::testing::log_id(term, 0, index)

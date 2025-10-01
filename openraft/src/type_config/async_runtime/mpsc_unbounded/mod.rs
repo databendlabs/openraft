@@ -40,7 +40,7 @@ pub trait MpscUnboundedReceiver<T>: OptionalSend + OptionalSync {
     ///
     /// This method returns `None` if the channel has been closed and there are
     /// no remaining messages in the channel's buffer.
-    fn recv(&mut self) -> impl std::future::Future<Output = Option<T>> + OptionalSend;
+    fn recv(&mut self) -> impl Future<Output = Option<T>> + OptionalSend;
 
     /// Tries to receive the next value for this receiver.
     ///

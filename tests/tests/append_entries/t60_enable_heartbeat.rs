@@ -3,14 +3,14 @@ use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
+use openraft::Config;
 use openraft::impls::TokioRuntime;
 use openraft::type_config::AsyncRuntime;
 use openraft::type_config::TypeConfigExt;
-use openraft::Config;
 use openraft_memstore::TypeConfig;
 
-use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
+use crate::fixtures::ut_harness;
 
 /// Enable heartbeat, heartbeat should be replicated.
 #[tracing::instrument]

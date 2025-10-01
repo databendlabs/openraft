@@ -1,9 +1,9 @@
 use std::fmt;
 
+use crate::RaftTypeConfig;
 use crate::display_ext::DisplayOptionExt;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::VoteOf;
-use crate::RaftTypeConfig;
 
 #[derive(Clone, Debug)]
 #[derive(PartialEq, Eq)]

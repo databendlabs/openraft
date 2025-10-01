@@ -18,6 +18,14 @@ mod tokio_rt {
     use super::Chunked;
     use super::SnapshotTransport;
     use super::Streaming;
+    use crate::ErrorSubject;
+    use crate::ErrorVerb;
+    use crate::OptionalSend;
+    use crate::Raft;
+    use crate::RaftNetwork;
+    use crate::RaftTypeConfig;
+    use crate::StorageError;
+    use crate::ToStorageResult;
     use crate::error::InstallSnapshotError;
     use crate::error::RPCError;
     use crate::error::RaftError;
@@ -27,17 +35,9 @@ mod tokio_rt {
     use crate::raft::InstallSnapshotRequest;
     use crate::raft::SnapshotResponse;
     use crate::storage::Snapshot;
-    use crate::type_config::alias::VoteOf;
     use crate::type_config::TypeConfigExt;
+    use crate::type_config::alias::VoteOf;
     use crate::vote::raft_vote::RaftVoteExt;
-    use crate::ErrorSubject;
-    use crate::ErrorVerb;
-    use crate::OptionalSend;
-    use crate::Raft;
-    use crate::RaftNetwork;
-    use crate::RaftTypeConfig;
-    use crate::StorageError;
-    use crate::ToStorageResult;
 
     /// This chunk-based implementation requires `SnapshotData` to be `AsyncRead + AsyncSeek`.
     impl<C: RaftTypeConfig> SnapshotTransport<C> for Chunked
@@ -263,6 +263,11 @@ use std::future::Future;
 use openraft_macros::add_async_trait;
 use openraft_macros::since;
 
+use crate::OptionalSend;
+use crate::Raft;
+use crate::RaftNetwork;
+use crate::RaftTypeConfig;
+use crate::SnapshotId;
 use crate::error::InstallSnapshotError;
 use crate::error::RaftError;
 use crate::error::ReplicationClosed;
@@ -272,11 +277,6 @@ use crate::raft::InstallSnapshotRequest;
 use crate::raft::SnapshotResponse;
 use crate::storage::Snapshot;
 use crate::type_config::alias::VoteOf;
-use crate::OptionalSend;
-use crate::Raft;
-use crate::RaftNetwork;
-use crate::RaftTypeConfig;
-use crate::SnapshotId;
 
 /// Send and Receive snapshot by chunks.
 pub struct Chunked {}
@@ -382,14 +382,18 @@ mod tests {
     use std::io::Cursor;
     use std::time::Duration;
 
+    use crate::RaftNetwork;
+    use crate::RaftTypeConfig;
+    use crate::StoredMembership;
+    use crate::Vote;
     use crate::engine::testing::UTConfig;
     use crate::error::InstallSnapshotError;
     use crate::error::RPCError;
     use crate::error::RaftError;
     use crate::error::SnapshotMismatch;
+    use crate::network::RPCOption;
     use crate::network::snapshot_transport::Chunked;
     use crate::network::snapshot_transport::SnapshotTransport;
-    use crate::network::RPCOption;
     use crate::raft::AppendEntriesRequest;
     use crate::raft::AppendEntriesResponse;
     use crate::raft::InstallSnapshotRequest;
@@ -398,10 +402,6 @@ mod tests {
     use crate::raft::VoteResponse;
     use crate::storage::Snapshot;
     use crate::storage::SnapshotMeta;
-    use crate::RaftNetwork;
-    use crate::RaftTypeConfig;
-    use crate::StoredMembership;
-    use crate::Vote;
 
     struct Network {
         received_offset: Vec<u64>,

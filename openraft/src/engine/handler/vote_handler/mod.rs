@@ -1,32 +1,32 @@
 use std::fmt::Debug;
 use std::time::Duration;
 
+use crate::OptionalSend;
+use crate::RaftState;
+use crate::RaftTypeConfig;
 use crate::display_ext::DisplayOptionExt;
-use crate::engine::handler::leader_handler::LeaderHandler;
-use crate::engine::handler::replication_handler::ReplicationHandler;
-use crate::engine::handler::server_state_handler::ServerStateHandler;
 use crate::engine::Command;
 use crate::engine::Condition;
 use crate::engine::EngineConfig;
 use crate::engine::EngineOutput;
 use crate::engine::Respond;
 use crate::engine::ValueSender;
+use crate::engine::handler::leader_handler::LeaderHandler;
+use crate::engine::handler::replication_handler::ReplicationHandler;
+use crate::engine::handler::server_state_handler::ServerStateHandler;
 use crate::entry::RaftEntry;
 use crate::error::RejectVoteRequest;
 use crate::proposer::CandidateState;
 use crate::proposer::LeaderState;
 use crate::raft_state::IOId;
 use crate::raft_state::LogStateReader;
+use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::OneshotSenderOf;
 use crate::type_config::alias::VoteOf;
-use crate::type_config::TypeConfigExt;
-use crate::vote::raft_vote::RaftVoteExt;
 use crate::vote::RaftLeaderId;
 use crate::vote::RaftVote;
-use crate::OptionalSend;
-use crate::RaftState;
-use crate::RaftTypeConfig;
+use crate::vote::raft_vote::RaftVoteExt;
 
 #[cfg(test)]
 mod accept_vote_test;

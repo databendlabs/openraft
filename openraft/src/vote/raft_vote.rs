@@ -1,14 +1,14 @@
 use std::fmt::Debug;
 use std::fmt::Display;
 
+use crate::RaftTypeConfig;
 use crate::base::OptionalFeatures;
 use crate::type_config::alias::CommittedLeaderIdOf;
+use crate::vote::RaftLeaderId;
 use crate::vote::committed::CommittedVote;
 use crate::vote::non_committed::NonCommittedVote;
 use crate::vote::ref_vote::RefVote;
 use crate::vote::vote_status::VoteStatus;
-use crate::vote::RaftLeaderId;
-use crate::RaftTypeConfig;
 // TODO: OptionSerde can be removed after all types are made trait based.
 
 /// Represents a vote in Raft consensus, including both votes for leader candidates

@@ -1,7 +1,7 @@
 extern crate test;
 
-use test::black_box;
 use test::Bencher;
+use test::black_box;
 
 use crate::progress::Progress;
 use crate::progress::VecProgress;

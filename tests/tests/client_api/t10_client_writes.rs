@@ -3,16 +3,16 @@ use std::sync::Arc;
 use anyhow::Result;
 use futures::prelude::*;
 use maplit::btreeset;
-use openraft::raft::ClientWriteResponse;
 use openraft::Config;
 use openraft::SnapshotPolicy;
+use openraft::raft::ClientWriteResponse;
 use openraft_memstore::ClientRequest;
 use openraft_memstore::IntoMemClientRequest;
 use openraft_memstore::TypeConfig;
 
+use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
 use crate::fixtures::ut_harness;
-use crate::fixtures::RaftRouter;
 
 /// - create a stable 3-node cluster.
 /// - write a lot of data to it.

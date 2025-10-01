@@ -1,8 +1,8 @@
-use crate::engine::testing::log_id;
-use crate::engine::testing::UTConfig;
 use crate::engine::Command;
 use crate::engine::Engine;
 use crate::engine::LogIdList;
+use crate::engine::testing::UTConfig;
+use crate::engine::testing::log_id;
 use crate::raft_state::LogStateReader;
 
 fn eng() -> Engine<UTConfig> {

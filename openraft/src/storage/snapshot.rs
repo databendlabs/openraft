@@ -2,8 +2,8 @@ use std::fmt;
 
 use openraft_macros::since;
 
-use crate::storage::SnapshotMeta;
 use crate::RaftTypeConfig;
+use crate::storage::SnapshotMeta;
 
 /// The data associated with the current snapshot.
 #[since(version = "0.10.0", change = "SnapshotData without Box")]

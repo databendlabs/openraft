@@ -2,11 +2,6 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use maplit::btreeset;
-use openraft::alias::LogIdOf;
-use openraft::error::Fatal;
-use openraft::storage::RaftStateMachine;
-use openraft::storage::Snapshot;
-use openraft::storage::SnapshotMeta;
 use openraft::Config;
 use openraft::Entry;
 use openraft::OptionalSend;
@@ -14,13 +9,18 @@ use openraft::RaftSnapshotBuilder;
 use openraft::RaftTypeConfig;
 use openraft::StorageError;
 use openraft::StoredMembership;
+use openraft::alias::LogIdOf;
+use openraft::error::Fatal;
+use openraft::storage::RaftStateMachine;
+use openraft::storage::Snapshot;
+use openraft::storage::SnapshotMeta;
 use openraft_memstore::ClientResponse;
 use openraft_memstore::TypeConfig;
 
-use crate::fixtures::log_id;
-use crate::fixtures::ut_harness;
 use crate::fixtures::MemStateMachine;
 use crate::fixtures::RaftRouter;
+use crate::fixtures::log_id;
+use crate::fixtures::ut_harness;
 
 /// Access [`RaftStateMachine`] via
 /// [`Raft::with_state_machine()`](openraft::Raft::with_state_machine)

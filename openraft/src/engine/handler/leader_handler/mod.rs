@@ -1,18 +1,18 @@
-use crate::engine::handler::replication_handler::ReplicationHandler;
+use crate::RaftState;
+use crate::RaftTypeConfig;
 use crate::engine::Command;
 use crate::engine::EngineConfig;
 use crate::engine::EngineOutput;
-use crate::entry::raft_entry_ext::RaftEntryExt;
+use crate::engine::handler::replication_handler::ReplicationHandler;
 use crate::entry::RaftEntry;
 use crate::entry::RaftPayload;
+use crate::entry::raft_entry_ext::RaftEntryExt;
 use crate::proposer::Leader;
 use crate::proposer::LeaderQuorumSet;
 use crate::raft::message::TransferLeaderRequest;
 use crate::raft_state::IOId;
 use crate::replication::ReplicationSessionId;
 use crate::type_config::alias::LogIdOf;
-use crate::RaftState;
-use crate::RaftTypeConfig;
 
 #[cfg(test)]
 mod append_entries_test;

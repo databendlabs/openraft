@@ -1,6 +1,6 @@
+use crate::RaftTypeConfig;
 use crate::error::ForwardToLeader;
 use crate::error::NodeNotFound;
-use crate::RaftTypeConfig;
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]

@@ -9,11 +9,11 @@ use anyerror::AnyError;
 use clap::Parser;
 use rand::Rng;
 
-use crate::config::error::ConfigError;
-use crate::raft_state::LogStateReader;
 use crate::AsyncRuntime;
 use crate::LogIdOptionExt;
 use crate::RaftTypeConfig;
+use crate::config::error::ConfigError;
+use crate::raft_state::LogStateReader;
 
 /// Log compaction and snapshot policy.
 ///

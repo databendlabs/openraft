@@ -123,11 +123,7 @@ where C: RaftTypeConfig
             self.committed = c
         }
 
-        if changed {
-            Some(self.effective().clone())
-        } else {
-            None
-        }
+        if changed { Some(self.effective().clone()) } else { None }
     }
 
     /// Append a membership config `m`.

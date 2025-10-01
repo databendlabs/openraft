@@ -1,9 +1,9 @@
 //! tick emitter emits a `RaftMsg::Tick` event at a certain interval.
 
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use futures::future::Either;
@@ -11,15 +11,15 @@ use tracing::Instrument;
 use tracing::Level;
 use tracing::Span;
 
+use crate::RaftTypeConfig;
 use crate::async_runtime::MpscUnboundedSender;
 use crate::core::notification::Notification;
+use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::JoinHandleOf;
 use crate::type_config::alias::MpscUnboundedSenderOf;
 use crate::type_config::alias::OneshotReceiverOf;
 use crate::type_config::alias::OneshotSenderOf;
 use crate::type_config::async_runtime::oneshot::OneshotSender;
-use crate::type_config::TypeConfigExt;
-use crate::RaftTypeConfig;
 
 /// Emit RaftMsg::Tick event at regular `interval`.
 pub(crate) struct Tick<C>
@@ -147,11 +147,10 @@ where C: RaftTypeConfig
             }
         }
 
-        let jh = {
+        {
             let mut x = self.join_handle.lock().unwrap();
             x.take()
-        };
-        jh
+        }
     }
 }
 
@@ -165,10 +164,10 @@ mod tests {
 
     use tokio::time::Duration;
 
+    use crate::RaftTypeConfig;
     use crate::core::Tick;
     use crate::impls::TokioRuntime;
     use crate::type_config::TypeConfigExt;
-    use crate::RaftTypeConfig;
 
     #[derive(Debug, Clone, Copy, Default, Eq, PartialEq, Ord, PartialOrd)]
     #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]

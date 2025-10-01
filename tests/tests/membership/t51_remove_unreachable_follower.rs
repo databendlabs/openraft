@@ -6,8 +6,8 @@ use maplit::btreeset;
 use openraft::Config;
 use openraft::ServerState;
 
-use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
+use crate::fixtures::ut_harness;
 
 /// Replication should stop after a **unreachable** follower is removed from membership.
 #[tracing::instrument]

@@ -1,13 +1,13 @@
 extern crate test;
 
 use maplit::btreeset;
-use test::black_box;
 use test::Bencher;
+use test::black_box;
 
-use crate::engine::testing::UTConfig;
-use crate::quorum::QuorumSet;
 use crate::EffectiveMembership;
 use crate::Membership;
+use crate::engine::testing::UTConfig;
+use crate::quorum::QuorumSet;
 
 #[bench]
 fn m12345_ids_slice(b: &mut Bencher) {

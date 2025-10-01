@@ -1,10 +1,10 @@
 use std::time::Duration;
 
-use crate::engine::time_state;
-use crate::type_config::alias::AsyncRuntimeOf;
 use crate::Config;
 use crate::RaftTypeConfig;
 use crate::SnapshotPolicy;
+use crate::engine::time_state;
+use crate::type_config::alias::AsyncRuntimeOf;
 
 /// Config for Engine
 #[derive(Clone, Debug)]

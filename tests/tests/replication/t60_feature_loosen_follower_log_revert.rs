@@ -5,8 +5,8 @@ use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
 
-use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
+use crate::fixtures::ut_harness;
 
 /// With "allow_log_reversion", the leader allows follower to revert its log to an
 /// earlier state.

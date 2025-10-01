@@ -7,8 +7,8 @@ use openraft::Config;
 use openraft::LogIdOptionExt;
 use tracing::Instrument;
 
-use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
+use crate::fixtures::ut_harness;
 
 /// A leader must wait for learner to commit member-change from [0] to [0,1,2].
 /// There is a bug that leader commit a member change log directly because it only checks

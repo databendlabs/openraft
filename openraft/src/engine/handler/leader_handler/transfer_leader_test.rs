@@ -9,17 +9,17 @@ use pretty_assertions::assert_ne;
 #[allow(unused_imports)]
 use pretty_assertions::assert_str_eq;
 
-use crate::engine::testing::log_id;
-use crate::engine::testing::UTConfig;
-use crate::engine::Command;
-use crate::engine::Engine;
-use crate::raft::TransferLeaderRequest;
-use crate::type_config::TypeConfigExt;
-use crate::utime::Leased;
 use crate::EffectiveMembership;
 use crate::Membership;
 use crate::MembershipState;
 use crate::Vote;
+use crate::engine::Command;
+use crate::engine::Engine;
+use crate::engine::testing::UTConfig;
+use crate::engine::testing::log_id;
+use crate::raft::TransferLeaderRequest;
+use crate::type_config::TypeConfigExt;
+use crate::utime::Leased;
 
 fn m23() -> Membership<UTConfig> {
     Membership::<UTConfig>::new_with_defaults(vec![btreeset! {2,3}], btreeset! {1,2,3})

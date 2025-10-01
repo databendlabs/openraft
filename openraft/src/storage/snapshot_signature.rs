@@ -1,6 +1,6 @@
-use crate::type_config::alias::LogIdOf;
 use crate::RaftTypeConfig;
 use crate::SnapshotId;
+use crate::type_config::alias::LogIdOf;
 
 /// A small piece of information for identifying a snapshot and error tracing.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -25,8 +25,8 @@ mod tests {
     #[test]
     fn test_snapshot_signature_serde() {
         use super::SnapshotSignature;
-        use crate::engine::testing::log_id;
         use crate::engine::testing::UTConfig;
+        use crate::engine::testing::log_id;
 
         let sig = SnapshotSignature {
             last_log_id: Some(log_id(1, 2, 3)),

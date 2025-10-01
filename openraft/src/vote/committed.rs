@@ -1,13 +1,13 @@
 use std::cmp::Ordering;
 use std::fmt;
 
+use crate::RaftTypeConfig;
 use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::type_config::alias::LeaderIdOf;
 use crate::type_config::alias::VoteOf;
-use crate::vote::raft_vote::RaftVoteExt;
 use crate::vote::RaftLeaderId;
 use crate::vote::RaftVote;
-use crate::RaftTypeConfig;
+use crate::vote::raft_vote::RaftVoteExt;
 
 /// Represents a committed Vote that has been accepted by a quorum.
 ///

@@ -1,15 +1,15 @@
 use openraft_macros::add_async_trait;
 use openraft_macros::since;
 
-use crate::storage::Snapshot;
-use crate::storage::SnapshotMeta;
-use crate::type_config::alias::LogIdOf;
 use crate::OptionalSend;
 use crate::OptionalSync;
 use crate::RaftSnapshotBuilder;
 use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::StoredMembership;
+use crate::storage::Snapshot;
+use crate::storage::SnapshotMeta;
+use crate::type_config::alias::LogIdOf;
 
 /// API for state machine and snapshot.
 ///

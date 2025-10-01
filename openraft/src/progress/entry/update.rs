@@ -1,9 +1,9 @@
+use crate::LogIdOptionExt;
+use crate::RaftTypeConfig;
 use crate::display_ext::DisplayOptionExt;
 use crate::engine::EngineConfig;
 use crate::progress::entry::ProgressEntry;
 use crate::type_config::alias::LogIdOf;
-use crate::LogIdOptionExt;
-use crate::RaftTypeConfig;
 
 /// It implements updating operations for a [`ProgressEntry`]
 pub(crate) struct Updater<'a, C>

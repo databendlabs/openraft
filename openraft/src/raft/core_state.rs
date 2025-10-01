@@ -1,8 +1,8 @@
+use crate::RaftTypeConfig;
 use crate::error::Fatal;
 use crate::error::Infallible;
 use crate::type_config::alias::JoinHandleOf;
 use crate::type_config::alias::WatchReceiverOf;
-use crate::RaftTypeConfig;
 
 /// The running state of RaftCore
 pub(in crate::raft) enum CoreState<C>

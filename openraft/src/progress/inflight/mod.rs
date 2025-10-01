@@ -7,10 +7,10 @@ use std::fmt::Formatter;
 
 use validit::Validate;
 
+use crate::RaftTypeConfig;
 use crate::display_ext::DisplayOptionExt;
 use crate::log_id_range::LogIdRange;
 use crate::type_config::alias::LogIdOf;
-use crate::RaftTypeConfig;
 
 /// The inflight data being transmitting from leader to a follower/learner.
 ///

@@ -1,8 +1,8 @@
 use std::error::Error;
 use std::fmt;
 
-use validit::less_equal;
 use validit::Validate;
+use validit::less_equal;
 
 use crate::display_ext::DisplayOptionExt;
 

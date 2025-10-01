@@ -1,17 +1,17 @@
+use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
-use openraft::error::PayloadTooLarge;
-use openraft::raft::AppendEntriesRequest;
 use openraft::Config;
 use openraft::RPCTypes;
+use openraft::error::PayloadTooLarge;
+use openraft::raft::AppendEntriesRequest;
 
-use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
+use crate::fixtures::ut_harness;
 
 /// If append-entries returns PayloadTooLarge, Openraft should split the request into smaller
 /// chunks.

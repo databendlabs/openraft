@@ -4,15 +4,15 @@ use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
-use openraft::raft::VoteRequest;
 use openraft::Config;
 use openraft::TokioInstant;
 use openraft::Vote;
+use openraft::raft::VoteRequest;
 use tokio::time::sleep;
 
+use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
 use crate::fixtures::ut_harness;
-use crate::fixtures::RaftRouter;
 
 /// If a follower receives heartbeat, it should reject vote request until leader lease expired.
 #[tracing::instrument]

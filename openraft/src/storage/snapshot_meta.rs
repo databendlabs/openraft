@@ -1,11 +1,11 @@
 use std::fmt;
 
-use crate::display_ext::DisplayOption;
-use crate::storage::SnapshotSignature;
-use crate::type_config::alias::LogIdOf;
 use crate::RaftTypeConfig;
 use crate::SnapshotId;
 use crate::StoredMembership;
+use crate::display_ext::DisplayOption;
+use crate::storage::SnapshotSignature;
+use crate::type_config::alias::LogIdOf;
 
 /// The metadata of a snapshot.
 ///

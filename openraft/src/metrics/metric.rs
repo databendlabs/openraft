@@ -1,12 +1,12 @@
 use std::cmp::Ordering;
 
+use crate::LogIdOptionExt;
+use crate::RaftMetrics;
+use crate::RaftTypeConfig;
 use crate::metrics::metric_display::MetricDisplay;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::VoteOf;
 use crate::vote::raft_vote::RaftVoteExt;
-use crate::LogIdOptionExt;
-use crate::RaftMetrics;
-use crate::RaftTypeConfig;
 
 /// A metric entry of a Raft node.
 ///

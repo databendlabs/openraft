@@ -1,7 +1,7 @@
 use std::fmt;
 
-use crate::progress::entry::ProgressEntry;
 use crate::RaftTypeConfig;
+use crate::progress::entry::ProgressEntry;
 
 #[derive(Debug)]
 #[derive(PartialEq, Eq)]

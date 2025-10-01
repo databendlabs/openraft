@@ -1,5 +1,5 @@
-use crate::type_config::alias::LogIdOf;
 use crate::RaftTypeConfig;
+use crate::type_config::alias::LogIdOf;
 
 /// The state about logs.
 ///

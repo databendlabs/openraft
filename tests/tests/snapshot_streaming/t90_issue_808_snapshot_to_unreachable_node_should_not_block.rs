@@ -5,9 +5,9 @@ use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
 
+use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
 use crate::fixtures::ut_harness;
-use crate::fixtures::RaftRouter;
 
 /// When transferring snapshot to unreachable node, it should not block for ever.
 #[tracing::instrument]

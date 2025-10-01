@@ -1,10 +1,10 @@
 use openraft_macros::add_async_trait;
 
-use crate::storage::Snapshot;
 use crate::OptionalSend;
 use crate::OptionalSync;
 use crate::RaftTypeConfig;
 use crate::StorageError;
+use crate::storage::Snapshot;
 /// A trait defining the interface for a Raft state machine snapshot subsystem.
 ///
 /// This interface is accessed read-only from a snapshot-building task.

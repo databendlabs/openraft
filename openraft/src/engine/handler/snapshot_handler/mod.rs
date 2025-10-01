@@ -1,13 +1,13 @@
 //! This mod handles state machine operations
 
+use crate::RaftState;
+use crate::RaftTypeConfig;
 use crate::core::sm;
 use crate::display_ext::DisplayOptionExt;
 use crate::engine::Command;
 use crate::engine::EngineOutput;
 use crate::raft_state::LogStateReader;
 use crate::storage::SnapshotMeta;
-use crate::RaftState;
-use crate::RaftTypeConfig;
 
 #[cfg(test)]
 mod trigger_snapshot_test;

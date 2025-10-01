@@ -1,7 +1,7 @@
+use crate::RaftTypeConfig;
 use crate::log_id::raft_log_id::RaftLogId;
 use crate::log_id::ref_log_id::RefLogId;
 use crate::type_config::alias::LogIdOf;
-use crate::RaftTypeConfig;
 
 pub(crate) trait RaftLogIdExt<C>
 where

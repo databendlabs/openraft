@@ -1,11 +1,11 @@
+use crate::RaftTypeConfig;
+use crate::StorageError;
 use crate::error::NetworkError;
 use crate::error::RPCError;
 use crate::error::ReplicationClosed;
 use crate::error::ReplicationError;
 use crate::error::Timeout;
 use crate::error::Unreachable;
-use crate::RaftTypeConfig;
-use crate::StorageError;
 
 /// Error occurred when streaming local data to a remote raft node.
 ///

@@ -1,17 +1,17 @@
 use std::cmp::Ordering;
 use std::fmt;
 
+use crate::ErrorSubject;
+use crate::ErrorVerb;
+use crate::RaftTypeConfig;
 use crate::raft_state::io_state::log_io_id::LogIOId;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::VoteOf;
+use crate::vote::RaftVote;
 use crate::vote::committed::CommittedVote;
 use crate::vote::non_committed::NonCommittedVote;
 use crate::vote::raft_vote::RaftVoteExt;
 use crate::vote::ref_vote::RefVote;
-use crate::vote::RaftVote;
-use crate::ErrorSubject;
-use crate::ErrorVerb;
-use crate::RaftTypeConfig;
 
 /// An ID to uniquely identify a monotonic increasing io operation to [`RaftLogStorage`].
 ///

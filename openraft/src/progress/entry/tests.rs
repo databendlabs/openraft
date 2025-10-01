@@ -1,7 +1,8 @@
 use std::borrow::Borrow;
 
-use crate::engine::testing::UTConfig;
+use crate::LogId;
 use crate::engine::EngineConfig;
+use crate::engine::testing::UTConfig;
 use crate::log_id::ref_log_id::RefLogId;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::inflight::Inflight;
@@ -9,7 +10,6 @@ use crate::raft_state::LogStateReader;
 use crate::type_config::alias::LeaderIdOf;
 use crate::type_config::alias::LogIdOf;
 use crate::vote::RaftLeaderIdExt;
-use crate::LogId;
 
 fn log_id(index: u64) -> LogIdOf<UTConfig> {
     LogId {
@@ -112,11 +112,7 @@ impl LogState {
 impl LogStateReader<UTConfig> for LogState {
     fn get_log_id(&self, index: u64) -> Option<LogIdOf<UTConfig>> {
         let x = Some(log_id(index));
-        if x >= self.purged && x <= self.last {
-            x
-        } else {
-            None
-        }
+        if x >= self.purged && x <= self.last { x } else { None }
     }
 
     fn ref_log_id(&self, _index: u64) -> Option<RefLogId<'_, UTConfig>> {

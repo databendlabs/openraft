@@ -1,14 +1,14 @@
 use openraft_macros::add_async_trait;
 
-use crate::storage::IOFlushed;
-use crate::storage::LogState;
-use crate::type_config::alias::LogIdOf;
-use crate::type_config::alias::VoteOf;
 use crate::OptionalSend;
 use crate::OptionalSync;
 use crate::RaftLogReader;
 use crate::RaftTypeConfig;
 use crate::StorageError;
+use crate::storage::IOFlushed;
+use crate::storage::LogState;
+use crate::type_config::alias::LogIdOf;
+use crate::type_config::alias::VoteOf;
 
 /// API for log store.
 ///

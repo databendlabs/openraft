@@ -2,15 +2,15 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use maplit::btreeset;
-use openraft::error::ChangeMembershipError;
-use openraft::error::ClientWriteError;
 use openraft::Config;
 use openraft::LogIdOptionExt;
 use openraft::RaftLogReader;
 use openraft::ServerState;
+use openraft::error::ChangeMembershipError;
+use openraft::error::ClientWriteError;
 
-use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
+use crate::fixtures::ut_harness;
 
 /// When a change-membership log is committed, the `RaftState.membership_state` should be updated.
 #[tracing::instrument]

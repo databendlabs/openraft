@@ -5,8 +5,8 @@ use maplit::btreemap;
 use openraft::ChangeMembers;
 use openraft::Config;
 
-use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
+use crate::fixtures::ut_harness;
 
 /// Call `Raft::change_membership()` on an uninitialized node should not panic due to empty
 /// membership.

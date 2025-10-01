@@ -1,13 +1,13 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use openraft::storage::RaftLogStorage;
 use openraft::Config;
 use openraft::ServerState;
 use openraft::Vote;
+use openraft::storage::RaftLogStorage;
 
-use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
+use crate::fixtures::ut_harness;
 
 /// Special case: A leader that is not a member(neither a voter or non-voter) should be started too,
 /// as a learner.

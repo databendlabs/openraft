@@ -1,11 +1,11 @@
 //! Callbacks for ReplicationCore internal communication.
 use core::fmt;
 
+use crate::RaftTypeConfig;
 use crate::error::StreamingError;
 use crate::raft::SnapshotResponse;
 use crate::storage::SnapshotMeta;
 use crate::type_config::alias::InstantOf;
-use crate::RaftTypeConfig;
 
 /// Callback payload when a snapshot transmission finished, successfully or not.
 #[derive(Debug)]

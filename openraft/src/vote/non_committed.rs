@@ -1,10 +1,10 @@
 use std::fmt;
 
+use crate::RaftTypeConfig;
 use crate::type_config::alias::LeaderIdOf;
 use crate::type_config::alias::VoteOf;
-use crate::vote::raft_vote::RaftVoteExt;
 use crate::vote::RaftVote;
-use crate::RaftTypeConfig;
+use crate::vote::raft_vote::RaftVoteExt;
 
 /// Represents a non-committed Vote that has **NOT** been granted by a quorum.
 ///

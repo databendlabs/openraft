@@ -3,25 +3,25 @@ use std::time::Duration;
 use maplit::btreeset;
 use pretty_assertions::assert_eq;
 
+use crate::Entry;
+use crate::Membership;
+use crate::Vote;
 use crate::core::ServerState;
-use crate::engine::testing::log_id;
-use crate::engine::testing::UTConfig;
 use crate::engine::Command;
 use crate::engine::Engine;
 use crate::engine::LogIdList;
+use crate::engine::testing::UTConfig;
+use crate::engine::testing::log_id;
 use crate::entry::RaftEntry;
 use crate::error::InitializeError;
 use crate::error::NotAllowed;
 use crate::error::NotInMembers;
 use crate::raft::VoteRequest;
 use crate::raft_state::LogStateReader;
-use crate::type_config::alias::LogIdOf;
 use crate::type_config::TypeConfigExt;
+use crate::type_config::alias::LogIdOf;
 use crate::utime::Leased;
 use crate::vote::raft_vote::RaftVoteExt;
-use crate::Entry;
-use crate::Membership;
-use crate::Vote;
 
 #[test]
 fn test_initialize_single_node() -> anyhow::Result<()> {

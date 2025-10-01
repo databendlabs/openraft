@@ -7,8 +7,8 @@ use openraft::Config;
 use openraft::LogIdOptionExt;
 use tokio::time::sleep;
 
-use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
+use crate::fixtures::ut_harness;
 
 /// Dynamic membership test.
 ///

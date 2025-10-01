@@ -3,17 +3,17 @@ use std::collections::BTreeSet;
 
 use futures::FutureExt;
 
+use crate::OptionalSend;
+use crate::RaftTypeConfig;
 use crate::async_runtime::watch::WatchReceiver;
 use crate::core::ServerState;
 use crate::metrics::Condition;
 use crate::metrics::Metric;
 use crate::metrics::RaftMetrics;
+use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::VoteOf;
 use crate::type_config::alias::WatchReceiverOf;
-use crate::type_config::TypeConfigExt;
-use crate::OptionalSend;
-use crate::RaftTypeConfig;
 
 // Error variants related to metrics.
 #[derive(Debug, thiserror::Error)]

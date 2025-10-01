@@ -2,15 +2,15 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use maplit::btreeset;
-use openraft::storage::RaftStateMachine;
 use openraft::Config;
 use openraft::LogIdOptionExt;
 use openraft::Membership;
 use openraft::StoredMembership;
+use openraft::storage::RaftStateMachine;
 
+use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
 use crate::fixtures::ut_harness;
-use crate::fixtures::RaftRouter;
 
 /// All log should be applied to state machine.
 ///

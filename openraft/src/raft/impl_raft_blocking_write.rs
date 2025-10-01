@@ -2,17 +2,17 @@
 //! Blocking-mode write API blocks until the write operation is completed,
 //! where [`RaftTypeConfig::Responder`] is a [`OneshotResponder`].
 
-use crate::error::into_raft_result::IntoRaftResult;
+use crate::ChangeMembers;
+use crate::Raft;
+use crate::RaftTypeConfig;
 use crate::error::ClientWriteError;
 use crate::error::RaftError;
+use crate::error::into_raft_result::IntoRaftResult;
 #[cfg(doc)]
 use crate::impls::OneshotResponder;
 use crate::raft::ClientWriteResponse;
 #[cfg(doc)]
 use crate::raft::ManagementApi;
-use crate::ChangeMembers;
-use crate::Raft;
-use crate::RaftTypeConfig;
 
 /// Implement blocking mode write operations those reply on oneshot channel for communication
 /// between Raft core and client.

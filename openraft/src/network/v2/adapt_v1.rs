@@ -1,12 +1,15 @@
 use std::future::Future;
 
-use crate::error::decompose::DecomposeResult;
+use crate::OptionalSend;
+use crate::RaftNetwork;
+use crate::RaftTypeConfig;
 use crate::error::RPCError;
 use crate::error::ReplicationClosed;
 use crate::error::StreamingError;
-use crate::network::v2::RaftNetworkV2;
+use crate::error::decompose::DecomposeResult;
 use crate::network::Backoff;
 use crate::network::RPCOption;
+use crate::network::v2::RaftNetworkV2;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
 use crate::raft::SnapshotResponse;
@@ -14,9 +17,6 @@ use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::storage::Snapshot;
 use crate::type_config::alias::VoteOf;
-use crate::OptionalSend;
-use crate::RaftNetwork;
-use crate::RaftTypeConfig;
 
 impl<C, V1> RaftNetworkV2<C> for V1
 where

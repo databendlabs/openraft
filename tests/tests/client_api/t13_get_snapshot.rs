@@ -4,9 +4,9 @@ use std::time::Duration;
 use maplit::btreeset;
 use openraft::Config;
 
+use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
 use crate::fixtures::ut_harness;
-use crate::fixtures::RaftRouter;
 
 /// Get snapshot with `Raft::get_snapshot()`
 #[tracing::instrument]

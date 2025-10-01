@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
+use openraft::StorageError;
 use openraft::testing::log::StoreBuilder;
 use openraft::testing::log::Suite;
-use openraft::StorageError;
 
 use crate::MemLogStore;
 use crate::MemStateMachine;

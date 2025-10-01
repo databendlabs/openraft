@@ -1,9 +1,9 @@
 use std::fmt;
 
-use crate::display_ext::DisplayOption;
-use crate::type_config::alias::LogIdOf;
 use crate::Membership;
 use crate::RaftTypeConfig;
+use crate::display_ext::DisplayOption;
+use crate::type_config::alias::LogIdOf;
 
 /// This struct represents information about a membership config that has already been stored in the
 /// raft logs.

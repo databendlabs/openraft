@@ -4,17 +4,17 @@ use std::time::Duration;
 use anyerror::AnyError;
 use anyhow::Result;
 use maplit::btreeset;
-use openraft::error::NetworkError;
-use openraft::error::RPCError;
 use openraft::Config;
 use openraft::LogIdOptionExt;
 use openraft::RPCTypes;
 use openraft::ReadPolicy;
 use openraft::ServerState;
+use openraft::error::NetworkError;
+use openraft::error::RPCError;
 
-use crate::fixtures::ut_harness;
 use crate::fixtures::RPCRequest;
 use crate::fixtures::RaftRouter;
+use crate::fixtures::ut_harness;
 
 /// Client read tests.
 ///

@@ -2,9 +2,9 @@ use std::fmt;
 
 use anyerror::AnyError;
 
+use crate::RaftTypeConfig;
 use crate::storage::SnapshotSignature;
 use crate::type_config::alias::LogIdOf;
-use crate::RaftTypeConfig;
 
 /// Convert error to StorageError::IO();
 pub trait ToStorageResult<C, T>
@@ -203,8 +203,8 @@ mod tests {
     #[test]
     fn test_storage_error_serde() {
         use super::StorageError;
-        use crate::engine::testing::log_id;
         use crate::engine::testing::UTConfig;
+        use crate::engine::testing::log_id;
 
         let err = StorageError::write_log_entry(log_id(1, 2, 3), super::AnyError::error("test"));
         let s = serde_json::to_string(&err).unwrap();

@@ -4,8 +4,8 @@ use std::time::Duration;
 use maplit::btreeset;
 use openraft::Config;
 
-use crate::fixtures::ut_harness;
 use crate::fixtures::RaftRouter;
+use crate::fixtures::ut_harness;
 
 /// A follower that restarted should not interrupt a stable cluster by a too quick election.
 #[tracing::instrument]
