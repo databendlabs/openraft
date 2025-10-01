@@ -6,6 +6,7 @@ pub use serde_able::OptionalSerde;
 pub use threaded::BoxAny;
 pub use threaded::BoxAsyncOnceMut;
 pub use threaded::BoxFuture;
+pub use threaded::BoxMaybeAsyncOnceMut;
 pub use threaded::BoxOnce;
 pub use threaded::OptionalSend;
 pub use threaded::OptionalSync;
@@ -28,6 +29,7 @@ mod threaded {
 
     pub type BoxFuture<'a, T = ()> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
     pub type BoxAsyncOnceMut<'a, A, T = ()> = Box<dyn FnOnce(&mut A) -> BoxFuture<T> + Send + 'a>;
+    pub type BoxMaybeAsyncOnceMut<'a, A, T = ()> = Box<dyn FnOnce(&mut A) -> Option<BoxFuture<T>> + Send + 'a>;
     pub type BoxOnce<'a, A, T = ()> = Box<dyn FnOnce(&A) -> T + Send + 'a>;
     pub type BoxAny = Box<dyn Any + Send>;
 }
@@ -50,6 +52,7 @@ mod threaded {
 
     pub type BoxFuture<'a, T = ()> = Pin<Box<dyn Future<Output = T> + 'a>>;
     pub type BoxAsyncOnceMut<'a, A, T = ()> = Box<dyn FnOnce(&mut A) -> BoxFuture<T> + 'a>;
+    pub type BoxMaybeAsyncOnceMut<'a, A, T = ()> = Box<dyn FnOnce(&mut A) -> Option<BoxFuture<T>> + 'a>;
     pub type BoxOnce<'a, A, T = ()> = Box<dyn FnOnce(&A) -> T + 'a>;
     pub type BoxAny = Box<dyn Any>;
 }
