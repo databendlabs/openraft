@@ -119,6 +119,23 @@ where
         tracing::debug!("RAFT_io_progress: {}", self);
     }
 
+    /// Update all three cursors (accepted, submitted, flushed) to the same value, if they are
+    /// behind
+    pub(crate) fn try_update_all(&mut self, value: T)
+    where T: Clone {
+        if self.accepted.as_ref() < Some(&value) {
+            self.accept(value.clone());
+        }
+        if self.submitted.as_ref() < Some(&value) {
+            self.submit(value.clone());
+        }
+        if self.flushed.as_ref() < Some(&value) {
+            self.flush(value.clone());
+        }
+
+        tracing::debug!("RAFT_io_progress: {}", self);
+    }
+
     pub(crate) fn accepted(&self) -> Option<&T> {
         self.accepted.as_ref()
     }

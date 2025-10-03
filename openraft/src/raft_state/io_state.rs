@@ -6,7 +6,6 @@ use validit::less_equal;
 
 use crate::LogId;
 use crate::RaftTypeConfig;
-use crate::display_ext::DisplayOption;
 use crate::raft_state::IOId;
 use crate::raft_state::io_state::io_progress::IOProgress;
 use crate::type_config::alias::LogIdOf;
@@ -88,7 +87,7 @@ where C: RaftTypeConfig
     pub(crate) apply_progress: Valid<IOProgress<LogId<C>>>,
 
     /// The last log id in the currently persisted snapshot.
-    pub(crate) snapshot: Option<LogIdOf<C>>,
+    pub(crate) snapshot: Valid<IOProgress<LogId<C>>>,
 
     /// The last log id that has been purged from storage.
     ///
@@ -100,6 +99,7 @@ where C: RaftTypeConfig
 
 const LOG_PROGRESS_NAME: &str = "LogIO";
 const APPLY_PROGRESS_NAME: &str = "Apply";
+const SNAPSHOT_PROGRESS_NAME: &str = "Snapshot";
 
 impl<C> Default for IOState<C>
 where C: RaftTypeConfig
@@ -109,7 +109,7 @@ where C: RaftTypeConfig
             building_snapshot: false,
             log_progress: Valid::new(IOProgress::new_synchronized(None, LOG_PROGRESS_NAME)),
             apply_progress: Valid::new(IOProgress::new_synchronized(None, APPLY_PROGRESS_NAME)),
-            snapshot: None,
+            snapshot: Valid::new(IOProgress::new_synchronized(None, SNAPSHOT_PROGRESS_NAME)),
             purged: None,
         }
     }
@@ -120,14 +120,21 @@ where C: RaftTypeConfig
 {
     fn validate(&self) -> Result<(), Box<dyn Error>> {
         self.log_progress.validate()?;
+        self.apply_progress.validate()?;
 
-        // TODO: enable this when get_initial_state() initialize the log io progress correctly
-        // let a = &self.append_log;
-        // Applied does not have to be flushed in local store.
-        // less_equal!(self.applied.as_ref(), a.submitted().and_then(|x| x.last_log_id()));
+        // Disable this check, because IOId.log_id is None when a Vote request is just accepted(updated to
+        // non-None when appendEntries are received):
+        //
+        // less_equal!(
+        //     self.apply_progress.submitted(),
+        //     self.log_progress.submitted().and_then(|x| x.last_log_id())
+        // );
 
-        less_equal!(self.snapshot.as_ref(), self.applied());
-        less_equal!(&self.purged, &self.snapshot);
+        self.snapshot.validate()?;
+        // Snapshot must be included in applied.
+        less_equal!(self.snapshot.submitted(), self.apply_progress.submitted());
+
+        less_equal!(&self.purged, &self.snapshot.flushed().cloned());
         Ok(())
     }
 }
@@ -145,7 +152,7 @@ where C: RaftTypeConfig
             building_snapshot: false,
             log_progress: Valid::new(IOProgress::new_synchronized(Some(IOId::new(vote)), LOG_PROGRESS_NAME)),
             apply_progress: Valid::new(IOProgress::new_synchronized(applied, APPLY_PROGRESS_NAME)),
-            snapshot,
+            snapshot: Valid::new(IOProgress::new_synchronized(snapshot, SNAPSHOT_PROGRESS_NAME)),
             purged,
         }
     }
@@ -154,21 +161,8 @@ where C: RaftTypeConfig
         self.apply_progress.flushed()
     }
 
-    pub(crate) fn update_snapshot(&mut self, log_id: Option<LogIdOf<C>>) {
-        tracing::debug!(snapshot = display(DisplayOption(&log_id)), "{}", func_name!());
-
-        debug_assert!(
-            log_id >= self.snapshot,
-            "snapshot log id should be monotonically increasing: current: {:?}, update: {:?}",
-            self.snapshot,
-            log_id
-        );
-
-        self.snapshot = log_id;
-    }
-
     pub(crate) fn snapshot(&self) -> Option<&LogIdOf<C>> {
-        self.snapshot.as_ref()
+        self.snapshot.flushed()
     }
 
     pub(crate) fn set_building_snapshot(&mut self, building: bool) {

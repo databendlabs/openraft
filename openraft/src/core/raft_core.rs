@@ -1448,8 +1448,13 @@ where
                         let last_log_id = meta.last_log_id.clone();
                         self.engine.finish_building_snapshot(meta);
 
-                        let st = self.engine.state.io_state_mut();
-                        st.update_snapshot(last_log_id);
+                        if let Some(last) = last_log_id {
+                            let st = self.engine.state.io_state_mut();
+
+                            // Snapshot building run asynchronously, it is possible that
+                            // the progress is already changed.
+                            st.snapshot.try_update_all(last);
+                        }
                     }
                     sm::Response::InstallSnapshot((io_id, meta)) => {
                         tracing::info!(
@@ -1462,11 +1467,11 @@ where
                         self.engine.state.log_progress_mut().flush(io_id);
 
                         if let Some(meta) = meta {
-                            if let Some(last) = &meta.last_log_id {
-                                self.engine.state.apply_progress_mut().flush(last.clone());
-                            }
                             let st = self.engine.state.io_state_mut();
-                            st.update_snapshot(meta.last_log_id);
+                            if let Some(last) = &meta.last_log_id {
+                                st.apply_progress.flush(last.clone());
+                                st.snapshot.flush(last.clone());
+                            }
                         }
                     }
                     sm::Response::Apply(res) => {
@@ -1808,6 +1813,10 @@ where
                 // If this command update the last-applied log id, mark it as submitted(to state machine).
                 if let Some(log_id) = command.get_apply_progress() {
                     self.engine.state.apply_progress_mut().submit(log_id);
+                }
+
+                if let Some(log_id) = command.get_snapshot_progress() {
+                    self.engine.state.snapshot_progress_mut().submit(log_id);
                 }
 
                 // Just forward a state machine command to the worker.

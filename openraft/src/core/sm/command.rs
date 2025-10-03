@@ -125,6 +125,17 @@ where C: RaftTypeConfig
             Command::Func { .. } => None,
         }
     }
+
+    pub(crate) fn get_snapshot_progress(&self) -> Option<LogIdOf<C>> {
+        match self {
+            Command::BuildSnapshot => None,
+            Command::GetSnapshot { .. } => None,
+            Command::BeginReceivingSnapshot { .. } => None,
+            Command::InstallFullSnapshot { snapshot, .. } => snapshot.meta.last_log_id.clone(),
+            Command::Apply { .. } => None,
+            Command::Func { .. } => None,
+        }
+    }
 }
 
 impl<C> Debug for Command<C>
