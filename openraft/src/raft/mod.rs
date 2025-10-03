@@ -325,6 +325,7 @@ where C: RaftTypeConfig
             id: id.clone(),
             config: config.clone(),
             runtime_config: runtime_config.clone(),
+            core_state: Default::default(),
             network_factory: network,
             log_store,
             sm_handle,

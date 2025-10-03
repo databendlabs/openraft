@@ -159,6 +159,7 @@ where
         run_test(builder, Self::delete_logs_since_0).await?;
         run_test(builder, Self::append_to_log).await?;
         run_test(builder, Self::snapshot_meta).await?;
+        run_test(builder, Self::snapshot_meta_optional).await?;
 
         run_test(builder, Self::apply_single).await?;
         run_test(builder, Self::apply_multiple).await?;
@@ -1199,7 +1200,7 @@ where
         {
             apply(&mut sm, [membership_ent_0::<C>(0, 0, btreeset! {1,2})]).await?;
 
-            let mut b = sm.get_snapshot_builder().await;
+            let mut b = sm.try_create_snapshot_builder(true).await.unwrap();
             let snap = b.build_snapshot().await?;
             let meta = snap.meta;
             assert_eq!(Some(log_id_0(0, 0)), meta.last_log_id);
@@ -1218,7 +1219,7 @@ where
             ])
             .await?;
 
-            let mut b = sm.get_snapshot_builder().await;
+            let mut b = sm.try_create_snapshot_builder(true).await.unwrap();
             let snap = b.build_snapshot().await?;
             let meta = snap.meta;
             assert_eq!(Some(log_id_0(2, 2)), meta.last_log_id);
@@ -1227,6 +1228,17 @@ where
                 &Membership::new_with_defaults(vec![btreeset! {3,4}], []),
                 meta.last_membership.membership()
             );
+        }
+
+        Ok(())
+    }
+
+    pub async fn snapshot_meta_optional(mut store: LS, mut sm: SM) -> Result<(), StorageError<C>> {
+        tracing::info!("--- optional snapshot builder may or may not be available");
+        {
+            apply(&mut sm, [membership_ent_0::<C>(0, 0, btreeset! {1,2})]).await?;
+
+            let _builder = sm.try_create_snapshot_builder(false).await;
         }
 
         Ok(())
@@ -1323,7 +1335,7 @@ where
         let snapshot_applied_state = (snapshot_last_log_id.clone(), snapshot_last_membership.clone());
 
         tracing::info!("--- build and get snapshot on leader state machine");
-        let ss1 = sm_l.get_snapshot_builder().await.build_snapshot().await?;
+        let ss1 = sm_l.try_create_snapshot_builder(true).await.unwrap().build_snapshot().await?;
         assert_eq!(
             ss1.meta.last_log_id, snapshot_last_log_id,
             "built snapshot has wrong last log id"

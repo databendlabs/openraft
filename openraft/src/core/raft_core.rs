@@ -28,6 +28,7 @@ use crate::config::Config;
 use crate::config::RuntimeConfig;
 use crate::core::ServerState;
 use crate::core::balancer::Balancer;
+use crate::core::core_state::CoreState;
 use crate::core::heartbeat::event::HeartbeatEvent;
 use crate::core::heartbeat::handle::HeartbeatWorkersHandle;
 use crate::core::notification::Notification;
@@ -146,6 +147,9 @@ where
     pub(crate) config: Arc<Config>,
 
     pub(crate) runtime_config: Arc<RuntimeConfig>,
+
+    /// Additional state that does not directly affect the consensus.
+    pub(crate) core_state: CoreState<C>,
 
     /// The `RaftNetworkFactory` implementation.
     pub(crate) network_factory: NF,
@@ -690,8 +694,13 @@ where
     #[tracing::instrument(level = "debug", skip(self))]
     pub(crate) fn trigger_routine_actions(&mut self) {
         // Check snapshot policy and trigger snapshot if needed
-        if self.config.snapshot_policy.should_snapshot(&self.engine.state) {
-            tracing::debug!("snapshot policy triggered");
+        if let Some(at) = self
+            .config
+            .snapshot_policy
+            .should_snapshot(&self.engine.state, self.core_state.snapshot_tried_at.as_ref())
+        {
+            tracing::debug!("snapshot policy triggered at: {}", at);
+            self.core_state.snapshot_tried_at = Some(at);
             self.trigger_snapshot();
         }
 
@@ -1457,27 +1466,14 @@ where
                 let res = command_result.result?;
 
                 match res {
-                    sm::Response::BuildSnapshot(meta) => {
+                    sm::Response::BuildSnapshotDone(meta) => {
                         tracing::info!(
-                            "sm::StateMachine command done: BuildSnapshot: {}: {}",
-                            meta,
+                            "sm::StateMachine command done: BuildSnapshotDone: {}: {}",
+                            meta.display(),
                             func_name!()
                         );
 
-                        // Update in-memory state first, then the io state.
-                        // In-memory state should always be ahead or equal to the io state.
-
-                        let last_log_id = meta.last_log_id.clone();
-                        self.engine.finish_building_snapshot(meta);
-
-                        if let Some(last) = last_log_id {
-                            let st = self.engine.state.io_state_mut();
-
-                            // Snapshot building runs asynchronously. While it was building,
-                            // a newer snapshot may have been installed from the leader,
-                            // advancing the snapshot progress. Only update if still behind.
-                            st.snapshot.try_update_all(last);
-                        }
+                        self.engine.on_building_snapshot_done(meta);
                     }
                     sm::Response::InstallSnapshot((io_id, meta)) => {
                         tracing::info!(

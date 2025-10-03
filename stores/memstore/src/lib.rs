@@ -12,6 +12,7 @@ use std::ops::RangeBounds;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
+use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 
 use openraft::Entry;
@@ -187,6 +188,8 @@ pub struct MemStateMachine {
     /// The Raft state machine.
     sm: RwLock<MemStoreStateMachine>,
 
+    allow_build_snapshot: Arc<AtomicBool>,
+
     snapshot_idx: Arc<Mutex<u64>>,
 
     /// The current snapshot.
@@ -194,6 +197,9 @@ pub struct MemStateMachine {
 
     /// Block operations for testing purposes.
     pub block: BlockConfig,
+
+    /// Counter for testing: tracks how many times `try_create_snapshot_builder` is called.
+    pub try_create_snapshot_builder_count: Arc<AtomicU64>,
 }
 
 impl MemStateMachine {
@@ -203,10 +209,21 @@ impl MemStateMachine {
 
         Self {
             sm,
+            allow_build_snapshot: Arc::new(AtomicBool::new(true)),
             snapshot_idx: Arc::new(Mutex::new(0)),
             current_snapshot,
             block,
+            try_create_snapshot_builder_count: Arc::new(AtomicU64::new(0)),
         }
+    }
+
+    pub fn allow_build_snapshot(&self, allowed: bool) {
+        self.allow_build_snapshot.store(allowed, Ordering::Relaxed);
+    }
+
+    /// Get and reset the counter for `try_create_snapshot_builder` calls.
+    pub fn take_try_create_snapshot_builder_count(&self) -> u64 {
+        self.try_create_snapshot_builder_count.swap(0, Ordering::Relaxed)
     }
 
     /// Remove the current snapshot.
@@ -482,6 +499,16 @@ impl RaftStateMachine<TypeConfig> for Arc<MemStateMachine> {
             };
         }
         Ok(res)
+    }
+
+    async fn try_create_snapshot_builder(&mut self, force: bool) -> Option<Self::SnapshotBuilder> {
+        self.try_create_snapshot_builder_count.fetch_add(1, Ordering::Relaxed);
+
+        if force || self.allow_build_snapshot.load(Ordering::Relaxed) {
+            Some(self.get_snapshot_builder().await)
+        } else {
+            None
+        }
     }
 
     async fn get_snapshot_builder(&mut self) -> Self::SnapshotBuilder {

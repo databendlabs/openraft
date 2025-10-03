@@ -10,6 +10,7 @@ use clap::Parser;
 use rand::Rng;
 
 use crate::AsyncRuntime;
+use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::RaftTypeConfig;
 use crate::config::error::ConfigError;
@@ -37,13 +38,26 @@ pub enum SnapshotPolicy {
 }
 
 impl SnapshotPolicy {
-    pub(crate) fn should_snapshot<C>(&self, state: &impl Deref<Target = impl LogStateReader<C>>) -> bool
-    where C: RaftTypeConfig {
+    pub(crate) fn should_snapshot<C>(
+        &self,
+        state: &impl Deref<Target = impl LogStateReader<C>>,
+        last_tried_at: Option<&LogId<C>>,
+    ) -> Option<LogId<C>>
+    where
+        C: RaftTypeConfig,
+    {
         match self {
             SnapshotPolicy::LogsSinceLast(threshold) => {
-                state.committed().next_index() >= state.snapshot_last_log_id().next_index() + threshold
+                let committed_next = state.committed().next_index();
+                let base_log_id = last_tried_at.max(state.snapshot_last_log_id());
+
+                if committed_next >= base_log_id.next_index() + threshold {
+                    state.committed().cloned()
+                } else {
+                    None
+                }
             }
-            SnapshotPolicy::Never => false,
+            SnapshotPolicy::Never => None,
         }
     }
 }

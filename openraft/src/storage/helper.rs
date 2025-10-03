@@ -132,7 +132,7 @@ where
         let snapshot = match snapshot {
             None => {
                 if last_purged_log_id.is_some() {
-                    let mut b = self.state_machine.get_snapshot_builder().await;
+                    let mut b = self.state_machine.try_create_snapshot_builder(true).await.unwrap();
                     let s = b.build_snapshot().await?;
                     Some(s)
                 } else {

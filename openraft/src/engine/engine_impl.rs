@@ -529,22 +529,38 @@ where C: RaftTypeConfig
         }
     }
 
-    /// Update Engine state when a new snapshot is built.
+    /// Update Engine state when snapshot building completes or is deferred.
     ///
-    /// NOTE:
-    /// - Engine updates its state for building a snapshot is done after storage finished building a
-    ///   snapshot,
-    /// - while Engine updates its state for installing a snapshot is done before storage starts
-    ///   installing a snapshot.
+    /// # Arguments
     ///
-    /// This is all right because:
-    /// - Engine only keeps the snapshot meta with the greatest last-log-id;
-    /// - and a snapshot smaller than last-committed is not allowed to be installed.
+    /// - `meta`: The snapshot metadata if building succeeded, or `None` if the state machine
+    ///   deferred snapshot creation via `try_create_snapshot_builder()`.
+    ///
+    /// # Implementation Notes
+    ///
+    /// Snapshot building runs asynchronously in the background. This creates race conditions:
+    /// - While building, a newer snapshot may be installed from the leader
+    /// - The installed snapshot may have advanced the snapshot progress beyond this build
+    ///
+    /// To handle this, we use `try_update_all()` which only updates progress if still behind,
+    /// preventing regression of the snapshot cursor.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn finish_building_snapshot(&mut self, meta: SnapshotMeta<C>) {
-        tracing::info!(snapshot_meta = display(&meta), "{}", func_name!());
+    pub(crate) fn on_building_snapshot_done(&mut self, meta: Option<SnapshotMeta<C>>) {
+        tracing::info!("{}: snapshot_meta: {}", func_name!(), meta.display());
 
         self.state.io_state_mut().set_building_snapshot(false);
+
+        let Some(meta) = meta else {
+            tracing::info!("snapshot building deferred by state machine, no meta update");
+            return;
+        };
+
+        // Snapshot building runs asynchronously. While it was building,
+        // a newer snapshot may have been installed from the leader,
+        // advancing the snapshot progress. Only update if still behind.
+        if let Some(last_log_id) = meta.last_log_id.clone() {
+            self.state.io_state_mut().snapshot.try_update_all(last_log_id);
+        }
 
         let mut h = self.snapshot_handler();
 
