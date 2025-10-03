@@ -317,6 +317,7 @@ where C: RaftTypeConfig
         self.state.accept_log_io(io_id.clone());
 
         self.state.apply_progress_mut().accept(snap_last_log_id.clone());
+        self.state.snapshot_progress_mut().accept(snap_last_log_id.clone());
 
         self.update_committed_membership(EffectiveMembership::new_from_stored_membership(
             meta.last_membership.clone(),

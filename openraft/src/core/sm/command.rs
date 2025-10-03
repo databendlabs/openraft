@@ -125,6 +125,24 @@ where C: RaftTypeConfig
             Command::Func { .. } => None,
         }
     }
+
+    /// Return the last log id included in a snapshot if this command installs a snapshot.
+    ///
+    /// The caller uses this to update `snapshot_progress.submitted()` in `IOState`,
+    /// tracking the highest log id that has been submitted to be included in a persisted snapshot.
+    ///
+    /// Only `InstallFullSnapshot` returns the snapshot's last_log_id, as it's the only command
+    /// that directly updates the persisted snapshot state.
+    pub(crate) fn get_snapshot_progress(&self) -> Option<LogIdOf<C>> {
+        match self {
+            Command::BuildSnapshot => None,
+            Command::GetSnapshot { .. } => None,
+            Command::BeginReceivingSnapshot { .. } => None,
+            Command::InstallFullSnapshot { snapshot, .. } => snapshot.meta.last_log_id.clone(),
+            Command::Apply { .. } => None,
+            Command::Func { .. } => None,
+        }
+    }
 }
 
 impl<C> Debug for Command<C>

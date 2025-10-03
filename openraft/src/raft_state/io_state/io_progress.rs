@@ -119,6 +119,27 @@ where
         tracing::debug!("RAFT_io_progress: {}", self);
     }
 
+    /// Conditionally update all three cursors (accepted, submitted, flushed) to the same value.
+    ///
+    /// Each cursor is only updated if it is behind the given value, ensuring monotonic progress.
+    /// This is primarily used when snapshot building completes asynchronously - the snapshot
+    /// progress may have already advanced through normal operations while the snapshot was being
+    /// built, so we only update cursors that are actually behind.
+    pub(crate) fn try_update_all(&mut self, value: T)
+    where T: Clone {
+        if self.accepted.as_ref() < Some(&value) {
+            self.accept(value.clone());
+        }
+        if self.submitted.as_ref() < Some(&value) {
+            self.submit(value.clone());
+        }
+        if self.flushed.as_ref() < Some(&value) {
+            self.flush(value.clone());
+        }
+
+        tracing::debug!("RAFT_io_progress: {}", self);
+    }
+
     pub(crate) fn accepted(&self) -> Option<&T> {
         self.accepted.as_ref()
     }

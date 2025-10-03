@@ -299,8 +299,13 @@ where C: RaftTypeConfig
     pub(crate) fn apply_progress(&self) -> &IOProgress<LogId<C>> {
         &self.io_state().apply_progress
     }
+
     pub(crate) fn apply_progress_mut(&mut self) -> &mut IOProgress<LogId<C>> {
         &mut self.io_state_mut().apply_progress
+    }
+
+    pub(crate) fn snapshot_progress_mut(&mut self) -> &mut IOProgress<LogId<C>> {
+        &mut self.io_state_mut().snapshot
     }
 
     pub(crate) fn io_state_mut(&mut self) -> &mut IOState<C> {
