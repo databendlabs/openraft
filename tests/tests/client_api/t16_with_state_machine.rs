@@ -126,6 +126,10 @@ async fn with_state_machine_wrong_sm_type() -> Result<()> {
                 todo!()
             }
 
+            async fn save_snapshot(&mut self, _snapshot: &Snapshot<TC>) -> Result<(), StorageError<TC>> {
+                todo!()
+            }
+
             async fn get_current_snapshot(&mut self) -> Result<Option<Snapshot<TC>>, Err> {
                 todo!()
             }
