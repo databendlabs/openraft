@@ -245,11 +245,15 @@ where
         Ok(resp)
     }
 
-    /// Build a snapshot from the state machine.
+    /// Build a snapshot by requesting a builder from the state machine.
     ///
-    /// Building snapshot is a read-only operation, so it can be run in another task in parallel.
-    /// This parallelization depends on the [`RaftSnapshotBuilder`] implementation returned by
-    /// [`get_snapshot_builder()`](`RaftStateMachine::get_snapshot_builder()`): The builder must:
+    /// This method calls
+    /// [`try_create_snapshot_builder(false)`](`RaftStateMachine::try_create_snapshot_builder`)
+    /// to allow the state machine to defer snapshot creation based on operational conditions.
+    /// If deferred (`None` returned), a `BuildSnapshotDone(None)` response is sent to RaftCore.
+    ///
+    /// Building snapshot is a read-only operation that runs in a spawned task. This parallelization
+    /// depends on the [`RaftSnapshotBuilder`] implementation: The builder must:
     /// - hold a consistent view of the state machine that won't be affected by further writes such
     ///   as applying a log entry,
     /// - or it must be able to acquire a lock that prevents any write operations.
@@ -259,13 +263,18 @@ where
         // use futures::future::abortable;
         // let (fu, abort_handle) = abortable(async move { builder.build_snapshot().await });
 
-        tracing::info!("{}", func_name!());
+        let builder = self.state_machine.try_create_snapshot_builder(false).await;
 
-        let mut builder = self.state_machine.get_snapshot_builder().await;
+        let Some(mut builder) = builder else {
+            tracing::info!("{}: snapshot building is refused by state machine", func_name!());
+            let res = CommandResult::new(Ok(Response::BuildSnapshotDone(None)));
+            resp_tx.send(Notification::sm(res)).ok();
+            return;
+        };
 
         let _handle = C::spawn(async move {
             let res = builder.build_snapshot().await;
-            let res = res.map(|snap| Response::BuildSnapshot(snap.meta));
+            let res = res.map(|snap| Response::BuildSnapshotDone(Some(snap.meta)));
             let cmd_res = CommandResult::new(res);
             let _ = resp_tx.send(Notification::sm(cmd_res));
         });

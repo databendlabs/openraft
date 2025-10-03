@@ -12,7 +12,8 @@ test:
 	cargo test
 	cargo test --features bt
 	cargo test --features serde
-	cargo test --features single-term-leader
+	# only crate `tests` has single-term-leader feature
+	cargo test --features single-term-leader -p tests
 	$(MAKE) test-examples
 
 

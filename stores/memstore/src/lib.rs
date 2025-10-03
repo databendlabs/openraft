@@ -187,6 +187,8 @@ pub struct MemStateMachine {
     /// The Raft state machine.
     sm: RwLock<MemStoreStateMachine>,
 
+    allow_build_snapshot: Arc<AtomicBool>,
+
     snapshot_idx: Arc<Mutex<u64>>,
 
     /// The current snapshot.
@@ -203,10 +205,15 @@ impl MemStateMachine {
 
         Self {
             sm,
+            allow_build_snapshot: Arc::new(AtomicBool::new(true)),
             snapshot_idx: Arc::new(Mutex::new(0)),
             current_snapshot,
             block,
         }
+    }
+
+    pub fn allow_build_snapshot(&self, allowed: bool) {
+        self.allow_build_snapshot.store(allowed, Ordering::Relaxed);
     }
 
     /// Remove the current snapshot.
@@ -482,6 +489,14 @@ impl RaftStateMachine<TypeConfig> for Arc<MemStateMachine> {
             };
         }
         Ok(res)
+    }
+
+    async fn try_create_snapshot_builder(&mut self, force: bool) -> Option<Self::SnapshotBuilder> {
+        if force || self.allow_build_snapshot.load(Ordering::Relaxed) {
+            Some(self.get_snapshot_builder().await)
+        } else {
+            None
+        }
     }
 
     async fn get_snapshot_builder(&mut self) -> Self::SnapshotBuilder {

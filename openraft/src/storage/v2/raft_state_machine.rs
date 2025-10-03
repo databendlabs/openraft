@@ -69,15 +69,39 @@ where C: RaftTypeConfig
         I: IntoIterator<Item = C::Entry> + OptionalSend,
         I::IntoIter: OptionalSend;
 
+    /// Try to create a snapshot builder for the state machine.
+    ///
+    /// Returns a snapshot view of the state machine, or `None` to defer snapshot creation.
+    ///
+    /// This allows applications to optimize snapshot timing based on system load, I/O conditions,
+    /// or other operational constraints. For example, deferring snapshots during high write load
+    /// or waiting for quieter periods.
+    ///
+    /// # Arguments
+    ///
+    /// - `force`: Controls whether snapshot creation can be deferred:
+    ///   - `true`: Implementation **must** return `Some(builder)`. OpenRaft uses this when a
+    ///     snapshot is required for replication (e.g., logs have been purged and a follower needs
+    ///     to catch up via snapshot).
+    ///   - `false`: Implementation **may** return `None` to defer snapshot creation. OpenRaft uses
+    ///     this for policy-based snapshots triggered by `SnapshotPolicy`.
+    ///
+    /// # Default Implementation
+    ///
+    /// Delegates to [`Self::get_snapshot_builder`] for backward compatibility. New implementations
+    /// should override this method instead of [`Self::get_snapshot_builder`].
+    #[since(version = "0.10.0")]
+    async fn try_create_snapshot_builder(&mut self, force: bool) -> Option<Self::SnapshotBuilder> {
+        let _ = force;
+        Some(self.get_snapshot_builder().await)
+    }
+
     /// Get the snapshot builder for the state machine.
     ///
-    /// Usually it returns a snapshot view of the state machine(i.e., subsequent changes to the
-    /// state machine won't affect the return snapshot view), or just a copy of the entire state
-    /// machine.
+    /// Returns a snapshot view of the state machine (subsequent changes won't affect the view).
     ///
-    /// The method is intentionally async to give the implementation a chance to use
-    /// asynchronous sync primitives to serialize access to the common internal object, if
-    /// needed.
+    /// This method will be replaced by [`Self::try_create_snapshot_builder`] in the future.
+    #[since(version = "0.10.0", change = "deprecated, use `try_create_snapshot_builder` instead")]
     async fn get_snapshot_builder(&mut self) -> Self::SnapshotBuilder;
 
     /// Create a new blank snapshot, returning a writable handle to the snapshot object.

@@ -1435,27 +1435,14 @@ where
                 let res = command_result.result?;
 
                 match res {
-                    sm::Response::BuildSnapshot(meta) => {
+                    sm::Response::BuildSnapshotDone(meta) => {
                         tracing::info!(
-                            "sm::StateMachine command done: BuildSnapshot: {}: {}",
-                            meta,
+                            "sm::StateMachine command done: BuildSnapshotDone: {}: {}",
+                            meta.display(),
                             func_name!()
                         );
 
-                        // Update in-memory state first, then the io state.
-                        // In-memory state should always be ahead or equal to the io state.
-
-                        let last_log_id = meta.last_log_id.clone();
-                        self.engine.finish_building_snapshot(meta);
-
-                        if let Some(last) = last_log_id {
-                            let st = self.engine.state.io_state_mut();
-
-                            // Snapshot building runs asynchronously. While it was building,
-                            // a newer snapshot may have been installed from the leader,
-                            // advancing the snapshot progress. Only update if still behind.
-                            st.snapshot.try_update_all(last);
-                        }
+                        self.engine.on_building_snapshot_done(meta);
                     }
                     sm::Response::InstallSnapshot((io_id, meta)) => {
                         tracing::info!(
