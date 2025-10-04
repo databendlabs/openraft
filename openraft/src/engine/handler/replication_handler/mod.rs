@@ -12,7 +12,6 @@ use crate::engine::EngineConfig;
 use crate::engine::EngineOutput;
 use crate::engine::ReplicationProgress;
 use crate::engine::handler::log_handler::LogHandler;
-use crate::engine::handler::snapshot_handler::SnapshotHandler;
 use crate::error::NodeNotFound;
 use crate::error::Operation;
 use crate::progress;
@@ -204,10 +203,6 @@ where C: RaftTypeConfig
                 already_committed: prev_committed,
                 upto: self.state.committed().cloned().unwrap(),
             });
-
-            if self.config.snapshot_policy.should_snapshot(&self.state) {
-                self.snapshot_handler().trigger_snapshot();
-            }
         }
     }
 
@@ -427,13 +422,6 @@ where C: RaftTypeConfig
     pub(crate) fn log_handler(&mut self) -> LogHandler<C> {
         LogHandler {
             config: self.config,
-            state: self.state,
-            output: self.output,
-        }
-    }
-
-    fn snapshot_handler(&mut self) -> SnapshotHandler<C> {
-        SnapshotHandler {
             state: self.state,
             output: self.output,
         }

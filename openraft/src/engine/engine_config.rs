@@ -2,7 +2,6 @@ use std::time::Duration;
 
 use crate::Config;
 use crate::RaftTypeConfig;
-use crate::SnapshotPolicy;
 use crate::engine::time_state;
 use crate::type_config::alias::AsyncRuntimeOf;
 
@@ -12,9 +11,6 @@ use crate::type_config::alias::AsyncRuntimeOf;
 pub(crate) struct EngineConfig<C: RaftTypeConfig> {
     /// The id of this node.
     pub(crate) id: C::NodeId,
-
-    /// The snapshot policy to use for a Raft node.
-    pub(crate) snapshot_policy: SnapshotPolicy,
 
     /// The maximum number of applied logs to keep before purging.
     pub(crate) max_in_snapshot_log_to_keep: u64,
@@ -37,7 +33,6 @@ where C: RaftTypeConfig
         let election_timeout = Duration::from_millis(config.new_rand_election_timeout::<AsyncRuntimeOf<C>>());
         Self {
             id,
-            snapshot_policy: config.snapshot_policy.clone(),
             max_in_snapshot_log_to_keep: config.max_in_snapshot_log_to_keep,
             purge_batch_size: config.purge_batch_size,
             max_payload_entries: config.max_payload_entries,
@@ -55,7 +50,6 @@ where C: RaftTypeConfig
     pub(crate) fn new_default(id: C::NodeId) -> Self {
         Self {
             id,
-            snapshot_policy: SnapshotPolicy::LogsSinceLast(5000),
             max_in_snapshot_log_to_keep: 1000,
             purge_batch_size: 256,
             max_payload_entries: 300,

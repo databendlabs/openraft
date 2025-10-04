@@ -678,6 +678,29 @@ where
         self.engine.snapshot_handler().trigger_snapshot();
     }
 
+    /// Trigger routine actions that need to be checked after processing messages.
+    ///
+    /// This is called in the main event loop after processing messages and running engine commands.
+    /// It performs routine checks and triggers corresponding actions:
+    /// - Snapshot building based on `SnapshotPolicy`
+    /// - Initiate replication if the replication stream is idle (for leader)
+    ///
+    /// Unlike tick-based triggers, this runs after every message batch, making it independent of
+    /// the tick configuration and more responsive to state changes.
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub(crate) fn trigger_routine_actions(&mut self) {
+        // Check snapshot policy and trigger snapshot if needed
+        if self.config.snapshot_policy.should_snapshot(&self.engine.state) {
+            tracing::debug!("snapshot policy triggered");
+            self.trigger_snapshot();
+        }
+
+        // Keep replicating to a target if the replication stream to it is idle
+        if let Ok(mut lh) = self.engine.leader_handler() {
+            lh.replication_handler().initiate_replication();
+        }
+    }
+
     #[tracing::instrument(level = "debug", skip(self))]
     pub(crate) fn current_leader(&self) -> Option<C::NodeId> {
         tracing::debug!(
@@ -928,10 +951,9 @@ where
                 }
             }
 
-            // Keep replicating to a target if the replication stream to it is idle.
-            if let Ok(mut lh) = self.engine.leader_handler() {
-                lh.replication_handler().initiate_replication();
-            }
+            // Trigger routine actions after processing all messages
+            self.trigger_routine_actions();
+
             self.run_engine_commands().await?;
         }
     }
