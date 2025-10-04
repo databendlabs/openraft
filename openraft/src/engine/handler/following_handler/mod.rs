@@ -181,10 +181,6 @@ where C: RaftTypeConfig
                 already_committed: prev_committed,
                 upto: committed.unwrap(),
             });
-
-            if self.config.snapshot_policy.should_snapshot(&self.state) {
-                self.snapshot_handler().trigger_snapshot();
-            }
         }
     }
 
