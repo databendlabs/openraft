@@ -14,8 +14,11 @@ use crate::storage::SnapshotMeta;
 pub(crate) enum Response<C>
 where C: RaftTypeConfig
 {
-    /// Build a snapshot, it returns result via the universal RaftCore response channel.
-    BuildSnapshot(SnapshotMeta<C>),
+    /// Snapshot building completed or was deferred.
+    ///
+    /// - `Some(meta)`: Snapshot was successfully built with the given metadata.
+    /// - `None`: State machine deferred snapshot creation via `try_create_snapshot_builder()`.
+    BuildSnapshotDone(Option<SnapshotMeta<C>>),
 
     /// When finishing installing a snapshot.
     ///
@@ -31,8 +34,8 @@ where C: RaftTypeConfig
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Self::BuildSnapshot(meta) => {
-                write!(f, "BuildSnapshot({})", meta)
+            Self::BuildSnapshotDone(meta) => {
+                write!(f, "BuildSnapshotDone({})", meta.display())
             }
             Self::InstallSnapshot((io_id, meta)) => {
                 write!(f, "InstallSnapshot(io_id:{}, meta:{})", io_id, meta.display())

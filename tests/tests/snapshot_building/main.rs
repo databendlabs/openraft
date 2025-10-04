@@ -5,6 +5,7 @@
 mod fixtures;
 
 mod t10_build_snapshot;
+mod t11_snapshot_builder_control;
 mod t35_building_snapshot_does_not_block_append;
 mod t35_building_snapshot_does_not_block_apply;
 mod t60_snapshot_policy_never;
