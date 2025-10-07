@@ -1,4 +1,31 @@
-//! Basic types used in the Raft implementation.
+//! Basic types and traits with optional feature support.
+//!
+//! This module provides foundational traits that adapt based on feature flags,
+//! allowing Openraft to work in both multi-threaded and single-threaded environments.
+//!
+//! ## Key Traits
+//!
+//! - [`OptionalSend`] - `Send` when not `singlethreaded`, empty otherwise
+//! - [`OptionalSync`] - `Sync` when not `singlethreaded`, empty otherwise
+//! - [`OptionalSerde`] - Serde traits when `serde` feature enabled
+//! - [`OptionalFeatures`] - Combines all optional traits
+//!
+//! ## Type Aliases
+//!
+//! - [`BoxFuture`] - Boxed future, optionally `Send`
+//! - [`BoxAsyncOnceMut`] - Boxed async FnOnce with mutable access
+//! - [`BoxOnce`] - Boxed FnOnce closure
+//! - [`BoxAny`] - Boxed Any type
+//!
+//! ## Overview
+//!
+//! These types allow Openraft to be used in:
+//! - **Multi-threaded** contexts (default): Types are `Send` + `Sync`
+//! - **Single-threaded** contexts (feature `singlethreaded`): No `Send` + `Sync` bounds
+//! - **With/without serde** (feature `serde`): Optional serialization support
+//!
+//! Applications rarely need to use these types directly - they're used internally
+//! to make Openraft flexible across different environments.
 
 pub(crate) mod finalized;
 

@@ -1,17 +1,55 @@
-# Example Openraft kv-store with snapshot stored in remote storage
+# Remote Snapshot Storage with OpenDAL
 
-This example shows how to save and retrieve snapshot data from remote storage,
-allowing users to follow a similar pattern for implementing business logic such as snapshot backups.
+Demonstrates storing and retrieving Raft snapshots in remote storage using [OpenDAL](https://docs.rs/opendal), enabling snapshot backup and disaster recovery patterns.
 
-This example is similar to the basic raft-kv-memstore example
-but focuses on how to store and fetch snapshot data from remote storage.
-Other aspects are minimized.
+## Key Features Demonstrated
 
-To send a complete snapshot, Refer to implementation of `RaftNetworkV2::full_snapshot()` in this example.
+- **Remote snapshot storage**: Store snapshots in S3, OSS, or other remote backends via OpenDAL
+- **`RaftNetworkV2` usage**: Full snapshot transmission without chunking
+- **Snapshot backup patterns**: Implement snapshot archival and restoration
+- **Minimal example**: Focuses on snapshot handling, other aspects simplified
 
-To receive a complete snapshot, Refer to implementation of `api::snapshot()` in this example.
+## Overview
 
+This example extends `raft-kv-memstore` to show how to:
+- Store snapshot data in remote storage (e.g., S3, OSS)
+- Transmit full snapshots between nodes
+- Retrieve snapshots from remote storage
 
-## Run it
+Useful for:
+- Snapshot backups to cloud storage
+- Disaster recovery scenarios
+- Reducing local storage requirements
 
-Run it with `cargo test -- --nocapture`.
+## Key Implementation Points
+
+**Sending snapshots**: See `RaftNetworkV2::full_snapshot()` implementation
+- Sends complete snapshot in single RPC
+- Fetches from remote storage before transmission
+
+**Receiving snapshots**: See `api::snapshot()` implementation
+- Stores received snapshot to remote storage
+- Installs snapshot in state machine
+
+## Running
+
+```bash
+cargo test -- --nocapture
+```
+
+## Architecture
+
+**Storage flow**:
+1. State machine creates snapshot
+2. Snapshot uploaded to remote storage (OpenDAL)
+3. Leader fetches from remote storage when needed
+4. Full snapshot sent to follower
+5. Follower stores to its remote storage
+
+## Comparison
+
+| Feature | opendal-snapshot | standard |
+|---------|------------------|----------|
+| Snapshot location | Remote (S3/OSS) | Local disk |
+| Backup capability | Built-in | Manual |
+| Network transmission | Full snapshot | Chunked |

@@ -35,12 +35,30 @@ pub enum Request {
 }
 
 /**
- * Here you will defined what type of answer you expect from reading the data of a node.
- * In this example it will return a optional value from a given key in
- * the `Request.Set`.
+ * Here you define the response type for client read/write requests.
  *
- * TODO: Should we explain how to create multiple `AppDataResponse`?
+ * This Response type is used as the `AppDataResponse` in the `TypeConfig`.
+ * It represents the result returned to clients after applying operations
+ * to the state machine.
  *
+ * In this example, it returns an optional value for a given key.
+ *
+ * ## Using Multiple Response Types
+ *
+ * For applications with diverse operations, you can use an enum:
+ *
+ * ```ignore
+ * #[derive(Serialize, Deserialize, Debug, Clone)]
+ * pub enum Response {
+ *     Get { value: Option<String> },
+ *     Set { prev_value: Option<String> },
+ *     Delete { existed: bool },
+ *     List { keys: Vec<String> },
+ * }
+ * ```
+ *
+ * Each variant corresponds to a different operation in your `Request` enum,
+ * providing strongly-typed responses for different client operations.
  */
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Response {

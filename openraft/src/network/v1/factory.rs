@@ -11,6 +11,12 @@ use crate::network::v2::RaftNetworkV2;
 /// See the [network chapter of the guide](crate::docs::getting_started#4-implement-raftnetwork)
 /// for details and discussion on this trait and how to implement it.
 ///
+/// ## Related Types
+///
+/// - [`RaftLogStorage`](crate::storage::RaftLogStorage) - For log storage operations
+/// - [`RaftStateMachine`](crate::storage::RaftStateMachine) - For state machine operations
+/// - [`Config`](crate::config::Config) - For configuration options
+///
 /// Typically, the network implementation as such will be hidden behind a `Box<T>` or `Arc<T>` and
 /// this interface implemented on the `Box<T>` or `Arc<T>`.
 #[add_async_trait]

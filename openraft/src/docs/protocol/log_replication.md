@@ -1,5 +1,9 @@
 # Replication by Append-Entries
 
+This document explains the log replication protocol in Openraft, including consistency guarantees, conflict resolution, and implementation considerations.
+
+## Core Concept
+
 Raft logs can be collectively considered as a **single value**:
 An append-entry RPC sends all logs to a follower and replaces all logs on the follower.
 This ensures that committed logs are always visible to the next leader.
@@ -68,7 +72,9 @@ can maintain consistency across all nodes.
      -----0--1--2---> log index
 ```
 
-## Warning: Deleting all entries after `prev_log_id` may result in loss of committed logs
+## Implementation Considerations
+
+### Warning: Deleting all entries after `prev_log_id` may result in loss of committed logs
 
 One mistake is that if [`prev_log_id`] is found, **delete all entries after `prev_log_id`** then append logs.
 Such a scenario can cause committed data loss because deleting and appending are not executed atomically:
@@ -108,7 +114,7 @@ committed logs are not lost during log replication.
 
 [`prev_log_id`]: `crate::raft::AppendEntriesRequest::prev_log_id`
 
-## Warning: commit-index must not advance beyond the last known consistent log
+### Warning: commit-index must not advance beyond the last known consistent log
 
 The commit index must be updated only after append-entries and must point to a
 log entry that is **consistent** with the **current** leader.
@@ -126,8 +132,9 @@ R2 | 1-1  1-2  3-3
   inconsistent with the leader. Then it updates `commit_index` to `3` and
   applies `2-3`.
 
+## Replication Progress Tracking
 
-## Algorithm to find the last matching log id on a Follower
+### Algorithm to find the last matching log id on a Follower
 
 When a Leader is established, it does not know which log entries are present on
 Followers and Learners. Therefore, it must determine the last matching log ID on
@@ -173,8 +180,7 @@ Notes:
 - `ProgressEntry.matching.next_index()` refers to the index right after the last
   known matching log ID.
 
-
-## LogId Appended Multiple Times
+### LogId Appended Multiple Times
 
 Consider a scenario where a specific `LogId` is truncated and appended more than once.
 

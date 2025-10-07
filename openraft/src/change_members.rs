@@ -1,3 +1,8 @@
+//! Membership change operations and types.
+//!
+//! This module defines the various types of membership changes that can be performed
+//! on a Raft cluster, such as adding voters, removing voters, or replacing the entire membership.
+
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::fmt;

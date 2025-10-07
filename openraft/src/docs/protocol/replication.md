@@ -6,4 +6,3 @@ ensuring that all nodes have a consistent state, particularly when log entries b
 
 - [Replication by Append-Entries](`crate::docs::protocol::replication::log_replication`).
 - [Replication by Snapshot](`crate::docs::protocol::replication::snapshot_replication`).
-
