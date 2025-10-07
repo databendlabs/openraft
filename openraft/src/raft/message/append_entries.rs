@@ -51,7 +51,10 @@ where C: RaftTypeConfig
             self.vote,
             self.prev_log_id.display(),
             self.leader_commit.display(),
-            DisplaySlice::<_>(self.entries.as_slice())
+            DisplaySlice {
+                slice: self.entries.as_slice(),
+                max: 5
+            }
         )
     }
 }

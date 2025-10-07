@@ -109,7 +109,10 @@ where C: RaftTypeConfig
                 write!(f, "ReplaceAllNodes({})", nodes.display())
             }
             ChangeMembers::Batch(changes) => {
-                write!(f, "Batch({})", DisplaySlice::<_, 1024>(changes.as_slice()))
+                write!(f, "Batch({})", DisplaySlice {
+                    slice: changes.as_slice(),
+                    max: 1024
+                })
             }
         }
     }

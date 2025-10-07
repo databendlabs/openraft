@@ -171,7 +171,7 @@ where C: RaftTypeConfig
             }
             Command::BroadcastTransferLeader { req } => write!(f, "TransferLeader: {}", req),
             Command::RebuildReplicationStreams { targets } => {
-                write!(f, "RebuildReplicationStreams: {}", targets.display_n::<10>())
+                write!(f, "RebuildReplicationStreams: {}", targets.display_n(10))
             }
             Command::SaveVote { vote } => write!(f, "SaveVote: {}", vote),
             Command::SendVote { vote_req } => write!(f, "SendVote: {}", vote_req),

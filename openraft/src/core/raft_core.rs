@@ -1712,7 +1712,10 @@ where
                 entries,
             } => {
                 let last_log_id = entries.last().unwrap().log_id();
-                tracing::debug!("AppendInputEntries: {}", DisplaySlice::<_>(&entries),);
+                tracing::debug!("AppendInputEntries: {}", DisplaySlice {
+                    slice: &entries,
+                    max: 5
+                });
 
                 let io_id = IOId::new_log_io(vote, Some(last_log_id));
                 let notify = Notification::LocalIO { io_id: io_id.clone() };
