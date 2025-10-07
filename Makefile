@@ -16,6 +16,9 @@ test:
 	cargo test --features single-term-leader -p tests
 	$(MAKE) test-examples
 
+check-parallel:
+	./scripts/check-parallel.sh
+
 
 test-examples:
 	cargo test --manifest-path examples/mem-log/Cargo.toml
