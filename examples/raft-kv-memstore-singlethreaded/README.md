@@ -1,18 +1,35 @@
-# Example single threaded key-value store
+# Single-Threaded Key-Value Store Example
 
-Example key-value store with `openraft`, single threaded, i.e., Openraft does not require `Send` for data types,
-by enabling feature flag `singlethreaded`
+Demonstrates using Openraft with non-`Send` types by enabling the `singlethreaded` feature flag.
 
-In this example, `NodeId` and application request `Request` are not `Send`, by enabling feature flag `singlethreaded`:
-`openraft = { path = "../../openraft", features = ["singlethreaded"] }`,
-Openraft works happily with non-`Send` data types:
+## Key Features Demonstrated
 
+- **Single-threaded operation**: No `Send` requirement for data types
+- **Custom non-Send types**: `NodeId` and `Request` with `!Send` markers
+- **Feature flag usage**: `singlethreaded` feature configuration
+
+## Overview
+
+This example shows how to build a Raft cluster when your application types cannot be sent across threads. Useful for:
+- FFI integration with non-thread-safe libraries
+- Performance optimization in single-threaded runtimes
+- Types with thread-local state
+
+## Implementation
+
+Enable the feature in `Cargo.toml`:
+```toml
+openraft = { version = "0.10", features = ["singlethreaded"] }
+```
+
+Example non-`Send` types:
 ```rust
 pub struct NodeId {
     pub id: u64,
     // Make it !Send
     _p: PhantomData<*const ()>,
 }
+
 pub enum Request {
     Set {
         key: String,
@@ -23,6 +40,16 @@ pub enum Request {
 }
 ```
 
-## Run it
+## Running
 
-Run it with `cargo test -- --nocapture`.
+```bash
+cargo test -- --nocapture
+```
+
+## Comparison
+
+| Feature | singlethreaded | standard |
+|---------|---------------|----------|
+| Send required | No | Yes |
+| Multi-threaded | No | Yes |
+| Use case | FFI, single-runtime | General purpose |

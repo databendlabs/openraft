@@ -1,8 +1,27 @@
-//! The `RaftCore` is a `Runtime` supporting the raft algorithm implementation `Engine`.
+//! Core Raft runtime and orchestration.
 //!
-//! It passes events from an application or timer or network to `Engine` to drive it to run.
-//! Also it receives and execute `Command` emitted by `Engine` to apply raft state to underlying
-//! storage or forward messages to other raft nodes.
+//! This module contains [`RaftCore`], the runtime that supports the Raft algorithm implementation
+//! ([`Engine`](crate::engine::Engine)).
+//!
+//! ## Architecture
+//!
+//! [`RaftCore`] acts as the bridge between the application and the Raft consensus algorithm:
+//!
+//! - **Event Processing**: Receives events from application, timer, or network and passes them to
+//!   [`Engine`](crate::engine::Engine)
+//! - **Command Execution**: Executes [`Command`](crate::engine::Command)s emitted by
+//!   [`Engine`](crate::engine::Engine) to:
+//!   - Apply Raft state to underlying storage
+//!   - Forward messages to other Raft nodes
+//!
+//! ## Key Types
+//!
+//! - [`RaftCore`] - Main runtime orchestrator
+//! - [`ServerState`] - Server state (Leader, Follower, Candidate, Learner)
+//! - [`ApplyResult`] - Result of applying log entries to state machine
+//!
+//! See the [Engine/Runtime architecture guide](crate::docs::components::engine_runtime) for
+//! details.
 
 pub(crate) mod balancer;
 pub(crate) mod core_state;

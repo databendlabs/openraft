@@ -1,71 +1,79 @@
 # Distributed Key-Value Store with OpenRaft and gRPC
 
-A distributed key-value store built using `openraft` and gRPC, demonstrating a robust, replicated storage system.
+Demonstrates building a distributed key-value store with Openraft using gRPC for network communication.
 
-This example stores Raft logs in a in-memory storage, state-machine in a
-protobuf defined in-memory struct `StateMachineData`, and use gRPC for
-inter-node Raft-protocol communication and the communication between app client
-and the cluster.
+## Key Features Demonstrated
 
-This example provide two testing scenarios:
+- **gRPC networking**: Uses [Tonic](https://docs.rs/tonic) for Raft protocol and client communication
+- **Protocol Buffers**: Type-safe RPC definitions for all network operations
+- **In-memory storage**: [`RaftLogStorage`] and protobuf-based state machine
+- **Dual test modes**: Single-process cluster and multi-process realistic deployment
 
-- `./tests/test_cluster.rs` brings up a 3 node cluster in a single process to
-    prove functions, including, initialize, add-learner, change-membership and
-    write/read.
+## Overview
 
-- `./test-cluster.sh` provides a more realistic scenario: it brings up a 3
-    process to form a cluster, and run the similar steps: initialize,
-    add-learner, change-membership and write/read.
+This example implements:
+- **Storage**: In-memory log storage with protobuf `StateMachineData` state machine
+- **Network**: gRPC-based [`RaftNetwork`] implementation using Tonic
+- **Services**: Separate gRPC services for application APIs and Raft internal communication
 
-## Modules
+## Testing Scenarios
 
-The application is structured into key modules:
+**Single-process cluster** (`./tests/test_cluster.rs`):
+- Brings up 3 nodes in one process
+- Tests: initialize, add-learner, change-membership, write/read
 
- - `src/bin`: Contains the `main()` function for server setup in [main.rs](./src/bin/main.rs)
- - `src/network`: For routing calls to their respective grpc RPCs
- - `src/grpc`:
-   - `api_service.rs`: gRPC service implementations for key value store(application APIs) and managements
-   - `raft_service.rs`: Raft-specific gRPC internal network communication
- - `protos`: Protocol buffers specifications for above services
- - `src/store`: Implements the key-value store logic in [store/mod.rs](./src/store/mod.rs)
+**Multi-process cluster** (`./test-cluster.sh`):
+- Realistic 3-process deployment
+- Same test sequence with actual network communication
 
-## Running the Cluster
+## Architecture
 
+**Key Code Locations**:
+- Server entry point: `src/bin/main.rs`
+- Network routing: `src/network/`
+- gRPC services: `src/grpc/`
+  - `api_service.rs` - Application APIs (read/write) and management
+  - `raft_service.rs` - Raft internal protocol RPCs
+- Protocol definitions: `protos/` - Protocol Buffer specifications
+- Storage implementation: `src/store/mod.rs`
 
-### Build the Application
+## Running
+
+### Build
 
 ```shell
 cargo build
 ```
 
-### Start Nodes
+### Start cluster
 
-Start the first node:
-```shell
+```bash
+# Terminal 1
 ./raft-key-value --id 1 --addr 127.0.0.1:21001
-```
 
-Start additional nodes by changing the `id` and `grpc-addr`:
-```shell
+# Terminal 2
 ./raft-key-value --id 2 --addr 127.0.0.1:21002
+
+# Terminal 3
+./raft-key-value --id 3 --addr 127.0.0.1:21003
 ```
 
-### Cluster Setup
+### Initialize and test
 
-1. Initialize the first node as the leader
-2. Add learner nodes
+1. Initialize first node as leader
+2. Add learner nodes (2, 3)
 3. Change membership to include all nodes
-4. Write and read data using gRPC calls
+4. Write/read data via gRPC
 
-## Data Storage
+See `./test-cluster.sh` for complete setup example.
 
-Data is stored in state machines, with Raft ensuring data synchronization across all nodes. 
+## Comparison
 
-## Cluster Management
+| Feature | grpc | http |
+|---------|------|------|
+| Protocol | gRPC/Protobuf | HTTP/JSON |
+| Type safety | Compile-time | Runtime |
+| Performance | Higher | Good |
+| Debugging | Harder | Easier |
 
-Node management process:
-- Store node information in the storage layer
-- Add nodes as learners
-- Promote learners to full cluster members
-
-Note: This is an example implementation and not recommended for production use.
+Built for demonstration purposes.
