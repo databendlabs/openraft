@@ -16,6 +16,12 @@ use crate::type_config::alias::VoteOf;
 /// while `log` is about **what**. A distributed consensus is about **at what a time, happened what
 /// a event**.
 ///
+/// ## Related Types
+///
+/// - [`RaftStateMachine`](crate::storage::RaftStateMachine) - For state machine operations
+/// - [`RaftNetworkFactory`](crate::network::RaftNetworkFactory) - For network communication
+/// - [`Config`](crate::config::Config) - For configuration options
+///
 /// ### To ensure correctness:
 ///
 /// - Logs must be consecutive, i.e., there must **NOT** leave a **hole** in logs.
