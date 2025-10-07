@@ -1,5 +1,28 @@
-//! This mod defines the identity of a raft log and provides supporting utilities to work with log
-//! id related types.
+//! Log identification and comparison.
+//!
+//! This module defines [`LogId`], the unique identifier for Raft log entries, and utilities for
+//! working with log IDs.
+//!
+//! ## Key Types
+//!
+//! - [`LogId`] - Unique identifier for a log entry `(leader_id, index)`
+//! - [`LogIdOptionExt`] - Extension trait for `Option<LogId>` comparisons
+//! - [`LogIndexOptionExt`] - Extension trait for `Option<u64>` index comparisons
+//!
+//! ## Overview
+//!
+//! Each log entry is uniquely identified by a [`LogId`] containing:
+//! - **Leader ID**: `(term, node_id)` of the leader that proposed the log
+//! - **Index**: Consecutive integer position in the log
+//!
+//! ## Log ID Ordering
+//!
+//! Log IDs are ordered by:
+//! 1. Leader ID (term, then node_id)
+//! 2. Index
+//!
+//! This ordering ensures that logs from higher terms always supersede logs from lower terms,
+//! which is fundamental to Raft's consistency guarantees.
 
 mod log_id_option_ext;
 mod log_index_option_ext;

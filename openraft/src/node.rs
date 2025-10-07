@@ -1,3 +1,26 @@
+//! Node identification and metadata.
+//!
+//! This module defines traits and types for representing nodes in a Raft cluster.
+//!
+//! ## Key Traits
+//!
+//! - [`NodeId`] - Unique identifier for a node (typically `u64`)
+//! - [`Node`] - Node information including network address and metadata
+//!
+//! ## Implementations
+//!
+//! - [`BasicNode`] - Node with network address string
+//! - [`EmptyNode`] - Minimal node with no metadata
+//!
+//! ## Overview
+//!
+//! Each Raft node is identified by a [`NodeId`] and has associated [`Node`] information:
+//! - **NodeId**: Unique identifier used throughout the protocol
+//! - **Node**: Additional metadata (e.g., network address) for connecting to the node
+//!
+//! Applications can use built-in types or define custom [`Node`] implementations to store
+//! additional metadata like datacenter location, priority, or capabilities.
+
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::fmt::Formatter;

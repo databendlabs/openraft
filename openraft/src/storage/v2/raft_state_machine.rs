@@ -16,6 +16,12 @@ use crate::type_config::alias::LogIdOf;
 /// Snapshot is part of the state machine, because usually a snapshot is the persisted state of the
 /// state machine.
 ///
+/// ## Related Types
+///
+/// - [`RaftLogStorage`](crate::storage::RaftLogStorage) - For log storage operations
+/// - [`RaftNetworkFactory`](crate::network::RaftNetworkFactory) - For network communication
+/// - [`Config`](crate::config::Config) - For configuration options
+///
 /// See: [`StateMachine`](crate::docs::components::state_machine)
 #[add_async_trait]
 pub trait RaftStateMachine<C>: OptionalSend + OptionalSync + 'static

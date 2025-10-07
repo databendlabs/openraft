@@ -1,4 +1,27 @@
-//! Collection of implementations of usually used traits defined by Openraft
+//! Default implementations for common Openraft traits.
+//!
+//! This module provides ready-to-use implementations of Openraft traits and types,
+//! making it easy to get started without custom implementations.
+//!
+//! ## Key Types
+//!
+//! - [`Entry`] - Default log entry implementation
+//! - [`LogId`] - Default log identifier
+//! - [`Vote`] - Default vote implementation
+//! - [`BasicNode`] - Simple node information with address
+//! - [`EmptyNode`] - Minimal node representation (no metadata)
+//! - [`OneshotResponder`] - Single-use response channel
+//!
+//! ## Runtime
+//!
+//! - [`TokioRuntime`] - Tokio-based async runtime (feature: `tokio-rt`)
+//!
+//! ## Leader ID Modes
+//!
+//! - [`leader_id_std::LeaderId`] - Standard Raft: single leader per term
+//! - [`leader_id_adv::LeaderId`] - Advanced: multiple leaders per term (reduces conflicts)
+//!
+//! Most applications can use these implementations directly without customization.
 
 pub use crate::entry::Entry;
 pub use crate::node::BasicNode;

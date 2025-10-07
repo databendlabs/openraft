@@ -18,3 +18,29 @@ Each commit message begins with a keyword indicating the type of change:
 - `Feature:` Adds compatible, non-breaking new features.
 - `Fix:` Addresses bug fixes.
 
+## Feature flags
+
+Openraft supports several feature flags to customize functionality:
+
+**Default features**: `tokio-rt`, `adapt-network-v1`
+
+**Runtime**:
+- `tokio-rt` - Enable Tokio async runtime support (default)
+- `singlethreaded` - Disallow sharing Raft instance across threads
+
+**Serialization**:
+- `serde` - Add `serde::Serialize` and `serde::Deserialize` bounds to data types
+
+**Error handling**:
+- `bt` - Enable error backtraces (requires nightly Rust)
+
+**Networking**:
+- `adapt-network-v1` - Automatically implement `RaftNetworkV2` for `RaftNetwork` implementations (default)
+
+**Development**:
+- `bench` - Enable benchmarks in unit tests (requires `RUSTC_BOOTSTRAP=1` with stable Rust)
+
+**Compatibility**:
+- `compat` - Provide basic compatible types for upgrades
+- `type-alias` - Enable `openraft::alias::*` type shortcuts (unstable)
+

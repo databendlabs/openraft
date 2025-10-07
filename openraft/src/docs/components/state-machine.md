@@ -1,56 +1,47 @@
-[`RaftStateMachine`] serves as the core API for managing the state machine and
-snapshot functionalities.
-It directly ties the concepts of state management and snapshotting,
-acknowledging that snapshots are often simply persisted states of the state
-machine.
+# State Machine Component
 
+[`RaftStateMachine`] (`storage/mod.rs`) manages application state and snapshots in Openraft.
 
-## Key Responsibilities
+## Core Responsibilities
 
-The [`RaftStateMachine`] encapsulates several critical responsibilities:
+**Log Application**: [`apply`] processes committed log entries and updates state
 
-1. **Log Application**: It requires an implementation of the [`apply`] method,
-   where the state machine processes and applies committed log entries.  This
-   method is central to maintaining the state machine's integrity and ensuring
-   that all state transitions are based on the replicated and committed log
-   entries.
+**State Queries**: [`applied_state`] returns current state (last applied log, membership)
 
-2. **Querying State and Snapshots**: [`applied_state`] allow querying the
-   current state of the state machine.
+**Snapshot Management**: Building, receiving, and installing snapshots
+- [`get_snapshot_builder`] - Create snapshots for compaction
+- [`begin_receiving_snapshot`] - Prepare to receive snapshot from leader
+- [`get_current_snapshot`] - Retrieve existing snapshot
+- [`install_snapshot`] - Apply received snapshot to state machine
 
-3. **Snapshot Handling**: Through methods like [`get_snapshot_builder`],
-   [`begin_receiving_snapshot`], [`get_current_snapshot`] and
-   [`install_snapshot`] defines a comprehensive approach to managing snapshots.
-   These methods cover creating snapshots, handling incoming snapshot data from
-   the leader, and installing snapshots to bring the state machine to a specific
-   state.
+## State Recovery
 
+State machines are typically in-memory and rebuild on startup:
 
-## State Management in Raft State Machines
+1. **Load snapshot** - Restore state from last snapshot
+2. **Replay logs** - Apply log entries not included in snapshot
+3. **Resume operation** - State machine catches up to current state
 
-- **State Reversion and Recovery**:
-  The state machine in the Raft application is typically an in-memory component.
-  Upon startup, the state machine may revert to a previous state. This setup is
-  generally acceptable because the combination of a persistent snapshot and the
-  Raft logs provides sufficient information to reconstruct the state. This process
-  involves first rebuilding the state machine from the snapshot and then
-  reapplying any logs that are not included in the snapshot.
+This approach works because persistent snapshots + logs provide complete state history.
 
-  Afterward, Raft log entries are applied to update the state machine to its
-  current state.
+## Membership State Handling
 
-- **Distinct Management of Membership and Normal Logs**:
-  Within the state machine, the state of membership configuration logs and the
-  state of normal logs are managed separately, though they are stored together.
-  These can be thought of as two distinct sections.
+**Dual state tracking**: Membership config and normal application logs maintain separate state
 
-- **Membership Config State Beyond the Last Applied**:
-  It is acceptable for the membership to return with a log ID greater than the
-  last applied log ID, provided that the corresponding Raft logs have not been
-  purged and can thus be reapplied to the state machine. Upon startup, the most
-  recent membership configuration is loaded by scanning the logs starting from the
-  `last-applied-log-id`.
+**Membership ahead of applied**: Membership `last_log_id` may exceed application `last_applied` if:
+- Corresponding logs haven't been purged
+- Logs can be replayed on restart
+- Membership is loaded by scanning from `last_applied` forward
 
+This allows membership changes to be tracked independently from application state.
+
+## Implementation Tips
+
+**In-memory state machine**: Fast operation, snapshot handles persistence
+
+**Separate membership tracking**: Keep membership config state distinct from application data
+
+**Snapshot strategy**: Balance snapshot frequency vs. log replay time on restart
 
 [`RaftStateMachine`]:         `crate::storage::RaftStateMachine`
 [`apply`]:                    `crate::storage::RaftStateMachine::apply`
