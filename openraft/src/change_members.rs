@@ -1,7 +1,11 @@
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
+use std::fmt;
 
 use crate::RaftTypeConfig;
+use crate::display_ext::DisplayBTreeMapDebugValueExt;
+use crate::display_ext::DisplayBTreeSetExt;
+use crate::display_ext::DisplaySlice;
 
 /// Defines various actions to change the membership, including adding or removing learners or
 /// voters.
@@ -72,5 +76,41 @@ where
     fn from(r: I) -> Self {
         let ids = r.into_iter().collect::<BTreeSet<C::NodeId>>();
         ChangeMembers::ReplaceAllVoters(ids)
+    }
+}
+
+impl<C> fmt::Display for ChangeMembers<C>
+where C: RaftTypeConfig
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ChangeMembers::AddVoterIds(ids) => {
+                write!(f, "AddVoterIds({})", ids.display())
+            }
+            ChangeMembers::AddVoters(nodes) => {
+                write!(f, "AddVoters({})", nodes.display())
+            }
+            ChangeMembers::RemoveVoters(ids) => {
+                write!(f, "RemoveVoters({})", ids.display())
+            }
+            ChangeMembers::ReplaceAllVoters(ids) => {
+                write!(f, "ReplaceAllVoters({})", ids.display())
+            }
+            ChangeMembers::AddNodes(nodes) => {
+                write!(f, "AddNodes({})", nodes.display())
+            }
+            ChangeMembers::SetNodes(nodes) => {
+                write!(f, "SetNodes({})", nodes.display())
+            }
+            ChangeMembers::RemoveNodes(ids) => {
+                write!(f, "RemoveNodes({})", ids.display())
+            }
+            ChangeMembers::ReplaceAllNodes(nodes) => {
+                write!(f, "ReplaceAllNodes({})", nodes.display())
+            }
+            ChangeMembers::Batch(changes) => {
+                write!(f, "Batch({})", DisplaySlice::<_, 1024>(changes.as_slice()))
+            }
+        }
     }
 }

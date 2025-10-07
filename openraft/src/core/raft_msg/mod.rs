@@ -6,6 +6,7 @@ use crate::RaftState;
 use crate::RaftTypeConfig;
 use crate::base::BoxOnce;
 use crate::core::raft_msg::external_command::ExternalCommand;
+use crate::display_ext::DisplayBTreeMapDebugValueExt;
 use crate::error::CheckIsLeaderError;
 use crate::error::Infallible;
 use crate::error::InitializeError;
@@ -120,7 +121,6 @@ where C: RaftTypeConfig
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             RaftMsg::AppendEntries { rpc, .. } => {
-                // TODO: avoid using summary()
                 write!(f, "AppendEntries: {}", rpc)
             }
             RaftMsg::RequestVote { rpc, .. } => {
@@ -137,12 +137,10 @@ where C: RaftTypeConfig
                 write!(f, "CheckIsLeaderRequest with read policy: {}", read_policy)
             }
             RaftMsg::Initialize { members, .. } => {
-                // TODO: avoid using Debug
-                write!(f, "Initialize: {:?}", members)
+                write!(f, "Initialize: {}", members.display())
             }
             RaftMsg::ChangeMembership { changes, retain, .. } => {
-                // TODO: avoid using Debug
-                write!(f, "ChangeMembership: {:?}, retain: {}", changes, retain,)
+                write!(f, "ChangeMembership: {}, retain: {}", changes, retain)
             }
             RaftMsg::ExternalCoreRequest { .. } => write!(f, "External Request"),
             RaftMsg::HandleTransferLeader { from, to } => {
