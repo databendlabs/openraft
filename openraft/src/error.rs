@@ -37,10 +37,27 @@ use crate::try_as_ref::TryAsRef;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::VoteOf;
 
-/// RaftError is returned by API methods of `Raft`.
+/// Error returned by Raft API methods.
 ///
-/// It is either a Fatal error indicating that `Raft` is no longer running, such as an underlying IO
-/// error, or an API error `E`.
+/// `RaftError` wraps either a [`Fatal`] error indicating the Raft node has stopped (due to storage
+/// failure, panic, or shutdown), or an API-specific error `E` (such as [`ClientWriteError`] or
+/// [`CheckIsLeaderError`]).
+///
+/// # Usage
+///
+/// Match on the error variant to handle appropriately:
+///
+/// ```ignore
+/// match raft.client_write(req).await {
+///     Ok(resp) => { /* handle response */ },
+///     Err(RaftError::APIError(e)) => {
+///         // Handle API error (e.g., forward to leader)
+///     }
+///     Err(RaftError::Fatal(f)) => {
+///         // Raft stopped - initiate shutdown
+///     }
+/// }
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub enum RaftError<C, E = Infallible>
@@ -140,7 +157,18 @@ where C: RaftTypeConfig
     }
 }
 
-/// Fatal is unrecoverable and shuts down raft at once.
+/// Unrecoverable error that causes Raft to shut down.
+///
+/// When a `Fatal` error occurs, the Raft node stops processing requests and enters a stopped state.
+/// Applications should monitor for fatal errors and initiate graceful shutdown when detected.
+///
+/// # Variants
+///
+/// - `StorageError`: Underlying storage (log or state machine) encountered an error
+/// - `Panicked`: Raft core task panicked due to a programming error
+/// - `Stopped`: Raft was explicitly shut down via [`Raft::shutdown`]
+///
+/// [`Raft::shutdown`]: crate::Raft::shutdown
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub enum Fatal<C>

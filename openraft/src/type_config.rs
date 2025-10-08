@@ -31,28 +31,38 @@ use crate::vote::raft_vote::RaftVote;
 /// node identifiers, async runtime, and internal data structures. Applications implement this
 /// trait (typically via the [`declare_raft_types!`] macro) to configure Raft for their needs.
 ///
-/// # Usage
+/// # Examples
 ///
-/// Use the [`declare_raft_types!`] macro to define your type configuration:
+/// ## Minimal Configuration
 ///
-/// ```ignore
-/// openraft::declare_raft_types!(
-///     pub MyTypeConfig:
-///         D = ClientRequest,      // Your application write request type
-///         R = ClientResponse,     // Your application write response type
-///         NodeId = u64,           // Node identifier type
-///         Node = BasicNode,       // Node connection info
-/// );
-/// ```
-///
-/// With defaults for omitted types:
+/// Use defaults for all types except application data:
 ///
 /// ```ignore
-/// // Minimal configuration using all defaults except D and R
 /// openraft::declare_raft_types!(
 ///     pub MyTypeConfig:
 ///         D = String,
 ///         R = String,
+/// );
+/// ```
+///
+/// ## Full Configuration
+///
+/// Specify all types explicitly:
+///
+/// ```ignore
+/// openraft::declare_raft_types!(
+///     pub MyTypeConfig:
+///         D            = ClientRequest,
+///         R            = ClientResponse,
+///         NodeId       = u64,
+///         Node         = openraft::BasicNode,
+///         Term         = u64,
+///         LeaderId     = openraft::impls::leader_id_adv::LeaderId<Self>,
+///         Vote         = openraft::impls::Vote<Self>,
+///         Entry        = openraft::Entry<Self>,
+///         SnapshotData = Cursor<Vec<u8>>,
+///         Responder    = openraft::impls::OneshotResponder<Self>,
+///         AsyncRuntime = openraft::TokioRuntime,
 /// );
 /// ```
 ///
