@@ -25,35 +25,51 @@ use crate::vote::RaftLeaderId;
 use crate::vote::RaftTerm;
 use crate::vote::raft_vote::RaftVote;
 
-/// Configuration of types used by the [`Raft`] core engine.
+/// Type configuration for customizing Raft components.
 ///
-/// The (empty) implementation structure defines request/response types, node ID type
-/// and the like. Refer to the documentation of associated types for more information.
+/// `RaftTypeConfig` defines all pluggable types used by Raft, including application data types,
+/// node identifiers, async runtime, and internal data structures. Applications implement this
+/// trait (typically via the [`declare_raft_types!`] macro) to configure Raft for their needs.
 ///
-/// ## Note
+/// # Usage
 ///
-/// Since Rust cannot automatically infer traits for various inner types using this config
-/// type as a parameter, this trait simply uses all the traits required for various types
-/// as its supertraits as a workaround. To ease the declaration, the macro
-/// `declare_raft_types` is provided, which can be used to declare the type easily.
+/// Use the [`declare_raft_types!`] macro to define your type configuration:
 ///
-/// Example:
 /// ```ignore
 /// openraft::declare_raft_types!(
-///    pub TypeConfig:
-///        D            = ClientRequest,
-///        R            = ClientResponse,
-///        NodeId       = u64,
-///        Node         = openraft::impls::BasicNode,
-///        Term         = u64,
-///        LeaderId     = openraft::impls::leader_id_adv::LeaderId<Self>,
-///        Vote         = openraft::impls::Vote<Self>,
-///        Entry        = openraft::impls::Entry<Self>,
-///        SnapshotData = Cursor<Vec<u8>>,
-///        AsyncRuntime = openraft::TokioRuntime,
+///     pub MyTypeConfig:
+///         D = ClientRequest,      // Your application write request type
+///         R = ClientResponse,     // Your application write response type
+///         NodeId = u64,           // Node identifier type
+///         Node = BasicNode,       // Node connection info
 /// );
 /// ```
+///
+/// With defaults for omitted types:
+///
+/// ```ignore
+/// // Minimal configuration using all defaults except D and R
+/// openraft::declare_raft_types!(
+///     pub MyTypeConfig:
+///         D = String,
+///         R = String,
+/// );
+/// ```
+///
+/// Then use your config with Raft:
+///
+/// ```ignore
+/// type MyRaft = Raft<MyTypeConfig>;
+/// let raft = MyRaft::new(id, config, network, log_store, state_machine).await?;
+/// ```
+///
+/// # See Also
+///
+/// - [`declare_raft_types!`] macro for easy type configuration
+/// - Each associated type's documentation for requirements and defaults
+///
 /// [`Raft`]: crate::Raft
+/// [`declare_raft_types!`]: crate::declare_raft_types
 pub trait RaftTypeConfig:
     Sized + OptionalSend + OptionalSync + Debug + Clone + Copy + Default + Eq + PartialEq + Ord + PartialOrd + 'static
 {
