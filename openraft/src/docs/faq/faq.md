@@ -112,6 +112,91 @@ what matters for cluster health monitoring. This approach allows you to maintain
 a list of active nodes without modifying cluster membership.
 
 
+## Troubleshooting
+
+
+### The node panics with "assertion failed: self.internal_server_state.is_following()"
+
+This panic occurs when a node incorrectly attempts to replicate logs to itself. Common causes:
+
+**Incorrect network configuration**: A node's network address points to itself instead of a remote node.
+- **Solution**: Verify that [`RaftNetwork`][] implementations connect to the correct remote addresses
+- Check your node address mapping in [`Membership`][] configuration
+
+**Split-brain scenario**: Multiple nodes believe they are the same node ID.
+- **Solution**: Ensure each node has a unique and persistent node ID
+- Never reuse node IDs across different physical/virtual machines
+
+
+### Replication is stuck or very slow
+
+**Check network connectivity**: Use [`RaftMetrics::heartbeat`][] to see last acknowledgment times from each node.
+Timestamps significantly behind current time indicate connectivity issues.
+
+**Check replication lag**: Monitor [`RaftMetrics::replication`][] to see which nodes are falling behind.
+Compare their `matched` log index against [`RaftMetrics::last_log_index`][].
+
+**Check snapshot transfer**: If a follower is far behind, snapshot transfer may be in progress.
+Monitor log messages and consider adjusting [`Config::install_snapshot_timeout`][].
+
+**Network backpressure**: Implement proper [`Backoff`][] strategy in [`RaftNetwork`][] to avoid overwhelming slow nodes.
+
+
+### Logs show frequent election timeouts
+
+**Heartbeat timing**: Ensure `heartbeat_interval ≪ election_timeout` (recommended: heartbeat = election_timeout / 3).
+- Check [`Config::heartbeat_interval`][] and [`Config::election_timeout_min`][]
+
+**Network latency**: Election timeouts that are too aggressive for your network conditions.
+- **Solution**: Increase [`Config::election_timeout_min`][] and [`Config::election_timeout_max`][]
+- Follow the Raft inequality: `network_rtt ≪ election_timeout ≪ MTBF`
+
+**Clock skew**: Significant time differences between nodes can cause spurious timeouts.
+- **Solution**: Use NTP or similar to synchronize clocks across the cluster
+
+
+### Fatal storage errors causing shutdown
+
+**Disk full**: No space left for writing logs or snapshots.
+- **Solution**: Monitor disk space, implement log compaction with [`Config::snapshot_policy`][]
+- Purge old logs after snapshots using [`RaftLogStorage::purge`][]
+
+**Corrupted data**: Storage returns errors when reading logs or snapshots.
+- **Solution**: Investigate underlying storage system (filesystem, database)
+- Check for hardware issues (bad disk sectors, memory errors)
+- Consider rebuilding the node from a snapshot if data is unrecoverable
+
+
+### Leader keeps changing / no stable leader
+
+**Network partitions**: Leader cannot maintain quorum due to connectivity issues.
+- **Solution**: Check network stability between nodes
+- Monitor [`RaftMetrics::last_quorum_acked`][] on the leader
+
+**Resource starvation**: Node is overloaded and cannot respond to heartbeats in time.
+- **Solution**: Monitor CPU/memory usage, reduce application load
+- Consider scaling to more/larger nodes
+
+**Aggressive timeouts**: Election timeouts too short for the cluster's network conditions.
+- **Solution**: Increase election timeout settings (see "Logs show frequent election timeouts" above)
+
+
+### Snapshot building takes too long or fails
+
+**Large state machine**: Snapshot serialization is slow due to data size.
+- **Solution**: Optimize [`RaftStateMachine::get_snapshot_builder`][] implementation
+- Consider incremental snapshots or streaming serialization
+- Build snapshots in background without blocking the state machine
+
+**Memory exhaustion**: Snapshot building causes OOM errors.
+- **Solution**: Implement streaming snapshot builders that don't load entire state into memory
+- Use disk-backed temporary storage during snapshot creation
+
+**Snapshot transfer failures**: Large snapshots timing out during transfer.
+- **Solution**: Increase [`Config::install_snapshot_timeout`][]
+- Implement chunked snapshot transfer in [`RaftNetwork::install_snapshot`][]
+
+
 ## Node management
 
 
@@ -348,14 +433,22 @@ OpenRaft intentionally supports this behavior because:
 [`RaftTypeConfig`]:   `crate::RaftTypeConfig`
 
 [`Config::allow_log_reversion`]: `crate::config::Config::allow_log_reversion`
+[`Config::election_timeout_min`]: `crate::config::Config::election_timeout_min`
+[`Config::election_timeout_max`]: `crate::config::Config::election_timeout_max`
+[`Config::heartbeat_interval`]: `crate::config::Config::heartbeat_interval`
+[`Config::install_snapshot_timeout`]: `crate::config::Config::install_snapshot_timeout`
 [`Config::snapshot_policy`]: `crate::config::Config::snapshot_policy`
 
 [`SnapshotPolicy::LogsSinceLast`]: `crate::config::SnapshotPolicy::LogsSinceLast`
 [`SnapshotPolicy::Never`]: `crate::config::SnapshotPolicy::Never`
 
 [`RaftLogStorage::save_committed()`]: `crate::storage::RaftLogStorage::save_committed`
+[`RaftLogStorage::purge`]: `crate::storage::RaftLogStorage::purge`
+[`RaftStateMachine::get_snapshot_builder`]: `crate::storage::RaftStateMachine::get_snapshot_builder`
 
 [`RaftNetwork`]: `crate::network::RaftNetwork`
+[`RaftNetwork::install_snapshot`]: `crate::network::RaftNetwork::install_snapshot`
+[`Backoff`]: `crate::network::Backoff`
 
 [`add_learner()`]: `crate::Raft::add_learner`
 [`change_membership()`]: `crate::Raft::change_membership`
@@ -369,6 +462,7 @@ OpenRaft intentionally supports this behavior because:
 [`RaftMetrics`]: `crate::metrics::RaftMetrics`
 [`RaftMetrics::heartbeat`]: `crate::metrics::RaftMetrics::heartbeat`
 [`RaftMetrics::last_log_index`]: `crate::metrics::RaftMetrics::last_log_index`
+[`RaftMetrics::last_quorum_acked`]: `crate::metrics::RaftMetrics::last_quorum_acked`
 [`RaftMetrics::replication`]: `crate::metrics::RaftMetrics::replication`
 [`RaftServerMetrics`]: `crate::metrics::RaftServerMetrics`
 [`RaftDataMetrics`]: `crate::metrics::RaftDataMetrics`
