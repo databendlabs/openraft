@@ -81,6 +81,19 @@ See: [`leader-id`](`crate::docs::data::leader_id`) for details.
 ## Replication
 
 
+### How does Openraft handle snapshot building and transfer?
+
+Openraft calls [`RaftStateMachine::get_snapshot_builder`][] to create snapshots. The builder runs
+concurrently with [`RaftStateMachine::apply`][], so your implementation must handle concurrent access
+to the state machine data.
+
+When a follower is more than [`Config::replication_lag_threshold`][] entries behind, the leader
+sends a snapshot instead of individual log entries.
+
+For large snapshots that timeout during transfer, increase [`Config::install_snapshot_timeout`][].
+The snapshot is sent in chunks of [`Config::snapshot_max_chunk_size`][] bytes.
+
+
 ### How to minimize error logging when a follower is offline
 
 Excessive error logging, like `ERROR openraft::replication: 248: RPCError err=NetworkError: ...`, occurs when a follower node becomes unresponsive. To alleviate this, implement a mechanism within [`RaftNetwork`][] that returns a [`Unreachable`][] error instead of a [`NetworkError`][] when immediate replication retries to the affected node are not advised.
@@ -110,6 +123,120 @@ unreachable.
 Both methods provide "unreachable from leader" perspective, which is typically
 what matters for cluster health monitoring. This approach allows you to maintain
 a list of active nodes without modifying cluster membership.
+
+
+## Troubleshooting
+
+
+### Panic: "assertion failed: self.internal_server_state.is_following()"
+
+**Symptom**: Node crashes with `panicked at 'assertion failed: self.internal_server_state.is_following()'`
+
+**Cause**: [`RaftNetworkFactory`][] creates a connection from a node to itself. When this node
+becomes leader, it sends replication messages to itself, but Openraft expects only followers to
+receive replication messages.
+
+**Solution**: In [`RaftNetworkFactory::new_client`][], ensure the target node ID never equals
+the local node's ID. Each node ID in [`Membership`][] must map to a different node.
+
+
+### Write returns `ForwardToLeader` but leader info is missing
+
+**Symptom**: [`ClientWriteError::ForwardToLeader`][] is returned but the `leader_id` field is `None`
+
+**Cause**: The current leader is no longer in the cluster's membership configuration.
+This occurs after a membership change that removes the leader node.
+
+**Solution**: If `leader_id` is `None`, query [`RaftMetrics::current_leader`][] to find the new
+leader, or retry the membership query after the new leader is elected.
+
+
+### Slow replication performance with RocksDB or disk storage
+
+**Symptom**: Write throughput is much lower than expected when using disk-based [`RaftLogStorage`][]
+
+**Cause**: Synchronous writes to disk block the Raft thread. Additionally, HTTP client connection
+pooling (in libraries like `reqwest`) can add 40ms+ latency spikes.
+
+**Solution**:
+- Use non-blocking I/O in your [`RaftLogStorage::append`][] implementation
+- Consider batching writes in your storage layer
+- For network layer, prefer WebSocket or connection pooling that doesn't introduce latency
+- With RocksDB: disable `sync` on writes if you can tolerate some data loss on crash
+
+
+### Frequent leader elections and timeouts
+
+**Symptom**: Logs show repeated leader elections, or [`RaftMetrics::current_leader`][] changes frequently
+
+**Cause**: [`Config::election_timeout_min`][] is too small for your storage or network latency.
+If [`RaftLogStorage::append`][] takes longer than the election timeout, heartbeats time out and
+trigger elections.
+
+**Solution**: Increase both [`Config::election_timeout_min`][] and [`Config::election_timeout_max`][].
+Ensure `heartbeat_interval < election_timeout_min / 2` and that election timeout is at least
+10× your typical [`RaftLogStorage::append`][] latency.
+
+
+### Excessive "RPCError err=NetworkError" in logs when a node is offline
+
+**Symptom**: Continuous error logs `ERROR openraft::replication: RPCError err=NetworkError`
+when a follower is unreachable
+
+**Cause**: Openraft retries replication aggressively. Each failed RPC logs an error.
+
+**Solution**: In your [`RaftNetwork`][] implementation, when a node is known to be unreachable,
+return [`Unreachable`][] error instead of [`NetworkError`][]. Openraft backs off longer for
+`Unreachable` errors, reducing log spam.
+
+
+### Holding `Raft::metrics()` reference blocks the Raft node
+
+**Symptom**: Raft node appears frozen or unresponsive. In single-threaded runtimes, everything stops.
+
+**Cause**: When using `tokio::watch` as [`AsyncRuntime::Watch`][], the `Ref` returned by
+`borrow_watched()` holds a synchronous `RwLock` read guard. If you hold this `Ref` while
+Openraft tries to send new metrics (needs write lock), it deadlocks.
+
+**Solution**: Clone the metrics immediately to drop the `Ref`. Never hold the `Ref` across operations.
+
+```rust,ignore
+// Bad - holds the Ref guard, blocks flush_metrics()
+let rx = raft.metrics();
+let metrics_ref = rx.borrow_watched(); // Ref guard held
+do_something().await; // Openraft may deadlock trying to flush_metrics()
+drop(metrics_ref);
+
+// Good - clone immediately, Ref guard dropped right away
+let metrics = raft.metrics().borrow_watched().clone();
+do_something().await; // Safe
+```
+
+Deadlock scenario:
+```text
+// Task 1 (on thread A)          |  // Task 2 (on thread B)
+let _ref1 = rx.borrow_watched(); |
+                                 |  // flush_metrics() blocks
+                                 |  let _ = tx.send(());
+// may deadlock                  |
+let _ref2 = rx.borrow_watched(); |
+```
+
+See: <https://github.com/databendlabs/openraft/issues/1238>
+
+
+### Error logs after `raft.shutdown()` completes
+
+**Symptom**: After calling [`Raft::shutdown`][] which returns successfully, logs show
+`ERROR openraft::raft::raft_inner: failure sending RaftMsg to RaftCore; message: AppendEntries ... core_result=Err(Stopped)`
+
+**Cause**: Other nodes in the cluster continue sending RPCs to this node. The `Raft` handle still
+exists and receives these RPCs, but the internal Raft core has stopped, so forwarding fails.
+
+**Solution**: This is expected behavior. These errors are harmless - they indicate the node has
+shut down as requested. You can ignore them or filter these specific error logs after shutdown.
+
+See: <https://github.com/databendlabs/openraft/issues/1357>
 
 
 ## Node management
@@ -346,16 +473,32 @@ OpenRaft intentionally supports this behavior because:
 
 [`BasicNode`]:        `crate::node::BasicNode`
 [`RaftTypeConfig`]:   `crate::RaftTypeConfig`
+[`AsyncRuntime::Watch`]: `crate::AsyncRuntime::Watch`
 
+[`Config`]: `crate::config::Config`
 [`Config::allow_log_reversion`]: `crate::config::Config::allow_log_reversion`
+[`Config::election_timeout_min`]: `crate::config::Config::election_timeout_min`
+[`Config::election_timeout_max`]: `crate::config::Config::election_timeout_max`
+[`Config::heartbeat_interval`]: `crate::config::Config::heartbeat_interval`
+[`Config::install_snapshot_timeout`]: `crate::config::Config::install_snapshot_timeout`
+[`Config::replication_lag_threshold`]: `crate::config::Config::replication_lag_threshold`
+[`Config::snapshot_max_chunk_size`]: `crate::config::Config::snapshot_max_chunk_size`
 [`Config::snapshot_policy`]: `crate::config::Config::snapshot_policy`
 
 [`SnapshotPolicy::LogsSinceLast`]: `crate::config::SnapshotPolicy::LogsSinceLast`
 [`SnapshotPolicy::Never`]: `crate::config::SnapshotPolicy::Never`
 
+[`RaftLogStorage`]: `crate::storage::RaftLogStorage`
+[`RaftLogStorage::append`]: `crate::storage::RaftLogStorage::append`
 [`RaftLogStorage::save_committed()`]: `crate::storage::RaftLogStorage::save_committed`
 
+[`RaftStateMachine`]: `crate::storage::RaftStateMachine`
+[`RaftStateMachine::apply`]: `crate::storage::RaftStateMachine::apply`
+[`RaftStateMachine::get_snapshot_builder`]: `crate::storage::RaftStateMachine::get_snapshot_builder`
+
 [`RaftNetwork`]: `crate::network::RaftNetwork`
+[`RaftNetworkFactory`]: `crate::network::RaftNetworkFactory`
+[`RaftNetworkFactory::new_client`]: `crate::network::RaftNetworkFactory::new_client`
 
 [`add_learner()`]: `crate::Raft::add_learner`
 [`change_membership()`]: `crate::Raft::change_membership`
@@ -364,12 +507,17 @@ OpenRaft intentionally supports this behavior because:
 
 [`Unreachable`]: `crate::error::Unreachable`
 [`NetworkError`]: `crate::error::NetworkError`
+[`Fatal::StorageError`]: `crate::error::Fatal::StorageError`
+[`ClientWriteError::ForwardToLeader`]: `crate::error::ClientWriteError::ForwardToLeader`
 
 
 [`RaftMetrics`]: `crate::metrics::RaftMetrics`
+[`RaftMetrics::current_leader`]: `crate::metrics::RaftMetrics::current_leader`
 [`RaftMetrics::heartbeat`]: `crate::metrics::RaftMetrics::heartbeat`
 [`RaftMetrics::last_log_index`]: `crate::metrics::RaftMetrics::last_log_index`
 [`RaftMetrics::replication`]: `crate::metrics::RaftMetrics::replication`
+[`Raft::metrics`]: `crate::Raft::metrics`
+[`Raft::shutdown`]: `crate::Raft::shutdown`
 [`RaftServerMetrics`]: `crate::metrics::RaftServerMetrics`
 [`RaftDataMetrics`]: `crate::metrics::RaftDataMetrics`
 [`Raft::metrics()`]: `crate::Raft::metrics`

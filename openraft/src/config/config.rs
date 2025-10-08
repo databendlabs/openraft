@@ -99,30 +99,44 @@ fn parse_snapshot_policy(src: &str) -> Result<SnapshotPolicy, ConfigError> {
     Ok(SnapshotPolicy::LogsSinceLast(n_logs))
 }
 
-/// The runtime configuration for a Raft node.
+/// Runtime configuration for a Raft node.
 ///
-/// The default values used by this type should generally work well for Raft clusters which will
-/// be running with nodes in multiple datacenter availability zones with low latency between
-/// zones. These values should typically be made configurable from the perspective of the
-/// application which is being built on top of Raft.
+/// `Config` controls tunable parameters for Raft operation including election timeouts, heartbeat
+/// intervals, replication settings, snapshot policies, and log compaction behavior.
 ///
-/// When building the Raft configuration for your application, remember this inequality from the
-/// Raft spec: `broadcastTime ≪ electionTimeout ≪ MTBF`.
+/// # Usage
 ///
-/// > In this inequality `broadcastTime` is the average time it takes a server to send RPCs in
-/// > parallel to every server in the cluster and receive their responses; `electionTimeout` is the
-/// > election timeout described in Section 5.2; and `MTBF` is the average time between failures for
-/// > a single server. The broadcast time should be an order of magnitude less than the election
-/// > timeout so that leaders can reliably send the heartbeat messages required to keep followers
-/// > from starting elections; given the randomized approach used for election timeouts, this
-/// > inequality also makes split votes unlikely. The election timeout should be a few orders of
-/// > magnitude less than `MTBF` so that the system makes steady progress. When the leader crashes,
-/// > the system will be unavailable for roughly the election timeout; we would like this to
-/// > represent only a small fraction of overall time.
+/// Create a configuration, optionally customize fields, validate it, and pass to [`Raft::new`]:
 ///
-/// What does all of this mean? Simply keep your election timeout settings high enough that the
-/// performance of your network will not cause election timeouts, but don't keep it so high that
-/// a real leader crash would cause prolonged downtime. See the Raft spec §5.6 for more details.
+/// ```ignore
+/// use openraft::Config;
+/// use std::sync::Arc;
+///
+/// let config = Config {
+///     cluster_name: "my-cluster".to_string(),
+///     heartbeat_interval: 50,
+///     election_timeout_min: 150,
+///     election_timeout_max: 300,
+///     ..Default::default()
+/// };
+///
+/// let config = Arc::new(config.validate()?);
+/// let raft = Raft::new(node_id, config, network, log_store, state_machine).await?;
+/// ```
+///
+/// # Timing Constraints
+///
+/// Follow the Raft timing inequality: `broadcastTime ≪ electionTimeout ≪ MTBF`
+///
+/// **Rule of thumb**: Set `heartbeat_interval ≈ election_timeout / 3` and ensure election timeout
+/// is 10-20× your typical network round-trip time.
+///
+/// # See Also
+///
+/// - [Raft specification §5.6](https://raft.github.io/raft.pdf) for timing guidance
+/// - [`SnapshotPolicy`] for snapshot triggering strategies
+///
+/// [`Raft::new`]: crate::Raft::new
 #[derive(Clone, Debug, Parser)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub struct Config {

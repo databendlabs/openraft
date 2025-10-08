@@ -220,25 +220,65 @@ pub enum ReadPolicy {
     ReadIndex,
 }
 
-/// The Raft API.
+/// Primary interface to a Raft node.
 ///
-/// This type implements the full Raft spec, and is the interface to a running Raft node.
-/// Applications building on top of Raft will use this to spawn a Raft task and interact with
-/// the spawned task.
+/// `Raft` provides the complete implementation of the Raft consensus protocol and serves as the
+/// main interface for interacting with a Raft node in the cluster. Applications built on Raft use
+/// this type to spawn a Raft task and communicate with it.
 ///
-/// For more information on the Raft protocol, see
-/// [the specification here](https://raft.github.io/raft.pdf) (**pdf warning**).
+/// # Architecture
 ///
-/// ### Clone
+/// The `Raft` handle is a lightweight wrapper around an `Arc<RaftInner>`, making it cheap to clone.
+/// The actual work is performed by an internal core task, which runs separately processing
+/// requests through message channels.
 ///
-/// This type implements `Clone`, and cloning itself is very cheap and helps to facilitate use with
-/// async workflows.
+/// # Lifecycle
 ///
-/// ### Shutting down
+/// 1. **Creation**: Use [`Raft::new`] to create and spawn a new Raft node
+/// 2. **Initialization**: Call [`initialize`](Raft::initialize) on pristine nodes to form a cluster
+/// 3. **Operation**: Use various methods to interact with the node:
+///    - Protocol RPCs: [`append_entries`](Raft::append_entries), [`vote`](Raft::vote)
+///    - Client operations: [`client_write`](Raft::client_write),
+///      [`ensure_linearizable`](Raft::ensure_linearizable)
+///    - Management: [`trigger`](Raft::trigger), [`metrics`](Raft::metrics)
+/// 4. **Shutdown**: Call [`shutdown`](Raft::shutdown) to gracefully stop the node
 ///
-/// If any of the interfaces returns a `RaftError::Fatal`, this indicates that the Raft node
-/// is shutting down. If the parent application needs to shutdown the Raft node for any reason,
-/// calling `shutdown` will do the trick.
+/// # Cloning
+///
+/// `Raft` implements [`Clone`] with very low cost, allowing multiple components in your application
+/// to hold handles to the same Raft node. All clones reference the same underlying Raft instance.
+///
+/// # Error Handling
+///
+/// Methods return [`RaftError::Fatal`] when the Raft node encounters unrecoverable errors or is
+/// shutting down. Applications should monitor for fatal errors and initiate shutdown if needed.
+///
+/// # Examples
+///
+/// ```ignore
+/// // Create a new Raft node
+/// let raft = Raft::new(node_id, config, network, log_store, state_machine).await?;
+///
+/// // Initialize a new cluster
+/// raft.initialize(btreeset![1, 2, 3]).await?;
+///
+/// // Write to the cluster
+/// let response = raft.client_write(my_request).await?;
+///
+/// // Read linearizably
+/// raft.ensure_linearizable(ReadPolicy::ReadIndex).await?;
+/// let data = raft.with_state_machine(|sm| { sm.read("key") }).await?;
+///
+/// // Monitor metrics
+/// let metrics = raft.metrics().borrow_watched();
+/// println!("Current leader: {:?}", metrics.current_leader);
+/// ```
+///
+/// # See Also
+///
+/// - [Raft specification](https://raft.github.io/raft.pdf) for protocol details
+/// - [`Config`] for configuration options
+/// - [`RaftMetrics`] for monitoring cluster state
 #[derive(Clone)]
 pub struct Raft<C>
 where C: RaftTypeConfig

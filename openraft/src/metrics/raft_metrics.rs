@@ -16,7 +16,56 @@ use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::SerdeInstantOf;
 use crate::type_config::alias::VoteOf;
 
-/// A set of metrics describing the current state of a Raft node.
+/// Comprehensive metrics describing the current state of a Raft node.
+///
+/// `RaftMetrics` provides real-time observability into a Raft node's operation, including its
+/// role, log state, cluster membership, and replication progress.
+///
+/// # Structure
+///
+/// Metrics are organized into logical groups:
+///
+/// - **Node State**: `id`, `state`, `current_leader`, `running_state`
+/// - **Log State**: `last_log_index`, `last_applied`, `snapshot`, `purged`
+/// - **Voting State**: `current_term`, `vote`
+/// - **Leader Metrics** (only when leader): `heartbeat`, `replication`, `last_quorum_acked`
+/// - **Cluster Config**: `membership_config`
+///
+/// # Usage
+///
+/// Access metrics through the watch channel returned by [`Raft::metrics`]:
+///
+/// ```ignore
+/// let metrics_rx = raft.metrics();
+///
+/// // Read current metrics
+/// let metrics = metrics_rx.borrow_watched();
+/// println!("Node state: {:?}", metrics.state);
+/// println!("Current leader: {:?}", metrics.current_leader);
+///
+/// // Wait for specific conditions
+/// raft.wait(None).state(State::Leader, "become leader").await?;
+/// raft.wait(Some(timeout)).log(Some(10), "log-10 applied").await?;
+/// ```
+///
+/// # Leader-Specific Metrics
+///
+/// When this node is the leader, `heartbeat` and `replication` fields contain detailed information
+/// about follower/learner connectivity and replication progress:
+///
+/// - `heartbeat`: Last acknowledged time for each node (for detecting offline nodes)
+/// - `replication`: Replication state including `matched` log index for each node
+///
+/// These fields are `None` when the node is a follower or candidate.
+///
+/// # See Also
+///
+/// - [`Raft::metrics`](crate::Raft::metrics) for obtaining the metrics channel
+/// - [`Wait`](crate::metrics::Wait) for waiting on specific metric conditions
+/// - [`RaftDataMetrics`] for additional data-plane metrics
+/// - [`RaftServerMetrics`] for server operational metrics
+///
+/// [`Raft::metrics`]: crate::Raft::metrics
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct RaftMetrics<C: RaftTypeConfig> {
