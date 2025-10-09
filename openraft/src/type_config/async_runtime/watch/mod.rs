@@ -1,3 +1,5 @@
+//! Watch channel traits and implementations.
+
 mod watch_error;
 
 use openraft_macros::add_async_trait;

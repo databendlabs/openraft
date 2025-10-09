@@ -69,6 +69,7 @@ use crate::type_config::alias::VoteOf;
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct RaftMetrics<C: RaftTypeConfig> {
+    /// The running state of the Raft node, or a fatal error if the node has stopped.
     pub running_state: Result<(), Fatal<C>>,
 
     /// The ID of the Raft node.
@@ -210,6 +211,7 @@ where C: RaftTypeConfig
 impl<C> RaftMetrics<C>
 where C: RaftTypeConfig
 {
+    /// Create initial metrics for a new Raft node with the given ID.
     pub fn new_initial(id: C::NodeId) -> Self {
         #[allow(deprecated)]
         Self {
@@ -238,9 +240,13 @@ where C: RaftTypeConfig
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct RaftDataMetrics<C: RaftTypeConfig> {
+    /// The last log id.
     pub last_log: Option<LogIdOf<C>>,
+    /// The last applied log id.
     pub last_applied: Option<LogIdOf<C>>,
+    /// The last log id in the last snapshot.
     pub snapshot: Option<LogIdOf<C>>,
+    /// The last purged log id.
     pub purged: Option<LogIdOf<C>>,
 
     /// For a leader, it is the elapsed time in milliseconds since the most recently acknowledged
@@ -273,6 +279,7 @@ pub struct RaftDataMetrics<C: RaftTypeConfig> {
     /// cluster.
     pub last_quorum_acked: Option<SerdeInstant<InstantOf<C>>>,
 
+    /// Replication metrics for each node, available only on the leader.
     pub replication: Option<ReplicationMetrics<C>>,
 
     /// Heartbeat metrics. It is Some() only when this node is leader.
@@ -328,11 +335,16 @@ where C: RaftTypeConfig
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct RaftServerMetrics<C: RaftTypeConfig> {
+    /// The ID of this Raft node.
     pub id: C::NodeId,
+    /// The current vote state.
     pub vote: VoteOf<C>,
+    /// The current server state (Leader, Follower, Candidate, etc.).
     pub state: ServerState,
+    /// The ID of the current leader, if known.
     pub current_leader: Option<C::NodeId>,
 
+    /// The current membership configuration.
     pub membership_config: Arc<StoredMembership<C>>,
 }
 

@@ -54,10 +54,15 @@ mod threaded {
     pub trait OptionalSync: Sync {}
     impl<T: Sync + ?Sized> OptionalSync for T {}
 
+    /// Type alias for a boxed pinned future that is `Send`.
     pub type BoxFuture<'a, T = ()> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
+    /// Type alias for a boxed async function that mutates its argument and is `Send`.
     pub type BoxAsyncOnceMut<'a, A, T = ()> = Box<dyn FnOnce(&mut A) -> BoxFuture<T> + Send + 'a>;
+    /// Type alias for a boxed function that optionally returns an async future.
     pub type BoxMaybeAsyncOnceMut<'a, A, T = ()> = Box<dyn FnOnce(&mut A) -> Option<BoxFuture<T>> + Send + 'a>;
+    /// Type alias for a boxed function that takes an argument and is `Send`.
     pub type BoxOnce<'a, A, T = ()> = Box<dyn FnOnce(&A) -> T + Send + 'a>;
+    /// Type alias for a boxed value that is `Send` and can be any type.
     pub type BoxAny = Box<dyn Any + Send>;
 }
 

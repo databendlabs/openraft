@@ -16,6 +16,7 @@ pub struct RPCOption {
 }
 
 impl RPCOption {
+    /// Create a new RPCOption with the given hard TTL.
     pub fn new(hard_ttl: Duration) -> Self {
         Self {
             hard_ttl,

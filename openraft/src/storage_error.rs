@@ -33,6 +33,7 @@ where C: RaftTypeConfig
     }
 }
 
+/// The subject of a storage error, indicating what operation or component failed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub enum ErrorSubject<C>
@@ -62,6 +63,7 @@ where C: RaftTypeConfig
     /// Error that happened when operating snapshots.
     Snapshot(Option<SnapshotSignature<C>>),
 
+    /// No specific subject for this error.
     None,
 }
 
@@ -71,9 +73,13 @@ where C: RaftTypeConfig
 #[derive(PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub enum ErrorVerb {
+    /// Reading data.
     Read,
+    /// Writing data.
     Write,
+    /// Seeking in data.
     Seek,
+    /// Deleting data.
     Delete,
 }
 
@@ -96,6 +102,7 @@ where C: RaftTypeConfig
         Some(self)
     }
 
+    /// Create a StorageError from a std::io::Error.
     pub fn from_io_error(subject: ErrorSubject<C>, verb: ErrorVerb, io_error: std::io::Error) -> Self {
         StorageError::new(subject, verb, AnyError::new(&io_error))
     }
@@ -128,6 +135,7 @@ where C: RaftTypeConfig
 impl<C> StorageError<C>
 where C: RaftTypeConfig
 {
+    /// Create a new StorageError.
     pub fn new(subject: ErrorSubject<C>, verb: ErrorVerb, source: impl Into<AnyError>) -> Self {
         Self {
             subject,
@@ -137,50 +145,62 @@ where C: RaftTypeConfig
         }
     }
 
+    /// Create an error for writing a log entry.
     pub fn write_log_entry(log_id: LogIdOf<C>, source: impl Into<AnyError>) -> Self {
         Self::new(ErrorSubject::Log(log_id), ErrorVerb::Write, source)
     }
 
+    /// Create an error for reading a log entry at an index.
     pub fn read_log_at_index(log_index: u64, source: impl Into<AnyError>) -> Self {
         Self::new(ErrorSubject::LogIndex(log_index), ErrorVerb::Read, source)
     }
 
+    /// Create an error for reading a log entry.
     pub fn read_log_entry(log_id: LogIdOf<C>, source: impl Into<AnyError>) -> Self {
         Self::new(ErrorSubject::Log(log_id), ErrorVerb::Read, source)
     }
 
+    /// Create an error for writing multiple log entries.
     pub fn write_logs(source: impl Into<AnyError>) -> Self {
         Self::new(ErrorSubject::Logs, ErrorVerb::Write, source)
     }
 
+    /// Create an error for reading multiple log entries.
     pub fn read_logs(source: impl Into<AnyError>) -> Self {
         Self::new(ErrorSubject::Logs, ErrorVerb::Read, source)
     }
 
+    /// Create an error for writing vote state.
     pub fn write_vote(source: impl Into<AnyError>) -> Self {
         Self::new(ErrorSubject::Vote, ErrorVerb::Write, source)
     }
 
+    /// Create an error for reading vote state.
     pub fn read_vote(source: impl Into<AnyError>) -> Self {
         Self::new(ErrorSubject::Vote, ErrorVerb::Read, source)
     }
 
+    /// Create an error for applying a log entry to the state machine.
     pub fn apply(log_id: LogIdOf<C>, source: impl Into<AnyError>) -> Self {
         Self::new(ErrorSubject::Apply(log_id), ErrorVerb::Write, source)
     }
 
+    /// Create an error for writing to the state machine.
     pub fn write_state_machine(source: impl Into<AnyError>) -> Self {
         Self::new(ErrorSubject::StateMachine, ErrorVerb::Write, source)
     }
 
+    /// Create an error for reading from the state machine.
     pub fn read_state_machine(source: impl Into<AnyError>) -> Self {
         Self::new(ErrorSubject::StateMachine, ErrorVerb::Read, source)
     }
 
+    /// Create an error for writing a snapshot.
     pub fn write_snapshot(signature: Option<SnapshotSignature<C>>, source: impl Into<AnyError>) -> Self {
         Self::new(ErrorSubject::Snapshot(signature), ErrorVerb::Write, source)
     }
 
+    /// Create an error for reading a snapshot.
     pub fn read_snapshot(signature: Option<SnapshotSignature<C>>, source: impl Into<AnyError>) -> Self {
         Self::new(ErrorSubject::Snapshot(signature), ErrorVerb::Read, source)
     }

@@ -13,6 +13,7 @@ pub struct Vote<C: RaftTypeConfig> {
     /// The id of the node that tries to become the leader.
     pub leader_id: C::LeaderId,
 
+    /// Whether this vote has been committed (granted by a quorum).
     pub committed: bool,
 }
 
@@ -52,6 +53,7 @@ where C: RaftTypeConfig
 impl<C> Vote<C>
 where C: RaftTypeConfig
 {
+    /// Create a new uncommitted vote for the given term and node.
     pub fn new(term: C::Term, node_id: C::NodeId) -> Self {
         Self {
             leader_id: C::LeaderId::new(term, node_id),
@@ -59,6 +61,7 @@ where C: RaftTypeConfig
         }
     }
 
+    /// Create a new committed vote for the given term and node.
     pub fn new_committed(term: C::Term, node_id: C::NodeId) -> Self {
         Self {
             leader_id: C::LeaderId::new(term, node_id),
@@ -66,11 +69,13 @@ where C: RaftTypeConfig
         }
     }
 
+    /// Mark this vote as committed (deprecated).
     #[deprecated(note = "use `into_committed()` instead", since = "0.10.0")]
     pub fn commit(&mut self) {
         self.committed = true
     }
 
+    /// Check if this vote has been committed.
     pub fn is_committed(&self) -> bool {
         self.committed
     }

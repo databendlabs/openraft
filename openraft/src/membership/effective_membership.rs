@@ -70,6 +70,7 @@ where C: RaftTypeConfig
         Arc::new(Self::new(log_id, membership))
     }
 
+    /// Create a new EffectiveMembership from a log ID and membership configuration.
     pub fn new(log_id: Option<LogIdOf<C>>, membership: Membership<C>) -> Self {
         let voter_ids = membership.voter_ids().collect();
 
@@ -96,10 +97,12 @@ where C: RaftTypeConfig
         &self.stored_membership
     }
 
+    /// Get the log ID at which this membership was stored.
     pub fn log_id(&self) -> &Option<LogIdOf<C>> {
         self.stored_membership.log_id()
     }
 
+    /// Get the membership configuration.
     pub fn membership(&self) -> &Membership<C> {
         self.stored_membership.membership()
     }
