@@ -10,9 +10,11 @@ use crate::error::NodeNotFound;
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub enum MembershipError<C: RaftTypeConfig> {
+    /// The membership configuration is empty.
     #[error(transparent)]
     EmptyMembership(#[from] EmptyMembership),
 
+    /// A required node was not found.
     #[error(transparent)]
     NodeNotFound(#[from] NodeNotFound<C>),
 }

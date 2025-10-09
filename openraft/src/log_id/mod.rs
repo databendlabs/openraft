@@ -103,11 +103,13 @@ where C: RaftTypeConfig
         &self.leader_id
     }
 
+    /// Get the established(committed) leader ID of this log entry.
     #[deprecated(since = "0.10.0", note = "Use `committed_leader_id` instead.")]
     pub fn leader_id(&self) -> &CommittedLeaderIdOf<C> {
         &self.leader_id
     }
 
+    /// Get the log index.
     pub fn index(&self) -> u64 {
         self.index
     }

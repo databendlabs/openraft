@@ -1,3 +1,5 @@
+#![allow(missing_docs)]
+
 use std::collections::BTreeSet;
 use std::fmt::Debug;
 use std::future::Future;
@@ -1365,6 +1367,7 @@ where
         Ok(())
     }
 
+    /// Helper to feed 10 log entries and vote.
     pub async fn feed_10_logs_vote_self(sto: &mut LS) -> Result<(), StorageError<C>> {
         append(sto, [blank_ent_0::<C>(0, 0)]).await?;
 
@@ -1377,6 +1380,7 @@ where
         Ok(())
     }
 
+    /// Helper to set default vote.
     pub async fn default_vote(sto: &mut LS) -> Result<(), StorageError<C>> {
         sto.save_vote(&VoteOf::<C>::from_term_node_id(1u64.into(), NODE_ID.into())).await?;
 

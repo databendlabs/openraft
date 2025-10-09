@@ -30,22 +30,27 @@ where C: RaftTypeConfig
 impl<C> StoredMembership<C>
 where C: RaftTypeConfig
 {
+    /// Create a new StoredMembership with the given log ID and membership configuration.
     pub fn new(log_id: Option<LogIdOf<C>>, membership: Membership<C>) -> Self {
         Self { log_id, membership }
     }
 
+    /// Get the log ID at which this membership was stored.
     pub fn log_id(&self) -> &Option<LogIdOf<C>> {
         &self.log_id
     }
 
+    /// Get the membership configuration.
     pub fn membership(&self) -> &Membership<C> {
         &self.membership
     }
 
+    /// Get an iterator over the voter node IDs.
     pub fn voter_ids(&self) -> impl Iterator<Item = C::NodeId> {
         self.membership.voter_ids()
     }
 
+    /// Get an iterator over all nodes (ID and node information).
     pub fn nodes(&self) -> impl Iterator<Item = (&C::NodeId, &C::Node)> {
         self.membership.nodes()
     }
