@@ -395,6 +395,12 @@ jobs:
         env:
           RUSTDOCFLAGS: '-D warnings'
 
+      - name: Doc tests
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --doc --all
+
       - shell: bash
         run: cargo install cargo-audit
 

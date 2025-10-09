@@ -1,3 +1,5 @@
+//! Utilities for converting `Result<Result<T, E>, E>` into `Result<T, E>`.
+
 use crate::error::Infallible;
 
 /// Trait to convert `Result<T, E>` to `T`, if `E` is a `never` type.

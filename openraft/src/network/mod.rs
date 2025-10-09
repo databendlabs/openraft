@@ -27,6 +27,7 @@ mod backoff;
 mod rpc_option;
 mod rpc_type;
 
+/// Version 1 of the Raft network API.
 pub mod v1;
 pub mod v2;
 

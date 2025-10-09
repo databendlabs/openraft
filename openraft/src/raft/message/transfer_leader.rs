@@ -5,6 +5,7 @@ use crate::display_ext::DisplayOptionExt;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::VoteOf;
 
+/// A request to transfer leadership from the current leader to another node.
 #[derive(Clone, Debug)]
 #[derive(PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
@@ -24,6 +25,7 @@ where C: RaftTypeConfig
 impl<C> TransferLeaderRequest<C>
 where C: RaftTypeConfig
 {
+    /// Create a new transfer leader request.
     pub fn new(from: VoteOf<C>, to: C::NodeId, last_log_id: Option<LogIdOf<C>>) -> Self {
         Self {
             from_leader: from,

@@ -16,7 +16,9 @@ use crate::vote::RaftLeaderId;
 pub struct LeaderId<C>
 where C: RaftTypeConfig
 {
+    /// The term of the leader.
     pub term: C::Term,
+    /// The node ID of the leader.
     pub node_id: C::NodeId,
 }
 

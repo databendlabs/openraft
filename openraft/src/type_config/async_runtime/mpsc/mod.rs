@@ -10,8 +10,11 @@ use crate::base;
 
 /// Multi-producer, single-consumer channel.
 pub trait Mpsc: Sized + OptionalSend {
+    /// The sender type for this MPSC channel.
     type Sender<T: OptionalSend>: MpscSender<Self, T>;
+    /// The receiver type for this MPSC channel.
     type Receiver<T: OptionalSend>: MpscReceiver<T>;
+    /// The weak sender type for this MPSC channel.
     type WeakSender<T: OptionalSend>: MpscWeakSender<Self, T>;
 
     /// Creates a bounded mpsc channel for communicating between asynchronous tasks with
