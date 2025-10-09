@@ -2,6 +2,13 @@ all: test defensive_test send_delay_test check_all
 
 check_all: lint fmt doc unused_dep typos
 
+basic_check:
+	cargo fmt
+	cargo test --lib
+	cargo test --test '*'
+	cargo clippy --no-deps --all-targets -- -D warnings
+	RUSTDOCFLAGS="-D warnings" cargo doc --document-private-items --all --no-deps
+
 defensive_test:
 	OPENRAFT_STORE_DEFENSIVE=on cargo test
 
