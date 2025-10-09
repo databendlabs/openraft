@@ -137,6 +137,7 @@ pub trait RaftTypeConfig:
 }
 
 #[allow(dead_code)]
+#[allow(missing_docs)]
 /// Type alias for types used in `RaftTypeConfig`.
 ///
 /// Aliases are enabled by the feature flag [`type-alias`].

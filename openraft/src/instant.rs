@@ -59,6 +59,7 @@ pub trait Instant:
     }
 }
 
+/// Type alias for tokio's Instant type.
 #[cfg(feature = "tokio-rt")]
 pub type TokioInstant = tokio::time::Instant;
 

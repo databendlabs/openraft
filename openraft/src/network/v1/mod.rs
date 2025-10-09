@@ -1,3 +1,5 @@
+//! Version 1 of the Raft network API.
+
 mod factory;
 mod network;
 

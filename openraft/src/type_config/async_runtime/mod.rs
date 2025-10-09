@@ -104,13 +104,18 @@ pub trait AsyncRuntime: Debug + Default + PartialEq + Eq + OptionalSend + Option
     /// sent to another thread.
     fn thread_rng() -> Self::ThreadLocalRng;
 
+    /// The bounded MPSC channel implementation.
     type Mpsc: Mpsc;
 
+    /// The unbounded MPSC channel implementation.
     type MpscUnbounded: MpscUnbounded;
 
+    /// The watch channel implementation.
     type Watch: Watch;
 
+    /// The oneshot channel implementation.
     type Oneshot: Oneshot;
 
+    /// The async mutex implementation.
     type Mutex<T: OptionalSend + 'static>: Mutex<T>;
 }

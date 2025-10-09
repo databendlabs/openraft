@@ -48,6 +48,20 @@ where C: RaftTypeConfig
     ///
     /// If it loses leadership or crashed before committing the second **uniform** config log, the
     /// cluster is left in the **joint** config.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use std::collections::BTreeSet;
+    ///
+    /// // Change membership to nodes {2, 3, 4}, keeping removed voters as learners
+    /// let new_voters = BTreeSet::from([2, 3, 4]);
+    /// raft.change_membership(new_voters, true).await?;
+    ///
+    /// // Change membership to nodes {3, 4, 5}, removing node 2 from cluster
+    /// let new_voters = BTreeSet::from([3, 4, 5]);
+    /// raft.change_membership(new_voters, false).await?;
+    /// ```
     #[tracing::instrument(level = "info", skip_all)]
     pub async fn change_membership(
         &self,
@@ -73,6 +87,20 @@ where C: RaftTypeConfig
     ///
     /// A `node` is able to store the network address of a node. Thus, an application does not
     /// need another store for mapping node-id to ip-addr when implementing the RaftNetwork.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use openraft::BasicNode;
+    ///
+    /// // Add node 4 as a learner (non-blocking)
+    /// let node = BasicNode { addr: "127.0.0.1:8083".to_string() };
+    /// raft.add_learner(4, node, false).await?;
+    ///
+    /// // Add node 5 as a learner and wait for it to catch up (blocking)
+    /// let node = BasicNode { addr: "127.0.0.1:8084".to_string() };
+    /// raft.add_learner(5, node, true).await?;
+    /// ```
     #[tracing::instrument(level = "debug", skip(self, id), fields(target=display(&id)))]
     pub async fn add_learner(
         &self,

@@ -712,6 +712,15 @@ where C: RaftTypeConfig
     ///
     /// These are application specific requirements, and must be implemented by the application
     /// which is being built on top of Raft.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// // Submit a write request
+    /// let request = MyAppData { key: "foo".to_string(), value: "bar".to_string() };
+    /// let response = raft.client_write(request).await?;
+    /// println!("Applied at log index: {:?}", response.log_id);
+    /// ```
     #[tracing::instrument(level = "debug", skip(self, app_data))]
     pub async fn client_write<E>(
         &self,
@@ -786,6 +795,25 @@ where C: RaftTypeConfig
     ///
     /// More than one node performing `initialize()` with the same config is safe,
     /// with different config will result in split brain condition.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use std::collections::BTreeMap;
+    /// use openraft::BasicNode;
+    ///
+    /// // Initialize a single-node cluster
+    /// let mut nodes = BTreeMap::new();
+    /// nodes.insert(1, BasicNode { addr: "127.0.0.1:8080".to_string() });
+    /// raft.initialize(nodes).await?;
+    ///
+    /// // Initialize a three-node cluster
+    /// let mut nodes = BTreeMap::new();
+    /// nodes.insert(1, BasicNode { addr: "127.0.0.1:8080".to_string() });
+    /// nodes.insert(2, BasicNode { addr: "127.0.0.1:8081".to_string() });
+    /// nodes.insert(3, BasicNode { addr: "127.0.0.1:8082".to_string() });
+    /// raft.initialize(nodes).await?;
+    /// ```
     #[tracing::instrument(level = "debug", skip(self))]
     pub async fn initialize<T>(&self, members: T) -> Result<(), RaftError<C, InitializeError<C>>>
     where T: IntoNodes<C::NodeId, C::Node> + Debug {
@@ -937,6 +965,15 @@ where C: RaftTypeConfig
     }
 
     /// Get a handle to the metrics channel.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// // Get current metrics
+    /// let metrics = raft.metrics().borrow_watched().clone();
+    /// println!("Current leader: {:?}", metrics.current_leader);
+    /// println!("Current term: {}", metrics.current_term);
+    /// ```
     pub fn metrics(&self) -> WatchReceiverOf<C, RaftMetrics<C>> {
         self.inner.rx_metrics.clone()
     }
@@ -978,6 +1015,13 @@ where C: RaftTypeConfig
     /// Shutdown this Raft node.
     ///
     /// It sends a shutdown signal and waits until `RaftCore` returns.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// // Gracefully shutdown the Raft node
+    /// raft.shutdown().await?;
+    /// ```
     pub async fn shutdown(&self) -> Result<(), JoinErrorOf<C>> {
         if let Some(tx) = self.inner.tx_shutdown.lock().unwrap().take() {
             // A failure to send means the RaftCore is already shutdown. Continue to check the task

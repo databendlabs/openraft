@@ -1,3 +1,5 @@
+//! Async mutex trait.
+
 use std::future::Future;
 use std::ops::DerefMut;
 

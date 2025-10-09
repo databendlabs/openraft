@@ -1,3 +1,4 @@
+/// Error indicating that a state machine operation was attempted with an incompatible type.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error(
     "User-defined function on the state machine failed to run; \
@@ -5,6 +6,7 @@
      of state machine from the one in RaftCore (`{actual_type}`)"
 )]
 pub struct InvalidStateMachineType {
+    /// The actual type name of the state machine that was used.
     pub actual_type: &'static str,
 }
 

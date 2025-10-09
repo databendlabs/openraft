@@ -1,5 +1,7 @@
 //! Suite for testing implementations of [`AsyncRuntime`].
 
+#![allow(missing_docs)]
+
 use std::pin::Pin;
 use std::pin::pin;
 use std::sync::Arc;
