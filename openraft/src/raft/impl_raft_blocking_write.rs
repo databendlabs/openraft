@@ -1,6 +1,6 @@
 //! Implement blocking-mode write operations for Raft.
 //! Blocking-mode write API blocks until the write operation is completed,
-//! where [`RaftTypeConfig::Responder`] is a [`OneshotResponder`].
+//! where [`RaftTypeConfig::WriteResponderBuilder`] is a [`OneshotResponder`].
 
 use crate::ChangeMembers;
 use crate::Raft;

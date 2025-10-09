@@ -23,7 +23,7 @@ declare_raft_types!(
         Vote = crate::impls::Vote<Self>,
         SnapshotData = Cursor<Vec<u8>>,
         AsyncRuntime = TokioRuntime,
-        Responder = crate::impls::OneshotResponder<Self>,
+        WriteResponderBuilder = crate::impls::OneshotResponder<Self>,
 );
 
 declare_raft_types!(

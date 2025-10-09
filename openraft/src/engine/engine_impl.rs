@@ -39,6 +39,7 @@ use crate::raft::AppendEntriesResponse;
 use crate::raft::SnapshotResponse;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
+use crate::raft::message::ClientWriteResult;
 use crate::raft::responder::Responder;
 use crate::raft_state::IOId;
 use crate::raft_state::LogStateReader;
@@ -250,14 +251,15 @@ where C: RaftTypeConfig
     ///
     /// If `tx` is None, no response will be sent.
     ///
-    /// The `tx` is a [`Responder`] instance, but it does not have to be the [`C::Responder`].
-    /// The generic `R` allows any responder type to be used, while [`C::Responder`] is specifically
-    /// designed for client write operations.
+    /// The `tx` is a [`Responder`] instance, but it does not have to be the built responder from
+    /// [`C::WriteResponderBuilder`]. The generic `R` allows any responder type to be used, while the
+    /// responder built from [`C::WriteResponderBuilder`] is specifically designed for client write
+    /// operations.
     ///
-    /// [`C::Responder`]: RaftTypeConfig::Responder
+    /// [`C::WriteResponderBuilder`]: RaftTypeConfig::WriteResponderBuilder
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn get_leader_handler_or_reject<R>(&mut self, tx: Option<R>) -> Option<(LeaderHandler<C>, Option<R>)>
-    where R: Responder<C> {
+    where R: Responder<ClientWriteResult<C>> {
         let res = self.leader_handler();
         let forward_err = match res {
             Ok(lh) => {

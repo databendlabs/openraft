@@ -14,10 +14,10 @@ use crate::raft::ClientWriteResponse;
 use crate::raft::ClientWriteResult;
 use crate::raft::linearizable_read::Linearizer;
 use crate::raft::raft_inner::RaftInner;
-use crate::raft::responder::Responder;
+use crate::raft::responder::ResponderBuilder;
 use crate::type_config::TypeConfigExt;
-use crate::type_config::alias::ResponderOf;
-use crate::type_config::alias::ResponderReceiverOf;
+use crate::type_config::alias::WriteResponderBuilderOf;
+use crate::type_config::alias::WriteResponderReceiverOf;
 
 /// Provides application-facing APIs for interacting with the Raft system.
 ///
@@ -55,7 +55,8 @@ where C: RaftTypeConfig
         // TODO: ClientWriteError can only be ForwardToLeader Error
     ) -> Result<Result<ClientWriteResponse<C>, ClientWriteError<C>>, Fatal<C>>
     where
-        ResponderReceiverOf<C>: Future<Output = Result<ClientWriteResult<C>, E>>,
+        WriteResponderBuilderOf<C>: ResponderBuilder<C::D, ClientWriteResult<C>>,
+        WriteResponderReceiverOf<C>: Future<Output = Result<ClientWriteResult<C>, E>>,
         E: Error + OptionalSend,
     {
         let rx = self.client_write_ff(app_data).await?;
@@ -67,8 +68,9 @@ where C: RaftTypeConfig
 
     #[since(version = "0.10.0")]
     #[tracing::instrument(level = "debug", skip(self, app_data))]
-    pub(crate) async fn client_write_ff(&self, app_data: C::D) -> Result<ResponderReceiverOf<C>, Fatal<C>> {
-        let (app_data, tx, rx) = ResponderOf::<C>::from_app_data(app_data);
+    pub(crate) async fn client_write_ff(&self, app_data: C::D) -> Result<WriteResponderReceiverOf<C>, Fatal<C>>
+    where WriteResponderBuilderOf<C>: ResponderBuilder<C::D, ClientWriteResult<C>> {
+        let (tx, rx) = WriteResponderBuilderOf::<C>::build(&app_data);
 
         self.inner.send_msg(RaftMsg::ClientWriteRequest { app_data, tx }).await?;
 

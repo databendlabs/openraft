@@ -470,7 +470,7 @@ where
     /// The result of applying it to state machine is sent to `resp_tx`, if it is not `None`.
     /// The calling side may not receive a result from `resp_tx`, if raft is shut down.
     ///
-    /// The responder `R` for `resp_tx` is either [`RaftTypeConfig::Responder`]
+    /// The responder `R` for `resp_tx` is either [`RaftTypeConfig::WriteResponderBuilder`]
     /// (application-defined) or [`OneshotResponder`] (general-purpose); the former is for
     /// application-defined entries like user data, the latter is for membership configuration
     /// changes.

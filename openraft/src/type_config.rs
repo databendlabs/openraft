@@ -20,7 +20,7 @@ use crate::NodeId;
 use crate::OptionalSend;
 use crate::OptionalSync;
 use crate::entry::RaftEntry;
-use crate::raft::responder::Responder;
+use crate::raft::responder::ResponderBuilder;
 use crate::vote::RaftLeaderId;
 use crate::vote::RaftTerm;
 use crate::vote::raft_vote::RaftVote;
@@ -59,10 +59,10 @@ use crate::vote::raft_vote::RaftVote;
 ///         Term         = u64,
 ///         LeaderId     = openraft::impls::leader_id_adv::LeaderId<Self>,
 ///         Vote         = openraft::impls::Vote<Self>,
-///         Entry        = openraft::impls::Entry<Self>,
-///         SnapshotData = Cursor<Vec<u8>>,
-///         Responder    = openraft::impls::OneshotResponder<Self>,
-///         AsyncRuntime = openraft::impls::TokioRuntime,
+///         Entry         = openraft::impls::Entry<Self>,
+///         SnapshotData  = Cursor<Vec<u8>>,
+///         WriteResponder = openraft::impls::OneshotResponder<Self>,
+///         AsyncRuntime  = openraft::impls::TokioRuntime,
 /// );
 /// ```
 ///
@@ -126,14 +126,17 @@ pub trait RaftTypeConfig:
     /// Asynchronous runtime type.
     type AsyncRuntime: AsyncRuntime;
 
-    /// Send the response or error of a client write request([`WriteResult`]).
+    /// Builder for creating responders to send client write responses.
     ///
-    /// For example, return [`WriteResult`] to the caller of [`Raft::client_write`], or send to
-    /// some application-defined channel.
+    /// This builder creates responders that send [`ClientWriteResult`] back to the caller
+    /// of [`Raft::client_write`], or to some application-defined channel.
+    ///
+    /// The builder is invoked with the application data (`Self::D`) and creates a responder
+    /// along with its receiver.
     ///
     /// [`Raft::client_write`]: `crate::raft::Raft::client_write`
-    /// [`WriteResult`]: `crate::raft::message::ClientWriteResult`
-    type Responder: Responder<Self>;
+    /// [`ClientWriteResult`]: `crate::raft::message::ClientWriteResult`
+    type WriteResponderBuilder: ResponderBuilder<Self::D, crate::raft::message::ClientWriteResult<Self>>;
 }
 
 #[allow(dead_code)]
@@ -151,7 +154,7 @@ pub mod alias {
     use crate::async_runtime::MpscUnbounded;
     use crate::async_runtime::Oneshot;
     use crate::async_runtime::watch;
-    use crate::raft::responder::Responder;
+    use crate::raft::responder::ResponderBuilder;
     use crate::type_config::AsyncRuntime;
     use crate::vote::RaftLeaderId;
 
@@ -167,8 +170,15 @@ pub mod alias {
     pub type EntryOf<C> = <C as RaftTypeConfig>::Entry;
     pub type SnapshotDataOf<C> = <C as RaftTypeConfig>::SnapshotData;
     pub type AsyncRuntimeOf<C> = <C as RaftTypeConfig>::AsyncRuntime;
-    pub type ResponderOf<C> = <C as RaftTypeConfig>::Responder;
-    pub type ResponderReceiverOf<C> = <ResponderOf<C> as Responder<C>>::Receiver;
+    pub type WriteResponderBuilderOf<C> = <C as RaftTypeConfig>::WriteResponderBuilder;
+    pub type ResponderOf<C> = <WriteResponderBuilderOf<C> as ResponderBuilder<
+        <C as RaftTypeConfig>::D,
+        crate::raft::message::ClientWriteResult<C>,
+    >>::Responder;
+    pub type WriteResponderReceiverOf<C> = <WriteResponderBuilderOf<C> as ResponderBuilder<
+        <C as RaftTypeConfig>::D,
+        crate::raft::message::ClientWriteResult<C>,
+    >>::Receiver;
 
     type Rt<C> = AsyncRuntimeOf<C>;
 

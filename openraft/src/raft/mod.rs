@@ -87,6 +87,7 @@ use crate::metrics::RaftMetrics;
 use crate::metrics::RaftServerMetrics;
 use crate::metrics::Wait;
 use crate::raft::raft_inner::RaftInner;
+use crate::raft::responder::ResponderBuilder;
 pub use crate::raft::runtime_config_handle::RuntimeConfigHandle;
 use crate::raft::trigger::Trigger;
 use crate::storage::RaftLogStorage;
@@ -95,10 +96,11 @@ use crate::storage::Snapshot;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::JoinErrorOf;
 use crate::type_config::alias::LogIdOf;
-use crate::type_config::alias::ResponderReceiverOf;
 use crate::type_config::alias::SnapshotDataOf;
 use crate::type_config::alias::VoteOf;
 use crate::type_config::alias::WatchReceiverOf;
+use crate::type_config::alias::WriteResponderBuilderOf;
+use crate::type_config::alias::WriteResponderReceiverOf;
 use crate::vote::raft_vote::RaftVoteExt;
 
 /// Define types for a Raft type configuration.
@@ -119,11 +121,11 @@ use crate::vote::raft_vote::RaftVoteExt;
 ///        Node         = openraft::BasicNode,
 ///        Term         = u64,
 ///        LeaderId     = openraft::impls::leader_id_adv::LeaderId<Self>,
-///        Vote         = openraft::impls::Vote<Self>,
-///        Entry        = openraft::Entry<Self>,
-///        SnapshotData = Cursor<Vec<u8>>,
-///        Responder    = openraft::impls::OneshotResponder<Self>,
-///        AsyncRuntime = openraft::TokioRuntime,
+///        Vote           = openraft::impls::Vote<Self>,
+///        Entry          = openraft::Entry<Self>,
+///        SnapshotData   = Cursor<Vec<u8>>,
+///        WriteResponderBuilder = openraft::impls::OneshotResponder<Self>,
+///        AsyncRuntime   = openraft::TokioRuntime,
 /// );
 /// ```
 ///
@@ -134,11 +136,11 @@ use crate::vote::raft_vote::RaftVoteExt;
 /// - `Node`:         `::openraft::impls::BasicNode`
 /// - `Term`:         `u64`
 /// - `LeaderId`:     `::openraft::impls::leader_id_adv::LeaderId<Self>`
-/// - `Vote`:         `::openraft::impls::Vote<Self>`
-/// - `Entry`:        `::openraft::impls::Entry<Self>`
-/// - `SnapshotData`: `Cursor<Vec<u8>>`
-/// - `Responder`:    `::openraft::impls::OneshotResponder<Self>`
-/// - `AsyncRuntime`: `::openraft::impls::TokioRuntime`
+/// - `Vote`:           `::openraft::impls::Vote<Self>`
+/// - `Entry`:          `::openraft::impls::Entry<Self>`
+/// - `SnapshotData`:   `Cursor<Vec<u8>>`
+/// - `WriteResponderBuilder`: `::openraft::impls::OneshotResponder<Self>`
+/// - `AsyncRuntime`:   `::openraft::impls::TokioRuntime`
 ///
 /// For example, to declare with only `D` and `R` types:
 /// ```ignore
@@ -183,11 +185,11 @@ macro_rules! declare_raft_types {
                 (Node         , , $crate::impls::BasicNode                     ),
                 (Term         , , u64                                          ),
                 (LeaderId     , , $crate::impls::leader_id_adv::LeaderId<Self> ),
-                (Vote         , , $crate::impls::Vote<Self>                    ),
-                (Entry        , , $crate::impls::Entry<Self>                   ),
-                (SnapshotData , , std::io::Cursor<Vec<u8>>                     ),
-                (Responder    , , $crate::impls::OneshotResponder<Self>        ),
-                (AsyncRuntime , , $crate::impls::TokioRuntime                  ),
+                (Vote           , , $crate::impls::Vote<Self>                    ),
+                (Entry          , , $crate::impls::Entry<Self>                   ),
+                (SnapshotData   , , std::io::Cursor<Vec<u8>>                     ),
+                (WriteResponderBuilder , , $crate::impls::OneshotResponder<Self>        ),
+                (AsyncRuntime   , , $crate::impls::TokioRuntime                  ),
             );
 
         }
@@ -727,7 +729,8 @@ where C: RaftTypeConfig
         app_data: C::D,
     ) -> Result<ClientWriteResponse<C>, RaftError<C, ClientWriteError<C>>>
     where
-        ResponderReceiverOf<C>: Future<Output = Result<ClientWriteResult<C>, E>>,
+        WriteResponderBuilderOf<C>: ResponderBuilder<C::D, ClientWriteResult<C>>,
+        WriteResponderReceiverOf<C>: Future<Output = Result<ClientWriteResult<C>, E>>,
         E: Error + OptionalSend,
     {
         self.app_api().client_write(app_data).await.into_raft_result()
@@ -740,7 +743,8 @@ where C: RaftTypeConfig
     ///
     /// It is same as [`Self::client_write`] but does not wait for the response.
     #[since(version = "0.10.0")]
-    pub async fn client_write_ff(&self, app_data: C::D) -> Result<ResponderReceiverOf<C>, Fatal<C>> {
+    pub async fn client_write_ff(&self, app_data: C::D) -> Result<WriteResponderReceiverOf<C>, Fatal<C>>
+    where WriteResponderBuilderOf<C>: ResponderBuilder<C::D, ClientWriteResult<C>> {
         self.app_api().client_write_ff(app_data).await
     }
 

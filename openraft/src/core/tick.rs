@@ -183,7 +183,7 @@ mod tests {
         type Entry = crate::Entry<Self>;
         type SnapshotData = Cursor<Vec<u8>>;
         type AsyncRuntime = TokioRuntime;
-        type Responder = crate::impls::OneshotResponder<Self>;
+        type WriteResponderBuilder = crate::impls::OneshotResponder<Self>;
     }
 
     #[tokio::test]
