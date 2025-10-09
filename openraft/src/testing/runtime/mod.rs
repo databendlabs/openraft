@@ -40,6 +40,7 @@ pub struct Suite<Rt: AsyncRuntime> {
 }
 
 impl<Rt: AsyncRuntime> Suite<Rt> {
+    /// Run all async runtime tests.
     pub async fn test_all() {
         Self::test_spawn_join_handle().await;
         Self::test_sleep().await;
@@ -70,6 +71,7 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         Self::test_mutex_contention().await;
     }
 
+    /// Test spawning tasks and joining handles.
     pub async fn test_spawn_join_handle() {
         for ret_number in 0..10 {
             let handle = Rt::spawn(async move { ret_number });
@@ -78,6 +80,7 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         }
     }
 
+    /// Test sleep functionality.
     pub async fn test_sleep() {
         let start_time = std::time::Instant::now();
         let dur_10ms = std::time::Duration::from_millis(10);
@@ -87,6 +90,7 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         assert!(elapsed >= dur_10ms);
     }
 
+    /// Test Instant creation and comparison.
     pub async fn test_instant() {
         let start_time = Rt::Instant::now();
         let dur_10ms = std::time::Duration::from_millis(10);
@@ -96,6 +100,7 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         assert!(elapsed >= dur_10ms);
     }
 
+    /// Test sleep_until with Instant deadline.
     pub async fn test_sleep_until() {
         let start_time = Rt::Instant::now();
         let dur_10ms = std::time::Duration::from_millis(10);
@@ -105,6 +110,7 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         assert!(elapsed >= dur_10ms);
     }
 
+    /// Test timeout functionality.
     pub async fn test_timeout() {
         let ret_number = 1;
 
@@ -123,6 +129,7 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         assert!(timeout_result.is_err());
     }
 
+    /// Test timeout_at with Instant deadline.
     pub async fn test_timeout_at() {
         let ret_number = 1;
 
@@ -143,12 +150,14 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         assert!(timeout_result.is_err());
     }
 
+    /// Test receiving from empty MPSC channel.
     pub async fn test_mpsc_recv_empty() {
         let (_tx, mut rx) = Rt::Mpsc::channel::<()>(5);
         let recv_err = rx.try_recv().unwrap_err();
         assert!(matches!(recv_err, TryRecvError::Empty));
     }
 
+    /// Test receiving from closed MPSC channel.
     pub async fn test_mpsc_recv_channel_closed() {
         let (_, mut rx) = Rt::Mpsc::channel::<()>(5);
         let recv_err = rx.try_recv().unwrap_err();
@@ -158,6 +167,7 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         assert!(recv_result.is_none());
     }
 
+    /// Test weak sender does not prevent channel closure.
     pub async fn test_mpsc_weak_sender_wont_prevent_channel_close() {
         let (tx, mut rx) = Rt::Mpsc::channel::<()>(5);
 
@@ -170,6 +180,7 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         assert!(recv_result.is_none());
     }
 
+    /// Test upgrading weak sender.
     pub async fn test_mpsc_weak_sender_upgrade() {
         let (tx, _rx) = Rt::Mpsc::channel::<()>(5);
 
@@ -185,6 +196,7 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         assert!(opt_tx.is_none());
     }
 
+    /// Test sending and receiving via MPSC channel.
     pub async fn test_mpsc_send() {
         let (tx, mut rx) = Rt::Mpsc::channel::<usize>(5);
         let tx = Arc::new(tx);
@@ -214,12 +226,14 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         assert_eq!(recv_expected, recv);
     }
 
+    /// Test receiving from empty unbounded MPSC channel.
     pub async fn test_unbounded_mpsc_recv_empty() {
         let (_tx, mut rx) = Rt::MpscUnbounded::channel::<()>();
         let recv_err = rx.try_recv().unwrap_err();
         assert!(matches!(recv_err, TryRecvError::Empty));
     }
 
+    /// Test receiving from closed unbounded MPSC channel.
     pub async fn test_unbounded_mpsc_recv_channel_closed() {
         let (_, mut rx) = Rt::MpscUnbounded::channel::<()>();
         let recv_err = rx.try_recv().unwrap_err();
@@ -229,6 +243,7 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         assert!(recv_result.is_none());
     }
 
+    /// Test weak sender does not prevent unbounded channel closure.
     pub async fn test_unbounded_mpsc_weak_sender_wont_prevent_channel_close() {
         let (tx, mut rx) = Rt::MpscUnbounded::channel::<()>();
 
@@ -241,6 +256,7 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         assert!(recv_result.is_none());
     }
 
+    /// Test upgrading unbounded weak sender.
     pub async fn test_unbounded_mpsc_weak_sender_upgrade() {
         let (tx, _rx) = Rt::MpscUnbounded::channel::<()>();
 
@@ -256,6 +272,7 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         assert!(opt_tx.is_none());
     }
 
+    /// Test sending and receiving via unbounded MPSC channel.
     pub async fn test_unbounded_mpsc_send() {
         let (tx, mut rx) = Rt::MpscUnbounded::channel::<usize>();
         let tx = Arc::new(tx);
@@ -285,6 +302,7 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         assert_eq!(recv_expected, recv);
     }
 
+    /// Test watch channel initial value.
     pub async fn test_watch_init_value() {
         let init_value = 1;
         let (tx, rx) = Rt::Watch::channel(init_value);
@@ -294,6 +312,7 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         assert_eq!(*value_from_tx, init_value);
     }
 
+    /// Test overwriting watch channel initial value.
     pub async fn test_watch_overwrite_init_value() {
         let init_value = 1;
         let overwrite = 3;
@@ -327,6 +346,7 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         assert_eq!(*value_from_tx, overwrite);
     }
 
+    /// Test watch send error when no receiver exists.
     pub async fn test_watch_send_error_no_receiver() {
         let (tx, rx) = Rt::Watch::channel(());
         drop(rx);
@@ -334,6 +354,7 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         assert!(send_result.is_err());
     }
 
+    /// Test watch send_if_modified functionality.
     pub async fn test_watch_send_if_modified() {
         let init_value = 0;
         let max_value = 5;
@@ -369,12 +390,14 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         assert_eq!(*value_from_tx, max_value);
     }
 
+    /// Test oneshot channel when sender is dropped.
     pub async fn test_oneshot_drop_tx() {
         let (tx, rx) = Rt::Oneshot::channel::<()>();
         drop(tx);
         assert!(rx.await.is_err());
     }
 
+    /// Test oneshot channel basic functionality.
     pub async fn test_oneshot() {
         let number_to_send = 1;
         let (tx, rx) = Rt::Oneshot::channel::<i32>();
@@ -384,6 +407,7 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         assert_eq!(number_to_send, number_received);
     }
 
+    /// Test oneshot channel send from another task.
     pub async fn test_oneshot_send_from_another_task() {
         let number_to_send = 1;
         let (tx, rx) = Rt::Oneshot::channel::<i32>();
@@ -396,6 +420,7 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         assert_eq!(number_to_send, number_received);
     }
 
+    /// Test mutex behavior under contention.
     pub async fn test_mutex_contention() {
         let counter = Arc::new(Rt::Mutex::new(0_u32));
         let n_task = 100;
@@ -419,6 +444,7 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         assert_eq!(*value, n_task);
     }
 
+    /// Test mutex basic functionality.
     pub async fn test_mutex() {
         let lock = Rt::Mutex::new(());
         let guard_fut = lock.lock();

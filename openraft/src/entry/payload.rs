@@ -12,6 +12,7 @@ pub enum EntryPayload<C: RaftTypeConfig> {
     /// An empty payload committed by a new cluster leader.
     Blank,
 
+    /// Normal application data.
     Normal(C::D),
 
     /// A change-membership log entry.

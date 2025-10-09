@@ -21,8 +21,10 @@ use crate::vote::RaftLeaderId;
 pub struct LeaderId<C>
 where C: RaftTypeConfig
 {
+    /// The term of the leader.
     pub term: C::Term,
 
+    /// The node ID that was voted for in this term.
     pub voted_for: Option<C::NodeId>,
 }
 
@@ -87,6 +89,7 @@ where C: RaftTypeConfig
 pub struct CommittedLeaderId<C>
 where C: RaftTypeConfig
 {
+    /// The term of the committed leader.
     pub term: C::Term,
     p: PhantomData<C>,
 }
@@ -94,6 +97,7 @@ where C: RaftTypeConfig
 impl<C> CommittedLeaderId<C>
 where C: RaftTypeConfig
 {
+    /// Create a new committed leader ID for the given term.
     pub fn new(term: C::Term, node_id: C::NodeId) -> Self {
         let _ = node_id;
         Self { term, p: PhantomData }

@@ -16,8 +16,10 @@ use crate::type_config::alias::VoteOf;
 #[derive(Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct AppendEntriesRequest<C: RaftTypeConfig> {
+    /// The leader's current vote.
     pub vote: VoteOf<C>,
 
+    /// The log id immediately preceding the new entries.
     pub prev_log_id: Option<LogIdOf<C>>,
 
     /// The new log entries to store.
@@ -104,10 +106,12 @@ pub enum AppendEntriesResponse<C: RaftTypeConfig> {
 impl<C> AppendEntriesResponse<C>
 where C: RaftTypeConfig
 {
+    /// Returns true if the response indicates a successful replication.
     pub fn is_success(&self) -> bool {
         matches!(*self, AppendEntriesResponse::Success)
     }
 
+    /// Returns true if the response indicates a log conflict.
     pub fn is_conflict(&self) -> bool {
         matches!(*self, AppendEntriesResponse::Conflict)
     }
