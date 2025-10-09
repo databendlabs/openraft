@@ -2,6 +2,7 @@ use crate::RaftTypeConfig;
 use crate::async_runtime::OneshotSender;
 use crate::raft::message::ClientWriteResult;
 use crate::raft::responder::Responder;
+use crate::raft::responder::ResponderBuilder;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::OneshotReceiverOf;
 use crate::type_config::alias::OneshotSenderOf;
@@ -28,17 +29,9 @@ where C: RaftTypeConfig
     }
 }
 
-impl<C> Responder<C> for OneshotResponder<C>
+impl<C> Responder<ClientWriteResult<C>> for OneshotResponder<C>
 where C: RaftTypeConfig
 {
-    type Receiver = OneshotReceiverOf<C, ClientWriteResult<C>>;
-
-    fn from_app_data(app_data: C::D) -> (C::D, Self, Self::Receiver)
-    where Self: Sized {
-        let (tx, rx) = C::oneshot();
-        (app_data, Self { tx }, rx)
-    }
-
     fn send(self, res: ClientWriteResult<C>) {
         let res = self.tx.send(res);
 
@@ -47,5 +40,17 @@ where C: RaftTypeConfig
         } else {
             tracing::warn!("OneshotConsumer.tx.send: is_ok: {}", res.is_ok());
         }
+    }
+}
+
+impl<C> ResponderBuilder<C::D, ClientWriteResult<C>> for OneshotResponder<C>
+where C: RaftTypeConfig
+{
+    type Responder = Self;
+    type Receiver = OneshotReceiverOf<C, ClientWriteResult<C>>;
+
+    fn build(_src: &C::D) -> (Self::Responder, Self::Receiver) {
+        let (tx, rx) = C::oneshot();
+        (Self { tx }, rx)
     }
 }

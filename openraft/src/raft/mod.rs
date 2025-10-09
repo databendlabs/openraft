@@ -87,6 +87,7 @@ use crate::metrics::RaftMetrics;
 use crate::metrics::RaftServerMetrics;
 use crate::metrics::Wait;
 use crate::raft::raft_inner::RaftInner;
+use crate::raft::responder::ResponderBuilder;
 pub use crate::raft::runtime_config_handle::RuntimeConfigHandle;
 use crate::raft::trigger::Trigger;
 use crate::storage::RaftLogStorage;
@@ -95,6 +96,7 @@ use crate::storage::Snapshot;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::JoinErrorOf;
 use crate::type_config::alias::LogIdOf;
+use crate::type_config::alias::ResponderBuilderOf;
 use crate::type_config::alias::ResponderReceiverOf;
 use crate::type_config::alias::SnapshotDataOf;
 use crate::type_config::alias::VoteOf;
@@ -119,11 +121,11 @@ use crate::vote::raft_vote::RaftVoteExt;
 ///        Node         = openraft::BasicNode,
 ///        Term         = u64,
 ///        LeaderId     = openraft::impls::leader_id_adv::LeaderId<Self>,
-///        Vote         = openraft::impls::Vote<Self>,
-///        Entry        = openraft::Entry<Self>,
-///        SnapshotData = Cursor<Vec<u8>>,
-///        Responder    = openraft::impls::OneshotResponder<Self>,
-///        AsyncRuntime = openraft::TokioRuntime,
+///        Vote           = openraft::impls::Vote<Self>,
+///        Entry          = openraft::Entry<Self>,
+///        SnapshotData   = Cursor<Vec<u8>>,
+///        ResponderBuilder = openraft::impls::OneshotResponder<Self>,
+///        AsyncRuntime   = openraft::TokioRuntime,
 /// );
 /// ```
 ///
@@ -134,11 +136,11 @@ use crate::vote::raft_vote::RaftVoteExt;
 /// - `Node`:         `::openraft::impls::BasicNode`
 /// - `Term`:         `u64`
 /// - `LeaderId`:     `::openraft::impls::leader_id_adv::LeaderId<Self>`
-/// - `Vote`:         `::openraft::impls::Vote<Self>`
-/// - `Entry`:        `::openraft::impls::Entry<Self>`
-/// - `SnapshotData`: `Cursor<Vec<u8>>`
-/// - `Responder`:    `::openraft::impls::OneshotResponder<Self>`
-/// - `AsyncRuntime`: `::openraft::impls::TokioRuntime`
+/// - `Vote`:           `::openraft::impls::Vote<Self>`
+/// - `Entry`:          `::openraft::impls::Entry<Self>`
+/// - `SnapshotData`:   `Cursor<Vec<u8>>`
+/// - `ResponderBuilder`: `::openraft::impls::OneshotResponder<Self>`
+/// - `AsyncRuntime`:   `::openraft::impls::TokioRuntime`
 ///
 /// For example, to declare with only `D` and `R` types:
 /// ```ignore
@@ -183,11 +185,11 @@ macro_rules! declare_raft_types {
                 (Node         , , $crate::impls::BasicNode                     ),
                 (Term         , , u64                                          ),
                 (LeaderId     , , $crate::impls::leader_id_adv::LeaderId<Self> ),
-                (Vote         , , $crate::impls::Vote<Self>                    ),
-                (Entry        , , $crate::impls::Entry<Self>                   ),
-                (SnapshotData , , std::io::Cursor<Vec<u8>>                     ),
-                (Responder    , , $crate::impls::OneshotResponder<Self>        ),
-                (AsyncRuntime , , $crate::impls::TokioRuntime                  ),
+                (Vote           , , $crate::impls::Vote<Self>                    ),
+                (Entry          , , $crate::impls::Entry<Self>                   ),
+                (SnapshotData   , , std::io::Cursor<Vec<u8>>                     ),
+                (ResponderBuilder , , $crate::impls::OneshotResponder<Self>        ),
+                (AsyncRuntime   , , $crate::impls::TokioRuntime                  ),
             );
 
         }
