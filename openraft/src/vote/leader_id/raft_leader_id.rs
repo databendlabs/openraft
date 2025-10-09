@@ -32,6 +32,7 @@ where
     /// A simple implementation of this trait would return `Self` as the committed version.
     type Committed: RaftCommittedLeaderId;
 
+    /// Create a new leader ID for the given term and node.
     fn new(term: C::Term, node_id: C::NodeId) -> Self;
 
     /// Get the term number of this leader
@@ -54,10 +55,12 @@ where
     C: RaftTypeConfig,
     Self: RaftLeaderId<C>,
 {
+    /// Create a new committed leader ID.
     fn new_committed(term: C::Term, node_id: C::NodeId) -> Self::Committed {
         Self::new(term, node_id).to_committed()
     }
 
+    /// Get the node ID of this leader as an owned value.
     fn to_node_id(&self) -> Option<C::NodeId> {
         self.node_id().cloned()
     }

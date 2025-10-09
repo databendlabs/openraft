@@ -119,11 +119,13 @@ where
     B: StoreBuilder<C, LS, SM, G>,
     G: Send + Sync,
 {
+    /// Run all storage tests with the provided builder.
     pub async fn test_all(builder: B) -> Result<(), StorageError<C>> {
         Suite::test_store(&builder).await?;
         Ok(())
     }
 
+    /// Run the complete storage test suite.
     pub async fn test_store(builder: &B) -> Result<(), StorageError<C>> {
         run_test(builder, Self::last_membership_in_log_initial).await?;
         run_test(builder, Self::last_membership_in_log).await?;
@@ -171,6 +173,7 @@ where
         Ok(())
     }
 
+    /// Test last_membership_in_log with initial empty state.
     pub async fn last_membership_in_log_initial(mut store: LS, mut sm: SM) -> Result<(), StorageError<C>> {
         let membership = StorageHelper::new(&mut store, &mut sm).last_membership_in_log(0).await?;
 
@@ -179,6 +182,7 @@ where
         Ok(())
     }
 
+    /// Test last_membership_in_log retrieves the latest membership from logs.
     pub async fn last_membership_in_log(mut store: LS, mut sm: SM) -> Result<(), StorageError<C>> {
         tracing::info!("--- no log, do not read membership from state machine");
         {
@@ -274,6 +278,7 @@ where
         Ok(())
     }
 
+    /// Test last_membership_in_log with multiple membership changes across many log entries.
     pub async fn last_membership_in_log_multi_step(mut store: LS, mut sm: SM) -> Result<(), StorageError<C>> {
         tracing::info!("--- find membership log entry backwards, multiple steps");
         {
@@ -308,6 +313,7 @@ where
         Ok(())
     }
 
+    /// Test get_membership with initial empty state.
     pub async fn get_membership_initial(mut store: LS, mut sm: SM) -> Result<(), StorageError<C>> {
         let mem_state = StorageHelper::new(&mut store, &mut sm).get_membership().await?;
 
@@ -317,6 +323,7 @@ where
         Ok(())
     }
 
+    /// Test get_membership reading from log with empty state machine.
     pub async fn get_membership_from_log_and_empty_sm(mut store: LS, mut sm: SM) -> Result<(), StorageError<C>> {
         tracing::info!("--- no log, read membership from state machine");
         {
@@ -336,6 +343,7 @@ where
         Ok(())
     }
 
+    /// Test get_membership reading from state machine when log is empty.
     pub async fn get_membership_from_empty_log_and_sm(mut store: LS, mut sm: SM) -> Result<(), StorageError<C>> {
         tracing::info!("--- no log, read membership from state machine");
         {
@@ -359,6 +367,8 @@ where
         Ok(())
     }
 
+    /// Test get_membership when log membership is less than or equal to state machine's
+    /// last_applied.
     pub async fn get_membership_from_log_le_sm_last_applied(mut store: LS, mut sm: SM) -> Result<(), StorageError<C>> {
         tracing::info!("--- membership presents in log, but smaller than last_applied, read from state machine");
         {
@@ -393,6 +403,8 @@ where
         Ok(())
     }
 
+    /// Test get_membership when log membership is greater than state machine's last_applied (single
+    /// membership).
     pub async fn get_membership_from_log_gt_sm_last_applied_1(
         mut store: LS,
         mut sm: SM,
@@ -426,6 +438,8 @@ where
         Ok(())
     }
 
+    /// Test get_membership when log membership is greater than state machine's last_applied
+    /// (multiple memberships).
     pub async fn get_membership_from_log_gt_sm_last_applied_2(
         mut store: LS,
         mut sm: SM,
@@ -462,6 +476,7 @@ where
         Ok(())
     }
 
+    /// Test get_initial_state without any initialization.
     pub async fn get_initial_state_without_init(mut store: LS, mut sm: SM) -> Result<(), StorageError<C>> {
         let initial = StorageHelper::new(&mut store, &mut sm).get_initial_state().await?;
         let mut want = RaftState::<C>::default();
@@ -478,6 +493,7 @@ where
         Ok(())
     }
 
+    /// Test get_initial_state with existing state in storage.
     pub async fn get_initial_state_with_state(mut store: LS, mut sm: SM) -> Result<(), StorageError<C>> {
         Self::default_vote(&mut store).await?;
 
@@ -510,6 +526,7 @@ where
         Ok(())
     }
 
+    /// Test get_initial_state reading membership from empty log and state machine.
     pub async fn get_initial_state_membership_from_empty_log_and_sm(
         mut store: LS,
         mut sm: SM,
@@ -537,6 +554,7 @@ where
         Ok(())
     }
 
+    /// Test get_initial_state reading membership from state machine when log membership is smaller.
     pub async fn get_initial_state_membership_from_sm_inlog_is_smaller(
         mut store: LS,
         mut sm: SM,
@@ -566,6 +584,7 @@ where
         Ok(())
     }
 
+    /// Test get_initial_state reading membership from log when state machine membership is smaller.
     pub async fn get_initial_state_membership_from_log_insm_is_smaller(
         mut store: LS,
         mut sm: SM,
@@ -596,6 +615,7 @@ where
         Ok(())
     }
 
+    /// Test get_initial_state when last log is greater than state machine's last applied.
     pub async fn get_initial_state_last_log_gt_sm(mut store: LS, mut sm: SM) -> Result<(), StorageError<C>> {
         Self::default_vote(&mut store).await?;
 
@@ -613,6 +633,7 @@ where
         Ok(())
     }
 
+    /// Test get_initial_state when last log is less than state machine's last applied.
     pub async fn get_initial_state_last_log_lt_sm(mut store: LS, mut sm: SM) -> Result<(), StorageError<C>> {
         Self::default_vote(&mut store).await?;
 
@@ -635,6 +656,7 @@ where
         Ok(())
     }
 
+    /// Test get_initial_state retrieves correct log IDs in various scenarios.
     pub async fn get_initial_state_log_ids(mut store: LS, mut sm: SM) -> Result<(), StorageError<C>> {
         let log_id = |t: u64, n: u64, i| LogIdOf::<C>::new(C::LeaderId::new_committed(t.into(), n.into()), i);
 
@@ -824,6 +846,7 @@ where
         Ok(())
     }
 
+    /// Test save_vote stores and retrieves vote correctly.
     pub async fn save_vote(mut store: LS, mut sm: SM) -> Result<(), StorageError<C>> {
         store.save_vote(&VoteOf::<C>::from_term_node_id(100.into(), NODE_ID.into())).await?;
 
@@ -833,6 +856,7 @@ where
         Ok(())
     }
 
+    /// Test get_log_entries retrieves log entries in a range.
     pub async fn get_log_entries(mut store: LS, mut sm: SM) -> Result<(), StorageError<C>> {
         Self::feed_10_logs_vote_self(&mut store).await?;
 
@@ -854,6 +878,7 @@ where
         Ok(())
     }
 
+    /// Test limited_get_log_entries respects entry count limits.
     pub async fn limited_get_log_entries(mut store: LS, mut sm: SM) -> Result<(), StorageError<C>> {
         Self::feed_10_logs_vote_self(&mut store).await?;
 
@@ -875,6 +900,7 @@ where
         Ok(())
     }
 
+    /// Test try_get_log_entry retrieves a single log entry.
     pub async fn try_get_log_entry(mut store: LS, mut sm: SM) -> Result<(), StorageError<C>> {
         Self::feed_10_logs_vote_self(&mut store).await?;
 
@@ -896,6 +922,7 @@ where
         Ok(())
     }
 
+    /// Test initial_logs verifies empty log state.
     pub async fn initial_logs(mut store: LS, mut sm: SM) -> Result<(), StorageError<C>> {
         let ent = store.try_get_log_entry(0).await?;
         assert!(ent.is_none(), "store initialized");
@@ -903,6 +930,7 @@ where
         Ok(())
     }
 
+    /// Test get_log_state returns correct log state information.
     pub async fn get_log_state(mut store: LS, mut sm: SM) -> Result<(), StorageError<C>> {
         let st = store.get_log_state().await?;
 
@@ -957,6 +985,7 @@ where
         Ok(())
     }
 
+    /// Test get_log_id retrieves log ID at a specific index.
     pub async fn get_log_id(mut store: LS, mut sm: SM) -> Result<(), StorageError<C>> {
         Self::feed_10_logs_vote_self(&mut store).await?;
 
@@ -984,6 +1013,7 @@ where
         Ok(())
     }
 
+    /// Test last_id_in_log returns the last log ID.
     pub async fn last_id_in_log(mut store: LS, mut sm: SM) -> Result<(), StorageError<C>> {
         let last_log_id = store.get_log_state().await?.last_log_id;
         assert_eq!(None, last_log_id);
@@ -1023,6 +1053,7 @@ where
         Ok(())
     }
 
+    /// Test last_applied_state tracks last applied log correctly.
     pub async fn last_applied_state(mut store: LS, mut sm: SM) -> Result<(), StorageError<C>> {
         let (applied, mem) = sm.applied_state().await?;
         assert_eq!(None, applied);
@@ -1061,6 +1092,7 @@ where
         Ok(())
     }
 
+    /// Test purge_logs_upto_0 purges logs up to index 0.
     pub async fn purge_logs_upto_0(mut store: LS, mut sm: SM) -> Result<(), StorageError<C>> {
         tracing::info!("--- delete (-oo, 0]");
 
@@ -1086,6 +1118,7 @@ where
         Ok(())
     }
 
+    /// Test purge_logs_upto_5 purges logs up to index 5.
     pub async fn purge_logs_upto_5(mut store: LS, mut sm: SM) -> Result<(), StorageError<C>> {
         tracing::info!("--- delete (-oo, 5]");
 
@@ -1111,6 +1144,7 @@ where
         Ok(())
     }
 
+    /// Test purge_logs_upto_20 purges logs up to index 20.
     pub async fn purge_logs_upto_20(mut store: LS, mut sm: SM) -> Result<(), StorageError<C>> {
         tracing::info!("--- delete (-oo, 20]");
 
@@ -1135,6 +1169,7 @@ where
         Ok(())
     }
 
+    /// Test delete_logs_since_11 deletes logs from index 11 onwards.
     pub async fn delete_logs_since_11(mut store: LS, mut sm: SM) -> Result<(), StorageError<C>> {
         tracing::info!("--- delete [11, +oo)");
 
@@ -1155,6 +1190,7 @@ where
         Ok(())
     }
 
+    /// Test delete_logs_since_0 deletes all logs from index 0.
     pub async fn delete_logs_since_0(mut store: LS, mut sm: SM) -> Result<(), StorageError<C>> {
         tracing::info!("--- delete [0, +oo)");
 
@@ -1176,6 +1212,7 @@ where
         Ok(())
     }
 
+    /// Test append_to_log appends new log entries.
     pub async fn append_to_log(mut store: LS, mut sm: SM) -> Result<(), StorageError<C>> {
         Self::feed_10_logs_vote_self(&mut store).await?;
 
@@ -1195,6 +1232,7 @@ where
         Ok(())
     }
 
+    /// Test snapshot_meta reads and writes snapshot metadata.
     pub async fn snapshot_meta(mut store: LS, mut sm: SM) -> Result<(), StorageError<C>> {
         tracing::info!("--- just initialized");
         {
@@ -1233,6 +1271,7 @@ where
         Ok(())
     }
 
+    /// Test snapshot_meta_optional handles optional snapshot metadata.
     pub async fn snapshot_meta_optional(mut store: LS, mut sm: SM) -> Result<(), StorageError<C>> {
         tracing::info!("--- optional snapshot builder may or may not be available");
         {
@@ -1244,6 +1283,7 @@ where
         Ok(())
     }
 
+    /// Test apply_single applies a single log entry to state machine.
     pub async fn apply_single(mut store: LS, mut sm: SM) -> Result<(), StorageError<C>> {
         let (last_applied, _) = sm.applied_state().await?;
         assert_eq!(last_applied, None,);
@@ -1293,6 +1333,7 @@ where
         Ok(())
     }
 
+    /// Test apply_multiple applies multiple log entries to state machine.
     pub async fn apply_multiple(mut store: LS, mut sm: SM) -> Result<(), StorageError<C>> {
         let (last_applied, _) = sm.applied_state().await?;
         assert_eq!(last_applied, None,);
@@ -1365,6 +1406,7 @@ where
         Ok(())
     }
 
+    /// Helper to feed 10 log entries and vote.
     pub async fn feed_10_logs_vote_self(sto: &mut LS) -> Result<(), StorageError<C>> {
         append(sto, [blank_ent_0::<C>(0, 0)]).await?;
 
@@ -1377,6 +1419,7 @@ where
         Ok(())
     }
 
+    /// Helper to set default vote.
     pub async fn default_vote(sto: &mut LS) -> Result<(), StorageError<C>> {
         sto.save_vote(&VoteOf::<C>::from_term_node_id(1u64.into(), NODE_ID.into())).await?;
 

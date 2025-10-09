@@ -47,6 +47,7 @@ use crate::type_config::alias::LogIdOf;
 pub struct Entry<C>
 where C: RaftTypeConfig
 {
+    /// The log ID uniquely identifying this entry.
     pub log_id: LogIdOf<C>,
 
     /// This entry's payload.
