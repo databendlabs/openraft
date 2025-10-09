@@ -15,12 +15,19 @@ use crate::vote::raft_vote::RaftVoteExt;
 pub enum Metric<C>
 where C: RaftTypeConfig
 {
+    /// The current term.
     Term(C::Term),
+    /// The current vote state.
     Vote(VoteOf<C>),
+    /// The index of the last log entry.
     LastLogIndex(Option<u64>),
+    /// The last applied log ID.
     Applied(Option<LogIdOf<C>>),
+    /// The index of the last applied log entry.
     AppliedIndex(Option<u64>),
+    /// The last snapshot log ID.
     Snapshot(Option<LogIdOf<C>>),
+    /// The last purged log ID.
     Purged(Option<LogIdOf<C>>),
 }
 

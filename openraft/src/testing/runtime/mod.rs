@@ -1,5 +1,7 @@
 //! Suite for testing implementations of [`AsyncRuntime`].
 
+#![allow(missing_docs)]
+
 use std::pin::Pin;
 use std::pin::pin;
 use std::sync::Arc;
@@ -23,7 +25,6 @@ use crate::type_config::async_runtime::oneshot::Oneshot;
 use crate::type_config::async_runtime::oneshot::OneshotSender;
 use crate::type_config::async_runtime::watch::Watch;
 
-/// Test suite to ensure a runtime impl works as expected.
 ///
 /// ```rust,ignore
 /// struct MyCustomRuntime;

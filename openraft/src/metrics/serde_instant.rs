@@ -51,10 +51,12 @@ where I: Instant
 impl<I> SerdeInstant<I>
 where I: Instant
 {
+    /// Create a new SerdeInstant wrapping the given Instant.
     pub fn new(inner: I) -> Self {
         Self { inner }
     }
 
+    /// Extract the inner Instant value.
     pub fn into_inner(self) -> I {
         self.inner
     }

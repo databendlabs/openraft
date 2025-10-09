@@ -10,7 +10,9 @@ use crate::type_config::alias::VoteOf;
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct VoteRequest<C: RaftTypeConfig> {
+    /// The candidate's vote requesting support.
     pub vote: VoteOf<C>,
+    /// The candidate's last log id.
     pub last_log_id: Option<LogIdOf<C>>,
 }
 
@@ -25,6 +27,7 @@ where C: RaftTypeConfig
 impl<C> VoteRequest<C>
 where C: RaftTypeConfig
 {
+    /// Create a new vote request.
     pub fn new(vote: VoteOf<C>, last_log_id: Option<LogIdOf<C>>) -> Self {
         Self { vote, last_log_id }
     }
@@ -51,6 +54,7 @@ pub struct VoteResponse<C: RaftTypeConfig> {
 impl<C> VoteResponse<C>
 where C: RaftTypeConfig
 {
+    /// Create a new vote response.
     pub fn new(vote: impl Borrow<VoteOf<C>>, last_log_id: Option<LogIdOf<C>>, granted: bool) -> Self {
         Self {
             vote: vote.borrow().clone(),
