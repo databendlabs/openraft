@@ -14,9 +14,9 @@ use crate::raft::ClientWriteResponse;
 use crate::raft::ClientWriteResult;
 use crate::raft::linearizable_read::Linearizer;
 use crate::raft::raft_inner::RaftInner;
-use crate::raft::responder::Responder;
+use crate::raft::responder::ResponderBuilder;
 use crate::type_config::TypeConfigExt;
-use crate::type_config::alias::ResponderOf;
+use crate::type_config::alias::ResponderBuilderOf;
 use crate::type_config::alias::ResponderReceiverOf;
 
 /// Provides application-facing APIs for interacting with the Raft system.
@@ -68,7 +68,7 @@ where C: RaftTypeConfig
     #[since(version = "0.10.0")]
     #[tracing::instrument(level = "debug", skip(self, app_data))]
     pub(crate) async fn client_write_ff(&self, app_data: C::D) -> Result<ResponderReceiverOf<C>, Fatal<C>> {
-        let (app_data, tx, rx) = ResponderOf::<C>::from_app_data(app_data);
+        let (tx, rx) = ResponderBuilderOf::<C>::build(&app_data);
 
         self.inner.send_msg(RaftMsg::ClientWriteRequest { app_data, tx }).await?;
 
