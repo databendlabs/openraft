@@ -367,6 +367,7 @@ where C: RaftTypeConfig
         }
     }
 
+    /// Get the snapshot ID for this streaming snapshot.
     pub fn snapshot_id(&self) -> &SnapshotId {
         &self.snapshot_id
     }

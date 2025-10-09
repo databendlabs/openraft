@@ -14,8 +14,10 @@ use crate::error::into_ok::into_ok;
 pub trait DecomposeResult<C, R, OuterError>
 where C: RaftTypeConfig
 {
+    /// The inner error type extracted from the composite error.
     type InnerError;
 
+    /// Decompose a composite error into its inner and outer components.
     fn decompose(self) -> Result<Result<R, Self::InnerError>, OuterError>;
 
     /// Convert `Result<R, CompositeErr>`

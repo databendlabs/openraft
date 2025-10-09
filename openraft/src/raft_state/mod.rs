@@ -194,6 +194,7 @@ where C: RaftTypeConfig
         self.vote.last_update()
     }
 
+    /// Get the last committed log ID.
     pub fn committed(&self) -> Option<&LogId<C>> {
         self.apply_progress().accepted()
     }

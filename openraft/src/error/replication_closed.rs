@@ -9,6 +9,7 @@ pub struct ReplicationClosed {
 }
 
 impl ReplicationClosed {
+    /// Create a new ReplicationClosed error with the given reason.
     pub fn new(reason: impl ToString) -> Self {
         Self {
             reason: reason.to_string(),

@@ -7,11 +7,16 @@ pub use try_recv_error::TryRecvError;
 use crate::OptionalSend;
 use crate::OptionalSync;
 
+/// Unbounded multi-producer, single-consumer channel.
 pub trait MpscUnbounded: Sized + OptionalSend {
+    /// The sender type for this unbounded MPSC channel.
     type Sender<T: OptionalSend>: MpscUnboundedSender<Self, T>;
+    /// The receiver type for this unbounded MPSC channel.
     type Receiver<T: OptionalSend>: MpscUnboundedReceiver<T>;
+    /// The weak sender type for this unbounded MPSC channel.
     type WeakSender<T: OptionalSend>: MpscUnboundedWeakSender<Self, T>;
 
+    /// Creates an unbounded MPSC channel for communicating between asynchronous tasks.
     fn channel<T: OptionalSend>() -> (Self::Sender<T>, Self::Receiver<T>);
 }
 

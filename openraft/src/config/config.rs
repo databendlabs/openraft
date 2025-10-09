@@ -335,6 +335,19 @@ impl Config {
     /// Build a `Config` instance from a series of command line arguments.
     ///
     /// The first element in `args` must be the application name.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use openraft::Config;
+    ///
+    /// let config = Config::build(&[
+    ///     "myapp",
+    ///     "--election-timeout-min", "300",
+    ///     "--election-timeout-max", "500",
+    /// ])?;
+    /// # Ok::<(), openraft::ConfigError>(())
+    /// ```
     pub fn build(args: &[&str]) -> Result<Config, ConfigError> {
         let config = <Self as Parser>::try_parse_from(args).map_err(|e| ConfigError::ParseError {
             source: AnyError::from(&e),

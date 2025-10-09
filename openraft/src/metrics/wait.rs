@@ -15,12 +15,14 @@ use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::VoteOf;
 use crate::type_config::alias::WatchReceiverOf;
 
-// Error variants related to metrics.
+/// Error variants related to waiting for metrics conditions.
 #[derive(Debug, thiserror::Error)]
 pub enum WaitError {
+    /// Timeout occurred while waiting for a condition.
     #[error("timeout after {0:?} when {1}")]
     Timeout(Duration, String),
 
+    /// Raft node is shutting down.
     #[error("raft is shutting down")]
     ShuttingDown,
 }
@@ -28,7 +30,9 @@ pub enum WaitError {
 /// Wait is a wrapper of RaftMetrics channel that impls several utils to wait for metrics to satisfy
 /// some condition.
 pub struct Wait<C: RaftTypeConfig> {
+    /// The timeout duration for waiting operations.
     pub timeout: Duration,
+    /// The metrics receiver channel.
     pub rx: WatchReceiverOf<C, RaftMetrics<C>>,
 }
 

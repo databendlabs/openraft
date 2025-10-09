@@ -9,10 +9,15 @@ pub(crate) mod tokio_impls {
     mod tokio_runtime;
     pub use tokio_runtime::TokioRuntime;
 }
+/// Bounded MPSC channel traits and implementations.
 pub mod mpsc;
+/// Unbounded MPSC channel traits and implementations.
 pub mod mpsc_unbounded;
+/// Async mutex traits and implementations.
 pub mod mutex;
+/// Oneshot channel traits and implementations.
 pub mod oneshot;
+/// Watch channel traits and implementations.
 pub mod watch;
 
 use std::fmt::Debug;
@@ -104,13 +109,18 @@ pub trait AsyncRuntime: Debug + Default + PartialEq + Eq + OptionalSend + Option
     /// sent to another thread.
     fn thread_rng() -> Self::ThreadLocalRng;
 
+    /// The bounded MPSC channel implementation.
     type Mpsc: Mpsc;
 
+    /// The unbounded MPSC channel implementation.
     type MpscUnbounded: MpscUnbounded;
 
+    /// The watch channel implementation.
     type Watch: Watch;
 
+    /// The oneshot channel implementation.
     type Oneshot: Oneshot;
 
+    /// The async mutex implementation.
     type Mutex<T: OptionalSend + 'static>: Mutex<T>;
 }

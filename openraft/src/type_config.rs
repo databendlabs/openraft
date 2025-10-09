@@ -154,62 +154,102 @@ pub mod alias {
     use crate::type_config::AsyncRuntime;
     use crate::vote::RaftLeaderId;
 
+    /// Type alias for application data.
     pub type DOf<C> = <C as RaftTypeConfig>::D;
+    /// Type alias for application response.
     pub type ROf<C> = <C as RaftTypeConfig>::R;
+    /// Type alias for application data (alternative name).
     pub type AppDataOf<C> = <C as RaftTypeConfig>::D;
+    /// Type alias for application response (alternative name).
     pub type AppResponseOf<C> = <C as RaftTypeConfig>::R;
+    /// Type alias for node ID.
     pub type NodeIdOf<C> = <C as RaftTypeConfig>::NodeId;
+    /// Type alias for node.
     pub type NodeOf<C> = <C as RaftTypeConfig>::Node;
+    /// Type alias for term.
     pub type TermOf<C> = <C as RaftTypeConfig>::Term;
+    /// Type alias for leader ID.
     pub type LeaderIdOf<C> = <C as RaftTypeConfig>::LeaderId;
+    /// Type alias for vote.
     pub type VoteOf<C> = <C as RaftTypeConfig>::Vote;
+    /// Type alias for log entry.
     pub type EntryOf<C> = <C as RaftTypeConfig>::Entry;
+    /// Type alias for snapshot data.
     pub type SnapshotDataOf<C> = <C as RaftTypeConfig>::SnapshotData;
+    /// Type alias for async runtime.
     pub type AsyncRuntimeOf<C> = <C as RaftTypeConfig>::AsyncRuntime;
+    /// Type alias for responder.
     pub type ResponderOf<C> = <C as RaftTypeConfig>::Responder;
+    /// Type alias for responder receiver.
     pub type ResponderReceiverOf<C> = <ResponderOf<C> as Responder<C>>::Receiver;
 
     type Rt<C> = AsyncRuntimeOf<C>;
 
+    /// Type alias for async runtime join error.
     pub type JoinErrorOf<C> = <Rt<C> as AsyncRuntime>::JoinError;
+    /// Type alias for async runtime join handle.
     pub type JoinHandleOf<C, T> = <Rt<C> as AsyncRuntime>::JoinHandle<T>;
+    /// Type alias for async runtime sleep future.
     pub type SleepOf<C> = <Rt<C> as AsyncRuntime>::Sleep;
+    /// Type alias for async runtime instant.
     pub type InstantOf<C> = <Rt<C> as AsyncRuntime>::Instant;
+    /// Type alias for async runtime timeout error.
     pub type TimeoutErrorOf<C> = <Rt<C> as AsyncRuntime>::TimeoutError;
+    /// Type alias for async runtime timeout future.
     pub type TimeoutOf<C, R, F> = <Rt<C> as AsyncRuntime>::Timeout<R, F>;
 
+    /// Type alias for oneshot channel implementation.
     pub type OneshotOf<C> = <Rt<C> as AsyncRuntime>::Oneshot;
+    /// Type alias for oneshot channel sender.
     pub type OneshotSenderOf<C, T> = <OneshotOf<C> as Oneshot>::Sender<T>;
+    /// Type alias for oneshot channel receiver error.
     pub type OneshotReceiverErrorOf<C> = <OneshotOf<C> as Oneshot>::ReceiverError;
+    /// Type alias for oneshot channel receiver.
     pub type OneshotReceiverOf<C, T> = <OneshotOf<C> as Oneshot>::Receiver<T>;
 
+    /// Type alias for bounded MPSC channel implementation.
     pub type MpscOf<C> = <Rt<C> as AsyncRuntime>::Mpsc;
 
     // MPSC bounded
     type MpscB<C> = MpscOf<C>;
 
+    /// Type alias for bounded MPSC channel sender.
     pub type MpscSenderOf<C, T> = <MpscB<C> as Mpsc>::Sender<T>;
+    /// Type alias for bounded MPSC channel receiver.
     pub type MpscReceiverOf<C, T> = <MpscB<C> as Mpsc>::Receiver<T>;
+    /// Type alias for bounded MPSC channel weak sender.
     pub type MpscWeakSenderOf<C, T> = <MpscB<C> as Mpsc>::WeakSender<T>;
 
+    /// Type alias for unbounded MPSC channel implementation.
     pub type MpscUnboundedOf<C> = <Rt<C> as AsyncRuntime>::MpscUnbounded;
 
     // MPSC unbounded
     type MpscUB<C> = MpscUnboundedOf<C>;
 
+    /// Type alias for unbounded MPSC channel sender.
     pub type MpscUnboundedSenderOf<C, T> = <MpscUB<C> as MpscUnbounded>::Sender<T>;
+    /// Type alias for unbounded MPSC channel receiver.
     pub type MpscUnboundedReceiverOf<C, T> = <MpscUB<C> as MpscUnbounded>::Receiver<T>;
+    /// Type alias for unbounded MPSC channel weak sender.
     pub type MpscUnboundedWeakSenderOf<C, T> = <MpscUB<C> as MpscUnbounded>::WeakSender<T>;
 
+    /// Type alias for watch channel implementation.
     pub type WatchOf<C> = <Rt<C> as AsyncRuntime>::Watch;
+    /// Type alias for watch channel sender.
     pub type WatchSenderOf<C, T> = <WatchOf<C> as watch::Watch>::Sender<T>;
+    /// Type alias for watch channel receiver.
     pub type WatchReceiverOf<C, T> = <WatchOf<C> as watch::Watch>::Receiver<T>;
 
+    /// Type alias for async mutex.
     pub type MutexOf<C, T> = <Rt<C> as AsyncRuntime>::Mutex<T>;
 
     // Usually used types
+    /// Type alias for log ID.
     pub type LogIdOf<C> = LogId<C>;
+    /// Type alias for committed leader ID.
     pub type CommittedLeaderIdOf<C> = <LeaderIdOf<C> as RaftLeaderId<C>>::Committed;
+    /// Type alias for entry payload.
     pub type EntryPayloadOf<C> = EntryPayload<C>;
+    /// Type alias for serializable instant.
     pub type SerdeInstantOf<C> = crate::metrics::SerdeInstant<InstantOf<C>>;
 }

@@ -3,6 +3,7 @@ use std::future::Future;
 use crate::OptionalSend;
 use crate::OptionalSync;
 
+/// A oneshot channel for sending a single value between asynchronous tasks.
 pub trait Oneshot {
     /// Type of a `oneshot` sender.
     type Sender<T: OptionalSend>: OneshotSender<T>;
@@ -25,6 +26,7 @@ pub trait Oneshot {
     where T: OptionalSend;
 }
 
+/// Send a value on a oneshot channel.
 pub trait OneshotSender<T>: OptionalSend + OptionalSync + Sized
 where T: OptionalSend
 {
