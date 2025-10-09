@@ -31,6 +31,7 @@ use std::fmt::Debug;
 use crate::Membership;
 use crate::RaftTypeConfig;
 
+/// Entry payload types for log entries.
 pub mod payload;
 pub(crate) mod raft_entry_ext;
 mod traits;
@@ -47,6 +48,7 @@ use crate::type_config::alias::LogIdOf;
 pub struct Entry<C>
 where C: RaftTypeConfig
 {
+    /// The log ID uniquely identifying this entry.
     pub log_id: LogIdOf<C>,
 
     /// This entry's payload.

@@ -17,6 +17,7 @@ where
     N: Node,
     NID: NodeId,
 {
+    /// Convert this type into a map of node IDs to nodes.
     fn into_nodes(self) -> BTreeMap<NID, N>;
 }
 

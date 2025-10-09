@@ -46,6 +46,7 @@ where C: RaftTypeConfig
 impl<C> SnapshotMeta<C>
 where C: RaftTypeConfig
 {
+    /// Get the signature of this snapshot metadata for comparison and identification.
     pub fn signature(&self) -> SnapshotSignature<C> {
         SnapshotSignature {
             last_log_id: self.last_log_id.clone(),

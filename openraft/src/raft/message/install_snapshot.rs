@@ -9,6 +9,7 @@ use crate::type_config::alias::VoteOf;
 #[derive(PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct InstallSnapshotRequest<C: RaftTypeConfig> {
+    /// The leader's current vote.
     pub vote: VoteOf<C>,
 
     /// Metadata of a snapshot: snapshot_id, last_log_ed membership, etc.
@@ -44,6 +45,7 @@ impl<C: RaftTypeConfig> fmt::Display for InstallSnapshotRequest<C> {
 #[display("{{vote:{}}}", vote)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct InstallSnapshotResponse<C: RaftTypeConfig> {
+    /// The responder's current vote.
     pub vote: VoteOf<C>,
 }
 
@@ -54,10 +56,12 @@ pub struct InstallSnapshotResponse<C: RaftTypeConfig> {
 #[display("SnapshotResponse{{vote:{}}}", vote)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct SnapshotResponse<C: RaftTypeConfig> {
+    /// The responder's current vote.
     pub vote: VoteOf<C>,
 }
 
 impl<C: RaftTypeConfig> SnapshotResponse<C> {
+    /// Create a new snapshot response with the given vote.
     pub fn new(vote: VoteOf<C>) -> Self {
         Self { vote }
     }

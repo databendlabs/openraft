@@ -14,6 +14,7 @@ use crate::type_config::alias::MpscUnboundedWeakSenderOf;
 use crate::type_config::alias::OneshotSenderOf;
 use crate::type_config::async_runtime::oneshot::OneshotSender;
 
+/// Type alias for log flush callback (deprecated).
 #[deprecated(since = "0.10.0", note = "Use `IOFlushed` instead")]
 pub type LogFlushed<C> = IOFlushed<C>;
 
@@ -39,6 +40,7 @@ where C: RaftTypeConfig
         }
     }
 
+    /// Report log io completion event (deprecated).
     #[deprecated(since = "0.10.0", note = "Use `io_completed` instead")]
     pub fn log_io_completed(self, result: Result<(), io::Error>) {
         self.io_completed(result)
