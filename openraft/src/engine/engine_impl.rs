@@ -258,7 +258,7 @@ where C: RaftTypeConfig
     ///
     /// [`C::ResponderBuilder`]: RaftTypeConfig::ResponderBuilder
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn get_leader_handler_or_reject<R>(&mut self, tx: Option<R>) -> Option<(LeaderHandler<C>, Option<R>)>
+    pub(crate) fn get_leader_handler_or_reject<R>(&mut self, tx: Option<R>) -> Option<(LeaderHandler<'_, C>, Option<R>)>
     where R: Responder<ClientWriteResult<C>> {
         let res = self.leader_handler();
         let forward_err = match res {
@@ -752,7 +752,7 @@ where C: RaftTypeConfig
 
     // --- handlers ---
 
-    pub(crate) fn vote_handler(&mut self) -> VoteHandler<C> {
+    pub(crate) fn vote_handler(&mut self) -> VoteHandler<'_, C> {
         VoteHandler {
             config: &mut self.config,
             state: &mut self.state,
@@ -762,7 +762,7 @@ where C: RaftTypeConfig
         }
     }
 
-    pub(crate) fn log_handler(&mut self) -> LogHandler<C> {
+    pub(crate) fn log_handler(&mut self) -> LogHandler<'_, C> {
         LogHandler {
             config: &mut self.config,
             state: &mut self.state,
@@ -770,14 +770,14 @@ where C: RaftTypeConfig
         }
     }
 
-    pub(crate) fn snapshot_handler(&mut self) -> SnapshotHandler<C> {
+    pub(crate) fn snapshot_handler(&mut self) -> SnapshotHandler<'_, '_, C> {
         SnapshotHandler {
             state: &mut self.state,
             output: &mut self.output,
         }
     }
 
-    pub(crate) fn leader_handler(&mut self) -> Result<LeaderHandler<C>, ForwardToLeader<C>> {
+    pub(crate) fn leader_handler(&mut self) -> Result<LeaderHandler<'_, C>, ForwardToLeader<C>> {
         let leader = match self.leader.as_mut() {
             None => {
                 tracing::debug!("this node is NOT a leader: {:?}", self.state.server_state);
@@ -801,7 +801,7 @@ where C: RaftTypeConfig
         })
     }
 
-    pub(crate) fn replication_handler(&mut self) -> ReplicationHandler<C> {
+    pub(crate) fn replication_handler(&mut self) -> ReplicationHandler<'_, C> {
         let leader = match self.leader.as_mut() {
             None => {
                 unreachable!("There is no leader, cannot handle replication");
@@ -817,7 +817,7 @@ where C: RaftTypeConfig
         }
     }
 
-    pub(crate) fn following_handler(&mut self) -> FollowingHandler<C> {
+    pub(crate) fn following_handler(&mut self) -> FollowingHandler<'_, C> {
         debug_assert!(self.leader.is_none());
 
         let leader_vote = self.state.vote_ref().clone();
@@ -835,13 +835,13 @@ where C: RaftTypeConfig
         }
     }
 
-    pub(crate) fn server_state_handler(&mut self) -> ServerStateHandler<C> {
+    pub(crate) fn server_state_handler(&mut self) -> ServerStateHandler<'_, C> {
         ServerStateHandler {
             config: &self.config,
             state: &mut self.state,
         }
     }
-    pub(crate) fn establish_handler(&mut self) -> EstablishHandler<C> {
+    pub(crate) fn establish_handler(&mut self) -> EstablishHandler<'_, C> {
         EstablishHandler {
             config: &mut self.config,
             leader: &mut self.leader,

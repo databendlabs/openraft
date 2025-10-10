@@ -90,7 +90,7 @@ where
     fn quorum_set(&self) -> &QS;
 
     /// Iterate over all id and values, voters first followed by learners.
-    fn iter(&self) -> Iter<(ID, V)>;
+    fn iter(&self) -> Iter<'_, (ID, V)>;
 
     /// Build a new instance with the new quorum set, inheriting progress data from `self`.
     fn upgrade_quorum_set(
@@ -259,7 +259,7 @@ where
         0
     }
 
-    pub(crate) fn iter_mut(&mut self) -> IterMut<(ID, V)> {
+    pub(crate) fn iter_mut(&mut self) -> IterMut<'_, (ID, V)> {
         self.vector.iter_mut()
     }
 
@@ -272,7 +272,7 @@ where
         &self.stat
     }
 
-    pub(crate) fn display_with<Fmt>(&self, f: Fmt) -> DisplayVecProgress<ID, V, P, QS, Fmt>
+    pub(crate) fn display_with<Fmt>(&self, f: Fmt) -> DisplayVecProgress<'_, ID, V, P, QS, Fmt>
     where Fmt: Fn(&mut Formatter<'_>, &ID, &V) -> std::fmt::Result {
         DisplayVecProgress { inner: self, f }
     }
@@ -411,7 +411,7 @@ where
         &self.quorum_set
     }
 
-    fn iter(&self) -> Iter<(ID, V)> {
+    fn iter(&self) -> Iter<'_, (ID, V)> {
         self.vector.as_slice().iter()
     }
 

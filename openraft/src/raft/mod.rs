@@ -422,7 +422,7 @@ where C: RaftTypeConfig
     /// raft.runtime_config().tick(true);
     /// raft.runtime_config().elect(true);
     /// ```
-    pub fn runtime_config(&self) -> RuntimeConfigHandle<C> {
+    pub fn runtime_config(&self) -> RuntimeConfigHandle<'_, C> {
         RuntimeConfigHandle::new(self.inner.as_ref())
     }
 
@@ -440,15 +440,15 @@ where C: RaftTypeConfig
     /// - [`ProtocolApi::begin_receiving_snapshot`]
     /// - [`ProtocolApi::install_full_snapshot`]
     /// - [`ProtocolApi::handle_transfer_leader`]
-    pub(crate) fn protocol_api(&self) -> ProtocolApi<C> {
+    pub(crate) fn protocol_api(&self) -> ProtocolApi<'_, C> {
         ProtocolApi::new(self.inner.as_ref())
     }
 
-    pub(crate) fn app_api(&self) -> AppApi<C> {
+    pub(crate) fn app_api(&self) -> AppApi<'_, C> {
         AppApi::new(self.inner.as_ref())
     }
 
-    pub(crate) fn management_api(&self) -> ManagementApi<C> {
+    pub(crate) fn management_api(&self) -> ManagementApi<'_, C> {
         ManagementApi::new(self.inner.as_ref())
     }
 
@@ -460,7 +460,7 @@ where C: RaftTypeConfig
     /// let raft = Raft::new(...).await?;
     /// raft.trigger().elect().await?;
     /// ```
-    pub fn trigger(&self) -> Trigger<C> {
+    pub fn trigger(&self) -> Trigger<'_, C> {
         Trigger::new(self.inner.as_ref())
     }
 

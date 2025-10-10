@@ -31,7 +31,7 @@ where
     K: fmt::Display,
     V: fmt::Display,
 {
-    fn display(&self) -> DisplayBTreeMap<K, V> {
+    fn display(&self) -> DisplayBTreeMap<'_, K, V> {
         DisplayBTreeMap(self)
     }
 }

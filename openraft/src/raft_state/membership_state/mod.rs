@@ -208,7 +208,7 @@ where C: RaftTypeConfig
         &self.effective
     }
 
-    pub(crate) fn change_handler(&self) -> ChangeHandler<C> {
+    pub(crate) fn change_handler(&self) -> ChangeHandler<'_, C> {
         ChangeHandler { state: self }
     }
 }

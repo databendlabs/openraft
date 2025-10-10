@@ -28,7 +28,7 @@ pub(crate) trait DisplayBTreeSetExt<'a, T: fmt::Display> {
 impl<T> DisplayBTreeSetExt<'_, T> for BTreeSet<T>
 where T: fmt::Display
 {
-    fn display(&self) -> DisplayBTreeSet<T> {
+    fn display(&self) -> DisplayBTreeSet<'_, T> {
         DisplayBTreeSet(self)
     }
 }

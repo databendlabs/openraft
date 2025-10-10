@@ -350,7 +350,7 @@ where C: RaftTypeConfig
         memberships
     }
 
-    fn log_handler(&mut self) -> LogHandler<C> {
+    fn log_handler(&mut self) -> LogHandler<'_, C> {
         LogHandler {
             config: self.config,
             state: self.state,
@@ -358,14 +358,14 @@ where C: RaftTypeConfig
         }
     }
 
-    fn snapshot_handler(&mut self) -> SnapshotHandler<C> {
+    fn snapshot_handler(&mut self) -> SnapshotHandler<'_, '_, C> {
         SnapshotHandler {
             state: self.state,
             output: self.output,
         }
     }
 
-    fn server_state_handler(&mut self) -> ServerStateHandler<C> {
+    fn server_state_handler(&mut self) -> ServerStateHandler<'_, C> {
         ServerStateHandler {
             config: self.config,
             state: self.state,

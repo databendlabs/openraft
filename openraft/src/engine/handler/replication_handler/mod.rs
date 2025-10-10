@@ -419,7 +419,7 @@ where C: RaftTypeConfig
         }
     }
 
-    pub(crate) fn log_handler(&mut self) -> LogHandler<C> {
+    pub(crate) fn log_handler(&mut self) -> LogHandler<'_, C> {
         LogHandler {
             config: self.config,
             state: self.state,
