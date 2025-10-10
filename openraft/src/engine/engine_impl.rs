@@ -258,8 +258,13 @@ where C: RaftTypeConfig
     ///
     /// [`C::ResponderBuilder`]: RaftTypeConfig::ResponderBuilder
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn get_leader_handler_or_reject<R>(&mut self, tx: Option<R>) -> Option<(LeaderHandler<'_, C>, Option<R>)>
-    where R: Responder<ClientWriteResult<C>> {
+    pub(crate) fn get_leader_handler_or_reject<R>(
+        &mut self,
+        tx: Option<R>,
+    ) -> Option<(LeaderHandler<'_, C>, Option<R>)>
+    where
+        R: Responder<ClientWriteResult<C>>,
+    {
         let res = self.leader_handler();
         let forward_err = match res {
             Ok(lh) => {

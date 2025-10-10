@@ -33,8 +33,15 @@ let store = RocksStore::new(path)?;
 - State machine data in separate column family
 - Vote and metadata persisted independently
 
+**Asynchronous I/O operations**:
+- WAL flush operations run in spawned tasks to avoid blocking the async runtime
+- `save_vote()` and `append_to_log()` spawn async tasks for disk persistence
+- Callbacks receive actual flush results for proper error propagation
+- Log truncation (`purge()`) doesn't require immediate persistence
+
 **Key Code Locations**:
 - Storage implementation: `src/lib.rs`
+- Log storage with async WAL flush: `src/log_store.rs`
 - Type definitions: See parent example for network and client implementations
 
 ## Comparison

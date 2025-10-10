@@ -43,6 +43,8 @@ where P: AsRef<Path> {
     let config = Config {
         heartbeat_interval: 250,
         election_timeout_min: 299,
+        // RocksDB flush and send IO notification in another task, which does not guarantee the order.
+        allow_io_notification_reorder: Some(true),
         ..Default::default()
     };
 

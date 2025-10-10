@@ -19,9 +19,11 @@ use openraft::OptionalSend;
 use openraft::RaftLogReader;
 use openraft::RaftTypeConfig;
 use openraft::StorageError;
+use openraft::TokioRuntime;
 use rocksdb::ColumnFamily;
 use rocksdb::Direction;
 use rocksdb::DB;
+use tokio::task::spawn_blocking;
 
 #[derive(Debug, Clone)]
 pub struct RocksLogStore<C>
@@ -115,8 +117,9 @@ where C: RaftTypeConfig
     }
 }
 
+// It requires TokioRuntime because it uses spawn_blocking internally.
 impl<C> RaftLogStorage<C> for RocksLogStore<C>
-where C: RaftTypeConfig
+where C: RaftTypeConfig<AsyncRuntime = TokioRuntime>
 {
     type LogReader = Self;
 
@@ -151,7 +154,14 @@ where C: RaftTypeConfig
 
     async fn save_vote(&mut self, vote: &VoteOf<C>) -> Result<(), StorageError<C>> {
         self.put_meta::<meta::Vote>(vote)?;
-        self.db.flush_wal(true).map_err(|e| StorageError::write_vote(&e))?;
+
+        // Vote must be persisted to disk before returning.
+        let db = self.db.clone();
+        spawn_blocking(move || db.flush_wal(true))
+            .await
+            .map_err(|e| StorageError::write_vote(&std::io::Error::other(e.to_string())))?
+            .map_err(|e| StorageError::write_vote(&e))?;
+
         Ok(())
     }
 
@@ -169,10 +179,18 @@ where C: RaftTypeConfig
                 .map_err(|e| StorageError::write_logs(&e))?;
         }
 
-        self.db.flush_wal(true).map_err(|e| StorageError::write_logs(&e))?;
+        // Make sure the logs are persisted to disk before invoking the callback.
+        //
+        // But the above `pub_cf()` must be called in this function, not in another task.
+        // Because when the function returns, it requires the log entries can be read.
+        let db = self.db.clone();
+        let handle = spawn_blocking(move || {
+            let res = db.flush_wal(true).map_err(std::io::Error::other);
+            callback.io_completed(res);
+        });
+        drop(handle);
 
-        // If there is error, the callback will be dropped.
-        callback.io_completed(Ok(()));
+        // Return now, and the callback will be invoked later when IO is done.
         Ok(())
     }
 
@@ -183,7 +201,7 @@ where C: RaftTypeConfig
         let to = id_to_bin(0xff_ff_ff_ff_ff_ff_ff_ff);
         self.db.delete_range_cf(self.cf_logs(), &from, &to).map_err(|e| StorageError::write_logs(&e))?;
 
-        self.db.flush_wal(true).map_err(|e| StorageError::write_logs(&e))?;
+        // Truncating does not need to be persisted.
         Ok(())
     }
 
