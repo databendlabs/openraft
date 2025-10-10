@@ -116,9 +116,9 @@ where C: RaftTypeConfig
     fn default() -> Self {
         Self {
             building_snapshot: false,
-            log_progress: Valid::new(IOProgress::new_synchronized(None, LOG_PROGRESS_NAME)),
-            apply_progress: Valid::new(IOProgress::new_synchronized(None, APPLY_PROGRESS_NAME)),
-            snapshot: Valid::new(IOProgress::new_synchronized(None, SNAPSHOT_PROGRESS_NAME)),
+            log_progress: Valid::new(IOProgress::new_synchronized(None, LOG_PROGRESS_NAME, false)),
+            apply_progress: Valid::new(IOProgress::new_synchronized(None, APPLY_PROGRESS_NAME, false)),
+            snapshot: Valid::new(IOProgress::new_synchronized(None, SNAPSHOT_PROGRESS_NAME, false)),
             purged: None,
         }
     }
@@ -151,17 +151,34 @@ where C: RaftTypeConfig
 impl<C> IOState<C>
 where C: RaftTypeConfig
 {
+    /// Create a new `IOState` with the given initial values.
+    ///
+    /// - `allow_io_notification_reorder`: Whether to allow IO completion notifications to arrive
+    ///   out of order.
     pub(crate) fn new(
         vote: &VoteOf<C>,
         applied: Option<LogIdOf<C>>,
         snapshot: Option<LogIdOf<C>>,
         purged: Option<LogIdOf<C>>,
+        allow_io_notification_reorder: bool,
     ) -> Self {
         Self {
             building_snapshot: false,
-            log_progress: Valid::new(IOProgress::new_synchronized(Some(IOId::new(vote)), LOG_PROGRESS_NAME)),
-            apply_progress: Valid::new(IOProgress::new_synchronized(applied, APPLY_PROGRESS_NAME)),
-            snapshot: Valid::new(IOProgress::new_synchronized(snapshot, SNAPSHOT_PROGRESS_NAME)),
+            log_progress: Valid::new(IOProgress::new_synchronized(
+                Some(IOId::new(vote)),
+                LOG_PROGRESS_NAME,
+                allow_io_notification_reorder,
+            )),
+            apply_progress: Valid::new(IOProgress::new_synchronized(
+                applied,
+                APPLY_PROGRESS_NAME,
+                allow_io_notification_reorder,
+            )),
+            snapshot: Valid::new(IOProgress::new_synchronized(
+                snapshot,
+                SNAPSHOT_PROGRESS_NAME,
+                allow_io_notification_reorder,
+            )),
             purged,
         }
     }
