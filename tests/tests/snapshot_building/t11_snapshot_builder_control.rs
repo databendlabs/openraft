@@ -227,9 +227,14 @@ async fn sm_refuse_with_logs_since_last_policy() -> Result<()> {
         sm.allow_build_snapshot(false);
     }
 
-    tracing::info!(log_index, "--- apply 5 logs to trigger first snapshot attempt");
-    log_index += router.client_request_many(0, "0", 5).await?;
-    router.wait(&0, timeout()).applied_index(Some(log_index), "applied 5 logs").await?;
+    tracing::info!(
+        log_index,
+        "--- apply upto index=4 logs to trigger first snapshot attempt"
+    );
+    log_index += router.client_request_many(0, "0", 4 - log_index as usize).await?;
+    router.wait(&0, timeout()).applied_index(Some(log_index), "applied upto index=4 logs").await?;
+
+    tracing::info!(log_index, "--- applied upto index=4 logs");
 
     tokio::time::sleep(Duration::from_millis(300)).await;
 
