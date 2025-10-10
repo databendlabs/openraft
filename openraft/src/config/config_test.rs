@@ -190,3 +190,31 @@ fn test_config_allow_log_reversion() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn test_config_allow_io_notification_reorder() -> anyhow::Result<()> {
+    let config = Config::build(&["foo", "--allow-io-notification-reorder=false"])?;
+    assert_eq!(Some(false), config.allow_io_notification_reorder);
+
+    let config = Config::build(&["foo", "--allow-io-notification-reorder=true"])?;
+    assert_eq!(Some(true), config.allow_io_notification_reorder);
+
+    let config = Config::build(&["foo", "--allow-io-notification-reorder"])?;
+    assert_eq!(Some(true), config.allow_io_notification_reorder);
+
+    let mut config = Config::build(&["foo"])?;
+    assert_eq!(None, config.allow_io_notification_reorder);
+
+    // test get_allow_io_notification_reorder method
+
+    config.allow_io_notification_reorder = None;
+    assert_eq!(false, config.get_allow_io_notification_reorder());
+
+    config.allow_io_notification_reorder = Some(true);
+    assert_eq!(true, config.get_allow_io_notification_reorder());
+
+    config.allow_io_notification_reorder = Some(false);
+    assert_eq!(false, config.get_allow_io_notification_reorder());
+
+    Ok(())
+}
