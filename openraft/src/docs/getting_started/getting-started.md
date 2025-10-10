@@ -78,26 +78,30 @@ and it generates the following type definitions:
 pub struct TypeConfig {}
 
 impl openraft::RaftTypeConfig for TypeConfig {
-    type D            = Request;
-    type R            = Response;
+    type D                = Request;
+    type R                = Response;
 
     // Following are absent in `declare_raft_types` and filled with default values:
-    type NodeId       = u64;
-    type Node         = openraft::impls::BasicNode;
-    type Entry        = openraft::impls::Entry<TypeConfig>;
+    type NodeId           = u64;
+    type Node             = openraft::impls::BasicNode;
+    type Entry            = openraft::impls::Entry<TypeConfig>;
     type ResponderBuilder = openraft::impls::OneshotResponder<TypeConfig>,
-    type AsyncRuntime = openraft::impls::TokioRuntime;
-    type SnapshotData = Cursor<Vec<u8>>;
+    type AsyncRuntime     = openraft::impls::TokioRuntime;
+    type SnapshotData     = Cursor<Vec<u8>>;
 }
 ```
 
 > In the above `TypeConfig` declaration,
-> - `NodeId` is the identifier of a node in the cluster, which implements [`NodeId`] trait.
-> - `Node` is the node type that contains the node's address, etc., which implements [`Node`] trait.
+> - `NodeId` is the identifier of a node in the cluster, which implements
+>   [`NodeId`] trait.
+> - `Node` is the node type that contains the node's address, etc., which
+>   implements [`Node`] trait.
 > - `Entry` is the log entry type that will be stored in the raft log,
 >   which includes the payload and log id, which implements [`RaftEntry`] trait.
-> - `ResponderBuilder` is the type that will be used to create a Responder to send response to the client, which implements [`ResponderBuilder`] trait.
-> - `AsyncRuntime` is the async runtime that will be used to run the raft instance, which implements [`AsyncRuntime`] trait.
+> - `ResponderBuilder` is the type that will be used to create a Responder to
+>   send response to the client, which implements [`ResponderBuilder`] trait.
+> - `AsyncRuntime` is the async runtime that will be used to run the raft
+>   instance, which implements [`AsyncRuntime`] trait.
 > - `SnapshotData` is the type that will be used to store the snapshot data.
 
 Openraft provides default implementations for mostly used types:
