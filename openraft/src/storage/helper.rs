@@ -3,6 +3,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyerror::AnyError;
+use openraft_macros::since;
 use validit::Valid;
 
 use crate::EffectiveMembership;
@@ -36,6 +37,8 @@ where
 {
     pub(crate) log_store: &'a mut LS,
     pub(crate) state_machine: &'a mut SM,
+    /// Whether to allow IO completion notifications to arrive out of order.
+    allow_io_notification_reorder: bool,
     _p: PhantomData<C>,
 }
 
@@ -51,8 +54,16 @@ where
         Self {
             log_store: sto,
             state_machine: sm,
+            allow_io_notification_reorder: false,
             _p: Default::default(),
         }
+    }
+
+    /// Configure whether to allow IO completion notifications to arrive out of order.
+    #[since(version = "0.10.0")]
+    pub fn with_allow_io_notification_reorder(mut self, allow_io_notification_reorder: bool) -> Self {
+        self.allow_io_notification_reorder = allow_io_notification_reorder;
+        self
     }
 
     // TODO: let RaftStore store node-id.
@@ -148,6 +159,7 @@ where
             last_applied.clone(),
             snapshot_meta.last_log_id.clone(),
             last_purged_log_id.clone(),
+            self.allow_io_notification_reorder,
         );
 
         let now = C::now();

@@ -7,6 +7,7 @@ use std::time::Duration;
 
 use anyerror::AnyError;
 use clap::Parser;
+use openraft_macros::since;
 use rand::Rng;
 
 use crate::AsyncRuntime;
@@ -276,6 +277,23 @@ pub struct Config {
            default_missing_value = "true"
     )]
     pub allow_log_reversion: Option<bool>,
+
+    /// Allow IO completion notifications to arrive out of order.
+    ///
+    /// When enabled, storage implementations may report IO completions non-monotonically.
+    /// For example, flushed entries `[5..6)` may notify before `[6..8)`.
+    ///
+    /// Enable this if your storage does not guarantee strictly ordered notifications.
+    ///
+    /// Default: `false` (detects out-of-order bugs by default)
+    ///
+    /// Since: 0.10.0
+    #[clap(long,
+           action = clap::ArgAction::Set,
+           num_args = 0..=1,
+           default_missing_value = "true"
+    )]
+    pub allow_io_notification_reorder: Option<bool>,
 }
 
 /// Updatable config for a raft runtime.
@@ -328,8 +346,17 @@ impl Config {
     /// detected.
     ///
     /// By default, it does not allow log reversion, because it might indicate a bug in the system.
+    #[since(version = "0.10.0")]
     pub(crate) fn get_allow_log_reversion(&self) -> bool {
         self.allow_log_reversion.unwrap_or(false)
+    }
+
+    /// Returns whether IO completion notifications can arrive out of order.
+    ///
+    /// Default: `false`
+    #[since(version = "0.10.0")]
+    pub(crate) fn get_allow_io_notification_reorder(&self) -> bool {
+        self.allow_io_notification_reorder.unwrap_or(false)
     }
 
     /// Build a `Config` instance from a series of command line arguments.

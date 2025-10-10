@@ -33,6 +33,14 @@ where T: PartialOrd + fmt::Debug
     submitted: Option<T>,
     flushed: Option<T>,
     name: &'static str,
+
+    /// Allow IO completion notifications to arrive out of order.
+    ///
+    /// When enabled, storage may report completions non-monotonically.
+    /// For example, `[5..6)` may notify before `[6..8)`.
+    ///
+    /// Disable to detect bugs if storage guarantees strictly ordered notifications.
+    allow_notification_reorder: bool,
 }
 
 impl<T> Validate for IOProgress<T>
@@ -67,19 +75,20 @@ where
     T: PartialOrd + fmt::Debug,
     T: fmt::Display,
 {
-    /// Create a new IOProgress with all three cursors (accepted, submitted, flushed) set to the
-    /// same value.
+    /// Create a new IOProgress with all cursors synchronized to the same value.
     ///
-    /// This creates a synchronized state where all IO operations (accepted, submitted, and flushed)
-    /// are considered complete up to the specified point. This is typically used for initialization
-    /// or when a snapshot is installed, ensuring all IO tracking is aligned.
-    pub(crate) fn new_synchronized(v: Option<T>, name: &'static str) -> Self
+    /// Used for initialization or snapshot installation to align all IO tracking.
+    ///
+    /// - `allow_notification_reorder`: Whether to allow IO completion notifications to arrive out
+    ///   of order.
+    pub(crate) fn new_synchronized(v: Option<T>, name: &'static str, allow_notification_reorder: bool) -> Self
     where T: Clone {
         Self {
             accepted: v.clone(),
             submitted: v.clone(),
             flushed: v.clone(),
             name,
+            allow_notification_reorder,
         }
     }
 

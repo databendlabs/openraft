@@ -1,4 +1,5 @@
 use std::error::Error;
+use std::fmt;
 
 use validit::Valid;
 use validit::Validate;
@@ -116,9 +117,9 @@ where C: RaftTypeConfig
     fn default() -> Self {
         Self {
             building_snapshot: false,
-            log_progress: Valid::new(IOProgress::new_synchronized(None, LOG_PROGRESS_NAME)),
-            apply_progress: Valid::new(IOProgress::new_synchronized(None, APPLY_PROGRESS_NAME)),
-            snapshot: Valid::new(IOProgress::new_synchronized(None, SNAPSHOT_PROGRESS_NAME)),
+            log_progress: new_progress(None, LOG_PROGRESS_NAME, false),
+            apply_progress: new_progress(None, APPLY_PROGRESS_NAME, false),
+            snapshot: new_progress(None, SNAPSHOT_PROGRESS_NAME, false),
             purged: None,
         }
     }
@@ -151,17 +152,24 @@ where C: RaftTypeConfig
 impl<C> IOState<C>
 where C: RaftTypeConfig
 {
+    /// Create a new `IOState` with the given initial values.
+    ///
+    /// - `allow_io_notification_reorder`: Whether to allow IO completion notifications to arrive
+    ///   out of order.
     pub(crate) fn new(
         vote: &VoteOf<C>,
         applied: Option<LogIdOf<C>>,
         snapshot: Option<LogIdOf<C>>,
         purged: Option<LogIdOf<C>>,
+        allow_io_notification_reorder: bool,
     ) -> Self {
+        let reorder = allow_io_notification_reorder;
+
         Self {
             building_snapshot: false,
-            log_progress: Valid::new(IOProgress::new_synchronized(Some(IOId::new(vote)), LOG_PROGRESS_NAME)),
-            apply_progress: Valid::new(IOProgress::new_synchronized(applied, APPLY_PROGRESS_NAME)),
-            snapshot: Valid::new(IOProgress::new_synchronized(snapshot, SNAPSHOT_PROGRESS_NAME)),
+            log_progress: new_progress(Some(IOId::new(vote)), LOG_PROGRESS_NAME, reorder),
+            apply_progress: new_progress(applied, APPLY_PROGRESS_NAME, reorder),
+            snapshot: new_progress(snapshot, SNAPSHOT_PROGRESS_NAME, reorder),
             purged,
         }
     }
@@ -189,4 +197,23 @@ where C: RaftTypeConfig
     pub(crate) fn purged(&self) -> Option<&LogIdOf<C>> {
         self.purged.as_ref()
     }
+}
+
+/// Create a new `IOProgress` wrapped in `Valid`.
+///
+/// The initial values for all three stages (accepted, submitted, flushed) are set to
+/// `initial_value`.
+fn new_progress<T>(
+    initial_value: Option<T>,
+    name: &'static str,
+    allow_notification_reorder: bool,
+) -> Valid<IOProgress<T>>
+where
+    T: PartialOrd + fmt::Debug,
+{
+    Valid::new(IOProgress::new_synchronized(
+        initial_value,
+        name,
+        allow_notification_reorder,
+    ))
 }
