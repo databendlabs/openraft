@@ -101,8 +101,14 @@ async fn test_cluster() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== init single node cluster");
     leader.init().await??;
 
-    println!("=== metrics after init");
-    leader.metrics().await?;
+    println!("=== get metrics after init, wait until leader is elected");
+    loop {
+        let metrics = leader.metrics().await?;
+        if metrics.current_leader == Some(1) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
 
     // --- 2. Add node 2 and 3 to the cluster as `Learner`, to let them start to receive log replication
     // from the        leader.
@@ -172,16 +178,16 @@ async fn test_cluster() -> Result<(), Box<dyn std::error::Error>> {
 
     // --- Read it on every node.
 
-    println!("=== read `foo` on node 1");
+    println!("=== read `foo=bar` on node 1");
     let x = leader.read(&("foo".to_string())).await?;
     assert_eq!("bar", x);
 
-    println!("=== read `foo` on node 2");
+    println!("=== read `foo=bar` on node 2");
     let client2 = ExampleClient::<TypeConfig>::new(2, get_addr(2));
     let x = client2.read(&("foo".to_string())).await?;
     assert_eq!("bar", x);
 
-    println!("=== read `foo` on node 3");
+    println!("=== read `foo=bar` on node 3");
     let client3 = ExampleClient::<TypeConfig>::new(3, get_addr(3));
     let x = client3.read(&("foo".to_string())).await?;
     assert_eq!("bar", x);
@@ -200,25 +206,25 @@ async fn test_cluster() -> Result<(), Box<dyn std::error::Error>> {
 
     // --- Read it on every node.
 
-    println!("=== read `foo` on node 1");
+    println!("=== read `foo=wow` on node 1");
     let x = leader.read(&("foo".to_string())).await?;
     assert_eq!("wow", x);
 
-    println!("=== read `foo` on node 2");
+    println!("=== read `foo=wow` on node 2");
     let client2 = ExampleClient::<TypeConfig>::new(2, get_addr(2));
     let x = client2.read(&("foo".to_string())).await?;
     assert_eq!("wow", x);
 
-    println!("=== read `foo` on node 3");
+    println!("=== read `foo=wow` on node 3");
     let client3 = ExampleClient::<TypeConfig>::new(3, get_addr(3));
     let x = client3.read(&("foo".to_string())).await?;
     assert_eq!("wow", x);
 
-    println!("=== linearizable_read `foo` on node 1");
+    println!("=== linearizable_read `foo=wow` on node 1");
     let x = leader.linearizable_read(&("foo".to_string())).await??;
     assert_eq!("wow", x);
 
-    println!("=== linearizable_read `foo` on node 2 MUST return CheckIsLeaderError");
+    println!("=== linearizable_read `foo=wow` on node 2 MUST return CheckIsLeaderError");
     let x = client2.linearizable_read(&("foo".to_string())).await?;
     println!("=== linearize_read on node 2 result: {:?}", x);
     match x {
@@ -232,7 +238,7 @@ async fn test_cluster() -> Result<(), Box<dyn std::error::Error>> {
         Ok(_) => panic!("MUST return CheckIsLeaderError"),
     }
 
-    println!("=== linearizable_read_auto_forward `foo` on node 2 returns value");
+    println!("=== linearizable_read_auto_forward `foo=wow` on node 2 returns value");
     let x = client2.linearizable_read_auto_forward(&("foo".to_string())).await?;
     assert_eq!(x.unwrap(), "wow");
 
