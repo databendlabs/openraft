@@ -659,13 +659,17 @@ where
         let res = self.engine.initialize(entry);
 
         // If there is an error, respond at once.
-        // Otherwise, wait until the membership config log at index 0 to be flushed to disk.
+        // Otherwise, wait for the initialization log to be applied to state machine.
         let condition = if res.is_err() {
             None
         } else {
-            // There is no Leader yet therefore use [`Condition::LogFlushed`] instead of
-            // [`Condition::IOFlushed`].
-            Some(Condition::LogFlushed {
+            // Wait for the initialization log to be applied, not just flushed to disk.
+            //
+            // The initialization must complete fully before accepting other requests.
+            // If we only wait for disk flush, subsequent membership changes (e.g., add-learner)
+            // may be rejected because the initial membership is not yet committed in the
+            // state machine.
+            Some(Condition::Applied {
                 log_id: self.engine.state.last_log_id().cloned(),
             })
         };
