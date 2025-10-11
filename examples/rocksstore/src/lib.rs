@@ -37,9 +37,7 @@ use rocksdb::Options;
 use rocksdb::DB;
 use serde::Deserialize;
 use serde::Serialize;
-// #![deny(unused_crate_dependencies)]
-// To make the above rule happy, tokio is used, but only in tests
-use tokio as _;
+use tokio::task::spawn_blocking;
 
 pub type RocksNodeId = u64;
 
@@ -101,20 +99,23 @@ pub struct RocksStateMachine {
 }
 
 impl RocksStateMachine {
-    async fn new(db: Arc<DB>) -> RocksStateMachine {
+    async fn new(db: Arc<DB>) -> Result<RocksStateMachine, std::io::Error> {
+        // Validate column family exists at construction time
+        db.cf_handle("sm_meta").ok_or_else(|| std::io::Error::other("column family `sm_meta` not found"))?;
+
         let mut state_machine = Self {
             db,
             sm: Default::default(),
         };
-        let snapshot = state_machine.get_current_snapshot().await.unwrap();
+        let snapshot = state_machine.get_current_snapshot().await.map_err(std::io::Error::other)?;
 
         // Restore previous state from snapshot
         if let Some(s) = snapshot {
-            let prev: StateMachine = serde_json::from_slice(s.snapshot.get_ref()).unwrap();
+            let prev: StateMachine = serde_json::from_slice(s.snapshot.get_ref()).map_err(std::io::Error::other)?;
             state_machine.sm = prev;
         }
 
-        state_machine
+        Ok(state_machine)
     }
 }
 
@@ -144,19 +145,20 @@ impl RaftSnapshotBuilder<TypeConfig> for RocksStateMachine {
 
         let snapshot = RocksSnapshot {
             meta: meta.clone(),
-            data: data.clone(),
+            data,
         };
 
         let serialized_snapshot = serde_json::to_vec(&snapshot)
             .map_err(|e| StorageError::write_snapshot(Some(meta.signature()), AnyError::new(&e)))?;
 
+        let cf = self.db.cf_handle("sm_meta").expect("column family `sm_meta` not found");
         self.db
-            .put_cf(self.db.cf_handle("sm_meta").unwrap(), "snapshot", serialized_snapshot)
+            .put_cf(cf, "snapshot", serialized_snapshot)
             .map_err(|e| StorageError::write_snapshot(Some(meta.signature()), AnyError::new(&e)))?;
 
         Ok(Snapshot {
             meta,
-            snapshot: Cursor::new(data),
+            snapshot: Cursor::new(snapshot.data),
         })
     }
 }
@@ -235,19 +237,23 @@ impl RaftStateMachine<TypeConfig> for RocksStateMachine {
         let serialized_snapshot = serde_json::to_vec(&new_snapshot)
             .map_err(|e| StorageError::write_snapshot(Some(meta.signature()), AnyError::new(&e)))?;
 
+        let cf = self.db.cf_handle("sm_meta").expect("column family `sm_meta` not found");
         self.db
-            .put_cf(self.db.cf_handle("sm_meta").unwrap(), "snapshot", serialized_snapshot)
+            .put_cf(cf, "snapshot", serialized_snapshot)
             .map_err(|e| StorageError::write_snapshot(Some(meta.signature()), AnyError::new(&e)))?;
 
-        self.db.flush_wal(true).map_err(|e| StorageError::write_snapshot(Some(meta.signature()), &e))?;
+        let db = self.db.clone();
+        spawn_blocking(move || db.flush_wal(true))
+            .await
+            .map_err(|e| StorageError::write_snapshot(Some(meta.signature()), &std::io::Error::other(e.to_string())))?
+            .map_err(|e| StorageError::write_snapshot(Some(meta.signature()), &e))?;
+
         Ok(())
     }
 
     async fn get_current_snapshot(&mut self) -> Result<Option<Snapshot<TypeConfig>>, StorageError<TypeConfig>> {
-        let x = self
-            .db
-            .get_cf(self.db.cf_handle("sm_meta").unwrap(), "snapshot")
-            .map_err(|e| StorageError::write_snapshot(None, AnyError::new(&e)))?;
+        let cf = self.db.cf_handle("sm_meta").expect("column family `sm_meta` not found");
+        let x = self.db.get_cf(cf, "snapshot").map_err(|e| StorageError::write_snapshot(None, AnyError::new(&e)))?;
 
         let bytes = match x {
             Some(x) => x,
@@ -257,18 +263,16 @@ impl RaftStateMachine<TypeConfig> for RocksStateMachine {
         let snapshot: RocksSnapshot =
             serde_json::from_slice(&bytes).map_err(|e| StorageError::write_snapshot(None, AnyError::new(&e)))?;
 
-        let data = snapshot.data.clone();
-
         Ok(Some(Snapshot {
             meta: snapshot.meta,
-            snapshot: Cursor::new(data),
+            snapshot: Cursor::new(snapshot.data),
         }))
     }
 }
 
 /// Create a pair of `RocksLogStore` and `RocksStateMachine` that are backed by a same rocks db
 /// instance.
-pub async fn new<C, P: AsRef<Path>>(db_path: P) -> (RocksLogStore<C>, RocksStateMachine)
+pub async fn new<C, P: AsRef<Path>>(db_path: P) -> Result<(RocksLogStore<C>, RocksStateMachine), std::io::Error>
 where C: RaftTypeConfig {
     let mut db_opts = Options::default();
     db_opts.create_missing_column_families(true);
@@ -278,8 +282,8 @@ where C: RaftTypeConfig {
     let sm_meta = ColumnFamilyDescriptor::new("sm_meta", Options::default());
     let logs = ColumnFamilyDescriptor::new("logs", Options::default());
 
-    let db = DB::open_cf_descriptors(&db_opts, db_path, vec![meta, sm_meta, logs]).unwrap();
+    let db = DB::open_cf_descriptors(&db_opts, db_path, vec![meta, sm_meta, logs]).map_err(std::io::Error::other)?;
 
     let db = Arc::new(db);
-    (RocksLogStore::new(db.clone()), RocksStateMachine::new(db).await)
+    Ok((RocksLogStore::new(db.clone()), RocksStateMachine::new(db).await?))
 }

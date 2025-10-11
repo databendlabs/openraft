@@ -169,7 +169,6 @@ where C: RaftTypeConfig<AsyncRuntime = TokioRuntime>
     where I: IntoIterator<Item = EntryOf<C>> + Send {
         for entry in entries {
             let id = id_to_bin(entry.index());
-            assert_eq!(bin_to_id(&id), entry.index());
             self.db
                 .put_cf(
                     self.cf_logs(),
@@ -198,7 +197,7 @@ where C: RaftTypeConfig<AsyncRuntime = TokioRuntime>
         tracing::debug!("truncate: [{:?}, +oo)", log_id);
 
         let from = id_to_bin(log_id.index());
-        let to = id_to_bin(0xff_ff_ff_ff_ff_ff_ff_ff);
+        let to = id_to_bin(u64::MAX);
         self.db.delete_range_cf(self.cf_logs(), &from, &to).map_err(|e| StorageError::write_logs(&e))?;
 
         // Truncating does not need to be persisted.

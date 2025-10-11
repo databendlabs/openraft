@@ -11,8 +11,8 @@ struct RocksBuilder {}
 
 impl StoreBuilder<TypeConfig, RocksLogStore<TypeConfig>, RocksStateMachine, TempDir> for RocksBuilder {
     async fn build(&self) -> Result<(TempDir, RocksLogStore<TypeConfig>, RocksStateMachine), StorageError<TypeConfig>> {
-        let td = TempDir::new().expect("couldn't create temp dir");
-        let (log_store, sm) = crate::new(td.path()).await;
+        let td = TempDir::new().map_err(|e| StorageError::read(&e))?;
+        let (log_store, sm) = crate::new(td.path()).await.map_err(|e| StorageError::read(&e))?;
         Ok((td, log_store, sm))
     }
 }
