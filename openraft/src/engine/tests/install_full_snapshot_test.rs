@@ -158,7 +158,7 @@ fn test_handle_install_full_snapshot_no_conflict() -> anyhow::Result<()> {
             Command::PurgeLog { upto: log_id(4, 1, 6) },
             Command::Respond {
                 when: Some(Condition::Snapshot {
-                    log_id: Some(log_id(4, 1, 6))
+                    log_id: log_id(4, 1, 6)
                 }),
                 resp: Respond::new(SnapshotResponse::new(curr_vote), dummy_tx),
             },

@@ -325,7 +325,7 @@ where C: RaftTypeConfig
         self.log_handler().purge_log();
 
         Some(Condition::Snapshot {
-            log_id: Some(snap_last_log_id),
+            log_id: snap_last_log_id,
         })
     }
 

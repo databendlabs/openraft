@@ -659,15 +659,25 @@ where
         let res = self.engine.initialize(entry);
 
         // If there is an error, respond at once.
-        // Otherwise, wait until the membership config log at index 0 to be flushed to disk.
+        // Otherwise, wait for the initialization log to be applied to state machine.
         let condition = if res.is_err() {
             None
         } else {
-            // There is no Leader yet therefore use [`Condition::LogFlushed`] instead of
-            // [`Condition::IOFlushed`].
-            Some(Condition::LogFlushed {
-                log_id: self.engine.state.last_log_id().cloned(),
-            })
+            // Wait for the initialization log to be flushed, not applied.
+            //
+            // Because committing a log entry requires a leader, the first leader may or may not be able to
+            // established, for example, there are already other nodes in the cluster with more logs.
+            //
+            // Thus, initialization should never wait for to apply of the initialization log.
+            //
+            // When adding new learners after initialization, we should not wait for the log to be applied.
+            // But this introduces an issue, if the client send a change membership at once after
+            // initialization, it may receive a InProgress error:
+            // `"InProgress": { "committed": null, "membership_log_id": { "leader_id": { "term": 0,
+            //             "node_id": 0 }, "index": 0 } }`
+            // TODO: change-membership should check leadership or wait for leader to establish?
+            let last_log_id = self.engine.state.last_log_id().cloned();
+            last_log_id.map(|log_id| Condition::LogFlushed { log_id })
         };
         self.engine.output.push_command(Command::Respond {
             when: condition,
@@ -862,29 +872,66 @@ where
             tracing::debug!("queued commands: end...");
         }
 
+        self.send_satisfied_responds();
+
         while let Some(cmd) = self.engine.output.pop_command() {
             let res = self.run_command(cmd).await?;
 
-            if let Some(cmd) = res {
-                tracing::debug!(
-                    "RAFT_stats id={:<2}    cmd: postpone command: {}, pending: {}",
-                    self.id,
-                    cmd,
-                    self.engine.output.len()
-                );
-                self.engine.output.postpone_command(cmd);
+            let Some(cmd) = res else {
+                // cmd executed. Process next
+                continue;
+            };
 
-                if tracing::enabled!(Level::DEBUG) {
-                    for c in self.engine.output.iter_commands().take(8) {
-                        tracing::debug!("postponed, first 8 queued commands: {:?}", c);
-                    }
-                }
+            // cmd is returned, means it can not be executed now, postpone it.
 
-                return Ok(());
+            tracing::debug!(
+                "RAFT_stats id={:<2}    cmd: postpone command: {}, pending: {}",
+                self.id,
+                cmd,
+                self.engine.output.len()
+            );
+
+            if let Ok(_) = self.engine.output.postpone_command(cmd) {
+                continue;
             }
+
+            // cmd is put back to the front of the queue. quit the loop
+
+            if tracing::enabled!(Level::DEBUG) {
+                for c in self.engine.output.iter_commands().take(8) {
+                    tracing::debug!("postponed, first 8 queued commands: {:?}", c);
+                }
+            }
+            return Ok(());
         }
 
         Ok(())
+    }
+
+    /// Send responds whose waiting conditions are satisfied.
+    ///
+    /// Responds are queued when their waiting conditions (log flushed, applied, snapshot built)
+    /// are not yet met. This method drains all responds whose conditions are now satisfied.
+    pub(crate) fn send_satisfied_responds(&mut self) {
+        let io_state = self.engine.state.io_state();
+
+        tracing::debug!(
+            "RAFT_stats id={:<2}    cmd: send satisfied responds: log_io: {}, apply: {}, snapshot: {}",
+            self.id,
+            io_state.log_progress.flushed().display(),
+            io_state.apply_progress.flushed().display(),
+            io_state.snapshot.flushed().display(),
+        );
+
+        for (phase, respond) in self.engine.output.pending_responds.drain_satisfied(io_state) {
+            tracing::debug!(
+                "RAFT_stats id={:<2}    cmd: send respond waiting for {}: {}",
+                self.id,
+                phase,
+                respond
+            );
+            respond.send();
+        }
     }
 
     /// Run an event handling loop
@@ -1648,52 +1695,11 @@ where
         tracing::debug!("condition: {:?}", condition);
 
         if let Some(condition) = condition {
-            match condition {
-                Condition::IOFlushed { io_id } => {
-                    let curr = self.engine.state.log_progress().flushed();
-                    if curr < Some(&io_id) {
-                        tracing::debug!(
-                            "io_id: {} has not yet flushed, currently flushed: {} postpone cmd: {}",
-                            io_id,
-                            curr.display(),
-                            cmd
-                        );
-                        return Ok(Some(cmd));
-                    }
-                }
-                Condition::LogFlushed { log_id } => {
-                    let curr = self.engine.state.log_progress().flushed();
-                    let curr = curr.and_then(|x| x.last_log_id());
-                    if curr < log_id.as_ref() {
-                        tracing::debug!(
-                            "log_id: {} has not yet flushed, currently flushed: {} postpone cmd: {}",
-                            log_id.display(),
-                            curr.display(),
-                            cmd
-                        );
-                        return Ok(Some(cmd));
-                    }
-                }
-                Condition::Applied { log_id } => {
-                    if self.engine.state.io_applied() < log_id.as_ref() {
-                        tracing::debug!(
-                            "log_id: {} has not yet applied, postpone cmd: {}",
-                            log_id.display(),
-                            cmd
-                        );
-                        return Ok(Some(cmd));
-                    }
-                }
-                Condition::Snapshot { log_id } => {
-                    if self.engine.state.io_state().snapshot() < log_id.as_ref() {
-                        tracing::debug!(
-                            "log_id: {} has not yet been in snapshot, postpone cmd: {}",
-                            log_id.display(),
-                            cmd
-                        );
-                        return Ok(Some(cmd));
-                    }
-                }
+            if condition.is_met(&self.engine.state.io_state) {
+                // continue run the command
+            } else {
+                tracing::debug!("{} is not yet met, postpone cmd: {}", condition, cmd);
+                return Ok(Some(cmd));
             }
         }
 

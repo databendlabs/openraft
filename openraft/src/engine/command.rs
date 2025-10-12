@@ -19,6 +19,7 @@ use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::raft::message::TransferLeaderRequest;
 use crate::raft_state::IOId;
+use crate::raft_state::IOState;
 use crate::replication::ReplicationSessionId;
 use crate::replication::request::Replicate;
 use crate::type_config::alias::LogIdOf;
@@ -228,7 +229,7 @@ where C: RaftTypeConfig
     pub(crate) fn kind(&self) -> CommandKind {
         match self {
             Command::RebuildReplicationStreams { .. } => CommandKind::Main,
-            Command::Respond { .. }                   => CommandKind::Main,
+            Command::Respond { .. }                   => CommandKind::Respond,
             // Apply is firstly handled by RaftCore, then forwarded to state machine worker.
             // TODO: Apply also write `committed` to log-store, which should be run in CommandKind::Log
 
@@ -243,7 +244,7 @@ where C: RaftTypeConfig
             Command::ReplicateCommitted { .. }        => CommandKind::Network,
             Command::BroadcastHeartbeat { .. }        => CommandKind::Network,
             Command::Replicate { .. }                 => CommandKind::Network,
-            Command::BroadcastTransferLeader { .. }            => CommandKind::Network,
+            Command::BroadcastTransferLeader { .. }   => CommandKind::Network,
             Command::SendVote { .. }                  => CommandKind::Network,
 
             Command::Apply { .. }                     => CommandKind::StateMachine,
@@ -264,12 +265,12 @@ where C: RaftTypeConfig
             Command::TruncateLog { .. }               => None,
             Command::SaveCommitted { .. }             => None,
 
-            Command::PurgeLog { upto }                => Some(Condition::Snapshot { log_id: Some(upto.clone()) }),
+            Command::PurgeLog { upto }                => Some(Condition::Snapshot { log_id: upto.clone() }),
 
             Command::ReplicateCommitted { .. }        => None,
             Command::BroadcastHeartbeat { .. }        => None,
             Command::Replicate { .. }                 => None,
-            Command::BroadcastTransferLeader { .. }            => None,
+            Command::BroadcastTransferLeader { .. }   => None,
             Command::SendVote { .. }                  => None,
 
             Command::Apply { .. }                     => None,
@@ -278,31 +279,28 @@ where C: RaftTypeConfig
     }
 }
 
-/// A condition to wait for before running a command.
+/// A condition to wait for before executing a command or sending a respond.
 #[derive(Debug, Clone)]
 #[derive(PartialEq, Eq)]
 pub(crate) enum Condition<C>
 where C: RaftTypeConfig
 {
-    /// Wait until the log is flushed to the disk.
+    /// Wait for log IO to be flushed to storage.
     ///
-    /// In raft, a log io can be uniquely identified by `(leader_id, log_id)`, not `log_id`.
-    /// The same log id can be written multiple times by different leaders.
+    /// A log IO is uniquely identified by `(leader_id, log_id)`, not just `log_id`,
+    /// since the same log index can be written multiple times by different leaders.
     IOFlushed { io_id: IOId<C> },
 
-    /// A log without a specific leader is flushed to disk.
-    ///
-    /// This is only used by [`Raft::initialize()`], because when initializing there is no leader.
-    ///
-    /// [`Raft::initialize()`]: `crate::Raft::initialize()`
-    LogFlushed { log_id: Option<LogIdOf<C>> },
-
-    /// Wait until the log is applied to the state machine.
+    /// Wait for log entry to be flushed to storage (without specific leader).
     #[allow(dead_code)]
-    Applied { log_id: Option<LogIdOf<C>> },
+    LogFlushed { log_id: LogIdOf<C> },
 
-    /// Wait until the snapshot is built and includes the log id.
-    Snapshot { log_id: Option<LogIdOf<C>> },
+    /// Wait for log entry to be applied to state machine.
+    #[allow(dead_code)]
+    Applied { log_id: LogIdOf<C> },
+
+    /// Wait for snapshot to be built that includes this log entry.
+    Snapshot { log_id: LogIdOf<C> },
 }
 
 impl<C> fmt::Display for Condition<C>
@@ -311,13 +309,47 @@ where C: RaftTypeConfig
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Condition::IOFlushed { io_id } => {
-                write!(f, "IOFlushed: {}", io_id)
+                write!(f, "IOFlushed >= {}", io_id)
             }
             Condition::LogFlushed { log_id } => {
-                write!(f, "LogFlushed: {}", log_id.display())
+                write!(f, "LogFlushed >= {}", log_id)
             }
-            Condition::Applied { log_id } => write!(f, "Applied: log_id: {}", log_id.display()),
-            Condition::Snapshot { log_id } => write!(f, "Snapshot: log_id: {}", log_id.display()),
+            Condition::Applied { log_id } => write!(f, "Applied >= {}", log_id),
+            Condition::Snapshot { log_id } => write!(f, "Snapshot >= {}", log_id),
+        }
+    }
+}
+
+impl<C> Condition<C>
+where C: RaftTypeConfig
+{
+    /// Check if the condition is satisfied by the current IO state.
+    pub(crate) fn is_met(&self, io_state: &IOState<C>) -> bool {
+        match self {
+            Condition::IOFlushed { io_id } => self.is_satisfied_by(io_id, io_state.log_progress.flushed()),
+            Condition::LogFlushed { log_id } => self.is_satisfied_by(
+                log_id,
+                io_state.log_progress.flushed().and_then(|io_id| io_id.last_log_id()),
+            ),
+            Condition::Applied { log_id } => self.is_satisfied_by(log_id, io_state.apply_progress.flushed()),
+            Condition::Snapshot { log_id } => self.is_satisfied_by(log_id, io_state.snapshot.flushed()),
+        }
+    }
+
+    /// Check if actual value satisfies the expected threshold.
+    fn is_satisfied_by<T>(&self, expected: &T, actual: Option<&T>) -> bool
+    where T: PartialOrd + fmt::Display {
+        let Some(actual) = actual else {
+            tracing::debug!("{} is not met: actual: None", self);
+            return false;
+        };
+
+        if actual >= expected {
+            tracing::debug!("{} is met: actual: {}", self, actual);
+            true
+        } else {
+            tracing::debug!("{} is not met: actual: {}", self, actual);
+            false
         }
     }
 }
