@@ -11,6 +11,8 @@ pub(crate) enum CommandKind {
     Network,
     /// State machine IO command
     StateMachine,
-    /// RaftCore main thread command
+    /// Command handled by RaftCore main thread.
     Main,
+    /// Respond to caller. Can be executed in parallel with other commands.
+    Respond,
 }

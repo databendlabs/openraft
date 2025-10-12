@@ -134,7 +134,7 @@ fn test_install_snapshot_not_conflict() -> anyhow::Result<()> {
 
     assert_eq!(
         Some(Condition::Snapshot {
-            log_id: Some(log_id(4, 1, 6))
+            log_id: log_id(4, 1, 6)
         }),
         cond
     );
@@ -219,7 +219,7 @@ fn test_install_snapshot_conflict() -> anyhow::Result<()> {
 
     assert_eq!(
         Some(Condition::Snapshot {
-            log_id: Some(log_id(5, 1, 6))
+            log_id: log_id(5, 1, 6)
         }),
         cond
     );
@@ -277,7 +277,7 @@ fn test_install_snapshot_advance_last_log_id() -> anyhow::Result<()> {
 
     assert_eq!(
         Some(Condition::Snapshot {
-            log_id: Some(log_id(100, 1, 100))
+            log_id: log_id(100, 1, 100)
         }),
         cond
     );
@@ -339,7 +339,7 @@ fn test_install_snapshot_update_accepted() -> anyhow::Result<()> {
 
     assert_eq!(
         Some(Condition::Snapshot {
-            log_id: Some(log_id(100, 1, 100))
+            log_id: log_id(100, 1, 100)
         }),
         cond
     );
