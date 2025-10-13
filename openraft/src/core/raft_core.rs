@@ -80,7 +80,7 @@ use crate::raft::VoteResponse;
 use crate::raft::linearizable_read::Linearizer;
 use crate::raft::message::TransferLeaderRequest;
 use crate::raft::responder::Responder;
-use crate::raft::responder::either::OneshotOrUserDefined;
+use crate::raft::responder::core_responder::CoreResponder;
 use crate::raft_state::LogStateReader;
 use crate::raft_state::io_state::io_id::IOId;
 use crate::replication::ReplicationCore;
@@ -164,8 +164,8 @@ where
 
     pub(crate) engine: Engine<C>,
 
-    /// Channels to send result back to client when logs are applied.
-    pub(crate) client_resp_channels: BTreeMap<u64, OneshotOrUserDefined<C>>,
+    /// Responders to send result back to client when logs are applied.
+    pub(crate) client_responders: BTreeMap<u64, CoreResponder<C>>,
 
     /// A mapping of node IDs the replication state of the target node.
     pub(crate) replications: BTreeMap<C::NodeId, ReplicationHandle<C>>,
@@ -459,7 +459,7 @@ where
         };
 
         let ent = C::Entry::new_membership(LogIdOf::<C>::default(), new_membership);
-        self.write_entry(ent, Some(OneshotOrUserDefined::Oneshot(tx)));
+        self.write_entry(ent, Some(CoreResponder::Oneshot(tx)));
     }
 
     /// Write a log entry to the cluster through raft protocol.
@@ -475,7 +475,7 @@ where
     /// (general-purpose); the former is for application-defined entries like user data, the
     /// latter is for membership configuration changes.
     #[tracing::instrument(level = "debug", skip_all, fields(id = display(&self.id)))]
-    pub fn write_entry(&mut self, entry: C::Entry, resp_tx: Option<OneshotOrUserDefined<C>>) {
+    pub fn write_entry(&mut self, entry: C::Entry, resp_tx: Option<CoreResponder<C>>) {
         tracing::debug!(payload = display(&entry), "write_entry");
 
         let Some((mut lh, tx)) = self.engine.get_leader_handler_or_reject(resp_tx) else {
@@ -499,7 +499,7 @@ where
 
         // Install callback channels.
         if let Some(tx) = tx {
-            self.client_resp_channels.insert(index, tx);
+            self.client_responders.insert(index, tx);
         }
     }
 
@@ -780,7 +780,7 @@ where
         );
 
         #[cfg(debug_assertions)]
-        if let Some(first_entry) = self.client_resp_channels.first_entry() {
+        if let Some(first_entry) = self.client_responders.first_entry() {
             debug_assert!(
                 first.index() <= *first_entry.key(),
                 "first.index {} should <= client_resp_channels.first index {}",
@@ -789,10 +789,10 @@ where
             );
         }
         let end = last.index() + 1;
-        let mut client_resp_channels = self.client_resp_channels.split_off(&end);
-        std::mem::swap(&mut client_resp_channels, &mut self.client_resp_channels);
+        let mut responders = self.client_responders.split_off(&end);
+        std::mem::swap(&mut responders, &mut self.client_responders);
 
-        let cmd = sm::Command::apply(first, last.clone(), client_resp_channels);
+        let cmd = sm::Command::apply(first, last.clone(), responders);
         self.sm_handle.send(cmd).map_err(|e| StorageError::apply(last, AnyError::error(e)))?;
 
         Ok(())
@@ -1264,7 +1264,7 @@ where
             RaftMsg::ClientWriteRequest { app_data, tx } => {
                 self.write_entry(
                     C::Entry::new_normal(LogIdOf::<C>::default(), app_data),
-                    Some(OneshotOrUserDefined::UserDefined(tx)),
+                    Some(CoreResponder::UserDefined(tx)),
                 );
             }
             RaftMsg::Initialize { members, tx } => {
@@ -1767,7 +1767,7 @@ where
                 self.log_store.truncate(since.clone()).await?;
 
                 // Inform clients waiting for logs to be applied.
-                let removed = self.client_resp_channels.split_off(&since.index());
+                let removed = self.client_responders.split_off(&since.index());
                 if !removed.is_empty() {
                     let leader_id = self.current_leader();
                     let leader_node = self.get_leader_node(leader_id.clone());

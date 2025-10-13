@@ -6,7 +6,7 @@ use std::fmt::Formatter;
 
 use crate::RaftTypeConfig;
 use crate::base::BoxMaybeAsyncOnceMut;
-use crate::raft::responder::either::OneshotOrUserDefined;
+use crate::raft::responder::core_responder::CoreResponder;
 use crate::raft_state::IOId;
 use crate::storage::Snapshot;
 use crate::type_config::alias::LogIdOf;
@@ -46,7 +46,7 @@ where C: RaftTypeConfig
         /// The last log id to apply, inclusive.
         last: LogIdOf<C>,
 
-        client_resp_channels: BTreeMap<u64, OneshotOrUserDefined<C>>,
+        client_resp_channels: BTreeMap<u64, CoreResponder<C>>,
     },
 
     /// Apply a custom function to the state machine.
@@ -86,7 +86,7 @@ where C: RaftTypeConfig
     pub(crate) fn apply(
         first: LogIdOf<C>,
         last: LogIdOf<C>,
-        client_resp_channels: BTreeMap<u64, OneshotOrUserDefined<C>>,
+        client_resp_channels: BTreeMap<u64, CoreResponder<C>>,
     ) -> Self {
         Command::Apply {
             first,

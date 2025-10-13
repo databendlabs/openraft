@@ -373,7 +373,7 @@ where C: RaftTypeConfig
 
             engine,
 
-            client_resp_channels: BTreeMap::new(),
+            client_responders: BTreeMap::new(),
 
             replications: Default::default(),
 

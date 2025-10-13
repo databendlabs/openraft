@@ -1,7 +1,7 @@
 //! API to consumer a response when a client write request is completed.
 
 pub(crate) mod builder;
-pub(crate) mod either;
+pub(crate) mod core_responder;
 pub(crate) mod impls;
 pub use builder::ResponderBuilder;
 pub use impls::OneshotResponder;

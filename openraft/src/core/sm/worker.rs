@@ -22,7 +22,7 @@ use crate::entry::RaftEntry;
 use crate::entry::RaftPayload;
 use crate::raft::ClientWriteResponse;
 use crate::raft::responder::Responder;
-use crate::raft::responder::either::OneshotOrUserDefined;
+use crate::raft::responder::core_responder::CoreResponder;
 #[cfg(doc)]
 use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
@@ -173,7 +173,7 @@ where
         &mut self,
         first: LogIdOf<C>,
         last: LogIdOf<C>,
-        client_resp_channels: &mut BTreeMap<u64, OneshotOrUserDefined<C>>,
+        client_resp_channels: &mut BTreeMap<u64, CoreResponder<C>>,
     ) -> Result<ApplyResult<C>, StorageError<C>> {
         // TODO: prepare response before apply,
         //       so that an Entry does not need to be Clone,

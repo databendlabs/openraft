@@ -4,17 +4,18 @@ use crate::raft::ClientWriteResult;
 use crate::raft::responder::Responder;
 use crate::type_config::alias::ResponderOf;
 
-/// Either an oneshot responder or a user-defined responder.
+/// The responder used in RaftCore.
 ///
-/// It is used in RaftCore to enqueue responder to the client.
-pub(crate) enum OneshotOrUserDefined<C>
+/// RaftCore use this responder to send response to the caller.
+/// It is either an oneshot responder or a user-defined responder.
+pub(crate) enum CoreResponder<C>
 where C: RaftTypeConfig
 {
     Oneshot(OneshotResponder<C>),
     UserDefined(ResponderOf<C>),
 }
 
-impl<C> Responder<ClientWriteResult<C>> for OneshotOrUserDefined<C>
+impl<C> Responder<ClientWriteResult<C>> for CoreResponder<C>
 where C: RaftTypeConfig
 {
     fn send(self, res: ClientWriteResult<C>) {
