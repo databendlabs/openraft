@@ -150,7 +150,7 @@ where C: RaftTypeConfig
         self.state.extend_log_ids(entries.iter().map(|ent| ent.ref_log_id()));
         self.append_membership(entries.iter());
 
-        self.output.push_command(Command::AppendInputEntries {
+        self.output.push_command(Command::AppendEntries {
             // A follower should always use the node's vote.
             committed_vote: self.leader_vote.clone(),
             entries,

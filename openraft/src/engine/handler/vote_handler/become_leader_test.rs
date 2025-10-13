@@ -66,7 +66,7 @@ fn test_become_leader() -> anyhow::Result<()> {
         Command::RebuildReplicationStreams {
             targets: vec![ReplicationProgress(0, ProgressEntry::empty(0))]
         },
-        Command::AppendInputEntries {
+        Command::AppendEntries {
             committed_vote: Vote::new(2, 1).into_committed(),
             entries: vec![EntryOf::<UTConfig>::new_blank(log_id(2, 1, 0)),]
         },

@@ -55,7 +55,7 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
 
         assert_eq!(
             vec![
-                Command::AppendInputEntries {
+                Command::AppendEntries {
                     committed_vote: Vote::default().into_committed(),
                     entries: vec![Entry::<UTConfig>::new_membership(LogIdOf::<UTConfig>::default(), m1())],
                 },
@@ -105,7 +105,7 @@ fn test_initialize() -> anyhow::Result<()> {
 
         assert_eq!(
             vec![
-                Command::AppendInputEntries {
+                Command::AppendEntries {
                     committed_vote: Vote::default().into_committed(),
                     entries: vec![Entry::new_membership(LogIdOf::<UTConfig>::default(), m12())],
                 },

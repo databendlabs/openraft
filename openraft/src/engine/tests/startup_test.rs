@@ -82,7 +82,7 @@ fn test_startup_as_leader_without_logs() -> anyhow::Result<()> {
                     allow_log_reversion: false,
                 })]
             },
-            Command::AppendInputEntries {
+            Command::AppendEntries {
                 committed_vote: Vote::new(2, 2).into_committed(),
                 entries: vec![Entry::<UTConfig>::new_blank(log_id(2, 2, 4))],
             },

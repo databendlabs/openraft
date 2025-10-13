@@ -77,7 +77,7 @@ fn test_follower_append_entries_update_accepted() -> anyhow::Result<()> {
     );
     assert_eq!(eng.output.take_commands(), vec![
         //
-        Command::AppendInputEntries {
+        Command::AppendEntries {
             committed_vote: Vote::new(2, 1).into_committed(),
             entries: vec![blank_ent(3, 1, 4), blank_ent(3, 1, 5),],
         }

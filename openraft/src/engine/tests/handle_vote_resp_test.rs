@@ -212,7 +212,7 @@ fn test_handle_vote_resp_equal_vote() -> anyhow::Result<()> {
                 Command::SaveVote {
                     vote: Vote::new_committed(2, 1)
                 },
-                Command::AppendInputEntries {
+                Command::AppendEntries {
                     committed_vote: Vote::new(2, 1).into_committed(),
                     entries: vec![Entry::<UTConfig>::new_blank(log_id(2, 1, 1))],
                 },

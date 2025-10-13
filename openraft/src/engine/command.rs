@@ -49,7 +49,7 @@ where C: RaftTypeConfig
     },
 
     /// Append a `range` of entries.
-    AppendInputEntries {
+    AppendEntries {
         /// The vote of the leader that submits the entries to write.
         ///
         /// The leader could be a local leader that appends entries to the local log store
@@ -145,11 +145,11 @@ where C: RaftTypeConfig
             Command::UpdateIOProgress { when, io_id } => {
                 write!(f, "UpdateIOProgress: when: {}, io_id: {}", when.display(), io_id)
             }
-            Command::AppendInputEntries {
+            Command::AppendEntries {
                 committed_vote: vote,
                 entries,
             } => {
-                write!(f, "AppendInputEntries: vote: {}, entries: {}", vote, entries.display())
+                write!(f, "AppendEntries: vote: {}, entries: {}", vote, entries.display())
             }
             Command::ReplicateCommitted { committed } => {
                 write!(f, "ReplicateCommitted: {}", committed.display())
@@ -202,7 +202,7 @@ where
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Command::UpdateIOProgress { when, io_id },        Command::UpdateIOProgress { when: wb, io_id: ab }, )                  => when == wb && io_id == ab,
-            (Command::AppendInputEntries { committed_vote: vote, entries },    Command::AppendInputEntries { committed_vote: vb, entries: b }, )               => vote == vb && entries == b,
+            (Command::AppendEntries { committed_vote: vote, entries },    Command::AppendEntries { committed_vote: vb, entries: b }, )               => vote == vb && entries == b,
             (Command::ReplicateCommitted { committed },        Command::ReplicateCommitted { committed: b }, )                       =>  committed == b,
             (Command::BroadcastHeartbeat { session_id, committed }, Command::BroadcastHeartbeat { session_id: sb, committed: b }, )  => session_id == sb && committed == b,
             (Command::SaveCommitted { committed },             Command::SaveCommitted { committed: b })                              => committed == b,
@@ -213,7 +213,7 @@ where
             (Command::SaveVote { vote },                       Command::SaveVote { vote: b })                                        => vote == b,
             (Command::SendVote { vote_req },                   Command::SendVote { vote_req: b }, )                                  => vote_req == b,
             (Command::PurgeLog { upto },                       Command::PurgeLog { upto: b })                                        => upto == b,
-            (Command::TruncateLog { since },                   Command::TruncateLog { since: b }, )                                        => since == b,
+            (Command::TruncateLog { since },                   Command::TruncateLog { since: b }, )                                  => since == b,
             (Command::Respond { when, resp: send },            Command::Respond { when: b_when, resp: b })                           => send == b && when == b_when,
             (Command::StateMachine { command },                Command::StateMachine { command: b })                                 => command == b,
             _ => false,
@@ -234,7 +234,7 @@ where C: RaftTypeConfig
             // TODO: Apply also write `committed` to log-store, which should be run in CommandKind::Log
 
             Command::UpdateIOProgress { .. }          => CommandKind::Log,
-            Command::AppendInputEntries { .. }        => CommandKind::Log,
+            Command::AppendEntries { .. }             => CommandKind::Log,
             Command::SaveVote { .. }                  => CommandKind::Log,
             Command::TruncateLog { .. }               => CommandKind::Log,
             Command::SaveCommitted { .. }             => CommandKind::Log,
@@ -260,7 +260,7 @@ where C: RaftTypeConfig
             Command::Respond { when, .. }             => when.clone(),
 
             Command::UpdateIOProgress { when, .. }    => when.clone(),
-            Command::AppendInputEntries { .. }        => None,
+            Command::AppendEntries { .. }             => None,
             Command::SaveVote { .. }                  => None,
             Command::TruncateLog { .. }               => None,
             Command::SaveCommitted { .. }             => None,

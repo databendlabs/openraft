@@ -76,7 +76,7 @@ where C: RaftTypeConfig
             self.leader.last_log_id().cloned(),
         ));
 
-        self.output.push_command(Command::AppendInputEntries {
+        self.output.push_command(Command::AppendEntries {
             // A leader should always use the leader's vote.
             // It is allowed to be different from local vote.
             committed_vote: self.leader.committed_vote.clone(),

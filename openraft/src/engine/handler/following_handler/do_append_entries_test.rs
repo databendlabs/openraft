@@ -84,7 +84,7 @@ fn test_follower_do_append_entries_no_membership_entries() -> anyhow::Result<()>
     assert_eq!(
         vec![
             //
-            Command::AppendInputEntries {
+            Command::AppendEntries {
                 committed_vote: Vote::new(1, 1).into_committed(),
                 entries: vec![blank_ent(3, 1, 4)]
             },
@@ -133,7 +133,7 @@ fn test_follower_do_append_entries_one_membership_entry() -> anyhow::Result<()> 
         "not in membership, become learner"
     );
     assert_eq!(
-        vec![Command::AppendInputEntries {
+        vec![Command::AppendEntries {
             committed_vote: Vote::new(1, 1).into_committed(),
             entries: vec![
                 //
@@ -192,7 +192,7 @@ fn test_follower_do_append_entries_three_membership_entries() -> anyhow::Result<
         "in membership, become follower"
     );
     assert_eq!(
-        vec![Command::AppendInputEntries {
+        vec![Command::AppendEntries {
             committed_vote: Vote::new(1, 1).into_committed(),
             entries: vec![
                 blank_ent(3, 1, 4),
