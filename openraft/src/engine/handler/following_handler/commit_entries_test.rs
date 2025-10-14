@@ -7,7 +7,6 @@ use crate::EffectiveMembership;
 use crate::Membership;
 use crate::MembershipState;
 use crate::Vote;
-use crate::engine::Command;
 use crate::engine::Engine;
 use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;
@@ -76,13 +75,9 @@ fn test_following_handler_commit_entries_ge_accepted() -> anyhow::Result<()> {
         ),
         eng.state.membership_state
     );
-    assert_eq!(
-        vec![Command::SaveCommittedAndApply {
-            already_applied: Some(log_id(1, 1, 1)),
-            upto: log_id(1, 1, 2),
-        }],
-        eng.output.take_commands()
-    );
+    assert_eq!(0, eng.output.take_commands().len());
+    assert_eq!(Some(&log_id(1, 1, 2)), eng.state.io_state.apply_progress.accepted());
+    assert_eq!(None, eng.state.io_state.apply_progress.submitted());
 
     Ok(())
 }
@@ -103,16 +98,9 @@ fn test_following_handler_commit_entries_le_accepted() -> anyhow::Result<()> {
         ),
         eng.state.membership_state
     );
-    assert_eq!(
-        vec![
-            //
-            Command::SaveCommittedAndApply {
-                already_applied: Some(log_id(1, 1, 1)),
-                upto: log_id(2, 1, 3)
-            },
-        ],
-        eng.output.take_commands()
-    );
+    assert_eq!(0, eng.output.take_commands().len());
+    assert_eq!(Some(&log_id(2, 1, 3)), eng.state.io_state.apply_progress.accepted());
+    assert_eq!(None, eng.state.io_state.apply_progress.submitted());
 
     Ok(())
 }

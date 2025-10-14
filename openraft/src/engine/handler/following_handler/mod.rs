@@ -172,12 +172,7 @@ where C: RaftTypeConfig
             func_name!()
         );
 
-        if let Some(prev_committed) = self.state.update_committed(&committed) {
-            self.output.push_command(Command::SaveCommittedAndApply {
-                already_applied: prev_committed,
-                upto: committed.unwrap(),
-            });
-        }
+        self.state.update_committed(&committed);
     }
 
     /// Delete log entries since log index `since`, inclusive, when the log at `since` is found
