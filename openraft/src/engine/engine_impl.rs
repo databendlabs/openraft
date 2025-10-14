@@ -660,6 +660,37 @@ where C: RaftTypeConfig
 
         lh.transfer_leader(to);
     }
+
+    /// Poll for commands generated from I/O progress state.
+    ///
+    /// Returns commands that can be automatically built by examining I/O progress,
+    /// without explicit Engine state changes.
+    ///
+    /// Currently generates [`Command::SaveCommittedAndApply`] when there are committed log entries
+    /// not yet submitted to the state machine:
+    /// `(apply_progress.submitted()..apply_progress.accepted()]`.
+    ///
+    /// In the future, will support other I/O progress-driven commands.
+    ///
+    /// A progress-driven command must:
+    /// - update the progress, so that no duplicated command will be generated.
+    pub(crate) fn next_progress_driven_command(&self) -> Option<Command<C>> {
+        let apply_progress = &self.state.io_state.apply_progress;
+
+        let submitted = apply_progress.submitted();
+        let committed = apply_progress.accepted();
+
+        if submitted.next_index() < committed.next_index() {
+            let committed = committed.cloned().unwrap();
+
+            return Some(Command::SaveCommittedAndApply {
+                already_applied: submitted.cloned(),
+                upto: committed,
+            });
+        }
+
+        None
+    }
 }
 
 /// Supporting util

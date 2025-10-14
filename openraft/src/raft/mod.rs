@@ -347,7 +347,8 @@ where C: RaftTypeConfig
 
         let state = {
             let mut helper = StorageHelper::new(&mut log_store, &mut state_machine)
-                .with_allow_io_notification_reorder(config.get_allow_io_notification_reorder());
+                .with_allow_io_notification_reorder(config.get_allow_io_notification_reorder())
+                .with_id(id.clone());
             helper.get_initial_state().await?
         };
 

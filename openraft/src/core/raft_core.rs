@@ -41,7 +41,6 @@ use crate::core::raft_msg::external_command::ExternalCommand;
 use crate::core::sm;
 use crate::display_ext::DisplayInstantExt;
 use crate::display_ext::DisplayOptionExt;
-use crate::display_ext::DisplaySlice;
 use crate::display_ext::DisplaySliceExt;
 use crate::engine::Command;
 use crate::engine::Condition;
@@ -903,7 +902,33 @@ where
                     tracing::debug!("postponed, first 8 queued commands: {:?}", c);
                 }
             }
+
             return Ok(());
+        }
+
+        // Progress-driven commands must run last.
+        //
+        // Some progress states are set based on the assumption that all preceding commands have been
+        // executed. Therefore, progress-driven commands must run after those commands to ensure their
+        // preconditions are satisfied.
+        //
+        // Example: An entry should be marked as `committed` only when:
+        // - The entry has been `submitted` to storage
+        // - A quorum has `acked` it
+        //
+        // Currently, `committed` is set when the entry is `accepted` and the append-entries IO is
+        // scheduled (added to engine.output), but not yet actually submitted to storage. This works
+        // because SaveCommitted is assumed to run after the append-entries command completes.
+        //
+        // If SaveCommitted becomes a progress-driven command, it must still wait until its
+        // preconditions (entry submitted to storage + quorum acked) are actually met.
+
+        while let Some(cmd) = self.engine.next_progress_driven_command() {
+            tracing::debug!("RAFT_event id={:<2}    io_driven cmd: {}", self.id, cmd);
+
+            // IO progress generated command is always ready to run. no need to postpone.
+            let res = self.run_command(cmd).await?;
+            assert!(res.is_none(), "IO driven command should always be executed");
         }
 
         Ok(())
@@ -1795,14 +1820,14 @@ where
             Command::BroadcastHeartbeat { session_id, committed } => {
                 self.heartbeat_handle.broadcast(HeartbeatEvent::new(C::now(), session_id, committed))
             }
-            Command::SaveCommitted { committed } => {
-                self.log_store.save_committed(Some(committed)).await?;
-            }
-            Command::Apply {
-                already_committed,
+            Command::SaveCommittedAndApply {
+                already_applied: already_committed,
                 upto,
             } => {
                 self.engine.state.apply_progress_mut().submit(upto.clone());
+
+                self.log_store.save_committed(Some(upto.clone())).await?;
+
                 let first = self.engine.state.get_log_id(already_committed.next_index()).unwrap();
                 self.apply_to_state_machine(first, upto).await?;
             }

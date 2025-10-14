@@ -73,25 +73,25 @@ where C: RaftTypeConfig
         committed: Option<LogIdOf<C>>,
     },
 
-    /// Save the committed log id to [`RaftLogStorage`].
+    /// Save the committed log id `upto` to [`RaftLogStorage`].
     ///
     /// Upon startup, the saved committed log ids will be re-applied to the state machine to restore
     /// the latest state.
     ///
-    /// [`RaftLogStorage`]: crate::storage::RaftLogStorage
-    SaveCommitted { committed: LogIdOf<C> },
-
-    /// Commit log entries that are already persisted in the store, up to `upto`, inclusive.
+    /// Apply log entries from `already_applied`, exclusive up to `upto`, inclusive.
     ///
     /// To `commit` logs, [`RaftLogStorage::save_committed()`] is called. And then committed logs
     /// will be applied to the state machine by calling [`RaftStateMachine::apply()`].
     ///
-    /// And if it is a leader, send the applied result to the client that proposed the entry.
+    /// And if it is a leader, send the applied result to the client that proposed the entry once
+    /// Apply is done.
     ///
+    ///
+    /// [`RaftLogStorage`]: crate::storage::RaftLogStorage
     /// [`RaftLogStorage::save_committed()`]: crate::storage::RaftLogStorage::save_committed
     /// [`RaftStateMachine::apply()`]: crate::storage::RaftStateMachine::apply
-    Apply {
-        already_committed: Option<LogIdOf<C>>,
+    SaveCommittedAndApply {
+        already_applied: Option<LogIdOf<C>>,
         upto: LogIdOf<C>,
     },
 
@@ -162,11 +162,10 @@ where C: RaftTypeConfig
                     committed.display()
                 )
             }
-            Command::SaveCommitted { committed } => write!(f, "SaveCommitted: {}", committed),
-            Command::Apply {
-                already_committed,
+            Command::SaveCommittedAndApply {
+                already_applied: already_committed,
                 upto,
-            } => write!(f, "Apply: ({}, {}]", already_committed.display(), upto),
+            } => write!(f, "SaveCommittedAndApply: ({}, {}]", already_committed.display(), upto),
             Command::Replicate { target, req } => {
                 write!(f, "Replicate: target={}, req: {}", target, req)
             }
@@ -205,8 +204,7 @@ where
             (Command::AppendEntries { committed_vote: vote, entries },    Command::AppendEntries { committed_vote: vb, entries: b }, )               => vote == vb && entries == b,
             (Command::ReplicateCommitted { committed },        Command::ReplicateCommitted { committed: b }, )                       =>  committed == b,
             (Command::BroadcastHeartbeat { session_id, committed }, Command::BroadcastHeartbeat { session_id: sb, committed: b }, )  => session_id == sb && committed == b,
-            (Command::SaveCommitted { committed },             Command::SaveCommitted { committed: b })                              => committed == b,
-            (Command::Apply { already_committed, upto, },      Command::Apply { already_committed: b_committed, upto: b_upto, }, )  => already_committed == b_committed && upto == b_upto,
+            (Command::SaveCommittedAndApply { already_applied: already_committed, upto, },      Command::SaveCommittedAndApply { already_applied: b_committed, upto: b_upto, }, )  => already_committed == b_committed && upto == b_upto,
             (Command::Replicate { target, req },               Command::Replicate { target: b_target, req: other_req, }, )           => target == b_target && req == other_req,
             (Command::BroadcastTransferLeader { req },         Command::BroadcastTransferLeader { req: b, }, )                       => req == b,
             (Command::RebuildReplicationStreams { targets },   Command::RebuildReplicationStreams { targets: b }, )                  => targets == b,
@@ -237,7 +235,6 @@ where C: RaftTypeConfig
             Command::AppendEntries { .. }             => CommandKind::Log,
             Command::SaveVote { .. }                  => CommandKind::Log,
             Command::TruncateLog { .. }               => CommandKind::Log,
-            Command::SaveCommitted { .. }             => CommandKind::Log,
 
             Command::PurgeLog { .. }                  => CommandKind::Log,
 
@@ -247,7 +244,7 @@ where C: RaftTypeConfig
             Command::BroadcastTransferLeader { .. }   => CommandKind::Network,
             Command::SendVote { .. }                  => CommandKind::Network,
 
-            Command::Apply { .. }                     => CommandKind::StateMachine,
+            Command::SaveCommittedAndApply { .. }                     => CommandKind::StateMachine,
             Command::StateMachine { .. }              => CommandKind::StateMachine,
         }
     }
@@ -263,7 +260,6 @@ where C: RaftTypeConfig
             Command::AppendEntries { .. }             => None,
             Command::SaveVote { .. }                  => None,
             Command::TruncateLog { .. }               => None,
-            Command::SaveCommitted { .. }             => None,
 
             Command::PurgeLog { upto }                => Some(Condition::Snapshot { log_id: upto.clone() }),
 
@@ -273,7 +269,7 @@ where C: RaftTypeConfig
             Command::BroadcastTransferLeader { .. }   => None,
             Command::SendVote { .. }                  => None,
 
-            Command::Apply { .. }                     => None,
+            Command::SaveCommittedAndApply { .. }                     => None,
             Command::StateMachine { .. }              => None,
         }
     }

@@ -98,20 +98,13 @@ fn test_update_matching() -> anyhow::Result<()> {
         rh.update_matching(3, Some(log_id(2, 1, 3)));
         assert_eq!(Some(&log_id(2, 1, 1)), rh.state.committed());
         assert_eq!(
-            vec![
-                Command::ReplicateCommitted {
-                    committed: Some(log_id(2, 1, 1))
-                },
-                Command::SaveCommitted {
-                    committed: log_id(2, 1, 1)
-                },
-                Command::Apply {
-                    already_committed: None,
-                    upto: log_id(2, 1, 1)
-                }
-            ],
+            vec![Command::ReplicateCommitted {
+                committed: Some(log_id(2, 1, 1))
+            },],
             rh.output.take_commands()
         );
+        assert_eq!(Some(&log_id(2, 1, 1)), rh.state.io_state.apply_progress.accepted());
+        assert_eq!(None, rh.state.io_state.apply_progress.submitted());
     }
 
     // progress: (2,4), (2,1), (2,3); committed: (1,3)
@@ -120,20 +113,13 @@ fn test_update_matching() -> anyhow::Result<()> {
         rh.update_matching(1, Some(log_id(2, 1, 4)));
         assert_eq!(Some(&log_id(2, 1, 3)), rh.state.committed());
         assert_eq!(
-            vec![
-                Command::ReplicateCommitted {
-                    committed: Some(log_id(2, 1, 3))
-                },
-                Command::SaveCommitted {
-                    committed: log_id(2, 1, 3)
-                },
-                Command::Apply {
-                    already_committed: Some(log_id(2, 1, 1)),
-                    upto: log_id(2, 1, 3)
-                }
-            ],
+            vec![Command::ReplicateCommitted {
+                committed: Some(log_id(2, 1, 3))
+            },],
             rh.output.take_commands()
         );
+        assert_eq!(Some(&log_id(2, 1, 3)), rh.state.io_state.apply_progress.accepted());
+        assert_eq!(None, rh.state.io_state.apply_progress.submitted());
     }
 
     Ok(())

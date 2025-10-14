@@ -32,6 +32,8 @@ where T: PartialOrd + fmt::Debug
     accepted: Option<T>,
     submitted: Option<T>,
     flushed: Option<T>,
+
+    id: String,
     name: &'static str,
 
     /// Allow IO completion notifications to arrive out of order.
@@ -61,7 +63,8 @@ where
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "{}:(flushed/submitted:({}, {}], accepted: {})",
+            "id={:<2} {:>7}:(flushed/submitted:({}, {}], accepted: {})",
+            self.id,
             self.name,
             self.flushed.display(),
             self.submitted.display(),
@@ -81,12 +84,20 @@ where
     ///
     /// - `allow_notification_reorder`: Whether to allow IO completion notifications to arrive out
     ///   of order.
-    pub(crate) fn new_synchronized(v: Option<T>, name: &'static str, allow_notification_reorder: bool) -> Self
-    where T: Clone {
+    pub(crate) fn new_synchronized(
+        v: Option<T>,
+        id: impl ToString,
+        name: &'static str,
+        allow_notification_reorder: bool,
+    ) -> Self
+    where
+        T: Clone,
+    {
         Self {
             accepted: v.clone(),
             submitted: v.clone(),
             flushed: v.clone(),
+            id: id.to_string(),
             name,
             allow_notification_reorder,
         }
@@ -94,7 +105,7 @@ where
 
     /// Update the `accept` cursor of the I/O progress.
     pub(crate) fn accept(&mut self, new_accepted: T) {
-        tracing::debug!("RAFT_io_progress: {}; new_accepted: {}", self, new_accepted);
+        tracing::debug!("RAFT_io    {}; new_accepted: {}", self, new_accepted);
 
         #[allow(clippy::collapsible_if)]
         if cfg!(debug_assertions) {
@@ -110,12 +121,12 @@ where
 
         self.accepted = Some(new_accepted);
 
-        tracing::debug!("RAFT_io_progress: {}", self);
+        tracing::debug!("RAFT_io    {}", self);
     }
 
     /// Update the `submit` cursor of the I/O progress.
     pub(crate) fn submit(&mut self, new_submitted: T) {
-        tracing::debug!("RAFT_io_progress: {}; new_submitted: {}", self, new_submitted);
+        tracing::debug!("RAFT_io    {}; new_submitted: {}", self, new_submitted);
 
         #[allow(clippy::collapsible_if)]
         if cfg!(debug_assertions) {
@@ -131,12 +142,12 @@ where
 
         self.submitted = Some(new_submitted);
 
-        tracing::debug!("RAFT_io_progress: {}", self);
+        tracing::debug!("RAFT_io    {}", self);
     }
 
     /// Update the `flush` cursor of the I/O progress.
     pub(crate) fn flush(&mut self, new_flushed: T) {
-        tracing::debug!("RAFT_io_progress: {}; new_flushed: {}", self, new_flushed);
+        tracing::debug!("RAFT_io    {}; new_flushed: {}", self, new_flushed);
 
         #[allow(clippy::collapsible_if)]
         if cfg!(debug_assertions) {
@@ -152,7 +163,7 @@ where
 
         self.flushed = Some(new_flushed);
 
-        tracing::debug!("RAFT_io_progress: {}", self);
+        tracing::debug!("RAFT_io    {}", self);
     }
 
     /// Conditionally update all three cursors (accepted, submitted, flushed) to the same value.
@@ -173,7 +184,7 @@ where
             self.flush(value.clone());
         }
 
-        tracing::debug!("RAFT_io_progress: {}", self);
+        tracing::debug!("RAFT_io    {}", self);
     }
 
     pub(crate) fn accepted(&self) -> Option<&T> {
@@ -197,7 +208,7 @@ mod tests {
 
     #[test]
     fn test_allow_notification_reorder_disabled() {
-        let mut progress = IOProgress::new_synchronized(Some(10), "test", false);
+        let mut progress = IOProgress::new_synchronized(Some(10), 1, "test", false);
 
         // Monotonic updates should work
         progress.accept(11);
@@ -214,7 +225,7 @@ mod tests {
     #[should_panic(expected = "expect accepted:11 < new_accepted:10")]
     #[cfg(debug_assertions)]
     fn test_allow_notification_reorder_disabled_accept_panics() {
-        let mut progress = IOProgress::new_synchronized(Some(10), "test", false);
+        let mut progress = IOProgress::new_synchronized(Some(10), 1, "test", false);
         progress.accept(11);
         progress.accept(10); // Should panic - out of order
     }
@@ -223,7 +234,7 @@ mod tests {
     #[should_panic(expected = "expect submitted:11 < new_submitted:10")]
     #[cfg(debug_assertions)]
     fn test_allow_notification_reorder_disabled_submit_panics() {
-        let mut progress = IOProgress::new_synchronized(Some(10), "test", false);
+        let mut progress = IOProgress::new_synchronized(Some(10), 1, "test", false);
         progress.submit(11);
         progress.submit(10); // Should panic - out of order
     }
@@ -232,14 +243,14 @@ mod tests {
     #[should_panic(expected = "expect flushed:11 < new_flushed:10")]
     #[cfg(debug_assertions)]
     fn test_allow_notification_reorder_disabled_flush_panics() {
-        let mut progress = IOProgress::new_synchronized(Some(10), "test", false);
+        let mut progress = IOProgress::new_synchronized(Some(10), 1, "test", false);
         progress.flush(11);
         progress.flush(10); // Should panic - out of order
     }
 
     #[test]
     fn test_allow_notification_reorder_enabled() {
-        let mut progress = IOProgress::new_synchronized(Some(10), "test", true);
+        let mut progress = IOProgress::new_synchronized(Some(10), 1, "test", true);
 
         // Monotonic updates work
         progress.accept(11);
@@ -267,14 +278,14 @@ mod tests {
     #[test]
     fn test_try_update_all_respects_reorder_flag() {
         // With reorder disabled
-        let mut progress = IOProgress::new_synchronized(Some(10), "test", false);
+        let mut progress = IOProgress::new_synchronized(Some(10), 1, "test", false);
         progress.try_update_all(15);
         assert_eq!(Some(&15), progress.accepted());
         assert_eq!(Some(&15), progress.submitted());
         assert_eq!(Some(&15), progress.flushed());
 
         // With reorder enabled
-        let mut progress = IOProgress::new_synchronized(Some(10), "test", true);
+        let mut progress = IOProgress::new_synchronized(Some(10), 1, "test", true);
         progress.try_update_all(15);
         assert_eq!(Some(&15), progress.accepted());
         assert_eq!(Some(&15), progress.submitted());

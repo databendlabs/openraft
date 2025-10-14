@@ -37,6 +37,9 @@ where
 {
     pub(crate) log_store: &'a mut LS,
     pub(crate) state_machine: &'a mut SM,
+
+    id: String,
+
     /// Whether to allow IO completion notifications to arrive out of order.
     allow_io_notification_reorder: bool,
     _p: PhantomData<C>,
@@ -55,6 +58,7 @@ where
             log_store: sto,
             state_machine: sm,
             allow_io_notification_reorder: false,
+            id: "xx".to_string(),
             _p: Default::default(),
         }
     }
@@ -63,6 +67,13 @@ where
     #[since(version = "0.10.0")]
     pub fn with_allow_io_notification_reorder(mut self, allow_io_notification_reorder: bool) -> Self {
         self.allow_io_notification_reorder = allow_io_notification_reorder;
+        self
+    }
+
+    /// Set the ID of this node
+    #[since(version = "0.10.0")]
+    pub fn with_id(mut self, id: impl ToString) -> Self {
+        self.id = id.to_string();
         self
     }
 
@@ -155,6 +166,7 @@ where
         let snapshot_meta = snapshot.map(|x| x.meta).unwrap_or_default();
 
         let io_state = IOState::new(
+            &self.id,
             &vote,
             last_applied.clone(),
             snapshot_meta.last_log_id.clone(),

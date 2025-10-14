@@ -117,9 +117,9 @@ where C: RaftTypeConfig
     fn default() -> Self {
         Self {
             building_snapshot: false,
-            log_progress: new_progress(None, LOG_PROGRESS_NAME, false),
-            apply_progress: new_progress(None, APPLY_PROGRESS_NAME, false),
-            snapshot: new_progress(None, SNAPSHOT_PROGRESS_NAME, false),
+            log_progress: new_progress(None, "xx", LOG_PROGRESS_NAME, false),
+            apply_progress: new_progress(None, "xx", APPLY_PROGRESS_NAME, false),
+            snapshot: new_progress(None, "xx", SNAPSHOT_PROGRESS_NAME, false),
             purged: None,
         }
     }
@@ -157,6 +157,7 @@ where C: RaftTypeConfig
     /// - `allow_io_notification_reorder`: Whether to allow IO completion notifications to arrive
     ///   out of order.
     pub(crate) fn new(
+        id: &str,
         vote: &VoteOf<C>,
         applied: Option<LogIdOf<C>>,
         snapshot: Option<LogIdOf<C>>,
@@ -167,9 +168,9 @@ where C: RaftTypeConfig
 
         Self {
             building_snapshot: false,
-            log_progress: new_progress(Some(IOId::new(vote)), LOG_PROGRESS_NAME, reorder),
-            apply_progress: new_progress(applied, APPLY_PROGRESS_NAME, reorder),
-            snapshot: new_progress(snapshot, SNAPSHOT_PROGRESS_NAME, reorder),
+            log_progress: new_progress(Some(IOId::new(vote)), id, LOG_PROGRESS_NAME, reorder),
+            apply_progress: new_progress(applied, id, APPLY_PROGRESS_NAME, reorder),
+            snapshot: new_progress(snapshot, id, SNAPSHOT_PROGRESS_NAME, reorder),
             purged,
         }
     }
@@ -205,6 +206,7 @@ where C: RaftTypeConfig
 /// `initial_value`.
 fn new_progress<T>(
     initial_value: Option<T>,
+    id: impl ToString,
     name: &'static str,
     allow_notification_reorder: bool,
 ) -> Valid<IOProgress<T>>
@@ -213,6 +215,7 @@ where
 {
     Valid::new(IOProgress::new_synchronized(
         initial_value,
+        id,
         name,
         allow_notification_reorder,
     ))
