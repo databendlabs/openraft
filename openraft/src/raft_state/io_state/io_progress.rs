@@ -187,6 +187,33 @@ where
         tracing::debug!("RAFT_io    {}", self);
     }
 
+    /// Conditionally update the `accept` cursor if the new value is greater.
+    #[allow(dead_code)]
+    pub(crate) fn try_accept(&mut self, new_accepted: T) {
+        if self.accepted.as_ref() < Some(&new_accepted) {
+            self.accept(new_accepted);
+            tracing::debug!("RAFT_io    {}", self);
+        }
+    }
+
+    /// Conditionally update the `submit` cursor if the new value is greater.
+    #[allow(dead_code)]
+    pub(crate) fn try_submit(&mut self, new_submitted: T) {
+        if self.submitted.as_ref() < Some(&new_submitted) {
+            self.submit(new_submitted);
+            tracing::debug!("RAFT_io    {}", self);
+        }
+    }
+
+    /// Conditionally update the `flush` cursor if the new value is greater.
+    #[allow(dead_code)]
+    pub(crate) fn try_flush(&mut self, new_flushed: T) {
+        if self.flushed.as_ref() < Some(&new_flushed) {
+            self.flush(new_flushed);
+            tracing::debug!("RAFT_io    {}", self);
+        }
+    }
+
     pub(crate) fn accepted(&self) -> Option<&T> {
         self.accepted.as_ref()
     }
@@ -296,5 +323,68 @@ mod tests {
         assert_eq!(Some(&15), progress.accepted());
         assert_eq!(Some(&15), progress.submitted());
         assert_eq!(Some(&15), progress.flushed());
+    }
+
+    #[test]
+    fn test_try_accept() {
+        let mut progress = IOProgress::new_synchronized(Some(10), 1, "test", false);
+
+        // Update with greater value - should update
+        progress.try_accept(15);
+        assert_eq!(Some(&15), progress.accepted());
+
+        // Update with smaller value - should not update
+        progress.try_accept(12);
+        assert_eq!(Some(&15), progress.accepted());
+
+        // Update with equal value - should not update
+        progress.try_accept(15);
+        assert_eq!(Some(&15), progress.accepted());
+
+        // Update with greater value again - should update
+        progress.try_accept(20);
+        assert_eq!(Some(&20), progress.accepted());
+    }
+
+    #[test]
+    fn test_try_submit() {
+        let mut progress = IOProgress::new_synchronized(Some(10), 1, "test", false);
+
+        // Update with greater value - should update
+        progress.try_submit(15);
+        assert_eq!(Some(&15), progress.submitted());
+
+        // Update with smaller value - should not update
+        progress.try_submit(12);
+        assert_eq!(Some(&15), progress.submitted());
+
+        // Update with equal value - should not update
+        progress.try_submit(15);
+        assert_eq!(Some(&15), progress.submitted());
+
+        // Update with greater value again - should update
+        progress.try_submit(20);
+        assert_eq!(Some(&20), progress.submitted());
+    }
+
+    #[test]
+    fn test_try_flush() {
+        let mut progress = IOProgress::new_synchronized(Some(10), 1, "test", false);
+
+        // Update with greater value - should update
+        progress.try_flush(15);
+        assert_eq!(Some(&15), progress.flushed());
+
+        // Update with smaller value - should not update
+        progress.try_flush(12);
+        assert_eq!(Some(&15), progress.flushed());
+
+        // Update with equal value - should not update
+        progress.try_flush(15);
+        assert_eq!(Some(&15), progress.flushed());
+
+        // Update with greater value again - should update
+        progress.try_flush(20);
+        assert_eq!(Some(&20), progress.flushed());
     }
 }
