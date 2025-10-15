@@ -17,6 +17,7 @@ use crate::engine::LogIdList;
 use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;
 use crate::raft_state::IOId;
+use crate::raft_state::io_state::log_io_id::LogIOId;
 use crate::storage::Snapshot;
 use crate::storage::SnapshotMeta;
 use crate::type_config::TypeConfigExt;
@@ -165,7 +166,7 @@ fn test_install_snapshot_not_conflict() -> anyhow::Result<()> {
                     },
                     snapshot: Cursor::new(vec![0u8]),
                 },
-                IOId::new_log_io(Vote::new(2, 1).into_committed(), Some(log_id(4, 1, 6))),
+                LogIOId::new(Vote::new(2, 1).into_committed(), Some(log_id(4, 1, 6))),
             )),
             Command::PurgeLog { upto: log_id(4, 1, 6) },
         ],
@@ -251,7 +252,7 @@ fn test_install_snapshot_conflict() -> anyhow::Result<()> {
                     },
                     snapshot: Cursor::new(vec![0u8]),
                 },
-                IOId::new_log_io(Vote::new(2, 1).into_committed(), Some(log_id(5, 1, 6)))
+                LogIOId::new(Vote::new(2, 1).into_committed(), Some(log_id(5, 1, 6)))
             )),
             Command::PurgeLog { upto: log_id(5, 1, 6) },
         ],
@@ -311,7 +312,7 @@ fn test_install_snapshot_advance_last_log_id() -> anyhow::Result<()> {
                     },
                     snapshot: Cursor::new(vec![0u8]),
                 },
-                IOId::new_log_io(Vote::new(2, 1).into_committed(), Some(log_id(100, 1, 100)))
+                LogIOId::new(Vote::new(2, 1).into_committed(), Some(log_id(100, 1, 100)))
             )),
             Command::PurgeLog {
                 upto: log_id(100, 1, 100)

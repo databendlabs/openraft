@@ -1548,15 +1548,15 @@ where
 
                         self.engine.on_building_snapshot_done(meta);
                     }
-                    sm::Response::InstallSnapshot((io_id, meta)) => {
+                    sm::Response::InstallSnapshot((log_io_id, meta)) => {
                         tracing::info!(
-                            "sm::StateMachine command done: InstallSnapshot: {}, io_id: {}: {}",
+                            "sm::StateMachine command done: InstallSnapshot: {}, log_io_id: {}: {}",
                             meta.display(),
-                            io_id,
+                            log_io_id,
                             func_name!()
                         );
 
-                        self.engine.state.log_progress_mut().flush(io_id);
+                        self.engine.state.log_progress_mut().flush(IOId::Log(log_io_id));
 
                         if let Some(meta) = meta {
                             let st = self.engine.state.io_state_mut();

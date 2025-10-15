@@ -8,6 +8,7 @@ use crate::RaftTypeConfig;
 use crate::base::BoxMaybeAsyncOnceMut;
 use crate::raft::responder::core_responder::CoreResponder;
 use crate::raft_state::IOId;
+use crate::raft_state::io_state::log_io_id::LogIOId;
 use crate::storage::Snapshot;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::OneshotSenderOf;
@@ -30,11 +31,11 @@ where C: RaftTypeConfig
     },
 
     InstallFullSnapshot {
-        /// The IO id used to update IO progress.
+        /// The Log IO id used to update IO progress.
         ///
         /// Installing a snapshot is considered as an IO of AppendEntries `[0,
         /// snapshot.last_log_id]`
-        io_id: IOId<C>,
+        log_io_id: LogIOId<C>,
         snapshot: Snapshot<C>,
     },
 
@@ -78,8 +79,8 @@ where C: RaftTypeConfig
         Command::BeginReceivingSnapshot { tx }
     }
 
-    pub(crate) fn install_full_snapshot(snapshot: Snapshot<C>, io_id: IOId<C>) -> Self {
-        Command::InstallFullSnapshot { io_id, snapshot }
+    pub(crate) fn install_full_snapshot(snapshot: Snapshot<C>, log_io_id: LogIOId<C>) -> Self {
+        Command::InstallFullSnapshot { log_io_id, snapshot }
     }
 
     /// Applies log ids within the inclusive range `[first, last]`.
@@ -104,7 +105,7 @@ where C: RaftTypeConfig
             Command::BuildSnapshot => None,
             Command::GetSnapshot { .. } => None,
             Command::BeginReceivingSnapshot { .. } => None,
-            Command::InstallFullSnapshot { io_id, .. } => Some(io_id.clone()),
+            Command::InstallFullSnapshot { log_io_id, .. } => Some(IOId::Log(log_io_id.clone())),
             Command::Apply { .. } => None,
             Command::Func { .. } => None,
         }
@@ -120,7 +121,7 @@ where C: RaftTypeConfig
             Command::BuildSnapshot => None,
             Command::GetSnapshot { .. } => None,
             Command::BeginReceivingSnapshot { .. } => None,
-            Command::InstallFullSnapshot { io_id, .. } => io_id.last_log_id().cloned(),
+            Command::InstallFullSnapshot { log_io_id, .. } => log_io_id.last_log_id().cloned(),
             Command::Apply { last, .. } => Some(last.clone()),
             Command::Func { .. } => None,
         }
@@ -152,7 +153,10 @@ where C: RaftTypeConfig
         match self {
             Command::BuildSnapshot => write!(f, "BuildSnapshot"),
             Command::GetSnapshot { .. } => write!(f, "GetSnapshot"),
-            Command::InstallFullSnapshot { io_id, snapshot } => {
+            Command::InstallFullSnapshot {
+                log_io_id: io_id,
+                snapshot,
+            } => {
                 write!(f, "InstallFullSnapshot: meta: {:?}, io_id: {:?}", snapshot.meta, io_id)
             }
             Command::BeginReceivingSnapshot { .. } => {
@@ -171,7 +175,10 @@ where C: RaftTypeConfig
         match self {
             Command::BuildSnapshot => write!(f, "BuildSnapshot"),
             Command::GetSnapshot { .. } => write!(f, "GetSnapshot"),
-            Command::InstallFullSnapshot { io_id, snapshot } => {
+            Command::InstallFullSnapshot {
+                log_io_id: io_id,
+                snapshot,
+            } => {
                 write!(f, "InstallFullSnapshot: meta: {}, io_id: {}", snapshot.meta, io_id)
             }
             Command::BeginReceivingSnapshot { .. } => {
@@ -194,11 +201,11 @@ where C: RaftTypeConfig
             (Command::BeginReceivingSnapshot { .. }, Command::BeginReceivingSnapshot { .. }) => true,
             (
                 Command::InstallFullSnapshot {
-                    io_id: io1,
+                    log_io_id: io1,
                     snapshot: s1,
                 },
                 Command::InstallFullSnapshot {
-                    io_id: io2,
+                    log_io_id: io2,
                     snapshot: s2,
                 },
             ) => s1.meta == s2.meta && io1 == io2,

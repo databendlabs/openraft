@@ -122,7 +122,10 @@ where
                     self.get_snapshot(tx).await?;
                     // GetSnapshot does not respond to RaftCore
                 }
-                Command::InstallFullSnapshot { io_id, snapshot } => {
+                Command::InstallFullSnapshot {
+                    log_io_id: io_id,
+                    snapshot,
+                } => {
                     tracing::info!("{}: install complete snapshot", func_name!());
 
                     let meta = snapshot.meta.clone();

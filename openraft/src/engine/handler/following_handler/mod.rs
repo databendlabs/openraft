@@ -22,9 +22,11 @@ use crate::error::RejectAppendEntries;
 use crate::log_id::option_raft_log_id_ext::OptionRaftLogIdExt;
 use crate::raft_state::IOId;
 use crate::raft_state::LogStateReader;
+use crate::raft_state::io_state::log_io_id::LogIOId;
 use crate::storage::Snapshot;
 use crate::type_config::alias::LogIdOf;
 use crate::vote::committed::CommittedVote;
+use crate::vote::raft_vote::RaftVoteExt;
 
 #[cfg(test)]
 mod append_entries_test;
@@ -300,8 +302,8 @@ where C: RaftTypeConfig
             }
         }
 
-        let io_id = IOId::new_log_io(self.leader_vote.clone(), Some(snap_last_log_id.clone()));
-        self.state.accept_log_io(io_id.clone());
+        let log_io_id = LogIOId::new(self.leader_vote.to_committed(), Some(snap_last_log_id.clone()));
+        self.state.accept_log_io(log_io_id.to_io_id());
 
         self.state.apply_progress_mut().accept(snap_last_log_id.clone());
         self.state.snapshot_progress_mut().accept(snap_last_log_id.clone());
@@ -310,7 +312,7 @@ where C: RaftTypeConfig
             meta.last_membership.clone(),
         ));
 
-        self.output.push_command(Command::from(sm::Command::install_full_snapshot(snapshot, io_id)));
+        self.output.push_command(Command::from(sm::Command::install_full_snapshot(snapshot, log_io_id)));
 
         self.state.purge_upto = Some(snap_last_log_id.clone());
         self.log_handler().purge_log();

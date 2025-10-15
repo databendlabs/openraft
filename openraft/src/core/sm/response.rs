@@ -6,7 +6,7 @@ use crate::StorageError;
 use crate::core::ApplyResult;
 use crate::display_ext::DisplayOptionExt;
 use crate::display_ext::display_result::DisplayResultExt;
-use crate::raft_state::IOId;
+use crate::raft_state::io_state::log_io_id::LogIOId;
 use crate::storage::SnapshotMeta;
 
 /// The Ok part of a state machine command result.
@@ -23,7 +23,7 @@ where C: RaftTypeConfig
     /// When finishing installing a snapshot.
     ///
     /// It does not return any value to RaftCore.
-    InstallSnapshot((IOId<C>, Option<SnapshotMeta<C>>)),
+    InstallSnapshot((LogIOId<C>, Option<SnapshotMeta<C>>)),
 
     /// Send back applied result to RaftCore.
     Apply(ApplyResult<C>),

@@ -16,7 +16,7 @@ use crate::engine::Respond;
 use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;
 use crate::raft::SnapshotResponse;
-use crate::raft_state::IOId;
+use crate::raft_state::io_state::log_io_id::LogIOId;
 use crate::storage::Snapshot;
 use crate::storage::SnapshotMeta;
 use crate::type_config::TypeConfigExt;
@@ -153,7 +153,7 @@ fn test_handle_install_full_snapshot_no_conflict() -> anyhow::Result<()> {
                     },
                     snapshot: Cursor::new(vec![0u8]),
                 },
-                IOId::new_log_io(Vote::new(2, 1).into_committed(), Some(log_id(4, 1, 6)))
+                LogIOId::new(Vote::new(2, 1).into_committed(), Some(log_id(4, 1, 6)))
             )),
             Command::PurgeLog { upto: log_id(4, 1, 6) },
             Command::Respond {

@@ -2,6 +2,7 @@ use std::fmt;
 
 use crate::RaftTypeConfig;
 use crate::display_ext::DisplayOptionExt;
+use crate::raft_state::io_state::IOId;
 use crate::type_config::alias::LogIdOf;
 use crate::vote::committed::CommittedVote;
 
@@ -48,5 +49,14 @@ where C: RaftTypeConfig
 {
     pub(crate) fn new(committed_vote: CommittedVote<C>, log_id: Option<LogIdOf<C>>) -> Self {
         Self { committed_vote, log_id }
+    }
+
+    /// Return the last log id included in this io operation.
+    pub(crate) fn last_log_id(&self) -> Option<&LogIdOf<C>> {
+        self.log_id.as_ref()
+    }
+
+    pub(crate) fn to_io_id(&self) -> IOId<C> {
+        IOId::Log(self.clone())
     }
 }
