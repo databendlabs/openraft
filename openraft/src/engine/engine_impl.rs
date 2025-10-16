@@ -661,32 +661,53 @@ where C: RaftTypeConfig
         lh.transfer_leader(to);
     }
 
-    /// Poll for commands generated from I/O progress state.
+    /// Poll for commands automatically generated from I/O progress state.
     ///
-    /// Returns commands that can be automatically built by examining I/O progress,
-    /// without explicit Engine state changes.
+    /// Returns commands built by examining I/O progress (submitted vs accepted positions),
+    /// without explicit Engine state changes. These commands have no preconditions and can be
+    /// executed immediately without queuing.
     ///
-    /// Currently generates [`Command::SaveCommittedAndApply`] when there are committed log entries
-    /// not yet submitted to the state machine:
-    /// `(apply_progress.submitted()..apply_progress.accepted()]`.
+    /// Currently, generates [`Command::SaveCommittedAndApply`] when committed log entries
+    /// haven't been applied: `(apply_progress.submitted()..apply_progress.accepted()]`.
     ///
-    /// In the future, will support other I/O progress-driven commands.
-    ///
-    /// A progress-driven command must:
-    /// - update the progress, so that no duplicated command will be generated.
+    /// Requirements:
+    /// - Commands must update their corresponding progress when executed to prevent duplicates
     pub(crate) fn next_progress_driven_command(&self) -> Option<Command<C>> {
         let apply_progress = &self.state.io_state.apply_progress;
+        let log_progress = &self.state.io_state.log_progress;
 
-        let submitted = apply_progress.submitted();
-        let committed = apply_progress.accepted();
+        // Generate Apply command
 
-        if submitted.next_index() < committed.next_index() {
-            let committed = committed.cloned().unwrap();
+        if log_progress.submitted().map(|x| x.as_ref_vote()) == log_progress.accepted().map(|x| x.as_ref_vote()) {
+            // Only apply committed entries when submitted and accepted logs are from the same leader.
+            //
+            // This ensures submitted logs won't be overridden by pending commands in the queue.
+            //
+            // If leaders differ, queued commands may override submitted logs. Example:
+            // - submitted: append-entries(leader=L1, entry=E2)
+            // - queued: truncate(E2), save-vote(L2), append-entries(leader=L2, entry=E2')
+            // Here E2 will be overridden by E2' when the queue executes.
+            //
+            // When both have the same leader:
+            // - A leader never truncates its own written entries
+            // - Committed entries are visible to all future leaders
+            // - The submitted logs are guaranteed to be the actual committed entries
 
-            return Some(Command::SaveCommittedAndApply {
-                already_applied: submitted.cloned(),
-                upto: committed,
-            });
+            let apply_submitted = apply_progress.submitted();
+            let apply_accepted = apply_progress.accepted();
+
+            let log_submitted = log_progress.submitted().and_then(|io_id| io_id.last_log_id());
+
+            let applicable_upto = log_submitted.min(apply_accepted);
+
+            if apply_submitted.next_index() < applicable_upto.next_index() {
+                let apply_upto = applicable_upto.cloned().unwrap();
+
+                return Some(Command::SaveCommittedAndApply {
+                    already_applied: apply_submitted.cloned(),
+                    upto: apply_upto,
+                });
+            }
         }
 
         None
