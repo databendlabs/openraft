@@ -34,6 +34,17 @@ pub struct StateMachineStore {
     current_snapshot: Mutex<Option<StoredSnapshot>>,
 }
 
+impl StateMachineStore {
+    /// Generates a unique snapshot ID based on the last applied log and snapshot index.
+    fn generate_snapshot_id(last_applied: &Option<LogId>, snapshot_idx: u64) -> String {
+        if let Some(last) = last_applied {
+            format!("{}-{}-{}", last.committed_leader_id(), last.index(), snapshot_idx)
+        } else {
+            format!("--{}", snapshot_idx)
+        }
+    }
+}
+
 impl RaftSnapshotBuilder<TypeConfig> for Arc<StateMachineStore> {
     #[tracing::instrument(level = "trace", skip(self))]
     async fn build_snapshot(&mut self) -> Result<Snapshot, StorageError> {
@@ -59,11 +70,7 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<StateMachineStore> {
             *l
         };
 
-        let snapshot_id = if let Some(last) = &last_applied {
-            format!("{}-{}-{}", last.committed_leader_id(), last.index(), snapshot_idx)
-        } else {
-            format!("--{}", snapshot_idx)
-        };
+        let snapshot_id = StateMachineStore::generate_snapshot_id(&last_applied, snapshot_idx);
 
         let meta = SnapshotMeta {
             last_log_id: last_applied,

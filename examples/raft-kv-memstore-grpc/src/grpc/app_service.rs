@@ -110,16 +110,7 @@ impl AppService for AppServiceImpl {
         let req = request.into_inner();
 
         // Convert nodes into required format
-        let nodes_map: BTreeMap<u64, pb::Node> = req
-            .nodes
-            .into_iter()
-            .map(|node| {
-                (node.node_id, pb::Node {
-                    rpc_addr: node.rpc_addr,
-                    node_id: node.node_id,
-                })
-            })
-            .collect();
+        let nodes_map: BTreeMap<u64, pb::Node> = req.nodes.into_iter().map(|node| (node.node_id, node)).collect();
 
         // Initialize the cluster
         let result = self
