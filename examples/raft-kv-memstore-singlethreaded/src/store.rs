@@ -1,5 +1,6 @@
 use std::cell::RefCell;
 use std::collections::BTreeMap;
+use std::fmt;
 use std::fmt::Debug;
 use std::io::Cursor;
 use std::marker::PhantomData;
@@ -23,6 +24,14 @@ pub enum Request {
         value: String,
         _p: PhantomData<*const ()>,
     },
+}
+
+impl fmt::Display for Request {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Request::Set { key, value, .. } => write!(f, "Set {{ key: {}, value: {} }}", key, value),
+        }
+    }
 }
 
 impl Request {

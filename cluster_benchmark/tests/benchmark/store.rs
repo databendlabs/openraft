@@ -1,6 +1,7 @@
 mod test;
 
 use std::collections::BTreeMap;
+use std::fmt;
 use std::fmt::Debug;
 use std::io::Cursor;
 use std::ops::RangeBounds;
@@ -31,6 +32,12 @@ use tokio::sync::RwLock;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ClientRequest {}
+
+impl fmt::Display for ClientRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "ClientRequest {{}}")
+    }
+}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ClientResponse {}

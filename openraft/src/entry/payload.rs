@@ -35,11 +35,13 @@ where
     }
 }
 
-impl<C: RaftTypeConfig> fmt::Debug for EntryPayload<C> {
+impl<C> fmt::Debug for EntryPayload<C>
+where C: RaftTypeConfig
+{
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             EntryPayload::Blank => write!(f, "blank")?,
-            EntryPayload::Normal(_n) => write!(f, "normal")?,
+            EntryPayload::Normal(app_data) => write!(f, "normal:{:?}", app_data)?,
             EntryPayload::Membership(c) => {
                 write!(f, "membership:{:?}", c)?;
             }
@@ -55,7 +57,7 @@ where C: RaftTypeConfig
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             EntryPayload::Blank => write!(f, "blank")?,
-            EntryPayload::Normal(_n) => write!(f, "normal")?,
+            EntryPayload::Normal(app_data) => write!(f, "normal:{}", app_data)?,
             EntryPayload::Membership(c) => {
                 write!(f, "membership:{}", c)?;
             }
@@ -65,12 +67,70 @@ where C: RaftTypeConfig
     }
 }
 
-impl<C: RaftTypeConfig> RaftPayload<C> for EntryPayload<C> {
+impl<C> EntryPayload<C>
+where C: RaftTypeConfig
+{
+    pub fn type_str(&self) -> &'static str {
+        match self {
+            EntryPayload::Blank => "Blank",
+            EntryPayload::Normal(_) => "Normal",
+            EntryPayload::Membership(_) => "Membership",
+        }
+    }
+}
+
+impl<C> RaftPayload<C> for EntryPayload<C>
+where C: RaftTypeConfig
+{
     fn get_membership(&self) -> Option<Membership<C>> {
         if let EntryPayload::Membership(m) = self {
             Some(m.clone())
         } else {
             None
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeSet;
+
+    use crate::engine::testing::UTConfig;
+    use crate::entry::payload::EntryPayload;
+
+    #[test]
+    fn test_debug() {
+        let blank = EntryPayload::<UTConfig>::Blank;
+        assert_eq!(format!("{:?}", blank), "blank");
+
+        let normal = EntryPayload::<UTConfig>::Normal(3);
+        assert_eq!(format!("{:?}", normal), "normal:3");
+
+        let membership = EntryPayload::<UTConfig>::Membership(crate::Membership::new_with_defaults(
+            vec![BTreeSet::from([1, 2])],
+            [],
+        ));
+        assert_eq!(
+            format!("{:?}", membership),
+            "membership:Membership { configs: [{1, 2}], nodes: {1: (), 2: ()} }"
+        );
+    }
+
+    #[test]
+    fn test_display() {
+        let blank = EntryPayload::<UTConfig>::Blank;
+        assert_eq!(format!("{}", blank), "blank");
+
+        let normal = EntryPayload::<UTConfig>::Normal(3);
+        assert_eq!(format!("{}", normal), "normal:3");
+
+        let membership = EntryPayload::<UTConfig>::Membership(crate::Membership::new_with_defaults(
+            vec![BTreeSet::from([1, 2])],
+            [],
+        ));
+        assert_eq!(
+            format!("{}", membership),
+            "membership:{voters:[{1:(),2:()}], learners:[]}"
+        );
     }
 }

@@ -35,7 +35,7 @@ impl<N> Copy for UTConfig<N> {}
 impl<N> RaftTypeConfig for UTConfig<N>
 where N: Node + Ord
 {
-    type D = ();
+    type D = u64;
     type R = ();
     type NodeId = u64;
     type Node = N;

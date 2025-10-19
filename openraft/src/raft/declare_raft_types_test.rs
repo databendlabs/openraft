@@ -13,7 +13,7 @@ declare_raft_types!(
         Node = (),
 
         /// This is AppData
-        D = (),
+        D = u64,
         #[allow(dead_code)]
         #[allow(dead_code)]
         R = (),
@@ -38,7 +38,7 @@ declare_raft_types!(
 
 declare_raft_types!(
     WithoutR:
-        D = (),
+        D = u64,
         NodeId = u64,
         Node = (),
         Entry = crate::Entry<Self>,

@@ -142,7 +142,7 @@ mod tests {
         use crate::declare_raft_types;
         use crate::vote::leader_id_std::LeaderId;
 
-        declare_raft_types!(TC: D=(),R=(),LeaderId=LeaderId<TC>);
+        declare_raft_types!(TC: D=u64,R=(),LeaderId=LeaderId<TC>);
 
         #[cfg(feature = "serde")]
         #[test]

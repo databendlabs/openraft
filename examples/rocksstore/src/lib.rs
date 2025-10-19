@@ -11,6 +11,7 @@ pub mod log_store;
 #[cfg(test)]
 mod test;
 
+use std::fmt;
 use std::fmt::Debug;
 use std::fs;
 use std::io::Cursor;
@@ -58,6 +59,14 @@ openraft::declare_raft_types!(
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum RocksRequest {
     Set { key: String, value: String },
+}
+
+impl fmt::Display for RocksRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            RocksRequest::Set { key, value } => write!(f, "Set {{ key: {}, value: {} }}", key, value),
+        }
+    }
 }
 
 /**

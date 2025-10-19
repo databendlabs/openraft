@@ -7,6 +7,7 @@ mod impl_entry;
 mod impl_leader_id;
 mod impl_log_id;
 mod impl_membership;
+mod impl_set_request;
 mod impl_snapshot_request;
 mod impl_vote;
 mod impl_vote_request;

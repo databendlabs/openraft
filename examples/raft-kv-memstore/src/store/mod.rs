@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::fmt;
 use std::fmt::Debug;
 use std::io::Cursor;
 use std::sync::atomic::AtomicU64;
@@ -32,6 +33,14 @@ pub type LogStore = mem_log::LogStore<TypeConfig>;
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Request {
     Set { key: String, value: String },
+}
+
+impl fmt::Display for Request {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Request::Set { key, value, .. } => write!(f, "Set {{ key: {}, value: {} }}", key, value),
+        }
+    }
 }
 
 /**

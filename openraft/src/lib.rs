@@ -75,6 +75,8 @@ pub mod vote;
 #[cfg(test)]
 mod feature_serde_test;
 
+use std::fmt;
+
 pub use anyerror;
 pub use anyerror::AnyError;
 pub use openraft_macros::add_async_trait;
@@ -148,9 +150,9 @@ pub use crate::vote::Vote;
 /// ## Note
 ///
 /// The trait is automatically implemented for all types that satisfy its supertraits.
-pub trait AppData: OptionalFeatures + 'static {}
+pub trait AppData: OptionalFeatures + fmt::Debug + fmt::Display + 'static {}
 
-impl<T> AppData for T where T: OptionalFeatures + 'static {}
+impl<T> AppData for T where T: OptionalFeatures + fmt::Debug + fmt::Display + 'static {}
 
 /// A trait defining application-specific response data.
 ///

@@ -42,6 +42,8 @@ use tokio::time::Duration;
 /// Conceptually, for demo purposes, this represents an update to a client's status info,
 /// returning the previously recorded status.
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(derive_more::Display)]
+#[display("ClientRequest{{client:{}, serial:{}, status:{}}}", client, serial, status)]
 pub struct ClientRequest {
     /// The ID of the client which has sent the request.
     pub client: String,
