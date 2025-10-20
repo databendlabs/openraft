@@ -50,9 +50,9 @@ use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::LeaderIdOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::OneshotSenderOf;
-use crate::type_config::alias::ResponderOf;
 use crate::type_config::alias::SnapshotDataOf;
 use crate::type_config::alias::VoteOf;
+use crate::type_config::alias::WriteResponderOf;
 use crate::vote::RaftLeaderId;
 use crate::vote::RaftTerm;
 use crate::vote::RaftVote;
@@ -649,7 +649,7 @@ where C: RaftTypeConfig
     pub(crate) fn trigger_transfer_leader(&mut self, to: C::NodeId) {
         tracing::info!(to = display(&to), "{}", func_name!());
 
-        let Some((mut lh, _)) = self.get_leader_handler_or_reject(None::<ResponderOf<C>>) else {
+        let Some((mut lh, _)) = self.get_leader_handler_or_reject(None::<WriteResponderOf<C>>) else {
             tracing::info!(
                 to = display(to),
                 "{}: this node is not a Leader, ignore transfer Leader",

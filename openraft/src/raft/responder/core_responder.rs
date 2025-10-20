@@ -2,7 +2,7 @@ use crate::RaftTypeConfig;
 use crate::impls::OneshotResponder;
 use crate::raft::ClientWriteResult;
 use crate::raft::responder::Responder;
-use crate::type_config::alias::ResponderOf;
+use crate::type_config::alias::WriteResponderOf;
 
 /// The responder used in RaftCore.
 ///
@@ -12,7 +12,7 @@ pub(crate) enum CoreResponder<C>
 where C: RaftTypeConfig
 {
     Oneshot(OneshotResponder<C>),
-    UserDefined(ResponderOf<C>),
+    UserDefined(WriteResponderOf<C>),
 }
 
 impl<C> Responder<ClientWriteResult<C>> for CoreResponder<C>

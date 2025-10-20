@@ -20,9 +20,9 @@ use crate::raft::VoteResponse;
 use crate::raft::linearizable_read::Linearizer;
 use crate::storage::Snapshot;
 use crate::type_config::alias::OneshotSenderOf;
-use crate::type_config::alias::ResponderOf;
 use crate::type_config::alias::SnapshotDataOf;
 use crate::type_config::alias::VoteOf;
+use crate::type_config::alias::WriteResponderOf;
 
 pub(crate) mod external_command;
 
@@ -72,7 +72,7 @@ where C: RaftTypeConfig
 
     ClientWriteRequest {
         app_data: C::D,
-        tx: ResponderOf<C>,
+        tx: WriteResponderOf<C>,
     },
 
     CheckIsLeaderRequest {

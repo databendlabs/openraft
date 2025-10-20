@@ -172,9 +172,10 @@ pub mod alias {
     pub type SnapshotDataOf<C> = <C as RaftTypeConfig>::SnapshotData;
     pub type AsyncRuntimeOf<C> = <C as RaftTypeConfig>::AsyncRuntime;
     pub type ResponderBuilderOf<C> = <C as RaftTypeConfig>::ResponderBuilder;
-    pub type ResponderOf<C> = <ResponderBuilderOf<C> as ResponderBuilder<DOf<C>, ClientWriteResult<C>>>::Responder;
-    pub type ResponderReceiverOf<C> =
-        <ResponderBuilderOf<C> as ResponderBuilder<DOf<C>, ClientWriteResult<C>>>::Receiver;
+    pub type ResponderOf<C, V> = <ResponderBuilderOf<C> as ResponderBuilder<DOf<C>, V>>::Responder;
+    pub type ResponderReceiverOf<C, V> = <ResponderBuilderOf<C> as ResponderBuilder<DOf<C>, V>>::Receiver;
+    pub type WriteResponderOf<C> = ResponderOf<C, ClientWriteResult<C>>;
+    pub type WriteResponderReceiverOf<C> = ResponderReceiverOf<C, ClientWriteResult<C>>;
 
     type Rt<C> = AsyncRuntimeOf<C>;
 

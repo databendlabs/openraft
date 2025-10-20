@@ -95,10 +95,10 @@ use crate::storage::Snapshot;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::JoinErrorOf;
 use crate::type_config::alias::LogIdOf;
-use crate::type_config::alias::ResponderReceiverOf;
 use crate::type_config::alias::SnapshotDataOf;
 use crate::type_config::alias::VoteOf;
 use crate::type_config::alias::WatchReceiverOf;
+use crate::type_config::alias::WriteResponderReceiverOf;
 use crate::vote::raft_vote::RaftVoteExt;
 
 /// Define types for a Raft type configuration.
@@ -729,7 +729,7 @@ where C: RaftTypeConfig
         app_data: C::D,
     ) -> Result<ClientWriteResponse<C>, RaftError<C, ClientWriteError<C>>>
     where
-        ResponderReceiverOf<C>: Future<Output = Result<ClientWriteResult<C>, E>>,
+        WriteResponderReceiverOf<C>: Future<Output = Result<ClientWriteResult<C>, E>>,
         E: Error + OptionalSend,
     {
         self.app_api().client_write(app_data).await.into_raft_result()
@@ -742,7 +742,7 @@ where C: RaftTypeConfig
     ///
     /// It is same as [`Self::client_write`] but does not wait for the response.
     #[since(version = "0.10.0")]
-    pub async fn client_write_ff(&self, app_data: C::D) -> Result<ResponderReceiverOf<C>, Fatal<C>> {
+    pub async fn client_write_ff(&self, app_data: C::D) -> Result<WriteResponderReceiverOf<C>, Fatal<C>> {
         self.app_api().client_write_ff(app_data).await
     }
 

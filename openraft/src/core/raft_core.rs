@@ -96,8 +96,8 @@ use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::MpscUnboundedReceiverOf;
 use crate::type_config::alias::MpscUnboundedSenderOf;
 use crate::type_config::alias::OneshotReceiverOf;
-use crate::type_config::alias::ResponderOf;
 use crate::type_config::alias::WatchSenderOf;
+use crate::type_config::alias::WriteResponderOf;
 use crate::type_config::async_runtime::MpscUnboundedReceiver;
 use crate::vote::RaftLeaderId;
 use crate::vote::RaftVote;
@@ -508,7 +508,7 @@ where
     pub(crate) fn send_heartbeat(&mut self, emitter: impl fmt::Display) -> bool {
         tracing::debug!(now = display(C::now().display()), "send_heartbeat");
 
-        let Some((mut lh, _)) = self.engine.get_leader_handler_or_reject(None::<ResponderOf<C>>) else {
+        let Some((mut lh, _)) = self.engine.get_leader_handler_or_reject(None::<WriteResponderOf<C>>) else {
             tracing::debug!(
                 now = display(C::now().display()),
                 "{} failed to send heartbeat, not a Leader",
