@@ -6,18 +6,11 @@ use openraft_macros::since;
 use crate::EntryPayload;
 use crate::Membership;
 use crate::RaftTypeConfig;
+use crate::alias::CommittedLeaderIdOf;
+use crate::alias::LogIdOf;
 use crate::base::OptionalFeatures;
 use crate::base::finalized::Final;
-use crate::type_config::alias::CommittedLeaderIdOf;
-use crate::type_config::alias::LogIdOf;
-
-/// Defines operations on an entry payload.
-pub trait RaftPayload<C>
-where C: RaftTypeConfig
-{
-    /// Return `Some(Membership)` if the entry payload contains a membership payload.
-    fn get_membership(&self) -> Option<Membership<C>>;
-}
+use crate::entry::RaftPayload;
 
 /// Defines operations on an entry.
 pub trait RaftEntry<C>
