@@ -14,13 +14,64 @@ use syn::parse::Parse;
 use syn::parse::ParseStream;
 
 /// A type or an expression which is used as an argument in the `expand` macro.
-#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+#[derive(Debug, Clone)]
 enum TypeOrExpr {
     Attribute(Vec<Attribute>),
     Type(Type),
     Expr(Expr),
+    Tokens(TokenStream2),
     Empty,
 }
+
+impl std::hash::Hash for TypeOrExpr {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        match self {
+            TypeOrExpr::Attribute(attrs) => {
+                std::mem::discriminant(self).hash(state);
+                for attr in attrs {
+                    attr.to_token_stream().to_string().hash(state);
+                }
+            }
+            TypeOrExpr::Type(t) => {
+                std::mem::discriminant(self).hash(state);
+                t.to_token_stream().to_string().hash(state);
+            }
+            TypeOrExpr::Expr(e) => {
+                std::mem::discriminant(self).hash(state);
+                e.to_token_stream().to_string().hash(state);
+            }
+            TypeOrExpr::Tokens(ts) => {
+                std::mem::discriminant(self).hash(state);
+                ts.to_string().hash(state);
+            }
+            TypeOrExpr::Empty => {
+                std::mem::discriminant(self).hash(state);
+            }
+        }
+    }
+}
+
+impl PartialEq for TypeOrExpr {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (TypeOrExpr::Attribute(a1), TypeOrExpr::Attribute(a2)) => {
+                a1.iter().map(|a| a.to_token_stream().to_string()).collect::<Vec<_>>()
+                    == a2.iter().map(|a| a.to_token_stream().to_string()).collect::<Vec<_>>()
+            }
+            (TypeOrExpr::Type(t1), TypeOrExpr::Type(t2)) => {
+                t1.to_token_stream().to_string() == t2.to_token_stream().to_string()
+            }
+            (TypeOrExpr::Expr(e1), TypeOrExpr::Expr(e2)) => {
+                e1.to_token_stream().to_string() == e2.to_token_stream().to_string()
+            }
+            (TypeOrExpr::Tokens(ts1), TypeOrExpr::Tokens(ts2)) => ts1.to_string() == ts2.to_string(),
+            (TypeOrExpr::Empty, TypeOrExpr::Empty) => true,
+            _ => false,
+        }
+    }
+}
+
+impl Eq for TypeOrExpr {}
 
 impl ToTokens for TypeOrExpr {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
@@ -32,6 +83,7 @@ impl ToTokens for TypeOrExpr {
             }
             TypeOrExpr::Type(t) => t.to_tokens(tokens),
             TypeOrExpr::Expr(e) => e.to_tokens(tokens),
+            TypeOrExpr::Tokens(ts) => tokens.extend(ts.clone()),
             TypeOrExpr::Empty => {}
         }
     }
@@ -46,22 +98,55 @@ impl Parse for TypeOrExpr {
             }
         }
 
-        let res = input.parse::<Type>();
-        if let Ok(t) = res {
+        // Check if empty (next token is comma or end)
+        let l = input.lookahead1();
+        if l.peek(Token![,]) {
+            return Ok(Self::Empty);
+        }
+
+        // Collect all tokens until comma at angle-bracket depth 0
+        // This handles generics correctly: Type<A, B> won't split at the inner comma
+        let mut tokens = TokenStream2::new();
+        let mut angle_depth = 0i32;
+
+        while !input.is_empty() {
+            // Check if we hit a comma at depth 0 (not inside angle brackets)
+            if angle_depth == 0 && input.peek(Token![,]) {
+                break;
+            }
+
+            let token = input.parse::<proc_macro2::TokenTree>()?;
+
+            // Track angle bracket depth
+            if let proc_macro2::TokenTree::Punct(ref punct) = token {
+                match punct.as_char() {
+                    '<' => angle_depth += 1,
+                    '>' => angle_depth -= 1,
+                    _ => {}
+                }
+            }
+
+            tokens.extend(std::iter::once(token));
+        }
+
+        if tokens.is_empty() {
+            return Ok(Self::Empty);
+        }
+
+        // Try to parse collected tokens as Type first
+        let type_result: Result<Type, _> = syn::parse2(tokens.clone());
+        if let Ok(t) = type_result {
             return Ok(Self::Type(t));
         }
 
-        let res = input.parse::<Expr>();
-        if let Ok(e) = res {
+        // Try to parse as Expr
+        let expr_result: Result<Expr, _> = syn::parse2(tokens.clone());
+        if let Ok(e) = expr_result {
             return Ok(Self::Expr(e));
         }
 
-        let l = input.lookahead1();
-        if l.peek(Token![,]) {
-            Ok(Self::Empty)
-        } else {
-            Err(l.error())
-        }
+        // Neither worked, return as raw tokens
+        Ok(Self::Tokens(tokens))
     }
 }
 
