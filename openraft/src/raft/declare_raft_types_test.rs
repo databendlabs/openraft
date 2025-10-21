@@ -23,7 +23,8 @@ declare_raft_types!(
         Vote = crate::impls::Vote<Self>,
         SnapshotData = Cursor<Vec<u8>>,
         AsyncRuntime = TokioRuntime,
-        ResponderBuilder = crate::impls::OneshotResponder<Self>,
+        // Responder<T> is not supported by  declare_raft_types
+        // Responder<T> = crate::impls::OneshotResponder<Self, T> where T: OptionalSend + 'static,
 );
 
 declare_raft_types!(

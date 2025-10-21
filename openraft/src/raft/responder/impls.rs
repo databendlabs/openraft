@@ -1,8 +1,7 @@
+use crate::OptionalSend;
 use crate::RaftTypeConfig;
 use crate::async_runtime::OneshotSender;
-use crate::raft::message::ClientWriteResult;
 use crate::raft::responder::Responder;
-use crate::raft::responder::ResponderBuilder;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::OneshotReceiverOf;
 use crate::type_config::alias::OneshotSenderOf;
@@ -12,27 +11,48 @@ use crate::type_config::alias::OneshotSenderOf;
 /// This could be used when the [`Raft::client_write`] caller wants to wait for the response.
 ///
 /// [`Raft::client_write`]: `crate::raft::Raft::client_write`
-pub struct OneshotResponder<C>
-where C: RaftTypeConfig
+pub struct OneshotResponder<C, T>
+where
+    C: RaftTypeConfig,
+    T: OptionalSend,
 {
-    tx: OneshotSenderOf<C, ClientWriteResult<C>>,
+    tx: OneshotSenderOf<C, T>,
 }
 
-impl<C> OneshotResponder<C>
-where C: RaftTypeConfig
+impl<C, T> OneshotResponder<C, T>
+where
+    C: RaftTypeConfig,
+    T: OptionalSend,
 {
     /// Create a new instance from a [`AsyncRuntime::Oneshot::Sender`].
     ///
     /// [`AsyncRuntime::Oneshot::Sender`]: `crate::async_runtime::Oneshot::Sender`
-    pub fn new(tx: OneshotSenderOf<C, ClientWriteResult<C>>) -> Self {
+    pub fn new(tx: OneshotSenderOf<C, T>) -> Self {
         Self { tx }
+    }
+
+    /// Create a new responder and receiver pair.
+    ///
+    /// This is a convenience method that creates a oneshot channel and returns
+    /// a [`OneshotResponder`] wrapping the sender and the receiver.
+    ///
+    /// # Returns
+    ///
+    /// A tuple containing:
+    /// - The [`OneshotResponder`] that can be used to send a response
+    /// - The receiver that can be used to wait for the response
+    pub fn new_pair() -> (Self, OneshotReceiverOf<C, T>) {
+        let (tx, rx) = C::oneshot();
+        (Self::new(tx), rx)
     }
 }
 
-impl<C> Responder<ClientWriteResult<C>> for OneshotResponder<C>
-where C: RaftTypeConfig
+impl<C, T> Responder<T> for OneshotResponder<C, T>
+where
+    C: RaftTypeConfig,
+    T: OptionalSend + 'static,
 {
-    fn send(self, res: ClientWriteResult<C>) {
+    fn send(self, res: T) {
         let res = self.tx.send(res);
 
         if res.is_ok() {
@@ -40,17 +60,5 @@ where C: RaftTypeConfig
         } else {
             tracing::warn!("OneshotConsumer.tx.send: is_ok: {}", res.is_ok());
         }
-    }
-}
-
-impl<C> ResponderBuilder<C::D, ClientWriteResult<C>> for OneshotResponder<C>
-where C: RaftTypeConfig
-{
-    type Responder = Self;
-    type Receiver = OneshotReceiverOf<C, ClientWriteResult<C>>;
-
-    fn build(_src: &C::D) -> (Self::Responder, Self::Receiver) {
-        let (tx, rx) = C::oneshot();
-        (Self { tx }, rx)
     }
 }

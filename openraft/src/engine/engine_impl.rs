@@ -251,12 +251,11 @@ where C: RaftTypeConfig
     ///
     /// If `tx` is None, no response will be sent.
     ///
-    /// The `tx` is a [`Responder`] instance, but it does not have to be the built responder from
-    /// [`C::ResponderBuilder`]. The generic `R` allows any responder type to be used, while the
-    /// responder built from [`C::ResponderBuilder`] is specifically designed for client write
+    /// The `tx` is a [`Responder`] instance. The generic `R` allows any responder type to be used,
+    /// while the responder from [`C::Responder`] is specifically designed for client write
     /// operations.
     ///
-    /// [`C::ResponderBuilder`]: RaftTypeConfig::ResponderBuilder
+    /// [`C::Responder`]: RaftTypeConfig::Responder
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn get_leader_handler_or_reject<R>(
         &mut self,

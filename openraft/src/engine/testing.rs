@@ -1,6 +1,7 @@
 use std::io::Cursor;
 
 use crate::Node;
+use crate::OptionalSend;
 use crate::RaftTypeConfig;
 use crate::impls::TokioRuntime;
 use crate::type_config::alias::LeaderIdOf;
@@ -45,7 +46,9 @@ where N: Node + Ord
     type Entry = crate::impls::Entry<Self>;
     type SnapshotData = Cursor<Vec<u8>>;
     type AsyncRuntime = TokioRuntime;
-    type ResponderBuilder = crate::impls::OneshotResponder<Self>;
+    type Responder<T>
+        = crate::impls::OneshotResponder<Self, T>
+    where T: OptionalSend + 'static;
 }
 
 /// Builds a log id, for testing purposes.

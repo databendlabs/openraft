@@ -11,7 +11,7 @@ use crate::type_config::alias::WriteResponderOf;
 pub(crate) enum CoreResponder<C>
 where C: RaftTypeConfig
 {
-    Oneshot(OneshotResponder<C>),
+    Oneshot(OneshotResponder<C, ClientWriteResult<C>>),
     UserDefined(WriteResponderOf<C>),
 }
 

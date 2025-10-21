@@ -5,6 +5,7 @@ use futures::prelude::*;
 use maplit::btreeset;
 use openraft::Config;
 use openraft::SnapshotPolicy;
+use openraft::impls::OneshotResponder;
 use openraft::raft::ClientWriteResponse;
 use openraft_memstore::ClientRequest;
 use openraft_memstore::IntoMemClientRequest;
@@ -86,12 +87,14 @@ async fn client_write_ff() -> Result<()> {
 
     let n0 = router.get_raft_handle(&0)?;
 
-    let resp_rx = n0.client_write_ff(ClientRequest::make_request("foo", 2)).await?;
-    let got: ClientWriteResponse<TypeConfig> = resp_rx.await??;
+    let (responder, rx) = OneshotResponder::new_pair();
+    n0.client_write_ff(ClientRequest::make_request("foo", 2), responder).await?;
+    let got: ClientWriteResponse<TypeConfig> = rx.await??;
     assert_eq!(None, got.response().0.as_deref());
 
-    let resp_rx = n0.client_write_ff(ClientRequest::make_request("foo", 3)).await?;
-    let got: ClientWriteResponse<TypeConfig> = resp_rx.await??;
+    let (responder, rx) = OneshotResponder::new_pair();
+    n0.client_write_ff(ClientRequest::make_request("foo", 3), responder).await?;
+    let got: ClientWriteResponse<TypeConfig> = rx.await??;
     assert_eq!(Some("request-2"), got.response().0.as_deref());
 
     Ok(())

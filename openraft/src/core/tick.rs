@@ -164,6 +164,7 @@ mod tests {
 
     use tokio::time::Duration;
 
+    use crate::OptionalSend;
     use crate::RaftTypeConfig;
     use crate::core::Tick;
     use crate::impls::TokioRuntime;
@@ -183,7 +184,9 @@ mod tests {
         type Entry = crate::Entry<Self>;
         type SnapshotData = Cursor<Vec<u8>>;
         type AsyncRuntime = TokioRuntime;
-        type ResponderBuilder = crate::impls::OneshotResponder<Self>;
+        type Responder<T>
+            = crate::impls::OneshotResponder<Self, T>
+        where T: OptionalSend + 'static;
     }
 
     #[tokio::test]

@@ -4,7 +4,7 @@ use proc_macro2::TokenTree;
 /// Check if the next two token is a doc attribute, such as `#[doc = "foo"]`.
 ///
 /// An doc attribute is composed of a `#` token and a `Group` token with a `Bracket` delimiter:
-/// ```ignore
+/// ```text
 /// Punct { ch: '#', },
 /// Group {
 ///     delimiter: Bracket,

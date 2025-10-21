@@ -21,7 +21,6 @@ pub mod trigger;
 
 use std::any::Any;
 use std::collections::BTreeMap;
-use std::error::Error;
 
 pub(crate) use api::app::AppApi;
 pub(crate) use api::management::ManagementApi;
@@ -30,7 +29,6 @@ pub(crate) use api::protocol::ProtocolApi;
 pub(in crate::raft) mod core_state;
 
 use std::fmt::Debug;
-use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -103,7 +101,7 @@ use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::SnapshotDataOf;
 use crate::type_config::alias::VoteOf;
 use crate::type_config::alias::WatchReceiverOf;
-use crate::type_config::alias::WriteResponderReceiverOf;
+use crate::type_config::alias::WriteResponderOf;
 use crate::vote::raft_vote::RaftVoteExt;
 
 /// Define types for a Raft type configuration.
@@ -127,7 +125,7 @@ use crate::vote::raft_vote::RaftVoteExt;
 ///        Vote           = openraft::impls::Vote<Self>,
 ///        Entry          = openraft::Entry<Self>,
 ///        SnapshotData   = Cursor<Vec<u8>>,
-///        ResponderBuilder = openraft::impls::OneshotResponder<Self>,
+///        Responder<T>   = openraft::impls::OneshotResponder<Self, T>,
 ///        AsyncRuntime   = openraft::TokioRuntime,
 /// );
 /// ```
@@ -142,7 +140,7 @@ use crate::vote::raft_vote::RaftVoteExt;
 /// - `Vote`:           `::openraft::impls::Vote<Self>`
 /// - `Entry`:          `::openraft::impls::Entry<Self>`
 /// - `SnapshotData`:   `Cursor<Vec<u8>>`
-/// - `ResponderBuilder`: `::openraft::impls::OneshotResponder<Self>`
+/// - `Responder<T>`:   `::openraft::impls::OneshotResponder<Self, T>`
 /// - `AsyncRuntime`:   `::openraft::impls::TokioRuntime`
 ///
 /// For example, to declare with only `D` and `R` types:
@@ -191,7 +189,7 @@ macro_rules! declare_raft_types {
                 (Vote           , , $crate::impls::Vote<Self>                    ),
                 (Entry          , , $crate::impls::Entry<Self>                   ),
                 (SnapshotData   , , std::io::Cursor<Vec<u8>>                     ),
-                (ResponderBuilder , , $crate::impls::OneshotResponder<Self>        ),
+                (Responder<T>   , , $crate::impls::OneshotResponder<Self, T> where T: $crate::OptionalSend + 'static     ),
                 (AsyncRuntime   , , $crate::impls::TokioRuntime                  ),
             );
 
@@ -734,14 +732,10 @@ where C: RaftTypeConfig
     /// println!("Applied at log index: {:?}", response.log_id);
     /// ```
     #[tracing::instrument(level = "debug", skip(self, app_data))]
-    pub async fn client_write<E>(
+    pub async fn client_write(
         &self,
         app_data: C::D,
-    ) -> Result<ClientWriteResponse<C>, RaftError<C, ClientWriteError<C>>>
-    where
-        WriteResponderReceiverOf<C>: Future<Output = Result<ClientWriteResult<C>, E>>,
-        E: Error + OptionalSend,
-    {
+    ) -> Result<ClientWriteResponse<C>, RaftError<C, ClientWriteError<C>>> {
         self.app_api().client_write(app_data).await.into_raft_result()
     }
 
@@ -751,9 +745,10 @@ where C: RaftTypeConfig
     /// `_ff` means fire and forget.
     ///
     /// It is same as [`Self::client_write`] but does not wait for the response.
+    #[since(version = "0.10.0", date = "2025-10-27", change = "add responder arg")]
     #[since(version = "0.10.0")]
-    pub async fn client_write_ff(&self, app_data: C::D) -> Result<WriteResponderReceiverOf<C>, Fatal<C>> {
-        self.app_api().client_write_ff(app_data).await
+    pub async fn client_write_ff(&self, app_data: C::D, responder: WriteResponderOf<C>) -> Result<(), Fatal<C>> {
+        self.app_api().client_write_ff(app_data, responder).await
     }
 
     /// Handle the LeaderTransfer request from a Leader node.

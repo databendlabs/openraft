@@ -75,6 +75,7 @@ use crate::progress::entry::ProgressEntry;
 use crate::quorum::QuorumSet;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
+use crate::raft::ClientWriteResult;
 use crate::raft::ReadPolicy;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
@@ -453,7 +454,12 @@ where
     //       membership logs. And it does not need to wait for the previous membership log to commit
     //       to propose the new membership log.
     #[tracing::instrument(level = "debug", skip(self, tx))]
-    pub(super) fn change_membership(&mut self, changes: ChangeMembers<C>, retain: bool, tx: OneshotResponder<C>) {
+    pub(super) fn change_membership(
+        &mut self,
+        changes: ChangeMembers<C>,
+        retain: bool,
+        tx: OneshotResponder<C, ClientWriteResult<C>>,
+    ) {
         let res = self.engine.state.membership_state.change_handler().apply(changes, retain);
         let new_membership = match res {
             Ok(x) => x,
@@ -476,7 +482,7 @@ where
     /// The calling side may not receive a result from `resp_tx`, if raft is shut down.
     ///
     /// The responder `resp_tx` is either Responder type of
-    /// [`RaftTypeConfig::ResponderBuilder`] (application-defined) or [`OneshotResponder`]
+    /// [`RaftTypeConfig::Responder`] (application-defined) or [`OneshotResponder`]
     /// (general-purpose); the former is for application-defined entries like user data, the
     /// latter is for membership configuration changes.
     #[tracing::instrument(level = "debug", skip_all, fields(id = display(&self.id)))]
@@ -1291,11 +1297,8 @@ where
             RaftMsg::CheckIsLeaderRequest { read_policy, tx } => {
                 self.handle_check_is_leader_request(read_policy, tx).await;
             }
-            RaftMsg::ClientWriteRequest { app_data, tx } => {
-                self.write_entry(
-                    C::Entry::new_normal(LogIdOf::<C>::default(), app_data),
-                    Some(CoreResponder::UserDefined(tx)),
-                );
+            RaftMsg::ClientWriteRequest { app_data, responder } => {
+                self.write_entry(C::Entry::new_normal(LogIdOf::<C>::default(), app_data), Some(responder));
             }
             RaftMsg::Initialize { members, tx } => {
                 tracing::info!(

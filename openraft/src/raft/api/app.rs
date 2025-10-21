@@ -1,23 +1,19 @@
-use std::error::Error;
-use std::future::Future;
-
 use openraft_macros::since;
 
-use crate::OptionalSend;
 use crate::RaftTypeConfig;
 use crate::ReadPolicy;
 use crate::core::raft_msg::RaftMsg;
 use crate::error::CheckIsLeaderError;
 use crate::error::ClientWriteError;
 use crate::error::Fatal;
+use crate::impls::OneshotResponder;
 use crate::raft::ClientWriteResponse;
 use crate::raft::ClientWriteResult;
 use crate::raft::linearizable_read::Linearizer;
 use crate::raft::raft_inner::RaftInner;
-use crate::raft::responder::ResponderBuilder;
+use crate::raft::responder::core_responder::CoreResponder;
 use crate::type_config::TypeConfigExt;
-use crate::type_config::alias::ResponderBuilderOf;
-use crate::type_config::alias::WriteResponderReceiverOf;
+use crate::type_config::alias::WriteResponderOf;
 
 /// Provides application-facing APIs for interacting with the Raft system.
 ///
@@ -49,16 +45,15 @@ where C: RaftTypeConfig
 
     #[since(version = "0.10.0")]
     #[tracing::instrument(level = "debug", skip(self, app_data))]
-    pub(crate) async fn client_write<E>(
+    pub(crate) async fn client_write(
         &self,
         app_data: C::D,
         // TODO: ClientWriteError can only be ForwardToLeader Error
-    ) -> Result<Result<ClientWriteResponse<C>, ClientWriteError<C>>, Fatal<C>>
-    where
-        WriteResponderReceiverOf<C>: Future<Output = Result<ClientWriteResult<C>, E>>,
-        E: Error + OptionalSend,
-    {
-        let rx = self.client_write_ff(app_data).await?;
+    ) -> Result<Result<ClientWriteResponse<C>, ClientWriteError<C>>, Fatal<C>> {
+        let (tx, rx) = C::oneshot();
+        let responder = OneshotResponder::new(tx);
+
+        self.do_client_write_ff(app_data, CoreResponder::Oneshot(responder)).await?;
 
         let res: ClientWriteResult<C> = self.inner.recv_msg(rx).await?;
 
@@ -66,12 +61,16 @@ where C: RaftTypeConfig
     }
 
     #[since(version = "0.10.0")]
-    #[tracing::instrument(level = "debug", skip(self, app_data))]
-    pub(crate) async fn client_write_ff(&self, app_data: C::D) -> Result<WriteResponderReceiverOf<C>, Fatal<C>> {
-        let (tx, rx) = ResponderBuilderOf::<C>::build(&app_data);
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub(crate) async fn client_write_ff(&self, app_data: C::D, responder: WriteResponderOf<C>) -> Result<(), Fatal<C>> {
+        self.do_client_write_ff(app_data, CoreResponder::UserDefined(responder)).await
+    }
 
-        self.inner.send_msg(RaftMsg::ClientWriteRequest { app_data, tx }).await?;
+    /// Fire-and-forget version of `client_write`, accept a generic responder.
+    #[since(version = "0.10.0")]
+    async fn do_client_write_ff(&self, app_data: C::D, responder: CoreResponder<C>) -> Result<(), Fatal<C>> {
+        self.inner.send_msg(RaftMsg::ClientWriteRequest { app_data, responder }).await?;
 
-        Ok(rx)
+        Ok(())
     }
 }

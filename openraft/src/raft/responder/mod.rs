@@ -1,9 +1,7 @@
 //! API to consumer a response when a client write request is completed.
 
-pub(crate) mod builder;
 pub(crate) mod core_responder;
 pub(crate) mod impls;
-pub use builder::ResponderBuilder;
 pub use impls::OneshotResponder;
 
 use crate::OptionalSend;
@@ -17,7 +15,8 @@ use crate::OptionalSend;
 ///
 /// Usually an implementation of [`Responder`] is a oneshot channel Sender.
 ///
-/// See [`ResponderBuilder`] for constructing responders and their receivers.
+/// Responders are typically created by the application and passed to Raft APIs
+/// like [`Raft::client_write_ff`](crate::raft::Raft::client_write_ff).
 ///
 /// # Type Parameters
 ///

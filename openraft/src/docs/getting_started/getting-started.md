@@ -85,7 +85,8 @@ impl openraft::RaftTypeConfig for TypeConfig {
     type NodeId           = u64;
     type Node             = openraft::impls::BasicNode;
     type Entry            = openraft::impls::Entry<TypeConfig>;
-    type ResponderBuilder = openraft::impls::OneshotResponder<TypeConfig>,
+    type Responder<T>     = openraft::impls::OneshotResponder<TypeConfig, T>
+        where T: openraft::OptionalSend + 'static;
     type AsyncRuntime     = openraft::impls::TokioRuntime;
     type SnapshotData     = Cursor<Vec<u8>>;
 }
@@ -98,8 +99,8 @@ impl openraft::RaftTypeConfig for TypeConfig {
 >   implements [`Node`] trait.
 > - `Entry` is the log entry type that will be stored in the raft log,
 >   which includes the payload and log id, which implements [`RaftEntry`] trait.
-> - `ResponderBuilder` is the type that will be used to create a Responder to
->   send response to the client, which implements [`ResponderBuilder`] trait.
+> - `Responder<T>` is the type that will be used to send responses to the client,
+>   which implements [`Responder`] trait.
 > - `AsyncRuntime` is the async runtime that will be used to run the raft
 >   instance, which implements [`AsyncRuntime`] trait.
 > - `SnapshotData` is the type that will be used to store the snapshot data.
@@ -420,7 +421,7 @@ Additionally, two test scripts for setting up a cluster are available:
 [`RaftEntry`]:                          `crate::entry::RaftEntry`
 [`Node`]:                               `crate::node::Node`
 [`NodeId`]:                             `crate::node::NodeId`
-[`ResponderBuilder`]:                   `crate::raft::responder::ResponderBuilder`
+[`Responder`]:                          `crate::raft::responder::Responder`
 
 [`TokioRuntime`]:                       `crate::impls::TokioRuntime`
 [`OneshotResponder`]:                   `crate::impls::OneshotResponder`
