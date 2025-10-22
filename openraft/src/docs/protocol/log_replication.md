@@ -236,5 +236,9 @@ However, it's important to note that a specific `LogId` can only be truncated an
 Therefore, the pointer for an IO operation must be represented as `term, LogId(term, index)`.
 In Openraft, the `LogIOId` is `(CommittedLeaderId, LogId)`.
 
+See also:
+- [LogIOId](crate::docs::data::log_io_id)
+- [Log I/O Progress Tracking](crate::docs::data::log_io_progress)
+
 
 [binary search]: https://en.wikipedia.org/wiki/Binary_search_algorithm

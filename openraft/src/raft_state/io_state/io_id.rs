@@ -13,21 +13,20 @@ use crate::vote::non_committed::NonCommittedVote;
 use crate::vote::raft_vote::RaftVoteExt;
 use crate::vote::ref_vote::RefVote;
 
-/// An ID to uniquely identify a monotonic increasing io operation to [`RaftLogStorage`].
+/// Uniquely identifies a monotonic increasing I/O operation to [`RaftLogStorage`].
 ///
-/// Not all IO to [`RaftLogStorage`] are included by this struct:
-/// only the IOs that make progress in the raft log are included.
-/// Including [`save_vote()`] and [`append()`] logs.
+/// Includes only IOs that make progress: [`save_vote()`] and [`append()`].
+/// Operations like [`purge()`] and [`truncate()`] are excluded as they remove logs.
 ///
-/// [`purge()`] and [`truncate()`] are not included,
-/// because [`truncate()`] just remove junks: the logs that are conflict with the leader.
-/// And [`purge()`] just remove logs that are already committed.
+/// For details on when to use `IOId` vs [`LogIOId`], see: [`IOId`
+/// documentation](crate::docs::data::io_id).
 ///
 /// [`RaftLogStorage`]: `crate::storage::RaftLogStorage`
 /// [`save_vote()`]: `crate::storage::RaftLogStorage::save_vote()`
 /// [`append()`]: `crate::storage::RaftLogStorage::append()`
 /// [`truncate()`]: `crate::storage::RaftLogStorage::truncate()`
 /// [`purge()`]: `crate::storage::RaftLogStorage::purge()`
+/// [`LogIOId`]: crate::raft_state::io_state::log_io_id::LogIOId
 #[derive(Debug, Clone)]
 #[derive(PartialEq, Eq)]
 pub(crate) enum IOId<C>

@@ -6,24 +6,16 @@ use validit::less_equal;
 
 use crate::display_ext::DisplayOptionExt;
 
-/// Tracks the progress of some non-reorder-able I/O operations.
+/// Tracks the progress of I/O operations through three stages: accepted, submitted, and flushed.
 ///
-/// It keeps track of two key stages in the I/O process: submission to the queue and flushing to
-/// storage.
+/// `T`: A totally ordered type representing the I/O operation identifier (e.g., [`LogIOId`]).
 ///
-/// `T`: A totally ordered type representing the I/O operation identifier. This could be a
-/// sequence number, timestamp, or any other comparable value.
+/// Invariant: `flushed <= submitted <= accepted`
 ///
-/// `accepted`: The id of the last IO operation accepted, not yet submitted.
-/// `submitted`: The id of the last IO operation submitted to the queue.
-/// `flushed`: The id of the last IO operation successfully flushed to storage.
+/// For a comprehensive explanation of the three-stage tracking and examples, see:
+/// [Log I/O Progress](crate::docs::data::log_io_progress).
 ///
-/// `(flushed, submitted]` represents the window of I/O operations in progress.
-///
-/// Invariants:
-/// ```text
-/// flushed <= submitted <= accepted
-/// ```
+/// [`LogIOId`]: crate::raft_state::io_state::log_io_id::LogIOId
 #[derive(Debug, Clone)]
 #[derive(PartialEq, Eq)]
 pub(crate) struct IOProgress<T>

@@ -23,6 +23,9 @@ To learn about the data structures used in Openraft and the commit protocol, see
 - [`data`](crate::docs::data) :
   - [`Vote`](`crate::docs::data::vote`) is the core in a distributed system;
   - [`Log pointers`](`crate::docs::data::log_pointers`) shows how Openraft tracks entries in the log;
+  - [`IOId`](`crate::docs::data::io_id`) explains the I/O operation identifier for both vote and log operations;
+  - [`LogIOId`](`crate::docs::data::log_io_id`) explains the monotonic I/O operation identifier for log entries;
+  - [`Log I/O Progress`](`crate::docs::data::log_io_progress`) explains how Openraft tracks log I/O operations through three stages;
   - [`Leader lease`](`crate::docs::data::leader_lease`) explains leader lease for a Leader and a Follower;
   - [`Extended membership`](`crate::docs::data::extended_membership`) explains how members are organized in Openraft;
   - [`Effective membership`](`crate::docs::data::effective_membership`) explains when membership config takes effect;

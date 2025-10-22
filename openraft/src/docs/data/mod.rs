@@ -12,6 +12,18 @@ pub mod log_pointers {
     #![doc = include_str!("log_pointers.md")]
 }
 
+pub mod io_id {
+    #![doc = include_str!("io_id.md")]
+}
+
+pub mod log_io_id {
+    #![doc = include_str!("log_io_id.md")]
+}
+
+pub mod log_io_progress {
+    #![doc = include_str!("log_io_progress.md")]
+}
+
 pub mod leader_lease {
     #![doc = include_str!("leader-lease.md")]
 }

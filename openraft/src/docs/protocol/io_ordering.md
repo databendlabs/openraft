@@ -71,3 +71,8 @@ loss.
 The term update must be persisted before any log entries from that term,
 ensuring that once a log entry is written, the corresponding term is also
 guaranteed to be durable.
+
+## See Also
+
+- [IOId](crate::docs::data::io_id) - I/O operation identifier that treats vote and log as a unified whole
+- [Log I/O Progress](crate::docs::data::log_io_progress) - Three-stage I/O progress tracking

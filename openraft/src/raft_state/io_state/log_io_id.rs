@@ -6,21 +6,12 @@ use crate::raft_state::io_state::IOId;
 use crate::type_config::alias::LogIdOf;
 use crate::vote::committed::CommittedVote;
 
-/// A monotonic increasing id for log append io operation.
+/// Monotonic increasing identifier for log append I/O operations.
 ///
-/// The last appended [`LogId`] itself is not monotonic,
-/// For example, Leader-1 appends log `[2,3]` and then Leader-2 truncate log `[2,3]` then append log
-/// `[2]` But `(LeaderId, LogId)` is monotonic increasing.
+/// `LogIOId = (CommittedVote, LogId)` ensures monotonicity even when the same [`LogId`] is
+/// truncated and appended multiple times by different leaders.
 ///
-/// The leader could be a local leader that appends entries to the local log store
-/// or a remote leader that replicates entries to this follower.
-///
-/// It is monotonic increasing because:
-/// - Leader id increases monotonically in the entire cluster.
-/// - Leader propose or replicate log entries in order.
-///
-/// See: [LogId Appended Multiple
-/// Times](crate::docs::protocol::replication::log_replication#logid-appended-multiple-times).
+/// For a comprehensive explanation, see: [`LogIOId` documentation](crate::docs::data::log_io_id).
 ///
 /// [`LogId`]: crate::log_id::LogId
 #[derive(Debug, Clone)]

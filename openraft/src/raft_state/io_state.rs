@@ -16,31 +16,40 @@ pub(crate) mod io_id;
 pub(crate) mod io_progress;
 pub(crate) mod log_io_id;
 
-/// IOState tracks the state of actually happened io including log flushed, applying log to state
-/// machine or snapshot building.
+/// Tracks the state of completed I/O operations: log flushing, applying to state machine, and
+/// snapshot building.
 ///
-/// These states are updated only when the I/O completes and thus may fall behind to the state
-/// stored in [`RaftState`](`crate::RaftState`).
+/// These states update only when I/O completes and may lag behind
+/// [`RaftState`](`crate::RaftState`).
+///
+/// ## Progress Tracking
 ///
 /// The log ids that are tracked include:
 ///
 /// ```text
 /// | log ids
-/// | *------+-------+-------+-------+-------+-------+------------------>
-/// |        |       |       |       |       |       `---> accepted
-/// |        |       |       |       |       `-----------> submitted
-/// |        |       |       |       `-------------------> flushed
-/// |        |       |       `---------------------------> applied
+/// | *------+-------+------+----+---+---+---+-------+------------------>
+/// |        |       |      |    |   |   |   |       `---> log.accepted
+/// |        |       |      |    |   |   |   `-----------> log.submitted
+/// |        |       |      |    |   `-------------------> log.flushed
+/// |        |       |      |    |       |
+/// |        |       |      |    |       `---------------> apply.accepted
+/// |        |       |      |    `-----------------------> apply.submitted
+/// |        |       |      `----------------------------> apply.flushed
+/// |        |       |
 /// |        |       `-----------------------------------> snapshot
 /// |        `-------------------------------------------> purged
 /// ```
 ///
-/// - `accepted`: Accepted log entries from the Leader but not yet submit to the storage.
-/// - `submitted`: AppendEntries IO request is submitted to `RaftLogStorage`, but not yet flushed.
-/// - `flushed`: The log entries are persisted in the `RaftLogStorage`.
-/// - `applied`: log entries are applied to state machine.
-/// - `snapshot`: log entries are included in a persisted snapshot.
-/// - `purged`: log entries are purged from `RaftLogStorage`.
+/// Each progress tracks three stages:
+/// - **accepted**: Operation accepted but not yet submitted to I/O
+/// - **submitted**: Submitted to I/O subsystem but not yet completed
+/// - **flushed**: Successfully completed and persisted
+///
+/// **Note**: `apply.accepted` does not require `log.flushed`. A log only needs to be submitted
+/// (not flushed) to be applied, since `RaftLogStorage` can read submitted entries.
+///
+/// For comprehensive details, see: [Log I/O Progress](crate::docs::data::log_io_progress).
 ///
 /// Invariants:
 ///
@@ -65,45 +74,34 @@ where C: RaftTypeConfig
     /// Whether it is building a snapshot
     building_snapshot: bool,
 
-    /// Tracks the accepted, submitted and flushed log I/O to the local storage.
+    /// Tracks log I/O progress to local storage (vote + log entries).
     ///
-    /// Note that log I/O also includes the vote state, which is persisted alongside log entries.
+    /// Uses `IOProgress<IOId>` to track both non-committed vote I/O and log I/O.
+    /// See: [`IOId`](crate::docs::data::io_id)
     pub(crate) log_progress: Valid<IOProgress<IOId<C>>>,
 
-    /// The io progress of applying log to state machine.
+    /// Tracks applying committed logs to state machine.
     ///
-    /// - The `apply_progress.accepted()` log id is also the committed, i.e., persisted in a quorum
-    ///   and can be chosen by the next Leader. A quorum is either a uniform quorum or a joint
-    ///   quorum. This is the highest log id that is safe to apply to the state machine.
+    /// - `accepted`: The committed log id, safe to apply
+    /// - `submitted`: Sent to state machine task to apply
+    /// - `flushed`: Already applied to state machine
     ///
-    /// - The `apply_progress.submitted()` is the last log id that has been sent to the state
-    ///   machine task to apply.
-    ///
-    /// - The `apply_progress.flushed()` is the last log id that has been already applied to state
-    ///   machine.
-    ///
-    /// Note that depending on the implementation of the state machine,
-    /// the `flushed()` log id may not be persisted in storage (the state machine may periodically
-    /// build a snapshot to persist the state).
+    /// Uses `IOProgress<LogId>` since only committed logs are applied.
     pub(crate) apply_progress: Valid<IOProgress<LogId<C>>>,
 
-    /// Tracks the progress of snapshot persistence.
+    /// Tracks snapshot persistence progress.
     ///
-    /// - `snapshot.accepted()`: Acknowledged that a snapshot covering up to this log id should
-    ///   exist.
-    /// - `snapshot.submitted()`: A snapshot covering up to this log id has been submitted to
-    ///   persist.
-    /// - `snapshot.flushed()`: A snapshot covering up to this log id has been successfully
-    ///   persisted.
+    /// - `accepted`: Snapshot covering this log id should exist
+    /// - `submitted`: Snapshot submitted to persist
+    /// - `flushed`: Snapshot successfully persisted
     ///
-    /// This tracks both locally built snapshots and snapshots installed from the leader.
+    /// Tracks both locally built snapshots and snapshots installed from the leader.
     pub(crate) snapshot: Valid<IOProgress<LogId<C>>>,
 
-    /// The last log id that has been purged from storage.
+    /// Last log id purged from storage.
     ///
-    /// `RaftState::last_purged_log_id()`
-    /// is just the log id that is going to be purged, i.e., there is a `PurgeLog` command queued to
-    /// be executed, and it may not be the actually purged log id.
+    /// Unlike `RaftState::last_purged_log_id()` (which is the queued purge target),
+    /// this reflects the actually purged log id.
     pub(crate) purged: Option<LogIdOf<C>>,
 }
 
@@ -152,10 +150,9 @@ where C: RaftTypeConfig
 impl<C> IOState<C>
 where C: RaftTypeConfig
 {
-    /// Create a new `IOState` with the given initial values.
+    /// Creates a new `IOState` with initial values.
     ///
-    /// - `allow_io_notification_reorder`: Whether to allow IO completion notifications to arrive
-    ///   out of order.
+    /// - `allow_io_notification_reorder`: Allow I/O completion notifications to arrive out of order
     pub(crate) fn new(
         id: &str,
         vote: &VoteOf<C>,
@@ -200,10 +197,9 @@ where C: RaftTypeConfig
     }
 }
 
-/// Create a new `IOProgress` wrapped in `Valid`.
+/// Creates a new `IOProgress` wrapped in `Valid`.
 ///
-/// The initial values for all three stages (accepted, submitted, flushed) are set to
-/// `initial_value`.
+/// All three stages (accepted, submitted, flushed) are initialized to `initial_value`.
 fn new_progress<T>(
     initial_value: Option<T>,
     id: impl ToString,
