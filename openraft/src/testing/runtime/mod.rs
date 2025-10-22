@@ -66,6 +66,7 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         Self::test_watch_overwrite_init_value().await;
         Self::test_watch_send_error_no_receiver().await;
         Self::test_watch_send_if_modified().await;
+        Self::test_watch_wait_until_ge().await;
         Self::test_oneshot_drop_tx().await;
         Self::test_oneshot().await;
         Self::test_mutex().await;
@@ -369,6 +370,42 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         assert_eq!(*value_from_rx, max_value);
         let value_from_tx = tx.borrow_watched();
         assert_eq!(*value_from_tx, max_value);
+    }
+
+    pub async fn test_watch_wait_until_ge() {
+        let init_value = 0;
+        let target_value = 5;
+        let (tx, mut rx) = Rt::Watch::channel(init_value);
+
+        // Spawn a task that waits for the value to reach target_value
+        let handle = Rt::spawn(async move { rx.wait_until_ge(&target_value).await });
+
+        // Send values incrementally
+        tx.send(1).unwrap();
+        tx.send(3).unwrap();
+        // Value should still be waiting since 3 < 5
+
+        tx.send(5).unwrap();
+        // Now the wait should complete
+
+        // Verify the returned value is >= target_value
+        let final_value = handle.await.unwrap().unwrap();
+        assert!(final_value >= target_value);
+        assert_eq!(final_value, 5);
+
+        // Test immediate return when value already satisfies condition
+        let (tx2, mut rx2) = Rt::Watch::channel(10);
+        let returned_value = rx2.wait_until_ge(&5).await.unwrap();
+        assert!(returned_value >= 5);
+        assert_eq!(returned_value, 10);
+        drop(tx2);
+
+        // Test error when sender is dropped before condition is met
+        let (tx3, mut rx3) = Rt::Watch::channel(0);
+        let handle3 = Rt::spawn(async move { rx3.wait_until_ge(&10).await });
+        drop(tx3);
+        let result = handle3.await.unwrap();
+        assert!(result.is_err());
     }
 
     pub async fn test_oneshot_drop_tx() {

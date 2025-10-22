@@ -114,4 +114,43 @@ where
     /// long-lived borrows could cause the producer half to block.
     /// See: [`Watch::Ref`]
     fn borrow_watched(&self) -> W::Ref<'_, T>;
+
+    /// Waits until the watched value is greater than or equal to the given value.
+    ///
+    /// This method blocks until the watched value becomes `>= value`,
+    /// checking after each change notification from the sender.
+    ///
+    /// Returns `Ok(T)` containing the value that satisfied the condition, or `Err(RecvError)`
+    /// if the sender is dropped before the target value is reached.
+    ///
+    /// # Requirements
+    ///
+    /// - `T` must implement `Ord` for comparison and `Clone` to return the value
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let (tx, mut rx) = watch::channel(0);
+    ///
+    /// // Wait until value is >= 5
+    /// tokio::spawn(async move {
+    ///     let final_value = rx.wait_until_ge(&5).await.unwrap();
+    ///     println!("Value reached: {}", final_value);
+    /// });
+    ///
+    /// tx.send(3).unwrap();
+    /// tx.send(5).unwrap(); // Unblocks the receiver with value 5
+    /// ```
+    async fn wait_until_ge(&mut self, value: &T) -> Result<T, RecvError>
+    where T: Ord + Clone {
+        loop {
+            {
+                let current = self.borrow_watched();
+                if &*current >= value {
+                    return Ok(current.clone());
+                }
+            }
+            self.changed().await?;
+        }
+    }
 }
