@@ -4,6 +4,7 @@
 use std::sync::Arc;
 
 use openraft::Config;
+use openraft::RaftTypeConfig;
 
 use crate::app::App;
 use crate::router::Router;
@@ -20,15 +21,23 @@ pub mod store;
 
 pub type NodeId = u64;
 
-openraft::declare_raft_types!(
-    /// Declare the type configuration for example K/V store.
-    pub TypeConfig:
-        D = Request,
-        R = Response,
-        // In this example, snapshot is just a copy of the state machine.
-        // And it can be any type.
-        SnapshotData = StateMachineData,
-);
+#[derive(Debug, Clone, Copy, Default, Eq, PartialEq, Ord, PartialOrd)]
+pub struct TypeConfig {}
+impl RaftTypeConfig for TypeConfig {
+    type D = Request;
+    type R = Response;
+    type SnapshotData = StateMachineData;
+}
+
+// openraft::declare_raft_types!(
+//     /// Declare the type configuration for example K/V store.
+//     pub TypeConfig:
+//         D = Request,
+//         R = Response,
+//         // In this example, snapshot is just a copy of the state machine.
+//         // And it can be any type.
+//         SnapshotData = StateMachineData,
+// );
 
 pub type LogStore = store::LogStore;
 pub type StateMachineStore = store::StateMachineStore;

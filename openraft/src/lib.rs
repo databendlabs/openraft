@@ -1,3 +1,4 @@
+#![feature(associated_type_defaults)]
 #![doc = include_str!("lib_readme.md")]
 #![doc = include_str!("docs/docs.md")]
 #![cfg_attr(feature = "bt", feature(error_generic_member_access))]

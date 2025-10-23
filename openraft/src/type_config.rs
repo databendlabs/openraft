@@ -15,11 +15,17 @@ pub use util::TypeConfigExt;
 
 use crate::AppData;
 use crate::AppDataResponse;
+use crate::BasicNode;
+use crate::Entry;
 use crate::Node;
 use crate::NodeId;
 use crate::OptionalSend;
 use crate::OptionalSync;
+use crate::TokioRuntime;
+use crate::Vote;
 use crate::entry::RaftEntry;
+use crate::impls::OneshotResponder;
+use crate::impls::leader_id_adv;
 use crate::raft::message::ClientWriteResult;
 use crate::raft::responder::ResponderBuilder;
 use crate::vote::RaftLeaderId;
@@ -85,16 +91,16 @@ pub trait RaftTypeConfig:
     Sized + OptionalSend + OptionalSync + Debug + Clone + Copy + Default + Eq + PartialEq + Ord + PartialOrd + 'static
 {
     /// Application-specific request data passed to the state machine.
-    type D: AppData;
+    type D: AppData = String;
 
     /// Application-specific response data returned by the state machine.
-    type R: AppDataResponse;
+    type R: AppDataResponse = String;
 
     /// A Raft node's ID.
-    type NodeId: NodeId;
+    type NodeId: NodeId = u64;
 
     /// Raft application level node data
-    type Node: Node;
+    type Node: Node = BasicNode;
 
     /// Type representing a Raft term number.
     ///
@@ -104,28 +110,28 @@ pub trait RaftTypeConfig:
     /// Common implementations are provided for standard integer types like `u64`, `i64`, etc.
     ///
     /// See: [`RaftTerm`] for the required methods.
-    type Term: RaftTerm;
+    type Term: RaftTerm = u64;
 
     /// A Leader identifier in a cluster.
-    type LeaderId: RaftLeaderId<Self>;
+    type LeaderId: RaftLeaderId<Self> = leader_id_adv::LeaderId<Self>;
 
     /// Raft vote type.
     ///
     /// It represents a candidate's vote or a leader's vote that has been granted by a quorum.
-    type Vote: RaftVote<Self>;
+    type Vote: RaftVote<Self> = Vote<Self>;
 
     /// Raft log entry, which can be built from an AppData.
-    type Entry: RaftEntry<Self>;
+    type Entry: RaftEntry<Self> = Entry<Self>;
 
     /// Snapshot data for exposing a snapshot for reading & writing.
     ///
     /// See the [storage chapter of the guide][sto] for details on log compaction / snapshotting.
     ///
     /// [sto]: crate::docs::getting_started#3-implement-raftlogstorage-and-raftstatemachine
-    type SnapshotData: OptionalSend + 'static;
+    type SnapshotData: OptionalSend + 'static = std::io::Cursor<Vec<u8>>;
 
     /// Asynchronous runtime type.
-    type AsyncRuntime: AsyncRuntime;
+    type AsyncRuntime: AsyncRuntime = TokioRuntime;
 
     /// Builder for creating responders to send client write responses.
     ///
@@ -136,7 +142,7 @@ pub trait RaftTypeConfig:
     /// along with its receiver.
     ///
     /// [`Raft::client_write`]: `crate::raft::Raft::client_write`
-    type ResponderBuilder: ResponderBuilder<Self::D, ClientWriteResult<Self>>;
+    type ResponderBuilder: ResponderBuilder<Self::D, ClientWriteResult<Self>> = OneshotResponder<Self>;
 }
 
 #[allow(dead_code)]

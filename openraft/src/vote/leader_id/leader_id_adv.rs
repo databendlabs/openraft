@@ -45,7 +45,7 @@ where C: RaftTypeConfig
 pub type CommittedLeaderId<C> = LeaderId<C>;
 
 impl<C> RaftLeaderId<C> for LeaderId<C>
-where C: RaftTypeConfig<LeaderId = Self>
+where C: RaftTypeConfig
 {
     type Committed = Self;
 
