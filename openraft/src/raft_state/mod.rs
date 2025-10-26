@@ -17,11 +17,16 @@ use crate::utime::Leased;
 pub(crate) mod io_state;
 mod log_state_reader;
 mod membership_state;
+mod runtime_stats;
 mod vote_state_reader;
 
 pub(crate) use io_state::IOState;
 #[allow(unused)]
 pub(crate) use io_state::io_id::IOId;
+pub(crate) use runtime_stats::RuntimeStats;
+
+#[allow(unused)]
+pub(crate) use crate::base::histogram::PercentileStats;
 
 #[cfg(test)]
 mod tests {
@@ -82,6 +87,9 @@ where C: RaftTypeConfig
     /// If a log is in use by a replication task, the purge is postponed and is stored in this
     /// field.
     pub(crate) purge_upto: Option<LogIdOf<C>>,
+
+    /// Runtime statistics for various Raft operations.
+    pub runtime_stats: RuntimeStats,
 }
 
 impl<C> Default for RaftState<C>
@@ -97,6 +105,7 @@ where C: RaftTypeConfig
             server_state: ServerState::default(),
             io_state: Valid::new(IOState::default()),
             purge_upto: None,
+            runtime_stats: RuntimeStats::default(),
         }
     }
 }
