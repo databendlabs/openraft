@@ -196,6 +196,7 @@ where
             server_state: Default::default(),
             io_state: Valid::new(io_state),
             purge_upto: last_purged_log_id,
+            runtime_stats: Default::default(),
         })
     }
 
