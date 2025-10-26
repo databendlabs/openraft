@@ -1742,6 +1742,9 @@ where
                 let last_log_id = entries.last().unwrap().log_id();
                 tracing::debug!("AppendEntries: {}", entries.display_n(10));
 
+                let entry_count = entries.len() as u64;
+                self.engine.state.runtime_stats.storage_append_entries_batch_size.record(entry_count);
+
                 let io_id = IOId::new_log_io(vote, Some(last_log_id));
                 let notify = Notification::LocalIO { io_id: io_id.clone() };
                 let callback = IOFlushed::new(notify, self.tx_notification.downgrade());
