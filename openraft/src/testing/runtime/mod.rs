@@ -67,6 +67,7 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         Self::test_watch_send_error_no_receiver().await;
         Self::test_watch_send_if_modified().await;
         Self::test_watch_wait_until_ge().await;
+        Self::test_watch_wait_until().await;
         Self::test_oneshot_drop_tx().await;
         Self::test_oneshot().await;
         Self::test_mutex().await;
@@ -403,6 +404,42 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         // Test error when sender is dropped before condition is met
         let (tx3, mut rx3) = Rt::Watch::channel(0);
         let handle3 = Rt::spawn(async move { rx3.wait_until_ge(&10).await });
+        drop(tx3);
+        let result = handle3.await.unwrap();
+        assert!(result.is_err());
+    }
+
+    pub async fn test_watch_wait_until() {
+        let init_value = 0;
+        let (tx, mut rx) = Rt::Watch::channel(init_value);
+
+        // Spawn a task that waits for an even value
+        let is_even = |v: &i32| v % 2 == 0;
+        let handle = Rt::spawn(async move { rx.wait_until(is_even).await });
+
+        // Send odd values
+        tx.send(1).unwrap();
+        tx.send(3).unwrap();
+
+        // Send an even value to unblock
+        tx.send(4).unwrap();
+
+        let final_value = handle.await.unwrap().unwrap();
+        assert_eq!(final_value % 2, 0);
+        assert_eq!(final_value, 4);
+
+        // Test immediate return when condition already satisfied
+        let (tx2, mut rx2) = Rt::Watch::channel(10);
+        let is_greater_than_5 = |v: &i32| *v > 5;
+        let returned_value = rx2.wait_until(is_greater_than_5).await.unwrap();
+        assert!(returned_value > 5);
+        assert_eq!(returned_value, 10);
+        drop(tx2);
+
+        // Test error when sender is dropped before condition is met
+        let (tx3, mut rx3) = Rt::Watch::channel(0);
+        let is_negative = |v: &i32| *v < 0;
+        let handle3 = Rt::spawn(async move { rx3.wait_until(is_negative).await });
         drop(tx3);
         let result = handle3.await.unwrap();
         assert!(result.is_err());

@@ -26,6 +26,7 @@
 pub(crate) mod balancer;
 pub(crate) mod core_state;
 pub(crate) mod heartbeat;
+pub(crate) mod io_flush_tracking;
 pub(crate) mod notification;
 mod raft_core;
 pub(crate) mod raft_msg;

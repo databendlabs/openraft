@@ -68,6 +68,10 @@ use crate::config::RuntimeConfig;
 use crate::core::RaftCore;
 use crate::core::Tick;
 use crate::core::heartbeat::handle::HeartbeatWorkersHandle;
+pub use crate::core::io_flush_tracking::FlushPoint;
+use crate::core::io_flush_tracking::IoProgressWatcher;
+use crate::core::io_flush_tracking::LogProgress;
+use crate::core::io_flush_tracking::VoteProgress;
 use crate::core::raft_msg::RaftMsg;
 use crate::core::raft_msg::external_command::ExternalCommand;
 use crate::core::sm;
@@ -325,6 +329,7 @@ where C: RaftTypeConfig
         let (tx_metrics, rx_metrics) = C::watch_channel(RaftMetrics::new_initial(id.clone()));
         let (tx_data_metrics, rx_data_metrics) = C::watch_channel(RaftDataMetrics::default());
         let (tx_server_metrics, rx_server_metrics) = C::watch_channel(RaftServerMetrics::default());
+        let (tx_progress, progress_watcher) = IoProgressWatcher::new();
         let (tx_shutdown, rx_shutdown) = C::oneshot();
 
         let tick_handle = Tick::spawn(
@@ -388,6 +393,7 @@ where C: RaftTypeConfig
             tx_metrics,
             tx_data_metrics,
             tx_server_metrics,
+            tx_progress,
 
             span: core_span,
         };
@@ -403,6 +409,7 @@ where C: RaftTypeConfig
             rx_metrics,
             rx_data_metrics,
             rx_server_metrics,
+            progress_watcher,
             tx_shutdown: std::sync::Mutex::new(Some(tx_shutdown)),
             core_state: std::sync::Mutex::new(CoreState::Running(core_handle)),
 
@@ -988,6 +995,49 @@ where C: RaftTypeConfig
     /// Get a handle to the server metrics channel.
     pub fn server_metrics(&self) -> WatchReceiverOf<C, RaftServerMetrics<C>> {
         self.inner.rx_server_metrics.clone()
+    }
+
+    /// Get a handle to watch log I/O flush progress.
+    ///
+    /// Tracks when log entries and votes are durably written to storage.
+    /// Updated on every I/O completion (vote saves and log appends).
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let mut log_progress = raft.watch_log_progress();
+    ///
+    /// // Wait for a specific log entry to be flushed
+    /// let target = Some(FlushPoint::new(
+    ///     Vote::new_committed(2, node_id),
+    ///     Some(LogId::new(LeaderId::new(2, node_id), 100))
+    /// ));
+    /// log_progress.wait_until_ge(&target).await?;
+    /// ```
+    #[must_use = "progress handle should be stored to track I/O progress"]
+    pub fn watch_log_progress(&self) -> LogProgress<C> {
+        self.inner.progress_watcher.log_progress()
+    }
+
+    /// Get a handle to watch vote I/O flush progress.
+    ///
+    /// Tracks when votes (leadership changes) are durably written to storage.
+    /// Updated only when the vote changes (new term or leader), not on every log append.
+    ///
+    /// Use this when you only care about leadership changes, not specific log entries.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let mut vote_progress = raft.watch_vote_progress();
+    ///
+    /// // Wait for term 2 to be persisted
+    /// let target = Some(Vote::new_committed(2, 0));
+    /// vote_progress.wait_until_ge(&target).await?;
+    /// ```
+    #[must_use = "progress handle should be stored to track vote progress"]
+    pub fn watch_vote_progress(&self) -> VoteProgress<C> {
+        self.inner.progress_watcher.vote_progress()
     }
 
     /// Get a handle to wait for the metrics to satisfy some condition.
