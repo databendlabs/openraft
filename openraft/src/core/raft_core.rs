@@ -31,6 +31,7 @@ use crate::core::balancer::Balancer;
 use crate::core::core_state::CoreState;
 use crate::core::heartbeat::event::HeartbeatEvent;
 use crate::core::heartbeat::handle::HeartbeatWorkersHandle;
+use crate::core::io_flush_tracking::IOProgressSender;
 use crate::core::notification::Notification;
 use crate::core::raft_msg::AppendEntriesTx;
 use crate::core::raft_msg::ClientReadTx;
@@ -186,6 +187,7 @@ where
     pub(crate) tx_metrics: WatchSenderOf<C, RaftMetrics<C>>,
     pub(crate) tx_data_metrics: WatchSenderOf<C, RaftDataMetrics<C>>,
     pub(crate) tx_server_metrics: WatchSenderOf<C, RaftServerMetrics<C>>,
+    pub(crate) tx_progress: IOProgressSender<C>,
 
     pub(crate) span: Span,
 }
@@ -202,7 +204,7 @@ where
         let res = self.do_main(rx_shutdown).instrument(span).await;
 
         // Flush buffered metrics
-        self.report_metrics(None, None);
+        self.flush_metrics();
 
         // Safe unwrap: res is Result<Infallible, _>
         let err = res.unwrap_err();
@@ -232,11 +234,11 @@ where
         tracing::debug!("raft node is initializing");
 
         self.engine.startup();
-        // It may not finish running all of the commands, if there is a command waiting for a callback.
+        // It may not finish running all the commands, if there is a command waiting for a callback.
         self.run_engine_commands().await?;
 
         // Initialize metrics.
-        self.report_metrics(None, None);
+        self.flush_metrics();
 
         self.runtime_loop(rx_shutdown).await
     }
@@ -278,11 +280,11 @@ where
         if read_policy == ReadPolicy::LeaseRead {
             let now = C::now();
             // Check if the lease is expired.
-            if let Some(last_quorum_acked_time) = self.last_quorum_acked_time() {
-                if now < last_quorum_acked_time + self.engine.config.timer_config.leader_lease {
-                    let _ = tx.send(Ok(resp));
-                    return;
-                }
+            if let Some(last_quorum_acked_time) = self.last_quorum_acked_time()
+                && now < last_quorum_acked_time + self.engine.config.timer_config.leader_lease
+            {
+                let _ = tx.send(Ok(resp));
+                return;
             }
             tracing::debug!("{}: lease expired when do lease read", self.id);
             // we may no longer leader so error out early
@@ -534,6 +536,8 @@ where
 
     #[tracing::instrument(level = "debug", skip_all)]
     pub fn flush_metrics(&mut self) {
+        self.tx_progress.send_log_progress(self.engine.state.log_progress().flushed().cloned());
+
         let (replication, heartbeat) = if let Some(leader) = self.engine.leader.as_ref() {
             let replication_prog = &leader.progress;
             let replication =
@@ -547,6 +551,7 @@ where
         } else {
             (None, None)
         };
+
         self.report_metrics(replication, heartbeat);
     }
 
@@ -572,7 +577,7 @@ where
 
             // --- data ---
             current_term: st.vote_ref().term(),
-            vote: st.log_progress().flushed().map(|io_id| io_id.to_vote()).unwrap_or_default(),
+            vote: st.log_progress().flushed().map(|io_id| io_id.to_app_vote()).unwrap_or_default(),
             last_log_index: st.last_log_id().index(),
             last_applied: st.io_applied().cloned(),
             snapshot: st.io_snapshot_last_log_id().cloned(),
@@ -604,7 +609,7 @@ where
 
         let server_metrics = RaftServerMetrics {
             id: self.id.clone(),
-            vote: st.log_progress().flushed().map(|io_id| io_id.to_vote()).unwrap_or_default(),
+            vote: st.log_progress().flushed().map(|io_id| io_id.to_app_vote()).unwrap_or_default(),
             state: st.server_state,
             current_leader,
             membership_config,
@@ -1244,7 +1249,7 @@ where
     pub(super) fn handle_append_entries_request(&mut self, req: AppendEntriesRequest<C>, tx: AppendEntriesTx<C>) {
         tracing::debug!(req = display(&req), func = func_name!());
 
-        let is_ok = self.engine.handle_append_entries(&req.vote, req.prev_log_id, req.entries, Some(tx));
+        let is_ok = self.engine.handle_append_entries(&req.vote, req.prev_log_id, req.entries, tx);
 
         if is_ok {
             self.engine.handle_commit_entries(req.leader_commit);
@@ -1434,16 +1439,16 @@ where
 
                 // Leader send heartbeat
                 let heartbeat_at = self.engine.leader_ref().map(|l| l.next_heartbeat);
-                if let Some(t) = heartbeat_at {
-                    if now >= t {
-                        if self.runtime_config.enable_heartbeat.load(Ordering::Relaxed) {
-                            self.send_heartbeat("tick");
-                        }
+                if let Some(t) = heartbeat_at
+                    && now >= t
+                {
+                    if self.runtime_config.enable_heartbeat.load(Ordering::Relaxed) {
+                        self.send_heartbeat("tick");
+                    }
 
-                        // Install next heartbeat
-                        if let Some(l) = self.engine.leader_mut() {
-                            l.next_heartbeat = C::now() + Duration::from_millis(self.config.heartbeat_interval);
-                        }
+                    // Install next heartbeat
+                    if let Some(l) = self.engine.leader_mut() {
+                        l.next_heartbeat = C::now() + Duration::from_millis(self.config.heartbeat_interval);
                     }
                 }
 

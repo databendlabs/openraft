@@ -235,8 +235,8 @@ where C: RaftTypeConfig
         );
 
         if cfg!(debug_assertions) {
-            let new_vote = accepted.to_vote();
-            let current_vote = curr_accepted.clone().map(|io_id| io_id.to_vote());
+            let new_vote = accepted.to_app_vote();
+            let current_vote = curr_accepted.clone().map(|io_id| io_id.to_app_vote());
             assert!(
                 Some(new_vote.as_ref_vote()) >= current_vote.as_ref().map(|x| x.as_ref_vote()),
                 "new accepted.committed_vote {} must be >= current accepted.committed_vote: {}",

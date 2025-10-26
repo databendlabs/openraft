@@ -216,10 +216,10 @@ mod tests {
                     let res = std::panic::catch_unwind(f);
                     assert!(res.is_err());
                 }
-                assert_panic(|| (committed(2, 2) > committed(2, 3)));
-                assert_panic(|| (committed(2, 2) >= committed(2, 3)));
-                assert_panic(|| (committed(2, 2) < committed(2, 3)));
-                assert_panic(|| (committed(2, 2) <= committed(2, 3)));
+                assert_panic(|| committed(2, 2) > committed(2, 3));
+                assert_panic(|| committed(2, 2) >= committed(2, 3));
+                assert_panic(|| committed(2, 2) < committed(2, 3));
+                assert_panic(|| committed(2, 2) <= committed(2, 3));
             }
 
             Ok(())

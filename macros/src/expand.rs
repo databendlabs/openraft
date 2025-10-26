@@ -92,10 +92,10 @@ impl ToTokens for TypeOrExpr {
 impl Parse for TypeOrExpr {
     fn parse(input: ParseStream) -> syn::Result<Self> {
         let res = input.call(Attribute::parse_outer);
-        if let Ok(r) = res {
-            if !r.is_empty() {
-                return Ok(Self::Attribute(r));
-            }
+        if let Ok(r) = res
+            && !r.is_empty()
+        {
+            return Ok(Self::Attribute(r));
         }
 
         // Check if empty (next token is comma or end)

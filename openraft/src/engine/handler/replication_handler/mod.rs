@@ -184,10 +184,10 @@ where C: RaftTypeConfig
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn try_commit_quorum_accepted(&mut self, granted: Option<LogIdOf<C>>) {
         // Only when the log id is proposed by the current leader, it is committed.
-        if let Some(ref c) = granted {
-            if !self.state.vote_ref().is_same_leader(c.committed_leader_id()) {
-                return;
-            }
+        if let Some(ref c) = granted
+            && !self.state.vote_ref().is_same_leader(c.committed_leader_id())
+        {
+            return;
         }
 
         if let Some(_prev_committed) = self.state.update_committed(&granted) {

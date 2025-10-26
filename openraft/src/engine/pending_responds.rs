@@ -113,36 +113,35 @@ where C: RaftTypeConfig
         loop {
             match self.phase {
                 DrainPhase::LogIO => {
-                    if let Some(flushed) = self.io_state.log_progress.flushed() {
-                        if let Some(respond) = pop_if_satisfied(&mut self.pending_responds.on_log_io, flushed) {
-                            return Some((self.phase, respond));
-                        }
+                    if let Some(flushed) = self.io_state.log_progress.flushed()
+                        && let Some(respond) = pop_if_satisfied(&mut self.pending_responds.on_log_io, flushed)
+                    {
+                        return Some((self.phase, respond));
                     }
                     self.phase = DrainPhase::LogFlush;
                 }
                 DrainPhase::LogFlush => {
-                    if let Some(flushed) = self.io_state.log_progress.flushed() {
-                        if let Some(log_id) = flushed.last_log_id() {
-                            if let Some(respond) = pop_if_satisfied(&mut self.pending_responds.on_log_flush, log_id) {
-                                return Some((self.phase, respond));
-                            }
-                        }
+                    if let Some(flushed) = self.io_state.log_progress.flushed()
+                        && let Some(log_id) = flushed.last_log_id()
+                        && let Some(respond) = pop_if_satisfied(&mut self.pending_responds.on_log_flush, log_id)
+                    {
+                        return Some((self.phase, respond));
                     }
                     self.phase = DrainPhase::Apply;
                 }
                 DrainPhase::Apply => {
-                    if let Some(applied) = self.io_state.apply_progress.flushed() {
-                        if let Some(respond) = pop_if_satisfied(&mut self.pending_responds.on_apply, applied) {
-                            return Some((self.phase, respond));
-                        }
+                    if let Some(applied) = self.io_state.apply_progress.flushed()
+                        && let Some(respond) = pop_if_satisfied(&mut self.pending_responds.on_apply, applied)
+                    {
+                        return Some((self.phase, respond));
                     }
                     self.phase = DrainPhase::Snapshot;
                 }
                 DrainPhase::Snapshot => {
-                    if let Some(snapshot) = self.io_state.snapshot.flushed() {
-                        if let Some(respond) = pop_if_satisfied(&mut self.pending_responds.on_snapshot, snapshot) {
-                            return Some((self.phase, respond));
-                        }
+                    if let Some(snapshot) = self.io_state.snapshot.flushed()
+                        && let Some(respond) = pop_if_satisfied(&mut self.pending_responds.on_snapshot, snapshot)
+                    {
+                        return Some((self.phase, respond));
                     }
                     self.phase = DrainPhase::Done;
                 }

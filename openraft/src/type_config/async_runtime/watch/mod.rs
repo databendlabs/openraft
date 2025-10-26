@@ -125,7 +125,7 @@ where
     ///
     /// # Requirements
     ///
-    /// - `T` must implement `Ord` for comparison and `Clone` to return the value
+    /// - `T` must implement `PartialOrd` for comparison and `Clone` to return the value
     ///
     /// # Example
     ///
@@ -142,11 +142,53 @@ where
     /// tx.send(5).unwrap(); // Unblocks the receiver with value 5
     /// ```
     async fn wait_until_ge(&mut self, value: &T) -> Result<T, RecvError>
-    where T: Ord + Clone {
+    where T: PartialOrd + Clone {
         loop {
             {
                 let current = self.borrow_watched();
                 if &*current >= value {
+                    return Ok(current.clone());
+                }
+            }
+            self.changed().await?;
+        }
+    }
+
+    /// Waits until the watched value satisfies the given condition.
+    ///
+    /// This method blocks until the watched value satisfies `condition`,
+    /// checking after each change notification from the sender.
+    ///
+    /// Returns `Ok(T)` containing the value that satisfied the condition, or `Err(RecvError)`
+    /// if the sender is dropped before the condition is met.
+    ///
+    /// # Requirements
+    ///
+    /// - `T` must implement `Clone` to return the value
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let (tx, mut rx) = watch::channel(0);
+    ///
+    /// // Wait until value is even
+    /// tokio::spawn(async move {
+    ///     let final_value = rx.wait_until(|v| v % 2 == 0).await.unwrap();
+    ///     println!("Even value reached: {}", final_value);
+    /// });
+    ///
+    /// tx.send(3).unwrap();
+    /// tx.send(4).unwrap(); // Unblocks the receiver with value 4
+    /// ```
+    async fn wait_until<F>(&mut self, condition: F) -> Result<T, RecvError>
+    where
+        T: Clone,
+        F: Fn(&T) -> bool + OptionalSend,
+    {
+        loop {
+            {
+                let current = self.borrow_watched();
+                if condition(&*current) {
                     return Ok(current.clone());
                 }
             }

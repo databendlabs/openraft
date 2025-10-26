@@ -118,17 +118,17 @@ where C: RaftTypeConfig
         &mut self,
         prev_log_id: Option<&LogIdOf<C>>,
     ) -> Result<(), RejectAppendEntries<C>> {
-        if let Some(prev) = prev_log_id {
-            if !self.state.has_log_id(prev) {
-                let local = self.state.get_log_id(prev.index());
-                tracing::debug!(local = display(DisplayOption(&local)), "prev_log_id does not match");
+        if let Some(prev) = prev_log_id
+            && !self.state.has_log_id(prev)
+        {
+            let local = self.state.get_log_id(prev.index());
+            tracing::debug!(local = display(DisplayOption(&local)), "prev_log_id does not match");
 
-                self.truncate_logs(prev.index());
-                return Err(RejectAppendEntries::ByConflictingLogId {
-                    local,
-                    expect: prev.clone(),
-                });
-            }
+            self.truncate_logs(prev.index());
+            return Err(RejectAppendEntries::ByConflictingLogId {
+                local,
+                expect: prev.clone(),
+            });
         }
 
         // else `prev_log_id.is_none()` means replicating logs from the very beginning.
@@ -295,11 +295,11 @@ where C: RaftTypeConfig
         }
 
         let local = self.state.get_log_id(snap_last_log_id.index());
-        if let Some(local) = local {
-            if local != snap_last_log_id {
-                // Conflict, delete all non-committed logs.
-                self.truncate_logs(self.state.committed().next_index());
-            }
+        if let Some(local) = local
+            && local != snap_last_log_id
+        {
+            // Conflict, delete all non-committed logs.
+            self.truncate_logs(self.state.committed().next_index());
         }
 
         let log_io_id = LogIOId::new(self.leader_vote.to_committed(), Some(snap_last_log_id.clone()));

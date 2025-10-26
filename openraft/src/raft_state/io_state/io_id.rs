@@ -3,7 +3,9 @@ use std::fmt;
 
 use crate::ErrorSubject;
 use crate::ErrorVerb;
+use crate::LogId;
 use crate::RaftTypeConfig;
+use crate::Vote;
 use crate::raft_state::io_state::log_io_id::LogIOId;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::VoteOf;
@@ -85,13 +87,31 @@ where C: RaftTypeConfig
         Self::Log(LogIOId::new(committed_vote, last_log_id))
     }
 
-    /// Returns the vote the io operation is submitted by.
+    /// Returns the vote for application-facing APIs.
+    ///
+    /// Uses the trait type `VoteOf<C>` which may be user-defined.
+    /// For existing metrics and application state APIs.
     #[allow(clippy::wrong_self_convention)]
     // The above lint is disabled because in future Vote may not be `Copy`
-    pub(crate) fn to_vote(&self) -> VoteOf<C> {
+    pub(crate) fn to_app_vote(&self) -> VoteOf<C> {
         match self {
             Self::Vote(non_committed_vote) => non_committed_vote.clone().into_vote(),
             Self::Log(log_io_id) => log_io_id.committed_vote.clone().into_vote(),
+        }
+    }
+
+    /// Unpack into internal vote and last log id for progress tracking.
+    ///
+    /// Returns the concrete `Vote<C>` type (not trait `VoteOf<C>`) because
+    /// progress tracking requires `PartialOrd`, which user-defined `VoteOf<C>`
+    /// may not implement.
+    pub(crate) fn to_vote_and_log_id(&self) -> (Vote<C>, Option<LogId<C>>) {
+        match self {
+            Self::Vote(non_committed_vote) => (non_committed_vote.clone().into_internal_vote(), None),
+            Self::Log(log_io_id) => (
+                log_io_id.committed_vote.clone().into_internal_vote(),
+                log_io_id.log_id.clone(),
+            ),
         }
     }
 

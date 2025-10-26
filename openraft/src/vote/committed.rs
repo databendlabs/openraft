@@ -2,6 +2,7 @@ use std::cmp::Ordering;
 use std::fmt;
 
 use crate::RaftTypeConfig;
+use crate::Vote;
 use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::type_config::alias::LeaderIdOf;
 use crate::type_config::alias::VoteOf;
@@ -50,6 +51,10 @@ where C: RaftTypeConfig
 
     pub(crate) fn into_vote(self) -> VoteOf<C> {
         VoteOf::<C>::from_leader_id(self.leader_id, true)
+    }
+
+    pub(crate) fn into_internal_vote(self) -> Vote<C> {
+        Vote::<C>::from_leader_id(self.leader_id, true)
     }
 }
 
