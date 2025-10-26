@@ -22,10 +22,12 @@ pub type VoteProgress<C> = WatchProgress<C, Option<Vote<C>>>;
 
 /// Watch handle for tracking I/O flush progress.
 ///
-/// Provides two operations:
+/// Provides three operations:
 /// - [`get()`](Self::get): Get current progress state immediately
 /// - [`wait_until_ge()`](Self::wait_until_ge): Wait asynchronously until progress reaches a
 ///   threshold
+/// - [`wait_until()`](Self::wait_until): Wait asynchronously until progress satisfies a custom
+///   condition
 ///
 /// # Concurrency
 ///
@@ -74,11 +76,117 @@ where
         self.inner.wait_until_ge(target).await
     }
 
+    /// Wait until the flushed I/O progress satisfies the given condition.
+    ///
+    /// Returns the current progress state once the condition is satisfied. If the progress
+    /// already satisfies the condition, returns immediately.
+    ///
+    /// # Errors
+    ///
+    /// Returns `RecvError` if the sender is dropped (node is shutting down).
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Wait until vote term is exactly 5
+    /// let state = vote_progress.wait_until(|v| v.as_ref().map_or(false, |vote| vote.leader_id().term == 5)).await?;
+    /// ```
+    pub async fn wait_until<F>(&mut self, condition: F) -> Result<T, RecvError>
+    where F: Fn(&T) -> bool + OptionalSend {
+        self.inner.wait_until(condition).await
+    }
+
     /// Get the current flushed I/O progress state immediately without waiting.
     ///
     /// This returns a snapshot of the most recent flushed I/O operation. The value may become
     /// stale immediately after reading as new I/O operations complete concurrently.
     pub fn get(&self) -> T {
         self.inner.borrow_watched().clone()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::Cursor;
+
+    use super::*;
+    use crate::RaftTypeConfig;
+    use crate::impls::TokioRuntime;
+    use crate::impls::Vote;
+    use crate::type_config::TypeConfigExt;
+
+    #[derive(Debug, Clone, Copy, Default, Eq, PartialEq, Ord, PartialOrd)]
+    struct TestConfig;
+
+    impl RaftTypeConfig for TestConfig {
+        type D = u64;
+        type R = ();
+        type NodeId = u64;
+        type Node = ();
+        type Term = u64;
+        type LeaderId = crate::impls::leader_id_adv::LeaderId<Self>;
+        type Vote = Vote<Self>;
+        type Entry = crate::impls::Entry<Self>;
+        type SnapshotData = Cursor<Vec<u8>>;
+        type AsyncRuntime = TokioRuntime;
+        type ResponderBuilder = crate::impls::OneshotResponder<Self>;
+    }
+
+    #[tokio::test]
+    async fn test_wait_until_ge() {
+        let (tx, rx) = TestConfig::watch_channel(0u64);
+        let mut progress = WatchProgress::<TestConfig, u64>::new(rx);
+
+        assert_eq!(progress.get(), 0);
+
+        tokio::spawn(async move {
+            tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+            tx.send(5).unwrap();
+            tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+            tx.send(10).unwrap();
+        });
+
+        let result = progress.wait_until_ge(&8).await.unwrap();
+        assert!(result >= 8);
+        assert_eq!(result, 10);
+    }
+
+    #[tokio::test]
+    async fn test_wait_until_ge_immediate() {
+        let (tx, rx) = TestConfig::watch_channel(10u64);
+        let mut progress = WatchProgress::<TestConfig, u64>::new(rx);
+
+        let result = progress.wait_until_ge(&5).await.unwrap();
+        assert_eq!(result, 10);
+
+        drop(tx);
+    }
+
+    #[tokio::test]
+    async fn test_wait_until_custom_condition() {
+        let (tx, rx) = TestConfig::watch_channel(1u64);
+        let mut progress = WatchProgress::<TestConfig, u64>::new(rx);
+
+        tokio::spawn(async move {
+            for i in 2..=10 {
+                tokio::time::sleep(tokio::time::Duration::from_millis(5)).await;
+                tx.send(i).unwrap();
+            }
+        });
+
+        let result = progress.wait_until(|v| v % 2 == 0).await.unwrap();
+        assert_eq!(result % 2, 0);
+        assert_eq!(result, 2);
+    }
+
+    #[tokio::test]
+    async fn test_wait_until_immediate() {
+        let (tx, rx) = TestConfig::watch_channel(10u64);
+        let mut progress = WatchProgress::<TestConfig, u64>::new(rx);
+
+        let result = progress.wait_until(|v| v >= &5).await.unwrap();
+        assert_eq!(result, 10);
+
+        drop(tx);
     }
 }
