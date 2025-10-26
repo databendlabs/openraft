@@ -792,6 +792,9 @@ where
         let mut responders = self.client_responders.split_off(&end);
         std::mem::swap(&mut responders, &mut self.client_responders);
 
+        let entry_count = last.index() + 1 - first.index();
+        self.engine.state.runtime_stats.apply_batch_size.record(entry_count);
+
         let cmd = sm::Command::apply(first, last.clone(), responders);
         self.sm_handle.send(cmd).map_err(|e| StorageError::apply(last, AnyError::error(e)))?;
 

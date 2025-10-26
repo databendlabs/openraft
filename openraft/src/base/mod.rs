@@ -28,6 +28,7 @@
 //! to make Openraft flexible across different environments.
 
 pub(crate) mod finalized;
+pub(crate) mod histogram;
 
 pub use serde_able::OptionalSerde;
 pub use threaded::BoxAny;
