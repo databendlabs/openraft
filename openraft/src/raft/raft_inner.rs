@@ -13,6 +13,7 @@ use crate::async_runtime::watch::WatchReceiver;
 use crate::async_runtime::watch::WatchSender;
 use crate::config::RuntimeConfig;
 use crate::core::TickHandle;
+use crate::core::io_flush_tracking::IoProgressWatcher;
 use crate::core::raft_msg::RaftMsg;
 use crate::core::raft_msg::external_command::ExternalCommand;
 use crate::display_ext::DisplayOptionExt;
@@ -43,6 +44,7 @@ where C: RaftTypeConfig
     pub(in crate::raft) rx_metrics: WatchReceiverOf<C, RaftMetrics<C>>,
     pub(in crate::raft) rx_data_metrics: WatchReceiverOf<C, RaftDataMetrics<C>>,
     pub(in crate::raft) rx_server_metrics: WatchReceiverOf<C, RaftServerMetrics<C>>,
+    pub(in crate::raft) progress_watcher: IoProgressWatcher<C>,
 
     pub(in crate::raft) tx_shutdown: std::sync::Mutex<Option<OneshotSenderOf<C, ()>>>,
     pub(in crate::raft) core_state: std::sync::Mutex<CoreState<C>>,

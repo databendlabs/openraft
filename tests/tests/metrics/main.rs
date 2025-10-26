@@ -14,3 +14,4 @@ mod t10_server_metrics_and_data_metrics;
 mod t20_metrics_state_machine_consistency;
 mod t30_leader_metrics;
 mod t40_metrics_wait;
+mod t50_progress_api;

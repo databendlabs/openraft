@@ -406,7 +406,7 @@ where C: RaftTypeConfig
         vote: &VoteOf<C>,
         prev_log_id: Option<LogIdOf<C>>,
         entries: Vec<C::Entry>,
-        tx: Option<AppendEntriesTx<C>>,
+        tx: AppendEntriesTx<C>,
     ) -> bool {
         tracing::debug!(
             vote = display(vote),
@@ -421,22 +421,21 @@ where C: RaftTypeConfig
         let res = self.append_entries(vote, prev_log_id, entries);
         let is_ok = res.is_ok();
 
-        if let Some(tx) = tx {
-            let resp: AppendEntriesResponse<C> = res.into();
+        let resp: AppendEntriesResponse<C> = res.into();
 
-            let condition = if is_ok {
-                Some(Condition::IOFlushed {
-                    io_id: self.state.accepted_log_io().unwrap().clone(),
-                })
-            } else {
-                None
-            };
+        let condition = if is_ok {
+            Some(Condition::IOFlushed {
+                io_id: self.state.accepted_log_io().unwrap().clone(),
+            })
+        } else {
+            None
+        };
 
-            self.output.push_command(Command::Respond {
-                when: condition,
-                resp: Respond::new(resp, tx),
-            });
-        }
+        self.output.push_command(Command::Respond {
+            when: condition,
+            resp: Respond::new(resp, tx),
+        });
+
         is_ok
     }
 

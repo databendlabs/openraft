@@ -2,7 +2,9 @@ use std::cmp::Ordering;
 use std::fmt::Formatter;
 
 use crate::RaftTypeConfig;
+use crate::Vote;
 use crate::display_ext::DisplayOptionExt;
+use crate::vote::RaftVote;
 
 /// Similar to [`Vote`] but with a reference to the `LeaderId`, and provide ordering and display
 /// implementation.
@@ -25,6 +27,13 @@ where C: RaftTypeConfig
 
     pub(crate) fn is_committed(&self) -> bool {
         self.committed
+    }
+
+    /// Convert to an owned [`Vote`].
+    #[allow(dead_code)]
+    pub(crate) fn to_owned(&self) -> Option<Vote<C>> {
+        let leader_id = self.leader_id?;
+        Some(Vote::from_leader_id(leader_id.clone(), self.committed))
     }
 }
 
