@@ -7,8 +7,6 @@ use std::marker::PhantomData;
 use std::ops::RangeBounds;
 use std::time::Duration;
 
-use maplit::btreeset;
-
 use crate::Membership;
 use crate::OptionalSend;
 use crate::RaftLogReader;

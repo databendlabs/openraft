@@ -361,17 +361,17 @@ where
 
         let mut log_ids = log_reader.get_key_log_ids(first..=last).await?;
 
-        if !log_ids.is_empty() {
-            if let Some(purged) = purged {
-                if purged.committed_leader_id() == log_ids[0].committed_leader_id() {
-                    if log_ids.len() >= 2 {
-                        log_ids[0] = purged;
-                    } else {
-                        log_ids.insert(0, purged);
-                    }
+        if !log_ids.is_empty()
+            && let Some(purged) = purged
+        {
+            if purged.committed_leader_id() == log_ids[0].committed_leader_id() {
+                if log_ids.len() >= 2 {
+                    log_ids[0] = purged;
                 } else {
                     log_ids.insert(0, purged);
                 }
+            } else {
+                log_ids.insert(0, purged);
             }
         }
 

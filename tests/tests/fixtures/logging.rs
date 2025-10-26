@@ -43,10 +43,10 @@ where
                 write!(writer, "#{:x}", span.id().into_u64())?;
 
                 let ext = span.extensions();
-                if let Some(fields) = &ext.get::<FormattedFields<N>>() {
-                    if !fields.is_empty() {
-                        write!(writer, "{{{}}}", fields)?;
-                    }
+                if let Some(fields) = &ext.get::<FormattedFields<N>>()
+                    && !fields.is_empty()
+                {
+                    write!(writer, "{{{}}}", fields)?;
                 }
                 write!(writer, ": ")?;
             }

@@ -278,11 +278,11 @@ where
         if read_policy == ReadPolicy::LeaseRead {
             let now = C::now();
             // Check if the lease is expired.
-            if let Some(last_quorum_acked_time) = self.last_quorum_acked_time() {
-                if now < last_quorum_acked_time + self.engine.config.timer_config.leader_lease {
-                    let _ = tx.send(Ok(resp));
-                    return;
-                }
+            if let Some(last_quorum_acked_time) = self.last_quorum_acked_time()
+                && now < last_quorum_acked_time + self.engine.config.timer_config.leader_lease
+            {
+                let _ = tx.send(Ok(resp));
+                return;
             }
             tracing::debug!("{}: lease expired when do lease read", self.id);
             // we may no longer leader so error out early
@@ -1437,16 +1437,16 @@ where
 
                 // Leader send heartbeat
                 let heartbeat_at = self.engine.leader_ref().map(|l| l.next_heartbeat);
-                if let Some(t) = heartbeat_at {
-                    if now >= t {
-                        if self.runtime_config.enable_heartbeat.load(Ordering::Relaxed) {
-                            self.send_heartbeat("tick");
-                        }
+                if let Some(t) = heartbeat_at
+                    && now >= t
+                {
+                    if self.runtime_config.enable_heartbeat.load(Ordering::Relaxed) {
+                        self.send_heartbeat("tick");
+                    }
 
-                        // Install next heartbeat
-                        if let Some(l) = self.engine.leader_mut() {
-                            l.next_heartbeat = C::now() + Duration::from_millis(self.config.heartbeat_interval);
-                        }
+                    // Install next heartbeat
+                    if let Some(l) = self.engine.leader_mut() {
+                        l.next_heartbeat = C::now() + Duration::from_millis(self.config.heartbeat_interval);
                     }
                 }
 
