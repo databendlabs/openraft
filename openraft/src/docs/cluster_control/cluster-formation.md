@@ -1,18 +1,23 @@
 # Formation of Clusters
 
-When a `Raft` node is created by [`Raft::new()`], it enters the `Learner` state.
+When a [`Raft`] node is created by [`Raft::new()`], it enters the [`Learner`] state.
 
-In order to establish a cluster, the application invokes [`Raft::initialize(membership)`][`Raft::initialize()`].
+To establish a cluster, invoke [`Raft::initialize()`].
+
+[`Raft`]: `crate::Raft`
+[`Learner`]: `crate::core::ServerState::Learner`
 
 
-## `Raft::initialize()`
+## [`Raft::initialize()`]
 
 This method will:
 
 - Add a membership log at index 0 with the log id `(leader_id=LeaderId::default(), index=0)`.
   The membership will be immediately effective.
 
-- Transition to the `Candidate` state and initiate voting to become the leader.
+- Transition to the [`Candidate`] state and initiate voting to become the leader.
+
+[`Candidate`]: `crate::core::ServerState::Candidate`
 
 - The leader will commit a blank log to commit all previous logs.
 

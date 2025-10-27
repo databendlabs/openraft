@@ -15,3 +15,7 @@ pub mod joint_consensus {
 pub mod node_lifecycle {
     #![doc = include_str!("node-lifecycle.md")]
 }
+
+pub mod monitoring_maintenance {
+    #![doc = include_str!("monitoring-maintenance.md")]
+}

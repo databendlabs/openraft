@@ -45,6 +45,12 @@ See: [`node_lifecycle`]
 
 Handle node addition (learner → voter promotion), removal, and failure scenarios.
 
+### Monitoring and Maintenance
+
+See: [`monitoring_maintenance`]
+
+Monitor cluster health using metrics and perform automated maintenance operations safely.
+
 ## Key APIs
 
 **Initialize cluster**: `Raft::initialize()` - Bootstrap first node
@@ -59,3 +65,4 @@ Handle node addition (learner → voter promotion), removal, and failure scenari
 [`dynamic_membership`]: `crate::docs::cluster_control::dynamic_membership`
 [`joint_consensus`]: `crate::docs::cluster_control::joint_consensus`
 [`node_lifecycle`]: `crate::docs::cluster_control::node_lifecycle`
+[`monitoring_maintenance`]: `crate::docs::cluster_control::monitoring_maintenance`

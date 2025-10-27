@@ -1,87 +1,75 @@
 # Dynamic Membership
 
-In contrast to the original raft, openraft considers all memberships as **joint** memberships.
-A uniform config is simply a specific case of joint: the combination of only one config.
+Openraft considers all memberships as **joint** memberships.
+A uniform config is a special case: a joint config with only one config set.
 
-Openraft provides the following mechanisms for managing member node lifecycles:
+## Membership APIs
 
+### [`Raft::add_learner()`]
 
-## Membership API
+Adds a learner to the cluster and starts log replication from the leader.
 
-### [`Raft::add_learner(node_id, node, blocking)`][`Raft::add_learner()`]
+**Parameters:**
+- `node_id`: ID of the new node
+- `node`: Node metadata (e.g., network address)
+- `blocking`: If `true`, waits until the learner catches up with the leader's log
 
-This method adds a learner to the cluster
-and immediately starts synchronizing logs from the leader.
+**Behavior:**
+- Learner immediately receives log replication
+- Learner does not participate in voting or elections
+- If the node already exists as learner or voter, it is re-added with updated metadata
 
-- A **Learner** does not vote for leadership.
-
-
-### [`Raft::change_membership(members, retain)`][`Raft::change_membership()`]
-
-This method initiates a membership change and returns when the proposed
-membership is effective and committed.
-
-If there are nodes in the given membership that are not `Learners`, this method will fail.
-Therefore, the application should always call [`Raft::add_learner()`] first.
-
-Once the new membership is committed, a `Voter` not in the new config is removed if `retain=false`,
-otherwise, it is converted to a `Learner` if `retain=true`.
-
-
-#### Example of using `retain`
-
-Given the original membership as `{"members":{1,2,3}, "learners":{}}`,
-call `change_membership` with `members={3,4,5}`, then:
-
-- If `retain=true`, the new membership is `{"members":{3,4,5}, "learners":{1,2}}`.
-- If `retain=false`, the new membership is `{"members":{3,4,5}, "learners":{}}`.
-
-
-## Add a new node as a `Voter`
-
-To add a new node as a `Voter`:
-- First, add it as a `Learner`(non-voter) with [`Raft::add_learner()`].
-  In this step, the leader sets up replication to the new node, but it cannot vote yet.
-- Then, convert it into a `Voter` with [`Raft::change_membership()`].
-
+**Example:**
 ```ignore
-let client = ExampleClient::new(1, get_addr(1)?);
+// Non-blocking: returns after setting up replication
+raft.add_learner(4, node, false).await?;
 
-client.add_learner((2, get_addr(2)?)).await?;
-client.add_learner((3, get_addr(3)?)).await?;
-client.change_membership(&btreeset! {1,2,3}, true).await?;
+// Blocking: waits until caught up
+raft.add_learner(4, node, true).await?;
 ```
 
-A complete snippet of adding voters can be found in [Mem KV cluster example](https://github.com/databendlabs/openraft/blob/d041202a9f30b704116c324a6adc4f2ec28029fa/examples/raft-kv-memstore/tests/cluster/test_cluster.rs#L75-L103).
+### [`Raft::change_membership()`]
+
+Changes the voting membership through a two-phase [joint consensus][`joint_consensus`] process.
+
+**Parameters:**
+- `members`: New voter set or node updates
+- `retain`: If `true`, removed voters become learners; if `false`, they are removed entirely
+
+**Preconditions:**
+- Only the leader can change membership
+- All nodes in `members` must already be learners (added via [`Raft::add_learner()`])
+
+**Process:**
+1. Proposes joint config: `[old_config, new_config]`
+2. After joint config commits, proposes uniform config: `new_config`
+
+**Behavior of `retain`:**
+
+Given membership `{"voters":{1,2,3}, "learners":{}}`, calling `change_membership({3,4,5}, retain)`:
+- If `retain=true`: Result is `{"voters":{3,4,5}, "learners":{1,2}}`
+- If `retain=false`: Result is `{"voters":{3,4,5}, "learners":{}}`
+
+**Example:**
+```ignore
+// Add learners first
+raft.add_learner(2, node2, true).await?;
+raft.add_learner(3, node3, true).await?;
+
+// Promote to voters
+raft.change_membership(btreeset!{1,2,3}, false).await?;
+```
+
+See [cluster example](https://github.com/databendlabs/openraft/blob/d041202a9f30b704116c324a6adc4f2ec28029fa/examples/raft-kv-memstore/tests/cluster/test_cluster.rs#L75-L103) for complete code.
 
 
-## Remove a voter node
+## Updating Node Metadata
 
--   Call `Raft::change_membership()` on the leader to initiate a two-phase
-    membership config change, e.g., the leader will propose two config logs:
-    joint config log: `[{1, 2, 3}, {3, 4, 5}]` and then the uniform config log:
-    `{3, 4, 5}`.
+To update node metadata (e.g., network address), use `ChangeMembers::SetNodes`.
 
--   As soon as the leader commits the second config log, the node to remove can
-    be safely terminated.
+**⚠️ Warning:** Misusing `SetNodes` can cause split-brain. Use `RemoveNodes` + `add_learner` instead when possible.
 
-**Note that** An application does not have to wait for the config log to be
-replicated to the node to remove. Because a distributed consensus protocol
-tolerates a minority member crash.
-
-
-To read more about Openraft's [Extended Membership Algorithm][`extended_membership`].
-
-
-## Update Node
-
-To update a node, such as altering its network address,
-the application calls [`Raft::change_membership()`][].
-The initial argument should be set to [`ChangeMembers::SetNodes(BTreeMap<NodeId,Node>)`][`ChangeMembers::SetNodes`].
-
-**Warning: Misusing `SetNodes` could lead to a split-brain situation**:
-
-### Brain split
+### Split-Brain Risk
 
 When updating node network addresses,
 brain split could occur if the new address belongs to another node,
@@ -110,37 +98,30 @@ Mistakenly updating `b`'s address from `y` to `w` would enable both `x, y` and `
 - `a, b` confirm `a` as leader
 
 
-Directly updating node addresses with `ChangeMembers::SetNodes`
-should be replaced with `ChangeMembers::RemoveNodes` and `Raft::add_learner` whenever possible.
+**Recommendation:** Use `RemoveNodes` + `add_learner` instead of `SetNodes` to avoid split-brain.
 
-Do not use `ChangeMembers::SetNodes` unless you know what you are doing.
+### Network Implementation Safety
 
+[`RaftNetworkFactory`] and [`RaftNetworkV2`] implementations must ensure connections to the correct nodes.
 
-### Ensure connection to the correct node
-
-Ensure that a connection to the right node is the responsibility
-of the [`RaftNetworkFactory`] and the [`RaftNetworkV2`] implementation.
-
-Connecting to a wrong node can lead to data inconsistency and even data loss.
-See: [brain split caused by wrong node address][`docs::brain-split`].
-
-Notably, the implementation should exercise additional care if one of the following conditions is met:
-
-* There is a chance that two cluster nodes have conflicting Node metadata.
-  For example, two nodes with the same hostname are added,
-  or one node is migrated to have the same hostname as another
-
-* The network cannot be trusted.
-  For example, a network adversary is present that might reroute Raft messages intended for one node to another.
+Exercise additional care when:
+- Nodes have conflicting metadata (e.g., duplicate hostnames)
+- One node migrates to another's hostname
+- Network cannot be trusted (adversary may reroute messages)
 
 
 
-[`ChangeMembers::SetNodes`]: `crate::change_members::ChangeMembers::SetNodes`
+## See Also
+
+- [`joint_consensus`]: Details on the two-phase membership change protocol
+- [`node_lifecycle`]: Internal mechanics of node state transitions
+- [`monitoring_maintenance`]: Operational guide for cluster monitoring and maintenance
+
 [`Raft::add_learner()`]: `crate::Raft::add_learner`
 [`Raft::change_membership()`]: `crate::Raft::change_membership`
-[`extended_membership`]: `crate::docs::data::extended_membership`
-
-[`RaftNetworkFactory`]:                 `crate::network::RaftNetworkFactory`
-[`RaftNetworkV2`]:                      `crate::network::v2::RaftNetworkV2`
-
-[`docs::brain-split`]:                  `crate::docs::cluster_control::dynamic_membership#brain-split`
+[`ChangeMembers::SetNodes`]: `crate::change_members::ChangeMembers::SetNodes`
+[`RaftNetworkFactory`]: `crate::network::RaftNetworkFactory`
+[`RaftNetworkV2`]: `crate::network::v2::RaftNetworkV2`
+[`joint_consensus`]: `crate::docs::cluster_control::joint_consensus`
+[`node_lifecycle`]: `crate::docs::cluster_control::node_lifecycle`
+[`monitoring_maintenance`]: `crate::docs::cluster_control::monitoring_maintenance`

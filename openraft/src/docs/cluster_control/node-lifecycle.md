@@ -1,17 +1,22 @@
 # Node Lifecycle
 
 - When a node is added using [`Raft::add_learner()`], it immediately starts receiving log
-  replication from the leader, meaning it becomes a `Learner`.
+  replication from the leader, becoming a [`Learner`].
 
-- A `Learner` transitions to a `Voter` when [`Raft::change_membership()`] includes it as a
-  `Voter`. A `Voter` can then become a `Candidate` or `Leader`.
+- A [`Learner`] transitions to a voter when [`Raft::change_membership()`] includes it as a
+  voter. A voter can be in [`Follower`], [`Candidate`], or [`Leader`] state.
 
-- When a node, regardless of being a `Learner` or `Voter`, is removed from membership, the
-  leader ceases replication to it immediately, i.e., when the new membership that
+[`Learner`]: `crate::core::ServerState::Learner`
+[`Follower`]: `crate::core::ServerState::Follower`
+[`Candidate`]: `crate::core::ServerState::Candidate`
+[`Leader`]: `crate::core::ServerState::Leader`
+
+- When a node, regardless of being a [`Learner`] or voter, is removed from membership, the
+  leader ceases replication to it immediately when the new membership that
   excludes the node is observed (no need for commitment).
 
   The removed node will not receive any log replication or heartbeat from the
-  leader. It will enter the `Candidate` state because it is unaware of its removal.
+  leader. It will enter the [`Candidate`] state because it is unaware of its removal.
 
 
 ## Removing a Node from Membership Config
@@ -32,7 +37,7 @@ In any scenario, stopping replication immediately is acceptable.
 
 One consideration is that nodes, such as `1,2`, are unaware of their removal from the cluster:
 
-- Removed nodes will enter the `Candidate` state and continue to increase their `term` and elect themselves.
+- Removed nodes will enter the [`Candidate`] state and continue to increase their `term` and elect themselves.
   This will not impact the functioning cluster:
 
     - The nodes in the functioning cluster have more logs; thus, the election will never succeed.
