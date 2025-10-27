@@ -807,7 +807,7 @@ where
         std::mem::swap(&mut responders, &mut self.client_responders);
 
         let entry_count = last.index() + 1 - first.index();
-        self.runtime_stats.apply_batch_size.record(entry_count);
+        self.runtime_stats.apply_batch.record(entry_count);
 
         let cmd = sm::Command::apply(first, last.clone(), responders);
         self.sm_handle.send(cmd).map_err(|e| StorageError::apply(last, AnyError::error(e)))?;
@@ -1754,7 +1754,7 @@ where
                 tracing::debug!("AppendEntries: {}", entries.display_n(10));
 
                 let entry_count = entries.len() as u64;
-                self.runtime_stats.storage_append_entries_batch_size.record(entry_count);
+                self.runtime_stats.append_batch.record(entry_count);
 
                 let io_id = IOId::new_log_io(vote, Some(last_log_id));
                 let notify = Notification::LocalIO { io_id: io_id.clone() };

@@ -10,14 +10,14 @@ pub(crate) struct RuntimeStats {
     ///
     /// This tracks how many log entries are included in each apply command sent
     /// to the state machine, helping identify batch size patterns and I/O efficiency.
-    pub(crate) apply_batch_size: Histogram,
+    pub(crate) apply_batch: Histogram,
 
     /// Histogram tracking the distribution of log entry counts when appending to storage.
     ///
     /// This tracks how many log entries are included in each AppendEntries command
     /// submitted to the storage layer, helping identify write batch patterns and storage I/O
     /// efficiency.
-    pub(crate) storage_append_entries_batch_size: Histogram,
+    pub(crate) append_batch: Histogram,
 }
 
 impl Default for RuntimeStats {
@@ -29,8 +29,8 @@ impl Default for RuntimeStats {
 impl RuntimeStats {
     pub(crate) fn new() -> Self {
         Self {
-            apply_batch_size: Histogram::new(),
-            storage_append_entries_batch_size: Histogram::new(),
+            apply_batch: Histogram::new(),
+            append_batch: Histogram::new(),
         }
     }
 }
