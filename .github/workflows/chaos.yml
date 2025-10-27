@@ -24,18 +24,15 @@ jobs:
 
 
       - name: Setup | Toolchain
-        uses: actions-rs/toolchain@v1.0.6
+        uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: "${{ matrix.toolchain }}"
-          override: true
           components: rustfmt, clippy
 
 
         # TODO: unit test should be replaced
       - name: Unit Tests, with and without defensive store
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
+        run: cargo test
         env:
           # Parallel tests block each other and result in timeout.
           RUST_TEST_THREADS: 2

@@ -21,16 +21,12 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup | Toolchain
-        uses: actions-rs/toolchain@v1.0.6
+        uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: '${{ matrix.toolchain }}'
-          override: true
 
       - name: Build | Release Mode
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --release --features "${{ matrix.features }}" --manifest-path openraft/Cargo.toml
+        run: cargo build --release --features "${{ matrix.features }}" --manifest-path openraft/Cargo.toml
 
   openraft-test-bench:
     runs-on: ubuntu-latest
@@ -45,16 +41,12 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup | Toolchain
-        uses: actions-rs/toolchain@v1.0.6
+        uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: '${{ matrix.toolchain }}'
-          override: true
 
       - name: Test build for benchmark
-        uses: actions-rs/cargo@v1
-        with:
-          command: bench
-          args: --features bench nothing-to-run --manifest-path openraft/Cargo.toml
+        run: cargo bench --features bench nothing-to-run --manifest-path openraft/Cargo.toml
 
   # Test crate `openraft/` and `macros/`
   test-openraft-core-crates:
@@ -75,28 +67,21 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup | Toolchain
-        uses: actions-rs/toolchain@v1.0.6
+        uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: '${{ matrix.toolchain }}'
-          override: true
 
       - name: Install cargo-expand
         run: cargo install cargo-expand
 
       - name: Test crate `macros/`
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --features "${{ matrix.features }}" --manifest-path macros/Cargo.toml
+        run: cargo test --features "${{ matrix.features }}" --manifest-path macros/Cargo.toml
         env:
           RUST_LOG: debug
           RUST_BACKTRACE: full
 
       - name: Test crate `openraft/`
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --features "${{ matrix.features }}" --manifest-path openraft/Cargo.toml
+        run: cargo test --features "${{ matrix.features }}" --manifest-path openraft/Cargo.toml
         env:
           RUST_LOG: debug
           RUST_BACKTRACE: full
@@ -136,16 +121,12 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup | Toolchain
-        uses: actions-rs/toolchain@v1.0.6
+        uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: '${{ matrix.toolchain }}'
-          override: true
 
       - name: Test crate `tests/`
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --features "${{ matrix.features }}" --manifest-path tests/Cargo.toml
+        run: cargo test --features "${{ matrix.features }}" --manifest-path tests/Cargo.toml
         env:
           # Parallel tests block each other and result in timeout.
           RUST_TEST_THREADS: 2
@@ -175,18 +156,14 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup | Toolchain
-        uses: actions-rs/toolchain@v1.0.6
+        uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: 'nightly'
-          override: true
 
       # - A store with defensive checks returns error when unexpected accesses are sent to RaftStore.
       # - Raft should not depend on defensive error to work correctly.
       - name: Unit Tests, with defensive store
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --manifest-path "${{ matrix.store }}/Cargo.toml"
+        run: cargo test --manifest-path "${{ matrix.store }}/Cargo.toml"
         env:
           # Parallel tests block each other and result in timeout.
           RUST_TEST_THREADS: 2
@@ -210,16 +187,12 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup | Toolchain
-        uses: actions-rs/toolchain@v1.0.6
+        uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: 'nightly'
-          override: true
 
       - name: Unit Tests
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --tests nothing --manifest-path "${{ matrix.crate }}/Cargo.toml"
+        run: cargo test --tests nothing --manifest-path "${{ matrix.crate }}/Cargo.toml"
         env:
           RUST_LOG: debug
           RUST_BACKTRACE: full
@@ -233,16 +206,12 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup | Toolchain
-        uses: actions-rs/toolchain@v1.0.6
+        uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: 'nightly'
-          override: true
 
       - name: Unit Tests
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --tests --manifest-path "rt-monoio/Cargo.toml"
+        run: cargo test --tests --manifest-path "rt-monoio/Cargo.toml"
         env:
           RUST_LOG: debug
           RUST_BACKTRACE: full
@@ -255,16 +224,12 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup | Toolchain
-        uses: actions-rs/toolchain@v1.0.6
+        uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: 'nightly'
-          override: true
 
       - name: Unit Tests
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --tests --manifest-path "rt-compio/Cargo.toml"
+        run: cargo test --tests --manifest-path "rt-compio/Cargo.toml"
         env:
           RUST_LOG: debug
           RUST_BACKTRACE: full
@@ -298,16 +263,12 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup | Toolchain
-        uses: actions-rs/toolchain@v1.0.6
+        uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: '${{ matrix.toolchain }}'
-          override: true
 
       - name: Test crate `openraft/`
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --features "${{ matrix.features }}" --manifest-path openraft/Cargo.toml
+        run: cargo test --features "${{ matrix.features }}" --manifest-path openraft/Cargo.toml
         env:
           # Parallel tests block each other and result in timeout.
           RUST_TEST_THREADS: 2
@@ -341,16 +302,12 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup | Toolchain
-        uses: actions-rs/toolchain@v1.0.6
+        uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: '${{ matrix.toolchain }}'
-          override: true
 
       - name: Test crate `tests/`
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --features "${{ matrix.features }}" --manifest-path tests/Cargo.toml
+        run: cargo test --features "${{ matrix.features }}" --manifest-path tests/Cargo.toml
         env:
           # Parallel tests block each other and result in timeout.
           RUST_TEST_THREADS: 2
@@ -371,15 +328,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions-rs/toolchain@v1.0.6
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           components: rustfmt, clippy
 
       - name: Format
-        uses: actions-rs/cargo@v1
-        with:
-          command: fmt
-          args: --all -- --check
+        run: cargo fmt --all -- --check
 
       - name: clippy
         shell: bash
@@ -388,18 +342,12 @@ jobs:
           cargo clippy --no-deps --workspace --all-targets --features "bt,serde,bench,compat" -- -D warnings
 
       - name: Build-doc
-        uses: actions-rs/cargo@v1
-        with:
-          command: doc
-          args: --all --no-deps
+        run: cargo doc --all --no-deps
         env:
           RUSTDOCFLAGS: '-D warnings'
 
       - name: Doc tests
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --doc --all
+        run: cargo test --doc --all
 
       - shell: bash
         run: cargo install cargo-audit
@@ -430,10 +378,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions-rs/toolchain@v1.0.6
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: '${{ matrix.toolchain }}'
-          override: true
           components: rustfmt, clippy
 
       - name: Install Protoc

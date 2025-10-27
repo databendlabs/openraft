@@ -102,7 +102,6 @@ use crate::type_config::alias::SnapshotDataOf;
 use crate::type_config::alias::VoteOf;
 use crate::type_config::alias::WatchReceiverOf;
 use crate::type_config::alias::WriteResponderOf;
-use crate::vote::raft_vote::RaftVoteExt;
 
 /// Define types for a Raft type configuration.
 ///
@@ -539,6 +538,7 @@ where C: RaftTypeConfig
         C::SnapshotData: tokio::io::AsyncRead + tokio::io::AsyncWrite + tokio::io::AsyncSeek + Unpin,
     {
         use crate::async_runtime::mutex::Mutex;
+        use crate::vote::raft_vote::RaftVoteExt;
 
         tracing::debug!(req = display(&req), "Raft::install_snapshot()");
 
