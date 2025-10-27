@@ -219,6 +219,11 @@ pub struct Config {
     /// a follower won't wake up to enter candidate state,
     /// and a leader won't send heartbeat.
     ///
+    /// **Critical for elections**: When `false`, followers cannot detect leader failures and will
+    /// never trigger elections, even with `enable_elect = true`. The tick mechanism provides the
+    /// timing infrastructure that allows followers to detect when `election_timeout_max` has passed
+    /// without receiving heartbeats from the leader.
+    ///
     /// This flag is mainly used for testing or to build a consensus system that does not depend on
     /// wall clock. The value of this config is evaluated as follows:
     /// - being absent: true
@@ -248,6 +253,17 @@ pub struct Config {
 
     /// Whether a follower will enter candidate state if it does not receive any messages from the
     /// leader for a while.
+    ///
+    /// When enabled (`true`), followers automatically trigger elections by entering the `Candidate`
+    /// state when they don't receive `AppendEntries` messages (heartbeats) from the leader for
+    /// longer than `election_timeout_max`. This is essential for automatic failover when a leader
+    /// becomes unavailable.
+    ///
+    /// When disabled (`false`), followers will never initiate elections, even if the leader fails.
+    /// This setting is primarily for testing or building custom consensus systems.
+    ///
+    /// **Important**: This setting only works when `enable_tick` is also `true`. Elections require
+    /// time-based events to detect leader absence.
     // clap 4 requires `num_args = 0..=1`, or it complains about missing arg error
     // https://github.com/clap-rs/clap/discussions/4374
     #[clap(long,
