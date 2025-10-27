@@ -83,6 +83,7 @@ use crate::raft::message::TransferLeaderRequest;
 use crate::raft::responder::Responder;
 use crate::raft::responder::core_responder::CoreResponder;
 use crate::raft_state::LogStateReader;
+use crate::raft_state::RuntimeStats;
 use crate::raft_state::io_state::io_id::IOId;
 use crate::replication::ReplicationCore;
 use crate::replication::ReplicationHandle;
@@ -188,6 +189,8 @@ where
     pub(crate) tx_data_metrics: WatchSenderOf<C, RaftDataMetrics<C>>,
     pub(crate) tx_server_metrics: WatchSenderOf<C, RaftServerMetrics<C>>,
     pub(crate) tx_progress: IoProgressSender<C>,
+
+    pub(crate) runtime_stats: RuntimeStats,
 
     pub(crate) span: Span,
 }
@@ -798,7 +801,7 @@ where
         std::mem::swap(&mut responders, &mut self.client_responders);
 
         let entry_count = last.index() + 1 - first.index();
-        self.engine.state.runtime_stats.apply_batch_size.record(entry_count);
+        self.runtime_stats.apply_batch_size.record(entry_count);
 
         let cmd = sm::Command::apply(first, last.clone(), responders);
         self.sm_handle.send(cmd).map_err(|e| StorageError::apply(last, AnyError::error(e)))?;
@@ -1748,7 +1751,7 @@ where
                 tracing::debug!("AppendEntries: {}", entries.display_n(10));
 
                 let entry_count = entries.len() as u64;
-                self.engine.state.runtime_stats.storage_append_entries_batch_size.record(entry_count);
+                self.runtime_stats.storage_append_entries_batch_size.record(entry_count);
 
                 let io_id = IOId::new_log_io(vote, Some(last_log_id));
                 let notify = Notification::LocalIO { io_id: io_id.clone() };

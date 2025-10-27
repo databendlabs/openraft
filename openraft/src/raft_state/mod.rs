@@ -87,9 +87,6 @@ where C: RaftTypeConfig
     /// If a log is in use by a replication task, the purge is postponed and is stored in this
     /// field.
     pub(crate) purge_upto: Option<LogIdOf<C>>,
-
-    /// Runtime statistics for various Raft operations.
-    pub(crate) runtime_stats: RuntimeStats,
 }
 
 impl<C> Default for RaftState<C>
@@ -105,7 +102,6 @@ where C: RaftTypeConfig
             server_state: ServerState::default(),
             io_state: Valid::new(IOState::default()),
             purge_upto: None,
-            runtime_stats: RuntimeStats::default(),
         }
     }
 }

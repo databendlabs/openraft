@@ -93,6 +93,7 @@ use crate::metrics::Wait;
 use crate::raft::raft_inner::RaftInner;
 pub use crate::raft::runtime_config_handle::RuntimeConfigHandle;
 use crate::raft::trigger::Trigger;
+use crate::raft_state::RuntimeStats;
 use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
 use crate::storage::Snapshot;
@@ -394,6 +395,8 @@ where C: RaftTypeConfig
             tx_data_metrics,
             tx_server_metrics,
             tx_progress,
+
+            runtime_stats: RuntimeStats::new(),
 
             span: core_span,
         };
