@@ -153,9 +153,10 @@ impl BlockConfig {
 pub struct MemLogStore {
     last_purged_log_id: RwLock<Option<LogId<TypeConfig>>>,
 
-    /// Saving committed log id is optional in Openraft.
+    /// Enable saving committed log id to support transient state machines.
     ///
-    /// This flag switches on the saving for testing purposes.
+    /// When enabled, on restart Openraft detects that committed > applied and
+    /// automatically re-applies logs to restore the in-memory state machine.
     pub enable_saving_committed: AtomicBool,
 
     committed: RwLock<Option<LogId<TypeConfig>>>,

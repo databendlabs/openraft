@@ -14,4 +14,5 @@ mod t50_leader_restart_clears_state;
 mod t50_single_follower_restart;
 mod t50_single_leader_restart_re_apply_logs;
 mod t90_issue_607_single_restart;
+mod t90_issue_881_transient_state_machine;
 mod t90_issue_920_non_voter_leader_restart;

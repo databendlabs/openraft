@@ -96,7 +96,7 @@ where
         let mut last_purged_log_id = st.last_purged_log_id;
         let mut last_log_id = st.last_log_id;
 
-        let (mut last_applied, _) = self.state_machine.applied_state().await?;
+        let (last_applied, _) = self.state_machine.applied_state().await?;
 
         tracing::info!(
             vote = display(&vote),
@@ -113,10 +113,31 @@ where
             committed = last_applied.clone();
         }
 
+        // For transient state machines: install persistent snapshot to restore state efficiently.
+        self.restore_from_snapshot().await?;
+        let (mut last_applied, _) = self.state_machine.applied_state().await?;
+
         // Re-apply log entries to recover SM to latest state.
+        // For transient state machines, this re-applies logs from snapshot position to committed.
         if last_applied < committed {
             let start = last_applied.next_index();
             let end = committed.next_index();
+
+            // If required logs are purged, it's an error - we can't recover
+            if start < last_purged_log_id.next_index() {
+                let err = AnyError::error(format!(
+                    "Cannot re-apply logs: need logs from index {}, but purged up to {}",
+                    start,
+                    last_purged_log_id.display()
+                ));
+                return Err(StorageError::read_log_at_index(start, err));
+            }
+
+            tracing::info!(
+                start,
+                end,
+                "Re-applying committed logs to restore state machine to latest state"
+            );
 
             self.reapply_committed(start, end).await?;
 
@@ -197,6 +218,36 @@ where
             io_state: Valid::new(io_state),
             purge_upto: last_purged_log_id,
         })
+    }
+
+    /// Restore state machine by installing snapshot if available and newer than last_applied.
+    ///
+    /// For transient state machines, this installs the last persistent snapshot to efficiently
+    /// restore the state machine to a recent position.
+    async fn restore_from_snapshot(&mut self) -> Result<(), StorageError<C>> {
+        let (last_applied, _) = self.state_machine.applied_state().await?;
+        let snapshot = self.state_machine.get_current_snapshot().await?;
+
+        let Some(snap) = snapshot else {
+            return Ok(());
+        };
+
+        if snap.meta.last_log_id > last_applied {
+            tracing::info!(
+                snapshot_last_log_id = display(snap.meta.last_log_id.display()),
+                last_applied = display(last_applied.display()),
+                "Installing snapshot to restore transient state machine"
+            );
+
+            self.state_machine.install_snapshot(&snap.meta, snap.snapshot).await?;
+
+            tracing::info!(
+                new_last_applied = display(snap.meta.last_log_id.display()),
+                "Snapshot installed, state machine restored to snapshot position"
+            );
+        }
+
+        Ok(())
     }
 
     /// Read log entries from [`RaftLogReader`] in chunks and apply them to the state machine.

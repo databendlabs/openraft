@@ -70,6 +70,15 @@ where C: RaftTypeConfig
     /// - An implementation with a persistent snapshot: `apply()` does not have to persist state on
     ///   disk. But every snapshot has to be persistent. And when starting up the application, the
     ///   state machine should be rebuilt from the last snapshot.
+    ///
+    /// - An implementation with a transient (in-memory) state machine: The state machine does NOT
+    ///   persist on each `apply()` call, but snapshots ARE persistent. On restart, in-memory state
+    ///   is lost and `applied_state()` returns `None` or an old value. Openraft will automatically
+    ///   restore the state machine by: (1) installing the last persistent snapshot, then (2)
+    ///   re-applying logs from the snapshot position to the committed position. To support this
+    ///   pattern, implement [`RaftLogStorage::save_committed()`] to persist the committed log id.
+    ///
+    /// [`RaftLogStorage::save_committed()`]: crate::storage::RaftLogStorage::save_committed
     async fn apply<I>(&mut self, entries: I) -> Result<Vec<C::R>, StorageError<C>>
     where
         I: IntoIterator<Item = C::Entry> + OptionalSend,
