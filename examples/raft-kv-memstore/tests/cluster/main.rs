@@ -1,3 +1,1 @@
-#![allow(clippy::uninlined_format_args)]
-
-mod test_cluster;
+mod test_follower_read;

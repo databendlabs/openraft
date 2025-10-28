@@ -15,11 +15,12 @@ Includes:
   - raft-internal network APIs for replication and voting.
   - Admin APIs to add nodes, change-membership etc.
   - Application APIs to write a value by key or read a value by key.
+  - Linearizable read implementations including follower reads.
 
 - Client and `RaftNetwork`([rpc](./src/network/raft_network_impl)) are built upon [reqwest](https://docs.rs/reqwest).
 
   [ExampleClient](./src/client.rs) is a minimal raft client in rust to talk to a raft cluster.
-  - It includes application API `write()` and `read()`, and administrative API `init()`, `add_learner()`, `change_membership()`, `metrics()`.
+  - It includes application API `write()`, `read()`, `linearizable_read()`, `follower_read()`, and administrative API `init()`, `add_learner()`, `change_membership()`, `metrics()`.
   - This client tracks the last known leader id, a write operation(such as `write()` or `change_membership()`) will be redirected to the leader on client side.
 
 ## Run it
@@ -101,6 +102,13 @@ POST - 127.0.0.1:21002/read  "foo"
 ```
 
 You should be able to read that on the another instance even if you did not sync any data!
+
+For linearizable reads, use the `/linearizable_read` endpoint on the leader, or `/follower_read` on any node to distribute read load:
+
+```
+POST - 127.0.0.1:21001/linearizable_read  "foo"
+POST - 127.0.0.1:21002/follower_read  "foo"
+```
 
 
 ## How it's structured.

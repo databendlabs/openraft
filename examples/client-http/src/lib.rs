@@ -1,4 +1,5 @@
 use std::collections::BTreeSet;
+use std::fmt;
 use std::sync::Arc;
 use std::sync::Mutex;
 
@@ -18,6 +19,19 @@ use openraft::TryAsRef;
 use reqwest::Client;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
+
+#[derive(Debug, Clone, Serialize, serde::Deserialize)]
+pub struct FollowerReadError {
+    pub message: String,
+}
+
+impl fmt::Display for FollowerReadError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.message)
+    }
+}
+
+impl std::error::Error for FollowerReadError {}
 
 pub struct ExampleClient<C>
 where C: RaftTypeConfig
@@ -75,6 +89,16 @@ where C: RaftTypeConfig<Node = BasicNode>
         req: &String,
     ) -> Result<Result<String, CheckIsLeaderError<C>>, RPCError<C>> {
         self.send_with_forwarding("linearizable_read", Some(req), 3).await
+    }
+
+    /// Perform a linearizable read on a follower.
+    ///
+    /// This method demonstrates follower reads: it fetches a linearizer from the leader,
+    /// waits for the local state machine to catch up, then reads from the local state machine.
+    ///
+    /// Returns the value if successful, or an error from the follower.
+    pub async fn follower_read(&self, req: &String) -> Result<Result<String, FollowerReadError>, RPCError<C>> {
+        self.send("follower_read", Some(req)).await
     }
 
     // --- Cluster management API

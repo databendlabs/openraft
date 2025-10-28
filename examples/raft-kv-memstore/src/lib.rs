@@ -94,10 +94,12 @@ pub async fn start_example_raft_node(node_id: NodeId, http_addr: String) -> std:
             .service(management::add_learner)
             .service(management::change_membership)
             .service(management::metrics)
+            .service(management::get_linearizer)
             // application API
             .service(api::write)
             .service(api::read)
             .service(api::linearizable_read)
+            .service(api::follower_read)
     });
 
     let x = server.bind(http_addr)?;
