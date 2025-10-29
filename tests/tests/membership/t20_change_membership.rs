@@ -40,11 +40,13 @@ async fn update_membership_state() -> anyhow::Result<()> {
                 .wait(&node_id, timeout())
                 .applied_index(Some(log_index), "change-membership log applied")
                 .await?;
-            router.external_request(node_id, move |st| {
-                tracing::debug!("--- got state: {:?}", st);
-                assert_eq!(st.membership_state.committed().log_id().index(), Some(log_index));
-                assert_eq!(st.membership_state.effective().log_id().index(), Some(log_index));
-            });
+            router
+                .external_request(node_id, move |st| {
+                    tracing::debug!("--- got state: {:?}", st);
+                    assert_eq!(st.membership_state.committed().log_id().index(), Some(log_index));
+                    assert_eq!(st.membership_state.effective().log_id().index(), Some(log_index));
+                })
+                .await?;
         }
     }
 

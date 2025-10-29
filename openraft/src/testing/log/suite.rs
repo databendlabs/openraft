@@ -14,8 +14,6 @@ use crate::RaftSnapshotBuilder;
 use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::StoredMembership;
-use crate::async_runtime::MpscUnboundedReceiver;
-use crate::async_runtime::MpscUnboundedSender;
 use crate::core::notification::Notification;
 use crate::entry::RaftEntry;
 use crate::membership::EffectiveMembership;
@@ -32,6 +30,8 @@ use crate::testing::log::StoreBuilder;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::VoteOf;
+use crate::type_config::async_runtime::mpsc::MpscReceiver;
+use crate::type_config::async_runtime::mpsc::MpscSender;
 use crate::vote::RaftLeaderIdExt;
 use crate::vote::raft_vote::RaftVoteExt;
 
@@ -1452,7 +1452,7 @@ where
 
     let last_log_id = entries.last().unwrap().log_id();
 
-    let (tx, mut rx) = C::mpsc_unbounded();
+    let (tx, mut rx) = C::mpsc(1024);
 
     // Dummy log io id for blocking append
     let io_id = IOId::<C>::new_log_io(VoteOf::<C>::default().into_committed(), Some(last_log_id));

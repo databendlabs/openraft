@@ -55,7 +55,6 @@ use crate::RaftNetworkFactory;
 use crate::RaftState;
 pub use crate::RaftTypeConfig;
 use crate::StorageHelper;
-use crate::async_runtime::MpscUnboundedSender;
 use crate::async_runtime::OneshotSender;
 use crate::async_runtime::watch::WatchReceiver;
 use crate::base::BoxFuture;
@@ -322,8 +321,11 @@ where C: RaftTypeConfig
         LS: RaftLogStorage<C>,
         SM: RaftStateMachine<C>,
     {
-        let (tx_api, rx_api) = C::mpsc_unbounded();
-        let (tx_notify, rx_notify) = C::mpsc_unbounded();
+        let api_channel_size = config.api_channel_size();
+        let notification_channel_size = config.notification_channel_size();
+
+        let (tx_api, rx_api) = C::mpsc(api_channel_size);
+        let (tx_notify, rx_notify) = C::mpsc(notification_channel_size);
         let (tx_metrics, rx_metrics) = C::watch_channel(RaftMetrics::new_initial(id.clone()));
         let (tx_data_metrics, rx_data_metrics) = C::watch_channel(RaftDataMetrics::default());
         let (tx_server_metrics, rx_server_metrics) = C::watch_channel(RaftServerMetrics::default());
@@ -858,7 +860,8 @@ where C: RaftTypeConfig
             if let Err(_err) = tx.send(result) {
                 tracing::error!("{}: to-Raft tx send error", func_name!());
             }
-        });
+        })
+        .await?;
 
         match rx.await {
             Ok(res) => Ok(res),
@@ -872,6 +875,10 @@ where C: RaftTypeConfig
 
     /// Send a request to the Raft core loop in a fire-and-forget manner.
     ///
+    /// This method returns immediately after sending the message to the Raft core loop,
+    /// without waiting for the request to be executed. The returned `Result` indicates
+    /// whether the message was successfully sent, not whether the request was executed.
+    ///
     /// The request functor will be called with an immutable reference to the [`RaftState`]
     /// and serialized with other Raft core loop processing (e.g., client requests
     /// or general state changes).
@@ -880,12 +887,14 @@ where C: RaftTypeConfig
     /// in the closure of the request functor, which can then be used to send the response
     /// asynchronously.
     ///
-    /// If the API channel is already closed (Raft is in shutdown), then the request functor is
-    /// destroyed right away and not called at all.
-    pub fn external_request<F>(&self, req: F)
+    /// Returns a `Fatal` error if:
+    /// - Raft core task is stopped normally.
+    /// - Raft core task is panicked due to programming error.
+    /// - Raft core task is encountered a storage error.
+    pub async fn external_request<F>(&self, req: F) -> Result<(), Fatal<C>>
     where F: FnOnce(&RaftState<C>) + OptionalSend + 'static {
         let req: BoxOnce<'static, RaftState<C>> = Box::new(req);
-        let _ignore_error = self.inner.tx_api.send(RaftMsg::ExternalCoreRequest { req });
+        self.inner.send_msg(RaftMsg::ExternalCoreRequest { req }).await
     }
 
     /// Provides mutable access to [`RaftStateMachine`] through a user-provided function.
@@ -927,7 +936,8 @@ where C: RaftTypeConfig
                     tracing::error!("{}: fail to send response to user communicating tx", func_name!());
                 }
             })
-        });
+        })
+        .await?;
 
         let recv_res = rx.await;
         tracing::debug!("{} receives result is error: {:?}", func_name!(), recv_res.is_err());
@@ -947,15 +957,21 @@ where C: RaftTypeConfig
 
     /// Send a request to the [`RaftStateMachine`] worker in a fire-and-forget manner.
     ///
+    /// This method returns immediately after sending the message to the state machine worker,
+    /// without waiting for the request to be executed. The returned `Result` indicates
+    /// whether the message was successfully sent, not whether the request was executed.
+    ///
     /// The request functor will be called with a mutable reference to the state machine.
     /// The functor returns a [`Future`] because state machine methods are `async`.
     ///
-    /// If the API channel is already closed (Raft is in shutdown), then the request functor is
-    /// destroyed right away and not called at all.
-    ///
     /// If the input `SM` is different from the one in `RaftCore`, it just silently ignores it.
+    ///
+    /// Returns a `Fatal` error if:
+    /// - Raft core task is stopped normally.
+    /// - Raft core task is panicked due to programming error.
+    /// - Raft core task is encountered a storage error.
     #[since(version = "0.10.0")]
-    pub fn external_state_machine_request<F, SM>(&self, req: F)
+    pub async fn external_state_machine_request<F, SM>(&self, req: F) -> Result<(), Fatal<C>>
     where
         SM: RaftStateMachine<C>,
         F: FnOnce(&mut SM) -> BoxFuture<()> + OptionalSend + 'static,
@@ -972,7 +988,7 @@ where C: RaftTypeConfig
         let raft_msg = RaftMsg::ExternalCommand {
             cmd: ExternalCommand::StateMachineCommand { sm_cmd },
         };
-        let _ignore_error = self.inner.tx_api.send(raft_msg);
+        self.inner.send_msg(raft_msg).await
     }
 
     /// Get a handle to the metrics channel.

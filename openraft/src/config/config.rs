@@ -213,6 +213,20 @@ pub struct Config {
     #[clap(long, default_value = "1")]
     pub purge_batch_size: u64,
 
+    /// The size of the bounded API channel for sending messages to RaftCore.
+    ///
+    /// This controls backpressure for client requests. When the channel is full,
+    /// new API calls will block until space becomes available.
+    #[clap(long, default_value = "65536")]
+    pub api_channel_size: Option<u64>,
+
+    /// The size of the bounded notification channel for internal events.
+    ///
+    /// This channel carries internal notifications like IO completion, replication progress,
+    /// and tick events. When full, internal components will block until space is available.
+    #[clap(long, default_value = "65536")]
+    pub notification_channel_size: Option<u64>,
+
     /// Enable or disable tick.
     ///
     /// If ticking is disabled, timeout-based events are all disabled:
@@ -373,6 +387,20 @@ impl Config {
     #[since(version = "0.10.0")]
     pub(crate) fn get_allow_io_notification_reorder(&self) -> bool {
         self.allow_io_notification_reorder.unwrap_or(false)
+    }
+
+    /// Get the API channel size for bounded MPSC channel.
+    ///
+    /// Defaults to 65536 if not specified.
+    pub(crate) fn api_channel_size(&self) -> usize {
+        self.api_channel_size.unwrap_or(65536) as usize
+    }
+
+    /// Get the notification channel size for bounded MPSC channel.
+    ///
+    /// Defaults to 65536 if not specified.
+    pub(crate) fn notification_channel_size(&self) -> usize {
+        self.notification_channel_size.unwrap_or(65536) as usize
     }
 
     /// Build a `Config` instance from a series of command line arguments.

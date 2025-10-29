@@ -314,11 +314,13 @@ impl RaftLogStorage<TypeConfig> for Rc<LogStore> {
     async fn append<I>(&mut self, entries: I, callback: IOFlushed) -> Result<(), StorageError>
     where I: IntoIterator<Item = Entry> {
         // Simple implementation that calls the flush-before-return `append_to_log`.
-        let mut log = self.log.borrow_mut();
-        for entry in entries {
-            log.insert(entry.log_id.index(), entry);
+        {
+            let mut log = self.log.borrow_mut();
+            for entry in entries {
+                log.insert(entry.log_id.index(), entry);
+            }
         }
-        callback.io_completed(Ok(()));
+        callback.io_completed(Ok(())).await;
 
         Ok(())
     }
