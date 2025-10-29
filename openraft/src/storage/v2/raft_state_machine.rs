@@ -7,6 +7,7 @@ use crate::RaftSnapshotBuilder;
 use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::StoredMembership;
+use crate::storage::EntryResponder;
 use crate::storage::Snapshot;
 use crate::storage::SnapshotMeta;
 use crate::type_config::alias::LogIdOf;
@@ -58,6 +59,8 @@ where C: RaftTypeConfig
     /// - Store the log id as last-applied log id.
     /// - Deal with the business logic log.
     /// - Store membership config if `RaftEntry::get_membership()` returns `Some`.
+    /// - Call [`ApplyResponder::send`](crate::storage::ApplyResponder::send) with the response
+    ///   immediately after applying the entry.
     ///
     /// Note that for a membership log, the implementation needs to do nothing about it, except
     /// storing it.
@@ -79,9 +82,9 @@ where C: RaftTypeConfig
     ///   pattern, implement [`RaftLogStorage::save_committed()`] to persist the committed log id.
     ///
     /// [`RaftLogStorage::save_committed()`]: crate::storage::RaftLogStorage::save_committed
-    async fn apply<I>(&mut self, entries: I) -> Result<Vec<C::R>, StorageError<C>>
+    async fn apply<I>(&mut self, entries: I) -> Result<(), StorageError<C>>
     where
-        I: IntoIterator<Item = C::Entry> + OptionalSend,
+        I: IntoIterator<Item = EntryResponder<C>> + OptionalSend,
         I::IntoIter: OptionalSend;
 
     /// Try to create a snapshot builder for the state machine.
