@@ -19,14 +19,12 @@ use crate::core::sm::handle::Handle;
 use crate::display_ext::DisplayOptionExt;
 use crate::display_ext::DisplaySliceExt;
 use crate::entry::RaftEntry;
-use crate::entry::RaftPayload;
-use crate::raft::ClientWriteResponse;
-use crate::raft::responder::Responder;
 use crate::raft::responder::core_responder::CoreResponder;
 #[cfg(doc)]
 use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
 use crate::storage::Snapshot;
+use crate::storage::v2::entry_responder::EntryResponderBuilder;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::JoinHandleOf;
 use crate::type_config::alias::LogIdOf;
@@ -178,10 +176,6 @@ where
         last: LogIdOf<C>,
         client_resp_channels: &mut BTreeMap<u64, CoreResponder<C>>,
     ) -> Result<ApplyResult<C>, StorageError<C>> {
-        // TODO: prepare response before apply,
-        //       so that an Entry does not need to be Clone,
-        //       and no references will be used by apply
-
         let since = first.index();
         let end = last.index() + 1;
 
@@ -198,46 +192,19 @@ where
 
         let last_applied = last;
 
-        // Fake complain: avoid using `collect()` when not needed
-        #[allow(clippy::needless_collect)]
-        let applying_entries = entries.iter().map(|e| (e.log_id(), e.get_membership())).collect::<Vec<_>>();
+        // Prepare entries with responders upfront.
+        // Entries are consumed and responders attached before calling apply() to avoid
+        // the need for cloning entries or using references during application.
+        let apply_items = entries.into_iter().map(|entry| {
+            let log_index = entry.index();
+            let responder = client_resp_channels.remove(&log_index);
 
-        let n_entries = end - since;
+            let item = EntryResponderBuilder { entry, responder };
+            tracing::debug!("prepared {}", item);
+            item.into_parts()
+        });
 
-        let apply_results = self.state_machine.apply(entries).await?;
-
-        let n_replies = apply_results.len() as u64;
-
-        debug_assert_eq!(
-            n_entries, n_replies,
-            "n_entries: {} should equal n_replies: {}",
-            n_entries, n_replies
-        );
-
-        let mut results = apply_results.into_iter();
-        let mut applying_entries = applying_entries.into_iter();
-        for log_index in since..end {
-            let (log_id, membership) = applying_entries.next().unwrap();
-            let resp = results.next().unwrap();
-            let tx = client_resp_channels.remove(&log_index);
-            tracing::debug!(
-                log_id = debug(&log_id),
-                membership = debug(&membership),
-                "send_response"
-            );
-
-            if let Some(tx) = tx {
-                let membership = membership;
-
-                let res = Ok(ClientWriteResponse {
-                    log_id,
-                    data: resp,
-                    membership,
-                });
-
-                tx.send(res);
-            }
-        }
+        self.state_machine.apply(apply_items).await?;
 
         let resp = ApplyResult {
             since,
