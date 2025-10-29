@@ -1298,7 +1298,7 @@ where
                 self.handle_check_is_leader_request(read_policy, tx).await;
             }
             RaftMsg::ClientWriteRequest { app_data, responder } => {
-                self.write_entry(C::Entry::new_normal(LogIdOf::<C>::default(), app_data), Some(responder));
+                self.write_entry(C::Entry::new_normal(LogIdOf::<C>::default(), app_data), responder);
             }
             RaftMsg::Initialize { members, tx } => {
                 tracing::info!(

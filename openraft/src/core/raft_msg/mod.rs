@@ -73,7 +73,7 @@ where C: RaftTypeConfig
 
     ClientWriteRequest {
         app_data: C::D,
-        responder: CoreResponder<C>,
+        responder: Option<CoreResponder<C>>,
     },
 
     CheckIsLeaderRequest {

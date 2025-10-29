@@ -747,7 +747,11 @@ where C: RaftTypeConfig
     /// It is same as [`Self::client_write`] but does not wait for the response.
     #[since(version = "0.10.0", date = "2025-10-27", change = "add responder arg")]
     #[since(version = "0.10.0")]
-    pub async fn client_write_ff(&self, app_data: C::D, responder: WriteResponderOf<C>) -> Result<(), Fatal<C>> {
+    pub async fn client_write_ff(
+        &self,
+        app_data: C::D,
+        responder: Option<WriteResponderOf<C>>,
+    ) -> Result<(), Fatal<C>> {
         self.app_api().client_write_ff(app_data, responder).await
     }
 

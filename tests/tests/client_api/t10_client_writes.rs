@@ -88,14 +88,17 @@ async fn client_write_ff() -> Result<()> {
     let n0 = router.get_raft_handle(&0)?;
 
     let (responder, rx) = OneshotResponder::new_pair();
-    n0.client_write_ff(ClientRequest::make_request("foo", 2), responder).await?;
+    n0.client_write_ff(ClientRequest::make_request("foo", 2), Some(responder)).await?;
     let got: ClientWriteResponse<TypeConfig> = rx.await??;
     assert_eq!(None, got.response().0.as_deref());
 
+    // Deliberately set the responder to None and do not wait for the result.
+    n0.client_write_ff(ClientRequest::make_request("foo", 3), None).await?;
+
     let (responder, rx) = OneshotResponder::new_pair();
-    n0.client_write_ff(ClientRequest::make_request("foo", 3), responder).await?;
+    n0.client_write_ff(ClientRequest::make_request("foo", 4), Some(responder)).await?;
     let got: ClientWriteResponse<TypeConfig> = rx.await??;
-    assert_eq!(Some("request-2"), got.response().0.as_deref());
+    assert_eq!(Some("request-3"), got.response().0.as_deref());
 
     Ok(())
 }
