@@ -5,6 +5,7 @@ use std::io::Cursor;
 use std::path::Path;
 use std::sync::Arc;
 
+use openraft::storage::EntryResponder;
 use openraft::storage::RaftStateMachine;
 use openraft::AnyError;
 use openraft::EntryPayload;
@@ -206,20 +207,17 @@ impl RaftStateMachine<TypeConfig> for StateMachineStore {
         Ok((self.data.last_applied_log_id, self.data.last_membership.clone()))
     }
 
-    async fn apply<I>(&mut self, entries: I) -> Result<Vec<Response>, StorageError>
+    async fn apply<I>(&mut self, entries: I) -> Result<(), StorageError>
     where
-        I: IntoIterator<Item = Entry> + OptionalSend,
+        I: IntoIterator<Item = EntryResponder<TypeConfig>> + OptionalSend,
         I::IntoIter: OptionalSend,
     {
-        let entries = entries.into_iter();
-        let mut replies = Vec::with_capacity(entries.size_hint().0);
-
-        for ent in entries {
-            self.data.last_applied_log_id = Some(ent.log_id);
+        for (entry, responder) in entries {
+            self.data.last_applied_log_id = Some(entry.log_id);
 
             let mut resp_value = None;
 
-            match ent.payload {
+            match entry.payload {
                 EntryPayload::Blank => {}
                 EntryPayload::Normal(req) => match req {
                     Request::Set { key, value } => {
@@ -230,13 +228,15 @@ impl RaftStateMachine<TypeConfig> for StateMachineStore {
                     }
                 },
                 EntryPayload::Membership(mem) => {
-                    self.data.last_membership = StoredMembership::new(Some(ent.log_id), mem);
+                    self.data.last_membership = StoredMembership::new(Some(entry.log_id), mem);
                 }
             }
 
-            replies.push(Response { value: resp_value });
+            let response = Response { value: resp_value };
+
+            responder.send(response);
         }
-        Ok(replies)
+        Ok(())
     }
 
     async fn get_snapshot_builder(&mut self) -> Self::SnapshotBuilder {

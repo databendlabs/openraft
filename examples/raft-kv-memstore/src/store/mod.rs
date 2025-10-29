@@ -7,9 +7,9 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use openraft::alias::SnapshotDataOf;
+use openraft::storage::EntryResponder;
 use openraft::storage::RaftStateMachine;
 use openraft::storage::Snapshot;
-use openraft::Entry;
 use openraft::EntryPayload;
 use openraft::LogId;
 use openraft::RaftSnapshotBuilder;
@@ -168,34 +168,37 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
     }
 
     #[tracing::instrument(level = "trace", skip(self, entries))]
-    async fn apply<I>(&mut self, entries: I) -> Result<Vec<Response>, StorageError<TypeConfig>>
-    where I: IntoIterator<Item = Entry<TypeConfig>> + Send {
-        let mut res = Vec::new(); //No `with_capacity`; do not know `len` of iterator
-
+    async fn apply<I>(&mut self, entries: I) -> Result<(), StorageError<TypeConfig>>
+    where
+        I: IntoIterator<Item = EntryResponder<TypeConfig>> + Send,
+        I::IntoIter: Send,
+    {
         let mut sm = self.state_machine.write().await;
 
-        for entry in entries {
+        for (entry, responder) in entries {
             tracing::debug!(%entry.log_id, "replicate to sm");
 
             sm.last_applied_log = Some(entry.log_id);
 
-            match entry.payload {
-                EntryPayload::Blank => res.push(Response { value: None }),
+            let response = match entry.payload {
+                EntryPayload::Blank => Response { value: None },
                 EntryPayload::Normal(ref req) => match req {
                     Request::Set { key, value } => {
                         sm.data.insert(key.clone(), value.clone());
-                        res.push(Response {
+                        Response {
                             value: Some(value.clone()),
-                        })
+                        }
                     }
                 },
                 EntryPayload::Membership(ref mem) => {
                     sm.last_membership = StoredMembership::new(Some(entry.log_id), mem.clone());
-                    res.push(Response { value: None })
+                    Response { value: None }
                 }
             };
+
+            responder.send(response);
         }
-        Ok(res)
+        Ok(())
     }
 
     #[tracing::instrument(level = "trace", skip(self))]

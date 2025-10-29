@@ -13,6 +13,9 @@ pub type EntryPayload = openraft::EntryPayload<TypeConfig>;
 pub type Membership = openraft::membership::Membership<TypeConfig>;
 pub type StoredMembership = openraft::StoredMembership<TypeConfig>;
 
+pub type ApplyResponder = openraft::storage::ApplyResponder<TypeConfig>;
+pub type EntryResponder = openraft::storage::EntryResponder<TypeConfig>;
+
 pub type Node = <TypeConfig as openraft::RaftTypeConfig>::Node;
 
 pub type LogState = openraft::storage::LogState<TypeConfig>;
