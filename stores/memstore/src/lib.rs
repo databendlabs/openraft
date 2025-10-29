@@ -416,7 +416,7 @@ impl RaftLogStorage<TypeConfig> for Arc<MemLogStore> {
             log.insert(entry.index(), s);
         }
 
-        callback.io_completed(Ok(()));
+        callback.io_completed(Ok(())).await;
         Ok(())
     }
 

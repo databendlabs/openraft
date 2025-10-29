@@ -75,9 +75,11 @@ async fn initialization() -> anyhow::Result<()> {
     // before other requests in the Raft core API queue, which definitely are executed
     // (since they are awaited).
     for node in [0, 1, 2] {
-        router.external_request(node, |s| {
-            assert_eq!(s.server_state, ServerState::Learner);
-        });
+        router
+            .external_request(node, |s| {
+                assert_eq!(s.server_state, ServerState::Learner);
+            })
+            .await?;
     }
 
     // Initialize the cluster, then assert that a stable cluster was formed & held.
@@ -101,25 +103,27 @@ async fn initialization() -> anyhow::Result<()> {
 
     tracing::info!(log_index, "--- check membership state");
     for node_id in [0, 1, 2] {
-        router.external_request(node_id, move |s| {
-            let want = EffectiveMembership::new(
-                Some(log_id(0, 0, 0)),
-                Membership::new_with_defaults(vec![btreeset! {0,1,2}], []),
-            );
-            let want = Arc::new(want);
-            assert_eq!(
-                s.membership_state.effective(),
-                &want,
-                "node-{}: effective membership",
-                node_id
-            );
-            assert_eq!(
-                s.membership_state.committed(),
-                &want,
-                "node-{}: committed membership",
-                node_id
-            );
-        });
+        router
+            .external_request(node_id, move |s| {
+                let want = EffectiveMembership::new(
+                    Some(log_id(0, 0, 0)),
+                    Membership::new_with_defaults(vec![btreeset! {0,1,2}], []),
+                );
+                let want = Arc::new(want);
+                assert_eq!(
+                    s.membership_state.effective(),
+                    &want,
+                    "node-{}: effective membership",
+                    node_id
+                );
+                assert_eq!(
+                    s.membership_state.committed(),
+                    &want,
+                    "node-{}: committed membership",
+                    node_id
+                );
+            })
+            .await?;
     }
 
     for i in [0, 1, 2] {
@@ -189,9 +193,11 @@ async fn initialize_err_target_not_include_target() -> anyhow::Result<()> {
     router.new_raft_node(1).await;
 
     for node in [0, 1] {
-        router.external_request(node, |s| {
-            assert_eq!(s.server_state, ServerState::Learner);
-        });
+        router
+            .external_request(node, |s| {
+                assert_eq!(s.server_state, ServerState::Learner);
+            })
+            .await?;
     }
 
     for node_id in 0..2 {
@@ -224,9 +230,11 @@ async fn initialize_err_not_allowed() -> anyhow::Result<()> {
     router.new_raft_node(0).await;
 
     for node in [0] {
-        router.external_request(node, |s| {
-            assert_eq!(s.server_state, ServerState::Learner);
-        });
+        router
+            .external_request(node, |s| {
+                assert_eq!(s.server_state, ServerState::Learner);
+            })
+            .await?;
     }
 
     tracing::info!("--- Initialize node 0");

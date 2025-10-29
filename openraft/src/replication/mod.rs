@@ -54,6 +54,7 @@ use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::JoinHandleOf;
 use crate::type_config::alias::LogIdOf;
+use crate::type_config::alias::MpscSenderOf;
 use crate::type_config::alias::MpscUnboundedReceiverOf;
 use crate::type_config::alias::MpscUnboundedSenderOf;
 use crate::type_config::alias::MpscUnboundedWeakSenderOf;
@@ -61,6 +62,7 @@ use crate::type_config::alias::MutexOf;
 use crate::type_config::alias::OneshotReceiverOf;
 use crate::type_config::alias::OneshotSenderOf;
 use crate::type_config::alias::VoteOf;
+use crate::type_config::async_runtime::mpsc::MpscSender;
 use crate::type_config::async_runtime::mutex::Mutex;
 use crate::vote::raft_vote::RaftVoteExt;
 
@@ -94,7 +96,7 @@ where
 
     /// A channel for sending events to the RaftCore.
     #[allow(clippy::type_complexity)]
-    tx_raft_core: MpscUnboundedSenderOf<C, Notification<C>>,
+    tx_raft_core: MpscSenderOf<C, Notification<C>>,
 
     /// A channel for receiving events from the RaftCore and snapshot transmitting task.
     rx_event: MpscUnboundedReceiverOf<C, Replicate<C>>,
@@ -168,7 +170,7 @@ where
         snapshot_network: N::Network,
         log_reader: LS::LogReader,
         snapshot_reader: SnapshotReader<C>,
-        tx_raft_core: MpscUnboundedSenderOf<C, Notification<C>>,
+        tx_raft_core: MpscSenderOf<C, Notification<C>>,
         span: tracing::Span,
     ) -> ReplicationHandle<C> {
         tracing::debug!(
@@ -240,7 +242,7 @@ where
                     self.send_log_entries(log, true).await
                 }
                 Data::Snapshot(snap) => self.stream_snapshot(snap).await,
-                Data::SnapshotCallback(resp) => self.handle_snapshot_callback(resp),
+                Data::SnapshotCallback(resp) => self.handle_snapshot_callback(resp).await,
             };
 
             tracing::debug!(res = debug(&res), "replication action done");
@@ -263,17 +265,20 @@ where
                             return Err(closed);
                         }
                         ReplicationError::HigherVote(h) => {
-                            let _ = self.tx_raft_core.send(Notification::HigherVote {
-                                target: self.target,
-                                higher: h.higher,
-                                leader_vote: self.session_id.committed_vote(),
-                            });
+                            let _ = self
+                                .tx_raft_core
+                                .send(Notification::HigherVote {
+                                    target: self.target,
+                                    higher: h.higher,
+                                    leader_vote: self.session_id.committed_vote(),
+                                })
+                                .await;
                             return Ok(());
                         }
                         ReplicationError::StorageError(error) => {
                             tracing::error!(error=%error, "error replication to target={}", self.target);
 
-                            let _ = self.tx_raft_core.send(Notification::StorageError { error });
+                            let _ = self.tx_raft_core.send(Notification::StorageError { error }).await;
                             return Ok(());
                         }
                         ReplicationError::RPCError(err) => {
@@ -306,7 +311,7 @@ where
                             } else {
                                 // If there is no id, it is a heartbeat and do not need to notify RaftCore
                                 if need_notify {
-                                    self.send_progress_error(err);
+                                    self.send_progress_error(err).await;
                                 } else {
                                     tracing::warn!("heartbeat RPC failed, do not send any response to RaftCore");
                                 };
@@ -460,11 +465,11 @@ where
 
         match append_resp {
             AppendEntriesResponse::Success => {
-                self.notify_heartbeat_progress(leader_time);
+                self.notify_heartbeat_progress(leader_time).await;
 
                 let matching = &sending_range.last;
                 if has_payload {
-                    self.notify_progress(ReplicationResult(Ok(matching.clone())), has_payload);
+                    self.notify_progress(ReplicationResult(Ok(matching.clone())), has_payload).await;
                     Ok(self.next_action_to_send(matching.clone(), log_ids))
                 } else {
                     Ok(None)
@@ -473,10 +478,10 @@ where
             AppendEntriesResponse::PartialSuccess(matching) => {
                 Self::debug_assert_partial_success(&sending_range, &matching);
 
-                self.notify_heartbeat_progress(leader_time);
+                self.notify_heartbeat_progress(leader_time).await;
 
                 if has_payload {
-                    self.notify_progress(ReplicationResult(Ok(matching.clone())), has_payload);
+                    self.notify_progress(ReplicationResult(Ok(matching.clone())), has_payload).await;
                     Ok(self.next_action_to_send(matching.clone(), log_ids))
                 } else {
                     Ok(None)
@@ -503,11 +508,11 @@ where
                 let conflict = conflict.unwrap();
 
                 // Conflict is also a successful replication RPC, because the leadership is acknowledged.
-                self.notify_heartbeat_progress(leader_time);
+                self.notify_heartbeat_progress(leader_time).await;
 
                 // Conflict should always be sent to RaftCore, ignoring `has_payload`
                 // because a heartbeat could also cause a conflict if the follower's state reverts.
-                self.notify_progress(ReplicationResult(Err(conflict)), has_payload);
+                self.notify_progress(ReplicationResult(Err(conflict)), has_payload).await;
 
                 Ok(None)
             }
@@ -516,34 +521,40 @@ where
 
     /// Send the error result to RaftCore.
     /// RaftCore will then submit another replication command.
-    fn send_progress_error(&mut self, err: RPCError<C>) {
-        let _ = self.tx_raft_core.send(Notification::ReplicationProgress {
-            // If `result` is Err, `has_payload` is not used.
-            has_payload: true,
-            progress: Progress {
-                target: self.target.clone(),
-                result: Err(err.to_string()),
-                session_id: self.session_id.clone(),
-            },
-        });
+    async fn send_progress_error(&mut self, err: RPCError<C>) {
+        let _ = self
+            .tx_raft_core
+            .send(Notification::ReplicationProgress {
+                // If `result` is Err, `has_payload` is not used.
+                has_payload: true,
+                progress: Progress {
+                    target: self.target.clone(),
+                    result: Err(err.to_string()),
+                    session_id: self.session_id.clone(),
+                },
+            })
+            .await;
     }
 
     /// A successful replication implies a successful heartbeat.
     /// This method notifies [`RaftCore`] with a heartbeat progress.
     ///
     /// [`RaftCore`]: crate::core::RaftCore
-    fn notify_heartbeat_progress(&mut self, sending_time: InstantOf<C>) {
-        let _ = self.tx_raft_core.send({
-            Notification::HeartbeatProgress {
-                session_id: self.session_id.clone(),
-                target: self.target.clone(),
-                sending_time,
-            }
-        });
+    async fn notify_heartbeat_progress(&mut self, sending_time: InstantOf<C>) {
+        let _ = self
+            .tx_raft_core
+            .send({
+                Notification::HeartbeatProgress {
+                    session_id: self.session_id.clone(),
+                    target: self.target.clone(),
+                    sending_time,
+                }
+            })
+            .await;
     }
 
     /// Notify RaftCore with the success replication result (log matching or conflict).
-    fn notify_progress(&mut self, replication_result: ReplicationResult<C>, has_payload: bool) {
+    async fn notify_progress(&mut self, replication_result: ReplicationResult<C>, has_payload: bool) {
         tracing::debug!(
             target = display(self.target.clone()),
             curr_matching = display(self.matching.display()),
@@ -561,16 +572,19 @@ where
             }
         }
 
-        let _ = self.tx_raft_core.send({
-            Notification::ReplicationProgress {
-                has_payload,
-                progress: Progress {
-                    session_id: self.session_id.clone(),
-                    target: self.target.clone(),
-                    result: Ok(replication_result.clone()),
-                },
-            }
-        });
+        let _ = self
+            .tx_raft_core
+            .send({
+                Notification::ReplicationProgress {
+                    has_payload,
+                    progress: Progress {
+                        session_id: self.session_id.clone(),
+                        target: self.target.clone(),
+                        result: Ok(replication_result.clone()),
+                    },
+                }
+            })
+            .await;
     }
 
     /// Drain all events in the channel in backoff mode, i.e., there was an un-retry-able error and
@@ -785,7 +799,7 @@ where
         }
     }
 
-    fn handle_snapshot_callback(
+    async fn handle_snapshot_callback(
         &mut self,
         callback: SnapshotCallback<C>,
     ) -> Result<Option<Data<C>>, ReplicationError<C>> {
@@ -814,8 +828,8 @@ where
             }));
         }
 
-        self.notify_heartbeat_progress(start_time);
-        self.notify_progress(ReplicationResult(Ok(snapshot_meta.last_log_id)), true);
+        self.notify_heartbeat_progress(start_time).await;
+        self.notify_progress(ReplicationResult(Ok(snapshot_meta.last_log_id)), true).await;
 
         Ok(None)
     }

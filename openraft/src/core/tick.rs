@@ -12,13 +12,13 @@ use tracing::Level;
 use tracing::Span;
 
 use crate::RaftTypeConfig;
-use crate::async_runtime::MpscUnboundedSender;
 use crate::core::notification::Notification;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::JoinHandleOf;
-use crate::type_config::alias::MpscUnboundedSenderOf;
+use crate::type_config::alias::MpscSenderOf;
 use crate::type_config::alias::OneshotReceiverOf;
 use crate::type_config::alias::OneshotSenderOf;
+use crate::type_config::async_runtime::mpsc::MpscSender;
 use crate::type_config::async_runtime::oneshot::OneshotSender;
 
 /// Emit RaftMsg::Tick event at regular `interval`.
@@ -27,7 +27,7 @@ where C: RaftTypeConfig
 {
     interval: Duration,
 
-    tx: MpscUnboundedSenderOf<C, Notification<C>>,
+    tx: MpscSenderOf<C, Notification<C>>,
 
     /// Emit event or not
     enabled: Arc<AtomicBool>,
@@ -56,11 +56,7 @@ where C: RaftTypeConfig
 impl<C> Tick<C>
 where C: RaftTypeConfig
 {
-    pub(crate) fn spawn(
-        interval: Duration,
-        tx: MpscUnboundedSenderOf<C, Notification<C>>,
-        enabled: bool,
-    ) -> TickHandle<C> {
+    pub(crate) fn spawn(interval: Duration, tx: MpscSenderOf<C, Notification<C>>, enabled: bool) -> TickHandle<C> {
         let enabled = Arc::new(AtomicBool::from(enabled));
         let this = Self {
             interval,
@@ -111,7 +107,7 @@ where C: RaftTypeConfig
 
             i += 1;
 
-            let send_res = self.tx.send(Notification::Tick { i });
+            let send_res = self.tx.send(Notification::Tick { i }).await;
             if let Err(_e) = send_res {
                 tracing::info!("Stopping tick_loop(), main loop terminated");
                 break;
@@ -191,7 +187,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_shutdown() -> anyhow::Result<()> {
-        let (tx, mut rx) = TickUTConfig::mpsc_unbounded();
+        let (tx, mut rx) = TickUTConfig::mpsc(1024);
         let th = Tick::<TickUTConfig>::spawn(Duration::from_millis(100), tx, true);
 
         TickUTConfig::sleep(Duration::from_millis(500)).await;

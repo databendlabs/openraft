@@ -246,7 +246,7 @@ impl RaftLogStorage<TypeConfig> for Arc<LogStore> {
             let mut log = self.log.write().await;
             log.extend(entries.into_iter().map(|entry| (entry.index(), entry)));
         }
-        callback.io_completed(Ok(()));
+        callback.io_completed(Ok(())).await;
         Ok(())
     }
 

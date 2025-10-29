@@ -39,22 +39,26 @@ async fn heartbeat_reject_vote() -> Result<()> {
     {
         let m = vote_modified_time.clone();
 
-        router.external_request(1, move |state| {
-            let mut l = m.lock().unwrap();
-            *l = state.vote_last_modified();
-            assert!(state.vote_last_modified() > Some(now));
-        });
+        router
+            .external_request(1, move |state| {
+                let mut l = m.lock().unwrap();
+                *l = state.vote_last_modified();
+                assert!(state.vote_last_modified() > Some(now));
+            })
+            .await?;
 
         let now = TokioInstant::now();
         sleep(Duration::from_millis(700)).await;
 
         let m = vote_modified_time.clone();
 
-        router.external_request(1, move |state| {
-            let l = m.lock().unwrap();
-            assert!(state.vote_last_modified() > Some(now));
-            assert!(state.vote_last_modified() > *l);
-        });
+        router
+            .external_request(1, move |state| {
+                let l = m.lock().unwrap();
+                assert!(state.vote_last_modified() > Some(now));
+                assert!(state.vote_last_modified() > *l);
+            })
+            .await?;
     }
 
     let node0 = router.get_raft_handle(&0)?;
