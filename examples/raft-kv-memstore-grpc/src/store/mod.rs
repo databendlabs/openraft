@@ -3,6 +3,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use openraft::entry::RaftEntry;
+use openraft::storage::ApplyItem;
 use openraft::storage::RaftStateMachine;
 use openraft::RaftSnapshotBuilder;
 
@@ -110,13 +111,12 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
     }
 
     #[tracing::instrument(level = "trace", skip(self, entries))]
-    async fn apply<I>(&mut self, entries: I) -> Result<Vec<Response>, StorageError>
-    where I: IntoIterator<Item = Entry> {
-        let mut res = Vec::new(); //No `with_capacity`; do not know `len` of iterator
-
+    async fn apply<I>(&mut self, entries: I) -> Result<(), StorageError>
+    where I: IntoIterator<Item = ApplyItem<TypeConfig>> {
         let mut sm = self.state_machine.lock().unwrap();
 
-        for entry in entries {
+        for item in entries {
+            let (entry, responder) = item.into_parts();
             let log_id = entry.log_id();
 
             tracing::debug!("replicate to sm: {}", log_id);
@@ -134,9 +134,11 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
                 None
             };
 
-            res.push(Response { value });
+            let response = Response { value };
+
+            responder.send(response);
         }
-        Ok(res)
+        Ok(())
     }
 
     #[tracing::instrument(level = "trace", skip(self))]

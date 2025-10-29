@@ -12,6 +12,7 @@ use std::sync::Arc;
 use openraft::alias::LogIdOf;
 use openraft::alias::SnapshotDataOf;
 use openraft::entry::RaftEntry;
+use openraft::storage::ApplyItem;
 use openraft::storage::IOFlushed;
 use openraft::storage::LogState;
 use openraft::storage::RaftLogReader;
@@ -265,26 +266,26 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
         Ok((sm.last_applied_log, sm.last_membership.clone()))
     }
 
-    async fn apply<I>(&mut self, entries: I) -> Result<Vec<ClientResponse>, StorageError<TypeConfig>>
-    where I: IntoIterator<Item = Entry<TypeConfig>> + Send {
+    async fn apply<I>(&mut self, entries: I) -> Result<(), StorageError<TypeConfig>>
+    where I: IntoIterator<Item = ApplyItem<TypeConfig>> + Send {
         let mut sm = self.sm.write().await;
 
-        let it = entries.into_iter();
-        let mut res = Vec::with_capacity(it.size_hint().1.unwrap_or(0));
-
-        for entry in it {
+        for item in entries {
+            let (entry, responder) = item.into_parts();
             sm.last_applied_log = Some(entry.log_id);
 
-            match entry.payload {
-                EntryPayload::Blank => res.push(ClientResponse {}),
-                EntryPayload::Normal(_) => res.push(ClientResponse {}),
+            let response = match entry.payload {
+                EntryPayload::Blank => ClientResponse {},
+                EntryPayload::Normal(_) => ClientResponse {},
                 EntryPayload::Membership(ref mem) => {
                     sm.last_membership = StoredMembership::new(Some(entry.log_id), mem.clone());
-                    res.push(ClientResponse {})
+                    ClientResponse {}
                 }
             };
+
+            responder.send(response);
         }
-        Ok(res)
+        Ok(())
     }
 
     #[tracing::instrument(level = "trace", skip(self))]

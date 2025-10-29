@@ -22,6 +22,7 @@ use std::sync::Arc;
 use log_store::RocksLogStore;
 use openraft::alias::SnapshotDataOf;
 use openraft::entry::RaftEntry;
+use openraft::storage::ApplyItem;
 use openraft::storage::RaftStateMachine;
 use openraft::storage::Snapshot;
 use openraft::AnyError;
@@ -219,38 +220,39 @@ impl RaftStateMachine<TypeConfig> for RocksStateMachine {
         self.get_meta()
     }
 
-    async fn apply<I>(&mut self, entries: I) -> Result<Vec<RocksResponse>, StorageError<TypeConfig>>
-    where I: IntoIterator<Item = Entry<TypeConfig>> + Send {
-        let entries_iter = entries.into_iter();
-        let mut res = Vec::with_capacity(entries_iter.size_hint().0);
-
+    async fn apply<I>(&mut self, entries: I) -> Result<(), StorageError<TypeConfig>>
+    where I: IntoIterator<Item = ApplyItem<TypeConfig>> + Send {
         let cf_data = self.cf_sm_data();
         let cf_meta = self.cf_sm_meta();
 
         let mut batch = rocksdb::WriteBatch::default();
         let mut last_applied_log = None;
         let mut last_membership = None;
+        let mut responses = Vec::new();
 
-        for entry in entries_iter {
+        for item in entries {
+            let (entry, responder) = item.into_parts();
             tracing::debug!(%entry.log_id, "replicate to sm");
 
             last_applied_log = Some(entry.log_id());
 
-            match entry.payload {
-                EntryPayload::Blank => res.push(RocksResponse { value: None }),
+            let response = match entry.payload {
+                EntryPayload::Blank => RocksResponse { value: None },
                 EntryPayload::Normal(ref req) => match req {
                     RocksRequest::Set { key, value } => {
                         batch.put_cf(cf_data, key.as_bytes(), value.as_bytes());
-                        res.push(RocksResponse {
+                        RocksResponse {
                             value: Some(value.clone()),
-                        })
+                        }
                     }
                 },
                 EntryPayload::Membership(ref mem) => {
                     last_membership = Some(StoredMembership::new(Some(entry.log_id), mem.clone()));
-                    res.push(RocksResponse { value: None })
+                    RocksResponse { value: None }
                 }
             };
+
+            responses.push((responder, response));
         }
 
         // Add metadata writes to the batch for atomic commit
@@ -262,10 +264,15 @@ impl RaftStateMachine<TypeConfig> for RocksStateMachine {
             batch.put_cf(cf_meta, "last_membership", serialize(membership)?);
         }
 
-        // Atomic write of all data + metadata
+        // Atomic write of all data + metadata - fail fast before sending any responses
         self.db.write(batch).map_err(|e| StorageError::write(&e))?;
 
-        Ok(res)
+        // Only send responses after successful write
+        for (responder, response) in responses {
+            responder.send(response);
+        }
+
+        Ok(())
     }
 
     async fn get_snapshot_builder(&mut self) -> Self::SnapshotBuilder {

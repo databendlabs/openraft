@@ -25,6 +25,7 @@ use openraft::StoredMembership;
 use openraft::Vote;
 use openraft::alias::SnapshotDataOf;
 use openraft::entry::RaftEntry;
+use openraft::storage::ApplyItem;
 use openraft::storage::IOFlushed;
 use openraft::storage::LogState;
 use openraft::storage::RaftLogReader;
@@ -475,33 +476,34 @@ impl RaftStateMachine<TypeConfig> for Arc<MemStateMachine> {
     }
 
     #[tracing::instrument(level = "trace", skip(self, entries))]
-    async fn apply<I>(&mut self, entries: I) -> Result<Vec<ClientResponse>, StorageError<TypeConfig>>
+    async fn apply<I>(&mut self, entries: I) -> Result<(), StorageError<TypeConfig>>
     where
-        I: IntoIterator<Item = Entry<TypeConfig>> + OptionalSend,
+        I: IntoIterator<Item = ApplyItem<TypeConfig>> + OptionalSend,
         I::IntoIter: OptionalSend,
     {
-        let mut res = Vec::new();
-
         let mut sm = self.sm.write().await;
 
-        for entry in entries {
+        for item in entries {
+            let (entry, responder) = item.into_parts();
             tracing::debug!(%entry.log_id, "replicate to sm");
 
             sm.last_applied_log = Some(entry.log_id);
 
-            match entry.payload {
-                EntryPayload::Blank => res.push(ClientResponse(None)),
+            let response = match entry.payload {
+                EntryPayload::Blank => ClientResponse(None),
                 EntryPayload::Normal(ref data) => {
                     let previous = sm.client_status.insert(data.client.clone(), data.status.clone());
-                    res.push(ClientResponse(previous));
+                    ClientResponse(previous)
                 }
                 EntryPayload::Membership(ref mem) => {
                     sm.last_membership = StoredMembership::new(Some(entry.log_id), mem.clone());
-                    res.push(ClientResponse(None))
+                    ClientResponse(None)
                 }
             };
+
+            responder.send(response);
         }
-        Ok(res)
+        Ok(())
     }
 
     async fn try_create_snapshot_builder(&mut self, force: bool) -> Option<Self::SnapshotBuilder> {

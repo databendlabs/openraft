@@ -293,7 +293,9 @@ where
                 start,
                 chunk_end
             );
-            self.state_machine.apply(entries).await?;
+            use crate::storage::ApplyItem;
+            let apply_items = entries.into_iter().map(|entry| ApplyItem { entry, responder: None });
+            self.state_machine.apply(apply_items).await?;
 
             start = chunk_end;
         }

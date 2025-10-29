@@ -44,6 +44,8 @@ pub use self::log_state::LogState;
 pub use self::snapshot::Snapshot;
 pub use self::snapshot_meta::SnapshotMeta;
 pub use self::snapshot_signature::SnapshotSignature;
+pub use self::v2::ApplyItem;
+pub use self::v2::ApplyResponder;
 pub use self::v2::RaftLogReader;
 pub use self::v2::RaftLogStorage;
 pub use self::v2::RaftLogStorageExt;
