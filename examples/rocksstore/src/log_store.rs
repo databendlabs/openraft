@@ -14,6 +14,7 @@ use openraft::alias::VoteOf;
 use openraft::entry::RaftEntry;
 use openraft::storage::IOFlushed;
 use openraft::storage::RaftLogStorage;
+use openraft::type_config::TypeConfigExt;
 use openraft::LogState;
 use openraft::OptionalSend;
 use openraft::RaftLogReader;
@@ -185,7 +186,7 @@ where C: RaftTypeConfig<AsyncRuntime = TokioRuntime>
         let db = self.db.clone();
         let handle = spawn_blocking(move || {
             let res = db.flush_wal(true).map_err(std::io::Error::other);
-            callback.io_completed(res);
+            C::spawn(callback.io_completed(res));
         });
         drop(handle);
 

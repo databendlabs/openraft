@@ -8,7 +8,7 @@ use crate::Config;
 use crate::OptionalSend;
 use crate::RaftMetrics;
 use crate::RaftTypeConfig;
-use crate::async_runtime::MpscUnboundedSender;
+use crate::async_runtime::MpscSender;
 use crate::async_runtime::watch::WatchReceiver;
 use crate::async_runtime::watch::WatchSender;
 use crate::config::RuntimeConfig;
@@ -25,7 +25,7 @@ use crate::raft::core_state::CoreState;
 use crate::type_config::AsyncRuntime;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::AsyncRuntimeOf;
-use crate::type_config::alias::MpscUnboundedSenderOf;
+use crate::type_config::alias::MpscSenderOf;
 use crate::type_config::alias::MutexOf;
 use crate::type_config::alias::OneshotReceiverOf;
 use crate::type_config::alias::OneshotSenderOf;
@@ -40,7 +40,7 @@ where C: RaftTypeConfig
     pub(in crate::raft) config: Arc<Config>,
     pub(in crate::raft) runtime_config: Arc<RuntimeConfig>,
     pub(in crate::raft) tick_handle: TickHandle<C>,
-    pub(in crate::raft) tx_api: MpscUnboundedSenderOf<C, RaftMsg<C>>,
+    pub(in crate::raft) tx_api: MpscSenderOf<C, RaftMsg<C>>,
     pub(in crate::raft) rx_metrics: WatchReceiverOf<C, RaftMetrics<C>>,
     pub(in crate::raft) rx_data_metrics: WatchReceiverOf<C, RaftDataMetrics<C>>,
     pub(in crate::raft) rx_server_metrics: WatchReceiverOf<C, RaftServerMetrics<C>>,
@@ -67,7 +67,7 @@ where C: RaftTypeConfig
     }
 
     pub(crate) async fn send_msg(&self, mes: RaftMsg<C>) -> Result<(), Fatal<C>> {
-        let send_res = self.tx_api.send(mes);
+        let send_res = self.tx_api.send(mes).await;
 
         if let Err(e) = send_res {
             let msg = e.0;
@@ -118,7 +118,7 @@ where C: RaftTypeConfig
     ///
     /// It returns at once.
     pub(in crate::raft) async fn send_external_command(&self, cmd: ExternalCommand<C>) -> Result<(), Fatal<C>> {
-        let send_res = self.tx_api.send(RaftMsg::ExternalCommand { cmd });
+        let send_res = self.tx_api.send(RaftMsg::ExternalCommand { cmd }).await;
 
         if send_res.is_err() {
             let fatal = self.get_core_stop_error().await;

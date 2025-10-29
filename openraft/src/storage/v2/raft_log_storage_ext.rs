@@ -3,8 +3,6 @@ use openraft_macros::add_async_trait;
 use crate::OptionalSend;
 use crate::RaftTypeConfig;
 use crate::StorageError;
-use crate::async_runtime::MpscUnboundedReceiver;
-use crate::async_runtime::MpscUnboundedSender;
 use crate::core::notification::Notification;
 use crate::entry::RaftEntry;
 use crate::raft_state::io_state::io_id::IOId;
@@ -12,6 +10,8 @@ use crate::storage::IOFlushed;
 use crate::storage::RaftLogStorage;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::VoteOf;
+use crate::type_config::async_runtime::mpsc::MpscReceiver;
+use crate::type_config::async_runtime::mpsc::MpscSender;
 use crate::vote::raft_vote::RaftVoteExt;
 
 /// Extension trait for RaftLogStorage to provide utility methods.
@@ -33,7 +33,7 @@ where C: RaftTypeConfig
 
         let last_log_id = entries.last().unwrap().log_id();
 
-        let (tx, mut rx) = C::mpsc_unbounded();
+        let (tx, mut rx) = C::mpsc(1024);
 
         let io_id = IOId::<C>::new_log_io(VoteOf::<C>::default().into_committed(), Some(last_log_id));
         let notify = Notification::LocalIO { io_id };

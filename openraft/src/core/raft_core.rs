@@ -20,6 +20,7 @@ use crate::Instant;
 use crate::Membership;
 use crate::RaftTypeConfig;
 use crate::StorageError;
+use crate::async_runtime::MpscReceiver;
 use crate::async_runtime::MpscUnboundedSender;
 use crate::async_runtime::OneshotSender;
 use crate::async_runtime::TryRecvError;
@@ -96,12 +97,12 @@ use crate::storage::RaftLogStorage;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::LogIdOf;
-use crate::type_config::alias::MpscUnboundedReceiverOf;
-use crate::type_config::alias::MpscUnboundedSenderOf;
+use crate::type_config::alias::MpscReceiverOf;
+use crate::type_config::alias::MpscSenderOf;
 use crate::type_config::alias::OneshotReceiverOf;
 use crate::type_config::alias::WatchSenderOf;
 use crate::type_config::alias::WriteResponderOf;
-use crate::type_config::async_runtime::MpscUnboundedReceiver;
+use crate::type_config::async_runtime::mpsc::MpscSender;
 use crate::vote::RaftLeaderId;
 use crate::vote::RaftVote;
 use crate::vote::committed::CommittedVote;
@@ -176,15 +177,15 @@ where
     pub(crate) heartbeat_handle: HeartbeatWorkersHandle<C>,
 
     #[allow(dead_code)]
-    pub(crate) tx_api: MpscUnboundedSenderOf<C, RaftMsg<C>>,
-    pub(crate) rx_api: MpscUnboundedReceiverOf<C, RaftMsg<C>>,
+    pub(crate) tx_api: MpscSenderOf<C, RaftMsg<C>>,
+    pub(crate) rx_api: MpscReceiverOf<C, RaftMsg<C>>,
 
     /// A Sender to send callback by other components to [`RaftCore`], when an action is finished,
     /// such as flushing log to disk, or applying log entries to state machine.
-    pub(crate) tx_notification: MpscUnboundedSenderOf<C, Notification<C>>,
+    pub(crate) tx_notification: MpscSenderOf<C, Notification<C>>,
 
     /// A Receiver to receive callback from other components.
-    pub(crate) rx_notification: MpscUnboundedReceiverOf<C, Notification<C>>,
+    pub(crate) rx_notification: MpscReceiverOf<C, Notification<C>>,
 
     pub(crate) tx_metrics: WatchSenderOf<C, RaftMetrics<C>>,
     pub(crate) tx_data_metrics: WatchSenderOf<C, RaftDataMetrics<C>>,
@@ -395,11 +396,13 @@ where
                         vote
                     );
 
-                    let send_res = core_tx.send(Notification::HigherVote {
-                        target,
-                        higher: vote,
-                        leader_vote: my_vote.into_committed(),
-                    });
+                    let send_res = core_tx
+                        .send(Notification::HigherVote {
+                            target,
+                            higher: vote,
+                            leader_vote: my_vote.into_committed(),
+                        })
+                        .await;
 
                     if let Err(_e) = send_res {
                         tracing::error!("fail to send HigherVote to RaftCore");
@@ -1173,11 +1176,13 @@ where
 
                         match res {
                             Ok(resp) => {
-                                let _ = tx.send(Notification::VoteResponse {
-                                    target,
-                                    resp,
-                                    candidate_vote: vote.into_non_committed(),
-                                });
+                                let _ = tx
+                                    .send(Notification::VoteResponse {
+                                        target,
+                                        resp,
+                                        candidate_vote: vote.into_non_committed(),
+                                    })
+                                    .await;
                             }
                             Err(err) => tracing::error!({error=%err, target=display(&target)}, "while requesting vote"),
                         }
@@ -1744,7 +1749,7 @@ where
 
                 let notify = Notification::LocalIO { io_id: io_id.clone() };
 
-                let _ = self.tx_notification.send(notify);
+                self.tx_notification.send(notify).await.ok();
             }
             Command::AppendEntries {
                 committed_vote: vote,
@@ -1777,19 +1782,25 @@ where
                 self.engine.state.log_progress_mut().submit(IOId::new(&vote));
                 self.log_store.save_vote(&vote).await?;
 
-                let _ = self.tx_notification.send(Notification::LocalIO {
-                    io_id: IOId::new(&vote),
-                });
+                let _ = self
+                    .tx_notification
+                    .send(Notification::LocalIO {
+                        io_id: IOId::new(&vote),
+                    })
+                    .await;
 
                 // If a non-committed vote is saved,
                 // there may be a candidate waiting for the response.
                 if let VoteStatus::Pending(non_committed) = vote.clone().into_vote_status() {
-                    let _ = self.tx_notification.send(Notification::VoteResponse {
-                        target: self.id.clone(),
-                        // last_log_id is not used when sending VoteRequest to local node
-                        resp: VoteResponse::new(vote, None, true),
-                        candidate_vote: non_committed,
-                    });
+                    let _ = self
+                        .tx_notification
+                        .send(Notification::VoteResponse {
+                            target: self.id.clone(),
+                            // last_log_id is not used when sending VoteRequest to local node
+                            resp: VoteResponse::new(vote, None, true),
+                            candidate_vote: non_committed,
+                        })
+                        .await;
                 }
             }
             Command::PurgeLog { upto } => {

@@ -17,6 +17,8 @@ fn test_config_defaults() {
 
     assert_eq!(3 * 1024 * 1024, cfg.snapshot_max_chunk_size);
     assert_eq!(SnapshotPolicy::LogsSinceLast(5000), cfg.snapshot_policy);
+    assert_eq!(Some(65536), cfg.api_channel_size);
+    assert_eq!(Some(65536), cfg.notification_channel_size);
 }
 
 #[test]
@@ -62,6 +64,8 @@ fn test_build() -> anyhow::Result<()> {
         "--snapshot-max-chunk-size=204",
         "--max-in-snapshot-log-to-keep=205",
         "--purge-batch-size=207",
+        "--api-channel-size=208",
+        "--notification-channel-size=209",
     ])?;
 
     assert_eq!("bar", config.cluster_name);
@@ -80,6 +84,8 @@ fn test_build() -> anyhow::Result<()> {
     assert_eq!(204, config.snapshot_max_chunk_size);
     assert_eq!(205, config.max_in_snapshot_log_to_keep);
     assert_eq!(207, config.purge_batch_size);
+    assert_eq!(Some(208), config.api_channel_size);
+    assert_eq!(Some(209), config.notification_channel_size);
 
     // Test config methods
     #[allow(deprecated)]
@@ -215,6 +221,54 @@ fn test_config_allow_io_notification_reorder() -> anyhow::Result<()> {
 
     config.allow_io_notification_reorder = Some(false);
     assert_eq!(false, config.get_allow_io_notification_reorder());
+
+    Ok(())
+}
+
+#[test]
+fn test_config_api_channel_size() -> anyhow::Result<()> {
+    // Test default value
+    let config = Config::build(&["foo"])?;
+    assert_eq!(Some(65536), config.api_channel_size);
+    assert_eq!(65536, config.api_channel_size());
+
+    // Test custom value
+    let config = Config::build(&["foo", "--api-channel-size=10000"])?;
+    assert_eq!(Some(10000), config.api_channel_size);
+    assert_eq!(10000, config.api_channel_size());
+
+    // Test api_channel_size() method with None
+    let mut config = Config::build(&["foo"])?;
+    config.api_channel_size = None;
+    assert_eq!(65536, config.api_channel_size());
+
+    // Test api_channel_size() method with Some
+    config.api_channel_size = Some(50000);
+    assert_eq!(50000, config.api_channel_size());
+
+    Ok(())
+}
+
+#[test]
+fn test_config_notification_channel_size() -> anyhow::Result<()> {
+    // Test default value
+    let config = Config::build(&["foo"])?;
+    assert_eq!(Some(65536), config.notification_channel_size);
+    assert_eq!(65536, config.notification_channel_size());
+
+    // Test custom value
+    let config = Config::build(&["foo", "--notification-channel-size=2048"])?;
+    assert_eq!(Some(2048), config.notification_channel_size);
+    assert_eq!(2048, config.notification_channel_size());
+
+    // Test notification_channel_size() method with None
+    let mut config = Config::build(&["foo"])?;
+    config.notification_channel_size = None;
+    assert_eq!(65536, config.notification_channel_size());
+
+    // Test notification_channel_size() method with Some
+    config.notification_channel_size = Some(512);
+    assert_eq!(512, config.notification_channel_size());
 
     Ok(())
 }

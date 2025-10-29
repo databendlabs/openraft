@@ -14,7 +14,7 @@ use crate::core::heartbeat::worker::HeartbeatWorker;
 use crate::core::notification::Notification;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::JoinHandleOf;
-use crate::type_config::alias::MpscUnboundedSenderOf;
+use crate::type_config::alias::MpscSenderOf;
 use crate::type_config::alias::OneshotSenderOf;
 use crate::type_config::alias::WatchReceiverOf;
 use crate::type_config::alias::WatchSenderOf;
@@ -62,7 +62,7 @@ where C: RaftTypeConfig
     pub(crate) async fn spawn_workers<NF>(
         &mut self,
         network_factory: &mut NF,
-        tx_notification: &MpscUnboundedSenderOf<C, Notification<C>>,
+        tx_notification: &MpscSenderOf<C, Notification<C>>,
         targets: impl IntoIterator<Item = (C::NodeId, C::Node)>,
     ) where
         NF: RaftNetworkFactory<C>,
