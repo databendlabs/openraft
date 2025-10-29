@@ -8,7 +8,6 @@ use crate::RaftSnapshotBuilder;
 use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::async_runtime::MpscUnboundedReceiver;
-use crate::async_runtime::MpscUnboundedSender;
 use crate::async_runtime::OneshotSender;
 use crate::core::ApplyResult;
 use crate::core::notification::Notification;
@@ -30,9 +29,10 @@ use crate::storage::Snapshot;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::JoinHandleOf;
 use crate::type_config::alias::LogIdOf;
+use crate::type_config::alias::MpscSenderOf;
 use crate::type_config::alias::MpscUnboundedReceiverOf;
-use crate::type_config::alias::MpscUnboundedSenderOf;
 use crate::type_config::alias::OneshotSenderOf;
+use crate::type_config::async_runtime::mpsc::MpscSender;
 
 pub(crate) struct Worker<C, SM, LR>
 where
@@ -50,7 +50,7 @@ where
     cmd_rx: MpscUnboundedReceiverOf<C, Command<C>>,
 
     /// Send back the result of the command to RaftCore.
-    resp_tx: MpscUnboundedSenderOf<C, Notification<C>>,
+    resp_tx: MpscSenderOf<C, Notification<C>>,
 }
 
 impl<C, SM, LR> Worker<C, SM, LR>
@@ -63,7 +63,7 @@ where
     pub(crate) fn spawn(
         state_machine: SM,
         log_reader: LR,
-        resp_tx: MpscUnboundedSenderOf<C, Notification<C>>,
+        resp_tx: MpscSenderOf<C, Notification<C>>,
         span: tracing::Span,
     ) -> Handle<C> {
         let (cmd_tx, cmd_rx) = C::mpsc_unbounded();
@@ -87,9 +87,12 @@ where
             if let Err(err) = res {
                 tracing::error!("{} while execute state machine command", err,);
 
-                let _ = self.resp_tx.send(Notification::StateMachine {
-                    command_result: CommandResult { result: Err(err) },
-                });
+                let _ = self
+                    .resp_tx
+                    .send(Notification::StateMachine {
+                        command_result: CommandResult { result: Err(err) },
+                    })
+                    .await;
             }
         };
         C::spawn(fu.instrument(span))
@@ -134,7 +137,7 @@ where
                     tracing::info!("Done install complete snapshot, meta: {}", meta);
 
                     let res = CommandResult::new(Ok(Response::InstallSnapshot((io_id, Some(meta)))));
-                    let _ = self.resp_tx.send(Notification::sm(res));
+                    let _ = self.resp_tx.send(Notification::sm(res)).await;
                 }
                 Command::BeginReceivingSnapshot { tx } => {
                     tracing::info!("{}: BeginReceivingSnapshot", func_name!());
@@ -151,7 +154,7 @@ where
                 } => {
                     let resp = self.apply(first, last, &mut client_resp_channels).await?;
                     let res = CommandResult::new(Ok(Response::Apply(resp)));
-                    let _ = self.resp_tx.send(Notification::sm(res));
+                    let _ = self.resp_tx.send(Notification::sm(res)).await;
                 }
                 Command::Func { func, input_sm_type } => {
                     tracing::debug!("{}: run user defined Func", func_name!());
@@ -261,7 +264,7 @@ where
     ///   as applying a log entry,
     /// - or it must be able to acquire a lock that prevents any write operations.
     #[tracing::instrument(level = "info", skip_all)]
-    async fn build_snapshot(&mut self, resp_tx: MpscUnboundedSenderOf<C, Notification<C>>) {
+    async fn build_snapshot(&mut self, resp_tx: MpscSenderOf<C, Notification<C>>) {
         // TODO: need to be abortable?
         // use futures::future::abortable;
         // let (fu, abort_handle) = abortable(async move { builder.build_snapshot().await });
@@ -271,7 +274,7 @@ where
         let Some(mut builder) = builder else {
             tracing::info!("{}: snapshot building is refused by state machine", func_name!());
             let res = CommandResult::new(Ok(Response::BuildSnapshotDone(None)));
-            resp_tx.send(Notification::sm(res)).ok();
+            resp_tx.send(Notification::sm(res)).await.ok();
             return;
         };
 
@@ -279,7 +282,7 @@ where
             let res = builder.build_snapshot().await;
             let res = res.map(|snap| Response::BuildSnapshotDone(Some(snap.meta)));
             let cmd_res = CommandResult::new(res);
-            let _ = resp_tx.send(Notification::sm(cmd_res));
+            let _ = resp_tx.send(Notification::sm(cmd_res)).await;
         });
         tracing::info!("{} returning; spawned building snapshot task", func_name!());
     }

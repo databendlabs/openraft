@@ -6,7 +6,6 @@ use futures::FutureExt;
 
 use crate::Config;
 use crate::RaftTypeConfig;
-use crate::async_runtime::MpscUnboundedSender;
 use crate::async_runtime::watch::WatchReceiver;
 use crate::core::heartbeat::errors::RaftCoreClosed;
 use crate::core::heartbeat::errors::Stopped;
@@ -19,9 +18,10 @@ use crate::raft::AppendEntriesResponse;
 use crate::replication::Progress;
 use crate::replication::response::ReplicationResult;
 use crate::type_config::TypeConfigExt;
-use crate::type_config::alias::MpscUnboundedSenderOf;
+use crate::type_config::alias::MpscSenderOf;
 use crate::type_config::alias::OneshotReceiverOf;
 use crate::type_config::alias::WatchReceiverOf;
+use crate::type_config::async_runtime::mpsc::MpscSender;
 
 /// A dedicated worker sending heartbeat to a specific follower.
 pub struct HeartbeatWorker<C, N>
@@ -46,7 +46,7 @@ where
     /// For sending back result to the [`RaftCore`].
     ///
     /// [`RaftCore`]: crate::core::RaftCore
-    pub(crate) tx_notification: MpscUnboundedSenderOf<C, Notification<C>>,
+    pub(crate) tx_notification: MpscSenderOf<C, Notification<C>>,
 }
 
 impl<C, N> fmt::Display for HeartbeatWorker<C, N>
@@ -122,7 +122,7 @@ where
                                 leader_vote: heartbeat.session_id.committed_vote(),
                             };
 
-                            self.send_notification(noti, "Seeing higher Vote")?;
+                            self.send_notification(noti, "Seeing higher Vote").await?;
                         }
                         AppendEntriesResponse::Conflict => {
                             let conflict = heartbeat.committed.unwrap();
@@ -136,7 +136,7 @@ where
                                 },
                             };
 
-                            self.send_notification(noti, "Seeing conflict")?;
+                            self.send_notification(noti, "Seeing conflict").await?;
                         }
                     }
 
@@ -146,7 +146,7 @@ where
                         target: self.target.clone(),
                     };
 
-                    self.send_notification(noti, "send HeartbeatProgress")?;
+                    self.send_notification(noti, "send HeartbeatProgress").await?;
                 }
                 _ => {
                     tracing::warn!("{} failed to send a heartbeat: {:?}", self, res);
@@ -155,8 +155,12 @@ where
         }
     }
 
-    fn send_notification(&self, notification: Notification<C>, when: impl fmt::Display) -> Result<(), RaftCoreClosed> {
-        let res = self.tx_notification.send(notification);
+    async fn send_notification(
+        &self,
+        notification: Notification<C>,
+        when: impl fmt::Display,
+    ) -> Result<(), RaftCoreClosed> {
+        let res = self.tx_notification.send(notification).await;
 
         if let Err(e) = res {
             let notification = e.0;

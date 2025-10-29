@@ -99,7 +99,7 @@ impl<C: RaftTypeConfig> LogStoreInner<C> {
         for entry in entries {
             self.log.insert(entry.index(), entry);
         }
-        callback.io_completed(Ok(()));
+        callback.io_completed(Ok(())).await;
 
         Ok(())
     }

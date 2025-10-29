@@ -415,7 +415,8 @@ impl TypedRaftRouter {
         for node in [0] {
             self.external_request(node, |s| {
                 assert_eq!(s.server_state, ServerState::Learner);
-            });
+            })
+            .await?;
         }
         self.wait_for_log(&btreeset![leader_id], None, timeout(), "empty").await?;
 
@@ -838,9 +839,13 @@ impl TypedRaftRouter {
     }
 
     /// Send external request to the particular node.
-    pub fn external_request<F: FnOnce(&RaftState<MemConfig>) + Send + 'static>(&self, target: MemNodeId, req: F) {
+    pub async fn external_request<F: FnOnce(&RaftState<MemConfig>) + Send + 'static>(
+        &self,
+        target: MemNodeId,
+        req: F,
+    ) -> Result<(), Fatal<MemConfig>> {
         let r = self.get_raft_handle(&target).unwrap();
-        r.external_request(req)
+        r.external_request(req).await
     }
 
     /// Request the current leader from the target node.

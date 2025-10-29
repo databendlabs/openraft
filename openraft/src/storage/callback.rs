@@ -6,12 +6,12 @@ use crate::ErrorSubject;
 use crate::ErrorVerb;
 use crate::RaftTypeConfig;
 use crate::StorageError;
-use crate::async_runtime::MpscUnboundedSender;
-use crate::async_runtime::MpscUnboundedWeakSender;
+use crate::async_runtime::MpscWeakSender;
 use crate::core::notification::Notification;
 use crate::type_config::alias::LogIdOf;
-use crate::type_config::alias::MpscUnboundedWeakSenderOf;
+use crate::type_config::alias::MpscWeakSenderOf;
 use crate::type_config::alias::OneshotSenderOf;
+use crate::type_config::async_runtime::mpsc::MpscSender;
 use crate::type_config::async_runtime::oneshot::OneshotSender;
 
 /// Type alias for log flush callback (deprecated).
@@ -27,13 +27,13 @@ where C: RaftTypeConfig
     /// The notification to send when the IO complete.
     notification: Notification<C>,
 
-    tx: MpscUnboundedWeakSenderOf<C, Notification<C>>,
+    tx: MpscWeakSenderOf<C, Notification<C>>,
 }
 
 impl<C> IOFlushed<C>
 where C: RaftTypeConfig
 {
-    pub(crate) fn new(notify: Notification<C>, tx: MpscUnboundedWeakSenderOf<C, Notification<C>>) -> Self {
+    pub(crate) fn new(notify: Notification<C>, tx: MpscWeakSenderOf<C, Notification<C>>) -> Self {
         Self {
             notification: notify,
             tx,
@@ -42,14 +42,14 @@ where C: RaftTypeConfig
 
     /// Report log io completion event (deprecated).
     #[deprecated(since = "0.10.0", note = "Use `io_completed` instead")]
-    pub fn log_io_completed(self, result: Result<(), io::Error>) {
-        self.io_completed(result)
+    pub async fn log_io_completed(self, result: Result<(), io::Error>) {
+        self.io_completed(result).await
     }
 
     /// Report log io completion event.
     ///
     /// It will be called when the log is successfully appended to the storage or an error occurs.
-    pub fn io_completed(self, result: Result<(), io::Error>) {
+    pub async fn io_completed(self, result: Result<(), io::Error>) {
         let Some(tx) = self.tx.upgrade() else {
             tracing::warn!("failed to upgrade tx, RaftCore may have closed the receiver");
             return;
@@ -65,11 +65,11 @@ where C: RaftTypeConfig
                 );
 
                 let sto_err = self.make_storage_error(e);
-                tx.send(Notification::StorageError { error: sto_err })
+                tx.send(Notification::StorageError { error: sto_err }).await
             }
             Ok(_) => {
                 tracing::debug!("{}: IOFlushed completed: {}", func_name!(), self.notification);
-                tx.send(self.notification)
+                tx.send(self.notification).await
             }
         };
 

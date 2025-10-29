@@ -57,9 +57,11 @@ async fn return_error_after_panic() -> Result<()> {
 
     tracing::info!(log_index, "--- panic the RaftCore");
     {
-        router.external_request(0, |_s| {
-            panic!("foo");
-        });
+        router
+            .external_request(0, |_s| {
+                panic!("foo");
+            })
+            .await?;
     }
 
     tracing::info!(
