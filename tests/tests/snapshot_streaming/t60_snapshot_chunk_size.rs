@@ -42,7 +42,7 @@ async fn snapshot_chunk_size() -> Result<()> {
         router.new_raft_node(0).await;
 
         router.wait_for_log(&btreeset![0], None, timeout(), "empty").await?;
-        router.wait_for_state(&btreeset![0], ServerState::Learner, timeout(), "empty").await?;
+        router.wait(&0, timeout()).state(ServerState::Learner, "empty").await?;
 
         router.initialize(0).await?;
         log_index += 1;
@@ -65,7 +65,7 @@ async fn snapshot_chunk_size() -> Result<()> {
                 "send log to trigger snapshot",
             )
             .await?;
-        router.wait_for_snapshot(&btreeset![0], log_id(1, 0, log_index), timeout(), "snapshot").await?;
+        router.wait(&0, timeout()).snapshot(log_id(1, 0, log_index), "snapshot").await?;
         router.assert_storage_state(1, log_index, Some(0), log_id(1, 0, log_index), want_snap).await?;
 
         let n0 = router.get_raft_handle(&0)?;

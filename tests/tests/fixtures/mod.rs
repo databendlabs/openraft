@@ -440,7 +440,7 @@ impl TypedRaftRouter {
             self.add_learner(leader_id, *id).await?;
             log_index += 1;
 
-            self.wait_for_state(&btreeset![*id], ServerState::Learner, timeout(), "empty node").await?;
+            self.wait(id, timeout()).state(ServerState::Learner, "empty node").await?;
         }
 
         self.wait_for_log(
@@ -716,36 +716,6 @@ impl TypedRaftRouter {
                 msg,
             )
             .await?;
-        }
-        Ok(())
-    }
-
-    /// Wait for specified nodes until their state becomes `state`.
-    #[tracing::instrument(level = "info", skip(self))]
-    pub async fn wait_for_state(
-        &self,
-        node_ids: &BTreeSet<MemNodeId>,
-        want_state: ServerState,
-        timeout: Option<Duration>,
-        msg: &str,
-    ) -> anyhow::Result<()> {
-        for i in node_ids.iter() {
-            self.wait(i, timeout).state(want_state, msg).await?;
-        }
-        Ok(())
-    }
-
-    /// Wait for specified nodes until their snapshot becomes `want`.
-    #[tracing::instrument(level = "info", skip(self))]
-    pub async fn wait_for_snapshot(
-        &self,
-        node_ids: &BTreeSet<MemNodeId>,
-        want: LogIdOf<TypeConfig>,
-        timeout: Option<Duration>,
-        msg: &str,
-    ) -> anyhow::Result<()> {
-        for i in node_ids.iter() {
-            self.wait(i, timeout).snapshot(want, msg).await?;
         }
         Ok(())
     }

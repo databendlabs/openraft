@@ -59,7 +59,7 @@ async fn build_snapshot() -> Result<()> {
     tracing::info!(log_index, "--- log_index: {}", log_index);
 
     router.wait_for_log(&btreeset![0], Some(log_index), timeout(), "write").await?;
-    router.wait_for_snapshot(&btreeset![0], log_id(1, 0, log_index), None, "snapshot").await?;
+    router.wait(&0, None).snapshot(log_id(1, 0, log_index), "snapshot").await?;
 
     router
         .assert_storage_state(
