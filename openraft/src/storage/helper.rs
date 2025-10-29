@@ -293,7 +293,8 @@ where
                 start,
                 chunk_end
             );
-            self.state_machine.apply(entries).await?;
+            let apply_items = entries.into_iter().map(|entry| (entry, None));
+            self.state_machine.apply(apply_items).await?;
 
             start = chunk_end;
         }
