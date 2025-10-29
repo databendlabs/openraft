@@ -3,7 +3,6 @@ use std::sync::Arc;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
-use openraft::Entry;
 use openraft::OptionalSend;
 use openraft::RaftSnapshotBuilder;
 use openraft::RaftTypeConfig;
@@ -11,10 +10,10 @@ use openraft::StorageError;
 use openraft::StoredMembership;
 use openraft::alias::LogIdOf;
 use openraft::error::Fatal;
+use openraft::storage::EntryResponder;
 use openraft::storage::RaftStateMachine;
 use openraft::storage::Snapshot;
 use openraft::storage::SnapshotMeta;
-use openraft_memstore::ClientResponse;
 use openraft_memstore::TypeConfig;
 
 use crate::fixtures::MemStateMachine;
@@ -102,9 +101,9 @@ async fn with_state_machine_wrong_sm_type() -> Result<()> {
                 todo!()
             }
 
-            async fn apply<I>(&mut self, _entries: I) -> Result<Vec<ClientResponse>, Err>
+            async fn apply<I>(&mut self, _entries: I) -> Result<(), Err>
             where
-                I: IntoIterator<Item = Entry<TC>> + OptionalSend,
+                I: IntoIterator<Item = EntryResponder<TC>> + OptionalSend,
                 I::IntoIter: OptionalSend,
             {
                 todo!()

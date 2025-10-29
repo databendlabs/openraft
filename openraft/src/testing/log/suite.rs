@@ -22,6 +22,7 @@ use crate::membership::EffectiveMembership;
 use crate::raft_state::LogStateReader;
 use crate::raft_state::RaftState;
 use crate::raft_state::io_state::io_id::IOId;
+use crate::storage::ApplyResponder;
 use crate::storage::IOFlushed;
 use crate::storage::LogState;
 use crate::storage::RaftLogReaderExt;
@@ -1252,8 +1253,7 @@ where
         {
             let entry = blank_ent_0::<C>(0, 0);
 
-            let replies = apply(&mut sm, [entry]).await?;
-            assert_eq!(replies.len(), 1, "expected 1 response");
+            apply(&mut sm, [entry]).await?;
             let (last_applied, _) = sm.applied_state().await?;
 
             assert_eq!(last_applied, Some(log_id_0(0, 0)),);
@@ -1263,8 +1263,7 @@ where
         {
             let entry = membership_ent_0::<C>(1, 1, btreeset! {1,2});
 
-            let replies = apply(&mut sm, [entry]).await?;
-            assert_eq!(replies.len(), 1, "expected 1 response");
+            apply(&mut sm, [entry]).await?;
             let (last_applied, mem) = sm.applied_state().await?;
 
             assert_eq!(last_applied, Some(log_id_0(1, 1)),);
@@ -1299,8 +1298,7 @@ where
 
         let entries = [blank_ent_0::<C>(0, 0), membership_ent_0::<C>(1, 1, btreeset! {1,2})];
 
-        let replies = apply(&mut sm, entries).await?;
-        assert_eq!(replies.len(), 2);
+        apply(&mut sm, entries).await?;
 
         let (last_applied, mem) = sm.applied_state().await?;
         assert_eq!(last_applied, Some(log_id_0(1, 1)),);
@@ -1326,7 +1324,7 @@ where
 
         // Add a few entries so we have state to snapshot
         let snapshot_entries = vec![membership_ent_0::<C>(1, 2, btreeset! {1, 2, 3}), blank_ent_0::<C>(3, 3)];
-        sm_l.apply(snapshot_entries).await?;
+        apply(&mut sm_l, snapshot_entries).await?;
         let snapshot_last_log_id = Some(log_id_0(3, 3));
         let snapshot_last_membership = StoredMembership::new(
             Some(log_id_0(1, 2)),
@@ -1429,15 +1427,16 @@ where
 }
 
 /// A wrapper for calling nonblocking `RaftStateMachine::apply()`
-async fn apply<C, SM, I>(sm: &mut SM, entries: I) -> Result<Vec<C::R>, StorageError<C>>
+async fn apply<C, SM, I>(sm: &mut SM, entries: I) -> Result<(), StorageError<C>>
 where
     C: RaftTypeConfig,
     SM: RaftStateMachine<C>,
     I: IntoIterator<Item = C::Entry> + OptionalSend,
     I::IntoIter: OptionalSend,
 {
-    let resp = sm.apply(entries).await?;
-    Ok(resp)
+    let apply_items = entries.into_iter().map(|entry| (entry, ApplyResponder::new_none()));
+    sm.apply(apply_items).await?;
+    Ok(())
 }
 
 /// A wrapper for calling nonblocking `RaftLogStorage::append()`

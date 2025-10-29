@@ -4,6 +4,7 @@ check_all: lint fmt doc unused_dep typos
 
 basic_check:
 	cargo fmt
+	cargo clippy --no-deps --all-targets --fix --allow-dirty --allow-staged
 	cargo test --lib
 	cargo test --test '*'
 	cargo clippy --no-deps --all-targets -- -D warnings
