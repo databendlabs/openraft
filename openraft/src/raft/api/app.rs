@@ -53,7 +53,7 @@ where C: RaftTypeConfig
         let (tx, rx) = C::oneshot();
         let responder = OneshotResponder::new(tx);
 
-        self.do_client_write_ff(app_data, CoreResponder::Oneshot(responder)).await?;
+        self.do_client_write_ff(app_data, Some(CoreResponder::Oneshot(responder))).await?;
 
         let res: ClientWriteResult<C> = self.inner.recv_msg(rx).await?;
 
@@ -62,13 +62,17 @@ where C: RaftTypeConfig
 
     #[since(version = "0.10.0")]
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) async fn client_write_ff(&self, app_data: C::D, responder: WriteResponderOf<C>) -> Result<(), Fatal<C>> {
-        self.do_client_write_ff(app_data, CoreResponder::UserDefined(responder)).await
+    pub(crate) async fn client_write_ff(
+        &self,
+        app_data: C::D,
+        responder: Option<WriteResponderOf<C>>,
+    ) -> Result<(), Fatal<C>> {
+        self.do_client_write_ff(app_data, responder.map(|r| CoreResponder::UserDefined(r))).await
     }
 
     /// Fire-and-forget version of `client_write`, accept a generic responder.
     #[since(version = "0.10.0")]
-    async fn do_client_write_ff(&self, app_data: C::D, responder: CoreResponder<C>) -> Result<(), Fatal<C>> {
+    async fn do_client_write_ff(&self, app_data: C::D, responder: Option<CoreResponder<C>>) -> Result<(), Fatal<C>> {
         self.inner.send_msg(RaftMsg::ClientWriteRequest { app_data, responder }).await?;
 
         Ok(())

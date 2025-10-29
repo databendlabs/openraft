@@ -47,7 +47,7 @@ where C: RaftTypeConfig
         /// The last log id to apply, inclusive.
         last: LogIdOf<C>,
 
-        client_resp_channels: BTreeMap<u64, CoreResponder<C>>,
+        client_resp_channels: BTreeMap<u64, Option<CoreResponder<C>>>,
     },
 
     /// Apply a custom function to the state machine.
@@ -87,7 +87,7 @@ where C: RaftTypeConfig
     pub(crate) fn apply(
         first: LogIdOf<C>,
         last: LogIdOf<C>,
-        client_resp_channels: BTreeMap<u64, CoreResponder<C>>,
+        client_resp_channels: BTreeMap<u64, Option<CoreResponder<C>>>,
     ) -> Self {
         Command::Apply {
             first,

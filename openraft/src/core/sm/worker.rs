@@ -176,7 +176,7 @@ where
         &mut self,
         first: LogIdOf<C>,
         last: LogIdOf<C>,
-        client_resp_channels: &mut BTreeMap<u64, CoreResponder<C>>,
+        client_resp_channels: &mut BTreeMap<u64, Option<CoreResponder<C>>>,
     ) -> Result<ApplyResult<C>, StorageError<C>> {
         // TODO: prepare response before apply,
         //       so that an Entry does not need to be Clone,
@@ -226,7 +226,7 @@ where
                 "send_response"
             );
 
-            if let Some(tx) = tx {
+            if let Some(Some(tx)) = tx {
                 let membership = membership;
 
                 let res = Ok(ClientWriteResponse {

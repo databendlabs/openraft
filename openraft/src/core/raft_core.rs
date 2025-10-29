@@ -168,7 +168,7 @@ where
     pub(crate) engine: Engine<C>,
 
     /// Responders to send result back to client when logs are applied.
-    pub(crate) client_responders: BTreeMap<u64, CoreResponder<C>>,
+    pub(crate) client_responders: BTreeMap<u64, Option<CoreResponder<C>>>,
 
     /// A mapping of node IDs the replication state of the target node.
     pub(crate) replications: BTreeMap<C::NodeId, ReplicationHandle<C>>,
@@ -509,9 +509,7 @@ where
         let index = lh.state.last_log_id().unwrap().index();
 
         // Install callback channels.
-        if let Some(tx) = tx {
-            self.client_responders.insert(index, tx);
-        }
+        self.client_responders.insert(index, tx);
     }
 
     /// Send a heartbeat message to every follower/learners.
@@ -1298,7 +1296,7 @@ where
                 self.handle_check_is_leader_request(read_policy, tx).await;
             }
             RaftMsg::ClientWriteRequest { app_data, responder } => {
-                self.write_entry(C::Entry::new_normal(LogIdOf::<C>::default(), app_data), Some(responder));
+                self.write_entry(C::Entry::new_normal(LogIdOf::<C>::default(), app_data), responder);
             }
             RaftMsg::Initialize { members, tx } => {
                 tracing::info!(
@@ -1809,10 +1807,12 @@ where
                     #[allow(clippy::let_underscore_future)]
                     let _ = C::spawn(async move {
                         for (log_index, tx) in removed.into_iter() {
-                            tx.send(Err(ClientWriteError::ForwardToLeader(ForwardToLeader {
-                                leader_id: leader_id.clone(),
-                                leader_node: leader_node.clone(),
-                            })));
+                            if let Some(tx) = tx {
+                                tx.send(Err(ClientWriteError::ForwardToLeader(ForwardToLeader {
+                                    leader_id: leader_id.clone(),
+                                    leader_node: leader_node.clone(),
+                                })));
+                            }
 
                             tracing::debug!("sent ForwardToLeader for log_index: {}", log_index,);
                         }
