@@ -19,6 +19,7 @@ use crate::storage::v2::apply_responder_inner::ApplyResponderInner;
 /// ```ignore
 /// use openraft::storage::EntryResponder;
 /// use openraft::StorageError;
+/// use openraft::EntryPayload;
 ///
 /// async fn apply<I>(&mut self, entries: I) -> Result<(), StorageError<C>>
 /// where
@@ -26,8 +27,23 @@ use crate::storage::v2::apply_responder_inner::ApplyResponderInner;
 ///     I::IntoIter: Send,
 /// {
 ///     for (entry, responder) in entries {
-///         let response = self.process_entry(&entry)?;
-///         responder.send(response);
+///         // Compute response based on entry type
+///         let response = match entry.payload {
+///             EntryPayload::Blank => Response::default(),
+///             EntryPayload::Normal(ref data) => {
+///                 self.apply_normal_entry(data)?;
+///                 self.compute_response(data)?
+///             }
+///             EntryPayload::Membership(ref mem) => {
+///                 self.apply_membership_change(mem)?;
+///                 Response::default()
+///             }
+///         };
+///
+///         // Send response only when there's a client waiting (leader entries)
+///         if let Some(responder) = responder {
+///             responder.send(response);
+///         }
 ///     }
 ///     Ok(())
 /// }
@@ -37,12 +53,6 @@ pub struct ApplyResponder<C: RaftTypeConfig> {
 }
 
 impl<C: RaftTypeConfig> ApplyResponder<C> {
-    pub(crate) fn new_none() -> Self {
-        Self {
-            inner: ApplyResponderInner::None,
-        }
-    }
-
     /// Send the response after applying an entry.
     pub fn send(self, response: C::R) {
         self.inner.send(response)

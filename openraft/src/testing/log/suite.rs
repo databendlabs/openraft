@@ -22,7 +22,6 @@ use crate::membership::EffectiveMembership;
 use crate::raft_state::LogStateReader;
 use crate::raft_state::RaftState;
 use crate::raft_state::io_state::io_id::IOId;
-use crate::storage::ApplyResponder;
 use crate::storage::IOFlushed;
 use crate::storage::LogState;
 use crate::storage::RaftLogReaderExt;
@@ -1434,7 +1433,7 @@ where
     I: IntoIterator<Item = C::Entry> + OptionalSend,
     I::IntoIter: OptionalSend,
 {
-    let apply_items = entries.into_iter().map(|entry| (entry, ApplyResponder::new_none()));
+    let apply_items = entries.into_iter().map(|entry| (entry, None));
     sm.apply(apply_items).await?;
     Ok(())
 }

@@ -253,7 +253,9 @@ impl RaftStateMachine<TypeConfig> for RocksStateMachine {
                 }
             };
 
-            responses.push((responder, response));
+            if let Some(responder) = responder {
+                responses.push((responder, response));
+            }
         }
 
         // Add metadata writes to the batch for atomic commit

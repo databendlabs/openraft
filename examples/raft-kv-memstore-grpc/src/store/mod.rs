@@ -136,9 +136,9 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
                 None
             };
 
-            let response = Response { value };
-
-            responder.send(response);
+            if let Some(responder) = responder {
+                responder.send(Response { value });
+            }
         }
         Ok(())
     }

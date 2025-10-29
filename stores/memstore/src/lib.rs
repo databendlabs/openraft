@@ -500,7 +500,9 @@ impl RaftStateMachine<TypeConfig> for Arc<MemStateMachine> {
                 }
             };
 
-            responder.send(response);
+            if let Some(responder) = responder {
+                responder.send(response);
+            }
         }
         Ok(())
     }

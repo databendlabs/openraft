@@ -5,9 +5,6 @@ use crate::type_config::alias::LogIdOf;
 
 /// Internal implementation of [`ApplyResponder`](super::ApplyResponder).
 pub(crate) enum ApplyResponderInner<C: RaftTypeConfig> {
-    /// No responder needed - fire-and-forget entry.
-    None,
-
     /// Normal entry response without membership change.
     Normal {
         log_id: LogIdOf<C>,
@@ -29,9 +26,6 @@ impl<C: RaftTypeConfig> ApplyResponderInner<C> {
         use crate::raft::responder::Responder as ResponderTrait;
 
         match self {
-            ApplyResponderInner::None => {
-                // No responder to send
-            }
             ApplyResponderInner::Normal { log_id, responder } => {
                 let res = Ok(ClientWriteResponse {
                     log_id,

@@ -20,7 +20,6 @@ use crate::engine::LogIdList;
 use crate::entry::RaftEntry;
 use crate::entry::RaftPayload;
 use crate::raft_state::IOState;
-use crate::storage::ApplyResponder;
 use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
 use crate::storage::log_reader_ext::RaftLogReaderExt;
@@ -294,7 +293,7 @@ where
                 start,
                 chunk_end
             );
-            let apply_items = entries.into_iter().map(|entry| (entry, ApplyResponder::new_none()));
+            let apply_items = entries.into_iter().map(|entry| (entry, None));
             self.state_machine.apply(apply_items).await?;
 
             start = chunk_end;

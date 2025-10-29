@@ -6,7 +6,7 @@ use crate::storage::v2::apply_responder::ApplyResponder;
 use crate::storage::v2::apply_responder_inner::ApplyResponderInner;
 use crate::type_config::alias::EntryOf;
 
-pub type EntryResponder<C> = (EntryOf<C>, ApplyResponder<C>);
+pub type EntryResponder<C> = (EntryOf<C>, Option<ApplyResponder<C>>);
 
 /// Internal builder for constructing [`EntryResponder`] tuples.
 ///
@@ -23,27 +23,32 @@ pub(crate) struct EntryResponderBuilder<C: RaftTypeConfig> {
 }
 
 impl<C: RaftTypeConfig> EntryResponderBuilder<C> {
-    /// Consume this item and return the entry and responder.
+    /// Consume this item and return the entry and optional responder.
+    ///
+    /// Returns `None` for the responder when this entry has no client waiting for a response
+    /// (e.g., entries being applied on followers).
     ///
     /// This method extracts the log_id and membership from the entry to construct
-    /// the appropriate [`ApplyResponder`] wrapper.
-    pub(crate) fn into_parts(self) -> (C::Entry, ApplyResponder<C>) {
+    /// the appropriate [`ApplyResponder`] wrapper when a responder is present.
+    pub(crate) fn into_parts(self) -> (C::Entry, Option<ApplyResponder<C>>) {
+        let responder = match self.responder {
+            None => return (self.entry, None),
+            Some(r) => r,
+        };
+
         let log_id = self.entry.log_id();
         let membership = self.entry.get_membership();
 
-        let inner = match self.responder {
-            None => ApplyResponderInner::None,
-            Some(responder) => match membership {
-                Some(membership) => ApplyResponderInner::Membership {
-                    log_id,
-                    membership,
-                    responder,
-                },
-                None => ApplyResponderInner::Normal { log_id, responder },
+        let inner = match membership {
+            Some(membership) => ApplyResponderInner::Membership {
+                log_id,
+                membership,
+                responder,
             },
+            None => ApplyResponderInner::Normal { log_id, responder },
         };
 
-        (self.entry, ApplyResponder { inner })
+        (self.entry, Some(ApplyResponder { inner }))
     }
 }
 

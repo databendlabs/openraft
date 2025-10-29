@@ -276,16 +276,16 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
         for (entry, responder) in entries {
             sm.last_applied_log = Some(entry.log_id);
 
-            let response = match entry.payload {
-                EntryPayload::Blank => ClientResponse {},
-                EntryPayload::Normal(_) => ClientResponse {},
+            match entry.payload {
+                EntryPayload::Blank | EntryPayload::Normal(_) => {}
                 EntryPayload::Membership(ref mem) => {
                     sm.last_membership = StoredMembership::new(Some(entry.log_id), mem.clone());
-                    ClientResponse {}
                 }
             };
 
-            responder.send(response);
+            if let Some(responder) = responder {
+                responder.send(ClientResponse {});
+            }
         }
         Ok(())
     }

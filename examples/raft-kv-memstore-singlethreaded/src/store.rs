@@ -218,7 +218,9 @@ impl RaftStateMachine<TypeConfig> for Rc<StateMachineStore> {
                 }
             };
 
-            responder.send(response);
+            if let Some(responder) = responder {
+                responder.send(response);
+            }
         }
         Ok(())
     }

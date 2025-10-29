@@ -215,26 +215,24 @@ impl RaftStateMachine<TypeConfig> for StateMachineStore {
         for (entry, responder) in entries {
             self.data.last_applied_log_id = Some(entry.log_id);
 
-            let mut resp_value = None;
-
-            match entry.payload {
-                EntryPayload::Blank => {}
+            let response = match entry.payload {
+                EntryPayload::Blank => Response { value: None },
                 EntryPayload::Normal(req) => match req {
                     Request::Set { key, value } => {
-                        resp_value = Some(value.clone());
-
                         let mut st = self.data.kvs.write().await;
-                        st.insert(key, value);
+                        st.insert(key, value.clone());
+                        Response { value: Some(value) }
                     }
                 },
                 EntryPayload::Membership(mem) => {
                     self.data.last_membership = StoredMembership::new(Some(entry.log_id), mem);
+                    Response { value: None }
                 }
+            };
+
+            if let Some(responder) = responder {
+                responder.send(response);
             }
-
-            let response = Response { value: resp_value };
-
-            responder.send(response);
         }
         Ok(())
     }
