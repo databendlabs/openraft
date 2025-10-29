@@ -59,7 +59,9 @@ async fn initialization() -> anyhow::Result<()> {
 
     // Assert all nodes are in learner state & have no entries.
     router.wait_for_log(&btreeset![0, 1, 2], None, timeout(), "empty").await?;
-    router.wait_for_state(&btreeset![0, 1, 2], ServerState::Learner, timeout(), "empty").await?;
+    for node in [0, 1, 2] {
+        router.wait(&node, timeout()).state(ServerState::Learner, "empty").await?;
+    }
 
     // Sending an external requests will also find all nodes in Learner state.
     //

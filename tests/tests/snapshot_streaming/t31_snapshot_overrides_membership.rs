@@ -61,7 +61,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
             )
             .await?;
 
-        router.wait_for_snapshot(&btreeset![0], log_id(1, 0, log_index), timeout(), "snapshot").await?;
+        router.wait(&0, timeout()).snapshot(log_id(1, 0, log_index), "snapshot").await?;
         router
             .assert_storage_state(
                 1,
@@ -119,7 +119,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
             tracing::info!(log_index, "--- DONE add learner");
 
             router.wait_for_log(&btreeset![0, 1], Some(log_index), timeout(), "add learner").await?;
-            router.wait_for_snapshot(&btreeset![1], log_id(1, 0, snapshot_index), timeout(), "").await?;
+            router.wait(&1, timeout()).snapshot(log_id(1, 0, snapshot_index), "").await?;
 
             let expected_snap = Some((snapshot_index.into(), 1));
 

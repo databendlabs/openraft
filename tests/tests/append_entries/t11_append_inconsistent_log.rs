@@ -88,21 +88,13 @@ async fn append_inconsistent_log() -> Result<()> {
     tracing::info!(log_index, "--- wait for node states");
     {
         router
-            .wait_for_state(
-                &btreeset! {0},
-                ServerState::Follower,
-                Some(Duration::from_millis(2000)),
-                "node 0 become follower",
-            )
+            .wait(&0, Some(Duration::from_millis(2000)))
+            .state(ServerState::Follower, "node 0 become follower")
             .await?;
 
         router
-            .wait_for_state(
-                &btreeset! {2},
-                ServerState::Leader,
-                Some(Duration::from_millis(5000)),
-                "node 2 become leader",
-            )
+            .wait(&2, Some(Duration::from_millis(5000)))
+            .state(ServerState::Leader, "node 2 become leader")
             .await?;
     }
 

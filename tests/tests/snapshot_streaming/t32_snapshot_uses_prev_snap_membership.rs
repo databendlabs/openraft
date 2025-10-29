@@ -62,7 +62,7 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
                 "send log to trigger snapshot",
             )
             .await?;
-        router.wait_for_snapshot(&btreeset![0], log_id(1, 0, log_index), timeout(), "1st snapshot").await?;
+        router.wait(&0, timeout()).snapshot(log_id(1, 0, log_index), "1st snapshot").await?;
 
         {
             let logs = sto0.try_get_log_entries(..).await?;
@@ -88,7 +88,7 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
         log_index = snapshot_threshold * 2 - 1;
 
         router.wait_for_log(&btreeset![0, 1], Some(log_index), None, "send log to trigger snapshot").await?;
-        router.wait_for_snapshot(&btreeset![0], log_id(1, 0, log_index), None, "2nd snapshot").await?;
+        router.wait(&0, None).snapshot(log_id(1, 0, log_index), "2nd snapshot").await?;
     }
 
     tracing::info!(log_index, "--- check membership");
