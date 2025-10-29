@@ -69,9 +69,7 @@ async fn snapshot_line_rate_to_snapshot() -> Result<()> {
                 "send log to trigger snapshot",
             )
             .await?;
-        router
-            .wait_for_snapshot(&btreeset![0], log_id(1, 0, log_index), timeout(), "snapshot on node 0")
-            .await?;
+        router.wait(&0, timeout()).snapshot(log_id(1, 0, log_index), "snapshot on node 0").await?;
     }
 
     tracing::info!(log_index, "--- restore node 1 and replication");
@@ -79,9 +77,7 @@ async fn snapshot_line_rate_to_snapshot() -> Result<()> {
         router.set_network_error(1, false);
 
         router.wait_for_log(&btreeset![1], Some(log_index), timeout(), "replicate by snapshot").await?;
-        router
-            .wait_for_snapshot(&btreeset![1], log_id(1, 0, log_index), timeout(), "snapshot on node 1")
-            .await?;
+        router.wait(&1, timeout()).snapshot(log_id(1, 0, log_index), "snapshot on node 1").await?;
     }
 
     Ok(())
