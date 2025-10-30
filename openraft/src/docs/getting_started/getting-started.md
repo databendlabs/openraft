@@ -282,6 +282,61 @@ This function should **not** establish a connection; instead, it should create a
 necessary.
 
 
+### How RaftNetwork and server interact
+
+The [`RaftNetwork`] implementation forwards Raft RPCs to the application-implemented server on another node.
+The server then forwards these RPCs to the corresponding [`Raft`] methods and returns the response.
+
+**Request flow**:
+
+1. **Client node**: [`append_entries()`] sends [`AppendEntriesRequest`] to target node's server
+2. **Target server**: Receives the RPC and calls local [`Raft::append_entries()`]
+3. **Target server**: Gets the response and sends it back to the client node
+4. **Client node**: Receives the response
+
+```text
+
+.--------------------------.           .--------------------------------.
+|    RaftCore              |           |                                |
+| (8) ^   | (1)            |           |                                |
+|     |   v                |           |                                |
+|  ReplicationCore         |           |  Raft::append_entries          |
+| (7) ^   | (2)            |           | (4) ^ | (5)                    |
+|     |   | append_entries |           |     | | AppendEntriesResponse  |
+|     |   v                |    (3)    |     | v                        |
+|  RaftNetwork -------------------------> Application Server            |
+|     ^---------------------------------- /append_entries               |
+|  (HTTP/gRPC/etc client)  |    (6)    |  (HTTP/gRPC/etc endpoint)      |
+'--------------------------'           '--------------------------------'
+    Leader                                 Follower
+
+
+Flow:
+(1) RaftCore triggers ReplicationCore to replicate logs
+(2) ReplicationCore calls append_entries on RaftNetwork
+(3) RaftNetwork sends RPC request over network (HTTP/gRPC/etc)
+(4) Application Server receives request at /append_entries endpoint
+(5) Application Server forwards to local Raft::append_entries
+(6) Raft::append_entries returns AppendEntriesResponse back through Application Server
+(7) RaftNetwork receives the response
+(8) ReplicationCore updates RaftCore with replication result
+```
+
+The same pattern applies to other RPC methods: [`vote()`], [`install_snapshot()`], etc.
+
+**Example server implementation**:
+
+```rust,ignore
+async fn handle_append_entries(
+    raft: Arc<Raft<TypeConfig>>,
+    req: AppendEntriesRequest<TypeConfig>,
+) -> Result<AppendEntriesResponse, ServerError> {
+    let resp = raft.append_entries(req).await?;
+    Ok(resp)
+}
+```
+
+
 ### Find the address of the target node.
 
 In Openraft, an implementation of [`RaftNetwork`] needs to connect to remote Raft peers. To store additional information about each peer, you need to specify the `Node` type in `RaftTypeConfig`:
@@ -474,5 +529,8 @@ Additionally, two test scripts for setting up a cluster are available:
 
 [`StoreBuilder`]:                       `crate::testing::log::StoreBuilder`
 [`LogSuite`]:                              `crate::testing::log::Suite`
+
+[`Fatal`]:                              `crate::error::Fatal`
+[`Unreachable`]:                        `crate::error::Unreachable`
 
 [`docs::connect-to-correct-node`]:      `crate::docs::cluster_control::dynamic_membership#ensure-connection-to-the-correct-node`
