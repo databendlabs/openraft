@@ -5,37 +5,34 @@ use openraft::async_runtime::watch::SendError;
 use openraft::type_config::async_runtime::watch;
 use openraft::OptionalSend;
 use openraft::OptionalSync;
-use see::error::SendError as SeeSendError;
-use see::unsync as see_unsync;
+use tokio::sync::watch as tokio_watch;
 
-pub struct See;
-pub struct SeeSender<T>(see_unsync::Sender<T>);
-pub struct SeeReceiver<T>(see_unsync::Receiver<T>);
-pub struct SeeRef<'a, T>(see_unsync::Guard<'a, T>);
+pub struct TokioWatch;
+pub struct TokioWatchSender<T>(tokio_watch::Sender<T>);
+pub struct TokioWatchReceiver<T>(tokio_watch::Receiver<T>);
+pub struct TokioWatchRef<'a, T>(tokio_watch::Ref<'a, T>);
 
-impl watch::Watch for See {
-    type Sender<T: OptionalSend + OptionalSync> = SeeSender<T>;
-    type Receiver<T: OptionalSend + OptionalSync> = SeeReceiver<T>;
-    type Ref<'a, T: OptionalSend + 'a> = SeeRef<'a, T>;
+impl watch::Watch for TokioWatch {
+    type Sender<T: OptionalSend + OptionalSync> = TokioWatchSender<T>;
+    type Receiver<T: OptionalSend + OptionalSync> = TokioWatchReceiver<T>;
+    type Ref<'a, T: OptionalSend + 'a> = TokioWatchRef<'a, T>;
 
     #[inline]
     fn channel<T: OptionalSend + OptionalSync>(init: T) -> (Self::Sender<T>, Self::Receiver<T>) {
-        let (tx, rx) = see_unsync::channel(init);
-        let tx_wrapper = SeeSender(tx);
-        let rx_wrapper = SeeReceiver(rx);
+        let (tx, rx) = tokio_watch::channel(init);
+        let tx_wrapper = TokioWatchSender(tx);
+        let rx_wrapper = TokioWatchReceiver(rx);
 
         (tx_wrapper, rx_wrapper)
     }
 }
 
-impl<T> watch::WatchSender<See, T> for SeeSender<T>
+impl<T> watch::WatchSender<TokioWatch, T> for TokioWatchSender<T>
 where T: OptionalSend + OptionalSync
 {
     #[inline]
     fn send(&self, value: T) -> Result<(), SendError<T>> {
-        self.0.send(value).map_err(|e| match e {
-            SeeSendError::ChannelClosed(value) => watch::SendError(value),
-        })
+        self.0.send(value).map_err(|e| watch::SendError(e.0))
     }
 
     #[inline]
@@ -45,20 +42,20 @@ where T: OptionalSend + OptionalSync
     }
 
     #[inline]
-    fn borrow_watched(&self) -> <See as watch::Watch>::Ref<'_, T> {
+    fn borrow_watched(&self) -> <TokioWatch as watch::Watch>::Ref<'_, T> {
         let inner = self.0.borrow();
-        SeeRef(inner)
+        TokioWatchRef(inner)
     }
 }
 
-impl<T> Clone for SeeReceiver<T> {
+impl<T> Clone for TokioWatchReceiver<T> {
     #[inline]
     fn clone(&self) -> Self {
         Self(self.0.clone())
     }
 }
 
-impl<T> watch::WatchReceiver<See, T> for SeeReceiver<T>
+impl<T> watch::WatchReceiver<TokioWatch, T> for TokioWatchReceiver<T>
 where T: OptionalSend + OptionalSync
 {
     #[inline]
@@ -67,12 +64,12 @@ where T: OptionalSend + OptionalSync
     }
 
     #[inline]
-    fn borrow_watched(&self) -> <See as watch::Watch>::Ref<'_, T> {
-        SeeRef(self.0.borrow())
+    fn borrow_watched(&self) -> <TokioWatch as watch::Watch>::Ref<'_, T> {
+        TokioWatchRef(self.0.borrow())
     }
 }
 
-impl<T> Deref for SeeRef<'_, T> {
+impl<T> Deref for TokioWatchRef<'_, T> {
     type Target = T;
 
     #[inline]
