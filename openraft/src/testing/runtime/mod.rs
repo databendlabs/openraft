@@ -421,8 +421,8 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         tx.send(1).unwrap();
         tx.send(3).unwrap();
 
-        // Send an even value to unblock
-        tx.send(4).unwrap();
+        // Send an even value to unblock, it may fail because the receiver is dropped.
+        tx.send(4).ok();
 
         let final_value = handle.await.unwrap().unwrap();
         assert_eq!(final_value % 2, 0);
