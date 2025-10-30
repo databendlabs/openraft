@@ -16,20 +16,16 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/databendlabs/openraft"
 
 [dependencies]
-openraft = { path = "../../openraft", features = [
-    "serde",
-    "singlethreaded",
-    "type-alias",
-] }
+openraft = { path = "../../openraft", features = ["serde", "singlethreaded", "type-alias"] }
 
-serde = { version = "1.0.114", features = ["derive"] }
-serde_json = "1.0.57"
-tokio = { version = "1.0", default-features = false, features = ["sync"] }
-tracing = "0.1.29"
+serde              = { version = "1.0.114", features = ["derive"] }
+serde_json         = { version = "1.0.57" }
+tokio              = { version = "1.0", default-features = false, features = ["sync"] }
+tracing            = { version = "0.1.29" }
 tracing-subscriber = { version = "0.3.0", features = ["env-filter"] }
 
 [dev-dependencies]
-maplit = "1.0.2"
+maplit = { version = "1.0.2" }
 
 [features]
 

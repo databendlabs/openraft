@@ -20,24 +20,23 @@ name = "raft-key-value"
 path = "src/bin/main.rs"
 
 [dependencies]
-openraft = { path = "../../openraft", features = ["serde", "type-alias"] }
-mem-log = { path = "../mem-log", features = [] }
+client-http     = { path = "../client-http" }
+mem-log         = { path = "../mem-log", features = [] }
 network-v1-http = { path = "../network-v1-http" }
-client-http = { path = "../client-http" }
+openraft        = { path = "../../openraft", features = ["serde", "type-alias"] }
 
-
-actix-web = "4.0.0-rc.2"
-clap = { version = "4.1.11", features = ["derive", "env"] }
-reqwest = { version = "0.12.5", features = ["json"] }
-serde = { version = "1.0.114", features = ["derive"] }
-serde_json = "1.0.57"
-tokio = { version = "1.0", default-features = false, features = ["sync"] }
-tracing = "0.1.29"
+actix-web          = { version = "4.0.0-rc.2" }
+clap               = { version = "4.1.11", features = ["derive", "env"] }
+reqwest            = { version = "0.12.5", features = ["json"] }
+serde              = { version = "1.0.114", features = ["derive"] }
+serde_json         = { version = "1.0.57" }
+tokio              = { version = "1.0", default-features = false, features = ["sync"] }
+tracing            = { version = "0.1.29" }
 tracing-subscriber = { version = "0.3.0", features = ["env-filter"] }
 
 [dev-dependencies]
-anyhow = "1.0.63"
-maplit = "1.0.2"
+anyhow = { version = "1.0.63" }
+maplit = { version = "1.0.2" }
 
 [features]
 

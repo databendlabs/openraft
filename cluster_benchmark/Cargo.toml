@@ -19,14 +19,14 @@ repository = "https://github.com/databendlabs/openraft"
 [dependencies]
 
 [dev-dependencies]
-openraft           = { path="../openraft", version = "0.10.0", features = ["serde", "type-alias"] }
+openraft = { path = "../openraft", version = "0.10.0", features = ["serde", "type-alias"] }
 
-anyhow = "1.0.63"
-maplit = "1.0.2"
-serde = { version="1.0.114", features=["derive", "rc"]}
-serde_json = "1.0.57"
-tokio = { version="1.8", default-features=false, features=["fs", "io-util", "macros", "rt", "rt-multi-thread", "sync", "time"] }
-tracing = "0.1.29"
+anyhow     = { version = "1.0.63" }
+maplit     = { version = "1.0.2" }
+serde      = { version = "1.0.114", features = ["derive", "rc"] }
+serde_json = { version = "1.0.57" }
+tokio      = { version = "1.8", default-features = false, features = ["fs", "io-util", "macros", "rt", "rt-multi-thread", "sync", "time"] }
+tracing    = { version = "0.1.29" }
 
 [features]
 
