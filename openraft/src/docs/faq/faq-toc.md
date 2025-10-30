@@ -3,6 +3,7 @@
 - [Observation and Management](#observation-and-management)
   * [How do leader elections get triggered?](#how-do-leader-elections-get-triggered)
   * [How to get notified when the server state changes?](#how-to-get-notified-when-the-server-state-changes)
+  * [How to detect if a leader is valid?](#how-to-detect-if-a-leader-is-valid)
 - [Data structure](#data-structure)
   * [Why is log id a tuple of `(term, node_id, log_index)`?](#why-is-log-id-a-tuple-of-term-node_id-log_index)
 - [Replication](#replication)
