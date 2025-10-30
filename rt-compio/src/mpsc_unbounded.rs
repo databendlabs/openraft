@@ -1,81 +1,81 @@
 //! Unbounded MPSC channel wrapper types and their trait impl.
-
-use openraft::type_config::async_runtime::mpsc_unbounded;
+use openraft::async_runtime::MpscUnboundedReceiver;
+use openraft::async_runtime::MpscUnboundedSender;
+use openraft::async_runtime::MpscUnboundedWeakSender;
+use openraft::async_runtime::SendError;
+use openraft::async_runtime::TryRecvError;
+use openraft::type_config::MpscUnbounded;
 use openraft::OptionalSend;
-use tokio::sync::mpsc as tokio_mpsc;
 
-pub struct TokioMpscUnbounded;
+pub struct FlumeMpscUnbounded;
 
-pub struct TokioMpscUnboundedSender<T>(tokio_mpsc::UnboundedSender<T>);
+pub struct FlumeUnboundedSender<T>(flume::Sender<T>);
+pub struct FlumeUnboundedWeakSender<T>(flume::WeakSender<T>);
+pub struct FlumeUnboundedReceiver<T>(flume::Receiver<T>);
 
-impl<T> Clone for TokioMpscUnboundedSender<T> {
+impl<T> Clone for FlumeUnboundedSender<T> {
     #[inline]
     fn clone(&self) -> Self {
         Self(self.0.clone())
     }
 }
 
-pub struct TokioMpscUnboundedReceiver<T>(tokio_mpsc::UnboundedReceiver<T>);
-
-pub struct TokioMpscUnboundedWeakSender<T>(tokio_mpsc::WeakUnboundedSender<T>);
-
-impl<T> Clone for TokioMpscUnboundedWeakSender<T> {
+impl<T> Clone for FlumeUnboundedWeakSender<T> {
     #[inline]
     fn clone(&self) -> Self {
         Self(self.0.clone())
     }
 }
 
-impl mpsc_unbounded::MpscUnbounded for TokioMpscUnbounded {
-    type Sender<T: OptionalSend> = TokioMpscUnboundedSender<T>;
-    type Receiver<T: OptionalSend> = TokioMpscUnboundedReceiver<T>;
-    type WeakSender<T: OptionalSend> = TokioMpscUnboundedWeakSender<T>;
+impl MpscUnbounded for FlumeMpscUnbounded {
+    type Sender<T: OptionalSend> = FlumeUnboundedSender<T>;
+    type Receiver<T: OptionalSend> = FlumeUnboundedReceiver<T>;
+    type WeakSender<T: OptionalSend> = FlumeUnboundedWeakSender<T>;
 
     #[inline]
     fn channel<T: OptionalSend>() -> (Self::Sender<T>, Self::Receiver<T>) {
-        let (tx, rx) = tokio_mpsc::unbounded_channel();
-        let tx_wrapper = TokioMpscUnboundedSender(tx);
-        let rx_wrapper = TokioMpscUnboundedReceiver(rx);
+        let (tx, rx) = flume::unbounded();
+        let tx_wrapper = FlumeUnboundedSender(tx);
+        let rx_wrapper = FlumeUnboundedReceiver(rx);
 
         (tx_wrapper, rx_wrapper)
     }
 }
 
-impl<T> mpsc_unbounded::MpscUnboundedSender<TokioMpscUnbounded, T> for TokioMpscUnboundedSender<T>
+impl<T> MpscUnboundedSender<FlumeMpscUnbounded, T> for FlumeUnboundedSender<T>
 where T: OptionalSend
 {
     #[inline]
-    fn send(&self, msg: T) -> Result<(), mpsc_unbounded::SendError<T>> {
-        self.0.send(msg).map_err(|e| mpsc_unbounded::SendError(e.0))
+    fn send(&self, msg: T) -> Result<(), SendError<T>> {
+        self.0.send(msg).map_err(|e| SendError(e.into_inner()))
     }
 
     #[inline]
-    fn downgrade(&self) -> <TokioMpscUnbounded as mpsc_unbounded::MpscUnbounded>::WeakSender<T> {
-        let inner = self.0.downgrade();
-        TokioMpscUnboundedWeakSender(inner)
+    fn downgrade(&self) -> <FlumeMpscUnbounded as MpscUnbounded>::WeakSender<T> {
+        FlumeUnboundedWeakSender(self.0.downgrade())
     }
 }
 
-impl<T> mpsc_unbounded::MpscUnboundedReceiver<T> for TokioMpscUnboundedReceiver<T> {
+impl<T> MpscUnboundedWeakSender<FlumeMpscUnbounded, T> for FlumeUnboundedWeakSender<T>
+where T: OptionalSend
+{
+    #[inline]
+    fn upgrade(&self) -> Option<<FlumeMpscUnbounded as MpscUnbounded>::Sender<T>> {
+        self.0.upgrade().map(FlumeUnboundedSender)
+    }
+}
+
+impl<T> MpscUnboundedReceiver<T> for FlumeUnboundedReceiver<T> {
     #[inline]
     async fn recv(&mut self) -> Option<T> {
-        self.0.recv().await
+        self.0.recv_async().await.ok()
     }
 
     #[inline]
-    fn try_recv(&mut self) -> Result<T, mpsc_unbounded::TryRecvError> {
+    fn try_recv(&mut self) -> Result<T, TryRecvError> {
         self.0.try_recv().map_err(|e| match e {
-            tokio_mpsc::error::TryRecvError::Empty => mpsc_unbounded::TryRecvError::Empty,
-            tokio_mpsc::error::TryRecvError::Disconnected => mpsc_unbounded::TryRecvError::Disconnected,
+            flume::TryRecvError::Empty => TryRecvError::Empty,
+            flume::TryRecvError::Disconnected => TryRecvError::Disconnected,
         })
-    }
-}
-
-impl<T> mpsc_unbounded::MpscUnboundedWeakSender<TokioMpscUnbounded, T> for TokioMpscUnboundedWeakSender<T>
-where T: OptionalSend
-{
-    #[inline]
-    fn upgrade(&self) -> Option<<TokioMpscUnbounded as mpsc_unbounded::MpscUnbounded>::Sender<T>> {
-        self.0.upgrade().map(TokioMpscUnboundedSender)
     }
 }

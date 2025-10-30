@@ -17,6 +17,11 @@ use openraft::OptionalSend;
 pub use rand;
 use rand::rngs::ThreadRng;
 
+use crate::mpsc::FlumeMpsc;
+use crate::mpsc_unbounded::FlumeMpscUnbounded;
+use crate::oneshot::FuturesOneshot;
+use crate::watch::See;
+
 mod mpsc;
 mod mpsc_unbounded;
 mod mutex;
@@ -109,11 +114,11 @@ impl AsyncRuntime for CompioRuntime {
     type TimeoutError = Elapsed;
     type Timeout<R, T: Future<Output = R> + OptionalSend> = CompioTimeout<T>;
     type ThreadLocalRng = ThreadRng;
-    type Mpsc = mpsc::CompioMpsc;
-    type MpscUnbounded = mpsc_unbounded::TokioMpscUnbounded;
-    type Watch = watch::TokioWatch;
-    type Oneshot = oneshot::FuturesOneshot;
-    type Mutex<T: OptionalSend + 'static> = mutex::TokioMutex<T>;
+    type Mpsc = FlumeMpsc;
+    type MpscUnbounded = FlumeMpscUnbounded;
+    type Watch = See;
+    type Oneshot = FuturesOneshot;
+    type Mutex<T: OptionalSend + 'static> = mutex::FlumeMutex<T>;
 
     fn spawn<T>(fut: T) -> Self::JoinHandle<T::Output>
     where
