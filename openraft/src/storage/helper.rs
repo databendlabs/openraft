@@ -19,6 +19,7 @@ use crate::display_ext::DisplayOptionExt;
 use crate::engine::LogIdList;
 use crate::entry::RaftEntry;
 use crate::entry::RaftPayload;
+use crate::error::StorageIOResult;
 use crate::raft_state::IOState;
 use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
@@ -87,16 +88,16 @@ where
     /// state from stable storage.
     pub async fn get_initial_state(&mut self) -> Result<RaftState<C>, StorageError<C>> {
         let mut log_reader = self.log_store.get_log_reader().await;
-        let vote = log_reader.read_vote().await?;
+        let vote = log_reader.read_vote().await.sto_read_vote()?;
         let vote = vote.unwrap_or_default();
 
-        let mut committed = self.log_store.read_committed().await?;
+        let mut committed = self.log_store.read_committed().await.sto_read_logs()?;
 
-        let st = self.log_store.get_log_state().await?;
+        let st = self.log_store.get_log_state().await.sto_read_logs()?;
         let mut last_purged_log_id = st.last_purged_log_id;
         let mut last_log_id = st.last_log_id;
 
-        let (last_applied, _) = self.state_machine.applied_state().await?;
+        let (last_applied, _) = self.state_machine.applied_state().await.sto_read_sm()?;
 
         tracing::info!(
             vote = display(&vote),
@@ -115,7 +116,7 @@ where
 
         // For transient state machines: install persistent snapshot to restore state efficiently.
         self.restore_from_snapshot().await?;
-        let (mut last_applied, _) = self.state_machine.applied_state().await?;
+        let (mut last_applied, _) = self.state_machine.applied_state().await.sto_read_sm()?;
 
         // Re-apply log entries to recover SM to latest state.
         // For transient state machines, this re-applies logs from snapshot position to committed.
@@ -155,7 +156,7 @@ where
                 last_applied.display(),
             );
 
-            self.log_store.purge(last_applied.clone().unwrap()).await?;
+            self.log_store.purge(last_applied.clone().unwrap()).await.sto_write_logs()?;
             last_log_id = last_applied.clone();
             last_purged_log_id = last_applied.clone();
         }
@@ -168,7 +169,7 @@ where
 
         let log_id_list = self.get_key_log_ids(last_purged_log_id.clone(), last_log_id.clone()).await?;
 
-        let snapshot = self.state_machine.get_current_snapshot().await?;
+        let snapshot = self.state_machine.get_current_snapshot().await.sto_read_snapshot(None)?;
 
         // If there is not a snapshot and there are logs purged, which means the snapshot is not persisted,
         // we just rebuild it so that replication can use it.
@@ -176,7 +177,7 @@ where
             None => {
                 if last_purged_log_id.is_some() {
                     let mut b = self.state_machine.try_create_snapshot_builder(true).await.unwrap();
-                    let s = b.build_snapshot().await?;
+                    let s = b.build_snapshot().await.sto_write_snapshot(None)?;
                     Some(s)
                 } else {
                     None
@@ -225,8 +226,8 @@ where
     /// For transient state machines, this installs the last persistent snapshot to efficiently
     /// restore the state machine to a recent position.
     async fn restore_from_snapshot(&mut self) -> Result<(), StorageError<C>> {
-        let (last_applied, _) = self.state_machine.applied_state().await?;
-        let snapshot = self.state_machine.get_current_snapshot().await?;
+        let (last_applied, _) = self.state_machine.applied_state().await.sto_read_sm()?;
+        let snapshot = self.state_machine.get_current_snapshot().await.sto_read_snapshot(None)?;
 
         let Some(snap) = snapshot else {
             return Ok(());
@@ -239,7 +240,10 @@ where
                 "Installing snapshot to restore transient state machine"
             );
 
-            self.state_machine.install_snapshot(&snap.meta, snap.snapshot).await?;
+            self.state_machine
+                .install_snapshot(&snap.meta, snap.snapshot)
+                .await
+                .sto_write_snapshot(Some(snap.meta.signature()))?;
 
             tracing::info!(
                 new_last_applied = display(snap.meta.last_log_id.display()),
@@ -265,7 +269,7 @@ where
 
         while start < end {
             let chunk_end = std::cmp::min(end, start + chunk_size);
-            let entries = log_reader.try_get_log_entries(start..chunk_end).await?;
+            let entries = log_reader.try_get_log_entries(start..chunk_end).await.sto_read_logs()?;
 
             let first = entries.first().map(|ent| ent.index());
             let last = entries.last().map(|ent| ent.index());
@@ -293,8 +297,9 @@ where
                 start,
                 chunk_end
             );
+            let last_applied = entries.last().map(|e| e.log_id()).unwrap();
             let apply_items = entries.into_iter().map(|entry| (entry, None));
-            self.state_machine.apply(apply_items).await?;
+            self.state_machine.apply(apply_items).await.sto_apply(last_applied)?;
 
             start = chunk_end;
         }
@@ -319,7 +324,7 @@ where
     ///
     /// Thus, a raft node will only need to store at most two recent membership logs.
     pub async fn get_membership(&mut self) -> Result<MembershipState<C>, StorageError<C>> {
-        let (last_applied, sm_mem) = self.state_machine.applied_state().await?;
+        let (last_applied, sm_mem) = self.state_machine.applied_state().await.sto_read_sm()?;
 
         let log_mem = self.last_membership_in_log(last_applied.next_index()).await?;
         tracing::debug!(membership_in_sm=?sm_mem, membership_in_log=?log_mem, "{}", func_name!());
@@ -356,7 +361,7 @@ where
         &mut self,
         since_index: u64,
     ) -> Result<Vec<StoredMembership<C>>, StorageError<C>> {
-        let st = self.log_store.get_log_state().await?;
+        let st = self.log_store.get_log_state().await.sto_read_logs()?;
 
         let mut end = st.last_log_id.next_index();
 
@@ -370,7 +375,7 @@ where
 
         while start < end {
             let step_start = std::cmp::max(start, end.saturating_sub(step));
-            let entries = log_reader.try_get_log_entries(step_start..end).await?;
+            let entries = log_reader.try_get_log_entries(step_start..end).await.sto_read_logs()?;
 
             for ent in entries.iter().rev() {
                 if let Some(mem) = ent.get_membership() {
@@ -410,7 +415,7 @@ where
 
         let first = log_reader.get_log_id(purged.next_index()).await?;
 
-        let mut log_ids = log_reader.get_key_log_ids(first..=last).await?;
+        let mut log_ids = log_reader.get_key_log_ids(first..=last).await.sto_read_logs()?;
 
         if !log_ids.is_empty()
             && let Some(purged) = purged

@@ -14,12 +14,12 @@ mod test;
 use std::fmt;
 use std::fmt::Debug;
 use std::fs;
+use std::io;
 use std::io::Cursor;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use log_store::RocksLogStore;
 use openraft::alias::SnapshotDataOf;
 use openraft::entry::RaftEntry;
 use openraft::storage::EntryResponder;
@@ -40,6 +40,8 @@ use rocksdb::DB;
 use serde::Deserialize;
 use serde::Serialize;
 use tokio::task::spawn_blocking;
+
+use crate::log_store::RocksLogStore;
 
 pub type RocksNodeId = u64;
 
@@ -89,10 +91,10 @@ pub struct RocksStateMachine {
 }
 
 impl RocksStateMachine {
-    async fn new(db: Arc<DB>, snapshot_dir: PathBuf) -> Result<RocksStateMachine, std::io::Error> {
+    async fn new(db: Arc<DB>, snapshot_dir: PathBuf) -> Result<RocksStateMachine, io::Error> {
         // Validate column families exist at construction time
-        db.cf_handle("sm_meta").ok_or_else(|| std::io::Error::other("column family `sm_meta` not found"))?;
-        db.cf_handle("sm_data").ok_or_else(|| std::io::Error::other("column family `sm_data` not found"))?;
+        db.cf_handle("sm_meta").ok_or_else(|| io::Error::other("column family `sm_meta` not found"))?;
+        db.cf_handle("sm_data").ok_or_else(|| io::Error::other("column family `sm_data` not found"))?;
 
         // Create snapshot directory if it doesn't exist
         fs::create_dir_all(&snapshot_dir)?;
@@ -148,7 +150,7 @@ struct SnapshotFile {
 
 impl RaftSnapshotBuilder<TypeConfig> for RocksStateMachine {
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn build_snapshot(&mut self) -> Result<Snapshot<TypeConfig>, StorageError<TypeConfig>> {
+    async fn build_snapshot(&mut self) -> Result<Snapshot<TypeConfig>, io::Error> {
         let (last_applied_log, last_membership) = self.get_meta()?;
 
         // Generate a random snapshot index.
@@ -168,9 +170,9 @@ impl RaftSnapshotBuilder<TypeConfig> for RocksStateMachine {
 
         // Use RocksDB snapshot for consistent point-in-time view
         let db = self.db.clone();
-        let meta_clone = meta.clone();
 
-        let data = spawn_blocking(move || {
+        #[allow(clippy::type_complexity)]
+        let data = spawn_blocking(move || -> Result<Vec<(Vec<u8>, Vec<u8>)>, io::Error> {
             let snapshot = db.snapshot();
             let cf_data = db.cf_handle("sm_data").expect("column family `sm_data` not found");
 
@@ -178,14 +180,14 @@ impl RaftSnapshotBuilder<TypeConfig> for RocksStateMachine {
             let iter = snapshot.iterator_cf(cf_data, rocksdb::IteratorMode::Start);
 
             for item in iter {
-                let (key, value) = item.map_err(|e| StorageError::read_snapshot(Some(meta_clone.signature()), &e))?;
+                let (key, value) = item.map_err(|e| io::Error::other(e.to_string()))?;
                 snapshot_data.push((key.to_vec(), value.to_vec()));
             }
 
             Ok(snapshot_data)
         })
         .await
-        .map_err(|e| StorageError::read_snapshot(Some(meta.signature()), &std::io::Error::other(e.to_string())))??;
+        .map_err(|e| io::Error::other(e.to_string()))??;
 
         // Serialize both metadata and data together
         let snapshot_file = SnapshotFile {
@@ -213,13 +215,11 @@ impl RaftSnapshotBuilder<TypeConfig> for RocksStateMachine {
 impl RaftStateMachine<TypeConfig> for RocksStateMachine {
     type SnapshotBuilder = Self;
 
-    async fn applied_state(
-        &mut self,
-    ) -> Result<(Option<LogId<TypeConfig>>, StoredMembership<TypeConfig>), StorageError<TypeConfig>> {
-        self.get_meta()
+    async fn applied_state(&mut self) -> Result<(Option<LogId<TypeConfig>>, StoredMembership<TypeConfig>), io::Error> {
+        self.get_meta().map_err(|e| io::Error::other(e.to_string()))
     }
 
-    async fn apply<I>(&mut self, entries: I) -> Result<(), StorageError<TypeConfig>>
+    async fn apply<I>(&mut self, entries: I) -> Result<(), io::Error>
     where
         I: IntoIterator<Item = EntryResponder<TypeConfig>> + Send,
         I::IntoIter: Send,
@@ -268,7 +268,7 @@ impl RaftStateMachine<TypeConfig> for RocksStateMachine {
         }
 
         // Atomic write of all data + metadata - fail fast before sending any responses
-        self.db.write(batch).map_err(|e| StorageError::write(&e))?;
+        self.db.write(batch).map_err(|e| io::Error::other(e.to_string()))?;
 
         // Only send responses after successful write
         for (responder, response) in responses {
@@ -282,7 +282,7 @@ impl RaftStateMachine<TypeConfig> for RocksStateMachine {
         self.clone()
     }
 
-    async fn begin_receiving_snapshot(&mut self) -> Result<SnapshotDataOf<TypeConfig>, StorageError<TypeConfig>> {
+    async fn begin_receiving_snapshot(&mut self) -> Result<SnapshotDataOf<TypeConfig>, io::Error> {
         Ok(Cursor::new(Vec::new()))
     }
 
@@ -290,15 +290,15 @@ impl RaftStateMachine<TypeConfig> for RocksStateMachine {
         &mut self,
         meta: &SnapshotMeta<TypeConfig>,
         snapshot: SnapshotDataOf<TypeConfig>,
-    ) -> Result<(), StorageError<TypeConfig>> {
+    ) -> Result<(), io::Error> {
         tracing::info!(
             { snapshot_size = snapshot.get_ref().len() },
             "decoding snapshot for installation"
         );
 
         // Deserialize snapshot data
-        let snapshot_data: Vec<(Vec<u8>, Vec<u8>)> = deserialize(snapshot.get_ref())
-            .map_err(|e| StorageError::read_snapshot(Some(meta.signature()), AnyError::new(&e)))?;
+        let snapshot_data: Vec<(Vec<u8>, Vec<u8>)> =
+            deserialize(snapshot.get_ref()).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
 
         // Clone data for file writing later
         let snapshot_data_clone = snapshot_data.clone();
@@ -307,19 +307,16 @@ impl RaftStateMachine<TypeConfig> for RocksStateMachine {
         let last_applied_bytes = meta
             .last_log_id
             .as_ref()
-            .map(|log_id| {
-                serialize(log_id).map_err(|e| StorageError::write_snapshot(Some(meta.signature()), AnyError::new(&e)))
-            })
+            .map(|log_id| serialize(log_id).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string())))
             .transpose()?;
 
-        let last_membership_bytes = serialize(&meta.last_membership)
-            .map_err(|e| StorageError::write_snapshot(Some(meta.signature()), AnyError::new(&e)))?;
+        let last_membership_bytes =
+            serialize(&meta.last_membership).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
 
         // Restore data and metadata atomically to RocksDB
         let db = self.db.clone();
-        let meta_sig = meta.signature();
 
-        spawn_blocking(move || {
+        spawn_blocking(move || -> Result<(), io::Error> {
             let cf_data = db.cf_handle("sm_data").expect("column family `sm_data` not found");
             let cf_meta = db.cf_handle("sm_meta").expect("column family `sm_meta` not found");
 
@@ -328,7 +325,7 @@ impl RaftStateMachine<TypeConfig> for RocksStateMachine {
             // Clear existing data in sm_data
             let iter = db.iterator_cf(cf_data, rocksdb::IteratorMode::Start);
             for item in iter {
-                let (key, _) = item.map_err(|e| StorageError::write_snapshot(Some(meta_sig.clone()), &e))?;
+                let (key, _) = item.map_err(|e| io::Error::other(e.to_string()))?;
                 batch.delete_cf(cf_data, &key);
             }
 
@@ -344,33 +341,33 @@ impl RaftStateMachine<TypeConfig> for RocksStateMachine {
             batch.put_cf(cf_meta, "last_membership", last_membership_bytes);
 
             // Atomic write of all changes
-            db.write(batch).map_err(|e| StorageError::write_snapshot(Some(meta_sig.clone()), &e))?;
+            db.write(batch).map_err(|e| io::Error::other(e.to_string()))?;
 
-            db.flush_wal(true).map_err(|e| StorageError::write_snapshot(Some(meta_sig.clone()), &e))
+            db.flush_wal(true).map_err(|e| io::Error::other(e.to_string()))
         })
         .await
-        .map_err(|e| StorageError::write_snapshot(Some(meta.signature()), &std::io::Error::other(e.to_string())))??;
+        .map_err(|e| io::Error::other(e.to_string()))??;
 
         // Write snapshot file with metadata for get_current_snapshot
         let snapshot_file = SnapshotFile {
             meta: meta.clone(),
             data: snapshot_data_clone,
         };
-        let file_bytes = serialize(&snapshot_file)
-            .map_err(|e| StorageError::write_snapshot(Some(meta.signature()), AnyError::new(&e)))?;
+        let file_bytes =
+            serialize(&snapshot_file).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
 
         let snapshot_path = self.snapshot_dir.join(&meta.snapshot_id);
-        fs::write(&snapshot_path, &file_bytes).map_err(|e| StorageError::write_snapshot(Some(meta.signature()), &e))?;
+        fs::write(&snapshot_path, &file_bytes)?;
 
         Ok(())
     }
 
-    async fn get_current_snapshot(&mut self) -> Result<Option<Snapshot<TypeConfig>>, StorageError<TypeConfig>> {
+    async fn get_current_snapshot(&mut self) -> Result<Option<Snapshot<TypeConfig>>, io::Error> {
         // Find the latest snapshot file by comparing filenames lexicographically
         let mut latest_snapshot_id: Option<String> = None;
 
-        for entry in fs::read_dir(&self.snapshot_dir).map_err(|e| StorageError::read_snapshot(None, &e))? {
-            let entry = entry.map_err(|e| StorageError::read_snapshot(None, &e))?;
+        for entry in fs::read_dir(&self.snapshot_dir)? {
+            let entry = entry?;
             let path = entry.path();
 
             if !path.is_file() {
@@ -394,13 +391,13 @@ impl RaftStateMachine<TypeConfig> for RocksStateMachine {
         let snapshot_path = self.snapshot_dir.join(&snapshot_id);
 
         // Read and deserialize snapshot file
-        let file_bytes = fs::read(&snapshot_path).map_err(|e| StorageError::read_snapshot(None, &e))?;
+        let file_bytes = fs::read(&snapshot_path)?;
         let snapshot_file: SnapshotFile =
-            deserialize(&file_bytes).map_err(|e| StorageError::read_snapshot(None, AnyError::new(&e)))?;
+            deserialize(&file_bytes).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
 
         // Serialize data for snapshot field
         let data_bytes =
-            serialize(&snapshot_file.data).map_err(|e| StorageError::read_snapshot(None, AnyError::new(&e)))?;
+            serialize(&snapshot_file.data).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
 
         Ok(Some(Snapshot {
             meta: snapshot_file.meta,
@@ -411,7 +408,7 @@ impl RaftStateMachine<TypeConfig> for RocksStateMachine {
 
 /// Create a pair of `RocksLogStore` and `RocksStateMachine` that are backed by a same rocks db
 /// instance.
-pub async fn new<C, P: AsRef<Path>>(db_path: P) -> Result<(RocksLogStore<C>, RocksStateMachine), std::io::Error>
+pub async fn new<C, P: AsRef<Path>>(db_path: P) -> Result<(RocksLogStore<C>, RocksStateMachine), io::Error>
 where C: RaftTypeConfig {
     let mut db_opts = Options::default();
     db_opts.create_missing_column_families(true);
@@ -425,8 +422,8 @@ where C: RaftTypeConfig {
     let db_path = db_path.as_ref();
     let snapshot_dir = db_path.join("snapshots");
 
-    let db = DB::open_cf_descriptors(&db_opts, db_path, vec![meta, sm_meta, sm_data, logs])
-        .map_err(std::io::Error::other)?;
+    let db =
+        DB::open_cf_descriptors(&db_opts, db_path, vec![meta, sm_meta, sm_data, logs]).map_err(io::Error::other)?;
 
     let db = Arc::new(db);
     Ok((

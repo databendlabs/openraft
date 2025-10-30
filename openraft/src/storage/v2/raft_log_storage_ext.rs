@@ -5,6 +5,7 @@ use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::core::notification::Notification;
 use crate::entry::RaftEntry;
+use crate::error::StorageIOResult;
 use crate::raft_state::io_state::io_id::IOId;
 use crate::storage::IOFlushed;
 use crate::storage::RaftLogStorage;
@@ -39,7 +40,7 @@ where C: RaftTypeConfig
         let notify = Notification::LocalIO { io_id };
 
         let callback = IOFlushed::<C>::new(notify, tx.downgrade());
-        self.append(entries, callback).await?;
+        self.append(entries, callback).await.sto_write_logs()?;
 
         let got = rx.recv().await.unwrap();
         if let Notification::StorageError { error } = got {

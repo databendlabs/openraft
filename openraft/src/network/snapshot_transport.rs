@@ -30,6 +30,7 @@ mod tokio_rt {
     use crate::error::RPCError;
     use crate::error::RaftError;
     use crate::error::ReplicationClosed;
+    use crate::error::StorageIOResult;
     use crate::error::StreamingError;
     use crate::network::RPCOption;
     use crate::raft::InstallSnapshotRequest;
@@ -210,9 +211,7 @@ mod tokio_rt {
                 let streaming = streaming.take().unwrap();
                 let mut data = streaming.into_snapshot_data();
 
-                data.shutdown()
-                    .await
-                    .map_err(|e| StorageError::write_snapshot(Some(snapshot_meta.signature()), &e))?;
+                data.shutdown().await.sto_write_snapshot(Some(snapshot_meta.signature()))?;
 
                 tracing::info!("finished streaming snapshot: {:?}", snapshot_meta);
                 return Ok(Some(Snapshot::new(snapshot_meta, data)));

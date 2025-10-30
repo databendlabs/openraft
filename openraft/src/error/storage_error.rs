@@ -108,6 +108,14 @@ where C: RaftTypeConfig
     }
 }
 
+impl<C> From<StorageError<C>> for std::io::Error
+where C: RaftTypeConfig
+{
+    fn from(e: StorageError<C>) -> Self {
+        std::io::Error::other(e.to_string())
+    }
+}
+
 /// Error that occurs when operating the store.
 ///
 /// It indicates a data crash.
@@ -234,5 +242,27 @@ mod tests {
         );
         let err2: StorageError<UTConfig> = serde_json::from_str(&s).unwrap();
         assert_eq!(err, err2);
+    }
+
+    #[test]
+    fn test_storage_error_to_io_error() {
+        use super::StorageError;
+        use crate::engine::testing::UTConfig;
+        use crate::engine::testing::log_id;
+
+        let storage_err = StorageError::write_log_entry(log_id(1, 2, 3), super::AnyError::error("disk full"));
+        let io_err: std::io::Error = storage_err.into();
+
+        assert_eq!(io_err.kind(), std::io::ErrorKind::Other);
+        assert!(io_err.to_string().contains("Write"));
+        assert!(io_err.to_string().contains("disk full"));
+
+        let storage_err: StorageError<UTConfig> = StorageError::read_vote(super::AnyError::error("permission denied"));
+        let io_err: std::io::Error = storage_err.into();
+
+        assert_eq!(io_err.kind(), std::io::ErrorKind::Other);
+        assert!(io_err.to_string().contains("Read"));
+        assert!(io_err.to_string().contains("Vote"));
+        assert!(io_err.to_string().contains("permission denied"));
     }
 }
