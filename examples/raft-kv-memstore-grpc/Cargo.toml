@@ -19,30 +19,30 @@ name = "raft-key-value"
 path = "src/bin/main.rs"
 
 [dependencies]
-mem-log = { path = "../mem-log", features = [] }
+mem-log  = { path = "../mem-log", features = [] }
 openraft = { path = "../../openraft", features = ["type-alias"] }
 
-clap = { version = "4.1.11", features = ["derive", "env"] }
-serde = { version = "1.0.114", features = ["derive"] }
-serde_json = "1.0.57"
-tokio = { version = "1.0", default-features = false, features = ["sync"] }
-tracing = "0.1.29"
+clap               = { version = "4.1.11", features = ["derive", "env"] }
+dashmap            = { version = "6.1.0" }
+futures            = { version = "0.3.31" }
+prost              = { version = "0.13.4" }
+serde              = { version = "1.0.114", features = ["derive"] }
+serde_json         = { version = "1.0.57" }
+tokio              = { version = "1.0", default-features = false, features = ["sync"] }
+tonic              = { version = "0.12.3" }
+tonic-build        = { version = "0.12.3" }
+tracing            = { version = "0.1.29" }
 tracing-subscriber = { version = "0.3.0", features = ["env-filter"] }
-tonic = "0.12.3"
-tonic-build = "0.12.3"
-dashmap = "6.1.0"
-prost = "0.13.4"
-futures = "0.3.31"
 
 [dev-dependencies]
-anyhow = "1.0.63"
-maplit = "1.0.2"
+anyhow = { version = "1.0.63" }
+maplit = { version = "1.0.2" }
 
 [features]
 
 [build-dependencies]
-prost-build = "0.13.4"
-tonic-build = "0.12.3"
+prost-build = { version = "0.13.4" }
+tonic-build = { version = "0.12.3" }
 
 [package.metadata.docs.rs]
 all-features = true

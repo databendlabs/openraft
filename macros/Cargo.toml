@@ -16,16 +16,16 @@ repository    = { workspace = true }
 proc-macro = true
 
 [dependencies]
-chrono = { workspace = true }
+chrono      = { workspace = true }
 proc-macro2 = { workspace = true }
-quote = { workspace = true }
-semver = { workspace = true }
-syn = { workspace = true, features = ["full", "extra-traits"] }
+quote       = { workspace = true }
+semver      = { workspace = true }
+syn         = { workspace = true, features = ["full", "extra-traits"] }
 
 
 [dev-dependencies]
-macrotest = "1"
-trybuild = "1.0"
+macrotest = { version = "1" }
+trybuild  = { version = "1.0" }
 
 
 [features]

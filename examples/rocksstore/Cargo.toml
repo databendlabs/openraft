@@ -18,15 +18,14 @@ repository = "https://github.com/databendlabs/openraft"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-openraft = { path= "../../openraft", version = "0.10.0", features=["serde", "type-alias"] }
+openraft = { path = "../../openraft", version = "0.10.0", features = ["serde", "type-alias"] }
 
-rocksdb = "0.22.0"
-rand = "0.9"
-byteorder = "1.4.3"
-
-serde = { version = "1.0.114", features = ["derive"] }
-serde_json = "1.0.57"
-tokio = { version = "1.22", default-features = false, features = [
+byteorder  = { version = "1.4.3" }
+rand       = { version = "0.9" }
+rocksdb    = { version = "0.22.0" }
+serde      = { version = "1.0.114", features = ["derive"] }
+serde_json = { version = "1.0.57" }
+tokio      = { version = "1.22", default-features = false, features = [
     "io-util",
     "macros",
     "rt",

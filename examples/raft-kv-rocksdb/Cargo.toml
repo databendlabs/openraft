@@ -21,24 +21,24 @@ name = "raft-key-value-rocks"
 path = "src/bin/main.rs"
 
 [dependencies]
-openraft = { path = "../../openraft", features = ["serde", "type-alias"] }
+client-http         = { path = "../client-http" }
+network-v1-http     = { path = "../network-v1-http" }
+openraft            = { path = "../../openraft", features = ["serde", "type-alias"] }
 openraft-rocksstore = { path = "../rocksstore" }
-network-v1-http = { path = "../network-v1-http" }
-client-http = { path = "../client-http" }
 
-actix-web = "4.0.0-rc.2"
-tokio = { version = "1.35.1", features = ["full"] }
-byteorder = "1.4.3"
-clap = { version = "4.1.11", features = ["derive", "env"] }
-reqwest = { version = "0.12.5", features = ["json"] }
-rocksdb = "0.22.0"
-serde = { version = "1.0.114", features = ["derive"] }
-serde_json = "1.0.57"
-tracing = "0.1.40"
+actix-web          = { version = "4.0.0-rc.2" }
+byteorder          = { version = "1.4.3" }
+clap               = { version = "4.1.11", features = ["derive", "env"] }
+reqwest            = { version = "0.12.5", features = ["json"] }
+rocksdb            = { version = "0.22.0" }
+serde              = { version = "1.0.114", features = ["derive"] }
+serde_json         = { version = "1.0.57" }
+tokio              = { version = "1.35.1", features = ["full"] }
+tracing            = { version = "0.1.40" }
 tracing-subscriber = { version = "0.3.0", features = ["env-filter"] }
 
 [dev-dependencies]
-maplit = "1.0.2"
+maplit = { version = "1.0.2" }
 tempfile = { version = "3.4.0" }
 
 
