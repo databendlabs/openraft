@@ -94,6 +94,7 @@ use crate::replication::request::Replicate;
 use crate::runtime::RaftRuntime;
 use crate::storage::IOFlushed;
 use crate::storage::RaftLogStorage;
+use crate::storage_error::StorageIOResult;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::LogIdOf;
@@ -1776,11 +1777,11 @@ where
                 self.engine.state.log_progress_mut().submit(io_id);
 
                 // Submit IO request, do not wait for the response.
-                self.log_store.append(entries, callback).await?;
+                self.log_store.append(entries, callback).await.sto_write_logs()?;
             }
             Command::SaveVote { vote } => {
                 self.engine.state.log_progress_mut().submit(IOId::new(&vote));
-                self.log_store.save_vote(&vote).await?;
+                self.log_store.save_vote(&vote).await.sto_write_vote()?;
 
                 let _ = self
                     .tx_notification
@@ -1804,11 +1805,11 @@ where
                 }
             }
             Command::PurgeLog { upto } => {
-                self.log_store.purge(upto.clone()).await?;
+                self.log_store.purge(upto.clone()).await.sto_write_logs()?;
                 self.engine.state.io_state_mut().update_purged(Some(upto));
             }
             Command::TruncateLog { since } => {
-                self.log_store.truncate(since.clone()).await?;
+                self.log_store.truncate(since.clone()).await.sto_write_logs()?;
 
                 // Inform clients waiting for logs to be applied.
                 let removed = self.client_responders.split_off(&since.index());
@@ -1847,7 +1848,7 @@ where
             } => {
                 self.engine.state.apply_progress_mut().submit(upto.clone());
 
-                self.log_store.save_committed(Some(upto.clone())).await?;
+                self.log_store.save_committed(Some(upto.clone())).await.sto_write()?;
 
                 let first = self.engine.state.get_log_id(already_committed.next_index()).unwrap();
                 self.apply_to_state_machine(first, upto).await?;

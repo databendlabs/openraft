@@ -142,7 +142,6 @@ mod impl_log_store {
     use openraft::LogState;
     use openraft::RaftLogReader;
     use openraft::RaftTypeConfig;
-    use openraft::StorageError;
 
     use crate::log_store::LogStore;
 
@@ -152,14 +151,14 @@ mod impl_log_store {
         async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug>(
             &mut self,
             range: RB,
-        ) -> Result<Vec<C::Entry>, StorageError<C>> {
+        ) -> Result<Vec<C::Entry>, std::io::Error> {
             let mut inner = self.inner.lock().await;
-            inner.try_get_log_entries(range).await
+            inner.try_get_log_entries(range).await.map_err(Into::into)
         }
 
-        async fn read_vote(&mut self) -> Result<Option<VoteOf<C>>, StorageError<C>> {
+        async fn read_vote(&mut self) -> Result<Option<VoteOf<C>>, std::io::Error> {
             let mut inner = self.inner.lock().await;
-            inner.read_vote().await
+            inner.read_vote().await.map_err(Into::into)
         }
     }
 
@@ -168,40 +167,40 @@ mod impl_log_store {
     {
         type LogReader = Self;
 
-        async fn get_log_state(&mut self) -> Result<LogState<C>, StorageError<C>> {
+        async fn get_log_state(&mut self) -> Result<LogState<C>, std::io::Error> {
             let mut inner = self.inner.lock().await;
-            inner.get_log_state().await
+            inner.get_log_state().await.map_err(Into::into)
         }
 
-        async fn save_committed(&mut self, committed: Option<LogIdOf<C>>) -> Result<(), StorageError<C>> {
+        async fn save_committed(&mut self, committed: Option<LogIdOf<C>>) -> Result<(), std::io::Error> {
             let mut inner = self.inner.lock().await;
-            inner.save_committed(committed).await
+            inner.save_committed(committed).await.map_err(Into::into)
         }
 
-        async fn read_committed(&mut self) -> Result<Option<LogIdOf<C>>, StorageError<C>> {
+        async fn read_committed(&mut self) -> Result<Option<LogIdOf<C>>, std::io::Error> {
             let mut inner = self.inner.lock().await;
-            inner.read_committed().await
+            inner.read_committed().await.map_err(Into::into)
         }
 
-        async fn save_vote(&mut self, vote: &VoteOf<C>) -> Result<(), StorageError<C>> {
+        async fn save_vote(&mut self, vote: &VoteOf<C>) -> Result<(), std::io::Error> {
             let mut inner = self.inner.lock().await;
-            inner.save_vote(vote).await
+            inner.save_vote(vote).await.map_err(Into::into)
         }
 
-        async fn append<I>(&mut self, entries: I, callback: IOFlushed<C>) -> Result<(), StorageError<C>>
+        async fn append<I>(&mut self, entries: I, callback: IOFlushed<C>) -> Result<(), std::io::Error>
         where I: IntoIterator<Item = C::Entry> {
             let mut inner = self.inner.lock().await;
-            inner.append(entries, callback).await
+            inner.append(entries, callback).await.map_err(Into::into)
         }
 
-        async fn truncate(&mut self, log_id: LogIdOf<C>) -> Result<(), StorageError<C>> {
+        async fn truncate(&mut self, log_id: LogIdOf<C>) -> Result<(), std::io::Error> {
             let mut inner = self.inner.lock().await;
-            inner.truncate(log_id).await
+            inner.truncate(log_id).await.map_err(Into::into)
         }
 
-        async fn purge(&mut self, log_id: LogIdOf<C>) -> Result<(), StorageError<C>> {
+        async fn purge(&mut self, log_id: LogIdOf<C>) -> Result<(), std::io::Error> {
             let mut inner = self.inner.lock().await;
-            inner.purge(log_id).await
+            inner.purge(log_id).await.map_err(Into::into)
         }
 
         async fn get_log_reader(&mut self) -> Self::LogReader {

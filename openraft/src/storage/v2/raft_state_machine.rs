@@ -1,3 +1,5 @@
+use std::io;
+
 use openraft_macros::add_async_trait;
 use openraft_macros::since;
 
@@ -5,7 +7,6 @@ use crate::OptionalSend;
 use crate::OptionalSync;
 use crate::RaftSnapshotBuilder;
 use crate::RaftTypeConfig;
-use crate::StorageError;
 use crate::StoredMembership;
 use crate::storage::EntryResponder;
 use crate::storage::Snapshot;
@@ -43,7 +44,7 @@ where C: RaftTypeConfig
     /// last-applied-log-id.
     /// Because upon startup, the last membership will be loaded by scanning logs from the
     /// `last-applied-log-id`.
-    async fn applied_state(&mut self) -> Result<(Option<LogIdOf<C>>, StoredMembership<C>), StorageError<C>>;
+    async fn applied_state(&mut self) -> Result<(Option<LogIdOf<C>>, StoredMembership<C>), io::Error>;
 
     /// Apply the given payload of entries to the state machine.
     ///
@@ -82,7 +83,7 @@ where C: RaftTypeConfig
     ///   pattern, implement [`RaftLogStorage::save_committed()`] to persist the committed log id.
     ///
     /// [`RaftLogStorage::save_committed()`]: crate::storage::RaftLogStorage::save_committed
-    async fn apply<I>(&mut self, entries: I) -> Result<(), StorageError<C>>
+    async fn apply<I>(&mut self, entries: I) -> Result<(), io::Error>
     where
         I: IntoIterator<Item = EntryResponder<C>> + OptionalSend,
         I::IntoIter: OptionalSend;
@@ -130,7 +131,7 @@ where C: RaftTypeConfig
     ///
     /// [sto]: crate::docs::getting_started#3-implement-raftlogstorage-and-raftstatemachine
     #[since(version = "0.10.0", change = "SnapshotData without Box")]
-    async fn begin_receiving_snapshot(&mut self) -> Result<C::SnapshotData, StorageError<C>>;
+    async fn begin_receiving_snapshot(&mut self) -> Result<C::SnapshotData, io::Error>;
 
     /// Install a snapshot which has finished streaming from the leader.
     ///
@@ -152,11 +153,7 @@ where C: RaftTypeConfig
     /// [`StorageHelper::get_initial_state()`]: crate::StorageHelper::get_initial_state
     /// [`Raft`]: crate::Raft
     #[since(version = "0.10.0", change = "SnapshotData without Box")]
-    async fn install_snapshot(
-        &mut self,
-        meta: &SnapshotMeta<C>,
-        snapshot: C::SnapshotData,
-    ) -> Result<(), StorageError<C>>;
+    async fn install_snapshot(&mut self, meta: &SnapshotMeta<C>, snapshot: C::SnapshotData) -> Result<(), io::Error>;
 
     /// Get a readable handle to the current snapshot.
     ///
@@ -171,5 +168,5 @@ where C: RaftTypeConfig
     /// A proper snapshot implementation will store last-applied-log-id and the
     /// last-applied-membership config as part of the snapshot, which should be decoded for
     /// creating this method's response data.
-    async fn get_current_snapshot(&mut self) -> Result<Option<Snapshot<C>>, StorageError<C>>;
+    async fn get_current_snapshot(&mut self) -> Result<Option<Snapshot<C>>, io::Error>;
 }
