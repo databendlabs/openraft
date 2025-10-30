@@ -1,3 +1,4 @@
+use std::io;
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -6,7 +7,6 @@ use openraft::Config;
 use openraft::OptionalSend;
 use openraft::RaftSnapshotBuilder;
 use openraft::RaftTypeConfig;
-use openraft::StorageError;
 use openraft::StoredMembership;
 use openraft::alias::LogIdOf;
 use openraft::error::Fatal;
@@ -87,7 +87,7 @@ async fn with_state_machine_wrong_sm_type() -> Result<()> {
     tracing::info!("--- use wrong type SM");
     {
         type TC = TypeConfig;
-        type Err = StorageError<TC>;
+        type Err = io::Error;
         struct FooSM;
         impl RaftSnapshotBuilder<TC> for FooSM {
             async fn build_snapshot(&mut self) -> Result<Snapshot<TC>, Err> {

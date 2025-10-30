@@ -50,6 +50,7 @@ use crate::replication::hint::ReplicationHint;
 use crate::storage::RaftLogReader;
 use crate::storage::RaftLogStorage;
 use crate::storage::Snapshot;
+use crate::storage_error::StorageIOResult;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::JoinHandleOf;
@@ -401,7 +402,7 @@ where
                 (vec![], r)
             } else {
                 // limited_get_log_entries will return logs smaller than the range [start, end).
-                let logs = self.log_reader.limited_get_log_entries(start, end).await?;
+                let logs = self.log_reader.limited_get_log_entries(start, end).await.sto_read_logs()?;
 
                 let first = logs.first().map(|ent| ent.ref_log_id()).unwrap();
                 let last = logs.last().map(|ent| ent.log_id()).unwrap();

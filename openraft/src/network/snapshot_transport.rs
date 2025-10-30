@@ -35,6 +35,7 @@ mod tokio_rt {
     use crate::raft::InstallSnapshotRequest;
     use crate::raft::SnapshotResponse;
     use crate::storage::Snapshot;
+    use crate::storage_error::StorageIOResult;
     use crate::type_config::TypeConfigExt;
     use crate::type_config::alias::VoteOf;
     use crate::vote::raft_vote::RaftVoteExt;
@@ -210,9 +211,7 @@ mod tokio_rt {
                 let streaming = streaming.take().unwrap();
                 let mut data = streaming.into_snapshot_data();
 
-                data.shutdown()
-                    .await
-                    .map_err(|e| StorageError::write_snapshot(Some(snapshot_meta.signature()), &e))?;
+                data.shutdown().await.sto_write_snapshot(Some(snapshot_meta.signature()))?;
 
                 tracing::info!("finished streaming snapshot: {:?}", snapshot_meta);
                 return Ok(Some(Snapshot::new(snapshot_meta, data)));

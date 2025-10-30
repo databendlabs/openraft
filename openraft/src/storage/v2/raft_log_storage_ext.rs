@@ -8,6 +8,7 @@ use crate::entry::RaftEntry;
 use crate::raft_state::io_state::io_id::IOId;
 use crate::storage::IOFlushed;
 use crate::storage::RaftLogStorage;
+use crate::storage_error::StorageIOResult;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::VoteOf;
 use crate::type_config::async_runtime::mpsc::MpscReceiver;
@@ -39,7 +40,7 @@ where C: RaftTypeConfig
         let notify = Notification::LocalIO { io_id };
 
         let callback = IOFlushed::<C>::new(notify, tx.downgrade());
-        self.append(entries, callback).await?;
+        self.append(entries, callback).await.sto_write_logs()?;
 
         let got = rx.recv().await.unwrap();
         if let Notification::StorageError { error } = got {

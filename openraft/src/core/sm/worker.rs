@@ -24,6 +24,7 @@ use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
 use crate::storage::Snapshot;
 use crate::storage::v2::entry_responder::EntryResponderBuilder;
+use crate::storage_error::StorageIOResult;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::JoinHandleOf;
 use crate::type_config::alias::LogIdOf;
@@ -130,7 +131,10 @@ where
                     tracing::info!("{}: install complete snapshot", func_name!());
 
                     let meta = snapshot.meta.clone();
-                    self.state_machine.install_snapshot(&meta, snapshot.snapshot).await?;
+                    self.state_machine
+                        .install_snapshot(&meta, snapshot.snapshot)
+                        .await
+                        .sto_write_snapshot(Some(meta.signature()))?;
 
                     tracing::info!("Done install complete snapshot, meta: {}", meta);
 
@@ -140,7 +144,7 @@ where
                 Command::BeginReceivingSnapshot { tx } => {
                     tracing::info!("{}: BeginReceivingSnapshot", func_name!());
 
-                    let snapshot_data = self.state_machine.begin_receiving_snapshot().await?;
+                    let snapshot_data = self.state_machine.begin_receiving_snapshot().await.sto_write_snapshot(None)?;
 
                     let _ = tx.send(snapshot_data);
                     // No response to RaftCore
@@ -182,7 +186,7 @@ where
         let since = first.index();
         let end = last.index() + 1;
 
-        let entries = self.log_reader.try_get_log_entries(since..end).await?;
+        let entries = self.log_reader.try_get_log_entries(since..end).await.sto_read_logs()?;
         if entries.len() != (end - since) as usize {
             return Err(StorageError::read_logs(AnyError::error(format!(
                 "returned log entries count({}) does not match the input([{}, {}]))",
@@ -207,7 +211,7 @@ where
             item.into_parts()
         });
 
-        self.state_machine.apply(apply_items).await?;
+        self.state_machine.apply(apply_items).await.sto_apply(last_applied.clone())?;
 
         let resp = ApplyResult {
             since,
@@ -246,7 +250,7 @@ where
         };
 
         let _handle = C::spawn(async move {
-            let res = builder.build_snapshot().await;
+            let res = builder.build_snapshot().await.sto_write_snapshot(None);
             let res = res.map(|snap| Response::BuildSnapshotDone(Some(snap.meta)));
             let cmd_res = CommandResult::new(res);
             resp_tx.send(Notification::sm(cmd_res)).await.ok();
@@ -258,7 +262,7 @@ where
     async fn get_snapshot(&mut self, tx: OneshotSenderOf<C, Option<Snapshot<C>>>) -> Result<(), StorageError<C>> {
         tracing::info!("{}", func_name!());
 
-        let snapshot = self.state_machine.get_current_snapshot().await?;
+        let snapshot = self.state_machine.get_current_snapshot().await.sto_read_snapshot(None)?;
 
         tracing::info!(
             "sending back snapshot: meta: {}",
