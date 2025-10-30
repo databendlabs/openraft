@@ -36,6 +36,7 @@ use crate::error::PayloadTooLarge;
 use crate::error::RPCError;
 use crate::error::ReplicationClosed;
 use crate::error::ReplicationError;
+use crate::error::StorageIOResult;
 use crate::error::Timeout;
 use crate::log_id::LogIdOptionExt;
 use crate::log_id_range::LogIdRange;
@@ -401,7 +402,7 @@ where
                 (vec![], r)
             } else {
                 // limited_get_log_entries will return logs smaller than the range [start, end).
-                let logs = self.log_reader.limited_get_log_entries(start, end).await?;
+                let logs = self.log_reader.limited_get_log_entries(start, end).await.sto_read_logs()?;
 
                 let first = logs.first().map(|ent| ent.ref_log_id()).unwrap();
                 let last = logs.last().map(|ent| ent.log_id()).unwrap();

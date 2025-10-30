@@ -10,7 +10,7 @@ use raft_kv_memstore::TypeConfig;
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn test_follower_read() -> Result<(), Box<dyn std::error::Error>> {
     fn get_addr(node_id: u64) -> String {
-        format!("127.0.0.1:2100{}", node_id)
+        format!("127.0.0.1:2800{}", node_id)
     }
 
     // Start 3 raft nodes

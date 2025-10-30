@@ -7,6 +7,7 @@ mod test;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::fmt::Debug;
+use std::io;
 use std::io::Cursor;
 use std::ops::RangeBounds;
 use std::sync::Arc;
@@ -20,7 +21,6 @@ use openraft::EntryPayload;
 use openraft::LogId;
 use openraft::OptionalSend;
 use openraft::SnapshotMeta;
-use openraft::StorageError;
 use openraft::StoredMembership;
 use openraft::Vote;
 use openraft::alias::SnapshotDataOf;
@@ -262,12 +262,13 @@ impl RaftLogReader<TypeConfig> for Arc<MemLogStore> {
     async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + OptionalSend>(
         &mut self,
         range: RB,
-    ) -> Result<Vec<Entry<TypeConfig>>, StorageError<TypeConfig>> {
+    ) -> Result<Vec<Entry<TypeConfig>>, io::Error> {
         let mut entries = vec![];
         {
             let log = self.log.read().await;
             for (_, serialized) in log.range(range.clone()) {
-                let ent = serde_json::from_str(serialized).map_err(|e| StorageError::read_logs(&e))?;
+                let ent = serde_json::from_str(serialized)
+                    .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
                 entries.push(ent);
             }
         };
@@ -275,14 +276,14 @@ impl RaftLogReader<TypeConfig> for Arc<MemLogStore> {
         Ok(entries)
     }
 
-    async fn read_vote(&mut self) -> Result<Option<Vote<TypeConfig>>, StorageError<TypeConfig>> {
+    async fn read_vote(&mut self) -> Result<Option<Vote<TypeConfig>>, io::Error> {
         Ok(*self.vote.read().await)
     }
 }
 
 impl RaftSnapshotBuilder<TypeConfig> for Arc<MemStateMachine> {
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn build_snapshot(&mut self) -> Result<Snapshot<TypeConfig>, StorageError<TypeConfig>> {
+    async fn build_snapshot(&mut self) -> Result<Snapshot<TypeConfig>, io::Error> {
         let data;
         let last_applied_log;
         let last_membership;
@@ -295,7 +296,7 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<MemStateMachine> {
         {
             // Serialize the data of the state machine.
             let sm = self.sm.read().await;
-            data = serde_json::to_vec(&*sm).map_err(|e| StorageError::read_state_machine(&e))?;
+            data = serde_json::to_vec(&*sm).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
 
             last_applied_log = sm.last_applied_log;
             last_membership = sm.last_membership.clone();
@@ -348,15 +349,15 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<MemStateMachine> {
 impl RaftLogStorage<TypeConfig> for Arc<MemLogStore> {
     type LogReader = Self;
 
-    async fn get_log_state(&mut self) -> Result<LogState<TypeConfig>, StorageError<TypeConfig>> {
+    async fn get_log_state(&mut self) -> Result<LogState<TypeConfig>, io::Error> {
         let log = self.log.read().await;
         let last_serialized = log.iter().next_back().map(|(_, ent)| ent);
 
         let last = match last_serialized {
             None => None,
             Some(serialized) => {
-                let ent: Entry<TypeConfig> =
-                    serde_json::from_str(serialized).map_err(|e| StorageError::read_logs(&e))?;
+                let ent: Entry<TypeConfig> = serde_json::from_str(serialized)
+                    .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
                 Some(ent.log_id())
             }
         };
@@ -379,7 +380,7 @@ impl RaftLogStorage<TypeConfig> for Arc<MemLogStore> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn save_vote(&mut self, vote: &Vote<TypeConfig>) -> Result<(), StorageError<TypeConfig>> {
+    async fn save_vote(&mut self, vote: &Vote<TypeConfig>) -> Result<(), io::Error> {
         tracing::debug!(?vote, "save_vote");
         let mut h = self.vote.write().await;
 
@@ -387,7 +388,7 @@ impl RaftLogStorage<TypeConfig> for Arc<MemLogStore> {
         Ok(())
     }
 
-    async fn save_committed(&mut self, committed: Option<LogId<TypeConfig>>) -> Result<(), StorageError<TypeConfig>> {
+    async fn save_committed(&mut self, committed: Option<LogId<TypeConfig>>) -> Result<(), io::Error> {
         let enabled = self.enable_saving_committed.load(Ordering::Relaxed);
         tracing::debug!(?committed, "save_committed, enabled: {}", enabled);
         if !enabled {
@@ -398,7 +399,7 @@ impl RaftLogStorage<TypeConfig> for Arc<MemLogStore> {
         Ok(())
     }
 
-    async fn read_committed(&mut self) -> Result<Option<LogId<TypeConfig>>, StorageError<TypeConfig>> {
+    async fn read_committed(&mut self) -> Result<Option<LogId<TypeConfig>>, io::Error> {
         let enabled = self.enable_saving_committed.load(Ordering::Relaxed);
         tracing::debug!("read_committed, enabled: {}", enabled);
         if !enabled {
@@ -409,11 +410,12 @@ impl RaftLogStorage<TypeConfig> for Arc<MemLogStore> {
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
-    async fn append<I>(&mut self, entries: I, callback: IOFlushed<TypeConfig>) -> Result<(), StorageError<TypeConfig>>
+    async fn append<I>(&mut self, entries: I, callback: IOFlushed<TypeConfig>) -> Result<(), io::Error>
     where I: IntoIterator<Item = Entry<TypeConfig>> + OptionalSend {
         let mut log = self.log.write().await;
         for entry in entries {
-            let s = serde_json::to_string(&entry).map_err(|e| StorageError::write_log_entry(entry.log_id(), &e))?;
+            let s =
+                serde_json::to_string(&entry).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
             log.insert(entry.index(), s);
         }
 
@@ -422,7 +424,7 @@ impl RaftLogStorage<TypeConfig> for Arc<MemLogStore> {
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
-    async fn truncate(&mut self, log_id: LogId<TypeConfig>) -> Result<(), StorageError<TypeConfig>> {
+    async fn truncate(&mut self, log_id: LogId<TypeConfig>) -> Result<(), io::Error> {
         tracing::debug!("delete_log: [{:?}, +oo)", log_id);
 
         {
@@ -438,7 +440,7 @@ impl RaftLogStorage<TypeConfig> for Arc<MemLogStore> {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn purge(&mut self, log_id: LogId<TypeConfig>) -> Result<(), StorageError<TypeConfig>> {
+    async fn purge(&mut self, log_id: LogId<TypeConfig>) -> Result<(), io::Error> {
         tracing::debug!("purge_log_upto: {:?}", log_id);
 
         if let Some(d) = self.block.get_blocking(&BlockOperation::PurgeLog) {
@@ -468,15 +470,13 @@ impl RaftLogStorage<TypeConfig> for Arc<MemLogStore> {
 impl RaftStateMachine<TypeConfig> for Arc<MemStateMachine> {
     type SnapshotBuilder = Self;
 
-    async fn applied_state(
-        &mut self,
-    ) -> Result<(Option<LogId<TypeConfig>>, StoredMembership<TypeConfig>), StorageError<TypeConfig>> {
+    async fn applied_state(&mut self) -> Result<(Option<LogId<TypeConfig>>, StoredMembership<TypeConfig>), io::Error> {
         let sm = self.sm.read().await;
         Ok((sm.last_applied_log, sm.last_membership.clone()))
     }
 
     #[tracing::instrument(level = "trace", skip(self, entries))]
-    async fn apply<I>(&mut self, entries: I) -> Result<(), StorageError<TypeConfig>>
+    async fn apply<I>(&mut self, entries: I) -> Result<(), io::Error>
     where
         I: IntoIterator<Item = EntryResponder<TypeConfig>> + OptionalSend,
         I::IntoIter: OptionalSend,
@@ -522,7 +522,7 @@ impl RaftStateMachine<TypeConfig> for Arc<MemStateMachine> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn begin_receiving_snapshot(&mut self) -> Result<SnapshotDataOf<TypeConfig>, StorageError<TypeConfig>> {
+    async fn begin_receiving_snapshot(&mut self) -> Result<SnapshotDataOf<TypeConfig>, io::Error> {
         Ok(Cursor::new(Vec::new()))
     }
 
@@ -531,7 +531,7 @@ impl RaftStateMachine<TypeConfig> for Arc<MemStateMachine> {
         &mut self,
         meta: &SnapshotMeta<TypeConfig>,
         snapshot: SnapshotDataOf<TypeConfig>,
-    ) -> Result<(), StorageError<TypeConfig>> {
+    ) -> Result<(), io::Error> {
         tracing::info!(
             { snapshot_size = snapshot.get_ref().len() },
             "decoding snapshot for installation"
@@ -552,7 +552,7 @@ impl RaftStateMachine<TypeConfig> for Arc<MemStateMachine> {
         // Update the state machine.
         {
             let new_sm: MemStoreStateMachine = serde_json::from_slice(&new_snapshot.data)
-                .map_err(|e| StorageError::read_snapshot(Some(new_snapshot.meta.signature()), &e))?;
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
             let mut sm = self.sm.write().await;
             *sm = new_sm;
         }
@@ -564,7 +564,7 @@ impl RaftStateMachine<TypeConfig> for Arc<MemStateMachine> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn get_current_snapshot(&mut self) -> Result<Option<Snapshot<TypeConfig>>, StorageError<TypeConfig>> {
+    async fn get_current_snapshot(&mut self) -> Result<Option<Snapshot<TypeConfig>>, io::Error> {
         match &*self.current_snapshot.read().await {
             Some(snapshot) => {
                 let data = snapshot.data.clone();

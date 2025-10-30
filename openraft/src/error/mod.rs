@@ -9,6 +9,8 @@ mod membership_error;
 mod node_not_found;
 mod operation;
 mod replication_closed;
+pub(crate) mod storage_error;
+mod storage_io_result;
 mod streaming_error;
 
 use std::collections::BTreeSet;
@@ -26,6 +28,7 @@ pub use self::membership_error::MembershipError;
 pub use self::node_not_found::NodeNotFound;
 pub use self::operation::Operation;
 pub use self::replication_closed::ReplicationClosed;
+pub(crate) use self::storage_io_result::StorageIOResult;
 pub use self::streaming_error::StreamingError;
 use crate::Membership;
 use crate::RaftTypeConfig;

@@ -1,10 +1,11 @@
+use std::io;
+
 use openraft_macros::add_async_trait;
 
 use crate::OptionalSend;
 use crate::OptionalSync;
 use crate::RaftLogReader;
 use crate::RaftTypeConfig;
-use crate::StorageError;
 use crate::storage::IOFlushed;
 use crate::storage::LogState;
 use crate::type_config::alias::LogIdOf;
@@ -45,7 +46,7 @@ where C: RaftTypeConfig
     /// `last_purged_log_id` if there is no entry at all.
     // NOTE: This can be made into sync, provided all state machines will use atomic read or the
     // like.
-    async fn get_log_state(&mut self) -> Result<LogState<C>, StorageError<C>>;
+    async fn get_log_state(&mut self) -> Result<LogState<C>, io::Error>;
 
     /// Get the log reader.
     ///
@@ -58,7 +59,7 @@ where C: RaftTypeConfig
     /// ### To ensure correctness:
     ///
     /// The vote must be persisted on disk before returning.
-    async fn save_vote(&mut self, vote: &VoteOf<C>) -> Result<(), StorageError<C>>;
+    async fn save_vote(&mut self, vote: &VoteOf<C>) -> Result<(), io::Error>;
 
     /// Saves the last committed log id to storage.
     ///
@@ -73,13 +74,13 @@ where C: RaftTypeConfig
     /// See: [`docs::data::log_pointers`].
     ///
     /// [`docs::data::log_pointers`]: `crate::docs::data::log_pointers#optionally-persisted-committed`
-    async fn save_committed(&mut self, _committed: Option<LogIdOf<C>>) -> Result<(), StorageError<C>> {
+    async fn save_committed(&mut self, _committed: Option<LogIdOf<C>>) -> Result<(), io::Error> {
         // By default `committed` log id is not saved
         Ok(())
     }
 
     /// Return the last saved committed log id by [`Self::save_committed`].
-    async fn read_committed(&mut self) -> Result<Option<LogIdOf<C>>, StorageError<C>> {
+    async fn read_committed(&mut self) -> Result<Option<LogIdOf<C>>, io::Error> {
         // By default `committed` log id is not saved and this method just returns None.
         Ok(None)
     }
@@ -102,7 +103,7 @@ where C: RaftTypeConfig
     ///
     /// - There must not be a **hole** in logs. Because Raft only examines the last log id to ensure
     ///   correctness.
-    async fn append<I>(&mut self, entries: I, callback: IOFlushed<C>) -> Result<(), StorageError<C>>
+    async fn append<I>(&mut self, entries: I, callback: IOFlushed<C>) -> Result<(), io::Error>
     where
         I: IntoIterator<Item = C::Entry> + OptionalSend,
         I::IntoIter: OptionalSend;
@@ -112,12 +113,12 @@ where C: RaftTypeConfig
     /// ### To ensure correctness:
     ///
     /// - It must not leave a **hole** in logs.
-    async fn truncate(&mut self, log_id: LogIdOf<C>) -> Result<(), StorageError<C>>;
+    async fn truncate(&mut self, log_id: LogIdOf<C>) -> Result<(), io::Error>;
 
     /// Purge logs up to `log_id`, inclusive
     ///
     /// ### To ensure correctness:
     ///
     /// - It must not leave a **hole** in logs.
-    async fn purge(&mut self, log_id: LogIdOf<C>) -> Result<(), StorageError<C>>;
+    async fn purge(&mut self, log_id: LogIdOf<C>) -> Result<(), io::Error>;
 }

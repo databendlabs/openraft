@@ -44,7 +44,6 @@ mod quorum;
 mod raft_types;
 mod replication;
 mod runtime;
-mod storage_error;
 mod summary;
 mod try_as_ref;
 
@@ -79,6 +78,12 @@ use std::fmt;
 
 pub use anyerror;
 pub use anyerror::AnyError;
+pub use error::storage_error::ErrorSubject;
+pub use error::storage_error::ErrorVerb;
+pub use error::storage_error::StorageError;
+#[allow(deprecated)]
+pub use error::storage_error::StorageIOError;
+pub use error::storage_error::ToStorageResult;
 pub use openraft_macros::add_async_trait;
 pub use type_config::AsyncRuntime;
 pub use type_config::async_runtime;
@@ -125,12 +130,6 @@ pub use crate::raft_state::MembershipState;
 pub use crate::raft_state::RaftState;
 pub use crate::raft_types::SnapshotId;
 pub use crate::raft_types::SnapshotSegmentId;
-pub use crate::storage_error::ErrorSubject;
-pub use crate::storage_error::ErrorVerb;
-pub use crate::storage_error::StorageError;
-#[allow(deprecated)]
-pub use crate::storage_error::StorageIOError;
-pub use crate::storage_error::ToStorageResult;
 pub use crate::summary::MessageSummary;
 pub use crate::try_as_ref::TryAsRef;
 pub use crate::type_config::RaftTypeConfig;
