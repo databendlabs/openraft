@@ -134,6 +134,11 @@ where C: RaftTypeConfig
 
     /// Install a snapshot which has finished streaming from the leader.
     ///
+    /// This method is called in two scenarios:
+    /// 1. **During replication**: When receiving a snapshot from the leader
+    /// 2. **On restart**: Automatically called by [`StorageHelper::get_initial_state()`] to restore
+    ///    transient state machines from the last persistent snapshot before creating [`Raft`]
+    ///
     /// Before this method returns:
     /// - The state machine should be replaced with the new contents of the snapshot,
     /// - the input snapshot should be saved, i.e., [`Self::get_current_snapshot`] should return it.
@@ -143,6 +148,9 @@ where C: RaftTypeConfig
     ///
     /// A snapshot created from an earlier call to `begin_receiving_snapshot` which provided the
     /// snapshot.
+    ///
+    /// [`StorageHelper::get_initial_state()`]: crate::StorageHelper::get_initial_state
+    /// [`Raft`]: crate::Raft
     #[since(version = "0.10.0", change = "SnapshotData without Box")]
     async fn install_snapshot(
         &mut self,
