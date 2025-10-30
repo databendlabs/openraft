@@ -410,7 +410,7 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
     }
 
     pub async fn test_watch_wait_until() {
-        let init_value = 0;
+        let init_value = 5;
         let (tx, mut rx) = Rt::Watch::channel(init_value);
 
         // Spawn a task that waits for an even value
