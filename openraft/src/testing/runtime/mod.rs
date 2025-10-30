@@ -410,7 +410,8 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
     }
 
     pub async fn test_watch_wait_until() {
-        let init_value = 0;
+        // set to an odd number
+        let init_value = 1;
         let (tx, mut rx) = Rt::Watch::channel(init_value);
 
         // Spawn a task that waits for an even value
@@ -418,15 +419,15 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         let handle = Rt::spawn(async move { rx.wait_until(is_even).await });
 
         // Send odd values
-        tx.send(1).unwrap();
         tx.send(3).unwrap();
+        tx.send(5).unwrap();
 
-        // Send an even value to unblock, it may fail because the receiver is dropped.
-        tx.send(4).ok();
+        // Send an even value to unblock.
+        tx.send(6).unwrap();
 
         let final_value = handle.await.unwrap().unwrap();
         assert_eq!(final_value % 2, 0);
-        assert_eq!(final_value, 4);
+        assert_eq!(final_value, 6);
 
         // Test immediate return when condition already satisfied
         let (tx2, mut rx2) = Rt::Watch::channel(10);
