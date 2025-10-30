@@ -1,4 +1,5 @@
 use std::fmt::Debug;
+use std::io;
 use std::ops::RangeBounds;
 use std::ops::RangeInclusive;
 
@@ -8,7 +9,6 @@ use openraft_macros::since;
 use crate::OptionalSend;
 use crate::OptionalSync;
 use crate::RaftTypeConfig;
-use crate::StorageError;
 use crate::engine::LogIdList;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::VoteOf;
@@ -42,15 +42,14 @@ where C: RaftTypeConfig
     ///
     /// - If the log doesn't contain all the requested entries, return the existing entries. The
     ///   absence of an entry is tolerated only at the beginning or end of the range. Missing
-    ///   entries within the range (i.e., holes) are not permitted and should result in a
-    ///   `StorageError`.
+    ///   entries within the range (i.e., holes) are not permitted and should result in an error.
     ///
     /// - The read operation must be transactional. That is, it should not reflect any state changes
     ///   that occur after the read operation has commenced.
     async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + OptionalSend>(
         &mut self,
         range: RB,
-    ) -> Result<Vec<C::Entry>, StorageError<C>>;
+    ) -> Result<Vec<C::Entry>, io::Error>;
 
     /// Return the last saved vote by [`RaftLogStorage::save_vote`].
     ///
@@ -58,7 +57,7 @@ where C: RaftTypeConfig
     /// See: [log-stream](`crate::docs::protocol::replication::log_stream`)
     ///
     /// [`RaftLogStorage::save_vote`]: crate::storage::RaftLogStorage::save_vote
-    async fn read_vote(&mut self) -> Result<Option<VoteOf<C>>, StorageError<C>>;
+    async fn read_vote(&mut self) -> Result<Option<VoteOf<C>>, io::Error>;
 
     /// Returns log entries within range `[start, end)`, `end` is exclusive,
     /// potentially limited by implementation-defined constraints.
@@ -70,7 +69,7 @@ where C: RaftTypeConfig
     ///
     /// The default implementation just returns the full range of log entries.
     #[since(version = "0.10.0")]
-    async fn limited_get_log_entries(&mut self, start: u64, end: u64) -> Result<Vec<C::Entry>, StorageError<C>> {
+    async fn limited_get_log_entries(&mut self, start: u64, end: u64) -> Result<Vec<C::Entry>, io::Error> {
         self.try_get_log_entries(start..end).await
     }
 
@@ -112,7 +111,7 @@ where C: RaftTypeConfig
     ///
     /// [`RaftLogStorage`]: crate::storage::RaftLogStorage
     #[since(version = "0.10.0")]
-    async fn get_key_log_ids(&mut self, range: RangeInclusive<LogIdOf<C>>) -> Result<Vec<LogIdOf<C>>, StorageError<C>> {
-        LogIdList::get_key_log_ids(range, self).await
+    async fn get_key_log_ids(&mut self, range: RangeInclusive<LogIdOf<C>>) -> Result<Vec<LogIdOf<C>>, io::Error> {
+        LogIdList::get_key_log_ids(range, self).await.map_err(|e| io::Error::other(e.to_string()))
     }
 }

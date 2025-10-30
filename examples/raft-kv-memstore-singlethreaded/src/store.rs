@@ -2,6 +2,7 @@ use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::fmt;
 use std::fmt::Debug;
+use std::io;
 use std::io::Cursor;
 use std::marker::PhantomData;
 use std::ops::RangeBounds;
@@ -122,20 +123,20 @@ impl RaftLogReader<TypeConfig> for Rc<LogStore> {
     async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug>(
         &mut self,
         range: RB,
-    ) -> Result<Vec<Entry>, StorageError> {
+    ) -> Result<Vec<Entry>, io::Error> {
         let log = self.log.borrow();
         let response = log.range(range.clone()).map(|(_, val)| val.clone()).collect::<Vec<_>>();
         Ok(response)
     }
 
-    async fn read_vote(&mut self) -> Result<Option<Vote>, StorageError> {
+    async fn read_vote(&mut self) -> Result<Option<Vote>, io::Error> {
         Ok(*self.vote.borrow())
     }
 }
 
 impl RaftSnapshotBuilder<TypeConfig> for Rc<StateMachineStore> {
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn build_snapshot(&mut self) -> Result<Snapshot, StorageError> {
+    async fn build_snapshot(&mut self) -> Result<Snapshot, io::Error> {
         let data;
         let last_applied_log;
         let last_membership;
@@ -143,7 +144,7 @@ impl RaftSnapshotBuilder<TypeConfig> for Rc<StateMachineStore> {
         {
             // Serialize the data of the state machine.
             let state_machine = self.state_machine.borrow();
-            data = serde_json::to_vec(&*state_machine).map_err(|e| StorageError::read_state_machine(&e))?;
+            data = serde_json::to_vec(&*state_machine).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
             last_applied_log = state_machine.last_applied;
             last_membership = state_machine.last_membership.clone();
@@ -187,13 +188,13 @@ impl RaftSnapshotBuilder<TypeConfig> for Rc<StateMachineStore> {
 impl RaftStateMachine<TypeConfig> for Rc<StateMachineStore> {
     type SnapshotBuilder = Self;
 
-    async fn applied_state(&mut self) -> Result<(Option<LogId>, StoredMembership), StorageError> {
+    async fn applied_state(&mut self) -> Result<(Option<LogId>, StoredMembership), io::Error> {
         let state_machine = self.state_machine.borrow();
         Ok((state_machine.last_applied, state_machine.last_membership.clone()))
     }
 
     #[tracing::instrument(level = "trace", skip(self, entries))]
-    async fn apply<I>(&mut self, entries: I) -> Result<(), StorageError>
+    async fn apply<I>(&mut self, entries: I) -> Result<(), io::Error>
     where I: IntoIterator<Item = EntryResponder<TypeConfig>> {
         let mut sm = self.state_machine.borrow_mut();
 
@@ -226,12 +227,12 @@ impl RaftStateMachine<TypeConfig> for Rc<StateMachineStore> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn begin_receiving_snapshot(&mut self) -> Result<SnapshotData, StorageError> {
+    async fn begin_receiving_snapshot(&mut self) -> Result<SnapshotData, io::Error> {
         Ok(Cursor::new(Vec::new()))
     }
 
     #[tracing::instrument(level = "trace", skip(self, snapshot))]
-    async fn install_snapshot(&mut self, meta: &SnapshotMeta, snapshot: SnapshotData) -> Result<(), StorageError> {
+    async fn install_snapshot(&mut self, meta: &SnapshotMeta, snapshot: SnapshotData) -> Result<(), io::Error> {
         tracing::info!(
             { snapshot_size = snapshot.get_ref().len() },
             "decoding snapshot for installation"
@@ -245,7 +246,7 @@ impl RaftStateMachine<TypeConfig> for Rc<StateMachineStore> {
         // Update the state machine.
         {
             let updated_state_machine: StateMachineData = serde_json::from_slice(&new_snapshot.data)
-                .map_err(|e| StorageError::read_snapshot(Some(new_snapshot.meta.signature()), &e))?;
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
             let mut state_machine = self.state_machine.borrow_mut();
             *state_machine = updated_state_machine;
         }
@@ -257,7 +258,7 @@ impl RaftStateMachine<TypeConfig> for Rc<StateMachineStore> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn get_current_snapshot(&mut self) -> Result<Option<Snapshot>, StorageError> {
+    async fn get_current_snapshot(&mut self) -> Result<Option<Snapshot>, io::Error> {
         match &*self.current_snapshot.borrow() {
             Some(snapshot) => {
                 let data = snapshot.data.clone();
@@ -278,7 +279,7 @@ impl RaftStateMachine<TypeConfig> for Rc<StateMachineStore> {
 impl RaftLogStorage<TypeConfig> for Rc<LogStore> {
     type LogReader = Self;
 
-    async fn get_log_state(&mut self) -> Result<LogState, StorageError> {
+    async fn get_log_state(&mut self) -> Result<LogState, io::Error> {
         let log = self.log.borrow();
         let last = log.iter().next_back().map(|(_, ent)| ent.log_id);
 
@@ -295,26 +296,26 @@ impl RaftLogStorage<TypeConfig> for Rc<LogStore> {
         })
     }
 
-    async fn save_committed(&mut self, committed: Option<LogId>) -> Result<(), StorageError> {
+    async fn save_committed(&mut self, committed: Option<LogId>) -> Result<(), io::Error> {
         let mut c = self.committed.borrow_mut();
         *c = committed;
         Ok(())
     }
 
-    async fn read_committed(&mut self) -> Result<Option<LogId>, StorageError> {
+    async fn read_committed(&mut self) -> Result<Option<LogId>, io::Error> {
         let committed = self.committed.borrow();
         Ok(*committed)
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn save_vote(&mut self, vote: &Vote) -> Result<(), StorageError> {
+    async fn save_vote(&mut self, vote: &Vote) -> Result<(), io::Error> {
         let mut v = self.vote.borrow_mut();
         *v = Some(*vote);
         Ok(())
     }
 
     #[tracing::instrument(level = "trace", skip(self, entries, callback))]
-    async fn append<I>(&mut self, entries: I, callback: IOFlushed) -> Result<(), StorageError>
+    async fn append<I>(&mut self, entries: I, callback: IOFlushed) -> Result<(), io::Error>
     where I: IntoIterator<Item = Entry> {
         // Simple implementation that calls the flush-before-return `append_to_log`.
         {
@@ -329,7 +330,7 @@ impl RaftLogStorage<TypeConfig> for Rc<LogStore> {
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
-    async fn truncate(&mut self, log_id: LogId) -> Result<(), StorageError> {
+    async fn truncate(&mut self, log_id: LogId) -> Result<(), io::Error> {
         tracing::debug!("delete_log: [{:?}, +oo)", log_id);
 
         let mut log = self.log.borrow_mut();
@@ -342,7 +343,7 @@ impl RaftLogStorage<TypeConfig> for Rc<LogStore> {
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
-    async fn purge(&mut self, log_id: LogId) -> Result<(), StorageError> {
+    async fn purge(&mut self, log_id: LogId) -> Result<(), io::Error> {
         tracing::debug!("delete_log: (-oo, {:?}]", log_id);
 
         {

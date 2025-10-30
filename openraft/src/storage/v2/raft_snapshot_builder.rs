@@ -1,9 +1,10 @@
+use std::io;
+
 use openraft_macros::add_async_trait;
 
 use crate::OptionalSend;
 use crate::OptionalSync;
 use crate::RaftTypeConfig;
-use crate::StorageError;
 use crate::storage::Snapshot;
 /// A trait defining the interface for a Raft state machine snapshot subsystem.
 ///
@@ -28,7 +29,7 @@ where C: RaftTypeConfig
     /// - Performing log compaction, e.g., merge log entries that operate on the same key, like an
     ///   LSM-tree does,
     /// - or by fetching a snapshot from the state machine.
-    async fn build_snapshot(&mut self) -> Result<Snapshot<C>, StorageError<C>>;
+    async fn build_snapshot(&mut self) -> Result<Snapshot<C>, io::Error>;
 
     // NOTES:
     // This interface is geared toward small file-based snapshots. However, not all snapshots can

@@ -90,7 +90,8 @@ where C: RaftTypeConfig
                 continue;
             }
 
-            let mid = sto.get_log_id((first.index() + last.index()) / 2).await?;
+            let mid_index = (first.index() + last.index()) / 2;
+            let mid = sto.get_log_id(mid_index).await?;
 
             if first.committed_leader_id() == mid.committed_leader_id() {
                 // Case AAC
