@@ -3,16 +3,16 @@ use std::future::Future;
 use openraft::type_config::async_runtime::mutex;
 use openraft::OptionalSend;
 
-pub struct TokioMutex<T>(tokio::sync::Mutex<T>);
+pub struct FlumeMutex<T>(futures::lock::Mutex<T>);
 
-impl<T> mutex::Mutex<T> for TokioMutex<T>
+impl<T> mutex::Mutex<T> for FlumeMutex<T>
 where T: OptionalSend + 'static
 {
-    type Guard<'a> = tokio::sync::MutexGuard<'a, T>;
+    type Guard<'a> = futures::lock::MutexGuard<'a, T>;
 
     #[inline]
     fn new(value: T) -> Self {
-        TokioMutex(tokio::sync::Mutex::new(value))
+        FlumeMutex(futures::lock::Mutex::new(value))
     }
 
     #[inline]
