@@ -58,7 +58,7 @@ async fn build_snapshot() -> Result<()> {
 
     tracing::info!(log_index, "--- log_index: {}", log_index);
 
-    router.wait_for_log(&btreeset![0], Some(log_index), timeout(), "write").await?;
+    router.wait(&0, timeout()).applied_index(Some(log_index), "write").await?;
     router.wait(&0, None).snapshot(log_id(1, 0, log_index), "snapshot").await?;
 
     router
@@ -91,7 +91,9 @@ async fn build_snapshot() -> Result<()> {
 
     tracing::info!(log_index, "--- log_index: {}", log_index);
 
-    router.wait_for_log(&btreeset![0, 1], Some(log_index), timeout(), "add follower").await?;
+    for id in [0, 1] {
+        router.wait(&id, timeout()).applied_index(Some(log_index), "add follower").await?;
+    }
 
     tracing::info!(
         log_index,

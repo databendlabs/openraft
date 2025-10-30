@@ -22,7 +22,6 @@ use std::time::Duration;
 use anyerror::AnyError;
 use anyhow::Context;
 use lazy_static::lazy_static;
-use maplit::btreeset;
 use openraft::Config;
 use openraft::LogIdOptionExt;
 use openraft::OptionalSend;
@@ -418,7 +417,7 @@ impl TypedRaftRouter {
             })
             .await?;
         }
-        self.wait_for_log(&btreeset![leader_id], None, timeout(), "empty").await?;
+        self.wait(&leader_id, timeout()).applied_index(None, "empty").await?;
 
         tracing::info!("--- initializing single node cluster: {}", 0);
 
@@ -427,7 +426,7 @@ impl TypedRaftRouter {
 
         tracing::info!(log_index, "--- wait for init node to become leader");
 
-        self.wait_for_log(&btreeset![leader_id], Some(log_index), timeout(), "init").await?;
+        self.wait(&leader_id, timeout()).applied_index(Some(log_index), "init").await?;
         self.wait(&leader_id, timeout()).vote(VoteOf::<MemConfig>::new_committed(1, 0), "init vote").await?;
 
         for id in voter_ids.iter() {
@@ -443,13 +442,11 @@ impl TypedRaftRouter {
             self.wait(id, timeout()).state(ServerState::Learner, "empty node").await?;
         }
 
-        self.wait_for_log(
-            &voter_ids,
-            Some(log_index),
-            timeout(),
-            &format!("learners of {:?}", voter_ids),
-        )
-        .await?;
+        for id in voter_ids.iter() {
+            self.wait(id, timeout())
+                .applied_index(Some(log_index), &format!("learners of {:?}", voter_ids))
+                .await?;
+        }
 
         if voter_ids.len() > 1 {
             tracing::info!(log_index, "--- change membership to setup voters: {:?}", voter_ids);
@@ -458,13 +455,11 @@ impl TypedRaftRouter {
             node.change_membership(voter_ids.clone(), false).await?;
             log_index += 2;
 
-            self.wait_for_log(
-                &voter_ids,
-                Some(log_index),
-                timeout(),
-                &format!("cluster of {:?}", voter_ids),
-            )
-            .await?;
+            for id in voter_ids.iter() {
+                self.wait(id, timeout())
+                    .applied_index(Some(log_index), &format!("cluster of {:?}", voter_ids))
+                    .await?;
+            }
         }
 
         for id in learners.clone() {
@@ -473,13 +468,11 @@ impl TypedRaftRouter {
             self.add_learner(MemNodeId::default(), id).await?;
             log_index += 1;
         }
-        self.wait_for_log(
-            &learners,
-            Some(log_index),
-            timeout(),
-            &format!("learners of {:?}", learners),
-        )
-        .await?;
+        for id in learners.iter() {
+            self.wait(id, timeout())
+                .applied_index(Some(log_index), &format!("learners of {:?}", learners))
+                .await?;
+        }
 
         Ok(log_index)
     }
@@ -660,23 +653,6 @@ impl TypedRaftRouter {
         Ok((x.1, x.2))
     }
 
-    /// Wait for metrics until it satisfies some condition.
-    #[tracing::instrument(level = "info", skip(self, func))]
-    pub async fn wait_for_metrics<T>(
-        &self,
-        node_id: &MemNodeId,
-        func: T,
-        timeout: Option<Duration>,
-        msg: &str,
-    ) -> anyhow::Result<RaftMetrics<MemConfig>>
-    where
-        T: Fn(&RaftMetrics<MemConfig>) -> bool + Send,
-    {
-        let wait = self.wait(node_id, timeout);
-        let rst = wait.metrics(func, format!("node-{} {}", node_id, msg)).await?;
-        Ok(rst)
-    }
-
     pub fn wait(&self, node_id: &MemNodeId, timeout: Option<Duration>) -> Wait<MemConfig> {
         let node = {
             let rt = self.nodes.lock().unwrap();
@@ -684,40 +660,6 @@ impl TypedRaftRouter {
         };
 
         node.wait(timeout)
-    }
-
-    /// Wait for specified nodes until they applied up to `want_log`(inclusive) logs.
-    #[tracing::instrument(level = "info", skip(self))]
-    pub async fn wait_for_log(
-        &self,
-        node_ids: &BTreeSet<MemNodeId>,
-        want_log: Option<u64>,
-        timeout: Option<Duration>,
-        msg: &str,
-    ) -> anyhow::Result<()> {
-        for i in node_ids.iter() {
-            self.wait(i, timeout).applied_index(want_log, msg).await?;
-        }
-        Ok(())
-    }
-
-    #[tracing::instrument(level = "info", skip(self))]
-    pub async fn wait_for_members(
-        &self,
-        node_ids: &BTreeSet<MemNodeId>,
-        members: BTreeSet<MemNodeId>,
-        timeout: Option<Duration>,
-        msg: &str,
-    ) -> anyhow::Result<()> {
-        for i in node_ids.iter() {
-            let wait = self.wait(i, timeout);
-            wait.metrics(
-                |x| x.membership_config.voter_ids().collect::<BTreeSet<MemNodeId>>() == members,
-                msg,
-            )
-            .await?;
-        }
-        Ok(())
     }
 
     /// Get the ID of the current leader.

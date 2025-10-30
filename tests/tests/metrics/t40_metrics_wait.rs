@@ -40,7 +40,7 @@ async fn metrics_wait() -> Result<()> {
     }
 
     router.wait(&0, None).current_leader(0, "become leader").await?;
-    router.wait_for_log(&cluster, Some(1), None, "initial log").await?;
+    router.wait(&0, None).applied_index(Some(1), "initial log").await?;
 
     tracing::info!("--- wait and timeout");
 

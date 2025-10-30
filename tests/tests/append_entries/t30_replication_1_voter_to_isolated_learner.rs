@@ -36,14 +36,7 @@ async fn replication_1_voter_to_isolated_learner() -> Result<()> {
         router.client_request_many(0, "0", (10 - log_index) as usize).await?;
         log_index = 10;
 
-        router
-            .wait_for_log(
-                &btreeset![0],
-                Some(log_index),
-                timeout(),
-                "send log to trigger snapshot",
-            )
-            .await?;
+        router.wait(&0, timeout()).applied_index(Some(log_index), "send log to trigger snapshot").await?;
     }
 
     tracing::info!(log_index, "--- restore replication to node 1");
@@ -53,14 +46,7 @@ async fn replication_1_voter_to_isolated_learner() -> Result<()> {
         router.client_request_many(0, "0", (10 - log_index) as usize).await?;
         log_index = 10;
 
-        router
-            .wait_for_log(
-                &btreeset![0],
-                Some(log_index),
-                timeout(),
-                "send log to trigger snapshot",
-            )
-            .await?;
+        router.wait(&0, timeout()).applied_index(Some(log_index), "send log to trigger snapshot").await?;
     }
     Ok(())
 }

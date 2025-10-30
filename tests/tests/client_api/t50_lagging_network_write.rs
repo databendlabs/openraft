@@ -37,7 +37,9 @@ async fn lagging_network_write() -> Result<()> {
 
     router.client_request_many(0, "client", 1).await?;
     log_index += 1;
-    router.wait_for_log(&btreeset![0, 1, 2], Some(log_index), timeout(), "write one log").await?;
+    for id in [0, 1, 2] {
+        router.wait(&id, timeout()).applied_index(Some(log_index), "write one log").await?;
+    }
 
     let node = router.get_raft_handle(&0)?;
     node.change_membership([0, 1, 2], false).await?;
@@ -46,11 +48,15 @@ async fn lagging_network_write() -> Result<()> {
     for node in [1, 2] {
         router.wait(&node, None).state(ServerState::Follower, "changed").await?;
     }
-    router.wait_for_log(&btreeset![0, 1, 2], Some(log_index), timeout(), "3 candidates").await?;
+    for id in [0, 1, 2] {
+        router.wait(&id, timeout()).applied_index(Some(log_index), "3 candidates").await?;
+    }
 
     router.client_request_many(0, "client", 1).await?;
     log_index += 1;
-    router.wait_for_log(&btreeset![0, 1, 2], Some(log_index), timeout(), "write 2nd log").await?;
+    for id in [0, 1, 2] {
+        router.wait(&id, timeout()).applied_index(Some(log_index), "write 2nd log").await?;
+    }
 
     Ok(())
 }

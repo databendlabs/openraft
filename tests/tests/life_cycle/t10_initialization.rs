@@ -58,8 +58,8 @@ async fn initialization() -> anyhow::Result<()> {
     let mut log_index = 0;
 
     // Assert all nodes are in learner state & have no entries.
-    router.wait_for_log(&btreeset![0, 1, 2], None, timeout(), "empty").await?;
     for node in [0, 1, 2] {
+        router.wait(&node, timeout()).applied_index(None, "empty").await?;
         router.wait(&node, timeout()).state(ServerState::Learner, "empty").await?;
     }
 

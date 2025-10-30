@@ -37,7 +37,7 @@ async fn single_node() -> Result<()> {
 
     // Write some data to the single node cluster.
     log_index += router.client_request_many(0, "0", 1000).await?;
-    router.wait_for_log(&btreeset![0], Some(log_index), timeout(), "client_request_many").await?;
+    router.wait(&0, timeout()).applied_index(Some(log_index), "client_request_many").await?;
     router.assert_storage_state(1, log_index, Some(0), log_id(1, 0, log_index), None).await?;
 
     // Read some data from the single node cluster.

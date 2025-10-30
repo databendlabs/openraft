@@ -118,20 +118,18 @@ async fn concurrent_write_and_add_learner() -> Result<()> {
 
     wait_log(&router, &candidates, log_index).await?;
     router
-        .wait_for_metrics(
-            &3u64,
+        .wait(&3u64, timeout())
+        .metrics(
             |x| x.state == ServerState::Learner,
-            timeout(),
             &format!("n{}.state -> {:?}", 3, ServerState::Learner),
         )
         .await?;
 
     // THe learner should receive the last written log
     router
-        .wait_for_metrics(
-            &3u64,
+        .wait(&3u64, timeout())
+        .metrics(
             |x| x.last_log_index == Some(log_index),
-            timeout(),
             &format!("n{}.last_log_index -> {}", 3, log_index),
         )
         .await?;
@@ -142,18 +140,16 @@ async fn concurrent_write_and_add_learner() -> Result<()> {
 async fn wait_log(router: &RaftRouter, node_ids: &BTreeSet<u64>, want_log: u64) -> anyhow::Result<()> {
     for i in node_ids.iter() {
         router
-            .wait_for_metrics(
-                i,
+            .wait(i, timeout())
+            .metrics(
                 |x| x.last_log_index == Some(want_log),
-                timeout(),
                 &format!("n{}.last_log_index -> {}", i, want_log),
             )
             .await?;
         router
-            .wait_for_metrics(
-                i,
+            .wait(i, timeout())
+            .metrics(
                 |x| x.last_applied.index() == Some(want_log),
-                timeout(),
                 &format!("n{}.last_applied -> {}", i, want_log),
             )
             .await?;

@@ -38,14 +38,7 @@ async fn after_snapshot_add_learner_and_request_a_log() -> Result<()> {
         log_index = snapshot_threshold - 1;
         snapshot_index = log_index;
 
-        router
-            .wait_for_log(
-                &btreeset![0],
-                Some(log_index),
-                timeout(),
-                "send log to trigger snapshot",
-            )
-            .await?;
+        router.wait(&0, timeout()).applied_index(Some(log_index), "send log to trigger snapshot").await?;
 
         router
             .wait(&0, timeout())
@@ -82,14 +75,12 @@ async fn after_snapshot_add_learner_and_request_a_log() -> Result<()> {
         log_index += router.client_request_many(0, "0", 1).await?;
         tracing::info!(log_index, "--- after request a log");
 
-        router
-            .wait_for_log(
-                &btreeset![0, 1],
-                Some(log_index),
-                timeout(),
-                "learner-1 receives client-write log",
-            )
-            .await?;
+        for id in [0, 1] {
+            router
+                .wait(&id, timeout())
+                .applied_index(Some(log_index), "learner-1 receives client-write log")
+                .await?;
+        }
 
         let expected_snap = Some((snapshot_index.into(), 1));
 

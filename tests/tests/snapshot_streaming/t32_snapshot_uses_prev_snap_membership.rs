@@ -54,14 +54,9 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
         router.client_request_many(0, "0", (snapshot_threshold - 1 - log_index) as usize).await?;
         log_index = snapshot_threshold - 1;
 
-        router
-            .wait_for_log(
-                &btreeset![0, 1],
-                Some(log_index),
-                timeout(),
-                "send log to trigger snapshot",
-            )
-            .await?;
+        for id in [0, 1] {
+            router.wait(&id, timeout()).applied_index(Some(log_index), "send log to trigger snapshot").await?;
+        }
         router.wait(&0, timeout()).snapshot(log_id(1, 0, log_index), "1st snapshot").await?;
 
         {
@@ -87,7 +82,9 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
         router.client_request_many(0, "0", (snapshot_threshold * 2 - 1 - log_index) as usize).await?;
         log_index = snapshot_threshold * 2 - 1;
 
-        router.wait_for_log(&btreeset![0, 1], Some(log_index), None, "send log to trigger snapshot").await?;
+        for id in [0, 1] {
+            router.wait(&id, None).applied_index(Some(log_index), "send log to trigger snapshot").await?;
+        }
         router.wait(&0, None).snapshot(log_id(1, 0, log_index), "2nd snapshot").await?;
     }
 

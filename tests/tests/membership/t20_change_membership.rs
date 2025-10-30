@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -8,6 +9,7 @@ use openraft::RaftLogReader;
 use openraft::ServerState;
 use openraft::error::ChangeMembershipError;
 use openraft::error::ClientWriteError;
+use openraft_memstore::MemNodeId;
 
 use crate::fixtures::RaftRouter;
 use crate::fixtures::ut_harness;
@@ -85,7 +87,7 @@ async fn change_with_new_learner_blocking() -> anyhow::Result<()> {
         router.new_raft_node(1).await;
         router.add_learner(0, 1).await?;
         log_index += 1;
-        router.wait_for_log(&btreeset![0], Some(log_index), timeout(), "add learner").await?;
+        router.wait(&0, timeout()).applied_index(Some(log_index), "add learner").await?;
 
         let node = router.get_raft_handle(&0)?;
         let res = node.change_membership([0, 1], false).await?;
@@ -174,7 +176,9 @@ async fn change_with_turn_removed_voter_to_learner() -> anyhow::Result<()> {
         log_index += 1;
 
         // all the nodes MUST recv the log
-        router.wait_for_log(&btreeset![0, 1, 2], Some(log_index), timeout, "append a log").await?;
+        for id in [0, 1, 2] {
+            router.wait(&id, timeout).applied_index(Some(log_index), "append a log").await?;
+        }
     }
 
     {
@@ -184,7 +188,9 @@ async fn change_with_turn_removed_voter_to_learner() -> anyhow::Result<()> {
         log_index += 2;
 
         // all the nodes MUST recv the change_membership log
-        router.wait_for_log(&btreeset![0, 1], Some(log_index), timeout, "append a log").await?;
+        for id in [0, 1] {
+            router.wait(&id, timeout).applied_index(Some(log_index), "append a log").await?;
+        }
     }
 
     tracing::info!(log_index, "--- write up to 1 logs");
@@ -193,23 +199,32 @@ async fn change_with_turn_removed_voter_to_learner() -> anyhow::Result<()> {
         log_index += 1;
 
         // node [0,1] MUST recv the log
-        router.wait_for_log(&btreeset![0, 1], Some(log_index), timeout, "append a log").await?;
+        for id in [0, 1] {
+            router.wait(&id, timeout).applied_index(Some(log_index), "append a log").await?;
+        }
 
         // node 2 MUST stay in learner state and is able to receive new logs
         router
-            .wait_for_metrics(
-                &2,
+            .wait(&2, timeout)
+            .metrics(
                 |x| x.state == ServerState::Learner,
-                timeout,
                 &format!("n{}.state -> {:?}", 2, ServerState::Learner),
             )
             .await?;
 
         // node [2] MUST recv the log
-        router.wait_for_log(&btreeset![2], Some(log_index), timeout, "append a log").await?;
+        router.wait(&2, timeout).applied_index(Some(log_index), "append a log").await?;
 
         // check membership
-        router.wait_for_members(&btreeset![0, 1, 2], btreeset![0, 1], timeout, "members: [0,1]").await?;
+        for id in [0, 1, 2] {
+            router
+                .wait(&id, timeout)
+                .metrics(
+                    |x| x.membership_config.voter_ids().collect::<BTreeSet<MemNodeId>>() == btreeset![0, 1],
+                    "members: [0,1]",
+                )
+                .await?;
+        }
     }
 
     Ok(())

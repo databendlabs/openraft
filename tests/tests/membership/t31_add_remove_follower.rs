@@ -38,7 +38,9 @@ async fn add_remove_voter() -> Result<()> {
         router.client_request_many(0, "client", 100).await?;
         log_index += 100;
 
-        router.wait_for_log(&c01234, Some(log_index), timeout(), "write 100 logs").await?;
+        for id in c01234.iter() {
+            router.wait(id, timeout()).applied_index(Some(log_index), "write 100 logs").await?;
+        }
     }
 
     tracing::info!(log_index, "--- remove n{}", 4);
@@ -47,7 +49,9 @@ async fn add_remove_voter() -> Result<()> {
         node.change_membership(c0123.clone(), false).await?;
         log_index += 2; // two member-change logs
 
-        router.wait_for_log(&c0123, Some(log_index), timeout(), "removed node-4 from membership").await?;
+        for id in c0123.iter() {
+            router.wait(id, timeout()).applied_index(Some(log_index), "removed node-4 from membership").await?;
+        }
     }
 
     tracing::info!(log_index, "--- write another 100 logs");
@@ -56,7 +60,9 @@ async fn add_remove_voter() -> Result<()> {
         log_index += 100;
     }
 
-    router.wait_for_log(&c0123, Some(log_index), timeout(), "4 nodes recv logs 100~200").await?;
+    for id in c0123.iter() {
+        router.wait(id, timeout()).applied_index(Some(log_index), "4 nodes recv logs 100~200").await?;
+    }
 
     tracing::info!(log_index, "--- log will not be sync to removed node");
     {
