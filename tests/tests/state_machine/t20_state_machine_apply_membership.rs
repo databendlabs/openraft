@@ -60,7 +60,7 @@ async fn state_machine_apply_membership() -> Result<()> {
         router.add_learner(0, 4).await?;
     }
     log_index += 4;
-    router.wait_for_log(&btreeset![0], Some(log_index), None, "add learner").await?;
+    router.wait(&0, None).applied_index(Some(log_index), "add learner").await?;
 
     tracing::info!(log_index, "--- changing cluster config");
     let node = router.get_raft_handle(&0)?;

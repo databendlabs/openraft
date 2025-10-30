@@ -50,7 +50,9 @@ async fn client_writes() -> Result<()> {
     while clients.next().await.is_some() {}
 
     log_index += 100 * 6;
-    router.wait_for_log(&btreeset![0, 1, 2], Some(log_index), None, "sync logs").await?;
+    for id in [0, 1, 2] {
+        router.wait(&id, None).applied_index(Some(log_index), "sync logs").await?;
+    }
 
     router
         .assert_storage_state(

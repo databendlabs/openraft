@@ -45,8 +45,8 @@ async fn leader_metrics() -> Result<()> {
     let mut log_index = router.new_cluster(btreeset! {0}, btreeset! {}).await?;
 
     router
-        .wait_for_metrics(
-            &0,
+        .wait(&0, timeout())
+        .metrics(
             |x| {
                 if let Some(ref q) = x.replication {
                     q == &btreemap! {
@@ -56,7 +56,6 @@ async fn leader_metrics() -> Result<()> {
                     false
                 }
             },
-            timeout(),
             "no replication with 1 node cluster",
         )
         .await?;
@@ -75,7 +74,9 @@ async fn leader_metrics() -> Result<()> {
         router.add_learner(0, 4).await?;
     }
     log_index += 4; // 4 add_learner log
-    router.wait_for_log(&c01234, Some(log_index), timeout(), "add learner 1,2,3,4").await?;
+    for id in c01234.iter() {
+        router.wait(id, timeout()).applied_index(Some(log_index), "add learner 1,2,3,4").await?;
+    }
 
     tracing::info!(log_index, "--- changing cluster config to 01234");
 
@@ -83,13 +84,15 @@ async fn leader_metrics() -> Result<()> {
     node.change_membership(c01234.clone(), false).await?;
     log_index += 2; // 2 member-change logs
 
-    router.wait_for_log(&c01234, Some(log_index), timeout(), "change members to 0,1,2,3,4").await?;
+    for id in c01234.iter() {
+        router.wait(id, timeout()).applied_index(Some(log_index), "change members to 0,1,2,3,4").await?;
+    }
 
     let ww = Some(log_id(1, 0, log_index));
     let want_repl = btreemap! { 0u64=>ww, 1u64=>ww, 2=>ww, 3=>ww, 4=>ww, };
     router
-        .wait_for_metrics(
-            &0,
+        .wait(&0, timeout())
+        .metrics(
             |x| {
                 if let Some(ref q) = x.replication {
                     q == &want_repl
@@ -97,7 +100,6 @@ async fn leader_metrics() -> Result<()> {
                     false
                 }
             },
-            timeout(),
             "replication metrics to 4 nodes",
         )
         .await?;
@@ -112,14 +114,12 @@ async fn leader_metrics() -> Result<()> {
         node.change_membership(c0123.clone(), false).await?;
         log_index += 2; // two member-change logs
 
-        router
-            .wait_for_log(
-                &c0123,
-                Some(log_index),
-                timeout(),
-                "other nodes should commit the membership change log",
-            )
-            .await?;
+        for id in c0123.iter() {
+            router
+                .wait(id, timeout())
+                .applied_index(Some(log_index), "other nodes should commit the membership change log")
+                .await?;
+        }
     }
 
     tracing::info!(
@@ -130,8 +130,8 @@ async fn leader_metrics() -> Result<()> {
         let ww = Some(log_id(1, 0, log_index));
         let want_repl = btreemap! { 0=>ww, 1=>ww, 2=>ww, 3=>ww};
         router
-            .wait_for_metrics(
-                &0,
+            .wait(&0, timeout())
+            .metrics(
                 |x| {
                     if let Some(ref q) = x.replication {
                         q == &want_repl
@@ -139,7 +139,6 @@ async fn leader_metrics() -> Result<()> {
                         false
                     }
                 },
-                timeout(),
                 "replication metrics to 3 nodes",
             )
             .await?;

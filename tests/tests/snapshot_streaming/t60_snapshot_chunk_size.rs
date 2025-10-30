@@ -2,7 +2,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
-use maplit::btreeset;
 use openraft::Config;
 use openraft::ServerState;
 use openraft::SnapshotPolicy;
@@ -41,13 +40,13 @@ async fn snapshot_chunk_size() -> Result<()> {
     {
         router.new_raft_node(0).await;
 
-        router.wait_for_log(&btreeset![0], None, timeout(), "empty").await?;
+        router.wait(&0, timeout()).applied_index(None, "empty").await?;
         router.wait(&0, timeout()).state(ServerState::Learner, "empty").await?;
 
         router.initialize(0).await?;
         log_index += 1;
 
-        router.wait_for_log(&btreeset![0], Some(log_index), timeout(), "init leader").await?;
+        router.wait(&0, timeout()).applied_index(Some(log_index), "init leader").await?;
     }
 
     tracing::info!(log_index, "--- send just enough logs to trigger snapshot");
@@ -57,14 +56,7 @@ async fn snapshot_chunk_size() -> Result<()> {
 
         let want_snap = Some((log_index.into(), 1));
 
-        router
-            .wait_for_log(
-                &btreeset![0],
-                Some(log_index),
-                timeout(),
-                "send log to trigger snapshot",
-            )
-            .await?;
+        router.wait(&0, timeout()).applied_index(Some(log_index), "send log to trigger snapshot").await?;
         router.wait(&0, timeout()).snapshot(log_id(1, 0, log_index), "snapshot").await?;
         router.assert_storage_state(1, log_index, Some(0), log_id(1, 0, log_index), want_snap).await?;
 
@@ -82,7 +74,9 @@ async fn snapshot_chunk_size() -> Result<()> {
         router.add_learner(0, 1).await.expect("failed to add new node as learner");
         log_index += 1;
 
-        router.wait_for_log(&btreeset![0, 1], Some(log_index), timeout(), "add learner").await?;
+        for id in [0, 1] {
+            router.wait(&id, timeout()).applied_index(Some(log_index), "add learner").await?;
+        }
         router.wait(&1, timeout()).applied_index(Some(log_index), "sync all data to learner-1").await?;
         router.wait(&1, timeout()).snapshot(log_id(1, 0, log_index - 1), "learner-1 snapshot").await?;
 

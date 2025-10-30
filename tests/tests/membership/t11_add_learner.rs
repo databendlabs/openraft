@@ -57,14 +57,16 @@ async fn add_learner_basic() -> Result<()> {
             log_index = 1000;
 
             tracing::info!(log_index, "--- write up to 1000 logs done");
-            router.wait_for_log(&btreeset! {0}, Some(log_index), timeout(), "write 1000 logs to leader").await?;
+            router.wait(&0, timeout()).applied_index(Some(log_index), "write 1000 logs to leader").await?;
         }
 
         router.new_raft_node(1).await;
         router.add_learner(0, 1).await?;
         log_index += 1;
 
-        router.wait_for_log(&btreeset! {0,1}, Some(log_index), timeout(), "add learner").await?;
+        for id in [0, 1] {
+            router.wait(&id, timeout()).applied_index(Some(log_index), "add learner").await?;
+        }
 
         tracing::info!(log_index, "--- add_learner blocks until the replication catches up");
         {
@@ -76,7 +78,9 @@ async fn add_learner_basic() -> Result<()> {
             // 0-th log
             assert_eq!(log_index + 1, logs.len() as u64);
 
-            router.wait_for_log(&btreeset! {0,1}, Some(log_index), timeout(), "replication to learner").await?;
+            for id in [0, 1] {
+                router.wait(&id, timeout()).applied_index(Some(log_index), "replication to learner").await?;
+            }
         }
     }
 
@@ -277,7 +281,9 @@ async fn check_learner_after_leader_transferred() -> Result<()> {
     router.add_learner(orig_leader_id, 3).await?;
     router.add_learner(orig_leader_id, 4).await?;
     log_index += 2;
-    router.wait_for_log(&btreeset![0, 1], Some(log_index), timeout(), "add learner").await?;
+    for id in [0, 1] {
+        router.wait(&id, timeout()).applied_index(Some(log_index), "add learner").await?;
+    }
 
     let node = router.get_raft_handle(&orig_leader_id)?;
     node.change_membership([1, 3, 4], false).await?;

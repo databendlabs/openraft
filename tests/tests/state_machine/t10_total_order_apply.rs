@@ -70,10 +70,9 @@ async fn total_order_apply() -> Result<()> {
 
     let want = n as u64;
     router
-        .wait_for_metrics(
-            &1u64,
+        .wait(&1u64, timeout())
+        .metrics(
             |x| x.last_applied.index() >= Some(want),
-            timeout(),
             &format!("n{}.last_applied -> {}", 1, want),
         )
         .await?;

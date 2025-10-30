@@ -39,7 +39,9 @@ async fn remove_leader() -> Result<()> {
     // Submit a config change which adds two new nodes and removes the current leader.
     let orig_leader = router.leader().expect("expected the cluster to have a leader");
     assert_eq!(0, orig_leader, "expected original leader to be node 0");
-    router.wait_for_log(&btreeset![0, 1], Some(log_index), timeout(), "add learner").await?;
+    for id in [0, 1] {
+        router.wait(&id, timeout()).applied_index(Some(log_index), "add learner").await?;
+    }
 
     let node = router.get_raft_handle(&orig_leader)?;
     node.change_membership([1, 2, 3], false).await?;

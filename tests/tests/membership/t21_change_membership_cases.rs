@@ -139,7 +139,12 @@ async fn change_from_to(old: BTreeSet<MemNodeId>, change_members: BTreeSet<MemNo
         router.client_request_many(0, "client", 10).await?;
         log_index += 10;
 
-        router.wait_for_log(&old, Some(log_index), timeout(), &format!("write 10 logs, {}", mes)).await?;
+        for id in old.iter() {
+            router
+                .wait(id, timeout())
+                .applied_index(Some(log_index), &format!("write 10 logs, {}", mes))
+                .await?;
+        }
     }
 
     let orig_leader = router.leader().expect("expected the cluster to have a leader");
@@ -150,7 +155,9 @@ async fn change_from_to(old: BTreeSet<MemNodeId>, change_members: BTreeSet<MemNo
             router.new_raft_node(*id).await;
             router.add_learner(0, *id).await?;
             log_index += 1;
-            router.wait_for_log(&old, Some(log_index), timeout(), &format!("add learner, {}", mes)).await?;
+            for id in old.iter() {
+                router.wait(id, timeout()).applied_index(Some(log_index), &format!("add learner, {}", mes)).await?;
+            }
         }
 
         let node = router.get_raft_handle(&0)?;

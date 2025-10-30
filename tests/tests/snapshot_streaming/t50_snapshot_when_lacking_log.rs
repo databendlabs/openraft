@@ -39,7 +39,7 @@ async fn switch_to_snapshot_replication_when_lacking_log() -> Result<()> {
         router.client_request_many(0, "0", (snapshot_threshold - 1 - log_index) as usize).await?;
         log_index = snapshot_threshold - 1;
 
-        router.wait_for_log(&btreeset![0], Some(log_index), None, "send log to trigger snapshot").await?;
+        router.wait(&0, None).applied_index(Some(log_index), "send log to trigger snapshot").await?;
 
         router.wait(&0, None).snapshot(log_id(1, 0, log_index), "snapshot").await?;
         router
@@ -68,7 +68,9 @@ async fn switch_to_snapshot_replication_when_lacking_log() -> Result<()> {
         router.add_learner(0, 1).await.expect("failed to add new node as learner");
         log_index += 1;
 
-        router.wait_for_log(&btreeset![0, 1], Some(log_index), None, "add learner").await?;
+        for id in [0, 1] {
+            router.wait(&id, None).applied_index(Some(log_index), "add learner").await?;
+        }
         router.wait(&1, None).snapshot(log_id(1, 0, snapshot_threshold - 1), "").await?;
         let expected_snap = Some(((snapshot_threshold - 1).into(), 1));
         router

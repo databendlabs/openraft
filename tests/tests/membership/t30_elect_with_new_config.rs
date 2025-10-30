@@ -49,9 +49,7 @@ async fn leader_election_after_changing_0_to_01234() -> Result<()> {
     node_1.trigger().elect().await?;
     log_index += 1; // leader initial blank log
 
-    router
-        .wait_for_metrics(&1, |x| x.current_leader == Some(1), timeout(), "wait for new leader")
-        .await?;
+    router.wait(&1, timeout()).metrics(|x| x.current_leader == Some(1), "wait for new leader").await?;
 
     for node_id in [1, 2, 3, 4] {
         router

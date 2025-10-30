@@ -2,7 +2,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
-use maplit::btreeset;
 use openraft::Config;
 use openraft::Entry;
 use openraft::RaftLogReader;
@@ -36,7 +35,7 @@ async fn append_conflicts() -> Result<()> {
 
     tracing::info!("--- wait for init node to ready");
 
-    router.wait_for_log(&btreeset![0], None, timeout(), "empty").await?;
+    router.wait(&0, timeout()).applied_index(None, "empty").await?;
     router.wait(&0, timeout()).state(ServerState::Learner, "empty").await?;
 
     let (r0, mut sto0, _sm0) = router.remove_node(0).unwrap();

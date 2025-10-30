@@ -52,14 +52,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
         router.client_request_many(0, "0", (snapshot_threshold - 1 - log_index) as usize).await?;
         log_index = snapshot_threshold - 1;
 
-        router
-            .wait_for_log(
-                &btreeset![0],
-                Some(log_index),
-                timeout(),
-                "send log to trigger snapshot",
-            )
-            .await?;
+        router.wait(&0, timeout()).applied_index(Some(log_index), "send log to trigger snapshot").await?;
 
         router.wait(&0, timeout()).snapshot(log_id(1, 0, log_index), "snapshot").await?;
         router
@@ -118,7 +111,9 @@ async fn snapshot_overrides_membership() -> Result<()> {
 
             tracing::info!(log_index, "--- DONE add learner");
 
-            router.wait_for_log(&btreeset![0, 1], Some(log_index), timeout(), "add learner").await?;
+            for id in [0, 1] {
+                router.wait(&id, timeout()).applied_index(Some(log_index), "add learner").await?;
+            }
             router.wait(&1, timeout()).snapshot(log_id(1, 0, snapshot_index), "").await?;
 
             let expected_snap = Some((snapshot_index.into(), 1));

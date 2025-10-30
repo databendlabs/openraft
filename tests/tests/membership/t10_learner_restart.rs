@@ -40,7 +40,9 @@ async fn learner_restart() -> Result<()> {
     router.client_request(0, "foo", 1).await?;
     log_index += 1;
 
-    router.wait_for_log(&btreeset![0, 1], Some(log_index), None, "write one log").await?;
+    for id in [0, 1] {
+        router.wait(&id, None).applied_index(Some(log_index), "write one log").await?;
+    }
 
     let (node0, _sto0, _sm0) = router.remove_node(0).unwrap();
     node0.shutdown().await?;
