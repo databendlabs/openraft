@@ -6,6 +6,8 @@
   * [How to detect if a leader is valid?](#how-to-detect-if-a-leader-is-valid)
 - [Data structure](#data-structure)
   * [Why is log id a tuple of `(term, node_id, log_index)`?](#why-is-log-id-a-tuple-of-term-node_id-log_index)
+- [Storage](#storage)
+  * [Does the state machine need to be persisted to disk?](#does-the-state-machine-need-to-be-persisted-to-disk)
 - [Replication](#replication)
   * [How does Openraft handle snapshot building and transfer?](#how-does-openraft-handle-snapshot-building-and-transfer)
   * [How to minimize error logging when a follower is offline](#how-to-minimize-error-logging-when-a-follower-is-offline)
