@@ -27,6 +27,12 @@ pub type VoteProgress<C> = WatchProgress<C, Option<Vote<C>>>;
 /// Returns `Some(LogId)` containing the latest committed log id.
 pub type CommitProgress<C> = WatchProgress<C, Option<LogIdOf<C>>>;
 
+/// Handle for tracking snapshot persistence progress.
+///
+/// Returns `None` if no snapshot has been persisted yet.
+/// Returns `Some(LogId)` containing the last persisted snapshot log id.
+pub type SnapshotProgress<C> = WatchProgress<C, Option<LogIdOf<C>>>;
+
 /// Handle for tracking applied log progress.
 ///
 /// Returns `None` if no log has been applied yet.
