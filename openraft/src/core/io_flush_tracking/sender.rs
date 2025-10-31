@@ -40,12 +40,7 @@ where C: RaftTypeConfig
     /// # Arguments
     ///
     /// * `io_id` - The I/O operation that just completed. `None` means no progress to report.
-    pub(crate) fn send_log_progress(&self, io_id: Option<IOId<C>>) {
-        self.do_send_log_progress(io_id);
-    }
-
-    /// Internal implementation of `send_log_progress` that returns an option, just for easy return.
-    fn do_send_log_progress(&self, io_id: Option<IOId<C>>) -> Option<()> {
+    pub(crate) fn send_log_progress(&self, io_id: Option<IOId<C>>) -> Option<()> {
         tracing::debug!("send_log_progress: try to update to :{}", io_id.display());
 
         let (vote, log_id) = io_id?.to_vote_and_log_id();
