@@ -2,6 +2,7 @@ use super::FlushPoint;
 use crate::RaftTypeConfig;
 use crate::Vote;
 use crate::core::io_flush_tracking::AppliedProgress;
+use crate::core::io_flush_tracking::CommitProgress;
 use crate::core::io_flush_tracking::LogProgress;
 use crate::core::io_flush_tracking::VoteProgress;
 use crate::core::io_flush_tracking::sender::IoProgressSender;
@@ -12,13 +13,15 @@ use crate::type_config::alias::WatchReceiverOf;
 /// I/O flush progress watch handles.
 ///
 /// This struct maintains the receiving ends of watch channels that track I/O flush progress.
-/// It provides three independent progress streams:
+/// It provides four independent progress streams:
 ///
 /// - **Log progress**: Tracks all I/O operations (both vote saves and log appends). Updated
 ///   whenever any data is flushed to storage.
 ///
 /// - **Vote progress**: Tracks only vote changes. Updated when the vote value changes (new term or
 ///   leader), not on every log append.
+///
+/// - **Commit progress**: Tracks when committed logs are submitted to the state machine.
 ///
 /// - **Applied progress**: Tracks logs applied to the state machine. Updated when the last applied
 ///   log id advances.
@@ -35,8 +38,11 @@ where C: RaftTypeConfig
     /// Receiver for vote I/O progress (vote saves only, or implied by log appends).
     vote: WatchReceiverOf<C, Option<Vote<C>>>,
 
+    /// Receiver for commit log progress (state machine submission).
+    commit: WatchReceiverOf<C, Option<LogIdOf<C>>>,
+
     /// Receiver for applied log progress (state machine application).
-    applied: WatchReceiverOf<C, Option<LogIdOf<C>>>,
+    apply: WatchReceiverOf<C, Option<LogIdOf<C>>>,
 }
 
 impl<C> IoProgressWatcher<C>
@@ -50,14 +56,21 @@ where C: RaftTypeConfig
     pub(crate) fn new() -> (IoProgressSender<C>, Self) {
         let (log_tx, log) = C::watch_channel(None);
         let (vote_tx, vote) = C::watch_channel(None);
-        let (apply_tx, applied) = C::watch_channel(None);
+        let (commit_tx, commit) = C::watch_channel(None);
+        let (apply_tx, apply) = C::watch_channel(None);
 
         let sender = IoProgressSender {
             log_tx,
             vote_tx,
+            commit_tx,
             apply_tx,
         };
-        let watcher = Self { log, vote, applied };
+        let watcher = Self {
+            log,
+            vote,
+            commit,
+            apply,
+        };
 
         (sender, watcher)
     }
@@ -78,11 +91,19 @@ where C: RaftTypeConfig
         VoteProgress::new(self.vote.clone())
     }
 
+    /// Create a watch handle for commit log progress.
+    ///
+    /// Each call creates a new independent handle. Multiple handles can watch the same progress
+    /// concurrently.
+    pub(crate) fn commit_progress(&self) -> CommitProgress<C> {
+        CommitProgress::new(self.commit.clone())
+    }
+
     /// Create a watch handle for applied log progress.
     ///
     /// Each call creates a new independent handle. Multiple handles can watch the same progress
     /// concurrently.
     pub(crate) fn apply_progress(&self) -> AppliedProgress<C> {
-        AppliedProgress::new(self.applied.clone())
+        AppliedProgress::new(self.apply.clone())
     }
 }

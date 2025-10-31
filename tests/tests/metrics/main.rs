@@ -15,4 +15,5 @@ mod t20_metrics_state_machine_consistency;
 mod t30_leader_metrics;
 mod t40_metrics_wait;
 mod t50_apply_progress_api;
+mod t50_commit_progress_api;
 mod t50_log_progress_api;

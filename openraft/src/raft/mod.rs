@@ -66,6 +66,7 @@ use crate::core::RaftCore;
 use crate::core::Tick;
 use crate::core::heartbeat::handle::HeartbeatWorkersHandle;
 use crate::core::io_flush_tracking::AppliedProgress;
+use crate::core::io_flush_tracking::CommitProgress;
 pub use crate::core::io_flush_tracking::FlushPoint;
 use crate::core::io_flush_tracking::IoProgressWatcher;
 use crate::core::io_flush_tracking::LogProgress;
@@ -1059,6 +1060,26 @@ where C: RaftTypeConfig
     #[must_use = "progress handle should be stored to track vote progress"]
     pub fn watch_vote_progress(&self) -> VoteProgress<C> {
         self.inner.progress_watcher.vote_progress()
+    }
+
+    /// Get a handle to watch commit log progress.
+    ///
+    /// Tracks when committed logs advance(persisted on a quorum and the last-log is proposed by the
+    /// leader). Updated whenever the committed cursor moves forward.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let mut commit_progress = raft.watch_commit_progress();
+    ///
+    /// // Wait until log index 42 is committed
+    /// let target = Some(LogId::new(LeaderId::new(2, node_id), 42));
+    /// commit_progress.wait_until_ge(&target).await?;
+    /// ```
+    #[since(version = "0.10.0")]
+    #[must_use = "progress handle should be stored to track commit progress"]
+    pub fn watch_commit_progress(&self) -> CommitProgress<C> {
+        self.inner.progress_watcher.commit_progress()
     }
 
     /// Get a handle to watch applied log progress.
