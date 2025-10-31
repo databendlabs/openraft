@@ -5,6 +5,7 @@ use crate::Vote;
 use crate::async_runtime::watch::RecvError;
 use crate::async_runtime::watch::WatchReceiver;
 use crate::core::io_flush_tracking::FlushPoint;
+use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::WatchReceiverOf;
 
 /// Handle for tracking log I/O flush progress.
@@ -19,6 +20,12 @@ pub type LogProgress<C> = WatchProgress<C, Option<FlushPoint<C>>>;
 /// Returns `None` if no vote has been flushed yet.
 /// Returns `Some(Vote)` containing the last flushed vote.
 pub type VoteProgress<C> = WatchProgress<C, Option<Vote<C>>>;
+
+/// Handle for tracking applied log progress.
+///
+/// Returns `None` if no log has been applied yet.
+/// Returns `Some(LogId)` containing the last applied log id.
+pub type AppliedProgress<C> = WatchProgress<C, Option<LogIdOf<C>>>;
 
 /// Watch handle for tracking I/O flush progress.
 ///

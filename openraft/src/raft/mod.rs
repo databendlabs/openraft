@@ -65,6 +65,7 @@ use crate::config::RuntimeConfig;
 use crate::core::RaftCore;
 use crate::core::Tick;
 use crate::core::heartbeat::handle::HeartbeatWorkersHandle;
+use crate::core::io_flush_tracking::AppliedProgress;
 pub use crate::core::io_flush_tracking::FlushPoint;
 use crate::core::io_flush_tracking::IoProgressWatcher;
 use crate::core::io_flush_tracking::LogProgress;
@@ -1032,6 +1033,7 @@ where C: RaftTypeConfig
     /// ));
     /// log_progress.wait_until_ge(&target).await?;
     /// ```
+    #[since(version = "0.10.0")]
     #[must_use = "progress handle should be stored to track I/O progress"]
     pub fn watch_log_progress(&self) -> LogProgress<C> {
         self.inner.progress_watcher.log_progress()
@@ -1053,9 +1055,35 @@ where C: RaftTypeConfig
     /// let target = Some(Vote::new_committed(2, 0));
     /// vote_progress.wait_until_ge(&target).await?;
     /// ```
+    #[since(version = "0.10.0")]
     #[must_use = "progress handle should be stored to track vote progress"]
     pub fn watch_vote_progress(&self) -> VoteProgress<C> {
         self.inner.progress_watcher.vote_progress()
+    }
+
+    /// Get a handle to watch applied log progress.
+    ///
+    /// Tracks when logs are applied to the state machine.
+    /// Updated whenever the last applied log id advances.
+    ///
+    /// # Note
+    ///
+    /// If the state machine does not persist the applied state immediately, the watcher
+    /// may observe duplicate events when the server restarts and re-applies log entries.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let mut apply_progress = raft.watch_apply_progress();
+    ///
+    /// // Wait until log index 42 is applied
+    /// let target = Some(LogId::new(LeaderId::new(2, node_id), 42));
+    /// apply_progress.wait_until_ge(&target).await?;
+    /// ```
+    #[since(version = "0.10.0")]
+    #[must_use = "progress handle should be stored to track applied progress"]
+    pub fn watch_apply_progress(&self) -> AppliedProgress<C> {
+        self.inner.progress_watcher.apply_progress()
     }
 
     /// Get a handle to wait for the metrics to satisfy some condition.

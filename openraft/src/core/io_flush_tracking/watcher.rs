@@ -1,22 +1,27 @@
 use super::FlushPoint;
 use crate::RaftTypeConfig;
 use crate::Vote;
+use crate::core::io_flush_tracking::AppliedProgress;
 use crate::core::io_flush_tracking::LogProgress;
 use crate::core::io_flush_tracking::VoteProgress;
 use crate::core::io_flush_tracking::sender::IoProgressSender;
 use crate::type_config::TypeConfigExt;
+use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::WatchReceiverOf;
 
 /// I/O flush progress watch handles.
 ///
 /// This struct maintains the receiving ends of watch channels that track I/O flush progress.
-/// It provides two independent progress streams:
+/// It provides three independent progress streams:
 ///
 /// - **Log progress**: Tracks all I/O operations (both vote saves and log appends). Updated
 ///   whenever any data is flushed to storage.
 ///
 /// - **Vote progress**: Tracks only vote changes. Updated when the vote value changes (new term or
 ///   leader), not on every log append.
+///
+/// - **Applied progress**: Tracks logs applied to the state machine. Updated when the last applied
+///   log id advances.
 ///
 /// The separation allows applications to efficiently wait for different kinds of progress:
 /// - Use log progress to wait for specific log entries to be durable
@@ -29,6 +34,9 @@ where C: RaftTypeConfig
 
     /// Receiver for vote I/O progress (vote saves only, or implied by log appends).
     vote: WatchReceiverOf<C, Option<Vote<C>>>,
+
+    /// Receiver for applied log progress (state machine application).
+    applied: WatchReceiverOf<C, Option<LogIdOf<C>>>,
 }
 
 impl<C> IoProgressWatcher<C>
@@ -42,9 +50,14 @@ where C: RaftTypeConfig
     pub(crate) fn new() -> (IoProgressSender<C>, Self) {
         let (log_tx, log) = C::watch_channel(None);
         let (vote_tx, vote) = C::watch_channel(None);
+        let (apply_tx, applied) = C::watch_channel(None);
 
-        let sender = IoProgressSender { log_tx, vote_tx };
-        let watcher = Self { log, vote };
+        let sender = IoProgressSender {
+            log_tx,
+            vote_tx,
+            apply_tx,
+        };
+        let watcher = Self { log, vote, applied };
 
         (sender, watcher)
     }
@@ -63,5 +76,13 @@ where C: RaftTypeConfig
     /// concurrently.
     pub(crate) fn vote_progress(&self) -> VoteProgress<C> {
         VoteProgress::new(self.vote.clone())
+    }
+
+    /// Create a watch handle for applied log progress.
+    ///
+    /// Each call creates a new independent handle. Multiple handles can watch the same progress
+    /// concurrently.
+    pub(crate) fn apply_progress(&self) -> AppliedProgress<C> {
+        AppliedProgress::new(self.applied.clone())
     }
 }
