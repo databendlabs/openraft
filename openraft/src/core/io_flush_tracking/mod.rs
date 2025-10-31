@@ -19,6 +19,7 @@ mod watcher;
 pub use flush_point::FlushPoint;
 pub(crate) use sender::IoProgressSender;
 pub use watch_progress::AppliedProgress;
+pub use watch_progress::CommitProgress;
 pub use watch_progress::LogProgress;
 pub use watch_progress::VoteProgress;
 pub(crate) use watcher::IoProgressWatcher;

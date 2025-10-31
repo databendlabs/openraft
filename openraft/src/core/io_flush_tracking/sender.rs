@@ -10,7 +10,7 @@ use crate::type_config::alias::WatchSenderOf;
 /// Sender for publishing I/O flush progress notifications.
 ///
 /// Used internally by RaftCore to notify watchers when I/O operations complete.
-/// The sender maintains independent channels (log, vote, and applied) to allow efficient
+/// The sender maintains independent channels (log, vote, commit, and apply) to allow efficient
 /// filtering of notifications.
 pub(crate) struct IoProgressSender<C>
 where C: RaftTypeConfig
@@ -24,6 +24,9 @@ where C: RaftTypeConfig
     /// because `PartialOrd` is required for progress tracking but user-provided `VoteOf<C>`
     /// implementations may not provide it.
     pub(crate) vote_tx: WatchSenderOf<C, Option<Vote<C>>>,
+
+    /// Sender for commit progress (state machine submission).
+    pub(crate) commit_tx: WatchSenderOf<C, Option<LogIdOf<C>>>,
 
     /// Sender for last-applied log progress (state machine application).
     pub(crate) apply_tx: WatchSenderOf<C, Option<LogIdOf<C>>>,
@@ -77,16 +80,31 @@ where C: RaftTypeConfig
         Some(())
     }
 
+    /// Publish the latest commit log id progress.
+    pub(crate) fn send_commit_progress(&self, log_id: Option<LogIdOf<C>>) -> Option<()> {
+        tracing::debug!("send_commit_progress: try to update to :{}", log_id.display());
+
+        self.commit_tx.send_if_modified(move |prev| {
+            if prev.as_ref() != log_id.as_ref() {
+                tracing::debug!("send_commit_progress: update commit to :{}", log_id.display());
+                *prev = log_id.clone();
+                true
+            } else {
+                false
+            }
+        });
+
+        Some(())
+    }
+
     /// Publish the latest applied log id progress.
     pub(crate) fn send_apply_progress(&self, log_id: Option<LogIdOf<C>>) -> Option<()> {
         tracing::debug!("send_apply_progress: try to update to :{}", log_id.display());
 
-        let log_id = log_id?;
-
         self.apply_tx.send_if_modified(move |prev| {
-            if prev.as_ref() != Some(&log_id) {
-                tracing::debug!("send_apply_progress: update applied to :{}", log_id);
-                *prev = Some(log_id.clone());
+            if prev.as_ref() != log_id.as_ref() {
+                tracing::debug!("send_apply_progress: update applied to :{}", log_id.display());
+                *prev = log_id.clone();
                 true
             } else {
                 false

@@ -550,6 +550,7 @@ where
     #[tracing::instrument(level = "debug", skip_all)]
     pub fn flush_metrics(&mut self) {
         self.tx_progress.send_log_progress(self.engine.state.log_progress().flushed().cloned());
+        self.tx_progress.send_commit_progress(self.engine.state.apply_progress().accepted().cloned());
         self.tx_progress.send_apply_progress(self.engine.state.io_applied().cloned());
 
         let (replication, heartbeat) = if let Some(leader) = self.engine.leader.as_ref() {

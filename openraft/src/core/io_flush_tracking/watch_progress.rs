@@ -21,6 +21,12 @@ pub type LogProgress<C> = WatchProgress<C, Option<FlushPoint<C>>>;
 /// Returns `Some(Vote)` containing the last flushed vote.
 pub type VoteProgress<C> = WatchProgress<C, Option<Vote<C>>>;
 
+/// Handle for tracking commit log progress.
+///
+/// Returns `None` if no log has been committed yet.
+/// Returns `Some(LogId)` containing the latest committed log id.
+pub type CommitProgress<C> = WatchProgress<C, Option<LogIdOf<C>>>;
+
 /// Handle for tracking applied log progress.
 ///
 /// Returns `None` if no log has been applied yet.
