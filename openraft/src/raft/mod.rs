@@ -70,6 +70,7 @@ use crate::core::io_flush_tracking::CommitProgress;
 pub use crate::core::io_flush_tracking::FlushPoint;
 use crate::core::io_flush_tracking::IoProgressWatcher;
 use crate::core::io_flush_tracking::LogProgress;
+use crate::core::io_flush_tracking::SnapshotProgress;
 use crate::core::io_flush_tracking::VoteProgress;
 use crate::core::raft_msg::RaftMsg;
 use crate::core::raft_msg::external_command::ExternalCommand;
@@ -1080,6 +1081,26 @@ where C: RaftTypeConfig
     #[must_use = "progress handle should be stored to track commit progress"]
     pub fn watch_commit_progress(&self) -> CommitProgress<C> {
         self.inner.progress_watcher.commit_progress()
+    }
+
+    /// Get a handle to watch snapshot persistence progress.
+    ///
+    /// Tracks when snapshots are persisted to storage.
+    /// Updated whenever a snapshot is built or installed and persisted.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let mut snapshot_progress = raft.watch_snapshot_progress();
+    ///
+    /// // Wait until snapshot covering log index 100 is persisted
+    /// let target = Some(LogId::new(LeaderId::new(2, node_id), 100));
+    /// snapshot_progress.wait_until_ge(&target).await?;
+    /// ```
+    #[since(version = "0.10.0")]
+    #[must_use = "progress handle should be stored to track snapshot progress"]
+    pub fn watch_snapshot_progress(&self) -> SnapshotProgress<C> {
+        self.inner.progress_watcher.snapshot_progress()
     }
 
     /// Get a handle to watch applied log progress.

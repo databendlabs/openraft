@@ -17,3 +17,4 @@ mod t40_metrics_wait;
 mod t50_apply_progress_api;
 mod t50_commit_progress_api;
 mod t50_log_progress_api;
+mod t50_snapshot_progress_api;

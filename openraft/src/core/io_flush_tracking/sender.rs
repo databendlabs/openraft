@@ -10,8 +10,8 @@ use crate::type_config::alias::WatchSenderOf;
 /// Sender for publishing I/O flush progress notifications.
 ///
 /// Used internally by RaftCore to notify watchers when I/O operations complete.
-/// The sender maintains independent channels (log, vote, commit, and apply) to allow efficient
-/// filtering of notifications.
+/// The sender maintains independent channels (log, vote, commit, snapshot, and apply) to allow
+/// efficient filtering of notifications.
 pub(crate) struct IoProgressSender<C>
 where C: RaftTypeConfig
 {
@@ -27,6 +27,9 @@ where C: RaftTypeConfig
 
     /// Sender for commit progress (state machine submission).
     pub(crate) commit_tx: WatchSenderOf<C, Option<LogIdOf<C>>>,
+
+    /// Sender for snapshot persistence progress.
+    pub(crate) snapshot_tx: WatchSenderOf<C, Option<LogIdOf<C>>>,
 
     /// Sender for last-applied log progress (state machine application).
     pub(crate) apply_tx: WatchSenderOf<C, Option<LogIdOf<C>>>,
@@ -87,6 +90,23 @@ where C: RaftTypeConfig
         self.commit_tx.send_if_modified(move |prev| {
             if prev.as_ref() != log_id.as_ref() {
                 tracing::debug!("send_commit_progress: update commit to :{}", log_id.display());
+                *prev = log_id.clone();
+                true
+            } else {
+                false
+            }
+        });
+
+        Some(())
+    }
+
+    /// Publish the latest snapshot log id progress.
+    pub(crate) fn send_snapshot_progress(&self, log_id: Option<LogIdOf<C>>) -> Option<()> {
+        tracing::debug!("send_snapshot_progress: try to update to :{}", log_id.display());
+
+        self.snapshot_tx.send_if_modified(move |prev| {
+            if prev.as_ref() != log_id.as_ref() {
+                tracing::debug!("send_snapshot_progress: update snapshot to :{}", log_id.display());
                 *prev = log_id.clone();
                 true
             } else {
