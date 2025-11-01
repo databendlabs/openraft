@@ -21,11 +21,17 @@ use crate::vote::leader_id::raft_committed_leader_id::RaftCommittedLeaderId;
 /// with the same term but different node IDs (e.g., `(1,2)` and `(1,3)`) have no defined ordering -
 /// neither can overwrite the other.
 ///
+/// Note: We require `impl PartialOrd<Self::Committed> for Self` but not
+/// `impl PartialOrd<Self> for Self::Committed`. This is because in standard Raft,
+/// `CommittedLeaderId` is typically just a `u64` term number, and we cannot implement
+/// external traits for primitive types.
+///
 /// [`Vote`]: crate::vote::Vote
 pub trait RaftLeaderId<C>
 where
     C: RaftTypeConfig,
     Self: OptionalFeatures + PartialOrd + Eq + Clone + Debug + Display + Default + 'static,
+    Self: PartialOrd<Self::Committed>,
 {
     /// The committed version of this leader ID.
     ///
