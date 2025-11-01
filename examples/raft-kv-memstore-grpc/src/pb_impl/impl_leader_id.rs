@@ -24,6 +24,18 @@ impl PartialOrd for pb::LeaderId {
     }
 }
 
+impl PartialEq<u64> for pb::LeaderId {
+    fn eq(&self, _other: &u64) -> bool {
+        false
+    }
+}
+
+impl PartialOrd<u64> for pb::LeaderId {
+    fn partial_cmp(&self, other: &u64) -> Option<Ordering> {
+        self.term.partial_cmp(other)
+    }
+}
+
 impl fmt::Display for pb::LeaderId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "T{}-N{}", self.term, self.node_id)
