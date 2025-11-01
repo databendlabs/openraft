@@ -55,6 +55,18 @@ mod tests {
     #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
     struct LeaderId(u64, Option<u64>);
 
+    impl PartialEq<u64> for LeaderId {
+        fn eq(&self, _other: &u64) -> bool {
+            false
+        }
+    }
+
+    impl PartialOrd<u64> for LeaderId {
+        fn partial_cmp(&self, other: &u64) -> Option<Ordering> {
+            self.0.partial_cmp(other)
+        }
+    }
+
     impl RaftLeaderId<UTConfig> for LeaderId {
         type Committed = u64;
 

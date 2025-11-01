@@ -45,6 +45,48 @@ where C: RaftTypeConfig
     }
 }
 
+impl<C> PartialEq<CommittedLeaderId<C>> for LeaderId<C>
+where C: RaftTypeConfig
+{
+    fn eq(&self, _other: &CommittedLeaderId<C>) -> bool {
+        // Committed and non-committed are never equal
+        false
+    }
+}
+
+impl<C> PartialOrd<CommittedLeaderId<C>> for LeaderId<C>
+where C: RaftTypeConfig
+{
+    fn partial_cmp(&self, other: &CommittedLeaderId<C>) -> Option<Ordering> {
+        if self.term == other.term {
+            // For the same term, committed Leader overrides non-committed
+            Some(Ordering::Less)
+        } else {
+            self.term.partial_cmp(&other.term)
+        }
+    }
+}
+
+impl<C> PartialEq<LeaderId<C>> for CommittedLeaderId<C>
+where C: RaftTypeConfig
+{
+    fn eq(&self, _other: &LeaderId<C>) -> bool {
+        false
+    }
+}
+
+impl<C> PartialOrd<LeaderId<C>> for CommittedLeaderId<C>
+where C: RaftTypeConfig
+{
+    fn partial_cmp(&self, other: &LeaderId<C>) -> Option<Ordering> {
+        if self.term == other.term {
+            Some(Ordering::Greater)
+        } else {
+            self.term.partial_cmp(&other.term)
+        }
+    }
+}
+
 impl<C> RaftLeaderId<C> for LeaderId<C>
 where C: RaftTypeConfig
 {
@@ -151,6 +193,28 @@ mod tests {
         assert!(!(lid(2, 2) > lid(2, 3)));
         assert!(!(lid(2, 2) < lid(2, 3)));
         assert!(!(lid(2, 2) == lid(2, 3)));
+
+        Ok(())
+    }
+
+    #[test]
+    #[allow(clippy::neg_cmp_op_on_partial_ord)]
+    fn test_leader_id_vs_committed_partial_order() -> anyhow::Result<()> {
+        use super::CommittedLeaderId;
+
+        let lid = |term, node_id| LeaderId::<UTConfig>::new(term, node_id);
+        let clid = |term| CommittedLeaderId::<UTConfig>::new(term, 0);
+
+        // PartialEq: LeaderId and CommittedLeaderId are never equal
+        assert!(lid(2, 2) != clid(2));
+
+        // Same term: CommittedLeaderId > LeaderId
+        assert!(lid(2, 2) < clid(2));
+        assert!(!(lid(2, 2) > clid(2)));
+
+        // Different terms: compare by term
+        assert!(lid(1, 2) < clid(2));
+        assert!(lid(3, 2) > clid(2));
 
         Ok(())
     }
