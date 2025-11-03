@@ -21,6 +21,7 @@ use crate::progress::entry::ProgressEntry;
 use crate::proposer::Leader;
 use crate::proposer::LeaderQuorumSet;
 use crate::raft_state::LogStateReader;
+use crate::raft_state::io_state::log_io_id::LogIOId;
 use crate::replication::request::Replicate;
 use crate::replication::response::ReplicationResult;
 use crate::type_config::alias::InstantOf;
@@ -190,7 +191,10 @@ where C: RaftTypeConfig
             return;
         }
 
-        if let Some(_prev_committed) = self.state.update_committed(&granted) {
+        let committed = LogIOId::new(self.state.vote_ref().to_committed(), granted.clone());
+        self.state.io_state_mut().cluster_committed.try_update(committed.clone()).ok();
+
+        if let Some(_prev_committed) = self.state.update_local_committed(&granted) {
             self.output.push_command(Command::ReplicateCommitted {
                 committed: self.state.committed().cloned(),
             });
