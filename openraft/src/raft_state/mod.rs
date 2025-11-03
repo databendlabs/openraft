@@ -33,6 +33,7 @@ mod tests {
     mod forward_to_leader_test;
     mod is_initialized_test;
     mod log_state_reader_test;
+    mod update_committed_test;
     mod validate_test;
 }
 
@@ -47,6 +48,7 @@ use crate::log_id::ref_log_id::RefLogId;
 use crate::proposer::Leader;
 use crate::proposer::LeaderQuorumSet;
 use crate::raft_state::io_state::io_progress::IOProgress;
+use crate::raft_state::io_state::log_io_id::LogIOId;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::VoteOf;
@@ -277,10 +279,35 @@ where C: RaftTypeConfig
         self.log_ids.extend(new_log_id)
     }
 
-    /// Update field `committed` if the input is greater.
-    /// If updated, it returns the previous value in a `Some()`.
-    #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn update_committed(&mut self, committed: &Option<LogIdOf<C>>) -> Option<Option<LogIdOf<C>>> {
+    /// This method first updates the cluster committed log ID, then uses it to calculate and
+    /// update the local committed log ID.
+    pub(crate) fn update_committed(&mut self, cluster_committed: LogIOId<C>) {
+        tracing::debug!(
+            "{}: leader_committed: {}, my_accepted: {}, my_committed: {}",
+            func_name!(),
+            cluster_committed,
+            self.accepted_log_io().display(),
+            self.committed().display()
+        );
+
+        self.io_state_mut().cluster_committed.try_update(cluster_committed.clone()).ok();
+
+        let local_committed = self.io_state.calculate_local_committed();
+
+        self.update_local_committed(&local_committed);
+    }
+
+    /// Updates the committed log id for local use.
+    ///
+    /// The local committed log id may be smaller than `cluster_committed` because it requires
+    /// all log entries up to this value to be persisted (or guaranteed to be persisted) and
+    /// safe from truncation. Only then are these entries safe to apply to the state machine.
+    ///
+    /// This method updates the committed log id only if the input is greater than the current
+    /// value.
+    ///
+    /// Returns `Some(previous_value)` if updated, or `None` if the input was not greater.
+    pub(crate) fn update_local_committed(&mut self, committed: &Option<LogIdOf<C>>) -> Option<Option<LogIdOf<C>>> {
         if committed.as_ref() > self.committed() {
             let prev = self.committed().cloned();
 

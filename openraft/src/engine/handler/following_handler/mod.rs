@@ -31,8 +31,6 @@ use crate::vote::raft_vote::RaftVoteExt;
 #[cfg(test)]
 mod append_entries_test;
 #[cfg(test)]
-mod commit_entries_test;
-#[cfg(test)]
 mod do_append_entries_test;
 #[cfg(test)]
 mod install_snapshot_test;
@@ -157,24 +155,6 @@ where C: RaftTypeConfig
             committed_vote: self.leader_vote.clone(),
             entries,
         });
-    }
-
-    /// Commit entries that are already committed by the leader.
-    #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn commit_entries(&mut self, leader_committed: Option<LogIdOf<C>>) {
-        let accepted = self.state.accepted_log_io().cloned();
-        let accepted = accepted.and_then(|x| x.last_log_id().cloned());
-        let committed = std::cmp::min(accepted.clone(), leader_committed.clone());
-
-        tracing::debug!(
-            leader_committed = display(DisplayOption(&leader_committed)),
-            accepted = display(DisplayOption(&accepted)),
-            committed = display(DisplayOption(&committed)),
-            "{}",
-            func_name!()
-        );
-
-        self.state.update_committed(&committed);
     }
 
     /// Delete log entries since log index `since`, inclusive, when the log at `since` is found
