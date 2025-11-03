@@ -7,6 +7,7 @@ use crate::LogId;
 use crate::RaftTypeConfig;
 use crate::Vote;
 use crate::raft_state::io_state::log_io_id::LogIOId;
+use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::VoteOf;
 use crate::vote::RaftVote;
@@ -119,6 +120,24 @@ where C: RaftTypeConfig
         match self {
             Self::Vote(non_committed_vote) => non_committed_vote.as_ref_vote(),
             Self::Log(log_io_id) => log_io_id.committed_vote.as_ref_vote(),
+        }
+    }
+
+    /// Return the CommittedVote that represent a leader, if it contains.
+    pub(crate) fn to_committed_vote(&self) -> Option<CommittedVote<C>> {
+        match self {
+            Self::Vote(_) => None,
+            Self::Log(log_io_id) => Some(log_io_id.to_committed_vote()),
+        }
+    }
+
+    /// Return the [`CommittedLeaderId`] if the io progress is submitted by a committed(established)
+    /// leader.
+    #[allow(dead_code)]
+    pub(crate) fn committed_leader_id(&self) -> Option<CommittedLeaderIdOf<C>> {
+        match self {
+            Self::Vote(_) => None,
+            Self::Log(log_io_id) => Some(log_io_id.committed_vote.committed_leader_id()),
         }
     }
 
