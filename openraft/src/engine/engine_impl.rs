@@ -455,21 +455,6 @@ where C: RaftTypeConfig
         Ok(())
     }
 
-    /// Commit entries for follower/learner.
-    #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn handle_commit_entries(&mut self, leader_committed: Option<LogIdOf<C>>) {
-        tracing::debug!(
-            leader_committed = display(leader_committed.display()),
-            my_accepted = display(self.state.accepted_log_io().display()),
-            my_committed = display(self.state.committed().display()),
-            "{}",
-            func_name!()
-        );
-
-        let mut fh = self.following_handler();
-        fh.commit_entries(leader_committed);
-    }
-
     /// Install a completely received snapshot on a follower.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn handle_install_full_snapshot(

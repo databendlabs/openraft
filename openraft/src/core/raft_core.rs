@@ -88,6 +88,7 @@ use crate::raft::responder::core_responder::CoreResponder;
 use crate::raft_state::LogStateReader;
 use crate::raft_state::RuntimeStats;
 use crate::raft_state::io_state::io_id::IOId;
+use crate::raft_state::io_state::log_io_id::LogIOId;
 use crate::replication::ReplicationCore;
 use crate::replication::ReplicationHandle;
 use crate::replication::ReplicationSessionId;
@@ -1269,12 +1270,15 @@ where
 
     #[tracing::instrument(level = "debug", skip_all)]
     pub(super) fn handle_append_entries_request(&mut self, req: AppendEntriesRequest<C>, tx: AppendEntriesTx<C>) {
+        // TODO: test this function when `is_ok` is removed, it should be able to get the right conclusion
+        // it self.
         tracing::debug!(req = display(&req), func = func_name!());
 
         let is_ok = self.engine.handle_append_entries(&req.vote, req.prev_log_id, req.entries, tx);
 
         if is_ok {
-            self.engine.handle_commit_entries(req.leader_commit);
+            let committed = LogIOId::new(req.vote.to_committed(), req.leader_commit);
+            self.engine.state.update_committed(committed);
         }
     }
 
