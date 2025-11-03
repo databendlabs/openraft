@@ -42,6 +42,15 @@ where C: RaftTypeConfig
         Self { committed_vote, log_id }
     }
 
+    #[allow(dead_code)]
+    pub(crate) fn committed_vote(&self) -> &CommittedVote<C> {
+        &self.committed_vote
+    }
+
+    pub(crate) fn to_committed_vote(&self) -> CommittedVote<C> {
+        self.committed_vote.clone()
+    }
+
     /// Return the last log id included in this io operation.
     pub(crate) fn last_log_id(&self) -> Option<&LogIdOf<C>> {
         self.log_id.as_ref()
