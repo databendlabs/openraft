@@ -229,14 +229,12 @@ where C: RaftTypeConfig
     }
 }
 
-fn oneshot_channel<C, T>() -> (OneshotResponder<C, T>, OneshotReceiverOf<C, T>)
+fn oneshot_channel<C, T>() -> (ProgressResponder<C, T>, OneshotReceiverOf<C, T>)
 where
     C: RaftTypeConfig,
     T: OptionalSend,
 {
-    let (tx, rx) = C::oneshot();
+    let (tx, _commit_rx, complete_rx) = ProgressResponder::new();
 
-    let tx = OneshotResponder::new(tx);
-
-    (tx, rx)
+    (tx, complete_rx)
 }
