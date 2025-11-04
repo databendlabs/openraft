@@ -262,7 +262,7 @@ where C: RaftTypeConfig
         tx: Option<R>,
     ) -> Option<(LeaderHandler<'_, C>, Option<R>)>
     where
-        R: Responder<ClientWriteResult<C>>,
+        R: Responder<C, ClientWriteResult<C>>,
     {
         let res = self.leader_handler();
         let forward_err = match res {
@@ -274,7 +274,7 @@ where C: RaftTypeConfig
         };
 
         if let Some(tx) = tx {
-            tx.send(Err(forward_err.into()));
+            tx.on_complete(Err(forward_err.into()));
         }
 
         None

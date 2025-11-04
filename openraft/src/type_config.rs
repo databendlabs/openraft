@@ -137,7 +137,7 @@ pub trait RaftTypeConfig:
     /// to Raft APIs that need to send asynchronous responses.
     ///
     /// [`Raft::client_write`]: `crate::raft::Raft::client_write`
-    type Responder<T>: Responder<T>
+    type Responder<T>: Responder<Self, T>
     where T: OptionalSend + 'static;
 }
 

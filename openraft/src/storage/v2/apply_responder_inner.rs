@@ -32,7 +32,7 @@ impl<C: RaftTypeConfig> ApplyResponderInner<C> {
                     data: response,
                     membership: None,
                 });
-                responder.send(res);
+                responder.on_complete(res);
             }
             ApplyResponderInner::Membership {
                 log_id,
@@ -44,7 +44,7 @@ impl<C: RaftTypeConfig> ApplyResponderInner<C> {
                     data: response,
                     membership: Some(membership),
                 });
-                responder.send(res);
+                responder.on_complete(res);
             }
         }
     }
