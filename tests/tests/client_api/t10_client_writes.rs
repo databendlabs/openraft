@@ -5,7 +5,7 @@ use futures::prelude::*;
 use maplit::btreeset;
 use openraft::Config;
 use openraft::SnapshotPolicy;
-use openraft::impls::OneshotResponder;
+use openraft::impls::ProgressResponder;
 use openraft::raft::ClientWriteResponse;
 use openraft_memstore::ClientRequest;
 use openraft_memstore::IntoMemClientRequest;
@@ -89,17 +89,17 @@ async fn client_write_ff() -> Result<()> {
 
     let n0 = router.get_raft_handle(&0)?;
 
-    let (responder, rx) = OneshotResponder::new_pair();
+    let (responder, _commit_rx, complete_rx) = ProgressResponder::new();
     n0.client_write_ff(ClientRequest::make_request("foo", 2), Some(responder)).await?;
-    let got: ClientWriteResponse<TypeConfig> = rx.await??;
+    let got: ClientWriteResponse<TypeConfig> = complete_rx.await??;
     assert_eq!(None, got.response().0.as_deref());
 
     // Deliberately set the responder to None and do not wait for the result.
     n0.client_write_ff(ClientRequest::make_request("foo", 3), None).await?;
 
-    let (responder, rx) = OneshotResponder::new_pair();
+    let (responder, _commit_rx, complete_rx) = ProgressResponder::new();
     n0.client_write_ff(ClientRequest::make_request("foo", 4), Some(responder)).await?;
-    let got: ClientWriteResponse<TypeConfig> = rx.await??;
+    let got: ClientWriteResponse<TypeConfig> = complete_rx.await??;
     assert_eq!(Some("request-3"), got.response().0.as_deref());
 
     Ok(())

@@ -8,11 +8,11 @@ use crate::RaftTypeConfig;
 use crate::error::ClientWriteError;
 use crate::error::RaftError;
 use crate::error::into_raft_result::IntoRaftResult;
-#[cfg(doc)]
-use crate::impls::OneshotResponder;
 use crate::raft::ClientWriteResponse;
 #[cfg(doc)]
 use crate::raft::ManagementApi;
+#[cfg(doc)]
+use crate::raft::responder::impls::OneshotResponder;
 
 /// Implement blocking mode write operations those reply on oneshot channel for communication
 /// between Raft core and client.

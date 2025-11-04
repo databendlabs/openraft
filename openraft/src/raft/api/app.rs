@@ -6,12 +6,12 @@ use crate::core::raft_msg::RaftMsg;
 use crate::error::CheckIsLeaderError;
 use crate::error::ClientWriteError;
 use crate::error::Fatal;
-use crate::impls::OneshotResponder;
 use crate::raft::ClientWriteResponse;
 use crate::raft::ClientWriteResult;
 use crate::raft::linearizable_read::Linearizer;
 use crate::raft::raft_inner::RaftInner;
 use crate::raft::responder::core_responder::CoreResponder;
+use crate::raft::responder::impls::ProgressResponder;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::WriteResponderOf;
 
@@ -50,12 +50,11 @@ where C: RaftTypeConfig
         app_data: C::D,
         // TODO: ClientWriteError can only be ForwardToLeader Error
     ) -> Result<Result<ClientWriteResponse<C>, ClientWriteError<C>>, Fatal<C>> {
-        let (tx, rx) = C::oneshot();
-        let responder = OneshotResponder::new(tx);
+        let (responder, _commit_rx, complete_rx) = ProgressResponder::new();
 
-        self.do_client_write_ff(app_data, Some(CoreResponder::Oneshot(responder))).await?;
+        self.do_client_write_ff(app_data, Some(CoreResponder::Progress(responder))).await?;
 
-        let res: ClientWriteResult<C> = self.inner.recv_msg(rx).await?;
+        let res: ClientWriteResult<C> = self.inner.recv_msg(complete_rx).await?;
 
         Ok(res)
     }
