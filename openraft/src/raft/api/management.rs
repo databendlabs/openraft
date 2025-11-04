@@ -14,10 +14,10 @@ use crate::display_ext::DisplayResult;
 use crate::display_ext::DisplayResultExt;
 use crate::error::Fatal;
 use crate::error::InitializeError;
-use crate::impls::OneshotResponder;
 use crate::membership::IntoNodes;
 use crate::raft::ClientWriteResult;
 use crate::raft::raft_inner::RaftInner;
+use crate::raft::responder::impls::ProgressResponder;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::OneshotReceiverOf;
@@ -229,14 +229,12 @@ where C: RaftTypeConfig
     }
 }
 
-fn oneshot_channel<C, T>() -> (OneshotResponder<C, T>, OneshotReceiverOf<C, T>)
+fn oneshot_channel<C, T>() -> (ProgressResponder<C, T>, OneshotReceiverOf<C, T>)
 where
     C: RaftTypeConfig,
     T: OptionalSend,
 {
-    let (tx, rx) = C::oneshot();
+    let (tx, _commit_rx, complete_rx) = ProgressResponder::new();
 
-    let tx = OneshotResponder::new(tx);
-
-    (tx, rx)
+    (tx, complete_rx)
 }

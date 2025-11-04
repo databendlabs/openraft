@@ -60,7 +60,6 @@ use crate::error::QuorumNotEnough;
 use crate::error::RPCError;
 use crate::error::StorageIOResult;
 use crate::error::Timeout;
-use crate::impls::OneshotResponder;
 use crate::log_id::option_raft_log_id_ext::OptionRaftLogIdExt;
 use crate::metrics::HeartbeatMetrics;
 use crate::metrics::RaftDataMetrics;
@@ -85,6 +84,7 @@ use crate::raft::linearizable_read::Linearizer;
 use crate::raft::message::TransferLeaderRequest;
 use crate::raft::responder::Responder;
 use crate::raft::responder::core_responder::CoreResponder;
+use crate::raft::responder::impls::ProgressResponder;
 use crate::raft_state::LogStateReader;
 use crate::raft_state::RuntimeStats;
 use crate::raft_state::io_state::io_id::IOId;
@@ -463,19 +463,19 @@ where
         &mut self,
         changes: ChangeMembers<C>,
         retain: bool,
-        tx: OneshotResponder<C, ClientWriteResult<C>>,
+        tx: ProgressResponder<C, ClientWriteResult<C>>,
     ) {
         let res = self.engine.state.membership_state.change_handler().apply(changes, retain);
         let new_membership = match res {
             Ok(x) => x,
             Err(e) => {
-                tx.send(Err(ClientWriteError::ChangeMembershipError(e)));
+                tx.on_complete(Err(ClientWriteError::ChangeMembershipError(e)));
                 return;
             }
         };
 
         let ent = C::Entry::new_membership(LogIdOf::<C>::default(), new_membership);
-        self.write_entry(ent, Some(CoreResponder::Oneshot(tx)));
+        self.write_entry(ent, Some(CoreResponder::Progress(tx)));
     }
 
     /// Write a log entry to the cluster through raft protocol.
@@ -487,7 +487,7 @@ where
     /// The calling side may not receive a result from `resp_tx`, if raft is shut down.
     ///
     /// The responder `resp_tx` is either Responder type of
-    /// [`RaftTypeConfig::Responder`] (application-defined) or [`OneshotResponder`]
+    /// [`RaftTypeConfig::Responder`] (application-defined) or [`ProgressResponder`]
     /// (general-purpose); the former is for application-defined entries like user data, the
     /// latter is for membership configuration changes.
     #[tracing::instrument(level = "debug", skip_all, fields(id = display(&self.id)))]
@@ -502,7 +502,7 @@ where
         if let Some(to) = lh.leader.get_transfer_to() {
             if let Some(tx) = tx {
                 let err = lh.state.new_forward_to_leader(to.clone());
-                tx.send(Err(ClientWriteError::ForwardToLeader(err)));
+                tx.on_complete(Err(ClientWriteError::ForwardToLeader(err)));
             }
             return;
         }
@@ -817,6 +817,11 @@ where
 
         let entry_count = last.index() + 1 - first.index();
         self.runtime_stats.apply_batch.record(entry_count);
+
+        for (index, responder) in responders.iter_mut() {
+            let log_id = self.engine.state.get_log_id(*index).unwrap();
+            responder.on_commit(log_id);
+        }
 
         let cmd = sm::Command::apply(first, last.clone(), responders);
         self.sm_handle.send(cmd).map_err(|e| StorageError::apply(last, AnyError::error(e)))?;
@@ -1829,7 +1834,7 @@ where
                     #[allow(clippy::let_underscore_future)]
                     let _ = C::spawn(async move {
                         for (log_index, tx) in removed.into_iter() {
-                            tx.send(Err(ClientWriteError::ForwardToLeader(ForwardToLeader {
+                            tx.on_complete(Err(ClientWriteError::ForwardToLeader(ForwardToLeader {
                                 leader_id: leader_id.clone(),
                                 leader_node: leader_node.clone(),
                             })));
