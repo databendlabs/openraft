@@ -93,7 +93,7 @@ where C: RaftTypeConfig
         /// config will be converted into learners, otherwise they will be removed.
         retain: bool,
 
-        tx: OneshotResponder<C, ClientWriteResult<C>>,
+        tx: ProgressResponder<C, ClientWriteResult<C>>,
     },
 
     ExternalCoreRequest {

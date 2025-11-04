@@ -71,7 +71,7 @@ where C: RaftTypeConfig
             "change_membership: start to commit joint config"
         );
 
-        let (tx, rx) = oneshot_channel::<C, _>();
+        let (tx, rx) = new_responder_pair::<C, _>();
 
         // res is error if membership cannot be changed.
         // If no error, it will enter a joint state
@@ -106,7 +106,7 @@ where C: RaftTypeConfig
         tracing::debug!("committed a joint config: {} {:?}", log_id, joint);
         tracing::debug!("the second step is to change to uniform config: {:?}", changes);
 
-        let (tx, rx) = oneshot_channel::<C, _>();
+        let (tx, rx) = new_responder_pair::<C, _>();
 
         // The second step, send a NOOP change to flatten the joint config.
         let changes = ChangeMembers::AddVoterIds(Default::default());
@@ -132,7 +132,7 @@ where C: RaftTypeConfig
         node: C::Node,
         blocking: bool,
     ) -> Result<ClientWriteResult<C>, Fatal<C>> {
-        let (tx, rx) = oneshot_channel::<C, _>();
+        let (tx, rx) = new_responder_pair::<C, _>();
 
         let msg = RaftMsg::ChangeMembership {
             changes: ChangeMembers::AddNodes(btreemap! {id.clone()=>node}),
@@ -229,14 +229,12 @@ where C: RaftTypeConfig
     }
 }
 
-fn oneshot_channel<C, T>() -> (OneshotResponder<C, T>, OneshotReceiverOf<C, T>)
+fn new_responder_pair<C, T>() -> (ProgressResponder<C, T>, OneshotReceiverOf<C, T>)
 where
     C: RaftTypeConfig,
     T: OptionalSend,
 {
-    let (tx, rx) = C::oneshot();
+    let (tx, _commit_rx, complete_rx) = ProgressResponder::new();
 
-    let tx = OneshotResponder::new(tx);
-
-    (tx, rx)
+    (tx, complete_rx)
 }
