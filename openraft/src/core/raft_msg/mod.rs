@@ -10,7 +10,7 @@ use crate::display_ext::DisplayBTreeMapDebugValueExt;
 use crate::error::CheckIsLeaderError;
 use crate::error::Infallible;
 use crate::error::InitializeError;
-use crate::impls::OneshotResponder;
+use crate::impls::ProgressResponder;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
 use crate::raft::ClientWriteResult;
@@ -93,7 +93,7 @@ where C: RaftTypeConfig
         /// config will be converted into learners, otherwise they will be removed.
         retain: bool,
 
-        tx: OneshotResponder<C, ClientWriteResult<C>>,
+        tx: ProgressResponder<C, ClientWriteResult<C>>,
     },
 
     ExternalCoreRequest {

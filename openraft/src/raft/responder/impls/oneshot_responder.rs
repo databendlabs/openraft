@@ -47,12 +47,12 @@ where
     }
 }
 
-impl<C, T> Responder<T> for OneshotResponder<C, T>
+impl<C, T> Responder<C, T> for OneshotResponder<C, T>
 where
     C: RaftTypeConfig,
     T: OptionalSend + 'static,
 {
-    fn send(self, res: T) {
+    fn on_complete(self, res: T) {
         let res = self.tx.send(res);
 
         if res.is_ok() {
