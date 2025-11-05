@@ -13,6 +13,8 @@ pub(crate) mod storage_error;
 mod storage_io_result;
 mod streaming_error;
 
+mod leader_changed;
+
 use std::collections::BTreeSet;
 use std::error::Error;
 use std::fmt;
@@ -24,6 +26,7 @@ use openraft_macros::since;
 
 pub use self::allow_next_revert_error::AllowNextRevertError;
 pub use self::invalid_sm::InvalidStateMachineType;
+pub use self::leader_changed::LeaderChanged;
 pub use self::membership_error::MembershipError;
 pub use self::node_not_found::NodeNotFound;
 pub use self::operation::Operation;

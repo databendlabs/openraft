@@ -36,6 +36,7 @@ pub use threaded::BoxAsyncOnceMut;
 pub use threaded::BoxFuture;
 pub use threaded::BoxMaybeAsyncOnceMut;
 pub use threaded::BoxOnce;
+pub use threaded::BoxStream;
 pub use threaded::OptionalSend;
 pub use threaded::OptionalSync;
 
@@ -44,6 +45,8 @@ mod threaded {
     use std::any::Any;
     use std::future::Future;
     use std::pin::Pin;
+
+    use futures::Stream;
 
     /// A trait that is empty if the `singlethreaded` feature flag is enabled,
     /// otherwise it extends `Send`.
@@ -57,6 +60,8 @@ mod threaded {
 
     /// Type alias for a boxed pinned future that is `Send`.
     pub type BoxFuture<'a, T = ()> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
+    /// Type alias for a boxed pinned stream that is `Send`.
+    pub type BoxStream<'a, T> = Pin<Box<dyn Stream<Item = T> + Send + 'a>>;
     /// Type alias for a boxed async function that mutates its argument and is `Send`.
     pub type BoxAsyncOnceMut<'a, A, T = ()> = Box<dyn FnOnce(&mut A) -> BoxFuture<T> + Send + 'a>;
     /// Type alias for a boxed function that optionally returns an async future.
@@ -73,6 +78,8 @@ mod threaded {
     use std::future::Future;
     use std::pin::Pin;
 
+    use futures::Stream;
+
     /// A trait that is empty if the `singlethreaded` feature flag is enabled,
     /// otherwise it extends `Send`.
     pub trait OptionalSend {}
@@ -84,6 +91,7 @@ mod threaded {
     impl<T: ?Sized> OptionalSync for T {}
 
     pub type BoxFuture<'a, T = ()> = Pin<Box<dyn Future<Output = T> + 'a>>;
+    pub type BoxStream<'a, T> = Pin<Box<dyn Stream<Item = T> + 'a>>;
     pub type BoxAsyncOnceMut<'a, A, T = ()> = Box<dyn FnOnce(&mut A) -> BoxFuture<T> + 'a>;
     pub type BoxMaybeAsyncOnceMut<'a, A, T = ()> = Box<dyn FnOnce(&mut A) -> Option<BoxFuture<T>> + 'a>;
     pub type BoxOnce<'a, A, T = ()> = Box<dyn FnOnce(&A) -> T + 'a>;

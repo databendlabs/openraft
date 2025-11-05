@@ -27,6 +27,7 @@ openraft        = { path = "../../openraft", features = ["serde", "type-alias"] 
 
 actix-web          = { version = "4.0.0-rc.2" }
 clap               = { version = "4.1.11", features = ["derive", "env"] }
+futures            = { version = "0.3" }
 reqwest            = { version = "0.12.5", features = ["json"] }
 serde              = { version = "1.0.114", features = ["derive"] }
 serde_json         = { version = "1.0.57" }

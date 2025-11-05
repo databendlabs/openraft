@@ -39,6 +39,11 @@ where
         Self::from_leader_id(leader_id, false)
     }
 
+    fn from_term_node_id_committed(term: C::Term, node_id: C::NodeId, committed: bool) -> Self {
+        let leader_id = C::LeaderId::new(term, node_id);
+        Self::from_leader_id(leader_id, committed)
+    }
+
     fn term(&self) -> C::Term {
         self.leader_id().map_or_else(C::Term::default, RaftLeaderId::term)
     }

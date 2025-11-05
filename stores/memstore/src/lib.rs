@@ -16,6 +16,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 
+use futures::Stream;
 use openraft::Entry;
 use openraft::EntryPayload;
 use openraft::LogId;
@@ -476,14 +477,13 @@ impl RaftStateMachine<TypeConfig> for Arc<MemStateMachine> {
     }
 
     #[tracing::instrument(level = "trace", skip(self, entries))]
-    async fn apply<I>(&mut self, entries: I) -> Result<(), io::Error>
-    where
-        I: IntoIterator<Item = EntryResponder<TypeConfig>> + OptionalSend,
-        I::IntoIter: OptionalSend,
-    {
+    async fn apply<Strm>(&mut self, mut entries: Strm) -> Result<(), io::Error>
+    where Strm: Stream<Item = Result<EntryResponder<TypeConfig>, io::Error>> + Unpin + OptionalSend {
+        use futures::TryStreamExt;
+
         let mut sm = self.sm.write().await;
 
-        for (entry, responder) in entries {
+        while let Some((entry, responder)) = entries.try_next().await? {
             tracing::debug!(%entry.log_id, "replicate to sm");
 
             sm.last_applied_log = Some(entry.log_id);

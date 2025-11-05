@@ -82,11 +82,7 @@ impl AppService for AppServiceImpl {
         let req = request.into_inner();
         debug!("Processing get request for key: {}", req.key);
 
-        let sm = self
-            .state_machine_store
-            .state_machine
-            .lock()
-            .map_err(|e| Status::internal(format!("error getting lock on sm: {}", e)))?;
+        let sm = self.state_machine_store.state_machine.lock().await;
         let value = sm
             .data
             .get(&req.key)

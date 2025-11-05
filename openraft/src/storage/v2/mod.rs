@@ -14,6 +14,8 @@ mod raft_state_machine;
 
 pub use self::apply_responder::ApplyResponder;
 pub use self::entry_responder::EntryResponder;
+pub use self::raft_log_reader::LeaderBoundedStreamError;
+pub use self::raft_log_reader::LeaderBoundedStreamResult;
 pub use self::raft_log_reader::RaftLogReader;
 pub use self::raft_log_storage::RaftLogStorage;
 pub use self::raft_log_storage_ext::RaftLogStorageExt;

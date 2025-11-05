@@ -10,6 +10,7 @@ use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
+use futures::Stream;
 use openraft::alias::LogIdOf;
 use openraft::alias::SnapshotDataOf;
 use openraft::entry::RaftEntry;
@@ -266,14 +267,13 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
         Ok((sm.last_applied_log, sm.last_membership.clone()))
     }
 
-    async fn apply<I>(&mut self, entries: I) -> Result<(), io::Error>
-    where
-        I: IntoIterator<Item = EntryResponder<TypeConfig>> + Send,
-        I::IntoIter: Send,
-    {
+    async fn apply<Strm>(&mut self, mut entries: Strm) -> Result<(), io::Error>
+    where Strm: Stream<Item = Result<EntryResponder<TypeConfig>, io::Error>> + Unpin + OptionalSend {
+        use futures::TryStreamExt;
+
         let mut sm = self.sm.write().await;
 
-        for (entry, responder) in entries {
+        while let Some((entry, responder)) = entries.try_next().await? {
             sm.last_applied_log = Some(entry.log_id);
 
             match entry.payload {

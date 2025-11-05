@@ -6,6 +6,8 @@ use std::io::Cursor;
 use std::path::Path;
 use std::sync::Arc;
 
+use futures::Stream;
+use futures::TryStreamExt;
 use openraft::storage::EntryResponder;
 use openraft::storage::RaftStateMachine;
 use openraft::EntryPayload;
@@ -201,12 +203,9 @@ impl RaftStateMachine<TypeConfig> for StateMachineStore {
         Ok((self.data.last_applied_log_id, self.data.last_membership.clone()))
     }
 
-    async fn apply<I>(&mut self, entries: I) -> Result<(), io::Error>
-    where
-        I: IntoIterator<Item = EntryResponder<TypeConfig>> + OptionalSend,
-        I::IntoIter: OptionalSend,
-    {
-        for (entry, responder) in entries {
+    async fn apply<Strm>(&mut self, mut entries: Strm) -> Result<(), io::Error>
+    where Strm: Stream<Item = Result<EntryResponder<TypeConfig>, io::Error>> + Unpin + OptionalSend {
+        while let Some((entry, responder)) = entries.try_next().await? {
             self.data.last_applied_log_id = Some(entry.log_id);
 
             let response = match entry.payload {

@@ -34,6 +34,7 @@ use crate::type_config::alias::VoteOf;
 use crate::type_config::async_runtime::mpsc::MpscReceiver;
 use crate::type_config::async_runtime::mpsc::MpscSender;
 use crate::vote::RaftLeaderIdExt;
+use crate::vote::RaftVote;
 use crate::vote::raft_vote::RaftVoteExt;
 
 const NODE_ID: u64 = 0;
@@ -147,6 +148,8 @@ where
         run_test(builder, Self::save_vote).await?;
         run_test(builder, Self::get_log_entries).await?;
         run_test(builder, Self::limited_get_log_entries).await?;
+        run_test(builder, Self::leader_bounded_stream).await?;
+        run_test(builder, Self::entries_stream).await?;
         run_test(builder, Self::try_get_log_entry).await?;
         run_test(builder, Self::initial_logs).await?;
         run_test(builder, Self::get_log_state).await?;
@@ -870,6 +873,154 @@ where
         Ok(())
     }
 
+    pub async fn leader_bounded_stream(mut store: LS, mut sm: SM) -> Result<(), io::Error> {
+        use futures::StreamExt;
+
+        Self::feed_10_logs_vote_self(&mut store).await?;
+
+        let vote = VoteOf::<C>::from_term_node_id_committed(1u64.into(), NODE_ID.into(), true);
+        store.save_vote(&vote).await?;
+
+        // The vote is: term=1, node_id=NODE_ID, committed
+        // Get the leader ID from the stored vote
+        let vote = store.read_vote().await?.expect("vote should be set");
+        let leader = vote.leader_id().expect("vote should have a leader").clone();
+
+        tracing::info!("--- test normal case: read entries with matching vote");
+        {
+            let mut reader = store.get_log_reader().await;
+            let stream = reader.leader_bounded_stream(leader.clone(), 3..7).await;
+            let entries: Vec<_> = stream.collect().await;
+
+            let actual: Vec<_> = entries.into_iter().map(|e| e.unwrap().log_id()).collect();
+            let expected = vec![log_id_0(1, 3), log_id_0(1, 4), log_id_0(1, 5), log_id_0(1, 6)];
+            assert_eq!(actual, expected);
+        }
+
+        tracing::info!("--- test boundary case: start before first log");
+        {
+            let mut reader = store.get_log_reader().await;
+            let stream = reader.leader_bounded_stream(leader.clone(), 0..3).await;
+            let entries: Vec<_> = stream.collect().await;
+
+            let actual: Vec<_> = entries.into_iter().map(|e| e.unwrap().log_id()).collect();
+            let expected = vec![log_id_0(0, 0), log_id_0(1, 1), log_id_0(1, 2)];
+            assert_eq!(actual, expected);
+        }
+
+        tracing::info!("--- test boundary case: end after last log");
+        {
+            let mut reader = store.get_log_reader().await;
+            let stream = reader.leader_bounded_stream(leader.clone(), 8..100).await;
+            let entries: Vec<_> = stream.collect().await;
+
+            let actual: Vec<_> = entries.into_iter().map(|e| e.unwrap().log_id()).collect();
+            let expected = vec![log_id_0(1, 8), log_id_0(1, 9), log_id_0(1, 10)];
+            assert_eq!(actual, expected);
+        }
+
+        tracing::info!("--- test vote mismatch: wrong leader node id");
+        {
+            let wrong_vote = VoteOf::<C>::from_term_node_id(1u64.into(), 99u64.into());
+            let wrong_leader = wrong_vote.leader_id().unwrap().clone();
+            let mut reader = store.get_log_reader().await;
+            let stream = reader.leader_bounded_stream(wrong_leader, 3..7).await;
+            let entries: Vec<_> = stream.collect().await;
+
+            // Should return a single error
+            assert_eq!(entries.len(), 1);
+            assert!(entries[0].is_err(), "expected Err, got {:?}", entries[0]);
+        }
+
+        tracing::info!("--- test vote mismatch: wrong term");
+        {
+            let wrong_vote = VoteOf::<C>::from_term_node_id(2u64.into(), NODE_ID.into());
+            let wrong_leader = wrong_vote.leader_id().unwrap().clone();
+            let mut reader = store.get_log_reader().await;
+            let stream = reader.leader_bounded_stream(wrong_leader, 3..7).await;
+            let entries: Vec<_> = stream.collect().await;
+
+            // Should return a single error
+            assert_eq!(entries.len(), 1);
+            assert!(entries[0].is_err(), "expected Err, got {:?}", entries[0]);
+        }
+
+        Ok(())
+    }
+
+    pub async fn entries_stream(mut store: LS, mut sm: SM) -> Result<(), io::Error> {
+        use futures::StreamExt;
+
+        Self::feed_10_logs_vote_self(&mut store).await?;
+
+        tracing::info!("--- test normal case: read entries without vote check");
+        {
+            let mut reader = store.get_log_reader().await;
+            let stream = reader.entries_stream(3..7).await;
+            let entries: Vec<_> = stream.collect().await;
+
+            let actual: Vec<_> = entries.into_iter().map(|e| e.unwrap().log_id()).collect();
+            let expected = vec![log_id_0(1, 3), log_id_0(1, 4), log_id_0(1, 5), log_id_0(1, 6)];
+            assert_eq!(actual, expected);
+        }
+
+        tracing::info!("--- test boundary case: start before first log");
+        {
+            let mut reader = store.get_log_reader().await;
+            let stream = reader.entries_stream(0..3).await;
+            let entries: Vec<_> = stream.collect().await;
+
+            let actual: Vec<_> = entries.into_iter().map(|e| e.unwrap().log_id()).collect();
+            let expected = vec![log_id_0(0, 0), log_id_0(1, 1), log_id_0(1, 2)];
+            assert_eq!(actual, expected);
+        }
+
+        tracing::info!("--- test boundary case: end after last log");
+        {
+            let mut reader = store.get_log_reader().await;
+            let stream = reader.entries_stream(8..100).await;
+            let entries: Vec<_> = stream.collect().await;
+
+            let actual: Vec<_> = entries.into_iter().map(|e| e.unwrap().log_id()).collect();
+            let expected = vec![log_id_0(1, 8), log_id_0(1, 9), log_id_0(1, 10)];
+            assert_eq!(actual, expected);
+        }
+
+        tracing::info!("--- test empty range");
+        {
+            let mut reader = store.get_log_reader().await;
+            let stream = reader.entries_stream(5..5).await;
+            let entries: Vec<_> = stream.collect().await;
+
+            assert_eq!(entries.len(), 0);
+        }
+
+        tracing::info!("--- test full range");
+        {
+            let mut reader = store.get_log_reader().await;
+            let stream = reader.entries_stream(0..11).await;
+            let entries: Vec<_> = stream.collect().await;
+
+            let actual: Vec<_> = entries.into_iter().map(|e| e.unwrap().log_id()).collect();
+            let expected = vec![
+                log_id_0(0, 0),
+                log_id_0(1, 1),
+                log_id_0(1, 2),
+                log_id_0(1, 3),
+                log_id_0(1, 4),
+                log_id_0(1, 5),
+                log_id_0(1, 6),
+                log_id_0(1, 7),
+                log_id_0(1, 8),
+                log_id_0(1, 9),
+                log_id_0(1, 10),
+            ];
+            assert_eq!(actual, expected);
+        }
+
+        Ok(())
+    }
+
     pub async fn try_get_log_entry(mut store: LS, mut sm: SM) -> Result<(), io::Error> {
         Self::feed_10_logs_vote_self(&mut store).await?;
 
@@ -1428,8 +1579,9 @@ where
     I: IntoIterator<Item = C::Entry> + OptionalSend,
     I::IntoIter: OptionalSend,
 {
-    let apply_items = entries.into_iter().map(|entry| (entry, None));
-    sm.apply(apply_items).await?;
+    let apply_items = entries.into_iter().map(|entry| Ok((entry, None)));
+    let apply_stream = futures::stream::iter(apply_items);
+    sm.apply(apply_stream).await?;
     Ok(())
 }
 

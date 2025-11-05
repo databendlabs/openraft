@@ -1,5 +1,6 @@
 use std::io;
 
+use futures::Stream;
 use openraft_macros::add_async_trait;
 use openraft_macros::since;
 
@@ -83,10 +84,9 @@ where C: RaftTypeConfig
     ///   pattern, implement [`RaftLogStorage::save_committed()`] to persist the committed log id.
     ///
     /// [`RaftLogStorage::save_committed()`]: crate::storage::RaftLogStorage::save_committed
-    async fn apply<I>(&mut self, entries: I) -> Result<(), io::Error>
-    where
-        I: IntoIterator<Item = EntryResponder<C>> + OptionalSend,
-        I::IntoIter: OptionalSend;
+    #[since(version = "0.10.0", change = "Entry-Responder-Result stream")]
+    async fn apply<Strm>(&mut self, entries: Strm) -> Result<(), io::Error>
+    where Strm: Stream<Item = Result<EntryResponder<C>, io::Error>> + Unpin + OptionalSend;
 
     /// Try to create a snapshot builder for the state machine.
     ///

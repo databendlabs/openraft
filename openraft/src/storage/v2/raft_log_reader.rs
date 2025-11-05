@@ -3,15 +3,46 @@ use std::io;
 use std::ops::RangeBounds;
 use std::ops::RangeInclusive;
 
+use futures::Stream;
 use openraft_macros::add_async_trait;
 use openraft_macros::since;
 
 use crate::OptionalSend;
 use crate::OptionalSync;
 use crate::RaftTypeConfig;
+use crate::base::BoxStream;
 use crate::engine::LogIdList;
+use crate::error::LeaderChanged;
+use crate::type_config::alias::EntryOf;
+use crate::type_config::alias::LeaderIdOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::VoteOf;
+use crate::vote::RaftVote;
+
+/// Error that can occur when reading log entries from a leader-bounded stream.
+///
+/// This error is returned by [`RaftLogReader::leader_bounded_stream`] when either:
+/// - The leader has changed ([`LeaderChanged`])
+/// - An I/O error occurred during log reading
+#[derive(Debug, thiserror::Error)]
+pub enum LeaderBoundedStreamError<C>
+where C: RaftTypeConfig
+{
+    /// The leader has changed, making the stream invalid.
+    #[error(transparent)]
+    LeaderChanged(#[from] LeaderChanged<C>),
+
+    /// An I/O error occurred while reading log entries.
+    #[error(transparent)]
+    IoError(#[from] io::Error),
+}
+
+/// Result type for [`RaftLogReader::leader_bounded_stream`] stream items.
+pub type LeaderBoundedStreamResult<C> = Result<EntryOf<C>, LeaderBoundedStreamError<C>>;
+
+/// Result type for [`RaftLogReader::entries_stream`] stream items.
+pub type EntriesStreamResult<C> = Result<EntryOf<C>, io::Error>;
+
 /// A trait defining the interface for a Raft log subsystem.
 ///
 /// This interface is accessed read-only by replication sub-task: `ReplicationCore`.
@@ -29,6 +60,134 @@ use crate::type_config::alias::VoteOf;
 pub trait RaftLogReader<C>: OptionalSend + OptionalSync + 'static
 where C: RaftTypeConfig
 {
+    /// Read log entries as a stream, conditional on vote state.
+    ///
+    /// Returns log entries within the specified range as a stream, but only if:
+    /// - The current vote belongs to the given `leader`
+    /// - The vote is committed (i.e., [`Self::read_vote`]`.await?.is_committed()`)
+    ///
+    /// # Important
+    ///
+    /// The stream must stop yielding entries immediately and return [`LeaderChanged`] error if the
+    /// leader changes during iteration, as log truncation may occur and entries may no longer
+    /// be consecutive.
+    ///
+    /// # Arguments
+    ///
+    /// * `leader` - The expected leader ID. Entries are only returned if the vote belongs to this
+    ///   leader.
+    /// * `range` - The range of log indices to read.
+    ///
+    /// # Returns
+    ///
+    /// Returns a stream of log entries wrapped in `Result`. If the vote doesn't match the leader,
+    /// isn't committed, or changes during the read, returns a stream yielding a single
+    /// [`LeaderChanged`] error.
+    ///
+    /// # Default Implementation
+    ///
+    /// The default implementation is a very simple wrapper of [`Self::try_get_log_entries`], and
+    /// application should implement it for better performance.
+    ///
+    /// The default impl:
+    /// 1. Checks if the stored vote matches the given leader and is committed
+    /// 2. If conditions are met, calls [`Self::try_get_log_entries`] to get all entries
+    /// 3. Verifies the vote hasn't changed after reading entries
+    /// 4. Returns stream with [`LeaderChanged`] error if vote doesn't match or changed, otherwise
+    ///    returns entries as stream
+    #[since(version = "0.10.0")]
+    async fn leader_bounded_stream<RB>(
+        &mut self,
+        leader: LeaderIdOf<C>,
+        range: RB,
+    ) -> impl Stream<Item = LeaderBoundedStreamResult<C>> + OptionalSend
+    where
+        RB: RangeBounds<u64> + Clone + Debug + OptionalSend,
+    {
+        // TODO: complete the test that ensures when the vote is changed, stream should be stopped.
+
+        use futures::stream;
+
+        let changed_err = |leader, vote| {
+            let err = LeaderChanged::new(leader, vote);
+            LeaderBoundedStreamError::LeaderChanged(err)
+        };
+
+        let fu = async move {
+            let vote = self.read_vote().await?;
+
+            let Some(vote) = vote else {
+                return Ok::<BoxStream<_>, _>(Box::pin(stream::iter([Err(changed_err(leader, None))])));
+            };
+
+            if vote.leader_id() == Some(&leader) && vote.is_committed() {
+                // valid vote, continue
+            } else {
+                return Ok::<BoxStream<_>, _>(Box::pin(stream::iter([Err(changed_err(leader, Some(vote)))])));
+            }
+
+            let entries = self.try_get_log_entries(range).await?;
+
+            let current_vote = self.read_vote().await?;
+
+            if current_vote.as_ref() != Some(&vote) {
+                // Vote has changed, return empty stream
+                return Ok::<BoxStream<_>, _>(Box::pin(stream::iter([Err(changed_err(leader, current_vote))])));
+            }
+
+            // Vote unchanged
+            let stream = stream::iter(entries.into_iter().map(Ok));
+            Ok::<BoxStream<_>, io::Error>(Box::pin(stream))
+        };
+
+        match fu.await {
+            Ok(strm) => strm,
+            Err(io_err) => Box::pin(stream::iter([Err(LeaderBoundedStreamError::IoError(io_err))])),
+        }
+    }
+
+    /// Read log entries as a stream without leader validation.
+    ///
+    /// Returns log entries within the specified range as a stream. Unlike
+    /// [`leader_bounded_stream`](Self::leader_bounded_stream), this method does not check vote
+    /// state or leader validity.
+    ///
+    /// This method is primarily used for reading committed log entries that will no longer be
+    /// changed, such as when applying logs to the state machine. It can also be used during
+    /// initialization or when the leader context is not relevant.
+    ///
+    /// # Arguments
+    ///
+    /// * `range` - The range of log indices to read.
+    ///
+    /// # Returns
+    ///
+    /// Returns a stream of log entries wrapped in `Result`. I/O errors during reading are
+    /// propagated through the stream.
+    ///
+    /// # Default Implementation
+    ///
+    /// The default implementation calls [`Self::try_get_log_entries`] to get all entries and
+    /// converts them to a stream. Applications may implement this for better performance, such as
+    /// streaming entries incrementally.
+    #[since(version = "0.10.0")]
+    async fn entries_stream<RB>(&mut self, range: RB) -> impl Stream<Item = EntriesStreamResult<C>> + OptionalSend
+    where RB: RangeBounds<u64> + Clone + Debug + OptionalSend {
+        use futures::stream;
+
+        let fu = async move {
+            let entries = self.try_get_log_entries(range).await?;
+
+            let stream = stream::iter(entries.into_iter().map(Ok));
+            Ok::<BoxStream<_>, io::Error>(Box::pin(stream))
+        };
+
+        match fu.await {
+            Ok(strm) => strm,
+            Err(io_err) => Box::pin(stream::iter([Err(io_err)])),
+        }
+    }
+
     /// Get a series of log entries from storage.
     ///
     /// This method retrieves log entries within the specified range. The range is defined by
@@ -44,8 +203,8 @@ where C: RaftTypeConfig
     ///   absence of an entry is tolerated only at the beginning or end of the range. Missing
     ///   entries within the range (i.e., holes) are not permitted and should result in an error.
     ///
-    /// - The read operation must be transactional. That is, it should not reflect any state changes
-    ///   that occur after the read operation has commenced.
+    /// - The read operation must be atomic. That is, it should not reflect any state changes that
+    ///   occur after the read operation has started.
     async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + OptionalSend>(
         &mut self,
         range: RB,

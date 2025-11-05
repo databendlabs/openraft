@@ -2,6 +2,7 @@ use std::io;
 use std::sync::Arc;
 
 use anyhow::Result;
+use futures::Stream;
 use maplit::btreeset;
 use openraft::Config;
 use openraft::OptionalSend;
@@ -101,11 +102,8 @@ async fn with_state_machine_wrong_sm_type() -> Result<()> {
                 todo!()
             }
 
-            async fn apply<I>(&mut self, _entries: I) -> Result<(), Err>
-            where
-                I: IntoIterator<Item = EntryResponder<TC>> + OptionalSend,
-                I::IntoIter: OptionalSend,
-            {
+            async fn apply<Strm>(&mut self, _entries: Strm) -> Result<(), Err>
+            where Strm: Stream<Item = Result<EntryResponder<TC>, Err>> + Unpin + OptionalSend {
                 todo!()
             }
 

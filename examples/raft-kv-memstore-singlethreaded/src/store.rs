@@ -8,9 +8,12 @@ use std::marker::PhantomData;
 use std::ops::RangeBounds;
 use std::rc::Rc;
 
+use futures::Stream;
+use futures::TryStreamExt;
 use openraft::storage::EntryResponder;
 use openraft::storage::RaftLogStorage;
 use openraft::storage::RaftStateMachine;
+use openraft::OptionalSend;
 use openraft::RaftLogReader;
 use openraft::RaftSnapshotBuilder;
 use serde::Deserialize;
@@ -194,12 +197,12 @@ impl RaftStateMachine<TypeConfig> for Rc<StateMachineStore> {
     }
 
     #[tracing::instrument(level = "trace", skip(self, entries))]
-    async fn apply<I>(&mut self, entries: I) -> Result<(), io::Error>
-    where I: IntoIterator<Item = EntryResponder<TypeConfig>> {
-        let mut sm = self.state_machine.borrow_mut();
-
-        for (entry, responder) in entries {
+    async fn apply<Strm>(&mut self, mut entries: Strm) -> Result<(), io::Error>
+    where Strm: Stream<Item = Result<EntryResponder<TypeConfig>, io::Error>> + Unpin + OptionalSend {
+        while let Some((entry, responder)) = entries.try_next().await? {
             tracing::debug!(%entry.log_id, "replicate to sm");
+
+            let mut sm = self.state_machine.borrow_mut();
 
             sm.last_applied = Some(entry.log_id);
 

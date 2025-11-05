@@ -3,9 +3,12 @@ use std::io;
 use std::sync::Arc;
 use std::sync::Mutex;
 
+use futures::Stream;
+use futures::TryStreamExt;
 use openraft::entry::RaftEntry;
 use openraft::storage::EntryResponder;
 use openraft::storage::RaftStateMachine;
+use openraft::OptionalSend;
 use openraft::RaftSnapshotBuilder;
 
 use crate::protobuf as pb;
@@ -28,7 +31,7 @@ pub struct StoredSnapshot {
 #[derive(Debug, Default)]
 pub struct StateMachineStore {
     /// The Raft state machine.
-    pub state_machine: Mutex<pb::StateMachineData>,
+    pub state_machine: tokio::sync::Mutex<pb::StateMachineData>,
 
     snapshot_idx: Mutex<u64>,
 
@@ -56,7 +59,7 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<StateMachineStore> {
 
         {
             // Serialize the data of the state machine.
-            let state_machine = self.state_machine.lock().unwrap().clone();
+            let state_machine = self.state_machine.lock().await.clone();
 
             last_applied = state_machine.last_applied.map(From::from);
             let last_membership_log_id = state_machine.last_membership_log_id.map(|log_id| log_id.into());
@@ -99,7 +102,7 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
     type SnapshotBuilder = Self;
 
     async fn applied_state(&mut self) -> Result<(Option<LogId>, StoredMembership), io::Error> {
-        let sm = self.state_machine.lock().unwrap();
+        let sm = self.state_machine.lock().await;
 
         let last_applied = sm.last_applied.map(|x| x.into());
 
@@ -112,14 +115,11 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
     }
 
     #[tracing::instrument(level = "trace", skip(self, entries))]
-    async fn apply<I>(&mut self, entries: I) -> Result<(), io::Error>
-    where
-        I: IntoIterator<Item = EntryResponder<TypeConfig>>,
-        I::IntoIter: Send,
-    {
-        let mut sm = self.state_machine.lock().unwrap();
+    async fn apply<Strm>(&mut self, mut entries: Strm) -> Result<(), io::Error>
+    where Strm: Stream<Item = Result<EntryResponder<TypeConfig>, io::Error>> + Unpin + OptionalSend {
+        let mut sm = self.state_machine.lock().await;
 
-        for (entry, responder) in entries {
+        while let Some((entry, responder)) = entries.try_next().await? {
             let log_id = entry.log_id();
 
             tracing::debug!("replicate to sm: {}", log_id);
@@ -163,7 +163,7 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
             let d: pb::StateMachineData = prost::Message::decode(new_snapshot.data.as_ref())
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
-            let mut state_machine = self.state_machine.lock().unwrap();
+            let mut state_machine = self.state_machine.lock().await;
             *state_machine = d;
         }
 

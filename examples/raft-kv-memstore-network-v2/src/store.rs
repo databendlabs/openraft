@@ -5,9 +5,12 @@ use std::io;
 use std::sync::Arc;
 use std::sync::Mutex;
 
+use futures::Stream;
+use futures::TryStreamExt;
 use openraft::storage::EntryResponder;
 use openraft::storage::RaftStateMachine;
 use openraft::EntryPayload;
+use openraft::OptionalSend;
 use openraft::RaftSnapshotBuilder;
 use serde::Deserialize;
 use serde::Serialize;
@@ -72,7 +75,7 @@ pub struct StateMachineData {
 #[derive(Debug, Default)]
 pub struct StateMachineStore {
     /// The Raft state machine.
-    pub state_machine: Mutex<StateMachineData>,
+    pub state_machine: tokio::sync::Mutex<StateMachineData>,
 
     snapshot_idx: Mutex<u64>,
 
@@ -89,7 +92,7 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<StateMachineStore> {
 
         {
             // Serialize the data of the state machine.
-            let state_machine = self.state_machine.lock().unwrap().clone();
+            let state_machine = self.state_machine.lock().await.clone();
 
             last_applied_log = state_machine.last_applied;
             last_membership = state_machine.last_membership.clone();
@@ -132,19 +135,16 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
     type SnapshotBuilder = Self;
 
     async fn applied_state(&mut self) -> Result<(Option<LogId>, StoredMembership), io::Error> {
-        let state_machine = self.state_machine.lock().unwrap();
+        let state_machine = self.state_machine.lock().await;
         Ok((state_machine.last_applied, state_machine.last_membership.clone()))
     }
 
     #[tracing::instrument(level = "trace", skip(self, entries))]
-    async fn apply<I>(&mut self, entries: I) -> Result<(), io::Error>
-    where
-        I: IntoIterator<Item = EntryResponder<TypeConfig>>,
-        I::IntoIter: Send,
-    {
-        let mut sm = self.state_machine.lock().unwrap();
+    async fn apply<Strm>(&mut self, mut entries: Strm) -> Result<(), io::Error>
+    where Strm: Stream<Item = Result<EntryResponder<TypeConfig>, io::Error>> + Unpin + OptionalSend {
+        let mut sm = self.state_machine.lock().await;
 
-        for (entry, responder) in entries {
+        while let Some((entry, responder)) = entries.try_next().await? {
             tracing::debug!(%entry.log_id, "replicate to sm");
 
             sm.last_applied = Some(entry.log_id);
@@ -189,7 +189,7 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
         // Update the state machine.
         {
             let updated_state_machine: StateMachineData = new_snapshot.data.clone();
-            let mut state_machine = self.state_machine.lock().unwrap();
+            let mut state_machine = self.state_machine.lock().await;
             *state_machine = updated_state_machine;
         }
 

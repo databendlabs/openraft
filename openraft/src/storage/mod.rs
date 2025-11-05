@@ -46,6 +46,8 @@ pub use self::snapshot_meta::SnapshotMeta;
 pub use self::snapshot_signature::SnapshotSignature;
 pub use self::v2::ApplyResponder;
 pub use self::v2::EntryResponder;
+pub use self::v2::LeaderBoundedStreamError;
+pub use self::v2::LeaderBoundedStreamResult;
 pub use self::v2::RaftLogReader;
 pub use self::v2::RaftLogStorage;
 pub use self::v2::RaftLogStorageExt;

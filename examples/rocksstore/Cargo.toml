@@ -21,6 +21,7 @@ repository = "https://github.com/databendlabs/openraft"
 openraft = { path = "../../openraft", version = "0.10.0", features = ["serde", "type-alias"] }
 
 byteorder  = { version = "1.4.3" }
+futures    = { version = "0.3" }
 rand       = { version = "0.9" }
 rocksdb    = { version = "0.22.0" }
 serde      = { version = "1.0.114", features = ["derive"] }

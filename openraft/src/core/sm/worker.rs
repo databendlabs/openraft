@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use anyerror::AnyError;
+use futures::TryStreamExt;
 use tracing_futures::Instrument;
 
 use crate::RaftLogReader;
@@ -16,7 +16,6 @@ use crate::core::sm::CommandResult;
 use crate::core::sm::Response;
 use crate::core::sm::handle::Handle;
 use crate::display_ext::DisplayOptionExt;
-use crate::display_ext::DisplaySliceExt;
 use crate::entry::RaftEntry;
 use crate::error::StorageIOResult;
 use crate::raft::responder::core_responder::CoreResponder;
@@ -186,37 +185,41 @@ where
         let since = first.index();
         let end = last.index() + 1;
 
-        let entries = self.log_reader.try_get_log_entries(since..end).await.sto_read_logs()?;
-        if entries.len() != (end - since) as usize {
-            return Err(StorageError::read_logs(AnyError::error(format!(
-                "returned log entries count({}) does not match the input([{}, {}]))",
-                entries.len(),
-                since,
-                end
-            ))));
-        }
-        tracing::debug!(entries = display(entries.display()), "about to apply");
+        #[cfg(debug_assertions)]
+        let (got_last_index, last_apply) = {
+            let l = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+            (l.clone(), l)
+        };
 
-        let last_applied = last;
+        let strm = self.log_reader.entries_stream(since..end).await;
 
         // Prepare entries with responders upfront.
-        // Entries are consumed and responders attached before calling apply() to avoid
-        // the need for cloning entries or using references during application.
-        let apply_items = entries.into_iter().map(|entry| {
+        let strm = strm.map_ok(move |entry| {
             let log_index = entry.index();
             let responder = client_resp_channels.remove(&log_index);
-
             let item = EntryResponderBuilder { entry, responder };
-            tracing::debug!("prepared {}", item);
-            item.into_parts()
+
+            #[cfg(debug_assertions)]
+            last_apply.store(log_index, std::sync::atomic::Ordering::Relaxed);
+
+            tracing::debug!("Applying entry to state machine: {}", item);
+
+            let (ent, responder) = item.into_parts();
+
+            (ent, responder)
         });
 
-        self.state_machine.apply(apply_items).await.sto_apply(last_applied.clone())?;
+        self.state_machine.apply(Box::pin(strm)).await.sto_apply(last.clone())?;
+
+        #[cfg(debug_assertions)]
+        {
+            assert_eq!(end - 1, got_last_index.load(std::sync::atomic::Ordering::Relaxed));
+        }
 
         let resp = ApplyResult {
             since,
             end,
-            last_applied,
+            last_applied: last,
         };
 
         Ok(resp)
