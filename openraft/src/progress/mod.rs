@@ -9,6 +9,7 @@
 #[cfg(test)]
 mod bench;
 pub(crate) mod entry;
+pub(crate) mod id_val;
 pub(crate) mod inflight;
 
 use std::borrow::Borrow;
@@ -18,6 +19,7 @@ use std::fmt::Formatter;
 use std::slice::Iter;
 use std::slice::IterMut;
 
+use id_val::IdVal;
 // TODO: remove it
 #[allow(unused_imports)]
 pub(crate) use inflight::Inflight;
@@ -90,7 +92,16 @@ where
     fn quorum_set(&self) -> &QS;
 
     /// Iterate over all id and values, voters first followed by learners.
-    fn iter(&self) -> Iter<'_, (ID, Ent)>;
+    fn iter(&self) -> Iter<'_, IdVal<ID, Ent>>;
+
+    /// Map each item to a value and collect into a collection.
+    fn collect_mapped<F, T, C>(&self, f: F) -> C
+    where
+        F: Fn(&IdVal<ID, Ent>) -> T,
+        C: FromIterator<T>,
+    {
+        self.iter().map(f).collect()
+    }
 
     /// Build a new instance with the new quorum set, inheriting progress data from `self`.
     fn upgrade_quorum_set(
@@ -137,7 +148,7 @@ where
     /// Learner elements are always still.
     /// A voter element will be moved up to keep them in descending order when a new value is
     /// updated.
-    entries: Vec<(ID, Ent)>,
+    entries: Vec<IdVal<ID, Ent>>,
 
     /// Statistics of how it runs.
     stat: ProgressStats,
@@ -155,11 +166,11 @@ where
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{{")?;
-        for (i, (id, v)) in self.iter().enumerate() {
+        for (i, item) in self.iter().enumerate() {
             if i > 0 {
                 write!(f, ", ")?;
             }
-            write!(f, "{}: {}", id, v)?
+            write!(f, "{}", item)?
         }
         write!(f, "}}")?;
 
@@ -187,11 +198,11 @@ where
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{{")?;
-        for (i, (id, v)) in self.inner.iter().enumerate() {
+        for (i, item) in self.inner.iter().enumerate() {
             if i > 0 {
                 write!(f, ", ")?;
             }
-            (self.f)(f, id, v)?;
+            (self.f)(f, &item.id, &item.val)?;
         }
         write!(f, "}}")?;
 
@@ -215,11 +226,11 @@ where
     Prog: Clone,
 {
     pub(crate) fn new(quorum_set: QS, learner_ids: impl IntoIterator<Item = ID>, default_v: impl Fn() -> Ent) -> Self {
-        let mut entries = quorum_set.ids().map(|id| (id, default_v())).collect::<Vec<_>>();
+        let mut entries = quorum_set.ids().map(|id| IdVal::new(id, default_v())).collect::<Vec<_>>();
 
         let voter_count = entries.len();
 
-        entries.extend(learner_ids.into_iter().map(|id| (id, default_v())));
+        entries.extend(learner_ids.into_iter().map(|id| IdVal::new(id, default_v())));
 
         Self {
             quorum_set,
@@ -234,7 +245,7 @@ where
     #[inline(always)]
     pub(crate) fn index(&self, target: &ID) -> Option<usize>
     where ID: PartialEq {
-        self.entries.iter().position(|(id, _)| id == target)
+        self.entries.iter().position(|item| &item.id == target)
     }
 
     /// Move an element at `index` up so that all the values greater than `quorum_accepted` are
@@ -244,7 +255,7 @@ where
     where Prog: PartialOrd {
         self.stat.move_count += 1;
         for i in (0..index).rev() {
-            if self.entries[i].1.borrow() < self.entries[i + 1].1.borrow() {
+            if self.entries[i].val.borrow() < self.entries[i + 1].val.borrow() {
                 self.entries.swap(i, i + 1);
             } else {
                 return i + 1;
@@ -254,11 +265,11 @@ where
         0
     }
 
-    pub(crate) fn iter_mut(&mut self) -> IterMut<'_, (ID, Ent)> {
+    pub(crate) fn iter_mut(&mut self) -> IterMut<'_, IdVal<ID, Ent>> {
         self.entries.iter_mut()
     }
 
-    pub(crate) fn into_iter(self) -> impl Iterator<Item = (ID, Ent)> {
+    pub(crate) fn into_iter(self) -> impl Iterator<Item = IdVal<ID, Ent>> {
         self.entries.into_iter()
     }
 
@@ -329,11 +340,11 @@ where
 
         let ent = &mut self.entries[index];
 
-        let prev_progress = ent.1.borrow().clone();
+        let prev_progress = ent.val.borrow().clone();
 
-        f(&mut ent.1);
+        f(&mut ent.val);
 
-        let new_progress = ent.1.borrow();
+        let new_progress = ent.val.borrow();
 
         debug_assert!(new_progress >= &prev_progress,);
 
@@ -358,7 +369,7 @@ where
 
             // From high to low, find the max value that has constituted a quorum.
             for i in new_index..self.voter_count {
-                let prog = self.entries[i].1.borrow();
+                let prog = self.entries[i].val.borrow();
 
                 // No need to re-calculate already quorum-accepted value.
                 if prog <= &self.quorum_accepted {
@@ -366,7 +377,7 @@ where
                 }
 
                 // Ids of the target that has value GE `entries[i]`
-                let it = self.entries[0..=i].iter().map(|x| &x.0);
+                let it = self.entries[0..=i].iter().map(|item| &item.id);
 
                 self.stat.is_quorum_count += 1;
 
@@ -383,18 +394,18 @@ where
     #[allow(dead_code)]
     fn try_get(&self, id: &ID) -> Option<&Ent> {
         let index = self.index(id)?;
-        Some(&self.entries[index].1)
+        Some(&self.entries[index].val)
     }
 
     fn get_mut(&mut self, id: &ID) -> Option<&mut Ent> {
         let index = self.index(id)?;
-        Some(&mut self.entries[index].1)
+        Some(&mut self.entries[index].val)
     }
 
     #[allow(dead_code)]
     fn get(&self, id: &ID) -> &Ent {
         let index = self.index(id).unwrap();
-        &self.entries[index].1
+        &self.entries[index].val
     }
 
     #[allow(dead_code)]
@@ -407,7 +418,7 @@ where
         &self.quorum_set
     }
 
-    fn iter(&self) -> Iter<'_, (ID, Ent)> {
+    fn iter(&self) -> Iter<'_, IdVal<ID, Ent>> {
         self.entries.as_slice().iter()
     }
 
@@ -421,8 +432,8 @@ where
 
         new_prog.stat = self.stat.clone();
 
-        for (id, v) in self.into_iter() {
-            let _ = new_prog.update(&id, v);
+        for item in self.into_iter() {
+            let _ = new_prog.update(&item.id, item.val);
         }
         new_prog
     }
@@ -443,19 +454,20 @@ mod t {
 
     #[test]
     fn vec_progress_new() {
+        use crate::progress::id_val::IdVal;
+
         let quorum_set: Vec<u64> = vec![0, 1, 2, 3, 4];
         let progress = VecProgress::<u64, u64, u64, _>::new(quorum_set, [6, 7], || 0);
 
         assert_eq!(
             vec![
-                //
-                (0, 0),
-                (1, 0),
-                (2, 0),
-                (3, 0),
-                (4, 0),
-                (6, 0),
-                (7, 0),
+                IdVal::new(0, 0),
+                IdVal::new(1, 0),
+                IdVal::new(2, 0),
+                IdVal::new(3, 0),
+                IdVal::new(4, 0),
+                IdVal::new(6, 0),
+                IdVal::new(7, 0),
             ],
             progress.entries
         );
@@ -497,6 +509,8 @@ mod t {
 
     #[test]
     fn vec_progress_iter() {
+        use crate::progress::id_val::IdVal;
+
         let quorum_set: Vec<u64> = vec![0, 1, 2, 3, 4];
         let mut progress = VecProgress::<u64, u64, u64, _>::new(quorum_set, [6, 7], || 0);
 
@@ -506,47 +520,96 @@ mod t {
 
         assert_eq!(
             vec![
-                //
-                (3, 3),
-                (1, 1),
-                (0, 0),
-                (2, 0),
-                (4, 0),
-                (6, 0),
-                (7, 7),
+                IdVal::new(3, 3),
+                IdVal::new(1, 1),
+                IdVal::new(0, 0),
+                IdVal::new(2, 0),
+                IdVal::new(4, 0),
+                IdVal::new(6, 0),
+                IdVal::new(7, 7),
             ],
-            progress.iter().copied().collect::<Vec<_>>(),
+            progress.iter().cloned().collect::<Vec<_>>(),
             "iter() returns voter first, followed by learners"
         );
     }
 
     #[test]
     fn vec_progress_move_up() {
+        use crate::progress::id_val::IdVal;
+
         let quorum_set: Vec<u64> = vec![0, 1, 2, 3, 4];
         let mut progress = VecProgress::<u64, u64, u64, _>::new(quorum_set, [6], || 0);
 
         // initial: 0-0, 1-0, 2-0, 3-0, 4-0
         let cases = [
-            ((1, 2), &[(1, 2), (0, 0), (2, 0), (3, 0), (4, 0), (6, 0)], 0), //
-            ((2, 3), &[(2, 3), (1, 2), (0, 0), (3, 0), (4, 0), (6, 0)], 0), //
-            ((1, 3), &[(2, 3), (1, 3), (0, 0), (3, 0), (4, 0), (6, 0)], 1), // no move
-            ((4, 8), &[(4, 8), (2, 3), (1, 3), (0, 0), (3, 0), (6, 0)], 0), //
-            ((0, 5), &[(4, 8), (0, 5), (2, 3), (1, 3), (3, 0), (6, 0)], 1), // move to 1st
+            (
+                (1, 2),
+                vec![
+                    IdVal::new(1, 2),
+                    IdVal::new(0, 0),
+                    IdVal::new(2, 0),
+                    IdVal::new(3, 0),
+                    IdVal::new(4, 0),
+                    IdVal::new(6, 0),
+                ],
+                0,
+            ),
+            (
+                (2, 3),
+                vec![
+                    IdVal::new(2, 3),
+                    IdVal::new(1, 2),
+                    IdVal::new(0, 0),
+                    IdVal::new(3, 0),
+                    IdVal::new(4, 0),
+                    IdVal::new(6, 0),
+                ],
+                0,
+            ),
+            (
+                (1, 3),
+                vec![
+                    IdVal::new(2, 3),
+                    IdVal::new(1, 3),
+                    IdVal::new(0, 0),
+                    IdVal::new(3, 0),
+                    IdVal::new(4, 0),
+                    IdVal::new(6, 0),
+                ],
+                1,
+            ), // no move
+            (
+                (4, 8),
+                vec![
+                    IdVal::new(4, 8),
+                    IdVal::new(2, 3),
+                    IdVal::new(1, 3),
+                    IdVal::new(0, 0),
+                    IdVal::new(3, 0),
+                    IdVal::new(6, 0),
+                ],
+                0,
+            ),
+            (
+                (0, 5),
+                vec![
+                    IdVal::new(4, 8),
+                    IdVal::new(0, 5),
+                    IdVal::new(2, 3),
+                    IdVal::new(1, 3),
+                    IdVal::new(3, 0),
+                    IdVal::new(6, 0),
+                ],
+                1,
+            ), // move to 1st
         ];
         for (ith, ((id, v), want_vec, want_new_index)) in cases.iter().enumerate() {
             // Update a value and move it up to keep the order.
             let index = progress.index(id).unwrap();
-            progress.entries[index].1 = *v;
+            progress.entries[index].val = *v;
             let got = progress.move_up(index);
 
-            assert_eq!(
-                want_vec.as_slice(),
-                &progress.entries,
-                "{}-th case: idx:{}, v:{}",
-                ith,
-                *id,
-                *v
-            );
+            assert_eq!(want_vec, &progress.entries, "{}-th case: idx:{}, v:{}", ith, *id, *v);
             assert_eq!(*want_new_index, got, "{}-th case: idx:{}, v:{}", ith, *id, *v);
         }
     }
