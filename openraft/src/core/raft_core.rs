@@ -319,11 +319,12 @@ where
 
         let voter_progresses = {
             let l = &self.engine.leader.as_ref().unwrap();
-            l.progress.iter().filter(|(id, _v)| l.progress.is_voter(id) == Some(true))
+            l.progress.iter().filter(|item| l.progress.is_voter(&item.id) == Some(true))
         };
 
-        for (target, progress) in voter_progresses {
-            let target = target.clone();
+        for item in voter_progresses {
+            let target = item.id.clone();
+            let progress = &item.val;
 
             if target == my_id {
                 continue;
@@ -558,12 +559,10 @@ where
 
         let (replication, heartbeat) = if let Some(leader) = self.engine.leader.as_ref() {
             let replication_prog = &leader.progress;
-            let replication =
-                Some(replication_prog.iter().map(|(id, p)| (id.clone(), p.matching().cloned())).collect());
+            let replication = Some(replication_prog.collect_mapped(|item| item.to_matching_tuple()));
 
             let clock_prog = &leader.clock_progress;
-            let heartbeat =
-                Some(clock_prog.iter().map(|(id, opt_t)| (id.clone(), opt_t.map(SerdeInstant::new))).collect());
+            let heartbeat = Some(clock_prog.collect_mapped(|item| (item.id.clone(), item.val.map(SerdeInstant::new))));
 
             (replication, heartbeat)
         } else {

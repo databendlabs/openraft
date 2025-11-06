@@ -289,12 +289,12 @@ where C: RaftTypeConfig
         let mut targets = vec![];
 
         // TODO: maybe it's better to update leader's matching when update_replication() is called.
-        for (target, prog_entry) in self.leader.progress.iter_mut() {
-            if target != &self.config.id {
+        for item in self.leader.progress.iter_mut() {
+            if &item.id != &self.config.id {
                 // Reset and resend (by self.send_to_all()) replication requests.
-                prog_entry.inflight = Inflight::None;
+                item.val.inflight = Inflight::None;
 
-                targets.push(ReplicationProgress(target.clone(), prog_entry.clone()));
+                targets.push(ReplicationProgress(item.id.clone(), item.val.clone()));
             }
         }
         self.output.push_command(Command::RebuildReplicationStreams { targets });
@@ -307,22 +307,22 @@ where C: RaftTypeConfig
     pub(crate) fn initiate_replication(&mut self) {
         tracing::debug!(progress = debug(&self.leader.progress), "{}", func_name!());
 
-        for (id, prog_entry) in self.leader.progress.iter_mut() {
+        for item in self.leader.progress.iter_mut() {
             // TODO: update matching should be done here for leader
             //       or updating matching should be queued in commands?
-            if id == &self.config.id {
+            if &item.id == &self.config.id {
                 continue;
             }
 
-            let t = prog_entry.next_send(self.state, self.config.max_payload_entries);
-            tracing::debug!(target = display(&*id), send = debug(&t), "next send");
+            let t = item.val.next_send(self.state, self.config.max_payload_entries);
+            tracing::debug!(target = display(&item.id), send = debug(&t), "next send");
 
             match t {
                 Ok(inflight) => {
-                    Self::send_to_target(self.output, id, inflight);
+                    Self::send_to_target(self.output, &item.id, inflight);
                 }
                 Err(e) => {
-                    tracing::debug!("no data to replicate for node-{}: current inflight: {:?}", id, e,);
+                    tracing::debug!("no data to replicate for node-{}: current inflight: {:?}", item.id, e,);
                 }
             }
         }
@@ -366,9 +366,9 @@ where C: RaftTypeConfig
 
         // Check if any replication task is going to use the log that is going to purge.
         let mut in_use = false;
-        for (id, prog_entry) in self.leader.progress.iter() {
-            if prog_entry.is_log_range_inflight(&purge_upto) {
-                tracing::debug!("log {} is in use by {}", purge_upto, id);
+        for item in self.leader.progress.iter() {
+            if item.val.is_log_range_inflight(&purge_upto) {
+                tracing::debug!("log {} is in use by {}", purge_upto, item.id);
                 in_use = true;
             }
         }
