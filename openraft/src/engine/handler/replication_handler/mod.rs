@@ -290,7 +290,7 @@ where C: RaftTypeConfig
 
         // TODO: maybe it's better to update leader's matching when update_replication() is called.
         for item in self.leader.progress.iter_mut() {
-            if &item.id != &self.config.id {
+            if item.id != self.config.id {
                 // Reset and resend (by self.send_to_all()) replication requests.
                 item.val.inflight = Inflight::None;
 
@@ -310,7 +310,7 @@ where C: RaftTypeConfig
         for item in self.leader.progress.iter_mut() {
             // TODO: update matching should be done here for leader
             //       or updating matching should be queued in commands?
-            if &item.id == &self.config.id {
+            if item.id == self.config.id {
                 continue;
             }
 
