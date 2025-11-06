@@ -234,13 +234,7 @@ where
     #[inline(always)]
     pub(crate) fn index(&self, target: &ID) -> Option<usize>
     where ID: PartialEq {
-        for (i, elt) in self.vector.iter().enumerate() {
-            if elt.0 == *target {
-                return Some(i);
-            }
-        }
-
-        None
+        self.vector.iter().position(|(id, _)| id == target)
     }
 
     /// Move an element at `index` up so that all the values greater than `committed` are sorted.
@@ -342,9 +336,7 @@ where
 
         debug_assert!(new_progress >= &prev_progress,);
 
-        let prev_le_granted = prev_progress <= self.granted;
-        let new_gt_granted = new_progress > &self.granted;
-
+        // No change, return early
         if &prev_progress == new_progress {
             return Ok(&self.granted);
         }
@@ -354,6 +346,9 @@ where
         if index >= self.voter_count {
             return Ok(&self.granted);
         }
+
+        let prev_le_granted = prev_progress <= self.granted;
+        let new_gt_granted = new_progress > &self.granted;
 
         // Sort and find the greatest value granted by a quorum set.
 
@@ -418,10 +413,10 @@ where
     fn upgrade_quorum_set(
         self,
         quorum_set: QS,
-        leaner_ids: impl IntoIterator<Item = ID>,
+        learner_ids: impl IntoIterator<Item = ID>,
         default_v: impl Fn() -> V,
     ) -> Self {
-        let mut new_prog = Self::new(quorum_set, leaner_ids, default_v);
+        let mut new_prog = Self::new(quorum_set, learner_ids, default_v);
 
         new_prog.stat = self.stat.clone();
 
@@ -446,7 +441,7 @@ mod t {
     use crate::quorum::Joint;
 
     #[test]
-    fn vec_progress_new() -> anyhow::Result<()> {
+    fn vec_progress_new() {
         let quorum_set: Vec<u64> = vec![0, 1, 2, 3, 4];
         let progress = VecProgress::<u64, u64, u64, _>::new(quorum_set, [6, 7], || 0);
 
@@ -464,12 +459,24 @@ mod t {
             progress.vector
         );
         assert_eq!(5, progress.voter_count);
-
-        Ok(())
     }
 
     #[test]
-    fn vec_progress_get() -> anyhow::Result<()> {
+    fn vec_progress_index() {
+        let quorum_set: Vec<u64> = vec![0, 1, 2, 3, 4];
+        let progress = VecProgress::<u64, u64, u64, _>::new(quorum_set, [6, 7], || 0);
+
+        assert_eq!(Some(0), progress.index(&0));
+        assert_eq!(Some(1), progress.index(&1));
+        assert_eq!(Some(4), progress.index(&4));
+        assert_eq!(Some(5), progress.index(&6));
+        assert_eq!(Some(6), progress.index(&7));
+        assert_eq!(None, progress.index(&9));
+        assert_eq!(None, progress.index(&100));
+    }
+
+    #[test]
+    fn vec_progress_get() {
         let quorum_set: Vec<u64> = vec![0, 1, 2, 3, 4];
         let mut progress = VecProgress::<u64, u64, u64, _>::new(quorum_set, [6, 7], || 0);
 
@@ -485,12 +492,10 @@ mod t {
             }
         }
         assert_eq!(Some(&10), progress.try_get(&6));
-
-        Ok(())
     }
 
     #[test]
-    fn vec_progress_iter() -> anyhow::Result<()> {
+    fn vec_progress_iter() {
         let quorum_set: Vec<u64> = vec![0, 1, 2, 3, 4];
         let mut progress = VecProgress::<u64, u64, u64, _>::new(quorum_set, [6, 7], || 0);
 
@@ -512,12 +517,10 @@ mod t {
             progress.iter().copied().collect::<Vec<_>>(),
             "iter() returns voter first, followed by learners"
         );
-
-        Ok(())
     }
 
     #[test]
-    fn vec_progress_move_up() -> anyhow::Result<()> {
+    fn vec_progress_move_up() {
         let quorum_set: Vec<u64> = vec![0, 1, 2, 3, 4];
         let mut progress = VecProgress::<u64, u64, u64, _>::new(quorum_set, [6], || 0);
 
@@ -545,11 +548,10 @@ mod t {
             );
             assert_eq!(*want_new_index, got, "{}-th case: idx:{}, v:{}", ith, *id, *v);
         }
-        Ok(())
     }
 
     #[test]
-    fn vec_progress_update() -> anyhow::Result<()> {
+    fn vec_progress_update() {
         let quorum_set: Vec<u64> = vec![0, 1, 2, 3, 4];
         let mut progress = VecProgress::<u64, u64, u64, _>::new(quorum_set, [6], || 0);
 
@@ -572,7 +574,6 @@ mod t {
             let got = progress.update_with(id, |x| *x = *v);
             assert_eq!(want_committed.clone(), got, "{}-th case: id:{}, v:{}", ith, id, v);
         }
-        Ok(())
     }
 
     /// Progress entry for testing
@@ -589,7 +590,7 @@ mod t {
     }
 
     #[test]
-    fn vec_progress_update_struct_value() -> anyhow::Result<()> {
+    fn vec_progress_update_struct_value() {
         let pv = |p, user_data| ProgressEntry { progress: p, user_data };
 
         let quorum_set: Vec<u64> = vec![0, 1, 2];
@@ -614,12 +615,10 @@ mod t {
         assert_eq!(pv(2, "d"), *progress.get(&1),);
         assert_eq!(pv(3, "c"), *progress.get(&2),);
         assert_eq!(pv(9, "a"), *progress.get(&3),);
-
-        Ok(())
     }
 
     #[test]
-    fn vec_progress_update_does_not_move_learner_elt() -> anyhow::Result<()> {
+    fn vec_progress_update_does_not_move_learner_elt() {
         let quorum_set: Vec<u64> = vec![0, 1, 2, 3, 4];
         let mut progress = VecProgress::<u64, u64, u64, _>::new(quorum_set, [6], || 0);
 
@@ -630,11 +629,10 @@ mod t {
 
         let _ = progress.update(&4, 4);
         assert_eq!(Some(0), progress.index(&4), "voter is not moved");
-        Ok(())
     }
 
     #[test]
-    fn vec_progress_upgrade_quorum_set() -> anyhow::Result<()> {
+    fn vec_progress_upgrade_quorum_set() {
         let qs012 = Joint::from(vec![vec![0, 1, 2]]);
         let qs012_345 = Joint::from(vec![vec![0, 1, 2], vec![3, 4, 5]]);
         let qs345 = Joint::from(vec![vec![3, 4, 5]]);
@@ -668,12 +666,10 @@ mod t {
 
         assert_eq!(&8, p345.granted(), "shrink quorum set, greater value becomes committed");
         assert_eq!(&6, p345.get(&1), "inherit voter progress");
-
-        Ok(())
     }
 
     #[test]
-    fn vec_progress_is_voter() -> anyhow::Result<()> {
+    fn vec_progress_is_voter() {
         let quorum_set: Vec<u64> = vec![0, 1, 2, 3, 4];
         let progress = VecProgress::<u64, u64, u64, _>::new(quorum_set, [6, 7], || 0);
 
@@ -681,7 +677,5 @@ mod t {
         assert_eq!(Some(true), progress.is_voter(&3));
         assert_eq!(Some(false), progress.is_voter(&7));
         assert_eq!(None, progress.is_voter(&8));
-
-        Ok(())
     }
 }
