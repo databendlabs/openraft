@@ -648,4 +648,106 @@ mod tests {
         assert_eq!(Some(false), progress.is_voter(&7));
         assert_eq!(None, progress.is_voter(&8));
     }
+
+    #[test]
+    fn vec_progress_display() {
+        let quorum_set: Vec<u64> = vec![0, 1, 2];
+        let mut progress = VecProgress::<u64, u64, u64, _>::new(quorum_set, [3], || 0);
+
+        let _ = progress.update(&1, 5);
+        let _ = progress.update(&2, 3);
+
+        let display = format!("{}", progress);
+        assert_eq!("{1: 5, 2: 3, 0: 0, 3: 0}", display);
+    }
+
+    #[test]
+    fn vec_progress_iter_mut() {
+        let quorum_set: Vec<u64> = vec![0, 1, 2];
+        let mut progress = VecProgress::<u64, u64, u64, _>::new(quorum_set, [3], || 0);
+
+        // Mutate values through iter_mut
+        for item in progress.iter_mut() {
+            if item.id == 1 {
+                item.val = 10;
+            }
+        }
+
+        assert_eq!(&10, progress.get(&1));
+        assert_eq!(&0, progress.get(&0));
+        assert_eq!(&0, progress.get(&2));
+    }
+
+    #[test]
+    fn vec_progress_stat() {
+        let quorum_set: Vec<u64> = vec![0, 1, 2];
+        let mut progress = VecProgress::<u64, u64, u64, _>::new(quorum_set, [3], || 0);
+
+        assert_eq!(0, progress.stat().update_count);
+        assert_eq!(0, progress.stat().move_count);
+
+        let _ = progress.update(&1, 5);
+        assert_eq!(1, progress.stat().update_count);
+
+        let _ = progress.update(&2, 3);
+        assert_eq!(2, progress.stat().update_count);
+        assert!(progress.stat().move_count > 0);
+    }
+
+    #[test]
+    fn vec_progress_display_with() {
+        let quorum_set: Vec<u64> = vec![0, 1, 2];
+        let mut progress = VecProgress::<u64, u64, u64, _>::new(quorum_set, [3], || 0);
+
+        let _ = progress.update(&1, 5);
+        let _ = progress.update(&2, 3);
+
+        let display = progress.display_with(|f, id, val| write!(f, "{}={}", id, val));
+
+        let output = format!("{}", display);
+        assert_eq!("{1=5, 2=3, 0=0, 3=0}", output);
+    }
+
+    #[test]
+    fn vec_progress_increase_to() {
+        let quorum_set: Vec<u64> = vec![0, 1, 2, 3, 4];
+        let mut progress = VecProgress::<u64, u64, u64, _>::new(quorum_set, [6], || 0);
+
+        // Increase from 0 to 5
+        let _ = progress.increase_to(&1, 5);
+        assert_eq!(&5, progress.get(&1));
+
+        // Try to decrease from 5 to 3 - should not change
+        let _ = progress.increase_to(&1, 3);
+        assert_eq!(&5, progress.get(&1));
+
+        // Increase from 5 to 7
+        let _ = progress.increase_to(&1, 7);
+        assert_eq!(&7, progress.get(&1));
+
+        // Try with nonexistent id
+        let result = progress.increase_to(&9, 10);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn vec_progress_collect_mapped() {
+        let quorum_set: Vec<u64> = vec![0, 1, 2];
+        let mut progress = VecProgress::<u64, u64, u64, _>::new(quorum_set, [3], || 0);
+
+        let _ = progress.update(&1, 5);
+        let _ = progress.update(&2, 3);
+
+        // Collect ids as Vec - order matters after updates (sorted by value descending)
+        let ids: Vec<u64> = progress.collect_mapped(|item| item.id);
+        assert_eq!(vec![1, 2, 0, 3], ids);
+
+        // Collect values as Vec - order matters after updates (sorted descending)
+        let values: Vec<u64> = progress.collect_mapped(|item| item.val);
+        assert_eq!(vec![5, 3, 0, 0], values);
+
+        // Collect as Vec of tuples - order matters after updates
+        let pairs: Vec<(u64, u64)> = progress.collect_mapped(|item| (item.id, item.val));
+        assert_eq!(vec![(1, 5), (2, 3), (0, 0), (3, 0)], pairs);
+    }
 }
