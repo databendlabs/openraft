@@ -28,7 +28,7 @@ use crate::quorum::QuorumSet;
 
 /// Track the progress of several incremental values.
 ///
-/// When one of the values is updated, it uses a `QuorumSet` to calculate the qruorum-accepted
+/// When one of the values is updated, it uses a `QuorumSet` to calculate the quorum-accepted
 /// value. `ID` is the identifier of every progress value.
 /// `V` is a type of progress entry.
 /// `P` is the progress data of `V`, a progress entry `V` could contain other user data.
@@ -633,11 +633,60 @@ mod t {
             ((9, 1), Err(&4)), // nonexistent id, ignore.
         ];
 
-        // TODO: test update_with
         for (ith, ((id, v), want_quorum_accepted)) in cases.iter().enumerate() {
             let got = progress.update_with(id, |x| *x = *v);
             assert_eq!(want_quorum_accepted.clone(), got, "{}-th case: id:{}, v:{}", ith, id, v);
         }
+    }
+
+    #[test]
+    fn vec_progress_update_with() {
+        let quorum_set: Vec<u64> = vec![0, 1, 2, 3, 4];
+        let mut progress = VecProgress::<u64, u64, u64, _>::new(quorum_set, [6], || 0);
+
+        // Test that update_with can use closures to modify values
+        // Case 0: 0,2,0,0,0,0
+        let got = progress.update_with(&1, |x| *x += 2);
+        assert_eq!(Ok(&0), got, "case 0: id:1, +=2");
+
+        // Case 1: 0,2,3,0,0,0
+        let got = progress.update_with(&2, |x| *x += 3);
+        assert_eq!(Ok(&0), got, "case 1: id:2, +=3");
+
+        // Case 2: 0,2,3,1,0,0
+        let got = progress.update_with(&3, |x| *x = 1);
+        assert_eq!(Ok(&1), got, "case 2: id:3, =1");
+
+        // Case 3: 0,2,3,1,5,0
+        let got = progress.update_with(&4, |x| *x += 5);
+        assert_eq!(Ok(&2), got, "case 3: id:4, +5");
+
+        // Case 4: 4,2,3,1,5,0 - closure can see updated value
+        let got = progress.update_with(&0, |x| {
+            *x += 4;
+            assert_eq!(4, *x, "closure sees the updated value");
+        });
+        assert_eq!(Ok(&3), got, "case 4: id:0, +=4");
+
+        // Case 5: 4,2,3,2,5,0 - using max
+        let got = progress.update_with(&3, |x| *x = (*x).max(2));
+        assert_eq!(Ok(&3), got, "case 5: id:3, max(2)");
+
+        // Case 6: 4,4,3,2,5,0
+        let got = progress.update_with(&1, |x| *x *= 2);
+        assert_eq!(Ok(&4), got, "case 6: id:1, *=2");
+
+        // Verify final values
+        assert_eq!(&4, progress.get(&0));
+        assert_eq!(&4, progress.get(&1));
+        assert_eq!(&3, progress.get(&2));
+        assert_eq!(&2, progress.get(&3));
+        assert_eq!(&5, progress.get(&4));
+        assert_eq!(&0, progress.get(&6));
+
+        // Test nonexistent id returns Err with current quorum-accepted
+        let got = progress.update_with(&9, |x| *x = 10);
+        assert_eq!(Err(&4), got, "nonexistent id returns Err");
     }
 
     /// Progress entry for testing
