@@ -12,7 +12,7 @@
 
 - `committed` log id can be optionally saved with [`RaftLogStorage::save_committed()`][].
 
-- New errors: [`PayloadTooLarge`][]: to inform Openraft to split append entries request into smaller ones.
+- New errors: `PayloadTooLarge`: to inform Openraft to split append entries request into smaller ones.
 
 - New API: support linearizable read: [`Raft::ensure_linearizable()`][].
 
@@ -183,7 +183,6 @@ To use arbitrary snapshot data, the application needs to:
 [`RPCOption`]:                        `crate::network::RPCOption`
 [`Chunked`]:                          `crate::network::snapshot_transport::Chunked`
 [`Streaming`]:                        `crate::network::snapshot_transport::Streaming`
-[`PayloadTooLarge`]:                  `crate::error::PayloadTooLarge`
 [`Raft::ensure_linearizable()`]:      `crate::Raft::ensure_linearizable`
 [`Raft::get_snapshot()`]:             `crate::Raft::get_snapshot`
 [`Raft::begin_receiving_snapshot()`]: `crate::Raft::begin_receiving_snapshot`

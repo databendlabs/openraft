@@ -118,7 +118,6 @@ mod tokio_rt {
                             match err {
                                 RPCError::Timeout(_) => {}
                                 RPCError::Unreachable(_) => {}
-                                RPCError::PayloadTooLarge(_) => {}
                                 RPCError::Network(_) => {}
                                 RPCError::RemoteError(remote_err) => {
                                     //

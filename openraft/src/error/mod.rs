@@ -17,7 +17,6 @@ mod leader_changed;
 
 use std::collections::BTreeSet;
 use std::error::Error;
-use std::fmt;
 use std::fmt::Debug;
 use std::time::Duration;
 
@@ -330,10 +329,6 @@ pub enum RPCError<C: RaftTypeConfig, E: Error = Infallible> {
     #[error(transparent)]
     Unreachable(#[from] Unreachable),
 
-    /// The RPC payload is too large and should be split into smaller chunks.
-    #[error(transparent)]
-    PayloadTooLarge(#[from] PayloadTooLarge),
-
     /// Failed to send the RPC request and should retry immediately.
     #[error(transparent)]
     Network(#[from] NetworkError),
@@ -354,7 +349,6 @@ where
         match self {
             RPCError::Timeout(_) => None,
             RPCError::Unreachable(_) => None,
-            RPCError::PayloadTooLarge(_) => None,
             RPCError::Network(_) => None,
             RPCError::RemoteError(remote_err) => remote_err.source.forward_to_leader(),
         }
@@ -369,7 +363,6 @@ where C: RaftTypeConfig
         match self {
             RPCError::Timeout(e) => RPCError::Timeout(e),
             RPCError::Unreachable(e) => RPCError::Unreachable(e),
-            RPCError::PayloadTooLarge(e) => RPCError::PayloadTooLarge(e),
             RPCError::Network(e) => RPCError::Network(e),
         }
     }
@@ -478,140 +471,6 @@ impl Unreachable {
         Self {
             source: AnyError::new(e),
         }
-    }
-}
-
-/// Error indicating that an RPC is too large and cannot be sent.
-///
-/// This is a retryable error:
-/// A [`RaftNetwork`] implementation returns this error to inform Openraft to divide an
-/// [`AppendEntriesRequest`] into smaller chunks.
-/// Openraft will immediately retry sending in smaller chunks.
-/// If the request cannot be divided (contains only one entry), Openraft interprets it as
-/// [`Unreachable`].
-///
-/// A hint can be provided to help Openraft in splitting the request.
-///
-/// The application should also set an appropriate value for [`Config::max_payload_entries`] to
-/// avoid returning this error if possible.
-///
-/// Example:
-///
-/// ```ignore
-/// impl<C: RaftTypeConfig> RaftNetwork<C> for MyNetwork {
-///     fn append_entries(&self,
-///             rpc: AppendEntriesRequest<C>,
-///             option: RPCOption
-///     ) -> Result<_, RPCError<C::NodeId, C::Node, RaftError<C>>> {
-///         if rpc.entries.len() > 10 {
-///             return Err(PayloadTooLarge::new_entries_hint(10).into());
-///         }
-///         // ...
-///     }
-/// }
-/// ```
-///
-/// [`RaftNetwork`]: crate::network::RaftNetwork
-/// [`AppendEntriesRequest`]: crate::raft::AppendEntriesRequest
-/// [`Config::max_payload_entries`]: crate::config::Config::max_payload_entries
-///
-/// [`InstallSnapshotRequest`]: crate::raft::InstallSnapshotRequest
-/// [`Config::snapshot_max_chunk_size`]: crate::config::Config::snapshot_max_chunk_size
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-pub struct PayloadTooLarge {
-    action: RPCTypes,
-
-    /// An optional hint indicating the anticipated number of entries.
-    /// Used only for append-entries replication.
-    entries_hint: u64,
-
-    /// An optional hint indicating the anticipated size in bytes.
-    /// Used for snapshot replication.
-    bytes_hint: u64,
-
-    #[source]
-    source: Option<AnyError>,
-}
-
-impl fmt::Display for PayloadTooLarge {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "RPC",)?;
-        write!(f, "({})", self.action)?;
-        write!(f, " payload too large:",)?;
-
-        write!(f, " hint:(")?;
-        match self.action {
-            RPCTypes::Vote => {
-                unreachable!("vote rpc should not have payload")
-            }
-            RPCTypes::AppendEntries => {
-                write!(f, "entries:{}", self.entries_hint)?;
-            }
-            RPCTypes::InstallSnapshot => {
-                write!(f, "bytes:{}", self.bytes_hint)?;
-            }
-            RPCTypes::TransferLeader => {
-                unreachable!("TransferLeader rpc should not have payload")
-            }
-        }
-        write!(f, ")")?;
-
-        if let Some(s) = &self.source {
-            write!(f, ", source: {}", s)?;
-        }
-
-        Ok(())
-    }
-}
-
-impl PayloadTooLarge {
-    /// Create a new PayloadTooLarge, with entries hint, without the causing error.
-    pub fn new_entries_hint(entries_hint: u64) -> Self {
-        debug_assert!(entries_hint > 0, "entries_hint should be greater than 0");
-
-        Self {
-            action: RPCTypes::AppendEntries,
-            entries_hint,
-            bytes_hint: u64::MAX,
-            source: None,
-        }
-    }
-
-    // No used yet.
-    /// Create a new PayloadTooLarge, with bytes hint, without the causing error.
-    #[allow(dead_code)]
-    pub(crate) fn new_bytes_hint(bytes_hint: u64) -> Self {
-        debug_assert!(bytes_hint > 0, "bytes_hint should be greater than 0");
-
-        Self {
-            action: RPCTypes::InstallSnapshot,
-            entries_hint: u64::MAX,
-            bytes_hint,
-            source: None,
-        }
-    }
-
-    /// Set the source error that causes this PayloadTooLarge error.
-    pub fn with_source_error(mut self, e: &(impl Error + 'static)) -> Self {
-        self.source = Some(AnyError::new(e));
-        self
-    }
-
-    /// Get the RPC type that caused the payload too large error.
-    pub fn action(&self) -> RPCTypes {
-        self.action
-    }
-
-    /// Get the hint for the entries number.
-    pub fn entries_hint(&self) -> u64 {
-        self.entries_hint
-    }
-
-    // No used yet.
-    #[allow(dead_code)]
-    pub(crate) fn bytes_hint(&self) -> u64 {
-        self.bytes_hint
     }
 }
 
@@ -809,29 +668,5 @@ where C: RaftTypeConfig
                 RejectAppendEntries::ByConflictingLogId { expect: _, local: _ } => AppendEntriesResponse::Conflict,
             },
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use anyerror::AnyError;
-
-    use crate::error::PayloadTooLarge;
-
-    #[test]
-    fn test_append_too_large() -> anyhow::Result<()> {
-        let a = PayloadTooLarge::new_entries_hint(5);
-        assert_eq!("RPC(AppendEntries) payload too large: hint:(entries:5)", a.to_string());
-
-        let a = PayloadTooLarge::new_bytes_hint(5);
-        assert_eq!("RPC(InstallSnapshot) payload too large: hint:(bytes:5)", a.to_string());
-
-        let a = PayloadTooLarge::new_entries_hint(5).with_source_error(&AnyError::error("test"));
-        assert_eq!(
-            "RPC(AppendEntries) payload too large: hint:(entries:5), source: test",
-            a.to_string()
-        );
-
-        Ok(())
     }
 }

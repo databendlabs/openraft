@@ -1,7 +1,6 @@
 //! Replication stream.
 
 pub(crate) mod callbacks;
-pub(crate) mod hint;
 mod replication_session_id;
 pub(crate) mod request;
 pub(crate) mod response;
@@ -32,7 +31,6 @@ use crate::display_ext::DisplayOptionExt;
 use crate::entry::RaftEntry;
 use crate::entry::raft_entry_ext::RaftEntryExt;
 use crate::error::HigherVote;
-use crate::error::PayloadTooLarge;
 use crate::error::RPCError;
 use crate::error::ReplicationClosed;
 use crate::error::ReplicationError;
@@ -47,7 +45,6 @@ use crate::network::v2::RaftNetworkV2;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
 use crate::replication::callbacks::SnapshotCallback;
-use crate::replication::hint::ReplicationHint;
 use crate::storage::RaftLogReader;
 use crate::storage::RaftLogStorage;
 use crate::storage::Snapshot;
@@ -145,10 +142,6 @@ where
 
     /// Next replication action to run.
     next_action: Option<Data<C>>,
-
-    /// An appropriate number of entries to send.
-    /// This is only used by AppendEntries RPC.
-    entries_hint: ReplicationHint,
 }
 
 impl<C, N, LS> ReplicationCore<C, N, LS>
@@ -201,7 +194,6 @@ where
             rx_event,
             weak_tx_event: tx_event.downgrade(),
             next_action: None,
-            entries_hint: Default::default(),
         };
 
         let join_handle = C::spawn(this.main().instrument(span));
@@ -222,9 +214,6 @@ where
                 continue;
             };
 
-            // Backup the log data for retrying.
-            let mut log_data = None;
-
             tracing::debug!(replication_data = display(&d), "{} send replication RPC", func_name!());
 
             // If an RPC response is expected by RaftCore
@@ -235,13 +224,9 @@ where
                     let m = &self.matching;
                     let d = LogIdRange::new(m.clone(), m.clone());
 
-                    log_data = Some(d.clone());
                     self.send_log_entries(d, false).await
                 }
-                Data::Logs(log) => {
-                    log_data = Some(log.clone());
-                    self.send_log_entries(log, true).await
-                }
+                Data::Logs(log) => self.send_log_entries(log, true).await,
                 Data::Snapshot(snap) => self.stream_snapshot(snap).await,
                 Data::SnapshotCallback(resp) => self.handle_snapshot_callback(resp).await,
             };
@@ -296,13 +281,6 @@ where
                                     }
                                     false
                                 }
-                                RPCError::PayloadTooLarge(too_large) => {
-                                    self.update_hint(too_large);
-
-                                    // PayloadTooLarge is a retryable error: retry at once.
-                                    self.next_action = Some(Data::Logs(log_data.unwrap()));
-                                    true
-                                }
                                 RPCError::Network(_) => false,
                                 RPCError::RemoteError(_) => false,
                             };
@@ -340,28 +318,6 @@ where
         Ok(())
     }
 
-    /// When a [`PayloadTooLarge`] error is received, update the hint for the next several RPC.
-    fn update_hint(&mut self, too_large: &PayloadTooLarge) {
-        const DEFAULT_ENTRIES_HINT_TTL: u64 = 10;
-
-        match too_large.action() {
-            RPCTypes::Vote => {
-                unreachable!("Vote RPC should not be too large")
-            }
-            RPCTypes::AppendEntries => {
-                self.entries_hint = ReplicationHint::new(too_large.entries_hint(), DEFAULT_ENTRIES_HINT_TTL);
-                tracing::debug!(entries_hint = debug(&self.entries_hint), "updated entries hint");
-            }
-            RPCTypes::InstallSnapshot => {
-                // TODO: handle too large
-                tracing::error!("InstallSnapshot RPC is too large, but it is not supported yet");
-            }
-            RPCTypes::TransferLeader => {
-                unreachable!("TransferLeader RPC should not be too large")
-            }
-        }
-    }
-
     /// Send an AppendEntries RPC to the target.
     ///
     /// This request will time out if no response is received within the
@@ -388,12 +344,7 @@ where
                 let start = rng.prev.next_index();
                 let end = rng.last.next_index();
 
-                if let Some(hint) = self.entries_hint.get() {
-                    let hint_end = start + hint;
-                    (start, std::cmp::min(end, hint_end))
-                } else {
-                    (start, end)
-                }
+                (start, end)
             };
 
             if start == end {

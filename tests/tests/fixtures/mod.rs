@@ -39,7 +39,6 @@ use openraft::error::ClientWriteError;
 use openraft::error::Fatal;
 use openraft::error::Infallible;
 use openraft::error::NetworkError;
-use openraft::error::PayloadTooLarge;
 use openraft::error::RPCError;
 use openraft::error::RaftError;
 use openraft::error::ReplicationClosed;
@@ -207,8 +206,6 @@ pub enum RPCErrorType {
     Unreachable,
     /// Returns [`NetworkError`](`openraft::error::NetworkError`).
     NetworkError,
-    /// Returns [`PayloadTooLarge`](`openraft::error::PayloadTooLarge`).
-    PayloadTooLarge { action: RPCTypes, entries_hint: u64 },
 }
 
 impl RPCErrorType {
@@ -219,18 +216,6 @@ impl RPCErrorType {
         match self {
             RPCErrorType::Unreachable => Unreachable::new(&AnyError::error(msg)).into(),
             RPCErrorType::NetworkError => NetworkError::new(&AnyError::error(msg)).into(),
-            RPCErrorType::PayloadTooLarge { action, entries_hint } => match action {
-                RPCTypes::Vote => {
-                    unreachable!("Vote RPC should not be too large")
-                }
-                RPCTypes::AppendEntries => PayloadTooLarge::new_entries_hint(*entries_hint).into(),
-                RPCTypes::InstallSnapshot => {
-                    unreachable!("InstallSnapshot RPC should not be too large")
-                }
-                RPCTypes::TransferLeader => {
-                    unreachable!("TransferLeader RPC should not be too large")
-                }
-            },
         }
     }
 }
@@ -603,7 +588,6 @@ impl TypedRaftRouter {
                     let rpc_err = match err {
                         RPCError::Timeout(e) => e.into(),
                         RPCError::Unreachable(e) => e.into(),
-                        RPCError::PayloadTooLarge(e) => e.into(),
                         RPCError::Network(e) => e.into(),
                         RPCError::RemoteError(e) => {
                             unreachable!("unexpected RemoteError: {:?}", e);

@@ -64,7 +64,6 @@ where
             Err(e) => match e {
                 RPCError::Timeout(e) => Err(RPCError::Timeout(e)),
                 RPCError::Unreachable(e) => Err(RPCError::Unreachable(e)),
-                RPCError::PayloadTooLarge(e) => Err(RPCError::PayloadTooLarge(e)),
                 RPCError::Network(e) => Err(RPCError::Network(e)),
                 RPCError::RemoteError(e) => match e.source {
                     RaftError::APIError(e) => Ok(Err(e)),

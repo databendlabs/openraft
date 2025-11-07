@@ -51,9 +51,6 @@ impl<C: RaftTypeConfig> From<RPCError<C>> for StreamingError<C> {
         match value {
             RPCError::Timeout(e) => StreamingError::Timeout(e),
             RPCError::Unreachable(e) => StreamingError::Unreachable(e),
-            RPCError::PayloadTooLarge(_e) => {
-                unreachable!("PayloadTooLarge should not be converted to StreamingError")
-            }
             RPCError::Network(e) => StreamingError::Network(e),
         }
     }
