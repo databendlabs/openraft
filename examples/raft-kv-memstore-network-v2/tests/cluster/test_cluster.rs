@@ -46,13 +46,13 @@ async fn test_cluster() {
         log_panic(panic);
     }));
 
-    tracing_subscriber::fmt()
+    let _ = tracing_subscriber::fmt()
         .with_target(true)
         .with_thread_ids(true)
         .with_level(true)
         .with_ansi(false)
         .with_env_filter(EnvFilter::from_default_env())
-        .init();
+        .try_init();
 
     let router = Router::default();
 

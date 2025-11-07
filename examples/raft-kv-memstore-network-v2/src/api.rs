@@ -14,7 +14,7 @@ use crate::NodeId;
 
 pub async fn write(app: &mut App, req: String) -> String {
     let res = app.raft.client_write(decode(&req)).await;
-    encode(res)
+    encode(&res)
 }
 
 pub async fn read(app: &mut App, req: String) -> String {
@@ -34,19 +34,28 @@ pub async fn read(app: &mut App, req: String) -> String {
         }
         Err(e) => Err(e),
     };
-    encode(res)
+    encode(&res)
 }
 
 // Raft API
 
 pub async fn vote(app: &mut App, req: String) -> String {
     let res = app.raft.vote(decode(&req)).await;
-    encode(res)
+    encode(&res)
 }
 
 pub async fn append(app: &mut App, req: String) -> String {
+    // Simulate transport layer payload size check (e.g., HTTP server rejecting large bodies)
+    if let Some(max_size) = *app.router.max_payload_size.lock().unwrap() {
+        if req.len() > max_size {
+            // Return empty string to simulate connection/transport error
+            // The router will convert this to an Unreachable error
+            return String::new();
+        }
+    }
+
     let res = app.raft.append_entries(decode(&req)).await;
-    encode(res)
+    encode(&res)
 }
 
 /// Receive a snapshot and install it.
@@ -57,7 +66,7 @@ pub async fn snapshot(app: &mut App, req: String) -> String {
         snapshot: snapshot_data,
     };
     let res = app.raft.install_full_snapshot(vote, snapshot).await.map_err(RaftError::<Infallible>::Fatal);
-    encode(res)
+    encode(&res)
 }
 
 // Management API
@@ -71,14 +80,14 @@ pub async fn add_learner(app: &mut App, req: String) -> String {
     let node_id: NodeId = decode(&req);
     let node = BasicNode { addr: "".to_string() };
     let res = app.raft.add_learner(node_id, node, true).await;
-    encode(res)
+    encode(&res)
 }
 
 /// Changes specified learners to members, or remove members.
 pub async fn change_membership(app: &mut App, req: String) -> String {
     let node_ids: BTreeSet<NodeId> = decode(&req);
     let res = app.raft.change_membership(node_ids, false).await;
-    encode(res)
+    encode(&res)
 }
 
 /// Initialize a single-node cluster.
@@ -86,7 +95,7 @@ pub async fn init(app: &mut App) -> String {
     let mut nodes = BTreeMap::new();
     nodes.insert(app.id, BasicNode { addr: "".to_string() });
     let res = app.raft.initialize(nodes).await;
-    encode(res)
+    encode(&res)
 }
 
 /// Get the latest metrics of the cluster
@@ -94,5 +103,5 @@ pub async fn metrics(app: &mut App) -> String {
     let metrics = app.raft.metrics().borrow().clone();
 
     let res: Result<RaftMetrics, Infallible> = Ok(metrics);
-    encode(res)
+    encode(&res)
 }

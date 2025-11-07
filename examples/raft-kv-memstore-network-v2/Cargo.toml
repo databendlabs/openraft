@@ -19,6 +19,7 @@ repository = "https://github.com/databendlabs/openraft"
 mem-log  = { path = "../mem-log", features = [] }
 openraft = { path = "../../openraft", features = ["serde", "type-alias"] }
 
+async-recursion    = { version = "1.0" }
 futures            = { version = "0.3" }
 serde              = { version = "1.0.114", features = ["derive"] }
 serde_json         = { version = "1.0.57" }

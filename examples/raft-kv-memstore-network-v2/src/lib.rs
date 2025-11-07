@@ -36,8 +36,8 @@ pub type StateMachineStore = store::StateMachineStore;
 #[path = "../../utils/declare_types.rs"]
 pub mod typ;
 
-pub fn encode<T: serde::Serialize>(t: T) -> String {
-    serde_json::to_string(&t).unwrap()
+pub fn encode<T: serde::Serialize>(t: &T) -> String {
+    serde_json::to_string(t).unwrap()
 }
 
 pub fn decode<T: serde::de::DeserializeOwned>(s: &str) -> T {
