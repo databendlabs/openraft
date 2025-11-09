@@ -1,6 +1,7 @@
 //! Replication stream.
 
 pub(crate) mod callbacks;
+pub(crate) mod log_state;
 mod replication_session_id;
 pub(crate) mod request;
 pub(crate) mod response;
@@ -45,6 +46,7 @@ use crate::network::v2::RaftNetworkV2;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
 use crate::replication::callbacks::SnapshotCallback;
+use crate::replication::log_state::LogState;
 use crate::storage::RaftLogReader;
 use crate::storage::RaftLogStorage;
 use crate::storage::Snapshot;
@@ -134,11 +136,8 @@ where
     /// The Raft's runtime config.
     config: Arc<Config>,
 
-    /// The log id of the highest log entry which is known to be committed in the cluster.
-    committed: Option<LogIdOf<C>>,
-
-    /// Last matching log id on a follower/learner
-    matching: Option<LogIdOf<C>>,
+    /// The log replication state tracking progress and matching logs for the follower.
+    log_state: LogState<C>,
 
     /// Next replication action to run.
     next_action: Option<Data<C>>,
@@ -188,8 +187,14 @@ where
             log_reader,
             snapshot_reader,
             config,
-            committed,
-            matching,
+            log_state: LogState {
+                stream_id: 0,
+                purged: None,
+                committed,
+                matching,
+                searching_end: 0,
+                last_log_id: None,
+            },
             tx_raft_core,
             rx_event,
             weak_tx_event: tx_event.downgrade(),
@@ -221,7 +226,7 @@ where
 
             let res = match d {
                 Data::Committed => {
-                    let m = &self.matching;
+                    let m = &self.log_state.matching;
                     let d = LogIdRange::new(m.clone(), m.clone());
 
                     self.send_log_entries(d, false).await
@@ -379,7 +384,7 @@ where
         let payload = AppendEntriesRequest {
             vote: self.session_id.vote(),
             prev_log_id: sending_range.prev.clone(),
-            leader_commit: self.committed.clone(),
+            leader_commit: self.log_state.committed.clone(),
             entries: logs,
         };
 
@@ -509,7 +514,7 @@ where
     async fn notify_progress(&mut self, replication_result: ReplicationResult<C>, has_payload: bool) {
         tracing::debug!(
             target = display(self.target.clone()),
-            curr_matching = display(self.matching.display()),
+            curr_matching = display(self.log_state.matching.display()),
             result = display(&replication_result),
             "{}",
             func_name!()
@@ -517,7 +522,7 @@ where
 
         match &replication_result.0 {
             Ok(matching) => {
-                self.matching = matching.clone();
+                self.log_state.matching = matching.clone();
             }
             Err(_conflict) => {
                 // Conflict is not allowed to be less than the current matching.
@@ -625,13 +630,13 @@ where
             Replicate::Committed(c) => {
                 // RaftCore may send a committed equals to the initial value.
                 debug_assert!(
-                    c >= self.committed,
+                    c >= self.log_state.committed,
                     "expect new committed {} > self.committed {}",
                     c.display(),
-                    self.committed.display()
+                    self.log_state.committed.display()
                 );
 
-                self.committed = c;
+                self.log_state.committed = c;
 
                 // If there is no action, fill in an heartbeat action to send committed index.
                 if self.next_action.is_none() {
@@ -757,7 +762,7 @@ where
     ) -> Result<Option<Data<C>>, ReplicationError<C>> {
         tracing::debug!(
             response = display(&callback),
-            matching = display(self.matching.display()),
+            matching = display(self.log_state.matching.display()),
             "handle_snapshot_response"
         );
 
