@@ -232,7 +232,7 @@ where
                     self.send_log_entries(d, false).await
                 }
                 Data::Logs(log) => self.send_log_entries(log, true).await,
-                Data::Snapshot(snap) => self.stream_snapshot(snap).await,
+                Data::Snapshot => self.stream_snapshot().await,
                 Data::SnapshotCallback(resp) => self.handle_snapshot_callback(resp).await,
             };
 
@@ -675,10 +675,7 @@ where
     }
 
     #[tracing::instrument(level = "info", skip_all)]
-    async fn stream_snapshot(
-        &mut self,
-        _snapshot_req: Option<LogIdOf<C>>,
-    ) -> Result<Option<Data<C>>, ReplicationError<C>> {
+    async fn stream_snapshot(&mut self) -> Result<Option<Data<C>>, ReplicationError<C>> {
         tracing::info!("{}", func_name!());
 
         let snapshot = self.snapshot_reader.get_snapshot().await.map_err(|reason| {

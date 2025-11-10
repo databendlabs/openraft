@@ -8,7 +8,6 @@ use std::fmt::Formatter;
 use validit::Validate;
 
 use crate::RaftTypeConfig;
-use crate::display_ext::DisplayOptionExt;
 use crate::log_id_range::LogIdRange;
 use crate::type_config::alias::LogIdOf;
 
@@ -30,12 +29,7 @@ where C: RaftTypeConfig
     },
 
     /// Being replicating a snapshot.
-    Snapshot {
-        /// The last log id snapshot includes.
-        ///
-        /// It is None, if the snapshot is empty.
-        last_log_id: Option<LogIdOf<C>>,
-    },
+    Snapshot,
 }
 
 impl<C> Copy for Inflight<C>
@@ -52,7 +46,7 @@ where C: RaftTypeConfig
         match self {
             Inflight::None => Ok(()),
             Inflight::Logs { log_id_range: r, .. } => r.validate(),
-            Inflight::Snapshot { .. } => Ok(()),
+            Inflight::Snapshot => Ok(()),
         }
     }
 }
@@ -64,8 +58,8 @@ where C: RaftTypeConfig
         match self {
             Inflight::None => write!(f, "None"),
             Inflight::Logs { log_id_range: r } => write!(f, "Logs:{}", r),
-            Inflight::Snapshot { last_log_id } => {
-                write!(f, "Snapshot:{}", last_log_id.display())
+            Inflight::Snapshot => {
+                write!(f, "Snapshot")
             }
         }
     }
@@ -87,10 +81,8 @@ where C: RaftTypeConfig
     }
 
     /// Create inflight state for sending snapshot.
-    pub(crate) fn snapshot(snapshot_last_log_id: Option<LogIdOf<C>>) -> Self {
-        Self::Snapshot {
-            last_log_id: snapshot_last_log_id,
-        }
+    pub(crate) fn snapshot() -> Self {
+        Self::Snapshot
     }
 
     pub(crate) fn is_none(&self) -> bool {
@@ -106,7 +98,7 @@ where C: RaftTypeConfig
     // test it if used
     #[allow(dead_code)]
     pub(crate) fn is_sending_snapshot(&self) -> bool {
-        matches!(self, Inflight::Snapshot { .. })
+        matches!(self, Inflight::Snapshot)
     }
 
     /// Update inflight state when log up to `upto` is acknowledged by a follower/learner.
@@ -122,8 +114,7 @@ where C: RaftTypeConfig
                     Inflight::logs(upto, log_id_range.last.clone())
                 }
             }
-            Inflight::Snapshot { last_log_id } => {
-                debug_assert_eq!(&upto, last_log_id);
+            Inflight::Snapshot => {
                 *self = Inflight::None;
             }
         }
@@ -136,7 +127,7 @@ where C: RaftTypeConfig
                 unreachable!("no inflight data")
             }
             Inflight::Logs { log_id_range: _ } => *self = Inflight::None,
-            Inflight::Snapshot { last_log_id: _ } => {
+            Inflight::Snapshot => {
                 unreachable!("sending snapshot should not conflict");
             }
         }

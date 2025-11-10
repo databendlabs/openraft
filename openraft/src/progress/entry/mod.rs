@@ -96,7 +96,7 @@ where C: RaftTypeConfig
                 let lid = Some(upto);
                 lid > log_id_range.prev.as_ref()
             }
-            Inflight::Snapshot { last_log_id: _, .. } => false,
+            Inflight::Snapshot => false,
         }
     }
 
@@ -135,8 +135,7 @@ where C: RaftTypeConfig
         // The log the follower needs is purged.
         // Replicate by snapshot.
         if self.searching_end < purge_upto_next {
-            let snapshot_last = log_state.snapshot_last_log_id();
-            self.inflight = Inflight::snapshot(snapshot_last.cloned());
+            self.inflight = Inflight::snapshot();
             return Ok(&self.inflight);
         }
 
@@ -217,10 +216,7 @@ where C: RaftTypeConfig
                 validit::less_equal!(self.matching(), log_id_range.prev.as_ref());
                 validit::less_equal!(log_id_range.prev.next_index(), self.searching_end);
             }
-            Inflight::Snapshot { last_log_id, .. } => {
-                // There is no need to send a snapshot smaller than the last matching.
-                validit::less!(self.matching(), last_log_id.as_ref());
-            }
+            Inflight::Snapshot => {}
         }
         Ok(())
     }
