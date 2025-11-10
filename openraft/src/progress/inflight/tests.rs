@@ -32,13 +32,8 @@ fn test_inflight_create() -> anyhow::Result<()> {
     assert!(l.is_none());
 
     // Snapshot
-    let l = Inflight::<UTConfig>::snapshot(Some(log_id(10)));
-    assert_eq!(
-        Inflight::Snapshot {
-            last_log_id: Some(log_id(10))
-        },
-        l
-    );
+    let l = Inflight::<UTConfig>::snapshot();
+    assert_eq!(Inflight::Snapshot, l);
     assert!(!l.is_none());
 
     Ok(())
@@ -52,7 +47,7 @@ fn test_inflight_is_xxx() -> anyhow::Result<()> {
     let l = Inflight::<UTConfig>::logs(Some(log_id(5)), Some(log_id(10)));
     assert!(l.is_sending_log());
 
-    let l = Inflight::<UTConfig>::snapshot(Some(log_id(10)));
+    let l = Inflight::<UTConfig>::snapshot();
     assert!(l.is_sending_snapshot());
 
     Ok(())
@@ -98,18 +93,9 @@ fn test_inflight_ack() -> anyhow::Result<()> {
     // Update matching when transmitting by snapshot
     {
         {
-            let mut f = Inflight::<UTConfig>::snapshot(Some(log_id(5)));
+            let mut f = Inflight::<UTConfig>::snapshot();
             f.ack(Some(log_id(5)));
             assert_eq!(Inflight::<UTConfig>::None, f, "valid ack");
-        }
-
-        {
-            let res = std::panic::catch_unwind(|| {
-                let mut f = Inflight::<UTConfig>::snapshot(Some(log_id(5)));
-                f.ack(Some(log_id(4)));
-            });
-            tracing::info!("res: {:?}", res);
-            assert!(res.is_err(), "non-matching ack != snapshot.last_log_id");
         }
     }
 
@@ -122,15 +108,6 @@ fn test_inflight_conflict() -> anyhow::Result<()> {
         let mut f = Inflight::<UTConfig>::logs(Some(log_id(5)), Some(log_id(10)));
         f.conflict(5);
         assert_eq!(Inflight::<UTConfig>::None, f, "valid conflict");
-    }
-
-    {
-        let res = std::panic::catch_unwind(|| {
-            let mut f = Inflight::<UTConfig>::snapshot(Some(log_id(5)));
-            f.conflict(5);
-        });
-        tracing::info!("res: {:?}", res);
-        assert!(res.is_err(), "conflict is not expected by Inflight::Snapshot");
     }
 
     Ok(())

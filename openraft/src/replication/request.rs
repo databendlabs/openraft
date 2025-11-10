@@ -22,8 +22,8 @@ where C: RaftTypeConfig
         Self::Data(Data::new_logs(log_id_range))
     }
 
-    pub(crate) fn snapshot(last_log_id: Option<LogIdOf<C>>) -> Self {
-        Self::Data(Data::new_snapshot(last_log_id))
+    pub(crate) fn snapshot() -> Self {
+        Self::Data(Data::new_snapshot())
     }
 
     pub(crate) fn new_data(data: Data<C>) -> Self {
@@ -60,7 +60,7 @@ where C: RaftTypeConfig
 {
     Committed,
     Logs(LogIdRange<C>),
-    Snapshot(Option<LogIdOf<C>>),
+    Snapshot,
     SnapshotCallback(SnapshotCallback<C>),
 }
 
@@ -73,7 +73,7 @@ where C: RaftTypeConfig
                 write!(f, "Data::Committed")
             }
             Self::Logs(l) => f.debug_struct("Data::Logs").field("log_id_range", l).finish(),
-            Self::Snapshot(s) => f.debug_struct("Data::Snapshot").field("last_log_id", s).finish(),
+            Self::Snapshot => f.debug_struct("Data::Snapshot").finish(),
             Self::SnapshotCallback(resp) => f.debug_struct("Data::SnapshotCallback").field("callback", resp).finish(),
         }
     }
@@ -88,8 +88,8 @@ impl<C: RaftTypeConfig> fmt::Display for Data<C> {
             Self::Logs(l) => {
                 write!(f, "Logs{{log_id_range: {}}}", l)
             }
-            Self::Snapshot(s) => {
-                write!(f, "Snapshot{{last_log_id:{}}}", s.display())
+            Self::Snapshot => {
+                write!(f, "Snapshot")
             }
             Self::SnapshotCallback(l) => {
                 write!(f, "SnapshotCallback{{callback: {}}}", l)
@@ -109,8 +109,8 @@ where C: RaftTypeConfig
         Self::Logs(log_id_range)
     }
 
-    pub(crate) fn new_snapshot(last_log_id: Option<LogIdOf<C>>) -> Self {
-        Self::Snapshot(last_log_id)
+    pub(crate) fn new_snapshot() -> Self {
+        Self::Snapshot
     }
 
     pub(crate) fn new_snapshot_callback(
@@ -126,7 +126,7 @@ where C: RaftTypeConfig
         match self {
             Self::Committed => false,
             Self::Logs(_) => true,
-            Self::Snapshot(_) => true,
+            Self::Snapshot => true,
             Self::SnapshotCallback(_) => true,
         }
     }
