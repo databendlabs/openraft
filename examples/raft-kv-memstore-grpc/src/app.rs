@@ -38,9 +38,14 @@ pub async fn start_raft_app(node_id: NodeId, http_addr: String) -> Result<(), Bo
     let internal_service = RaftServiceImpl::new(raft.clone());
     let api_service = AppServiceImpl::new(raft, state_machine_store);
 
-    // Start server
+    // Start server with reduced max message size on Raft service to demonstrate chunking behavior.
+    // The default gRPC message size limit is 4MB, but we set it to 1KB for the internal
+    // Raft service to force the append_entries RPC to use chunking for even small payloads.
+    // The app service uses the default limit since it's user-facing.
+    let raft_service = RaftServiceServer::new(internal_service).max_decoding_message_size(1024);
+
     let server_future = Server::builder()
-        .add_service(RaftServiceServer::new(internal_service))
+        .add_service(raft_service)
         .add_service(AppServiceServer::new(api_service))
         .serve(http_addr.parse()?);
 
