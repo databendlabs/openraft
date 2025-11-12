@@ -2,6 +2,7 @@
 
 mod allow_next_revert_error;
 pub mod decompose;
+pub(crate) mod higher_vote;
 pub mod into_ok;
 pub(crate) mod into_raft_result;
 mod invalid_sm;
@@ -9,6 +10,7 @@ mod membership_error;
 mod node_not_found;
 mod operation;
 mod replication_closed;
+pub(crate) mod replication_error;
 pub(crate) mod storage_error;
 mod storage_io_result;
 mod streaming_error;
@@ -24,12 +26,14 @@ use anyerror::AnyError;
 use openraft_macros::since;
 
 pub use self::allow_next_revert_error::AllowNextRevertError;
+pub(crate) use self::higher_vote::HigherVote;
 pub use self::invalid_sm::InvalidStateMachineType;
 pub use self::leader_changed::LeaderChanged;
 pub use self::membership_error::MembershipError;
 pub use self::node_not_found::NodeNotFound;
 pub use self::operation::Operation;
 pub use self::replication_closed::ReplicationClosed;
+pub(crate) use self::replication_error::ReplicationError;
 pub(crate) use self::storage_io_result::StorageIOResult;
 pub use self::streaming_error::StreamingError;
 use crate::Membership;
@@ -290,25 +294,6 @@ where C: RaftTypeConfig
     NotInMembers(#[from] NotInMembers<C>),
 }
 
-/// Error variants related to the Replication.
-#[derive(Debug, thiserror::Error)]
-#[allow(clippy::large_enum_variant)]
-pub(crate) enum ReplicationError<C>
-where C: RaftTypeConfig
-{
-    #[error(transparent)]
-    HigherVote(#[from] HigherVote<C>),
-
-    #[error(transparent)]
-    Closed(#[from] ReplicationClosed),
-
-    #[error(transparent)]
-    StorageError(#[from] StorageError<C>),
-
-    #[error(transparent)]
-    RPCError(#[from] RPCError<C>),
-}
-
 /// Error occurs when invoking a remote raft API.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 // C already has serde bound.
@@ -416,14 +401,6 @@ where
             source: RaftError::Fatal(e.source),
         }
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-#[error("seen a higher vote: {higher} GT mine: {sender_vote}")]
-pub(crate) struct HigherVote<C: RaftTypeConfig> {
-    pub(crate) higher: VoteOf<C>,
-    pub(crate) sender_vote: VoteOf<C>,
 }
 
 /// Error that indicates a **temporary** network error and when it is returned, Openraft will retry
