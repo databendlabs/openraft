@@ -145,11 +145,13 @@ impl<C: RaftTypeConfig> ClientResponderQueue<C> {
     }
 
     /// Returns the number of responders in the queue.
+    #[allow(dead_code)]
     pub(crate) fn len(&self) -> usize {
         self.responders.len()
     }
 
     /// Returns true if the queue is empty.
+    #[allow(dead_code)]
     pub(crate) fn is_empty(&self) -> bool {
         self.responders.is_empty()
     }

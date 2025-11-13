@@ -1833,7 +1833,7 @@ where
                     // False positive lint warning(`non-binding `let` on a future`): https://github.com/rust-lang/rust-clippy/issues/9932
                     #[allow(clippy::let_underscore_future)]
                     let _ = C::spawn(async move {
-                        for (log_index, mut tx) in removed.into_iter() {
+                        for (log_index, tx) in removed.into_iter() {
                             tx.on_complete(Err(ClientWriteError::ForwardToLeader(ForwardToLeader {
                                 leader_id: leader_id.clone(),
                                 leader_node: leader_node.clone(),
