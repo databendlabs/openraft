@@ -80,11 +80,7 @@ impl<C: RaftTypeConfig> ClientResponderQueue<C> {
     ///
     /// O(log n + k) where n = total responders, k = number of responders in range.
     /// Binary search is used to find the start and end positions.
-    pub(crate) fn extract_range(
-        &mut self,
-        first_index: u64,
-        last_index: u64,
-    ) -> Vec<(u64, CoreResponder<C>)> {
+    pub(crate) fn extract_range(&mut self, first_index: u64, last_index: u64) -> Vec<(u64, CoreResponder<C>)> {
         if self.responders.is_empty() {
             return Vec::new();
         }
@@ -106,9 +102,7 @@ impl<C: RaftTypeConfig> ClientResponderQueue<C> {
         let end_pos = self.find_end_position(last_index, start_pos);
 
         // Extract the range [start_pos, end_pos]
-        self.responders
-            .drain(start_pos..=end_pos)
-            .collect()
+        self.responders.drain(start_pos..=end_pos).collect()
     }
 
     /// Extracts all responders from the specified index onwards.
@@ -140,6 +134,7 @@ impl<C: RaftTypeConfig> ClientResponderQueue<C> {
     }
 
     /// Returns the first (smallest) log index in the queue, if any.
+    #[allow(dead_code)]
     pub(crate) fn first_index(&self) -> Option<u64> {
         self.responders.front().map(|(index, _)| *index)
     }
