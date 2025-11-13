@@ -27,6 +27,7 @@ use crate::async_runtime::TryRecvError;
 use crate::async_runtime::watch::WatchSender;
 use crate::config::Config;
 use crate::config::RuntimeConfig;
+use crate::core::ClientResponderQueue;
 use crate::core::ServerState;
 use crate::core::balancer::Balancer;
 use crate::core::core_state::CoreState;
@@ -171,7 +172,7 @@ where
     pub(crate) engine: Engine<C>,
 
     /// Responders to send result back to client when logs are applied.
-    pub(crate) client_responders: BTreeMap<u64, CoreResponder<C>>,
+    pub(crate) client_responders: ClientResponderQueue<CoreResponder<C>>,
 
     /// A mapping of node IDs the replication state of the target node.
     pub(crate) replications: BTreeMap<C::NodeId, ReplicationHandle<C>>,
@@ -516,7 +517,7 @@ where
 
         // Install callback channels.
         if let Some(tx) = tx {
-            self.client_responders.insert(index, tx);
+            self.client_responders.push(index, tx);
         }
     }
 
@@ -802,21 +803,22 @@ where
         );
 
         #[cfg(debug_assertions)]
-        if let Some(first_entry) = self.client_responders.first_entry() {
+        if let Some(first_idx) = self.client_responders.first_index() {
             debug_assert!(
-                first.index() <= *first_entry.key(),
+                first.index() <= first_idx,
                 "first.index {} should <= client_resp_channels.first index {}",
                 first.index(),
-                first_entry.key(),
+                first_idx,
             );
         }
-        let end = last.index() + 1;
-        let mut responders = self.client_responders.split_off(&end);
-        std::mem::swap(&mut responders, &mut self.client_responders);
+
+        // Drain responders up to last.index
+        let mut responders = self.client_responders.drain_upto(last.index());
 
         let entry_count = last.index() + 1 - first.index();
         self.runtime_stats.apply_batch.record(entry_count);
 
+        // Call on_commit on each responder
         for (index, responder) in responders.iter_mut() {
             let log_id = self.engine.state.get_log_id(*index).unwrap();
             responder.on_commit(log_id);
@@ -1824,23 +1826,16 @@ where
                 self.log_store.truncate(since.clone()).await.sto_write_logs()?;
 
                 // Inform clients waiting for logs to be applied.
-                let removed = self.client_responders.split_off(&since.index());
-                if !removed.is_empty() {
-                    let leader_id = self.current_leader();
-                    let leader_node = self.get_leader_node(leader_id.clone());
+                let leader_id = self.current_leader();
+                let leader_node = self.get_leader_node(leader_id.clone());
 
-                    // False positive lint warning(`non-binding `let` on a future`): https://github.com/rust-lang/rust-clippy/issues/9932
-                    #[allow(clippy::let_underscore_future)]
-                    let _ = C::spawn(async move {
-                        for (log_index, tx) in removed.into_iter() {
-                            tx.on_complete(Err(ClientWriteError::ForwardToLeader(ForwardToLeader {
-                                leader_id: leader_id.clone(),
-                                leader_node: leader_node.clone(),
-                            })));
+                for (log_index, tx) in self.client_responders.drain_from(since.index()) {
+                    tx.on_complete(Err(ClientWriteError::ForwardToLeader(ForwardToLeader {
+                        leader_id: leader_id.clone(),
+                        leader_node: leader_node.clone(),
+                    })));
 
-                            tracing::debug!("sent ForwardToLeader for log_index: {}", log_index,);
-                        }
-                    });
+                    tracing::debug!("sent ForwardToLeader for log_index: {}", log_index);
                 }
             }
             Command::SendVote { vote_req } => {
