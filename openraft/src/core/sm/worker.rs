@@ -1,5 +1,3 @@
-use std::collections::BTreeMap;
-
 use futures::TryStreamExt;
 use tracing_futures::Instrument;
 
@@ -151,9 +149,9 @@ where
                 Command::Apply {
                     first,
                     last,
-                    mut client_resp_channels,
+                    client_resp_channels,
                 } => {
-                    let resp = self.apply(first, last, &mut client_resp_channels).await?;
+                    let resp = self.apply(first, last, client_resp_channels).await?;
                     let res = CommandResult::new(Ok(Response::Apply(resp)));
                     self.resp_tx.send(Notification::sm(res)).await.ok();
                 }
@@ -180,7 +178,7 @@ where
         &mut self,
         first: LogIdOf<C>,
         last: LogIdOf<C>,
-        client_resp_channels: &mut BTreeMap<u64, CoreResponder<C>>,
+        client_resp_channels: Vec<(u64, CoreResponder<C>)>,
     ) -> Result<ApplyResult<C>, StorageError<C>> {
         let since = first.index();
         let end = last.index() + 1;
@@ -193,10 +191,20 @@ where
 
         let strm = self.log_reader.entries_stream(since..end).await;
 
+        // Convert Vec to an iterator for efficient matching
+        let mut responder_iter = client_resp_channels.into_iter().peekable();
+
         // Prepare entries with responders upfront.
         let strm = strm.map_ok(move |entry| {
             let log_index = entry.index();
-            let responder = client_resp_channels.remove(&log_index);
+
+            // Check if the next responder matches this log index
+            let responder = if responder_iter.peek().map(|(idx, _)| *idx) == Some(log_index) {
+                responder_iter.next().map(|(_, r)| r)
+            } else {
+                None
+            };
+
             let item = EntryResponderBuilder { entry, responder };
 
             #[cfg(debug_assertions)]
