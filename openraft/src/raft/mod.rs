@@ -20,7 +20,6 @@ mod runtime_config_handle;
 pub mod trigger;
 
 use std::any::Any;
-use std::collections::BTreeMap;
 
 pub(crate) use api::app::AppApi;
 pub(crate) use api::management::ManagementApi;
@@ -62,6 +61,7 @@ use crate::base::BoxMaybeAsyncOnceMut;
 use crate::base::BoxOnce;
 use crate::config::Config;
 use crate::config::RuntimeConfig;
+use crate::core::ClientResponderQueue;
 use crate::core::RaftCore;
 use crate::core::Tick;
 use crate::core::heartbeat::handle::HeartbeatWorkersHandle;
@@ -382,7 +382,8 @@ where C: RaftTypeConfig
 
             engine,
 
-            client_responders: BTreeMap::new(),
+            // initially, allocate for 8 kilo outstanding requests.
+            client_responders: ClientResponderQueue::with_capacity(1024 * 8),
 
             replications: Default::default(),
 

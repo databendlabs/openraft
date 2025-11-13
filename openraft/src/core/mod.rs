@@ -24,6 +24,7 @@
 //! details.
 
 pub(crate) mod balancer;
+mod client_responder_queue;
 pub(crate) mod core_state;
 pub(crate) mod heartbeat;
 pub(crate) mod io_flush_tracking;
@@ -35,6 +36,7 @@ mod server_state;
 pub(crate) mod sm;
 mod tick;
 
+pub(crate) use client_responder_queue::ClientResponderQueue;
 pub(crate) use raft_core::ApplyResult;
 pub use raft_core::RaftCore;
 pub(crate) use replication_state::replication_lag;
