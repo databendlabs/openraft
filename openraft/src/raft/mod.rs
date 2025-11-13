@@ -20,7 +20,6 @@ mod runtime_config_handle;
 pub mod trigger;
 
 use std::any::Any;
-use std::collections::BTreeMap;
 
 pub(crate) use api::app::AppApi;
 pub(crate) use api::management::ManagementApi;
@@ -382,7 +381,7 @@ where C: RaftTypeConfig
 
             engine,
 
-            client_responders: BTreeMap::new(),
+            client_responders: crate::core::ClientResponderQueue::new(),
 
             replications: Default::default(),
 
