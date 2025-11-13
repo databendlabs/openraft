@@ -1,5 +1,4 @@
 use std::any::Any;
-use std::collections::BTreeMap;
 use std::fmt;
 use std::fmt::Debug;
 use std::fmt::Formatter;
@@ -47,7 +46,9 @@ where C: RaftTypeConfig
         /// The last log id to apply, inclusive.
         last: LogIdOf<C>,
 
-        client_resp_channels: BTreeMap<u64, CoreResponder<C>>,
+        /// Client responders as a vector of (log_index, responder) pairs.
+        /// The vector is sorted by log_index in ascending order.
+        client_resp_channels: Vec<(u64, CoreResponder<C>)>,
     },
 
     /// Apply a custom function to the state machine.
@@ -87,7 +88,7 @@ where C: RaftTypeConfig
     pub(crate) fn apply(
         first: LogIdOf<C>,
         last: LogIdOf<C>,
-        client_resp_channels: BTreeMap<u64, CoreResponder<C>>,
+        client_resp_channels: Vec<(u64, CoreResponder<C>)>,
     ) -> Self {
         Command::Apply {
             first,
