@@ -16,7 +16,6 @@ use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::JoinHandleOf;
 use crate::type_config::alias::MpscSenderOf;
 use crate::type_config::alias::OneshotSenderOf;
-use crate::type_config::alias::WatchReceiverOf;
 use crate::type_config::alias::WatchSenderOf;
 
 pub(crate) struct HeartbeatWorkersHandle<C>
@@ -26,37 +25,33 @@ where C: RaftTypeConfig
 
     pub(crate) config: Arc<Config>,
 
-    /// Inform the heartbeat task to broadcast a heartbeat message.
-    ///
-    /// A Leader will periodically update this value to trigger sending heartbeat messages.
-    pub(crate) tx: WatchSenderOf<C, Option<HeartbeatEvent<C>>>,
-
-    /// The receiving end of heartbeat command.
-    ///
-    /// A separate task will have a clone of this receiver to receive and execute heartbeat command.
-    pub(crate) rx: WatchReceiverOf<C, Option<HeartbeatEvent<C>>>,
-
-    pub(crate) workers: BTreeMap<C::NodeId, (OneshotSenderOf<C, ()>, JoinHandleOf<C, ()>)>,
+    pub(crate) workers: BTreeMap<
+        C::NodeId,
+        // sender, cancel tx, join handle
+        (
+            WatchSenderOf<C, Option<HeartbeatEvent<C>>>,
+            OneshotSenderOf<C, ()>,
+            JoinHandleOf<C, ()>,
+        ),
+    >,
 }
 
 impl<C> HeartbeatWorkersHandle<C>
 where C: RaftTypeConfig
 {
     pub(crate) fn new(id: C::NodeId, config: Arc<Config>) -> Self {
-        let (tx, rx) = C::watch_channel(None);
-
         Self {
             id,
             config,
-            tx,
-            rx,
             workers: Default::default(),
         }
     }
 
-    pub(crate) fn broadcast(&self, event: HeartbeatEvent<C>) {
-        tracing::debug!("id={} send_heartbeat {}", self.id, event);
-        let _ = self.tx.send(Some(event));
+    pub(crate) fn broadcast(&self, events: impl IntoIterator<Item = (C::NodeId, HeartbeatEvent<C>)>) {
+        for (target, event) in events {
+            tracing::debug!("id={} target={} send_heartbeat {}", self.id, target, event);
+            self.workers.get(&target).unwrap().0.send(Some(event)).ok();
+        }
     }
 
     pub(crate) async fn spawn_workers<NF>(
@@ -71,9 +66,11 @@ where C: RaftTypeConfig
             tracing::debug!("id={} spawn HeartbeatWorker target={}", self.id, target);
             let network = network_factory.new_client(target.clone(), &node).await;
 
+            let (tx, rx) = C::watch_channel(None);
+
             let worker = HeartbeatWorker {
                 id: self.id.clone(),
-                rx: self.rx.clone(),
+                rx: rx.clone(),
                 network,
                 target: target.clone(),
                 node,
@@ -86,7 +83,7 @@ where C: RaftTypeConfig
             let (tx_shutdown, rx_shutdown) = C::oneshot();
 
             let worker_handle = C::spawn(worker.run(rx_shutdown).instrument(span));
-            self.workers.insert(target, (tx_shutdown, worker_handle));
+            self.workers.insert(target, (tx, tx_shutdown, worker_handle));
         }
     }
 

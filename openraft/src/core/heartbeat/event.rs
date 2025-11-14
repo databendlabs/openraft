@@ -1,5 +1,6 @@
 use std::fmt;
 
+use crate::LogId;
 use crate::RaftTypeConfig;
 use crate::display_ext::DisplayInstantExt;
 use crate::display_ext::DisplayOptionExt;
@@ -26,23 +27,17 @@ where C: RaftTypeConfig
     /// membership config and will be ignored.
     pub(crate) session_id: ReplicationSessionId<C>,
 
+    /// The last known matching log id that has been confirmed replicated to the target follower.
+    ///
+    /// This is used as `prev_log_id` in heartbeat AppendEntries to ensure the follower has this
+    /// log id, avoiding false conflict responses that could be misinterpreted as log reversion.
+    pub(crate) matching: Option<LogId<C>>,
+
     /// The last known committed log id of the Leader.
     ///
     /// When there are no new logs to replicate, the Leader sends a heartbeat to replicate committed
     /// log id to followers to update their committed log id.
     pub(crate) committed: Option<LogIdOf<C>>,
-}
-
-impl<C> HeartbeatEvent<C>
-where C: RaftTypeConfig
-{
-    pub(crate) fn new(time: InstantOf<C>, session_id: ReplicationSessionId<C>, committed: Option<LogIdOf<C>>) -> Self {
-        Self {
-            time,
-            session_id,
-            committed,
-        }
-    }
 }
 
 impl<C> fmt::Display for HeartbeatEvent<C>
@@ -51,9 +46,10 @@ where C: RaftTypeConfig
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "(time={}, leader_vote: {}, committed: {})",
+            "(time={}, leader_vote: {}, matching: {}, committed: {})",
             self.time.display(),
             self.session_id,
+            self.matching.display(),
             self.committed.display()
         )
     }

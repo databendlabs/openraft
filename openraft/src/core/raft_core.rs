@@ -1847,7 +1847,31 @@ where
                 }
             }
             Command::BroadcastHeartbeat { session_id, committed } => {
-                self.heartbeat_handle.broadcast(HeartbeatEvent::new(C::now(), session_id, committed))
+                // Lazy get the progress data for heartbeat. If the leader changes or replication config changes, no
+                // need to send heartbeat
+                if let Ok(lh) = self.engine.leader_handler() {
+                    let committed_vote = lh.leader.committed_vote.clone();
+                    let membership_log_id = lh.state.membership_state.effective().log_id();
+                    let current_session_id = ReplicationSessionId::new(committed_vote, membership_log_id.clone());
+
+                    if current_session_id == session_id {
+                        let now = C::now();
+                        let events =
+                            lh.leader.progress.iter().filter(|progress_entry| progress_entry.id != self.id).map(
+                                |progress_entry| {
+                                    (progress_entry.id.clone(), HeartbeatEvent {
+                                        time: now,
+                                        session_id: session_id.clone(),
+                                        matching: progress_entry.val.matching.clone(),
+                                        committed: committed.clone(),
+                                    })
+                                },
+                            );
+                        self.heartbeat_handle.broadcast(events)
+                    }
+                } else {
+                    // no longer a leader
+                }
             }
             Command::SaveCommittedAndApply {
                 already_applied: already_committed,
