@@ -50,7 +50,7 @@ pub struct InstallSnapshotResponse<C: RaftTypeConfig> {
 }
 
 /// The response to `Raft::install_full_snapshot` API.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[derive(PartialEq, Eq)]
 #[derive(derive_more::Display)]
 #[display("SnapshotResponse{{vote:{}}}", vote)]

@@ -93,9 +93,12 @@ where
 
             let payload = AppendEntriesRequest {
                 vote: heartbeat.session_id.leader_vote.clone().into_vote(),
-                // Use committed log id as prev_log_id to detect follower state reversion.
+                // Use last known matching log id as prev_log_id to detect follower state reversion.
                 // prev_log_id == None does not conflict.
-                prev_log_id: heartbeat.committed.clone(),
+                //
+                // Fail test `t99_issue_1500_heartbeat_cause_reversion_panic` by changing the
+                // following line to `prev_log_id = heartbeat.committed.clone()`.
+                prev_log_id: heartbeat.matching.clone(),
                 leader_commit: heartbeat.committed.clone(),
                 entries: vec![],
             };
@@ -125,14 +128,18 @@ where
                             self.send_notification(noti, "Seeing higher Vote").await?;
                         }
                         AppendEntriesResponse::Conflict => {
-                            let conflict = heartbeat.committed.unwrap();
+                            // The follower does not have `matching` log id.
+                            // Use `matching` (which may be None) as the conflict point.
+                            //
+                            // Safe unwrap(): a None never conflict
+                            let conflict_log_id = heartbeat.matching.clone().unwrap();
 
                             let noti = Notification::ReplicationProgress {
                                 has_payload: false,
                                 progress: Progress {
                                     session_id: heartbeat.session_id.clone(),
                                     target: self.target.clone(),
-                                    result: Ok(ReplicationResult(Err(conflict))),
+                                    result: Ok(ReplicationResult(Err(conflict_log_id))),
                                 },
                             };
 

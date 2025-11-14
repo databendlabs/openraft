@@ -1733,6 +1733,45 @@ where
         }
         true
     }
+
+    /// Broadcast heartbeat to all followers with per-follower matching log ids.
+    ///
+    /// This method validates the session and sends heartbeat events only if the current
+    /// session matches the requested session (no leader change or membership change).
+    fn broadcast_heartbeat(&mut self, session_id: ReplicationSessionId<C>, committed: Option<LogIdOf<C>>) {
+        // Lazy get the progress data for heartbeat. If the leader changes or replication
+        // config changes, no need to send heartbeat.
+        let Ok(lh) = self.engine.leader_handler() else {
+            // No longer a leader
+            return;
+        };
+
+        let committed_vote = lh.leader.committed_vote.clone();
+        let membership_log_id = lh.state.membership_state.effective().log_id();
+        let current_session_id = ReplicationSessionId::new(committed_vote, membership_log_id.clone());
+
+        if current_session_id != session_id {
+            // Session changed, skip heartbeat
+            return;
+        }
+
+        let now = C::now();
+        let events =
+            lh.leader
+                .progress
+                .iter()
+                .filter(|progress_entry| progress_entry.id != self.id)
+                .map(|progress_entry| {
+                    (progress_entry.id.clone(), HeartbeatEvent {
+                        time: now,
+                        session_id: session_id.clone(),
+                        matching: progress_entry.val.matching.clone(),
+                        committed: committed.clone(),
+                    })
+                });
+
+        self.heartbeat_handle.broadcast(events);
+    }
 }
 
 impl<C, N, LS> RaftRuntime<C> for RaftCore<C, N, LS>
@@ -1847,7 +1886,7 @@ where
                 }
             }
             Command::BroadcastHeartbeat { session_id, committed } => {
-                self.heartbeat_handle.broadcast(HeartbeatEvent::new(C::now(), session_id, committed))
+                self.broadcast_heartbeat(session_id, committed);
             }
             Command::SaveCommittedAndApply {
                 already_applied: already_committed,

@@ -68,7 +68,7 @@ where C: RaftTypeConfig
 ///
 /// [`RPCError`]: crate::error::RPCError
 /// [`RaftNetwork::append_entries`]: crate::network::RaftNetwork::append_entries
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[derive(PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub enum AppendEntriesResponse<C: RaftTypeConfig> {

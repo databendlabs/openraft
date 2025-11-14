@@ -36,14 +36,18 @@ async fn append_entries_backoff() -> Result<()> {
 
     tracing::info!(log_index, "--- set node 2 to unreachable, and write 10 entries");
     {
-        router.set_rpc_pre_hook(RPCTypes::AppendEntries, |_router, _req, _id, target| {
-            if target == 2 {
-                let any_err = AnyError::error("unreachable");
-                Err(RPCError::Unreachable(Unreachable::new(&any_err)))
-            } else {
-                Ok(())
-            }
-        });
+        router
+            .set_rpc_pre_hook(RPCTypes::AppendEntries, |_router, _req, _id, target| {
+                let res = if target == 2 {
+                    let any_err = AnyError::error("unreachable");
+                    Err(RPCError::Unreachable(Unreachable::new(&any_err)))
+                } else {
+                    Ok(())
+                };
+                let fu = futures::future::ready(res);
+                Box::pin(fu)
+            })
+            .await;
         // The above is equivalent to the following:
         // router.set_unreachable(2, true);
 
