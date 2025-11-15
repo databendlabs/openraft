@@ -18,5 +18,6 @@ mod t14_transfer_leader;
 mod t15_client_write_with_twoshot;
 mod t16_with_raft_state;
 mod t16_with_state_machine;
+mod t20_raft_api;
 mod t50_lagging_network_write;
 mod t51_write_when_leader_quit;
