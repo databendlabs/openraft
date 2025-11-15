@@ -445,6 +445,71 @@ where C: RaftTypeConfig
         &self.inner.config
     }
 
+    /// Check if this node is currently the leader.
+    ///
+    /// Returns `true` if the node's current state is [`ServerState::Leader`].
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// if raft.is_leader() {
+    ///     // Perform leader-only operations
+    /// }
+    /// ```
+    ///
+    /// [`ServerState::Leader`]: crate::core::ServerState::Leader
+    pub fn is_leader(&self) -> bool {
+        self.inner.rx_metrics.borrow_watched().state.is_leader()
+    }
+
+    /// Get the ID of this Raft node.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let id = raft.node_id();
+    /// println!("Node ID: {:?}", id);
+    /// ```
+    pub fn node_id(&self) -> &C::NodeId {
+        &self.inner.id
+    }
+
+    /// Get an iterator over the current voter node IDs.
+    ///
+    /// Returns node IDs that are voters in the effective membership. Learners are not included.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// for voter_id in raft.voter_ids() {
+    ///     println!("Voter: {:?}", voter_id);
+    /// }
+    /// ```
+    pub fn voter_ids(&self) -> impl Iterator<Item = C::NodeId> {
+        // borrow_watched() holds a lock that blocks RaftCore.
+        // Clone and collect immediately to release the lock quickly.
+        let membership = self.inner.rx_metrics.borrow_watched().membership_config.clone();
+        membership.voter_ids().collect::<Vec<_>>().into_iter()
+    }
+
+    /// Get an iterator over the current learner node IDs.
+    ///
+    /// Returns node IDs that are learners in the effective membership. Voters are not included.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// for learner_id in raft.learner_ids() {
+    ///     println!("Learner: {:?}", learner_id);
+    /// }
+    /// ```
+    pub fn learner_ids(&self) -> impl Iterator<Item = C::NodeId> {
+        // borrow_watched() holds a lock that blocks RaftCore.
+        // Clone and collect immediately to release the lock quickly.
+        let membership = self.inner.rx_metrics.borrow_watched().membership_config.clone();
+        membership.membership().learner_ids().collect::<Vec<_>>().into_iter()
+    }
+
     /// Create a new [`ProtocolApi`] to handle Raft protocal RPCs received by this Raft node.
     ///
     /// [`ProtocolApi`] provides the following protocol APIs:
