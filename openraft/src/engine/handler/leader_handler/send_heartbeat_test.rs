@@ -61,7 +61,6 @@ fn test_leader_send_heartbeat() -> anyhow::Result<()> {
                 //
                 Command::BroadcastHeartbeat {
                     session_id: ReplicationSessionId::new(Vote::new(3, 1).into_committed(), Some(log_id(2, 1, 3))),
-                    committed: Some(log_id(0, 1, 0))
                 },
             ],
             eng.output.take_commands()
@@ -77,7 +76,6 @@ fn test_leader_send_heartbeat() -> anyhow::Result<()> {
                 //
                 Command::BroadcastHeartbeat {
                     session_id: ReplicationSessionId::new(Vote::new(3, 1).into_committed(), Some(log_id(2, 1, 3))),
-                    committed: Some(log_id(0, 1, 0))
                 },
             ],
             eng.output.take_commands()

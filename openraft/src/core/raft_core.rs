@@ -1738,7 +1738,7 @@ where
     ///
     /// This method validates the session and sends heartbeat events only if the current
     /// session matches the requested session (no leader change or membership change).
-    fn broadcast_heartbeat(&mut self, session_id: ReplicationSessionId<C>, committed: Option<LogIdOf<C>>) {
+    fn broadcast_heartbeat(&mut self, session_id: ReplicationSessionId<C>) {
         // Lazy get the progress data for heartbeat. If the leader changes or replication
         // config changes, no need to send heartbeat.
         let Ok(lh) = self.engine.leader_handler() else {
@@ -1755,6 +1755,7 @@ where
             return;
         }
 
+        let committed = lh.state.committed().cloned();
         let now = C::now();
         let events =
             lh.leader
@@ -1885,8 +1886,8 @@ where
                     let _ = node.tx_repl.send(Replicate::Committed(committed.clone()));
                 }
             }
-            Command::BroadcastHeartbeat { session_id, committed } => {
-                self.broadcast_heartbeat(session_id, committed);
+            Command::BroadcastHeartbeat { session_id } => {
+                self.broadcast_heartbeat(session_id);
             }
             Command::SaveCommittedAndApply {
                 already_applied: already_committed,
