@@ -68,10 +68,7 @@ where C: RaftTypeConfig
     ReplicateCommitted { committed: Option<LogIdOf<C>> },
 
     /// Broadcast heartbeat to all other nodes.
-    BroadcastHeartbeat {
-        session_id: ReplicationSessionId<C>,
-        committed: Option<LogIdOf<C>>,
-    },
+    BroadcastHeartbeat { session_id: ReplicationSessionId<C> },
 
     /// Save the committed log id `upto` to [`RaftLogStorage`].
     ///
@@ -154,13 +151,8 @@ where C: RaftTypeConfig
             Command::ReplicateCommitted { committed } => {
                 write!(f, "ReplicateCommitted: {}", committed.display())
             }
-            Command::BroadcastHeartbeat { session_id, committed } => {
-                write!(
-                    f,
-                    "BroadcastHeartbeat: session_id:{}, committed:{}",
-                    session_id,
-                    committed.display()
-                )
+            Command::BroadcastHeartbeat { session_id } => {
+                write!(f, "BroadcastHeartbeat: session_id:{}", session_id)
             }
             Command::SaveCommittedAndApply {
                 already_applied: already_committed,
@@ -203,7 +195,7 @@ where
             (Command::UpdateIOProgress { when, io_id },        Command::UpdateIOProgress { when: wb, io_id: ab }, )                  => when == wb && io_id == ab,
             (Command::AppendEntries { committed_vote: vote, entries },    Command::AppendEntries { committed_vote: vb, entries: b }, )               => vote == vb && entries == b,
             (Command::ReplicateCommitted { committed },        Command::ReplicateCommitted { committed: b }, )                       =>  committed == b,
-            (Command::BroadcastHeartbeat { session_id, committed }, Command::BroadcastHeartbeat { session_id: sb, committed: b }, )  => session_id == sb && committed == b,
+            (Command::BroadcastHeartbeat { session_id },       Command::BroadcastHeartbeat { session_id: sb }, )                     => session_id == sb,
             (Command::SaveCommittedAndApply { already_applied: already_committed, upto, },      Command::SaveCommittedAndApply { already_applied: b_committed, upto: b_upto, }, )  => already_committed == b_committed && upto == b_upto,
             (Command::Replicate { target, req },               Command::Replicate { target: b_target, req: other_req, }, )           => target == b_target && req == other_req,
             (Command::BroadcastTransferLeader { req },         Command::BroadcastTransferLeader { req: b, }, )                       => req == b,

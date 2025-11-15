@@ -100,10 +100,7 @@ where C: RaftTypeConfig
         let membership_log_id = self.state.membership_state.effective().log_id();
         let session_id = ReplicationSessionId::new(self.leader.committed_vote.clone(), membership_log_id.clone());
 
-        self.output.push_command(Command::BroadcastHeartbeat {
-            session_id,
-            committed: self.state.committed().cloned(),
-        });
+        self.output.push_command(Command::BroadcastHeartbeat { session_id });
     }
 
     /// Get the log id for a linearizable read.
