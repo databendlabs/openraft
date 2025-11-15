@@ -5,8 +5,8 @@ use maplit::btreeset;
 use openraft::Config;
 use openraft::RPCTypes;
 
-use crate::fixtures::RPCRequest;
 use crate::fixtures::RaftRouter;
+use crate::fixtures::rpc_request::RpcRequest;
 use crate::fixtures::ut_harness;
 
 /// Test heartbeat does not cause false log reversion panic when follower lags behind.
@@ -48,7 +48,7 @@ async fn t99_issue_1500_heartbeat_cause_reversion_panic() -> anyhow::Result<()> 
             let sleep_ms = if target == 2 {
                 tracing::debug!("Post-hook for target {}: {}", target, req);
                 match req {
-                    RPCRequest::AppendEntries(append) => {
+                    RpcRequest::AppendEntries(append) => {
                         if append.entries.is_empty() {
                             10
                         } else {

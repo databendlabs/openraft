@@ -13,8 +13,8 @@ use openraft::base::BoxFuture;
 use openraft::error::NetworkError;
 use openraft::error::RPCError;
 
-use crate::fixtures::RPCRequest;
 use crate::fixtures::RaftRouter;
+use crate::fixtures::rpc_request::RpcRequest;
 use crate::fixtures::ut_harness;
 
 /// Client read tests.
@@ -108,7 +108,7 @@ async fn get_read_log_id() -> Result<()> {
 
         let res = if target == 0 {
             match req {
-                RPCRequest::AppendEntries(a) => {
+                RpcRequest::AppendEntries(a) => {
                     // Heartbeat is not blocked.
                     if a.entries.is_empty() { Ok(()) } else { err() }
                 }
@@ -445,7 +445,7 @@ async fn ensure_linearizable_process_from_followers() -> Result<()> {
 
         let res = if target == 1 {
             match req {
-                RPCRequest::AppendEntries(a) => {
+                RpcRequest::AppendEntries(a) => {
                     // Heartbeat is not blocked.
                     if a.entries.is_empty() { Ok(()) } else { err() }
                 }
