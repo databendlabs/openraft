@@ -4,6 +4,8 @@
 use std::cmp::Ordering;
 use std::fmt;
 use std::marker::PhantomData;
+use std::ops::Deref;
+use std::ops::DerefMut;
 
 use crate::RaftTypeConfig;
 use crate::display_ext::DisplayOptionExt;
@@ -128,6 +130,9 @@ where C: RaftTypeConfig
 /// leader-ids a correct total order set, e.g., in standard raft, `voted_for: Option<node_id>` can
 /// be removed from `(term, voted_for)` once it is granted. This is why standard Raft stores just a
 /// `term` in log entry to identify the Leader proposing the log entry.
+///
+/// In std mode, `CommittedLeaderId` is just a wrapper of `C::Term`, which is an integer in most
+/// cases (u64, u32, u16, u8, i64, i32, i16, i8).
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 #[derive(PartialOrd, Ord)]
 #[derive(derive_more::Display)]
@@ -150,6 +155,39 @@ where C: RaftTypeConfig
         let _ = node_id;
         Self { term, p: PhantomData }
     }
+}
+
+impl<C> Deref for CommittedLeaderId<C>
+where C: RaftTypeConfig
+{
+    type Target = C::Term;
+
+    fn deref(&self) -> &Self::Target {
+        &self.term
+    }
+}
+
+impl<C> DerefMut for CommittedLeaderId<C>
+where C: RaftTypeConfig
+{
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.term
+    }
+}
+
+#[rustfmt::skip]
+mod impl_from_int {
+    use crate::RaftTypeConfig;
+    use crate::vote::leader_id_std::CommittedLeaderId;
+
+    impl<C: RaftTypeConfig<Term=u64>> From<u64> for CommittedLeaderId<C> {fn from(term: u64) -> Self {Self {term,..Default::default()}}}
+    impl<C: RaftTypeConfig<Term=u32>> From<u32> for CommittedLeaderId<C> {fn from(term: u32) -> Self {Self {term,..Default::default()}}}
+    impl<C: RaftTypeConfig<Term=u16>> From<u16> for CommittedLeaderId<C> {fn from(term: u16) -> Self {Self {term,..Default::default()}}}
+    impl<C: RaftTypeConfig<Term=u8>>  From<u8>  for CommittedLeaderId<C> {fn from(term: u8)  -> Self {Self {term,..Default::default()}}}
+    impl<C: RaftTypeConfig<Term=i64>> From<i64> for CommittedLeaderId<C> {fn from(term: i64) -> Self {Self {term,..Default::default()}}}
+    impl<C: RaftTypeConfig<Term=i32>> From<i32> for CommittedLeaderId<C> {fn from(term: i32) -> Self {Self {term,..Default::default()}}}
+    impl<C: RaftTypeConfig<Term=i16>> From<i16> for CommittedLeaderId<C> {fn from(term: i16) -> Self {Self {term,..Default::default()}}}
+    impl<C: RaftTypeConfig<Term=i8>>  From<i8>  for CommittedLeaderId<C> {fn from(term: i8)  -> Self {Self {term,..Default::default()}}}
 }
 
 #[cfg(test)]
@@ -247,6 +285,59 @@ mod tests {
         assert!(clid(2) < lid(3, 2));
         assert!(!(clid(2) > lid(3, 2)));
         assert!(!(clid(2) == lid(1, 2)));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_committed_leader_id_deref() -> anyhow::Result<()> {
+        use super::CommittedLeaderId;
+
+        let clid = CommittedLeaderId::<UTConfig>::new(5, 10);
+        assert_eq!(5, *clid);
+
+        let term_ref: &u64 = &clid;
+        assert_eq!(&5, term_ref);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_committed_leader_id_deref_mut() -> anyhow::Result<()> {
+        use super::CommittedLeaderId;
+
+        let mut clid = CommittedLeaderId::<UTConfig>::new(5, 10);
+        *clid = 10;
+        assert_eq!(10, *clid);
+        assert_eq!(CommittedLeaderId::new(10, 10), clid);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_committed_leader_id_from_int() -> anyhow::Result<()> {
+        use super::CommittedLeaderId;
+
+        macro_rules! test_from {
+            ($config:ident, $term_type:ty, $value:expr) => {{
+                crate::declare_raft_types!($config: D=u64, R=(), LeaderId=super::LeaderId<$config>, Term=$term_type);
+
+                let clid: CommittedLeaderId<$config> = $value.into();
+                assert_eq!(CommittedLeaderId::new($value, 0), clid);
+
+                let clid = CommittedLeaderId::<$config>::from($value);
+                assert_eq!(CommittedLeaderId::new($value, 0), clid);
+            }};
+        }
+
+        test_from!(TcU64, u64, 5u64);
+        test_from!(TcU32, u32, 5u32);
+        test_from!(TcU16, u16, 5u16);
+        test_from!(TcU8, u8, 5u8);
+        test_from!(TcI64, i64, 5i64);
+        test_from!(TcI32, i32, 5i32);
+        test_from!(TcI16, i16, 5i16);
+        test_from!(TcI8, i8, 5i8);
 
         Ok(())
     }
