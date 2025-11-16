@@ -44,6 +44,7 @@ pub use message::SnapshotResponse;
 pub use message::TransferLeaderRequest;
 pub use message::VoteRequest;
 pub use message::VoteResponse;
+pub use message::WriteRequest;
 use openraft_macros::since;
 use tracing::Instrument;
 use tracing::Level;
@@ -824,6 +825,46 @@ where C: RaftTypeConfig
         responder: Option<WriteResponderOf<C>>,
     ) -> Result<(), Fatal<C>> {
         self.app_api().client_write_ff(app_data, responder).await
+    }
+
+    /// Submit a write request to Raft (fire-and-forget).
+    ///
+    /// Returns a [`WriteRequest`] builder for configuration before execution.
+    /// Does not wait for result by default - use [`.responder()`] to receive the result.
+    ///
+    /// # Performance
+    ///
+    /// Allocates (`Pin<Box<dyn Future>>`) due to stable Rust limitations.
+    /// Will be optimized to zero-allocation when `impl_trait_in_assoc_type` stabilizes.
+    ///
+    /// **Zero-allocation alternatives:**
+    /// - [`client_write()`] - waits for response, returns result directly
+    /// - [`client_write_ff()`] - deprecated, but avoids allocation
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// // Fire-and-forget
+    /// raft.write(my_data).await?;
+    ///
+    /// // With responder to receive result
+    /// use openraft::impls::ProgressResponder;
+    ///
+    /// let (responder, _commit_rx, complete_rx) = ProgressResponder::new();
+    /// raft.write(my_data).responder(responder).await?;
+    /// let result = complete_rx.await??;
+    /// ```
+    ///
+    /// [`client_write()`]: Self::client_write
+    /// [`client_write_ff()`]: Self::client_write_ff
+    /// [`.responder()`]: WriteRequest::responder
+    #[since(version = "0.10.0")]
+    pub fn write(&self, app_data: C::D) -> WriteRequest<'_, C> {
+        WriteRequest {
+            inner: &self.inner,
+            app_data,
+            responder: None,
+        }
     }
 
     /// Handle the LeaderTransfer request from a Leader node.
