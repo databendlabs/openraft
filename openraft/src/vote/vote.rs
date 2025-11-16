@@ -133,6 +133,23 @@ mod tests {
             assert!(vote(2, 2) < committed(2, 2));
             Ok(())
         }
+
+        #[test]
+        fn test_to_committed_leader_id() -> anyhow::Result<()> {
+            use crate::type_config::alias::LeaderIdOf;
+            use crate::vote::RaftLeaderId;
+            use crate::vote::raft_vote::RaftVoteExt;
+
+            let vote = Vote::<UTConfig>::new(1, 2);
+            assert_eq!(None, vote.to_committed_leader_id());
+
+            let committed = Vote::<UTConfig>::new_committed(1, 2);
+            let leader_id = committed.to_committed_leader_id();
+            let expected = LeaderIdOf::<UTConfig>::new(1, 2).to_committed();
+            assert_eq!(Some(expected), leader_id);
+
+            Ok(())
+        }
     }
 
     mod feature_single_term_leader {
@@ -221,6 +238,26 @@ mod tests {
                 assert_panic(|| committed(2, 2) < committed(2, 3));
                 assert_panic(|| committed(2, 2) <= committed(2, 3));
             }
+
+            Ok(())
+        }
+
+        #[test]
+        fn test_to_committed_leader_id() -> anyhow::Result<()> {
+            use crate::vote::RaftLeaderId;
+            use crate::vote::raft_vote::RaftVoteExt;
+
+            let vote = Vote::<TC>::new(1, 2);
+            assert_eq!(None, vote.to_committed_leader_id());
+
+            let committed = Vote::<TC>::new_committed(1, 2);
+            let leader_id = committed.to_committed_leader_id();
+            let expected = LeaderId {
+                term: 1,
+                voted_for: Some(2),
+            }
+            .to_committed();
+            assert_eq!(Some(expected), leader_id);
 
             Ok(())
         }
