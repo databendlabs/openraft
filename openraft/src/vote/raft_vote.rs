@@ -99,6 +99,19 @@ where
         }
     }
 
+    /// Returns the leader ID as `CommittedLeaderId` if this vote is committed.
+    ///
+    /// Returns `Some(CommittedLeaderId)` if the vote is committed and has a leader ID.
+    /// Returns `None` if the vote is not committed or has no leader ID.
+    #[allow(dead_code)]
+    fn to_committed_leader_id(&self) -> Option<CommittedLeaderIdOf<C>> {
+        if self.is_committed() {
+            self.leader_id().map(|l| l.to_committed())
+        } else {
+            None
+        }
+    }
+
     /// Checks if this vote is for the same leader as specified by the given committed leader ID.
     fn is_same_leader(&self, leader_id: &CommittedLeaderIdOf<C>) -> bool {
         self.leader_id().map(|x| x.to_committed()).unwrap_or_default() == *leader_id
