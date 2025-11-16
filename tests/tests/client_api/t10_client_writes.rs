@@ -104,3 +104,43 @@ async fn client_write_ff() -> Result<()> {
 
     Ok(())
 }
+
+/// Test Raft::write() builder API
+///
+/// Test the new write() API that returns WriteRequest builder, both with and without responder.
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
+async fn write_builder() -> Result<()> {
+    let config = Arc::new(
+        Config {
+            enable_tick: false,
+            ..Default::default()
+        }
+        .validate()?,
+    );
+
+    let mut router = RaftRouter::new(config.clone());
+
+    tracing::info!("--- initializing cluster");
+    let log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+    let _ = log_index;
+
+    let n0 = router.get_raft_handle(&0)?;
+
+    // Test write with responder
+    let (responder, _commit_rx, complete_rx) = ProgressResponder::new();
+    n0.write(ClientRequest::make_request("foo", 2)).responder(responder).await?;
+    let got: ClientWriteResponse<TypeConfig> = complete_rx.await??;
+    assert_eq!(None, got.response().0.as_deref());
+
+    // Test write without responder (fire-and-forget)
+    n0.write(ClientRequest::make_request("foo", 3)).await?;
+
+    // Test write with responder again to verify previous write completed
+    let (responder, _commit_rx, complete_rx) = ProgressResponder::new();
+    n0.write(ClientRequest::make_request("foo", 4)).responder(responder).await?;
+    let got: ClientWriteResponse<TypeConfig> = complete_rx.await??;
+    assert_eq!(Some("request-3"), got.response().0.as_deref());
+
+    Ok(())
+}

@@ -9,6 +9,7 @@ mod transfer_leader;
 mod vote;
 
 mod client_write;
+mod write_request;
 
 pub use append_entries::AppendEntriesRequest;
 pub use append_entries::AppendEntriesResponse;
@@ -20,3 +21,4 @@ pub use install_snapshot::SnapshotResponse;
 pub use transfer_leader::TransferLeaderRequest;
 pub use vote::VoteRequest;
 pub use vote::VoteResponse;
+pub use write_request::WriteRequest;
