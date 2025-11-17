@@ -3,6 +3,10 @@ use std::sync::Arc;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
+use openraft::async_runtime::watch::WatchReceiver;
+use openraft::type_config::alias::LeaderIdOf;
+use openraft::vote::RaftLeaderId;
+use openraft_memstore::TypeConfig;
 
 use crate::fixtures::RaftRouter;
 use crate::fixtures::ut_harness;
@@ -171,6 +175,44 @@ async fn api_after_add_learner() -> Result<()> {
     let voters: Vec<u64> = leader.voter_ids().collect();
     assert_eq!(voters.len(), 3, "should still have 3 voters");
     assert!(!voters.contains(&3), "node 3 should not be a voter");
+
+    Ok(())
+}
+
+/// Test Raft::local_leader_id() API
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
+async fn api_local_leader_id() -> Result<()> {
+    let config = Arc::new(
+        Config {
+            enable_tick: false,
+            ..Default::default()
+        }
+        .validate()?,
+    );
+    let mut router = RaftRouter::new(config.clone());
+
+    tracing::info!("--- initializing cluster");
+    router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+
+    let leader_id = router.leader().expect("leader not found");
+    let leader = router.get_raft_handle(&leader_id)?;
+
+    // Leader should return Some(LeaderId)
+    let metrics_rx = leader.metrics();
+    let metrics = metrics_rx.borrow_watched();
+    let expected = LeaderIdOf::<TypeConfig>::new(metrics.current_term, leader_id);
+    assert_eq!(leader.local_leader_id(), Some(expected));
+
+    // Followers should return None
+    for follower_id in [0, 1, 2].iter().filter(|&&id| id != leader_id) {
+        let follower = router.get_raft_handle(follower_id)?;
+        assert!(
+            follower.local_leader_id().is_none(),
+            "follower node {} should return None for local_leader_id()",
+            follower_id
+        );
+    }
 
     Ok(())
 }
