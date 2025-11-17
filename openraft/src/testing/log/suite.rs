@@ -884,7 +884,7 @@ where
         // The vote is: term=1, node_id=NODE_ID, committed
         // Get the leader ID from the stored vote
         let vote = store.read_vote().await?.expect("vote should be set");
-        let leader = vote.leader_id().expect("vote should have a leader").clone();
+        let leader = vote.leader_id().clone();
 
         tracing::info!("--- test normal case: read entries with matching vote");
         {
@@ -922,7 +922,7 @@ where
         tracing::info!("--- test vote mismatch: wrong leader node id");
         {
             let wrong_vote = VoteOf::<C>::from_term_node_id(1u64.into(), 99u64.into());
-            let wrong_leader = wrong_vote.leader_id().unwrap().clone();
+            let wrong_leader = wrong_vote.leader_id().clone();
             let mut reader = store.get_log_reader().await;
             let stream = reader.leader_bounded_stream(wrong_leader, 3..7).await;
             let entries: Vec<_> = stream.collect().await;
@@ -935,7 +935,7 @@ where
         tracing::info!("--- test vote mismatch: wrong term");
         {
             let wrong_vote = VoteOf::<C>::from_term_node_id(2u64.into(), NODE_ID.into());
-            let wrong_leader = wrong_vote.leader_id().unwrap().clone();
+            let wrong_leader = wrong_vote.leader_id().clone();
             let mut reader = store.get_log_reader().await;
             let stream = reader.leader_bounded_stream(wrong_leader, 3..7).await;
             let entries: Vec<_> = stream.collect().await;

@@ -14,8 +14,8 @@ impl RaftVote<TypeConfig> for pb::Vote {
         }
     }
 
-    fn leader_id(&self) -> Option<&LeaderId> {
-        self.leader_id.as_ref()
+    fn leader_id(&self) -> &LeaderId {
+        self.leader_id.as_ref().expect("Vote must have a leader_id")
     }
 
     fn is_committed(&self) -> bool {
@@ -28,7 +28,7 @@ impl fmt::Display for pb::Vote {
         write!(
             f,
             "<{}:{}>",
-            self.leader_id.as_ref().unwrap_or(&Default::default()),
+            self.leader_id(),
             if self.is_committed() { "Q" } else { "-" }
         )
     }

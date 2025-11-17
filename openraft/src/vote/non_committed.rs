@@ -43,8 +43,8 @@ where C: RaftTypeConfig
         unreachable!("NonCommittedVote should only be built from a Vote")
     }
 
-    fn leader_id(&self) -> Option<&LeaderIdOf<C>> {
-        Some(&self.leader_id)
+    fn leader_id(&self) -> &LeaderIdOf<C> {
+        &self.leader_id
     }
 
     fn is_committed(&self) -> bool {
