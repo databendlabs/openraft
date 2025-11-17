@@ -100,11 +100,15 @@ use crate::storage::RaftStateMachine;
 use crate::storage::Snapshot;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::JoinErrorOf;
+use crate::type_config::alias::LeaderIdOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::SnapshotDataOf;
 use crate::type_config::alias::VoteOf;
 use crate::type_config::alias::WatchReceiverOf;
 use crate::type_config::alias::WriteResponderOf;
+use crate::vote::leader_id::raft_leader_id::RaftLeaderId;
+use crate::vote::raft_vote::RaftVote;
+use crate::vote::raft_vote::RaftVoteExt;
 
 /// Define types for a Raft type configuration.
 ///
@@ -461,6 +465,40 @@ where C: RaftTypeConfig
     /// [`ServerState::Leader`]: crate::core::ServerState::Leader
     pub fn is_leader(&self) -> bool {
         self.inner.rx_metrics.borrow_watched().state.is_leader()
+    }
+
+    /// Get the leader ID of the local node if it is currently the leader with a committed vote.
+    ///
+    /// Returns the [`LeaderId`] (including term and node ID) if this node is the leader, i.e., its
+    /// vote has been accepted by a quorum, otherwise returns [`None`].
+    ///
+    /// The returned [`LeaderId`] can be converted to [`CommittedLeaderId`] when needed.
+    /// And with std LeaderId([`crate::impls::leader_id_std::LeaderId`]), the `CommittedLeaderId`
+    /// can be deref to a [`Term`].
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// if let Some(leader_id) = raft.local_leader_id() {
+    ///     println!("This node is leader: {}", leader_id);
+    /// }
+    /// ```
+    ///
+    /// [`LeaderId`]: `RaftLeaderId`
+    /// [`CommittedLeaderId`]: `RaftLeaderId::Committed`
+    /// [`Term`]: `crate::vote::RaftTerm`
+    pub fn local_leader_id(&self) -> Option<LeaderIdOf<C>> {
+        // Do not use `is_leader()`, which depends on other state to determine, which may result in
+        // inconsistent state. And `is_leader()` just do another reading from the metrics, which also may be
+        // inconsistent.
+
+        let committed_vote = self.inner.rx_metrics.borrow_watched().vote.try_to_committed()?;
+        let leader_id = committed_vote.leader_id();
+        if leader_id.node_id() == Some(&self.inner.id) {
+            Some(leader_id.clone())
+        } else {
+            None
+        }
     }
 
     /// Get the ID of this Raft node.
