@@ -46,7 +46,7 @@ where C: RaftTypeConfig
     }
 
     pub(crate) fn committed_leader_id(&self) -> CommittedLeaderIdOf<C> {
-        self.leader_id().map_or_else(Default::default, RaftLeaderId::to_committed)
+        self.leader_id().to_committed()
     }
 
     pub(crate) fn into_vote(self) -> VoteOf<C> {
@@ -73,8 +73,8 @@ where C: RaftTypeConfig
         unreachable!("CommittedVote should only be built from a Vote")
     }
 
-    fn leader_id(&self) -> Option<&LeaderIdOf<C>> {
-        Some(&self.leader_id)
+    fn leader_id(&self) -> &LeaderIdOf<C> {
+        &self.leader_id
     }
 
     fn is_committed(&self) -> bool {

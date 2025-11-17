@@ -120,7 +120,7 @@ where C: RaftTypeConfig
                 return Ok::<BoxStream<_>, _>(Box::pin(stream::iter([Err(changed_err(leader, None))])));
             };
 
-            if vote.leader_id() == Some(&leader) && vote.is_committed() {
+            if vote.leader_id() == &leader && vote.is_committed() {
                 // valid vote, continue
             } else {
                 return Ok::<BoxStream<_>, _>(Box::pin(stream::iter([Err(changed_err(leader, Some(vote)))])));
