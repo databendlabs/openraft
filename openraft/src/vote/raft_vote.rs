@@ -1,6 +1,8 @@
 use std::fmt::Debug;
 use std::fmt::Display;
 
+use openraft_macros::since;
+
 use crate::RaftTypeConfig;
 use crate::base::OptionalFeatures;
 use crate::type_config::alias::CommittedLeaderIdOf;
@@ -13,18 +15,23 @@ use crate::vote::vote_status::VoteStatus;
 
 /// Represents a vote in Raft consensus, including both votes for leader candidates
 /// and committed leader (a leader granted by a quorum).
+#[since(version = "0.10.0")]
 pub trait RaftVote<C>
 where
     C: RaftTypeConfig,
     Self: OptionalFeatures + Eq + Clone + Debug + Display + Default + 'static,
 {
     /// Create a new vote for the specified leader with optional quorum commitment.
+    #[since(version = "0.10.0")]
     fn from_leader_id(leader_id: C::LeaderId, committed: bool) -> Self;
 
     /// Get a reference to this vote's LeaderId([`RaftLeaderId`] implementation).
-    fn leader_id(&self) -> Option<&C::LeaderId>;
+    #[since(version = "0.10.0", change = "non-Option return")]
+    #[since(version = "0.10.0")]
+    fn leader_id(&self) -> &C::LeaderId;
 
     /// Whether this vote has been committed by a quorum.
+    #[since(version = "0.10.0")]
     fn is_committed(&self) -> bool;
 }
 
@@ -45,7 +52,7 @@ where
     }
 
     fn term(&self) -> C::Term {
-        self.leader_id().map_or_else(C::Term::default, RaftLeaderId::term)
+        self.leader_id().term()
     }
 
     /// Gets the node ID of the leader this vote is for, if present.
@@ -55,19 +62,19 @@ where
 
     /// Gets a reference to the node ID of the leader this vote is for, if present.
     fn leader_node_id(&self) -> Option<&C::NodeId> {
-        self.leader_id().and_then(|leader_id| leader_id.node_id())
+        self.leader_id().node_id()
     }
 
     /// Gets the leader ID this vote is associated with.
     fn to_leader_id(&self) -> C::LeaderId {
-        self.leader_id().cloned().unwrap_or_default()
+        self.leader_id().clone()
     }
 
     /// Creates a reference view of this vote.
     ///
     /// Returns a lightweight `RefVote` that borrows the data from this vote.
     fn as_ref_vote(&self) -> RefVote<'_, C> {
-        RefVote::new(self.leader_id(), self.is_committed())
+        RefVote::new(Some(self.leader_id()), self.is_committed())
     }
 
     /// Create a [`CommittedVote`] with the same leader id.
@@ -99,14 +106,26 @@ where
         }
     }
 
+    /// Converts this vote to a [`CommittedVote`] if it is committed.
+    ///
+    /// Returns `Some(CommittedVote)` if the vote is committed, otherwise returns `None`.
+    #[allow(dead_code)]
+    fn try_to_committed(&self) -> Option<CommittedVote<C>> {
+        if self.is_committed() {
+            Some(self.to_committed())
+        } else {
+            None
+        }
+    }
+
     /// Returns the leader ID as `CommittedLeaderId` if this vote is committed.
     ///
     /// Returns `Some(CommittedLeaderId)` if the vote is committed and has a leader ID.
     /// Returns `None` if the vote is not committed or has no leader ID.
     #[allow(dead_code)]
-    fn to_committed_leader_id(&self) -> Option<CommittedLeaderIdOf<C>> {
+    fn try_to_committed_leader_id(&self) -> Option<CommittedLeaderIdOf<C>> {
         if self.is_committed() {
-            self.leader_id().map(|l| l.to_committed())
+            Some(self.leader_id().to_committed())
         } else {
             None
         }
@@ -114,7 +133,7 @@ where
 
     /// Checks if this vote is for the same leader as specified by the given committed leader ID.
     fn is_same_leader(&self, leader_id: &CommittedLeaderIdOf<C>) -> bool {
-        self.leader_id().map(|x| x.to_committed()).unwrap_or_default() == *leader_id
+        self.leader_id().to_committed() == *leader_id
     }
 }
 

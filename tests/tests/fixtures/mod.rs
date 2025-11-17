@@ -1171,7 +1171,7 @@ where
 
     /// Gets a reference to the node ID of the leader this vote is for, if present.
     fn leader_node_id(&self) -> Option<&C::NodeId> {
-        self.leader_id().and_then(|x| x.node_id())
+        self.leader_id().node_id()
     }
 
     // /// Gets the leader ID this vote is associated with.
