@@ -100,11 +100,14 @@ use crate::storage::RaftStateMachine;
 use crate::storage::Snapshot;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::JoinErrorOf;
+use crate::type_config::alias::LeaderIdOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::SnapshotDataOf;
 use crate::type_config::alias::VoteOf;
 use crate::type_config::alias::WatchReceiverOf;
 use crate::type_config::alias::WriteResponderOf;
+use crate::vote::raft_vote::RaftVote;
+use crate::vote::raft_vote::RaftVoteExt;
 
 /// Define types for a Raft type configuration.
 ///
@@ -461,6 +464,31 @@ where C: RaftTypeConfig
     /// [`ServerState::Leader`]: crate::core::ServerState::Leader
     pub fn is_leader(&self) -> bool {
         self.inner.rx_metrics.borrow_watched().state.is_leader()
+    }
+
+    /// Get the leader ID of the local node if it is currently the leader with a committed vote.
+    ///
+    /// Returns the [`LeaderId`] (including term and node ID) if this node is the leader and its
+    /// vote has been committed by a quorum, otherwise returns [`None`].
+    ///
+    /// The returned [`LeaderId`] can be converted to [`CommittedLeaderId`] when needed.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// if let Some(leader_id) = raft.local_leader_id() {
+    ///     println!("This node is leader: {}", leader_id);
+    /// }
+    /// ```
+    ///
+    /// [`LeaderId`]: `crate::vote::RaftLeaderId`
+    /// [`CommittedLeaderId`]: `crate::vote::RaftLeaderId::Committed`
+    pub fn local_leader_id(&self) -> Option<LeaderIdOf<C>> {
+        if self.is_leader() {
+            self.inner.rx_metrics.borrow_watched().vote.try_to_committed().map(|v| v.leader_id().clone())
+        } else {
+            None
+        }
     }
 
     /// Get the ID of this Raft node.
