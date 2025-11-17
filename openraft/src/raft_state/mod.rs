@@ -51,6 +51,7 @@ use crate::raft_state::io_state::io_progress::IOProgress;
 use crate::raft_state::io_state::log_io_id::LogIOId;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::LogIdOf;
+use crate::type_config::alias::TermOf;
 use crate::type_config::alias::VoteOf;
 use crate::vote::RaftLeaderId;
 use crate::vote::RaftVote;
@@ -214,7 +215,7 @@ where C: RaftTypeConfig
         }
 
         // If it received a request-vote from other node, it is already initialized.
-        if self.vote_ref() != &VoteOf::<C>::default() {
+        if self.vote_ref().leader_id().term() != TermOf::<C>::default() {
             return true;
         }
 
