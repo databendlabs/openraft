@@ -26,6 +26,7 @@ pub(crate) use api::management::ManagementApi;
 pub(crate) use api::protocol::ProtocolApi;
 
 pub(in crate::raft) mod core_state;
+mod leader;
 
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -50,6 +51,7 @@ use tracing::Instrument;
 use tracing::Level;
 use tracing::trace_span;
 
+pub use self::leader::Leader;
 use crate::OptionalSend;
 use crate::RaftNetworkFactory;
 use crate::RaftState;
@@ -100,7 +102,6 @@ use crate::storage::RaftStateMachine;
 use crate::storage::Snapshot;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::JoinErrorOf;
-use crate::type_config::alias::LeaderIdOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::SnapshotDataOf;
 use crate::type_config::alias::VoteOf;
@@ -295,6 +296,14 @@ where C: RaftTypeConfig
     inner: Arc<RaftInner<C>>,
 }
 
+impl<C> Debug for Raft<C>
+where C: RaftTypeConfig
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Raft").field("id", &self.inner.id).finish()
+    }
+}
+
 impl<C> Raft<C>
 where C: RaftTypeConfig
 {
@@ -463,39 +472,40 @@ where C: RaftTypeConfig
     /// ```
     ///
     /// [`ServerState::Leader`]: crate::core::ServerState::Leader
+    #[since(version = "0.10.0")]
     pub fn is_leader(&self) -> bool {
         self.inner.rx_metrics.borrow_watched().state.is_leader()
     }
 
-    /// Get the leader ID of the local node if it is currently the leader with a committed vote.
+    /// Get leader information if this node is currently a leader.
     ///
-    /// Returns the [`LeaderId`] (including term and node ID) if this node is the leader, i.e., its
-    /// vote has been accepted by a quorum, otherwise returns [`None`].
-    ///
-    /// The returned [`LeaderId`] can be converted to [`CommittedLeaderId`] when needed.
-    /// And with std LeaderId([`crate::impls::leader_id_std::LeaderId`]), the `CommittedLeaderId`
-    /// can be deref to a [`Term`].
+    /// Returns [`Leader`] containing the leader ID and health metadata if this node is the leader
+    /// (i.e., its vote has been accepted by a quorum), otherwise returns [`None`].
     ///
     /// # Example
     ///
     /// ```ignore
-    /// if let Some(leader_id) = raft.local_leader_id() {
-    ///     println!("This node is leader: {}", leader_id);
+    /// if let Some(leader) = raft.as_leader() {
+    ///     println!("This node is leader: {}", leader.id);
     /// }
     /// ```
-    ///
-    /// [`LeaderId`]: `RaftLeaderId`
-    /// [`CommittedLeaderId`]: `RaftLeaderId::Committed`
-    /// [`Term`]: `crate::vote::RaftTerm`
-    pub fn local_leader_id(&self) -> Option<LeaderIdOf<C>> {
+    #[since(version = "0.10.0")]
+    pub fn as_leader(&self) -> Option<Leader<C>> {
         // Do not use `is_leader()`, which depends on other state to determine, which may result in
         // inconsistent state. And `is_leader()` just do another reading from the metrics, which also may be
         // inconsistent.
 
-        let committed_vote = self.inner.rx_metrics.borrow_watched().vote.try_to_committed()?;
+        let metrics = self.inner.rx_metrics.borrow_watched();
+
+        let committed_vote = metrics.vote.try_to_committed()?;
         let leader_id = committed_vote.leader_id();
+
         if leader_id.node_id() == Some(&self.inner.id) {
-            Some(leader_id.clone())
+            Some(Leader {
+                raft: self.clone(),
+                leader_id: leader_id.clone(),
+                last_quorum_acked: metrics.last_quorum_acked.map(|s| s.into_inner()),
+            })
         } else {
             None
         }
@@ -509,6 +519,7 @@ where C: RaftTypeConfig
     /// let id = raft.node_id();
     /// println!("Node ID: {:?}", id);
     /// ```
+    #[since(version = "0.10.0")]
     pub fn node_id(&self) -> &C::NodeId {
         &self.inner.id
     }
@@ -524,6 +535,7 @@ where C: RaftTypeConfig
     ///     println!("Voter: {:?}", voter_id);
     /// }
     /// ```
+    #[since(version = "0.10.0")]
     pub fn voter_ids(&self) -> impl Iterator<Item = C::NodeId> {
         // borrow_watched() holds a lock that blocks RaftCore.
         // Clone and collect immediately to release the lock quickly.
@@ -542,6 +554,7 @@ where C: RaftTypeConfig
     ///     println!("Learner: {:?}", learner_id);
     /// }
     /// ```
+    #[since(version = "0.10.0")]
     pub fn learner_ids(&self) -> impl Iterator<Item = C::NodeId> {
         // borrow_watched() holds a lock that blocks RaftCore.
         // Clone and collect immediately to release the lock quickly.
