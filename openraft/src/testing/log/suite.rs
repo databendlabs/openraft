@@ -15,6 +15,7 @@ use crate::RaftSnapshotBuilder;
 use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::StoredMembership;
+use crate::alias::LeaderIdOf;
 use crate::core::notification::Notification;
 use crate::entry::RaftEntry;
 use crate::membership::EffectiveMembership;
@@ -33,6 +34,7 @@ use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::VoteOf;
 use crate::type_config::async_runtime::mpsc::MpscReceiver;
 use crate::type_config::async_runtime::mpsc::MpscSender;
+use crate::vote::RaftLeaderId;
 use crate::vote::RaftLeaderIdExt;
 use crate::vote::RaftVote;
 use crate::vote::raft_vote::RaftVoteExt;
@@ -884,7 +886,7 @@ where
         // The vote is: term=1, node_id=NODE_ID, committed
         // Get the leader ID from the stored vote
         let vote = store.read_vote().await?.expect("vote should be set");
-        let leader = vote.leader_id().expect("vote should have a leader").clone();
+        let leader = vote.leader_id().clone();
 
         tracing::info!("--- test normal case: read entries with matching vote");
         {
@@ -922,7 +924,7 @@ where
         tracing::info!("--- test vote mismatch: wrong leader node id");
         {
             let wrong_vote = VoteOf::<C>::from_term_node_id(1u64.into(), 99u64.into());
-            let wrong_leader = wrong_vote.leader_id().unwrap().clone();
+            let wrong_leader = wrong_vote.leader_id().clone();
             let mut reader = store.get_log_reader().await;
             let stream = reader.leader_bounded_stream(wrong_leader, 3..7).await;
             let entries: Vec<_> = stream.collect().await;
@@ -935,7 +937,7 @@ where
         tracing::info!("--- test vote mismatch: wrong term");
         {
             let wrong_vote = VoteOf::<C>::from_term_node_id(2u64.into(), NODE_ID.into());
-            let wrong_leader = wrong_vote.leader_id().unwrap().clone();
+            let wrong_leader = wrong_vote.leader_id().clone();
             let mut reader = store.get_log_reader().await;
             let stream = reader.leader_bounded_stream(wrong_leader, 3..7).await;
             let entries: Vec<_> = stream.collect().await;
@@ -1600,7 +1602,11 @@ where
     let (tx, mut rx) = C::mpsc(1024);
 
     // Dummy log io id for blocking append
-    let io_id = IOId::<C>::new_log_io(VoteOf::<C>::default().into_committed(), Some(last_log_id));
+    let leader_id = LeaderIdOf::<C>::new(1, 0);
+    let io_id = IOId::<C>::new_log_io(
+        VoteOf::<C>::from_leader_id(leader_id, true).into_committed(),
+        Some(last_log_id),
+    );
     let notify = Notification::LocalIO { io_id };
     let cb = IOFlushed::new(notify, tx.downgrade());
 

@@ -41,8 +41,8 @@ where C: RaftTypeConfig
         Self { leader_id, committed }
     }
 
-    fn leader_id(&self) -> Option<&C::LeaderId> {
-        Some(&self.leader_id)
+    fn leader_id(&self) -> &C::LeaderId {
+        &self.leader_id
     }
 
     fn is_committed(&self) -> bool {
@@ -141,10 +141,10 @@ mod tests {
             use crate::vote::raft_vote::RaftVoteExt;
 
             let vote = Vote::<UTConfig>::new(1, 2);
-            assert_eq!(None, vote.to_committed_leader_id());
+            assert_eq!(None, vote.try_to_committed_leader_id());
 
             let committed = Vote::<UTConfig>::new_committed(1, 2);
-            let leader_id = committed.to_committed_leader_id();
+            let leader_id = committed.try_to_committed_leader_id();
             let expected = LeaderIdOf::<UTConfig>::new(1, 2).to_committed();
             assert_eq!(Some(expected), leader_id);
 
@@ -248,10 +248,10 @@ mod tests {
             use crate::vote::raft_vote::RaftVoteExt;
 
             let vote = Vote::<TC>::new(1, 2);
-            assert_eq!(None, vote.to_committed_leader_id());
+            assert_eq!(None, vote.try_to_committed_leader_id());
 
             let committed = Vote::<TC>::new_committed(1, 2);
-            let leader_id = committed.to_committed_leader_id();
+            let leader_id = committed.try_to_committed_leader_id();
             let expected = LeaderId {
                 term: 1,
                 voted_for: Some(2),
