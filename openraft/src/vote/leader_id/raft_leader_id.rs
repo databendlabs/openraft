@@ -61,6 +61,11 @@ where
     C: RaftTypeConfig,
     Self: RaftLeaderId<C>,
 {
+    /// Create a LeaderId with default Term and specified Node ID
+    fn new_with_default_term(node_id: C::NodeId) -> Self {
+        Self::new(C::Term::default(), node_id)
+    }
+
     /// Create a new committed leader ID.
     fn new_committed(term: C::Term, node_id: C::NodeId) -> Self::Committed {
         Self::new(term, node_id).to_committed()

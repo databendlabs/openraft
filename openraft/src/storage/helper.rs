@@ -25,8 +25,13 @@ use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
 use crate::storage::log_reader_ext::RaftLogReaderExt;
 use crate::type_config::TypeConfigExt;
+use crate::type_config::alias::LeaderIdOf;
 use crate::type_config::alias::LogIdOf;
+use crate::type_config::alias::TermOf;
+use crate::type_config::alias::VoteOf;
 use crate::utime::Leased;
+use crate::vote::RaftLeaderId;
+use crate::vote::RaftVote;
 
 /// StorageHelper provides additional methods to access a [`RaftLogStorage`] and
 /// [`RaftStateMachine`] implementation.
@@ -39,7 +44,8 @@ where
     pub(crate) log_store: &'a mut LS,
     pub(crate) state_machine: &'a mut SM,
 
-    id: String,
+    id: Option<C::NodeId>,
+    id_str: String,
 
     /// Whether to allow IO completion notifications to arrive out of order.
     allow_io_notification_reorder: bool,
@@ -59,7 +65,8 @@ where
             log_store: sto,
             state_machine: sm,
             allow_io_notification_reorder: false,
-            id: "xx".to_string(),
+            id: None,
+            id_str: "xx".to_string(),
             _p: Default::default(),
         }
     }
@@ -73,8 +80,9 @@ where
 
     /// Set the ID of this node
     #[since(version = "0.10.0")]
-    pub fn with_id(mut self, id: impl ToString) -> Self {
-        self.id = id.to_string();
+    pub fn with_id(mut self, id: C::NodeId) -> Self {
+        self.id_str = id.to_string();
+        self.id = Some(id);
         self
     }
 
@@ -89,7 +97,11 @@ where
     pub async fn get_initial_state(&mut self) -> Result<RaftState<C>, StorageError<C>> {
         let mut log_reader = self.log_store.get_log_reader().await;
         let vote = log_reader.read_vote().await.sto_read_vote()?;
-        let vote = vote.unwrap_or_default();
+        // When absent, create a default value for this node.
+        let vote = vote.unwrap_or_else(|| {
+            let leader_id = LeaderIdOf::<C>::new(TermOf::<C>::default(), self.id.clone().unwrap());
+            VoteOf::<C>::from_leader_id(leader_id, false)
+        });
 
         let mut committed = self.log_store.read_committed().await.sto_read_logs()?;
 
@@ -188,7 +200,7 @@ where
         let snapshot_meta = snapshot.map(|x| x.meta).unwrap_or_default();
 
         let io_state = IOState::new(
-            &self.id,
+            &self.id_str,
             &vote,
             last_applied.clone(),
             snapshot_meta.last_log_id.clone(),
