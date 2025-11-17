@@ -51,6 +51,7 @@ use crate::type_config::alias::LeaderIdOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::OneshotSenderOf;
 use crate::type_config::alias::SnapshotDataOf;
+use crate::type_config::alias::TermOf;
 use crate::type_config::alias::VoteOf;
 use crate::type_config::alias::WriteResponderOf;
 use crate::vote::RaftLeaderId;
@@ -196,7 +197,8 @@ where C: RaftTypeConfig
         self.check_members_contain_me(&m)?;
 
         // FollowingHandler requires vote to be committed.
-        let vote = <VoteOf<C> as RaftVote<C>>::from_leader_id(Default::default(), true);
+        let leader_id = LeaderIdOf::<C>::new(TermOf::<C>::default(), self.config.id.clone());
+        let vote = <VoteOf<C> as RaftVote<C>>::from_leader_id(leader_id, true);
         self.state.vote.update(C::now(), Duration::default(), vote);
         self.following_handler().do_append_entries(vec![entry]);
 

@@ -8,6 +8,7 @@ use crate::base::OptionalFeatures;
 use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::vote::RaftLeaderId;
 use crate::vote::committed::CommittedVote;
+use crate::vote::leader_id::raft_leader_id::RaftLeaderIdExt;
 use crate::vote::non_committed::NonCommittedVote;
 use crate::vote::ref_vote::RefVote;
 use crate::vote::vote_status::VoteStatus;
@@ -40,6 +41,12 @@ where
     C: RaftTypeConfig,
     Self: RaftVote<C>,
 {
+    #[allow(dead_code)]
+    fn new_with_default_term(node_id: C::NodeId) -> Self {
+        let leader_id = C::LeaderId::new_with_default_term(node_id);
+        Self::from_leader_id(leader_id, false)
+    }
+
     /// Creates a new vote for a node in a specific term, with uncommitted status.
     fn from_term_node_id(term: C::Term, node_id: C::NodeId) -> Self {
         let leader_id = C::LeaderId::new(term, node_id);

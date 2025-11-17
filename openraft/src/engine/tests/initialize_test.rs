@@ -56,7 +56,7 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
         assert_eq!(
             vec![
                 Command::AppendEntries {
-                    committed_vote: Vote::default().into_committed(),
+                    committed_vote: Vote::new_with_default_term(1).into_committed(),
                     entries: vec![Entry::<UTConfig>::new_membership(LogIdOf::<UTConfig>::default(), m1())],
                 },
                 // When update the effective membership, the engine set it to Follower.
@@ -106,7 +106,7 @@ fn test_initialize() -> anyhow::Result<()> {
         assert_eq!(
             vec![
                 Command::AppendEntries {
-                    committed_vote: Vote::default().into_committed(),
+                    committed_vote: Vote::new_with_default_term(1).into_committed(),
                     entries: vec![Entry::new_membership(LogIdOf::<UTConfig>::default(), m12())],
                 },
                 // When update the effective membership, the engine set it to Follower.
@@ -141,12 +141,12 @@ fn test_initialize() -> anyhow::Result<()> {
     tracing::info!("--- not allowed because of vote");
     {
         let mut eng = eng();
-        eng.state.vote = Leased::new(UTConfig::<()>::now(), Duration::from_millis(500), Vote::new(0, 1));
+        eng.state.vote = Leased::new(UTConfig::<()>::now(), Duration::from_millis(500), Vote::new(1, 1));
 
         assert_eq!(
             Err(InitializeError::NotAllowed(NotAllowed {
                 last_log_id: None,
-                vote: Vote::new(0, 1),
+                vote: Vote::new(1, 1),
             })),
             eng.initialize(entry())
         );

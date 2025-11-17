@@ -95,6 +95,10 @@ where
         }
     }
 
+    pub(crate) fn set_id(&mut self, id: impl ToString) {
+        self.id = id.to_string();
+    }
+
     /// Update the `accept` cursor of the I/O progress.
     pub(crate) fn accept(&mut self, new_accepted: T) {
         tracing::debug!("RAFT_io    {}; new_accepted: {}", self, new_accepted);
