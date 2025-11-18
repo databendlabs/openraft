@@ -19,18 +19,13 @@ where C: RaftTypeConfig
     pub fn std<LID>(a: &LID, b: &LID) -> Option<Ordering>
     where LID: RaftLeaderId<C> {
         match a.term().cmp(&b.term()) {
-            Ordering::Equal => match (a.node_id(), b.node_id()) {
-                (None, None) => Some(Ordering::Equal),
-                (Some(_), None) => Some(Ordering::Greater),
-                (None, Some(_)) => Some(Ordering::Less),
-                (Some(a), Some(b)) => {
-                    if a == b {
-                        Some(Ordering::Equal)
-                    } else {
-                        None
-                    }
+            Ordering::Equal => {
+                if a.node_id() == b.node_id() {
+                    Some(Ordering::Equal)
+                } else {
+                    None
                 }
-            },
+            }
             cmp => Some(cmp),
         }
     }
@@ -51,9 +46,9 @@ mod tests {
     use crate::vote::RaftLeaderId;
 
     #[derive(Debug, PartialEq, Eq, Default, Clone, PartialOrd, derive_more::Display)]
-    #[display("T{}-N{:?}", _0, _1)]
+    #[display("T{}-N{}", _0, _1)]
     #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-    struct LeaderId(u64, Option<u64>);
+    struct LeaderId(u64, u64);
 
     impl PartialEq<u64> for LeaderId {
         fn eq(&self, _other: &u64) -> bool {
@@ -71,15 +66,15 @@ mod tests {
         type Committed = u64;
 
         fn new(term: u64, node_id: u64) -> Self {
-            Self(term, Some(node_id))
+            Self(term, node_id)
         }
 
         fn term(&self) -> u64 {
             self.0
         }
 
-        fn node_id(&self) -> Option<&u64> {
-            self.1.as_ref()
+        fn node_id(&self) -> &u64 {
+            &self.1
         }
 
         fn to_committed(&self) -> Self::Committed {
@@ -93,16 +88,11 @@ mod tests {
 
         use super::LeaderIdCompare as Cmp;
 
-        let lid = |term, node_id| LeaderId(term, Some(node_id));
-        let lid_none = |term| LeaderId(term, None);
+        let lid = |term, node_id| LeaderId(term, node_id);
 
         // Compare term first
         assert_eq!(Cmp::std(&lid(2, 2), &lid(1, 2)), Some(Greater));
         assert_eq!(Cmp::std(&lid(1, 2), &lid(2, 2)), Some(Less));
-
-        // Equal term, Some > None
-        assert_eq!(Cmp::std(&lid(2, 2), &lid_none(2)), Some(Greater));
-        assert_eq!(Cmp::std(&lid_none(2), &lid(2, 2)), Some(Less));
 
         // Equal
         assert_eq!(Cmp::std(&lid(2, 2), &lid(2, 2)), Some(Equal));
@@ -119,7 +109,7 @@ mod tests {
 
         use super::LeaderIdCompare as Cmp;
 
-        let lid = |term, node_id| LeaderId(term, Some(node_id));
+        let lid = |term, node_id| LeaderId(term, node_id);
 
         // Compare term first
         assert_eq!(Cmp::adv(&lid(2, 2), &lid(1, 2)), Some(Greater));

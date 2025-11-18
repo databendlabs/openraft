@@ -212,8 +212,7 @@ where
         // For `Leading`, the vote is always the leader's vote.
         // Thus vote.voted_for() is this node.
 
-        // Safe unwrap: voted_for() is always non-None in Openraft
-        let node_id = self.committed_vote.to_leader_node_id().unwrap();
+        let node_id = self.committed_vote.to_leader_node_id();
         let now = C::now();
 
         tracing::debug!(

@@ -850,7 +850,7 @@ impl TypedRaftRouter {
         if let Some(voted_for) = &expect_voted_for {
             assert_eq!(
                 vote.leader_node_id(),
-                Some(voted_for),
+                voted_for,
                 "expected node {} to have voted for {}, got {:?}",
                 id,
                 voted_for,
@@ -979,7 +979,7 @@ impl RaftNetworkV2<MemConfig> for RaftRouterNetwork {
         mut rpc: AppendEntriesRequest<MemConfig>,
         _option: RPCOption,
     ) -> Result<AppendEntriesResponse<MemConfig>, RPCError<MemConfig>> {
-        let from_id = rpc.vote.to_leader_node_id().unwrap();
+        let from_id = rpc.vote.to_leader_node_id();
 
         tracing::debug!("append_entries to id={} {}", self.target, rpc);
         self.owner.count_rpc(RPCTypes::AppendEntries);
@@ -1051,7 +1051,7 @@ impl RaftNetworkV2<MemConfig> for RaftRouterNetwork {
         _cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
         _option: RPCOption,
     ) -> Result<SnapshotResponse<MemConfig>, StreamingError<MemConfig>> {
-        let from_id = vote.leader_id().to_node_id().unwrap();
+        let from_id = vote.leader_id().to_node_id();
 
         self.owner.count_rpc(RPCTypes::InstallSnapshot);
         self.owner.call_rpc_pre_hook(snapshot.clone(), from_id, self.target).await?;
@@ -1079,7 +1079,7 @@ impl RaftNetworkV2<MemConfig> for RaftRouterNetwork {
         rpc: VoteRequest<MemConfig>,
         _option: RPCOption,
     ) -> Result<VoteResponse<MemConfig>, RPCError<MemConfig>> {
-        let from_id = rpc.vote.leader_id().to_node_id().unwrap();
+        let from_id = rpc.vote.leader_id().to_node_id();
 
         self.owner.count_rpc(RPCTypes::Vote);
         self.owner.call_rpc_pre_hook(rpc.clone(), from_id, self.target).await?;
@@ -1106,7 +1106,7 @@ impl RaftNetworkV2<MemConfig> for RaftRouterNetwork {
         rpc: TransferLeaderRequest<MemConfig>,
         _option: RPCOption,
     ) -> Result<(), RPCError<MemConfig>> {
-        let from_id = rpc.from_leader().leader_id().to_node_id().unwrap();
+        let from_id = rpc.from_leader().leader_id().to_node_id();
 
         self.owner.count_rpc(RPCTypes::TransferLeader);
         self.owner.call_rpc_pre_hook(rpc.clone(), from_id, self.target).await?;
@@ -1164,13 +1164,13 @@ where
         Self::from_leader_id(leader_id, false)
     }
 
-    /// Gets the node ID of the leader this vote is for, if present.
-    fn to_leader_node_id(&self) -> Option<C::NodeId> {
-        self.leader_node_id().cloned()
+    /// Gets the node ID of the leader this vote is for.
+    fn to_leader_node_id(&self) -> C::NodeId {
+        self.leader_node_id().clone()
     }
 
-    /// Gets a reference to the node ID of the leader this vote is for, if present.
-    fn leader_node_id(&self) -> Option<&C::NodeId> {
+    /// Gets a reference to the node ID of the leader this vote is for.
+    fn leader_node_id(&self) -> &C::NodeId {
         self.leader_id().node_id()
     }
 
