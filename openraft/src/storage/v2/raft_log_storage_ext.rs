@@ -1,19 +1,13 @@
+use anyerror::AnyError;
 use openraft_macros::add_async_trait;
 
 use crate::OptionalSend;
 use crate::RaftTypeConfig;
 use crate::StorageError;
-use crate::core::notification::Notification;
-use crate::entry::RaftEntry;
 use crate::error::StorageIOResult;
-use crate::raft_state::io_state::io_id::IOId;
 use crate::storage::IOFlushed;
 use crate::storage::RaftLogStorage;
 use crate::type_config::TypeConfigExt;
-use crate::type_config::alias::VoteOf;
-use crate::type_config::async_runtime::mpsc::MpscReceiver;
-use crate::type_config::async_runtime::mpsc::MpscSender;
-use crate::vote::raft_vote::RaftVoteExt;
 
 /// Extension trait for RaftLogStorage to provide utility methods.
 ///
@@ -32,22 +26,14 @@ where C: RaftTypeConfig
     {
         let entries = entries.into_iter().collect::<Vec<_>>();
 
-        let last_log_id = entries.last().unwrap().log_id();
+        let (tx, rx) = C::oneshot();
 
-        let (tx, mut rx) = C::mpsc(1024);
-
-        let io_id = IOId::<C>::new_log_io(VoteOf::<C>::default().into_committed(), Some(last_log_id));
-        let notify = Notification::LocalIO { io_id };
-
-        let callback = IOFlushed::<C>::new(notify, tx.downgrade());
+        let callback = IOFlushed::<C>::signal(tx);
         self.append(entries, callback).await.sto_write_logs()?;
 
-        let got = rx.recv().await.unwrap();
-        if let Notification::StorageError { error } = got {
-            return Err(error);
-        }
+        let result = rx.await.map_err(|_e| StorageError::write_logs(AnyError::error("callback channel closed")))?;
 
-        Ok(())
+        result.map_err(|e| StorageError::write_logs(AnyError::new(&e)))
     }
 }
 
