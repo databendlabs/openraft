@@ -81,7 +81,7 @@ where
     ///
     /// Returns a lightweight `RefVote` that borrows the data from this vote.
     fn as_ref_vote(&self) -> RefVote<'_, C> {
-        RefVote::new(Some(self.leader_id()), self.is_committed())
+        RefVote::new(self.leader_id(), self.is_committed())
     }
 
     /// Create a [`CommittedVote`] with the same leader id.
