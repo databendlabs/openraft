@@ -8,12 +8,13 @@ use crate::type_config::alias::LeaderIdOf;
 use crate::type_config::alias::VoteOf;
 use crate::vote::RaftLeaderId;
 use crate::vote::RaftVote;
+use crate::vote::leader_id::raft_leader_id::RaftLeaderIdExt;
 use crate::vote::raft_vote::RaftVoteExt;
 
 /// Represents a committed Vote that has been accepted by a quorum.
 ///
 /// The inner `Vote`'s attribute `committed` is always set to `true`
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 #[derive(PartialEq, Eq)]
 #[derive(PartialOrd)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
@@ -21,6 +22,18 @@ pub(crate) struct CommittedVote<C>
 where C: RaftTypeConfig
 {
     leader_id: LeaderIdOf<C>,
+}
+
+impl<C> Default for CommittedVote<C>
+where
+    C: RaftTypeConfig,
+    C::NodeId: Default,
+{
+    fn default() -> Self {
+        Self {
+            leader_id: LeaderIdOf::<C>::new_with_default_term(C::NodeId::default()),
+        }
+    }
 }
 
 /// The `CommittedVote` is totally ordered.
