@@ -17,7 +17,9 @@ use crate::metrics::Wait;
 use crate::metrics::WaitError;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::NodeIdOf;
+use crate::type_config::alias::VoteOf;
 use crate::type_config::alias::WatchSenderOf;
+use crate::vote::raft_vote::RaftVoteExt;
 
 /// Test wait for different state changes
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
@@ -245,14 +247,14 @@ pub(crate) type InitResult<C> = (RaftMetrics<C>, Wait<C>, WatchSenderOf<C, RaftM
 /// Build a initial state for testing of Wait:
 /// Returns init metrics, Wait, and the tx to send an updated metrics.
 fn init_wait_test<C>() -> InitResult<C>
-where C: RaftTypeConfig {
+where C: RaftTypeConfig<NodeId = u64> {
     #[allow(deprecated)]
     let init = RaftMetrics {
         running_state: Ok(()),
         id: NodeIdOf::<C>::default(),
         state: ServerState::Learner,
         current_term: Default::default(),
-        vote: Default::default(),
+        vote: VoteOf::<C>::new_with_default_term(0),
         last_log_index: None,
         last_applied: None,
         purged: None,
