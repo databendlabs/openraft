@@ -3,25 +3,22 @@ use std::fmt::Formatter;
 
 use crate::RaftTypeConfig;
 use crate::Vote;
-use crate::display_ext::DisplayOptionExt;
 use crate::vote::RaftVote;
 
 /// Similar to [`Vote`] but with a reference to the `LeaderId`, and provide ordering and display
 /// implementation.
-///
-/// [`Vote`]: crate::vote::Vote
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct RefVote<'a, C>
 where C: RaftTypeConfig
 {
-    pub(crate) leader_id: Option<&'a C::LeaderId>,
+    pub(crate) leader_id: &'a C::LeaderId,
     pub(crate) committed: bool,
 }
 
 impl<'a, C> RefVote<'a, C>
 where C: RaftTypeConfig
 {
-    pub(crate) fn new(leader_id: Option<&'a C::LeaderId>, committed: bool) -> Self {
+    pub(crate) fn new(leader_id: &'a C::LeaderId, committed: bool) -> Self {
         Self { leader_id, committed }
     }
 
@@ -31,9 +28,8 @@ where C: RaftTypeConfig
 
     /// Convert to an owned [`Vote`].
     #[allow(dead_code)]
-    pub(crate) fn to_owned(&self) -> Option<Vote<C>> {
-        let leader_id = self.leader_id?;
-        Some(Vote::from_leader_id(leader_id.clone(), self.committed))
+    pub(crate) fn to_owned(&self) -> Vote<C> {
+        Vote::from_leader_id(self.leader_id.clone(), self.committed)
     }
 }
 
@@ -70,7 +66,7 @@ where C: RaftTypeConfig
         write!(
             f,
             "<{}:{}>",
-            self.leader_id.display(),
+            self.leader_id,
             if self.is_committed() { "Q" } else { "-" }
         )
     }
