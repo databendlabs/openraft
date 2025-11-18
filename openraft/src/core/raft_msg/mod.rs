@@ -21,6 +21,7 @@ use crate::raft::VoteResponse;
 use crate::raft::linearizable_read::Linearizer;
 use crate::raft::responder::core_responder::CoreResponder;
 use crate::storage::Snapshot;
+use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::type_config::alias::OneshotSenderOf;
 use crate::type_config::alias::SnapshotDataOf;
 use crate::type_config::alias::VoteOf;
@@ -74,6 +75,7 @@ where C: RaftTypeConfig
     ClientWriteRequest {
         app_data: C::D,
         responder: Option<CoreResponder<C>>,
+        expected_leader: Option<CommittedLeaderIdOf<C>>,
     },
 
     EnsureLinearizableRead {

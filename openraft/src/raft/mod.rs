@@ -933,6 +933,7 @@ where C: RaftTypeConfig
             inner: &self.inner,
             app_data,
             responder: None,
+            expected_leader: None,
         }
     }
 
