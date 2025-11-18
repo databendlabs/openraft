@@ -72,7 +72,13 @@ where C: RaftTypeConfig
     /// Fire-and-forget version of `client_write`, accept a generic responder.
     #[since(version = "0.10.0")]
     async fn do_client_write_ff(&self, app_data: C::D, responder: Option<CoreResponder<C>>) -> Result<(), Fatal<C>> {
-        self.inner.send_msg(RaftMsg::ClientWriteRequest { app_data, responder }).await?;
+        self.inner
+            .send_msg(RaftMsg::ClientWriteRequest {
+                app_data,
+                responder,
+                expected_leader: None,
+            })
+            .await?;
 
         Ok(())
     }

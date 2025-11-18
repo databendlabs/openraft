@@ -896,43 +896,41 @@ where C: RaftTypeConfig
         self.app_api().client_write_ff(app_data, responder).await
     }
 
-    /// Submit a write request to Raft (fire-and-forget).
+    /// Submit a write request to Raft.
     ///
-    /// Returns a [`WriteRequest`] builder for configuration before execution.
-    /// Does not wait for result by default - use [`.responder()`] to receive the result.
-    ///
-    /// # Performance
-    ///
-    /// Allocates (`Pin<Box<dyn Future>>`) due to stable Rust limitations.
-    /// Will be optimized to zero-allocation when `impl_trait_in_assoc_type` stabilizes.
-    ///
-    /// **Zero-allocation alternatives:**
-    /// - [`client_write()`] - waits for response, returns result directly
-    /// - [`client_write_ff()`] - deprecated, but avoids allocation
+    /// Returns a [`WriteRequest`] builder. Fire-and-forget by default;
+    /// use [`.responder()`] for results, [`.with_leader()`] for conditional writes.
     ///
     /// # Examples
     ///
     /// ```ignore
+    /// use openraft::impls::ProgressResponder;
+    ///
     /// // Fire-and-forget
     /// raft.write(my_data).await?;
     ///
-    /// // With responder to receive result
-    /// use openraft::impls::ProgressResponder;
-    ///
-    /// let (responder, _commit_rx, complete_rx) = ProgressResponder::new();
+    /// // With responder
+    /// let (responder, _, rx) = ProgressResponder::new();
     /// raft.write(my_data).responder(responder).await?;
-    /// let result = complete_rx.await??;
+    /// let result = rx.await??;
+    ///
+    /// // Conditional write (fails if leader changed)
+    /// let leader_id = raft.as_leader()?.to_committed_leader_id();
+    /// raft.write(my_data)
+    ///     .with_leader(leader_id)
+    ///     .responder(responder)
+    ///     .await?;
     /// ```
     ///
-    /// [`client_write()`]: Self::client_write
-    /// [`client_write_ff()`]: Self::client_write_ff
     /// [`.responder()`]: WriteRequest::responder
+    /// [`.with_leader()`]: WriteRequest::with_leader
     #[since(version = "0.10.0")]
     pub fn write(&self, app_data: C::D) -> WriteRequest<'_, C> {
         WriteRequest {
             inner: &self.inner,
             app_data,
             responder: None,
+            expected_leader: None,
         }
     }
 

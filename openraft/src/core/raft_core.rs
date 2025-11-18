@@ -1325,7 +1325,27 @@ where
             RaftMsg::EnsureLinearizableRead { read_policy, tx } => {
                 self.handle_ensure_linearizable_read(read_policy, tx).await;
             }
-            RaftMsg::ClientWriteRequest { app_data, responder } => {
+            RaftMsg::ClientWriteRequest {
+                app_data,
+                responder,
+                expected_leader,
+            } => {
+                // Check if expected leader matches current leader
+                if let Some(expected) = expected_leader {
+                    let vote = self.engine.state.vote_ref();
+
+                    let committed_leader_id = vote.try_to_committed_leader_id();
+
+                    if committed_leader_id.as_ref() != Some(&expected) {
+                        // Leader has changed, return ForwardToLeader error
+                        if let Some(responder) = responder {
+                            let forward_err = self.engine.state.forward_to_leader();
+                            let client_write_err = ClientWriteError::ForwardToLeader(forward_err);
+                            responder.on_complete(Err(client_write_err));
+                        }
+                        return;
+                    }
+                }
                 self.write_entry(C::Entry::new_normal(LogIdOf::<C>::default(), app_data), responder);
             }
             RaftMsg::Initialize { members, tx } => {

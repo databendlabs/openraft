@@ -7,7 +7,9 @@ use openraft::Config;
 use openraft::SnapshotPolicy;
 use openraft::impls::ProgressResponder;
 use openraft::raft::ClientWriteResponse;
+use openraft::type_config::alias::LeaderIdOf;
 use openraft_memstore::ClientRequest;
+use openraft_memstore::ClientResponse;
 use openraft_memstore::IntoMemClientRequest;
 use openraft_memstore::TypeConfig;
 
@@ -141,6 +143,75 @@ async fn write_builder() -> Result<()> {
     n0.write(ClientRequest::make_request("foo", 4)).responder(responder).await?;
     let got: ClientWriteResponse<TypeConfig> = complete_rx.await??;
     assert_eq!(Some("request-3"), got.response().0.as_deref());
+
+    Ok(())
+}
+
+/// Test Raft::write().with_leader() for conditional writes
+///
+/// Test that writes only execute when the expected leader matches current leader.
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
+async fn write_with_leader() -> Result<()> {
+    use openraft::error::ClientWriteError;
+    use openraft::vote::RaftLeaderId;
+
+    let config = Arc::new(
+        Config {
+            enable_tick: false,
+            ..Default::default()
+        }
+        .validate()?,
+    );
+
+    let mut router = RaftRouter::new(config.clone());
+
+    tracing::info!("--- initializing cluster");
+    let mut log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+
+    let n0 = router.get_raft_handle(&0)?;
+
+    let leader_id = n0.as_leader().unwrap().to_committed_leader_id();
+
+    // Test 1: Write with correct leader should succeed
+    let (responder, _commit_rx, complete_rx) = ProgressResponder::new();
+    n0.write(ClientRequest::make_request("foo", 2)).with_leader(leader_id).responder(responder).await?;
+
+    log_index += 1;
+    router.wait(&0, None).applied_index(Some(log_index), "write with correct leader").await?;
+
+    let got = complete_rx.await??;
+    assert_eq!(&ClientResponse(None), got.response());
+    assert_eq!(&log_id(1, 0, log_index), got.log_id());
+
+    // Test 2: Write with incorrect leader should fail with ForwardToLeader
+    // Create a fake leader ID that doesn't match
+    let fake_leader = LeaderIdOf::<TypeConfig>::new(100, 99).to_committed();
+
+    let (responder, _commit_rx, complete_rx) = ProgressResponder::new();
+    n0.write(ClientRequest::make_request("foo", 3))
+        .with_leader(fake_leader)
+        .responder(responder)
+        .await?;
+
+    let err = complete_rx.await?.unwrap_err();
+    let ClientWriteError::ForwardToLeader(forward) = err else {
+        panic!("Expected ForwardToLeader error, got: {:?}", err)
+    };
+    // Check the error content: leader_id should point to node 0
+    assert_eq!(Some(0), forward.leader_id);
+
+    // Test 3: Write without leader check should succeed
+    let (responder, _commit_rx, complete_rx) = ProgressResponder::new();
+    n0.write(ClientRequest::make_request("foo", 4)).responder(responder).await?;
+
+    log_index += 1;
+    router.wait(&0, None).applied_index(Some(log_index), "write without leader check").await?;
+
+    let got = complete_rx.await??;
+    // Should see request-2 (request-3 failed)
+    assert_eq!(&ClientResponse(Some("request-2".to_string())), got.response());
+    assert_eq!(&log_id(1, 0, log_index), got.log_id());
 
     Ok(())
 }
