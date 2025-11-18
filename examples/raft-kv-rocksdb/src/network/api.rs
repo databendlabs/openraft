@@ -3,8 +3,8 @@ use actix_web::web;
 use actix_web::web::Data;
 use actix_web::Responder;
 use openraft::error::decompose::DecomposeResult;
-use openraft::error::CheckIsLeaderError;
 use openraft::error::Infallible;
+use openraft::error::LinearizableReadError;
 use openraft::ReadPolicy;
 use web::Json;
 
@@ -40,7 +40,7 @@ pub async fn linearizable_read(app: Data<App>, req: Json<String>) -> actix_web::
             let kvs = app.key_values.read().await;
             let value = kvs.get(&key);
 
-            let res: Result<String, CheckIsLeaderError<TypeConfig>> = Ok(value.cloned().unwrap_or_default());
+            let res: Result<String, LinearizableReadError<TypeConfig>> = Ok(value.cloned().unwrap_or_default());
             Ok(Json(res))
         }
         Err(e) => Ok(Json(Err(e))),

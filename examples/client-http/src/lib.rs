@@ -3,11 +3,11 @@ use std::fmt;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-use openraft::error::CheckIsLeaderError;
 use openraft::error::ClientWriteError;
 use openraft::error::ForwardToLeader;
 use openraft::error::Infallible;
 use openraft::error::InitializeError;
+use openraft::error::LinearizableReadError;
 use openraft::error::NetworkError;
 use openraft::error::RPCError;
 use openraft::error::Unreachable;
@@ -77,8 +77,11 @@ where C: RaftTypeConfig<Node = BasicNode>
 
     /// Consistent Read value by key, in an inconsistent mode.
     ///
-    /// This method MUST return consistent value or CheckIsLeaderError.
-    pub async fn linearizable_read(&self, req: &String) -> Result<Result<String, CheckIsLeaderError<C>>, RPCError<C>> {
+    /// This method MUST return consistent value or LinearizableReadError.
+    pub async fn linearizable_read(
+        &self,
+        req: &String,
+    ) -> Result<Result<String, LinearizableReadError<C>>, RPCError<C>> {
         self.send_with_forwarding("linearizable_read", Some(req), 0).await
     }
 
@@ -87,7 +90,7 @@ where C: RaftTypeConfig<Node = BasicNode>
     pub async fn linearizable_read_auto_forward(
         &self,
         req: &String,
-    ) -> Result<Result<String, CheckIsLeaderError<C>>, RPCError<C>> {
+    ) -> Result<Result<String, LinearizableReadError<C>>, RPCError<C>> {
         self.send_with_forwarding("linearizable_read", Some(req), 3).await
     }
 

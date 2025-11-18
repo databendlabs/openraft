@@ -1322,7 +1322,7 @@ where
             RaftMsg::InstallFullSnapshot { vote, snapshot, tx } => {
                 self.engine.handle_install_full_snapshot(vote, snapshot, tx);
             }
-            RaftMsg::CheckIsLeaderRequest { read_policy, tx } => {
+            RaftMsg::EnsureLinearizableRead { read_policy, tx } => {
                 self.handle_check_is_leader_request(read_policy, tx).await;
             }
             RaftMsg::ClientWriteRequest { app_data, responder } => {

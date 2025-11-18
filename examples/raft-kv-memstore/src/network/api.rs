@@ -4,8 +4,8 @@ use actix_web::web::Data;
 use actix_web::Responder;
 use client_http::FollowerReadError;
 use openraft::error::decompose::DecomposeResult;
-use openraft::error::CheckIsLeaderError;
 use openraft::error::Infallible;
+use openraft::error::LinearizableReadError;
 use openraft::raft::linearizable_read::Linearizer;
 use openraft::ReadPolicy;
 use web::Json;
@@ -51,7 +51,7 @@ pub async fn linearizable_read(app: Data<App>, req: Json<String>) -> actix_web::
             let key = req.0;
             let value = state_machine.data.get(&key).cloned();
 
-            let res: Result<String, CheckIsLeaderError<TypeConfig>> = Ok(value.unwrap_or_default());
+            let res: Result<String, LinearizableReadError<TypeConfig>> = Ok(value.unwrap_or_default());
             Ok(Json(res))
         }
         Err(e) => Ok(Json(Err(e))),
@@ -103,7 +103,7 @@ pub async fn follower_read(app: Data<App>, req: Json<String>) -> actix_web::Resu
         }
     };
 
-    let linearizer_data_result: Result<crate::network::management::LinearizerData, CheckIsLeaderError<TypeConfig>> =
+    let linearizer_data_result: Result<crate::network::management::LinearizerData, LinearizableReadError<TypeConfig>> =
         match response.json().await {
             Ok(result) => result,
             Err(e) => {
