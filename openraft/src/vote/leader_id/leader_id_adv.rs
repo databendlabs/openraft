@@ -57,8 +57,8 @@ where C: RaftTypeConfig<LeaderId = Self>
         self.term
     }
 
-    fn node_id(&self) -> Option<&C::NodeId> {
-        Some(&self.node_id)
+    fn node_id(&self) -> &C::NodeId {
+        &self.node_id
     }
 
     fn to_committed(&self) -> Self::Committed {

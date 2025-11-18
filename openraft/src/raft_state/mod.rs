@@ -438,7 +438,7 @@ where C: RaftTypeConfig
     ///
     /// [Determine Server State]: crate::docs::data::vote#vote-and-membership-define-the-server-state
     pub(crate) fn is_leading(&self, id: &C::NodeId) -> bool {
-        self.membership_state.contains(id) && self.vote.leader_node_id() == Some(id)
+        self.membership_state.contains(id) && self.vote.leader_node_id() == id
     }
 
     /// The node is leader
@@ -477,8 +477,7 @@ where C: RaftTypeConfig
         let vote = self.vote_ref();
 
         if vote.is_committed() {
-            // Safe unwrap(): vote that is committed has to already have voted for some node.
-            let id = vote.to_leader_id().node_id().cloned().unwrap();
+            let id = vote.to_leader_id().node_id().clone();
 
             return self.new_forward_to_leader(id);
         }

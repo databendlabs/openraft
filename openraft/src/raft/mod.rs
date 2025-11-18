@@ -500,7 +500,7 @@ where C: RaftTypeConfig
         let committed_vote = metrics.vote.try_to_committed()?;
         let leader_id = committed_vote.leader_id();
 
-        if leader_id.node_id() == Some(&self.inner.id) {
+        if leader_id.node_id() == &self.inner.id {
             Some(Leader {
                 raft: self.clone(),
                 leader_id: leader_id.clone(),

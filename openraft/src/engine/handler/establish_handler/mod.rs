@@ -26,7 +26,7 @@ where C: RaftTypeConfig
 
         debug_assert_eq!(
             vote.leader_node_id(),
-            Some(&self.config.id),
+            &self.config.id,
             "it can only commit its own vote"
         );
 

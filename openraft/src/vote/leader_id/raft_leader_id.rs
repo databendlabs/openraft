@@ -44,8 +44,8 @@ where
     /// Get the term number of this leader
     fn term(&self) -> C::Term;
 
-    /// Get the node ID of this leader if one is set
-    fn node_id(&self) -> Option<&C::NodeId>;
+    /// Get the node ID of this leader
+    fn node_id(&self) -> &C::NodeId;
 
     /// Convert this leader ID to a committed leader ID.
     ///
@@ -72,8 +72,8 @@ where
     }
 
     /// Get the node ID of this leader as an owned value.
-    fn to_node_id(&self) -> Option<C::NodeId> {
-        self.node_id().cloned()
+    fn to_node_id(&self) -> C::NodeId {
+        self.node_id().clone()
     }
 }
 

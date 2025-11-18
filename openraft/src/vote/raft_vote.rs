@@ -62,13 +62,13 @@ where
         self.leader_id().term()
     }
 
-    /// Gets the node ID of the leader this vote is for, if present.
-    fn to_leader_node_id(&self) -> Option<C::NodeId> {
-        self.leader_node_id().cloned()
+    /// Gets the node ID of the leader this vote is for.
+    fn to_leader_node_id(&self) -> C::NodeId {
+        self.leader_node_id().clone()
     }
 
-    /// Gets a reference to the node ID of the leader this vote is for, if present.
-    fn leader_node_id(&self) -> Option<&C::NodeId> {
+    /// Gets a reference to the node ID of the leader this vote is for.
+    fn leader_node_id(&self) -> &C::NodeId {
         self.leader_id().node_id()
     }
 
