@@ -912,16 +912,65 @@ where C: RaftTypeConfig
     ///
     /// # Examples
     ///
-    /// ```ignore
-    /// // Fire-and-forget
-    /// raft.write(my_data).await?;
+    /// ## Fire-and-forget (basic)
     ///
-    /// // With responder to receive result
+    /// The simplest usage - submit write and don't wait for result:
+    ///
+    /// ```ignore
+    /// raft.write(my_data).await?;
+    /// ```
+    ///
+    /// ## With responder to receive result
+    ///
+    /// Attach a responder to receive the write result:
+    ///
+    /// ```ignore
     /// use openraft::impls::ProgressResponder;
     ///
     /// let (responder, _commit_rx, complete_rx) = ProgressResponder::new();
     /// raft.write(my_data).responder(responder).await?;
     /// let result = complete_rx.await??;
+    /// ```
+    ///
+    /// ## Conditional write with leader check
+    ///
+    /// Execute write only if the current leader matches the expected leader.
+    /// Useful for preventing duplicate operations after network partitions:
+    ///
+    /// ```ignore
+    /// // Get current leader ID
+    /// let leader_id = raft.as_leader()?.to_committed_leader_id();
+    ///
+    /// // Write only executes if leader hasn't changed
+    /// raft.write(my_data).with_leader(leader_id).await?;
+    /// ```
+    ///
+    /// ## Combined: conditional write with result
+    ///
+    /// Full control - conditional write with result notification:
+    ///
+    /// ```ignore
+    /// use openraft::impls::ProgressResponder;
+    ///
+    /// let leader_id = raft.as_leader()?.to_committed_leader_id();
+    /// let (responder, _commit_rx, complete_rx) = ProgressResponder::new();
+    ///
+    /// raft.write(my_data)
+    ///     .with_leader(leader_id)
+    ///     .responder(responder)
+    ///     .await?;
+    ///
+    /// match complete_rx.await? {
+    ///     Ok(response) => {
+    ///         // Write succeeded
+    ///         println!("Written at log_id: {:?}", response.log_id());
+    ///     }
+    ///     Err(ClientWriteError::ForwardToLeader(forward)) => {
+    ///         // Leader changed - retry with new leader
+    ///         println!("Leader changed to: {:?}", forward.leader_id);
+    ///     }
+    ///     Err(e) => return Err(e.into()),
+    /// }
     /// ```
     ///
     /// [`client_write()`]: Self::client_write
@@ -933,6 +982,7 @@ where C: RaftTypeConfig
             inner: &self.inner,
             app_data,
             responder: None,
+            expected_leader: None,
         }
     }
 
