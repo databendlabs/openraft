@@ -34,9 +34,9 @@ use openraft::RaftTypeConfig;
 use openraft::ReadPolicy;
 use openraft::ServerState;
 use openraft::Vote;
-use openraft::error::CheckIsLeaderError;
 use openraft::error::ClientWriteError;
 use openraft::error::Fatal;
+use openraft::error::LinearizableReadError;
 use openraft::error::NetworkError;
 use openraft::error::RPCError;
 use openraft::error::RaftError;
@@ -713,7 +713,7 @@ impl TypedRaftRouter {
         &self,
         target: MemNodeId,
         read_policy: ReadPolicy,
-    ) -> Result<(Option<LogIdOf<MemConfig>>, Option<LogIdOf<MemConfig>>), CheckIsLeaderError<MemConfig>> {
+    ) -> Result<(Option<LogIdOf<MemConfig>>, Option<LogIdOf<MemConfig>>), LinearizableReadError<MemConfig>> {
         let n = self.get_raft_handle(&target).unwrap();
         n.get_read_log_id(read_policy).await.map_err(|e| e.into_api_error().unwrap())
     }

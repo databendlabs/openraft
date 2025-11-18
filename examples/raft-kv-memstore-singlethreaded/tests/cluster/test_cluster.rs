@@ -11,10 +11,10 @@ use openraft::BasicNode;
 use raft_kv_memstore_singlethreaded::router::Router;
 use raft_kv_memstore_singlethreaded::start_raft;
 use raft_kv_memstore_singlethreaded::store::Request;
-use raft_kv_memstore_singlethreaded::typ::CheckIsLeaderError;
 use raft_kv_memstore_singlethreaded::typ::ClientWriteError;
 use raft_kv_memstore_singlethreaded::typ::ClientWriteResponse;
 use raft_kv_memstore_singlethreaded::typ::InitializeError;
+use raft_kv_memstore_singlethreaded::typ::LinearizableReadError;
 use raft_kv_memstore_singlethreaded::typ::RaftMetrics;
 use raft_kv_memstore_singlethreaded::NodeId;
 use tokio::task;
@@ -184,7 +184,7 @@ async fn run_test(router: Router) {
 
     println!("=== read `foo` on node 1");
     let resp = router
-        .send::<String, String, CheckIsLeaderError>(NodeId::new(1), "/app/read", "foo".to_string())
+        .send::<String, String, LinearizableReadError>(NodeId::new(1), "/app/read", "foo".to_string())
         .await
         .unwrap();
     println!("read resp: {:#?}", resp);

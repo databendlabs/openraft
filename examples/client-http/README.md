@@ -62,10 +62,10 @@ impl ExampleClient {
     pub async fn read(&self, req: &String) -> Result<String, RPCError>;
     
     /// Consistent read with linearizability guarantee
-    pub async fn linearizable_read(&self, req: &String) -> Result<Result<String, CheckIsLeaderError>, RPCError>;
-    
+    pub async fn linearizable_read(&self, req: &String) -> Result<Result<String, LinearizableReadError>, RPCError>;
+
     /// Auto-forwarding linearizable read
-    pub async fn linearizable_read_auto_forward(&self, req: &String) -> Result<Result<String, CheckIsLeaderError>, RPCError>;
+    pub async fn linearizable_read_auto_forward(&self, req: &String) -> Result<Result<String, LinearizableReadError>, RPCError>;
 }
 ```
 
@@ -110,7 +110,7 @@ The client sends requests to these server endpoints:
 |---------------|---------------|--------------|---------------|-------------|
 | `write` | `POST /write` | `RaftTypeConfig::D` | `Result<ClientWriteResponse, ClientWriteError>` | Write data to cluster |
 | `read` | `POST /read` | `String` | `String` | Read data (inconsistent) |
-| `linearizable_read` | `POST /linearizable_read` | `RaftTypeConfig::R` | `Result<String, CheckIsLeaderError>` | Read data (consistent) |
+| `linearizable_read` | `POST /linearizable_read` | `RaftTypeConfig::R` | `Result<String, LinearizableReadError>` | Read data (consistent) |
 | `init` | `POST /init` | `{}` | `Result<(), InitializeError>` | Initialize cluster |
 | `add_learner` | `POST /add-learner` | `(NodeId, String)` | `Result<ClientWriteResponse, ClientWriteError>` | Add learner node |
 | `change_membership` | `POST /change-membership` | `BTreeSet<NodeId>` | `Result<ClientWriteResponse, ClientWriteError>` | Change membership |

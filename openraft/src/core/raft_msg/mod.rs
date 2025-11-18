@@ -7,9 +7,9 @@ use crate::RaftTypeConfig;
 use crate::base::BoxOnce;
 use crate::core::raft_msg::external_command::ExternalCommand;
 use crate::display_ext::DisplayBTreeMapDebugValueExt;
-use crate::error::CheckIsLeaderError;
 use crate::error::Infallible;
 use crate::error::InitializeError;
+use crate::error::LinearizableReadError;
 use crate::impls::ProgressResponder;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
@@ -37,7 +37,7 @@ pub(crate) type VoteTx<C> = OneshotSenderOf<C, VoteResponse<C>>;
 pub(crate) type AppendEntriesTx<C> = OneshotSenderOf<C, AppendEntriesResponse<C>>;
 
 /// TX for Linearizable Read Response
-pub(crate) type ClientReadTx<C> = ResultSender<C, Linearizer<C>, CheckIsLeaderError<C>>;
+pub(crate) type ClientReadTx<C> = ResultSender<C, Linearizer<C>, LinearizableReadError<C>>;
 
 /// A message sent by application to the [`RaftCore`].
 ///
@@ -76,7 +76,7 @@ where C: RaftTypeConfig
         responder: Option<CoreResponder<C>>,
     },
 
-    CheckIsLeaderRequest {
+    EnsureLinearizableRead {
         read_policy: ReadPolicy,
         tx: ClientReadTx<C>,
     },
@@ -134,8 +134,8 @@ where C: RaftTypeConfig
                 write!(f, "InstallFullSnapshot: vote: {}, snapshot: {}", vote, snapshot)
             }
             RaftMsg::ClientWriteRequest { .. } => write!(f, "ClientWriteRequest"),
-            RaftMsg::CheckIsLeaderRequest { read_policy, .. } => {
-                write!(f, "CheckIsLeaderRequest with read policy: {}", read_policy)
+            RaftMsg::EnsureLinearizableRead { read_policy, .. } => {
+                write!(f, "EnsureLinearizable with read policy: {}", read_policy)
             }
             RaftMsg::Initialize { members, .. } => {
                 write!(f, "Initialize: {}", members.display())

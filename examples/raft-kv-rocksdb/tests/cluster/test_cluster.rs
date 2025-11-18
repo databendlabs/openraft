@@ -224,7 +224,7 @@ async fn test_cluster() -> Result<(), Box<dyn std::error::Error>> {
     let x = leader.linearizable_read(&("foo".to_string())).await??;
     assert_eq!("wow", x);
 
-    println!("=== linearizable_read `foo=wow` on node 2 MUST return CheckIsLeaderError");
+    println!("=== linearizable_read `foo=wow` on node 2 MUST return LinearizableReadError");
     let x = client2.linearizable_read(&("foo".to_string())).await?;
     println!("=== linearize_read on node 2 result: {:?}", x);
     match x {
@@ -235,7 +235,7 @@ async fn test_cluster() -> Result<(), Box<dyn std::error::Error>> {
 
             assert_eq!(s, expect_err);
         }
-        Ok(_) => panic!("MUST return CheckIsLeaderError"),
+        Ok(_) => panic!("MUST return LinearizableReadError"),
     }
 
     println!("=== linearizable_read_auto_forward `foo=wow` on node 2 returns value");

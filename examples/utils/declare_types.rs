@@ -38,7 +38,7 @@ pub type StreamingError = openraft::error::StreamingError<TypeConfig>;
 pub type RaftMetrics = openraft::RaftMetrics<TypeConfig>;
 
 pub type ClientWriteError = openraft::error::ClientWriteError<TypeConfig>;
-pub type CheckIsLeaderError = openraft::error::CheckIsLeaderError<TypeConfig>;
+pub type LinearizableReadError = openraft::error::LinearizableReadError<TypeConfig>;
 pub type ForwardToLeader = openraft::error::ForwardToLeader<TypeConfig>;
 pub type InitializeError = openraft::error::InitializeError<TypeConfig>;
 
