@@ -81,11 +81,11 @@ use crate::core::sm;
 use crate::core::sm::worker;
 use crate::engine::Engine;
 use crate::engine::EngineConfig;
-use crate::error::CheckIsLeaderError;
 use crate::error::ClientWriteError;
 use crate::error::Fatal;
 use crate::error::InitializeError;
 use crate::error::InvalidStateMachineType;
+use crate::error::LinearizableReadError;
 use crate::error::RaftError;
 use crate::error::into_raft_result::IntoRaftResult;
 use crate::membership::IntoNodes;
@@ -727,7 +727,7 @@ where C: RaftTypeConfig
     /// - `Ok(read_log_id)` on successful confirmation that the node is the leader. `read_log_id`
     ///   represents the log id up to which the state machine has applied to ensure a linearizable
     ///   read.
-    /// - `Err(RaftError<CheckIsLeaderError>)` if fails to assert leadership.
+    /// - `Err(RaftError<LinearizableReadError>)` if fails to assert leadership.
     ///
     /// # Examples
     /// ```ignore
@@ -745,7 +745,7 @@ where C: RaftTypeConfig
     pub async fn ensure_linearizable(
         &self,
         read_policy: ReadPolicy,
-    ) -> Result<Option<LogIdOf<C>>, RaftError<C, CheckIsLeaderError<C>>> {
+    ) -> Result<Option<LogIdOf<C>>, RaftError<C, LinearizableReadError<C>>> {
         let linearizer = self.app_api().get_read_linearizer(read_policy).await.into_raft_result()?;
 
         // Safe unwrap: it never times out.
@@ -765,7 +765,7 @@ where C: RaftTypeConfig
     pub async fn get_read_log_id(
         &self,
         read_policy: ReadPolicy,
-    ) -> Result<(Option<LogIdOf<C>>, Option<LogIdOf<C>>), RaftError<C, CheckIsLeaderError<C>>> {
+    ) -> Result<(Option<LogIdOf<C>>, Option<LogIdOf<C>>), RaftError<C, LinearizableReadError<C>>> {
         let linearizer = self.app_api().get_read_linearizer(read_policy).await.into_raft_result()?;
 
         let read_log_id = linearizer.read_log_id();
@@ -784,7 +784,7 @@ where C: RaftTypeConfig
     /// - `Ok(Linearizer<C>)` on successful confirmation that the node is the leader. The
     ///   [`Linearizer`] contains the `read_log_id` up to which the state machine should apply to
     ///   linearize reads, and the last `applied` log id.
-    /// - `Err(RaftError<CheckIsLeaderError>)` if this node fails to ensure its leadership, for
+    /// - `Err(RaftError<LinearizableReadError>)` if this node fails to ensure its leadership, for
     ///   example, it detects a higher term, or fails to communicate with a quorum.
     ///
     /// Once returned, the caller should block until the state machine to apply up to `read_log_id`
@@ -823,7 +823,7 @@ where C: RaftTypeConfig
     pub async fn get_read_linearizer(
         &self,
         read_policy: ReadPolicy,
-    ) -> Result<Linearizer<C>, RaftError<C, CheckIsLeaderError<C>>> {
+    ) -> Result<Linearizer<C>, RaftError<C, LinearizableReadError<C>>> {
         self.app_api().get_read_linearizer(read_policy).await.into_raft_result()
     }
 

@@ -3,9 +3,9 @@ use openraft_macros::since;
 use crate::RaftTypeConfig;
 use crate::ReadPolicy;
 use crate::core::raft_msg::RaftMsg;
-use crate::error::CheckIsLeaderError;
 use crate::error::ClientWriteError;
 use crate::error::Fatal;
+use crate::error::LinearizableReadError;
 use crate::impls::ProgressResponder;
 use crate::raft::ClientWriteResponse;
 use crate::raft::ClientWriteResult;
@@ -38,9 +38,9 @@ where C: RaftTypeConfig
     pub(crate) async fn get_read_linearizer(
         &self,
         read_policy: ReadPolicy,
-    ) -> Result<Result<Linearizer<C>, CheckIsLeaderError<C>>, Fatal<C>> {
+    ) -> Result<Result<Linearizer<C>, LinearizableReadError<C>>, Fatal<C>> {
         let (tx, rx) = C::oneshot();
-        self.inner.call_core(RaftMsg::CheckIsLeaderRequest { read_policy, tx }, rx).await
+        self.inner.call_core(RaftMsg::EnsureLinearizableRead { read_policy, tx }, rx).await
     }
 
     #[since(version = "0.10.0")]

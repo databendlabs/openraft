@@ -264,7 +264,7 @@ where
     // TODO: the second condition is such a read request can only read from state machine only when the last log it sees
     //       at `T1` is committed.
     #[tracing::instrument(level = "trace", skip(self, tx))]
-    pub(super) async fn handle_check_is_leader_request(&mut self, read_policy: ReadPolicy, tx: ClientReadTx<C>) {
+    pub(super) async fn handle_ensure_linearizable_read(&mut self, read_policy: ReadPolicy, tx: ClientReadTx<C>) {
         // Setup sentinel values to track when we've received majority confirmation of leadership.
 
         let resp = {
@@ -1322,8 +1322,8 @@ where
             RaftMsg::InstallFullSnapshot { vote, snapshot, tx } => {
                 self.engine.handle_install_full_snapshot(vote, snapshot, tx);
             }
-            RaftMsg::CheckIsLeaderRequest { read_policy, tx } => {
-                self.handle_check_is_leader_request(read_policy, tx).await;
+            RaftMsg::EnsureLinearizableRead { read_policy, tx } => {
+                self.handle_ensure_linearizable_read(read_policy, tx).await;
             }
             RaftMsg::ClientWriteRequest { app_data, responder } => {
                 self.write_entry(C::Entry::new_normal(LogIdOf::<C>::default(), app_data), responder);

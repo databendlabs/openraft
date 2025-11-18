@@ -6,6 +6,7 @@ pub(crate) mod higher_vote;
 pub mod into_ok;
 pub(crate) mod into_raft_result;
 mod invalid_sm;
+mod linearizable_read_error;
 mod membership_error;
 mod node_not_found;
 mod operation;
@@ -29,6 +30,7 @@ pub use self::allow_next_revert_error::AllowNextRevertError;
 pub(crate) use self::higher_vote::HigherVote;
 pub use self::invalid_sm::InvalidStateMachineType;
 pub use self::leader_changed::LeaderChanged;
+pub use self::linearizable_read_error::LinearizableReadError;
 pub use self::membership_error::MembershipError;
 pub use self::node_not_found::NodeNotFound;
 pub use self::operation::Operation;
@@ -46,11 +48,14 @@ use crate::try_as_ref::TryAsRef;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::VoteOf;
 
+/// For backward compatibility, use [`LinearizableReadError`] instead.
+pub type CheckIsLeaderError<C> = LinearizableReadError<C>;
+
 /// Error returned by Raft API methods.
 ///
 /// `RaftError` wraps either a [`Fatal`] error indicating the Raft node has stopped (due to storage
 /// failure, panic, or shutdown), or an API-specific error `E` (such as [`ClientWriteError`] or
-/// [`CheckIsLeaderError`]).
+/// [`LinearizableReadError`]).
 ///
 /// # Usage
 ///
@@ -207,32 +212,6 @@ pub enum InstallSnapshotError {
     /// The snapshot segment offset does not match what was expected.
     #[error(transparent)]
     SnapshotMismatch(#[from] SnapshotMismatch),
-}
-
-/// An error related to an is_leader request.
-#[derive(Debug, Clone, thiserror::Error, derive_more::TryInto)]
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub enum CheckIsLeaderError<C>
-where C: RaftTypeConfig
-{
-    /// This node is not the leader; request should be forwarded to the leader.
-    #[error(transparent)]
-    ForwardToLeader(#[from] ForwardToLeader<C>),
-
-    /// Cannot finish a request, such as elect or replicate, because a quorum is not available.
-    #[error(transparent)]
-    QuorumNotEnough(#[from] QuorumNotEnough<C>),
-}
-
-impl<C> TryAsRef<ForwardToLeader<C>> for CheckIsLeaderError<C>
-where C: RaftTypeConfig
-{
-    fn try_as_ref(&self) -> Option<&ForwardToLeader<C>> {
-        match self {
-            Self::ForwardToLeader(f) => Some(f),
-            _ => None,
-        }
-    }
 }
 
 /// An error related to a client write request.

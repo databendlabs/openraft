@@ -229,7 +229,7 @@ async fn test_cluster() -> anyhow::Result<()> {
     let x = client.linearizable_read(&("foo".to_string())).await??;
     assert_eq!("wow", x);
 
-    println!("=== linearizable_read `foo` on node 2 MUST return CheckIsLeaderError");
+    println!("=== linearizable_read `foo` on node 2 MUST return LinearizableReadError");
     let x = client2.linearizable_read(&("foo".to_string())).await?;
     match x {
         Err(e) => {
@@ -239,7 +239,7 @@ async fn test_cluster() -> anyhow::Result<()> {
 
             assert_eq!(s, expect_err);
         }
-        Ok(_) => panic!("MUST return CheckIsLeaderError"),
+        Ok(_) => panic!("MUST return LinearizableReadError"),
     }
 
     // --- Remove node 1,2 from the cluster.
