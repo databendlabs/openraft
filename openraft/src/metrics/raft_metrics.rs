@@ -15,6 +15,7 @@ use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::SerdeInstantOf;
 use crate::type_config::alias::VoteOf;
+use crate::vote::raft_vote::RaftVoteExt;
 
 /// Comprehensive metrics describing the current state of a Raft node.
 ///
@@ -213,13 +214,14 @@ where C: RaftTypeConfig
 {
     /// Create initial metrics for a new Raft node with the given ID.
     pub fn new_initial(id: C::NodeId) -> Self {
+        let vote = VoteOf::<C>::new_with_default_term(id.clone());
         #[allow(deprecated)]
         Self {
             running_state: Ok(()),
             id,
 
             current_term: Default::default(),
-            vote: Default::default(),
+            vote,
             last_log_index: None,
             last_applied: None,
             snapshot: None,
@@ -332,7 +334,7 @@ where C: RaftTypeConfig
 }
 
 /// Subset of RaftMetrics, only include server-related metrics
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct RaftServerMetrics<C: RaftTypeConfig> {
     /// The ID of this Raft node.
@@ -366,5 +368,20 @@ where C: RaftTypeConfig
 
         write!(f, "}}")?;
         Ok(())
+    }
+}
+
+impl<C> RaftServerMetrics<C>
+where C: RaftTypeConfig
+{
+    pub(crate) fn new_empty(id: C::NodeId) -> Self {
+        let vote = VoteOf::<C>::new_with_default_term(id.clone());
+        Self {
+            id,
+            vote,
+            state: Default::default(),
+            current_leader: None,
+            membership_config: Arc::new(Default::default()),
+        }
     }
 }

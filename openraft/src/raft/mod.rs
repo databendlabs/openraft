@@ -345,7 +345,7 @@ where C: RaftTypeConfig
         let (tx_notify, rx_notify) = C::mpsc(notification_channel_size);
         let (tx_metrics, rx_metrics) = C::watch_channel(RaftMetrics::new_initial(id.clone()));
         let (tx_data_metrics, rx_data_metrics) = C::watch_channel(RaftDataMetrics::default());
-        let (tx_server_metrics, rx_server_metrics) = C::watch_channel(RaftServerMetrics::default());
+        let (tx_server_metrics, rx_server_metrics) = C::watch_channel(RaftServerMetrics::new_empty(id.clone()));
         let (tx_progress, progress_watcher) = IoProgressWatcher::new();
         let (tx_shutdown, rx_shutdown) = C::oneshot();
 

@@ -92,12 +92,17 @@ where C: RaftTypeConfig
     pub(crate) purge_upto: Option<LogIdOf<C>>,
 }
 
+/// This impl is only for testing, require in the test NodeId has default value.
 impl<C> Default for RaftState<C>
-where C: RaftTypeConfig
+where
+    C: RaftTypeConfig,
+    C::NodeId: Default,
 {
     fn default() -> Self {
+        let vote = VoteOf::<C>::new_with_default_term(C::NodeId::default());
+
         Self {
-            vote: Leased::default(),
+            vote: Leased::without_last_update(vote),
             purged_next: 0,
             log_ids: LogIdList::default(),
             membership_state: MembershipState::default(),

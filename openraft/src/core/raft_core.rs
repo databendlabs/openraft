@@ -103,6 +103,7 @@ use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::MpscReceiverOf;
 use crate::type_config::alias::MpscSenderOf;
 use crate::type_config::alias::OneshotReceiverOf;
+use crate::type_config::alias::VoteOf;
 use crate::type_config::alias::WatchSenderOf;
 use crate::type_config::alias::WriteResponderOf;
 use crate::type_config::async_runtime::mpsc::MpscSender;
@@ -588,6 +589,13 @@ where
         let membership_config = st.membership_state.effective().stored_membership().clone();
         let current_leader = self.current_leader();
 
+        // The default value for `Vote` is made of zero Term with this node id.
+        let vote = st
+            .log_progress()
+            .flushed()
+            .map(|io_id| io_id.to_app_vote())
+            .unwrap_or_else(|| VoteOf::<C>::new_with_default_term(self.id.clone()));
+
         #[allow(deprecated)]
         let m = RaftMetrics {
             running_state: Ok(()),
@@ -595,7 +603,7 @@ where
 
             // --- data ---
             current_term: st.vote_ref().term(),
-            vote: st.log_progress().flushed().map(|io_id| io_id.to_app_vote()).unwrap_or_default(),
+            vote: vote.clone(),
             last_log_index: st.last_log_id().index(),
             last_applied: st.io_applied().cloned(),
             snapshot: st.io_snapshot_last_log_id().cloned(),
@@ -627,7 +635,7 @@ where
 
         let server_metrics = RaftServerMetrics {
             id: self.id.clone(),
-            vote: st.log_progress().flushed().map(|io_id| io_id.to_app_vote()).unwrap_or_default(),
+            vote: vote.clone(),
             state: st.server_state,
             current_leader,
             membership_config,

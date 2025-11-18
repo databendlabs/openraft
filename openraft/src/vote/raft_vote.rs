@@ -20,7 +20,7 @@ use crate::vote::vote_status::VoteStatus;
 pub trait RaftVote<C>
 where
     C: RaftTypeConfig,
-    Self: OptionalFeatures + Eq + Clone + Debug + Display + Default + 'static,
+    Self: OptionalFeatures + Eq + Clone + Debug + Display + 'static,
 {
     /// Create a new vote for the specified leader with optional quorum commitment.
     #[since(version = "0.10.0")]
