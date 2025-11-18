@@ -30,7 +30,7 @@ use crate::vote::leader_id::raft_committed_leader_id::RaftCommittedLeaderId;
 pub trait RaftLeaderId<C>
 where
     C: RaftTypeConfig,
-    Self: OptionalFeatures + PartialOrd + Eq + Clone + Debug + Display + Default + 'static,
+    Self: OptionalFeatures + PartialOrd + Eq + Clone + Debug + Display + 'static,
     Self: PartialOrd<Self::Committed>,
 {
     /// The committed version of this leader ID.
