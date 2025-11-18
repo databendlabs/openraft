@@ -405,7 +405,7 @@ where
         let append_res = res.map_err(|_e| {
             let to = Timeout {
                 action: RPCTypes::AppendEntries,
-                id: self.session_id.vote().to_leader_node_id().unwrap(),
+                id: self.session_id.vote().to_leader_node_id(),
                 target: self.target.clone(),
                 timeout: the_timeout,
             };

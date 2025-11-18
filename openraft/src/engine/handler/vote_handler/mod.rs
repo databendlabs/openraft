@@ -223,7 +223,7 @@ where C: RaftTypeConfig
     /// This node then becomes raft-follower or raft-learner.
     pub(crate) fn become_following(&mut self) {
         debug_assert!(
-            self.state.vote_ref().to_leader_id().node_id() != Some(&self.config.id)
+            self.state.vote_ref().to_leader_id().node_id() != &self.config.id
                 || !self.state.membership_state.effective().membership().is_voter(&self.config.id),
             "It must hold: vote is not mine, or I am not a voter(leader just left the cluster)"
         );

@@ -53,8 +53,8 @@ impl RaftLeaderId<TypeConfig> for pb::LeaderId {
         self.term
     }
 
-    fn node_id(&self) -> Option<&u64> {
-        Some(&self.node_id)
+    fn node_id(&self) -> &u64 {
+        &self.node_id
     }
 
     fn to_committed(&self) -> Self::Committed {

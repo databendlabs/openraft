@@ -111,8 +111,8 @@ where C: RaftTypeConfig
         self.term
     }
 
-    fn node_id(&self) -> Option<&C::NodeId> {
-        self.voted_for.as_ref()
+    fn node_id(&self) -> &C::NodeId {
+        self.voted_for.as_ref().unwrap()
     }
 
     fn to_committed(&self) -> Self::Committed {
@@ -218,15 +218,9 @@ mod tests {
         #[allow(clippy::redundant_closure)]
         let lid = |term, node_id| LeaderId::<UTConfig>::new(term, node_id);
 
-        let lid_none = |term| LeaderId::<UTConfig> { term, voted_for: None };
-
         // Compare term first
         assert!(lid(2, 2) > lid(1, 2));
         assert!(lid(1, 2) < lid(2, 2));
-
-        // Equal term, Some > None
-        assert!(lid(2, 2) > lid_none(2));
-        assert!(lid_none(2) < lid(2, 2));
 
         // Equal
         assert!(lid(2, 2) == lid(2, 2));

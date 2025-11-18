@@ -180,11 +180,6 @@ mod tests {
             #[allow(clippy::redundant_closure)]
             let vote = |term, node_id| Vote::<TC>::new(term, node_id);
 
-            let none = |term| Vote::<TC> {
-                leader_id: LeaderId { term, voted_for: None },
-                committed: false,
-            };
-
             #[allow(clippy::redundant_closure)]
             let committed = |term, node_id| Vote::<TC>::new_committed(term, node_id);
 
@@ -193,12 +188,6 @@ mod tests {
             assert!(vote(2, 2) >= vote(1, 2));
             assert!(vote(1, 2) < vote(2, 2));
             assert!(vote(1, 2) <= vote(2, 2));
-
-            // Equal term, Some > None
-            assert!(vote(2, 2) > none(2));
-            assert!(vote(2, 2) >= none(2));
-            assert!(none(2) < vote(2, 2));
-            assert!(none(2) <= vote(2, 2));
 
             // Committed greater than non-committed if leader_id is incomparable
             assert!(committed(2, 2) > vote(2, 2));
