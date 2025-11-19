@@ -3,6 +3,7 @@
 pub(crate) mod callbacks;
 pub(crate) mod log_state;
 mod replication_session_id;
+pub(crate) mod replication_state;
 pub(crate) mod request;
 pub(crate) mod response;
 
@@ -12,6 +13,7 @@ use std::time::Duration;
 use anyerror::AnyError;
 use futures::future::FutureExt;
 pub(crate) use replication_session_id::ReplicationSessionId;
+use replication_state::ReplicationState;
 use request::Data;
 use request::Replicate;
 pub(crate) use response::Progress;
@@ -137,7 +139,7 @@ where
     config: Arc<Config>,
 
     /// The log replication state tracking progress and matching logs for the follower.
-    log_state: LogState<C>,
+    replication_sate: ReplicationState<C>,
 
     /// Next replication action to run.
     next_action: Option<Data<C>>,
@@ -187,13 +189,15 @@ where
             log_reader,
             snapshot_reader,
             config,
-            log_state: LogState {
+            replication_sate: ReplicationState {
                 stream_id: 0,
                 purged: None,
-                committed,
-                matching,
+                local: LogState { committed, last: None },
+                remote: LogState {
+                    committed: None,
+                    last: matching,
+                },
                 searching_end: 0,
-                last_log_id: None,
             },
             tx_raft_core,
             rx_event,
@@ -226,7 +230,7 @@ where
 
             let res = match d {
                 Data::Committed => {
-                    let m = &self.log_state.matching;
+                    let m = &self.replication_sate.remote.last;
                     let d = LogIdRange::new(m.clone(), m.clone());
 
                     self.send_log_entries(d, false).await
@@ -384,7 +388,7 @@ where
         let payload = AppendEntriesRequest {
             vote: self.session_id.vote(),
             prev_log_id: sending_range.prev.clone(),
-            leader_commit: self.log_state.committed.clone(),
+            leader_commit: self.replication_sate.local.committed.clone(),
             entries: logs,
         };
 
@@ -514,7 +518,7 @@ where
     async fn notify_progress(&mut self, replication_result: ReplicationResult<C>, has_payload: bool) {
         tracing::debug!(
             target = display(self.target.clone()),
-            curr_matching = display(self.log_state.matching.display()),
+            curr_matching = display(self.replication_sate.remote.last.display()),
             result = display(&replication_result),
             "{}",
             func_name!()
@@ -522,7 +526,7 @@ where
 
         match &replication_result.0 {
             Ok(matching) => {
-                self.log_state.matching = matching.clone();
+                self.replication_sate.remote.last = matching.clone();
             }
             Err(_conflict) => {
                 // Conflict is not allowed to be less than the current matching.
@@ -630,13 +634,13 @@ where
             Replicate::Committed(c) => {
                 // RaftCore may send a committed equals to the initial value.
                 debug_assert!(
-                    c >= self.log_state.committed,
+                    c >= self.replication_sate.local.committed,
                     "expect new committed {} > self.committed {}",
                     c.display(),
-                    self.log_state.committed.display()
+                    self.replication_sate.local.committed.display()
                 );
 
-                self.log_state.committed = c;
+                self.replication_sate.local.committed = c;
 
                 // If there is no action, fill in an heartbeat action to send committed index.
                 if self.next_action.is_none() {
@@ -759,7 +763,7 @@ where
     ) -> Result<Option<Data<C>>, ReplicationError<C>> {
         tracing::debug!(
             response = display(&callback),
-            matching = display(self.log_state.matching.display()),
+            matching = display(self.replication_sate.remote.last.display()),
             "handle_snapshot_response"
         );
 
