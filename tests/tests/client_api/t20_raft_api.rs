@@ -209,12 +209,19 @@ async fn api_as_leader() -> Result<()> {
     assert_eq!(leader_info.leader_id(), &expected_id);
     assert!(leader_info.last_quorum_acked() >= metrics.last_quorum_acked.map(|s| s.into_inner()));
 
-    // Followers should return None
+    // Followers should return Err(ForwardToLeader) with leader info
     for follower_id in [0, 1, 2].iter().filter(|&&id| id != leader_id) {
         let follower = router.get_raft_handle(follower_id)?;
+        let forward = follower.as_leader().expect_err("follower node should return ForwardToLeader error");
+        assert_eq!(
+            forward.leader_id,
+            Some(leader_id),
+            "follower node {} should return ForwardToLeader with leader_id",
+            follower_id
+        );
         assert!(
-            follower.as_leader().is_none(),
-            "follower node {} should return None for as_leader()",
+            forward.leader_node.is_some(),
+            "follower node {} should return ForwardToLeader with leader_node",
             follower_id
         );
     }
