@@ -83,6 +83,7 @@ use crate::engine::Engine;
 use crate::engine::EngineConfig;
 use crate::error::ClientWriteError;
 use crate::error::Fatal;
+use crate::error::ForwardToLeader;
 use crate::error::InitializeError;
 use crate::error::InvalidStateMachineType;
 use crate::error::LinearizableReadError;
@@ -480,34 +481,51 @@ where C: RaftTypeConfig
     /// Get leader information if this node is currently a leader.
     ///
     /// Returns [`Leader`] containing the leader ID and health metadata if this node is the leader
-    /// (i.e., its vote has been accepted by a quorum), otherwise returns [`None`].
+    /// (i.e., its vote has been accepted by a quorum), otherwise returns
+    /// [`ForwardToLeader`] error containing the current known leader information.
     ///
     /// # Example
     ///
     /// ```ignore
-    /// if let Some(leader) = raft.as_leader() {
-    ///     println!("This node is leader: {}", leader.id);
+    /// match raft.as_leader() {
+    ///     Ok(leader) => {
+    ///         println!("This node is leader: {:?}", leader.leader_id());
+    ///     }
+    ///     Err(forward) => {
+    ///         println!("Forward to leader: {:?}", forward.leader_id);
+    ///     }
     /// }
     /// ```
+    ///
+    /// [`ForwardToLeader`]: crate::error::ForwardToLeader
     #[since(version = "0.10.0")]
-    pub fn as_leader(&self) -> Option<Leader<C>> {
+    pub fn as_leader(&self) -> Result<Leader<C>, ForwardToLeader<C>> {
         // Do not use `is_leader()`, which depends on other state to determine, which may result in
         // inconsistent state. And `is_leader()` just do another reading from the metrics, which also may be
         // inconsistent.
 
         let metrics = self.inner.rx_metrics.borrow_watched();
 
-        let committed_vote = metrics.vote.try_to_committed()?;
-        let leader_id = committed_vote.leader_id();
+        let Some(committed_vote) = metrics.vote.try_to_committed() else {
+            return Err(ForwardToLeader::empty());
+        };
 
-        if leader_id.node_id() == &self.inner.id {
-            Some(Leader {
+        let leader_id = committed_vote.leader_id();
+        let node_id = leader_id.node_id();
+
+        if node_id == &self.inner.id {
+            Ok(Leader {
                 raft: self.clone(),
                 leader_id: leader_id.clone(),
                 last_quorum_acked: metrics.last_quorum_acked.map(|s| s.into_inner()),
             })
         } else {
-            None
+            let node = metrics.membership_config.membership().get_node(node_id).cloned();
+
+            Err(ForwardToLeader {
+                leader_id: Some(node_id.clone()),
+                leader_node: node,
+            })
         }
     }
 
