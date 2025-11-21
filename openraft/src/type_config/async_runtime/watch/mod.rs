@@ -55,7 +55,7 @@ pub trait Watch: Sized + OptionalSend {
 }
 
 /// Sends values to the associated Receiver.
-pub trait WatchSender<W, T>: OptionalSend
+pub trait WatchSender<W, T>: OptionalSend + Clone
 where
     W: Watch,
     T: OptionalSend + OptionalSync,

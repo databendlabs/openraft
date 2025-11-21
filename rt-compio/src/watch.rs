@@ -28,6 +28,12 @@ impl watch::Watch for See {
     }
 }
 
+impl<T> Clone for SeeSender<T> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+
 impl<T> watch::WatchSender<See, T> for SeeSender<T>
 where T: OptionalSend + OptionalSync
 {

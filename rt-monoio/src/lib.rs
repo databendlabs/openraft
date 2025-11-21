@@ -416,6 +416,12 @@ mod watch_mod {
         }
     }
 
+    impl<T> Clone for TokioWatchSender<T> {
+        fn clone(&self) -> Self {
+            Self(self.0.clone())
+        }
+    }
+
     impl<T> watch::WatchSender<TokioWatch, T> for TokioWatchSender<T>
     where T: OptionalSend + OptionalSync
     {
