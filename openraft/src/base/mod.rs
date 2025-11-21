@@ -34,6 +34,7 @@ pub use serde_able::OptionalSerde;
 pub use threaded::BoxAny;
 pub use threaded::BoxAsyncOnceMut;
 pub use threaded::BoxFuture;
+pub use threaded::BoxIterator;
 pub use threaded::BoxMaybeAsyncOnceMut;
 pub use threaded::BoxOnce;
 pub use threaded::BoxStream;
@@ -58,6 +59,8 @@ mod threaded {
     pub trait OptionalSync: Sync {}
     impl<T: Sync + ?Sized> OptionalSync for T {}
 
+    /// Type alias for a boxed iterator that is `Send`.
+    pub type BoxIterator<'a, T> = Box<dyn Iterator<Item = T> + Send + 'a>;
     /// Type alias for a boxed pinned future that is `Send`.
     pub type BoxFuture<'a, T = ()> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
     /// Type alias for a boxed pinned stream that is `Send`.
@@ -90,6 +93,7 @@ mod threaded {
     pub trait OptionalSync {}
     impl<T: ?Sized> OptionalSync for T {}
 
+    pub type BoxIterator<'a, T> = Box<dyn Iterator<Item = T> + 'a>;
     pub type BoxFuture<'a, T = ()> = Pin<Box<dyn Future<Output = T> + 'a>>;
     pub type BoxStream<'a, T> = Pin<Box<dyn Stream<Item = T> + 'a>>;
     pub type BoxAsyncOnceMut<'a, A, T = ()> = Box<dyn FnOnce(&mut A) -> BoxFuture<T> + 'a>;
