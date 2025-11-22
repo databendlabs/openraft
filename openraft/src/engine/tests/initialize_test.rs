@@ -16,7 +16,6 @@ use crate::entry::RaftEntry;
 use crate::error::InitializeError;
 use crate::error::NotAllowed;
 use crate::error::NotInMembers;
-use crate::raft::VoteRequest;
 use crate::raft_state::LogStateReader;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::LogIdOf;
@@ -50,21 +49,15 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
         assert_eq!(None, eng.state.get_log_id(1));
         assert_eq!(Some(&log_id0), eng.state.last_log_id());
 
-        assert_eq!(ServerState::Candidate, eng.state.server_state);
+        assert_eq!(ServerState::Leader, eng.state.server_state);
         assert_eq!(&m1(), eng.state.membership_state.effective().membership());
 
         assert_eq!(
             vec![
+                //
                 Command::AppendEntries {
                     committed_vote: Vote::new_with_default_term(1).into_committed(),
                     entries: vec![Entry::<UTConfig>::new_membership(LogIdOf::<UTConfig>::default(), m1())],
-                },
-                // When update the effective membership, the engine set it to Follower.
-                // But when initializing, it will switch to Candidate at once, in the last output
-                // command.
-                Command::SaveVote { vote: Vote::new(1, 1) },
-                Command::SendVote {
-                    vote_req: VoteRequest::new(Vote::new(1, 1), Some(log_id(0, 0, 0)))
                 },
             ],
             eng.output.take_commands()
@@ -100,24 +93,15 @@ fn test_initialize() -> anyhow::Result<()> {
         assert_eq!(None, eng.state.get_log_id(1));
         assert_eq!(Some(&log_id0), eng.state.last_log_id());
 
-        assert_eq!(ServerState::Candidate, eng.state.server_state);
+        assert_eq!(ServerState::Leader, eng.state.server_state);
         assert_eq!(&m12(), eng.state.membership_state.effective().membership());
 
         assert_eq!(
             vec![
+                //
                 Command::AppendEntries {
                     committed_vote: Vote::new_with_default_term(1).into_committed(),
                     entries: vec![Entry::new_membership(LogIdOf::<UTConfig>::default(), m12())],
-                },
-                // When update the effective membership, the engine set it to Follower.
-                // But when initializing, it will switch to Candidate at once, in the last output
-                // command.
-                Command::SaveVote { vote: Vote::new(1, 1) },
-                Command::SendVote {
-                    vote_req: VoteRequest {
-                        vote: Vote::new(1, 1),
-                        last_log_id: Some(log_id(0, 0, 0))
-                    },
                 },
             ],
             eng.output.take_commands()

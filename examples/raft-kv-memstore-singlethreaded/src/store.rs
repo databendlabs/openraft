@@ -327,7 +327,7 @@ impl RaftLogStorage<TypeConfig> for Rc<LogStore> {
                 log.insert(entry.log_id.index(), entry);
             }
         }
-        callback.io_completed(Ok(())).await;
+        callback.io_completed(Ok(()));
 
         Ok(())
     }

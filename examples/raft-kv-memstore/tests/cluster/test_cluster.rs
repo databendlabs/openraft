@@ -112,6 +112,9 @@ async fn test_cluster() -> anyhow::Result<()> {
     println!("=== init single node cluster");
     client.init().await??;
 
+    // Wait for the initial membership log to commit after election
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
     println!("=== metrics after init");
     client.metrics().await?;
 
