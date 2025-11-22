@@ -1538,7 +1538,7 @@ where
             }
 
             Notification::LocalIO { io_id } => {
-                self.engine.state.log_progress_mut().flush(io_id.clone());
+                self.engine.state.log_progress_mut().try_flush(io_id.clone());
 
                 match io_id {
                     IOId::Log(log_io_id) => {
@@ -1611,18 +1611,18 @@ where
                             func_name!()
                         );
 
-                        self.engine.state.log_progress_mut().flush(IOId::Log(log_io_id));
+                        self.engine.state.log_progress_mut().try_flush(IOId::Log(log_io_id));
 
                         if let Some(meta) = meta {
                             let st = self.engine.state.io_state_mut();
                             if let Some(last) = &meta.last_log_id {
-                                st.apply_progress.flush(last.clone());
-                                st.snapshot.flush(last.clone());
+                                st.apply_progress.try_flush(last.clone());
+                                st.snapshot.try_flush(last.clone());
                             }
                         }
                     }
                     sm::Response::Apply(res) => {
-                        self.engine.state.apply_progress_mut().flush(res.last_applied);
+                        self.engine.state.apply_progress_mut().try_flush(res.last_applied);
                     }
                 }
             }

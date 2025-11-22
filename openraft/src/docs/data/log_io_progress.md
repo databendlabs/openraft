@@ -49,8 +49,8 @@ At each point, the system knows:
 
 The `IOProgress` struct maintains these three cursors and provides methods to update them:
 
-- `accept(new_accepted)`: Update the accepted cursor when a new I/O operation is created
-- `submit(new_submitted)`: Update the submitted cursor when an I/O operation is sent to storage
-- `flush(new_flushed)`: Update the flushed cursor when storage confirms the operation is durable
+- `accept(new_accepted)`: Update the accepted cursor when a new I/O operation is created. Enforces strict monotonicity in debug mode.
+- `submit(new_submitted)`: Update the submitted cursor when an I/O operation is sent to storage. Enforces strict monotonicity in debug mode.
+- `flush(new_flushed)`: Update the flushed cursor only if the new value is greater. Tolerates out-of-order I/O completion notifications.
 
-In debug mode, `IOProgress` enforces monotonicity by default, panicking if updates arrive out of order. This can be disabled via the `allow_notification_reorder` flag for storage implementations that may report completions non-monotonically.
+The `flush()` method gracefully handles out-of-order I/O completions by only advancing the cursor when the notification represents progress beyond the current state. This is necessary because I/O completion callbacks may arrive out of order from the storage layer.

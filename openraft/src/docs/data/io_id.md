@@ -117,8 +117,7 @@ This ensures monotonic ordering across both vote and log I/O operations:
 let mut progress = IOProgress::new_synchronized(
     None,
     "storage",
-    "log",
-    false
+    "log"
 );
 
 // Accept a vote I/O

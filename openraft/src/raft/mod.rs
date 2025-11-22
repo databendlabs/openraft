@@ -369,9 +369,7 @@ where C: RaftTypeConfig
         let eng_config = EngineConfig::new(id.clone(), config.as_ref());
 
         let state = {
-            let mut helper = StorageHelper::new(&mut log_store, &mut state_machine)
-                .with_allow_io_notification_reorder(config.get_allow_io_notification_reorder())
-                .with_id(id.clone());
+            let mut helper = StorageHelper::new(&mut log_store, &mut state_machine).with_id(id.clone());
             helper.get_initial_state().await?
         };
 
