@@ -56,8 +56,10 @@ use crate::OptionalSend;
 use crate::RaftNetworkFactory;
 use crate::RaftState;
 pub use crate::RaftTypeConfig;
+use crate::StorageError;
 use crate::StorageHelper;
 use crate::async_runtime::OneshotSender;
+use crate::async_runtime::mpsc::MpscSender;
 use crate::async_runtime::watch::WatchReceiver;
 use crate::base::BoxFuture;
 use crate::base::BoxMaybeAsyncOnceMut;
@@ -75,6 +77,7 @@ use crate::core::io_flush_tracking::IoProgressWatcher;
 use crate::core::io_flush_tracking::LogProgress;
 use crate::core::io_flush_tracking::SnapshotProgress;
 use crate::core::io_flush_tracking::VoteProgress;
+use crate::core::notification::Notification;
 use crate::core::raft_msg::RaftMsg;
 use crate::core::raft_msg::external_command::ExternalCommand;
 use crate::core::sm;
@@ -97,6 +100,7 @@ use crate::metrics::Wait;
 use crate::raft::raft_inner::RaftInner;
 pub use crate::raft::runtime_config_handle::RuntimeConfigHandle;
 use crate::raft::trigger::Trigger;
+use crate::raft_state::IOId;
 use crate::raft_state::RuntimeStats;
 use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
@@ -104,11 +108,14 @@ use crate::storage::Snapshot;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::JoinErrorOf;
 use crate::type_config::alias::LogIdOf;
+use crate::type_config::alias::MpscWeakSenderOf;
 use crate::type_config::alias::SnapshotDataOf;
 use crate::type_config::alias::VoteOf;
 use crate::type_config::alias::WatchReceiverOf;
 use crate::type_config::alias::WriteResponderOf;
 use crate::vote::leader_id::raft_leader_id::RaftLeaderId;
+use crate::vote::leader_id::raft_leader_id::RaftLeaderIdExt;
+use crate::vote::non_committed::NonCommittedVote;
 use crate::vote::raft_vote::RaftVote;
 use crate::vote::raft_vote::RaftVoteExt;
 
@@ -305,6 +312,52 @@ where C: RaftTypeConfig
     }
 }
 
+/// Forwarder task that bridges IO completion Watch channel to notification channel.
+///
+/// This task reads IO completion results from a Watch channel and forwards them
+/// to the RaftCore notification channel, translating IOId and storage errors to notifications.
+async fn io_completion_forwarder<C>(
+    mut rx_io: WatchReceiverOf<C, Result<IOId<C>, StorageError<C>>>,
+    weak_tx_notify: MpscWeakSenderOf<C, Notification<C>>,
+) where
+    C: RaftTypeConfig,
+{
+    use crate::async_runtime::MpscWeakSender;
+    use crate::async_runtime::watch::WatchReceiver;
+
+    loop {
+        // Wait for IO completion notification
+        if rx_io.changed().await.is_err() {
+            // Watch sender dropped, exit forwarder
+            tracing::debug!("IO completion watch channel closed, forwarder exiting");
+            break;
+        }
+
+        // Read the current value
+        let result = {
+            let borrowed = rx_io.borrow_watched();
+            borrowed.clone()
+        };
+
+        // Try to upgrade weak sender
+        let Some(tx) = weak_tx_notify.upgrade() else {
+            tracing::debug!("Notification channel closed, forwarder exiting");
+            break;
+        };
+
+        // Forward the result to notification channel
+        let notification = match result {
+            Ok(io_id) => Notification::LocalIO { io_id },
+            Err(storage_error) => Notification::StorageError { error: storage_error },
+        };
+
+        if let Err(e) = tx.send(notification).await {
+            tracing::warn!("Failed to forward IO completion: {}", e.0);
+            break;
+        }
+    }
+}
+
 impl<C> Raft<C>
 where C: RaftTypeConfig
 {
@@ -347,6 +400,16 @@ where C: RaftTypeConfig
         let (tx_metrics, rx_metrics) = C::watch_channel(RaftMetrics::new_initial(id.clone()));
         let (tx_data_metrics, rx_data_metrics) = C::watch_channel(RaftDataMetrics::default());
         let (tx_server_metrics, rx_server_metrics) = C::watch_channel(RaftServerMetrics::new_initial(id.clone()));
+
+        // Watch channel for IO completion notifications from storage callbacks.
+        // Initial value is a dummy IOId with this node's ID.
+        let leader_id = C::LeaderId::new_with_default_term(id.clone());
+        let dummy_io_id = IOId::Vote(NonCommittedVote::new(leader_id));
+        let (tx_io_completed, rx_io_completed) = C::watch_channel(Ok(dummy_io_id));
+
+        // Create weak sender for forwarder before moving tx_notify into RaftCore
+        let weak_tx_notify = tx_notify.downgrade();
+
         let (tx_progress, progress_watcher) = IoProgressWatcher::new();
         let (tx_shutdown, rx_shutdown) = C::oneshot();
 
@@ -407,6 +470,8 @@ where C: RaftTypeConfig
             tx_notification: tx_notify,
             rx_notification: rx_notify,
 
+            tx_io_completed,
+
             tx_metrics,
             tx_data_metrics,
             tx_server_metrics,
@@ -416,6 +481,9 @@ where C: RaftTypeConfig
 
             span: core_span,
         };
+
+        // Spawn forwarder task to bridge Watch channel to notification channel
+        let _forwarder_handle = C::spawn(io_completion_forwarder::<C>(rx_io_completed, weak_tx_notify));
 
         let core_handle = C::spawn(core.main(rx_shutdown).instrument(trace_span!("spawn").or_current()));
 

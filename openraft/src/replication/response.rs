@@ -10,7 +10,7 @@ use crate::type_config::alias::LogIdOf;
 ///
 /// Update the `matched` log id of a replication target.
 /// Sent by a replication task `ReplicationCore`.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct Progress<C>
 where C: RaftTypeConfig
 {

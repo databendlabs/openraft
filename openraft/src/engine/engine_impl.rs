@@ -202,9 +202,6 @@ where C: RaftTypeConfig
         self.state.vote.update(C::now(), Duration::default(), vote);
         self.following_handler().do_append_entries(vec![entry]);
 
-        // With the new config, start to elect to become leader
-        self.elect();
-
         Ok(())
     }
 
