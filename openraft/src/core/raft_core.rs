@@ -191,6 +191,10 @@ where
     /// A Receiver to receive callback from other components.
     pub(crate) rx_notification: MpscReceiverOf<C, Notification<C>>,
 
+    /// A Watch channel sender for IO completion notifications from storage callbacks.
+    /// This is used by IOFlushed callbacks to report IO completion in a synchronous manner.
+    pub(crate) tx_io_completed: WatchSenderOf<C, Result<IOId<C>, StorageError<C>>>,
+
     pub(crate) tx_metrics: WatchSenderOf<C, RaftMetrics<C>>,
     pub(crate) tx_data_metrics: WatchSenderOf<C, RaftDataMetrics<C>>,
     pub(crate) tx_server_metrics: WatchSenderOf<C, RaftServerMetrics<C>>,
@@ -708,13 +712,18 @@ where
             // `"InProgress": { "committed": null, "membership_log_id": { "leader_id": { "term": 0,
             //             "node_id": 0 }, "index": 0 } }`
             // TODO: change-membership should check leadership or wait for leader to establish?
-            let last_log_id = self.engine.state.last_log_id().cloned();
-            last_log_id.map(|log_id| Condition::LogFlushed { log_id })
+
+            // Wait for the generated IO to be flushed before respond.
+            let accepted = self.engine.state.io_state().log_progress.accepted().cloned();
+            accepted.map(|io_id| Condition::IOFlushed { io_id })
         };
         self.engine.output.push_command(Command::Respond {
             when: condition,
             resp: Respond::new(res, tx),
         });
+
+        // With the new config, start to elect to become leader
+        self.engine.elect();
     }
 
     /// Trigger a snapshot building(log compaction) job if there is no pending building job.
@@ -975,7 +984,7 @@ where
         let io_state = self.engine.state.io_state();
 
         tracing::debug!(
-            "RAFT_stats id={:<2}    cmd: send satisfied responds: log_io: {}, apply: {}, snapshot: {}",
+            "RAFT_stats id={:<2}    cmd: try send satisfied responds: log_io: {}, apply: {}, snapshot: {}",
             self.id,
             io_state.log_progress.flushed().display(),
             io_state.apply_progress.flushed().display(),
@@ -1845,8 +1854,7 @@ where
                 self.runtime_stats.append_batch.record(entry_count);
 
                 let io_id = IOId::new_log_io(vote, Some(last_log_id));
-                let notify = Notification::LocalIO { io_id: io_id.clone() };
-                let callback = IOFlushed::new(notify, self.tx_notification.downgrade());
+                let callback = IOFlushed::new(io_id.clone(), self.tx_io_completed.clone());
 
                 // Mark this IO request as submitted,
                 // other commands relying on it can then be processed.

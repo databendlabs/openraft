@@ -2,17 +2,14 @@
 
 use std::io;
 
-use crate::ErrorSubject;
-use crate::ErrorVerb;
 use crate::RaftTypeConfig;
 use crate::StorageError;
-use crate::async_runtime::MpscWeakSender;
-use crate::core::notification::Notification;
+use crate::raft_state::IOId;
 use crate::type_config::alias::LogIdOf;
-use crate::type_config::alias::MpscWeakSenderOf;
 use crate::type_config::alias::OneshotSenderOf;
-use crate::type_config::async_runtime::mpsc::MpscSender;
+use crate::type_config::alias::WatchSenderOf;
 use crate::type_config::async_runtime::oneshot::OneshotSender;
+use crate::type_config::async_runtime::watch::WatchSender;
 
 /// Type alias for log flush callback (deprecated).
 #[deprecated(since = "0.10.0", note = "Use `IOFlushed` instead")]
@@ -45,11 +42,11 @@ where C: RaftTypeConfig
 pub struct IOFlushedNotify<C>
 where C: RaftTypeConfig
 {
-    /// The notification to send when the IO completes.
-    notification: Notification<C>,
+    /// The IO ID to send when the IO completes.
+    io_id: IOId<C>,
 
-    /// The channel to send the notification through.
-    tx: MpscWeakSenderOf<C, Notification<C>>,
+    /// The channel to send the IO completion result through.
+    tx: WatchSenderOf<C, Result<IOId<C>, StorageError<C>>>,
 }
 
 impl<C> IOFlushed<C>
@@ -67,76 +64,65 @@ where C: RaftTypeConfig
         Self::Signal(tx)
     }
 
-    pub(crate) fn new(notify: Notification<C>, tx: MpscWeakSenderOf<C, Notification<C>>) -> Self {
-        Self::Notify(IOFlushedNotify {
-            notification: notify,
-            tx,
-        })
+    pub(crate) fn new(io_id: IOId<C>, tx: WatchSenderOf<C, Result<IOId<C>, StorageError<C>>>) -> Self {
+        Self::Notify(IOFlushedNotify { io_id, tx })
     }
 
     /// Report log io completion event (deprecated).
     #[deprecated(since = "0.10.0", note = "Use `io_completed` instead")]
-    pub async fn log_io_completed(self, result: Result<(), io::Error>) {
-        self.io_completed(result).await
+    pub fn log_io_completed(self, result: Result<(), io::Error>) {
+        self.io_completed(result)
     }
 
     /// Report log io completion event.
     ///
     /// It will be called when the log is successfully appended to the storage or an error occurs.
-    pub async fn io_completed(self, result: Result<(), io::Error>) {
+    pub fn io_completed(self, result: Result<(), io::Error>) {
         match self {
             Self::Noop => {}
             Self::Signal(tx) => {
                 tx.send(result).ok();
             }
-            Self::Notify(IOFlushedNotify { notification, tx }) => {
-                let Some(tx) = tx.upgrade() else {
-                    tracing::warn!("failed to upgrade tx, RaftCore may have closed the receiver");
-                    return;
-                };
-
-                let send_res = match result {
+            Self::Notify(IOFlushedNotify { io_id, tx }) => {
+                let new_value = match result {
                     Err(e) => {
-                        let sto_err = Self::make_storage_error(&notification, e);
-                        tx.send(Notification::StorageError { error: sto_err }).await
+                        let sto_err = Self::make_storage_error(&io_id, e);
+                        Err(sto_err)
                     }
                     Ok(_) => {
-                        tracing::debug!("{}: IOFlushed completed: {}", func_name!(), notification);
-                        tx.send(notification).await
+                        tracing::debug!("{}: IOFlushed completed: {}", func_name!(), io_id);
+                        Ok(io_id)
                     }
                 };
 
-                if let Err(e) = send_res {
-                    tracing::warn!("failed to send log io completion event: {}", e.0);
+                // Use send_if_modified to ensure error permanence:
+                // once the value becomes Err, never change back to Ok
+                let modified = tx.send_if_modified(move |current| {
+                    if current.is_err() {
+                        // Already in error state, don't modify
+                        tracing::debug!("IO completion ignored: already in error state");
+                        false
+                    } else {
+                        // Update to new value
+                        *current = new_value;
+                        true
+                    }
+                });
+
+                if !modified {
+                    tracing::debug!("IO completion not sent: channel state unchanged");
                 }
             }
         }
     }
 
-    /// Figure out the error subject and verb from the kind of response `Notification`.
-    fn make_storage_error(notification: &Notification<C>, e: io::Error) -> StorageError<C> {
-        tracing::error!(
-            "io_completed: IOFlushed error: {}, while flushing IO: {}",
-            e,
-            notification
-        );
+    /// Figure out the error subject and verb from the IO ID.
+    fn make_storage_error(io_id: &IOId<C>, e: io::Error) -> StorageError<C> {
+        tracing::error!("io_completed: IOFlushed error: {}, while flushing IO: {}", e, io_id);
 
-        match notification {
-            Notification::VoteResponse { .. } => StorageError::from_io_error(ErrorSubject::Vote, ErrorVerb::Write, e),
-            Notification::LocalIO { io_id } => {
-                let subject = io_id.subject();
-                let verb = io_id.verb();
-                StorageError::from_io_error(subject, verb, e)
-            }
-            Notification::HigherVote { .. }
-            | Notification::StorageError { .. }
-            | Notification::ReplicationProgress { .. }
-            | Notification::HeartbeatProgress { .. }
-            | Notification::StateMachine { .. }
-            | Notification::Tick { .. } => {
-                unreachable!("Unexpected notification: {}", notification)
-            }
-        }
+        let subject = io_id.subject();
+        let verb = io_id.verb();
+        StorageError::from_io_error(subject, verb, e)
     }
 }
 
@@ -192,14 +178,14 @@ mod tests {
     async fn test_io_flushed_noop() {
         let callback = IOFlushed::<UTConfig>::noop();
         // Should not panic or do anything
-        callback.io_completed(Ok(())).await;
+        callback.io_completed(Ok(()));
     }
 
     #[tokio::test]
     async fn test_io_flushed_noop_with_error() {
         let callback = IOFlushed::<UTConfig>::noop();
         // Should not panic even with error
-        callback.io_completed(Err(io::Error::other("test error"))).await;
+        callback.io_completed(Err(io::Error::other("test error")));
     }
 
     #[tokio::test]
@@ -207,7 +193,7 @@ mod tests {
         let (tx, rx) = UTConfig::<()>::oneshot();
         let callback = IOFlushed::<UTConfig>::signal(tx);
 
-        callback.io_completed(Ok(())).await;
+        callback.io_completed(Ok(()));
 
         let result = rx.await;
         assert!(result.is_ok());
@@ -220,7 +206,7 @@ mod tests {
         let callback = IOFlushed::<UTConfig>::signal(tx);
 
         // Signal sends the error result
-        callback.io_completed(Err(io::Error::other("test error"))).await;
+        callback.io_completed(Err(io::Error::other("test error")));
 
         let result = rx.await;
         assert!(result.is_ok());
@@ -236,6 +222,6 @@ mod tests {
 
         let callback = IOFlushed::<UTConfig>::signal(tx);
         // Should not panic when receiver is dropped
-        callback.io_completed(Ok(())).await;
+        callback.io_completed(Ok(()));
     }
 }
