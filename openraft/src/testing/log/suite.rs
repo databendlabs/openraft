@@ -15,7 +15,6 @@ use crate::RaftSnapshotBuilder;
 use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::StoredMembership;
-use crate::core::notification::Notification;
 use crate::entry::RaftEntry;
 use crate::membership::EffectiveMembership;
 use crate::raft_state::LogStateReader;
@@ -33,12 +32,12 @@ use crate::type_config::alias::LeaderIdOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::TermOf;
 use crate::type_config::alias::VoteOf;
-use crate::type_config::async_runtime::mpsc::MpscReceiver;
-use crate::type_config::async_runtime::mpsc::MpscSender;
+use crate::type_config::async_runtime::watch::WatchReceiver;
 use crate::vote::RaftLeaderId;
 use crate::vote::RaftLeaderIdExt;
 use crate::vote::RaftTerm;
 use crate::vote::RaftVote;
+use crate::vote::non_committed::NonCommittedVote;
 use crate::vote::raft_vote::RaftVoteExt;
 
 const NODE_ID: u64 = 0;
@@ -1605,23 +1604,26 @@ where
 
     let last_log_id = entries.last().unwrap().log_id();
 
-    let (tx, mut rx) = C::mpsc(1024);
-
     // Dummy log io id for blocking append
     let leader_id = LeaderIdOf::<C>::new(TermOf::<C>::default().next(), 0u64.into());
     let io_id = IOId::<C>::new_log_io(
         VoteOf::<C>::from_leader_id(leader_id, true).into_committed(),
         Some(last_log_id),
     );
-    let notify = Notification::LocalIO { io_id };
-    let cb = IOFlushed::new(notify, tx.downgrade());
+
+    // Create Watch channel for IO completion
+    let dummy_io_id = IOId::Vote(NonCommittedVote::default());
+    let (tx, mut rx) = C::watch_channel(Ok(dummy_io_id));
+    let cb = IOFlushed::new(io_id, tx);
 
     store.append(entries, cb).await?;
-    let got = rx.recv().await.unwrap();
-    if let Notification::StorageError { error } = got {
-        return Err(io::Error::other(error.to_string()));
-    }
-    Ok(())
+
+    // Wait for the Watch channel to update
+    rx.changed().await.ok();
+    let result = rx.borrow_watched().clone();
+
+    // Convert Result<IOId, StorageError> to io::Result
+    result.map(|_| ()).map_err(|e| io::Error::other(e.to_string()))
 }
 
 fn log_id<C>(term: u64, node_id: u64, index: u64) -> LogIdOf<C>
