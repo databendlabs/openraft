@@ -151,9 +151,9 @@ where C: RaftTypeConfig
     fn default() -> Self {
         Self {
             building_snapshot: false,
-            log_progress: new_progress(None, "xx", LOG_PROGRESS_NAME, false),
-            apply_progress: new_progress(None, "xx", APPLY_PROGRESS_NAME, false),
-            snapshot: new_progress(None, "xx", SNAPSHOT_PROGRESS_NAME, false),
+            log_progress: new_progress(None, "xx", LOG_PROGRESS_NAME),
+            apply_progress: new_progress(None, "xx", APPLY_PROGRESS_NAME),
+            snapshot: new_progress(None, "xx", SNAPSHOT_PROGRESS_NAME),
             cluster_committed: MonotonicIncrease::default(),
             purged: None,
         }
@@ -188,23 +188,18 @@ impl<C> IOState<C>
 where C: RaftTypeConfig
 {
     /// Creates a new `IOState` with initial values.
-    ///
-    /// - `allow_io_notification_reorder`: Allow I/O completion notifications to arrive out of order
     pub(crate) fn new(
         id: &str,
         vote: &VoteOf<C>,
         applied: Option<LogIdOf<C>>,
         snapshot: Option<LogIdOf<C>>,
         purged: Option<LogIdOf<C>>,
-        allow_io_notification_reorder: bool,
     ) -> Self {
-        let reorder = allow_io_notification_reorder;
-
         Self {
             building_snapshot: false,
-            log_progress: new_progress(Some(IOId::new(vote)), id, LOG_PROGRESS_NAME, reorder),
-            apply_progress: new_progress(applied, id, APPLY_PROGRESS_NAME, reorder),
-            snapshot: new_progress(snapshot, id, SNAPSHOT_PROGRESS_NAME, reorder),
+            log_progress: new_progress(Some(IOId::new(vote)), id, LOG_PROGRESS_NAME),
+            apply_progress: new_progress(applied, id, APPLY_PROGRESS_NAME),
+            snapshot: new_progress(snapshot, id, SNAPSHOT_PROGRESS_NAME),
             cluster_committed: MonotonicIncrease::default(),
             purged,
         }
@@ -290,19 +285,7 @@ where C: RaftTypeConfig
 /// Creates a new `IOProgress` wrapped in `Valid`.
 ///
 /// All three stages (accepted, submitted, flushed) are initialized to `initial_value`.
-fn new_progress<T>(
-    initial_value: Option<T>,
-    id: impl ToString,
-    name: &'static str,
-    allow_notification_reorder: bool,
-) -> Valid<IOProgress<T>>
-where
-    T: PartialOrd + fmt::Debug + fmt::Display + Clone,
-{
-    Valid::new(IOProgress::new_synchronized(
-        initial_value,
-        id,
-        name,
-        allow_notification_reorder,
-    ))
+fn new_progress<T>(initial_value: Option<T>, id: impl ToString, name: &'static str) -> Valid<IOProgress<T>>
+where T: PartialOrd + fmt::Debug + fmt::Display + Clone {
+    Valid::new(IOProgress::new_synchronized(initial_value, id, name))
 }

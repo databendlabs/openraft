@@ -472,7 +472,7 @@ where
         want.vote.update(initial.vote.last_update().unwrap(), Duration::default(), vote.clone());
         want.log_progress_mut().accept(IOId::new(&vote));
         want.log_progress_mut().submit(IOId::new(&vote));
-        want.log_progress_mut().flush(IOId::new(&vote));
+        want.log_progress_mut().try_flush(IOId::new(&vote));
 
         // Set the id to the NODE_ID used in these tests.
         want.log_progress_mut().set_id(NODE_ID.to_string());
