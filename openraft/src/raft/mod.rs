@@ -115,7 +115,7 @@ use crate::type_config::alias::WatchReceiverOf;
 use crate::type_config::alias::WriteResponderOf;
 use crate::vote::leader_id::raft_leader_id::RaftLeaderId;
 use crate::vote::leader_id::raft_leader_id::RaftLeaderIdExt;
-use crate::vote::non_committed::NonCommittedVote;
+use crate::vote::non_committed::UncommittedVote;
 use crate::vote::raft_vote::RaftVote;
 use crate::vote::raft_vote::RaftVoteExt;
 
@@ -404,7 +404,7 @@ where C: RaftTypeConfig
         // Watch channel for IO completion notifications from storage callbacks.
         // Initial value is a dummy IOId with this node's ID.
         let leader_id = C::LeaderId::new_with_default_term(id.clone());
-        let dummy_io_id = IOId::Vote(NonCommittedVote::new(leader_id));
+        let dummy_io_id = IOId::Vote(UncommittedVote::new(leader_id));
         let (tx_io_completed, rx_io_completed) = C::watch_channel(Ok(dummy_io_id));
 
         // Create weak sender for forwarder before moving tx_notify into RaftCore

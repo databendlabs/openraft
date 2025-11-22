@@ -12,7 +12,7 @@ use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::VoteOf;
 use crate::vote::RaftVote;
 use crate::vote::committed::CommittedVote;
-use crate::vote::non_committed::NonCommittedVote;
+use crate::vote::non_committed::UncommittedVote;
 use crate::vote::raft_vote::RaftVoteExt;
 use crate::vote::ref_vote::RefVote;
 
@@ -36,7 +36,7 @@ pub(crate) enum IOId<C>
 where C: RaftTypeConfig
 {
     /// Saving a non-committed vote, this kind of IO is not related to any log entries.
-    Vote(NonCommittedVote<C>),
+    Vote(UncommittedVote<C>),
 
     /// Saving log entries by a Leader, which is identified by a committed vote.
     Log(LogIOId<C>),
@@ -80,7 +80,7 @@ where C: RaftTypeConfig
         }
     }
 
-    pub(crate) fn new_vote_io(vote: NonCommittedVote<C>) -> Self {
+    pub(crate) fn new_vote_io(vote: UncommittedVote<C>) -> Self {
         Self::Vote(vote)
     }
 

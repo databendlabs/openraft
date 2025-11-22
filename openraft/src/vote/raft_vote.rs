@@ -9,7 +9,7 @@ use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::vote::RaftLeaderId;
 use crate::vote::committed::CommittedVote;
 use crate::vote::leader_id::raft_leader_id::RaftLeaderIdExt;
-use crate::vote::non_committed::NonCommittedVote;
+use crate::vote::non_committed::UncommittedVote;
 use crate::vote::ref_vote::RefVote;
 use crate::vote::vote_status::VoteStatus;
 // TODO: OptionSerde can be removed after all types are made trait based.
@@ -89,9 +89,9 @@ where
         CommittedVote::new(self.to_leader_id())
     }
 
-    /// Create a [`NonCommittedVote`] with the same leader id.
-    fn to_non_committed(&self) -> NonCommittedVote<C> {
-        NonCommittedVote::new(self.to_leader_id())
+    /// Create a [`UncommittedVote`] with the same leader id.
+    fn to_non_committed(&self) -> UncommittedVote<C> {
+        UncommittedVote::new(self.to_leader_id())
     }
 
     /// Convert this vote into a [`CommittedVote`]
@@ -99,9 +99,9 @@ where
         CommittedVote::new(self.to_leader_id())
     }
 
-    /// Convert this vote into a [`NonCommittedVote`]
-    fn into_non_committed(self) -> NonCommittedVote<C> {
-        NonCommittedVote::new(self.to_leader_id())
+    /// Convert this vote into a [`UncommittedVote`]
+    fn into_non_committed(self) -> UncommittedVote<C> {
+        UncommittedVote::new(self.to_leader_id())
     }
 
     /// Converts this vote into a [`VoteStatus`] enum based on its commitment state.

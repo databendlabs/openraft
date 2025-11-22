@@ -15,13 +15,13 @@ use crate::vote::raft_vote::RaftVoteExt;
 #[derive(PartialEq, Eq)]
 #[derive(PartialOrd)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub(crate) struct NonCommittedVote<C>
+pub(crate) struct UncommittedVote<C>
 where C: RaftTypeConfig
 {
     leader_id: LeaderIdOf<C>,
 }
 
-impl<C> Default for NonCommittedVote<C>
+impl<C> Default for UncommittedVote<C>
 where
     C: RaftTypeConfig,
     C::NodeId: Default,
@@ -33,7 +33,7 @@ where
     }
 }
 
-impl<C> NonCommittedVote<C>
+impl<C> UncommittedVote<C>
 where C: RaftTypeConfig
 {
     pub(crate) fn new(leader_id: LeaderIdOf<C>) -> Self {
@@ -49,7 +49,7 @@ where C: RaftTypeConfig
     }
 }
 
-impl<C> RaftVote<C> for NonCommittedVote<C>
+impl<C> RaftVote<C> for UncommittedVote<C>
 where C: RaftTypeConfig
 {
     fn from_leader_id(_leader_id: C::LeaderId, _committed: bool) -> Self {
@@ -65,7 +65,7 @@ where C: RaftTypeConfig
     }
 }
 
-impl<C> fmt::Display for NonCommittedVote<C>
+impl<C> fmt::Display for UncommittedVote<C>
 where C: RaftTypeConfig
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

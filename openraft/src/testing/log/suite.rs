@@ -37,7 +37,7 @@ use crate::vote::RaftLeaderId;
 use crate::vote::RaftLeaderIdExt;
 use crate::vote::RaftTerm;
 use crate::vote::RaftVote;
-use crate::vote::non_committed::NonCommittedVote;
+use crate::vote::non_committed::UncommittedVote;
 use crate::vote::raft_vote::RaftVoteExt;
 
 const NODE_ID: u64 = 0;
@@ -1612,7 +1612,7 @@ where
     );
 
     // Create Watch channel for IO completion
-    let dummy_io_id = IOId::Vote(NonCommittedVote::default());
+    let dummy_io_id = IOId::Vote(UncommittedVote::default());
     let (tx, mut rx) = C::watch_channel(Ok(dummy_io_id));
     let cb = IOFlushed::new(io_id, tx);
 
