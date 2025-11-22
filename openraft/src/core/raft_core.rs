@@ -110,7 +110,7 @@ use crate::type_config::async_runtime::mpsc::MpscSender;
 use crate::vote::RaftLeaderId;
 use crate::vote::RaftVote;
 use crate::vote::committed::CommittedVote;
-use crate::vote::non_committed::NonCommittedVote;
+use crate::vote::non_committed::UncommittedVote;
 use crate::vote::raft_vote::RaftVoteExt;
 use crate::vote::vote_status::VoteStatus;
 
@@ -1695,7 +1695,7 @@ where
 
     /// If a message is sent by a previous Candidate but is received by current Candidate,
     /// it is a stale message and should be just ignored.
-    fn does_candidate_vote_match(&self, candidate_vote: &NonCommittedVote<C>, msg: impl fmt::Display) -> bool {
+    fn does_candidate_vote_match(&self, candidate_vote: &UncommittedVote<C>, msg: impl fmt::Display) -> bool {
         // If it finished voting, Candidate's vote is None.
         let Some(my_vote) = self.engine.candidate_ref().map(|x| x.vote_ref().clone()) else {
             tracing::warn!(

@@ -11,7 +11,7 @@ use crate::replication::ReplicationSessionId;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::VoteOf;
 use crate::vote::committed::CommittedVote;
-use crate::vote::non_committed::NonCommittedVote;
+use crate::vote::non_committed::UncommittedVote;
 
 /// A message coming from the internal components.
 pub(crate) enum Notification<C>
@@ -24,7 +24,7 @@ where C: RaftTypeConfig
         /// The candidate that sent the vote request.
         ///
         /// A vote identifies a unique server state.
-        candidate_vote: NonCommittedVote<C>,
+        candidate_vote: UncommittedVote<C>,
     },
 
     /// A Leader sees a higher `vote` when replicating.
