@@ -191,6 +191,10 @@ where
     /// A Receiver to receive callback from other components.
     pub(crate) rx_notification: MpscReceiverOf<C, Notification<C>>,
 
+    /// A Watch channel sender for IO completion notifications from storage callbacks.
+    /// This is used by IOFlushed callbacks to report IO completion in a synchronous manner.
+    pub(crate) tx_io_completed: WatchSenderOf<C, Result<IOId<C>, StorageError<C>>>,
+
     pub(crate) tx_metrics: WatchSenderOf<C, RaftMetrics<C>>,
     pub(crate) tx_data_metrics: WatchSenderOf<C, RaftDataMetrics<C>>,
     pub(crate) tx_server_metrics: WatchSenderOf<C, RaftServerMetrics<C>>,
@@ -1845,8 +1849,7 @@ where
                 self.runtime_stats.append_batch.record(entry_count);
 
                 let io_id = IOId::new_log_io(vote, Some(last_log_id));
-                let notify = Notification::LocalIO { io_id: io_id.clone() };
-                let callback = IOFlushed::new(notify, self.tx_notification.downgrade());
+                let callback = IOFlushed::new(io_id.clone(), self.tx_io_completed.clone());
 
                 // Mark this IO request as submitted,
                 // other commands relying on it can then be processed.
