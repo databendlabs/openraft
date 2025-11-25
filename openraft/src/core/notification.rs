@@ -4,6 +4,8 @@ use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::core::sm;
 use crate::display_ext::DisplayInstantExt;
+use crate::display_ext::display_option::DisplayOptionExt;
+use crate::progress::inflight_id::InflightId;
 use crate::raft::VoteResponse;
 use crate::raft_state::IOId;
 use crate::replication;
@@ -56,6 +58,7 @@ where C: RaftTypeConfig
         /// `has_payload`: contain payload and should reset `inflight` state if conflict.
         has_payload: bool,
         progress: replication::Progress<C>,
+        inflight_id: Option<InflightId>,
     },
 
     HeartbeatProgress {
@@ -111,9 +114,13 @@ where C: RaftTypeConfig
             }
             Self::StorageError { error } => write!(f, "StorageError: {}", error),
             Self::LocalIO { io_id } => write!(f, "IOFlushed: {}", io_id),
-            Self::ReplicationProgress { has_payload, progress } => {
+            Self::ReplicationProgress {
+                has_payload,
+                progress,
+                inflight_id,
+            } => {
                 let payload = if *has_payload { "no-payload" } else { "has-payload" };
-                write!(f, "{payload}: {}", progress)
+                write!(f, "{payload}: {}, inflight_id: {}", progress, inflight_id.display())
             }
             Self::HeartbeatProgress {
                 session_id: leader_vote,

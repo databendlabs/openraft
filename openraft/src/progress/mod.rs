@@ -12,6 +12,7 @@ pub(crate) mod display_vec_progress;
 pub(crate) mod entry;
 pub(crate) mod id_val;
 pub(crate) mod inflight;
+pub(crate) mod inflight_id;
 pub(crate) mod progress_stats;
 pub(crate) mod vec_progress;
 
