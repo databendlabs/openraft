@@ -49,10 +49,11 @@ mod tests {
     mod handle_vote_resp_test;
     mod initialize_test;
     mod install_full_snapshot_test;
-    mod log_id_list_test;
     mod startup_test;
     mod trigger_purge_log_test;
 }
+#[cfg(test)]
+mod log_id_list_test;
 #[cfg(test)]
 pub(crate) mod testing;
 

@@ -252,7 +252,6 @@ where C: RaftTypeConfig
     }
 
     /// Purge log ids up to the log with index `upto_index`, inclusive.
-    #[allow(dead_code)]
     pub(crate) fn purge(&mut self, upto: &LogIdOf<C>) {
         let last = self.last().cloned();
 
