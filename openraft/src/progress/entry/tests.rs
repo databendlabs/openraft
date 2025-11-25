@@ -1,12 +1,15 @@
 use std::borrow::Borrow;
 
 use crate::LogId;
+use crate::RaftState;
+use crate::SnapshotMeta;
+use crate::StoredMembership;
 use crate::engine::EngineConfig;
+use crate::engine::LogIdList;
 use crate::engine::testing::UTConfig;
-use crate::log_id::ref_log_id::RefLogId;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::inflight::Inflight;
-use crate::raft_state::LogStateReader;
+use crate::progress::inflight_id::InflightId;
 use crate::type_config::alias::LeaderIdOf;
 use crate::type_config::alias::LogIdOf;
 use crate::vote::RaftLeaderIdExt;
@@ -19,7 +22,7 @@ fn log_id(index: u64) -> LogIdOf<UTConfig> {
 }
 
 fn inflight_logs(prev_index: u64, last_index: u64) -> Inflight<UTConfig> {
-    Inflight::logs(Some(log_id(prev_index)), Some(log_id(last_index)))
+    Inflight::logs(Some(log_id(prev_index)), Some(log_id(last_index)), InflightId::new(0))
 }
 
 #[test]
@@ -34,7 +37,7 @@ fn test_is_log_range_inflight() -> anyhow::Result<()> {
     assert_eq!(true, pe.is_log_range_inflight(&log_id(4)));
     assert_eq!(true, pe.is_log_range_inflight(&log_id(5)));
 
-    pe.inflight = Inflight::snapshot();
+    pe.inflight = Inflight::snapshot(InflightId::new(0));
     assert_eq!(false, pe.is_log_range_inflight(&log_id(5)));
 
     Ok(())
@@ -48,12 +51,12 @@ fn test_update_matching() -> anyhow::Result<()> {
     {
         let mut pe = ProgressEntry::<UTConfig>::empty(20);
         pe.inflight = inflight_logs(5, 10);
-        pe.new_updater(&engine_config).update_matching(Some(log_id(6)));
+        pe.new_updater(&engine_config).update_matching(Some(log_id(6)), Some(InflightId::new(0)));
         assert_eq!(inflight_logs(6, 10), pe.inflight);
         assert_eq!(Some(&log_id(6)), pe.matching());
         assert_eq!(20, pe.searching_end);
 
-        pe.new_updater(&engine_config).update_matching(Some(log_id(10)));
+        pe.new_updater(&engine_config).update_matching(Some(log_id(10)), Some(InflightId::new(0)));
         assert_eq!(Inflight::None, pe.inflight);
         assert_eq!(Some(&log_id(10)), pe.matching());
         assert_eq!(20, pe.searching_end);
@@ -65,7 +68,7 @@ fn test_update_matching() -> anyhow::Result<()> {
         pe.matching = Some(log_id(6));
         pe.inflight = inflight_logs(5, 20);
 
-        pe.new_updater(&engine_config).update_matching(Some(log_id(20)));
+        pe.new_updater(&engine_config).update_matching(Some(log_id(20)), Some(InflightId::new(0)));
         assert_eq!(21, pe.searching_end);
     }
 
@@ -79,7 +82,7 @@ fn test_update_conflicting() -> anyhow::Result<()> {
     pe.inflight = inflight_logs(5, 10);
 
     let engine_config = EngineConfig::new_default(1);
-    pe.new_updater(&engine_config).update_conflicting(5, true);
+    pe.new_updater(&engine_config).update_conflicting(5, true, Some(InflightId::new(0)));
 
     assert_eq!(Inflight::None, pe.inflight);
     assert_eq!(&Some(log_id(3)), pe.borrow());
@@ -88,68 +91,21 @@ fn test_update_conflicting() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// LogStateReader impl for testing
-struct LogState {
-    last: Option<LogIdOf<UTConfig>>,
-    snap_last: Option<LogIdOf<UTConfig>>,
-    purge_upto: Option<LogIdOf<UTConfig>>,
-    purged: Option<LogIdOf<UTConfig>>,
-}
+fn new_raft_state(purge_upto: u64, snap_last: u64, last: u64) -> RaftState<UTConfig> {
+    let mut st = RaftState::new(0);
 
-impl LogState {
-    fn new(purge_upto: u64, snap_last: u64, last: u64) -> Self {
-        Self {
-            last: Some(log_id(last)),
-            snap_last: Some(log_id(snap_last)),
-            // `next_send()` only checks purge_upto, but not purged,
-            // We just fake a purged
-            purge_upto: Some(log_id(purge_upto)),
-            purged: Some(log_id(purge_upto - 1)),
-        }
-    }
-}
+    // TODO: setup log_ids
 
-impl LogStateReader<UTConfig> for LogState {
-    fn get_log_id(&self, index: u64) -> Option<LogIdOf<UTConfig>> {
-        let x = Some(log_id(index));
-        if x >= self.purged && x <= self.last { x } else { None }
-    }
+    st.purge_upto = Some(log_id(purge_upto));
+    st.snapshot_meta = SnapshotMeta {
+        last_log_id: Some(log_id(snap_last)),
+        last_membership: StoredMembership::default(),
+        snapshot_id: "".to_string(),
+    };
 
-    fn ref_log_id(&self, _index: u64) -> Option<RefLogId<'_, UTConfig>> {
-        unimplemented!("testing")
-    }
+    st.log_ids = LogIdList::new([log_id(purge_upto - 1), log_id(last)]);
 
-    fn last_log_id(&self) -> Option<&LogIdOf<UTConfig>> {
-        self.last.as_ref()
-    }
-
-    fn committed(&self) -> Option<&LogIdOf<UTConfig>> {
-        unimplemented!("testing")
-    }
-
-    fn io_applied(&self) -> Option<&LogIdOf<UTConfig>> {
-        todo!()
-    }
-
-    fn io_snapshot_last_log_id(&self) -> Option<&LogIdOf<UTConfig>> {
-        todo!()
-    }
-
-    fn io_purged(&self) -> Option<&LogIdOf<UTConfig>> {
-        todo!()
-    }
-
-    fn snapshot_last_log_id(&self) -> Option<&LogIdOf<UTConfig>> {
-        self.snap_last.as_ref()
-    }
-
-    fn purge_upto(&self) -> Option<&LogIdOf<UTConfig>> {
-        self.purge_upto.as_ref()
-    }
-
-    fn last_purged_log_id(&self) -> Option<&LogIdOf<UTConfig>> {
-        self.purged.as_ref()
-    }
+    st
 }
 
 #[test]
@@ -158,7 +114,7 @@ fn test_next_send() -> anyhow::Result<()> {
     {
         let mut pe = ProgressEntry::<UTConfig>::empty(20);
         pe.inflight = inflight_logs(10, 11);
-        let res = pe.next_send(&LogState::new(6, 10, 20), 100);
+        let res = pe.next_send(&mut new_raft_state(6, 10, 20), 100);
         assert_eq!(Err(&inflight_logs(10, 11)), res);
     }
 
@@ -173,8 +129,8 @@ fn test_next_send() -> anyhow::Result<()> {
         let mut pe = ProgressEntry::<UTConfig>::empty(4);
         pe.matching = Some(log_id(4));
 
-        let res = pe.next_send(&LogState::new(6, 10, 20), 100);
-        assert_eq!(Ok(&Inflight::snapshot()), res);
+        let res = pe.next_send(&mut new_raft_state(6, 10, 20), 100);
+        assert_eq!(Ok(&Inflight::snapshot(InflightId::new(1))), res);
     }
     {
         //    matching,end
@@ -187,8 +143,8 @@ fn test_next_send() -> anyhow::Result<()> {
         let mut pe = ProgressEntry::<UTConfig>::empty(6);
         pe.matching = Some(log_id(4));
 
-        let res = pe.next_send(&LogState::new(6, 10, 20), 100);
-        assert_eq!(Ok(&Inflight::snapshot()), res);
+        let res = pe.next_send(&mut new_raft_state(6, 10, 20), 100);
+        assert_eq!(Ok(&Inflight::snapshot(InflightId::new(1))), res);
     }
 
     {
@@ -202,8 +158,8 @@ fn test_next_send() -> anyhow::Result<()> {
         let mut pe = ProgressEntry::<UTConfig>::empty(7);
         pe.matching = Some(log_id(4));
 
-        let res = pe.next_send(&LogState::new(6, 10, 20), 100);
-        assert_eq!(Ok(&inflight_logs(6, 20)), res);
+        let res = pe.next_send(&mut new_raft_state(6, 10, 20), 100);
+        assert_eq!(Ok(&inflight_logs(6, 20).with_id(1)), res);
     }
 
     {
@@ -217,8 +173,8 @@ fn test_next_send() -> anyhow::Result<()> {
         let mut pe = ProgressEntry::<UTConfig>::empty(20);
         pe.matching = Some(log_id(4));
 
-        let res = pe.next_send(&LogState::new(6, 10, 20), 100);
-        assert_eq!(Ok(&inflight_logs(6, 20)), res);
+        let res = pe.next_send(&mut new_raft_state(6, 10, 20), 100);
+        assert_eq!(Ok(&inflight_logs(6, 20).with_id(1)), res);
     }
 
     //-----------
@@ -234,8 +190,8 @@ fn test_next_send() -> anyhow::Result<()> {
         let mut pe = ProgressEntry::<UTConfig>::empty(7);
         pe.matching = Some(log_id(6));
 
-        let res = pe.next_send(&LogState::new(6, 10, 20), 100);
-        assert_eq!(Ok(&inflight_logs(6, 20)), res);
+        let res = pe.next_send(&mut new_raft_state(6, 10, 20), 100);
+        assert_eq!(Ok(&inflight_logs(6, 20).with_id(1)), res);
     }
 
     {
@@ -249,8 +205,8 @@ fn test_next_send() -> anyhow::Result<()> {
         let mut pe = ProgressEntry::<UTConfig>::empty(8);
         pe.matching = Some(log_id(6));
 
-        let res = pe.next_send(&LogState::new(6, 10, 20), 100);
-        assert_eq!(Ok(&inflight_logs(6, 20)), res);
+        let res = pe.next_send(&mut new_raft_state(6, 10, 20), 100);
+        assert_eq!(Ok(&inflight_logs(6, 20).with_id(1)), res);
     }
 
     {
@@ -264,8 +220,8 @@ fn test_next_send() -> anyhow::Result<()> {
         let mut pe = ProgressEntry::<UTConfig>::empty(20);
         pe.matching = Some(log_id(6));
 
-        let res = pe.next_send(&LogState::new(6, 10, 20), 100);
-        assert_eq!(Ok(&inflight_logs(6, 20)), res);
+        let res = pe.next_send(&mut new_raft_state(6, 10, 20), 100);
+        assert_eq!(Ok(&inflight_logs(6, 20).with_id(1)), res);
     }
 
     {
@@ -279,8 +235,8 @@ fn test_next_send() -> anyhow::Result<()> {
         let mut pe = ProgressEntry::<UTConfig>::empty(20);
         pe.matching = Some(log_id(7));
 
-        let res = pe.next_send(&LogState::new(6, 10, 20), 100);
-        assert_eq!(Ok(&inflight_logs(7, 20)), res);
+        let res = pe.next_send(&mut new_raft_state(6, 10, 20), 100);
+        assert_eq!(Ok(&inflight_logs(7, 20).with_id(1)), res);
     }
 
     {
@@ -294,8 +250,8 @@ fn test_next_send() -> anyhow::Result<()> {
         let mut pe = ProgressEntry::<UTConfig>::empty(8);
         pe.matching = Some(log_id(7));
 
-        let res = pe.next_send(&LogState::new(6, 10, 20), 100);
-        assert_eq!(Ok(&inflight_logs(7, 20)), res);
+        let res = pe.next_send(&mut new_raft_state(6, 10, 20), 100);
+        assert_eq!(Ok(&inflight_logs(7, 20).with_id(1)), res);
     }
 
     {
@@ -309,7 +265,7 @@ fn test_next_send() -> anyhow::Result<()> {
         let mut pe = ProgressEntry::<UTConfig>::empty(21);
         pe.matching = Some(log_id(20));
 
-        let res = pe.next_send(&LogState::new(6, 10, 20), 100);
+        let res = pe.next_send(&mut new_raft_state(6, 10, 20), 100);
         assert_eq!(Err(&Inflight::None), res, "nothing to send");
     }
 
@@ -325,8 +281,8 @@ fn test_next_send() -> anyhow::Result<()> {
         let mut pe = ProgressEntry::<UTConfig>::empty(20);
         pe.matching = Some(log_id(7));
 
-        let res = pe.next_send(&LogState::new(6, 10, 20), 5);
-        assert_eq!(Ok(&inflight_logs(7, 12)), res);
+        let res = pe.next_send(&mut new_raft_state(6, 10, 20), 5);
+        assert_eq!(Ok(&inflight_logs(7, 12).with_id(1)), res);
     }
     Ok(())
 }

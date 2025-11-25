@@ -93,7 +93,9 @@ use crate::raft_state::io_state::log_io_id::LogIOId;
 use crate::replication::ReplicationCore;
 use crate::replication::ReplicationHandle;
 use crate::replication::ReplicationSessionId;
+use crate::replication::replication_task_state::ReplicationContext;
 use crate::replication::request::Replicate;
+use crate::replication::snapshot_transmit::SnapshotTransmitter;
 use crate::runtime::RaftRuntime;
 use crate::storage::IOFlushed;
 use crate::storage::RaftLogStorage;
@@ -860,7 +862,6 @@ where
 
         let membership_log_id = self.engine.state.membership_state.effective().log_id();
         let network = self.network_factory.new_client(target.clone(), target_node).await;
-        let snapshot_network = self.network_factory.new_client(target.clone(), target_node).await;
 
         let leader = self.engine.leader.as_ref().unwrap();
 
@@ -873,9 +874,7 @@ where
             self.engine.state.committed().cloned(),
             progress_entry.matching.clone(),
             network,
-            snapshot_network,
             self.log_store.get_log_reader().await,
-            self.sm_handle.new_snapshot_reader(),
             self.tx_notification.clone(),
             tracing::span!(parent: &self.span, Level::DEBUG, "replication", id=display(&self.id), target=display(&target)),
         )
@@ -1567,7 +1566,11 @@ where
                 }
             }
 
-            Notification::ReplicationProgress { has_payload, progress } => {
+            Notification::ReplicationProgress {
+                has_payload,
+                progress,
+                inflight_id,
+            } => {
                 // If vote or membership changes, ignore the message.
                 // There is chance delayed message reports a wrong state.
                 if self.does_replication_session_match(&progress.session_id, "ReplicationProgress") {
@@ -1575,7 +1578,12 @@ where
 
                     // replication_handler() won't panic because:
                     // The leader is still valid because progress.session_id.leader_vote does not change.
-                    self.engine.replication_handler().update_progress(progress.target, progress.result, has_payload);
+                    self.engine.replication_handler().update_progress(
+                        progress.target,
+                        progress.result,
+                        has_payload,
+                        inflight_id,
+                    );
                 }
             }
 
@@ -1810,6 +1818,20 @@ where
 
         self.heartbeat_handle.broadcast(events);
     }
+
+    pub(crate) fn new_replication_task_state(
+        &self,
+        session_id: ReplicationSessionId<C>,
+        target: C::NodeId,
+    ) -> ReplicationContext<C> {
+        ReplicationContext {
+            id: self.id.clone(),
+            target,
+            session_id,
+            config: self.config.clone(),
+            tx_notify: self.tx_notification.clone(),
+        }
+    }
 }
 
 impl<C, N, LS> RaftRuntime<C> for RaftCore<C, N, LS>
@@ -1919,7 +1941,9 @@ where
             }
             Command::ReplicateCommitted { committed } => {
                 for node in self.replications.values() {
-                    let _ = node.tx_repl.send(Replicate::Committed(committed.clone()));
+                    let _ = node.tx_repl.send(Replicate::Committed {
+                        committed: committed.clone(),
+                    });
                 }
             }
             Command::BroadcastHeartbeat { session_id } => {
@@ -1939,6 +1963,27 @@ where
             Command::Replicate { req, target } => {
                 let node = self.replications.get(&target).expect("replication to target node exists");
                 let _ = node.tx_repl.send(req);
+            }
+            Command::ReplicateSnapshot { target, inflight_id } => {
+                let node = self.replications.get(&target).expect("replication to target node exists");
+
+                let snapshot_reader = self.sm_handle.new_snapshot_reader();
+                let session_id = node.session_id.clone();
+                let replication_task_state = self.new_replication_task_state(session_id, target.clone());
+
+                let target_node = self.engine.state.membership_state.effective().get_node(&target).unwrap();
+                let snapshot_network = self.network_factory.new_client(target.clone(), target_node).await;
+
+                let handle = SnapshotTransmitter::<C, N>::spawn(
+                    replication_task_state,
+                    snapshot_network,
+                    snapshot_reader,
+                    inflight_id,
+                );
+
+                let node = self.replications.get_mut(&target).expect("replication to target node exists");
+                // TODO: it is not cleaned when snapshot transmission is done.
+                node.snapshot_transmit_handle = Some(handle);
             }
             Command::BroadcastTransferLeader { req } => self.broadcast_transfer_leader(req).await,
 

@@ -9,45 +9,41 @@ pub(crate) enum Replicate<C>
 where C: RaftTypeConfig
 {
     /// Inform the replication stream to forward the committed log id to followers/learners.
-    Committed(Option<LogIdOf<C>>),
+    Committed { committed: Option<LogIdOf<C>> },
 
     /// Send a chunk of data, e.g., logs or snapshot.
-    Data(Data<C>),
+    Data {
+        inflight_id: Option<InflightId>,
+        data: Data<C>,
+    },
 }
 
 impl<C> Replicate<C>
 where C: RaftTypeConfig
 {
-    pub(crate) fn logs(log_id_range: LogIdRange<C>) -> Self {
-        Self::Data(Data::new_logs(log_id_range))
-    }
-
-    pub(crate) fn snapshot() -> Self {
-        Self::Data(Data::new_snapshot())
-    }
-
-    pub(crate) fn new_data(data: Data<C>) -> Self {
-        Self::Data(data)
+    pub(crate) fn logs(log_id_range: LogIdRange<C>, inflight_id: Option<InflightId>) -> Self {
+        Self::Data {
+            inflight_id,
+            data: Data::new_logs(log_id_range),
+        }
     }
 }
 
 impl<C: RaftTypeConfig> fmt::Display for Replicate<C> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Committed(c) => write!(f, "Committed({})", c.display()),
-            Self::Data(d) => write!(f, "Data({})", d),
+            Self::Committed { committed } => write!(f, "Committed({})", committed.display(),),
+            Self::Data { inflight_id, data } => {
+                write!(f, "Data({}), inflight_id:{}", data, inflight_id.display())
+            }
         }
     }
 }
 
 use crate::RaftTypeConfig;
 use crate::display_ext::DisplayOptionExt;
-use crate::error::StreamingError;
 use crate::log_id_range::LogIdRange;
-use crate::raft::SnapshotResponse;
-use crate::replication::callbacks::SnapshotCallback;
-use crate::storage::SnapshotMeta;
-use crate::type_config::alias::InstantOf;
+use crate::progress::inflight_id::InflightId;
 
 /// Request to replicate a chunk of data, logs or snapshot.
 ///
@@ -60,8 +56,6 @@ where C: RaftTypeConfig
 {
     Committed,
     Logs(LogIdRange<C>),
-    Snapshot,
-    SnapshotCallback(SnapshotCallback<C>),
 }
 
 impl<C> fmt::Debug for Data<C>
@@ -73,8 +67,6 @@ where C: RaftTypeConfig
                 write!(f, "Data::Committed")
             }
             Self::Logs(l) => f.debug_struct("Data::Logs").field("log_id_range", l).finish(),
-            Self::Snapshot => f.debug_struct("Data::Snapshot").finish(),
-            Self::SnapshotCallback(resp) => f.debug_struct("Data::SnapshotCallback").field("callback", resp).finish(),
         }
     }
 }
@@ -87,12 +79,6 @@ impl<C: RaftTypeConfig> fmt::Display for Data<C> {
             }
             Self::Logs(l) => {
                 write!(f, "Logs{{log_id_range: {}}}", l)
-            }
-            Self::Snapshot => {
-                write!(f, "Snapshot")
-            }
-            Self::SnapshotCallback(l) => {
-                write!(f, "SnapshotCallback{{callback: {}}}", l)
             }
         }
     }
@@ -109,25 +95,11 @@ where C: RaftTypeConfig
         Self::Logs(log_id_range)
     }
 
-    pub(crate) fn new_snapshot() -> Self {
-        Self::Snapshot
-    }
-
-    pub(crate) fn new_snapshot_callback(
-        start_time: InstantOf<C>,
-        snapshot_meta: SnapshotMeta<C>,
-        result: Result<SnapshotResponse<C>, StreamingError<C>>,
-    ) -> Self {
-        Self::SnapshotCallback(SnapshotCallback::new(start_time, snapshot_meta, result))
-    }
-
     /// Return true if the data includes any payload, i.e., not a heartbeat.
     pub(crate) fn has_payload(&self) -> bool {
         match self {
             Self::Committed => false,
             Self::Logs(_) => true,
-            Self::Snapshot => true,
-            Self::SnapshotCallback(_) => true,
         }
     }
 }
