@@ -141,6 +141,7 @@ where
                                     target: self.target.clone(),
                                     result: Ok(ReplicationResult(Err(conflict_log_id))),
                                 },
+                                replication_id: None,
                             };
 
                             self.send_notification(noti, "Seeing conflict").await?;

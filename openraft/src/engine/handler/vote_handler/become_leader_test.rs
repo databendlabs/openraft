@@ -16,6 +16,7 @@ use crate::engine::testing::log_id;
 use crate::entry::RaftEntry;
 use crate::log_id_range::LogIdRange;
 use crate::progress::entry::ProgressEntry;
+use crate::progress::replication_id::InflightId;
 use crate::raft_state::IOId;
 use crate::replication::request::Replicate;
 use crate::type_config::TypeConfigExt;
@@ -72,7 +73,7 @@ fn test_become_leader() -> anyhow::Result<()> {
         },
         Command::Replicate {
             target: 0,
-            req: Replicate::logs(LogIdRange::new(None, Some(log_id(2, 1, 0))))
+            req: Replicate::logs(LogIdRange::new(None, Some(log_id(2, 1, 0))), Some(InflightId::new(1)))
         }
     ]);
 

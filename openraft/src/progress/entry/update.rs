@@ -3,6 +3,7 @@ use crate::RaftTypeConfig;
 use crate::display_ext::DisplayOptionExt;
 use crate::engine::EngineConfig;
 use crate::progress::entry::ProgressEntry;
+use crate::progress::replication_id::InflightId;
 use crate::type_config::alias::LogIdOf;
 
 /// It implements updating operations for a [`ProgressEntry`]
@@ -35,7 +36,7 @@ where C: RaftTypeConfig
     /// To allow follower log reversion, enable [`Config::allow_log_reversion`].
     ///
     /// [`Config::allow_log_reversion`]: `crate::config::Config::allow_log_reversion`
-    pub(crate) fn update_conflicting(&mut self, conflict: u64, has_payload: bool) {
+    pub(crate) fn update_conflicting(&mut self, conflict: u64, has_payload: bool, replication_id: Option<InflightId>) {
         tracing::debug!(
             "update_conflict: current progress_entry: {}; conflict: {}",
             self.entry,
@@ -44,7 +45,7 @@ where C: RaftTypeConfig
 
         // The inflight may be None if the conflict is caused by a heartbeat response.
         if has_payload {
-            self.entry.inflight.conflict(conflict);
+            self.entry.inflight.conflict(conflict, replication_id);
         }
 
         if conflict >= self.entry.searching_end {
@@ -90,14 +91,14 @@ where C: RaftTypeConfig
         }
     }
 
-    pub(crate) fn update_matching(&mut self, matching: Option<LogIdOf<C>>) {
+    pub(crate) fn update_matching(&mut self, matching: Option<LogIdOf<C>>, replication_id: Option<InflightId>) {
         tracing::debug!(
             "update_matching: current progress_entry: {}; matching: {}",
             self.entry,
             matching.display()
         );
 
-        self.entry.inflight.ack(matching.clone());
+        self.entry.inflight.ack(matching.clone(), replication_id);
 
         debug_assert!(matching.as_ref() >= self.entry.matching());
         self.entry.matching = matching;

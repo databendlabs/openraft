@@ -19,6 +19,7 @@ use crate::engine::testing::log_id;
 use crate::entry::RaftEntry;
 use crate::log_id_range::LogIdRange;
 use crate::progress::entry::ProgressEntry;
+use crate::progress::replication_id::InflightId;
 use crate::raft::VoteResponse;
 use crate::raft_state::IOId;
 use crate::replication::request::Replicate;
@@ -218,7 +219,7 @@ fn test_handle_vote_resp_equal_vote() -> anyhow::Result<()> {
                 },
                 Command::Replicate {
                     target: 2,
-                    req: Replicate::logs(LogIdRange::new(None, Some(log_id(2, 1, 1))))
+                    req: Replicate::logs(LogIdRange::new(None, Some(log_id(2, 1, 1))), Some(InflightId::new(1)))
                 },
             ],
             eng.output.take_commands()

@@ -13,6 +13,7 @@ pub(crate) mod entry;
 pub(crate) mod id_val;
 pub(crate) mod inflight;
 pub(crate) mod progress_stats;
+pub(crate) mod replication_id;
 pub(crate) mod vec_progress;
 
 use std::borrow::Borrow;
