@@ -130,6 +130,14 @@ where C: RaftTypeConfig
         });
     }
 
+    /// Return a replication session id
+    #[allow(dead_code)]
+    pub(crate) fn replication_session_id(&self) -> ReplicationSessionId<C> {
+        let committed_vote = self.leader.committed_vote.clone();
+        let membership_log_id = self.state.membership_state.effective().log_id();
+        ReplicationSessionId::new(committed_vote, membership_log_id.clone())
+    }
+
     pub(crate) fn replication_handler(&mut self) -> ReplicationHandler<'_, C> {
         ReplicationHandler {
             config: self.config,

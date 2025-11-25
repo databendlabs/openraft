@@ -18,6 +18,7 @@ use crate::engine::testing::log_id;
 use crate::progress::Inflight;
 use crate::progress::Progress;
 use crate::progress::entry::ProgressEntry;
+use crate::progress::replication_id::ReplicationId;
 use crate::type_config::TypeConfigExt;
 use crate::utime::Leased;
 
@@ -148,28 +149,41 @@ fn test_leader_append_membership_update_learner_process() -> anyhow::Result<()> 
 
     if let Some(l) = &mut eng.leader.as_mut() {
         assert_eq!(
-            &ProgressEntry::new(Some(log_id(1, 1, 4)))
-                .with_inflight(Inflight::logs(Some(log_id(1, 1, 4)), Some(log_id(5, 1, 10)))),
+            &ProgressEntry::new(Some(log_id(1, 1, 4))).with_inflight(Inflight::logs(
+                Some(log_id(1, 1, 4)),
+                Some(log_id(5, 1, 10)),
+                ReplicationId::new(1)
+            )),
             l.progress.get(&4),
             "learner-4 progress should be transferred to voter progress"
         );
 
         assert_eq!(
-            &ProgressEntry::new(Some(log_id(1, 1, 3)))
-                .with_inflight(Inflight::logs(Some(log_id(1, 1, 3)), Some(log_id(5, 1, 10)))),
+            &ProgressEntry::new(Some(log_id(1, 1, 3))).with_inflight(Inflight::logs(
+                Some(log_id(1, 1, 3)),
+                Some(log_id(5, 1, 10)),
+                ReplicationId::new(2)
+            )),
             l.progress.get(&3),
             "voter-3 progress should be transferred to learner progress"
         );
 
         assert_eq!(
-            &ProgressEntry::new(Some(log_id(1, 1, 5)))
-                .with_inflight(Inflight::logs(Some(log_id(1, 1, 5)), Some(log_id(5, 1, 10)))),
+            &ProgressEntry::new(Some(log_id(1, 1, 5))).with_inflight(Inflight::logs(
+                Some(log_id(1, 1, 5)),
+                Some(log_id(5, 1, 10)),
+                ReplicationId::new(3)
+            )),
             l.progress.get(&5),
             "learner-5 has previous value"
         );
 
         assert_eq!(
-            &ProgressEntry::empty(11).with_inflight(Inflight::logs(None, Some(log_id(5, 1, 10)))),
+            &ProgressEntry::empty(11).with_inflight(Inflight::logs(
+                None,
+                Some(log_id(5, 1, 10)),
+                ReplicationId::new(4)
+            )),
             l.progress.get(&6)
         );
     } else {

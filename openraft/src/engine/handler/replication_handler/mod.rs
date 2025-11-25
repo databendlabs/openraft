@@ -18,6 +18,7 @@ use crate::progress;
 use crate::progress::Inflight;
 use crate::progress::Progress;
 use crate::progress::entry::ProgressEntry;
+use crate::progress::replication_id::ReplicationId;
 use crate::proposer::Leader;
 use crate::proposer::LeaderQuorumSet;
 use crate::raft_state::LogStateReader;
@@ -150,7 +151,12 @@ where C: RaftTypeConfig
     /// Update progress when replicated data(logs or snapshot) matches on follower/learner and is
     /// accepted.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn update_matching(&mut self, node_id: C::NodeId, log_id: Option<LogIdOf<C>>) {
+    pub(crate) fn update_matching(
+        &mut self,
+        node_id: C::NodeId,
+        log_id: Option<LogIdOf<C>>,
+        replication_id: Option<ReplicationId>,
+    ) {
         tracing::debug!(
             node_id = display(&node_id),
             log_id = display(log_id.display()),
@@ -166,7 +172,7 @@ where C: RaftTypeConfig
             .leader
             .progress
             .update_with(&node_id, |prog_entry| {
-                prog_entry.new_updater(&*self.config).update_matching(log_id)
+                prog_entry.new_updater(&*self.config).update_matching(log_id, replication_id)
             })
             .expect("it should always update existing progress")
             .clone();
@@ -207,14 +213,20 @@ where C: RaftTypeConfig
     /// If `has_payload` is true, the `inflight` state is reset because AppendEntries RPC
     /// manages the inflight state.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn update_conflicting(&mut self, target: C::NodeId, conflict: LogIdOf<C>, has_payload: bool) {
+    pub(crate) fn update_conflicting(
+        &mut self,
+        target: C::NodeId,
+        conflict: LogIdOf<C>,
+        has_payload: bool,
+        replication_id: Option<ReplicationId>,
+    ) {
         // TODO(2): test it?
 
         let prog_entry = self.leader.progress.get_mut(&target).unwrap();
 
         let mut updater = progress::entry::update::Updater::new(self.config, prog_entry);
 
-        updater.update_conflicting(conflict.index(), has_payload);
+        updater.update_conflicting(conflict.index(), has_payload, replication_id);
     }
 
     /// Enable one-time replication reset for a specific node upon log reversion detection.
@@ -252,6 +264,7 @@ where C: RaftTypeConfig
         target: C::NodeId,
         repl_res: Result<ReplicationResult<C>, String>,
         has_payload: bool,
+        replication_id: Option<ReplicationId>,
     ) {
         tracing::debug!(
             "{}: target={target}, result={}, has_payload={has_payload}, current progresses={}",
@@ -263,10 +276,10 @@ where C: RaftTypeConfig
         match repl_res {
             Ok(p) => match p.0 {
                 Ok(matching) => {
-                    self.update_matching(target, matching);
+                    self.update_matching(target, matching, replication_id);
                 }
                 Err(conflict) => {
-                    self.update_conflicting(target, conflict, has_payload);
+                    self.update_conflicting(target, conflict, has_payload, replication_id);
                 }
             },
             Err(err_str) => {
@@ -330,15 +343,25 @@ where C: RaftTypeConfig
 
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn send_to_target(output: &mut EngineOutput<C>, target: &C::NodeId, inflight: &Inflight<C>) {
-        let req = match inflight {
+        match inflight {
             Inflight::None => unreachable!("no data to send"),
-            Inflight::Logs { log_id_range } => Replicate::logs(log_id_range.clone()),
-            Inflight::Snapshot => Replicate::snapshot(),
+            Inflight::Logs {
+                log_id_range,
+                replication_id,
+            } => {
+                let req = Replicate::logs(log_id_range.clone(), Some(*replication_id));
+                output.push_command(Command::Replicate {
+                    target: target.clone(),
+                    req,
+                });
+            }
+            Inflight::Snapshot { replication_id } => {
+                output.push_command(Command::ReplicateSnapshot {
+                    target: target.clone(),
+                    replication_id: *replication_id,
+                });
+            }
         };
-        output.push_command(Command::Replicate {
-            target: target.clone(),
-            req,
-        });
     }
 
     /// Try to run a pending purge job if no tasks are using the logs to be purged.
@@ -408,9 +431,9 @@ where C: RaftTypeConfig
                 return;
             }
             // TODO: It should be self.state.last_log_id() but None is ok.
-            prog_entry.inflight = Inflight::logs(None, upto.clone());
+            prog_entry.inflight = Inflight::logs(None, upto.clone(), ReplicationId::new(0));
 
-            self.update_matching(id, upto);
+            self.update_matching(id, upto, None);
         }
     }
 

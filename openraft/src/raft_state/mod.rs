@@ -45,6 +45,7 @@ use crate::display_ext::DisplayOptionExt;
 use crate::entry::RaftEntry;
 use crate::entry::raft_entry_ext::RaftEntryExt;
 use crate::log_id::ref_log_id::RefLogId;
+use crate::progress::replication_id::ReplicationId;
 use crate::proposer::Leader;
 use crate::proposer::LeaderQuorumSet;
 use crate::raft_state::io_state::io_progress::IOProgress;
@@ -80,6 +81,8 @@ where C: RaftTypeConfig
     // --
     // -- volatile fields: they are not persisted.
     // --
+    pub(crate) last_replication_id: u64,
+
     /// The state of a Raft node, such as Leader or Follower.
     pub server_state: ServerState,
 
@@ -107,6 +110,7 @@ where
             log_ids: LogIdList::default(),
             membership_state: MembershipState::default(),
             snapshot_meta: SnapshotMeta::default(),
+            last_replication_id: 0,
             server_state: ServerState::default(),
             io_state: Valid::new(IOState::default()),
             purge_upto: None,
@@ -197,6 +201,23 @@ where C: RaftTypeConfig
 impl<C> RaftState<C>
 where C: RaftTypeConfig
 {
+    #[allow(dead_code)]
+    pub(crate) fn new(node_id: C::NodeId) -> Self {
+        let vote = VoteOf::<C>::new_with_default_term(node_id);
+
+        Self {
+            vote: Leased::without_last_update(vote),
+            purged_next: 0,
+            log_ids: LogIdList::default(),
+            membership_state: MembershipState::default(),
+            snapshot_meta: SnapshotMeta::default(),
+            last_replication_id: 0,
+            server_state: ServerState::default(),
+            io_state: Valid::new(IOState::default()),
+            purge_upto: None,
+        }
+    }
+
     /// Get a reference to the current vote.
     pub fn vote_ref(&self) -> &VoteOf<C> {
         self.vote.deref()
@@ -496,5 +517,10 @@ where C: RaftTypeConfig
             tracing::debug!("id={} is not in membership, when getting leader id", to);
             ForwardToLeader::empty()
         }
+    }
+
+    pub(crate) fn new_replication_id(&mut self) -> ReplicationId {
+        self.last_replication_id += 1;
+        ReplicationId::new(self.last_replication_id)
     }
 }

@@ -12,6 +12,7 @@ use crate::engine::CommandKind;
 use crate::engine::replication_progress::ReplicationProgress;
 use crate::error::InitializeError;
 use crate::error::InstallSnapshotError;
+use crate::progress::replication_id::ReplicationId;
 use crate::raft::AppendEntriesResponse;
 use crate::raft::InstallSnapshotResponse;
 use crate::raft::SnapshotResponse;
@@ -92,8 +93,14 @@ where C: RaftTypeConfig
         upto: LogIdOf<C>,
     },
 
-    /// Replicate log entries or snapshot to a target.
+    /// Replicate log entries to a target.
     Replicate { target: C::NodeId, req: Replicate<C> },
+
+    /// Replicate snapshot to a target.
+    ReplicateSnapshot {
+        target: C::NodeId,
+        replication_id: ReplicationId,
+    },
 
     /// Broadcast transfer Leader message to all other nodes.
     BroadcastTransferLeader { req: TransferLeaderRequest<C> },
@@ -160,6 +167,13 @@ where C: RaftTypeConfig
             } => write!(f, "SaveCommittedAndApply: ({}, {}]", already_committed.display(), upto),
             Command::Replicate { target, req } => {
                 write!(f, "Replicate: target={}, req: {}", target, req)
+            }
+            Command::ReplicateSnapshot { target, replication_id } => {
+                write!(
+                    f,
+                    "ReplicateSnapshot: target={}, replication_id: {}",
+                    target, replication_id
+                )
             }
             Command::BroadcastTransferLeader { req } => write!(f, "TransferLeader: {}", req),
             Command::RebuildReplicationStreams { targets } => {
@@ -233,6 +247,7 @@ where C: RaftTypeConfig
             Command::ReplicateCommitted { .. }        => CommandKind::Network,
             Command::BroadcastHeartbeat { .. }        => CommandKind::Network,
             Command::Replicate { .. }                 => CommandKind::Network,
+            Command::ReplicateSnapshot { .. }         => CommandKind::Network,
             Command::BroadcastTransferLeader { .. }   => CommandKind::Network,
             Command::SendVote { .. }                  => CommandKind::Network,
 
@@ -258,6 +273,7 @@ where C: RaftTypeConfig
             Command::ReplicateCommitted { .. }        => None,
             Command::BroadcastHeartbeat { .. }        => None,
             Command::Replicate { .. }                 => None,
+            Command::ReplicateSnapshot { .. }         => None,
             Command::BroadcastTransferLeader { .. }   => None,
             Command::SendVote { .. }                  => None,
 

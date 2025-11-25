@@ -9,6 +9,7 @@ use std::fmt::Formatter;
 use validit::Validate;
 
 use crate::LogIdOptionExt;
+use crate::RaftState;
 use crate::RaftTypeConfig;
 use crate::display_ext::DisplayOptionExt;
 use crate::engine::EngineConfig;
@@ -96,7 +97,7 @@ where C: RaftTypeConfig
                 let lid = Some(upto);
                 lid > log_id_range.prev.as_ref()
             }
-            Inflight::Snapshot => false,
+            Inflight::Snapshot { replication_id: _ } => false,
         }
     }
 
@@ -110,7 +111,7 @@ where C: RaftTypeConfig
     /// [algo]: crate::docs::protocol::replication::log_replication#algorithm-to-find-the-last-matching-log-id-on-a-follower
     pub(crate) fn next_send(
         &mut self,
-        log_state: &impl LogStateReader<C>,
+        log_state: &mut RaftState<C>,
         max_entries: u64,
     ) -> Result<&Inflight<C>, &Inflight<C>> {
         if !self.inflight.is_none() {
@@ -135,7 +136,8 @@ where C: RaftTypeConfig
         // The log the follower needs is purged.
         // Replicate by snapshot.
         if self.searching_end < purge_upto_next {
-            self.inflight = Inflight::snapshot();
+            let replication_id = log_state.new_replication_id();
+            self.inflight = Inflight::snapshot(replication_id);
             return Ok(&self.inflight);
         }
 
@@ -156,7 +158,8 @@ where C: RaftTypeConfig
         let prev = log_state.prev_log_id(start);
         let last = log_state.prev_log_id(end);
 
-        self.inflight = Inflight::logs(prev, last);
+        let replication_id = log_state.new_replication_id();
+        self.inflight = Inflight::logs(prev, last, replication_id);
 
         Ok(&self.inflight)
     }
@@ -216,7 +219,7 @@ where C: RaftTypeConfig
                 validit::less_equal!(self.matching(), log_id_range.prev.as_ref());
                 validit::less_equal!(log_id_range.prev.next_index(), self.searching_end);
             }
-            Inflight::Snapshot => {}
+            Inflight::Snapshot { replication_id: _ } => {}
         }
         Ok(())
     }

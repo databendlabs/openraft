@@ -19,6 +19,7 @@ use crate::entry::RaftEntry;
 use crate::log_id_range::LogIdRange;
 use crate::progress::Inflight;
 use crate::progress::entry::ProgressEntry;
+use crate::progress::replication_id::ReplicationId;
 use crate::raft_state::IOId;
 use crate::replication::request::Replicate;
 use crate::type_config::TypeConfigExt;
@@ -88,7 +89,10 @@ fn test_startup_as_leader_without_logs() -> anyhow::Result<()> {
             },
             Command::Replicate {
                 target: 3,
-                req: Replicate::logs(LogIdRange::new(None, Some(log_id(2, 2, 4))))
+                req: Replicate::logs(
+                    LogIdRange::new(None, Some(log_id(2, 2, 4))),
+                    Some(ReplicationId::new(1))
+                ),
             }
         ],
         eng.output.take_commands()
@@ -136,7 +140,10 @@ fn test_startup_as_leader_with_proposed_logs() -> anyhow::Result<()> {
             },
             Command::Replicate {
                 target: 3,
-                req: Replicate::logs(LogIdRange::new(None, Some(log_id(1, 2, 6))))
+                req: Replicate::logs(
+                    LogIdRange::new(None, Some(log_id(1, 2, 6))),
+                    Some(ReplicationId::new(1))
+                )
             }
         ],
         eng.output.take_commands()

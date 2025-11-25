@@ -216,6 +216,7 @@ where
             snapshot_meta,
 
             // -- volatile fields: they are not persisted.
+            last_replication_id: 0,
             server_state: Default::default(),
             io_state: Valid::new(io_state),
             purge_upto: last_purged_log_id,
