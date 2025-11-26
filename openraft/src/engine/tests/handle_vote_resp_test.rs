@@ -219,7 +219,7 @@ fn test_handle_vote_resp_equal_vote() -> anyhow::Result<()> {
                 },
                 Command::Replicate {
                     target: 2,
-                    req: Replicate::logs(LogIdRange::new(None, Some(log_id(2, 1, 1))), Some(InflightId::new(1)))
+                    req: Replicate::logs(LogIdRange::new(None, Some(log_id(2, 1, 1))), InflightId::new(1))
                 },
             ],
             eng.output.take_commands()
