@@ -318,15 +318,10 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         drop(value_from_rx);
         drop(value_from_tx);
 
-        // macro `pin!` creates a temporary mutable reference to `rx`, move them
-        // into a block so that they can be dropped before invoking `.borrow_watched()`,
-        // which needs an immutable reference to `rx`.
         {
-            let changed_fut = rx.changed();
-            let mut pinned_changed_fut = pin!(changed_fut);
-            assert!(matches!(poll_in_place(pinned_changed_fut.as_mut()), Poll::Pending));
+            assert!(is_pending(rx.changed()));
             tx.send(overwrite).unwrap();
-            assert!(matches!(poll_in_place(pinned_changed_fut), Poll::Ready(_)));
+            assert!(is_ready(rx.changed()));
         }
 
         let value_from_rx = rx.borrow_watched();
@@ -472,7 +467,7 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
 
         // First changed() should return immediately (value not yet seen)
         // and mark the value as seen
-        rx.changed().await.unwrap();
+        assert!(is_ready(rx.changed()));
 
         // Verify we can see the new value
         {
@@ -516,24 +511,13 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
     /// marked seen when this method is called, the method marks that value seen and
     /// returns immediately."
     pub async fn test_watch_changed_returns_immediately_when_unseen() {
-        let dur_10ms = std::time::Duration::from_millis(10);
-
         let (tx, mut rx) = Rt::Watch::channel(0i32);
 
         // Send a new value without reading the initial value
         tx.send(1).unwrap();
 
         // changed() should return immediately since the new value hasn't been seen
-        let start = std::time::Instant::now();
-        rx.changed().await.unwrap();
-        let elapsed = start.elapsed();
-
-        // Should return very quickly (< 10ms)
-        assert!(
-            elapsed < dur_10ms,
-            "changed() took too long ({:?}), should return immediately for unseen value",
-            elapsed
-        );
+        assert!(is_ready(rx.changed()));
 
         // Verify the value
         {
@@ -561,8 +545,8 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         // Send new value
         tx.send(1).unwrap();
 
-        // changed() should still work correctly
-        rx.changed().await.unwrap();
+        // changed() should return immediately since value hasn't been marked as seen
+        assert!(is_ready(rx.changed()));
 
         {
             let val = rx.borrow_watched();
@@ -581,6 +565,11 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         let elapsed = start.elapsed();
 
         assert!(elapsed >= dur_40ms, "changed() returned too quickly ({:?})", elapsed);
+
+        {
+            let val = rx.borrow_watched();
+            assert_eq!(*val, 2);
+        }
 
         drop(tx);
     }
@@ -706,9 +695,21 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
     }
 }
 
-/// Polls the future, and returns its current state.
+/// Polls the future and returns its current state.
 fn poll_in_place<F: Future>(fut: Pin<&mut F>) -> Poll<F::Output> {
     let waker = futures::task::noop_waker();
     let mut cx = futures::task::Context::from_waker(&waker);
     fut.poll(&mut cx)
+}
+
+/// Returns `true` if the future is ready when polled.
+fn is_ready<F: Future>(fut: F) -> bool {
+    let fut = fut;
+    let pinned = pin!(fut);
+    matches!(poll_in_place(pinned), Poll::Ready(_))
+}
+
+/// Returns `true` if the future is pending when polled.
+fn is_pending<F: Future>(fut: F) -> bool {
+    !is_ready(fut)
 }
