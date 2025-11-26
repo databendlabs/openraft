@@ -36,7 +36,7 @@ where C: RaftTypeConfig
     /// To allow follower log reversion, enable [`Config::allow_log_reversion`].
     ///
     /// [`Config::allow_log_reversion`]: `crate::config::Config::allow_log_reversion`
-    pub(crate) fn update_conflicting(&mut self, conflict: u64, has_payload: bool, inflight_id: Option<InflightId>) {
+    pub(crate) fn update_conflicting(&mut self, conflict: u64, inflight_id: Option<InflightId>) {
         tracing::debug!(
             "update_conflict: current progress_entry: {}; conflict: {}",
             self.entry,
@@ -44,7 +44,7 @@ where C: RaftTypeConfig
         );
 
         // The inflight may be None if the conflict is caused by a heartbeat response.
-        if has_payload {
+        if let Some(inflight_id) = inflight_id {
             self.entry.inflight.conflict(conflict, inflight_id);
         }
 
@@ -98,7 +98,9 @@ where C: RaftTypeConfig
             matching.display()
         );
 
-        self.entry.inflight.ack(matching.clone(), inflight_id);
+        if let Some(inflight_id) = inflight_id {
+            self.entry.inflight.ack(matching.clone(), inflight_id);
+        }
 
         debug_assert!(matching.as_ref() >= self.entry.matching());
         self.entry.matching = matching;

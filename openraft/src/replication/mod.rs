@@ -195,27 +195,30 @@ where
             // If an RPC response is expected by RaftCore
             let need_notify = d.has_payload();
 
-            let res = match d {
+            let log_id_range = match d {
                 Data::Committed => {
                     let m = &self.replication_sate.remote.last;
                     let d = LogIdRange::new(m.clone(), m.clone());
-
-                    self.send_log_entries(d, false).await
+                    self.inflight_id = None;
+                    d
                 }
-                Data::Logs(log) => self.send_log_entries(log, true).await,
+                Data::Logs {
+                    inflight_id,
+                    log_id_range,
+                } => {
+                    self.inflight_id = Some(inflight_id);
+                    log_id_range
+                }
             };
+
+            let res = self.send_log_entries(log_id_range).await;
 
             tracing::debug!(res = debug(&res), "replication action done");
 
             match res {
-                Ok(next) => {
+                Ok(_) => {
                     // reset backoff at once if replication succeeds
                     self.backoff = None;
-
-                    // If the RPC was successful but not finished, continue.
-                    if let Some(next) = next {
-                        self.next_action = Some(next);
-                    }
                 }
                 Err(err) => {
                     tracing::warn!(error=%err, "error replication to target={}", self.task_state.target);
@@ -245,8 +248,8 @@ where
                         ReplicationError::RPCError(err) => {
                             tracing::error!(err = display(&err), "RPCError");
 
-                            let retry = match &err {
-                                RPCError::Timeout(_) => false,
+                            match &err {
+                                RPCError::Timeout(_) => {}
                                 RPCError::Unreachable(_unreachable) => {
                                     // If there is an [`Unreachable`] error, we will backoff for a
                                     // period of time. Backoff will be reset if there is a
@@ -254,22 +257,17 @@ where
                                     if self.backoff.is_none() {
                                         self.backoff = Some(self.network.backoff());
                                     }
-                                    false
                                 }
-                                RPCError::Network(_) => false,
-                                RPCError::RemoteError(_) => false,
+                                RPCError::Network(_) => {}
+                                RPCError::RemoteError(_) => {}
                             };
 
-                            if retry {
-                                debug_assert!(self.next_action.is_some(), "next_action must be Some");
+                            // If there is no id, it is a heartbeat and do not need to notify RaftCore
+                            if need_notify {
+                                self.send_progress_error(err).await;
                             } else {
-                                // If there is no id, it is a heartbeat and do not need to notify RaftCore
-                                if need_notify {
-                                    self.send_progress_error(err).await;
-                                } else {
-                                    tracing::warn!("heartbeat RPC failed, do not send any response to RaftCore");
-                                };
-                            }
+                                tracing::warn!("heartbeat RPC failed, do not send any response to RaftCore");
+                            };
                         }
                     };
                 }
@@ -303,11 +301,7 @@ where
     /// `has_payload` indicates if there are any data(AppendEntries) to send, or it is a heartbeat.
     /// `has_payload` decides if it needs to send back notifications to RaftCore.
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn send_log_entries(
-        &mut self,
-        log_ids: LogIdRange<C>,
-        has_payload: bool,
-    ) -> Result<Option<Data<C>>, ReplicationError<C>> {
+    async fn send_log_entries(&mut self, log_ids: LogIdRange<C>) -> Result<(), ReplicationError<C>> {
         tracing::debug!(log_id_range = display(&log_ids), "send_log_entries",);
 
         // Series of logs to send, and the last log id to send
@@ -395,24 +389,25 @@ where
                 self.notify_heartbeat_progress(leader_time).await;
 
                 let matching = &sending_range.last;
-                if has_payload {
-                    self.notify_progress(ReplicationResult(Ok(matching.clone())), has_payload).await;
-                    Ok(self.next_action_to_send(matching.clone(), log_ids))
-                } else {
-                    Ok(None)
+
+                // If there is no data sent, no need to respond OK notification.
+                if self.inflight_id.is_some() {
+                    self.notify_progress(ReplicationResult(Ok(matching.clone()))).await;
+                    self.update_next_action_to_send(matching.clone(), log_ids);
                 }
+                Ok(())
             }
             AppendEntriesResponse::PartialSuccess(matching) => {
                 Self::debug_assert_partial_success(&sending_range, &matching);
 
                 self.notify_heartbeat_progress(leader_time).await;
 
-                if has_payload {
-                    self.notify_progress(ReplicationResult(Ok(matching.clone())), has_payload).await;
-                    Ok(self.next_action_to_send(matching.clone(), log_ids))
-                } else {
-                    Ok(None)
+                // If there is no data sent, no need to respond OK notification.
+                if self.inflight_id.is_some() {
+                    self.notify_progress(ReplicationResult(Ok(matching.clone()))).await;
+                    self.update_next_action_to_send(matching.clone(), log_ids);
                 }
+                Ok(())
             }
             AppendEntriesResponse::HigherVote(vote) => {
                 debug_assert!(
@@ -439,9 +434,9 @@ where
 
                 // Conflict should always be sent to RaftCore, ignoring `has_payload`
                 // because a heartbeat could also cause a conflict if the follower's state reverts.
-                self.notify_progress(ReplicationResult(Err(conflict)), has_payload).await;
+                self.notify_progress(ReplicationResult(Err(conflict))).await;
 
-                Ok(None)
+                Ok(())
             }
         }
     }
@@ -452,8 +447,6 @@ where
         self.task_state
             .tx_notify
             .send(Notification::ReplicationProgress {
-                // If `result` is Err, `has_payload` is not used.
-                has_payload: true,
                 progress: Progress {
                     target: self.task_state.target.clone(),
                     result: Err(err.to_string()),
@@ -485,7 +478,7 @@ where
     }
 
     /// Notify RaftCore with the success replication result (log matching or conflict).
-    async fn notify_progress(&mut self, replication_result: ReplicationResult<C>, has_payload: bool) {
+    async fn notify_progress(&mut self, replication_result: ReplicationResult<C>) {
         tracing::debug!(
             target = display(self.task_state.target.clone()),
             curr_matching = display(self.replication_sate.remote.last.display()),
@@ -507,12 +500,12 @@ where
             .tx_notify
             .send({
                 Notification::ReplicationProgress {
-                    has_payload,
                     progress: Progress {
                         session_id: self.task_state.session_id.clone(),
                         target: self.task_state.target.clone(),
                         result: Ok(replication_result.clone()),
                     },
+                    // If it is None, meaning it is not a response to a request with payload.
                     inflight_id: self.inflight_id,
                 }
             })
@@ -619,7 +612,7 @@ where
                     self.next_action = Some(Data::new_committed());
                 }
             }
-            Replicate::Data { data: d, inflight_id } => {
+            Replicate::Data { data: d } => {
                 // TODO: Currently there is at most 1 in flight data. But in future RaftCore may send next data
                 //       actions without waiting for the previous to finish.
                 debug_assert!(
@@ -629,18 +622,22 @@ where
                 );
 
                 self.next_action = Some(d);
-                self.inflight_id = inflight_id
             }
         }
     }
 
     /// If there are more logs to send, it returns a new `Some(Data::Logs)` to send.
-    fn next_action_to_send(&mut self, matching: Option<LogIdOf<C>>, log_ids: LogIdRange<C>) -> Option<Data<C>> {
-        if matching < log_ids.last {
-            Some(Data::new_logs(LogIdRange::new(matching, log_ids.last)))
+    fn update_next_action_to_send(&mut self, matching: Option<LogIdOf<C>>, log_ids: LogIdRange<C>) {
+        let next = if matching < log_ids.last {
+            Some(Data::new_logs(
+                LogIdRange::new(matching, log_ids.last),
+                // Safe unwrap: this function is called only when self.inflight_id is Some.
+                self.inflight_id.unwrap(),
+            ))
         } else {
             None
-        }
+        };
+        self.next_action = next;
     }
 
     /// Check if partial success result(`matching`) is valid for a given log range to send.

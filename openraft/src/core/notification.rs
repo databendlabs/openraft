@@ -53,11 +53,12 @@ where C: RaftTypeConfig
 
     /// Result of executing a command sent from network worker.
     ReplicationProgress {
+        progress: replication::Progress<C>,
         /// If this progress from RPC with payload.
         ///
-        /// `has_payload`: contain payload and should reset `inflight` state if conflict.
-        has_payload: bool,
-        progress: replication::Progress<C>,
+        /// non-None inflight id should reset `inflight` state if conflict.
+        /// Both None and Some inflight id will change the searching_end cursor.
+        /// If it is None, meaning it is not a response to a request with payload.
         inflight_id: Option<InflightId>,
     },
 
@@ -114,13 +115,8 @@ where C: RaftTypeConfig
             }
             Self::StorageError { error } => write!(f, "StorageError: {}", error),
             Self::LocalIO { io_id } => write!(f, "IOFlushed: {}", io_id),
-            Self::ReplicationProgress {
-                has_payload,
-                progress,
-                inflight_id,
-            } => {
-                let payload = if *has_payload { "no-payload" } else { "has-payload" };
-                write!(f, "{payload}: {}, inflight_id: {}", progress, inflight_id.display())
+            Self::ReplicationProgress { progress, inflight_id } => {
+                write!(f, "{}, inflight_id: {}", progress, inflight_id.display())
             }
             Self::HeartbeatProgress {
                 session_id: leader_vote,
