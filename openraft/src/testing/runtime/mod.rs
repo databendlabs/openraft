@@ -60,12 +60,15 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         Self::test_mpsc_weak_sender_wont_prevent_channel_close().await;
         Self::test_mpsc_weak_sender_upgrade().await;
         Self::test_mpsc_send().await;
+        Self::test_mpsc_send_to_closed_channel().await;
+        Self::test_mpsc_backpressure().await;
 
         Self::test_unbounded_mpsc_recv_empty().await;
         Self::test_unbounded_mpsc_recv_channel_closed().await;
         Self::test_unbounded_mpsc_weak_sender_wont_prevent_channel_close().await;
         Self::test_unbounded_mpsc_weak_sender_upgrade().await;
         Self::test_unbounded_mpsc_send().await;
+        Self::test_unbounded_mpsc_send_to_closed_channel().await;
 
         Self::test_watch_init_value().await;
         Self::test_watch_overwrite_init_value().await;
@@ -77,8 +80,11 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         Self::test_watch_changed_returns_immediately_when_unseen().await;
         Self::test_watch_multiple_borrow_then_changed().await;
         Self::test_watch_wait_loop_pattern().await;
+        Self::test_watch_multiple_receivers().await;
         Self::test_oneshot_drop_tx().await;
         Self::test_oneshot().await;
+        Self::test_oneshot_send_from_another_task().await;
+        Self::test_oneshot_send_to_dropped_rx().await;
         Self::test_mutex().await;
         Self::test_mutex_contention().await;
     }
@@ -313,6 +319,53 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         assert_eq!(recv_expected, recv);
     }
 
+    /// Test that `send()` returns `SendError` when receiver is dropped.
+    pub async fn test_mpsc_send_to_closed_channel() {
+        let (tx, rx) = Rt::Mpsc::channel::<i32>(5);
+        drop(rx);
+
+        let result = tx.send(42).await;
+        assert!(result.is_err());
+
+        // Verify the value is returned in the error
+        let err = result.unwrap_err();
+        assert_eq!(err.0, 42);
+    }
+
+    /// Test bounded channel backpressure: `send()` blocks when buffer is full.
+    pub async fn test_mpsc_backpressure() {
+        let buffer_size = 2;
+        let (tx, mut rx) = Rt::Mpsc::channel::<i32>(buffer_size);
+
+        // Fill the buffer
+        tx.send(1).await.unwrap();
+        tx.send(2).await.unwrap();
+
+        // Next send should be pending (buffer is full)
+        let send_fut = tx.send(3);
+        let mut pinned_send_fut = pin!(send_fut);
+
+        // Verify send is blocked
+        assert!(
+            matches!(poll_in_place(pinned_send_fut.as_mut()), Poll::Pending),
+            "send() should be Pending when buffer is full"
+        );
+
+        // Receive one item to make room
+        let received = rx.recv().await.unwrap();
+        assert_eq!(received, 1);
+
+        // Now the send should complete
+        assert!(
+            matches!(poll_in_place(pinned_send_fut.as_mut()), Poll::Ready(_)),
+            "send() should be Ready after space is available"
+        );
+
+        // Verify remaining items
+        assert_eq!(rx.recv().await.unwrap(), 2);
+        assert_eq!(rx.recv().await.unwrap(), 3);
+    }
+
     pub async fn test_unbounded_mpsc_recv_empty() {
         let (_tx, mut rx) = Rt::MpscUnbounded::channel::<()>();
         let recv_err = rx.try_recv().unwrap_err();
@@ -382,6 +435,19 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         recv.sort();
 
         assert_eq!(recv_expected, recv);
+    }
+
+    /// Test that unbounded `send()` returns `SendError` when receiver is dropped.
+    pub async fn test_unbounded_mpsc_send_to_closed_channel() {
+        let (tx, rx) = Rt::MpscUnbounded::channel::<i32>();
+        drop(rx);
+
+        let result = tx.send(42);
+        assert!(result.is_err());
+
+        // Verify the value is returned in the error
+        let err = result.unwrap_err();
+        assert_eq!(err.0, 42);
     }
 
     pub async fn test_watch_init_value() {
@@ -713,6 +779,52 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         drop(tx);
     }
 
+    /// Test `WatchReceiver::Clone` - multiple receivers can watch the same sender.
+    pub async fn test_watch_multiple_receivers() {
+        let (tx, rx1) = Rt::Watch::channel(0i32);
+        let rx2 = rx1.clone();
+        let rx3 = rx1.clone();
+
+        // All receivers should see the initial value
+        assert_eq!(*rx1.borrow_watched(), 0);
+        assert_eq!(*rx2.borrow_watched(), 0);
+        assert_eq!(*rx3.borrow_watched(), 0);
+
+        // Send a new value
+        tx.send(42).unwrap();
+
+        // All receivers should see the new value
+        assert_eq!(*rx1.borrow_watched(), 42);
+        assert_eq!(*rx2.borrow_watched(), 42);
+        assert_eq!(*rx3.borrow_watched(), 42);
+
+        // Test that each receiver can independently wait for changes
+        let (tx2, mut rx2_1) = Rt::Watch::channel(0i32);
+        let mut rx2_2 = rx2_1.clone();
+
+        // Spawn tasks that wait for changes on each receiver
+        let handle1 = Rt::spawn(async move {
+            rx2_1.changed().await.unwrap();
+            *rx2_1.borrow_watched()
+        });
+        let handle2 = Rt::spawn(async move {
+            rx2_2.changed().await.unwrap();
+            *rx2_2.borrow_watched()
+        });
+
+        // Give spawned tasks time to start waiting
+        Rt::sleep(Duration::from_millis(10)).await;
+
+        // Send a value - both receivers should wake up
+        tx2.send(100).unwrap();
+
+        let val1 = handle1.await.unwrap();
+        let val2 = handle2.await.unwrap();
+
+        assert_eq!(val1, 100);
+        assert_eq!(val2, 100);
+    }
+
     pub async fn test_oneshot_drop_tx() {
         let (tx, rx) = Rt::Oneshot::channel::<()>();
         drop(tx);
@@ -738,6 +850,19 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         let number_received = rx.await.unwrap();
 
         assert_eq!(number_to_send, number_received);
+    }
+
+    /// Test that oneshot `send()` returns `Err(T)` when receiver is dropped.
+    pub async fn test_oneshot_send_to_dropped_rx() {
+        let (tx, rx) = Rt::Oneshot::channel::<i32>();
+        drop(rx);
+
+        let result = tx.send(42);
+        assert!(result.is_err());
+
+        // Verify the value is returned in the error
+        let returned_value = result.unwrap_err();
+        assert_eq!(returned_value, 42);
     }
 
     pub async fn test_mutex_contention() {
@@ -795,12 +920,12 @@ fn poll_in_place<F: Future>(fut: Pin<&mut F>) -> Poll<F::Output> {
 
 /// Returns `true` if the future is ready when polled.
 fn is_ready<F: Future>(fut: F) -> bool {
-    let fut = fut;
     let pinned = pin!(fut);
     matches!(poll_in_place(pinned), Poll::Ready(_))
 }
 
 /// Returns `true` if the future is pending when polled.
 fn is_pending<F: Future>(fut: F) -> bool {
-    !is_ready(fut)
+    let pinned = pin!(fut);
+    matches!(poll_in_place(pinned), Poll::Pending)
 }
