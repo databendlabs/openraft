@@ -6,6 +6,7 @@ use std::pin::Pin;
 use std::pin::pin;
 use std::sync::Arc;
 use std::task::Poll;
+use std::time::Duration;
 
 use crate::async_runtime::Mpsc;
 use crate::async_runtime::MpscReceiver;
@@ -46,6 +47,10 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         Self::test_spawn_join_handle().await;
         Self::test_sleep().await;
         Self::test_instant().await;
+        Self::test_instant_arithmetic().await;
+        Self::test_instant_sub_instant().await;
+        Self::test_instant_saturating_duration_since().await;
+        Self::test_instant_ord().await;
         Self::test_sleep_until().await;
         Self::test_timeout().await;
         Self::test_timeout_at().await;
@@ -88,7 +93,7 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
 
     pub async fn test_sleep() {
         let start_time = std::time::Instant::now();
-        let dur_10ms = std::time::Duration::from_millis(10);
+        let dur_10ms = Duration::from_millis(10);
         Rt::sleep(dur_10ms).await;
         let elapsed = start_time.elapsed();
 
@@ -97,16 +102,102 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
 
     pub async fn test_instant() {
         let start_time = Rt::Instant::now();
-        let dur_10ms = std::time::Duration::from_millis(10);
+        let dur_10ms = Duration::from_millis(10);
         Rt::sleep(dur_10ms).await;
         let elapsed = start_time.elapsed();
 
         assert!(elapsed >= dur_10ms);
     }
 
+    /// Test `Instant + Duration` and `Instant - Duration` arithmetic.
+    pub async fn test_instant_arithmetic() {
+        let dur_100ms = Duration::from_millis(100);
+        let dur_50ms = Duration::from_millis(50);
+
+        let now = Rt::Instant::now();
+
+        // Test Add<Duration>
+        let later = now + dur_100ms;
+        assert!(later > now);
+
+        // Test Sub<Duration>
+        let earlier = later - dur_50ms;
+        assert!(earlier > now);
+        assert!(earlier < later);
+
+        // Test AddAssign<Duration>
+        let mut t = now;
+        t += dur_100ms;
+        assert_eq!(t, later);
+
+        // Test SubAssign<Duration>
+        let mut t2 = later;
+        t2 -= dur_50ms;
+        assert_eq!(t2, earlier);
+    }
+
+    /// Test `Instant - Instant` returns `Duration`.
+    pub async fn test_instant_sub_instant() {
+        let dur_50ms = Duration::from_millis(50);
+
+        let t1 = Rt::Instant::now();
+        Rt::sleep(dur_50ms).await;
+        let t2 = Rt::Instant::now();
+
+        // t2 - t1 should be approximately 50ms (at least 50ms)
+        let diff = t2 - t1;
+        assert!(diff >= dur_50ms);
+        // Should be less than 200ms (reasonable upper bound)
+        assert!(diff < Duration::from_millis(200));
+    }
+
+    /// Test `saturating_duration_since` returns zero when `self` is earlier.
+    pub async fn test_instant_saturating_duration_since() {
+        let dur_50ms = Duration::from_millis(50);
+
+        let t1 = Rt::Instant::now();
+        Rt::sleep(dur_50ms).await;
+        let t2 = Rt::Instant::now();
+
+        // t2.saturating_duration_since(t1) should be >= 50ms
+        let duration = t2.saturating_duration_since(t1);
+        assert!(duration >= dur_50ms);
+
+        // t1.saturating_duration_since(t2) should be zero (t1 is earlier)
+        let zero_duration = t1.saturating_duration_since(t2);
+        assert_eq!(zero_duration, Duration::from_secs(0));
+    }
+
+    /// Test `Instant` ordering: `Ord`, `PartialOrd`, `Eq`, `PartialEq`.
+    pub async fn test_instant_ord() {
+        let dur_10ms = Duration::from_millis(10);
+
+        let t1 = Rt::Instant::now();
+        Rt::sleep(dur_10ms).await;
+        let t2 = Rt::Instant::now();
+        let t1_copy = t1;
+
+        // PartialEq / Eq
+        assert_eq!(t1, t1_copy);
+        assert_ne!(t1, t2);
+
+        // PartialOrd
+        assert!(t1 < t2);
+        assert!(t2 > t1);
+        assert!(t1 <= t1_copy);
+        assert!(t1 >= t1_copy);
+        assert!(t1 <= t2);
+        assert!(t2 >= t1);
+
+        // Ord (via cmp)
+        assert_eq!(t1.cmp(&t1_copy), std::cmp::Ordering::Equal);
+        assert_eq!(t1.cmp(&t2), std::cmp::Ordering::Less);
+        assert_eq!(t2.cmp(&t1), std::cmp::Ordering::Greater);
+    }
+
     pub async fn test_sleep_until() {
         let start_time = Rt::Instant::now();
-        let dur_10ms = std::time::Duration::from_millis(10);
+        let dur_10ms = Duration::from_millis(10);
         let end_time = start_time + dur_10ms;
         Rt::sleep_until(end_time).await;
         let elapsed = start_time.elapsed();
@@ -117,12 +208,12 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         let ret_number = 1;
 
         // Won't time out
-        let dur_10ms = std::time::Duration::from_millis(10);
+        let dur_10ms = Duration::from_millis(10);
         let ret_value = Rt::timeout(dur_10ms, async move { ret_number }).await.unwrap();
         assert_eq!(ret_value, ret_number);
 
         // Will time out
-        let dur_1s = std::time::Duration::from_secs(1);
+        let dur_1s = Duration::from_secs(1);
         let timeout_result = Rt::timeout(dur_10ms, async {
             Rt::sleep(dur_1s).await;
             ret_number
@@ -135,13 +226,13 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         let ret_number = 1;
 
         // Won't time out
-        let dur_10ms = std::time::Duration::from_millis(10);
+        let dur_10ms = Duration::from_millis(10);
         let ddl = Rt::Instant::now() + dur_10ms;
         let ret_value = Rt::timeout_at(ddl, async move { ret_number }).await.unwrap();
         assert_eq!(ret_value, ret_number);
 
         // Will time out
-        let dur_1s = std::time::Duration::from_secs(1);
+        let dur_1s = Duration::from_secs(1);
         let ddl = Rt::Instant::now() + dur_10ms;
         let timeout_result = Rt::timeout_at(ddl, async {
             Rt::sleep(dur_1s).await;
@@ -451,8 +542,8 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
     /// a subsequent call to `changed()` will properly wait for a new value instead of
     /// returning immediately (which would cause a hot loop / 100% CPU usage).
     pub async fn test_watch_changed_marks_as_seen() {
-        let dur_50ms = std::time::Duration::from_millis(50);
-        let dur_40ms = std::time::Duration::from_millis(40);
+        let dur_50ms = Duration::from_millis(50);
+        let dur_40ms = Duration::from_millis(40);
 
         let (tx, mut rx) = Rt::Watch::channel(0i32);
 
@@ -531,8 +622,8 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
     /// Since borrow_watched() uses borrow() which doesn't mark as seen,
     /// multiple calls shouldn't cause changed() to misbehave.
     pub async fn test_watch_multiple_borrow_then_changed() {
-        let dur_50ms = std::time::Duration::from_millis(50);
-        let dur_40ms = std::time::Duration::from_millis(40);
+        let dur_50ms = Duration::from_millis(50);
+        let dur_40ms = Duration::from_millis(40);
 
         let (tx, mut rx) = Rt::Watch::channel(0i32);
 
@@ -579,7 +670,7 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
     /// This simulates the pattern used in openraft's Wait::metrics() method,
     /// ensuring changed() properly waits between iterations.
     pub async fn test_watch_wait_loop_pattern() {
-        let dur_20ms = std::time::Duration::from_millis(20);
+        let dur_20ms = Duration::from_millis(20);
 
         let (tx, mut rx) = Rt::Watch::channel(0i32);
 
