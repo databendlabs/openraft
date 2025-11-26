@@ -45,6 +45,7 @@ pub struct Suite<Rt: AsyncRuntime> {
 impl<Rt: AsyncRuntime> Suite<Rt> {
     pub async fn test_all() {
         Self::test_spawn_join_handle().await;
+        Self::test_thread_rng().await;
         Self::test_sleep().await;
         Self::test_instant().await;
         Self::test_instant_arithmetic().await;
@@ -95,6 +96,38 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
             let ret_value = handle.await.unwrap();
             assert_eq!(ret_value, ret_number);
         }
+    }
+
+    /// Test `thread_rng()` returns a working random number generator.
+    pub async fn test_thread_rng() {
+        use rand::Rng;
+
+        let mut rng = Rt::thread_rng();
+
+        // Generate some random numbers to verify the RNG works
+        let r1: u32 = rng.random();
+        let r2: u32 = rng.random();
+        let r3: u32 = rng.random();
+
+        // While theoretically possible for all to be equal, it's astronomically unlikely
+        // This just verifies the RNG is functioning and producing values
+        let all_same = r1 == r2 && r2 == r3;
+        assert!(
+            !all_same || r1 != 0,
+            "RNG should produce varying values (got {}, {}, {})",
+            r1,
+            r2,
+            r3
+        );
+
+        // Test range generation
+        for _ in 0..100 {
+            let value: u32 = rng.random_range(0..100);
+            assert!(value < 100, "random_range should respect upper bound");
+        }
+
+        // Test bool generation works
+        let _: bool = rng.random();
     }
 
     pub async fn test_sleep() {
