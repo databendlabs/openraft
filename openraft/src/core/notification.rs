@@ -53,11 +53,17 @@ where C: RaftTypeConfig
 
     /// Result of executing a command sent from network worker.
     ReplicationProgress {
-        /// If this progress from RPC with payload.
-        ///
-        /// `has_payload`: contain payload and should reset `inflight` state if conflict.
-        has_payload: bool,
         progress: replication::Progress<C>,
+
+        /// The `InflightId` of the replication request that produced this response.
+        ///
+        /// - `Some(id)`: This response corresponds to a replication request that carries log
+        ///   payload. The `id` is used to match the response to the correct inflight state,
+        ///   allowing the leader to update `matching` or handle conflicts properly.
+        ///
+        /// - `None`: This response is from an RPC without log payload (e.g., a heartbeat to
+        ///   synchronize commit index). Such RPCs don't have corresponding inflight records, so no
+        ///   inflight state update is needed.
         inflight_id: Option<InflightId>,
     },
 
@@ -114,13 +120,8 @@ where C: RaftTypeConfig
             }
             Self::StorageError { error } => write!(f, "StorageError: {}", error),
             Self::LocalIO { io_id } => write!(f, "IOFlushed: {}", io_id),
-            Self::ReplicationProgress {
-                has_payload,
-                progress,
-                inflight_id,
-            } => {
-                let payload = if *has_payload { "no-payload" } else { "has-payload" };
-                write!(f, "{payload}: {}, inflight_id: {}", progress, inflight_id.display())
+            Self::ReplicationProgress { progress, inflight_id } => {
+                write!(f, "{}, inflight_id: {}", progress, inflight_id.display())
             }
             Self::HeartbeatProgress {
                 session_id: leader_vote,

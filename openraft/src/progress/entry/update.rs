@@ -26,8 +26,9 @@ where C: RaftTypeConfig
     /// The conflicting log index is the last log index found on a follower that does not match
     /// the leader's log at that position.
     ///
-    /// If `has_payload` is true, the `inflight` state is reset because AppendEntries RPC
-    /// manages the inflight state.
+    /// If `inflight_id` is `Some`, the inflight state is reset because the response corresponds
+    /// to a replication request with log payload. If `None`, the response is from an RPC without
+    /// payload (e.g., heartbeat), and inflight state is not modified.
     ///
     /// Normally, the `conflict` index should be greater than or equal to the `matching` index
     /// when follower data is intact. However, for testing purposes, a follower may clean its
@@ -36,7 +37,7 @@ where C: RaftTypeConfig
     /// To allow follower log reversion, enable [`Config::allow_log_reversion`].
     ///
     /// [`Config::allow_log_reversion`]: `crate::config::Config::allow_log_reversion`
-    pub(crate) fn update_conflicting(&mut self, conflict: u64, has_payload: bool, inflight_id: Option<InflightId>) {
+    pub(crate) fn update_conflicting(&mut self, conflict: u64, inflight_id: Option<InflightId>) {
         tracing::debug!(
             "update_conflict: current progress_entry: {}; conflict: {}",
             self.entry,
@@ -44,7 +45,7 @@ where C: RaftTypeConfig
         );
 
         // The inflight may be None if the conflict is caused by a heartbeat response.
-        if has_payload {
+        if let Some(inflight_id) = inflight_id {
             self.entry.inflight.conflict(conflict, inflight_id);
         }
 
@@ -91,6 +92,11 @@ where C: RaftTypeConfig
         }
     }
 
+    /// Update the matching log id for this follower when replication succeeds.
+    ///
+    /// If `inflight_id` is `Some`, the inflight state is acknowledged because the response
+    /// corresponds to a replication request with log payload. If `None`, the response is from
+    /// an RPC without payload (e.g., heartbeat), and inflight state is not modified.
     pub(crate) fn update_matching(&mut self, matching: Option<LogIdOf<C>>, inflight_id: Option<InflightId>) {
         tracing::debug!(
             "update_matching: current progress_entry: {}; matching: {}",
@@ -98,7 +104,9 @@ where C: RaftTypeConfig
             matching.display()
         );
 
-        self.entry.inflight.ack(matching.clone(), inflight_id);
+        if let Some(inflight_id) = inflight_id {
+            self.entry.inflight.ack(matching.clone(), inflight_id);
+        }
 
         debug_assert!(matching.as_ref() >= self.entry.matching());
         self.entry.matching = matching;

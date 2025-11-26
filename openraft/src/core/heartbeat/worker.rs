@@ -135,7 +135,6 @@ where
                             let conflict_log_id = heartbeat.matching.clone().unwrap();
 
                             let noti = Notification::ReplicationProgress {
-                                has_payload: false,
                                 progress: Progress {
                                     session_id: heartbeat.session_id.clone(),
                                     target: self.target.clone(),

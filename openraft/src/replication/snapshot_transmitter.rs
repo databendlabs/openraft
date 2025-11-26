@@ -253,7 +253,6 @@ where
             .tx_notify
             .send({
                 Notification::ReplicationProgress {
-                    has_payload: true,
                     progress: Progress {
                         session_id: self.replication_context.session_id.clone(),
                         target: self.replication_context.target.clone(),

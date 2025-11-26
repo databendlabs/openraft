@@ -217,7 +217,6 @@ where C: RaftTypeConfig
         &mut self,
         target: C::NodeId,
         conflict: LogIdOf<C>,
-        has_payload: bool,
         inflight_id: Option<InflightId>,
     ) {
         // TODO(2): test it?
@@ -226,7 +225,7 @@ where C: RaftTypeConfig
 
         let mut updater = progress::entry::update::Updater::new(self.config, prog_entry);
 
-        updater.update_conflicting(conflict.index(), has_payload, inflight_id);
+        updater.update_conflicting(conflict.index(), inflight_id);
     }
 
     /// Enable one-time replication reset for a specific node upon log reversion detection.
@@ -263,13 +262,13 @@ where C: RaftTypeConfig
         &mut self,
         target: C::NodeId,
         repl_res: Result<ReplicationResult<C>, String>,
-        has_payload: bool,
         inflight_id: Option<InflightId>,
     ) {
         tracing::debug!(
-            "{}: target={target}, result={}, has_payload={has_payload}, current progresses={}",
+            "{}: target={target}, result={}, inflight_id={}, current progresses={}",
             func_name!(),
             repl_res.display(),
+            inflight_id.display(),
             self.leader.progress
         );
 
@@ -279,7 +278,7 @@ where C: RaftTypeConfig
                     self.update_matching(target, matching, inflight_id);
                 }
                 Err(conflict) => {
-                    self.update_conflicting(target, conflict, has_payload, inflight_id);
+                    self.update_conflicting(target, conflict, inflight_id);
                 }
             },
             Err(err_str) => {
@@ -349,7 +348,7 @@ where C: RaftTypeConfig
                 log_id_range,
                 inflight_id,
             } => {
-                let req = Replicate::logs(log_id_range.clone(), Some(*inflight_id));
+                let req = Replicate::logs(log_id_range.clone(), *inflight_id);
                 output.push_command(Command::Replicate {
                     target: target.clone(),
                     req,
@@ -433,7 +432,7 @@ where C: RaftTypeConfig
             // TODO: It should be self.state.last_log_id() but None is ok.
             prog_entry.inflight = Inflight::logs(None, upto.clone(), InflightId::new(0));
 
-            self.update_matching(id, upto, None);
+            self.update_matching(id, upto, Some(InflightId::new(0)));
         }
     }
 

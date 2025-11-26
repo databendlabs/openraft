@@ -89,7 +89,7 @@ fn test_startup_as_leader_without_logs() -> anyhow::Result<()> {
             },
             Command::Replicate {
                 target: 3,
-                req: Replicate::logs(LogIdRange::new(None, Some(log_id(2, 2, 4))), Some(InflightId::new(1))),
+                req: Replicate::logs(LogIdRange::new(None, Some(log_id(2, 2, 4))), InflightId::new(1)),
             }
         ],
         eng.output.take_commands()
@@ -137,7 +137,7 @@ fn test_startup_as_leader_with_proposed_logs() -> anyhow::Result<()> {
             },
             Command::Replicate {
                 target: 3,
-                req: Replicate::logs(LogIdRange::new(None, Some(log_id(1, 2, 6))), Some(InflightId::new(1)))
+                req: Replicate::logs(LogIdRange::new(None, Some(log_id(1, 2, 6))), InflightId::new(1))
             }
         ],
         eng.output.take_commands()

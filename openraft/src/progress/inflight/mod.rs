@@ -126,9 +126,9 @@ where C: RaftTypeConfig
 
     /// Update inflight state when log up to `upto` is acknowledged by a follower/learner.
     ///
-    /// If `from_inflight_id` is `Some` and doesn't match the current `InflightId`,
-    /// the ack is ignored (stale response). If `None`, the ack is always applied.
-    pub(crate) fn ack(&mut self, upto: Option<LogIdOf<C>>, from_inflight_id: Option<InflightId>) {
+    /// If `from_inflight_id` doesn't match the current `InflightId`,
+    /// the ack is ignored as a stale response.
+    pub(crate) fn ack(&mut self, upto: Option<LogIdOf<C>>, from_inflight_id: InflightId) {
         match self {
             Inflight::None => {
                 unreachable!("no inflight data")
@@ -137,7 +137,7 @@ where C: RaftTypeConfig
                 log_id_range,
                 inflight_id,
             } => {
-                if from_inflight_id.is_some_and(|from| *inflight_id != from) {
+                if *inflight_id != from_inflight_id {
                     return;
                 }
 
@@ -148,7 +148,7 @@ where C: RaftTypeConfig
                 }
             }
             Inflight::Snapshot { inflight_id } => {
-                if from_inflight_id.is_some_and(|from| *inflight_id != from) {
+                if *inflight_id != from_inflight_id {
                     return;
                 }
 
@@ -159,9 +159,9 @@ where C: RaftTypeConfig
 
     /// Update inflight state when a conflicting log id is responded by a follower/learner.
     ///
-    /// If `from_inflight_id` is `Some` and doesn't match the current `InflightId`,
-    /// the conflict is ignored (stale response). If `None`, the conflict is always applied.
-    pub(crate) fn conflict(&mut self, _conflict: u64, from_inflight_id: Option<InflightId>) {
+    /// If `from_inflight_id` doesn't match the current `InflightId`,
+    /// the conflict is ignored as a stale response.
+    pub(crate) fn conflict(&mut self, _conflict: u64, from_inflight_id: InflightId) {
         match self {
             Inflight::None => {
                 unreachable!("no inflight data")
@@ -170,14 +170,14 @@ where C: RaftTypeConfig
                 log_id_range: _,
                 inflight_id,
             } => {
-                if from_inflight_id.is_some_and(|from| *inflight_id != from) {
+                if *inflight_id != from_inflight_id {
                     return;
                 }
 
                 *self = Inflight::None
             }
             Inflight::Snapshot { inflight_id } => {
-                if from_inflight_id.is_some_and(|from| *inflight_id != from) {
+                if *inflight_id != from_inflight_id {
                     return;
                 }
 
