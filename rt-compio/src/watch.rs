@@ -69,7 +69,12 @@ where T: OptionalSend + OptionalSync
 {
     #[inline]
     async fn changed(&mut self) -> Result<(), RecvError> {
-        self.0.changed().await.map_err(|_| watch::RecvError(()))
+        // see's changed() returns immediately if version > seen_version.
+        // After it returns, we mark the value as seen to fulfill the trait contract:
+        // "marks that value seen and returns immediately" or "sleeps until a new message".
+        self.0.changed().await.map_err(|_| watch::RecvError(()))?;
+        self.0.mark_unchanged();
+        Ok(())
     }
 
     #[inline]

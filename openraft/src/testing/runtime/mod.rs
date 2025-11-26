@@ -68,6 +68,10 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         Self::test_watch_send_if_modified().await;
         Self::test_watch_wait_until_ge().await;
         Self::test_watch_wait_until().await;
+        Self::test_watch_changed_marks_as_seen().await;
+        Self::test_watch_changed_returns_immediately_when_unseen().await;
+        Self::test_watch_multiple_borrow_then_changed().await;
+        Self::test_watch_wait_loop_pattern().await;
         Self::test_oneshot_drop_tx().await;
         Self::test_oneshot().await;
         Self::test_mutex().await;
@@ -444,6 +448,189 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         drop(tx3);
         let result = handle3.await.unwrap();
         assert!(result.is_err());
+    }
+
+    /// Test that `changed()` marks the value as seen after returning.
+    ///
+    /// This test verifies that after calling `borrow_watched()` followed by `changed()`,
+    /// a subsequent call to `changed()` will properly wait for a new value instead of
+    /// returning immediately (which would cause a hot loop / 100% CPU usage).
+    pub async fn test_watch_changed_marks_as_seen() {
+        let dur_50ms = std::time::Duration::from_millis(50);
+        let dur_40ms = std::time::Duration::from_millis(40);
+
+        let (tx, mut rx) = Rt::Watch::channel(0i32);
+
+        // First, borrow the value (does not mark as seen)
+        {
+            let val = rx.borrow_watched();
+            assert_eq!(*val, 0);
+        }
+
+        // Send a new value
+        tx.send(1).unwrap();
+
+        // First changed() should return immediately (value not yet seen)
+        // and mark the value as seen
+        rx.changed().await.unwrap();
+
+        // Verify we can see the new value
+        {
+            let val = rx.borrow_watched();
+            assert_eq!(*val, 1);
+        }
+
+        // Clone tx for the spawned task
+        let tx_clone = tx.clone();
+        let _handle = Rt::spawn(async move {
+            Rt::sleep(dur_50ms).await;
+            tx_clone.send(2).unwrap();
+        });
+
+        // This changed() should wait for the new value (not return immediately)
+        // If changed() doesn't properly mark as seen, this would return immediately
+        // causing a hot loop
+        let start = std::time::Instant::now();
+        rx.changed().await.unwrap();
+        let elapsed = start.elapsed();
+
+        // Should have waited at least ~40ms for the new value
+        assert!(
+            elapsed >= dur_40ms,
+            "changed() returned too quickly ({:?}), indicating it didn't wait for new value",
+            elapsed
+        );
+
+        // Verify we got the new value
+        {
+            let val = rx.borrow_watched();
+            assert_eq!(*val, 2);
+        }
+
+        drop(tx);
+    }
+
+    /// Test that `changed()` returns immediately when value has not been seen.
+    ///
+    /// Per the trait contract: "If the newest value in the channel has not yet been
+    /// marked seen when this method is called, the method marks that value seen and
+    /// returns immediately."
+    pub async fn test_watch_changed_returns_immediately_when_unseen() {
+        let dur_10ms = std::time::Duration::from_millis(10);
+
+        let (tx, mut rx) = Rt::Watch::channel(0i32);
+
+        // Send a new value without reading the initial value
+        tx.send(1).unwrap();
+
+        // changed() should return immediately since the new value hasn't been seen
+        let start = std::time::Instant::now();
+        rx.changed().await.unwrap();
+        let elapsed = start.elapsed();
+
+        // Should return very quickly (< 10ms)
+        assert!(
+            elapsed < dur_10ms,
+            "changed() took too long ({:?}), should return immediately for unseen value",
+            elapsed
+        );
+
+        // Verify the value
+        {
+            let val = rx.borrow_watched();
+            assert_eq!(*val, 1);
+        }
+    }
+
+    /// Test that multiple borrow_watched() calls don't affect changed() behavior.
+    ///
+    /// Since borrow_watched() uses borrow() which doesn't mark as seen,
+    /// multiple calls shouldn't cause changed() to misbehave.
+    pub async fn test_watch_multiple_borrow_then_changed() {
+        let dur_50ms = std::time::Duration::from_millis(50);
+        let dur_40ms = std::time::Duration::from_millis(40);
+
+        let (tx, mut rx) = Rt::Watch::channel(0i32);
+
+        // Multiple borrow_watched calls
+        for _ in 0..5 {
+            let val = rx.borrow_watched();
+            assert_eq!(*val, 0);
+        }
+
+        // Send new value
+        tx.send(1).unwrap();
+
+        // changed() should still work correctly
+        rx.changed().await.unwrap();
+
+        {
+            let val = rx.borrow_watched();
+            assert_eq!(*val, 1);
+        }
+
+        // Now changed() should wait for the next value
+        let tx_clone = tx.clone();
+        let _handle = Rt::spawn(async move {
+            Rt::sleep(dur_50ms).await;
+            tx_clone.send(2).unwrap();
+        });
+
+        let start = std::time::Instant::now();
+        rx.changed().await.unwrap();
+        let elapsed = start.elapsed();
+
+        assert!(elapsed >= dur_40ms, "changed() returned too quickly ({:?})", elapsed);
+
+        drop(tx);
+    }
+
+    /// Test the wait loop pattern that openraft uses internally.
+    ///
+    /// This simulates the pattern used in openraft's Wait::metrics() method,
+    /// ensuring changed() properly waits between iterations.
+    pub async fn test_watch_wait_loop_pattern() {
+        let dur_20ms = std::time::Duration::from_millis(20);
+
+        let (tx, mut rx) = Rt::Watch::channel(0i32);
+
+        // Spawn a task that increments the value periodically
+        let tx_clone = tx.clone();
+        let _handle = Rt::spawn(async move {
+            for i in 1..=5 {
+                Rt::sleep(dur_20ms).await;
+                tx_clone.send(i).unwrap();
+            }
+        });
+
+        // Wait until value reaches 3
+        let target = 3;
+        let mut iterations = 0;
+        loop {
+            {
+                let current = rx.borrow_watched();
+                if *current >= target {
+                    assert_eq!(*current, 3);
+                    break;
+                }
+            }
+            rx.changed().await.unwrap();
+            iterations += 1;
+
+            // Safety check to prevent infinite loop in case of bug
+            if iterations > 100 {
+                panic!("Too many iterations, possible hot loop bug");
+            }
+        }
+
+        // Should have taken only a few iterations (not 100s which would indicate hot loop)
+        assert!(
+            iterations <= 10,
+            "Too many iterations ({}), possible hot loop",
+            iterations
+        );
+
+        drop(tx);
     }
 
     pub async fn test_oneshot_drop_tx() {
