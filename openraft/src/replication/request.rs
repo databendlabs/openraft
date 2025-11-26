@@ -12,19 +12,15 @@ where C: RaftTypeConfig
     Committed { committed: Option<LogIdOf<C>> },
 
     /// Send a chunk of data, e.g., logs or snapshot.
-    Data {
-        inflight_id: Option<InflightId>,
-        data: Data<C>,
-    },
+    Data { data: Data<C> },
 }
 
 impl<C> Replicate<C>
 where C: RaftTypeConfig
 {
-    pub(crate) fn logs(log_id_range: LogIdRange<C>, inflight_id: Option<InflightId>) -> Self {
+    pub(crate) fn logs(log_id_range: LogIdRange<C>, inflight_id: InflightId) -> Self {
         Self::Data {
-            inflight_id,
-            data: Data::new_logs(log_id_range),
+            data: Data::new_logs(log_id_range, inflight_id),
         }
     }
 }
@@ -33,8 +29,8 @@ impl<C: RaftTypeConfig> fmt::Display for Replicate<C> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Committed { committed } => write!(f, "Committed({})", committed.display(),),
-            Self::Data { inflight_id, data } => {
-                write!(f, "Data({}), inflight_id:{}", data, inflight_id.display())
+            Self::Data { data } => {
+                write!(f, "Data({})", data)
             }
         }
     }
@@ -47,15 +43,25 @@ use crate::progress::inflight_id::InflightId;
 
 /// Request to replicate a chunk of data, logs or snapshot.
 ///
-/// It defines what data to send to a follower/learner and an id to identify who is sending this
-/// data.
-/// The data is either a series of logs or a snapshot.
+/// The data is either a series of logs or a notification of the committed index.
+///
+/// - `Committed`: An RPC to synchronize the committed index without log payload. This type of
+///   request has no corresponding `Inflight` record on the leader because there's nothing to
+///   acknowledge.
+///
+/// - `Logs`: An RPC that carries actual log entries. Each such request has a corresponding
+///   `Inflight` record on the leader, identified by an `InflightId`. The follower's response
+///   carries the same `InflightId` so the leader can match the response to the correct inflight
+///   state.
 #[derive(PartialEq, Eq)]
 pub(crate) enum Data<C>
 where C: RaftTypeConfig
 {
     Committed,
-    Logs(LogIdRange<C>),
+    Logs {
+        inflight_id: InflightId,
+        log_id_range: LogIdRange<C>,
+    },
 }
 
 impl<C> fmt::Debug for Data<C>
@@ -66,7 +72,14 @@ where C: RaftTypeConfig
             Data::Committed => {
                 write!(f, "Data::Committed")
             }
-            Self::Logs(l) => f.debug_struct("Data::Logs").field("log_id_range", l).finish(),
+            Self::Logs {
+                inflight_id,
+                log_id_range,
+            } => f
+                .debug_struct("Data::Logs")
+                .field("log_id_range", log_id_range)
+                .field("inflight_id", inflight_id)
+                .finish(),
         }
     }
 }
@@ -77,8 +90,15 @@ impl<C: RaftTypeConfig> fmt::Display for Data<C> {
             Data::Committed => {
                 write!(f, "Committed")
             }
-            Self::Logs(l) => {
-                write!(f, "Logs{{log_id_range: {}}}", l)
+            Self::Logs {
+                inflight_id,
+                log_id_range,
+            } => {
+                write!(
+                    f,
+                    "Logs{{log_id_range: {}, inflight_id: {}}}",
+                    log_id_range, inflight_id
+                )
             }
         }
     }
@@ -91,15 +111,18 @@ where C: RaftTypeConfig
         Self::Committed
     }
 
-    pub(crate) fn new_logs(log_id_range: LogIdRange<C>) -> Self {
-        Self::Logs(log_id_range)
+    pub(crate) fn new_logs(log_id_range: LogIdRange<C>, inflight_id: InflightId) -> Self {
+        Self::Logs {
+            log_id_range,
+            inflight_id,
+        }
     }
 
     /// Return true if the data includes any payload, i.e., not a heartbeat.
     pub(crate) fn has_payload(&self) -> bool {
         match self {
             Self::Committed => false,
-            Self::Logs(_) => true,
+            Self::Logs { .. } => true,
         }
     }
 }
