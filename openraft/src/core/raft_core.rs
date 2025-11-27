@@ -1292,16 +1292,12 @@ where
 
     #[tracing::instrument(level = "debug", skip_all)]
     pub(super) fn handle_append_entries_request(&mut self, req: AppendEntriesRequest<C>, tx: AppendEntriesTx<C>) {
-        // TODO: test this function when `is_ok` is removed, it should be able to get the right conclusion
-        // it self.
         tracing::debug!(req = display(&req), func = func_name!());
 
-        let is_ok = self.engine.handle_append_entries(&req.vote, req.prev_log_id, req.entries, tx);
+        self.engine.handle_append_entries(&req.vote, req.prev_log_id, req.entries, tx);
 
-        if is_ok {
-            let committed = LogIOId::new(req.vote.to_committed(), req.leader_commit);
-            self.engine.state.update_committed(committed);
-        }
+        let committed = LogIOId::new(req.vote.to_committed(), req.leader_commit);
+        self.engine.state.update_committed(committed);
     }
 
     // TODO: Make this method non-async. It does not need to run any async command in it.
