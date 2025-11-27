@@ -35,6 +35,9 @@ struct Pending<C: RaftTypeConfig> {
 ///
 /// Spawns a background task that reads from input, sends to RaftCore,
 /// and forwards response receivers. The returned stream awaits responses in order.
+///
+/// On error (Conflict or HigherVote), the stream terminates immediately.
+/// The background task exits when it fails to send to the dropped channel.
 pub(crate) fn stream_append<C, S>(
     inner: Arc<RaftInner<C>>,
     input: S,
@@ -45,9 +48,9 @@ where
 {
     let (tx, rx) = C::mpsc::<Pending<C>>(PIPELINE_BUFFER_SIZE);
 
-    let inner2 = inner.clone();
-    let _handle = C::AsyncRuntime::spawn(async move {
-        let inner = inner2;
+    let inner_clone = inner.clone();
+
+    let _join_handle = C::AsyncRuntime::spawn(async move {
         futures::pin_mut!(input);
 
         while let Some(req) = input.next().await {
@@ -55,14 +58,16 @@ where
             let last = req.entries.last().map(|e| e.log_id()).or(prev.clone());
             let (resp_tx, resp_rx) = C::oneshot();
 
-            if inner.send_msg(RaftMsg::AppendEntries { rpc: req, tx: resp_tx }).await.is_err() {
+            if inner_clone.send_msg(RaftMsg::AppendEntries { rpc: req, tx: resp_tx }).await.is_err() {
                 break;
             }
+
             let pending = Pending {
                 response_rx: resp_rx,
                 prev_log_id: prev,
                 last_log_id: last,
             };
+
             if MpscSender::send(&tx, pending).await.is_err() {
                 break;
             }
@@ -74,10 +79,12 @@ where
         let p: Pending<C> = MpscReceiver::recv(&mut rx).await?;
 
         let resp = inner.recv_msg(p.response_rx).await.ok()?;
-
         let result = resp.into_stream_result(p.prev_log_id, p.last_log_id);
-        let cont = result.is_ok();
 
-        Some((result, if cont { Some((rx, inner)) } else { None }))
+        if result.is_err() {
+            return Some((result, None));
+        }
+
+        Some((result, Some((rx, inner))))
     })
 }
