@@ -9,6 +9,7 @@ mod fixtures;
 
 mod t10_conflict_with_empty_entries;
 mod t10_see_higher_vote;
+mod t10_stream_append;
 mod t11_append_conflicts;
 mod t11_append_entries_with_bigger_term;
 mod t11_append_inconsistent_log;

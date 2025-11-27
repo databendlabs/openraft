@@ -3,6 +3,8 @@ use std::fmt;
 use crate::RaftTypeConfig;
 use crate::display_ext::DisplayOptionExt;
 use crate::display_ext::DisplaySlice;
+use crate::raft::StreamAppendError;
+use crate::raft::stream_append::StreamAppendResult;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::VoteOf;
 
@@ -114,6 +116,24 @@ where C: RaftTypeConfig
     /// Returns true if the response indicates a log conflict.
     pub fn is_conflict(&self) -> bool {
         matches!(*self, AppendEntriesResponse::Conflict)
+    }
+
+    /// Convert this response to a stream append result.
+    ///
+    /// Arguments:
+    /// - `prev_log_id`: The prev_log_id from the request, used for Conflict errors.
+    /// - `last_log_id`: The last_log_id of the sent entries, used for Success.
+    pub fn into_stream_result(
+        self,
+        prev_log_id: Option<LogIdOf<C>>,
+        last_log_id: Option<LogIdOf<C>>,
+    ) -> StreamAppendResult<C> {
+        match self {
+            AppendEntriesResponse::Success => Ok(last_log_id),
+            AppendEntriesResponse::PartialSuccess(log_id) => Ok(log_id),
+            AppendEntriesResponse::Conflict => Err(StreamAppendError::Conflict(prev_log_id)),
+            AppendEntriesResponse::HigherVote(vote) => Err(StreamAppendError::HigherVote(vote)),
+        }
     }
 }
 
