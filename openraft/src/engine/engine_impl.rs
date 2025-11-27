@@ -405,7 +405,7 @@ where C: RaftTypeConfig
         prev_log_id: Option<LogIdOf<C>>,
         entries: Vec<C::Entry>,
         tx: AppendEntriesTx<C>,
-    ) -> bool {
+    ) {
         tracing::debug!(
             vote = display(vote),
             prev_log_id = display(prev_log_id.display()),
@@ -433,8 +433,6 @@ where C: RaftTypeConfig
             when: condition,
             resp: Respond::new(resp, tx),
         });
-
-        is_ok
     }
 
     pub(crate) fn append_entries(
