@@ -17,6 +17,7 @@ pub(crate) mod message;
 mod raft_inner;
 pub mod responder;
 mod runtime_config_handle;
+mod stream_append;
 pub mod trigger;
 
 use std::any::Any;
@@ -42,11 +43,13 @@ pub use message::ClientWriteResult;
 pub use message::InstallSnapshotRequest;
 pub use message::InstallSnapshotResponse;
 pub use message::SnapshotResponse;
+pub use message::StreamAppendError;
 pub use message::TransferLeaderRequest;
 pub use message::VoteRequest;
 pub use message::VoteResponse;
 pub use message::WriteRequest;
 use openraft_macros::since;
+pub use stream_append::StreamAppendResult;
 use tracing::Instrument;
 use tracing::Level;
 use tracing::trace_span;
@@ -655,8 +658,8 @@ where C: RaftTypeConfig
     /// - [`ProtocolApi::begin_receiving_snapshot`]
     /// - [`ProtocolApi::install_full_snapshot`]
     /// - [`ProtocolApi::handle_transfer_leader`]
-    pub(crate) fn protocol_api(&self) -> ProtocolApi<'_, C> {
-        ProtocolApi::new(self.inner.as_ref())
+    pub(crate) fn protocol_api(&self) -> ProtocolApi<C> {
+        ProtocolApi::new(self.inner.clone())
     }
 
     pub(crate) fn app_api(&self) -> AppApi<'_, C> {
@@ -686,6 +689,72 @@ where C: RaftTypeConfig
     #[tracing::instrument(level = "debug", skip_all)]
     pub async fn append_entries(&self, rpc: AppendEntriesRequest<C>) -> Result<AppendEntriesResponse<C>, RaftError<C>> {
         self.protocol_api().append_entries(rpc).await.into_raft_result()
+    }
+
+    /// Submit a stream of AppendEntries RPCs to this Raft node.
+    ///
+    /// This is a stream-oriented version of [`Self::append_entries`] with pipelining support.
+    /// It spawns a background task that reads from the input stream, sends requests to RaftCore,
+    /// and forwards response receivers to the output stream. Responses are yielded in order.
+    ///
+    /// ## Pipelining Behavior
+    ///
+    /// - A background task reads from the input stream and sends to RaftCore
+    /// - Uses a bounded channel (64 slots) for backpressure
+    /// - Responses are yielded in order (FIFO) as they complete
+    ///
+    /// ## Output
+    ///
+    /// The output stream emits:
+    /// - `Ok(log_id)` when logs are successfully flushed
+    /// - `Err(e)` when an error occurs, which terminates the stream
+    ///
+    /// ## Pinning
+    ///
+    /// The returned stream is `!Unpin` because it uses async closures internally.
+    /// You must pin the stream before calling `.next()`:
+    ///
+    /// ```ignore
+    /// use std::pin::pin;
+    ///
+    /// let mut output = pin!(raft.stream_append(input));
+    /// while let Some(result) = output.next().await { /* ... */ }
+    /// ```
+    ///
+    /// Alternatively, use `Box::pin` for heap pinning if the stream needs to be stored or returned:
+    ///
+    /// ```ignore
+    /// let mut output = Box::pin(raft.stream_append(input));
+    /// ```
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use std::pin::pin;
+    /// use futures::StreamExt;
+    ///
+    /// let input_stream = futures::stream::iter(vec![request1, request2, request3]);
+    /// let mut output_stream = pin!(raft.stream_append(input_stream));
+    ///
+    /// while let Some(result) = output_stream.next().await {
+    ///     match result {
+    ///         Ok(log_id) => println!("Flushed: {:?}", log_id),
+    ///         Err(err) => {
+    ///             println!("Error: {}", err);
+    ///             break;
+    ///         }
+    ///     }
+    /// }
+    /// ```
+    #[since(version = "0.10.0")]
+    pub fn stream_append<S>(
+        &self,
+        stream: S,
+    ) -> impl futures::Stream<Item = StreamAppendResult<C>> + OptionalSend + 'static
+    where
+        S: futures::Stream<Item = AppendEntriesRequest<C>> + OptionalSend + 'static,
+    {
+        self.protocol_api().stream_append(stream)
     }
 
     /// Submit a VoteRequest (RequestVote in the spec) RPC to this Raft node.

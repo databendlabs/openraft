@@ -1,9 +1,12 @@
+use std::sync::Arc;
 use std::time::Duration;
 
+use futures::Stream;
 use openraft_macros::since;
 
 use crate::LogIdOptionExt;
 use crate::LogIndexOptionExt;
+use crate::OptionalSend;
 use crate::RaftMetrics;
 use crate::RaftTypeConfig;
 use crate::Snapshot;
@@ -20,6 +23,8 @@ use crate::raft::TransferLeaderRequest;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::raft::raft_inner::RaftInner;
+use crate::raft::stream_append;
+use crate::raft::stream_append::StreamAppendResult;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::SnapshotDataOf;
 use crate::type_config::alias::VoteOf;
@@ -57,16 +62,16 @@ use crate::vote::raft_vote::RaftVoteExt;
 /// Remote Leader Node                                           Local Follower Node
 /// ```
 #[since(version = "0.10.0")]
-pub(crate) struct ProtocolApi<'a, C>
+pub(crate) struct ProtocolApi<C>
 where C: RaftTypeConfig
 {
-    inner: &'a RaftInner<C>,
+    inner: Arc<RaftInner<C>>,
 }
 
-impl<'a, C> ProtocolApi<'a, C>
+impl<C> ProtocolApi<C>
 where C: RaftTypeConfig
 {
-    pub(in crate::raft) fn new(inner: &'a RaftInner<C>) -> Self {
+    pub(in crate::raft) fn new(inner: Arc<RaftInner<C>>) -> Self {
         Self { inner }
     }
 
@@ -89,6 +94,17 @@ where C: RaftTypeConfig
 
         let (tx, rx) = C::oneshot();
         self.inner.call_core(RaftMsg::AppendEntries { rpc, tx }, rx).await
+    }
+
+    #[since(version = "0.10.0")]
+    pub(crate) fn stream_append<S>(
+        self,
+        stream: S,
+    ) -> impl Stream<Item = StreamAppendResult<C>> + OptionalSend + 'static
+    where
+        S: Stream<Item = AppendEntriesRequest<C>> + OptionalSend + 'static,
+    {
+        stream_append::stream_append(self.inner, stream)
     }
 
     #[since(version = "0.10.0")]
