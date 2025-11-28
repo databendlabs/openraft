@@ -10,7 +10,6 @@ use openraft_macros::since;
 use crate::OptionalSend;
 use crate::OptionalSync;
 use crate::RaftTypeConfig;
-use crate::entry::RaftEntry;
 use crate::error::RPCError;
 use crate::error::ReplicationClosed;
 use crate::error::StreamingError;
@@ -93,14 +92,13 @@ where C: RaftTypeConfig
                 let (network, mut input) = state?;
 
                 let req = input.next().await?;
-                let prev_log_id = req.prev_log_id.clone();
-                let last_log_id = req.entries.last().map(|e| e.log_id()).or(prev_log_id.clone());
+                let range = req.log_id_range();
 
                 let result = network.append_entries(req, option).await;
 
                 match result {
                     Ok(resp) => {
-                        let stream_result = resp.into_stream_result(prev_log_id, last_log_id);
+                        let stream_result = resp.into_stream_result(range.prev, range.last);
                         let is_err = stream_result.is_err();
                         let next_state = if is_err { None } else { Some((network, input)) };
                         Some((Ok(stream_result), next_state))
