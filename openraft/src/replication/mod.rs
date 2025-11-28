@@ -301,12 +301,12 @@ where
     /// `has_payload` indicates if there are any data(AppendEntries) to send, or it is a heartbeat.
     /// `has_payload` decides if it needs to send back notifications to RaftCore.
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn send_log_entries(&mut self, log_ids: LogIdRange<C>) -> Result<(), ReplicationError<C>> {
-        tracing::debug!(log_id_range = display(&log_ids), "send_log_entries",);
+    async fn send_log_entries(&mut self, log_id_range: LogIdRange<C>) -> Result<(), ReplicationError<C>> {
+        tracing::debug!("send_log_entries: log_id_range: {}", log_id_range);
 
         // Series of logs to send, and the last log id to send
         let (logs, sending_range) = {
-            let rng = &log_ids;
+            let rng = &log_id_range;
 
             // The log index start and end to send.
             let (start, end) = {
@@ -393,7 +393,7 @@ where
                 // If there is no data sent, no need to respond OK notification.
                 if self.inflight_id.is_some() {
                     self.notify_progress(ReplicationResult(Ok(matching.clone()))).await;
-                    self.update_next_action_to_send(matching.clone(), log_ids);
+                    self.update_next_action_to_send(matching.clone(), log_id_range);
                 }
                 Ok(())
             }
@@ -405,7 +405,7 @@ where
                 // If there is no data sent, no need to respond OK notification.
                 if self.inflight_id.is_some() {
                     self.notify_progress(ReplicationResult(Ok(matching.clone()))).await;
-                    self.update_next_action_to_send(matching.clone(), log_ids);
+                    self.update_next_action_to_send(matching.clone(), log_id_range);
                 }
                 Ok(())
             }
