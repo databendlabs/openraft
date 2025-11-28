@@ -2,12 +2,15 @@ use std::future::Future;
 use std::time::Duration;
 
 use anyerror::AnyError;
+use futures::Stream;
+use futures::StreamExt;
 use openraft_macros::add_async_trait;
 use openraft_macros::since;
 
 use crate::OptionalSend;
 use crate::OptionalSync;
 use crate::RaftTypeConfig;
+use crate::entry::RaftEntry;
 use crate::error::RPCError;
 use crate::error::ReplicationClosed;
 use crate::error::StreamingError;
@@ -17,6 +20,7 @@ use crate::network::RPCOption;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
 use crate::raft::SnapshotResponse;
+use crate::raft::StreamAppendResult;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::raft::message::TransferLeaderRequest;
@@ -55,6 +59,57 @@ where C: RaftTypeConfig
         rpc: AppendEntriesRequest<C>,
         option: RPCOption,
     ) -> Result<AppendEntriesResponse<C>, RPCError<C>>;
+
+    /// Send a stream of AppendEntries RPCs to the target and return a stream of responses.
+    ///
+    /// This method forwards a stream of AppendEntries requests to the remote follower.
+    /// The remote follower should call [`Raft::stream_append()`] to process the stream
+    /// and send back a stream of responses.
+    ///
+    /// The default implementation processes requests sequentially in a request-response
+    /// manner: it sends one request, waits for the response, then sends the next.
+    /// This is simple but not optimal for performance.
+    ///
+    /// Since network delivery order is not guaranteed, the default implementation
+    /// does not attempt pipelining. Applications requiring higher throughput should
+    /// override this method with a custom implementation that handles out-of-order
+    /// delivery appropriately (e.g., using sequence numbers or a reliable transport).
+    ///
+    /// The output stream terminates when the input is exhausted or an error occurs.
+    ///
+    /// [`Raft::stream_append()`]: crate::raft::Raft::stream_append
+    #[since(version = "0.10.0")]
+    fn stream_append<'s, S>(
+        &'s mut self,
+        input: S,
+        option: RPCOption,
+    ) -> impl Stream<Item = Result<StreamAppendResult<C>, RPCError<C>>> + OptionalSend + 's
+    where
+        S: Stream<Item = AppendEntriesRequest<C>> + OptionalSend + Unpin + 'static,
+    {
+        futures::stream::unfold(Some((self, input)), move |state| {
+            let option = option.clone();
+            async move {
+                let (network, mut input) = state?;
+
+                let req = input.next().await?;
+                let prev_log_id = req.prev_log_id.clone();
+                let last_log_id = req.entries.last().map(|e| e.log_id()).or(prev_log_id.clone());
+
+                let result = network.append_entries(req, option).await;
+
+                match result {
+                    Ok(resp) => {
+                        let stream_result = resp.into_stream_result(prev_log_id, last_log_id);
+                        let is_err = stream_result.is_err();
+                        let next_state = if is_err { None } else { Some((network, input)) };
+                        Some((Ok(stream_result), next_state))
+                    }
+                    Err(e) => Some((Err(e), None)),
+                }
+            }
+        })
+    }
 
     /// Send a RequestVote RPC to the target.
     async fn vote(&mut self, rpc: VoteRequest<C>, option: RPCOption) -> Result<VoteResponse<C>, RPCError<C>>;
