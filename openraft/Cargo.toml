@@ -109,6 +109,15 @@ loosen-follower-log-revert = []
 # See: https://docs.rs/tracing/latest/tracing/#emitting-log-records
 tracing-log = [ "tracing/log" ]
 
+# Enable Multi-Raft support.
+# This feature provides `RaftRouter` for managing multiple Raft groups
+# on a single node, along with `GroupId` trait and `MultiRaftTypeConfig`.
+#
+# Note: When using `GroupNetworkAdapter` as `RaftNetworkV2`, you must disable
+# `adapt-network-v1` (which is enabled by default) to avoid blanket impl conflict:
+#   openraft = { default-features = false, features = ["multi-raft", "tokio-rt"] }
+multi-raft = []
+
 [package.metadata.docs.rs]
 
 # Enable these feature flags to show all types/mods,
@@ -116,6 +125,7 @@ tracing-log = [ "tracing/log" ]
 features = [
     "bt",
     "compat",
+    "multi-raft",
     "serde",
     "tracing-log",
 ]

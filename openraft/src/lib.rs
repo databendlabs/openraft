@@ -64,6 +64,8 @@ pub mod instant;
 pub mod log_id;
 pub mod membership;
 pub mod metrics;
+#[cfg(feature = "multi-raft")]
+pub mod multi_raft;
 pub mod network;
 pub mod raft;
 pub mod storage;
