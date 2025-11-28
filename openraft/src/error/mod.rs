@@ -6,8 +6,11 @@ pub(crate) mod higher_vote;
 pub mod into_ok;
 pub(crate) mod into_raft_result;
 mod invalid_sm;
+mod leader_changed;
 mod linearizable_read_error;
 mod membership_error;
+#[cfg(feature = "multi-raft")]
+mod multi_raft_error;
 mod node_not_found;
 mod operation;
 mod replication_closed;
@@ -15,8 +18,6 @@ pub(crate) mod replication_error;
 pub(crate) mod storage_error;
 mod storage_io_result;
 mod streaming_error;
-
-mod leader_changed;
 
 use std::collections::BTreeSet;
 use std::error::Error;
@@ -32,6 +33,8 @@ pub use self::invalid_sm::InvalidStateMachineType;
 pub use self::leader_changed::LeaderChanged;
 pub use self::linearizable_read_error::LinearizableReadError;
 pub use self::membership_error::MembershipError;
+#[cfg(feature = "multi-raft")]
+pub use self::multi_raft_error::MultiRaftError;
 pub use self::node_not_found::NodeNotFound;
 pub use self::operation::Operation;
 pub use self::replication_closed::ReplicationClosed;

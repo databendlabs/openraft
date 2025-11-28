@@ -14,7 +14,7 @@ jobs:
       matrix:
         include:
           - toolchain: 'nightly'
-            features: 'bench,serde,bt,singlethreaded'
+            features: 'bench,serde,bt,singlethreaded,multi-raft'
 
     steps:
       - name: Setup | Checkout
@@ -258,6 +258,10 @@ jobs:
           - toolchain: 'nightly'
             features: 'serde,singlethreaded'
 
+          # Multi-Raft feature
+          - toolchain: 'nightly'
+            features: 'multi-raft,serde'
+
     steps:
       - name: Setup | Checkout
         uses: actions/checkout@v4
@@ -374,6 +378,8 @@ jobs:
           - 'raft-kv-memstore-opendal-snapshot-data'
           - 'raft-kv-memstore-singlethreaded'
           - 'raft-kv-rocksdb'
+          - 'multi-raft-kv'
+          - 'multi-raft-sharding'
 
     steps:
       - uses: actions/checkout@v4
@@ -401,13 +407,17 @@ jobs:
 
       - name: Test demo script of examples/${{ matrix.example }}
         # The script is not meant for testing. Just to ensure it works but do not
-        # rely on it.
+        # rely on it. Skip if test-cluster.sh doesn't exist.
         if: ${{ matrix.toolchain == 'stable' }}
 
         shell: bash
         run: |
           cd examples/${{ matrix.example }}
-          ./test-cluster.sh
+          if [ -f test-cluster.sh ]; then
+            ./test-cluster.sh
+          else
+            echo "No test-cluster.sh found, skipping"
+          fi
 
       - name: Format
         # clippy/format produces different result with stable and nightly. Only with nightly.
