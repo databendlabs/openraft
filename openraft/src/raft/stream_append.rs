@@ -9,7 +9,7 @@ use crate::AsyncRuntime;
 use crate::OptionalSend;
 use crate::RaftTypeConfig;
 use crate::core::raft_msg::RaftMsg;
-use crate::entry::RaftEntry;
+use crate::log_id_range::LogIdRange;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
 use crate::raft::StreamAppendError;
@@ -27,8 +27,7 @@ const PIPELINE_BUFFER_SIZE: usize = 64;
 
 struct Pending<C: RaftTypeConfig> {
     response_rx: OneshotReceiverOf<C, AppendEntriesResponse<C>>,
-    prev_log_id: Option<LogIdOf<C>>,
-    last_log_id: Option<LogIdOf<C>>,
+    log_id_range: LogIdRange<C>,
 }
 
 /// Create a pipelined stream that processes AppendEntries requests.
@@ -54,8 +53,7 @@ where
         futures::pin_mut!(input);
 
         while let Some(req) = input.next().await {
-            let prev = req.prev_log_id.clone();
-            let last = req.entries.last().map(|e| e.log_id()).or(prev.clone());
+            let log_id_range = req.log_id_range();
             let (resp_tx, resp_rx) = C::oneshot();
 
             if inner_clone.send_msg(RaftMsg::AppendEntries { rpc: req, tx: resp_tx }).await.is_err() {
@@ -64,8 +62,7 @@ where
 
             let pending = Pending {
                 response_rx: resp_rx,
-                prev_log_id: prev,
-                last_log_id: last,
+                log_id_range,
             };
 
             if MpscSender::send(&tx, pending).await.is_err() {
@@ -79,7 +76,8 @@ where
         let p: Pending<C> = MpscReceiver::recv(&mut rx).await?;
 
         let resp = inner.recv_msg(p.response_rx).await.ok()?;
-        let result = resp.into_stream_result(p.prev_log_id, p.last_log_id);
+        let range = p.log_id_range;
+        let result = resp.into_stream_result(range.prev, range.last);
 
         if result.is_err() {
             return Some((result, None));

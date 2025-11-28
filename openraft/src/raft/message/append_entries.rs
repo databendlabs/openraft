@@ -3,6 +3,8 @@ use std::fmt;
 use crate::RaftTypeConfig;
 use crate::display_ext::DisplayOptionExt;
 use crate::display_ext::DisplaySlice;
+use crate::entry::RaftEntry;
+use crate::log_id_range::LogIdRange;
 use crate::raft::StreamAppendError;
 use crate::raft::stream_append::StreamAppendResult;
 use crate::type_config::alias::LogIdOf;
@@ -60,6 +62,25 @@ where C: RaftTypeConfig
                 max: 5
             }
         )
+    }
+}
+
+impl<C> AppendEntriesRequest<C>
+where C: RaftTypeConfig
+{
+    /// Returns the last log id in this request.
+    ///
+    /// This is the log id of the last entry, or `prev_log_id` if entries is empty.
+    pub(crate) fn last_log_id(&self) -> Option<LogIdOf<C>> {
+        self.entries.last().map(|e| e.log_id()).or(self.prev_log_id.clone())
+    }
+
+    /// Returns the log id range covered by this request.
+    ///
+    /// The range is `(prev_log_id, last_log_id]` where `last_log_id` is the log id
+    /// of the last entry, or `prev_log_id` if entries is empty.
+    pub(crate) fn log_id_range(&self) -> LogIdRange<C> {
+        LogIdRange::new(self.prev_log_id.clone(), self.last_log_id())
     }
 }
 
@@ -149,5 +170,46 @@ where C: RaftTypeConfig
             AppendEntriesResponse::HigherVote(vote) => write!(f, "Higher vote, {}", vote),
             AppendEntriesResponse::Conflict => write!(f, "Conflict"),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::Vote;
+    use crate::engine::testing::UTConfig;
+    use crate::engine::testing::log_id;
+    use crate::raft::AppendEntriesRequest;
+    use crate::testing::blank_ent;
+
+    fn req(prev: Option<u64>, entries: Vec<u64>) -> AppendEntriesRequest<UTConfig> {
+        AppendEntriesRequest {
+            vote: Vote::new_committed(1, 1),
+            prev_log_id: prev.map(|i| log_id(1, 1, i)),
+            entries: entries.into_iter().map(|i| blank_ent::<UTConfig>(1, 1, i)).collect(),
+            leader_commit: None,
+        }
+    }
+
+    #[test]
+    fn test_last_log_id() {
+        assert_eq!(req(None, vec![]).last_log_id(), None);
+        assert_eq!(req(Some(5), vec![]).last_log_id(), Some(log_id(1, 1, 5)));
+        assert_eq!(req(None, vec![1, 2]).last_log_id(), Some(log_id(1, 1, 2)));
+        assert_eq!(req(Some(5), vec![6, 7]).last_log_id(), Some(log_id(1, 1, 7)));
+    }
+
+    #[test]
+    fn test_log_id_range() {
+        let r = req(None, vec![]).log_id_range();
+        assert_eq!((r.prev, r.last), (None, None));
+
+        let r = req(Some(5), vec![]).log_id_range();
+        assert_eq!((r.prev, r.last), (Some(log_id(1, 1, 5)), Some(log_id(1, 1, 5))));
+
+        let r = req(None, vec![1, 2]).log_id_range();
+        assert_eq!((r.prev, r.last), (None, Some(log_id(1, 1, 2))));
+
+        let r = req(Some(5), vec![6, 7]).log_id_range();
+        assert_eq!((r.prev, r.last), (Some(log_id(1, 1, 5)), Some(log_id(1, 1, 7))));
     }
 }
