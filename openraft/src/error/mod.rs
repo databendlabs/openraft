@@ -6,6 +6,7 @@ pub(crate) mod higher_vote;
 pub mod into_ok;
 pub(crate) mod into_raft_result;
 mod invalid_sm;
+mod leader_changed;
 mod linearizable_read_error;
 mod membership_error;
 mod node_not_found;
@@ -15,8 +16,6 @@ pub(crate) mod replication_error;
 pub(crate) mod storage_error;
 mod storage_io_result;
 mod streaming_error;
-
-mod leader_changed;
 
 use std::collections::BTreeSet;
 use std::error::Error;

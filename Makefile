@@ -25,6 +25,8 @@ test:
 	cargo test --features serde
 	# only crate `tests` has single-term-leader feature
 	cargo test --features single-term-leader -p tests
+	# multiraft crate tests
+	cargo test --manifest-path multiraft/Cargo.toml
 	$(MAKE) test-examples
 
 check-parallel:
@@ -40,6 +42,8 @@ test-examples:
 	cargo test --manifest-path examples/raft-kv-memstore-singlethreaded/Cargo.toml
 	cargo test --manifest-path examples/raft-kv-rocksdb/Cargo.toml
 	cargo test --manifest-path examples/rocksstore/Cargo.toml
+	cargo test --manifest-path examples/multi-raft-kv/Cargo.toml
+	cargo test --manifest-path examples/multi-raft-sharding/Cargo.toml
 
 bench:
 	cargo bench --features bench
@@ -75,19 +79,29 @@ guide:
 
 lint:
 	cargo fmt
+	cargo fmt --manifest-path multiraft/Cargo.toml
+	cargo fmt --manifest-path rt-compio/Cargo.toml
+	cargo fmt --manifest-path rt-monoio/Cargo.toml
 	cargo fmt --manifest-path examples/mem-log/Cargo.toml
 	cargo fmt --manifest-path examples/raft-kv-memstore-network-v2/Cargo.toml
 	cargo fmt --manifest-path examples/raft-kv-memstore-opendal-snapshot-data/Cargo.toml
 	cargo fmt --manifest-path examples/raft-kv-memstore-singlethreaded/Cargo.toml
 	cargo fmt --manifest-path examples/raft-kv-memstore/Cargo.toml
 	cargo fmt --manifest-path examples/raft-kv-rocksdb/Cargo.toml
+	cargo fmt --manifest-path examples/multi-raft-kv/Cargo.toml
+	cargo fmt --manifest-path examples/multi-raft-sharding/Cargo.toml
 	cargo clippy --no-deps --all-targets -- -D warnings
-	cargo clippy --no-deps --manifest-path examples/mem-log/Cargo.toml                               --all-targets -- -D warnings
+	cargo clippy --no-deps --manifest-path multiraft/Cargo.toml                                       --all-targets -- -D warnings
+	cargo clippy --no-deps --manifest-path rt-compio/Cargo.toml                                       --all-targets -- -D warnings
+	cargo clippy --no-deps --manifest-path rt-monoio/Cargo.toml                                       --all-targets -- -D warnings
+	cargo clippy --no-deps --manifest-path examples/mem-log/Cargo.toml                                --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/raft-kv-memstore-network-v2/Cargo.toml            --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/raft-kv-memstore-opendal-snapshot-data/Cargo.toml --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/raft-kv-memstore-singlethreaded/Cargo.toml        --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/raft-kv-memstore/Cargo.toml                       --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/raft-kv-rocksdb/Cargo.toml                        --all-targets -- -D warnings
+	cargo clippy --no-deps --manifest-path examples/multi-raft-kv/Cargo.toml                          --all-targets -- -D warnings
+	cargo clippy --no-deps --manifest-path examples/multi-raft-sharding/Cargo.toml                    --all-targets -- -D warnings
 	# Bug: clippy --all-targets reports false warning about unused dep in
 	# `[dev-dependencies]`:
 	# https://github.com/rust-lang/rust/issues/72686#issuecomment-635539688
