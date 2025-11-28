@@ -205,8 +205,6 @@ mod oneshot_mod {
 ///
 /// Tokio MPSC channel are runtime independent.
 mod mpsc_mod {
-    //! MPSC channel wrapper types and their trait impl.
-
     use std::future::Future;
 
     use futures::TryFutureExt;
