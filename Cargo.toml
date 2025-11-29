@@ -77,6 +77,10 @@ exclude = [
     "examples/raft-kv-memstore-opendal-snapshot-data",
     "examples/raft-kv-rocksdb",
 
+    "examples/multi-raft-kv",
+    "examples/multi-raft-sharding",
+
     "rt-monoio",
-    "rt-compio"
+    "rt-compio",
+    "multiraft"
 ]

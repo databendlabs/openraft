@@ -1,0 +1,33 @@
+[package]
+name = "multi-raft-sharding"
+version = "0.1.0"
+readme = "README.md"
+
+edition = "2021"
+authors = [
+    "AriesDevil <ariesdevil77@gmail.com>",
+]
+categories = ["algorithms", "asynchronous", "data-structures"]
+description = "Multi-Raft sharding example with TiKV-style split support"
+homepage = "https://github.com/databendlabs/openraft"
+keywords = ["raft", "consensus", "multi-raft", "sharding", "split"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/databendlabs/openraft"
+
+[dependencies]
+mem-log         = { path = "../mem-log", features = [] }
+openraft        = { path = "../../openraft", default-features = false, features = ["serde", "type-alias", "tokio-rt"] }
+openraft-multi = { path = "../../multiraft" }
+
+futures            = { version = "0.3" }
+serde              = { version = "1", features = ["derive"] }
+serde_json         = { version = "1" }
+tokio              = { version = "1", default-features = false, features = ["sync"] }
+tracing            = { version = "0.1" }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[features]
+
+[package.metadata.docs.rs]
+all-features = true
+
