@@ -78,7 +78,7 @@ where C: RaftTypeConfig
         match self {
             AppendEntriesResponse::Success => Ok(last_log_id),
             AppendEntriesResponse::PartialSuccess(log_id) => Ok(log_id),
-            AppendEntriesResponse::Conflict => Err(StreamAppendError::Conflict(prev_log_id)),
+            AppendEntriesResponse::Conflict => Err(StreamAppendError::Conflict(prev_log_id.unwrap())),
             AppendEntriesResponse::HigherVote(vote) => Err(StreamAppendError::HigherVote(vote)),
         }
     }

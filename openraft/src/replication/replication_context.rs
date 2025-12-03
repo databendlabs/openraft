@@ -1,3 +1,4 @@
+use std::fmt;
 use std::sync::Arc;
 
 use crate::Config;
@@ -5,12 +6,14 @@ use crate::RaftTypeConfig;
 use crate::core::notification::Notification;
 use crate::replication::ReplicationSessionId;
 use crate::type_config::alias::MpscSenderOf;
+use crate::type_config::alias::WatchReceiverOf;
 
 /// Shared context for replication tasks.
 ///
 /// Contains the common state needed by both log replication (`ReplicationCore`)
 /// and snapshot transmission (`SnapshotTransmitter`) tasks, including node identifiers,
 /// session information, configuration, and the notification channel back to `RaftCore`.
+#[derive(Clone)]
 pub(crate) struct ReplicationContext<C>
 where C: RaftTypeConfig
 {
@@ -30,4 +33,22 @@ where C: RaftTypeConfig
     /// A channel for sending events to the RaftCore.
     #[allow(clippy::type_complexity)]
     pub(crate) tx_notify: MpscSenderOf<C, Notification<C>>,
+
+    /// Watch channel receiver for cancellation signal.
+    ///
+    /// When the sender is dropped, this signals that replication should stop.
+    pub(crate) cancel_rx: WatchReceiverOf<C, ()>,
+}
+
+impl<C> fmt::Debug for ReplicationContext<C>
+where C: RaftTypeConfig
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ReplicationContext")
+            .field("id", &self.id)
+            .field("target", &self.target)
+            .field("session_id", &self.session_id)
+            .field("config", &self.config)
+            .finish_non_exhaustive()
+    }
 }

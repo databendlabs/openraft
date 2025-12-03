@@ -118,6 +118,16 @@ where C: RaftTypeConfig
         }
     }
 
+    /// Returns the inflight ID if this is a log replication request.
+    ///
+    /// Returns `None` for commit-only updates (heartbeats).
+    pub(crate) fn inflight_id(&self) -> Option<InflightId> {
+        match self {
+            Data::Committed => None,
+            Data::Logs { inflight_id, .. } => Some(*inflight_id),
+        }
+    }
+
     /// Return true if the data includes any payload, i.e., not a heartbeat.
     pub(crate) fn has_payload(&self) -> bool {
         match self {

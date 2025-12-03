@@ -26,7 +26,7 @@ use crate::replication::response::ReplicationResult;
 use crate::replication::snapshot_transmitter_handle::SnapshotTransmitterHandle;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::InstantOf;
-use crate::type_config::alias::WatchReceiverOf;
+use crate::type_config::alias::WatchSenderOf;
 use crate::vote::raft_vote::RaftVoteExt;
 
 /// Task that transmits a snapshot to a follower.
@@ -42,9 +42,6 @@ where
     pub(crate) replication_context: ReplicationContext<C>,
 
     inflight_id: InflightId,
-
-    /// For receiving cancel signal.
-    rx_cancel: WatchReceiverOf<C, ()>,
 
     /// Another `RaftNetwork` specific for snapshot replication.
     ///
@@ -69,22 +66,23 @@ where
         network: N::Network,
         snapshot_reader: SnapshotReader<C>,
         inflight_id: InflightId,
+        cancel_tx: WatchSenderOf<C, ()>,
     ) -> SnapshotTransmitterHandle<C> {
-        let (tx_cancel, rx_cancel) = C::watch_channel(());
         let snapshot_transmit = Self {
             replication_context,
             inflight_id,
-            rx_cancel,
             network,
             backoff: None,
             snapshot_reader,
         };
 
+        // TODO: this function should just return join_handle and let the caller build
+        //       SnapshotTransmitterHandle
         let join_handle = C::spawn(snapshot_transmit.stream_snapshot());
 
         SnapshotTransmitterHandle {
             _join_handle: join_handle,
-            _tx_cancel: tx_cancel,
+            _tx_cancel: cancel_tx,
         }
     }
 
@@ -153,7 +151,7 @@ where
                         });
 
                         let sleep = C::sleep(duration);
-                        let recv = self.rx_cancel.changed();
+                        let recv = self.replication_context.cancel_rx.changed();
 
                         futures::select! {
                             _ = sleep.fuse() => {
@@ -199,7 +197,7 @@ where
     async fn send_snapshot(&mut self, snapshot: Snapshot<C>, option: RPCOption) -> Result<(), ReplicationError<C>> {
         let meta = snapshot.meta.clone();
 
-        let mut c = self.rx_cancel.clone();
+        let mut c = self.replication_context.cancel_rx.clone();
         let cancel = async move {
             c.changed().await.ok();
             ReplicationClosed::new("RaftCore is dropped")

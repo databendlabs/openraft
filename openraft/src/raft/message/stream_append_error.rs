@@ -1,7 +1,6 @@
 use std::fmt;
 
 use crate::RaftTypeConfig;
-use crate::display_ext::DisplayOptionExt;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::VoteOf;
 
@@ -14,7 +13,7 @@ pub enum StreamAppendError<C: RaftTypeConfig> {
     /// Log conflict at the given prev_log_id.
     ///
     /// The follower's log at this position does not match the leader's.
-    Conflict(Option<LogIdOf<C>>),
+    Conflict(LogIdOf<C>),
 
     /// Seen a higher vote from another leader.
     HigherVote(VoteOf<C>),
@@ -26,7 +25,7 @@ where C: RaftTypeConfig
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             StreamAppendError::Conflict(log_id) => {
-                write!(f, "Conflict({})", log_id.display())
+                write!(f, "Conflict({})", log_id)
             }
             StreamAppendError::HigherVote(vote) => {
                 write!(f, "HigherVote({})", vote)
