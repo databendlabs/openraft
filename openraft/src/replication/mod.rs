@@ -1,5 +1,7 @@
 //! Replication stream.
 
+pub(crate) mod inflight_append;
+pub(crate) mod inflight_append_queue;
 pub(crate) mod log_state;
 pub(crate) mod replication_context;
 mod replication_session_id;
@@ -8,10 +10,13 @@ pub(crate) mod request;
 pub(crate) mod response;
 pub(crate) mod snapshot_transmitter;
 pub(crate) mod snapshot_transmitter_handle;
+pub(crate) mod stream_context;
+pub(crate) mod stream_state;
 
 use std::sync::Arc;
 use std::time::Duration;
 
+use futures::StreamExt;
 use futures::future::FutureExt;
 pub(crate) use replication_session_id::ReplicationSessionId;
 use replication_state::ReplicationState;
@@ -19,36 +24,32 @@ use request::Data;
 use request::Replicate;
 pub(crate) use response::Progress;
 use response::ReplicationResult;
+use stream_state::StreamState;
 use tracing_futures::Instrument;
 
 use crate::RaftNetworkFactory;
 use crate::RaftTypeConfig;
 use crate::async_runtime::MpscUnboundedReceiver;
+use crate::async_runtime::Mutex;
+use crate::base::BoxStream;
 use crate::config::Config;
 use crate::core::notification::Notification;
-use crate::display_ext::DisplayInstantExt;
 use crate::display_ext::DisplayOptionExt;
-use crate::entry::RaftEntry;
-use crate::entry::raft_entry_ext::RaftEntryExt;
-use crate::error::HigherVote;
+use crate::display_ext::display_instant::DisplayInstantExt;
 use crate::error::RPCError;
 use crate::error::ReplicationClosed;
-use crate::error::ReplicationError;
-use crate::error::StorageIOResult;
-use crate::error::Timeout;
-use crate::log_id::LogIdOptionExt;
 use crate::log_id_range::LogIdRange;
 use crate::network::Backoff;
 use crate::network::RPCOption;
-use crate::network::RPCTypes;
 use crate::network::v2::RaftNetworkV2;
 use crate::progress::inflight_id::InflightId;
 use crate::raft::AppendEntriesRequest;
-use crate::raft::AppendEntriesResponse;
+use crate::raft::StreamAppendError;
+use crate::replication::inflight_append_queue::InflightAppendQueue;
 use crate::replication::log_state::LogState;
 use crate::replication::replication_context::ReplicationContext;
 use crate::replication::snapshot_transmitter_handle::SnapshotTransmitterHandle;
-use crate::storage::RaftLogReader;
+use crate::replication::stream_context::StreamContext;
 use crate::storage::RaftLogStorage;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::InstantOf;
@@ -57,13 +58,15 @@ use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::MpscSenderOf;
 use crate::type_config::alias::MpscUnboundedReceiverOf;
 use crate::type_config::alias::MpscUnboundedSenderOf;
+use crate::type_config::alias::MutexOf;
+use crate::type_config::alias::WatchSenderOf;
 use crate::type_config::async_runtime::mpsc::MpscSender;
-use crate::vote::raft_vote::RaftVoteExt;
 
 /// The handle to a spawned replication stream.
 pub(crate) struct ReplicationHandle<C>
 where C: RaftTypeConfig
 {
+    /// Identifies this replication session (leader vote + target node).
     pub(crate) session_id: ReplicationSessionId<C>,
 
     /// The spawn handle of the `ReplicationCore` task.
@@ -72,7 +75,11 @@ where C: RaftTypeConfig
     /// The channel used for communicating with the replication task.
     pub(crate) tx_repl: MpscUnboundedSenderOf<C, Replicate<C>>,
 
+    /// Handle to the snapshot transmitter task, if one is running.
     pub(crate) snapshot_transmit_handle: Option<SnapshotTransmitterHandle<C>>,
+
+    /// Sender for the cancellation signal; dropping this stops replication.
+    pub(crate) _cancel_tx: WatchSenderOf<C, ()>,
 }
 
 /// A task responsible for sending replication events to a target follower in the Raft cluster.
@@ -86,28 +93,29 @@ where
     N: RaftNetworkFactory<C>,
     LS: RaftLogStorage<C>,
 {
-    task_state: ReplicationContext<C>,
+    /// Shared context containing node IDs, session info, and notification channel.
+    task_context: ReplicationContext<C>,
 
-    inflight_id: Option<InflightId>,
+    /// State shared with the request stream generator, protected by a mutex.
+    stream_state: Arc<MutexOf<C, StreamState<C, LS>>>,
 
     /// A channel for receiving events from the RaftCore and snapshot transmitting task.
-    rx_event: MpscUnboundedReceiverOf<C, Replicate<C>>,
+    pub(crate) rx_event: MpscUnboundedReceiverOf<C, Replicate<C>>,
+
+    /// The next replication action to execute, set when partially completed.
+    next_action: Option<Data<C>>,
+
+    /// Identifies the current in-flight replication batch for progress tracking.
+    inflight_id: Option<InflightId>,
 
     /// The `RaftNetwork` interface for replicating logs and heartbeat.
-    network: N::Network,
-
-    /// The backoff policy if an [`Unreachable`](`crate::error::Unreachable`) error is returned.
-    /// It will be reset to `None` when a successful response is received.
-    backoff: Option<Backoff>,
-
-    /// The [`RaftLogStorage::LogReader`] interface.
-    log_reader: LS::LogReader,
+    network: Option<N::Network>,
 
     /// The log replication state tracking progress and matching logs for the follower.
-    replication_sate: ReplicationState<C>,
+    pub(crate) replication_state: ReplicationState<C>,
 
-    /// Next replication action to run.
-    next_action: Option<Data<C>>,
+    /// Shared backoff state for rate-limiting retries on persistent errors.
+    backoff: Arc<std::sync::Mutex<Option<Backoff>>>,
 }
 
 impl<C, N, LS> ReplicationCore<C, N, LS>
@@ -117,7 +125,8 @@ where
     LS: RaftLogStorage<C>,
 {
     /// Spawn a new replication task for the target node.
-    #[tracing::instrument(level = "trace", skip_all,fields(target=display(&target), session_id=display(&session_id)))]
+    #[tracing::instrument(level = "trace", skip_all, fields(target=display(&target), session_id=display(&session_id)
+    ))]
     #[allow(clippy::type_complexity)]
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn spawn(
@@ -141,22 +150,35 @@ where
 
         // Another component to ReplicationStream
         let (tx_event, rx_event) = C::mpsc_unbounded();
+        let (cancel_tx, cancel_rx) = C::watch_channel(());
 
         let id = session_id.leader_vote.node_id().clone();
 
+        let backoff = Arc::new(std::sync::Mutex::new(None));
+
+        let task_context = ReplicationContext {
+            id,
+            target,
+            session_id: session_id.clone(),
+            config,
+            tx_notify: tx_raft_core,
+            cancel_rx,
+        };
+
         let this = Self {
-            task_state: ReplicationContext {
-                id,
-                target,
-                session_id: session_id.clone(),
-                config,
-                tx_notify: tx_raft_core,
-            },
+            task_context: task_context.clone(),
+            stream_state: Arc::new(MutexOf::<C, _>::new(StreamState {
+                task_context,
+                log_reader,
+                log_id_range: None,
+                leader_committed: None,
+                inflight_id: None,
+                backoff: backoff.clone(),
+            })),
             inflight_id: None,
-            network,
-            backoff: None,
-            log_reader,
-            replication_sate: ReplicationState {
+            rx_event,
+            network: Some(network),
+            replication_state: ReplicationState {
                 stream_id: 0,
                 purged: None,
                 local: LogState { committed, last: None },
@@ -166,7 +188,7 @@ where
                 },
                 searching_end: 0,
             },
-            rx_event,
+            backoff: backoff.clone(),
             next_action: None,
         };
 
@@ -177,280 +199,214 @@ where
             join_handle,
             tx_repl: tx_event,
             snapshot_transmit_handle: None,
+            _cancel_tx: cancel_tx,
         }
     }
 
-    #[tracing::instrument(level="debug", skip(self), fields(session=%self.task_state.session_id, target=display(&self.task_state.target), cluster=%self.task_state.config.cluster_name))]
+    /// Creates a stream of AppendEntries requests from the given context.
+    fn new_request_stream(stream_context: StreamContext<C, LS>) -> BoxStream<'static, AppendEntriesRequest<C>> {
+        let strm = futures::stream::unfold(stream_context, Self::next_append_request);
+        Box::pin(strm)
+    }
+
+    /// Generates the next AppendEntries request and records it in the inflight queue.
+    ///
+    /// Used as the unfold function for the request stream.
+    async fn next_append_request(
+        stream_context: StreamContext<C, LS>,
+    ) -> Option<(AppendEntriesRequest<C>, StreamContext<C, LS>)> {
+        let req = {
+            let mut state = stream_context.stream_state.as_ref().lock().await;
+            state.next_request().await?
+        };
+
+        stream_context.inflight_append_queue.push(req.last_log_id());
+
+        Some((req, stream_context))
+    }
+
+    /// Main replication loop that sends AppendEntries requests and processes responses.
     async fn main(mut self) -> Result<(), ReplicationClosed> {
+        // Avoid holding a mut ref to self during streaming.
+        let mut network = self.network.take().unwrap();
+
+        let mut backoff_rank = 0u64;
+
+        // reset the streaming state
+        self.next_action = None;
+
         loop {
-            let action = self.next_action.take();
+            self.inflight_id = None;
 
-            let Some(d) = action else {
-                self.drain_events_with_backoff().await?;
-                continue;
-            };
+            if backoff_rank > 20 {
+                self.enable_backoff(&mut network);
+            } else {
+                self.disable_backoff();
+            }
 
-            tracing::debug!(replication_data = display(&d), "{} send replication RPC", func_name!());
+            if self.next_action.is_none() {
+                self.drain_events().await?;
+            }
 
-            // If an RPC response is expected by RaftCore
-            let need_notify = d.has_payload();
+            let action = self.next_action.take().unwrap();
 
-            let log_id_range = match d {
+            self.inflight_id = action.inflight_id();
+
+            let mut log_id_range = match action {
                 Data::Committed => {
-                    let m = &self.replication_sate.remote.last;
-                    let d = LogIdRange::new(m.clone(), m.clone());
-                    self.inflight_id = None;
-                    d
+                    let m = self.replication_state.remote.last.clone();
+
+                    LogIdRange::new(m.clone(), m)
                 }
                 Data::Logs {
-                    inflight_id,
+                    inflight_id: _,
                     log_id_range,
-                } => {
-                    self.inflight_id = Some(inflight_id);
-                    log_id_range
+                } => log_id_range,
+            };
+
+            {
+                let mut stream_state = self.stream_state.lock().await;
+
+                stream_state.inflight_id = self.inflight_id;
+                stream_state.log_id_range = Some(log_id_range.clone());
+                stream_state.leader_committed = self.replication_state.local.committed.clone()
+            }
+
+            let inflight_queue = InflightAppendQueue::new();
+
+            let stream_context = StreamContext {
+                stream_state: self.stream_state.clone(),
+                inflight_append_queue: inflight_queue.clone(),
+            };
+
+            let req_strm = Self::new_request_stream(stream_context);
+
+            let rpc_timeout = Duration::from_millis(self.task_context.config.heartbeat_interval);
+            let option = RPCOption::new(rpc_timeout);
+
+            // TODO: this makes the network poll the io Stream, not good.
+
+            let resp_strm_res = network.stream_append(req_strm, option).await;
+
+            let resp_strm = match resp_strm_res {
+                Ok(resp_strm) => resp_strm,
+                Err(rpc_err) => {
+                    tracing::error!(
+                        "ReplicationCore recv RPCError: {}, when:(initiate-stream-replication)",
+                        rpc_err
+                    );
+
+                    backoff_rank += rpc_err.backoff_rank();
+
+                    self.send_progress_error(rpc_err).await;
+                    continue;
                 }
             };
 
-            let res = self.send_log_entries(log_id_range).await;
+            let mut resp_strm = std::pin::pin!(resp_strm);
 
-            tracing::debug!(res = debug(&res), "replication action done");
+            let mut had_error = false;
 
-            match res {
-                Ok(_) => {
-                    // reset backoff at once if replication succeeds
-                    self.backoff = None;
+            while let Some(rpc_res) = resp_strm.next().await {
+                tracing::debug!("AppendEntries RPC response: {:?}", rpc_res);
+                //
+                let append_res = match rpc_res {
+                    Ok(x) => {
+                        backoff_rank = 0;
+                        x
+                    }
+                    Err(rpc_err) => {
+                        tracing::error!("ReplicationCore recv RPCError: {}, when:(stream-replication)", rpc_err);
+
+                        backoff_rank += rpc_err.backoff_rank();
+
+                        self.send_progress_error(rpc_err).await;
+
+                        had_error = true;
+                        // No more response are expected.
+                        break;
+                    }
+                };
+
+                match append_res {
+                    Ok(matching) => {
+                        let last_acked_sending_time = inflight_queue.drain_acked(&matching);
+
+                        if let Some(last) = last_acked_sending_time {
+                            self.notify_heartbeat_progress(last).await;
+                        }
+
+                        self.replication_state.remote.last = matching.clone();
+
+                        self.notify_progress(ReplicationResult(Ok(matching))).await;
+                    }
+                    Err(append_err) => {
+                        match append_err {
+                            StreamAppendError::Conflict(conflict_log_id) => {
+                                self.notify_progress(ReplicationResult(Err(conflict_log_id))).await;
+                            }
+                            StreamAppendError::HigherVote(higher) => {
+                                //
+                                self.task_context
+                                    .tx_notify
+                                    .send(Notification::HigherVote {
+                                        target: self.task_context.target.clone(),
+                                        higher,
+                                        leader_vote: self.task_context.session_id.committed_vote(),
+                                    })
+                                    .await
+                                    .ok();
+                            }
+                        }
+
+                        had_error = true;
+                        // no more response is expected.
+                        break;
+                    }
                 }
-                Err(err) => {
-                    tracing::warn!(error=%err, "error replication to target={}", self.task_state.target);
+            }
 
-                    match err {
-                        ReplicationError::Closed(closed) => {
-                            return Err(closed);
-                        }
-                        ReplicationError::HigherVote(h) => {
-                            self.task_state
-                                .tx_notify
-                                .send(Notification::HigherVote {
-                                    target: self.task_state.target,
-                                    higher: h.higher,
-                                    leader_vote: self.task_state.session_id.committed_vote(),
-                                })
-                                .await
-                                .ok();
-                            return Ok(());
-                        }
-                        ReplicationError::StorageError(error) => {
-                            tracing::error!(error=%error, "error replication to target={}", self.task_state.target);
-
-                            self.task_state.tx_notify.send(Notification::StorageError { error }).await.ok();
-                            return Ok(());
-                        }
-                        ReplicationError::RPCError(err) => {
-                            tracing::error!(err = display(&err), "RPCError");
-
-                            match &err {
-                                RPCError::Timeout(_) => {}
-                                RPCError::Unreachable(_unreachable) => {
-                                    // If there is an [`Unreachable`] error, we will backoff for a
-                                    // period of time. Backoff will be reset if there is a
-                                    // successful RPC is sent.
-                                    if self.backoff.is_none() {
-                                        self.backoff = Some(self.network.backoff());
-                                    }
-                                }
-                                RPCError::Network(_) => {}
-                                RPCError::RemoteError(_) => {}
-                            };
-
-                            // If there is no id, it is a heartbeat and do not need to notify RaftCore
-                            if need_notify {
-                                self.send_progress_error(err).await;
-                            } else {
-                                tracing::warn!("heartbeat RPC failed, do not send any response to RaftCore");
-                            };
-                        }
-                    };
+            if !had_error {
+                // if partial success is returned, not all data is exhausted. keep sending
+                log_id_range.prev = self.replication_state.remote.last.clone();
+                if log_id_range.len() > 0 {
+                    self.next_action = Some(Data::new_logs(log_id_range, self.inflight_id.unwrap()));
                 }
-            };
-
-            self.drain_events_with_backoff().await?;
+            }
         }
     }
 
-    async fn drain_events_with_backoff(&mut self) -> Result<(), ReplicationClosed> {
-        if let Some(b) = &mut self.backoff {
-            let duration = b.next().unwrap_or_else(|| {
-                tracing::warn!("backoff exhausted, using default");
-                Duration::from_millis(500)
-            });
-
-            self.backoff_drain_events(C::now() + duration).await?;
+    /// Enables backoff for retries when errors persist.
+    fn enable_backoff(&self, network: &mut N::Network) {
+        let mut backoff = self.backoff.lock().unwrap();
+        if backoff.is_none() {
+            *backoff = Some(network.backoff());
         }
-
-        self.drain_events().await?;
-        Ok(())
     }
 
-    /// Send an AppendEntries RPC to the target.
-    ///
-    /// This request will time out if no response is received within the
-    /// configured heartbeat interval.
-    ///
-    /// If an RPC is made but not completely finished, it returns the next action expected to do.
-    ///
-    /// `has_payload` indicates if there are any data(AppendEntries) to send, or it is a heartbeat.
-    /// `has_payload` decides if it needs to send back notifications to RaftCore.
-    #[tracing::instrument(level = "debug", skip_all)]
-    async fn send_log_entries(&mut self, log_id_range: LogIdRange<C>) -> Result<(), ReplicationError<C>> {
-        tracing::debug!("send_log_entries: log_id_range: {}", log_id_range);
-
-        // Series of logs to send, and the last log id to send
-        let (logs, sending_range) = {
-            let rng = &log_id_range;
-
-            // The log index start and end to send.
-            let (start, end) = {
-                let start = rng.prev.next_index();
-                let end = rng.last.next_index();
-
-                (start, end)
-            };
-
-            if start == end {
-                // Heartbeat RPC, no logs to send, last log id is the same as prev_log_id
-                let r = LogIdRange::new(rng.prev.clone(), rng.prev.clone());
-                (vec![], r)
-            } else {
-                // limited_get_log_entries will return logs smaller than the range [start, end).
-                let logs = self.log_reader.limited_get_log_entries(start, end).await.sto_read_logs()?;
-
-                let first = logs.first().map(|ent| ent.ref_log_id()).unwrap();
-                let last = logs.last().map(|ent| ent.log_id()).unwrap();
-
-                debug_assert!(
-                    !logs.is_empty() && logs.len() <= (end - start) as usize,
-                    "expect logs ⊆ [{}..{}) but got {} entries, first: {}, last: {}",
-                    start,
-                    end,
-                    logs.len(),
-                    first,
-                    last
-                );
-
-                let r = LogIdRange::new(rng.prev.clone(), Some(last));
-                (logs, r)
-            }
-        };
-
-        let leader_time = C::now();
-
-        // Build the heartbeat frame to be sent to the follower.
-        let payload = AppendEntriesRequest {
-            vote: self.task_state.session_id.vote(),
-            prev_log_id: sending_range.prev.clone(),
-            leader_commit: self.replication_sate.local.committed.clone(),
-            entries: logs,
-        };
-
-        // Send the payload.
-        tracing::debug!(
-            payload = display(&payload),
-            now = display(leader_time.display()),
-            "start sending append_entries, timeout: {:?}",
-            self.task_state.config.heartbeat_interval
-        );
-
-        let the_timeout = Duration::from_millis(self.task_state.config.heartbeat_interval);
-        let option = RPCOption::new(the_timeout);
-        let res = C::timeout(the_timeout, self.network.append_entries(payload, option)).await;
-
-        tracing::debug!("append_entries res: {:?}", res);
-
-        let append_res = res.map_err(|_e| {
-            let to = Timeout {
-                action: RPCTypes::AppendEntries,
-                id: self.task_state.session_id.vote().to_leader_node_id(),
-                target: self.task_state.target.clone(),
-                timeout: the_timeout,
-            };
-            RPCError::Timeout(to)
-        })?; // return Timeout error
-
-        let append_resp = append_res?;
-
-        tracing::debug!(
-            req = display(&sending_range),
-            resp = display(&append_resp),
-            "append_entries resp"
-        );
-
-        match append_resp {
-            AppendEntriesResponse::Success => {
-                self.notify_heartbeat_progress(leader_time).await;
-
-                let matching = &sending_range.last;
-
-                // If there is no data sent, no need to respond OK notification.
-                if self.inflight_id.is_some() {
-                    self.notify_progress(ReplicationResult(Ok(matching.clone()))).await;
-                    self.update_next_action_to_send(matching.clone(), log_id_range);
-                }
-                Ok(())
-            }
-            AppendEntriesResponse::PartialSuccess(matching) => {
-                Self::debug_assert_partial_success(&sending_range, &matching);
-
-                self.notify_heartbeat_progress(leader_time).await;
-
-                // If there is no data sent, no need to respond OK notification.
-                if self.inflight_id.is_some() {
-                    self.notify_progress(ReplicationResult(Ok(matching.clone()))).await;
-                    self.update_next_action_to_send(matching.clone(), log_id_range);
-                }
-                Ok(())
-            }
-            AppendEntriesResponse::HigherVote(vote) => {
-                debug_assert!(
-                    vote.as_ref_vote() > self.task_state.session_id.vote().as_ref_vote(),
-                    "higher vote({}) should be greater than leader's vote({})",
-                    vote,
-                    self.task_state.session_id.vote(),
-                );
-                tracing::debug!(%vote, "append entries failed. converting to follower");
-
-                Err(ReplicationError::HigherVote(HigherVote {
-                    higher: vote,
-                    sender_vote: self.task_state.session_id.vote(),
-                }))
-            }
-            AppendEntriesResponse::Conflict => {
-                let conflict = sending_range.prev;
-                debug_assert!(conflict.is_some(), "prev_log_id=None never conflict");
-
-                let conflict = conflict.unwrap();
-
-                // Conflict is also a successful replication RPC, because the leadership is acknowledged.
-                self.notify_heartbeat_progress(leader_time).await;
-
-                // Conflict should always be sent to RaftCore, ignoring `has_payload`
-                // because a heartbeat could also cause a conflict if the follower's state reverts.
-                self.notify_progress(ReplicationResult(Err(conflict))).await;
-
-                Ok(())
-            }
-        }
+    /// Disables backoff after successful communication.
+    fn disable_backoff(&self) {
+        let mut backoff = self.backoff.lock().unwrap();
+        *backoff = None;
     }
 
     /// Send the error result to RaftCore.
     /// RaftCore will then submit another replication command.
     async fn send_progress_error(&mut self, err: RPCError<C>) {
-        self.task_state
+        tracing::info!("ReplicationCore send progress error: {}", err);
+
+        // no inflight id means there is no payload is sent, and no one is waiting the response, no need to
+        // report.
+        if self.inflight_id.is_none() {
+            return;
+        }
+        self.task_context
             .tx_notify
             .send(Notification::ReplicationProgress {
                 progress: Progress {
-                    target: self.task_state.target.clone(),
+                    target: self.task_context.target.clone(),
                     result: Err(err.to_string()),
-                    session_id: self.task_state.session_id.clone(),
+                    session_id: self.task_context.session_id.clone(),
                 },
 
                 inflight_id: self.inflight_id,
@@ -464,12 +420,13 @@ where
     ///
     /// [`RaftCore`]: crate::core::RaftCore
     async fn notify_heartbeat_progress(&mut self, sending_time: InstantOf<C>) {
-        self.task_state
+        tracing::debug!("ReplicationCore notify heartbeat progress: {}", sending_time.display());
+        self.task_context
             .tx_notify
             .send({
                 Notification::HeartbeatProgress {
-                    session_id: self.task_state.session_id.clone(),
-                    target: self.task_state.target.clone(),
+                    session_id: self.task_context.session_id.clone(),
+                    target: self.task_context.target.clone(),
                     sending_time,
                 }
             })
@@ -480,8 +437,8 @@ where
     /// Notify RaftCore with the success replication result (log matching or conflict).
     async fn notify_progress(&mut self, replication_result: ReplicationResult<C>) {
         tracing::debug!(
-            target = display(self.task_state.target.clone()),
-            curr_matching = display(self.replication_sate.remote.last.display()),
+            target = display(self.task_context.target.clone()),
+            curr_matching = display(self.replication_state.remote.last.display()),
             result = display(&replication_result),
             "{}",
             func_name!()
@@ -489,20 +446,27 @@ where
 
         match &replication_result.0 {
             Ok(matching) => {
-                self.replication_sate.remote.last = matching.clone();
+                self.replication_state.remote.last = matching.clone();
+
+                // No need to notify
+                if matching.is_none() {
+                    return;
+                }
             }
             Err(_conflict) => {
                 // Conflict is not allowed to be less than the current matching.
             }
         }
 
-        self.task_state
+        // always send Conflict error back, even when the inflight id is None
+        // for heartbeat to detect log reversion
+        self.task_context
             .tx_notify
             .send({
                 Notification::ReplicationProgress {
                     progress: Progress {
-                        session_id: self.task_state.session_id.clone(),
-                        target: self.task_state.target.clone(),
+                        session_id: self.task_context.session_id.clone(),
+                        target: self.task_context.target.clone(),
                         result: Ok(replication_result.clone()),
                     },
                     // If it is None, meaning it is not a response to a request with payload.
@@ -511,41 +475,6 @@ where
             })
             .await
             .ok();
-    }
-
-    /// Drain all events in the channel in backoff mode, i.e., there was an un-retry-able error and
-    /// should not send out anything before the backoff interval expired.
-    ///
-    /// In the backoff period, we should not send out any RPCs, but we should still receive events
-    /// in case the channel is closed, it should quit at once.
-    #[tracing::instrument(level = "debug", skip(self))]
-    pub async fn backoff_drain_events(&mut self, until: InstantOf<C>) -> Result<(), ReplicationClosed> {
-        let d = until - C::now();
-        tracing::warn!(
-            interval = debug(d),
-            "{} backoff mode: drain events without processing them",
-            func_name!()
-        );
-
-        loop {
-            let sleep_duration = until - C::now();
-            let sleep = C::sleep(sleep_duration);
-
-            let recv = self.rx_event.recv();
-
-            tracing::debug!("backoff timeout: {:?}", sleep_duration);
-
-            futures::select! {
-                _ = sleep.fuse() => {
-                    tracing::debug!("backoff timeout");
-                    return Ok(());
-                }
-                recv_res = recv.fuse() => {
-                    let event = recv_res.ok_or(ReplicationClosed::new("RaftCore closed replication"))?;
-                    self.process_event(event);
-                }
-            }
-        }
     }
 
     /// Receive and process events from RaftCore until `next_action` is filled.
@@ -599,13 +528,13 @@ where
             Replicate::Committed { committed: c } => {
                 // RaftCore may send a committed equals to the initial value.
                 debug_assert!(
-                    c >= self.replication_sate.local.committed,
+                    c >= self.replication_state.local.committed,
                     "expect new committed {} > self.committed {}",
                     c.display(),
-                    self.replication_sate.local.committed.display()
+                    self.replication_state.local.committed.display()
                 );
 
-                self.replication_sate.local.committed = c;
+                self.replication_state.local.committed = c;
 
                 // If there is no action, fill in an heartbeat action to send committed index.
                 if self.next_action.is_none() {
@@ -624,47 +553,5 @@ where
                 self.next_action = Some(d);
             }
         }
-    }
-
-    /// If there are more logs to send, it returns a new `Some(Data::Logs)` to send.
-    fn update_next_action_to_send(&mut self, matching: Option<LogIdOf<C>>, log_ids: LogIdRange<C>) {
-        let next = if matching < log_ids.last {
-            Some(Data::new_logs(
-                LogIdRange::new(matching, log_ids.last),
-                // Safe unwrap: this function is called only when self.inflight_id is Some.
-                self.inflight_id.unwrap(),
-            ))
-        } else {
-            None
-        };
-        self.next_action = next;
-    }
-
-    /// Check if partial success result(`matching`) is valid for a given log range to send.
-    fn debug_assert_partial_success(to_send: &LogIdRange<C>, matching: &Option<LogIdOf<C>>) {
-        debug_assert!(
-            matching <= &to_send.last,
-            "matching ({}) should be <= last_log_id ({})",
-            matching.display(),
-            to_send.last.display()
-        );
-        debug_assert!(
-            matching.index() <= to_send.last.index(),
-            "matching.index ({}) should be <= last_log_id.index ({})",
-            matching.index().display(),
-            to_send.last.index().display()
-        );
-        debug_assert!(
-            matching >= &to_send.prev,
-            "matching ({}) should be >= prev_log_id ({})",
-            matching.display(),
-            to_send.prev.display()
-        );
-        debug_assert!(
-            matching.index() >= to_send.prev.index(),
-            "matching.index ({}) should be >= prev_log_id.index ({})",
-            matching.index().display(),
-            to_send.prev.index().display()
-        );
     }
 }

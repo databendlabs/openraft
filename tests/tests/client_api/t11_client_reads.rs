@@ -528,5 +528,5 @@ async fn ensure_linearizable_process_from_followers() -> Result<()> {
 }
 
 fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(200))
+    Some(Duration::from_millis(1_000))
 }

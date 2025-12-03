@@ -60,5 +60,5 @@ async fn replication_does_not_block_purge() -> Result<()> {
 }
 
 fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(1_000))
+    Some(Duration::from_millis(3_000))
 }

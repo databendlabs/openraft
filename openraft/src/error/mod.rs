@@ -301,6 +301,26 @@ pub enum RPCError<C: RaftTypeConfig, E: Error = Infallible> {
     RemoteError(#[from] RemoteError<C, E>),
 }
 
+impl<C, E> RPCError<C, E>
+where
+    C: RaftTypeConfig,
+    E: Error,
+{
+    /// Returns a weight indicating how severe this error is for backoff purposes.
+    ///
+    /// Higher values indicate more severe errors that should trigger longer backoff.
+    /// - Timeout/Network errors: 2 (transient, retry soon)
+    /// - Unreachable/RemoteError: 100 (more serious, back off longer)
+    pub(crate) fn backoff_rank(&self) -> u64 {
+        match &self {
+            RPCError::Timeout(_) => 2,
+            RPCError::Unreachable(_unreachable) => 100,
+            RPCError::Network(_) => 2,
+            RPCError::RemoteError(_) => 100,
+        }
+    }
+}
+
 impl<C, E> RPCError<C, RaftError<C, E>>
 where
     C: RaftTypeConfig,
