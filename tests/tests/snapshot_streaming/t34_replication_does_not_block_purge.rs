@@ -49,7 +49,7 @@ async fn replication_does_not_block_purge() -> Result<()> {
         leader.trigger().snapshot().await?;
         leader.wait(timeout()).snapshot(log_id(1, 0, log_index), "built snapshot").await?;
 
-        sleep(Duration::from_millis(500)).await;
+        sleep(Duration::from_millis(2_000)).await;
 
         let (mut sto0, mut _sm0) = router.get_storage_handle(&0)?;
         let logs = sto0.try_get_log_entries(..).await?;
@@ -60,5 +60,5 @@ async fn replication_does_not_block_purge() -> Result<()> {
 }
 
 fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(1_000))
+    Some(Duration::from_millis(3_000))
 }

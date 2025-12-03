@@ -1806,18 +1806,25 @@ where
         self.heartbeat_handle.broadcast(events);
     }
 
-    pub(crate) fn new_replication_task_state(
+    /// Creates a new replication context and its associated cancellation channel.
+    ///
+    /// Returns the context for the replication task and the sender half of the
+    /// cancellation channel. Dropping the sender signals the task to stop.
+    pub(crate) fn new_replication_task_context(
         &self,
         session_id: ReplicationSessionId<C>,
         target: C::NodeId,
-    ) -> ReplicationContext<C> {
-        ReplicationContext {
+    ) -> (ReplicationContext<C>, WatchSenderOf<C, ()>) {
+        let (cancel_tx, cancel_rx) = C::watch_channel(());
+        let ctx = ReplicationContext {
             id: self.id.clone(),
             target,
             session_id,
             config: self.config.clone(),
             tx_notify: self.tx_notification.clone(),
-        }
+            cancel_rx,
+        };
+        (ctx, cancel_tx)
     }
 }
 
@@ -1956,16 +1963,18 @@ where
 
                 let snapshot_reader = self.sm_handle.new_snapshot_reader();
                 let session_id = node.session_id.clone();
-                let replication_task_state = self.new_replication_task_state(session_id, target.clone());
+                let (replication_task_context, cancel_tx) =
+                    self.new_replication_task_context(session_id, target.clone());
 
                 let target_node = self.engine.state.membership_state.effective().get_node(&target).unwrap();
                 let snapshot_network = self.network_factory.new_client(target.clone(), target_node).await;
 
                 let handle = SnapshotTransmitter::<C, N>::spawn(
-                    replication_task_state,
+                    replication_task_context,
                     snapshot_network,
                     snapshot_reader,
                     inflight_id,
+                    cancel_tx,
                 );
 
                 let node = self.replications.get_mut(&target).expect("replication to target node exists");
