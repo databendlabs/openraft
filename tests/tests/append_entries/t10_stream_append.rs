@@ -112,7 +112,7 @@ async fn stream_append_conflict() -> Result<()> {
     let results: Vec<_> = output_stream.collect().await;
     assert_eq!(results, vec![
         Ok(Some(log_id(1, 1, 1))),
-        Err(StreamAppendError::Conflict(Some(log_id(1, 1, 5)))),
+        Err(StreamAppendError::Conflict(log_id(1, 1, 5))),
     ]);
 
     Ok(())

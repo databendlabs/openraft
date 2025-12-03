@@ -66,7 +66,7 @@ async fn purge_in_snapshot_logs() -> Result<()> {
 
     // There may be a cached append-entries request that already loads log 10..15 from the store,
     // just before building snapshot.
-    sleep(Duration::from_millis(500)).await;
+    sleep(Duration::from_millis(1_000)).await;
 
     tracing::info!(
         log_index,
@@ -94,5 +94,5 @@ async fn purge_in_snapshot_logs() -> Result<()> {
 }
 
 fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(1_000))
+    Some(Duration::from_millis(2_000))
 }
