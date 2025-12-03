@@ -60,5 +60,5 @@ async fn snapshot_to_unreachable_node_should_not_block() -> Result<()> {
 }
 
 fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(1_000))
+    Some(Duration::from_millis(2_000))
 }

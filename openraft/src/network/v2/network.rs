@@ -10,6 +10,8 @@ use openraft_macros::since;
 use crate::OptionalSend;
 use crate::OptionalSync;
 use crate::RaftTypeConfig;
+use crate::base::BoxFuture;
+use crate::base::BoxStream;
 use crate::error::RPCError;
 use crate::error::ReplicationClosed;
 use crate::error::StreamingError;
@@ -76,37 +78,52 @@ where C: RaftTypeConfig
     ///
     /// The output stream terminates when the input is exhausted or an error occurs.
     ///
+    /// # Note
+    ///
+    /// This method returns `BoxFuture` and `BoxStream` instead of `impl Future`/`impl Stream`
+    /// to avoid a higher-ranked lifetime error that occurs when the return type
+    /// captures the lifetime `'s` in an `impl Trait` position.
+    ///
     /// [`Raft::stream_append()`]: crate::raft::Raft::stream_append
     #[since(version = "0.10.0")]
     fn stream_append<'s, S>(
         &'s mut self,
         input: S,
         option: RPCOption,
-    ) -> impl Stream<Item = Result<StreamAppendResult<C>, RPCError<C>>> + OptionalSend + 's
+    ) -> BoxFuture<'s, Result<BoxStream<'s, Result<StreamAppendResult<C>, RPCError<C>>>, RPCError<C>>>
     where
-        S: Stream<Item = AppendEntriesRequest<C>> + OptionalSend + Unpin + 'static,
+        S: Stream<Item = AppendEntriesRequest<C>> + OptionalSend + Unpin + 's,
     {
-        futures::stream::unfold(Some((self, input)), move |state| {
-            let option = option.clone();
-            async move {
-                let (network, mut input) = state?;
+        let fu = async move {
+            let strm = futures::stream::unfold(Some((self, input)), move |state| {
+                let option = option.clone();
+                async move {
+                    let (network, mut input) = state?;
 
-                let req = input.next().await?;
-                let range = req.log_id_range();
+                    let req = input.next().await?;
+                    let range = req.log_id_range();
 
-                let result = network.append_entries(req, option).await;
+                    let fu = network.append_entries(req, option);
 
-                match result {
-                    Ok(resp) => {
-                        let stream_result = resp.into_stream_result(range.prev, range.last);
-                        let is_err = stream_result.is_err();
-                        let next_state = if is_err { None } else { Some((network, input)) };
-                        Some((Ok(stream_result), next_state))
+                    let result = fu.await;
+
+                    match result {
+                        Ok(resp) => {
+                            let stream_result = resp.into_stream_result(range.prev, range.last);
+                            let is_err = stream_result.is_err();
+                            let next_state = if is_err { None } else { Some((network, input)) };
+                            Some((Ok(stream_result), next_state))
+                        }
+                        Err(e) => Some((Err(e), None)),
                     }
-                    Err(e) => Some((Err(e), None)),
                 }
-            }
-        })
+            });
+
+            let strm: BoxStream<'s, _> = Box::pin(strm);
+            Ok(strm)
+        };
+
+        Box::pin(fu)
     }
 
     /// Send a RequestVote RPC to the target.
