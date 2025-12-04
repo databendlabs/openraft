@@ -26,7 +26,7 @@ futures    = { version = "0.3" }
 maplit     = { version = "1.0.2" }
 serde      = { version = "1.0.114", features = ["derive", "rc"] }
 serde_json = { version = "1.0.57" }
-tokio      = { version = "1.8", default-features = false, features = ["fs", "io-util", "macros", "rt", "rt-multi-thread", "sync", "time"] }
+tokio      = { version = "1.39", default-features = false, features = ["fs", "io-util", "macros", "rt", "rt-multi-thread", "sync", "time"] }
 tracing    = { version = "0.1.29" }
 
 [features]
