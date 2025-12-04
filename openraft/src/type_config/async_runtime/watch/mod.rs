@@ -88,6 +88,11 @@ where
     /// long-lived borrows could cause the producer half to block.
     /// See: [`Watch::Ref`]
     fn borrow_watched(&self) -> W::Ref<'_, T>;
+
+    /// Creates a new Receiver connected to this Sender.
+    ///
+    /// All messages sent after this call will be visible to the new Receiver.
+    fn subscribe(&self) -> W::Receiver<T>;
 }
 
 /// Receives values from the associated Sender.

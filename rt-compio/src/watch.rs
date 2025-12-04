@@ -55,6 +55,11 @@ where T: OptionalSend + OptionalSync
         let inner = self.0.borrow();
         SeeRef(inner)
     }
+
+    #[inline]
+    fn subscribe(&self) -> <See as watch::Watch>::Receiver<T> {
+        SeeReceiver(self.0.subscribe())
+    }
 }
 
 impl<T> Clone for SeeReceiver<T> {

@@ -439,6 +439,11 @@ mod watch_mod {
             let inner = self.0.borrow();
             TokioWatchRef(inner)
         }
+
+        #[inline]
+        fn subscribe(&self) -> <TokioWatch as watch::Watch>::Receiver<T> {
+            TokioWatchReceiver(self.0.subscribe())
+        }
     }
 
     impl<T> Clone for TokioWatchReceiver<T> {
