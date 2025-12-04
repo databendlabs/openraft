@@ -4,6 +4,7 @@ pub(crate) mod inflight_append;
 pub(crate) mod inflight_append_queue;
 pub(crate) mod log_state;
 pub(crate) mod replication_context;
+pub(crate) mod replication_handle;
 mod replication_session_id;
 pub(crate) mod replication_state;
 pub(crate) mod request;
@@ -18,6 +19,7 @@ use std::time::Duration;
 
 use futures::StreamExt;
 use futures::future::FutureExt;
+use replication_handle::ReplicationHandle;
 pub(crate) use replication_session_id::ReplicationSessionId;
 use replication_state::ReplicationState;
 use request::Data;
@@ -48,39 +50,15 @@ use crate::raft::StreamAppendError;
 use crate::replication::inflight_append_queue::InflightAppendQueue;
 use crate::replication::log_state::LogState;
 use crate::replication::replication_context::ReplicationContext;
-use crate::replication::snapshot_transmitter_handle::SnapshotTransmitterHandle;
 use crate::replication::stream_context::StreamContext;
 use crate::storage::RaftLogStorage;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::InstantOf;
-use crate::type_config::alias::JoinHandleOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::MpscSenderOf;
 use crate::type_config::alias::MpscUnboundedReceiverOf;
-use crate::type_config::alias::MpscUnboundedSenderOf;
 use crate::type_config::alias::MutexOf;
-use crate::type_config::alias::WatchSenderOf;
 use crate::type_config::async_runtime::mpsc::MpscSender;
-
-/// The handle to a spawned replication stream.
-pub(crate) struct ReplicationHandle<C>
-where C: RaftTypeConfig
-{
-    /// Identifies this replication session (leader vote + target node).
-    pub(crate) session_id: ReplicationSessionId<C>,
-
-    /// The spawn handle of the `ReplicationCore` task.
-    pub(crate) join_handle: JoinHandleOf<C, Result<(), ReplicationClosed>>,
-
-    /// The channel used for communicating with the replication task.
-    pub(crate) tx_repl: MpscUnboundedSenderOf<C, Replicate<C>>,
-
-    /// Handle to the snapshot transmitter task, if one is running.
-    pub(crate) snapshot_transmit_handle: Option<SnapshotTransmitterHandle<C>>,
-
-    /// Sender for the cancellation signal; dropping this stops replication.
-    pub(crate) _cancel_tx: WatchSenderOf<C, ()>,
-}
 
 /// A task responsible for sending replication events to a target follower in the Raft cluster.
 ///
