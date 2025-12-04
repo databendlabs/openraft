@@ -82,6 +82,7 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         Self::test_watch_multiple_borrow_then_changed().await;
         Self::test_watch_wait_loop_pattern().await;
         Self::test_watch_multiple_receivers().await;
+        Self::test_watch_subscribe().await;
         Self::test_oneshot_drop_tx().await;
         Self::test_oneshot().await;
         Self::test_oneshot_send_from_another_task().await;
@@ -778,7 +779,7 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         let _handle = Rt::spawn(async move {
             for i in 1..=5 {
                 Rt::sleep(dur_20ms).await;
-                tx_clone.send(i).unwrap();
+                tx_clone.send(i).ok();
             }
         });
 
@@ -850,6 +851,54 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
 
         // Send a value - both receivers should wake up
         tx2.send(100).unwrap();
+
+        let val1 = handle1.await.unwrap();
+        let val2 = handle2.await.unwrap();
+
+        assert_eq!(val1, 100);
+        assert_eq!(val2, 100);
+    }
+
+    /// Test `WatchSender::subscribe()` - create a new receiver from the sender.
+    pub async fn test_watch_subscribe() {
+        let (tx, rx1) = Rt::Watch::channel(0i32);
+
+        // Create a new receiver via subscribe()
+        let rx2 = tx.subscribe();
+
+        // Both receivers should see the initial value
+        assert_eq!(*rx1.borrow_watched(), 0);
+        assert_eq!(*rx2.borrow_watched(), 0);
+
+        // Send a new value
+        tx.send(42).unwrap();
+
+        // All receivers should see the new value
+        assert_eq!(*rx1.borrow_watched(), 42);
+        assert_eq!(*rx2.borrow_watched(), 42);
+
+        // Create another receiver after sending a value
+        let rx3 = tx.subscribe();
+        assert_eq!(*rx3.borrow_watched(), 42);
+
+        // Test that subscribed receivers can independently wait for changes
+        let mut rx4 = tx.subscribe();
+        let mut rx5 = tx.subscribe();
+
+        let handle1 = Rt::spawn(async move {
+            rx4.changed().await.unwrap();
+            *rx4.borrow_watched()
+        });
+        let handle2 = Rt::spawn(async move {
+            rx5.changed().await.unwrap();
+            *rx5.borrow_watched()
+        });
+
+        // Give spawned tasks time to start waiting
+        Rt::sleep(Duration::from_millis(10)).await;
+
+        // Send a value - both receivers should wake up
+        tx.send(100).unwrap();
 
         let val1 = handle1.await.unwrap();
         let val2 = handle2.await.unwrap();
