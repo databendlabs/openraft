@@ -84,6 +84,7 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         Self::test_watch_multiple_receivers().await;
         Self::test_watch_subscribe().await;
         Self::test_watch_send_if_different().await;
+        Self::test_watch_send_if_greater().await;
         Self::test_oneshot_drop_tx().await;
         Self::test_oneshot().await;
         Self::test_oneshot_send_from_another_task().await;
@@ -937,6 +938,53 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
 
         // Sending another different value should return true
         let updated = tx.send_if_different(100);
+        assert!(updated);
+        assert_eq!(*tx.borrow_watched(), 100);
+
+        // changed() should be ready
+        assert!(is_ready(rx.changed()));
+        assert_eq!(*rx.borrow_watched(), 100);
+    }
+
+    /// Test `WatchSender::send_if_greater()` - only sends when value is greater.
+    pub async fn test_watch_send_if_greater() {
+        let (tx, mut rx) = Rt::Watch::channel(10i32);
+
+        // Sending a smaller value should return false and not notify receivers
+        let updated = tx.send_if_greater(5);
+        assert!(!updated);
+        assert_eq!(*tx.borrow_watched(), 10);
+
+        // changed() should be pending since value wasn't updated
+        assert!(is_pending(rx.changed()));
+
+        // Sending an equal value should return false
+        let updated = tx.send_if_greater(10);
+        assert!(!updated);
+        assert_eq!(*tx.borrow_watched(), 10);
+
+        // changed() should still be pending
+        assert!(is_pending(rx.changed()));
+
+        // Sending a greater value should return true
+        let updated = tx.send_if_greater(42);
+        assert!(updated);
+        assert_eq!(*tx.borrow_watched(), 42);
+
+        // changed() should be ready since value was updated
+        assert!(is_ready(rx.changed()));
+        assert_eq!(*rx.borrow_watched(), 42);
+
+        // Sending a smaller value again should return false
+        let updated = tx.send_if_greater(20);
+        assert!(!updated);
+        assert_eq!(*tx.borrow_watched(), 42);
+
+        // changed() should be pending
+        assert!(is_pending(rx.changed()));
+
+        // Sending another greater value should return true
+        let updated = tx.send_if_greater(100);
         assert!(updated);
         assert_eq!(*tx.borrow_watched(), 100);
 
