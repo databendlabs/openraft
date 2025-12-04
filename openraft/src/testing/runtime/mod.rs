@@ -83,6 +83,7 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         Self::test_watch_wait_loop_pattern().await;
         Self::test_watch_multiple_receivers().await;
         Self::test_watch_subscribe().await;
+        Self::test_watch_send_if_different().await;
         Self::test_oneshot_drop_tx().await;
         Self::test_oneshot().await;
         Self::test_oneshot_send_from_another_task().await;
@@ -905,6 +906,43 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
 
         assert_eq!(val1, 100);
         assert_eq!(val2, 100);
+    }
+
+    /// Test `WatchSender::send_if_different()` - only sends when value differs.
+    pub async fn test_watch_send_if_different() {
+        let (tx, mut rx) = Rt::Watch::channel(0i32);
+
+        // Sending the same value should return false and not notify receivers
+        let updated = tx.send_if_different(0);
+        assert!(!updated);
+
+        // changed() should be pending since value wasn't updated
+        assert!(is_pending(rx.changed()));
+
+        // Sending a different value should return true
+        let updated = tx.send_if_different(42);
+        assert!(updated);
+        assert_eq!(*tx.borrow_watched(), 42);
+
+        // changed() should be ready since value was updated
+        assert!(is_ready(rx.changed()));
+        assert_eq!(*rx.borrow_watched(), 42);
+
+        // Sending the same value again should return false
+        let updated = tx.send_if_different(42);
+        assert!(!updated);
+
+        // changed() should be pending since value wasn't updated
+        assert!(is_pending(rx.changed()));
+
+        // Sending another different value should return true
+        let updated = tx.send_if_different(100);
+        assert!(updated);
+        assert_eq!(*tx.borrow_watched(), 100);
+
+        // changed() should be ready
+        assert!(is_ready(rx.changed()));
+        assert_eq!(*rx.borrow_watched(), 100);
     }
 
     pub async fn test_oneshot_drop_tx() {

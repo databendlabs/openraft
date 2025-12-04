@@ -93,6 +93,25 @@ where
     ///
     /// All messages sent after this call will be visible to the new Receiver.
     fn subscribe(&self) -> W::Receiver<T>;
+
+    /// Sends a new value only if it differs from the current value.
+    ///
+    /// This is a convenience method that compares the new value with the stored value
+    /// and only notifies receivers if they are different.
+    ///
+    /// Returns `true` if the value was updated (i.e., values were different),
+    /// `false` otherwise.
+    fn send_if_different(&self, value: T) -> bool
+    where T: PartialEq {
+        self.send_if_modified(|current| {
+            if *current != value {
+                *current = value;
+                true
+            } else {
+                false
+            }
+        })
+    }
 }
 
 /// Receives values from the associated Sender.
