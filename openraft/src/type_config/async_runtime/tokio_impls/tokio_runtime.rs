@@ -232,6 +232,10 @@ where T: OptionalSend + OptionalSync
     fn borrow_watched(&self) -> <TokioWatch as watch::Watch>::Ref<'_, T> {
         self.borrow()
     }
+
+    fn subscribe(&self) -> <TokioWatch as watch::Watch>::Receiver<T> {
+        self.subscribe()
+    }
 }
 
 impl<T> watch::WatchReceiver<TokioWatch, T> for tokio_watch::Receiver<T>
