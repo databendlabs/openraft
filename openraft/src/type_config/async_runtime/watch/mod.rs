@@ -112,6 +112,25 @@ where
             }
         })
     }
+
+    /// Sends a new value only if it is greater than the current value.
+    ///
+    /// This is a convenience method that compares the new value with the stored value
+    /// and only updates and notifies receivers if the new value is greater.
+    ///
+    /// Returns `true` if the value was updated (i.e., new value was greater),
+    /// `false` otherwise.
+    fn send_if_greater(&self, value: T) -> bool
+    where T: PartialOrd {
+        self.send_if_modified(|current| {
+            if value > *current {
+                *current = value;
+                true
+            } else {
+                false
+            }
+        })
+    }
 }
 
 /// Receives values from the associated Sender.
