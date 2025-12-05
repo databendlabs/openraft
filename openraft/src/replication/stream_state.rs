@@ -18,7 +18,6 @@ use crate::entry::raft_entry_ext::RaftEntryExt;
 use crate::error::StorageIOResult;
 use crate::log_id_range::LogIdRange;
 use crate::network::Backoff;
-use crate::progress::inflight_id::InflightId;
 use crate::raft::AppendEntriesRequest;
 use crate::replication::replication_context::ReplicationContext;
 use crate::storage::RaftLogStorage;
@@ -48,9 +47,6 @@ where
 
     /// The leader's committed log id to send in AppendEntries requests.
     pub(crate) leader_committed: Option<LogId<C>>,
-
-    /// Identifies the current in-flight replication batch for progress tracking.
-    pub(crate) inflight_id: Option<InflightId>,
 
     /// The backoff policy if an [`Unreachable`](`crate::error::Unreachable`) error is returned.
     /// It will be reset to `None` when a successful response is received.
