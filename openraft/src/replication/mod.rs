@@ -15,6 +15,7 @@ pub(crate) mod snapshot_transmitter_handle;
 pub(crate) mod stream_context;
 pub(crate) mod stream_state;
 
+use std::fmt;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -46,6 +47,7 @@ use crate::network::v2::RaftNetworkV2;
 use crate::progress::inflight_id::InflightId;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::StreamAppendError;
+use crate::raft::StreamAppendResult;
 use crate::replication::event_watcher::EventWatcher;
 use crate::replication::inflight_append_queue::InflightAppendQueue;
 use crate::replication::log_state::LogState;
@@ -78,7 +80,7 @@ where
     stream_state: Arc<MutexOf<C, StreamState<C, LS>>>,
 
     /// A channel for receiving events from the RaftCore and snapshot transmitting task.
-    rx_event: EventWatcher<C>,
+    event_watcher: EventWatcher<C>,
 
     /// The next replication action to execute, set when partially completed.
     next_action: Option<Replicate<C>>,
@@ -91,6 +93,8 @@ where
 
     /// The log replication state tracking progress and matching logs for the follower.
     replication_state: ReplicationState<C>,
+
+    backoff_rank: u64,
 
     /// Shared backoff state for rate-limiting retries on persistent errors.
     backoff: Arc<std::sync::Mutex<Option<Backoff>>>,
@@ -154,7 +158,7 @@ where
                 backoff: backoff.clone(),
             })),
             inflight_id: None,
-            rx_event: event_watcher,
+            event_watcher,
             network: Some(network),
             replication_state: ReplicationState {
                 stream_id: 0,
@@ -166,6 +170,7 @@ where
                 },
                 searching_end: 0,
             },
+            backoff_rank: 0,
             backoff: backoff.clone(),
             next_action: None,
         };
@@ -208,15 +213,13 @@ where
         // Avoid holding a mut ref to self during streaming.
         let mut network = self.network.take().unwrap();
 
-        let mut backoff_rank = 0u64;
-
         // reset the streaming state
         self.next_action = None;
 
         loop {
             self.inflight_id = None;
 
-            if backoff_rank > 20 {
+            if self.backoff_rank > 20 {
                 self.enable_backoff(&mut network);
             } else {
                 self.disable_backoff();
@@ -267,82 +270,17 @@ where
             let resp_strm = match resp_strm_res {
                 Ok(resp_strm) => resp_strm,
                 Err(rpc_err) => {
-                    tracing::error!(
-                        "ReplicationCore recv RPCError: {}, when:(initiate-stream-replication)",
-                        rpc_err
-                    );
+                    self.backoff_rank += rpc_err.backoff_rank();
+                    self.send_progress_error(rpc_err, "initiate-stream-replication").await;
 
-                    backoff_rank += rpc_err.backoff_rank();
-
-                    self.send_progress_error(rpc_err).await;
                     continue;
                 }
             };
 
-            let mut resp_strm = std::pin::pin!(resp_strm);
+            let res = self.handle_response_stream(resp_strm, inflight_queue).await;
 
-            let mut had_error = false;
-
-            while let Some(rpc_res) = resp_strm.next().await {
-                tracing::debug!("AppendEntries RPC response: {:?}", rpc_res);
-                //
-                let append_res = match rpc_res {
-                    Ok(x) => {
-                        backoff_rank = 0;
-                        x
-                    }
-                    Err(rpc_err) => {
-                        tracing::error!("ReplicationCore recv RPCError: {}, when:(stream-replication)", rpc_err);
-
-                        backoff_rank += rpc_err.backoff_rank();
-
-                        self.send_progress_error(rpc_err).await;
-
-                        had_error = true;
-                        // No more response are expected.
-                        break;
-                    }
-                };
-
-                match append_res {
-                    Ok(matching) => {
-                        let last_acked_sending_time = inflight_queue.drain_acked(&matching);
-
-                        if let Some(last) = last_acked_sending_time {
-                            self.notify_heartbeat_progress(last).await;
-                        }
-
-                        self.replication_state.remote.last = matching.clone();
-
-                        self.notify_progress(ReplicationResult(Ok(matching))).await;
-                    }
-                    Err(append_err) => {
-                        match append_err {
-                            StreamAppendError::Conflict(conflict_log_id) => {
-                                self.notify_progress(ReplicationResult(Err(conflict_log_id))).await;
-                            }
-                            StreamAppendError::HigherVote(higher) => {
-                                //
-                                self.replication_context
-                                    .tx_notify
-                                    .send(Notification::HigherVote {
-                                        target: self.replication_context.target.clone(),
-                                        higher,
-                                        leader_vote: self.replication_context.session_id.committed_vote(),
-                                    })
-                                    .await
-                                    .ok();
-                            }
-                        }
-
-                        had_error = true;
-                        // no more response is expected.
-                        break;
-                    }
-                }
-            }
-
-            if !had_error {
+            // Response stream is successfully exhausted.
+            if res.is_ok() {
                 // if partial success is returned, not all data is exhausted. keep sending
                 log_id_range.prev = self.replication_state.remote.last.clone();
                 if log_id_range.len() > 0 {
@@ -350,6 +288,66 @@ where
                 }
             }
         }
+    }
+
+    async fn handle_response_stream<'s>(
+        &mut self,
+        resp_strm: BoxStream<'s, Result<StreamAppendResult<C>, RPCError<C>>>,
+        inflight_queue: InflightAppendQueue<C>,
+    ) -> Result<(), &'static str> {
+        let mut resp_strm = std::pin::pin!(resp_strm);
+
+        while let Some(rpc_res) = resp_strm.next().await {
+            tracing::debug!("AppendEntries RPC response: {:?}", rpc_res);
+
+            let append_res = match rpc_res {
+                Ok(stream_append_res) => {
+                    self.backoff_rank = 0;
+                    stream_append_res
+                }
+                Err(rpc_err) => {
+                    self.backoff_rank += rpc_err.backoff_rank();
+                    self.send_progress_error(rpc_err, "stream-replication").await;
+
+                    return Err("RPCError");
+                }
+            };
+
+            match append_res {
+                Ok(matching) => {
+                    let last_acked_sending_time = inflight_queue.drain_acked(&matching);
+
+                    if let Some(last) = last_acked_sending_time {
+                        self.notify_heartbeat_progress(last).await;
+                    }
+
+                    self.replication_state.remote.last = matching.clone();
+
+                    self.notify_progress(ReplicationResult(Ok(matching))).await;
+                }
+                Err(append_err) => {
+                    match append_err {
+                        StreamAppendError::Conflict(conflict_log_id) => {
+                            self.notify_progress(ReplicationResult(Err(conflict_log_id))).await;
+                        }
+                        StreamAppendError::HigherVote(higher) => {
+                            self.replication_context
+                                .tx_notify
+                                .send(Notification::HigherVote {
+                                    target: self.replication_context.target.clone(),
+                                    higher,
+                                    leader_vote: self.replication_context.session_id.committed_vote(),
+                                })
+                                .await
+                                .ok();
+                        }
+                    }
+
+                    return Err("AppendError");
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Enables backoff for retries when errors persist.
@@ -368,8 +366,12 @@ where
 
     /// Send the error result to RaftCore.
     /// RaftCore will then submit another replication command.
-    async fn send_progress_error(&mut self, err: RPCError<C>) {
-        tracing::info!("ReplicationCore send progress error: {}", err);
+    async fn send_progress_error(&mut self, err: RPCError<C>, when: impl fmt::Display) {
+        tracing::warn!(
+            "ReplicationCore recv RPCError: {}, when:({}); sending error to RaftCore",
+            err,
+            when
+        );
 
         // no inflight id means there is no payload is sent, and no one is waiting the response, no need to
         // report.
@@ -461,7 +463,7 @@ where
         tracing::debug!("drain_events");
 
         let event = self
-            .rx_event
+            .event_watcher
             .recv()
             .await
             .map_err(|_e| ReplicationClosed::new("EventWatcher is closed in drain_event()"))?;
