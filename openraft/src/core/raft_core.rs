@@ -21,7 +21,6 @@ use crate::Membership;
 use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::async_runtime::MpscReceiver;
-use crate::async_runtime::MpscUnboundedSender;
 use crate::async_runtime::OneshotSender;
 use crate::async_runtime::TryRecvError;
 use crate::async_runtime::watch::WatchSender;
@@ -92,9 +91,10 @@ use crate::raft_state::io_state::io_id::IOId;
 use crate::raft_state::io_state::log_io_id::LogIOId;
 use crate::replication::ReplicationCore;
 use crate::replication::ReplicationSessionId;
+use crate::replication::event_watcher::EventWatcher;
 use crate::replication::replication_context::ReplicationContext;
 use crate::replication::replication_handle::ReplicationHandle;
-use crate::replication::request::Replicate;
+use crate::replication::request::Data;
 use crate::replication::snapshot_transmitter::SnapshotTransmitter;
 use crate::runtime::RaftRuntime;
 use crate::storage::IOFlushed;
@@ -106,6 +106,7 @@ use crate::type_config::alias::MpscReceiverOf;
 use crate::type_config::alias::MpscSenderOf;
 use crate::type_config::alias::OneshotReceiverOf;
 use crate::type_config::alias::VoteOf;
+use crate::type_config::alias::WatchReceiverOf;
 use crate::type_config::alias::WatchSenderOf;
 use crate::type_config::alias::WriteResponderOf;
 use crate::type_config::async_runtime::mpsc::MpscSender;
@@ -196,6 +197,10 @@ where
     /// A Watch channel sender for IO completion notifications from storage callbacks.
     /// This is used by IOFlushed callbacks to report IO completion in a synchronous manner.
     pub(crate) tx_io_completed: WatchSenderOf<C, Result<IOId<C>, StorageError<C>>>,
+
+    /// For broadcast committed log id to replication task.
+    pub(crate) committed_tx: WatchSenderOf<C, Option<LogIdOf<C>>>,
+    pub(crate) _committed_rx: WatchReceiverOf<C, Option<LogIdOf<C>>>,
 
     pub(crate) tx_metrics: WatchSenderOf<C, RaftMetrics<C>>,
     pub(crate) tx_data_metrics: WatchSenderOf<C, RaftDataMetrics<C>>,
@@ -867,6 +872,8 @@ where
 
         let session_id = ReplicationSessionId::new(leader.committed_vote.clone(), membership_log_id.clone());
 
+        let (event_watcher, entries_tx) = self.new_event_watcher();
+
         ReplicationCore::<C, NF, LS>::spawn(
             target.clone(),
             session_id,
@@ -876,8 +883,20 @@ where
             network,
             self.log_store.get_log_reader().await,
             self.tx_notification.clone(),
+            event_watcher,
+            entries_tx,
             tracing::span!(parent: &self.span, Level::DEBUG, "replication", id=display(&self.id), target=display(&target)),
         )
+    }
+
+    fn new_event_watcher(&self) -> (EventWatcher<C>, WatchSenderOf<C, Data<C>>) {
+        let (entries_tx, entries_rx) = C::watch_channel(Data::default());
+        let ew = EventWatcher {
+            entries_rx,
+            committed_rx: self.committed_tx.subscribe(),
+        };
+
+        (ew, entries_tx)
     }
 
     /// Remove all replication.
@@ -898,7 +917,8 @@ where
             let handle = s.join_handle;
 
             // Drop sender to notify the task to shutdown
-            drop(s.tx_repl);
+            drop(s.entries_tx);
+            drop(s.cancel_tx);
 
             tracing::debug!("joining removed replication: {}", target);
             let _x = handle.await;
@@ -1934,11 +1954,7 @@ where
                 self.spawn_parallel_vote_requests(&vote_req).await;
             }
             Command::ReplicateCommitted { committed } => {
-                for node in self.replications.values() {
-                    let _ = node.tx_repl.send(Replicate::Committed {
-                        committed: committed.clone(),
-                    });
-                }
+                self.committed_tx.send_if_greater(committed);
             }
             Command::BroadcastHeartbeat { session_id } => {
                 self.broadcast_heartbeat(session_id);
@@ -1956,7 +1972,7 @@ where
             }
             Command::Replicate { req, target } => {
                 let node = self.replications.get(&target).expect("replication to target node exists");
-                let _ = node.tx_repl.send(req);
+                let _ = node.entries_tx.send(req);
             }
             Command::ReplicateSnapshot { target, inflight_id } => {
                 let node = self.replications.get(&target).expect("replication to target node exists");

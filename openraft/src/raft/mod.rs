@@ -450,6 +450,8 @@ where C: RaftTypeConfig
             sm_span,
         );
 
+        let (committed_tx, committed_rx) = C::watch_channel(None);
+
         let core: RaftCore<C, N, LS> = RaftCore {
             id: id.clone(),
             config: config.clone(),
@@ -475,6 +477,8 @@ where C: RaftTypeConfig
 
             tx_io_completed,
 
+            committed_tx,
+            _committed_rx: committed_rx,
             tx_metrics,
             tx_data_metrics,
             tx_server_metrics,

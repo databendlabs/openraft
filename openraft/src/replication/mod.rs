@@ -1,5 +1,6 @@
 //! Replication stream.
 
+pub(crate) mod event_watcher;
 pub(crate) mod inflight_append;
 pub(crate) mod inflight_append_queue;
 pub(crate) mod log_state;
@@ -18,7 +19,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use futures::StreamExt;
-use futures::future::FutureExt;
 use replication_handle::ReplicationHandle;
 pub(crate) use replication_session_id::ReplicationSessionId;
 use replication_state::ReplicationState;
@@ -31,7 +31,6 @@ use tracing_futures::Instrument;
 
 use crate::RaftNetworkFactory;
 use crate::RaftTypeConfig;
-use crate::async_runtime::MpscUnboundedReceiver;
 use crate::async_runtime::Mutex;
 use crate::base::BoxStream;
 use crate::config::Config;
@@ -47,6 +46,7 @@ use crate::network::v2::RaftNetworkV2;
 use crate::progress::inflight_id::InflightId;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::StreamAppendError;
+use crate::replication::event_watcher::EventWatcher;
 use crate::replication::inflight_append_queue::InflightAppendQueue;
 use crate::replication::log_state::LogState;
 use crate::replication::replication_context::ReplicationContext;
@@ -56,8 +56,8 @@ use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::MpscSenderOf;
-use crate::type_config::alias::MpscUnboundedReceiverOf;
 use crate::type_config::alias::MutexOf;
+use crate::type_config::alias::WatchSenderOf;
 use crate::type_config::async_runtime::mpsc::MpscSender;
 
 /// A task responsible for sending replication events to a target follower in the Raft cluster.
@@ -78,10 +78,10 @@ where
     stream_state: Arc<MutexOf<C, StreamState<C, LS>>>,
 
     /// A channel for receiving events from the RaftCore and snapshot transmitting task.
-    rx_event: MpscUnboundedReceiverOf<C, Replicate<C>>,
+    rx_event: EventWatcher<C>,
 
     /// The next replication action to execute, set when partially completed.
-    next_action: Option<Data<C>>,
+    next_action: Option<Replicate<C>>,
 
     /// Identifies the current in-flight replication batch for progress tracking.
     inflight_id: Option<InflightId>,
@@ -115,7 +115,9 @@ where
         matching: Option<LogIdOf<C>>,
         network: N::Network,
         log_reader: LS::LogReader,
-        tx_raft_core: MpscSenderOf<C, Notification<C>>,
+        notification_tx: MpscSenderOf<C, Notification<C>>,
+        event_watcher: EventWatcher<C>,
+        entries_tx: WatchSenderOf<C, Data<C>>,
         span: tracing::Span,
     ) -> ReplicationHandle<C> {
         tracing::debug!(
@@ -126,8 +128,6 @@ where
             "spawn replication"
         );
 
-        // Another component to ReplicationStream
-        let (tx_event, rx_event) = C::mpsc_unbounded();
         let (cancel_tx, cancel_rx) = C::watch_channel(());
 
         let id = session_id.leader_vote.node_id().clone();
@@ -139,7 +139,7 @@ where
             target,
             session_id: session_id.clone(),
             config,
-            tx_notify: tx_raft_core,
+            tx_notify: notification_tx,
             cancel_rx,
         };
 
@@ -154,7 +154,7 @@ where
                 backoff: backoff.clone(),
             })),
             inflight_id: None,
-            rx_event,
+            rx_event: event_watcher,
             network: Some(network),
             replication_state: ReplicationState {
                 stream_id: 0,
@@ -175,9 +175,9 @@ where
         ReplicationHandle {
             session_id,
             join_handle,
-            tx_repl: tx_event,
+            entries_tx,
             snapshot_transmit_handle: None,
-            _cancel_tx: cancel_tx,
+            cancel_tx,
         }
     }
 
@@ -223,7 +223,7 @@ where
             }
 
             if self.next_action.is_none() {
-                self.drain_events().await?;
+                self.next_action = Some(self.drain_events().await?);
             }
 
             let action = self.next_action.take().unwrap();
@@ -231,15 +231,13 @@ where
             self.inflight_id = action.inflight_id();
 
             let mut log_id_range = match action {
-                Data::Committed => {
-                    let m = self.replication_state.remote.last.clone();
+                Replicate::Committed { committed } => {
+                    self.replication_state.local.committed = committed.clone();
 
+                    let m = self.replication_state.remote.last.clone();
                     LogIdRange::new(m.clone(), m)
                 }
-                Data::Logs {
-                    inflight_id: _,
-                    log_id_range,
-                } => log_id_range,
+                Replicate::Data { data } => data.log_id_range.clone(),
             };
 
             {
@@ -348,7 +346,7 @@ where
                 // if partial success is returned, not all data is exhausted. keep sending
                 log_id_range.prev = self.replication_state.remote.last.clone();
                 if log_id_range.len() > 0 {
-                    self.next_action = Some(Data::new_logs(log_id_range, self.inflight_id.unwrap()));
+                    self.next_action = Some(Replicate::logs(log_id_range, self.inflight_id.unwrap()));
                 }
             }
         }
@@ -459,77 +457,15 @@ where
     ///
     /// It blocks until at least one event is received.
     #[tracing::instrument(level = "trace", skip_all)]
-    pub async fn drain_events(&mut self) -> Result<(), ReplicationClosed> {
+    pub async fn drain_events(&mut self) -> Result<Replicate<C>, ReplicationClosed> {
         tracing::debug!("drain_events");
 
-        // If there is next action to run, do not block waiting for events,
-        // instead, just try the best to drain all events.
-        if self.next_action.is_none() {
-            let event =
-                self.rx_event.recv().await.ok_or(ReplicationClosed::new("rx_repl is closed in drain_event()"))?;
-            self.process_event(event);
-        }
+        let event = self
+            .rx_event
+            .recv()
+            .await
+            .map_err(|_e| ReplicationClosed::new("EventWatcher is closed in drain_event()"))?;
 
-        // Returning from process_event(), next_action is never None.
-
-        self.try_drain_events().await?;
-
-        Ok(())
-    }
-
-    #[tracing::instrument(level = "trace", skip(self))]
-    pub async fn try_drain_events(&mut self) -> Result<(), ReplicationClosed> {
-        tracing::debug!("{}", func_name!());
-
-        // Just drain all events in the channel.
-        // There should NOT be more than one `Replicate::Data` event in the channel.
-        // Looping it just collect all commit events and heartbeat events.
-        loop {
-            let maybe_res = self.rx_event.recv().now_or_never();
-
-            let Some(recv_res) = maybe_res else {
-                // No more event found in self.repl_rx
-                return Ok(());
-            };
-
-            let event = recv_res.ok_or(ReplicationClosed::new("rx_repl is closed in try_drain_event"))?;
-
-            self.process_event(event);
-        }
-    }
-
-    #[tracing::instrument(level = "trace", skip_all)]
-    pub fn process_event(&mut self, event: Replicate<C>) {
-        tracing::debug!(event = display(&event), "process_event");
-
-        match event {
-            Replicate::Committed { committed: c } => {
-                // RaftCore may send a committed equals to the initial value.
-                debug_assert!(
-                    c >= self.replication_state.local.committed,
-                    "expect new committed {} > self.committed {}",
-                    c.display(),
-                    self.replication_state.local.committed.display()
-                );
-
-                self.replication_state.local.committed = c;
-
-                // If there is no action, fill in an heartbeat action to send committed index.
-                if self.next_action.is_none() {
-                    self.next_action = Some(Data::new_committed());
-                }
-            }
-            Replicate::Data { data: d } => {
-                // TODO: Currently there is at most 1 in flight data. But in future RaftCore may send next data
-                //       actions without waiting for the previous to finish.
-                debug_assert!(
-                    !self.next_action.as_ref().map(|d| d.has_payload()).unwrap_or(false),
-                    "there cannot be two actions with payload in flight, curr: {}",
-                    self.next_action.as_ref().map(|d| d.to_string()).display()
-                );
-
-                self.next_action = Some(d);
-            }
-        }
+        Ok(event)
     }
 }

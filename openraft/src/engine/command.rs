@@ -22,7 +22,7 @@ use crate::raft::message::TransferLeaderRequest;
 use crate::raft_state::IOId;
 use crate::raft_state::IOState;
 use crate::replication::ReplicationSessionId;
-use crate::replication::request::Replicate;
+use crate::replication::request::Data;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::OneshotSenderOf;
 use crate::type_config::alias::VoteOf;
@@ -94,7 +94,7 @@ where C: RaftTypeConfig
     },
 
     /// Replicate log entries to a target.
-    Replicate { target: C::NodeId, req: Replicate<C> },
+    Replicate { target: C::NodeId, req: Data<C> },
 
     /// Replicate snapshot to a target.
     ReplicateSnapshot { target: C::NodeId, inflight_id: InflightId },

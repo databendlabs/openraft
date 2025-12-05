@@ -23,6 +23,13 @@ where C: RaftTypeConfig
             data: Data::new_logs(log_id_range, inflight_id),
         }
     }
+
+    pub(crate) fn inflight_id(&self) -> Option<InflightId> {
+        match self {
+            Replicate::Committed { .. } => None,
+            Replicate::Data { data } => Some(data.inflight_id),
+        }
+    }
 }
 
 impl<C: RaftTypeConfig> fmt::Display for Replicate<C> {
@@ -53,86 +60,42 @@ use crate::progress::inflight_id::InflightId;
 ///   `Inflight` record on the leader, identified by an `InflightId`. The follower's response
 ///   carries the same `InflightId` so the leader can match the response to the correct inflight
 ///   state.
-#[derive(PartialEq, Eq)]
-pub(crate) enum Data<C>
+#[derive(PartialEq, Eq, Clone, Debug)]
+pub(crate) struct Data<C>
 where C: RaftTypeConfig
 {
-    Committed,
-    Logs {
-        inflight_id: InflightId,
-        log_id_range: LogIdRange<C>,
-    },
+    pub(crate) inflight_id: InflightId,
+    pub(crate) log_id_range: LogIdRange<C>,
 }
 
-impl<C> fmt::Debug for Data<C>
+impl<C> Default for Data<C>
 where C: RaftTypeConfig
 {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Data::Committed => {
-                write!(f, "Data::Committed")
-            }
-            Self::Logs {
-                inflight_id,
-                log_id_range,
-            } => f
-                .debug_struct("Data::Logs")
-                .field("log_id_range", log_id_range)
-                .field("inflight_id", inflight_id)
-                .finish(),
+    fn default() -> Self {
+        Data {
+            inflight_id: InflightId::new(0),
+            log_id_range: LogIdRange::new(None, None),
         }
     }
 }
 
 impl<C: RaftTypeConfig> fmt::Display for Data<C> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Data::Committed => {
-                write!(f, "Committed")
-            }
-            Self::Logs {
-                inflight_id,
-                log_id_range,
-            } => {
-                write!(
-                    f,
-                    "Logs{{log_id_range: {}, inflight_id: {}}}",
-                    log_id_range, inflight_id
-                )
-            }
-        }
+        write!(
+            f,
+            "Data{{log_id_range: {}, inflight_id: {}}}",
+            self.log_id_range, self.inflight_id
+        )
     }
 }
 
 impl<C> Data<C>
 where C: RaftTypeConfig
 {
-    pub(crate) fn new_committed() -> Self {
-        Self::Committed
-    }
-
     pub(crate) fn new_logs(log_id_range: LogIdRange<C>, inflight_id: InflightId) -> Self {
-        Self::Logs {
+        Self {
             log_id_range,
             inflight_id,
-        }
-    }
-
-    /// Returns the inflight ID if this is a log replication request.
-    ///
-    /// Returns `None` for commit-only updates (heartbeats).
-    pub(crate) fn inflight_id(&self) -> Option<InflightId> {
-        match self {
-            Data::Committed => None,
-            Data::Logs { inflight_id, .. } => Some(*inflight_id),
-        }
-    }
-
-    /// Return true if the data includes any payload, i.e., not a heartbeat.
-    pub(crate) fn has_payload(&self) -> bool {
-        match self {
-            Self::Committed => false,
-            Self::Logs { .. } => true,
         }
     }
 }
