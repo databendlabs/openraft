@@ -24,6 +24,7 @@ use replication_handle::ReplicationHandle;
 pub(crate) use replication_session_id::ReplicationSessionId;
 use replication_state::ReplicationState;
 use request::Data;
+use request::DataPayload;
 use request::Replicate;
 pub(crate) use response::Progress;
 use response::ReplicationResult;
@@ -242,7 +243,12 @@ where
                     let m = self.replication_state.remote.last.clone();
                     LogIdRange::new(m.clone(), m)
                 }
-                Replicate::Data { data } => data.log_id_range.clone(),
+                Replicate::Data { data } => match &data.payload {
+                    DataPayload::LogIdRange { log_id_range } => log_id_range.clone(),
+                    DataPayload::LogsSince { prev: _ } => {
+                        unreachable!("TODO")
+                    }
+                },
             };
 
             {

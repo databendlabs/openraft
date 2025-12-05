@@ -40,6 +40,13 @@ fn test_is_log_range_inflight() -> anyhow::Result<()> {
     pe.inflight = Inflight::snapshot(InflightId::new(0));
     assert_eq!(false, pe.is_log_range_inflight(&log_id(5)));
 
+    // LogsSince: all logs after prev are inflight
+    pe.inflight = Inflight::logs_since(Some(log_id(2)), InflightId::new(0));
+    assert_eq!(false, pe.is_log_range_inflight(&log_id(1)));
+    assert_eq!(false, pe.is_log_range_inflight(&log_id(2)));
+    assert_eq!(true, pe.is_log_range_inflight(&log_id(3)));
+    assert_eq!(true, pe.is_log_range_inflight(&log_id(100)));
+
     Ok(())
 }
 
