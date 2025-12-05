@@ -360,6 +360,13 @@ where C: RaftTypeConfig
                     inflight_id: *inflight_id,
                 });
             }
+            Inflight::LogsSince { prev, inflight_id } => {
+                let req = Data::new_logs_since(prev.clone(), *inflight_id);
+                output.push_command(Command::Replicate {
+                    target: target.clone(),
+                    req,
+                });
+            }
         };
     }
 

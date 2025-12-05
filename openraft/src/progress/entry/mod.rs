@@ -98,6 +98,11 @@ where C: RaftTypeConfig
                 lid > log_id_range.prev.as_ref()
             }
             Inflight::Snapshot { inflight_id: _ } => false,
+            Inflight::LogsSince { prev, .. } => {
+                // All logs after prev are inflight in streaming mode
+                let lid = Some(upto);
+                lid > prev.as_ref()
+            }
         }
     }
 
@@ -220,6 +225,7 @@ where C: RaftTypeConfig
                 validit::less_equal!(log_id_range.prev.next_index(), self.searching_end);
             }
             Inflight::Snapshot { inflight_id: _ } => {}
+            Inflight::LogsSince { .. } => {}
         }
         Ok(())
     }
