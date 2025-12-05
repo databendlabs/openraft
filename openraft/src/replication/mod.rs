@@ -154,7 +154,6 @@ where
                 log_reader,
                 log_id_range: None,
                 leader_committed: None,
-                inflight_id: None,
                 backoff: backoff.clone(),
             })),
             inflight_id: None,
@@ -246,7 +245,6 @@ where
             {
                 let mut stream_state = self.stream_state.lock().await;
 
-                stream_state.inflight_id = self.inflight_id;
                 stream_state.log_id_range = Some(log_id_range.clone());
                 stream_state.leader_committed = self.replication_state.local.committed.clone()
             }
