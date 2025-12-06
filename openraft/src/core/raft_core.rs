@@ -198,6 +198,13 @@ where
     /// This is used by IOFlushed callbacks to report IO completion in a synchronous manner.
     pub(crate) tx_io_completed: WatchSenderOf<C, Result<IOId<C>, StorageError<C>>>,
 
+    /// Broadcasts I/O submission progress to replication tasks.
+    ///
+    /// This enables replication tasks to know which log entries have been submitted
+    /// to storage and are safe to read. Updated after each I/O submission completes.
+    pub(crate) io_submitted_tx: WatchSenderOf<C, IOId<C>>,
+    pub(crate) _io_submitted_rx: WatchReceiverOf<C, IOId<C>>,
+
     /// For broadcast committed log id to replication task.
     pub(crate) committed_tx: WatchSenderOf<C, Option<LogIdOf<C>>>,
     pub(crate) _committed_rx: WatchReceiverOf<C, Option<LogIdOf<C>>>,
@@ -1877,6 +1884,9 @@ where
             Command::UpdateIOProgress { io_id, .. } => {
                 self.engine.state.log_progress_mut().submit(io_id.clone());
 
+                // Broadcast I/O progress so replication tasks can read submitted logs.
+                self.io_submitted_tx.send_if_greater(io_id.clone());
+
                 let notify = Notification::LocalIO { io_id: io_id.clone() };
 
                 self.tx_notification.send(notify).await.ok();
@@ -1902,14 +1912,21 @@ where
                 //
                 // The `submit` state must be updated before calling `append()`,
                 // because `append()` may call the callback before returning.
-                self.engine.state.log_progress_mut().submit(io_id);
+                self.engine.state.log_progress_mut().submit(io_id.clone());
 
                 // Submit IO request, do not wait for the response.
                 self.log_store.append(entries, callback).await.sto_write_logs()?;
+
+                // Notify replication tasks that logs up to `io_id` are now readable.
+                self.io_submitted_tx.send_if_greater(io_id);
             }
             Command::SaveVote { vote } => {
-                self.engine.state.log_progress_mut().submit(IOId::new(&vote));
+                let io_id = IOId::new(&vote);
+                self.engine.state.log_progress_mut().submit(io_id.clone());
                 self.log_store.save_vote(&vote).await.sto_write_vote()?;
+
+                // Notify replication tasks of vote I/O completion.
+                self.io_submitted_tx.send_if_greater(io_id);
 
                 let _ = self
                     .tx_notification
