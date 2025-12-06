@@ -454,6 +454,8 @@ where C: RaftTypeConfig
             sm_span,
         );
 
+        let default_io_id = IOId::new_vote_io(UncommittedVote::new_with_default_term(id.clone()));
+        let (io_submitted_tx, io_submitted_rx) = C::watch_channel(default_io_id);
         let (committed_tx, committed_rx) = C::watch_channel(None);
 
         let core: RaftCore<C, N, LS> = RaftCore {
@@ -480,6 +482,9 @@ where C: RaftTypeConfig
             rx_notification: rx_notify,
 
             tx_io_completed,
+
+            io_submitted_tx,
+            _io_submitted_rx: io_submitted_rx,
 
             committed_tx,
             _committed_rx: committed_rx,
