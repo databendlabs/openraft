@@ -198,6 +198,16 @@ where
     /// This is used by IOFlushed callbacks to report IO completion in a synchronous manner.
     pub(crate) tx_io_completed: WatchSenderOf<C, Result<IOId<C>, StorageError<C>>>,
 
+    /// Broadcasts I/O acceptance before submission to storage.
+    ///
+    /// Updated when `RaftCore` is about to execute an I/O operation. This allows
+    /// observers to prepare for upcoming I/O before it actually happens.
+    ///
+    /// Note: This is sent when `RaftCore` executes the I/O, not when `Engine` accepts it,
+    /// since `Engine` is a pure algorithm implementation without I/O capabilities.
+    pub(crate) io_accepted_tx: WatchSenderOf<C, IOId<C>>,
+    pub(crate) _io_accepted_rx: WatchReceiverOf<C, IOId<C>>,
+
     /// Broadcasts I/O submission progress to replication tasks.
     ///
     /// This enables replication tasks to know which log entries have been submitted
@@ -1882,6 +1892,9 @@ where
 
         match cmd {
             Command::UpdateIOProgress { io_id, .. } => {
+                // Notify that I/O is about to be submitted.
+                self.io_accepted_tx.send_if_greater(io_id.clone());
+
                 self.engine.state.log_progress_mut().submit(io_id.clone());
 
                 // Broadcast I/O progress so replication tasks can read submitted logs.
@@ -1904,6 +1917,9 @@ where
                 let io_id = IOId::new_log_io(vote, Some(last_log_id));
                 let callback = IOFlushed::new(io_id.clone(), self.tx_io_completed.clone());
 
+                // Notify that I/O is about to be submitted.
+                self.io_accepted_tx.send_if_greater(io_id.clone());
+
                 // Mark this IO request as submitted,
                 // other commands relying on it can then be processed.
                 // For example,
@@ -1922,6 +1938,10 @@ where
             }
             Command::SaveVote { vote } => {
                 let io_id = IOId::new(&vote);
+
+                // Notify that vote I/O is about to be submitted.
+                self.io_accepted_tx.send_if_greater(io_id.clone());
+
                 self.engine.state.log_progress_mut().submit(io_id.clone());
                 self.log_store.save_vote(&vote).await.sto_write_vote()?;
 
