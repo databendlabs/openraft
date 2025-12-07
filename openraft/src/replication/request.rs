@@ -18,9 +18,9 @@ where C: RaftTypeConfig
 impl<C> Replicate<C>
 where C: RaftTypeConfig
 {
-    pub(crate) fn logs(log_id_range: LogIdRange<C>, inflight_id: InflightId) -> Self {
+    pub(crate) fn new_payload(payload: DataPayload<C>, inflight_id: InflightId) -> Self {
         Self::Data {
-            data: Data::new_logs(log_id_range, inflight_id),
+            data: Data { inflight_id, payload },
         }
     }
 
@@ -63,6 +63,39 @@ where C: RaftTypeConfig
     /// Used for streaming replication where the leader continuously sends new logs.
     /// The `prev` is updated as logs are acknowledged.
     LogsSince { prev: Option<LogIdOf<C>> },
+}
+
+impl<C> fmt::Display for DataPayload<C>
+where C: RaftTypeConfig
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self {
+            DataPayload::LogIdRange { log_id_range } => {
+                write!(f, "LogIdRange{{{}}}", log_id_range)
+            }
+            DataPayload::LogsSince { prev } => {
+                write!(f, "LogsSince{{{}}}", prev.display(),)
+            }
+        }
+    }
+}
+
+impl<C> DataPayload<C>
+where C: RaftTypeConfig
+{
+    pub(crate) fn update_matching(&mut self, matching: Option<LogIdOf<C>>) {
+        match self {
+            DataPayload::LogIdRange { log_id_range } => log_id_range.prev = matching,
+            DataPayload::LogsSince { prev } => *prev = matching,
+        }
+    }
+
+    pub(crate) fn len(&self) -> Option<u64> {
+        match self {
+            DataPayload::LogIdRange { log_id_range } => Some(log_id_range.len()),
+            DataPayload::LogsSince { .. } => None,
+        }
+    }
 }
 
 /// A replication data request containing log entries to send.
