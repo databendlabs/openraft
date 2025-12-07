@@ -34,6 +34,7 @@ use tracing_futures::Instrument;
 use crate::RaftNetworkFactory;
 use crate::RaftTypeConfig;
 use crate::async_runtime::Mutex;
+use crate::async_runtime::watch::WatchReceiver;
 use crate::base::BoxStream;
 use crate::config::Config;
 use crate::core::SharedRuntimeState;
@@ -50,6 +51,7 @@ use crate::progress::inflight_id::InflightId;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::StreamAppendError;
 use crate::raft::StreamAppendResult;
+use crate::raft_state::IOId;
 use crate::replication::event_watcher::EventWatcher;
 use crate::replication::inflight_append_queue::InflightAppendQueue;
 use crate::replication::log_state::LogState;
@@ -155,8 +157,9 @@ where
             replication_context: replication_context.clone(),
             stream_state: Arc::new(MutexOf::<C, _>::new(StreamState {
                 replication_context,
+                event_watcher: event_watcher.clone(),
                 log_reader,
-                log_id_range: None,
+                payload: None,
                 leader_committed: None,
                 backoff: backoff.clone(),
             })),
@@ -222,6 +225,18 @@ where
         loop {
             self.inflight_id = None;
 
+            let accepted_io: IOId<C> = self.event_watcher.io_accepted_rx.borrow_watched().clone();
+            let current_leader = accepted_io.leader_id().clone();
+            let belonging_leader = self.replication_context.session_id.leader_id().clone();
+            if current_leader != belonging_leader {
+                tracing::info!(
+                    "ReplicationCore: Leader changed from {} to {}, quit replication",
+                    belonging_leader,
+                    current_leader
+                );
+                return Err(ReplicationClosed::new("Leader changed"));
+            }
+
             if self.backoff_rank > 20 {
                 self.enable_backoff(&mut network);
             } else {
@@ -236,25 +251,22 @@ where
 
             self.inflight_id = action.inflight_id();
 
-            let mut log_id_range = match action {
+            let mut payload = match action {
                 Replicate::Committed { committed } => {
                     self.replication_state.local.committed = committed.clone();
 
                     let m = self.replication_state.remote.last.clone();
-                    LogIdRange::new(m.clone(), m)
+                    let log_id_range = LogIdRange::new(m.clone(), m);
+                    DataPayload::LogIdRange { log_id_range }
                 }
-                Replicate::Data { data } => match &data.payload {
-                    DataPayload::LogIdRange { log_id_range } => log_id_range.clone(),
-                    DataPayload::LogsSince { prev: _ } => {
-                        unreachable!("TODO")
-                    }
-                },
+                Replicate::Data { data } => data.payload.clone(),
             };
 
             {
                 let mut stream_state = self.stream_state.lock().await;
 
-                stream_state.log_id_range = Some(log_id_range.clone());
+                // TODO
+                stream_state.payload = Some(payload.clone());
                 stream_state.leader_committed = self.replication_state.local.committed.clone()
             }
 
@@ -289,9 +301,9 @@ where
             // Response stream is successfully exhausted.
             if res.is_ok() {
                 // if partial success is returned, not all data is exhausted. keep sending
-                log_id_range.prev = self.replication_state.remote.last.clone();
-                if log_id_range.len() > 0 {
-                    self.next_action = Some(Replicate::logs(log_id_range, self.inflight_id.unwrap()));
+                payload.update_matching(self.replication_state.remote.last.clone());
+                if payload.len() != Some(0) {
+                    self.next_action = Some(Replicate::new_payload(payload, self.inflight_id.unwrap()));
                 }
             }
         }
@@ -471,7 +483,7 @@ where
 
         let event = self
             .event_watcher
-            .recv()
+            .recv_replicate_event()
             .await
             .map_err(|_e| ReplicationClosed::new("EventWatcher is closed in drain_event()"))?;
 

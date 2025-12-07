@@ -2,9 +2,11 @@ use std::fmt::Display;
 use std::fmt::Formatter;
 
 use crate::RaftTypeConfig;
+use crate::alias::LeaderIdOf;
 use crate::display_ext::DisplayOptionExt;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::VoteOf;
+use crate::vote::RaftVote;
 use crate::vote::committed::CommittedVote;
 
 /// Uniquely identifies a replication session.
@@ -58,5 +60,9 @@ where C: RaftTypeConfig
 
     pub(crate) fn vote(&self) -> VoteOf<C> {
         self.leader_vote.clone().into_vote()
+    }
+
+    pub(crate) fn leader_id(&self) -> &LeaderIdOf<C> {
+        self.leader_vote.leader_id()
     }
 }

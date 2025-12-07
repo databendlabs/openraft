@@ -206,14 +206,12 @@ where
     /// Note: This is sent when `RaftCore` executes the I/O, not when `Engine` accepts it,
     /// since `Engine` is a pure algorithm implementation without I/O capabilities.
     pub(crate) io_accepted_tx: WatchSenderOf<C, IOId<C>>,
-    pub(crate) _io_accepted_rx: WatchReceiverOf<C, IOId<C>>,
 
     /// Broadcasts I/O submission progress to replication tasks.
     ///
     /// This enables replication tasks to know which log entries have been submitted
     /// to storage and are safe to read. Updated after each I/O submission completes.
     pub(crate) io_submitted_tx: WatchSenderOf<C, IOId<C>>,
-    pub(crate) _io_submitted_rx: WatchReceiverOf<C, IOId<C>>,
 
     /// For broadcast committed log id to replication task.
     pub(crate) committed_tx: WatchSenderOf<C, Option<LogIdOf<C>>>,
@@ -912,6 +910,8 @@ where
         let ew = EventWatcher {
             entries_rx,
             committed_rx: self.committed_tx.subscribe(),
+            io_accepted_rx: self.io_accepted_tx.subscribe(),
+            io_submitted_rx: self.io_submitted_tx.subscribe(),
         };
 
         (ew, entries_tx)

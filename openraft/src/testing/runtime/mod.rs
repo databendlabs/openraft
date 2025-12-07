@@ -658,6 +658,12 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         // Send a new value
         tx.send(1).unwrap();
 
+        // Reading before `change()` does not invalidate the following `change()` to pending
+        {
+            let val = rx.borrow_watched();
+            assert_eq!(*val, 1);
+        }
+
         // First changed() should return immediately (value not yet seen)
         // and mark the value as seen
         assert!(is_ready(rx.changed()));

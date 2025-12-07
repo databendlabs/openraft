@@ -455,8 +455,8 @@ where C: RaftTypeConfig
         );
 
         let default_io_id = IOId::new_vote_io(UncommittedVote::new_with_default_term(id.clone()));
-        let (io_accepted_tx, io_accepted_rx) = C::watch_channel(default_io_id.clone());
-        let (io_submitted_tx, io_submitted_rx) = C::watch_channel(default_io_id);
+        let (io_accepted_tx, _io_accepted_rx) = C::watch_channel(default_io_id.clone());
+        let (io_submitted_tx, _io_submitted_rx) = C::watch_channel(default_io_id);
         let (committed_tx, committed_rx) = C::watch_channel(None);
 
         let runtime_stats = SharedRuntimeState::new();
@@ -487,10 +487,8 @@ where C: RaftTypeConfig
             tx_io_completed,
 
             io_accepted_tx,
-            _io_accepted_rx: io_accepted_rx,
 
             io_submitted_tx,
-            _io_submitted_rx: io_submitted_rx,
 
             committed_tx,
             _committed_rx: committed_rx,

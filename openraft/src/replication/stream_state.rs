@@ -12,14 +12,16 @@ use crate::StorageError;
 use crate::async_runtime::MpscSender;
 use crate::async_runtime::watch::WatchReceiver;
 use crate::core::notification::Notification;
-use crate::display_ext::DisplayOptionExt;
 use crate::entry::RaftEntry;
 use crate::entry::raft_entry_ext::RaftEntryExt;
 use crate::error::StorageIOResult;
 use crate::log_id_range::LogIdRange;
 use crate::network::Backoff;
 use crate::raft::AppendEntriesRequest;
+use crate::raft_state::IOId;
+use crate::replication::event_watcher::EventWatcher;
 use crate::replication::replication_context::ReplicationContext;
+use crate::replication::request::DataPayload;
 use crate::storage::RaftLogStorage;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::EntryOf;
@@ -37,13 +39,15 @@ where
 {
     pub(crate) replication_context: ReplicationContext<C>,
 
+    pub(crate) event_watcher: EventWatcher<C>,
+
     /// The [`RaftLogStorage::LogReader`] interface.
     pub(crate) log_reader: LS::LogReader,
 
     /// The range of log entries to replicate: `(prev_log_id, last_log_id]`.
     ///
     /// Set to `None` when all entries have been sent.
-    pub(crate) log_id_range: Option<LogIdRange<C>>,
+    pub(crate) payload: Option<DataPayload<C>>,
 
     /// The leader's committed log id to send in AppendEntries requests.
     pub(crate) leader_committed: Option<LogId<C>>,
@@ -65,9 +69,9 @@ where
     pub(crate) async fn next_request(&mut self) -> Option<AppendEntriesRequest<C>> {
         // The initial log_id_range may be empty range, for sync a commit log id.
         // In this case, still send one RPC, and set log_id_range in `update_log_id_range()`
-        let log_id_range = self.log_id_range.clone()?;
+        let log_id_range = self.get_log_id_range().await?;
 
-        tracing::debug!("{} log_id_range: {}", func_name!(), self.log_id_range.display());
+        tracing::debug!("{} log_id_range: {}", func_name!(), log_id_range);
 
         let res = self.read_log_entries(log_id_range).await;
         let (entries, sending_range) = match res {
@@ -79,6 +83,18 @@ where
                 return None;
             }
         };
+
+        let belonging_leader = self.replication_context.session_id.leader_id().clone();
+        let accepted_io: IOId<C> = self.event_watcher.io_accepted_rx.borrow_watched().clone();
+        let current_leader = accepted_io.leader_id().clone();
+        if current_leader != belonging_leader {
+            tracing::info!(
+                "Leader changed from {} to {}, quit replication",
+                belonging_leader,
+                current_leader
+            );
+            return None;
+        }
 
         self.update_log_id_range(sending_range.last);
 
@@ -96,6 +112,39 @@ where
         self.backoff_if_enabled().await;
 
         Some(payload)
+    }
+
+    /// Return None if no more data to send.
+    async fn get_log_id_range(&mut self) -> Option<LogIdRange<C>> {
+        let payload = self.payload.as_ref()?;
+
+        let prev = match payload {
+            DataPayload::LogIdRange { log_id_range } => return Some(log_id_range.clone()),
+            DataPayload::LogsSince { prev } => prev.clone(),
+        };
+
+        loop {
+            let current: IOId<C> = self.event_watcher.io_submitted_rx.borrow_watched().clone();
+            let last_log_id = current.last_log_id().cloned();
+
+            if last_log_id > prev {
+                return Some(LogIdRange::new(prev, last_log_id));
+            } else {
+                let change = self.event_watcher.io_submitted_rx.changed();
+                let cancel = self.replication_context.cancel_rx.changed();
+
+                futures::select! {
+                    _changed = change.fuse() => {
+                        tracing::debug!("io_submitted_rx changed");
+                        // Continue
+                    }
+                    _cancel_res = cancel.fuse() => {
+                        tracing::info!("Replication Stream is canceled");
+                        return None;
+                    }
+                }
+            }
+        }
     }
 
     /// Waits for the backoff duration if backoff is enabled, or returns immediately.
@@ -126,14 +175,14 @@ where
     ///
     /// Sets `log_id_range` to `None` when all entries have been sent.
     fn update_log_id_range(&mut self, matching: Option<LogIdOf<C>>) {
-        let Some(log_id_range) = self.log_id_range.as_mut() else {
+        let Some(payload) = self.payload.as_mut() else {
             return;
         };
 
-        log_id_range.prev = matching;
+        payload.update_matching(matching);
 
-        if log_id_range.len() == 0 {
-            self.log_id_range = None;
+        if payload.len() == Some(0) {
+            self.payload = None;
         }
     }
 

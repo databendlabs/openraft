@@ -6,6 +6,7 @@ use crate::ErrorVerb;
 use crate::LogId;
 use crate::RaftTypeConfig;
 use crate::Vote;
+use crate::alias::LeaderIdOf;
 use crate::raft_state::io_state::log_io_id::LogIOId;
 use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::type_config::alias::LogIdOf;
@@ -120,6 +121,13 @@ where C: RaftTypeConfig
         match self {
             Self::Vote(non_committed_vote) => non_committed_vote.as_ref_vote(),
             Self::Log(log_io_id) => log_io_id.committed_vote.as_ref_vote(),
+        }
+    }
+
+    pub(crate) fn leader_id(&self) -> &LeaderIdOf<C> {
+        match self {
+            Self::Vote(uncommitted_vote) => uncommitted_vote.leader_id(),
+            Self::Log(log_io_id) => log_io_id.leader_id(),
         }
     }
 
