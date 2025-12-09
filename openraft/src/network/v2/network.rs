@@ -92,7 +92,7 @@ where C: RaftTypeConfig
         option: RPCOption,
     ) -> BoxFuture<'s, Result<BoxStream<'s, Result<StreamAppendResult<C>, RPCError<C>>>, RPCError<C>>>
     where
-        S: Stream<Item = AppendEntriesRequest<C>> + OptionalSend + Unpin + 's,
+        S: Stream<Item = AppendEntriesRequest<C>> + OptionalSend + Unpin + 'static,
     {
         let fu = async move {
             let strm = futures::stream::unfold(Some((self, input)), move |state| {

@@ -6,36 +6,21 @@ Demonstrates building a distributed key-value store with Openraft using gRPC for
 
 - **gRPC networking**: Uses [Tonic](https://docs.rs/tonic) for Raft protocol and client communication
 - **Protocol Buffers**: Type-safe RPC definitions for all network operations
-- **Payload chunking**: Automatic retry with chunked transmission when append_entries exceeds gRPC message size limit
+- **Pipeline streaming**: Bidirectional gRPC streaming for efficient log replication via `stream_append`
 - **In-memory storage**: [`RaftLogStorage`] and protobuf-based state machine
-- **Dual test modes**: Single-process cluster and multi-process realistic deployment
 
 ## Overview
 
 This example implements:
 - **Storage**: In-memory log storage with protobuf `StateMachineData` state machine
-- **Network**: gRPC-based [`RaftNetwork`] implementation using Tonic
+- **Network**: gRPC-based [`RaftNetwork`] implementation using Tonic with bidirectional streaming
 - **Services**: Separate gRPC services for application APIs and Raft internal communication
 
-## Handling gRPC Payload Size Limits
-
-Demonstrates automatic chunking when `append_entries` exceeds gRPC message size limits:
-
-- **Error detection and retry**: [`src/network/mod.rs:137-145`](src/network/mod.rs#L137-L145)
-- **Chunking logic**: [`src/network/mod.rs:63-125`](src/network/mod.rs#L63-L125)
-- **Server size limit config**: [`src/app.rs:44-45`](src/app.rs#L44-L45)
-- **Test**: Run `RUST_LOG=warn cargo test --test test_chunk -- --nocapture` to see chunking logs
-
-## Testing Scenarios
+## Testing
 
 **Single-process cluster** (`./tests/test_cluster.rs`):
 - Brings up 3 nodes in one process
 - Tests: initialize, add-learner, change-membership, write/read
-
-**Chunking test** (`./tests/test_chunk.rs`):
-- Demonstrates automatic payload chunking with 2-node cluster
-- Uses large log entries to trigger gRPC size limit
-- Verifies correct replication despite chunking
 
 **Multi-process cluster** (`./test-cluster.sh`):
 - Realistic 3-process deployment
@@ -81,14 +66,3 @@ cargo build
 4. Write/read data via gRPC
 
 See `./test-cluster.sh` for complete setup example.
-
-## Comparison
-
-| Feature | grpc | http |
-|---------|------|------|
-| Protocol | gRPC/Protobuf | HTTP/JSON |
-| Type safety | Compile-time | Runtime |
-| Performance | Higher | Good |
-| Debugging | Harder | Easier |
-
-Built for demonstration purposes.
