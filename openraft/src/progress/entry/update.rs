@@ -2,6 +2,7 @@ use crate::LogIdOptionExt;
 use crate::RaftTypeConfig;
 use crate::display_ext::DisplayOptionExt;
 use crate::engine::EngineConfig;
+use crate::progress::Inflight;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::inflight_id::InflightId;
 use crate::type_config::alias::LogIdOf;
@@ -79,6 +80,11 @@ where C: RaftTypeConfig
 
                 self.entry.matching = None;
                 self.entry.allow_log_reversion = false;
+
+                // Reset pipeline mode when logs are reverted
+                if self.entry.inflight.is_logs_since() {
+                    self.entry.inflight = Inflight::None;
+                }
             }
         } else {
             debug_assert!(

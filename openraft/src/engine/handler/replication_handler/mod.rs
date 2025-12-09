@@ -23,7 +23,7 @@ use crate::proposer::Leader;
 use crate::proposer::LeaderQuorumSet;
 use crate::raft_state::LogStateReader;
 use crate::raft_state::io_state::log_io_id::LogIOId;
-use crate::replication::request::Data;
+use crate::replication::replicate::Replicate;
 use crate::replication::response::ReplicationResult;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::LogIdOf;
@@ -348,7 +348,7 @@ where C: RaftTypeConfig
                 log_id_range,
                 inflight_id,
             } => {
-                let req = Data::new_logs(log_id_range.clone(), *inflight_id);
+                let req = Replicate::new_logs(log_id_range.clone(), *inflight_id);
                 output.push_command(Command::Replicate {
                     target: target.clone(),
                     req,
@@ -361,7 +361,7 @@ where C: RaftTypeConfig
                 });
             }
             Inflight::LogsSince { prev, inflight_id } => {
-                let req = Data::new_logs_since(prev.clone(), *inflight_id);
+                let req = Replicate::new_logs_since(prev.clone(), *inflight_id);
                 output.push_command(Command::Replicate {
                     target: target.clone(),
                     req,

@@ -35,7 +35,6 @@ where C: RaftTypeConfig
     /// Unlike `Logs` which replicates a fixed range, `LogsSince` represents
     /// open-ended streaming replication. The `prev` advances as logs are
     /// acknowledged by the follower.
-    #[allow(dead_code)]
     LogsSince {
         prev: Option<LogIdOf<C>>,
         inflight_id: InflightId,
@@ -107,7 +106,7 @@ where C: RaftTypeConfig
     }
 
     /// Create inflight state for streaming logs after a given log id.
-    #[allow(dead_code)]
+    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) fn logs_since(prev: Option<LogIdOf<C>>, inflight_id: InflightId) -> Self {
         Self::LogsSince { prev, inflight_id }
     }
@@ -141,6 +140,10 @@ where C: RaftTypeConfig
     #[allow(dead_code)]
     pub(crate) fn is_sending_log(&self) -> bool {
         matches!(self, Inflight::Logs { .. })
+    }
+
+    pub(crate) fn is_logs_since(&self) -> bool {
+        matches!(self, Inflight::LogsSince { .. })
     }
 
     // test it if used
@@ -198,7 +201,7 @@ where C: RaftTypeConfig
     pub(crate) fn conflict(&mut self, _conflict: u64, from_inflight_id: InflightId) {
         match self {
             Inflight::None => {
-                unreachable!("no inflight data")
+                // with LogsSince, there might be duplicated conflict message received.
             }
             Inflight::Logs {
                 log_id_range: _,

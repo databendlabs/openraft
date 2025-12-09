@@ -101,17 +101,30 @@ where C: RaftTypeConfig
                     let (network, mut input) = state?;
 
                     let req = input.next().await?;
+
                     let range = req.log_id_range();
 
-                    let fu = network.append_entries(req, option);
-
-                    let result = fu.await;
+                    let result = network.append_entries(req, option).await;
 
                     match result {
                         Ok(resp) => {
-                            let stream_result = resp.into_stream_result(range.prev, range.last);
+                            let partial_success = resp.get_partial_success().cloned();
+
+                            let stream_result = resp.into_stream_result(range.prev, range.last.clone());
                             let is_err = stream_result.is_err();
-                            let next_state = if is_err { None } else { Some((network, input)) };
+                            let next_state = if is_err {
+                                None
+                            } else if let Some(partial) = partial_success {
+                                if partial == range.last {
+                                    Some((network, input))
+                                } else {
+                                    // If the request is only partially finished, pipeline should be stopped
+                                    None
+                                }
+                            } else {
+                                // full success
+                                Some((network, input))
+                            };
                             Some((Ok(stream_result), next_state))
                         }
                         Err(e) => Some((Err(e), None)),

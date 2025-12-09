@@ -67,7 +67,7 @@ pub fn init_file_logging(app_name: &str, dir: &str, level: &str) -> (WorkerGuard
     let (writer, writer_guard) = tracing_appender::non_blocking(f);
 
     let f_layer = fmt::Layer::new()
-        .with_span_events(fmt::format::FmtSpan::FULL)
+        .with_span_events(fmt::format::FmtSpan::NONE)
         .with_writer(writer)
         .with_ansi(false)
         .event_format(EventFormatter {});
