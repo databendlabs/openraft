@@ -1,11 +1,6 @@
-use futures::FutureExt;
-
 use crate::RaftTypeConfig;
-use crate::async_runtime::watch::RecvError;
-use crate::async_runtime::watch::WatchReceiver;
 use crate::raft_state::IOId;
-use crate::replication::request::Data;
-use crate::replication::request::Replicate;
+use crate::replication::replicate::Replicate;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::WatchReceiverOf;
 
@@ -13,33 +8,9 @@ use crate::type_config::alias::WatchReceiverOf;
 pub(crate) struct EventWatcher<C>
 where C: RaftTypeConfig
 {
-    pub(crate) entries_rx: WatchReceiverOf<C, Data<C>>,
+    pub(crate) replicate_rx: WatchReceiverOf<C, Replicate<C>>,
     pub(crate) committed_rx: WatchReceiverOf<C, Option<LogIdOf<C>>>,
 
     pub(crate) io_accepted_rx: WatchReceiverOf<C, IOId<C>>,
     pub(crate) io_submitted_rx: WatchReceiverOf<C, IOId<C>>,
-}
-
-impl<C> EventWatcher<C>
-where C: RaftTypeConfig
-{
-    pub(crate) async fn recv_replicate_event(&mut self) -> Result<Replicate<C>, RecvError> {
-        let entries = self.entries_rx.changed();
-        let committed = self.committed_rx.changed();
-
-        futures::select! {
-            entries_res = entries.fuse() => {
-                entries_res?;
-
-                let data = self.entries_rx.borrow_watched().clone();
-                Ok(Replicate::Data {data})
-            }
-            committed_res = committed.fuse() => {
-                committed_res?;
-
-                let committed = self.committed_rx.borrow_watched().clone();
-                Ok(Replicate::Committed {committed})
-            }
-        }
-    }
 }

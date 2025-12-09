@@ -12,16 +12,18 @@ use crate::StorageError;
 use crate::async_runtime::MpscSender;
 use crate::async_runtime::watch::WatchReceiver;
 use crate::core::notification::Notification;
+use crate::display_ext::display_option::DisplayOptionExt;
 use crate::entry::RaftEntry;
 use crate::entry::raft_entry_ext::RaftEntryExt;
 use crate::error::StorageIOResult;
 use crate::log_id_range::LogIdRange;
 use crate::network::Backoff;
+use crate::progress::inflight_id::InflightId;
 use crate::raft::AppendEntriesRequest;
 use crate::raft_state::IOId;
 use crate::replication::event_watcher::EventWatcher;
+use crate::replication::payload::Payload;
 use crate::replication::replication_context::ReplicationContext;
-use crate::replication::request::DataPayload;
 use crate::storage::RaftLogStorage;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::EntryOf;
@@ -47,7 +49,9 @@ where
     /// The range of log entries to replicate: `(prev_log_id, last_log_id]`.
     ///
     /// Set to `None` when all entries have been sent.
-    pub(crate) payload: Option<DataPayload<C>>,
+    pub(crate) payload: Option<Payload<C>>,
+
+    pub(crate) inflight_id: Option<InflightId>,
 
     /// The leader's committed log id to send in AppendEntries requests.
     pub(crate) leader_committed: Option<LogId<C>>,
@@ -101,13 +105,15 @@ where
         let payload = AppendEntriesRequest {
             vote: self.replication_context.session_id.vote(),
             prev_log_id: sending_range.prev.clone(),
-            leader_commit: self.leader_committed.clone(),
+            leader_commit: self.event_watcher.committed_rx.borrow_watched().clone(),
             entries,
         };
 
         self.replication_context
             .runtime_stats
             .with_mut(|s| s.replicate_batch.record(payload.entries.len() as u64));
+
+        tracing::debug!("next_request: AppendEntries: {}", payload);
 
         self.backoff_if_enabled().await;
 
@@ -118,28 +124,58 @@ where
     async fn get_log_id_range(&mut self) -> Option<LogIdRange<C>> {
         let payload = self.payload.as_ref()?;
 
+        tracing::debug!("pipeline stream payload: {}", payload);
+
         let prev = match payload {
-            DataPayload::LogIdRange { log_id_range } => return Some(log_id_range.clone()),
-            DataPayload::LogsSince { prev } => prev.clone(),
+            Payload::LogIdRange { log_id_range } => return Some(log_id_range.clone()),
+            Payload::LogsSince { prev } => prev.clone(),
         };
+
+        // pipeline mode:
 
         loop {
             let current: IOId<C> = self.event_watcher.io_submitted_rx.borrow_watched().clone();
             let last_log_id = current.last_log_id().cloned();
 
-            if last_log_id > prev {
+            let committed: Option<LogIdOf<C>> = self.event_watcher.committed_rx.borrow_watched().clone();
+
+            tracing::debug!(
+                "building next entries range to replicate: current last_log_id: {}, current committed: {}",
+                last_log_id.display(),
+                committed.display()
+            );
+
+            if last_log_id > prev || committed > self.leader_committed {
+                self.leader_committed = committed;
                 return Some(LogIdRange::new(prev, last_log_id));
             } else {
-                let change = self.event_watcher.io_submitted_rx.changed();
+                let data_change = self.event_watcher.replicate_rx.changed();
+                let io_change = self.event_watcher.io_submitted_rx.changed();
+                let committed_change = self.event_watcher.committed_rx.changed();
                 let cancel = self.replication_context.cancel_rx.changed();
 
                 futures::select! {
-                    _changed = change.fuse() => {
+                    _data_changed = data_change.fuse() => {
+                        let new_data = self.event_watcher.replicate_rx.borrow_watched().clone();
+                        if Some(new_data.inflight_id) != self.inflight_id {
+                            tracing::info!("current inflight_id: {} received payload with new inflight_id: {}, quit", self.inflight_id.display(), new_data.inflight_id);
+                            return None;
+                        }
+                    }
+                    _io_changed = io_change.fuse() => {
                         tracing::debug!("io_submitted_rx changed");
                         // Continue
                     }
-                    _cancel_res = cancel.fuse() => {
-                        tracing::info!("Replication Stream is canceled");
+                    _committed_change = committed_change.fuse() => {
+                        tracing::debug!("committed_rx changed");
+                        // `committed` may be triggered even when the value does not change.
+                        // in which scenario, it is for replication committed log id,
+                        // thus we just emit an RPC once committed receiver is notified.
+                        self.leader_committed = self.event_watcher.committed_rx.borrow_watched().clone();
+                        return Some(LogIdRange::new(prev, last_log_id));
+                    }
+                    cancel_res = cancel.fuse() => {
+                        tracing::info!("Replication Stream is canceled, res: {:?}, when:(get_log_id_range:wait-for-changed)", cancel_res);
                         return None;
                     }
                 }
@@ -165,8 +201,8 @@ where
             _ = sleep.fuse() => {
                 tracing::debug!("backoff timeout");
             }
-            _cancel_res = cancel.fuse() => {
-                tracing::info!("Replication Stream is canceled");
+            cancel_res = cancel.fuse() => {
+                tracing::info!("Replication Stream is canceled, res: {:?}, when:(backoff_if_enabled:wait-for-changed)", cancel_res);
             }
         }
     }

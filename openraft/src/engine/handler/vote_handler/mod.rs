@@ -5,6 +5,7 @@ use crate::OptionalSend;
 use crate::RaftState;
 use crate::RaftTypeConfig;
 use crate::display_ext::DisplayOptionExt;
+use crate::display_ext::display_instant::DisplayInstantExt;
 use crate::engine::Command;
 use crate::engine::Condition;
 use crate::engine::EngineConfig;
@@ -132,7 +133,13 @@ where C: RaftTypeConfig
             self.state.accept_log_io(IOId::new(vote));
             self.output.push_command(Command::SaveVote { vote: vote.clone() });
         } else {
-            self.state.vote.touch(C::now(), leader_lease);
+            let now = C::now();
+            self.state.vote.touch(now, leader_lease);
+            tracing::debug!(
+                "vote does not change, just update lease, updated: {}; now: {}",
+                self.state.vote,
+                now.display()
+            );
         }
 
         self.update_internal_server_state();

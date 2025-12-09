@@ -92,9 +92,10 @@ use crate::raft_state::io_state::log_io_id::LogIOId;
 use crate::replication::ReplicationCore;
 use crate::replication::ReplicationSessionId;
 use crate::replication::event_watcher::EventWatcher;
+use crate::replication::replicate::Replicate;
 use crate::replication::replication_context::ReplicationContext;
 use crate::replication::replication_handle::ReplicationHandle;
-use crate::replication::request::Data;
+use crate::replication::replication_progress;
 use crate::replication::snapshot_transmitter::SnapshotTransmitter;
 use crate::runtime::RaftRuntime;
 use crate::storage::IOFlushed;
@@ -880,41 +881,75 @@ where
         // Safe unwrap(): target must be in membership
         let target_node = self.engine.state.membership_state.effective().get_node(&target).unwrap();
 
-        let membership_log_id = self.engine.state.membership_state.effective().log_id();
         let network = self.network_factory.new_client(target.clone(), target_node).await;
 
-        let leader = self.engine.leader.as_ref().unwrap();
+        let (replicate_tx, replicate_rx) = C::watch_channel(Replicate::default());
 
-        let session_id = ReplicationSessionId::new(leader.committed_vote.clone(), membership_log_id.clone());
+        let event_watcher = self.new_event_watcher(replicate_rx);
 
-        let (event_watcher, entries_tx) = self.new_event_watcher();
+        let (mut replication_handle, replication_context) = self.new_replication(target.clone(), replicate_tx);
 
-        ReplicationCore::<C, NF, LS>::spawn(
-            target.clone(),
-            session_id,
-            self.config.clone(),
-            self.engine.state.committed().cloned(),
-            progress_entry.matching.clone(),
+        let progress = replication_progress::ReplicationProgress {
+            local_committed: self.engine.state.committed().cloned(),
+            remote_matched: progress_entry.matching.clone(),
+        };
+
+        let join_handel = ReplicationCore::<C, NF, LS>::spawn(
+            replication_context,
+            progress,
             network,
             self.log_store.get_log_reader().await,
-            self.tx_notification.clone(),
             event_watcher,
-            entries_tx,
             tracing::span!(parent: &self.span, Level::DEBUG, "replication", id=display(&self.id), target=display(&target)),
             self.runtime_stats.clone(),
-        )
+        );
+
+        replication_handle.join_handle = Some(join_handel);
+
+        replication_handle
     }
 
-    fn new_event_watcher(&self) -> (EventWatcher<C>, WatchSenderOf<C, Data<C>>) {
-        let (entries_tx, entries_rx) = C::watch_channel(Data::default());
-        let ew = EventWatcher {
-            entries_rx,
+    fn new_replication(
+        &self,
+        target: C::NodeId,
+        replicate_tx: WatchSenderOf<C, Replicate<C>>,
+    ) -> (ReplicationHandle<C>, ReplicationContext<C>) {
+        let (cancel_tx, cancel_rx) = C::watch_channel(());
+
+        let context = self.new_replication_context(target.clone(), cancel_rx);
+
+        let handle = ReplicationHandle::new(context.session_id.clone(), replicate_tx, cancel_tx);
+
+        (handle, context)
+    }
+
+    fn new_replication_context(&self, target: C::NodeId, cancel_rx: WatchReceiverOf<C, ()>) -> ReplicationContext<C> {
+        let id = self.id.clone();
+
+        let membership_log_id = self.engine.state.membership_state.effective().log_id();
+
+        let session_id = {
+            let leader = self.engine.leader.as_ref().unwrap();
+            ReplicationSessionId::new(leader.committed_vote.clone(), membership_log_id.clone())
+        };
+
+        ReplicationContext {
+            id,
+            target,
+            session_id: session_id.clone(),
+            config: self.config.clone(),
+            tx_notify: self.tx_notification.clone(),
+            cancel_rx,
+        }
+    }
+
+    fn new_event_watcher(&self, replicate_rx: WatchReceiverOf<C, Replicate<C>>) -> EventWatcher<C> {
+        EventWatcher {
+            replicate_rx,
             committed_rx: self.committed_tx.subscribe(),
             io_accepted_rx: self.io_accepted_tx.subscribe(),
             io_submitted_rx: self.io_submitted_tx.subscribe(),
-        };
-
-        (ew, entries_tx)
+        }
     }
 
     /// Remove all replication.
@@ -931,11 +966,13 @@ where
             "remove all targets from replication_metrics"
         );
 
-        for (target, s) in nodes {
-            let handle = s.join_handle;
+        for (target, mut s) in nodes {
+            let Some(handle) = s.join_handle.take() else {
+                continue;
+            };
 
             // Drop sender to notify the task to shutdown
-            drop(s.entries_tx);
+            drop(s.replicate_tx);
             drop(s.cancel_tx);
 
             tracing::debug!("joining removed replication: {}", target);
@@ -2011,7 +2048,7 @@ where
             }
             Command::Replicate { req, target } => {
                 let node = self.replications.get(&target).expect("replication to target node exists");
-                let _ = node.entries_tx.send(req);
+                let _ = node.replicate_tx.send(req);
             }
             Command::ReplicateSnapshot { target, inflight_id } => {
                 let node = self.replications.get(&target).expect("replication to target node exists");

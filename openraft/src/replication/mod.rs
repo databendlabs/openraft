@@ -3,12 +3,12 @@
 pub(crate) mod event_watcher;
 pub(crate) mod inflight_append;
 pub(crate) mod inflight_append_queue;
-pub(crate) mod log_state;
+pub(crate) mod payload;
+pub(crate) mod replicate;
 pub(crate) mod replication_context;
 pub(crate) mod replication_handle;
+pub(crate) mod replication_progress;
 mod replication_session_id;
-pub(crate) mod replication_state;
-pub(crate) mod request;
 pub(crate) mod response;
 pub(crate) mod snapshot_transmitter;
 pub(crate) mod snapshot_transmitter_handle;
@@ -19,13 +19,11 @@ use std::fmt;
 use std::sync::Arc;
 use std::time::Duration;
 
+use futures::FutureExt;
 use futures::StreamExt;
-use replication_handle::ReplicationHandle;
+use payload::Payload;
+use replication_progress::ReplicationProgress;
 pub(crate) use replication_session_id::ReplicationSessionId;
-use replication_state::ReplicationState;
-use request::Data;
-use request::DataPayload;
-use request::Replicate;
 pub(crate) use response::Progress;
 use response::ReplicationResult;
 use stream_state::StreamState;
@@ -33,6 +31,7 @@ use tracing_futures::Instrument;
 
 use crate::RaftNetworkFactory;
 use crate::RaftTypeConfig;
+use crate::alias::JoinHandleOf;
 use crate::async_runtime::Mutex;
 use crate::async_runtime::watch::WatchReceiver;
 use crate::base::BoxStream;
@@ -54,16 +53,12 @@ use crate::raft::StreamAppendResult;
 use crate::raft_state::IOId;
 use crate::replication::event_watcher::EventWatcher;
 use crate::replication::inflight_append_queue::InflightAppendQueue;
-use crate::replication::log_state::LogState;
 use crate::replication::replication_context::ReplicationContext;
 use crate::replication::stream_context::StreamContext;
 use crate::storage::RaftLogStorage;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::InstantOf;
-use crate::type_config::alias::LogIdOf;
-use crate::type_config::alias::MpscSenderOf;
 use crate::type_config::alias::MutexOf;
-use crate::type_config::alias::WatchSenderOf;
 use crate::type_config::async_runtime::mpsc::MpscSender;
 
 /// A task responsible for sending replication events to a target follower in the Raft cluster.
@@ -86,8 +81,8 @@ where
     /// A channel for receiving events from the RaftCore and snapshot transmitting task.
     event_watcher: EventWatcher<C>,
 
-    /// The next replication action to execute, set when partially completed.
-    next_action: Option<Replicate<C>>,
+    /// The next replication payload to send, set when partially completed.
+    next_action: Option<Payload<C>>,
 
     /// Identifies the current in-flight replication batch for progress tracking.
     inflight_id: Option<InflightId>,
@@ -96,7 +91,7 @@ where
     network: Option<N::Network>,
 
     /// The log replication state tracking progress and matching logs for the follower.
-    replication_state: ReplicationState<C>,
+    replication_progress: ReplicationProgress<C>,
 
     backoff_rank: u64,
 
@@ -111,47 +106,28 @@ where
     LS: RaftLogStorage<C>,
 {
     /// Spawn a new replication task for the target node.
-    #[tracing::instrument(level = "trace", skip_all, fields(target=display(&target), session_id=display(&session_id)
+    #[tracing::instrument(level = "trace", skip_all, fields(context=display(&replication_context)
     ))]
     #[allow(clippy::type_complexity)]
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn spawn(
-        target: C::NodeId,
-        session_id: ReplicationSessionId<C>,
-        config: Arc<Config>,
-        committed: Option<LogIdOf<C>>,
-        matching: Option<LogIdOf<C>>,
+        replication_context: ReplicationContext<C>,
+        progress: ReplicationProgress<C>,
         network: N::Network,
         log_reader: LS::LogReader,
-        notification_tx: MpscSenderOf<C, Notification<C>>,
         event_watcher: EventWatcher<C>,
-        entries_tx: WatchSenderOf<C, Data<C>>,
         span: tracing::Span,
         runtime_stats: SharedRuntimeState,
-    ) -> ReplicationHandle<C> {
+    ) -> JoinHandleOf<C, Result<(), ReplicationClosed>> {
         tracing::debug!(
-            session_id = display(&session_id),
-            target = display(&target),
-            committed = display(committed.display()),
-            matching = debug(&matching),
-            "spawn replication"
+            "spawn replication: session_id={}, target={}, committed={}, matching={}",
+            replication_context.session_id,
+            replication_context.target,
+            progress.local_committed.display(),
+            progress.remote_matched.display()
         );
 
-        let (cancel_tx, cancel_rx) = C::watch_channel(());
-
-        let id = session_id.leader_vote.node_id().clone();
-
         let backoff = Arc::new(std::sync::Mutex::new(None));
-
-        let replication_context = ReplicationContext {
-            id,
-            target,
-            session_id: session_id.clone(),
-            config,
-            tx_notify: notification_tx,
-            cancel_rx,
-            runtime_stats,
-        };
 
         let this = Self {
             replication_context: replication_context.clone(),
@@ -160,36 +136,20 @@ where
                 event_watcher: event_watcher.clone(),
                 log_reader,
                 payload: None,
+                inflight_id: None,
                 leader_committed: None,
                 backoff: backoff.clone(),
             })),
             inflight_id: None,
             event_watcher,
             network: Some(network),
-            replication_state: ReplicationState {
-                stream_id: 0,
-                purged: None,
-                local: LogState { committed, last: None },
-                remote: LogState {
-                    committed: None,
-                    last: matching,
-                },
-                searching_end: 0,
-            },
+            replication_progress: progress,
             backoff_rank: 0,
             backoff: backoff.clone(),
             next_action: None,
         };
 
-        let join_handle = C::spawn(this.main().instrument(span));
-
-        ReplicationHandle {
-            session_id,
-            join_handle,
-            entries_tx,
-            snapshot_transmit_handle: None,
-            cancel_tx,
-        }
+        C::spawn(this.main().instrument(span))
     }
 
     /// Creates a stream of AppendEntries requests from the given context.
@@ -221,9 +181,19 @@ where
 
         // reset the streaming state
         self.next_action = None;
+        self.inflight_id = None;
 
         loop {
-            self.inflight_id = None;
+            tracing::debug!(
+                "ReplicationCore: new stream start, next_action = {:?}",
+                self.next_action
+            );
+
+            let canceled = self.replication_context.cancel_rx.changed().now_or_never();
+            if canceled.map(|x| x.is_err()) == Some(true) {
+                tracing::info!("ReplicationCore: canceled, quit");
+                return Err(ReplicationClosed::new("canceled"));
+            }
 
             let accepted_io: IOId<C> = self.event_watcher.io_accepted_rx.borrow_watched().clone();
             let current_leader = accepted_io.leader_id().clone();
@@ -244,30 +214,32 @@ where
             }
 
             if self.next_action.is_none() {
-                self.next_action = Some(self.drain_events().await?);
+                self.drain_events().await?;
+            } else {
+                // If there is new data to send, even when the current data is not yet finished sending
+                // discard the current data, start to send the new data.
+                // When data is reverted in LogsSince mode, it needs such a mechanism.
+                let new_data = self.event_watcher.replicate_rx.borrow_watched().clone();
+                if self.inflight_id != Some(new_data.inflight_id) {
+                    tracing::info!(
+                        "ReplicationCore replaced current data with inflight id {:?} with new {}",
+                        self.inflight_id,
+                        new_data.inflight_id
+                    );
+                    self.inflight_id = Some(new_data.inflight_id);
+                    self.next_action = Some(new_data.payload);
+                }
             }
 
-            let action = self.next_action.take().unwrap();
-
-            self.inflight_id = action.inflight_id();
-
-            let mut payload = match action {
-                Replicate::Committed { committed } => {
-                    self.replication_state.local.committed = committed.clone();
-
-                    let m = self.replication_state.remote.last.clone();
-                    let log_id_range = LogIdRange::new(m.clone(), m);
-                    DataPayload::LogIdRange { log_id_range }
-                }
-                Replicate::Data { data } => data.payload.clone(),
-            };
+            let mut payload = self.next_action.take().unwrap();
 
             {
                 let mut stream_state = self.stream_state.lock().await;
 
                 // TODO
                 stream_state.payload = Some(payload.clone());
-                stream_state.leader_committed = self.replication_state.local.committed.clone()
+                stream_state.inflight_id = self.inflight_id;
+                stream_state.leader_committed = self.event_watcher.committed_rx.borrow_watched().clone()
             }
 
             let inflight_queue = InflightAppendQueue::new();
@@ -301,9 +273,12 @@ where
             // Response stream is successfully exhausted.
             if res.is_ok() {
                 // if partial success is returned, not all data is exhausted. keep sending
-                payload.update_matching(self.replication_state.remote.last.clone());
+                payload.update_matching(self.replication_progress.remote_matched.clone());
                 if payload.len() != Some(0) {
-                    self.next_action = Some(Replicate::new_payload(payload, self.inflight_id.unwrap()));
+                    self.next_action = Some(payload);
+                } else {
+                    // Payload is all sent.
+                    self.inflight_id = None;
                 }
             }
         }
@@ -340,7 +315,7 @@ where
                         self.notify_heartbeat_progress(last).await;
                     }
 
-                    self.replication_state.remote.last = matching.clone();
+                    self.replication_progress.remote_matched = matching.clone();
 
                     self.notify_progress(ReplicationResult(Ok(matching))).await;
                 }
@@ -417,7 +392,7 @@ where
     ///
     /// [`RaftCore`]: crate::core::RaftCore
     async fn notify_heartbeat_progress(&mut self, sending_time: InstantOf<C>) {
-        tracing::debug!("ReplicationCore notify heartbeat progress: {}", sending_time.display());
+        tracing::debug!("ReplicationCore notify_heartbeat_progress: {}", sending_time.display());
         self.replication_context
             .tx_notify
             .send({
@@ -434,16 +409,17 @@ where
     /// Notify RaftCore with the success replication result (log matching or conflict).
     async fn notify_progress(&mut self, replication_result: ReplicationResult<C>) {
         tracing::debug!(
-            target = display(self.replication_context.target.clone()),
-            curr_matching = display(self.replication_state.remote.last.display()),
-            result = display(&replication_result),
-            "{}",
-            func_name!()
+            "{}: target={}, curr_matching={}, result={}, inflight_id={}",
+            func_name!(),
+            self.replication_context.target,
+            self.replication_progress.remote_matched.display(),
+            replication_result,
+            self.inflight_id.display()
         );
 
         match &replication_result.0 {
             Ok(matching) => {
-                self.replication_state.remote.last = matching.clone();
+                self.replication_progress.remote_matched = matching.clone();
 
                 // No need to notify
                 if matching.is_none() {
@@ -474,19 +450,47 @@ where
             .ok();
     }
 
-    /// Receive and process events from RaftCore until `next_action` is filled.
+    /// Receive and process events from RaftCore and set `next_action` and `inflight_id`.
+    ///
+    /// - For log entries: sets `inflight_id = Some(id)` and `next_action = Some(payload)`
+    /// - For committed update: sets `inflight_id = None` and `next_action =
+    ///   Some(empty_range_payload)`
     ///
     /// It blocks until at least one event is received.
     #[tracing::instrument(level = "trace", skip_all)]
-    pub async fn drain_events(&mut self) -> Result<Replicate<C>, ReplicationClosed> {
+    pub async fn drain_events(&mut self) -> Result<(), ReplicationClosed> {
         tracing::debug!("drain_events");
 
-        let event = self
-            .event_watcher
-            .recv_replicate_event()
-            .await
-            .map_err(|_e| ReplicationClosed::new("EventWatcher is closed in drain_event()"))?;
+        let entries = self.event_watcher.replicate_rx.changed();
+        let committed = self.event_watcher.committed_rx.changed();
 
-        Ok(event)
+        futures::select! {
+            entries_res = entries.fuse() => {
+                entries_res.map_err(|_e| ReplicationClosed::new("replicate_rx closed"))?;
+                let data = self.event_watcher.replicate_rx.borrow_watched().clone();
+                self.inflight_id = Some(data.inflight_id);
+                self.next_action = Some(data.payload);
+            }
+            committed_res = committed.fuse() => {
+                committed_res.map_err(|_e| ReplicationClosed::new("committed_rx closed"))?;
+
+                // Committed update: create an empty-range payload to sync commit index.
+                let committed = self.event_watcher.committed_rx.borrow_watched().clone();
+                self.replication_progress.local_committed = committed;
+
+                let m = self.replication_progress.remote_matched.clone();
+                let log_id_range = LogIdRange::new(m.clone(), m);
+                self.inflight_id = None;
+                self.next_action = Some(Payload::LogIdRange { log_id_range });
+            }
+        };
+
+        tracing::debug!(
+            "drain_events set: inflight_id={:?}, next_action={:?}",
+            self.inflight_id,
+            self.next_action
+        );
+
+        Ok(())
     }
 }

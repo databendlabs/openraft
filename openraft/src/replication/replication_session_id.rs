@@ -2,8 +2,8 @@ use std::fmt::Display;
 use std::fmt::Formatter;
 
 use crate::RaftTypeConfig;
-use crate::alias::LeaderIdOf;
 use crate::display_ext::DisplayOptionExt;
+use crate::type_config::alias::LeaderIdOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::VoteOf;
 use crate::vote::RaftVote;

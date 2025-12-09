@@ -193,12 +193,18 @@ fn test_next_send() -> anyhow::Result<()> {
         // -----+------+-----+--->
         //      purged snap  last
         //      6      10    20
+        //
+        // matching.next_index() == searching_end, enter pipeline mode
 
         let mut pe = ProgressEntry::<UTConfig>::empty(7);
         pe.matching = Some(log_id(6));
 
         let res = pe.next_send(&mut new_raft_state(6, 10, 20), 100);
-        assert_eq!(Ok(&inflight_logs(6, 20).with_id(1)), res);
+        assert_eq!(
+            Ok(&Inflight::logs_since(Some(log_id(6)), InflightId::new(1))),
+            res,
+            "pipeline mode: matching.next == searching_end"
+        );
     }
 
     {
@@ -253,12 +259,18 @@ fn test_next_send() -> anyhow::Result<()> {
         // -----+------+-----+--->
         //      purged snap  last
         //      6      10    20
+        //
+        // matching.next_index() == searching_end, enter pipeline mode
 
         let mut pe = ProgressEntry::<UTConfig>::empty(8);
         pe.matching = Some(log_id(7));
 
         let res = pe.next_send(&mut new_raft_state(6, 10, 20), 100);
-        assert_eq!(Ok(&inflight_logs(7, 20).with_id(1)), res);
+        assert_eq!(
+            Ok(&Inflight::logs_since(Some(log_id(7)), InflightId::new(1))),
+            res,
+            "pipeline mode: matching.next == searching_end"
+        );
     }
 
     {
@@ -268,12 +280,19 @@ fn test_next_send() -> anyhow::Result<()> {
         // -----+------+-----+--->
         //      purged snap  last
         //      6      10    20
+        //
+        // matching.next_index() == searching_end, enter pipeline mode
+        // (even though follower is fully caught up)
 
         let mut pe = ProgressEntry::<UTConfig>::empty(21);
         pe.matching = Some(log_id(20));
 
         let res = pe.next_send(&mut new_raft_state(6, 10, 20), 100);
-        assert_eq!(Err(&Inflight::None), res, "nothing to send");
+        assert_eq!(
+            Ok(&Inflight::logs_since(Some(log_id(20)), InflightId::new(1))),
+            res,
+            "pipeline mode: fully caught up"
+        );
     }
 
     // Test max_entries
@@ -291,5 +310,50 @@ fn test_next_send() -> anyhow::Result<()> {
         let res = pe.next_send(&mut new_raft_state(6, 10, 20), 5);
         assert_eq!(Ok(&inflight_logs(7, 12).with_id(1)), res);
     }
+    Ok(())
+}
+
+#[test]
+fn test_next_send_pipeline_mode() -> anyhow::Result<()> {
+    // Pipeline mode: when matching.next_index() == searching_end,
+    // enter streaming mode with LogsSince instead of fixed-range Logs.
+    // Basic pipeline mode cases are already covered in test_next_send().
+    // This test covers additional edge cases.
+
+    // NOT pipeline mode: matching.next_index() != searching_end
+    {
+        //       matching  searching_end
+        //       7         20
+        //       v---------v
+        // -----+------+-----+--->
+        //      purged snap  last
+        //      6      10    20
+
+        let mut pe = ProgressEntry::<UTConfig>::empty(20);
+        pe.matching = Some(log_id(7));
+        pe.searching_end = 20;
+
+        let res = pe.next_send(&mut new_raft_state(6, 10, 20), 100);
+        assert_eq!(Ok(&inflight_logs(7, 20).with_id(1)), res, "not pipeline: gap exists");
+    }
+
+    // NOT pipeline mode: no matching yet
+    {
+        //  matching=None  searching_end
+        //                 20
+        //                 v
+        // -----+------+-----+--->
+        //      purged snap  last
+        //      6      10    20
+
+        let mut pe = ProgressEntry::<UTConfig>::empty(20);
+        pe.matching = None;
+        pe.searching_end = 20;
+
+        let res = pe.next_send(&mut new_raft_state(6, 10, 20), 100);
+        // calc_mid(0, 20) = 10, so start = 10
+        assert!(matches!(res, Ok(Inflight::Logs { .. })), "not pipeline: no matching");
+    }
+
     Ok(())
 }
