@@ -3,6 +3,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use futures::FutureExt;
+use futures::StreamExt;
 
 use crate::Config;
 use crate::RaftTypeConfig;
@@ -14,7 +15,8 @@ use crate::core::notification::Notification;
 use crate::network::RPCOption;
 use crate::network::v2::RaftNetworkV2;
 use crate::raft::AppendEntriesRequest;
-use crate::raft::AppendEntriesResponse;
+use crate::raft::StreamAppendError;
+use crate::raft::StreamAppendResult;
 use crate::replication::Progress;
 use crate::replication::response::ReplicationResult;
 use crate::type_config::TypeConfigExt;
@@ -103,63 +105,86 @@ where
                 entries: vec![],
             };
 
-            let res = C::timeout(timeout, self.network.append_entries(payload, option)).await;
+            let input_stream = Box::pin(futures::stream::once(async { payload }));
+
+            let res = C::timeout(timeout, async {
+                let mut output = self.network.stream_append(input_stream, option).await?;
+                output.next().await.transpose()
+            })
+            .await;
+
             tracing::debug!("{} sent a heartbeat: {}, result: {:?}", self, heartbeat, res);
 
             match res {
-                Ok(Ok(x)) => {
-                    let response: AppendEntriesResponse<C> = x;
-
-                    match response {
-                        AppendEntriesResponse::Success => {}
-                        AppendEntriesResponse::PartialSuccess(_matching) => {}
-                        AppendEntriesResponse::HigherVote(vote) => {
-                            tracing::debug!(
-                                "seen a higher vote({vote}) from {}; when:(sending heartbeat)",
-                                self.target
-                            );
-
-                            let noti = Notification::HigherVote {
-                                target: self.target.clone(),
-                                higher: vote,
-                                leader_vote: heartbeat.session_id.committed_vote(),
-                            };
-
-                            self.send_notification(noti, "Seeing higher Vote").await?;
-                        }
-                        AppendEntriesResponse::Conflict => {
-                            // The follower does not have `matching` log id.
-                            // Use `matching` (which may be None) as the conflict point.
-                            //
-                            // Safe unwrap(): a None never conflict
-                            let conflict_log_id = heartbeat.matching.clone().unwrap();
-
-                            let noti = Notification::ReplicationProgress {
-                                progress: Progress {
-                                    session_id: heartbeat.session_id.clone(),
-                                    target: self.target.clone(),
-                                    result: Ok(ReplicationResult(Err(conflict_log_id))),
-                                },
-                                inflight_id: None,
-                            };
-
-                            self.send_notification(noti, "Seeing conflict").await?;
-                        }
-                    }
-
-                    let noti = Notification::HeartbeatProgress {
-                        session_id: heartbeat.session_id.clone(),
-                        sending_time: heartbeat.time,
-                        target: self.target.clone(),
-                    };
-
-                    self.send_notification(noti, "send HeartbeatProgress").await?;
+                Ok(Ok(Some(stream_result))) => {
+                    self.handle_stream_result(stream_result, &heartbeat).await?;
+                }
+                Ok(Ok(None)) => {
+                    // Stream returned no response - treat as network error
+                    tracing::warn!("{} heartbeat stream returned no response", self);
                 }
                 _ => {
                     tracing::warn!("{} failed to send a heartbeat: {:?}", self, res);
                 }
+            };
+        }
+    }
+
+    /// Handle the stream append result, send appropriate notifications.
+    async fn handle_stream_result(
+        &self,
+        result: StreamAppendResult<C>,
+        heartbeat: &HeartbeatEvent<C>,
+    ) -> Result<(), RaftCoreClosed> {
+        match result {
+            Ok(_) => {
+                self.send_heartbeat_progress(heartbeat).await?;
+            }
+            Err(StreamAppendError::HigherVote(vote)) => {
+                tracing::debug!(
+                    "seen a higher vote({vote}) from {}; when:(sending heartbeat)",
+                    self.target
+                );
+
+                let noti = Notification::HigherVote {
+                    target: self.target.clone(),
+                    higher: vote,
+                    leader_vote: heartbeat.session_id.committed_vote(),
+                };
+
+                self.send_notification(noti, "Seeing higher Vote").await?;
+                // Higher vote means leadership is not granted, don't send HeartbeatProgress
+            }
+            Err(StreamAppendError::Conflict(_conflict_log_id)) => {
+                // The follower does not have `matching` log id.
+                // Use `matching` (which may be None) as the conflict point.
+                //
+                // Safe unwrap(): a None never conflict
+                let conflict_log_id = heartbeat.matching.clone().unwrap();
+
+                let noti = Notification::ReplicationProgress {
+                    progress: Progress {
+                        session_id: heartbeat.session_id.clone(),
+                        target: self.target.clone(),
+                        result: Ok(ReplicationResult(Err(conflict_log_id))),
+                    },
+                    inflight_id: None,
+                };
+
+                self.send_notification(noti, "Seeing conflict").await?;
+                self.send_heartbeat_progress(heartbeat).await?;
             }
         }
+        Ok(())
+    }
+
+    async fn send_heartbeat_progress(&self, heartbeat: &HeartbeatEvent<C>) -> Result<(), RaftCoreClosed> {
+        let noti = Notification::HeartbeatProgress {
+            session_id: heartbeat.session_id.clone(),
+            sending_time: heartbeat.time,
+            target: self.target.clone(),
+        };
+        self.send_notification(noti, "send HeartbeatProgress").await
     }
 
     async fn send_notification(

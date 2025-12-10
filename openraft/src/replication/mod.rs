@@ -31,7 +31,6 @@ use tracing_futures::Instrument;
 
 use crate::RaftNetworkFactory;
 use crate::RaftTypeConfig;
-use crate::alias::JoinHandleOf;
 use crate::async_runtime::Mutex;
 use crate::async_runtime::watch::WatchReceiver;
 use crate::base::BoxStream;
@@ -58,6 +57,7 @@ use crate::replication::stream_context::StreamContext;
 use crate::storage::RaftLogStorage;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::InstantOf;
+use crate::type_config::alias::JoinHandleOf;
 use crate::type_config::alias::MutexOf;
 use crate::type_config::async_runtime::mpsc::MpscSender;
 
