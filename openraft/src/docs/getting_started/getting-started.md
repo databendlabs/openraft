@@ -114,7 +114,7 @@ Openraft provides default implementations for mostly used types:
 You can use these implementations directly or define your own custom types.
 
 A [`RaftTypeConfig`] is also used by other components such as [`RaftLogStorage`], [`RaftStateMachine`],
-[`RaftNetworkFactory`] and [`RaftNetwork`].
+[`RaftNetworkFactory`] and [`RaftNetworkV2`].
 
 
 ## 3. Implement [`RaftLogStorage`] and [`RaftStateMachine`]
@@ -195,38 +195,48 @@ The caller always assumes a completed writing is persistent.
 The raft correctness highly depends on a reliable store.
 
 
-## 4. Implement [`RaftNetwork`] or [`RaftNetworkV2`].
+## 4. Implement [`RaftNetworkV2`].
 
 Raft nodes communicate with each other to achieve consensus about the logs.
-The trait [`RaftNetwork`] and [`RaftNetworkV2`] defines the data transmission protocol.
-
-Your application can use either [`RaftNetwork`] or [`RaftNetworkV2`].
-The only difference between them is:
-- [`RaftNetwork`] sends snapshot in chunks with [`RaftNetwork::install_snapshot()`][`install_snapshot()`],
-- while [`RaftNetworkV2`] sends snapshot in one piece with [`RaftNetworkV2::full_snapshot()`][`full_snapshot()`].
-
+The trait [`RaftNetworkV2`] defines the data transmission protocol.
 
 ```ignore
-pub trait RaftNetwork<C: RaftTypeConfig>: Send + Sync + 'static {
-    async fn vote(&mut self, rpc: VoteRequest<C::NodeId>) -> Result<...>;
-    async fn append_entries(&mut self, rpc: AppendEntriesRequest<C>) -> Result<...>;
-    async fn install_snapshot(&mut self, vote: Vote<C::NodeId>, snapshot: Snapshot<C>) -> Result<...>;
+pub trait RaftNetworkV2<C: RaftTypeConfig>: Send + Sync + 'static {
+    async fn append_entries(&mut self, rpc: AppendEntriesRequest<C>, option: RPCOption) -> Result<...>;
+    async fn vote(&mut self, rpc: VoteRequest<C>, option: RPCOption) -> Result<...>;
+    async fn full_snapshot(&mut self, vote: Vote<C::NodeId>, snapshot: Snapshot<C>, cancel: impl Future<...>, option: RPCOption) -> Result<...>;
+
+    // Optional: override for pipelined replication
+    fn stream_append(&mut self, input: impl Stream<Item = AppendEntriesRequest<C>>, option: RPCOption) -> BoxFuture<Result<BoxStream<StreamAppendResult<C>>>>;
 }
 ```
 
-An implementation of [`RaftNetwork`] can be considered as a wrapper that invokes
+An implementation of [`RaftNetworkV2`] can be considered as a wrapper that invokes
 the corresponding methods of a remote [`Raft`]. It is responsible for sending
 and receiving messages between Raft nodes.
 
-Here is the list of methods that need to be implemented for the [`RaftNetwork`] trait:
+Here is the list of methods that need to be implemented for the [`RaftNetworkV2`] trait:
 
 
-| [`RaftNetwork`] method | forward request            | to target                                     |
-|------------------------|----------------------------|-----------------------------------------------|
-| [`append_entries()`]   | [`AppendEntriesRequest`]   | remote node [`Raft::append_entries()`]        |
-| [`vote()`]             | [`VoteRequest`]            | remote node [`Raft::vote()`]                  |
-| [`install_snapshot()`] | [`InstallSnapshotRequest`] | remote node [`Raft::install_snapshot()`]      |
-| [`full_snapshot()`]    | [`Snapshot`]               | remote node [`Raft::install_full_snapshot()`] |
+| [`RaftNetworkV2`] method | forward request            | to target                                     |
+|--------------------------|----------------------------|-----------------------------------------------|
+| [`append_entries()`]     | [`AppendEntriesRequest`]   | remote node [`Raft::append_entries()`]        |
+| [`vote()`]               | [`VoteRequest`]            | remote node [`Raft::vote()`]                  |
+| [`full_snapshot()`]      | [`Snapshot`]               | remote node [`Raft::install_full_snapshot()`] |
+
+### Optional: `stream_append()` for pipelined replication
+
+[`stream_append()`] is an optional method that enables bidirectional streaming
+for efficient pipelined log replication. The default implementation uses
+[`append_entries()`] sequentially.
+
+To enable pipelined replication, override [`stream_append()`] to forward the
+request stream to the remote node's [`Raft::stream_append()`] and return the
+response stream.
+
+| [`RaftNetworkV2`] method | forward request            | to target                                     |
+|--------------------------|----------------------------|-----------------------------------------------|
+| [`stream_append()`]      | [`AppendEntriesRequest`] stream | remote node [`Raft::stream_append()`]    |
 
 [Mem KV Network](https://github.com/databendlabs/openraft/blob/main/examples/raft-kv-memstore/src/network/raft_network_impl.rs)
 demonstrates how to forward messages to other Raft nodes using [`reqwest`](https://docs.rs/reqwest/latest/reqwest/) as network transport layer.
@@ -238,12 +248,16 @@ When the server receives a Raft RPC, it simply passes it to its `raft` instance 
 For a real-world implementation, you may want to use [Tonic gRPC](https://github.com/hyperium/tonic) to handle gRPC-based communication between Raft nodes. The [databend-meta](https://github.com/databendlabs/databend/blob/6603392a958ba8593b1f4b01410bebedd484c6a9/metasrv/src/network.rs#L89) project provides an excellent real-world example of a Tonic gRPC-based Raft network implementation.
 
 
-> ### Troubleshooting: implementation conflicts
+> ### Troubleshooting: implementation conflicts (for [`RaftNetwork`] users only)
+>
+> **Note:** This section applies only to users migrating from or still using the
+> original [`RaftNetwork`] trait. If you implement [`RaftNetworkV2`] directly,
+> you can skip this section.
 >
 > When implementing `RaftNetworkV2<T>` for a generic type parameter `T`, you might
 > encounter a compiler error about conflicting implementations. This happens
-> because Openraft provides a blanket implementation that adapts `RaftNetwork`
-> implementations to `RaftNetworkV2`. For example:
+> because Openraft provides a blanket implementation that adapts [`RaftNetwork`]
+> implementations to [`RaftNetworkV2`]. For example:
 >
 > ```rust,ignore
 > pub trait RaftTypeConfigExt: openraft::RaftTypeConfig {}
@@ -260,7 +274,9 @@ For a real-world implementation, you may want to use [Tonic gRPC](https://github
 > ```
 >
 > If you encounter this error, you can disable the feature `adapt-network-v1` to
-> remove the default implementation for `RaftNetworkV2`.
+> remove the default implementation for [`RaftNetworkV2`].
+>
+> [`RaftNetwork`]: crate::network::v1::RaftNetwork
 
 
 ### Implement [`RaftNetworkFactory`].
@@ -269,22 +285,22 @@ For a real-world implementation, you may want to use [Tonic gRPC](https://github
 
 ```ignore
 pub trait RaftNetworkFactory<C: RaftTypeConfig>: Send + Sync + 'static {
-    type Network: RaftNetwork<C>;
+    type Network: RaftNetworkV2<C>;
     async fn new_client(&mut self, target: C::NodeId, node: &C::Node) -> Self::Network;
 }
 ```
 
 This trait contains only one method:
-- [`RaftNetworkFactory::new_client()`] builds a new [`RaftNetwork`] instance for a target node, intended for sending RPCs to that node.
-  The associated type `RaftNetworkFactory::Network` represents the application's implementation of the `RaftNetwork` trait.
+- [`RaftNetworkFactory::new_client()`] builds a new [`RaftNetworkV2`] instance for a target node, intended for sending RPCs to that node.
+  The associated type `RaftNetworkFactory::Network` represents the application's implementation of the `RaftNetworkV2` trait.
 
 This function should **not** establish a connection; instead, it should create a client that connects when
 necessary.
 
 
-### How RaftNetwork and server interact
+### How RaftNetworkV2 and server interact
 
-The [`RaftNetwork`] implementation forwards Raft RPCs to the application-implemented server on another node.
+The [`RaftNetworkV2`] implementation forwards Raft RPCs to the application-implemented server on another node.
 The server then forwards these RPCs to the corresponding [`Raft`] methods and returns the response.
 
 **Request flow**:
@@ -304,7 +320,7 @@ The server then forwards these RPCs to the corresponding [`Raft`] methods and re
 | (7) ^   | (2)            |           | (4) ^ | (5)                    |
 |     |   | append_entries |           |     | | AppendEntriesResponse  |
 |     |   v                |    (3)    |     | v                        |
-|  RaftNetwork -------------------------> Application Server            |
+|  RaftNetworkV2 -----------------------> Application Server            |
 |     ^---------------------------------- /append_entries               |
 |  (HTTP/gRPC/etc client)  |    (6)    |  (HTTP/gRPC/etc endpoint)      |
 '--------------------------'           '--------------------------------'
@@ -313,16 +329,16 @@ The server then forwards these RPCs to the corresponding [`Raft`] methods and re
 
 Flow:
 (1) RaftCore triggers ReplicationCore to replicate logs
-(2) ReplicationCore calls append_entries on RaftNetwork
-(3) RaftNetwork sends RPC request over network (HTTP/gRPC/etc)
+(2) ReplicationCore calls append_entries on RaftNetworkV2
+(3) RaftNetworkV2 sends RPC request over network (HTTP/gRPC/etc)
 (4) Application Server receives request at /append_entries endpoint
 (5) Application Server forwards to local Raft::append_entries
 (6) Raft::append_entries returns AppendEntriesResponse back through Application Server
-(7) RaftNetwork receives the response
+(7) RaftNetworkV2 receives the response
 (8) ReplicationCore updates RaftCore with replication result
 ```
 
-The same pattern applies to other RPC methods: [`vote()`], [`install_snapshot()`], etc.
+The same pattern applies to other RPC methods: [`vote()`], [`full_snapshot()`].
 
 **Example server implementation**:
 
@@ -339,7 +355,7 @@ async fn handle_append_entries(
 
 ### Find the address of the target node.
 
-In Openraft, an implementation of [`RaftNetwork`] needs to connect to remote Raft peers. To store additional information about each peer, you need to specify the `Node` type in `RaftTypeConfig`:
+In Openraft, an implementation of [`RaftNetworkV2`] needs to connect to remote Raft peers. To store additional information about each peer, you need to specify the `Node` type in `RaftTypeConfig`:
 
 ```ignore
 pub struct TypeConfig {}
@@ -370,8 +386,7 @@ See: [Ensure connection to the correct node][`docs::connect-to-correct-node`]
 ## 5. Put everything together
 
 Finally, we put these parts together and boot up a raft node
-[main.rs](https://github.com/databendlabs/openraft/blob/main/examples/raft-kv-memstore/src/lib.rs)
-:
+[lib.rs](https://github.com/databendlabs/openraft/blob/main/examples/raft-kv-memstore/src/lib.rs):
 
 ```ignore
 openraft::declare_raft_types!(
@@ -461,13 +476,12 @@ Additionally, two test scripts for setting up a cluster are available:
 [`declare_raft_types!`]:                `crate::declare_raft_types`
 [`Raft`]:                               `crate::Raft`
 [`Raft::append_entries()`]:             `crate::Raft::append_entries`
+[`Raft::stream_append()`]:              `crate::Raft::stream_append`
 [`Raft::vote()`]:                       `crate::Raft::vote`
 [`Raft::install_full_snapshot()`]:      `crate::Raft::install_full_snapshot`
-[`Raft::install_snapshot()`]:           `crate::Raft::install_snapshot`
 
 [`AppendEntriesRequest`]:               `crate::raft::AppendEntriesRequest`
 [`VoteRequest`]:                        `crate::raft::VoteRequest`
-[`InstallSnapshotRequest`]:             `crate::raft::InstallSnapshotRequest`
 
 [`RaftTypeConfig`]:                     `crate::RaftTypeConfig`
 [`AsyncRuntime`]:                       `crate::AsyncRuntime`
@@ -514,13 +528,12 @@ Additionally, two test scripts for setting up a cluster are available:
 [`get_snapshot_builder()`]:             `crate::storage::RaftStateMachine::get_snapshot_builder`
 
 [`RaftNetworkFactory`]:                 `crate::network::RaftNetworkFactory`
-[`RaftNetwork`]:                        `crate::network::RaftNetwork`
 [`RaftNetworkFactory::new_client()`]:   `crate::network::RaftNetworkFactory::new_client`
-[`append_entries()`]:                   `crate::RaftNetwork::append_entries`
-[`vote()`]:                             `crate::RaftNetwork::vote`
-[`install_snapshot()`]:                 `crate::RaftNetwork::install_snapshot`
-[`full_snapshot()`]:                    `crate::network::v2::RaftNetworkV2::full_snapshot`
 [`RaftNetworkV2`]:                      `crate::network::v2::RaftNetworkV2`
+[`append_entries()`]:                   `crate::network::v2::RaftNetworkV2::append_entries`
+[`stream_append()`]:                    `crate::network::v2::RaftNetworkV2::stream_append`
+[`vote()`]:                             `crate::network::v2::RaftNetworkV2::vote`
+[`full_snapshot()`]:                    `crate::network::v2::RaftNetworkV2::full_snapshot`
 
 
 [`RaftSnapshotBuilder`]:                `crate::storage::RaftSnapshotBuilder`
