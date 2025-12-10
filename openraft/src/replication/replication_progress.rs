@@ -1,5 +1,5 @@
 use crate::RaftTypeConfig;
-use crate::alias::LogIdOf;
+use crate::type_config::alias::LogIdOf;
 
 /// Tracks the log replication state for a follower from the leader's perspective.
 #[derive(Clone, Debug)]
