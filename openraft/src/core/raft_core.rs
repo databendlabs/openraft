@@ -77,9 +77,9 @@ use crate::progress::Progress;
 use crate::progress::entry::ProgressEntry;
 use crate::quorum::QuorumSet;
 use crate::raft::AppendEntriesRequest;
-use crate::raft::AppendEntriesResponse;
 use crate::raft::ClientWriteResult;
 use crate::raft::ReadPolicy;
+use crate::raft::StreamAppendError;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::raft::linearizable_read::Linearizer;
@@ -377,12 +377,22 @@ where
                 let target = target.clone();
 
                 async move {
-                    let outer_res = C::timeout(ttl, client.append_entries(rpc, option)).await;
+                    let input_stream = Box::pin(futures::stream::once(async { rpc }));
+
+                    let outer_res = C::timeout(ttl, async {
+                        let mut output = client.stream_append(input_stream, option).await?;
+                        output.next().await.transpose()
+                    })
+                    .await;
+
                     match outer_res {
-                        Ok(append_res) => match append_res {
-                            Ok(x) => Ok((target, x)),
-                            Err(err) => Err((target, err)),
-                        },
+                        Ok(Ok(Some(stream_result))) => Ok((target, stream_result)),
+                        Ok(Ok(None)) => {
+                            // Stream returned no response - treat as network error
+                            let err = AnyError::error("stream_append returned no response");
+                            Err((target, RPCError::Network(crate::error::NetworkError::new(&err))))
+                        }
+                        Ok(Err(rpc_err)) => Err((target, rpc_err)),
                         Err(_timeout) => {
                             let timeout_err = Timeout {
                                 action: RPCTypes::AppendEntries,
@@ -406,7 +416,7 @@ where
         let waiting_fu = async move {
             // Handle responses as they return.
             while let Some(res) = pending.next().await {
-                let (target, append_res) = match res {
+                let (target, stream_result) = match res {
                     Ok(Ok(res)) => res,
                     Ok(Err((target, err))) => {
                         tracing::error!(target=display(target), error=%err, "timeout while confirming leadership for read request");
@@ -420,7 +430,7 @@ where
 
                 // If we receive a response with a greater vote, then revert to follower and abort this
                 // request.
-                if let AppendEntriesResponse::HigherVote(vote) = append_res {
+                if let Err(StreamAppendError::HigherVote(vote)) = stream_result {
                     debug_assert!(
                         vote.as_ref_vote() > my_vote.as_ref_vote(),
                         "committed vote({}) has total order relation with other votes({})",
@@ -446,6 +456,7 @@ where
                     return;
                 }
 
+                // Success or Conflict both confirm leadership (got valid response from follower)
                 granted.insert(target);
 
                 if eff_mem.is_quorum(granted.iter()) {
