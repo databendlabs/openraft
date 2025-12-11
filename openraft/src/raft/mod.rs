@@ -12,6 +12,7 @@ pub(crate) mod api;
 #[cfg(test)]
 mod declare_raft_types_test;
 mod impl_raft_blocking_write;
+mod leader_watch;
 pub mod linearizable_read;
 pub(crate) mod message;
 mod raft_inner;
@@ -55,6 +56,7 @@ use tracing::Level;
 use tracing::trace_span;
 
 pub use self::leader::Leader;
+pub use self::leader_watch::LeaderChangeHandle;
 use crate::OptionalSend;
 use crate::RaftNetworkFactory;
 use crate::RaftState;
@@ -116,6 +118,7 @@ use crate::type_config::alias::SnapshotDataOf;
 use crate::type_config::alias::VoteOf;
 use crate::type_config::alias::WatchReceiverOf;
 use crate::type_config::alias::WriteResponderOf;
+use crate::vote::Vote;
 use crate::vote::leader_id::raft_leader_id::RaftLeaderId;
 use crate::vote::leader_id::raft_leader_id::RaftLeaderIdExt;
 use crate::vote::non_committed::UncommittedVote;
@@ -1439,6 +1442,82 @@ where C: RaftTypeConfig
     #[must_use = "progress handle should be stored to track applied progress"]
     pub fn watch_apply_progress(&self) -> AppliedProgress<C> {
         self.inner.progress_watcher.apply_progress()
+    }
+
+    /// Watch for leader changes and invoke callback on each change.
+    ///
+    /// Returns a handle that can be used to stop watching.
+    /// The callback receives:
+    /// - `old`: The previous leader state `(leader_id, committed)`, or `None` on the first callback
+    /// - `new`: The current leader state `(leader_id, committed)`
+    ///
+    /// This is useful for starting or stopping leader-only services when leadership changes.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let my_node_id = 1;
+    ///
+    /// let mut handle = raft.on_leader_change(move |_old, (leader_id, committed)| {
+    ///     let is_leader = leader_id.node_id == my_node_id && committed;
+    ///
+    ///     if is_leader {
+    ///         // This node just became the committed leader
+    ///         // Start leader-only services (e.g., cron jobs, cache warming)
+    ///         start_leader_services();
+    ///     } else {
+    ///         // This node is no longer the leader
+    ///         // Stop leader-only services to avoid duplicate work
+    ///         stop_leader_services();
+    ///     }
+    /// });
+    ///
+    /// // Later, stop watching
+    /// handle.close().await;
+    /// ```
+    #[since(version = "0.10.0")]
+    pub fn on_leader_change<F>(&self, callback: F) -> LeaderChangeHandle<C>
+    where F: Fn(Option<(C::LeaderId, bool)>, (C::LeaderId, bool)) + OptionalSend + 'static {
+        use futures::FutureExt;
+
+        let mut vote_progress = self.watch_vote_progress();
+        let (cancel_tx, cancel_rx) = C::oneshot::<()>();
+
+        let handle = C::spawn(async move {
+            let mut prev_vote: Option<Vote<C>> = None;
+            let mut cancel_rx = cancel_rx.fuse();
+
+            loop {
+                futures::select! {
+                    _ = cancel_rx => break,
+                    res = vote_progress.changed().fuse() => {
+                        if res.is_err() {
+                            break; // Channel closed
+                        }
+                        let Some(new_vote) = vote_progress.get() else {
+                            continue; // Skip if vote is None
+                        };
+
+                        let old_leader = prev_vote.as_ref().map(|v| v.leader_id().clone());
+                        let new_leader = new_vote.leader_id().clone();
+
+                        // Only call callback if leader_id actually changed
+                        if old_leader.as_ref() != Some(&new_leader) {
+                            let old_state =
+                                prev_vote.as_ref().map(|v| (v.leader_id().clone(), v.is_committed()));
+                            let new_state = (new_vote.leader_id().clone(), new_vote.is_committed());
+                            callback(old_state, new_state);
+                        }
+                        prev_vote = Some(new_vote);
+                    }
+                }
+            }
+        });
+
+        LeaderChangeHandle {
+            cancel_tx: Some(cancel_tx),
+            join_handle: Some(handle),
+        }
     }
 
     /// Get a handle to wait for the metrics to satisfy some condition.

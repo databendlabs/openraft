@@ -17,6 +17,7 @@
   * [How to detect if a leader is valid?](#how-to-detect-if-a-leader-is-valid)
   * [How to detect which nodes are currently down or unreachable?](#how-to-detect-which-nodes-are-currently-down-or-unreachable)
   * [How to minimize error logging when a follower is offline](#how-to-minimize-error-logging-when-a-follower-is-offline)
+  * [How to start/stop services when a node becomes leader?](#how-to-startstop-services-when-a-node-becomes-leader)
 - [Operations & Maintenance](#operations--maintenance)
   * [What actions are required when a node restarts?](#what-actions-are-required-when-a-node-restarts)
   * [How to remove node-2 safely from a cluster `{1, 2, 3}`?](#how-to-remove-node-2-safely-from-a-cluster-1-2-3)
