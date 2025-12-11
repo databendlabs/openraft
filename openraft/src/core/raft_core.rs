@@ -265,7 +265,8 @@ where
         Err(err)
     }
 
-    #[tracing::instrument(level="trace", skip_all, fields(id=display(&self.id), cluster=%self.config.cluster_name))]
+    #[tracing::instrument(level = "trace", skip_all, fields(id=display(&self.id), cluster=%self.config.cluster_name
+    ))]
     async fn do_main(&mut self, rx_shutdown: OneshotReceiverOf<C, ()>) -> Result<Infallible, Fatal<C>> {
         tracing::debug!("raft node is initializing");
 
@@ -552,10 +553,12 @@ where
         // TODO: it should returns membership config error etc. currently this is done by the
         //       caller.
         lh.leader_append_entries(entries);
+        let log_id = lh.state.last_log_id().unwrap();
         let index = lh.state.last_log_id().unwrap().index();
 
         // Install callback channels.
         if let Some(tx) = tx {
+            tracing::debug!("write_entry: push tx to client_responders: log_id: {}", log_id);
             self.client_responders.push(index, tx);
         }
     }
@@ -912,7 +915,6 @@ where
             self.log_store.get_log_reader().await,
             event_watcher,
             tracing::span!(parent: &self.span, Level::DEBUG, "replication", id=display(&self.id), target=display(&target)),
-            self.runtime_stats.clone(),
         );
 
         replication_handle.join_handle = Some(join_handel);
@@ -951,6 +953,7 @@ where
             config: self.config.clone(),
             tx_notify: self.tx_notification.clone(),
             cancel_rx,
+            runtime_stats: self.runtime_stats.clone(),
         }
     }
 
@@ -960,35 +963,6 @@ where
             committed_rx: self.committed_tx.subscribe(),
             io_accepted_rx: self.io_accepted_tx.subscribe(),
             io_submitted_rx: self.io_submitted_tx.subscribe(),
-        }
-    }
-
-    /// Remove all replication.
-    #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn remove_all_replication(&mut self) {
-        tracing::info!("remove all replication");
-
-        self.heartbeat_handle.shutdown();
-
-        let nodes = std::mem::take(&mut self.replications);
-
-        tracing::debug!(
-            targets = debug(nodes.iter().map(|x| x.0.clone()).collect::<Vec<_>>()),
-            "remove all targets from replication_metrics"
-        );
-
-        for (target, mut s) in nodes {
-            let Some(handle) = s.join_handle.take() else {
-                continue;
-            };
-
-            // Drop sender to notify the task to shutdown
-            drop(s.replicate_tx);
-            drop(s.cancel_tx);
-
-            tracing::debug!("joining removed replication: {}", target);
-            let _x = handle.await;
-            tracing::info!("Done joining removed replication : {}", target);
         }
     }
 
@@ -1090,7 +1064,7 @@ where
     /// Run an event handling loop
     ///
     /// It always returns a [`Fatal`] error upon returning.
-    #[tracing::instrument(level="debug", skip_all, fields(id=display(&self.id)))]
+    #[tracing::instrument(level = "debug", skip_all, fields(id=display(&self.id)))]
     async fn runtime_loop(&mut self, mut rx_shutdown: OneshotReceiverOf<C, ()>) -> Result<Infallible, Fatal<C>> {
         // Ratio control the ratio of number of RaftMsg to process to number of Notification to process.
         let mut balancer = Balancer::new(10_000);
@@ -1387,7 +1361,8 @@ where
     }
 
     // TODO: Make this method non-async. It does not need to run any async command in it.
-    #[tracing::instrument(level = "debug", skip(self, msg), fields(state = debug(self.engine.state.server_state), id=display(&self.id)))]
+    #[tracing::instrument(level = "debug", skip(self, msg), fields(state = debug(self.engine.state.server_state), id=display(&self.id)
+    ))]
     pub(crate) async fn handle_api_msg(&mut self, msg: RaftMsg<C>) {
         tracing::debug!("RAFT_event id={:<2}  input: {}", self.id, msg);
 
@@ -1528,7 +1503,8 @@ where
         };
     }
 
-    #[tracing::instrument(level = "debug", skip_all, fields(state = debug(self.engine.state.server_state), id=display(&self.id)))]
+    #[tracing::instrument(level = "debug", skip_all, fields(state = debug(self.engine.state.server_state), id=display(&self.id)
+    ))]
     pub(crate) fn handle_notification(&mut self, notify: Notification<C>) -> Result<(), Fatal<C>> {
         tracing::debug!("RAFT_event id={:<2} notify: {}", self.id, notify);
 
@@ -1651,13 +1627,15 @@ where
             Notification::ReplicationProgress { progress, inflight_id } => {
                 // If vote or membership changes, ignore the message.
                 // There is chance delayed message reports a wrong state.
-                if self.does_replication_session_match(&progress.session_id, "ReplicationProgress") {
-                    tracing::debug!(progress = display(&progress), "recv Notification::ReplicationProgress");
+                // if self.does_replication_session_match(&progress.session_id, "ReplicationProgress") {
+                tracing::debug!(progress = display(&progress), "recv Notification::ReplicationProgress");
 
-                    // replication_handler() won't panic because:
-                    // The leader is still valid because progress.session_id.leader_vote does not change.
+                // replication_handler() won't panic because:
+                // The leader is still valid because progress.session_id.leader_vote does not change.
+                if self.engine.leader.is_some() {
                     self.engine.replication_handler().update_progress(progress.target, progress.result, inflight_id);
                 }
+                // }
             }
 
             Notification::HeartbeatProgress {
@@ -2087,12 +2065,42 @@ where
             Command::BroadcastTransferLeader { req } => self.broadcast_transfer_leader(req).await,
 
             Command::RebuildReplicationStreams { targets } => {
-                self.remove_all_replication().await;
+                self.heartbeat_handle.shutdown();
+
+                // self.remove_all_replication().await;
+
+                let mut new_replications = BTreeMap::new();
 
                 for ReplicationProgress(target, matching) in targets.iter() {
-                    let handle = self.spawn_replication_stream(target.clone(), matching.clone()).await;
-                    self.replications.insert(target.clone(), handle);
+                    let removed = self.replications.remove(target);
+
+                    if let Some(removed) = removed {
+                        new_replications.insert(target.clone(), removed);
+                    } else {
+                        let handle = self.spawn_replication_stream(target.clone(), matching.clone()).await;
+                        new_replications.insert(target.clone(), handle);
+                    }
                 }
+
+                tracing::debug!("removing unused replications");
+
+                let left = std::mem::replace(&mut self.replications, new_replications);
+
+                for (target, mut s) in left {
+                    let Some(handle) = s.join_handle.take() else {
+                        continue;
+                    };
+
+                    // Drop sender to notify the task to shutdown
+                    drop(s.replicate_tx);
+                    drop(s.cancel_tx);
+
+                    tracing::debug!("joining removed replication: {}", target);
+                    let _x = handle.await;
+                    tracing::info!("Done joining removed replication : {}", target);
+                }
+
+                //
 
                 let effective = self.engine.state.membership_state.effective().clone();
 

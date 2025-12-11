@@ -34,8 +34,6 @@ use crate::RaftTypeConfig;
 use crate::async_runtime::Mutex;
 use crate::async_runtime::watch::WatchReceiver;
 use crate::base::BoxStream;
-use crate::config::Config;
-use crate::core::SharedRuntimeState;
 use crate::core::notification::Notification;
 use crate::display_ext::DisplayOptionExt;
 use crate::display_ext::display_instant::DisplayInstantExt;
@@ -117,7 +115,6 @@ where
         log_reader: LS::LogReader,
         event_watcher: EventWatcher<C>,
         span: tracing::Span,
-        runtime_stats: SharedRuntimeState,
     ) -> JoinHandleOf<C, Result<(), ReplicationClosed>> {
         tracing::debug!(
             "spawn replication: session_id={}, target={}, committed={}, matching={}",

@@ -168,14 +168,17 @@ where C: RaftTypeConfig
 
         // The value granted by a quorum may not yet be a committed.
         // A committed is **granted** and also is in the current term.
-        let quorum_accepted = self
-            .leader
-            .progress
-            .update_with(&node_id, |prog_entry| {
-                prog_entry.new_updater(&*self.config).update_matching(log_id, inflight_id)
-            })
-            .expect("it should always update existing progress")
-            .clone();
+        let Ok(quorum_accepted) = self.leader.progress.update_with(&node_id, |prog_entry| {
+            prog_entry.new_updater(&*self.config).update_matching(log_id, inflight_id)
+        }) else {
+            // the node does not exist anymore
+            return;
+        };
+
+        // .expect("it should always update existing progress")
+        // .clone();
+
+        let quorum_accepted = quorum_accepted.clone();
 
         tracing::debug!(
             quorum_accepted = display(quorum_accepted.display()),
@@ -221,7 +224,9 @@ where C: RaftTypeConfig
     ) {
         // TODO(2): test it?
 
-        let prog_entry = self.leader.progress.get_mut(&target).unwrap();
+        let Some(prog_entry) = self.leader.progress.get_mut(&target) else {
+            return;
+        };
 
         let mut updater = progress::entry::update::Updater::new(self.config, prog_entry);
 
@@ -285,8 +290,9 @@ where C: RaftTypeConfig
                 tracing::warn!(result = display(&err_str), "update progress error");
 
                 // Reset inflight state and it will retry.
-                let p = self.leader.progress.get_mut(&target).unwrap();
-                p.inflight = Inflight::None;
+                if let Some(p) = self.leader.progress.get_mut(&target) {
+                    p.inflight = Inflight::None;
+                };
             }
         };
 
@@ -303,8 +309,8 @@ where C: RaftTypeConfig
         // TODO: maybe it's better to update leader's matching when update_replication() is called.
         for item in self.leader.progress.iter_mut() {
             if item.id != self.config.id {
-                // Reset and resend (by self.send_to_all()) replication requests.
-                item.val.inflight = Inflight::None;
+                // // Reset and resend (by self.send_to_all()) replication requests.
+                // item.val.inflight = Inflight::None;
 
                 targets.push(ReplicationProgress(item.id.clone(), item.val.clone()));
             }
