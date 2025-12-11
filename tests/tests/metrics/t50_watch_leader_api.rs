@@ -1,0 +1,124 @@
+use std::sync::Arc;
+use std::sync::Mutex;
+use std::time::Duration;
+
+use anyhow::Result;
+use maplit::btreeset;
+use openraft::Config;
+use openraft::ServerState;
+use openraft::vote::RaftLeaderId;
+
+use crate::fixtures::RaftRouter;
+use crate::fixtures::ut_harness;
+
+/// Test on_leader_change API with leader switch
+///
+/// What does this test do?
+///
+/// - Creates a 3-node cluster with node 0 as initial leader
+/// - Watches leader change events on node 1
+/// - Shuts down node 0 to force leader change
+/// - Triggers election on node 2 to become new leader
+/// - Verifies leader change callbacks are invoked correctly
+/// - Closes the watch handle and verifies no more callbacks are invoked
+#[allow(clippy::type_complexity)]
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
+async fn on_leader_change_api() -> Result<()> {
+    let config = Arc::new(
+        Config {
+            enable_elect: false,
+            enable_heartbeat: false,
+            ..Default::default()
+        }
+        .validate()?,
+    );
+    let mut router = RaftRouter::new(config.clone());
+
+    tracing::info!("--- initializing 3-node cluster");
+    let _log_index = router.new_cluster(btreeset! {0, 1, 2}, btreeset! {}).await?;
+
+    tracing::info!("--- create on_leader_change on node 1");
+    let n1 = router.get_raft_handle(&1)?;
+
+    // Collect (old, new) tuples: ((term, node_id, committed), (term, node_id, committed))
+    let changes: Arc<Mutex<Vec<(Option<(u64, u64, bool)>, (u64, u64, bool))>>> = Arc::new(Mutex::new(Vec::new()));
+    let changes_clone = changes.clone();
+
+    let mut handle = n1.on_leader_change(move |old, new| {
+        let old_val = old.map(|(leader_id, committed)| (leader_id.term(), leader_id.node_id().clone(), committed));
+        let new_val = (new.0.term(), new.0.node_id().clone(), new.1);
+        changes_clone.lock().unwrap().push((old_val, new_val));
+    });
+
+    // Give some time for the initial callback to be invoked
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    tracing::info!("--- verify initial leader change event");
+    {
+        let got = changes.lock().unwrap().clone();
+        // Expected: one callback with old=None, new=(term=1, node_id=0, committed=true)
+        let want = vec![(None, (1, 0, true))];
+        assert_eq!(got, want);
+    }
+
+    tracing::info!("--- shutdown node 0 (current leader)");
+    router.remove_node(0);
+
+    // Wait for leader lease to expire so other nodes accept new vote
+    tokio::time::sleep(Duration::from_millis(700)).await;
+
+    tracing::info!("--- trigger election on node 2");
+    let n2 = router.get_raft_handle(&2)?;
+    n2.trigger().elect().await?;
+
+    tracing::info!("--- wait for node 2 to become leader");
+    n2.wait(Some(Duration::from_millis(2000)))
+        .state(ServerState::Leader, "wait for node 2 to become leader")
+        .await?;
+
+    tracing::info!("--- wait for node 1 to see the new leader");
+    n1.wait(Some(Duration::from_millis(2000)))
+        .current_leader(2, "wait for node 1 to see node 2 as leader")
+        .await?;
+
+    // Give some time for the callback to be invoked
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    tracing::info!("--- verify leader change events after election");
+    {
+        let got = changes.lock().unwrap().clone();
+        // Expected:
+        // 1. Initial: old=None, new=(term=1, node_id=0, committed=true)
+        // 2. New leader: old=(term=1, node_id=0, committed=true), new=(term=2, node_id=2, committed=false)
+        //    Note: committed=false because callback fires at leader change moment, before vote is committed
+        let want = vec![(None, (1, 0, true)), (Some((1, 0, true)), (2, 2, false))];
+        assert_eq!(got, want);
+    }
+
+    tracing::info!("--- close the watch handle");
+    handle.close().await;
+
+    // Wait for leader lease to expire
+    tokio::time::sleep(Duration::from_millis(700)).await;
+
+    tracing::info!("--- trigger election on node 1 after handle closed (node 2 still running for quorum)");
+    n1.trigger().elect().await?;
+
+    n1.wait(Some(Duration::from_millis(2000)))
+        .state(ServerState::Leader, "wait for node 1 to become leader")
+        .await?;
+
+    // Give some time for any potential callback to be invoked
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    tracing::info!("--- verify no new events after handle closed");
+    {
+        let got = changes.lock().unwrap().clone();
+        // Should still be only 2 events - callback not invoked after close even though leader changed
+        let want = vec![(None, (1, 0, true)), (Some((1, 0, true)), (2, 2, false))];
+        assert_eq!(got, want);
+    }
+
+    Ok(())
+}
