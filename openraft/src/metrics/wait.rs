@@ -17,6 +17,7 @@ use crate::type_config::alias::WatchReceiverOf;
 
 /// Error variants related to waiting for metrics conditions.
 #[derive(Debug, thiserror::Error)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub enum WaitError {
     /// Timeout occurred while waiting for a condition.
     #[error("timeout after {0:?} when {1}")]
