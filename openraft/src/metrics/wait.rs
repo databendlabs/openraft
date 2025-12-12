@@ -16,7 +16,8 @@ use crate::type_config::alias::VoteOf;
 use crate::type_config::alias::WatchReceiverOf;
 
 /// Error variants related to waiting for metrics conditions.
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, PartialEq, Eq, thiserror::Error)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub enum WaitError {
     /// Timeout occurred while waiting for a condition.
     #[error("timeout after {0:?} when {1}")]
@@ -259,5 +260,31 @@ where C: RaftTypeConfig
             &format!("{} .{}", msg.to_string(), cond),
         )
         .await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn test_wait_error_serde() {
+        use super::*;
+
+        // Test Timeout variant
+        {
+            let err = WaitError::Timeout(Duration::from_millis(500), "waiting for leader".to_string());
+            let serialized = serde_json::to_string(&err).unwrap();
+            let deserialized: WaitError = serde_json::from_str(&serialized).unwrap();
+            assert_eq!(err, deserialized);
+        }
+
+        // Test ShuttingDown variant
+        {
+            let err = WaitError::ShuttingDown;
+            let serialized = serde_json::to_string(&err).unwrap();
+            let deserialized: WaitError = serde_json::from_str(&serialized).unwrap();
+            assert_eq!(err, deserialized);
+        }
     }
 }
