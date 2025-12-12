@@ -103,10 +103,13 @@ async fn heartbeat_metrics() -> Result<()> {
                         .heartbeat
                         .as_ref()
                         .expect("expect heartbeat to be Some as metrics come from the leader node");
-                    let node1 = heartbeat.get(&1).unwrap().unwrap();
-                    let node2 = heartbeat.get(&2).unwrap().unwrap();
+                    let node1 = heartbeat.get(&1);
+                    let node2 = heartbeat.get(&2);
 
-                    (*node1 >= now) && (*node2 >= now)
+                    match (node1, node2) {
+                        (Some(Some(node1)), Some(Some(node2))) => (**node1 >= now) && (**node2 >= now),
+                        _ => false,
+                    }
                 },
                 "millis_since_quorum_ack refreshed",
             )

@@ -76,9 +76,9 @@ use crate::progress::Progress;
 use crate::progress::entry::ProgressEntry;
 use crate::quorum::QuorumSet;
 use crate::raft::AppendEntriesRequest;
-use crate::raft::AppendEntriesResponse;
 use crate::raft::ClientWriteResult;
 use crate::raft::ReadPolicy;
+use crate::raft::StreamAppendError;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::raft::linearizable_read::Linearizer;
@@ -92,9 +92,10 @@ use crate::raft_state::io_state::log_io_id::LogIOId;
 use crate::replication::ReplicationCore;
 use crate::replication::ReplicationSessionId;
 use crate::replication::event_watcher::EventWatcher;
+use crate::replication::replicate::Replicate;
 use crate::replication::replication_context::ReplicationContext;
 use crate::replication::replication_handle::ReplicationHandle;
-use crate::replication::request::Data;
+use crate::replication::replication_progress;
 use crate::replication::snapshot_transmitter::SnapshotTransmitter;
 use crate::runtime::RaftRuntime;
 use crate::storage::IOFlushed;
@@ -198,6 +199,21 @@ where
     /// This is used by IOFlushed callbacks to report IO completion in a synchronous manner.
     pub(crate) tx_io_completed: WatchSenderOf<C, Result<IOId<C>, StorageError<C>>>,
 
+    /// Broadcasts I/O acceptance before submission to storage.
+    ///
+    /// Updated when `RaftCore` is about to execute an I/O operation. This allows
+    /// observers to prepare for upcoming I/O before it actually happens.
+    ///
+    /// Note: This is sent when `RaftCore` executes the I/O, not when `Engine` accepts it,
+    /// since `Engine` is a pure algorithm implementation without I/O capabilities.
+    pub(crate) io_accepted_tx: WatchSenderOf<C, IOId<C>>,
+
+    /// Broadcasts I/O submission progress to replication tasks.
+    ///
+    /// This enables replication tasks to know which log entries have been submitted
+    /// to storage and are safe to read. Updated after each I/O submission completes.
+    pub(crate) io_submitted_tx: WatchSenderOf<C, IOId<C>>,
+
     /// For broadcast committed log id to replication task.
     pub(crate) committed_tx: WatchSenderOf<C, Option<LogIdOf<C>>>,
     pub(crate) _committed_rx: WatchReceiverOf<C, Option<LogIdOf<C>>>,
@@ -249,7 +265,8 @@ where
         Err(err)
     }
 
-    #[tracing::instrument(level="trace", skip_all, fields(id=display(&self.id), cluster=%self.config.cluster_name))]
+    #[tracing::instrument(level = "trace", skip_all, fields(id=display(&self.id), cluster=%self.config.cluster_name
+    ))]
     async fn do_main(&mut self, rx_shutdown: OneshotReceiverOf<C, ()>) -> Result<Infallible, Fatal<C>> {
         tracing::debug!("raft node is initializing");
 
@@ -361,12 +378,22 @@ where
                 let target = target.clone();
 
                 async move {
-                    let outer_res = C::timeout(ttl, client.append_entries(rpc, option)).await;
+                    let input_stream = Box::pin(futures::stream::once(async { rpc }));
+
+                    let outer_res = C::timeout(ttl, async {
+                        let mut output = client.stream_append(input_stream, option).await?;
+                        output.next().await.transpose()
+                    })
+                    .await;
+
                     match outer_res {
-                        Ok(append_res) => match append_res {
-                            Ok(x) => Ok((target, x)),
-                            Err(err) => Err((target, err)),
-                        },
+                        Ok(Ok(Some(stream_result))) => Ok((target, stream_result)),
+                        Ok(Ok(None)) => {
+                            // Stream returned no response - treat as network error
+                            let err = AnyError::error("stream_append returned no response");
+                            Err((target, RPCError::Network(crate::error::NetworkError::new(&err))))
+                        }
+                        Ok(Err(rpc_err)) => Err((target, rpc_err)),
                         Err(_timeout) => {
                             let timeout_err = Timeout {
                                 action: RPCTypes::AppendEntries,
@@ -390,7 +417,7 @@ where
         let waiting_fu = async move {
             // Handle responses as they return.
             while let Some(res) = pending.next().await {
-                let (target, append_res) = match res {
+                let (target, stream_result) = match res {
                     Ok(Ok(res)) => res,
                     Ok(Err((target, err))) => {
                         tracing::error!(target=display(target), error=%err, "timeout while confirming leadership for read request");
@@ -404,7 +431,7 @@ where
 
                 // If we receive a response with a greater vote, then revert to follower and abort this
                 // request.
-                if let AppendEntriesResponse::HigherVote(vote) = append_res {
+                if let Err(StreamAppendError::HigherVote(vote)) = stream_result {
                     debug_assert!(
                         vote.as_ref_vote() > my_vote.as_ref_vote(),
                         "committed vote({}) has total order relation with other votes({})",
@@ -430,6 +457,7 @@ where
                     return;
                 }
 
+                // Success or Conflict both confirm leadership (got valid response from follower)
                 granted.insert(target);
 
                 if eff_mem.is_quorum(granted.iter()) {
@@ -525,10 +553,12 @@ where
         // TODO: it should returns membership config error etc. currently this is done by the
         //       caller.
         lh.leader_append_entries(entries);
+        let log_id = lh.state.last_log_id().unwrap();
         let index = lh.state.last_log_id().unwrap().index();
 
         // Install callback channels.
         if let Some(tx) = tx {
+            tracing::debug!("write_entry: push tx to client_responders: log_id: {}", log_id);
             self.client_responders.push(index, tx);
         }
     }
@@ -865,64 +895,73 @@ where
         // Safe unwrap(): target must be in membership
         let target_node = self.engine.state.membership_state.effective().get_node(&target).unwrap();
 
-        let membership_log_id = self.engine.state.membership_state.effective().log_id();
         let network = self.network_factory.new_client(target.clone(), target_node).await;
 
-        let leader = self.engine.leader.as_ref().unwrap();
+        let (replicate_tx, replicate_rx) = C::watch_channel(Replicate::default());
 
-        let session_id = ReplicationSessionId::new(leader.committed_vote.clone(), membership_log_id.clone());
+        let event_watcher = self.new_event_watcher(replicate_rx);
 
-        let (event_watcher, entries_tx) = self.new_event_watcher();
+        let (mut replication_handle, replication_context) = self.new_replication(target.clone(), replicate_tx);
 
-        ReplicationCore::<C, NF, LS>::spawn(
-            target.clone(),
-            session_id,
-            self.config.clone(),
-            self.engine.state.committed().cloned(),
-            progress_entry.matching.clone(),
-            network,
-            self.log_store.get_log_reader().await,
-            self.tx_notification.clone(),
-            event_watcher,
-            entries_tx,
-            tracing::span!(parent: &self.span, Level::DEBUG, "replication", id=display(&self.id), target=display(&target)),
-        )
-    }
-
-    fn new_event_watcher(&self) -> (EventWatcher<C>, WatchSenderOf<C, Data<C>>) {
-        let (entries_tx, entries_rx) = C::watch_channel(Data::default());
-        let ew = EventWatcher {
-            entries_rx,
-            committed_rx: self.committed_tx.subscribe(),
+        let progress = replication_progress::ReplicationProgress {
+            local_committed: self.engine.state.committed().cloned(),
+            remote_matched: progress_entry.matching.clone(),
         };
 
-        (ew, entries_tx)
-    }
-
-    /// Remove all replication.
-    #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn remove_all_replication(&mut self) {
-        tracing::info!("remove all replication");
-
-        self.heartbeat_handle.shutdown();
-
-        let nodes = std::mem::take(&mut self.replications);
-
-        tracing::debug!(
-            targets = debug(nodes.iter().map(|x| x.0.clone()).collect::<Vec<_>>()),
-            "remove all targets from replication_metrics"
+        let join_handel = ReplicationCore::<C, NF, LS>::spawn(
+            replication_context,
+            progress,
+            network,
+            self.log_store.get_log_reader().await,
+            event_watcher,
+            tracing::span!(parent: &self.span, Level::DEBUG, "replication", id=display(&self.id), target=display(&target)),
         );
 
-        for (target, s) in nodes {
-            let handle = s.join_handle;
+        replication_handle.join_handle = Some(join_handel);
 
-            // Drop sender to notify the task to shutdown
-            drop(s.entries_tx);
-            drop(s.cancel_tx);
+        replication_handle
+    }
 
-            tracing::debug!("joining removed replication: {}", target);
-            let _x = handle.await;
-            tracing::info!("Done joining removed replication : {}", target);
+    fn new_replication(
+        &self,
+        target: C::NodeId,
+        replicate_tx: WatchSenderOf<C, Replicate<C>>,
+    ) -> (ReplicationHandle<C>, ReplicationContext<C>) {
+        let (cancel_tx, cancel_rx) = C::watch_channel(());
+
+        let context = self.new_replication_context(target.clone(), cancel_rx);
+
+        let handle = ReplicationHandle::new(context.session_id.clone(), replicate_tx, cancel_tx);
+
+        (handle, context)
+    }
+
+    fn new_replication_context(&self, target: C::NodeId, cancel_rx: WatchReceiverOf<C, ()>) -> ReplicationContext<C> {
+        let id = self.id.clone();
+
+        let membership_log_id = self.engine.state.membership_state.effective().log_id();
+
+        let session_id = {
+            let leader = self.engine.leader.as_ref().unwrap();
+            ReplicationSessionId::new(leader.committed_vote.clone(), membership_log_id.clone())
+        };
+
+        ReplicationContext {
+            id,
+            target,
+            session_id: session_id.clone(),
+            config: self.config.clone(),
+            tx_notify: self.tx_notification.clone(),
+            cancel_rx,
+        }
+    }
+
+    fn new_event_watcher(&self, replicate_rx: WatchReceiverOf<C, Replicate<C>>) -> EventWatcher<C> {
+        EventWatcher {
+            replicate_rx,
+            committed_rx: self.committed_tx.subscribe(),
+            io_accepted_rx: self.io_accepted_tx.subscribe(),
+            io_submitted_rx: self.io_submitted_tx.subscribe(),
         }
     }
 
@@ -1024,7 +1063,7 @@ where
     /// Run an event handling loop
     ///
     /// It always returns a [`Fatal`] error upon returning.
-    #[tracing::instrument(level="debug", skip_all, fields(id=display(&self.id)))]
+    #[tracing::instrument(level = "debug", skip_all, fields(id=display(&self.id)))]
     async fn runtime_loop(&mut self, mut rx_shutdown: OneshotReceiverOf<C, ()>) -> Result<Infallible, Fatal<C>> {
         // Ratio control the ratio of number of RaftMsg to process to number of Notification to process.
         let mut balancer = Balancer::new(10_000);
@@ -1321,7 +1360,8 @@ where
     }
 
     // TODO: Make this method non-async. It does not need to run any async command in it.
-    #[tracing::instrument(level = "debug", skip(self, msg), fields(state = debug(self.engine.state.server_state), id=display(&self.id)))]
+    #[tracing::instrument(level = "debug", skip(self, msg), fields(state = debug(self.engine.state.server_state), id=display(&self.id)
+    ))]
     pub(crate) async fn handle_api_msg(&mut self, msg: RaftMsg<C>) {
         tracing::debug!("RAFT_event id={:<2}  input: {}", self.id, msg);
 
@@ -1462,7 +1502,8 @@ where
         };
     }
 
-    #[tracing::instrument(level = "debug", skip_all, fields(state = debug(self.engine.state.server_state), id=display(&self.id)))]
+    #[tracing::instrument(level = "debug", skip_all, fields(state = debug(self.engine.state.server_state), id=display(&self.id)
+    ))]
     pub(crate) fn handle_notification(&mut self, notify: Notification<C>) -> Result<(), Fatal<C>> {
         tracing::debug!("RAFT_event id={:<2} notify: {}", self.id, notify);
 
@@ -1585,13 +1626,15 @@ where
             Notification::ReplicationProgress { progress, inflight_id } => {
                 // If vote or membership changes, ignore the message.
                 // There is chance delayed message reports a wrong state.
-                if self.does_replication_session_match(&progress.session_id, "ReplicationProgress") {
-                    tracing::debug!(progress = display(&progress), "recv Notification::ReplicationProgress");
+                // if self.does_replication_session_match(&progress.session_id, "ReplicationProgress") {
+                tracing::debug!(progress = display(&progress), "recv Notification::ReplicationProgress");
 
-                    // replication_handler() won't panic because:
-                    // The leader is still valid because progress.session_id.leader_vote does not change.
+                // replication_handler() won't panic because:
+                // The leader is still valid because progress.session_id.leader_vote does not change.
+                if self.engine.leader.is_some() {
                     self.engine.replication_handler().update_progress(progress.target, progress.result, inflight_id);
                 }
+                // }
             }
 
             Notification::HeartbeatProgress {
@@ -1873,7 +1916,13 @@ where
 
         match cmd {
             Command::UpdateIOProgress { io_id, .. } => {
+                // Notify that I/O is about to be submitted.
+                self.io_accepted_tx.send_if_greater(io_id.clone());
+
                 self.engine.state.log_progress_mut().submit(io_id.clone());
+
+                // Broadcast I/O progress so replication tasks can read submitted logs.
+                self.io_submitted_tx.send_if_greater(io_id.clone());
 
                 let notify = Notification::LocalIO { io_id: io_id.clone() };
 
@@ -1892,6 +1941,9 @@ where
                 let io_id = IOId::new_log_io(vote, Some(last_log_id));
                 let callback = IOFlushed::new(io_id.clone(), self.tx_io_completed.clone());
 
+                // Notify that I/O is about to be submitted.
+                self.io_accepted_tx.send_if_greater(io_id.clone());
+
                 // Mark this IO request as submitted,
                 // other commands relying on it can then be processed.
                 // For example,
@@ -1900,14 +1952,25 @@ where
                 //
                 // The `submit` state must be updated before calling `append()`,
                 // because `append()` may call the callback before returning.
-                self.engine.state.log_progress_mut().submit(io_id);
+                self.engine.state.log_progress_mut().submit(io_id.clone());
 
                 // Submit IO request, do not wait for the response.
                 self.log_store.append(entries, callback).await.sto_write_logs()?;
+
+                // Notify replication tasks that logs up to `io_id` are now readable.
+                self.io_submitted_tx.send_if_greater(io_id);
             }
             Command::SaveVote { vote } => {
-                self.engine.state.log_progress_mut().submit(IOId::new(&vote));
+                let io_id = IOId::new(&vote);
+
+                // Notify that vote I/O is about to be submitted.
+                self.io_accepted_tx.send_if_greater(io_id.clone());
+
+                self.engine.state.log_progress_mut().submit(io_id.clone());
                 self.log_store.save_vote(&vote).await.sto_write_vote()?;
+
+                // Notify replication tasks of vote I/O completion.
+                self.io_submitted_tx.send_if_greater(io_id);
 
                 let _ = self
                     .tx_notification
@@ -1972,7 +2035,7 @@ where
             }
             Command::Replicate { req, target } => {
                 let node = self.replications.get(&target).expect("replication to target node exists");
-                let _ = node.entries_tx.send(req);
+                let _ = node.replicate_tx.send(req);
             }
             Command::ReplicateSnapshot { target, inflight_id } => {
                 let node = self.replications.get(&target).expect("replication to target node exists");
@@ -2000,12 +2063,42 @@ where
             Command::BroadcastTransferLeader { req } => self.broadcast_transfer_leader(req).await,
 
             Command::RebuildReplicationStreams { targets } => {
-                self.remove_all_replication().await;
+                self.heartbeat_handle.shutdown();
+
+                // self.remove_all_replication().await;
+
+                let mut new_replications = BTreeMap::new();
 
                 for ReplicationProgress(target, matching) in targets.iter() {
-                    let handle = self.spawn_replication_stream(target.clone(), matching.clone()).await;
-                    self.replications.insert(target.clone(), handle);
+                    let removed = self.replications.remove(target);
+
+                    if let Some(removed) = removed {
+                        new_replications.insert(target.clone(), removed);
+                    } else {
+                        let handle = self.spawn_replication_stream(target.clone(), matching.clone()).await;
+                        new_replications.insert(target.clone(), handle);
+                    }
                 }
+
+                tracing::debug!("removing unused replications");
+
+                let left = std::mem::replace(&mut self.replications, new_replications);
+
+                for (target, mut s) in left {
+                    let Some(handle) = s.join_handle.take() else {
+                        continue;
+                    };
+
+                    // Drop sender to notify the task to shutdown
+                    drop(s.replicate_tx);
+                    drop(s.cancel_tx);
+
+                    tracing::debug!("joining removed replication: {}", target);
+                    let _x = handle.await;
+                    tracing::info!("Done joining removed replication : {}", target);
+                }
+
+                //
 
                 let effective = self.engine.state.membership_state.effective().clone();
 

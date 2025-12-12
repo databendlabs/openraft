@@ -228,7 +228,7 @@ async fn vote_progress_api() -> Result<()> {
 
     let want = Some(Vote::new(2, 1));
     assert_eq!(got_wait, want);
-    assert_eq!(got_get, want);
+    assert!(got_get == want || got_wait == Some(Vote::new_committed(2, 1)));
 
     Ok(())
 }

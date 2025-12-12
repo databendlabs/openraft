@@ -300,7 +300,6 @@ impl TypedRaftRouter {
         self.send_delay.store(ms, Ordering::Relaxed);
     }
 
-    #[tracing::instrument(level = "debug", skip(self))]
     async fn rand_send_delay(&self) {
         let send_delay = self.send_delay.load(Ordering::Relaxed);
         if send_delay == 0 {
@@ -653,7 +652,6 @@ impl TypedRaftRouter {
         Ok(metrics)
     }
 
-    #[tracing::instrument(level = "debug", skip(self))]
     pub fn get_raft_handle(&self, node_id: &MemNodeId) -> Result<MemRaft, NetworkError> {
         let rt = self.nodes.lock().unwrap();
         let raft_and_sto = rt
@@ -942,7 +940,6 @@ impl TypedRaftRouter {
     }
 
     #[allow(clippy::result_large_err)]
-    #[tracing::instrument(level = "debug", skip(self))]
     pub fn emit_rpc_error(&self, id: MemNodeId, target: MemNodeId) -> Result<(), RPCError<MemConfig>> {
         let fails = self.fail_rpc.lock().unwrap();
 

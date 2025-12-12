@@ -152,6 +152,9 @@ service RaftService {
   // AppendEntries handles call related to append entries RPC
   rpc AppendEntries(AppendEntriesRequest) returns (AppendEntriesResponse) {}
 
+  // StreamAppend handles streaming append entries for pipeline replication
+  rpc StreamAppend(stream AppendEntriesRequest) returns (stream AppendEntriesResponse) {}
+
   // Snapshot handles install snapshot RPC
   rpc Snapshot(stream SnapshotRequest) returns (SnapshotResponse) {}
 }

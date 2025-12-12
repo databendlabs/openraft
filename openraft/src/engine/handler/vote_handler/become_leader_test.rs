@@ -14,11 +14,11 @@ use crate::engine::ReplicationProgress;
 use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;
 use crate::entry::RaftEntry;
-use crate::log_id_range::LogIdRange;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::inflight_id::InflightId;
 use crate::raft_state::IOId;
-use crate::replication::request::Data;
+use crate::replication::payload::Payload;
+use crate::replication::replicate::Replicate;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::EntryOf;
 use crate::utime::Leased;
@@ -71,9 +71,13 @@ fn test_become_leader() -> anyhow::Result<()> {
             committed_vote: Vote::new(2, 1).into_committed(),
             entries: vec![EntryOf::<UTConfig>::new_blank(log_id(2, 1, 0)),]
         },
+        // Pipeline mode: ProgressEntry::empty(0) has matching.next_index()=0 == searching_end=0
         Command::Replicate {
             target: 0,
-            req: Data::new_logs(LogIdRange::new(None, Some(log_id(2, 1, 0))), InflightId::new(1))
+            req: Replicate {
+                inflight_id: InflightId::new(1),
+                payload: Payload::LogsSince { prev: None },
+            }
         }
     ]);
 

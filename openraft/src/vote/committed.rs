@@ -62,6 +62,7 @@ where C: RaftTypeConfig
         self.leader_id().to_committed()
     }
 
+    #[allow(dead_code)]
     pub(crate) fn node_id(&self) -> &C::NodeId {
         self.leader_id.node_id()
     }

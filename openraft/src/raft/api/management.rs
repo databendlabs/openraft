@@ -73,6 +73,8 @@ where C: RaftTypeConfig
 
         let (tx, rx) = new_responder_pair::<C, _>();
 
+        tracing::debug!("change_membership: start",);
+
         // res is error if membership cannot be changed.
         // If no error, it will enter a joint state
         let client_write_result = self
@@ -86,6 +88,11 @@ where C: RaftTypeConfig
                 rx,
             )
             .await?;
+
+        tracing::debug!(
+            "change_membership: client_write_result: {}",
+            client_write_result.display()
+        );
 
         let resp = match client_write_result {
             Ok(x) => x,

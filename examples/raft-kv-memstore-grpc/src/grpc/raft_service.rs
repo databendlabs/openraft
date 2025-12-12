@@ -1,4 +1,8 @@
+use std::pin::Pin;
+
+use futures::Stream;
 use futures::StreamExt;
+use openraft::raft::StreamAppendError;
 use openraft::Snapshot;
 use tonic::Request;
 use tonic::Response;
@@ -157,5 +161,56 @@ impl RaftService for RaftServiceImpl {
         Ok(Response::new(pb::SnapshotResponse {
             vote: Some(snapshot_resp.vote),
         }))
+    }
+
+    type StreamAppendStream = Pin<Box<dyn Stream<Item = Result<pb::AppendEntriesResponse, Status>> + Send>>;
+
+    /// Handles streaming append entries requests for pipeline replication.
+    ///
+    /// This enables efficient pipelining of log replication where multiple
+    /// AppendEntries requests can be in-flight simultaneously.
+    async fn stream_append(
+        &self,
+        request: Request<Streaming<pb::AppendEntriesRequest>>,
+    ) -> Result<Response<Self::StreamAppendStream>, Status> {
+        debug!("Processing stream_append request");
+
+        let input = request.into_inner();
+
+        // Convert pb stream to openraft AppendEntriesRequest stream
+        let input_stream = input.filter_map(|r| async move { r.ok().map(Into::into) });
+
+        // Call Raft::stream_append
+        let output = self.raft_node.stream_append(input_stream);
+
+        // Convert StreamAppendResult to pb::AppendEntriesResponse
+        let output_stream = output.map(|result| {
+            let resp = match result {
+                Ok(Some(log_id)) => pb::AppendEntriesResponse {
+                    rejected_by: None,
+                    conflict: false,
+                    last_log_id: Some(log_id.into()),
+                },
+                Ok(None) => pb::AppendEntriesResponse {
+                    rejected_by: None,
+                    conflict: false,
+                    last_log_id: None,
+                },
+                Err(StreamAppendError::Conflict(log_id)) => pb::AppendEntriesResponse {
+                    rejected_by: None,
+                    conflict: true,
+                    // Store the conflict log_id in last_log_id field
+                    last_log_id: Some(log_id.into()),
+                },
+                Err(StreamAppendError::HigherVote(vote)) => pb::AppendEntriesResponse {
+                    rejected_by: Some(vote),
+                    conflict: false,
+                    last_log_id: None,
+                },
+            };
+            Ok(resp)
+        });
+
+        Ok(Response::new(Box::pin(output_stream)))
     }
 }

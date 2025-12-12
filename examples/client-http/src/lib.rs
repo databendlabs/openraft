@@ -155,10 +155,12 @@ where C: RaftTypeConfig<Node = BasicNode>
     /// The remote endpoint must respond a reply in form of `Result<Resp, Err>`.
     async fn send<Req, Resp, Err>(&self, uri: &str, req: Option<&Req>) -> Result<Result<Resp, Err>, RPCError<C>>
     where
-        Req: Serialize + 'static,
+        Req: Serialize + fmt::Debug + 'static,
         Resp: Serialize + DeserializeOwned,
         Err: std::error::Error + Serialize + DeserializeOwned,
     {
+        tracing::debug!("client-http: start, send to {}; request: {:?}", uri, req);
+
         let (_leader_id, url) = {
             let t = self.leader.lock().unwrap();
             let target_addr = &t.1;
@@ -171,9 +173,15 @@ where C: RaftTypeConfig<Node = BasicNode>
                 url,
                 serde_json::to_string_pretty(&r).unwrap()
             );
+            tracing::debug!(
+                ">>> client send request to {}: {}",
+                url,
+                serde_json::to_string_pretty(&r).unwrap()
+            );
             self.inner.post(url.clone()).json(r)
         } else {
             println!(">>> client send request to {}", url,);
+            tracing::debug!(">>> client send request to {}", url,);
             self.inner.get(url.clone())
         }
         .send()
@@ -210,7 +218,7 @@ where C: RaftTypeConfig<Node = BasicNode>
         mut retry: usize,
     ) -> Result<Result<Resp, Err>, RPCError<C>>
     where
-        Req: Serialize + 'static,
+        Req: Serialize + fmt::Debug + 'static,
         Resp: Serialize + DeserializeOwned,
         Err: std::error::Error + Serialize + DeserializeOwned + TryAsRef<ForwardToLeader<C>> + Clone,
     {
