@@ -12,7 +12,6 @@ pub(crate) mod api;
 #[cfg(test)]
 mod declare_raft_types_test;
 mod impl_raft_blocking_write;
-mod leader_watch;
 pub mod linearizable_read;
 pub(crate) mod message;
 mod raft_inner;
@@ -20,6 +19,7 @@ pub mod responder;
 mod runtime_config_handle;
 mod stream_append;
 pub mod trigger;
+mod watch_handle;
 
 use std::any::Any;
 
@@ -56,13 +56,14 @@ use tracing::Level;
 use tracing::trace_span;
 
 pub use self::leader::Leader;
-pub use self::leader_watch::LeaderChangeHandle;
+pub use self::watch_handle::WatchChangeHandle;
 use crate::OptionalSend;
 use crate::RaftNetworkFactory;
 use crate::RaftState;
 pub use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::StorageHelper;
+use crate::alias::NodeIdOf;
 use crate::async_runtime::OneshotSender;
 use crate::async_runtime::mpsc::MpscSender;
 use crate::async_runtime::watch::WatchReceiver;
@@ -1444,21 +1445,23 @@ where C: RaftTypeConfig
         self.inner.progress_watcher.apply_progress()
     }
 
-    /// Watch for leader changes and invoke callback on each change.
+    /// Watch for any leader changes in the cluster and invoke callback on each change.
     ///
     /// Returns a handle that can be used to stop watching.
     /// The callback receives:
     /// - `old`: The previous leader state `(leader_id, committed)`, or `None` on the first callback
     /// - `new`: The current leader state `(leader_id, committed)`
     ///
-    /// This is useful for starting or stopping leader-only services when leadership changes.
+    /// This fires on ANY leader change in the cluster, not just when this node's leadership
+    /// changes. For a simpler API that only fires when THIS node becomes or loses leadership,
+    /// see [`on_leader_change()`].
     ///
     /// # Example
     ///
     /// ```ignore
     /// let my_node_id = 1;
     ///
-    /// let mut handle = raft.on_leader_change(move |_old, (leader_id, committed)| {
+    /// let mut handle = raft.on_cluster_leader_change(move |_old, (leader_id, committed)| {
     ///     let is_leader = leader_id.node_id == my_node_id && committed;
     ///
     ///     if is_leader {
@@ -1475,16 +1478,94 @@ where C: RaftTypeConfig
     /// // Later, stop watching
     /// handle.close().await;
     /// ```
+    ///
+    /// [`on_leader_change()`]: Self::on_leader_change
     #[since(version = "0.10.0")]
-    pub fn on_leader_change<F>(&self, callback: F) -> LeaderChangeHandle<C>
-    where F: Fn(Option<(C::LeaderId, bool)>, (C::LeaderId, bool)) + OptionalSend + 'static {
+    pub fn on_cluster_leader_change<F>(&self, mut callback: F) -> WatchChangeHandle<C>
+    where F: FnMut(Option<(C::LeaderId, bool)>, (C::LeaderId, bool)) + OptionalSend + 'static {
+        let mut prev_vote: Option<Vote<C>> = None;
+
+        self.watch_vote_change(move |new_vote, _my_node_id| {
+            let old_leader = prev_vote.as_ref().map(|v| v.leader_id().clone());
+            let new_leader = new_vote.leader_id().clone();
+
+            // Only call callback if leader_id actually changed
+            if old_leader.as_ref() != Some(&new_leader) {
+                let old_state = prev_vote.as_ref().map(|v| (v.leader_id().clone(), v.is_committed()));
+                let new_state = (new_vote.leader_id().clone(), new_vote.is_committed());
+                callback(old_state, new_state);
+            }
+            prev_vote = Some(new_vote);
+        })
+    }
+
+    /// Register callbacks for when this node becomes or stops being the committed leader.
+    ///
+    /// Unlike [`on_cluster_leader_change()`] which fires on any leader change in the cluster,
+    /// this method only fires when THIS node becomes or stops being the leader.
+    ///
+    /// - `start`: Called when this node becomes the leader (committed, quorum-acknowledged)
+    /// - `stop`: Called when this node is no longer the leader (another node becomes leader)
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let handle = raft.on_leader_change(
+    ///     |leader_id| {
+    ///         println!("Became leader: {:?}", leader_id);
+    ///         start_leader_services();
+    ///     },
+    ///     |old_leader| {
+    ///         println!("Stopped leading: {:?}", old_leader);
+    ///         stop_leader_services();
+    ///     },
+    /// );
+    ///
+    /// // Later, stop watching
+    /// handle.close().await;
+    /// ```
+    ///
+    /// [`on_cluster_leader_change()`]: Self::on_cluster_leader_change
+    #[since(version = "0.10.0")]
+    pub fn on_leader_change<F1, F2>(&self, start: F1, stop: F2) -> WatchChangeHandle<C>
+    where
+        F1: Fn(C::LeaderId) + OptionalSend + 'static,
+        F2: Fn(C::LeaderId) + OptionalSend + 'static,
+    {
+        let mut prev_leader_id = None;
+
+        self.watch_vote_change(move |vote, my_node_id| {
+            let leader_id = vote.leader_id().clone();
+
+            // Fire `start` when THIS node becomes committed leader
+            // and it's a new leadership (different from current)
+            #[allow(clippy::collapsible_else_if)]
+            if leader_id.node_id() == my_node_id {
+                if vote.is_committed() && prev_leader_id.as_ref() != Some(&leader_id) {
+                    start(leader_id.clone());
+                    prev_leader_id = Some(leader_id);
+                }
+            } else {
+                if let Some(old_id) = prev_leader_id.take() {
+                    stop(old_id);
+                }
+            }
+        })
+    }
+
+    /// Spawn a task that watches vote changes and invokes callback on each change.
+    ///
+    /// This is an internal helper used by [`Self::on_leader_change()`] and
+    /// [`Self::on_cluster_leader_change()`].
+    fn watch_vote_change<F>(&self, mut callback: F) -> WatchChangeHandle<C>
+    where F: FnMut(Vote<C>, &NodeIdOf<C>) + OptionalSend + 'static {
         use futures::FutureExt;
 
+        let my_node_id = self.inner.id().clone();
         let mut vote_progress = self.watch_vote_progress();
         let (cancel_tx, cancel_rx) = C::oneshot::<()>();
 
         let handle = C::spawn(async move {
-            let mut prev_vote: Option<Vote<C>> = None;
             let mut cancel_rx = cancel_rx.fuse();
 
             loop {
@@ -1492,29 +1573,19 @@ where C: RaftTypeConfig
                     _ = cancel_rx => break,
                     res = vote_progress.changed().fuse() => {
                         if res.is_err() {
-                            break; // Channel closed
+                            break;
                         }
-                        let Some(new_vote) = vote_progress.get() else {
-                            continue; // Skip if vote is None
+                        let Some(vote) = vote_progress.get() else {
+                            continue;
                         };
 
-                        let old_leader = prev_vote.as_ref().map(|v| v.leader_id().clone());
-                        let new_leader = new_vote.leader_id().clone();
-
-                        // Only call callback if leader_id actually changed
-                        if old_leader.as_ref() != Some(&new_leader) {
-                            let old_state =
-                                prev_vote.as_ref().map(|v| (v.leader_id().clone(), v.is_committed()));
-                            let new_state = (new_vote.leader_id().clone(), new_vote.is_committed());
-                            callback(old_state, new_state);
-                        }
-                        prev_vote = Some(new_vote);
+                        callback(vote, &my_node_id);
                     }
                 }
             }
         });
 
-        LeaderChangeHandle {
+        WatchChangeHandle {
             cancel_tx: Some(cancel_tx),
             join_handle: Some(handle),
         }
