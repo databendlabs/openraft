@@ -11,7 +11,7 @@ use openraft::vote::RaftLeaderId;
 use crate::fixtures::RaftRouter;
 use crate::fixtures::ut_harness;
 
-/// Test on_leader_change API with leader switch
+/// Test on_cluster_leader_change API with leader switch
 ///
 /// What does this test do?
 ///
@@ -24,7 +24,7 @@ use crate::fixtures::ut_harness;
 #[allow(clippy::type_complexity)]
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
-async fn on_leader_change_api() -> Result<()> {
+async fn on_cluster_leader_change_api() -> Result<()> {
     let config = Arc::new(
         Config {
             enable_elect: false,
@@ -38,14 +38,14 @@ async fn on_leader_change_api() -> Result<()> {
     tracing::info!("--- initializing 3-node cluster");
     let _log_index = router.new_cluster(btreeset! {0, 1, 2}, btreeset! {}).await?;
 
-    tracing::info!("--- create on_leader_change on node 1");
+    tracing::info!("--- create on_cluster_leader_change on node 1");
     let n1 = router.get_raft_handle(&1)?;
 
     // Collect (old, new) tuples: ((term, node_id, committed), (term, node_id, committed))
     let changes: Arc<Mutex<Vec<(Option<(u64, u64, bool)>, (u64, u64, bool))>>> = Arc::new(Mutex::new(Vec::new()));
     let changes_clone = changes.clone();
 
-    let mut handle = n1.on_leader_change(move |old, new| {
+    let mut handle = n1.on_cluster_leader_change(move |old, new| {
         let old_val = old.map(|(leader_id, committed)| (leader_id.term(), *leader_id.node_id(), committed));
         let new_val = (new.0.term(), *new.0.node_id(), new.1);
         changes_clone.lock().unwrap().push((old_val, new_val));
@@ -119,6 +119,100 @@ async fn on_leader_change_api() -> Result<()> {
         let want = vec![(None, (1, 0, true)), (Some((1, 0, true)), (2, 2, false))];
         assert_eq!(got, want);
     }
+
+    Ok(())
+}
+
+/// Test on_leader_change API (simplified version for this node's leadership)
+///
+/// What does this test do?
+///
+/// - Creates a 3-node cluster with node 0 as initial leader
+/// - Registers on_leader_change callbacks on node 0 (the leader)
+/// - Verifies `start` callback is called when node 0 becomes committed leader
+/// - Triggers election on node 2 to take over leadership
+/// - Verifies `stop` callback is called when node 0 loses leadership
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
+async fn on_leader_change_api() -> Result<()> {
+    let config = Arc::new(
+        Config {
+            enable_elect: false,
+            enable_heartbeat: false,
+            ..Default::default()
+        }
+        .validate()?,
+    );
+    let mut router = RaftRouter::new(config.clone());
+
+    tracing::info!("--- initializing 3-node cluster");
+    let _log_index = router.new_cluster(btreeset! {0, 1, 2}, btreeset! {}).await?;
+
+    tracing::info!("--- create on_leader_change on node 0 (the leader)");
+    let n0 = router.get_raft_handle(&0)?;
+
+    // Track start and stop events
+    let started: Arc<Mutex<Vec<(u64, u64)>>> = Arc::new(Mutex::new(Vec::new()));
+    let stopped: Arc<Mutex<Vec<(u64, u64)>>> = Arc::new(Mutex::new(Vec::new()));
+
+    let started_clone = started.clone();
+    let stopped_clone = stopped.clone();
+
+    let mut handle = n0.on_leader_change(
+        move |leader_id| {
+            started_clone.lock().unwrap().push((leader_id.term(), *leader_id.node_id()));
+        },
+        move |old_leader_id| {
+            stopped_clone.lock().unwrap().push((old_leader_id.term(), *old_leader_id.node_id()));
+        },
+    );
+
+    // Give some time for the initial callback to be invoked
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    tracing::info!("--- verify `start` was called for node 0");
+    {
+        let got = started.lock().unwrap().clone();
+        // Node 0 became committed leader at term 1
+        assert_eq!(got, vec![(1, 0)]);
+
+        let got = stopped.lock().unwrap().clone();
+        // No stop yet
+        assert_eq!(got, vec![]);
+    }
+
+    // Wait for leader lease to expire so other nodes accept new vote
+    tokio::time::sleep(Duration::from_millis(700)).await;
+
+    tracing::info!("--- trigger election on node 2");
+    let n2 = router.get_raft_handle(&2)?;
+    n2.trigger().elect().await?;
+
+    tracing::info!("--- wait for node 2 to become leader");
+    n2.wait(Some(Duration::from_millis(2000)))
+        .state(ServerState::Leader, "wait for node 2 to become leader")
+        .await?;
+
+    tracing::info!("--- wait for node 0 to see the new leader");
+    n0.wait(Some(Duration::from_millis(2000)))
+        .current_leader(2, "wait for node 0 to see node 2 as leader")
+        .await?;
+
+    // Give some time for the callback to be invoked
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    tracing::info!("--- verify `stop` was called for node 0");
+    {
+        let got = started.lock().unwrap().clone();
+        // Still only one start event
+        assert_eq!(got, vec![(1, 0)]);
+
+        let got = stopped.lock().unwrap().clone();
+        // Node 0 stopped leading (term 1, node 0)
+        assert_eq!(got, vec![(1, 0)]);
+    }
+
+    handle.close().await;
 
     Ok(())
 }
