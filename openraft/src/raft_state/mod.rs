@@ -17,13 +17,11 @@ use crate::utime::Leased;
 pub(crate) mod io_state;
 mod log_state_reader;
 mod membership_state;
-mod runtime_stats;
 mod vote_state_reader;
 
 pub(crate) use io_state::IOState;
 #[allow(unused)]
 pub(crate) use io_state::io_id::IOId;
-pub(crate) use runtime_stats::RuntimeStats;
 
 #[allow(unused)]
 pub(crate) use crate::base::histogram::PercentileStats;

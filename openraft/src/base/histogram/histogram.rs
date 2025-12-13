@@ -2,24 +2,68 @@ use super::percentile_stats::PercentileStats;
 
 /// A histogram for tracking the distribution of u64 values using logarithmic bucketing.
 ///
-/// Uses a logarithmic bucketing strategy where smaller values get higher precision.
-/// The bucketing algorithm is based on the binary representation of the value:
+/// This histogram provides O(1) recording and efficient percentile calculation with
+/// bounded memory usage (252 buckets = ~2KB), regardless of the number of samples.
 ///
-/// - Group 0 (special): [0, 1, 2, 3]
-/// - Group 1: [4, 5, 6, 7]
-/// - Group 2: [8, 10, 12, 14]
-/// - Group 3: [16, 20, 24, 28]
-/// - Group 4: [32, 40, 48, 56]
-/// - And so on...
+/// # Bucketing Strategy
 ///
-/// Each group (except group 0) contains 4 buckets determined by the 2 bits
-/// after the most significant bit.
+/// Uses logarithmic bucketing where smaller values get higher precision, similar to
+/// [HDRHistogram](https://github.com/HdrHistogram/HdrHistogram). The bucket boundaries
+/// are determined by the binary representation of the value:
 ///
-/// The histogram uses exactly 252 buckets to cover all possible u64 values.
+/// ```text
+/// Group  Bucket   Value Range     Binary Pattern (3-bit window)
+/// ─────  ──────   ───────────     ─────────────────────────────
+///   0      0-3    [0-3]           Direct mapping (special case)
+///   1      4-7    [4-7]           100, 101, 110, 111
+///   2     8-11    [8-15]          1xx0, 1xx0 (step=2)
+///   3    12-15    [16-31]         1xx00, 1xx00 (step=4)
+///   4    16-19    [32-63]         1xx000, 1xx000 (step=8)
+///   ...
+/// ```
+///
+/// Each group covers a power-of-2 range and contains 4 buckets. The 2 bits after the
+/// MSB determine which bucket within the group:
+///
+/// ```text
+/// Example: value = 42 (binary: 101010)
+///   MSB position: 5 (counting from 0)
+///   Group: 5 - 2 = 3
+///   Bits after MSB: 01 (from 1[01]010)
+///   Bucket within group: 1
+///   Final bucket index: 4 + (3 * 4) + 1 = 17
+/// ```
+///
+/// # Precision
+///
+/// - Values 0-7: exact (1:1 mapping)
+/// - Values 8-15: ±1 (2 values per bucket)
+/// - Values 16-31: ±2 (4 values per bucket)
+/// - Values 2^n to 2^(n+1)-1: ±2^(n-2)
+///
+/// Relative error is bounded at ~12.5% for values >= 8.
+///
+/// # Memory Usage
+///
+/// Fixed at 252 buckets * 8 bytes = 2,016 bytes per histogram, covering the entire
+/// u64 range [0, 2^64-1].
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Histogram {
+pub struct Histogram {
+    /// Count of samples in each bucket.
+    ///
+    /// `buckets[i]` holds the number of recorded values that fall into bucket `i`.
     buckets: Vec<u64>,
+
+    /// Minimum value represented by each bucket (precomputed lookup table).
+    ///
+    /// `bucket_min_values[i]` is the smallest value that maps to bucket `i`.
+    /// Used when reporting percentiles to convert bucket index back to a value.
     bucket_min_values: Vec<u64>,
+
+    /// Precomputed bucket indices for small values (0 to SMALL_VALUE_CACHE_SIZE-1).
+    ///
+    /// Using u8 is sufficient since values 0-4095 map to bucket indices 0-44.
+    small_value_buckets: Vec<u8>,
 }
 
 impl Default for Histogram {
@@ -57,6 +101,11 @@ impl Histogram {
     /// This equals bucket_index(u64::MAX) + 1
     const BUCKETS_FOR_U64: usize = Self::GROUP_SIZE * (66 - Self::WIDTH);
 
+    /// Cache size for small value bucket lookups.
+    ///
+    /// Values 0-4095 map to bucket indices 0-44, fitting in u8.
+    const SMALL_VALUE_CACHE_SIZE: usize = 4096;
+
     /// Creates a new histogram with 252 buckets, covering all u64 values.
     ///
     /// Memory usage: 252 * 8 bytes = 2,016 bytes per histogram.
@@ -75,16 +124,29 @@ impl Histogram {
             }
         }
 
+        // Precompute bucket indices for small values
+        let small_value_buckets: Vec<u8> =
+            (0..Self::SMALL_VALUE_CACHE_SIZE).map(|v| Self::calculate_bucket_uncached(v as u64) as u8).collect();
+
         Self {
             buckets: vec![0; Self::BUCKETS_FOR_U64],
             bucket_min_values,
+            small_value_buckets,
         }
     }
 
     /// Records a value to the histogram.
     pub(crate) fn record(&mut self, value: u64) {
-        let bucket_index = Self::calculate_bucket(value);
+        let bucket_index = self.calculate_bucket(value);
         self.buckets[bucket_index] += 1;
+    }
+
+    /// Calculates the bucket index for a given value, using cache for small values.
+    fn calculate_bucket(&self, value: u64) -> usize {
+        if value < Self::SMALL_VALUE_CACHE_SIZE as u64 {
+            return self.small_value_buckets[value as usize] as usize;
+        }
+        Self::calculate_bucket_uncached(value)
     }
 
     /// Calculates the bucket index for a given value using logarithmic bucketing.
@@ -97,7 +159,7 @@ impl Histogram {
     ///      etc.)
     ///    - Extract offset within that group using the 2 bits after MSB
     ///    - Bucket index = base of this group + offset within group
-    fn calculate_bucket(value: u64) -> usize {
+    fn calculate_bucket_uncached(value: u64) -> usize {
         if value < Self::GROUP_SIZE as u64 {
             return value as usize;
         }
@@ -111,8 +173,7 @@ impl Histogram {
     }
 
     /// Returns the total number of values recorded.
-    #[allow(dead_code)]
-    pub(crate) fn total(&self) -> u64 {
+    pub fn total(&self) -> u64 {
         self.buckets.iter().sum()
     }
 
@@ -147,11 +208,12 @@ impl Histogram {
         0
     }
 
-    /// Returns common percentile statistics: P50, P90, P99.
+    /// Returns common percentile statistics: total, P50, P90, P99.
     #[allow(dead_code)]
-    pub(crate) fn percentile_stats(&self) -> PercentileStats {
+    pub fn percentile_stats(&self) -> PercentileStats {
         let total = self.total();
         PercentileStats {
+            total,
             p50: self.percentile_with_total(0.50, total),
             p90: self.percentile_with_total(0.90, total),
             p99: self.percentile_with_total(0.99, total),
@@ -175,42 +237,42 @@ mod tests {
 
     #[test]
     fn test_calculate_bucket_group_0() {
-        assert_eq!(Histogram::calculate_bucket(0), 0);
-        assert_eq!(Histogram::calculate_bucket(1), 1);
-        assert_eq!(Histogram::calculate_bucket(2), 2);
-        assert_eq!(Histogram::calculate_bucket(3), 3);
+        assert_eq!(Histogram::calculate_bucket_uncached(0), 0);
+        assert_eq!(Histogram::calculate_bucket_uncached(1), 1);
+        assert_eq!(Histogram::calculate_bucket_uncached(2), 2);
+        assert_eq!(Histogram::calculate_bucket_uncached(3), 3);
     }
 
     #[test]
     fn test_calculate_bucket_group_1() {
-        assert_eq!(Histogram::calculate_bucket(4), 4);
-        assert_eq!(Histogram::calculate_bucket(5), 5);
-        assert_eq!(Histogram::calculate_bucket(6), 6);
-        assert_eq!(Histogram::calculate_bucket(7), 7);
+        assert_eq!(Histogram::calculate_bucket_uncached(4), 4);
+        assert_eq!(Histogram::calculate_bucket_uncached(5), 5);
+        assert_eq!(Histogram::calculate_bucket_uncached(6), 6);
+        assert_eq!(Histogram::calculate_bucket_uncached(7), 7);
     }
 
     #[test]
     fn test_calculate_bucket_group_2() {
-        assert_eq!(Histogram::calculate_bucket(8), 8);
-        assert_eq!(Histogram::calculate_bucket(10), 9);
-        assert_eq!(Histogram::calculate_bucket(12), 10);
-        assert_eq!(Histogram::calculate_bucket(14), 11);
+        assert_eq!(Histogram::calculate_bucket_uncached(8), 8);
+        assert_eq!(Histogram::calculate_bucket_uncached(10), 9);
+        assert_eq!(Histogram::calculate_bucket_uncached(12), 10);
+        assert_eq!(Histogram::calculate_bucket_uncached(14), 11);
     }
 
     #[test]
     fn test_calculate_bucket_group_3() {
-        assert_eq!(Histogram::calculate_bucket(16), 12);
-        assert_eq!(Histogram::calculate_bucket(20), 13);
-        assert_eq!(Histogram::calculate_bucket(24), 14);
-        assert_eq!(Histogram::calculate_bucket(28), 15);
+        assert_eq!(Histogram::calculate_bucket_uncached(16), 12);
+        assert_eq!(Histogram::calculate_bucket_uncached(20), 13);
+        assert_eq!(Histogram::calculate_bucket_uncached(24), 14);
+        assert_eq!(Histogram::calculate_bucket_uncached(28), 15);
     }
 
     #[test]
     fn test_calculate_bucket_group_4() {
-        assert_eq!(Histogram::calculate_bucket(32), 16);
-        assert_eq!(Histogram::calculate_bucket(40), 17);
-        assert_eq!(Histogram::calculate_bucket(48), 18);
-        assert_eq!(Histogram::calculate_bucket(56), 19);
+        assert_eq!(Histogram::calculate_bucket_uncached(32), 16);
+        assert_eq!(Histogram::calculate_bucket_uncached(40), 17);
+        assert_eq!(Histogram::calculate_bucket_uncached(48), 18);
+        assert_eq!(Histogram::calculate_bucket_uncached(56), 19);
     }
 
     #[test]
@@ -225,8 +287,8 @@ mod tests {
         assert_eq!(hist.total(), 4);
         assert_eq!(hist.get_bucket(1), 1);
         assert_eq!(hist.get_bucket(5), 1);
-        assert_eq!(hist.get_bucket(Histogram::calculate_bucket(10)), 1);
-        assert_eq!(hist.get_bucket(Histogram::calculate_bucket(100)), 1);
+        assert_eq!(hist.get_bucket(Histogram::calculate_bucket_uncached(10)), 1);
+        assert_eq!(hist.get_bucket(Histogram::calculate_bucket_uncached(100)), 1);
     }
 
     #[test]
@@ -243,7 +305,7 @@ mod tests {
 
     #[test]
     fn test_u64_max_coverage() {
-        let max_bucket = Histogram::calculate_bucket(u64::MAX);
+        let max_bucket = Histogram::calculate_bucket_uncached(u64::MAX);
         assert_eq!(max_bucket, 251, "u64::MAX should map to bucket 251");
         assert_eq!(Histogram::BUCKETS_FOR_U64, 252, "Should need exactly 252 buckets");
 
@@ -257,14 +319,16 @@ mod tests {
 
     #[test]
     fn test_reasonable_bucket_ranges() {
-        assert_eq!(Histogram::calculate_bucket(1024), 36);
+        assert_eq!(Histogram::calculate_bucket_uncached(1024), 36);
+        assert_eq!(Histogram::calculate_bucket_uncached(2048), 40);
+        assert_eq!(Histogram::calculate_bucket_uncached(4096), 44);
 
         let million = 1_048_576;
-        let million_bucket = Histogram::calculate_bucket(million);
+        let million_bucket = Histogram::calculate_bucket_uncached(million);
         assert!(million_bucket < 80);
 
         let billion = 1_073_741_824;
-        let billion_bucket = Histogram::calculate_bucket(billion);
+        let billion_bucket = Histogram::calculate_bucket_uncached(billion);
         assert!(billion_bucket < 120);
     }
 
@@ -301,7 +365,12 @@ mod tests {
     fn test_percentile_empty() {
         let hist = Histogram::new();
         assert_eq!(hist.percentile(0.5), 0);
-        assert_eq!(hist.percentile_stats(), PercentileStats { p50: 0, p90: 0, p99: 0 });
+        assert_eq!(hist.percentile_stats(), PercentileStats {
+            total: 0,
+            p50: 0,
+            p90: 0,
+            p99: 0
+        });
     }
 
     #[test]
@@ -380,5 +449,54 @@ mod tests {
         // P80 should be the 4th value (1000), but bucket returns min value
         let p80 = hist.percentile(0.8);
         assert!((896..=1000).contains(&p80), "P80 = {}", p80);
+    }
+
+    #[test]
+    fn test_cached_bucket_matches_uncached() {
+        let hist = Histogram::new();
+
+        // Sample values across cache range to verify cache correctness
+        let test_values: Vec<usize> =
+            (0..100).chain((100..1000).step_by(10)).chain((1000..4096).step_by(100)).collect();
+
+        for v in test_values {
+            let cached = hist.calculate_bucket(v as u64);
+            let uncached = Histogram::calculate_bucket_uncached(v as u64);
+            assert_eq!(cached, uncached, "Mismatch at value {}", v);
+        }
+    }
+
+    #[test]
+    fn test_cached_bucket_boundary() {
+        let hist = Histogram::new();
+
+        // Test at cache boundary
+        let last_cached = (Histogram::SMALL_VALUE_CACHE_SIZE - 1) as u64;
+        let first_uncached = Histogram::SMALL_VALUE_CACHE_SIZE as u64;
+
+        assert_eq!(
+            hist.calculate_bucket(last_cached),
+            Histogram::calculate_bucket_uncached(last_cached)
+        );
+        assert_eq!(
+            hist.calculate_bucket(first_uncached),
+            Histogram::calculate_bucket_uncached(first_uncached)
+        );
+    }
+
+    #[test]
+    fn test_cached_bucket_large_values() {
+        let hist = Histogram::new();
+
+        // Values beyond cache should still work correctly
+        let large_values = [4096, 10000, 100000, 1_000_000, u64::MAX];
+        for &v in &large_values {
+            assert_eq!(
+                hist.calculate_bucket(v),
+                Histogram::calculate_bucket_uncached(v),
+                "Mismatch at value {}",
+                v
+            );
+        }
     }
 }

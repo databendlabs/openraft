@@ -28,6 +28,7 @@ use crate::config::Config;
 use crate::config::RuntimeConfig;
 use crate::core::ClientResponderQueue;
 use crate::core::ServerState;
+use crate::core::SharedRuntimeState;
 use crate::core::balancer::Balancer;
 use crate::core::core_state::CoreState;
 use crate::core::heartbeat::event::HeartbeatEvent;
@@ -86,7 +87,6 @@ use crate::raft::message::TransferLeaderRequest;
 use crate::raft::responder::Responder;
 use crate::raft::responder::core_responder::CoreResponder;
 use crate::raft_state::LogStateReader;
-use crate::raft_state::RuntimeStats;
 use crate::raft_state::io_state::io_id::IOId;
 use crate::raft_state::io_state::log_io_id::LogIOId;
 use crate::replication::ReplicationCore;
@@ -207,7 +207,7 @@ where
     pub(crate) tx_server_metrics: WatchSenderOf<C, RaftServerMetrics<C>>,
     pub(crate) tx_progress: IoProgressSender<C>,
 
-    pub(crate) runtime_stats: RuntimeStats,
+    pub(crate) runtime_stats: SharedRuntimeState,
 
     pub(crate) span: Span,
 }
@@ -840,7 +840,7 @@ where
         let mut responders = self.client_responders.drain_upto(last.index());
 
         let entry_count = last.index() + 1 - first.index();
-        self.runtime_stats.apply_batch.record(entry_count);
+        self.runtime_stats.with_mut(|s| s.apply_batch.record(entry_count));
 
         // Call on_commit on each responder
         for (index, responder) in responders.iter_mut() {
@@ -1887,7 +1887,7 @@ where
                 tracing::debug!("AppendEntries: {}", entries.display_n(10));
 
                 let entry_count = entries.len() as u64;
-                self.runtime_stats.append_batch.record(entry_count);
+                self.runtime_stats.with_mut(|s| s.append_batch.record(entry_count));
 
                 let io_id = IOId::new_log_io(vote, Some(last_log_id));
                 let callback = IOFlushed::new(io_id.clone(), self.tx_io_completed.clone());

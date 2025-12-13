@@ -66,6 +66,8 @@ pub mod membership;
 pub mod metrics;
 pub mod network;
 pub mod raft;
+#[cfg(feature = "runtime-stats")]
+pub mod stats;
 pub mod storage;
 pub mod testing;
 pub mod type_config;
