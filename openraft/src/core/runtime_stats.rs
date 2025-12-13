@@ -1,0 +1,70 @@
+use std::fmt;
+
+use crate::base::histogram::Histogram;
+use crate::base::histogram::PercentileStats;
+
+/// Runtime statistics for Raft operations.
+///
+/// This is a volatile structure that is not persisted. It accumulates
+/// statistics from the time the Raft node starts.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RuntimeStats {
+    /// Histogram tracking the distribution of log entry counts in Apply commands.
+    ///
+    /// This tracks how many log entries are included in each apply command sent
+    /// to the state machine, helping identify batch size patterns and I/O efficiency.
+    pub apply_batch: Histogram,
+
+    /// Histogram tracking the distribution of log entry counts when appending to storage.
+    ///
+    /// This tracks how many log entries are included in each AppendEntries command
+    /// submitted to the storage layer, helping identify write batch patterns and storage I/O
+    /// efficiency.
+    pub append_batch: Histogram,
+}
+
+impl Default for RuntimeStats {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl RuntimeStats {
+    pub(crate) fn new() -> Self {
+        Self {
+            apply_batch: Histogram::new(),
+            append_batch: Histogram::new(),
+        }
+    }
+
+    /// Returns a displayable representation of the runtime statistics.
+    ///
+    /// All values are precomputed when calling this method, so the returned
+    /// `RuntimeStatsDisplay` can be cheaply formatted multiple times.
+    #[allow(dead_code)]
+    pub fn display(&self) -> RuntimeStatsDisplay {
+        RuntimeStatsDisplay {
+            apply_batch: self.apply_batch.percentile_stats(),
+            append_batch: self.append_batch.percentile_stats(),
+        }
+    }
+}
+
+/// Precomputed display data for [`RuntimeStats`].
+///
+/// All values are computed upfront so `Display::fmt()` is cheap.
+#[allow(dead_code)]
+pub struct RuntimeStatsDisplay {
+    apply_batch: PercentileStats,
+    append_batch: PercentileStats,
+}
+
+impl fmt::Display for RuntimeStatsDisplay {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "RuntimeStats {{ apply_batch: {}, append_batch: {} }}",
+            self.apply_batch, self.append_batch
+        )
+    }
+}
