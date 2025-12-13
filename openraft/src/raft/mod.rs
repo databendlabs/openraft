@@ -73,6 +73,7 @@ use crate::config::Config;
 use crate::config::RuntimeConfig;
 use crate::core::ClientResponderQueue;
 use crate::core::RaftCore;
+use crate::core::SharedRuntimeState;
 use crate::core::Tick;
 use crate::core::heartbeat::handle::HeartbeatWorkersHandle;
 use crate::core::io_flush_tracking::AppliedProgress;
@@ -106,7 +107,6 @@ use crate::raft::raft_inner::RaftInner;
 pub use crate::raft::runtime_config_handle::RuntimeConfigHandle;
 use crate::raft::trigger::Trigger;
 use crate::raft_state::IOId;
-use crate::raft_state::RuntimeStats;
 use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
 use crate::storage::Snapshot;
@@ -456,6 +456,8 @@ where C: RaftTypeConfig
 
         let (committed_tx, committed_rx) = C::watch_channel(None);
 
+        let runtime_stats = SharedRuntimeState::new();
+
         let core: RaftCore<C, N, LS> = RaftCore {
             id: id.clone(),
             config: config.clone(),
@@ -488,7 +490,7 @@ where C: RaftTypeConfig
             tx_server_metrics,
             tx_progress,
 
-            runtime_stats: RuntimeStats::new(),
+            runtime_stats: runtime_stats.clone(),
 
             span: core_span,
         };
@@ -508,6 +510,7 @@ where C: RaftTypeConfig
             rx_data_metrics,
             rx_server_metrics,
             progress_watcher,
+            runtime_stats,
             tx_shutdown: std::sync::Mutex::new(Some(tx_shutdown)),
             core_state: std::sync::Mutex::new(CoreState::Running(core_handle)),
 
@@ -535,6 +538,15 @@ where C: RaftTypeConfig
     /// Return the config of this Raft node.
     pub fn config(&self) -> &Arc<Config> {
         &self.inner.config
+    }
+
+    /// Return a clone of the shared runtime statistics.
+    ///
+    /// The returned [`SharedRuntimeState`] shares the same underlying data with `RaftCore`,
+    /// allowing access to runtime statistics that are updated during Raft operations.
+    #[cfg(feature = "runtime-stats")]
+    pub fn runtime_stats(&self) -> SharedRuntimeState {
+        self.inner.runtime_stats.clone()
     }
 
     /// Check if this node is currently the leader.

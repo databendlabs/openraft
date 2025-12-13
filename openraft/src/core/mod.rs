@@ -32,7 +32,9 @@ pub(crate) mod notification;
 mod raft_core;
 pub(crate) mod raft_msg;
 mod replication_state;
+mod runtime_stats;
 mod server_state;
+mod shared_runtime_state;
 pub(crate) mod sm;
 mod tick;
 
@@ -40,6 +42,8 @@ pub(crate) use client_responder_queue::ClientResponderQueue;
 pub(crate) use raft_core::ApplyResult;
 pub use raft_core::RaftCore;
 pub(crate) use replication_state::replication_lag;
+pub use runtime_stats::RuntimeStats;
 pub use server_state::ServerState;
+pub use shared_runtime_state::SharedRuntimeState;
 pub(crate) use tick::Tick;
 pub(crate) use tick::TickHandle;

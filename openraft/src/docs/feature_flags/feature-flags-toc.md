@@ -2,6 +2,7 @@
 - [feature-flag `bench`](#feature-flag-bench)
 - [feature-flag `bt`](#feature-flag-bt)
 - [feature-flag `compat`](#feature-flag-compat)
+- [feature-flag `runtime-stats`](#feature-flag-runtime-stats)
 - [feature-flag `serde`](#feature-flag-serde)
 - [feature-flag `single-term-leader`](#feature-flag-single-term-leader)
 - [feature-flag `singlethreaded`](#feature-flag-singlethreaded)
