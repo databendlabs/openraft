@@ -553,7 +553,7 @@ where
         //       caller.
         lh.leader_append_entries(entries);
         let log_id = lh.state.last_log_id().unwrap();
-        let index = lh.state.last_log_id().unwrap().index();
+        let index = log_id.index();
 
         // Install callback channels.
         if let Some(tx) = tx {
