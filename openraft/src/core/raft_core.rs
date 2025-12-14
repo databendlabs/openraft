@@ -796,6 +796,11 @@ where
         if let Ok(mut lh) = self.engine.leader_handler() {
             lh.replication_handler().initiate_replication();
         }
+
+        // Broadcast I/O progress so replication tasks can read submitted logs.
+        if let Some(submitted) = self.engine.state.log_progress().submitted().cloned() {
+            self.io_submitted_tx.send_if_greater(submitted);
+        }
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
@@ -1923,9 +1928,6 @@ where
 
                 self.engine.state.log_progress_mut().submit(io_id.clone());
 
-                // Broadcast I/O progress so replication tasks can read submitted logs.
-                self.io_submitted_tx.send_if_greater(io_id.clone());
-
                 let notify = Notification::LocalIO { io_id: io_id.clone() };
 
                 self.tx_notification.send(notify).await.ok();
@@ -1958,9 +1960,6 @@ where
 
                 // Submit IO request, do not wait for the response.
                 self.log_store.append(entries, callback).await.sto_write_logs()?;
-
-                // Notify replication tasks that logs up to `io_id` are now readable.
-                self.io_submitted_tx.send_if_greater(io_id);
             }
             Command::SaveVote { vote } => {
                 let io_id = IOId::new(&vote);
@@ -1970,9 +1969,6 @@ where
 
                 self.engine.state.log_progress_mut().submit(io_id.clone());
                 self.log_store.save_vote(&vote).await.sto_write_vote()?;
-
-                // Notify replication tasks of vote I/O completion.
-                self.io_submitted_tx.send_if_greater(io_id);
 
                 let _ = self
                     .tx_notification
