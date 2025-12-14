@@ -20,7 +20,7 @@ repository = "https://github.com/databendlabs/openraft"
 console-subscriber = { version = "0.5", optional = true }
 
 [dev-dependencies]
-openraft = { path = "../openraft", version = "0.10.0", features = ["serde", "type-alias"] }
+openraft = { path = "../openraft", version = "0.10.0", features = ["serde", "type-alias", "runtime-stats"] }
 
 anyhow     = { version = "1.0.63" }
 futures    = { version = "0.3" }

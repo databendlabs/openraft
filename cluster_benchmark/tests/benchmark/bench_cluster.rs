@@ -114,6 +114,18 @@ async fn do_bench(bench_config: &BenchConfig) -> anyhow::Result<()> {
 
     // Benchmark start
     let now = Instant::now();
+
+    // Spawn stats printing task
+    let stats_leader = leader.clone();
+    let stats_handle = tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(Duration::from_secs(5)).await;
+            let stats = stats_leader.runtime_stats();
+            let display = stats.with_mut(|s| s.display());
+            eprintln!("[{:>6.2}s] {}", now.elapsed().as_secs_f64(), display);
+        }
+    });
+
     for _nc in 0..bench_config.n_client {
         let l = leader.clone();
         let h = tokio::spawn(async move {
@@ -138,6 +150,14 @@ async fn do_bench(bench_config: &BenchConfig) -> anyhow::Result<()> {
     for h in handles {
         h.await?;
     }
+
+    // Stop stats printing task
+    stats_handle.abort();
+
+    // Print final stats
+    let stats = leader.runtime_stats();
+    let display = stats.with_mut(|s| s.display());
+    eprintln!("[{:>6.2}s] Final: {}", elapsed.as_secs_f64(), display);
 
     println!(
         "{}: time: {:?}, ns/op: {}, op/ms: {}",
