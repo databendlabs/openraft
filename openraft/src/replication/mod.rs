@@ -232,8 +232,6 @@ where
 
             {
                 let mut stream_state = self.stream_state.lock().await;
-
-                // TODO
                 stream_state.payload = Some(payload.clone());
                 stream_state.inflight_id = self.inflight_id;
                 stream_state.leader_committed = self.event_watcher.committed_rx.borrow_watched().clone()
@@ -250,8 +248,6 @@ where
 
             let rpc_timeout = Duration::from_millis(self.replication_context.config.heartbeat_interval);
             let option = RPCOption::new(rpc_timeout);
-
-            // TODO: this makes the network poll the io Stream, not good.
 
             let resp_strm_res = network.stream_append(req_strm, option).await;
 

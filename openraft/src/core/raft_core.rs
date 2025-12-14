@@ -1629,9 +1629,6 @@ where
             }
 
             Notification::ReplicationProgress { progress, inflight_id } => {
-                // If vote or membership changes, ignore the message.
-                // There is chance delayed message reports a wrong state.
-                // if self.does_replication_session_match(&progress.session_id, "ReplicationProgress") {
                 tracing::debug!(progress = display(&progress), "recv Notification::ReplicationProgress");
 
                 // replication_handler() won't panic because:
@@ -1639,7 +1636,6 @@ where
                 if self.engine.leader.is_some() {
                     self.engine.replication_handler().update_progress(progress.target, progress.result, inflight_id);
                 }
-                // }
             }
 
             Notification::HeartbeatProgress {

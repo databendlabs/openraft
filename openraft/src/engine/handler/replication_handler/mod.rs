@@ -303,12 +303,8 @@ where C: RaftTypeConfig
     pub(crate) fn rebuild_replication_streams(&mut self) {
         let mut targets = vec![];
 
-        // TODO: maybe it's better to update leader's matching when update_replication() is called.
         for item in self.leader.progress.iter_mut() {
             if item.id != self.config.id {
-                // // Reset and resend (by self.send_to_all()) replication requests.
-                // item.val.inflight = Inflight::None;
-
                 targets.push(ReplicationProgress(item.id.clone(), item.val.clone()));
             }
         }
