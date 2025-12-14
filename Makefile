@@ -47,14 +47,19 @@ test-examples:
 bench:
 	cargo bench --features bench
 
+# Set TOKIO_CONSOLE=1 to enable tokio-console support
+# Example: TOKIO_CONSOLE=1 make bench_cluster_of_3
+BENCH_FEATURES := $(if $(TOKIO_CONSOLE),--features tokio-console,)
+BENCH_RUSTFLAGS := $(if $(TOKIO_CONSOLE),RUSTFLAGS="--cfg tokio_unstable",)
+
 bench_cluster_of_1:
-	cargo test --manifest-path cluster_benchmark/Cargo.toml --test benchmark --release bench_cluster_of_1 -- --ignored --nocapture
+	$(BENCH_RUSTFLAGS) cargo test --manifest-path cluster_benchmark/Cargo.toml --test benchmark --release $(BENCH_FEATURES) bench_cluster_of_1 -- --ignored --nocapture
 
 bench_cluster_of_3:
-	cargo test --manifest-path cluster_benchmark/Cargo.toml --test benchmark --release bench_cluster_of_3 -- --ignored --nocapture
+	$(BENCH_RUSTFLAGS) cargo test --manifest-path cluster_benchmark/Cargo.toml --test benchmark --release $(BENCH_FEATURES) bench_cluster_of_3 -- --ignored --nocapture
 
 bench_cluster_of_5:
-	cargo test --manifest-path cluster_benchmark/Cargo.toml --test benchmark --release bench_cluster_of_5 -- --ignored --nocapture
+	$(BENCH_RUSTFLAGS) cargo test --manifest-path cluster_benchmark/Cargo.toml --test benchmark --release $(BENCH_FEATURES) bench_cluster_of_5 -- --ignored --nocapture
 
 fmt:
 	cargo fmt
