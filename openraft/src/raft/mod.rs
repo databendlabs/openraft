@@ -1614,6 +1614,7 @@ where C: RaftTypeConfig
 
     /// Get a handle to wait for the metrics to satisfy some condition.
     ///
+    ///
     /// If `timeout` is `None`, then it will wait forever(10 years).
     /// If `timeout` is `Some`, then it will wait for the specified duration.
     ///

@@ -21,8 +21,19 @@ use crate::display_ext::DisplayOptionExt;
 pub(crate) struct IOProgress<T>
 where T: PartialOrd + fmt::Debug
 {
+    /// The highest I/O operation accepted by RaftCore for execution.
+    ///
+    /// An accepted I/O will eventually be submitted and flushed.
     accepted: Option<T>,
+
+    /// The highest I/O operation submitted to the storage layer.
+    ///
+    /// Set before submitting an I/O in RaftCore. Within the same task, seeing this
+    /// set to `v` guarantees I/O `v` has been submitted; no such guarantee exists
+    /// for other tasks due to potential reordering.
     submitted: Option<T>,
+
+    /// The highest I/O operation confirmed as durably persisted.
     flushed: Option<T>,
 
     id: String,

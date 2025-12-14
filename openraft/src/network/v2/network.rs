@@ -182,6 +182,6 @@ where C: RaftTypeConfig
     ///
     /// By default, it returns a constant backoff of 500 ms.
     fn backoff(&self) -> Backoff {
-        Backoff::new(std::iter::repeat(Duration::from_millis(500)))
+        Backoff::new(std::iter::repeat(Duration::from_millis(200)))
     }
 }

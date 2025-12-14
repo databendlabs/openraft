@@ -661,6 +661,8 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         // First changed() should return immediately (value not yet seen)
         // and mark the value as seen
         assert!(is_ready(rx.changed()));
+        // Second change should return pending, because previous changed() mark it as seen.
+        assert!(is_pending(rx.changed()));
 
         // Verify we can see the new value
         {
