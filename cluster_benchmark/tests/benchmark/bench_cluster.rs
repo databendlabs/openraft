@@ -48,7 +48,7 @@ fn bench_cluster_of_3() -> anyhow::Result<()> {
     bench_with_config(&BenchConfig {
         worker_threads: 32,
         n_operations: 100_000,
-        n_client: 256,
+        n_client: 1024 * 4,
         members: btreeset! {0,1,2},
     })?;
     Ok(())
@@ -98,6 +98,7 @@ async fn do_bench(bench_config: &BenchConfig) -> anyhow::Result<()> {
             election_timeout_min: 200,
             election_timeout_max: 2000,
             purge_batch_size: 1024,
+            max_payload_entries: 1024,
             ..Default::default()
         }
         .validate()?,
@@ -171,5 +172,5 @@ async fn do_bench(bench_config: &BenchConfig) -> anyhow::Result<()> {
 }
 
 fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(50_000))
+    Some(Duration::from_millis(400_000))
 }

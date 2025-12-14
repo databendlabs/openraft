@@ -52,8 +52,8 @@ where C: RaftTypeConfig
 impl<C> RaftVote<C> for UncommittedVote<C>
 where C: RaftTypeConfig
 {
-    fn from_leader_id(_leader_id: C::LeaderId, _committed: bool) -> Self {
-        unreachable!("NonCommittedVote should only be built from a Vote")
+    fn from_leader_id(leader_id: C::LeaderId, _committed: bool) -> Self {
+        Self { leader_id }
     }
 
     fn leader_id(&self) -> &LeaderIdOf<C> {

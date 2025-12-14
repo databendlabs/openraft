@@ -19,6 +19,8 @@ use crate::progress::Inflight;
 use crate::progress::Progress;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::inflight_id::InflightId;
+use crate::replication::payload::Payload;
+use crate::replication::replicate::Replicate;
 use crate::type_config::TypeConfigExt;
 use crate::utime::Leased;
 
@@ -89,7 +91,23 @@ fn test_leader_append_membership_for_leader() -> anyhow::Result<()> {
                     ReplicationProgress(4, ProgressEntry::empty(0))
                 ], /* node-2 is leader,
                     * won't be removed */
-            }
+                close_old_streams: false,
+            },
+            // Pipeline mode kicks in for new followers
+            Command::Replicate {
+                target: 3,
+                req: Replicate {
+                    inflight_id: InflightId::new(1),
+                    payload: Payload::LogsSince { prev: None },
+                },
+            },
+            Command::Replicate {
+                target: 4,
+                req: Replicate {
+                    inflight_id: InflightId::new(2),
+                    payload: Payload::LogsSince { prev: None },
+                },
+            },
         ],
         eng.output.take_commands()
     );
@@ -148,39 +166,34 @@ fn test_leader_append_membership_update_learner_process() -> anyhow::Result<()> 
     );
 
     if let Some(l) = &mut eng.leader.as_mut() {
+        // Progress entries with matching.next_index() == searching_end enter pipeline mode
         assert_eq!(
-            &ProgressEntry::new(Some(log_id(1, 1, 4))).with_inflight(Inflight::logs(
-                Some(log_id(1, 1, 4)),
-                Some(log_id(5, 1, 10)),
-                InflightId::new(1)
-            )),
+            &ProgressEntry::new(Some(log_id(1, 1, 4)))
+                .with_inflight(Inflight::logs_since(Some(log_id(1, 1, 4)), InflightId::new(1))),
             l.progress.get(&4),
-            "learner-4 progress should be transferred to voter progress"
+            "learner-4 progress should be transferred to voter progress (pipeline mode)"
         );
 
         assert_eq!(
-            &ProgressEntry::new(Some(log_id(1, 1, 3))).with_inflight(Inflight::logs(
-                Some(log_id(1, 1, 3)),
-                Some(log_id(5, 1, 10)),
-                InflightId::new(2)
-            )),
+            &ProgressEntry::new(Some(log_id(1, 1, 3)))
+                .with_inflight(Inflight::logs_since(Some(log_id(1, 1, 3)), InflightId::new(2))),
             l.progress.get(&3),
-            "voter-3 progress should be transferred to learner progress"
+            "voter-3 progress should be transferred to learner progress (pipeline mode)"
         );
 
         assert_eq!(
-            &ProgressEntry::new(Some(log_id(1, 1, 5))).with_inflight(Inflight::logs(
-                Some(log_id(1, 1, 5)),
-                Some(log_id(5, 1, 10)),
-                InflightId::new(3)
-            )),
+            &ProgressEntry::new(Some(log_id(1, 1, 5)))
+                .with_inflight(Inflight::logs_since(Some(log_id(1, 1, 5)), InflightId::new(3))),
             l.progress.get(&5),
-            "learner-5 has previous value"
+            "learner-5 has previous value (pipeline mode)"
         );
 
+        // Node 6 is new, with matching=None and searching_end=11
+        // matching.next_index()=0 != searching_end=11, so NOT pipeline mode
         assert_eq!(
             &ProgressEntry::empty(11).with_inflight(Inflight::logs(None, Some(log_id(5, 1, 10)), InflightId::new(4))),
-            l.progress.get(&6)
+            l.progress.get(&6),
+            "node-6 is new, not pipeline mode"
         );
     } else {
         unreachable!("leader should not be None");

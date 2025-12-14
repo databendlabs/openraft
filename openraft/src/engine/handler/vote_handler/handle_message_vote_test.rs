@@ -79,9 +79,15 @@ fn test_handle_message_vote_committed_vote() -> anyhow::Result<()> {
     assert!(Some(now) <= eng.state.vote_last_modified());
     assert!(eng.state.vote_last_modified() <= Some(now + Duration::from_millis(20)));
     assert_eq!(
-        vec![Command::SaveVote {
-            vote: Vote::new_committed(3, 2)
-        },],
+        vec![
+            Command::SaveVote {
+                vote: Vote::new_committed(3, 2)
+            },
+            Command::RebuildReplicationStreams {
+                targets: vec![],
+                close_old_streams: true,
+            },
+        ],
         eng.output.take_commands()
     );
 
@@ -108,7 +114,13 @@ fn test_handle_message_vote_granted_equal_vote() -> anyhow::Result<()> {
     assert!(Some(now) <= eng.state.vote_last_modified());
     assert!(eng.state.vote_last_modified() <= Some(now + Duration::from_millis(20)));
 
-    assert!(eng.output.take_commands().is_empty());
+    assert_eq!(
+        vec![Command::RebuildReplicationStreams {
+            targets: vec![],
+            close_old_streams: true,
+        }],
+        eng.output.take_commands()
+    );
     Ok(())
 }
 
@@ -128,7 +140,13 @@ fn test_handle_message_vote_granted_greater_vote() -> anyhow::Result<()> {
 
     assert_eq!(ServerState::Follower, eng.state.server_state);
     assert_eq!(
-        vec![Command::SaveVote { vote: Vote::new(3, 1) },],
+        vec![
+            Command::SaveVote { vote: Vote::new(3, 1) },
+            Command::RebuildReplicationStreams {
+                targets: vec![],
+                close_old_streams: true,
+            },
+        ],
         eng.output.take_commands()
     );
     Ok(())
@@ -155,8 +173,11 @@ fn test_handle_message_vote_granted_follower_learner_does_not_emit_update_server
         assert_eq!(st, eng.state.server_state);
         assert_eq!(
             vec![
-                //
                 Command::SaveVote { vote: Vote::new(3, 1) },
+                Command::RebuildReplicationStreams {
+                    targets: vec![],
+                    close_old_streams: true,
+                },
             ],
             eng.output.take_commands()
         );
@@ -178,8 +199,11 @@ fn test_handle_message_vote_granted_follower_learner_does_not_emit_update_server
         assert_eq!(st, eng.state.server_state);
         assert_eq!(
             vec![
-                //
                 Command::SaveVote { vote: Vote::new(3, 1) },
+                Command::RebuildReplicationStreams {
+                    targets: vec![],
+                    close_old_streams: true,
+                },
             ],
             eng.output.take_commands()
         );

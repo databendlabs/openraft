@@ -1,9 +1,15 @@
+use futures::Stream;
+use futures::StreamExt;
+use openraft::base::BoxFuture;
+use openraft::base::BoxStream;
 use openraft::error::NetworkError;
 use openraft::error::Unreachable;
 use openraft::network::v2::RaftNetworkV2;
 use openraft::network::RPCOption;
+use openraft::raft::StreamAppendError;
+use openraft::raft::StreamAppendResult;
 use openraft::AnyError;
-use openraft::LogId;
+use openraft::OptionalSend;
 use openraft::RaftNetworkFactory;
 use tonic::codegen::tokio_stream::wrappers::ReceiverStream;
 use tonic::transport::Channel;
@@ -55,70 +61,25 @@ impl NetworkConnection {
         Ok(channel)
     }
 
-    /// Checks if a gRPC error is due to payload being too large.
-    fn is_payload_too_large(status: &tonic::Status) -> bool {
-        status.code() == tonic::Code::OutOfRange
-    }
-
-    /// Sends append_entries in chunks when the payload is too large.
-    async fn append_entries_chunked(&mut self, req: AppendEntriesRequest) -> Result<AppendEntriesResponse, RPCError> {
-        const CHUNK_SIZE: usize = 2;
-
-        let total_entries = req.entries.len();
-        tracing::warn!(
-            "Payload too large, splitting append_entries into chunks: target_node={:?}, total_entries={}, chunk_size={}",
-            self.target_node,
-            total_entries,
-            CHUNK_SIZE
-        );
-
-        let mut current_offset = 0;
-        let mut prev_log_id = req.prev_log_id;
-        let mut last_response = None;
-
-        while current_offset < total_entries {
-            let channel = self.create_channel().await?;
-            let mut client = RaftServiceClient::new(channel);
-
-            let end_idx = (current_offset + CHUNK_SIZE).min(total_entries);
-            let entries = req.entries[current_offset..end_idx].to_vec();
-
-            tracing::warn!(
-                "Sending append_entries chunk: chunk_start={}, chunk_end={}, chunk_entries={}",
-                current_offset,
-                end_idx,
-                entries.len()
-            );
-
-            let chunk_req = AppendEntriesRequest {
-                vote: req.vote,
-                prev_log_id,
-                leader_commit: req.leader_commit,
-                entries: entries.clone(),
-            };
-
-            let response = client
-                .append_entries(pb::AppendEntriesRequest::from(chunk_req))
-                .await
-                .map_err(|e| RPCError::Network(NetworkError::new(&e)))?;
-
-            last_response = Some(response.into_inner());
-
-            if let Some(last_entry) = entries.last() {
-                prev_log_id = Some(LogId::new(last_entry.term, last_entry.index));
-            }
-
-            current_offset = end_idx;
+    /// Convert pb::AppendEntriesResponse to StreamAppendResult.
+    ///
+    /// For `StreamAppend`, conflict is encoded as `conflict = true` plus a required `last_log_id`
+    /// carrying the conflict log id.
+    fn pb_to_stream_result(resp: pb::AppendEntriesResponse) -> Result<StreamAppendResult<TypeConfig>, RPCError> {
+        if let Some(higher_vote) = resp.rejected_by {
+            return Ok(Err(StreamAppendError::HigherVote(higher_vote)));
         }
 
-        tracing::warn!(
-            "Completed chunked append_entries transmission: total_chunks={}",
-            total_entries.div_ceil(CHUNK_SIZE)
-        );
+        if resp.conflict {
+            let conflict_log_id = resp.last_log_id.ok_or_else(|| {
+                RPCError::Network(NetworkError::new(&AnyError::error(
+                    "Missing `last_log_id` in conflict stream-append response",
+                )))
+            })?;
+            return Ok(Err(StreamAppendError::Conflict(conflict_log_id.into())));
+        }
 
-        Ok(AppendEntriesResponse::from(
-            last_response.expect("At least one chunk should have been sent"),
-        ))
+        Ok(Ok(resp.last_log_id.map(Into::into)))
     }
 
     /// Sends snapshot data in chunks through the provided channel.
@@ -148,13 +109,40 @@ impl RaftNetworkV2<TypeConfig> for NetworkConnection {
         let channel = self.create_channel().await?;
         let mut client = RaftServiceClient::new(channel);
 
-        let response = client.append_entries(pb::AppendEntriesRequest::from(req.clone())).await;
+        let response = client
+            .append_entries(pb::AppendEntriesRequest::from(req))
+            .await
+            .map_err(|e| RPCError::Network(NetworkError::new(&e)))?;
 
-        match response {
-            Ok(resp) => Ok(AppendEntriesResponse::from(resp.into_inner())),
-            Err(status) if Self::is_payload_too_large(&status) => self.append_entries_chunked(req).await,
-            Err(e) => Err(RPCError::Network(NetworkError::new(&e))),
-        }
+        Ok(AppendEntriesResponse::from(response.into_inner()))
+    }
+
+    fn stream_append<'s, S>(
+        &'s mut self,
+        input: S,
+        _option: RPCOption,
+    ) -> BoxFuture<'s, Result<BoxStream<'s, Result<StreamAppendResult<TypeConfig>, RPCError>>, RPCError>>
+    where
+        S: Stream<Item = AppendEntriesRequest> + OptionalSend + Unpin + 'static,
+    {
+        let fu = async move {
+            let channel = self.create_channel().await?;
+            let mut client = RaftServiceClient::new(channel);
+
+            let response = client
+                .stream_append(input.map(pb::AppendEntriesRequest::from))
+                .await
+                .map_err(|e| RPCError::Network(NetworkError::new(&e)))?;
+
+            let output = response.into_inner().map(|result| {
+                let resp = result.map_err(|e| RPCError::Network(NetworkError::new(&e)))?;
+                Self::pb_to_stream_result(resp)
+            });
+
+            Ok(Box::pin(output) as BoxStream<'s, _>)
+        };
+
+        Box::pin(fu)
     }
 
     async fn full_snapshot(

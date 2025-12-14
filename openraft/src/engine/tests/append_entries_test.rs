@@ -118,6 +118,10 @@ fn test_append_entries_prev_log_id_is_applied() -> anyhow::Result<()> {
             Command::SaveVote {
                 vote: Vote::new_committed(2, 1)
             },
+            Command::RebuildReplicationStreams {
+                targets: vec![],
+                close_old_streams: true,
+            },
             Command::UpdateIOProgress {
                 when: Some(Condition::IOFlushed {
                     io_id: IOId::new_log_io(Vote::new(2, 1).into_committed(), None)
@@ -169,6 +173,10 @@ fn test_append_entries_prev_log_id_conflict() -> anyhow::Result<()> {
             Command::SaveVote {
                 vote: Vote::new_committed(2, 1)
             },
+            Command::RebuildReplicationStreams {
+                targets: vec![],
+                close_old_streams: true,
+            },
             Command::TruncateLog { since: log_id(1, 1, 2) },
         ],
         eng.output.take_commands()
@@ -208,6 +216,10 @@ fn test_append_entries_prev_log_id_is_committed() -> anyhow::Result<()> {
         vec![
             Command::SaveVote {
                 vote: Vote::new_committed(2, 1)
+            },
+            Command::RebuildReplicationStreams {
+                targets: vec![],
+                close_old_streams: true,
             },
             Command::TruncateLog { since: log_id(1, 1, 2) },
             Command::AppendEntries {
@@ -257,9 +269,15 @@ fn test_append_entries_prev_log_id_not_exists() -> anyhow::Result<()> {
     );
     assert_eq!(ServerState::Follower, eng.state.server_state);
     assert_eq!(
-        vec![Command::SaveVote {
-            vote: Vote::new_committed(2, 1)
-        },],
+        vec![
+            Command::SaveVote {
+                vote: Vote::new_committed(2, 1)
+            },
+            Command::RebuildReplicationStreams {
+                targets: vec![],
+                close_old_streams: true,
+            },
+        ],
         eng.output.take_commands()
     );
 
@@ -302,6 +320,10 @@ fn test_append_entries_conflict() -> anyhow::Result<()> {
         vec![
             Command::SaveVote {
                 vote: Vote::new_committed(2, 1)
+            },
+            Command::RebuildReplicationStreams {
+                targets: vec![],
+                close_old_streams: true,
             },
             Command::TruncateLog { since: log_id(2, 1, 3) },
             Command::AppendEntries {

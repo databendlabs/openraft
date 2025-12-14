@@ -60,6 +60,16 @@ where C: RaftTypeConfig
         matches!(*self, AppendEntriesResponse::Success)
     }
 
+    /// Returns the partial success log id if this is a `PartialSuccess` response.
+    ///
+    /// Returns `None` for `Success`, `Conflict`, or `HigherVote` responses.
+    pub(crate) fn get_partial_success(&self) -> Option<&Option<LogIdOf<C>>> {
+        match self {
+            AppendEntriesResponse::PartialSuccess(log_id) => Some(log_id),
+            _ => None,
+        }
+    }
+
     /// Returns true if the response indicates a log conflict.
     pub fn is_conflict(&self) -> bool {
         matches!(*self, AppendEntriesResponse::Conflict)

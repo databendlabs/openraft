@@ -180,3 +180,73 @@ fn test_inflight_validate() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn test_inflight_logs_since_create() -> anyhow::Result<()> {
+    let l = Inflight::<UTConfig>::logs_since(Some(log_id(5)), InflightId::new(1));
+    assert_eq!(
+        Inflight::LogsSince {
+            prev: Some(log_id(5)),
+            inflight_id: InflightId::new(1),
+        },
+        l
+    );
+    assert!(!l.is_none());
+
+    Ok(())
+}
+
+#[test]
+fn test_inflight_logs_since_ack() -> anyhow::Result<()> {
+    // LogsSince: ack updates prev to the acked log id
+    {
+        let mut f = Inflight::<UTConfig>::logs_since(Some(log_id(5)), InflightId::new(1));
+
+        f.ack(Some(log_id(7)), InflightId::new(1));
+        assert_eq!(
+            Inflight::<UTConfig>::logs_since(Some(log_id(7)), InflightId::new(1)),
+            f,
+            "ack should update prev"
+        );
+
+        f.ack(Some(log_id(10)), InflightId::new(1));
+        assert_eq!(
+            Inflight::<UTConfig>::logs_since(Some(log_id(10)), InflightId::new(1)),
+            f,
+            "ack should update prev again"
+        );
+    }
+
+    // LogsSince: ack with mismatched inflight_id should be ignored
+    {
+        let mut f = Inflight::<UTConfig>::logs_since(Some(log_id(5)), InflightId::new(1));
+        let original = f;
+
+        f.ack(Some(log_id(7)), InflightId::new(2));
+        assert_eq!(original, f, "ack with mismatched inflight_id should be ignored");
+    }
+
+    Ok(())
+}
+
+#[test]
+fn test_inflight_logs_since_conflict() -> anyhow::Result<()> {
+    // LogsSince: conflict resets to None
+    {
+        let mut f = Inflight::<UTConfig>::logs_since(Some(log_id(5)), InflightId::new(1));
+
+        f.conflict(5, InflightId::new(1));
+        assert_eq!(Inflight::<UTConfig>::None, f, "conflict should reset to None");
+    }
+
+    // LogsSince: conflict with mismatched inflight_id should be ignored
+    {
+        let mut f = Inflight::<UTConfig>::logs_since(Some(log_id(5)), InflightId::new(1));
+        let original = f;
+
+        f.conflict(5, InflightId::new(2));
+        assert_eq!(original, f, "conflict with mismatched inflight_id should be ignored");
+    }
+
+    Ok(())
+}
