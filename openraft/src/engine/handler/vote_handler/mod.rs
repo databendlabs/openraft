@@ -5,6 +5,7 @@ use crate::OptionalSend;
 use crate::RaftState;
 use crate::RaftTypeConfig;
 use crate::display_ext::DisplayOptionExt;
+use crate::display_ext::display_instant::DisplayInstantExt;
 use crate::engine::Command;
 use crate::engine::Condition;
 use crate::engine::EngineConfig;
@@ -132,7 +133,13 @@ where C: RaftTypeConfig
             self.state.accept_log_io(IOId::new(vote));
             self.output.push_command(Command::SaveVote { vote: vote.clone() });
         } else {
-            self.state.vote.touch(C::now(), leader_lease);
+            let now = C::now();
+            self.state.vote.touch(now, leader_lease);
+            tracing::debug!(
+                "vote does not change, just update lease, updated: {}; now: {}",
+                self.state.vote,
+                now.display()
+            );
         }
 
         self.update_internal_server_state();
@@ -207,7 +214,7 @@ where C: RaftTypeConfig
         self.server_state_handler().update_server_state_if_changed();
 
         let mut rh = self.replication_handler();
-        rh.rebuild_replication_streams();
+        rh.rebuild_replication_streams(true);
 
         // If the leader has not yet proposed any log, propose a blank log and initiate replication;
         // Otherwise, just initiate replication.
@@ -230,6 +237,11 @@ where C: RaftTypeConfig
 
         *self.leader = None;
         *self.candidate = None;
+
+        self.output.push_command(Command::RebuildReplicationStreams {
+            targets: vec![],
+            close_old_streams: true,
+        });
 
         self.server_state_handler().update_server_state_if_changed();
     }

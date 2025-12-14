@@ -98,6 +98,11 @@ where C: RaftTypeConfig
                 lid > log_id_range.prev.as_ref()
             }
             Inflight::Snapshot { inflight_id: _ } => false,
+            Inflight::LogsSince { prev, .. } => {
+                // All logs after prev are inflight in streaming mode
+                let lid = Some(upto);
+                lid > prev.as_ref()
+            }
         }
     }
 
@@ -141,11 +146,21 @@ where C: RaftTypeConfig
             return Ok(&self.inflight);
         }
 
+        let matching_next = self.matching().next_index();
+
         // Replicate by logs.
         // Run a binary search to find the matching log id, if matching log id is not determined.
-        let mut start = Self::calc_mid(self.matching().next_index(), self.searching_end);
+        let mut start = Self::calc_mid(matching_next, self.searching_end);
         if start < purge_upto_next {
             start = purge_upto_next;
+        }
+
+        // Enter pipeline mode
+        if start == matching_next && matching_next == self.searching_end {
+            let prev = log_state.prev_log_id(start);
+            let inflight_id = log_state.new_inflight_id();
+            self.inflight = Inflight::LogsSince { prev, inflight_id };
+            return Ok(&self.inflight);
         }
 
         let end = std::cmp::min(start + max_entries, last_next);
@@ -220,6 +235,7 @@ where C: RaftTypeConfig
                 validit::less_equal!(log_id_range.prev.next_index(), self.searching_end);
             }
             Inflight::Snapshot { inflight_id: _ } => {}
+            Inflight::LogsSince { .. } => {}
         }
         Ok(())
     }

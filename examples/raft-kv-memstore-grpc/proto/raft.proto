@@ -91,12 +91,17 @@ message AppendEntriesResponse {
 
   // The follower accepts this AppendEntries request's vote, but the prev_log_id conflicts with
   // the follower's log. The leader should retry with a smaller prev_log_id that matches the
-  // follower's log. All subsequent fields are valid only when this field is false
+  // follower's log.
+  //
+  // For unary AppendEntries, `last_log_id` is not used for conflicts.
+  // For StreamAppend (pipeline replication), `last_log_id` carries the conflict log id.
   bool conflict = 2;
 
-  // The last log id the follower accepted from this request.
-  // If None, all input entries were accepted and persisted.
-  // Otherwise, only entries up to and including this id were accepted
+  // If `conflict = false`, the last log id the follower accepted from this request:
+  // - None: all input entries were accepted and persisted.
+  // - Some: partial success; only entries up to and including this id were accepted.
+  //
+  // If `conflict = true` in StreamAppend, this is the conflict log id.
   LogId last_log_id = 3;
 }
 
@@ -151,6 +156,9 @@ service RaftService {
 
   // AppendEntries handles call related to append entries RPC
   rpc AppendEntries(AppendEntriesRequest) returns (AppendEntriesResponse) {}
+
+  // StreamAppend handles streaming append entries for pipeline replication
+  rpc StreamAppend(stream AppendEntriesRequest) returns (stream AppendEntriesResponse) {}
 
   // Snapshot handles install snapshot RPC
   rpc Snapshot(stream SnapshotRequest) returns (SnapshotResponse) {}

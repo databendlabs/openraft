@@ -3,7 +3,9 @@ use std::fmt;
 use crate::RaftTypeConfig;
 use crate::display_ext::DisplayOptionExt;
 use crate::raft_state::io_state::IOId;
+use crate::type_config::alias::LeaderIdOf;
 use crate::type_config::alias::LogIdOf;
+use crate::vote::RaftVote;
 use crate::vote::committed::CommittedVote;
 
 /// Monotonic increasing identifier for log append I/O operations.
@@ -49,6 +51,10 @@ where C: RaftTypeConfig
 
     pub(crate) fn to_committed_vote(&self) -> CommittedVote<C> {
         self.committed_vote.clone()
+    }
+
+    pub(crate) fn leader_id(&self) -> &LeaderIdOf<C> {
+        self.committed_vote.leader_id()
     }
 
     /// Return the last log id included in this io operation.

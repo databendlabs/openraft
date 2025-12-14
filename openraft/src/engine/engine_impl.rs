@@ -712,7 +712,7 @@ where C: RaftTypeConfig
         let vote = leader.committed_vote_ref().clone();
         let last_log_id = leader.last_log_id().cloned();
 
-        self.replication_handler().rebuild_replication_streams();
+        self.replication_handler().rebuild_replication_streams(true);
 
         // Before sending any log, update the vote.
         // This could not fail because `internal_server_state` will be cleared

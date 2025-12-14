@@ -44,6 +44,14 @@ where C: RaftTypeConfig
     pub(crate) runtime_stats: SharedRuntimeState,
 }
 
+impl<C> fmt::Display for ReplicationContext<C>
+where C: RaftTypeConfig
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{{id: {}, target: {}, {}}}", self.id, self.target, self.session_id)
+    }
+}
+
 impl<C> fmt::Debug for ReplicationContext<C>
 where C: RaftTypeConfig
 {

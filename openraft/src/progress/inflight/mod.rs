@@ -24,13 +24,23 @@ where C: RaftTypeConfig
 {
     None,
 
-    /// Being replicating a series of logs.
+    /// Replicating logs in a fixed range `(prev, last]`.
     Logs {
         log_id_range: LogIdRange<C>,
         inflight_id: InflightId,
     },
 
-    /// Being replicating a snapshot.
+    /// Replicating logs after `prev` with no upper bound (streaming mode).
+    ///
+    /// Unlike `Logs` which replicates a fixed range, `LogsSince` represents
+    /// open-ended streaming replication. The `prev` advances as logs are
+    /// acknowledged by the follower.
+    LogsSince {
+        prev: Option<LogIdOf<C>>,
+        inflight_id: InflightId,
+    },
+
+    /// Replicating a snapshot.
     Snapshot {
         inflight_id: InflightId,
     },
@@ -50,6 +60,7 @@ where C: RaftTypeConfig
         match self {
             Inflight::None => Ok(()),
             Inflight::Logs { log_id_range: r, .. } => r.validate(),
+            Inflight::LogsSince { .. } => Ok(()),
             Inflight::Snapshot { .. } => Ok(()),
         }
     }
@@ -65,6 +76,9 @@ where C: RaftTypeConfig
                 log_id_range: r,
                 inflight_id,
             } => write!(f, "Logs:{}, inflight_id:{}", r, inflight_id),
+            Inflight::LogsSince { prev, inflight_id } => {
+                write!(f, "LogsSince:{:?}, inflight_id:{}", prev, inflight_id)
+            }
             Inflight::Snapshot { inflight_id } => write!(f, "Snapshot, inflight_id:{}", inflight_id),
         }
     }
@@ -91,6 +105,12 @@ where C: RaftTypeConfig
         Self::Snapshot { inflight_id }
     }
 
+    /// Create inflight state for streaming logs after a given log id.
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) fn logs_since(prev: Option<LogIdOf<C>>, inflight_id: InflightId) -> Self {
+        Self::LogsSince { prev, inflight_id }
+    }
+
     #[allow(dead_code)]
     pub(crate) fn with_id(self, id: u64) -> Self {
         match self {
@@ -105,6 +125,10 @@ where C: RaftTypeConfig
             Inflight::Snapshot { inflight_id: _ } => Inflight::Snapshot {
                 inflight_id: InflightId::new(id),
             },
+            Inflight::LogsSince { prev, inflight_id: _ } => Inflight::LogsSince {
+                prev,
+                inflight_id: InflightId::new(id),
+            },
         }
     }
 
@@ -116,6 +140,10 @@ where C: RaftTypeConfig
     #[allow(dead_code)]
     pub(crate) fn is_sending_log(&self) -> bool {
         matches!(self, Inflight::Logs { .. })
+    }
+
+    pub(crate) fn is_logs_since(&self) -> bool {
+        matches!(self, Inflight::LogsSince { .. })
     }
 
     // test it if used
@@ -154,6 +182,15 @@ where C: RaftTypeConfig
 
                 *self = Inflight::None;
             }
+            Inflight::LogsSince { prev, inflight_id } => {
+                if *inflight_id != from_inflight_id {
+                    return;
+                }
+
+                debug_assert!(&upto >= prev);
+
+                *prev = upto;
+            }
         }
     }
 
@@ -164,7 +201,7 @@ where C: RaftTypeConfig
     pub(crate) fn conflict(&mut self, _conflict: u64, from_inflight_id: InflightId) {
         match self {
             Inflight::None => {
-                unreachable!("no inflight data")
+                // with LogsSince, there might be duplicated conflict message received.
             }
             Inflight::Logs {
                 log_id_range: _,
@@ -182,6 +219,13 @@ where C: RaftTypeConfig
                 }
 
                 unreachable!("sending snapshot should not conflict");
+            }
+            Inflight::LogsSince { prev: _, inflight_id } => {
+                if *inflight_id != from_inflight_id {
+                    return;
+                }
+
+                *self = Inflight::None
             }
         }
     }
