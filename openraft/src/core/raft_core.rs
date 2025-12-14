@@ -216,7 +216,6 @@ where
 
     /// For broadcast committed log id to replication task.
     pub(crate) committed_tx: WatchSenderOf<C, Option<LogIdOf<C>>>,
-    pub(crate) _committed_rx: WatchReceiverOf<C, Option<LogIdOf<C>>>,
 
     pub(crate) tx_metrics: WatchSenderOf<C, RaftMetrics<C>>,
     pub(crate) tx_data_metrics: WatchSenderOf<C, RaftDataMetrics<C>>,
