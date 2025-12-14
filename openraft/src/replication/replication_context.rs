@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use crate::Config;
 use crate::RaftTypeConfig;
+use crate::core::SharedRuntimeState;
 use crate::core::notification::Notification;
 use crate::replication::ReplicationSessionId;
 use crate::type_config::alias::MpscSenderOf;
@@ -38,6 +39,9 @@ where C: RaftTypeConfig
     ///
     /// When the sender is dropped, this signals that replication should stop.
     pub(crate) cancel_rx: WatchReceiverOf<C, ()>,
+
+    /// Shared runtime statistics for recording replication metrics.
+    pub(crate) runtime_stats: SharedRuntimeState,
 }
 
 impl<C> fmt::Debug for ReplicationContext<C>

@@ -35,6 +35,7 @@ use crate::RaftTypeConfig;
 use crate::async_runtime::Mutex;
 use crate::base::BoxStream;
 use crate::config::Config;
+use crate::core::SharedRuntimeState;
 use crate::core::notification::Notification;
 use crate::display_ext::DisplayOptionExt;
 use crate::display_ext::display_instant::DisplayInstantExt;
@@ -123,6 +124,7 @@ where
         event_watcher: EventWatcher<C>,
         entries_tx: WatchSenderOf<C, Data<C>>,
         span: tracing::Span,
+        runtime_stats: SharedRuntimeState,
     ) -> ReplicationHandle<C> {
         tracing::debug!(
             session_id = display(&session_id),
@@ -145,6 +147,7 @@ where
             config,
             tx_notify: notification_tx,
             cancel_rx,
+            runtime_stats,
         };
 
         let this = Self {
