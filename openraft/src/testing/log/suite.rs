@@ -154,6 +154,7 @@ where
         run_test(builder, Self::leader_bounded_stream).await?;
         run_test(builder, Self::entries_stream).await?;
         run_test(builder, Self::try_get_log_entry).await?;
+        run_test(builder, Self::log_reader_reads_new_entries).await?;
         run_test(builder, Self::initial_logs).await?;
         run_test(builder, Self::get_log_state).await?;
         run_test(builder, Self::get_log_id).await?;
@@ -1044,6 +1045,45 @@ where
 
         let ent = store.try_get_log_entry(11).await?;
         assert_eq!(None, ent.map(|x| x.log_id()));
+
+        Ok(())
+    }
+
+    /// Test that a LogReader obtained before writing new entries can still read newly written
+    /// entries.
+    pub async fn log_reader_reads_new_entries(mut store: LS, mut sm: SM) -> Result<(), io::Error> {
+        tracing::info!("--- get log reader, then write entries, reader should see new entries");
+
+        // Write initial entries
+        append(&mut store, [blank_ent_0::<C>(0, 0), blank_ent_0::<C>(1, 1)]).await?;
+
+        // Get a log reader BEFORE writing more entries
+        let mut reader = store.get_log_reader().await;
+
+        // Verify reader can see initial entries
+        let entries = reader.try_get_log_entries(0..2).await?;
+        assert_eq!(2, entries.len());
+        assert_eq!(entries[0].log_id(), log_id_0(0, 0));
+        assert_eq!(entries[1].log_id(), log_id_0(1, 1));
+
+        // Write more entries AFTER getting the reader
+        append(&mut store, [
+            blank_ent_0::<C>(1, 2),
+            blank_ent_0::<C>(1, 3),
+            blank_ent_0::<C>(2, 4),
+        ])
+        .await?;
+
+        // The same reader should be able to read the newly written entries
+        let entries = reader.try_get_log_entries(2..5).await?;
+        assert_eq!(3, entries.len());
+        assert_eq!(entries[0].log_id(), log_id_0(1, 2));
+        assert_eq!(entries[1].log_id(), log_id_0(1, 3));
+        assert_eq!(entries[2].log_id(), log_id_0(2, 4));
+
+        // Also verify reading the full range works
+        let all_entries = reader.try_get_log_entries(0..5).await?;
+        assert_eq!(5, all_entries.len());
 
         Ok(())
     }
