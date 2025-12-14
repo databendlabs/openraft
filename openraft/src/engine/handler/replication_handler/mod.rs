@@ -82,7 +82,7 @@ where C: RaftTypeConfig
         // committed.
 
         self.rebuild_progresses();
-        self.rebuild_replication_streams();
+        self.rebuild_replication_streams(false);
         self.initiate_replication();
     }
 
@@ -300,15 +300,21 @@ where C: RaftTypeConfig
 
     /// Update replication streams to reflect replication progress change.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn rebuild_replication_streams(&mut self) {
+    pub(crate) fn rebuild_replication_streams(&mut self, close_old: bool) {
         let mut targets = vec![];
 
         for item in self.leader.progress.iter_mut() {
             if item.id != self.config.id {
+                if close_old {
+                    item.val.inflight = Inflight::None;
+                }
                 targets.push(ReplicationProgress(item.id.clone(), item.val.clone()));
             }
         }
-        self.output.push_command(Command::RebuildReplicationStreams { targets });
+        self.output.push_command(Command::RebuildReplicationStreams {
+            targets,
+            close_old_streams: close_old,
+        });
     }
 
     /// Initiate replication for every target that is not sending data in flight.

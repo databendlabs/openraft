@@ -65,7 +65,8 @@ fn test_become_leader() -> anyhow::Result<()> {
             io_id: IOId::new_log_io(Vote::new(2, 1).into_committed(), None)
         },
         Command::RebuildReplicationStreams {
-            targets: vec![ReplicationProgress(0, ProgressEntry::empty(0))]
+            targets: vec![ReplicationProgress(0, ProgressEntry::empty(0))],
+            close_old_streams: true,
         },
         Command::AppendEntries {
             committed_vote: Vote::new(2, 1).into_committed(),

@@ -276,7 +276,8 @@ fn test_leader_append_entries_with_membership_log() -> anyhow::Result<()> {
                 ]
             },
             Command::RebuildReplicationStreams {
-                targets: vec![ReplicationProgress(2, ProgressEntry::empty(7))]
+                targets: vec![ReplicationProgress(2, ProgressEntry::empty(7))],
+                close_old_streams: false,
             },
             Command::Replicate {
                 target: 2,

@@ -125,8 +125,11 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         assert_eq!(
             eng.output.take_commands(),
             vec![
-                //
-                Command::SaveVote { vote: Vote::new(3, 2) }
+                Command::SaveVote { vote: Vote::new(3, 2) },
+                Command::RebuildReplicationStreams {
+                    targets: vec![],
+                    close_old_streams: true,
+                },
             ],
             "no SaveVote because the higher vote is not yet granted by this node"
         );
@@ -208,7 +211,8 @@ fn test_handle_vote_resp_equal_vote() -> anyhow::Result<()> {
         assert_eq!(
             vec![
                 Command::RebuildReplicationStreams {
-                    targets: vec![ReplicationProgress(2, ProgressEntry::empty(1))]
+                    targets: vec![ReplicationProgress(2, ProgressEntry::empty(1))],
+                    close_old_streams: true,
                 },
                 Command::SaveVote {
                     vote: Vote::new_committed(2, 1)

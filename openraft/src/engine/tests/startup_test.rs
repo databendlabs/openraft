@@ -81,7 +81,8 @@ fn test_startup_as_leader_without_logs() -> anyhow::Result<()> {
                     inflight: Inflight::None,
                     searching_end: 4,
                     allow_log_reversion: false,
-                })]
+                })],
+                close_old_streams: true,
             },
             Command::AppendEntries {
                 committed_vote: Vote::new(2, 2).into_committed(),
@@ -133,7 +134,8 @@ fn test_startup_as_leader_with_proposed_logs() -> anyhow::Result<()> {
                     inflight: Inflight::None,
                     searching_end: 7,
                     allow_log_reversion: false,
-                })]
+                })],
+                close_old_streams: true,
             },
             Command::Replicate {
                 target: 3,

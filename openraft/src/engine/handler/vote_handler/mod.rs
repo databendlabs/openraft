@@ -214,7 +214,7 @@ where C: RaftTypeConfig
         self.server_state_handler().update_server_state_if_changed();
 
         let mut rh = self.replication_handler();
-        rh.rebuild_replication_streams();
+        rh.rebuild_replication_streams(true);
 
         // If the leader has not yet proposed any log, propose a blank log and initiate replication;
         // Otherwise, just initiate replication.
@@ -237,6 +237,11 @@ where C: RaftTypeConfig
 
         *self.leader = None;
         *self.candidate = None;
+
+        self.output.push_command(Command::RebuildReplicationStreams {
+            targets: vec![],
+            close_old_streams: true,
+        });
 
         self.server_state_handler().update_server_state_if_changed();
     }

@@ -62,17 +62,24 @@ impl NetworkConnection {
     }
 
     /// Convert pb::AppendEntriesResponse to StreamAppendResult.
-    fn pb_to_stream_result(resp: pb::AppendEntriesResponse) -> StreamAppendResult<TypeConfig> {
+    ///
+    /// For `StreamAppend`, conflict is encoded as `conflict = true` plus a required `last_log_id`
+    /// carrying the conflict log id.
+    fn pb_to_stream_result(resp: pb::AppendEntriesResponse) -> Result<StreamAppendResult<TypeConfig>, RPCError> {
         if let Some(higher_vote) = resp.rejected_by {
-            return Err(StreamAppendError::HigherVote(higher_vote));
+            return Ok(Err(StreamAppendError::HigherVote(higher_vote)));
         }
 
         if resp.conflict {
-            let conflict_log_id = resp.last_log_id.map(Into::into).unwrap_or_else(|| LogId::new(0, 0));
-            return Err(StreamAppendError::Conflict(conflict_log_id));
+            let conflict_log_id = resp.last_log_id.ok_or_else(|| {
+                RPCError::Network(NetworkError::new(&AnyError::error(
+                    "Missing `last_log_id` in conflict stream-append response",
+                )))
+            })?;
+            return Ok(Err(StreamAppendError::Conflict(conflict_log_id.into())));
         }
 
-        Ok(resp.last_log_id.map(Into::into))
+        Ok(Ok(resp.last_log_id.map(Into::into)))
     }
 
     /// Sends snapshot data in chunks through the provided channel.
@@ -129,7 +136,7 @@ impl RaftNetworkV2<TypeConfig> for NetworkConnection {
 
             let output = response.into_inner().map(|result| {
                 let resp = result.map_err(|e| RPCError::Network(NetworkError::new(&e)))?;
-                Ok(Self::pb_to_stream_result(resp))
+                Self::pb_to_stream_result(resp)
             });
 
             Ok(Box::pin(output) as BoxStream<'s, _>)

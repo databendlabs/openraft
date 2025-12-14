@@ -91,6 +91,7 @@ fn test_leader_append_membership_for_leader() -> anyhow::Result<()> {
                     ReplicationProgress(4, ProgressEntry::empty(0))
                 ], /* node-2 is leader,
                     * won't be removed */
+                close_old_streams: false,
             },
             // Pipeline mode kicks in for new followers
             Command::Replicate {

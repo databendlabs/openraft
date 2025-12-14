@@ -1891,6 +1891,20 @@ where
         };
         (ctx, cancel_tx)
     }
+
+    async fn close_replication(target: &C::NodeId, mut s: ReplicationHandle<C>) {
+        let Some(handle) = s.join_handle.take() else {
+            return;
+        };
+
+        // Drop sender to notify the task to shutdown
+        drop(s.replicate_tx);
+        drop(s.cancel_tx);
+
+        tracing::debug!("joining removed replication: {}", target);
+        let _x = handle.await;
+        tracing::info!("Done joining removed replication : {}", target);
+    }
 }
 
 impl<C, N, LS> RaftRuntime<C> for RaftCore<C, N, LS>
@@ -2055,7 +2069,10 @@ where
             }
             Command::BroadcastTransferLeader { req } => self.broadcast_transfer_leader(req).await,
 
-            Command::RebuildReplicationStreams { targets } => {
+            Command::RebuildReplicationStreams {
+                targets,
+                close_old_streams,
+            } => {
                 self.heartbeat_handle.shutdown();
 
                 let mut new_replications = BTreeMap::new();
@@ -2063,30 +2080,26 @@ where
                 for ReplicationProgress(target, matching) in targets.iter() {
                     let removed = self.replications.remove(target);
 
-                    if let Some(removed) = removed {
-                        new_replications.insert(target.clone(), removed);
+                    let handle = if let Some(removed) = removed {
+                        if close_old_streams {
+                            Self::close_replication(target, removed).await;
+                            self.spawn_replication_stream(target.clone(), matching.clone()).await
+                        } else {
+                            removed
+                        }
                     } else {
-                        let handle = self.spawn_replication_stream(target.clone(), matching.clone()).await;
-                        new_replications.insert(target.clone(), handle);
-                    }
+                        self.spawn_replication_stream(target.clone(), matching.clone()).await
+                    };
+
+                    new_replications.insert(target.clone(), handle);
                 }
 
                 tracing::debug!("removing unused replications");
 
                 let left = std::mem::replace(&mut self.replications, new_replications);
 
-                for (target, mut s) in left {
-                    let Some(handle) = s.join_handle.take() else {
-                        continue;
-                    };
-
-                    // Drop sender to notify the task to shutdown
-                    drop(s.replicate_tx);
-                    drop(s.cancel_tx);
-
-                    tracing::debug!("joining removed replication: {}", target);
-                    let _x = handle.await;
-                    tracing::info!("Done joining removed replication : {}", target);
+                for (target, s) in left {
+                    Self::close_replication(&target, s).await;
                 }
 
                 //

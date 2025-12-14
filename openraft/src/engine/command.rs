@@ -110,6 +110,12 @@ where C: RaftTypeConfig
     RebuildReplicationStreams {
         /// Targets to replicate to.
         targets: Vec<ReplicationProgress<C>>,
+
+        /// Whether close old replication before spawn new ones.
+        ///
+        /// If vote changes, old should be closed;
+        /// If only membership changes, old should be kept.
+        close_old_streams: bool,
     },
 
     /// Save vote to storage
@@ -169,8 +175,16 @@ where C: RaftTypeConfig
                 write!(f, "ReplicateSnapshot: target={}, inflight_id: {}", target, inflight_id)
             }
             Command::BroadcastTransferLeader { req } => write!(f, "TransferLeader: {}", req),
-            Command::RebuildReplicationStreams { targets } => {
-                write!(f, "RebuildReplicationStreams: {}", targets.display_n(10))
+            Command::RebuildReplicationStreams {
+                targets,
+                close_old_streams,
+            } => {
+                write!(
+                    f,
+                    "RebuildReplicationStreams: {}; close_old: {}",
+                    targets.display_n(10),
+                    close_old_streams
+                )
             }
             Command::SaveVote { vote } => write!(f, "SaveVote: {}", vote),
             Command::SendVote { vote_req } => write!(f, "SendVote: {}", vote_req),
@@ -206,7 +220,7 @@ where
             (Command::SaveCommittedAndApply { already_applied: already_committed, upto, },      Command::SaveCommittedAndApply { already_applied: b_committed, upto: b_upto, }, )  => already_committed == b_committed && upto == b_upto,
             (Command::Replicate { target, req },               Command::Replicate { target: b_target, req: other_req, }, )           => target == b_target && req == other_req,
             (Command::BroadcastTransferLeader { req },         Command::BroadcastTransferLeader { req: b, }, )                       => req == b,
-            (Command::RebuildReplicationStreams { targets },   Command::RebuildReplicationStreams { targets: b }, )                  => targets == b,
+            (Command::RebuildReplicationStreams { targets, close_old_streams },   Command::RebuildReplicationStreams { targets: b, close_old_streams: cb }, )                  => targets == b && close_old_streams == cb,
             (Command::SaveVote { vote },                       Command::SaveVote { vote: b })                                        => vote == b,
             (Command::SendVote { vote_req },                   Command::SendVote { vote_req: b }, )                                  => vote_req == b,
             (Command::PurgeLog { upto },                       Command::PurgeLog { upto: b })                                        => upto == b,

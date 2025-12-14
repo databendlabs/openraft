@@ -13,7 +13,7 @@ Demonstrates building a distributed key-value store with Openraft using gRPC for
 
 This example implements:
 - **Storage**: In-memory log storage with protobuf `StateMachineData` state machine
-- **Network**: gRPC-based [`RaftNetwork`] implementation using Tonic with bidirectional streaming
+- **Network**: gRPC-based [`RaftNetworkV2`] implementation using Tonic with bidirectional streaming
 - **Services**: Separate gRPC services for application APIs and Raft internal communication
 
 ## Testing
@@ -34,7 +34,7 @@ This example implements:
 - gRPC services: `src/grpc/`
   - `api_service.rs` - Application APIs (read/write) and management
   - `raft_service.rs` - Raft internal protocol RPCs
-- Protocol definitions: `protos/` - Protocol Buffer specifications
+- Protocol definitions: `proto/` - Protocol Buffer specifications
 - Storage implementation: `src/store/mod.rs`
 
 ## Running

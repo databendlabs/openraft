@@ -95,7 +95,10 @@ fn test_handle_install_full_snapshot_lt_last_snapshot() -> anyhow::Result<()> {
     let (dummy_tx, _rx) = UTConfig::<()>::oneshot();
     assert_eq!(
         vec![
-            //
+            Command::RebuildReplicationStreams {
+                targets: vec![],
+                close_old_streams: true,
+            },
             Command::Respond {
                 when: None,
                 resp: Respond::new(SnapshotResponse::new(curr_vote), dummy_tx),
@@ -143,7 +146,10 @@ fn test_handle_install_full_snapshot_no_conflict() -> anyhow::Result<()> {
     let (dummy_tx, _rx) = UTConfig::<()>::oneshot();
     assert_eq!(
         vec![
-            //
+            Command::RebuildReplicationStreams {
+                targets: vec![],
+                close_old_streams: true,
+            },
             Command::from(sm::Command::install_full_snapshot(
                 Snapshot {
                     meta: SnapshotMeta {
