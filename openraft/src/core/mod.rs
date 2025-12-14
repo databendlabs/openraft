@@ -43,6 +43,8 @@ pub(crate) use raft_core::ApplyResult;
 pub use raft_core::RaftCore;
 pub(crate) use replication_state::replication_lag;
 pub use runtime_stats::RuntimeStats;
+#[allow(unused_imports)]
+pub use runtime_stats::RuntimeStatsDisplay;
 pub use server_state::ServerState;
 pub use shared_runtime_state::SharedRuntimeState;
 pub(crate) use tick::Tick;

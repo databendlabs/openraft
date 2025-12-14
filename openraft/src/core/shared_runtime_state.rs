@@ -29,7 +29,7 @@ impl SharedRuntimeState {
     ///
     /// The closure receives a mutable reference to [`RuntimeStats`] and can
     /// read or modify its fields. The return value of the closure is passed through.
-    pub(crate) fn with_mut<F, R>(&self, f: F) -> R
+    pub fn with_mut<F, R>(&self, f: F) -> R
     where F: FnOnce(&mut RuntimeStats) -> R {
         let mut guard = self.inner.lock().unwrap();
         f(&mut guard)
