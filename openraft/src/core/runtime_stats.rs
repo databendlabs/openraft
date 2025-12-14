@@ -21,6 +21,12 @@ pub struct RuntimeStats {
     /// submitted to the storage layer, helping identify write batch patterns and storage I/O
     /// efficiency.
     pub append_batch: Histogram,
+
+    /// Histogram tracking the distribution of log entry counts in replication RPCs.
+    ///
+    /// This tracks how many log entries are included in each AppendEntries RPC
+    /// sent to followers during replication, helping identify replication batch patterns.
+    pub replicate_batch: Histogram,
 }
 
 impl Default for RuntimeStats {
@@ -34,6 +40,7 @@ impl RuntimeStats {
         Self {
             apply_batch: Histogram::new(),
             append_batch: Histogram::new(),
+            replicate_batch: Histogram::new(),
         }
     }
 
@@ -46,6 +53,7 @@ impl RuntimeStats {
         RuntimeStatsDisplay {
             apply_batch: self.apply_batch.percentile_stats(),
             append_batch: self.append_batch.percentile_stats(),
+            replicate_batch: self.replicate_batch.percentile_stats(),
         }
     }
 }
@@ -57,14 +65,15 @@ impl RuntimeStats {
 pub struct RuntimeStatsDisplay {
     apply_batch: PercentileStats,
     append_batch: PercentileStats,
+    replicate_batch: PercentileStats,
 }
 
 impl fmt::Display for RuntimeStatsDisplay {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "RuntimeStats {{ apply_batch: {}, append_batch: {} }}",
-            self.apply_batch, self.append_batch
+            "RuntimeStats {{ apply_batch: {}, append_batch: {}, replicate_batch: {} }}",
+            self.apply_batch, self.append_batch, self.replicate_batch
         )
     }
 }

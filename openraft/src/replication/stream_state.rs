@@ -93,6 +93,10 @@ where
             entries,
         };
 
+        self.replication_context
+            .runtime_stats
+            .with_mut(|s| s.replicate_batch.record(payload.entries.len() as u64));
+
         self.backoff_if_enabled().await;
 
         Some(payload)

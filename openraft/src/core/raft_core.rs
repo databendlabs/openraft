@@ -886,6 +886,7 @@ where
             event_watcher,
             entries_tx,
             tracing::span!(parent: &self.span, Level::DEBUG, "replication", id=display(&self.id), target=display(&target)),
+            self.runtime_stats.clone(),
         )
     }
 
@@ -1843,6 +1844,7 @@ where
             config: self.config.clone(),
             tx_notify: self.tx_notification.clone(),
             cancel_rx,
+            runtime_stats: self.runtime_stats.clone(),
         };
         (ctx, cancel_tx)
     }
