@@ -24,6 +24,7 @@ pub trait Oneshot {
     /// used by the consumer to receive the value.
     ///
     /// Each handle can be used on separate tasks.
+    #[track_caller]
     fn channel<T>() -> (Self::Sender<T>, Self::Receiver<T>)
     where T: OptionalSend;
 }
@@ -40,5 +41,6 @@ where T: OptionalSend
     /// channel never requires any form of waiting.  Because of this, the `send`
     /// method can be used in both synchronous and asynchronous code without
     /// problems.
+    #[track_caller]
     fn send(self, t: T) -> Result<(), T>;
 }

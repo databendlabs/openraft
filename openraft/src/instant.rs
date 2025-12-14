@@ -34,11 +34,13 @@ pub trait Instant:
     + 'static
 {
     /// Return the current instant.
+    #[track_caller]
     fn now() -> Self;
 
     /// Return the amount of time since the instant.
     ///
     /// The returned duration is guaranteed to be non-negative.
+    #[track_caller]
     fn elapsed(&self) -> Duration {
         let now = Self::now();
         if now > *self {

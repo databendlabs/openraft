@@ -51,6 +51,7 @@ pub trait Watch: Sized + OptionalSend {
     /// All values sent by [`WatchSender`] should become visible to the [`WatchReceiver`] handles.
     /// Only the last value sent should be made available to the [`WatchReceiver`] half. All
     /// intermediate values should be dropped.
+    #[track_caller]
     fn channel<T: OptionalSend + OptionalSync>(init: T) -> (Self::Sender<T>, Self::Receiver<T>);
 }
 
@@ -64,6 +65,7 @@ where
     ///
     /// This method should fail if the channel is closed, which is the case when
     /// every receiver has been dropped.
+    #[track_caller]
     fn send(&self, value: T) -> Result<(), SendError<T>>;
 
     /// Modifies the watched value **conditionally** in-place,
@@ -79,6 +81,7 @@ where
     /// in a *silent modification*, i.e., the modified value will be visible
     /// in subsequent calls to `borrow_watched`, but receivers will not receive
     /// a change notification.
+    #[track_caller]
     fn send_if_modified<F>(&self, modify: F) -> bool
     where F: FnOnce(&mut T) -> bool;
 
@@ -87,11 +90,13 @@ where
     /// If the implementation of `Ref` holds a lock on the inner value, it means that
     /// long-lived borrows could cause the producer half to block.
     /// See: [`Watch::Ref`]
+    #[track_caller]
     fn borrow_watched(&self) -> W::Ref<'_, T>;
 
     /// Creates a new Receiver connected to this Sender.
     ///
     /// All messages sent after this call will be visible to the new Receiver.
+    #[track_caller]
     fn subscribe(&self) -> W::Receiver<T>;
 
     /// Sends a new value only if it differs from the current value.
@@ -156,6 +161,7 @@ where
     /// If the implementation of `Ref` holds a lock on the inner value, it means that
     /// long-lived borrows could cause the producer half to block.
     /// See: [`Watch::Ref`]
+    #[track_caller]
     fn borrow_watched(&self) -> W::Ref<'_, T>;
 
     /// Waits until the watched value is greater than or equal to the given value.

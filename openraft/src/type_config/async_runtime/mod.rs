@@ -76,24 +76,30 @@ pub trait AsyncRuntime: Debug + Default + PartialEq + Eq + OptionalSend + Option
     type ThreadLocalRng: rand::Rng;
 
     /// Spawn a new task.
+    #[track_caller]
     fn spawn<T>(future: T) -> Self::JoinHandle<T::Output>
     where
         T: Future + OptionalSend + 'static,
         T::Output: OptionalSend + 'static;
 
     /// Wait until `duration` has elapsed.
+    #[track_caller]
     fn sleep(duration: Duration) -> Self::Sleep;
 
     /// Wait until `deadline` is reached.
+    #[track_caller]
     fn sleep_until(deadline: Self::Instant) -> Self::Sleep;
 
     /// Require a [`Future`] to complete before the specified duration has elapsed.
+    #[track_caller]
     fn timeout<R, F: Future<Output = R> + OptionalSend>(duration: Duration, future: F) -> Self::Timeout<R, F>;
 
     /// Require a [`Future`] to complete before the specified instant in time.
+    #[track_caller]
     fn timeout_at<R, F: Future<Output = R> + OptionalSend>(deadline: Self::Instant, future: F) -> Self::Timeout<R, F>;
 
     /// Check if the [`Self::JoinError`] is `panic`.
+    #[track_caller]
     fn is_panic(join_error: &Self::JoinError) -> bool;
 
     /// Get the random number generator to use for generating random numbers.
@@ -102,6 +108,7 @@ pub trait AsyncRuntime: Debug + Default + PartialEq + Eq + OptionalSend + Option
     ///
     /// This is a per-thread instance, which cannot be shared across threads or
     /// sent to another thread.
+    #[track_caller]
     fn thread_rng() -> Self::ThreadLocalRng;
 
     /// The bounded MPSC channel implementation.

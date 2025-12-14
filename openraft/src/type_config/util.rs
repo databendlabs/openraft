@@ -38,26 +38,31 @@ pub trait TypeConfigExt: RaftTypeConfig {
     // Time related methods
 
     /// Returns the current time.
+    #[track_caller]
     fn now() -> InstantOf<Self> {
         InstantOf::<Self>::now()
     }
 
     /// Wait until `duration` has elapsed.
+    #[track_caller]
     fn sleep(duration: Duration) -> SleepOf<Self> {
         AsyncRuntimeOf::<Self>::sleep(duration)
     }
 
     /// Wait until `deadline` is reached.
+    #[track_caller]
     fn sleep_until(deadline: InstantOf<Self>) -> SleepOf<Self> {
         AsyncRuntimeOf::<Self>::sleep_until(deadline)
     }
 
     /// Require a [`Future`] to complete before the specified duration has elapsed.
+    #[track_caller]
     fn timeout<R, F: Future<Output = R> + OptionalSend>(duration: Duration, future: F) -> TimeoutOf<Self, R, F> {
         AsyncRuntimeOf::<Self>::timeout(duration, future)
     }
 
     /// Require a [`Future`] to complete before the specified instant in time.
+    #[track_caller]
     fn timeout_at<R, F: Future<Output = R> + OptionalSend>(
         deadline: InstantOf<Self>,
         future: F,
@@ -71,6 +76,7 @@ pub trait TypeConfigExt: RaftTypeConfig {
     ///
     /// This is just a wrapper of
     /// [`AsyncRuntime::Oneshot::channel()`](`crate::async_runtime::Oneshot::channel`).
+    #[track_caller]
     fn oneshot<T>() -> (OneshotSenderOf<Self, T>, OneshotReceiverOf<Self, T>)
     where T: OptionalSend {
         OneshotOf::<Self>::channel()
@@ -81,6 +87,7 @@ pub trait TypeConfigExt: RaftTypeConfig {
     ///
     /// This is just a wrapper of
     /// [`AsyncRuntime::Mpsc::channel()`](`crate::async_runtime::Mpsc::channel`).
+    #[track_caller]
     fn mpsc<T>(buffer: usize) -> (MpscSenderOf<Self, T>, MpscReceiverOf<Self, T>)
     where T: OptionalSend {
         MpscOf::<Self>::channel(buffer)
@@ -91,6 +98,7 @@ pub trait TypeConfigExt: RaftTypeConfig {
     ///
     /// This is just a wrapper of
     /// [`AsyncRuntime::MpscUnbounded::channel()`](`crate::async_runtime::MpscUnbounded::channel`).
+    #[track_caller]
     fn mpsc_unbounded<T>() -> (MpscUnboundedSenderOf<Self, T>, MpscUnboundedReceiverOf<Self, T>)
     where T: OptionalSend {
         MpscUnboundedOf::<Self>::channel()
@@ -101,6 +109,7 @@ pub trait TypeConfigExt: RaftTypeConfig {
     ///
     /// This is just a wrapper of
     /// [`AsyncRuntime::Watch::channel()`](`crate::async_runtime::Watch::channel`).
+    #[track_caller]
     fn watch_channel<T>(init: T) -> (WatchSenderOf<Self, T>, WatchReceiverOf<Self, T>)
     where T: OptionalSend + OptionalSync {
         WatchOf::<Self>::channel(init)
@@ -110,6 +119,7 @@ pub trait TypeConfigExt: RaftTypeConfig {
     ///
     /// This is just a wrapper of
     /// [`AsyncRuntime::Mutex::new()`](`crate::async_runtime::Mutex::new`).
+    #[track_caller]
     fn mutex<T>(value: T) -> MutexOf<Self, T>
     where T: OptionalSend {
         MutexOf::<Self, T>::new(value)
@@ -118,6 +128,7 @@ pub trait TypeConfigExt: RaftTypeConfig {
     // Task methods
 
     /// Spawn a new task.
+    #[track_caller]
     fn spawn<T>(future: T) -> JoinHandleOf<Self, T::Output>
     where
         T: Future + OptionalSend + 'static,

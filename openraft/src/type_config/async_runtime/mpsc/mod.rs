@@ -21,6 +21,7 @@ pub trait Mpsc: Sized + OptionalSend {
 
     /// Creates a bounded mpsc channel for communicating between asynchronous tasks with
     /// backpressure.
+    #[track_caller]
     fn channel<T: OptionalSend>(buffer: usize) -> (Self::Sender<T>, Self::Receiver<T>);
 }
 
@@ -34,12 +35,14 @@ where
     ///
     /// If the receiving half of the channel is closed, this
     /// function returns an error. The error includes the value passed to `send`.
+    #[track_caller]
     fn send(&self, msg: T) -> impl Future<Output = Result<(), SendError<T>>> + OptionalSend;
 
     /// Converts the [`MpscSender`] to a [`MpscWeakSender`] that does not count
     /// towards RAII semantics, i.e., if all `Sender` instances of the
     /// channel were dropped and only `WeakSender` instances remain,
     /// the channel is closed.
+    #[track_caller]
     fn downgrade(&self) -> MU::WeakSender<T>;
 }
 
@@ -49,6 +52,7 @@ pub trait MpscReceiver<T>: OptionalSend + OptionalSync {
     ///
     /// This method returns `None` if the channel has been closed and there are
     /// no remaining messages in the channel's buffer.
+    #[track_caller]
     fn recv(&mut self) -> impl Future<Output = Option<T>> + OptionalSend;
 
     /// Tries to receive the next value for this receiver.
@@ -58,6 +62,7 @@ pub trait MpscReceiver<T>: OptionalSend + OptionalSync {
     ///
     /// This method returns the [`TryRecvError::Disconnected`] error if the channel is
     /// currently empty, and there are no outstanding senders.
+    #[track_caller]
     fn try_recv(&mut self) -> Result<T, TryRecvError>;
 }
 
@@ -74,5 +79,6 @@ where
     ///
     /// This will return `Some` if there are other `Sender` instances alive and
     /// the channel wasn't previously dropped, otherwise `None` is returned.
+    #[track_caller]
     fn upgrade(&self) -> Option<MU::Sender<T>>;
 }

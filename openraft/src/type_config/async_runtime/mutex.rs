@@ -13,8 +13,10 @@ pub trait Mutex<T: OptionalSend + 'static>: OptionalSend + OptionalSync {
     where Self: 'a;
 
     /// Creates a new lock.
+    #[track_caller]
     fn new(value: T) -> Self;
 
     /// Locks this Mutex.
+    #[track_caller]
     fn lock(&self) -> impl Future<Output = Self::Guard<'_>> + OptionalSend;
 }
