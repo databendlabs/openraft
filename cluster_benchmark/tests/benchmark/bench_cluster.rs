@@ -67,6 +67,15 @@ fn bench_cluster_of_5() -> anyhow::Result<()> {
 }
 
 fn bench_with_config(bench_config: &BenchConfig) -> anyhow::Result<()> {
+    #[cfg(feature = "tokio-console")]
+    {
+        console_subscriber::ConsoleLayer::builder()
+            .server_addr(([127, 0, 0, 1], 6669))
+            .with_default_env()
+            .init();
+        eprintln!("tokio-console server started on 127.0.0.1:6669");
+    }
+
     let rt = Builder::new_multi_thread()
         .worker_threads(bench_config.worker_threads)
         .enable_all()
