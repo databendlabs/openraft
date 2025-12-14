@@ -175,9 +175,6 @@ where C: RaftTypeConfig
             return;
         };
 
-        // .expect("it should always update existing progress")
-        // .clone();
-
         let quorum_accepted = quorum_accepted.clone();
 
         tracing::debug!(

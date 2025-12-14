@@ -2,7 +2,6 @@ use std::pin::Pin;
 
 use futures::Stream;
 use futures::StreamExt;
-use openraft::raft::StreamAppendError;
 use openraft::Snapshot;
 use tonic::Request;
 use tonic::Response;
@@ -184,32 +183,7 @@ impl RaftService for RaftServiceImpl {
         let output = self.raft_node.stream_append(input_stream);
 
         // Convert StreamAppendResult to pb::AppendEntriesResponse
-        let output_stream = output.map(|result| {
-            let resp = match result {
-                Ok(Some(log_id)) => pb::AppendEntriesResponse {
-                    rejected_by: None,
-                    conflict: false,
-                    last_log_id: Some(log_id.into()),
-                },
-                Ok(None) => pb::AppendEntriesResponse {
-                    rejected_by: None,
-                    conflict: false,
-                    last_log_id: None,
-                },
-                Err(StreamAppendError::Conflict(log_id)) => pb::AppendEntriesResponse {
-                    rejected_by: None,
-                    conflict: true,
-                    // Store the conflict log_id in last_log_id field
-                    last_log_id: Some(log_id.into()),
-                },
-                Err(StreamAppendError::HigherVote(vote)) => pb::AppendEntriesResponse {
-                    rejected_by: Some(vote),
-                    conflict: false,
-                    last_log_id: None,
-                },
-            };
-            Ok(resp)
-        });
+        let output_stream = output.map(|result| Ok(result.into()));
 
         Ok(Response::new(Box::pin(output_stream)))
     }

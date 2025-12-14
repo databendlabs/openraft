@@ -2063,8 +2063,6 @@ where
             Command::RebuildReplicationStreams { targets } => {
                 self.heartbeat_handle.shutdown();
 
-                // self.remove_all_replication().await;
-
                 let mut new_replications = BTreeMap::new();
 
                 for ReplicationProgress(target, matching) in targets.iter() {
