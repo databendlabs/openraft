@@ -8,9 +8,23 @@ use std::time::Instant;
 use maplit::btreeset;
 use openraft::Config;
 use tokio::runtime::Builder;
+#[cfg(feature = "flamegraph")]
+use tracing_flame::FlushGuard;
 
 use crate::network::Router;
 use crate::store::ClientRequest;
+
+#[cfg(feature = "flamegraph")]
+fn init_flamegraph(path: &str) -> Result<FlushGuard<std::io::BufWriter<std::fs::File>>, tracing_flame::Error> {
+    use tracing_flame::FlameLayer;
+    use tracing_subscriber::layer::SubscriberExt;
+    use tracing_subscriber::util::SubscriberInitExt;
+
+    let (flame_layer, guard) = FlameLayer::with_file(path)?;
+    tracing_subscriber::registry().with(flame_layer).init();
+    eprintln!("flamegraph profiling enabled, output: {}", path);
+    Ok(guard)
+}
 
 struct BenchConfig {
     /// Worker threads for both client and server tasks
@@ -75,6 +89,9 @@ fn bench_with_config(bench_config: &BenchConfig) -> anyhow::Result<()> {
             .init();
         eprintln!("tokio-console server started on 127.0.0.1:6669");
     }
+
+    #[cfg(feature = "flamegraph")]
+    let _flame_guard = init_flamegraph("./flamegraph.folded")?;
 
     let rt = Builder::new_multi_thread()
         .worker_threads(bench_config.worker_threads)
