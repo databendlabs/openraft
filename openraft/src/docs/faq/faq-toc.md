@@ -1,6 +1,7 @@
 - [Getting Started](#getting-started)
   * [How to initialize a cluster?](#how-to-initialize-a-cluster)
   * [Are there any issues with running a single node service?](#are-there-any-issues-with-running-a-single-node-service)
+  * [Can I call `initialize()` on multiple nodes?](#can-i-call-initialize-on-multiple-nodes)
 - [Core Concepts](#core-concepts)
   * [What are the differences between Openraft and standard Raft?](#what-are-the-differences-between-openraft-and-standard-raft)
   * [Why is log id a tuple of `(term, node_id, log_index)`?](#why-is-log-id-a-tuple-of-term-node_id-log_index)
