@@ -21,18 +21,23 @@ This method will:
 
 - The leader will commit a blank log to commit all previous logs.
 
+### Recommended Usage
+
+The simplest and most appropriate way to initialize a cluster is to call `initialize()`
+on **exactly one node**. The other nodes should remain empty and wait for the initialized
+node to replicate logs to them.
+
+Calling `initialize()` on multiple nodes with **identical configuration** is also
+acceptable and will not cause any consistency issues — the Raft voting protocol ensures
+that only one leader will be elected.
+
+However, calling `initialize()` with **different configurations** on different nodes
+may lead to a split-brain condition and must be avoided.
+
 ### Errors and Failures
 
 - If this method is called on a node that has already been initialized, it will simply return an error and remain safe,
   i.e., if `last_log_id` on this node is not `None`, or `vote` on this node is not `(0,0)`.
-
-- If this method is called on more than one node simultaneously:
-
-    - with the same `membership`, it is safe,
-      as the voting protocol ensures consistency.
-
-    - with different `membership`, it is **ILLEGAL** and will lead to an undefined
-      state, also known as the **split-brain** state.
 
 ### Preconditions for Initialization
 

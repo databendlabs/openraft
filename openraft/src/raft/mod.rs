@@ -1133,19 +1133,24 @@ where C: RaftTypeConfig
     /// if the cluster is initialized with [`Raft::is_initialized()`] and then avoid re-initialize
     /// it in case you want to get rid of this error.
     ///
-    /// This command will work for single-node or multi-node cluster formation. This command
-    /// should be called with all discovered nodes which need to be part of cluster, and as such
-    /// it is recommended that applications be configured with an initial cluster formation delay
-    /// which will allow time for the initial members of the cluster to be discovered (by the
-    /// parent application) for this call.
+    /// ## Recommended Usage
     ///
-    /// Once a node successfully initialized it will commit a new membership config
-    /// log entry to store.
-    /// Then it starts to work, i.e., entering Candidate state and try electing itself as the
+    /// The simplest and most appropriate way to initialize a cluster is to call `initialize()`
+    /// on **exactly one node**. The other nodes should remain empty and wait for the initialized
+    /// node to replicate logs to them.
+    ///
+    /// Calling `initialize()` on multiple nodes with **identical configuration** is also
+    /// acceptable and will not cause any consistency issues — the Raft voting protocol ensures
+    /// that only one leader will be elected.
+    ///
+    /// However, calling `initialize()` with **different configurations** on different nodes
+    /// may lead to a split-brain condition and must be avoided.
+    ///
+    /// ## Behavior
+    ///
+    /// Once a node is successfully initialized, it will commit a new membership config
+    /// log entry to store, then enter Candidate state and attempt to elect itself as the
     /// leader.
-    ///
-    /// More than one node performing `initialize()` with the same config is safe,
-    /// with different config will result in split brain condition.
     ///
     /// # Examples
     ///
