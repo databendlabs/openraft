@@ -32,5 +32,25 @@ The benchmark is conducted with the following settings:
 `make bench_cluster_of_3` in repo root folder, or in this folder:
 
 ```sh
-cargo test --test benchmark --release bench_cluster_of_3 -- --ignored --nocapture
+# Run with default settings (32 workers, 256 clients, 50000 ops/client, 3 members)
+cargo run --release --bin bench
+
+# Customize parameters
+cargo run --release --bin bench -- -w 32 -c 1024 -n 100000 -m 3
+
+# With tokio-console (for async task debugging)
+RUSTFLAGS="--cfg tokio_unstable" cargo run --release --bin bench --features tokio-console
+
+# With flamegraph profiling
+cargo run --release --bin bench --features flamegraph
+# Then generate SVG: inferno-flamegraph flamegraph.folded > flamegraph.svg
+```
+
+### CLI Options
+
+```
+-w, --workers     Number of worker threads [default: 32]
+-c, --clients     Number of client tasks [default: 256]
+-n, --operations  Operations per client [default: 50000]
+-m, --members     Cluster size (1, 3, or 5) [default: 3]
 ```

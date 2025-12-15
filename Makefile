@@ -48,18 +48,21 @@ bench:
 	cargo bench --features bench
 
 # Set TOKIO_CONSOLE=1 to enable tokio-console support
+# Set FLAMEGRAPH=1 to enable flamegraph profiling
 # Example: TOKIO_CONSOLE=1 make bench_cluster_of_3
-BENCH_FEATURES := $(if $(TOKIO_CONSOLE),--features tokio-console,)
+comma := ,
+BENCH_FEATURES := $(if $(TOKIO_CONSOLE),tokio-console,)$(if $(FLAMEGRAPH),$(if $(TOKIO_CONSOLE),$(comma))flamegraph,)
+BENCH_FEATURES_FLAG := $(if $(BENCH_FEATURES),--features $(BENCH_FEATURES),)
 BENCH_RUSTFLAGS := $(if $(TOKIO_CONSOLE),RUSTFLAGS="--cfg tokio_unstable",)
 
 bench_cluster_of_1:
-	$(BENCH_RUSTFLAGS) cargo test --manifest-path cluster_benchmark/Cargo.toml --test benchmark --release $(BENCH_FEATURES) bench_cluster_of_1 -- --ignored --nocapture
+	$(BENCH_RUSTFLAGS) cargo run --manifest-path cluster_benchmark/Cargo.toml --release --bin bench $(BENCH_FEATURES_FLAG) -- -m 1
 
 bench_cluster_of_3:
-	$(BENCH_RUSTFLAGS) cargo test --manifest-path cluster_benchmark/Cargo.toml --test benchmark --release $(BENCH_FEATURES) bench_cluster_of_3 -- --ignored --nocapture
+	$(BENCH_RUSTFLAGS) cargo run --manifest-path cluster_benchmark/Cargo.toml --release --bin bench $(BENCH_FEATURES_FLAG) -- -m 3
 
 bench_cluster_of_5:
-	$(BENCH_RUSTFLAGS) cargo test --manifest-path cluster_benchmark/Cargo.toml --test benchmark --release $(BENCH_FEATURES) bench_cluster_of_5 -- --ignored --nocapture
+	$(BENCH_RUSTFLAGS) cargo run --manifest-path cluster_benchmark/Cargo.toml --release --bin bench $(BENCH_FEATURES_FLAG) -- -m 5
 
 fmt:
 	cargo fmt

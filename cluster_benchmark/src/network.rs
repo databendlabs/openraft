@@ -1,7 +1,5 @@
-//! A minimized store with least cost for benchmarking Openraft.
+//! A minimized network implementation for benchmarking Openraft.
 
-#[cfg(feature = "bt")]
-use std::backtrace::Backtrace;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::sync::Arc;
@@ -28,13 +26,12 @@ use crate::store::LogStore;
 use crate::store::NodeId;
 use crate::store::StateMachineStore;
 use crate::store::TypeConfig;
-use crate::store::TypeConfig as MemConfig;
 
-pub type BenchRaft = Raft<MemConfig>;
+pub type BenchRaft = Raft<TypeConfig>;
 
 #[derive(Clone)]
 pub struct Router {
-    pub(crate) table: Arc<Mutex<BTreeMap<NodeId, BenchRaft>>>,
+    pub table: Arc<Mutex<BTreeMap<NodeId, BenchRaft>>>,
 }
 
 impl Router {
@@ -44,7 +41,7 @@ impl Router {
         }
     }
 
-    pub(crate) fn get_raft(&self, id: NodeId) -> BenchRaft {
+    pub fn get_raft(&self, id: NodeId) -> BenchRaft {
         self.table.lock().unwrap().get(&id).unwrap().clone()
     }
 
@@ -81,7 +78,13 @@ impl Router {
     }
 }
 
-impl RaftNetworkFactory<MemConfig> for Router {
+impl Default for Router {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl RaftNetworkFactory<TypeConfig> for Router {
     type Network = Network;
 
     async fn new_client(&mut self, target: NodeId, _node: &()) -> Self::Network {
@@ -97,21 +100,21 @@ pub struct Network {
     target_raft: BenchRaft,
 }
 
-impl RaftNetwork<MemConfig> for Network {
+impl RaftNetwork<TypeConfig> for Network {
     async fn append_entries(
         &mut self,
-        rpc: AppendEntriesRequest<MemConfig>,
+        rpc: AppendEntriesRequest<TypeConfig>,
         _option: RPCOption,
-    ) -> Result<AppendEntriesResponse<TypeConfig>, RPCError<MemConfig, RaftError<MemConfig>>> {
+    ) -> Result<AppendEntriesResponse<TypeConfig>, RPCError<TypeConfig, RaftError<TypeConfig>>> {
         let resp = self.target_raft.append_entries(rpc).await.map_err(|e| RemoteError::new(self.target, e))?;
         Ok(resp)
     }
 
     async fn install_snapshot(
         &mut self,
-        rpc: InstallSnapshotRequest<MemConfig>,
+        rpc: InstallSnapshotRequest<TypeConfig>,
         _option: RPCOption,
-    ) -> Result<InstallSnapshotResponse<TypeConfig>, RPCError<MemConfig, RaftError<MemConfig, InstallSnapshotError>>>
+    ) -> Result<InstallSnapshotResponse<TypeConfig>, RPCError<TypeConfig, RaftError<TypeConfig, InstallSnapshotError>>>
     {
         let resp = self.target_raft.install_snapshot(rpc).await.map_err(|e| RemoteError::new(self.target, e))?;
         Ok(resp)
@@ -121,7 +124,7 @@ impl RaftNetwork<MemConfig> for Network {
         &mut self,
         rpc: VoteRequest<TypeConfig>,
         _option: RPCOption,
-    ) -> Result<VoteResponse<TypeConfig>, RPCError<MemConfig, RaftError<MemConfig>>> {
+    ) -> Result<VoteResponse<TypeConfig>, RPCError<TypeConfig, RaftError<TypeConfig>>> {
         let resp = self.target_raft.vote(rpc).await.map_err(|e| RemoteError::new(self.target, e))?;
         Ok(resp)
     }
