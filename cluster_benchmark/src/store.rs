@@ -1,4 +1,4 @@
-mod test;
+//! A minimized store with least cost for benchmarking Openraft.
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -14,7 +14,6 @@ use futures::Stream;
 use openraft::alias::LogIdOf;
 use openraft::alias::SnapshotDataOf;
 use openraft::entry::RaftEntry;
-use openraft::storage::EntryResponder;
 use openraft::storage::IOFlushed;
 use openraft::storage::LogState;
 use openraft::storage::RaftLogReader;
@@ -28,6 +27,7 @@ use openraft::OptionalSend;
 use openraft::SnapshotMeta;
 use openraft::StoredMembership;
 use openraft::Vote;
+use openraft::storage::EntryResponder;
 use serde::Deserialize;
 use serde::Serialize;
 use tokio::sync::RwLock;
@@ -115,6 +115,12 @@ impl StateMachineStore {
             snapshot_idx: AtomicU64::new(0),
             current_snapshot: RwLock::new(None),
         }
+    }
+}
+
+impl Default for StateMachineStore {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
