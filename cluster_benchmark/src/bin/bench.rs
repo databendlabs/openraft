@@ -1,3 +1,7 @@
+//! Openraft cluster benchmark binary.
+//!
+//! Run with: cargo run --release --bin bench -- --help
+
 use std::collections::BTreeSet;
 use std::fmt::Display;
 use std::fmt::Formatter;
@@ -5,29 +9,37 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
 
-use maplit::btreeset;
+use clap::Parser;
+use cluster_benchmark::network::Router;
+use cluster_benchmark::store::ClientRequest;
 use openraft::Config;
 use tokio::runtime::Builder;
+
 #[cfg(feature = "flamegraph")]
 use tracing_flame::FlushGuard;
 
-use crate::network::Router;
-use crate::store::ClientRequest;
+/// Openraft cluster benchmark
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    /// Number of worker threads for the tokio runtime
+    #[arg(short = 'w', long, default_value_t = 8)]
+    workers: usize,
 
-#[cfg(feature = "flamegraph")]
-fn init_flamegraph(path: &str) -> Result<FlushGuard<std::io::BufWriter<std::fs::File>>, tracing_flame::Error> {
-    use tracing_flame::FlameLayer;
-    use tracing_subscriber::layer::SubscriberExt;
-    use tracing_subscriber::util::SubscriberInitExt;
+    /// Number of client tasks to spawn
+    #[arg(short = 'c', long, default_value_t = 256)]
+    clients: u64,
 
-    let (flame_layer, guard) = FlameLayer::with_file(path)?;
-    tracing_subscriber::registry().with(flame_layer).init();
-    eprintln!("flamegraph profiling enabled, output: {}", path);
-    Ok(guard)
+    /// Number of operations per client
+    #[arg(short = 'n', long, default_value_t = 10000)]
+    operations: u64,
+
+    /// Number of raft cluster members (1, 3, or 5)
+    #[arg(short = 'm', long, default_value_t = 3)]
+    members: u64,
 }
 
 struct BenchConfig {
-    /// Worker threads for both client and server tasks
     pub worker_threads: usize,
     pub n_operations: u64,
     pub n_client: u64,
@@ -44,40 +56,33 @@ impl Display for BenchConfig {
     }
 }
 
-#[test]
-#[ignore]
-fn bench_cluster_of_1() -> anyhow::Result<()> {
-    bench_with_config(&BenchConfig {
-        worker_threads: 32,
-        n_operations: 100_000,
-        n_client: 256,
-        members: btreeset! {0},
-    })?;
-    Ok(())
+#[cfg(feature = "flamegraph")]
+fn init_flamegraph(path: &str) -> Result<FlushGuard<std::io::BufWriter<std::fs::File>>, tracing_flame::Error> {
+    use tracing_flame::FlameLayer;
+    use tracing_subscriber::layer::SubscriberExt;
+    use tracing_subscriber::util::SubscriberInitExt;
+
+    let (flame_layer, guard) = FlameLayer::with_file(path)?;
+    tracing_subscriber::registry().with(flame_layer).init();
+    eprintln!("flamegraph profiling enabled, output: {}", path);
+    Ok(guard)
 }
 
-#[test]
-#[ignore]
-fn bench_cluster_of_3() -> anyhow::Result<()> {
-    bench_with_config(&BenchConfig {
-        worker_threads: 32,
-        n_operations: 100_000,
-        n_client: 1024 * 4,
-        members: btreeset! {0,1,2},
-    })?;
-    Ok(())
-}
+fn main() -> anyhow::Result<()> {
+    let args = Args::parse();
 
-#[test]
-#[ignore]
-fn bench_cluster_of_5() -> anyhow::Result<()> {
-    bench_with_config(&BenchConfig {
-        worker_threads: 32,
-        n_operations: 100_000,
-        n_client: 256,
-        members: btreeset! {0,1,2,3,4},
-    })?;
-    Ok(())
+    let members: BTreeSet<u64> = (0..args.members).collect();
+
+    let bench_config = BenchConfig {
+        worker_threads: args.workers,
+        n_operations: args.operations,
+        n_client: args.clients,
+        members,
+    };
+
+    eprintln!("Benchmark config: {}", bench_config);
+
+    bench_with_config(&bench_config)
 }
 
 fn bench_with_config(bench_config: &BenchConfig) -> anyhow::Result<()> {
@@ -100,7 +105,6 @@ fn bench_with_config(bench_config: &BenchConfig) -> anyhow::Result<()> {
         .thread_stack_size(3 * 1024 * 1024)
         .build()?;
 
-    // Run client_write benchmark
     rt.block_on(do_bench(bench_config))
 }
 
