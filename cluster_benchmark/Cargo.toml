@@ -18,6 +18,8 @@ repository = "https://github.com/databendlabs/openraft"
 
 [dependencies]
 console-subscriber = { version = "0.5", optional = true }
+tracing-flame = { version = "0.2", optional = true }
+tracing-subscriber = { version = "0.3", optional = true }
 
 [dev-dependencies]
 openraft = { path = "../openraft", version = "0.10.0", features = ["serde", "type-alias", "runtime-stats"] }
@@ -34,6 +36,7 @@ tracing    = { version = "0.1.29" }
 bt = ["openraft/bt"]
 single-term-leader = []
 tokio-console = ["console-subscriber"]
+flamegraph = ["tracing-flame", "tracing-subscriber"]
 
 [profile.release]
 debug = 2
