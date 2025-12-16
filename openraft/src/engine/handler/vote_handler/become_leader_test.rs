@@ -16,6 +16,7 @@ use crate::engine::testing::log_id;
 use crate::entry::RaftEntry;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::inflight_id::InflightId;
+use crate::progress::stream_id::StreamId;
 use crate::raft_state::IOId;
 use crate::replication::payload::Payload;
 use crate::replication::replicate::Replicate;
@@ -65,7 +66,12 @@ fn test_become_leader() -> anyhow::Result<()> {
             io_id: IOId::new_log_io(Vote::new(2, 1).into_committed(), None)
         },
         Command::RebuildReplicationStreams {
-            targets: vec![ReplicationProgress(0, ProgressEntry::empty(0))],
+            leader_vote: Vote::new(2, 1).into_committed(),
+            targets: vec![ReplicationProgress {
+                target: 0,
+                target_node: (),
+                progress: ProgressEntry::empty(StreamId::new(1), 0),
+            }],
             close_old_streams: true,
         },
         Command::AppendEntries {

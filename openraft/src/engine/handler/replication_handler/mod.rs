@@ -19,6 +19,7 @@ use crate::progress::Inflight;
 use crate::progress::Progress;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::inflight_id::InflightId;
+use crate::progress::stream_id::StreamId;
 use crate::proposer::Leader;
 use crate::proposer::LeaderQuorumSet;
 use crate::raft_state::LogStateReader;
@@ -27,6 +28,7 @@ use crate::replication::replicate::Replicate;
 use crate::replication::response::ReplicationResult;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::LogIdOf;
+use crate::vote::committed::CommittedVote;
 use crate::vote::raft_vote::RaftVoteExt;
 
 #[cfg(test)]
@@ -97,9 +99,14 @@ where C: RaftTypeConfig
 
         {
             let end = self.state.last_log_id().next_index();
-            let default_v = || ProgressEntry::empty(end);
 
             let old_progress = self.leader.progress.clone();
+
+            let id_gen = self.state.progress_id_gen.clone();
+            let default_v = || {
+                let progress_id = StreamId::new(id_gen.next_id());
+                ProgressEntry::empty(progress_id, end)
+            };
 
             self.leader.progress =
                 old_progress.upgrade_quorum_set(em.membership().to_quorum_set(), learner_ids.clone(), default_v);
@@ -115,25 +122,33 @@ where C: RaftTypeConfig
 
     /// Update progress when replicated data(logs or snapshot) matches on follower/learner and is
     /// accepted.
-    #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn update_leader_clock(&mut self, node_id: C::NodeId, t: InstantOf<C>) {
-        tracing::debug!(target = display(&node_id), t = display(t.display()), "{}", func_name!());
+    pub(crate) fn try_update_leader_clock(
+        &mut self,
+        stream_id: StreamId,
+        target: C::NodeId,
+        sending_time: InstantOf<C>,
+    ) {
+        // clock_progress and progress has the same structure but clock_progress does not store stream_id.
+        // Thus we need to check stream_id in progress to ensure the stream is correct.
+
+        tracing::debug!("{}: target: {}, t: {}", func_name!(), &target, sending_time.display());
+
+        if !self.leader.is_replication_stream_valid(&target, stream_id) {
+            return;
+        }
 
         let granted = *self
             .leader
             .clock_progress
-            .increase_to(&node_id, Some(t))
+            .increase_to(&target, Some(sending_time))
             .expect("it should always update existing progress");
 
         tracing::debug!(
-            granted = display(granted.as_ref().map(|x| x.display()).display()),
-            clock_progress = display(
-                &self
-                    .leader
-                    .clock_progress
-                    .display_with(|f, id, v| { write!(f, "{}: {}", id, v.as_ref().map(|x| x.display()).display()) })
-            ),
-            "granted leader vote clock after updating"
+            "granted leader vote clock after updating: granted: {}; clock_progress: {}",
+            granted.as_ref().map(|x| x.display()).display(),
+            self.leader
+                .clock_progress
+                .display_with(|f, id, v| { write!(f, "{}: {}", id, v.as_ref().map(|x| x.display()).display()) })
         );
 
         // When membership changes, the granted value may revert to a previous value.
@@ -284,7 +299,7 @@ where C: RaftTypeConfig
                 }
             },
             Err(err_str) => {
-                tracing::warn!(result = display(&err_str), "update progress error");
+                tracing::warn!("update progress error: {}", err_str);
 
                 // Reset inflight state and it will retry.
                 if let Some(p) = self.leader.progress.get_mut(&target) {
@@ -303,15 +318,25 @@ where C: RaftTypeConfig
     pub(crate) fn rebuild_replication_streams(&mut self, close_old: bool) {
         let mut targets = vec![];
 
+        let membership = self.state.membership_state.effective();
+
         for item in self.leader.progress.iter_mut() {
             if item.id != self.config.id {
                 if close_old {
                     item.val.inflight = Inflight::None;
                 }
-                targets.push(ReplicationProgress(item.id.clone(), item.val.clone()));
+
+                let target_node = membership.get_node(&item.id).unwrap().clone();
+
+                targets.push(ReplicationProgress {
+                    target: item.id.clone(),
+                    target_node,
+                    progress: item.val.clone(),
+                });
             }
         }
         self.output.push_command(Command::RebuildReplicationStreams {
+            leader_vote: self.leader.committed_vote.clone(),
             targets,
             close_old_streams: close_old,
         });
@@ -332,11 +357,12 @@ where C: RaftTypeConfig
             }
 
             let t = item.val.next_send(self.state, self.config.max_payload_entries);
-            tracing::debug!(target = display(&item.id), send = debug(&t), "next send");
+            tracing::debug!("next send: target: {}, send: {:?}", item.id, t);
 
             match t {
                 Ok(inflight) => {
-                    Self::send_to_target(self.output, &item.id, inflight);
+                    let leader_vote = self.leader.committed_vote.clone();
+                    Self::send_to_target(self.output, leader_vote, &item.id, inflight);
                 }
                 Err(e) => {
                     tracing::debug!("no data to replicate for node-{}: current inflight: {:?}", item.id, e,);
@@ -346,7 +372,12 @@ where C: RaftTypeConfig
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn send_to_target(output: &mut EngineOutput<C>, target: &C::NodeId, inflight: &Inflight<C>) {
+    pub(crate) fn send_to_target(
+        output: &mut EngineOutput<C>,
+        leader_vote: CommittedVote<C>,
+        target: &C::NodeId,
+        inflight: &Inflight<C>,
+    ) {
         match inflight {
             Inflight::None => unreachable!("no data to send"),
             Inflight::Logs {
@@ -361,6 +392,7 @@ where C: RaftTypeConfig
             }
             Inflight::Snapshot { inflight_id } => {
                 output.push_command(Command::ReplicateSnapshot {
+                    leader_vote,
                     target: target.clone(),
                     inflight_id: *inflight_id,
                 });
@@ -423,7 +455,7 @@ where C: RaftTypeConfig
     /// Writing to local log store does not have to wait for a replication response from remote
     /// nodes. Thus, it can just be done in a fast-path.
     pub(crate) fn update_local_progress(&mut self, upto: Option<LogIdOf<C>>) {
-        tracing::debug!(upto = display(upto.display()), "{}", func_name!());
+        tracing::debug!("{}: upto: {}", func_name!(), upto.display());
 
         if upto.is_none() {
             return;

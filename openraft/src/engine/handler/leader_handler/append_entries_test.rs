@@ -23,6 +23,7 @@ use crate::entry::RaftEntry;
 use crate::log_id_range::LogIdRange;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::inflight_id::InflightId;
+use crate::progress::stream_id::StreamId;
 use crate::raft_state::IOId;
 use crate::raft_state::LogStateReader;
 use crate::replication::replicate::Replicate;
@@ -276,7 +277,12 @@ fn test_leader_append_entries_with_membership_log() -> anyhow::Result<()> {
                 ]
             },
             Command::RebuildReplicationStreams {
-                targets: vec![ReplicationProgress(2, ProgressEntry::empty(7))],
+                leader_vote: Vote::new(3, 1).into_committed(),
+                targets: vec![ReplicationProgress {
+                    target: 2,
+                    target_node: (),
+                    progress: ProgressEntry::empty(StreamId::new(8), 7),
+                }],
                 close_old_streams: false,
             },
             Command::Replicate {

@@ -14,6 +14,7 @@ pub(crate) mod id_val;
 pub(crate) mod inflight;
 pub(crate) mod inflight_id;
 pub(crate) mod progress_stats;
+pub(crate) mod stream_id;
 pub(crate) mod vec_progress;
 
 use std::borrow::Borrow;

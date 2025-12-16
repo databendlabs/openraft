@@ -1,6 +1,7 @@
 use std::fmt;
 
 use crate::RaftTypeConfig;
+use crate::base::shared_id_generator::SharedIdGenerator;
 use crate::display_ext::DisplayInstantExt;
 use crate::display_ext::DisplayOptionExt;
 use crate::engine::leader_log_ids::LeaderLogIds;
@@ -36,6 +37,8 @@ where
     quorum_set: QS,
 
     learner_ids: Vec<C::NodeId>,
+
+    progress_id_gen: SharedIdGenerator,
 }
 
 impl<C, QS> fmt::Display for Candidate<C, QS>
@@ -66,6 +69,7 @@ where
         last_log_id: Option<LogIdOf<C>>,
         quorum_set: QS,
         learner_ids: impl IntoIterator<Item = C::NodeId>,
+        progress_id_gen: SharedIdGenerator,
     ) -> Self {
         Self {
             starting_time,
@@ -74,6 +78,7 @@ where
             progress: VecProgress::new(quorum_set.clone(), [], || false),
             quorum_set,
             learner_ids: learner_ids.into_iter().collect::<Vec<_>>(),
+            progress_id_gen,
         }
     }
 
@@ -119,6 +124,12 @@ where
         let last = self.last_log_id();
         let last_leader_log_ids = LeaderLogIds::new(last.map(|last| last.clone()..=last.clone()));
 
-        Leader::new(vote, self.quorum_set.clone(), self.learner_ids, last_leader_log_ids)
+        Leader::new(
+            vote,
+            self.quorum_set.clone(),
+            self.learner_ids,
+            last_leader_log_ids,
+            self.progress_id_gen,
+        )
     }
 }

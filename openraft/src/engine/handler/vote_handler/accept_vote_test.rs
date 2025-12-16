@@ -84,10 +84,7 @@ fn test_accept_vote_granted_greater_vote() -> anyhow::Result<()> {
     assert_eq!(
         vec![
             Command::SaveVote { vote: Vote::new(3, 3) },
-            Command::RebuildReplicationStreams {
-                targets: vec![],
-                close_old_streams: true,
-            },
+            Command::CloseReplicationStreams,
         ],
         eng.output.take_commands()
     );

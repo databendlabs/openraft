@@ -31,7 +31,6 @@ mod command_kind;
 mod engine_config;
 mod engine_impl;
 mod engine_output;
-mod replication_progress;
 mod respond_command;
 
 pub(crate) mod command;
@@ -39,6 +38,7 @@ pub(crate) mod handler;
 pub(crate) mod leader_log_ids;
 pub(crate) mod log_id_list;
 pub(crate) mod pending_responds;
+pub(crate) mod replication_progress;
 pub(crate) mod time_state;
 
 #[cfg(test)]

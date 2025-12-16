@@ -14,6 +14,7 @@ use crate::core::heartbeat::event::HeartbeatEvent;
 use crate::core::notification::Notification;
 use crate::network::RPCOption;
 use crate::network::v2::RaftNetworkV2;
+use crate::progress::stream_id::StreamId;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::StreamAppendError;
 use crate::raft::StreamAppendResult;
@@ -24,6 +25,7 @@ use crate::type_config::alias::MpscSenderOf;
 use crate::type_config::alias::OneshotReceiverOf;
 use crate::type_config::alias::WatchReceiverOf;
 use crate::type_config::async_runtime::mpsc::MpscSender;
+use crate::vote::committed::CommittedVote;
 
 /// A dedicated worker sending heartbeat to a specific follower.
 pub struct HeartbeatWorker<C, N>
@@ -32,6 +34,12 @@ where
     N: RaftNetworkV2<C>,
 {
     pub(crate) id: C::NodeId,
+
+    /// The leader this heartbeat worker works for
+    pub(crate) leader_vote: CommittedVote<C>,
+
+    /// A unique stream.
+    pub(crate) stream_id: StreamId,
 
     /// The receiver will be changed when a new heartbeat is needed to be sent.
     pub(crate) rx: WatchReceiverOf<C, Option<HeartbeatEvent<C>>>,
@@ -94,7 +102,7 @@ where
             let option = RPCOption::new(timeout);
 
             let payload = AppendEntriesRequest {
-                vote: heartbeat.session_id.leader_vote.clone().into_vote(),
+                vote: self.leader_vote.clone().into_vote(),
                 // Use last known matching log id as prev_log_id to detect follower state reversion.
                 // prev_log_id == None does not conflict.
                 //
@@ -149,7 +157,7 @@ where
                 let noti = Notification::HigherVote {
                     target: self.target.clone(),
                     higher: vote,
-                    leader_vote: heartbeat.session_id.committed_vote(),
+                    leader_vote: self.leader_vote.clone(),
                 };
 
                 self.send_notification(noti, "Seeing higher Vote").await?;
@@ -164,7 +172,6 @@ where
 
                 let noti = Notification::ReplicationProgress {
                     progress: Progress {
-                        session_id: heartbeat.session_id.clone(),
                         target: self.target.clone(),
                         result: Ok(ReplicationResult(Err(conflict_log_id))),
                     },
@@ -180,7 +187,7 @@ where
 
     async fn send_heartbeat_progress(&self, heartbeat: &HeartbeatEvent<C>) -> Result<(), RaftCoreClosed> {
         let noti = Notification::HeartbeatProgress {
-            session_id: heartbeat.session_id.clone(),
+            stream_id: self.stream_id,
             sending_time: heartbeat.time,
             target: self.target.clone(),
         };
