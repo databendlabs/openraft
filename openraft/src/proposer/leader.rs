@@ -2,6 +2,7 @@ use std::fmt;
 
 use crate::LogIdOptionExt;
 use crate::RaftTypeConfig;
+use crate::base::shared_id_generator::SharedIdGenerator;
 use crate::display_ext::DisplayInstantExt;
 use crate::engine::leader_log_ids::LeaderLogIds;
 use crate::entry::RaftEntry;
@@ -9,6 +10,7 @@ use crate::entry::raft_entry_ext::RaftEntryExt;
 use crate::progress::Progress;
 use crate::progress::VecProgress;
 use crate::progress::entry::ProgressEntry;
+use crate::progress::stream_id::StreamId;
 use crate::quorum::QuorumSet;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::InstantOf;
@@ -94,6 +96,7 @@ where
         quorum_set: QS,
         learner_ids: impl IntoIterator<Item = C::NodeId>,
         last_leader_log_id: LeaderLogIds<C>,
+        id_gen: SharedIdGenerator,
     ) -> Self {
         debug_assert!(
             Some(vote.committed_leader_id()) >= last_leader_log_id.last().map(|x| x.committed_leader_id().clone()),
@@ -135,7 +138,8 @@ where
             last_log_id: last_log_id.clone(),
             noop_log_id,
             progress: VecProgress::new(quorum_set.clone(), learner_ids.iter().cloned(), || {
-                ProgressEntry::empty(last_log_id.next_index())
+                let stream_id = StreamId::new(id_gen.next_id());
+                ProgressEntry::empty(stream_id, last_log_id.next_index())
             }),
             clock_progress: VecProgress::new(quorum_set, learner_ids, || None),
         }
@@ -230,12 +234,30 @@ where
             Err(x) => *x,
         }
     }
+
+    pub(crate) fn is_replication_stream_valid(&self, target: &C::NodeId, stream_id: StreamId) -> bool {
+        if let Some(prog_ent) = self.progress.try_get(target)
+            && prog_ent.stream_id == stream_id
+        {
+            return true;
+        }
+
+        tracing::warn!(
+            "{}: target node {} stream_id:{} not found in progress tracker. It may be from a delayed message, ignore",
+            func_name!(),
+            target,
+            stream_id,
+        );
+
+        false
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::Entry;
     use crate::Vote;
+    use crate::base::shared_id_generator::SharedIdGenerator;
     use crate::engine::leader_log_ids::LeaderLogIds;
     use crate::engine::testing::UTConfig;
     use crate::engine::testing::log_id;
@@ -256,6 +278,7 @@ mod tests {
                 vec![1, 2, 3],
                 vec![],
                 LeaderLogIds::new_start_end(log_id(1, 2, 1), log_id(1, 2, 3)),
+                SharedIdGenerator::new(),
             );
 
             assert_eq!(leader.noop_log_id(), &log_id(2, 2, 4));
@@ -270,6 +293,7 @@ mod tests {
                 vec![1, 2, 3],
                 vec![],
                 LeaderLogIds::new_start_end(log_id(1, 2, 1), log_id(1, 2, 3)),
+                SharedIdGenerator::new(),
             );
 
             assert_eq!(leader.noop_log_id(), &log_id(1, 2, 1));
@@ -279,8 +303,13 @@ mod tests {
         tracing::info!("--- vote equals last log id, reuse noop_log_id, last_leader_log_id.len()==1");
         {
             let vote = Vote::new(1, 2).into_committed();
-            let leader =
-                Leader::<UTConfig, _>::new(vote, vec![1, 2, 3], vec![], LeaderLogIds::new_single(log_id(1, 2, 3)));
+            let leader = Leader::<UTConfig, _>::new(
+                vote,
+                vec![1, 2, 3],
+                vec![],
+                LeaderLogIds::new_single(log_id(1, 2, 3)),
+                SharedIdGenerator::new(),
+            );
 
             assert_eq!(leader.noop_log_id(), &log_id(1, 2, 3));
             assert_eq!(leader.last_log_id(), Some(&log_id(1, 2, 3)));
@@ -289,7 +318,13 @@ mod tests {
         tracing::info!("--- no last log ids, create new noop_log_id, last_leader_log_id.len()==0");
         {
             let vote = Vote::new(1, 2).into_committed();
-            let leader = Leader::<UTConfig, _>::new(vote, vec![1, 2, 3], vec![], LeaderLogIds::new(None));
+            let leader = Leader::<UTConfig, _>::new(
+                vote,
+                vec![1, 2, 3],
+                vec![],
+                LeaderLogIds::new(None),
+                SharedIdGenerator::new(),
+            );
 
             assert_eq!(leader.noop_log_id(), &log_id(1, 2, 0));
             assert_eq!(leader.last_log_id(), None);
@@ -299,8 +334,13 @@ mod tests {
     #[test]
     fn test_leader_established() {
         let vote = Vote::new(2, 2).into_committed();
-        let mut leader =
-            Leader::<UTConfig, _>::new(vote, vec![1, 2, 3], vec![], LeaderLogIds::new_single(log_id(1, 2, 3)));
+        let mut leader = Leader::<UTConfig, _>::new(
+            vote,
+            vec![1, 2, 3],
+            vec![],
+            LeaderLogIds::new_single(log_id(1, 2, 3)),
+            SharedIdGenerator::new(),
+        );
 
         let mut entries = vec![Entry::<UTConfig>::new_blank(log_id(5, 5, 2))];
         leader.assign_log_ids(&mut entries);
@@ -316,7 +356,13 @@ mod tests {
     #[test]
     fn test_1_entry_none_last_log_id() {
         let vote = Vote::new(0, 0).into_committed();
-        let mut leading = Leader::<UTConfig, _>::new(vote, vec![1, 2, 3], vec![], LeaderLogIds::new(None));
+        let mut leading = Leader::<UTConfig, _>::new(
+            vote,
+            vec![1, 2, 3],
+            vec![],
+            LeaderLogIds::new(None),
+            SharedIdGenerator::new(),
+        );
 
         let mut entries: Vec<Entry<UTConfig>> = vec![blank_ent(1, 1, 1)];
         leading.assign_log_ids(&mut entries);
@@ -328,8 +374,13 @@ mod tests {
     #[test]
     fn test_no_entries_provided() {
         let vote = Vote::new(2, 2).into_committed();
-        let mut leading =
-            Leader::<UTConfig, _>::new(vote, vec![1, 2, 3], vec![], LeaderLogIds::new_single(log_id(1, 1, 8)));
+        let mut leading = Leader::<UTConfig, _>::new(
+            vote,
+            vec![1, 2, 3],
+            vec![],
+            LeaderLogIds::new_single(log_id(1, 1, 8)),
+            SharedIdGenerator::new(),
+        );
 
         let mut entries: Vec<Entry<UTConfig>> = vec![];
         leading.assign_log_ids(&mut entries);
@@ -339,8 +390,13 @@ mod tests {
     #[test]
     fn test_multiple_entries() {
         let vote = Vote::new(2, 2).into_committed();
-        let mut leading =
-            Leader::<UTConfig, _>::new(vote, vec![1, 2, 3], [], LeaderLogIds::new_single(log_id(1, 1, 8)));
+        let mut leading = Leader::<UTConfig, _>::new(
+            vote,
+            vec![1, 2, 3],
+            [],
+            LeaderLogIds::new_single(log_id(1, 1, 8)),
+            SharedIdGenerator::new(),
+        );
 
         let mut entries: Vec<Entry<UTConfig>> = vec![blank_ent(1, 1, 1), blank_ent(1, 1, 1), blank_ent(1, 1, 1)];
 
@@ -358,6 +414,7 @@ mod tests {
             vec![1, 2, 3],
             [4],
             LeaderLogIds::new(None),
+            SharedIdGenerator::new(),
         );
 
         let now1 = UTConfig::<()>::now();
@@ -374,6 +431,7 @@ mod tests {
             vec![1, 2, 3],
             [4],
             LeaderLogIds::new(None),
+            SharedIdGenerator::new(),
         );
 
         let t2 = UTConfig::<()>::now();
@@ -394,6 +452,7 @@ mod tests {
             vec![1, 2, 3],
             [4],
             LeaderLogIds::new(None),
+            SharedIdGenerator::new(),
         );
 
         let t2 = UTConfig::<()>::now();

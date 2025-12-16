@@ -1,6 +1,6 @@
 use crate::RaftTypeConfig;
 use crate::error::ReplicationClosed;
-use crate::replication::ReplicationSessionId;
+use crate::progress::stream_id::StreamId;
 use crate::replication::replicate::Replicate;
 use crate::replication::snapshot_transmitter_handle::SnapshotTransmitterHandle;
 use crate::type_config::alias::JoinHandleOf;
@@ -11,7 +11,7 @@ pub(crate) struct ReplicationHandle<C>
 where C: RaftTypeConfig
 {
     /// Identifies this replication session (leader vote + target node).
-    pub(crate) session_id: ReplicationSessionId<C>,
+    pub(crate) stream_id: StreamId,
 
     /// The channel used for communicating with the replication task.
     pub(crate) replicate_tx: WatchSenderOf<C, Replicate<C>>,
@@ -30,12 +30,12 @@ impl<C> ReplicationHandle<C>
 where C: RaftTypeConfig
 {
     pub(crate) fn new(
-        session_id: ReplicationSessionId<C>,
+        stream_id: StreamId,
         replicate_tx: WatchSenderOf<C, Replicate<C>>,
         cancel_tx: WatchSenderOf<C, ()>,
     ) -> Self {
         Self {
-            session_id,
+            stream_id,
             join_handle: None,
             replicate_tx,
             snapshot_transmit_handle: None,

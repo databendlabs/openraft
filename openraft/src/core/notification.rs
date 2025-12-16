@@ -6,10 +6,10 @@ use crate::core::sm;
 use crate::display_ext::DisplayInstantExt;
 use crate::display_ext::display_option::DisplayOptionExt;
 use crate::progress::inflight_id::InflightId;
+use crate::progress::stream_id::StreamId;
 use crate::raft::VoteResponse;
 use crate::raft_state::IOId;
 use crate::replication;
-use crate::replication::ReplicationSessionId;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::VoteOf;
 use crate::vote::committed::CommittedVote;
@@ -39,9 +39,6 @@ where C: RaftTypeConfig
 
         /// The Leader that sent the replication request.
         leader_vote: CommittedVote<C>,
-        // TODO: need this?
-        // /// The cluster this replication works for.
-        // membership_log_id: Option<LogIdOf<C>>,
     },
 
     /// [`StorageError`] error has taken place locally(not on remote node),
@@ -68,7 +65,7 @@ where C: RaftTypeConfig
     },
 
     HeartbeatProgress {
-        session_id: ReplicationSessionId<C>,
+        stream_id: StreamId,
         sending_time: InstantOf<C>,
         target: C::NodeId,
     },
@@ -124,7 +121,7 @@ where C: RaftTypeConfig
                 write!(f, "{}, inflight_id: {}", progress, inflight_id.display())
             }
             Self::HeartbeatProgress {
-                session_id: leader_vote,
+                stream_id: leader_vote,
                 sending_time,
                 target,
             } => {

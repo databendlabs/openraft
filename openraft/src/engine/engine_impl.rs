@@ -128,6 +128,7 @@ where C: RaftTypeConfig
             last_log_id,
             membership.to_quorum_set(),
             membership.learner_ids(),
+            self.state.progress_id_gen.clone(),
         ));
 
         self.candidate.as_mut().unwrap()
@@ -836,6 +837,20 @@ where C: RaftTypeConfig
             state: &mut self.state,
             output: &mut self.output,
         })
+    }
+
+    /// Return ReplicationHandler if it is Leader.
+    pub(crate) fn try_replication_handler(&mut self) -> Option<ReplicationHandler<'_, C>> {
+        let leader = self.leader.as_mut()?;
+
+        let rh = ReplicationHandler {
+            config: &mut self.config,
+            leader,
+            state: &mut self.state,
+            output: &mut self.output,
+        };
+
+        Some(rh)
     }
 
     pub(crate) fn replication_handler(&mut self) -> ReplicationHandler<'_, C> {

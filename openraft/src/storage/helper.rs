@@ -15,6 +15,7 @@ use crate::RaftState;
 use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::StoredMembership;
+use crate::base::shared_id_generator::SharedIdGenerator;
 use crate::display_ext::DisplayOptionExt;
 use crate::engine::LogIdList;
 use crate::entry::RaftEntry;
@@ -220,6 +221,7 @@ where
             server_state: Default::default(),
             io_state: Valid::new(io_state),
             purge_upto: last_purged_log_id,
+            progress_id_gen: SharedIdGenerator::new(),
         })
     }
 

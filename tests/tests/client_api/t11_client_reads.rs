@@ -275,9 +275,9 @@ async fn ensure_linearizable_with_lease_read() -> Result<()> {
         Config {
             enable_heartbeat: false,
             enable_elect: false,
-            heartbeat_interval: 100,
-            election_timeout_min: 101,
-            election_timeout_max: 102,
+            heartbeat_interval: 1000,
+            election_timeout_min: 1001,
+            election_timeout_max: 1002,
             ..Default::default()
         }
         .validate()?,
@@ -293,12 +293,16 @@ async fn ensure_linearizable_with_lease_read() -> Result<()> {
     let leader = router.leader().expect("leader not found");
     assert_eq!(leader, 0, "expected leader to be node 0, got {}", leader);
 
+    // There may be some ongoing replication requests that sending the commit log ID.
+    //Wait for them to finish.
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
     let leader_handle = router.get_raft_handle(&leader).unwrap();
 
     tracing::info!("--- testing LeaseRead policy");
     {
         let rpc_count_before = router.get_rpc_count();
-        let append_entries_count_before = *rpc_count_before.get(&RPCTypes::AppendEntries).unwrap_or(&0);
+        let before = *rpc_count_before.get(&RPCTypes::AppendEntries).unwrap_or(&0);
 
         router
             .ensure_linearizable(leader, ReadPolicy::LeaseRead)
@@ -307,12 +311,12 @@ async fn ensure_linearizable_with_lease_read() -> Result<()> {
 
         // check RPC count, leader should **NOT** send heartbeat with LeaseRead policy
         let rpc_count_after = router.get_rpc_count();
-        let append_entries_count_after = *rpc_count_after.get(&RPCTypes::AppendEntries).unwrap_or(&0);
+        let after = *rpc_count_after.get(&RPCTypes::AppendEntries).unwrap_or(&0);
 
         assert_eq!(
-            append_entries_count_after, append_entries_count_before,
-            "Lease policy should not send heartbeats: before={}, after={}",
-            append_entries_count_before, append_entries_count_after
+            after, before,
+            "Lease policy should not send heartbeats: counts: before={}, after={}",
+            before, after
         );
 
         // lease time elapsed, lease read will return error.

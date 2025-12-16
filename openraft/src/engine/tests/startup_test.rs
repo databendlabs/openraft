@@ -20,6 +20,7 @@ use crate::log_id_range::LogIdRange;
 use crate::progress::Inflight;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::inflight_id::InflightId;
+use crate::progress::stream_id::StreamId;
 use crate::raft_state::IOId;
 use crate::replication::replicate::Replicate;
 use crate::type_config::TypeConfigExt;
@@ -76,12 +77,18 @@ fn test_startup_as_leader_without_logs() -> anyhow::Result<()> {
                 io_id: IOId::new_log_io(Vote::new(2, 2).into_committed(), Some(log_id(1, 1, 3)))
             },
             Command::RebuildReplicationStreams {
-                targets: vec![ReplicationProgress(3, ProgressEntry {
-                    matching: None,
-                    inflight: Inflight::None,
-                    searching_end: 4,
-                    allow_log_reversion: false,
-                })],
+                leader_vote: Vote::new(2, 2).into_committed(),
+                targets: vec![ReplicationProgress {
+                    target: 3,
+                    target_node: (),
+                    progress: ProgressEntry {
+                        stream_id: StreamId::new(2),
+                        matching: None,
+                        inflight: Inflight::None,
+                        searching_end: 4,
+                        allow_log_reversion: false,
+                    },
+                }],
                 close_old_streams: true,
             },
             Command::AppendEntries {
@@ -129,12 +136,18 @@ fn test_startup_as_leader_with_proposed_logs() -> anyhow::Result<()> {
                 io_id: IOId::new_log_io(Vote::new(1, 2).into_committed(), Some(log_id(1, 2, 6)))
             },
             Command::RebuildReplicationStreams {
-                targets: vec![ReplicationProgress(3, ProgressEntry {
-                    matching: None,
-                    inflight: Inflight::None,
-                    searching_end: 7,
-                    allow_log_reversion: false,
-                })],
+                leader_vote: Vote::new(1, 2).into_committed(),
+                targets: vec![ReplicationProgress {
+                    target: 3,
+                    target_node: (),
+                    progress: ProgressEntry {
+                        stream_id: StreamId::new(2),
+                        matching: None,
+                        inflight: Inflight::None,
+                        searching_end: 7,
+                        allow_log_reversion: false,
+                    },
+                }],
                 close_old_streams: true,
             },
             Command::Replicate {

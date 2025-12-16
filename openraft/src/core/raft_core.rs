@@ -74,7 +74,7 @@ use crate::network::RPCTypes;
 use crate::network::RaftNetworkFactory;
 use crate::network::v2::RaftNetworkV2;
 use crate::progress::Progress;
-use crate::progress::entry::ProgressEntry;
+use crate::progress::stream_id::StreamId;
 use crate::quorum::QuorumSet;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::ClientWriteResult;
@@ -893,23 +893,20 @@ where
     #[allow(clippy::type_complexity)]
     pub(crate) async fn spawn_replication_stream(
         &mut self,
-        target: C::NodeId,
-        progress_entry: ProgressEntry<C>,
+        leader_vote: CommittedVote<C>,
+        prog: &ReplicationProgress<C>,
     ) -> ReplicationHandle<C> {
-        // Safe unwrap(): target must be in membership
-        let target_node = self.engine.state.membership_state.effective().get_node(&target).unwrap();
-
-        let network = self.network_factory.new_client(target.clone(), target_node).await;
+        let network = self.network_factory.new_client(prog.target.clone(), &prog.target_node).await;
 
         let (replicate_tx, replicate_rx) = C::watch_channel(Replicate::default());
 
         let event_watcher = self.new_event_watcher(replicate_rx);
 
-        let (mut replication_handle, replication_context) = self.new_replication(target.clone(), replicate_tx);
+        let (mut replication_handle, replication_context) = self.new_replication(leader_vote, prog, replicate_tx);
 
         let progress = replication_progress::ReplicationProgress {
             local_committed: self.engine.state.committed().cloned(),
-            remote_matched: progress_entry.matching.clone(),
+            remote_matched: prog.progress.matching.clone(),
         };
 
         let join_handel = ReplicationCore::<C, NF, LS>::spawn(
@@ -918,7 +915,7 @@ where
             network,
             self.log_store.get_log_reader().await,
             event_watcher,
-            tracing::span!(parent: &self.span, Level::DEBUG, "replication", id=display(&self.id), target=display(&target)),
+            tracing::span!(parent: &self.span, Level::DEBUG, "replication", id=display(&self.id), target=display(&prog.target)),
         );
 
         replication_handle.join_handle = Some(join_handel);
@@ -928,32 +925,32 @@ where
 
     fn new_replication(
         &self,
-        target: C::NodeId,
+        leader_vote: CommittedVote<C>,
+        prog: &ReplicationProgress<C>,
         replicate_tx: WatchSenderOf<C, Replicate<C>>,
     ) -> (ReplicationHandle<C>, ReplicationContext<C>) {
         let (cancel_tx, cancel_rx) = C::watch_channel(());
 
-        let context = self.new_replication_context(target.clone(), cancel_rx);
+        let context = self.new_replication_context(leader_vote, prog, cancel_rx);
 
-        let handle = ReplicationHandle::new(context.session_id.clone(), replicate_tx, cancel_tx);
+        let handle = ReplicationHandle::new(prog.progress.stream_id, replicate_tx, cancel_tx);
 
         (handle, context)
     }
 
-    fn new_replication_context(&self, target: C::NodeId, cancel_rx: WatchReceiverOf<C, ()>) -> ReplicationContext<C> {
+    fn new_replication_context(
+        &self,
+        leader_vote: CommittedVote<C>,
+        prog: &ReplicationProgress<C>,
+        cancel_rx: WatchReceiverOf<C, ()>,
+    ) -> ReplicationContext<C> {
         let id = self.id.clone();
-
-        let membership_log_id = self.engine.state.membership_state.effective().log_id();
-
-        let session_id = {
-            let leader = self.engine.leader.as_ref().unwrap();
-            ReplicationSessionId::new(leader.committed_vote.clone(), membership_log_id.clone())
-        };
 
         ReplicationContext {
             id,
-            target,
-            session_id: session_id.clone(),
+            target: prog.target.clone(),
+            leader_vote,
+            stream_id: prog.progress.stream_id,
             config: self.config.clone(),
             tx_notify: self.tx_notification.clone(),
             cancel_rx,
@@ -1541,11 +1538,11 @@ where
                 leader_vote,
             } => {
                 tracing::info!(
-                    target = display(target),
-                    higher_vote = display(&higher),
-                    sending_vote = display(&leader_vote),
-                    "received Notification::HigherVote: {}",
-                    func_name!()
+                    "{}: received Notification::HigherVote, target: {}, higher_vote: {}, sending_vote: {}",
+                    func_name!(),
+                    target,
+                    higher,
+                    leader_vote
                 );
 
                 if self.does_leader_vote_match(&leader_vote, "HigherVote") {
@@ -1631,28 +1628,18 @@ where
             Notification::ReplicationProgress { progress, inflight_id } => {
                 tracing::debug!(progress = display(&progress), "recv Notification::ReplicationProgress");
 
-                // replication_handler() won't panic because:
-                // The leader is still valid because progress.session_id.leader_vote does not change.
-                if self.engine.leader.is_some() {
-                    self.engine.replication_handler().update_progress(progress.target, progress.result, inflight_id);
+                if let Some(mut rh) = self.engine.try_replication_handler() {
+                    rh.update_progress(progress.target, progress.result, inflight_id);
                 }
             }
 
             Notification::HeartbeatProgress {
-                session_id,
+                stream_id,
                 sending_time,
                 target,
             } => {
-                if self.does_replication_session_match(&session_id, "HeartbeatProgress") {
-                    tracing::debug!(
-                        session_id = display(&session_id),
-                        target = display(&target),
-                        sending_time = display(sending_time.display()),
-                        "HeartbeatProgress"
-                    );
-                    // replication_handler() won't panic because:
-                    // The leader is still valid because progress.session_id.leader_vote does not change.
-                    self.engine.replication_handler().update_leader_clock(target, sending_time);
+                if let Some(mut rh) = self.engine.try_replication_handler() {
+                    rh.try_update_leader_clock(stream_id, target, sending_time);
                 }
             }
 
@@ -1807,29 +1794,6 @@ where
         }
     }
 
-    /// If a message is sent by a previous replication session but is received by current server
-    /// state, it is a stale message and should be just ignored.
-    fn does_replication_session_match(
-        &self,
-        session_id: &ReplicationSessionId<C>,
-        msg: impl fmt::Display + Copy,
-    ) -> bool {
-        if !self.does_leader_vote_match(&session_id.committed_vote(), msg) {
-            return false;
-        }
-
-        if &session_id.membership_log_id != self.engine.state.membership_state.effective().log_id() {
-            tracing::warn!(
-                "membership_log_id changed: msg sent by: {}; curr: {}; ignore when ({})",
-                session_id.membership_log_id.display(),
-                self.engine.state.membership_state.effective().log_id().display(),
-                msg
-            );
-            return false;
-        }
-        true
-    }
-
     /// Broadcast heartbeat to all followers with per-follower matching log ids.
     ///
     /// This method validates the session and sends heartbeat events only if the current
@@ -1876,14 +1840,16 @@ where
     /// cancellation channel. Dropping the sender signals the task to stop.
     pub(crate) fn new_replication_task_context(
         &self,
-        session_id: ReplicationSessionId<C>,
+        leader_vote: CommittedVote<C>,
+        stream_id: StreamId,
         target: C::NodeId,
     ) -> (ReplicationContext<C>, WatchSenderOf<C, ()>) {
         let (cancel_tx, cancel_rx) = C::watch_channel(());
         let ctx = ReplicationContext {
             id: self.id.clone(),
             target,
-            session_id,
+            leader_vote,
+            stream_id,
             config: self.config.clone(),
             tx_notify: self.tx_notification.clone(),
             cancel_rx,
@@ -2044,13 +2010,17 @@ where
                 let node = self.replications.get(&target).expect("replication to target node exists");
                 let _ = node.replicate_tx.send(req);
             }
-            Command::ReplicateSnapshot { target, inflight_id } => {
+            Command::ReplicateSnapshot {
+                leader_vote,
+                target,
+                inflight_id,
+            } => {
                 let node = self.replications.get(&target).expect("replication to target node exists");
 
                 let snapshot_reader = self.sm_handle.new_snapshot_reader();
-                let session_id = node.session_id.clone();
+                let stream_id = node.stream_id;
                 let (replication_task_context, cancel_tx) =
-                    self.new_replication_task_context(session_id, target.clone());
+                    self.new_replication_task_context(leader_vote, stream_id, target.clone());
 
                 let target_node = self.engine.state.membership_state.effective().get_node(&target).unwrap();
                 let snapshot_network = self.network_factory.new_client(target.clone(), target_node).await;
@@ -2069,29 +2039,52 @@ where
             }
             Command::BroadcastTransferLeader { req } => self.broadcast_transfer_leader(req).await,
 
+            Command::CloseReplicationStreams => {
+                self.heartbeat_handle.close_workers();
+
+                let left = std::mem::take(&mut self.replications);
+                for (target, s) in left {
+                    Self::close_replication(&target, s).await;
+                }
+            }
             Command::RebuildReplicationStreams {
+                leader_vote,
                 targets,
                 close_old_streams,
             } => {
-                self.heartbeat_handle.shutdown();
+                self.heartbeat_handle
+                    .spawn_workers(
+                        leader_vote.clone(),
+                        &mut self.network_factory,
+                        &self.tx_notification,
+                        &targets,
+                        close_old_streams,
+                    )
+                    .await;
 
                 let mut new_replications = BTreeMap::new();
 
-                for ReplicationProgress(target, matching) in targets.iter() {
-                    let removed = self.replications.remove(target);
+                for prog in targets.iter() {
+                    let removed = self.replications.remove(&prog.target);
 
                     let handle = if let Some(removed) = removed {
                         if close_old_streams {
-                            Self::close_replication(target, removed).await;
-                            self.spawn_replication_stream(target.clone(), matching.clone()).await
+                            Self::close_replication(&prog.target, removed).await;
+                            None
                         } else {
-                            removed
+                            Some(removed)
                         }
                     } else {
-                        self.spawn_replication_stream(target.clone(), matching.clone()).await
+                        None
                     };
 
-                    new_replications.insert(target.clone(), handle);
+                    let handle = if let Some(handle) = handle {
+                        handle
+                    } else {
+                        self.spawn_replication_stream(leader_vote.clone(), prog).await
+                    };
+
+                    new_replications.insert(prog.target.clone(), handle);
                 }
 
                 tracing::debug!("removing unused replications");
@@ -2101,17 +2094,6 @@ where
                 for (target, s) in left {
                     Self::close_replication(&target, s).await;
                 }
-
-                //
-
-                let effective = self.engine.state.membership_state.effective().clone();
-
-                let nodes = targets.into_iter().map(|p| {
-                    let node_id = p.0;
-                    (node_id.clone(), effective.get_node(&node_id).unwrap().clone())
-                });
-
-                self.heartbeat_handle.spawn_workers(&mut self.network_factory, &self.tx_notification, nodes).await;
             }
             Command::StateMachine { command } => {
                 let io_id = command.get_log_progress();

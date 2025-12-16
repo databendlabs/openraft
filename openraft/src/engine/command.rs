@@ -97,10 +97,17 @@ where C: RaftTypeConfig
     Replicate { target: C::NodeId, req: Replicate<C> },
 
     /// Replicate snapshot to a target.
-    ReplicateSnapshot { target: C::NodeId, inflight_id: InflightId },
+    ReplicateSnapshot {
+        leader_vote: CommittedVote<C>,
+        target: C::NodeId,
+        inflight_id: InflightId,
+    },
 
     /// Broadcast transfer Leader message to all other nodes.
     BroadcastTransferLeader { req: TransferLeaderRequest<C> },
+
+    /// Close replication streams and heartbeat streams.
+    CloseReplicationStreams,
 
     /// Membership config changed, need to update replication streams.
     /// The Runtime has to close all old replications and start new ones.
@@ -108,6 +115,8 @@ where C: RaftTypeConfig
     /// When membership config changes, the membership log id stored in ReplicationCore has to be
     /// updated.
     RebuildReplicationStreams {
+        leader_vote: CommittedVote<C>,
+
         /// Targets to replicate to.
         targets: Vec<ReplicationProgress<C>>,
 
@@ -171,17 +180,28 @@ where C: RaftTypeConfig
             Command::Replicate { target, req } => {
                 write!(f, "Replicate: target={}, req: {}", target, req)
             }
-            Command::ReplicateSnapshot { target, inflight_id } => {
-                write!(f, "ReplicateSnapshot: target={}, inflight_id: {}", target, inflight_id)
+            Command::ReplicateSnapshot {
+                leader_vote,
+                target,
+                inflight_id,
+            } => {
+                write!(
+                    f,
+                    "ReplicateSnapshot: leader_vote: {}, target={}, inflight_id: {}",
+                    leader_vote, target, inflight_id
+                )
             }
             Command::BroadcastTransferLeader { req } => write!(f, "TransferLeader: {}", req),
+            Command::CloseReplicationStreams => write!(f, "CloseReplicationStreams"),
             Command::RebuildReplicationStreams {
+                leader_vote,
                 targets,
                 close_old_streams,
             } => {
                 write!(
                     f,
-                    "RebuildReplicationStreams: {}; close_old: {}",
+                    "RebuildReplicationStreams: leader_vote: {}, targets: {}; close_old: {}",
+                    leader_vote,
                     targets.display_n(10),
                     close_old_streams
                 )
@@ -220,13 +240,15 @@ where
             (Command::SaveCommittedAndApply { already_applied: already_committed, upto, },      Command::SaveCommittedAndApply { already_applied: b_committed, upto: b_upto, }, )  => already_committed == b_committed && upto == b_upto,
             (Command::Replicate { target, req },               Command::Replicate { target: b_target, req: other_req, }, )           => target == b_target && req == other_req,
             (Command::BroadcastTransferLeader { req },         Command::BroadcastTransferLeader { req: b, }, )                       => req == b,
-            (Command::RebuildReplicationStreams { targets, close_old_streams },   Command::RebuildReplicationStreams { targets: b, close_old_streams: cb }, )                  => targets == b && close_old_streams == cb,
+            (Command::RebuildReplicationStreams { leader_vote, targets, close_old_streams },   Command::RebuildReplicationStreams { leader_vote: lb, targets: b, close_old_streams: cb }, ) => leader_vote == lb && targets == b && close_old_streams == cb,
             (Command::SaveVote { vote },                       Command::SaveVote { vote: b })                                        => vote == b,
             (Command::SendVote { vote_req },                   Command::SendVote { vote_req: b }, )                                  => vote_req == b,
             (Command::PurgeLog { upto },                       Command::PurgeLog { upto: b })                                        => upto == b,
             (Command::TruncateLog { since },                   Command::TruncateLog { since: b }, )                                  => since == b,
             (Command::Respond { when, resp: send },            Command::Respond { when: b_when, resp: b })                           => send == b && when == b_when,
             (Command::StateMachine { command },                Command::StateMachine { command: b })                                 => command == b,
+            (Command::CloseReplicationStreams,                 Command::CloseReplicationStreams)                                     => true,
+            (Command::ReplicateSnapshot { leader_vote, target, inflight_id }, Command::ReplicateSnapshot { leader_vote: lb, target: tb, inflight_id: ib }) => leader_vote == lb && target == tb && inflight_id == ib,
             _ => false,
         }
     }
@@ -239,6 +261,7 @@ where C: RaftTypeConfig
     #[rustfmt::skip]
     pub(crate) fn kind(&self) -> CommandKind {
         match self {
+            Command::CloseReplicationStreams          => CommandKind::Main,
             Command::RebuildReplicationStreams { .. } => CommandKind::Main,
             Command::Respond { .. }                   => CommandKind::Respond,
             // Apply is firstly handled by RaftCore, then forwarded to state machine worker.
@@ -267,6 +290,7 @@ where C: RaftTypeConfig
     #[rustfmt::skip]
     pub(crate) fn condition(&self) -> Option<Condition<C>> {
         match self {
+            Command::CloseReplicationStreams          => None,
             Command::RebuildReplicationStreams { .. } => None,
             Command::Respond { when, .. }             => when.clone(),
 
