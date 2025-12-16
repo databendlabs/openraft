@@ -118,10 +118,7 @@ fn test_append_entries_prev_log_id_is_applied() -> anyhow::Result<()> {
             Command::SaveVote {
                 vote: Vote::new_committed(2, 1)
             },
-            Command::RebuildReplicationStreams {
-                targets: vec![],
-                close_old_streams: true,
-            },
+            Command::CloseReplicationStreams,
             Command::UpdateIOProgress {
                 when: Some(Condition::IOFlushed {
                     io_id: IOId::new_log_io(Vote::new(2, 1).into_committed(), None)
@@ -173,10 +170,7 @@ fn test_append_entries_prev_log_id_conflict() -> anyhow::Result<()> {
             Command::SaveVote {
                 vote: Vote::new_committed(2, 1)
             },
-            Command::RebuildReplicationStreams {
-                targets: vec![],
-                close_old_streams: true,
-            },
+            Command::CloseReplicationStreams,
             Command::TruncateLog { since: log_id(1, 1, 2) },
         ],
         eng.output.take_commands()
@@ -217,10 +211,7 @@ fn test_append_entries_prev_log_id_is_committed() -> anyhow::Result<()> {
             Command::SaveVote {
                 vote: Vote::new_committed(2, 1)
             },
-            Command::RebuildReplicationStreams {
-                targets: vec![],
-                close_old_streams: true,
-            },
+            Command::CloseReplicationStreams,
             Command::TruncateLog { since: log_id(1, 1, 2) },
             Command::AppendEntries {
                 committed_vote: Vote::new(2, 1).into_committed(),
@@ -273,10 +264,7 @@ fn test_append_entries_prev_log_id_not_exists() -> anyhow::Result<()> {
             Command::SaveVote {
                 vote: Vote::new_committed(2, 1)
             },
-            Command::RebuildReplicationStreams {
-                targets: vec![],
-                close_old_streams: true,
-            },
+            Command::CloseReplicationStreams,
         ],
         eng.output.take_commands()
     );
@@ -321,10 +309,7 @@ fn test_append_entries_conflict() -> anyhow::Result<()> {
             Command::SaveVote {
                 vote: Vote::new_committed(2, 1)
             },
-            Command::RebuildReplicationStreams {
-                targets: vec![],
-                close_old_streams: true,
-            },
+            Command::CloseReplicationStreams,
             Command::TruncateLog { since: log_id(2, 1, 3) },
             Command::AppendEntries {
                 committed_vote: Vote::new(2, 1).into_committed(),

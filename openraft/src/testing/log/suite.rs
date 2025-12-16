@@ -479,6 +479,8 @@ where
         want.apply_progress_mut().set_id(NODE_ID.to_string());
         want.snapshot_progress_mut().set_id(NODE_ID.to_string());
 
+        want.progress_id_gen = initial.progress_id_gen.clone();
+
         assert_eq!(want, initial, "uninitialized state");
         Ok(())
     }

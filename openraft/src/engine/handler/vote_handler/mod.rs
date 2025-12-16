@@ -229,6 +229,7 @@ where C: RaftTypeConfig
     ///
     /// This node then becomes raft-follower or raft-learner.
     pub(crate) fn become_following(&mut self) {
+        // TODO: if it is already in following state, nothing to do.
         debug_assert!(
             self.state.vote_ref().to_leader_id().node_id() != &self.config.id
                 || !self.state.membership_state.effective().membership().is_voter(&self.config.id),
@@ -238,10 +239,7 @@ where C: RaftTypeConfig
         *self.leader = None;
         *self.candidate = None;
 
-        self.output.push_command(Command::RebuildReplicationStreams {
-            targets: vec![],
-            close_old_streams: true,
-        });
+        self.output.push_command(Command::CloseReplicationStreams);
 
         self.server_state_handler().update_server_state_if_changed();
     }

@@ -20,6 +20,7 @@ use crate::entry::RaftEntry;
 use crate::log_id_range::LogIdRange;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::inflight_id::InflightId;
+use crate::progress::stream_id::StreamId;
 use crate::raft::VoteResponse;
 use crate::raft_state::IOId;
 use crate::replication::replicate::Replicate;
@@ -126,10 +127,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
             eng.output.take_commands(),
             vec![
                 Command::SaveVote { vote: Vote::new(3, 2) },
-                Command::RebuildReplicationStreams {
-                    targets: vec![],
-                    close_old_streams: true,
-                },
+                Command::CloseReplicationStreams,
             ],
             "no SaveVote because the higher vote is not yet granted by this node"
         );
@@ -211,7 +209,12 @@ fn test_handle_vote_resp_equal_vote() -> anyhow::Result<()> {
         assert_eq!(
             vec![
                 Command::RebuildReplicationStreams {
-                    targets: vec![ReplicationProgress(2, ProgressEntry::empty(1))],
+                    leader_vote: Vote::new(2, 1).into_committed(),
+                    targets: vec![ReplicationProgress {
+                        target: 2,
+                        target_node: (),
+                        progress: ProgressEntry::empty(StreamId::new(2), 1),
+                    }],
                     close_old_streams: true,
                 },
                 Command::SaveVote {

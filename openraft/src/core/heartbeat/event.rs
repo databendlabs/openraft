@@ -4,7 +4,6 @@ use crate::LogId;
 use crate::RaftTypeConfig;
 use crate::display_ext::DisplayInstantExt;
 use crate::display_ext::DisplayOptionExt;
-use crate::replication::ReplicationSessionId;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::LogIdOf;
 
@@ -19,13 +18,6 @@ where C: RaftTypeConfig
     /// The Leader uses this sending time to calculate the quorum acknowledge time, but not the
     /// receiving timestamp.
     pub(crate) time: InstantOf<C>,
-
-    /// The vote of the Leader that submits this heartbeat and the log id of the cluster config.
-    ///
-    /// The response that matches this session id is considered as a valid response.
-    /// Otherwise, it is considered as an outdated response from older leader or older cluster
-    /// membership config and will be ignored.
-    pub(crate) session_id: ReplicationSessionId<C>,
 
     /// The last known matching log id that has been confirmed replicated to the target follower.
     ///
@@ -46,9 +38,8 @@ where C: RaftTypeConfig
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "(time={}, leader_vote: {}, matching: {}, committed: {})",
+            "(time={}, matching: {}, committed: {})",
             self.time.display(),
-            self.session_id,
             self.matching.display(),
             self.committed.display()
         )

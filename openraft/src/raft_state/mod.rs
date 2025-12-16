@@ -39,6 +39,7 @@ pub(crate) use log_state_reader::LogStateReader;
 pub use membership_state::MembershipState;
 pub(crate) use vote_state_reader::VoteStateReader;
 
+use crate::base::shared_id_generator::SharedIdGenerator;
 use crate::display_ext::DisplayOptionExt;
 use crate::entry::RaftEntry;
 use crate::entry::raft_entry_ext::RaftEntryExt;
@@ -91,6 +92,8 @@ where C: RaftTypeConfig
     /// If a log is in use by a replication task, the purge is postponed and is stored in this
     /// field.
     pub(crate) purge_upto: Option<LogIdOf<C>>,
+
+    pub(crate) progress_id_gen: SharedIdGenerator,
 }
 
 /// This impl is only for testing, require in the test NodeId has default value.
@@ -112,6 +115,7 @@ where
             server_state: ServerState::default(),
             io_state: Valid::new(IOState::default()),
             purge_upto: None,
+            progress_id_gen: Default::default(),
         }
     }
 }
@@ -213,6 +217,7 @@ where C: RaftTypeConfig
             server_state: ServerState::default(),
             io_state: Valid::new(IOState::default()),
             purge_upto: None,
+            progress_id_gen: Default::default(),
         }
     }
 
@@ -488,6 +493,7 @@ where C: RaftTypeConfig
             em.to_quorum_set(),
             em.learner_ids(),
             last_leader_log_ids,
+            self.progress_id_gen.clone(),
         )
     }
 

@@ -28,6 +28,7 @@ use crate::storage::RaftLogStorage;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::EntryOf;
 use crate::type_config::alias::LogIdOf;
+use crate::vote::RaftVote;
 
 /// Mutable state for generating AppendEntries requests in a replication stream.
 ///
@@ -88,7 +89,7 @@ where
             }
         };
 
-        let belonging_leader = self.replication_context.session_id.leader_id().clone();
+        let belonging_leader = self.replication_context.leader_vote.leader_id().clone();
         let accepted_io: IOId<C> = self.event_watcher.io_accepted_rx.borrow_watched().clone();
         let current_leader = accepted_io.leader_id().clone();
         if current_leader != belonging_leader {
@@ -103,7 +104,7 @@ where
         self.update_log_id_range(sending_range.last);
 
         let payload = AppendEntriesRequest {
-            vote: self.replication_context.session_id.vote(),
+            vote: self.replication_context.leader_vote.clone().into_vote(),
             prev_log_id: sending_range.prev.clone(),
             leader_commit: self.event_watcher.committed_rx.borrow_watched().clone(),
             entries,
