@@ -15,6 +15,7 @@ use crate::display_ext::DisplayOptionExt;
 use crate::engine::EngineConfig;
 use crate::progress::entry::update::Updater;
 use crate::progress::inflight::Inflight;
+use crate::progress::stream_id::StreamId;
 use crate::raft_state::LogStateReader;
 use crate::type_config::alias::LogIdOf;
 
@@ -24,6 +25,8 @@ use crate::type_config::alias::LogIdOf;
 pub(crate) struct ProgressEntry<C>
 where C: RaftTypeConfig
 {
+    pub(crate) stream_id: StreamId,
+
     /// The id of the last matching log on the target following node.
     pub(crate) matching: Option<LogIdOf<C>>,
 
@@ -49,8 +52,9 @@ impl<C> ProgressEntry<C>
 where C: RaftTypeConfig
 {
     #[allow(dead_code)]
-    pub(crate) fn new(matching: Option<LogIdOf<C>>) -> Self {
+    pub(crate) fn testing_new(matching: Option<LogIdOf<C>>) -> Self {
         Self {
+            stream_id: StreamId::new(0),
             matching: matching.clone(),
             inflight: Inflight::None,
             searching_end: matching.next_index(),
@@ -61,8 +65,9 @@ where C: RaftTypeConfig
     /// Create a progress entry that does not have any matching log id.
     ///
     /// It's going to initiate a binary search to find the minimal matching log id.
-    pub(crate) fn empty(end: u64) -> Self {
+    pub(crate) fn empty(stream_id: StreamId, end: u64) -> Self {
         Self {
+            stream_id,
             matching: None,
             inflight: Inflight::None,
             searching_end: end,
@@ -210,10 +215,11 @@ where C: RaftTypeConfig
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "{{[{}, {}), inflight:{}}}",
+            "{{P({})[{}, {}), inflight:{}}}",
+            self.stream_id,
             self.matching().display(),
             self.searching_end,
-            self.inflight
+            self.inflight,
         )
     }
 }

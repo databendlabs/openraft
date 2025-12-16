@@ -19,10 +19,12 @@ use crate::progress::Inflight;
 use crate::progress::Progress;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::inflight_id::InflightId;
+use crate::progress::stream_id::StreamId;
 use crate::replication::payload::Payload;
 use crate::replication::replicate::Replicate;
 use crate::type_config::TypeConfigExt;
 use crate::utime::Leased;
+use crate::vote::raft_vote::RaftVoteExt;
 
 fn m01() -> Membership<UTConfig> {
     Membership::<UTConfig>::new_with_defaults(vec![btreeset! {0,1}], [])
@@ -86,9 +88,18 @@ fn test_leader_append_membership_for_leader() -> anyhow::Result<()> {
         vec![
             //
             Command::RebuildReplicationStreams {
+                leader_vote: Vote::new(6, 2).into_committed(),
                 targets: vec![
-                    ReplicationProgress(3, ProgressEntry::empty(0)),
-                    ReplicationProgress(4, ProgressEntry::empty(0))
+                    ReplicationProgress {
+                        target: 3,
+                        target_node: (),
+                        progress: ProgressEntry::empty(StreamId::new(2), 0),
+                    },
+                    ReplicationProgress {
+                        target: 4,
+                        target_node: (),
+                        progress: ProgressEntry::empty(StreamId::new(5), 0),
+                    }
                 ], /* node-2 is leader,
                     * won't be removed */
                 close_old_streams: false,
@@ -137,18 +148,18 @@ fn test_leader_append_membership_update_learner_process() -> anyhow::Result<()> 
     eng.testing_new_leader();
 
     if let Some(l) = &mut eng.leader.as_mut() {
-        assert_eq!(&ProgressEntry::empty(11), l.progress.get(&4));
-        assert_eq!(&ProgressEntry::empty(11), l.progress.get(&5));
+        assert_eq!(&ProgressEntry::empty(StreamId::new(3), 11), l.progress.get(&4));
+        assert_eq!(&ProgressEntry::empty(StreamId::new(4), 11), l.progress.get(&5));
 
-        let p = ProgressEntry::new(Some(log_id(1, 1, 4)));
+        let p = ProgressEntry::testing_new(Some(log_id(1, 1, 4)));
         let _ = l.progress.update(&4, p.clone());
         assert_eq!(&p, l.progress.get(&4));
 
-        let p = ProgressEntry::new(Some(log_id(1, 1, 5)));
+        let p = ProgressEntry::testing_new(Some(log_id(1, 1, 5)));
         let _ = l.progress.update(&5, p.clone());
         assert_eq!(&p, l.progress.get(&5));
 
-        let p = ProgressEntry::new(Some(log_id(1, 1, 3)));
+        let p = ProgressEntry::testing_new(Some(log_id(1, 1, 3)));
         let _ = l.progress.update(&3, p.clone());
         assert_eq!(&p, l.progress.get(&3));
     } else {
@@ -168,21 +179,21 @@ fn test_leader_append_membership_update_learner_process() -> anyhow::Result<()> 
     if let Some(l) = &mut eng.leader.as_mut() {
         // Progress entries with matching.next_index() == searching_end enter pipeline mode
         assert_eq!(
-            &ProgressEntry::new(Some(log_id(1, 1, 4)))
+            &ProgressEntry::testing_new(Some(log_id(1, 1, 4)))
                 .with_inflight(Inflight::logs_since(Some(log_id(1, 1, 4)), InflightId::new(1))),
             l.progress.get(&4),
             "learner-4 progress should be transferred to voter progress (pipeline mode)"
         );
 
         assert_eq!(
-            &ProgressEntry::new(Some(log_id(1, 1, 3)))
+            &ProgressEntry::testing_new(Some(log_id(1, 1, 3)))
                 .with_inflight(Inflight::logs_since(Some(log_id(1, 1, 3)), InflightId::new(2))),
             l.progress.get(&3),
             "voter-3 progress should be transferred to learner progress (pipeline mode)"
         );
 
         assert_eq!(
-            &ProgressEntry::new(Some(log_id(1, 1, 5)))
+            &ProgressEntry::testing_new(Some(log_id(1, 1, 5)))
                 .with_inflight(Inflight::logs_since(Some(log_id(1, 1, 5)), InflightId::new(3))),
             l.progress.get(&5),
             "learner-5 has previous value (pipeline mode)"
@@ -191,7 +202,11 @@ fn test_leader_append_membership_update_learner_process() -> anyhow::Result<()> 
         // Node 6 is new, with matching=None and searching_end=11
         // matching.next_index()=0 != searching_end=11, so NOT pipeline mode
         assert_eq!(
-            &ProgressEntry::empty(11).with_inflight(Inflight::logs(None, Some(log_id(5, 1, 10)), InflightId::new(4))),
+            &ProgressEntry::empty(StreamId::new(9), 11).with_inflight(Inflight::logs(
+                None,
+                Some(log_id(5, 1, 10)),
+                InflightId::new(4)
+            )),
             l.progress.get(&6),
             "node-6 is new, not pipeline mode"
         );

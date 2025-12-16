@@ -58,6 +58,7 @@ use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::JoinHandleOf;
 use crate::type_config::alias::MutexOf;
 use crate::type_config::async_runtime::mpsc::MpscSender;
+use crate::vote::RaftVote;
 
 /// A task responsible for sending replication events to a target follower in the Raft cluster.
 ///
@@ -118,7 +119,7 @@ where
     ) -> JoinHandleOf<C, Result<(), ReplicationClosed>> {
         tracing::debug!(
             "spawn replication: session_id={}, target={}, committed={}, matching={}",
-            replication_context.session_id,
+            replication_context.stream_id,
             replication_context.target,
             progress.local_committed.display(),
             progress.remote_matched.display()
@@ -194,7 +195,7 @@ where
 
             let accepted_io: IOId<C> = self.event_watcher.io_accepted_rx.borrow_watched().clone();
             let current_leader = accepted_io.leader_id().clone();
-            let belonging_leader = self.replication_context.session_id.leader_id().clone();
+            let belonging_leader = self.replication_context.leader_vote.leader_id().clone();
             if current_leader != belonging_leader {
                 tracing::info!(
                     "ReplicationCore: Leader changed from {} to {}, quit replication",
@@ -323,7 +324,7 @@ where
                                 .send(Notification::HigherVote {
                                     target: self.replication_context.target.clone(),
                                     higher,
-                                    leader_vote: self.replication_context.session_id.committed_vote(),
+                                    leader_vote: self.replication_context.leader_vote.clone(),
                                 })
                                 .await
                                 .ok();
@@ -371,7 +372,6 @@ where
                 progress: Progress {
                     target: self.replication_context.target.clone(),
                     result: Err(err.to_string()),
-                    session_id: self.replication_context.session_id.clone(),
                 },
 
                 inflight_id: self.inflight_id,
@@ -390,7 +390,7 @@ where
             .tx_notify
             .send({
                 Notification::HeartbeatProgress {
-                    session_id: self.replication_context.session_id.clone(),
+                    stream_id: self.replication_context.stream_id,
                     target: self.replication_context.target.clone(),
                     sending_time,
                 }
@@ -431,7 +431,6 @@ where
             .send({
                 Notification::ReplicationProgress {
                     progress: Progress {
-                        session_id: self.replication_context.session_id.clone(),
                         target: self.replication_context.target.clone(),
                         result: Ok(replication_result.clone()),
                     },

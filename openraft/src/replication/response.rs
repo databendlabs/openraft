@@ -3,7 +3,6 @@ use std::fmt;
 use crate::RaftTypeConfig;
 use crate::display_ext::DisplayOptionExt;
 use crate::display_ext::DisplayResultExt;
-use crate::replication::ReplicationSessionId;
 use crate::type_config::alias::LogIdOf;
 
 /// The response of replication command.
@@ -26,15 +25,6 @@ where C: RaftTypeConfig
     ///
     /// The result also tracks the time when this request is sent.
     pub(crate) result: Result<ReplicationResult<C>, String>,
-
-    /// In which session this message is sent.
-    ///
-    /// This session id identifies a certain leader(by vote) that is replicating to a certain
-    /// group of nodes.
-    ///
-    /// A message should be discarded if it does not match the present vote and
-    /// membership_log_id.
-    pub(crate) session_id: ReplicationSessionId<C>,
 }
 
 impl<C> fmt::Display for Progress<C>
@@ -43,10 +33,9 @@ where C: RaftTypeConfig
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "replication::Progress: target={}, result: {}, session_id: {}",
+            "replication::Progress: target={}, result: {}",
             self.target,
             self.result.display(),
-            self.session_id
         )
     }
 }

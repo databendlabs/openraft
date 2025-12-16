@@ -5,9 +5,10 @@ use crate::Config;
 use crate::RaftTypeConfig;
 use crate::core::SharedRuntimeState;
 use crate::core::notification::Notification;
-use crate::replication::ReplicationSessionId;
+use crate::progress::stream_id::StreamId;
 use crate::type_config::alias::MpscSenderOf;
 use crate::type_config::alias::WatchReceiverOf;
+use crate::vote::committed::CommittedVote;
 
 /// Shared context for replication tasks.
 ///
@@ -25,8 +26,11 @@ where C: RaftTypeConfig
     /// The ID of the target Raft node which replication events are to be sent to.
     pub(crate) target: C::NodeId,
 
+    /// The leader this replication works for
+    pub(crate) leader_vote: CommittedVote<C>,
+
     /// Identifies which session this replication belongs to.
-    pub(crate) session_id: ReplicationSessionId<C>,
+    pub(crate) stream_id: StreamId,
 
     /// The Raft's runtime config.
     pub(crate) config: Arc<Config>,
@@ -48,7 +52,7 @@ impl<C> fmt::Display for ReplicationContext<C>
 where C: RaftTypeConfig
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{{id: {}, target: {}, {}}}", self.id, self.target, self.session_id)
+        write!(f, "{{id: {}, target: {}, {}}}", self.id, self.target, self.stream_id)
     }
 }
 
@@ -59,7 +63,7 @@ where C: RaftTypeConfig
         f.debug_struct("ReplicationContext")
             .field("id", &self.id)
             .field("target", &self.target)
-            .field("session_id", &self.session_id)
+            .field("session_id", &self.stream_id)
             .field("config", &self.config)
             .finish_non_exhaustive()
     }

@@ -117,7 +117,7 @@ where
                         .send(Notification::HigherVote {
                             target: self.replication_context.target,
                             higher: h.higher,
-                            leader_vote: self.replication_context.session_id.committed_vote(),
+                            leader_vote: self.replication_context.leader_vote.clone(),
                         })
                         .await
                         .ok();
@@ -203,16 +203,15 @@ where
             ReplicationClosed::new("RaftCore is dropped")
         };
 
-        let vote = self.replication_context.session_id.vote();
+        let sender_vote = self.replication_context.leader_vote.clone().into_vote();
 
         let start_time = C::now();
 
-        let resp = self.network.full_snapshot(vote, snapshot, cancel, option).await?;
+        let resp = self.network.full_snapshot(sender_vote.clone(), snapshot, cancel, option).await?;
 
         tracing::info!("finished sending full_snapshot, resp: {}", resp);
 
         // Handle response conditions.
-        let sender_vote = self.replication_context.session_id.vote();
         if resp.vote.as_ref_vote() > sender_vote.as_ref_vote() {
             return Err(ReplicationError::HigherVote(HigherVote {
                 higher: resp.vote,
@@ -230,7 +229,7 @@ where
             .tx_notify
             .send({
                 Notification::HeartbeatProgress {
-                    session_id: self.replication_context.session_id.clone(),
+                    stream_id: self.replication_context.stream_id,
                     target: self.replication_context.target.clone(),
                     sending_time,
                 }
@@ -252,7 +251,6 @@ where
             .send({
                 Notification::ReplicationProgress {
                     progress: Progress {
-                        session_id: self.replication_context.session_id.clone(),
                         target: self.replication_context.target.clone(),
                         result: Ok(replication_result.clone()),
                     },

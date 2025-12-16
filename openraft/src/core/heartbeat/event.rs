@@ -25,6 +25,7 @@ where C: RaftTypeConfig
     /// The response that matches this session id is considered as a valid response.
     /// Otherwise, it is considered as an outdated response from older leader or older cluster
     /// membership config and will be ignored.
+    // TODO: remove this
     pub(crate) session_id: ReplicationSessionId<C>,
 
     /// The last known matching log id that has been confirmed replicated to the target follower.
