@@ -24,6 +24,7 @@ use openraft::storage::Snapshot;
 use openraft::Entry;
 use openraft::EntryPayload;
 use openraft::OptionalSend;
+use openraft::RaftTypeConfig;
 use openraft::SnapshotMeta;
 use openraft::StoredMembership;
 use openraft::Vote;
@@ -54,13 +55,24 @@ mod leader_id_mode {
     pub use openraft::impls::leader_id_std::LeaderId;
 }
 
-openraft::declare_raft_types!(
-    pub TypeConfig:
-        D = ClientRequest,
-        R = ClientResponse,
-        Node = (),
-        LeaderId = leader_id_mode::LeaderId<TypeConfig>,
-);
+#[derive(Debug, Clone, Copy, Default, Eq, PartialEq, Ord, PartialOrd)]
+pub struct TypeConfig;
+
+impl RaftTypeConfig for TypeConfig {
+    type D = ClientRequest;
+    type R = ClientResponse;
+    type NodeId = u64;
+    type Node = ();
+    type Term = u64;
+    type LeaderId = leader_id_mode::LeaderId<TypeConfig>;
+    type Vote = Vote<Self>;
+    type Entry = Entry<Self>;
+    type SnapshotData = Cursor<Vec<u8>>;
+    type Responder<T>
+        = openraft::impls::OneshotResponder<Self, T>
+    where T: Send + 'static;
+    type AsyncRuntime = openraft::impls::TokioRuntime;
+}
 
 #[derive(Debug)]
 pub struct StoredSnapshot {
