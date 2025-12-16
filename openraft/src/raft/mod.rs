@@ -36,6 +36,7 @@ use std::time::Duration;
 
 use core_state::CoreState;
 use derive_more::Display;
+use futures::FutureExt;
 use linearizable_read::Linearizer;
 pub use message::AppendEntriesRequest;
 pub use message::AppendEntriesResponse;
@@ -63,6 +64,7 @@ use crate::RaftState;
 pub use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::StorageHelper;
+use crate::async_runtime::MpscWeakSender;
 use crate::async_runtime::OneshotSender;
 use crate::async_runtime::mpsc::MpscSender;
 use crate::async_runtime::watch::WatchReceiver;
@@ -323,16 +325,21 @@ where C: RaftTypeConfig
 ///
 /// This task reads IO completion results from a Watch channel and forwards them
 /// to the RaftCore notification channel, translating IOId and storage errors to notifications.
+///
+/// To reduce wakeup overhead, notifications are batched: at most one notification
+/// is forwarded per `BATCH_INTERVAL`. When a change arrives, the forwarder waits
+/// until the interval expires before reading and forwarding the latest value.
 async fn io_completion_forwarder<C>(
     mut rx_io: WatchReceiverOf<C, Result<IOId<C>, StorageError<C>>>,
     weak_tx_notify: MpscWeakSenderOf<C, Notification<C>>,
 ) where
     C: RaftTypeConfig,
 {
-    use crate::async_runtime::MpscWeakSender;
-    use crate::async_runtime::watch::WatchReceiver;
+    const BATCH_INTERVAL: Duration = Duration::from_micros(1);
 
     loop {
+        let deadline = C::now() + BATCH_INTERVAL;
+
         // Wait for IO completion notification
         if rx_io.changed().await.is_err() {
             // Watch sender dropped, exit forwarder
@@ -340,7 +347,15 @@ async fn io_completion_forwarder<C>(
             break;
         }
 
-        // Read the current value
+        let now = C::now();
+        if now < deadline {
+            C::sleep_until(deadline).await;
+
+            // Drain all the changed events.
+            let _ = rx_io.changed().now_or_never();
+        }
+
+        // Read the latest value after batching interval
         let result = {
             let borrowed = rx_io.borrow_watched();
             borrowed.clone()
