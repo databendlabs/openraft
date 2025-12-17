@@ -95,7 +95,7 @@ async fn heartbeat_metrics() -> Result<()> {
         let now = TypeConfig::now();
         leader.trigger().heartbeat().await?;
 
-        let metrics = leader
+        leader
             .wait(timeout())
             .metrics(
                 |metrics| {
@@ -121,6 +121,7 @@ async fn heartbeat_metrics() -> Result<()> {
         );
         TypeConfig::sleep(Duration::from_millis(500)).await;
 
+        let metrics = leader.metrics().borrow().clone();
         let heartbeat = metrics
             .heartbeat
             .as_ref()
