@@ -9,6 +9,7 @@ use crate::display_ext::DisplayOptionExt;
 use crate::display_ext::DisplayResultExt;
 use crate::display_ext::DisplaySliceExt;
 use crate::engine::CommandKind;
+use crate::engine::CommandName;
 use crate::engine::replication_progress::TargetProgress;
 use crate::error::InitializeError;
 use crate::error::InstallSnapshotError;
@@ -257,6 +258,29 @@ where
 impl<C> Command<C>
 where C: RaftTypeConfig
 {
+    #[allow(dead_code)]
+    #[rustfmt::skip]
+    pub(crate) fn name(&self) -> CommandName {
+        match self {
+            Command::UpdateIOProgress { .. }          => CommandName::UpdateIOProgress,
+            Command::AppendEntries { .. }             => CommandName::AppendEntries,
+            Command::ReplicateCommitted { .. }        => CommandName::ReplicateCommitted,
+            Command::BroadcastHeartbeat { .. }        => CommandName::BroadcastHeartbeat,
+            Command::SaveCommittedAndApply { .. }     => CommandName::SaveCommittedAndApply,
+            Command::Replicate { .. }                 => CommandName::Replicate,
+            Command::ReplicateSnapshot { .. }         => CommandName::ReplicateSnapshot,
+            Command::BroadcastTransferLeader { .. }   => CommandName::BroadcastTransferLeader,
+            Command::CloseReplicationStreams          => CommandName::CloseReplicationStreams,
+            Command::RebuildReplicationStreams { .. } => CommandName::RebuildReplicationStreams,
+            Command::SaveVote { .. }                  => CommandName::SaveVote,
+            Command::SendVote { .. }                  => CommandName::SendVote,
+            Command::PurgeLog { .. }                  => CommandName::PurgeLog,
+            Command::TruncateLog { .. }               => CommandName::TruncateLog,
+            Command::StateMachine { command }          => CommandName::StateMachine(command.name()),
+            Command::Respond { .. }                   => CommandName::Respond,
+        }
+    }
+
     #[allow(dead_code)]
     #[rustfmt::skip]
     pub(crate) fn kind(&self) -> CommandKind {

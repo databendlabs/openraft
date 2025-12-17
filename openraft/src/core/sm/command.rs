@@ -5,6 +5,7 @@ use std::fmt::Formatter;
 
 use crate::RaftTypeConfig;
 use crate::base::BoxMaybeAsyncOnceMut;
+use crate::engine::SMCommandName;
 use crate::raft::responder::core_responder::CoreResponder;
 use crate::raft_state::IOId;
 use crate::raft_state::io_state::log_io_id::LogIOId;
@@ -68,6 +69,18 @@ where C: RaftTypeConfig
 impl<C> Command<C>
 where C: RaftTypeConfig
 {
+    #[allow(dead_code)]
+    pub(crate) fn name(&self) -> SMCommandName {
+        match self {
+            Command::BuildSnapshot => SMCommandName::BuildSnapshot,
+            Command::GetSnapshot { .. } => SMCommandName::GetSnapshot,
+            Command::BeginReceivingSnapshot { .. } => SMCommandName::BeginReceivingSnapshot,
+            Command::InstallFullSnapshot { .. } => SMCommandName::InstallFullSnapshot,
+            Command::Apply { .. } => SMCommandName::Apply,
+            Command::Func { .. } => SMCommandName::Func,
+        }
+    }
+
     pub(crate) fn build_snapshot() -> Self {
         Command::BuildSnapshot
     }
