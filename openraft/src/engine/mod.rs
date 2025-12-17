@@ -28,6 +28,7 @@
 //! ```
 
 mod command_kind;
+mod command_name;
 mod engine_config;
 mod engine_impl;
 mod engine_output;
@@ -62,6 +63,8 @@ pub(crate) use command::Condition;
 pub(crate) use command::Respond;
 pub(crate) use command::ValueSender;
 pub(crate) use command_kind::CommandKind;
+pub(crate) use command_name::CommandName;
+pub(crate) use command_name::SMCommandName;
 pub(crate) use engine_config::EngineConfig;
 pub(crate) use engine_impl::Engine;
 pub(crate) use engine_output::EngineOutput;
