@@ -12,7 +12,7 @@ use crate::async_runtime::watch::WatchSender;
 use crate::core::heartbeat::event::HeartbeatEvent;
 use crate::core::heartbeat::worker::HeartbeatWorker;
 use crate::core::notification::Notification;
-use crate::engine::ReplicationProgress;
+use crate::engine::TargetProgress;
 use crate::progress::stream_id::StreamId;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::JoinHandleOf;
@@ -77,7 +77,7 @@ where C: RaftTypeConfig
         leader_vote: CommittedVote<C>,
         network_factory: &mut NF,
         tx_notification: &MpscSenderOf<C, Notification<C>>,
-        progresses: impl IntoIterator<Item = &ReplicationProgress<C>>,
+        progresses: impl IntoIterator<Item = &TargetProgress<C>>,
         close_old: bool,
     ) where
         NF: RaftNetworkFactory<C>,

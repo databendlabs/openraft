@@ -16,7 +16,7 @@ use crate::MembershipState;
 use crate::Vote;
 use crate::engine::Command;
 use crate::engine::Engine;
-use crate::engine::ReplicationProgress;
+use crate::engine::TargetProgress;
 use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;
 use crate::entry::RaftEntry;
@@ -278,7 +278,7 @@ fn test_leader_append_entries_with_membership_log() -> anyhow::Result<()> {
             },
             Command::RebuildReplicationStreams {
                 leader_vote: Vote::new(3, 1).into_committed(),
-                targets: vec![ReplicationProgress {
+                targets: vec![TargetProgress {
                     target: 2,
                     target_node: (),
                     progress: ProgressEntry::empty(StreamId::new(8), 7),

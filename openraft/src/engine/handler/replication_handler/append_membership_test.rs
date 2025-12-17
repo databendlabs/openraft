@@ -12,7 +12,7 @@ use crate::core::ServerState;
 use crate::engine::Command;
 use crate::engine::Engine;
 use crate::engine::LogIdList;
-use crate::engine::ReplicationProgress;
+use crate::engine::TargetProgress;
 use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;
 use crate::progress::Inflight;
@@ -90,12 +90,12 @@ fn test_leader_append_membership_for_leader() -> anyhow::Result<()> {
             Command::RebuildReplicationStreams {
                 leader_vote: Vote::new(6, 2).into_committed(),
                 targets: vec![
-                    ReplicationProgress {
+                    TargetProgress {
                         target: 3,
                         target_node: (),
                         progress: ProgressEntry::empty(StreamId::new(2), 0),
                     },
-                    ReplicationProgress {
+                    TargetProgress {
                         target: 4,
                         target_node: (),
                         progress: ProgressEntry::empty(StreamId::new(5), 0),

@@ -10,7 +10,7 @@ use crate::display_ext::DisplayResultExt;
 use crate::engine::Command;
 use crate::engine::EngineConfig;
 use crate::engine::EngineOutput;
-use crate::engine::ReplicationProgress;
+use crate::engine::TargetProgress;
 use crate::engine::handler::log_handler::LogHandler;
 use crate::error::NodeNotFound;
 use crate::error::Operation;
@@ -328,7 +328,7 @@ where C: RaftTypeConfig
 
                 let target_node = membership.get_node(&item.id).unwrap().clone();
 
-                targets.push(ReplicationProgress {
+                targets.push(TargetProgress {
                     target: item.id.clone(),
                     target_node,
                     progress: item.val.clone(),
