@@ -18,6 +18,7 @@ async fn snapshot_to_unreachable_node_should_not_block() -> Result<()> {
             purge_batch_size: 1,
             max_in_snapshot_log_to_keep: 0,
             enable_heartbeat: false,
+            enable_elect: false,
             ..Default::default()
         }
         .validate()?,
