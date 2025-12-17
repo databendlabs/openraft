@@ -181,12 +181,13 @@ async fn do_bench(bench_config: &BenchConfig) -> anyhow::Result<()> {
     let display = stats.with_mut(|s| s.display());
     eprintln!("[{:>6.2}s] Final: {}", elapsed.as_secs_f64(), display);
 
+    let millis = elapsed.as_millis().max(1);
     println!(
         "{}: time: {:?}, ns/op: {}, op/ms: {}",
         bench_config,
         elapsed,
         elapsed.as_nanos() / (total as u128),
-        (total as u128) / elapsed.as_millis(),
+        (total as u128) / millis,
     );
 
     Ok(())

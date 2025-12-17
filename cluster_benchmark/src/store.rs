@@ -14,6 +14,7 @@ use futures::Stream;
 use openraft::alias::LogIdOf;
 use openraft::alias::SnapshotDataOf;
 use openraft::entry::RaftEntry;
+use openraft::storage::EntryResponder;
 use openraft::storage::IOFlushed;
 use openraft::storage::LogState;
 use openraft::storage::RaftLogReader;
@@ -28,7 +29,6 @@ use openraft::RaftTypeConfig;
 use openraft::SnapshotMeta;
 use openraft::StoredMembership;
 use openraft::Vote;
-use openraft::storage::EntryResponder;
 use serde::Deserialize;
 use serde::Serialize;
 use tokio::sync::RwLock;
@@ -153,7 +153,7 @@ impl RaftLogReader<TypeConfig> for Arc<LogStore> {
     }
 
     async fn read_vote(&mut self) -> Result<Option<Vote<TypeConfig>>, io::Error> {
-        Ok(self.vote.read().await.clone())
+        Ok(*self.vote.read().await)
     }
 }
 
@@ -167,7 +167,7 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<StateMachineStore> {
         {
             // Serialize the data of the state machine.
             let sm = self.sm.read().await;
-            data = serde_json::to_vec(&*sm).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+            data = serde_json::to_vec(&*sm).map_err(io::Error::other)?;
 
             last_applied_log = sm.last_applied_log;
             last_membership = sm.last_membership.clone();
@@ -211,19 +211,11 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<StateMachineStore> {
 impl RaftLogStorage<TypeConfig> for Arc<LogStore> {
     async fn get_log_state(&mut self) -> Result<LogState<TypeConfig>, io::Error> {
         let log = self.log.read().await;
-        let last_serialized = log.iter().rev().next().map(|(_, ent)| ent);
+        let last = log.iter().next_back().map(|(_, ent)| ent.log_id());
 
-        let last = match last_serialized {
-            None => None,
-            Some(ent) => Some(ent.log_id()),
-        };
+        let last_purged = *self.last_purged_log_id.read().await;
 
-        let last_purged = self.last_purged_log_id.read().await.clone();
-
-        let last = match last {
-            None => last_purged,
-            Some(x) => Some(x),
-        };
+        let last = last.or(last_purged);
 
         Ok(LogState {
             last_purged_log_id: last_purged,
@@ -327,7 +319,7 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
         // Update the state machine.
         {
             let new_sm: StateMachine =
-                serde_json::from_slice(&new_snapshot.data).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+                serde_json::from_slice(&new_snapshot.data).map_err(io::Error::other)?;
             let mut sm = self.sm.write().await;
             *sm = new_sm;
         }
