@@ -313,7 +313,7 @@ where C: RaftTypeConfig
     /// `retain` specifies whether to retain the removed voters as learners, i.e., nodes that
     /// continue to receive log replication from the leader.
     pub(crate) fn change(mut self, change: ChangeMembers<C>, retain: bool) -> Result<Self, ChangeMembershipError<C>> {
-        tracing::debug!(change = debug(&change), "{}", func_name!());
+        tracing::debug!("{}: change: {:?}", func_name!(), change);
 
         let Membership { mut configs, nodes } = self.clone().compute_target_membership(change);
 
@@ -323,7 +323,7 @@ where C: RaftTypeConfig
         self.nodes = nodes;
         let new_membership = self.next_coherent(target_voter_ids, retain);
 
-        tracing::debug!(new_membership = display(&new_membership), "new membership");
+        tracing::debug!("new membership: {}", new_membership);
 
         new_membership.ensure_valid()?;
 

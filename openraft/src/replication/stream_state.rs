@@ -76,7 +76,7 @@ where
         // In this case, still send one RPC, and set log_id_range in `update_log_id_range()`
         let log_id_range = self.get_log_id_range().await?;
 
-        tracing::debug!("{} log_id_range: {}", func_name!(), log_id_range);
+        tracing::debug!("{}: log_id_range: {}", func_name!(), log_id_range);
 
         let res = self.read_log_entries(log_id_range).await;
         let (entries, sending_range) = match res {

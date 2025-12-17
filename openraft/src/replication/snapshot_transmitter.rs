@@ -103,15 +103,15 @@ where
                 }
             };
 
-            tracing::error!("ReplicationError: {}; when (sending snapshot)", error);
+            tracing::error!("ReplicationError while sending snapshot: {}", error);
 
             match error {
                 ReplicationError::Closed(closed) => {
-                    tracing::info!("Snapshot transmitting is canceled: {}", closed);
+                    tracing::info!("snapshot transmission canceled: {}", closed);
                     return;
                 }
                 ReplicationError::HigherVote(h) => {
-                    tracing::info!("Snapshot transmitting has seen a higher vote: {}, notify and quit", h);
+                    tracing::info!("snapshot transmission aborted, higher vote seen: {}", h);
                     self.replication_context
                         .tx_notify
                         .send(Notification::HigherVote {
@@ -158,7 +158,7 @@ where
                                 tracing::debug!("backoff timeout");
                             }
                             _ = recv.fuse() => {
-                                tracing::info!("Snapshot transmitting is canceled by RaftCore");
+                                tracing::info!("snapshot transmission canceled by RaftCore");
                                 return;
                             }
                         }
@@ -170,7 +170,7 @@ where
 
     async fn read_and_send_snapshot(&mut self, ith: i32) -> Result<(), ReplicationError<C>> {
         let snapshot = self.snapshot_reader.get_snapshot().await.map_err(|reason| {
-            tracing::warn!(error = display(&reason), "failed to get snapshot from state machine");
+            tracing::warn!("failed to get snapshot from state machine: {}", reason);
             ReplicationClosed::new(reason)
         })?;
 
@@ -240,10 +240,10 @@ where
 
     async fn notify_progress(&mut self, replication_result: ReplicationResult<C>) {
         tracing::debug!(
-            target = display(self.replication_context.target.clone()),
-            result = display(&replication_result),
-            "{}",
-            func_name!()
+            "{}: target: {}, result: {}",
+            func_name!(),
+            self.replication_context.target.clone(),
+            replication_result
         );
 
         self.replication_context

@@ -113,7 +113,7 @@ mod tokio_rt {
                         Err(err) => {
                             let err: RPCError<C, RaftError<C, InstallSnapshotError>> = err;
 
-                            tracing::warn!(error=%err, "error sending InstallSnapshot RPC to target");
+                            tracing::warn!("failed to send InstallSnapshot RPC: {}", err);
 
                             match err {
                                 RPCError::Timeout(_) => {}
@@ -143,7 +143,7 @@ mod tokio_rt {
                         }
                     },
                     Err(err) => {
-                        tracing::warn!(error=%err, "timeout while sending InstallSnapshot RPC to target");
+                        tracing::warn!("timeout sending InstallSnapshot RPC: {}", err);
                         continue;
                     }
                 };
@@ -171,7 +171,7 @@ mod tokio_rt {
             let snapshot_meta = req.meta.clone();
             let done = req.done;
 
-            tracing::info!(req = display(&req), "{}", func_name!());
+            tracing::info!("{}: req: {}", func_name!(), req);
 
             let curr_id = streaming.as_ref().map(|s| s.snapshot_id());
 

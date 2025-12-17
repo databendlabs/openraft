@@ -78,7 +78,7 @@ where C: RaftTypeConfig
     #[since(version = "0.10.0")]
     #[tracing::instrument(level = "debug", skip(self, rpc))]
     pub(crate) async fn vote(&self, rpc: VoteRequest<C>) -> Result<VoteResponse<C>, Fatal<C>> {
-        tracing::info!(rpc = display(&rpc), "Raft::vote()");
+        tracing::info!("Raft::vote(): rpc: {}", rpc);
 
         let (tx, rx) = C::oneshot();
         self.inner.call_core(RaftMsg::RequestVote { rpc, tx }, rx).await
@@ -90,7 +90,7 @@ where C: RaftTypeConfig
         &self,
         rpc: AppendEntriesRequest<C>,
     ) -> Result<AppendEntriesResponse<C>, Fatal<C>> {
-        tracing::debug!(rpc = display(&rpc), "Raft::append_entries");
+        tracing::debug!("Raft::append_entries: rpc: {}", rpc);
 
         let (tx, rx) = C::oneshot();
         self.inner.call_core(RaftMsg::AppendEntries { rpc, tx }, rx).await

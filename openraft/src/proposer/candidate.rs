@@ -98,7 +98,7 @@ where
     pub(crate) fn grant_by(&mut self, target: &C::NodeId) -> bool {
         let granted = *self.progress.update(target, true).expect("target not in quorum set");
 
-        tracing::info!(voting = display(&self), "{}", func_name!());
+        tracing::info!("{}: voting: {}", func_name!(), self);
 
         granted
     }
