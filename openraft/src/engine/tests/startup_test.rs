@@ -12,7 +12,7 @@ use crate::Vote;
 use crate::engine::Command;
 use crate::engine::Engine;
 use crate::engine::LogIdList;
-use crate::engine::ReplicationProgress;
+use crate::engine::TargetProgress;
 use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;
 use crate::entry::RaftEntry;
@@ -78,7 +78,7 @@ fn test_startup_as_leader_without_logs() -> anyhow::Result<()> {
             },
             Command::RebuildReplicationStreams {
                 leader_vote: Vote::new(2, 2).into_committed(),
-                targets: vec![ReplicationProgress {
+                targets: vec![TargetProgress {
                     target: 3,
                     target_node: (),
                     progress: ProgressEntry {
@@ -137,7 +137,7 @@ fn test_startup_as_leader_with_proposed_logs() -> anyhow::Result<()> {
             },
             Command::RebuildReplicationStreams {
                 leader_vote: Vote::new(1, 2).into_committed(),
-                targets: vec![ReplicationProgress {
+                targets: vec![TargetProgress {
                     target: 3,
                     target_node: (),
                     progress: ProgressEntry {
