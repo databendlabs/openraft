@@ -89,8 +89,8 @@ async fn heartbeat_metrics() -> Result<()> {
     let leader = router.get_raft_handle(&0)?;
 
     tracing::info!(log_index, "--- trigger heartbeat; heartbeat metrics refreshes");
-    let refreshed_node1;
-    let refreshed_node2;
+    let n1_hb_ts;
+    let n2_hb_ts;
     {
         let now = TypeConfig::now();
         leader.trigger().heartbeat().await?;
@@ -115,12 +115,18 @@ async fn heartbeat_metrics() -> Result<()> {
             )
             .await?;
 
+        tracing::info!(
+            log_index,
+            "--- sleep 500 ms to drain all ongoing heartbeat notifications"
+        );
+        TypeConfig::sleep(Duration::from_millis(500)).await;
+
         let heartbeat = metrics
             .heartbeat
             .as_ref()
             .expect("expect heartbeat to be Some as metrics come from the leader node");
-        refreshed_node1 = heartbeat.get(&1).unwrap().unwrap();
-        refreshed_node2 = heartbeat.get(&2).unwrap().unwrap();
+        n1_hb_ts = heartbeat.get(&1).unwrap().unwrap();
+        n2_hb_ts = heartbeat.get(&2).unwrap().unwrap();
     }
 
     tracing::info!(log_index, "--- sleep 500 ms, the acked time should not change");
@@ -134,11 +140,11 @@ async fn heartbeat_metrics() -> Result<()> {
             .as_ref()
             .expect("expect heartbeat to be Some as metrics come from the leader node");
 
-        let got_node1 = heartbeat.get(&1).unwrap().unwrap();
-        let got_node2 = heartbeat.get(&2).unwrap().unwrap();
+        let n1_hb_ts2 = heartbeat.get(&1).unwrap().unwrap();
+        let n2_hb_ts2 = heartbeat.get(&2).unwrap().unwrap();
 
-        assert!(got_node1 == refreshed_node1);
-        assert!(got_node2 == refreshed_node2);
+        assert_eq!(n1_hb_ts2, n1_hb_ts);
+        assert_eq!(n2_hb_ts2, n2_hb_ts);
     }
 
     Ok(())
