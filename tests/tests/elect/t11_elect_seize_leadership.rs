@@ -16,6 +16,7 @@ async fn elect_seize_leadership() -> Result<()> {
     let config = Arc::new(
         Config {
             enable_heartbeat: false,
+            enable_elect: false,
             ..Default::default()
         }
         .validate()?,
@@ -28,6 +29,9 @@ async fn elect_seize_leadership() -> Result<()> {
 
     let n0 = router.get_raft_handle(&0)?;
     n0.wait(timeout()).state(ServerState::Leader, "node 0 becomes leader").await?;
+
+    tracing::info!(log_index, "--- sleep to wait for leadership to expire");
+    tokio::time::sleep(Duration::from_secs(2)).await;
 
     tracing::info!(log_index, "--- trigger election on node 1");
     {
