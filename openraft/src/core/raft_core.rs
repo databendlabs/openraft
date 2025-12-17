@@ -246,11 +246,11 @@ where
         match err {
             Fatal::Stopped => { /* Normal quit */ }
             _ => {
-                tracing::error!(error = display(&err), "quit RaftCore::main on error");
+                tracing::error!("RaftCore::main error: {}", err);
             }
         }
 
-        tracing::debug!("update the metrics for shutdown");
+        tracing::debug!("update metrics for shutdown");
         {
             let mut curr = self.tx_metrics.borrow_watched().clone();
             curr.state = ServerState::Shutdown;
@@ -322,7 +322,7 @@ where
                 let _ = tx.send(Ok(resp));
                 return;
             }
-            tracing::debug!("{}: lease expired when do lease read", self.id);
+            tracing::debug!("{}: lease expired during lease read", self.id);
             // we may no longer leader so error out early
             let err = ForwardToLeader::empty();
             let _ = tx.send(Err(err.into()));
@@ -419,11 +419,15 @@ where
                 let (target, stream_result) = match res {
                     Ok(Ok(res)) => res,
                     Ok(Err((target, err))) => {
-                        tracing::error!(target=display(target), error=%err, "timeout while confirming leadership for read request");
+                        tracing::error!(
+                            "timeout while confirming leadership for read request, target: {}, error: {}",
+                            target,
+                            err
+                        );
                         continue;
                     }
                     Err((target, err)) => {
-                        tracing::error!(target = display(target), "fail to join task: {}", err);
+                        tracing::error!("failed to join task: {}, target: {}", err, target);
                         continue;
                     }
                 };
@@ -447,7 +451,7 @@ where
                         .await;
 
                     if let Err(_e) = send_res {
-                        tracing::error!("fail to send HigherVote to RaftCore");
+                        tracing::error!("failed to send HigherVote to RaftCore");
                     }
 
                     // we are no longer leader so error out early
@@ -533,7 +537,7 @@ where
     /// latter is for membership configuration changes.
     #[tracing::instrument(level = "debug", skip_all, fields(id = display(&self.id)))]
     pub fn write_entry(&mut self, entry: C::Entry, resp_tx: Option<CoreResponder<C>>) {
-        tracing::debug!(payload = display(&entry), "write_entry");
+        tracing::debug!("write_entry: payload: {}", entry);
 
         let Some((mut lh, tx)) = self.engine.get_leader_handler_or_reject(resp_tx) else {
             return;
@@ -565,7 +569,7 @@ where
     /// Send a heartbeat message to every follower/learners.
     #[tracing::instrument(level = "debug", skip_all, fields(id = display(&self.id)))]
     pub(crate) fn send_heartbeat(&mut self, emitter: impl fmt::Display) -> bool {
-        tracing::debug!(now = display(C::now().display()), "send_heartbeat");
+        tracing::debug!("send_heartbeat: now: {}", C::now().display());
 
         let Some((mut lh, _)) = self.engine.get_leader_handler_or_reject(None::<WriteResponderOf<C>>) else {
             tracing::debug!(
@@ -707,7 +711,7 @@ where
         let res = self.tx_metrics.send(m);
 
         if let Err(err) = res {
-            tracing::error!(error=%err, id=display(&self.id), "error reporting metrics");
+            tracing::error!("error reporting metrics: error: {}, id: {}", err, &self.id);
         }
     }
 
@@ -723,7 +727,7 @@ where
         member_nodes: BTreeMap<C::NodeId, C::Node>,
         tx: ResultSender<C, (), InitializeError<C>>,
     ) {
-        tracing::debug!(member_nodes = debug(&member_nodes), "{}", func_name!());
+        tracing::debug!("{}: member_nodes: {:?}", func_name!(), member_nodes);
 
         let membership = Membership::from(member_nodes);
 
@@ -1258,7 +1262,7 @@ where
                                     target: target.clone(),
                                     timeout: ttl,
                                 };
-                                tracing::error!({error = %timeout_err}, "timeout");
+                                tracing::error!("timeout: {}", timeout_err);
                                 return;
                             }
                         };
@@ -1273,7 +1277,7 @@ where
                                     })
                                     .await;
                             }
-                            Err(err) => tracing::error!({error=%err, target=display(&target)}, "while requesting vote"),
+                            Err(err) => tracing::error!("while requesting vote, error: {}, target: {}", err, target),
                         }
                     }
                 }
@@ -1312,13 +1316,13 @@ where
                     let res = match tm_res {
                         Ok(res) => res,
                         Err(timeout) => {
-                            tracing::error!({error = display(timeout), target = display(&target)}, "timeout sending transfer_leader");
+                            tracing::error!("timeout sending transfer_leader: {}, target: {}", timeout, target);
                             return;
                         }
                     };
 
                     if let Err(e) = res {
-                        tracing::error!({error = display(e), target = display(&target)}, "error sending transfer_leader");
+                        tracing::error!("error sending transfer_leader: {}, target: {}", e, target);
                     } else {
                         tracing::info!("Done transfer_leader sent to {}", target);
                     }
@@ -1339,7 +1343,7 @@ where
 
     #[tracing::instrument(level = "debug", skip_all)]
     pub(super) fn handle_vote_request(&mut self, req: VoteRequest<C>, tx: VoteTx<C>) {
-        tracing::info!(req = display(&req), func = func_name!());
+        tracing::info!("{}: req: {}", func_name!(), req);
 
         let resp = self.engine.handle_vote_req(req);
         let condition = Some(Condition::IOFlushed {
@@ -1353,7 +1357,7 @@ where
 
     #[tracing::instrument(level = "debug", skip_all)]
     pub(super) fn handle_append_entries_request(&mut self, req: AppendEntriesRequest<C>, tx: AppendEntriesTx<C>) {
-        tracing::debug!(req = display(&req), func = func_name!());
+        tracing::debug!("{}: req: {}", func_name!(), req);
 
         self.engine.handle_append_entries(&req.vote, req.prev_log_id, req.entries, tx);
 
@@ -1374,10 +1378,10 @@ where
             RaftMsg::RequestVote { rpc, tx } => {
                 let now = C::now();
                 tracing::info!(
-                    now = display(now.display()),
-                    vote_request = display(&rpc),
-                    "received RaftMsg::RequestVote: {}",
-                    func_name!()
+                    "received RaftMsg::RequestVote: {}, now: {}, vote_request: {}",
+                    func_name!(),
+                    now.display(),
+                    rpc
                 );
 
                 self.handle_vote_request(rpc, tx);
@@ -1415,20 +1419,16 @@ where
                 self.write_entry(C::Entry::new_normal(LogIdOf::<C>::default(), app_data), responder);
             }
             RaftMsg::Initialize { members, tx } => {
-                tracing::info!(
-                    members = debug(&members),
-                    "received RaftMsg::Initialize: {}",
-                    func_name!()
-                );
+                tracing::info!("received RaftMsg::Initialize: {}, members: {:?}", func_name!(), members);
 
                 self.handle_initialize(members, tx);
             }
             RaftMsg::ChangeMembership { changes, retain, tx } => {
                 tracing::info!(
-                    members = debug(&changes),
-                    retain = debug(&retain),
-                    "received RaftMsg::ChangeMembership: {}",
-                    func_name!()
+                    "received RaftMsg::ChangeMembership: {}, members: {:?}, retain: {:?}",
+                    func_name!(),
+                    changes,
+                    retain
                 );
 
                 self.change_membership(changes, retain, tx);
@@ -1450,7 +1450,7 @@ where
                 }
             }
             RaftMsg::ExternalCommand { cmd } => {
-                tracing::info!(cmd = debug(&cmd), "received RaftMsg::ExternalCommand: {}", func_name!());
+                tracing::info!("{}: received RaftMsg::ExternalCommand, cmd: {:?}", func_name!(), cmd);
 
                 match cmd {
                     ExternalCommand::Elect => {
@@ -1470,7 +1470,7 @@ where
                         let cmd = sm::Command::get_snapshot(tx);
                         let res = self.sm_handle.send(cmd);
                         if let Err(e) = res {
-                            tracing::error!(error = display(e), "error sending GetSnapshot to sm worker");
+                            tracing::error!("error sending GetSnapshot to sm worker: {}", e);
                         }
                     }
                     ExternalCommand::PurgeLog { upto } => {
@@ -1496,7 +1496,7 @@ where
                     ExternalCommand::StateMachineCommand { sm_cmd } => {
                         let res = self.sm_handle.send(sm_cmd);
                         if let Err(e) = res {
-                            tracing::error!(error = display(e), "error sending sm::Command to sm::Worker");
+                            tracing::error!("error sending sm::Command to sm::Worker: {}", e);
                         }
                     }
                 }
@@ -1518,10 +1518,10 @@ where
                 let now = C::now();
 
                 tracing::info!(
-                    now = display(now.display()),
-                    resp = display(&resp),
-                    "received Notification::VoteResponse: {}",
-                    func_name!()
+                    "received Notification::VoteResponse: {}, now: {}, resp: {}",
+                    func_name!(),
+                    now.display(),
+                    resp
                 );
 
                 #[allow(clippy::collapsible_if)]
@@ -1626,7 +1626,7 @@ where
             }
 
             Notification::ReplicationProgress { progress, inflight_id } => {
-                tracing::debug!(progress = display(&progress), "recv Notification::ReplicationProgress");
+                tracing::debug!("recv Notification::ReplicationProgress: progress: {}", progress);
 
                 if let Some(mut rh) = self.engine.try_replication_handler() {
                     rh.update_progress(progress.target, progress.result, inflight_id);

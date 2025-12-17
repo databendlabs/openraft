@@ -374,7 +374,7 @@ async fn io_completion_forwarder<C>(
         };
 
         if let Err(e) = tx.send(notification).await {
-            tracing::warn!("Failed to forward IO completion: {}", e.0);
+            tracing::warn!("failed to forward IO completion: {}", e.0);
             break;
         }
     }
@@ -857,7 +857,7 @@ where C: RaftTypeConfig
         use crate::async_runtime::mutex::Mutex;
         use crate::vote::raft_vote::RaftVoteExt;
 
-        tracing::debug!(req = display(&req), "Raft::install_snapshot()");
+        tracing::debug!("Raft::install_snapshot(): req: {}", req);
 
         let req_vote = req.vote.clone();
         let my_vote = self.with_raft_state(|state| state.vote_ref().clone()).await?;
@@ -1224,7 +1224,7 @@ where C: RaftTypeConfig
         match rx.await {
             Ok(res) => Ok(res),
             Err(err) => {
-                tracing::error!(error = display(&err), "{}: rx recv error", func_name!());
+                tracing::error!("{}: rx recv error: {}", func_name!(), err);
                 let fatal = self.inner.get_core_stop_error().await;
                 Err(fatal)
             }
@@ -1291,21 +1291,21 @@ where C: RaftTypeConfig
             Box::pin(async move {
                 let resp = func(sm).await;
                 if let Err(_err) = tx.send(resp) {
-                    tracing::error!("{}: fail to send response to user communicating tx", func_name!());
+                    tracing::error!("{}: failed to send response to user tx", func_name!());
                 }
             })
         })
         .await?;
 
         let recv_res = rx.await;
-        tracing::debug!("{} receives result is error: {:?}", func_name!(), recv_res.is_err());
+        tracing::debug!("{}: receives result is error: {:?}", func_name!(), recv_res.is_err());
 
         let Ok(v) = recv_res else {
             if self.inner.is_core_running() {
                 return Ok(Err(InvalidStateMachineType::new::<SM>()));
             } else {
                 let fatal = self.inner.get_core_stop_error().await;
-                tracing::error!(error = debug(&fatal), "error when {}", func_name!());
+                tracing::error!("{}: error: {}", func_name!(), fatal);
                 return Err(fatal);
             }
         };
