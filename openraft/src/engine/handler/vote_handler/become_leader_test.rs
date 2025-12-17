@@ -10,7 +10,7 @@ use crate::Vote;
 use crate::core::ServerState;
 use crate::engine::Command;
 use crate::engine::Engine;
-use crate::engine::ReplicationProgress;
+use crate::engine::TargetProgress;
 use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;
 use crate::entry::RaftEntry;
@@ -67,7 +67,7 @@ fn test_become_leader() -> anyhow::Result<()> {
         },
         Command::RebuildReplicationStreams {
             leader_vote: Vote::new(2, 1).into_committed(),
-            targets: vec![ReplicationProgress {
+            targets: vec![TargetProgress {
                 target: 0,
                 target_node: (),
                 progress: ProgressEntry::empty(StreamId::new(1), 0),

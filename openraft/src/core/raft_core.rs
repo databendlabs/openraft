@@ -48,8 +48,8 @@ use crate::display_ext::DisplaySliceExt;
 use crate::engine::Command;
 use crate::engine::Condition;
 use crate::engine::Engine;
-use crate::engine::ReplicationProgress;
 use crate::engine::Respond;
+use crate::engine::TargetProgress;
 use crate::entry::RaftEntry;
 use crate::error::AllowNextRevertError;
 use crate::error::ClientWriteError;
@@ -894,7 +894,7 @@ where
     pub(crate) async fn spawn_replication_stream(
         &mut self,
         leader_vote: CommittedVote<C>,
-        prog: &ReplicationProgress<C>,
+        prog: &TargetProgress<C>,
     ) -> ReplicationHandle<C> {
         let network = self.network_factory.new_client(prog.target.clone(), &prog.target_node).await;
 
@@ -926,7 +926,7 @@ where
     fn new_replication(
         &self,
         leader_vote: CommittedVote<C>,
-        prog: &ReplicationProgress<C>,
+        prog: &TargetProgress<C>,
         replicate_tx: WatchSenderOf<C, Replicate<C>>,
     ) -> (ReplicationHandle<C>, ReplicationContext<C>) {
         let (cancel_tx, cancel_rx) = C::watch_channel(());
@@ -941,7 +941,7 @@ where
     fn new_replication_context(
         &self,
         leader_vote: CommittedVote<C>,
-        prog: &ReplicationProgress<C>,
+        prog: &TargetProgress<C>,
         cancel_rx: WatchReceiverOf<C, ()>,
     ) -> ReplicationContext<C> {
         let id = self.id.clone();

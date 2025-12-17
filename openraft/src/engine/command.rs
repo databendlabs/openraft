@@ -9,7 +9,7 @@ use crate::display_ext::DisplayOptionExt;
 use crate::display_ext::DisplayResultExt;
 use crate::display_ext::DisplaySliceExt;
 use crate::engine::CommandKind;
-use crate::engine::replication_progress::ReplicationProgress;
+use crate::engine::replication_progress::TargetProgress;
 use crate::error::InitializeError;
 use crate::error::InstallSnapshotError;
 use crate::progress::inflight_id::InflightId;
@@ -118,7 +118,7 @@ where C: RaftTypeConfig
         leader_vote: CommittedVote<C>,
 
         /// Targets to replicate to.
-        targets: Vec<ReplicationProgress<C>>,
+        targets: Vec<TargetProgress<C>>,
 
         /// Whether close old replication before spawn new ones.
         ///
