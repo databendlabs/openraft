@@ -173,10 +173,10 @@ where C: RaftTypeConfig
         inflight_id: Option<InflightId>,
     ) {
         tracing::debug!(
-            node_id = display(&node_id),
-            log_id = display(log_id.display()),
-            "{}",
-            func_name!()
+            "{}: node_id: {}, log_id: {}",
+            func_name!(),
+            node_id,
+            log_id.display()
         );
 
         debug_assert!(log_id.is_some(), "a valid update can never set matching to None");
@@ -193,8 +193,8 @@ where C: RaftTypeConfig
         let quorum_accepted = quorum_accepted.clone();
 
         tracing::debug!(
-            quorum_accepted = display(quorum_accepted.display()),
-            "after updating progress"
+            "after updating progress: quorum_accepted: {}",
+            quorum_accepted.display()
         );
 
         self.try_commit_quorum_accepted(quorum_accepted);
@@ -282,8 +282,9 @@ where C: RaftTypeConfig
         inflight_id: Option<InflightId>,
     ) {
         tracing::debug!(
-            "{}: target={target}, result={}, inflight_id={}, current progresses={}",
+            "{}: target: {}, result: {}, inflight_id: {}, current progresses: {}",
             func_name!(),
+            target,
             repl_res.display(),
             inflight_id.display(),
             self.leader.progress
@@ -347,7 +348,7 @@ where C: RaftTypeConfig
     /// `send_none` specifies whether to force to send a message even when there is no data to send.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn initiate_replication(&mut self) {
-        tracing::debug!(progress = debug(&self.leader.progress), "{}", func_name!());
+        tracing::debug!("{}: progress: {:?}", func_name!(), self.leader.progress);
 
         for item in self.leader.progress.iter_mut() {
             // TODO: update matching should be done here for leader
@@ -417,9 +418,9 @@ where C: RaftTypeConfig
         // TODO: test
 
         tracing::debug!(
-            last_purged_log_id = display(self.state.last_purged_log_id().display()),
-            purge_upto = display(self.state.purge_upto().display()),
-            "try_purge_log"
+            "try_purge_log: last_purged_log_id: {}, purge_upto: {}",
+            self.state.last_purged_log_id().display(),
+            self.state.purge_upto().display()
         );
 
         if self.state.purge_upto() <= self.state.last_purged_log_id() {
@@ -466,8 +467,8 @@ where C: RaftTypeConfig
         // The leader may not be in membership anymore
         if let Some(prog_entry) = self.leader.progress.get_mut(&id) {
             tracing::debug!(
-                self_matching = display(prog_entry.matching().display()),
-                "update progress"
+                "update progress: self_matching: {}",
+                prog_entry.matching().display()
             );
 
             if prog_entry.matching() >= upto.as_ref() {

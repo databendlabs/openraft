@@ -77,7 +77,7 @@ where C: RaftTypeConfig
             let msg = e.0;
 
             let fatal = self.get_core_stop_error().await;
-            tracing::error!("Failed to send RaftMsg: {msg} to RaftCore; error: {fatal}",);
+            tracing::error!("failed to send RaftMsg to RaftCore: {msg}, error: {fatal}",);
             return Err(fatal);
         }
         Ok(())
@@ -95,7 +95,7 @@ where C: RaftTypeConfig
 
         self.send_msg(mes).await?;
         self.recv_msg(rx).await.inspect_err(|_e| {
-            tracing::error!("Failed to receive from RaftCore: error when {}", sum.display());
+            tracing::error!("failed to receive from RaftCore: {}", sum.display());
         })
     }
 
@@ -106,13 +106,13 @@ where C: RaftTypeConfig
         E: OptionalSend,
     {
         let recv_res = rx.await;
-        tracing::debug!("{} receives result is error: {:?}", func_name!(), recv_res.is_err());
+        tracing::debug!("{}: receives result is error: {:?}", func_name!(), recv_res.is_err());
 
         match recv_res {
             Ok(x) => Ok(x),
             Err(_) => {
                 let fatal = self.get_core_stop_error().await;
-                tracing::error!(error = debug(&fatal), "error when {}", func_name!());
+                tracing::error!("{}: error: {}", func_name!(), fatal);
                 Err(fatal)
             }
         }
@@ -187,7 +187,7 @@ where C: RaftTypeConfig
             Ok((join_handle, tx)) => {
                 let join_res = join_handle.await;
 
-                tracing::info!(res = debug(&join_res), "RaftCore exited");
+                tracing::info!("RaftCore exited: {:?}", join_res);
 
                 let core_task_res = match join_res {
                     Err(err) => {

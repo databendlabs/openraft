@@ -332,7 +332,7 @@ where
         let (last_applied, sm_mem) = self.state_machine.applied_state().await.sto_read_sm()?;
 
         let log_mem = self.last_membership_in_log(last_applied.next_index()).await?;
-        tracing::debug!(membership_in_sm=?sm_mem, membership_in_log=?log_mem, "{}", func_name!());
+        tracing::debug!("{}: membership_in_sm={:?}, membership_in_log={:?}", func_name!(), sm_mem, log_mem);
 
         // There 2 membership configs in logs.
         if log_mem.len() == 2 {

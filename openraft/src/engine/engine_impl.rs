@@ -215,7 +215,7 @@ where C: RaftTypeConfig
 
         let candidate = self.new_candidate(new_vote.clone());
 
-        tracing::info!("{}, new candidate: {}", func_name!(), candidate);
+        tracing::info!("{}: new candidate: {}", func_name!(), candidate);
 
         let last_log_id = candidate.last_log_id().cloned();
 
@@ -285,12 +285,12 @@ where C: RaftTypeConfig
         let now = C::now();
         let local_leased_vote = &self.state.vote;
 
-        tracing::info!(req = display(&req), "Engine::handle_vote_req");
+        tracing::info!("Engine::handle_vote_req: req: {}", req);
         tracing::info!(
-            my_vote = display(&**local_leased_vote),
-            my_last_log_id = display(self.state.last_log_id().display()),
-            lease = display(local_leased_vote.display_lease_info(now)),
-            "Engine::handle_vote_req"
+            "Engine::handle_vote_req: my_vote: {}, my_last_log_id: {}, lease: {}",
+            **local_leased_vote,
+            self.state.last_log_id().display(),
+            local_leased_vote.display_lease_info(now)
         );
 
         if local_leased_vote.is_committed() {
@@ -327,7 +327,7 @@ where C: RaftTypeConfig
 
         let res = self.vote_handler().update_vote(&req.vote);
 
-        tracing::info!(req = display(&req), result = debug(&res), "handle vote request result");
+        tracing::info!("handle vote request result: req: {}, result: {:?}", req, res);
 
         // Return the updated vote, this way the candidate knows which vote is granted, in case
         // the candidate's vote is changed after sending the vote request.
@@ -337,12 +337,12 @@ where C: RaftTypeConfig
     #[tracing::instrument(level = "debug", skip(self, resp))]
     pub(crate) fn handle_vote_resp(&mut self, target: C::NodeId, resp: VoteResponse<C>) {
         tracing::info!(
-            resp = display(&resp),
-            target = display(&target),
-            my_vote = display(self.state.vote_ref()),
-            my_last_log_id = display(self.state.last_log_id().display()),
-            "{}",
-            func_name!()
+            "{}: resp: {}, target: {}, my_vote: {}, my_last_log_id: {}",
+            func_name!(),
+            resp,
+            target,
+            self.state.vote_ref(),
+            self.state.last_log_id().display()
         );
 
         let Some(candidate) = self.candidate_mut() else {
@@ -408,13 +408,13 @@ where C: RaftTypeConfig
         tx: AppendEntriesTx<C>,
     ) {
         tracing::debug!(
-            vote = display(vote),
-            prev_log_id = display(prev_log_id.display()),
-            entries = display(entries.display()),
-            my_vote = display(self.state.vote_ref()),
-            my_last_log_id = display(self.state.last_log_id().display()),
-            "{}",
-            func_name!()
+            "{}: vote: {}, prev_log_id: {}, entries: {}, my_vote: {}, my_last_log_id: {}",
+            func_name!(),
+            vote,
+            prev_log_id.display(),
+            entries.display(),
+            self.state.vote_ref(),
+            self.state.last_log_id().display()
         );
 
         let res = self.append_entries(vote, prev_log_id, entries);
@@ -461,7 +461,7 @@ where C: RaftTypeConfig
         snapshot: Snapshot<C>,
         tx: OneshotSenderOf<C, SnapshotResponse<C>>,
     ) {
-        tracing::info!(vote = display(&vote), snapshot = display(&snapshot), "{}", func_name!());
+        tracing::info!("{}: vote: {}, snapshot: {}", func_name!(), vote, snapshot);
 
         let vote_res = self.vote_handler().accept_vote(&vote, tx, |state, _rejected| {
             SnapshotResponse::new(state.vote_ref().clone())
@@ -588,7 +588,7 @@ where C: RaftTypeConfig
     /// This is a to user API that triggers log purging up to `index`, inclusive.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn trigger_purge_log(&mut self, mut index: u64) {
-        tracing::info!(index = display(index), "{}", func_name!());
+        tracing::info!("{}: index: {}", func_name!(), index);
 
         let snapshot_last_log_id = self.state.snapshot_last_log_id();
         let snapshot_last_log_id = if let Some(log_id) = snapshot_last_log_id {
@@ -621,14 +621,14 @@ where C: RaftTypeConfig
         // Safe unwrap: `index` is ensured to be present in the above code.
         let log_id = self.state.get_log_id(index).unwrap();
 
-        tracing::info!(purge_upto = display(&log_id), "{}", func_name!());
+        tracing::info!("{}: purge_upto: {}", func_name!(), log_id);
 
         self.log_handler().update_purge_upto(log_id);
         self.try_purge_log();
     }
 
     pub(crate) fn trigger_transfer_leader(&mut self, to: C::NodeId) {
-        tracing::info!(to = display(&to), "{}", func_name!());
+        tracing::info!("{}: to: {}", func_name!(), to);
 
         let Some((mut lh, _)) = self.get_leader_handler_or_reject(None::<WriteResponderOf<C>>) else {
             tracing::info!(

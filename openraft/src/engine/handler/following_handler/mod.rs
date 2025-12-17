@@ -120,7 +120,7 @@ where C: RaftTypeConfig
             && !self.state.has_log_id(prev)
         {
             let local = self.state.get_log_id(prev.index());
-            tracing::debug!(local = display(DisplayOption(&local)), "prev_log_id does not match");
+            tracing::debug!("prev_log_id does not match: local: {}", DisplayOption(&local));
 
             self.truncate_logs(prev.index());
             return Err(RejectAppendEntries::ByConflictingLogId {
