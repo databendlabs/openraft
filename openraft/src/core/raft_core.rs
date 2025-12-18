@@ -734,9 +734,11 @@ where
         let entry = C::Entry::new_membership(LogIdOf::<C>::default(), membership);
         let res = self.engine.initialize(entry);
 
+        let has_error = res.is_err();
+
         // If there is an error, respond at once.
         // Otherwise, wait for the initialization log to be applied to state machine.
-        let condition = if res.is_err() {
+        let condition = if has_error {
             None
         } else {
             // Wait for the initialization log to be flushed, not applied.
@@ -762,8 +764,10 @@ where
             resp: Respond::new(res, tx),
         });
 
-        // With the new config, start to elect to become leader
-        self.engine.elect();
+        if !has_error {
+            // With the new config, start to elect to become leader
+            self.engine.elect();
+        }
     }
 
     /// Trigger a snapshot building(log compaction) job if there is no pending building job.
