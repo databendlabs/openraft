@@ -129,8 +129,8 @@ mod tokio_rt {
                                                 InstallSnapshotError::SnapshotMismatch(mismatch) => {
                                                     //
                                                     tracing::warn!(
-                                                        mismatch = display(&mismatch),
-                                                        "snapshot mismatch, reset offset and retry"
+                                                        "snapshot mismatch, reset offset and retry: mismatch: {}",
+                                                        mismatch
                                                     );
                                                     offset = 0;
                                                 }

@@ -809,9 +809,9 @@ where
     #[tracing::instrument(level = "debug", skip(self))]
     pub(crate) fn current_leader(&self) -> Option<C::NodeId> {
         tracing::debug!(
-            self_id = display(&self.id),
-            vote = display(self.engine.state.vote_ref()),
-            "get current_leader"
+            "get current_leader: self_id: {}, vote: {}",
+            self.id,
+            self.engine.state.vote_ref()
         );
 
         let vote = self.engine.state.vote_ref();

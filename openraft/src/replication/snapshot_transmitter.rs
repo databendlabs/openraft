@@ -125,7 +125,11 @@ where
                     return;
                 }
                 ReplicationError::StorageError(error) => {
-                    tracing::error!(error=%error, "error replication to target={}", self.replication_context.target);
+                    tracing::error!(
+                        "error replication to target: {}, error: {}",
+                        self.replication_context.target,
+                        error
+                    );
                     self.replication_context.tx_notify.send(Notification::StorageError { error }).await.ok();
                     return;
                 }
