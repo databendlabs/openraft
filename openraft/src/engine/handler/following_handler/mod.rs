@@ -120,7 +120,7 @@ where C: RaftTypeConfig
             && !self.state.has_log_id(prev)
         {
             let local = self.state.get_log_id(prev.index());
-            tracing::debug!("prev_log_id does not match: local: {}", DisplayOption(&local));
+            tracing::debug!("prev_log_id mismatch, local: {}", DisplayOption(&local));
 
             self.truncate_logs(prev.index());
             return Err(RejectAppendEntries::ByConflictingLogId {
@@ -163,13 +163,13 @@ where C: RaftTypeConfig
     /// And revert effective membership to the last committed if it is from the conflicting logs.
     #[tracing::instrument(level = "debug", skip(self))]
     fn truncate_logs(&mut self, since: u64) {
-        tracing::debug!("truncate_logs: since: {}", since);
+        tracing::debug!("truncate logs since index {}", since);
 
         debug_assert!(since >= self.state.last_purged_log_id().next_index());
 
         let since_log_id = match self.state.get_log_id(since) {
             None => {
-                tracing::debug!("trying to delete absent log at: {}", since);
+                tracing::debug!("skip truncating absent log at index {}", since);
                 return;
             }
             Some(x) => x,
@@ -196,11 +196,11 @@ where C: RaftTypeConfig
         // Update membership state with the last 2 membership configs found in new log entries.
         // Other membership log can be just ignored.
         for (i, m) in memberships.into_iter().enumerate() {
-            tracing::debug!("applying {}-th new membership config received from leader: {}", i, m);
+            tracing::debug!("apply membership config #{} from leader: {}", i, m);
             self.state.membership_state.append(Arc::new(EffectiveMembership::new_from_stored_membership(m)));
         }
 
-        tracing::debug!("updated membership state: {}", self.state.membership_state);
+        tracing::debug!("membership state updated: {}", self.state.membership_state);
 
         self.server_state_handler().update_server_state_if_changed();
     }
@@ -241,7 +241,7 @@ where C: RaftTypeConfig
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn install_full_snapshot(&mut self, snapshot: Snapshot<C>) -> Option<Condition<C>> {
         let meta = &snapshot.meta;
-        tracing::info!("install_full_snapshot: meta:{:?}", meta);
+        tracing::info!("install full snapshot, meta: {:?}", meta);
 
         let snap_last_log_id = meta.last_log_id.clone();
 

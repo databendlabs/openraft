@@ -23,7 +23,7 @@ where C: RaftTypeConfig
         let server_state = self.state.calc_server_state(&self.config.id);
 
         tracing::debug!(
-            "update_server_state_if_changed: id: {}, prev_server_state: {:?}, server_state: {:?}",
+            "check server state: id: {}, prev: {:?}, curr: {:?}",
             self.config.id,
             self.state.server_state,
             server_state
@@ -37,9 +37,9 @@ where C: RaftTypeConfig
         let is_leader = server_state == ServerState::Leader;
 
         if !was_leader && is_leader {
-            tracing::info!("become leader: id: {}", &self.config.id);
+            tracing::info!("id={} becomes leader", &self.config.id);
         } else if was_leader && !is_leader {
-            tracing::info!("quit leader: id: {}", &self.config.id);
+            tracing::info!("id={} steps down from leader", &self.config.id);
         } else {
             // nothing to do
         }
