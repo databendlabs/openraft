@@ -65,6 +65,7 @@ pub enum RaftMsgName {
     HandleTransferLeader,
     ExternalCoreRequest,
     ExternalCommand(ExternalCommandName),
+    GetRuntimeStats,
 }
 
 impl RaftMsgName {
@@ -90,6 +91,7 @@ impl RaftMsgName {
         RaftMsgName::ExternalCommand(ExternalCommandName::TriggerTransferLeader),
         RaftMsgName::ExternalCommand(ExternalCommandName::AllowNextRevert),
         RaftMsgName::ExternalCommand(ExternalCommandName::StateMachineCommand),
+        RaftMsgName::GetRuntimeStats,
     ];
 
     /// Returns the string representation of the message name.
@@ -107,6 +109,7 @@ impl RaftMsgName {
             RaftMsgName::HandleTransferLeader => "HandleTransferLeader",
             RaftMsgName::ExternalCoreRequest => "ExternalCoreRequest",
             RaftMsgName::ExternalCommand(ext) => ext.as_str(),
+            RaftMsgName::GetRuntimeStats => "GetRuntimeStats",
         }
     }
 }

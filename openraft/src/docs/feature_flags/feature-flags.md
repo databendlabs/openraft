@@ -56,18 +56,15 @@ for accessing runtime statistics.
 When enabled, the `stats` module provides:
 - `Histogram`: Tracks distribution of values in logarithmic buckets
 - `RuntimeStats`: Contains histograms for apply and append batch sizes
-- `SharedRuntimeState`: Thread-safe wrapper for accessing `RuntimeStats`
 
 Example usage:
 ```rust,ignore
-use openraft::stats::SharedRuntimeState;
+use openraft::stats::RuntimeStats;
 
 let raft = Raft::new(...).await?;
-let stats: SharedRuntimeState = raft.runtime_stats();
-stats.with_mut(|s| {
-    println!("Total applies: {}", s.apply_batch.total());
-    println!("P99 batch size: {:?}", s.apply_batch.percentile(0.99));
-});
+let stats: RuntimeStats = raft.runtime_stats().await?;
+println!("Total applies: {}", stats.apply_batch.total());
+println!("P99 batch size: {:?}", stats.apply_batch.percentile(0.99));
 ```
 
 

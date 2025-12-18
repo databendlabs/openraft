@@ -27,8 +27,9 @@ use crate::async_runtime::watch::WatchSender;
 use crate::config::Config;
 use crate::config::RuntimeConfig;
 use crate::core::ClientResponderQueue;
+use crate::core::RuntimeStats;
 use crate::core::ServerState;
-use crate::core::SharedRuntimeState;
+use crate::core::SharedReplicateBatch;
 use crate::core::balancer::Balancer;
 use crate::core::core_state::CoreState;
 use crate::core::heartbeat::event::HeartbeatEvent;
@@ -222,7 +223,17 @@ where
     pub(crate) tx_server_metrics: WatchSenderOf<C, RaftServerMetrics<C>>,
     pub(crate) tx_progress: IoProgressSender<C>,
 
-    pub(crate) runtime_stats: SharedRuntimeState,
+    /// Runtime statistics for Raft operations.
+    ///
+    /// Owned directly by RaftCore for lock-free access to most stats.
+    /// Only `replicate_batch` is shared with replication tasks via `shared_replicate_batch`.
+    pub(crate) runtime_stats: RuntimeStats,
+
+    /// Shared histogram for replication batch sizes.
+    ///
+    /// This is the only stats field that needs to be shared with replication tasks.
+    /// All other stats are updated only by RaftCore.
+    pub(crate) shared_replicate_batch: SharedReplicateBatch,
 
     pub(crate) span: Span,
 }
@@ -882,7 +893,7 @@ where
         let mut responders = self.client_responders.drain_upto(last.index());
 
         let entry_count = last.index() + 1 - first.index();
-        self.runtime_stats.with_mut(|s| s.apply_batch.record(entry_count));
+        self.runtime_stats.apply_batch.record(entry_count);
 
         // Call on_commit on each responder
         for (index, responder) in responders.iter_mut() {
@@ -962,7 +973,7 @@ where
             config: self.config.clone(),
             tx_notify: self.tx_notification.clone(),
             cancel_rx,
-            runtime_stats: self.runtime_stats.clone(),
+            replicate_batch: self.shared_replicate_batch.clone(),
         }
     }
 
@@ -1379,7 +1390,7 @@ where
     pub(crate) async fn handle_api_msg(&mut self, msg: RaftMsg<C>) {
         tracing::debug!("RAFT_event id={:<2}  input: {}", self.id, msg);
 
-        self.runtime_stats.with_mut(|s| s.record_raft_msg(msg.name()));
+        self.runtime_stats.record_raft_msg(msg.name());
 
         match msg {
             RaftMsg::AppendEntries { rpc, tx } => {
@@ -1510,6 +1521,13 @@ where
                         }
                     }
                 }
+            }
+            #[cfg(feature = "runtime-stats")]
+            RaftMsg::GetRuntimeStats { tx } => {
+                // Copy runtime_stats and sync the shared replicate_batch
+                let mut stats = self.runtime_stats.clone();
+                stats.replicate_batch = self.shared_replicate_batch.snapshot();
+                let _ = tx.send(stats);
             }
         };
     }
@@ -1862,7 +1880,7 @@ where
             config: self.config.clone(),
             tx_notify: self.tx_notification.clone(),
             cancel_rx,
-            runtime_stats: self.runtime_stats.clone(),
+            replicate_batch: self.shared_replicate_batch.clone(),
         };
         (ctx, cancel_tx)
     }
@@ -1906,7 +1924,7 @@ where
         tracing::debug!("RAFT_event id={:<2}    cmd: {}", self.id, cmd);
 
         // Record command execution
-        self.runtime_stats.with_mut(|s| s.record_command(cmd.name()));
+        self.runtime_stats.record_command(cmd.name());
 
         match cmd {
             Command::UpdateIOProgress { io_id, .. } => {
@@ -1927,7 +1945,7 @@ where
                 tracing::debug!("AppendEntries: {}", entries.display_n(10));
 
                 let entry_count = entries.len() as u64;
-                self.runtime_stats.with_mut(|s| s.append_batch.record(entry_count));
+                self.runtime_stats.append_batch.record(entry_count);
 
                 let io_id = IOId::new_log_io(vote, Some(last_log_id));
                 let callback = IOFlushed::new(io_id.clone(), self.tx_io_completed.clone());

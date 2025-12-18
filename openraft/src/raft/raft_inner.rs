@@ -12,7 +12,6 @@ use crate::async_runtime::MpscSender;
 use crate::async_runtime::watch::WatchReceiver;
 use crate::async_runtime::watch::WatchSender;
 use crate::config::RuntimeConfig;
-use crate::core::SharedRuntimeState;
 use crate::core::TickHandle;
 use crate::core::io_flush_tracking::IoProgressWatcher;
 use crate::core::raft_msg::RaftMsg;
@@ -46,9 +45,6 @@ where C: RaftTypeConfig
     pub(in crate::raft) rx_data_metrics: WatchReceiverOf<C, RaftDataMetrics<C>>,
     pub(in crate::raft) rx_server_metrics: WatchReceiverOf<C, RaftServerMetrics<C>>,
     pub(in crate::raft) progress_watcher: IoProgressWatcher<C>,
-
-    #[cfg_attr(not(feature = "runtime-stats"), allow(dead_code))]
-    pub(in crate::raft) runtime_stats: SharedRuntimeState,
 
     pub(in crate::raft) tx_shutdown: std::sync::Mutex<Option<OneshotSenderOf<C, ()>>>,
     pub(in crate::raft) core_state: std::sync::Mutex<CoreState<C>>,

@@ -1,6 +1,8 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
+#[cfg(feature = "runtime-stats")]
+use super::RuntimeStats;
 use crate::ChangeMembers;
 use crate::RaftState;
 use crate::RaftTypeConfig;
@@ -120,6 +122,14 @@ where C: RaftTypeConfig
     ExternalCommand {
         cmd: ExternalCommand<C>,
     },
+
+    /// Get runtime statistics from RaftCore.
+    ///
+    /// Returns a copy of the current runtime stats.
+    #[cfg(feature = "runtime-stats")]
+    GetRuntimeStats {
+        tx: OneshotSenderOf<C, RuntimeStats>,
+    },
 }
 
 impl<C: RaftTypeConfig> RaftMsg<C> {
@@ -137,6 +147,8 @@ impl<C: RaftTypeConfig> RaftMsg<C> {
             RaftMsg::HandleTransferLeader { .. } => RaftMsgName::HandleTransferLeader,
             RaftMsg::ExternalCoreRequest { .. } => RaftMsgName::ExternalCoreRequest,
             RaftMsg::ExternalCommand { cmd } => RaftMsgName::ExternalCommand(cmd.name()),
+            #[cfg(feature = "runtime-stats")]
+            RaftMsg::GetRuntimeStats { .. } => RaftMsgName::GetRuntimeStats,
         }
     }
 }
@@ -174,6 +186,10 @@ where C: RaftTypeConfig
             }
             RaftMsg::ExternalCommand { cmd } => {
                 write!(f, "ExternalCommand: {}", cmd)
+            }
+            #[cfg(feature = "runtime-stats")]
+            RaftMsg::GetRuntimeStats { .. } => {
+                write!(f, "GetRuntimeStats")
             }
         }
     }
