@@ -13,6 +13,10 @@ pub enum ExternalCommandName {
 }
 
 impl ExternalCommandName {
+    /// Total number of variants.
+    #[allow(dead_code)]
+    pub const COUNT: usize = 8;
+
     /// All variants in canonical order.
     #[allow(dead_code)]
     pub const ALL: &'static [ExternalCommandName] = &[
@@ -25,6 +29,21 @@ impl ExternalCommandName {
         ExternalCommandName::AllowNextRevert,
         ExternalCommandName::StateMachineCommand,
     ];
+
+    /// Returns the index of this variant for array-based storage.
+    #[allow(dead_code)]
+    pub const fn index(&self) -> usize {
+        match self {
+            ExternalCommandName::Elect => 0,
+            ExternalCommandName::Heartbeat => 1,
+            ExternalCommandName::Snapshot => 2,
+            ExternalCommandName::GetSnapshot => 3,
+            ExternalCommandName::PurgeLog => 4,
+            ExternalCommandName::TriggerTransferLeader => 5,
+            ExternalCommandName::AllowNextRevert => 6,
+            ExternalCommandName::StateMachineCommand => 7,
+        }
+    }
 
     #[allow(dead_code)]
     pub const fn as_str(&self) -> &'static str {
@@ -69,6 +88,9 @@ pub enum RaftMsgName {
 }
 
 impl RaftMsgName {
+    /// Total number of variants (including expanded ExternalCommand variants).
+    pub const COUNT: usize = 19;
+
     /// All variants in canonical order.
     ///
     /// ExternalCommand variants are expanded to include all ExternalCommandName variants.
@@ -94,6 +116,24 @@ impl RaftMsgName {
         RaftMsgName::GetRuntimeStats,
     ];
 
+    /// Returns the index of this variant for array-based storage.
+    pub const fn index(&self) -> usize {
+        match self {
+            RaftMsgName::AppendEntries => 0,
+            RaftMsgName::RequestVote => 1,
+            RaftMsgName::InstallFullSnapshot => 2,
+            RaftMsgName::BeginReceivingSnapshot => 3,
+            RaftMsgName::ClientWriteRequest => 4,
+            RaftMsgName::EnsureLinearizableRead => 5,
+            RaftMsgName::Initialize => 6,
+            RaftMsgName::ChangeMembership => 7,
+            RaftMsgName::HandleTransferLeader => 8,
+            RaftMsgName::ExternalCoreRequest => 9,
+            RaftMsgName::ExternalCommand(ext) => 10 + ext.index(),
+            RaftMsgName::GetRuntimeStats => 10 + ExternalCommandName::COUNT,
+        }
+    }
+
     /// Returns the string representation of the message name.
     #[allow(dead_code)]
     pub fn as_str(&self) -> &'static str {
@@ -117,5 +157,42 @@ impl RaftMsgName {
 impl std::fmt::Display for RaftMsgName {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.as_str())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_external_command_name_index() {
+        assert_eq!(ExternalCommandName::COUNT, ExternalCommandName::ALL.len());
+
+        for (i, name) in ExternalCommandName::ALL.iter().enumerate() {
+            assert_eq!(
+                name.index(),
+                i,
+                "ExternalCommandName::{:?} index mismatch: expected {}, got {}",
+                name,
+                i,
+                name.index()
+            );
+        }
+    }
+
+    #[test]
+    fn test_raft_msg_name_index() {
+        assert_eq!(RaftMsgName::COUNT, RaftMsgName::ALL.len());
+
+        for (i, name) in RaftMsgName::ALL.iter().enumerate() {
+            assert_eq!(
+                name.index(),
+                i,
+                "RaftMsgName::{:?} index mismatch: expected {}, got {}",
+                name,
+                i,
+                name.index()
+            );
+        }
     }
 }

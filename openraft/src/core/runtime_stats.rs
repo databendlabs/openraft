@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::fmt;
 
 use crate::base::histogram::Histogram;
@@ -35,13 +34,15 @@ pub struct RuntimeStats {
     ///
     /// This tracks how many times each command type has been executed,
     /// useful for understanding workload patterns and debugging.
-    pub command_counts: HashMap<CommandName, u64>,
+    /// Indexed by `CommandName::index()`.
+    pub command_counts: Vec<u64>,
 
     /// Count of each RaftMsg type received.
     ///
     /// This tracks how many times each RaftMsg type has been received,
     /// useful for understanding API usage patterns and debugging.
-    pub raft_msg_counts: HashMap<RaftMsgName, u64>,
+    /// Indexed by `RaftMsgName::index()`.
+    pub raft_msg_counts: Vec<u64>,
 }
 
 impl Default for RuntimeStats {
@@ -56,19 +57,19 @@ impl RuntimeStats {
             apply_batch: Histogram::new(),
             append_batch: Histogram::new(),
             replicate_batch: Histogram::new(),
-            command_counts: HashMap::new(),
-            raft_msg_counts: HashMap::new(),
+            command_counts: vec![0; CommandName::COUNT],
+            raft_msg_counts: vec![0; RaftMsgName::COUNT],
         }
     }
 
     /// Record the execution of a command.
     pub fn record_command(&mut self, name: CommandName) {
-        *self.command_counts.entry(name).or_insert(0) += 1;
+        self.command_counts[name.index()] += 1;
     }
 
     /// Record the receipt of a RaftMsg.
     pub fn record_raft_msg(&mut self, name: RaftMsgName) {
-        *self.raft_msg_counts.entry(name).or_insert(0) += 1;
+        self.raft_msg_counts[name.index()] += 1;
     }
 
     /// Returns a displayable representation of the runtime statistics.
@@ -95,8 +96,8 @@ pub struct RuntimeStatsDisplay {
     apply_batch: PercentileStats,
     append_batch: PercentileStats,
     replicate_batch: PercentileStats,
-    command_counts: HashMap<CommandName, u64>,
-    raft_msg_counts: HashMap<RaftMsgName, u64>,
+    command_counts: Vec<u64>,
+    raft_msg_counts: Vec<u64>,
 }
 
 impl fmt::Display for RuntimeStatsDisplay {
@@ -108,8 +109,9 @@ impl fmt::Display for RuntimeStatsDisplay {
         )?;
 
         let mut first = true;
-        for name in CommandName::ALL {
-            if let Some(&count) = self.command_counts.get(name) {
+        for (i, name) in CommandName::ALL.iter().enumerate() {
+            let count = self.command_counts[i];
+            if count > 0 {
                 if !first {
                     write!(f, ", ")?;
                 }
@@ -121,8 +123,9 @@ impl fmt::Display for RuntimeStatsDisplay {
         write!(f, "}}, raft_msgs: {{")?;
 
         let mut first = true;
-        for name in RaftMsgName::ALL {
-            if let Some(&count) = self.raft_msg_counts.get(name) {
+        for (i, name) in RaftMsgName::ALL.iter().enumerate() {
+            let count = self.raft_msg_counts[i];
+            if count > 0 {
                 if !first {
                     write!(f, ", ")?;
                 }

@@ -12,6 +12,10 @@ pub enum SMCommandName {
 }
 
 impl SMCommandName {
+    /// Total number of variants.
+    #[allow(dead_code)]
+    pub const COUNT: usize = 6;
+
     /// All variants in canonical order.
     #[allow(dead_code)]
     pub const ALL: &'static [SMCommandName] = &[
@@ -22,6 +26,12 @@ impl SMCommandName {
         SMCommandName::Apply,
         SMCommandName::Func,
     ];
+
+    /// Returns the index of this variant for array-based storage.
+    #[allow(dead_code)]
+    pub const fn index(&self) -> usize {
+        *self as usize
+    }
 
     #[allow(dead_code)]
     pub const fn as_str(&self) -> &'static str {
@@ -68,6 +78,9 @@ pub enum CommandName {
 }
 
 impl CommandName {
+    /// Total number of variants (including expanded StateMachine variants).
+    pub const COUNT: usize = 21;
+
     /// All variants in canonical order.
     ///
     /// StateMachine variants are expanded to include all SMCommandName variants.
@@ -94,6 +107,28 @@ impl CommandName {
         CommandName::StateMachine(SMCommandName::Func),
         CommandName::Respond,
     ];
+
+    /// Returns the index of this variant for array-based storage.
+    pub const fn index(&self) -> usize {
+        match self {
+            CommandName::UpdateIOProgress => 0,
+            CommandName::AppendEntries => 1,
+            CommandName::ReplicateCommitted => 2,
+            CommandName::BroadcastHeartbeat => 3,
+            CommandName::SaveCommittedAndApply => 4,
+            CommandName::Replicate => 5,
+            CommandName::ReplicateSnapshot => 6,
+            CommandName::BroadcastTransferLeader => 7,
+            CommandName::CloseReplicationStreams => 8,
+            CommandName::RebuildReplicationStreams => 9,
+            CommandName::SaveVote => 10,
+            CommandName::SendVote => 11,
+            CommandName::PurgeLog => 12,
+            CommandName::TruncateLog => 13,
+            CommandName::StateMachine(sm) => 14 + sm.index(),
+            CommandName::Respond => 14 + SMCommandName::COUNT,
+        }
+    }
 
     /// Returns the string representation of the command name.
     #[allow(dead_code)]
@@ -311,5 +346,37 @@ mod tests {
         assert_eq!(SMCommandName::InstallFullSnapshot.as_str(), "SM::InstallFullSnapshot");
         assert_eq!(SMCommandName::Apply.as_str(), "SM::Apply");
         assert_eq!(SMCommandName::Func.as_str(), "SM::Func");
+    }
+
+    #[test]
+    fn test_sm_command_name_index() {
+        assert_eq!(SMCommandName::COUNT, SMCommandName::ALL.len());
+
+        for (i, name) in SMCommandName::ALL.iter().enumerate() {
+            assert_eq!(
+                name.index(),
+                i,
+                "SMCommandName::{:?} index mismatch: expected {}, got {}",
+                name,
+                i,
+                name.index()
+            );
+        }
+    }
+
+    #[test]
+    fn test_command_name_index() {
+        assert_eq!(CommandName::COUNT, CommandName::ALL.len());
+
+        for (i, name) in CommandName::ALL.iter().enumerate() {
+            assert_eq!(
+                name.index(),
+                i,
+                "CommandName::{:?} index mismatch: expected {}, got {}",
+                name,
+                i,
+                name.index()
+            );
+        }
     }
 }
