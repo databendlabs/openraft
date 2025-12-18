@@ -1,6 +1,7 @@
 use std::collections::VecDeque;
 
 use crate::RaftTypeConfig;
+use crate::config::Config;
 use crate::engine::Command;
 use crate::engine::Condition;
 use crate::engine::command_scheduler::CommandScheduler;
@@ -107,8 +108,11 @@ where C: RaftTypeConfig
     ///
     /// Currently performs:
     /// - Merging consecutive `AppendEntries` commands from the same leader into one
-    pub(crate) fn sched_commands(&mut self) {
-        let mut scheduler = CommandScheduler::new(self);
+    ///
+    /// The batch size is limited by `config.max_in_batch_entries` to avoid high latency
+    /// from writing very large batches to storage. A value of 0 means unlimited batching.
+    pub(crate) fn sched_commands(&mut self, config: &Config) {
+        let mut scheduler = CommandScheduler::new(config, self);
         scheduler.merge_front_append_entries();
     }
 }
