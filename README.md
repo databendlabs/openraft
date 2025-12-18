@@ -113,11 +113,13 @@ Whatever your style, we're here to support you. 🚀 Let's make something awesom
 The benchmark is focused on the OpenRaft framework itself and is run on a
 minimized store and network. This is **NOT a real world** application benchmark!!!
 
-| clients | put/s         | ns/op      |
-| --:     | --:           | --:        |
-| 256     | **1,014,000** |      985   |
-|  64     |   **730,000** |    1,369   |
-|   1     |      70,000   | **14,273** |
+| clients | put/s     |
+| --:     | --:       |
+| 4096    | 3,087,000 |
+| 1024    | 3,006,000 |
+| 256     | 1,808,000 |
+| 64      |   912,000 |
+| 1       |    33,000 |
 
 
 For benchmark detail, go to the [./cluster_benchmark](./cluster_benchmark) folder.
