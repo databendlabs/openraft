@@ -2,7 +2,7 @@
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(u8)]
-pub(crate) enum SMCommandName {
+pub enum SMCommandName {
     BuildSnapshot = 0,
     GetSnapshot = 1,
     BeginReceivingSnapshot = 2,
@@ -12,6 +12,17 @@ pub(crate) enum SMCommandName {
 }
 
 impl SMCommandName {
+    /// All variants in canonical order.
+    #[allow(dead_code)]
+    pub const ALL: &'static [SMCommandName] = &[
+        SMCommandName::BuildSnapshot,
+        SMCommandName::GetSnapshot,
+        SMCommandName::BeginReceivingSnapshot,
+        SMCommandName::InstallFullSnapshot,
+        SMCommandName::Apply,
+        SMCommandName::Func,
+    ];
+
     #[allow(dead_code)]
     pub const fn as_str(&self) -> &'static str {
         match self {
@@ -37,7 +48,7 @@ impl std::fmt::Display for SMCommandName {
 /// string comparisons, useful for logging, metrics, and debugging.
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub(crate) enum CommandName {
+pub enum CommandName {
     UpdateIOProgress,
     AppendEntries,
     ReplicateCommitted,
@@ -57,6 +68,33 @@ pub(crate) enum CommandName {
 }
 
 impl CommandName {
+    /// All variants in canonical order.
+    ///
+    /// StateMachine variants are expanded to include all SMCommandName variants.
+    pub const ALL: &'static [CommandName] = &[
+        CommandName::UpdateIOProgress,
+        CommandName::AppendEntries,
+        CommandName::ReplicateCommitted,
+        CommandName::BroadcastHeartbeat,
+        CommandName::SaveCommittedAndApply,
+        CommandName::Replicate,
+        CommandName::ReplicateSnapshot,
+        CommandName::BroadcastTransferLeader,
+        CommandName::CloseReplicationStreams,
+        CommandName::RebuildReplicationStreams,
+        CommandName::SaveVote,
+        CommandName::SendVote,
+        CommandName::PurgeLog,
+        CommandName::TruncateLog,
+        CommandName::StateMachine(SMCommandName::BuildSnapshot),
+        CommandName::StateMachine(SMCommandName::GetSnapshot),
+        CommandName::StateMachine(SMCommandName::BeginReceivingSnapshot),
+        CommandName::StateMachine(SMCommandName::InstallFullSnapshot),
+        CommandName::StateMachine(SMCommandName::Apply),
+        CommandName::StateMachine(SMCommandName::Func),
+        CommandName::Respond,
+    ];
+
     /// Returns the string representation of the command name.
     #[allow(dead_code)]
     pub fn as_str(&self) -> &'static str {

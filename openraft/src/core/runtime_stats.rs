@@ -1,7 +1,9 @@
+use std::collections::HashMap;
 use std::fmt;
 
 use crate::base::histogram::Histogram;
 use crate::base::histogram::PercentileStats;
+use crate::engine::CommandName;
 
 /// Runtime statistics for Raft operations.
 ///
@@ -27,6 +29,12 @@ pub struct RuntimeStats {
     /// This tracks how many log entries are included in each AppendEntries RPC
     /// sent to followers during replication, helping identify replication batch patterns.
     pub replicate_batch: Histogram,
+
+    /// Count of each command type executed.
+    ///
+    /// This tracks how many times each command type has been executed,
+    /// useful for understanding workload patterns and debugging.
+    pub command_counts: HashMap<CommandName, u64>,
 }
 
 impl Default for RuntimeStats {
@@ -41,7 +49,13 @@ impl RuntimeStats {
             apply_batch: Histogram::new(),
             append_batch: Histogram::new(),
             replicate_batch: Histogram::new(),
+            command_counts: HashMap::new(),
         }
+    }
+
+    /// Record the execution of a command.
+    pub fn record_command(&mut self, name: CommandName) {
+        *self.command_counts.entry(name).or_insert(0) += 1;
     }
 
     /// Returns a displayable representation of the runtime statistics.
@@ -54,6 +68,7 @@ impl RuntimeStats {
             apply_batch: self.apply_batch.percentile_stats(),
             append_batch: self.append_batch.percentile_stats(),
             replicate_batch: self.replicate_batch.percentile_stats(),
+            command_counts: self.command_counts.clone(),
         }
     }
 }
@@ -66,14 +81,28 @@ pub struct RuntimeStatsDisplay {
     apply_batch: PercentileStats,
     append_batch: PercentileStats,
     replicate_batch: PercentileStats,
+    command_counts: HashMap<CommandName, u64>,
 }
 
 impl fmt::Display for RuntimeStatsDisplay {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "RuntimeStats {{ apply_batch: {}, append_batch: {}, replicate_batch: {} }}",
+            "RuntimeStats {{ apply_batch: {}, append_batch: {}, replicate_batch: {}, commands: {{",
             self.apply_batch, self.append_batch, self.replicate_batch
-        )
+        )?;
+
+        let mut first = true;
+        for name in CommandName::ALL {
+            if let Some(&count) = self.command_counts.get(name) {
+                if !first {
+                    write!(f, ", ")?;
+                }
+                write!(f, "{}: {}", name, count)?;
+                first = false;
+            }
+        }
+
+        write!(f, "}} }}")
     }
 }

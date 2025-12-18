@@ -1895,6 +1895,9 @@ where
 
         tracing::debug!("RAFT_event id={:<2}    cmd: {}", self.id, cmd);
 
+        // Record command execution
+        self.runtime_stats.with_mut(|s| s.record_command(cmd.name()));
+
         match cmd {
             Command::UpdateIOProgress { io_id, .. } => {
                 // Notify that I/O is about to be submitted.
