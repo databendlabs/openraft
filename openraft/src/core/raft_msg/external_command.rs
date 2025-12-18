@@ -4,6 +4,7 @@ use std::fmt;
 
 use crate::RaftTypeConfig;
 use crate::Snapshot;
+use crate::core::raft_msg::ExternalCommandName;
 use crate::core::raft_msg::ResultSender;
 use crate::core::sm;
 use crate::error::AllowNextRevertError;
@@ -50,6 +51,22 @@ pub(crate) enum ExternalCommand<C: RaftTypeConfig> {
     /// Send a [`sm::Command`] to [`sm::worker::Worker`].
     /// This command is run in the sm task.
     StateMachineCommand { sm_cmd: sm::Command<C> },
+}
+
+impl<C: RaftTypeConfig> ExternalCommand<C> {
+    /// Returns the name of this command variant.
+    pub fn name(&self) -> ExternalCommandName {
+        match self {
+            ExternalCommand::Elect => ExternalCommandName::Elect,
+            ExternalCommand::Heartbeat => ExternalCommandName::Heartbeat,
+            ExternalCommand::Snapshot => ExternalCommandName::Snapshot,
+            ExternalCommand::GetSnapshot { .. } => ExternalCommandName::GetSnapshot,
+            ExternalCommand::PurgeLog { .. } => ExternalCommandName::PurgeLog,
+            ExternalCommand::TriggerTransferLeader { .. } => ExternalCommandName::TriggerTransferLeader,
+            ExternalCommand::AllowNextRevert { .. } => ExternalCommandName::AllowNextRevert,
+            ExternalCommand::StateMachineCommand { .. } => ExternalCommandName::StateMachineCommand,
+        }
+    }
 }
 
 impl<C> fmt::Debug for ExternalCommand<C>

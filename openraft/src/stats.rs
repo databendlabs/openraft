@@ -18,5 +18,7 @@ pub use crate::base::histogram::PercentileStats;
 pub use crate::core::RuntimeStats;
 pub use crate::core::RuntimeStatsDisplay;
 pub use crate::core::SharedRuntimeState;
+pub use crate::core::raft_msg::ExternalCommandName;
+pub use crate::core::raft_msg::RaftMsgName;
 pub use crate::engine::CommandName;
 pub use crate::engine::SMCommandName;

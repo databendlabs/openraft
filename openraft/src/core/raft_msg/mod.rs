@@ -27,6 +27,10 @@ use crate::type_config::alias::SnapshotDataOf;
 use crate::type_config::alias::VoteOf;
 
 pub(crate) mod external_command;
+mod raft_msg_name;
+
+pub use raft_msg_name::ExternalCommandName;
+pub use raft_msg_name::RaftMsgName;
 
 /// A oneshot TX to send result from `RaftCore` to external caller, e.g. `Raft::append_entries`.
 pub(crate) type ResultSender<C, T, E = Infallible> = OneshotSenderOf<C, Result<T, E>>;
@@ -116,6 +120,25 @@ where C: RaftTypeConfig
     ExternalCommand {
         cmd: ExternalCommand<C>,
     },
+}
+
+impl<C: RaftTypeConfig> RaftMsg<C> {
+    /// Returns the name of this message variant.
+    pub fn name(&self) -> RaftMsgName {
+        match self {
+            RaftMsg::AppendEntries { .. } => RaftMsgName::AppendEntries,
+            RaftMsg::RequestVote { .. } => RaftMsgName::RequestVote,
+            RaftMsg::InstallFullSnapshot { .. } => RaftMsgName::InstallFullSnapshot,
+            RaftMsg::BeginReceivingSnapshot { .. } => RaftMsgName::BeginReceivingSnapshot,
+            RaftMsg::ClientWriteRequest { .. } => RaftMsgName::ClientWriteRequest,
+            RaftMsg::EnsureLinearizableRead { .. } => RaftMsgName::EnsureLinearizableRead,
+            RaftMsg::Initialize { .. } => RaftMsgName::Initialize,
+            RaftMsg::ChangeMembership { .. } => RaftMsgName::ChangeMembership,
+            RaftMsg::HandleTransferLeader { .. } => RaftMsgName::HandleTransferLeader,
+            RaftMsg::ExternalCoreRequest { .. } => RaftMsgName::ExternalCoreRequest,
+            RaftMsg::ExternalCommand { cmd } => RaftMsgName::ExternalCommand(cmd.name()),
+        }
+    }
 }
 
 impl<C> fmt::Display for RaftMsg<C>
