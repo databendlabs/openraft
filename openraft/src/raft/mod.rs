@@ -75,7 +75,8 @@ use crate::config::Config;
 use crate::config::RuntimeConfig;
 use crate::core::ClientResponderQueue;
 use crate::core::RaftCore;
-use crate::core::SharedRuntimeState;
+use crate::core::RuntimeStats;
+use crate::core::SharedReplicateBatch;
 use crate::core::Tick;
 use crate::core::heartbeat::handle::HeartbeatWorkersHandle;
 use crate::core::io_flush_tracking::AppliedProgress;
@@ -474,7 +475,7 @@ where C: RaftTypeConfig
         let (io_submitted_tx, _io_submitted_rx) = C::watch_channel(default_io_id);
         let (committed_tx, _committed_rx) = C::watch_channel(None);
 
-        let runtime_stats = SharedRuntimeState::new();
+        let shared_replicate_batch = SharedReplicateBatch::new();
 
         let core: RaftCore<C, N, LS> = RaftCore {
             id: id.clone(),
@@ -511,7 +512,8 @@ where C: RaftTypeConfig
             tx_server_metrics,
             tx_progress,
 
-            runtime_stats: runtime_stats.clone(),
+            runtime_stats: RuntimeStats::new(),
+            shared_replicate_batch,
 
             span: core_span,
         };
@@ -531,7 +533,6 @@ where C: RaftTypeConfig
             rx_data_metrics,
             rx_server_metrics,
             progress_watcher,
-            runtime_stats,
             tx_shutdown: std::sync::Mutex::new(Some(tx_shutdown)),
             core_state: std::sync::Mutex::new(CoreState::Running(core_handle)),
 
@@ -561,13 +562,14 @@ where C: RaftTypeConfig
         &self.inner.config
     }
 
-    /// Return a clone of the shared runtime statistics.
+    /// Return a copy of the runtime statistics.
     ///
-    /// The returned [`SharedRuntimeState`] shares the same underlying data with `RaftCore`,
-    /// allowing access to runtime statistics that are updated during Raft operations.
+    /// Sends a message to RaftCore to retrieve the current runtime statistics.
+    /// This returns a snapshot of the stats at the time of the call.
     #[cfg(feature = "runtime-stats")]
-    pub fn runtime_stats(&self) -> SharedRuntimeState {
-        self.inner.runtime_stats.clone()
+    pub async fn runtime_stats(&self) -> Result<RuntimeStats, Fatal<C>> {
+        let (tx, rx) = C::oneshot();
+        self.inner.call_core(RaftMsg::GetRuntimeStats { tx }, rx).await
     }
 
     /// Check if this node is currently the leader.

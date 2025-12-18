@@ -7,17 +7,14 @@
 //!
 //! ```ignore
 //! let raft = Raft::new(...).await?;
-//! let stats = raft.runtime_stats();
-//! stats.with_mut(|s| {
-//!     println!("{}", s.display());
-//! });
+//! let stats = raft.runtime_stats().await?;
+//! println!("{}", stats.display());
 //! ```
 
 pub use crate::base::histogram::Histogram;
 pub use crate::base::histogram::PercentileStats;
 pub use crate::core::RuntimeStats;
 pub use crate::core::RuntimeStatsDisplay;
-pub use crate::core::SharedRuntimeState;
 pub use crate::core::raft_msg::ExternalCommandName;
 pub use crate::core::raft_msg::RaftMsgName;
 pub use crate::engine::CommandName;

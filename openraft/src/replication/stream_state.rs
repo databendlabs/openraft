@@ -110,9 +110,7 @@ where
             entries,
         };
 
-        self.replication_context
-            .runtime_stats
-            .with_mut(|s| s.replicate_batch.record(payload.entries.len() as u64));
+        self.replication_context.replicate_batch.record(payload.entries.len() as u64);
 
         tracing::debug!("next_request: AppendEntries: {}", payload);
 

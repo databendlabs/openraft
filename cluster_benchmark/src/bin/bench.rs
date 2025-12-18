@@ -142,9 +142,9 @@ async fn do_bench(bench_config: &BenchConfig) -> anyhow::Result<()> {
     let stats_handle = tokio::spawn(async move {
         loop {
             tokio::time::sleep(Duration::from_secs(5)).await;
-            let stats = stats_leader.runtime_stats();
-            let display = stats.with_mut(|s| s.display());
-            eprintln!("[{:>6.2}s] {}", now.elapsed().as_secs_f64(), display);
+            if let Ok(stats) = stats_leader.runtime_stats().await {
+                eprintln!("[{:>6.2}s] {}", now.elapsed().as_secs_f64(), stats.display());
+            }
         }
     });
 
@@ -177,9 +177,8 @@ async fn do_bench(bench_config: &BenchConfig) -> anyhow::Result<()> {
     stats_handle.abort();
 
     // Print final stats
-    let stats = leader.runtime_stats();
-    let display = stats.with_mut(|s| s.display());
-    eprintln!("[{:>6.2}s] Final: {}", elapsed.as_secs_f64(), display);
+    let stats = leader.runtime_stats().await?;
+    eprintln!("[{:>6.2}s] Final: {}", elapsed.as_secs_f64(), stats.display());
 
     let millis = elapsed.as_millis().max(1);
     println!(

@@ -34,7 +34,7 @@ pub(crate) mod raft_msg;
 mod replication_state;
 mod runtime_stats;
 mod server_state;
-mod shared_runtime_state;
+mod shared_replicate_batch;
 pub(crate) mod sm;
 mod tick;
 
@@ -46,6 +46,6 @@ pub use runtime_stats::RuntimeStats;
 #[allow(unused_imports)]
 pub use runtime_stats::RuntimeStatsDisplay;
 pub use server_state::ServerState;
-pub use shared_runtime_state::SharedRuntimeState;
+pub(crate) use shared_replicate_batch::SharedReplicateBatch;
 pub(crate) use tick::Tick;
 pub(crate) use tick::TickHandle;
