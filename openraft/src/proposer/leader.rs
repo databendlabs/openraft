@@ -220,10 +220,10 @@ where
         let now = C::now();
 
         tracing::debug!(
-            leader_id = display(&node_id),
-            now = display(now.display()),
-            "{}: update with leader's local time, before retrieving quorum acked clock",
-            func_name!()
+            "{}: update with leader's local time, before retrieving quorum acked clock: leader_id: {}, now: {}",
+            func_name!(),
+            node_id,
+            now.display()
         );
 
         let granted = self.clock_progress.increase_to(&node_id, Some(now));

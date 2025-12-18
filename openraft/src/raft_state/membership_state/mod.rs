@@ -174,9 +174,9 @@ where C: RaftTypeConfig
 
         if Some(since) <= self.effective().log_id().index() {
             tracing::debug!(
-                effective = display(self.effective()),
-                committed = display(self.committed()),
-                "effective membership is in conflicting logs, revert it to last committed"
+                "effective membership is in conflicting logs, revert it to last committed: effective: {}, committed: {}",
+                self.effective(),
+                self.committed()
             );
 
             self.effective = self.committed.clone();

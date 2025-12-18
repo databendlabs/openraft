@@ -573,18 +573,18 @@ where
 
         let Some((mut lh, _)) = self.engine.get_leader_handler_or_reject(None::<WriteResponderOf<C>>) else {
             tracing::debug!(
-                now = display(C::now().display()),
-                "{} failed to send heartbeat, not a Leader",
-                emitter
+                "{} failed to send heartbeat, not a Leader: now: {}",
+                emitter,
+                C::now().display()
             );
             return false;
         };
 
         if lh.leader.get_transfer_to().is_some() {
             tracing::debug!(
-                now = display(C::now().display()),
-                "{} is transferring leadership, skip sending heartbeat",
-                emitter
+                "{} is transferring leadership, skip sending heartbeat: now: {}",
+                emitter,
+                C::now().display()
             );
             return false;
         }
@@ -809,9 +809,9 @@ where
     #[tracing::instrument(level = "debug", skip(self))]
     pub(crate) fn current_leader(&self) -> Option<C::NodeId> {
         tracing::debug!(
-            self_id = display(&self.id),
-            vote = display(self.engine.state.vote_ref()),
-            "get current_leader"
+            "get current_leader: self_id: {}, vote: {}",
+            self.id,
+            self.engine.state.vote_ref()
         );
 
         let vote = self.engine.state.vote_ref();

@@ -23,10 +23,10 @@ where C: RaftTypeConfig
         let server_state = self.state.calc_server_state(&self.config.id);
 
         tracing::debug!(
-            id = display(&self.config.id),
-            prev_server_state = debug(self.state.server_state),
-            server_state = debug(server_state),
-            "update_server_state_if_changed"
+            "update_server_state_if_changed: id: {}, prev_server_state: {:?}, server_state: {:?}",
+            self.config.id,
+            self.state.server_state,
+            server_state
         );
 
         if self.state.server_state == server_state {

@@ -97,11 +97,11 @@ mod tokio_rt {
 
                 // Send the RPC over to the target.
                 tracing::debug!(
-                    snapshot_size = req.data.len(),
+                    "sending snapshot chunk: snapshot_size: {}, offset: {}, end: {}, done: {}",
+                    req.data.len(),
                     req.offset,
                     end,
-                    req.done,
-                    "sending snapshot chunk"
+                    req.done
                 );
 
                 #[allow(deprecated)]
@@ -129,8 +129,8 @@ mod tokio_rt {
                                                 InstallSnapshotError::SnapshotMismatch(mismatch) => {
                                                     //
                                                     tracing::warn!(
-                                                        mismatch = display(&mismatch),
-                                                        "snapshot mismatch, reset offset and retry"
+                                                        "snapshot mismatch, reset offset and retry: mismatch: {}",
+                                                        mismatch
                                                     );
                                                     offset = 0;
                                                 }
