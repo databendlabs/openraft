@@ -1371,6 +1371,8 @@ where
     pub(crate) async fn handle_api_msg(&mut self, msg: RaftMsg<C>) {
         tracing::debug!("RAFT_event id={:<2}  input: {}", self.id, msg);
 
+        self.runtime_stats.with_mut(|s| s.record_raft_msg(msg.name()));
+
         match msg {
             RaftMsg::AppendEntries { rpc, tx } => {
                 self.handle_append_entries_request(rpc, tx);

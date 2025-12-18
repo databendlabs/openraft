@@ -3,6 +3,7 @@ use std::fmt;
 
 use crate::base::histogram::Histogram;
 use crate::base::histogram::PercentileStats;
+use crate::core::raft_msg::RaftMsgName;
 use crate::engine::CommandName;
 
 /// Runtime statistics for Raft operations.
@@ -35,6 +36,12 @@ pub struct RuntimeStats {
     /// This tracks how many times each command type has been executed,
     /// useful for understanding workload patterns and debugging.
     pub command_counts: HashMap<CommandName, u64>,
+
+    /// Count of each RaftMsg type received.
+    ///
+    /// This tracks how many times each RaftMsg type has been received,
+    /// useful for understanding API usage patterns and debugging.
+    pub raft_msg_counts: HashMap<RaftMsgName, u64>,
 }
 
 impl Default for RuntimeStats {
@@ -50,12 +57,18 @@ impl RuntimeStats {
             append_batch: Histogram::new(),
             replicate_batch: Histogram::new(),
             command_counts: HashMap::new(),
+            raft_msg_counts: HashMap::new(),
         }
     }
 
     /// Record the execution of a command.
     pub fn record_command(&mut self, name: CommandName) {
         *self.command_counts.entry(name).or_insert(0) += 1;
+    }
+
+    /// Record the receipt of a RaftMsg.
+    pub fn record_raft_msg(&mut self, name: RaftMsgName) {
+        *self.raft_msg_counts.entry(name).or_insert(0) += 1;
     }
 
     /// Returns a displayable representation of the runtime statistics.
@@ -69,6 +82,7 @@ impl RuntimeStats {
             append_batch: self.append_batch.percentile_stats(),
             replicate_batch: self.replicate_batch.percentile_stats(),
             command_counts: self.command_counts.clone(),
+            raft_msg_counts: self.raft_msg_counts.clone(),
         }
     }
 }
@@ -82,6 +96,7 @@ pub struct RuntimeStatsDisplay {
     append_batch: PercentileStats,
     replicate_batch: PercentileStats,
     command_counts: HashMap<CommandName, u64>,
+    raft_msg_counts: HashMap<RaftMsgName, u64>,
 }
 
 impl fmt::Display for RuntimeStatsDisplay {
@@ -95,6 +110,19 @@ impl fmt::Display for RuntimeStatsDisplay {
         let mut first = true;
         for name in CommandName::ALL {
             if let Some(&count) = self.command_counts.get(name) {
+                if !first {
+                    write!(f, ", ")?;
+                }
+                write!(f, "{}: {}", name, count)?;
+                first = false;
+            }
+        }
+
+        write!(f, "}}, raft_msgs: {{")?;
+
+        let mut first = true;
+        for name in RaftMsgName::ALL {
+            if let Some(&count) = self.raft_msg_counts.get(name) {
                 if !first {
                     write!(f, ", ")?;
                 }
