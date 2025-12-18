@@ -29,6 +29,7 @@
 
 mod command_kind;
 mod command_name;
+mod command_scheduler;
 mod engine_config;
 mod engine_impl;
 mod engine_output;

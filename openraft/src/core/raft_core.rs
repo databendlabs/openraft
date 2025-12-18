@@ -987,6 +987,9 @@ where
 
         self.send_satisfied_responds();
 
+        // Batch commands for better I/O performance (e.g., merge consecutive AppendEntries)
+        self.engine.output.sched_commands();
+
         while let Some(cmd) = self.engine.output.pop_command() {
             let res = self.run_command(cmd).await?;
 
@@ -1168,13 +1171,10 @@ where
             };
 
             self.handle_api_msg(msg).await;
-
-            // TODO: does run_engine_commands() run too frequently?
-            //       to run many commands in one shot, it is possible to batch more commands to gain
-            //       better performance.
-
-            self.run_engine_commands().await?;
         }
+
+        // After handling all the inputs, batch run all the commands for better performance
+        self.run_engine_commands().await?;
 
         tracing::debug!("at_most({}) reached, there are more queued RaftMsg to process", at_most);
 
