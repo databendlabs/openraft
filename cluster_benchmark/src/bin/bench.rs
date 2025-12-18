@@ -10,11 +10,12 @@ use std::time::Duration;
 use std::time::Instant;
 
 use clap::Parser;
+use cluster_benchmark::network::BenchRaft;
 use cluster_benchmark::network::Router;
 use cluster_benchmark::store::ClientRequest;
 use openraft::Config;
 use tokio::runtime::Builder;
-
+use tokio::runtime::Runtime;
 #[cfg(feature = "flamegraph")]
 use tracing_flame::FlushGuard;
 
@@ -22,12 +23,16 @@ use tracing_flame::FlushGuard;
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
-    /// Number of worker threads for the tokio runtime
-    #[arg(short = 'w', long, default_value_t = 32)]
-    workers: usize,
+    /// Number of worker threads for the client runtime
+    #[arg(long, default_value_t = 2)]
+    client_workers: usize,
+
+    /// Number of worker threads for the server runtime
+    #[arg(long, default_value_t = 16)]
+    server_workers: usize,
 
     /// Number of client tasks to spawn
-    #[arg(short = 'c', long, default_value_t = 256)]
+    #[arg(short = 'c', long, default_value_t = 4096)]
     clients: u64,
 
     /// Number of operations per client
@@ -40,7 +45,8 @@ struct Args {
 }
 
 struct BenchConfig {
-    pub worker_threads: usize,
+    pub client_workers: usize,
+    pub server_workers: usize,
     pub n_operations: u64,
     pub n_client: u64,
     pub members: BTreeSet<u64>,
@@ -50,8 +56,8 @@ impl Display for BenchConfig {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "workers: {}, clients: {}, n: {}, raft_members: {:?}",
-            self.worker_threads, self.n_client, self.n_operations, self.members
+            "client_workers: {}, server_workers: {}, clients: {}, n: {}, raft_members: {:?}",
+            self.client_workers, self.server_workers, self.n_client, self.n_operations, self.members
         )
     }
 }
@@ -74,7 +80,8 @@ fn main() -> anyhow::Result<()> {
     let members: BTreeSet<u64> = (0..args.members).collect();
 
     let bench_config = BenchConfig {
-        worker_threads: args.workers,
+        client_workers: args.client_workers,
+        server_workers: args.server_workers,
         n_operations: args.operations,
         n_client: args.clients,
         members,
@@ -98,14 +105,47 @@ fn bench_with_config(bench_config: &BenchConfig) -> anyhow::Result<()> {
     #[cfg(feature = "flamegraph")]
     let _flame_guard = init_flamegraph("./flamegraph.folded")?;
 
-    let rt = Builder::new_multi_thread()
-        .worker_threads(bench_config.worker_threads)
+    // Server runtime - runs all Raft nodes
+    let server_rt = Builder::new_multi_thread()
+        .worker_threads(bench_config.server_workers)
         .enable_all()
-        .thread_name("bench-cluster")
+        .thread_name("bench-server")
         .thread_stack_size(3 * 1024 * 1024)
         .build()?;
 
-    rt.block_on(do_bench(bench_config))
+    // Client runtime - runs client tasks
+    let client_rt = Builder::new_multi_thread()
+        .worker_threads(bench_config.client_workers)
+        .enable_all()
+        .thread_name("bench-client")
+        .thread_stack_size(3 * 1024 * 1024)
+        .build()?;
+
+    // Create cluster on server runtime
+    let (_router, leader) = create_cluster(&server_rt, bench_config)?;
+
+    // Run benchmark on client runtime
+    client_rt.block_on(do_bench(bench_config, leader))
+}
+
+fn create_cluster(server_rt: &Runtime, bench_config: &BenchConfig) -> anyhow::Result<(Router, BenchRaft)> {
+    server_rt.block_on(async {
+        let config = Arc::new(
+            Config {
+                election_timeout_min: 200,
+                election_timeout_max: 2000,
+                purge_batch_size: 1024,
+                max_payload_entries: 1024,
+                ..Default::default()
+            }
+            .validate()?,
+        );
+
+        let mut router = Router::new();
+        router.new_cluster(config, bench_config.members.clone()).await?;
+        let leader = router.get_raft(0);
+        Ok((router, leader))
+    })
 }
 
 /// Benchmark client_write.
@@ -113,25 +153,10 @@ fn bench_with_config(bench_config: &BenchConfig) -> anyhow::Result<()> {
 /// Cluster config:
 /// - Log: in-memory BTree
 /// - StateMachine: in-memory BTree
-async fn do_bench(bench_config: &BenchConfig) -> anyhow::Result<()> {
-    let config = Arc::new(
-        Config {
-            election_timeout_min: 200,
-            election_timeout_max: 2000,
-            purge_batch_size: 1024,
-            max_payload_entries: 1024,
-            ..Default::default()
-        }
-        .validate()?,
-    );
-
-    let mut router = Router::new();
-    router.new_cluster(config.clone(), bench_config.members.clone()).await?;
-
+async fn do_bench(bench_config: &BenchConfig, leader: BenchRaft) -> anyhow::Result<()> {
     let n = bench_config.n_operations;
     let total = n * bench_config.n_client;
 
-    let leader = router.get_raft(0);
     let mut handles = Vec::new();
 
     // Benchmark start
