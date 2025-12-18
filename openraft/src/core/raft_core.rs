@@ -987,10 +987,14 @@ where
 
         self.send_satisfied_responds();
 
-        // Batch commands for better I/O performance (e.g., merge consecutive AppendEntries)
-        self.engine.output.sched_commands();
+        loop {
+            // Batch commands for better I/O performance (e.g., merge consecutive AppendEntries)
+            self.engine.output.sched_commands();
 
-        while let Some(cmd) = self.engine.output.pop_command() {
+            let Some(cmd) = self.engine.output.pop_command() else {
+                break;
+            };
+
             let res = self.run_command(cmd).await?;
 
             let Some(cmd) = res else {
