@@ -1,0 +1,17 @@
+[package]
+name = "openraft-metrics-otel"
+version = "0.1.0"
+edition = "2024"
+authors = [
+    "Databend Authors <opensource@datafuselabs.com>",
+]
+description = "OpenTelemetry metrics integration for Openraft"
+documentation = "https://docs.rs/openraft-metrics-otel"
+homepage = "https://github.com/databendlabs/openraft"
+keywords = ["raft", "consensus", "opentelemetry", "metrics"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/databendlabs/openraft"
+
+[dependencies]
+openraft = { path = "../openraft", version = "0.10.0" }
+opentelemetry = "0.30.0"

@@ -110,7 +110,13 @@ where
             entries,
         };
 
-        self.replication_context.replicate_batch.record(payload.entries.len() as u64);
+        let entry_count = payload.entries.len() as u64;
+        self.replication_context.replicate_batch.record(entry_count);
+
+        // Record to external metrics recorder
+        if let Some(r) = &self.replication_context.metrics_recorder {
+            r.record_replicate_batch(entry_count);
+        }
 
         tracing::debug!("next_request: AppendEntries: {}", payload);
 
