@@ -372,9 +372,9 @@ where C: RaftTypeConfig
         // Seen a higher log. Record it so that the next election will be delayed for a while.
         if resp.last_log_id.as_ref() > self.state.last_log_id() {
             tracing::info!(
-                greater_log_id = display(resp.last_log_id.display()),
-                "seen a greater log id when {}",
-                func_name!()
+                "{}: seen a greater log id: {}",
+                func_name!(),
+                resp.last_log_id.display()
             );
             self.set_greater_log();
         }
@@ -570,11 +570,7 @@ where C: RaftTypeConfig
     /// other tasks are using the logs.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn try_purge_log(&mut self) {
-        tracing::debug!(
-            purge_upto = display(self.state.purge_upto().display()),
-            "{}",
-            func_name!()
-        );
+        tracing::debug!("{}: purge_upto: {}", func_name!(), self.state.purge_upto().display());
 
         if self.leader.is_some() {
             // If it is leading, it must not delete a log that is in use by a replication task.
@@ -632,9 +628,9 @@ where C: RaftTypeConfig
 
         let Some((mut lh, _)) = self.get_leader_handler_or_reject(None::<WriteResponderOf<C>>) else {
             tracing::info!(
-                to = display(to),
-                "{}: this node is not a Leader, ignore transfer Leader",
-                func_name!()
+                "{}: this node is not a Leader, ignore transfer Leader: to: {}",
+                func_name!(),
+                to
             );
             return;
         };
@@ -741,9 +737,9 @@ where C: RaftTypeConfig
         }
 
         tracing::info!(
-            last_log_id = display(self.state.last_log_id().display()),
-            vote = display(self.state.vote_ref()),
-            "Engine::check_initialize(): cannot initialize"
+            "Engine::check_initialize(): cannot initialize: last_log_id: {}, vote: {}",
+            self.state.last_log_id().display(),
+            self.state.vote_ref()
         );
 
         Err(NotAllowed {

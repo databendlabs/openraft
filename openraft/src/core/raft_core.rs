@@ -573,18 +573,18 @@ where
 
         let Some((mut lh, _)) = self.engine.get_leader_handler_or_reject(None::<WriteResponderOf<C>>) else {
             tracing::debug!(
-                now = display(C::now().display()),
-                "{} failed to send heartbeat, not a Leader",
-                emitter
+                "{} failed to send heartbeat, not a Leader: now: {}",
+                emitter,
+                C::now().display()
             );
             return false;
         };
 
         if lh.leader.get_transfer_to().is_some() {
             tracing::debug!(
-                now = display(C::now().display()),
-                "{} is transferring leadership, skip sending heartbeat",
-                emitter
+                "{} is transferring leadership, skip sending heartbeat: now: {}",
+                emitter,
+                C::now().display()
             );
             return false;
         }

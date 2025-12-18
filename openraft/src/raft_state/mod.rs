@@ -399,11 +399,7 @@ where C: RaftTypeConfig
             let ref_log_id = ent.ref_log_id();
 
             if !self.has_log_id(ref_log_id) {
-                tracing::debug!(
-                    at = display(i),
-                    entry_log_id = display(ref_log_id),
-                    "found nonexistent log id"
-                );
+                tracing::debug!("found nonexistent log id: at: {}, entry_log_id: {}", i, ref_log_id);
                 return i;
             }
         }
@@ -426,11 +422,11 @@ where C: RaftTypeConfig
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn calc_server_state(&self, id: &C::NodeId) -> ServerState {
         tracing::debug!(
-            contains = display(self.membership_state.contains(id)),
-            is_voter = display(self.is_voter(id)),
-            is_leader = display(self.is_leader(id)),
-            is_leading = display(self.is_leading(id)),
-            "states"
+            "states: contains: {}, is_voter: {}, is_leader: {}, is_leading: {}",
+            self.membership_state.contains(id),
+            self.is_voter(id),
+            self.is_leader(id),
+            self.is_leading(id)
         );
 
         // Openraft does not require Leader/Candidate to be a voter, i.e., a learner node could
