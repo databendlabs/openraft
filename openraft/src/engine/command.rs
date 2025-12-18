@@ -305,7 +305,7 @@ where C: RaftTypeConfig
             Command::BroadcastTransferLeader { .. }   => CommandKind::Network,
             Command::SendVote { .. }                  => CommandKind::Network,
 
-            Command::SaveCommittedAndApply { .. }                     => CommandKind::StateMachine,
+            Command::SaveCommittedAndApply { .. }     => CommandKind::StateMachine,
             Command::StateMachine { .. }              => CommandKind::StateMachine,
         }
     }

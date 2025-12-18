@@ -18,3 +18,5 @@ pub use crate::base::histogram::PercentileStats;
 pub use crate::core::RuntimeStats;
 pub use crate::core::RuntimeStatsDisplay;
 pub use crate::core::SharedRuntimeState;
+pub use crate::engine::CommandName;
+pub use crate::engine::SMCommandName;
