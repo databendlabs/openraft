@@ -9,6 +9,7 @@ mod fixtures;
 
 mod t10_current_leader;
 mod t10_leader_last_ack;
+mod t10_metrics_recorder;
 mod t10_purged;
 mod t10_server_metrics_and_data_metrics;
 mod t20_metrics_state_machine_consistency;

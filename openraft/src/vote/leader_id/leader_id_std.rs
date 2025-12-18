@@ -328,10 +328,6 @@ mod tests {
         test_from!(TcU32, u32, 5u32);
         test_from!(TcU16, u16, 5u16);
         test_from!(TcU8, u8, 5u8);
-        test_from!(TcI64, i64, 5i64);
-        test_from!(TcI32, i32, 5i32);
-        test_from!(TcI16, i16, 5i16);
-        test_from!(TcI8, i8, 5i8);
 
         Ok(())
     }

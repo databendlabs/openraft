@@ -5,6 +5,7 @@ use crate::Config;
 use crate::RaftTypeConfig;
 use crate::core::SharedReplicateBatch;
 use crate::core::notification::Notification;
+use crate::metrics::MetricsRecorder;
 use crate::progress::stream_id::StreamId;
 use crate::type_config::alias::MpscSenderOf;
 use crate::type_config::alias::WatchReceiverOf;
@@ -46,6 +47,9 @@ where C: RaftTypeConfig
 
     /// Shared histogram for recording replication batch sizes.
     pub(crate) replicate_batch: SharedReplicateBatch,
+
+    /// External metrics recorder for exporting metrics to custom backends.
+    pub(crate) metrics_recorder: Option<Arc<dyn MetricsRecorder>>,
 }
 
 impl<C> fmt::Display for ReplicationContext<C>

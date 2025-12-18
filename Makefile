@@ -150,6 +150,7 @@ check:
 	RUSTFLAGS="-D warnings" cargo check --manifest-path rt-compio/Cargo.toml
 	RUSTFLAGS="-D warnings" cargo check --manifest-path rt-monoio/Cargo.toml
 	RUSTFLAGS="-D warnings" cargo check --manifest-path rt-tokio/Cargo.toml
+	RUSTFLAGS="-D warnings" cargo check --manifest-path metrics-otel/Cargo.toml
 	RUSTFLAGS="-D warnings" cargo check --manifest-path benchmarks/minimal/Cargo.toml
 	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/client-http/Cargo.toml
 	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/network-v1-http/Cargo.toml
@@ -171,6 +172,7 @@ clean:
 	cargo clean --manifest-path rt-compio/Cargo.toml
 	cargo clean --manifest-path rt-monoio/Cargo.toml
 	cargo clean --manifest-path rt-tokio/Cargo.toml
+	cargo clean --manifest-path metrics-otel/Cargo.toml
 	cargo clean --manifest-path benchmarks/minimal/Cargo.toml
 	cargo clean --manifest-path examples/client-http/Cargo.toml
 	cargo clean --manifest-path examples/network-v1-http/Cargo.toml
