@@ -2,6 +2,7 @@ use std::fmt;
 
 use crate::base::histogram::Histogram;
 use crate::base::histogram::PercentileStats;
+use crate::core::NotificationName;
 use crate::core::raft_msg::RaftMsgName;
 use crate::engine::CommandName;
 
@@ -43,6 +44,13 @@ pub struct RuntimeStats {
     /// useful for understanding API usage patterns and debugging.
     /// Indexed by `RaftMsgName::index()`.
     pub raft_msg_counts: Vec<u64>,
+
+    /// Count of each Notification type received.
+    ///
+    /// This tracks how many times each Notification type has been received,
+    /// useful for understanding internal message patterns and debugging.
+    /// Indexed by `NotificationName::index()`.
+    pub notification_counts: Vec<u64>,
 }
 
 impl Default for RuntimeStats {
@@ -59,6 +67,7 @@ impl RuntimeStats {
             replicate_batch: Histogram::new(),
             command_counts: vec![0; CommandName::COUNT],
             raft_msg_counts: vec![0; RaftMsgName::COUNT],
+            notification_counts: vec![0; NotificationName::COUNT],
         }
     }
 
@@ -70,6 +79,11 @@ impl RuntimeStats {
     /// Record the receipt of a RaftMsg.
     pub fn record_raft_msg(&mut self, name: RaftMsgName) {
         self.raft_msg_counts[name.index()] += 1;
+    }
+
+    /// Record the receipt of a Notification.
+    pub fn record_notification(&mut self, name: NotificationName) {
+        self.notification_counts[name.index()] += 1;
     }
 
     /// Returns a displayable representation of the runtime statistics.
@@ -84,6 +98,7 @@ impl RuntimeStats {
             replicate_batch: self.replicate_batch.percentile_stats(),
             command_counts: self.command_counts.clone(),
             raft_msg_counts: self.raft_msg_counts.clone(),
+            notification_counts: self.notification_counts.clone(),
         }
     }
 }
@@ -98,6 +113,7 @@ pub struct RuntimeStatsDisplay {
     replicate_batch: PercentileStats,
     command_counts: Vec<u64>,
     raft_msg_counts: Vec<u64>,
+    notification_counts: Vec<u64>,
 }
 
 impl fmt::Display for RuntimeStatsDisplay {
@@ -125,6 +141,20 @@ impl fmt::Display for RuntimeStatsDisplay {
         let mut first = true;
         for (i, name) in RaftMsgName::ALL.iter().enumerate() {
             let count = self.raft_msg_counts[i];
+            if count > 0 {
+                if !first {
+                    write!(f, ", ")?;
+                }
+                write!(f, "{}: {}", name, count)?;
+                first = false;
+            }
+        }
+
+        write!(f, "}}, notifications: {{")?;
+
+        let mut first = true;
+        for (i, name) in NotificationName::ALL.iter().enumerate() {
+            let count = self.notification_counts[i];
             if count > 0 {
                 if !first {
                     write!(f, ", ")?;

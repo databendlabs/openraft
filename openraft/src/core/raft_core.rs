@@ -1537,6 +1537,8 @@ where
     pub(crate) fn handle_notification(&mut self, notify: Notification<C>) -> Result<(), Fatal<C>> {
         tracing::debug!("RAFT_event id={:<2} notify: {}", self.id, notify);
 
+        self.runtime_stats.record_notification(notify.name());
+
         match notify {
             Notification::VoteResponse {
                 target,

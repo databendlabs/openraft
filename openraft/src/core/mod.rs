@@ -29,6 +29,7 @@ pub(crate) mod core_state;
 pub(crate) mod heartbeat;
 pub(crate) mod io_flush_tracking;
 pub(crate) mod notification;
+mod notification_name;
 mod raft_core;
 pub(crate) mod raft_msg;
 mod replication_state;
@@ -39,6 +40,7 @@ pub(crate) mod sm;
 mod tick;
 
 pub(crate) use client_responder_queue::ClientResponderQueue;
+pub use notification_name::NotificationName;
 pub(crate) use raft_core::ApplyResult;
 pub use raft_core::RaftCore;
 pub(crate) use replication_state::replication_lag;

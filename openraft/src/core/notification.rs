@@ -2,6 +2,7 @@ use std::fmt;
 
 use crate::RaftTypeConfig;
 use crate::StorageError;
+use crate::core::NotificationName;
 use crate::core::sm;
 use crate::display_ext::DisplayInstantExt;
 use crate::display_ext::display_option::DisplayOptionExt;
@@ -85,6 +86,20 @@ where C: RaftTypeConfig
 {
     pub(crate) fn sm(command_result: sm::CommandResult<C>) -> Self {
         Self::StateMachine { command_result }
+    }
+
+    /// Returns the name of this notification variant.
+    pub(crate) fn name(&self) -> NotificationName {
+        match self {
+            Self::VoteResponse { .. } => NotificationName::VoteResponse,
+            Self::HigherVote { .. } => NotificationName::HigherVote,
+            Self::StorageError { .. } => NotificationName::StorageError,
+            Self::LocalIO { .. } => NotificationName::LocalIO,
+            Self::ReplicationProgress { .. } => NotificationName::ReplicationProgress,
+            Self::HeartbeatProgress { .. } => NotificationName::HeartbeatProgress,
+            Self::StateMachine { .. } => NotificationName::StateMachine,
+            Self::Tick { .. } => NotificationName::Tick,
+        }
     }
 }
 

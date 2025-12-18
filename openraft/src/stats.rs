@@ -13,6 +13,7 @@
 
 pub use crate::base::histogram::Histogram;
 pub use crate::base::histogram::PercentileStats;
+pub use crate::core::NotificationName;
 pub use crate::core::RuntimeStats;
 pub use crate::core::RuntimeStatsDisplay;
 pub use crate::core::raft_msg::ExternalCommandName;
