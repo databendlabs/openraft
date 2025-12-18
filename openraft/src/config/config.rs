@@ -181,6 +181,19 @@ pub struct Config {
     #[clap(long, default_value = "300")]
     pub max_payload_entries: u64,
 
+    /// The maximum number of log entries per append I/O operation.
+    ///
+    /// When multiple `AppendEntries` commands are queued, Openraft can merge them into
+    /// a single storage write to improve throughput. This setting limits the batch size
+    /// to prevent excessively large writes that could cause high storage latency.
+    ///
+    /// This is separate from `max_payload_entries` which controls network replication payload size.
+    /// Storage typically has higher throughput than network, so this value can be larger.
+    ///
+    /// Defaults to 4096.
+    #[clap(long, default_value = "4096")]
+    pub max_append_entries: Option<u64>,
+
     /// The distance behind in log replication a follower must fall before it is considered lagging
     ///
     /// - Followers that fall behind this index are replicated with a snapshot.
@@ -376,6 +389,13 @@ impl Config {
     /// Defaults to 65536 if not specified.
     pub(crate) fn notification_channel_size(&self) -> usize {
         self.notification_channel_size.unwrap_or(65536) as usize
+    }
+
+    /// Get the maximum number of log entries per append I/O operation.
+    ///
+    /// Defaults to 4096 if not specified.
+    pub(crate) fn max_append_entries(&self) -> u64 {
+        self.max_append_entries.unwrap_or(4096)
     }
 
     /// Build a `Config` instance from a series of command line arguments.

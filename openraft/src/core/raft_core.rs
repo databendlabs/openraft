@@ -993,7 +993,7 @@ where
 
         loop {
             // Batch commands for better I/O performance (e.g., merge consecutive AppendEntries)
-            self.engine.output.sched_commands();
+            self.engine.output.sched_commands(&self.config);
 
             let Some(cmd) = self.engine.output.pop_command() else {
                 break;
