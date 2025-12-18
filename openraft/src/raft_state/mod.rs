@@ -399,12 +399,12 @@ where C: RaftTypeConfig
             let ref_log_id = ent.ref_log_id();
 
             if !self.has_log_id(ref_log_id) {
-                tracing::debug!("found nonexistent log id: at: {}, entry_log_id: {}", i, ref_log_id);
+                tracing::debug!("found conflicting log id at index {}: {}", i, ref_log_id);
                 return i;
             }
         }
 
-        tracing::debug!("not found nonexistent");
+        tracing::debug!("no conflicting log id found");
         l
     }
 

@@ -169,7 +169,7 @@ where C: RaftTypeConfig
         self.state.server_state = server_state;
 
         tracing::info!(
-            "startup done: id={} target_state: {:?}",
+            "startup done, id={}, target_state: {:?}",
             self.config.id,
             self.state.server_state
         );
@@ -285,9 +285,9 @@ where C: RaftTypeConfig
         let now = C::now();
         let local_leased_vote = &self.state.vote;
 
-        tracing::info!("Engine::handle_vote_req: req: {}", req);
+        tracing::info!("handle vote request: req: {}", req);
         tracing::info!(
-            "Engine::handle_vote_req: my_vote: {}, my_last_log_id: {}, lease: {}",
+            "handle vote request: my_vote: {}, my_last_log_id: {}, lease: {}",
             **local_leased_vote,
             self.state.last_log_id().display(),
             local_leased_vote.display_lease_info(now)
@@ -498,7 +498,7 @@ where C: RaftTypeConfig
     /// This is only called by leader.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn leader_step_down(&mut self) {
-        tracing::debug!("leader_step_down: node_id:{}", self.config.id);
+        tracing::debug!("leader step down, node_id: {}", self.config.id);
 
         // Step down:
         // Keep acting as leader until a membership without this node is committed.
@@ -814,7 +814,7 @@ where C: RaftTypeConfig
     pub(crate) fn leader_handler(&mut self) -> Result<LeaderHandler<'_, C>, ForwardToLeader<C>> {
         let leader = match self.leader.as_mut() {
             None => {
-                tracing::debug!("this node is NOT a leader: {:?}", self.state.server_state);
+                tracing::debug!("not a leader, server_state: {:?}", self.state.server_state);
                 return Err(self.state.forward_to_leader());
             }
             Some(x) => x,

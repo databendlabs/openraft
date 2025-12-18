@@ -537,7 +537,7 @@ where
     /// latter is for membership configuration changes.
     #[tracing::instrument(level = "debug", skip_all, fields(id = display(&self.id)))]
     pub fn write_entry(&mut self, entry: C::Entry, resp_tx: Option<CoreResponder<C>>) {
-        tracing::debug!("write_entry: payload: {}", entry);
+        tracing::debug!("write entry, payload: {}", entry);
 
         let Some((mut lh, tx)) = self.engine.get_leader_handler_or_reject(resp_tx) else {
             return;
@@ -561,7 +561,7 @@ where
 
         // Install callback channels.
         if let Some(tx) = tx {
-            tracing::debug!("write_entry: push tx to client_responders: log_id: {}", log_id);
+            tracing::debug!("write entry: push tx to responders, log_id: {}", log_id);
             self.client_responders.push(index, tx);
         }
     }
@@ -569,7 +569,7 @@ where
     /// Send a heartbeat message to every follower/learners.
     #[tracing::instrument(level = "debug", skip_all, fields(id = display(&self.id)))]
     pub(crate) fn send_heartbeat(&mut self, emitter: impl fmt::Display) -> bool {
-        tracing::debug!("send_heartbeat: now: {}", C::now().display());
+        tracing::debug!("send heartbeat, now: {}", C::now().display());
 
         let Some((mut lh, _)) = self.engine.get_leader_handler_or_reject(None::<WriteResponderOf<C>>) else {
             tracing::debug!(
@@ -707,11 +707,11 @@ where
             false
         });
 
-        tracing::debug!("report_metrics: {}", m);
+        tracing::debug!("report metrics: {}", m);
         let res = self.tx_metrics.send(m);
 
         if let Err(err) = res {
-            tracing::error!("error reporting metrics: error: {}, id: {}", err, &self.id);
+            tracing::error!("failed to report metrics, error: {}, id: {}", err, &self.id);
         }
     }
 
@@ -1689,29 +1689,29 @@ where
     fn handle_tick_election(&mut self) {
         let now = C::now();
 
-        tracing::debug!("try to trigger election by tick, now: {}", now.display());
+        tracing::debug!("try to trigger election, now: {}", now.display());
 
         // TODO: leader lease should be extended. Or it has to examine if it is leader
         //       before electing.
         if self.engine.state.server_state == ServerState::Leader {
-            tracing::debug!("already a leader, do not elect again");
+            tracing::debug!("skip election, already a leader");
             return;
         }
 
         if !self.engine.state.membership_state.effective().is_voter(&self.id) {
-            tracing::debug!("this node is not a voter");
+            tracing::debug!("skip election, not a voter");
             return;
         }
 
         if !self.runtime_config.enable_elect.load(Ordering::Relaxed) {
-            tracing::debug!("election is disabled");
+            tracing::debug!("skip election, election disabled");
             return;
         }
 
         if self.engine.state.membership_state.effective().voter_ids().count() == 1 {
-            tracing::debug!("this is the only voter, do election at once");
+            tracing::debug!("single voter, elect immediately");
         } else {
-            tracing::debug!("there are multiple voter, check election timeout");
+            tracing::debug!("multiple voters, check election timeout");
 
             let local_vote = &self.engine.state.vote;
             let timer_config = &self.engine.config.timer_config;
@@ -1725,9 +1725,9 @@ where
             tracing::debug!("local vote: {}, election_timeout: {:?}", local_vote, election_timeout,);
 
             if local_vote.is_expired(now, election_timeout) {
-                tracing::info!("election timeout passed, about to elect");
+                tracing::info!("election timeout expired, triggering election");
             } else {
-                tracing::debug!("election timeout has not yet passed",);
+                tracing::debug!("election timeout not yet expired");
                 return;
             }
         }
@@ -1735,7 +1735,7 @@ where
         // Every time elect, reset this flag.
         self.engine.reset_greater_log();
 
-        tracing::info!("do trigger election");
+        tracing::info!("trigger election");
         self.engine.elect();
     }
 
@@ -1868,7 +1868,7 @@ where
 
         tracing::debug!("joining removed replication: {}", target);
         let _x = handle.await;
-        tracing::info!("Done joining removed replication : {}", target);
+        tracing::info!("done joining removed replication: {}", target);
     }
 }
 
