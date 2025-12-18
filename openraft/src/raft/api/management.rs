@@ -66,9 +66,9 @@ where C: RaftTypeConfig
         let changes: ChangeMembers<C> = members.into();
 
         tracing::info!(
-            changes = debug(&changes),
-            retain = display(retain),
-            "change_membership: start to commit joint config"
+            "change_membership: start to commit joint config: changes: {:?}, retain: {}",
+            changes,
+            retain
         );
 
         let (tx, rx) = new_responder_pair::<C, _>();
@@ -181,8 +181,8 @@ where C: RaftTypeConfig
             .await;
 
         tracing::info!(
-            wait_res = display(DisplayResult(&wait_res)),
-            "waiting for replication to new learner"
+            "waiting for replication to new learner: wait_res: {}",
+            DisplayResult(&wait_res)
         );
 
         Ok(Ok(resp))

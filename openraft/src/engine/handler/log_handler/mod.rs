@@ -33,9 +33,9 @@ where C: RaftTypeConfig
         let purge_upto = st.purge_upto();
 
         tracing::info!(
-            last_purged_log_id = display(st.last_purged_log_id().display()),
-            purge_upto = display(purge_upto.display()),
-            "purge_log"
+            "purge_log: last_purged_log_id: {}, purge_upto: {}",
+            st.last_purged_log_id().display(),
+            purge_upto.display()
         );
 
         if purge_upto <= st.last_purged_log_id() {
@@ -83,20 +83,20 @@ where C: RaftTypeConfig
         let purge_end = self.state.snapshot_meta.last_log_id.next_index().saturating_sub(max_keep);
 
         tracing::debug!(
-            snapshot_last_log_id = debug(self.state.snapshot_meta.last_log_id.clone()),
-            max_keep,
-            "try purge: (-oo, {})",
-            purge_end
+            "try purge: (-oo, {}), snapshot_last_log_id: {:?}, max_keep: {}",
+            purge_end,
+            self.state.snapshot_meta.last_log_id,
+            max_keep
         );
 
         if st.last_purged_log_id().next_index() + batch_size > purge_end {
             tracing::debug!(
-                snapshot_last_log_id = debug(self.state.snapshot_meta.last_log_id.clone()),
+                "no need to purge: snapshot_last_log_id: {:?}, max_keep: {}, last_purged_log_id: {}, batch_size: {}, purge_end: {}",
+                self.state.snapshot_meta.last_log_id,
                 max_keep,
-                last_purged_log_id = display(st.last_purged_log_id().display()),
+                st.last_purged_log_id().display(),
                 batch_size,
-                purge_end,
-                "no need to purge",
+                purge_end
             );
             return None;
         }

@@ -103,12 +103,12 @@ where
         let (last_applied, _) = self.state_machine.applied_state().await.sto_read_sm()?;
 
         tracing::info!(
-            vote = display(&vote),
-            last_purged_log_id = display(last_purged_log_id.display()),
-            last_applied = display(last_applied.display()),
-            committed = display(committed.display()),
-            last_log_id = display(last_log_id.display()),
-            "get_initial_state"
+            "get_initial_state: vote: {}, last_purged_log_id: {}, last_applied: {}, committed: {}, last_log_id: {}",
+            vote,
+            last_purged_log_id.display(),
+            last_applied.display(),
+            committed.display(),
+            last_log_id.display()
         );
 
         // TODO: It is possible `committed < last_applied` because when installing snapshot,
@@ -138,9 +138,9 @@ where
             }
 
             tracing::info!(
+                "Re-applying committed logs to restore state machine to latest state: start: {}, end: {}",
                 start,
-                end,
-                "Re-applying committed logs to restore state machine to latest state"
+                end
             );
 
             self.reapply_committed(start, end).await?;
@@ -239,9 +239,9 @@ where
 
         if snap.meta.last_log_id > last_applied {
             tracing::info!(
-                snapshot_last_log_id = display(snap.meta.last_log_id.display()),
-                last_applied = display(last_applied.display()),
-                "Installing snapshot to restore transient state machine"
+                "Installing snapshot to restore transient state machine: snapshot_last_log_id: {}, last_applied: {}",
+                snap.meta.last_log_id.display(),
+                last_applied.display()
             );
 
             self.state_machine
@@ -250,8 +250,8 @@ where
                 .sto_write_snapshot(Some(snap.meta.signature()))?;
 
             tracing::info!(
-                new_last_applied = display(snap.meta.last_log_id.display()),
-                "Snapshot installed, state machine restored to snapshot position"
+                "Snapshot installed, state machine restored to snapshot position: new_last_applied: {}",
+                snap.meta.last_log_id.display()
             );
         }
 

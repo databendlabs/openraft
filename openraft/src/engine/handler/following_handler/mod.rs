@@ -163,7 +163,7 @@ where C: RaftTypeConfig
     /// And revert effective membership to the last committed if it is from the conflicting logs.
     #[tracing::instrument(level = "debug", skip(self))]
     fn truncate_logs(&mut self, since: u64) {
-        tracing::debug!(since = since, "truncate_logs");
+        tracing::debug!("truncate_logs: since: {}", since);
 
         debug_assert!(since >= self.state.last_purged_log_id().next_index());
 
@@ -196,18 +196,11 @@ where C: RaftTypeConfig
         // Update membership state with the last 2 membership configs found in new log entries.
         // Other membership log can be just ignored.
         for (i, m) in memberships.into_iter().enumerate() {
-            tracing::debug!(
-                last = display(&m),
-                "applying {}-th new membership configs received from leader",
-                i
-            );
+            tracing::debug!("applying {}-th new membership config received from leader: {}", i, m);
             self.state.membership_state.append(Arc::new(EffectiveMembership::new_from_stored_membership(m)));
         }
 
-        tracing::debug!(
-            membership_state = display(&self.state.membership_state),
-            "updated membership state"
-        );
+        tracing::debug!("updated membership state: {}", self.state.membership_state);
 
         self.server_state_handler().update_server_state_if_changed();
     }
