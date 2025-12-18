@@ -31,7 +31,7 @@ struct Args {
     clients: u64,
 
     /// Number of operations per client
-    #[arg(short = 'n', long, default_value_t = 50000)]
+    #[arg(short = 'n', long, default_value_t = 100_000)]
     operations: u64,
 
     /// Number of raft cluster members (1, 3, or 5)
