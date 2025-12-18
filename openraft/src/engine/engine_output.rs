@@ -3,6 +3,7 @@ use std::collections::VecDeque;
 use crate::RaftTypeConfig;
 use crate::engine::Command;
 use crate::engine::Condition;
+use crate::engine::command_scheduler::CommandScheduler;
 use crate::engine::pending_responds::PendingResponds;
 use crate::engine::respond_command::PendingRespond;
 
@@ -100,5 +101,14 @@ where C: RaftTypeConfig
     #[cfg(test)]
     pub(crate) fn clear_commands(&mut self) {
         self.commands.clear()
+    }
+
+    /// Reorganize commands for better I/O performance.
+    ///
+    /// Currently performs:
+    /// - Merging consecutive `AppendEntries` commands from the same leader into one
+    pub(crate) fn sched_commands(&mut self) {
+        let mut scheduler = CommandScheduler::new(self);
+        scheduler.merge_front_append_entries();
     }
 }
