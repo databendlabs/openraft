@@ -32,11 +32,11 @@ struct Args {
     server_workers: usize,
 
     /// Number of client tasks to spawn
-    #[arg(short = 'c', long, default_value_t = 4096)]
+    #[arg(short = 'c', long, default_value_t = 4096, value_parser = parse_underscore_u64)]
     clients: u64,
 
-    /// Number of operations per client
-    #[arg(short = 'n', long, default_value_t = 100_000)]
+    /// Total number of operations across all clients
+    #[arg(short = 'n', long, default_value_t = 20_000_000, value_parser = parse_underscore_u64)]
     operations: u64,
 
     /// Number of raft cluster members (1, 3, or 5)
@@ -60,6 +60,25 @@ impl Display for BenchConfig {
             self.client_workers, self.server_workers, self.n_client, self.n_operations, self.members
         )
     }
+}
+
+/// Parse u64 with optional underscores and decimal unit suffix.
+///
+/// Uses decimal (1000-based) units:
+/// - Underscores: "1_000_000"
+/// - Suffix k/K: "100k" = 100,000 (thousand)
+/// - Suffix m/M: "20m" = 20,000,000 (million)
+/// - Suffix g/G: "1g" = 1,000,000,000 (billion)
+fn parse_underscore_u64(s: &str) -> Result<u64, String> {
+    let s = s.replace('_', "");
+    let (num_str, multiplier) = match s.chars().last() {
+        Some('k' | 'K') => (&s[..s.len() - 1], 1_000u64),
+        Some('m' | 'M') => (&s[..s.len() - 1], 1_000_000u64),
+        Some('g' | 'G') => (&s[..s.len() - 1], 1_000_000_000u64),
+        _ => (s.as_str(), 1u64),
+    };
+    let base: u64 = num_str.parse().map_err(|e| format!("{}", e))?;
+    Ok(base * multiplier)
 }
 
 #[cfg(feature = "flamegraph")]
@@ -154,8 +173,9 @@ fn create_cluster(server_rt: &Runtime, bench_config: &BenchConfig) -> anyhow::Re
 /// - Log: in-memory BTree
 /// - StateMachine: in-memory BTree
 async fn do_bench(bench_config: &BenchConfig, leader: BenchRaft) -> anyhow::Result<()> {
-    let n = bench_config.n_operations;
-    let total = n * bench_config.n_client;
+    let n_client = bench_config.n_client;
+    let ops_per_client = bench_config.n_operations / n_client;
+    let total = ops_per_client * n_client;
 
     let mut handles = Vec::new();
 
@@ -173,10 +193,10 @@ async fn do_bench(bench_config: &BenchConfig, leader: BenchRaft) -> anyhow::Resu
         }
     });
 
-    for _nc in 0..bench_config.n_client {
+    for _client_id in 0..n_client {
         let l = leader.clone();
         let h = tokio::spawn(async move {
-            for _i in 0..n {
+            for _i in 0..ops_per_client {
                 l.client_write(ClientRequest {})
                     .await
                     .map_err(|e| {
