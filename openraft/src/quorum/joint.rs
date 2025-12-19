@@ -1,3 +1,4 @@
+use std::fmt::Debug;
 use std::marker::PhantomData;
 
 use maplit::btreeset;
@@ -19,7 +20,7 @@ where
 /// A wrapper that uses other data to define a joint quorum set.
 ///
 /// The input ids have to be a quorum in every sub-config to constitute a joint-quorum.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 #[derive(PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub(crate) struct Joint<ID, QS, D>
@@ -29,6 +30,20 @@ where
 {
     data: D,
     _p: PhantomData<(ID, QS)>,
+}
+
+impl<ID, QS, D> Default for Joint<ID, QS, D>
+where
+    ID: 'static,
+    QS: QuorumSet<ID>,
+    D: Default,
+{
+    fn default() -> Self {
+        Self {
+            data: D::default(),
+            _p: PhantomData,
+        }
+    }
 }
 
 impl<ID, QS, D> Joint<ID, QS, D>

@@ -32,35 +32,12 @@ use crate::base::OptionalFeatures;
 ///
 /// A `NodeId` uniquely identifies a node in the Raft cluster.
 pub trait NodeId
-where Self: Sized
-        + OptionalFeatures
-        + Eq
-        + PartialEq
-        + Ord
-        + PartialOrd
-        + Debug
-        + Display
-        + Hash
-        + Clone
-        + Default
-        + 'static
+where Self: Sized + OptionalFeatures + Eq + PartialEq + Ord + PartialOrd + Debug + Display + Hash + Clone + 'static
 {
 }
 
-impl<T> NodeId for T where T: Sized
-        + OptionalFeatures
-        + Eq
-        + PartialEq
-        + Ord
-        + PartialOrd
-        + Debug
-        + Display
-        + Hash
-        + Clone
-        + Default
-        + 'static
-{
-}
+impl<T> NodeId for T where T: Sized + OptionalFeatures + Eq + PartialEq + Ord + PartialOrd + Debug + Display + Hash + Clone + 'static
+{}
 
 /// A Raft `Node`, this trait holds all relevant node information.
 ///
@@ -77,9 +54,15 @@ impl<T> Node for T where T: Sized + OptionalFeatures + Eq + PartialEq + Debug + 
 /// EmptyNode is an implementation of the [`Node`] trait that contains nothing.
 ///
 /// Such a node stores nothing but is just a placeholder.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub struct EmptyNode {}
+
+impl Default for EmptyNode {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl EmptyNode {
     /// Creates an [`EmptyNode`].
@@ -102,7 +85,7 @@ impl Display for EmptyNode {
 ///
 /// An application is also free not to use this storage and implements its own node-id to address
 /// mapping.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub struct BasicNode {
     /// A user-defined string that represents the endpoint of the target node.
@@ -134,7 +117,7 @@ mod tests {
     fn node_id_default_impl() {
         /// Automatically implemented trait [`NodeId`] for this struct.
         #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-        #[derive(Debug, Clone, PartialEq, Eq, Hash, Default, Ord, PartialOrd)]
+        #[derive(Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
         struct AutoNodeId;
 
         impl fmt::Display for AutoNodeId {

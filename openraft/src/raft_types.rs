@@ -8,7 +8,7 @@ use std::fmt::Formatter;
 pub type SnapshotId = String;
 
 /// The identity of a segment of a snapshot.
-#[derive(Debug, Default, Clone, PartialOrd, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialOrd, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub struct SnapshotSegmentId {
     /// The unique identifier of the snapshot stream.

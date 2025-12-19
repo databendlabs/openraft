@@ -10,7 +10,7 @@ use crate::vote::RaftLeaderId;
 /// It includes the `term` and the `node_id`.
 ///
 /// This is totally ordered to enable multiple leaders per term.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[derive(PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct LeaderId<C>

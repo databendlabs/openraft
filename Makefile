@@ -2,6 +2,11 @@ all: test defensive_test send_delay_test check_all
 
 check_all: lint fmt doc unused_dep typos
 
+compile:
+	cargo test --lib
+	cargo test --test '*'
+	cargo test --features singlethreaded --lib
+
 basic_check:
 	cargo fmt
 	cargo clippy --no-deps --all-targets --fix --allow-dirty --allow-staged
