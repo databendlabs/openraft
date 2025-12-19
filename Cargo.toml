@@ -69,7 +69,7 @@ members = [
     "stores/memstore",
 ]
 exclude = [
-    "cluster_benchmark",
+    "benchmarks/minimal",
 
     "examples/client-http",
     "examples/network-v1-http",

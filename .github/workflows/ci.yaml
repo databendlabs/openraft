@@ -172,15 +172,15 @@ jobs:
           OPENRAFT_STORE_DEFENSIVE: on
 
   # Test external crate.
-  # cluster_benchmark is a standalone crate for benchmarking openraft cluster.
-  cluster-benchmark:
+  # benchmarks/minimal is a standalone crate for benchmarking openraft cluster.
+  bench-minimal:
     runs-on: ubuntu-latest
 
     strategy:
       fail-fast: false
       matrix:
         include:
-          - crate: 'cluster_benchmark'
+          - crate: 'benchmarks/minimal'
 
     steps:
       - name: Setup | Checkout

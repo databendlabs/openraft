@@ -122,7 +122,7 @@ minimized store and network. This is **NOT a real world** application benchmark!
 | 1       |    33,000 |
 
 
-For benchmark detail, go to the [./cluster_benchmark](./cluster_benchmark) folder.
+For benchmark detail, go to the [./benchmarks/minimal](./benchmarks/minimal) folder.
 
 # Features
 
