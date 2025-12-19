@@ -1,5 +1,7 @@
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::atomic::AtomicU32;
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use anyhow::Result;
@@ -214,6 +216,176 @@ async fn on_leader_change_api() -> Result<()> {
         // Node 0 stopped leading (term 1, node 0)
         assert_eq!(got, vec![(1, 0)]);
     }
+
+    handle.close().await;
+
+    Ok(())
+}
+
+/// Test that async callbacks are actually awaited, not discarded.
+///
+/// This test verifies that the futures returned by callbacks are polled to completion.
+/// State is only updated AFTER an await point inside the async block, so if the future
+/// is discarded without being awaited, the state won't change.
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
+async fn on_leader_change_future_is_awaited() -> Result<()> {
+    let config = Arc::new(
+        Config {
+            enable_elect: false,
+            enable_heartbeat: false,
+            ..Default::default()
+        }
+        .validate()?,
+    );
+    let mut router = RaftRouter::new(config.clone());
+
+    tracing::info!("--- initializing 3-node cluster");
+    let _log_index = router.new_cluster(btreeset! {0, 1, 2}, btreeset! {}).await?;
+
+    let n0 = router.get_raft_handle(&0)?;
+
+    // Counter that is only incremented AFTER an await point
+    let start_counter = Arc::new(AtomicU32::new(0));
+    let stop_counter = Arc::new(AtomicU32::new(0));
+
+    let start_counter_clone = start_counter.clone();
+    let stop_counter_clone = stop_counter.clone();
+
+    tracing::info!("--- register on_leader_change with async callbacks");
+    let mut handle = n0.on_leader_change(
+        move |_leader_id| {
+            let counter = start_counter_clone.clone();
+            async move {
+                // Yield to ensure this is a real async operation
+                tokio::task::yield_now().await;
+                // Only increment after the await - if future is discarded, this won't run
+                counter.fetch_add(1, Ordering::SeqCst);
+            }
+        },
+        move |_old_leader_id| {
+            let counter = stop_counter_clone.clone();
+            async move {
+                tokio::task::yield_now().await;
+                counter.fetch_add(1, Ordering::SeqCst);
+            }
+        },
+    );
+
+    // Give time for the callback future to be awaited
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    tracing::info!("--- verify start callback future was awaited");
+    assert_eq!(
+        start_counter.load(Ordering::SeqCst),
+        1,
+        "start future should have been awaited"
+    );
+    assert_eq!(
+        stop_counter.load(Ordering::SeqCst),
+        0,
+        "stop should not have been called yet"
+    );
+
+    // Wait for leader lease to expire
+    tokio::time::sleep(Duration::from_millis(700)).await;
+
+    tracing::info!("--- trigger election on node 2 to cause leadership change");
+    let n2 = router.get_raft_handle(&2)?;
+    n2.trigger().elect().await?;
+
+    n2.wait(Some(Duration::from_millis(2000)))
+        .state(ServerState::Leader, "wait for node 2 to become leader")
+        .await?;
+
+    n0.wait(Some(Duration::from_millis(2000)))
+        .current_leader(2, "wait for node 0 to see node 2 as leader")
+        .await?;
+
+    // Give time for the stop callback future to be awaited
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    tracing::info!("--- verify stop callback future was awaited");
+    assert_eq!(start_counter.load(Ordering::SeqCst), 1, "start count should still be 1");
+    assert_eq!(
+        stop_counter.load(Ordering::SeqCst),
+        1,
+        "stop future should have been awaited"
+    );
+
+    handle.close().await;
+
+    Ok(())
+}
+
+/// Test that on_cluster_leader_change callback future is awaited.
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
+async fn on_cluster_leader_change_future_is_awaited() -> Result<()> {
+    let config = Arc::new(
+        Config {
+            enable_elect: false,
+            enable_heartbeat: false,
+            ..Default::default()
+        }
+        .validate()?,
+    );
+    let mut router = RaftRouter::new(config.clone());
+
+    tracing::info!("--- initializing 3-node cluster");
+    let _log_index = router.new_cluster(btreeset! {0, 1, 2}, btreeset! {}).await?;
+
+    let n1 = router.get_raft_handle(&1)?;
+
+    // Counter incremented only after await point
+    let callback_counter = Arc::new(AtomicU32::new(0));
+    let callback_counter_clone = callback_counter.clone();
+
+    tracing::info!("--- register on_cluster_leader_change with async callback");
+    let mut handle = n1.on_cluster_leader_change(move |_old, _new| {
+        let counter = callback_counter_clone.clone();
+        async move {
+            // Yield to ensure this is a real async operation
+            tokio::task::yield_now().await;
+            // Only increment after the await
+            counter.fetch_add(1, Ordering::SeqCst);
+        }
+    });
+
+    // Give time for the callback future to be awaited
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    tracing::info!("--- verify callback future was awaited for initial leader");
+    assert_eq!(
+        callback_counter.load(Ordering::SeqCst),
+        1,
+        "callback future should have been awaited"
+    );
+
+    // Wait for leader lease to expire
+    tokio::time::sleep(Duration::from_millis(700)).await;
+
+    tracing::info!("--- trigger election on node 2");
+    let n2 = router.get_raft_handle(&2)?;
+    n2.trigger().elect().await?;
+
+    n2.wait(Some(Duration::from_millis(2000)))
+        .state(ServerState::Leader, "wait for node 2 to become leader")
+        .await?;
+
+    n1.wait(Some(Duration::from_millis(2000)))
+        .current_leader(2, "wait for node 1 to see node 2 as leader")
+        .await?;
+
+    // Give time for the callback future to be awaited
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    tracing::info!("--- verify callback future was awaited for new leader");
+    assert_eq!(
+        callback_counter.load(Ordering::SeqCst),
+        2,
+        "callback future should have been awaited twice"
+    );
 
     handle.close().await;
 
