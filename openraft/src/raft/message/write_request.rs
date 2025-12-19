@@ -135,7 +135,7 @@ where C: RaftTypeConfig
     fn into_future(self) -> Self::IntoFuture {
         Box::pin(async move {
             self.inner
-                .send_msg(RaftMsg::ClientWriteRequest {
+                .send_msg(RaftMsg::ClientWrite {
                     app_data: self.app_data,
                     responder: self.responder,
                     expected_leader: self.expected_leader,

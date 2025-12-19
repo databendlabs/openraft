@@ -1254,7 +1254,7 @@ where C: RaftTypeConfig
     pub async fn external_request<F>(&self, req: F) -> Result<(), Fatal<C>>
     where F: FnOnce(&RaftState<C>) + OptionalSend + 'static {
         let req: BoxOnce<'static, RaftState<C>> = Box::new(req);
-        self.inner.send_msg(RaftMsg::ExternalCoreRequest { req }).await
+        self.inner.send_msg(RaftMsg::WithRaftState { req }).await
     }
 
     /// Provides mutable access to [`RaftStateMachine`] through a user-provided function.

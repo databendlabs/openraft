@@ -123,7 +123,7 @@ where C: RaftTypeConfig
         tracing::info!("Raft::begin_receiving_snapshot()");
 
         let (tx, rx) = C::oneshot();
-        self.inner.call_core(RaftMsg::BeginReceivingSnapshot { tx }, rx).await
+        self.inner.call_core(RaftMsg::GetSnapshotReceiver { tx }, rx).await
     }
 
     #[since(version = "0.10.0")]
@@ -136,7 +136,7 @@ where C: RaftTypeConfig
         tracing::info!("Raft::install_full_snapshot()");
 
         let (tx, rx) = C::oneshot();
-        self.inner.call_core(RaftMsg::InstallFullSnapshot { vote, snapshot, tx }, rx).await
+        self.inner.call_core(RaftMsg::InstallSnapshot { vote, snapshot, tx }, rx).await
     }
 
     #[since(version = "0.10.0")]

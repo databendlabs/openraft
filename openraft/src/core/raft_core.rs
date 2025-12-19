@@ -1407,16 +1407,16 @@ where
 
                 self.handle_vote_request(rpc, tx);
             }
-            RaftMsg::BeginReceivingSnapshot { tx } => {
+            RaftMsg::GetSnapshotReceiver { tx } => {
                 self.engine.handle_begin_receiving_snapshot(tx);
             }
-            RaftMsg::InstallFullSnapshot { vote, snapshot, tx } => {
+            RaftMsg::InstallSnapshot { vote, snapshot, tx } => {
                 self.engine.handle_install_full_snapshot(vote, snapshot, tx);
             }
-            RaftMsg::EnsureLinearizableRead { read_policy, tx } => {
+            RaftMsg::GetLinearizer { read_policy, tx } => {
                 self.handle_ensure_linearizable_read(read_policy, tx).await;
             }
-            RaftMsg::ClientWriteRequest {
+            RaftMsg::ClientWrite {
                 app_data,
                 responder,
                 expected_leader,
@@ -1454,7 +1454,7 @@ where
 
                 self.change_membership(changes, retain, tx);
             }
-            RaftMsg::ExternalCoreRequest { req } => {
+            RaftMsg::WithRaftState { req } => {
                 req(&self.engine.state);
             }
             RaftMsg::HandleTransferLeader {

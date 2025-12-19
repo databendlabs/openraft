@@ -62,7 +62,7 @@ where C: RaftTypeConfig
         tx: VoteTx<C>,
     },
 
-    InstallFullSnapshot {
+    InstallSnapshot {
         vote: VoteOf<C>,
         snapshot: Snapshot<C>,
         tx: OneshotSenderOf<C, SnapshotResponse<C>>,
@@ -74,17 +74,17 @@ where C: RaftTypeConfig
     ///
     /// It does not check `Vote` because it is a read operation
     /// and does not break raft protocol.
-    BeginReceivingSnapshot {
+    GetSnapshotReceiver {
         tx: OneshotSenderOf<C, SnapshotDataOf<C>>,
     },
 
-    ClientWriteRequest {
+    ClientWrite {
         app_data: C::D,
         responder: Option<CoreResponder<C>>,
         expected_leader: Option<CommittedLeaderIdOf<C>>,
     },
 
-    EnsureLinearizableRead {
+    GetLinearizer {
         read_policy: ReadPolicy,
         tx: ClientReadTx<C>,
     },
@@ -104,7 +104,7 @@ where C: RaftTypeConfig
         tx: ProgressResponder<C, ClientWriteResult<C>>,
     },
 
-    ExternalCoreRequest {
+    WithRaftState {
         req: BoxOnce<'static, RaftState<C>>,
     },
 
@@ -138,14 +138,14 @@ impl<C: RaftTypeConfig> RaftMsg<C> {
         match self {
             RaftMsg::AppendEntries { .. } => RaftMsgName::AppendEntries,
             RaftMsg::RequestVote { .. } => RaftMsgName::RequestVote,
-            RaftMsg::InstallFullSnapshot { .. } => RaftMsgName::InstallFullSnapshot,
-            RaftMsg::BeginReceivingSnapshot { .. } => RaftMsgName::BeginReceivingSnapshot,
-            RaftMsg::ClientWriteRequest { .. } => RaftMsgName::ClientWriteRequest,
-            RaftMsg::EnsureLinearizableRead { .. } => RaftMsgName::EnsureLinearizableRead,
+            RaftMsg::InstallSnapshot { .. } => RaftMsgName::InstallSnapshot,
+            RaftMsg::GetSnapshotReceiver { .. } => RaftMsgName::GetSnapshotReceiver,
+            RaftMsg::ClientWrite { .. } => RaftMsgName::ClientWrite,
+            RaftMsg::GetLinearizer { .. } => RaftMsgName::GetLinearizer,
             RaftMsg::Initialize { .. } => RaftMsgName::Initialize,
             RaftMsg::ChangeMembership { .. } => RaftMsgName::ChangeMembership,
             RaftMsg::HandleTransferLeader { .. } => RaftMsgName::HandleTransferLeader,
-            RaftMsg::ExternalCoreRequest { .. } => RaftMsgName::ExternalCoreRequest,
+            RaftMsg::WithRaftState { .. } => RaftMsgName::WithRaftState,
             RaftMsg::ExternalCommand { cmd } => RaftMsgName::ExternalCommand(cmd.name()),
             #[cfg(feature = "runtime-stats")]
             RaftMsg::GetRuntimeStats { .. } => RaftMsgName::GetRuntimeStats,
@@ -164,15 +164,15 @@ where C: RaftTypeConfig
             RaftMsg::RequestVote { rpc, .. } => {
                 write!(f, "RequestVote: {}", rpc)
             }
-            RaftMsg::BeginReceivingSnapshot { .. } => {
-                write!(f, "BeginReceivingSnapshot")
+            RaftMsg::GetSnapshotReceiver { .. } => {
+                write!(f, "GetSnapshotReceiver")
             }
-            RaftMsg::InstallFullSnapshot { vote, snapshot, .. } => {
-                write!(f, "InstallFullSnapshot: vote: {}, snapshot: {}", vote, snapshot)
+            RaftMsg::InstallSnapshot { vote, snapshot, .. } => {
+                write!(f, "InstallSnapshot: vote: {}, snapshot: {}", vote, snapshot)
             }
-            RaftMsg::ClientWriteRequest { .. } => write!(f, "ClientWriteRequest"),
-            RaftMsg::EnsureLinearizableRead { read_policy, .. } => {
-                write!(f, "EnsureLinearizable with read policy: {}", read_policy)
+            RaftMsg::ClientWrite { .. } => write!(f, "ClientWrite"),
+            RaftMsg::GetLinearizer { read_policy, .. } => {
+                write!(f, "GetLinearizer: {}", read_policy)
             }
             RaftMsg::Initialize { members, .. } => {
                 write!(f, "Initialize: {}", members.display())
@@ -180,7 +180,7 @@ where C: RaftTypeConfig
             RaftMsg::ChangeMembership { changes, retain, .. } => {
                 write!(f, "ChangeMembership: {}, retain: {}", changes, retain)
             }
-            RaftMsg::ExternalCoreRequest { .. } => write!(f, "External Request"),
+            RaftMsg::WithRaftState { .. } => write!(f, "WithRaftState"),
             RaftMsg::HandleTransferLeader { from, to } => {
                 write!(f, "TransferLeader: from_leader: vote={}, to: {}", from, to)
             }

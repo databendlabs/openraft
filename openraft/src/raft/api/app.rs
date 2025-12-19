@@ -40,7 +40,7 @@ where C: RaftTypeConfig
         read_policy: ReadPolicy,
     ) -> Result<Result<Linearizer<C>, LinearizableReadError<C>>, Fatal<C>> {
         let (tx, rx) = C::oneshot();
-        self.inner.call_core(RaftMsg::EnsureLinearizableRead { read_policy, tx }, rx).await
+        self.inner.call_core(RaftMsg::GetLinearizer { read_policy, tx }, rx).await
     }
 
     #[since(version = "0.10.0")]
@@ -73,7 +73,7 @@ where C: RaftTypeConfig
     #[since(version = "0.10.0")]
     async fn do_client_write_ff(&self, app_data: C::D, responder: Option<CoreResponder<C>>) -> Result<(), Fatal<C>> {
         self.inner
-            .send_msg(RaftMsg::ClientWriteRequest {
+            .send_msg(RaftMsg::ClientWrite {
                 app_data,
                 responder,
                 expected_leader: None,
