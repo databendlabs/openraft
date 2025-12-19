@@ -52,7 +52,7 @@ fn test_leader_send_heartbeat() -> anyhow::Result<()> {
     let mut eng = eng();
     eng.output.take_commands();
 
-    let mut lh = eng.leader_handler()?;
+    let mut lh = eng.try_leader_handler()?;
 
     lh.transfer_leader(2);
 

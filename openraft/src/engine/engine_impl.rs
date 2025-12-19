@@ -39,8 +39,6 @@ use crate::raft::AppendEntriesResponse;
 use crate::raft::SnapshotResponse;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
-use crate::raft::message::ClientWriteResult;
-use crate::raft::responder::Responder;
 use crate::raft_state::IOId;
 use crate::raft_state::LogStateReader;
 use crate::raft_state::RaftState;
@@ -53,7 +51,6 @@ use crate::type_config::alias::OneshotSenderOf;
 use crate::type_config::alias::SnapshotDataOf;
 use crate::type_config::alias::TermOf;
 use crate::type_config::alias::VoteOf;
-use crate::type_config::alias::WriteResponderOf;
 use crate::vote::RaftLeaderId;
 use crate::vote::RaftTerm;
 use crate::vote::RaftVote;
@@ -244,40 +241,6 @@ where C: RaftTypeConfig
 
     pub(crate) fn candidate_mut(&mut self) -> Option<&mut Candidate<C, LeaderQuorumSet<C>>> {
         self.candidate.as_mut()
-    }
-
-    /// Get a LeaderHandler for handling leader's operation. If it is not a leader, it sends back a
-    /// ForwardToLeader error through the tx.
-    ///
-    /// If `tx` is None, no response will be sent.
-    ///
-    /// The `tx` is a [`Responder`] instance. The generic `R` allows any responder type to be used,
-    /// while the responder from [`C::Responder`] is specifically designed for client write
-    /// operations.
-    ///
-    /// [`C::Responder`]: RaftTypeConfig::Responder
-    #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn get_leader_handler_or_reject<R>(
-        &mut self,
-        tx: Option<R>,
-    ) -> Option<(LeaderHandler<'_, C>, Option<R>)>
-    where
-        R: Responder<C, ClientWriteResult<C>>,
-    {
-        let res = self.leader_handler();
-        let forward_err = match res {
-            Ok(lh) => {
-                tracing::debug!("this node is a leader");
-                return Some((lh, tx));
-            }
-            Err(forward_err) => forward_err,
-        };
-
-        if let Some(tx) = tx {
-            tx.on_complete(Err(forward_err.into()));
-        }
-
-        None
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
@@ -626,7 +589,7 @@ where C: RaftTypeConfig
     pub(crate) fn trigger_transfer_leader(&mut self, to: C::NodeId) {
         tracing::info!("{}: to: {}", func_name!(), to);
 
-        let Some((mut lh, _)) = self.get_leader_handler_or_reject(None::<WriteResponderOf<C>>) else {
+        let Some(mut lh) = self.try_leader_handler().ok() else {
             tracing::info!(
                 "{}: this node is not a Leader, ignore transfer Leader: to: {}",
                 func_name!(),
@@ -722,7 +685,7 @@ where C: RaftTypeConfig
         // No need to submit UpdateIOProgress command,
         // IO progress is updated by the new blank log
 
-        self.leader_handler()
+        self.try_leader_handler()
             .unwrap()
             .leader_append_entries(vec![C::Entry::new_blank(LogIdOf::<C>::default())]);
     }
@@ -811,7 +774,7 @@ where C: RaftTypeConfig
         }
     }
 
-    pub(crate) fn leader_handler(&mut self) -> Result<LeaderHandler<'_, C>, ForwardToLeader<C>> {
+    pub(crate) fn try_leader_handler(&mut self) -> Result<LeaderHandler<'_, C>, ForwardToLeader<C>> {
         let leader = match self.leader.as_mut() {
             None => {
                 tracing::debug!("not a leader, server_state: {:?}", self.state.server_state);

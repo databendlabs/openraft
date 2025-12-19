@@ -110,7 +110,6 @@ use crate::type_config::alias::OneshotReceiverOf;
 use crate::type_config::alias::VoteOf;
 use crate::type_config::alias::WatchReceiverOf;
 use crate::type_config::alias::WatchSenderOf;
-use crate::type_config::alias::WriteResponderOf;
 use crate::type_config::async_runtime::mpsc::MpscSender;
 use crate::vote::RaftLeaderId;
 use crate::vote::RaftVote;
@@ -306,7 +305,7 @@ where
         // Setup sentinel values to track when we've received majority confirmation of leadership.
 
         let resp = {
-            let l = self.engine.leader_handler();
+            let l = self.engine.try_leader_handler();
             let lh = match l {
                 Ok(leading_handler) => leading_handler,
                 Err(forward) => {
@@ -550,13 +549,20 @@ where
     pub fn write_entry(&mut self, entry: C::Entry, resp_tx: Option<CoreResponder<C>>) {
         tracing::debug!("write entry, payload: {}", entry);
 
-        let Some((mut lh, tx)) = self.engine.get_leader_handler_or_reject(resp_tx) else {
-            return;
+        let res = self.engine.try_leader_handler();
+        let mut lh = match res {
+            Ok(lh) => lh,
+            Err(forward_err) => {
+                if let Some(tx) = resp_tx {
+                    tx.on_complete(Err(forward_err.into()));
+                }
+                return;
+            }
         };
 
         // If the leader is transferring leadership, forward writes to the new leader.
         if let Some(to) = lh.leader.get_transfer_to() {
-            if let Some(tx) = tx {
+            if let Some(tx) = resp_tx {
                 let err = lh.state.new_forward_to_leader(to.clone());
                 tx.on_complete(Err(ClientWriteError::ForwardToLeader(err)));
             }
@@ -571,7 +577,7 @@ where
         let index = log_id.index();
 
         // Install callback channels.
-        if let Some(tx) = tx {
+        if let Some(tx) = resp_tx {
             tracing::debug!("write entry: push tx to responders, log_id: {}", log_id);
             self.client_responders.push(index, tx);
         }
@@ -582,7 +588,7 @@ where
     pub(crate) fn send_heartbeat(&mut self, emitter: impl fmt::Display) -> bool {
         tracing::debug!("send heartbeat, now: {}", C::now().display());
 
-        let Some((mut lh, _)) = self.engine.get_leader_handler_or_reject(None::<WriteResponderOf<C>>) else {
+        let Some(mut lh) = self.engine.try_leader_handler().ok() else {
             tracing::debug!(
                 "{} failed to send heartbeat, not a Leader: now: {}",
                 emitter,
@@ -811,7 +817,7 @@ where
         }
 
         // Keep replicating to a target if the replication stream to it is idle
-        if let Ok(mut lh) = self.engine.leader_handler() {
+        if let Ok(mut lh) = self.engine.try_leader_handler() {
             lh.replication_handler().initiate_replication();
         }
 
@@ -1502,7 +1508,7 @@ where
                     }
                     ExternalCommand::AllowNextRevert { to, allow, tx } => {
                         //
-                        let res = match self.engine.leader_handler() {
+                        let res = match self.engine.try_leader_handler() {
                             Ok(mut l) => {
                                 let res = l.replication_handler().allow_next_revert(to, allow);
                                 res.map_err(AllowNextRevertError::from)
@@ -1831,7 +1837,7 @@ where
     fn broadcast_heartbeat(&mut self, session_id: ReplicationSessionId<C>) {
         // Lazy get the progress data for heartbeat. If the leader changes or replication
         // config changes, no need to send heartbeat.
-        let Ok(lh) = self.engine.leader_handler() else {
+        let Ok(lh) = self.engine.try_leader_handler() else {
             // No longer a leader
             return;
         };

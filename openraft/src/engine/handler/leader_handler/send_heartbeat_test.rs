@@ -55,7 +55,7 @@ fn test_leader_send_heartbeat() -> anyhow::Result<()> {
 
     // A heartbeat is a normal AppendEntries RPC if there are pending data to send.
     {
-        eng.leader_handler()?.send_heartbeat();
+        eng.try_leader_handler()?.send_heartbeat();
         assert_eq!(
             vec![
                 //
@@ -70,7 +70,7 @@ fn test_leader_send_heartbeat() -> anyhow::Result<()> {
     // Heartbeat will be resent
     {
         eng.output.clear_commands();
-        eng.leader_handler()?.send_heartbeat();
+        eng.try_leader_handler()?.send_heartbeat();
         assert_eq!(
             vec![
                 //

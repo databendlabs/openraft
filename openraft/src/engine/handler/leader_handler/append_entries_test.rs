@@ -77,7 +77,7 @@ fn test_leader_append_entries_empty() -> anyhow::Result<()> {
     let mut eng = eng();
     eng.output.take_commands();
 
-    eng.leader_handler()?.leader_append_entries(Vec::<Entry<UTConfig>>::new());
+    eng.try_leader_handler()?.leader_append_entries(Vec::<Entry<UTConfig>>::new());
 
     assert_eq!(
         None,
@@ -110,7 +110,7 @@ fn test_leader_append_entries_normal() -> anyhow::Result<()> {
     eng.output.take_commands();
 
     // log id will be assigned by eng.
-    eng.leader_handler()?.leader_append_entries(vec![
+    eng.try_leader_handler()?.leader_append_entries(vec![
         blank_ent(1, 1, 1), //
         blank_ent(1, 1, 1),
         blank_ent(1, 1, 1),
@@ -176,7 +176,7 @@ fn test_leader_append_entries_single_node_leader() -> anyhow::Result<()> {
     eng.output.clear_commands();
 
     // log id will be assigned by eng.
-    eng.leader_handler()?.leader_append_entries(vec![
+    eng.try_leader_handler()?.leader_append_entries(vec![
         blank_ent(1, 1, 1), //
         blank_ent(1, 1, 1),
         blank_ent(1, 1, 1),
@@ -234,7 +234,7 @@ fn test_leader_append_entries_with_membership_log() -> anyhow::Result<()> {
     eng.output.clear_commands();
 
     // log id will be assigned by eng.
-    eng.leader_handler()?.leader_append_entries(vec![
+    eng.try_leader_handler()?.leader_append_entries(vec![
         blank_ent(1, 1, 1), //
         Entry::new_membership(log_id(1, 1, 1), m1_2()),
         blank_ent(1, 1, 1),
