@@ -49,6 +49,7 @@ async fn on_cluster_leader_change_api() -> Result<()> {
         let old_val = old.map(|(leader_id, committed)| (leader_id.term(), *leader_id.node_id(), committed));
         let new_val = (new.0.term(), *new.0.node_id(), new.1);
         changes_clone.lock().unwrap().push((old_val, new_val));
+        async {}
     });
 
     // Give some time for the initial callback to be invoked
@@ -161,9 +162,11 @@ async fn on_leader_change_api() -> Result<()> {
     let mut handle = n0.on_leader_change(
         move |leader_id| {
             started_clone.lock().unwrap().push((leader_id.term(), *leader_id.node_id()));
+            async {}
         },
         move |old_leader_id| {
             stopped_clone.lock().unwrap().push((old_leader_id.term(), *old_leader_id.node_id()));
+            async {}
         },
     );
 
