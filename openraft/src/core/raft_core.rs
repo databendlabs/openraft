@@ -750,8 +750,7 @@ where
 
         let membership = Membership::from(member_nodes);
 
-        let entry = C::Entry::new_membership(LogIdOf::<C>::default(), membership);
-        let res = self.engine.initialize(entry);
+        let res = self.engine.initialize(membership);
 
         let has_error = res.is_err();
 

@@ -35,7 +35,6 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
     let log_id0 = log_id(0, 0, 0);
 
     let m1 = || Membership::<UTConfig>::new_with_defaults(vec![btreeset! {1}], []);
-    let entry = Entry::<UTConfig>::new_membership(LogIdOf::<UTConfig>::default(), m1());
 
     tracing::info!("--- ok: init empty node 1 with membership(1,2)");
     tracing::info!("--- expect OK result, check output commands and state changes");
@@ -43,7 +42,7 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
         let mut eng = eng();
         eng.config.id = 1;
 
-        eng.initialize(entry)?;
+        eng.initialize(m1())?;
 
         assert_eq!(Some(log_id0), eng.state.get_log_id(0));
         assert_eq!(None, eng.state.get_log_id(1));
@@ -79,7 +78,6 @@ fn test_initialize() -> anyhow::Result<()> {
     let log_id0 = log_id(0, 0, 0);
 
     let m12 = || Membership::<UTConfig>::new_with_defaults(vec![btreeset! {1,2}], []);
-    let entry = || Entry::<UTConfig>::new_membership(LogIdOf::<UTConfig>::default(), m12());
 
     tracing::info!("--- ok: init empty node 1 with membership(1,2)");
     tracing::info!("--- expect OK result, check output commands and state changes");
@@ -87,7 +85,7 @@ fn test_initialize() -> anyhow::Result<()> {
         let mut eng = eng();
         eng.config.id = 1;
 
-        eng.initialize(entry())?;
+        eng.initialize(m12())?;
 
         assert_eq!(Some(log_id0), eng.state.get_log_id(0));
         assert_eq!(None, eng.state.get_log_id(1));
@@ -118,7 +116,7 @@ fn test_initialize() -> anyhow::Result<()> {
                 last_log_id: Some(log_id0),
                 vote: Vote::default(),
             })),
-            eng.initialize(entry())
+            eng.initialize(m12())
         );
     }
 
@@ -132,7 +130,7 @@ fn test_initialize() -> anyhow::Result<()> {
                 last_log_id: None,
                 vote: Vote::new(1, 1),
             })),
-            eng.initialize(entry())
+            eng.initialize(m12())
         );
     }
 
@@ -145,7 +143,7 @@ fn test_initialize() -> anyhow::Result<()> {
                 node_id: 0,
                 membership: m12()
             })),
-            eng.initialize(entry())
+            eng.initialize(m12())
         );
     }
 

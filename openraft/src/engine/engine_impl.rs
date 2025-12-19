@@ -24,7 +24,6 @@ use crate::engine::handler::server_state_handler::ServerStateHandler;
 use crate::engine::handler::snapshot_handler::SnapshotHandler;
 use crate::engine::handler::vote_handler::VoteHandler;
 use crate::entry::RaftEntry;
-use crate::entry::RaftPayload;
 use crate::entry::payload::EntryPayload;
 use crate::error::ForwardToLeader;
 use crate::error::InitializeError;
@@ -186,14 +185,13 @@ where C: RaftTypeConfig
     ///
     /// [precondition]: crate::docs::cluster_control::cluster_formation#preconditions-for-initialization
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn initialize(&mut self, mut entry: C::Entry) -> Result<(), InitializeError<C>> {
+    pub(crate) fn initialize(&mut self, membership: Membership<C>) -> Result<(), InitializeError<C>> {
         self.check_initialize()?;
 
-        // The very first log id
-        entry.set_log_id(LogIdOf::<C>::default());
+        self.check_members_contain_me(&membership)?;
 
-        let m = entry.get_membership().expect("the only log entry for initializing has to be membership log");
-        self.check_members_contain_me(&m)?;
+        // The very first log id
+        let entry = C::Entry::new(LogIdOf::<C>::default(), EntryPayload::Membership(membership));
 
         // FollowingHandler requires vote to be committed.
         let leader_id = LeaderIdOf::<C>::new(TermOf::<C>::default(), self.config.id.clone());
