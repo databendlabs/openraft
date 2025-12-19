@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
-use cluster_benchmark::store::LogStore;
-use cluster_benchmark::store::StateMachineStore;
-use cluster_benchmark::store::TypeConfig;
+use bench_minimal::store::LogStore;
+use bench_minimal::store::StateMachineStore;
+use bench_minimal::store::TypeConfig;
 use openraft::testing::log::StoreBuilder;
 use openraft::testing::log::Suite;
 use openraft::StorageError;

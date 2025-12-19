@@ -56,13 +56,13 @@ BENCH_FEATURES_FLAG := $(if $(BENCH_FEATURES),--features $(BENCH_FEATURES),)
 BENCH_RUSTFLAGS := $(if $(TOKIO_CONSOLE),RUSTFLAGS="--cfg tokio_unstable",)
 
 bench_cluster_of_1:
-	$(BENCH_RUSTFLAGS) cargo run --manifest-path cluster_benchmark/Cargo.toml --release --bin bench $(BENCH_FEATURES_FLAG) -- -m 1
+	$(BENCH_RUSTFLAGS) cargo run --manifest-path benchmarks/minimal/Cargo.toml --release --bin bench $(BENCH_FEATURES_FLAG) -- -m 1
 
 bench_cluster_of_3:
-	$(BENCH_RUSTFLAGS) cargo run --manifest-path cluster_benchmark/Cargo.toml --release --bin bench $(BENCH_FEATURES_FLAG) -- -m 3
+	$(BENCH_RUSTFLAGS) cargo run --manifest-path benchmarks/minimal/Cargo.toml --release --bin bench $(BENCH_FEATURES_FLAG) -- -m 3
 
 bench_cluster_of_5:
-	$(BENCH_RUSTFLAGS) cargo run --manifest-path cluster_benchmark/Cargo.toml --release --bin bench $(BENCH_FEATURES_FLAG) -- -m 5
+	$(BENCH_RUSTFLAGS) cargo run --manifest-path benchmarks/minimal/Cargo.toml --release --bin bench $(BENCH_FEATURES_FLAG) -- -m 5
 
 fmt:
 	cargo fmt

@@ -10,9 +10,9 @@ use std::time::Duration;
 use std::time::Instant;
 
 use clap::Parser;
-use cluster_benchmark::network::BenchRaft;
-use cluster_benchmark::network::Router;
-use cluster_benchmark::store::ClientRequest;
+use bench_minimal::network::BenchRaft;
+use bench_minimal::network::Router;
+use bench_minimal::store::ClientRequest;
 use openraft::Config;
 use tokio::runtime::Builder;
 use tokio::runtime::Runtime;

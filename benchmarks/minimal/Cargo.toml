@@ -2,8 +2,8 @@
 # This make it impossible to test openraft with `serde` feature off.
 
 [package]
-name = "cluster-benchmark"
-description = "openraft cluster benchmark"
+name = "bench-minimal"
+description = "Minimal openraft benchmark with in-memory store and no network"
 
 version = "0.1.0"
 edition = "2021"
@@ -17,7 +17,7 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/databendlabs/openraft"
 
 [dependencies]
-openraft = { path = "../openraft", version = "0.10.0", features = ["serde", "type-alias", "runtime-stats"] }
+openraft = { path = "../../openraft", version = "0.10.0", features = ["serde", "type-alias", "runtime-stats"] }
 
 anyhow     = { version = "1.0.63" }
 clap       = { version = "4.2", features = ["derive"] }
