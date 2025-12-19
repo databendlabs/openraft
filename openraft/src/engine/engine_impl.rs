@@ -190,13 +190,14 @@ where C: RaftTypeConfig
 
         self.check_members_contain_me(&membership)?;
 
-        // The very first log id
-        let entry = C::Entry::new(LogIdOf::<C>::default(), EntryPayload::Membership(membership));
-
         // FollowingHandler requires vote to be committed.
         let leader_id = LeaderIdOf::<C>::new(TermOf::<C>::default(), self.config.id.clone());
-        let vote = <VoteOf<C> as RaftVote<C>>::from_leader_id(leader_id, true);
+        let vote = <VoteOf<C> as RaftVote<C>>::from_leader_id(leader_id.clone(), true);
         self.state.vote.update(C::now(), Duration::default(), vote);
+
+        // The very first log id
+        let log_id = LogIdOf::<C>::new(leader_id.to_committed(), 0);
+        let entry = C::Entry::new(log_id, EntryPayload::Membership(membership));
         self.following_handler().do_append_entries(vec![entry]);
 
         Ok(())

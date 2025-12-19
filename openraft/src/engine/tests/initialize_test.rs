@@ -18,7 +18,6 @@ use crate::error::NotAllowed;
 use crate::error::NotInMembers;
 use crate::raft_state::LogStateReader;
 use crate::type_config::TypeConfigExt;
-use crate::type_config::alias::LogIdOf;
 use crate::utime::Leased;
 use crate::vote::raft_vote::RaftVoteExt;
 
@@ -32,8 +31,6 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
         eng
     };
 
-    let log_id0 = log_id(0, 0, 0);
-
     let m1 = || Membership::<UTConfig>::new_with_defaults(vec![btreeset! {1}], []);
 
     tracing::info!("--- ok: init empty node 1 with membership(1,2)");
@@ -41,6 +38,9 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
     {
         let mut eng = eng();
         eng.config.id = 1;
+
+        // The first log id uses the node's own id as leader
+        let log_id0 = log_id(0, 1, 0);
 
         eng.initialize(m1())?;
 
@@ -56,7 +56,7 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
                 //
                 Command::AppendEntries {
                     committed_vote: Vote::new_with_default_term(1).into_committed(),
-                    entries: vec![Entry::<UTConfig>::new_membership(LogIdOf::<UTConfig>::default(), m1())],
+                    entries: vec![Entry::<UTConfig>::new_membership(log_id(0, 1, 0), m1())],
                 },
             ],
             eng.output.take_commands()
@@ -75,8 +75,6 @@ fn test_initialize() -> anyhow::Result<()> {
         eng
     };
 
-    let log_id0 = log_id(0, 0, 0);
-
     let m12 = || Membership::<UTConfig>::new_with_defaults(vec![btreeset! {1,2}], []);
 
     tracing::info!("--- ok: init empty node 1 with membership(1,2)");
@@ -84,6 +82,9 @@ fn test_initialize() -> anyhow::Result<()> {
     {
         let mut eng = eng();
         eng.config.id = 1;
+
+        // The first log id uses the node's own id as leader
+        let log_id0 = log_id(0, 1, 0);
 
         eng.initialize(m12())?;
 
@@ -99,21 +100,24 @@ fn test_initialize() -> anyhow::Result<()> {
                 //
                 Command::AppendEntries {
                     committed_vote: Vote::new_with_default_term(1).into_committed(),
-                    entries: vec![Entry::new_membership(LogIdOf::<UTConfig>::default(), m12())],
+                    entries: vec![Entry::new_membership(log_id(0, 1, 0), m12())],
                 },
             ],
             eng.output.take_commands()
         );
     }
 
+    // For error cases, use a pre-existing log with arbitrary log ID
+    let existing_log_id = log_id(0, 0, 0);
+
     tracing::info!("--- not allowed because of last_log_id");
     {
         let mut eng = eng();
-        eng.state.log_ids = LogIdList::new(vec![log_id0]);
+        eng.state.log_ids = LogIdList::new(vec![existing_log_id]);
 
         assert_eq!(
             Err(InitializeError::NotAllowed(NotAllowed {
-                last_log_id: Some(log_id0),
+                last_log_id: Some(existing_log_id),
                 vote: Vote::default(),
             })),
             eng.initialize(m12())
