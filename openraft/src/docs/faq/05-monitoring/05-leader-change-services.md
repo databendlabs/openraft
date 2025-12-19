@@ -40,6 +40,12 @@ this node), use [`Raft::on_cluster_leader_change()`][] instead.
 - **Committed leadership**: `on_start` only fires when the node is the
   committed leader (acknowledged by a quorum), not when it's still a candidate.
 
+- **Alternating callbacks**: The `start` and `stop` callbacks are guaranteed
+  to be called in alternating order: `start` → `stop` → `start` → `stop` → ...
+  Even if a node transitions directly from leader in Term 1 to leader in Term 2,
+  `stop` will be called with the old `leader_id` before `start` is called with
+  the new one. This ensures proper resource cleanup between leadership terms.
+
 - **Idempotent operations**: Ensure your start/stop logic is idempotent.
 
 - **Non-blocking callback**: The callback runs in the watch task. Keep it

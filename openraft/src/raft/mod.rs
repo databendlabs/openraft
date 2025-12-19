@@ -1499,6 +1499,16 @@ where C: RaftTypeConfig
     /// changes. For a simpler API that only fires when THIS node becomes or loses leadership,
     /// see [`on_leader_change()`].
     ///
+    /// # Note on Start/Stop Service Pattern
+    ///
+    /// If you use this API to start/stop services based on leadership, be aware that
+    /// consecutive callbacks may show the same node as leader with different Terms
+    /// (e.g., Term 1 → Term 2). The simple `if is_leader { start } else { stop }` pattern
+    /// could call `start` twice without an intervening `stop`.
+    ///
+    /// For the start/stop service pattern, prefer [`on_leader_change()`] which guarantees
+    /// alternating `start`/`stop` callbacks.
+    ///
     /// # Example
     ///
     /// ```ignore
@@ -1555,6 +1565,15 @@ where C: RaftTypeConfig
     /// - `start`: Called when this node becomes the leader (committed, quorum-acknowledged)
     /// - `stop`: Called when this node is no longer the leader (another node becomes leader)
     ///
+    /// # Callback Guarantees
+    ///
+    /// The `start` and `stop` callbacks are guaranteed to be called in alternating order:
+    /// `start` → `stop` → `start` → `stop` → ...
+    ///
+    /// Even if a node transitions directly from leader in Term 1 to leader in Term 2,
+    /// `stop` will be called with the old `leader_id` before `start` is called with the
+    /// new `leader_id`. This ensures proper resource cleanup between leadership terms.
+    ///
     /// # Example
     ///
     /// ```ignore
@@ -1591,6 +1610,12 @@ where C: RaftTypeConfig
             #[allow(clippy::collapsible_else_if)]
             if leader_id.node_id() == my_node_id {
                 if vote.is_committed() && prev_leader_id.as_ref() != Some(&leader_id) {
+                    // Call stop first if transitioning from one leadership to another
+                    // (e.g., Term 1 leader -> Term 2 leader)
+                    // This guarantees alternating start/stop calls.
+                    if let Some(old_id) = prev_leader_id.take() {
+                        stop(old_id);
+                    }
                     start(leader_id.clone());
                     prev_leader_id = Some(leader_id);
                 }
