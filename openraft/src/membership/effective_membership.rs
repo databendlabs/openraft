@@ -20,7 +20,7 @@ use crate::type_config::alias::LogIdOf;
 /// - and the config.
 ///
 /// An active config is just the last seen config in raft spec.
-#[derive(Clone, Default, Eq)]
+#[derive(Clone, Eq)]
 pub struct EffectiveMembership<C>
 where C: RaftTypeConfig
 {
@@ -31,6 +31,18 @@ where C: RaftTypeConfig
 
     /// Cache of the union of all members
     voter_ids: BTreeSet<C::NodeId>,
+}
+
+impl<C> Default for EffectiveMembership<C>
+where C: RaftTypeConfig
+{
+    fn default() -> Self {
+        Self {
+            stored_membership: Arc::new(StoredMembership::default()),
+            quorum_set: Joint::default(),
+            voter_ids: Default::default(),
+        }
+    }
 }
 
 impl<C> Debug for EffectiveMembership<C>

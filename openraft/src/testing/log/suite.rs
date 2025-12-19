@@ -468,7 +468,7 @@ where
         let initial = StorageHelper::new(&mut store, &mut sm).with_id(NODE_ID.into()).get_initial_state().await?;
 
         let vote = VoteOf::<C>::new_with_default_term(NODE_ID.into());
-        let mut want = RaftState::<C>::default();
+        let mut want = RaftState::<C>::new(NODE_ID.into());
         want.vote.update(initial.vote.last_update().unwrap(), Duration::default(), vote.clone());
         want.log_progress_mut().accept(IOId::new(&vote));
         want.log_progress_mut().submit(IOId::new(&vote));
@@ -1654,7 +1654,7 @@ where
     );
 
     // Create Watch channel for IO completion
-    let dummy_io_id = IOId::Vote(UncommittedVote::default());
+    let dummy_io_id = IOId::Vote(UncommittedVote::new_with_default_term(NODE_ID.into()));
     let (tx, mut rx) = C::watch_channel(Ok(dummy_io_id));
     let cb = IOFlushed::new(io_id, tx);
 

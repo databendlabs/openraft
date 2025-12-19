@@ -45,7 +45,7 @@ mod tests {
     use crate::engine::testing::UTConfig;
     use crate::vote::RaftLeaderId;
 
-    #[derive(Debug, PartialEq, Eq, Default, Clone, PartialOrd, derive_more::Display)]
+    #[derive(Debug, PartialEq, Eq, Clone, PartialOrd, derive_more::Display)]
     #[display("T{}-N{}", _0, _1)]
     #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
     struct LeaderId(u64, u64);

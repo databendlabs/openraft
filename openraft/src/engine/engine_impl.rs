@@ -134,8 +134,8 @@ where C: RaftTypeConfig
     /// Create a default Engine for testing.
     #[allow(dead_code)]
     pub(crate) fn testing_default(id: C::NodeId) -> Self {
-        let config = EngineConfig::new_default(id);
-        let state = RaftState::default();
+        let config = EngineConfig::new_default(id.clone());
+        let state = RaftState::new(id);
         Self::new(state, config)
     }
 
