@@ -52,6 +52,7 @@ use crate::engine::Engine;
 use crate::engine::Respond;
 use crate::engine::TargetProgress;
 use crate::entry::RaftEntry;
+use crate::entry::payload::EntryPayload;
 use crate::error::AllowNextRevertError;
 use crate::error::ClientWriteError;
 use crate::error::Fatal;
@@ -529,8 +530,7 @@ where
             }
         };
 
-        let ent = C::Entry::new_membership(LogIdOf::<C>::default(), new_membership);
-        self.write_entry(ent, Some(CoreResponder::Progress(tx)));
+        self.write_entry(EntryPayload::Membership(new_membership), Some(CoreResponder::Progress(tx)));
     }
 
     /// Write a log entry to the cluster through raft protocol.
@@ -546,8 +546,8 @@ where
     /// (general-purpose); the former is for application-defined entries like user data, the
     /// latter is for membership configuration changes.
     #[tracing::instrument(level = "debug", skip_all, fields(id = display(&self.id)))]
-    pub fn write_entry(&mut self, entry: C::Entry, resp_tx: Option<CoreResponder<C>>) {
-        tracing::debug!("write entry, payload: {}", entry);
+    pub fn write_entry(&mut self, payload: EntryPayload<C>, resp_tx: Option<CoreResponder<C>>) {
+        tracing::debug!("write entry, payload: {}", payload);
 
         let res = self.engine.try_leader_handler();
         let mut lh = match res {
@@ -569,6 +569,8 @@ where
             return;
         }
 
+        // Construct entry with placeholder log ID; the actual ID is assigned by leader_append_entries
+        let entry = C::Entry::new(LogIdOf::<C>::default(), payload);
         let entries = vec![entry];
         // TODO: it should returns membership config error etc. currently this is done by the
         //       caller.
@@ -1443,7 +1445,7 @@ where
                         return;
                     }
                 }
-                self.write_entry(C::Entry::new_normal(LogIdOf::<C>::default(), app_data), responder);
+                self.write_entry(EntryPayload::Normal(app_data), responder);
             }
             RaftMsg::Initialize { members, tx } => {
                 tracing::info!("received RaftMsg::Initialize: {}, members: {:?}", func_name!(), members);
