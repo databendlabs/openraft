@@ -20,7 +20,7 @@ fn test_is_initialized() {
     // Vote is set but is default
     {
         let rs = RaftState::<UTConfig> {
-            vote: Leased::new(UTConfig::<()>::now(), Duration::from_millis(500), Vote::default()),
+            vote: Leased::new(UTConfig::<()>::now(), Duration::from_millis(500), Vote::new(0, 0)),
             ..Default::default()
         };
 

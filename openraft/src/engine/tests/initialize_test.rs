@@ -118,7 +118,7 @@ fn test_initialize() -> anyhow::Result<()> {
         assert_eq!(
             Err(InitializeError::NotAllowed(NotAllowed {
                 last_log_id: Some(existing_log_id),
-                vote: Vote::default(),
+                vote: Vote::new(0, 0),
             })),
             eng.initialize(m12())
         );

@@ -45,10 +45,12 @@ async fn single_follower_restart() -> anyhow::Result<()> {
     {
         let (node, mut sto, sm) = router.remove_node(0).unwrap();
         node.shutdown().await?;
-        let v = sto.read_vote().await?.unwrap_or_default();
+        let v = sto.read_vote().await?;
 
-        // Set a non-committed vote so that the node restarts as a follower.
-        sto.save_vote(&Vote::new(v.leader_id.term() + 1, v.leader_id.to_node_id())).await?;
+        if let Some(v) = v {
+            // Set a non-committed vote so that the node restarts as a follower.
+            sto.save_vote(&Vote::new(v.leader_id.term() + 1, v.leader_id.to_node_id())).await?;
+        }
 
         tracing::info!(log_index, "--- restart node-0");
 

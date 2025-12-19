@@ -7,7 +7,7 @@ use crate::vote::RaftVote;
 use crate::vote::raft_vote::RaftVoteExt;
 
 /// `Vote` represent the privilege of a node.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct Vote<C: RaftTypeConfig> {
     /// The id of the node that tries to become the leader.
