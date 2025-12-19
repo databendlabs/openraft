@@ -41,17 +41,6 @@ where C: RaftTypeConfig
     }
 }
 
-impl<C> Default for Entry<C>
-where C: RaftTypeConfig
-{
-    fn default() -> Self {
-        Self {
-            log_id: LogIdOf::<C>::default(),
-            payload: EntryPayload::Blank,
-        }
-    }
-}
-
 impl<C> PartialEq for Entry<C>
 where
     C::D: PartialEq,

@@ -46,7 +46,7 @@ use crate::type_config::alias::CommittedLeaderIdOf;
 ///
 /// The log id serves as a unique identifier for a log entry across the system. It is composed of
 /// two parts: a leader id, which refers to the leader that proposed this log, and an integer index.
-#[derive(Debug, Default, Clone, PartialOrd, Ord, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct LogId<C>
 where C: RaftTypeConfig
