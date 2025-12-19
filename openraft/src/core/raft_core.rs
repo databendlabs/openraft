@@ -572,12 +572,9 @@ where
             return;
         }
 
-        // Construct entry with placeholder log ID; the actual ID is assigned by leader_append_entries
-        let entry = C::Entry::new(LogIdOf::<C>::default(), payload);
-        let entries = vec![entry];
         // TODO: it should returns membership config error etc. currently this is done by the
         //       caller.
-        lh.leader_append_entries(entries);
+        lh.leader_append_entries(vec![payload]);
         let log_id = lh.state.last_log_id().unwrap();
         let index = log_id.index();
 

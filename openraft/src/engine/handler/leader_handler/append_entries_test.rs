@@ -20,6 +20,7 @@ use crate::engine::TargetProgress;
 use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;
 use crate::entry::RaftEntry;
+use crate::entry::payload::EntryPayload;
 use crate::log_id_range::LogIdRange;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::inflight_id::InflightId;
@@ -77,7 +78,7 @@ fn test_leader_append_entries_empty() -> anyhow::Result<()> {
     let mut eng = eng();
     eng.output.take_commands();
 
-    eng.try_leader_handler()?.leader_append_entries(Vec::<Entry<UTConfig>>::new());
+    eng.try_leader_handler()?.leader_append_entries(vec![]);
 
     assert_eq!(
         None,
@@ -109,11 +110,10 @@ fn test_leader_append_entries_normal() -> anyhow::Result<()> {
     let mut eng = eng();
     eng.output.take_commands();
 
-    // log id will be assigned by eng.
     eng.try_leader_handler()?.leader_append_entries(vec![
-        blank_ent(1, 1, 1), //
-        blank_ent(1, 1, 1),
-        blank_ent(1, 1, 1),
+        EntryPayload::Blank,
+        EntryPayload::Blank,
+        EntryPayload::Blank,
     ]);
 
     assert_eq!(
@@ -175,11 +175,10 @@ fn test_leader_append_entries_single_node_leader() -> anyhow::Result<()> {
 
     eng.output.clear_commands();
 
-    // log id will be assigned by eng.
     eng.try_leader_handler()?.leader_append_entries(vec![
-        blank_ent(1, 1, 1), //
-        blank_ent(1, 1, 1),
-        blank_ent(1, 1, 1),
+        EntryPayload::Blank,
+        EntryPayload::Blank,
+        EntryPayload::Blank,
     ]);
 
     assert_eq!(
@@ -233,11 +232,10 @@ fn test_leader_append_entries_with_membership_log() -> anyhow::Result<()> {
 
     eng.output.clear_commands();
 
-    // log id will be assigned by eng.
     eng.try_leader_handler()?.leader_append_entries(vec![
-        blank_ent(1, 1, 1), //
-        Entry::new_membership(log_id(1, 1, 1), m1_2()),
-        blank_ent(1, 1, 1),
+        EntryPayload::Blank,
+        EntryPayload::Membership(m1_2()),
+        EntryPayload::Blank,
     ]);
 
     assert_eq!(

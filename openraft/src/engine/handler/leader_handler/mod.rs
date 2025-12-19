@@ -6,6 +6,7 @@ use crate::engine::EngineOutput;
 use crate::engine::handler::replication_handler::ReplicationHandler;
 use crate::entry::RaftEntry;
 use crate::entry::RaftPayload;
+use crate::entry::payload::EntryPayload;
 use crate::entry::raft_entry_ext::RaftEntryExt;
 use crate::proposer::Leader;
 use crate::proposer::LeaderQuorumSet;
@@ -49,14 +50,18 @@ where C: RaftTypeConfig
     /// committed.
     ///
     /// TODO(xp): if vote indicates this node is not the leader, refuse append
-    #[tracing::instrument(level = "debug", skip(self, entries))]
-    pub(crate) fn leader_append_entries(&mut self, mut entries: Vec<C::Entry>) {
-        let log_ids = self.leader.assign_log_ids(entries.len());
+    #[tracing::instrument(level = "debug", skip(self, payloads))]
+    pub(crate) fn leader_append_entries(&mut self, payloads: Vec<EntryPayload<C>>) {
+        let log_ids = self.leader.assign_log_ids(payloads.len());
 
-        for (entry, log_id) in entries.iter_mut().zip(log_ids) {
-            entry.set_log_id(log_id);
-            tracing::debug!("assign log id: {}", entry.ref_log_id());
-        }
+        let entries: Vec<C::Entry> = payloads
+            .into_iter()
+            .zip(log_ids)
+            .map(|(payload, log_id)| {
+                tracing::debug!("assign log id: {}", log_id);
+                C::Entry::new(log_id, payload)
+            })
+            .collect();
 
         if entries.is_empty() {
             return;
