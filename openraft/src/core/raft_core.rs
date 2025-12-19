@@ -530,7 +530,10 @@ where
             }
         };
 
-        self.write_entry(EntryPayload::Membership(new_membership), Some(CoreResponder::Progress(tx)));
+        self.write_entry(
+            EntryPayload::Membership(new_membership),
+            Some(CoreResponder::Progress(tx)),
+        );
     }
 
     /// Write a log entry to the cluster through raft protocol.

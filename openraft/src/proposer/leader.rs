@@ -5,8 +5,6 @@ use crate::RaftTypeConfig;
 use crate::base::shared_id_generator::SharedIdGenerator;
 use crate::display_ext::DisplayInstantExt;
 use crate::engine::leader_log_ids::LeaderLogIds;
-use crate::entry::RaftEntry;
-use crate::entry::raft_entry_ext::RaftEntryExt;
 use crate::progress::Progress;
 use crate::progress::VecProgress;
 use crate::progress::entry::ProgressEntry;
@@ -169,35 +167,24 @@ where
         self.transfer_to.as_ref()
     }
 
-    /// Assign log ids to the entries.
+    /// Allocate a range of log IDs for new entries.
     ///
-    /// This method update the `self.last_log_id`.
-    pub(crate) fn assign_log_ids<'a, Ent, I>(&mut self, entries: I)
-    where
-        Ent: RaftEntry<C> + 'a,
-        I: IntoIterator<Item = &'a mut Ent>,
-        <I as IntoIterator>::IntoIter: ExactSizeIterator,
-    {
+    /// Returns an iterator of log IDs for the given count.
+    /// Updates `self.last_log_id` to the last allocated log ID.
+    ///
+    /// The caller is responsible for assigning the log IDs to entries.
+    pub(crate) fn assign_log_ids(&mut self, count: usize) -> impl Iterator<Item = LogIdOf<C>> + use<'_, C, QS> {
         debug_assert!(self.transfer_to.is_none(), "leader is disabled to propose new log");
 
-        let it = entries.into_iter();
-        let len = it.len();
-        if len == 0 {
-            return;
-        }
-
         let committed_leader_id = self.committed_vote.committed_leader_id();
+        let first_index = self.last_log_id().next_index();
 
-        let mut index = self.last_log_id().next_index();
-
-        for entry in it {
-            entry.set_log_id(LogIdOf::<C>::new(committed_leader_id.clone(), index));
-            tracing::debug!("assign log id: {}", entry.ref_log_id());
-            index += 1;
+        if count > 0 {
+            let last_index = first_index + count as u64 - 1;
+            self.last_log_id = Some(LogIdOf::<C>::new(committed_leader_id.clone(), last_index));
         }
 
-        index -= 1;
-        self.last_log_id = Some(LogIdOf::<C>::new(committed_leader_id.clone(), index));
+        (0..count).map(move |i| LogIdOf::<C>::new(committed_leader_id.clone(), first_index + i as u64))
     }
 
     /// Get the last timestamp acknowledged by a quorum.
@@ -255,16 +242,13 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::Entry;
     use crate::Vote;
     use crate::base::shared_id_generator::SharedIdGenerator;
     use crate::engine::leader_log_ids::LeaderLogIds;
     use crate::engine::testing::UTConfig;
     use crate::engine::testing::log_id;
-    use crate::entry::RaftEntry;
     use crate::progress::Progress;
     use crate::proposer::Leader;
-    use crate::testing::blank_ent;
     use crate::type_config::TypeConfigExt;
     use crate::vote::raft_vote::RaftVoteExt;
 
@@ -342,12 +326,11 @@ mod tests {
             SharedIdGenerator::new(),
         );
 
-        let mut entries = vec![Entry::<UTConfig>::new_blank(log_id(5, 5, 2))];
-        leader.assign_log_ids(&mut entries);
+        let log_ids: Vec<_> = leader.assign_log_ids(1).collect();
 
         assert_eq!(
-            entries[0].log_id(),
-            log_id(2, 2, 4),
+            log_ids,
+            vec![log_id(2, 2, 4)],
             "entry log id assigned following last-log-id"
         );
         assert_eq!(Some(log_id(2, 2, 4)), leader.last_log_id);
@@ -364,10 +347,9 @@ mod tests {
             SharedIdGenerator::new(),
         );
 
-        let mut entries: Vec<Entry<UTConfig>> = vec![blank_ent(1, 1, 1)];
-        leading.assign_log_ids(&mut entries);
+        let log_ids: Vec<_> = leading.assign_log_ids(1).collect();
 
-        assert_eq!(entries[0].log_id(), log_id(0, 0, 0),);
+        assert_eq!(log_ids, vec![log_id(0, 0, 0)]);
         assert_eq!(Some(log_id(0, 0, 0)), leading.last_log_id);
     }
 
@@ -382,8 +364,8 @@ mod tests {
             SharedIdGenerator::new(),
         );
 
-        let mut entries: Vec<Entry<UTConfig>> = vec![];
-        leading.assign_log_ids(&mut entries);
+        let log_ids: Vec<_> = leading.assign_log_ids(0).collect();
+        assert_eq!(log_ids, vec![]);
         assert_eq!(Some(log_id(1, 1, 8)), leading.last_log_id);
     }
 
@@ -398,12 +380,8 @@ mod tests {
             SharedIdGenerator::new(),
         );
 
-        let mut entries: Vec<Entry<UTConfig>> = vec![blank_ent(1, 1, 1), blank_ent(1, 1, 1), blank_ent(1, 1, 1)];
-
-        leading.assign_log_ids(&mut entries);
-        assert_eq!(entries[0].log_id(), log_id(2, 2, 9));
-        assert_eq!(entries[1].log_id(), log_id(2, 2, 10));
-        assert_eq!(entries[2].log_id(), log_id(2, 2, 11));
+        let log_ids: Vec<_> = leading.assign_log_ids(3).collect();
+        assert_eq!(log_ids, vec![log_id(2, 2, 9), log_id(2, 2, 10), log_id(2, 2, 11)]);
         assert_eq!(Some(log_id(2, 2, 11)), leading.last_log_id);
     }
 

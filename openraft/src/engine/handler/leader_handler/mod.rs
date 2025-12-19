@@ -51,12 +51,16 @@ where C: RaftTypeConfig
     /// TODO(xp): if vote indicates this node is not the leader, refuse append
     #[tracing::instrument(level = "debug", skip(self, entries))]
     pub(crate) fn leader_append_entries(&mut self, mut entries: Vec<C::Entry>) {
-        let l = entries.len();
-        if l == 0 {
-            return;
+        let log_ids = self.leader.assign_log_ids(entries.len());
+
+        for (entry, log_id) in entries.iter_mut().zip(log_ids) {
+            entry.set_log_id(log_id);
+            tracing::debug!("assign log id: {}", entry.ref_log_id());
         }
 
-        self.leader.assign_log_ids(&mut entries);
+        if entries.is_empty() {
+            return;
+        }
 
         self.state.extend_log_ids_from_same_leader(entries.iter().map(|x| x.ref_log_id()));
 
