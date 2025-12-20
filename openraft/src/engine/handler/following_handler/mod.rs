@@ -153,7 +153,7 @@ where C: RaftTypeConfig
         self.output.push_command(Command::AppendEntries {
             // A follower should always use the node's vote.
             committed_vote: self.leader_vote.clone(),
-            entries,
+            entries: entries.into(),
         });
     }
 

@@ -89,7 +89,7 @@ where C: RaftTypeConfig
             // A leader should always use the leader's vote.
             // It is allowed to be different from local vote.
             committed_vote: self.leader.committed_vote.clone(),
-            entries,
+            entries: entries.into(),
         });
 
         let mut rh = self.replication_handler();

@@ -222,7 +222,7 @@ fn test_handle_vote_resp_equal_vote() -> anyhow::Result<()> {
                 },
                 Command::AppendEntries {
                     committed_vote: Vote::new(2, 1).into_committed(),
-                    entries: vec![Entry::<UTConfig>::new_blank(log_id(2, 1, 1))],
+                    entries: [Entry::<UTConfig>::new_blank(log_id(2, 1, 1))].into(),
                 },
                 Command::Replicate {
                     target: 2,

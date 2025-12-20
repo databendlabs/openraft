@@ -79,7 +79,7 @@ fn test_follower_append_entries_update_accepted() -> anyhow::Result<()> {
         //
         Command::AppendEntries {
             committed_vote: Vote::new(2, 1).into_committed(),
-            entries: vec![blank_ent(3, 1, 4), blank_ent(3, 1, 5),],
+            entries: [blank_ent(3, 1, 4), blank_ent(3, 1, 5),].into(),
         }
     ]);
 
