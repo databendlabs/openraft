@@ -115,7 +115,7 @@ minimized store and network. This is **NOT a real world** application benchmark!
 
 | clients | put/s     |
 | --:     | --:       |
-| 4096    | 3,087,000 |
+| 4096    | 3,373,000 |
 | 1024    | 3,006,000 |
 | 256     | 1,808,000 |
 | 64      |   912,000 |
