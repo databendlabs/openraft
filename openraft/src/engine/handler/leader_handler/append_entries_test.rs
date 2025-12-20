@@ -78,7 +78,7 @@ fn test_leader_append_entries_empty() -> anyhow::Result<()> {
     let mut eng = eng();
     eng.output.take_commands();
 
-    eng.try_leader_handler()?.leader_append_entries(vec![]);
+    eng.try_leader_handler()?.leader_append_entries([]);
 
     assert_eq!(
         None,
@@ -110,11 +110,8 @@ fn test_leader_append_entries_normal() -> anyhow::Result<()> {
     let mut eng = eng();
     eng.output.take_commands();
 
-    eng.try_leader_handler()?.leader_append_entries(vec![
-        EntryPayload::Blank,
-        EntryPayload::Blank,
-        EntryPayload::Blank,
-    ]);
+    eng.try_leader_handler()?
+        .leader_append_entries([EntryPayload::Blank, EntryPayload::Blank, EntryPayload::Blank]);
 
     assert_eq!(
         Some(&IOId::new_log_io(
@@ -175,11 +172,8 @@ fn test_leader_append_entries_single_node_leader() -> anyhow::Result<()> {
 
     eng.output.clear_commands();
 
-    eng.try_leader_handler()?.leader_append_entries(vec![
-        EntryPayload::Blank,
-        EntryPayload::Blank,
-        EntryPayload::Blank,
-    ]);
+    eng.try_leader_handler()?
+        .leader_append_entries([EntryPayload::Blank, EntryPayload::Blank, EntryPayload::Blank]);
 
     assert_eq!(
         Some(&IOId::new_log_io(
@@ -232,7 +226,7 @@ fn test_leader_append_entries_with_membership_log() -> anyhow::Result<()> {
 
     eng.output.clear_commands();
 
-    eng.try_leader_handler()?.leader_append_entries(vec![
+    eng.try_leader_handler()?.leader_append_entries([
         EntryPayload::Blank,
         EntryPayload::Membership(m1_2()),
         EntryPayload::Blank,
