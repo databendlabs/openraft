@@ -37,7 +37,6 @@ impl<T> Batch<T> {
     ///
     /// If the iterator has exactly one element, returns `Single` variant.
     /// Otherwise, collects into `Vec` variant.
-    #[allow(dead_code)]
     pub fn from_iter(iter: impl ExactSizeIterator<Item = T>) -> Self {
         if iter.len() == 1 {
             let mut iter = iter;

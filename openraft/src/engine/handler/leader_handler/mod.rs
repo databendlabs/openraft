@@ -1,5 +1,6 @@
 use crate::RaftState;
 use crate::RaftTypeConfig;
+use crate::base::batch::Batch;
 use crate::engine::Command;
 use crate::engine::EngineConfig;
 use crate::engine::EngineOutput;
@@ -61,16 +62,10 @@ where C: RaftTypeConfig
 
         self.state.extend_log_ids_from_same_leader(log_ids.clone());
 
-        let entries: Vec<C::Entry> = payloads
-            .zip(log_ids)
-            .map(|(payload, log_id)| {
-                tracing::debug!("assign log id: {}", log_id);
-                C::Entry::new(log_id, payload)
-            })
-            .collect();
-
         let mut membership_entry = None;
-        for entry in entries.iter() {
+        let entries = Batch::from_iter(payloads.zip(log_ids).map(|(payload, log_id)| {
+            tracing::debug!("assign log id: {}", log_id);
+            let entry = C::Entry::new(log_id, payload);
             if let Some(m) = entry.get_membership() {
                 debug_assert!(
                     membership_entry.is_none(),
@@ -78,7 +73,8 @@ where C: RaftTypeConfig
                 );
                 membership_entry = Some((entry.log_id(), m));
             }
-        }
+            entry
+        }));
 
         self.state.accept_log_io(IOId::new_log_io(
             self.leader.committed_vote.clone(),
@@ -89,7 +85,7 @@ where C: RaftTypeConfig
             // A leader should always use the leader's vote.
             // It is allowed to be different from local vote.
             committed_vote: self.leader.committed_vote.clone(),
-            entries: entries.into(),
+            entries,
         });
 
         let mut rh = self.replication_handler();
