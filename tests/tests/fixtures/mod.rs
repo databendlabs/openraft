@@ -23,11 +23,9 @@ use anyerror::AnyError;
 use anyhow::Context;
 use lazy_static::lazy_static;
 use openraft::Config;
-use openraft::LogIdOptionExt;
 use openraft::OptionalSend;
 use openraft::RPCTypes;
 use openraft::Raft;
-use openraft::RaftLogReader;
 use openraft::RaftMetrics;
 use openraft::RaftState;
 use openraft::RaftTypeConfig;
@@ -53,8 +51,6 @@ use openraft::raft::SnapshotResponse;
 use openraft::raft::TransferLeaderRequest;
 use openraft::raft::VoteRequest;
 use openraft::raft::VoteResponse;
-use openraft::storage::RaftLogStorage;
-use openraft::storage::RaftStateMachine;
 use openraft::storage::Snapshot;
 use openraft_memstore::ClientRequest;
 use openraft_memstore::ClientResponse;
@@ -811,134 +807,6 @@ impl TypedRaftRouter {
         node.0.client_write(req).await.map(|res| res.data)
     }
 
-    /// Assert against the state of the storage system one node in the cluster.
-    pub async fn assert_storage_state_with_sto(
-        &self,
-        storage: &mut MemLogStore,
-        sm: &mut MemStateMachine,
-        id: &MemNodeId,
-        expect_term: u64,
-        expect_last_log: u64,
-        expect_voted_for: Option<MemNodeId>,
-        expect_sm_last_applied_log: LogIdOf<TypeConfig>,
-        expect_snapshot: &Option<(ValueTest<u64>, u64)>,
-    ) -> anyhow::Result<()> {
-        let last_log_id = storage.get_log_state().await?.last_log_id;
-
-        assert_eq!(
-            expect_last_log,
-            last_log_id.index().unwrap(),
-            "expected node {} to have last_log {}, got {:?}",
-            id,
-            expect_last_log,
-            last_log_id
-        );
-
-        let vote = storage.read_vote().await?.unwrap_or_else(|| panic!("no hard state found for node {}", id));
-
-        assert_eq!(
-            vote.leader_id().term(),
-            expect_term,
-            "expected node {} to have term {}, got {:?}",
-            id,
-            expect_term,
-            vote
-        );
-
-        if let Some(voted_for) = &expect_voted_for {
-            assert_eq!(
-                vote.leader_node_id(),
-                voted_for,
-                "expected node {} to have voted for {}, got {:?}",
-                id,
-                voted_for,
-                vote
-            );
-        }
-
-        if let Some((index_test, term)) = &expect_snapshot {
-            let snap = sm
-                .get_current_snapshot()
-                .await
-                .map_err(|err| panic!("{}", err))
-                .unwrap()
-                .unwrap_or_else(|| panic!("no snapshot present for node {}", id));
-
-            match index_test {
-                ValueTest::Exact(index) => assert_eq!(
-                    snap.meta.last_log_id.index(),
-                    Some(*index),
-                    "expected node {} to have snapshot with index {}, got {:?}",
-                    id,
-                    index,
-                    snap.meta.last_log_id
-                ),
-                ValueTest::Range(range) => assert!(
-                    range.contains(&snap.meta.last_log_id.index().unwrap_or_default()),
-                    "expected node {} to have snapshot within range {:?}, got {:?}",
-                    id,
-                    range,
-                    snap.meta.last_log_id
-                ),
-            }
-
-            assert_eq!(
-                &snap.meta.last_log_id.map(|log_id| log_id.committed_leader_id().term).unwrap_or_default(),
-                term,
-                "expected node {} to have snapshot with term {}, got {:?}",
-                id,
-                term,
-                snap.meta.last_log_id
-            );
-        }
-
-        let (last_applied, _) = sm.applied_state().await?;
-
-        assert_eq!(
-            &last_applied,
-            &Some(expect_sm_last_applied_log),
-            "expected node {} to have state machine last_applied_log {}, got {:?}",
-            id,
-            expect_sm_last_applied_log,
-            last_applied
-        );
-
-        Ok(())
-    }
-
-    /// Assert against the state of the storage system per node in the cluster.
-    pub async fn assert_storage_state(
-        &self,
-        expect_term: u64,
-        expect_last_log: u64,
-        expect_voted_for: Option<MemNodeId>,
-        expect_sm_last_applied_log: LogIdOf<TypeConfig>,
-        expect_snapshot: Option<(ValueTest<u64>, u64)>,
-    ) -> anyhow::Result<()> {
-        let node_ids = {
-            let rt = self.nodes.lock().unwrap();
-            rt.keys().cloned().collect::<Vec<_>>()
-        };
-
-        for id in node_ids {
-            let (mut storage, mut sm) = self.get_storage_handle(&id)?;
-
-            self.assert_storage_state_with_sto(
-                &mut storage,
-                &mut sm,
-                &id,
-                expect_term,
-                expect_last_log,
-                expect_voted_for,
-                expect_sm_last_applied_log,
-                &expect_snapshot,
-            )
-            .await?;
-        }
-
-        Ok(())
-    }
-
     #[allow(clippy::result_large_err)]
     pub fn emit_rpc_error(&self, id: MemNodeId, target: MemNodeId) -> Result<(), RPCError<MemConfig>> {
         let fails = self.fail_rpc.lock().unwrap();
@@ -1123,23 +991,6 @@ impl RaftNetworkV2<MemConfig> for RaftRouterNetwork {
         self.owner.call_rpc_post_hook(rpc, (), from_id, self.target).await?;
 
         Ok(())
-    }
-}
-
-pub enum ValueTest<T> {
-    Exact(T),
-    Range(std::ops::Range<T>),
-}
-
-impl<T> From<T> for ValueTest<T> {
-    fn from(src: T) -> Self {
-        Self::Exact(src)
-    }
-}
-
-impl<T> From<std::ops::Range<T>> for ValueTest<T> {
-    fn from(src: std::ops::Range<T>) -> Self {
-        Self::Range(src)
     }
 }
 
