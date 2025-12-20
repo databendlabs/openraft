@@ -342,21 +342,24 @@ where C: RaftTypeConfig
     ///
     /// Note that the 0-th log does not belong to any leader (but a membership log to initialize a
     /// cluster), but this method does not differentiate between them.
-    #[allow(dead_code)]
-    pub(crate) fn by_last_leader(&self) -> LeaderLogIds<C> {
+    pub(crate) fn by_last_leader(&self) -> Option<LeaderLogIds<C>> {
         let ks = &self.key_log_ids;
         let l = ks.len();
         if l < 2 {
-            let last = self.last();
-            return LeaderLogIds::new(last.map(|x| x.clone()..=x.clone()));
+            let last = self.last()?;
+            return Some(LeaderLogIds::new_single(last.clone()));
         }
 
         // There are at most two(adjacent) key log ids with the same leader_id
         if ks[l - 1].committed_leader_id() == ks[l - 2].committed_leader_id() {
-            LeaderLogIds::new_start_end(ks[l - 2].clone(), ks[l - 1].clone())
+            Some(LeaderLogIds::new(
+                ks[l - 2].committed_leader_id().clone(),
+                ks[l - 2].index(),
+                ks[l - 1].index(),
+            ))
         } else {
             let last = self.last().cloned().unwrap();
-            LeaderLogIds::new_single(last)
+            Some(LeaderLogIds::new_single(last))
         }
     }
 }

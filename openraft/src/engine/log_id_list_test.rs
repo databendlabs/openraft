@@ -358,27 +358,27 @@ fn test_log_id_list_get_log_id() -> anyhow::Result<()> {
 fn test_log_id_list_by_last_leader() -> anyhow::Result<()> {
     // len == 0
     let ids = LogIdList::<UTConfig>::default();
-    assert_eq!(ids.by_last_leader(), LeaderLogIds::new(None));
+    assert_eq!(ids.by_last_leader(), None);
 
     // len == 1
     let ids = LogIdList::<UTConfig>::new([log_id(1, 1, 1)]);
-    assert_eq!(LeaderLogIds::new_single(log_id(1, 1, 1)), ids.by_last_leader());
+    assert_eq!(Some(LeaderLogIds::new_single(log_id(1, 1, 1))), ids.by_last_leader());
 
     // len == 2, the last leader has only one log
     let ids = LogIdList::<UTConfig>::new([log_id(1, 1, 1), log_id(3, 1, 3)]);
-    assert_eq!(LeaderLogIds::new_single(log_id(3, 1, 3)), ids.by_last_leader());
+    assert_eq!(Some(LeaderLogIds::new_single(log_id(3, 1, 3))), ids.by_last_leader());
 
     // len == 2, the last leader has two logs
     let ids = LogIdList::<UTConfig>::new([log_id(1, 1, 1), log_id(1, 1, 3)]);
     assert_eq!(
-        LeaderLogIds::new_start_end(log_id(1, 1, 1), log_id(1, 1, 3)),
+        Some(LeaderLogIds::new(*log_id(1, 1, 0).committed_leader_id(), 1, 3)),
         ids.by_last_leader()
     );
 
     // len > 2, the last leader has only more than one logs
     let ids = LogIdList::<UTConfig>::new([log_id(1, 1, 1), log_id(7, 1, 8), log_id(7, 1, 10)]);
     assert_eq!(
-        LeaderLogIds::new_start_end(log_id(7, 1, 8), log_id(7, 1, 10)),
+        Some(LeaderLogIds::new(*log_id(7, 1, 0).committed_leader_id(), 8, 10)),
         ids.by_last_leader()
     );
 
