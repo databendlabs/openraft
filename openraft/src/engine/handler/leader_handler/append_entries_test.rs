@@ -146,6 +146,7 @@ fn test_leader_append_entries_normal() -> anyhow::Result<()> {
                     blank_ent(3, 1, 5),
                     blank_ent(3, 1, 6),
                 ]
+                .into()
             },
             Command::Replicate {
                 target: 2,
@@ -209,6 +210,7 @@ fn test_leader_append_entries_single_node_leader() -> anyhow::Result<()> {
                 blank_ent(3, 1, 5),
                 blank_ent(3, 1, 6),
             ]
+            .into()
         },],
         eng.output.take_commands()
     );
@@ -267,6 +269,7 @@ fn test_leader_append_entries_with_membership_log() -> anyhow::Result<()> {
                     Entry::new_membership(log_id(3, 1, 5), m1_2()),
                     blank_ent(3, 1, 6),
                 ]
+                .into()
             },
             Command::RebuildReplicationStreams {
                 leader_vote: Vote::new(3, 1).into_committed(),

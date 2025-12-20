@@ -27,6 +27,7 @@
 //! Applications rarely need to use these types directly - they're used internally
 //! to make Openraft flexible across different environments.
 
+pub(crate) mod batch;
 pub(crate) mod finalized;
 pub(crate) mod histogram;
 pub(crate) mod shared_id_generator;
