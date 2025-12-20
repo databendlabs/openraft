@@ -62,7 +62,7 @@ async fn client_writes() -> Result<()> {
             log_index,
             Some(0),
             log_id(1, 0, log_index),
-            Some(((499..600).into(), 1)),
+            Some(((450..600).into(), 1)),
         )
         .await?;
 
