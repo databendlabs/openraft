@@ -16,7 +16,7 @@ and an in-process network that uses function calls to simulate RPC.
 | 256     | 1,808,000 |
 | 512     | 2,543,000 |
 | 1024    | 3,006,000 |
-| 4096    | 3,087,000 |
+| 4096    | 3,373,000 |
 
 The benchmark is carried out with varying numbers of clients because:
 - The `1 client` benchmark shows the average **latency** to commit each log.

@@ -9,10 +9,10 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
 
-use clap::Parser;
 use bench_minimal::network::BenchRaft;
 use bench_minimal::network::Router;
 use bench_minimal::store::ClientRequest;
+use clap::Parser;
 use openraft::Config;
 use tokio::runtime::Builder;
 use tokio::runtime::Runtime;
@@ -24,7 +24,7 @@ use tracing_flame::FlushGuard;
 #[command(author, version, about, long_about = None)]
 struct Args {
     /// Number of worker threads for the client runtime
-    #[arg(long, default_value_t = 2)]
+    #[arg(long, default_value_t = 1)]
     client_workers: usize,
 
     /// Number of worker threads for the server runtime
