@@ -201,7 +201,7 @@ mod tests {
         // AppendEntries
         let cmd: Command<C> = Command::AppendEntries {
             committed_vote: cv.clone(),
-            entries: vec![],
+            entries: [].into(),
         };
         assert_eq!(cmd.name(), CommandName::AppendEntries);
 

@@ -93,7 +93,7 @@ fn test_startup_as_leader_without_logs() -> anyhow::Result<()> {
             },
             Command::AppendEntries {
                 committed_vote: Vote::new(2, 2).into_committed(),
-                entries: vec![Entry::<UTConfig>::new_blank(log_id(2, 2, 4))],
+                entries: [Entry::<UTConfig>::new_blank(log_id(2, 2, 4))].into(),
             },
             Command::Replicate {
                 target: 3,
