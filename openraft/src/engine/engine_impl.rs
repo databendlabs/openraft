@@ -685,7 +685,7 @@ where C: RaftTypeConfig
         // No need to submit UpdateIOProgress command,
         // IO progress is updated by the new blank log
 
-        self.try_leader_handler().unwrap().leader_append_entries(vec![EntryPayload::Blank]);
+        self.try_leader_handler().unwrap().leader_append_entries([EntryPayload::Blank]);
     }
 
     /// Check if a raft node is in a state that allows to initialize.

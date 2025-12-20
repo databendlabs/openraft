@@ -50,7 +50,10 @@ where C: RaftTypeConfig
     ///
     /// TODO(xp): if vote indicates this node is not the leader, refuse append
     #[tracing::instrument(level = "debug", skip(self, payloads))]
-    pub(crate) fn leader_append_entries(&mut self, payloads: Vec<EntryPayload<C>>) {
+    pub(crate) fn leader_append_entries<I>(&mut self, payloads: I)
+    where I: IntoIterator<Item = EntryPayload<C>, IntoIter: ExactSizeIterator> {
+        let payloads = payloads.into_iter();
+
         let log_ids = match self.leader.assign_log_ids(payloads.len()) {
             Some(ids) => ids,
             None => return,
@@ -59,7 +62,6 @@ where C: RaftTypeConfig
         self.state.extend_log_ids_from_same_leader(log_ids.clone());
 
         let entries: Vec<C::Entry> = payloads
-            .into_iter()
             .zip(log_ids)
             .map(|(payload, log_id)| {
                 tracing::debug!("assign log id: {}", log_id);

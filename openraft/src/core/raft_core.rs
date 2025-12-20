@@ -574,7 +574,7 @@ where
 
         // TODO: it should returns membership config error etc. currently this is done by the
         //       caller.
-        lh.leader_append_entries(vec![payload]);
+        lh.leader_append_entries([payload]);
         let log_id = lh.state.last_log_id().unwrap();
         let index = log_id.index();
 
