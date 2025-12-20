@@ -33,6 +33,20 @@ impl<T> Default for Batch<T> {
 }
 
 impl<T> Batch<T> {
+    /// Creates a `Batch` from an `ExactSizeIterator`.
+    ///
+    /// If the iterator has exactly one element, returns `Single` variant.
+    /// Otherwise, collects into `Vec` variant.
+    #[allow(dead_code)]
+    pub fn from_iter(iter: impl ExactSizeIterator<Item = T>) -> Self {
+        if iter.len() == 1 {
+            let mut iter = iter;
+            Batch::Single(iter.next().unwrap())
+        } else {
+            Batch::Vec(iter.collect())
+        }
+    }
+
     /// Returns the number of elements.
     pub fn len(&self) -> usize {
         match self {
@@ -168,6 +182,18 @@ impl<T, const N: usize> From<[T; N]> for Batch<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_from_iter() {
+        // Single element creates Single variant
+        assert_eq!(Batch::from_iter(vec![42].into_iter()), Batch::Single(42));
+
+        // Multiple elements create Vec variant
+        assert_eq!(Batch::from_iter(vec![1, 2, 3].into_iter()), Batch::Vec(vec![1, 2, 3]));
+
+        // Empty iterator creates empty Vec variant
+        assert_eq!(Batch::from_iter(Vec::<i32>::new().into_iter()), Batch::Vec(vec![]));
+    }
 
     #[test]
     fn test_from_conversions() {
