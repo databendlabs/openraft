@@ -10,6 +10,7 @@ use crate::display_ext::DisplayResultExt;
 use crate::display_ext::DisplaySliceExt;
 use crate::engine::CommandKind;
 use crate::engine::CommandName;
+use crate::engine::batch::Batch;
 use crate::engine::replication_progress::TargetProgress;
 use crate::error::InitializeError;
 use crate::error::InstallSnapshotError;
@@ -63,7 +64,7 @@ where C: RaftTypeConfig
         /// [`LogIOId`]: crate::raft_state::io_state::io_id::IOId
         committed_vote: CommittedVote<C>,
 
-        entries: Vec<C::Entry>,
+        entries: Batch<C::Entry>,
     },
 
     /// Replicate the committed log id to other nodes

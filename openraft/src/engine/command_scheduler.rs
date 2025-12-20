@@ -119,7 +119,7 @@ mod tests {
         let mut output: EngineOutput<C> = EngineOutput::new(8);
         output.push_command(Command::AppendEntries {
             committed_vote: committed_vote(1, 0),
-            entries: vec![blank_ent(1, 0, 1)],
+            entries: [blank_ent(1, 0, 1)].into(),
         });
         let mut scheduler = CommandScheduler::new(&config, &mut output);
         scheduler.merge_front_append_entries();
@@ -133,7 +133,7 @@ mod tests {
         output.push_command(Command::SaveVote { vote: Vote::new(1, 0) });
         output.push_command(Command::AppendEntries {
             committed_vote: committed_vote(1, 0),
-            entries: vec![blank_ent(1, 0, 1)],
+            entries: [blank_ent(1, 0, 1)].into(),
         });
         let mut scheduler = CommandScheduler::new(&config, &mut output);
         scheduler.merge_front_append_entries();
@@ -146,15 +146,15 @@ mod tests {
         let mut output: EngineOutput<C> = EngineOutput::new(8);
         output.push_command(Command::AppendEntries {
             committed_vote: committed_vote(1, 0),
-            entries: vec![blank_ent(1, 0, 1)],
+            entries: [blank_ent(1, 0, 1)].into(),
         });
         output.push_command(Command::AppendEntries {
             committed_vote: committed_vote(1, 0),
-            entries: vec![blank_ent(1, 0, 2)],
+            entries: [blank_ent(1, 0, 2)].into(),
         });
         output.push_command(Command::AppendEntries {
             committed_vote: committed_vote(1, 0),
-            entries: vec![blank_ent(1, 0, 3)],
+            entries: [blank_ent(1, 0, 3)].into(),
         });
 
         let mut scheduler = CommandScheduler::new(&config, &mut output);
@@ -174,11 +174,11 @@ mod tests {
         let mut output: EngineOutput<C> = EngineOutput::new(8);
         output.push_command(Command::AppendEntries {
             committed_vote: committed_vote(1, 0),
-            entries: vec![blank_ent(1, 0, 1)],
+            entries: [blank_ent(1, 0, 1)].into(),
         });
         output.push_command(Command::AppendEntries {
             committed_vote: committed_vote(2, 0), // Different vote
-            entries: vec![blank_ent(2, 0, 2)],
+            entries: [blank_ent(2, 0, 2)].into(),
         });
 
         let mut scheduler = CommandScheduler::new(&config, &mut output);
@@ -193,16 +193,16 @@ mod tests {
         let mut output: EngineOutput<C> = EngineOutput::new(8);
         output.push_command(Command::AppendEntries {
             committed_vote: committed_vote(1, 0),
-            entries: vec![blank_ent(1, 0, 1)],
+            entries: [blank_ent(1, 0, 1)].into(),
         });
         output.push_command(Command::AppendEntries {
             committed_vote: committed_vote(1, 0),
-            entries: vec![blank_ent(1, 0, 2)],
+            entries: [blank_ent(1, 0, 2)].into(),
         });
         output.push_command(Command::SaveVote { vote: Vote::new(1, 0) });
         output.push_command(Command::AppendEntries {
             committed_vote: committed_vote(1, 0),
-            entries: vec![blank_ent(1, 0, 3)],
+            entries: [blank_ent(1, 0, 3)].into(),
         });
 
         let mut scheduler = CommandScheduler::new(&config, &mut output);
@@ -224,15 +224,15 @@ mod tests {
         let mut output: EngineOutput<C> = EngineOutput::new(8);
         output.push_command(Command::AppendEntries {
             committed_vote: committed_vote(1, 0),
-            entries: vec![blank_ent(1, 0, 1), blank_ent(1, 0, 2)],
+            entries: [blank_ent(1, 0, 1), blank_ent(1, 0, 2)].into(),
         });
         output.push_command(Command::AppendEntries {
             committed_vote: committed_vote(1, 0),
-            entries: vec![blank_ent(1, 0, 3)],
+            entries: [blank_ent(1, 0, 3)].into(),
         });
         output.push_command(Command::AppendEntries {
             committed_vote: committed_vote(1, 0),
-            entries: vec![blank_ent(1, 0, 4)],
+            entries: [blank_ent(1, 0, 4)].into(),
         });
 
         let mut scheduler = CommandScheduler::new(&config, &mut output);

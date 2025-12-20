@@ -45,7 +45,6 @@ use crate::core::raft_msg::external_command::ExternalCommand;
 use crate::core::sm;
 use crate::display_ext::DisplayInstantExt;
 use crate::display_ext::DisplayOptionExt;
-use crate::display_ext::DisplaySliceExt;
 use crate::engine::Command;
 use crate::engine::Condition;
 use crate::engine::Engine;

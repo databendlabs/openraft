@@ -35,6 +35,7 @@ mod engine_impl;
 mod engine_output;
 mod respond_command;
 
+pub(crate) mod batch;
 pub(crate) mod command;
 pub(crate) mod handler;
 pub(crate) mod leader_log_ids;
