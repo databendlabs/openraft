@@ -7,7 +7,6 @@ use crate::engine::handler::replication_handler::ReplicationHandler;
 use crate::entry::RaftEntry;
 use crate::entry::RaftPayload;
 use crate::entry::payload::EntryPayload;
-use crate::entry::raft_entry_ext::RaftEntryExt;
 use crate::proposer::Leader;
 use crate::proposer::LeaderQuorumSet;
 use crate::raft::message::TransferLeaderRequest;
@@ -52,7 +51,12 @@ where C: RaftTypeConfig
     /// TODO(xp): if vote indicates this node is not the leader, refuse append
     #[tracing::instrument(level = "debug", skip(self, payloads))]
     pub(crate) fn leader_append_entries(&mut self, payloads: Vec<EntryPayload<C>>) {
-        let log_ids = self.leader.assign_log_ids(payloads.len());
+        let log_ids = match self.leader.assign_log_ids(payloads.len()) {
+            Some(ids) => ids,
+            None => return,
+        };
+
+        self.state.extend_log_ids_from_same_leader(log_ids.clone());
 
         let entries: Vec<C::Entry> = payloads
             .into_iter()
@@ -62,12 +66,6 @@ where C: RaftTypeConfig
                 C::Entry::new(log_id, payload)
             })
             .collect();
-
-        if entries.is_empty() {
-            return;
-        }
-
-        self.state.extend_log_ids_from_same_leader(entries.iter().map(|x| x.ref_log_id()));
 
         let mut membership_entry = None;
         for entry in entries.iter() {
