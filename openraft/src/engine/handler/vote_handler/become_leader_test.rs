@@ -76,7 +76,7 @@ fn test_become_leader() -> anyhow::Result<()> {
         },
         Command::AppendEntries {
             committed_vote: Vote::new(2, 1).into_committed(),
-            entries: vec![EntryOf::<UTConfig>::new_blank(log_id(2, 1, 0)),]
+            entries: [EntryOf::<UTConfig>::new_blank(log_id(2, 1, 0)),].into()
         },
         // Pipeline mode: ProgressEntry::empty(0) has matching.next_index()=0 == searching_end=0
         Command::Replicate {
