@@ -4,9 +4,13 @@ use anyhow::Result;
 use futures::prelude::*;
 use maplit::btreeset;
 use openraft::Config;
+use openraft::RaftLogReader;
 use openraft::SnapshotPolicy;
+use openraft::Vote;
 use openraft::impls::ProgressResponder;
 use openraft::raft::ClientWriteResponse;
+use openraft::storage::RaftLogStorage;
+use openraft::storage::RaftStateMachine;
 use openraft::type_config::alias::LeaderIdOf;
 use openraft_memstore::ClientRequest;
 use openraft_memstore::ClientResponse;
@@ -56,15 +60,24 @@ async fn client_writes() -> Result<()> {
         router.wait(&id, None).applied_index(Some(log_index), "sync logs").await?;
     }
 
-    router
-        .assert_storage_state(
-            1,
-            log_index,
-            Some(0),
-            log_id(1, 0, log_index),
-            Some(((450..600).into(), 1)),
-        )
-        .await?;
+    for id in [0, 1, 2] {
+        let (mut sto, mut sm) = router.get_storage_handle(&id)?;
+
+        let last_log_id = sto.get_log_state().await?.last_log_id;
+        assert_eq!(last_log_id, Some(log_id(1, 0, log_index)));
+
+        let vote = sto.read_vote().await?.unwrap();
+        assert_eq!(vote, Vote::new_committed(1, 0));
+
+        let (last_applied, _) = sm.applied_state().await?;
+        assert_eq!(last_applied, Some(log_id(1, 0, log_index)));
+
+        let snap = sm.get_current_snapshot().await?.unwrap();
+        let snap_log_id = snap.meta.last_log_id.unwrap();
+        assert!(snap_log_id.index() >= 450);
+        assert!(snap_log_id.index() < 600);
+        assert_eq!(snap_log_id.committed_leader_id().term, 1);
+    }
 
     Ok(())
 }
