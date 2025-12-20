@@ -122,13 +122,13 @@ where
         //       Thus the first() is ignored.
         //       But we should not fake the first() there.
         let last = self.last_log_id();
-        let last_leader_log_ids = LeaderLogIds::new(last.map(|last| last.clone()..=last.clone()));
+        let last_leader_log_ids = last.cloned().map(LeaderLogIds::new_single);
 
         Leader::new(
             vote,
             self.quorum_set.clone(),
             self.learner_ids,
-            last_leader_log_ids,
+            last_leader_log_ids, // already Option<LeaderLogIds>
             self.progress_id_gen,
         )
     }
