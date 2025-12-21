@@ -6,6 +6,7 @@ use super::RuntimeStats;
 use crate::ChangeMembers;
 use crate::RaftState;
 use crate::RaftTypeConfig;
+use crate::base::Batch;
 use crate::base::BoxOnce;
 use crate::core::raft_msg::external_command::ExternalCommand;
 use crate::display_ext::DisplayBTreeMapDebugValueExt;
@@ -79,8 +80,8 @@ where C: RaftTypeConfig
     },
 
     ClientWrite {
-        app_data: C::D,
-        responder: Option<CoreResponder<C>>,
+        app_data: Batch<C::D>,
+        responders: Batch<Option<CoreResponder<C>>>,
         expected_leader: Option<CommittedLeaderIdOf<C>>,
     },
 
