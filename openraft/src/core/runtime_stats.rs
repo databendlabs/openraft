@@ -295,7 +295,7 @@ impl RuntimeStatsDisplay {
         // Batch sizes table with separate columns for each percentile
         writeln!(f, "Batch Sizes:")?;
         let mut builder = Builder::default();
-        builder.push_record(["", "Total", "P1", "P5", "P10", "P50", "P90", "P99"]);
+        builder.push_record(["", "Total", "P0.1", "P1", "P5", "P10", "P50", "P90", "P99", "P99.9"]);
         builder.push_record(Self::percentile_row("Apply", &self.apply_batch));
         builder.push_record(Self::percentile_row("Append", &self.append_batch));
         builder.push_record(Self::percentile_row("Replicate", &self.replicate_batch));
@@ -365,16 +365,18 @@ impl RuntimeStatsDisplay {
 
     /// Create a row with percentile values for the batch sizes table.
     #[cfg(feature = "runtime-stats")]
-    fn percentile_row(name: &str, stats: &PercentileStats) -> [String; 8] {
+    fn percentile_row(name: &str, stats: &PercentileStats) -> [String; 10] {
         [
             name.to_string(),
             Self::format_count(stats.total),
+            stats.p0_1.to_string(),
             stats.p1.to_string(),
             stats.p5.to_string(),
             stats.p10.to_string(),
             stats.p50.to_string(),
             stats.p90.to_string(),
             stats.p99.to_string(),
+            stats.p99_9.to_string(),
         ]
     }
 

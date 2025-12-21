@@ -208,18 +208,20 @@ impl Histogram {
         0
     }
 
-    /// Returns common percentile statistics: total, P1, P5, P10, P50, P90, P99.
+    /// Returns common percentile statistics: total, P0.1, P1, P5, P10, P50, P90, P99, P99.9.
     #[allow(dead_code)]
     pub fn percentile_stats(&self) -> PercentileStats {
         let total = self.total();
         PercentileStats {
             total,
+            p0_1: self.percentile_with_total(0.001, total),
             p1: self.percentile_with_total(0.01, total),
             p5: self.percentile_with_total(0.05, total),
             p10: self.percentile_with_total(0.10, total),
             p50: self.percentile_with_total(0.50, total),
             p90: self.percentile_with_total(0.90, total),
             p99: self.percentile_with_total(0.99, total),
+            p99_9: self.percentile_with_total(0.999, total),
         }
     }
 
@@ -370,12 +372,14 @@ mod tests {
         assert_eq!(hist.percentile(0.5), 0);
         assert_eq!(hist.percentile_stats(), PercentileStats {
             total: 0,
+            p0_1: 0,
             p1: 0,
             p5: 0,
             p10: 0,
             p50: 0,
             p90: 0,
-            p99: 0
+            p99: 0,
+            p99_9: 0
         });
     }
 
