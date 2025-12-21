@@ -5,6 +5,8 @@ use std::fmt;
 pub struct PercentileStats {
     /// Total number of samples recorded
     pub total: u64,
+    /// 0.1th percentile (99.9% of values >= this)
+    pub p0_1: u64,
     /// 1st percentile (99% of values >= this)
     pub p1: u64,
     /// 5th percentile (95% of values >= this)
@@ -17,14 +19,16 @@ pub struct PercentileStats {
     pub p90: u64,
     /// 99th percentile
     pub p99: u64,
+    /// 99.9th percentile
+    pub p99_9: u64,
 }
 
 impl fmt::Display for PercentileStats {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "[total: {}, P1: {}, P5: {}, P10: {}, P50: {}, P90: {}, P99: {}]",
-            self.total, self.p1, self.p5, self.p10, self.p50, self.p90, self.p99
+            "[total: {}, P0.1: {}, P1: {}, P5: {}, P10: {}, P50: {}, P90: {}, P99: {}, P99.9: {}]",
+            self.total, self.p0_1, self.p1, self.p5, self.p10, self.p50, self.p90, self.p99, self.p99_9
         )
     }
 }
