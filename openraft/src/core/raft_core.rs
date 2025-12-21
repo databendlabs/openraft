@@ -1154,6 +1154,7 @@ where
                 // TODO: try to merge message for batching
                 self.handle_api_msg(msg).await;
                 self.runtime_stats.raft_msg_batch.record(1);
+                self.runtime_stats.raft_msg_usage_permille.record(1000);
                 self.run_engine_commands().await?;
             }
 
@@ -1213,6 +1214,7 @@ where
 
         // After handling all the inputs, batch run all the commands for better performance
         self.runtime_stats.raft_msg_batch.record(processed);
+        self.runtime_stats.raft_msg_usage_permille.record(processed * 1000 / at_most);
         self.run_engine_commands().await?;
 
         if processed == at_most {
@@ -1256,6 +1258,8 @@ where
 
             self.run_engine_commands().await?;
         }
+
+        self.runtime_stats.notification_usage_permille.record(processed * 1000 / at_most);
 
         if processed == at_most {
             tracing::debug!(

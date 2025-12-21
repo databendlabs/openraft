@@ -70,6 +70,18 @@ pub struct RuntimeStats {
     /// `process_notification()` call, helping understand load balancing behavior.
     pub notification_budget: Histogram,
 
+    /// Histogram tracking RaftMsg budget utilization in permille (0-1000).
+    ///
+    /// This tracks `processed * 1000 / budget` for each `process_raft_msg()` call,
+    /// where 1000 means 100% utilization. Helps identify if the budget is well-tuned.
+    pub raft_msg_usage_permille: Histogram,
+
+    /// Histogram tracking Notification budget utilization in permille (0-1000).
+    ///
+    /// This tracks `processed * 1000 / budget` for each `process_notification()` call,
+    /// where 1000 means 100% utilization. Helps identify if the budget is well-tuned.
+    pub notification_usage_permille: Histogram,
+
     /// Count of each command type executed.
     ///
     /// This tracks how many times each command type has been executed,
@@ -107,6 +119,8 @@ impl RuntimeStats {
             raft_msg_batch: Histogram::new(),
             raft_msg_budget: Histogram::new(),
             notification_budget: Histogram::new(),
+            raft_msg_usage_permille: Histogram::new(),
+            notification_usage_permille: Histogram::new(),
             command_counts: vec![0; CommandName::COUNT],
             raft_msg_counts: vec![0; RaftMsgName::COUNT],
             notification_counts: vec![0; NotificationName::COUNT],
@@ -144,6 +158,8 @@ impl RuntimeStats {
             raft_msg_batch: self.raft_msg_batch.percentile_stats(),
             raft_msg_budget: self.raft_msg_budget.percentile_stats(),
             notification_budget: self.notification_budget.percentile_stats(),
+            raft_msg_usage_permille: self.raft_msg_usage_permille.percentile_stats(),
+            notification_usage_permille: self.notification_usage_permille.percentile_stats(),
             command_counts: self.command_counts.clone(),
             raft_msg_counts: self.raft_msg_counts.clone(),
             notification_counts: self.notification_counts.clone(),
@@ -164,6 +180,8 @@ pub struct RuntimeStatsDisplay {
     raft_msg_batch: PercentileStats,
     raft_msg_budget: PercentileStats,
     notification_budget: PercentileStats,
+    raft_msg_usage_permille: PercentileStats,
+    notification_usage_permille: PercentileStats,
     command_counts: Vec<u64>,
     raft_msg_counts: Vec<u64>,
     notification_counts: Vec<u64>,
@@ -207,8 +225,15 @@ impl RuntimeStatsDisplay {
     fn fmt_compact(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "RuntimeStats {{ apply_batch: {}, append_batch: {}, replicate_batch: {}, raft_msg_batch: {}, raft_msg_budget: {}, notification_budget: {}, commands: {{",
-            self.apply_batch, self.append_batch, self.replicate_batch, self.raft_msg_batch, self.raft_msg_budget, self.notification_budget
+            "RuntimeStats {{ apply_batch: {}, append_batch: {}, replicate_batch: {}, raft_msg_batch: {}, raft_msg_budget: {}, notification_budget: {}, raft_msg_usage_permille: {}, notification_usage_permille: {}, commands: {{",
+            self.apply_batch,
+            self.append_batch,
+            self.replicate_batch,
+            self.raft_msg_batch,
+            self.raft_msg_budget,
+            self.notification_budget,
+            self.raft_msg_usage_permille,
+            self.notification_usage_permille
         )?;
 
         let mut first = true;
@@ -262,6 +287,8 @@ impl RuntimeStatsDisplay {
         writeln!(f, "  raft_msg_batch: {}", self.raft_msg_batch)?;
         writeln!(f, "  raft_msg_budget: {}", self.raft_msg_budget)?;
         writeln!(f, "  notification_budget: {}", self.notification_budget)?;
+        writeln!(f, "  raft_msg_usage_permille: {}", self.raft_msg_usage_permille)?;
+        writeln!(f, "  notification_usage_permille: {}", self.notification_usage_permille)?;
 
         writeln!(f, "  commands:")?;
         for (i, name) in CommandName::ALL.iter().enumerate() {
@@ -302,6 +329,8 @@ impl RuntimeStatsDisplay {
         builder.push_record(Self::percentile_row("RaftMsg", &self.raft_msg_batch));
         builder.push_record(Self::percentile_row("RaftMsgBudget", &self.raft_msg_budget));
         builder.push_record(Self::percentile_row("NotifyBudget", &self.notification_budget));
+        builder.push_record(Self::percentile_row("RaftMsgUsage‰", &self.raft_msg_usage_permille));
+        builder.push_record(Self::percentile_row("NotifyUsage‰", &self.notification_usage_permille));
         let mut table = builder.build();
         table.with(Style::rounded());
         // Right-align all columns except the first (name column)
