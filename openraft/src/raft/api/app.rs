@@ -2,6 +2,7 @@ use openraft_macros::since;
 
 use crate::RaftTypeConfig;
 use crate::ReadPolicy;
+use crate::base::Batch;
 use crate::core::raft_msg::RaftMsg;
 use crate::error::ClientWriteError;
 use crate::error::Fatal;
@@ -74,8 +75,8 @@ where C: RaftTypeConfig
     async fn do_client_write_ff(&self, app_data: C::D, responder: Option<CoreResponder<C>>) -> Result<(), Fatal<C>> {
         self.inner
             .send_msg(RaftMsg::ClientWrite {
-                app_data,
-                responder,
+                app_data: Batch::from(app_data),
+                responders: Batch::from(responder),
                 expected_leader: None,
             })
             .await?;

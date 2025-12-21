@@ -530,10 +530,9 @@ where
             }
         };
 
-        self.write_entry(
-            EntryPayload::Membership(new_membership),
-            Some(CoreResponder::Progress(tx)),
-        );
+        self.write_entries([EntryPayload::Membership(new_membership)], [Some(
+            CoreResponder::Progress(tx),
+        )]);
     }
 
     /// Ensure this node is a writable leader and return a leader handler.
@@ -552,40 +551,61 @@ where
         Ok(lh)
     }
 
-    /// Write a log entry to the cluster through raft protocol.
+    /// Write log entries to the cluster through raft protocol.
     ///
-    /// I.e.: append the log entry to local store, forward it to a quorum(including the leader),
-    /// waiting for it to be committed and applied.
+    /// I.e.: append the log entries to local store, forward them to a quorum(including the
+    /// leader), waiting for them to be committed and applied.
     ///
-    /// The result of applying it to state machine is sent to `resp_tx`, if it is not `None`.
-    /// The calling side may not receive a result from `resp_tx`, if raft is shut down.
+    /// The result of applying each entry to state machine is sent to its corresponding responder,
+    /// if provided. The calling side may not receive a result if raft is shut down.
     ///
-    /// The responder `resp_tx` is either Responder type of
-    /// [`RaftTypeConfig::Responder`] (application-defined) or [`ProgressResponder`]
-    /// (general-purpose); the former is for application-defined entries like user data, the
-    /// latter is for membership configuration changes.
+    /// The responder is either Responder type of [`RaftTypeConfig::Responder`]
+    /// (application-defined) or [`ProgressResponder`] (general-purpose); the former is for
+    /// application-defined entries like user data, the latter is for membership configuration
+    /// changes.
     #[tracing::instrument(level = "debug", skip_all, fields(id = display(&self.id)))]
-    pub fn write_entry(&mut self, payload: EntryPayload<C>, resp_tx: Option<CoreResponder<C>>) {
-        tracing::debug!("write entry, payload: {}", payload);
+    pub fn write_entries<I, R>(&mut self, payloads: I, responders: R)
+    where
+        I: IntoIterator<Item = EntryPayload<C>>,
+        I::IntoIter: ExactSizeIterator,
+        R: IntoIterator<Item = Option<CoreResponder<C>>>,
+        R::IntoIter: ExactSizeIterator,
+    {
+        let payloads = payloads.into_iter();
+        let responders = responders.into_iter();
+
+        debug_assert_eq!(
+            payloads.len(),
+            responders.len(),
+            "payloads and responders must have same length"
+        );
+
+        tracing::debug!("write {} entries", payloads.len());
 
         let mut lh = match self.ensure_writable_leader_handler() {
             Ok(lh) => lh,
             Err(forward_err) => {
-                resp_tx.map(|tx| tx.on_complete(Err(ClientWriteError::ForwardToLeader(forward_err))));
+                let err = ClientWriteError::ForwardToLeader(forward_err);
+                for tx in responders.flatten() {
+                    tx.on_complete(Err(err.clone()))
+                }
                 return;
             }
         };
 
         // TODO: it should returns membership config error etc. currently this is done by the
         //       caller.
-        lh.leader_append_entries([payload]);
-        let log_id = lh.state.last_log_id().unwrap();
-        let index = log_id.index();
+        let log_ids = lh.leader_append_entries(payloads);
 
         // Install callback channels.
-        if let Some(tx) = resp_tx {
-            tracing::debug!("write entry: push tx to responders, log_id: {}", log_id);
-            self.client_responders.push(index, tx);
+        if let Some(log_ids) = log_ids {
+            for (log_id, resp_tx) in log_ids.into_iter().zip(responders) {
+                if let Some(tx) = resp_tx {
+                    let index = log_id.index();
+                    tracing::debug!("write entries: push tx to responders, log_id: {}", log_id);
+                    self.client_responders.push(index, tx);
+                }
+            }
         }
     }
 
@@ -1456,7 +1476,7 @@ where
             }
             RaftMsg::ClientWrite {
                 app_data,
-                responder,
+                responders,
                 expected_leader,
             } => {
                 // Check if expected leader matches current leader
@@ -1466,16 +1486,17 @@ where
                     let committed_leader_id = vote.try_to_committed_leader_id();
 
                     if committed_leader_id.as_ref() != Some(&expected) {
-                        // Leader has changed, return ForwardToLeader error
-                        if let Some(responder) = responder {
-                            let forward_err = self.engine.state.forward_to_leader();
-                            let client_write_err = ClientWriteError::ForwardToLeader(forward_err);
-                            responder.on_complete(Err(client_write_err));
+                        // Leader has changed, return ForwardToLeader error to all responders
+                        let forward_err = self.engine.state.forward_to_leader();
+                        for r in responders.into_iter().flatten() {
+                            let err = ClientWriteError::ForwardToLeader(forward_err.clone());
+                            r.on_complete(Err(err));
                         }
                         return;
                     }
                 }
-                self.write_entry(EntryPayload::Normal(app_data), responder);
+                let payloads = app_data.into_iter().map(EntryPayload::Normal);
+                self.write_entries(payloads, responders);
             }
             RaftMsg::Initialize { members, tx } => {
                 tracing::info!("received RaftMsg::Initialize: {}, members: {:?}", func_name!(), members);

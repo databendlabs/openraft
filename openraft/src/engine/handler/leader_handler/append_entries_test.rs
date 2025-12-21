@@ -17,6 +17,7 @@ use crate::Vote;
 use crate::engine::Command;
 use crate::engine::Engine;
 use crate::engine::TargetProgress;
+use crate::engine::leader_log_ids::LeaderLogIds;
 use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;
 use crate::entry::RaftEntry;
@@ -32,6 +33,10 @@ use crate::testing::blank_ent;
 use crate::type_config::TypeConfigExt;
 use crate::utime::Leased;
 use crate::vote::raft_vote::RaftVoteExt;
+
+fn committed_leader_id(term: u64, node_id: u64) -> crate::type_config::alias::CommittedLeaderIdOf<UTConfig> {
+    *log_id(term, node_id, 0).committed_leader_id()
+}
 
 fn m01() -> Membership<UTConfig> {
     Membership::<UTConfig>::new_with_defaults(vec![btreeset! {0,1}], [])
@@ -78,8 +83,9 @@ fn test_leader_append_entries_empty() -> anyhow::Result<()> {
     let mut eng = eng();
     eng.output.take_commands();
 
-    eng.try_leader_handler()?.leader_append_entries([]);
+    let got = eng.try_leader_handler()?.leader_append_entries([]);
 
+    assert_eq!(None, got, "empty entries should return None");
     assert_eq!(
         None,
         eng.state.accepted_log_io(),
@@ -110,9 +116,17 @@ fn test_leader_append_entries_normal() -> anyhow::Result<()> {
     let mut eng = eng();
     eng.output.take_commands();
 
-    eng.try_leader_handler()?
-        .leader_append_entries([EntryPayload::Blank, EntryPayload::Blank, EntryPayload::Blank]);
+    let got = eng.try_leader_handler()?.leader_append_entries([
+        EntryPayload::Blank,
+        EntryPayload::Blank,
+        EntryPayload::Blank,
+    ]);
 
+    assert_eq!(
+        Some(LeaderLogIds::new(committed_leader_id(3, 1), 4, 6)),
+        got,
+        "should return log ids for 3 entries"
+    );
     assert_eq!(
         Some(&IOId::new_log_io(
             Vote::new(3, 1).into_committed(),
@@ -173,9 +187,17 @@ fn test_leader_append_entries_single_node_leader() -> anyhow::Result<()> {
 
     eng.output.clear_commands();
 
-    eng.try_leader_handler()?
-        .leader_append_entries([EntryPayload::Blank, EntryPayload::Blank, EntryPayload::Blank]);
+    let got = eng.try_leader_handler()?.leader_append_entries([
+        EntryPayload::Blank,
+        EntryPayload::Blank,
+        EntryPayload::Blank,
+    ]);
 
+    assert_eq!(
+        Some(LeaderLogIds::new(committed_leader_id(3, 1), 4, 6)),
+        got,
+        "should return log ids for 3 entries"
+    );
     assert_eq!(
         Some(&IOId::new_log_io(
             Vote::new(3, 1).into_committed(),
@@ -228,12 +250,17 @@ fn test_leader_append_entries_with_membership_log() -> anyhow::Result<()> {
 
     eng.output.clear_commands();
 
-    eng.try_leader_handler()?.leader_append_entries([
+    let got = eng.try_leader_handler()?.leader_append_entries([
         EntryPayload::Blank,
         EntryPayload::Membership(m1_2()),
         EntryPayload::Blank,
     ]);
 
+    assert_eq!(
+        Some(LeaderLogIds::new(committed_leader_id(3, 1), 4, 6)),
+        got,
+        "should return log ids for 3 entries"
+    );
     assert_eq!(
         Some(&IOId::new_log_io(
             Vote::new(3, 1).into_committed(),
