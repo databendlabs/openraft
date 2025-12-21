@@ -1,10 +1,31 @@
 use std::fmt;
 
+#[cfg(feature = "runtime-stats")]
+use tabled::builder::Builder;
+#[cfg(feature = "runtime-stats")]
+use tabled::settings::Alignment;
+#[cfg(feature = "runtime-stats")]
+use tabled::settings::Style;
+#[cfg(feature = "runtime-stats")]
+use tabled::settings::object::Columns;
+
 use crate::base::histogram::Histogram;
 use crate::base::histogram::PercentileStats;
 use crate::core::NotificationName;
 use crate::core::raft_msg::RaftMsgName;
 use crate::engine::CommandName;
+
+/// Display mode for [`RuntimeStatsDisplay`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DisplayMode {
+    /// Compact single-line format (default).
+    #[default]
+    Compact,
+    /// Multiline format with one piece of information per line.
+    Multiline,
+    /// Human-readable format with better formatting and spacing.
+    HumanReadable,
+}
 
 /// Runtime statistics for Raft operations.
 ///
@@ -90,9 +111,12 @@ impl RuntimeStats {
     ///
     /// All values are precomputed when calling this method, so the returned
     /// `RuntimeStatsDisplay` can be cheaply formatted multiple times.
+    ///
+    /// Use builder methods like `.human_readable()` to change the display mode.
     #[allow(dead_code)]
     pub fn display(&self) -> RuntimeStatsDisplay {
         RuntimeStatsDisplay {
+            mode: DisplayMode::default(),
             apply_batch: self.apply_batch.percentile_stats(),
             append_batch: self.append_batch.percentile_stats(),
             replicate_batch: self.replicate_batch.percentile_stats(),
@@ -106,8 +130,10 @@ impl RuntimeStats {
 /// Precomputed display data for [`RuntimeStats`].
 ///
 /// All values are computed upfront so `Display::fmt()` is cheap.
+/// Use [`DisplayMode`] to control the output format.
 #[allow(dead_code)]
 pub struct RuntimeStatsDisplay {
+    mode: DisplayMode,
     apply_batch: PercentileStats,
     append_batch: PercentileStats,
     replicate_batch: PercentileStats,
@@ -116,8 +142,42 @@ pub struct RuntimeStatsDisplay {
     notification_counts: Vec<u64>,
 }
 
+#[allow(dead_code)]
+impl RuntimeStatsDisplay {
+    /// Set the display mode.
+    pub fn mode(mut self, mode: DisplayMode) -> Self {
+        self.mode = mode;
+        self
+    }
+
+    /// Use compact single-line format.
+    pub fn compact(self) -> Self {
+        self.mode(DisplayMode::Compact)
+    }
+
+    /// Use multiline format.
+    pub fn multiline(self) -> Self {
+        self.mode(DisplayMode::Multiline)
+    }
+
+    /// Use human-readable format.
+    pub fn human_readable(self) -> Self {
+        self.mode(DisplayMode::HumanReadable)
+    }
+}
+
 impl fmt::Display for RuntimeStatsDisplay {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.mode {
+            DisplayMode::Compact => self.fmt_compact(f),
+            DisplayMode::Multiline => self.fmt_multiline(f),
+            DisplayMode::HumanReadable => self.fmt_human_readable(f),
+        }
+    }
+}
+
+impl RuntimeStatsDisplay {
+    fn fmt_compact(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "RuntimeStats {{ apply_batch: {}, append_batch: {}, replicate_batch: {}, commands: {{",
@@ -165,5 +225,143 @@ impl fmt::Display for RuntimeStatsDisplay {
         }
 
         write!(f, "}} }}")
+    }
+
+    fn fmt_multiline(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "RuntimeStats:")?;
+        writeln!(f, "  apply_batch: {}", self.apply_batch)?;
+        writeln!(f, "  append_batch: {}", self.append_batch)?;
+        writeln!(f, "  replicate_batch: {}", self.replicate_batch)?;
+
+        writeln!(f, "  commands:")?;
+        for (i, name) in CommandName::ALL.iter().enumerate() {
+            let count = self.command_counts[i];
+            if count > 0 {
+                writeln!(f, "    {}: {}", name, count)?;
+            }
+        }
+
+        writeln!(f, "  raft_msgs:")?;
+        for (i, name) in RaftMsgName::ALL.iter().enumerate() {
+            let count = self.raft_msg_counts[i];
+            if count > 0 {
+                writeln!(f, "    {}: {}", name, count)?;
+            }
+        }
+
+        writeln!(f, "  notifications:")?;
+        for (i, name) in NotificationName::ALL.iter().enumerate() {
+            let count = self.notification_counts[i];
+            if count > 0 {
+                writeln!(f, "    {}: {}", name, count)?;
+            }
+        }
+
+        Ok(())
+    }
+
+    #[cfg(feature = "runtime-stats")]
+    fn fmt_human_readable(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Batch sizes table with separate columns for each percentile
+        writeln!(f, "Batch Sizes:")?;
+        let mut builder = Builder::default();
+        builder.push_record(["", "Total", "P1", "P5", "P10", "P50", "P90", "P99"]);
+        builder.push_record(Self::percentile_row("Apply", &self.apply_batch));
+        builder.push_record(Self::percentile_row("Append", &self.append_batch));
+        builder.push_record(Self::percentile_row("Replicate", &self.replicate_batch));
+        let mut table = builder.build();
+        table.with(Style::rounded());
+        // Right-align all columns except the first (name column)
+        table.with(Alignment::right());
+        table.modify(Columns::first(), Alignment::left());
+        writeln!(f, "{}", table)?;
+
+        // Commands table with right-aligned counts
+        let mut builder = Builder::default();
+        builder.push_record(["Command", "Count"]);
+        for (i, name) in CommandName::ALL.iter().enumerate() {
+            let count = self.command_counts[i];
+            if count > 0 {
+                builder.push_record([name.to_string(), Self::format_count(count)]);
+            }
+        }
+        if builder.count_records() > 1 {
+            writeln!(f, "Commands:")?;
+            let mut table = builder.build();
+            table.with(Style::rounded());
+            table.modify(Columns::last(), Alignment::right());
+            writeln!(f, "{}", table)?;
+        }
+
+        // Raft messages table with right-aligned counts
+        let mut builder = Builder::default();
+        builder.push_record(["Message", "Count"]);
+        for (i, name) in RaftMsgName::ALL.iter().enumerate() {
+            let count = self.raft_msg_counts[i];
+            if count > 0 {
+                builder.push_record([name.to_string(), Self::format_count(count)]);
+            }
+        }
+        if builder.count_records() > 1 {
+            writeln!(f, "Raft Messages:")?;
+            let mut table = builder.build();
+            table.with(Style::rounded());
+            table.modify(Columns::last(), Alignment::right());
+            writeln!(f, "{}", table)?;
+        }
+
+        // Notifications table with right-aligned counts
+        let mut builder = Builder::default();
+        builder.push_record(["Notification", "Count"]);
+        for (i, name) in NotificationName::ALL.iter().enumerate() {
+            let count = self.notification_counts[i];
+            if count > 0 {
+                builder.push_record([name.to_string(), Self::format_count(count)]);
+            }
+        }
+        if builder.count_records() > 1 {
+            writeln!(f, "Notifications:")?;
+            let mut table = builder.build();
+            table.with(Style::rounded());
+            table.modify(Columns::last(), Alignment::right());
+            write!(f, "{}", table)?;
+        }
+
+        Ok(())
+    }
+
+    /// Create a row with percentile values for the batch sizes table.
+    #[cfg(feature = "runtime-stats")]
+    fn percentile_row(name: &str, stats: &PercentileStats) -> [String; 8] {
+        [
+            name.to_string(),
+            Self::format_count(stats.total),
+            stats.p1.to_string(),
+            stats.p5.to_string(),
+            stats.p10.to_string(),
+            stats.p50.to_string(),
+            stats.p90.to_string(),
+            stats.p99.to_string(),
+        ]
+    }
+
+    /// Fallback when tabled is not available.
+    #[cfg(not(feature = "runtime-stats"))]
+    fn fmt_human_readable(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.fmt_multiline(f)
+    }
+
+    /// Format count with thousand separators for readability.
+    #[cfg(feature = "runtime-stats")]
+    fn format_count(n: u64) -> String {
+        let s = n.to_string();
+        let mut result = String::new();
+        for (i, c) in s.chars().rev().enumerate() {
+            if i > 0 && i % 3 == 0 {
+                result.push(',');
+            }
+            result.push(c);
+        }
+        result.chars().rev().collect()
     }
 }
