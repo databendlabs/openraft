@@ -5,6 +5,7 @@ use crate::engine::Command;
 use crate::engine::EngineConfig;
 use crate::engine::EngineOutput;
 use crate::engine::handler::replication_handler::ReplicationHandler;
+use crate::engine::leader_log_ids::LeaderLogIds;
 use crate::entry::RaftEntry;
 use crate::entry::RaftPayload;
 use crate::entry::payload::EntryPayload;
@@ -51,19 +52,19 @@ where C: RaftTypeConfig
     ///
     /// TODO(xp): if vote indicates this node is not the leader, refuse append
     #[tracing::instrument(level = "debug", skip(self, payloads))]
-    pub(crate) fn leader_append_entries<I>(&mut self, payloads: I)
+    pub(crate) fn leader_append_entries<I>(&mut self, payloads: I) -> Option<LeaderLogIds<C>>
     where I: IntoIterator<Item = EntryPayload<C>, IntoIter: ExactSizeIterator> {
         let payloads = payloads.into_iter();
 
         let log_ids = match self.leader.assign_log_ids(payloads.len()) {
             Some(ids) => ids,
-            None => return,
+            None => return None,
         };
 
         self.state.extend_log_ids_from_same_leader(log_ids.clone());
 
         let mut membership_entry = None;
-        let entries = Batch::from_iter(payloads.zip(log_ids).map(|(payload, log_id)| {
+        let entries = Batch::from_iter(payloads.zip(log_ids.clone()).map(|(payload, log_id)| {
             tracing::debug!("assign log id: {}", log_id);
             let entry = C::Entry::new(log_id, payload);
             if let Some(m) = entry.get_membership() {
@@ -98,6 +99,8 @@ where C: RaftTypeConfig
         }
 
         rh.initiate_replication();
+
+        Some(log_ids)
     }
 
     #[tracing::instrument(level = "debug", skip_all)]

@@ -32,6 +32,7 @@ pub(crate) mod finalized;
 pub(crate) mod histogram;
 pub(crate) mod shared_id_generator;
 
+pub(crate) use batch::Batch;
 pub use serde_able::OptionalSerde;
 pub use threaded::BoxAny;
 pub use threaded::BoxAsyncOnceMut;
