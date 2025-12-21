@@ -87,6 +87,7 @@ use crate::core::io_flush_tracking::IoProgressWatcher;
 use crate::core::io_flush_tracking::LogProgress;
 use crate::core::io_flush_tracking::SnapshotProgress;
 use crate::core::io_flush_tracking::VoteProgress;
+use crate::core::merged_raft_msg_receiver::BatchRaftMsgReceiver;
 use crate::core::notification::Notification;
 use crate::core::raft_msg::RaftMsg;
 use crate::core::raft_msg::external_command::ExternalCommand;
@@ -496,7 +497,7 @@ where C: RaftTypeConfig
 
             heartbeat_handle: HeartbeatWorkersHandle::new(id.clone(), config.clone()),
             tx_api: tx_api.clone(),
-            rx_api,
+            rx_api: BatchRaftMsgReceiver::new(rx_api),
 
             tx_notification: tx_notify,
             rx_notification: rx_notify,

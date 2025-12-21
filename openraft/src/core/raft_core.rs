@@ -35,6 +35,7 @@ use crate::core::core_state::CoreState;
 use crate::core::heartbeat::event::HeartbeatEvent;
 use crate::core::heartbeat::handle::HeartbeatWorkersHandle;
 use crate::core::io_flush_tracking::IoProgressSender;
+use crate::core::merged_raft_msg_receiver::BatchRaftMsgReceiver;
 use crate::core::notification::Notification;
 use crate::core::raft_msg::AppendEntriesTx;
 use crate::core::raft_msg::ClientReadTx;
@@ -188,7 +189,7 @@ where
 
     #[allow(dead_code)]
     pub(crate) tx_api: MpscSenderOf<C, RaftMsg<C>>,
-    pub(crate) rx_api: MpscReceiverOf<C, RaftMsg<C>>,
+    pub(crate) rx_api: BatchRaftMsgReceiver<C>,
 
     /// A Sender to send callback by other components to [`RaftCore`], when an action is finished,
     /// such as flushing log to disk, or applying log entries to state machine.
@@ -1148,7 +1149,7 @@ where
             // `select!` without `biased` provides a random fairness.
             // We want to check shutdown prior to other channels.
             // See: https://docs.rs/tokio/latest/tokio/macro.select.html#fairness
-            let got_raft_msg = futures::select_biased! {
+            futures::select_biased! {
                 _ = (&mut rx_shutdown).fuse() => {
                     tracing::info!("recv from rx_shutdown");
                     return Err(Fatal::Stopped);
@@ -1162,29 +1163,14 @@ where
                             return Err(Fatal::Stopped);
                         }
                     };
-                    None
                 }
 
-                msg_res = self.rx_api.recv().fuse() => {
-                    match msg_res {
-                        Some(msg) => Some(msg),
-                        None => {
-                            tracing::info!("all rx_api senders are dropped");
-                            return Err(Fatal::Stopped);
-                        }
-                    }
+                msg_res = self.rx_api.ensure_buffered().fuse() => {
+                    msg_res?;
                 }
             };
 
             self.run_engine_commands().await?;
-
-            if let Some(msg) = got_raft_msg {
-                // TODO: try to merge message for batching
-                self.handle_api_msg(msg).await;
-                self.runtime_stats.raft_msg_batch.record(1);
-                self.runtime_stats.raft_msg_usage_permille.record(1000);
-                self.run_engine_commands().await?;
-            }
 
             // There is a message waking up the loop, process channels one by one.
 
@@ -1219,25 +1205,33 @@ where
         self.runtime_stats.raft_msg_budget.record(at_most);
 
         let mut processed = 0u64;
+        let mut total = 0u64;
+        // Being 0 disabled batch msg processing.
+        // TODO: make it configurable
+        let run_command_threshold = 0;
+        let mut last_log_index = 0;
 
         for _i in 0..at_most {
-            let res = self.rx_api.try_recv();
-            let msg = match res {
-                Ok(msg) => msg,
-                Err(e) => match e {
-                    TryRecvError::Empty => {
-                        tracing::debug!("all RaftMsg are processed, wait for more");
-                        break;
-                    }
-                    TryRecvError::Disconnected => {
-                        tracing::debug!("rx_api is disconnected, quit");
-                        return Err(Fatal::Stopped);
-                    }
-                },
+            let res = self.rx_api.try_recv()?;
+            let Some(msg) = res else {
+                break;
             };
 
             self.handle_api_msg(msg).await;
             processed += 1;
+            total += 1;
+
+            let index = self.engine.state.last_log_id().next_index();
+
+            if index - last_log_index >= run_command_threshold {
+                // After handling all the inputs, batch run all the commands for better performance
+                self.runtime_stats.raft_msg_batch.record(processed);
+                self.runtime_stats.raft_msg_usage_permille.record(processed * 1000 / at_most);
+                self.run_engine_commands().await?;
+
+                last_log_index = index;
+                processed = 0;
+            }
         }
 
         // After handling all the inputs, batch run all the commands for better performance
@@ -1245,11 +1239,11 @@ where
         self.runtime_stats.raft_msg_usage_permille.record(processed * 1000 / at_most);
         self.run_engine_commands().await?;
 
-        if processed == at_most {
+        if total == at_most {
             tracing::debug!("at_most({}) reached, there are more queued RaftMsg to process", at_most);
         }
 
-        Ok(processed)
+        Ok(total)
     }
 
     /// Process Notification as many as possible.
