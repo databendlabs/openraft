@@ -3,6 +3,7 @@ use std::future::IntoFuture;
 use openraft_macros::since;
 
 use crate::RaftTypeConfig;
+use crate::base::Batch;
 use crate::base::BoxFuture;
 use crate::core::raft_msg::RaftMsg;
 use crate::error::Fatal;
@@ -136,8 +137,8 @@ where C: RaftTypeConfig
         Box::pin(async move {
             self.inner
                 .send_msg(RaftMsg::ClientWrite {
-                    app_data: self.app_data,
-                    responder: self.responder,
+                    app_data: Batch::from(self.app_data),
+                    responders: Batch::from(self.responder),
                     expected_leader: self.expected_leader,
                 })
                 .await
