@@ -1120,7 +1120,7 @@ where
             // `select!` without `biased` provides a random fairness.
             // We want to check shutdown prior to other channels.
             // See: https://docs.rs/tokio/latest/tokio/macro.select.html#fairness
-            futures::select_biased! {
+            let got_raft_msg = futures::select_biased! {
                 _ = (&mut rx_shutdown).fuse() => {
                     tracing::info!("recv from rx_shutdown");
                     return Err(Fatal::Stopped);
@@ -1134,20 +1134,28 @@ where
                             return Err(Fatal::Stopped);
                         }
                     };
+                    None
                 }
 
                 msg_res = self.rx_api.recv().fuse() => {
                     match msg_res {
-                        Some(msg) => self.handle_api_msg(msg).await,
+                        Some(msg) => Some(msg),
                         None => {
                             tracing::info!("all rx_api senders are dropped");
                             return Err(Fatal::Stopped);
                         }
-                    };
+                    }
                 }
-            }
+            };
 
             self.run_engine_commands().await?;
+
+            if let Some(msg) = got_raft_msg {
+                // TODO: try to merge message for batching
+                self.handle_api_msg(msg).await;
+                self.runtime_stats.raft_msg_batch.record(1);
+                self.run_engine_commands().await?;
+            }
 
             // There is a message waking up the loop, process channels one by one.
 
@@ -1179,14 +1187,16 @@ where
     /// It returns the number of processed message.
     /// If the input channel is closed, it returns `Fatal::Stopped`.
     async fn process_raft_msg(&mut self, at_most: u64) -> Result<u64, Fatal<C>> {
-        for i in 0..at_most {
+        let mut processed = 0u64;
+
+        for _i in 0..at_most {
             let res = self.rx_api.try_recv();
             let msg = match res {
                 Ok(msg) => msg,
                 Err(e) => match e {
                     TryRecvError::Empty => {
                         tracing::debug!("all RaftMsg are processed, wait for more");
-                        return Ok(i + 1);
+                        break;
                     }
                     TryRecvError::Disconnected => {
                         tracing::debug!("rx_api is disconnected, quit");
@@ -1196,14 +1206,18 @@ where
             };
 
             self.handle_api_msg(msg).await;
+            processed += 1;
         }
 
         // After handling all the inputs, batch run all the commands for better performance
+        self.runtime_stats.raft_msg_batch.record(processed);
         self.run_engine_commands().await?;
 
-        tracing::debug!("at_most({}) reached, there are more queued RaftMsg to process", at_most);
+        if processed == at_most {
+            tracing::debug!("at_most({}) reached, there are more queued RaftMsg to process", at_most);
+        }
 
-        Ok(at_most)
+        Ok(processed)
     }
 
     /// Process Notification as many as possible.
@@ -1211,14 +1225,16 @@ where
     /// It returns the number of processed notifications.
     /// If the input channel is closed, it returns `Fatal::Stopped`.
     async fn process_notification(&mut self, at_most: u64) -> Result<u64, Fatal<C>> {
-        for i in 0..at_most {
+        let mut processed = 0u64;
+
+        for _i in 0..at_most {
             let res = self.rx_notification.try_recv();
             let notify = match res {
                 Ok(msg) => msg,
                 Err(e) => match e {
                     TryRecvError::Empty => {
                         tracing::debug!("all Notification are processed, wait for more");
-                        return Ok(i + 1);
+                        break;
                     }
                     TryRecvError::Disconnected => {
                         tracing::error!("rx_notify is disconnected, quit");
@@ -1228,6 +1244,7 @@ where
             };
 
             self.handle_notification(notify)?;
+            processed += 1;
 
             // TODO: does run_engine_commands() run too frequently?
             //       to run many commands in one shot, it is possible to batch more commands to gain
@@ -1236,12 +1253,14 @@ where
             self.run_engine_commands().await?;
         }
 
-        tracing::debug!(
-            "at_most({}) reached, there are more queued Notification to process",
-            at_most
-        );
+        if processed == at_most {
+            tracing::debug!(
+                "at_most({}) reached, there are more queued Notification to process",
+                at_most
+            );
+        }
 
-        Ok(at_most)
+        Ok(processed)
     }
 
     /// Spawn parallel vote requests to all cluster members.

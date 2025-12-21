@@ -52,6 +52,12 @@ pub struct RuntimeStats {
     /// sent to followers during replication, helping identify replication batch patterns.
     pub replicate_batch: Histogram,
 
+    /// Histogram tracking the distribution of RaftMsg counts processed in a batch.
+    ///
+    /// This tracks how many RaftMsg are processed together before calling
+    /// `run_engine_commands()`, helping identify message batching efficiency.
+    pub raft_msg_batch: Histogram,
+
     /// Count of each command type executed.
     ///
     /// This tracks how many times each command type has been executed,
@@ -86,6 +92,7 @@ impl RuntimeStats {
             apply_batch: Histogram::new(),
             append_batch: Histogram::new(),
             replicate_batch: Histogram::new(),
+            raft_msg_batch: Histogram::new(),
             command_counts: vec![0; CommandName::COUNT],
             raft_msg_counts: vec![0; RaftMsgName::COUNT],
             notification_counts: vec![0; NotificationName::COUNT],
@@ -120,6 +127,7 @@ impl RuntimeStats {
             apply_batch: self.apply_batch.percentile_stats(),
             append_batch: self.append_batch.percentile_stats(),
             replicate_batch: self.replicate_batch.percentile_stats(),
+            raft_msg_batch: self.raft_msg_batch.percentile_stats(),
             command_counts: self.command_counts.clone(),
             raft_msg_counts: self.raft_msg_counts.clone(),
             notification_counts: self.notification_counts.clone(),
@@ -137,6 +145,7 @@ pub struct RuntimeStatsDisplay {
     apply_batch: PercentileStats,
     append_batch: PercentileStats,
     replicate_batch: PercentileStats,
+    raft_msg_batch: PercentileStats,
     command_counts: Vec<u64>,
     raft_msg_counts: Vec<u64>,
     notification_counts: Vec<u64>,
@@ -180,8 +189,8 @@ impl RuntimeStatsDisplay {
     fn fmt_compact(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "RuntimeStats {{ apply_batch: {}, append_batch: {}, replicate_batch: {}, commands: {{",
-            self.apply_batch, self.append_batch, self.replicate_batch
+            "RuntimeStats {{ apply_batch: {}, append_batch: {}, replicate_batch: {}, raft_msg_batch: {}, commands: {{",
+            self.apply_batch, self.append_batch, self.replicate_batch, self.raft_msg_batch
         )?;
 
         let mut first = true;
@@ -232,6 +241,7 @@ impl RuntimeStatsDisplay {
         writeln!(f, "  apply_batch: {}", self.apply_batch)?;
         writeln!(f, "  append_batch: {}", self.append_batch)?;
         writeln!(f, "  replicate_batch: {}", self.replicate_batch)?;
+        writeln!(f, "  raft_msg_batch: {}", self.raft_msg_batch)?;
 
         writeln!(f, "  commands:")?;
         for (i, name) in CommandName::ALL.iter().enumerate() {
@@ -269,6 +279,7 @@ impl RuntimeStatsDisplay {
         builder.push_record(Self::percentile_row("Apply", &self.apply_batch));
         builder.push_record(Self::percentile_row("Append", &self.append_batch));
         builder.push_record(Self::percentile_row("Replicate", &self.replicate_batch));
+        builder.push_record(Self::percentile_row("RaftMsg", &self.raft_msg_batch));
         let mut table = builder.build();
         table.with(Style::rounded());
         // Right-align all columns except the first (name column)
