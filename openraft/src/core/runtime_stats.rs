@@ -58,6 +58,18 @@ pub struct RuntimeStats {
     /// `run_engine_commands()`, helping identify message batching efficiency.
     pub raft_msg_batch: Histogram,
 
+    /// Histogram tracking the budget for RaftMsg processing.
+    ///
+    /// This tracks the maximum number of RaftMsg allowed to process in each
+    /// `process_raft_msg()` call, helping understand load balancing behavior.
+    pub raft_msg_budget: Histogram,
+
+    /// Histogram tracking the budget for Notification processing.
+    ///
+    /// This tracks the maximum number of Notifications allowed to process in each
+    /// `process_notification()` call, helping understand load balancing behavior.
+    pub notification_budget: Histogram,
+
     /// Count of each command type executed.
     ///
     /// This tracks how many times each command type has been executed,
@@ -93,6 +105,8 @@ impl RuntimeStats {
             append_batch: Histogram::new(),
             replicate_batch: Histogram::new(),
             raft_msg_batch: Histogram::new(),
+            raft_msg_budget: Histogram::new(),
+            notification_budget: Histogram::new(),
             command_counts: vec![0; CommandName::COUNT],
             raft_msg_counts: vec![0; RaftMsgName::COUNT],
             notification_counts: vec![0; NotificationName::COUNT],
@@ -128,6 +142,8 @@ impl RuntimeStats {
             append_batch: self.append_batch.percentile_stats(),
             replicate_batch: self.replicate_batch.percentile_stats(),
             raft_msg_batch: self.raft_msg_batch.percentile_stats(),
+            raft_msg_budget: self.raft_msg_budget.percentile_stats(),
+            notification_budget: self.notification_budget.percentile_stats(),
             command_counts: self.command_counts.clone(),
             raft_msg_counts: self.raft_msg_counts.clone(),
             notification_counts: self.notification_counts.clone(),
@@ -146,6 +162,8 @@ pub struct RuntimeStatsDisplay {
     append_batch: PercentileStats,
     replicate_batch: PercentileStats,
     raft_msg_batch: PercentileStats,
+    raft_msg_budget: PercentileStats,
+    notification_budget: PercentileStats,
     command_counts: Vec<u64>,
     raft_msg_counts: Vec<u64>,
     notification_counts: Vec<u64>,
@@ -189,8 +207,8 @@ impl RuntimeStatsDisplay {
     fn fmt_compact(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "RuntimeStats {{ apply_batch: {}, append_batch: {}, replicate_batch: {}, raft_msg_batch: {}, commands: {{",
-            self.apply_batch, self.append_batch, self.replicate_batch, self.raft_msg_batch
+            "RuntimeStats {{ apply_batch: {}, append_batch: {}, replicate_batch: {}, raft_msg_batch: {}, raft_msg_budget: {}, notification_budget: {}, commands: {{",
+            self.apply_batch, self.append_batch, self.replicate_batch, self.raft_msg_batch, self.raft_msg_budget, self.notification_budget
         )?;
 
         let mut first = true;
@@ -242,6 +260,8 @@ impl RuntimeStatsDisplay {
         writeln!(f, "  append_batch: {}", self.append_batch)?;
         writeln!(f, "  replicate_batch: {}", self.replicate_batch)?;
         writeln!(f, "  raft_msg_batch: {}", self.raft_msg_batch)?;
+        writeln!(f, "  raft_msg_budget: {}", self.raft_msg_budget)?;
+        writeln!(f, "  notification_budget: {}", self.notification_budget)?;
 
         writeln!(f, "  commands:")?;
         for (i, name) in CommandName::ALL.iter().enumerate() {
@@ -280,6 +300,8 @@ impl RuntimeStatsDisplay {
         builder.push_record(Self::percentile_row("Append", &self.append_batch));
         builder.push_record(Self::percentile_row("Replicate", &self.replicate_batch));
         builder.push_record(Self::percentile_row("RaftMsg", &self.raft_msg_batch));
+        builder.push_record(Self::percentile_row("RaftMsgBudget", &self.raft_msg_budget));
+        builder.push_record(Self::percentile_row("NotifyBudget", &self.notification_budget));
         let mut table = builder.build();
         table.with(Style::rounded());
         // Right-align all columns except the first (name column)
