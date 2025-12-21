@@ -50,6 +50,7 @@ use crate::engine::Condition;
 use crate::engine::Engine;
 use crate::engine::Respond;
 use crate::engine::TargetProgress;
+use crate::engine::handler::leader_handler::LeaderHandler;
 use crate::entry::RaftEntry;
 use crate::entry::payload::EntryPayload;
 use crate::error::AllowNextRevertError;
@@ -535,6 +536,22 @@ where
         );
     }
 
+    /// Ensure this node is a writable leader and return a leader handler.
+    ///
+    /// Returns `Err(ForwardToLeader)` if:
+    /// - This node is not the leader
+    /// - The leader is transferring leadership to another node
+    fn ensure_writable_leader_handler(&mut self) -> Result<LeaderHandler<'_, C>, ForwardToLeader<C>> {
+        let lh = self.engine.try_leader_handler()?;
+
+        // If the leader is transferring leadership, forward writes to the new leader.
+        if let Some(to) = lh.leader.get_transfer_to() {
+            return Err(lh.state.new_forward_to_leader(to.clone()));
+        }
+
+        Ok(lh)
+    }
+
     /// Write a log entry to the cluster through raft protocol.
     ///
     /// I.e.: append the log entry to local store, forward it to a quorum(including the leader),
@@ -551,25 +568,13 @@ where
     pub fn write_entry(&mut self, payload: EntryPayload<C>, resp_tx: Option<CoreResponder<C>>) {
         tracing::debug!("write entry, payload: {}", payload);
 
-        let res = self.engine.try_leader_handler();
-        let mut lh = match res {
+        let mut lh = match self.ensure_writable_leader_handler() {
             Ok(lh) => lh,
             Err(forward_err) => {
-                if let Some(tx) = resp_tx {
-                    tx.on_complete(Err(forward_err.into()));
-                }
+                resp_tx.map(|tx| tx.on_complete(Err(ClientWriteError::ForwardToLeader(forward_err))));
                 return;
             }
         };
-
-        // If the leader is transferring leadership, forward writes to the new leader.
-        if let Some(to) = lh.leader.get_transfer_to() {
-            if let Some(tx) = resp_tx {
-                let err = lh.state.new_forward_to_leader(to.clone());
-                tx.on_complete(Err(ClientWriteError::ForwardToLeader(err)));
-            }
-            return;
-        }
 
         // TODO: it should returns membership config error etc. currently this is done by the
         //       caller.
