@@ -28,6 +28,7 @@ mod client_responder_queue;
 pub(crate) mod core_state;
 pub(crate) mod heartbeat;
 pub(crate) mod io_flush_tracking;
+pub(crate) mod merged_raft_msg_receiver;
 pub(crate) mod notification;
 mod notification_name;
 mod raft_core;
