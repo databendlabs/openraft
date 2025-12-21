@@ -34,6 +34,7 @@ semver             = { version = "1.0.14" }
 serde              = { version = "1.0.114", features = ["derive", "rc"] }
 serde_json         = { version = "1.0.57" }
 syn                = { version = "2.0" }
+tabled             = { version = "0.17" }
 tempfile           = { version = "3.4.0" }
 test-harness       = { version = "0.3.0" }
 thiserror          = { version = "1.0.49" }

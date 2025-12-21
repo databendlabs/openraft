@@ -28,6 +28,7 @@ maplit          = { workspace = true }
 rand            = { workspace = true }
 serde           = { workspace = true, optional = true }
 serde_json      = { workspace = true, optional = true }
+tabled          = { workspace = true, optional = true }
 thiserror       = { workspace = true }
 tokio           = { workspace = true, optional = true }
 tracing         = { workspace = true }
@@ -111,7 +112,7 @@ tracing-log = [ "tracing/log" ]
 
 # Expose runtime statistics types (`RuntimeStats`, `SharedRuntimeState`, `Histogram`)
 # and add `Raft::runtime_stats()` method for accessing runtime statistics.
-runtime-stats = []
+runtime-stats = ["dep:tabled"]
 
 [package.metadata.docs.rs]
 
