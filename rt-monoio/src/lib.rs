@@ -28,6 +28,18 @@ use std::time::Duration;
 use openraft::AsyncRuntime;
 use openraft::OptionalSend;
 
+mod instant;
+mod mpsc;
+mod mutex;
+mod oneshot;
+mod watch;
+
+use instant::MonoioInstant;
+use mpsc::MonoioMpsc;
+use mutex::TokioMutex;
+use oneshot::MonoioOneshot;
+use watch::TokioWatch;
+
 /// [`AsyncRuntime`] implementation for Monoio.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct MonoioRuntime;
@@ -37,7 +49,7 @@ impl AsyncRuntime for MonoioRuntime {
     type JoinError = openraft::error::Infallible;
     type JoinHandle<T: OptionalSend + 'static> = monoio::task::JoinHandle<Result<T, Self::JoinError>>;
     type Sleep = monoio::time::Sleep;
-    type Instant = instant_mod::MonoioInstant;
+    type Instant = MonoioInstant;
     type TimeoutError = monoio::time::error::Elapsed;
     type Timeout<R, T: Future<Output = R> + OptionalSend> = monoio::time::Timeout<T>;
     type ThreadLocalRng = rand::rngs::ThreadRng;
@@ -81,340 +93,10 @@ impl AsyncRuntime for MonoioRuntime {
         rand::rng()
     }
 
-    type Mpsc = mpsc_mod::MonoioMpsc;
-    type Watch = watch_mod::TokioWatch;
-    type Oneshot = oneshot_mod::MonoioOneshot;
-    type Mutex<T: OptionalSend + 'static> = mutex_mod::TokioMutex<T>;
-}
-
-// Put the wrapper types in a private module to make them `pub` but not
-// exposed to the user.
-mod instant_mod {
-    //! Instant channel wrapper type and its trait impl.
-
-    use std::ops::Add;
-    use std::ops::AddAssign;
-    use std::ops::Sub;
-    use std::ops::SubAssign;
-    use std::time::Duration;
-
-    use openraft::async_runtime::instant;
-
-    #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
-    pub struct MonoioInstant(pub(crate) monoio::time::Instant);
-
-    impl Add<Duration> for MonoioInstant {
-        type Output = Self;
-
-        #[inline]
-        fn add(self, rhs: Duration) -> Self::Output {
-            Self(self.0.add(rhs))
-        }
-    }
-
-    impl AddAssign<Duration> for MonoioInstant {
-        #[inline]
-        fn add_assign(&mut self, rhs: Duration) {
-            self.0.add_assign(rhs)
-        }
-    }
-
-    impl Sub<Duration> for MonoioInstant {
-        type Output = Self;
-
-        #[inline]
-        fn sub(self, rhs: Duration) -> Self::Output {
-            Self(self.0.sub(rhs))
-        }
-    }
-
-    impl Sub<Self> for MonoioInstant {
-        type Output = Duration;
-
-        #[inline]
-        fn sub(self, rhs: Self) -> Self::Output {
-            self.0.sub(rhs.0)
-        }
-    }
-
-    impl SubAssign<Duration> for MonoioInstant {
-        #[inline]
-        fn sub_assign(&mut self, rhs: Duration) {
-            self.0.sub_assign(rhs)
-        }
-    }
-
-    impl instant::Instant for MonoioInstant {
-        #[inline]
-        fn now() -> Self {
-            let inner = monoio::time::Instant::now();
-            Self(inner)
-        }
-
-        #[inline]
-        fn elapsed(&self) -> Duration {
-            self.0.elapsed()
-        }
-    }
-}
-
-// Put the wrapper types in a private module to make them `pub` but not
-// exposed to the user.
-mod oneshot_mod {
-    //! Oneshot channel wrapper types and their trait impl.
-
-    use local_sync::oneshot as monoio_oneshot;
-    use openraft::type_config::async_runtime::oneshot;
-    use openraft::OptionalSend;
-
-    pub struct MonoioOneshot;
-
-    pub struct MonoioOneshotSender<T>(monoio_oneshot::Sender<T>);
-
-    impl oneshot::Oneshot for MonoioOneshot {
-        type Sender<T: OptionalSend> = MonoioOneshotSender<T>;
-        type Receiver<T: OptionalSend> = monoio_oneshot::Receiver<T>;
-        type ReceiverError = monoio_oneshot::error::RecvError;
-
-        #[inline]
-        fn channel<T>() -> (Self::Sender<T>, Self::Receiver<T>)
-        where T: OptionalSend {
-            let (tx, rx) = monoio_oneshot::channel();
-            let tx_wrapper = MonoioOneshotSender(tx);
-
-            (tx_wrapper, rx)
-        }
-    }
-
-    impl<T> oneshot::OneshotSender<T> for MonoioOneshotSender<T>
-    where T: OptionalSend
-    {
-        #[inline]
-        fn send(self, t: T) -> Result<(), T> {
-            self.0.send(t)
-        }
-    }
-}
-
-// Put the wrapper types in a private module to make them `pub` but not
-// exposed to the user.
-/// MPSC channel is implemented with tokio MPSC channels.
-///
-/// Tokio MPSC channel are runtime independent.
-mod mpsc_mod {
-    use std::future::Future;
-
-    use futures::TryFutureExt;
-    use openraft::async_runtime::Mpsc;
-    use openraft::async_runtime::MpscReceiver;
-    use openraft::async_runtime::MpscSender;
-    use openraft::async_runtime::MpscWeakSender;
-    use openraft::async_runtime::SendError;
-    use openraft::async_runtime::TryRecvError;
-    use openraft::OptionalSend;
-    use tokio::sync::mpsc as tokio_mpsc;
-
-    pub struct MonoioMpsc;
-
-    pub struct MonoioMpscSender<T>(tokio_mpsc::Sender<T>);
-
-    impl<T> Clone for MonoioMpscSender<T> {
-        #[inline]
-        fn clone(&self) -> Self {
-            Self(self.0.clone())
-        }
-    }
-
-    pub struct MonoioMpscReceiver<T>(tokio_mpsc::Receiver<T>);
-
-    pub struct MonoioMpscWeakSender<T>(tokio_mpsc::WeakSender<T>);
-
-    impl<T> Clone for MonoioMpscWeakSender<T> {
-        #[inline]
-        fn clone(&self) -> Self {
-            Self(self.0.clone())
-        }
-    }
-
-    impl Mpsc for MonoioMpsc {
-        type Sender<T: OptionalSend> = MonoioMpscSender<T>;
-        type Receiver<T: OptionalSend> = MonoioMpscReceiver<T>;
-        type WeakSender<T: OptionalSend> = MonoioMpscWeakSender<T>;
-
-        #[inline]
-        fn channel<T: OptionalSend>(buffer: usize) -> (Self::Sender<T>, Self::Receiver<T>) {
-            let (tx, rx) = tokio_mpsc::channel(buffer);
-            let tx_wrapper = MonoioMpscSender(tx);
-            let rx_wrapper = MonoioMpscReceiver(rx);
-
-            (tx_wrapper, rx_wrapper)
-        }
-    }
-
-    impl<T> MpscSender<MonoioMpsc, T> for MonoioMpscSender<T>
-    where T: OptionalSend
-    {
-        #[inline]
-        fn send(&self, msg: T) -> impl Future<Output = Result<(), SendError<T>>> {
-            self.0.send(msg).map_err(|e| SendError(e.0))
-        }
-
-        #[inline]
-        fn downgrade(&self) -> <MonoioMpsc as Mpsc>::WeakSender<T> {
-            let inner = self.0.downgrade();
-            MonoioMpscWeakSender(inner)
-        }
-    }
-
-    impl<T> MpscReceiver<T> for MonoioMpscReceiver<T> {
-        #[inline]
-        fn recv(&mut self) -> impl Future<Output = Option<T>> {
-            self.0.recv()
-        }
-
-        #[inline]
-        fn try_recv(&mut self) -> Result<T, TryRecvError> {
-            self.0.try_recv().map_err(|e| match e {
-                tokio_mpsc::error::TryRecvError::Empty => TryRecvError::Empty,
-                tokio_mpsc::error::TryRecvError::Disconnected => TryRecvError::Disconnected,
-            })
-        }
-    }
-
-    impl<T> MpscWeakSender<MonoioMpsc, T> for MonoioMpscWeakSender<T>
-    where T: OptionalSend
-    {
-        #[inline]
-        fn upgrade(&self) -> Option<<MonoioMpsc as Mpsc>::Sender<T>> {
-            self.0.upgrade().map(MonoioMpscSender)
-        }
-    }
-}
-
-// Put the wrapper types in a private module to make them `pub` but not
-// exposed to the user.
-mod watch_mod {
-    //! Watch channel wrapper types and their trait impl.
-
-    use std::ops::Deref;
-
-    use openraft::async_runtime::watch::RecvError;
-    use openraft::async_runtime::watch::SendError;
-    use openraft::type_config::async_runtime::watch;
-    use openraft::OptionalSend;
-    use openraft::OptionalSync;
-    use tokio::sync::watch as tokio_watch;
-
-    pub struct TokioWatch;
-    pub struct TokioWatchSender<T>(tokio_watch::Sender<T>);
-    pub struct TokioWatchReceiver<T>(tokio_watch::Receiver<T>);
-    pub struct TokioWatchRef<'a, T>(tokio_watch::Ref<'a, T>);
-
-    impl watch::Watch for TokioWatch {
-        type Sender<T: OptionalSend + OptionalSync> = TokioWatchSender<T>;
-        type Receiver<T: OptionalSend + OptionalSync> = TokioWatchReceiver<T>;
-        type Ref<'a, T: OptionalSend + 'a> = TokioWatchRef<'a, T>;
-
-        #[inline]
-        fn channel<T: OptionalSend + OptionalSync>(init: T) -> (Self::Sender<T>, Self::Receiver<T>) {
-            let (tx, rx) = tokio_watch::channel(init);
-            let tx_wrapper = TokioWatchSender(tx);
-            let rx_wrapper = TokioWatchReceiver(rx);
-
-            (tx_wrapper, rx_wrapper)
-        }
-    }
-
-    impl<T> Clone for TokioWatchSender<T> {
-        fn clone(&self) -> Self {
-            Self(self.0.clone())
-        }
-    }
-
-    impl<T> watch::WatchSender<TokioWatch, T> for TokioWatchSender<T>
-    where T: OptionalSend + OptionalSync
-    {
-        #[inline]
-        fn send(&self, value: T) -> Result<(), SendError<T>> {
-            self.0.send(value).map_err(|e| watch::SendError(e.0))
-        }
-
-        #[inline]
-        fn send_if_modified<F>(&self, modify: F) -> bool
-        where F: FnOnce(&mut T) -> bool {
-            self.0.send_if_modified(modify)
-        }
-
-        #[inline]
-        fn borrow_watched(&self) -> <TokioWatch as watch::Watch>::Ref<'_, T> {
-            let inner = self.0.borrow();
-            TokioWatchRef(inner)
-        }
-
-        #[inline]
-        fn subscribe(&self) -> <TokioWatch as watch::Watch>::Receiver<T> {
-            TokioWatchReceiver(self.0.subscribe())
-        }
-    }
-
-    impl<T> Clone for TokioWatchReceiver<T> {
-        #[inline]
-        fn clone(&self) -> Self {
-            Self(self.0.clone())
-        }
-    }
-
-    impl<T> watch::WatchReceiver<TokioWatch, T> for TokioWatchReceiver<T>
-    where T: OptionalSend + OptionalSync
-    {
-        #[inline]
-        async fn changed(&mut self) -> Result<(), RecvError> {
-            self.0.changed().await.map_err(|_| watch::RecvError(()))
-        }
-
-        #[inline]
-        fn borrow_watched(&self) -> <TokioWatch as watch::Watch>::Ref<'_, T> {
-            TokioWatchRef(self.0.borrow())
-        }
-    }
-
-    impl<'a, T> Deref for TokioWatchRef<'a, T> {
-        type Target = T;
-
-        #[inline]
-        fn deref(&self) -> &Self::Target {
-            self.0.deref()
-        }
-    }
-}
-
-// Put the wrapper types in a private module to make them `pub` but not
-// exposed to the user.
-mod mutex_mod {
-    //! Mutex wrapper type and its trait impl.
-
-    use std::future::Future;
-
-    use openraft::type_config::async_runtime::mutex;
-    use openraft::OptionalSend;
-
-    pub struct TokioMutex<T>(tokio::sync::Mutex<T>);
-
-    impl<T> mutex::Mutex<T> for TokioMutex<T>
-    where T: OptionalSend + 'static
-    {
-        type Guard<'a> = tokio::sync::MutexGuard<'a, T>;
-
-        #[inline]
-        fn new(value: T) -> Self {
-            TokioMutex(tokio::sync::Mutex::new(value))
-        }
-
-        #[inline]
-        fn lock(&self) -> impl Future<Output = Self::Guard<'_>> + OptionalSend {
-            self.0.lock()
-        }
-    }
+    type Mpsc = MonoioMpsc;
+    type Watch = TokioWatch;
+    type Oneshot = MonoioOneshot;
+    type Mutex<T: OptionalSend + 'static> = TokioMutex<T>;
 }
 
 #[cfg(test)]
