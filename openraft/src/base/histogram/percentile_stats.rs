@@ -3,8 +3,8 @@ use std::fmt;
 /// Percentile statistics for a histogram.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PercentileStats {
-    /// Total number of samples recorded
-    pub total: u64,
+    /// Number of samples recorded
+    pub samples: u64,
     /// 0.1th percentile (99.9% of values >= this)
     pub p0_1: u64,
     /// 1st percentile (99% of values >= this)
@@ -27,8 +27,8 @@ impl fmt::Display for PercentileStats {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "[total: {}, P0.1: {}, P1: {}, P5: {}, P10: {}, P50: {}, P90: {}, P99: {}, P99.9: {}]",
-            self.total, self.p0_1, self.p1, self.p5, self.p10, self.p50, self.p90, self.p99, self.p99_9
+            "[samples: {}, P0.1: {}, P1: {}, P5: {}, P10: {}, P50: {}, P90: {}, P99: {}, P99.9: {}]",
+            self.samples, self.p0_1, self.p1, self.p5, self.p10, self.p50, self.p90, self.p99, self.p99_9
         )
     }
 }
