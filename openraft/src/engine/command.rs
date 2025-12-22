@@ -522,6 +522,6 @@ where
     }
 
     pub(crate) fn send(self) {
-        let _ = self.tx.send(self.value);
+        self.tx.send(self.value).ok();
     }
 }

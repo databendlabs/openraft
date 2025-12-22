@@ -356,7 +356,7 @@ where C: RaftTypeConfig
         let vote = resp.vote.to_non_committed().into_vote();
 
         // Update if resp.vote is greater.
-        let _ = self.vote_handler().update_vote(&vote);
+        self.vote_handler().update_vote(&vote).ok();
     }
 
     /// Append entries to follower/learner.

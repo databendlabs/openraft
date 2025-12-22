@@ -24,7 +24,7 @@ where C: RaftTypeConfig
 
         // Wait for task to finish
         if let Some(handle) = self.join_handle.take() {
-            let _ = handle.await;
+            handle.await.ok();
         }
     }
 }

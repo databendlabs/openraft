@@ -191,7 +191,7 @@ mod tests {
         let th = Tick::<TickUTConfig>::spawn(Duration::from_millis(100), tx, true);
 
         TickUTConfig::sleep(Duration::from_millis(500)).await;
-        let _ = th.shutdown().unwrap().await;
+        th.shutdown().unwrap().await.ok();
         TickUTConfig::sleep(Duration::from_millis(500)).await;
 
         let mut received = vec![];

@@ -284,7 +284,7 @@ where
         new_prog.stat = self.stat.clone();
 
         for item in self.into_iter() {
-            let _ = new_prog.update(&item.id, item.val);
+            new_prog.update(&item.id, item.val).ok();
         }
         new_prog
     }
@@ -343,7 +343,7 @@ mod tests {
         let quorum_set: Vec<u64> = vec![0, 1, 2, 3, 4];
         let mut progress = VecProgress::<u64, u64, u64, _>::new(quorum_set, [6, 7], || 0);
 
-        let _ = progress.update(&6, 5);
+        progress.update(&6, 5).ok();
         assert_eq!(&5, progress.get(&6));
         assert_eq!(Some(&5), progress.try_get(&6));
         assert_eq!(None, progress.try_get(&9));
@@ -362,9 +362,9 @@ mod tests {
         let quorum_set: Vec<u64> = vec![0, 1, 2, 3, 4];
         let mut progress = VecProgress::<u64, u64, u64, _>::new(quorum_set, [6, 7], || 0);
 
-        let _ = progress.update(&7, 7);
-        let _ = progress.update(&3, 3);
-        let _ = progress.update(&1, 1);
+        progress.update(&7, 7).ok();
+        progress.update(&3, 3).ok();
+        progress.update(&1, 1).ok();
 
         assert_eq!(
             vec![
@@ -590,10 +590,10 @@ mod tests {
 
         assert_eq!(Some(5), progress.index(&6));
 
-        let _ = progress.update(&6, 6);
+        progress.update(&6, 6).ok();
         assert_eq!(Some(5), progress.index(&6), "learner is not moved");
 
-        let _ = progress.update(&4, 4);
+        progress.update(&4, 4).ok();
         assert_eq!(Some(0), progress.index(&4), "voter is not moved");
     }
 
@@ -607,9 +607,9 @@ mod tests {
 
         let mut p012 = VecProgress::<u64, u64, u64, _>::new(qs012, [5], || 0);
 
-        let _ = p012.update(&0, 5);
-        let _ = p012.update(&1, 6);
-        let _ = p012.update(&5, 9);
+        p012.update(&0, 5).ok();
+        p012.update(&1, 6).ok();
+        p012.update(&5, 9).ok();
         assert_eq!(&5, p012.quorum_accepted());
 
         // After upgrading to a bigger quorum set, quorum-accepted fall back to 0
@@ -624,8 +624,8 @@ mod tests {
 
         // When quorum set shrinks, quorum-accepted becomes greater.
 
-        let _ = p012_345.update(&3, 7);
-        let _ = p012_345.update(&4, 8);
+        p012_345.update(&3, 7).ok();
+        p012_345.update(&4, 8).ok();
         assert_eq!(&5, p012_345.quorum_accepted());
 
         let p345 = p012_345.upgrade_quorum_set(qs345, [1], || 0);
@@ -654,8 +654,8 @@ mod tests {
         let quorum_set: Vec<u64> = vec![0, 1, 2];
         let mut progress = VecProgress::<u64, u64, u64, _>::new(quorum_set, [3], || 0);
 
-        let _ = progress.update(&1, 5);
-        let _ = progress.update(&2, 3);
+        progress.update(&1, 5).ok();
+        progress.update(&2, 3).ok();
 
         let display = format!("{}", progress);
         assert_eq!("{1: 5, 2: 3, 0: 0, 3: 0}", display);
@@ -686,10 +686,10 @@ mod tests {
         assert_eq!(0, progress.stat().update_count);
         assert_eq!(0, progress.stat().move_count);
 
-        let _ = progress.update(&1, 5);
+        progress.update(&1, 5).ok();
         assert_eq!(1, progress.stat().update_count);
 
-        let _ = progress.update(&2, 3);
+        progress.update(&2, 3).ok();
         assert_eq!(2, progress.stat().update_count);
         assert!(progress.stat().move_count > 0);
     }
@@ -699,8 +699,8 @@ mod tests {
         let quorum_set: Vec<u64> = vec![0, 1, 2];
         let mut progress = VecProgress::<u64, u64, u64, _>::new(quorum_set, [3], || 0);
 
-        let _ = progress.update(&1, 5);
-        let _ = progress.update(&2, 3);
+        progress.update(&1, 5).ok();
+        progress.update(&2, 3).ok();
 
         let display = progress.display_with(|f, id, val| write!(f, "{}={}", id, val));
 
@@ -714,15 +714,15 @@ mod tests {
         let mut progress = VecProgress::<u64, u64, u64, _>::new(quorum_set, [6], || 0);
 
         // Increase from 0 to 5
-        let _ = progress.increase_to(&1, 5);
+        progress.increase_to(&1, 5).ok();
         assert_eq!(&5, progress.get(&1));
 
         // Try to decrease from 5 to 3 - should not change
-        let _ = progress.increase_to(&1, 3);
+        progress.increase_to(&1, 3).ok();
         assert_eq!(&5, progress.get(&1));
 
         // Increase from 5 to 7
-        let _ = progress.increase_to(&1, 7);
+        progress.increase_to(&1, 7).ok();
         assert_eq!(&7, progress.get(&1));
 
         // Try with nonexistent id
@@ -735,8 +735,8 @@ mod tests {
         let quorum_set: Vec<u64> = vec![0, 1, 2];
         let mut progress = VecProgress::<u64, u64, u64, _>::new(quorum_set, [3], || 0);
 
-        let _ = progress.update(&1, 5);
-        let _ = progress.update(&2, 3);
+        progress.update(&1, 5).ok();
+        progress.update(&2, 3).ok();
 
         // Collect ids as Vec - order matters after updates (sorted by value descending)
         let ids: Vec<u64> = progress.collect_mapped(|item| item.id);
