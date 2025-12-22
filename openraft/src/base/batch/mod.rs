@@ -113,10 +113,12 @@ impl<T> Batch<T> {
     ///
     /// This method converts `self` to the `Vec` variant if needed.
     pub fn extend(&mut self, other: Batch<T>) {
+        const DEFAULT_VEC_SIZE: usize = 32;
+
         match self {
             Batch::Single(_) => {
                 // Convert single to vec, then extend
-                let single = std::mem::replace(self, Batch::Vec(Vec::new()));
+                let single = std::mem::replace(self, Batch::Vec(Vec::with_capacity(DEFAULT_VEC_SIZE)));
                 let Batch::Single(e) = single else { unreachable!() };
                 let Batch::Vec(v) = self else { unreachable!() };
                 v.push(e);
