@@ -1,13 +1,15 @@
 //! Bounded MPSC channel traits.
 
+mod send_error;
+mod try_recv_error;
+
 use std::future::Future;
 
 use base::OptionalSend;
 use base::OptionalSync;
 
-/// mpsc shares the same error types as mpsc_unbounded
-pub use super::mpsc_unbounded::SendError;
-pub use super::mpsc_unbounded::TryRecvError;
+pub use send_error::SendError;
+pub use try_recv_error::TryRecvError;
 use crate::base;
 
 /// Multi-producer, single-consumer channel.

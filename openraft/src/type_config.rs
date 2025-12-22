@@ -9,7 +9,6 @@ pub(crate) mod util;
 use std::fmt::Debug;
 
 pub use async_runtime::AsyncRuntime;
-pub use async_runtime::MpscUnbounded;
 pub use async_runtime::OneshotSender;
 pub use util::TypeConfigExt;
 
@@ -153,7 +152,6 @@ pub mod alias {
     use crate::LogId;
     use crate::RaftTypeConfig;
     use crate::async_runtime::Mpsc;
-    use crate::async_runtime::MpscUnbounded;
     use crate::async_runtime::Oneshot;
     use crate::async_runtime::watch;
     use crate::raft::message::ClientWriteResult;
@@ -197,15 +195,6 @@ pub mod alias {
     pub type MpscSenderOf<C, T> = <MpscB<C> as Mpsc>::Sender<T>;
     pub type MpscReceiverOf<C, T> = <MpscB<C> as Mpsc>::Receiver<T>;
     pub type MpscWeakSenderOf<C, T> = <MpscB<C> as Mpsc>::WeakSender<T>;
-
-    pub type MpscUnboundedOf<C> = <Rt<C> as AsyncRuntime>::MpscUnbounded;
-
-    // MPSC unbounded
-    type MpscUB<C> = MpscUnboundedOf<C>;
-
-    pub type MpscUnboundedSenderOf<C, T> = <MpscUB<C> as MpscUnbounded>::Sender<T>;
-    pub type MpscUnboundedReceiverOf<C, T> = <MpscUB<C> as MpscUnbounded>::Receiver<T>;
-    pub type MpscUnboundedWeakSenderOf<C, T> = <MpscUB<C> as MpscUnbounded>::WeakSender<T>;
 
     pub type WatchOf<C> = <Rt<C> as AsyncRuntime>::Watch;
     pub type WatchSenderOf<C, T> = <WatchOf<C> as watch::Watch>::Sender<T>;

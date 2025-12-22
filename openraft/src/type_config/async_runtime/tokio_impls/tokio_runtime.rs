@@ -1,15 +1,12 @@
 use std::future::Future;
 use std::time::Duration;
 
-use tokio::sync::mpsc;
 use tokio::sync::watch as tokio_watch;
 
 use crate::AsyncRuntime;
 use crate::OptionalSend;
 use crate::OptionalSync;
 use crate::TokioInstant;
-use crate::async_runtime::mpsc_unbounded;
-use crate::async_runtime::mpsc_unbounded::MpscUnbounded;
 use crate::async_runtime::mutex;
 use crate::async_runtime::oneshot;
 use crate::async_runtime::watch;
@@ -75,64 +72,9 @@ impl AsyncRuntime for TokioRuntime {
     }
 
     type Mpsc = mpsc_impl::TokioMpsc;
-    type MpscUnbounded = TokioMpscUnbounded;
     type Watch = TokioWatch;
     type Oneshot = TokioOneshot;
     type Mutex<T: OptionalSend + 'static> = TokioMutex<T>;
-}
-
-pub struct TokioMpscUnbounded;
-
-impl MpscUnbounded for TokioMpscUnbounded {
-    type Sender<T: OptionalSend> = mpsc::UnboundedSender<T>;
-    type Receiver<T: OptionalSend> = mpsc::UnboundedReceiver<T>;
-    type WeakSender<T: OptionalSend> = mpsc::WeakUnboundedSender<T>;
-
-    /// Creates an unbounded mpsc channel for communicating between asynchronous
-    /// tasks without backpressure.
-    fn channel<T: OptionalSend>() -> (Self::Sender<T>, Self::Receiver<T>) {
-        mpsc::unbounded_channel()
-    }
-}
-
-impl<T> mpsc_unbounded::MpscUnboundedSender<TokioMpscUnbounded, T> for mpsc::UnboundedSender<T>
-where T: OptionalSend
-{
-    #[inline]
-    fn send(&self, msg: T) -> Result<(), mpsc_unbounded::SendError<T>> {
-        self.send(msg).map_err(|e| mpsc_unbounded::SendError(e.0))
-    }
-
-    #[inline]
-    fn downgrade(&self) -> <TokioMpscUnbounded as MpscUnbounded>::WeakSender<T> {
-        self.downgrade()
-    }
-}
-
-impl<T> mpsc_unbounded::MpscUnboundedReceiver<T> for mpsc::UnboundedReceiver<T>
-where T: OptionalSend
-{
-    #[inline]
-    async fn recv(&mut self) -> Option<T> {
-        self.recv().await
-    }
-
-    #[inline]
-    fn try_recv(&mut self) -> Result<T, mpsc_unbounded::TryRecvError> {
-        self.try_recv().map_err(|e| match e {
-            mpsc::error::TryRecvError::Empty => mpsc_unbounded::TryRecvError::Empty,
-            mpsc::error::TryRecvError::Disconnected => mpsc_unbounded::TryRecvError::Disconnected,
-        })
-    }
-}
-
-impl<T> mpsc_unbounded::MpscUnboundedWeakSender<TokioMpscUnbounded, T> for mpsc::WeakUnboundedSender<T>
-where T: OptionalSend
-{
-    #[inline]
-    fn upgrade(&self) -> Option<<TokioMpscUnbounded as MpscUnbounded>::Sender<T>> {
-        self.upgrade()
-    }
 }
 
 mod mpsc_impl {
