@@ -50,7 +50,7 @@ Whatever your style, we're here to support you. 🚀 Let's make something awesom
 # Status
 
 - The features are almost complete for building an application.
-- Performance: Supports 70,000 writes/sec for a single writer, and 1,000,000 writes/sec for 256 writers. See: [Performance](#performance)
+- Performance: Supports 70,000 writes/sec for a single writer, and 5,600,000 writes/sec with batch writes. See: [Performance](#performance)
 - Unit test coverage stands at 92%.
 - The chaos test has not yet been completed, and further testing is needed to ensure the application's robustness and reliability.
 
@@ -113,6 +113,8 @@ Whatever your style, we're here to support you. 🚀 Let's make something awesom
 The benchmark is focused on the OpenRaft framework itself and is run on a
 minimized store and network. This is **NOT a real world** application benchmark!!!
 
+Single writes:
+
 | clients | put/s     |
 | --:     | --:       |
 | 4096    | 3,548,000 |
@@ -121,6 +123,11 @@ minimized store and network. This is **NOT a real world** application benchmark!
 | 64      |   912,000 |
 | 1       |    33,000 |
 
+Batch writes (4 entries per batch):
+
+| clients | put/s     |
+| --:     | --:       |
+| 4096    | 5,615,000 |
 
 For benchmark detail, go to the [./benchmarks/minimal](./benchmarks/minimal) folder.
 

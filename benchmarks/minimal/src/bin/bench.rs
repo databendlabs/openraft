@@ -13,6 +13,7 @@ use bench_minimal::network::BenchRaft;
 use bench_minimal::network::Router;
 use bench_minimal::store::ClientRequest;
 use clap::Parser;
+use futures::TryStreamExt;
 use openraft::Config;
 use tokio::runtime::Builder;
 use tokio::runtime::Runtime;
@@ -42,6 +43,10 @@ struct Args {
     /// Number of raft cluster members (1, 3, or 5)
     #[arg(short = 'm', long, default_value_t = 3)]
     members: u64,
+
+    /// Batch size for writes (1 = single writes, >1 = batch writes)
+    #[arg(short = 'b', long, default_value_t = 1, value_parser = parse_underscore_u64)]
+    batch: u64,
 }
 
 struct BenchConfig {
@@ -50,14 +55,15 @@ struct BenchConfig {
     pub n_operations: u64,
     pub n_client: u64,
     pub members: BTreeSet<u64>,
+    pub batch_size: u64,
 }
 
 impl Display for BenchConfig {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "client_workers: {}, server_workers: {}, clients: {}, n: {}, raft_members: {:?}",
-            self.client_workers, self.server_workers, self.n_client, self.n_operations, self.members
+            "client_workers: {}, server_workers: {}, clients: {}, n: {}, batch: {}, raft_members: {:?}",
+            self.client_workers, self.server_workers, self.n_client, self.n_operations, self.batch_size, self.members
         )
     }
 }
@@ -104,6 +110,7 @@ fn main() -> anyhow::Result<()> {
         n_operations: args.operations,
         n_client: args.clients,
         members,
+        batch_size: args.batch,
     };
 
     eprintln!("Benchmark config: {}", bench_config);
@@ -174,7 +181,8 @@ fn create_cluster(server_rt: &Runtime, bench_config: &BenchConfig) -> anyhow::Re
 /// - StateMachine: in-memory BTree
 async fn do_bench(bench_config: &BenchConfig, leader: BenchRaft) -> anyhow::Result<()> {
     let n_client = bench_config.n_client;
-    let ops_per_client = bench_config.n_operations / n_client;
+    let batch_size = bench_config.batch_size;
+    let ops_per_client = bench_config.n_operations / n_client / batch_size * batch_size;
     let total = ops_per_client * n_client;
 
     let mut handles = Vec::new();
@@ -195,17 +203,53 @@ async fn do_bench(bench_config: &BenchConfig, leader: BenchRaft) -> anyhow::Resu
 
     for _client_id in 0..n_client {
         let l = leader.clone();
-        let h = tokio::spawn(async move {
-            for _i in 0..ops_per_client {
-                l.client_write(ClientRequest {})
-                    .await
-                    .map_err(|e| {
-                        eprintln!("client_write error: {:?}", e);
-                        e
-                    })
-                    .unwrap();
-            }
-        });
+        let h = if batch_size <= 1 {
+            // Single write mode
+            tokio::spawn(async move {
+                for _i in 0..ops_per_client {
+                    l.client_write(ClientRequest {})
+                        .await
+                        .map_err(|e| {
+                            eprintln!("client_write error: {:?}", e);
+                            e
+                        })
+                        .unwrap();
+                }
+            })
+        } else {
+            // Batch write mode
+            tokio::spawn(async move {
+                let batches = ops_per_client / batch_size;
+
+                for _batch in 0..batches {
+                    let requests: Vec<_> = (0..batch_size).map(|_| ClientRequest {}).collect();
+                    let mut stream = l
+                        .client_write_many(requests)
+                        .await
+                        .map_err(|e| {
+                            eprintln!("client_write_many error: {:?}", e);
+                            e
+                        })
+                        .unwrap();
+                    while let Some(result) = stream
+                        .try_next()
+                        .await
+                        .map_err(|e| {
+                            eprintln!("stream error: {:?}", e);
+                            e
+                        })
+                        .unwrap()
+                    {
+                        result
+                            .map_err(|e| {
+                                eprintln!("write error: {:?}", e);
+                                e
+                            })
+                            .unwrap();
+                    }
+                }
+            })
+        };
 
         handles.push(h)
     }

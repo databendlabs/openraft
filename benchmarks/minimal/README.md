@@ -9,6 +9,8 @@ and an in-process network that uses function calls to simulate RPC.
 
 ## Benchmark result
 
+### Single writes (batch=1)
+
 | clients | put/s     |
 | --:     | --:       |
 | 1       |    33,000 |
@@ -18,9 +20,16 @@ and an in-process network that uses function calls to simulate RPC.
 | 1024    | 3,006,000 |
 | 4096    | 3,548,000 |
 
+### Batch writes (batch=4)
+
+| clients | put/s     |
+| --:     | --:       |
+| 4096    | 5,615,000 |
+
 The benchmark is carried out with varying numbers of clients because:
 - The `1 client` benchmark shows the average **latency** to commit each log.
 - The `4096 client` benchmark shows the maximum **throughput**.
+- Batch writes reduce per-operation overhead by submitting multiple entries at once.
 
 The benchmark is conducted with the following settings:
 - client-workers: 1, server-workers: 16
@@ -42,6 +51,9 @@ cargo run --release --bin bench
 # Customize parameters
 cargo run --release --bin bench -- --client-workers 1 --server-workers 16 -c 4k -n 20m -m 3
 
+# Batch writes (4 entries per batch)
+cargo run --release --bin bench -- -c 4k -n 20m -b 4
+
 # With tokio-console (for async task debugging)
 RUSTFLAGS="--cfg tokio_unstable" cargo run --release --bin bench --features tokio-console
 
@@ -53,11 +65,12 @@ cargo run --release --bin bench --features flamegraph
 ### CLI Options
 
 ```
---client-workers  Number of worker threads for client runtime [default: 2]
+--client-workers  Number of worker threads for client runtime [default: 1]
 --server-workers  Number of worker threads for server runtime [default: 16]
 -c, --clients     Number of client tasks [default: 4096]
 -n, --operations  Total operations across all clients [default: 20000000]
 -m, --members     Cluster size (1, 3, or 5) [default: 3]
+-b, --batch       Batch size for writes (1=single, >1=batch) [default: 1]
 ```
 
 Numbers support underscores and unit suffixes: `1_000`, `100k`, `20m`, `1g`
