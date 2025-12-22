@@ -58,6 +58,12 @@ pub struct RuntimeStats {
     /// `run_engine_commands()`, helping identify message batching efficiency.
     pub raft_msg_batch: Histogram,
 
+    /// Histogram tracking the distribution of client write entries merged per batch.
+    ///
+    /// This tracks how many client write entries are merged together in each
+    /// `RaftMsg::ClientWrite` after batching, helping identify batching efficiency.
+    pub write_batch: Histogram,
+
     /// Histogram tracking the budget for RaftMsg processing.
     ///
     /// This tracks the maximum number of RaftMsg allowed to process in each
@@ -117,6 +123,7 @@ impl RuntimeStats {
             append_batch: Histogram::new(),
             replicate_batch: Histogram::new(),
             raft_msg_batch: Histogram::new(),
+            write_batch: Histogram::new(),
             raft_msg_budget: Histogram::new(),
             notification_budget: Histogram::new(),
             raft_msg_usage_permille: Histogram::new(),
@@ -156,6 +163,7 @@ impl RuntimeStats {
             append_batch: self.append_batch.percentile_stats(),
             replicate_batch: self.replicate_batch.percentile_stats(),
             raft_msg_batch: self.raft_msg_batch.percentile_stats(),
+            write_batch: self.write_batch.percentile_stats(),
             raft_msg_budget: self.raft_msg_budget.percentile_stats(),
             notification_budget: self.notification_budget.percentile_stats(),
             raft_msg_usage_permille: self.raft_msg_usage_permille.percentile_stats(),
@@ -178,6 +186,7 @@ pub struct RuntimeStatsDisplay {
     append_batch: PercentileStats,
     replicate_batch: PercentileStats,
     raft_msg_batch: PercentileStats,
+    write_batch: PercentileStats,
     raft_msg_budget: PercentileStats,
     notification_budget: PercentileStats,
     raft_msg_usage_permille: PercentileStats,
@@ -225,11 +234,12 @@ impl RuntimeStatsDisplay {
     fn fmt_compact(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "RuntimeStats {{ apply_batch: {}, append_batch: {}, replicate_batch: {}, raft_msg_batch: {}, raft_msg_budget: {}, notification_budget: {}, raft_msg_usage_permille: {}, notification_usage_permille: {}, commands: {{",
+            "RuntimeStats {{ apply_batch: {}, append_batch: {}, replicate_batch: {}, raft_msg_batch: {}, write_batch: {}, raft_msg_budget: {}, notification_budget: {}, raft_msg_usage_permille: {}, notification_usage_permille: {}, commands: {{",
             self.apply_batch,
             self.append_batch,
             self.replicate_batch,
             self.raft_msg_batch,
+            self.write_batch,
             self.raft_msg_budget,
             self.notification_budget,
             self.raft_msg_usage_permille,
@@ -285,6 +295,7 @@ impl RuntimeStatsDisplay {
         writeln!(f, "  append_batch: {}", self.append_batch)?;
         writeln!(f, "  replicate_batch: {}", self.replicate_batch)?;
         writeln!(f, "  raft_msg_batch: {}", self.raft_msg_batch)?;
+        writeln!(f, "  write_batch: {}", self.write_batch)?;
         writeln!(f, "  raft_msg_budget: {}", self.raft_msg_budget)?;
         writeln!(f, "  notification_budget: {}", self.notification_budget)?;
         writeln!(f, "  raft_msg_usage_permille: {}", self.raft_msg_usage_permille)?;
@@ -327,6 +338,7 @@ impl RuntimeStatsDisplay {
         builder.push_record(Self::percentile_row("Append", &self.append_batch));
         builder.push_record(Self::percentile_row("Replicate", &self.replicate_batch));
         builder.push_record(Self::percentile_row("RaftMsg", &self.raft_msg_batch));
+        builder.push_record(Self::percentile_row("Write", &self.write_batch));
         builder.push_record(Self::percentile_row("RaftMsgBudget", &self.raft_msg_budget));
         builder.push_record(Self::percentile_row("NotifyBudget", &self.notification_budget));
         builder.push_record(Self::percentile_row("RaftMsgUsage‰", &self.raft_msg_usage_permille));
