@@ -5,7 +5,7 @@ use crate::error::higher_vote::HigherVote;
 use crate::error::replication_closed::ReplicationClosed;
 
 /// Error variants related to the Replication.
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[allow(clippy::large_enum_variant)]
 pub(crate) enum ReplicationError<C>
 where C: RaftTypeConfig
