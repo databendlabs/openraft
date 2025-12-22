@@ -51,6 +51,8 @@ pub use message::TransferLeaderRequest;
 pub use message::VoteRequest;
 pub use message::VoteResponse;
 pub use message::WriteRequest;
+pub use message::WriteResponse;
+pub use message::WriteResult;
 use openraft_macros::since;
 pub use stream_append::StreamAppendResult;
 use tracing::Instrument;
@@ -72,6 +74,7 @@ use crate::async_runtime::watch::WatchReceiver;
 use crate::base::BoxFuture;
 use crate::base::BoxMaybeAsyncOnceMut;
 use crate::base::BoxOnce;
+use crate::base::BoxStream;
 use crate::config::Config;
 use crate::config::RuntimeConfig;
 use crate::core::ClientResponderQueue;
@@ -709,7 +712,7 @@ where C: RaftTypeConfig
     }
 
     pub(crate) fn app_api(&self) -> AppApi<'_, C> {
-        AppApi::new(self.inner.as_ref())
+        AppApi::new(&self.inner)
     }
 
     pub(crate) fn management_api(&self) -> ManagementApi<'_, C> {
@@ -1075,6 +1078,36 @@ where C: RaftTypeConfig
         responder: Option<WriteResponderOf<C>>,
     ) -> Result<(), Fatal<C>> {
         self.app_api().client_write_ff(app_data, responder).await
+    }
+
+    /// Write multiple application data payloads in a single batch.
+    ///
+    /// Returns a stream that yields each result in submission order.
+    /// This is more efficient than calling [`client_write()`](Self::client_write) multiple times
+    /// as it sends all payloads in a single message to the Raft core.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use futures::TryStreamExt;
+    ///
+    /// let mut stream = raft.client_write_many([data1, data2, data3]).await?;
+    ///
+    /// // try_next() extracts Fatal error, result is WriteResult
+    /// while let Some(result) = stream.try_next().await? {
+    ///     match result {
+    ///         Ok(response) => println!("Applied at log index: {:?}", response.log_id),
+    ///         Err(forward_err) => eprintln!("Forward to leader: {:?}", forward_err),
+    ///     }
+    /// }
+    /// ```
+    #[since(version = "0.10.0")]
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub async fn client_write_many(
+        &self,
+        app_data: impl IntoIterator<Item = C::D>,
+    ) -> Result<BoxStream<'static, Result<WriteResult<C>, Fatal<C>>>, Fatal<C>> {
+        self.app_api().client_write_many(app_data).await
     }
 
     /// Submit a write request to Raft.

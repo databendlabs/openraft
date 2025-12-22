@@ -9,6 +9,7 @@ mod install_snapshot;
 mod stream_append_error;
 mod transfer_leader;
 mod vote;
+mod write;
 
 mod client_write;
 mod write_request;
@@ -24,4 +25,7 @@ pub use stream_append_error::StreamAppendError;
 pub use transfer_leader::TransferLeaderRequest;
 pub use vote::VoteRequest;
 pub use vote::VoteResponse;
+pub use write::WriteResponse;
+pub use write::WriteResult;
+pub use write::into_write_result;
 pub use write_request::WriteRequest;
