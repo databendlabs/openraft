@@ -333,12 +333,34 @@ impl RuntimeStatsDisplay {
         // Batch sizes table
         writeln!(f, "Batch Sizes:")?;
         let mut builder = Builder::default();
-        builder.push_record(["", "Total", "P0.1", "P1", "P5", "P10", "P50", "P90", "P99", "P99.9", ""]);
-        builder.push_record(Self::percentile_row("Apply", &self.apply_batch, "Entries per state machine apply"));
-        builder.push_record(Self::percentile_row("Append", &self.append_batch, "Entries per storage append"));
-        builder.push_record(Self::percentile_row("Replicate", &self.replicate_batch, "Entries per replication RPC"));
-        builder.push_record(Self::percentile_row("RaftMsg/run", &self.raft_msg_per_run, "RaftMsgs per run_engine_commands()"));
-        builder.push_record(Self::percentile_row("Write", &self.write_batch, "Client writes merged per batch"));
+        builder.push_record([
+            "", "#Samples", "P0.1", "P1", "P5", "P10", "P50", "P90", "P99", "P99.9", "",
+        ]);
+        builder.push_record(Self::percentile_row(
+            "Apply",
+            &self.apply_batch,
+            "Entries per state machine apply",
+        ));
+        builder.push_record(Self::percentile_row(
+            "Append",
+            &self.append_batch,
+            "Entries per storage append",
+        ));
+        builder.push_record(Self::percentile_row(
+            "Replicate",
+            &self.replicate_batch,
+            "Entries per replication RPC",
+        ));
+        builder.push_record(Self::percentile_row(
+            "RaftMsg/run",
+            &self.raft_msg_per_run,
+            "RaftMsgs per run_engine_commands()",
+        ));
+        builder.push_record(Self::percentile_row(
+            "Write",
+            &self.write_batch,
+            "Client writes merged per batch",
+        ));
         let mut table = builder.build();
         table.with(Style::rounded());
         table.with(Alignment::right());
@@ -349,11 +371,29 @@ impl RuntimeStatsDisplay {
         // Budget & utilization table
         writeln!(f, "Budget & Utilization:")?;
         let mut builder = Builder::default();
-        builder.push_record(["", "Total", "P0.1", "P1", "P5", "P10", "P50", "P90", "P99", "P99.9", ""]);
-        builder.push_record(Self::percentile_row("RaftMsgBudget", &self.raft_msg_budget, "Max RaftMsgs allowed per loop"));
-        builder.push_record(Self::percentile_row("NotifyBudget", &self.notification_budget, "Max Notifications allowed per loop"));
-        builder.push_record(Self::percentile_row("RaftMsgUsage‰", &self.raft_msg_usage_permille, "RaftMsg budget utilization (‰)"));
-        builder.push_record(Self::percentile_row("NotifyUsage‰", &self.notification_usage_permille, "Notification budget utilization (‰)"));
+        builder.push_record([
+            "", "#Samples", "P0.1", "P1", "P5", "P10", "P50", "P90", "P99", "P99.9", "",
+        ]);
+        builder.push_record(Self::percentile_row(
+            "RaftMsgBudget",
+            &self.raft_msg_budget,
+            "Max RaftMsgs allowed per loop",
+        ));
+        builder.push_record(Self::percentile_row(
+            "NotifyBudget",
+            &self.notification_budget,
+            "Max Notifications allowed per loop",
+        ));
+        builder.push_record(Self::percentile_row(
+            "RaftMsgUsage‰",
+            &self.raft_msg_usage_permille,
+            "RaftMsg budget utilization (‰)",
+        ));
+        builder.push_record(Self::percentile_row(
+            "NotifyUsage‰",
+            &self.notification_usage_permille,
+            "Notification budget utilization (‰)",
+        ));
         let mut table = builder.build();
         table.with(Style::rounded());
         table.with(Alignment::right());
@@ -420,7 +460,7 @@ impl RuntimeStatsDisplay {
     fn percentile_row(name: &str, stats: &PercentileStats, comment: &str) -> [String; 11] {
         [
             name.to_string(),
-            Self::format_count(stats.total),
+            Self::format_count(stats.samples),
             stats.p0_1.to_string(),
             stats.p1.to_string(),
             stats.p5.to_string(),
