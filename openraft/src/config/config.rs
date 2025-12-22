@@ -240,6 +240,14 @@ pub struct Config {
     #[clap(long, default_value = "65536")]
     pub notification_channel_size: Option<u64>,
 
+    /// The size of the bounded channel for sending commands to the state machine worker.
+    ///
+    /// This channel carries commands like Apply, BuildSnapshot, and InstallSnapshot.
+    /// When full, RaftCore will block until space becomes available, providing backpressure
+    /// when the state machine is slow.
+    #[clap(long, default_value = "1024")]
+    pub state_machine_channel_size: Option<u64>,
+
     /// Enable or disable tick.
     ///
     /// If ticking is disabled, timeout-based events are all disabled:
@@ -389,6 +397,13 @@ impl Config {
     /// Defaults to 65536 if not specified.
     pub(crate) fn notification_channel_size(&self) -> usize {
         self.notification_channel_size.unwrap_or(65536) as usize
+    }
+
+    /// Get the state machine command channel size for bounded MPSC channel.
+    ///
+    /// Defaults to 1024 if not specified.
+    pub(crate) fn state_machine_channel_size(&self) -> usize {
+        self.state_machine_channel_size.unwrap_or(1024) as usize
     }
 
     /// Get the maximum number of log entries per append I/O operation.

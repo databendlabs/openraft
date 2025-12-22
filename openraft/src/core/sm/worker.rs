@@ -5,7 +5,7 @@ use crate::RaftLogReader;
 use crate::RaftSnapshotBuilder;
 use crate::RaftTypeConfig;
 use crate::StorageError;
-use crate::async_runtime::MpscUnboundedReceiver;
+use crate::async_runtime::MpscReceiver;
 use crate::async_runtime::OneshotSender;
 use crate::core::ApplyResult;
 use crate::core::notification::Notification;
@@ -25,8 +25,8 @@ use crate::storage::v2::entry_responder::EntryResponderBuilder;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::JoinHandleOf;
 use crate::type_config::alias::LogIdOf;
+use crate::type_config::alias::MpscReceiverOf;
 use crate::type_config::alias::MpscSenderOf;
-use crate::type_config::alias::MpscUnboundedReceiverOf;
 use crate::type_config::alias::OneshotSenderOf;
 use crate::type_config::async_runtime::mpsc::MpscSender;
 
@@ -43,7 +43,7 @@ where
     log_reader: LR,
 
     /// Read command from RaftCore to execute.
-    cmd_rx: MpscUnboundedReceiverOf<C, Command<C>>,
+    cmd_rx: MpscReceiverOf<C, Command<C>>,
 
     /// Send back the result of the command to RaftCore.
     resp_tx: MpscSenderOf<C, Notification<C>>,
@@ -60,9 +60,10 @@ where
         state_machine: SM,
         log_reader: LR,
         resp_tx: MpscSenderOf<C, Notification<C>>,
+        state_machine_channel_size: usize,
         span: tracing::Span,
     ) -> Handle<C> {
-        let (cmd_tx, cmd_rx) = C::mpsc_unbounded();
+        let (cmd_tx, cmd_rx) = C::mpsc(state_machine_channel_size);
 
         let worker = Worker {
             state_machine,
