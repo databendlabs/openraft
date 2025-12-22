@@ -10,7 +10,6 @@ pub(crate) mod tokio_impls {
     pub use tokio_runtime::TokioRuntime;
 }
 pub mod mpsc;
-pub mod mpsc_unbounded;
 pub mod mutex;
 pub mod oneshot;
 pub mod watch;
@@ -24,12 +23,8 @@ pub use mpsc::Mpsc;
 pub use mpsc::MpscReceiver;
 pub use mpsc::MpscSender;
 pub use mpsc::MpscWeakSender;
-pub use mpsc_unbounded::MpscUnbounded;
-pub use mpsc_unbounded::MpscUnboundedReceiver;
-pub use mpsc_unbounded::MpscUnboundedSender;
-pub use mpsc_unbounded::MpscUnboundedWeakSender;
-pub use mpsc_unbounded::SendError;
-pub use mpsc_unbounded::TryRecvError;
+pub use mpsc::SendError;
+pub use mpsc::TryRecvError;
 pub use mutex::Mutex;
 pub use oneshot::Oneshot;
 pub use oneshot::OneshotSender;
@@ -113,9 +108,6 @@ pub trait AsyncRuntime: Debug + Default + PartialEq + Eq + OptionalSend + Option
 
     /// The bounded MPSC channel implementation.
     type Mpsc: Mpsc;
-
-    /// The unbounded MPSC channel implementation.
-    type MpscUnbounded: MpscUnbounded;
 
     /// The watch channel implementation.
     type Watch: Watch;

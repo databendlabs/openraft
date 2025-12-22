@@ -18,12 +18,10 @@ pub use rand;
 use rand::rngs::ThreadRng;
 
 use crate::mpsc::FlumeMpsc;
-use crate::mpsc_unbounded::FlumeMpscUnbounded;
 use crate::oneshot::FuturesOneshot;
 use crate::watch::See;
 
 mod mpsc;
-mod mpsc_unbounded;
 mod mutex;
 mod oneshot;
 mod watch;
@@ -115,7 +113,6 @@ impl AsyncRuntime for CompioRuntime {
     type Timeout<R, T: Future<Output = R> + OptionalSend> = CompioTimeout<T>;
     type ThreadLocalRng = ThreadRng;
     type Mpsc = FlumeMpsc;
-    type MpscUnbounded = FlumeMpscUnbounded;
     type Watch = See;
     type Oneshot = FuturesOneshot;
     type Mutex<T: OptionalSend + 'static> = mutex::FlumeMutex<T>;
