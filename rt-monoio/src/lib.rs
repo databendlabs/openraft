@@ -98,7 +98,7 @@ mod instant_mod {
     use std::ops::SubAssign;
     use std::time::Duration;
 
-    use openraft::instant;
+    use openraft::async_runtime::instant;
 
     #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
     pub struct MonoioInstant(pub(crate) monoio::time::Instant);

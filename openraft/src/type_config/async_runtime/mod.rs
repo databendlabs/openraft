@@ -22,8 +22,6 @@ use std::future::Future;
 use std::time::Duration;
 
 pub use instant::Instant;
-#[cfg(feature = "tokio-rt")]
-pub use tokio_impls::TokioInstant;
 pub use mpsc::Mpsc;
 pub use mpsc::MpscReceiver;
 pub use mpsc::MpscSender;
@@ -33,7 +31,10 @@ pub use mpsc::TryRecvError;
 pub use mutex::Mutex;
 pub use oneshot::Oneshot;
 pub use oneshot::OneshotSender;
+#[cfg(feature = "tokio-rt")]
+pub use tokio_impls::TokioInstant;
 pub use watch::Watch;
+
 use crate::OptionalSend;
 use crate::OptionalSync;
 
