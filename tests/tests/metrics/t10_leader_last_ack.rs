@@ -4,6 +4,7 @@ use std::time::Duration;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
+use openraft::Instant;
 use openraft::type_config::TypeConfigExt;
 use openraft_memstore::TypeConfig;
 

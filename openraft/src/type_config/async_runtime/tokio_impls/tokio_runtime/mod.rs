@@ -2,28 +2,19 @@ use std::future::Future;
 use std::time::Duration;
 
 use crate::AsyncRuntime;
-use crate::Instant;
 use crate::OptionalSend;
 
+mod instant;
 mod mpsc;
 mod mutex;
 mod oneshot;
 mod watch;
 
+pub use instant::TokioInstant;
 use mpsc::TokioMpsc;
 use mutex::TokioMutex;
 use oneshot::TokioOneshot;
 use watch::TokioWatch;
-
-/// Type alias for tokio's Instant type.
-pub type TokioInstant = tokio::time::Instant;
-
-impl Instant for tokio::time::Instant {
-    #[inline]
-    fn now() -> Self {
-        tokio::time::Instant::now()
-    }
-}
 
 /// `Tokio` is the default asynchronous executor.
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -61,7 +52,7 @@ impl AsyncRuntime for TokioRuntime {
 
     #[inline]
     fn sleep_until(deadline: Self::Instant) -> Self::Sleep {
-        tokio::time::sleep_until(deadline)
+        tokio::time::sleep_until(deadline.0)
     }
 
     #[inline]
@@ -71,7 +62,7 @@ impl AsyncRuntime for TokioRuntime {
 
     #[inline]
     fn timeout_at<R, F: Future<Output = R> + OptionalSend>(deadline: Self::Instant, future: F) -> Self::Timeout<R, F> {
-        tokio::time::timeout_at(deadline, future)
+        tokio::time::timeout_at(deadline.0, future)
     }
 
     #[inline]

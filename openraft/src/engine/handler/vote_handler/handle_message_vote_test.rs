@@ -5,6 +5,7 @@ use maplit::btreeset;
 use pretty_assertions::assert_eq;
 
 use crate::EffectiveMembership;
+use crate::Instant;
 use crate::Membership;
 use crate::TokioInstant;
 use crate::Vote;

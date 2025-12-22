@@ -5,6 +5,7 @@ use std::time::Duration;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
+use openraft::Instant;
 use openraft::TokioInstant;
 use openraft::Vote;
 use openraft::raft::VoteRequest;
