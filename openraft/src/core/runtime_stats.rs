@@ -56,7 +56,7 @@ pub struct RuntimeStats {
     ///
     /// This tracks how many RaftMsg are processed together before calling
     /// `run_engine_commands()`, helping identify message batching efficiency.
-    pub raft_msg_batch: Histogram,
+    pub raft_msg_per_run: Histogram,
 
     /// Histogram tracking the distribution of client write entries merged per batch.
     ///
@@ -122,7 +122,7 @@ impl RuntimeStats {
             apply_batch: Histogram::new(),
             append_batch: Histogram::new(),
             replicate_batch: Histogram::new(),
-            raft_msg_batch: Histogram::new(),
+            raft_msg_per_run: Histogram::new(),
             write_batch: Histogram::new(),
             raft_msg_budget: Histogram::new(),
             notification_budget: Histogram::new(),
@@ -162,7 +162,7 @@ impl RuntimeStats {
             apply_batch: self.apply_batch.percentile_stats(),
             append_batch: self.append_batch.percentile_stats(),
             replicate_batch: self.replicate_batch.percentile_stats(),
-            raft_msg_batch: self.raft_msg_batch.percentile_stats(),
+            raft_msg_per_run: self.raft_msg_per_run.percentile_stats(),
             write_batch: self.write_batch.percentile_stats(),
             raft_msg_budget: self.raft_msg_budget.percentile_stats(),
             notification_budget: self.notification_budget.percentile_stats(),
@@ -185,7 +185,7 @@ pub struct RuntimeStatsDisplay {
     apply_batch: PercentileStats,
     append_batch: PercentileStats,
     replicate_batch: PercentileStats,
-    raft_msg_batch: PercentileStats,
+    raft_msg_per_run: PercentileStats,
     write_batch: PercentileStats,
     raft_msg_budget: PercentileStats,
     notification_budget: PercentileStats,
@@ -234,11 +234,11 @@ impl RuntimeStatsDisplay {
     fn fmt_compact(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "RuntimeStats {{ apply_batch: {}, append_batch: {}, replicate_batch: {}, raft_msg_batch: {}, write_batch: {}, raft_msg_budget: {}, notification_budget: {}, raft_msg_usage_permille: {}, notification_usage_permille: {}, commands: {{",
+            "RuntimeStats {{ apply_batch: {}, append_batch: {}, replicate_batch: {}, raft_msg_per_run: {}, write_batch: {}, raft_msg_budget: {}, notification_budget: {}, raft_msg_usage_permille: {}, notification_usage_permille: {}, commands: {{",
             self.apply_batch,
             self.append_batch,
             self.replicate_batch,
-            self.raft_msg_batch,
+            self.raft_msg_per_run,
             self.write_batch,
             self.raft_msg_budget,
             self.notification_budget,
@@ -294,7 +294,7 @@ impl RuntimeStatsDisplay {
         writeln!(f, "  apply_batch: {}", self.apply_batch)?;
         writeln!(f, "  append_batch: {}", self.append_batch)?;
         writeln!(f, "  replicate_batch: {}", self.replicate_batch)?;
-        writeln!(f, "  raft_msg_batch: {}", self.raft_msg_batch)?;
+        writeln!(f, "  raft_msg_per_run: {}", self.raft_msg_per_run)?;
         writeln!(f, "  write_batch: {}", self.write_batch)?;
         writeln!(f, "  raft_msg_budget: {}", self.raft_msg_budget)?;
         writeln!(f, "  notification_budget: {}", self.notification_budget)?;
@@ -330,24 +330,35 @@ impl RuntimeStatsDisplay {
 
     #[cfg(feature = "runtime-stats")]
     fn fmt_human_readable(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Batch sizes table with separate columns for each percentile
+        // Batch sizes table
         writeln!(f, "Batch Sizes:")?;
         let mut builder = Builder::default();
-        builder.push_record(["", "Total", "P0.1", "P1", "P5", "P10", "P50", "P90", "P99", "P99.9"]);
-        builder.push_record(Self::percentile_row("Apply", &self.apply_batch));
-        builder.push_record(Self::percentile_row("Append", &self.append_batch));
-        builder.push_record(Self::percentile_row("Replicate", &self.replicate_batch));
-        builder.push_record(Self::percentile_row("RaftMsg", &self.raft_msg_batch));
-        builder.push_record(Self::percentile_row("Write", &self.write_batch));
-        builder.push_record(Self::percentile_row("RaftMsgBudget", &self.raft_msg_budget));
-        builder.push_record(Self::percentile_row("NotifyBudget", &self.notification_budget));
-        builder.push_record(Self::percentile_row("RaftMsgUsage‰", &self.raft_msg_usage_permille));
-        builder.push_record(Self::percentile_row("NotifyUsage‰", &self.notification_usage_permille));
+        builder.push_record(["", "Total", "P0.1", "P1", "P5", "P10", "P50", "P90", "P99", "P99.9", ""]);
+        builder.push_record(Self::percentile_row("Apply", &self.apply_batch, "Entries per state machine apply"));
+        builder.push_record(Self::percentile_row("Append", &self.append_batch, "Entries per storage append"));
+        builder.push_record(Self::percentile_row("Replicate", &self.replicate_batch, "Entries per replication RPC"));
+        builder.push_record(Self::percentile_row("RaftMsg/run", &self.raft_msg_per_run, "RaftMsgs per run_engine_commands()"));
+        builder.push_record(Self::percentile_row("Write", &self.write_batch, "Client writes merged per batch"));
         let mut table = builder.build();
         table.with(Style::rounded());
-        // Right-align all columns except the first (name column)
         table.with(Alignment::right());
         table.modify(Columns::first(), Alignment::left());
+        table.modify(Columns::last(), Alignment::left());
+        writeln!(f, "{}", table)?;
+
+        // Budget & utilization table
+        writeln!(f, "Budget & Utilization:")?;
+        let mut builder = Builder::default();
+        builder.push_record(["", "Total", "P0.1", "P1", "P5", "P10", "P50", "P90", "P99", "P99.9", ""]);
+        builder.push_record(Self::percentile_row("RaftMsgBudget", &self.raft_msg_budget, "Max RaftMsgs allowed per loop"));
+        builder.push_record(Self::percentile_row("NotifyBudget", &self.notification_budget, "Max Notifications allowed per loop"));
+        builder.push_record(Self::percentile_row("RaftMsgUsage‰", &self.raft_msg_usage_permille, "RaftMsg budget utilization (‰)"));
+        builder.push_record(Self::percentile_row("NotifyUsage‰", &self.notification_usage_permille, "Notification budget utilization (‰)"));
+        let mut table = builder.build();
+        table.with(Style::rounded());
+        table.with(Alignment::right());
+        table.modify(Columns::first(), Alignment::left());
+        table.modify(Columns::last(), Alignment::left());
         writeln!(f, "{}", table)?;
 
         // Commands table with right-aligned counts
@@ -406,7 +417,7 @@ impl RuntimeStatsDisplay {
 
     /// Create a row with percentile values for the batch sizes table.
     #[cfg(feature = "runtime-stats")]
-    fn percentile_row(name: &str, stats: &PercentileStats) -> [String; 10] {
+    fn percentile_row(name: &str, stats: &PercentileStats, comment: &str) -> [String; 11] {
         [
             name.to_string(),
             Self::format_count(stats.total),
@@ -418,6 +429,7 @@ impl RuntimeStatsDisplay {
             stats.p90.to_string(),
             stats.p99.to_string(),
             stats.p99_9.to_string(),
+            comment.to_string(),
         ]
     }
 
