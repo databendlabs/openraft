@@ -63,9 +63,37 @@ impl Display for BenchConfig {
         write!(
             f,
             "client_workers: {}, server_workers: {}, clients: {}, n: {}, batch: {}, raft_members: {:?}",
-            self.client_workers, self.server_workers, self.n_client, self.n_operations, self.batch_size, self.members
+            self.client_workers, self.server_workers, self.n_client, format_number(self.n_operations), self.batch_size, self.members
         )
     }
+}
+
+/// Format a number in human-readable form: "20m (20_000_000)"
+fn format_number(n: u64) -> String {
+    let with_underscores = format_with_underscores(n);
+    let short = if n >= 1_000_000_000 && n % 1_000_000_000 == 0 {
+        format!("{}g", n / 1_000_000_000)
+    } else if n >= 1_000_000 && n % 1_000_000 == 0 {
+        format!("{}m", n / 1_000_000)
+    } else if n >= 1_000 && n % 1_000 == 0 {
+        format!("{}k", n / 1_000)
+    } else {
+        return with_underscores;
+    };
+    format!("{} ({})", short, with_underscores)
+}
+
+/// Format a number with underscores as thousand separators.
+fn format_with_underscores(n: u64) -> String {
+    let s = n.to_string();
+    let mut result = String::new();
+    for (i, c) in s.chars().rev().enumerate() {
+        if i > 0 && i % 3 == 0 {
+            result.push('_');
+        }
+        result.push(c);
+    }
+    result.chars().rev().collect()
 }
 
 /// Parse u64 with optional underscores and decimal unit suffix.
