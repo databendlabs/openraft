@@ -269,7 +269,7 @@ where
             curr.state = ServerState::Shutdown;
             curr.running_state = Err(err.clone());
 
-            let _ = self.tx_metrics.send(curr);
+            self.tx_metrics.send(curr).ok();
         }
 
         tracing::info!("RaftCore shutdown complete");
@@ -312,7 +312,7 @@ where
             let lh = match l {
                 Ok(leading_handler) => leading_handler,
                 Err(forward) => {
-                    let _ = tx.send(Err(forward.into()));
+                    tx.send(Err(forward.into())).ok();
                     return;
                 }
             };
@@ -332,13 +332,13 @@ where
             if let Some(last_quorum_acked_time) = self.last_quorum_acked_time()
                 && now < last_quorum_acked_time + self.engine.config.timer_config.leader_lease
             {
-                let _ = tx.send(Ok(resp));
+                tx.send(Ok(resp)).ok();
                 return;
             }
             tracing::debug!("{}: lease expired during lease read", self.id);
             // we may no longer leader so error out early
             let err = ForwardToLeader::empty();
-            let _ = tx.send(Err(err.into()));
+            tx.send(Err(err.into())).ok();
             return;
         }
 
@@ -352,7 +352,7 @@ where
 
         // single-node quorum, fast path, return quickly.
         if eff_mem.is_quorum(granted.iter()) {
-            let _ = tx.send(Ok(resp));
+            tx.send(Ok(resp)).ok();
             return;
         }
 
@@ -469,7 +469,7 @@ where
 
                     // we are no longer leader so error out early
                     let err = ForwardToLeader::empty();
-                    let _ = tx.send(Err(err.into()));
+                    tx.send(Err(err.into())).ok();
                     return;
                 }
 
@@ -477,7 +477,7 @@ where
                 granted.insert(target);
 
                 if eff_mem.is_quorum(granted.iter()) {
-                    let _ = tx.send(Ok(resp));
+                    tx.send(Ok(resp)).ok();
                     return;
                 }
             }
@@ -485,11 +485,12 @@ where
             // If we've hit this location, then we've failed to gather needed confirmations due to
             // request failures.
 
-            let _ = tx.send(Err(QuorumNotEnough {
+            tx.send(Err(QuorumNotEnough {
                 cluster: eff_mem.membership().to_string(),
                 got: granted,
             }
-            .into()));
+            .into()))
+                .ok();
         };
 
         // TODO: do not spawn, manage read requests with a queue by RaftCore
@@ -1343,13 +1344,13 @@ where
 
                         match res {
                             Ok(resp) => {
-                                let _ = tx
-                                    .send(Notification::VoteResponse {
-                                        target,
-                                        resp,
-                                        candidate_vote: vote.into_non_committed(),
-                                    })
-                                    .await;
+                                tx.send(Notification::VoteResponse {
+                                    target,
+                                    resp,
+                                    candidate_vote: vote.into_non_committed(),
+                                })
+                                .await
+                                .ok();
                             }
                             Err(err) => tracing::error!("while requesting vote, error: {}, target: {}", err, target),
                         }
@@ -1569,7 +1570,7 @@ where
                                 Err(AllowNextRevertError::from(e))
                             }
                         };
-                        let _ = tx.send(res);
+                        tx.send(res).ok();
                     }
                     ExternalCommand::StateMachineCommand { sm_cmd } => {
                         let res = self.sm_handle.send(sm_cmd).await;
@@ -1584,7 +1585,7 @@ where
                 // Copy runtime_stats and sync the shared replicate_batch
                 let mut stats = self.runtime_stats.clone();
                 stats.replicate_batch = self.shared_replicate_batch.snapshot();
-                let _ = tx.send(stats);
+                tx.send(stats).ok();
             }
         };
     }
@@ -1634,7 +1635,7 @@ where
 
                 if self.does_leader_vote_match(&leader_vote, "HigherVote") {
                     // Rejected vote change is ok.
-                    let _ = self.engine.vote_handler().update_vote(&higher);
+                    self.engine.vote_handler().update_vote(&higher).ok();
                 }
             }
 
@@ -2034,25 +2035,25 @@ where
                 self.engine.state.log_progress_mut().submit(io_id.clone());
                 self.log_store.save_vote(&vote).await.sto_write_vote()?;
 
-                let _ = self
-                    .tx_notification
+                self.tx_notification
                     .send(Notification::LocalIO {
                         io_id: IOId::new(&vote),
                     })
-                    .await;
+                    .await
+                    .ok();
 
                 // If a non-committed vote is saved,
                 // there may be a candidate waiting for the response.
                 if let VoteStatus::Pending(non_committed) = vote.clone().into_vote_status() {
-                    let _ = self
-                        .tx_notification
+                    self.tx_notification
                         .send(Notification::VoteResponse {
                             target: self.id.clone(),
                             // last_log_id is not used when sending VoteRequest to local node
                             resp: VoteResponse::new(vote, None, true),
                             candidate_vote: non_committed,
                         })
-                        .await;
+                        .await
+                        .ok();
                 }
             }
             Command::PurgeLog { upto } => {
@@ -2097,7 +2098,7 @@ where
             }
             Command::Replicate { req, target } => {
                 let node = self.replications.get(&target).expect("replication to target node exists");
-                let _ = node.replicate_tx.send(req);
+                node.replicate_tx.send(req).ok();
             }
             Command::ReplicateSnapshot {
                 leader_vote,

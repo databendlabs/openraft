@@ -407,12 +407,12 @@ mod tests {
         );
 
         let t2 = UTConfig::<()>::now();
-        let _ = leading.clock_progress.increase_to(&2, Some(t2));
+        leading.clock_progress.increase_to(&2, Some(t2)).ok();
         let t = leading.last_quorum_acked_time();
         assert!(t.is_none(), "n1(leader+learner) does not count in quorum");
 
         let t3 = UTConfig::<()>::now();
-        let _ = leading.clock_progress.increase_to(&3, Some(t3));
+        leading.clock_progress.increase_to(&3, Some(t3)).ok();
         let t = leading.last_quorum_acked_time();
         assert_eq!(Some(t2), t, "n2 and n3 acked");
     }
@@ -428,12 +428,12 @@ mod tests {
         );
 
         let t2 = UTConfig::<()>::now();
-        let _ = leading.clock_progress.increase_to(&2, Some(t2));
+        leading.clock_progress.increase_to(&2, Some(t2)).ok();
         let t = leading.last_quorum_acked_time();
         assert!(t.is_none(), "n1(leader+learner) does not count in quorum");
 
         let t3 = UTConfig::<()>::now();
-        let _ = leading.clock_progress.increase_to(&3, Some(t3));
+        leading.clock_progress.increase_to(&3, Some(t3)).ok();
         let t = leading.last_quorum_acked_time();
         assert_eq!(Some(t2), t, "n2 and n3 acked");
     }

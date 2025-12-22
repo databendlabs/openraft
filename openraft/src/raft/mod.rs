@@ -1742,7 +1742,7 @@ where C: RaftTypeConfig
         }
         self.inner.join_core_task().await;
         if let Some(join_handle) = self.inner.tick_handle.shutdown() {
-            let _ = join_handle.await;
+            join_handle.await.ok();
         }
 
         // TODO(xp): API change: replace `JoinError` with `Fatal`,

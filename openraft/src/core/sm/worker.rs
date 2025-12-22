@@ -84,12 +84,12 @@ where
             if let Err(err) = res {
                 tracing::error!("{} while execute state machine command", err,);
 
-                let _ = self
-                    .resp_tx
+                self.resp_tx
                     .send(Notification::StateMachine {
                         command_result: CommandResult { result: Err(err) },
                     })
-                    .await;
+                    .await
+                    .ok();
             }
         };
         C::spawn(fu.instrument(span))
@@ -144,7 +144,7 @@ where
 
                     let snapshot_data = self.state_machine.begin_receiving_snapshot().await.sto_write_snapshot(None)?;
 
-                    let _ = tx.send(snapshot_data);
+                    tx.send(snapshot_data).ok();
                     // No response to RaftCore
                 }
                 Command::Apply {
@@ -280,7 +280,7 @@ where
             "sending back snapshot: meta: {}",
             snapshot.as_ref().map(|s| &s.meta).display()
         );
-        let _ = tx.send(snapshot);
+        tx.send(snapshot).ok();
         Ok(())
     }
 }
