@@ -7,6 +7,7 @@ mod fixtures;
 // The number indicate the preferred running order for these case.
 // See ./README.md
 
+mod t10_client_write_many;
 mod t10_client_writes;
 mod t11_client_reads;
 mod t12_trigger_purge_log;
