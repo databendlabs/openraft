@@ -1,21 +1,21 @@
 //! State machine control handle
 
 use crate::RaftTypeConfig;
-use crate::async_runtime::MpscUnboundedSender;
-use crate::async_runtime::MpscUnboundedWeakSender;
+use crate::async_runtime::MpscSender;
+use crate::async_runtime::MpscWeakSender;
 use crate::async_runtime::SendError;
 use crate::core::sm;
 use crate::storage::Snapshot;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::JoinHandleOf;
-use crate::type_config::alias::MpscUnboundedSenderOf;
-use crate::type_config::alias::MpscUnboundedWeakSenderOf;
+use crate::type_config::alias::MpscSenderOf;
+use crate::type_config::alias::MpscWeakSenderOf;
 
 /// State machine worker handle for sending command to it.
 pub(crate) struct Handle<C>
 where C: RaftTypeConfig
 {
-    pub(in crate::core::sm) cmd_tx: MpscUnboundedSenderOf<C, sm::Command<C>>,
+    pub(in crate::core::sm) cmd_tx: MpscSenderOf<C, sm::Command<C>>,
 
     #[allow(dead_code)]
     pub(in crate::core::sm) join_handle: JoinHandleOf<C, ()>,
@@ -24,9 +24,9 @@ where C: RaftTypeConfig
 impl<C> Handle<C>
 where C: RaftTypeConfig
 {
-    pub(crate) fn send(&mut self, cmd: sm::Command<C>) -> Result<(), SendError<sm::Command<C>>> {
+    pub(crate) async fn send(&mut self, cmd: sm::Command<C>) -> Result<(), SendError<sm::Command<C>>> {
         tracing::debug!("sending command to state machine worker: {:?}", cmd);
-        self.cmd_tx.send(cmd)
+        self.cmd_tx.send(cmd).await
     }
 
     /// Create a [`SnapshotReader`] to get the current snapshot from the state machine.
@@ -46,7 +46,7 @@ where C: RaftTypeConfig
     /// It is weak because the [`Worker`] watches the close event of this channel for shutdown.
     ///
     /// [`Worker`]: sm::worker::Worker
-    cmd_tx: MpscUnboundedWeakSenderOf<C, sm::Command<C>>,
+    cmd_tx: MpscWeakSenderOf<C, sm::Command<C>>,
 }
 
 impl<C> SnapshotReader<C>
@@ -68,7 +68,7 @@ where C: RaftTypeConfig
         };
 
         // If fail to send command, cmd is dropped and tx will be dropped.
-        let _ = cmd_tx.send(cmd);
+        cmd_tx.send(cmd).await.ok();
 
         let snapshot = match rx.await {
             Ok(x) => x,

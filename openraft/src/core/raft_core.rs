@@ -937,7 +937,7 @@ where
         }
 
         let cmd = sm::Command::apply(first, last.clone(), responders);
-        self.sm_handle.send(cmd).map_err(|e| StorageError::apply(last, AnyError::error(e)))?;
+        self.sm_handle.send(cmd).await.map_err(|e| StorageError::apply(last, AnyError::error(e)))?;
 
         Ok(())
     }
@@ -1546,7 +1546,7 @@ where
                     ExternalCommand::Snapshot => self.trigger_snapshot(),
                     ExternalCommand::GetSnapshot { tx } => {
                         let cmd = sm::Command::get_snapshot(tx);
-                        let res = self.sm_handle.send(cmd);
+                        let res = self.sm_handle.send(cmd).await;
                         if let Err(e) = res {
                             tracing::error!("error sending GetSnapshot to sm worker: {}", e);
                         }
@@ -1572,7 +1572,7 @@ where
                         let _ = tx.send(res);
                     }
                     ExternalCommand::StateMachineCommand { sm_cmd } => {
-                        let res = self.sm_handle.send(sm_cmd);
+                        let res = self.sm_handle.send(sm_cmd).await;
                         if let Err(e) = res {
                             tracing::error!("error sending sm::Command to sm::Worker: {}", e);
                         }
@@ -2201,7 +2201,7 @@ where
                 }
 
                 // Just forward a state machine command to the worker.
-                self.sm_handle.send(command).map_err(|_e| {
+                self.sm_handle.send(command).await.map_err(|_e| {
                     StorageError::write_state_machine(AnyError::error("cannot send to sm::Worker".to_string()))
                 })?;
             }

@@ -469,6 +469,7 @@ where C: RaftTypeConfig
             state_machine,
             log_store.get_log_reader().await,
             tx_notify.clone(),
+            config.state_machine_channel_size(),
             sm_span,
         );
 
