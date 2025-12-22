@@ -15,7 +15,7 @@ use crate::async_runtime::MpscWeakSender;
 use crate::async_runtime::TryRecvError;
 use crate::async_runtime::watch::WatchReceiver;
 use crate::async_runtime::watch::WatchSender;
-use crate::instant::Instant;
+use crate::type_config::async_runtime::Instant;
 use crate::type_config::async_runtime::AsyncRuntime;
 use crate::type_config::async_runtime::mutex::Mutex;
 use crate::type_config::async_runtime::oneshot::Oneshot;

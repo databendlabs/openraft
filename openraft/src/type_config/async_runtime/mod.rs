@@ -7,8 +7,10 @@ pub(crate) mod tokio_impls {
     #![cfg(feature = "tokio-rt")]
 
     mod tokio_runtime;
+    pub use tokio_runtime::TokioInstant;
     pub use tokio_runtime::TokioRuntime;
 }
+pub mod instant;
 pub mod mpsc;
 pub mod mutex;
 pub mod oneshot;
@@ -19,6 +21,9 @@ use std::fmt::Display;
 use std::future::Future;
 use std::time::Duration;
 
+pub use instant::Instant;
+#[cfg(feature = "tokio-rt")]
+pub use tokio_impls::TokioInstant;
 pub use mpsc::Mpsc;
 pub use mpsc::MpscReceiver;
 pub use mpsc::MpscSender;
@@ -29,8 +34,6 @@ pub use mutex::Mutex;
 pub use oneshot::Oneshot;
 pub use oneshot::OneshotSender;
 pub use watch::Watch;
-
-use crate::Instant;
 use crate::OptionalSend;
 use crate::OptionalSync;
 

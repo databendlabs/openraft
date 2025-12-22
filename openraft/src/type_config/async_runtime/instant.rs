@@ -61,18 +61,6 @@ pub trait Instant:
     }
 }
 
-/// Type alias for tokio's Instant type.
-#[cfg(feature = "tokio-rt")]
-pub type TokioInstant = tokio::time::Instant;
-
-#[cfg(feature = "tokio-rt")]
-impl Instant for tokio::time::Instant {
-    #[inline]
-    fn now() -> Self {
-        tokio::time::Instant::now()
-    }
-}
-
 impl Instant for std::time::Instant {
     fn now() -> Self {
         std::time::Instant::now()

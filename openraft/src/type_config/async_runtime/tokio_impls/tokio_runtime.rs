@@ -4,13 +4,23 @@ use std::time::Duration;
 use tokio::sync::watch as tokio_watch;
 
 use crate::AsyncRuntime;
+use crate::Instant;
 use crate::OptionalSend;
 use crate::OptionalSync;
-use crate::TokioInstant;
 use crate::async_runtime::mutex;
 use crate::async_runtime::oneshot;
 use crate::async_runtime::watch;
 use crate::type_config::OneshotSender;
+
+/// Type alias for tokio's Instant type.
+pub type TokioInstant = tokio::time::Instant;
+
+impl Instant for tokio::time::Instant {
+    #[inline]
+    fn now() -> Self {
+        tokio::time::Instant::now()
+    }
+}
 
 /// `Tokio` is the default asynchronous executor.
 #[derive(Debug, Default, PartialEq, Eq)]
