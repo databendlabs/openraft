@@ -48,6 +48,7 @@ use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::VoteOf;
 
 /// For backward compatibility, use [`LinearizableReadError`] instead.
+#[deprecated(since = "0.10.0", note = "use `LinearizableReadError` instead")]
 pub type CheckIsLeaderError<C> = LinearizableReadError<C>;
 
 /// Error returned by Raft API methods.
