@@ -11,16 +11,12 @@ use std::time::Duration;
 use crate::async_runtime::Mpsc;
 use crate::async_runtime::MpscReceiver;
 use crate::async_runtime::MpscSender;
-use crate::async_runtime::MpscUnboundedWeakSender;
 use crate::async_runtime::MpscWeakSender;
+use crate::async_runtime::TryRecvError;
 use crate::async_runtime::watch::WatchReceiver;
 use crate::async_runtime::watch::WatchSender;
 use crate::instant::Instant;
 use crate::type_config::async_runtime::AsyncRuntime;
-use crate::type_config::async_runtime::mpsc_unbounded::MpscUnbounded;
-use crate::type_config::async_runtime::mpsc_unbounded::MpscUnboundedReceiver;
-use crate::type_config::async_runtime::mpsc_unbounded::MpscUnboundedSender;
-use crate::type_config::async_runtime::mpsc_unbounded::TryRecvError;
 use crate::type_config::async_runtime::mutex::Mutex;
 use crate::type_config::async_runtime::oneshot::Oneshot;
 use crate::type_config::async_runtime::oneshot::OneshotSender;
@@ -63,13 +59,6 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         Self::test_mpsc_send().await;
         Self::test_mpsc_send_to_closed_channel().await;
         Self::test_mpsc_backpressure().await;
-
-        Self::test_unbounded_mpsc_recv_empty().await;
-        Self::test_unbounded_mpsc_recv_channel_closed().await;
-        Self::test_unbounded_mpsc_weak_sender_wont_prevent_channel_close().await;
-        Self::test_unbounded_mpsc_weak_sender_upgrade().await;
-        Self::test_unbounded_mpsc_send().await;
-        Self::test_unbounded_mpsc_send_to_closed_channel().await;
 
         Self::test_watch_init_value().await;
         Self::test_watch_overwrite_init_value().await;
@@ -400,90 +389,6 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         // Verify remaining items
         assert_eq!(rx.recv().await.unwrap(), 2);
         assert_eq!(rx.recv().await.unwrap(), 3);
-    }
-
-    pub async fn test_unbounded_mpsc_recv_empty() {
-        let (_tx, mut rx) = Rt::MpscUnbounded::channel::<()>();
-        let recv_err = rx.try_recv().unwrap_err();
-        assert!(matches!(recv_err, TryRecvError::Empty));
-    }
-
-    pub async fn test_unbounded_mpsc_recv_channel_closed() {
-        let (_, mut rx) = Rt::MpscUnbounded::channel::<()>();
-        let recv_err = rx.try_recv().unwrap_err();
-        assert!(matches!(recv_err, TryRecvError::Disconnected));
-
-        let recv_result = rx.recv().await;
-        assert!(recv_result.is_none());
-    }
-
-    pub async fn test_unbounded_mpsc_weak_sender_wont_prevent_channel_close() {
-        let (tx, mut rx) = Rt::MpscUnbounded::channel::<()>();
-
-        let _weak_tx = tx.downgrade();
-        drop(tx);
-        let recv_err = rx.try_recv().unwrap_err();
-        assert!(matches!(recv_err, TryRecvError::Disconnected));
-
-        let recv_result = rx.recv().await;
-        assert!(recv_result.is_none());
-    }
-
-    pub async fn test_unbounded_mpsc_weak_sender_upgrade() {
-        let (tx, _rx) = Rt::MpscUnbounded::channel::<()>();
-
-        let weak_tx = tx.downgrade();
-        let opt_tx = weak_tx.upgrade();
-        assert!(opt_tx.is_some());
-
-        drop(tx);
-        drop(opt_tx);
-        // now there is no Sender instances alive
-
-        let opt_tx = weak_tx.upgrade();
-        assert!(opt_tx.is_none());
-    }
-
-    pub async fn test_unbounded_mpsc_send() {
-        let (tx, mut rx) = Rt::MpscUnbounded::channel::<usize>();
-        let tx = Arc::new(tx);
-
-        let n_senders = 10_usize;
-        let recv_expected = (0..n_senders).collect::<Vec<_>>();
-
-        for idx in 0..n_senders {
-            let tx = tx.clone();
-            // no need to wait for senders here, we wait by recv()ing
-            let _handle = Rt::spawn(async move {
-                tx.send(idx).unwrap();
-            });
-        }
-
-        let mut recv = Vec::with_capacity(n_senders);
-        while let Some(recv_number) = rx.recv().await {
-            recv.push(recv_number);
-
-            if recv.len() == n_senders {
-                break;
-            }
-        }
-
-        recv.sort();
-
-        assert_eq!(recv_expected, recv);
-    }
-
-    /// Test that unbounded `send()` returns `SendError` when receiver is dropped.
-    pub async fn test_unbounded_mpsc_send_to_closed_channel() {
-        let (tx, rx) = Rt::MpscUnbounded::channel::<i32>();
-        drop(rx);
-
-        let result = tx.send(42);
-        assert!(result.is_err());
-
-        // Verify the value is returned in the error
-        let err = result.unwrap_err();
-        assert_eq!(err.0, 42);
     }
 
     pub async fn test_watch_init_value() {

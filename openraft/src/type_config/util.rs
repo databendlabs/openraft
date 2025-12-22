@@ -8,7 +8,6 @@ use crate::OptionalSend;
 use crate::OptionalSync;
 use crate::RaftTypeConfig;
 use crate::async_runtime::Mpsc;
-use crate::async_runtime::MpscUnbounded;
 use crate::async_runtime::Oneshot;
 use crate::async_runtime::mutex::Mutex;
 use crate::async_runtime::watch::Watch;
@@ -19,9 +18,6 @@ use crate::type_config::alias::JoinHandleOf;
 use crate::type_config::alias::MpscOf;
 use crate::type_config::alias::MpscReceiverOf;
 use crate::type_config::alias::MpscSenderOf;
-use crate::type_config::alias::MpscUnboundedOf;
-use crate::type_config::alias::MpscUnboundedReceiverOf;
-use crate::type_config::alias::MpscUnboundedSenderOf;
 use crate::type_config::alias::MutexOf;
 use crate::type_config::alias::OneshotOf;
 use crate::type_config::alias::OneshotReceiverOf;
@@ -91,17 +87,6 @@ pub trait TypeConfigExt: RaftTypeConfig {
     fn mpsc<T>(buffer: usize) -> (MpscSenderOf<Self, T>, MpscReceiverOf<Self, T>)
     where T: OptionalSend {
         MpscOf::<Self>::channel(buffer)
-    }
-
-    /// Creates an unbounded mpsc channel for communicating between asynchronous
-    /// tasks without backpressure.
-    ///
-    /// This is just a wrapper of
-    /// [`AsyncRuntime::MpscUnbounded::channel()`](`crate::async_runtime::MpscUnbounded::channel`).
-    #[track_caller]
-    fn mpsc_unbounded<T>() -> (MpscUnboundedSenderOf<Self, T>, MpscUnboundedReceiverOf<Self, T>)
-    where T: OptionalSend {
-        MpscUnboundedOf::<Self>::channel()
     }
 
     /// Creates a watch channel for watching for changes to a value from multiple
