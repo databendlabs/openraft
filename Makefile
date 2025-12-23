@@ -129,5 +129,20 @@ typos:
 
 clean:
 	cargo clean
+	cargo clean --manifest-path multiraft/Cargo.toml
+	cargo clean --manifest-path rt-compio/Cargo.toml
+	cargo clean --manifest-path rt-monoio/Cargo.toml
+	cargo clean --manifest-path benchmarks/minimal/Cargo.toml
+	cargo clean --manifest-path examples/client-http/Cargo.toml
+	cargo clean --manifest-path examples/network-v1-http/Cargo.toml
+	cargo clean --manifest-path examples/mem-log/Cargo.toml
+	cargo clean --manifest-path examples/raft-kv-memstore/Cargo.toml
+	cargo clean --manifest-path examples/raft-kv-memstore-grpc/Cargo.toml
+	cargo clean --manifest-path examples/raft-kv-memstore-network-v2/Cargo.toml
+	cargo clean --manifest-path examples/raft-kv-memstore-opendal-snapshot-data/Cargo.toml
+	cargo clean --manifest-path examples/raft-kv-memstore-singlethreaded/Cargo.toml
+	cargo clean --manifest-path examples/raft-kv-rocksdb/Cargo.toml
+	cargo clean --manifest-path examples/rocksstore/Cargo.toml
+	cargo clean --manifest-path examples/multi-raft-kv/Cargo.toml
 
 .PHONY: test fmt lint clean doc guide
