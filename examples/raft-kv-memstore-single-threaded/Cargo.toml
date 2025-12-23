@@ -1,5 +1,5 @@
 [package]
-name = "raft-kv-memstore-singlethreaded"
+name = "raft-kv-memstore-single-threaded"
 version = "0.1.0"
 readme = "README.md"
 
@@ -16,7 +16,7 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/databendlabs/openraft"
 
 [dependencies]
-openraft = { path = "../../openraft", features = ["serde", "singlethreaded", "type-alias"] }
+openraft = { path = "../../openraft", features = ["serde", "single-threaded", "type-alias"] }
 
 futures            = { version = "0.3" }
 serde              = { version = "1.0.114", features = ["derive"] }

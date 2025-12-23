@@ -5,7 +5,7 @@
 - [feature-flag `runtime-stats`](#feature-flag-runtime-stats)
 - [feature-flag `serde`](#feature-flag-serde)
 - [feature-flag `single-term-leader`](#feature-flag-single-term-leader)
-- [feature-flag `singlethreaded`](#feature-flag-singlethreaded)
+- [feature-flag `single-threaded`](#feature-flag-single-threaded)
 - [feature-flag `tokio-rt`](#feature-flag-tokio-rt)
 - [feature-flag `tracing-log`](#feature-flag-tracing-log)
 - [feature-flag `type-alias`](#feature-flag-type-alias)

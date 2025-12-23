@@ -14,7 +14,7 @@ jobs:
       matrix:
         include:
           - toolchain: 'nightly'
-            features: 'bench,serde,bt,singlethreaded'
+            features: 'bench,serde,bt,single-threaded'
 
     steps:
       - name: Setup | Checkout
@@ -256,7 +256,7 @@ jobs:
             features: 'serde'
 
           - toolchain: 'nightly'
-            features: 'serde,singlethreaded'
+            features: 'serde,single-threaded'
 
     steps:
       - name: Setup | Checkout
@@ -372,7 +372,7 @@ jobs:
           - 'raft-kv-memstore-grpc'
           - 'raft-kv-memstore-network-v2'
           - 'raft-kv-memstore-opendal-snapshot-data'
-          - 'raft-kv-memstore-singlethreaded'
+          - 'raft-kv-memstore-single-threaded'
           - 'raft-kv-rocksdb'
           - 'multi-raft-kv'
 

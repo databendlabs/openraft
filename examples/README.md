@@ -20,7 +20,7 @@ This directory contains example applications demonstrating different implementat
 | [raft-kv-rocksdb] | [rocksstore] | [rocksstore] | HTTP/reqwest([network-v1]) | RaftNetwork | reqwest | actix-web | Persistent storage |
 | [raft-kv-memstore-network-v2] | [mem-log] | in-memory | HTTP/reqwest | RaftNetworkV2 | reqwest | actix-web | Network V2 interface |
 | [raft-kv-memstore-grpc] | [mem-log] | in-memory | gRPC/tonic | RaftNetwork | tonic | tonic | gRPC transport |
-| [raft-kv-memstore-singlethreaded] | [mem-log] | in-memory | HTTP/reqwest | RaftNetwork | reqwest | actix-web | Single-threaded runtime |
+| [raft-kv-memstore-single-threaded] | [mem-log] | in-memory | HTTP/reqwest | RaftNetwork | reqwest | actix-web | Single-threaded runtime |
 | [raft-kv-memstore-opendal-snapshot-data] | [mem-log] | in-memory+OpenDAL | HTTP/reqwest | RaftNetwork | reqwest | actix-web | OpenDAL snapshot storage |
 
 
@@ -45,7 +45,7 @@ Deprecated:
 [raft-kv-rocksdb]: raft-kv-rocksdb/
 [raft-kv-memstore-network-v2]: raft-kv-memstore-network-v2/
 [raft-kv-memstore-grpc]: raft-kv-memstore-grpc/
-[raft-kv-memstore-singlethreaded]: raft-kv-memstore-singlethreaded/
+[raft-kv-memstore-single-threaded]: raft-kv-memstore-single-threaded/
 [raft-kv-memstore-opendal-snapshot-data]: raft-kv-memstore-opendal-snapshot-data/
 [mem-log]: mem-log/
 [rocksstore]: rocksstore/

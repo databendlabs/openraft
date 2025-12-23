@@ -150,10 +150,10 @@ where C: RaftTypeConfig
     }
 }
 
-// AsyncRuntime::spawn is `spawn_local` with singlethreaded enabled.
+// AsyncRuntime::spawn is `spawn_local` with single-threaded enabled.
 // It will result in a panic:
 // `spawn_local` called from outside of a `task::LocalSet`.
-#[cfg(not(feature = "singlethreaded"))]
+#[cfg(not(feature = "single-threaded"))]
 #[cfg(test)]
 mod tests {
     use std::io::Cursor;
