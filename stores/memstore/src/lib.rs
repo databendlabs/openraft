@@ -171,6 +171,10 @@ pub struct MemLogStore {
 
     /// The current hard state.
     vote: RwLock<Option<Vote<TypeConfig>>>,
+
+    /// When set to true, `limited_get_log_entries` will return empty result.
+    /// This is for testing graceful handling of faulty storage implementations.
+    pub return_empty_limited_get: AtomicBool,
 }
 
 impl MemLogStore {
@@ -184,7 +188,14 @@ impl MemLogStore {
             log,
             block,
             vote: RwLock::new(None),
+            return_empty_limited_get: AtomicBool::new(false),
         }
+    }
+
+    /// Set whether `limited_get_log_entries` should return empty results.
+    /// This is for testing graceful handling of faulty storage implementations.
+    pub fn set_return_empty_limited_get(&self, value: bool) {
+        self.return_empty_limited_get.store(value, Ordering::Relaxed);
     }
 }
 
@@ -279,6 +290,18 @@ impl RaftLogReader<TypeConfig> for Arc<MemLogStore> {
 
     async fn read_vote(&mut self) -> Result<Option<Vote<TypeConfig>>, io::Error> {
         Ok(*self.vote.read().await)
+    }
+
+    async fn limited_get_log_entries(&mut self, start: u64, end: u64) -> Result<Vec<Entry<TypeConfig>>, io::Error> {
+        if self.return_empty_limited_get.load(Ordering::Relaxed) {
+            tracing::info!(
+                "limited_get_log_entries({}, {}): returning empty for testing",
+                start,
+                end
+            );
+            return Ok(vec![]);
+        }
+        self.try_get_log_entries(start..end).await
     }
 }
 
