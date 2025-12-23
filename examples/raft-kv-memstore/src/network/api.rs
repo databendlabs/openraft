@@ -3,6 +3,7 @@ use actix_web::web;
 use actix_web::web::Data;
 use actix_web::Responder;
 use client_http::FollowerReadError;
+use openraft::async_runtime::WatchReceiver;
 use openraft::error::decompose::DecomposeResult;
 use openraft::error::Infallible;
 use openraft::error::LinearizableReadError;
@@ -79,7 +80,7 @@ pub async fn follower_read(app: Data<App>, req: Json<String>) -> actix_web::Resu
     };
 
     // 2. Get leader's address from membership config
-    let metrics = app.raft.metrics().borrow().clone();
+    let metrics = app.raft.metrics().borrow_watched().clone();
     let leader_node = match metrics.membership_config.membership().get_node(&leader_id) {
         Some(node) => node,
         None => {

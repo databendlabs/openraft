@@ -4,6 +4,7 @@ use std::time::Duration;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
+use openraft::async_runtime::WatchReceiver;
 use openraft::type_config::TypeConfigExt;
 use openraft_memstore::TypeConfig;
 #[allow(unused_imports)]
@@ -33,12 +34,12 @@ async fn server_metrics_and_data_metrics() -> Result<()> {
     let mut log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
 
     let node = router.get_raft_handle(&0)?;
-    let mut server_metrics = node.server_metrics();
+    let server_metrics = node.server_metrics();
     let data_metrics = node.data_metrics();
 
     let current_leader = router.current_leader(0).await;
     let server_metrics_1 = {
-        let sm = server_metrics.borrow_and_update();
+        let sm = server_metrics.borrow_watched();
         sm.clone()
     };
     let leader = server_metrics_1.current_leader;
@@ -51,19 +52,13 @@ async fn server_metrics_and_data_metrics() -> Result<()> {
 
     router.wait(&0, timeout()).applied_index(Some(log_index), "applied log index").await?;
 
-    let last_log_index = data_metrics.borrow().last_log.map(|x| x.index()).unwrap_or_default();
+    let last_log_index = data_metrics.borrow_watched().last_log.map(|x| x.index()).unwrap_or_default();
     assert_eq!(last_log_index, log_index, "last_log_index should be {:?}", log_index);
 
-    let sm = server_metrics.borrow();
-    let server_metrics_2 = sm.clone();
+    let server_metrics_2 = server_metrics.borrow_watched().clone();
 
-    // TODO: flaky fail, find out why.
-    assert!(
-        !sm.has_changed(),
-        "server metrics should not update, but {:?} --> {:?}",
-        server_metrics_1,
-        server_metrics_2
-    );
+    // Server metrics should not change when only data (logs) are written.
+    assert_eq!(server_metrics_1, server_metrics_2, "server metrics should not update");
     Ok(())
 }
 
@@ -121,7 +116,7 @@ async fn heartbeat_metrics() -> Result<()> {
         );
         TypeConfig::sleep(Duration::from_millis(500)).await;
 
-        let metrics = leader.metrics().borrow().clone();
+        let metrics = leader.metrics().borrow_watched().clone();
         let heartbeat = metrics
             .heartbeat
             .as_ref()
@@ -135,7 +130,7 @@ async fn heartbeat_metrics() -> Result<()> {
         TypeConfig::sleep(Duration::from_millis(500)).await;
 
         let metrics = leader.metrics();
-        let metrics_ref = metrics.borrow();
+        let metrics_ref = metrics.borrow_watched();
         let heartbeat = metrics_ref
             .heartbeat
             .as_ref()

@@ -162,6 +162,7 @@ mod tests {
 
     use crate::OptionalSend;
     use crate::RaftTypeConfig;
+    use crate::async_runtime::MpscReceiver;
     use crate::core::Tick;
     use crate::impls::TokioRuntime;
     use crate::type_config::TypeConfigExt;

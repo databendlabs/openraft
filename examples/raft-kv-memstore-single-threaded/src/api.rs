@@ -3,6 +3,7 @@
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
+use openraft::async_runtime::WatchReceiver;
 use openraft::error::Infallible;
 use openraft::BasicNode;
 use openraft::ReadPolicy;
@@ -87,7 +88,7 @@ pub async fn init(app: &mut App) -> String {
 
 /// Get the latest metrics of the cluster
 pub async fn metrics(app: &mut App) -> String {
-    let metrics = app.raft.metrics().borrow().clone();
+    let metrics = app.raft.metrics().borrow_watched().clone();
 
     let res: Result<RaftMetrics, Infallible> = Ok(metrics);
     encode(res)

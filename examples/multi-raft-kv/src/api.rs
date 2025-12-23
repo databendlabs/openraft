@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
+use openraft::async_runtime::WatchReceiver;
 use openraft::raft::TransferLeaderRequest;
 use openraft::BasicNode;
 use openraft::ReadPolicy;
@@ -104,7 +105,7 @@ pub async fn init(app: &mut GroupApp) -> String {
 
 /// Get the latest metrics of this Raft group
 pub async fn metrics(app: &mut GroupApp) -> String {
-    let metrics = app.raft.metrics().borrow().clone();
+    let metrics = app.raft.metrics().borrow_watched().clone();
 
     let res: Result<RaftMetrics, Infallible> = Ok(metrics);
     encode(res)

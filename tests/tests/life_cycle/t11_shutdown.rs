@@ -4,6 +4,7 @@ use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
 use openraft::ServerState;
+use openraft::async_runtime::WatchReceiver;
 use openraft::error::Fatal;
 
 use crate::fixtures::RaftRouter;
@@ -30,7 +31,7 @@ async fn shutdown() -> Result<()> {
             let (node, _, _) = router.remove_node(i).unwrap();
             node.shutdown().await?;
             let m = node.metrics();
-            assert_eq!(ServerState::Shutdown, m.borrow().state, "shutdown node-{}", i);
+            assert_eq!(ServerState::Shutdown, m.borrow_watched().state, "shutdown node-{}", i);
         }
     }
 

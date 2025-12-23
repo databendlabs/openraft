@@ -16,6 +16,7 @@ use multi_raft_kv::router::Router;
 use multi_raft_kv::store::Request;
 use multi_raft_kv::typ;
 use multi_raft_kv::GroupId;
+use openraft::async_runtime::WatchReceiver;
 use openraft::BasicNode;
 use tokio::task;
 use tokio::task::LocalSet;
@@ -145,7 +146,7 @@ async fn run_test(node1_rafts: &[typ::Raft], node2_rafts: &[typ::Raft], group_id
     println!("\n=== Verifying replication to Node 2 ===\n");
 
     for (i, raft) in node2_rafts.iter().enumerate() {
-        let metrics = raft.metrics().borrow().clone();
+        let metrics = raft.metrics().borrow_watched().clone();
         println!(
             "  Group '{}' on Node 2: last_applied={:?}",
             group_ids[i], metrics.last_applied
@@ -236,9 +237,9 @@ async fn run_leader_distribution_test(
     // Verify distribution
     println!("\n=== Verifying leader distribution ===\n");
 
-    let users_leader = node1_rafts[0].metrics().borrow().current_leader;
-    let orders_leader = node2_rafts[1].metrics().borrow().current_leader;
-    let products_leader = node3_rafts[2].metrics().borrow().current_leader;
+    let users_leader = node1_rafts[0].metrics().borrow_watched().current_leader;
+    let orders_leader = node2_rafts[1].metrics().borrow_watched().current_leader;
+    let products_leader = node3_rafts[2].metrics().borrow_watched().current_leader;
 
     println!("  Group 'users':    leader = {:?}", users_leader);
     println!("  Group 'orders':   leader = {:?}", orders_leader);

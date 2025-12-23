@@ -5,6 +5,7 @@ use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
 use openraft::Instant;
+use openraft::async_runtime::WatchReceiver;
 use openraft::type_config::TypeConfigExt;
 use openraft_memstore::TypeConfig;
 
@@ -33,11 +34,11 @@ async fn leader_last_ack_3_nodes() -> Result<()> {
     let log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
 
     let n0 = router.get_raft_handle(&0)?;
-    let millis = n0.metrics().borrow().millis_since_quorum_ack;
+    let millis = n0.metrics().borrow_watched().millis_since_quorum_ack;
     assert!(millis >= Some(0));
 
     {
-        let millis = n0.data_metrics().borrow().millis_since_quorum_ack;
+        let millis = n0.data_metrics().borrow_watched().millis_since_quorum_ack;
         assert!(millis >= Some(0));
     }
 
@@ -45,7 +46,7 @@ async fn leader_last_ack_3_nodes() -> Result<()> {
     {
         TypeConfig::sleep(Duration::from_millis(500)).await;
 
-        let greater = n0.metrics().borrow().millis_since_quorum_ack;
+        let greater = n0.metrics().borrow_watched().millis_since_quorum_ack;
         println!("greater: {:?}", greater);
         assert!(greater > millis);
         assert!(
@@ -139,11 +140,11 @@ async fn leader_last_ack_3_nodes_abs_time() -> Result<()> {
     TypeConfig::sleep(Duration::from_millis(100)).await;
 
     let n0 = router.get_raft_handle(&0)?;
-    let last_acked = n0.metrics().borrow().last_quorum_acked;
+    let last_acked = n0.metrics().borrow_watched().last_quorum_acked;
     assert!(last_acked.as_deref() <= Some(&TypeConfig::now()));
 
     {
-        let last_acked = n0.data_metrics().borrow().last_quorum_acked;
+        let last_acked = n0.data_metrics().borrow_watched().last_quorum_acked;
         assert!(last_acked.as_deref() <= Some(&TypeConfig::now()));
     }
 
@@ -151,7 +152,7 @@ async fn leader_last_ack_3_nodes_abs_time() -> Result<()> {
     {
         TypeConfig::sleep(Duration::from_millis(500)).await;
 
-        let acked2 = n0.metrics().borrow().last_quorum_acked;
+        let acked2 = n0.metrics().borrow_watched().last_quorum_acked;
         println!("greater: {:?}", acked2);
         assert_eq!(acked2, last_acked);
     }
@@ -237,22 +238,22 @@ async fn leader_last_ack_1_node() -> Result<()> {
 
     let n0 = router.get_raft_handle(&0)?;
 
-    let millis = n0.metrics().borrow().millis_since_quorum_ack;
+    let millis = n0.metrics().borrow_watched().millis_since_quorum_ack;
     assert_eq!(millis, Some(0), "it is always acked for single leader");
 
     {
-        let millis = n0.data_metrics().borrow().millis_since_quorum_ack;
+        let millis = n0.data_metrics().borrow_watched().millis_since_quorum_ack;
         assert_eq!(millis, Some(0), "it is always acked for single leader");
     }
 
-    let last_acked = n0.metrics().borrow().last_quorum_acked;
+    let last_acked = n0.metrics().borrow_watched().last_quorum_acked;
     assert!(
         last_acked.unwrap().elapsed() < Duration::from_millis(100),
         "it is always acked for single leader"
     );
 
     {
-        let last_acked = n0.metrics().borrow().last_quorum_acked;
+        let last_acked = n0.metrics().borrow_watched().last_quorum_acked;
         assert!(
             last_acked.unwrap().elapsed() < Duration::from_millis(100),
             "it is always acked for single leader"

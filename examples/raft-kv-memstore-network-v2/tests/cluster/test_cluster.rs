@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use std::panic::PanicHookInfo;
 use std::time::Duration;
 
+use openraft::async_runtime::WatchReceiver;
 use openraft::BasicNode;
 use raft_kv_memstore_network_v2::new_raft;
 use raft_kv_memstore_network_v2::router::Router;
@@ -107,7 +108,7 @@ async fn run_test(rafts: &[typ::Raft], router: Router) {
 
     println!("=== metrics after building snapshot");
     {
-        let metrics = raft1.metrics().borrow().clone();
+        let metrics = raft1.metrics().borrow_watched().clone();
         println!("node 1 metrics: {:#?}", metrics);
         assert_eq!(Some(3), metrics.snapshot.map(|x| x.index));
         assert_eq!(Some(3), metrics.purged.map(|x| x.index));
@@ -125,7 +126,7 @@ async fn run_test(rafts: &[typ::Raft], router: Router) {
 
     println!("=== metrics of node 2 that received snapshot");
     {
-        let metrics = raft2.metrics().borrow().clone();
+        let metrics = raft2.metrics().borrow_watched().clone();
         println!("node 2 metrics: {:#?}", metrics);
         assert_eq!(Some(3), metrics.snapshot.map(|x| x.index));
         assert_eq!(Some(3), metrics.purged.map(|x| x.index));

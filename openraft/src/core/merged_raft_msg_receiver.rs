@@ -195,6 +195,7 @@ where C: RaftTypeConfig
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::async_runtime::MpscSender;
     use crate::base::Batch;
     use crate::engine::testing::UTConfig;
     use crate::engine::testing::log_id;

@@ -4,6 +4,7 @@ use std::time::Duration;
 use maplit::btreeset;
 use openraft::Config;
 use openraft::ServerState;
+use openraft::async_runtime::WatchReceiver;
 use openraft::raft::TransferLeaderRequest;
 
 use crate::fixtures::RaftRouter;
@@ -34,7 +35,7 @@ async fn transfer_leader() -> anyhow::Result<()> {
     let n1 = router.get_raft_handle(&1)?;
     let n2 = router.get_raft_handle(&2)?;
 
-    let metrics = n0.metrics().borrow().clone();
+    let metrics = n0.metrics().borrow_watched().clone();
     let leader_vote = metrics.vote;
     let last_log_id = metrics.last_applied;
 

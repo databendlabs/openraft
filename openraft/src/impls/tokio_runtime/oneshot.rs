@@ -1,11 +1,14 @@
 use crate::OptionalSend;
+use crate::async_runtime::OneshotSender;
 use crate::async_runtime::oneshot;
-use crate::type_config::OneshotSender;
 
 pub struct TokioOneshot;
 
+/// Wrapper around `tokio::sync::oneshot::Sender` to implement the `OneshotSender` trait.
+pub struct TokioOneshotSender<T>(tokio::sync::oneshot::Sender<T>);
+
 impl oneshot::Oneshot for TokioOneshot {
-    type Sender<T: OptionalSend> = tokio::sync::oneshot::Sender<T>;
+    type Sender<T: OptionalSend> = TokioOneshotSender<T>;
     type Receiver<T: OptionalSend> = tokio::sync::oneshot::Receiver<T>;
     type ReceiverError = tokio::sync::oneshot::error::RecvError;
 
@@ -13,15 +16,15 @@ impl oneshot::Oneshot for TokioOneshot {
     fn channel<T>() -> (Self::Sender<T>, Self::Receiver<T>)
     where T: OptionalSend {
         let (tx, rx) = tokio::sync::oneshot::channel();
-        (tx, rx)
+        (TokioOneshotSender(tx), rx)
     }
 }
 
-impl<T> OneshotSender<T> for tokio::sync::oneshot::Sender<T>
+impl<T> OneshotSender<T> for TokioOneshotSender<T>
 where T: OptionalSend
 {
     #[inline]
     fn send(self, t: T) -> Result<(), T> {
-        self.send(t)
+        self.0.send(t)
     }
 }

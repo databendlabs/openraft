@@ -2,8 +2,8 @@
 
 use std::future::Future;
 
-use openraft::type_config::async_runtime::mutex;
-use openraft::OptionalSend;
+use openraft_rt::mutex;
+use openraft_rt::OptionalSend;
 
 pub struct TokioMutex<T>(tokio::sync::Mutex<T>);
 

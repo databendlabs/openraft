@@ -64,6 +64,7 @@ split-debuginfo = "packed"
 resolver = "3"
 
 members = [
+    "rt",
     "openraft",
     "macros",
     "tests",

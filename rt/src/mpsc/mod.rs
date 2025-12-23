@@ -5,12 +5,11 @@ mod try_recv_error;
 
 use std::future::Future;
 
-use base::OptionalSend;
-use base::OptionalSync;
 pub use send_error::SendError;
 pub use try_recv_error::TryRecvError;
 
-use crate::base;
+use crate::OptionalSend;
+use crate::OptionalSync;
 
 /// Multi-producer, single-consumer channel.
 pub trait Mpsc: Sized + OptionalSend {

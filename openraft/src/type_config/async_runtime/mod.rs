@@ -2,116 +2,30 @@
 //!
 //! `async` runtime is an abstraction over different asynchronous runtimes, such as `tokio`,
 //! `async-std`, etc.
+//!
+//! This module re-exports types from the `openraft-async-runtime` crate.
 
-pub mod instant;
-pub mod mpsc;
-pub mod mutex;
-pub mod oneshot;
-pub mod watch;
+// Re-export all public items from openraft-async-runtime
+pub use openraft_rt::AsyncRuntime;
+pub use openraft_rt::Instant;
+pub use openraft_rt::Mpsc;
+pub use openraft_rt::MpscReceiver;
+pub use openraft_rt::MpscSender;
+pub use openraft_rt::MpscWeakSender;
+pub use openraft_rt::Mutex;
+pub use openraft_rt::Oneshot;
+pub use openraft_rt::OneshotSender;
+pub use openraft_rt::RecvError;
+pub use openraft_rt::SendError;
+pub use openraft_rt::TryRecvError;
+pub use openraft_rt::Watch;
+pub use openraft_rt::WatchReceiver;
+pub use openraft_rt::WatchSender;
+pub use openraft_rt::instant;
+pub use openraft_rt::mpsc;
+pub use openraft_rt::mutex;
+pub use openraft_rt::oneshot;
+pub use openraft_rt::watch;
 
-use std::fmt::Debug;
-use std::fmt::Display;
-use std::future::Future;
-use std::time::Duration;
-
-pub use instant::Instant;
-pub use mpsc::Mpsc;
-pub use mpsc::MpscReceiver;
-pub use mpsc::MpscSender;
-pub use mpsc::MpscWeakSender;
-pub use mpsc::SendError;
-pub use mpsc::TryRecvError;
-pub use mutex::Mutex;
-pub use oneshot::Oneshot;
-pub use oneshot::OneshotSender;
-pub use watch::Watch;
-
-use crate::OptionalSend;
-use crate::OptionalSync;
 #[cfg(feature = "tokio-rt")]
 pub use crate::impls::tokio_runtime::TokioInstant;
-
-/// A trait defining interfaces with an asynchronous runtime.
-///
-/// The intention of this trait is to allow an application using this crate to bind an asynchronous
-/// runtime that suits it the best.
-///
-/// Some additional related functions are also exposed by this trait.
-///
-/// ## Note
-///
-/// The default asynchronous runtime is `tokio`.
-pub trait AsyncRuntime: Debug + Default + PartialEq + Eq + OptionalSend + OptionalSync + 'static {
-    /// The error type of [`Self::JoinHandle`].
-    type JoinError: Debug + Display + OptionalSend;
-
-    /// The return type of [`Self::spawn`].
-    type JoinHandle<T: OptionalSend + 'static>: Future<Output = Result<T, Self::JoinError>>
-        + OptionalSend
-        + OptionalSync
-        + Unpin;
-
-    /// The type that enables the user to sleep in an asynchronous runtime.
-    type Sleep: Future<Output = ()> + OptionalSend + OptionalSync;
-
-    /// A measurement of a monotonically non-decreasing clock.
-    type Instant: Instant;
-
-    /// The timeout error type.
-    type TimeoutError: Debug + Display + OptionalSend;
-
-    /// The timeout type used by [`Self::timeout`] and [`Self::timeout_at`] that enables the user
-    /// to await the outcome of a [`Future`].
-    type Timeout<R, T: Future<Output = R> + OptionalSend>: Future<Output = Result<R, Self::TimeoutError>> + OptionalSend;
-
-    /// Type of thread-local random number generator.
-    type ThreadLocalRng: rand::Rng;
-
-    /// Spawn a new task.
-    #[track_caller]
-    fn spawn<T>(future: T) -> Self::JoinHandle<T::Output>
-    where
-        T: Future + OptionalSend + 'static,
-        T::Output: OptionalSend + 'static;
-
-    /// Wait until `duration` has elapsed.
-    #[track_caller]
-    fn sleep(duration: Duration) -> Self::Sleep;
-
-    /// Wait until `deadline` is reached.
-    #[track_caller]
-    fn sleep_until(deadline: Self::Instant) -> Self::Sleep;
-
-    /// Require a [`Future`] to complete before the specified duration has elapsed.
-    #[track_caller]
-    fn timeout<R, F: Future<Output = R> + OptionalSend>(duration: Duration, future: F) -> Self::Timeout<R, F>;
-
-    /// Require a [`Future`] to complete before the specified instant in time.
-    #[track_caller]
-    fn timeout_at<R, F: Future<Output = R> + OptionalSend>(deadline: Self::Instant, future: F) -> Self::Timeout<R, F>;
-
-    /// Check if the [`Self::JoinError`] is `panic`.
-    #[track_caller]
-    fn is_panic(join_error: &Self::JoinError) -> bool;
-
-    /// Get the random number generator to use for generating random numbers.
-    ///
-    /// # Note
-    ///
-    /// This is a per-thread instance, which cannot be shared across threads or
-    /// sent to another thread.
-    #[track_caller]
-    fn thread_rng() -> Self::ThreadLocalRng;
-
-    /// The bounded MPSC channel implementation.
-    type Mpsc: Mpsc;
-
-    /// The watch channel implementation.
-    type Watch: Watch;
-
-    /// The oneshot channel implementation.
-    type Oneshot: Oneshot;
-
-    /// The async mutex implementation.
-    type Mutex<T: OptionalSend + 'static>: Mutex<T>;
-}
