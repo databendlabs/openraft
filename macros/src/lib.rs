@@ -22,7 +22,7 @@ use syn::token::RArrow;
 /// By default, `Send` bounds will be added to the trait and to the return bounds of any async
 /// functions defined within the trait.
 ///
-/// If the `singlethreaded` feature is enabled, the trait definition remains the same without any
+/// If the `single-threaded` feature is enabled, the trait definition remains the same without any
 /// added `Send` bounds.
 ///
 /// # Example
@@ -51,7 +51,7 @@ use syn::token::RArrow;
 /// This proc macro will panic if used on anything other than trait definitions.
 #[proc_macro_attribute]
 pub fn add_async_trait(_attr: TokenStream, item: TokenStream) -> TokenStream {
-    if cfg!(feature = "singlethreaded") {
+    if cfg!(feature = "single-threaded") {
         allow_non_send_bounds(item)
     } else {
         add_send_bounds(item)
@@ -60,7 +60,7 @@ pub fn add_async_trait(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
 fn allow_non_send_bounds(item: TokenStream) -> TokenStream {
     // `async_fn_in_trait` requires the user to explicitly specify the `Send` bound for public
-    // trait methods, however the `singlethreaded` feature renders the requirement irrelevant.
+    // trait methods, however the `single-threaded` feature renders the requirement irrelevant.
     let item: proc_macro2::TokenStream = item.into();
     quote! {
         #[allow(async_fn_in_trait)]

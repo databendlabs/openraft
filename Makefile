@@ -5,14 +5,14 @@ check_all: lint fmt doc unused_dep typos
 compile:
 	cargo test --lib
 	cargo test --test '*'
-	cargo test --features singlethreaded --lib
+	cargo test --features single-threaded --lib
 
 basic_check:
 	cargo fmt
 	cargo clippy --no-deps --all-targets --fix --allow-dirty --allow-staged
 	cargo test --lib
 	cargo test --test '*'
-	cargo test --features singlethreaded --lib
+	cargo test --features single-threaded --lib
 	cargo clippy --no-deps --all-targets -- -D warnings
 	RUSTDOCFLAGS="-D warnings" cargo doc --document-private-items --all --no-deps
 	# test result in different output on CI are ignored and only run locally
@@ -44,7 +44,7 @@ test-examples:
 	cargo test --manifest-path examples/raft-kv-memstore-grpc/Cargo.toml
 	cargo test --manifest-path examples/raft-kv-memstore-network-v2/Cargo.toml
 	cargo test --manifest-path examples/raft-kv-memstore-opendal-snapshot-data/Cargo.toml
-	cargo test --manifest-path examples/raft-kv-memstore-singlethreaded/Cargo.toml
+	cargo test --manifest-path examples/raft-kv-memstore-single-threaded/Cargo.toml
 	cargo test --manifest-path examples/raft-kv-rocksdb/Cargo.toml
 	cargo test --manifest-path examples/rocksstore/Cargo.toml
 	cargo test --manifest-path examples/multi-raft-kv/Cargo.toml
@@ -97,7 +97,7 @@ lint:
 	cargo fmt --manifest-path examples/mem-log/Cargo.toml
 	cargo fmt --manifest-path examples/raft-kv-memstore-network-v2/Cargo.toml
 	cargo fmt --manifest-path examples/raft-kv-memstore-opendal-snapshot-data/Cargo.toml
-	cargo fmt --manifest-path examples/raft-kv-memstore-singlethreaded/Cargo.toml
+	cargo fmt --manifest-path examples/raft-kv-memstore-single-threaded/Cargo.toml
 	cargo fmt --manifest-path examples/raft-kv-memstore/Cargo.toml
 	cargo fmt --manifest-path examples/raft-kv-rocksdb/Cargo.toml
 	cargo fmt --manifest-path examples/multi-raft-kv/Cargo.toml
@@ -108,7 +108,7 @@ lint:
 	cargo clippy --no-deps --manifest-path examples/mem-log/Cargo.toml                                --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/raft-kv-memstore-network-v2/Cargo.toml            --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/raft-kv-memstore-opendal-snapshot-data/Cargo.toml --all-targets -- -D warnings
-	cargo clippy --no-deps --manifest-path examples/raft-kv-memstore-singlethreaded/Cargo.toml        --all-targets -- -D warnings
+	cargo clippy --no-deps --manifest-path examples/raft-kv-memstore-single-threaded/Cargo.toml        --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/raft-kv-memstore/Cargo.toml                       --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/raft-kv-rocksdb/Cargo.toml                        --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/multi-raft-kv/Cargo.toml                          --all-targets -- -D warnings
@@ -140,7 +140,7 @@ clean:
 	cargo clean --manifest-path examples/raft-kv-memstore-grpc/Cargo.toml
 	cargo clean --manifest-path examples/raft-kv-memstore-network-v2/Cargo.toml
 	cargo clean --manifest-path examples/raft-kv-memstore-opendal-snapshot-data/Cargo.toml
-	cargo clean --manifest-path examples/raft-kv-memstore-singlethreaded/Cargo.toml
+	cargo clean --manifest-path examples/raft-kv-memstore-single-threaded/Cargo.toml
 	cargo clean --manifest-path examples/raft-kv-rocksdb/Cargo.toml
 	cargo clean --manifest-path examples/rocksstore/Cargo.toml
 	cargo clean --manifest-path examples/multi-raft-kv/Cargo.toml

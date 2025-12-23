@@ -5,8 +5,8 @@
 //!
 //! ## Key Traits
 //!
-//! - [`OptionalSend`] - `Send` when not `singlethreaded`, empty otherwise
-//! - [`OptionalSync`] - `Sync` when not `singlethreaded`, empty otherwise
+//! - [`OptionalSend`] - `Send` when not `single-threaded`, empty otherwise
+//! - [`OptionalSync`] - `Sync` when not `single-threaded`, empty otherwise
 //! - [`OptionalSerde`] - Serde traits when `serde` feature enabled
 //! - [`OptionalFeatures`] - Combines all optional traits
 //!
@@ -21,7 +21,7 @@
 //!
 //! These types allow Openraft to be used in:
 //! - **Multi-threaded** contexts (default): Types are `Send` + `Sync`
-//! - **Single-threaded** contexts (feature `singlethreaded`): No `Send` + `Sync` bounds
+//! - **Single-threaded** contexts (feature `single-threaded`): No `Send` + `Sync` bounds
 //! - **With/without serde** (feature `serde`): Optional serialization support
 //!
 //! Applications rarely need to use these types directly - they're used internally
@@ -44,7 +44,7 @@ pub use threaded::BoxStream;
 pub use threaded::OptionalSend;
 pub use threaded::OptionalSync;
 
-#[cfg(not(feature = "singlethreaded"))]
+#[cfg(not(feature = "single-threaded"))]
 mod threaded {
     use std::any::Any;
     use std::future::Future;
@@ -52,12 +52,12 @@ mod threaded {
 
     use futures::Stream;
 
-    /// A trait that is empty if the `singlethreaded` feature flag is enabled,
+    /// A trait that is empty if the `single-threaded` feature flag is enabled,
     /// otherwise it extends `Send`.
     pub trait OptionalSend: Send {}
     impl<T: Send + ?Sized> OptionalSend for T {}
 
-    /// A trait that is empty if the `singlethreaded` feature flag is enabled,
+    /// A trait that is empty if the `single-threaded` feature flag is enabled,
     /// otherwise it extends `Sync`.
     pub trait OptionalSync: Sync {}
     impl<T: Sync + ?Sized> OptionalSync for T {}
@@ -78,7 +78,7 @@ mod threaded {
     pub type BoxAny = Box<dyn Any + Send>;
 }
 
-#[cfg(feature = "singlethreaded")]
+#[cfg(feature = "single-threaded")]
 mod threaded {
     use std::any::Any;
     use std::future::Future;
@@ -86,12 +86,12 @@ mod threaded {
 
     use futures::Stream;
 
-    /// A trait that is empty if the `singlethreaded` feature flag is enabled,
+    /// A trait that is empty if the `single-threaded` feature flag is enabled,
     /// otherwise it extends `Send`.
     pub trait OptionalSend {}
     impl<T: ?Sized> OptionalSend for T {}
 
-    /// A trait that is empty if the `singlethreaded` feature flag is enabled,
+    /// A trait that is empty if the `single-threaded` feature flag is enabled,
     /// otherwise it extends `Sync`.
     pub trait OptionalSync {}
     impl<T: ?Sized> OptionalSync for T {}

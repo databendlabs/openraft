@@ -32,6 +32,12 @@ compile_error!(
      Use `Config::allow_log_reversion` instead."
 );
 
+#[cfg(feature = "singlethreaded")]
+compile_error!(
+    "The feature flag `singlethreaded` is renamed to `single-threaded`. \
+     Please update your Cargo.toml to use `single-threaded` instead."
+);
+
 pub extern crate openraft_macros;
 
 mod change_members;

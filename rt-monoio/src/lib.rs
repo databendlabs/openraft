@@ -15,8 +15,8 @@
 //!
 //! 1. For the Openraft dependency used with this crate
 //!    1. You can disable the `default` feature as you don't need the built-in Tokio runtime.
-//!    2. The `singlethreaded` feature needs to be enabled or this crate won't work.
-//! 2. With the `singlethreaded` feature enabled, the handle type [`Raft`](openraft::Raft) will be
+//!    2. The `single-threaded` feature needs to be enabled or this crate won't work.
+//! 2. With the `single-threaded` feature enabled, the handle type [`Raft`](openraft::Raft) will be
 //!    no longer [`Send`] and [`Sync`].
 //! 3. Even though this crate allows you to use Monoio, it still uses some primitives from Tokio
 //!    1. `Watch`: Monoio (or `local_sync`) does not have a watch channel.

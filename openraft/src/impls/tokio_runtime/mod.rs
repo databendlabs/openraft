@@ -35,11 +35,11 @@ impl AsyncRuntime for TokioRuntime {
         T: Future + OptionalSend + 'static,
         T::Output: OptionalSend + 'static,
     {
-        #[cfg(feature = "singlethreaded")]
+        #[cfg(feature = "single-threaded")]
         {
             tokio::task::spawn_local(future)
         }
-        #[cfg(not(feature = "singlethreaded"))]
+        #[cfg(not(feature = "single-threaded"))]
         {
             tokio::task::spawn(future)
         }
@@ -87,8 +87,8 @@ mod tests {
     use crate::testing::runtime::Suite;
 
     #[test]
-    #[cfg(not(feature = "singlethreaded"))]
-    fn test_tokio_rt_not_singlethreaded() {
+    #[cfg(not(feature = "single-threaded"))]
+    fn test_tokio_rt_not_single_threaded() {
         let rt = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(8)
             .enable_all()
@@ -99,8 +99,8 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "singlethreaded")]
-    fn test_tokio_rt_singlethreaded() {
+    #[cfg(feature = "single-threaded")]
+    fn test_tokio_rt_single_threaded() {
         let rt = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(8)
             .enable_all()
