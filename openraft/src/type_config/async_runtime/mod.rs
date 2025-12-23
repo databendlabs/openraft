@@ -3,13 +3,6 @@
 //! `async` runtime is an abstraction over different asynchronous runtimes, such as `tokio`,
 //! `async-std`, etc.
 
-pub(crate) mod tokio_impls {
-    #![cfg(feature = "tokio-rt")]
-
-    mod tokio_runtime;
-    pub use tokio_runtime::TokioInstant;
-    pub use tokio_runtime::TokioRuntime;
-}
 pub mod instant;
 pub mod mpsc;
 pub mod mutex;
@@ -31,12 +24,12 @@ pub use mpsc::TryRecvError;
 pub use mutex::Mutex;
 pub use oneshot::Oneshot;
 pub use oneshot::OneshotSender;
-#[cfg(feature = "tokio-rt")]
-pub use tokio_impls::TokioInstant;
 pub use watch::Watch;
 
 use crate::OptionalSend;
 use crate::OptionalSync;
+#[cfg(feature = "tokio-rt")]
+pub use crate::impls::tokio_runtime::TokioInstant;
 
 /// A trait defining interfaces with an asynchronous runtime.
 ///
