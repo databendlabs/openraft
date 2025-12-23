@@ -1,5 +1,6 @@
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::thread::sleep_until;
 use std::time::Duration;
 
 use futures::FutureExt;
@@ -253,11 +254,29 @@ where
             // limited_get_log_entries will return logs smaller than the range [start, end).
             let logs = self.log_reader.limited_get_log_entries(start, end).await.sto_read_logs()?;
 
+            // Handle empty result gracefully: treat as heartbeat.
+            // This violates the API contract but we don't panic.
+            // We sleep briefly to avoid a tight loop since the log_id_range won't advance.
+            if logs.is_empty() {
+                let sleep_duration = Duration::from_millis(10);
+                tracing::warn!(
+                    "limited_get_log_entries({}, {}) returned empty; \
+                     this violates the API contract but is handled gracefully as a heartbeat. \
+                     Sleeping {:?} to avoid tight loop.",
+                    start,
+                    end,
+                    sleep_duration
+                );
+                C::sleep(sleep_duration).await;
+                let r = LogIdRange::new(rng.prev.clone(), rng.prev.clone());
+                return Ok((vec![], r));
+            }
+
             let first = logs.first().map(|ent| ent.ref_log_id()).unwrap();
             let last = logs.last().map(|ent| ent.log_id()).unwrap();
 
             debug_assert!(
-                !logs.is_empty() && logs.len() <= (end - start) as usize,
+                logs.len() <= (end - start) as usize,
                 "expect logs ⊆ [{}..{}) but got {} entries, first: {}, last: {}",
                 start,
                 end,

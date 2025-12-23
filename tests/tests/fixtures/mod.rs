@@ -665,6 +665,14 @@ impl TypedRaftRouter {
         Ok((x.1, x.2))
     }
 
+    /// Set whether `limited_get_log_entries` should return empty results for a node.
+    /// This is for testing graceful handling of faulty storage implementations.
+    pub fn set_return_empty_limited_get(&self, node_id: &MemNodeId, value: bool) -> anyhow::Result<()> {
+        let (log_store, _) = self.get_storage_handle(node_id)?;
+        log_store.set_return_empty_limited_get(value);
+        Ok(())
+    }
+
     pub fn wait(&self, node_id: &MemNodeId, timeout: Option<Duration>) -> Wait<MemConfig> {
         let node = {
             let rt = self.nodes.lock().unwrap();

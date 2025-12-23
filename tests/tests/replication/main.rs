@@ -5,6 +5,7 @@
 mod fixtures;
 
 mod t10_append_entries_partial_success;
+mod t20_empty_log_entries;
 mod t50_append_entries_backoff;
 mod t50_append_entries_backoff_rejoin;
 mod t60_feature_loosen_follower_log_revert;
