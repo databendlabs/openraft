@@ -12,8 +12,8 @@ pub use compio;
 pub use futures;
 use futures::FutureExt;
 pub use openraft;
-use openraft::AsyncRuntime;
-use openraft::OptionalSend;
+use openraft_rt::AsyncRuntime;
+use openraft_rt::OptionalSend;
 pub use rand;
 use rand::rngs::ThreadRng;
 

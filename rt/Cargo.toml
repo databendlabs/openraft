@@ -1,0 +1,23 @@
+[package]
+name = "openraft-rt"
+readme = "../README.md"
+
+version       = { workspace = true }
+edition       = { workspace = true }
+authors       = { workspace = true }
+categories    = { workspace = true }
+description   = "Async runtime abstraction traits for Openraft"
+documentation = { workspace = true }
+homepage      = { workspace = true }
+keywords      = { workspace = true }
+license       = { workspace = true }
+repository    = { workspace = true }
+
+[features]
+default = []
+single-threaded = ["openraft-macros/singlethreaded"]
+
+[dependencies]
+futures         = { workspace = true }
+openraft-macros = { version = "0.10", path = "../macros" }
+rand            = { workspace = true }

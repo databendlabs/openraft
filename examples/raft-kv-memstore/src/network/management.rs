@@ -6,6 +6,7 @@ use actix_web::post;
 use actix_web::web::Data;
 use actix_web::web::Json;
 use actix_web::Responder;
+use openraft::async_runtime::WatchReceiver;
 use openraft::error::decompose::DecomposeResult;
 use openraft::error::Infallible;
 use openraft::BasicNode;
@@ -68,7 +69,7 @@ pub async fn init(app: Data<App>, req: Json<Vec<(NodeId, String)>>) -> actix_web
 /// Get the latest metrics of the cluster
 #[get("/metrics")]
 pub async fn metrics(app: Data<App>) -> actix_web::Result<impl Responder> {
-    let metrics = app.raft.metrics().borrow().clone();
+    let metrics = app.raft.metrics().borrow_watched().clone();
 
     let res: Result<RaftMetrics<TypeConfig>, Infallible> = Ok(metrics);
     Ok(Json(res))

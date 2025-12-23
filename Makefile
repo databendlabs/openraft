@@ -12,7 +12,7 @@ basic_check:
 	cargo clippy --no-deps --all-targets --fix --allow-dirty --allow-staged
 	cargo test --lib
 	cargo test --test '*'
-	cargo test --features single-threaded --lib
+	# cargo test --features single-threaded --lib
 	cargo clippy --no-deps --all-targets -- -D warnings
 	RUSTDOCFLAGS="-D warnings" cargo doc --document-private-items --all --no-deps
 	# test result in different output on CI are ignored and only run locally

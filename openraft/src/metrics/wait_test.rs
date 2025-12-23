@@ -9,6 +9,7 @@ use crate::RaftMetrics;
 use crate::RaftTypeConfig;
 use crate::StoredMembership;
 use crate::Vote;
+use crate::async_runtime::WatchSender;
 use crate::core::ServerState;
 use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;

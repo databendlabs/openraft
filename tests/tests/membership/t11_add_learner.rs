@@ -9,6 +9,7 @@ use openraft::Config;
 use openraft::Membership;
 use openraft::RaftLogReader;
 use openraft::StorageHelper;
+use openraft::async_runtime::WatchReceiver;
 use openraft::error::ChangeMembershipError;
 use openraft::error::ClientWriteError;
 use openraft::error::InProgress;
@@ -92,7 +93,7 @@ async fn add_learner_basic() -> Result<()> {
         assert_eq!(log_index, res.log_id.index());
         router.wait(&0, timeout()).applied_index(Some(log_index), "commit re-adding node-1 log").await?;
 
-        let metrics = router.get_raft_handle(&0)?.metrics().borrow().clone();
+        let metrics = router.get_raft_handle(&0)?.metrics().borrow_watched().clone();
         let node_ids = metrics.membership_config.membership().nodes().map(|x| *x.0).collect::<Vec<_>>();
         assert_eq!(vec![0, 1], node_ids);
     }
@@ -143,7 +144,7 @@ async fn add_learner_non_blocking() -> Result<()> {
                 unreachable!("no replication status is reported to metrics!");
             }
 
-            let metrics = router.get_raft_handle(&0)?.metrics().borrow().clone();
+            let metrics = router.get_raft_handle(&0)?.metrics().borrow_watched().clone();
             let repl = metrics.replication.as_ref().unwrap();
 
             // The result is Some(&None) when there is no success replication is made,

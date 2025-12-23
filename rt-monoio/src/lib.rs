@@ -25,8 +25,8 @@
 use std::future::Future;
 use std::time::Duration;
 
-use openraft::AsyncRuntime;
-use openraft::OptionalSend;
+use openraft_rt::AsyncRuntime;
+use openraft_rt::OptionalSend;
 
 mod instant;
 mod mpsc;

@@ -9,6 +9,7 @@ use openraft::LogIdOptionExt;
 use openraft::RPCTypes;
 use openraft::ReadPolicy;
 use openraft::ServerState;
+use openraft::async_runtime::WatchReceiver;
 use openraft::base::BoxFuture;
 use openraft::error::NetworkError;
 use openraft::error::RPCError;
@@ -481,7 +482,7 @@ async fn ensure_linearizable_process_from_followers() -> Result<()> {
         assert_eq!(linearizer.applied().index(), Some(log_index));
 
         let follower_n1 = router.get_raft_handle(&1).unwrap();
-        let metrics = follower_n1.metrics().borrow().clone();
+        let metrics = follower_n1.metrics().borrow_watched().clone();
         let follower_n1_applied = metrics.last_applied;
         assert!(
             follower_n1_applied.as_ref() < linearizer.applied(),

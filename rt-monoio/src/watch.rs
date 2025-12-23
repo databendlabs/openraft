@@ -2,11 +2,11 @@
 
 use std::ops::Deref;
 
-use openraft::async_runtime::watch::RecvError;
-use openraft::async_runtime::watch::SendError;
-use openraft::type_config::async_runtime::watch;
-use openraft::OptionalSend;
-use openraft::OptionalSync;
+use openraft_rt::OptionalSend;
+use openraft_rt::OptionalSync;
+use openraft_rt::watch;
+use openraft_rt::watch::RecvError;
+use openraft_rt::watch::SendError;
 use tokio::sync::watch as tokio_watch;
 
 pub struct TokioWatch;

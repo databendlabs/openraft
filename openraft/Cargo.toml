@@ -15,6 +15,7 @@ repository    = { workspace = true }
 
 
 [dependencies]
+openraft-rt = { path = "../rt", version = "0.10.0" }
 openraft-macros = { path = "../macros", version = "0.10.0" }
 
 anyerror        = { workspace = true }
@@ -90,9 +91,10 @@ compat = []
 adapt-network-v1 = []
 
 # Disallows applications to share a raft instance with multiple threads.
-single-threaded = ["openraft-macros/single-threaded"]
+single-threaded = ["openraft-rt/single-threaded", "openraft-macros/single-threaded"]
 
 # Deprecated: use `single-threaded` instead.
+# This feature triggers a compile-time error with migration instructions.
 singlethreaded = []
 
 

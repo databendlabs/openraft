@@ -33,6 +33,8 @@ pub(crate) mod histogram;
 pub(crate) mod shared_id_generator;
 
 pub(crate) use batch::Batch;
+pub use openraft_rt::OptionalSend;
+pub use openraft_rt::OptionalSync;
 pub use serde_able::OptionalSerde;
 pub use threaded::BoxAny;
 pub use threaded::BoxAsyncOnceMut;
@@ -41,8 +43,6 @@ pub use threaded::BoxIterator;
 pub use threaded::BoxMaybeAsyncOnceMut;
 pub use threaded::BoxOnce;
 pub use threaded::BoxStream;
-pub use threaded::OptionalSend;
-pub use threaded::OptionalSync;
 
 #[cfg(not(feature = "single-threaded"))]
 mod threaded {
@@ -51,16 +51,6 @@ mod threaded {
     use std::pin::Pin;
 
     use futures::Stream;
-
-    /// A trait that is empty if the `single-threaded` feature flag is enabled,
-    /// otherwise it extends `Send`.
-    pub trait OptionalSend: Send {}
-    impl<T: Send + ?Sized> OptionalSend for T {}
-
-    /// A trait that is empty if the `single-threaded` feature flag is enabled,
-    /// otherwise it extends `Sync`.
-    pub trait OptionalSync: Sync {}
-    impl<T: Sync + ?Sized> OptionalSync for T {}
 
     /// Type alias for a boxed iterator that is `Send`.
     pub type BoxIterator<'a, T> = Box<dyn Iterator<Item = T> + Send + 'a>;
@@ -85,16 +75,6 @@ mod threaded {
     use std::pin::Pin;
 
     use futures::Stream;
-
-    /// A trait that is empty if the `single-threaded` feature flag is enabled,
-    /// otherwise it extends `Send`.
-    pub trait OptionalSend {}
-    impl<T: ?Sized> OptionalSend for T {}
-
-    /// A trait that is empty if the `single-threaded` feature flag is enabled,
-    /// otherwise it extends `Sync`.
-    pub trait OptionalSync {}
-    impl<T: ?Sized> OptionalSync for T {}
 
     pub type BoxIterator<'a, T> = Box<dyn Iterator<Item = T> + 'a>;
     pub type BoxFuture<'a, T = ()> = Pin<Box<dyn Future<Output = T> + 'a>>;

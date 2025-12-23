@@ -193,6 +193,7 @@ use Direction::NetRecv;
 use Direction::NetSend;
 use openraft::alias::LogIdOf;
 use openraft::alias::VoteOf;
+use openraft::async_runtime::WatchReceiver;
 use openraft::entry::RaftEntry;
 use openraft::network::v2::RaftNetworkV2;
 use openraft::vote::RaftLeaderId;
@@ -635,7 +636,7 @@ impl TypedRaftRouter {
         let rt = self.nodes.lock().unwrap();
         let mut metrics = vec![];
         for node in rt.values() {
-            let m = node.0.metrics().borrow().clone();
+            let m = node.0.metrics().borrow_watched().clone();
             tracing::debug!("router::latest_metrics: {:?}", m);
             metrics.push(m);
         }
@@ -644,7 +645,7 @@ impl TypedRaftRouter {
 
     pub fn get_metrics(&self, node_id: &MemNodeId) -> anyhow::Result<RaftMetrics<MemConfig>> {
         let node = self.get_raft_handle(node_id)?;
-        let metrics = node.metrics().borrow().clone();
+        let metrics = node.metrics().borrow_watched().clone();
         Ok(metrics)
     }
 

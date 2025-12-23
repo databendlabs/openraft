@@ -5,13 +5,13 @@
 use std::future::Future;
 
 use futures::TryFutureExt;
-use openraft::async_runtime::Mpsc;
-use openraft::async_runtime::MpscReceiver;
-use openraft::async_runtime::MpscSender;
-use openraft::async_runtime::MpscWeakSender;
-use openraft::async_runtime::SendError;
-use openraft::async_runtime::TryRecvError;
-use openraft::OptionalSend;
+use openraft_rt::Mpsc;
+use openraft_rt::MpscReceiver;
+use openraft_rt::MpscSender;
+use openraft_rt::MpscWeakSender;
+use openraft_rt::OptionalSend;
+use openraft_rt::SendError;
+use openraft_rt::TryRecvError;
 use tokio::sync::mpsc as tokio_mpsc;
 
 pub struct MonoioMpsc;

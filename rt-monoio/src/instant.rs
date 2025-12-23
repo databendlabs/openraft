@@ -6,7 +6,7 @@ use std::ops::Sub;
 use std::ops::SubAssign;
 use std::time::Duration;
 
-use openraft::async_runtime::instant;
+use openraft_rt::instant;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
 pub struct MonoioInstant(pub(crate) monoio::time::Instant);
