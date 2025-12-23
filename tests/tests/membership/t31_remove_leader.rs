@@ -20,8 +20,6 @@ use crate::fixtures::ut_harness;
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn remove_leader() -> Result<()> {
-    // TODO(1): flaky with --features single-term-leader
-
     // Setup test dependencies.
     let config = Arc::new(
         Config {
@@ -71,8 +69,10 @@ async fn remove_leader() -> Result<()> {
         tracing::debug!("--- expect log_index:{}", log_index);
 
         for id in [2, 3] {
+            // There may be a log conflict when running with `single-term-leader` feature flag enabled.
+            // Thus wait a little bit longer for this check
             router
-                .wait(&id, timeout())
+                .wait(&id, Some(Duration::from_millis(10_000)))
                 .applied_index_at_least(
                     Some(log_index),
                     "node in new cluster finally commit at least one blank leader-initialize log",
