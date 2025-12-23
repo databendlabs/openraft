@@ -23,13 +23,17 @@
 //!
 //! Most applications can use these implementations directly without customization.
 
+#[cfg(feature = "tokio-rt")]
+pub(crate) mod tokio_runtime;
+
+#[cfg(feature = "tokio-rt")]
+pub use tokio_runtime::TokioRuntime;
+
 pub use crate::entry::Entry;
 pub use crate::node::BasicNode;
 pub use crate::node::EmptyNode;
 pub use crate::raft::responder::impls::OneshotResponder;
 pub use crate::raft::responder::impls::ProgressResponder;
-#[cfg(feature = "tokio-rt")]
-pub use crate::type_config::async_runtime::tokio_impls::TokioRuntime;
 
 /// LeaderId implementation for advanced mode, allowing multiple leaders per term.
 pub mod leader_id_adv {

@@ -85,14 +85,14 @@ pub use error::storage_error::StorageError;
 #[allow(deprecated)]
 pub use error::storage_error::StorageIOError;
 pub use error::storage_error::ToStorageResult;
+#[cfg(feature = "tokio-rt")]
+pub use impls::TokioRuntime;
+#[cfg(feature = "tokio-rt")]
+pub use impls::tokio_runtime::TokioInstant;
 pub use openraft_macros::add_async_trait;
 pub use type_config::AsyncRuntime;
 pub use type_config::async_runtime;
 pub use type_config::async_runtime::Instant;
-#[cfg(feature = "tokio-rt")]
-pub use type_config::async_runtime::TokioInstant;
-#[cfg(feature = "tokio-rt")]
-pub use type_config::async_runtime::tokio_impls::TokioRuntime;
 
 pub use self::storage::LogState;
 pub use self::storage::RaftLogReader;
