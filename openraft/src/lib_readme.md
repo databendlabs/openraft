@@ -26,7 +26,7 @@ Openraft supports several feature flags to customize functionality:
 
 **Runtime**:
 - `tokio-rt` - Enable Tokio async runtime support (default)
-- `singlethreaded` - Disallow sharing Raft instance across threads
+- `single-threaded` - Disallow sharing Raft instance across threads
 
 **Serialization**:
 - `serde` - Add `serde::Serialize` and `serde::Deserialize` bounds to data types

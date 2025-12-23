@@ -90,7 +90,10 @@ compat = []
 adapt-network-v1 = []
 
 # Disallows applications to share a raft instance with multiple threads.
-singlethreaded = ["openraft-macros/singlethreaded"]
+single-threaded = ["openraft-macros/single-threaded"]
+
+# Deprecated: use `single-threaded` instead.
+singlethreaded = []
 
 
 # Permit the follower's log to roll back to an earlier state without causing the
@@ -128,7 +131,7 @@ features = [
 no-default-features = false
 
 # Do not use this to enable all features:
-# "singlethreaded" makes `Raft<C>` a `!Send`, which confuses users.
+# "single-threaded" makes `Raft<C>` a `!Send`, which confuses users.
 # all-features = true
 
 # Disabled appearance order. It produce multiple `Trait`, `Struct` sections in a doc page.

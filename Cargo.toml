@@ -80,7 +80,7 @@ exclude = [
 
     "examples/raft-kv-memstore",
     "examples/raft-kv-memstore-grpc",
-    "examples/raft-kv-memstore-singlethreaded",
+    "examples/raft-kv-memstore-single-threaded",
     "examples/raft-kv-memstore-network-v2",
     "examples/raft-kv-memstore-opendal-snapshot-data",
     "examples/raft-kv-rocksdb",

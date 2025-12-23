@@ -87,7 +87,7 @@ Read more about how it is implemented in:
 and [`vote`](crate::docs::data::vote).
 
 
-## feature-flag `singlethreaded`
+## feature-flag `single-threaded`
 
 Removes `Send` and `Sync` bounds from `AppData`, `AppDataResponse`, `RaftEntry`, `SnapshotData`
 and other types to force the asynchronous runtime to spawn any tasks in the current thread.

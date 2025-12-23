@@ -25,7 +25,7 @@
 
 - New feature flags:
 
-    - [`singlethreaded`][]: Run Openraft in a single-threaded environment, i.e., without requiring `Send` bound.
+    - [`single-threaded`][]: Run Openraft in a single-threaded environment, i.e., without requiring `Send` bound.
     - [`loosen-follower-log-revert`][]: Allows cleaning a follower's data, useful for testing.
     - [`generic-snapshot-data`][]: Remove `AsyncRead + AsyncWrite` bound from snapshot data. Let the application define its own snapshot data transfer.
 
@@ -195,7 +195,7 @@ To use arbitrary snapshot data, the application needs to:
 
 [`RaftStateMachine::apply()`]:        `crate::storage::RaftStateMachine::apply`
 
-[`singlethreaded`]:              `crate::docs::feature_flags#feature-flag-singlethreaded`
+[`single-threaded`]:             `crate::docs::feature_flags#feature-flag-single-threaded`
 [`loosen-follower-log-revert`]:  `crate::docs::feature_flags#feature-flag-loosen-follower-log-revert`
 [`generic-snapshot-data`]:       `crate::docs::feature_flags#feature-flag-generic-snapshot-data`
 [`tracing-log`]:                 `crate::docs::feature_flags#feature-flag-tracing-log`

@@ -1,12 +1,12 @@
 # Single-Threaded Key-Value Store Example
 
-Demonstrates using Openraft with non-`Send` types by enabling the `singlethreaded` feature flag.
+Demonstrates using Openraft with non-`Send` types by enabling the `single-threaded` feature flag.
 
 ## Key Features Demonstrated
 
 - **Single-threaded operation**: No `Send` requirement for data types
 - **Custom non-Send types**: `NodeId` and `Request` with `!Send` markers
-- **Feature flag usage**: `singlethreaded` feature configuration
+- **Feature flag usage**: `single-threaded` feature configuration
 
 ## Overview
 
@@ -19,7 +19,7 @@ This example shows how to build a Raft cluster when your application types canno
 
 Enable the feature in `Cargo.toml`:
 ```toml
-openraft = { version = "0.10", features = ["singlethreaded"] }
+openraft = { version = "0.10", features = ["single-threaded"] }
 ```
 
 Example non-`Send` types:
@@ -48,7 +48,7 @@ cargo test -- --nocapture
 
 ## Comparison
 
-| Feature | singlethreaded | standard |
+| Feature | single-threaded | standard |
 |---------|---------------|----------|
 | Send required | No | Yes |
 | Multi-threaded | No | Yes |

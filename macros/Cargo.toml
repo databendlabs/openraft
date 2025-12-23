@@ -31,4 +31,7 @@ trybuild  = { version = "1.0" }
 [features]
 
 # Do not add `Send` bounds.
+single-threaded = []
+
+# Deprecated: use `single-threaded` instead.
 singlethreaded = []
