@@ -8,6 +8,8 @@ use openraft::Config;
 use openraft::LogIdOptionExt;
 use openraft::ServerState;
 use openraft::Vote;
+use openraft::type_config::TypeConfigExt;
+use openraft_memstore::TypeConfig;
 use tracing::Instrument;
 
 use crate::fixtures::RaftRouter;
@@ -101,7 +103,7 @@ async fn concurrent_write_and_add_learner() -> Result<()> {
         let r = router.clone();
 
         let handle = {
-            tokio::spawn(
+            TypeConfig::spawn(
                 async move {
                     r.add_learner(leader, 3).await.unwrap();
                     Ok::<(), anyhow::Error>(())

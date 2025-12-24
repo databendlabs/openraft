@@ -7,6 +7,8 @@ use openraft::Config;
 use openraft::LogIdOptionExt;
 use openraft::ServerState;
 use openraft::storage::RaftStateMachine;
+use openraft::type_config::TypeConfigExt;
+use openraft_memstore::TypeConfig;
 use tokio::sync::watch;
 
 use crate::fixtures::RaftRouter;
@@ -46,7 +48,7 @@ async fn total_order_apply() -> Result<()> {
     let (_sto1, mut sm1) = router.get_storage_handle(&1)?;
 
     let mut prev = None;
-    let h = tokio::spawn(async move {
+    let h = TypeConfig::spawn(async move {
         loop {
             if *rx.borrow() {
                 break;

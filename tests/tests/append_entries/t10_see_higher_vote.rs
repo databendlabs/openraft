@@ -67,7 +67,7 @@ async fn append_sees_higher_vote() -> Result<()> {
         router.wait(&0, timeout()).state(ServerState::Leader, "node-0 is leader").await?;
 
         let n0 = router.get_raft_handle(&0)?;
-        tokio::spawn(async move {
+        TypeConfig::spawn(async move {
             let res = n0
                 .client_write(ClientRequest {
                     client: "0".to_string(),
