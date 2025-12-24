@@ -51,7 +51,7 @@ async fn write_when_leader_quit_and_log_revert() -> Result<()> {
     tracing::info!(log_index, "--- write a log in another task");
     {
         let n0 = router.get_raft_handle(&0)?;
-        tokio::spawn(async move {
+        TypeConfig::spawn(async move {
             let res = n0.client_write(ClientRequest::make_request("cli", 1)).await;
             tx.send(res).unwrap();
         });
@@ -126,7 +126,7 @@ async fn write_when_leader_switched() -> Result<()> {
     tracing::info!(log_index, "--- write a log in another task");
     {
         let n0 = router.get_raft_handle(&0)?;
-        tokio::spawn(async move {
+        TypeConfig::spawn(async move {
             let res = n0.client_write(ClientRequest::make_request("cli", 1)).await;
             tx.send(res).unwrap();
         });

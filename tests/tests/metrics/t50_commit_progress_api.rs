@@ -3,6 +3,8 @@ use std::sync::Arc;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
+use openraft::type_config::TypeConfigExt;
+use openraft_memstore::TypeConfig;
 
 use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
@@ -47,7 +49,7 @@ async fn commit_progress_api() -> Result<()> {
     let target = Some(log_id(1, 0, target_index));
 
     let n0_clone = router.get_raft_handle(&0)?;
-    let handle = tokio::spawn(async move {
+    let handle = TypeConfig::spawn(async move {
         let mut progress = n0_clone.watch_commit_progress();
         progress.wait_until_ge(&target).await
     });

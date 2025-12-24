@@ -59,7 +59,7 @@ async fn log_progress_api() -> Result<()> {
     ));
 
     let n0_clone = router.get_raft_handle(&0)?;
-    let handle = tokio::spawn(async move {
+    let handle = TypeConfig::spawn(async move {
         let mut progress = n0_clone.watch_log_progress();
         progress.wait_until_ge(&target).await
     });
@@ -133,7 +133,7 @@ async fn log_progress_with_leader_change() -> Result<()> {
     TypeConfig::sleep(Duration::from_millis(500)).await;
 
     let n1_clone = router.get_raft_handle(&1)?;
-    let handle = tokio::spawn(async move {
+    let handle = TypeConfig::spawn(async move {
         let mut progress = n1_clone.watch_log_progress();
         progress.wait_until_ge(&target).await
     });
@@ -212,7 +212,7 @@ async fn vote_progress_api() -> Result<()> {
 
     tracing::info!("--- spawn task to wait for term 2");
     let n1 = router.get_raft_handle(&1)?;
-    let handle = tokio::spawn(async move {
+    let handle = TypeConfig::spawn(async move {
         let mut progress = n1.watch_vote_progress();
 
         let target = Some(Vote::new(2, 1));

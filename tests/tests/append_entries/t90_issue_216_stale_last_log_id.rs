@@ -4,6 +4,8 @@ use std::time::Duration;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
+use openraft::type_config::TypeConfigExt;
+use openraft_memstore::TypeConfig;
 
 use crate::fixtures::RaftRouter;
 use crate::fixtures::ut_harness;
@@ -42,7 +44,7 @@ async fn stale_last_log_id() -> Result<()> {
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
 
     for i in 0..n_threads {
-        tokio::spawn({
+        TypeConfig::spawn({
             let router = router.clone();
             let tx = tx.clone();
 

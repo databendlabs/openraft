@@ -183,7 +183,7 @@ async fn get_read_log_id() -> Result<()> {
         router.set_rpc_pre_hook(RPCTypes::AppendEntries, block_to_n0).await;
 
         let r = router.clone();
-        tokio::spawn(async move {
+        TypeConfig::spawn(async move {
             // This will block for ever
             let _x = r.client_request_many(1, "foo", 1).await;
         });
