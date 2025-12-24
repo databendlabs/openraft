@@ -1,8 +1,7 @@
+use openraft_rt::OptionalSend;
+use openraft_rt::OptionalSync;
+use openraft_rt::watch;
 use tokio::sync::watch as tokio_watch;
-
-use crate::OptionalSend;
-use crate::OptionalSync;
-use crate::async_runtime::watch;
 
 pub struct TokioWatch;
 

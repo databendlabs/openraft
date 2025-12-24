@@ -6,7 +6,7 @@ use std::ops::Sub;
 use std::ops::SubAssign;
 use std::time::Duration;
 
-use crate::async_runtime::instant;
+use openraft_rt::instant;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
 pub struct TokioInstant(pub(crate) tokio::time::Instant);

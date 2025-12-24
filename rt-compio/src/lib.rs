@@ -11,7 +11,6 @@ use std::task::Poll;
 pub use compio;
 pub use futures;
 use futures::FutureExt;
-pub use openraft;
 use openraft_rt::AsyncRuntime;
 use openraft_rt::OptionalSend;
 pub use rand;
@@ -158,7 +157,7 @@ impl AsyncRuntime for CompioRuntime {
 
 #[cfg(test)]
 mod tests {
-    use openraft::testing::runtime::Suite;
+    use openraft_rt::testing::Suite;
 
     use super::*;
 

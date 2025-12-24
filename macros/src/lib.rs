@@ -1,6 +1,12 @@
 #![doc = include_str!("lib_readme.md")]
 #![allow(clippy::uninlined_format_args)]
 
+#[cfg(feature = "singlethreaded")]
+compile_error!(
+    "The feature flag `singlethreaded` is renamed to `single-threaded`. \
+     Please update your Cargo.toml to use `single-threaded` instead."
+);
+
 mod expand;
 mod since;
 pub(crate) mod utils;

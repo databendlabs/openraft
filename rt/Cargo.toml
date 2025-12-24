@@ -15,7 +15,7 @@ repository    = { workspace = true }
 
 [features]
 default = []
-single-threaded = ["openraft-macros/singlethreaded"]
+single-threaded = ["openraft-macros/single-threaded"]
 
 [dependencies]
 futures         = { workspace = true }
