@@ -1,0 +1,23 @@
+[package]
+name = "openraft-rt-tokio"
+version = "0.10.0"
+edition = "2024"
+authors = [
+    "drdrxp <drdr.xp@gmail.com>",
+    "Databend Authors <opensource@datafuselabs.com>",
+]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/drmingdrmer/openraft"
+homepage = "https://github.com/drmingdrmer/openraft"
+readme = "README.md"
+description = "Tokio runtime implementation for Openraft"
+
+[dependencies]
+openraft-rt = { path = "../rt", version = "0.10.0" }
+tokio = { version = "1.39", default-features = false, features = ["rt", "rt-multi-thread", "sync", "time"] }
+futures = { version = "0.3" }
+rand = { version = "0.9", default-features = false, features = ["std", "std_rng"] }
+
+[features]
+default = []
+single-threaded = ["openraft-rt/single-threaded"]

@@ -46,7 +46,7 @@ pub struct MonoioRuntime;
 
 impl AsyncRuntime for MonoioRuntime {
     // Joining an async task on Monoio always succeeds
-    type JoinError = openraft::error::Infallible;
+    type JoinError = std::convert::Infallible;
     type JoinHandle<T: OptionalSend + 'static> = monoio::task::JoinHandle<Result<T, Self::JoinError>>;
     type Sleep = monoio::time::Sleep;
     type Instant = MonoioInstant;
@@ -101,7 +101,7 @@ impl AsyncRuntime for MonoioRuntime {
 
 #[cfg(test)]
 mod tests {
-    use openraft::testing::runtime::Suite;
+    use openraft_rt::testing::Suite;
 
     use super::*;
 

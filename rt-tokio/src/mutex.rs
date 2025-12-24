@@ -1,5 +1,7 @@
-use crate::OptionalSend;
-use crate::async_runtime::mutex;
+use std::future::Future;
+
+use openraft_rt::OptionalSend;
+use openraft_rt::mutex;
 
 /// Wrapper around `tokio::sync::Mutex` to implement the `Mutex` trait.
 pub struct TokioMutex<T>(tokio::sync::Mutex<T>);

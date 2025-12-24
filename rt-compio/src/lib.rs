@@ -158,7 +158,7 @@ impl AsyncRuntime for CompioRuntime {
 
 #[cfg(test)]
 mod tests {
-    use openraft::testing::runtime::Suite;
+    use openraft_rt::testing::Suite;
 
     use super::*;
 

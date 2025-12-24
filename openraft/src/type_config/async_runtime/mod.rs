@@ -26,6 +26,5 @@ pub use openraft_rt::mpsc;
 pub use openraft_rt::mutex;
 pub use openraft_rt::oneshot;
 pub use openraft_rt::watch;
-
 #[cfg(feature = "tokio-rt")]
-pub use crate::impls::tokio_runtime::TokioInstant;
+pub use openraft_rt_tokio::TokioInstant;

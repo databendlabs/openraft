@@ -93,9 +93,9 @@ pub use error::storage_error::StorageIOError;
 pub use error::storage_error::ToStorageResult;
 #[cfg(feature = "tokio-rt")]
 pub use impls::TokioRuntime;
-#[cfg(feature = "tokio-rt")]
-pub use impls::tokio_runtime::TokioInstant;
 pub use openraft_macros::add_async_trait;
+#[cfg(feature = "tokio-rt")]
+pub use openraft_rt_tokio::TokioInstant;
 pub use type_config::AsyncRuntime;
 pub use type_config::async_runtime;
 pub use type_config::async_runtime::Instant;
