@@ -19,7 +19,6 @@ fn test_raft_state_validate_snapshot_is_none() -> anyhow::Result<()> {
 
     let mut rs = RaftState::<UTConfig> {
         log_ids: LogIdList::new(Some(log_id(1, 1)), vec![log_id(3, 4)]),
-        purged_next: 2,
         purge_upto: Some(log_id(1, 1)),
         snapshot_meta: SnapshotMeta::default(),
         ..Default::default()

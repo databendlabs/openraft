@@ -29,7 +29,6 @@ fn test_raft_state_prev_log_id() -> anyhow::Result<()> {
     {
         let rs = RaftState::<UTConfig> {
             log_ids: LogIdList::new(Some(log_id(0, 0)), vec![log_id(1, 3), log_id(3, 4)]),
-            purged_next: 1,
             ..Default::default()
         };
 
@@ -131,18 +130,9 @@ fn test_raft_state_last_purged_log_id() -> anyhow::Result<()> {
     };
     assert_eq!(None, rs.last_purged_log_id());
 
-    // Purged at index 2 (with purged_next = 3)
+    // Purged at index 2
     let rs = RaftState::<UTConfig> {
         log_ids: LogIdList::new(Some(log_id(1, 2)), vec![log_id(3, 4)]),
-        purged_next: 3,
-        ..Default::default()
-    };
-    assert_eq!(Some(log_id(1, 2)), rs.last_purged_log_id().copied());
-
-    // Purged at index 2, logs at 3-4
-    let rs = RaftState::<UTConfig> {
-        log_ids: LogIdList::new(Some(log_id(1, 2)), vec![log_id(3, 4)]),
-        purged_next: 3,
         ..Default::default()
     };
     assert_eq!(Some(log_id(1, 2)), rs.last_purged_log_id().copied());

@@ -11,7 +11,6 @@ fn eng() -> Engine<UTConfig> {
 
     // Setup: purged at 2 (leader 2), leader 2's logs at 3-4, leader 4's logs at 5-6
     eng.state.log_ids = LogIdList::new(Some(log_id(2, 1, 2)), vec![log_id(2, 1, 4), log_id(4, 1, 6)]);
-    eng.state.purged_next = 3;
     eng
 }
 

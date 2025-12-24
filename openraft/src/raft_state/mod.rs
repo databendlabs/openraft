@@ -5,7 +5,6 @@ use validit::Valid;
 use validit::Validate;
 
 use crate::LogId;
-use crate::LogIdOptionExt;
 use crate::RaftTypeConfig;
 use crate::ServerState;
 use crate::engine::LogIdList;
@@ -66,8 +65,6 @@ where C: RaftTypeConfig
     /// The vote state of this node.
     pub(crate) vote: Leased<VoteOf<C>, InstantOf<C>>,
 
-    pub(crate) purged_next: u64,
-
     /// All log ids this node has.
     pub log_ids: LogIdList<C>,
 
@@ -107,7 +104,6 @@ where
 
         Self {
             vote: Leased::without_last_update(vote),
-            purged_next: 0,
             log_ids: LogIdList::default(),
             membership_state: MembershipState::default(),
             snapshot_meta: SnapshotMeta::default(),
@@ -156,9 +152,6 @@ where C: RaftTypeConfig
     }
 
     fn last_purged_log_id(&self) -> Option<&LogIdOf<C>> {
-        if self.purged_next == 0 {
-            return None;
-        }
         self.log_ids.purged()
     }
 }
@@ -175,12 +168,9 @@ impl<C> Validate for RaftState<C>
 where C: RaftTypeConfig
 {
     fn validate(&self) -> Result<(), Box<dyn Error>> {
-        if self.purged_next == 0 {
+        if self.log_ids.purged().is_none() {
             // Nothing purged - first log should exist at index 0 or later
             validit::less_equal!(self.log_ids.first().map(|r| r.index()), Some(0));
-        } else {
-            // Something purged - purged_next should equal purged.index + 1
-            validit::equal!(self.purged_next, self.log_ids.purged().next_index());
         }
 
         validit::less_equal!(self.last_purged_log_id(), self.purge_upto());
@@ -211,7 +201,6 @@ where C: RaftTypeConfig
 
         Self {
             vote: Leased::without_last_update(vote),
-            purged_next: 0,
             log_ids: LogIdList::default(),
             membership_state: MembershipState::default(),
             snapshot_meta: SnapshotMeta::default(),
@@ -413,7 +402,6 @@ where C: RaftTypeConfig
 
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn purge_log(&mut self, upto: &LogIdOf<C>) {
-        self.purged_next = upto.index() + 1;
         self.log_ids.purge(upto);
     }
 

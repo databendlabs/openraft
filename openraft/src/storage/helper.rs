@@ -211,7 +211,6 @@ where
             //       When lease based read is added, the restarted node must sleep for a while,
             //       before serving.
             vote: Leased::new(now, Duration::default(), vote),
-            purged_next: last_purged_log_id.next_index(),
             log_ids: log_id_list,
             membership_state: mem_state,
             snapshot_meta,
