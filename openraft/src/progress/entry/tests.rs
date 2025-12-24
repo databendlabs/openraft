@@ -111,7 +111,7 @@ fn new_raft_state(purge_upto: u64, snap_last: u64, last: u64) -> RaftState<UTCon
         snapshot_id: "".to_string(),
     };
 
-    st.log_ids = LogIdList::new([log_id(purge_upto - 1), log_id(last)]);
+    st.log_ids = LogIdList::new(None, [log_id(purge_upto - 1), log_id(last)]);
 
     st
 }

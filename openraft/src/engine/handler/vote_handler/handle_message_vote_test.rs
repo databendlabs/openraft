@@ -65,7 +65,7 @@ fn test_handle_message_vote_reject_smaller_vote() -> anyhow::Result<()> {
 #[test]
 fn test_handle_message_vote_committed_vote() -> anyhow::Result<()> {
     let mut eng = eng();
-    eng.state.log_ids = LogIdList::new(vec![log_id(2, 1, 3)]);
+    eng.state.log_ids = LogIdList::new(None, vec![log_id(2, 1, 3)]);
     let now = TokioInstant::now();
 
     let resp = eng.vote_handler().update_vote(&Vote::new_committed(3, 2));
@@ -97,7 +97,7 @@ fn test_handle_message_vote_granted_equal_vote() -> anyhow::Result<()> {
     // Equal vote should not emit a SaveVote command.
 
     let mut eng = eng();
-    eng.state.log_ids = LogIdList::new(vec![log_id(2, 1, 3)]);
+    eng.state.log_ids = LogIdList::new(None, vec![log_id(2, 1, 3)]);
     let now = TokioInstant::now();
 
     let resp = eng.vote_handler().update_vote(&Vote::new(2, 1));
@@ -121,7 +121,7 @@ fn test_handle_message_vote_granted_greater_vote() -> anyhow::Result<()> {
     // A greater vote should emit a SaveVote command.
 
     let mut eng = eng();
-    eng.state.log_ids = LogIdList::new(vec![log_id(2, 1, 3)]);
+    eng.state.log_ids = LogIdList::new(None, vec![log_id(2, 1, 3)]);
 
     let resp = eng.vote_handler().update_vote(&Vote::new(3, 1));
 

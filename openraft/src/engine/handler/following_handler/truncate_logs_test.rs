@@ -39,11 +39,7 @@ fn eng() -> Engine<UTConfig> {
         Duration::from_millis(500),
         Vote::new_committed(2, 1),
     );
-    eng.state.log_ids = LogIdList::new(vec![
-        log_id(2, 1, 2), //
-        log_id(4, 1, 4),
-        log_id(4, 1, 6),
-    ]);
+    eng.state.log_ids = LogIdList::new(None, vec![log_id(2, 1, 3), log_id(4, 1, 6)]);
     eng.state.membership_state = MembershipState::new(
         Arc::new(EffectiveMembership::new(Some(log_id(1, 1, 1)), m01())),
         Arc::new(EffectiveMembership::new(Some(log_id(2, 1, 3)), m23())),
@@ -61,6 +57,7 @@ fn test_truncate_logs_since_3() -> anyhow::Result<()> {
     eng.following_handler().truncate_logs(3);
 
     assert_eq!(Some(&log_id(2, 1, 2)), eng.state.last_log_id());
+    assert_eq!(None, eng.state.log_ids.purged());
     assert_eq!(&[log_id(2, 1, 2)], eng.state.log_ids.key_log_ids());
     assert_eq!(
         MembershipState::new(
@@ -89,7 +86,8 @@ fn test_truncate_logs_since_4() -> anyhow::Result<()> {
     eng.following_handler().truncate_logs(4);
 
     assert_eq!(Some(&log_id(2, 1, 3)), eng.state.last_log_id());
-    assert_eq!(&[log_id(2, 1, 2), log_id(2, 1, 3)], eng.state.log_ids.key_log_ids());
+    assert_eq!(None, eng.state.log_ids.purged());
+    assert_eq!(&[log_id(2, 1, 3)], eng.state.log_ids.key_log_ids());
     assert_eq!(
         MembershipState::new(
             Arc::new(EffectiveMembership::new(Some(log_id(1, 1, 1)), m01())),
@@ -114,7 +112,8 @@ fn test_truncate_logs_since_5() -> anyhow::Result<()> {
     eng.following_handler().truncate_logs(5);
 
     assert_eq!(Some(&log_id(4, 1, 4)), eng.state.last_log_id());
-    assert_eq!(&[log_id(2, 1, 2), log_id(4, 1, 4)], eng.state.log_ids.key_log_ids());
+    assert_eq!(None, eng.state.log_ids.purged());
+    assert_eq!(&[log_id(2, 1, 3), log_id(4, 1, 4)], eng.state.log_ids.key_log_ids());
     assert_eq!(
         vec![Command::TruncateLog { since: log_id(4, 1, 5) }],
         eng.output.take_commands()
@@ -130,10 +129,8 @@ fn test_truncate_logs_since_6() -> anyhow::Result<()> {
     eng.following_handler().truncate_logs(6);
 
     assert_eq!(Some(&log_id(4, 1, 5)), eng.state.last_log_id());
-    assert_eq!(
-        &[log_id(2, 1, 2), log_id(4, 1, 4), log_id(4, 1, 5)],
-        eng.state.log_ids.key_log_ids()
-    );
+    assert_eq!(None, eng.state.log_ids.purged());
+    assert_eq!(&[log_id(2, 1, 3), log_id(4, 1, 5)], eng.state.log_ids.key_log_ids());
     assert_eq!(
         vec![Command::TruncateLog { since: log_id(4, 1, 6) }],
         eng.output.take_commands()
@@ -149,10 +146,8 @@ fn test_truncate_logs_since_7() -> anyhow::Result<()> {
     eng.following_handler().truncate_logs(7);
 
     assert_eq!(Some(&log_id(4, 1, 6)), eng.state.last_log_id());
-    assert_eq!(
-        &[log_id(2, 1, 2), log_id(4, 1, 4), log_id(4, 1, 6)],
-        eng.state.log_ids.key_log_ids()
-    );
+    assert_eq!(None, eng.state.log_ids.purged());
+    assert_eq!(&[log_id(2, 1, 3), log_id(4, 1, 6)], eng.state.log_ids.key_log_ids());
     assert!(eng.output.take_commands().is_empty());
 
     Ok(())
@@ -165,10 +160,8 @@ fn test_truncate_logs_since_8() -> anyhow::Result<()> {
     eng.following_handler().truncate_logs(8);
 
     assert_eq!(Some(&log_id(4, 1, 6)), eng.state.last_log_id());
-    assert_eq!(
-        &[log_id(2, 1, 2), log_id(4, 1, 4), log_id(4, 1, 6)],
-        eng.state.log_ids.key_log_ids()
-    );
+    assert_eq!(None, eng.state.log_ids.purged());
+    assert_eq!(&[log_id(2, 1, 3), log_id(4, 1, 6)], eng.state.log_ids.key_log_ids());
     assert!(eng.output.take_commands().is_empty());
 
     Ok(())
@@ -186,7 +179,8 @@ fn test_truncate_logs_revert_effective_membership() -> anyhow::Result<()> {
     eng.following_handler().truncate_logs(4);
 
     assert_eq!(Some(&log_id(2, 1, 3)), eng.state.last_log_id());
-    assert_eq!(&[log_id(2, 1, 2), log_id(2, 1, 3)], eng.state.log_ids.key_log_ids());
+    assert_eq!(None, eng.state.log_ids.purged());
+    assert_eq!(&[log_id(2, 1, 3)], eng.state.log_ids.key_log_ids());
     assert_eq!(
         vec![
             //

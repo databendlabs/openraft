@@ -138,7 +138,9 @@ fn test_leader_append_membership_update_learner_process() -> anyhow::Result<()> 
     // learner or vice versa.
 
     let mut eng = eng();
-    eng.state.log_ids = LogIdList::new([log_id(0, 0, 0), log_id(1, 1, 1), log_id(5, 1, 10)]);
+    // Last-per-leader format: leader (0,0) last at 0, leader (1,1) last at 9, leader (5,1) last at 10
+    // This preserves the original ranges: (1,1) covers indices 1-9, (5,1) covers index 10
+    eng.state.log_ids = LogIdList::new(None, [log_id(0, 0, 0), log_id(1, 1, 9), log_id(5, 1, 10)]);
 
     eng.state
         .membership_state

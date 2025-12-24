@@ -89,7 +89,7 @@ fn test_handle_vote_req_reject_smaller_vote() -> anyhow::Result<()> {
 #[test]
 fn test_handle_vote_req_reject_smaller_last_log_id() -> anyhow::Result<()> {
     let mut eng = eng();
-    eng.state.log_ids = LogIdList::new(vec![log_id(2, 1, 3)]);
+    eng.state.log_ids = LogIdList::new(None, vec![log_id(2, 1, 3)]);
 
     let resp = eng.handle_vote_req(VoteRequest {
         vote: Vote::new(3, 2),
@@ -114,7 +114,7 @@ fn test_handle_vote_req_granted_equal_vote_and_last_log_id() -> anyhow::Result<(
     let mut eng = eng();
     eng.config.id = 0;
     eng.vote_handler().update_internal_server_state();
-    eng.state.log_ids = LogIdList::new(vec![log_id(2, 1, 3)]);
+    eng.state.log_ids = LogIdList::new(None, vec![log_id(2, 1, 3)]);
 
     eng.output.clear_commands();
 
@@ -140,7 +140,7 @@ fn test_handle_vote_req_granted_greater_vote() -> anyhow::Result<()> {
     let mut eng = eng();
     eng.config.id = 0;
     eng.vote_handler().update_internal_server_state();
-    eng.state.log_ids = LogIdList::new(vec![log_id(2, 1, 3)]);
+    eng.state.log_ids = LogIdList::new(None, vec![log_id(2, 1, 3)]);
 
     eng.output.clear_commands();
 

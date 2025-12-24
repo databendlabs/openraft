@@ -59,11 +59,11 @@ fn test_follower_append_entries_update_accepted() -> anyhow::Result<()> {
         blank_ent(3, 1, 5),
     ]);
 
+    assert_eq!(None, eng.state.log_ids.purged());
     assert_eq!(
         &[
             log_id(1, 1, 1), //
             log_id(2, 1, 3),
-            log_id(3, 1, 4),
             log_id(3, 1, 5),
         ],
         eng.state.log_ids.key_log_ids()

@@ -14,42 +14,78 @@ use crate::type_config::alias::LogIdOf;
 
 /// Efficient storage for log ids.
 ///
-/// It stores only the ids of logs that have a new leader_id. And the `last_log_id` at the end.
-/// I.e., the oldest log id belonging to every leader.
+/// It stores the last purged log id separately, and the last log id of each leader.
+/// Each leader has exactly one entry in `key_log_ids` (their last log id).
 ///
-/// If it is not empty, the first one is `last_purged_log_id` and the last one is `last_log_id`.
-/// The last one may have the same leader id as the second last one.
+/// For example, given logs from Leader1: 1-3, Leader2: 4-6, Leader3: 7-8, purged at 0:
+/// - `purged` = Some(log_id(0))
+/// - `key_log_ids` = [log_id(1,3), log_id(2,6), log_id(3,8)]
 #[derive(Default, Debug, Clone)]
 #[derive(PartialEq, Eq)]
 pub struct LogIdList<C>
 where C: RaftTypeConfig
 {
+    /// The last purged log id, if any logs have been purged.
+    purged: Option<LogIdOf<C>>,
+
+    /// The last log id of each leader. Each leader has exactly one entry.
     key_log_ids: Vec<LogIdOf<C>>,
 }
 
 impl<C> LogIdList<C>
 where C: RaftTypeConfig
 {
-    /// Load all log ids that are the first one proposed by a leader.
+    /// Helper function to push a log entry, replacing last entry if same leader.
     ///
-    /// E.g., log ids with the same leader id will be discarded, except the smallest.
-    /// The `last_log_id` will always be present at the end to simplify searching.
+    /// When the same leader appears multiple times due to range subdivision in the binary
+    /// search, we keep only the entry with the greatest index (the true last of that leader).
     ///
-    /// Given an example with the logs `[(2,2),(2,3),(5,4),(5,5)]`, and the `last_purged_log_id` is
-    /// (1,1). This function returns `[(1,1),(2,2),(5,4),(5,5)]`.
+    /// The binary search guarantees logs are processed in non-decreasing index order,
+    /// so we can simply replace when we see the same leader again.
+    fn push_key_log_id(res: &mut Vec<LogIdOf<C>>, log_id: LogIdOf<C>) {
+        if let Some(last_ent) = res.last_mut()
+            && last_ent.committed_leader_id() == log_id.committed_leader_id()
+        {
+            // Same leader: replace with the newer entry (which has greater or equal index)
+            debug_assert!(
+                log_id.index() >= last_ent.index(),
+                "Binary search invariant violated: expected log_id.index({}) >= last_ent.index({})",
+                log_id.index(),
+                last_ent.index()
+            );
+            *last_ent = log_id;
+            return;
+        }
+
+        // Different leader or empty result: push new entry
+        res.push(log_id);
+    }
+
+    /// Load the last log id of each leader from storage.
     ///
-    /// It adopts a modified binary-search algo.
+    /// Each leader has exactly one entry in the result (their last log id).
+    /// Uses a binary search algorithm to find leadership change boundaries.
+    ///
+    /// Given logs `[(2,2),(2,3),(5,4),(5,5)]`, this returns `[(2,3),(5,5)]`.
+    ///
+    /// Algorithm: Binary search to find boundaries between leaders and their last logs.
     /// ```text
     /// input:
     /// A---------------C
     ///
     /// load the mid log-id, then compare the first, the middle, and the last:
     ///
-    /// A---------------A : push_res(A);
-    /// A-------A-------C : push_res(A); find(A,C) // both find `A`, need to de-dup
-    /// A-------B-------C : find(A,B); find(B,C)   // both find `B`, need to de-dup
-    /// A-------C-------C : find(A,C)
+    /// A---------------A : push_res(A_last);                   // single leader, push last
+    /// A-------A-------C : find(A_mid, C)                      // boundary in right half (AAC)
+    /// A-------B-------C : find(A,B); find(B,C)                // boundaries in both halves (ABC)
+    /// A-------C-------C : find(A, C_mid); find(C_mid, C_last) // boundary in left, find C's last in right (ACC)
     /// ```
+    ///
+    /// The key insight is that when mid and last have the same leader (Case ACC), we must:
+    /// 1. Search the left half `(first, mid)` to find where the previous leader ends
+    /// 2. Search the right half `(mid, last)` to find where leader C actually ends
+    ///
+    /// This ensures we find the true last log of each leader, not just intermediate positions.
     pub(crate) async fn get_key_log_ids<LR>(
         range: RangeInclusive<LogIdOf<C>>,
         sto: &mut LR,
@@ -63,56 +99,43 @@ where C: RaftTypeConfig
         let mut res: Vec<LogIdOf<C>> = vec![];
 
         // Recursion stack
-        let mut stack = vec![(first, last.clone())];
+        let mut stack = vec![(first, last)];
 
         loop {
-            let (first, last) = match stack.pop() {
-                None => {
-                    break;
-                }
-                Some(x) => x,
+            let Some((first, last)) = stack.pop() else {
+                break;
             };
 
-            // Case AA
+            // Case AA: Same leader for entire range - push the last
             if first.committed_leader_id() == last.committed_leader_id() {
-                if res.last().map(|x| x.committed_leader_id()) < Some(first.committed_leader_id()) {
-                    res.push(first);
-                }
+                Self::push_key_log_id(&mut res, last);
                 continue;
             }
 
-            // Two adjacent logs with different leader_id, no need to binary search
+            // Two adjacent logs with different leader_id:
+            // first is the last of leader A, last is the last of leader B (for this span)
             if first.index() + 1 == last.index() {
-                if res.last().committed_leader_id() < Some(first.committed_leader_id()) {
-                    res.push(first);
-                }
-                res.push(last);
+                Self::push_key_log_id(&mut res, first);
+                Self::push_key_log_id(&mut res, last);
                 continue;
             }
+
+            // A*C cases:
 
             let mid_index = (first.index() + last.index()) / 2;
             let mid = sto.get_log_id(mid_index).await?;
 
+            // Case AAC: boundary is between mid and last
             if first.committed_leader_id() == mid.committed_leader_id() {
-                // Case AAC
-                if res.last().committed_leader_id() < Some(first.committed_leader_id()) {
-                    res.push(first);
-                }
                 stack.push((mid, last));
-            } else if mid.committed_leader_id() == last.committed_leader_id() {
-                // Case ACC
-                stack.push((first, mid));
-            } else {
-                // Case ABC
-                // first.leader_id < mid_log_id.leader_id < last.leader_id
-                // Deal with (first, mid) then (mid, last)
-                stack.push((mid.clone(), last));
-                stack.push((first, mid));
+                continue;
             }
-        }
 
-        if res.last() != Some(&last) {
-            res.push(last);
+            // Case ACC or ABC: search both halves.
+            // - ACC: boundary in left half; right half finds where leader C actually ends
+            // - ABC: boundaries in both halves
+            stack.push((mid.clone(), last));
+            stack.push((first, mid));
         }
 
         Ok(res)
@@ -124,11 +147,25 @@ where C: RaftTypeConfig
 {
     /// Create a new `LogIdList`.
     ///
-    /// It stores the last purged log id, and a series of key log ids.
-    pub fn new(key_log_ids: impl IntoIterator<Item = LogIdOf<C>>) -> Self {
+    /// It stores the last purged log id and the last log id of each leader.
+    ///
+    /// - `purged`: The last purged log id, if any logs have been purged.
+    /// - `key_log_ids`: The last log id of each leader. Each leader has exactly one entry.
+    pub fn new(purged: Option<LogIdOf<C>>, key_log_ids: impl IntoIterator<Item = LogIdOf<C>>) -> Self {
         Self {
+            purged,
             key_log_ids: key_log_ids.into_iter().collect(),
         }
+    }
+
+    /// Get the last purged log id, if any.
+    pub(crate) fn purged(&self) -> Option<&LogIdOf<C>> {
+        self.purged.as_ref()
+    }
+
+    /// Get the first log index (purged.index + 1, or 0 if nothing purged).
+    pub(crate) fn first_index(&self) -> u64 {
+        self.purged.next_index()
     }
 
     /// Extends a list of `log_id` that are proposed by the same leader.
@@ -154,131 +191,113 @@ where C: RaftTypeConfig
         }
     }
 
-    /// Extends a list of `log_id`.
+    /// Extends with a list of `log_id`.
     pub(crate) fn extend<LID, I>(&mut self, new_ids: I)
     where
         LID: RaftLogId<C>,
         I: IntoIterator<Item = LID>,
-        <I as IntoIterator>::IntoIter: ExactSizeIterator,
     {
-        let it = new_ids.into_iter();
-        let len = it.len();
-
-        for (i, log_id) in it.enumerate() {
-            if self.last_committed_leader_id() != Some(log_id.committed_leader_id()) {
-                self.append(log_id.to_log_id());
-            }
-
-            #[allow(clippy::collapsible_if)]
-            if i == len - 1 {
-                if self.last_ref() != Some(log_id.to_ref()) {
-                    self.append(log_id.to_log_id());
-                }
-            }
+        for log_id in new_ids {
+            self.append(log_id.to_log_id());
         }
     }
 
     /// Append a new `log_id`.
     ///
-    /// The log id to append does not have to be the next to the last one in `key_log_ids`.
-    /// In such a case it fills the gap at index `i` with `LogId{leader_id: prev_log_id.leader,
-    /// index: i}`.
-    ///
-    /// NOTE: The last two in `key_log_ids` may be with the same `leader_id`, because `last_log_id`
-    /// is always present in `log_ids`.
+    /// With last-per-leader storage:
+    /// - If same leader as the last entry, replace the last entry
+    /// - If different leader, push a new entry
     pub(crate) fn append(&mut self, new_log_id: LogIdOf<C>) {
-        let l = self.key_log_ids.len();
-        if l == 0 {
-            self.key_log_ids.push(new_log_id);
-            return;
+        #[cfg(debug_assertions)]
+        if let Some(last) = self.last() {
+            debug_assert!(new_log_id > *last, "new_log_id: {}, last: {}", new_log_id, last);
         }
-
-        // l >= 1
-
-        debug_assert!(
-            new_log_id > self.key_log_ids[l - 1],
-            "new_log_id: {}, last: {}",
-            new_log_id,
-            self.key_log_ids[l - 1]
-        );
-
-        if l == 1 {
-            self.key_log_ids.push(new_log_id);
-            return;
-        }
-
-        // l >= 2
-
-        let last = &self.key_log_ids[l - 1];
-
-        if self.key_log_ids.get(l - 2).map(|x| x.committed_leader_id()) == Some(last.committed_leader_id()) {
-            // Replace the **last log id**.
-            self.key_log_ids[l - 1] = new_log_id;
-            return;
-        }
-
-        // The last one is an initial log entry of a leader.
-        // Add a **last log id** with the same leader id.
-
-        self.key_log_ids.push(new_log_id);
+        Self::push_key_log_id(&mut self.key_log_ids, new_log_id);
     }
 
     /// Delete log ids from `at`, inclusive.
+    ///
+    /// With last-per-leader storage:
+    /// - Entry at position i covers a range starting after entry[i-1] (or purged+1 for i=0)
+    /// - If truncation point is within an entry's range, update that entry to (at-1)
     // leader_id: Copy is feature gated
     #[allow(clippy::clone_on_copy)]
     pub(crate) fn truncate(&mut self, at: u64) {
+        // Special case: truncate everything from index 0
+        if at == 0 {
+            self.key_log_ids.clear();
+            return;
+        }
+
         let res = self.key_log_ids.binary_search_by(|log_id| log_id.index().cmp(&at));
 
         let i = match res {
-            Ok(i) => i,
+            Ok(i) => i, // Exact match at entry i
             Err(i) => {
                 if i == self.key_log_ids.len() {
-                    return;
+                    return; // Beyond all entries, nothing to truncate
                 }
-                i
+                i // Entry i has index > at
             }
         };
 
-        self.key_log_ids.truncate(i);
+        // Entry at position i has index >= at.
+        // Determine the start index of entry i's range.
+        //
+        // The index since which will be removed if no push.
+        let end_after_truncate = if i == 0 {
+            self.first_index()
+        } else {
+            self.key_log_ids[i - 1].index() + 1
+        };
 
-        // Add key log id if there is a gap between last.index and at - 1.
-        let last = self.key_log_ids.last();
-        if let Some(last) = last {
-            let (last_leader_id, last_index) = (last.committed_leader_id().clone(), last.index());
-            if last_index < at - 1 {
-                self.append(LogIdOf::<C>::new(last_leader_id, at - 1));
-            }
+        // If (at-1) is within entry i's range, keep a truncated version
+        if at > end_after_truncate {
+            let truncated_leader = self.key_log_ids[i].committed_leader_id().clone();
+            self.key_log_ids.truncate(i);
+            self.key_log_ids.push(LogIdOf::<C>::new(truncated_leader, at - 1));
+        } else {
+            // Truncation is before or at entry i's start, remove it entirely
+            self.key_log_ids.truncate(i);
         }
     }
 
     /// Purge log ids up to the log with index `upto_index`, inclusive.
+    ///
+    /// With last-per-leader storage:
+    /// - Set the `purged` field to `upto`
+    /// - Remove entries whose last index <= upto.index
     pub(crate) fn purge(&mut self, upto: &LogIdOf<C>) {
-        let last = self.last().cloned();
+        let upto_index = upto.index();
 
         // When installing snapshot it may need to purge across the `last_log_id`.
-        if upto.index() >= last.next_index() {
+        if upto_index >= self.last().next_index() {
             debug_assert!(Some(upto) > self.last());
-            self.key_log_ids = vec![upto.clone()];
+            self.purged = Some(upto.clone());
+            self.key_log_ids.clear();
             return;
         }
 
-        if upto.index() < self.key_log_ids[0].index() {
+        // Already purged further - nothing to do
+        if upto_index < self.first_index() {
             return;
         }
 
-        let res = self.key_log_ids.binary_search_by(|log_id| log_id.index().cmp(&upto.index()));
+        // Find entries that are completely purged (last_index <= upto.index)
+        let res = self.key_log_ids.binary_search_by(|log_id| log_id.index().cmp(&upto_index));
 
         match res {
             Ok(i) => {
-                if i > 0 {
-                    self.key_log_ids = self.key_log_ids.split_off(i)
-                }
+                // Exact match: entries 0..=i are purged
+                self.key_log_ids = self.key_log_ids.split_off(i + 1);
             }
             Err(i) => {
-                self.key_log_ids = self.key_log_ids.split_off(i - 1);
-                self.key_log_ids[0].index = upto.index();
+                // upto.index is between entries: entries 0..i are purged
+                self.key_log_ids = self.key_log_ids.split_off(i);
             }
         }
+
+        self.purged = Some(upto.clone());
     }
 
     // This method is only used in tests
@@ -289,45 +308,72 @@ where C: RaftTypeConfig
 
     /// Get the log id at the specified index in a [`RefLogId`].
     ///
-    /// It will return `last_purged_log_id` if the index is at the last purged index.
+    /// With last-per-leader storage, each entry represents a range:
+    /// - Entry at i covers indices from `(key_log_ids[i-1].index + 1)` to `key_log_ids[i].index`
+    /// - Entry at 0 covers indices from `(purged.index + 1)` to `key_log_ids[0].index`
+    ///
+    /// Returns the `purged` log id if the index equals the purged index.
     #[allow(clippy::clone_on_copy)]
     pub(crate) fn ref_at(&self, index: u64) -> Option<RefLogId<'_, C>> {
+        // Handle purged range
+        // index < next_index() implies purged is Some (otherwise next_index() returns 0)
+        if index < self.first_index() {
+            let purged = self.purged.as_ref().unwrap();
+            return if index == purged.index() {
+                Some(purged.to_ref())
+            } else {
+                None // Index is before the first available log
+            };
+        }
+
         let res = self.key_log_ids.binary_search_by(|log_id| log_id.index().cmp(&index));
 
-        // Index of the leadership change point that covers the target index.
-        // It points to either:
-        // - The exact matching log entry if found, or
-        // - The most recent change point before the target index
-        let change_point = match res {
-            Ok(i) => i,
+        // With last-per-leader, find the entry whose range contains the index
+        let i = match res {
+            Ok(i) => i, // Exact match
             Err(i) => {
-                // i - 1 is the last one that is smaller than the input.
-                if i == 0 || i == self.key_log_ids.len() {
-                    return None;
-                } else {
-                    i - 1
+                // i is the first entry where last_index > target
+                // This entry's leader contains the target index
+                if i >= self.key_log_ids.len() {
+                    return None; // Index beyond last log
                 }
+                i
             }
         };
 
-        Some(RefLogId::new(
-            self.key_log_ids[change_point].committed_leader_id(),
-            index,
-        ))
+        // Validate: index must be within the range of entry i
+        let range_start = if i == 0 {
+            self.first_index()
+        } else {
+            self.key_log_ids[i - 1].index() + 1
+        };
+
+        if index < range_start {
+            return None;
+        }
+
+        Some(RefLogId::new(self.key_log_ids[i].committed_leader_id(), index))
     }
 
-    pub(crate) fn first(&self) -> Option<&LogIdOf<C>> {
-        self.key_log_ids.first()
+    /// Get the first log id as a `RefLogId`.
+    ///
+    /// The first log index is `purged.index + 1` (or 0 if nothing purged).
+    /// The leader comes from the first entry in `key_log_ids`.
+    pub(crate) fn first(&self) -> Option<RefLogId<'_, C>> {
+        let first_key = self.key_log_ids.first()?;
+        let first_index = self.first_index();
+        Some(RefLogId::new(first_key.committed_leader_id(), first_index))
     }
 
     pub(crate) fn last(&self) -> Option<&LogIdOf<C>> {
-        self.key_log_ids.last()
+        self.key_log_ids.last().or(self.purged.as_ref())
     }
 
     pub(crate) fn last_ref(&self) -> Option<RefLogId<'_, C>> {
         self.last().map(|x| x.to_ref())
     }
 
+    #[allow(dead_code)]
     pub(crate) fn last_committed_leader_id(&self) -> Option<&CommittedLeaderIdOf<C>> {
         self.last().map(|x| x.committed_leader_id())
     }
@@ -340,26 +386,33 @@ where C: RaftTypeConfig
 
     /// Returns key log ids appended by the last leader.
     ///
+    /// With last-per-leader storage, the first index of the last leader is:
+    /// - If there's a previous entry: previous_entry.index + 1
+    /// - Otherwise: purged.index + 1 (or 0 if nothing purged)
+    ///
+    /// If key_log_ids is empty but purged is Some, returns the purged log info.
+    ///
     /// Note that the 0-th log does not belong to any leader (but a membership log to initialize a
     /// cluster), but this method does not differentiate between them.
     pub(crate) fn by_last_leader(&self) -> Option<LeaderLogIds<C>> {
-        let ks = &self.key_log_ids;
-        let l = ks.len();
-        if l < 2 {
-            let last = self.last()?;
-            return Some(LeaderLogIds::new_single(last.clone()));
-        }
+        let last = self.last()?;
+        let l = self.key_log_ids.len();
 
-        // There are at most two(adjacent) key log ids with the same leader_id
-        if ks[l - 1].committed_leader_id() == ks[l - 2].committed_leader_id() {
-            Some(LeaderLogIds::new(
-                ks[l - 2].committed_leader_id().clone(),
-                ks[l - 2].index(),
-                ks[l - 1].index(),
-            ))
+        let first_index = if l == 0 {
+            // No entries in key_log_ids, last is from purged
+            last.index()
+        } else if l == 1 {
+            // Only one entry: first index is purged.index + 1 or 0
+            self.first_index()
         } else {
-            let last = self.last().cloned().unwrap();
-            Some(LeaderLogIds::new_single(last))
-        }
+            // Previous entry's index + 1
+            self.key_log_ids[l - 2].index() + 1
+        };
+
+        Some(LeaderLogIds::new(
+            last.committed_leader_id().clone(),
+            first_index,
+            last.index(),
+        ))
     }
 }

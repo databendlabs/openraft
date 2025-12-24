@@ -42,7 +42,8 @@ fn eng() -> Engine<UTConfig> {
 
     eng.config.id = 2;
     eng.state.vote = Leased::new(UTConfig::<()>::now(), Duration::from_millis(500), Vote::new(2, 1));
-    eng.state.log_ids.append(log_id(1, 1, 1));
+    // Last-per-leader format: leader 1's last at index 2, leader 2's last at index 3
+    eng.state.log_ids.append(log_id(1, 1, 2));
     eng.state.log_ids.append(log_id(2, 1, 3));
     eng.state.apply_progress_mut().accept(log_id(0, 1, 0));
     eng.state.membership_state = MembershipState::new(
@@ -60,9 +61,10 @@ fn test_append_entries_vote_is_rejected() -> anyhow::Result<()> {
     let res = eng.append_entries(&Vote::new(1, 1), None, Vec::<Entry<UTConfig>>::new());
 
     assert_eq!(Err(RejectAppendEntries::ByVote(Vote::new(2, 1))), res);
+    assert_eq!(None, eng.state.log_ids.purged());
     assert_eq!(
         &[
-            log_id(1, 1, 1), //
+            log_id(1, 1, 2), // Last-per-leader: leader 1's last at index 2
             log_id(2, 1, 3),
         ],
         eng.state.log_ids.key_log_ids()
@@ -96,9 +98,10 @@ fn test_append_entries_prev_log_id_is_applied() -> anyhow::Result<()> {
     );
 
     assert_eq!(Ok(()), res);
+    assert_eq!(None, eng.state.log_ids.purged());
     assert_eq!(
         &[
-            log_id(1, 1, 1), //
+            log_id(1, 1, 2), // Last-per-leader: leader 1's last at index 2
             log_id(2, 1, 3), //
         ],
         eng.state.log_ids.key_log_ids()
@@ -149,6 +152,7 @@ fn test_append_entries_prev_log_id_conflict() -> anyhow::Result<()> {
         }),
         res
     );
+    assert_eq!(None, eng.state.log_ids.purged());
     assert_eq!(
         &[
             log_id(1, 1, 1), //
@@ -189,10 +193,11 @@ fn test_append_entries_prev_log_id_is_committed() -> anyhow::Result<()> {
     ]);
 
     assert_eq!(Ok(()), res);
+    assert_eq!(None, eng.state.log_ids.purged());
     assert_eq!(
         &[
-            log_id(1, 1, 1), //
-            log_id(2, 1, 2), //
+            log_id(1, 1, 1), // After truncation: leader 1 ends at index 1
+            log_id(2, 1, 2), // New leader 2 entry at index 2
         ],
         eng.state.log_ids.key_log_ids()
     );
@@ -242,9 +247,10 @@ fn test_append_entries_prev_log_id_not_exists() -> anyhow::Result<()> {
         }),
         res
     );
+    assert_eq!(None, eng.state.log_ids.purged());
     assert_eq!(
         &[
-            log_id(1, 1, 1), //
+            log_id(1, 1, 2), // Last-per-leader: leader 1's last at index 2
             log_id(2, 1, 3), //
         ],
         eng.state.log_ids.key_log_ids()
@@ -287,10 +293,11 @@ fn test_append_entries_conflict() -> anyhow::Result<()> {
     ]);
 
     assert_eq!(Ok(()), resp);
+    assert_eq!(None, eng.state.log_ids.purged());
     assert_eq!(
         &[
-            log_id(1, 1, 1), //
-            log_id(3, 1, 3), //
+            log_id(1, 1, 2), // Leader 1's last is at index 2 (blank_ent at index 2)
+            log_id(3, 1, 3), // Leader 3's last is at index 3 (membership entry)
         ],
         eng.state.log_ids.key_log_ids()
     );

@@ -40,7 +40,7 @@ fn eng() -> Engine<UTConfig> {
     let mut eng = Engine::testing_default(0);
     eng.state.enable_validation(false); // Disable validation for incomplete state
 
-    eng.state.log_ids = LogIdList::new([log_id(0, 0, 0)]);
+    eng.state.log_ids = LogIdList::new(None, [log_id(0, 0, 0)]);
     eng
 }
 
@@ -103,7 +103,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         let mut eng = eng();
         eng.config.id = 1;
         eng.state.vote = Leased::new(UTConfig::<()>::now(), Duration::from_millis(500), Vote::new(2, 1));
-        eng.state.log_ids = LogIdList::new(vec![log_id(3, 1, 3)]);
+        eng.state.log_ids = LogIdList::new(None, vec![log_id(3, 1, 3)]);
         eng.state
             .membership_state
             .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(1, 1, 1)), m12())));

@@ -31,7 +31,7 @@ fn eng() -> Engine<UTConfig> {
         EffectiveMembership::new_arc(Some(log_id(1, 0, 1)), m12()),
     );
 
-    eng.state.log_ids = LogIdList::new([log_id(0, 0, 0)]);
+    eng.state.log_ids = LogIdList::new(None, [log_id(0, 0, 0)]);
     eng
 }
 
@@ -78,7 +78,7 @@ fn test_trigger_purge_log_delete_only_in_snapshot_logs() -> anyhow::Result<()> {
     };
     eng.state.purge_upto = Some(log_id(1, 0, 2));
     eng.state.io_state.purged = Some(log_id(1, 0, 2));
-    eng.state.log_ids = LogIdList::new([log_id(1, 0, 2), log_id(1, 0, 10)]);
+    eng.state.log_ids = LogIdList::new(Some(log_id(1, 0, 2)), [log_id(1, 0, 10)]);
 
     eng.trigger_purge_log(5);
 
@@ -106,7 +106,7 @@ fn test_trigger_purge_log_in_used_wont_be_delete() -> anyhow::Result<()> {
     };
     eng.state.purge_upto = Some(log_id(1, 0, 2));
     eng.state.io_state.purged = Some(log_id(1, 0, 2));
-    eng.state.log_ids = LogIdList::new([log_id(1, 0, 2), log_id(1, 0, 10)]);
+    eng.state.log_ids = LogIdList::new(Some(log_id(1, 0, 2)), [log_id(1, 0, 10)]);
     eng.state.vote = Leased::new(
         UTConfig::<()>::now(),
         Duration::from_millis(500),
