@@ -5,6 +5,7 @@ use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
 use openraft::Vote;
+use openraft::async_runtime::OneshotSender;
 use openraft::error::ClientWriteError;
 use openraft::error::ForwardToLeader;
 use openraft::error::RaftError;
@@ -13,7 +14,6 @@ use openraft::type_config::TypeConfigExt;
 use openraft_memstore::ClientRequest;
 use openraft_memstore::IntoMemClientRequest;
 use openraft_memstore::TypeConfig;
-use tokio::sync::oneshot;
 
 use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
@@ -46,7 +46,7 @@ async fn write_when_leader_quit_and_log_revert() -> Result<()> {
     tracing::info!(log_index, "--- block replication so that no log will be committed");
     router.set_unreachable(1, true);
 
-    let (tx, rx) = oneshot::channel();
+    let (tx, rx) = TypeConfig::oneshot();
 
     tracing::info!(log_index, "--- write a log in another task");
     {
@@ -121,7 +121,7 @@ async fn write_when_leader_switched() -> Result<()> {
     tracing::info!(log_index, "--- block replication so that no log will be committed");
     router.set_unreachable(1, true);
 
-    let (tx, rx) = oneshot::channel();
+    let (tx, rx) = TypeConfig::oneshot();
 
     tracing::info!(log_index, "--- write a log in another task");
     {

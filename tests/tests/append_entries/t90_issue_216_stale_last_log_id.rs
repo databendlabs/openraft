@@ -4,6 +4,8 @@ use std::time::Duration;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
+use openraft::async_runtime::MpscReceiver;
+use openraft::async_runtime::MpscSender;
 use openraft::type_config::TypeConfigExt;
 use openraft_memstore::TypeConfig;
 
@@ -39,9 +41,9 @@ async fn stale_last_log_id() -> Result<()> {
 
     let mut log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {3,4}).await?;
 
-    let n_threads = 4;
+    let n_threads: u64 = 4;
     let n_ops = 500;
-    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    let (tx, mut rx) = TypeConfig::mpsc(n_threads as usize);
 
     for i in 0..n_threads {
         TypeConfig::spawn({
@@ -50,7 +52,7 @@ async fn stale_last_log_id() -> Result<()> {
 
             async move {
                 router.client_request_many(0, &format!("{}", i), n_ops).await.unwrap();
-                let _ = tx.send(());
+                let _ = tx.send(()).await;
             }
         });
     }

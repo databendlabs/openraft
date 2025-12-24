@@ -6,10 +6,11 @@ use maplit::btreeset;
 use openraft::Config;
 use openraft::LogIdOptionExt;
 use openraft::ServerState;
+use openraft::async_runtime::WatchReceiver;
+use openraft::async_runtime::WatchSender;
 use openraft::storage::RaftStateMachine;
 use openraft::type_config::TypeConfigExt;
 use openraft_memstore::TypeConfig;
-use tokio::sync::watch;
 
 use crate::fixtures::RaftRouter;
 use crate::fixtures::ut_harness;
@@ -43,14 +44,14 @@ async fn total_order_apply() -> Result<()> {
     tracing::info!("--- add one learner");
     router.add_learner(0, 1).await?;
 
-    let (tx, rx) = watch::channel(false);
+    let (tx, rx) = TypeConfig::watch_channel(false);
 
     let (_sto1, mut sm1) = router.get_storage_handle(&1)?;
 
     let mut prev = None;
     let h = TypeConfig::spawn(async move {
         loop {
-            if *rx.borrow() {
+            if *rx.borrow_watched() {
                 break;
             }
 

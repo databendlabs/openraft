@@ -32,6 +32,7 @@ use openraft::RaftTypeConfig;
 use openraft::ReadPolicy;
 use openraft::ServerState;
 use openraft::Vote;
+use openraft::async_runtime::Mutex as AsyncMutex;
 use openraft::error::ClientWriteError;
 use openraft::error::Fatal;
 use openraft::error::LinearizableReadError;
@@ -53,6 +54,7 @@ use openraft::raft::VoteRequest;
 use openraft::raft::VoteResponse;
 use openraft::storage::Snapshot;
 use openraft::type_config::TypeConfigExt;
+use openraft::type_config::alias::MutexOf;
 use openraft_memstore::ClientRequest;
 use openraft_memstore::ClientResponse;
 use openraft_memstore::IntoMemClientRequest;
@@ -239,10 +241,10 @@ pub struct TypedRaftRouter {
     rpc_count: Arc<Mutex<HashMap<RPCTypes, u64>>>,
 
     /// A hook function to be called when before an RPC is sent to target node.
-    rpc_pre_hook: Arc<tokio::sync::Mutex<HashMap<RPCTypes, PreHook>>>,
+    rpc_pre_hook: Arc<MutexOf<TypeConfig, HashMap<RPCTypes, PreHook>>>,
 
     /// A hook function to be called when after an RPC is received from target node.
-    rpc_post_hook: Arc<tokio::sync::Mutex<HashMap<RPCTypes, PostHook>>>,
+    rpc_post_hook: Arc<MutexOf<TypeConfig, HashMap<RPCTypes, PostHook>>>,
 }
 
 /// Default `RaftRouter` for memstore.
@@ -278,8 +280,8 @@ impl Builder {
             send_delay: Arc::new(AtomicU64::new(send_delay)),
             append_entries_quota: Arc::new(Mutex::new(None)),
             rpc_count: Default::default(),
-            rpc_pre_hook: Default::default(),
-            rpc_post_hook: Default::default(),
+            rpc_pre_hook: Arc::new(TypeConfig::mutex(HashMap::new())),
+            rpc_post_hook: Arc::new(TypeConfig::mutex(HashMap::new())),
         }
     }
 }
