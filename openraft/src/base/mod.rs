@@ -33,57 +33,16 @@ pub(crate) mod histogram;
 pub(crate) mod shared_id_generator;
 
 pub(crate) use batch::Batch;
+pub use openraft_rt::BoxAny;
+pub use openraft_rt::BoxAsyncOnceMut;
+pub use openraft_rt::BoxFuture;
+pub use openraft_rt::BoxIterator;
+pub use openraft_rt::BoxMaybeAsyncOnceMut;
+pub use openraft_rt::BoxOnce;
+pub use openraft_rt::BoxStream;
 pub use openraft_rt::OptionalSend;
 pub use openraft_rt::OptionalSync;
 pub use serde_able::OptionalSerde;
-pub use threaded::BoxAny;
-pub use threaded::BoxAsyncOnceMut;
-pub use threaded::BoxFuture;
-pub use threaded::BoxIterator;
-pub use threaded::BoxMaybeAsyncOnceMut;
-pub use threaded::BoxOnce;
-pub use threaded::BoxStream;
-
-#[cfg(not(feature = "single-threaded"))]
-mod threaded {
-    use std::any::Any;
-    use std::future::Future;
-    use std::pin::Pin;
-
-    use futures::Stream;
-
-    /// Type alias for a boxed iterator that is `Send`.
-    pub type BoxIterator<'a, T> = Box<dyn Iterator<Item = T> + Send + 'a>;
-    /// Type alias for a boxed pinned future that is `Send`.
-    pub type BoxFuture<'a, T = ()> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
-    /// Type alias for a boxed pinned stream that is `Send`.
-    pub type BoxStream<'a, T> = Pin<Box<dyn Stream<Item = T> + Send + 'a>>;
-    /// Type alias for a boxed async function that mutates its argument and is `Send`.
-    pub type BoxAsyncOnceMut<'a, A, T = ()> = Box<dyn FnOnce(&mut A) -> BoxFuture<T> + Send + 'a>;
-    /// Type alias for a boxed function that optionally returns an async future.
-    pub type BoxMaybeAsyncOnceMut<'a, A, T = ()> = Box<dyn FnOnce(&mut A) -> Option<BoxFuture<T>> + Send + 'a>;
-    /// Type alias for a boxed function that takes an argument and is `Send`.
-    pub type BoxOnce<'a, A, T = ()> = Box<dyn FnOnce(&A) -> T + Send + 'a>;
-    /// Type alias for a boxed value that is `Send` and can be any type.
-    pub type BoxAny = Box<dyn Any + Send>;
-}
-
-#[cfg(feature = "single-threaded")]
-mod threaded {
-    use std::any::Any;
-    use std::future::Future;
-    use std::pin::Pin;
-
-    use futures::Stream;
-
-    pub type BoxIterator<'a, T> = Box<dyn Iterator<Item = T> + 'a>;
-    pub type BoxFuture<'a, T = ()> = Pin<Box<dyn Future<Output = T> + 'a>>;
-    pub type BoxStream<'a, T> = Pin<Box<dyn Stream<Item = T> + 'a>>;
-    pub type BoxAsyncOnceMut<'a, A, T = ()> = Box<dyn FnOnce(&mut A) -> BoxFuture<T> + 'a>;
-    pub type BoxMaybeAsyncOnceMut<'a, A, T = ()> = Box<dyn FnOnce(&mut A) -> Option<BoxFuture<T>> + 'a>;
-    pub type BoxOnce<'a, A, T = ()> = Box<dyn FnOnce(&A) -> T + 'a>;
-    pub type BoxAny = Box<dyn Any>;
-}
 
 #[cfg(not(feature = "serde"))]
 mod serde_able {
