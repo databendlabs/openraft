@@ -93,3 +93,8 @@ exclude = [
     "rt-tokio",
     "multiraft"
 ]
+
+
+
+[patch.crates-io]
+validit = { path = "../validit" }

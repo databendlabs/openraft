@@ -28,7 +28,7 @@ fn m12() -> Membership<UTConfig> {
 
 fn eng() -> Engine<UTConfig> {
     let mut eng = Engine::testing_default(0);
-    eng.state.log_ids = LogIdList::new([log_id(0, 0, 0)]);
+    eng.state.log_ids = LogIdList::new(None, [log_id(0, 0, 0)]);
     eng.state.enable_validation(false); // Disable validation for incomplete state
     eng
 }
@@ -123,7 +123,7 @@ fn test_elect_multi_node_enter_candidate() -> anyhow::Result<()> {
         eng.state
             .membership_state
             .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(0, 1, 1)), m12())));
-        eng.state.log_ids = LogIdList::new(vec![log_id(1, 1, 1)]);
+        eng.state.log_ids = LogIdList::new(None, vec![log_id(1, 1, 1)]);
 
         eng.elect();
 

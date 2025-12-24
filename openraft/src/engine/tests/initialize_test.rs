@@ -113,7 +113,7 @@ fn test_initialize() -> anyhow::Result<()> {
     tracing::info!("--- not allowed because of last_log_id");
     {
         let mut eng = eng();
-        eng.state.log_ids = LogIdList::new(vec![existing_log_id]);
+        eng.state.log_ids = LogIdList::new(None, vec![existing_log_id]);
 
         assert_eq!(
             Err(InitializeError::NotAllowed(NotAllowed {

@@ -17,13 +17,12 @@ fn eng() -> Engine<UTConfig> {
     let mut eng = Engine::testing_default(0);
     eng.state.enable_validation(false); // Disable validation for incomplete state
 
-    eng.state.log_ids = LogIdList::new(vec![
-        //
-        log_id(0, 0),
-        log_id(1, 1),
-        log_id(3, 3),
-        log_id(5, 5),
-    ]);
+    // Last-per-leader format:
+    // - leader 0: index 0
+    // - leader 1: indices 1-2
+    // - leader 3: indices 3-4
+    // - leader 5: index 5
+    eng.state.log_ids = LogIdList::new(None, vec![log_id(0, 0), log_id(1, 2), log_id(3, 4), log_id(5, 5)]);
     eng
 }
 

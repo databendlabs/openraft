@@ -47,7 +47,8 @@ fn eng() -> Engine<UTConfig> {
         Duration::from_millis(500),
         Vote::new_committed(2, 1),
     );
-    eng.state.log_ids.append(log_id(1, 1, 1));
+    // Last-per-leader format: leader 1's last at index 2, leader 2's last at index 3
+    eng.state.log_ids.append(log_id(1, 1, 2));
     eng.state.log_ids.append(log_id(2, 1, 3));
     eng.state.membership_state = MembershipState::new(
         Arc::new(EffectiveMembership::new(Some(log_id(1, 1, 1)), m01())),
@@ -64,9 +65,10 @@ fn test_follower_do_append_entries_no_membership_entries() -> anyhow::Result<()>
 
     eng.following_handler().do_append_entries(vec![blank_ent(3, 1, 4)]);
 
+    assert_eq!(None, eng.state.log_ids.purged());
     assert_eq!(
         &[
-            log_id(1, 1, 1), //
+            log_id(1, 1, 2), // Leader 1's last
             log_id(2, 1, 3),
             log_id(3, 1, 4),
         ],
@@ -109,11 +111,11 @@ fn test_follower_do_append_entries_one_membership_entry() -> anyhow::Result<()> 
         payload: EntryPayload::<UTConfig>::Membership(m34()),
     }]);
 
+    assert_eq!(None, eng.state.log_ids.purged());
     assert_eq!(
         &[
-            log_id(1, 1, 1), //
+            log_id(1, 1, 2), // Leader 1's last
             log_id(2, 1, 3),
-            log_id(3, 1, 4),
             log_id(3, 1, 5),
         ],
         eng.state.log_ids.key_log_ids()
@@ -168,13 +170,13 @@ fn test_follower_do_append_entries_three_membership_entries() -> anyhow::Result<
         Entry::<UTConfig>::new_membership(log_id(4, 1, 7), m45()),
     ]);
 
+    assert_eq!(None, eng.state.log_ids.purged());
     assert_eq!(
         &[
-            log_id(1, 1, 1), //
+            log_id(1, 1, 2), // Leader 1's last
             log_id(2, 1, 3),
-            log_id(3, 1, 4),
-            log_id(4, 1, 6),
-            log_id(4, 1, 7),
+            log_id(3, 1, 5), // Leader 3's last (entries 4-5)
+            log_id(4, 1, 7), // Leader 4's last (entries 6-7)
         ],
         eng.state.log_ids.key_log_ids()
     );

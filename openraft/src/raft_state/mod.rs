@@ -159,7 +159,7 @@ where C: RaftTypeConfig
         if self.purged_next == 0 {
             return None;
         }
-        self.log_ids.first()
+        self.log_ids.purged()
     }
 }
 
@@ -176,9 +176,11 @@ where C: RaftTypeConfig
 {
     fn validate(&self) -> Result<(), Box<dyn Error>> {
         if self.purged_next == 0 {
-            validit::less_equal!(self.log_ids.first().index(), Some(0));
+            // Nothing purged - first log should exist at index 0 or later
+            validit::less_equal!(self.log_ids.first().map(|r| r.index()), Some(0));
         } else {
-            validit::equal!(self.purged_next, self.log_ids.first().next_index());
+            // Something purged - purged_next should equal purged.index + 1
+            validit::equal!(self.purged_next, self.log_ids.purged().next_index());
         }
 
         validit::less_equal!(self.last_purged_log_id(), self.purge_upto());

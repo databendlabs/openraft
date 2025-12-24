@@ -91,6 +91,7 @@ fn test_leader_append_entries_empty() -> anyhow::Result<()> {
         eng.state.accepted_log_io(),
         "no accepted log updated for empty entries"
     );
+    assert_eq!(None, eng.state.log_ids.purged());
     assert_eq!(
         &[
             log_id(1, 1, 1), //
@@ -134,11 +135,11 @@ fn test_leader_append_entries_normal() -> anyhow::Result<()> {
         )),
         eng.state.accepted_log_io()
     );
+    assert_eq!(None, eng.state.log_ids.purged());
     assert_eq!(
         &[
             log_id(1, 1, 1), //
             log_id(2, 1, 3),
-            log_id(3, 1, 4),
             log_id(3, 1, 6),
         ],
         eng.state.log_ids.key_log_ids()
@@ -205,11 +206,11 @@ fn test_leader_append_entries_single_node_leader() -> anyhow::Result<()> {
         )),
         eng.state.accepted_log_io()
     );
+    assert_eq!(None, eng.state.log_ids.purged());
     assert_eq!(
         &[
             log_id(1, 1, 1), //
             log_id(2, 1, 3),
-            log_id(3, 1, 4),
             log_id(3, 1, 6),
         ],
         eng.state.log_ids.key_log_ids()
@@ -268,11 +269,11 @@ fn test_leader_append_entries_with_membership_log() -> anyhow::Result<()> {
         )),
         eng.state.accepted_log_io()
     );
+    assert_eq!(None, eng.state.log_ids.purged());
     assert_eq!(
         &[
             log_id(1, 1, 1), //
             log_id(2, 1, 3),
-            log_id(3, 1, 4),
             log_id(3, 1, 6),
         ],
         eng.state.log_ids.key_log_ids()

@@ -40,11 +40,10 @@ fn eng() -> Engine<UTConfig> {
         Vote::new_committed(2, 1),
     );
     eng.state.apply_progress_mut().accept(log_id(4, 1, 5));
-    eng.state.log_ids = LogIdList::new(vec![
+    eng.state.log_ids = LogIdList::new(None, vec![
         //
-        log_id(2, 1, 2),
+        log_id(2, 1, 4),
         log_id(3, 1, 5),
-        log_id(4, 1, 6),
         log_id(4, 1, 8),
     ]);
     eng.state.snapshot_meta = SnapshotMeta {

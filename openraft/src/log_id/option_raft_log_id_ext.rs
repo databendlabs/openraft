@@ -19,6 +19,7 @@ where C: RaftTypeConfig
     /// Returns the leader id that proposed this log id.
     ///
     /// In standard raft, committed leader id is just `term`.
+    #[allow(dead_code)]
     fn committed_leader_id(&self) -> Option<&CommittedLeaderIdOf<C>>;
 
     /// Converts this `Option<T: RaftLogId>` into a reference-based log ID.

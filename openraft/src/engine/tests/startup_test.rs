@@ -56,7 +56,7 @@ fn test_startup_as_leader_without_logs() -> anyhow::Result<()> {
     eng.state
         .membership_state
         .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(1, 1, 3)), m23())));
-    eng.state.log_ids = LogIdList::new([log_id(1, 1, 3)]);
+    eng.state.log_ids = LogIdList::new(None, [log_id(1, 1, 3)]);
     // Committed vote makes it a leader at startup.
     eng.state.vote = Leased::new(
         UTConfig::<()>::now(),
@@ -114,8 +114,8 @@ fn test_startup_as_leader_with_proposed_logs() -> anyhow::Result<()> {
     eng.state
         .membership_state
         .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(2, 1, 3)), m23())));
-    // Fake existing log ids
-    eng.state.log_ids = LogIdList::new([log_id(1, 1, 2), log_id(1, 2, 4), log_id(1, 2, 6)]);
+    // Last-per-leader format: leader (1,1) last at index 3, leader (1,2) last at index 6
+    eng.state.log_ids = LogIdList::new(None, [log_id(1, 1, 3), log_id(1, 2, 6)]);
     // Committed vote makes it a leader at startup.
     eng.state.vote = Leased::new(
         UTConfig::<()>::now(),

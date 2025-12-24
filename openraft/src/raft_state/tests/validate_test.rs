@@ -14,9 +14,11 @@ fn log_id(term: u64, index: u64) -> LogIdOf<UTConfig> {
 fn test_raft_state_validate_snapshot_is_none() -> anyhow::Result<()> {
     // Some app does not persist snapshot, when restarted, purged is not None but snapshot_last_log_id
     // is None. This is a valid state and should not emit error.
+    //
+    // Last-per-leader: purged at 1, leader 3's logs at 2-4
 
     let mut rs = RaftState::<UTConfig> {
-        log_ids: LogIdList::new(vec![log_id(1, 1), log_id(3, 4)]),
+        log_ids: LogIdList::new(Some(log_id(1, 1)), vec![log_id(3, 4)]),
         purged_next: 2,
         purge_upto: Some(log_id(1, 1)),
         snapshot_meta: SnapshotMeta::default(),

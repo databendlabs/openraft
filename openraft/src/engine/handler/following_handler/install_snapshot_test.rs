@@ -40,11 +40,11 @@ fn eng() -> Engine<UTConfig> {
     let vote = VoteOf::<UTConfig>::new_committed(2, 1);
     eng.state.vote.update(now, Duration::from_millis(500), vote);
     eng.state.apply_progress_mut().accept(log_id(4, 1, 5));
-    eng.state.log_ids = LogIdList::new(vec![
+    // Last-per-leader format: leader 2 last at 4, leader 3 last at 5, leader 4 last at 8
+    eng.state.log_ids = LogIdList::new(None, vec![
         //
-        log_id(2, 1, 2),
+        log_id(2, 1, 4),
         log_id(3, 1, 5),
-        log_id(4, 1, 6),
         log_id(4, 1, 8),
     ]);
     eng.state.snapshot_meta = SnapshotMeta {
@@ -148,7 +148,8 @@ fn test_install_snapshot_not_conflict() -> anyhow::Result<()> {
         },
         eng.state.snapshot_meta
     );
-    assert_eq!(&[log_id(4, 1, 6), log_id(4, 1, 8)], eng.state.log_ids.key_log_ids());
+    assert_eq!(Some(&log_id(4, 1, 6)), eng.state.log_ids.purged());
+    assert_eq!(&[log_id(4, 1, 8)], eng.state.log_ids.key_log_ids());
     assert_eq!(Some(&log_id(4, 1, 6)), eng.state.committed());
     assert_eq!(
         &Arc::new(EffectiveMembership::new(Some(log_id(1, 1, 1)), m1234())),
@@ -190,11 +191,10 @@ fn test_install_snapshot_conflict() -> anyhow::Result<()> {
             Vote::new_committed(2, 1),
         );
         eng.state.apply_progress_mut().accept(log_id(2, 1, 3));
-        eng.state.log_ids = LogIdList::new(vec![
+        eng.state.log_ids = LogIdList::new(None, vec![
             //
-            log_id(2, 1, 2),
+            log_id(2, 1, 4),
             log_id(3, 1, 5),
-            log_id(4, 1, 6),
             log_id(4, 1, 8),
         ]);
 
@@ -233,7 +233,9 @@ fn test_install_snapshot_conflict() -> anyhow::Result<()> {
         },
         eng.state.snapshot_meta
     );
-    assert_eq!(&[log_id(5, 1, 6)], eng.state.log_ids.key_log_ids());
+    // All logs purged by snapshot, only purged field contains the snapshot's last_log_id
+    assert!(eng.state.log_ids.key_log_ids().is_empty());
+    assert_eq!(Some(&log_id(5, 1, 6)), eng.state.log_ids.purged());
     assert_eq!(Some(&log_id(5, 1, 6)), eng.state.committed());
     assert_eq!(
         &Arc::new(EffectiveMembership::new(Some(log_id(1, 1, 1)), m1234())),
@@ -291,7 +293,9 @@ fn test_install_snapshot_advance_last_log_id() -> anyhow::Result<()> {
         },
         eng.state.snapshot_meta
     );
-    assert_eq!(&[log_id(100, 1, 100)], eng.state.log_ids.key_log_ids());
+    // All logs purged by snapshot, only purged field contains the snapshot's last_log_id
+    assert!(eng.state.log_ids.key_log_ids().is_empty());
+    assert_eq!(Some(&log_id(100, 1, 100)), eng.state.log_ids.purged());
     assert_eq!(Some(&log_id(100, 1, 100)), eng.state.committed());
     assert_eq!(
         &Arc::new(EffectiveMembership::new(Some(log_id(1, 1, 1)), m1234())),

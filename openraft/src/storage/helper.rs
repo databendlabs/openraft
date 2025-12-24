@@ -406,7 +406,7 @@ where
     // TODO: store purged: Option<LogId> separately.
     /// Get key-log-ids from the log store.
     ///
-    /// Key-log-ids are the first log id of each Leader.
+    /// Key-log-ids are the last log id of each Leader.
     async fn get_key_log_ids(
         &mut self,
         purged: Option<LogIdOf<C>>,
@@ -415,32 +415,19 @@ where
         let mut log_reader = self.log_store.get_log_reader().await;
 
         let last = match last {
-            None => return Ok(LogIdList::new(vec![])),
+            None => return Ok(LogIdList::new(purged, vec![])),
             Some(x) => x,
         };
 
         if purged.index() == Some(last.index()) {
-            return Ok(LogIdList::new(vec![last]));
+            // All logs are purged, no key_log_ids
+            return Ok(LogIdList::new(Some(last), vec![]));
         }
 
         let first = log_reader.get_log_id(purged.next_index()).await?;
 
-        let mut log_ids = log_reader.get_key_log_ids(first..=last).await.sto_read_logs()?;
+        let log_ids = log_reader.get_key_log_ids(first..=last).await.sto_read_logs()?;
 
-        if !log_ids.is_empty()
-            && let Some(purged) = purged
-        {
-            if purged.committed_leader_id() == log_ids[0].committed_leader_id() {
-                if log_ids.len() >= 2 {
-                    log_ids[0] = purged;
-                } else {
-                    log_ids.insert(0, purged);
-                }
-            } else {
-                log_ids.insert(0, purged);
-            }
-        }
-
-        Ok(LogIdList::new(log_ids))
+        Ok(LogIdList::new(purged, log_ids))
     }
 }
