@@ -6,8 +6,10 @@ use maplit::btreeset;
 use openraft::Config;
 use openraft::ServerState;
 use openraft::error::ClientWriteError;
+use openraft::type_config::TypeConfigExt;
 use openraft_memstore::ClientRequest;
 use openraft_memstore::IntoMemClientRequest;
+use openraft_memstore::TypeConfig;
 
 use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
@@ -161,7 +163,7 @@ async fn remove_leader_and_convert_to_learner() -> Result<()> {
 
     tracing::info!(log_index, "--- wait 1 sec, old leader(non-voter) stays as a leader");
     {
-        tokio::time::sleep(Duration::from_millis(1_000)).await;
+        TypeConfig::sleep(Duration::from_millis(1_000)).await;
 
         router
             .wait(&0, timeout())

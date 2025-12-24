@@ -7,7 +7,8 @@ use openraft::Config;
 use openraft::ServerState;
 use openraft::Vote;
 use openraft::raft::FlushPoint;
-use tokio::time::sleep;
+use openraft::type_config::TypeConfigExt;
+use openraft_memstore::TypeConfig;
 
 use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
@@ -129,7 +130,7 @@ async fn log_progress_with_leader_change() -> Result<()> {
     n0.shutdown().await?;
 
     // ensure node 0 is down and leader lease expire
-    sleep(Duration::from_millis(500)).await;
+    TypeConfig::sleep(Duration::from_millis(500)).await;
 
     let n1_clone = router.get_raft_handle(&1)?;
     let handle = tokio::spawn(async move {
@@ -206,7 +207,7 @@ async fn vote_progress_api() -> Result<()> {
         n0.shutdown().await?;
 
         // ensure node 0 is down and leader lease expire
-        sleep(Duration::from_millis(500)).await;
+        TypeConfig::sleep(Duration::from_millis(500)).await;
     }
 
     tracing::info!("--- spawn task to wait for term 2");

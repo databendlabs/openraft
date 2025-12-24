@@ -10,8 +10,9 @@ use openraft::network::RPCOption;
 use openraft::network::RaftNetworkFactory;
 use openraft::network::v2::RaftNetworkV2;
 use openraft::raft::VoteRequest;
+use openraft::type_config::TypeConfigExt;
 use openraft_memstore::ClientRequest;
-use tokio::time::sleep;
+use openraft_memstore::TypeConfig;
 
 use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
@@ -39,7 +40,7 @@ async fn append_sees_higher_vote() -> Result<()> {
     tracing::info!(log_index, "--- upgrade vote on node-1");
     {
         // Let leader lease expire
-        sleep(Duration::from_millis(800)).await;
+        TypeConfig::sleep(Duration::from_millis(800)).await;
 
         let option = RPCOption::new(Duration::from_millis(1_000));
 
@@ -78,7 +79,7 @@ async fn append_sees_higher_vote() -> Result<()> {
             tracing::debug!("--- client_write res: {:?}", res);
         });
 
-        tokio::time::sleep(Duration::from_millis(500)).await;
+        TypeConfig::sleep(Duration::from_millis(500)).await;
 
         router
             .wait(&0, timeout())

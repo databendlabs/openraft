@@ -8,7 +8,9 @@ use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
 use openraft::ServerState;
+use openraft::type_config::TypeConfigExt;
 use openraft::vote::RaftLeaderId;
+use openraft_memstore::TypeConfig;
 
 use crate::fixtures::RaftRouter;
 use crate::fixtures::ut_harness;
@@ -55,7 +57,7 @@ async fn on_cluster_leader_change_api() -> Result<()> {
     });
 
     // Give some time for the initial callback to be invoked
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    TypeConfig::sleep(Duration::from_millis(100)).await;
 
     tracing::info!("--- verify initial leader change event");
     {
@@ -69,7 +71,7 @@ async fn on_cluster_leader_change_api() -> Result<()> {
     router.remove_node(0);
 
     // Wait for leader lease to expire so other nodes accept new vote
-    tokio::time::sleep(Duration::from_millis(700)).await;
+    TypeConfig::sleep(Duration::from_millis(700)).await;
 
     tracing::info!("--- trigger election on node 2");
     let n2 = router.get_raft_handle(&2)?;
@@ -86,7 +88,7 @@ async fn on_cluster_leader_change_api() -> Result<()> {
         .await?;
 
     // Give some time for the callback to be invoked
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    TypeConfig::sleep(Duration::from_millis(100)).await;
 
     tracing::info!("--- verify leader change events after election");
     {
@@ -103,7 +105,7 @@ async fn on_cluster_leader_change_api() -> Result<()> {
     handle.close().await;
 
     // Wait for leader lease to expire
-    tokio::time::sleep(Duration::from_millis(700)).await;
+    TypeConfig::sleep(Duration::from_millis(700)).await;
 
     tracing::info!("--- trigger election on node 1 after handle closed (node 2 still running for quorum)");
     n1.trigger().elect().await?;
@@ -113,7 +115,7 @@ async fn on_cluster_leader_change_api() -> Result<()> {
         .await?;
 
     // Give some time for any potential callback to be invoked
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    TypeConfig::sleep(Duration::from_millis(100)).await;
 
     tracing::info!("--- verify no new events after handle closed");
     {
@@ -173,7 +175,7 @@ async fn on_leader_change_api() -> Result<()> {
     );
 
     // Give some time for the initial callback to be invoked
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    TypeConfig::sleep(Duration::from_millis(100)).await;
 
     tracing::info!("--- verify `start` was called for node 0");
     {
@@ -187,7 +189,7 @@ async fn on_leader_change_api() -> Result<()> {
     }
 
     // Wait for leader lease to expire so other nodes accept new vote
-    tokio::time::sleep(Duration::from_millis(700)).await;
+    TypeConfig::sleep(Duration::from_millis(700)).await;
 
     tracing::info!("--- trigger election on node 2");
     let n2 = router.get_raft_handle(&2)?;
@@ -204,7 +206,7 @@ async fn on_leader_change_api() -> Result<()> {
         .await?;
 
     // Give some time for the callback to be invoked
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    TypeConfig::sleep(Duration::from_millis(100)).await;
 
     tracing::info!("--- verify `stop` was called for node 0");
     {
@@ -273,7 +275,7 @@ async fn on_leader_change_future_is_awaited() -> Result<()> {
     );
 
     // Give time for the callback future to be awaited
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    TypeConfig::sleep(Duration::from_millis(100)).await;
 
     tracing::info!("--- verify start callback future was awaited");
     assert_eq!(
@@ -288,7 +290,7 @@ async fn on_leader_change_future_is_awaited() -> Result<()> {
     );
 
     // Wait for leader lease to expire
-    tokio::time::sleep(Duration::from_millis(700)).await;
+    TypeConfig::sleep(Duration::from_millis(700)).await;
 
     tracing::info!("--- trigger election on node 2 to cause leadership change");
     let n2 = router.get_raft_handle(&2)?;
@@ -303,7 +305,7 @@ async fn on_leader_change_future_is_awaited() -> Result<()> {
         .await?;
 
     // Give time for the stop callback future to be awaited
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    TypeConfig::sleep(Duration::from_millis(100)).await;
 
     tracing::info!("--- verify stop callback future was awaited");
     assert_eq!(start_counter.load(Ordering::SeqCst), 1, "start count should still be 1");
@@ -353,7 +355,7 @@ async fn on_cluster_leader_change_future_is_awaited() -> Result<()> {
     });
 
     // Give time for the callback future to be awaited
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    TypeConfig::sleep(Duration::from_millis(100)).await;
 
     tracing::info!("--- verify callback future was awaited for initial leader");
     assert_eq!(
@@ -363,7 +365,7 @@ async fn on_cluster_leader_change_future_is_awaited() -> Result<()> {
     );
 
     // Wait for leader lease to expire
-    tokio::time::sleep(Duration::from_millis(700)).await;
+    TypeConfig::sleep(Duration::from_millis(700)).await;
 
     tracing::info!("--- trigger election on node 2");
     let n2 = router.get_raft_handle(&2)?;
@@ -378,7 +380,7 @@ async fn on_cluster_leader_change_future_is_awaited() -> Result<()> {
         .await?;
 
     // Give time for the callback future to be awaited
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    TypeConfig::sleep(Duration::from_millis(100)).await;
 
     tracing::info!("--- verify callback future was awaited for new leader");
     assert_eq!(

@@ -10,7 +10,9 @@ use openraft::network::RaftNetworkFactory;
 use openraft::network::v2::RaftNetworkV2;
 use openraft::raft::AppendEntriesRequest;
 use openraft::testing::blank_ent;
+use openraft::type_config::TypeConfigExt;
 use openraft_memstore::BlockOperation;
+use openraft_memstore::TypeConfig;
 
 use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
@@ -47,7 +49,7 @@ async fn building_snapshot_does_not_block_append() -> Result<()> {
         follower.trigger().snapshot().await?;
 
         tracing::info!(log_index, "--- sleep 500 ms to make sure snapshot is started");
-        tokio::time::sleep(Duration::from_millis(500)).await;
+        TypeConfig::sleep(Duration::from_millis(500)).await;
 
         let res = router
             .wait(&1, Some(Duration::from_millis(500)))

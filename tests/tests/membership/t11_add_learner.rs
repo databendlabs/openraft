@@ -13,7 +13,8 @@ use openraft::async_runtime::WatchReceiver;
 use openraft::error::ChangeMembershipError;
 use openraft::error::ClientWriteError;
 use openraft::error::InProgress;
-use tokio::time::sleep;
+use openraft::type_config::TypeConfigExt;
+use openraft_memstore::TypeConfig;
 
 use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
@@ -153,7 +154,7 @@ async fn add_learner_non_blocking() -> Result<()> {
             if n1_repl.is_none() {
                 tracing::info!("--- no replication attempt is made, sleep and retry: {}-th attempt", i);
 
-                sleep(Duration::from_millis(500)).await;
+                TypeConfig::sleep(Duration::from_millis(500)).await;
                 continue;
             }
             assert_eq!(Some(&None), n1_repl, "no replication state to the learner is reported");
@@ -229,7 +230,7 @@ async fn add_learner_when_previous_membership_not_committed() -> Result<()> {
             unreachable!("do not expect any res");
         });
 
-        sleep(Duration::from_millis(500)).await;
+        TypeConfig::sleep(Duration::from_millis(500)).await;
     }
 
     tracing::info!(log_index, "--- add new node node-1, in non blocking mode");

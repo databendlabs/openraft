@@ -7,6 +7,8 @@ use openraft::Config;
 use openraft::SnapshotMeta;
 use openraft::SnapshotPolicy;
 use openraft::storage::RaftStateMachine;
+use openraft::type_config::TypeConfigExt;
+use openraft_memstore::TypeConfig;
 
 use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
@@ -64,7 +66,7 @@ async fn sm_can_refuse_snapshot_building() -> Result<()> {
         n0.trigger().snapshot().await?;
 
         // Wait a bit to ensure the snapshot building attempt completes
-        tokio::time::sleep(Duration::from_millis(200)).await;
+        TypeConfig::sleep(Duration::from_millis(200)).await;
 
         // Verify no snapshot was created in storage
         let (_, mut sm) = router.get_storage_handle(&0)?;
@@ -134,7 +136,7 @@ async fn sm_can_refuse_snapshot_building() -> Result<()> {
         let n0 = router.get_raft_handle(&0)?;
         n0.trigger().snapshot().await?;
 
-        tokio::time::sleep(Duration::from_millis(200)).await;
+        TypeConfig::sleep(Duration::from_millis(200)).await;
 
         // The old snapshot should still be there in storage
         let snapshot = sm.get_current_snapshot().await?;
@@ -236,7 +238,7 @@ async fn sm_refuse_with_logs_since_last_policy() -> Result<()> {
 
     tracing::info!(log_index, "--- applied upto index=4 logs");
 
-    tokio::time::sleep(Duration::from_millis(300)).await;
+    TypeConfig::sleep(Duration::from_millis(300)).await;
 
     let first_count = take_snapshot_builder_count(&router, 0)?;
 
@@ -251,7 +253,7 @@ async fn sm_refuse_with_logs_since_last_policy() -> Result<()> {
     take_snapshot_builder_count(&router, 0)?;
 
     // Apply a small write to trigger routine actions during the idle period
-    tokio::time::sleep(Duration::from_millis(300)).await;
+    TypeConfig::sleep(Duration::from_millis(300)).await;
     log_index += router.client_request_many(0, "0", 1).await?;
     router.wait(&0, timeout()).applied_index(Some(log_index), "trigger check").await?;
 

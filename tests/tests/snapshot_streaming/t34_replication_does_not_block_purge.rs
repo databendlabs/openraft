@@ -5,7 +5,8 @@ use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
 use openraft::RaftLogReader;
-use tokio::time::sleep;
+use openraft::type_config::TypeConfigExt;
+use openraft_memstore::TypeConfig;
 
 use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
@@ -49,7 +50,7 @@ async fn replication_does_not_block_purge() -> Result<()> {
         leader.trigger().snapshot().await?;
         leader.wait(timeout()).snapshot(log_id(1, 0, log_index), "built snapshot").await?;
 
-        sleep(Duration::from_millis(2_000)).await;
+        TypeConfig::sleep(Duration::from_millis(2_000)).await;
 
         let (mut sto0, mut _sm0) = router.get_storage_handle(&0)?;
         let logs = sto0.try_get_log_entries(..).await?;

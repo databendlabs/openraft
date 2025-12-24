@@ -13,6 +13,8 @@ use openraft::async_runtime::WatchReceiver;
 use openraft::base::BoxFuture;
 use openraft::error::NetworkError;
 use openraft::error::RPCError;
+use openraft::type_config::TypeConfigExt;
+use openraft_memstore::TypeConfig;
 
 use crate::fixtures::RaftRouter;
 use crate::fixtures::rpc_request::RpcRequest;
@@ -130,7 +132,7 @@ async fn get_read_log_id() -> Result<()> {
     router.set_rpc_pre_hook(RPCTypes::AppendEntries, block_to_n0).await;
 
     // Expire current leader
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    TypeConfig::sleep(Duration::from_millis(200)).await;
 
     tracing::info!("--- let node 1 to become leader, append a blank log");
     let n1 = router.get_raft_handle(&1).unwrap();
@@ -296,7 +298,7 @@ async fn ensure_linearizable_with_lease_read() -> Result<()> {
 
     // There may be some ongoing replication requests that sending the commit log ID.
     //Wait for them to finish.
-    tokio::time::sleep(Duration::from_millis(300)).await;
+    TypeConfig::sleep(Duration::from_millis(300)).await;
 
     let leader_handle = router.get_raft_handle(&leader).unwrap();
 
@@ -321,7 +323,7 @@ async fn ensure_linearizable_with_lease_read() -> Result<()> {
         );
 
         // lease time elapsed, lease read will return error.
-        tokio::time::sleep(Duration::from_millis(config.election_timeout_max)).await;
+        TypeConfig::sleep(Duration::from_millis(config.election_timeout_max)).await;
         let rst = router.ensure_linearizable(leader, ReadPolicy::LeaseRead).await;
         tracing::debug!(?rst, "ensure_linearizable with LeaseRead after lease expired");
 

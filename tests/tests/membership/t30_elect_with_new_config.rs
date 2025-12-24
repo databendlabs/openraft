@@ -5,7 +5,8 @@ use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
 use openraft::LogIdOptionExt;
-use tokio::time::sleep;
+use openraft::type_config::TypeConfigExt;
+use openraft_memstore::TypeConfig;
 
 use crate::fixtures::RaftRouter;
 use crate::fixtures::ut_harness;
@@ -42,7 +43,7 @@ async fn leader_election_after_changing_0_to_01234() -> Result<()> {
     router.set_network_error(0, true);
 
     // Wait for leader lease to expire
-    sleep(Duration::from_millis(700)).await;
+    TypeConfig::sleep(Duration::from_millis(700)).await;
 
     // Let node-1 become leader.
     let node_1 = router.get_raft_handle(&1)?;

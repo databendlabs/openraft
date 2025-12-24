@@ -4,6 +4,8 @@ use std::time::Duration;
 use maplit::btreeset;
 use openraft::Config;
 use openraft::RPCTypes;
+use openraft::type_config::TypeConfigExt;
+use openraft_memstore::TypeConfig;
 
 use crate::fixtures::RaftRouter;
 use crate::fixtures::rpc_request::RpcRequest;
@@ -64,7 +66,7 @@ async fn t99_issue_1500_heartbeat_cause_reversion_panic() -> anyhow::Result<()> 
             let fu = async move {
                 if sleep_ms > 0 {
                     tracing::debug!("Post-hook for target {}: delaying response by {}ms", target, sleep_ms);
-                    tokio::time::sleep(Duration::from_millis(sleep_ms)).await;
+                    TypeConfig::sleep(Duration::from_millis(sleep_ms)).await;
                     tracing::debug!("Post-hook for target {}: delay complete", target);
                 }
                 Ok::<_, _>(())

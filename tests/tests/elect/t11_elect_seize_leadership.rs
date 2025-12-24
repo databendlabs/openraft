@@ -5,6 +5,8 @@ use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
 use openraft::ServerState;
+use openraft::type_config::TypeConfigExt;
+use openraft_memstore::TypeConfig;
 
 use crate::fixtures::RaftRouter;
 use crate::fixtures::ut_harness;
@@ -31,7 +33,7 @@ async fn elect_seize_leadership() -> Result<()> {
     n0.wait(timeout()).state(ServerState::Leader, "node 0 becomes leader").await?;
 
     tracing::info!(log_index, "--- sleep to wait for leadership to expire");
-    tokio::time::sleep(Duration::from_secs(2)).await;
+    TypeConfig::sleep(Duration::from_secs(2)).await;
 
     tracing::info!(log_index, "--- trigger election on node 1");
     {

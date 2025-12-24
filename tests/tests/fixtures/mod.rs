@@ -52,6 +52,7 @@ use openraft::raft::TransferLeaderRequest;
 use openraft::raft::VoteRequest;
 use openraft::raft::VoteResponse;
 use openraft::storage::Snapshot;
+use openraft::type_config::TypeConfigExt;
 use openraft_memstore::ClientRequest;
 use openraft_memstore::ClientResponse;
 use openraft_memstore::IntoMemClientRequest;
@@ -305,7 +306,7 @@ impl TypedRaftRouter {
 
         let r = rand::random::<u64>() % send_delay;
         let timeout = Duration::from_millis(r);
-        tokio::time::sleep(timeout).await;
+        TypeConfig::sleep(timeout).await;
     }
 
     pub fn set_append_entries_quota(&mut self, quota: Option<u64>) {

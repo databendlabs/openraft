@@ -6,11 +6,12 @@ use maplit::btreemap;
 use maplit::btreeset;
 use openraft::Config;
 use openraft::ServerState;
+use openraft::type_config::TypeConfigExt;
+use openraft_memstore::TypeConfig;
 #[allow(unused_imports)]
 use pretty_assertions::assert_eq;
 #[allow(unused_imports)]
 use pretty_assertions::assert_ne;
-use tokio::time::sleep;
 
 use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
@@ -150,7 +151,7 @@ async fn leader_metrics() -> Result<()> {
     tracing::info!(log_index, "--- let node-1 to elect to take leadership from node-0");
     {
         // Let the leader lease expire
-        sleep(Duration::from_millis(700)).await;
+        TypeConfig::sleep(Duration::from_millis(700)).await;
 
         n1.trigger().elect().await?;
         n1.wait(timeout()).state(ServerState::Leader, "node-1 becomes leader").await?;

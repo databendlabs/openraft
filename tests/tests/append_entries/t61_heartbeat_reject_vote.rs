@@ -9,7 +9,8 @@ use openraft::Instant;
 use openraft::TokioInstant;
 use openraft::Vote;
 use openraft::raft::VoteRequest;
-use tokio::time::sleep;
+use openraft::type_config::TypeConfigExt;
+use openraft_memstore::TypeConfig;
 
 use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
@@ -31,7 +32,7 @@ async fn heartbeat_reject_vote() -> Result<()> {
     let mut router = RaftRouter::new(config.clone());
 
     let now = TokioInstant::now();
-    sleep(Duration::from_millis(1)).await;
+    TypeConfig::sleep(Duration::from_millis(1)).await;
 
     let log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {3}).await?;
 
@@ -49,7 +50,7 @@ async fn heartbeat_reject_vote() -> Result<()> {
             .await?;
 
         let now = TokioInstant::now();
-        sleep(Duration::from_millis(700)).await;
+        TypeConfig::sleep(Duration::from_millis(700)).await;
 
         let m = vote_modified_time.clone();
 
@@ -74,14 +75,14 @@ async fn heartbeat_reject_vote() -> Result<()> {
     tracing::info!(log_index, "--- ensures no more blank-log heartbeat is used");
     {
         // TODO: this part can be removed when blank-log heartbeat is removed.
-        sleep(Duration::from_millis(1500)).await;
+        TypeConfig::sleep(Duration::from_millis(1500)).await;
         router.wait(&1, timeout()).applied_index(Some(log_index), "no log is written").await?;
     }
 
     tracing::info!(log_index, "--- disable heartbeat, vote request will be granted");
     {
         node0.runtime_config().heartbeat(false);
-        sleep(Duration::from_millis(1500)).await;
+        TypeConfig::sleep(Duration::from_millis(1500)).await;
 
         router.wait(&1, timeout()).applied_index(Some(log_index), "no log is written").await?;
 
