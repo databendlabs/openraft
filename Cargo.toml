@@ -51,7 +51,7 @@ tracing            = { version = "0.1.40" }
 tracing-appender   = { version = "0.2.0" }
 tracing-futures    = { version = "0.2.4" }
 tracing-subscriber = { version = "0.3.3", features = ["env-filter"] }
-validit            = { version = "0.2.2" }
+validit            = { version = "0.2.5" }
 
 
 [profile.release]
