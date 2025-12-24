@@ -1,6 +1,6 @@
-use crate::OptionalSend;
-use crate::async_runtime::OneshotSender;
-use crate::async_runtime::oneshot;
+use openraft_rt::oneshot;
+use openraft_rt::OneshotSender;
+use openraft_rt::OptionalSend;
 
 pub struct TokioOneshot;
 

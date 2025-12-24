@@ -16,6 +16,7 @@ repository    = { workspace = true }
 
 [dependencies]
 openraft-rt = { path = "../rt", version = "0.10.0" }
+openraft-rt-tokio = { path = "../rt-tokio", version = "0.10.0", optional = true }
 openraft-macros = { path = "../macros", version = "0.10.0" }
 
 anyerror        = { workspace = true }
@@ -31,6 +32,7 @@ serde           = { workspace = true, optional = true }
 serde_json      = { workspace = true, optional = true }
 tabled          = { workspace = true, optional = true }
 thiserror       = { workspace = true }
+# Tokio is still needed for I/O traits (AsyncRead, AsyncWrite, AsyncSeek) when tokio-rt is enabled
 tokio           = { workspace = true, optional = true }
 tracing         = { workspace = true }
 tracing-futures = { workspace = true }
@@ -48,7 +50,7 @@ serde_json        = { workspace = true }
 default = ["tokio-rt", "adapt-network-v1"]
 
 # Enable the default Tokio runtime
-tokio-rt = ["dep:tokio"]
+tokio-rt = ["dep:openraft-rt-tokio", "dep:tokio"]
 
 # Enables benchmarks in unittest.
 #
@@ -91,7 +93,7 @@ compat = []
 adapt-network-v1 = []
 
 # Disallows applications to share a raft instance with multiple threads.
-single-threaded = ["openraft-rt/single-threaded", "openraft-macros/single-threaded"]
+single-threaded = ["openraft-rt/single-threaded", "openraft-rt-tokio?/single-threaded", "openraft-macros/single-threaded"]
 
 # Deprecated: use `single-threaded` instead.
 # This feature triggers a compile-time error with migration instructions.

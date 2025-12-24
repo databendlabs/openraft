@@ -90,5 +90,6 @@ exclude = [
 
     "rt-monoio",
     "rt-compio",
+    "rt-tokio",
     "multiraft"
 ]

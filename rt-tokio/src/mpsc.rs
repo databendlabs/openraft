@@ -1,13 +1,15 @@
+use std::future::Future;
+
 use futures::TryFutureExt;
 use tokio::sync::mpsc;
 
-use crate::OptionalSend;
-use crate::async_runtime::Mpsc;
-use crate::async_runtime::MpscReceiver;
-use crate::async_runtime::MpscSender;
-use crate::async_runtime::MpscWeakSender;
-use crate::async_runtime::SendError;
-use crate::async_runtime::TryRecvError;
+use openraft_rt::Mpsc;
+use openraft_rt::MpscReceiver;
+use openraft_rt::MpscSender;
+use openraft_rt::MpscWeakSender;
+use openraft_rt::OptionalSend;
+use openraft_rt::SendError;
+use openraft_rt::TryRecvError;
 
 pub struct TokioMpsc;
 

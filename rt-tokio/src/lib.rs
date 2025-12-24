@@ -1,8 +1,8 @@
 use std::future::Future;
 use std::time::Duration;
 
-use crate::AsyncRuntime;
-use crate::OptionalSend;
+use openraft_rt::AsyncRuntime;
+use openraft_rt::OptionalSend;
 
 mod instant;
 mod mpsc;
@@ -11,13 +11,19 @@ mod oneshot;
 mod watch;
 
 pub use instant::TokioInstant;
-use mpsc::TokioMpsc;
-use mutex::TokioMutex;
-use oneshot::TokioOneshot;
-use watch::TokioWatch;
+pub use mpsc::TokioMpsc;
+pub use mpsc::TokioMpscReceiver;
+pub use mpsc::TokioMpscSender;
+pub use mpsc::TokioMpscWeakSender;
+pub use mutex::TokioMutex;
+pub use oneshot::TokioOneshot;
+pub use oneshot::TokioOneshotSender;
+pub use watch::TokioWatch;
+pub use watch::TokioWatchReceiver;
+pub use watch::TokioWatchSender;
 
 /// `Tokio` is the default asynchronous executor.
-#[derive(Debug, Default, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct TokioRuntime;
 
 impl AsyncRuntime for TokioRuntime {
@@ -84,7 +90,7 @@ impl AsyncRuntime for TokioRuntime {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::testing::runtime::Suite;
+    use openraft_rt::testing::Suite;
 
     #[test]
     #[cfg(not(feature = "single-threaded"))]

@@ -24,10 +24,7 @@
 //! Most applications can use these implementations directly without customization.
 
 #[cfg(feature = "tokio-rt")]
-pub(crate) mod tokio_runtime;
-
-#[cfg(feature = "tokio-rt")]
-pub use tokio_runtime::TokioRuntime;
+pub use openraft_rt_tokio::TokioRuntime;
 
 pub use crate::entry::Entry;
 pub use crate::node::BasicNode;
