@@ -2,25 +2,26 @@
 
 #![allow(missing_docs)]
 
+use std::future::Future;
 use std::pin::Pin;
 use std::pin::pin;
 use std::sync::Arc;
 use std::task::Poll;
 use std::time::Duration;
 
-use crate::async_runtime::Mpsc;
-use crate::async_runtime::MpscReceiver;
-use crate::async_runtime::MpscSender;
-use crate::async_runtime::MpscWeakSender;
-use crate::async_runtime::TryRecvError;
-use crate::async_runtime::watch::WatchReceiver;
-use crate::async_runtime::watch::WatchSender;
-use crate::type_config::async_runtime::AsyncRuntime;
-use crate::type_config::async_runtime::Instant;
-use crate::type_config::async_runtime::mutex::Mutex;
-use crate::type_config::async_runtime::oneshot::Oneshot;
-use crate::type_config::async_runtime::oneshot::OneshotSender;
-use crate::type_config::async_runtime::watch::Watch;
+use crate::AsyncRuntime;
+use crate::Instant;
+use crate::Mutex;
+use crate::Oneshot;
+use crate::OneshotSender;
+use crate::Watch;
+use crate::mpsc::Mpsc;
+use crate::mpsc::MpscReceiver;
+use crate::mpsc::MpscSender;
+use crate::mpsc::MpscWeakSender;
+use crate::mpsc::TryRecvError;
+use crate::watch::WatchReceiver;
+use crate::watch::WatchSender;
 
 /// Test suite to ensure a runtime impl works as expected.
 ///

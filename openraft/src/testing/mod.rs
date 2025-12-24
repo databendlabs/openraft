@@ -6,7 +6,7 @@
 //!
 //! - [`common`] - Common test utilities and assertions
 //! - [`log`] - Log storage test suite
-//! - [`runtime`] - Runtime test utilities
+//! - [`runtime`] - Runtime test utilities (re-exported from `openraft_rt::testing`)
 //!
 //! ## Overview
 //!
@@ -30,6 +30,10 @@
 
 pub mod common;
 pub mod log;
-pub mod runtime;
 
 pub use common::*;
+
+/// Runtime test utilities re-exported from `openraft_rt::testing`.
+pub mod runtime {
+    pub use openraft_rt::testing::Suite;
+}

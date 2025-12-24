@@ -21,6 +21,7 @@ pub mod instant;
 pub mod mpsc;
 pub mod mutex;
 pub mod oneshot;
+pub mod testing;
 pub mod watch;
 
 pub use async_runtime::AsyncRuntime;
