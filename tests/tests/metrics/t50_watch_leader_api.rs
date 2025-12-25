@@ -260,7 +260,7 @@ async fn on_leader_change_future_is_awaited() -> Result<()> {
             let counter = start_counter_clone.clone();
             async move {
                 // Yield to ensure this is a real async operation
-                tokio::task::yield_now().await;
+                TypeConfig::yield_now().await;
                 // Only increment after the await - if future is discarded, this won't run
                 counter.fetch_add(1, Ordering::SeqCst);
             }
@@ -268,7 +268,7 @@ async fn on_leader_change_future_is_awaited() -> Result<()> {
         move |_old_leader_id| {
             let counter = stop_counter_clone.clone();
             async move {
-                tokio::task::yield_now().await;
+                TypeConfig::yield_now().await;
                 counter.fetch_add(1, Ordering::SeqCst);
             }
         },
@@ -348,7 +348,7 @@ async fn on_cluster_leader_change_future_is_awaited() -> Result<()> {
         let counter = callback_counter_clone.clone();
         async move {
             // Yield to ensure this is a real async operation
-            tokio::task::yield_now().await;
+            TypeConfig::yield_now().await;
             // Only increment after the await
             counter.fetch_add(1, Ordering::SeqCst);
         }

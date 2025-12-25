@@ -73,7 +73,7 @@ async fn building_snapshot_does_not_block_append() -> Result<()> {
         let mut cli = router.new_client(1, &()).await;
         let option = RPCOption::new(Duration::from_millis(1_000));
         let fu = cli.append_entries(rpc, option);
-        let fu = tokio::time::timeout(Duration::from_millis(500), fu);
+        let fu = TypeConfig::timeout(Duration::from_millis(500), fu);
         let resp = fu.await??;
         assert!(resp.is_success());
     }
