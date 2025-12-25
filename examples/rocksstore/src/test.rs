@@ -1,5 +1,6 @@
 use openraft::testing::log::StoreBuilder;
 use openraft::testing::log::Suite;
+use openraft::type_config::TypeConfigExt;
 use openraft::StorageError;
 use tempfile::TempDir;
 
@@ -17,8 +18,9 @@ impl StoreBuilder<TypeConfig, RocksLogStore<TypeConfig>, RocksStateMachine, Temp
     }
 }
 
-#[tokio::test]
-pub async fn test_rocks_store() -> Result<(), StorageError<TypeConfig>> {
-    Suite::test_all(RocksBuilder {}).await?;
-    Ok(())
+#[test]
+pub fn test_rocks_store() {
+    TypeConfig::run(async {
+        Suite::test_all(RocksBuilder {}).await.unwrap();
+    });
 }

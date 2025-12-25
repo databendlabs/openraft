@@ -3,6 +3,7 @@ use std::sync::Arc;
 use openraft::StorageError;
 use openraft::testing::log::StoreBuilder;
 use openraft::testing::log::Suite;
+use openraft::type_config::TypeConfigExt;
 
 use crate::MemLogStore;
 use crate::MemStateMachine;
@@ -17,8 +18,9 @@ impl StoreBuilder<TypeConfig, Arc<MemLogStore>, Arc<MemStateMachine>, ()> for Me
     }
 }
 
-#[tokio::test]
-pub async fn test_mem_store() -> Result<(), StorageError<TypeConfig>> {
-    Suite::test_all(MemStoreBuilder {}).await?;
-    Ok(())
+#[test]
+pub fn test_mem_store() {
+    TypeConfig::run(async {
+        Suite::test_all(MemStoreBuilder {}).await.unwrap();
+    });
 }

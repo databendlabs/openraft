@@ -5,6 +5,7 @@ use bench_minimal::store::StateMachineStore;
 use bench_minimal::store::TypeConfig;
 use openraft::testing::log::StoreBuilder;
 use openraft::testing::log::Suite;
+use openraft::type_config::TypeConfigExt;
 use openraft::StorageError;
 
 struct Builder {}
@@ -17,8 +18,9 @@ impl StoreBuilder<TypeConfig, Arc<LogStore>, Arc<StateMachineStore>> for Builder
     }
 }
 
-#[tokio::test]
-pub async fn test_store() -> Result<(), StorageError<TypeConfig>> {
-    Suite::test_all(Builder {}).await?;
-    Ok(())
+#[test]
+pub fn test_store() {
+    TypeConfig::run(async {
+        Suite::test_all(Builder {}).await.unwrap();
+    });
 }

@@ -46,33 +46,35 @@ pub fn log_panic(panic: &PanicHookInfo) {
 
 /// Setup a cluster of 3 nodes.
 /// Write to it and read from it.
-#[tokio::test]
-async fn test_cluster() {
-    std::panic::set_hook(Box::new(|panic| {
-        log_panic(panic);
-    }));
+#[test]
+fn test_cluster() {
+    TypeConfig::run(async {
+        std::panic::set_hook(Box::new(|panic| {
+            log_panic(panic);
+        }));
 
-    tracing_subscriber::fmt()
-        .with_target(true)
-        .with_thread_ids(true)
-        .with_level(true)
-        .with_ansi(false)
-        .with_env_filter(EnvFilter::from_default_env())
-        .init();
+        tracing_subscriber::fmt()
+            .with_target(true)
+            .with_thread_ids(true)
+            .with_level(true)
+            .with_ansi(false)
+            .with_env_filter(EnvFilter::from_default_env())
+            .init();
 
-    let router = Router::default();
+        let router = Router::default();
 
-    let local = LocalSet::new();
+        let local = LocalSet::new();
 
-    local
-        .run_until(async move {
-            task::spawn_local(start_raft(NodeId::new(1), router.clone()));
-            task::spawn_local(start_raft(NodeId::new(2), router.clone()));
-            task::spawn_local(start_raft(NodeId::new(3), router.clone()));
+        local
+            .run_until(async move {
+                task::spawn_local(start_raft(NodeId::new(1), router.clone()));
+                task::spawn_local(start_raft(NodeId::new(2), router.clone()));
+                task::spawn_local(start_raft(NodeId::new(3), router.clone()));
 
-            run_test(router).await;
-        })
-        .await;
+                run_test(router).await;
+            })
+            .await;
+    });
 }
 
 async fn run_test(router: Router) {

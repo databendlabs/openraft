@@ -43,37 +43,39 @@ pub fn log_panic(panic: &PanicHookInfo) {
 ///   - The sending end sends snapshot with `RaftNetwork::full_snapshot()`;
 ///   - The receiving end deliver the received snapshot to `Raft` with
 ///     `Raft::install_full_snapshot()`.
-#[tokio::test]
-async fn test_cluster() {
-    std::panic::set_hook(Box::new(|panic| {
-        log_panic(panic);
-    }));
+#[test]
+fn test_cluster() {
+    TypeConfig::run(async {
+        std::panic::set_hook(Box::new(|panic| {
+            log_panic(panic);
+        }));
 
-    tracing_subscriber::fmt()
-        .with_target(true)
-        .with_thread_ids(true)
-        .with_level(true)
-        .with_ansi(false)
-        .with_env_filter(EnvFilter::from_default_env())
-        .init();
+        tracing_subscriber::fmt()
+            .with_target(true)
+            .with_thread_ids(true)
+            .with_level(true)
+            .with_ansi(false)
+            .with_env_filter(EnvFilter::from_default_env())
+            .init();
 
-    let router = Router::default();
+        let router = Router::default();
 
-    let local = LocalSet::new();
+        let local = LocalSet::new();
 
-    let (raft1, app1) = new_raft(1, router.clone()).await;
-    let (raft2, app2) = new_raft(2, router.clone()).await;
+        let (raft1, app1) = new_raft(1, router.clone()).await;
+        let (raft2, app2) = new_raft(2, router.clone()).await;
 
-    let rafts = [raft1, raft2];
+        let rafts = [raft1, raft2];
 
-    local
-        .run_until(async move {
-            task::spawn_local(app1.run());
-            task::spawn_local(app2.run());
+        local
+            .run_until(async move {
+                task::spawn_local(app1.run());
+                task::spawn_local(app2.run());
 
-            run_test(&rafts, router).await;
-        })
-        .await;
+                run_test(&rafts, router).await;
+            })
+            .await;
+    });
 }
 
 async fn run_test(rafts: &[typ::Raft], router: Router) {
