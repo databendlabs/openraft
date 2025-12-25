@@ -9,20 +9,20 @@ use byteorder::BigEndian;
 use byteorder::ReadBytesExt;
 use byteorder::WriteBytesExt;
 use meta::StoreMeta;
+use openraft::LogState;
+use openraft::OptionalSend;
+use openraft::RaftLogReader;
+use openraft::RaftTypeConfig;
+use openraft::TokioRuntime;
 use openraft::alias::EntryOf;
 use openraft::alias::LogIdOf;
 use openraft::alias::VoteOf;
 use openraft::entry::RaftEntry;
 use openraft::storage::IOFlushed;
 use openraft::storage::RaftLogStorage;
-use openraft::LogState;
-use openraft::OptionalSend;
-use openraft::RaftLogReader;
-use openraft::RaftTypeConfig;
-use openraft::TokioRuntime;
 use rocksdb::ColumnFamily;
-use rocksdb::Direction;
 use rocksdb::DB;
+use rocksdb::Direction;
 use tokio::task::spawn_blocking;
 
 #[derive(Debug, Clone)]
@@ -226,9 +226,9 @@ where C: RaftTypeConfig<AsyncRuntime = TokioRuntime>
 /// In raft, except logs and state machine, the store also has to store several piece of metadata.
 /// This sub mod defines the key-value pairs of these metadata.
 mod meta {
+    use openraft::RaftTypeConfig;
     use openraft::alias::LogIdOf;
     use openraft::alias::VoteOf;
-    use openraft::RaftTypeConfig;
 
     /// Defines metadata key and value
     pub(crate) trait StoreMeta<C>

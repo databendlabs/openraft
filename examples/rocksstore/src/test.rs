@@ -1,13 +1,13 @@
+use openraft::AnyError;
+use openraft::StorageError;
 use openraft::testing::log::StoreBuilder;
 use openraft::testing::log::Suite;
 use openraft::type_config::TypeConfigExt;
-use openraft::AnyError;
-use openraft::StorageError;
 use tempfile::TempDir;
 
-use crate::log_store::RocksLogStore;
 use crate::RocksStateMachine;
 use crate::TypeConfig;
+use crate::log_store::RocksLogStore;
 
 struct RocksBuilder {}
 

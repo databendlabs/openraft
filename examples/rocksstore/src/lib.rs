@@ -21,11 +21,6 @@ use std::sync::Arc;
 
 use futures::Stream;
 use futures::TryStreamExt;
-use openraft::alias::SnapshotDataOf;
-use openraft::entry::RaftEntry;
-use openraft::storage::EntryResponder;
-use openraft::storage::RaftStateMachine;
-use openraft::storage::Snapshot;
 use openraft::AnyError;
 use openraft::EntryPayload;
 use openraft::LogId;
@@ -35,10 +30,15 @@ use openraft::RaftTypeConfig;
 use openraft::SnapshotMeta;
 use openraft::StorageError;
 use openraft::StoredMembership;
+use openraft::alias::SnapshotDataOf;
+use openraft::entry::RaftEntry;
+use openraft::storage::EntryResponder;
+use openraft::storage::RaftStateMachine;
+use openraft::storage::Snapshot;
 use rand::Rng;
 use rocksdb::ColumnFamilyDescriptor;
-use rocksdb::Options;
 use rocksdb::DB;
+use rocksdb::Options;
 use serde::Deserialize;
 use serde::Serialize;
 use tokio::task::spawn_blocking;
@@ -201,7 +201,8 @@ impl RaftSnapshotBuilder<TypeConfig> for RocksStateMachine {
 
         // Write complete snapshot to file
         let snapshot_path = self.snapshot_dir.join(&snapshot_id);
-        fs::write(&snapshot_path, &file_bytes).map_err(|e| StorageError::write_snapshot(Some(meta.signature()), AnyError::new(&e)))?;
+        fs::write(&snapshot_path, &file_bytes)
+            .map_err(|e| StorageError::write_snapshot(Some(meta.signature()), AnyError::new(&e)))?;
 
         // Return snapshot with data-only for backward compatibility with the data field
         let data_bytes =
