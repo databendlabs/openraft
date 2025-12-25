@@ -157,8 +157,7 @@ where C: RaftTypeConfig
 #[cfg(test)]
 mod tests {
     use std::io::Cursor;
-
-    use tokio::time::Duration;
+    use std::time::Duration;
 
     use crate::OptionalSend;
     use crate::RaftTypeConfig;

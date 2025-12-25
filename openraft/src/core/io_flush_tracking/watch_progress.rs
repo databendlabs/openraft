@@ -211,10 +211,10 @@ mod tests {
 
         assert_eq!(progress.get(), 0);
 
-        tokio::spawn(async move {
-            tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+        TestConfig::spawn(async move {
+            TestConfig::sleep(std::time::Duration::from_millis(10)).await;
             tx.send(5).unwrap();
-            tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+            TestConfig::sleep(std::time::Duration::from_millis(10)).await;
             tx.send(10).unwrap();
         });
 
@@ -239,9 +239,9 @@ mod tests {
         let (tx, rx) = TestConfig::watch_channel(1u64);
         let mut progress = WatchProgress::<TestConfig, u64>::new(rx);
 
-        tokio::spawn(async move {
+        TestConfig::spawn(async move {
             for i in 2..=10 {
-                tokio::time::sleep(tokio::time::Duration::from_millis(5)).await;
+                TestConfig::sleep(std::time::Duration::from_millis(5)).await;
                 tx.send(i).unwrap();
             }
         });
@@ -271,8 +271,8 @@ mod tests {
         assert_eq!(progress.get(), 0);
 
         // Spawn a task that sends a new value after a delay
-        tokio::spawn(async move {
-            tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+        TestConfig::spawn(async move {
+            TestConfig::sleep(std::time::Duration::from_millis(10)).await;
             tx.send(5).unwrap();
         });
 
@@ -315,10 +315,10 @@ mod tests {
         let mut progress = WatchProgress::<TestConfig, u64>::new(rx);
 
         // Spawn a task that sends values
-        tokio::spawn(async move {
-            tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+        TestConfig::spawn(async move {
+            TestConfig::sleep(std::time::Duration::from_millis(10)).await;
             tx.send(5).unwrap();
-            tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+            TestConfig::sleep(std::time::Duration::from_millis(10)).await;
             tx.send(10).unwrap();
         });
 

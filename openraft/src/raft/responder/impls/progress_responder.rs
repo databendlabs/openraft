@@ -101,10 +101,13 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use crate::engine::testing::UTConfig;
     use crate::engine::testing::log_id;
     use crate::raft::responder::ProgressResponder;
     use crate::raft::responder::Responder;
+    use crate::type_config::TypeConfigExt;
 
     #[tokio::test]
     async fn test_twoshot_responder_new() {
@@ -215,12 +218,12 @@ mod tests {
         let test_result = 42;
 
         // Create tasks to receive in parallel
-        let commit_task = tokio::spawn(async move { commit_rx.await.unwrap() });
+        let commit_task = UTConfig::spawn(async move { commit_rx.await.unwrap() });
 
-        let complete_task = tokio::spawn(async move { complete_rx.await.unwrap() });
+        let complete_task = UTConfig::spawn(async move { complete_rx.await.unwrap() });
 
         // Small delay to ensure receivers are waiting
-        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+        UTConfig::sleep(Duration::from_millis(10)).await;
 
         // Send in order: commit first, then complete
         responder.on_commit(test_log_id);

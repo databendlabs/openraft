@@ -2,7 +2,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use maplit::btreeset;
-use tokio::time::sleep;
 
 use crate::Membership;
 use crate::RaftMetrics;
@@ -29,8 +28,8 @@ async fn test_wait() -> anyhow::Result<()> {
         // wait for leader
         let (init, w, tx) = init_wait_test::<UTConfig>();
 
-        let h = tokio::spawn(async move {
-            sleep(Duration::from_millis(10)).await;
+        let h = UTConfig::spawn(async move {
+            UTConfig::sleep(Duration::from_millis(10)).await;
             let mut update = init.clone();
             update.current_leader = Some(3);
             let rst = tx.send(update);
@@ -45,8 +44,8 @@ async fn test_wait() -> anyhow::Result<()> {
         // wait for applied log
         let (init, w, tx) = init_wait_test::<UTConfig>();
 
-        let h = tokio::spawn(async move {
-            sleep(Duration::from_millis(10)).await;
+        let h = UTConfig::spawn(async move {
+            UTConfig::sleep(Duration::from_millis(10)).await;
             let mut update = init.clone();
             update.last_log_index = Some(3);
             update.last_applied = Some(log_id(1, 0, 3));
@@ -73,8 +72,8 @@ async fn test_wait() -> anyhow::Result<()> {
         // wait for state
         let (init, w, tx) = init_wait_test::<UTConfig>();
 
-        let h = tokio::spawn(async move {
-            sleep(Duration::from_millis(10)).await;
+        let h = UTConfig::spawn(async move {
+            UTConfig::sleep(Duration::from_millis(10)).await;
             let mut update = init.clone();
             update.state = ServerState::Leader;
             let rst = tx.send(update);
@@ -90,8 +89,8 @@ async fn test_wait() -> anyhow::Result<()> {
         // wait for members
         let (init, w, tx) = init_wait_test::<UTConfig>();
 
-        let h = tokio::spawn(async move {
-            sleep(Duration::from_millis(10)).await;
+        let h = UTConfig::spawn(async move {
+            UTConfig::sleep(Duration::from_millis(10)).await;
             let mut update = init.clone();
             update.membership_config = Arc::new(StoredMembership::new(
                 None,
@@ -113,8 +112,8 @@ async fn test_wait() -> anyhow::Result<()> {
     {
         let (init, w, tx) = init_wait_test::<UTConfig>();
 
-        let h = tokio::spawn(async move {
-            sleep(Duration::from_millis(10)).await;
+        let h = UTConfig::spawn(async move {
+            UTConfig::sleep(Duration::from_millis(10)).await;
             let mut update = init.clone();
             update.snapshot = Some(log_id(1, 0, 2));
             let rst = tx.send(update);
@@ -130,14 +129,14 @@ async fn test_wait() -> anyhow::Result<()> {
     {
         let (init, w, tx) = init_wait_test::<UTConfig>();
 
-        let h = tokio::spawn(async move {
-            sleep(Duration::from_millis(10)).await;
+        let h = UTConfig::spawn(async move {
+            UTConfig::sleep(Duration::from_millis(10)).await;
             let mut update = init.clone();
             update.snapshot = Some(log_id(3, 0, 2));
             let rst = tx.send(update);
             assert!(rst.is_ok());
             // delay otherwise the channel will be closed thus the error is shutdown.
-            sleep(Duration::from_millis(200)).await;
+            UTConfig::sleep(Duration::from_millis(200)).await;
         });
         let got = w.snapshot(log_id(1, 0, 2), "snapshot").await;
         h.await?;
@@ -155,8 +154,8 @@ async fn test_wait() -> anyhow::Result<()> {
         // timeout
         let (_init, w, _tx) = init_wait_test::<UTConfig>();
 
-        let h = tokio::spawn(async move {
-            sleep(Duration::from_millis(200)).await;
+        let h = UTConfig::spawn(async move {
+            UTConfig::sleep(Duration::from_millis(200)).await;
         });
         let got = w.state(ServerState::Follower, "timeout").await;
         h.await?;
@@ -179,8 +178,8 @@ async fn test_wait_log_index() -> anyhow::Result<()> {
     // wait for applied log
     let (init, w, tx) = init_wait_test::<UTConfig>();
 
-    let h = tokio::spawn(async move {
-        sleep(Duration::from_millis(10)).await;
+    let h = UTConfig::spawn(async move {
+        UTConfig::sleep(Duration::from_millis(10)).await;
         let mut update = init.clone();
         update.last_log_index = Some(3);
         let rst = tx.send(update);
@@ -206,8 +205,8 @@ async fn test_wait_log_index() -> anyhow::Result<()> {
 async fn test_wait_vote() -> anyhow::Result<()> {
     let (init, w, tx) = init_wait_test::<UTConfig>();
 
-    let h = tokio::spawn(async move {
-        sleep(Duration::from_millis(10)).await;
+    let h = UTConfig::spawn(async move {
+        UTConfig::sleep(Duration::from_millis(10)).await;
         let mut update = init.clone();
         update.vote = Vote::new_committed(1, 2);
         let rst = tx.send(update);
@@ -229,8 +228,8 @@ async fn test_wait_vote() -> anyhow::Result<()> {
 async fn test_wait_purged() -> anyhow::Result<()> {
     let (init, w, tx) = init_wait_test::<UTConfig>();
 
-    let h = tokio::spawn(async move {
-        sleep(Duration::from_millis(10)).await;
+    let h = UTConfig::spawn(async move {
+        UTConfig::sleep(Duration::from_millis(10)).await;
         let mut update = init.clone();
         update.purged = Some(log_id(1, 2, 3));
         let rst = tx.send(update);
