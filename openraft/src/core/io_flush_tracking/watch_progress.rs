@@ -180,6 +180,7 @@ mod tests {
 
     use super::*;
     use crate::RaftTypeConfig;
+    use crate::async_runtime::AsyncRuntime;
     use crate::async_runtime::WatchSender;
     use crate::impls::TokioRuntime;
     use crate::impls::Vote;
@@ -204,23 +205,25 @@ mod tests {
         where T: OptionalSend + 'static;
     }
 
-    #[tokio::test]
-    async fn test_wait_until_ge() {
-        let (tx, rx) = TestConfig::watch_channel(0u64);
-        let mut progress = WatchProgress::<TestConfig, u64>::new(rx);
+    #[test]
+    fn test_wait_until_ge() {
+        TokioRuntime::run(async {
+            let (tx, rx) = TestConfig::watch_channel(0u64);
+            let mut progress = WatchProgress::<TestConfig, u64>::new(rx);
 
-        assert_eq!(progress.get(), 0);
+            assert_eq!(progress.get(), 0);
 
-        TestConfig::spawn(async move {
-            TestConfig::sleep(std::time::Duration::from_millis(10)).await;
-            tx.send(5).unwrap();
-            TestConfig::sleep(std::time::Duration::from_millis(10)).await;
-            tx.send(10).unwrap();
+            TestConfig::spawn(async move {
+                TestConfig::sleep(std::time::Duration::from_millis(10)).await;
+                tx.send(5).unwrap();
+                TestConfig::sleep(std::time::Duration::from_millis(10)).await;
+                tx.send(10).unwrap();
+            });
+
+            let result = progress.wait_until_ge(&8).await.unwrap();
+            assert!(result >= 8);
+            assert_eq!(result, 10);
         });
-
-        let result = progress.wait_until_ge(&8).await.unwrap();
-        assert!(result >= 8);
-        assert_eq!(result, 10);
     }
 
     #[tokio::test]
@@ -234,21 +237,23 @@ mod tests {
         drop(tx);
     }
 
-    #[tokio::test]
-    async fn test_wait_until_custom_condition() {
-        let (tx, rx) = TestConfig::watch_channel(1u64);
-        let mut progress = WatchProgress::<TestConfig, u64>::new(rx);
+    #[test]
+    fn test_wait_until_custom_condition() {
+        TokioRuntime::run(async {
+            let (tx, rx) = TestConfig::watch_channel(1u64);
+            let mut progress = WatchProgress::<TestConfig, u64>::new(rx);
 
-        TestConfig::spawn(async move {
-            for i in 2..=10 {
-                TestConfig::sleep(std::time::Duration::from_millis(5)).await;
-                tx.send(i).unwrap();
-            }
+            TestConfig::spawn(async move {
+                for i in 2..=10 {
+                    TestConfig::sleep(std::time::Duration::from_millis(5)).await;
+                    tx.send(i).unwrap();
+                }
+            });
+
+            let result = progress.wait_until(|v| v % 2 == 0).await.unwrap();
+            assert_eq!(result % 2, 0);
+            assert_eq!(result, 2);
         });
-
-        let result = progress.wait_until(|v| v % 2 == 0).await.unwrap();
-        assert_eq!(result % 2, 0);
-        assert_eq!(result, 2);
     }
 
     #[tokio::test]
@@ -262,25 +267,27 @@ mod tests {
         drop(tx);
     }
 
-    #[tokio::test]
-    async fn test_changed_waits_for_notification() {
-        let (tx, rx) = TestConfig::watch_channel(0u64);
-        let mut progress = WatchProgress::<TestConfig, u64>::new(rx);
+    #[test]
+    fn test_changed_waits_for_notification() {
+        TokioRuntime::run(async {
+            let (tx, rx) = TestConfig::watch_channel(0u64);
+            let mut progress = WatchProgress::<TestConfig, u64>::new(rx);
 
-        // Initial value is 0
-        assert_eq!(progress.get(), 0);
+            // Initial value is 0
+            assert_eq!(progress.get(), 0);
 
-        // Spawn a task that sends a new value after a delay
-        TestConfig::spawn(async move {
-            TestConfig::sleep(std::time::Duration::from_millis(10)).await;
-            tx.send(5).unwrap();
+            // Spawn a task that sends a new value after a delay
+            TestConfig::spawn(async move {
+                TestConfig::sleep(std::time::Duration::from_millis(10)).await;
+                tx.send(5).unwrap();
+            });
+
+            // Wait for change
+            progress.changed().await.unwrap();
+
+            // Value should have changed
+            assert_eq!(progress.get(), 5);
         });
-
-        // Wait for change
-        progress.changed().await.unwrap();
-
-        // Value should have changed
-        assert_eq!(progress.get(), 5);
     }
 
     #[tokio::test]
@@ -309,26 +316,28 @@ mod tests {
         assert!(result.is_err());
     }
 
-    #[tokio::test]
-    async fn test_next_returns_changed_value() {
-        let (tx, rx) = TestConfig::watch_channel(0u64);
-        let mut progress = WatchProgress::<TestConfig, u64>::new(rx);
+    #[test]
+    fn test_next_returns_changed_value() {
+        TokioRuntime::run(async {
+            let (tx, rx) = TestConfig::watch_channel(0u64);
+            let mut progress = WatchProgress::<TestConfig, u64>::new(rx);
 
-        // Spawn a task that sends values
-        TestConfig::spawn(async move {
-            TestConfig::sleep(std::time::Duration::from_millis(10)).await;
-            tx.send(5).unwrap();
-            TestConfig::sleep(std::time::Duration::from_millis(10)).await;
-            tx.send(10).unwrap();
+            // Spawn a task that sends values
+            TestConfig::spawn(async move {
+                TestConfig::sleep(std::time::Duration::from_millis(10)).await;
+                tx.send(5).unwrap();
+                TestConfig::sleep(std::time::Duration::from_millis(10)).await;
+                tx.send(10).unwrap();
+            });
+
+            // First next() should return 5
+            let value = progress.next().await.unwrap();
+            assert_eq!(value, 5);
+
+            // Second next() should return 10
+            let value = progress.next().await.unwrap();
+            assert_eq!(value, 10);
         });
-
-        // First next() should return 5
-        let value = progress.next().await.unwrap();
-        assert_eq!(value, 5);
-
-        // Second next() should return 10
-        let value = progress.next().await.unwrap();
-        assert_eq!(value, 10);
     }
 
     #[tokio::test]

@@ -19,11 +19,14 @@ use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::NodeIdOf;
 use crate::type_config::alias::VoteOf;
 use crate::type_config::alias::WatchSenderOf;
+use crate::async_runtime::AsyncRuntime;
+use crate::impls::TokioRuntime;
 use crate::vote::raft_vote::RaftVoteExt;
 
 /// Test wait for different state changes
-#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
-async fn test_wait() -> anyhow::Result<()> {
+#[test]
+fn test_wait() {
+    TokioRuntime::run(async {
     {
         // wait for leader
         let (init, w, tx) = init_wait_test::<UTConfig>();
@@ -170,11 +173,13 @@ async fn test_wait() -> anyhow::Result<()> {
         }
     }
 
-    Ok(())
+    Ok::<(), anyhow::Error>(())
+    }).unwrap();
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
-async fn test_wait_log_index() -> anyhow::Result<()> {
+#[test]
+fn test_wait_log_index() {
+    TokioRuntime::run(async {
     // wait for applied log
     let (init, w, tx) = init_wait_test::<UTConfig>();
 
@@ -198,11 +203,13 @@ async fn test_wait_log_index() -> anyhow::Result<()> {
 
     assert!(got_least4.is_err());
 
-    Ok(())
+    Ok::<(), anyhow::Error>(())
+    }).unwrap();
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
-async fn test_wait_vote() -> anyhow::Result<()> {
+#[test]
+fn test_wait_vote() {
+    TokioRuntime::run(async {
     let (init, w, tx) = init_wait_test::<UTConfig>();
 
     let h = UTConfig::<()>::spawn(async move {
@@ -221,11 +228,13 @@ async fn test_wait_vote() -> anyhow::Result<()> {
     h.await?;
     assert_eq!(Vote::new_committed(1, 2), got.vote);
 
-    Ok(())
+    Ok::<(), anyhow::Error>(())
+    }).unwrap();
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
-async fn test_wait_purged() -> anyhow::Result<()> {
+#[test]
+fn test_wait_purged() {
+    TokioRuntime::run(async {
     let (init, w, tx) = init_wait_test::<UTConfig>();
 
     let h = UTConfig::<()>::spawn(async move {
@@ -239,7 +248,8 @@ async fn test_wait_purged() -> anyhow::Result<()> {
     h.await?;
     assert_eq!(Some(log_id(1, 2, 3)), got.purged);
 
-    Ok(())
+    Ok::<(), anyhow::Error>(())
+    }).unwrap();
 }
 
 pub(crate) type InitResult<C> = (RaftMetrics<C>, Wait<C>, WatchSenderOf<C, RaftMetrics<C>>);

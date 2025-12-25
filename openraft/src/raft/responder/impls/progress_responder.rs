@@ -103,8 +103,10 @@ where
 mod tests {
     use std::time::Duration;
 
+    use crate::async_runtime::AsyncRuntime;
     use crate::engine::testing::UTConfig;
     use crate::engine::testing::log_id;
+    use crate::impls::TokioRuntime;
     use crate::raft::responder::ProgressResponder;
     use crate::raft::responder::Responder;
     use crate::type_config::TypeConfigExt;
@@ -209,31 +211,33 @@ mod tests {
         assert!(commit_rx.try_recv().is_err());
     }
 
-    #[tokio::test]
-    async fn test_twoshot_responder_ordering() {
-        let (mut responder, commit_rx, complete_rx): (ProgressResponder<UTConfig, i32>, _, _) =
-            ProgressResponder::new();
+    #[test]
+    fn test_twoshot_responder_ordering() {
+        TokioRuntime::run(async {
+            let (mut responder, commit_rx, complete_rx): (ProgressResponder<UTConfig, i32>, _, _) =
+                ProgressResponder::new();
 
-        let test_log_id = log_id(5, 10, 15);
-        let test_result = 42;
+            let test_log_id = log_id(5, 10, 15);
+            let test_result = 42;
 
-        // Create tasks to receive in parallel
-        let commit_task = UTConfig::<()>::spawn(async move { commit_rx.await.unwrap() });
+            // Create tasks to receive in parallel
+            let commit_task = UTConfig::<()>::spawn(async move { commit_rx.await.unwrap() });
 
-        let complete_task = UTConfig::<()>::spawn(async move { complete_rx.await.unwrap() });
+            let complete_task = UTConfig::<()>::spawn(async move { complete_rx.await.unwrap() });
 
-        // Small delay to ensure receivers are waiting
-        UTConfig::<()>::sleep(Duration::from_millis(10)).await;
+            // Small delay to ensure receivers are waiting
+            UTConfig::<()>::sleep(Duration::from_millis(10)).await;
 
-        // Send in order: commit first, then complete
-        responder.on_commit(test_log_id);
-        responder.on_complete(test_result);
+            // Send in order: commit first, then complete
+            responder.on_commit(test_log_id);
+            responder.on_complete(test_result);
 
-        // Both should complete successfully
-        let received_log_id = commit_task.await.unwrap();
-        let received_result = complete_task.await.unwrap();
+            // Both should complete successfully
+            let received_log_id = commit_task.await.unwrap();
+            let received_result = complete_task.await.unwrap();
 
-        assert_eq!(test_log_id, received_log_id);
-        assert_eq!(test_result, received_result);
+            assert_eq!(test_log_id, received_log_id);
+            assert_eq!(test_result, received_result);
+        });
     }
 }
