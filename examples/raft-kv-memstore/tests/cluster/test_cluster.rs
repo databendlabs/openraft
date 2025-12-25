@@ -7,6 +7,7 @@ use std::time::Duration;
 use client_http::ExampleClient;
 use maplit::btreemap;
 use maplit::btreeset;
+use openraft::type_config::TypeConfigExt;
 use openraft::BasicNode;
 use raft_kv_memstore::start_example_raft_node;
 use raft_kv_memstore::store::Request;
@@ -100,7 +101,7 @@ async fn test_cluster() -> anyhow::Result<()> {
     });
 
     // Wait for server to start up.
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    TypeConfig::sleep(Duration::from_millis(200)).await;
 
     // --- Create a client to the first node, as a control handle to the cluster.
 
@@ -113,7 +114,7 @@ async fn test_cluster() -> anyhow::Result<()> {
     client.init().await??;
 
     // Wait for the initial membership log to commit after election
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    TypeConfig::sleep(Duration::from_millis(200)).await;
 
     println!("=== metrics after init");
     client.metrics().await?;
@@ -182,7 +183,7 @@ async fn test_cluster() -> anyhow::Result<()> {
 
     // --- Wait for a while to let the replication get done.
 
-    tokio::time::sleep(Duration::from_millis(1_000)).await;
+    TypeConfig::sleep(Duration::from_millis(1_000)).await;
 
     // --- Read it on every node.
 
@@ -210,7 +211,7 @@ async fn test_cluster() -> anyhow::Result<()> {
         })
         .await??;
 
-    tokio::time::sleep(Duration::from_millis(1_000)).await;
+    TypeConfig::sleep(Duration::from_millis(1_000)).await;
 
     // --- Read it on every node.
 
@@ -250,7 +251,7 @@ async fn test_cluster() -> anyhow::Result<()> {
     println!("=== change-membership to 3, ");
     client.change_membership(&btreeset! {3}).await??;
 
-    tokio::time::sleep(Duration::from_millis(8_000)).await;
+    TypeConfig::sleep(Duration::from_millis(8_000)).await;
 
     println!("=== metrics after change-membership to {{3}}");
     let x = client.metrics().await?;

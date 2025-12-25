@@ -16,7 +16,9 @@ use raft_kv_memstore_single_threaded::typ::ClientWriteResponse;
 use raft_kv_memstore_single_threaded::typ::InitializeError;
 use raft_kv_memstore_single_threaded::typ::LinearizableReadError;
 use raft_kv_memstore_single_threaded::typ::RaftMetrics;
+use openraft::type_config::TypeConfigExt;
 use raft_kv_memstore_single_threaded::NodeId;
+use raft_kv_memstore_single_threaded::TypeConfig;
 use tokio::task;
 use tokio::task::LocalSet;
 use tracing_subscriber::EnvFilter;
@@ -75,7 +77,7 @@ async fn test_cluster() {
 
 async fn run_test(router: Router) {
     // Wait for server to start up.
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    TypeConfig::sleep(Duration::from_millis(200)).await;
 
     // --- 1. Initialize the target node as a cluster of only one node.
     //        After init(), the single node cluster will be fully functional.
@@ -178,7 +180,7 @@ async fn run_test(router: Router) {
 
     // --- Wait for a while to let the replication get done.
 
-    tokio::time::sleep(Duration::from_millis(1_000)).await;
+    TypeConfig::sleep(Duration::from_millis(1_000)).await;
 
     // --- Read it
 

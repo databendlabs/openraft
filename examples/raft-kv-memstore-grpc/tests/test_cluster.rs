@@ -7,7 +7,9 @@ use std::time::Duration;
 use maplit::btreemap;
 use raft_kv_memstore_grpc::app::start_raft_app;
 use raft_kv_memstore_grpc::protobuf as pb;
+use openraft::type_config::TypeConfigExt;
 use raft_kv_memstore_grpc::protobuf::app_service_client::AppServiceClient;
+use raft_kv_memstore_grpc::TypeConfig;
 use tokio::runtime::Runtime;
 use tonic::transport::Channel;
 use tracing_subscriber::EnvFilter;
@@ -70,7 +72,7 @@ async fn test_cluster() -> anyhow::Result<()> {
     });
 
     // Wait for server to start up.
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    TypeConfig::sleep(Duration::from_millis(200)).await;
 
     let mut client1 = new_client(get_addr(1)).await?;
 
@@ -156,7 +158,7 @@ async fn test_cluster() -> anyhow::Result<()> {
             .await?;
 
         // --- Wait for a while to let the replication get done.
-        tokio::time::sleep(Duration::from_millis(1_000)).await;
+        TypeConfig::sleep(Duration::from_millis(1_000)).await;
     }
 
     println!("=== read `foo` on every node");
@@ -191,7 +193,7 @@ async fn test_cluster() -> anyhow::Result<()> {
             })
             .await?;
 
-        tokio::time::sleep(Duration::from_millis(2_000)).await;
+        TypeConfig::sleep(Duration::from_millis(2_000)).await;
 
         let metrics = client1.metrics(()).await?.into_inner();
         println!("=== metrics after change-membership to {{3}}: {:?}", metrics);
