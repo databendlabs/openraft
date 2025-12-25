@@ -11,7 +11,7 @@ use crate::error::Unreachable;
 ///
 /// Thus, this error includes storage error, network error, and remote error.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize), serde(bound = ""))]
 pub enum StreamingError<C: RaftTypeConfig> {
     /// The replication stream is closed intentionally.
     #[error(transparent)]
@@ -27,11 +27,11 @@ pub enum StreamingError<C: RaftTypeConfig> {
 
     /// The node is temporarily unreachable and should backoff before retrying.
     #[error(transparent)]
-    Unreachable(#[from] Unreachable),
+    Unreachable(#[from] Unreachable<C>),
 
     /// Failed to send the RPC request and should retry immediately.
     #[error(transparent)]
-    Network(#[from] NetworkError),
+    Network(#[from] NetworkError<C>),
 }
 
 impl<C: RaftTypeConfig> From<StreamingError<C>> for ReplicationError<C> {

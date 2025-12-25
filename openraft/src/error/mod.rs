@@ -2,6 +2,7 @@
 
 mod allow_next_revert_error;
 pub mod decompose;
+mod error_source;
 pub(crate) mod higher_vote;
 pub mod into_ok;
 pub(crate) mod into_raft_result;
@@ -22,10 +23,10 @@ use std::error::Error;
 use std::fmt::Debug;
 use std::time::Duration;
 
-use anyerror::AnyError;
 use openraft_macros::since;
 
 pub use self::allow_next_revert_error::AllowNextRevertError;
+pub use self::error_source::ErrorSource;
 pub(crate) use self::higher_vote::HigherVote;
 pub use self::invalid_sm::InvalidStateMachineType;
 pub use self::leader_changed::LeaderChanged;
@@ -291,11 +292,11 @@ pub enum RPCError<C: RaftTypeConfig, E: Error = Infallible> {
 
     /// The node is temporarily unreachable and should backoff before retrying.
     #[error(transparent)]
-    Unreachable(#[from] Unreachable),
+    Unreachable(#[from] Unreachable<C>),
 
     /// Failed to send the RPC request and should retry immediately.
     #[error(transparent)]
-    Network(#[from] NetworkError),
+    Network(#[from] NetworkError<C>),
 
     /// The remote node returned an error.
     #[error(transparent)]
@@ -407,18 +408,24 @@ where
 ///
 /// Unlike [`Unreachable`], which indicates an error that should backoff before retrying.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 #[error("NetworkError: {source}")]
-pub struct NetworkError {
-    #[from]
-    source: AnyError,
+pub struct NetworkError<C: RaftTypeConfig> {
+    source: C::ErrorSource,
 }
 
-impl NetworkError {
+impl<C: RaftTypeConfig> NetworkError<C> {
     /// Create a new NetworkError from an error.
     pub fn new<E: Error + 'static>(e: &E) -> Self {
         Self {
-            source: AnyError::new(e),
+            source: C::ErrorSource::from_error(e),
+        }
+    }
+
+    /// Create a NetworkError from a string message.
+    pub fn from_string(msg: impl ToString) -> Self {
+        Self {
+            source: C::ErrorSource::from_string(msg),
         }
     }
 }
@@ -434,18 +441,24 @@ impl NetworkError {
 ///
 /// [`backoff()`]: crate::network::RaftNetwork::backoff
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 #[error("Unreachable node: {source}")]
-pub struct Unreachable {
-    #[from]
-    source: AnyError,
+pub struct Unreachable<C: RaftTypeConfig> {
+    source: C::ErrorSource,
 }
 
-impl Unreachable {
+impl<C: RaftTypeConfig> Unreachable<C> {
     /// Create a new Unreachable error from an error.
     pub fn new<E: Error + 'static>(e: &E) -> Self {
         Self {
-            source: AnyError::new(e),
+            source: C::ErrorSource::from_error(e),
+        }
+    }
+
+    /// Create an Unreachable error from a string message.
+    pub fn from_string(msg: impl ToString) -> Self {
+        Self {
+            source: C::ErrorSource::from_string(msg),
         }
     }
 }

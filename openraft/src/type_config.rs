@@ -19,6 +19,7 @@ use crate::NodeId;
 use crate::OptionalSend;
 use crate::OptionalSync;
 use crate::entry::RaftEntry;
+use crate::error::ErrorSource;
 use crate::raft::responder::Responder;
 use crate::vote::RaftLeaderId;
 use crate::vote::RaftTerm;
@@ -138,6 +139,19 @@ pub trait RaftTypeConfig:
     /// [`Raft::client_write`]: `crate::raft::Raft::client_write`
     type Responder<T>: Responder<Self, T>
     where T: OptionalSend + 'static;
+
+    /// Error wrapper type for storage and network errors.
+    ///
+    /// This type is used to wrap underlying errors in storage and network operations.
+    /// The default implementation uses [`anyerror::AnyError`].
+    ///
+    /// Custom implementations can provide:
+    /// - Enhanced diagnostic capabilities
+    /// - In-place error storage (no heap allocation)
+    /// - Robustness against out-of-memory conditions
+    ///
+    /// See [`ErrorSource`] for the required methods.
+    type ErrorSource: ErrorSource;
 }
 
 #[allow(dead_code)]
@@ -171,6 +185,7 @@ pub mod alias {
     pub type SnapshotDataOf<C> = <C as RaftTypeConfig>::SnapshotData;
     pub type AsyncRuntimeOf<C> = <C as RaftTypeConfig>::AsyncRuntime;
     pub type ResponderOf<C, T> = <C as RaftTypeConfig>::Responder<T>;
+    pub type ErrorSourceOf<C> = <C as RaftTypeConfig>::ErrorSource;
     pub type WriteResponderOf<C> = ResponderOf<C, ClientWriteResult<C>>;
 
     type Rt<C> = AsyncRuntimeOf<C>;

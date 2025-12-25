@@ -1,6 +1,5 @@
 use std::time::Duration;
 
-use anyerror::AnyError;
 use futures::FutureExt;
 
 use crate::RaftNetworkFactory;
@@ -186,7 +185,7 @@ where
 
         let snapshot = match snapshot {
             None => {
-                let sto_err = StorageError::read_snapshot(None, AnyError::error("snapshot not found"));
+                let sto_err = StorageError::read_snapshot(None, C::err_from_string("snapshot not found"));
                 return Err(sto_err.into());
             }
             Some(x) => x,

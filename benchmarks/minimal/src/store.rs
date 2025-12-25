@@ -72,6 +72,7 @@ impl RaftTypeConfig for TypeConfig {
         = openraft::impls::OneshotResponder<Self, T>
     where T: Send + 'static;
     type AsyncRuntime = openraft::impls::TokioRuntime;
+    type ErrorSource = openraft::AnyError;
 }
 
 #[derive(Debug)]

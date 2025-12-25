@@ -49,6 +49,7 @@ where N: Node + Ord
     type Responder<T>
         = crate::impls::OneshotResponder<Self, T>
     where T: OptionalSend + 'static;
+    type ErrorSource = anyerror::AnyError;
 }
 
 /// Builds a log id, for testing purposes.

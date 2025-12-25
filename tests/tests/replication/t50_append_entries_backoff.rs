@@ -1,13 +1,13 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyerror::AnyError;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
 use openraft::RPCTypes;
 use openraft::error::RPCError;
 use openraft::error::Unreachable;
+use openraft_memstore::TypeConfig;
 
 use crate::fixtures::RaftRouter;
 use crate::fixtures::ut_harness;
@@ -39,8 +39,9 @@ async fn append_entries_backoff() -> Result<()> {
         router
             .set_rpc_pre_hook(RPCTypes::AppendEntries, |_router, _req, _id, target| {
                 let res = if target == 2 {
-                    let any_err = AnyError::error("unreachable");
-                    Err(RPCError::Unreachable(Unreachable::new(&any_err)))
+                    Err(RPCError::Unreachable(Unreachable::<TypeConfig>::from_string(
+                        "unreachable",
+                    )))
                 } else {
                     Ok(())
                 };

@@ -85,6 +85,7 @@ use std::fmt;
 
 pub use anyerror;
 pub use anyerror::AnyError;
+pub use error::ErrorSource;
 pub use error::storage_error::ErrorSubject;
 pub use error::storage_error::ErrorVerb;
 pub use error::storage_error::StorageError;

@@ -13,6 +13,7 @@ use openraft::alias::SnapshotDataOf;
 use openraft::storage::EntryResponder;
 use openraft::storage::RaftStateMachine;
 use openraft::storage::Snapshot;
+use openraft::AnyError;
 use openraft::EntryPayload;
 use openraft::LogId;
 use openraft::OptionalSend;
@@ -226,7 +227,7 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
 
         // Update the state machine.
         let updated_state_machine_data = serde_json::from_slice(&new_snapshot.data)
-            .map_err(|e| StorageError::read_snapshot(Some(new_snapshot.meta.signature()), &e))?;
+            .map_err(|e| StorageError::read_snapshot(Some(new_snapshot.meta.signature()), AnyError::new(&e)))?;
         let updated_state_machine = StateMachineData {
             last_applied_log: meta.last_log_id,
             last_membership: meta.last_membership.clone(),

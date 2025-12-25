@@ -2,7 +2,6 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyerror::AnyError;
 use openraft_macros::since;
 use validit::Valid;
 
@@ -129,7 +128,7 @@ where
 
             // If required logs are purged, it's an error - we can't recover
             if start < last_purged_log_id.next_index() {
-                let err = AnyError::error(format!(
+                let err = C::err_from_string(format!(
                     "Cannot re-apply logs: need logs from index {}, but purged up to {}",
                     start,
                     last_purged_log_id.display()
@@ -278,7 +277,7 @@ where
             let last = entries.last().map(|ent| ent.index());
 
             let make_err = || {
-                let err = AnyError::error(format!(
+                let err = C::err_from_string(format!(
                     "Failed to get log entries, expected index: [{}, {}), got [{:?}, {:?})",
                     start, chunk_end, first, last
                 ));
