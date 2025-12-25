@@ -5,11 +5,11 @@ use std::panic::PanicHookInfo;
 use std::time::Duration;
 
 use openraft::async_runtime::WatchReceiver;
+use openraft::type_config::TypeConfigExt;
 use openraft::BasicNode;
 use raft_kv_memstore_opendal_snapshot_data::new_raft;
 use raft_kv_memstore_opendal_snapshot_data::router::Router;
 use raft_kv_memstore_opendal_snapshot_data::store::Request;
-use openraft::type_config::TypeConfigExt;
 use raft_kv_memstore_opendal_snapshot_data::typ;
 use raft_kv_memstore_opendal_snapshot_data::TypeConfig;
 use tokio::task;
