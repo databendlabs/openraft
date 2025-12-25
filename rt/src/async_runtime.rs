@@ -26,7 +26,7 @@ use crate::Watch;
 /// ## Note
 ///
 /// The default asynchronous runtime is `tokio`.
-pub trait AsyncRuntime: Debug + Default + PartialEq + Eq + OptionalSend + OptionalSync + 'static {
+pub trait AsyncRuntime: Debug + OptionalSend + OptionalSync + 'static {
     /// The error type of [`Self::JoinHandle`].
     type JoinError: Debug + Display + OptionalSend;
 
@@ -99,4 +99,37 @@ pub trait AsyncRuntime: Debug + Default + PartialEq + Eq + OptionalSend + Option
 
     /// The async mutex implementation.
     type Mutex<T: OptionalSend + 'static>: Mutex<T>;
+
+    /// Create a new runtime instance for testing purposes.
+    ///
+    /// **Note**: This method is primarily intended for testing and is not used by Openraft
+    /// internally. In production applications, the runtime should be created and managed
+    /// by the application itself, with Openraft running within that runtime.
+    ///
+    /// # Arguments
+    ///
+    /// * `threads` - Number of worker threads. Multi-threaded runtimes (like Tokio) will use
+    ///   this value; single-threaded runtimes (like Monoio, Compio) may ignore it.
+    fn new(threads: usize) -> Self;
+
+    /// Run a future to completion on this runtime.
+    fn block_on<F, T>(&mut self, future: F) -> T
+    where
+        F: Future<Output = T> + OptionalSend,
+        T: OptionalSend;
+
+    /// Convenience method: create a runtime and run the future to completion.
+    ///
+    /// Creates a runtime with default configuration (8 threads) and runs the future.
+    /// For simple cases where you don't need to reuse the runtime.
+    /// If you need to run multiple futures, consider using [`Self::new`] and
+    /// [`Self::block_on`] directly.
+    fn run<F, T>(future: F) -> T
+    where
+        Self: Sized,
+        F: Future<Output = T> + OptionalSend,
+        T: OptionalSend,
+    {
+        Self::new(8).block_on(future)
+    }
 }

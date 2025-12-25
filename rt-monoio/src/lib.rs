@@ -40,9 +40,28 @@ use mutex::TokioMutex;
 use oneshot::MonoioOneshot;
 use watch::TokioWatch;
 
+/// The monoio runtime type varies by platform.
+/// On Linux, FusionRuntime has two drivers (iouring + legacy fallback).
+/// On other platforms, only legacy driver is available.
+#[cfg(target_os = "linux")]
+type InnerRuntime = monoio::FusionRuntime<
+    monoio::time::TimeDriver<monoio::IoUringDriver>,
+    monoio::time::TimeDriver<monoio::LegacyDriver>,
+>;
+
+#[cfg(not(target_os = "linux"))]
+type InnerRuntime = monoio::FusionRuntime<monoio::time::TimeDriver<monoio::LegacyDriver>>;
+
 /// [`AsyncRuntime`] implementation for Monoio.
-#[derive(Debug, Default, PartialEq, Eq)]
-pub struct MonoioRuntime;
+pub struct MonoioRuntime {
+    rt: InnerRuntime,
+}
+
+impl std::fmt::Debug for MonoioRuntime {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MonoioRuntime").finish()
+    }
+}
 
 impl AsyncRuntime for MonoioRuntime {
     // Joining an async task on Monoio always succeeds
@@ -97,6 +116,23 @@ impl AsyncRuntime for MonoioRuntime {
     type Watch = TokioWatch;
     type Oneshot = MonoioOneshot;
     type Mutex<T: OptionalSend + 'static> = TokioMutex<T>;
+
+    fn new(_threads: usize) -> Self {
+        // Monoio is single-threaded, ignores threads parameter
+        let rt = monoio::RuntimeBuilder::<monoio::FusionDriver>::new()
+            .enable_all()
+            .build()
+            .expect("Failed to create Monoio runtime");
+        MonoioRuntime { rt }
+    }
+
+    fn block_on<F, T>(&mut self, future: F) -> T
+    where
+        F: Future<Output = T> + OptionalSend,
+        T: OptionalSend,
+    {
+        self.rt.block_on(future)
+    }
 }
 
 #[cfg(test)]
@@ -107,7 +143,6 @@ mod tests {
 
     #[test]
     fn test_monoio_rt() {
-        let mut rt = monoio::RuntimeBuilder::<monoio::FusionDriver>::new().enable_all().build().unwrap();
-        rt.block_on(Suite::<MonoioRuntime>::test_all());
+        MonoioRuntime::run(Suite::<MonoioRuntime>::test_all());
     }
 }
