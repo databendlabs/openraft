@@ -15,6 +15,7 @@ use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
+use std::time::Duration;
 
 use futures::Stream;
 use openraft::Entry;
@@ -34,10 +35,10 @@ use openraft::storage::RaftLogStorage;
 use openraft::storage::RaftSnapshotBuilder;
 use openraft::storage::RaftStateMachine;
 use openraft::storage::Snapshot;
+use openraft::type_config::TypeConfigExt;
 use serde::Deserialize;
 use serde::Serialize;
 use tokio::sync::RwLock;
-use tokio::time::Duration;
 
 /// The application data request type which the `MemStore` works with.
 ///
@@ -314,7 +315,7 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<MemStateMachine> {
 
         if let Some(d) = self.block.get_blocking(&BlockOperation::DelayBuildingSnapshot) {
             tracing::info!(?d, "delay snapshot build");
-            tokio::time::sleep(d).await;
+            TypeConfig::sleep(d).await;
         }
 
         {
@@ -327,7 +328,7 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<MemStateMachine> {
 
             if let Some(d) = self.block.get_blocking(&BlockOperation::BuildSnapshot) {
                 tracing::info!(?d, "blocking snapshot build");
-                tokio::time::sleep(d).await;
+                TypeConfig::sleep(d).await;
             }
         }
 
@@ -469,7 +470,7 @@ impl RaftLogStorage<TypeConfig> for Arc<MemLogStore> {
 
         if let Some(d) = self.block.get_blocking(&BlockOperation::PurgeLog) {
             tracing::info!(?d, "block purging log");
-            tokio::time::sleep(d).await;
+            TypeConfig::sleep(d).await;
         }
 
         {
