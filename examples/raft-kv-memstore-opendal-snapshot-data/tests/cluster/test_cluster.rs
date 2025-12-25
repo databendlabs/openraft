@@ -7,13 +7,12 @@ use std::time::Duration;
 use openraft::async_runtime::WatchReceiver;
 use openraft::type_config::TypeConfigExt;
 use openraft::BasicNode;
+use openraft::ServerState;
 use raft_kv_memstore_opendal_snapshot_data::new_raft;
 use raft_kv_memstore_opendal_snapshot_data::router::Router;
 use raft_kv_memstore_opendal_snapshot_data::store::Request;
 use raft_kv_memstore_opendal_snapshot_data::typ;
 use raft_kv_memstore_opendal_snapshot_data::TypeConfig;
-use tokio::task;
-use tokio::task::LocalSet;
 use tracing_subscriber::EnvFilter;
 
 pub fn log_panic(panic: &PanicHookInfo) {
@@ -65,21 +64,15 @@ fn test_cluster() {
 
         let router = Router::default();
 
-        let local = LocalSet::new();
-
         let (raft1, app1) = new_raft(1, router.clone(), op.clone()).await;
         let (raft2, app2) = new_raft(2, router.clone(), op.clone()).await;
 
         let rafts = [raft1, raft2];
 
-        local
-            .run_until(async move {
-                task::spawn_local(app1.run());
-                task::spawn_local(app2.run());
+        TypeConfig::spawn(app1.run());
+        TypeConfig::spawn(app2.run());
 
-                run_test(&rafts, router).await;
-            })
-            .await;
+        run_test(&rafts, router).await;
     });
 }
 
@@ -97,6 +90,7 @@ async fn run_test(rafts: &[typ::Raft], router: Router) {
         let mut nodes = BTreeMap::new();
         nodes.insert(1, BasicNode { addr: "".to_string() });
         raft1.initialize(nodes).await.unwrap();
+        raft1.wait(None).state(ServerState::Leader, "wait node 1 to become leader").await.unwrap();
     }
 
     println!("=== write 2 logs");

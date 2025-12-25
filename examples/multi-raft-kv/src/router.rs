@@ -4,13 +4,15 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use openraft::error::Unreachable;
-use tokio::sync::oneshot;
+use openraft::type_config::alias::OneshotSenderOf;
+use openraft::type_config::TypeConfigExt;
 
 use crate::decode;
 use crate::encode;
 use crate::typ::RaftError;
 use crate::GroupId;
 use crate::NodeId;
+use crate::TypeConfig;
 
 pub type NodeTx = tokio::sync::mpsc::UnboundedSender<NodeMessage>;
 pub type NodeRx = tokio::sync::mpsc::UnboundedReceiver<NodeMessage>;
@@ -31,7 +33,7 @@ pub struct NodeMessage {
     pub group_id: GroupId,
     pub path: String,
     pub payload: String,
-    pub response_tx: oneshot::Sender<String>,
+    pub response_tx: OneshotSenderOf<TypeConfig, String>,
 }
 
 /// Multi-Raft Router with per-node connection sharing.
@@ -73,7 +75,7 @@ impl Router {
         Req: serde::Serialize,
         Result<Resp, RaftError>: serde::de::DeserializeOwned,
     {
-        let (resp_tx, resp_rx) = oneshot::channel();
+        let (resp_tx, resp_rx) = TypeConfig::oneshot();
 
         let encoded_req = encode(&req);
         tracing::debug!(

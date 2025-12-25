@@ -4,7 +4,7 @@ use std::rc::Rc;
 
 use openraft::error::RemoteError;
 use openraft::error::Unreachable;
-use tokio::sync::oneshot;
+use openraft::type_config::TypeConfigExt;
 
 use crate::app::RequestTx;
 use crate::decode;
@@ -12,6 +12,7 @@ use crate::encode;
 use crate::typ::RPCError;
 use crate::typ::RaftError;
 use crate::NodeId;
+use crate::TypeConfig;
 
 /// Simulate a network router.
 #[derive(Debug, Clone)]
@@ -28,7 +29,7 @@ impl Router {
         Result<Resp, RaftError<E>>: serde::de::DeserializeOwned,
         E: std::error::Error,
     {
-        let (resp_tx, resp_rx) = oneshot::channel();
+        let (resp_tx, resp_rx) = TypeConfig::oneshot();
 
         let encoded_req = encode(req);
         tracing::debug!("send to: {}, {}, {}", to, path, encoded_req);

@@ -1,17 +1,19 @@
 use std::sync::Arc;
 
+use openraft::async_runtime::OneshotSender;
+use openraft::type_config::alias::OneshotSenderOf;
 use tokio::sync::mpsc;
-use tokio::sync::oneshot;
 
 use crate::api;
 use crate::router::Router;
 use crate::typ;
 use crate::NodeId;
 use crate::StateMachineStore;
+use crate::TypeConfig;
 
 pub type Path = String;
 pub type Payload = String;
-pub type ResponseTx = oneshot::Sender<String>;
+pub type ResponseTx = OneshotSenderOf<TypeConfig, String>;
 pub type RequestTx = mpsc::UnboundedSender<(Path, Payload, ResponseTx)>;
 
 /// Representation of an application state.

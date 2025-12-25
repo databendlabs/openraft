@@ -20,8 +20,6 @@ use multi_raft_kv::TypeConfig;
 use openraft::async_runtime::WatchReceiver;
 use openraft::type_config::TypeConfigExt;
 use openraft::BasicNode;
-use tokio::task;
-use tokio::task::LocalSet;
 use tracing_subscriber::EnvFilter;
 
 pub fn log_panic(panic: &PanicHookInfo) {
@@ -65,8 +63,6 @@ fn test_multi_raft_cluster() {
         let router = Router::new();
         let group_ids = groups::all();
 
-        let local = LocalSet::new();
-
         // Create nodes - each node has ONE connection, multiple groups
         let node1 = create_node(1, &group_ids, router.clone()).await;
         let node2 = create_node(2, &group_ids, router.clone()).await;
@@ -75,15 +71,11 @@ fn test_multi_raft_cluster() {
         let node1_rafts: Vec<_> = group_ids.iter().map(|g| node1.get_raft(g).unwrap().clone()).collect();
         let node2_rafts: Vec<_> = group_ids.iter().map(|g| node2.get_raft(g).unwrap().clone()).collect();
 
-        local
-            .run_until(async move {
-                // Spawn node message handlers (one per node, not per group!)
-                task::spawn_local(node1.run());
-                task::spawn_local(node2.run());
+        // Spawn node message handlers (one per node, not per group!)
+        TypeConfig::spawn(node1.run());
+        TypeConfig::spawn(node2.run());
 
-                run_test(&node1_rafts, &node2_rafts, &group_ids).await;
-            })
-            .await;
+        run_test(&node1_rafts, &node2_rafts, &group_ids).await;
     });
 }
 
@@ -174,8 +166,6 @@ fn test_leader_distribution() {
         let router = Router::new();
         let group_ids = groups::all();
 
-        let local = LocalSet::new();
-
         // Create 3 nodes
         let node1 = create_node(1, &group_ids, router.clone()).await;
         let node2 = create_node(2, &group_ids, router.clone()).await;
@@ -185,15 +175,11 @@ fn test_leader_distribution() {
         let node2_rafts: Vec<_> = group_ids.iter().map(|g| node2.get_raft(g).unwrap().clone()).collect();
         let node3_rafts: Vec<_> = group_ids.iter().map(|g| node3.get_raft(g).unwrap().clone()).collect();
 
-        local
-            .run_until(async move {
-                task::spawn_local(node1.run());
-                task::spawn_local(node2.run());
-                task::spawn_local(node3.run());
+        TypeConfig::spawn(node1.run());
+        TypeConfig::spawn(node2.run());
+        TypeConfig::spawn(node3.run());
 
-                run_leader_distribution_test(&node1_rafts, &node2_rafts, &node3_rafts, &group_ids).await;
-            })
-            .await;
+        run_leader_distribution_test(&node1_rafts, &node2_rafts, &node3_rafts, &group_ids).await;
     });
 }
 

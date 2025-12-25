@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use openraft::async_runtime::OneshotSender;
 use tokio::sync::mpsc;
 
 use crate::api;
