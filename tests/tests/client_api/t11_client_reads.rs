@@ -1,7 +1,6 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyerror::AnyError;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
@@ -105,8 +104,9 @@ async fn get_read_log_id() -> Result<()> {
     let block_to_n0 = |_router: &_, req, _id, target| {
         let err = || {
             // Block append-entries to block commit.
-            let any_err = AnyError::error("block append-entries to node 0");
-            Err(RPCError::Network(NetworkError::new(&any_err)))
+            Err(RPCError::Network(NetworkError::<TypeConfig>::from_string(
+                "block append-entries to node 0",
+            )))
         };
 
         let res = if target == 0 {
@@ -446,8 +446,9 @@ async fn ensure_linearizable_process_from_followers() -> Result<()> {
     let block_to_follower_n1 = |_router: &_, req, _id, target| {
         let err = || {
             // Block append-entries to block commit.
-            let any_err = AnyError::error("block append-entries to node 0");
-            Err(RPCError::Network(NetworkError::new(&any_err)))
+            Err(RPCError::Network(NetworkError::<TypeConfig>::from_string(
+                "block append-entries to node 0",
+            )))
         };
 
         let res = if target == 1 {

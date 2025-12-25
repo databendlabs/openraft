@@ -1,9 +1,9 @@
 use std::fmt;
 
-use anyerror::AnyError;
-
 use crate::RaftTypeConfig;
+use crate::error::ErrorSource;
 use crate::storage::SnapshotSignature;
+use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::LogIdOf;
 
 /// Convert error to StorageError::IO();
@@ -26,7 +26,7 @@ where C: RaftTypeConfig
             Ok(x) => Ok(x),
             Err(e) => {
                 let (subject, verb) = f();
-                let io_err = StorageError::new(subject, verb, AnyError::new(&e));
+                let io_err = StorageError::new(subject, verb, C::err_from_error(&e));
                 Err(io_err)
             }
         }
@@ -104,7 +104,7 @@ where C: RaftTypeConfig
 
     /// Create a StorageError from a std::io::Error.
     pub fn from_io_error(subject: ErrorSubject<C>, verb: ErrorVerb, io_error: std::io::Error) -> Self {
-        StorageError::new(subject, verb, AnyError::new(&io_error))
+        StorageError::new(subject, verb, C::err_from_error(&io_error))
     }
 }
 
@@ -128,7 +128,7 @@ where C: RaftTypeConfig
 {
     subject: ErrorSubject<C>,
     verb: ErrorVerb,
-    source: Box<AnyError>,
+    source: Box<C::ErrorSource>,
     backtrace: Option<String>,
 }
 
@@ -144,88 +144,91 @@ impl<C> StorageError<C>
 where C: RaftTypeConfig
 {
     /// Create a new StorageError.
-    pub fn new(subject: ErrorSubject<C>, verb: ErrorVerb, source: impl Into<AnyError>) -> Self {
+    pub fn new(subject: ErrorSubject<C>, verb: ErrorVerb, source: C::ErrorSource) -> Self {
+        let backtrace = source.backtrace_str();
         Self {
             subject,
             verb,
-            source: Box::new(source.into()),
-            backtrace: anyerror::backtrace_str(),
+            source: Box::new(source),
+            backtrace,
         }
     }
 
     /// Create an error for writing a log entry.
-    pub fn write_log_entry(log_id: LogIdOf<C>, source: impl Into<AnyError>) -> Self {
+    pub fn write_log_entry(log_id: LogIdOf<C>, source: C::ErrorSource) -> Self {
         Self::new(ErrorSubject::Log(log_id), ErrorVerb::Write, source)
     }
 
     /// Create an error for reading a log entry at an index.
-    pub fn read_log_at_index(log_index: u64, source: impl Into<AnyError>) -> Self {
+    pub fn read_log_at_index(log_index: u64, source: C::ErrorSource) -> Self {
         Self::new(ErrorSubject::LogIndex(log_index), ErrorVerb::Read, source)
     }
 
     /// Create an error for reading a log entry.
-    pub fn read_log_entry(log_id: LogIdOf<C>, source: impl Into<AnyError>) -> Self {
+    pub fn read_log_entry(log_id: LogIdOf<C>, source: C::ErrorSource) -> Self {
         Self::new(ErrorSubject::Log(log_id), ErrorVerb::Read, source)
     }
 
     /// Create an error for writing multiple log entries.
-    pub fn write_logs(source: impl Into<AnyError>) -> Self {
+    pub fn write_logs(source: C::ErrorSource) -> Self {
         Self::new(ErrorSubject::Logs, ErrorVerb::Write, source)
     }
 
     /// Create an error for reading multiple log entries.
-    pub fn read_logs(source: impl Into<AnyError>) -> Self {
+    pub fn read_logs(source: C::ErrorSource) -> Self {
         Self::new(ErrorSubject::Logs, ErrorVerb::Read, source)
     }
 
     /// Create an error for writing vote state.
-    pub fn write_vote(source: impl Into<AnyError>) -> Self {
+    pub fn write_vote(source: C::ErrorSource) -> Self {
         Self::new(ErrorSubject::Vote, ErrorVerb::Write, source)
     }
 
     /// Create an error for reading vote state.
-    pub fn read_vote(source: impl Into<AnyError>) -> Self {
+    pub fn read_vote(source: C::ErrorSource) -> Self {
         Self::new(ErrorSubject::Vote, ErrorVerb::Read, source)
     }
 
     /// Create an error for applying a log entry to the state machine.
-    pub fn apply(log_id: LogIdOf<C>, source: impl Into<AnyError>) -> Self {
+    pub fn apply(log_id: LogIdOf<C>, source: C::ErrorSource) -> Self {
         Self::new(ErrorSubject::Apply(log_id), ErrorVerb::Write, source)
     }
 
     /// Create an error for writing to the state machine.
-    pub fn write_state_machine(source: impl Into<AnyError>) -> Self {
+    pub fn write_state_machine(source: C::ErrorSource) -> Self {
         Self::new(ErrorSubject::StateMachine, ErrorVerb::Write, source)
     }
 
     /// Create an error for reading from the state machine.
-    pub fn read_state_machine(source: impl Into<AnyError>) -> Self {
+    pub fn read_state_machine(source: C::ErrorSource) -> Self {
         Self::new(ErrorSubject::StateMachine, ErrorVerb::Read, source)
     }
 
     /// Create an error for writing a snapshot.
-    pub fn write_snapshot(signature: Option<SnapshotSignature<C>>, source: impl Into<AnyError>) -> Self {
+    pub fn write_snapshot(signature: Option<SnapshotSignature<C>>, source: C::ErrorSource) -> Self {
         Self::new(ErrorSubject::Snapshot(signature), ErrorVerb::Write, source)
     }
 
     /// Create an error for reading a snapshot.
-    pub fn read_snapshot(signature: Option<SnapshotSignature<C>>, source: impl Into<AnyError>) -> Self {
+    pub fn read_snapshot(signature: Option<SnapshotSignature<C>>, source: C::ErrorSource) -> Self {
         Self::new(ErrorSubject::Snapshot(signature), ErrorVerb::Read, source)
     }
 
     /// General read error
-    pub fn read(source: impl Into<AnyError>) -> Self {
+    pub fn read(source: C::ErrorSource) -> Self {
         Self::new(ErrorSubject::Store, ErrorVerb::Read, source)
     }
 
     /// General write error
-    pub fn write(source: impl Into<AnyError>) -> Self {
+    pub fn write(source: C::ErrorSource) -> Self {
         Self::new(ErrorSubject::Store, ErrorVerb::Write, source)
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use anyerror::AnyError;
+
     /// If `bt` feature is enabled, `backtrace` field is included in the serialized error.
     #[cfg(all(feature = "serde", not(feature = "bt")))]
     #[test]
@@ -234,7 +237,7 @@ mod tests {
         use crate::engine::testing::UTConfig;
         use crate::engine::testing::log_id;
 
-        let err = StorageError::write_log_entry(log_id(1, 2, 3), super::AnyError::error("test"));
+        let err = StorageError::write_log_entry(log_id(1, 2, 3), AnyError::error("test"));
         let s = serde_json::to_string(&err).unwrap();
         assert_eq!(
             s,
@@ -250,14 +253,14 @@ mod tests {
         use crate::engine::testing::UTConfig;
         use crate::engine::testing::log_id;
 
-        let storage_err = StorageError::write_log_entry(log_id(1, 2, 3), super::AnyError::error("disk full"));
+        let storage_err = StorageError::write_log_entry(log_id(1, 2, 3), AnyError::error("disk full"));
         let io_err: std::io::Error = storage_err.into();
 
         assert_eq!(io_err.kind(), std::io::ErrorKind::Other);
         assert!(io_err.to_string().contains("Write"));
         assert!(io_err.to_string().contains("disk full"));
 
-        let storage_err: StorageError<UTConfig> = StorageError::read_vote(super::AnyError::error("permission denied"));
+        let storage_err: StorageError<UTConfig> = StorageError::read_vote(AnyError::error("permission denied"));
         let io_err: std::io::Error = storage_err.into();
 
         assert_eq!(io_err.kind(), std::io::ErrorKind::Other);

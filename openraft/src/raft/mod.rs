@@ -172,6 +172,7 @@ use crate::vote::raft_vote::RaftVoteExt;
 /// - `SnapshotData`:   `Cursor<Vec<u8>>`
 /// - `Responder<T>`:   `::openraft::impls::OneshotResponder<Self, T>`
 /// - `AsyncRuntime`:   `::openraft::impls::TokioRuntime`
+/// - `ErrorSource`:    `::anyerror::AnyError`
 ///
 /// For example, to declare with only `D` and `R` types:
 /// ```ignore
@@ -221,6 +222,7 @@ macro_rules! declare_raft_types {
                 (SnapshotData   , , std::io::Cursor<Vec<u8>>                     ),
                 (Responder<T>   , , $crate::impls::ProgressResponder<Self, T> where T: $crate::OptionalSend + 'static     ),
                 (AsyncRuntime   , , $crate::impls::TokioRuntime                  ),
+                (ErrorSource    , , $crate::AnyError                              ),
             );
 
         }

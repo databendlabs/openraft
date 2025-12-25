@@ -172,7 +172,7 @@ where
         run_test(builder, Self::apply_single).await?;
         run_test(builder, Self::apply_multiple).await?;
 
-        Self::transfer_snapshot(builder).await.map_err(|e| StorageError::read(&e))?;
+        Self::transfer_snapshot(builder).await.map_err(|e| StorageError::read(C::err_from_error(&e)))?;
 
         // TODO(xp): test: do_log_compaction
 
@@ -1696,7 +1696,7 @@ where
     TestFn: Fn(LS, SM) -> Fu + Sync + Send,
 {
     let (_g, store, sm) = builder.build().await?;
-    test_fn(store, sm).await.map_err(|e| StorageError::read(&e))
+    test_fn(store, sm).await.map_err(|e| StorageError::read(C::err_from_error(&e)))
 }
 
 /// A wrapper for calling nonblocking `RaftStateMachine::apply()`

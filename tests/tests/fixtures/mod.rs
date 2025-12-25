@@ -19,7 +19,6 @@ use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
-use anyerror::AnyError;
 use anyhow::Context;
 use lazy_static::lazy_static;
 use openraft::Config;
@@ -652,11 +651,11 @@ impl TypedRaftRouter {
         Ok(metrics)
     }
 
-    pub fn get_raft_handle(&self, node_id: &MemNodeId) -> Result<MemRaft, NetworkError> {
+    pub fn get_raft_handle(&self, node_id: &MemNodeId) -> Result<MemRaft, NetworkError<MemConfig>> {
         let rt = self.nodes.lock().unwrap();
         let raft_and_sto = rt
             .get(node_id)
-            .ok_or_else(|| NetworkError::new(&AnyError::error(format!("node {} not found", *node_id))))?;
+            .ok_or_else(|| NetworkError::<MemConfig>::from_string(format!("node {} not found", *node_id)))?;
         let r = raft_and_sto.clone().0;
         Ok(r)
     }
@@ -902,10 +901,10 @@ impl RaftNetworkV2<MemConfig> for RaftRouterNetwork {
 
         tracing::debug!("append_entries: recv resp from id={} {:?}", self.target, resp);
         let resp = resp.map_err(|e| {
-            RPCError::Unreachable(Unreachable::new(&AnyError::error(format!(
+            RPCError::Unreachable(Unreachable::<MemConfig>::from_string(format!(
                 "error: {} target={}",
                 e, self.target
-            ))))
+            )))
         })?;
 
         self.owner.call_rpc_post_hook(rpc, resp.clone(), from_id, self.target).await?;
@@ -939,10 +938,10 @@ impl RaftNetworkV2<MemConfig> for RaftRouterNetwork {
 
         let resp = node.install_full_snapshot(vote, snapshot.clone()).await;
         let resp = resp.map_err(|e| {
-            RPCError::Unreachable(Unreachable::new(&AnyError::error(format!(
+            RPCError::Unreachable(Unreachable::<MemConfig>::from_string(format!(
                 "error: {} target={}",
                 e, self.target
-            ))))
+            )))
         })?;
 
         self.owner.call_rpc_post_hook(snapshot, resp.clone(), from_id, self.target).await?;
@@ -967,10 +966,10 @@ impl RaftNetworkV2<MemConfig> for RaftRouterNetwork {
 
         let resp = node.vote(rpc.clone()).await;
         let resp = resp.map_err(|e| {
-            RPCError::Unreachable(Unreachable::new(&AnyError::error(format!(
+            RPCError::Unreachable(Unreachable::<MemConfig>::from_string(format!(
                 "error: {} target={}",
                 e, self.target
-            ))))
+            )))
         })?;
 
         self.owner.call_rpc_post_hook(rpc, resp.clone(), from_id, self.target).await?;
@@ -994,10 +993,10 @@ impl RaftNetworkV2<MemConfig> for RaftRouterNetwork {
 
         let resp = node.handle_transfer_leader(rpc.clone()).await;
         resp.map_err(|e| {
-            RPCError::Unreachable(Unreachable::new(&AnyError::error(format!(
+            RPCError::Unreachable(Unreachable::<MemConfig>::from_string(format!(
                 "error: {} target={}",
                 e, self.target
-            ))))
+            )))
         })?;
 
         self.owner.call_rpc_post_hook(rpc, (), from_id, self.target).await?;

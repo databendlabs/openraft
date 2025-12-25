@@ -1,4 +1,3 @@
-use anyerror::AnyError;
 use openraft_macros::add_async_trait;
 
 use crate::OptionalSend;
@@ -31,9 +30,9 @@ where C: RaftTypeConfig
         let callback = IOFlushed::<C>::signal(tx);
         self.append(entries, callback).await.sto_write_logs()?;
 
-        let result = rx.await.map_err(|_e| StorageError::write_logs(AnyError::error("callback channel closed")))?;
+        let result = rx.await.map_err(|_e| StorageError::write_logs(C::err_from_string("callback channel closed")))?;
 
-        result.map_err(|e| StorageError::write_logs(AnyError::new(&e)))
+        result.map_err(|e| StorageError::write_logs(C::err_from_error(&e)))
     }
 }
 

@@ -21,7 +21,7 @@ pub struct Router {
 
 impl Router {
     /// Send request `Req` to target node `to`, and wait for response `Result<Resp, RaftError<E>>`.
-    pub async fn send<Req, Resp>(&self, to: NodeId, path: &str, req: Req) -> Result<Resp, Unreachable>
+    pub async fn send<Req, Resp>(&self, to: NodeId, path: &str, req: Req) -> Result<Resp, Unreachable<TypeConfig>>
     where
         Req: serde::Serialize,
         Result<Resp, RaftError>: serde::de::DeserializeOwned,

@@ -5,7 +5,6 @@ use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
-use anyerror::AnyError;
 use futures::FutureExt;
 use futures::StreamExt;
 use futures::TryFutureExt;
@@ -61,6 +60,7 @@ use crate::error::Fatal;
 use crate::error::ForwardToLeader;
 use crate::error::Infallible;
 use crate::error::InitializeError;
+use crate::error::NetworkError;
 use crate::error::QuorumNotEnough;
 use crate::error::RPCError;
 use crate::error::StorageIOResult;
@@ -402,8 +402,10 @@ where
                         Ok(Ok(Some(stream_result))) => Ok((target, stream_result)),
                         Ok(Ok(None)) => {
                             // Stream returned no response - treat as network error
-                            let err = AnyError::error("stream_append returned no response");
-                            Err((target, RPCError::Network(crate::error::NetworkError::new(&err))))
+                            Err((
+                                target,
+                                RPCError::Network(NetworkError::from_string("stream_append returned no response")),
+                            ))
                         }
                         Ok(Err(rpc_err)) => Err((target, rpc_err)),
                         Err(_timeout) => {
@@ -938,7 +940,7 @@ where
         }
 
         let cmd = sm::Command::apply(first, last.clone(), responders);
-        self.sm_handle.send(cmd).await.map_err(|e| StorageError::apply(last, AnyError::error(e)))?;
+        self.sm_handle.send(cmd).await.map_err(|e| StorageError::apply(last, C::err_from_string(e)))?;
 
         Ok(())
     }
@@ -2202,9 +2204,10 @@ where
                 }
 
                 // Just forward a state machine command to the worker.
-                self.sm_handle.send(command).await.map_err(|_e| {
-                    StorageError::write_state_machine(AnyError::error("cannot send to sm::Worker".to_string()))
-                })?;
+                self.sm_handle
+                    .send(command)
+                    .await
+                    .map_err(|_e| StorageError::write_state_machine(C::err_from_string("cannot send to sm::Worker")))?;
             }
             Command::Respond { resp: send, .. } => {
                 send.send();

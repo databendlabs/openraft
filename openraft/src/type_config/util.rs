@@ -11,8 +11,10 @@ use crate::async_runtime::Mpsc;
 use crate::async_runtime::Oneshot;
 use crate::async_runtime::mutex::Mutex;
 use crate::async_runtime::watch::Watch;
+use crate::error::ErrorSource;
 use crate::type_config::AsyncRuntime;
 use crate::type_config::alias::AsyncRuntimeOf;
+use crate::type_config::alias::ErrorSourceOf;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::JoinHandleOf;
 use crate::type_config::alias::MpscOf;
@@ -143,7 +145,23 @@ pub trait TypeConfigExt: RaftTypeConfig {
         F: Future<Output = T> + OptionalSend,
         T: OptionalSend,
     {
-        AsyncRuntimeOf::<Self>::run(future)
+        <AsyncRuntimeOf<Self> as AsyncRuntime>::run(future)
+    }
+
+    // Error methods
+
+    /// Create an error source from a string message.
+    ///
+    /// This is a convenience wrapper for [`ErrorSource::from_string`].
+    fn err_from_string(msg: impl ToString) -> ErrorSourceOf<Self> {
+        ErrorSourceOf::<Self>::from_string(msg)
+    }
+
+    /// Create an error source from an error reference.
+    ///
+    /// This is a convenience wrapper for [`ErrorSource::from_error`].
+    fn err_from_error<E: std::error::Error + 'static>(e: &E) -> ErrorSourceOf<Self> {
+        ErrorSourceOf::<Self>::from_error(e)
     }
 }
 

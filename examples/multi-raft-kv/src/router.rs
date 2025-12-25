@@ -70,7 +70,7 @@ impl Router {
         to_group: &GroupId,
         path: &str,
         req: Req,
-    ) -> Result<Resp, Unreachable>
+    ) -> Result<Resp, Unreachable<TypeConfig>>
     where
         Req: serde::Serialize,
         Result<Resp, RaftError>: serde::de::DeserializeOwned,

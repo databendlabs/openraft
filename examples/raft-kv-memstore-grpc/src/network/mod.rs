@@ -57,7 +57,7 @@ impl NetworkConnection {
         let channel = Channel::builder(format!("http://{}", server_addr).parse().unwrap())
             .connect()
             .await
-            .map_err(|e| RPCError::Unreachable(Unreachable::new(&e)))?;
+            .map_err(|e| RPCError::Unreachable(Unreachable::<TypeConfig>::new(&e)))?;
         Ok(channel)
     }
 
@@ -72,7 +72,7 @@ impl NetworkConnection {
 
         if resp.conflict {
             let conflict_log_id = resp.last_log_id.ok_or_else(|| {
-                RPCError::Network(NetworkError::new(&AnyError::error(
+                RPCError::Network(NetworkError::<TypeConfig>::new(&AnyError::error(
                     "Missing `last_log_id` in conflict stream-append response",
                 )))
             })?;
@@ -86,13 +86,13 @@ impl NetworkConnection {
     async fn send_snapshot_chunks(
         tx: &tokio::sync::mpsc::Sender<pb::SnapshotRequest>,
         snapshot_data: &[u8],
-    ) -> Result<(), NetworkError> {
+    ) -> Result<(), NetworkError<TypeConfig>> {
         let chunk_size = 1024 * 1024;
         for chunk in snapshot_data.chunks(chunk_size) {
             let request = pb::SnapshotRequest {
                 payload: Some(pb::snapshot_request::Payload::Chunk(chunk.to_vec())),
             };
-            tx.send(request).await.map_err(|e| NetworkError::new(&e))?;
+            tx.send(request).await.map_err(|e| NetworkError::<TypeConfig>::new(&e))?;
         }
         Ok(())
     }
@@ -112,7 +112,7 @@ impl RaftNetworkV2<TypeConfig> for NetworkConnection {
         let response = client
             .append_entries(pb::AppendEntriesRequest::from(req))
             .await
-            .map_err(|e| RPCError::Network(NetworkError::new(&e)))?;
+            .map_err(|e| RPCError::Network(NetworkError::<TypeConfig>::new(&e)))?;
 
         Ok(AppendEntriesResponse::from(response.into_inner()))
     }
@@ -132,10 +132,10 @@ impl RaftNetworkV2<TypeConfig> for NetworkConnection {
             let response = client
                 .stream_append(input.map(pb::AppendEntriesRequest::from))
                 .await
-                .map_err(|e| RPCError::Network(NetworkError::new(&e)))?;
+                .map_err(|e| RPCError::Network(NetworkError::<TypeConfig>::new(&e)))?;
 
             let output = response.into_inner().map(|result| {
-                let resp = result.map_err(|e| RPCError::Network(NetworkError::new(&e)))?;
+                let resp = result.map_err(|e| RPCError::Network(NetworkError::<TypeConfig>::new(&e)))?;
                 Self::pb_to_stream_result(resp)
             });
 
@@ -157,7 +157,7 @@ impl RaftNetworkV2<TypeConfig> for NetworkConnection {
 
         let (tx, rx) = tokio::sync::mpsc::channel(1024);
         let strm = ReceiverStream::new(rx);
-        let response = client.snapshot(strm).await.map_err(|e| NetworkError::new(&e))?;
+        let response = client.snapshot(strm).await.map_err(|e| NetworkError::<TypeConfig>::new(&e))?;
 
         // 1. Send meta chunk
 
@@ -173,7 +173,7 @@ impl RaftNetworkV2<TypeConfig> for NetworkConnection {
             })),
         };
 
-        tx.send(request).await.map_err(|e| NetworkError::new(&e))?;
+        tx.send(request).await.map_err(|e| NetworkError::<TypeConfig>::new(&e))?;
 
         // 2. Send data chunks
         Self::send_snapshot_chunks(&tx, &snapshot.snapshot).await?;
@@ -185,7 +185,7 @@ impl RaftNetworkV2<TypeConfig> for NetworkConnection {
         Ok(SnapshotResponse {
             vote: message
                 .vote
-                .ok_or_else(|| NetworkError::new(&AnyError::error("Missing `vote` in snapshot response")))?,
+                .ok_or_else(|| NetworkError::<TypeConfig>::new(&AnyError::error("Missing `vote` in snapshot response")))?,
         })
     }
 
@@ -200,7 +200,7 @@ impl RaftNetworkV2<TypeConfig> for NetworkConnection {
         let request = tonic::Request::new(proto_vote_req);
 
         // Send the vote request
-        let response = client.vote(request).await.map_err(|e| RPCError::Network(NetworkError::new(&e)))?;
+        let response = client.vote(request).await.map_err(|e| RPCError::Network(NetworkError::<TypeConfig>::new(&e)))?;
 
         // Convert the response back to openraft VoteResponse
         let proto_vote_resp: PbVoteResponse = response.into_inner();

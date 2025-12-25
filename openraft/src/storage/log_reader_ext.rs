@@ -1,4 +1,3 @@
-use anyerror::AnyError;
 use openraft_macros::add_async_trait;
 
 use crate::RaftLogReader;
@@ -6,6 +5,7 @@ use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::entry::RaftEntry;
 use crate::error::StorageIOResult;
+use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::LogIdOf;
 
 /// Extension trait for [`RaftLogReader`] providing convenience methods for log access.
@@ -28,7 +28,7 @@ where C: RaftTypeConfig
         if entries.is_empty() {
             return Err(StorageError::read_log_at_index(
                 log_index,
-                AnyError::error("log entry not found"),
+                C::err_from_string("log entry not found"),
             ));
         }
 

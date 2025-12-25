@@ -1,6 +1,5 @@
 //! RPC error type definitions for test fixtures.
 
-use anyerror::AnyError;
 use openraft::RaftTypeConfig;
 use openraft::error::NetworkError;
 use openraft::error::RPCError;
@@ -23,8 +22,8 @@ impl RpcErrorType {
         let msg = format!("error {} id={}", dir, id);
 
         match self {
-            RpcErrorType::Unreachable => Unreachable::new(&AnyError::error(msg)).into(),
-            RpcErrorType::NetworkError => NetworkError::new(&AnyError::error(msg)).into(),
+            RpcErrorType::Unreachable => Unreachable::<C>::from_string(msg).into(),
+            RpcErrorType::NetworkError => NetworkError::<C>::from_string(msg).into(),
         }
     }
 }
