@@ -8,8 +8,12 @@ use raft_kv_memstore::store::Request;
 use raft_kv_memstore::TypeConfig;
 
 /// Test follower read functionality
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn test_follower_read() -> Result<(), Box<dyn std::error::Error>> {
+#[test]
+fn test_follower_read() {
+    TypeConfig::run(test_follower_read_inner()).unwrap();
+}
+
+async fn test_follower_read_inner() -> anyhow::Result<()> {
     fn get_addr(node_id: u64) -> String {
         format!("127.0.0.1:2800{}", node_id)
     }

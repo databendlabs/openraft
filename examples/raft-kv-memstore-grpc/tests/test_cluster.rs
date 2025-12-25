@@ -37,8 +37,12 @@ pub fn log_panic(panic: &PanicHookInfo) {
 
 /// Set up a cluster of 3 nodes.
 /// Write to it and read from it.
-#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
-async fn test_cluster() -> anyhow::Result<()> {
+#[test]
+fn test_cluster() {
+    TypeConfig::run(test_cluster_inner()).unwrap();
+}
+
+async fn test_cluster_inner() -> anyhow::Result<()> {
     std::panic::set_hook(Box::new(|panic| {
         log_panic(panic);
     }));
