@@ -95,7 +95,7 @@ pub fn log_id(term: u64, node_id: u64, index: u64) -> LogIdOf<TypeConfig> {
 pub fn ut_harness<F, Fut>(f: F) -> anyhow::Result<()>
 where
     F: FnOnce() -> Fut + Send + 'static,
-    Fut: std::future::Future<Output = anyhow::Result<()>> + 'static,
+    Fut: Future<Output = anyhow::Result<()>> + 'static,
 {
     fn func_name<F: std::any::Any>() -> &'static str {
         let full_name = std::any::type_name::<F>();

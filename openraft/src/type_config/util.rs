@@ -45,6 +45,17 @@ pub trait TypeConfigExt: RaftTypeConfig {
         AsyncRuntimeOf::<Self>::sleep(duration)
     }
 
+    /// Yield control back to the async runtime, allowing other tasks to run.
+    ///
+    /// This is useful for long-running computations that want to avoid
+    /// starving other tasks. The default implementation sleeps for 1 nanosecond
+    /// to ensure the runtime actually yields (some runtimes may optimize
+    /// zero-duration sleep as a no-op).
+    #[track_caller]
+    fn yield_now() -> SleepOf<Self> {
+        AsyncRuntimeOf::<Self>::sleep(Duration::from_nanos(1))
+    }
+
     /// Wait until `deadline` is reached.
     #[track_caller]
     fn sleep_until(deadline: InstantOf<Self>) -> SleepOf<Self> {
