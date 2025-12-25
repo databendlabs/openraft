@@ -2,6 +2,7 @@ use std::time::Duration;
 
 use client_http::ExampleClient;
 use maplit::btreeset;
+use openraft::type_config::TypeConfigExt;
 use raft_kv_memstore::start_example_raft_node;
 use raft_kv_memstore::store::Request;
 use raft_kv_memstore::TypeConfig;
@@ -19,7 +20,7 @@ async fn test_follower_read() -> Result<(), Box<dyn std::error::Error>> {
     let _h3 = tokio::spawn(start_example_raft_node(3, get_addr(3)));
 
     // Wait for servers to start
-    tokio::time::sleep(Duration::from_millis(1000)).await;
+    TypeConfig::sleep(Duration::from_millis(1000)).await;
 
     let leader = ExampleClient::<TypeConfig>::new(1, get_addr(1));
 
@@ -34,7 +35,7 @@ async fn test_follower_read() -> Result<(), Box<dyn std::error::Error>> {
         if metrics.current_leader == Some(1) {
             break;
         }
-        tokio::time::sleep(Duration::from_millis(200)).await;
+        TypeConfig::sleep(Duration::from_millis(200)).await;
     }
 
     // Add learners
@@ -56,7 +57,7 @@ async fn test_follower_read() -> Result<(), Box<dyn std::error::Error>> {
         .await??;
 
     // Wait for replication
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    TypeConfig::sleep(Duration::from_millis(500)).await;
 
     // Test follower read on node 2
     println!("=== follower_read on node 2");
