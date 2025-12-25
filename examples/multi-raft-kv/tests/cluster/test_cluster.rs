@@ -16,7 +16,9 @@ use multi_raft_kv::router::Router;
 use multi_raft_kv::store::Request;
 use multi_raft_kv::typ;
 use multi_raft_kv::GroupId;
+use multi_raft_kv::TypeConfig;
 use openraft::async_runtime::WatchReceiver;
+use openraft::type_config::TypeConfigExt;
 use openraft::BasicNode;
 use tokio::task;
 use tokio::task::LocalSet;
@@ -85,7 +87,7 @@ async fn test_multi_raft_cluster() {
 
 async fn run_test(node1_rafts: &[typ::Raft], node2_rafts: &[typ::Raft], group_ids: &[GroupId]) {
     // Wait for servers to start up
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    TypeConfig::sleep(Duration::from_millis(200)).await;
 
     println!("\n╔════════════════════════════════════════════════════════════════════╗");
     println!("║   Multi-Raft Test: 3 groups, 2 nodes, CONNECTION SHARING          ║");
@@ -103,7 +105,7 @@ async fn run_test(node1_rafts: &[typ::Raft], node2_rafts: &[typ::Raft], group_id
         println!("  ✓ Group '{}' initialized on Node 1", group_ids[i]);
     }
 
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    TypeConfig::sleep(Duration::from_millis(500)).await;
 
     // =========================================================================
     // Add Node 2 as learner for each group
@@ -116,7 +118,7 @@ async fn run_test(node1_rafts: &[typ::Raft], node2_rafts: &[typ::Raft], group_id
         println!("  ✓ Group '{}': Node 2 added as learner", group_ids[i]);
     }
 
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    TypeConfig::sleep(Duration::from_millis(500)).await;
 
     // =========================================================================
     // Write data to each group
@@ -138,7 +140,7 @@ async fn run_test(node1_rafts: &[typ::Raft], node2_rafts: &[typ::Raft], group_id
     node1_rafts[2].client_write(Request::set("product:B", "Gadget")).await.unwrap();
     println!("  ✓ Group 'products': wrote product:A=Widget, product:B=Gadget");
 
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    TypeConfig::sleep(Duration::from_millis(500)).await;
 
     // =========================================================================
     // Verify replication
@@ -197,7 +199,7 @@ async fn run_leader_distribution_test(
     node3_rafts: &[typ::Raft],
     group_ids: &[GroupId],
 ) {
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    TypeConfig::sleep(Duration::from_millis(200)).await;
 
     println!("\n╔════════════════════════════════════════════════════════════════════╗");
     println!("║   Leader Distribution Test using transfer_leader                  ║");
@@ -219,7 +221,7 @@ async fn run_leader_distribution_test(
         println!("  ✓ Group '{}' initialized (voters: 1, 2, 3)", group_ids[i]);
     }
 
-    tokio::time::sleep(Duration::from_millis(1000)).await;
+    TypeConfig::sleep(Duration::from_millis(1000)).await;
 
     // Transfer leaders to distribute load
     println!("\n=== Using transfer_leader to distribute leaders ===\n");
@@ -227,12 +229,12 @@ async fn run_leader_distribution_test(
     // orders -> Node 2
     println!("  → Transferring 'orders' leader to Node 2...");
     node1_rafts[1].trigger().transfer_leader(2).await.unwrap();
-    tokio::time::sleep(Duration::from_millis(1000)).await;
+    TypeConfig::sleep(Duration::from_millis(1000)).await;
 
     // products -> Node 3
     println!("  → Transferring 'products' leader to Node 3...");
     node1_rafts[2].trigger().transfer_leader(3).await.unwrap();
-    tokio::time::sleep(Duration::from_millis(1000)).await;
+    TypeConfig::sleep(Duration::from_millis(1000)).await;
 
     // Verify distribution
     println!("\n=== Verifying leader distribution ===\n");

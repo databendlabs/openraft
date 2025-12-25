@@ -4,11 +4,13 @@ use std::panic::PanicHookInfo;
 use std::time::Duration;
 
 use openraft::async_runtime::WatchReceiver;
+use openraft::type_config::TypeConfigExt;
 use openraft::BasicNode;
 use raft_kv_memstore_network_v2::new_raft;
 use raft_kv_memstore_network_v2::router::Router;
 use raft_kv_memstore_network_v2::store::Request;
 use raft_kv_memstore_network_v2::typ;
+use raft_kv_memstore_network_v2::TypeConfig;
 use tokio::task;
 use tokio::task::LocalSet;
 use tracing_subscriber::EnvFilter;
@@ -78,7 +80,7 @@ async fn run_test(rafts: &[typ::Raft], router: Router) {
     let _ = router;
 
     // Wait for server to start up.
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    TypeConfig::sleep(Duration::from_millis(200)).await;
 
     let raft1 = &rafts[0];
     let raft2 = &rafts[1];
@@ -103,7 +105,7 @@ async fn run_test(rafts: &[typ::Raft], router: Router) {
         raft1.trigger().snapshot().await.unwrap();
 
         // Wait for a while to let the snapshot get done.
-        tokio::time::sleep(Duration::from_millis(500)).await;
+        TypeConfig::sleep(Duration::from_millis(500)).await;
     }
 
     println!("=== metrics after building snapshot");
@@ -122,7 +124,7 @@ async fn run_test(rafts: &[typ::Raft], router: Router) {
     }
 
     // Wait for a while to let the node 2 to receive snapshot replication.
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    TypeConfig::sleep(Duration::from_millis(500)).await;
 
     println!("=== metrics of node 2 that received snapshot");
     {

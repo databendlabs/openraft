@@ -7,6 +7,7 @@ use std::time::Duration;
 use client_http::ExampleClient;
 use maplit::btreemap;
 use maplit::btreeset;
+use openraft::type_config::TypeConfigExt;
 use openraft::BasicNode;
 use raft_kv_rocksdb::start_example_raft_node;
 use raft_kv_rocksdb::store::Request;
@@ -89,7 +90,7 @@ async fn test_cluster() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     // Wait for server to start up.
-    tokio::time::sleep(Duration::from_millis(3_000)).await;
+    TypeConfig::sleep(Duration::from_millis(3_000)).await;
 
     // --- Create a client to the first node, as a control handle to the cluster.
 
@@ -107,7 +108,7 @@ async fn test_cluster() -> Result<(), Box<dyn std::error::Error>> {
         if metrics.current_leader == Some(1) {
             break;
         }
-        tokio::time::sleep(Duration::from_millis(500)).await;
+        TypeConfig::sleep(Duration::from_millis(500)).await;
     }
 
     // --- 2. Add node 2 and 3 to the cluster as `Learner`, to let them start to receive log replication
@@ -174,7 +175,7 @@ async fn test_cluster() -> Result<(), Box<dyn std::error::Error>> {
 
     // --- Wait for a while to let the replication get done.
 
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    TypeConfig::sleep(Duration::from_millis(500)).await;
 
     // --- Read it on every node.
 
@@ -202,7 +203,7 @@ async fn test_cluster() -> Result<(), Box<dyn std::error::Error>> {
         })
         .await??;
 
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    TypeConfig::sleep(Duration::from_millis(500)).await;
 
     // --- Read it on every node.
 
