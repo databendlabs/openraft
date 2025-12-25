@@ -23,8 +23,17 @@ pub use watch::TokioWatchReceiver;
 pub use watch::TokioWatchSender;
 
 /// `Tokio` is the default asynchronous executor.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-pub struct TokioRuntime;
+pub struct TokioRuntime {
+    rt: tokio::runtime::Runtime,
+    #[cfg(feature = "single-threaded")]
+    local: tokio::task::LocalSet,
+}
+
+impl std::fmt::Debug for TokioRuntime {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TokioRuntime").finish()
+    }
+}
 
 impl AsyncRuntime for TokioRuntime {
     type JoinError = tokio::task::JoinError;
@@ -85,6 +94,35 @@ impl AsyncRuntime for TokioRuntime {
     type Watch = TokioWatch;
     type Oneshot = TokioOneshot;
     type Mutex<T: OptionalSend + 'static> = TokioMutex<T>;
+
+    fn new(threads: usize) -> Self {
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(threads)
+            .enable_all()
+            .build()
+            .expect("Failed to create Tokio runtime");
+
+        TokioRuntime {
+            rt,
+            #[cfg(feature = "single-threaded")]
+            local: tokio::task::LocalSet::new(),
+        }
+    }
+
+    fn block_on<F, T>(&mut self, future: F) -> T
+    where
+        F: Future<Output = T> + OptionalSend,
+        T: OptionalSend,
+    {
+        #[cfg(feature = "single-threaded")]
+        {
+            self.local.block_on(&self.rt, future)
+        }
+        #[cfg(not(feature = "single-threaded"))]
+        {
+            self.rt.block_on(future)
+        }
+    }
 }
 
 #[cfg(test)]
@@ -94,28 +132,7 @@ mod tests {
     use super::*;
 
     #[test]
-    #[cfg(not(feature = "single-threaded"))]
-    fn test_tokio_rt_not_single_threaded() {
-        let rt = tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(8)
-            .enable_all()
-            .build()
-            .expect("Failed building the runtime");
-
-        rt.block_on(Suite::<TokioRuntime>::test_all());
-    }
-
-    #[test]
-    #[cfg(feature = "single-threaded")]
-    fn test_tokio_rt_single_threaded() {
-        let rt = tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(8)
-            .enable_all()
-            .build()
-            .expect("Failed building the runtime");
-        // `spawn_local` needs to be called called from inside of a `task::LocalSet`
-        let local = tokio::task::LocalSet::new();
-
-        local.block_on(&rt, Suite::<TokioRuntime>::test_all());
+    fn test_tokio_rt() {
+        TokioRuntime::run(Suite::<TokioRuntime>::test_all());
     }
 }

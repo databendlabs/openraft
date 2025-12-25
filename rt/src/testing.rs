@@ -107,10 +107,7 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         let all_same = r1 == r2 && r2 == r3;
         assert!(
             !all_same || r1 != 0,
-            "RNG should produce varying values (got {}, {}, {})",
-            r1,
-            r2,
-            r3
+            "RNG should produce varying values (got {r1}, {r2}, {r3})"
         );
 
         // Test range generation
@@ -599,8 +596,7 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         // Should have waited at least ~40ms for the new value
         assert!(
             elapsed >= dur_40ms,
-            "changed() returned too quickly ({:?}), indicating it didn't wait for new value",
-            elapsed
+            "changed() returned too quickly ({elapsed:?}), indicating it didn't wait for new value"
         );
 
         // Verify we got the new value
@@ -671,7 +667,7 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         rx.changed().await.unwrap();
         let elapsed = start.elapsed();
 
-        assert!(elapsed >= dur_40ms, "changed() returned too quickly ({:?})", elapsed);
+        assert!(elapsed >= dur_40ms, "changed() returned too quickly ({elapsed:?})");
 
         {
             let val = rx.borrow_watched();
@@ -722,8 +718,7 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         // Should have taken only a few iterations (not 100s which would indicate hot loop)
         assert!(
             iterations <= 10,
-            "Too many iterations ({}), possible hot loop",
-            iterations
+            "Too many iterations ({iterations}), possible hot loop"
         );
 
         drop(tx);
