@@ -6,10 +6,10 @@ use std::time::Duration;
 
 use maplit::btreemap;
 use openraft::type_config::TypeConfigExt;
+use raft_kv_memstore_grpc::TypeConfig;
 use raft_kv_memstore_grpc::app::start_raft_app;
 use raft_kv_memstore_grpc::protobuf as pb;
 use raft_kv_memstore_grpc::protobuf::app_service_client::AppServiceClient;
-use raft_kv_memstore_grpc::TypeConfig;
 use tokio::runtime::Runtime;
 use tonic::transport::Channel;
 use tracing_subscriber::EnvFilter;

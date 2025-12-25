@@ -3,15 +3,15 @@ use std::collections::BTreeMap;
 use std::panic::PanicHookInfo;
 use std::time::Duration;
 
-use openraft::async_runtime::WatchReceiver;
-use openraft::type_config::TypeConfigExt;
 use openraft::BasicNode;
 use openraft::ServerState;
+use openraft::async_runtime::WatchReceiver;
+use openraft::type_config::TypeConfigExt;
+use raft_kv_memstore_network_v2::TypeConfig;
 use raft_kv_memstore_network_v2::new_raft;
 use raft_kv_memstore_network_v2::router::Router;
 use raft_kv_memstore_network_v2::store::Request;
 use raft_kv_memstore_network_v2::typ;
-use raft_kv_memstore_network_v2::TypeConfig;
 use tracing_subscriber::EnvFilter;
 
 pub fn log_panic(panic: &PanicHookInfo) {

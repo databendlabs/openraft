@@ -4,19 +4,19 @@
 use std::path::Path;
 use std::sync::Arc;
 
+use actix_web::HttpServer;
 use actix_web::middleware;
 use actix_web::middleware::Logger;
 use actix_web::web::Data;
-use actix_web::HttpServer;
 use openraft::Config;
 
 use crate::app::App;
 use crate::network::api;
 use crate::network::management;
 use crate::network::raft;
-use crate::store::new_storage;
 use crate::store::Request;
 use crate::store::Response;
+use crate::store::new_storage;
 
 pub mod app;
 pub mod network;

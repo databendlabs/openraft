@@ -1,13 +1,13 @@
 use std::fmt;
 
+use openraft::EntryPayload;
+use openraft::Membership;
 use openraft::alias::LogIdOf;
 use openraft::entry::RaftEntry;
 use openraft::entry::RaftPayload;
-use openraft::EntryPayload;
-use openraft::Membership;
 
-use crate::protobuf as pb;
 use crate::TypeConfig;
+use crate::protobuf as pb;
 
 impl fmt::Display for pb::Entry {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

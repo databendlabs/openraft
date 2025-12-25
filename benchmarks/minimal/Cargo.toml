@@ -6,7 +6,7 @@ name = "bench-minimal"
 description = "Minimal openraft benchmark with in-memory store and no network"
 
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 authors = [
     "drdr xp <drdr.xp@gmail.com>",
 ]

@@ -3,8 +3,8 @@ use std::collections::BTreeSet;
 
 use openraft::Membership;
 
-use crate::pb;
 use crate::TypeConfig;
+use crate::pb;
 
 impl From<pb::Membership> for Membership<TypeConfig> {
     fn from(value: pb::Membership) -> Self {

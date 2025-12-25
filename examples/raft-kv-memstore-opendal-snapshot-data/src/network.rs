@@ -1,16 +1,16 @@
 use std::future::Future;
 
-use openraft::error::ReplicationClosed;
-use openraft::network::v2::RaftNetworkV2;
-use openraft::network::RPCOption;
 use openraft::BasicNode;
 use openraft::OptionalSend;
 use openraft::RaftNetworkFactory;
+use openraft::error::ReplicationClosed;
+use openraft::network::RPCOption;
+use openraft::network::v2::RaftNetworkV2;
 
-use crate::router::Router;
-use crate::typ::*;
 use crate::NodeId;
 use crate::TypeConfig;
+use crate::router::Router;
+use crate::typ::*;
 
 pub struct Connection {
     router: Router,

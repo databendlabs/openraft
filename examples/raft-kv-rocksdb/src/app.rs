@@ -4,8 +4,8 @@ use std::sync::Arc;
 use openraft::Config;
 use tokio::sync::RwLock;
 
-use crate::typ::Raft;
 use crate::NodeId;
+use crate::typ::Raft;
 
 // Representation of an application state. This struct can be shared around to share
 // instances of raft, store and more.

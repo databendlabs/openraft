@@ -4,6 +4,7 @@ use openraft::Config;
 use tonic::transport::Server;
 use tracing::info;
 
+use crate::NodeId;
 use crate::grpc::app_service::AppServiceImpl;
 use crate::grpc::raft_service::RaftServiceImpl;
 use crate::network::Network;
@@ -12,7 +13,6 @@ use crate::pb::raft_service_server::RaftServiceServer;
 use crate::store::LogStore;
 use crate::store::StateMachineStore;
 use crate::typ::*;
-use crate::NodeId;
 
 pub async fn start_raft_app(node_id: NodeId, http_addr: String) -> Result<(), Box<dyn std::error::Error>> {
     // Create a configuration for the raft instance.

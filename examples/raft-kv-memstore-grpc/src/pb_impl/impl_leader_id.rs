@@ -6,8 +6,8 @@ use std::fmt;
 use openraft::vote::LeaderIdCompare;
 use openraft::vote::RaftLeaderId;
 
-use crate::protobuf as pb;
 use crate::TypeConfig;
+use crate::protobuf as pb;
 
 /// Implements PartialOrd for LeaderId to enforce the standard Raft behavior of at most one leader
 /// per term.

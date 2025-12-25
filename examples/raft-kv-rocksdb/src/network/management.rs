@@ -1,19 +1,19 @@
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
+use actix_web::Responder;
 use actix_web::get;
 use actix_web::post;
 use actix_web::web::Data;
 use actix_web::web::Json;
-use actix_web::Responder;
-use openraft::async_runtime::WatchReceiver;
-use openraft::error::decompose::DecomposeResult;
-use openraft::error::Infallible;
 use openraft::BasicNode;
+use openraft::async_runtime::WatchReceiver;
+use openraft::error::Infallible;
+use openraft::error::decompose::DecomposeResult;
 
+use crate::NodeId;
 use crate::app::App;
 use crate::typ::*;
-use crate::NodeId;
 
 // --- Cluster management
 

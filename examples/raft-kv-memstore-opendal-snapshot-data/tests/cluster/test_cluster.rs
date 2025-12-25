@@ -4,15 +4,15 @@ use std::collections::HashMap;
 use std::panic::PanicHookInfo;
 use std::time::Duration;
 
-use openraft::async_runtime::WatchReceiver;
-use openraft::type_config::TypeConfigExt;
 use openraft::BasicNode;
 use openraft::ServerState;
+use openraft::async_runtime::WatchReceiver;
+use openraft::type_config::TypeConfigExt;
+use raft_kv_memstore_opendal_snapshot_data::TypeConfig;
 use raft_kv_memstore_opendal_snapshot_data::new_raft;
 use raft_kv_memstore_opendal_snapshot_data::router::Router;
 use raft_kv_memstore_opendal_snapshot_data::store::Request;
 use raft_kv_memstore_opendal_snapshot_data::typ;
-use raft_kv_memstore_opendal_snapshot_data::TypeConfig;
 use tracing_subscriber::EnvFilter;
 
 pub fn log_panic(panic: &PanicHookInfo) {

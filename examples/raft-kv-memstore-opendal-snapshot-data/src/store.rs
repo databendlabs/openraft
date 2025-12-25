@@ -8,17 +8,17 @@ use std::sync::Mutex;
 use futures::Stream;
 use futures::TryStreamExt;
 use opendal::Operator;
-use openraft::storage::EntryResponder;
-use openraft::storage::RaftStateMachine;
 use openraft::OptionalSend;
 use openraft::RaftSnapshotBuilder;
+use openraft::storage::EntryResponder;
+use openraft::storage::RaftStateMachine;
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::TypeConfig;
 use crate::decode_buffer;
 use crate::encode;
 use crate::typ::*;
-use crate::TypeConfig;
 
 pub type LogStore = mem_log::LogStore<TypeConfig>;
 

@@ -1,26 +1,26 @@
 use futures::Stream;
 use futures::StreamExt;
+use openraft::AnyError;
+use openraft::OptionalSend;
+use openraft::RaftNetworkFactory;
 use openraft::base::BoxFuture;
 use openraft::base::BoxStream;
 use openraft::error::NetworkError;
 use openraft::error::Unreachable;
-use openraft::network::v2::RaftNetworkV2;
 use openraft::network::RPCOption;
+use openraft::network::v2::RaftNetworkV2;
 use openraft::raft::StreamAppendError;
 use openraft::raft::StreamAppendResult;
-use openraft::AnyError;
-use openraft::OptionalSend;
-use openraft::RaftNetworkFactory;
 use tonic::codegen::tokio_stream::wrappers::ReceiverStream;
 use tonic::transport::Channel;
 
-use crate::protobuf as pb;
-use crate::protobuf::raft_service_client::RaftServiceClient;
-use crate::protobuf::VoteRequest as PbVoteRequest;
-use crate::protobuf::VoteResponse as PbVoteResponse;
-use crate::typ::*;
 use crate::NodeId;
 use crate::TypeConfig;
+use crate::protobuf as pb;
+use crate::protobuf::VoteRequest as PbVoteRequest;
+use crate::protobuf::VoteResponse as PbVoteResponse;
+use crate::protobuf::raft_service_client::RaftServiceClient;
+use crate::typ::*;
 
 /// Network implementation for gRPC-based Raft communication.
 /// Provides the networking layer for Raft nodes to communicate with each other.

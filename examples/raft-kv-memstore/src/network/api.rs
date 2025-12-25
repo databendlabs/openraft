@@ -1,19 +1,19 @@
+use actix_web::Responder;
 use actix_web::post;
 use actix_web::web;
 use actix_web::web::Data;
-use actix_web::Responder;
 use client_http::FollowerReadError;
+use openraft::ReadPolicy;
 use openraft::async_runtime::WatchReceiver;
-use openraft::error::decompose::DecomposeResult;
 use openraft::error::Infallible;
 use openraft::error::LinearizableReadError;
+use openraft::error::decompose::DecomposeResult;
 use openraft::raft::linearizable_read::Linearizer;
-use openraft::ReadPolicy;
 use web::Json;
 
+use crate::TypeConfig;
 use crate::app::App;
 use crate::store::Request;
-use crate::TypeConfig;
 
 /**
  * Application API

@@ -4,15 +4,15 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use openraft::error::Unreachable;
-use openraft::type_config::alias::OneshotSenderOf;
 use openraft::type_config::TypeConfigExt;
+use openraft::type_config::alias::OneshotSenderOf;
 
-use crate::decode;
-use crate::encode;
-use crate::typ::RaftError;
 use crate::GroupId;
 use crate::NodeId;
 use crate::TypeConfig;
+use crate::decode;
+use crate::encode;
+use crate::typ::RaftError;
 
 pub type NodeTx = tokio::sync::mpsc::UnboundedSender<NodeMessage>;
 pub type NodeRx = tokio::sync::mpsc::UnboundedReceiver<NodeMessage>;

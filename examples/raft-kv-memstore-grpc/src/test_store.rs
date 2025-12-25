@@ -4,10 +4,10 @@ use openraft::testing::log::StoreBuilder;
 use openraft::testing::log::Suite;
 use openraft::type_config::TypeConfigExt;
 
+use crate::TypeConfig;
 use crate::store::LogStore;
 use crate::store::StateMachineStore;
 use crate::typ::*;
-use crate::TypeConfig;
 
 struct MemKVStoreBuilder {}
 

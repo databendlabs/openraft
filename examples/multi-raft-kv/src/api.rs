@@ -1,16 +1,16 @@
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
-use openraft::async_runtime::WatchReceiver;
-use openraft::raft::TransferLeaderRequest;
 use openraft::BasicNode;
 use openraft::ReadPolicy;
+use openraft::async_runtime::WatchReceiver;
+use openraft::raft::TransferLeaderRequest;
 
+use crate::NodeId;
 use crate::app::GroupApp;
 use crate::decode;
 use crate::encode;
 use crate::typ::*;
-use crate::NodeId;
 
 /// Write a key-value pair to the group's state machine
 pub async fn write(app: &mut GroupApp, req: String) -> String {

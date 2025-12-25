@@ -10,13 +10,16 @@
 use std::future::Future;
 use std::time::Duration;
 
+use openraft::OptionalSend;
+use openraft::OptionalSync;
+use openraft::RaftTypeConfig;
 use openraft::error::RPCError;
 use openraft::error::ReplicationClosed;
 use openraft::error::StreamingError;
 use openraft::error::Unreachable;
-use openraft::network::v2::RaftNetworkV2;
 use openraft::network::Backoff;
 use openraft::network::RPCOption;
+use openraft::network::v2::RaftNetworkV2;
 use openraft::raft::AppendEntriesRequest;
 use openraft::raft::AppendEntriesResponse;
 use openraft::raft::SnapshotResponse;
@@ -25,9 +28,6 @@ use openraft::raft::VoteRequest;
 use openraft::raft::VoteResponse;
 use openraft::storage::Snapshot;
 use openraft::type_config::alias::VoteOf;
-use openraft::OptionalSend;
-use openraft::OptionalSync;
-use openraft::RaftTypeConfig;
 
 /// Trait for sending Raft RPCs with target and group routing.
 ///

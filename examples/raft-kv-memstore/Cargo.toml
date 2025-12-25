@@ -3,7 +3,7 @@ name = "raft-kv-memstore"
 version = "0.1.0"
 readme = "README.md"
 
-edition = "2021"
+edition = "2024"
 authors = [
     "drdr xp <drdr.xp@gmail.com>",
     "Pedro Paulo de Amorim <pepa.amorim@gmail.com>",

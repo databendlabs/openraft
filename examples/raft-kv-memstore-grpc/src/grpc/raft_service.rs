@@ -10,9 +10,9 @@ use tonic::Streaming;
 use tracing::debug;
 
 use crate::protobuf as pb;
-use crate::protobuf::raft_service_server::RaftService;
 use crate::protobuf::VoteRequest;
 use crate::protobuf::VoteResponse;
+use crate::protobuf::raft_service_server::RaftService;
 use crate::typ::*;
 
 /// Internal gRPC service implementation for Raft protocol communications.

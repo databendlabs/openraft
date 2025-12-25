@@ -4,12 +4,12 @@ use openraft::async_runtime::OneshotSender;
 use openraft::type_config::alias::OneshotSenderOf;
 use tokio::sync::mpsc;
 
-use crate::api;
-use crate::router::Router;
-use crate::typ::Raft;
 use crate::NodeId;
 use crate::StateMachineStore;
 use crate::TypeConfig;
+use crate::api;
+use crate::router::Router;
+use crate::typ::Raft;
 
 pub type Path = String;
 pub type Payload = String;

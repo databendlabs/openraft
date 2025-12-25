@@ -8,22 +8,22 @@ use std::sync::Arc;
 
 use futures::Stream;
 use futures::TryStreamExt;
-use openraft::storage::EntryResponder;
-use openraft::storage::RaftStateMachine;
 use openraft::EntryPayload;
 use openraft::OptionalSend;
 use openraft::RaftSnapshotBuilder;
+use openraft::storage::EntryResponder;
+use openraft::storage::RaftStateMachine;
 use openraft_rocksstore::log_store::RocksLogStore;
 use rocksdb::ColumnFamily;
 use rocksdb::ColumnFamilyDescriptor;
-use rocksdb::Options;
 use rocksdb::DB;
+use rocksdb::Options;
 use serde::Deserialize;
 use serde::Serialize;
 use tokio::sync::RwLock;
 
-use crate::typ::*;
 use crate::TypeConfig;
+use crate::typ::*;
 
 /**
  * Here you will set the types of request that will interact with the raft nodes.

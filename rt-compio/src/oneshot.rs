@@ -1,7 +1,7 @@
 //! Oneshot channel wrapper types and their trait impl.
 
-use openraft_rt::oneshot;
 use openraft_rt::OptionalSend;
+use openraft_rt::oneshot;
 
 pub struct FuturesOneshot;
 

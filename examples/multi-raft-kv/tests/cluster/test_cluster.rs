@@ -10,16 +10,16 @@ use std::collections::BTreeMap;
 use std::panic::PanicHookInfo;
 use std::time::Duration;
 
+use multi_raft_kv::GroupId;
+use multi_raft_kv::TypeConfig;
 use multi_raft_kv::create_node;
 use multi_raft_kv::groups;
 use multi_raft_kv::router::Router;
 use multi_raft_kv::store::Request;
 use multi_raft_kv::typ;
-use multi_raft_kv::GroupId;
-use multi_raft_kv::TypeConfig;
+use openraft::BasicNode;
 use openraft::async_runtime::WatchReceiver;
 use openraft::type_config::TypeConfigExt;
-use openraft::BasicNode;
 use tracing_subscriber::EnvFilter;
 
 pub fn log_panic(panic: &PanicHookInfo) {

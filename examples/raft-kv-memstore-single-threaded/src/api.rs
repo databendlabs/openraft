@@ -3,16 +3,16 @@
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
-use openraft::async_runtime::WatchReceiver;
-use openraft::error::Infallible;
 use openraft::BasicNode;
 use openraft::ReadPolicy;
+use openraft::async_runtime::WatchReceiver;
+use openraft::error::Infallible;
 
+use crate::NodeId;
 use crate::app::App;
 use crate::decode;
 use crate::encode;
 use crate::typ::*;
-use crate::NodeId;
 
 pub async fn write(app: &mut App, req: String) -> String {
     let res = app.raft.client_write(decode(&req)).await;

@@ -1,8 +1,8 @@
 //! Oneshot channel wrapper types and their trait impl.
 
 use local_sync::oneshot as monoio_oneshot;
-use openraft_rt::oneshot;
 use openraft_rt::OptionalSend;
+use openraft_rt::oneshot;
 
 pub struct MonoioOneshot;
 

@@ -7,12 +7,12 @@ use std::io;
 use std::ops::RangeBounds;
 use std::sync::Arc;
 
+use openraft::LogState;
+use openraft::RaftTypeConfig;
 use openraft::alias::LogIdOf;
 use openraft::alias::VoteOf;
 use openraft::entry::RaftEntry;
 use openraft::storage::IOFlushed;
-use openraft::LogState;
-use openraft::RaftTypeConfig;
 use tokio::sync::Mutex;
 
 /// RaftLogStore implementation with a in-memory storage
@@ -136,13 +136,13 @@ mod impl_log_store {
     use std::io;
     use std::ops::RangeBounds;
 
+    use openraft::LogState;
+    use openraft::RaftLogReader;
+    use openraft::RaftTypeConfig;
     use openraft::alias::LogIdOf;
     use openraft::alias::VoteOf;
     use openraft::storage::IOFlushed;
     use openraft::storage::RaftLogStorage;
-    use openraft::LogState;
-    use openraft::RaftLogReader;
-    use openraft::RaftTypeConfig;
 
     use crate::log_store::LogStore;
 

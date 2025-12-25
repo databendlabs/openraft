@@ -8,10 +8,10 @@ use tonic::Status;
 use tracing::debug;
 
 use crate::pb;
-use crate::protobuf::app_service_server::AppService;
 use crate::protobuf::GetRequest;
 use crate::protobuf::Response as PbResponse;
 use crate::protobuf::SetRequest;
+use crate::protobuf::app_service_server::AppService;
 use crate::store::StateMachineStore;
 use crate::typ::*;
 

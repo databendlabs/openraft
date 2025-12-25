@@ -5,16 +5,16 @@ use std::sync::Mutex;
 
 use futures::Stream;
 use futures::TryStreamExt;
+use openraft::OptionalSend;
+use openraft::RaftSnapshotBuilder;
 use openraft::entry::RaftEntry;
 use openraft::storage::EntryResponder;
 use openraft::storage::RaftStateMachine;
-use openraft::OptionalSend;
-use openraft::RaftSnapshotBuilder;
 
+use crate::TypeConfig;
 use crate::protobuf as pb;
 use crate::protobuf::Response;
 use crate::typ::*;
-use crate::TypeConfig;
 
 pub type LogStore = mem_log::LogStore<TypeConfig>;
 

@@ -7,11 +7,11 @@ use std::time::Duration;
 use client_http::ExampleClient;
 use maplit::btreemap;
 use maplit::btreeset;
-use openraft::type_config::TypeConfigExt;
 use openraft::BasicNode;
+use openraft::type_config::TypeConfigExt;
+use raft_kv_memstore::TypeConfig;
 use raft_kv_memstore::start_example_raft_node;
 use raft_kv_memstore::store::Request;
-use raft_kv_memstore::TypeConfig;
 use tokio::runtime::Runtime;
 use tracing_subscriber::EnvFilter;
 

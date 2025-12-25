@@ -1,13 +1,13 @@
-use openraft::error::InstallSnapshotError;
-use openraft::network::RPCOption;
 use openraft::BasicNode;
 use openraft::RaftNetwork;
 use openraft::RaftNetworkFactory;
+use openraft::error::InstallSnapshotError;
+use openraft::network::RPCOption;
 
-use crate::router::Router;
-use crate::typ::*;
 use crate::NodeId;
 use crate::TypeConfig;
+use crate::router::Router;
+use crate::typ::*;
 
 pub struct Connection {
     router: Router,

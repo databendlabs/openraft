@@ -7,16 +7,16 @@ use std::sync::Mutex;
 
 use futures::Stream;
 use futures::TryStreamExt;
-use openraft::storage::EntryResponder;
-use openraft::storage::RaftStateMachine;
 use openraft::EntryPayload;
 use openraft::OptionalSend;
 use openraft::RaftSnapshotBuilder;
+use openraft::storage::EntryResponder;
+use openraft::storage::RaftStateMachine;
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::typ::*;
 use crate::TypeConfig;
+use crate::typ::*;
 
 pub type LogStore = mem_log::LogStore<TypeConfig>;
 

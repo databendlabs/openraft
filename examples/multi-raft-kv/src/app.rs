@@ -4,6 +4,9 @@ use std::sync::Arc;
 use openraft::async_runtime::OneshotSender;
 use tokio::sync::mpsc;
 
+use crate::GroupId;
+use crate::NodeId;
+use crate::StateMachineStore;
 use crate::api;
 use crate::encode;
 use crate::router::NodeMessage;
@@ -11,9 +14,6 @@ use crate::router::NodeRx;
 use crate::router::NodeTx;
 use crate::router::Router;
 use crate::typ;
-use crate::GroupId;
-use crate::NodeId;
-use crate::StateMachineStore;
 
 /// A Node manages multiple Raft groups on the same physical node.
 ///

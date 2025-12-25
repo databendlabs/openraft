@@ -6,13 +6,13 @@ use openraft::error::RemoteError;
 use openraft::error::Unreachable;
 use openraft::type_config::TypeConfigExt;
 
+use crate::NodeId;
+use crate::TypeConfig;
 use crate::app::RequestTx;
 use crate::decode;
 use crate::encode;
 use crate::typ::RPCError;
 use crate::typ::RaftError;
-use crate::NodeId;
-use crate::TypeConfig;
 
 /// Simulate a network router.
 #[derive(Debug, Clone)]

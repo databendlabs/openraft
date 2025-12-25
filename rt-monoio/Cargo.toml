@@ -4,7 +4,7 @@ description = "monoio AsyncRuntime support for Openraft"
 documentation = "https://docs.rs/openraft-rt-monoio"
 readme = "README.md"
 version = "0.10.0"
-edition = "2021"
+edition = "2024"
 authors = [
     "Databend Authors <opensource@datafuselabs.com>",
 ]

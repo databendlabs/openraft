@@ -3,10 +3,10 @@
 
 use std::sync::Arc;
 
+use actix_web::HttpServer;
 use actix_web::middleware;
 use actix_web::middleware::Logger;
 use actix_web::web::Data;
-use actix_web::HttpServer;
 use openraft::Config;
 
 use crate::app::App;

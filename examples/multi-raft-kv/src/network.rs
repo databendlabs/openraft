@@ -1,5 +1,6 @@
 use std::future::Future;
 
+use openraft::OptionalSend;
 use openraft::error::RPCError;
 use openraft::error::ReplicationClosed;
 use openraft::error::StreamingError;
@@ -13,16 +14,15 @@ use openraft::raft::TransferLeaderRequest;
 use openraft::raft::VoteRequest;
 use openraft::raft::VoteResponse;
 use openraft::storage::Snapshot;
-use openraft::OptionalSend;
 use openraft_multi::GroupNetworkAdapter;
 use openraft_multi::GroupNetworkFactory;
 use openraft_multi::GroupRouter;
 
-use crate::router::Router;
-use crate::typ;
 use crate::GroupId;
 use crate::NodeId;
 use crate::TypeConfig;
+use crate::router::Router;
+use crate::typ;
 
 impl GroupRouter<TypeConfig, GroupId> for Router {
     async fn append_entries(
