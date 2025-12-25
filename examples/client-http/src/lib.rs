@@ -3,6 +3,10 @@ use std::fmt;
 use std::sync::Arc;
 use std::sync::Mutex;
 
+use openraft::BasicNode;
+use openraft::RaftMetrics;
+use openraft::RaftTypeConfig;
+use openraft::TryAsRef;
 use openraft::error::ClientWriteError;
 use openraft::error::ForwardToLeader;
 use openraft::error::Infallible;
@@ -12,13 +16,9 @@ use openraft::error::NetworkError;
 use openraft::error::RPCError;
 use openraft::error::Unreachable;
 use openraft::raft::ClientWriteResponse;
-use openraft::BasicNode;
-use openraft::RaftMetrics;
-use openraft::RaftTypeConfig;
-use openraft::TryAsRef;
 use reqwest::Client;
-use serde::de::DeserializeOwned;
 use serde::Serialize;
+use serde::de::DeserializeOwned;
 
 #[derive(Debug, Clone, Serialize, serde::Deserialize)]
 pub struct FollowerReadError {

@@ -1,5 +1,7 @@
 use std::fmt::Display;
 
+use openraft::BasicNode;
+use openraft::RaftTypeConfig;
 use openraft::error::Infallible;
 use openraft::error::InstallSnapshotError;
 use openraft::error::NetworkError;
@@ -16,11 +18,9 @@ use openraft::raft::InstallSnapshotRequest;
 use openraft::raft::InstallSnapshotResponse;
 use openraft::raft::VoteRequest;
 use openraft::raft::VoteResponse;
-use openraft::BasicNode;
-use openraft::RaftTypeConfig;
 use reqwest::Client;
-use serde::de::DeserializeOwned;
 use serde::Serialize;
+use serde::de::DeserializeOwned;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncSeek;
 use tokio::io::AsyncWrite;
