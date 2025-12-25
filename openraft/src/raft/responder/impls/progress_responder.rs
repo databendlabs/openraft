@@ -218,12 +218,12 @@ mod tests {
         let test_result = 42;
 
         // Create tasks to receive in parallel
-        let commit_task = UTConfig::spawn(async move { commit_rx.await.unwrap() });
+        let commit_task = UTConfig::<()>::spawn(async move { commit_rx.await.unwrap() });
 
-        let complete_task = UTConfig::spawn(async move { complete_rx.await.unwrap() });
+        let complete_task = UTConfig::<()>::spawn(async move { complete_rx.await.unwrap() });
 
         // Small delay to ensure receivers are waiting
-        UTConfig::sleep(Duration::from_millis(10)).await;
+        UTConfig::<()>::sleep(Duration::from_millis(10)).await;
 
         // Send in order: commit first, then complete
         responder.on_commit(test_log_id);
