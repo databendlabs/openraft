@@ -15,9 +15,9 @@ async fn test_follower_read() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Start 3 raft nodes
-    let _h1 = tokio::spawn(start_example_raft_node(1, get_addr(1)));
-    let _h2 = tokio::spawn(start_example_raft_node(2, get_addr(2)));
-    let _h3 = tokio::spawn(start_example_raft_node(3, get_addr(3)));
+    let _h1 = TypeConfig::spawn(start_example_raft_node(1, get_addr(1)));
+    let _h2 = TypeConfig::spawn(start_example_raft_node(2, get_addr(2)));
+    let _h3 = TypeConfig::spawn(start_example_raft_node(3, get_addr(3)));
 
     // Wait for servers to start
     TypeConfig::sleep(Duration::from_millis(1000)).await;
