@@ -96,6 +96,7 @@ lint:
 	cargo fmt --manifest-path rt-monoio/Cargo.toml
 	cargo fmt --manifest-path rt-tokio/Cargo.toml
 	cargo fmt --manifest-path examples/mem-log/Cargo.toml
+	cargo fmt --manifest-path examples/raft-kv-memstore-grpc/Cargo.toml
 	cargo fmt --manifest-path examples/raft-kv-memstore-network-v2/Cargo.toml
 	cargo fmt --manifest-path examples/raft-kv-memstore-opendal-snapshot-data/Cargo.toml
 	cargo fmt --manifest-path examples/raft-kv-memstore-single-threaded/Cargo.toml
@@ -106,11 +107,12 @@ lint:
 	cargo clippy --no-deps --manifest-path multiraft/Cargo.toml                                       --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path rt-compio/Cargo.toml                                       --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path rt-monoio/Cargo.toml                                       --all-targets -- -D warnings
-	cargo clippy --no-deps --manifest-path rt-tokio/Cargo.toml                                       --all-targets -- -D warnings
+	cargo clippy --no-deps --manifest-path rt-tokio/Cargo.toml                                        --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/mem-log/Cargo.toml                                --all-targets -- -D warnings
+	cargo clippy --no-deps --manifest-path examples/raft-kv-memstore-grpc/Cargo.toml                  --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/raft-kv-memstore-network-v2/Cargo.toml            --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/raft-kv-memstore-opendal-snapshot-data/Cargo.toml --all-targets -- -D warnings
-	cargo clippy --no-deps --manifest-path examples/raft-kv-memstore-single-threaded/Cargo.toml        --all-targets -- -D warnings
+	cargo clippy --no-deps --manifest-path examples/raft-kv-memstore-single-threaded/Cargo.toml       --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/raft-kv-memstore/Cargo.toml                       --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/raft-kv-rocksdb/Cargo.toml                        --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/multi-raft-kv/Cargo.toml                          --all-targets -- -D warnings
@@ -139,11 +141,11 @@ clean:
 	cargo clean --manifest-path examples/client-http/Cargo.toml
 	cargo clean --manifest-path examples/network-v1-http/Cargo.toml
 	cargo clean --manifest-path examples/mem-log/Cargo.toml
-	cargo clean --manifest-path examples/raft-kv-memstore/Cargo.toml
 	cargo clean --manifest-path examples/raft-kv-memstore-grpc/Cargo.toml
 	cargo clean --manifest-path examples/raft-kv-memstore-network-v2/Cargo.toml
 	cargo clean --manifest-path examples/raft-kv-memstore-opendal-snapshot-data/Cargo.toml
 	cargo clean --manifest-path examples/raft-kv-memstore-single-threaded/Cargo.toml
+	cargo clean --manifest-path examples/raft-kv-memstore/Cargo.toml
 	cargo clean --manifest-path examples/raft-kv-rocksdb/Cargo.toml
 	cargo clean --manifest-path examples/rocksstore/Cargo.toml
 	cargo clean --manifest-path examples/multi-raft-kv/Cargo.toml

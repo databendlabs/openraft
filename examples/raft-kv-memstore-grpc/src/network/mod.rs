@@ -183,9 +183,9 @@ impl RaftNetworkV2<TypeConfig> for NetworkConnection {
         let message = response.into_inner();
 
         Ok(SnapshotResponse {
-            vote: message
-                .vote
-                .ok_or_else(|| NetworkError::<TypeConfig>::new(&AnyError::error("Missing `vote` in snapshot response")))?,
+            vote: message.vote.ok_or_else(|| {
+                NetworkError::<TypeConfig>::new(&AnyError::error("Missing `vote` in snapshot response"))
+            })?,
         })
     }
 
@@ -200,7 +200,8 @@ impl RaftNetworkV2<TypeConfig> for NetworkConnection {
         let request = tonic::Request::new(proto_vote_req);
 
         // Send the vote request
-        let response = client.vote(request).await.map_err(|e| RPCError::Network(NetworkError::<TypeConfig>::new(&e)))?;
+        let response =
+            client.vote(request).await.map_err(|e| RPCError::Network(NetworkError::<TypeConfig>::new(&e)))?;
 
         // Convert the response back to openraft VoteResponse
         let proto_vote_resp: PbVoteResponse = response.into_inner();
