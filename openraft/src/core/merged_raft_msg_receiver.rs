@@ -216,157 +216,169 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn test_merge_consecutive_client_writes_with_same_leader() {
-        let (tx, rx) = C::mpsc(100);
-        let mut receiver: BatchRaftMsgReceiver<C> = BatchRaftMsgReceiver::new(rx);
+    #[test]
+    fn test_merge_consecutive_client_writes_with_same_leader() {
+        C::run(async {
+            let (tx, rx) = C::mpsc(100);
+            let mut receiver: BatchRaftMsgReceiver<C> = BatchRaftMsgReceiver::new(rx);
 
-        let leader = Some(committed_leader_id(1, 1));
-        tx.send(client_write(1, leader)).await.unwrap();
-        tx.send(client_write(2, leader)).await.unwrap();
-        tx.send(client_write(3, leader)).await.unwrap();
+            let leader = Some(committed_leader_id(1, 1));
+            tx.send(client_write(1, leader)).await.unwrap();
+            tx.send(client_write(2, leader)).await.unwrap();
+            tx.send(client_write(3, leader)).await.unwrap();
 
-        receiver.ensure_buffered().await.unwrap();
-        let msg = receiver.try_recv().unwrap().unwrap();
+            receiver.ensure_buffered().await.unwrap();
+            let msg = receiver.try_recv().unwrap().unwrap();
 
-        let RaftMsg::ClientWrite {
-            app_data, responders, ..
-        } = msg
-        else {
-            panic!("expected ClientWrite");
-        };
-        assert_eq!(app_data.as_slice(), &[1, 2, 3]);
-        assert_eq!(responders.len(), app_data.len());
+            let RaftMsg::ClientWrite {
+                app_data, responders, ..
+            } = msg
+            else {
+                panic!("expected ClientWrite");
+            };
+            assert_eq!(app_data.as_slice(), &[1, 2, 3]);
+            assert_eq!(responders.len(), app_data.len());
+        });
     }
 
-    #[tokio::test]
-    async fn test_no_merge_when_expected_leader_differs() {
-        let (tx, rx) = C::mpsc(100);
-        let mut receiver: BatchRaftMsgReceiver<C> = BatchRaftMsgReceiver::new(rx);
+    #[test]
+    fn test_no_merge_when_expected_leader_differs() {
+        C::run(async {
+            let (tx, rx) = C::mpsc(100);
+            let mut receiver: BatchRaftMsgReceiver<C> = BatchRaftMsgReceiver::new(rx);
 
-        let leader1 = Some(committed_leader_id(1, 1));
-        let leader2 = Some(committed_leader_id(2, 1));
-        tx.send(client_write(1, leader1)).await.unwrap();
-        tx.send(client_write(2, leader2)).await.unwrap();
+            let leader1 = Some(committed_leader_id(1, 1));
+            let leader2 = Some(committed_leader_id(2, 1));
+            tx.send(client_write(1, leader1)).await.unwrap();
+            tx.send(client_write(2, leader2)).await.unwrap();
 
-        receiver.ensure_buffered().await.unwrap();
+            receiver.ensure_buffered().await.unwrap();
 
-        // First message should not be merged with second
-        let msg1 = receiver.try_recv().unwrap().unwrap();
-        let RaftMsg::ClientWrite {
-            app_data, responders, ..
-        } = msg1
-        else {
-            panic!("expected ClientWrite");
-        };
-        assert_eq!(app_data.as_slice(), &[1]);
-        assert_eq!(responders.len(), app_data.len());
+            // First message should not be merged with second
+            let msg1 = receiver.try_recv().unwrap().unwrap();
+            let RaftMsg::ClientWrite {
+                app_data, responders, ..
+            } = msg1
+            else {
+                panic!("expected ClientWrite");
+            };
+            assert_eq!(app_data.as_slice(), &[1]);
+            assert_eq!(responders.len(), app_data.len());
 
-        // Second message should be buffered and returned separately
-        let msg2 = receiver.try_recv().unwrap().unwrap();
-        let RaftMsg::ClientWrite {
-            app_data, responders, ..
-        } = msg2
-        else {
-            panic!("expected ClientWrite");
-        };
-        assert_eq!(app_data.as_slice(), &[2]);
-        assert_eq!(responders.len(), app_data.len());
+            // Second message should be buffered and returned separately
+            let msg2 = receiver.try_recv().unwrap().unwrap();
+            let RaftMsg::ClientWrite {
+                app_data, responders, ..
+            } = msg2
+            else {
+                panic!("expected ClientWrite");
+            };
+            assert_eq!(app_data.as_slice(), &[2]);
+            assert_eq!(responders.len(), app_data.len());
+        });
     }
 
-    #[tokio::test]
-    async fn test_non_client_write_stops_merging() {
-        let (tx, rx) = C::mpsc(100);
-        let mut receiver: BatchRaftMsgReceiver<C> = BatchRaftMsgReceiver::new(rx);
+    #[test]
+    fn test_non_client_write_stops_merging() {
+        C::run(async {
+            let (tx, rx) = C::mpsc(100);
+            let mut receiver: BatchRaftMsgReceiver<C> = BatchRaftMsgReceiver::new(rx);
 
-        let leader = Some(committed_leader_id(1, 1));
-        tx.send(client_write(1, leader)).await.unwrap();
-        tx.send(RaftMsg::WithRaftState { req: Box::new(|_| {}) }).await.unwrap();
-        tx.send(client_write(2, leader)).await.unwrap();
+            let leader = Some(committed_leader_id(1, 1));
+            tx.send(client_write(1, leader)).await.unwrap();
+            tx.send(RaftMsg::WithRaftState { req: Box::new(|_| {}) }).await.unwrap();
+            tx.send(client_write(2, leader)).await.unwrap();
 
-        receiver.ensure_buffered().await.unwrap();
+            receiver.ensure_buffered().await.unwrap();
 
-        // First ClientWrite should not merge past the WithRaftState
-        let msg1 = receiver.try_recv().unwrap().unwrap();
-        let RaftMsg::ClientWrite {
-            app_data, responders, ..
-        } = msg1
-        else {
-            panic!("expected ClientWrite");
-        };
-        assert_eq!(app_data.as_slice(), &[1]);
-        assert_eq!(responders.len(), app_data.len());
+            // First ClientWrite should not merge past the WithRaftState
+            let msg1 = receiver.try_recv().unwrap().unwrap();
+            let RaftMsg::ClientWrite {
+                app_data, responders, ..
+            } = msg1
+            else {
+                panic!("expected ClientWrite");
+            };
+            assert_eq!(app_data.as_slice(), &[1]);
+            assert_eq!(responders.len(), app_data.len());
 
-        // WithRaftState should be returned next
-        let msg2 = receiver.try_recv().unwrap().unwrap();
-        assert!(matches!(msg2, RaftMsg::WithRaftState { .. }));
+            // WithRaftState should be returned next
+            let msg2 = receiver.try_recv().unwrap().unwrap();
+            assert!(matches!(msg2, RaftMsg::WithRaftState { .. }));
 
-        // Last ClientWrite should be returned
-        let msg3 = receiver.try_recv().unwrap().unwrap();
-        let RaftMsg::ClientWrite {
-            app_data, responders, ..
-        } = msg3
-        else {
-            panic!("expected ClientWrite");
-        };
-        assert_eq!(app_data.as_slice(), &[2]);
-        assert_eq!(responders.len(), app_data.len());
+            // Last ClientWrite should be returned
+            let msg3 = receiver.try_recv().unwrap().unwrap();
+            let RaftMsg::ClientWrite {
+                app_data, responders, ..
+            } = msg3
+            else {
+                panic!("expected ClientWrite");
+            };
+            assert_eq!(app_data.as_slice(), &[2]);
+            assert_eq!(responders.len(), app_data.len());
+        });
     }
 
-    #[tokio::test]
-    async fn test_try_recv_returns_none_when_empty() {
-        let (_tx, rx) = C::mpsc::<RaftMsg<C>>(100);
-        let mut receiver: BatchRaftMsgReceiver<C> = BatchRaftMsgReceiver::new(rx);
+    #[test]
+    fn test_try_recv_returns_none_when_empty() {
+        C::run(async {
+            let (_tx, rx) = C::mpsc::<RaftMsg<C>>(100);
+            let mut receiver: BatchRaftMsgReceiver<C> = BatchRaftMsgReceiver::new(rx);
 
-        let result = receiver.try_recv().unwrap();
-        assert!(result.is_none());
+            let result = receiver.try_recv().unwrap();
+            assert!(result.is_none());
+        });
     }
 
-    #[tokio::test]
-    async fn test_ensure_buffered_waits_for_message() {
-        let (tx, rx) = C::mpsc(100);
-        let mut receiver: BatchRaftMsgReceiver<C> = BatchRaftMsgReceiver::new(rx);
+    #[test]
+    fn test_ensure_buffered_waits_for_message() {
+        C::run(async {
+            let (tx, rx) = C::mpsc(100);
+            let mut receiver: BatchRaftMsgReceiver<C> = BatchRaftMsgReceiver::new(rx);
 
-        tx.send(client_write(42, None)).await.unwrap();
+            tx.send(client_write(42, None)).await.unwrap();
 
-        receiver.ensure_buffered().await.unwrap();
+            receiver.ensure_buffered().await.unwrap();
 
-        // Message should be in buffer, try_recv should return it
-        let msg = receiver.try_recv().unwrap().unwrap();
-        let RaftMsg::ClientWrite {
-            app_data, responders, ..
-        } = msg
-        else {
-            panic!("expected ClientWrite");
-        };
-        assert_eq!(app_data.as_slice(), &[42]);
-        assert_eq!(responders.len(), app_data.len());
+            // Message should be in buffer, try_recv should return it
+            let msg = receiver.try_recv().unwrap().unwrap();
+            let RaftMsg::ClientWrite {
+                app_data, responders, ..
+            } = msg
+            else {
+                panic!("expected ClientWrite");
+            };
+            assert_eq!(app_data.as_slice(), &[42]);
+            assert_eq!(responders.len(), app_data.len());
+        });
     }
 
-    #[tokio::test]
-    async fn test_ensure_buffered_returns_immediately_if_already_buffered() {
-        let (tx, rx) = C::mpsc(100);
-        let mut receiver: BatchRaftMsgReceiver<C> = BatchRaftMsgReceiver::new(rx);
+    #[test]
+    fn test_ensure_buffered_returns_immediately_if_already_buffered() {
+        C::run(async {
+            let (tx, rx) = C::mpsc(100);
+            let mut receiver: BatchRaftMsgReceiver<C> = BatchRaftMsgReceiver::new(rx);
 
-        let leader = Some(committed_leader_id(1, 1));
-        tx.send(client_write(1, None)).await.unwrap();
-        tx.send(client_write(2, leader)).await.unwrap();
+            let leader = Some(committed_leader_id(1, 1));
+            tx.send(client_write(1, None)).await.unwrap();
+            tx.send(client_write(2, leader)).await.unwrap();
 
-        receiver.ensure_buffered().await.unwrap();
-        // try_recv will buffer the second message (different leader)
-        let _msg1 = receiver.try_recv().unwrap().unwrap();
+            receiver.ensure_buffered().await.unwrap();
+            // try_recv will buffer the second message (different leader)
+            let _msg1 = receiver.try_recv().unwrap().unwrap();
 
-        // ensure_buffered should return immediately since msg2 is buffered
-        receiver.ensure_buffered().await.unwrap();
+            // ensure_buffered should return immediately since msg2 is buffered
+            receiver.ensure_buffered().await.unwrap();
 
-        let msg2 = receiver.try_recv().unwrap().unwrap();
-        let RaftMsg::ClientWrite {
-            app_data, responders, ..
-        } = msg2
-        else {
-            panic!("expected ClientWrite");
-        };
-        assert_eq!(app_data.as_slice(), &[2]);
-        assert_eq!(responders.len(), app_data.len());
+            let msg2 = receiver.try_recv().unwrap().unwrap();
+            let RaftMsg::ClientWrite {
+                app_data, responders, ..
+            } = msg2
+            else {
+                panic!("expected ClientWrite");
+            };
+            assert_eq!(app_data.as_slice(), &[2]);
+            assert_eq!(responders.len(), app_data.len());
+        });
     }
 }

@@ -401,6 +401,7 @@ mod tests {
     use crate::raft::VoteResponse;
     use crate::storage::Snapshot;
     use crate::storage::SnapshotMeta;
+    use crate::type_config::TypeConfigExt;
 
     struct Network {
         received_offset: Vec<u64>,
@@ -459,36 +460,38 @@ mod tests {
 
     /// Test that `Chunked` should reset the offset to 0 to re-send all data
     /// if a [`SnapshotMismatch`] error is received.
-    #[tokio::test]
-    async fn test_chunked_reset_offset_if_snapshot_id_mismatch() {
-        let mut net = Network {
-            received_offset: vec![],
-            // When match_cnt == 1, return a mismatch error.
-            // For other times, return Ok.
-            match_cnt: 4,
-        };
+    #[test]
+    fn test_chunked_reset_offset_if_snapshot_id_mismatch() {
+        UTConfig::<()>::run(async {
+            let mut net = Network {
+                received_offset: vec![],
+                // When match_cnt == 1, return a mismatch error.
+                // For other times, return Ok.
+                match_cnt: 4,
+            };
 
-        let mut opt = RPCOption::new(Duration::from_millis(100));
-        opt.snapshot_chunk_size = Some(1);
-        let cancel = futures::future::pending();
+            let mut opt = RPCOption::new(Duration::from_millis(100));
+            opt.snapshot_chunk_size = Some(1);
+            let cancel = futures::future::pending();
 
-        Chunked::send_snapshot(
-            &mut net,
-            Vote::new(1, 0),
-            Snapshot::<UTConfig>::new(
-                SnapshotMeta {
-                    last_log_id: None,
-                    last_membership: StoredMembership::default(),
-                    snapshot_id: "1-1-1-1".to_string(),
-                },
-                Cursor::new(vec![1, 2, 3]),
-            ),
-            cancel,
-            opt,
-        )
-        .await
-        .unwrap();
+            Chunked::send_snapshot(
+                &mut net,
+                Vote::new(1, 0),
+                Snapshot::<UTConfig>::new(
+                    SnapshotMeta {
+                        last_log_id: None,
+                        last_membership: StoredMembership::default(),
+                        snapshot_id: "1-1-1-1".to_string(),
+                    },
+                    Cursor::new(vec![1, 2, 3]),
+                ),
+                cancel,
+                opt,
+            )
+            .await
+            .unwrap();
 
-        assert_eq!(net.received_offset, vec![0, 1, 2, 0, 1, 2]);
+            assert_eq!(net.received_offset, vec![0, 1, 2, 0, 1, 2]);
+        });
     }
 }

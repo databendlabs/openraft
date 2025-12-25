@@ -225,15 +225,17 @@ mod tests {
         });
     }
 
-    #[tokio::test]
-    async fn test_wait_until_ge_immediate() {
-        let (tx, rx) = TestConfig::watch_channel(10u64);
-        let mut progress = WatchProgress::<TestConfig, u64>::new(rx);
+    #[test]
+    fn test_wait_until_ge_immediate() {
+        TestConfig::run(async {
+            let (tx, rx) = TestConfig::watch_channel(10u64);
+            let mut progress = WatchProgress::<TestConfig, u64>::new(rx);
 
-        let result = progress.wait_until_ge(&5).await.unwrap();
-        assert_eq!(result, 10);
+            let result = progress.wait_until_ge(&5).await.unwrap();
+            assert_eq!(result, 10);
 
-        drop(tx);
+            drop(tx);
+        });
     }
 
     #[test]
@@ -255,15 +257,17 @@ mod tests {
         });
     }
 
-    #[tokio::test]
-    async fn test_wait_until_immediate() {
-        let (tx, rx) = TestConfig::watch_channel(10u64);
-        let mut progress = WatchProgress::<TestConfig, u64>::new(rx);
+    #[test]
+    fn test_wait_until_immediate() {
+        TestConfig::run(async {
+            let (tx, rx) = TestConfig::watch_channel(10u64);
+            let mut progress = WatchProgress::<TestConfig, u64>::new(rx);
 
-        let result = progress.wait_until(|v| v >= &5).await.unwrap();
-        assert_eq!(result, 10);
+            let result = progress.wait_until(|v| v >= &5).await.unwrap();
+            assert_eq!(result, 10);
 
-        drop(tx);
+            drop(tx);
+        });
     }
 
     #[test]
@@ -289,30 +293,34 @@ mod tests {
         });
     }
 
-    #[tokio::test]
-    async fn test_changed_returns_immediately_if_unseen_value() {
-        let (tx, rx) = TestConfig::watch_channel(0u64);
-        let mut progress = WatchProgress::<TestConfig, u64>::new(rx);
+    #[test]
+    fn test_changed_returns_immediately_if_unseen_value() {
+        TestConfig::run(async {
+            let (tx, rx) = TestConfig::watch_channel(0u64);
+            let mut progress = WatchProgress::<TestConfig, u64>::new(rx);
 
-        // Send a value before calling changed()
-        tx.send(5).unwrap();
+            // Send a value before calling changed()
+            tx.send(5).unwrap();
 
-        // changed() should return immediately since value hasn't been marked seen
-        progress.changed().await.unwrap();
-        assert_eq!(progress.get(), 5);
+            // changed() should return immediately since value hasn't been marked seen
+            progress.changed().await.unwrap();
+            assert_eq!(progress.get(), 5);
+        });
     }
 
-    #[tokio::test]
-    async fn test_changed_returns_error_when_sender_dropped() {
-        let (tx, rx) = TestConfig::watch_channel(0u64);
-        let mut progress = WatchProgress::<TestConfig, u64>::new(rx);
+    #[test]
+    fn test_changed_returns_error_when_sender_dropped() {
+        TestConfig::run(async {
+            let (tx, rx) = TestConfig::watch_channel(0u64);
+            let mut progress = WatchProgress::<TestConfig, u64>::new(rx);
 
-        // Drop sender
-        drop(tx);
+            // Drop sender
+            drop(tx);
 
-        // changed() should return error
-        let result = progress.changed().await;
-        assert!(result.is_err());
+            // changed() should return error
+            let result = progress.changed().await;
+            assert!(result.is_err());
+        });
     }
 
     #[test]
@@ -339,29 +347,33 @@ mod tests {
         });
     }
 
-    #[tokio::test]
-    async fn test_next_returns_immediate_if_unseen_value() {
-        let (tx, rx) = TestConfig::watch_channel(0u64);
-        let mut progress = WatchProgress::<TestConfig, u64>::new(rx);
+    #[test]
+    fn test_next_returns_immediate_if_unseen_value() {
+        TestConfig::run(async {
+            let (tx, rx) = TestConfig::watch_channel(0u64);
+            let mut progress = WatchProgress::<TestConfig, u64>::new(rx);
 
-        // Send value before calling next()
-        tx.send(42).unwrap();
+            // Send value before calling next()
+            tx.send(42).unwrap();
 
-        // next() should return immediately with the new value
-        let value = progress.next().await.unwrap();
-        assert_eq!(value, 42);
+            // next() should return immediately with the new value
+            let value = progress.next().await.unwrap();
+            assert_eq!(value, 42);
+        });
     }
 
-    #[tokio::test]
-    async fn test_next_returns_error_when_sender_dropped() {
-        let (tx, rx) = TestConfig::watch_channel(0u64);
-        let mut progress = WatchProgress::<TestConfig, u64>::new(rx);
+    #[test]
+    fn test_next_returns_error_when_sender_dropped() {
+        TestConfig::run(async {
+            let (tx, rx) = TestConfig::watch_channel(0u64);
+            let mut progress = WatchProgress::<TestConfig, u64>::new(rx);
 
-        // Drop sender
-        drop(tx);
+            // Drop sender
+            drop(tx);
 
-        // next() should return error
-        let result = progress.next().await;
-        assert!(result.is_err());
+            // next() should return error
+            let result = progress.next().await;
+            assert!(result.is_err());
+        });
     }
 }

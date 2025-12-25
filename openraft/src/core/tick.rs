@@ -150,10 +150,6 @@ where C: RaftTypeConfig
     }
 }
 
-// AsyncRuntime::spawn is `spawn_local` with single-threaded enabled.
-// It will result in a panic:
-// `spawn_local` called from outside of a `task::LocalSet`.
-#[cfg(not(feature = "single-threaded"))]
 #[cfg(test)]
 mod tests {
     use std::io::Cursor;
@@ -185,26 +181,26 @@ mod tests {
         where T: OptionalSend + 'static;
     }
 
-    #[tokio::test]
-    async fn test_shutdown() -> anyhow::Result<()> {
-        let (tx, mut rx) = TickUTConfig::mpsc(1024);
-        let th = Tick::<TickUTConfig>::spawn(Duration::from_millis(100), tx, true);
+    #[test]
+    fn test_shutdown() {
+        TickUTConfig::run(async {
+            let (tx, mut rx) = TickUTConfig::mpsc(1024);
+            let th = Tick::<TickUTConfig>::spawn(Duration::from_millis(100), tx, true);
 
-        TickUTConfig::sleep(Duration::from_millis(500)).await;
-        th.shutdown().unwrap().await.ok();
-        TickUTConfig::sleep(Duration::from_millis(500)).await;
+            TickUTConfig::sleep(Duration::from_millis(500)).await;
+            th.shutdown().unwrap().await.ok();
+            TickUTConfig::sleep(Duration::from_millis(500)).await;
 
-        let mut received = vec![];
-        while let Some(x) = rx.recv().await {
-            received.push(x);
-        }
+            let mut received = vec![];
+            while let Some(x) = rx.recv().await {
+                received.push(x);
+            }
 
-        assert!(
-            received.len() < 10,
-            "no more tick will be received after shutdown: {}",
-            received.len()
-        );
-
-        Ok(())
+            assert!(
+                received.len() < 10,
+                "no more tick will be received after shutdown: {}",
+                received.len()
+            );
+        });
     }
 }

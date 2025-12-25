@@ -7,6 +7,7 @@ use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;
 use crate::entry::RaftEntry;
 use crate::log_id::raft_log_id_ext::RaftLogIdExt;
+use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::LogIdOf;
 
 /// Mock RaftLogReader for testing get_key_log_ids
@@ -831,138 +832,147 @@ fn test_log_id_list_by_last_leader_edge_cases() -> anyhow::Result<()> {
     Ok(())
 }
 
-#[tokio::test]
-async fn test_get_key_log_ids_single_log() -> anyhow::Result<()> {
-    // Single log: [(1,0)]
-    let logs = vec![log_id(1, 1, 0)];
-    let mut reader = MockLogReader::new(logs);
+#[test]
+fn test_get_key_log_ids_single_log() {
+    UTConfig::<()>::run(async {
+        // Single log: [(1,0)]
+        let logs = vec![log_id(1, 1, 0)];
+        let mut reader = MockLogReader::new(logs);
 
-    let result = LogIdList::get_key_log_ids(log_id(1, 1, 0)..=log_id(1, 1, 0), &mut reader).await?;
+        let result = LogIdList::get_key_log_ids(log_id(1, 1, 0)..=log_id(1, 1, 0), &mut reader).await.unwrap();
 
-    assert_eq!(vec![log_id(1, 1, 0)], result);
-    Ok(())
+        assert_eq!(vec![log_id(1, 1, 0)], result);
+    });
 }
 
-#[tokio::test]
-async fn test_get_key_log_ids_all_same_leader() -> anyhow::Result<()> {
-    // All same leader: [(1,0), (1,1), (1,2)]
-    // Expected: [(1,2)] - last of leader 1
-    // This tests Case AA with empty res (None branch)
-    let logs = vec![log_id(1, 1, 0), log_id(1, 1, 1), log_id(1, 1, 2)];
-    let mut reader = MockLogReader::new(logs);
+#[test]
+fn test_get_key_log_ids_all_same_leader() {
+    UTConfig::<()>::run(async {
+        // All same leader: [(1,0), (1,1), (1,2)]
+        // Expected: [(1,2)] - last of leader 1
+        // This tests Case AA with empty res (None branch)
+        let logs = vec![log_id(1, 1, 0), log_id(1, 1, 1), log_id(1, 1, 2)];
+        let mut reader = MockLogReader::new(logs);
 
-    let result = LogIdList::get_key_log_ids(log_id(1, 1, 0)..=log_id(1, 1, 2), &mut reader).await?;
+        let result = LogIdList::get_key_log_ids(log_id(1, 1, 0)..=log_id(1, 1, 2), &mut reader).await.unwrap();
 
-    assert_eq!(vec![log_id(1, 1, 2)], result);
-    Ok(())
+        assert_eq!(vec![log_id(1, 1, 2)], result);
+    });
 }
 
-#[tokio::test]
-async fn test_get_key_log_ids_two_adjacent_leaders() -> anyhow::Result<()> {
-    // Two adjacent logs with different leaders: [(1,0), (2,1)]
-    // Expected: [(1,0), (2,1)]
-    let logs = vec![log_id(1, 1, 0), log_id(2, 1, 1)];
-    let mut reader = MockLogReader::new(logs);
+#[test]
+fn test_get_key_log_ids_two_adjacent_leaders() {
+    UTConfig::<()>::run(async {
+        // Two adjacent logs with different leaders: [(1,0), (2,1)]
+        // Expected: [(1,0), (2,1)]
+        let logs = vec![log_id(1, 1, 0), log_id(2, 1, 1)];
+        let mut reader = MockLogReader::new(logs);
 
-    let result = LogIdList::get_key_log_ids(log_id(1, 1, 0)..=log_id(2, 1, 1), &mut reader).await?;
+        let result = LogIdList::get_key_log_ids(log_id(1, 1, 0)..=log_id(2, 1, 1), &mut reader).await.unwrap();
 
-    assert_eq!(vec![log_id(1, 1, 0), log_id(2, 1, 1)], result);
-    Ok(())
+        assert_eq!(vec![log_id(1, 1, 0), log_id(2, 1, 1)], result);
+    });
 }
 
-#[tokio::test]
-async fn test_get_key_log_ids_case_aac() -> anyhow::Result<()> {
-    // Case AAC: first.leader == mid.leader != last.leader
-    // Logs: [(1,0), (1,1), (2,2)]
-    // Expected: [(1,1), (2,2)]
-    let logs = vec![log_id(1, 1, 0), log_id(1, 1, 1), log_id(2, 1, 2)];
-    let mut reader = MockLogReader::new(logs);
+#[test]
+fn test_get_key_log_ids_case_aac() {
+    UTConfig::<()>::run(async {
+        // Case AAC: first.leader == mid.leader != last.leader
+        // Logs: [(1,0), (1,1), (2,2)]
+        // Expected: [(1,1), (2,2)]
+        let logs = vec![log_id(1, 1, 0), log_id(1, 1, 1), log_id(2, 1, 2)];
+        let mut reader = MockLogReader::new(logs);
 
-    let result = LogIdList::get_key_log_ids(log_id(1, 1, 0)..=log_id(2, 1, 2), &mut reader).await?;
+        let result = LogIdList::get_key_log_ids(log_id(1, 1, 0)..=log_id(2, 1, 2), &mut reader).await.unwrap();
 
-    assert_eq!(vec![log_id(1, 1, 1), log_id(2, 1, 2)], result);
-    Ok(())
+        assert_eq!(vec![log_id(1, 1, 1), log_id(2, 1, 2)], result);
+    });
 }
 
-#[tokio::test]
-async fn test_get_key_log_ids_case_acc() -> anyhow::Result<()> {
-    // Case ACC: first.leader != mid.leader == last.leader
-    // This is the bug case! Must search both halves.
-    // Logs: [(1,0), (2,1), (2,2), (2,3)]
-    // Expected: [(1,0), (2,3)]
-    let logs = vec![log_id(1, 1, 0), log_id(2, 1, 1), log_id(2, 1, 2), log_id(2, 1, 3)];
-    let mut reader = MockLogReader::new(logs);
+#[test]
+fn test_get_key_log_ids_case_acc() {
+    UTConfig::<()>::run(async {
+        // Case ACC: first.leader != mid.leader == last.leader
+        // This is the bug case! Must search both halves.
+        // Logs: [(1,0), (2,1), (2,2), (2,3)]
+        // Expected: [(1,0), (2,3)]
+        let logs = vec![log_id(1, 1, 0), log_id(2, 1, 1), log_id(2, 1, 2), log_id(2, 1, 3)];
+        let mut reader = MockLogReader::new(logs);
 
-    let result = LogIdList::get_key_log_ids(log_id(1, 1, 0)..=log_id(2, 1, 3), &mut reader).await?;
+        let result = LogIdList::get_key_log_ids(log_id(1, 1, 0)..=log_id(2, 1, 3), &mut reader).await.unwrap();
 
-    assert_eq!(vec![log_id(1, 1, 0), log_id(2, 1, 3)], result);
-    Ok(())
+        assert_eq!(vec![log_id(1, 1, 0), log_id(2, 1, 3)], result);
+    });
 }
 
-#[tokio::test]
-async fn test_get_key_log_ids_case_abc() -> anyhow::Result<()> {
-    // Case ABC: first.leader != mid.leader != last.leader
-    // Logs: [(1,0), (2,1), (3,2)]
-    // Expected: [(1,0), (2,1), (3,2)]
-    let logs = vec![log_id(1, 1, 0), log_id(2, 1, 1), log_id(3, 1, 2)];
-    let mut reader = MockLogReader::new(logs);
+#[test]
+fn test_get_key_log_ids_case_abc() {
+    UTConfig::<()>::run(async {
+        // Case ABC: first.leader != mid.leader != last.leader
+        // Logs: [(1,0), (2,1), (3,2)]
+        // Expected: [(1,0), (2,1), (3,2)]
+        let logs = vec![log_id(1, 1, 0), log_id(2, 1, 1), log_id(3, 1, 2)];
+        let mut reader = MockLogReader::new(logs);
 
-    let result = LogIdList::get_key_log_ids(log_id(1, 1, 0)..=log_id(3, 1, 2), &mut reader).await?;
+        let result = LogIdList::get_key_log_ids(log_id(1, 1, 0)..=log_id(3, 1, 2), &mut reader).await.unwrap();
 
-    assert_eq!(vec![log_id(1, 1, 0), log_id(2, 1, 1), log_id(3, 1, 2)], result);
-    Ok(())
+        assert_eq!(vec![log_id(1, 1, 0), log_id(2, 1, 1), log_id(3, 1, 2)], result);
+    });
 }
 
-#[tokio::test]
-async fn test_get_key_log_ids_many_same_leader() -> anyhow::Result<()> {
-    // Many logs from same leader: [(1,0), (2,1), (2,2), (2,3), (2,4)]
-    // Expected: [(1,0), (2,4)] - last of each leader
-    // This tests Case ACC with multiple logs in right half
-    let logs = vec![
-        log_id(1, 1, 0),
-        log_id(2, 1, 1),
-        log_id(2, 1, 2),
-        log_id(2, 1, 3),
-        log_id(2, 1, 4),
-    ];
-    let mut reader = MockLogReader::new(logs);
+#[test]
+fn test_get_key_log_ids_many_same_leader() {
+    UTConfig::<()>::run(async {
+        // Many logs from same leader: [(1,0), (2,1), (2,2), (2,3), (2,4)]
+        // Expected: [(1,0), (2,4)] - last of each leader
+        // This tests Case ACC with multiple logs in right half
+        let logs = vec![
+            log_id(1, 1, 0),
+            log_id(2, 1, 1),
+            log_id(2, 1, 2),
+            log_id(2, 1, 3),
+            log_id(2, 1, 4),
+        ];
+        let mut reader = MockLogReader::new(logs);
 
-    let result = LogIdList::get_key_log_ids(log_id(1, 1, 0)..=log_id(2, 1, 4), &mut reader).await?;
+        let result = LogIdList::get_key_log_ids(log_id(1, 1, 0)..=log_id(2, 1, 4), &mut reader).await.unwrap();
 
-    assert_eq!(vec![log_id(1, 1, 0), log_id(2, 1, 4)], result);
-    Ok(())
+        assert_eq!(vec![log_id(1, 1, 0), log_id(2, 1, 4)], result);
+    });
 }
 
-#[tokio::test]
-async fn test_get_key_log_ids_three_leaders() -> anyhow::Result<()> {
-    // Three leaders with varying counts: [(1,0), (2,1), (2,2), (2,3), (3,4), (3,5)]
-    // Expected: [(1,0), (2,3), (3,5)]
-    let logs = vec![
-        log_id(1, 1, 0),
-        log_id(2, 1, 1),
-        log_id(2, 1, 2),
-        log_id(2, 1, 3),
-        log_id(3, 1, 4),
-        log_id(3, 1, 5),
-    ];
-    let mut reader = MockLogReader::new(logs);
+#[test]
+fn test_get_key_log_ids_three_leaders() {
+    UTConfig::<()>::run(async {
+        // Three leaders with varying counts: [(1,0), (2,1), (2,2), (2,3), (3,4), (3,5)]
+        // Expected: [(1,0), (2,3), (3,5)]
+        let logs = vec![
+            log_id(1, 1, 0),
+            log_id(2, 1, 1),
+            log_id(2, 1, 2),
+            log_id(2, 1, 3),
+            log_id(3, 1, 4),
+            log_id(3, 1, 5),
+        ];
+        let mut reader = MockLogReader::new(logs);
 
-    let result = LogIdList::get_key_log_ids(log_id(1, 1, 0)..=log_id(3, 1, 5), &mut reader).await?;
+        let result = LogIdList::get_key_log_ids(log_id(1, 1, 0)..=log_id(3, 1, 5), &mut reader).await.unwrap();
 
-    assert_eq!(vec![log_id(1, 1, 0), log_id(2, 1, 3), log_id(3, 1, 5)], result);
-    Ok(())
+        assert_eq!(vec![log_id(1, 1, 0), log_id(2, 1, 3), log_id(3, 1, 5)], result);
+    });
 }
 
-#[tokio::test]
-async fn test_get_key_log_ids_long_same_leader() -> anyhow::Result<()> {
-    // Many logs from same leader: [(1,0), (1,1), ..., (1,9)]
-    // Expected: [(1,9)]
-    // Stresses binary search with many subdivisions
-    let logs: Vec<_> = (0..10).map(|i| log_id(1, 1, i)).collect();
-    let mut reader = MockLogReader::new(logs);
+#[test]
+fn test_get_key_log_ids_long_same_leader() {
+    UTConfig::<()>::run(async {
+        // Many logs from same leader: [(1,0), (1,1), ..., (1,9)]
+        // Expected: [(1,9)]
+        // Stresses binary search with many subdivisions
+        let logs: Vec<_> = (0..10).map(|i| log_id(1, 1, i)).collect();
+        let mut reader = MockLogReader::new(logs);
 
-    let result = LogIdList::get_key_log_ids(log_id(1, 1, 0)..=log_id(1, 1, 9), &mut reader).await?;
+        let result = LogIdList::get_key_log_ids(log_id(1, 1, 0)..=log_id(1, 1, 9), &mut reader).await.unwrap();
 
-    assert_eq!(vec![log_id(1, 1, 9)], result);
-    Ok(())
+        assert_eq!(vec![log_id(1, 1, 9)], result);
+    });
 }

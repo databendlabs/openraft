@@ -174,54 +174,64 @@ mod tests {
     use crate::engine::testing::UTConfig;
     use crate::type_config::TypeConfigExt;
 
-    #[tokio::test]
-    async fn test_io_flushed_noop() {
-        let callback = IOFlushed::<UTConfig>::noop();
-        // Should not panic or do anything
-        callback.io_completed(Ok(()));
+    #[test]
+    fn test_io_flushed_noop() {
+        UTConfig::<()>::run(async {
+            let callback = IOFlushed::<UTConfig>::noop();
+            // Should not panic or do anything
+            callback.io_completed(Ok(()));
+        });
     }
 
-    #[tokio::test]
-    async fn test_io_flushed_noop_with_error() {
-        let callback = IOFlushed::<UTConfig>::noop();
-        // Should not panic even with error
-        callback.io_completed(Err(io::Error::other("test error")));
+    #[test]
+    fn test_io_flushed_noop_with_error() {
+        UTConfig::<()>::run(async {
+            let callback = IOFlushed::<UTConfig>::noop();
+            // Should not panic even with error
+            callback.io_completed(Err(io::Error::other("test error")));
+        });
     }
 
-    #[tokio::test]
-    async fn test_io_flushed_signal_success() {
-        let (tx, rx) = UTConfig::<()>::oneshot();
-        let callback = IOFlushed::<UTConfig>::signal(tx);
+    #[test]
+    fn test_io_flushed_signal_success() {
+        UTConfig::<()>::run(async {
+            let (tx, rx) = UTConfig::<()>::oneshot();
+            let callback = IOFlushed::<UTConfig>::signal(tx);
 
-        callback.io_completed(Ok(()));
+            callback.io_completed(Ok(()));
 
-        let result = rx.await;
-        assert!(result.is_ok());
-        assert!(result.unwrap().is_ok());
+            let result = rx.await;
+            assert!(result.is_ok());
+            assert!(result.unwrap().is_ok());
+        });
     }
 
-    #[tokio::test]
-    async fn test_io_flushed_signal_with_error() {
-        let (tx, rx) = UTConfig::<()>::oneshot();
-        let callback = IOFlushed::<UTConfig>::signal(tx);
+    #[test]
+    fn test_io_flushed_signal_with_error() {
+        UTConfig::<()>::run(async {
+            let (tx, rx) = UTConfig::<()>::oneshot();
+            let callback = IOFlushed::<UTConfig>::signal(tx);
 
-        // Signal sends the error result
-        callback.io_completed(Err(io::Error::other("test error")));
+            // Signal sends the error result
+            callback.io_completed(Err(io::Error::other("test error")));
 
-        let result = rx.await;
-        assert!(result.is_ok());
-        let io_result = result.unwrap();
-        assert!(io_result.is_err());
-        assert_eq!(io_result.unwrap_err().kind(), io::ErrorKind::Other);
+            let result = rx.await;
+            assert!(result.is_ok());
+            let io_result = result.unwrap();
+            assert!(io_result.is_err());
+            assert_eq!(io_result.unwrap_err().kind(), io::ErrorKind::Other);
+        });
     }
 
-    #[tokio::test]
-    async fn test_io_flushed_signal_receiver_dropped() {
-        let (tx, rx) = UTConfig::<()>::oneshot();
-        drop(rx);
+    #[test]
+    fn test_io_flushed_signal_receiver_dropped() {
+        UTConfig::<()>::run(async {
+            let (tx, rx) = UTConfig::<()>::oneshot();
+            drop(rx);
 
-        let callback = IOFlushed::<UTConfig>::signal(tx);
-        // Should not panic when receiver is dropped
-        callback.io_completed(Ok(()));
+            let callback = IOFlushed::<UTConfig>::signal(tx);
+            // Should not panic when receiver is dropped
+            callback.io_completed(Ok(()));
+        });
     }
 }

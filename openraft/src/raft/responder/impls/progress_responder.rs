@@ -109,104 +109,116 @@ mod tests {
     use crate::raft::responder::Responder;
     use crate::type_config::TypeConfigExt;
 
-    #[tokio::test]
-    async fn test_twoshot_responder_new() {
-        let (_responder, mut commit_rx, mut complete_rx): (ProgressResponder<UTConfig, String>, _, _) =
-            ProgressResponder::new();
+    #[test]
+    fn test_twoshot_responder_new() {
+        UTConfig::<()>::run(async {
+            let (_responder, mut commit_rx, mut complete_rx): (ProgressResponder<UTConfig, String>, _, _) =
+                ProgressResponder::new();
 
-        // Receivers should be created but not yet have values
-        assert!(commit_rx.try_recv().is_err());
-        assert!(complete_rx.try_recv().is_err());
+            // Receivers should be created but not yet have values
+            assert!(commit_rx.try_recv().is_err());
+            assert!(complete_rx.try_recv().is_err());
+        });
     }
 
-    #[tokio::test]
-    async fn test_twoshot_responder_on_commit() {
-        let (mut responder, commit_rx, _complete_rx): (ProgressResponder<UTConfig, String>, _, _) =
-            ProgressResponder::new();
+    #[test]
+    fn test_twoshot_responder_on_commit() {
+        UTConfig::<()>::run(async {
+            let (mut responder, commit_rx, _complete_rx): (ProgressResponder<UTConfig, String>, _, _) =
+                ProgressResponder::new();
 
-        let test_log_id = log_id(1, 2, 3);
+            let test_log_id = log_id(1, 2, 3);
 
-        // Send commit notification
-        responder.on_commit(test_log_id);
+            // Send commit notification
+            responder.on_commit(test_log_id);
 
-        // Commit receiver should receive the log_id
-        let received_log_id = commit_rx.await.unwrap();
-        assert_eq!(test_log_id, received_log_id);
+            // Commit receiver should receive the log_id
+            let received_log_id = commit_rx.await.unwrap();
+            assert_eq!(test_log_id, received_log_id);
+        });
     }
 
-    #[tokio::test]
-    async fn test_twoshot_responder_on_commit_multiple_calls() {
-        let (mut responder, commit_rx, _complete_rx): (ProgressResponder<UTConfig, String>, _, _) =
-            ProgressResponder::new();
+    #[test]
+    fn test_twoshot_responder_on_commit_multiple_calls() {
+        UTConfig::<()>::run(async {
+            let (mut responder, commit_rx, _complete_rx): (ProgressResponder<UTConfig, String>, _, _) =
+                ProgressResponder::new();
 
-        let test_log_id_1 = log_id(1, 2, 3);
-        let test_log_id_2 = log_id(2, 3, 4);
+            let test_log_id_1 = log_id(1, 2, 3);
+            let test_log_id_2 = log_id(2, 3, 4);
 
-        // Send first commit notification
-        responder.on_commit(test_log_id_1);
+            // Send first commit notification
+            responder.on_commit(test_log_id_1);
 
-        // Second call should be ignored (tx is taken on first call)
-        responder.on_commit(test_log_id_2);
+            // Second call should be ignored (tx is taken on first call)
+            responder.on_commit(test_log_id_2);
 
-        // Commit receiver should only receive the first log_id
-        let received_log_id = commit_rx.await.unwrap();
-        assert_eq!(test_log_id_1, received_log_id);
+            // Commit receiver should only receive the first log_id
+            let received_log_id = commit_rx.await.unwrap();
+            assert_eq!(test_log_id_1, received_log_id);
+        });
     }
 
-    #[tokio::test]
-    async fn test_twoshot_responder_send() {
-        let (responder, _commit_rx, complete_rx): (ProgressResponder<UTConfig, String>, _, _) =
-            ProgressResponder::new();
+    #[test]
+    fn test_twoshot_responder_send() {
+        UTConfig::<()>::run(async {
+            let (responder, _commit_rx, complete_rx): (ProgressResponder<UTConfig, String>, _, _) =
+                ProgressResponder::new();
 
-        let test_result = "test_result".to_string();
+            let test_result = "test_result".to_string();
 
-        // Send completion result
-        responder.on_complete(test_result.clone());
+            // Send completion result
+            responder.on_complete(test_result.clone());
 
-        // Complete receiver should receive the result
-        let received_result = complete_rx.await.unwrap();
-        assert_eq!(test_result, received_result);
+            // Complete receiver should receive the result
+            let received_result = complete_rx.await.unwrap();
+            assert_eq!(test_result, received_result);
+        });
     }
 
-    #[tokio::test]
-    async fn test_twoshot_responder_both_channels() {
-        let (mut responder, commit_rx, complete_rx): (ProgressResponder<UTConfig, String>, _, _) =
-            ProgressResponder::new();
+    #[test]
+    fn test_twoshot_responder_both_channels() {
+        UTConfig::<()>::run(async {
+            let (mut responder, commit_rx, complete_rx): (ProgressResponder<UTConfig, String>, _, _) =
+                ProgressResponder::new();
 
-        let test_log_id = log_id(1, 2, 3);
-        let test_result = "test_result".to_string();
+            let test_log_id = log_id(1, 2, 3);
+            let test_result = "test_result".to_string();
 
-        // Send commit notification
-        responder.on_commit(test_log_id);
+            // Send commit notification
+            responder.on_commit(test_log_id);
 
-        // Verify commit was received
-        let received_log_id = commit_rx.await.unwrap();
-        assert_eq!(test_log_id, received_log_id);
+            // Verify commit was received
+            let received_log_id = commit_rx.await.unwrap();
+            assert_eq!(test_log_id, received_log_id);
 
-        // Send completion result
-        responder.on_complete(test_result.clone());
+            // Send completion result
+            responder.on_complete(test_result.clone());
 
-        // Verify completion was received
-        let received_result = complete_rx.await.unwrap();
-        assert_eq!(test_result, received_result);
+            // Verify completion was received
+            let received_result = complete_rx.await.unwrap();
+            assert_eq!(test_result, received_result);
+        });
     }
 
-    #[tokio::test]
-    async fn test_twoshot_responder_send_without_commit() {
-        let (responder, mut commit_rx, complete_rx): (ProgressResponder<UTConfig, String>, _, _) =
-            ProgressResponder::new();
+    #[test]
+    fn test_twoshot_responder_send_without_commit() {
+        UTConfig::<()>::run(async {
+            let (responder, mut commit_rx, complete_rx): (ProgressResponder<UTConfig, String>, _, _) =
+                ProgressResponder::new();
 
-        let test_result = "test_result".to_string();
+            let test_result = "test_result".to_string();
 
-        // Send completion without calling on_commit
-        responder.on_complete(test_result.clone());
+            // Send completion without calling on_commit
+            responder.on_complete(test_result.clone());
 
-        // Complete receiver should still receive the result
-        let received_result = complete_rx.await.unwrap();
-        assert_eq!(test_result, received_result);
+            // Complete receiver should still receive the result
+            let received_result = complete_rx.await.unwrap();
+            assert_eq!(test_result, received_result);
 
-        // Commit receiver should not have received anything
-        assert!(commit_rx.try_recv().is_err());
+            // Commit receiver should not have received anything
+            assert!(commit_rx.try_recv().is_err());
+        });
     }
 
     #[test]
