@@ -25,8 +25,16 @@ mod mutex;
 mod oneshot;
 mod watch;
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct CompioRuntime;
+/// Compio async runtime.
+pub struct CompioRuntime {
+    rt: compio::runtime::Runtime,
+}
+
+impl Debug for CompioRuntime {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        f.debug_struct("CompioRuntime").finish()
+    }
+}
 
 #[derive(Debug)]
 pub struct CompioJoinError(#[allow(dead_code)] Box<dyn Any + Send>);
@@ -153,6 +161,20 @@ impl AsyncRuntime for CompioRuntime {
     fn thread_rng() -> Self::ThreadLocalRng {
         rand::rng()
     }
+
+    fn new(_threads: usize) -> Self {
+        // Compio is single-threaded, ignores threads parameter
+        let rt = compio::runtime::Runtime::new().expect("Failed to create Compio runtime");
+        CompioRuntime { rt }
+    }
+
+    fn block_on<F, T>(&mut self, future: F) -> T
+    where
+        F: Future<Output = T> + OptionalSend,
+        T: OptionalSend,
+    {
+        self.rt.block_on(future)
+    }
 }
 
 #[cfg(test)]
@@ -163,7 +185,6 @@ mod tests {
 
     #[test]
     fn test_compio_rt() {
-        let rt = compio::runtime::Runtime::new().unwrap();
-        rt.block_on(Suite::<CompioRuntime>::test_all());
+        CompioRuntime::run(Suite::<CompioRuntime>::test_all());
     }
 }
