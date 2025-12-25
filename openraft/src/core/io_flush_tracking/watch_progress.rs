@@ -180,7 +180,6 @@ mod tests {
 
     use super::*;
     use crate::RaftTypeConfig;
-    use crate::async_runtime::AsyncRuntime;
     use crate::async_runtime::WatchSender;
     use crate::impls::TokioRuntime;
     use crate::impls::Vote;
@@ -207,7 +206,7 @@ mod tests {
 
     #[test]
     fn test_wait_until_ge() {
-        TokioRuntime::run(async {
+        TestConfig::run(async {
             let (tx, rx) = TestConfig::watch_channel(0u64);
             let mut progress = WatchProgress::<TestConfig, u64>::new(rx);
 
@@ -239,7 +238,7 @@ mod tests {
 
     #[test]
     fn test_wait_until_custom_condition() {
-        TokioRuntime::run(async {
+        TestConfig::run(async {
             let (tx, rx) = TestConfig::watch_channel(1u64);
             let mut progress = WatchProgress::<TestConfig, u64>::new(rx);
 
@@ -269,7 +268,7 @@ mod tests {
 
     #[test]
     fn test_changed_waits_for_notification() {
-        TokioRuntime::run(async {
+        TestConfig::run(async {
             let (tx, rx) = TestConfig::watch_channel(0u64);
             let mut progress = WatchProgress::<TestConfig, u64>::new(rx);
 
@@ -318,7 +317,7 @@ mod tests {
 
     #[test]
     fn test_next_returns_changed_value() {
-        TokioRuntime::run(async {
+        TestConfig::run(async {
             let (tx, rx) = TestConfig::watch_channel(0u64);
             let mut progress = WatchProgress::<TestConfig, u64>::new(rx);
 

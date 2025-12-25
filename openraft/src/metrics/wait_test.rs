@@ -8,12 +8,10 @@ use crate::RaftMetrics;
 use crate::RaftTypeConfig;
 use crate::StoredMembership;
 use crate::Vote;
-use crate::async_runtime::AsyncRuntime;
 use crate::async_runtime::WatchSender;
 use crate::core::ServerState;
 use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;
-use crate::impls::TokioRuntime;
 use crate::log_id::LogIdOptionExt;
 use crate::metrics::Wait;
 use crate::metrics::WaitError;
@@ -26,7 +24,7 @@ use crate::vote::raft_vote::RaftVoteExt;
 /// Test wait for different state changes
 #[test]
 fn test_wait() {
-    TokioRuntime::run(async {
+    UTConfig::<()>::run(async {
         {
             // wait for leader
             let (init, w, tx) = init_wait_test::<UTConfig>();
@@ -180,7 +178,7 @@ fn test_wait() {
 
 #[test]
 fn test_wait_log_index() {
-    TokioRuntime::run(async {
+    UTConfig::<()>::run(async {
         // wait for applied log
         let (init, w, tx) = init_wait_test::<UTConfig>();
 
@@ -211,7 +209,7 @@ fn test_wait_log_index() {
 
 #[test]
 fn test_wait_vote() {
-    TokioRuntime::run(async {
+    UTConfig::<()>::run(async {
         let (init, w, tx) = init_wait_test::<UTConfig>();
 
         let h = UTConfig::<()>::spawn(async move {
@@ -237,7 +235,7 @@ fn test_wait_vote() {
 
 #[test]
 fn test_wait_purged() {
-    TokioRuntime::run(async {
+    UTConfig::<()>::run(async {
         let (init, w, tx) = init_wait_test::<UTConfig>();
 
         let h = UTConfig::<()>::spawn(async move {

@@ -103,10 +103,8 @@ where
 mod tests {
     use std::time::Duration;
 
-    use crate::async_runtime::AsyncRuntime;
     use crate::engine::testing::UTConfig;
     use crate::engine::testing::log_id;
-    use crate::impls::TokioRuntime;
     use crate::raft::responder::ProgressResponder;
     use crate::raft::responder::Responder;
     use crate::type_config::TypeConfigExt;
@@ -213,7 +211,7 @@ mod tests {
 
     #[test]
     fn test_twoshot_responder_ordering() {
-        TokioRuntime::run(async {
+        UTConfig::<()>::run(async {
             let (mut responder, commit_rx, complete_rx): (ProgressResponder<UTConfig, i32>, _, _) =
                 ProgressResponder::new();
 

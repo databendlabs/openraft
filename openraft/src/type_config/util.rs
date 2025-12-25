@@ -132,6 +132,19 @@ pub trait TypeConfigExt: RaftTypeConfig {
     {
         AsyncRuntimeOf::<Self>::spawn(future)
     }
+
+    /// Create a runtime and run the given future to completion.
+    ///
+    /// This is a convenience method for testing. It creates a runtime with
+    /// default configuration and runs the future on it.
+    #[track_caller]
+    fn run<F, T>(future: F) -> T
+    where
+        F: Future<Output = T> + OptionalSend,
+        T: OptionalSend,
+    {
+        AsyncRuntimeOf::<Self>::run(future)
+    }
 }
 
 impl<T> TypeConfigExt for T where T: RaftTypeConfig {}
