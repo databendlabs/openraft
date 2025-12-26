@@ -1,6 +1,7 @@
 use std::future::Future;
 use std::time::Duration;
 
+use futures::Stream;
 use openraft_macros::since;
 
 use crate::Instant;
@@ -8,6 +9,7 @@ use crate::OptionalSend;
 use crate::OptionalSync;
 use crate::RaftTypeConfig;
 use crate::async_runtime::Mpsc;
+use crate::async_runtime::MpscReceiver;
 use crate::async_runtime::Oneshot;
 use crate::async_runtime::mutex::Mutex;
 use crate::async_runtime::watch::Watch;
@@ -102,6 +104,18 @@ pub trait TypeConfigExt: RaftTypeConfig {
         MpscOf::<Self>::channel(buffer)
     }
 
+    /// Converts an mpsc receiver into a [`Stream`].
+    ///
+    /// This is useful for passing receiver data to streaming APIs
+    /// in a runtime-agnostic way.
+    fn mpsc_to_stream<T>(rx: MpscReceiverOf<Self, T>) -> impl Stream<Item = T>
+    where T: OptionalSend {
+        futures::stream::unfold(rx, |mut rx| async move {
+            let item = MpscReceiver::recv(&mut rx).await?;
+            Some((item, rx))
+        })
+    }
+
     /// Creates a watch channel for watching for changes to a value from multiple
     /// points in the code base.
     ///
@@ -166,3 +180,85 @@ pub trait TypeConfigExt: RaftTypeConfig {
 }
 
 impl<T> TypeConfigExt for T where T: RaftTypeConfig {}
+
+#[cfg(test)]
+mod tests {
+    use std::io::Cursor;
+
+    use futures::StreamExt;
+
+    use crate::OptionalSend;
+    use crate::RaftTypeConfig;
+    use crate::async_runtime::MpscSender;
+    use crate::impls::TokioRuntime;
+    use crate::type_config::TypeConfigExt;
+
+    #[derive(Debug, Clone, Copy, Default, Eq, PartialEq, Ord, PartialOrd)]
+    pub(crate) struct UTConfig {}
+
+    impl RaftTypeConfig for UTConfig {
+        type D = u64;
+        type R = ();
+        type NodeId = u64;
+        type Node = ();
+        type Term = u64;
+        type LeaderId = crate::impls::leader_id_adv::LeaderId<Self>;
+        type Vote = crate::impls::Vote<Self>;
+        type Entry = crate::Entry<Self>;
+        type SnapshotData = Cursor<Vec<u8>>;
+        type AsyncRuntime = TokioRuntime;
+        type Responder<T>
+            = crate::impls::OneshotResponder<Self, T>
+        where T: OptionalSend + 'static;
+        type ErrorSource = anyerror::AnyError;
+    }
+
+    #[test]
+    fn test_mpsc_to_stream() {
+        UTConfig::run(async {
+            let (tx, rx) = UTConfig::mpsc::<u64>(16);
+            let stream = UTConfig::mpsc_to_stream(rx);
+            futures::pin_mut!(stream);
+
+            // Send items
+            tx.send(1).await.unwrap();
+            tx.send(2).await.unwrap();
+            tx.send(3).await.unwrap();
+            drop(tx); // Close sender
+
+            // Receive from stream
+            let mut received = vec![];
+            while let Some(item) = stream.next().await {
+                received.push(item);
+            }
+
+            assert_eq!(received, vec![1, 2, 3]);
+        });
+    }
+
+    #[test]
+    fn test_mpsc_to_stream_empty() {
+        UTConfig::run(async {
+            let (tx, rx) = UTConfig::mpsc::<u64>(16);
+            let stream = UTConfig::mpsc_to_stream(rx);
+            futures::pin_mut!(stream);
+
+            // Close sender immediately
+            drop(tx);
+
+            // Stream should be empty
+            let item = stream.next().await;
+            assert!(item.is_none());
+        });
+    }
+
+    /// Ensure the returned stream is 'static
+    fn _assert_static<T: 'static>(_: T) {}
+
+    #[test]
+    fn test_mpsc_to_stream_is_static() {
+        let (_, rx) = UTConfig::mpsc::<u64>(16);
+        let stream = UTConfig::mpsc_to_stream(rx);
+        _assert_static(stream);
+    }
+}
