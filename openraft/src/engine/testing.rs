@@ -1,9 +1,10 @@
 use std::io::Cursor;
 
+use openraft_rt_tokio::TokioRuntime;
+
 use crate::Node;
 use crate::OptionalSend;
 use crate::RaftTypeConfig;
-use crate::impls::TokioRuntime;
 use crate::type_config::alias::LeaderIdOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::NodeIdOf;

@@ -178,10 +178,11 @@ where
 mod tests {
     use std::io::Cursor;
 
+    use openraft_rt_tokio::TokioRuntime;
+
     use super::*;
     use crate::RaftTypeConfig;
     use crate::async_runtime::WatchSender;
-    use crate::impls::TokioRuntime;
     use crate::impls::Vote;
     use crate::type_config::TypeConfigExt;
 

@@ -11,7 +11,7 @@ The major components inside Openraft include:
 - **[`Raft`]**: This is the control handle for the application and user. It
   provides APIs to send `RaftMsg` to `RaftCore` to manipulate Openraft.
 
--   **`RaftCore`**: This is the main component running in a `tokio::task`,
+-   **`RaftCore`**: This is the main component running in an async `task`,
     which handles all client requests (such as [`client_write`]) and Raft
     protocol requests (such as [`append_entries`]). It is primarily an event
     loop that receives messages from the `RaftMsg` channel and the internal
