@@ -16,7 +16,6 @@ mod tokio_rt {
     use tokio::io::AsyncWriteExt;
 
     use super::Chunked;
-    use super::SnapshotTransport;
     use super::Streaming;
     use crate::ErrorSubject;
     use crate::ErrorVerb;
@@ -40,11 +39,19 @@ mod tokio_rt {
     use crate::type_config::alias::VoteOf;
     use crate::vote::raft_vote::RaftVoteExt;
 
-    /// This chunk-based implementation requires `SnapshotData` to be `AsyncRead + AsyncSeek`.
-    impl<C: RaftTypeConfig> SnapshotTransport<C> for Chunked
+    impl<C: RaftTypeConfig> Chunked<C>
     where C::SnapshotData: tokio::io::AsyncRead + tokio::io::AsyncWrite + tokio::io::AsyncSeek + Unpin
     {
-        async fn send_snapshot<Net>(
+        /// Send a snapshot to a target node via `Net`.
+        ///
+        /// This chunk-based implementation requires `SnapshotData` to be `AsyncRead + AsyncSeek`.
+        ///
+        /// The argument `vote` is the leader's(the caller's) vote,
+        /// which is used to check if the leader is still valid by a follower.
+        ///
+        /// `cancel` is a future that is polled by this function to check if the caller decides to
+        /// cancel. It returns `Ready` if the caller decides to cancel this snapshot transmission.
+        pub async fn send_snapshot<Net>(
             net: &mut Net,
             vote: VoteOf<C>,
             mut snapshot: Snapshot<C>,
@@ -162,7 +169,12 @@ mod tokio_rt {
             }
         }
 
-        async fn receive_snapshot(
+        /// Receive a chunk of snapshot. If the snapshot is done receiving, return the snapshot.
+        ///
+        /// This method requires the caller to provide:
+        /// - The receiving state `streaming` maintained by the caller.
+        /// - `Raft::begin_receiving_snapshot()` to create a `SnapshotData` for receiving data.
+        pub async fn receive_snapshot(
             streaming: &mut Option<Streaming<C>>,
             raft: &Raft<C>,
             req: InstallSnapshotRequest<C>,
@@ -256,84 +268,33 @@ mod tokio_rt {
     }
 }
 
-use std::future::Future;
+use std::marker::PhantomData;
 
-use openraft_macros::add_async_trait;
 use openraft_macros::since;
 
-use crate::OptionalSend;
-use crate::Raft;
-use crate::RaftNetwork;
 use crate::RaftTypeConfig;
 use crate::SnapshotId;
-use crate::error::InstallSnapshotError;
-use crate::error::RaftError;
-use crate::error::ReplicationClosed;
-use crate::error::StreamingError;
-use crate::network::RPCOption;
-use crate::raft::InstallSnapshotRequest;
-use crate::raft::SnapshotResponse;
-use crate::storage::Snapshot;
-use crate::type_config::alias::VoteOf;
 
 /// Send and Receive snapshot by chunks.
-pub struct Chunked {}
-
-/// Defines the sending and receiving API for snapshot transport.
-#[add_async_trait]
-pub trait SnapshotTransport<C: RaftTypeConfig> {
-    /// Send a snapshot to a target node via `Net`.
-    ///
-    /// This function is for backward compatibility and provides a default implement for
-    /// `RaftNetwork::full_snapshot()` upon `RafNetwork::install_snapshot()`.
-    ///
-    /// The argument `vote` is the leader's(the caller's) vote,
-    /// which is used to check if the leader is still valid by a follower.
-    ///
-    /// `cancel` is a future that is polled by this function to check if the caller decides to
-    /// cancel.
-    /// It returns `Ready` if the caller decides to cancel this snapshot transmission.
-    // TODO: consider removing dependency on RaftNetwork
-    async fn send_snapshot<Net>(
-        net: &mut Net,
-        vote: VoteOf<C>,
-        snapshot: Snapshot<C>,
-        cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
-        option: RPCOption,
-    ) -> Result<SnapshotResponse<C>, StreamingError<C>>
-    where
-        Net: RaftNetwork<C> + ?Sized;
-
-    /// Receive a chunk of snapshot. If the snapshot is done receiving, return the snapshot.
-    ///
-    /// This method provides a default implementation for chunk-based snapshot transport
-    /// and requires the caller to provide two things:
-    ///
-    /// - The receiving state `streaming` is maintained by the caller.
-    /// - And it depends on `Raft::begin_receiving_snapshot()` to create a `SnapshotData` for
-    ///   receiving data.
-    ///
-    /// Example usage:
-    /// ```ignore
-    /// struct App<C> {
-    ///     raft: Raft<C>
-    ///     streaming: Option<Streaming<C>>,
-    /// }
-    ///
-    /// impl<C> App<C> {
-    ///     fn handle_install_snapshot_request(&mut self, req: InstallSnapshotRequest<C>) {
-    ///         let res = Chunked::receive_snapshot(&mut self.streaming, &self.raft, req).await?;
-    ///         if let Some(snapshot) = res {
-    ///             self.raft.install_snapshot(snapshot).await?;
-    ///         }
-    ///     }
-    /// }
-    /// ```
-    async fn receive_snapshot(
-        streaming: &mut Option<Streaming<C>>,
-        raft: &Raft<C>,
-        req: InstallSnapshotRequest<C>,
-    ) -> Result<Option<Snapshot<C>>, RaftError<C, InstallSnapshotError>>;
+///
+/// Example usage:
+/// ```ignore
+/// struct App<C> {
+///     raft: Raft<C>
+///     streaming: Option<Streaming<C>>,
+/// }
+///
+/// impl<C> App<C> {
+///     fn handle_install_snapshot_request(&mut self, req: InstallSnapshotRequest<C>) {
+///         let res = Chunked::<C>::receive_snapshot(&mut self.streaming, &self.raft, req).await?;
+///         if let Some(snapshot) = res {
+///             self.raft.install_full_snapshot(vote, snapshot).await?;
+///         }
+///     }
+/// }
+/// ```
+pub struct Chunked<C> {
+    _phantom: PhantomData<C>,
 }
 
 /// The Raft node is streaming in a snapshot from the leader.
@@ -392,7 +353,6 @@ mod tests {
     use crate::error::SnapshotMismatch;
     use crate::network::RPCOption;
     use crate::network::snapshot_transport::Chunked;
-    use crate::network::snapshot_transport::SnapshotTransport;
     use crate::raft::AppendEntriesRequest;
     use crate::raft::AppendEntriesResponse;
     use crate::raft::InstallSnapshotRequest;
@@ -474,7 +434,7 @@ mod tests {
             opt.snapshot_chunk_size = Some(1);
             let cancel = futures::future::pending();
 
-            Chunked::send_snapshot(
+            Chunked::<UTConfig>::send_snapshot(
                 &mut net,
                 Vote::new(1, 0),
                 Snapshot::<UTConfig>::new(

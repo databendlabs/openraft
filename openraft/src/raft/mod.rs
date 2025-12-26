@@ -887,10 +887,9 @@ where C: RaftTypeConfig
 
         let finished_snapshot = {
             use crate::network::snapshot_transport::Chunked;
-            use crate::network::snapshot_transport::SnapshotTransport;
 
             let mut streaming = self.inner.snapshot.lock().await;
-            Chunked::receive_snapshot(&mut *streaming, self, req).await?
+            Chunked::<C>::receive_snapshot(&mut *streaming, self, req).await?
         };
 
         if let Some(snapshot) = finished_snapshot {
