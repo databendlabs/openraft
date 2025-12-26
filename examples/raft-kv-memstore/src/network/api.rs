@@ -32,7 +32,7 @@ pub async fn write(app: Data<App>, req: Json<Request>) -> actix_web::Result<impl
 
 #[post("/read")]
 pub async fn read(app: Data<App>, req: Json<String>) -> actix_web::Result<impl Responder> {
-    let state_machine = app.state_machine_store.state_machine.read().await;
+    let state_machine = app.state_machine_store.state_machine.lock().await;
     let key = req.0;
     let value = state_machine.data.get(&key).cloned();
 
@@ -48,7 +48,7 @@ pub async fn linearizable_read(app: Data<App>, req: Json<String>) -> actix_web::
         Ok(linearizer) => {
             linearizer.await_ready(&app.raft).await.unwrap();
 
-            let state_machine = app.state_machine_store.state_machine.read().await;
+            let state_machine = app.state_machine_store.state_machine.lock().await;
             let key = req.0;
             let value = state_machine.data.get(&key).cloned();
 
@@ -138,7 +138,7 @@ pub async fn follower_read(app: Data<App>, req: Json<String>) -> actix_web::Resu
     }
 
     // 5. Read from local state machine
-    let state_machine = app.state_machine_store.state_machine.read().await;
+    let state_machine = app.state_machine_store.state_machine.lock().await;
     let key = req.0;
     let value = state_machine.data.get(&key).cloned();
 
