@@ -3,10 +3,11 @@ use std::fmt;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-use futures::SinkExt;
-use futures::channel::mpsc;
+use openraft::async_runtime::MpscSender;
 use openraft::error::Unreachable;
 use openraft::type_config::TypeConfigExt;
+use openraft::type_config::alias::MpscReceiverOf;
+use openraft::type_config::alias::MpscSenderOf;
 use openraft::type_config::alias::OneshotSenderOf;
 
 use crate::GroupId;
@@ -16,8 +17,8 @@ use crate::decode;
 use crate::encode;
 use crate::typ::RaftError;
 
-pub type NodeTx = mpsc::Sender<NodeMessage>;
-pub type NodeRx = mpsc::Receiver<NodeMessage>;
+pub type NodeTx = MpscSenderOf<TypeConfig, NodeMessage>;
+pub type NodeRx = MpscReceiverOf<TypeConfig, NodeMessage>;
 
 #[derive(Debug)]
 pub struct RouterError(pub String);
@@ -39,7 +40,7 @@ pub struct NodeMessage {
 }
 
 /// Multi-Raft Router with per-node connection sharing.
-#[derive(Debug, Clone, Default)]
+#[derive(Clone, Default)]
 pub struct Router {
     /// Map from node_id to node connection.
     /// All groups on the same node share this connection.
@@ -89,7 +90,7 @@ impl Router {
         );
 
         // Clone the sender and release the lock before async send
-        let mut tx = {
+        let tx = {
             let nodes = self.nodes.lock().unwrap();
             nodes
                 .get(&to_node)
@@ -104,7 +105,7 @@ impl Router {
             response_tx: resp_tx,
         };
 
-        tx.send(msg).await.map_err(|e| Unreachable::new(&RouterError(e.to_string())))?;
+        MpscSender::send(&tx, msg).await.map_err(|e| Unreachable::new(&RouterError(e.to_string())))?;
 
         let resp_str = resp_rx.await.map_err(|e| Unreachable::new(&RouterError(e.to_string())))?;
         tracing::debug!(

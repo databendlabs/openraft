@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-use futures::SinkExt;
+use openraft::async_runtime::MpscSender;
 use openraft::error::Unreachable;
 use openraft::type_config::TypeConfigExt;
 
@@ -14,8 +14,7 @@ use crate::encode;
 use crate::typ::RaftError;
 
 /// Simulate a network router.
-#[derive(Debug, Clone)]
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct Router {
     pub targets: Arc<Mutex<BTreeMap<NodeId, RequestTx>>>,
 }
@@ -32,12 +31,12 @@ impl Router {
         let encoded_req = encode(req);
         tracing::debug!("send to: {}, {}, {}", to, path, encoded_req);
 
-        let mut tx = {
+        let tx = {
             let targets = self.targets.lock().unwrap();
             targets.get(&to).unwrap().clone()
         };
 
-        tx.send((path.to_string(), encoded_req, resp_tx)).await.unwrap();
+        MpscSender::send(&tx, (path.to_string(), encoded_req, resp_tx)).await.unwrap();
 
         let resp_str = resp_rx.await.unwrap();
         tracing::debug!("resp from: {}, {}, {}", to, path, resp_str);
