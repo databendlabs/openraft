@@ -8,11 +8,12 @@ use client_http::ExampleClient;
 use maplit::btreemap;
 use maplit::btreeset;
 use openraft::BasicNode;
+use openraft::async_runtime::AsyncRuntime;
 use openraft::type_config::TypeConfigExt;
+use openraft::type_config::alias::AsyncRuntimeOf;
 use raft_kv_rocksdb::TypeConfig;
 use raft_kv_rocksdb::start_example_raft_node;
 use raft_kv_rocksdb::store::Request;
-use tokio::runtime::Handle;
 use tracing_subscriber::EnvFilter;
 
 pub fn log_panic(panic: &PanicHookInfo) {
@@ -75,21 +76,21 @@ async fn test_cluster_inner() -> Result<(), Box<dyn std::error::Error + Send + S
     let d2 = tempfile::TempDir::new()?;
     let d3 = tempfile::TempDir::new()?;
 
-    let handle = Handle::current();
-    let handle_clone = handle.clone();
     let _h1 = thread::spawn(move || {
-        let x = handle_clone.block_on(start_example_raft_node(1, d1.path(), get_addr(1)));
+        let mut rt = AsyncRuntimeOf::<TypeConfig>::new(1);
+        let x = rt.block_on(start_example_raft_node(1, d1.path(), get_addr(1)));
         println!("x: {:?}", x);
     });
 
-    let handle_clone = handle.clone();
     let _h2 = thread::spawn(move || {
-        let x = handle_clone.block_on(start_example_raft_node(2, d2.path(), get_addr(2)));
+        let mut rt = AsyncRuntimeOf::<TypeConfig>::new(1);
+        let x = rt.block_on(start_example_raft_node(2, d2.path(), get_addr(2)));
         println!("x: {:?}", x);
     });
 
     let _h3 = thread::spawn(move || {
-        let x = handle.block_on(start_example_raft_node(3, d3.path(), get_addr(3)));
+        let mut rt = AsyncRuntimeOf::<TypeConfig>::new(1);
+        let x = rt.block_on(start_example_raft_node(3, d3.path(), get_addr(3)));
         println!("x: {:?}", x);
     });
 

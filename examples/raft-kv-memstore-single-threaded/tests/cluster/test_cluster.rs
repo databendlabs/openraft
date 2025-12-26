@@ -19,8 +19,6 @@ use raft_kv_memstore_single_threaded::typ::ClientWriteResponse;
 use raft_kv_memstore_single_threaded::typ::InitializeError;
 use raft_kv_memstore_single_threaded::typ::LinearizableReadError;
 use raft_kv_memstore_single_threaded::typ::RaftMetrics;
-use tokio::task;
-use tokio::task::LocalSet;
 use tracing_subscriber::EnvFilter;
 
 pub fn log_panic(panic: &PanicHookInfo) {
@@ -63,17 +61,11 @@ fn test_cluster() {
 
         let router = Router::default();
 
-        let local = LocalSet::new();
+        TypeConfig::spawn(start_raft(NodeId::new(1), router.clone()));
+        TypeConfig::spawn(start_raft(NodeId::new(2), router.clone()));
+        TypeConfig::spawn(start_raft(NodeId::new(3), router.clone()));
 
-        local
-            .run_until(async move {
-                task::spawn_local(start_raft(NodeId::new(1), router.clone()));
-                task::spawn_local(start_raft(NodeId::new(2), router.clone()));
-                task::spawn_local(start_raft(NodeId::new(3), router.clone()));
-
-                run_test(router).await;
-            })
-            .await;
+        run_test(router).await;
     });
 }
 

@@ -3,6 +3,7 @@ use futures::StreamExt;
 use openraft::AnyError;
 use openraft::OptionalSend;
 use openraft::RaftNetworkFactory;
+use openraft::async_runtime::MpscSender;
 use openraft::base::BoxFuture;
 use openraft::base::BoxStream;
 use openraft::error::NetworkError;
@@ -11,7 +12,8 @@ use openraft::network::RPCOption;
 use openraft::network::v2::RaftNetworkV2;
 use openraft::raft::StreamAppendError;
 use openraft::raft::StreamAppendResult;
-use tonic::codegen::tokio_stream::wrappers::ReceiverStream;
+use openraft::type_config::TypeConfigExt;
+use openraft::type_config::alias::MpscSenderOf;
 use tonic::transport::Channel;
 
 use crate::NodeId;
@@ -84,7 +86,7 @@ impl NetworkConnection {
 
     /// Sends snapshot data in chunks through the provided channel.
     async fn send_snapshot_chunks(
-        tx: &tokio::sync::mpsc::Sender<pb::SnapshotRequest>,
+        tx: &MpscSenderOf<TypeConfig, pb::SnapshotRequest>,
         snapshot_data: &[u8],
     ) -> Result<(), NetworkError<TypeConfig>> {
         let chunk_size = 1024 * 1024;
@@ -155,8 +157,8 @@ impl RaftNetworkV2<TypeConfig> for NetworkConnection {
         let channel = self.create_channel().await?;
         let mut client = RaftServiceClient::new(channel);
 
-        let (tx, rx) = tokio::sync::mpsc::channel(1024);
-        let strm = ReceiverStream::new(rx);
+        let (tx, rx) = TypeConfig::mpsc(1024);
+        let strm = TypeConfig::mpsc_to_stream(rx);
         let response = client.snapshot(strm).await.map_err(|e| NetworkError::<TypeConfig>::new(&e))?;
 
         // 1. Send meta chunk

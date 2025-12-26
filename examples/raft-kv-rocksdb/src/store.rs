@@ -11,8 +11,10 @@ use futures::TryStreamExt;
 use openraft::EntryPayload;
 use openraft::OptionalSend;
 use openraft::RaftSnapshotBuilder;
+use openraft::async_runtime::Mutex;
 use openraft::storage::EntryResponder;
 use openraft::storage::RaftStateMachine;
+use openraft::type_config::alias::MutexOf;
 use openraft_rocksstore::log_store::RocksLogStore;
 use rocksdb::ColumnFamily;
 use rocksdb::ColumnFamilyDescriptor;
@@ -20,7 +22,6 @@ use rocksdb::DB;
 use rocksdb::Options;
 use serde::Deserialize;
 use serde::Serialize;
-use tokio::sync::RwLock;
 
 use crate::TypeConfig;
 use crate::typ::*;
@@ -97,14 +98,23 @@ pub struct StateMachineStore {
     db: Arc<DB>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct StateMachineData {
     pub last_applied_log_id: Option<LogId>,
 
     pub last_membership: StoredMembership,
 
     /// State built from applying the raft logs
-    pub kvs: Arc<RwLock<BTreeMap<String, String>>>,
+    pub kvs: Arc<MutexOf<TypeConfig, BTreeMap<String, String>>>,
+}
+
+impl Debug for StateMachineData {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("StateMachineData")
+            .field("last_applied_log_id", &self.last_applied_log_id)
+            .field("last_membership", &self.last_membership)
+            .finish_non_exhaustive()
+    }
 }
 
 impl RaftSnapshotBuilder<TypeConfig> for StateMachineStore {
@@ -113,7 +123,7 @@ impl RaftSnapshotBuilder<TypeConfig> for StateMachineStore {
         let last_membership = self.data.last_membership.clone();
 
         let kv_json = {
-            let kvs = self.data.kvs.read().await;
+            let kvs = self.data.kvs.lock().await;
             serde_json::to_vec(&*kvs).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?
         };
 
@@ -149,7 +159,7 @@ impl StateMachineStore {
             data: StateMachineData {
                 last_applied_log_id: None,
                 last_membership: Default::default(),
-                kvs: Arc::new(Default::default()),
+                kvs: Arc::new(MutexOf::<TypeConfig, _>::new(BTreeMap::new())),
             },
             snapshot_idx: 0,
             db,
@@ -169,7 +179,7 @@ impl StateMachineStore {
 
         self.data.last_applied_log_id = snapshot.meta.last_log_id;
         self.data.last_membership = snapshot.meta.last_membership.clone();
-        let mut x = self.data.kvs.write().await;
+        let mut x = self.data.kvs.lock().await;
         *x = kvs;
 
         Ok(())
@@ -212,7 +222,7 @@ impl RaftStateMachine<TypeConfig> for StateMachineStore {
                 EntryPayload::Blank => Response { value: None },
                 EntryPayload::Normal(req) => match req {
                     Request::Set { key, value } => {
-                        let mut st = self.data.kvs.write().await;
+                        let mut st = self.data.kvs.lock().await;
                         st.insert(key, value.clone());
                         Response { value: Some(value) }
                     }

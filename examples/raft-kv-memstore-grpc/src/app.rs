@@ -14,7 +14,10 @@ use crate::store::LogStore;
 use crate::store::StateMachineStore;
 use crate::typ::*;
 
-pub async fn start_raft_app(node_id: NodeId, http_addr: String) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn start_raft_app(
+    node_id: NodeId,
+    http_addr: String,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Create a configuration for the raft instance.
     let config = Arc::new(
         Config {

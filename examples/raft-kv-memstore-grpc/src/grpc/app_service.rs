@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use openraft::async_runtime::Mutex;
 use openraft::async_runtime::WatchReceiver;
 use tonic::Request;
 use tonic::Response;

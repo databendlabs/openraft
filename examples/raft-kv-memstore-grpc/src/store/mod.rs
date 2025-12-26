@@ -1,15 +1,17 @@
 use std::fmt::Debug;
 use std::io;
 use std::sync::Arc;
-use std::sync::Mutex;
+use std::sync::Mutex as StdMutex;
 
 use futures::Stream;
 use futures::TryStreamExt;
 use openraft::OptionalSend;
 use openraft::RaftSnapshotBuilder;
+use openraft::async_runtime::Mutex;
 use openraft::entry::RaftEntry;
 use openraft::storage::EntryResponder;
 use openraft::storage::RaftStateMachine;
+use openraft::type_config::alias::MutexOf;
 
 use crate::TypeConfig;
 use crate::protobuf as pb;
@@ -28,15 +30,30 @@ pub struct StoredSnapshot {
 
 /// Defines a state machine for the Raft cluster. This state machine represents a copy of the
 /// data for this node. Additionally, it is responsible for storing the last snapshot of the data.
-#[derive(Debug, Default)]
 pub struct StateMachineStore {
     /// The Raft state machine.
-    pub state_machine: tokio::sync::Mutex<pb::StateMachineData>,
+    pub state_machine: MutexOf<TypeConfig, pb::StateMachineData>,
 
-    snapshot_idx: Mutex<u64>,
+    snapshot_idx: StdMutex<u64>,
 
     /// The last received snapshot.
-    current_snapshot: Mutex<Option<StoredSnapshot>>,
+    current_snapshot: StdMutex<Option<StoredSnapshot>>,
+}
+
+impl std::fmt::Debug for StateMachineStore {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("StateMachineStore").finish_non_exhaustive()
+    }
+}
+
+impl Default for StateMachineStore {
+    fn default() -> Self {
+        Self {
+            state_machine: MutexOf::<TypeConfig, _>::new(pb::StateMachineData::default()),
+            snapshot_idx: StdMutex::new(0),
+            current_snapshot: StdMutex::new(None),
+        }
+    }
 }
 
 impl StateMachineStore {

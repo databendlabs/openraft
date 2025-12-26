@@ -17,8 +17,6 @@ repository = "https://github.com/databendlabs/openraft"
 [dependencies]
 openraft = { path = "../../openraft", default-features = false, features = ["type-alias", "tokio-rt"] }
 
-tokio = { version = "1.0", default-features = false, features = ["sync"] }
-
 [features]
 
 serde = ["openraft/serde"]

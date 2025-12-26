@@ -18,12 +18,13 @@ use openraft::SnapshotMeta;
 use openraft::StorageError;
 use openraft::StoredMembership;
 use openraft::alias::SnapshotDataOf;
+use openraft::async_runtime::Mutex;
 use openraft::storage::EntryResponder;
 use openraft::storage::RaftStateMachine;
 use openraft::storage::Snapshot;
+use openraft::type_config::alias::MutexOf;
 use serde::Deserialize;
 use serde::Serialize;
-use tokio::sync::RwLock;
 
 use crate::TypeConfig;
 
@@ -104,10 +105,9 @@ pub struct StateMachineData {
 
 /// Defines a state machine for the Raft cluster. This state machine represents a copy of the
 /// data for this node. Additionally, it is responsible for storing the last snapshot of the data.
-#[derive(Debug, Default)]
 pub struct StateMachineStore {
     /// The Raft state machine.
-    pub state_machine: RwLock<StateMachineData>,
+    pub state_machine: MutexOf<TypeConfig, StateMachineData>,
 
     /// Used in identifier for snapshot.
     ///
@@ -117,14 +117,30 @@ pub struct StateMachineStore {
     snapshot_idx: AtomicU64,
 
     /// The last received snapshot.
-    current_snapshot: RwLock<Option<StoredSnapshot>>,
+    current_snapshot: MutexOf<TypeConfig, Option<StoredSnapshot>>,
+}
+
+impl Debug for StateMachineStore {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("StateMachineStore").finish_non_exhaustive()
+    }
+}
+
+impl Default for StateMachineStore {
+    fn default() -> Self {
+        Self {
+            state_machine: MutexOf::<TypeConfig, _>::new(StateMachineData::default()),
+            snapshot_idx: AtomicU64::new(0),
+            current_snapshot: MutexOf::<TypeConfig, _>::new(None),
+        }
+    }
 }
 
 impl RaftSnapshotBuilder<TypeConfig> for Arc<StateMachineStore> {
     #[tracing::instrument(level = "trace", skip(self))]
     async fn build_snapshot(&mut self) -> Result<Snapshot<TypeConfig>, io::Error> {
         // Serialize the data of the state machine.
-        let state_machine = self.state_machine.read().await;
+        let state_machine = self.state_machine.lock().await;
         let data =
             serde_json::to_vec(&state_machine.data).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
@@ -133,7 +149,7 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<StateMachineStore> {
 
         // Lock the current snapshot before releasing the lock on the state machine, to avoid a race
         // condition on the written snapshot
-        let mut current_snapshot = self.current_snapshot.write().await;
+        let mut current_snapshot = self.current_snapshot.lock().await;
         drop(state_machine);
 
         let snapshot_idx = self.snapshot_idx.fetch_add(1, Ordering::Relaxed) + 1;
@@ -167,14 +183,14 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
     type SnapshotBuilder = Self;
 
     async fn applied_state(&mut self) -> Result<(Option<LogId<TypeConfig>>, StoredMembership<TypeConfig>), io::Error> {
-        let state_machine = self.state_machine.read().await;
+        let state_machine = self.state_machine.lock().await;
         Ok((state_machine.last_applied_log, state_machine.last_membership.clone()))
     }
 
     #[tracing::instrument(level = "trace", skip(self, entries))]
     async fn apply<Strm>(&mut self, mut entries: Strm) -> Result<(), io::Error>
     where Strm: Stream<Item = Result<EntryResponder<TypeConfig>, io::Error>> + Unpin + OptionalSend {
-        let mut sm = self.state_machine.write().await;
+        let mut sm = self.state_machine.lock().await;
 
         while let Some((entry, responder)) = entries.try_next().await? {
             tracing::debug!(%entry.log_id, "replicate to sm");
@@ -233,12 +249,12 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
             last_membership: meta.last_membership.clone(),
             data: updated_state_machine_data,
         };
-        let mut state_machine = self.state_machine.write().await;
+        let mut state_machine = self.state_machine.lock().await;
         *state_machine = updated_state_machine;
 
         // Lock the current snapshot before releasing the lock on the state machine, to avoid a race
         // condition on the written snapshot
-        let mut current_snapshot = self.current_snapshot.write().await;
+        let mut current_snapshot = self.current_snapshot.lock().await;
         drop(state_machine);
 
         // Update current snapshot.
@@ -248,7 +264,7 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
 
     #[tracing::instrument(level = "trace", skip(self))]
     async fn get_current_snapshot(&mut self) -> Result<Option<Snapshot<TypeConfig>>, io::Error> {
-        match &*self.current_snapshot.read().await {
+        match &*self.current_snapshot.lock().await {
             Some(snapshot) => {
                 let data = snapshot.data.clone();
                 Ok(Some(Snapshot {

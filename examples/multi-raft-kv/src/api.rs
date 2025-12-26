@@ -3,6 +3,7 @@ use std::collections::BTreeSet;
 
 use openraft::BasicNode;
 use openraft::ReadPolicy;
+use openraft::async_runtime::Mutex;
 use openraft::async_runtime::WatchReceiver;
 use openraft::raft::TransferLeaderRequest;
 

@@ -124,6 +124,18 @@ lint:
 
 unused_dep:
 	cargo machete
+	cargo machete examples/raft-kv-memstore
+	cargo machete examples/raft-kv-rocksdb
+	cargo machete examples/raft-kv-memstore-grpc
+	cargo machete examples/raft-kv-memstore-single-threaded
+	cargo machete examples/raft-kv-memstore-opendal-snapshot-data
+	cargo machete examples/raft-kv-memstore-network-v2
+	cargo machete examples/multi-raft-kv
+	cargo machete examples/rocksstore
+	cargo machete multiraft
+	cargo machete rt-compio
+	cargo machete rt-monoio
+	cargo machete rt-tokio
 
 typos:
 	# cargo install typos-cli

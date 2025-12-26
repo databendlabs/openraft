@@ -11,14 +11,29 @@ use openraft::LogState;
 use openraft::RaftTypeConfig;
 use openraft::alias::LogIdOf;
 use openraft::alias::VoteOf;
+use openraft::async_runtime::Mutex;
 use openraft::entry::RaftEntry;
 use openraft::storage::IOFlushed;
-use tokio::sync::Mutex;
+use openraft::type_config::alias::MutexOf;
 
 /// RaftLogStore implementation with a in-memory storage
-#[derive(Clone, Debug, Default)]
+#[derive(Clone)]
 pub struct LogStore<C: RaftTypeConfig> {
-    inner: Arc<Mutex<LogStoreInner<C>>>,
+    inner: Arc<MutexOf<C, LogStoreInner<C>>>,
+}
+
+impl<C: RaftTypeConfig> std::fmt::Debug for LogStore<C> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LogStore").finish_non_exhaustive()
+    }
+}
+
+impl<C: RaftTypeConfig> Default for LogStore<C> {
+    fn default() -> Self {
+        Self {
+            inner: Arc::new(MutexOf::<C, LogStoreInner<C>>::new(LogStoreInner::default())),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -141,6 +156,7 @@ mod impl_log_store {
     use openraft::RaftTypeConfig;
     use openraft::alias::LogIdOf;
     use openraft::alias::VoteOf;
+    use openraft::async_runtime::Mutex;
     use openraft::storage::IOFlushed;
     use openraft::storage::RaftLogStorage;
 

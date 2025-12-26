@@ -3,6 +3,8 @@ use std::fmt;
 use std::sync::Arc;
 use std::sync::Mutex;
 
+use futures::SinkExt;
+use futures::channel::mpsc;
 use openraft::error::Unreachable;
 use openraft::type_config::TypeConfigExt;
 use openraft::type_config::alias::OneshotSenderOf;
@@ -14,8 +16,8 @@ use crate::decode;
 use crate::encode;
 use crate::typ::RaftError;
 
-pub type NodeTx = tokio::sync::mpsc::UnboundedSender<NodeMessage>;
-pub type NodeRx = tokio::sync::mpsc::UnboundedReceiver<NodeMessage>;
+pub type NodeTx = mpsc::Sender<NodeMessage>;
+pub type NodeRx = mpsc::Receiver<NodeMessage>;
 
 #[derive(Debug)]
 pub struct RouterError(pub String);
@@ -86,22 +88,23 @@ impl Router {
             encoded_req
         );
 
-        // Send through the shared node connection
-        {
+        // Clone the sender and release the lock before async send
+        let mut tx = {
             let nodes = self.nodes.lock().unwrap();
-            let tx = nodes
+            nodes
                 .get(&to_node)
-                .ok_or_else(|| Unreachable::new(&RouterError(format!("node {} not connected", to_node))))?;
+                .ok_or_else(|| Unreachable::new(&RouterError(format!("node {} not connected", to_node))))?
+                .clone()
+        };
 
-            let msg = NodeMessage {
-                group_id: to_group.clone(),
-                path: path.to_string(),
-                payload: encoded_req,
-                response_tx: resp_tx,
-            };
+        let msg = NodeMessage {
+            group_id: to_group.clone(),
+            path: path.to_string(),
+            payload: encoded_req,
+            response_tx: resp_tx,
+        };
 
-            tx.send(msg).map_err(|e| Unreachable::new(&RouterError(e.to_string())))?;
-        }
+        tx.send(msg).await.map_err(|e| Unreachable::new(&RouterError(e.to_string())))?;
 
         let resp_str = resp_rx.await.map_err(|e| Unreachable::new(&RouterError(e.to_string())))?;
         tracing::debug!(

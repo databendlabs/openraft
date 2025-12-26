@@ -1,8 +1,9 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use futures::StreamExt;
+use futures::channel::mpsc;
 use openraft::async_runtime::OneshotSender;
-use tokio::sync::mpsc;
 
 use crate::GroupId;
 use crate::NodeId;
@@ -28,7 +29,7 @@ pub struct Node {
 
 impl Node {
     pub fn new(node_id: NodeId, router: Router) -> (Self, NodeTx) {
-        let (tx, rx) = mpsc::unbounded_channel();
+        let (tx, rx) = mpsc::channel(1024);
 
         // Register this node's shared connection
         router.register_node(node_id, tx.clone());
@@ -63,7 +64,7 @@ impl Node {
     /// Routes incoming messages to the correct group based on group_id.
     pub async fn run(mut self) -> Option<()> {
         loop {
-            let msg = self.rx.recv().await?;
+            let msg = self.rx.next().await?;
 
             let NodeMessage {
                 group_id,
