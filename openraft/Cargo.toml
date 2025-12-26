@@ -41,6 +41,7 @@ validit         = { workspace = true }
 
 [dev-dependencies]
 anyhow            = { workspace = true }
+openraft-rt-tokio = { path = "../rt-tokio", version = "0.10.0" }
 pretty_assertions = { workspace = true }
 serde_json        = { workspace = true }
 

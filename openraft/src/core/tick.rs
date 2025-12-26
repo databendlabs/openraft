@@ -155,11 +155,12 @@ mod tests {
     use std::io::Cursor;
     use std::time::Duration;
 
+    use openraft_rt_tokio::TokioRuntime;
+
     use crate::OptionalSend;
     use crate::RaftTypeConfig;
     use crate::async_runtime::MpscReceiver;
     use crate::core::Tick;
-    use crate::impls::TokioRuntime;
     use crate::type_config::TypeConfigExt;
 
     #[derive(Debug, Clone, Copy, Default, Eq, PartialEq, Ord, PartialOrd)]

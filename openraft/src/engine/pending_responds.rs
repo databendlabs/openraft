@@ -155,6 +155,7 @@ where C: RaftTypeConfig
 
 #[cfg(test)]
 mod tests {
+    use openraft_rt_tokio::TokioRuntime;
     use validit::Valid;
 
     use super::*;
@@ -165,7 +166,6 @@ mod tests {
     use crate::engine::respond_command::PendingRespond;
     use crate::engine::testing::UTConfig;
     use crate::engine::testing::log_id;
-    use crate::impls::TokioRuntime;
     use crate::raft::VoteResponse;
     use crate::raft_state::IOId;
     use crate::raft_state::io_state::IOState;
