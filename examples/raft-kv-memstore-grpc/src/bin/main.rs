@@ -1,4 +1,6 @@
 use clap::Parser;
+use openraft::AsyncRuntime;
+use raft_kv_memstore_grpc::TypeConfig;
 use raft_kv_memstore_grpc::app::start_raft_app;
 
 #[derive(Parser, Clone, Debug)]
@@ -12,8 +14,7 @@ pub struct Opt {
     pub addr: String,
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Initialize tracing first, before any logging happens
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::INFO)
@@ -24,5 +25,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Parse the parameters passed by arguments.
     let options = Opt::parse();
 
-    start_raft_app(options.id, options.addr).await
+    let mut rt = <TypeConfig as openraft::RaftTypeConfig>::AsyncRuntime::new(1);
+    rt.block_on(start_raft_app(options.id, options.addr))
 }

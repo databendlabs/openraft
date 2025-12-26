@@ -23,7 +23,6 @@ openraft-memstore  = { path = "../stores/memstore" }
 
 anyerror           = { workspace = true }
 anyhow             = { workspace = true }
-async-entry        = { workspace = true }
 derive_more        = { workspace = true }
 futures            = { workspace = true }
 lazy_static        = { workspace = true }
@@ -31,7 +30,6 @@ maplit             = { workspace = true }
 pretty_assertions  = { workspace = true }
 rand               = { workspace = true }
 test-harness       = { workspace = true }
-tokio              = { workspace = true }
 tracing            = { workspace = true }
 tracing-appender   = { workspace = true }
 tracing-subscriber = { workspace = true }
