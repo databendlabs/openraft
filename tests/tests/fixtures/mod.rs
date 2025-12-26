@@ -90,10 +90,10 @@ pub fn log_id(term: u64, node_id: u64, index: u64) -> LogIdOf<TypeConfig> {
     )
 }
 
-/// Create a harness that sets up tracing and a tokio runtime for testing.
+/// Create a harness that sets up tracing and an async runtime for testing.
 pub fn ut_harness<F, Fut>(f: F) -> anyhow::Result<()>
 where
-    F: FnOnce() -> Fut + Send + 'static,
+    F: FnOnce() -> Fut + 'static,
     Fut: Future<Output = anyhow::Result<()>> + 'static,
 {
     fn func_name<F: std::any::Any>() -> &'static str {
@@ -104,13 +104,7 @@ where
     #[allow(clippy::let_unit_value)]
     let _g = init_default_ut_tracing();
 
-    let rt = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(8)
-        .enable_all()
-        .build()
-        .expect("Failed building the Runtime");
-
-    let res = rt.block_on(f());
+    let res = TypeConfig::run(f());
     if let Err(e) = &res {
         tracing::error!("{} error: {:?}", func_name::<F>(), e);
     }

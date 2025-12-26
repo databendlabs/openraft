@@ -7,18 +7,32 @@ use std::io;
 use std::ops::RangeBounds;
 use std::sync::Arc;
 
+use futures::lock::Mutex;
 use openraft::LogState;
 use openraft::RaftTypeConfig;
 use openraft::alias::LogIdOf;
 use openraft::alias::VoteOf;
 use openraft::entry::RaftEntry;
 use openraft::storage::IOFlushed;
-use tokio::sync::Mutex;
 
 /// RaftLogStore implementation with a in-memory storage
-#[derive(Clone, Debug, Default)]
+#[derive(Clone)]
 pub struct LogStore<C: RaftTypeConfig> {
     inner: Arc<Mutex<LogStoreInner<C>>>,
+}
+
+impl<C: RaftTypeConfig> std::fmt::Debug for LogStore<C> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LogStore").finish_non_exhaustive()
+    }
+}
+
+impl<C: RaftTypeConfig> Default for LogStore<C> {
+    fn default() -> Self {
+        Self {
+            inner: Arc::new(Mutex::new(LogStoreInner::default())),
+        }
+    }
 }
 
 #[derive(Debug)]

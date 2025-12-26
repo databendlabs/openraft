@@ -1,17 +1,17 @@
 use std::fmt::Debug;
 use std::io;
 use std::sync::Arc;
-use std::sync::Mutex;
+use std::sync::Mutex as StdMutex;
 
 use futures::Stream;
 use futures::TryStreamExt;
+use futures::lock::Mutex;
 use openraft::OptionalSend;
 use openraft::RaftSnapshotBuilder;
 use openraft::entry::RaftEntry;
 use openraft::storage::EntryResponder;
 use openraft::storage::RaftStateMachine;
 
-use crate::TypeConfig;
 use crate::protobuf as pb;
 use crate::protobuf::Response;
 use crate::typ::*;
@@ -31,12 +31,12 @@ pub struct StoredSnapshot {
 #[derive(Debug, Default)]
 pub struct StateMachineStore {
     /// The Raft state machine.
-    pub state_machine: tokio::sync::Mutex<pb::StateMachineData>,
+    pub state_machine: Mutex<pb::StateMachineData>,
 
-    snapshot_idx: Mutex<u64>,
+    snapshot_idx: StdMutex<u64>,
 
     /// The last received snapshot.
-    current_snapshot: Mutex<Option<StoredSnapshot>>,
+    current_snapshot: StdMutex<Option<StoredSnapshot>>,
 }
 
 impl StateMachineStore {

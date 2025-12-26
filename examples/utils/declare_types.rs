@@ -1,7 +1,7 @@
 //! Declare the Raft type with the TypeConfig.
 
-// Reference the containing module's type config.
-use super::TypeConfig;
+// Reference the containing module's type config and re-export it.
+pub use super::TypeConfig;
 
 pub type Raft = openraft::Raft<TypeConfig>;
 

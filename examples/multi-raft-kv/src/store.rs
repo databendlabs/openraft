@@ -3,10 +3,11 @@ use std::fmt;
 use std::fmt::Debug;
 use std::io;
 use std::sync::Arc;
-use std::sync::Mutex;
+use std::sync::Mutex as StdMutex;
 
 use futures::Stream;
 use futures::TryStreamExt;
+use futures::lock::Mutex;
 use openraft::EntryPayload;
 use openraft::OptionalSend;
 use openraft::RaftSnapshotBuilder;
@@ -15,7 +16,6 @@ use openraft::storage::RaftStateMachine;
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::TypeConfig;
 use crate::typ::*;
 
 pub type LogStore = mem_log::LogStore<TypeConfig>;
@@ -69,12 +69,12 @@ pub struct StateMachineData {
 /// Each group may have its own independent state machine instance.
 #[derive(Debug, Default)]
 pub struct StateMachineStore {
-    pub state_machine: tokio::sync::Mutex<StateMachineData>,
+    pub state_machine: Mutex<StateMachineData>,
 
-    snapshot_idx: Mutex<u64>,
+    snapshot_idx: StdMutex<u64>,
 
     /// The last received snapshot.
-    current_snapshot: Mutex<Option<StoredSnapshot>>,
+    current_snapshot: StdMutex<Option<StoredSnapshot>>,
 }
 
 impl RaftSnapshotBuilder<TypeConfig> for Arc<StateMachineStore> {

@@ -13,7 +13,6 @@ use openraft::LogState;
 use openraft::OptionalSend;
 use openraft::RaftLogReader;
 use openraft::RaftTypeConfig;
-use openraft::TokioRuntime;
 use openraft::alias::EntryOf;
 use openraft::alias::LogIdOf;
 use openraft::alias::VoteOf;
@@ -23,7 +22,8 @@ use openraft::storage::RaftLogStorage;
 use rocksdb::ColumnFamily;
 use rocksdb::DB;
 use rocksdb::Direction;
-use tokio::task::spawn_blocking;
+
+use crate::run_blocking;
 
 #[derive(Debug, Clone)]
 pub struct RocksLogStore<C>
@@ -117,9 +117,8 @@ where C: RaftTypeConfig
     }
 }
 
-// It requires TokioRuntime because it uses spawn_blocking internally.
 impl<C> RaftLogStorage<C> for RocksLogStore<C>
-where C: RaftTypeConfig<AsyncRuntime = TokioRuntime>
+where C: RaftTypeConfig
 {
     type LogReader = Self;
 
@@ -157,10 +156,7 @@ where C: RaftTypeConfig<AsyncRuntime = TokioRuntime>
 
         // Vote must be persisted to disk before returning.
         let db = self.db.clone();
-        spawn_blocking(move || db.flush_wal(true))
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))?
-            .map_err(|e| io::Error::other(e.to_string()))?;
+        run_blocking(move || db.flush_wal(true).map_err(|e| io::Error::other(e.to_string()))).await??;
 
         Ok(())
     }
@@ -183,11 +179,10 @@ where C: RaftTypeConfig<AsyncRuntime = TokioRuntime>
         // But the above `pub_cf()` must be called in this function, not in another task.
         // Because when the function returns, it requires the log entries can be read.
         let db = self.db.clone();
-        let handle = spawn_blocking(move || {
+        std::thread::spawn(move || {
             let res = db.flush_wal(true).map_err(io::Error::other);
             callback.io_completed(res);
         });
-        drop(handle);
 
         // Return now, and the callback will be invoked later when IO is done.
         Ok(())

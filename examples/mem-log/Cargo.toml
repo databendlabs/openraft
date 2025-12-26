@@ -15,9 +15,8 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/databendlabs/openraft"
 
 [dependencies]
+futures = "0.3.31"
 openraft = { path = "../../openraft", default-features = false, features = ["type-alias", "tokio-rt"] }
-
-tokio = { version = "1.0", default-features = false, features = ["sync"] }
 
 [features]
 

@@ -23,14 +23,9 @@ mem-log  = { path = "../mem-log", features = [] }
 openraft = { path = "../../openraft", features = ["type-alias"] }
 
 clap               = { version = "4.1.11", features = ["derive", "env"] }
-dashmap            = { version = "6.1.0" }
 futures            = { version = "0.3.31" }
 prost              = { version = "0.13.4" }
-serde              = { version = "1.0.114", features = ["derive"] }
-serde_json         = { version = "1.0.57" }
-tokio              = { version = "1.39", default-features = false, features = ["sync"] }
 tonic              = { version = "0.12.3" }
-tonic-build        = { version = "0.12.3" }
 tracing            = { version = "0.1.29" }
 tracing-subscriber = { version = "0.3.0", features = ["env-filter"] }
 

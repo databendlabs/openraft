@@ -113,9 +113,11 @@ pub trait AsyncRuntime: Debug + OptionalSend + OptionalSync + 'static {
     fn new(threads: usize) -> Self;
 
     /// Run a future to completion on this runtime.
+    ///
+    /// This runs synchronously on the current thread, so `Send` is not required.
     fn block_on<F, T>(&mut self, future: F) -> T
     where
-        F: Future<Output = T> + OptionalSend,
+        F: Future<Output = T>,
         T: OptionalSend;
 
     /// Convenience method: create a runtime and run the future to completion.
@@ -124,10 +126,12 @@ pub trait AsyncRuntime: Debug + OptionalSend + OptionalSync + 'static {
     /// For simple cases where you don't need to reuse the runtime.
     /// If you need to run multiple futures, consider using [`Self::new`] and
     /// [`Self::block_on`] directly.
+    ///
+    /// This runs synchronously on the current thread, so `Send` is not required.
     fn run<F, T>(future: F) -> T
     where
         Self: Sized,
-        F: Future<Output = T> + OptionalSend,
+        F: Future<Output = T>,
         T: OptionalSend,
     {
         Self::new(8).block_on(future)
