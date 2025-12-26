@@ -6,6 +6,7 @@
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::future::Future;
+use std::io;
 use std::time::Duration;
 
 use crate::Instant;
@@ -135,5 +136,22 @@ pub trait AsyncRuntime: Debug + OptionalSend + OptionalSync + 'static {
         T: OptionalSend,
     {
         Self::new(8).block_on(future)
+    }
+
+    /// Run a blocking function on a separate thread.
+    ///
+    /// The default implementation spawns a new OS thread for each call.
+    /// Runtime implementations may override this with their own thread pool
+    /// (e.g., tokio's `spawn_blocking`) for better resource management.
+    fn spawn_blocking<F, T>(f: F) -> impl Future<Output = Result<T, io::Error>> + Send
+    where
+        F: FnOnce() -> T + Send + 'static,
+        T: Send + 'static,
+    {
+        let (tx, rx) = futures::channel::oneshot::channel();
+        std::thread::spawn(move || {
+            tx.send(f()).ok();
+        });
+        async { rx.await.map_err(|_| io::Error::other("spawn_blocking task cancelled")) }
     }
 }
