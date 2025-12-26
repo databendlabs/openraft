@@ -616,7 +616,7 @@ the local node's ID. Each node ID in [`Membership`][] must map to a different no
 
 **Symptom**: Raft node appears frozen or unresponsive. In single-threaded runtimes, everything stops.
 
-**Cause**: When using `tokio::watch` as [`AsyncRuntime::Watch`][], the `Ref` returned by
+**Cause**: When using `watch` as [`AsyncRuntime::Watch`][], the `Ref` returned by
 `borrow_watched()` holds a synchronous `RwLock` read guard. If you hold this `Ref` while
 Openraft tries to send new metrics (needs write lock), it deadlocks.
 

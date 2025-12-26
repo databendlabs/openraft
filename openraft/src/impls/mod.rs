@@ -24,6 +24,7 @@
 //! Most applications can use these implementations directly without customization.
 
 #[cfg(feature = "tokio-rt")]
+#[deprecated(since = "0.10.0", note = "use `openraft_rt_tokio::TokioRuntime` directly")]
 pub use openraft_rt_tokio::TokioRuntime;
 
 pub use crate::entry::Entry;

@@ -4,8 +4,9 @@
 
 use std::io::Cursor;
 
+use openraft_rt_tokio::TokioRuntime;
+
 use crate::declare_raft_types;
-use crate::impls::TokioRuntime;
 
 declare_raft_types!(
     All:
