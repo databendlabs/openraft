@@ -30,6 +30,7 @@ use openraft::RaftTypeConfig;
 use openraft::SnapshotMeta;
 use openraft::StorageError;
 use openraft::StoredMembership;
+use openraft::type_config::TypeConfigExt;
 use openraft::alias::SnapshotDataOf;
 use openraft::entry::RaftEntry;
 use openraft::storage::EntryResponder;
@@ -43,22 +44,6 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::log_store::RocksLogStore;
-
-/// Run a blocking function in a separate thread and return the result via oneshot channel.
-pub(crate) async fn run_blocking<F, T>(f: F) -> Result<T, io::Error>
-where
-    F: FnOnce() -> T + Send + 'static,
-    T: Send + 'static,
-{
-    let (tx, rx) = futures::channel::oneshot::channel();
-
-    std::thread::spawn(move || {
-        let result = f();
-        let _ = tx.send(result);
-    });
-
-    rx.await.map_err(|_| io::Error::other("blocking task cancelled"))
-}
 
 pub type RocksNodeId = u64;
 
@@ -189,7 +174,7 @@ impl RaftSnapshotBuilder<TypeConfig> for RocksStateMachine {
         let db = self.db.clone();
 
         #[allow(clippy::type_complexity)]
-        let data = run_blocking(move || -> Result<Vec<(Vec<u8>, Vec<u8>)>, io::Error> {
+        let data = TypeConfig::spawn_blocking(move || -> Result<Vec<(Vec<u8>, Vec<u8>)>, io::Error> {
             let snapshot = db.snapshot();
             let cf_data = db.cf_handle("sm_data").expect("column family `sm_data` not found");
 
@@ -331,7 +316,7 @@ impl RaftStateMachine<TypeConfig> for RocksStateMachine {
         // Restore data and metadata atomically to RocksDB
         let db = self.db.clone();
 
-        run_blocking(move || -> Result<(), io::Error> {
+        TypeConfig::spawn_blocking(move || -> Result<(), io::Error> {
             let cf_data = db.cf_handle("sm_data").expect("column family `sm_data` not found");
             let cf_meta = db.cf_handle("sm_meta").expect("column family `sm_meta` not found");
 

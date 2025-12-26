@@ -1,4 +1,5 @@
 use std::future::Future;
+use std::io;
 use std::time::Duration;
 
 use futures::Stream;
@@ -162,6 +163,19 @@ pub trait TypeConfigExt: RaftTypeConfig {
         T: OptionalSend,
     {
         <AsyncRuntimeOf<Self> as AsyncRuntime>::run(future)
+    }
+
+    /// Run a blocking function on a separate thread.
+    ///
+    /// This is a convenience wrapper for
+    /// [`AsyncRuntime::spawn_blocking()`](`crate::AsyncRuntime::spawn_blocking`).
+    #[track_caller]
+    fn spawn_blocking<F, T>(f: F) -> impl Future<Output = Result<T, io::Error>> + Send
+    where
+        F: FnOnce() -> T + Send + 'static,
+        T: Send + 'static,
+    {
+        AsyncRuntimeOf::<Self>::spawn_blocking(f)
     }
 
     // Error methods

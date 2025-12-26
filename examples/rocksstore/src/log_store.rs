@@ -19,11 +19,10 @@ use openraft::alias::VoteOf;
 use openraft::entry::RaftEntry;
 use openraft::storage::IOFlushed;
 use openraft::storage::RaftLogStorage;
+use openraft::type_config::TypeConfigExt;
 use rocksdb::ColumnFamily;
 use rocksdb::DB;
 use rocksdb::Direction;
-
-use crate::run_blocking;
 
 #[derive(Debug, Clone)]
 pub struct RocksLogStore<C>
@@ -156,7 +155,7 @@ where C: RaftTypeConfig
 
         // Vote must be persisted to disk before returning.
         let db = self.db.clone();
-        run_blocking(move || db.flush_wal(true).map_err(|e| io::Error::other(e.to_string()))).await??;
+        C::spawn_blocking(move || db.flush_wal(true).map_err(|e| io::Error::other(e.to_string()))).await??;
 
         Ok(())
     }
