@@ -26,15 +26,7 @@ rand       = { version = "0.9" }
 rocksdb    = { version = "0.22.0" }
 serde      = { version = "1.0.114", features = ["derive"] }
 serde_json = { version = "1.0.57" }
-tokio      = { version = "1.22", default-features = false, features = [
-    "io-util",
-    "macros",
-    "rt",
-    "rt-multi-thread",
-    "sync",
-    "time",
-] }
-tracing = { version = "0.1.40" }
+tracing    = { version = "0.1.40" }
 
 [dev-dependencies]
 tempfile = { version = "3.4.0" }

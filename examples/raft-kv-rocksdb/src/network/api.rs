@@ -21,7 +21,7 @@ pub async fn write(app: Data<App>, req: Json<Request>) -> actix_web::Result<impl
 #[post("/read")]
 pub async fn read(app: Data<App>, req: Json<String>) -> actix_web::Result<impl Responder> {
     let key = req.0;
-    let kvs = app.key_values.read().await;
+    let kvs = app.key_values.lock().await;
     let value = kvs.get(&key);
 
     let res: Result<String, Infallible> = Ok(value.cloned().unwrap_or_default());
@@ -37,7 +37,7 @@ pub async fn linearizable_read(app: Data<App>, req: Json<String>) -> actix_web::
             linearizer.await_ready(&app.raft).await.unwrap();
 
             let key = req.0;
-            let kvs = app.key_values.read().await;
+            let kvs = app.key_values.lock().await;
             let value = kvs.get(&key);
 
             let res: Result<String, LinearizableReadError<TypeConfig>> = Ok(value.cloned().unwrap_or_default());

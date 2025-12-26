@@ -111,7 +111,7 @@ impl AsyncRuntime for TokioRuntime {
 
     fn block_on<F, T>(&mut self, future: F) -> T
     where
-        F: Future<Output = T> + OptionalSend,
+        F: Future<Output = T>,
         T: OptionalSend,
     {
         #[cfg(feature = "single-threaded")]

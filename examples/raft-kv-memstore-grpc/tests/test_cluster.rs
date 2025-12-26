@@ -5,12 +5,13 @@ use std::thread;
 use std::time::Duration;
 
 use maplit::btreemap;
+use openraft::async_runtime::AsyncRuntime;
 use openraft::type_config::TypeConfigExt;
+use openraft::type_config::alias::AsyncRuntimeOf;
 use raft_kv_memstore_grpc::TypeConfig;
 use raft_kv_memstore_grpc::app::start_raft_app;
 use raft_kv_memstore_grpc::protobuf as pb;
 use raft_kv_memstore_grpc::protobuf::app_service_client::AppServiceClient;
-use tokio::runtime::Runtime;
 use tonic::transport::Channel;
 use tracing_subscriber::EnvFilter;
 
@@ -58,19 +59,19 @@ async fn test_cluster_inner() -> anyhow::Result<()> {
     // --- Start 3 raft node in 3 threads.
 
     let _h1 = thread::spawn(|| {
-        let rt = Runtime::new().unwrap();
+        let mut rt = AsyncRuntimeOf::<TypeConfig>::new(1);
         let x = rt.block_on(start_raft_app(1, get_addr(1)));
         println!("raft app exit result: {:?}", x);
     });
 
     let _h2 = thread::spawn(|| {
-        let rt = Runtime::new().unwrap();
+        let mut rt = AsyncRuntimeOf::<TypeConfig>::new(1);
         let x = rt.block_on(start_raft_app(2, get_addr(2)));
         println!("raft app exit result: {:?}", x);
     });
 
     let _h3 = thread::spawn(|| {
-        let rt = Runtime::new().unwrap();
+        let mut rt = AsyncRuntimeOf::<TypeConfig>::new(1);
         let x = rt.block_on(start_raft_app(3, get_addr(3)));
         println!("raft app exit result: {:?}", x);
     });

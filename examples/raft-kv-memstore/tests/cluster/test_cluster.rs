@@ -8,11 +8,12 @@ use client_http::ExampleClient;
 use maplit::btreemap;
 use maplit::btreeset;
 use openraft::BasicNode;
+use openraft::async_runtime::AsyncRuntime;
 use openraft::type_config::TypeConfigExt;
+use openraft::type_config::alias::AsyncRuntimeOf;
 use raft_kv_memstore::TypeConfig;
 use raft_kv_memstore::start_example_raft_node;
 use raft_kv_memstore::store::Request;
-use tokio::runtime::Runtime;
 use tracing_subscriber::EnvFilter;
 
 pub fn log_panic(panic: &PanicHookInfo) {
@@ -87,19 +88,19 @@ async fn test_cluster_inner() -> anyhow::Result<()> {
     // --- Start 3 raft node in 3 threads.
 
     let _h1 = thread::spawn(|| {
-        let rt = Runtime::new().unwrap();
+        let mut rt = AsyncRuntimeOf::<TypeConfig>::new(1);
         let x = rt.block_on(start_example_raft_node(1, "127.0.0.1:21001".to_string()));
         println!("x: {:?}", x);
     });
 
     let _h2 = thread::spawn(|| {
-        let rt = Runtime::new().unwrap();
+        let mut rt = AsyncRuntimeOf::<TypeConfig>::new(1);
         let x = rt.block_on(start_example_raft_node(2, "127.0.0.1:21002".to_string()));
         println!("x: {:?}", x);
     });
 
     let _h3 = thread::spawn(|| {
-        let rt = Runtime::new().unwrap();
+        let mut rt = AsyncRuntimeOf::<TypeConfig>::new(1);
         let x = rt.block_on(start_example_raft_node(3, "127.0.0.1:21003".to_string()));
         println!("x: {:?}", x);
     });
