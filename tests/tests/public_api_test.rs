@@ -41,6 +41,7 @@ use openraft::RPCTypes;
 use openraft::Raft;
 use openraft::RaftLogReader;
 use openraft::RaftMetrics;
+#[allow(deprecated)]
 use openraft::RaftNetwork;
 use openraft::RaftNetworkFactory;
 use openraft::RaftSnapshotBuilder;
@@ -191,12 +192,9 @@ use openraft::metrics::WaitError;
 use openraft::network::Backoff;
 use openraft::network::RPCOption;
 use openraft::network::RPCTypes as RPCTypesModule;
+#[allow(deprecated)]
 use openraft::network::RaftNetwork as RaftNetworkModule;
 use openraft::network::RaftNetworkFactory as RaftNetworkFactoryModule;
-use openraft::network::snapshot_transport;
-use openraft::network::v1;
-use openraft::network::v1::RaftNetwork as RaftNetworkV1;
-use openraft::network::v1::RaftNetworkFactory as RaftNetworkFactoryV1;
 use openraft::network::v2;
 use openraft::network::v2::RaftNetworkV2;
 // =============================================================================

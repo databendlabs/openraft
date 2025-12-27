@@ -32,8 +32,6 @@ serde           = { workspace = true, optional = true }
 serde_json      = { workspace = true, optional = true }
 tabled          = { workspace = true, optional = true }
 thiserror       = { workspace = true }
-# Tokio is still needed for I/O traits (AsyncRead, AsyncWrite, AsyncSeek) when tokio-rt is enabled
-tokio           = { workspace = true, optional = true }
 tracing         = { workspace = true }
 tracing-futures = { workspace = true }
 validit         = { workspace = true }
@@ -47,10 +45,10 @@ serde_json        = { workspace = true }
 
 
 [features]
-default = ["tokio-rt", "adapt-network-v1"]
+default = ["tokio-rt"]
 
 # Enable the default Tokio runtime
-tokio-rt = ["dep:openraft-rt-tokio", "dep:tokio"]
+tokio-rt = ["dep:openraft-rt-tokio"]
 
 # Enables benchmarks in unittest.
 #
