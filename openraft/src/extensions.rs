@@ -68,6 +68,32 @@ impl Extensions {
         map.get(&TypeId::of::<T>()).and_then(|b| b.downcast_ref::<T>()).cloned()
     }
 
+    /// Get a clone of the value of type `T`, or insert a default value if none exists.
+    ///
+    /// If no value of type `T` has been inserted, the provided closure is called
+    /// to create a default value, which is then inserted and returned.
+    pub fn get_or_insert_with<T>(&self, f: impl FnOnce() -> T) -> T
+    where T: OptionalSend + Clone + 'static {
+        let mut map = self.map.lock().unwrap();
+        let type_id = TypeId::of::<T>();
+
+        if let Some(val) = map.get(&type_id).and_then(|b| b.downcast_ref::<T>()) {
+            return val.clone();
+        }
+
+        let val = f();
+        map.insert(type_id, Box::new(val.clone()));
+        val
+    }
+
+    /// Get a clone of the value of type `T`, or insert `T::default()` if none exists.
+    ///
+    /// This is a convenience method equivalent to `get_or_insert_with(T::default)`.
+    pub fn get_or_default<T>(&self) -> T
+    where T: OptionalSend + Clone + Default + 'static {
+        self.get_or_insert_with(T::default)
+    }
+
     /// Check if a value of type `T` exists.
     pub fn contains<T>(&self) -> bool
     where T: 'static {
@@ -159,5 +185,47 @@ mod tests {
         assert_eq!(ext.remove::<u32>(), Some(42));
         assert!(!ext.contains::<u32>());
         assert!(ext.remove::<u32>().is_none());
+    }
+
+    #[test]
+    fn test_get_or_insert_with() {
+        let ext = Extensions::new();
+
+        // First call creates the value
+        let val = ext.get_or_insert_with(|| 42u32);
+        assert_eq!(val, 42);
+
+        // Second call returns existing value, closure not called
+        let val = ext.get_or_insert_with(|| 100u32);
+        assert_eq!(val, 42);
+
+        // Works with Arc for shared state
+        #[derive(Clone, Default)]
+        struct Counter(Arc<AtomicU64>);
+
+        let c1 = ext.get_or_insert_with(Counter::default);
+        c1.0.fetch_add(1, Ordering::Relaxed);
+
+        let c2 = ext.get_or_insert_with(Counter::default);
+        assert_eq!(c2.0.load(Ordering::Relaxed), 1);
+    }
+
+    #[test]
+    fn test_get_or_default() {
+        let ext = Extensions::new();
+
+        #[derive(Clone, Default, PartialEq, Debug)]
+        struct MyData(u32);
+
+        // First call creates default value
+        let val = ext.get_or_default::<MyData>();
+        assert_eq!(val, MyData(0));
+
+        // Insert a different value
+        ext.insert(MyData(42));
+
+        // Now returns the inserted value
+        let val = ext.get_or_default::<MyData>();
+        assert_eq!(val, MyData(42));
     }
 }

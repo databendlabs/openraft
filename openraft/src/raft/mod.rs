@@ -545,8 +545,6 @@ where C: RaftTypeConfig
             progress_watcher,
             tx_shutdown: Mutex::new(Some(tx_shutdown)),
             core_state: Mutex::new(CoreState::Running(core_handle)),
-
-            snapshot: C::mutex(None),
             extensions: Extensions::default(),
         };
 
@@ -921,8 +919,10 @@ where C: RaftTypeConfig
         let finished_snapshot = {
             use crate::network::snapshot_transport::Chunked;
             use crate::network::snapshot_transport::SnapshotTransport;
+            use crate::network::snapshot_transport::StreamingState;
 
-            let mut streaming = self.inner.snapshot.lock().await;
+            let streaming_state = self.inner.extensions.get_or_default::<StreamingState<C>>();
+            let mut streaming = streaming_state.streaming.lock().await;
             Chunked::receive_snapshot(&mut *streaming, self, req).await?
         };
 

@@ -257,6 +257,7 @@ mod tokio_rt {
 }
 
 use std::future::Future;
+use std::sync::Arc;
 
 use openraft_macros::add_async_trait;
 use openraft_macros::since;
@@ -274,6 +275,8 @@ use crate::network::RPCOption;
 use crate::raft::InstallSnapshotRequest;
 use crate::raft::SnapshotResponse;
 use crate::storage::Snapshot;
+use crate::type_config::TypeConfigExt;
+use crate::type_config::alias::MutexOf;
 use crate::type_config::alias::VoteOf;
 
 /// Send and Receive snapshot by chunks.
@@ -373,6 +376,34 @@ where C: RaftTypeConfig
     /// Consumes the `Streaming` and returns the snapshot data.
     pub fn into_snapshot_data(self) -> C::SnapshotData {
         self.snapshot_data
+    }
+}
+
+/// Shared state for receiving snapshot chunks, stored in [`Extensions`].
+///
+/// This wrapper holds the ongoing snapshot reception state and is stored
+/// in [`Raft::extensions()`] to track chunk-based snapshot transfers.
+///
+/// [`Extensions`]: crate::Extensions
+/// [`Raft::extensions()`]: crate::Raft::extensions
+#[derive(Clone)]
+pub struct StreamingState<C: RaftTypeConfig> {
+    #[allow(dead_code)]
+    pub(crate) streaming: Arc<MutexOf<C, Option<Streaming<C>>>>,
+}
+
+impl<C: RaftTypeConfig> StreamingState<C> {
+    /// Create a new empty streaming state.
+    pub fn new() -> Self {
+        Self {
+            streaming: Arc::new(C::mutex(None)),
+        }
+    }
+}
+
+impl<C: RaftTypeConfig> Default for StreamingState<C> {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
