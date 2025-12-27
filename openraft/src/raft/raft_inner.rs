@@ -26,7 +26,6 @@ use crate::type_config::AsyncRuntime;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::AsyncRuntimeOf;
 use crate::type_config::alias::MpscSenderOf;
-use crate::type_config::alias::MutexOf;
 use crate::type_config::alias::OneshotReceiverOf;
 use crate::type_config::alias::OneshotSenderOf;
 use crate::type_config::alias::WatchReceiverOf;
@@ -52,7 +51,7 @@ where C: RaftTypeConfig
     /// The ongoing snapshot transmission.
     #[cfg_attr(not(feature = "tokio-rt"), allow(dead_code))]
     // This field will only be read when feature tokio-rt is on
-    pub(in crate::raft) snapshot: MutexOf<C, Option<crate::network::snapshot_transport::Streaming<C>>>,
+    pub(in crate::raft) snapshot: crate::network::snapshot_transport::SharedStreaming<C>,
 }
 
 impl<C> RaftInner<C>

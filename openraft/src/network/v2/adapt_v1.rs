@@ -44,9 +44,8 @@ where
         option: RPCOption,
     ) -> Result<SnapshotResponse<C>, StreamingError<C>> {
         use crate::network::snapshot_transport::Chunked;
-        use crate::network::snapshot_transport::SnapshotTransport;
 
-        let resp = Chunked::send_snapshot(self, vote, snapshot, cancel, option).await?;
+        let resp = Chunked::<C>::send_snapshot(self, vote, snapshot, cancel, option).await?;
         Ok(resp)
     }
 
