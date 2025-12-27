@@ -152,6 +152,16 @@ pub trait RaftTypeConfig:
     ///
     /// See [`ErrorSource`] for the required methods.
     type ErrorSource: ErrorSource;
+
+    /// User-defined data stored in the Raft instance.
+    ///
+    /// This allows external crates to store singleton data associated with a Raft instance.
+    /// The data is initialized via `Default::default()` when the Raft instance is created.
+    ///
+    /// Access via [`Raft::user_data()`](`crate::Raft::user_data`).
+    ///
+    /// Default: `()`.
+    type UserData: OptionalSend + OptionalSync + Default + 'static;
 }
 
 #[allow(dead_code)]
@@ -186,6 +196,7 @@ pub mod alias {
     pub type AsyncRuntimeOf<C> = <C as RaftTypeConfig>::AsyncRuntime;
     pub type ResponderOf<C, T> = <C as RaftTypeConfig>::Responder<T>;
     pub type ErrorSourceOf<C> = <C as RaftTypeConfig>::ErrorSource;
+    pub type UserDataOf<C> = <C as RaftTypeConfig>::UserData;
     pub type WriteResponderOf<C> = ResponderOf<C, ClientWriteResult<C>>;
 
     type Rt<C> = AsyncRuntimeOf<C>;

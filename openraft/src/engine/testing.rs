@@ -51,6 +51,7 @@ where N: Node + Ord
         = crate::impls::OneshotResponder<Self, T>
     where T: OptionalSend + 'static;
     type ErrorSource = anyerror::AnyError;
+    type UserData = ();
 }
 
 /// Builds a log id, for testing purposes.
