@@ -1,0 +1,28 @@
+[package]
+name = "openraft-network-v1"
+readme = "README.md"
+
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+categories.workspace = true
+description = "RaftNetwork V1 adapter for Openraft with chunked snapshot support"
+documentation.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+openraft = { path = "../openraft", version = "0.10.0", default-features = false }
+openraft-macros = { path = "../macros", version = "0.10.0" }
+
+futures = { workspace = true }
+tokio = { workspace = true, features = ["io-util", "sync"] }
+tracing = { workspace = true }
+
+[features]
+default = []
+
+[package.metadata.docs.rs]
+all-features = true

@@ -81,7 +81,7 @@ impl Display for EmptyNode {
 ///
 /// The most common usage is to store the connecting address of a node.
 /// So that an application does not need an additional store to support its
-/// [`RaftNetwork`](crate::RaftNetwork) implementation.
+/// [`RaftNetworkV2`](crate::RaftNetworkV2) implementation.
 ///
 /// An application is also free not to use this storage and implements its own node-id to address
 /// mapping.
@@ -90,7 +90,7 @@ impl Display for EmptyNode {
 pub struct BasicNode {
     /// A user-defined string that represents the endpoint of the target node.
     ///
-    /// It is used by [`RaftNetwork`](crate::RaftNetwork) for connecting to the target node.
+    /// It is used by [`RaftNetworkV2`](crate::RaftNetworkV2) for connecting to the target node.
     pub addr: String,
 }
 

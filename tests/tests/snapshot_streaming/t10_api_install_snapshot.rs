@@ -6,6 +6,7 @@ use openraft::Config;
 use openraft::Vote;
 use openraft::raft::InstallSnapshotRequest;
 use openraft::storage::SnapshotMeta;
+use openraft_network_v1::RaftV1;
 
 use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
@@ -36,7 +37,8 @@ async fn snapshot_arguments() -> Result<()> {
     tracing::info!(log_index, "--- initializing cluster");
     log_index = router.new_cluster(btreeset! {0}, btreeset! {}).await?;
 
-    let n = router.remove_node(0).unwrap();
+    let (raft, _, _) = router.remove_node(0).unwrap();
+    let raft = RaftV1::new(raft);
     let make_req = || InstallSnapshotRequest {
         // force it to be a follower
         vote: Vote::new_committed(2, 1),
@@ -54,7 +56,7 @@ async fn snapshot_arguments() -> Result<()> {
     {
         let mut req = make_req();
         req.offset = 2;
-        let res = n.0.install_snapshot(req).await;
+        let res = raft.install_snapshot(req).await;
         assert_eq!(
             "snapshot segment id mismatch, expect: ss1+0, got: ss1+2",
             res.unwrap_err().to_string()
@@ -63,7 +65,7 @@ async fn snapshot_arguments() -> Result<()> {
 
     tracing::info!(log_index, "--- install and write ss1:[0,3)");
     {
-        n.0.install_snapshot(make_req()).await?;
+        raft.install_snapshot(make_req()).await?;
     }
 
     tracing::info!("-- continue write with different id");
@@ -71,7 +73,7 @@ async fn snapshot_arguments() -> Result<()> {
         let mut req = make_req();
         req.offset = 3;
         req.meta.snapshot_id = "ss2".into();
-        let res = n.0.install_snapshot(req).await;
+        let res = raft.install_snapshot(req).await;
         assert_eq!(
             "snapshot segment id mismatch, expect: ss2+0, got: ss2+3",
             res.unwrap_err().to_string()
@@ -83,12 +85,12 @@ async fn snapshot_arguments() -> Result<()> {
         let mut req = make_req();
         req.offset = 0;
         req.meta.snapshot_id = "ss2".into();
-        n.0.install_snapshot(req).await?;
+        raft.install_snapshot(req).await?;
 
         let mut req = make_req();
         req.offset = 3;
         req.meta.snapshot_id = "ss2".into();
-        n.0.install_snapshot(req).await?;
+        raft.install_snapshot(req).await?;
     }
 
     tracing::info!("-- continue write with mismatched offset is allowed");
@@ -96,7 +98,7 @@ async fn snapshot_arguments() -> Result<()> {
         let mut req = make_req();
         req.offset = 8;
         req.meta.snapshot_id = "ss2".into();
-        n.0.install_snapshot(req).await?;
+        raft.install_snapshot(req).await?;
     }
     Ok(())
 }

@@ -4,9 +4,8 @@
 //!
 //! ## Network Traits
 //!
-//! - [`RaftNetwork`] - Protocol for sending Raft RPCs (AppendEntries, Vote, InstallSnapshot)
+//! - [`RaftNetworkV2`] - Protocol for sending Raft RPCs (AppendEntries, Vote, Snapshot)
 //! - [`RaftNetworkFactory`] - Factory for creating network connections to target nodes
-//! - [`v2::RaftNetworkV2`] - Alternative protocol with full snapshot support
 //!
 //! ## Key Types
 //!
@@ -16,7 +15,7 @@
 //!
 //! ## Usage
 //!
-//! Applications implement [`RaftNetworkFactory`] to create [`RaftNetwork`] instances
+//! Applications implement [`RaftNetworkFactory`] to create [`RaftNetworkV2`] instances
 //! for communicating with each remote Raft node. The factory is passed to
 //! [`Raft::new()`](crate::Raft::new) when creating a Raft instance.
 //!
@@ -24,16 +23,17 @@
 //! details and examples.
 
 mod backoff;
+mod factory;
+mod raft_network_v1;
 mod rpc_option;
 mod rpc_type;
 
-pub mod v1;
 pub mod v2;
 
-pub mod snapshot_transport;
-
 pub use backoff::Backoff;
+pub use factory::RaftNetworkFactory;
+#[allow(deprecated)]
+pub use raft_network_v1::RaftNetwork;
 pub use rpc_option::RPCOption;
 pub use rpc_type::RPCTypes;
-pub use v1::RaftNetwork;
-pub use v1::RaftNetworkFactory;
+pub use v2::RaftNetworkV2;

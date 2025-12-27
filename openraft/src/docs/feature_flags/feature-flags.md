@@ -1,32 +1,15 @@
 
-By default openraft enables `["tokio-rt", "adapt-network-v1"]`.
+By default openraft enables `["tokio-rt"]`.
 
 
-## feature-flag `adapt-network-v1`
+## feature-flag `adapt-network-v1` (removed)
 
-When implementing [`RaftNetworkV2<T>`][`RaftNetworkV2`] for a generic type parameter `T`, you might
-encounter a compiler error about conflicting implementations. This happens
-because Openraft provides a blanket implementation that adapts `RaftNetwork`
-implementations to [`RaftNetworkV2`]. For example:
+This feature flag has been removed since `0.10.0`.
 
-```rust,ignore
-pub trait RaftTypeConfigExt: openraft::RaftTypeConfig {}
-pub struct YourNetworkType {}
-impl<T: RaftTypeConfigExt> RaftNetworkV2<T> for YourNetworkType {}
-```
+For backward compatibility with the v1 `RaftNetwork` trait and chunk-based
+snapshot transport, use the [`openraft-network-v1`] crate instead.
 
-You might encounter the following error:
-
-```text
-conflicting implementations of trait `RaftNetworkV2<_>` for type `YourNetworkType`
-conflicting implementation in crate `openraft`:
-- impl<C, V1> RaftNetworkV2<C> for V1
-```
-
-If you encounter this error, you can disable the feature `adapt-network-v1` to
-remove the default implementation for [`RaftNetworkV2`].
-
-[`RaftNetworkV2`]: crate::network::v2::RaftNetworkV2
+[`openraft-network-v1`]: https://crates.io/crates/openraft-network-v1
 
 
 ## feature-flag `bench`

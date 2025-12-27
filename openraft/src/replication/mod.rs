@@ -86,7 +86,7 @@ where
     /// Identifies the current in-flight replication batch for progress tracking.
     inflight_id: Option<InflightId>,
 
-    /// The `RaftNetwork` interface for replicating logs and heartbeat.
+    /// The `RaftNetworkV2` interface for replicating logs and heartbeat.
     network: Option<N::Network>,
 
     /// The log replication state tracking progress and matching logs for the follower.

@@ -38,7 +38,7 @@ The major components inside Openraft include:
     acknowledgments, which could otherwise lead to the Leader's lease expiration
     and subsequent step down.
 
--   **[`RaftNetwork`]**: This is a user-provided component that implements the
+-   **[`RaftNetworkV2`]**: This is a user-provided component that implements the
     network transport layer, e.g., sending logs to a remote node or sending a
     [`VoteRequest`] to a remote node.
 
@@ -56,8 +56,8 @@ The major components inside Openraft include:
 [`client_write`]:         `crate::raft::Raft::client_write`
 [`RaftLogStorage`]:       `crate::storage::RaftLogStorage`
 [`RaftStateMachine`]:     `crate::storage::RaftStateMachine`
-[`RaftNetwork`]:          `crate::network::RaftNetwork`
-[`append_entries`]:       `crate::network::RaftNetwork::append_entries`
+[`RaftNetworkV2`]:        `crate::network::v2::RaftNetworkV2`
+[`append_entries`]:       `crate::network::v2::RaftNetworkV2::append_entries`
 [`VoteRequest`]:          `crate::raft::VoteRequest`
 [`AppendEntriesRequest`]: `crate::raft::message::AppendEntriesRequest`
 
@@ -94,22 +94,22 @@ The major components inside Openraft include:
       |    !   |  |       |                        !   |     |                                                       
       |    '~~~|~~|~~~~~~~|~~~~~~~~~~~~~~~~~~~~~~~~'   |     |                                                       
       |        |  |       |                            |     |    
-      |        |  |       |     .~~~~~~~~~~~~~~~~~.    |     |                       
-      |        |  |       +------>HeartbeatWorker !    |     |                       
-      |        |  |       |     !  RaftNetwork---------------+                       
-      |        |  |       |     '~~~~~~~~~~~~~~~~~'    |     |                       
-      |        |  |       |     .~~~~~~~~~~~~~~~~~.    |     | RPC:                      
-      |        |  |       `------>HeartbeatWorker !    |     |   "vote()"                
-      |        |  |             !  RaftNetwork    !    |     |   "append_entries()"      
-      |        |  |             '~~~~~~~~~~~~~~~~~'    |     |   "snapshot()"    
+      |        |  |       |     .~~~~~~~~~~~~~~~~~.    |     |
+      |        |  |       +------>HeartbeatWorker !    |     |
+      |        |  |       |     !  RaftNetworkV2--------------+
+      |        |  |       |     '~~~~~~~~~~~~~~~~~'    |     |
+      |        |  |       |     .~~~~~~~~~~~~~~~~~.    |     | RPC:
+      |        |  |       `------>HeartbeatWorker !    |     |   "vote()"
+      |        |  |             !  RaftNetworkV2 !    |     |   "append_entries()"
+      |        |  |             '~~~~~~~~~~~~~~~~~'    |     |   "snapshot()"
       |        |  |                                    |     |   "transfer_leader()"
-      |        |  |     .~~~~~~~~~~~~~~~~~.            |     |    
-      |        |  `------>ReplicationCore !            |     |    
-      |   .----|--------!-o  RaftNetwork---------------------+    
-      |   |    |        '~~~~~~~~~~~~~~~~~'            |     |    
-      |   |    |        .~~~~~~~~~~~~~~~~~.            |     |    
-      |   |    `--------->ReplicationCore !            |     |    
-      |   +-------------!-o  RaftNetwork---------------------'    
+      |        |  |     .~~~~~~~~~~~~~~~~~.            |     |
+      |        |  `------>ReplicationCore !            |     |
+      |   .----|--------!-o  RaftNetworkV2-------------------+
+      |   |    |        '~~~~~~~~~~~~~~~~~'            |     |
+      |   |    |        .~~~~~~~~~~~~~~~~~.            |     |
+      |   |    `--------->ReplicationCore !            |     |
+      |   +-------------!-o  RaftNetworkV2-------------------'    
       |   |             '~~~~~~~~~~~~~~~~~'            |          
       |   |                                            | "apply()"
       |   |                                            | "build_snapshot()"

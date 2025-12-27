@@ -10,7 +10,6 @@ use openraft::error::RaftError;
 use openraft::error::RemoteError;
 use openraft::error::Unreachable;
 use openraft::network::RPCOption;
-use openraft::network::RaftNetwork;
 use openraft::network::RaftNetworkFactory;
 use openraft::raft::AppendEntriesRequest;
 use openraft::raft::AppendEntriesResponse;
@@ -18,6 +17,8 @@ use openraft::raft::InstallSnapshotRequest;
 use openraft::raft::InstallSnapshotResponse;
 use openraft::raft::VoteRequest;
 use openraft::raft::VoteResponse;
+use openraft_network_v1::Adapter;
+use openraft_network_v1::RaftNetwork;
 use reqwest::Client;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -30,12 +31,10 @@ pub struct NetworkFactory {}
 impl<C> RaftNetworkFactory<C> for NetworkFactory
 where
     C: RaftTypeConfig<Node = BasicNode>,
-    // RaftNetworkV2 is implemented automatically for RaftNetwork, but requires the following trait bounds.
-    // In V2 network, the snapshot has no constraints, but RaftNetwork assumes a Snapshot is a file-like
-    // object that can be seeked, read from, and written to.
+    // RaftNetwork requires the snapshot to be a file-like object that can be seeked, read from, and written to.
     <C as RaftTypeConfig>::SnapshotData: AsyncRead + AsyncWrite + AsyncSeek + Unpin,
 {
-    type Network = Network<C>;
+    type Network = Adapter<C, Network<C>>;
 
     #[tracing::instrument(level = "debug", skip_all)]
     async fn new_client(&mut self, target: C::NodeId, node: &BasicNode) -> Self::Network {
@@ -43,7 +42,8 @@ where
 
         let client = Client::builder().no_proxy().build().unwrap();
 
-        Network { addr, client, target }
+        let network = Network { addr, client, target };
+        Adapter::new(network)
     }
 }
 

@@ -22,7 +22,7 @@ Each commit message begins with a keyword indicating the type of change:
 
 Openraft supports several feature flags to customize functionality:
 
-**Default features**: `tokio-rt`, `adapt-network-v1`
+**Default features**: `tokio-rt`
 
 **Runtime**:
 - `tokio-rt` - Enable Tokio async runtime support (default)
@@ -33,9 +33,6 @@ Openraft supports several feature flags to customize functionality:
 
 **Error handling**:
 - `bt` - Enable error backtraces (requires nightly Rust)
-
-**Networking**:
-- `adapt-network-v1` - Automatically implement `RaftNetworkV2` for `RaftNetwork` implementations (default)
 
 **Development**:
 - `bench` - Enable benchmarks in unit tests (requires `RUSTC_BOOTSTRAP=1` with stable Rust)

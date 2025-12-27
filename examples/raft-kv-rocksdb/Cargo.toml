@@ -24,6 +24,7 @@ path = "src/bin/main.rs"
 client-http         = { path = "../client-http" }
 network-v1-http     = { path = "../network-v1-http" }
 openraft            = { path = "../../openraft", features = ["serde", "type-alias"] }
+openraft-network-v1 = { path = "../../network-v1" }
 openraft-rocksstore = { path = "../rocksstore" }
 
 actix-web          = { version = "4.0.0-rc.2" }

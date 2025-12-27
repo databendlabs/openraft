@@ -23,6 +23,6 @@ pub async fn append(app: Data<App>, req: Json<AppendEntriesRequest>) -> actix_we
 
 #[post("/snapshot")]
 pub async fn snapshot(app: Data<App>, req: Json<InstallSnapshotRequest>) -> actix_web::Result<impl Responder> {
-    let res = app.raft.install_snapshot(req.0).await.decompose().unwrap();
+    let res = app.raft.install_snapshot(req.0).await;
     Ok(Json(res))
 }

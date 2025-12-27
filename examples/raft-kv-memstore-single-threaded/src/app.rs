@@ -3,9 +3,11 @@ use std::rc::Rc;
 use futures::StreamExt;
 use futures::channel::mpsc;
 use futures::channel::oneshot;
+use openraft_network_v1::RaftV1;
 
 use crate::NodeId;
 use crate::StateMachineStore;
+use crate::TypeConfig;
 use crate::api;
 use crate::router::Router;
 use crate::typ::Raft;
@@ -19,7 +21,7 @@ pub type RequestRx = mpsc::Receiver<(Path, Payload, ResponseTx)>;
 /// Representation of an application state.
 pub struct App {
     pub id: NodeId,
-    pub raft: Raft,
+    pub raft: RaftV1<TypeConfig>,
 
     /// Receive application requests, Raft protocol request or management requests.
     pub rx: RequestRx,
@@ -36,6 +38,8 @@ impl App {
             let mut targets = router.targets.borrow_mut();
             targets.insert(id, tx);
         }
+
+        let raft = RaftV1::new(raft);
 
         Self {
             id,

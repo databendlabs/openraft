@@ -42,7 +42,7 @@ where
 
     inflight_id: InflightId,
 
-    /// Another `RaftNetwork` specific for snapshot replication.
+    /// Another `RaftNetworkV2` specific for snapshot replication.
     ///
     /// Snapshot transmitting is a long-running task and is processed in a separate task.
     network: N::Network,

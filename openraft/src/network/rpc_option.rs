@@ -1,9 +1,9 @@
 use std::time::Duration;
 
-/// An additional argument to the [`RaftNetwork`] methods to allow applications to customize
+/// An additional argument to the [`RaftNetworkV2`] methods to allow applications to customize
 /// networking behaviors.
 ///
-/// [`RaftNetwork`]: `crate::network::RaftNetwork`
+/// [`RaftNetworkV2`]: `crate::network::v2::RaftNetworkV2`
 #[derive(Clone, Debug)]
 pub struct RPCOption {
     /// The expected time-to-last for an RPC.
