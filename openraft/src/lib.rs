@@ -38,6 +38,13 @@ compile_error!(
      Please update your Cargo.toml to use `single-threaded` instead."
 );
 
+#[cfg(feature = "adapt-network-v1")]
+compile_error!(
+    "The feature flag `adapt-network-v1` is removed since `0.10.0`. \
+     For backward compatibility with the v1 `RaftNetwork` trait and chunk-based snapshot transport, \
+     use the `openraft-network-v1` crate instead."
+);
+
 pub extern crate openraft_macros;
 
 mod change_members;
@@ -132,8 +139,10 @@ pub use crate::membership::Membership;
 pub use crate::membership::StoredMembership;
 pub use crate::metrics::RaftMetrics;
 pub use crate::network::RPCTypes;
+#[allow(deprecated)]
 pub use crate::network::RaftNetwork;
 pub use crate::network::RaftNetworkFactory;
+pub use crate::network::RaftNetworkV2;
 pub use crate::node::BasicNode;
 pub use crate::node::EmptyNode;
 pub use crate::node::Node;

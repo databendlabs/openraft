@@ -439,7 +439,7 @@ impl<C: RaftTypeConfig> NetworkError<C> {
 /// This error is similar to [`NetworkError`] but with a key distinction: `Unreachable` advises a
 /// backoff period, whereas with [`NetworkError`], Openraft may attempt an immediate retry.
 ///
-/// [`backoff()`]: crate::network::RaftNetwork::backoff
+/// [`backoff()`]: crate::network::v2::RaftNetworkV2::backoff
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 #[error("Unreachable node: {source}")]

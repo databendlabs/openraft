@@ -8,6 +8,7 @@ use actix_web::middleware;
 use actix_web::middleware::Logger;
 use actix_web::web::Data;
 use openraft::Config;
+use openraft_network_v1::ChunkedRaft;
 
 use crate::app::App;
 use crate::network::api;
@@ -68,6 +69,9 @@ pub async fn start_example_raft_node(node_id: NodeId, http_addr: String) -> std:
     )
     .await
     .unwrap();
+
+    // Create a ChunkedRaft wrapper for chunk-based snapshot receiving
+    let raft = ChunkedRaft::new(raft);
 
     // Create an application that will store all the instances created above, this will
     // later be used on the actix-web services.

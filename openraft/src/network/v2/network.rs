@@ -40,15 +40,9 @@ use crate::type_config::alias::VoteOf;
 /// and introduces the `full_snapshot()` method that lets the application fully customize snapshot
 /// transmit.
 ///
-/// Compatibility: [`RaftNetworkV2`] is automatically implemented for [`RaftNetwork`]
-/// implementations. If it conflicts with your application, disable the [`adapt-network-v1`] feature
-/// flag.
-///
 /// [Ensure connection to correct node][correct-node]
 ///
-/// [`RaftNetwork`]: crate::network::v1::RaftNetwork
 /// [correct-node]: `crate::docs::cluster_control::dynamic_membership#ensure-connection-to-the-correct-node`
-/// [`adapt-network-v1`]: `crate::docs::feature_flags#adapt-network-v1`
 #[since(version = "0.10.0")]
 #[add_async_trait]
 pub trait RaftNetworkV2<C>: OptionalSend + OptionalSync + 'static
