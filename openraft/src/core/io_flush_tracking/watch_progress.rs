@@ -204,6 +204,7 @@ mod tests {
             = crate::impls::OneshotResponder<Self, T>
         where T: OptionalSend + 'static;
         type ErrorSource = anyerror::AnyError;
+        type UserData = ();
     }
 
     #[test]

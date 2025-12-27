@@ -19,6 +19,8 @@ pub mod responder;
 mod runtime_config_handle;
 mod stream_append;
 pub mod trigger;
+#[cfg(test)]
+mod user_data_test;
 mod watch_handle;
 
 use std::any::Any;
@@ -33,6 +35,7 @@ mod leader;
 use std::fmt::Debug;
 use std::future::Future;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::time::Duration;
 
 use core_state::CoreState;
@@ -222,7 +225,8 @@ macro_rules! declare_raft_types {
                 (SnapshotData   , , std::io::Cursor<Vec<u8>>                     ),
                 (Responder<T>   , , $crate::impls::ProgressResponder<Self, T> where T: $crate::OptionalSend + 'static     ),
                 (AsyncRuntime   , , $crate::impls::TokioRuntime                  ),
-                (ErrorSource    , , $crate::AnyError                              ),
+                (ErrorSource    , , $crate::AnyError                             ),
+                (UserData       , , ()                                           ),
             );
 
         }
@@ -541,10 +545,11 @@ where C: RaftTypeConfig
             rx_data_metrics,
             rx_server_metrics,
             progress_watcher,
-            tx_shutdown: std::sync::Mutex::new(Some(tx_shutdown)),
-            core_state: std::sync::Mutex::new(CoreState::Running(core_handle)),
+            tx_shutdown: Mutex::new(Some(tx_shutdown)),
+            core_state: Mutex::new(CoreState::Running(core_handle)),
 
             snapshot: C::mutex(None),
+            user_data: C::UserData::default(),
         };
 
         Ok(Self { inner: Arc::new(inner) })
@@ -568,6 +573,15 @@ where C: RaftTypeConfig
     /// Return the config of this Raft node.
     pub fn config(&self) -> &Arc<Config> {
         &self.inner.config
+    }
+
+    /// Access user-defined data associated with this Raft instance.
+    ///
+    /// This allows external crates to store singleton data that persists
+    /// for the lifetime of this Raft instance.
+    #[since(version = "0.10.0")]
+    pub fn user_data(&self) -> &C::UserData {
+        &self.inner.user_data
     }
 
     /// Return a copy of the runtime statistics.
