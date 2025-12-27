@@ -33,6 +33,7 @@ mod leader;
 use std::fmt::Debug;
 use std::future::Future;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::time::Duration;
 
 use core_state::CoreState;
@@ -61,6 +62,7 @@ use tracing::trace_span;
 
 pub use self::leader::Leader;
 pub use self::watch_handle::WatchChangeHandle;
+use crate::Extensions;
 use crate::OptionalSend;
 use crate::RaftNetworkFactory;
 use crate::RaftState;
@@ -222,7 +224,7 @@ macro_rules! declare_raft_types {
                 (SnapshotData   , , std::io::Cursor<Vec<u8>>                     ),
                 (Responder<T>   , , $crate::impls::ProgressResponder<Self, T> where T: $crate::OptionalSend + 'static     ),
                 (AsyncRuntime   , , $crate::impls::TokioRuntime                  ),
-                (ErrorSource    , , $crate::AnyError                              ),
+                (ErrorSource    , , $crate::AnyError                             ),
             );
 
         }
@@ -541,10 +543,11 @@ where C: RaftTypeConfig
             rx_data_metrics,
             rx_server_metrics,
             progress_watcher,
-            tx_shutdown: std::sync::Mutex::new(Some(tx_shutdown)),
-            core_state: std::sync::Mutex::new(CoreState::Running(core_handle)),
+            tx_shutdown: Mutex::new(Some(tx_shutdown)),
+            core_state: Mutex::new(CoreState::Running(core_handle)),
 
             snapshot: C::mutex(None),
+            extensions: Extensions::default(),
         };
 
         Ok(Self { inner: Arc::new(inner) })
@@ -568,6 +571,36 @@ where C: RaftTypeConfig
     /// Return the config of this Raft node.
     pub fn config(&self) -> &Arc<Config> {
         &self.inner.config
+    }
+
+    /// Access the extensions map for storing user-defined data.
+    ///
+    /// This allows external crates to store arbitrary types that persist
+    /// for the lifetime of this Raft instance. Each type can have at most
+    /// one value stored.
+    ///
+    /// Values must implement `Clone`. Use `Arc` for shared mutable state.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use std::sync::atomic::{AtomicU64, Ordering};
+    /// use std::sync::Arc;
+    ///
+    /// #[derive(Clone, Default)]
+    /// pub struct MyCounter(Arc<AtomicU64>);
+    ///
+    /// // Insert at startup
+    /// raft.extensions().insert(MyCounter::default());
+    ///
+    /// // Get a clone and use it
+    /// if let Some(counter) = raft.extensions().get::<MyCounter>() {
+    ///     counter.0.fetch_add(1, Ordering::Relaxed);
+    /// }
+    /// ```
+    #[since(version = "0.10.0")]
+    pub fn extensions(&self) -> &Extensions {
+        &self.inner.extensions
     }
 
     /// Return a copy of the runtime statistics.

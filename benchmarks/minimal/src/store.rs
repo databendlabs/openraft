@@ -69,8 +69,9 @@ impl RaftTypeConfig for TypeConfig {
     type Entry = Entry<Self>;
     type SnapshotData = Cursor<Vec<u8>>;
     type Responder<T>
-        = openraft::impls::OneshotResponder<Self, T>
-    where T: Send + 'static;
+    = openraft::impls::OneshotResponder<Self, T>
+    where
+        T: Send + 'static;
     type AsyncRuntime = openraft::impls::TokioRuntime;
     type ErrorSource = openraft::AnyError;
 }
@@ -254,7 +255,9 @@ impl RaftLogStorage<TypeConfig> for Arc<LogStore> {
 
     #[tracing::instrument(level = "trace", skip_all)]
     async fn append<I>(&mut self, entries: I, callback: IOFlushed<TypeConfig>) -> Result<(), io::Error>
-    where I: IntoIterator<Item = Entry<TypeConfig>> + Send {
+    where
+        I: IntoIterator<Item=Entry<TypeConfig>> + Send,
+    {
         {
             let mut log = self.log.write().await;
             log.extend(entries.into_iter().map(|entry| (entry.index(), entry)));
@@ -279,7 +282,9 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
     }
 
     async fn apply<Strm>(&mut self, mut entries: Strm) -> Result<(), io::Error>
-    where Strm: Stream<Item = Result<EntryResponder<TypeConfig>, io::Error>> + Unpin + OptionalSend {
+    where
+        Strm: Stream<Item=Result<EntryResponder<TypeConfig>, io::Error>> + Unpin + OptionalSend,
+    {
         use futures::TryStreamExt;
 
         let mut sm = self.sm.write().await;
@@ -319,8 +324,7 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
 
         // Update the state machine.
         {
-            let new_sm: StateMachine =
-                serde_json::from_slice(&new_snapshot.data).map_err(io::Error::other)?;
+            let new_sm: StateMachine = serde_json::from_slice(&new_snapshot.data).map_err(io::Error::other)?;
             let mut sm = self.sm.write().await;
             *sm = new_sm;
         }

@@ -1,10 +1,12 @@
 use std::future::Future;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::time::Duration;
 
 use tracing::Level;
 
 use crate::Config;
+use crate::Extensions;
 use crate::OptionalSend;
 use crate::RaftMetrics;
 use crate::RaftTypeConfig;
@@ -46,13 +48,18 @@ where C: RaftTypeConfig
     pub(in crate::raft) rx_server_metrics: WatchReceiverOf<C, RaftServerMetrics<C>>,
     pub(in crate::raft) progress_watcher: IoProgressWatcher<C>,
 
-    pub(in crate::raft) tx_shutdown: std::sync::Mutex<Option<OneshotSenderOf<C, ()>>>,
-    pub(in crate::raft) core_state: std::sync::Mutex<CoreState<C>>,
+    pub(in crate::raft) tx_shutdown: Mutex<Option<OneshotSenderOf<C, ()>>>,
+    pub(in crate::raft) core_state: Mutex<CoreState<C>>,
 
     /// The ongoing snapshot transmission.
     #[cfg_attr(not(feature = "tokio-rt"), allow(dead_code))]
     // This field will only be read when feature tokio-rt is on
     pub(in crate::raft) snapshot: MutexOf<C, Option<crate::network::snapshot_transport::Streaming<C>>>,
+
+    /// Type-map for storing user-defined extension data.
+    ///
+    /// External crates can access this via [`Raft::extensions()`](`crate::Raft::extensions`).
+    pub(in crate::raft) extensions: Extensions,
 }
 
 impl<C> RaftInner<C>

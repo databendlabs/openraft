@@ -54,6 +54,7 @@ mod summary;
 mod try_as_ref;
 
 pub(crate) mod engine;
+mod extensions;
 pub(crate) mod log_id_range;
 pub(crate) mod proposer;
 pub(crate) mod raft_state;
@@ -122,6 +123,7 @@ pub use crate::config::SnapshotPolicy;
 pub use crate::core::ServerState;
 pub use crate::entry::Entry;
 pub use crate::entry::EntryPayload;
+pub use crate::extensions::Extensions;
 pub use crate::log_id::LogId;
 pub use crate::log_id::LogIdOptionExt;
 pub use crate::log_id::LogIndexOptionExt;
