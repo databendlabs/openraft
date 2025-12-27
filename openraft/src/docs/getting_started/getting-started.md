@@ -248,37 +248,6 @@ When the server receives a Raft RPC, it simply passes it to its `raft` instance 
 For a real-world implementation, you may want to use [Tonic gRPC](https://github.com/hyperium/tonic) to handle gRPC-based communication between Raft nodes. The [databend-meta](https://github.com/databendlabs/databend/blob/6603392a958ba8593b1f4b01410bebedd484c6a9/metasrv/src/network.rs#L89) project provides an excellent real-world example of a Tonic gRPC-based Raft network implementation.
 
 
-> ### Troubleshooting: implementation conflicts (for [`RaftNetwork`] users only)
->
-> **Note:** This section applies only to users migrating from or still using the
-> original [`RaftNetwork`] trait. If you implement [`RaftNetworkV2`] directly,
-> you can skip this section.
->
-> When implementing `RaftNetworkV2<T>` for a generic type parameter `T`, you might
-> encounter a compiler error about conflicting implementations. This happens
-> because Openraft provides a blanket implementation that adapts [`RaftNetwork`]
-> implementations to [`RaftNetworkV2`]. For example:
->
-> ```rust,ignore
-> pub trait RaftTypeConfigExt: openraft::RaftTypeConfig {}
-> pub struct YourNetworkType {}
-> impl<T: RaftTypeConfigExt> RaftNetworkV2<T> for YourNetworkType {}
-> ```
->
-> You might encounter the following error:
->
-> ```text
-> conflicting implementations of trait `RaftNetworkV2<_>` for type `YourNetworkType`
-> conflicting implementation in crate `openraft`:
-> - impl<C, V1> RaftNetworkV2<C> for V1
-> ```
->
-> If you encounter this error, you can disable the feature `adapt-network-v1` to
-> remove the default implementation for [`RaftNetworkV2`].
->
-> [`RaftNetwork`]: crate::network::v1::RaftNetwork
-
-
 ### Implement [`RaftNetworkFactory`].
 
 [`RaftNetworkFactory`] is a singleton responsible for creating [`RaftNetworkV2`] instances for each replication target node.

@@ -20,10 +20,11 @@ name = "raft-key-value"
 path = "src/bin/main.rs"
 
 [dependencies]
-client-http     = { path = "../client-http" }
-mem-log         = { path = "../mem-log", features = [] }
-network-v1-http = { path = "../network-v1-http" }
-openraft        = { path = "../../openraft", features = ["serde", "type-alias"] }
+client-http        = { path = "../client-http" }
+mem-log            = { path = "../mem-log", features = [] }
+network-v1-http    = { path = "../network-v1-http" }
+openraft           = { path = "../../openraft", features = ["serde", "type-alias"] }
+openraft-network-v1 = { path = "../../network-v1" }
 
 actix-web          = { version = "4.0.0-rc.2" }
 clap               = { version = "4.1.11", features = ["derive", "env"] }
