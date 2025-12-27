@@ -13,7 +13,7 @@ use crate::engine::Command;
 /// or `elect` from a timer, and outputs `command`, such as
 /// `append-entry-to-storage`, or `commit-entry-at-index-5` to a runtime to execute.
 ///
-/// A `RaftRuntime` talks to `RaftLogStorage` and `RaftNetwork` to get things done.
+/// A `RaftRuntime` talks to `RaftLogStorage` and `RaftNetworkV2` to get things done.
 ///
 /// The workflow of writing something through raft protocol with engine and runtime would be like
 /// this:

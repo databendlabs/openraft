@@ -9,6 +9,7 @@ use openraft::raft::AppendEntriesRequest;
 use openraft::raft::InstallSnapshotRequest;
 use openraft::storage::Snapshot;
 use openraft::storage::SnapshotMeta;
+use openraft_network_v1::RaftV1;
 
 use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
@@ -35,6 +36,7 @@ async fn install_snapshot_lower_vote() -> Result<()> {
     log_index = router.new_cluster(btreeset! {0}, btreeset! {}).await?;
 
     let (n0, _, _) = router.remove_node(0).unwrap();
+    let raft_v1 = RaftV1::new(n0.clone());
     let make_req = || InstallSnapshotRequest {
         vote: Vote::new_committed(2, 1),
         meta: SnapshotMeta {
@@ -66,7 +68,7 @@ async fn install_snapshot_lower_vote() -> Result<()> {
         let mut req = make_req();
         req.vote = Vote::new_committed(1, 1);
 
-        let got = n0.install_snapshot(req).await?;
+        let got = raft_v1.install_snapshot(req).await?;
         assert_eq!(Vote::new_committed(2, 1), got.vote);
 
         let snapshot_meta = n0.with_raft_state(|st| st.snapshot_meta.clone()).await?;
