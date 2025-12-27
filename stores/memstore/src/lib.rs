@@ -89,6 +89,20 @@ mod leader_id_mode {
     pub use openraft::impls::leader_id_std::LeaderId;
 }
 
+/// Counter for testing interior mutability in UserData.
+#[derive(Default)]
+pub struct Counter(AtomicU64);
+
+impl Counter {
+    pub fn inc(&self) -> u64 {
+        self.0.fetch_add(1, Ordering::SeqCst)
+    }
+
+    pub fn get(&self) -> u64 {
+        self.0.load(Ordering::SeqCst)
+    }
+}
+
 openraft::declare_raft_types!(
     /// Declare the type configuration for `MemStore`.
     pub TypeConfig:
@@ -96,6 +110,7 @@ openraft::declare_raft_types!(
         R = ClientResponse,
         Node = (),
         LeaderId = leader_id_mode::LeaderId<TypeConfig>,
+        UserData = Counter,
 );
 
 /// The application snapshot type which the `MemStore` works with.
