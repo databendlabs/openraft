@@ -544,7 +544,7 @@ where C: RaftTypeConfig
             tx_shutdown: std::sync::Mutex::new(Some(tx_shutdown)),
             core_state: std::sync::Mutex::new(CoreState::Running(core_handle)),
 
-            snapshot: C::mutex(None),
+            snapshot: crate::network::snapshot_transport::SharedStreaming::new(),
         };
 
         Ok(Self { inner: Arc::new(inner) })
@@ -864,39 +864,7 @@ where C: RaftTypeConfig
     where
         C::SnapshotData: tokio::io::AsyncRead + tokio::io::AsyncWrite + tokio::io::AsyncSeek + Unpin,
     {
-        use crate::async_runtime::mutex::Mutex;
-        use crate::vote::raft_vote::RaftVoteExt;
-
-        tracing::debug!("Raft::install_snapshot(): req: {}", req);
-
-        let req_vote = req.vote.clone();
-        let my_vote = self.with_raft_state(|state| state.vote_ref().clone()).await?;
-        let resp = InstallSnapshotResponse { vote: my_vote.clone() };
-
-        // Check vote.
-        // It is not mandatory because it is just a read operation
-        // but prevent unnecessary snapshot transfer early.
-        {
-            if req_vote.as_ref_vote() >= my_vote.as_ref_vote() {
-                // Ok
-            } else {
-                tracing::info!("vote {} is rejected by local vote: {}", req_vote, my_vote);
-                return Ok(resp);
-            }
-        }
-
-        let finished_snapshot = {
-            use crate::network::snapshot_transport::Chunked;
-
-            let mut streaming = self.inner.snapshot.lock().await;
-            Chunked::<C>::receive_snapshot(&mut *streaming, self, req).await?
-        };
-
-        if let Some(snapshot) = finished_snapshot {
-            let resp = self.install_full_snapshot(req_vote, snapshot).await?;
-            return Ok(resp.into());
-        }
-        Ok(resp)
+        self.inner.snapshot.receive(self, req).await
     }
 
     /// Get the ID of the current leader from this Raft node.

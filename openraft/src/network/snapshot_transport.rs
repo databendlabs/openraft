@@ -16,6 +16,7 @@ mod tokio_rt {
     use tokio::io::AsyncWriteExt;
 
     use super::Chunked;
+    use super::SharedStreaming;
     use super::Streaming;
     use crate::ErrorSubject;
     use crate::ErrorVerb;
@@ -33,6 +34,7 @@ mod tokio_rt {
     use crate::error::StreamingError;
     use crate::network::RPCOption;
     use crate::raft::InstallSnapshotRequest;
+    use crate::raft::InstallSnapshotResponse;
     use crate::raft::SnapshotResponse;
     use crate::storage::Snapshot;
     use crate::type_config::TypeConfigExt;
@@ -168,22 +170,83 @@ mod tokio_rt {
                 offset += n_read as u64;
             }
         }
+    }
 
-        /// Receive a chunk of snapshot. If the snapshot is done receiving, return the snapshot.
+    impl<C> Streaming<C>
+    where
+        C: RaftTypeConfig,
+        C::SnapshotData: tokio::io::AsyncWrite + tokio::io::AsyncSeek + Unpin,
+    {
+        /// Receive a chunk of snapshot data.
+        pub async fn receive(&mut self, req: InstallSnapshotRequest<C>) -> Result<bool, StorageError<C>> {
+            // TODO: check id?
+
+            // Always seek to the target offset if not an exact match.
+            if req.offset != self.offset {
+                if let Err(err) = self.snapshot_data.seek(SeekFrom::Start(req.offset)).await {
+                    return Err(StorageError::from_io_error(
+                        ErrorSubject::Snapshot(Some(req.meta.signature())),
+                        ErrorVerb::Seek,
+                        err,
+                    ));
+                }
+                self.offset = req.offset;
+            }
+
+            // Write the next segment & update offset.
+            let res = self.snapshot_data.write_all(&req.data).await;
+            if let Err(err) = res {
+                return Err(StorageError::from_io_error(
+                    ErrorSubject::Snapshot(Some(req.meta.signature())),
+                    ErrorVerb::Write,
+                    err,
+                ));
+            }
+            self.offset += req.data.len() as u64;
+            Ok(req.done)
+        }
+    }
+
+    impl<C: RaftTypeConfig> SharedStreaming<C>
+    where C::SnapshotData: tokio::io::AsyncRead + tokio::io::AsyncWrite + tokio::io::AsyncSeek + Unpin
+    {
+        /// Receive a chunk of snapshot and handle the complete snapshot installation.
         ///
-        /// This method requires the caller to provide:
-        /// - The receiving state `streaming` maintained by the caller.
-        /// - `Raft::begin_receiving_snapshot()` to create a `SnapshotData` for receiving data.
-        pub async fn receive_snapshot(
-            streaming: &mut Option<Streaming<C>>,
+        /// This method:
+        /// 1. Checks the vote to reject stale requests early
+        /// 2. Locks the internal mutex and processes the chunk
+        /// 3. When all chunks are received, installs the snapshot to the state machine
+        ///
+        /// This is a complete handler for the chunked snapshot protocol that can be used
+        /// as a plugin to adapt the old InstallSnapshot RPC.
+        pub async fn receive(
+            &self,
             raft: &Raft<C>,
             req: InstallSnapshotRequest<C>,
-        ) -> Result<Option<Snapshot<C>>, RaftError<C, InstallSnapshotError>> {
+        ) -> Result<InstallSnapshotResponse<C>, RaftError<C, InstallSnapshotError>> {
+            use crate::async_runtime::mutex::Mutex;
+
+            tracing::debug!("SharedStreaming::receive(): req: {}", req);
+
+            let req_vote = req.vote.clone();
+            let my_vote = raft.with_raft_state(|state| state.vote_ref().clone()).await?;
+            let resp = InstallSnapshotResponse { vote: my_vote.clone() };
+
+            // Check vote.
+            // It is not mandatory because it is just a read operation
+            // but prevents unnecessary snapshot transfer early.
+            if req_vote.as_ref_vote() < my_vote.as_ref_vote() {
+                tracing::info!("vote {} is rejected by local vote: {}", req_vote, my_vote);
+                return Ok(resp);
+            }
+
             let snapshot_id = &req.meta.snapshot_id;
             let snapshot_meta = req.meta.clone();
             let done = req.done;
 
             tracing::info!("{}: req: {}", func_name!(), req);
+
+            let mut streaming = self.streaming.lock().await;
 
             let curr_id = streaming.as_ref().map(|s| s.snapshot_id());
 
@@ -225,45 +288,12 @@ mod tokio_rt {
                 data.shutdown().await.sto_write_snapshot(Some(snapshot_meta.signature()))?;
 
                 tracing::info!("finished streaming snapshot: {:?}", snapshot_meta);
-                return Ok(Some(Snapshot::new(snapshot_meta, data)));
+                let snapshot = Snapshot::new(snapshot_meta, data);
+                let resp = raft.install_full_snapshot(req_vote, snapshot).await?;
+                return Ok(resp.into());
             }
 
-            Ok(None)
-        }
-    }
-
-    impl<C> Streaming<C>
-    where
-        C: RaftTypeConfig,
-        C::SnapshotData: tokio::io::AsyncWrite + tokio::io::AsyncSeek + Unpin,
-    {
-        /// Receive a chunk of snapshot data.
-        pub async fn receive(&mut self, req: InstallSnapshotRequest<C>) -> Result<bool, StorageError<C>> {
-            // TODO: check id?
-
-            // Always seek to the target offset if not an exact match.
-            if req.offset != self.offset {
-                if let Err(err) = self.snapshot_data.seek(SeekFrom::Start(req.offset)).await {
-                    return Err(StorageError::from_io_error(
-                        ErrorSubject::Snapshot(Some(req.meta.signature())),
-                        ErrorVerb::Seek,
-                        err,
-                    ));
-                }
-                self.offset = req.offset;
-            }
-
-            // Write the next segment & update offset.
-            let res = self.snapshot_data.write_all(&req.data).await;
-            if let Err(err) = res {
-                return Err(StorageError::from_io_error(
-                    ErrorSubject::Snapshot(Some(req.meta.signature())),
-                    ErrorVerb::Write,
-                    err,
-                ));
-            }
-            self.offset += req.data.len() as u64;
-            Ok(req.done)
+            Ok(resp)
         }
     }
 }
@@ -274,25 +304,12 @@ use openraft_macros::since;
 
 use crate::RaftTypeConfig;
 use crate::SnapshotId;
+use crate::type_config::alias::MutexOf;
 
-/// Send and Receive snapshot by chunks.
+/// Chunk-based snapshot sender.
 ///
-/// Example usage:
-/// ```ignore
-/// struct App<C> {
-///     raft: Raft<C>
-///     streaming: Option<Streaming<C>>,
-/// }
-///
-/// impl<C> App<C> {
-///     fn handle_install_snapshot_request(&mut self, req: InstallSnapshotRequest<C>) {
-///         let res = Chunked::<C>::receive_snapshot(&mut self.streaming, &self.raft, req).await?;
-///         if let Some(snapshot) = res {
-///             self.raft.install_full_snapshot(vote, snapshot).await?;
-///         }
-///     }
-/// }
-/// ```
+/// Use [`Chunked::send_snapshot()`] to send a snapshot to a remote node.
+/// For receiving snapshots, use [`SharedStreaming`].
 pub struct Chunked<C> {
     _phantom: PhantomData<C>,
 }
@@ -334,6 +351,48 @@ where C: RaftTypeConfig
     /// Consumes the `Streaming` and returns the snapshot data.
     pub fn into_snapshot_data(self) -> C::SnapshotData {
         self.snapshot_data
+    }
+}
+
+/// A shared, mutex-protected streaming state for receiving snapshot chunks.
+///
+/// This wrapper allows applications to handle snapshot receiving without
+/// needing a mutable reference to the streaming state. It contains an
+/// `Option<Streaming<C>>` protected by an async mutex.
+///
+/// Example usage:
+/// ```ignore
+/// struct App<C: RaftTypeConfig> {
+///     raft: Raft<C>,
+///     streaming: SharedStreaming<C>,
+/// }
+///
+/// impl<C: RaftTypeConfig> App<C> {
+///     async fn handle_install_snapshot_request(&self, req: InstallSnapshotRequest<C>) {
+///         let snapshot = self.streaming.receive(&self.raft, req).await?;
+///         if let Some(snapshot) = snapshot {
+///             self.raft.install_full_snapshot(vote, snapshot).await?;
+///         }
+///     }
+/// }
+/// ```
+pub struct SharedStreaming<C: RaftTypeConfig> {
+    streaming: MutexOf<C, Option<Streaming<C>>>,
+}
+
+impl<C: RaftTypeConfig> Default for SharedStreaming<C> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<C: RaftTypeConfig> SharedStreaming<C> {
+    /// Create a new empty shared streaming state.
+    pub fn new() -> Self {
+        use crate::type_config::TypeConfigExt;
+        Self {
+            streaming: C::mutex(None),
+        }
     }
 }
 
