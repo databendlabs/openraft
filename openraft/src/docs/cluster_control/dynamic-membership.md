@@ -121,7 +121,7 @@ Exercise additional care when:
 [`Raft::change_membership()`]: `crate::Raft::change_membership`
 [`ChangeMembers::SetNodes`]: `crate::change_members::ChangeMembers::SetNodes`
 [`RaftNetworkFactory`]: `crate::network::RaftNetworkFactory`
-[`RaftNetworkV2`]: `crate::network::v2::RaftNetworkV2`
+[`RaftNetworkV2`]: `crate::network::RaftNetworkV2`
 [`joint_consensus`]: `crate::docs::cluster_control::joint_consensus`
 [`node_lifecycle`]: `crate::docs::cluster_control::node_lifecycle`
 [`monitoring_maintenance`]: `crate::docs::cluster_control::monitoring_maintenance`
