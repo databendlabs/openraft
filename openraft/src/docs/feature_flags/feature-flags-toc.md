@@ -1,4 +1,4 @@
-- [feature-flag `adapt-network-v1`](#feature-flag-adapt-network-v1)
+- [feature-flag `adapt-network-v1` (removed)](#feature-flag-adapt-network-v1-removed)
 - [feature-flag `bench`](#feature-flag-bench)
 - [feature-flag `bt`](#feature-flag-bt)
 - [feature-flag `compat`](#feature-flag-compat)
