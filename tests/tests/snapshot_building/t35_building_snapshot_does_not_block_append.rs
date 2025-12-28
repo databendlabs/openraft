@@ -5,9 +5,6 @@ use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
 use openraft::Vote;
-use openraft::network::RPCOption;
-use openraft::network::RaftNetworkFactory;
-use openraft::network::v2::RaftNetworkV2;
 use openraft::raft::AppendEntriesRequest;
 use openraft::testing::blank_ent;
 use openraft::type_config::TypeConfigExt;
@@ -70,9 +67,8 @@ async fn building_snapshot_does_not_block_append() -> Result<()> {
             leader_commit: None,
         };
 
-        let mut cli = router.new_client(1, &()).await;
-        let option = RPCOption::new(Duration::from_millis(1_000));
-        let fu = cli.append_entries(rpc, option);
+        let node = router.get_raft_handle(&1)?;
+        let fu = node.append_entries(rpc);
         let fu = TypeConfig::timeout(Duration::from_millis(500), fu);
         let resp = fu.await??;
         assert!(resp.is_success());
