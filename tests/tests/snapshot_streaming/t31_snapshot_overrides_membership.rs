@@ -11,9 +11,6 @@ use openraft::Membership;
 use openraft::RaftLogReader;
 use openraft::SnapshotPolicy;
 use openraft::Vote;
-use openraft::network::RPCOption;
-use openraft::network::RaftNetworkFactory;
-use openraft::network::v2::RaftNetworkV2;
 use openraft::raft::AppendEntriesRequest;
 use openraft::storage::RaftLogStorage;
 use openraft::storage::RaftStateMachine;
@@ -87,9 +84,9 @@ async fn snapshot_overrides_membership() -> Result<()> {
                 }],
                 leader_commit: Some(log_id(0, 0, 0)),
             };
-            let option = RPCOption::new(Duration::from_millis(1_000));
 
-            router.new_client(1, &()).await.append_entries(req, option).await?;
+            let node = router.get_raft_handle(&1)?;
+            node.append_entries(req).await?;
 
             tracing::info!(log_index, "--- check that learner membership is affected");
             {

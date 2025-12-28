@@ -13,9 +13,6 @@ use openraft::ServerState;
 use openraft::SnapshotPolicy;
 use openraft::StorageHelper;
 use openraft::Vote;
-use openraft::network::RPCOption;
-use openraft::network::RaftNetworkFactory;
-use openraft::network::v2::RaftNetworkV2;
 use openraft::raft::AppendEntriesRequest;
 use openraft::storage::RaftLogStorage;
 use openraft::storage::RaftLogStorageExt;
@@ -112,9 +109,9 @@ async fn snapshot_delete_conflicting_logs() -> Result<()> {
             ],
             leader_commit: Some(log_id(1, 0, 2)),
         };
-        let option = RPCOption::new(Duration::from_millis(1_000));
 
-        router.new_client(1, &()).await.append_entries(req, option).await?;
+        let node = router.get_raft_handle(&1)?;
+        node.append_entries(req).await?;
 
         tracing::info!(log_index, "--- check that learner membership is affected");
         {
@@ -143,14 +140,9 @@ async fn snapshot_delete_conflicting_logs() -> Result<()> {
         };
 
         let vote = sto0.read_vote().await?.unwrap();
-        let option = RPCOption::new(Duration::from_millis(1_000));
 
-        #[allow(deprecated)]
-        router
-            .new_client(1, &())
-            .await
-            .full_snapshot(vote, snap, futures::future::pending(), option)
-            .await?;
+        let node = router.get_raft_handle(&1)?;
+        node.install_full_snapshot(vote, snap).await?;
 
         tracing::info!(log_index, "--- DONE installing snapshot");
 
