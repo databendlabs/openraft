@@ -1,6 +1,5 @@
 //! Client-side chunk-based snapshot sending.
 
-use std::cmp::Ordering;
 use std::future::Future;
 use std::io::SeekFrom;
 use std::time::Duration;
@@ -22,24 +21,10 @@ use openraft::raft::SnapshotResponse;
 use openraft::storage::Snapshot;
 use openraft::type_config::TypeConfigExt;
 use openraft::type_config::alias::VoteOf;
-use openraft::vote::RaftVote;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncSeekExt;
 
 use crate::RaftNetwork;
-
-/// Compare two votes using their public API.
-fn vote_greater<C: RaftTypeConfig>(a: &C::Vote, b: &C::Vote) -> bool {
-    match PartialOrd::partial_cmp(a.leader_id(), b.leader_id()) {
-        Some(Ordering::Greater) => true,
-        Some(Ordering::Equal) => a.is_committed() && !b.is_committed(),
-        Some(Ordering::Less) => false,
-        None => {
-            // If two leader_ids are not comparable, use committed status
-            a.is_committed() && !b.is_committed()
-        }
-    }
-}
 
 /// Sends snapshots in chunks via `RaftNetwork::install_snapshot()`.
 ///
@@ -159,7 +144,7 @@ where
                 }
             };
 
-            if vote_greater::<C>(&resp.vote, &vote) {
+            if resp.vote != vote {
                 // Unfinished, return a response with a higher vote.
                 // The caller checks the vote and return a HigherVote error.
                 return Ok(SnapshotResponse::new(resp.vote));

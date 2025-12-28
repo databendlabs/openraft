@@ -1,12 +1,19 @@
 //! Streaming state for receiving snapshot chunks.
 
+use std::io::SeekFrom;
 use std::sync::Arc;
 
+use openraft::ErrorSubject;
+use openraft::ErrorVerb;
 use openraft::RaftTypeConfig;
 use openraft::SnapshotId;
+use openraft::StorageError;
+use openraft::raft::InstallSnapshotRequest;
 use openraft::type_config::TypeConfigExt;
 use openraft::type_config::alias::MutexOf;
 use openraft_macros::since;
+use tokio::io::AsyncSeekExt;
+use tokio::io::AsyncWriteExt;
 
 /// The Raft node is streaming in a snapshot from the leader.
 #[since(version = "0.10.0")]
@@ -14,7 +21,7 @@ pub struct Streaming<C>
 where C: RaftTypeConfig
 {
     /// The offset of the last byte written to the snapshot.
-    pub(crate) offset: u64,
+    offset: u64,
 
     /// The ID of the snapshot being written.
     snapshot_id: SnapshotId,
@@ -44,20 +51,50 @@ where C: RaftTypeConfig
     pub fn into_snapshot_data(self) -> C::SnapshotData {
         self.snapshot_data
     }
+}
 
-    /// Get mutable reference to snapshot data (for writing chunks).
-    pub(crate) fn snapshot_data_mut(&mut self) -> &mut C::SnapshotData {
-        &mut self.snapshot_data
+impl<C> Streaming<C>
+where
+    C: RaftTypeConfig,
+    C::SnapshotData: tokio::io::AsyncWrite + tokio::io::AsyncSeek + Unpin,
+{
+    /// Receive a single chunk of snapshot data.
+    ///
+    /// Writes the chunk data to the snapshot at the specified offset.
+    /// Returns `true` if this was the final chunk.
+    pub async fn receive_chunk(&mut self, req: &InstallSnapshotRequest<C>) -> Result<bool, StorageError<C>> {
+        // Seek to the target offset if not an exact match.
+        if req.offset != self.offset {
+            if let Err(err) = self.snapshot_data.seek(SeekFrom::Start(req.offset)).await {
+                return Err(StorageError::from_io_error(
+                    ErrorSubject::Snapshot(Some(req.meta.signature())),
+                    ErrorVerb::Seek,
+                    err,
+                ));
+            }
+            self.offset = req.offset;
+        }
+
+        // Write the chunk data.
+        if let Err(err) = self.snapshot_data.write_all(&req.data).await {
+            return Err(StorageError::from_io_error(
+                ErrorSubject::Snapshot(Some(req.meta.signature())),
+                ErrorVerb::Write,
+                err,
+            ));
+        }
+        self.offset += req.data.len() as u64;
+
+        Ok(req.done)
     }
 }
 
-/// Shared state for receiving snapshot chunks, stored in [`Extensions`].
+/// Shared state for receiving snapshot chunks, stored via [`Raft::extension()`].
 ///
 /// This wrapper holds the ongoing snapshot reception state and is stored
-/// in [`Raft::extensions()`] to track chunk-based snapshot transfers.
+/// via [`Raft::extension()`] to track chunk-based snapshot transfers.
 ///
-/// [`Extensions`]: openraft::Extensions
-/// [`Raft::extensions()`]: openraft::Raft::extensions
+/// [`Raft::extension()`]: openraft::Raft::extension
 #[derive(Clone)]
 pub struct StreamingState<C: RaftTypeConfig> {
     pub(crate) streaming: Arc<MutexOf<C, Option<Streaming<C>>>>,
