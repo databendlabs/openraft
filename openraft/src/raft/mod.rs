@@ -577,7 +577,7 @@ where C: RaftTypeConfig
     /// for the lifetime of this Raft instance. Each type can have at most
     /// one value stored.
     ///
-    /// Values must implement `Clone`. Use `Arc` for shared mutable state.
+    /// Values must implement `Clone` and `Default`. Use `Arc` for shared mutable state.
     ///
     /// # Example
     ///
@@ -588,17 +588,23 @@ where C: RaftTypeConfig
     /// #[derive(Clone, Default)]
     /// pub struct MyCounter(Arc<AtomicU64>);
     ///
-    /// // Insert at startup
-    /// raft.extensions().insert(MyCounter::default());
-    ///
-    /// // Get a clone and use it
-    /// if let Some(counter) = raft.extensions().get::<MyCounter>() {
-    ///     counter.0.fetch_add(1, Ordering::Relaxed);
-    /// }
+    /// // Get a clone (auto-inserts default if not present)
+    /// let counter = raft.extension::<MyCounter>();
+    /// counter.0.fetch_add(1, Ordering::Relaxed);
     /// ```
     #[since(version = "0.10.0")]
     pub fn extensions(&self) -> &Extensions {
         &self.inner.extensions
+    }
+
+    /// Get a clone of a user-defined extension value.
+    ///
+    /// This is a convenience wrapper for `self.extensions().get::<T>()`.
+    /// If no value exists, `T::default()` is inserted and a clone is returned.
+    #[since(version = "0.10.0")]
+    pub fn extension<T>(&self) -> T
+    where T: OptionalSend + Clone + Default + 'static {
+        self.inner.extensions.get::<T>()
     }
 
     /// Return a copy of the runtime statistics.
@@ -920,7 +926,7 @@ where C: RaftTypeConfig
             use crate::network::snapshot_transport::Chunked;
             use crate::network::snapshot_transport::StreamingState;
 
-            let streaming_state = self.inner.extensions.get_or_default::<StreamingState<C>>();
+            let streaming_state = self.inner.extensions.get::<StreamingState<C>>();
             let mut streaming = streaming_state.streaming.lock().await;
             Chunked::<C>::receive_snapshot(&mut *streaming, self, req).await?
         };
