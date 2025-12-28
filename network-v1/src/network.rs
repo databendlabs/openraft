@@ -76,8 +76,8 @@ where C: RaftTypeConfig
     /// The backoff is an infinite iterator that returns the ith sleep interval before the ith
     /// retry. The returned instance will be dropped if a successful RPC is made.
     ///
-    /// By default, it returns a constant backoff of 500 ms.
+    /// By default, it returns a constant backoff of 200 ms.
     fn backoff(&self) -> Backoff {
-        Backoff::new(std::iter::repeat(Duration::from_millis(500)))
+        Backoff::new(std::iter::repeat(Duration::from_millis(200)))
     }
 }
