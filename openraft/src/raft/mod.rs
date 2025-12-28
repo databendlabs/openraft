@@ -920,7 +920,7 @@ where C: RaftTypeConfig
             use crate::network::snapshot_transport::Chunked;
             use crate::network::snapshot_transport::StreamingState;
 
-            let streaming_state = self.inner.extensions.get_or_default::<StreamingState<C>>();
+            let streaming_state = self.inner.extensions.get::<StreamingState<C>>();
             let mut streaming = streaming_state.streaming.lock().await;
             Chunked::<C>::receive_snapshot(&mut *streaming, self, req).await?
         };

@@ -44,11 +44,8 @@ async fn test_extensions_with_counter() -> Result<()> {
 
     let raft = router.get_raft_handle(&0)?;
 
-    // Insert counter into extensions
-    raft.extensions().insert(Counter::default());
-
-    // Access counter and verify it's initialized to 0
-    let counter = raft.extensions().get::<Counter>().expect("counter should exist");
+    // Get counter from extensions (auto-inserts default if not present)
+    let counter = raft.extensions().get::<Counter>();
     assert_eq!(counter.get(), 0, "counter should start at 0");
 
     // Test interior mutability
@@ -58,21 +55,15 @@ async fn test_extensions_with_counter() -> Result<()> {
     assert_eq!(counter.get(), 3, "counter should be 3 after 3 increments");
 
     // Get another clone - shares the same Arc
-    let counter2 = raft.extensions().get::<Counter>().expect("counter should still exist");
+    let counter2 = raft.extensions().get::<Counter>();
     assert_eq!(counter2.get(), 3, "should see the same counter state");
 
     // More increments
     counter2.inc();
     assert_eq!(counter2.get(), 4, "should see the increment");
 
-    // Test that non-existent types return None
-    #[derive(Clone)]
-    struct NonExistent;
-    assert!(raft.extensions().get::<NonExistent>().is_none());
-
     // Test contains
     assert!(raft.extensions().contains::<Counter>());
-    assert!(!raft.extensions().contains::<NonExistent>());
 
     Ok(())
 }
