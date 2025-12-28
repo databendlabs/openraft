@@ -5,7 +5,6 @@ use maplit::btreeset;
 use openraft::type_config::TypeConfigExt;
 use raft_kv_memstore::TypeConfig;
 use raft_kv_memstore::start_example_raft_node;
-use raft_kv_memstore::store::Request;
 
 /// Test follower read functionality
 #[test]
@@ -54,7 +53,7 @@ async fn test_follower_read_inner() -> anyhow::Result<()> {
     // Write some data
     println!("=== write test_key=test_value");
     leader
-        .write(&Request::Set {
+        .write(&types_kv::Request::Set {
             key: "test_key".to_string(),
             value: "test_value".to_string(),
         })

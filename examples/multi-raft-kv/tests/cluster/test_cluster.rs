@@ -15,7 +15,6 @@ use multi_raft_kv::TypeConfig;
 use multi_raft_kv::create_node;
 use multi_raft_kv::groups;
 use multi_raft_kv::router::Router;
-use multi_raft_kv::store::Request;
 use multi_raft_kv::typ;
 use openraft::BasicNode;
 use openraft::async_runtime::WatchReceiver;
@@ -120,18 +119,18 @@ async fn run_test(node1_rafts: &[typ::Raft], node2_rafts: &[typ::Raft], group_id
     println!("\n=== Writing data to each group ===\n");
 
     // users group
-    node1_rafts[0].client_write(Request::set("user:1", "Alice")).await.unwrap();
-    node1_rafts[0].client_write(Request::set("user:2", "Bob")).await.unwrap();
+    node1_rafts[0].client_write(types_kv::Request::set("user:1", "Alice")).await.unwrap();
+    node1_rafts[0].client_write(types_kv::Request::set("user:2", "Bob")).await.unwrap();
     println!("  ✓ Group 'users': wrote user:1=Alice, user:2=Bob");
 
     // orders group
-    node1_rafts[1].client_write(Request::set("order:1001", "pending")).await.unwrap();
-    node1_rafts[1].client_write(Request::set("order:1002", "shipped")).await.unwrap();
+    node1_rafts[1].client_write(types_kv::Request::set("order:1001", "pending")).await.unwrap();
+    node1_rafts[1].client_write(types_kv::Request::set("order:1002", "shipped")).await.unwrap();
     println!("  ✓ Group 'orders': wrote order:1001=pending, order:1002=shipped");
 
     // products group
-    node1_rafts[2].client_write(Request::set("product:A", "Widget")).await.unwrap();
-    node1_rafts[2].client_write(Request::set("product:B", "Gadget")).await.unwrap();
+    node1_rafts[2].client_write(types_kv::Request::set("product:A", "Widget")).await.unwrap();
+    node1_rafts[2].client_write(types_kv::Request::set("product:B", "Gadget")).await.unwrap();
     println!("  ✓ Group 'products': wrote product:A=Widget, product:B=Gadget");
 
     TypeConfig::sleep(Duration::from_millis(500)).await;

@@ -10,7 +10,6 @@ use openraft::type_config::TypeConfigExt;
 use raft_kv_memstore_network_v2::TypeConfig;
 use raft_kv_memstore_network_v2::new_raft;
 use raft_kv_memstore_network_v2::router::Router;
-use raft_kv_memstore_network_v2::store::Request;
 use raft_kv_memstore_network_v2::typ;
 use tracing_subscriber::EnvFilter;
 
@@ -90,9 +89,9 @@ async fn run_test(rafts: &[typ::Raft], router: Router) {
 
     println!("=== write 2 logs");
     {
-        let resp = raft1.client_write(Request::set("foo1", "bar1")).await.unwrap();
+        let resp = raft1.client_write(types_kv::Request::set("foo1", "bar1")).await.unwrap();
         println!("write resp: {:#?}", resp);
-        let resp = raft1.client_write(Request::set("foo2", "bar2")).await.unwrap();
+        let resp = raft1.client_write(types_kv::Request::set("foo2", "bar2")).await.unwrap();
         println!("write resp: {:#?}", resp);
     }
 
