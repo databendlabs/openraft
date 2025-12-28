@@ -28,8 +28,8 @@ use rocksdb::DB;
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::RocksRequest;
-use crate::RocksResponse;
+use crate::Request;
+use crate::Response;
 use crate::TypeConfig;
 
 /// State machine backed by RocksDB for full persistence.
@@ -183,20 +183,18 @@ impl RaftStateMachine<TypeConfig> for RocksStateMachine {
             last_applied_log = Some(entry.log_id());
 
             let response = match entry.payload {
-                EntryPayload::Blank => RocksResponse { value: None },
+                EntryPayload::Blank => Response::none(),
                 EntryPayload::Normal(ref req) => match req {
-                    RocksRequest::Set { key, value } => {
+                    Request::Set { key, value } => {
                         let cf_data = self.cf_sm_data();
 
                         batch.put_cf(cf_data, key.as_bytes(), value.as_bytes());
-                        RocksResponse {
-                            value: Some(value.clone()),
-                        }
+                        Response::new(value.clone())
                     }
                 },
                 EntryPayload::Membership(ref mem) => {
                     last_membership = Some(StoredMembership::new(Some(entry.log_id), mem.clone()));
-                    RocksResponse { value: None }
+                    Response::none()
                 }
             };
 

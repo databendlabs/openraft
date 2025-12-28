@@ -12,7 +12,6 @@ pub mod state_machine;
 #[cfg(test)]
 mod test;
 
-use std::fmt;
 use std::io;
 use std::path::Path;
 use std::sync::Arc;
@@ -21,8 +20,9 @@ use openraft::RaftTypeConfig;
 use rocksdb::ColumnFamilyDescriptor;
 use rocksdb::DB;
 use rocksdb::Options;
-use serde::Deserialize;
-use serde::Serialize;
+
+pub use types_kv::Request;
+pub use types_kv::Response;
 
 use crate::log_store::RocksLogStore;
 pub use crate::state_machine::RocksStateMachine;
@@ -32,38 +32,9 @@ pub type RocksNodeId = u64;
 openraft::declare_raft_types!(
     /// Declare the type configuration.
     pub TypeConfig:
-        D = RocksRequest,
-        R = RocksResponse,
+        D = Request,
+        R = Response,
 );
-
-/**
- * Here you will set the types of request that will interact with the raft nodes.
- * For example the `Set` will be used to write data (key and value) to the raft database.
- * The `AddNode` will append a new node to the current existing shared list of nodes.
- * You will want to add any request that can write data in all nodes here.
- */
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub enum RocksRequest {
-    Set { key: String, value: String },
-}
-
-impl fmt::Display for RocksRequest {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            RocksRequest::Set { key, value } => write!(f, "Set {{ key: {}, value: {} }}", key, value),
-        }
-    }
-}
-
-/**
- * Here you will define what type of answer you expect from reading the data of a node.
- * In this example it will return a optional value from a given key in
- * the `RocksRequest.Set`.
- */
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct RocksResponse {
-    pub value: Option<String>,
-}
 
 /// Create a pair of `RocksLogStore` and `RocksStateMachine` that are backed by a same rocks db
 /// instance.
