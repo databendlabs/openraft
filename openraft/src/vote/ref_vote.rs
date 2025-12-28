@@ -48,9 +48,7 @@ where C: RaftTypeConfig
                     (false, false) => None,
                     (true, false) => Some(Ordering::Greater),
                     (false, true) => Some(Ordering::Less),
-                    (true, true) => {
-                        unreachable!("two incomparable leaders cannot be both committed: {} {}", self, other)
-                    }
+                    (true, true) => None,
                 }
             }
             // Some(non-equal)

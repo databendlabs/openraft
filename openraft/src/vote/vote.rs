@@ -153,8 +153,6 @@ mod tests {
     }
 
     mod feature_single_term_leader {
-        use std::panic::UnwindSafe;
-
         use crate::Vote;
         use crate::declare_raft_types;
         use crate::vote::leader_id_std::LeaderId;
@@ -216,17 +214,13 @@ mod tests {
             assert!(!(vote(2, 2) <= vote(2, 3)));
             assert!(!(vote(2, 2) == vote(2, 3)));
 
-            // Incomparable committed
-            {
-                fn assert_panic<T, F: FnOnce() -> T + UnwindSafe>(f: F) {
-                    let res = std::panic::catch_unwind(f);
-                    assert!(res.is_err());
-                }
-                assert_panic(|| committed(2, 2) > committed(2, 3));
-                assert_panic(|| committed(2, 2) >= committed(2, 3));
-                assert_panic(|| committed(2, 2) < committed(2, 3));
-                assert_panic(|| committed(2, 2) <= committed(2, 3));
-            }
+            // Incomparable committed: returns None, not panic
+            assert!(!(committed(2, 2) > committed(2, 3)));
+            assert!(!(committed(2, 2) >= committed(2, 3)));
+            assert!(!(committed(2, 2) < committed(2, 3)));
+            assert!(!(committed(2, 2) <= committed(2, 3)));
+            assert!(!(committed(2, 2) == committed(2, 3)));
+            assert_eq!(committed(2, 2).partial_cmp(&committed(2, 3)), None);
 
             Ok(())
         }

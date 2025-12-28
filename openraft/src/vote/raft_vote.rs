@@ -7,6 +7,7 @@ use crate::RaftTypeConfig;
 use crate::base::OptionalFeatures;
 use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::vote::RaftLeaderId;
+use crate::vote::Vote;
 use crate::vote::committed::CommittedVote;
 use crate::vote::leader_id::raft_leader_id::RaftLeaderIdExt;
 use crate::vote::non_committed::UncommittedVote;
@@ -34,6 +35,16 @@ where
     /// Whether this vote has been committed by a quorum.
     #[since(version = "0.10.0")]
     fn is_committed(&self) -> bool;
+
+    /// Convert to the openraft-provided [`Vote`] struct.
+    ///
+    /// This creates an owned [`Vote<C>`] from any vote implementation.
+    /// [`Vote`] is openraft's standard vote representation, which differs from
+    /// user-defined vote types that may be optimized for storage.
+    #[since(version = "0.10.0")]
+    fn to_owned_vote(&self) -> Vote<C> {
+        Vote::from_leader_id(self.leader_id().clone(), self.is_committed())
+    }
 }
 
 pub(crate) trait RaftVoteExt<C>
@@ -149,4 +160,36 @@ where
     C: RaftTypeConfig,
     T: RaftVote<C>,
 {
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::Vote;
+    use crate::engine::testing::UTConfig;
+    use crate::vote::RaftVote;
+    use crate::vote::raft_vote::RaftVoteExt;
+
+    #[test]
+    fn test_to_owned_vote() {
+        // From Vote
+        let vote = Vote::<UTConfig>::new(1, 2);
+        let owned = vote.to_owned_vote();
+        assert_eq!(owned, vote);
+
+        let committed_vote = Vote::<UTConfig>::new_committed(3, 4);
+        let owned = committed_vote.to_owned_vote();
+        assert_eq!(owned, committed_vote);
+
+        // From CommittedVote
+        let committed = vote.to_committed();
+        let owned = committed.to_owned_vote();
+        assert_eq!(owned.leader_id, vote.leader_id);
+        assert!(owned.is_committed());
+
+        // From UncommittedVote
+        let uncommitted = committed_vote.to_non_committed();
+        let owned = uncommitted.to_owned_vote();
+        assert_eq!(owned.leader_id, committed_vote.leader_id);
+        assert!(!owned.is_committed());
+    }
 }
