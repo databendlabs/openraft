@@ -11,7 +11,6 @@ use openraft::type_config::TypeConfigExt;
 use raft_kv_memstore_opendal_snapshot_data::TypeConfig;
 use raft_kv_memstore_opendal_snapshot_data::new_raft;
 use raft_kv_memstore_opendal_snapshot_data::router::Router;
-use raft_kv_memstore_opendal_snapshot_data::store::Request;
 use raft_kv_memstore_opendal_snapshot_data::typ;
 use tracing_subscriber::EnvFilter;
 
@@ -95,9 +94,9 @@ async fn run_test(rafts: &[typ::Raft], router: Router) {
 
     println!("=== write 2 logs");
     {
-        let resp = raft1.client_write(Request::set("foo1", "bar1")).await.unwrap();
+        let resp = raft1.client_write(types_kv::Request::set("foo1", "bar1")).await.unwrap();
         println!("write resp: {:#?}", resp);
-        let resp = raft1.client_write(Request::set("foo2", "bar2")).await.unwrap();
+        let resp = raft1.client_write(types_kv::Request::set("foo2", "bar2")).await.unwrap();
         println!("write resp: {:#?}", resp);
     }
 

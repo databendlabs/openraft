@@ -13,7 +13,6 @@ use openraft::type_config::TypeConfigExt;
 use openraft::type_config::alias::AsyncRuntimeOf;
 use raft_kv_memstore::TypeConfig;
 use raft_kv_memstore::start_example_raft_node;
-use raft_kv_memstore::store::Request;
 use tracing_subscriber::EnvFilter;
 
 pub fn log_panic(panic: &PanicHookInfo) {
@@ -180,7 +179,7 @@ async fn test_cluster_inner() -> anyhow::Result<()> {
 
     println!("=== write `foo=bar`");
     client
-        .write(&Request::Set {
+        .write(&types_kv::Request::Set {
             key: "foo".to_string(),
             value: "bar".to_string(),
         })
@@ -210,7 +209,7 @@ async fn test_cluster_inner() -> anyhow::Result<()> {
 
     println!("=== read `foo` on node 2");
     client2
-        .write(&Request::Set {
+        .write(&types_kv::Request::Set {
             key: "foo".to_string(),
             value: "wow".to_string(),
         })
@@ -264,7 +263,7 @@ async fn test_cluster_inner() -> anyhow::Result<()> {
 
     println!("=== write `foo=zoo` to node-3");
     client3
-        .write(&Request::Set {
+        .write(&types_kv::Request::Set {
             key: "foo".to_string(),
             value: "zoo".to_string(),
         })

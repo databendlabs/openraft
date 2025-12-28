@@ -14,8 +14,6 @@ use crate::app::App;
 use crate::network::api;
 use crate::network::management;
 use crate::network::raft;
-use crate::store::Request;
-use crate::store::Response;
 
 pub mod app;
 pub mod network;
@@ -28,8 +26,8 @@ pub type NodeId = u64;
 openraft::declare_raft_types!(
     /// Declare the type configuration for example K/V store.
     pub TypeConfig:
-        D = Request,
-        R = Response,
+        D = types_kv::Request,
+        R = types_kv::Response,
 );
 
 pub type LogStore = store::LogStore;

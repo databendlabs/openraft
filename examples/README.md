@@ -38,6 +38,7 @@ Deprecated:
 - **[network-v1]** - HTTP-based RaftNetwork interface V1 using `reqwest` crate
 
 ### Utilities
+- **[types-kv]** - Shared KV request/response types for example crates
 - **[utils]** - Shared type declarations and utilities
 
 <!-- Reference Links -->
@@ -50,6 +51,7 @@ Deprecated:
 [mem-log]: mem-log/
 [rocksstore]: rocksstore/
 [network-v1]: network-v1-http/
+[types-kv]: types-kv/
 [utils]: utils/
 
 [memstore]: memstore/

@@ -1,5 +1,4 @@
 use std::collections::BTreeMap;
-use std::fmt;
 use std::io;
 use std::sync::Arc;
 use std::sync::Mutex as StdMutex;
@@ -20,33 +19,6 @@ use crate::encode;
 use crate::typ::*;
 
 pub type LogStore = mem_log::LogStore<TypeConfig>;
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub enum Request {
-    Set { key: String, value: String },
-}
-
-impl fmt::Display for Request {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Request::Set { key, value } => write!(f, "Set {{ key: {}, value: {} }}", key, value),
-        }
-    }
-}
-
-impl Request {
-    pub fn set(key: impl ToString, value: impl ToString) -> Self {
-        Self::Set {
-            key: key.to_string(),
-            value: value.to_string(),
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Response {
-    pub value: Option<String>,
-}
 
 #[derive(Debug)]
 pub struct StoredSnapshot {
@@ -172,18 +144,16 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
             sm.last_applied = Some(entry.log_id);
 
             let response = match entry.payload {
-                EntryPayload::Blank => Response { value: None },
+                EntryPayload::Blank => types_kv::Response::none(),
                 EntryPayload::Normal(ref req) => match req {
-                    Request::Set { key, value, .. } => {
+                    types_kv::Request::Set { key, value, .. } => {
                         sm.data.insert(key.clone(), value.clone());
-                        Response {
-                            value: Some(value.clone()),
-                        }
+                        types_kv::Response::new(value.clone())
                     }
                 },
                 EntryPayload::Membership(ref mem) => {
                     sm.last_membership = StoredMembership::new(Some(entry.log_id), mem.clone());
-                    Response { value: None }
+                    types_kv::Response::none()
                 }
             };
 

@@ -78,6 +78,7 @@ exclude = [
 
     "examples/mem-log",
     "examples/rocksstore",
+    "examples/types-kv",
 
     "examples/raft-kv-memstore",
     "examples/raft-kv-memstore-grpc",

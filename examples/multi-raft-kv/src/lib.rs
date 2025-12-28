@@ -4,8 +4,6 @@ use openraft::Config;
 
 use crate::app::Node;
 use crate::router::Router;
-use crate::store::Request;
-use crate::store::Response;
 use crate::store::StateMachineData;
 
 pub mod router;
@@ -24,8 +22,8 @@ pub type GroupId = String;
 openraft::declare_raft_types!(
     /// Declare the type configuration for Multi-Raft K/V store.
     pub TypeConfig:
-        D = Request,
-        R = Response,
+        D = types_kv::Request,
+        R = types_kv::Response,
         // In this example, snapshot is just a copy of the state machine.
         SnapshotData = StateMachineData,
 );
