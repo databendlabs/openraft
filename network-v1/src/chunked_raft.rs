@@ -6,14 +6,20 @@
 
 use openraft::Raft;
 use openraft::RaftTypeConfig;
+use openraft::SnapshotSegmentId;
+use openraft::StorageError;
 use openraft::async_runtime::Mutex;
 use openraft::async_runtime::WatchReceiver;
+use openraft::error::ErrorSource;
 use openraft::error::InstallSnapshotError;
 use openraft::error::RaftError;
+use openraft::error::SnapshotMismatch;
 use openraft::raft::InstallSnapshotRequest;
 use openraft::raft::InstallSnapshotResponse;
+use openraft::storage::Snapshot;
+use tokio::io::AsyncWriteExt;
 
-use crate::receiver::Receiver;
+use crate::streaming::Streaming;
 use crate::streaming::StreamingState;
 
 /// Raft wrapper with `install_snapshot()` for chunk-based snapshot receiving.
@@ -54,7 +60,7 @@ impl<C: RaftTypeConfig> ChunkedRaft<C> {
     /// `InstallSnapshotRequest`. It handles:
     ///
     /// 1. Getting or creating the streaming state from `Raft::extensions()`
-    /// 2. Receiving the chunk via `Receiver::receive_snapshot()`
+    /// 2. Receiving chunks via `Streaming::receive_chunk()`
     /// 3. When all chunks are received, calling `Raft::install_full_snapshot()`
     ///
     /// # Returns
@@ -71,16 +77,71 @@ impl<C: RaftTypeConfig> ChunkedRaft<C> {
         C::SnapshotData: tokio::io::AsyncRead + tokio::io::AsyncWrite + tokio::io::AsyncSeek + Unpin,
     {
         let vote = req.vote.clone();
+        let snapshot_id = &req.meta.snapshot_id;
+        let snapshot_meta = req.meta.clone();
+        let done = req.done;
+
+        tracing::info!(
+            snapshot_id = display(snapshot_id),
+            offset = req.offset,
+            done,
+            "ChunkedRaft::install_snapshot"
+        );
 
         // Get or create streaming state from extensions
         let state: StreamingState<C> = self.inner.extensions().get_or_default();
         let mut streaming = state.streaming.lock().await;
 
-        // Receive chunk and check if snapshot is complete
-        let snapshot = Receiver::<C>::receive_snapshot(&mut *streaming, &self.inner, req).await?;
+        // Check if this is a new snapshot or continuation
+        let curr_id = streaming.as_ref().map(|s| s.snapshot_id());
 
-        if let Some(snapshot) = snapshot {
-            // All chunks received, install the full snapshot
+        if curr_id != Some(snapshot_id) {
+            // New snapshot - must start at offset 0
+            if req.offset != 0 {
+                let mismatch = InstallSnapshotError::SnapshotMismatch(SnapshotMismatch {
+                    expect: SnapshotSegmentId {
+                        id: snapshot_id.clone(),
+                        offset: 0,
+                    },
+                    got: SnapshotSegmentId {
+                        id: snapshot_id.clone(),
+                        offset: req.offset,
+                    },
+                });
+                return Err(RaftError::APIError(mismatch));
+            }
+
+            // Initialize new streaming state
+            let snapshot_data =
+                self.inner.begin_receiving_snapshot().await.map_err(|e| RaftError::Fatal(e.unwrap_fatal()))?;
+
+            *streaming = Some(Streaming::new(snapshot_id.clone(), snapshot_data));
+        }
+
+        // Write the chunk
+        streaming.as_mut().unwrap().receive_chunk(&req).await?;
+
+        tracing::info!("Received snapshot chunk");
+
+        // If done, finalize the snapshot
+        if done {
+            let streaming = streaming.take().unwrap();
+            let mut data = streaming.into_snapshot_data();
+
+            data.shutdown().await.map_err(|e| {
+                RaftError::Fatal(openraft::error::Fatal::from(StorageError::write_snapshot(
+                    Some(snapshot_meta.signature()),
+                    C::ErrorSource::from_error(&e),
+                )))
+            })?;
+
+            tracing::info!(snapshot_meta = debug(&snapshot_meta), "Finished streaming snapshot");
+
+            let snapshot = Snapshot {
+                meta: snapshot_meta,
+                snapshot: data,
+            };
+
             self.inner.install_full_snapshot(vote.clone(), snapshot).await.map_err(RaftError::Fatal)?;
         }
 
