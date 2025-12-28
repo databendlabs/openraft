@@ -49,7 +49,6 @@
 mod adapt_v1_to_v2;
 mod chunked_raft;
 mod network;
-mod receiver;
 mod sender;
 mod streaming;
 

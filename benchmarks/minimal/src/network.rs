@@ -11,7 +11,6 @@ use openraft::error::RPCError;
 use openraft::error::RaftError;
 use openraft::error::RemoteError;
 use openraft::network::RPCOption;
-use openraft::network::RaftNetwork;
 use openraft::network::RaftNetworkFactory;
 use openraft::raft::AppendEntriesRequest;
 use openraft::raft::AppendEntriesResponse;
@@ -21,13 +20,16 @@ use openraft::raft::VoteRequest;
 use openraft::raft::VoteResponse;
 use openraft::Config;
 use openraft::Raft;
+use openraft_network_v1::Adapter;
+use openraft_network_v1::ChunkedRaft;
+use openraft_network_v1::RaftNetwork;
 
 use crate::store::LogStore;
 use crate::store::NodeId;
 use crate::store::StateMachineStore;
 use crate::store::TypeConfig;
 
-pub type BenchRaft = Raft<TypeConfig>;
+pub type BenchRaft = ChunkedRaft<TypeConfig>;
 
 #[derive(Clone)]
 pub struct Router {
@@ -54,6 +56,7 @@ impl Router {
             let sm = Arc::new(StateMachineStore::new());
 
             let raft = Raft::new(*id, config.clone(), self.clone(), log_store, sm).await?;
+            let raft = ChunkedRaft::new(raft);
 
             rafts.insert(*id, raft);
         }
@@ -85,13 +88,14 @@ impl Default for Router {
 }
 
 impl RaftNetworkFactory<TypeConfig> for Router {
-    type Network = Network;
+    type Network = Adapter<TypeConfig, Network>;
 
     async fn new_client(&mut self, target: NodeId, _node: &()) -> Self::Network {
-        Network {
+        let network = Network {
             target,
             target_raft: self.table.lock().unwrap().get(&target).unwrap().clone(),
-        }
+        };
+        Adapter::new(network)
     }
 }
 

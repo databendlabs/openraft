@@ -9,6 +9,6 @@ when a follower is unreachable
 return [`Unreachable`][] error instead of [`NetworkError`][]. Openraft backs off longer for
 `Unreachable` errors, reducing log spam.
 
-[`RaftNetworkV2`]: `crate::network::v2::RaftNetworkV2`
+[`RaftNetworkV2`]: `crate::network::RaftNetworkV2`
 [`Unreachable`]: `crate::error::Unreachable`
 [`NetworkError`]: `crate::error::NetworkError`

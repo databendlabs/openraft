@@ -1152,7 +1152,7 @@ where C: RaftTypeConfig
     /// the cluster via [`RaftNetworkV2::transfer_leader`] and the implementation on the remote node
     /// responds to transfer leader request by calling this method.
     ///
-    /// [`RaftNetworkV2::transfer_leader`]: crate::network::v2::RaftNetworkV2::transfer_leader
+    /// [`RaftNetworkV2::transfer_leader`]: crate::network::RaftNetworkV2::transfer_leader
     #[since(version = "0.10.0")]
     #[tracing::instrument(level = "debug", skip_all)]
     pub async fn handle_transfer_leader(&self, req: TransferLeaderRequest<C>) -> Result<(), Fatal<C>> {

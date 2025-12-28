@@ -189,7 +189,7 @@ To use arbitrary snapshot data, the application needs to:
 [`Raft::install_full_snapshot()`]:    `crate::Raft::install_full_snapshot`
 
 [`RaftNetwork`]:                      `crate::network::RaftNetwork`
-[`RaftNetwork::full_snapshot()`]:     `crate::network::v2::RaftNetworkV2::full_snapshot`
+[`RaftNetwork::full_snapshot()`]:     `crate::network::RaftNetworkV2::full_snapshot`
 
 [`RaftLogStorage::save_committed()`]: `crate::storage::RaftLogStorage::save_committed`
 

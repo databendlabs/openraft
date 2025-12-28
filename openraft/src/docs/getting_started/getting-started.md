@@ -498,11 +498,11 @@ Additionally, two test scripts for setting up a cluster are available:
 
 [`RaftNetworkFactory`]:                 `crate::network::RaftNetworkFactory`
 [`RaftNetworkFactory::new_client()`]:   `crate::network::RaftNetworkFactory::new_client`
-[`RaftNetworkV2`]:                      `crate::network::v2::RaftNetworkV2`
-[`append_entries()`]:                   `crate::network::v2::RaftNetworkV2::append_entries`
-[`stream_append()`]:                    `crate::network::v2::RaftNetworkV2::stream_append`
-[`vote()`]:                             `crate::network::v2::RaftNetworkV2::vote`
-[`full_snapshot()`]:                    `crate::network::v2::RaftNetworkV2::full_snapshot`
+[`RaftNetworkV2`]:                      `crate::network::RaftNetworkV2`
+[`append_entries()`]:                   `crate::network::RaftNetworkV2::append_entries`
+[`stream_append()`]:                    `crate::network::RaftNetworkV2::stream_append`
+[`vote()`]:                             `crate::network::RaftNetworkV2::vote`
+[`full_snapshot()`]:                    `crate::network::RaftNetworkV2::full_snapshot`
 
 
 [`RaftSnapshotBuilder`]:                `crate::storage::RaftSnapshotBuilder`

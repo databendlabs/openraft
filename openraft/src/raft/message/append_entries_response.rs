@@ -13,7 +13,7 @@ use crate::type_config::alias::VoteOf;
 /// Otherwise, it should return [`RPCError`].
 ///
 /// [`RPCError`]: crate::error::RPCError
-/// [`RaftNetworkV2::append_entries`]: crate::network::v2::RaftNetworkV2::append_entries
+/// [`RaftNetworkV2::append_entries`]: crate::network::RaftNetworkV2::append_entries
 #[derive(Debug, Clone)]
 #[derive(PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
@@ -36,7 +36,7 @@ pub enum AppendEntriesResponse<C: RaftTypeConfig> {
     /// the remote target node.
     ///
     /// [`RPCError`]: crate::error::RPCError
-    /// [`RaftNetworkV2::append_entries`]: crate::network::v2::RaftNetworkV2::append_entries
+    /// [`RaftNetworkV2::append_entries`]: crate::network::RaftNetworkV2::append_entries
     /// [`AppendEntriesRequest::prev_log_id`]: crate::raft::AppendEntriesRequest::prev_log_id
     PartialSuccess(Option<LogIdOf<C>>),
 
