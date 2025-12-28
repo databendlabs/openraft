@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 use std::fmt::Debug;
 use std::fmt::Display;
 
@@ -44,6 +45,19 @@ where
     #[since(version = "0.10.0")]
     fn to_owned_vote(&self) -> Vote<C> {
         Vote::from_leader_id(self.leader_id().clone(), self.is_committed())
+    }
+
+    /// Compare this vote with another vote by partial order.
+    ///
+    /// Returns `Some(Ordering)` if the votes are comparable, `None` if incomparable.
+    /// Votes are compared first by leader_id, then by committed status.
+    /// When leader IDs are incomparable, committed votes are considered greater
+    /// than uncommitted ones to minimize election conflicts.
+    #[since(version = "0.10.0")]
+    fn partial_cmp<V: RaftVote<C>>(&self, other: &V) -> Option<Ordering> {
+        let self_ref: RefVote<'_, C> = RefVote::new(self.leader_id(), self.is_committed());
+        let other_ref: RefVote<'_, C> = RefVote::new(other.leader_id(), other.is_committed());
+        PartialOrd::partial_cmp(&self_ref, &other_ref)
     }
 }
 
@@ -164,10 +178,44 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::cmp::Ordering;
+
     use crate::Vote;
     use crate::engine::testing::UTConfig;
     use crate::vote::RaftVote;
     use crate::vote::raft_vote::RaftVoteExt;
+
+    #[test]
+    fn test_partial_cmp() {
+        // Same vote: Equal
+        let v1 = Vote::<UTConfig>::new(1, 2);
+        let v2 = Vote::<UTConfig>::new(1, 2);
+        assert_eq!(RaftVote::partial_cmp(&v1, &v2), Some(Ordering::Equal));
+
+        // Different terms: comparable
+        let v_lower = Vote::<UTConfig>::new(1, 2);
+        let v_higher = Vote::<UTConfig>::new(2, 2);
+        assert_eq!(RaftVote::partial_cmp(&v_lower, &v_higher), Some(Ordering::Less));
+        assert_eq!(RaftVote::partial_cmp(&v_higher, &v_lower), Some(Ordering::Greater));
+
+        // Same leader_id, committed > uncommitted
+        let uncommitted = Vote::<UTConfig>::new(1, 2);
+        let committed = Vote::<UTConfig>::new_committed(1, 2);
+        assert_eq!(RaftVote::partial_cmp(&uncommitted, &committed), Some(Ordering::Less));
+        assert_eq!(RaftVote::partial_cmp(&committed, &uncommitted), Some(Ordering::Greater));
+
+        // Compare Vote with CommittedVote type
+        let vote = Vote::<UTConfig>::new(1, 2);
+        let committed_vote = vote.to_committed();
+        assert_eq!(RaftVote::partial_cmp(&vote, &committed_vote), Some(Ordering::Less));
+        assert_eq!(RaftVote::partial_cmp(&committed_vote, &vote), Some(Ordering::Greater));
+
+        // Compare Vote with UncommittedVote type
+        let vote = Vote::<UTConfig>::new(1, 2);
+        let uncommitted_vote = vote.to_non_committed();
+        assert_eq!(RaftVote::partial_cmp(&vote, &uncommitted_vote), Some(Ordering::Equal));
+        assert_eq!(RaftVote::partial_cmp(&uncommitted_vote, &vote), Some(Ordering::Equal));
+    }
 
     #[test]
     fn test_to_owned_vote() {
