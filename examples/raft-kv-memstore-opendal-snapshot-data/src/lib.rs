@@ -10,8 +10,6 @@ use openraft::Config;
 
 use crate::app::App;
 use crate::router::Router;
-use crate::store::Request;
-use crate::store::Response;
 
 pub mod router;
 
@@ -25,8 +23,8 @@ pub type NodeId = u64;
 openraft::declare_raft_types!(
     /// Declare the type configuration for example K/V store.
     pub TypeConfig:
-        D = Request,
-        R = Response,
+        D = types_kv::Request,
+        R = types_kv::Response,
         // In this example, snapshot is a path pointing to a file stored in shared storage.
         SnapshotData = String
 );

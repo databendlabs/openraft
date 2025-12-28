@@ -19,8 +19,6 @@ use rocksdb::DB;
 use rocksdb::Options;
 use serde::Deserialize;
 use serde::Serialize;
-pub use types_kv::Request;
-pub use types_kv::Response;
 
 use crate::TypeConfig;
 use crate::typ::*;
@@ -159,17 +157,17 @@ impl RaftStateMachine<TypeConfig> for StateMachineStore {
             self.data.last_applied_log_id = Some(entry.log_id);
 
             let response = match entry.payload {
-                EntryPayload::Blank => Response::none(),
+                EntryPayload::Blank => types_kv::Response::none(),
                 EntryPayload::Normal(req) => match req {
-                    Request::Set { key, value } => {
+                    types_kv::Request::Set { key, value } => {
                         let mut st = self.data.kvs.lock().await;
                         st.insert(key, value.clone());
-                        Response::new(value)
+                        types_kv::Response::new(value)
                     }
                 },
                 EntryPayload::Membership(mem) => {
                     self.data.last_membership = StoredMembership::new(Some(entry.log_id), mem);
-                    Response::none()
+                    types_kv::Response::none()
                 }
             };
 

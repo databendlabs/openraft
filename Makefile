@@ -143,6 +143,26 @@ typos:
 	#typos --write-changes --exclude change-log/ --exclude change-log.md --exclude derived-from-async-raft.md
 	# typos
 
+check:
+	RUSTFLAGS="-D warnings" cargo check
+	RUSTFLAGS="-D warnings" cargo check --manifest-path multiraft/Cargo.toml
+	RUSTFLAGS="-D warnings" cargo check --manifest-path rt-compio/Cargo.toml
+	RUSTFLAGS="-D warnings" cargo check --manifest-path rt-monoio/Cargo.toml
+	RUSTFLAGS="-D warnings" cargo check --manifest-path rt-tokio/Cargo.toml
+	RUSTFLAGS="-D warnings" cargo check --manifest-path benchmarks/minimal/Cargo.toml
+	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/client-http/Cargo.toml
+	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/network-v1-http/Cargo.toml
+	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/mem-log/Cargo.toml
+	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/types-kv/Cargo.toml
+	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/raft-kv-memstore-grpc/Cargo.toml
+	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/raft-kv-memstore-network-v2/Cargo.toml
+	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/raft-kv-memstore-opendal-snapshot-data/Cargo.toml
+	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/raft-kv-memstore-single-threaded/Cargo.toml
+	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/raft-kv-memstore/Cargo.toml
+	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/raft-kv-rocksdb/Cargo.toml
+	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/rocksstore/Cargo.toml
+	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/multi-raft-kv/Cargo.toml
+
 clean:
 	cargo clean
 	cargo clean --manifest-path multiraft/Cargo.toml

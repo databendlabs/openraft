@@ -7,8 +7,6 @@ use openraft::Config;
 
 use crate::app::App;
 use crate::router::Router;
-use crate::store::Request;
-use crate::store::Response;
 use crate::store::StateMachineData;
 
 pub mod router;
@@ -23,8 +21,8 @@ pub type NodeId = u64;
 openraft::declare_raft_types!(
     /// Declare the type configuration for example K/V store.
     pub TypeConfig:
-        D = Request,
-        R = Response,
+        D = types_kv::Request,
+        R = types_kv::Response,
         // In this example, snapshot is just a copy of the state machine.
         // And it can be any type.
         SnapshotData = StateMachineData,

@@ -15,8 +15,6 @@ use crate::app::App;
 use crate::network::api;
 use crate::network::management;
 use crate::network::raft;
-use crate::store::Request;
-use crate::store::Response;
 use crate::store::new_storage;
 
 pub mod app;
@@ -27,8 +25,8 @@ pub type NodeId = u64;
 
 openraft::declare_raft_types!(
     pub TypeConfig:
-        D = Request,
-        R = Response,
+        D = types_kv::Request,
+        R = types_kv::Response,
 );
 
 pub type LogStore = openraft_rocksstore::log_store::RocksLogStore<TypeConfig>;

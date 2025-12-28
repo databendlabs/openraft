@@ -21,9 +21,6 @@ use rocksdb::ColumnFamilyDescriptor;
 use rocksdb::DB;
 use rocksdb::Options;
 
-pub use types_kv::Request;
-pub use types_kv::Response;
-
 use crate::log_store::RocksLogStore;
 pub use crate::state_machine::RocksStateMachine;
 
@@ -32,8 +29,8 @@ pub type RocksNodeId = u64;
 openraft::declare_raft_types!(
     /// Declare the type configuration.
     pub TypeConfig:
-        D = Request,
-        R = Response,
+        D = types_kv::Request,
+        R = types_kv::Response,
 );
 
 /// Create a pair of `RocksLogStore` and `RocksStateMachine` that are backed by a same rocks db

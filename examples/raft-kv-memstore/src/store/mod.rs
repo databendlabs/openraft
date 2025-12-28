@@ -23,8 +23,6 @@ use openraft::storage::RaftStateMachine;
 use openraft::storage::Snapshot;
 use serde::Deserialize;
 use serde::Serialize;
-pub use types_kv::Request;
-pub use types_kv::Response;
 
 use crate::TypeConfig;
 
@@ -133,16 +131,16 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
             sm.last_applied_log = Some(entry.log_id);
 
             let response = match entry.payload {
-                EntryPayload::Blank => Response::none(),
+                EntryPayload::Blank => types_kv::Response::none(),
                 EntryPayload::Normal(ref req) => match req {
-                    Request::Set { key, value } => {
+                    types_kv::Request::Set { key, value } => {
                         sm.data.insert(key.clone(), value.clone());
-                        Response::new(value.clone())
+                        types_kv::Response::new(value.clone())
                     }
                 },
                 EntryPayload::Membership(ref mem) => {
                     sm.last_membership = StoredMembership::new(Some(entry.log_id), mem.clone());
-                    Response::none()
+                    types_kv::Response::none()
                 }
             };
 

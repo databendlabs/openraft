@@ -13,7 +13,6 @@ use web::Json;
 
 use crate::TypeConfig;
 use crate::app::App;
-use crate::store::Request;
 
 /**
  * Application API
@@ -25,7 +24,7 @@ use crate::store::Request;
  *  - `POST - /read` attempt to find a value from a given key.
  */
 #[post("/write")]
-pub async fn write(app: Data<App>, req: Json<Request>) -> actix_web::Result<impl Responder> {
+pub async fn write(app: Data<App>, req: Json<types_kv::Request>) -> actix_web::Result<impl Responder> {
     let response = app.raft.client_write(req.0).await.decompose().unwrap();
     Ok(Json(response))
 }
