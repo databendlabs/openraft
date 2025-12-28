@@ -10,9 +10,6 @@ use openraft::Membership;
 use openraft::RaftLogReader;
 use openraft::SnapshotPolicy;
 use openraft::Vote;
-use openraft::network::RPCOption;
-use openraft::network::RaftNetworkFactory;
-use openraft::network::v2::RaftNetworkV2;
 use openraft::raft::AppendEntriesRequest;
 use openraft::storage::RaftLogStorage;
 use openraft::storage::RaftLogStorageExt;
@@ -127,20 +124,14 @@ async fn build_snapshot() -> Result<()> {
         "--- send a heartbeat with prev_log_id to be some value <= last_applied to ensure the commit index is updated"
     );
     {
-        let option = RPCOption::new(Duration::from_millis(1_000));
-
-        let res = router
-            .new_client(1, &())
-            .await
-            .append_entries(
-                AppendEntriesRequest {
-                    vote: Vote::new_committed(1, 0),
-                    prev_log_id: Some(log_id(1, 0, 2)),
-                    entries: vec![],
-                    leader_commit: Some(log_id(0, 0, 0)),
-                },
-                option,
-            )
+        let node = router.get_raft_handle(&1)?;
+        let res = node
+            .append_entries(AppendEntriesRequest {
+                vote: Vote::new_committed(1, 0),
+                prev_log_id: Some(log_id(1, 0, 2)),
+                entries: vec![],
+                leader_commit: Some(log_id(0, 0, 0)),
+            })
             .await?;
 
         tracing::debug!("--- append-entries res: {:?}", res);

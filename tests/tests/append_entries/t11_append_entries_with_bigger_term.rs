@@ -1,14 +1,10 @@
 use std::sync::Arc;
-use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
 use openraft::RaftLogReader;
 use openraft::Vote;
-use openraft::network::RPCOption;
-use openraft::network::RaftNetworkFactory;
-use openraft::network::v2::RaftNetworkV2;
 use openraft::raft::AppendEntriesRequest;
 use openraft::storage::RaftLogStorage;
 use openraft::storage::RaftStateMachine;
@@ -55,9 +51,8 @@ async fn append_entries_with_bigger_term() -> Result<()> {
         leader_commit: Some(log_id(1, 0, log_index)),
     };
 
-    let option = RPCOption::new(Duration::from_millis(1_000));
-
-    let resp = router.new_client(0, &()).await.append_entries(req, option).await?;
+    let node = router.get_raft_handle(&0)?;
+    let resp = node.append_entries(req).await?;
     assert!(resp.is_success());
 
     // after append entries, check hard state in term 2 and vote for node 1
