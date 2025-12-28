@@ -6,9 +6,6 @@ use maplit::btreeset;
 use openraft::Config;
 use openraft::ServerState;
 use openraft::Vote;
-use openraft::network::RPCOption;
-use openraft::network::RaftNetworkFactory;
-use openraft::network::v2::RaftNetworkV2;
 use openraft::raft::VoteRequest;
 use openraft::type_config::TypeConfigExt;
 use openraft_memstore::ClientRequest;
@@ -42,18 +39,12 @@ async fn append_sees_higher_vote() -> Result<()> {
         // Let leader lease expire
         TypeConfig::sleep(Duration::from_millis(800)).await;
 
-        let option = RPCOption::new(Duration::from_millis(1_000));
-
-        let resp = router
-            .new_client(1, &())
-            .await
-            .vote(
-                VoteRequest {
-                    vote: Vote::new(10, 1),
-                    last_log_id: Some(log_id(10, 1, 5)),
-                },
-                option,
-            )
+        let node = router.get_raft_handle(&1)?;
+        let resp = node
+            .vote(VoteRequest {
+                vote: Vote::new(10, 1),
+                last_log_id: Some(log_id(10, 1, 5)),
+            })
             .await?;
 
         assert!(resp.is_granted_to(&Vote::new(10, 1)));
