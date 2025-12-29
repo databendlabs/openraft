@@ -106,8 +106,8 @@ where C: RaftTypeConfig<D = types_kv::Request, R = types_kv::Response, SnapshotD
     async fn build_snapshot(&mut self) -> Result<Snapshot<C>, io::Error> {
         let mut inner = self.0.lock().await;
 
-        let data = serde_json::to_vec(&inner.state_machine.data)
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+        let data =
+            serde_json::to_vec(&inner.state_machine.data).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
         let snapshot_idx = inner.next_snapshot_idx();
         let snapshot_id = if let Some(last) = inner.last_applied_log.clone() {
@@ -194,8 +194,8 @@ where C: RaftTypeConfig<D = types_kv::Request, R = types_kv::Response, SnapshotD
             data: snapshot.into_inner(),
         };
 
-        let updated_state_machine_data: BTreeMap<String, String> = serde_json::from_slice(&new_snapshot.data)
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+        let updated_state_machine_data: BTreeMap<String, String> =
+            serde_json::from_slice(&new_snapshot.data).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
         let mut inner = self.0.lock().await;
         inner.last_applied_log = meta.last_log_id.clone();

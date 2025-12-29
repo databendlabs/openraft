@@ -1,5 +1,5 @@
 [package]
-name = "mem-log"
+name = "log-mem"
 version = "0.1.0"
 readme = "README.md"
 
