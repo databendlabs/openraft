@@ -16,7 +16,7 @@ use crate::protobuf as pb;
 use crate::protobuf::Response;
 use crate::typ::*;
 
-pub type LogStore = mem_log::LogStore<TypeConfig>;
+pub type LogStore = log_mem::LogStore<TypeConfig>;
 
 #[derive(Debug)]
 pub struct StoredSnapshot {
