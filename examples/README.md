@@ -18,7 +18,8 @@ This directory contains example applications demonstrating different implementat
 |---------|-----|---------------|------------------|-------------|--------|--------|------------------|
 | [raft-kv-memstore] | [log-mem] | [sm-mem] | HTTP/reqwest | RaftNetwork | reqwest | actix-web | Basic example |
 | [raft-kv-rocksdb] | [rocksstore] | [rocksstore] | HTTP/reqwest([network-v1]) | RaftNetwork | reqwest | actix-web | Persistent storage |
-| [raft-kv-memstore-network-v2] | [log-mem] | in-memory | HTTP/reqwest | RaftNetworkV2 | reqwest | actix-web | Network V2 interface |
+| [raft-kv-memstore-network-v2] | [log-mem] | [sm-mem] | HTTP/reqwest | RaftNetworkV2 | reqwest | actix-web | Network V2 interface |
+| [multi-raft-kv] | [log-mem] | [sm-mem] | HTTP/channel | GroupRouter | channel | in-memory | Multi-Raft groups |
 | [raft-kv-memstore-grpc] | [log-mem] | in-memory | gRPC/tonic | RaftNetwork | tonic | tonic | gRPC transport |
 | [raft-kv-memstore-single-threaded] | [log-mem] | in-memory | HTTP/reqwest | RaftNetwork | reqwest | actix-web | Single-threaded runtime |
 | [raft-kv-memstore-opendal-snapshot-data] | [log-mem] | in-memory+OpenDAL | HTTP/reqwest | RaftNetwork | reqwest | actix-web | OpenDAL snapshot storage |
@@ -52,6 +53,7 @@ The following symbolic links are provided for backward compatibility:
 [raft-kv-memstore-grpc]: raft-kv-memstore-grpc/
 [raft-kv-memstore-single-threaded]: raft-kv-memstore-single-threaded/
 [raft-kv-memstore-opendal-snapshot-data]: raft-kv-memstore-opendal-snapshot-data/
+[multi-raft-kv]: multi-raft-kv/
 [log-mem]: log-mem/
 [sm-mem]: sm-mem/
 [rocksstore]: rocksstore/

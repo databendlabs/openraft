@@ -54,14 +54,11 @@ impl GroupRouter<TypeConfig, GroupId> for Router {
         _cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
         _option: RPCOption,
     ) -> Result<SnapshotResponse<TypeConfig>, StreamingError<TypeConfig>> {
-        self.send(
-            target,
-            &group_id,
-            "/raft/snapshot",
-            (vote, snapshot.meta, snapshot.snapshot),
-        )
-        .await
-        .map_err(StreamingError::Unreachable)
+        // Extract inner Vec<u8> from Cursor for serialization
+        let data: Vec<u8> = snapshot.snapshot.into_inner();
+        self.send(target, &group_id, "/raft/snapshot", (vote, snapshot.meta, data))
+            .await
+            .map_err(StreamingError::Unreachable)
     }
 
     async fn transfer_leader(

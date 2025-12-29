@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
+use std::io::Cursor;
 
 use openraft::BasicNode;
 use openraft::ReadPolicy;
@@ -28,8 +29,8 @@ pub async fn read(app: &mut GroupApp, req: String) -> String {
         Ok(linearizer) => {
             linearizer.await_ready(&app.raft).await.unwrap();
 
-            let state_machine = app.state_machine.state_machine.lock().await;
-            let value = state_machine.data.get(&key).cloned();
+            let inner = app.state_machine.inner().lock().await;
+            let value = inner.state_machine.data.get(&key).cloned();
 
             let res: Result<String, RaftError<LinearizableReadError>> = Ok(value.unwrap_or_default());
             res
@@ -57,10 +58,11 @@ pub async fn append(app: &mut GroupApp, req: String) -> String {
 
 /// Receive a snapshot and install it
 pub async fn snapshot(app: &mut GroupApp, req: String) -> String {
-    let (vote, snapshot_meta, snapshot_data): (Vote, SnapshotMeta, SnapshotData) = decode(&req);
+    // Receive Vec<u8> and wrap with Cursor for SnapshotData
+    let (vote, snapshot_meta, snapshot_data): (Vote, SnapshotMeta, Vec<u8>) = decode(&req);
     let snapshot = Snapshot {
         meta: snapshot_meta,
-        snapshot: snapshot_data,
+        snapshot: Cursor::new(snapshot_data),
     };
     let res = app.raft.install_full_snapshot(vote, snapshot).await.map_err(RaftError::<Infallible>::Fatal);
     encode(res)

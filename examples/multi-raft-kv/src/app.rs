@@ -1,5 +1,4 @@
 use std::collections::BTreeMap;
-use std::sync::Arc;
 
 use futures::StreamExt;
 use futures::channel::mpsc;
@@ -44,7 +43,7 @@ impl Node {
     }
 
     /// Add a Raft group to this node.
-    pub fn add_group(&mut self, group_id: GroupId, raft: typ::Raft, state_machine: Arc<StateMachineStore>) {
+    pub fn add_group(&mut self, group_id: GroupId, raft: typ::Raft, state_machine: StateMachineStore) {
         let app = GroupApp {
             node_id: self.node_id,
             group_id: group_id.clone(),
@@ -117,5 +116,5 @@ pub struct GroupApp {
     pub node_id: NodeId,
     pub group_id: GroupId,
     pub raft: typ::Raft,
-    pub state_machine: Arc<StateMachineStore>,
+    pub state_machine: StateMachineStore,
 }
