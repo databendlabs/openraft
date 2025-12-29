@@ -31,9 +31,9 @@ pub async fn write(app: Data<App>, req: Json<types_kv::Request>) -> actix_web::R
 
 #[post("/read")]
 pub async fn read(app: Data<App>, req: Json<String>) -> actix_web::Result<impl Responder> {
-    let state_machine = app.state_machine_store.state_machine().lock().await;
+    let inner = app.state_machine_store.inner().lock().await;
     let key = req.0;
-    let value = state_machine.data.get(&key).cloned();
+    let value = inner.state_machine.data.get(&key).cloned();
 
     let res: Result<String, Infallible> = Ok(value.unwrap_or_default());
     Ok(Json(res))
@@ -47,9 +47,9 @@ pub async fn linearizable_read(app: Data<App>, req: Json<String>) -> actix_web::
         Ok(linearizer) => {
             linearizer.await_ready(&app.raft).await.unwrap();
 
-            let state_machine = app.state_machine_store.state_machine().lock().await;
+            let inner = app.state_machine_store.inner().lock().await;
             let key = req.0;
-            let value = state_machine.data.get(&key).cloned();
+            let value = inner.state_machine.data.get(&key).cloned();
 
             let res: Result<String, LinearizableReadError<TypeConfig>> = Ok(value.unwrap_or_default());
             Ok(Json(res))
@@ -137,9 +137,9 @@ pub async fn follower_read(app: Data<App>, req: Json<String>) -> actix_web::Resu
     }
 
     // 5. Read from local state machine
-    let state_machine = app.state_machine_store.state_machine().lock().await;
+    let inner = app.state_machine_store.inner().lock().await;
     let key = req.0;
-    let value = state_machine.data.get(&key).cloned();
+    let value = inner.state_machine.data.get(&key).cloned();
 
     Ok(Json(Ok(value.unwrap_or_default())))
 }
