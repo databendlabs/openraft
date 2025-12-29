@@ -18,6 +18,7 @@ repository = "https://github.com/databendlabs/openraft"
 [dependencies]
 log-mem  = { path = "../log-mem", features = [] }
 openraft = { path = "../../openraft", features = ["serde", "type-alias"] }
+sm-mem   = { path = "../sm-mem" }
 types-kv = { path = "../types-kv" }
 
 futures            = { version = "0.3" }

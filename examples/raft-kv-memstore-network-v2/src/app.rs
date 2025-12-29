@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use futures::StreamExt;
 use futures::channel::mpsc;
 use futures::channel::oneshot;
@@ -25,11 +23,11 @@ pub struct App {
     pub rx: RequestRx,
     pub router: Router,
 
-    pub state_machine: Arc<StateMachineStore>,
+    pub state_machine: StateMachineStore,
 }
 
 impl App {
-    pub fn new(id: NodeId, raft: typ::Raft, router: Router, state_machine: Arc<StateMachineStore>) -> Self {
+    pub fn new(id: NodeId, raft: typ::Raft, router: Router, state_machine: StateMachineStore) -> Self {
         let (tx, rx) = mpsc::channel(1024);
 
         {

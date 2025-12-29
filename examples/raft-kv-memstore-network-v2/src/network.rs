@@ -46,7 +46,9 @@ impl RaftNetworkV2<TypeConfig> for Connection {
         _cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
         _option: RPCOption,
     ) -> Result<SnapshotResponse, StreamingError> {
-        let resp = self.router.send(self.target, "/raft/snapshot", (vote, snapshot.meta, snapshot.snapshot)).await?;
+        // Extract inner Vec<u8> from Cursor for serialization
+        let data: Vec<u8> = snapshot.snapshot.into_inner();
+        let resp = self.router.send(self.target, "/raft/snapshot", (vote, snapshot.meta, data)).await?;
         Ok(resp)
     }
 
