@@ -153,6 +153,7 @@ check:
 	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/client-http/Cargo.toml
 	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/network-v1-http/Cargo.toml
 	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/mem-log/Cargo.toml
+	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/sm-mem/Cargo.toml
 	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/types-kv/Cargo.toml
 	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/raft-kv-memstore-grpc/Cargo.toml
 	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/raft-kv-memstore-network-v2/Cargo.toml

@@ -21,8 +21,9 @@ path = "src/bin/main.rs"
 
 [dependencies]
 client-http        = { path = "../client-http" }
-mem-log            = { path = "../mem-log", features = [] }
+mem-log            = { path = "../mem-log" }
 network-v1-http    = { path = "../network-v1-http" }
+sm-mem             = { path = "../sm-mem" }
 openraft           = { path = "../../openraft", features = ["serde", "type-alias"] }
 openraft-network-v1 = { path = "../../network-v1" }
 types-kv           = { path = "../types-kv" }

@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use openraft_network_v1::ChunkedRaft;
 
 use crate::NodeId;
@@ -12,5 +10,5 @@ pub struct App {
     pub id: NodeId,
     pub addr: String,
     pub raft: ChunkedRaft<TypeConfig>,
-    pub state_machine_store: Arc<StateMachineStore>,
+    pub state_machine_store: StateMachineStore,
 }

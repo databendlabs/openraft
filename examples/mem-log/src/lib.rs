@@ -1,4 +1,4 @@
-//! Provide storage layer implementation for examples.
+//! Provide in-memory log storage implementation for examples.
 
 mod log_store;
 
