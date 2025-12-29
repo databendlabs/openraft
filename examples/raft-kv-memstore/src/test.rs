@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use openraft::StorageError;
 use openraft::testing::log::StoreBuilder;
 use openraft::testing::log::Suite;
@@ -11,9 +9,11 @@ use crate::store::StateMachineStore;
 
 struct MemKVStoreBuilder {}
 
-impl StoreBuilder<TypeConfig, LogStore, Arc<StateMachineStore>, ()> for MemKVStoreBuilder {
-    async fn build(&self) -> Result<((), LogStore, Arc<StateMachineStore>), StorageError<TypeConfig>> {
-        Ok(((), LogStore::default(), Arc::default()))
+impl StoreBuilder<TypeConfig, LogStore<TypeConfig>, StateMachineStore<TypeConfig>, ()> for MemKVStoreBuilder {
+    async fn build(
+        &self,
+    ) -> Result<((), LogStore<TypeConfig>, StateMachineStore<TypeConfig>), StorageError<TypeConfig>> {
+        Ok(((), LogStore::default(), Default::default()))
     }
 }
 

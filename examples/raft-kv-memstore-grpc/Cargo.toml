@@ -19,7 +19,7 @@ name = "raft-key-value"
 path = "src/bin/main.rs"
 
 [dependencies]
-mem-log  = { path = "../mem-log", features = [] }
+log-mem  = { path = "../log-mem", features = [] }
 openraft = { path = "../../openraft", features = ["type-alias"] }
 
 clap               = { version = "4.1.11", features = ["derive", "env"] }

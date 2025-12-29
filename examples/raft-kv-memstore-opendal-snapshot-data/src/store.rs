@@ -18,7 +18,7 @@ use crate::decode_buffer;
 use crate::encode;
 use crate::typ::*;
 
-pub type LogStore = mem_log::LogStore<TypeConfig>;
+pub type LogStore = log_mem::LogStore<TypeConfig>;
 
 #[derive(Debug)]
 pub struct StoredSnapshot {

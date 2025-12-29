@@ -39,7 +39,7 @@ check-parallel:
 
 
 test-examples:
-	cargo test --manifest-path examples/mem-log/Cargo.toml
+	cargo test --manifest-path examples/log-mem/Cargo.toml
 	cargo test --manifest-path examples/raft-kv-memstore/Cargo.toml
 	cargo test --manifest-path examples/raft-kv-memstore-grpc/Cargo.toml
 	cargo test --manifest-path examples/raft-kv-memstore-network-v2/Cargo.toml
@@ -95,7 +95,7 @@ lint:
 	cargo fmt --manifest-path rt-compio/Cargo.toml
 	cargo fmt --manifest-path rt-monoio/Cargo.toml
 	cargo fmt --manifest-path rt-tokio/Cargo.toml
-	cargo fmt --manifest-path examples/mem-log/Cargo.toml
+	cargo fmt --manifest-path examples/log-mem/Cargo.toml
 	cargo fmt --manifest-path examples/raft-kv-memstore-grpc/Cargo.toml
 	cargo fmt --manifest-path examples/raft-kv-memstore-network-v2/Cargo.toml
 	cargo fmt --manifest-path examples/raft-kv-memstore-opendal-snapshot-data/Cargo.toml
@@ -108,7 +108,7 @@ lint:
 	cargo clippy --no-deps --manifest-path rt-compio/Cargo.toml                                       --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path rt-monoio/Cargo.toml                                       --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path rt-tokio/Cargo.toml                                        --all-targets -- -D warnings
-	cargo clippy --no-deps --manifest-path examples/mem-log/Cargo.toml                                --all-targets -- -D warnings
+	cargo clippy --no-deps --manifest-path examples/log-mem/Cargo.toml                                --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/raft-kv-memstore-grpc/Cargo.toml                  --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/raft-kv-memstore-network-v2/Cargo.toml            --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/raft-kv-memstore-opendal-snapshot-data/Cargo.toml --all-targets -- -D warnings
@@ -152,7 +152,7 @@ check:
 	RUSTFLAGS="-D warnings" cargo check --manifest-path benchmarks/minimal/Cargo.toml
 	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/client-http/Cargo.toml
 	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/network-v1-http/Cargo.toml
-	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/mem-log/Cargo.toml
+	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/log-mem/Cargo.toml
 	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/sm-mem/Cargo.toml
 	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/types-kv/Cargo.toml
 	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/raft-kv-memstore-grpc/Cargo.toml
@@ -173,7 +173,7 @@ clean:
 	cargo clean --manifest-path benchmarks/minimal/Cargo.toml
 	cargo clean --manifest-path examples/client-http/Cargo.toml
 	cargo clean --manifest-path examples/network-v1-http/Cargo.toml
-	cargo clean --manifest-path examples/mem-log/Cargo.toml
+	cargo clean --manifest-path examples/log-mem/Cargo.toml
 	cargo clean --manifest-path examples/raft-kv-memstore-grpc/Cargo.toml
 	cargo clean --manifest-path examples/raft-kv-memstore-network-v2/Cargo.toml
 	cargo clean --manifest-path examples/raft-kv-memstore-opendal-snapshot-data/Cargo.toml

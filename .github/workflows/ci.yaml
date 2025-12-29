@@ -366,7 +366,7 @@ jobs:
           - 'stable'
           - 'nightly'
         example:
-          - 'mem-log'
+          - 'log-mem'
           - 'rocksstore'
           - 'raft-kv-memstore'
           - 'raft-kv-memstore-grpc'

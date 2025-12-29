@@ -16,7 +16,7 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/databendlabs/openraft"
 
 [dependencies]
-mem-log  = { path = "../mem-log", features = [] }
+log-mem  = { path = "../log-mem", features = [] }
 openraft = { path = "../../openraft", features = ["serde", "type-alias"] }
 types-kv = { path = "../types-kv" }
 
