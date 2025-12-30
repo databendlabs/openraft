@@ -68,6 +68,7 @@ use crate::error::Timeout;
 use crate::impls::ProgressResponder;
 use crate::log_id::option_raft_log_id_ext::OptionRaftLogIdExt;
 use crate::metrics::HeartbeatMetrics;
+use crate::metrics::MetricsRecorder;
 use crate::metrics::RaftDataMetrics;
 use crate::metrics::RaftMetrics;
 use crate::metrics::RaftServerMetrics;
@@ -236,6 +237,14 @@ where
     /// This is the only stats field that needs to be shared with replication tasks.
     /// All other stats are updated only by RaftCore.
     pub(crate) shared_replicate_batch: SharedReplicateBatch,
+
+    /// External metrics recorder for exporting metrics to custom backends.
+    ///
+    /// Defaults to `None`. Applications can install a custom recorder
+    /// via [`Raft::set_metrics_recorder`] to collect metrics.
+    ///
+    /// [`Raft::set_metrics_recorder`]: crate::Raft::set_metrics_recorder
+    pub(crate) metrics_recorder: Option<Arc<dyn MetricsRecorder>>,
 
     pub(crate) span: Span,
 }
@@ -603,7 +612,13 @@ where
 
         // TODO: it should returns membership config error etc. currently this is done by the
         //       caller.
+        let entry_count = payloads.len() as u64;
         let log_ids = lh.leader_append_entries(payloads)?;
+
+        // Record write batch size to external metrics recorder
+        if let Some(r) = &self.metrics_recorder {
+            r.record_write_batch(entry_count);
+        }
 
         for (log_id, resp_tx) in log_ids.clone().into_iter().zip(responders) {
             if let Some(tx) = resp_tx {
@@ -640,6 +655,11 @@ where
         }
 
         lh.send_heartbeat();
+
+        // Record heartbeat to external metrics recorder
+        if let Some(r) = &self.metrics_recorder {
+            r.increment_heartbeat();
+        }
 
         tracing::debug!("{} triggered sending heartbeat", emitter);
         true
@@ -735,6 +755,11 @@ where
             current_leader,
             membership_config,
         };
+
+        // Record to external metrics recorder
+        if let Some(r) = &self.metrics_recorder {
+            crate::metrics::forward_metrics(&m, r.as_ref());
+        }
 
         // Start to send metrics
         // `RaftMetrics` is sent last, because `Wait` only examines `RaftMetrics`
@@ -932,6 +957,11 @@ where
 
         let entry_count = last.index() + 1 - first.index();
         self.runtime_stats.apply_batch.record(entry_count);
+
+        // Record to external metrics recorder
+        if let Some(r) = &self.metrics_recorder {
+            r.record_apply_batch(entry_count);
+        }
 
         // Call on_commit on each responder
         for (index, responder) in responders.iter_mut() {
@@ -1423,6 +1453,12 @@ where
         tracing::info!("{}: req: {}", func_name!(), req);
 
         let resp = self.engine.handle_vote_req(req);
+
+        // Record vote to external metrics recorder
+        if let Some(r) = &self.metrics_recorder {
+            r.increment_vote();
+        }
+
         let condition = Some(Condition::IOFlushed {
             io_id: IOId::new(self.engine.state.vote_ref()),
         });
@@ -1437,6 +1473,11 @@ where
         tracing::debug!("{}: req: {}", func_name!(), req);
 
         self.engine.handle_append_entries(&req.vote, req.prev_log_id, req.entries, tx);
+
+        // Record append entries to external metrics recorder
+        if let Some(r) = &self.metrics_recorder {
+            r.increment_append();
+        }
 
         let committed = LogIOId::new(req.vote.to_committed(), req.leader_commit);
         self.engine.state.update_committed(committed);
@@ -1579,6 +1620,10 @@ where
                         if let Err(e) = res {
                             tracing::error!("error sending sm::Command to sm::Worker: {}", e);
                         }
+                    }
+                    ExternalCommand::SetMetricsRecorder { recorder } => {
+                        tracing::info!("setting metrics recorder");
+                        self.metrics_recorder = recorder;
                     }
                 }
             }
@@ -2007,7 +2052,14 @@ where
                 tracing::debug!("AppendEntries: {}", entries.display_n(10));
 
                 let entry_count = entries.len() as u64;
+
+                // Record to internal histogram
                 self.runtime_stats.append_batch.record(entry_count);
+
+                // Record to external metrics recorder
+                if let Some(r) = &self.metrics_recorder {
+                    r.record_append_batch(entry_count);
+                }
 
                 let io_id = IOId::new_log_io(vote, Some(last_log_id));
                 let callback = IOFlushed::new(io_id.clone(), self.tx_io_completed.clone());
