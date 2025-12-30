@@ -5,7 +5,7 @@ use actix_web::web::Json;
 use openraft::raft::AppendEntriesRequest;
 use openraft::raft::InstallSnapshotRequest;
 use openraft::raft::VoteRequest;
-use openraft_legacy::network_v1::ChunkedSnapshotReceiver;
+use openraft_legacy::prelude::*;
 
 use crate::TypeConfig;
 use crate::app::App;

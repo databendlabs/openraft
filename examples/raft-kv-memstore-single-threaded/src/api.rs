@@ -7,7 +7,7 @@ use openraft::BasicNode;
 use openraft::ReadPolicy;
 use openraft::async_runtime::WatchReceiver;
 use openraft::error::Infallible;
-use openraft_legacy::network_v1::ChunkedSnapshotReceiver;
+use openraft_legacy::prelude::*;
 
 use crate::NodeId;
 use crate::app::App;

@@ -4,6 +4,14 @@
 //! Openraft APIs. Instead of modifying application code, users can switch imports
 //! from the main `openraft` crate to this crate.
 //!
+//! # Quick Start
+//!
+//! Use the prelude to import all commonly used legacy types:
+//!
+//! ```ignore
+//! use openraft_legacy::prelude::*;
+//! ```
+//!
 //! # Available Legacy APIs
 //!
 //! ## Network V1
@@ -20,3 +28,16 @@
 //! ```
 
 pub mod network_v1;
+
+/// Prelude for convenient imports of commonly used legacy types.
+///
+/// # Usage
+///
+/// ```ignore
+/// use openraft_legacy::prelude::*;
+/// ```
+pub mod prelude {
+    pub use crate::network_v1::Adapter;
+    pub use crate::network_v1::ChunkedSnapshotReceiver;
+    pub use crate::network_v1::RaftNetwork;
+}

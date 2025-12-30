@@ -4,6 +4,14 @@ Legacy compatibility layer for deprecated Openraft APIs.
 
 This crate provides backward compatibility for applications using deprecated Openraft APIs. Instead of modifying application code, users can switch imports from the main `openraft` crate to this crate.
 
+## Quick Start
+
+Use the prelude to import all commonly used legacy types:
+
+```rust
+use openraft_legacy::prelude::*;
+```
+
 ## Available Legacy APIs
 
 ### Network V1 (`network_v1` module)

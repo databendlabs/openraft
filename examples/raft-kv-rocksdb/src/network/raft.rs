@@ -3,7 +3,7 @@ use actix_web::post;
 use actix_web::web::Data;
 use actix_web::web::Json;
 use openraft::error::decompose::DecomposeResult;
-use openraft_legacy::network_v1::ChunkedSnapshotReceiver;
+use openraft_legacy::prelude::*;
 
 use crate::app::App;
 use crate::typ::*;
