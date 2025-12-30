@@ -8,7 +8,7 @@ use actix_web::middleware;
 use actix_web::middleware::Logger;
 use actix_web::web::Data;
 use openraft::Config;
-use openraft_network_v1::ChunkedRaft;
+use openraft_legacy::network_v1::ChunkedRaft;
 
 use crate::app::App;
 use crate::network::api;

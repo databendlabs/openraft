@@ -7,9 +7,9 @@ By default openraft enables `["tokio-rt"]`.
 This feature flag has been removed since `0.10.0`.
 
 For backward compatibility with the v1 `RaftNetwork` trait and chunk-based
-snapshot transport, use the [`openraft-network-v1`] crate instead.
+snapshot transport, use the [`openraft-legacy`] crate instead.
 
-[`openraft-network-v1`]: https://crates.io/crates/openraft-network-v1
+[`openraft-legacy`]: https://crates.io/crates/openraft-legacy
 
 
 ## feature-flag `bench`
