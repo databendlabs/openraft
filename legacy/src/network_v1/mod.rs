@@ -8,9 +8,10 @@
 //! ## Client-side Adapter
 //!
 //! [`Adapter`] wraps any `RaftNetwork` (v1) implementation to provide `RaftNetworkV2`.
+//! Use the [`RaftNetwork::into_v2()`] method for convenient conversion.
 //!
 //! ```ignore
-//! use openraft_legacy::network_v1::{Adapter, RaftNetwork};
+//! use openraft_legacy::network_v1::RaftNetwork;
 //!
 //! impl RaftNetwork<MyConfig> for MyNetwork {
 //!     async fn install_snapshot(...) { ... }  // chunk-based RPC
@@ -23,7 +24,7 @@
 //!     type Network = Adapter<MyConfig, MyNetwork>;
 //!
 //!     async fn new_client(&mut self, ...) -> Self::Network {
-//!         Adapter::new(MyNetwork::new(...))
+//!         MyNetwork::new(...).into_v2()
 //!     }
 //! }
 //! ```

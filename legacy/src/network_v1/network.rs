@@ -21,6 +21,8 @@ use openraft::raft::VoteRequest;
 use openraft::raft::VoteResponse;
 use openraft_macros::add_async_trait;
 
+use crate::network_v1::Adapter;
+
 /// A trait defining the interface for a Raft network between cluster members.
 ///
 /// This is the v1 network API that uses chunk-based snapshot transmission via
@@ -79,5 +81,25 @@ where C: RaftTypeConfig
     /// By default, it returns a constant backoff of 200 ms.
     fn backoff(&self) -> Backoff {
         Backoff::new(std::iter::repeat(Duration::from_millis(200)))
+    }
+
+    /// Convert this `RaftNetwork` into an [`Adapter`] that implements `RaftNetworkV2`.
+    ///
+    /// This is a convenience method equivalent to `Adapter::new(self)`.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// impl RaftNetworkFactory<MyConfig> for MyFactory {
+    ///     type Network = Adapter<MyConfig, MyNetwork>;
+    ///
+    ///     async fn new_client(&mut self, target: NodeId, node: Node) -> Self::Network {
+    ///         MyNetwork::new(target, node).into_v2()
+    ///     }
+    /// }
+    /// ```
+    fn into_v2(self) -> Adapter<C, Self>
+    where Self: Sized {
+        Adapter::new(self)
     }
 }
