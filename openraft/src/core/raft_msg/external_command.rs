@@ -1,6 +1,7 @@
 //! This mod defines external command sent by application to Raft.
 
 use std::fmt;
+use std::sync::Arc;
 
 use crate::RaftTypeConfig;
 use crate::Snapshot;
@@ -8,6 +9,7 @@ use crate::core::raft_msg::ExternalCommandName;
 use crate::core::raft_msg::ResultSender;
 use crate::core::sm;
 use crate::error::AllowNextRevertError;
+use crate::metrics::MetricsRecorder;
 use crate::type_config::alias::OneshotSenderOf;
 
 /// Application-triggered Raft actions for testing and administration.
@@ -51,6 +53,13 @@ pub(crate) enum ExternalCommand<C: RaftTypeConfig> {
     /// Send a [`sm::Command`] to [`sm::worker::Worker`].
     /// This command is run in the sm task.
     StateMachineCommand { sm_cmd: sm::Command<C> },
+
+    /// Set or unset a custom metrics recorder for exporting metrics.
+    ///
+    /// This allows applications to plug in their own metrics collection backends
+    /// (e.g., OpenTelemetry, Prometheus, StatsD) at runtime.
+    /// Pass `None` to disable metrics recording.
+    SetMetricsRecorder { recorder: Option<Arc<dyn MetricsRecorder>> },
 }
 
 impl<C: RaftTypeConfig> ExternalCommand<C> {
@@ -65,6 +74,7 @@ impl<C: RaftTypeConfig> ExternalCommand<C> {
             ExternalCommand::TriggerTransferLeader { .. } => ExternalCommandName::TriggerTransferLeader,
             ExternalCommand::AllowNextRevert { .. } => ExternalCommandName::AllowNextRevert,
             ExternalCommand::StateMachineCommand { .. } => ExternalCommandName::StateMachineCommand,
+            ExternalCommand::SetMetricsRecorder { .. } => ExternalCommandName::SetMetricsRecorder,
         }
     }
 }
@@ -110,6 +120,9 @@ where C: RaftTypeConfig
             }
             ExternalCommand::StateMachineCommand { sm_cmd } => {
                 write!(f, "StateMachineCommand: {}", sm_cmd)
+            }
+            ExternalCommand::SetMetricsRecorder { .. } => {
+                write!(f, "SetMetricsRecorder")
             }
         }
     }

@@ -109,6 +109,7 @@ use crate::error::LinearizableReadError;
 use crate::error::RaftError;
 use crate::error::into_raft_result::IntoRaftResult;
 use crate::membership::IntoNodes;
+use crate::metrics::MetricsRecorder;
 use crate::metrics::RaftDataMetrics;
 use crate::metrics::RaftMetrics;
 use crate::metrics::RaftServerMetrics;
@@ -525,6 +526,8 @@ where C: RaftTypeConfig
             runtime_stats: RuntimeStats::new(),
             shared_replicate_batch,
 
+            metrics_recorder: None,
+
             span: core_span,
         };
 
@@ -773,6 +776,40 @@ where C: RaftTypeConfig
     /// ```
     pub fn trigger(&self) -> Trigger<'_, C> {
         Trigger::new(self.inner.as_ref())
+    }
+
+    /// Set or unset a custom metrics recorder for exporting Raft metrics.
+    ///
+    /// This allows applications to plug in their own metrics collection backends
+    /// (e.g., OpenTelemetry, Prometheus, StatsD) at runtime. The recorder will
+    /// receive metrics events from RaftCore as they occur.
+    ///
+    /// Pass `Some(recorder)` to enable metrics recording, or `None` to disable it.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use std::sync::Arc;
+    /// use openraft::metrics::MetricsRecorder;
+    ///
+    /// struct MyRecorder;
+    /// impl MetricsRecorder for MyRecorder {
+    ///     fn record_apply_batch(&self, entry_count: u64) { /* ... */ }
+    ///     fn record_append_batch(&self, entry_count: u64) { /* ... */ }
+    /// }
+    ///
+    /// // Enable metrics recording
+    /// raft.set_metrics_recorder(Some(Arc::new(MyRecorder))).await?;
+    ///
+    /// // Disable metrics recording
+    /// raft.set_metrics_recorder(None).await?;
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Fatal`] error if RaftCore is shut down or has a storage error.
+    pub async fn set_metrics_recorder(&self, recorder: Option<Arc<dyn MetricsRecorder>>) -> Result<(), Fatal<C>> {
+        self.inner.send_external_command(ExternalCommand::SetMetricsRecorder { recorder }).await
     }
 
     /// Submit an AppendEntries RPC to this Raft node.
