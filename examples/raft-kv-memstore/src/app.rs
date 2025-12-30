@@ -1,4 +1,4 @@
-use openraft_network_v1::ChunkedRaft;
+use openraft_legacy::ChunkedRaft;
 
 use crate::NodeId;
 use crate::StateMachineStore;

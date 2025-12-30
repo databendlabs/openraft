@@ -1,12 +1,12 @@
 [package]
-name = "openraft-network-v1"
+name = "openraft-legacy"
 readme = "README.md"
 
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 categories.workspace = true
-description = "RaftNetwork V1 adapter for Openraft with chunked snapshot support"
+description = "Legacy compatibility layer for deprecated Openraft APIs"
 documentation.workspace = true
 homepage.workspace = true
 keywords.workspace = true

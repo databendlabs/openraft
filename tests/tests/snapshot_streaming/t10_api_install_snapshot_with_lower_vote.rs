@@ -9,7 +9,7 @@ use openraft::raft::AppendEntriesRequest;
 use openraft::raft::InstallSnapshotRequest;
 use openraft::storage::Snapshot;
 use openraft::storage::SnapshotMeta;
-use openraft_network_v1::ChunkedRaft;
+use openraft_legacy::ChunkedRaft;
 
 use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
