@@ -251,11 +251,7 @@ where
     C: RaftTypeConfig,
     T: RaftNetworkV2<C>,
 {
-    async fn transfer_leader(
-        &mut self,
-        req: TransferLeaderRequest<C>,
-        option: RPCOption,
-    ) -> Result<(), RPCError<C>> {
+    async fn transfer_leader(&mut self, req: TransferLeaderRequest<C>, option: RPCOption) -> Result<(), RPCError<C>> {
         RaftNetworkV2::transfer_leader(self, req, option).await
     }
 }

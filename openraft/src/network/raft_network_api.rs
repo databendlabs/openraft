@@ -18,7 +18,7 @@ use crate::network::RaftNetworkVote;
 /// 2. Implement individual sub-traits directly - `RaftNetworkApi` is auto-implemented
 ///
 /// [`RaftNetworkV2`]: crate::network::RaftNetworkV2
-pub trait RaftNetworkApi<C>:
+pub(crate) trait RaftNetworkApi<C>:
     RaftNetworkBackoff<C>
     + RaftNetworkStreamAppend<C>
     + RaftNetworkVote<C>
