@@ -19,8 +19,8 @@ use openraft::raft::InstallSnapshotResponse;
 use openraft::storage::Snapshot;
 use tokio::io::AsyncWriteExt;
 
-use crate::streaming::Streaming;
-use crate::streaming::StreamingState;
+use super::streaming::Streaming;
+use super::streaming::StreamingState;
 
 /// Raft wrapper with `install_snapshot()` for chunk-based snapshot receiving.
 ///
@@ -33,7 +33,7 @@ use crate::streaming::StreamingState;
 /// # Usage
 ///
 /// ```ignore
-/// use openraft_network_v1::ChunkedRaft;
+/// use openraft_legacy::network_v1::ChunkedRaft;
 ///
 /// let inner = openraft::Raft::new(...).await?;
 /// let raft = ChunkedRaft::new(inner);

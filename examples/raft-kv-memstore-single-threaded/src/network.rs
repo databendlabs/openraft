@@ -2,8 +2,8 @@ use openraft::BasicNode;
 use openraft::RaftNetworkFactory;
 use openraft::error::InstallSnapshotError;
 use openraft::network::RPCOption;
-use openraft_network_v1::Adapter;
-use openraft_network_v1::RaftNetwork;
+use openraft_legacy::network_v1::Adapter;
+use openraft_legacy::network_v1::RaftNetwork;
 
 use crate::NodeId;
 use crate::TypeConfig;

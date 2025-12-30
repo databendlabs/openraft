@@ -42,7 +42,7 @@ compile_error!(
 compile_error!(
     "The feature flag `adapt-network-v1` is removed since `0.10.0`. \
      For backward compatibility with the v1 `RaftNetwork` trait and chunk-based snapshot transport, \
-     use the `openraft-network-v1` crate instead."
+     use the `openraft-legacy` crate instead."
 );
 
 pub extern crate openraft_macros;

@@ -25,7 +25,7 @@ log-mem            = { path = "../log-mem" }
 network-v1-http    = { path = "../network-v1-http" }
 sm-mem             = { path = "../sm-mem" }
 openraft           = { path = "../../openraft", features = ["serde", "type-alias"] }
-openraft-network-v1 = { path = "../../network-v1" }
+openraft-legacy = { path = "../../legacy" }
 types-kv           = { path = "../types-kv" }
 
 actix-web          = { version = "4.0.0-rc.2" }
