@@ -181,8 +181,8 @@ To use arbitrary snapshot data, the application needs to:
 
 [`AsyncRuntime`]:                     `crate::AsyncRuntime`
 [`RPCOption`]:                        `crate::network::RPCOption`
-[`Chunked`]:                          https://docs.rs/openraft-network-v1/latest/openraft_network_v1/struct.Chunked.html
-[`Streaming`]:                        https://docs.rs/openraft-network-v1/latest/openraft_network_v1/struct.Streaming.html
+[`Chunked`]:                          https://docs.rs/openraft-legacy/latest/openraft_legacy/struct.Chunked.html
+[`Streaming`]:                        https://docs.rs/openraft-legacy/latest/openraft_legacy/struct.Streaming.html
 [`Raft::ensure_linearizable()`]:      `crate::Raft::ensure_linearizable`
 [`Raft::get_snapshot()`]:             `crate::Raft::get_snapshot`
 [`Raft::begin_receiving_snapshot()`]: `crate::Raft::begin_receiving_snapshot`

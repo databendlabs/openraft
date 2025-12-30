@@ -65,7 +65,7 @@ resolver = "3"
 members = [
     "rt",
     "openraft",
-    "network-v1",
+    "legacy",
     "macros",
     "tests",
     "stores/memstore",

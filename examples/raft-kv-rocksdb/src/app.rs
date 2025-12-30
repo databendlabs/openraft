@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use futures::lock::Mutex;
 use openraft::Config;
-use openraft_network_v1::ChunkedRaft;
+use openraft_legacy::network_v1::ChunkedRaft;
 
 use crate::NodeId;
 use crate::TypeConfig;
