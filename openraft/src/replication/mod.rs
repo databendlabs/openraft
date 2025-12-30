@@ -42,7 +42,8 @@ use crate::error::ReplicationClosed;
 use crate::log_id_range::LogIdRange;
 use crate::network::Backoff;
 use crate::network::RPCOption;
-use crate::network::v2::RaftNetworkV2;
+use crate::network::RaftNetworkBackoff;
+use crate::network::RaftNetworkStreamAppend;
 use crate::progress::inflight_id::InflightId;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::StreamAppendError;
@@ -86,7 +87,7 @@ where
     /// Identifies the current in-flight replication batch for progress tracking.
     inflight_id: Option<InflightId>,
 
-    /// The `RaftNetworkV2` interface for replicating logs and heartbeat.
+    /// The network interface for replicating logs and heartbeat.
     network: Option<N::Network>,
 
     /// The log replication state tracking progress and matching logs for the follower.
