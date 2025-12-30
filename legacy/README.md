@@ -12,7 +12,7 @@ The legacy `RaftNetwork` v1 trait with chunk-based snapshot transmission:
 
 - **`RaftNetwork`**: The legacy v1 network trait using `install_snapshot()` for chunked snapshot transfer
 - **`Adapter`**: Converts a v1 `RaftNetwork` impl to `RaftNetworkV2`
-- **`ChunkedRaft`**: Wraps `Raft` to accept v1 chunk-based `install_snapshot` RPCs
+- **`ChunkedSnapshotReceiver`**: Extension trait that adds `install_snapshot()` to `Raft` for receiving chunks
 
 ## Usage
 
@@ -38,15 +38,15 @@ impl RaftNetworkFactory<C> for MyFactory {
 }
 ```
 
-### Server-side: `ChunkedRaft`
+### Server-side: `ChunkedSnapshotReceiver`
 
-Wraps `Raft` to accept chunk-based snapshot RPCs. Derefs to inner `Raft`:
+Extension trait that adds `install_snapshot()` to `Raft`. Just import the trait:
 
 ```rust
-use openraft_legacy::network_v1::ChunkedRaft;
+use openraft_legacy::network_v1::ChunkedSnapshotReceiver;
 
-let raft = ChunkedRaft::new(Raft::new(...));
+let raft = Raft::new(...).await?;
 
-raft.client_write(cmd).await?;      // via Deref
-raft.install_snapshot(req).await?;  // chunk-based
+raft.client_write(cmd).await?;      // standard Raft method
+raft.install_snapshot(req).await?;  // added by ChunkedSnapshotReceiver trait
 ```

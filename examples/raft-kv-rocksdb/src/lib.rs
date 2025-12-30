@@ -9,7 +9,6 @@ use actix_web::middleware;
 use actix_web::middleware::Logger;
 use actix_web::web::Data;
 use openraft::Config;
-use openraft_legacy::network_v1::ChunkedRaft;
 
 use crate::app::App;
 use crate::network::api;
@@ -56,9 +55,6 @@ where P: AsRef<Path> {
 
     // Create a local raft instance.
     let raft = openraft::Raft::new(node_id, config.clone(), network, log_store, state_machine_store).await.unwrap();
-
-    // Create a ChunkedRaft wrapper for chunk-based snapshot receiving
-    let raft = ChunkedRaft::new(raft);
 
     // Create an application that will store all the instances created above, this will
     // later be used on the actix-web services.
