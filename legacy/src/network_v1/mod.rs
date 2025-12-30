@@ -52,5 +52,5 @@ mod snapshot_receiver;
 mod streaming;
 
 pub use adapter::Adapter;
-pub use snapshot_receiver::ChunkedSnapshotReceiver;
 pub use network::RaftNetwork;
+pub use snapshot_receiver::ChunkedSnapshotReceiver;
