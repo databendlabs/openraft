@@ -6,7 +6,7 @@ use openraft::Config;
 use openraft::Vote;
 use openraft::raft::InstallSnapshotRequest;
 use openraft::storage::SnapshotMeta;
-use openraft_legacy::network_v1::ChunkedRaft;
+use openraft_legacy::network_v1::ChunkedSnapshotReceiver;
 
 use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
@@ -38,7 +38,6 @@ async fn snapshot_arguments() -> Result<()> {
     log_index = router.new_cluster(btreeset! {0}, btreeset! {}).await?;
 
     let (raft, _, _) = router.remove_node(0).unwrap();
-    let raft = ChunkedRaft::new(raft);
     let make_req = || InstallSnapshotRequest {
         // force it to be a follower
         vote: Vote::new_committed(2, 1),
