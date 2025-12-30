@@ -6,7 +6,7 @@ use openraft::Config;
 use openraft::Vote;
 use openraft::raft::InstallSnapshotRequest;
 use openraft::storage::SnapshotMeta;
-use openraft_legacy::network_v1::ChunkedSnapshotReceiver;
+use openraft_legacy::prelude::*;
 
 use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
