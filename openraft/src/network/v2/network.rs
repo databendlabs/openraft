@@ -3,7 +3,6 @@ use std::time::Duration;
 
 use anyerror::AnyError;
 use futures::Stream;
-use futures::StreamExt;
 use openraft_macros::add_async_trait;
 use openraft_macros::since;
 
@@ -18,6 +17,8 @@ use crate::error::StreamingError;
 use crate::error::Unreachable;
 use crate::network::Backoff;
 use crate::network::RPCOption;
+use crate::network::RaftNetworkAppend;
+use crate::network::stream_append_sequential;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
 use crate::raft::SnapshotResponse;
@@ -88,49 +89,7 @@ where C: RaftTypeConfig
     where
         S: Stream<Item = AppendEntriesRequest<C>> + OptionalSend + Unpin + 'static,
     {
-        let fu = async move {
-            let strm = futures::stream::unfold(Some((self, input)), move |state| {
-                let option = option.clone();
-                async move {
-                    let (network, mut input) = state?;
-
-                    let req = input.next().await?;
-
-                    let range = req.log_id_range();
-
-                    let result = network.append_entries(req, option).await;
-
-                    match result {
-                        Ok(resp) => {
-                            let partial_success = resp.get_partial_success().cloned();
-
-                            let stream_result = resp.into_stream_result(range.prev, range.last.clone());
-                            let is_err = stream_result.is_err();
-                            let next_state = if is_err {
-                                None
-                            } else if let Some(partial) = partial_success {
-                                if partial == range.last {
-                                    Some((network, input))
-                                } else {
-                                    // If the request is only partially finished, pipeline should be stopped
-                                    None
-                                }
-                            } else {
-                                // full success
-                                Some((network, input))
-                            };
-                            Some((Ok(stream_result), next_state))
-                        }
-                        Err(e) => Some((Err(e), None)),
-                    }
-                }
-            });
-
-            let strm: BoxStream<'s, _> = Box::pin(strm);
-            Ok(strm)
-        };
-
-        Box::pin(fu)
+        stream_append_sequential(self, input, option)
     }
 
     /// Send a RequestVote RPC to the target.
@@ -190,5 +149,100 @@ where C: RaftTypeConfig
     /// By default, it returns a constant backoff of 500 ms.
     fn backoff(&self) -> Backoff {
         Backoff::new(std::iter::repeat(Duration::from_millis(200)))
+    }
+}
+
+// =============================================================================
+// Blanket implementations: RaftNetworkV2 → Sub-traits
+// =============================================================================
+//
+// These blanket impls allow existing RaftNetworkV2 implementations to
+// automatically satisfy all sub-trait requirements by delegating to
+// the corresponding RaftNetworkV2 methods.
+
+use crate::network::RaftNetworkBackoff;
+use crate::network::RaftNetworkSnapshot;
+use crate::network::RaftNetworkStreamAppend;
+use crate::network::RaftNetworkTransferLeader;
+use crate::network::RaftNetworkVote;
+
+#[allow(clippy::manual_async_fn)]
+impl<C, T> RaftNetworkAppend<C> for T
+where
+    C: RaftTypeConfig,
+    T: RaftNetworkV2<C> + ?Sized,
+{
+    async fn append_entries(
+        &mut self,
+        rpc: AppendEntriesRequest<C>,
+        option: RPCOption,
+    ) -> Result<AppendEntriesResponse<C>, RPCError<C>> {
+        RaftNetworkV2::append_entries(self, rpc, option).await
+    }
+}
+
+impl<C, T> RaftNetworkBackoff<C> for T
+where
+    C: RaftTypeConfig,
+    T: RaftNetworkV2<C> + ?Sized,
+{
+    fn backoff(&self) -> Backoff {
+        RaftNetworkV2::backoff(self)
+    }
+}
+
+#[allow(clippy::manual_async_fn)]
+impl<C, T> RaftNetworkVote<C> for T
+where
+    C: RaftTypeConfig,
+    T: RaftNetworkV2<C> + ?Sized,
+{
+    async fn vote(&mut self, rpc: VoteRequest<C>, option: RPCOption) -> Result<VoteResponse<C>, RPCError<C>> {
+        RaftNetworkV2::vote(self, rpc, option).await
+    }
+}
+
+#[allow(clippy::manual_async_fn)]
+impl<C, T> RaftNetworkSnapshot<C> for T
+where
+    C: RaftTypeConfig,
+    T: RaftNetworkV2<C> + ?Sized,
+{
+    async fn full_snapshot(
+        &mut self,
+        vote: VoteOf<C>,
+        snapshot: Snapshot<C>,
+        cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
+        option: RPCOption,
+    ) -> Result<SnapshotResponse<C>, StreamingError<C>> {
+        RaftNetworkV2::full_snapshot(self, vote, snapshot, cancel, option).await
+    }
+}
+
+#[allow(clippy::manual_async_fn)]
+impl<C, T> RaftNetworkTransferLeader<C> for T
+where
+    C: RaftTypeConfig,
+    T: RaftNetworkV2<C> + ?Sized,
+{
+    async fn transfer_leader(&mut self, req: TransferLeaderRequest<C>, option: RPCOption) -> Result<(), RPCError<C>> {
+        RaftNetworkV2::transfer_leader(self, req, option).await
+    }
+}
+
+impl<C, T> RaftNetworkStreamAppend<C> for T
+where
+    C: RaftTypeConfig,
+    T: RaftNetworkV2<C> + ?Sized,
+{
+    fn stream_append<'s, S>(
+        &'s mut self,
+        input: S,
+        option: RPCOption,
+    ) -> BoxFuture<'s, Result<BoxStream<'s, Result<StreamAppendResult<C>, RPCError<C>>>, RPCError<C>>>
+    where
+        S: Stream<Item = AppendEntriesRequest<C>> + OptionalSend + Unpin + 'static,
+    {
+        RaftNetworkV2::stream_append(self, input, option)
     }
 }
