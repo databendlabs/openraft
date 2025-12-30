@@ -22,18 +22,33 @@
 //! See the [Getting Started Guide](crate::docs::getting_started) for implementation
 //! details and examples.
 
+mod append_trait;
 mod backoff;
+mod backoff_trait;
 mod factory;
+mod raft_network_api;
 mod raft_network_v1;
 mod rpc_option;
 mod rpc_type;
+mod snapshot_trait;
+mod stream_append_trait;
+mod transfer_leader_trait;
+mod vote_trait;
 
 pub mod v2;
 
+pub use append_trait::RaftNetworkAppend;
 pub use backoff::Backoff;
+pub use backoff_trait::RaftNetworkBackoff;
 pub use factory::RaftNetworkFactory;
 #[allow(deprecated)]
 pub use raft_network_v1::RaftNetwork;
+pub use raft_network_api::RaftNetworkApi;
 pub use rpc_option::RPCOption;
 pub use rpc_type::RPCTypes;
+pub use snapshot_trait::RaftNetworkSnapshot;
+pub use stream_append_trait::RaftNetworkStreamAppend;
+pub use stream_append_trait::stream_append_sequential;
+pub use transfer_leader_trait::RaftNetworkTransferLeader;
 pub use v2::RaftNetworkV2;
+pub use vote_trait::RaftNetworkVote;

@@ -192,3 +192,87 @@ where C: RaftTypeConfig
         Backoff::new(std::iter::repeat(Duration::from_millis(200)))
     }
 }
+
+// =============================================================================
+// Blanket implementations: RaftNetworkV2 → Sub-traits
+// =============================================================================
+//
+// These blanket impls allow existing RaftNetworkV2 implementations to
+// automatically satisfy all sub-trait requirements by delegating to
+// the corresponding RaftNetworkV2 methods.
+
+use crate::network::RaftNetworkBackoff;
+use crate::network::RaftNetworkSnapshot;
+use crate::network::RaftNetworkStreamAppend;
+use crate::network::RaftNetworkTransferLeader;
+use crate::network::RaftNetworkVote;
+
+impl<C, T> RaftNetworkBackoff<C> for T
+where
+    C: RaftTypeConfig,
+    T: RaftNetworkV2<C>,
+{
+    fn backoff(&self) -> Backoff {
+        RaftNetworkV2::backoff(self)
+    }
+}
+
+#[allow(clippy::manual_async_fn)]
+impl<C, T> RaftNetworkVote<C> for T
+where
+    C: RaftTypeConfig,
+    T: RaftNetworkV2<C>,
+{
+    async fn vote(&mut self, rpc: VoteRequest<C>, option: RPCOption) -> Result<VoteResponse<C>, RPCError<C>> {
+        RaftNetworkV2::vote(self, rpc, option).await
+    }
+}
+
+#[allow(clippy::manual_async_fn)]
+impl<C, T> RaftNetworkSnapshot<C> for T
+where
+    C: RaftTypeConfig,
+    T: RaftNetworkV2<C>,
+{
+    async fn full_snapshot(
+        &mut self,
+        vote: VoteOf<C>,
+        snapshot: Snapshot<C>,
+        cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
+        option: RPCOption,
+    ) -> Result<SnapshotResponse<C>, StreamingError<C>> {
+        RaftNetworkV2::full_snapshot(self, vote, snapshot, cancel, option).await
+    }
+}
+
+#[allow(clippy::manual_async_fn)]
+impl<C, T> RaftNetworkTransferLeader<C> for T
+where
+    C: RaftTypeConfig,
+    T: RaftNetworkV2<C>,
+{
+    async fn transfer_leader(
+        &mut self,
+        req: TransferLeaderRequest<C>,
+        option: RPCOption,
+    ) -> Result<(), RPCError<C>> {
+        RaftNetworkV2::transfer_leader(self, req, option).await
+    }
+}
+
+impl<C, T> RaftNetworkStreamAppend<C> for T
+where
+    C: RaftTypeConfig,
+    T: RaftNetworkV2<C>,
+{
+    fn stream_append<'s, S>(
+        &'s mut self,
+        input: S,
+        option: RPCOption,
+    ) -> BoxFuture<'s, Result<BoxStream<'s, Result<StreamAppendResult<C>, RPCError<C>>>, RPCError<C>>>
+    where
+        S: Stream<Item = AppendEntriesRequest<C>> + OptionalSend + Unpin + 'static,
+    {
+        RaftNetworkV2::stream_append(self, input, option)
+    }
+}
