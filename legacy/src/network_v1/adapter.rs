@@ -25,8 +25,8 @@ use openraft::raft::VoteResponse;
 use openraft::storage::Snapshot;
 use openraft::type_config::alias::VoteOf;
 
-use crate::RaftNetwork;
-use crate::sender::Sender;
+use super::RaftNetwork;
+use super::sender::Sender;
 
 /// Wrapper that adapts `RaftNetwork` (v1) to `RaftNetworkV2`.
 ///
@@ -38,7 +38,7 @@ use crate::sender::Sender;
 /// # Usage
 ///
 /// ```ignore
-/// use openraft_network_v1::Adapter;
+/// use openraft_legacy::Adapter;
 ///
 /// // Your existing RaftNetwork implementation
 /// let network: MyNetwork = /* ... */;

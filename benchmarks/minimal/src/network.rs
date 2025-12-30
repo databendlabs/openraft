@@ -20,9 +20,9 @@ use openraft::raft::VoteRequest;
 use openraft::raft::VoteResponse;
 use openraft::Config;
 use openraft::Raft;
-use openraft_network_v1::Adapter;
-use openraft_network_v1::ChunkedRaft;
-use openraft_network_v1::RaftNetwork;
+use openraft_legacy::Adapter;
+use openraft_legacy::ChunkedRaft;
+use openraft_legacy::RaftNetwork;
 
 use crate::store::LogStore;
 use crate::store::NodeId;
