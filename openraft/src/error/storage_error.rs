@@ -145,7 +145,7 @@ where C: RaftTypeConfig
 {
     /// Create a new StorageError.
     pub fn new(subject: ErrorSubject<C>, verb: ErrorVerb, source: C::ErrorSource) -> Self {
-        let backtrace = source.backtrace_str();
+        let backtrace = source.backtrace_display().map(|d| d.to_string());
         Self {
             subject,
             verb,

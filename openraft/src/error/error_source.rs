@@ -1,6 +1,7 @@
 //! Configurable error source trait for wrapping arbitrary errors.
 
 use std::error::Error;
+use std::fmt::Display;
 
 use anyerror::AnyError;
 
@@ -53,12 +54,15 @@ pub trait ErrorSource: Error + Clone + PartialEq + Eq + OptionalSend + OptionalS
     /// Create an error from a string message.
     fn from_string(msg: impl ToString) -> Self;
 
-    /// Get the backtrace if captured.
+    /// Get the backtrace as a displayable value if captured.
     ///
     /// Returns `None` if backtrace is not available or not captured.
     /// The default implementation returns `None`.
-    fn backtrace_str(&self) -> Option<String> {
-        None
+    ///
+    /// This method returns `impl Display` to avoid allocation when only
+    /// displaying the backtrace. Call `.to_string()` if storage is needed.
+    fn backtrace_display(&self) -> Option<impl Display + '_> {
+        None::<&str>
     }
 }
 
@@ -71,7 +75,7 @@ impl ErrorSource for AnyError {
         AnyError::error(msg)
     }
 
-    fn backtrace_str(&self) -> Option<String> {
+    fn backtrace_display(&self) -> Option<impl Display + '_> {
         anyerror::backtrace_str()
     }
 }
