@@ -28,30 +28,29 @@
 //! }
 //! ```
 //!
-//! ## Server-side: ChunkedRaft
+//! ## Server-side: ChunkedSnapshot
 //!
-//! [`ChunkedRaft`] wraps [`openraft::Raft`] and adds `install_snapshot()` for receiving
-//! chunks. It derefs to the inner Raft, so all standard methods are available.
+//! [`ChunkedSnapshotReceiver`] is an extension trait that adds `install_snapshot()` to
+//! [`openraft::Raft`] for receiving chunks. Just import the trait to use it.
 //!
 //! ```ignore
-//! use openraft_legacy::network_v1::ChunkedRaft;
+//! use openraft_legacy::network_v1::ChunkedSnapshotReceiver;
 //!
-//! let inner = openraft::Raft::new(...).await?;
-//! let raft = ChunkedRaft::new(inner);
+//! let raft = openraft::Raft::new(...).await?;
 //!
-//! // Standard Raft methods via Deref
+//! // Standard Raft methods
 //! raft.client_write(...).await?;
 //!
-//! // Added method for chunked snapshot receiving
+//! // Added method for chunked snapshot receiving (via trait)
 //! raft.install_snapshot(req).await?;
 //! ```
 
 mod adapter;
-mod chunked_raft;
 mod network;
 mod sender;
+mod snapshot_receiver;
 mod streaming;
 
 pub use adapter::Adapter;
-pub use chunked_raft::ChunkedRaft;
+pub use snapshot_receiver::ChunkedSnapshotReceiver;
 pub use network::RaftNetwork;

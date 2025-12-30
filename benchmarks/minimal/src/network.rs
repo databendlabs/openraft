@@ -21,7 +21,7 @@ use openraft::raft::VoteResponse;
 use openraft::Config;
 use openraft::Raft;
 use openraft_legacy::network_v1::Adapter;
-use openraft_legacy::network_v1::ChunkedRaft;
+use openraft_legacy::network_v1::ChunkedSnapshotReceiver;
 use openraft_legacy::network_v1::RaftNetwork;
 
 use crate::store::LogStore;
@@ -29,7 +29,7 @@ use crate::store::NodeId;
 use crate::store::StateMachineStore;
 use crate::store::TypeConfig;
 
-pub type BenchRaft = ChunkedRaft<TypeConfig>;
+pub type BenchRaft = Raft<TypeConfig>;
 
 #[derive(Clone)]
 pub struct Router {
@@ -56,7 +56,6 @@ impl Router {
             let sm = Arc::new(StateMachineStore::new());
 
             let raft = Raft::new(*id, config.clone(), self.clone(), log_store, sm).await?;
-            let raft = ChunkedRaft::new(raft);
 
             rafts.insert(*id, raft);
         }
