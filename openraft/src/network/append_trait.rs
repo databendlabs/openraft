@@ -1,4 +1,4 @@
-//! Defines the [`RaftNetworkAppend`] trait for AppendEntries RPC.
+//! Defines the [`NetAppend`] trait for AppendEntries RPC.
 
 use openraft_macros::add_async_trait;
 
@@ -17,7 +17,7 @@ use crate::raft::AppendEntriesResponse;
 ///
 /// [`RaftNetworkV2`]: crate::network::RaftNetworkV2
 #[add_async_trait]
-pub trait RaftNetworkAppend<C>: OptionalSend + OptionalSync + 'static
+pub trait NetAppend<C>: OptionalSend + OptionalSync + 'static
 where C: RaftTypeConfig
 {
     /// Send an AppendEntries RPC to the target.

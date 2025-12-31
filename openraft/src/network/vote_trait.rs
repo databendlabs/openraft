@@ -1,4 +1,4 @@
-//! Defines the [`RaftNetworkVote`] trait for Vote RPC.
+//! Defines the [`NetVote`] trait for Vote RPC.
 
 use openraft_macros::add_async_trait;
 
@@ -17,7 +17,7 @@ use crate::raft::VoteResponse;
 ///
 /// [`RaftNetworkV2`]: crate::network::RaftNetworkV2
 #[add_async_trait]
-pub trait RaftNetworkVote<C>: OptionalSend + OptionalSync + 'static
+pub trait NetVote<C>: OptionalSend + OptionalSync + 'static
 where C: RaftTypeConfig
 {
     /// Send a RequestVote RPC to the target.

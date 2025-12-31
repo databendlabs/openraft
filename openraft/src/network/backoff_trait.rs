@@ -1,4 +1,4 @@
-//! Defines the [`RaftNetworkBackoff`] trait for network backoff behavior.
+//! Defines the [`NetBackoff`] trait for network backoff behavior.
 
 use crate::OptionalSend;
 use crate::OptionalSync;
@@ -14,7 +14,7 @@ use crate::network::Backoff;
 /// [`RaftTypeConfig`], enabling proper blanket impl from [`RaftNetworkV2`].
 ///
 /// [`RaftNetworkV2`]: crate::network::RaftNetworkV2
-pub trait RaftNetworkBackoff<C>: OptionalSend + OptionalSync + 'static
+pub trait NetBackoff<C>: OptionalSend + OptionalSync + 'static
 where C: RaftTypeConfig
 {
     /// Build a backoff instance if the target node is temporarily(or permanently) unreachable.

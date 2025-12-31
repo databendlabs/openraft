@@ -16,8 +16,8 @@ use crate::error::ReplicationClosed;
 use crate::error::StreamingError;
 use crate::error::Unreachable;
 use crate::network::Backoff;
+use crate::network::NetAppend;
 use crate::network::RPCOption;
-use crate::network::RaftNetworkAppend;
 use crate::network::stream_append_sequential;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
@@ -160,14 +160,14 @@ where C: RaftTypeConfig
 // automatically satisfy all sub-trait requirements by delegating to
 // the corresponding RaftNetworkV2 methods.
 
-use crate::network::RaftNetworkBackoff;
-use crate::network::RaftNetworkSnapshot;
-use crate::network::RaftNetworkStreamAppend;
-use crate::network::RaftNetworkTransferLeader;
-use crate::network::RaftNetworkVote;
+use crate::network::NetBackoff;
+use crate::network::NetSnapshot;
+use crate::network::NetStreamAppend;
+use crate::network::NetTransferLeader;
+use crate::network::NetVote;
 
 #[allow(clippy::manual_async_fn)]
-impl<C, T> RaftNetworkAppend<C> for T
+impl<C, T> NetAppend<C> for T
 where
     C: RaftTypeConfig,
     T: RaftNetworkV2<C> + ?Sized,
@@ -181,7 +181,7 @@ where
     }
 }
 
-impl<C, T> RaftNetworkBackoff<C> for T
+impl<C, T> NetBackoff<C> for T
 where
     C: RaftTypeConfig,
     T: RaftNetworkV2<C> + ?Sized,
@@ -192,7 +192,7 @@ where
 }
 
 #[allow(clippy::manual_async_fn)]
-impl<C, T> RaftNetworkVote<C> for T
+impl<C, T> NetVote<C> for T
 where
     C: RaftTypeConfig,
     T: RaftNetworkV2<C> + ?Sized,
@@ -203,7 +203,7 @@ where
 }
 
 #[allow(clippy::manual_async_fn)]
-impl<C, T> RaftNetworkSnapshot<C> for T
+impl<C, T> NetSnapshot<C> for T
 where
     C: RaftTypeConfig,
     T: RaftNetworkV2<C> + ?Sized,
@@ -220,7 +220,7 @@ where
 }
 
 #[allow(clippy::manual_async_fn)]
-impl<C, T> RaftNetworkTransferLeader<C> for T
+impl<C, T> NetTransferLeader<C> for T
 where
     C: RaftTypeConfig,
     T: RaftNetworkV2<C> + ?Sized,
@@ -230,7 +230,7 @@ where
     }
 }
 
-impl<C, T> RaftNetworkStreamAppend<C> for T
+impl<C, T> NetStreamAppend<C> for T
 where
     C: RaftTypeConfig,
     T: RaftNetworkV2<C> + ?Sized,

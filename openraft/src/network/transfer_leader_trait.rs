@@ -1,4 +1,4 @@
-//! Defines the [`RaftNetworkTransferLeader`] trait for leader transfer.
+//! Defines the [`NetTransferLeader`] trait for leader transfer.
 
 use openraft_macros::add_async_trait;
 
@@ -16,7 +16,7 @@ use crate::raft::message::TransferLeaderRequest;
 ///
 /// [`RaftNetworkV2`]: crate::network::RaftNetworkV2
 #[add_async_trait]
-pub trait RaftNetworkTransferLeader<C>: OptionalSend + OptionalSync + 'static
+pub trait NetTransferLeader<C>: OptionalSend + OptionalSync + 'static
 where C: RaftTypeConfig
 {
     /// Send TransferLeader message to the target node.

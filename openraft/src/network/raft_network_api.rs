@@ -1,11 +1,11 @@
 //! Defines the [`RaftNetworkApi`] super-trait used internally by Openraft.
 
 use crate::RaftTypeConfig;
-use crate::network::RaftNetworkBackoff;
-use crate::network::RaftNetworkSnapshot;
-use crate::network::RaftNetworkStreamAppend;
-use crate::network::RaftNetworkTransferLeader;
-use crate::network::RaftNetworkVote;
+use crate::network::NetBackoff;
+use crate::network::NetSnapshot;
+use crate::network::NetStreamAppend;
+use crate::network::NetTransferLeader;
+use crate::network::NetVote;
 
 /// The complete network API required by Openraft.
 ///
@@ -18,12 +18,8 @@ use crate::network::RaftNetworkVote;
 /// 2. Implement individual sub-traits directly - `RaftNetworkApi` is auto-implemented
 ///
 /// [`RaftNetworkV2`]: crate::network::RaftNetworkV2
-pub trait RaftNetworkApi<C>:
-    RaftNetworkBackoff<C>
-    + RaftNetworkStreamAppend<C>
-    + RaftNetworkVote<C>
-    + RaftNetworkSnapshot<C>
-    + RaftNetworkTransferLeader<C>
+pub(crate) trait RaftNetworkApi<C>:
+    NetBackoff<C> + NetStreamAppend<C> + NetVote<C> + NetSnapshot<C> + NetTransferLeader<C>
 where C: RaftTypeConfig
 {
 }
@@ -33,10 +29,6 @@ where C: RaftTypeConfig
 impl<C, T> RaftNetworkApi<C> for T
 where
     C: RaftTypeConfig,
-    T: RaftNetworkBackoff<C>
-        + RaftNetworkStreamAppend<C>
-        + RaftNetworkVote<C>
-        + RaftNetworkSnapshot<C>
-        + RaftNetworkTransferLeader<C>,
+    T: NetBackoff<C> + NetStreamAppend<C> + NetVote<C> + NetSnapshot<C> + NetTransferLeader<C>,
 {
 }

@@ -1,4 +1,4 @@
-//! Defines the [`RaftNetworkStreamAppend`] trait for streaming AppendEntries.
+//! Defines the [`NetStreamAppend`] trait for streaming AppendEntries.
 
 use futures::Stream;
 use futures::StreamExt;
@@ -9,8 +9,8 @@ use crate::RaftTypeConfig;
 use crate::base::BoxFuture;
 use crate::base::BoxStream;
 use crate::error::RPCError;
+use crate::network::NetAppend;
 use crate::network::RPCOption;
-use crate::network::RaftNetworkAppend;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::StreamAppendResult;
 
@@ -23,10 +23,10 @@ use crate::raft::StreamAppendResult;
 /// 2. **Direct implementation**: Implement the trait directly
 ///
 /// For implementations that want to build streaming on top of single-request
-/// [`RaftNetworkAppend`], use [`stream_append_sequential`] helper.
+/// [`NetAppend`], use [`stream_append_sequential`] helper.
 ///
 /// [`RaftNetworkV2`]: crate::network::RaftNetworkV2
-pub trait RaftNetworkStreamAppend<C>: OptionalSend + OptionalSync + 'static
+pub trait NetStreamAppend<C>: OptionalSend + OptionalSync + 'static
 where C: RaftTypeConfig
 {
     /// Send a stream of AppendEntries RPCs to the target and return a stream of responses.
@@ -63,7 +63,7 @@ pub fn stream_append_sequential<'s, C, N, S>(
 ) -> BoxFuture<'s, Result<BoxStream<'s, Result<StreamAppendResult<C>, RPCError<C>>>, RPCError<C>>>
 where
     C: RaftTypeConfig,
-    N: RaftNetworkAppend<C> + ?Sized,
+    N: NetAppend<C> + ?Sized,
     S: Stream<Item = AppendEntriesRequest<C>> + OptionalSend + Unpin + 'static,
 {
     let fu = async move {

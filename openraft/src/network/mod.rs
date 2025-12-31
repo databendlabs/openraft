@@ -37,18 +37,18 @@ mod vote_trait;
 
 pub mod v2;
 
-pub use append_trait::RaftNetworkAppend;
+pub use append_trait::NetAppend;
 pub use backoff::Backoff;
-pub use backoff_trait::RaftNetworkBackoff;
+pub use backoff_trait::NetBackoff;
 pub use factory::RaftNetworkFactory;
-pub use raft_network_api::RaftNetworkApi;
+pub(crate) use raft_network_api::RaftNetworkApi;
 #[allow(deprecated)]
 pub use raft_network_v1::RaftNetwork;
 pub use rpc_option::RPCOption;
 pub use rpc_type::RPCTypes;
-pub use snapshot_trait::RaftNetworkSnapshot;
-pub use stream_append_trait::RaftNetworkStreamAppend;
+pub use snapshot_trait::NetSnapshot;
+pub use stream_append_trait::NetStreamAppend;
 pub use stream_append_trait::stream_append_sequential;
-pub use transfer_leader_trait::RaftNetworkTransferLeader;
+pub use transfer_leader_trait::NetTransferLeader;
 pub use v2::RaftNetworkV2;
-pub use vote_trait::RaftNetworkVote;
+pub use vote_trait::NetVote;

@@ -1,4 +1,4 @@
-//! Defines the [`RaftNetworkSnapshot`] trait for snapshot transmission.
+//! Defines the [`NetSnapshot`] trait for snapshot transmission.
 
 use std::future::Future;
 
@@ -21,7 +21,7 @@ use crate::type_config::alias::VoteOf;
 ///
 /// [`RaftNetworkV2`]: crate::network::RaftNetworkV2
 #[add_async_trait]
-pub trait RaftNetworkSnapshot<C>: OptionalSend + OptionalSync + 'static
+pub trait NetSnapshot<C>: OptionalSend + OptionalSync + 'static
 where C: RaftTypeConfig
 {
     /// Send a complete Snapshot to the target.
