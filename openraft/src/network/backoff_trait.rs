@@ -7,11 +7,11 @@ use crate::network::Backoff;
 
 /// Provides backoff strategy for network operations.
 ///
-/// This trait is part of the granular network API. It can be implemented directly
-/// or automatically via blanket impl when implementing [`RaftNetworkV2`].
+/// **For most applications, implement [`RaftNetworkV2`] instead.** This trait is
+/// automatically derived from `RaftNetworkV2` via blanket implementation.
 ///
-/// The type parameter `C` is used to associate this trait with a specific
-/// [`RaftTypeConfig`], enabling proper blanket impl from [`RaftNetworkV2`].
+/// Direct implementation is an advanced option for fine-grained control over
+/// retry behavior when nodes are unreachable.
 ///
 /// [`RaftNetworkV2`]: crate::network::RaftNetworkV2
 pub trait NetBackoff<C>: OptionalSend + OptionalSync + 'static

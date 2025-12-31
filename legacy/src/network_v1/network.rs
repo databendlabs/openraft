@@ -30,7 +30,7 @@ use crate::network_v1::Adapter;
 /// [`RaftNetworkV2`](openraft::network::v2::RaftNetworkV2) instead.
 ///
 /// To use this trait with openraft, wrap your implementation with
-/// [`Adapter`](crate::network_v1::Adapter) to convert it to `RaftNetworkV2`.
+/// [`Adapter`] to convert it to `RaftNetworkV2`.
 ///
 /// A single network instance is used to connect to a single target node. The network instance is
 /// constructed by the [`RaftNetworkFactory`](`openraft::network::RaftNetworkFactory`).

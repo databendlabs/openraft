@@ -31,6 +31,15 @@ use crate::type_config::alias::VoteOf;
 
 /// A trait defining the interface for a Raft network between cluster members.
 ///
+/// **This is the recommended trait for most applications.** It provides a unified interface
+/// for all network operations with sensible defaults. Simply implement the required methods
+/// (`append_entries`, `vote`, `full_snapshot`) and the sub-traits ([`NetAppend`], [`NetVote`],
+/// [`NetSnapshot`], etc.) will be automatically derived via blanket implementations.
+///
+/// For advanced use cases requiring fine-grained control, applications may implement
+/// the individual sub-traits directly instead of this trait. See [`NetStreamAppend`] for
+/// an example where direct implementation enables native gRPC bidirectional streaming.
+///
 /// See the [network chapter of the guide](crate::docs::getting_started#4-implement-raftnetwork)
 /// for details and discussion on this trait and how to implement it.
 ///
@@ -43,6 +52,10 @@ use crate::type_config::alias::VoteOf;
 ///
 /// [Ensure connection to correct node][correct-node]
 ///
+/// [`NetAppend`]: crate::network::NetAppend
+/// [`NetVote`]: crate::network::NetVote
+/// [`NetSnapshot`]: crate::network::NetSnapshot
+/// [`NetStreamAppend`]: crate::network::NetStreamAppend
 /// [correct-node]: `crate::docs::cluster_control::dynamic_membership#ensure-connection-to-the-correct-node`
 #[since(version = "0.10.0")]
 #[add_async_trait]

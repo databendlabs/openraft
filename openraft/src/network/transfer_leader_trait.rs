@@ -11,8 +11,10 @@ use crate::raft::message::TransferLeaderRequest;
 
 /// Sends TransferLeader messages to a target node.
 ///
-/// This trait is part of the granular network API. It can be implemented directly
-/// or automatically via blanket impl when implementing [`RaftNetworkV2`].
+/// **For most applications, implement [`RaftNetworkV2`] instead.** This trait is
+/// automatically derived from `RaftNetworkV2` via blanket implementation.
+///
+/// Direct implementation is an advanced option for fine-grained control.
 ///
 /// [`RaftNetworkV2`]: crate::network::RaftNetworkV2
 #[add_async_trait]

@@ -1,3 +1,6 @@
+use std::future::Future;
+use std::time::Duration;
+
 use futures::SinkExt;
 use futures::Stream;
 use futures::StreamExt;
@@ -8,11 +11,18 @@ use openraft::RaftNetworkFactory;
 use openraft::base::BoxFuture;
 use openraft::base::BoxStream;
 use openraft::error::NetworkError;
+use openraft::error::ReplicationClosed;
 use openraft::error::Unreachable;
+use openraft::network::Backoff;
+use openraft::network::NetBackoff;
+use openraft::network::NetSnapshot;
+use openraft::network::NetStreamAppend;
+use openraft::network::NetTransferLeader;
+use openraft::network::NetVote;
 use openraft::network::RPCOption;
-use openraft::network::v2::RaftNetworkV2;
 use openraft::raft::StreamAppendError;
 use openraft::raft::StreamAppendResult;
+use openraft::raft::TransferLeaderRequest;
 use tonic::transport::Channel;
 
 use crate::NodeId;
@@ -52,14 +62,14 @@ impl NetworkConnection {
         NetworkConnection { target_node }
     }
 
-    /// Creates a gRPC channel to the target node.
-    async fn create_channel(&self) -> Result<Channel, RPCError> {
+    /// Creates a gRPC client to the target node.
+    async fn make_client(&self) -> Result<RaftServiceClient<Channel>, RPCError> {
         let server_addr = &self.target_node.rpc_addr;
         let channel = Channel::builder(format!("http://{}", server_addr).parse().unwrap())
             .connect()
             .await
             .map_err(|e| RPCError::Unreachable(Unreachable::<TypeConfig>::new(&e)))?;
-        Ok(channel)
+        Ok(RaftServiceClient::new(channel))
     }
 
     /// Convert pb::AppendEntriesResponse to StreamAppendResult.
@@ -99,25 +109,17 @@ impl NetworkConnection {
     }
 }
 
-/// Implementation of RaftNetwork trait for handling Raft protocol communications.
-#[allow(clippy::blocks_in_conditions)]
-impl RaftNetworkV2<TypeConfig> for NetworkConnection {
-    async fn append_entries(
-        &mut self,
-        req: AppendEntriesRequest,
-        _option: RPCOption,
-    ) -> Result<AppendEntriesResponse, RPCError> {
-        let channel = self.create_channel().await?;
-        let mut client = RaftServiceClient::new(channel);
+// =============================================================================
+// Sub-trait implementations for NetworkConnection
+// =============================================================================
+//
+// Instead of implementing RaftNetworkV2 as a monolithic trait, this example
+// demonstrates implementing individual sub-traits directly. This approach:
+// - Shows exactly which network capabilities are provided
+// - Each impl is focused on a single concern
+// - gRPC's native bidirectional streaming maps naturally to NetStreamAppend
 
-        let response = client
-            .append_entries(pb::AppendEntriesRequest::from(req))
-            .await
-            .map_err(|e| RPCError::Network(NetworkError::<TypeConfig>::new(&e)))?;
-
-        Ok(AppendEntriesResponse::from(response.into_inner()))
-    }
-
+impl NetStreamAppend<TypeConfig> for NetworkConnection {
     fn stream_append<'s, S>(
         &'s mut self,
         input: S,
@@ -127,8 +129,7 @@ impl RaftNetworkV2<TypeConfig> for NetworkConnection {
         S: Stream<Item = AppendEntriesRequest> + OptionalSend + Unpin + 'static,
     {
         let fu = async move {
-            let channel = self.create_channel().await?;
-            let mut client = RaftServiceClient::new(channel);
+            let mut client = self.make_client().await?;
 
             let response = client
                 .stream_append(input.map(pb::AppendEntriesRequest::from))
@@ -145,22 +146,37 @@ impl RaftNetworkV2<TypeConfig> for NetworkConnection {
 
         Box::pin(fu)
     }
+}
 
+impl NetVote<TypeConfig> for NetworkConnection {
+    async fn vote(&mut self, req: VoteRequest, _option: RPCOption) -> Result<VoteResponse, RPCError> {
+        let mut client = self.make_client().await?;
+
+        let proto_vote_req: PbVoteRequest = req.into();
+        let response = client
+            .vote(proto_vote_req)
+            .await
+            .map_err(|e| RPCError::Network(NetworkError::<TypeConfig>::new(&e)))?;
+
+        let proto_vote_resp: PbVoteResponse = response.into_inner();
+        Ok(proto_vote_resp.into())
+    }
+}
+
+impl NetSnapshot<TypeConfig> for NetworkConnection {
     async fn full_snapshot(
         &mut self,
         vote: Vote,
         snapshot: Snapshot,
-        _cancel: impl std::future::Future<Output = openraft::error::ReplicationClosed> + openraft::OptionalSend + 'static,
+        _cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
         _option: RPCOption,
-    ) -> Result<SnapshotResponse, crate::typ::StreamingError> {
-        let channel = self.create_channel().await?;
-        let mut client = RaftServiceClient::new(channel);
+    ) -> Result<SnapshotResponse, StreamingError> {
+        let mut client = self.make_client().await?;
 
         let (mut tx, rx) = mpsc::channel(1024);
         let response = client.snapshot(rx).await.map_err(|e| NetworkError::<TypeConfig>::new(&e))?;
 
         // 1. Send meta chunk
-
         let meta = &snapshot.meta;
 
         let request = pb::SnapshotRequest {
@@ -178,8 +194,7 @@ impl RaftNetworkV2<TypeConfig> for NetworkConnection {
         // 2. Send data chunks
         Self::send_snapshot_chunks(&mut tx, &snapshot.snapshot).await?;
 
-        // 3. receive response
-
+        // 3. Receive response
         let message = response.into_inner();
 
         Ok(SnapshotResponse {
@@ -188,23 +203,22 @@ impl RaftNetworkV2<TypeConfig> for NetworkConnection {
             })?,
         })
     }
+}
 
-    async fn vote(&mut self, req: VoteRequest, _option: RPCOption) -> Result<VoteResponse, RPCError> {
-        let channel = self.create_channel().await?;
-        let mut client = RaftServiceClient::new(channel);
+impl NetBackoff<TypeConfig> for NetworkConnection {
+    fn backoff(&self) -> Backoff {
+        Backoff::new(std::iter::repeat(Duration::from_millis(200)))
+    }
+}
 
-        // Convert the openraft VoteRequest to protobuf VoteRequest
-        let proto_vote_req: PbVoteRequest = req.into();
-
-        // Create a tonic Request with the protobuf VoteRequest
-        let request = tonic::Request::new(proto_vote_req);
-
-        // Send the vote request
-        let response =
-            client.vote(request).await.map_err(|e| RPCError::Network(NetworkError::<TypeConfig>::new(&e)))?;
-
-        // Convert the response back to openraft VoteResponse
-        let proto_vote_resp: PbVoteResponse = response.into_inner();
-        Ok(proto_vote_resp.into())
+impl NetTransferLeader<TypeConfig> for NetworkConnection {
+    async fn transfer_leader(
+        &mut self,
+        _req: TransferLeaderRequest<TypeConfig>,
+        _option: RPCOption,
+    ) -> Result<(), RPCError> {
+        Err(RPCError::Unreachable(Unreachable::new(&AnyError::error(
+            "transfer_leader not implemented",
+        ))))
     }
 }

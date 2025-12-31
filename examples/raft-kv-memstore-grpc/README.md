@@ -6,15 +6,23 @@ Demonstrates building a distributed key-value store with Openraft using gRPC for
 
 - **gRPC networking**: Uses [Tonic](https://docs.rs/tonic) for Raft protocol and client communication
 - **Protocol Buffers**: Type-safe RPC definitions for all network operations
-- **Pipeline streaming**: Bidirectional gRPC streaming for efficient log replication via `stream_append`
+- **Sub-trait implementation**: Implements individual `Net*` sub-traits directly instead of `RaftNetworkV2`
+- **Pipeline streaming**: Bidirectional gRPC streaming for efficient log replication via `NetStreamAppend`
 - **In-memory storage**: [`RaftLogStorage`] and protobuf-based state machine
 
 ## Overview
 
 This example implements:
 - **Storage**: In-memory log storage with protobuf `StateMachineData` state machine
-- **Network**: gRPC-based [`RaftNetworkV2`] implementation using Tonic with bidirectional streaming
+- **Network**: Implements `NetStreamAppend`, `NetVote`, `NetSnapshot`, `NetBackoff`, and
+  `NetTransferLeader` sub-traits directly (instead of implementing `RaftNetworkV2` as a
+  monolithic trait). This approach is suited for gRPC where native bidirectional streaming
+  maps naturally to `NetStreamAppend`.
 - **Services**: Separate gRPC services for application APIs and Raft internal communication
+
+> **Note**: For most applications, implementing [`RaftNetworkV2`] is recommended for simplicity.
+> This example demonstrates the advanced sub-trait approach to showcase fine-grained control
+> over network capabilities.
 
 ## Testing
 

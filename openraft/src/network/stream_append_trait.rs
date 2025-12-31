@@ -18,6 +18,14 @@ use crate::raft::StreamAppendResult;
 ///
 /// This trait provides streaming capabilities for AppendEntries.
 ///
+/// **For most applications, implement [`RaftNetworkV2`] instead.** This trait is
+/// automatically derived from `RaftNetworkV2` via blanket implementation.
+///
+/// Direct implementation is useful for advanced cases like:
+/// - Native gRPC bidirectional streaming
+/// - Custom pipelining strategies
+/// - Protocol-specific optimizations
+///
 /// This trait can be obtained via:
 /// 1. **From RaftNetworkV2**: Blanket impl delegates to `RaftNetworkV2::stream_append()`
 /// 2. **Direct implementation**: Implement the trait directly
