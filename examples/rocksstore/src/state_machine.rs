@@ -9,7 +9,6 @@ use std::sync::Arc;
 
 use futures::Stream;
 use futures::TryStreamExt;
-use openraft::AnyError;
 use openraft::EntryPayload;
 use openraft::LogId;
 use openraft::OptionalSend;
@@ -66,14 +65,14 @@ impl RocksStateMachine {
         let last_applied_log = self
             .db
             .get_cf(cf, "last_applied_log")
-            .map_err(|e| StorageError::read(AnyError::new(&e)))?
+            .map_err(|e| StorageError::read(TypeConfig::err_from_error(&e)))?
             .map(|bytes| deserialize(&bytes))
             .transpose()?;
 
         let last_membership = self
             .db
             .get_cf(cf, "last_membership")
-            .map_err(|e| StorageError::read(AnyError::new(&e)))?
+            .map_err(|e| StorageError::read(TypeConfig::err_from_error(&e)))?
             .map(|bytes| deserialize(&bytes))
             .transpose()?
             .unwrap_or_default();
@@ -83,11 +82,11 @@ impl RocksStateMachine {
 }
 
 fn serialize<T: Serialize>(value: &T) -> Result<Vec<u8>, StorageError<TypeConfig>> {
-    serde_json::to_vec(value).map_err(|e| StorageError::write(AnyError::new(&e)))
+    serde_json::to_vec(value).map_err(|e| StorageError::write(TypeConfig::err_from_error(&e)))
 }
 
 fn deserialize<T: for<'de> Deserialize<'de>>(bytes: &[u8]) -> Result<T, StorageError<TypeConfig>> {
-    serde_json::from_slice(bytes).map_err(|e| StorageError::read(AnyError::new(&e)))
+    serde_json::from_slice(bytes).map_err(|e| StorageError::read(TypeConfig::err_from_error(&e)))
 }
 
 /// Snapshot file format: metadata + data stored together
@@ -143,16 +142,16 @@ impl RaftSnapshotBuilder<TypeConfig> for RocksStateMachine {
             data: data.clone(),
         };
         let file_bytes = serialize(&snapshot_file)
-            .map_err(|e| StorageError::write_snapshot(Some(meta.signature()), AnyError::new(&e)))?;
+            .map_err(|e| StorageError::write_snapshot(Some(meta.signature()), TypeConfig::err_from_error(&e)))?;
 
         // Write complete snapshot to file
         let snapshot_path = self.snapshot_dir.join(&snapshot_id);
         fs::write(&snapshot_path, &file_bytes)
-            .map_err(|e| StorageError::write_snapshot(Some(meta.signature()), AnyError::new(&e)))?;
+            .map_err(|e| StorageError::write_snapshot(Some(meta.signature()), TypeConfig::err_from_error(&e)))?;
 
         // Return snapshot with data-only for backward compatibility with the data field
-        let data_bytes =
-            serialize(&data).map_err(|e| StorageError::write_snapshot(Some(meta.signature()), AnyError::new(&e)))?;
+        let data_bytes = serialize(&data)
+            .map_err(|e| StorageError::write_snapshot(Some(meta.signature()), TypeConfig::err_from_error(&e)))?;
 
         Ok(Snapshot {
             meta,

@@ -11,6 +11,7 @@
 //! - [`BasicNode`] - Simple node information with address
 //! - [`EmptyNode`] - Minimal node representation (no metadata)
 //! - [`OneshotResponder`] - Single-use response channel
+//! - [`BoxedErrorSource`] - Boxed error wrapper for smaller error types
 //!
 //! ## Runtime
 //!
@@ -23,6 +24,9 @@
 //!
 //! Most applications can use these implementations directly without customization.
 
+mod boxed_error_source;
+
+pub use boxed_error_source::BoxedErrorSource;
 #[cfg(feature = "tokio-rt")]
 #[deprecated(since = "0.10.0", note = "use `openraft_rt_tokio::TokioRuntime` directly")]
 pub use openraft_rt_tokio::TokioRuntime;

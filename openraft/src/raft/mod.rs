@@ -225,7 +225,7 @@ macro_rules! declare_raft_types {
                 (SnapshotData   , , std::io::Cursor<Vec<u8>>                     ),
                 (Responder<T>   , , $crate::impls::ProgressResponder<Self, T> where T: $crate::OptionalSend + 'static     ),
                 (AsyncRuntime   , , $crate::impls::TokioRuntime                  ),
-                (ErrorSource    , , $crate::AnyError                             ),
+                (ErrorSource    , , $crate::impls::BoxedErrorSource               ),
             );
 
         }
