@@ -88,11 +88,11 @@ impl RaftNetworkFactory<TypeConfig> for Router {
     type Network = Adapter<TypeConfig, Network>;
 
     async fn new_client(&mut self, target: NodeId, _node: &()) -> Self::Network {
-        let network = Network {
+        Network {
             target,
             target_raft: self.table.lock().unwrap().get(&target).unwrap().clone(),
-        };
-        Adapter::new(network)
+        }
+        .into_v2()
     }
 }
 

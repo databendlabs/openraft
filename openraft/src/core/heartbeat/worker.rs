@@ -13,7 +13,7 @@ use crate::core::heartbeat::errors::Stopped;
 use crate::core::heartbeat::event::HeartbeatEvent;
 use crate::core::notification::Notification;
 use crate::network::RPCOption;
-use crate::network::v2::RaftNetworkV2;
+use crate::network::RaftNetworkApi;
 use crate::progress::stream_id::StreamId;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::StreamAppendError;
@@ -31,7 +31,7 @@ use crate::vote::committed::CommittedVote;
 pub struct HeartbeatWorker<C, N>
 where
     C: RaftTypeConfig,
-    N: RaftNetworkV2<C>,
+    N: RaftNetworkApi<C>,
 {
     pub(crate) id: C::NodeId,
 
@@ -62,7 +62,7 @@ where
 impl<C, N> fmt::Display for HeartbeatWorker<C, N>
 where
     C: RaftTypeConfig,
-    N: RaftNetworkV2<C>,
+    N: RaftNetworkApi<C>,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "HeartbeatWorker(id={}, target={})", self.id, self.target)
@@ -72,7 +72,7 @@ where
 impl<C, N> HeartbeatWorker<C, N>
 where
     C: RaftTypeConfig,
-    N: RaftNetworkV2<C>,
+    N: RaftNetworkApi<C>,
 {
     pub(crate) async fn run(self, rx_shutdown: OneshotReceiverOf<C, ()>) {
         let res = self.do_run(rx_shutdown).await;

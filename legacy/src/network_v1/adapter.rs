@@ -38,13 +38,13 @@ use super::sender::Sender;
 /// # Usage
 ///
 /// ```ignore
-/// use openraft_legacy::network_v1::Adapter;
+/// use openraft_legacy::prelude::*;
 ///
 /// // Your existing RaftNetwork implementation
 /// let network: MyNetwork = /* ... */;
 ///
 /// // Wrap it to use as RaftNetworkV2
-/// let adapter = Adapter::new(network);
+/// let adapter = network.into_v2();
 /// ```
 pub struct Adapter<C, N> {
     network: N,

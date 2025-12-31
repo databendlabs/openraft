@@ -18,11 +18,11 @@ impl RaftNetworkFactory<TypeConfig> for Router {
     type Network = Adapter<TypeConfig, Connection>;
 
     async fn new_client(&mut self, target: NodeId, _node: &BasicNode) -> Self::Network {
-        let connection = Connection {
+        Connection {
             router: self.clone(),
             target,
-        };
-        Adapter::new(connection)
+        }
+        .into_v2()
     }
 }
 

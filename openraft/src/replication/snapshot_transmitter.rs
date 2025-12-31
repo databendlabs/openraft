@@ -16,8 +16,9 @@ use crate::error::RPCError;
 use crate::error::ReplicationClosed;
 use crate::error::ReplicationError;
 use crate::network::Backoff;
+use crate::network::NetBackoff;
+use crate::network::NetSnapshot;
 use crate::network::RPCOption;
-use crate::network::v2::RaftNetworkV2;
 use crate::progress::inflight_id::InflightId;
 use crate::replication::Progress;
 use crate::replication::replication_context::ReplicationContext;
@@ -42,7 +43,7 @@ where
 
     inflight_id: InflightId,
 
-    /// Another `RaftNetworkV2` specific for snapshot replication.
+    /// Network connection for snapshot replication.
     ///
     /// Snapshot transmitting is a long-running task and is processed in a separate task.
     network: N::Network,

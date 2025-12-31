@@ -41,8 +41,7 @@ where
 
         let client = Client::builder().no_proxy().build().unwrap();
 
-        let network = Network { addr, client, target };
-        Adapter::new(network)
+        Network { addr, client, target }.into_v2()
     }
 }
 
