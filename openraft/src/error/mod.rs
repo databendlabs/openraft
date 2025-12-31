@@ -26,6 +26,7 @@ use std::time::Duration;
 use openraft_macros::since;
 
 pub use self::allow_next_revert_error::AllowNextRevertError;
+pub use self::error_source::BacktraceDisplay;
 pub use self::error_source::ErrorSource;
 pub(crate) use self::higher_vote::HigherVote;
 pub use self::invalid_sm::InvalidStateMachineType;

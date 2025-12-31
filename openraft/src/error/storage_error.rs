@@ -1,6 +1,7 @@
 use std::fmt;
 
 use crate::RaftTypeConfig;
+use crate::error::BacktraceDisplay;
 use crate::error::ErrorSource;
 use crate::storage::SnapshotSignature;
 use crate::type_config::TypeConfigExt;
@@ -128,7 +129,7 @@ where C: RaftTypeConfig
 {
     subject: ErrorSubject<C>,
     verb: ErrorVerb,
-    source: Box<C::ErrorSource>,
+    source: C::ErrorSource,
     backtrace: Option<String>,
 }
 
@@ -145,11 +146,16 @@ where C: RaftTypeConfig
 {
     /// Create a new StorageError.
     pub fn new(subject: ErrorSubject<C>, verb: ErrorVerb, source: C::ErrorSource) -> Self {
-        let backtrace = source.backtrace_str();
+        let backtrace = if source.has_backtrace() {
+            Some(BacktraceDisplay(&source).to_string())
+        } else {
+            None
+        };
+
         Self {
             subject,
             verb,
-            source: Box::new(source),
+            source,
             backtrace,
         }
     }

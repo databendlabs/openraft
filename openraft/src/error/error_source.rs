@@ -1,6 +1,7 @@
 //! Configurable error source trait for wrapping arbitrary errors.
 
 use std::error::Error;
+use std::fmt;
 
 use anyerror::AnyError;
 
@@ -53,12 +54,22 @@ pub trait ErrorSource: Error + Clone + PartialEq + Eq + OptionalSend + OptionalS
     /// Create an error from a string message.
     fn from_string(msg: impl ToString) -> Self;
 
-    /// Get the backtrace if captured.
+    /// Returns `true` if a backtrace is available.
     ///
-    /// Returns `None` if backtrace is not available or not captured.
-    /// The default implementation returns `None`.
-    fn backtrace_str(&self) -> Option<String> {
-        None
+    /// The default implementation returns `false`.
+    fn has_backtrace(&self) -> bool {
+        false
+    }
+
+    /// Formats the backtrace to the given formatter.
+    ///
+    /// This method writes directly to a [`Formatter`](fmt::Formatter) instead of
+    /// returning `impl Display`, to avoid allocation and to keep this method
+    /// object-safe (enabling `dyn ErrorSource` if other constraints are removed).
+    ///
+    /// The default implementation does nothing.
+    fn fmt_backtrace(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        Ok(())
     }
 }
 
@@ -71,7 +82,28 @@ impl ErrorSource for AnyError {
         AnyError::error(msg)
     }
 
-    fn backtrace_str(&self) -> Option<String> {
-        anyerror::backtrace_str()
+    fn has_backtrace(&self) -> bool {
+        anyerror::backtrace_str().is_some()
+    }
+
+    fn fmt_backtrace(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(bt) = anyerror::backtrace_str() {
+            write!(f, "{}", bt)
+        } else {
+            Ok(())
+        }
+    }
+}
+
+/// A wrapper that implements [`Display`](fmt::Display) for formatting backtraces.
+pub struct BacktraceDisplay<'a, E: ErrorSource>(pub &'a E);
+
+impl<E: ErrorSource> fmt::Display for BacktraceDisplay<'_, E> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.0.has_backtrace() {
+            self.0.fmt_backtrace(f)
+        } else {
+            Ok(())
+        }
     }
 }
