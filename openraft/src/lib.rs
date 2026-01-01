@@ -26,24 +26,7 @@ macro_rules! func_name {
     }};
 }
 
-#[cfg(feature = "loosen-follower-log-revert")]
-compile_error!(
-    "The feature flag `loosen-follower-log-revert` is removed since `0.10.0`. \
-     Use `Config::allow_log_reversion` instead."
-);
-
-#[cfg(feature = "singlethreaded")]
-compile_error!(
-    "The feature flag `singlethreaded` is renamed to `single-threaded`. \
-     Please update your Cargo.toml to use `single-threaded` instead."
-);
-
-#[cfg(feature = "adapt-network-v1")]
-compile_error!(
-    "The feature flag `adapt-network-v1` is removed since `0.10.0`. \
-     For backward compatibility with the v1 `RaftNetwork` trait and chunk-based snapshot transport, \
-     use the `openraft-legacy` crate instead."
-);
+mod deprecated_features;
 
 pub extern crate openraft_macros;
 
