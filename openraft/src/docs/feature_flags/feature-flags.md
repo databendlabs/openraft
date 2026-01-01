@@ -29,6 +29,16 @@ This feature works ONLY with nightly rust, because it requires unstable feature 
 Enables compatibility supporting types.
 
 
+## feature-flag `loosen-follower-log-revert` (removed)
+
+This feature flag has been removed since `0.10.0`.
+
+Use [`Config::allow_log_reversion`] instead to allow a follower's log to revert
+to an earlier state.
+
+[`Config::allow_log_reversion`]: crate::Config::allow_log_reversion
+
+
 ## feature-flag `runtime-stats`
 
 **Unstable**: This feature is experimental and the API may change in future versions.
@@ -56,9 +66,16 @@ println!("P99 batch size: {:?}", stats.apply_batch.percentile(0.99));
 Derives `serde::Serialize, serde::Deserialize` for type that are used
 in storage and network, such as `Vote` or `AppendEntriesRequest`.
 
-## feature-flag `single-term-leader`
+## feature-flag `singlethreaded` (removed)
 
-**This feature flag is removed**.
+This feature flag has been renamed to `single-threaded` since `0.10.0`.
+
+Please update your `Cargo.toml` to use `single-threaded` instead.
+
+
+## feature-flag `single-term-leader` (removed)
+
+This feature flag has been removed since `0.10.0`.
 Use [`leader_id_std::LeaderId`] in [`RaftTypeConfig`] instead.
 
 Allows only one leader to be elected in each `term`.
