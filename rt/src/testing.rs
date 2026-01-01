@@ -81,6 +81,7 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         Self::test_oneshot_send_to_dropped_rx().await;
         Self::test_mutex().await;
         Self::test_mutex_contention().await;
+        Self::test_mutex_lock_owned().await;
     }
 
     pub async fn test_spawn_join_handle() {
@@ -985,6 +986,37 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
 
         drop(guard);
         assert!(matches!(poll_in_place(pinned_another_guard_fut), Poll::Ready(_)));
+    }
+
+    /// Test `lock_owned()` returns a guard that owns the mutex via Arc.
+    pub async fn test_mutex_lock_owned() {
+        // Test basic lock_owned functionality
+        {
+            let mutex = Arc::new(Rt::Mutex::new(42_i32));
+            let guard = Arc::clone(&mutex).lock_owned().await;
+            assert_eq!(*guard, 42);
+        }
+
+        // Test that the guard can be moved and returned from async blocks
+        {
+            let mutex = Arc::new(Rt::Mutex::new(100_i32));
+            let guard = async { mutex.lock_owned().await }.await;
+            assert_eq!(*guard, 100);
+        }
+
+        // Test that lock_owned prevents concurrent access
+        let mutex = Arc::new(Rt::Mutex::new(0_u32));
+        let mutex1 = Arc::clone(&mutex);
+        let guard = mutex1.lock_owned().await;
+
+        // Try to acquire another lock - should be pending
+        let lock_fut = mutex.lock();
+        let mut pinned_lock_fut = pin!(lock_fut);
+        assert!(matches!(poll_in_place(pinned_lock_fut.as_mut()), Poll::Pending));
+
+        // Drop the owned guard and the lock should succeed
+        drop(guard);
+        assert!(matches!(poll_in_place(pinned_lock_fut), Poll::Ready(_)));
     }
 }
 
