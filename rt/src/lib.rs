@@ -33,6 +33,7 @@ pub use mpsc::MpscWeakSender;
 pub use mpsc::SendError;
 pub use mpsc::TryRecvError;
 pub use mutex::Mutex;
+pub use mutex::OwnedGuard;
 pub use oneshot::Oneshot;
 pub use oneshot::OneshotSender;
 pub use threaded::BoxAny;
