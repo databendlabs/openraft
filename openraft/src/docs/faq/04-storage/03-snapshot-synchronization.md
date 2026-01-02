@@ -20,7 +20,10 @@ implementation can (and should) include additional methods for application-speci
 
 1. **Add custom methods to your state machine:**
 
-```rust
+```rust,ignore
+use std::io;
+use openraft::storage::RaftStateMachine;
+
 pub struct MyStateMachine {
     // Your data
 }
@@ -41,7 +44,7 @@ impl RaftStateMachine<TypeConfig> for MyStateMachine {
 
 2. **Use [`Raft::with_state_machine`][] to call your custom methods:**
 
-```rust
+```rust,ignore
 // On follower: receive and save snapshot from leader
 let snapshot_data = receive_snapshot_from_leader().await?;
 
@@ -55,7 +58,10 @@ raft.with_state_machine(|sm: &mut MyStateMachine| {
 
 **Example: Custom snapshot distribution:**
 
-```rust
+```rust,ignore
+use std::io;
+use openraft::Raft;
+
 // Leader builds and distributes snapshot
 async fn distribute_snapshot(
     leader: &Raft<TypeConfig>,
