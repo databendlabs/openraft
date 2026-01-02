@@ -1,8 +1,6 @@
 use std::fmt;
 
 use crate::RaftTypeConfig;
-use crate::error::BacktraceDisplay;
-use crate::error::ErrorSource;
 use crate::storage::SnapshotSignature;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::LogIdOf;
@@ -130,7 +128,6 @@ where C: RaftTypeConfig
     subject: ErrorSubject<C>,
     verb: ErrorVerb,
     source: C::ErrorSource,
-    backtrace: Option<String>,
 }
 
 impl<C> fmt::Display for StorageError<C>
@@ -146,18 +143,7 @@ where C: RaftTypeConfig
 {
     /// Create a new StorageError.
     pub fn new(subject: ErrorSubject<C>, verb: ErrorVerb, source: C::ErrorSource) -> Self {
-        let backtrace = if source.has_backtrace() {
-            Some(BacktraceDisplay(&source).to_string())
-        } else {
-            None
-        };
-
-        Self {
-            subject,
-            verb,
-            source,
-            backtrace,
-        }
+        Self { subject, verb, source }
     }
 
     /// Create an error for writing a log entry.
@@ -247,10 +233,30 @@ mod tests {
         let s = serde_json::to_string(&err).unwrap();
         assert_eq!(
             s,
-            r#"{"subject":{"Log":{"leader_id":{"term":1,"node_id":2},"index":3}},"verb":"Write","source":{"typ":null,"msg":"test","source":null,"context":[],"backtrace":null},"backtrace":null}"#
+            r#"{"subject":{"Log":{"leader_id":{"term":1,"node_id":2},"index":3}},"verb":"Write","source":{"typ":null,"msg":"test","source":null,"context":[],"backtrace":null}}"#
         );
         let err2: StorageError<UTConfig> = serde_json::from_str(&s).unwrap();
         assert_eq!(err, err2);
+    }
+
+    /// Test backward compatibility: deserializing from old format that included `backtrace` field.
+    ///
+    /// Since 0.10.0, `backtrace` is removed, and it should be able to deserialize it.
+    #[cfg(all(feature = "serde", not(feature = "bt")))]
+    #[test]
+    fn test_storage_error_deserialize_old_format_with_backtrace() {
+        use super::StorageError;
+        use crate::engine::testing::UTConfig;
+
+        // Old serialized format with the redundant `backtrace` field
+        let old_format = r#"{"subject":{"Log":{"leader_id":{"term":1,"node_id":2},"index":3}},"verb":"Write","source":{"typ":null,"msg":"test","source":null,"context":[],"backtrace":null},"backtrace":"some backtrace"}"#;
+
+        // Should deserialize successfully, ignoring the `backtrace` field
+        let err: StorageError<UTConfig> = serde_json::from_str(old_format).unwrap();
+        assert_eq!(
+            err.to_string(),
+            "when Write Log(LogId { leader_id: LeaderId { term: 1, node_id: 2 }, index: 3 }): test"
+        );
     }
 
     #[test]
