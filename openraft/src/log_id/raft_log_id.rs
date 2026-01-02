@@ -9,7 +9,7 @@ use crate::type_config::alias::CommittedLeaderIdOf;
 pub(crate) trait RaftLogId<C>
 where
     C: RaftTypeConfig,
-    Self: Eq + Clone + fmt::Debug + fmt::Display,
+    Self: Eq + Clone + fmt::Debug,
 {
     /// Creates a log id proposed by a committed leader `leader_id` at the given index.
     // This is only used internally
