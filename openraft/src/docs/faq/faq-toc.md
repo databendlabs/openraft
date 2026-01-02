@@ -13,6 +13,7 @@
 - [Storage](#storage)
   * [Does the state machine need to be persisted to disk?](#does-the-state-machine-need-to-be-persisted-to-disk)
   * [How does Openraft handle snapshot building and transfer?](#how-does-openraft-handle-snapshot-building-and-transfer)
+  * [How to synchronize snapshots from leader to followers without rebuilding?](#how-to-synchronize-snapshots-from-leader-to-followers-without-rebuilding)
 - [Monitoring & Observability](#monitoring--observability)
   * [How to get notified when the server state changes?](#how-to-get-notified-when-the-server-state-changes)
   * [How to detect if a leader is valid?](#how-to-detect-if-a-leader-is-valid)
