@@ -277,7 +277,9 @@ mod tests {
         assert_eq!(cmd.name(), CommandName::PurgeLog);
 
         // TruncateLog
-        let cmd: Command<C> = Command::TruncateLog { since: log_id(1, 0, 1) };
+        let cmd: Command<C> = Command::TruncateLog {
+            after: Some(log_id(1, 0, 1)),
+        };
         assert_eq!(cmd.name(), CommandName::TruncateLog);
 
         // Respond - skip as it requires a oneshot sender

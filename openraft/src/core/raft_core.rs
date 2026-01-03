@@ -2116,14 +2116,14 @@ where
                 self.log_store.purge(upto.clone()).await.sto_write_logs()?;
                 self.engine.state.io_state_mut().update_purged(Some(upto));
             }
-            Command::TruncateLog { since } => {
-                self.log_store.truncate(since.clone()).await.sto_write_logs()?;
+            Command::TruncateLog { after } => {
+                self.log_store.truncate_after(after.clone()).await.sto_write_logs()?;
 
                 // Inform clients waiting for logs to be applied.
                 let leader_id = self.current_leader();
                 let leader_node = self.get_leader_node(leader_id.clone());
 
-                for (log_index, tx) in self.client_responders.drain_from(since.index()) {
+                for (log_index, tx) in self.client_responders.drain_from(after.next_index()) {
                     tx.on_complete(Err(ClientWriteError::ForwardToLeader(ForwardToLeader {
                         leader_id: leader_id.clone(),
                         leader_node: leader_node.clone(),

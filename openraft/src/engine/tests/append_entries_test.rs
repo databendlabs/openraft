@@ -175,7 +175,9 @@ fn test_append_entries_prev_log_id_conflict() -> anyhow::Result<()> {
                 vote: Vote::new_committed(2, 1)
             },
             Command::CloseReplicationStreams,
-            Command::TruncateLog { since: log_id(1, 1, 2) },
+            Command::TruncateLog {
+                after: Some(log_id(1, 1, 1))
+            },
         ],
         eng.output.take_commands()
     );
@@ -217,7 +219,9 @@ fn test_append_entries_prev_log_id_is_committed() -> anyhow::Result<()> {
                 vote: Vote::new_committed(2, 1)
             },
             Command::CloseReplicationStreams,
-            Command::TruncateLog { since: log_id(1, 1, 2) },
+            Command::TruncateLog {
+                after: Some(log_id(1, 1, 1))
+            },
             Command::AppendEntries {
                 committed_vote: Vote::new(2, 1).into_committed(),
                 entries: [blank_ent(2, 1, 2)].into()
@@ -317,7 +321,9 @@ fn test_append_entries_conflict() -> anyhow::Result<()> {
                 vote: Vote::new_committed(2, 1)
             },
             Command::CloseReplicationStreams,
-            Command::TruncateLog { since: log_id(2, 1, 3) },
+            Command::TruncateLog {
+                after: Some(log_id(1, 1, 2))
+            },
             Command::AppendEntries {
                 committed_vote: Vote::new(2, 1).into_committed(),
                 entries: [Entry::new_membership(log_id(3, 1, 3), m34())].into()

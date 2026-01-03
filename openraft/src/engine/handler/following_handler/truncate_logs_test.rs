@@ -71,7 +71,9 @@ fn test_truncate_logs_since_3() -> anyhow::Result<()> {
     assert_eq!(
         vec![
             //
-            Command::TruncateLog { since: log_id(2, 1, 3) },
+            Command::TruncateLog {
+                after: Some(log_id(2, 1, 2))
+            },
         ],
         eng.output.take_commands()
     );
@@ -98,7 +100,9 @@ fn test_truncate_logs_since_4() -> anyhow::Result<()> {
     assert_eq!(ServerState::Follower, eng.state.server_state);
 
     assert_eq!(
-        vec![Command::TruncateLog { since: log_id(4, 1, 4) }],
+        vec![Command::TruncateLog {
+            after: Some(log_id(2, 1, 3))
+        }],
         eng.output.take_commands()
     );
 
@@ -115,7 +119,9 @@ fn test_truncate_logs_since_5() -> anyhow::Result<()> {
     assert_eq!(None, eng.state.log_ids.purged());
     assert_eq!(&[log_id(2, 1, 3), log_id(4, 1, 4)], eng.state.log_ids.key_log_ids());
     assert_eq!(
-        vec![Command::TruncateLog { since: log_id(4, 1, 5) }],
+        vec![Command::TruncateLog {
+            after: Some(log_id(4, 1, 4))
+        }],
         eng.output.take_commands()
     );
 
@@ -132,7 +138,9 @@ fn test_truncate_logs_since_6() -> anyhow::Result<()> {
     assert_eq!(None, eng.state.log_ids.purged());
     assert_eq!(&[log_id(2, 1, 3), log_id(4, 1, 5)], eng.state.log_ids.key_log_ids());
     assert_eq!(
-        vec![Command::TruncateLog { since: log_id(4, 1, 6) }],
+        vec![Command::TruncateLog {
+            after: Some(log_id(4, 1, 5))
+        }],
         eng.output.take_commands()
     );
 
@@ -184,7 +192,9 @@ fn test_truncate_logs_revert_effective_membership() -> anyhow::Result<()> {
     assert_eq!(
         vec![
             //
-            Command::TruncateLog { since: log_id(4, 1, 4) },
+            Command::TruncateLog {
+                after: Some(log_id(2, 1, 3))
+            },
         ],
         eng.output.take_commands()
     );
