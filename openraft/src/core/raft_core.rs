@@ -2117,7 +2117,7 @@ where
                 self.engine.state.io_state_mut().update_purged(Some(upto));
             }
             Command::TruncateLog { since } => {
-                self.log_store.truncate(since.clone()).await.sto_write_logs()?;
+                self.log_store.truncate_after(Some(since.clone())).await.sto_write_logs()?;
 
                 // Inform clients waiting for logs to be applied.
                 let leader_id = self.current_leader();
