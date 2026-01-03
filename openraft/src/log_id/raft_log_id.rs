@@ -6,7 +6,7 @@ use crate::type_config::alias::CommittedLeaderIdOf;
 /// Log id is the globally unique identifier of a log entry.
 ///
 /// Equal log id means the same log entry.
-pub(crate) trait RaftLogId<C>
+pub trait RaftLogId<C>
 where
     C: RaftTypeConfig,
     Self: Eq + Clone + fmt::Debug,
