@@ -115,3 +115,49 @@ where C: RaftTypeConfig
         self.index
     }
 }
+
+/// Methods available only when using `leader_id_std::LeaderId`.
+impl<C> LogId<C>
+where C: RaftTypeConfig<LeaderId = crate::vote::leader_id_std::LeaderId<C>>
+{
+    /// Creates a log id from a term and index.
+    ///
+    /// This is a convenience method for standard Raft where `CommittedLeaderId` is
+    /// just a wrapper around the term.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Equivalent to: LogId::new(CommittedLeaderId::new(5), 100)
+    /// let log_id = LogId::new_term_index(5, 100);
+    /// ```
+    pub fn new_term_index(term: C::Term, index: u64) -> Self {
+        LogId {
+            leader_id: crate::vote::leader_id_std::CommittedLeaderId::new(term),
+            index,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::declare_raft_types;
+    use crate::vote::leader_id_std::CommittedLeaderId;
+
+    declare_raft_types!(pub TestConfig: LeaderId=crate::vote::leader_id_std::LeaderId<Self>, Term=u64);
+
+    #[test]
+    fn test_new_term_index() {
+        let log_id = super::LogId::<TestConfig>::new_term_index(5, 100);
+        assert_eq!(100, log_id.index());
+        assert_eq!(5u64, **log_id.committed_leader_id());
+    }
+
+    #[test]
+    fn test_new_term_index_equivalence() {
+        let log_id1 = super::LogId::<TestConfig>::new_term_index(5, 100);
+        let log_id2 = super::LogId::<TestConfig>::new(CommittedLeaderId::<TestConfig>::new(5), 100);
+        assert_eq!(log_id1.index(), log_id2.index());
+        assert_eq!(**log_id1.committed_leader_id(), **log_id2.committed_leader_id());
+    }
+}
