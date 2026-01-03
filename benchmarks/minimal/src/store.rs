@@ -233,9 +233,14 @@ impl RaftLogStorage<TypeConfig> for Arc<LogStore> {
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
-    async fn truncate(&mut self, log_id: LogIdOf<TypeConfig>) -> Result<(), io::Error> {
+    async fn truncate_after(&mut self, last_log_id: Option<LogIdOf<TypeConfig>>) -> Result<(), io::Error> {
+        let start_index = match last_log_id {
+            Some(log_id) => log_id.index() + 1,
+            None => 0,
+        };
+
         let mut log = self.log.write().await;
-        log.split_off(&log_id.index());
+        log.split_off(&start_index);
 
         Ok(())
     }

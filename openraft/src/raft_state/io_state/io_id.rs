@@ -20,7 +20,7 @@ use crate::vote::ref_vote::RefVote;
 /// Uniquely identifies a monotonic increasing I/O operation to [`RaftLogStorage`].
 ///
 /// Includes only IOs that make progress: [`save_vote()`] and [`append()`].
-/// Operations like [`purge()`] and [`truncate()`] are excluded as they remove logs.
+/// Operations like [`purge()`] and [`truncate_after()`] are excluded as they remove logs.
 ///
 /// For details on when to use `IOId` vs [`LogIOId`], see: [`IOId`
 /// documentation](crate::docs::data::io_id).
@@ -28,7 +28,7 @@ use crate::vote::ref_vote::RefVote;
 /// [`RaftLogStorage`]: `crate::storage::RaftLogStorage`
 /// [`save_vote()`]: `crate::storage::RaftLogStorage::save_vote()`
 /// [`append()`]: `crate::storage::RaftLogStorage::append()`
-/// [`truncate()`]: `crate::storage::RaftLogStorage::truncate()`
+/// [`truncate_after()`]: `crate::storage::RaftLogStorage::truncate_after()`
 /// [`purge()`]: `crate::storage::RaftLogStorage::purge()`
 /// [`LogIOId`]: crate::raft_state::io_state::log_io_id::LogIOId
 #[derive(Debug, Clone)]

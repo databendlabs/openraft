@@ -187,10 +187,15 @@ where C: RaftTypeConfig
         Ok(())
     }
 
-    async fn truncate(&mut self, log_id: LogIdOf<C>) -> Result<(), io::Error> {
-        tracing::debug!("truncate: [{:?}, +oo)", log_id);
+    async fn truncate_after(&mut self, last_log_id: Option<LogIdOf<C>>) -> Result<(), io::Error> {
+        tracing::debug!("truncate_after: ({:?}, +oo)", last_log_id);
 
-        let from = id_to_bin(log_id.index());
+        let start_index = match last_log_id {
+            Some(log_id) => log_id.index() + 1,
+            None => 0,
+        };
+
+        let from = id_to_bin(start_index);
         let to = id_to_bin(u64::MAX);
         self.db.delete_range_cf(self.cf_logs(), &from, &to).map_err(|e| io::Error::other(e.to_string()))?;
 

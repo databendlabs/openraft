@@ -104,8 +104,13 @@ impl<C: RaftTypeConfig> LogStoreInner<C> {
         Ok(())
     }
 
-    async fn truncate(&mut self, log_id: LogIdOf<C>) -> Result<(), io::Error> {
-        let keys = self.log.range(log_id.index()..).map(|(k, _v)| *k).collect::<Vec<_>>();
+    async fn truncate_after(&mut self, last_log_id: Option<LogIdOf<C>>) -> Result<(), io::Error> {
+        let start_index = match last_log_id {
+            Some(log_id) => log_id.index() + 1,
+            None => 0,
+        };
+
+        let keys = self.log.range(start_index..).map(|(k, _v)| *k).collect::<Vec<_>>();
         for key in keys {
             self.log.remove(&key);
         }
@@ -194,9 +199,9 @@ mod impl_log_store {
             inner.append(entries, callback).await
         }
 
-        async fn truncate(&mut self, log_id: LogIdOf<C>) -> Result<(), io::Error> {
+        async fn truncate_after(&mut self, last_log_id: Option<LogIdOf<C>>) -> Result<(), io::Error> {
             let mut inner = self.inner.lock().await;
-            inner.truncate(log_id).await
+            inner.truncate_after(last_log_id).await
         }
 
         async fn purge(&mut self, log_id: LogIdOf<C>) -> Result<(), io::Error> {

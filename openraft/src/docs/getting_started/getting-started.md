@@ -135,7 +135,7 @@ Follow the links to method documentations to see the details.
 |            |                           | ↳ [`try_get_log_entries()`]  | get a range of logs                   |
 |            | [`get_log_state()`]       | [`LogState`]                 | get first/last log id                 |
 | Write log: | [`append()`]              | ()                           | append logs                           |
-| Write log: | [`truncate()`]            | ()                           | delete logs `[index, +oo)`            |
+| Write log: | [`truncate_after()`]      | ()                           | delete logs `(index, +oo)`            |
 | Write log: | [`purge()`]               | ()                           | purge logs `(-oo, index]`             |
 | Vote:      | [`save_vote()`]           | ()                           | save vote                             |
 
@@ -481,7 +481,7 @@ Additionally, two test scripts for setting up a cluster are available:
 [`RaftLogStorage`]:                     `crate::storage::RaftLogStorage`
 [`RaftLogStorage::LogReader`]:          `crate::storage::RaftLogStorage::LogReader`
 [`append()`]:                           `crate::storage::RaftLogStorage::append`
-[`truncate()`]:                         `crate::storage::RaftLogStorage::truncate`
+[`truncate_after()`]:                   `crate::storage::RaftLogStorage::truncate_after`
 [`purge()`]:                            `crate::storage::RaftLogStorage::purge`
 [`save_vote()`]:                        `crate::storage::RaftLogStorage::save_vote`
 [`get_log_state()`]:                    `crate::storage::RaftLogStorage::get_log_state`

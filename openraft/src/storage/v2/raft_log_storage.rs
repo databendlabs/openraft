@@ -1,6 +1,7 @@
 use std::io;
 
 use openraft_macros::add_async_trait;
+use openraft_macros::since;
 
 use crate::OptionalSend;
 use crate::OptionalSync;
@@ -108,12 +109,15 @@ where C: RaftTypeConfig
         I: IntoIterator<Item = C::Entry> + OptionalSend,
         I::IntoIter: OptionalSend;
 
-    /// Truncate logs since `log_id`, inclusive
+    /// Truncate logs after `last_log_id`, exclusive
     ///
     /// ### To ensure correctness:
     ///
-    /// - It must not leave a **hole** in logs.
-    async fn truncate(&mut self, log_id: LogIdOf<C>) -> Result<(), io::Error>;
+    /// - It must not leave a **hole** in logs: It is OK if the truncation is not done in
+    ///   transaction, but it must not leave a **hole** in logs. In other words, a non-transactional
+    ///   truncation removes log entries from the end backward to this `last_log_id`.
+    #[since(version = "0.10.0")]
+    async fn truncate_after(&mut self, last_log_id: Option<LogIdOf<C>>) -> Result<(), io::Error>;
 
     /// Purge logs up to `log_id`, inclusive
     ///
