@@ -244,7 +244,9 @@ fn test_install_snapshot_conflict() -> anyhow::Result<()> {
     assert_eq!(
         vec![
             //
-            Command::TruncateLog { since: log_id(2, 1, 4) },
+            Command::TruncateLog {
+                after: Some(log_id(2, 1, 3))
+            },
             Command::from(sm::Command::install_full_snapshot(
                 Snapshot {
                     meta: SnapshotMeta {

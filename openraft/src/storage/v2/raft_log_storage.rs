@@ -1,11 +1,14 @@
 use std::io;
 
 use openraft_macros::add_async_trait;
+use openraft_macros::since;
 
 use crate::OptionalSend;
 use crate::OptionalSync;
 use crate::RaftLogReader;
 use crate::RaftTypeConfig;
+use crate::entry::RaftEntry;
+use crate::log_id::option_raft_log_id_ext::OptionRaftLogIdExt;
 use crate::storage::IOFlushed;
 use crate::storage::LogState;
 use crate::type_config::alias::LogIdOf;
@@ -108,11 +111,41 @@ where C: RaftTypeConfig
         I: IntoIterator<Item = C::Entry> + OptionalSend,
         I::IntoIter: OptionalSend;
 
+    /// Truncate logs after `last_log_id`, exclusive
+    ///
+    /// Currently, it is not required and provides a default implementation that delegates to the
+    /// deprecated [`truncate()`][Self::truncate()]. We should switch to implement this method
+    /// instead of the deprecated `truncate()`.
+    ///
+    /// ### To ensure correctness:
+    ///
+    /// - It must not leave a **hole** in logs: It is OK if the truncation is not done in
+    ///   transaction, but it must not leave a **hole** in logs. In other words, a non-transactional
+    ///   truncation removes log entries from the end backward to this `last_log_id`.
+    ///
+    /// [Self::truncate()]: Self::truncate()
+    #[since(version = "0.10.0")]
+    async fn truncate_after(&mut self, last_log_id: Option<LogIdOf<C>>) -> Result<(), io::Error> {
+        let next_index = last_log_id.next_index();
+
+        let mut rdr = self.get_log_reader().await;
+        let got = rdr.try_get_log_entries(next_index..=next_index).await?;
+
+        let Some(got) = got.first() else {
+            return Ok(());
+        };
+
+        #[allow(deprecated)]
+        self.truncate(got.log_id()).await
+    }
+
     /// Truncate logs since `log_id`, inclusive
     ///
     /// ### To ensure correctness:
     ///
     /// - It must not leave a **hole** in logs.
+    #[since(version = "0.10.0", change = "deprecated, use truncate_after instead")]
+    #[deprecated(since = "0.10.0", note = "please use `truncate_after` instead")]
     async fn truncate(&mut self, log_id: LogIdOf<C>) -> Result<(), io::Error>;
 
     /// Purge logs up to `log_id`, inclusive
