@@ -32,6 +32,11 @@ where
     where T: RaftLogId<C> {
         T::new(self.committed_leader_id().clone(), self.index())
     }
+
+    /// Returns the parts of this log ID as a tuple of (committed_leader_id, index).
+    fn log_id_parts(&self) -> (&CommittedLeaderIdOf<C>, u64) {
+        (self.committed_leader_id(), self.index())
+    }
 }
 
 impl<C, T> RaftLogId<C> for &T

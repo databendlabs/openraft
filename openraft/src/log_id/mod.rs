@@ -176,4 +176,12 @@ mod tests {
         assert_eq!(100, log_id.index());
         assert_eq!(5, **log_id.committed_leader_id());
     }
+
+    #[test]
+    fn test_log_id_parts() {
+        let log_id = super::LogId::<TestConfig>::new_term_index(5, 100);
+        let (leader_id, index) = log_id.log_id_parts();
+        assert_eq!(5, **leader_id);
+        assert_eq!(100, index);
+    }
 }
