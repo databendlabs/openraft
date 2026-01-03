@@ -26,6 +26,12 @@ where
 
     /// Returns the index of the log id.
     fn index(&self) -> u64;
+
+    /// Converts this log ID into another type that implements [`RaftLogId`].
+    fn to_type<T>(&self) -> T
+    where T: RaftLogId<C> {
+        T::new(self.committed_leader_id().clone(), self.index())
+    }
 }
 
 impl<C, T> RaftLogId<C> for &T

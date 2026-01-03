@@ -142,6 +142,7 @@ where C: RaftTypeConfig<LeaderId = crate::vote::leader_id_std::LeaderId<C>>
 #[cfg(test)]
 mod tests {
     use crate::declare_raft_types;
+    use crate::log_id::raft_log_id::RaftLogId;
     use crate::vote::leader_id_std::CommittedLeaderId;
 
     declare_raft_types!(pub TestConfig: LeaderId=crate::vote::leader_id_std::LeaderId<Self>, Term=u64);
@@ -159,5 +160,20 @@ mod tests {
         let log_id2 = super::LogId::<TestConfig>::new(CommittedLeaderId::<TestConfig>::new(5), 100);
         assert_eq!(log_id1.index(), log_id2.index());
         assert_eq!(**log_id1.committed_leader_id(), **log_id2.committed_leader_id());
+    }
+
+    #[test]
+    fn test_to_type_log_id_to_tuple() {
+        let log_id = super::LogId::<TestConfig>::new_term_index(5, 100);
+        let tuple: (u64, u64) = log_id.to_type();
+        assert_eq!((5, 100), tuple);
+    }
+
+    #[test]
+    fn test_to_type_tuple_to_log_id() {
+        let tuple: (u64, u64) = (5, 100);
+        let log_id: super::LogId<TestConfig> = tuple.to_type();
+        assert_eq!(100, log_id.index());
+        assert_eq!(5, **log_id.committed_leader_id());
     }
 }
