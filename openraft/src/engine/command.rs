@@ -138,9 +138,9 @@ where C: RaftTypeConfig
     /// Purge log from the beginning to `upto`, inclusive.
     PurgeLog { upto: LogIdOf<C> },
 
-    /// Delete logs that have conflicted with the leader from a follower/learner since log id
-    /// `since`, inclusive.
-    TruncateLog { since: LogIdOf<C> },
+    /// Delete logs that have conflicted with the leader from a follower/learner after log id
+    /// `after`, exclusive.
+    TruncateLog { after: Option<LogIdOf<C>> },
 
     /// A command sent to state machine worker [`sm::worker::Worker`].
     ///
@@ -211,7 +211,7 @@ where C: RaftTypeConfig
             Command::SaveVote { vote } => write!(f, "SaveVote: {}", vote),
             Command::SendVote { vote_req } => write!(f, "SendVote: {}", vote_req),
             Command::PurgeLog { upto } => write!(f, "PurgeLog: upto: {}", upto),
-            Command::TruncateLog { since } => write!(f, "TruncateLog: since: {}", since),
+            Command::TruncateLog { after } => write!(f, "TruncateLog: since: {}", after.display()),
             Command::StateMachine { command } => write!(f, "StateMachine: command: {}", command),
             Command::Respond { when, resp } => write!(f, "Respond: when: {}, resp: {}", when.display(), resp),
         }
@@ -246,7 +246,7 @@ where
             (Command::SaveVote { vote },                       Command::SaveVote { vote: b })                                        => vote == b,
             (Command::SendVote { vote_req },                   Command::SendVote { vote_req: b }, )                                  => vote_req == b,
             (Command::PurgeLog { upto },                       Command::PurgeLog { upto: b })                                        => upto == b,
-            (Command::TruncateLog { since },                   Command::TruncateLog { since: b }, )                                  => since == b,
+            (Command::TruncateLog { after },                   Command::TruncateLog { after: b }, )                                  => after == b,
             (Command::Respond { when, resp: send },            Command::Respond { when: b_when, resp: b })                           => send == b && when == b_when,
             (Command::StateMachine { command },                Command::StateMachine { command: b })                                 => command == b,
             (Command::CloseReplicationStreams,                 Command::CloseReplicationStreams)                                     => true,

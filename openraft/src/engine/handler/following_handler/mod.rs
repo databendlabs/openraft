@@ -167,16 +167,15 @@ where C: RaftTypeConfig
 
         debug_assert!(since >= self.state.last_purged_log_id().next_index());
 
-        let since_log_id = match self.state.get_log_id(since) {
-            None => {
-                tracing::debug!("skip truncating absent log at index {}", since);
-                return;
-            }
-            Some(x) => x,
-        };
+        if self.state.get_log_id(since).is_none() {
+            tracing::debug!("skip truncating absent log at index {}", since);
+            return;
+        }
+
+        let after = self.state.prev_log_id(since);
 
         self.state.log_ids.truncate(since);
-        self.output.push_command(Command::TruncateLog { since: since_log_id });
+        self.output.push_command(Command::TruncateLog { after });
 
         let changed = self.state.membership_state.truncate(since);
         if let Some(_c) = changed {

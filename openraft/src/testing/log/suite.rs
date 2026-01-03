@@ -165,6 +165,9 @@ where
         run_test(builder, Self::purge_logs_upto_20).await?;
         run_test(builder, Self::delete_logs_since_11).await?;
         run_test(builder, Self::delete_logs_since_0).await?;
+        run_test(builder, Self::delete_logs_after_11).await?;
+        run_test(builder, Self::delete_logs_after_0).await?;
+        run_test(builder, Self::delete_logs_after_none).await?;
         run_test(builder, Self::append_to_log).await?;
         run_test(builder, Self::snapshot_meta).await?;
         run_test(builder, Self::snapshot_meta_optional).await?;
@@ -1409,6 +1412,7 @@ where
         Ok(())
     }
 
+    #[allow(deprecated)]
     pub async fn delete_logs_since_11(mut store: LS, mut sm: SM) -> Result<(), io::Error> {
         tracing::info!("--- delete [11, +oo)");
 
@@ -1429,12 +1433,75 @@ where
         Ok(())
     }
 
+    #[allow(deprecated)]
     pub async fn delete_logs_since_0(mut store: LS, mut sm: SM) -> Result<(), io::Error> {
         tracing::info!("--- delete [0, +oo)");
 
         Self::feed_10_logs_vote_self(&mut store).await?;
 
         store.truncate(log_id_0(0, 0)).await?;
+
+        let logs = store.try_get_log_entries(0..100).await?;
+        assert_eq!(logs.len(), 0);
+
+        assert_eq!(
+            LogState {
+                last_purged_log_id: None,
+                last_log_id: None,
+            },
+            store.get_log_state().await?
+        );
+
+        Ok(())
+    }
+
+    pub async fn delete_logs_after_11(mut store: LS, mut sm: SM) -> Result<(), io::Error> {
+        tracing::info!("--- delete (11, +oo)");
+
+        Self::feed_10_logs_vote_self(&mut store).await?;
+
+        store.truncate_after(Some(log_id_0(1, 11))).await?;
+
+        let logs = store.try_get_log_entries(0..100).await?;
+        assert_eq!(logs.len(), 11);
+
+        assert_eq!(
+            LogState {
+                last_purged_log_id: None,
+                last_log_id: Some(log_id_0(1, 10)),
+            },
+            store.get_log_state().await?
+        );
+        Ok(())
+    }
+
+    pub async fn delete_logs_after_0(mut store: LS, mut sm: SM) -> Result<(), io::Error> {
+        tracing::info!("--- delete (0, +oo)");
+
+        Self::feed_10_logs_vote_self(&mut store).await?;
+
+        store.truncate_after(Some(log_id_0(0, 0))).await?;
+
+        let logs = store.try_get_log_entries(0..100).await?;
+        assert_eq!(logs.len(), 1); // log at index 0 remains
+
+        assert_eq!(
+            LogState {
+                last_purged_log_id: None,
+                last_log_id: Some(log_id_0(0, 0)),
+            },
+            store.get_log_state().await?
+        );
+
+        Ok(())
+    }
+
+    pub async fn delete_logs_after_none(mut store: LS, mut sm: SM) -> Result<(), io::Error> {
+        tracing::info!("--- delete all logs");
+
+        Self::feed_10_logs_vote_self(&mut store).await?;
+
+        store.truncate_after(None).await?;
 
         let logs = store.try_get_log_entries(0..100).await?;
         assert_eq!(logs.len(), 0);
