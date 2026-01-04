@@ -10,6 +10,7 @@ use crate::base::Batch;
 use crate::base::BoxOnce;
 use crate::core::raft_msg::external_command::ExternalCommand;
 use crate::display_ext::DisplayBTreeMapDebugValueExt;
+use crate::entry::EntryPayload;
 use crate::error::Infallible;
 use crate::error::InitializeError;
 use crate::error::LinearizableReadError;
@@ -80,7 +81,7 @@ where C: RaftTypeConfig
     },
 
     ClientWrite {
-        app_data: Batch<C::D>,
+        payloads: Batch<EntryPayload<C>>,
         responders: Batch<Option<CoreResponder<C>>>,
         expected_leader: Option<CommittedLeaderIdOf<C>>,
     },

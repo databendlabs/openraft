@@ -1518,7 +1518,7 @@ where
                 self.handle_ensure_linearizable_read(read_policy, tx).await;
             }
             RaftMsg::ClientWrite {
-                app_data,
+                payloads,
                 responders,
                 expected_leader,
             } => {
@@ -1538,8 +1538,7 @@ where
                         return;
                     }
                 }
-                self.runtime_stats.write_batch.record(app_data.len() as u64);
-                let payloads = app_data.into_iter().map(EntryPayload::Normal);
+                self.runtime_stats.write_batch.record(payloads.len() as u64);
                 self.write_entries(payloads, responders);
             }
             RaftMsg::Initialize { members, tx } => {

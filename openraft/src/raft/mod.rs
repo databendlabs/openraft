@@ -100,6 +100,7 @@ use crate::core::sm;
 use crate::core::sm::worker;
 use crate::engine::Engine;
 use crate::engine::EngineConfig;
+use crate::entry::EntryPayload;
 use crate::error::ClientWriteError;
 use crate::error::Fatal;
 use crate::error::ForwardToLeader;
@@ -1090,7 +1091,21 @@ where C: RaftTypeConfig
         &self,
         app_data: C::D,
     ) -> Result<ClientWriteResponse<C>, RaftError<C, ClientWriteError<C>>> {
-        self.app_api().client_write(app_data).await.into_raft_result()
+        self.app_api().client_write(EntryPayload::Normal(app_data)).await.into_raft_result()
+    }
+
+    /// Write a blank log entry to the Raft log.
+    ///
+    /// A blank entry contains no application data and is typically used to:
+    /// - Commit entries from previous terms when a new leader is elected
+    /// - Advance the commit index without any state machine changes
+    /// - Act as a barrier to ensure all previous entries are committed
+    ///
+    /// Returns when the blank entry has been applied to the state machine.
+    #[since(version = "0.10.0")]
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub async fn write_blank(&self) -> Result<ClientWriteResponse<C>, RaftError<C, ClientWriteError<C>>> {
+        self.app_api().client_write(EntryPayload::Blank).await.into_raft_result()
     }
 
     /// Submit a mutating client request to Raft to update the state machine, returns an application
@@ -1106,7 +1121,7 @@ where C: RaftTypeConfig
         app_data: C::D,
         responder: Option<WriteResponderOf<C>>,
     ) -> Result<(), Fatal<C>> {
-        self.app_api().client_write_ff(app_data, responder).await
+        self.app_api().client_write_ff(EntryPayload::Normal(app_data), responder).await
     }
 
     /// Write multiple application data payloads in a single batch.
@@ -1136,7 +1151,7 @@ where C: RaftTypeConfig
         &self,
         app_data: impl IntoIterator<Item = C::D>,
     ) -> Result<BoxStream<'static, Result<WriteResult<C>, Fatal<C>>>, Fatal<C>> {
-        self.app_api().client_write_many(app_data).await
+        self.app_api().client_write_many(app_data.into_iter().map(EntryPayload::Normal)).await
     }
 
     /// Submit a write request to Raft.
