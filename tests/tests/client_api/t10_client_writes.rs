@@ -228,3 +228,63 @@ async fn write_with_leader() -> Result<()> {
 
     Ok(())
 }
+
+/// Test Raft::write_blank() to write blank log entries
+///
+/// Blank entries contain no application data and are used to:
+/// - Commit entries from previous terms
+/// - Advance commit index without state machine changes
+/// - Act as a barrier
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
+async fn write_blank() -> Result<()> {
+    let config = Arc::new(
+        Config {
+            enable_tick: false,
+            ..Default::default()
+        }
+        .validate()?,
+    );
+
+    let mut router = RaftRouter::new(config.clone());
+
+    tracing::info!("--- initializing cluster");
+    let mut log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+
+    let n0 = router.get_raft_handle(&0)?;
+
+    // Write a blank entry
+    tracing::info!("--- write blank entry");
+    let resp = n0.write_blank().await?;
+    log_index += 1;
+
+    assert_eq!(&log_id(1, 0, log_index), resp.log_id());
+
+    // Wait for all nodes to apply the blank entry
+    for id in [0, 1, 2] {
+        router.wait(&id, None).applied_index(Some(log_index), "blank entry applied").await?;
+    }
+
+    // Verify the log contains a blank entry
+    let (mut sto, _sm) = router.get_storage_handle(&0)?;
+    let entries = sto.try_get_log_entries(log_index..=log_index).await?;
+    assert_eq!(1, entries.len());
+
+    let entry = &entries[0];
+    assert!(
+        matches!(entry.payload, openraft::entry::EntryPayload::Blank),
+        "Expected Blank payload, got: {:?}",
+        entry.payload
+    );
+
+    // Write another normal entry to verify blank didn't break anything
+    tracing::info!("--- write normal entry after blank");
+    n0.client_write(ClientRequest::make_request("after_blank", 1)).await?;
+    log_index += 1;
+
+    for id in [0, 1, 2] {
+        router.wait(&id, None).applied_index(Some(log_index), "normal entry after blank").await?;
+    }
+
+    Ok(())
+}

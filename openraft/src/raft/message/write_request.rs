@@ -6,6 +6,7 @@ use crate::RaftTypeConfig;
 use crate::base::Batch;
 use crate::base::BoxFuture;
 use crate::core::raft_msg::RaftMsg;
+use crate::entry::EntryPayload;
 use crate::error::Fatal;
 use crate::raft::raft_inner::RaftInner;
 use crate::raft::responder::core_responder::CoreResponder;
@@ -137,7 +138,7 @@ where C: RaftTypeConfig
         Box::pin(async move {
             self.inner
                 .send_msg(RaftMsg::ClientWrite {
-                    app_data: Batch::from(self.app_data),
+                    payloads: Batch::from(EntryPayload::Normal(self.app_data)),
                     responders: Batch::from(self.responder),
                     expected_leader: self.expected_leader,
                 })

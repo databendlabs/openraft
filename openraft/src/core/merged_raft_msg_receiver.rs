@@ -146,12 +146,12 @@ where C: RaftTypeConfig
     fn merge_client_writes(&mut self, msg: &mut RaftMsg<C>) -> Result<(), Fatal<C>> {
         debug_assert!(self.buffered.is_none());
 
-        let (batch_data, batch_responders, batch_leader) = match msg {
+        let (batch_payloads, batch_responders, batch_leader) = match msg {
             RaftMsg::ClientWrite {
-                app_data,
+                payloads,
                 responders,
                 expected_leader,
-            } => (app_data, responders, expected_leader),
+            } => (payloads, responders, expected_leader),
             _ => return Ok(()),
         };
 
@@ -166,7 +166,7 @@ where C: RaftTypeConfig
             };
 
             let RaftMsg::ClientWrite {
-                app_data,
+                payloads,
                 responders,
                 expected_leader,
             } = next
@@ -176,11 +176,11 @@ where C: RaftTypeConfig
             };
 
             if &expected_leader == batch_leader {
-                batch_data.extend(app_data);
+                batch_payloads.extend(payloads);
                 batch_responders.extend(responders);
             } else {
                 self.buffered = Some(RaftMsg::ClientWrite {
-                    app_data,
+                    payloads,
                     responders,
                     expected_leader,
                 });
@@ -199,6 +199,7 @@ mod tests {
     use crate::base::Batch;
     use crate::engine::testing::UTConfig;
     use crate::engine::testing::log_id;
+    use crate::entry::EntryPayload;
     use crate::type_config::TypeConfigExt;
     use crate::type_config::alias::CommittedLeaderIdOf;
 
@@ -210,10 +211,21 @@ mod tests {
 
     fn client_write(data: u64, leader: Option<CommittedLeaderIdOf<C>>) -> RaftMsg<C> {
         RaftMsg::ClientWrite {
-            app_data: Batch::Single(data),
+            payloads: Batch::Single(EntryPayload::Normal(data)),
             responders: Batch::Single(None),
             expected_leader: leader,
         }
+    }
+
+    fn extract_payload_data(payloads: &Batch<EntryPayload<C>>) -> Vec<u64> {
+        payloads
+            .as_slice()
+            .iter()
+            .map(|p| match p {
+                EntryPayload::Normal(d) => *d,
+                _ => panic!("expected Normal payload"),
+            })
+            .collect()
     }
 
     #[test]
@@ -231,13 +243,13 @@ mod tests {
             let msg = receiver.try_recv().unwrap().unwrap();
 
             let RaftMsg::ClientWrite {
-                app_data, responders, ..
+                payloads, responders, ..
             } = msg
             else {
                 panic!("expected ClientWrite");
             };
-            assert_eq!(app_data.as_slice(), &[1, 2, 3]);
-            assert_eq!(responders.len(), app_data.len());
+            assert_eq!(extract_payload_data(&payloads), vec![1, 2, 3]);
+            assert_eq!(responders.len(), payloads.len());
         });
     }
 
@@ -257,24 +269,24 @@ mod tests {
             // First message should not be merged with second
             let msg1 = receiver.try_recv().unwrap().unwrap();
             let RaftMsg::ClientWrite {
-                app_data, responders, ..
+                payloads, responders, ..
             } = msg1
             else {
                 panic!("expected ClientWrite");
             };
-            assert_eq!(app_data.as_slice(), &[1]);
-            assert_eq!(responders.len(), app_data.len());
+            assert_eq!(extract_payload_data(&payloads), vec![1]);
+            assert_eq!(responders.len(), payloads.len());
 
             // Second message should be buffered and returned separately
             let msg2 = receiver.try_recv().unwrap().unwrap();
             let RaftMsg::ClientWrite {
-                app_data, responders, ..
+                payloads, responders, ..
             } = msg2
             else {
                 panic!("expected ClientWrite");
             };
-            assert_eq!(app_data.as_slice(), &[2]);
-            assert_eq!(responders.len(), app_data.len());
+            assert_eq!(extract_payload_data(&payloads), vec![2]);
+            assert_eq!(responders.len(), payloads.len());
         });
     }
 
@@ -294,13 +306,13 @@ mod tests {
             // First ClientWrite should not merge past the WithRaftState
             let msg1 = receiver.try_recv().unwrap().unwrap();
             let RaftMsg::ClientWrite {
-                app_data, responders, ..
+                payloads, responders, ..
             } = msg1
             else {
                 panic!("expected ClientWrite");
             };
-            assert_eq!(app_data.as_slice(), &[1]);
-            assert_eq!(responders.len(), app_data.len());
+            assert_eq!(extract_payload_data(&payloads), vec![1]);
+            assert_eq!(responders.len(), payloads.len());
 
             // WithRaftState should be returned next
             let msg2 = receiver.try_recv().unwrap().unwrap();
@@ -309,13 +321,13 @@ mod tests {
             // Last ClientWrite should be returned
             let msg3 = receiver.try_recv().unwrap().unwrap();
             let RaftMsg::ClientWrite {
-                app_data, responders, ..
+                payloads, responders, ..
             } = msg3
             else {
                 panic!("expected ClientWrite");
             };
-            assert_eq!(app_data.as_slice(), &[2]);
-            assert_eq!(responders.len(), app_data.len());
+            assert_eq!(extract_payload_data(&payloads), vec![2]);
+            assert_eq!(responders.len(), payloads.len());
         });
     }
 
@@ -343,13 +355,13 @@ mod tests {
             // Message should be in buffer, try_recv should return it
             let msg = receiver.try_recv().unwrap().unwrap();
             let RaftMsg::ClientWrite {
-                app_data, responders, ..
+                payloads, responders, ..
             } = msg
             else {
                 panic!("expected ClientWrite");
             };
-            assert_eq!(app_data.as_slice(), &[42]);
-            assert_eq!(responders.len(), app_data.len());
+            assert_eq!(extract_payload_data(&payloads), vec![42]);
+            assert_eq!(responders.len(), payloads.len());
         });
     }
 
@@ -372,13 +384,13 @@ mod tests {
 
             let msg2 = receiver.try_recv().unwrap().unwrap();
             let RaftMsg::ClientWrite {
-                app_data, responders, ..
+                payloads, responders, ..
             } = msg2
             else {
                 panic!("expected ClientWrite");
             };
-            assert_eq!(app_data.as_slice(), &[2]);
-            assert_eq!(responders.len(), app_data.len());
+            assert_eq!(extract_payload_data(&payloads), vec![2]);
+            assert_eq!(responders.len(), payloads.len());
         });
     }
 }
