@@ -674,6 +674,9 @@ where
 
         tracing::info!("--- log terms: [0,1,1,2], last_purged_log_id is None, expect [(0,0),(1,1),(2,3)]");
         {
+            // truncate for new append, otherwise there may be conflict error, due to impl of the store.
+            store.truncate_after(Some(log_id(0, 0, 0))).await?;
+
             append(&mut store, [
                 blank_ent_0::<C>(1, 1),
                 blank_ent_0::<C>(1, 2),
