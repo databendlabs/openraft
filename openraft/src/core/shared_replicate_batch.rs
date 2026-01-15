@@ -22,7 +22,7 @@ impl Default for SharedReplicateBatch {
 impl SharedReplicateBatch {
     pub(crate) fn new() -> Self {
         Self {
-            inner: Arc::new(Mutex::new(Histogram::new())),
+            inner: Arc::new(Mutex::new(Histogram::<()>::new())),
         }
     }
 
