@@ -1,6 +1,6 @@
 use std::future::Future;
 
-use futures::TryFutureExt;
+use futures_util::TryFutureExt;
 use openraft_rt::Mpsc;
 use openraft_rt::MpscReceiver;
 use openraft_rt::MpscSender;
