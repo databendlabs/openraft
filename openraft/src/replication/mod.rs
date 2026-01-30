@@ -27,7 +27,7 @@ pub(crate) use replication_session_id::ReplicationSessionId;
 pub(crate) use response::Progress;
 use response::ReplicationResult;
 use stream_state::StreamState;
-use tracing_futures::Instrument;
+use tracing::Instrument;
 
 use crate::RaftNetworkFactory;
 use crate::RaftTypeConfig;

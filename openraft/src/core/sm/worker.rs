@@ -1,5 +1,5 @@
 use futures_util::TryStreamExt;
-use tracing_futures::Instrument;
+use tracing::Instrument;
 
 use crate::RaftLogReader;
 use crate::RaftSnapshotBuilder;

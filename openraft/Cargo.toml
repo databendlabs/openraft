@@ -33,7 +33,6 @@ serde_json      = { workspace = true, optional = true }
 tabled          = { workspace = true, optional = true }
 thiserror       = { workspace = true }
 tracing         = { workspace = true }
-tracing-futures = { workspace = true }
 validit         = { workspace = true }
 
 
