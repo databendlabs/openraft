@@ -2,8 +2,8 @@ use std::fmt;
 use std::sync::Arc;
 use std::time::Duration;
 
-use futures::FutureExt;
-use futures::StreamExt;
+use futures_util::FutureExt;
+use futures_util::StreamExt;
 
 use crate::Config;
 use crate::RaftTypeConfig;
@@ -83,7 +83,7 @@ where
         loop {
             tracing::debug!("{} is waiting for a new heartbeat event.", self);
 
-            futures::select! {
+            futures_util::select! {
                 _ = (&mut rx_shutdown).fuse() => {
                     tracing::info!("{} is shutdown.", self);
                     return Err(Stopped::ReceivedShutdown);
@@ -113,7 +113,7 @@ where
                 entries: vec![],
             };
 
-            let input_stream = Box::pin(futures::stream::once(async { payload }));
+            let input_stream = Box::pin(futures_util::stream::once(async { payload }));
 
             let res = C::timeout(timeout, async {
                 let mut output = self.network.stream_append(input_stream, option).await?;

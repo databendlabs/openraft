@@ -38,7 +38,7 @@ use std::time::Duration;
 
 use core_state::CoreState;
 use derive_more::Display;
-use futures::FutureExt;
+use futures_util::FutureExt;
 use linearizable_read::Linearizer;
 pub use message::AppendEntriesRequest;
 pub use message::AppendEntriesResponse;
@@ -862,9 +862,9 @@ where C: RaftTypeConfig
     ///
     /// ```ignore
     /// use std::pin::pin;
-    /// use futures::StreamExt;
+    /// use futures_util::StreamExt;
     ///
-    /// let input_stream = futures::stream::iter(vec![request1, request2, request3]);
+    /// let input_stream = futures_util::stream::iter(vec![request1, request2, request3]);
     /// let mut output_stream = pin!(raft.stream_append(input_stream));
     ///
     /// while let Some(result) = output_stream.next().await {
@@ -881,9 +881,9 @@ where C: RaftTypeConfig
     pub fn stream_append<S>(
         &self,
         stream: S,
-    ) -> impl futures::Stream<Item = StreamAppendResult<C>> + OptionalSend + 'static
+    ) -> impl futures_util::Stream<Item = StreamAppendResult<C>> + OptionalSend + 'static
     where
-        S: futures::Stream<Item = AppendEntriesRequest<C>> + OptionalSend + 'static,
+        S: futures_util::Stream<Item = AppendEntriesRequest<C>> + OptionalSend + 'static,
     {
         self.protocol_api().stream_append(stream)
     }
@@ -1133,7 +1133,7 @@ where C: RaftTypeConfig
     /// # Examples
     ///
     /// ```ignore
-    /// use futures::TryStreamExt;
+    /// use futures_util::TryStreamExt;
     ///
     /// let mut stream = raft.client_write_many([data1, data2, data3]).await?;
     ///
@@ -1743,7 +1743,7 @@ where C: RaftTypeConfig
         F: FnMut(Vote<C>, &NodeIdOf<C>) -> Fut + OptionalSend + 'static,
         Fut: Future<Output = ()> + OptionalSend + 'static,
     {
-        use futures::FutureExt;
+        use futures_util::FutureExt;
 
         let my_node_id = self.inner.id().clone();
         let mut vote_progress = self.watch_vote_progress();
@@ -1753,7 +1753,7 @@ where C: RaftTypeConfig
             let mut cancel_rx = cancel_rx.fuse();
 
             loop {
-                futures::select! {
+                futures_util::select! {
                     _ = cancel_rx => break,
                     res = vote_progress.changed().fuse() => {
                         if res.is_err() {

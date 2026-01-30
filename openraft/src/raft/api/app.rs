@@ -128,7 +128,7 @@ where C: RaftTypeConfig
 
         self.do_client_write_ff(Batch::from(payloads), Batch::from(responders)).await?;
 
-        let stream = futures::stream::unfold(Some(receivers.into_iter()), |opt_iter| async move {
+        let stream = futures_util::stream::unfold(Some(receivers.into_iter()), |opt_iter| async move {
             let mut iter = opt_iter?;
             let rx = iter.next()?;
             match rx.await {

@@ -1,7 +1,7 @@
 use core::time::Duration;
 use std::collections::BTreeSet;
 
-use futures::FutureExt;
+use futures_util::FutureExt;
 
 use crate::OptionalSend;
 use crate::RaftTypeConfig;
@@ -69,7 +69,7 @@ where C: RaftTypeConfig
             tracing::debug!(?sleep_time, "wait timeout");
             let delay = C::sleep(sleep_time);
 
-            futures::select_biased! {
+            futures_util::select_biased! {
                 _ = delay.fuse() => {
                     tracing::debug!( "id={} timeout wait {:} latest: {}", latest.id, msg.to_string(), latest );
                     return Err(WaitError::Timeout(self.timeout, format!("{} latest: {}", msg.to_string(), latest)));

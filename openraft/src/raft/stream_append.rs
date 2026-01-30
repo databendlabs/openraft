@@ -2,8 +2,8 @@
 
 use std::sync::Arc;
 
-use futures::Stream;
-use futures::StreamExt;
+use futures_util::Stream;
+use futures_util::StreamExt;
 
 use crate::AsyncRuntime;
 use crate::OptionalSend;
@@ -50,7 +50,7 @@ where
     let inner_clone = inner.clone();
 
     let _join_handle = C::AsyncRuntime::spawn(async move {
-        futures::pin_mut!(input);
+        futures_util::pin_mut!(input);
 
         while let Some(req) = input.next().await {
             let log_id_range = req.log_id_range();
@@ -71,7 +71,7 @@ where
         }
     });
 
-    futures::stream::unfold(Some((rx, inner)), |state| async move {
+    futures_util::stream::unfold(Some((rx, inner)), |state| async move {
         let (mut rx, inner) = state?;
         let p: Pending<C> = MpscReceiver::recv(&mut rx).await?;
 

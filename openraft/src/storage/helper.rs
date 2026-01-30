@@ -301,7 +301,7 @@ where
             );
             let last_applied = entries.last().map(|e| e.log_id()).unwrap();
             let apply_items = entries.into_iter().map(|entry| Ok((entry, None)));
-            let apply_stream = futures::stream::iter(apply_items);
+            let apply_stream = futures_util::stream::iter(apply_items);
             self.state_machine.apply(apply_stream).await.sto_apply(last_applied)?;
 
             start = chunk_end;

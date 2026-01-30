@@ -2,7 +2,7 @@ use std::future::Future;
 use std::io;
 use std::time::Duration;
 
-use futures::Stream;
+use futures_util::Stream;
 use openraft_macros::since;
 
 use crate::Instant;
@@ -111,7 +111,7 @@ pub trait TypeConfigExt: RaftTypeConfig {
     /// in a runtime-agnostic way.
     fn mpsc_to_stream<T>(rx: MpscReceiverOf<Self, T>) -> impl Stream<Item = T>
     where T: OptionalSend {
-        futures::stream::unfold(rx, |mut rx| async move {
+        futures_util::stream::unfold(rx, |mut rx| async move {
             let item = MpscReceiver::recv(&mut rx).await?;
             Some((item, rx))
         })
@@ -201,7 +201,7 @@ impl<T> TypeConfigExt for T where T: RaftTypeConfig {}
 mod tests {
     use std::io::Cursor;
 
-    use futures::StreamExt;
+    use futures_util::StreamExt;
     use openraft_rt_tokio::TokioRuntime;
 
     use crate::OptionalSend;
@@ -234,7 +234,7 @@ mod tests {
         UTConfig::run(async {
             let (tx, rx) = UTConfig::mpsc::<u64>(16);
             let stream = UTConfig::mpsc_to_stream(rx);
-            futures::pin_mut!(stream);
+            futures_util::pin_mut!(stream);
 
             // Send items
             tx.send(1).await.unwrap();
@@ -257,7 +257,7 @@ mod tests {
         UTConfig::run(async {
             let (tx, rx) = UTConfig::mpsc::<u64>(16);
             let stream = UTConfig::mpsc_to_stream(rx);
-            futures::pin_mut!(stream);
+            futures_util::pin_mut!(stream);
 
             // Close sender immediately
             drop(tx);

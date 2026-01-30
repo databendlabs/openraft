@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use futures::FutureExt;
+use futures_util::FutureExt;
 
 use crate::RaftNetworkFactory;
 use crate::RaftTypeConfig;
@@ -157,7 +157,7 @@ where
                         let sleep = C::sleep(duration);
                         let recv = self.replication_context.cancel_rx.changed();
 
-                        futures::select! {
+                        futures_util::select! {
                             _ = sleep.fuse() => {
                                 tracing::debug!("backoff timeout");
                             }
