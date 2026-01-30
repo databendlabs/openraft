@@ -1022,8 +1022,8 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
 
 /// Polls the future and returns its current state.
 fn poll_in_place<F: Future>(fut: Pin<&mut F>) -> Poll<F::Output> {
-    let waker = futures::task::noop_waker();
-    let mut cx = futures::task::Context::from_waker(&waker);
+    let waker = futures_util::task::noop_waker();
+    let mut cx = futures_util::task::Context::from_waker(&waker);
     fut.poll(&mut cx)
 }
 

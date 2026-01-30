@@ -148,7 +148,7 @@ pub trait AsyncRuntime: Debug + OptionalSend + OptionalSync + 'static {
         F: FnOnce() -> T + Send + 'static,
         T: Send + 'static,
     {
-        let (tx, rx) = futures::channel::oneshot::channel();
+        let (tx, rx) = futures_channel::oneshot::channel();
         std::thread::spawn(move || {
             tx.send(f()).ok();
         });
