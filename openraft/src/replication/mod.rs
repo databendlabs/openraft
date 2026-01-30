@@ -19,8 +19,8 @@ use std::fmt;
 use std::sync::Arc;
 use std::time::Duration;
 
-use futures::FutureExt;
-use futures::StreamExt;
+use futures_util::FutureExt;
+use futures_util::StreamExt;
 use payload::Payload;
 use replication_progress::ReplicationProgress;
 pub(crate) use replication_session_id::ReplicationSessionId;
@@ -153,7 +153,7 @@ where
 
     /// Creates a stream of AppendEntries requests from the given context.
     fn new_request_stream(stream_context: StreamContext<C, LS>) -> BoxStream<'static, AppendEntriesRequest<C>> {
-        let strm = futures::stream::unfold(stream_context, Self::next_append_request);
+        let strm = futures_util::stream::unfold(stream_context, Self::next_append_request);
         Box::pin(strm)
     }
 
@@ -457,7 +457,7 @@ where
         let entries = self.event_watcher.replicate_rx.changed();
         let committed = self.event_watcher.committed_rx.changed();
 
-        futures::select! {
+        futures_util::select! {
             entries_res = entries.fuse() => {
                 entries_res.map_err(|_e| ReplicationClosed::new("replicate_rx closed"))?;
                 let data = self.event_watcher.replicate_rx.borrow_watched().clone();

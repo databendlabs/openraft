@@ -1,4 +1,4 @@
-use futures::TryStreamExt;
+use futures_util::TryStreamExt;
 use tracing_futures::Instrument;
 
 use crate::RaftLogReader;
@@ -249,7 +249,7 @@ where
     #[tracing::instrument(level = "info", skip_all)]
     async fn build_snapshot(&mut self, resp_tx: MpscSenderOf<C, Notification<C>>) {
         // TODO: need to be abortable?
-        // use futures::future::abortable;
+        // use futures_util::future::abortable;
         // let (fu, abort_handle) = abortable(async move { builder.build_snapshot().await });
 
         let builder = self.state_machine.try_create_snapshot_builder(false).await;

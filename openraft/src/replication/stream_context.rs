@@ -8,7 +8,7 @@ use crate::type_config::alias::MutexOf;
 
 /// Context passed through the AppendEntries request stream.
 ///
-/// This struct is used with `futures::stream::unfold` to generate
+/// This struct is used with `futures_util::stream::unfold` to generate
 /// AppendEntries requests. It holds both the mutable state for reading
 /// log entries and a queue for tracking in-flight requests.
 pub(crate) struct StreamContext<C, LS>

@@ -1,7 +1,7 @@
 //! Defines the [`NetStreamAppend`] trait for streaming AppendEntries.
 
-use futures::Stream;
-use futures::StreamExt;
+use futures_util::Stream;
+use futures_util::StreamExt;
 
 use crate::OptionalSend;
 use crate::OptionalSync;
@@ -75,7 +75,7 @@ where
     S: Stream<Item = AppendEntriesRequest<C>> + OptionalSend + Unpin + 'static,
 {
     let fu = async move {
-        let strm = futures::stream::unfold(Some((network, input)), move |state| {
+        let strm = futures_util::stream::unfold(Some((network, input)), move |state| {
             let option = option.clone();
             async move {
                 let (network, mut input) = state?;

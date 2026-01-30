@@ -3,7 +3,7 @@ use std::io;
 use std::ops::RangeBounds;
 use std::ops::RangeInclusive;
 
-use futures::Stream;
+use futures_util::Stream;
 use openraft_macros::add_async_trait;
 use openraft_macros::since;
 
@@ -106,7 +106,7 @@ where C: RaftTypeConfig
     {
         // TODO: complete the test that ensures when the vote is changed, stream should be stopped.
 
-        use futures::stream;
+        use futures_util::stream;
 
         let changed_err = |leader, vote| {
             let err = LeaderChanged::new(leader, vote);
@@ -173,7 +173,7 @@ where C: RaftTypeConfig
     #[since(version = "0.10.0")]
     async fn entries_stream<RB>(&mut self, range: RB) -> impl Stream<Item = EntriesStreamResult<C>> + OptionalSend
     where RB: RangeBounds<u64> + Clone + Debug + OptionalSend {
-        use futures::stream;
+        use futures_util::stream;
 
         let fu = async move {
             let entries = self.try_get_log_entries(range).await?;

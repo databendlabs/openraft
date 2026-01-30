@@ -2,7 +2,7 @@ use std::future::Future;
 use std::time::Duration;
 
 use anyerror::AnyError;
-use futures::Stream;
+use futures_util::Stream;
 use openraft_macros::add_async_trait;
 use openraft_macros::since;
 
