@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use futures::Stream;
+use futures_util::Stream;
 use openraft_macros::since;
 
 use crate::LogIdOptionExt;

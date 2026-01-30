@@ -23,6 +23,7 @@ chrono             = { version = "0.4" }
 clap               = { version = "4.1.11", features = ["derive", "env"] }
 derive_more        = { version = "1.0", features = ["std", "from", "try_into", "display"] }
 futures            = { version = "0.3" }
+futures-util       = { version = "0.3" }
 lazy_static        = { version = "1.4.0" }
 maplit             = { version = "1.0.2" }
 pretty_assertions  = { version = "1.0.0" }

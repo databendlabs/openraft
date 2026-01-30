@@ -6,7 +6,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
-use futures::future::Either;
+use futures_util::future::Either;
 use tracing::Instrument;
 use tracing::Level;
 use tracing::Span;
@@ -91,7 +91,7 @@ where C: RaftTypeConfig
             let sleep_fut = std::pin::pin!(C::sleep_until(at));
             let cancel_fut = cancel.as_mut();
 
-            match futures::future::select(cancel_fut, sleep_fut).await {
+            match futures_util::future::select(cancel_fut, sleep_fut).await {
                 Either::Left((_canceled, _)) => {
                     tracing::info!("TickLoop received cancel signal, quit");
                     return;

@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Duration;
 
-use futures::FutureExt;
+use futures_util::FutureExt;
 
 use crate::LogId;
 use crate::LogIdOptionExt;
@@ -154,7 +154,7 @@ where
                 let committed_change = self.event_watcher.committed_rx.changed();
                 let cancel = self.replication_context.cancel_rx.changed();
 
-                futures::select! {
+                futures_util::select! {
                     _data_changed = data_change.fuse() => {
                         let new_data = self.event_watcher.replicate_rx.borrow_watched().clone();
                         if Some(new_data.inflight_id) != self.inflight_id {
@@ -197,7 +197,7 @@ where
 
         tracing::debug!("backoff timeout: {:?}", sleep_duration);
 
-        futures::select! {
+        futures_util::select! {
             _ = sleep.fuse() => {
                 tracing::debug!("backoff timeout");
             }
