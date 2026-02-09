@@ -1,6 +1,6 @@
 use std::io;
 
-use futures::Stream;
+use futures_util::Stream;
 use openraft_macros::add_async_trait;
 use openraft_macros::since;
 

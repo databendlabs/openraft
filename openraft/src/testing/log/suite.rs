@@ -968,7 +968,7 @@ where
     }
 
     pub async fn leader_bounded_stream(mut store: LS, mut sm: SM) -> Result<(), io::Error> {
-        use futures::StreamExt;
+        use futures_util::StreamExt;
 
         Self::feed_10_logs_vote_self(&mut store).await?;
 
@@ -1043,7 +1043,7 @@ where
     }
 
     pub async fn entries_stream(mut store: LS, mut sm: SM) -> Result<(), io::Error> {
-        use futures::StreamExt;
+        use futures_util::StreamExt;
 
         Self::feed_10_logs_vote_self(&mut store).await?;
 
@@ -1755,7 +1755,7 @@ where
     I::IntoIter: OptionalSend,
 {
     let apply_items = entries.into_iter().map(|entry| Ok((entry, None)));
-    let apply_stream = futures::stream::iter(apply_items);
+    let apply_stream = futures_util::stream::iter(apply_items);
     sm.apply(apply_stream).await?;
     Ok(())
 }

@@ -18,6 +18,7 @@ default = []
 single-threaded = ["openraft-macros/single-threaded"]
 
 [dependencies]
-futures         = { workspace = true }
+futures-channel = { workspace = true }
+futures-util    = { workspace = true }
 openraft-macros = { version = "0.10", path = "../macros" }
 rand            = { workspace = true }

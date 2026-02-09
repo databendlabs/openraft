@@ -25,7 +25,7 @@ byte-unit       = { workspace = true }
 chrono          = { workspace = true }
 clap            = { workspace = true }
 derive_more     = { workspace = true }
-futures         = { workspace = true }
+futures-util    = { workspace = true }
 maplit          = { workspace = true }
 rand            = { workspace = true }
 serde           = { workspace = true, optional = true }
@@ -33,7 +33,6 @@ serde_json      = { workspace = true, optional = true }
 tabled          = { workspace = true, optional = true }
 thiserror       = { workspace = true }
 tracing         = { workspace = true }
-tracing-futures = { workspace = true }
 validit         = { workspace = true }
 
 

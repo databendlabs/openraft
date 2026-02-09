@@ -56,7 +56,7 @@ mod threaded {
     use std::future::Future;
     use std::pin::Pin;
 
-    use futures::Stream;
+    use futures_util::Stream;
 
     /// A trait that is empty if the `single-threaded` feature flag is enabled,
     /// otherwise it extends `Send`.
@@ -90,7 +90,7 @@ mod threaded {
     use std::future::Future;
     use std::pin::Pin;
 
-    use futures::Stream;
+    use futures_util::Stream;
 
     /// A trait that is empty if the `single-threaded` feature flag is enabled,
     /// otherwise it extends `Send`.

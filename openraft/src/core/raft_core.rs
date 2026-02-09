@@ -5,10 +5,10 @@ use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
-use futures::FutureExt;
-use futures::StreamExt;
-use futures::TryFutureExt;
-use futures::stream::FuturesUnordered;
+use futures_util::FutureExt;
+use futures_util::StreamExt;
+use futures_util::TryFutureExt;
+use futures_util::stream::FuturesUnordered;
 use maplit::btreeset;
 use tracing::Instrument;
 use tracing::Level;
@@ -402,7 +402,7 @@ where
                 let target = target.clone();
 
                 async move {
-                    let input_stream = Box::pin(futures::stream::once(async { rpc }));
+                    let input_stream = Box::pin(futures_util::stream::once(async { rpc }));
 
                     let outer_res = C::timeout(ttl, async {
                         let mut output = client.stream_append(input_stream, option).await?;
@@ -1185,7 +1185,7 @@ where
             // `select!` without `biased` provides a random fairness.
             // We want to check shutdown prior to other channels.
             // See: https://docs.rs/tokio/latest/tokio/macro.select.html#fairness
-            futures::select_biased! {
+            futures_util::select_biased! {
                 _ = (&mut rx_shutdown).fuse() => {
                     tracing::info!("recv from rx_shutdown");
                     return Err(Fatal::Stopped);

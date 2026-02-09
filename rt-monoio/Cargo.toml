@@ -17,8 +17,8 @@ repository = "https://github.com/databendlabs/openraft"
 [dependencies]
 openraft-rt = { path = "../rt", version = "0.10.0", features = ["single-threaded"] }
 
-futures    = { version = "0.3" }
-local-sync = { version = "0.1.1" }
-monoio     = { version = "0.2.3" }
-rand       = { version = "0.9" }
-tokio      = { version = "1.22", features = ["sync"] }
+futures-util = { version = "0.3" }
+local-sync   = { version = "0.1.1" }
+monoio       = { version = "0.2.3" }
+rand         = { version = "0.9" }
+tokio        = { version = "1.22", features = ["sync"] }
