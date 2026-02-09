@@ -3,40 +3,46 @@
 use std::fmt;
 use std::fmt::Formatter;
 
-use super::Batch;
+use super::RaftBatch;
+use crate::OptionalSend;
 
-impl<T: fmt::Display> Batch<T> {
-    /// Returns a display helper that shows all elements.
-    pub fn display(&self) -> impl fmt::Display + '_ {
-        BatchDisplay {
-            elements: self,
-            max: None,
-        }
-    }
+/// Display helper for types implementing `RaftBatch`.
+pub struct DisplayBatch<'a, T, B>
+where
+    T: fmt::Display + OptionalSend + 'static + fmt::Debug,
+    B: RaftBatch<T>,
+{
+    pub(super) elements: &'a B,
+    pub(super) max: Option<usize>,
+    pub(super) _phantom: std::marker::PhantomData<T>,
+}
 
-    /// Returns a display helper that shows at most `max` elements.
-    pub fn display_n(&self, max: usize) -> impl fmt::Display + '_ {
-        BatchDisplay {
-            elements: self,
-            max: Some(max),
+impl<'a, T, B> DisplayBatch<'a, T, B>
+where
+    T: fmt::Display + OptionalSend + 'static + fmt::Debug,
+    B: RaftBatch<T>,
+{
+    pub(super) fn new(elements: &'a B, max: Option<usize>) -> Self {
+        Self {
+            elements,
+            max,
+            _phantom: std::marker::PhantomData,
         }
     }
 }
 
-struct BatchDisplay<'a, T> {
-    elements: &'a Batch<T>,
-    max: Option<usize>,
-}
-
-impl<'a, T: fmt::Display> fmt::Display for BatchDisplay<'a, T> {
+impl<'a, T, B> fmt::Display for DisplayBatch<'a, T, B>
+where
+    T: fmt::Display + OptionalSend + 'static + fmt::Debug,
+    B: RaftBatch<T>,
+{
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let slice = self.elements.as_slice();
-        let max = self.max.unwrap_or(slice.len());
-        let len = slice.len();
+        let len = self.elements.len();
+        let max = self.max.unwrap_or(len);
         let shown = max.min(len);
 
         write!(f, "[")?;
-        for (i, e) in slice.iter().take(max).enumerate() {
+        for (i, e) in self.elements.iter().take(max).enumerate() {
             if i > 0 {
                 write!(f, ", ")?;
             }
@@ -55,25 +61,53 @@ impl<'a, T: fmt::Display> fmt::Display for BatchDisplay<'a, T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::impls::Batch;
 
     #[test]
     fn test_display() {
-        assert_eq!(format!("{}", Batch::Single(42).display()), "[42]");
-        assert_eq!(format!("{}", Batch::Vec(vec![1, 2]).display()), "[1, 2]");
-        assert_eq!(format!("{}", Batch::<i32>::Vec(vec![]).display()), "[]");
+        assert_eq!(
+            format!("{}", <Batch<i32> as RaftBatch<i32>>::display(&Batch::Single(42))),
+            "[42]"
+        );
+        assert_eq!(
+            format!("{}", <Batch<i32> as RaftBatch<i32>>::display(&Batch::Vec(vec![1, 2]))),
+            "[1, 2]"
+        );
+        assert_eq!(
+            format!(
+                "{}",
+                <Batch<i32> as RaftBatch<i32>>::display(&Batch::<i32>::Vec(vec![]))
+            ),
+            "[]"
+        );
     }
 
     #[test]
     fn test_display_n() {
         let v: Batch<i32> = [1, 2, 3, 4, 5].into();
 
-        assert_eq!(format!("{}", v.display_n(3)), "[1, 2, 3, ... 2 more]");
-        assert_eq!(format!("{}", v.display_n(5)), "[1, 2, 3, 4, 5]");
-        assert_eq!(format!("{}", v.display_n(10)), "[1, 2, 3, 4, 5]");
-        assert_eq!(format!("{}", v.display_n(0)), "[... 5 more]");
+        assert_eq!(
+            format!("{}", <Batch<i32> as RaftBatch<i32>>::display_n(&v, 3)),
+            "[1, 2, 3, ... 2 more]"
+        );
+        assert_eq!(
+            format!("{}", <Batch<i32> as RaftBatch<i32>>::display_n(&v, 5)),
+            "[1, 2, 3, 4, 5]"
+        );
+        assert_eq!(
+            format!("{}", <Batch<i32> as RaftBatch<i32>>::display_n(&v, 10)),
+            "[1, 2, 3, 4, 5]"
+        );
+        assert_eq!(
+            format!("{}", <Batch<i32> as RaftBatch<i32>>::display_n(&v, 0)),
+            "[... 5 more]"
+        );
 
         let v2: Batch<i32> = 42.into();
-        assert_eq!(format!("{}", v2.display_n(0)), "[... 1 more]");
-        assert_eq!(format!("{}", v2.display_n(1)), "[42]");
+        assert_eq!(
+            format!("{}", <Batch<i32> as RaftBatch<i32>>::display_n(&v2, 0)),
+            "[... 1 more]"
+        );
+        assert_eq!(format!("{}", <Batch<i32> as RaftBatch<i32>>::display_n(&v2, 1)), "[42]");
     }
 }

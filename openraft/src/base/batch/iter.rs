@@ -44,6 +44,9 @@ impl<T> Iterator for BatchIter<T> {
 
 impl<T> ExactSizeIterator for BatchIter<T> {}
 
+// Safety: BatchIter<T> is Send when T is Send because both Option<T> and vec::IntoIter<T> are Send
+unsafe impl<T: Send> Send for BatchIter<T> {}
+
 #[cfg(test)]
 mod tests {
     use super::*;

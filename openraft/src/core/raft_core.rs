@@ -23,6 +23,7 @@ use crate::async_runtime::MpscReceiver;
 use crate::async_runtime::OneshotSender;
 use crate::async_runtime::TryRecvError;
 use crate::async_runtime::watch::WatchSender;
+use crate::base::RaftBatch;
 use crate::config::Config;
 use crate::config::RuntimeConfig;
 use crate::core::ClientResponderQueue;
@@ -1539,7 +1540,7 @@ where
                     }
                 }
                 self.runtime_stats.write_batch.record(payloads.len() as u64);
-                self.write_entries(payloads, responders);
+                self.write_entries(payloads.into_iter(), responders.into_iter());
             }
             RaftMsg::Initialize { members, tx } => {
                 tracing::info!("received RaftMsg::Initialize: {}, members: {:?}", func_name!(), members);
@@ -2079,7 +2080,7 @@ where
                 self.engine.state.log_progress_mut().submit(io_id.clone());
 
                 // Submit IO request, do not wait for the response.
-                self.log_store.append(entries, callback).await.sto_write_logs()?;
+                self.log_store.append(entries.into_iter(), callback).await.sto_write_logs()?;
             }
             Command::SaveVote { vote } => {
                 let io_id = IOId::new(&vote);
