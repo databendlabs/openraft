@@ -106,6 +106,7 @@ use crate::base::OptionalFeatures;
 pub use crate::base::OptionalSend;
 pub use crate::base::OptionalSerde;
 pub use crate::base::OptionalSync;
+pub use crate::base::RaftBatch;
 pub use crate::change_members::ChangeMembers;
 pub use crate::config::Config;
 pub use crate::config::ConfigError;

@@ -8,6 +8,7 @@
 use crate::RaftTypeConfig;
 use crate::async_runtime::MpscReceiver;
 use crate::async_runtime::TryRecvError;
+use crate::base::RaftBatch;
 use crate::core::raft_msg::RaftMsg;
 use crate::error::Fatal;
 use crate::type_config::alias::MpscReceiverOf;
@@ -196,7 +197,6 @@ where C: RaftTypeConfig
 mod tests {
     use super::*;
     use crate::async_runtime::MpscSender;
-    use crate::base::Batch;
     use crate::engine::testing::UTConfig;
     use crate::engine::testing::log_id;
     use crate::entry::EntryPayload;
@@ -211,15 +211,14 @@ mod tests {
 
     fn client_write(data: u64, leader: Option<CommittedLeaderIdOf<C>>) -> RaftMsg<C> {
         RaftMsg::ClientWrite {
-            payloads: Batch::Single(EntryPayload::Normal(data)),
-            responders: Batch::Single(None),
+            payloads: C::Batch::from_item(EntryPayload::Normal(data)),
+            responders: C::Batch::from_item(None),
             expected_leader: leader,
         }
     }
 
-    fn extract_payload_data(payloads: &Batch<EntryPayload<C>>) -> Vec<u64> {
+    fn extract_payload_data(payloads: &C::Batch<EntryPayload<C>>) -> Vec<u64> {
         payloads
-            .as_slice()
             .iter()
             .map(|p| match p {
                 EntryPayload::Normal(d) => *d,
