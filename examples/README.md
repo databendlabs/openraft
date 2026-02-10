@@ -46,14 +46,20 @@ or runtime.
 ### Storage Implementations
 - **[log-mem]** - In-memory Raft Log Store using `std::collections::BTreeMap`
 - **[log-rocks]** - RocksDB-based persistent Raft Log Store
+- **[log-fjall]** - Persistent Raft Log Store on [fjall], an LSM-tree key-value store in Rust
 - **[log-wal]** - Write-ahead-log Raft Log Store built on the [raft-log] crate
 - **[sm-mem]** - In-memory KV State Machine implementation
 - **[sm-rocks]** - RocksDB-based persistent state machine
+- **[sm-fjall]** - fjall-based persistent state machine
 
-Performance note: Raft log workloads are mostly append-only. RocksDB's general-purpose LSM design
-adds compaction and write-amplification overhead, so [log-rocks] is a durable example rather than an
-optimal-performance log store. [log-wal] shows the other approach: a log-shaped storage engine that
-appends records to chunk files and deletes a whole chunk once every entry in it is purged.
+Performance note: Raft log workloads are mostly append-only. General-purpose LSM stores such as
+RocksDB and fjall write every entry twice, to a journal and later to a table file, and reclaim
+purged entries through tombstones and compaction, so [log-rocks] and [log-fjall] are durable
+examples rather than optimal-performance log stores. [log-wal] shows the other approach: a
+log-shaped storage engine that appends records to chunk files and deletes a whole chunk once every
+entry in it is purged. A state machine, which reads and overwrites keys in any order, suits an LSM
+store well; Openraft keeps the two independent, so [sm-fjall] or [sm-rocks] can be paired with any
+log store.
 
 ### Backward Compatibility (since 0.10)
 
@@ -91,9 +97,11 @@ The following symbolic links are provided for backward compatibility:
 [multi-raft-kv]: multi-raft-kv/
 [log-mem]: log-mem/
 [log-rocks]: log-rocks/
+[log-fjall]: log-fjall/
 [log-wal]: log-wal/
 [sm-mem]: sm-mem/
 [sm-rocks]: sm-rocks/
+[sm-fjall]: sm-fjall/
 [dir-transfer]: dir-transfer/
 [network-v2]: network-v2-http/
 [network-v1]: network-v1-http/
@@ -104,3 +112,4 @@ The following symbolic links are provided for backward compatibility:
 [memstore]: memstore/
 
 [raft-log]: https://crates.io/crates/raft-log
+[fjall]: https://crates.io/crates/fjall

@@ -1,0 +1,35 @@
+[package]
+name = "sm-fjall"
+description = "An example fjall-backed state machine for `openraft`."
+readme = "README.md"
+
+version = "0.1.0"
+edition = "2024"
+authors = [
+    "ariesdevil <ariesdevil77@gmail.com>",
+]
+categories = ["algorithms", "asynchronous", "data-structures"]
+homepage = "https://github.com/databendlabs/openraft"
+keywords = ["raft", "consensus"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/databendlabs/openraft"
+
+[dependencies]
+openraft = { path = "../../openraft", version = "0.10.0-alpha.38", features = ["serde", "type-alias"] }
+types-kv = { path = "../types-kv" }
+
+fjall      = { version = "3.1.13" }
+futures    = { version = "0.3" }
+serde      = { version = "1.0.114" }
+serde_json = { version = "1.0.57" }
+tracing    = { version = "0.1.40" }
+
+[dev-dependencies]
+log-fjall = { path = "../log-fjall" }
+tempfile  = { version = "3.4.0" }
+
+[features]
+bt = ["openraft/bt"]
+
+[package.metadata.docs.rs]
+all-features = true
