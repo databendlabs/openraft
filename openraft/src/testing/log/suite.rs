@@ -476,10 +476,11 @@ where
         want.log_progress_mut().submit(IOId::new(&vote));
         want.log_progress_mut().try_flush(IOId::new(&vote));
 
-        // Set the id to the NODE_ID used in these tests.
-        want.log_progress_mut().set_id(NODE_ID.to_string());
-        want.apply_progress_mut().set_id(NODE_ID.to_string());
-        want.snapshot_progress_mut().set_id(NODE_ID.to_string());
+        // Set the id using C::NodeId's Display, matching what StorageHelper::with_id produces.
+        let node_id: C::NodeId = NODE_ID.into();
+        want.log_progress_mut().set_id(node_id.to_string());
+        want.apply_progress_mut().set_id(node_id.to_string());
+        want.snapshot_progress_mut().set_id(node_id.to_string());
 
         want.progress_id_gen = initial.progress_id_gen.clone();
 
