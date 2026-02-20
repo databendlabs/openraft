@@ -150,6 +150,7 @@ jobs:
       matrix:
         include:
           - store: 'stores/memstore'
+          - store: 'stores/memstore-custom-node-id'
 
     steps:
       - name: Setup | Checkout

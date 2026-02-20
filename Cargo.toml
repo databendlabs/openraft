@@ -70,6 +70,7 @@ members = [
     "macros",
     "tests",
     "stores/memstore",
+    "stores/memstore-custom-node-id",
 ]
 exclude = [
     "benchmarks/minimal",
