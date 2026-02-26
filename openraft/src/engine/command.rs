@@ -14,12 +14,13 @@ use crate::engine::CommandName;
 use crate::engine::replication_progress::TargetProgress;
 use crate::errors::InitializeError;
 use crate::errors::InstallSnapshotError;
+use crate::errors::RejectAppendEntries;
 use crate::progress::inflight_id::InflightId;
-use crate::raft::AppendEntriesResponse;
 use crate::raft::InstallSnapshotResponse;
 use crate::raft::SnapshotResponse;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
+use crate::raft::message::MatchedLogId;
 use crate::raft::message::TransferLeaderRequest;
 use crate::raft_state::IOId;
 use crate::raft_state::IOState;
@@ -421,7 +422,7 @@ pub(crate) enum Respond<C>
 where C: RaftTypeConfig
 {
     Vote(ValueSender<C, VoteResponse<C>>),
-    AppendEntries(ValueSender<C, AppendEntriesResponse<C>>),
+    AppendEntries(ValueSender<C, Result<MatchedLogId<C>, RejectAppendEntries<C>>>),
     ReceiveSnapshotChunk(ValueSender<C, Result<(), InstallSnapshotError>>),
     InstallSnapshot(ValueSender<C, Result<InstallSnapshotResponse<C>, InstallSnapshotError>>),
     InstallFullSnapshot(ValueSender<C, SnapshotResponse<C>>),
@@ -434,7 +435,7 @@ where C: RaftTypeConfig
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Respond::Vote(vs) => write!(f, "Vote {}", vs.value()),
-            Respond::AppendEntries(vs) => write!(f, "AppendEntries {}", vs.value()),
+            Respond::AppendEntries(vs) => write!(f, "AppendEntries {}", vs.value().display()),
             Respond::ReceiveSnapshotChunk(vs) => {
                 write!(
                     f,

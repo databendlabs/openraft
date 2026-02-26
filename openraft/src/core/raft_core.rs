@@ -90,6 +90,7 @@ use crate::raft::StreamAppendError;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::raft::linearizable_read::Linearizer;
+use crate::raft::message::AppendEntries;
 use crate::raft::message::TransferLeaderRequest;
 use crate::raft::responder::Responder;
 use crate::raft::responder::core_responder::CoreResponder;
@@ -1471,17 +1472,20 @@ where
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(super) fn handle_append_entries_request(&mut self, req: AppendEntriesRequest<C>, tx: AppendEntriesTx<C>) {
-        tracing::debug!("{}: req: {}", func_name!(), req);
+    pub(super) fn handle_append_entries_request(&mut self, ae: AppendEntries<C>, tx: AppendEntriesTx<C>) {
+        tracing::debug!("{}: leadership vote: {}", func_name!(), ae.leadership.vote);
 
-        self.engine.handle_append_entries(&req.vote, req.prev_log_id, req.entries, tx);
+        let leader_commit = ae.leader_commit;
+        let vote = ae.leadership.vote.clone();
+
+        self.engine.handle_append_entries(ae.leadership, ae.log_segment, tx);
 
         // Record append entries to external metrics recorder
         if let Some(r) = &self.metrics_recorder {
             r.increment_append();
         }
 
-        let committed = LogIOId::new(req.vote.to_committed(), req.leader_commit);
+        let committed = LogIOId::new(vote.to_committed(), leader_commit);
         self.engine.state.update_committed(committed);
     }
 
@@ -1494,8 +1498,8 @@ where
         self.runtime_stats.record_raft_msg(msg.name());
 
         match msg {
-            RaftMsg::AppendEntries { rpc, tx } => {
-                self.handle_append_entries_request(rpc, tx);
+            RaftMsg::AppendEntries { ae, tx } => {
+                self.handle_append_entries_request(ae, tx);
             }
             RaftMsg::RequestVote { rpc, tx } => {
                 let now = C::now();

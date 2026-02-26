@@ -6,7 +6,7 @@ use crate::errors::RejectLeadership;
 use crate::raft::AppendEntriesResponse;
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-pub(crate) enum RejectAppendEntries<C: RaftTypeConfig> {
+pub enum RejectAppendEntries<C: RaftTypeConfig> {
     #[error("reject AppendEntries by a greater vote: {0}")]
     RejectLeadership(RejectLeadership<C>),
 
