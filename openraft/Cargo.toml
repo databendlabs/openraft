@@ -34,6 +34,7 @@ tabled          = { workspace = true, optional = true }
 thiserror       = { workspace = true }
 tracing         = { workspace = true }
 validit         = { workspace = true }
+peel-off        = { workspace = true }
 
 
 [dev-dependencies]

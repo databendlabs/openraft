@@ -18,6 +18,7 @@ use crate::engine::handler::snapshot_handler::SnapshotHandler;
 use crate::entry::RaftEntry;
 use crate::entry::RaftPayload;
 use crate::entry::raft_entry_ext::RaftEntryExt;
+use crate::error::ConflictingLogId;
 use crate::error::RejectAppendEntries;
 use crate::log_id::option_raft_log_id_ext::OptionRaftLogIdExt;
 use crate::raft_state::IOId;
@@ -123,10 +124,10 @@ where C: RaftTypeConfig
             tracing::debug!("prev_log_id mismatch, local: {}", DisplayOption(&local));
 
             self.truncate_logs(prev.index());
-            return Err(RejectAppendEntries::ByConflictingLogId {
+            return Err(RejectAppendEntries::ConflictingLogId(ConflictingLogId {
                 local,
                 expect: prev.clone(),
-            });
+            }));
         }
 
         // else `prev_log_id.is_none()` means replicating logs from the very beginning.

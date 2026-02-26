@@ -15,7 +15,7 @@ use crate::engine::Engine;
 use crate::engine::LogIdList;
 use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;
-use crate::error::RejectVoteRequest;
+use crate::error::RejectLeadership;
 use crate::type_config::TypeConfigExt;
 use crate::utime::Leased;
 
@@ -50,7 +50,7 @@ fn test_handle_message_vote_reject_smaller_vote() -> anyhow::Result<()> {
 
     let resp = eng.vote_handler().update_vote(&Vote::new(1, 2));
 
-    assert_eq!(Err(RejectVoteRequest::ByVote(Vote::new_committed(2, 1))), resp);
+    assert_eq!(Err(RejectLeadership::ByVote(Vote::new_committed(2, 1))), resp);
 
     assert_eq!(Vote::new_committed(2, 1), *eng.state.vote_ref());
     assert!(eng.leader.is_some());
