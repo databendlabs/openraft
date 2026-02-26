@@ -1,6 +1,7 @@
 //! Error types exposed by this crate.
 
 mod allow_next_revert_error;
+mod conflicting_log_id;
 pub mod decompose;
 mod error_source;
 pub(crate) mod higher_vote;
@@ -12,6 +13,8 @@ mod linearizable_read_error;
 mod membership_error;
 mod node_not_found;
 mod operation;
+mod reject_append_entries;
+mod reject_leadership;
 mod replication_closed;
 pub(crate) mod replication_error;
 pub(crate) mod storage_error;
@@ -26,6 +29,7 @@ use std::time::Duration;
 use openraft_macros::since;
 
 pub use self::allow_next_revert_error::AllowNextRevertError;
+pub(crate) use self::conflicting_log_id::ConflictingLogId;
 pub use self::error_source::BacktraceDisplay;
 pub use self::error_source::ErrorSource;
 pub(crate) use self::higher_vote::HigherVote;
@@ -35,6 +39,8 @@ pub use self::linearizable_read_error::LinearizableReadError;
 pub use self::membership_error::MembershipError;
 pub use self::node_not_found::NodeNotFound;
 pub use self::operation::Operation;
+pub(crate) use self::reject_append_entries::RejectAppendEntries;
+pub(crate) use self::reject_leadership::RejectLeadership;
 pub use self::replication_closed::ReplicationClosed;
 pub(crate) use self::replication_error::ReplicationError;
 pub(crate) use self::storage_io_result::StorageIOResult;
@@ -43,7 +49,6 @@ use crate::Membership;
 use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::network::RPCTypes;
-use crate::raft::AppendEntriesResponse;
 use crate::raft_types::SnapshotSegmentId;
 use crate::try_as_ref::TryAsRef;
 use crate::type_config::alias::LogIdOf;
@@ -597,66 +602,3 @@ pub enum Infallible {}
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[error("no-forward")]
 pub enum NoForward {}
-
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub(crate) enum RejectVoteRequest<C: RaftTypeConfig> {
-    #[error("reject vote request by a greater vote: {0}")]
-    ByVote(VoteOf<C>),
-
-    #[allow(dead_code)]
-    #[error("reject vote request by a greater last-log-id: {0:?}")]
-    ByLastLogId(Option<LogIdOf<C>>),
-}
-
-impl<C> From<RejectVoteRequest<C>> for AppendEntriesResponse<C>
-where C: RaftTypeConfig
-{
-    fn from(r: RejectVoteRequest<C>) -> Self {
-        match r {
-            RejectVoteRequest::ByVote(v) => AppendEntriesResponse::HigherVote(v),
-            RejectVoteRequest::ByLastLogId(_) => {
-                unreachable!("the leader should always has a greater last log id")
-            }
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-pub(crate) enum RejectAppendEntries<C: RaftTypeConfig> {
-    #[error("reject AppendEntries by a greater vote: {0}")]
-    ByVote(VoteOf<C>),
-
-    #[error("reject AppendEntries because of conflicting log-id: {local:?}; expect to be: {expect:?}")]
-    ByConflictingLogId {
-        expect: LogIdOf<C>,
-        local: Option<LogIdOf<C>>,
-    },
-}
-
-impl<C> From<RejectVoteRequest<C>> for RejectAppendEntries<C>
-where C: RaftTypeConfig
-{
-    fn from(r: RejectVoteRequest<C>) -> Self {
-        match r {
-            RejectVoteRequest::ByVote(v) => RejectAppendEntries::ByVote(v),
-            RejectVoteRequest::ByLastLogId(_) => {
-                unreachable!("the leader should always has a greater last log id")
-            }
-        }
-    }
-}
-
-impl<C> From<Result<(), RejectAppendEntries<C>>> for AppendEntriesResponse<C>
-where C: RaftTypeConfig
-{
-    fn from(r: Result<(), RejectAppendEntries<C>>) -> Self {
-        match r {
-            Ok(_) => AppendEntriesResponse::Success,
-            Err(e) => match e {
-                RejectAppendEntries::ByVote(v) => AppendEntriesResponse::HigherVote(v),
-                RejectAppendEntries::ByConflictingLogId { expect: _, local: _ } => AppendEntriesResponse::Conflict,
-            },
-        }
-    }
-}

@@ -16,7 +16,7 @@ use crate::engine::handler::leader_handler::LeaderHandler;
 use crate::engine::handler::replication_handler::ReplicationHandler;
 use crate::engine::handler::server_state_handler::ServerStateHandler;
 use crate::entry::payload::EntryPayload;
-use crate::error::RejectVoteRequest;
+use crate::error::RejectLeadership;
 use crate::proposer::CandidateState;
 use crate::proposer::LeaderState;
 use crate::raft_state::IOId;
@@ -70,7 +70,7 @@ where C: RaftTypeConfig
     where
         T: Debug + Eq + OptionalSend,
         Respond<C>: From<ValueSender<C, T>>,
-        F: Fn(&RaftState<C>, RejectVoteRequest<C>) -> T,
+        F: Fn(&RaftState<C>, RejectLeadership<C>) -> T,
     {
         let vote_res = self.update_vote(vote);
 
@@ -101,7 +101,7 @@ where C: RaftTypeConfig
     /// Note: This method does not check last-log-id. handle-vote-request has to deal with
     /// last-log-id itself.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn update_vote(&mut self, vote: &VoteOf<C>) -> Result<(), RejectVoteRequest<C>> {
+    pub(crate) fn update_vote(&mut self, vote: &VoteOf<C>) -> Result<(), RejectLeadership<C>> {
         // Partial ord compare:
         // Vote does not have to be total ord.
         // `!(a >= b)` does not imply `a < b`.
@@ -109,7 +109,7 @@ where C: RaftTypeConfig
             // Ok
         } else {
             tracing::info!("vote {} is rejected by local vote: {}", vote, self.state.vote_ref());
-            return Err(RejectVoteRequest::ByVote(self.state.vote_ref().clone()));
+            return Err(RejectLeadership::ByVote(self.state.vote_ref().clone()));
         }
         tracing::debug!(%vote, "vote is changing to" );
 

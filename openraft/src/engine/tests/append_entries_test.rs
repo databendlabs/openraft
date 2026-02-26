@@ -16,7 +16,9 @@ use crate::engine::Engine;
 use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;
 use crate::entry::RaftEntry;
+use crate::error::ConflictingLogId;
 use crate::error::RejectAppendEntries;
+use crate::error::RejectLeadership;
 use crate::raft_state::IOId;
 use crate::raft_state::LogStateReader;
 use crate::testing::blank_ent;
@@ -60,7 +62,12 @@ fn test_append_entries_vote_is_rejected() -> anyhow::Result<()> {
 
     let res = eng.append_entries(&Vote::new(1, 1), None, Vec::<Entry<UTConfig>>::new());
 
-    assert_eq!(Err(RejectAppendEntries::ByVote(Vote::new(2, 1))), res);
+    assert_eq!(
+        Err(RejectAppendEntries::RejectLeadership(RejectLeadership::ByVote(
+            Vote::new(2, 1)
+        ))),
+        res
+    );
     assert_eq!(None, eng.state.log_ids.purged());
     assert_eq!(
         &[
@@ -146,10 +153,10 @@ fn test_append_entries_prev_log_id_conflict() -> anyhow::Result<()> {
     );
 
     assert_eq!(
-        Err(RejectAppendEntries::ByConflictingLogId {
+        Err(RejectAppendEntries::ConflictingLogId(ConflictingLogId {
             expect: log_id(2, 1, 2),
             local: Some(log_id(1, 1, 2)),
-        }),
+        })),
         res
     );
     assert_eq!(None, eng.state.log_ids.purged());
@@ -245,10 +252,10 @@ fn test_append_entries_prev_log_id_not_exists() -> anyhow::Result<()> {
     ]);
 
     assert_eq!(
-        Err(RejectAppendEntries::ByConflictingLogId {
+        Err(RejectAppendEntries::ConflictingLogId(ConflictingLogId {
             expect: log_id(2, 1, 4),
             local: None,
-        }),
+        })),
         res
     );
     assert_eq!(None, eng.state.log_ids.purged());
