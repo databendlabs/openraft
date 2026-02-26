@@ -166,7 +166,7 @@ async fn write_builder() -> Result<()> {
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn write_with_leader() -> Result<()> {
-    use openraft::error::ClientWriteError;
+    use openraft::errors::ClientWriteError;
     use openraft::vote::RaftLeaderId;
 
     let config = Arc::new(

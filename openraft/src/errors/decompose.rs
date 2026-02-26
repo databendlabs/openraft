@@ -3,11 +3,11 @@
 use std::error::Error;
 
 use crate::RaftTypeConfig;
-use crate::error::Infallible;
-use crate::error::RPCError;
-use crate::error::RaftError;
-use crate::error::Unreachable;
-use crate::error::into_ok::into_ok;
+use crate::errors::Infallible;
+use crate::errors::RPCError;
+use crate::errors::RaftError;
+use crate::errors::Unreachable;
+use crate::errors::into_ok::into_ok;
 
 /// Simplifies error handling by extracting the inner error from a composite error.
 ///

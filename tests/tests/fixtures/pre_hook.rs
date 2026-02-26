@@ -1,8 +1,8 @@
 //! Pre-hook types for intercepting RPC calls before they are sent.
 
 use openraft::base::BoxFuture;
-use openraft::error::Infallible;
-use openraft::error::RPCError;
+use openraft::errors::Infallible;
+use openraft::errors::RPCError;
 use openraft_memstore::MemNodeId;
 use openraft_memstore::TypeConfig;
 

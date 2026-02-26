@@ -11,8 +11,8 @@ use openraft::LogId;
 use openraft::RaftMetrics;
 use openraft::ReadPolicy;
 use openraft::async_runtime::WatchReceiver;
-use openraft::error::Infallible;
-use openraft::error::decompose::DecomposeResult;
+use openraft::errors::Infallible;
+use openraft::errors::decompose::DecomposeResult;
 use serde::Deserialize;
 use serde::Serialize;
 

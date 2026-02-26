@@ -4,10 +4,10 @@ use std::time::Duration;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
-use openraft::error::AllowNextRevertError;
-use openraft::error::ForwardToLeader;
-use openraft::error::NodeNotFound;
-use openraft::error::Operation;
+use openraft::errors::AllowNextRevertError;
+use openraft::errors::ForwardToLeader;
+use openraft::errors::NodeNotFound;
+use openraft::errors::Operation;
 
 use crate::fixtures::RaftRouter;
 use crate::fixtures::ut_harness;

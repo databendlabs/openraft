@@ -6,9 +6,9 @@ use maplit::btreeset;
 use openraft::Config;
 use openraft::Vote;
 use openraft::async_runtime::OneshotSender;
-use openraft::error::ClientWriteError;
-use openraft::error::ForwardToLeader;
-use openraft::error::RaftError;
+use openraft::errors::ClientWriteError;
+use openraft::errors::ForwardToLeader;
+use openraft::errors::RaftError;
 use openraft::raft::AppendEntriesRequest;
 use openraft::type_config::TypeConfigExt;
 use openraft_memstore::ClientRequest;
@@ -22,7 +22,7 @@ use crate::fixtures::ut_harness;
 /// Client write will receive a [`ForwardToLeader`] error because of log reversion, when leader
 /// quit, even after log is appended.
 ///
-/// [`ForwardToLeader`]: openraft::error::ForwardToLeader
+/// [`ForwardToLeader`]: openraft::errors::ForwardToLeader
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn write_when_leader_quit_and_log_revert() -> Result<()> {
@@ -97,7 +97,7 @@ async fn write_when_leader_quit_and_log_revert() -> Result<()> {
 /// Client write will still receive an OK response, as soon as log is committed, even when leader is
 /// switched.
 ///
-/// [`ForwardToLeader`]: openraft::error::ForwardToLeader
+/// [`ForwardToLeader`]: openraft::errors::ForwardToLeader
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn write_when_leader_switched() -> Result<()> {

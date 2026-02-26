@@ -12,9 +12,9 @@ use openraft::RaftLogReader;
 use openraft::ServerState;
 use openraft::StoredMembership;
 use openraft::Vote;
-use openraft::error::InitializeError;
-use openraft::error::NotAllowed;
-use openraft::error::NotInMembers;
+use openraft::errors::InitializeError;
+use openraft::errors::NotAllowed;
+use openraft::errors::NotInMembers;
 use openraft::storage::RaftStateMachine;
 
 use crate::fixtures::RaftRouter;

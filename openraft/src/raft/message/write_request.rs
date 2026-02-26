@@ -7,7 +7,7 @@ use crate::base::Batch;
 use crate::base::BoxFuture;
 use crate::core::raft_msg::RaftMsg;
 use crate::entry::EntryPayload;
-use crate::error::Fatal;
+use crate::errors::Fatal;
 use crate::raft::raft_inner::RaftInner;
 use crate::raft::responder::core_responder::CoreResponder;
 use crate::type_config::alias::CommittedLeaderIdOf;
@@ -120,7 +120,7 @@ where C: RaftTypeConfig
     ///
     /// See [`Leader::term()`] and [`Leader::to_committed_leader_id()`]
     ///
-    /// [`ClientWriteError::ForwardToLeader`]: crate::error::ClientWriteError::ForwardToLeader
+    /// [`ClientWriteError::ForwardToLeader`]: crate::errors::ClientWriteError::ForwardToLeader
     #[since(version = "0.10.0")]
     pub fn with_leader(mut self, expected_leader: impl Into<CommittedLeaderIdOf<C>>) -> Self {
         self.expected_leader = Some(expected_leader.into());

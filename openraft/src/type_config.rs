@@ -19,7 +19,7 @@ use crate::NodeId;
 use crate::OptionalSend;
 use crate::OptionalSync;
 use crate::entry::RaftEntry;
-use crate::error::ErrorSource;
+use crate::errors::ErrorSource;
 use crate::raft::responder::Responder;
 use crate::vote::RaftLeaderId;
 use crate::vote::RaftTerm;

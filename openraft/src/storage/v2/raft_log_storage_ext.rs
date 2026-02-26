@@ -3,7 +3,7 @@ use openraft_macros::add_async_trait;
 use crate::OptionalSend;
 use crate::RaftTypeConfig;
 use crate::StorageError;
-use crate::error::StorageIOResult;
+use crate::errors::StorageIOResult;
 use crate::storage::IOFlushed;
 use crate::storage::RaftLogStorage;
 use crate::type_config::TypeConfigExt;

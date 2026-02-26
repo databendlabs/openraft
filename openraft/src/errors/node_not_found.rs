@@ -1,5 +1,5 @@
 use crate::RaftTypeConfig;
-use crate::error::Operation;
+use crate::errors::Operation;
 
 /// Error indicating a node was not found in the cluster.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]

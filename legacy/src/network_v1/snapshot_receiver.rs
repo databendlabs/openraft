@@ -9,10 +9,10 @@ use openraft::SnapshotSegmentId;
 use openraft::StorageError;
 use openraft::async_runtime::Mutex;
 use openraft::async_runtime::WatchReceiver;
-use openraft::error::ErrorSource;
-use openraft::error::InstallSnapshotError;
-use openraft::error::RaftError;
-use openraft::error::SnapshotMismatch;
+use openraft::errors::ErrorSource;
+use openraft::errors::InstallSnapshotError;
+use openraft::errors::RaftError;
+use openraft::errors::SnapshotMismatch;
 use openraft::raft::InstallSnapshotRequest;
 use openraft::raft::InstallSnapshotResponse;
 use openraft::storage::Snapshot;
@@ -125,7 +125,7 @@ where C::SnapshotData: tokio::io::AsyncRead + tokio::io::AsyncWrite + tokio::io:
             let mut data = streaming.into_snapshot_data();
 
             data.shutdown().await.map_err(|e| {
-                RaftError::Fatal(openraft::error::Fatal::from(StorageError::write_snapshot(
+                RaftError::Fatal(openraft::errors::Fatal::from(StorageError::write_snapshot(
                     Some(snapshot_meta.signature()),
                     C::ErrorSource::from_error(&e),
                 )))

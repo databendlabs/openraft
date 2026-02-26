@@ -10,9 +10,9 @@ use openraft::Membership;
 use openraft::RaftLogReader;
 use openraft::StorageHelper;
 use openraft::async_runtime::WatchReceiver;
-use openraft::error::ChangeMembershipError;
-use openraft::error::ClientWriteError;
-use openraft::error::InProgress;
+use openraft::errors::ChangeMembershipError;
+use openraft::errors::ClientWriteError;
+use openraft::errors::InProgress;
 use openraft::type_config::TypeConfigExt;
 use openraft_memstore::TypeConfig;
 

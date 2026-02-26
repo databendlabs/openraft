@@ -16,7 +16,7 @@ use crate::engine::handler::leader_handler::LeaderHandler;
 use crate::engine::handler::replication_handler::ReplicationHandler;
 use crate::engine::handler::server_state_handler::ServerStateHandler;
 use crate::entry::payload::EntryPayload;
-use crate::error::RejectLeadership;
+use crate::errors::RejectLeadership;
 use crate::proposer::CandidateState;
 use crate::proposer::LeaderState;
 use crate::raft_state::IOId;

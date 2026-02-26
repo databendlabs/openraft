@@ -68,8 +68,8 @@ fn measure_storage_error_size() {
     println!("SnapshotId (String):              {} bytes", size_of::<SnapshotId>());
 
     println!("\n--- Related Types ---");
-    use openraft::error::Fatal;
-    use openraft::error::RaftError;
+    use openraft::errors::Fatal;
+    use openraft::errors::RaftError;
 
     println!(
         "RaftError<TestConfig, ()>:        {} bytes",

@@ -8,8 +8,8 @@ use actix_web::web::Data;
 use actix_web::web::Json;
 use openraft::BasicNode;
 use openraft::async_runtime::WatchReceiver;
-use openraft::error::Infallible;
-use openraft::error::decompose::DecomposeResult;
+use openraft::errors::Infallible;
+use openraft::errors::decompose::DecomposeResult;
 
 use crate::NodeId;
 use crate::app::App;

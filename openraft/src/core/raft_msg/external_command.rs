@@ -8,7 +8,7 @@ use crate::Snapshot;
 use crate::core::raft_msg::ExternalCommandName;
 use crate::core::raft_msg::ResultSender;
 use crate::core::sm;
-use crate::error::AllowNextRevertError;
+use crate::errors::AllowNextRevertError;
 use crate::metrics::MetricsRecorder;
 use crate::type_config::alias::OneshotSenderOf;
 

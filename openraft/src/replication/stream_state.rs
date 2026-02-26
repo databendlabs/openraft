@@ -15,7 +15,7 @@ use crate::core::notification::Notification;
 use crate::display_ext::display_option::DisplayOptionExt;
 use crate::entry::RaftEntry;
 use crate::entry::raft_entry_ext::RaftEntryExt;
-use crate::error::StorageIOResult;
+use crate::errors::StorageIOResult;
 use crate::log_id_range::LogIdRange;
 use crate::network::Backoff;
 use crate::progress::inflight_id::InflightId;

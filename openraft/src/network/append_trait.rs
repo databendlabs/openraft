@@ -5,7 +5,7 @@ use openraft_macros::add_async_trait;
 use crate::OptionalSend;
 use crate::OptionalSync;
 use crate::RaftTypeConfig;
-use crate::error::RPCError;
+use crate::errors::RPCError;
 use crate::network::RPCOption;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;

@@ -7,8 +7,8 @@ use openraft::Config;
 use openraft::LogIdOptionExt;
 use openraft::RaftLogReader;
 use openraft::ServerState;
-use openraft::error::ChangeMembershipError;
-use openraft::error::ClientWriteError;
+use openraft::errors::ChangeMembershipError;
+use openraft::errors::ClientWriteError;
 use openraft_memstore::MemNodeId;
 
 use crate::fixtures::RaftRouter;

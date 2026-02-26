@@ -10,10 +10,10 @@ use std::marker::PhantomData;
 
 use openraft::OptionalSend;
 use openraft::RaftTypeConfig;
-use openraft::error::RPCError;
-use openraft::error::ReplicationClosed;
-use openraft::error::StreamingError;
-use openraft::error::decompose::DecomposeResult;
+use openraft::errors::RPCError;
+use openraft::errors::ReplicationClosed;
+use openraft::errors::StreamingError;
+use openraft::errors::decompose::DecomposeResult;
 use openraft::network::Backoff;
 use openraft::network::RPCOption;
 use openraft::network::v2::RaftNetworkV2;

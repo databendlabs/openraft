@@ -1,8 +1,8 @@
 use crate::RaftTypeConfig;
-use crate::error::ChangeMembershipError;
-use crate::error::EmptyMembership;
-use crate::error::LearnerNotFound;
-use crate::error::NodeNotFound;
+use crate::errors::ChangeMembershipError;
+use crate::errors::EmptyMembership;
+use crate::errors::LearnerNotFound;
+use crate::errors::NodeNotFound;
 
 /// Errors occur when building a [`Membership`].
 ///

@@ -9,7 +9,7 @@ use crate::RaftTypeConfig;
 use crate::async_runtime::MpscReceiver;
 use crate::async_runtime::TryRecvError;
 use crate::core::raft_msg::RaftMsg;
-use crate::error::Fatal;
+use crate::errors::Fatal;
 use crate::type_config::alias::MpscReceiverOf;
 
 /// A receiver wrapper that batches consecutive `RaftMsg::ClientWrite` messages.

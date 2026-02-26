@@ -4,7 +4,7 @@ use crate::RaftLogReader;
 use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::entry::RaftEntry;
-use crate::error::StorageIOResult;
+use crate::errors::StorageIOResult;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::LogIdOf;
 

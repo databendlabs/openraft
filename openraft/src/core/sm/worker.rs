@@ -15,7 +15,7 @@ use crate::core::sm::Response;
 use crate::core::sm::handle::Handle;
 use crate::display_ext::DisplayOptionExt;
 use crate::entry::RaftEntry;
-use crate::error::StorageIOResult;
+use crate::errors::StorageIOResult;
 use crate::raft::responder::core_responder::CoreResponder;
 #[cfg(doc)]
 use crate::storage::RaftLogStorage;

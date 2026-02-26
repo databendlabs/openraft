@@ -1,6 +1,6 @@
 use crate::RaftTypeConfig;
-use crate::error::Fatal;
-use crate::error::Infallible;
+use crate::errors::Fatal;
+use crate::errors::Infallible;
 use crate::type_config::alias::JoinHandleOf;
 use crate::type_config::alias::WatchReceiverOf;
 

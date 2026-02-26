@@ -8,7 +8,7 @@ use crate::OptionalSync;
 use crate::RaftTypeConfig;
 use crate::base::BoxFuture;
 use crate::base::BoxStream;
-use crate::error::RPCError;
+use crate::errors::RPCError;
 use crate::network::NetAppend;
 use crate::network::RPCOption;
 use crate::raft::AppendEntriesRequest;

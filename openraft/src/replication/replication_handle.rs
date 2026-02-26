@@ -1,5 +1,5 @@
 use crate::RaftTypeConfig;
-use crate::error::ReplicationClosed;
+use crate::errors::ReplicationClosed;
 use crate::progress::stream_id::StreamId;
 use crate::replication::replicate::Replicate;
 use crate::replication::snapshot_transmitter_handle::SnapshotTransmitterHandle;

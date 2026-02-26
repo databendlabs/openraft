@@ -10,7 +10,7 @@ use openraft::RaftSnapshotBuilder;
 use openraft::RaftTypeConfig;
 use openraft::StoredMembership;
 use openraft::alias::LogIdOf;
-use openraft::error::Fatal;
+use openraft::errors::Fatal;
 use openraft::storage::EntryResponder;
 use openraft::storage::RaftStateMachine;
 use openraft::storage::Snapshot;

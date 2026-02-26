@@ -12,7 +12,7 @@ use crate::type_config::alias::VoteOf;
 /// [`RaftNetworkV2::append_entries`] returns this type only when received an RPC reply.
 /// Otherwise, it should return [`RPCError`].
 ///
-/// [`RPCError`]: crate::error::RPCError
+/// [`RPCError`]: crate::errors::RPCError
 /// [`RaftNetworkV2::append_entries`]: crate::network::RaftNetworkV2::append_entries
 #[derive(Debug, Clone)]
 #[derive(PartialEq, Eq)]
@@ -35,7 +35,7 @@ pub enum AppendEntriesResponse<C: RaftTypeConfig> {
     /// Openraft that the first log id([`AppendEntriesRequest::prev_log_id`]) may not match on
     /// the remote target node.
     ///
-    /// [`RPCError`]: crate::error::RPCError
+    /// [`RPCError`]: crate::errors::RPCError
     /// [`RaftNetworkV2::append_entries`]: crate::network::RaftNetworkV2::append_entries
     /// [`AppendEntriesRequest::prev_log_id`]: crate::raft::AppendEntriesRequest::prev_log_id
     PartialSuccess(Option<LogIdOf<C>>),

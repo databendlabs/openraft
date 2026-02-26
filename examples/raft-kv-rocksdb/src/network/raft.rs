@@ -2,7 +2,7 @@ use actix_web::Responder;
 use actix_web::post;
 use actix_web::web::Data;
 use actix_web::web::Json;
-use openraft::error::decompose::DecomposeResult;
+use openraft::errors::decompose::DecomposeResult;
 use openraft_legacy::prelude::*;
 
 use crate::app::App;

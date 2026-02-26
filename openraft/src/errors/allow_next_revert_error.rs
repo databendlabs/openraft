@@ -1,6 +1,6 @@
 use crate::RaftTypeConfig;
-use crate::error::ForwardToLeader;
-use crate::error::NodeNotFound;
+use crate::errors::ForwardToLeader;
+use crate::errors::NodeNotFound;
 
 /// Error related to setting the allow_next_revert flag.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]

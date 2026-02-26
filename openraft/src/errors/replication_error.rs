@@ -1,8 +1,8 @@
 use crate::RaftTypeConfig;
 use crate::StorageError;
-use crate::error::RPCError;
-use crate::error::higher_vote::HigherVote;
-use crate::error::replication_closed::ReplicationClosed;
+use crate::errors::RPCError;
+use crate::errors::higher_vote::HigherVote;
+use crate::errors::replication_closed::ReplicationClosed;
 
 /// Error variants related to the Replication.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]

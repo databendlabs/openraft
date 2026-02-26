@@ -101,14 +101,14 @@ use crate::core::sm::worker;
 use crate::engine::Engine;
 use crate::engine::EngineConfig;
 use crate::entry::EntryPayload;
-use crate::error::ClientWriteError;
-use crate::error::Fatal;
-use crate::error::ForwardToLeader;
-use crate::error::InitializeError;
-use crate::error::InvalidStateMachineType;
-use crate::error::LinearizableReadError;
-use crate::error::RaftError;
-use crate::error::into_raft_result::IntoRaftResult;
+use crate::errors::ClientWriteError;
+use crate::errors::Fatal;
+use crate::errors::ForwardToLeader;
+use crate::errors::InitializeError;
+use crate::errors::InvalidStateMachineType;
+use crate::errors::LinearizableReadError;
+use crate::errors::RaftError;
+use crate::errors::into_raft_result::IntoRaftResult;
 use crate::membership::IntoNodes;
 use crate::metrics::MetricsRecorder;
 use crate::metrics::RaftDataMetrics;
@@ -663,7 +663,7 @@ where C: RaftTypeConfig
     /// }
     /// ```
     ///
-    /// [`ForwardToLeader`]: crate::error::ForwardToLeader
+    /// [`ForwardToLeader`]: crate::errors::ForwardToLeader
     #[since(version = "0.10.0")]
     pub fn as_leader(&self) -> Result<Leader<C>, ForwardToLeader<C>> {
         // Do not use `is_leader()`, which depends on other state to determine, which may result in

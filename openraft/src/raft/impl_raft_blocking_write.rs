@@ -5,9 +5,9 @@
 use crate::ChangeMembers;
 use crate::Raft;
 use crate::RaftTypeConfig;
-use crate::error::ClientWriteError;
-use crate::error::RaftError;
-use crate::error::into_raft_result::IntoRaftResult;
+use crate::errors::ClientWriteError;
+use crate::errors::RaftError;
+use crate::errors::into_raft_result::IntoRaftResult;
 #[cfg(doc)]
 use crate::impls::OneshotResponder;
 use crate::raft::ClientWriteResponse;
