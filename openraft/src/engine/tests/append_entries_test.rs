@@ -19,11 +19,14 @@ use crate::entry::RaftEntry;
 use crate::errors::ConflictingLogId;
 use crate::errors::RejectAppendEntries;
 use crate::errors::RejectLeadership;
+use crate::raft::message::LogSegment;
+use crate::raft::message::MatchedLogId;
 use crate::raft_state::IOId;
 use crate::raft_state::LogStateReader;
 use crate::testing::blank_ent;
 use crate::type_config::TypeConfigExt;
 use crate::utime::Leased;
+use crate::vote::Leadership;
 use crate::vote::raft_vote::RaftVoteExt;
 
 fn m01() -> Membership<UTConfig> {
@@ -56,11 +59,25 @@ fn eng() -> Engine<UTConfig> {
     eng
 }
 
+fn leadership(vote: Vote<UTConfig>) -> Leadership<UTConfig> {
+    Leadership {
+        vote,
+        last_log_id: None,
+    }
+}
+
+fn segment(
+    prev_log_id: Option<crate::type_config::alias::LogIdOf<UTConfig>>,
+    entries: Vec<Entry<UTConfig>>,
+) -> LogSegment<UTConfig> {
+    LogSegment { prev_log_id, entries }
+}
+
 #[test]
 fn test_append_entries_vote_is_rejected() -> anyhow::Result<()> {
     let mut eng = eng();
 
-    let res = eng.append_entries(&Vote::new(1, 1), None, Vec::<Entry<UTConfig>>::new());
+    let res = eng.append_entries(leadership(Vote::new(1, 1)), segment(None, vec![]));
 
     assert_eq!(
         Err(RejectAppendEntries::RejectLeadership(RejectLeadership::ByVote(
@@ -99,12 +116,16 @@ fn test_append_entries_prev_log_id_is_applied() -> anyhow::Result<()> {
     eng.output.take_commands();
 
     let res = eng.append_entries(
-        &Vote::new_committed(2, 1),
-        Some(log_id(0, 1, 0)),
-        Vec::<Entry<UTConfig>>::new(),
+        leadership(Vote::new_committed(2, 1)),
+        segment(Some(log_id(0, 1, 0)), vec![]),
     );
 
-    assert_eq!(Ok(()), res);
+    assert_eq!(
+        Ok(MatchedLogId {
+            log_id: Some(log_id(0, 1, 0))
+        }),
+        res
+    );
     assert_eq!(None, eng.state.log_ids.purged());
     assert_eq!(
         &[
@@ -147,9 +168,8 @@ fn test_append_entries_prev_log_id_conflict() -> anyhow::Result<()> {
     let mut eng = eng();
 
     let res = eng.append_entries(
-        &Vote::new_committed(2, 1),
-        Some(log_id(2, 1, 2)),
-        Vec::<Entry<UTConfig>>::new(),
+        leadership(Vote::new_committed(2, 1)),
+        segment(Some(log_id(2, 1, 2)), vec![]),
     );
 
     assert_eq!(
@@ -196,12 +216,17 @@ fn test_append_entries_prev_log_id_conflict() -> anyhow::Result<()> {
 fn test_append_entries_prev_log_id_is_committed() -> anyhow::Result<()> {
     let mut eng = eng();
 
-    let res = eng.append_entries(&Vote::new_committed(2, 1), Some(log_id(0, 1, 0)), vec![
-        blank_ent(1, 1, 1),
-        blank_ent(2, 1, 2),
-    ]);
+    let res = eng.append_entries(
+        leadership(Vote::new_committed(2, 1)),
+        segment(Some(log_id(0, 1, 0)), vec![blank_ent(1, 1, 1), blank_ent(2, 1, 2)]),
+    );
 
-    assert_eq!(Ok(()), res);
+    assert_eq!(
+        Ok(MatchedLogId {
+            log_id: Some(log_id(2, 1, 2))
+        }),
+        res
+    );
     assert_eq!(None, eng.state.log_ids.purged());
     assert_eq!(
         &[
@@ -246,10 +271,10 @@ fn test_append_entries_prev_log_id_not_exists() -> anyhow::Result<()> {
     eng.state.vote = Leased::new(UTConfig::<()>::now(), Duration::from_millis(500), Vote::new(1, 2));
     eng.output.take_commands();
 
-    let res = eng.append_entries(&Vote::new_committed(2, 1), Some(log_id(2, 1, 4)), vec![
-        blank_ent(2, 1, 5),
-        blank_ent(2, 1, 6),
-    ]);
+    let res = eng.append_entries(
+        leadership(Vote::new_committed(2, 1)),
+        segment(Some(log_id(2, 1, 4)), vec![blank_ent(2, 1, 5), blank_ent(2, 1, 6)]),
+    );
 
     assert_eq!(
         Err(RejectAppendEntries::ConflictingLogId(ConflictingLogId {
@@ -298,12 +323,20 @@ fn test_append_entries_conflict() -> anyhow::Result<()> {
     // It is no longer a member, change to learner
     let mut eng = eng();
 
-    let resp = eng.append_entries(&Vote::new_committed(2, 1), Some(log_id(1, 1, 1)), vec![
-        blank_ent(1, 1, 2),
-        Entry::new_membership(log_id(3, 1, 3), m34()),
-    ]);
+    let resp = eng.append_entries(
+        leadership(Vote::new_committed(2, 1)),
+        segment(Some(log_id(1, 1, 1)), vec![
+            blank_ent(1, 1, 2),
+            Entry::new_membership(log_id(3, 1, 3), m34()),
+        ]),
+    );
 
-    assert_eq!(Ok(()), resp);
+    assert_eq!(
+        Ok(MatchedLogId {
+            log_id: Some(log_id(3, 1, 3))
+        }),
+        resp
+    );
     assert_eq!(None, eng.state.log_ids.purged());
     assert_eq!(
         &[

@@ -14,6 +14,8 @@ use crate::core::raft_msg::RaftMsg;
 use crate::core::raft_msg::external_command::ExternalCommand;
 use crate::display_ext::DisplayOptionExt;
 use crate::errors::Fatal;
+use crate::errors::RaftError;
+use crate::errors::RejectAppendEntries;
 #[cfg(doc)]
 use crate::errors::into_raft_result::IntoRaftResult;
 use crate::raft::AppendEntriesRequest;
@@ -22,6 +24,8 @@ use crate::raft::SnapshotResponse;
 use crate::raft::TransferLeaderRequest;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
+use crate::raft::message::AppendEntries;
+use crate::raft::message::MatchedLogId;
 use crate::raft::raft_inner::RaftInner;
 use crate::raft::stream_append;
 use crate::raft::stream_append::StreamAppendResult;
@@ -92,8 +96,29 @@ where C: RaftTypeConfig
     ) -> Result<AppendEntriesResponse<C>, Fatal<C>> {
         tracing::debug!("Raft::append_entries: rpc: {}", rpc);
 
+        let ae = AppendEntries::from(rpc);
+
+        match self.append_entries_v2(ae).await {
+            Ok(_matched) => Ok(AppendEntriesResponse::Success),
+            Err(RaftError::APIError(reject)) => Ok(Err::<(), _>(reject).into()),
+            Err(RaftError::Fatal(f)) => Err(f),
+        }
+    }
+
+    #[since(version = "0.10.0")]
+    #[tracing::instrument(level = "debug", skip(self, ae))]
+    pub(crate) async fn append_entries_v2(
+        &self,
+        ae: AppendEntries<C>,
+    ) -> Result<MatchedLogId<C>, RaftError<C, RejectAppendEntries<C>>> {
+        tracing::debug!("Raft::append_entries_v2: leadership vote: {}", ae.leadership.vote);
+
         let (tx, rx) = C::oneshot();
-        self.inner.call_core(RaftMsg::AppendEntries { rpc, tx }, rx).await
+        match self.inner.call_core(RaftMsg::AppendEntries { ae, tx }, rx).await {
+            Ok(Ok(matched)) => Ok(matched),
+            Ok(Err(e)) => Err(RaftError::APIError(e)),
+            Err(f) => Err(RaftError::Fatal(f)),
+        }
     }
 
     #[since(version = "0.10.0")]
