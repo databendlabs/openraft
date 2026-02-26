@@ -15,7 +15,7 @@ use crate::engine::Engine;
 use crate::engine::LogIdList;
 use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;
-use crate::error::RejectLeadership;
+use crate::errors::RejectLeadership;
 use crate::type_config::TypeConfigExt;
 use crate::utime::Leased;
 

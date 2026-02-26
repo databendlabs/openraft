@@ -12,7 +12,7 @@ use crate::OptionalSync;
 use crate::RaftTypeConfig;
 use crate::base::BoxStream;
 use crate::engine::LogIdList;
-use crate::error::LeaderChanged;
+use crate::errors::LeaderChanged;
 use crate::type_config::alias::EntryOf;
 use crate::type_config::alias::LeaderIdOf;
 use crate::type_config::alias::LogIdOf;

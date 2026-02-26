@@ -4,7 +4,7 @@ use std::sync::Mutex;
 
 use futures::SinkExt;
 use futures::channel::oneshot;
-use openraft::error::Unreachable;
+use openraft::errors::Unreachable;
 
 use crate::NodeId;
 use crate::TypeConfig;

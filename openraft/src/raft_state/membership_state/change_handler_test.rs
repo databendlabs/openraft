@@ -8,10 +8,10 @@ use crate::Membership;
 use crate::MembershipState;
 use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;
-use crate::error::ChangeMembershipError;
-use crate::error::EmptyMembership;
-use crate::error::InProgress;
-use crate::error::LearnerNotFound;
+use crate::errors::ChangeMembershipError;
+use crate::errors::EmptyMembership;
+use crate::errors::InProgress;
+use crate::errors::LearnerNotFound;
 
 /// Create an Arc<EffectiveMembership>
 fn effmem(term: u64, index: u64, m: Membership<UTConfig>) -> Arc<EffectiveMembership<UTConfig>> {

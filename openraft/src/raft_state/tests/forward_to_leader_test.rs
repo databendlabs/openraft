@@ -10,7 +10,7 @@ use crate::MembershipState;
 use crate::RaftState;
 use crate::Vote;
 use crate::engine::testing::UTConfig;
-use crate::error::ForwardToLeader;
+use crate::errors::ForwardToLeader;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::LeaderIdOf;
 use crate::type_config::alias::LogIdOf;

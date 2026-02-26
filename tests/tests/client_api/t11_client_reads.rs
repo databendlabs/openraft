@@ -10,8 +10,8 @@ use openraft::ReadPolicy;
 use openraft::ServerState;
 use openraft::async_runtime::WatchReceiver;
 use openraft::base::BoxFuture;
-use openraft::error::NetworkError;
-use openraft::error::RPCError;
+use openraft::errors::NetworkError;
+use openraft::errors::RPCError;
 use openraft::type_config::TypeConfigExt;
 use openraft_memstore::TypeConfig;
 

@@ -14,7 +14,7 @@ use crate::async_runtime::MpscReceiver;
 use crate::async_runtime::Oneshot;
 use crate::async_runtime::mutex::Mutex;
 use crate::async_runtime::watch::Watch;
-use crate::error::ErrorSource;
+use crate::errors::ErrorSource;
 use crate::type_config::AsyncRuntime;
 use crate::type_config::alias::AsyncRuntimeOf;
 use crate::type_config::alias::ErrorSourceOf;

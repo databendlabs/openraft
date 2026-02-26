@@ -1,6 +1,6 @@
 //! Utilities for converting `Result<T, Infallible>` into `T`.
 
-use crate::error::Infallible;
+use crate::errors::Infallible;
 
 /// Trait to convert `Result<T, E>` to `T`, if `E` is a `never` type.
 pub(crate) trait UnwrapInfallible<T> {

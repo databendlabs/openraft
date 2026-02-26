@@ -5,7 +5,7 @@ use maplit::btreeset;
 use openraft::Config;
 use openraft::ServerState;
 use openraft::async_runtime::WatchReceiver;
-use openraft::error::Fatal;
+use openraft::errors::Fatal;
 
 use crate::fixtures::RaftRouter;
 use crate::fixtures::ut_harness;

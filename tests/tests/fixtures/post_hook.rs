@@ -1,7 +1,7 @@
 //! Post-hook types for intercepting RPC responses after they are received.
 
 use openraft::base::BoxFuture;
-use openraft::error::RPCError;
+use openraft::errors::RPCError;
 use openraft_memstore::MemNodeId;
 use openraft_memstore::TypeConfig;
 

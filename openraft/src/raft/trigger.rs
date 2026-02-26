@@ -2,8 +2,8 @@
 
 use crate::RaftTypeConfig;
 use crate::core::raft_msg::external_command::ExternalCommand;
-use crate::error::AllowNextRevertError;
-use crate::error::Fatal;
+use crate::errors::AllowNextRevertError;
+use crate::errors::Fatal;
 use crate::raft::RaftInner;
 use crate::type_config::TypeConfigExt;
 

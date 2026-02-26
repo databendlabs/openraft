@@ -5,8 +5,8 @@ use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
 use openraft::RPCTypes;
-use openraft::error::RPCError;
-use openraft::error::Unreachable;
+use openraft::errors::RPCError;
+use openraft::errors::Unreachable;
 use openraft_memstore::TypeConfig;
 
 use crate::fixtures::RaftRouter;

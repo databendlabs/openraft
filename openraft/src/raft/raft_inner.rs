@@ -19,7 +19,7 @@ use crate::core::io_flush_tracking::IoProgressWatcher;
 use crate::core::raft_msg::RaftMsg;
 use crate::core::raft_msg::external_command::ExternalCommand;
 use crate::display_ext::DisplayOptionExt;
-use crate::error::Fatal;
+use crate::errors::Fatal;
 use crate::metrics::RaftDataMetrics;
 use crate::metrics::RaftServerMetrics;
 use crate::metrics::Wait;

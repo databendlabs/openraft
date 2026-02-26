@@ -5,7 +5,7 @@ use std::fmt;
 
 use anyerror::AnyError;
 
-use crate::error::ErrorSource;
+use crate::errors::ErrorSource;
 
 /// A boxed wrapper around [`AnyError`] for smaller error type sizes.
 ///

@@ -5,7 +5,7 @@ use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
 use openraft::ServerState;
-use openraft::error::ClientWriteError;
+use openraft::errors::ClientWriteError;
 use openraft::type_config::TypeConfigExt;
 use openraft_memstore::ClientRequest;
 use openraft_memstore::IntoMemClientRequest;

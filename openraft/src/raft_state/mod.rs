@@ -8,7 +8,7 @@ use crate::LogId;
 use crate::RaftTypeConfig;
 use crate::ServerState;
 use crate::engine::LogIdList;
-use crate::error::ForwardToLeader;
+use crate::errors::ForwardToLeader;
 use crate::log_id::raft_log_id::RaftLogId;
 use crate::storage::SnapshotMeta;
 use crate::utime::Leased;

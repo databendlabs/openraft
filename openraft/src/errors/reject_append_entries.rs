@@ -1,8 +1,8 @@
 use peel_off::Peel;
 
 use crate::RaftTypeConfig;
-use crate::error::ConflictingLogId;
-use crate::error::RejectLeadership;
+use crate::errors::ConflictingLogId;
+use crate::errors::RejectLeadership;
 use crate::raft::AppendEntriesResponse;
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]

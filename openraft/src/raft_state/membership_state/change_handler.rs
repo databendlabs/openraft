@@ -2,8 +2,8 @@ use crate::ChangeMembers;
 use crate::Membership;
 use crate::MembershipState;
 use crate::RaftTypeConfig;
-use crate::error::ChangeMembershipError;
-use crate::error::InProgress;
+use crate::errors::ChangeMembershipError;
+use crate::errors::InProgress;
 
 /// This struct handles change-membership requests, validating them and applying the changes if
 /// the necessary conditions are met. It operates at the `Engine` and `RaftState` level and

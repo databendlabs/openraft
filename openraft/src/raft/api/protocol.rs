@@ -13,9 +13,9 @@ use crate::Snapshot;
 use crate::core::raft_msg::RaftMsg;
 use crate::core::raft_msg::external_command::ExternalCommand;
 use crate::display_ext::DisplayOptionExt;
-use crate::error::Fatal;
+use crate::errors::Fatal;
 #[cfg(doc)]
-use crate::error::into_raft_result::IntoRaftResult;
+use crate::errors::into_raft_result::IntoRaftResult;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
 use crate::raft::SnapshotResponse;

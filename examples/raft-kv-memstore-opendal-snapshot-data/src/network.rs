@@ -3,7 +3,7 @@ use std::future::Future;
 use openraft::BasicNode;
 use openraft::OptionalSend;
 use openraft::RaftNetworkFactory;
-use openraft::error::ReplicationClosed;
+use openraft::errors::ReplicationClosed;
 use openraft::network::RPCOption;
 use openraft::network::v2::RaftNetworkV2;
 

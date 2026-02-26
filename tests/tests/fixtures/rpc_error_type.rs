@@ -1,9 +1,9 @@
 //! RPC error type definitions for test fixtures.
 
 use openraft::RaftTypeConfig;
-use openraft::error::NetworkError;
-use openraft::error::RPCError;
-use openraft::error::Unreachable;
+use openraft::errors::NetworkError;
+use openraft::errors::RPCError;
+use openraft::errors::Unreachable;
 
 use crate::fixtures::Direction;
 

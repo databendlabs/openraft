@@ -7,7 +7,7 @@ use crate::StoredMembership;
 use crate::core::ServerState;
 use crate::display_ext::DisplayBTreeMapOptValue;
 use crate::display_ext::DisplayOption;
-use crate::error::Fatal;
+use crate::errors::Fatal;
 use crate::metrics::HeartbeatMetrics;
 use crate::metrics::ReplicationMetrics;
 use crate::metrics::SerdeInstant;

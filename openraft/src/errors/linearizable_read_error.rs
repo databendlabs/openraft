@@ -1,7 +1,7 @@
 use crate::RaftTypeConfig;
 use crate::TryAsRef;
-use crate::error::ForwardToLeader;
-use crate::error::QuorumNotEnough;
+use crate::errors::ForwardToLeader;
+use crate::errors::QuorumNotEnough;
 
 /// An error related to an is_leader request.
 #[derive(Debug, Clone, thiserror::Error, derive_more::TryInto)]

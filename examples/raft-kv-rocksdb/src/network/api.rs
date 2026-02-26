@@ -3,9 +3,9 @@ use actix_web::post;
 use actix_web::web;
 use actix_web::web::Data;
 use openraft::ReadPolicy;
-use openraft::error::Infallible;
-use openraft::error::LinearizableReadError;
-use openraft::error::decompose::DecomposeResult;
+use openraft::errors::Infallible;
+use openraft::errors::LinearizableReadError;
+use openraft::errors::decompose::DecomposeResult;
 use web::Json;
 
 use crate::TypeConfig;

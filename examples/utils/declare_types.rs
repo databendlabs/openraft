@@ -26,21 +26,21 @@ pub type SnapshotData = <TypeConfig as openraft::RaftTypeConfig>::SnapshotData;
 
 pub type IOFlushed = openraft::storage::IOFlushed<TypeConfig>;
 
-pub type Infallible = openraft::error::Infallible;
-pub type Fatal = openraft::error::Fatal<TypeConfig>;
-pub type RaftError<E = openraft::error::Infallible> = openraft::error::RaftError<TypeConfig, E>;
-pub type RPCError<E = openraft::error::Infallible> = openraft::error::RPCError<TypeConfig, E>;
+pub type Infallible = openraft::errors::Infallible;
+pub type Fatal = openraft::errors::Fatal<TypeConfig>;
+pub type RaftError<E = openraft::errors::Infallible> = openraft::errors::RaftError<TypeConfig, E>;
+pub type RPCError<E = openraft::errors::Infallible> = openraft::errors::RPCError<TypeConfig, E>;
 
 pub type ErrorSubject = openraft::ErrorSubject<TypeConfig>;
 pub type StorageError = openraft::StorageError<TypeConfig>;
-pub type StreamingError = openraft::error::StreamingError<TypeConfig>;
+pub type StreamingError = openraft::errors::StreamingError<TypeConfig>;
 
 pub type RaftMetrics = openraft::RaftMetrics<TypeConfig>;
 
-pub type ClientWriteError = openraft::error::ClientWriteError<TypeConfig>;
-pub type LinearizableReadError = openraft::error::LinearizableReadError<TypeConfig>;
-pub type ForwardToLeader = openraft::error::ForwardToLeader<TypeConfig>;
-pub type InitializeError = openraft::error::InitializeError<TypeConfig>;
+pub type ClientWriteError = openraft::errors::ClientWriteError<TypeConfig>;
+pub type LinearizableReadError = openraft::errors::LinearizableReadError<TypeConfig>;
+pub type ForwardToLeader = openraft::errors::ForwardToLeader<TypeConfig>;
+pub type InitializeError = openraft::errors::InitializeError<TypeConfig>;
 
 pub type VoteRequest = openraft::raft::VoteRequest<TypeConfig>;
 pub type VoteResponse = openraft::raft::VoteResponse<TypeConfig>;

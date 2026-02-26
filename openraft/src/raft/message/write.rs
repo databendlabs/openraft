@@ -1,6 +1,6 @@
 use crate::RaftTypeConfig;
-use crate::error::ClientWriteError;
-use crate::error::ForwardToLeader;
+use crate::errors::ClientWriteError;
+use crate::errors::ForwardToLeader;
 use crate::raft::ClientWriteResponse;
 use crate::raft::ClientWriteResult;
 use crate::type_config::alias::LogIdOf;

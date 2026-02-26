@@ -5,9 +5,9 @@ use actix_web::web::Data;
 use client_http::FollowerReadError;
 use openraft::ReadPolicy;
 use openraft::async_runtime::WatchReceiver;
-use openraft::error::Infallible;
-use openraft::error::LinearizableReadError;
-use openraft::error::decompose::DecomposeResult;
+use openraft::errors::Infallible;
+use openraft::errors::LinearizableReadError;
+use openraft::errors::decompose::DecomposeResult;
 use openraft::raft::linearizable_read::Linearizer;
 use web::Json;
 

@@ -55,7 +55,7 @@ pub mod base;
 pub mod compat;
 pub mod docs;
 pub mod entry;
-pub mod error;
+pub mod errors;
 pub mod impls;
 pub mod log_id;
 pub mod membership;
@@ -69,6 +69,10 @@ pub mod testing;
 pub mod type_config;
 pub mod vote;
 
+/// Backward-compatibility alias for the [`errors`] module, which was renamed from `error`.
+#[deprecated(since = "0.10.0", note = "use `errors` instead")]
+pub use errors as error;
+
 #[cfg(test)]
 mod feature_serde_test;
 
@@ -76,12 +80,12 @@ use std::fmt;
 
 pub use anyerror;
 pub use anyerror::AnyError;
-pub use error::storage_error::ErrorSubject;
-pub use error::storage_error::ErrorVerb;
-pub use error::storage_error::StorageError;
+pub use errors::storage_error::ErrorSubject;
+pub use errors::storage_error::ErrorVerb;
+pub use errors::storage_error::StorageError;
 #[allow(deprecated)]
-pub use error::storage_error::StorageIOError;
-pub use error::storage_error::ToStorageResult;
+pub use errors::storage_error::StorageIOError;
+pub use errors::storage_error::ToStorageResult;
 #[cfg(feature = "tokio-rt")]
 #[allow(deprecated)]
 #[deprecated(since = "0.10.0", note = "use `openraft_rt_tokio::TokioRuntime` directly")]

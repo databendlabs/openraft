@@ -4,11 +4,11 @@ use std::collections::BTreeSet;
 
 use crate::ChangeMembers;
 use crate::RaftTypeConfig;
-use crate::error::ChangeMembershipError;
-use crate::error::EmptyMembership;
-use crate::error::MembershipError;
-use crate::error::NodeNotFound;
-use crate::error::Operation;
+use crate::errors::ChangeMembershipError;
+use crate::errors::EmptyMembership;
+use crate::errors::MembershipError;
+use crate::errors::NodeNotFound;
+use crate::errors::Operation;
 use crate::membership::IntoNodes;
 use crate::quorum::AsJoint;
 use crate::quorum::FindCoherent;
@@ -418,9 +418,9 @@ mod tests {
     use crate::ChangeMembers;
     use crate::Membership;
     use crate::engine::testing::UTConfig;
-    use crate::error::ChangeMembershipError;
-    use crate::error::EmptyMembership;
-    use crate::error::LearnerNotFound;
+    use crate::errors::ChangeMembershipError;
+    use crate::errors::EmptyMembership;
+    use crate::errors::LearnerNotFound;
 
     #[test]
     fn test_membership_ensure_voter_nodes() -> anyhow::Result<()> {
