@@ -7,7 +7,7 @@ use crate::type_config::alias::LogIdOf;
 /// leader is not present in its local log.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("conflicting log-id: local={local:?} should be: {expect:?}")]
-pub(crate) struct ConflictingLogId<C: RaftTypeConfig> {
-    pub(crate) expect: LogIdOf<C>,
-    pub(crate) local: Option<LogIdOf<C>>,
+pub struct ConflictingLogId<C: RaftTypeConfig> {
+    pub expect: LogIdOf<C>,
+    pub local: Option<LogIdOf<C>>,
 }
