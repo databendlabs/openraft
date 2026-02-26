@@ -9,10 +9,13 @@ use crate::AsyncRuntime;
 use crate::OptionalSend;
 use crate::RaftTypeConfig;
 use crate::core::raft_msg::RaftMsg;
+use crate::errors::RejectAppendEntries;
+use crate::errors::RejectLeadership;
 use crate::log_id_range::LogIdRange;
 use crate::raft::AppendEntriesRequest;
-use crate::raft::AppendEntriesResponse;
 use crate::raft::StreamAppendError;
+use crate::raft::message::AppendEntries;
+use crate::raft::message::MatchedLogId;
 use crate::raft::raft_inner::RaftInner;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::OneshotReceiverOf;
@@ -26,7 +29,7 @@ pub type StreamAppendResult<C> = Result<Option<LogIdOf<C>>, StreamAppendError<C>
 const PIPELINE_BUFFER_SIZE: usize = 64;
 
 struct Pending<C: RaftTypeConfig> {
-    response_rx: OneshotReceiverOf<C, AppendEntriesResponse<C>>,
+    response_rx: OneshotReceiverOf<C, Result<MatchedLogId<C>, RejectAppendEntries<C>>>,
     log_id_range: LogIdRange<C>,
 }
 
@@ -54,9 +57,10 @@ where
 
         while let Some(req) = input.next().await {
             let log_id_range = req.log_id_range();
+            let ae = AppendEntries::from(req);
             let (resp_tx, resp_rx) = C::oneshot();
 
-            if inner_clone.send_msg(RaftMsg::AppendEntries { rpc: req, tx: resp_tx }).await.is_err() {
+            if inner_clone.send_msg(RaftMsg::AppendEntries { ae, tx: resp_tx }).await.is_err() {
                 break;
             }
 
@@ -77,7 +81,16 @@ where
 
         let resp = inner.recv_msg(p.response_rx).await.ok()?;
         let range = p.log_id_range;
-        let result = resp.into_stream_result(range.prev, range.last);
+        let result: StreamAppendResult<C> = match resp {
+            Ok(matched) => Ok(matched.log_id),
+            Err(RejectAppendEntries::ConflictingLogId(_)) => Err(StreamAppendError::Conflict(range.prev.unwrap())),
+            Err(RejectAppendEntries::RejectLeadership(RejectLeadership::ByVote(v))) => {
+                Err(StreamAppendError::HigherVote(v))
+            }
+            Err(RejectAppendEntries::RejectLeadership(RejectLeadership::ByLastLogId(_))) => {
+                unreachable!("the leader should always have a greater last log id")
+            }
+        };
 
         if result.is_err() {
             return Some((result, None));

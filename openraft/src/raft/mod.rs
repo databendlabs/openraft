@@ -40,12 +40,15 @@ use core_state::CoreState;
 use derive_more::Display;
 use futures_util::FutureExt;
 use linearizable_read::Linearizer;
+pub use message::AppendEntries;
 pub use message::AppendEntriesRequest;
 pub use message::AppendEntriesResponse;
+pub use message::AppendEntriesResult;
 pub use message::ClientWriteResponse;
 pub use message::ClientWriteResult;
 pub use message::InstallSnapshotRequest;
 pub use message::InstallSnapshotResponse;
+pub use message::MatchedLogId;
 pub use message::SnapshotResponse;
 pub use message::StreamAppendError;
 pub use message::TransferLeaderRequest;
@@ -108,6 +111,7 @@ use crate::errors::InitializeError;
 use crate::errors::InvalidStateMachineType;
 use crate::errors::LinearizableReadError;
 use crate::errors::RaftError;
+use crate::errors::RejectAppendEntries;
 use crate::errors::into_raft_result::IntoRaftResult;
 use crate::membership::IntoNodes;
 use crate::metrics::MetricsRecorder;
@@ -820,6 +824,19 @@ where C: RaftTypeConfig
     #[tracing::instrument(level = "debug", skip_all)]
     pub async fn append_entries(&self, rpc: AppendEntriesRequest<C>) -> Result<AppendEntriesResponse<C>, RaftError<C>> {
         self.protocol_api().append_entries(rpc).await.into_raft_result()
+    }
+
+    /// Submit a typed AppendEntries request, returning the highest log-id known to match the
+    /// leader's log after this RPC completes.
+    ///
+    /// Unlike [`Self::append_entries`], this method uses the richer [`AppendEntries`] type and
+    /// returns a structured [`MatchedLogId`] instead of an opaque [`AppendEntriesResponse`].
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub async fn append_entries_v2(
+        &self,
+        ae: AppendEntries<C>,
+    ) -> Result<MatchedLogId<C>, RaftError<C, RejectAppendEntries<C>>> {
+        self.protocol_api().append_entries_v2(ae).await
     }
 
     /// Submit a stream of AppendEntries RPCs to this Raft node.

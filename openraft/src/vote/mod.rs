@@ -26,6 +26,7 @@
 
 pub(crate) mod committed;
 pub(crate) mod leader_id;
+pub(crate) mod leadership;
 pub(crate) mod non_committed;
 pub(crate) mod raft_term;
 pub(crate) mod raft_vote;
@@ -43,4 +44,5 @@ pub use raft_vote::RaftVote;
 pub use self::leader_id::leader_id_adv;
 pub use self::leader_id::leader_id_cmp::LeaderIdCompare;
 pub use self::leader_id::leader_id_std;
+pub use self::leadership::Leadership;
 pub use self::vote::Vote;

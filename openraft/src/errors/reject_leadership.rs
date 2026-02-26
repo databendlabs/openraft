@@ -9,7 +9,7 @@ use crate::type_config::alias::VoteOf;
 /// `AppendEntries` RPC because the requesting node is not qualified to be
 /// leader from this node's perspective.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-pub(crate) enum RejectLeadership<C: RaftTypeConfig> {
+pub enum RejectLeadership<C: RaftTypeConfig> {
     /// The node has already granted a vote to — or seen a committed vote from —
     /// a candidate with an equal or higher term, so it refuses this one.
     #[error("reject leadership: local vote {0} is not less than the leader's")]

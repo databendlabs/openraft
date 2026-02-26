@@ -14,15 +14,16 @@ use crate::entry::EntryPayload;
 use crate::errors::Infallible;
 use crate::errors::InitializeError;
 use crate::errors::LinearizableReadError;
+use crate::errors::RejectAppendEntries;
 use crate::impls::ProgressResponder;
-use crate::raft::AppendEntriesRequest;
-use crate::raft::AppendEntriesResponse;
 use crate::raft::ClientWriteResult;
 use crate::raft::ReadPolicy;
 use crate::raft::SnapshotResponse;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::raft::linearizable_read::Linearizer;
+use crate::raft::message::AppendEntries;
+use crate::raft::message::MatchedLogId;
 use crate::raft::responder::core_responder::CoreResponder;
 use crate::storage::Snapshot;
 use crate::type_config::alias::CommittedLeaderIdOf;
@@ -42,8 +43,8 @@ pub(crate) type ResultSender<C, T, E = Infallible> = OneshotSenderOf<C, Result<T
 /// TX for Vote Response
 pub(crate) type VoteTx<C> = OneshotSenderOf<C, VoteResponse<C>>;
 
-/// TX for Append Entries Response
-pub(crate) type AppendEntriesTx<C> = OneshotSenderOf<C, AppendEntriesResponse<C>>;
+/// TX for AppendEntries Response
+pub(crate) type AppendEntriesTx<C> = OneshotSenderOf<C, Result<MatchedLogId<C>, RejectAppendEntries<C>>>;
 
 /// TX for Linearizable Read Response
 pub(crate) type ClientReadTx<C> = ResultSender<C, Linearizer<C>, LinearizableReadError<C>>;
@@ -55,7 +56,7 @@ pub(crate) enum RaftMsg<C>
 where C: RaftTypeConfig
 {
     AppendEntries {
-        rpc: AppendEntriesRequest<C>,
+        ae: AppendEntries<C>,
         tx: AppendEntriesTx<C>,
     },
 
@@ -160,8 +161,8 @@ where C: RaftTypeConfig
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            RaftMsg::AppendEntries { rpc, .. } => {
-                write!(f, "AppendEntries: {}", rpc)
+            RaftMsg::AppendEntries { ae, .. } => {
+                write!(f, "AppendEntries: {}", ae)
             }
             RaftMsg::RequestVote { rpc, .. } => {
                 write!(f, "RequestVote: {}", rpc)
