@@ -27,6 +27,7 @@ futures-channel    = { version = "0.3" }
 futures-util       = { version = "0.3" }
 lazy_static        = { version = "1.4.0" }
 maplit             = { version = "1.0.2" }
+peel-off           = { version = "0.1.0" }
 pretty_assertions  = { version = "1.0.0" }
 proc-macro2        = { version = "1.0" }
 quote              = { version = "1.0" }
