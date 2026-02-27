@@ -94,6 +94,16 @@ where C: RaftTypeConfig
     }
 }
 
+impl<C: RaftTypeConfig> From<StreamAppendResult<C>> for AppendEntriesResponse<C> {
+    fn from(r: StreamAppendResult<C>) -> Self {
+        match r {
+            Ok(_) => AppendEntriesResponse::Success,
+            Err(StreamAppendError::Conflict(_)) => AppendEntriesResponse::Conflict,
+            Err(StreamAppendError::HigherVote(v)) => AppendEntriesResponse::HigherVote(v),
+        }
+    }
+}
+
 impl<C> fmt::Display for AppendEntriesResponse<C>
 where C: RaftTypeConfig
 {
