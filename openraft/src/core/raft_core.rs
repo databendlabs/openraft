@@ -85,6 +85,7 @@ use crate::progress::stream_id::StreamId;
 use crate::quorum::QuorumSet;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::ClientWriteResult;
+use crate::raft::LogSegment;
 use crate::raft::ReadPolicy;
 use crate::raft::StreamAppendError;
 use crate::raft::VoteRequest;
@@ -1474,7 +1475,8 @@ where
     pub(super) fn handle_append_entries_request(&mut self, req: AppendEntriesRequest<C>, tx: AppendEntriesTx<C>) {
         tracing::debug!("{}: req: {}", func_name!(), req);
 
-        self.engine.handle_append_entries(&req.vote, req.prev_log_id, req.entries, tx);
+        let segment = LogSegment::new(req.prev_log_id, req.entries);
+        self.engine.handle_append_entries(&req.vote, segment, tx);
 
         // Record append entries to external metrics recorder
         if let Some(r) = &self.metrics_recorder {
