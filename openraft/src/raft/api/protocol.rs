@@ -93,7 +93,8 @@ where C: RaftTypeConfig
         tracing::debug!("Raft::append_entries: rpc: {}", rpc);
 
         let (tx, rx) = C::oneshot();
-        self.inner.call_core(RaftMsg::AppendEntries { rpc, tx }, rx).await
+        let stream_result: StreamAppendResult<C> = self.inner.call_core(RaftMsg::AppendEntries { rpc, tx }, rx).await?;
+        Ok(AppendEntriesResponse::from(stream_result))
     }
 
     #[since(version = "0.10.0")]

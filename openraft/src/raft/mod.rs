@@ -17,7 +17,7 @@ pub(crate) mod message;
 mod raft_inner;
 pub mod responder;
 mod runtime_config_handle;
-mod stream_append;
+pub(crate) mod stream_append;
 pub mod trigger;
 mod watch_handle;
 
@@ -46,6 +46,7 @@ pub use message::ClientWriteResponse;
 pub use message::ClientWriteResult;
 pub use message::InstallSnapshotRequest;
 pub use message::InstallSnapshotResponse;
+pub use message::LogSegment;
 pub use message::SnapshotResponse;
 pub use message::StreamAppendError;
 pub use message::TransferLeaderRequest;
