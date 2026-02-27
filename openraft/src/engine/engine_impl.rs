@@ -9,7 +9,6 @@ use crate::core::ServerState;
 use crate::core::raft_msg::AppendEntriesTx;
 use crate::core::sm;
 use crate::display_ext::DisplayOptionExt;
-use crate::display_ext::DisplaySliceExt;
 use crate::engine::Command;
 use crate::engine::Condition;
 use crate::engine::EngineOutput;
@@ -35,10 +34,11 @@ use crate::proposer::Leader;
 use crate::proposer::LeaderQuorumSet;
 use crate::proposer::LeaderState;
 use crate::proposer::leader_state::CandidateState;
-use crate::raft::AppendEntriesResponse;
+use crate::raft::LogSegment;
 use crate::raft::SnapshotResponse;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
+use crate::raft::stream_append::StreamAppendResult;
 use crate::raft_state::IOId;
 use crate::raft_state::LogStateReader;
 use crate::raft_state::RaftState;
@@ -363,29 +363,19 @@ where C: RaftTypeConfig
     ///
     /// Also clean conflicting entries and update membership state.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn handle_append_entries(
-        &mut self,
-        vote: &VoteOf<C>,
-        prev_log_id: Option<LogIdOf<C>>,
-        entries: Vec<C::Entry>,
-        tx: AppendEntriesTx<C>,
-    ) {
+    pub(crate) fn handle_append_entries(&mut self, vote: &VoteOf<C>, segment: LogSegment<C>, tx: AppendEntriesTx<C>) {
         tracing::debug!(
-            "{}: vote: {}, prev_log_id: {}, entries: {}, my_vote: {}, my_last_log_id: {}",
+            "{}: vote: {}, segment: {}, my_vote: {}, my_last_log_id: {}",
             func_name!(),
             vote,
-            prev_log_id.display(),
-            entries.display(),
+            segment,
             self.state.vote_ref(),
             self.state.last_log_id().display()
         );
 
-        let res = self.append_entries(vote, prev_log_id, entries);
-        let is_ok = res.is_ok();
+        let stream_result: StreamAppendResult<C> = self.append_entries(vote, segment).map_err(Into::into);
 
-        let resp: AppendEntriesResponse<C> = res.into();
-
-        let condition = if is_ok {
+        let condition = if stream_result.is_ok() {
             Some(Condition::IOFlushed {
                 io_id: self.state.accepted_log_io().unwrap().clone(),
             })
@@ -395,25 +385,26 @@ where C: RaftTypeConfig
 
         self.output.push_command(Command::Respond {
             when: condition,
-            resp: Respond::new(resp, tx),
+            resp: Respond::new(stream_result, tx),
         });
     }
 
     pub(crate) fn append_entries(
         &mut self,
         vote: &VoteOf<C>,
-        prev_log_id: Option<LogIdOf<C>>,
-        entries: Vec<C::Entry>,
-    ) -> Result<(), RejectAppendEntries<C>> {
+        segment: LogSegment<C>,
+    ) -> Result<Option<LogIdOf<C>>, RejectAppendEntries<C>> {
         self.vote_handler().update_vote(vote)?;
 
         // Vote is legal.
 
-        let mut fh = self.following_handler();
-        fh.ensure_log_consecutive(prev_log_id.as_ref())?;
-        fh.append_entries(prev_log_id, entries);
+        let last = segment.last();
 
-        Ok(())
+        let mut fh = self.following_handler();
+        fh.ensure_log_consecutive(segment.prev_log_id.as_ref())?;
+        fh.append_entries(segment.prev_log_id, segment.entries);
+
+        Ok(last)
     }
 
     /// Install a completely received snapshot on a follower.

@@ -9,9 +9,7 @@ use crate::AsyncRuntime;
 use crate::OptionalSend;
 use crate::RaftTypeConfig;
 use crate::core::raft_msg::RaftMsg;
-use crate::log_id_range::LogIdRange;
 use crate::raft::AppendEntriesRequest;
-use crate::raft::AppendEntriesResponse;
 use crate::raft::StreamAppendError;
 use crate::raft::raft_inner::RaftInner;
 use crate::type_config::alias::LogIdOf;
@@ -26,8 +24,7 @@ pub type StreamAppendResult<C> = Result<Option<LogIdOf<C>>, StreamAppendError<C>
 const PIPELINE_BUFFER_SIZE: usize = 64;
 
 struct Pending<C: RaftTypeConfig> {
-    response_rx: OneshotReceiverOf<C, AppendEntriesResponse<C>>,
-    log_id_range: LogIdRange<C>,
+    response_rx: OneshotReceiverOf<C, StreamAppendResult<C>>,
 }
 
 /// Create a pipelined stream that processes AppendEntries requests.
@@ -37,7 +34,7 @@ struct Pending<C: RaftTypeConfig> {
 ///
 /// On error (Conflict or HigherVote), the stream terminates immediately.
 /// The background task exits when it fails to send to the dropped channel.
-pub(crate) fn stream_append<C, S>(
+pub(in crate::raft) fn stream_append<C, S>(
     inner: Arc<RaftInner<C>>,
     input: S,
 ) -> impl Stream<Item = StreamAppendResult<C>> + OptionalSend + 'static
@@ -47,23 +44,17 @@ where
 {
     let (tx, rx) = C::mpsc::<Pending<C>>(PIPELINE_BUFFER_SIZE);
 
-    let inner_clone = inner.clone();
-
     let _join_handle = C::AsyncRuntime::spawn(async move {
         futures_util::pin_mut!(input);
 
         while let Some(req) = input.next().await {
-            let log_id_range = req.log_id_range();
             let (resp_tx, resp_rx) = C::oneshot();
 
-            if inner_clone.send_msg(RaftMsg::AppendEntries { rpc: req, tx: resp_tx }).await.is_err() {
+            if inner.send_msg(RaftMsg::AppendEntries { rpc: req, tx: resp_tx }).await.is_err() {
                 break;
             }
 
-            let pending = Pending {
-                response_rx: resp_rx,
-                log_id_range,
-            };
+            let pending = Pending { response_rx: resp_rx };
 
             if MpscSender::send(&tx, pending).await.is_err() {
                 break;
@@ -71,18 +62,22 @@ where
         }
     });
 
-    futures_util::stream::unfold(Some((rx, inner)), |state| async move {
-        let (mut rx, inner) = state?;
+    futures_util::stream::unfold(Some(rx), |state| async move {
+        let mut rx = state?;
         let p: Pending<C> = MpscReceiver::recv(&mut rx).await?;
 
-        let resp = inner.recv_msg(p.response_rx).await.ok()?;
-        let range = p.log_id_range;
-        let result = resp.into_stream_result(range.prev, range.last);
+        let result: StreamAppendResult<C> = match p.response_rx.await {
+            Ok(r) => r,
+            Err(e) => {
+                tracing::error!("stream_append: failed to receive response from RaftCore: {}", e);
+                return None;
+            }
+        };
 
         if result.is_err() {
             return Some((result, None));
         }
 
-        Some((result, Some((rx, inner))))
+        Some((result, Some(rx)))
     })
 }
