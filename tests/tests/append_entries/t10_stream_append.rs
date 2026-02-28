@@ -57,9 +57,9 @@ async fn stream_append_success() -> Result<()> {
 
     let results: Vec<_> = output_stream.collect().await;
     assert_eq!(results, vec![
-        Ok(Some(log_id(1, 1, 1))),
-        Ok(Some(log_id(1, 1, 3))),
-        Ok(Some(log_id(1, 1, 4))),
+        Ok(Ok(Some(log_id(1, 1, 1)))),
+        Ok(Ok(Some(log_id(1, 1, 3)))),
+        Ok(Ok(Some(log_id(1, 1, 4)))),
     ]);
 
     Ok(())
@@ -111,8 +111,8 @@ async fn stream_append_conflict() -> Result<()> {
 
     let results: Vec<_> = output_stream.collect().await;
     assert_eq!(results, vec![
-        Ok(Some(log_id(1, 1, 1))),
-        Err(StreamAppendError::Conflict(log_id(1, 1, 5))),
+        Ok(Ok(Some(log_id(1, 1, 1)))),
+        Ok(Err(StreamAppendError::Conflict(log_id(1, 1, 5)))),
     ]);
 
     Ok(())
@@ -165,7 +165,7 @@ async fn stream_append_higher_vote() -> Result<()> {
     let output_stream = pin!(raft.stream_append(input_stream));
 
     let results: Vec<_> = output_stream.collect().await;
-    assert_eq!(results, vec![Err(StreamAppendError::HigherVote(Vote::new(10, 2))),]);
+    assert_eq!(results, vec![Ok(Err(StreamAppendError::HigherVote(Vote::new(10, 2)))),]);
 
     Ok(())
 }
