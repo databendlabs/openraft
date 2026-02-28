@@ -96,7 +96,6 @@ pub struct Instruments {
     // Histograms for performance metrics
     apply_batch_size: Histogram<u64>,
     storage_append_batch_size: Histogram<u64>,
-    replicate_batch_size: Histogram<u64>,
     write_batch_size: Histogram<u64>,
 
     // Gauges for runtime state
@@ -129,11 +128,6 @@ impl Instruments {
         let storage_append_batch_size = meter
             .u64_histogram("openraft.storage.append.batch_size")
             .with_description("Distribution of log entry counts when appending to storage")
-            .build();
-
-        let replicate_batch_size = meter
-            .u64_histogram("openraft.replication.batch_size")
-            .with_description("Distribution of log entry counts in replication RPCs")
             .build();
 
         let write_batch_size = meter
@@ -181,7 +175,6 @@ impl Instruments {
             meter,
             apply_batch_size,
             storage_append_batch_size,
-            replicate_batch_size,
             write_batch_size,
             current_term,
             last_log_index,
@@ -213,10 +206,6 @@ impl MetricsRecorder for Instruments {
 
     fn record_append_batch(&self, entry_count: u64) {
         self.storage_append_batch_size.record(entry_count, &[]);
-    }
-
-    fn record_replicate_batch(&self, entry_count: u64) {
-        self.replicate_batch_size.record(entry_count, &[]);
     }
 
     fn record_write_batch(&self, entry_count: u64) {
@@ -271,7 +260,6 @@ mod tests {
         // Histograms
         instruments.record_apply_batch(10);
         instruments.record_append_batch(5);
-        instruments.record_replicate_batch(8);
         instruments.record_write_batch(3);
 
         // Gauges
