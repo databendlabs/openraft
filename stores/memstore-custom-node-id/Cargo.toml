@@ -12,7 +12,7 @@ license       = { workspace = true }
 repository    = { workspace = true }
 
 [dependencies]
-openraft  = { path = "../../openraft", version = "0.10.0", features = ["serde", "type-alias"] }
+openraft  = { path = "../../openraft", version = "0.10.0-alpha.14", features = ["serde", "type-alias"] }
 
 futures    = { workspace = true }
 serde      = { workspace = true }

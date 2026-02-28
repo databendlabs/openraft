@@ -17,8 +17,8 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/databendlabs/openraft"
 
 [dependencies]
-openraft            = { path = "../../openraft", version = "0.10.0", features = ["serde", "type-alias", "runtime-stats"] }
-openraft-legacy = { path = "../../legacy", version = "0.10.0" }
+openraft            = { path = "../../openraft", version = "0.10.0-alpha.14", features = ["serde", "type-alias", "runtime-stats"] }
+openraft-legacy = { path = "../../legacy", version = "0.10.0-alpha.14" }
 
 anyhow     = { version = "1.0.63" }
 clap       = { version = "4.2", features = ["derive"] }

@@ -14,8 +14,8 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-openraft = { path = "../openraft", version = "0.10.0", default-features = false }
-openraft-macros = { path = "../macros", version = "0.10.0" }
+openraft = { path = "../openraft", version = "0.10.0-alpha.14", default-features = false }
+openraft-macros = { path = "../macros", version = "0.10.0-alpha.14" }
 
 futures = { workspace = true }
 tokio = { workspace = true, features = ["io-util", "sync"] }

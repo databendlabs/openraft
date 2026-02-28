@@ -3,7 +3,7 @@ name = "openraft-rt-monoio"
 description = "monoio AsyncRuntime support for Openraft"
 documentation = "https://docs.rs/openraft-rt-monoio"
 readme = "README.md"
-version = "0.10.0"
+version = "0.10.0-alpha.14"
 edition = "2024"
 authors = [
     "Databend Authors <opensource@datafuselabs.com>",
@@ -15,7 +15,7 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/databendlabs/openraft"
 
 [dependencies]
-openraft-rt = { path = "../rt", version = "0.10.0", features = ["single-threaded"] }
+openraft-rt = { path = "../rt", version = "0.10.0-alpha.14", features = ["single-threaded"] }
 
 futures-util = { version = "0.3" }
 local-sync   = { version = "0.1.1" }
