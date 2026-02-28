@@ -9,6 +9,7 @@ use crate::AsyncRuntime;
 use crate::OptionalSend;
 use crate::RaftTypeConfig;
 use crate::core::raft_msg::RaftMsg;
+use crate::errors::Fatal;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::StreamAppendError;
 use crate::raft::raft_inner::RaftInner;
@@ -32,17 +33,20 @@ struct Pending<C: RaftTypeConfig> {
 /// Spawns a background task that reads from input, sends to RaftCore,
 /// and forwards response receivers. The returned stream awaits responses in order.
 ///
-/// On error (Conflict or HigherVote), the stream terminates immediately.
+/// On API error (Conflict or HigherVote), the stream terminates with the error.
+/// On Fatal error (RaftCore stopped), the stream yields `Err(Fatal)` and terminates.
 /// The background task exits when it fails to send to the dropped channel.
 pub(in crate::raft) fn stream_append<C, S>(
     inner: Arc<RaftInner<C>>,
     input: S,
-) -> impl Stream<Item = StreamAppendResult<C>> + OptionalSend + 'static
+) -> impl Stream<Item = Result<StreamAppendResult<C>, Fatal<C>>> + OptionalSend + 'static
 where
     C: RaftTypeConfig,
     S: Stream<Item = AppendEntriesRequest<C>> + OptionalSend + 'static,
 {
     let (tx, rx) = C::mpsc::<Pending<C>>(PIPELINE_BUFFER_SIZE);
+
+    let unfold_inner = inner.clone();
 
     let _join_handle = C::AsyncRuntime::spawn(async move {
         futures_util::pin_mut!(input);
@@ -62,22 +66,22 @@ where
         }
     });
 
-    futures_util::stream::unfold(Some(rx), |state| async move {
-        let mut rx = state?;
+    futures_util::stream::unfold(Some((rx, unfold_inner)), |state| async move {
+        let (mut rx, inner) = state?;
         let p: Pending<C> = MpscReceiver::recv(&mut rx).await?;
 
-        let result: StreamAppendResult<C> = match p.response_rx.await {
-            Ok(r) => r,
-            Err(e) => {
-                tracing::error!("stream_append: failed to receive response from RaftCore: {}", e);
-                return None;
+        let result: Result<StreamAppendResult<C>, Fatal<C>> = match p.response_rx.await {
+            Ok(r) => Ok(r),
+            Err(_) => {
+                let fatal = inner.get_core_stop_error().await;
+                tracing::error!("stream_append: RaftCore stopped: {}", fatal);
+                Err(fatal)
             }
         };
 
-        if result.is_err() {
-            return Some((result, None));
+        match &result {
+            Ok(Ok(_)) => Some((result, Some((rx, inner)))),
+            _ => Some((result, None)),
         }
-
-        Some((result, Some(rx)))
     })
 }

@@ -870,19 +870,24 @@ where C: RaftTypeConfig
     ///
     /// while let Some(result) = output_stream.next().await {
     ///     match result {
-    ///         Ok(log_id) => println!("Flushed: {:?}", log_id),
-    ///         Err(err) => {
-    ///             println!("Error: {}", err);
+    ///         Ok(Ok(log_id)) => println!("Flushed: {:?}", log_id),
+    ///         Ok(Err(err)) => {
+    ///             println!("Append error: {}", err);
+    ///             break;
+    ///         }
+    ///         Err(fatal) => {
+    ///             println!("Fatal: {}", fatal);
     ///             break;
     ///         }
     ///     }
     /// }
     /// ```
+    #[since(version = "0.10.0", change = "stream item contains Fatal")]
     #[since(version = "0.10.0")]
     pub fn stream_append<S>(
         &self,
         stream: S,
-    ) -> impl futures_util::Stream<Item = StreamAppendResult<C>> + OptionalSend + 'static
+    ) -> impl futures_util::Stream<Item = Result<StreamAppendResult<C>, Fatal<C>>> + OptionalSend + 'static
     where
         S: futures_util::Stream<Item = AppendEntriesRequest<C>> + OptionalSend + 'static,
     {
