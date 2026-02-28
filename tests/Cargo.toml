@@ -18,7 +18,7 @@ repository    = { workspace = true }
 [dependencies]
 
 [dev-dependencies]
-openraft           = { path = "../openraft", version = "0.10.0", features = ["type-alias"] }
+openraft           = { path = "../openraft", version = "0.10.0-alpha.14", features = ["type-alias"] }
 openraft-memstore  = { path = "../stores/memstore" }
 openraft-legacy = { path = "../legacy" }
 

@@ -3,7 +3,7 @@ name = "openraft-multi"
 description = "Multi-Raft adapters for connection sharing across Raft groups"
 documentation = "https://docs.rs/openraft-multiraft"
 readme = "README.md"
-version = "0.10.0"
+version = "0.10.0-alpha.14"
 edition = "2024"
 authors = ["Databend Authors <opensource@datafuselabs.com>"]
 categories = ["network", "asynchronous", "data-structures"]
@@ -13,6 +13,6 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/databendlabs/openraft"
 
 [dependencies]
-openraft  = { path = "../openraft", version = "0.10.0", default-features = false }
+openraft  = { path = "../openraft", version = "0.10.0-alpha.14", default-features = false }
 anyerror  = { version = "0.1" }
 
