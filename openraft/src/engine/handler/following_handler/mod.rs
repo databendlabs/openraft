@@ -4,6 +4,7 @@ use crate::EffectiveMembership;
 use crate::RaftState;
 use crate::RaftTypeConfig;
 use crate::StoredMembership;
+use crate::base::RaftBatch;
 use crate::core::sm;
 use crate::display_ext::DisplayOption;
 use crate::display_ext::DisplayOptionExt;
@@ -154,7 +155,7 @@ where C: RaftTypeConfig
         self.output.push_command(Command::AppendEntries {
             // A follower should always use the node's vote.
             committed_vote: self.leader_vote.clone(),
-            entries: entries.into(),
+            entries: C::Batch::from_vec(entries),
         });
     }
 

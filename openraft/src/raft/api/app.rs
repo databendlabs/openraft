@@ -4,8 +4,8 @@ use openraft_macros::since;
 
 use crate::RaftTypeConfig;
 use crate::ReadPolicy;
-use crate::base::Batch;
 use crate::base::BoxStream;
+use crate::base::RaftBatch;
 use crate::core::raft_msg::RaftMsg;
 use crate::entry::EntryPayload;
 use crate::errors::ClientWriteError;
@@ -60,8 +60,8 @@ where C: RaftTypeConfig
         let (responder, _commit_rx, complete_rx) = ProgressResponder::new();
 
         self.do_client_write_ff(
-            Batch::from(payload),
-            Batch::from(Some(CoreResponder::Progress(responder))),
+            C::Batch::from_item(payload),
+            C::Batch::from_item(Some(CoreResponder::Progress(responder))),
         )
         .await?;
 
@@ -78,8 +78,8 @@ where C: RaftTypeConfig
         responder: Option<WriteResponderOf<C>>,
     ) -> Result<(), Fatal<C>> {
         self.do_client_write_ff(
-            Batch::from(payload),
-            Batch::from(responder.map(|r| CoreResponder::UserDefined(r))),
+            C::Batch::from_item(payload),
+            C::Batch::from_item(responder.map(|r| CoreResponder::UserDefined(r))),
         )
         .await
     }
@@ -88,8 +88,8 @@ where C: RaftTypeConfig
     #[since(version = "0.10.0")]
     async fn do_client_write_ff(
         &self,
-        payloads: Batch<EntryPayload<C>>,
-        responders: Batch<Option<CoreResponder<C>>>,
+        payloads: C::Batch<EntryPayload<C>>,
+        responders: C::Batch<Option<CoreResponder<C>>>,
     ) -> Result<(), Fatal<C>> {
         self.inner
             .send_msg(RaftMsg::ClientWrite {
@@ -126,7 +126,7 @@ where C: RaftTypeConfig
             receivers.push(complete_rx);
         }
 
-        self.do_client_write_ff(Batch::from(payloads), Batch::from(responders)).await?;
+        self.do_client_write_ff(C::Batch::from_vec(payloads), C::Batch::from_vec(responders)).await?;
 
         let stream = futures_util::stream::unfold(Some(receivers.into_iter()), |opt_iter| async move {
             let mut iter = opt_iter?;

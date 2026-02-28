@@ -225,6 +225,7 @@ macro_rules! declare_raft_types {
                 (Vote           , , $crate::impls::Vote<Self>                    ),
                 (Entry          , , $crate::impls::Entry<Self>                   ),
                 (SnapshotData   , , std::io::Cursor<Vec<u8>>                     ),
+                (Batch<T>       , , $crate::impls::Batch<T> where T: $crate::OptionalSend + 'static + std::fmt::Debug ),
                 (Responder<T>   , , $crate::impls::ProgressResponder<Self, T> where T: $crate::OptionalSend + 'static     ),
                 (AsyncRuntime   , , $crate::impls::TokioRuntime                  ),
                 (ErrorSource    , , $crate::impls::BoxedErrorSource               ),

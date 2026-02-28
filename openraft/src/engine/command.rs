@@ -4,7 +4,7 @@ use std::fmt::Debug;
 use crate::OptionalSend;
 use crate::RaftTypeConfig;
 use crate::async_runtime::OneshotSender;
-use crate::base::batch::Batch;
+use crate::base::RaftBatch;
 use crate::core::sm;
 use crate::display_ext::DisplayOptionExt;
 use crate::display_ext::DisplayResultExt;
@@ -64,7 +64,7 @@ where C: RaftTypeConfig
         /// [`LogIOId`]: crate::raft_state::io_state::io_id::IOId
         committed_vote: CommittedVote<C>,
 
-        entries: Batch<C::Entry>,
+        entries: C::Batch<C::Entry>,
     },
 
     /// Replicate the committed log id to other nodes
@@ -231,6 +231,7 @@ impl<C> PartialEq for Command<C>
 where
     C: RaftTypeConfig,
     C::Entry: PartialEq,
+    C::Batch<C::Entry>: PartialEq,
 {
     #[rustfmt::skip]
     fn eq(&self, other: &Self) -> bool {
