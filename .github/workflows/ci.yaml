@@ -374,6 +374,7 @@ jobs:
           - 'raft-kv-memstore-network-v2'
           - 'raft-kv-memstore-opendal-snapshot-data'
           - 'raft-kv-memstore-single-threaded'
+          - 'raft-kv-fjall'
           - 'raft-kv-rocksdb'
           - 'multi-raft-kv'
 

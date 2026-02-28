@@ -45,6 +45,7 @@ test-examples:
 	cargo test --manifest-path examples/raft-kv-memstore-network-v2/Cargo.toml
 	cargo test --manifest-path examples/raft-kv-memstore-opendal-snapshot-data/Cargo.toml
 	cargo test --manifest-path examples/raft-kv-memstore-single-threaded/Cargo.toml
+	cargo test --manifest-path examples/raft-kv-fjall/Cargo.toml
 	cargo test --manifest-path examples/raft-kv-rocksdb/Cargo.toml
 	cargo test --manifest-path examples/rocksstore/Cargo.toml
 	cargo test --manifest-path examples/multi-raft-kv/Cargo.toml
@@ -103,6 +104,7 @@ lint:
 	cargo fmt --manifest-path examples/raft-kv-memstore-opendal-snapshot-data/Cargo.toml
 	cargo fmt --manifest-path examples/raft-kv-memstore-single-threaded/Cargo.toml
 	cargo fmt --manifest-path examples/raft-kv-memstore/Cargo.toml
+	cargo fmt --manifest-path examples/raft-kv-fjall/Cargo.toml
 	cargo fmt --manifest-path examples/raft-kv-rocksdb/Cargo.toml
 	cargo fmt --manifest-path examples/multi-raft-kv/Cargo.toml
 	cargo clippy --no-deps --all-targets -- -D warnings
@@ -118,6 +120,7 @@ lint:
 	cargo clippy --no-deps --manifest-path examples/raft-kv-memstore-opendal-snapshot-data/Cargo.toml --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/raft-kv-memstore-single-threaded/Cargo.toml       --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/raft-kv-memstore/Cargo.toml                       --all-targets -- -D warnings
+	cargo clippy --no-deps --manifest-path examples/raft-kv-fjall/Cargo.toml                          --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/raft-kv-rocksdb/Cargo.toml                        --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/multi-raft-kv/Cargo.toml                          --all-targets -- -D warnings
 	# Bug: clippy --all-targets reports false warning about unused dep in
@@ -166,6 +169,7 @@ check:
 	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/raft-kv-memstore-opendal-snapshot-data/Cargo.toml
 	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/raft-kv-memstore-single-threaded/Cargo.toml
 	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/raft-kv-memstore/Cargo.toml
+	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/raft-kv-fjall/Cargo.toml
 	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/raft-kv-rocksdb/Cargo.toml
 	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/rocksstore/Cargo.toml
 	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/multi-raft-kv/Cargo.toml
@@ -188,6 +192,7 @@ clean:
 	cargo clean --manifest-path examples/raft-kv-memstore-opendal-snapshot-data/Cargo.toml
 	cargo clean --manifest-path examples/raft-kv-memstore-single-threaded/Cargo.toml
 	cargo clean --manifest-path examples/raft-kv-memstore/Cargo.toml
+	cargo clean --manifest-path examples/raft-kv-fjall/Cargo.toml
 	cargo clean --manifest-path examples/raft-kv-rocksdb/Cargo.toml
 	cargo clean --manifest-path examples/rocksstore/Cargo.toml
 	cargo clean --manifest-path examples/multi-raft-kv/Cargo.toml

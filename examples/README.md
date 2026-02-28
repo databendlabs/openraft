@@ -17,6 +17,7 @@ This directory contains example applications demonstrating different implementat
 | Example | Log | State Machine | RaftNetwork Impl | RaftNetwork | Client | Server | Special Features |
 |---------|-----|---------------|------------------|-------------|--------|--------|------------------|
 | [raft-kv-memstore] | [log-mem] | [sm-mem] | HTTP/reqwest | RaftNetwork | reqwest | actix-web | Basic example |
+| [raft-kv-fjall] | [fjall] | [fjall] | HTTP/reqwest([network-v1]) | RaftNetwork | reqwest | actix-web | Persistent storage |
 | [raft-kv-rocksdb] | [rocksstore] | [rocksstore] | HTTP/reqwest([network-v1]) | RaftNetwork | reqwest | actix-web | Persistent storage |
 | [raft-kv-memstore-network-v2] | [log-mem] | [sm-mem] | HTTP/reqwest | RaftNetworkV2 | reqwest | actix-web | Network V2 interface |
 | [multi-raft-kv] | [log-mem] | [sm-mem] | HTTP/channel | GroupRouter | channel | in-memory | Multi-Raft groups |
@@ -48,6 +49,7 @@ The following symbolic links are provided for backward compatibility:
 
 <!-- Reference Links -->
 [raft-kv-memstore]: raft-kv-memstore/
+[raft-kv-fjall]: raft-kv-fjall/
 [raft-kv-rocksdb]: raft-kv-rocksdb/
 [raft-kv-memstore-network-v2]: raft-kv-memstore-network-v2/
 [raft-kv-memstore-grpc]: raft-kv-memstore-grpc/
