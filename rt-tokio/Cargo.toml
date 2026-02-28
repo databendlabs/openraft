@@ -1,6 +1,6 @@
 [package]
 name = "openraft-rt-tokio"
-version = "0.10.0"
+version = "0.10.0-alpha.14"
 edition = "2024"
 authors = [
     "drdrxp <drdr.xp@gmail.com>",
@@ -13,7 +13,7 @@ readme = "README.md"
 description = "Tokio runtime implementation for Openraft"
 
 [dependencies]
-openraft-rt  = { path = "../rt", version = "0.10.0" }
+openraft-rt  = { path = "../rt", version = "0.10.0-alpha.14" }
 tokio        = { version = "1.39", default-features = false, features = ["rt", "rt-multi-thread", "sync", "time"] }
 futures-util = { version = "0.3" }
 rand         = { version = "0.9", default-features = false, features = ["std", "std_rng"] }
