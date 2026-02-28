@@ -39,7 +39,13 @@ for crate in "${CRATES[@]}"; do
         | python3 -c "import sys,json; pkgs=json.load(sys.stdin)['packages']; print([p['version'] for p in pkgs if p['name']=='$name'][0])")
 
     echo ""
-    echo "--- Publishing $name $version ($crate/) ---"
+    echo "--- $name $version ($crate/) ---"
+
+    # Check if this version already exists on crates.io
+    if cargo info "${name}@${version}" &>/dev/null; then
+        echo "Already published, skipping."
+        continue
+    fi
 
     cargo publish --manifest-path "$manifest" $DRY_RUN
 
