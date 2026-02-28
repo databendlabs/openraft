@@ -4,6 +4,7 @@ mod allow_next_revert_error;
 mod conflicting_log_id;
 pub mod decompose;
 mod error_source;
+mod fatal;
 pub(crate) mod higher_vote;
 pub mod into_ok;
 pub(crate) mod into_raft_result;
@@ -13,6 +14,7 @@ mod linearizable_read_error;
 mod membership_error;
 mod node_not_found;
 mod operation;
+mod raft_error;
 mod reject_append_entries;
 mod reject_vote;
 mod replication_closed;
@@ -23,15 +25,13 @@ mod streaming_error;
 
 use std::collections::BTreeSet;
 use std::error::Error;
-use std::fmt::Debug;
 use std::time::Duration;
-
-use openraft_macros::since;
 
 pub use self::allow_next_revert_error::AllowNextRevertError;
 pub use self::conflicting_log_id::ConflictingLogId;
 pub use self::error_source::BacktraceDisplay;
 pub use self::error_source::ErrorSource;
+pub use self::fatal::Fatal;
 pub(crate) use self::higher_vote::HigherVote;
 pub use self::invalid_sm::InvalidStateMachineType;
 pub use self::leader_changed::LeaderChanged;
@@ -39,6 +39,7 @@ pub use self::linearizable_read_error::LinearizableReadError;
 pub use self::membership_error::MembershipError;
 pub use self::node_not_found::NodeNotFound;
 pub use self::operation::Operation;
+pub use self::raft_error::RaftError;
 pub(crate) use self::reject_append_entries::RejectAppendEntries;
 pub use self::reject_vote::RejectVote;
 pub use self::replication_closed::ReplicationClosed;
@@ -47,7 +48,6 @@ pub(crate) use self::storage_io_result::StorageIOResult;
 pub use self::streaming_error::StreamingError;
 use crate::Membership;
 use crate::RaftTypeConfig;
-use crate::StorageError;
 use crate::network::RPCTypes;
 use crate::raft_types::SnapshotSegmentId;
 use crate::try_as_ref::TryAsRef;
@@ -57,158 +57,6 @@ use crate::type_config::alias::VoteOf;
 /// For backward compatibility, use [`LinearizableReadError`] instead.
 #[deprecated(since = "0.10.0", note = "use `LinearizableReadError` instead")]
 pub type CheckIsLeaderError<C> = LinearizableReadError<C>;
-
-/// Error returned by Raft API methods.
-///
-/// `RaftError` wraps either a [`Fatal`] error indicating the Raft node has stopped (due to storage
-/// failure, panic, or shutdown), or an API-specific error `E` (such as [`ClientWriteError`] or
-/// [`LinearizableReadError`]).
-///
-/// # Usage
-///
-/// Match on the error variant to handle appropriately:
-///
-/// ```ignore
-/// match raft.client_write(req).await {
-///     Ok(resp) => { /* handle response */ },
-///     Err(RaftError::APIError(e)) => {
-///         // Handle API error (e.g., forward to leader)
-///     }
-///     Err(RaftError::Fatal(f)) => {
-///         // Raft stopped - initiate shutdown
-///     }
-/// }
-/// ```
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-pub enum RaftError<C, E = Infallible>
-where C: RaftTypeConfig
-{
-    /// API-specific error returned by Raft API methods.
-    #[error(transparent)]
-    APIError(E),
-
-    /// Fatal error indicating the Raft node has stopped.
-    // Reset serde trait bound for C but not for E
-    #[cfg_attr(feature = "serde", serde(bound = ""))]
-    #[error(transparent)]
-    Fatal(#[from] Fatal<C>),
-}
-
-impl<C> RaftError<C, Infallible>
-where C: RaftTypeConfig
-{
-    /// Convert to a [`Fatal`] error if its `APIError` variant is [`Infallible`],
-    /// otherwise panic.
-    #[since(version = "0.10.0")]
-    pub fn unwrap_fatal(self) -> Fatal<C> {
-        self.into_fatal().unwrap()
-    }
-}
-
-impl<C, E> RaftError<C, E>
-where
-    C: RaftTypeConfig,
-    E: Debug,
-{
-    /// Return a reference to Self::APIError.
-    pub fn api_error(&self) -> Option<&E> {
-        match self {
-            RaftError::APIError(e) => Some(e),
-            RaftError::Fatal(_) => None,
-        }
-    }
-
-    /// Try to convert self to APIError.
-    pub fn into_api_error(self) -> Option<E> {
-        match self {
-            RaftError::APIError(e) => Some(e),
-            RaftError::Fatal(_) => None,
-        }
-    }
-
-    /// Return a reference to Self::Fatal.
-    pub fn fatal(&self) -> Option<&Fatal<C>> {
-        match self {
-            RaftError::APIError(_) => None,
-            RaftError::Fatal(f) => Some(f),
-        }
-    }
-
-    /// Try to convert self to Fatal error.
-    pub fn into_fatal(self) -> Option<Fatal<C>> {
-        match self {
-            RaftError::APIError(_) => None,
-            RaftError::Fatal(f) => Some(f),
-        }
-    }
-
-    /// Return a reference to ForwardToLeader if Self::APIError contains it.
-    pub fn forward_to_leader(&self) -> Option<&ForwardToLeader<C>>
-    where E: TryAsRef<ForwardToLeader<C>> {
-        match self {
-            RaftError::APIError(api_err) => api_err.try_as_ref(),
-            RaftError::Fatal(_) => None,
-        }
-    }
-
-    /// Try to convert self to ForwardToLeader error if APIError is a ForwardToLeader error.
-    pub fn into_forward_to_leader(self) -> Option<ForwardToLeader<C>>
-    where E: TryInto<ForwardToLeader<C>> {
-        match self {
-            RaftError::APIError(api_err) => api_err.try_into().ok(),
-            RaftError::Fatal(_) => None,
-        }
-    }
-}
-
-impl<C, E> TryAsRef<ForwardToLeader<C>> for RaftError<C, E>
-where
-    C: RaftTypeConfig,
-    E: Debug + TryAsRef<ForwardToLeader<C>>,
-{
-    fn try_as_ref(&self) -> Option<&ForwardToLeader<C>> {
-        self.forward_to_leader()
-    }
-}
-
-impl<C, E> From<StorageError<C>> for RaftError<C, E>
-where C: RaftTypeConfig
-{
-    fn from(se: StorageError<C>) -> Self {
-        RaftError::Fatal(Fatal::from(se))
-    }
-}
-
-/// Unrecoverable error that causes Raft to shut down.
-///
-/// When a `Fatal` error occurs, the Raft node stops processing requests and enters a stopped state.
-/// Applications should monitor for fatal errors and initiate graceful shutdown when detected.
-///
-/// # Variants
-///
-/// - `StorageError`: Underlying storage (log or state machine) encountered an error
-/// - `Panicked`: Raft core task panicked due to a programming error
-/// - `Stopped`: Raft was explicitly shut down via [`Raft::shutdown`]
-///
-/// [`Raft::shutdown`]: crate::Raft::shutdown
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub enum Fatal<C>
-where C: RaftTypeConfig
-{
-    /// Storage error that caused the Raft node to stop.
-    #[error(transparent)]
-    StorageError(#[from] StorageError<C>),
-
-    /// Raft node panicked and stopped.
-    #[error("panicked")]
-    Panicked,
-
-    /// Raft stopped normally.
-    #[error("raft stopped")]
-    Stopped,
-}
 
 /// Error related to installing a snapshot.
 // TODO: remove
