@@ -17,50 +17,8 @@ use crate::errors::ErrorSource;
 /// larger error types.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize))]
 pub struct BoxedErrorSource {
-    #[cfg_attr(feature = "rkyv", rkyv(with = AnyErrorAsString))]
     inner: Box<AnyError>,
-}
-
-#[cfg(feature = "rkyv")]
-struct AnyErrorAsString;
-
-#[cfg(feature = "rkyv")]
-impl rkyv::with::ArchiveWith<Box<AnyError>> for AnyErrorAsString {
-    type Archived = <String as rkyv::Archive>::Archived;
-    type Resolver = <String as rkyv::Archive>::Resolver;
-
-    fn resolve_with(field: &Box<AnyError>, resolver: Self::Resolver, out: rkyv::Place<Self::Archived>) {
-        <String as rkyv::Archive>::resolve(&field.to_string(), resolver, out);
-    }
-}
-
-#[cfg(feature = "rkyv")]
-impl<S> rkyv::with::SerializeWith<Box<AnyError>, S> for AnyErrorAsString
-where
-    S: rkyv::rancor::Fallible + ?Sized,
-    String: rkyv::Serialize<S>,
-{
-    fn serialize_with(field: &Box<AnyError>, serializer: &mut S) -> Result<Self::Resolver, S::Error> {
-        <String as rkyv::Serialize<S>>::serialize(&field.to_string(), serializer)
-    }
-}
-
-#[cfg(feature = "rkyv")]
-impl<D> rkyv::with::DeserializeWith<<String as rkyv::Archive>::Archived, Box<AnyError>, D> for AnyErrorAsString
-where
-    D: rkyv::rancor::Fallible + ?Sized,
-    <String as rkyv::Archive>::Archived: rkyv::Deserialize<String, D>,
-{
-    fn deserialize_with(
-        field: &<String as rkyv::Archive>::Archived,
-        deserializer: &mut D,
-    ) -> Result<Box<AnyError>, D::Error> {
-        let message =
-            <<String as rkyv::Archive>::Archived as rkyv::Deserialize<String, D>>::deserialize(field, deserializer)?;
-        Ok(Box::new(AnyError::error(message)))
-    }
 }
 
 impl fmt::Display for BoxedErrorSource {

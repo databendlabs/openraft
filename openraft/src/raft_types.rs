@@ -10,7 +10,6 @@ pub type SnapshotId = String;
 /// The identity of a segment of a snapshot.
 #[derive(Debug, Clone, PartialOrd, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize))]
 pub struct SnapshotSegmentId {
     /// The unique identifier of the snapshot stream.
     pub id: SnapshotId,

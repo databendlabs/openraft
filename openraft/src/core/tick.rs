@@ -165,7 +165,6 @@ mod tests {
 
     #[derive(Debug, Clone, Copy, Default, Eq, PartialEq, Ord, PartialOrd)]
     #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-    #[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize))]
     pub(crate) struct TickUTConfig {}
     impl RaftTypeConfig for TickUTConfig {
         type D = u64;

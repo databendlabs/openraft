@@ -6,7 +6,6 @@ use crate::errors::QuorumNotEnough;
 /// An error related to an is_leader request.
 #[derive(Debug, Clone, thiserror::Error, derive_more::TryInto)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize))]
 pub enum LinearizableReadError<C>
 where C: RaftTypeConfig
 {

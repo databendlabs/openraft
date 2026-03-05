@@ -10,14 +10,14 @@ This directory contains example applications demonstrating different implementat
 - **State Machine**: StateMachine implementation for application state
 - **RaftNetwork Impl**: Transport protocol and client library used
 - **RaftNetwork**: Interface version (RaftNetwork vs RaftNetworkV2)
-- **Client**: HTTP/gRPC client library for application requests
-- **Server**: Web framework for handling incoming requests
+- **Client**: Client transport/library used by the example
+- **Server**: Server runtime/framework used to accept requests
 - **Special Features**: Unique characteristics of each example
 
 | Example | Log | State Machine | RaftNetwork Impl | RaftNetwork | Client | Server | Special Features |
 |---------|-----|---------------|------------------|-------------|--------|--------|------------------|
 | [raft-kv-memstore] | [log-mem] | [sm-mem] | HTTP/reqwest | RaftNetwork | reqwest | actix-web | Basic example |
-| [raft-kv-memstore-rkyv] | [log-mem] | [sm-mem-rkyv] | HTTP/reqwest | RaftNetwork | reqwest | actix-web | `rkyv` snapshots + zero-copy `access` |
+| [raft-kv-memstore-rkyv] | [log-mem] | in-memory (`rkyv`) | TCP + length-prefixed `rkyv` frames | RaftNetworkV2 | custom TCP (tests) | tokio `TcpListener` | custom wire protocol + `rkyv` serialization |
 | [raft-kv-rocksdb] | [rocksstore] | [rocksstore] | HTTP/reqwest([network-v1]) | RaftNetwork | reqwest | actix-web | Persistent storage |
 | [raft-kv-memstore-network-v2] | [log-mem] | [sm-mem] | HTTP/reqwest | RaftNetworkV2 | reqwest | actix-web | Network V2 interface |
 | [multi-raft-kv] | [log-mem] | [sm-mem] | HTTP/channel | GroupRouter | channel | in-memory | Multi-Raft groups |
@@ -46,7 +46,6 @@ The following symbolic links are provided for backward compatibility:
 
 ### Utilities
 - **[types-kv]** - Shared KV request/response types for example crates
-- **[types-kv-rkyv]** - Shared KV request/response types serialized with `rkyv`
 - **[utils]** - Shared type declarations and utilities
 
 <!-- Reference Links -->
@@ -64,7 +63,6 @@ The following symbolic links are provided for backward compatibility:
 [rocksstore]: rocksstore/
 [network-v1]: network-v1-http/
 [types-kv]: types-kv/
-[types-kv-rkyv]: types-kv-rkyv/
 [utils]: utils/
 
 [memstore]: memstore/

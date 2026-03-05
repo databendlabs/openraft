@@ -56,7 +56,6 @@ impl<T> Node for T where T: Sized + OptionalFeatures + Eq + PartialEq + Debug + 
 /// Such a node stores nothing but is just a placeholder.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize))]
 pub struct EmptyNode {}
 
 impl Default for EmptyNode {
@@ -88,7 +87,6 @@ impl Display for EmptyNode {
 /// mapping.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize))]
 pub struct BasicNode {
     /// A user-defined string that represents the endpoint of the target node.
     ///
@@ -127,7 +125,6 @@ mod tests {
     fn node_id_default_impl() {
         /// Automatically implemented trait [`NodeId`] for this struct.
         #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-        #[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize))]
         #[derive(Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
         struct AutoNodeId;
 

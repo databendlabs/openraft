@@ -16,6 +16,7 @@ repository = "https://github.com/databendlabs/openraft"
 
 [dependencies]
 futures = "0.3.31"
+# We don't need rkyv feature in this case as this is soley for storage
 openraft = { path = "../../openraft", default-features = false, features = ["type-alias", "tokio-rt"] }
 rkyv = { version = "0.8.15" }
 tracing = "0.1"

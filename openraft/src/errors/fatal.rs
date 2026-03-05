@@ -15,7 +15,6 @@ use crate::StorageError;
 /// [`Raft::shutdown`]: crate::Raft::shutdown
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize))]
 pub enum Fatal<C>
 where C: RaftTypeConfig
 {

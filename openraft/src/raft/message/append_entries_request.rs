@@ -17,7 +17,6 @@ use crate::type_config::alias::VoteOf;
 /// previous log entries.
 #[derive(Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize))]
 pub struct AppendEntriesRequest<C: RaftTypeConfig> {
     /// The leader's current vote.
     pub vote: VoteOf<C>,

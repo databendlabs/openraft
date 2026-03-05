@@ -12,7 +12,6 @@ use crate::errors::Unreachable;
 /// Thus, this error includes storage error, network error, and remote error.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize), serde(bound = ""))]
-#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize))]
 pub enum StreamingError<C: RaftTypeConfig> {
     /// The replication stream is closed intentionally.
     #[error(transparent)]

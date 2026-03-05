@@ -1,6 +1,7 @@
 use clap::Parser;
-use raft_kv_memstore_rkyv::start_example_raft_node;
-use tracing_subscriber::EnvFilter;
+use openraft::AsyncRuntime;
+use raft_kv_memstore_rkyv::TypeConfig;
+use raft_kv_memstore_rkyv::app::start_raft_app;
 
 #[derive(Parser, Clone, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -9,22 +10,21 @@ pub struct Opt {
     pub id: u64,
 
     #[clap(long)]
-    pub http_addr: String,
+    /// Network address to bind the server to (e.g., "127.0.0.1:50051")
+    pub addr: String,
 }
 
-#[actix_web::main]
-async fn main() -> std::io::Result<()> {
-    // Setup the logger
+fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    // Initialize tracing first, before any logging happens
     tracing_subscriber::fmt()
-        .with_target(true)
-        .with_thread_ids(true)
-        .with_level(true)
-        .with_ansi(false)
-        .with_env_filter(EnvFilter::from_default_env())
+        .with_max_level(tracing::Level::INFO)
+        .with_file(true)
+        .with_line_number(true)
         .init();
 
     // Parse the parameters passed by arguments.
     let options = Opt::parse();
 
-    start_example_raft_node(options.id, options.http_addr).await
+    let mut rt = <TypeConfig as openraft::RaftTypeConfig>::AsyncRuntime::new(1);
+    rt.block_on(start_raft_app(options.id, options.addr))
 }

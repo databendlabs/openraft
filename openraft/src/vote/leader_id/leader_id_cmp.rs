@@ -48,7 +48,6 @@ mod tests {
     #[derive(Debug, PartialEq, Eq, Clone, PartialOrd, derive_more::Display)]
     #[display("T{}-N{}", _0, _1)]
     #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-    #[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize))]
     struct LeaderId(u64, u64);
 
     impl PartialEq<u64> for LeaderId {

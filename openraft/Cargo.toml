@@ -79,7 +79,10 @@ type-alias = []
 compat = []
 
 # Enables rkyv support
-rkyv = ["dep:rkyv"]
+rkyv = ["rkyv-storage"]
+
+# Enables rkyv support just for storage
+rkyv-storage = ["dep:rkyv"]
 
 # DEPRECATED: This feature is removed since 0.10.0.
 #

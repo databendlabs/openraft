@@ -18,7 +18,6 @@ use crate::vote::raft_vote::RaftVoteExt;
 #[derive(PartialEq, Eq)]
 #[derive(PartialOrd)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize))]
 pub(crate) struct CommittedVote<C>
 where C: RaftTypeConfig
 {

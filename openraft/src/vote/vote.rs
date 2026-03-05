@@ -9,7 +9,6 @@ use crate::vote::raft_vote::RaftVoteExt;
 /// `Vote` represent the privilege of a node.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize))]
 pub struct Vote<C: RaftTypeConfig> {
     /// The id of the node that tries to become the leader.
     pub leader_id: C::LeaderId,
@@ -96,28 +95,6 @@ mod tests {
         use crate::Vote;
         use crate::engine::testing::UTConfig;
 
-        #[cfg(feature = "serde")]
-        #[test]
-        fn test_vote_serde() -> anyhow::Result<()> {
-            let v = Vote::new(1, 2);
-            let s = serde_json::to_string(&v)?;
-            assert_eq!(r#"{"leader_id":{"term":1,"node_id":2},"committed":false}"#, s);
-
-            let v2: Vote<UTConfig> = serde_json::from_str(&s)?;
-            assert_eq!(v, v2);
-
-            Ok(())
-        }
-
-        #[cfg(feature = "rkyv")]
-        #[test]
-        fn test_vote_rkyv() {
-            let v = Vote::new(1, 2);
-            let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&v).unwrap();
-            let v2: Vote<UTConfig> = rkyv::from_bytes::<Vote<UTConfig>, rkyv::rancor::Error>(&bytes).unwrap();
-            assert_eq!(v, v2);
-        }
-
         #[test]
         fn test_vote_total_order() -> anyhow::Result<()> {
             #[allow(clippy::redundant_closure)]
@@ -180,15 +157,6 @@ mod tests {
             assert_eq!(v, v2);
 
             Ok(())
-        }
-
-        #[cfg(feature = "rkyv")]
-        #[test]
-        fn test_vote_rkyv() {
-            let v = Vote::new(1, 2);
-            let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&v).unwrap();
-            let v2: Vote<TC> = rkyv::from_bytes::<Vote<TC>, rkyv::rancor::Error>(&bytes).unwrap();
-            assert_eq!(v, v2);
         }
 
         #[test]

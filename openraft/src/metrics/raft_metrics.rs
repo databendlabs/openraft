@@ -69,7 +69,6 @@ use crate::vote::raft_vote::RaftVoteExt;
 /// [`Raft::metrics`]: crate::Raft::metrics
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize))]
 pub struct RaftMetrics<C: RaftTypeConfig> {
     /// The running state of the Raft node, or a fatal error if the node has stopped.
     pub running_state: Result<(), Fatal<C>>,
@@ -242,7 +241,6 @@ where C: RaftTypeConfig
 /// Subset of RaftMetrics, only include data-related metrics
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize))]
 pub struct RaftDataMetrics<C: RaftTypeConfig> {
     /// The last log id.
     pub last_log: Option<LogIdOf<C>>,
@@ -338,7 +336,6 @@ where C: RaftTypeConfig
 /// Subset of RaftMetrics, only include server-related metrics
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize))]
 pub struct RaftServerMetrics<C: RaftTypeConfig> {
     /// The ID of this Raft node.
     pub id: C::NodeId,

@@ -5,7 +5,6 @@ use crate::errors::NodeNotFound;
 /// Error related to setting the allow_next_revert flag.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize))]
 pub enum AllowNextRevertError<C: RaftTypeConfig> {
     /// The target node was not found.
     #[error("cannot set allow_next_revert; error: {0}")]

@@ -26,7 +26,6 @@ pub type WriteResult<C> = Result<WriteResponse<C>, ForwardToLeader<C>>;
     derive(serde::Deserialize, serde::Serialize),
     serde(bound = "C::R: crate::AppDataResponse")
 )]
-#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize))]
 pub struct WriteResponse<C: RaftTypeConfig> {
     /// The log ID of the applied entry.
     pub log_id: LogIdOf<C>,
@@ -51,6 +50,42 @@ pub(crate) fn into_write_result<C: RaftTypeConfig>(result: ClientWriteResult<C>)
         Err(ClientWriteError::ForwardToLeader(e)) => Err(e),
         Err(ClientWriteError::ChangeMembershipError(_)) => {
             unreachable!("ChangeMembershipError should not occur for normal writes")
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::WriteResponse;
+    use super::into_write_result;
+    use crate::engine::testing::UTConfig;
+    use crate::errors::ClientWriteError;
+    use crate::errors::ForwardToLeader;
+    use crate::raft::ClientWriteResponse;
+    use crate::testing::log_id;
+
+    #[test]
+    fn test_into_write_result_ok_path() {
+        let client_resp = ClientWriteResponse::<UTConfig> {
+            log_id: log_id(3, 2, 10),
+            data: (),
+            membership: None,
+        };
+
+        let res = into_write_result::<UTConfig>(Ok(client_resp));
+        let write_resp = res.expect("must convert successful client write");
+
+        assert_eq!(write_resp.log_id, log_id(3, 2, 10));
+        assert_eq!(write_resp.response, ());
+    }
+
+    #[test]
+    fn test_into_write_result_forward_to_leader_path() {
+        let fwd = ForwardToLeader::<UTConfig>::empty();
+        let res = into_write_result::<UTConfig>(Err(ClientWriteError::ForwardToLeader(fwd.clone())));
+        match res {
+            Err(e) => assert_eq!(e, fwd),
+            Ok(_) => panic!("expected ForwardToLeader error"),
         }
     }
 }

@@ -1,145 +1,80 @@
-# Example distributed key-value store built upon openraft (rkyv snapshots).
+# Distributed Key-Value Store with OpenRaft over TCP + rkyv
 
-It is an example of how to build a real-world key-value store with `openraft`.
-Includes:
-- An in-memory `RaftLogStorage` and `RaftStateMachine` implementation [store](./src/store/mod.rs).
-- Snapshot serialization with `rkyv`, including zero-copy validation/access via
-  [`rkyv::access`](https://docs.rs/rkyv/latest/rkyv/fn.access.html) in
-  [`sm-mem-rkyv`](../sm-mem-rkyv/src/lib.rs).
+Demonstrates a distributed key-value store built on OpenRaft using a custom TCP transport and `rkyv`-serialized wire messages.
 
-- A server is based on [actix-web](https://docs.rs/actix-web/4.0.0-rc.2).
-  All service endpoints accept a `Json<I>` input argument,
-  and return a JSON-encoded `Result<T, E>` response,
-  where `T` and `E` are API-specific types.
-  For example, the `/write` endpoint accepts a user-defined `Request`
-  and returns a `Result<WriteResponse, ClientWriteError>`.
+## Key Features Demonstrated
 
-  Includes:
-  - raft-internal network APIs for replication and voting.
-  - Admin APIs to add nodes, change-membership etc.
-  - Application APIs to write a value by key or read a value by key.
-  - Linearizable read implementations including follower reads.
+- **Custom TCP networking**: Raft RPCs are exchanged over `tokio::net::TcpStream`.
+- **Length-prefixed framing**: Each request/response is sent as `u32` length + payload bytes.
+- **`rkyv` serialization**: Wire RPC enums and snapshot/state-machine data use zero-copy-friendly `rkyv` formats.
+- **`RaftNetworkV2` implementation**: Implements `append_entries`, `vote`, `full_snapshot`, `transfer_leader`, and `backoff`.
+- **In-memory storage**: `log-mem::LogStore` plus an in-memory `StateMachineStore` with snapshot support.
 
-- Client and `RaftNetwork`([rpc](./src/network/raft.rs)) are built upon [reqwest](https://docs.rs/reqwest).
+## Overview
 
-  [ExampleClient](./src/client.rs) is a minimal raft client in rust to talk to a raft cluster.
-  - It includes application API `write()`, `read()`, `linearizable_read()`, `follower_read()`, and administrative API `init()`, `add_learner()`, `change_membership()`, `metrics()`.
-  - This client tracks the last known leader id, a write operation(such as `write()` or `change_membership()`) will be redirected to the leader on client side.
+This example includes:
 
-## Run it
+- **Storage**:
+  - In-memory log store (`log-mem`)
+  - In-memory state machine (`BTreeMap<String, String>`) and snapshot build/install logic in `src/store/mod.rs`
+- **Network**:
+  - A TCP-based `RaftNetworkFactory` and `RaftNetworkV2` implementation in `src/network/mod.rs`
+  - Request/response wire enums (`WireRequest`, `WireResponse`) serialized with `rkyv`
+- **Application process**:
+  - Node bootstrap in `src/app.rs`
+  - Binary entrypoint and CLI args in `src/bin/main.rs`
 
-There is a example in bash script and an example in rust:
+## Testing
 
-- [test-cluster.sh](./test-cluster.sh) shows a simulation of 3 nodes running and sharing data,
-  It only uses `curl` and shows the communication between a client and the cluster in plain HTTP messages.
-  You can run the cluster demo with:
+- **Storage conformance** (`src/test_store.rs`):
+  - Runs OpenRaft's storage test suite against this example's in-memory store.
+- **Message serialization tests** (`tests/test_rkyv_messages.rs`):
+  - Validates `rkyv` round-trip for vote/append/snapshot/transfer-leader/write message types.
+- **Single-process transport test** (`tests/test_cluster.rs`):
+  - Spawns 3 nodes and verifies framed TCP Raft RPC behavior.
+- **Multi-process smoke test** (`./test-cluster.sh`):
+  - Builds the binary, starts 5 local nodes, probes TCP endpoints, and tails recent logs.
 
-  ```shell
-  ./test-cluster.sh
-  ```
+## Architecture
 
-- [test_cluster.rs](./tests/cluster/test_cluster.rs) does almost the same as `test-cluster.sh` but in rust
-  with the `ExampleClient`.
+**Key code locations:**
 
-  Run it with `cargo test`.
+- `src/bin/main.rs`: CLI and runtime bootstrap.
+- `src/app.rs`: Raft config, store/network setup, and TCP listener loop.
+- `src/network/mod.rs`: TCP wire protocol, framing, request handling, and `RaftNetworkV2`.
+- `src/store/mod.rs`: State machine and snapshot implementation.
+- `src/raft.rs`: App data types (`SetRequest`, `Response`, `Node`, `Vote`, `Entry`).
+- `tests/`: integration tests for transport and serialization.
 
+## Running
 
-if you want to compile the application, run:
+### Build
 
 ```shell
 cargo build
 ```
 
-(If you append `--release` to make it compile in production, but we don't recommend to use
-this project in production yet.)
-
-## What the test script does
-
-To run it, get the binary `raft-key-value-rkyv` inside `target/debug` and run:
+### Run tests
 
 ```shell
-./raft-key-value-rkyv --id 1 --http-addr 127.0.0.1:21001
+cargo test
 ```
 
-It will start a node.
+### Start a 3-node cluster manually
 
-To start the following nodes:
+```bash
+# Terminal 1
+./target/debug/raft-key-value --id 1 --addr 127.0.0.1:5051
 
-```shell
-./raft-key-value-rkyv --id 2 --http-addr 127.0.0.1:21002
+# Terminal 2
+./target/debug/raft-key-value --id 2 --addr 127.0.0.1:5052
+
+# Terminal 3
+./target/debug/raft-key-value --id 3 --addr 127.0.0.1:5053
 ```
 
-You can continue replicating the nodes by changing the `id` and `http-addr`.
+### Multi-process smoke test
 
-After that, call the first node created:
-
+```bash
+./test-cluster.sh
 ```
-POST - 127.0.0.1:21001/init
-```
-
-It will define the first node created as the leader.
-
-Then you need to inform to the leader that these nodes are learners:
-
-```
-POST - 127.0.0.1:21001/add-learner '[2, "127.0.0.1:21002"]'
-POST - 127.0.0.1:21001/add-learner '[3, "127.0.0.1:21003"]'
-```
-
-Now you need to tell the leader to add all learners as members of the cluster:
-
-```
-POST - 127.0.0.1:21001/change-membership  "[1, 2, 3]"
-```
-
-Write some data in any of the nodes:
-
-```
-POST - 127.0.0.1:21001/write  "{"Set":{"key":"foo","value":"bar"}}"
-```
-
-Read the data from any node:
-
-```
-POST - 127.0.0.1:21002/read  "foo"
-```
-
-You should be able to read that on the another instance even if you did not sync any data!
-
-For linearizable reads, use the `/linearizable_read` endpoint on the leader, or `/follower_read` on any node to distribute read load:
-
-```
-POST - 127.0.0.1:21001/linearizable_read  "foo"
-POST - 127.0.0.1:21002/follower_read  "foo"
-```
-
-
-## How it's structured.
-
-The application is separated in 4 modules:
-
- - `bin`: You can find the `main()` function in [main](./src/bin/main.rs) the file where the setup for the server happens.
- - `network`: You can find the [api](./src/network/api.rs) that implements the endpoints used by the public API and [rpc](./src/network/raft.rs) where all the raft communication from the node happens. [management](./src/network/management.rs) is where all the administration endpoints are present, those are used to add orremove nodes, promote and more. [raft](./src/network/raft.rs) is where all the communication are received from other nodes.
- - `store`: You can find the file [store](./src/store/mod.rs) where all the key-value implementation is done. Here is where your data application will be managed.
-
-## Where is my data?
-
-The data is store inside state machines, each state machine represents a point of data and
-raft enforces that all nodes have the same data in synchronization. You can have a look of
-the struct [ExampleStateMachine](./src/store/mod.rs)
-
-## Cluster management
-
-The raft itself does not store node addresses.
-But in a real-world application, the implementation of `RaftNetwork` needs to know the addresses.
-
-Thus, in this example application:
-
-- The storage layer has to store nodes' information.
-- The network layer keeps a reference to the store so that it is able to get the address of a target node to send RPC to.
-
-To add a node to a cluster, it includes 3 steps:
-
-- Write a `node` through raft protocol to the storage.
-- Add the node as a `Learner` to let it start receiving replication data from the leader.
-- Invoke `change-membership` to change the learner node to a member.

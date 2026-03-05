@@ -20,7 +20,7 @@ use crate::vote::RaftLeaderId;
 /// defined below.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize))]
+#[cfg_attr(feature = "rkyv-storage", derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize))]
 pub struct LeaderId<C>
 where C: RaftTypeConfig
 {
@@ -139,8 +139,8 @@ where C: RaftTypeConfig
 #[derive(derive_more::Display)]
 #[display("{}", term)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize))]
 #[cfg_attr(feature = "serde", serde(transparent))]
+#[cfg_attr(feature = "rkyv-storage", derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize))]
 pub struct CommittedLeaderId<C>
 where C: RaftTypeConfig
 {
@@ -214,7 +214,7 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(feature = "rkyv")]
+    #[cfg(feature = "rkyv-storage")]
     #[test]
     fn test_committed_leader_id_rkyv() {
         use super::CommittedLeaderId;

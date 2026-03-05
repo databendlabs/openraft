@@ -17,7 +17,6 @@ use crate::type_config::alias::VoteOf;
 #[derive(Debug, Clone)]
 #[derive(PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize))]
 pub enum AppendEntriesResponse<C: RaftTypeConfig> {
     /// Successfully replicated all log entries to the target node.
     Success,

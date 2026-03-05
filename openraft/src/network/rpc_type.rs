@@ -5,7 +5,6 @@ use std::fmt;
 #[derive(PartialEq, Eq)]
 #[derive(Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize))]
 pub enum RPCTypes {
     /// Vote request RPC.
     Vote,

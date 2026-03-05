@@ -5,37 +5,30 @@ readme = "README.md"
 
 edition = "2024"
 authors = [
-    "drdr xp <drdr.xp@gmail.com>",
-    "Pedro Paulo de Amorim <pepa.amorim@gmail.com>",
+    "Sainath Singineedi <sainathsingineedi2222@gmail.com>",
 ]
 categories = ["algorithms", "asynchronous", "data-structures"]
-description = "An example distributed key-value store built upon `openraft` with rkyv snapshots."
+description = "An example distributed key-value store built upon `openraft`."
 homepage = "https://github.com/databendlabs/openraft"
 keywords = ["raft", "consensus"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/databendlabs/openraft"
 
 [[bin]]
-name = "raft-key-value-rkyv"
+name = "raft-key-value"
 path = "src/bin/main.rs"
 
 [dependencies]
-client-http        = { path = "../client-http" }
-log-mem            = { path = "../log-mem" }
-network-v1-http    = { path = "../network-v1-http" }
-sm-mem-rkyv        = { path = "../sm-mem-rkyv" }
-openraft           = { path = "../../openraft", features = ["serde", "rkyv", "type-alias"] }
-openraft-legacy    = { path = "../../legacy" }
-types-kv           = { path = "../types-kv" }
-
-actix-web          = { version = "4.0.0-rc.2" }
+log-mem  = { path = "../log-mem", features = [] }
+openraft = { path = "../../openraft", features = ["type-alias", "rkyv", "serde"] }
+tokio              = { version = "1.49.0", features = ["net", "io-util", "rt"] }
 clap               = { version = "4.1.11", features = ["derive", "env"] }
-futures            = { version = "0.3" }
-reqwest            = { version = "0.12.5", features = ["json"] }
-serde              = { version = "1.0.114", features = ["derive"] }
-serde_json         = { version = "1.0.57" }
+futures            = { version = "0.3.31" }
 tracing            = { version = "0.1.29" }
 tracing-subscriber = { version = "0.3.0", features = ["env-filter"] }
+rkyv = { version = "0.8.15" }
+serde = { version = "1", features = ["derive"] }
+bincode = { version = "2.0.1", features = ["serde"] }
 
 [dev-dependencies]
 anyhow = { version = "1.0.63" }

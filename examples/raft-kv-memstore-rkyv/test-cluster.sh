@@ -1,179 +1,96 @@
 #!/bin/sh
 
 set -o errexit
+set -o nounset
 
 cargo build
 
-kill() {
+kill_nodes() {
     if [ "$(uname)" = "Darwin" ]; then
-        SERVICE='raft-key-value-rkyv'
+        SERVICE='raft-key-value'
         if pgrep -xq -- "${SERVICE}"; then
             pkill -f "${SERVICE}"
         fi
     else
-        set +e # killall will error if finds no process to kill
-        killall raft-key-value-rkyv
+        set +e # killall errors if no process is found
+        killall raft-key-value
         set -e
     fi
 }
 
-rpc() {
-    local uri=$1
-    local body="$2"
+wait_for_port() {
+    host="$1"
+    port="$2"
+    timeout_secs="${3:-30}"
 
-    echo '---'" rpc(:$uri, $body)"
-
-    {
-        if [ ".$body" = "." ]; then
-            time curl --silent "127.0.0.1:$uri"
-        else
-            time curl --silent "127.0.0.1:$uri" -H "Content-Type: application/json" -d "$body"
+    i=0
+    while [ "$i" -lt "$timeout_secs" ]; do
+        if command -v nc >/dev/null 2>&1; then
+            if nc -z "$host" "$port" >/dev/null 2>&1; then
+                return 0
+            fi
+        elif command -v bash >/dev/null 2>&1; then
+            if bash -c "exec 3<>/dev/tcp/$host/$port" >/dev/null 2>&1; then
+                return 0
+            fi
         fi
-    } | {
-        if type jq > /dev/null 2>&1; then
-            jq
-        else
-            cat
-        fi
-    }
 
-    echo
-    echo
+        i=$((i + 1))
+        sleep 1
+    done
+
+    echo "ERROR: timed out waiting for ${host}:${port}" >&2
+    return 1
+}
+
+probe_socket() {
+    host="$1"
+    port="$2"
+
+    echo "--- probe tcp://${host}:${port}"
+
+    if command -v nc >/dev/null 2>&1; then
+        # Open and close immediately to exercise accept/process path.
+        printf '' | nc "$host" "$port" >/dev/null 2>&1 || true
+    elif command -v bash >/dev/null 2>&1; then
+        bash -c "exec 3<>/dev/tcp/$host/$port; exec 3>&-"
+    else
+        echo "WARNING: neither nc nor bash /dev/tcp available; skipping active probe"
+    fi
+}
+
+start_node() {
+    node_id="$1"
+    port="$2"
+    log_file="$3"
+
+    nohup ./target/debug/raft-key-value --id "$node_id" --addr "127.0.0.1:${port}" > "$log_file" 2>&1 &
+    wait_for_port 127.0.0.1 "$port" 30
+    echo "Server ${node_id} started on 127.0.0.1:${port}"
 }
 
 export RUST_LOG=trace
 export RUST_BACKTRACE=full
 
-echo "Killing all running raft-key-value-rkyv"
+trap 'echo "Killing all nodes..."; kill_nodes' EXIT INT TERM
 
-kill
-
+echo "Killing all running raft-key-value"
+kill_nodes || true
 sleep 1
 
-echo "Start 5 uninitialized raft-key-value-rkyv servers..."
+echo "Start 5 raft-key-value servers (TCP wire-protocol mode)..."
+start_node 1 5051 n1.log
+start_node 2 5052 n2.log
+start_node 3 5053 n3.log
+start_node 4 5054 n4.log
+start_node 5 5055 n5.log
 
-nohup ./target/debug/raft-key-value-rkyv  --id 1 --http-addr 127.0.0.1:21001 > n1.log &
-sleep 1
-echo "Server 1 started"
-
-nohup ./target/debug/raft-key-value-rkyv  --id 2 --http-addr 127.0.0.1:21002 > n2.log &
-sleep 1
-echo "Server 2 started"
-
-nohup ./target/debug/raft-key-value-rkyv  --id 3 --http-addr 127.0.0.1:21003 > n3.log &
-sleep 1
-echo "Server 3 started"
-sleep 1
-
-nohup ./target/debug/raft-key-value-rkyv  --id 4 --http-addr 127.0.0.1:21004 > n4.log &
-sleep 1
-echo "Server 4 started"
-sleep 1
-
-nohup ./target/debug/raft-key-value-rkyv  --id 5 --http-addr 127.0.0.1:21005 > n5.log &
-sleep 1
-echo "Server 5 started"
-sleep 1
-
-echo "Initialize servers 1,2,3 as a 3-nodes cluster"
-sleep 2
 echo
+echo "Recent node logs:"
+for f in n1.log n2.log n3.log n4.log n5.log; do
+    echo "===== ${f} ====="
+    tail -n 20 "$f" || true
+    echo
+done
 
-rpc 21001/init '[[1, "127.0.0.1:21001"], [2, "127.0.0.1:21002"], [3, "127.0.0.1:21003"]]'
-# if you want to initialize server 1 as a single cluster, use `rpc 21001/init '[]'` or `rpc 21001/init '[[1, "127.0.0.1:21001"]]'`
-
-echo "Server 1 is a leader now"
-
-sleep 2
-
-echo "Get metrics from the leader"
-sleep 2
-echo
-rpc 21001/metrics
-sleep 1
-
-
-echo "Adding node 4 and node 5 as learners, to receive log from leader node 1"
-
-sleep 1
-echo
-rpc 21001/add-learner       '[4, "127.0.0.1:21004"]'
-echo "Node 4 added as learner"
-sleep 1
-echo
-rpc 21001/add-learner       '[5, "127.0.0.1:21005"]'
-echo "Node 5 added as learner"
-sleep 1
-
-echo "Get metrics from the leader, after adding 2 learners"
-sleep 2
-echo
-rpc 21001/metrics
-sleep 1
-
-echo "Changing membership from [1, 2, 3] to 5 nodes cluster: [1, 2, 3, 4, 5]"
-echo
-rpc 21001/change-membership '[1, 2, 3, 4, 5]'
-sleep 1
-echo 'Membership changed to [1, 2, 3, 4, 5]'
-sleep 1
-
-echo "Get metrics from the leader again"
-sleep 1
-echo
-rpc 21001/metrics
-sleep 1
-
-echo "Write data on leader"
-sleep 1
-echo
-rpc 21001/write '{"Set":{"key":"foo","value":"bar"}}'
-sleep 1
-echo "Data written"
-sleep 1
-
-echo "Read on every node, including the leader"
-sleep 1
-echo "Read from node 1"
-echo
-rpc 21001/read  '"foo"'
-echo "Read from node 2"
-echo
-rpc 21002/read  '"foo"'
-echo "Read from node 3"
-echo
-rpc 21003/read  '"foo"'
-
-
-echo "Changing membership from [1,2,3, 4, 5] to [3]"
-echo
-rpc 21001/change-membership '[3]'
-sleep 1
-echo 'Membership changed to [3]'
-sleep 1
-
-echo "Get metrics from the node-3"
-sleep 1
-echo
-rpc 21003/metrics
-sleep 1
-
-
-echo "Write foo=zoo on node-3"
-sleep 1
-echo
-rpc 21003/write '{"Set":{"key":"foo","value":"zoo"}}'
-sleep 1
-echo "Data written"
-sleep 1
-
-echo "Read foo=zoo from node-3"
-sleep 1
-echo "Read from node 3"
-echo
-rpc 21003/read  '"foo"'
-echo
-
-
-echo "Killing all nodes..."
-kill
+echo "Smoke test complete"

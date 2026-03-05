@@ -5,7 +5,7 @@ use crate::type_config::alias::LogIdOf;
 /// A small piece of information for identifying a snapshot and error tracing.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize))]
+#[cfg_attr(feature = "rkyv-storage", derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize))]
 pub struct SnapshotSignature<C>
 where C: RaftTypeConfig
 {
@@ -43,7 +43,7 @@ mod tests {
         assert_eq!(sig, sig2);
     }
 
-    #[cfg(feature = "rkyv")]
+    #[cfg(feature = "rkyv-storage")]
     #[test]
     fn test_snapshot_signature_rkyv() {
         use super::SnapshotSignature;

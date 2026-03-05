@@ -14,7 +14,6 @@ use crate::vote::RaftLeaderIdExt;
 /// with an optional custom node type `N` for the Node type.
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize))]
 pub(crate) struct UTConfig<N = ()> {
     _p: std::marker::PhantomData<N>,
 }

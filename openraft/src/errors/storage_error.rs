@@ -35,7 +35,6 @@ where C: RaftTypeConfig
 /// The subject of a storage error, indicating what operation or component failed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize))]
 pub enum ErrorSubject<C>
 where C: RaftTypeConfig
 {
@@ -72,7 +71,6 @@ where C: RaftTypeConfig
 #[derive(Clone, Copy)]
 #[derive(PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize))]
 pub enum ErrorVerb {
     /// Reading data.
     Read,
@@ -124,7 +122,6 @@ where C: RaftTypeConfig
 /// further damage.
 #[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize))]
 pub struct StorageError<C>
 where C: RaftTypeConfig
 {
@@ -240,46 +237,6 @@ mod tests {
         );
         let err2: StorageError<UTConfig> = serde_json::from_str(&s).unwrap();
         assert_eq!(err, err2);
-    }
-
-    #[cfg(feature = "rkyv")]
-    #[test]
-    fn test_storage_error_rkyv() {
-        use super::StorageError;
-        use crate::LogId;
-        use crate::RaftTypeConfig;
-        use crate::errors::ErrorSource;
-        use crate::type_config::alias::LeaderIdOf;
-        use crate::vote::RaftLeaderIdExt;
-
-        crate::declare_raft_types!(TC: D = u64, R = ());
-
-        let log_id = LogId::new(LeaderIdOf::<TC>::new_committed(1, 2), 3);
-        let source = <TC as RaftTypeConfig>::ErrorSource::from_string("test");
-        let err = StorageError::write_log_entry(log_id, source);
-        let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&err).unwrap();
-        let err2: StorageError<TC> = rkyv::from_bytes::<StorageError<TC>, rkyv::rancor::Error>(&bytes).unwrap();
-        assert_eq!(err, err2);
-    }
-
-    /// Test backward compatibility: deserializing from old format that included `backtrace` field.
-    ///
-    /// Since 0.10.0, `backtrace` is removed, and it should be able to deserialize it.
-    #[cfg(all(feature = "serde", not(feature = "bt")))]
-    #[test]
-    fn test_storage_error_deserialize_old_format_with_backtrace() {
-        use super::StorageError;
-        use crate::engine::testing::UTConfig;
-
-        // Old serialized format with the redundant `backtrace` field
-        let old_format = r#"{"subject":{"Log":{"leader_id":{"term":1,"node_id":2},"index":3}},"verb":"Write","source":{"typ":null,"msg":"test","source":null,"context":[],"backtrace":null},"backtrace":"some backtrace"}"#;
-
-        // Should deserialize successfully, ignoring the `backtrace` field
-        let err: StorageError<UTConfig> = serde_json::from_str(old_format).unwrap();
-        assert_eq!(
-            err.to_string(),
-            "when Write Log(LogId { leader_id: LeaderId { term: 1, node_id: 2 }, index: 3 }): test"
-        );
     }
 
     #[test]
