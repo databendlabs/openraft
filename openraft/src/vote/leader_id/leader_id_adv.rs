@@ -2,8 +2,9 @@
 
 use std::fmt;
 
-use crate::RaftTypeConfig;
+use crate::NodeId;
 use crate::vote::RaftLeaderId;
+use crate::vote::RaftTerm;
 
 /// ID of a `leader`, allowing multiple leaders per term.
 ///
@@ -13,17 +14,21 @@ use crate::vote::RaftLeaderId;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[derive(PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub struct LeaderId<C>
-where C: RaftTypeConfig
+pub struct LeaderId<Term, NID>
+where
+    Term: RaftTerm,
+    NID: NodeId,
 {
     /// The term of the leader.
-    pub term: C::Term,
+    pub term: Term,
     /// The node ID of the leader.
-    pub node_id: C::NodeId,
+    pub node_id: NID,
 }
 
-impl<C> fmt::Display for LeaderId<C>
-where C: RaftTypeConfig
+impl<Term, NID> fmt::Display for LeaderId<Term, NID>
+where
+    Term: RaftTerm,
+    NID: NodeId,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "T{}-N{}", self.term, self.node_id)
@@ -42,22 +47,24 @@ where C: RaftTypeConfig
 /// the information that makes leader-ids a correct total order set, e.g., in standard raft,
 /// `voted_for: Option<node_id>` can be removed from `(term, voted_for)` once it is granted. This is
 /// why standard raft stores just a `term` in log entry.
-pub type CommittedLeaderId<C> = LeaderId<C>;
+pub type CommittedLeaderId<Term, NID> = LeaderId<Term, NID>;
 
-impl<C> RaftLeaderId<C> for LeaderId<C>
-where C: RaftTypeConfig<LeaderId = Self>
+impl<Term, NID> RaftLeaderId<Term, NID> for LeaderId<Term, NID>
+where
+    Term: RaftTerm,
+    NID: NodeId,
 {
     type Committed = Self;
 
-    fn new(term: C::Term, node_id: C::NodeId) -> Self {
+    fn new(term: Term, node_id: NID) -> Self {
         Self { term, node_id }
     }
 
-    fn term(&self) -> C::Term {
+    fn term(&self) -> Term {
         self.term
     }
 
-    fn node_id(&self) -> &C::NodeId {
+    fn node_id(&self) -> &NID {
         &self.node_id
     }
 
@@ -69,22 +76,19 @@ where C: RaftTypeConfig<LeaderId = Self>
 #[cfg(test)]
 mod tests {
     use super::LeaderId;
-    use crate::engine::testing::UTConfig;
     use crate::vote::RaftLeaderId;
 
     #[cfg(feature = "serde")]
     #[test]
     fn test_committed_leader_id_serde() -> anyhow::Result<()> {
-        use crate::type_config::alias::CommittedLeaderIdOf;
-        use crate::type_config::alias::LeaderIdOf;
         use crate::vote::RaftLeaderIdExt;
 
-        let c = LeaderIdOf::<UTConfig>::new_committed(5, 10);
+        let c = LeaderId::<u64, u64>::new_committed(5, 10);
         let s = serde_json::to_string(&c)?;
         assert_eq!(r#"{"term":5,"node_id":10}"#, s);
 
-        let c2: CommittedLeaderIdOf<UTConfig> = serde_json::from_str(&s)?;
-        assert_eq!(LeaderIdOf::<UTConfig>::new_committed(5, 10), c2);
+        let c2: LeaderId<u64, u64> = serde_json::from_str(&s)?;
+        assert_eq!(LeaderId::<u64, u64>::new_committed(5, 10), c2);
 
         Ok(())
     }
@@ -92,7 +96,7 @@ mod tests {
     #[test]
     fn test_adv_leader_id_partial_order() -> anyhow::Result<()> {
         #[allow(clippy::redundant_closure)]
-        let lid = |term, node_id| LeaderId::<UTConfig>::new(term, node_id);
+        let lid = |term, node_id| LeaderId::<u64, u64>::new(term, node_id);
 
         // Compare term first
         assert!(lid(2, 2) > lid(1, 2));

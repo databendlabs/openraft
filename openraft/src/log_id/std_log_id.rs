@@ -1,20 +1,30 @@
 //! RaftLogId implementation for primitive tuples `(Term, u64)`.
 
+use crate::NodeId;
 use crate::RaftTypeConfig;
 use crate::log_id::raft_log_id::RaftLogId;
 use crate::type_config::alias::CommittedLeaderIdOf;
 
+/// `NID` is extracted as a separate type parameter to avoid a rustc cycle error
+/// that occurs when using `C::NodeId` inside an associated type equality constraint
+/// (e.g., `LeaderId = LeaderId<$term_type, C::NodeId>`).
 macro_rules! impl_raft_log_id {
     ($term_type:ty) => {
-        impl<C> RaftLogId<C> for ($term_type, u64)
-        where C: RaftTypeConfig<Term = $term_type, LeaderId = crate::vote::leader_id_std::LeaderId<C>>
+        impl<NID, C> RaftLogId<C> for ($term_type, u64)
+        where
+            NID: NodeId,
+            C: RaftTypeConfig<
+                    Term = $term_type,
+                    NodeId = NID,
+                    LeaderId = crate::vote::leader_id_std::LeaderId<$term_type, NID>,
+                >,
         {
             fn new(leader_id: CommittedLeaderIdOf<C>, index: u64) -> Self {
                 (*leader_id, index)
             }
 
             fn committed_leader_id(&self) -> &CommittedLeaderIdOf<C> {
-                // SAFETY: CommittedLeaderId<C> is repr(transparent) around C::Term.
+                // SAFETY: CommittedLeaderId<Term> is repr(transparent) around Term.
                 unsafe { &*(std::ptr::addr_of!(self.0) as *const CommittedLeaderIdOf<C>) }
             }
 
@@ -38,16 +48,16 @@ impl_raft_log_id!(i8);
 mod tests {
     use crate::declare_raft_types;
     use crate::log_id::raft_log_id::RaftLogId;
-    use crate::vote::leader_id_std::CommittedLeaderId;
+    use crate::type_config::alias::CommittedLeaderIdOf;
 
-    declare_raft_types!(pub ConfigU64: LeaderId=crate::vote::leader_id_std::LeaderId<Self>, Term=u64);
-    declare_raft_types!(pub ConfigU32: LeaderId=crate::vote::leader_id_std::LeaderId<Self>, Term=u32);
-    declare_raft_types!(pub ConfigU16: LeaderId=crate::vote::leader_id_std::LeaderId<Self>, Term=u16);
-    declare_raft_types!(pub ConfigU8:  LeaderId=crate::vote::leader_id_std::LeaderId<Self>, Term=u8);
-    declare_raft_types!(pub ConfigI64: LeaderId=crate::vote::leader_id_std::LeaderId<Self>, Term=i64);
-    declare_raft_types!(pub ConfigI32: LeaderId=crate::vote::leader_id_std::LeaderId<Self>, Term=i32);
-    declare_raft_types!(pub ConfigI16: LeaderId=crate::vote::leader_id_std::LeaderId<Self>, Term=i16);
-    declare_raft_types!(pub ConfigI8:  LeaderId=crate::vote::leader_id_std::LeaderId<Self>, Term=i8);
+    declare_raft_types!(pub ConfigU64: LeaderId=crate::vote::leader_id_std::LeaderId<Self::Term, Self::NodeId>, Term=u64);
+    declare_raft_types!(pub ConfigU32: LeaderId=crate::vote::leader_id_std::LeaderId<Self::Term, Self::NodeId>, Term=u32);
+    declare_raft_types!(pub ConfigU16: LeaderId=crate::vote::leader_id_std::LeaderId<Self::Term, Self::NodeId>, Term=u16);
+    declare_raft_types!(pub ConfigU8:  LeaderId=crate::vote::leader_id_std::LeaderId<Self::Term, Self::NodeId>, Term=u8);
+    declare_raft_types!(pub ConfigI64: LeaderId=crate::vote::leader_id_std::LeaderId<Self::Term, Self::NodeId>, Term=i64);
+    declare_raft_types!(pub ConfigI32: LeaderId=crate::vote::leader_id_std::LeaderId<Self::Term, Self::NodeId>, Term=i32);
+    declare_raft_types!(pub ConfigI16: LeaderId=crate::vote::leader_id_std::LeaderId<Self::Term, Self::NodeId>, Term=i16);
+    declare_raft_types!(pub ConfigI8:  LeaderId=crate::vote::leader_id_std::LeaderId<Self::Term, Self::NodeId>, Term=i8);
 
     #[test]
     fn test_u64_tuple_log_id() {
@@ -58,7 +68,7 @@ mod tests {
 
     #[test]
     fn test_u64_tuple_log_id_new() {
-        let leader_id = CommittedLeaderId::<ConfigU64>::new(5);
+        let leader_id = CommittedLeaderIdOf::<ConfigU64>::new(5);
         let log_id = <(u64, u64) as RaftLogId<ConfigU64>>::new(leader_id, 100);
         assert_eq!((5, 100), log_id);
         assert_eq!(100, <(u64, u64) as RaftLogId<ConfigU64>>::index(&log_id));
@@ -73,7 +83,7 @@ mod tests {
 
     #[test]
     fn test_u32_tuple_log_id_new() {
-        let leader_id = CommittedLeaderId::<ConfigU32>::new(5);
+        let leader_id = CommittedLeaderIdOf::<ConfigU32>::new(5);
         let log_id = <(u32, u64) as RaftLogId<ConfigU32>>::new(leader_id, 100);
         assert_eq!((5, 100), log_id);
         assert_eq!(100, <(u32, u64) as RaftLogId<ConfigU32>>::index(&log_id));
@@ -88,7 +98,7 @@ mod tests {
 
     #[test]
     fn test_u16_tuple_log_id_new() {
-        let leader_id = CommittedLeaderId::<ConfigU16>::new(5);
+        let leader_id = CommittedLeaderIdOf::<ConfigU16>::new(5);
         let log_id = <(u16, u64) as RaftLogId<ConfigU16>>::new(leader_id, 100);
         assert_eq!((5, 100), log_id);
         assert_eq!(100, <(u16, u64) as RaftLogId<ConfigU16>>::index(&log_id));
@@ -103,7 +113,7 @@ mod tests {
 
     #[test]
     fn test_u8_tuple_log_id_new() {
-        let leader_id = CommittedLeaderId::<ConfigU8>::new(5);
+        let leader_id = CommittedLeaderIdOf::<ConfigU8>::new(5);
         let log_id = <(u8, u64) as RaftLogId<ConfigU8>>::new(leader_id, 100);
         assert_eq!((5, 100), log_id);
         assert_eq!(100, <(u8, u64) as RaftLogId<ConfigU8>>::index(&log_id));
@@ -118,7 +128,7 @@ mod tests {
 
     #[test]
     fn test_i64_tuple_log_id_new() {
-        let leader_id = CommittedLeaderId::<ConfigI64>::new(5);
+        let leader_id = CommittedLeaderIdOf::<ConfigI64>::new(5);
         let log_id = <(i64, u64) as RaftLogId<ConfigI64>>::new(leader_id, 100);
         assert_eq!((5, 100), log_id);
         assert_eq!(100, <(i64, u64) as RaftLogId<ConfigI64>>::index(&log_id));
@@ -133,7 +143,7 @@ mod tests {
 
     #[test]
     fn test_i32_tuple_log_id_new() {
-        let leader_id = CommittedLeaderId::<ConfigI32>::new(5);
+        let leader_id = CommittedLeaderIdOf::<ConfigI32>::new(5);
         let log_id = <(i32, u64) as RaftLogId<ConfigI32>>::new(leader_id, 100);
         assert_eq!((5, 100), log_id);
         assert_eq!(100, <(i32, u64) as RaftLogId<ConfigI32>>::index(&log_id));
@@ -148,7 +158,7 @@ mod tests {
 
     #[test]
     fn test_i16_tuple_log_id_new() {
-        let leader_id = CommittedLeaderId::<ConfigI16>::new(5);
+        let leader_id = CommittedLeaderIdOf::<ConfigI16>::new(5);
         let log_id = <(i16, u64) as RaftLogId<ConfigI16>>::new(leader_id, 100);
         assert_eq!((5, 100), log_id);
         assert_eq!(100, <(i16, u64) as RaftLogId<ConfigI16>>::index(&log_id));
@@ -163,7 +173,7 @@ mod tests {
 
     #[test]
     fn test_i8_tuple_log_id_new() {
-        let leader_id = CommittedLeaderId::<ConfigI8>::new(5);
+        let leader_id = CommittedLeaderIdOf::<ConfigI8>::new(5);
         let log_id = <(i8, u64) as RaftLogId<ConfigI8>>::new(leader_id, 100);
         assert_eq!((5, 100), log_id);
         assert_eq!(100, <(i8, u64) as RaftLogId<ConfigI8>>::index(&log_id));

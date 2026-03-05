@@ -2,7 +2,6 @@ use openraft_macros::since;
 
 use crate::Raft;
 use crate::RaftTypeConfig;
-use crate::impls::leader_id_std;
 use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::LeaderIdOf;
@@ -44,14 +43,23 @@ where C: RaftTypeConfig
         self.leader_id.to_committed()
     }
 
-    /// Only when the [`CommittedLeaderIdOf`] is a single term this method is allowed.
-    /// Otherwise, the user may mistakenly get the term as the entire [`CommittedLeaderIdOf`]
-    pub fn term(&self) -> C::Term
-    where C: RaftTypeConfig<LeaderId = leader_id_std::LeaderId<C>> {
-        self.leader_id.term()
-    }
-
     pub fn last_quorum_acked(&self) -> Option<InstantOf<C>> {
         self.last_quorum_acked
+    }
+}
+
+/// `Term` and `NID` are extracted as separate type parameters to avoid a rustc cycle error
+/// that occurs when using `C::Term` or `C::NodeId` inside an associated type equality constraint
+/// (e.g., `LeaderId = LeaderId<C::Term, C::NodeId>`).
+impl<Term, NID, C> Leader<C>
+where
+    Term: crate::vote::RaftTerm,
+    NID: crate::NodeId,
+    C: RaftTypeConfig<Term = Term, NodeId = NID, LeaderId = crate::impls::leader_id_std::LeaderId<Term, NID>>,
+{
+    /// Only when the [`CommittedLeaderIdOf`] is a single term this method is allowed.
+    /// Otherwise, the user may mistakenly get the term as the entire [`CommittedLeaderIdOf`]
+    pub fn term(&self) -> C::Term {
+        self.leader_id.term()
     }
 }
