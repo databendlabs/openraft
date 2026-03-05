@@ -28,7 +28,10 @@ macro_rules! func_name {
 
 mod deprecated_features;
 
+/// Deprecated: use `openraft::macros` instead. Will be removed in the next release.
 pub extern crate openraft_macros;
+pub extern crate openraft_macros as macros;
+pub extern crate openraft_rt as rt;
 
 mod change_members;
 mod config;
