@@ -1,8 +1,9 @@
 use std::fmt::Debug;
 use std::fmt::Display;
 
-use crate::RaftTypeConfig;
+use crate::NodeId;
 use crate::base::OptionalFeatures;
+use crate::vote::RaftTerm;
 use crate::vote::leader_id::raft_committed_leader_id::RaftCommittedLeaderId;
 
 /// A Leader identifier in an OpenRaft cluster.
@@ -27,9 +28,10 @@ use crate::vote::leader_id::raft_committed_leader_id::RaftCommittedLeaderId;
 /// external traits for primitive types.
 ///
 /// [`Vote`]: crate::vote::Vote
-pub trait RaftLeaderId<C>
+pub trait RaftLeaderId<Term, NID>
 where
-    C: RaftTypeConfig,
+    Term: RaftTerm,
+    NID: NodeId,
     Self: OptionalFeatures + PartialOrd + Eq + Clone + Debug + Display + 'static,
     Self: PartialOrd<Self::Committed>,
 {
@@ -39,13 +41,13 @@ where
     type Committed: RaftCommittedLeaderId;
 
     /// Create a new leader ID for the given term and node.
-    fn new(term: C::Term, node_id: C::NodeId) -> Self;
+    fn new(term: Term, node_id: NID) -> Self;
 
     /// Get the term number of this leader
-    fn term(&self) -> C::Term;
+    fn term(&self) -> Term;
 
     /// Get the node ID of this leader
-    fn node_id(&self) -> &C::NodeId;
+    fn node_id(&self) -> &NID;
 
     /// Convert this leader ID to a committed leader ID.
     ///
@@ -56,30 +58,32 @@ where
 /// Extension methods for [`RaftLeaderId`].
 ///
 /// This trait is implemented for all types that implement [`RaftLeaderId`].
-pub trait RaftLeaderIdExt<C>
+pub trait RaftLeaderIdExt<Term, NID>
 where
-    C: RaftTypeConfig,
-    Self: RaftLeaderId<C>,
+    Term: RaftTerm,
+    NID: NodeId,
+    Self: RaftLeaderId<Term, NID>,
 {
     /// Create a LeaderId with default Term and specified Node ID
-    fn new_with_default_term(node_id: C::NodeId) -> Self {
-        Self::new(C::Term::default(), node_id)
+    fn new_with_default_term(node_id: NID) -> Self {
+        Self::new(Term::default(), node_id)
     }
 
     /// Create a new committed leader ID.
-    fn new_committed(term: C::Term, node_id: C::NodeId) -> Self::Committed {
+    fn new_committed(term: Term, node_id: NID) -> Self::Committed {
         Self::new(term, node_id).to_committed()
     }
 
     /// Get the node ID of this leader as an owned value.
-    fn to_node_id(&self) -> C::NodeId {
+    fn to_node_id(&self) -> NID {
         self.node_id().clone()
     }
 }
 
-impl<C, T> RaftLeaderIdExt<C> for T
+impl<Term, NID, T> RaftLeaderIdExt<Term, NID> for T
 where
-    C: RaftTypeConfig,
-    T: RaftLeaderId<C>,
+    Term: RaftTerm,
+    NID: NodeId,
+    T: RaftLeaderId<Term, NID>,
 {
 }

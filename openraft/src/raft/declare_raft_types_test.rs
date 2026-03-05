@@ -19,7 +19,7 @@ declare_raft_types!(
         #[allow(dead_code)]
         R = (),
         Term = u64,
-        LeaderId = crate::impls::leader_id_std::LeaderId<Self>,
+        LeaderId = crate::impls::leader_id_std::LeaderId<u64, u64>,
         Entry = crate::Entry<Self>,
         Vote = crate::impls::Vote<Self>,
         SnapshotData = Cursor<Vec<u8>>,

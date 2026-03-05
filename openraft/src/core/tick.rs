@@ -172,7 +172,7 @@ mod tests {
         type NodeId = u64;
         type Node = ();
         type Term = u64;
-        type LeaderId = crate::impls::leader_id_adv::LeaderId<Self>;
+        type LeaderId = crate::impls::leader_id_adv::LeaderId<u64, u64>;
         type Vote = crate::impls::Vote<Self>;
         type Entry = crate::Entry<Self>;
         type SnapshotData = Cursor<Vec<u8>>;
