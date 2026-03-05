@@ -20,6 +20,7 @@ use crate::vote::RaftLeaderId;
 /// defined below.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
+#[cfg_attr(feature = "rkyv-storage", derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize))]
 pub struct LeaderId<C>
 where C: RaftTypeConfig
 {
@@ -139,6 +140,7 @@ where C: RaftTypeConfig
 #[display("{}", term)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 #[cfg_attr(feature = "serde", serde(transparent))]
+#[cfg_attr(feature = "rkyv-storage", derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize))]
 pub struct CommittedLeaderId<C>
 where C: RaftTypeConfig
 {
@@ -210,6 +212,18 @@ mod tests {
         assert_eq!(CommittedLeaderId::new(5), c2);
 
         Ok(())
+    }
+
+    #[cfg(feature = "rkyv-storage")]
+    #[test]
+    fn test_committed_leader_id_rkyv() {
+        use super::CommittedLeaderId;
+
+        let c = CommittedLeaderId::<UTConfig>::new(5);
+        let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&c).unwrap();
+        let c2: CommittedLeaderId<UTConfig> =
+            rkyv::from_bytes::<CommittedLeaderId<UTConfig>, rkyv::rancor::Error>(&bytes).unwrap();
+        assert_eq!(CommittedLeaderId::new(5), c2);
     }
 
     #[test]

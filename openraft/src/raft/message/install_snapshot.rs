@@ -8,6 +8,10 @@ use crate::type_config::alias::VoteOf;
 #[derive(Clone, Debug)]
 #[derive(PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
+#[cfg_attr(
+    feature = "rkyv-transport",
+    derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize)
+)]
 pub struct InstallSnapshotRequest<C: RaftTypeConfig> {
     /// The leader's current vote.
     pub vote: VoteOf<C>,
@@ -44,6 +48,10 @@ impl<C: RaftTypeConfig> fmt::Display for InstallSnapshotRequest<C> {
 #[derive(derive_more::Display)]
 #[display("{{vote:{}}}", vote)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
+#[cfg_attr(
+    feature = "rkyv-transport",
+    derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize)
+)]
 pub struct InstallSnapshotResponse<C: RaftTypeConfig> {
     /// The responder's current vote.
     pub vote: VoteOf<C>,
@@ -55,6 +63,10 @@ pub struct InstallSnapshotResponse<C: RaftTypeConfig> {
 #[derive(derive_more::Display)]
 #[display("SnapshotResponse{{vote:{}}}", vote)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
+#[cfg_attr(
+    feature = "rkyv-transport",
+    derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize)
+)]
 pub struct SnapshotResponse<C: RaftTypeConfig> {
     /// The responder's current vote.
     pub vote: VoteOf<C>,

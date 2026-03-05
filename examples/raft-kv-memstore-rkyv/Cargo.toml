@@ -1,0 +1,40 @@
+[package]
+name = "raft-kv-memstore-rkyv"
+version = "0.1.0"
+readme = "README.md"
+
+edition = "2024"
+authors = [
+    "Sainath Singineedi <sainathsingineedi2222@gmail.com>",
+]
+categories = ["algorithms", "asynchronous", "data-structures"]
+description = "An example distributed key-value store built upon `openraft`."
+homepage = "https://github.com/databendlabs/openraft"
+keywords = ["raft", "consensus"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/databendlabs/openraft"
+
+[[bin]]
+name = "raft-key-value"
+path = "src/bin/main.rs"
+
+[dependencies]
+log-mem  = { path = "../log-mem", features = [] }
+openraft = { path = "../../openraft", features = ["type-alias", "rkyv", "serde"] }
+tokio              = { version = "1.49.0", features = ["net", "io-util", "rt"] }
+clap               = { version = "4.1.11", features = ["derive", "env"] }
+futures            = { version = "0.3.31" }
+tracing            = { version = "0.1.29" }
+tracing-subscriber = { version = "0.3.0", features = ["env-filter"] }
+rkyv = { version = "0.8.15" }
+serde = { version = "1", features = ["derive"] }
+bincode = { version = "2.0.1", features = ["serde"] }
+
+[dev-dependencies]
+anyhow = { version = "1.0.63" }
+maplit = { version = "1.0.2" }
+
+[features]
+
+[package.metadata.docs.rs]
+all-features = true

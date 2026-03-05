@@ -21,6 +21,7 @@ use crate::quorum::QuorumSet;
 /// of a majority of every config.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
+#[cfg_attr(feature = "rkyv-storage", derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize))]
 pub struct Membership<C>
 where C: RaftTypeConfig
 {

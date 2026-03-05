@@ -28,6 +28,7 @@ derive_more     = { workspace = true }
 futures-util    = { workspace = true }
 maplit          = { workspace = true }
 rand            = { workspace = true }
+rkyv            = { workspace = true, optional = true }
 serde           = { workspace = true, optional = true }
 serde_json      = { workspace = true, optional = true }
 tabled          = { workspace = true, optional = true }
@@ -76,6 +77,15 @@ type-alias = []
 
 # Provide basic compatible types
 compat = []
+
+# Enables rkyv support
+rkyv = ["rkyv-storage", "rkyv-transport"]
+
+# Enables rkyv support just for storage
+rkyv-storage = ["dep:rkyv"]
+
+# Enables rkyv support just for transport
+rkyv-transport = ["dep:rkyv"]
 
 # DEPRECATED: This feature is removed since 0.10.0.
 #

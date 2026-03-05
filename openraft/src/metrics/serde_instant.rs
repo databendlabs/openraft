@@ -185,3 +185,122 @@ mod serde_impl {
         }
     }
 }
+
+#[cfg(feature = "rkyv")]
+mod rkyv_impl {
+    use std::time::SystemTime;
+
+    use chrono::DateTime;
+    use chrono::Utc;
+
+    use super::SerdeInstant;
+    use crate::Instant;
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, rkyv::Portable)]
+    #[repr(transparent)]
+    pub struct ArchivedSerdeInstant(pub rkyv::primitive::ArchivedU64);
+
+    unsafe impl<C> rkyv::bytecheck::CheckBytes<C> for ArchivedSerdeInstant
+    where
+        C: rkyv::rancor::Fallible + ?Sized,
+        rkyv::primitive::ArchivedU64: rkyv::bytecheck::CheckBytes<C>,
+    {
+        unsafe fn check_bytes(value: *const Self, context: &mut C) -> Result<(), C::Error> {
+            // SAFETY: ArchivedSerdeInstant is repr(transparent) over ArchivedU64.
+            unsafe {
+                <rkyv::primitive::ArchivedU64 as rkyv::bytecheck::CheckBytes<C>>::check_bytes(
+                    value.cast::<rkyv::primitive::ArchivedU64>(),
+                    context,
+                )
+            }
+        }
+    }
+
+    impl<I> rkyv::Archive for SerdeInstant<I>
+    where I: Instant
+    {
+        type Archived = ArchivedSerdeInstant;
+        type Resolver = u64;
+
+        fn resolve(&self, resolver: Self::Resolver, out: rkyv::Place<Self::Archived>) {
+            let archived = ArchivedSerdeInstant(rkyv::primitive::ArchivedU64::from_native(resolver));
+            // SAFETY: ArchivedSerdeInstant is repr(transparent) over ArchivedU64 and has no padding.
+            unsafe { out.write_unchecked(archived) };
+        }
+    }
+
+    impl<I, S> rkyv::Serialize<S> for SerdeInstant<I>
+    where
+        I: Instant,
+        S: rkyv::rancor::Fallible + ?Sized,
+    {
+        fn serialize(&self, _serializer: &mut S) -> Result<Self::Resolver, S::Error> {
+            // Convert Instant to SystemTime.
+            let system_time = {
+                let sys_now = SystemTime::now();
+                let now = I::now();
+
+                if now >= self.inner {
+                    let d = now - self.inner;
+                    sys_now - d
+                } else {
+                    let d = self.inner - now;
+                    sys_now + d
+                }
+            };
+
+            let datetime: DateTime<Utc> = system_time.into();
+            let nano = datetime.timestamp_nanos_opt().expect("time out of range");
+            Ok(nano as u64)
+        }
+    }
+
+    impl<I, D> rkyv::Deserialize<SerdeInstant<I>, D> for ArchivedSerdeInstant
+    where
+        I: Instant,
+        D: rkyv::rancor::Fallible + ?Sized,
+    {
+        fn deserialize(&self, _deserializer: &mut D) -> Result<SerdeInstant<I>, D::Error> {
+            let datetime = DateTime::from_timestamp_nanos(self.0.to_native() as i64);
+            let system_time: SystemTime = datetime.with_timezone(&Utc).into();
+
+            let sys_now = SystemTime::now();
+            let now = I::now();
+            let instant = if system_time > sys_now {
+                now + system_time.duration_since(sys_now).unwrap()
+            } else {
+                now - sys_now.duration_since(system_time).unwrap()
+            };
+
+            Ok(SerdeInstant { inner: instant })
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use std::time::Duration;
+
+        use super::SerdeInstant;
+        use crate::engine::testing::UTConfig;
+        use crate::type_config::TypeConfigExt;
+        use crate::type_config::alias::SerdeInstantOf;
+
+        #[test]
+        fn test_rkyv_instant() {
+            let now = UTConfig::<()>::now();
+            let serde_instant = SerdeInstant::new(now);
+
+            let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&serde_instant).unwrap();
+
+            let deserialized: SerdeInstantOf<UTConfig> =
+                rkyv::from_bytes::<SerdeInstantOf<UTConfig>, rkyv::rancor::Error>(&bytes).unwrap();
+
+            // Convert Instant to SerdeInstant is inaccurate.
+            if now > *deserialized {
+                assert!((now - *deserialized) < Duration::from_millis(5));
+            } else {
+                assert!((*deserialized - now) < Duration::from_millis(5));
+            }
+        }
+    }
+}

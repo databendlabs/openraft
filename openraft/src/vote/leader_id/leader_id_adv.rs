@@ -13,6 +13,7 @@ use crate::vote::RaftLeaderId;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[derive(PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
+#[cfg_attr(feature = "rkyv-storage", derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize))]
 pub struct LeaderId<C>
 where C: RaftTypeConfig
 {
@@ -87,6 +88,20 @@ mod tests {
         assert_eq!(LeaderIdOf::<UTConfig>::new_committed(5, 10), c2);
 
         Ok(())
+    }
+
+    #[cfg(feature = "rkyv-storage")]
+    #[test]
+    fn test_committed_leader_id_rkyv() {
+        use crate::type_config::alias::CommittedLeaderIdOf;
+        use crate::type_config::alias::LeaderIdOf;
+        use crate::vote::RaftLeaderIdExt;
+
+        let c = LeaderIdOf::<UTConfig>::new_committed(5, 10);
+        let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&c).unwrap();
+        let c2: CommittedLeaderIdOf<UTConfig> =
+            rkyv::from_bytes::<CommittedLeaderIdOf<UTConfig>, rkyv::rancor::Error>(&bytes).unwrap();
+        assert_eq!(LeaderIdOf::<UTConfig>::new_committed(5, 10), c2);
     }
 
     #[test]

@@ -1,0 +1,26 @@
+[package]
+name = "sm-mem-rkyv"
+version = "0.1.0"
+readme = "README.md"
+
+edition = "2024"
+authors = [
+    "drdr xp <drdr.xp@gmail.com>",
+]
+categories = ["algorithms", "asynchronous", "data-structures"]
+description = "An example in-memory state machine for `openraft` using rkyv snapshots."
+homepage = "https://github.com/databendlabs/openraft"
+keywords = ["raft", "consensus"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/databendlabs/openraft"
+
+[dependencies]
+futures = "0.3.31"
+# We don't need rkyv feature in this case as this is soley for storage
+openraft = { path = "../../openraft", default-features = false, features = ["type-alias", "tokio-rt"] }
+rkyv = { version = "0.8.15" }
+tracing = "0.1"
+types-kv = { path = "../types-kv" }
+
+[package.metadata.docs.rs]
+all-features = true

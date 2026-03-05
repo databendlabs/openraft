@@ -5,6 +5,7 @@ use crate::type_config::alias::LogIdOf;
 /// A small piece of information for identifying a snapshot and error tracing.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
+#[cfg_attr(feature = "rkyv-storage", derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize))]
 pub struct SnapshotSignature<C>
 where C: RaftTypeConfig
 {
@@ -39,6 +40,24 @@ mod tests {
             r#"{"last_log_id":{"leader_id":{"term":1,"node_id":2},"index":3},"last_membership_log_id":{"leader_id":{"term":4,"node_id":5},"index":6},"snapshot_id":"test"}"#
         );
         let sig2: SnapshotSignature<UTConfig> = serde_json::from_str(&s).unwrap();
+        assert_eq!(sig, sig2);
+    }
+
+    #[cfg(feature = "rkyv-storage")]
+    #[test]
+    fn test_snapshot_signature_rkyv() {
+        use super::SnapshotSignature;
+        use crate::engine::testing::UTConfig;
+        use crate::engine::testing::log_id;
+
+        let sig = SnapshotSignature {
+            last_log_id: Some(log_id(1, 2, 3)),
+            last_membership_log_id: Some(Box::new(log_id(4, 5, 6))),
+            snapshot_id: "test".to_string(),
+        };
+        let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&sig).unwrap();
+        let sig2: SnapshotSignature<UTConfig> =
+            rkyv::from_bytes::<SnapshotSignature<UTConfig>, rkyv::rancor::Error>(&bytes).unwrap();
         assert_eq!(sig, sig2);
     }
 }

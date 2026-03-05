@@ -14,6 +14,7 @@ use crate::type_config::alias::LogIdOf;
 /// and a snapshot id.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
+#[cfg_attr(feature = "rkyv-storage", derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize))]
 pub struct SnapshotMeta<C>
 where C: RaftTypeConfig
 {

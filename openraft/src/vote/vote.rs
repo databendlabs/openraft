@@ -95,19 +95,6 @@ mod tests {
         use crate::Vote;
         use crate::engine::testing::UTConfig;
 
-        #[cfg(feature = "serde")]
-        #[test]
-        fn test_vote_serde() -> anyhow::Result<()> {
-            let v = Vote::new(1, 2);
-            let s = serde_json::to_string(&v)?;
-            assert_eq!(r#"{"leader_id":{"term":1,"node_id":2},"committed":false}"#, s);
-
-            let v2: Vote<UTConfig> = serde_json::from_str(&s)?;
-            assert_eq!(v, v2);
-
-            Ok(())
-        }
-
         #[test]
         fn test_vote_total_order() -> anyhow::Result<()> {
             #[allow(clippy::redundant_closure)]

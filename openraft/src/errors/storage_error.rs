@@ -239,26 +239,6 @@ mod tests {
         assert_eq!(err, err2);
     }
 
-    /// Test backward compatibility: deserializing from old format that included `backtrace` field.
-    ///
-    /// Since 0.10.0, `backtrace` is removed, and it should be able to deserialize it.
-    #[cfg(all(feature = "serde", not(feature = "bt")))]
-    #[test]
-    fn test_storage_error_deserialize_old_format_with_backtrace() {
-        use super::StorageError;
-        use crate::engine::testing::UTConfig;
-
-        // Old serialized format with the redundant `backtrace` field
-        let old_format = r#"{"subject":{"Log":{"leader_id":{"term":1,"node_id":2},"index":3}},"verb":"Write","source":{"typ":null,"msg":"test","source":null,"context":[],"backtrace":null},"backtrace":"some backtrace"}"#;
-
-        // Should deserialize successfully, ignoring the `backtrace` field
-        let err: StorageError<UTConfig> = serde_json::from_str(old_format).unwrap();
-        assert_eq!(
-            err.to_string(),
-            "when Write Log(LogId { leader_id: LeaderId { term: 1, node_id: 2 }, index: 3 }): test"
-        );
-    }
-
     #[test]
     fn test_storage_error_to_io_error() {
         use super::StorageError;

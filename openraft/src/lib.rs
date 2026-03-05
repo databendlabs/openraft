@@ -74,6 +74,8 @@ pub mod vote;
 pub use errors as error;
 
 #[cfg(test)]
+mod feature_rkyv_test;
+#[cfg(test)]
 mod feature_serde_test;
 
 use std::fmt;

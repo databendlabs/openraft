@@ -49,6 +49,7 @@ use crate::type_config::alias::CommittedLeaderIdOf;
 /// two parts: a leader id, which refers to the leader that proposed this log, and an integer index.
 #[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
+#[cfg_attr(feature = "rkyv-storage", derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize))]
 pub struct LogId<C>
 where C: RaftTypeConfig
 {

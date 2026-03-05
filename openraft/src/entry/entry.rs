@@ -10,6 +10,7 @@ use crate::type_config::alias::LogIdOf;
 
 /// A Raft log entry.
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
+#[cfg_attr(feature = "rkyv-storage", derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize))]
 pub struct Entry<C>
 where C: RaftTypeConfig
 {

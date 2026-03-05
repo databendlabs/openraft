@@ -32,6 +32,7 @@ pretty_assertions  = { version = "1.0.0" }
 proc-macro2        = { version = "1.0" }
 quote              = { version = "1.0" }
 rand               = { version = "0.9" }
+rkyv               = { version = "0.8.15" }
 semver             = { version = "1.0.14" }
 serde              = { version = "1.0.114", features = ["derive", "rc"] }
 serde_json         = { version = "1.0.57" }
@@ -82,10 +83,13 @@ exclude = [
 
     "examples/log-mem",
     "examples/sm-mem",
+    "examples/sm-mem-rkyv",
     "examples/rocksstore",
     "examples/types-kv",
+    "examples/types-kv-rkyv",
 
     "examples/raft-kv-memstore",
+    "examples/raft-kv-memstore-rkyv",
     "examples/raft-kv-memstore-grpc",
     "examples/raft-kv-memstore-single-threaded",
     "examples/raft-kv-memstore-network-v2",
