@@ -80,7 +80,7 @@ openraft::declare_raft_types!(
         R = (),
         NodeId = NodeId,
         Node = (),
-        LeaderId = openraft::impls::leader_id_adv::LeaderId<TypeConfig>,
+        LeaderId = openraft::impls::leader_id_adv::LeaderId<Self::Term, Self::NodeId>,
 );
 
 // ── State machine ────────────────────────────────────────────────────────────

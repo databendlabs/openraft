@@ -156,7 +156,7 @@ use crate::vote::raft_vote::RaftVoteExt;
 ///        NodeId       = u64,
 ///        Node         = openraft::BasicNode,
 ///        Term         = u64,
-///        LeaderId     = openraft::impls::leader_id_adv::LeaderId<Self>,
+///        LeaderId     = openraft::impls::leader_id_adv::LeaderId<Self::Term, Self::NodeId>,
 ///        Vote           = openraft::impls::Vote<Self>,
 ///        Entry          = openraft::Entry<Self>,
 ///        SnapshotData   = Cursor<Vec<u8>>,
@@ -171,7 +171,7 @@ use crate::vote::raft_vote::RaftVoteExt;
 /// - `NodeId`:       `u64`
 /// - `Node`:         `::openraft::impls::BasicNode`
 /// - `Term`:         `u64`
-/// - `LeaderId`:     `::openraft::impls::leader_id_adv::LeaderId<Self>`
+/// - `LeaderId`:     `::openraft::impls::leader_id_adv::LeaderId<Self::Term, Self::NodeId>`
 /// - `Vote`:           `::openraft::impls::Vote<Self>`
 /// - `Entry`:          `::openraft::impls::Entry<Self>`
 /// - `SnapshotData`:   `Cursor<Vec<u8>>`
@@ -221,7 +221,7 @@ macro_rules! declare_raft_types {
                 (NodeId       , , u64                                          ),
                 (Node         , , $crate::impls::BasicNode                     ),
                 (Term         , , u64                                          ),
-                (LeaderId     , , $crate::impls::leader_id_adv::LeaderId<Self> ),
+                (LeaderId     , , $crate::impls::leader_id_adv::LeaderId<Self::Term, Self::NodeId> ),
                 (Vote           , , $crate::impls::Vote<Self>                    ),
                 (Entry          , , $crate::impls::Entry<Self>                   ),
                 (SnapshotData   , , std::io::Cursor<Vec<u8>>                     ),

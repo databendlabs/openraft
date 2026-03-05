@@ -40,8 +40,11 @@ pub use log_id_option_ext::LogIdOptionExt;
 pub use log_index_option_ext::LogIndexOptionExt;
 
 pub use self::raft_log_id::RaftLogId;
+use crate::NodeId;
 use crate::RaftTypeConfig;
 use crate::type_config::alias::CommittedLeaderIdOf;
+use crate::vote::RaftTerm;
+use crate::vote::leader_id_std;
 
 /// The identity of a raft log.
 ///
@@ -117,8 +120,15 @@ where C: RaftTypeConfig
 }
 
 /// Methods available only when using `leader_id_std::LeaderId`.
-impl<C> LogId<C>
-where C: RaftTypeConfig<LeaderId = crate::vote::leader_id_std::LeaderId<C>>
+///
+/// `Term` and `NID` are extracted as separate type parameters to avoid a rustc cycle error
+/// that occurs when using `C::Term` or `C::NodeId` inside an associated type equality constraint
+/// (e.g., `LeaderId = LeaderId<C::Term, C::NodeId>`).
+impl<Term, NID, C> LogId<C>
+where
+    Term: RaftTerm,
+    NID: NodeId,
+    C: RaftTypeConfig<Term = Term, NodeId = NID, LeaderId = leader_id_std::LeaderId<Term, NID>>,
 {
     /// Creates a log id from a term and index.
     ///
@@ -133,7 +143,7 @@ where C: RaftTypeConfig<LeaderId = crate::vote::leader_id_std::LeaderId<C>>
     /// ```
     pub fn new_term_index(term: C::Term, index: u64) -> Self {
         LogId {
-            leader_id: crate::vote::leader_id_std::CommittedLeaderId::new(term),
+            leader_id: leader_id_std::CommittedLeaderId::new(term),
             index,
         }
     }
@@ -143,9 +153,9 @@ where C: RaftTypeConfig<LeaderId = crate::vote::leader_id_std::LeaderId<C>>
 mod tests {
     use crate::declare_raft_types;
     use crate::log_id::raft_log_id::RaftLogId;
-    use crate::vote::leader_id_std::CommittedLeaderId;
+    use crate::type_config::alias::CommittedLeaderIdOf;
 
-    declare_raft_types!(pub TestConfig: LeaderId=crate::vote::leader_id_std::LeaderId<Self>, Term=u64);
+    declare_raft_types!(pub TestConfig: LeaderId=crate::vote::leader_id_std::LeaderId<Self::Term, Self::NodeId>, Term=u64);
 
     #[test]
     fn test_new_term_index() {
@@ -157,7 +167,7 @@ mod tests {
     #[test]
     fn test_new_term_index_equivalence() {
         let log_id1 = super::LogId::<TestConfig>::new_term_index(5, 100);
-        let log_id2 = super::LogId::<TestConfig>::new(CommittedLeaderId::<TestConfig>::new(5), 100);
+        let log_id2 = super::LogId::<TestConfig>::new(CommittedLeaderIdOf::<TestConfig>::new(5), 100);
         assert_eq!(log_id1.index(), log_id2.index());
         assert_eq!(**log_id1.committed_leader_id(), **log_id2.committed_leader_id());
     }

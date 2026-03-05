@@ -95,7 +95,7 @@ openraft::declare_raft_types!(
         D = ClientRequest,
         R = ClientResponse,
         Node = (),
-        LeaderId = leader_id_mode::LeaderId<TypeConfig>,
+        LeaderId = leader_id_mode::LeaderId<Self::Term, Self::NodeId>,
 );
 
 /// The application snapshot type which the `MemStore` works with.

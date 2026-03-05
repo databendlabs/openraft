@@ -64,7 +64,7 @@ impl RaftTypeConfig for TypeConfig {
     type NodeId = u64;
     type Node = ();
     type Term = u64;
-    type LeaderId = leader_id_mode::LeaderId<TypeConfig>;
+    type LeaderId = leader_id_mode::LeaderId<u64, u64>;
     type Vote = Vote<Self>;
     type Entry = Entry<Self>;
     type SnapshotData = Cursor<Vec<u8>>;

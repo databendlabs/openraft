@@ -3,14 +3,14 @@
 
 use std::cmp::Ordering;
 use std::fmt;
-use std::marker::PhantomData;
 use std::ops::Deref;
 use std::ops::DerefMut;
 
-use crate::RaftTypeConfig;
+use crate::NodeId;
 use crate::display_ext::DisplayOptionExt;
 use crate::vote::LeaderIdCompare;
 use crate::vote::RaftLeaderId;
+use crate::vote::RaftTerm;
 
 /// ID of a `leader`, enforcing a single leader per term.
 ///
@@ -20,46 +20,56 @@ use crate::vote::RaftLeaderId;
 /// defined below.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub struct LeaderId<C>
-where C: RaftTypeConfig
+pub struct LeaderId<Term, NID>
+where
+    Term: RaftTerm,
+    NID: NodeId,
 {
     /// The term of the leader.
-    pub term: C::Term,
+    pub term: Term,
 
     /// The node ID that was voted for in this term.
-    pub voted_for: Option<C::NodeId>,
+    pub voted_for: Option<NID>,
 }
 
-impl<C> PartialOrd for LeaderId<C>
-where C: RaftTypeConfig
+impl<Term, NID> PartialOrd for LeaderId<Term, NID>
+where
+    Term: RaftTerm,
+    NID: NodeId,
 {
     #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        LeaderIdCompare::<C>::std(self, other)
+        LeaderIdCompare::<Term, NID>::std(self, other)
     }
 }
 
-impl<C> fmt::Display for LeaderId<C>
-where C: RaftTypeConfig
+impl<Term, NID> fmt::Display for LeaderId<Term, NID>
+where
+    Term: RaftTerm,
+    NID: NodeId,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "T{}-N{}", self.term, self.voted_for.display())
     }
 }
 
-impl<C> PartialEq<CommittedLeaderId<C>> for LeaderId<C>
-where C: RaftTypeConfig
+impl<Term, NID> PartialEq<CommittedLeaderId<Term>> for LeaderId<Term, NID>
+where
+    Term: RaftTerm,
+    NID: NodeId,
 {
-    fn eq(&self, _other: &CommittedLeaderId<C>) -> bool {
+    fn eq(&self, _other: &CommittedLeaderId<Term>) -> bool {
         // Committed and non-committed are never equal
         false
     }
 }
 
-impl<C> PartialOrd<CommittedLeaderId<C>> for LeaderId<C>
-where C: RaftTypeConfig
+impl<Term, NID> PartialOrd<CommittedLeaderId<Term>> for LeaderId<Term, NID>
+where
+    Term: RaftTerm,
+    NID: NodeId,
 {
-    fn partial_cmp(&self, other: &CommittedLeaderId<C>) -> Option<Ordering> {
+    fn partial_cmp(&self, other: &CommittedLeaderId<Term>) -> Option<Ordering> {
         if self.term == other.term {
             // For the same term, committed Leader overrides non-committed
             Some(Ordering::Less)
@@ -72,10 +82,12 @@ where C: RaftTypeConfig
 /// Reciprocal comparison: `CommittedLeaderId` compared with `LeaderId`.
 ///
 /// Not required by [`RaftLeaderId`] trait bound, but provides symmetric comparison semantics.
-impl<C> PartialEq<LeaderId<C>> for CommittedLeaderId<C>
-where C: RaftTypeConfig
+impl<Term, NID> PartialEq<LeaderId<Term, NID>> for CommittedLeaderId<Term>
+where
+    Term: RaftTerm,
+    NID: NodeId,
 {
-    fn eq(&self, _other: &LeaderId<C>) -> bool {
+    fn eq(&self, _other: &LeaderId<Term, NID>) -> bool {
         false
     }
 }
@@ -83,10 +95,12 @@ where C: RaftTypeConfig
 /// Reciprocal comparison: `CommittedLeaderId` compared with `LeaderId`.
 ///
 /// Not required by [`RaftLeaderId`] trait bound, but provides symmetric comparison semantics.
-impl<C> PartialOrd<LeaderId<C>> for CommittedLeaderId<C>
-where C: RaftTypeConfig
+impl<Term, NID> PartialOrd<LeaderId<Term, NID>> for CommittedLeaderId<Term>
+where
+    Term: RaftTerm,
+    NID: NodeId,
 {
-    fn partial_cmp(&self, other: &LeaderId<C>) -> Option<Ordering> {
+    fn partial_cmp(&self, other: &LeaderId<Term, NID>) -> Option<Ordering> {
         if self.term == other.term {
             Some(Ordering::Greater)
         } else {
@@ -95,23 +109,25 @@ where C: RaftTypeConfig
     }
 }
 
-impl<C> RaftLeaderId<C> for LeaderId<C>
-where C: RaftTypeConfig
+impl<Term, NID> RaftLeaderId<Term, NID> for LeaderId<Term, NID>
+where
+    Term: RaftTerm,
+    NID: NodeId,
 {
-    type Committed = CommittedLeaderId<C>;
+    type Committed = CommittedLeaderId<Term>;
 
-    fn new(term: C::Term, node_id: C::NodeId) -> Self {
+    fn new(term: Term, node_id: NID) -> Self {
         Self {
             term,
             voted_for: Some(node_id),
         }
     }
 
-    fn term(&self) -> C::Term {
+    fn term(&self) -> Term {
         self.term
     }
 
-    fn node_id(&self) -> &C::NodeId {
+    fn node_id(&self) -> &NID {
         self.voted_for.as_ref().unwrap()
     }
 
@@ -131,7 +147,7 @@ where C: RaftTypeConfig
 /// be removed from `(term, voted_for)` once it is granted. This is why standard Raft stores just a
 /// `term` in log entry to identify the Leader proposing the log entry.
 ///
-/// In std mode, `CommittedLeaderId` is just a wrapper of `C::Term`, which is an integer in most
+/// In std mode, `CommittedLeaderId` is just a wrapper of `Term`, which is an integer in most
 /// cases (u64, u32, u16, u8, i64, i32, i16, i8).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[derive(PartialOrd, Ord)]
@@ -139,35 +155,35 @@ where C: RaftTypeConfig
 #[display("{}", term)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 #[cfg_attr(feature = "serde", serde(transparent))]
-pub struct CommittedLeaderId<C>
-where C: RaftTypeConfig
+#[repr(transparent)]
+pub struct CommittedLeaderId<Term>
+where Term: RaftTerm
 {
     /// The term of the committed leader.
-    pub term: C::Term,
-    p: PhantomData<C>,
+    pub term: Term,
 }
 
-impl<C> CommittedLeaderId<C>
-where C: RaftTypeConfig
+impl<Term> CommittedLeaderId<Term>
+where Term: RaftTerm
 {
     /// Create a new committed leader ID for the given term.
-    pub fn new(term: C::Term) -> Self {
-        Self { term, p: PhantomData }
+    pub fn new(term: Term) -> Self {
+        Self { term }
     }
 }
 
-impl<C> Deref for CommittedLeaderId<C>
-where C: RaftTypeConfig
+impl<Term> Deref for CommittedLeaderId<Term>
+where Term: RaftTerm
 {
-    type Target = C::Term;
+    type Target = Term;
 
     fn deref(&self) -> &Self::Target {
         &self.term
     }
 }
 
-impl<C> DerefMut for CommittedLeaderId<C>
-where C: RaftTypeConfig
+impl<Term> DerefMut for CommittedLeaderId<Term>
+where Term: RaftTerm
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.term
@@ -176,25 +192,22 @@ where C: RaftTypeConfig
 
 #[rustfmt::skip]
 mod impl_from_int {
-use std::marker::PhantomData;
-use crate::RaftTypeConfig;
     use crate::vote::leader_id_std::CommittedLeaderId;
 
-    impl<C: RaftTypeConfig<Term=u64>> From<u64> for CommittedLeaderId<C> {fn from(term: u64) -> Self {Self {term, p: PhantomData}}}
-    impl<C: RaftTypeConfig<Term=u32>> From<u32> for CommittedLeaderId<C> {fn from(term: u32) -> Self {Self {term, p: PhantomData}}}
-    impl<C: RaftTypeConfig<Term=u16>> From<u16> for CommittedLeaderId<C> {fn from(term: u16) -> Self {Self {term, p: PhantomData}}}
-    impl<C: RaftTypeConfig<Term=u8>>  From<u8>  for CommittedLeaderId<C> {fn from(term: u8)  -> Self {Self {term, p: PhantomData}}}
-    impl<C: RaftTypeConfig<Term=i64>> From<i64> for CommittedLeaderId<C> {fn from(term: i64) -> Self {Self {term, p: PhantomData}}}
-    impl<C: RaftTypeConfig<Term=i32>> From<i32> for CommittedLeaderId<C> {fn from(term: i32) -> Self {Self {term, p: PhantomData}}}
-    impl<C: RaftTypeConfig<Term=i16>> From<i16> for CommittedLeaderId<C> {fn from(term: i16) -> Self {Self {term, p: PhantomData}}}
-    impl<C: RaftTypeConfig<Term=i8>>  From<i8>  for CommittedLeaderId<C> {fn from(term: i8)  -> Self {Self {term, p: PhantomData}}}
+    impl From<u64> for CommittedLeaderId<u64> {fn from(term: u64) -> Self {Self {term}}}
+    impl From<u32> for CommittedLeaderId<u32> {fn from(term: u32) -> Self {Self {term}}}
+    impl From<u16> for CommittedLeaderId<u16> {fn from(term: u16) -> Self {Self {term}}}
+    impl From<u8>  for CommittedLeaderId<u8>  {fn from(term: u8)  -> Self {Self {term}}}
+    impl From<i64> for CommittedLeaderId<i64> {fn from(term: i64) -> Self {Self {term}}}
+    impl From<i32> for CommittedLeaderId<i32> {fn from(term: i32) -> Self {Self {term}}}
+    impl From<i16> for CommittedLeaderId<i16> {fn from(term: i16) -> Self {Self {term}}}
+    impl From<i8>  for CommittedLeaderId<i8>  {fn from(term: i8)  -> Self {Self {term}}}
 }
 
 #[cfg(test)]
 #[allow(clippy::nonminimal_bool)]
 mod tests {
     use super::LeaderId;
-    use crate::engine::testing::UTConfig;
     use crate::vote::RaftLeaderId;
 
     #[cfg(feature = "serde")]
@@ -202,11 +215,11 @@ mod tests {
     fn test_committed_leader_id_serde() -> anyhow::Result<()> {
         use super::CommittedLeaderId;
 
-        let c = CommittedLeaderId::<UTConfig>::new(5);
+        let c = CommittedLeaderId::<u64>::new(5);
         let s = serde_json::to_string(&c)?;
         assert_eq!(r#"5"#, s);
 
-        let c2: CommittedLeaderId<UTConfig> = serde_json::from_str(&s)?;
+        let c2: CommittedLeaderId<u64> = serde_json::from_str(&s)?;
         assert_eq!(CommittedLeaderId::new(5), c2);
 
         Ok(())
@@ -216,7 +229,7 @@ mod tests {
     #[allow(clippy::neg_cmp_op_on_partial_ord)]
     fn test_std_leader_id_partial_order() -> anyhow::Result<()> {
         #[allow(clippy::redundant_closure)]
-        let lid = |term, node_id| LeaderId::<UTConfig>::new(term, node_id);
+        let lid = |term, node_id| LeaderId::<u64, u64>::new(term, node_id);
 
         // Compare term first
         assert!(lid(2, 2) > lid(1, 2));
@@ -240,8 +253,8 @@ mod tests {
     fn test_leader_id_vs_committed_partial_order() -> anyhow::Result<()> {
         use super::CommittedLeaderId;
 
-        let lid = |term, node_id| LeaderId::<UTConfig>::new(term, node_id);
-        let clid = |term| CommittedLeaderId::<UTConfig>::new(term);
+        let lid = |term, node_id| LeaderId::<u64, u64>::new(term, node_id);
+        let clid = |term| CommittedLeaderId::<u64>::new(term);
 
         // PartialEq: LeaderId and CommittedLeaderId are never equal
         assert!(lid(2, 2) != clid(2));
@@ -262,8 +275,8 @@ mod tests {
     fn test_committed_vs_leader_id_partial_order() -> anyhow::Result<()> {
         use super::CommittedLeaderId;
 
-        let lid = |term, node_id| LeaderId::<UTConfig>::new(term, node_id);
-        let clid = |term| CommittedLeaderId::<UTConfig>::new(term);
+        let lid = |term, node_id| LeaderId::<u64, u64>::new(term, node_id);
+        let clid = |term| CommittedLeaderId::<u64>::new(term);
 
         // PartialEq: CommittedLeaderId and LeaderId are never equal (symmetric)
         assert!(clid(2) != lid(2, 2));
@@ -287,7 +300,7 @@ mod tests {
     fn test_committed_leader_id_deref() -> anyhow::Result<()> {
         use super::CommittedLeaderId;
 
-        let clid = CommittedLeaderId::<UTConfig>::new(5);
+        let clid = CommittedLeaderId::<u64>::new(5);
         assert_eq!(5, *clid);
 
         let term_ref: &u64 = &clid;
@@ -300,7 +313,7 @@ mod tests {
     fn test_committed_leader_id_deref_mut() -> anyhow::Result<()> {
         use super::CommittedLeaderId;
 
-        let mut clid = CommittedLeaderId::<UTConfig>::new(5);
+        let mut clid = CommittedLeaderId::<u64>::new(5);
         *clid = 10;
         assert_eq!(10, *clid);
         assert_eq!(CommittedLeaderId::new(10), clid);
@@ -313,25 +326,23 @@ mod tests {
         use super::CommittedLeaderId;
 
         macro_rules! test_from {
-            ($config:ident, $term_type:ty, $value:expr) => {{
-                crate::declare_raft_types!($config: D=u64, R=(), LeaderId=super::LeaderId<$config>, Term=$term_type);
-
-                let clid: CommittedLeaderId<$config> = $value.into();
+            ($term_type:ty, $value:expr) => {{
+                let clid: CommittedLeaderId<$term_type> = $value.into();
                 assert_eq!(CommittedLeaderId::new($value), clid);
 
-                let clid = CommittedLeaderId::<$config>::from($value);
+                let clid = CommittedLeaderId::<$term_type>::from($value);
                 assert_eq!(CommittedLeaderId::new($value), clid);
             }};
         }
 
-        test_from!(TcU64, u64, 5u64);
-        test_from!(TcU32, u32, 5u32);
-        test_from!(TcU16, u16, 5u16);
-        test_from!(TcU8, u8, 5u8);
-        test_from!(TcI64, i64, 5i64);
-        test_from!(TcI32, i32, 5i32);
-        test_from!(TcI16, i16, 5i16);
-        test_from!(TcI8, i8, 5i8);
+        test_from!(u64, 5u64);
+        test_from!(u32, 5u32);
+        test_from!(u16, 5u16);
+        test_from!(u8, 5u8);
+        test_from!(i64, 5i64);
+        test_from!(i32, 5i32);
+        test_from!(i16, 5i16);
+        test_from!(i8, 5i8);
 
         Ok(())
     }

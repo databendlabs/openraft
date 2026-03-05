@@ -57,7 +57,7 @@ use crate::vote::raft_vote::RaftVote;
 ///         NodeId           = u64,
 ///         Node             = openraft::impls::BasicNode,
 ///         Term             = u64,
-///         LeaderId         = openraft::impls::leader_id_adv::LeaderId<Self>,
+///         LeaderId         = openraft::impls::leader_id_adv::LeaderId<Self::Term, Self::NodeId>,
 ///         Vote             = openraft::impls::Vote<Self>,
 ///         Entry            = openraft::impls::Entry<Self>,
 ///         SnapshotData     = Cursor<Vec<u8>>,
@@ -106,7 +106,7 @@ pub trait RaftTypeConfig:
     type Term: RaftTerm;
 
     /// A Leader identifier in a cluster.
-    type LeaderId: RaftLeaderId<Self>;
+    type LeaderId: RaftLeaderId<Self::Term, Self::NodeId>;
 
     /// Raft vote type.
     ///
@@ -219,7 +219,7 @@ pub mod alias {
 
     // Usually used types
     pub type LogIdOf<C> = LogId<C>;
-    pub type CommittedLeaderIdOf<C> = <LeaderIdOf<C> as RaftLeaderId<C>>::Committed;
+    pub type CommittedLeaderIdOf<C> = <LeaderIdOf<C> as RaftLeaderId<TermOf<C>, NodeIdOf<C>>>::Committed;
     pub type EntryPayloadOf<C> = EntryPayload<C>;
     pub type SerdeInstantOf<C> = crate::metrics::SerdeInstant<InstantOf<C>>;
 }
