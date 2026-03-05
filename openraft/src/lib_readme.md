@@ -30,8 +30,9 @@ Openraft supports several feature flags to customize functionality:
 
 **Serialization**:
 - `serde` - Add `serde::Serialize` and `serde::Deserialize` bounds to data types
+- `rkyv` - Add `rkyv::Archive`, `rkyv::Serialize`, and `rkyv::Deserialize` bounds to data types
 - `rkyv-storage` - Add `rkyv::Archive`, `rkyv::Serialize`, and `rkyv::Deserialize` bounds to storage data types
-- `rkyv` - Add `rkyv::Archive`, `rkyv::Serialize`, and `rkyv::Deserialize` bounds to data types (Currently just rkyv-storage)
+- `rkyv-transport` - Add `rkyv::Archive`, `rkyv::Serialize`, and `rkyv::Deserialize` bounds to transport data types
 
 **Error handling**:
 - `bt` - Enable error backtraces (requires nightly Rust)

@@ -26,6 +26,10 @@ pub type WriteResult<C> = Result<WriteResponse<C>, ForwardToLeader<C>>;
     derive(serde::Deserialize, serde::Serialize),
     serde(bound = "C::R: crate::AppDataResponse")
 )]
+#[cfg_attr(
+    feature = "rkyv-transport",
+    derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize)
+)]
 pub struct WriteResponse<C: RaftTypeConfig> {
     /// The log ID of the applied entry.
     pub log_id: LogIdOf<C>,

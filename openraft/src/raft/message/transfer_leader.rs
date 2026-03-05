@@ -9,6 +9,10 @@ use crate::type_config::alias::VoteOf;
 #[derive(Clone, Debug)]
 #[derive(PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
+#[cfg_attr(
+    feature = "rkyv-transport",
+    derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize)
+)]
 pub struct TransferLeaderRequest<C>
 where C: RaftTypeConfig
 {
