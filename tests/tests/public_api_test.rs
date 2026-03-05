@@ -175,6 +175,10 @@ use openraft::log_id::LogId as LogIdModule;
 use openraft::log_id::LogIdOptionExt as LogIdOptionExtModule;
 use openraft::log_id::LogIndexOptionExt as LogIndexOptionExtModule;
 // =============================================================================
+// Re-exported crates: openraft::macros (openraft-macros)
+// =============================================================================
+use openraft::macros;
+// =============================================================================
 // membership module exports
 // =============================================================================
 use openraft::membership::EffectiveMembership as EffectiveMembershipModule;
@@ -228,6 +232,12 @@ use openraft::raft::responder::Responder;
 use openraft::raft::trigger;
 use openraft::raft::trigger::Trigger;
 // =============================================================================
+// Re-exported crates: openraft::rt (openraft-rt)
+// =============================================================================
+use openraft::rt;
+use openraft::rt::AsyncRuntime as RtAsyncRuntime;
+use openraft::rt::Instant as RtInstant;
+// =============================================================================
 // storage module exports
 // =============================================================================
 use openraft::storage::ApplyResponder;
@@ -266,7 +276,6 @@ use openraft::type_config::async_runtime as type_config_async_runtime;
 use openraft::vote::RaftLeaderId;
 use openraft::vote::RaftTerm;
 use openraft::vote::Vote as VoteModule;
-
 // =============================================================================
 // Macros
 // =============================================================================

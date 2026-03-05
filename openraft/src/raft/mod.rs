@@ -210,7 +210,7 @@ macro_rules! declare_raft_types {
             // `expand!(KEYED, ...)` ignores the duplicates.
             // Thus by appending default types after user defined types,
             // the absent user defined types are filled with default types.
-            $crate::openraft_macros::expand!(
+            $crate::macros::expand!(
                 KEYED,
                 (T, ATTR, V) => {ATTR type T = V;},
                 $(($type_id, $(#[$inner])*, $type),)*
