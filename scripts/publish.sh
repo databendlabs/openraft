@@ -41,8 +41,8 @@ for crate in "${CRATES[@]}"; do
     echo ""
     echo "--- $name $version ($crate/) ---"
 
-    # Check if this version already exists on crates.io
-    if cargo info "${name}@${version}" &>/dev/null; then
+    # Check if this version already exists on crates.io (query remote API)
+    if curl -sf "https://crates.io/api/v1/crates/${name}/${version}" -o /dev/null; then
         echo "Already published, skipping."
         continue
     fi
