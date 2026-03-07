@@ -1,10 +1,9 @@
-use std::any::Any;
 use std::fmt;
 use std::fmt::Debug;
 use std::fmt::Formatter;
 
 use crate::RaftTypeConfig;
-use crate::base::BoxMaybeAsyncOnceMut;
+use crate::base::BoxAsyncOnceMut;
 use crate::engine::SMCommandName;
 use crate::raft::responder::core_responder::CoreResponder;
 use crate::raft_state::IOId;
@@ -15,7 +14,7 @@ use crate::type_config::alias::OneshotSenderOf;
 use crate::type_config::alias::SnapshotDataOf;
 
 /// The payload of a state machine command.
-pub(crate) enum Command<C>
+pub(crate) enum Command<C, SM = ()>
 where C: RaftTypeConfig
 {
     /// Instruct the state machine to create a snapshot based on its most recent view.
@@ -52,21 +51,15 @@ where C: RaftTypeConfig
         client_resp_channels: Vec<(u64, CoreResponder<C>)>,
     },
 
-    /// Apply a custom function to the state machine.
+    /// Apply a typed function to the state machine.
     ///
-    /// To erase the type parameter `SM`, it is a
-    /// `Box<dyn FnOnce(&mut SM) -> Box<dyn Future<Output = ()>> + Send + 'static>`
-    /// where `SM` has been upcast to `Any`.
-    /// If the argument provided to `func` is not of type `SM`, it returns `None`, rather than
-    /// returning the user-provided future.
-    Func {
-        func: BoxMaybeAsyncOnceMut<'static, dyn Any>,
-        /// The SM type user specified, for debug purpose.
-        input_sm_type: &'static str,
+    /// The function receives a mutable reference to the concrete state machine type `SM`.
+    ExternalFunc {
+        func: BoxAsyncOnceMut<'static, SM>,
     },
 }
 
-impl<C> Command<C>
+impl<C, SM> Command<C, SM>
 where C: RaftTypeConfig
 {
     #[allow(dead_code)]
@@ -77,7 +70,7 @@ where C: RaftTypeConfig
             Command::BeginReceivingSnapshot { .. } => SMCommandName::BeginReceivingSnapshot,
             Command::InstallFullSnapshot { .. } => SMCommandName::InstallFullSnapshot,
             Command::Apply { .. } => SMCommandName::Apply,
-            Command::Func { .. } => SMCommandName::Func,
+            Command::ExternalFunc { .. } => SMCommandName::ExternalFunc,
         }
     }
 
@@ -121,7 +114,7 @@ where C: RaftTypeConfig
             Command::BeginReceivingSnapshot { .. } => None,
             Command::InstallFullSnapshot { log_io_id, .. } => Some(IOId::Log(log_io_id.clone())),
             Command::Apply { .. } => None,
-            Command::Func { .. } => None,
+            Command::ExternalFunc { .. } => None,
         }
     }
 
@@ -137,7 +130,7 @@ where C: RaftTypeConfig
             Command::BeginReceivingSnapshot { .. } => None,
             Command::InstallFullSnapshot { log_io_id, .. } => log_io_id.last_log_id().cloned(),
             Command::Apply { last, .. } => Some(last.clone()),
-            Command::Func { .. } => None,
+            Command::ExternalFunc { .. } => None,
         }
     }
 
@@ -155,12 +148,12 @@ where C: RaftTypeConfig
             Command::BeginReceivingSnapshot { .. } => None,
             Command::InstallFullSnapshot { snapshot, .. } => snapshot.meta.last_log_id.clone(),
             Command::Apply { .. } => None,
-            Command::Func { .. } => None,
+            Command::ExternalFunc { .. } => None,
         }
     }
 }
 
-impl<C> Debug for Command<C>
+impl<C, SM> Debug for Command<C, SM>
 where C: RaftTypeConfig
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
@@ -177,12 +170,12 @@ where C: RaftTypeConfig
                 write!(f, "BeginReceivingSnapshot")
             }
             Command::Apply { first, last, .. } => write!(f, "Apply: [{},{}]", first, last),
-            Command::Func { .. } => write!(f, "Func"),
+            Command::ExternalFunc { .. } => write!(f, "ExternalFunc"),
         }
     }
 }
 
-impl<C> fmt::Display for Command<C>
+impl<C, SM> fmt::Display for Command<C, SM>
 where C: RaftTypeConfig
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
@@ -199,13 +192,13 @@ where C: RaftTypeConfig
                 write!(f, "BeginReceivingSnapshot")
             }
             Command::Apply { first, last, .. } => write!(f, "Apply: [{},{}]", first, last),
-            Command::Func { .. } => write!(f, "Func"),
+            Command::ExternalFunc { .. } => write!(f, "ExternalFunc"),
         }
     }
 }
 
 // `PartialEq` is only used for testing
-impl<C> PartialEq for Command<C>
+impl<C, SM> PartialEq for Command<C, SM>
 where C: RaftTypeConfig
 {
     fn eq(&self, other: &Self) -> bool {
@@ -231,7 +224,7 @@ where C: RaftTypeConfig
                     ..
                 },
             ) => first == first2 && last == last2,
-            (Command::Func { .. }, Command::Func { .. }) => false,
+            (Command::ExternalFunc { .. }, Command::ExternalFunc { .. }) => false,
             _ => false,
         }
     }

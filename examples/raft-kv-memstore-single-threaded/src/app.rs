@@ -5,10 +5,10 @@ use futures::channel::mpsc;
 use futures::channel::oneshot;
 
 use crate::NodeId;
+use crate::Raft;
 use crate::StateMachineStore;
 use crate::api;
 use crate::router::Router;
-use crate::typ::Raft;
 
 pub type Path = String;
 pub type Payload = String;

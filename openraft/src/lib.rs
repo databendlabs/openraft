@@ -1,5 +1,7 @@
 #![doc = include_str!("lib_readme.md")]
 #![doc = include_str!("docs/docs.md")]
+// These features are stabilized in recent nightly but still needed on older toolchains.
+#![allow(unused_features)]
 #![cfg_attr(feature = "bt", feature(error_generic_member_access))]
 #![cfg_attr(feature = "bench", feature(test))]
 #![allow(clippy::bool_assert_comparison)]

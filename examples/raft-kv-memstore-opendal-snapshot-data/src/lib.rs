@@ -31,6 +31,7 @@ openraft::declare_raft_types!(
 
 pub type LogStore = store::LogStore;
 pub type StateMachineStore = store::StateMachineStore;
+pub type Raft = openraft::Raft<TypeConfig, Arc<StateMachineStore>>;
 
 #[path = "../../utils/declare_types.rs"]
 pub mod typ;
@@ -47,7 +48,7 @@ pub fn decode_buffer<T: serde::de::DeserializeOwned>(b: Buffer) -> T {
     serde_json::from_reader(b.reader()).unwrap()
 }
 
-pub async fn new_raft(node_id: NodeId, router: Router, op: Operator) -> (typ::Raft, App) {
+pub async fn new_raft(node_id: NodeId, router: Router, op: Operator) -> (Raft, App) {
     // Create a configuration for the raft instance.
     let config = Config {
         heartbeat_interval: 500,

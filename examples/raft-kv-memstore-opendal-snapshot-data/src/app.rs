@@ -5,10 +5,10 @@ use futures::channel::mpsc;
 use futures::channel::oneshot;
 
 use crate::NodeId;
+use crate::Raft;
 use crate::StateMachineStore;
 use crate::api;
 use crate::router::Router;
-use crate::typ;
 
 pub type Path = String;
 pub type Payload = String;
@@ -19,7 +19,7 @@ pub type RequestRx = mpsc::Receiver<(Path, Payload, ResponseTx)>;
 /// Representation of an application state.
 pub struct App {
     pub id: NodeId,
-    pub raft: typ::Raft,
+    pub raft: Raft,
 
     /// Receive application requests, Raft protocol request or management requests.
     pub rx: RequestRx,
@@ -29,7 +29,7 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(id: NodeId, raft: typ::Raft, router: Router, state_machine: Arc<StateMachineStore>) -> Self {
+    pub fn new(id: NodeId, raft: Raft, router: Router, state_machine: Arc<StateMachineStore>) -> Self {
         let (tx, rx) = mpsc::channel(1024);
 
         {

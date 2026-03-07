@@ -65,7 +65,7 @@ where C::SnapshotData: tokio::io::AsyncRead + tokio::io::AsyncWrite + tokio::io:
     ) -> impl std::future::Future<Output = Result<InstallSnapshotResponse<C>, RaftError<C, InstallSnapshotError>>>;
 }
 
-impl<C: RaftTypeConfig> ChunkedSnapshotReceiver<C> for Raft<C>
+impl<C: RaftTypeConfig, SM> ChunkedSnapshotReceiver<C> for Raft<C, SM>
 where C::SnapshotData: tokio::io::AsyncRead + tokio::io::AsyncWrite + tokio::io::AsyncSeek + Unpin
 {
     async fn install_snapshot(
@@ -154,5 +154,5 @@ mod private {
 
     pub trait Sealed<C: RaftTypeConfig> {}
 
-    impl<C: RaftTypeConfig> Sealed<C> for Raft<C> {}
+    impl<C: RaftTypeConfig, SM> Sealed<C> for Raft<C, SM> {}
 }

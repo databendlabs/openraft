@@ -34,7 +34,7 @@ use crate::vote::raft_vote::RaftVoteExt;
 /// Spawned by `RaftCore` when log replication falls too far behind and a snapshot
 /// is needed. Runs independently, retrying on transient failures with backoff,
 /// and notifies `RaftCore` of progress or errors via the notification channel.
-pub(crate) struct SnapshotTransmitter<C, N>
+pub(crate) struct SnapshotTransmitter<C, N, SM = ()>
 where
     C: RaftTypeConfig,
     N: RaftNetworkFactory<C>,
@@ -53,10 +53,10 @@ where
     backoff: Option<Backoff>,
 
     /// The handle to get a snapshot directly from the state machine.
-    snapshot_reader: SnapshotReader<C>,
+    snapshot_reader: SnapshotReader<C, SM>,
 }
 
-impl<C, N> SnapshotTransmitter<C, N>
+impl<C, N, SM: 'static> SnapshotTransmitter<C, N, SM>
 where
     C: RaftTypeConfig,
     N: RaftNetworkFactory<C>,
@@ -64,7 +64,7 @@ where
     pub(crate) fn spawn(
         replication_context: ReplicationContext<C>,
         network: N::Network,
-        snapshot_reader: SnapshotReader<C>,
+        snapshot_reader: SnapshotReader<C, SM>,
         inflight_id: InflightId,
         cancel_tx: WatchSenderOf<C, ()>,
     ) -> SnapshotTransmitterHandle<C> {

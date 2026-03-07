@@ -43,7 +43,7 @@ impl Node {
     }
 
     /// Add a Raft group to this node.
-    pub fn add_group(&mut self, group_id: GroupId, raft: typ::Raft, state_machine: StateMachineStore) {
+    pub fn add_group(&mut self, group_id: GroupId, raft: crate::Raft, state_machine: StateMachineStore) {
         let app = GroupApp {
             node_id: self.node_id,
             group_id: group_id.clone(),
@@ -54,7 +54,7 @@ impl Node {
     }
 
     /// Get a Raft instance by group_id.
-    pub fn get_raft(&self, group_id: &GroupId) -> Option<&typ::Raft> {
+    pub fn get_raft(&self, group_id: &GroupId) -> Option<&crate::Raft> {
         self.groups.get(group_id).map(|g| &g.raft)
     }
 
@@ -115,6 +115,6 @@ impl Node {
 pub struct GroupApp {
     pub node_id: NodeId,
     pub group_id: GroupId,
-    pub raft: typ::Raft,
+    pub raft: crate::Raft,
     pub state_machine: StateMachineStore,
 }

@@ -22,6 +22,7 @@ impl<C> CoreState<C>
 where C: RaftTypeConfig
 {
     /// Returns `true` if the RaftCore task is still running.
+    #[allow(dead_code)]
     pub(in crate::raft) fn is_running(&self) -> bool {
         matches!(self, CoreState::Running(_))
     }

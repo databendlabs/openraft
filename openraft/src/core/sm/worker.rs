@@ -43,7 +43,7 @@ where
     log_reader: LR,
 
     /// Read command from RaftCore to execute.
-    cmd_rx: MpscReceiverOf<C, Command<C>>,
+    cmd_rx: MpscReceiverOf<C, Command<C, SM>>,
 
     /// Send back the result of the command to RaftCore.
     resp_tx: MpscSenderOf<C, Notification<C>>,
@@ -62,7 +62,7 @@ where
         resp_tx: MpscSenderOf<C, Notification<C>>,
         state_machine_channel_size: usize,
         span: tracing::Span,
-    ) -> Handle<C> {
+    ) -> Handle<C, SM> {
         let (cmd_tx, cmd_rx) = C::mpsc(state_machine_channel_size);
 
         let worker = Worker {
@@ -156,20 +156,9 @@ where
                     let res = CommandResult::new(Ok(Response::Apply(resp)));
                     self.resp_tx.send(Notification::sm(res)).await.ok();
                 }
-                Command::Func { func, input_sm_type } => {
-                    tracing::debug!("{}: run user defined Func", func_name!());
-
-                    let maybe_future = func(&mut self.state_machine);
-                    match maybe_future {
-                        Some(future) => future.await,
-                        None => {
-                            tracing::warn!(
-                                "User-defined SM function uses incorrect state machine type, expected: {}, got: {}",
-                                std::any::type_name::<SM>(),
-                                input_sm_type
-                            );
-                        }
-                    };
+                Command::ExternalFunc { func } => {
+                    tracing::debug!("{}: run user defined ExternalFunc", func_name!());
+                    func(&mut self.state_machine).await;
                 }
             };
         }

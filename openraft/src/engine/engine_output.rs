@@ -9,18 +9,29 @@ use crate::engine::pending_responds::PendingResponds;
 use crate::engine::respond_command::PendingRespond;
 
 /// The entry of output from Engine to the runtime.
-#[derive(Debug, Default)]
-pub(crate) struct EngineOutput<C>
+#[derive(Debug)]
+pub(crate) struct EngineOutput<C, SM = ()>
 where C: RaftTypeConfig
 {
     /// Command queue that needs to be executed by `RaftRuntime`.
-    pub(crate) commands: VecDeque<Command<C>>,
+    pub(crate) commands: VecDeque<Command<C, SM>>,
 
     /// Pending responds waiting for IO conditions to be met before sending.
     pub(crate) pending_responds: PendingResponds<C>,
 }
 
-impl<C> EngineOutput<C>
+impl<C, SM> Default for EngineOutput<C, SM>
+where C: RaftTypeConfig
+{
+    fn default() -> Self {
+        Self {
+            commands: VecDeque::new(),
+            pending_responds: PendingResponds::default(),
+        }
+    }
+}
+
+impl<C, SM> EngineOutput<C, SM>
 where C: RaftTypeConfig
 {
     pub(crate) fn new(command_buffer_size: usize) -> Self {
@@ -36,7 +47,7 @@ where C: RaftTypeConfig
     }
 
     /// Push a command to the queue.
-    pub(crate) fn push_command(&mut self, cmd: Command<C>) {
+    pub(crate) fn push_command(&mut self, cmd: Command<C, SM>) {
         tracing::debug!("push command: {:?}", cmd);
         self.commands.push_back(cmd)
     }
@@ -47,7 +58,7 @@ where C: RaftTypeConfig
     ///
     /// Returns Ok if the cmd is put to a pending queue, means it is not put back, and other
     /// commands in the main queue can still be processed.
-    pub(crate) fn postpone_command(&mut self, cmd: Command<C>) -> Result<(), &'static str> {
+    pub(crate) fn postpone_command(&mut self, cmd: Command<C, SM>) -> Result<(), &'static str> {
         tracing::debug!("postpone command: {:?}", cmd);
 
         // For Respond command, put them to separate queue in order not to block other commands.
@@ -83,18 +94,18 @@ where C: RaftTypeConfig
     }
 
     /// Pop the first command to run from the queue.
-    pub(crate) fn pop_command(&mut self) -> Option<Command<C>> {
+    pub(crate) fn pop_command(&mut self) -> Option<Command<C, SM>> {
         self.commands.pop_front()
     }
 
     /// Iterate all queued commands.
-    pub(crate) fn iter_commands(&self) -> impl Iterator<Item = &Command<C>> {
+    pub(crate) fn iter_commands(&self) -> impl Iterator<Item = &Command<C, SM>> {
         self.commands.iter()
     }
 
     /// Take all queued commands and clear the queue.
     #[cfg(test)]
-    pub(crate) fn take_commands(&mut self) -> Vec<Command<C>> {
+    pub(crate) fn take_commands(&mut self) -> Vec<Command<C, SM>> {
         self.commands.drain(..).collect()
     }
 

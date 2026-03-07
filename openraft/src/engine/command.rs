@@ -31,8 +31,7 @@ use crate::type_config::alias::VoteOf;
 use crate::vote::committed::CommittedVote;
 
 /// Commands to send to `RaftRuntime` to execute, to update the application state.
-#[derive(Debug)]
-pub(crate) enum Command<C>
+pub(crate) enum Command<C, SM = ()>
 where C: RaftTypeConfig
 {
     /// No actual IO is submitted but need to update io progress.
@@ -146,7 +145,7 @@ where C: RaftTypeConfig
     ///
     /// The runtime(`RaftCore`) will just forward this command to [`sm::worker::Worker`].
     /// The response will be sent back in a `RaftMsg::StateMachine` message to `RaftCore`.
-    StateMachine { command: sm::Command<C> },
+    StateMachine { command: sm::Command<C, SM> },
 
     /// Send result to caller
     Respond {
@@ -155,7 +154,15 @@ where C: RaftTypeConfig
     },
 }
 
-impl<C> fmt::Display for Command<C>
+impl<C, SM> Debug for Command<C, SM>
+where C: RaftTypeConfig
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(self, f)
+    }
+}
+
+impl<C, SM> fmt::Display for Command<C, SM>
 where C: RaftTypeConfig
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -218,16 +225,16 @@ where C: RaftTypeConfig
     }
 }
 
-impl<C> From<sm::Command<C>> for Command<C>
+impl<C, SM> From<sm::Command<C, SM>> for Command<C, SM>
 where C: RaftTypeConfig
 {
-    fn from(cmd: sm::Command<C>) -> Self {
+    fn from(cmd: sm::Command<C, SM>) -> Self {
         Self::StateMachine { command: cmd }
     }
 }
 
 /// For unit testing
-impl<C> PartialEq for Command<C>
+impl<C, SM> PartialEq for Command<C, SM>
 where
     C: RaftTypeConfig,
     C::Entry: PartialEq,
@@ -256,7 +263,7 @@ where
     }
 }
 
-impl<C> Command<C>
+impl<C, SM> Command<C, SM>
 where C: RaftTypeConfig
 {
     #[allow(dead_code)]

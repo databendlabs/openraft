@@ -43,7 +43,7 @@ mod update_committed_membership_test;
 /// Receive replication request and deal with them.
 ///
 /// It mainly implements the logic of a follower/learner
-pub(crate) struct FollowingHandler<'x, C>
+pub(crate) struct FollowingHandler<'x, C, SM = ()>
 where C: RaftTypeConfig
 {
     /// The Leader this Acceptor (Follower/Leaner) currently following.
@@ -51,10 +51,10 @@ where C: RaftTypeConfig
 
     pub(crate) config: &'x mut EngineConfig<C>,
     pub(crate) state: &'x mut RaftState<C>,
-    pub(crate) output: &'x mut EngineOutput<C>,
+    pub(crate) output: &'x mut EngineOutput<C, SM>,
 }
 
-impl<C> FollowingHandler<'_, C>
+impl<C, SM> FollowingHandler<'_, C, SM>
 where C: RaftTypeConfig
 {
     /// Append entries to follower/learner.
@@ -233,9 +233,9 @@ where C: RaftTypeConfig
     /// commands that depend on the state of the snapshot.
     ///
     /// It returns an `Option<Condition<C>>` indicating the next action:
-    /// - `Some(Condition::StateMachineCommand { command_seq })` if the snapshot will be installed.
-    ///   Further commands that depend on the snapshot state should use this condition so that these
-    ///   command block until the condition is satisfied(`RaftCore` receives a `Notification`).
+    /// - `Some(Condition::Snapshot { log_id })` if the snapshot will be installed. Further commands
+    ///   that depend on the snapshot state should use this condition so that these commands block
+    ///   until the condition is satisfied (`RaftCore` receives a `Notification`).
     /// - Otherwise `None` if the snapshot will not be installed (e.g., if it is not newer than the
     ///   current state).
     #[tracing::instrument(level = "debug", skip_all)]
@@ -316,7 +316,7 @@ where C: RaftTypeConfig
         memberships
     }
 
-    fn log_handler(&mut self) -> LogHandler<'_, C> {
+    fn log_handler(&mut self) -> LogHandler<'_, C, SM> {
         LogHandler {
             config: self.config,
             state: self.state,
@@ -324,7 +324,7 @@ where C: RaftTypeConfig
         }
     }
 
-    fn snapshot_handler(&mut self) -> SnapshotHandler<'_, '_, C> {
+    fn snapshot_handler(&mut self) -> SnapshotHandler<'_, '_, C, SM> {
         SnapshotHandler {
             state: self.state,
             output: self.output,
