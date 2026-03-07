@@ -1756,13 +1756,7 @@ where C: RaftTypeConfig
         //           to let the caller know the return value of RaftCore task.
         Ok(())
     }
-}
 
-impl<C, SM> Raft<C, SM>
-where
-    C: RaftTypeConfig,
-    SM: OptionalSend + 'static,
-{
     /// Provides mutable access to [`RaftStateMachine`] through a user-provided function.
     ///
     /// The function `func` is applied to the current [`RaftStateMachine`]. The result of this
@@ -1784,6 +1778,7 @@ where
     #[since(version = "0.10.0")]
     pub async fn with_state_machine<F, V>(&self, func: F) -> Result<V, Fatal<C>>
     where
+        SM: OptionalSend + 'static,
         F: FnOnce(&mut SM) -> BoxFuture<V> + OptionalSend + 'static,
         V: OptionalSend + 'static,
     {
@@ -1826,7 +1821,10 @@ where
     /// - Raft core task is encountered a storage error.
     #[since(version = "0.10.0")]
     pub async fn external_state_machine_request<F>(&self, req: F) -> Result<(), Fatal<C>>
-    where F: FnOnce(&mut SM) -> BoxFuture<()> + OptionalSend + 'static {
+    where
+        SM: OptionalSend + 'static,
+        F: FnOnce(&mut SM) -> BoxFuture<()> + OptionalSend + 'static,
+    {
         // If shutdown has been initiated, the SM worker may still be running
         // but we should reject new requests.
         if self.inner.tx_shutdown.lock().unwrap().is_none() {
