@@ -27,7 +27,7 @@ use crate::store::NodeId;
 use crate::store::StateMachineStore;
 use crate::store::TypeConfig;
 
-pub type BenchRaft = Raft<TypeConfig, StateMachineStore>;
+pub type BenchRaft = Raft<TypeConfig, Arc<StateMachineStore>>;
 
 #[derive(Clone)]
 pub struct Router {
