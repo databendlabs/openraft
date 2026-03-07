@@ -122,7 +122,6 @@ use crate::storage::Snapshot;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::JoinErrorOf;
 use crate::type_config::alias::LogIdOf;
-use crate::type_config::alias::MpscSenderOf;
 use crate::type_config::alias::MpscWeakSenderOf;
 use crate::type_config::alias::NodeIdOf;
 use crate::type_config::alias::SnapshotDataOf;
@@ -320,7 +319,7 @@ pub struct Raft<C, SM = ()>
 where C: RaftTypeConfig
 {
     inner: Arc<RaftInner<C>>,
-    sm_cmd_tx: MpscSenderOf<C, sm::Command<C, SM>>,
+    sm_cmd_tx: MpscWeakSenderOf<C, sm::Command<C, SM>>,
 }
 
 impl<C, SM> Clone for Raft<C, SM>
@@ -492,7 +491,7 @@ where
             sm_span,
         );
 
-        let sm_cmd_tx = sm_handle.clone_sender();
+        let sm_cmd_tx = sm_handle.downgrade_sender();
 
         let default_io_id = IOId::new_vote_io(UncommittedVote::new_with_default_term(id.clone()));
         let (io_accepted_tx, _io_accepted_rx) = C::watch_channel(default_io_id.clone());
@@ -1834,6 +1833,10 @@ where C: RaftTypeConfig
         let sm_cmd = sm::Command::ExternalFunc {
             func: Box::new(move |sm| req(sm)),
         };
-        self.sm_cmd_tx.send(sm_cmd).await.map_err(|_e| Fatal::Stopped)
+
+        let Some(tx) = self.sm_cmd_tx.upgrade() else {
+            return Err(Fatal::Stopped);
+        };
+        tx.send(sm_cmd).await.map_err(|_e| Fatal::Stopped)
     }
 }
