@@ -1,4 +1,5 @@
 use crate::RaftTypeConfig;
+use crate::base::RaftBatch;
 use crate::config::Config;
 use crate::engine::Command;
 use crate::engine::engine_output::EngineOutput;

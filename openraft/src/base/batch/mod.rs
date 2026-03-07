@@ -2,9 +2,12 @@
 
 mod display;
 mod iter;
+mod raft_batch;
 
 use std::ops::Index;
 use std::slice;
+
+pub use raft_batch::RaftBatch;
 
 /// A container that stores elements efficiently by avoiding heap allocation for single elements.
 ///
@@ -12,7 +15,7 @@ use std::slice;
 /// - `Single`: stores exactly one element inline (no heap allocation)
 /// - `Vec`: stores zero or more elements using a `Vec`
 #[derive(Debug, Clone, Eq)]
-pub(crate) enum Batch<T> {
+pub enum Batch<T> {
     /// A single element stored inline without heap allocation.
     Single(T),
     /// Multiple elements stored in a Vec.
@@ -135,6 +138,66 @@ impl<T> Batch<T> {
     }
 }
 
+// Implement RaftBatch trait for Batch
+impl<T> RaftBatch<T> for Batch<T>
+where T: crate::OptionalSend + 'static + std::fmt::Debug
+{
+    type Iter<'a>
+        = slice::Iter<'a, T>
+    where T: 'a;
+    type IterMut<'a>
+        = slice::IterMut<'a, T>
+    where T: 'a;
+    type IntoIter = iter::BatchIter<T>;
+
+    fn from_item(item: T) -> Self {
+        Batch::Single(item)
+    }
+
+    fn from_vec(vec: Vec<T>) -> Self {
+        Batch::from(vec)
+    }
+
+    fn from_exact_iter<I>(iter: I) -> Self
+    where I: ExactSizeIterator<Item = T> {
+        match iter.len() {
+            0 => Batch::Vec(Vec::new()),
+            1 => Batch::Single(iter.into_iter().next().unwrap()),
+            _ => Batch::Vec(iter.collect()),
+        }
+    }
+
+    fn len(&self) -> usize {
+        Batch::len(self)
+    }
+
+    fn first(&self) -> Option<&T> {
+        Batch::first(self)
+    }
+
+    fn last(&self) -> Option<&T> {
+        Batch::last(self)
+    }
+
+    fn iter(&self) -> Self::Iter<'_> {
+        self.as_slice().iter()
+    }
+
+    fn iter_mut(&mut self) -> Self::IterMut<'_> {
+        self.as_mut_slice().iter_mut()
+    }
+
+    fn into_iter(self) -> Self::IntoIter {
+        // Use the existing IntoIterator impl
+        IntoIterator::into_iter(self)
+    }
+
+    fn extend(&mut self, other: Self) {
+        Batch::extend(self, other)
+    }
+}
+
+// Index
 impl<T> Index<usize> for Batch<T> {
     type Output = T;
 

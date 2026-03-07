@@ -1,6 +1,6 @@
 use crate::RaftState;
 use crate::RaftTypeConfig;
-use crate::base::batch::Batch;
+use crate::base::RaftBatch;
 use crate::engine::Command;
 use crate::engine::EngineConfig;
 use crate::engine::EngineOutput;
@@ -61,7 +61,7 @@ where C: RaftTypeConfig
         self.state.extend_log_ids_from_same_leader(log_ids.clone());
 
         let mut membership_entry = None;
-        let entries = Batch::from_iter(payloads.zip(log_ids.clone()).map(|(payload, log_id)| {
+        let entries = C::Batch::from_exact_iter(payloads.zip(log_ids.clone()).map(|(payload, log_id)| {
             tracing::debug!("assign log id: {}", log_id);
             let entry = C::Entry::new(log_id, payload);
             if let Some(m) = entry.get_membership() {

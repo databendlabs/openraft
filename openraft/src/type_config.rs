@@ -123,6 +123,49 @@ pub trait RaftTypeConfig:
     /// [sto]: crate::docs::getting_started#3-implement-raftlogstorage-and-raftstatemachine
     type SnapshotData: OptionalSend + 'static;
 
+    /// Batch container type for grouping multiple items efficiently.
+    ///
+    /// The batch type is used throughout Raft to store collections of entries, data items,
+    /// and responders efficiently. Implementations can optimize for different use cases:
+    ///
+    /// - Memory allocation strategies (arena allocators, pre-allocated pools)
+    /// - Cache locality optimization
+    /// - Minimizing heap allocations for small batches
+    ///
+    /// The default implementation ([`Batch`](crate::impls::Batch)) uses an enum that stores
+    /// single elements inline without heap allocation, and multiple elements in a `Vec`.
+    ///
+    /// # Examples
+    ///
+    /// Using the default batch implementation:
+    ///
+    /// ```ignore
+    /// openraft::declare_raft_types!(
+    ///     pub MyTypeConfig:
+    ///         D = String,
+    ///         R = String,
+    /// );
+    /// // Batch<T> defaults to openraft::impls::Batch<T>
+    /// ```
+    ///
+    /// Providing a custom batch implementation:
+    ///
+    /// ```ignore
+    /// openraft::declare_raft_types!(
+    ///     pub MyTypeConfig:
+    ///         D = String,
+    ///         R = String,
+    ///         Batch<T> = MyCustomBatch<T> where T: OptionalSend + 'static,
+    /// );
+    /// ```
+    ///
+    /// # See Also
+    ///
+    /// - [`RaftBatch`](crate::base::RaftBatch) - The trait that batch implementations must satisfy
+    /// - [`Batch`](crate::impls::Batch) - The default implementation
+    type Batch<T>: crate::base::RaftBatch<T>
+    where T: OptionalSend + 'static + Debug;
+
     /// Asynchronous runtime type.
     type AsyncRuntime: AsyncRuntime;
 
@@ -183,6 +226,7 @@ pub mod alias {
     pub type VoteOf<C> = <C as RaftTypeConfig>::Vote;
     pub type EntryOf<C> = <C as RaftTypeConfig>::Entry;
     pub type SnapshotDataOf<C> = <C as RaftTypeConfig>::SnapshotData;
+    pub type BatchOf<C, T> = <C as RaftTypeConfig>::Batch<T>;
     pub type AsyncRuntimeOf<C> = <C as RaftTypeConfig>::AsyncRuntime;
     pub type ResponderOf<C, T> = <C as RaftTypeConfig>::Responder<T>;
     pub type ErrorSourceOf<C> = <C as RaftTypeConfig>::ErrorSource;

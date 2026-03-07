@@ -32,7 +32,7 @@ pub(crate) mod finalized;
 pub(crate) mod histogram;
 pub(crate) mod shared_id_generator;
 
-pub(crate) use batch::Batch;
+pub use batch::RaftBatch;
 pub use openraft_rt::BoxAny;
 pub use openraft_rt::BoxAsyncOnceMut;
 pub use openraft_rt::BoxFuture;
