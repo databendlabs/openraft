@@ -132,7 +132,6 @@ use openraft::errors::InProgress;
 use openraft::errors::Infallible;
 use openraft::errors::InitializeError;
 use openraft::errors::InstallSnapshotError;
-use openraft::errors::InvalidStateMachineType;
 use openraft::errors::LeaderChanged;
 use openraft::errors::LearnerNotFound;
 use openraft::errors::LinearizableReadError;

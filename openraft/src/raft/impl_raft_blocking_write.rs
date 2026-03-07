@@ -16,7 +16,7 @@ use crate::raft::ManagementApi;
 
 /// Implement blocking mode write operations those reply on oneshot channel for communication
 /// between Raft core and client.
-impl<C> Raft<C>
+impl<C, SM> Raft<C, SM>
 where C: RaftTypeConfig
 {
     /// Propose a cluster configuration change.

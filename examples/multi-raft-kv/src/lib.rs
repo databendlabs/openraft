@@ -29,6 +29,7 @@ openraft::declare_raft_types!(
 
 pub type LogStore = store::LogStore;
 pub type StateMachineStore = sm_mem::StateMachineStore<TypeConfig>;
+pub type Raft = openraft::Raft<TypeConfig, StateMachineStore>;
 
 /// Define all Raft-related type aliases
 #[path = "../../utils/declare_types.rs"]

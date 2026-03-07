@@ -69,7 +69,7 @@ where C: RaftTypeConfig
     /// // Now safe to perform linearizable reads
     /// ```
     #[since(version = "0.10.0")]
-    pub async fn await_ready(self, raft: &Raft<C>) -> Result<LinearizeState<C>, Fatal<C>> {
+    pub async fn await_ready<SM>(self, raft: &Raft<C, SM>) -> Result<LinearizeState<C>, Fatal<C>> {
         let state_res = self.try_await_ready(raft, None).await?;
         // Safe unwrap: No timeout error.
         Ok(state_res.unwrap())
@@ -96,9 +96,9 @@ where C: RaftTypeConfig
     /// // Now safe to perform linearizable reads
     /// ```
     #[since(version = "0.10.0")]
-    pub async fn try_await_ready(
+    pub async fn try_await_ready<SM>(
         self,
-        raft: &Raft<C>,
+        raft: &Raft<C, SM>,
         timeout: Option<Duration>,
     ) -> Result<Result<LinearizeState<C>, LinearizeState<C>>, Fatal<C>> {
         let this_id = raft.inner.id();

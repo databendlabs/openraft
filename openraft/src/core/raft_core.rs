@@ -153,7 +153,7 @@ impl<C: RaftTypeConfig> fmt::Display for ApplyResult<C> {
 }
 
 /// The core type implementing the Raft protocol.
-pub struct RaftCore<C, NF, LS>
+pub struct RaftCore<C, NF, LS, SM>
 where
     C: RaftTypeConfig,
     NF: RaftNetworkFactory<C>,
@@ -179,9 +179,9 @@ where
     /// A controlling handle to the [`RaftStateMachine`] worker.
     ///
     /// [`RaftStateMachine`]: `crate::storage::RaftStateMachine`
-    pub(crate) sm_handle: sm::handle::Handle<C>,
+    pub(crate) sm_handle: sm::handle::Handle<C, SM>,
 
-    pub(crate) engine: Engine<C>,
+    pub(crate) engine: Engine<C, SM>,
 
     /// Responders to send result back to client when logs are applied.
     pub(crate) client_responders: ClientResponderQueue<CoreResponder<C>>,
@@ -252,11 +252,12 @@ where
     pub(crate) span: Span,
 }
 
-impl<C, NF, LS> RaftCore<C, NF, LS>
+impl<C, NF, LS, SM> RaftCore<C, NF, LS, SM>
 where
     C: RaftTypeConfig,
     NF: RaftNetworkFactory<C>,
     LS: RaftLogStorage<C>,
+    SM: 'static,
 {
     /// The main loop of the Raft protocol.
     pub(crate) async fn main(mut self, rx_shutdown: OneshotReceiverOf<C, ()>) -> Result<Infallible, Fatal<C>> {
@@ -557,7 +558,7 @@ where
     /// Returns `Err(ForwardToLeader)` if:
     /// - This node is not the leader
     /// - The leader is transferring leadership to another node
-    fn ensure_writable_leader_handler(&mut self) -> Result<LeaderHandler<'_, C>, ForwardToLeader<C>> {
+    fn ensure_writable_leader_handler(&mut self) -> Result<LeaderHandler<'_, C, SM>, ForwardToLeader<C>> {
         let lh = self.engine.try_leader_handler()?;
 
         // If the leader is transferring leadership, forward writes to the new leader.
@@ -1126,7 +1127,7 @@ where
             tracing::debug!("RAFT_event id={:<2}    progress_driven cmd: {}", self.id, cmd);
 
             // IO progress generated command is always ready to run. no need to postpone.
-            let res = self.run_command(cmd).await?;
+            let res: Option<Command<C, SM>> = self.run_command(cmd).await?;
             debug_assert!(res.is_none(), "progress driven command should always be executed");
         }
 
@@ -1618,12 +1619,6 @@ where
                         };
                         tx.send(res).ok();
                     }
-                    ExternalCommand::StateMachineCommand { sm_cmd } => {
-                        let res = self.sm_handle.send(sm_cmd).await;
-                        if let Err(e) = res {
-                            tracing::error!("error sending sm::Command to sm::Worker: {}", e);
-                        }
-                    }
                     ExternalCommand::SetMetricsRecorder { recorder } => {
                         tracing::info!("setting metrics recorder");
                         self.metrics_recorder = recorder;
@@ -2010,13 +2005,14 @@ where
     }
 }
 
-impl<C, N, LS> RaftRuntime<C> for RaftCore<C, N, LS>
+impl<C, N, LS, SM> RaftRuntime<C, SM> for RaftCore<C, N, LS, SM>
 where
     C: RaftTypeConfig,
     N: RaftNetworkFactory<C>,
     LS: RaftLogStorage<C>,
+    SM: 'static,
 {
-    async fn run_command(&mut self, cmd: Command<C>) -> Result<Option<Command<C>>, StorageError<C>> {
+    async fn run_command(&mut self, cmd: Command<C, SM>) -> Result<Option<Command<C, SM>>, StorageError<C>> {
         // tracing::debug!("RAFT_event id={:<2} trycmd: {}", self.id, cmd);
 
         let condition = cmd.condition();
@@ -2172,7 +2168,7 @@ where
                 let target_node = self.engine.state.membership_state.effective().get_node(&target).unwrap();
                 let snapshot_network = self.network_factory.new_client(target.clone(), target_node).await;
 
-                let handle = SnapshotTransmitter::<C, N>::spawn(
+                let handle = SnapshotTransmitter::<C, N, SM>::spawn(
                     replication_task_context,
                     snapshot_network,
                     snapshot_reader,

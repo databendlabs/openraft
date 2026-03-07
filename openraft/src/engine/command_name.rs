@@ -8,7 +8,7 @@ pub enum SMCommandName {
     BeginReceivingSnapshot = 2,
     InstallFullSnapshot = 3,
     Apply = 4,
-    Func = 5,
+    ExternalFunc = 5,
 }
 
 impl SMCommandName {
@@ -24,7 +24,7 @@ impl SMCommandName {
         SMCommandName::BeginReceivingSnapshot,
         SMCommandName::InstallFullSnapshot,
         SMCommandName::Apply,
-        SMCommandName::Func,
+        SMCommandName::ExternalFunc,
     ];
 
     /// Returns the index of this variant for array-based storage.
@@ -41,7 +41,7 @@ impl SMCommandName {
             SMCommandName::BeginReceivingSnapshot => "SM::BeginReceivingSnapshot",
             SMCommandName::InstallFullSnapshot => "SM::InstallFullSnapshot",
             SMCommandName::Apply => "SM::Apply",
-            SMCommandName::Func => "SM::Func",
+            SMCommandName::ExternalFunc => "SM::ExternalFunc",
         }
     }
 }
@@ -104,7 +104,7 @@ impl CommandName {
         CommandName::StateMachine(SMCommandName::BeginReceivingSnapshot),
         CommandName::StateMachine(SMCommandName::InstallFullSnapshot),
         CommandName::StateMachine(SMCommandName::Apply),
-        CommandName::StateMachine(SMCommandName::Func),
+        CommandName::StateMachine(SMCommandName::ExternalFunc),
         CommandName::Respond,
     ];
 
@@ -347,7 +347,7 @@ mod tests {
         );
         assert_eq!(SMCommandName::InstallFullSnapshot.as_str(), "SM::InstallFullSnapshot");
         assert_eq!(SMCommandName::Apply.as_str(), "SM::Apply");
-        assert_eq!(SMCommandName::Func.as_str(), "SM::Func");
+        assert_eq!(SMCommandName::ExternalFunc.as_str(), "SM::ExternalFunc");
     }
 
     #[test]

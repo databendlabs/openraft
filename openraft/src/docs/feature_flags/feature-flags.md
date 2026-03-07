@@ -22,7 +22,7 @@ toolchain, the unstable features have to be enabled explicitly with environment 
 ## feature-flag `bt`
 
 attaches backtrace to generated errors.
-This feature works ONLY with nightly rust, because it requires unstable feature `error_generic_member_access`.
+This feature requires nightly Rust on older toolchains due to the `error_generic_member_access` feature, which has been stabilized in recent nightly versions.
 
 ## feature-flag `compat`
 

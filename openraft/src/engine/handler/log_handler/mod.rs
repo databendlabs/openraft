@@ -15,15 +15,15 @@ mod calc_purge_upto_test;
 mod purge_log_test;
 
 /// Handle raft-log related operations
-pub(crate) struct LogHandler<'x, C>
+pub(crate) struct LogHandler<'x, C, SM = ()>
 where C: RaftTypeConfig
 {
     pub(crate) config: &'x mut EngineConfig<C>,
     pub(crate) state: &'x mut RaftState<C>,
-    pub(crate) output: &'x mut EngineOutput<C>,
+    pub(crate) output: &'x mut EngineOutput<C, SM>,
 }
 
-impl<C> LogHandler<'_, C>
+impl<C, SM> LogHandler<'_, C, SM>
 where C: RaftTypeConfig
 {
     /// Purge log entries up to `RaftState.purge_upto()`, inclusive.

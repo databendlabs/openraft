@@ -7,17 +7,17 @@ use crate::engine::engine_output::EngineOutput;
 ///
 /// This scheduler optimizes the command queue by batching related operations together,
 /// reducing the number of I/O operations and improving throughput.
-pub(crate) struct CommandScheduler<'a, C>
+pub(crate) struct CommandScheduler<'a, C, SM = ()>
 where C: RaftTypeConfig
 {
     config: &'a Config,
-    output: &'a mut EngineOutput<C>,
+    output: &'a mut EngineOutput<C, SM>,
 }
 
-impl<'a, C> CommandScheduler<'a, C>
+impl<'a, C, SM> CommandScheduler<'a, C, SM>
 where C: RaftTypeConfig
 {
-    pub(crate) fn new(config: &'a Config, output: &'a mut EngineOutput<C>) -> Self {
+    pub(crate) fn new(config: &'a Config, output: &'a mut EngineOutput<C, SM>) -> Self {
         Self { config, output }
     }
 

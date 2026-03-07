@@ -39,17 +39,17 @@ mod handle_message_vote_test;
 ///
 /// A `vote` defines the state of an openraft node.
 /// See [`RaftState::calc_server_state`].
-pub(crate) struct VoteHandler<'st, C>
+pub(crate) struct VoteHandler<'st, C, SM = ()>
 where C: RaftTypeConfig
 {
     pub(crate) config: &'st mut EngineConfig<C>,
     pub(crate) state: &'st mut RaftState<C>,
-    pub(crate) output: &'st mut EngineOutput<C>,
+    pub(crate) output: &'st mut EngineOutput<C, SM>,
     pub(crate) leader: &'st mut LeaderState<C>,
     pub(crate) candidate: &'st mut CandidateState<C>,
 }
 
-impl<C> VoteHandler<'_, C>
+impl<C, SM> VoteHandler<'_, C, SM>
 where C: RaftTypeConfig
 {
     /// Validate and accept the input `vote` and send the result via `tx`.
@@ -252,7 +252,7 @@ where C: RaftTypeConfig
         }
     }
 
-    pub(crate) fn replication_handler(&mut self) -> ReplicationHandler<'_, C> {
+    pub(crate) fn replication_handler(&mut self) -> ReplicationHandler<'_, C, SM> {
         let leader = self.leader.as_mut().unwrap();
 
         ReplicationHandler {
@@ -263,7 +263,7 @@ where C: RaftTypeConfig
         }
     }
 
-    pub(crate) fn leader_handler(&mut self) -> LeaderHandler<'_, C> {
+    pub(crate) fn leader_handler(&mut self) -> LeaderHandler<'_, C, SM> {
         let leader = self.leader.as_mut().unwrap();
 
         LeaderHandler {
