@@ -30,16 +30,16 @@ mod transfer_leader_test;
 /// - Append new logs;
 /// - Change membership;
 /// - etc.
-pub(crate) struct LeaderHandler<'x, C>
+pub(crate) struct LeaderHandler<'x, C, SM = ()>
 where C: RaftTypeConfig
 {
     pub(crate) config: &'x mut EngineConfig<C>,
     pub(crate) leader: &'x mut Leader<C, LeaderQuorumSet<C>>,
     pub(crate) state: &'x mut RaftState<C>,
-    pub(crate) output: &'x mut EngineOutput<C>,
+    pub(crate) output: &'x mut EngineOutput<C, SM>,
 }
 
-impl<C> LeaderHandler<'_, C>
+impl<C, SM> LeaderHandler<'_, C, SM>
 where C: RaftTypeConfig
 {
     /// Append new log entries by a leader.
@@ -143,7 +143,7 @@ where C: RaftTypeConfig
         ReplicationSessionId::new(committed_vote, membership_log_id.clone())
     }
 
-    pub(crate) fn replication_handler(&mut self) -> ReplicationHandler<'_, C> {
+    pub(crate) fn replication_handler(&mut self) -> ReplicationHandler<'_, C, SM> {
         ReplicationHandler {
             config: self.config,
             leader: self.leader,

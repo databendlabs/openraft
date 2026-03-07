@@ -9,14 +9,13 @@ pub enum ExternalCommandName {
     PurgeLog,
     TriggerTransferLeader,
     AllowNextRevert,
-    StateMachineCommand,
     SetMetricsRecorder,
 }
 
 impl ExternalCommandName {
     /// Total number of variants.
     #[allow(dead_code)]
-    pub const COUNT: usize = 9;
+    pub const COUNT: usize = 8;
 
     /// All variants in canonical order.
     #[allow(dead_code)]
@@ -28,7 +27,6 @@ impl ExternalCommandName {
         ExternalCommandName::PurgeLog,
         ExternalCommandName::TriggerTransferLeader,
         ExternalCommandName::AllowNextRevert,
-        ExternalCommandName::StateMachineCommand,
         ExternalCommandName::SetMetricsRecorder,
     ];
 
@@ -43,8 +41,7 @@ impl ExternalCommandName {
             ExternalCommandName::PurgeLog => 4,
             ExternalCommandName::TriggerTransferLeader => 5,
             ExternalCommandName::AllowNextRevert => 6,
-            ExternalCommandName::StateMachineCommand => 7,
-            ExternalCommandName::SetMetricsRecorder => 8,
+            ExternalCommandName::SetMetricsRecorder => 7,
         }
     }
 
@@ -58,7 +55,6 @@ impl ExternalCommandName {
             ExternalCommandName::PurgeLog => "Ext::PurgeLog",
             ExternalCommandName::TriggerTransferLeader => "Ext::TriggerTransferLeader",
             ExternalCommandName::AllowNextRevert => "Ext::AllowNextRevert",
-            ExternalCommandName::StateMachineCommand => "Ext::StateMachineCommand",
             ExternalCommandName::SetMetricsRecorder => "Ext::SetMetricsRecorder",
         }
     }
@@ -93,7 +89,7 @@ pub enum RaftMsgName {
 
 impl RaftMsgName {
     /// Total number of variants (including expanded ExternalCommand variants).
-    pub const COUNT: usize = 20;
+    pub const COUNT: usize = 19;
 
     /// All variants in canonical order.
     ///
@@ -116,7 +112,6 @@ impl RaftMsgName {
         RaftMsgName::ExternalCommand(ExternalCommandName::PurgeLog),
         RaftMsgName::ExternalCommand(ExternalCommandName::TriggerTransferLeader),
         RaftMsgName::ExternalCommand(ExternalCommandName::AllowNextRevert),
-        RaftMsgName::ExternalCommand(ExternalCommandName::StateMachineCommand),
         RaftMsgName::ExternalCommand(ExternalCommandName::SetMetricsRecorder),
         RaftMsgName::GetRuntimeStats,
     ];

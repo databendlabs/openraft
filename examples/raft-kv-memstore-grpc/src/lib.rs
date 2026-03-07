@@ -34,3 +34,4 @@ openraft::declare_raft_types!(
 pub type NodeId = u64;
 pub type LogStore = store::LogStore;
 pub type StateMachineStore = store::StateMachineStore;
+pub type Raft = openraft::Raft<TypeConfig, std::sync::Arc<StateMachineStore>>;

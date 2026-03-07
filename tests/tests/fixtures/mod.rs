@@ -81,7 +81,7 @@ pub type MemLogStore = Arc<LogStoreInner>;
 pub type MemStateMachine = Arc<SMInner>;
 
 /// A concrete Raft type used during testing.
-pub type MemRaft = Raft<MemConfig>;
+pub type MemRaft = Raft<MemConfig, MemStateMachine>;
 
 pub fn log_id(term: u64, node_id: u64, index: u64) -> LogIdOf<TypeConfig> {
     LogIdOf::<TypeConfig>::new(

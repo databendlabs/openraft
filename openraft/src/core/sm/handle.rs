@@ -12,25 +12,30 @@ use crate::type_config::alias::MpscSenderOf;
 use crate::type_config::alias::MpscWeakSenderOf;
 
 /// State machine worker handle for sending command to it.
-pub(crate) struct Handle<C>
+pub(crate) struct Handle<C, SM = ()>
 where C: RaftTypeConfig
 {
-    pub(in crate::core::sm) cmd_tx: MpscSenderOf<C, sm::Command<C>>,
+    pub(in crate::core::sm) cmd_tx: MpscSenderOf<C, sm::Command<C, SM>>,
 
     #[allow(dead_code)]
     pub(in crate::core::sm) join_handle: JoinHandleOf<C, ()>,
 }
 
-impl<C> Handle<C>
+impl<C, SM> Handle<C, SM>
 where C: RaftTypeConfig
 {
-    pub(crate) async fn send(&mut self, cmd: sm::Command<C>) -> Result<(), SendError<sm::Command<C>>> {
+    pub(crate) async fn send(&mut self, cmd: sm::Command<C, SM>) -> Result<(), SendError<sm::Command<C, SM>>> {
         tracing::debug!("sending command to state machine worker: {:?}", cmd);
         self.cmd_tx.send(cmd).await
     }
 
+    /// Clone the sender for direct access to the SM command channel.
+    pub(crate) fn clone_sender(&self) -> MpscSenderOf<C, sm::Command<C, SM>> {
+        self.cmd_tx.clone()
+    }
+
     /// Create a [`SnapshotReader`] to get the current snapshot from the state machine.
-    pub(crate) fn new_snapshot_reader(&self) -> SnapshotReader<C> {
+    pub(crate) fn new_snapshot_reader(&self) -> SnapshotReader<C, SM> {
         SnapshotReader {
             cmd_tx: self.cmd_tx.downgrade(),
         }
@@ -38,7 +43,7 @@ where C: RaftTypeConfig
 }
 
 /// A handle for retrieving a snapshot from the state machine.
-pub(crate) struct SnapshotReader<C>
+pub(crate) struct SnapshotReader<C, SM = ()>
 where C: RaftTypeConfig
 {
     /// Weak command sender to the state machine worker.
@@ -46,10 +51,10 @@ where C: RaftTypeConfig
     /// It is weak because the [`Worker`] watches the close event of this channel for shutdown.
     ///
     /// [`Worker`]: sm::worker::Worker
-    cmd_tx: MpscWeakSenderOf<C, sm::Command<C>>,
+    cmd_tx: MpscWeakSenderOf<C, sm::Command<C, SM>>,
 }
 
-impl<C> SnapshotReader<C>
+impl<C, SM> SnapshotReader<C, SM>
 where C: RaftTypeConfig
 {
     /// Get a snapshot from the state machine.

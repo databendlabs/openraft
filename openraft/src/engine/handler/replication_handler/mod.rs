@@ -44,16 +44,16 @@ mod update_matching_test;
 /// - Tracking replication progress and commit;
 /// - Purging in-snapshot logs;
 /// - etc.
-pub(crate) struct ReplicationHandler<'x, C>
+pub(crate) struct ReplicationHandler<'x, C, SM = ()>
 where C: RaftTypeConfig
 {
     pub(crate) config: &'x mut EngineConfig<C>,
     pub(crate) leader: &'x mut Leader<C, LeaderQuorumSet<C>>,
     pub(crate) state: &'x mut RaftState<C>,
-    pub(crate) output: &'x mut EngineOutput<C>,
+    pub(crate) output: &'x mut EngineOutput<C, SM>,
 }
 
-impl<C> ReplicationHandler<'_, C>
+impl<C, SM> ReplicationHandler<'_, C, SM>
 where C: RaftTypeConfig
 {
     /// Append a new membership and update related state such as replication streams.
@@ -369,7 +369,7 @@ where C: RaftTypeConfig
 
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn send_to_target(
-        output: &mut EngineOutput<C>,
+        output: &mut EngineOutput<C, SM>,
         leader_vote: CommittedVote<C>,
         target: &C::NodeId,
         inflight: &Inflight<C>,
@@ -473,7 +473,7 @@ where C: RaftTypeConfig
         }
     }
 
-    pub(crate) fn log_handler(&mut self) -> LogHandler<'_, C> {
+    pub(crate) fn log_handler(&mut self) -> LogHandler<'_, C, SM> {
         LogHandler {
             config: self.config,
             state: self.state,

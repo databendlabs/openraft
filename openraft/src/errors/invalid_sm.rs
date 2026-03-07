@@ -11,6 +11,7 @@ pub struct InvalidStateMachineType {
 }
 
 impl InvalidStateMachineType {
+    #[allow(dead_code)]
     pub(crate) fn new<SM>() -> Self {
         Self {
             actual_type: std::any::type_name::<SM>(),

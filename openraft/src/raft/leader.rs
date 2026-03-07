@@ -15,11 +15,10 @@ use crate::vote::RaftTerm;
 /// This struct contains metadata about the current leader state, including
 /// its identity and health indicators.
 #[since(version = "0.10.0")]
-#[derive(Clone, Debug)]
-pub struct Leader<C>
+pub struct Leader<C, SM = ()>
 where C: RaftTypeConfig
 {
-    pub(crate) raft: Raft<C>,
+    pub(crate) raft: Raft<C, SM>,
 
     /// The leader ID, including term and node ID.
     pub(crate) leader_id: LeaderIdOf<C>,
@@ -31,10 +30,34 @@ where C: RaftTypeConfig
     pub(crate) last_quorum_acked: Option<InstantOf<C>>,
 }
 
-impl<C> Leader<C>
+impl<C, SM> Clone for Leader<C, SM>
 where C: RaftTypeConfig
 {
-    pub fn raft(&self) -> &Raft<C> {
+    fn clone(&self) -> Self {
+        Self {
+            raft: self.raft.clone(),
+            leader_id: self.leader_id.clone(),
+            last_quorum_acked: self.last_quorum_acked,
+        }
+    }
+}
+
+impl<C, SM> std::fmt::Debug for Leader<C, SM>
+where C: RaftTypeConfig
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Leader")
+            .field("raft", &self.raft)
+            .field("leader_id", &self.leader_id)
+            .field("last_quorum_acked", &self.last_quorum_acked)
+            .finish()
+    }
+}
+
+impl<C, SM> Leader<C, SM>
+where C: RaftTypeConfig
+{
+    pub fn raft(&self) -> &Raft<C, SM> {
         &self.raft
     }
 

@@ -66,7 +66,7 @@ use crate::vote::raft_vote::RaftVoteExt;
 /// but none of the application specific data.
 /// TODO: make the fields private
 #[derive(Debug)]
-pub(crate) struct Engine<C>
+pub(crate) struct Engine<C, SM = ()>
 where C: RaftTypeConfig
 {
     pub(crate) config: EngineConfig<C>,
@@ -92,10 +92,10 @@ where C: RaftTypeConfig
     pub(crate) candidate: CandidateState<C>,
 
     /// Output entry for the runtime.
-    pub(crate) output: EngineOutput<C>,
+    pub(crate) output: EngineOutput<C, SM>,
 }
 
-impl<C> Engine<C>
+impl<C, SM> Engine<C, SM>
 where C: RaftTypeConfig
 {
     pub(crate) fn new(init_state: RaftState<C>, config: EngineConfig<C>) -> Self {
@@ -129,14 +129,6 @@ where C: RaftTypeConfig
         ));
 
         self.candidate.as_mut().unwrap()
-    }
-
-    /// Create a default Engine for testing.
-    #[allow(dead_code)]
-    pub(crate) fn testing_default(id: C::NodeId) -> Self {
-        let config = EngineConfig::new_default(id.clone());
-        let state = RaftState::new(id);
-        Self::new(state, config)
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
@@ -603,7 +595,7 @@ where C: RaftTypeConfig
     ///
     /// Requirements:
     /// - Commands must update their corresponding progress when executed to prevent duplicates
-    pub(crate) fn next_progress_driven_command(&self) -> Option<Command<C>> {
+    pub(crate) fn next_progress_driven_command(&self) -> Option<Command<C, SM>> {
         let apply_progress = &self.state.io_state.apply_progress;
         let log_progress = &self.state.io_state.log_progress;
 
@@ -646,7 +638,7 @@ where C: RaftTypeConfig
 }
 
 /// Supporting util
-impl<C> Engine<C>
+impl<C, SM> Engine<C, SM>
 where C: RaftTypeConfig
 {
     /// Vote is granted by a quorum, leader established.
@@ -738,7 +730,7 @@ where C: RaftTypeConfig
 
     // --- handlers ---
 
-    pub(crate) fn vote_handler(&mut self) -> VoteHandler<'_, C> {
+    pub(crate) fn vote_handler(&mut self) -> VoteHandler<'_, C, SM> {
         VoteHandler {
             config: &mut self.config,
             state: &mut self.state,
@@ -748,7 +740,7 @@ where C: RaftTypeConfig
         }
     }
 
-    pub(crate) fn log_handler(&mut self) -> LogHandler<'_, C> {
+    pub(crate) fn log_handler(&mut self) -> LogHandler<'_, C, SM> {
         LogHandler {
             config: &mut self.config,
             state: &mut self.state,
@@ -756,14 +748,14 @@ where C: RaftTypeConfig
         }
     }
 
-    pub(crate) fn snapshot_handler(&mut self) -> SnapshotHandler<'_, '_, C> {
+    pub(crate) fn snapshot_handler(&mut self) -> SnapshotHandler<'_, '_, C, SM> {
         SnapshotHandler {
             state: &mut self.state,
             output: &mut self.output,
         }
     }
 
-    pub(crate) fn try_leader_handler(&mut self) -> Result<LeaderHandler<'_, C>, ForwardToLeader<C>> {
+    pub(crate) fn try_leader_handler(&mut self) -> Result<LeaderHandler<'_, C, SM>, ForwardToLeader<C>> {
         let leader = match self.leader.as_mut() {
             None => {
                 tracing::debug!("not a leader, server_state: {:?}", self.state.server_state);
@@ -788,7 +780,7 @@ where C: RaftTypeConfig
     }
 
     /// Return ReplicationHandler if it is Leader.
-    pub(crate) fn try_replication_handler(&mut self) -> Option<ReplicationHandler<'_, C>> {
+    pub(crate) fn try_replication_handler(&mut self) -> Option<ReplicationHandler<'_, C, SM>> {
         let leader = self.leader.as_mut()?;
 
         let rh = ReplicationHandler {
@@ -801,7 +793,7 @@ where C: RaftTypeConfig
         Some(rh)
     }
 
-    pub(crate) fn replication_handler(&mut self) -> ReplicationHandler<'_, C> {
+    pub(crate) fn replication_handler(&mut self) -> ReplicationHandler<'_, C, SM> {
         let leader = match self.leader.as_mut() {
             None => {
                 unreachable!("There is no leader, cannot handle replication");
@@ -817,7 +809,7 @@ where C: RaftTypeConfig
         }
     }
 
-    pub(crate) fn following_handler(&mut self) -> FollowingHandler<'_, C> {
+    pub(crate) fn following_handler(&mut self) -> FollowingHandler<'_, C, SM> {
         debug_assert!(self.leader.is_none());
 
         let leader_vote = self.state.vote_ref().clone();
@@ -854,9 +846,11 @@ where C: RaftTypeConfig
 mod engine_testing {
     use crate::RaftTypeConfig;
     use crate::engine::Engine;
+    use crate::engine::EngineConfig;
     use crate::proposer::LeaderQuorumSet;
+    use crate::raft_state::RaftState;
 
-    impl<C> Engine<C>
+    impl<C, SM> Engine<C, SM>
     where C: RaftTypeConfig
     {
         /// Create a Leader state just for testing purpose only,
@@ -866,6 +860,17 @@ mod engine_testing {
             let leader = self.state.new_leader();
             self.leader = Some(Box::new(leader));
             self.leader.as_mut().unwrap()
+        }
+    }
+
+    impl<C> Engine<C, ()>
+    where C: RaftTypeConfig
+    {
+        /// Create a default Engine for testing, with SM pinned to ().
+        pub(crate) fn testing_default(id: C::NodeId) -> Self {
+            let config = EngineConfig::new_default(id.clone());
+            let state = RaftState::new(id);
+            Self::new(state, config)
         }
     }
 }

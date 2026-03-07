@@ -58,9 +58,9 @@ use crate::engine::Command;
 ///
 /// TODO: add this diagram to guides/
 #[add_async_trait]
-pub(crate) trait RaftRuntime<C: RaftTypeConfig> {
+pub(crate) trait RaftRuntime<C: RaftTypeConfig, SM = ()> {
     /// Run a command produced by the engine.
     ///
     /// If a command cannot be run, i.e., waiting for some event, it will be returned
-    async fn run_command(&mut self, cmd: Command<C>) -> Result<Option<Command<C>>, StorageError<C>>;
+    async fn run_command(&mut self, cmd: Command<C, SM>) -> Result<Option<Command<C, SM>>, StorageError<C>>;
 }

@@ -128,6 +128,7 @@ where C: RaftTypeConfig
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub(in crate::raft) fn is_core_running(&self) -> bool {
         let state = self.core_state.lock().unwrap();
         state.is_running()

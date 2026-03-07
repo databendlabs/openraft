@@ -11,11 +11,11 @@ use std::panic::PanicHookInfo;
 use std::time::Duration;
 
 use multi_raft_kv::GroupId;
+use multi_raft_kv::Raft;
 use multi_raft_kv::TypeConfig;
 use multi_raft_kv::create_node;
 use multi_raft_kv::groups;
 use multi_raft_kv::router::Router;
-use multi_raft_kv::typ;
 use openraft::BasicNode;
 use openraft::async_runtime::WatchReceiver;
 use openraft::type_config::TypeConfigExt;
@@ -78,7 +78,7 @@ fn test_multi_raft_cluster() {
     });
 }
 
-async fn run_test(node1_rafts: &[typ::Raft], node2_rafts: &[typ::Raft], group_ids: &[GroupId]) {
+async fn run_test(node1_rafts: &[Raft], node2_rafts: &[Raft], group_ids: &[GroupId]) {
     // Wait for servers to start up
     TypeConfig::sleep(Duration::from_millis(200)).await;
 
@@ -183,9 +183,9 @@ fn test_leader_distribution() {
 }
 
 async fn run_leader_distribution_test(
-    node1_rafts: &[typ::Raft],
-    node2_rafts: &[typ::Raft],
-    node3_rafts: &[typ::Raft],
+    node1_rafts: &[Raft],
+    node2_rafts: &[Raft],
+    node3_rafts: &[Raft],
     group_ids: &[GroupId],
 ) {
     TypeConfig::sleep(Duration::from_millis(200)).await;

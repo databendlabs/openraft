@@ -1,9 +1,9 @@
 //! Declare the Raft type with the TypeConfig.
 
 // Reference the containing module's type config and re-export it.
+// Re-export `Raft` from the parent module so `typ::Raft` works.
+pub use super::Raft;
 pub use super::TypeConfig;
-
-pub type Raft = openraft::Raft<TypeConfig>;
 
 pub type Vote = <TypeConfig as openraft::RaftTypeConfig>::Vote;
 pub type LeaderId = <TypeConfig as openraft::RaftTypeConfig>::LeaderId;

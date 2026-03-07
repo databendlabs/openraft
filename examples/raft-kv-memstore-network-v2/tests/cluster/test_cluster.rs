@@ -7,10 +7,10 @@ use openraft::BasicNode;
 use openraft::ServerState;
 use openraft::async_runtime::WatchReceiver;
 use openraft::type_config::TypeConfigExt;
+use raft_kv_memstore_network_v2::Raft;
 use raft_kv_memstore_network_v2::TypeConfig;
 use raft_kv_memstore_network_v2::new_raft;
 use raft_kv_memstore_network_v2::router::Router;
-use raft_kv_memstore_network_v2::typ;
 use tracing_subscriber::EnvFilter;
 
 pub fn log_panic(panic: &PanicHookInfo) {
@@ -70,7 +70,7 @@ fn test_cluster() {
     });
 }
 
-async fn run_test(rafts: &[typ::Raft], router: Router) {
+async fn run_test(rafts: &[Raft], router: Router) {
     let _ = router;
 
     // Wait for server to start up.

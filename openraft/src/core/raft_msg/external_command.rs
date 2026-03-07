@@ -7,7 +7,6 @@ use crate::RaftTypeConfig;
 use crate::Snapshot;
 use crate::core::raft_msg::ExternalCommandName;
 use crate::core::raft_msg::ResultSender;
-use crate::core::sm;
 use crate::errors::AllowNextRevertError;
 use crate::metrics::MetricsRecorder;
 use crate::type_config::alias::OneshotSenderOf;
@@ -50,10 +49,6 @@ pub(crate) enum ExternalCommand<C: RaftTypeConfig> {
         tx: ResultSender<C, (), AllowNextRevertError<C>>,
     },
 
-    /// Send a [`sm::Command`] to [`sm::worker::Worker`].
-    /// This command is run in the sm task.
-    StateMachineCommand { sm_cmd: sm::Command<C> },
-
     /// Set or unset a custom metrics recorder for exporting metrics.
     ///
     /// This allows applications to plug in their own metrics collection backends
@@ -73,7 +68,6 @@ impl<C: RaftTypeConfig> ExternalCommand<C> {
             ExternalCommand::PurgeLog { .. } => ExternalCommandName::PurgeLog,
             ExternalCommand::TriggerTransferLeader { .. } => ExternalCommandName::TriggerTransferLeader,
             ExternalCommand::AllowNextRevert { .. } => ExternalCommandName::AllowNextRevert,
-            ExternalCommand::StateMachineCommand { .. } => ExternalCommandName::StateMachineCommand,
             ExternalCommand::SetMetricsRecorder { .. } => ExternalCommandName::SetMetricsRecorder,
         }
     }
@@ -117,9 +111,6 @@ where C: RaftTypeConfig
                     if *allow { "AllowReset" } else { "Panic" },
                     to
                 )
-            }
-            ExternalCommand::StateMachineCommand { sm_cmd } => {
-                write!(f, "StateMachineCommand: {}", sm_cmd)
             }
             ExternalCommand::SetMetricsRecorder { .. } => {
                 write!(f, "SetMetricsRecorder")

@@ -21,8 +21,6 @@ pub(crate) mod stream_append;
 pub mod trigger;
 mod watch_handle;
 
-use std::any::Any;
-
 pub(crate) use api::app::AppApi;
 pub(crate) use api::management::ManagementApi;
 pub(crate) use api::protocol::ProtocolApi;
@@ -75,7 +73,6 @@ use crate::async_runtime::OneshotSender;
 use crate::async_runtime::mpsc::MpscSender;
 use crate::async_runtime::watch::WatchReceiver;
 use crate::base::BoxFuture;
-use crate::base::BoxMaybeAsyncOnceMut;
 use crate::base::BoxOnce;
 use crate::base::BoxStream;
 use crate::config::Config;
@@ -106,7 +103,6 @@ use crate::errors::ClientWriteError;
 use crate::errors::Fatal;
 use crate::errors::ForwardToLeader;
 use crate::errors::InitializeError;
-use crate::errors::InvalidStateMachineType;
 use crate::errors::LinearizableReadError;
 use crate::errors::RaftError;
 use crate::errors::into_raft_result::IntoRaftResult;
@@ -126,6 +122,7 @@ use crate::storage::Snapshot;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::JoinErrorOf;
 use crate::type_config::alias::LogIdOf;
+use crate::type_config::alias::MpscSenderOf;
 use crate::type_config::alias::MpscWeakSenderOf;
 use crate::type_config::alias::NodeIdOf;
 use crate::type_config::alias::SnapshotDataOf;
@@ -319,14 +316,25 @@ pub enum ReadPolicy {
 /// - [Raft specification](https://raft.github.io/raft.pdf) for protocol details
 /// - [`Config`] for configuration options
 /// - [`RaftMetrics`] for monitoring cluster state
-#[derive(Clone)]
-pub struct Raft<C>
+pub struct Raft<C, SM = ()>
 where C: RaftTypeConfig
 {
     inner: Arc<RaftInner<C>>,
+    sm_cmd_tx: MpscSenderOf<C, sm::Command<C, SM>>,
 }
 
-impl<C> Debug for Raft<C>
+impl<C, SM> Clone for Raft<C, SM>
+where C: RaftTypeConfig
+{
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+            sm_cmd_tx: self.sm_cmd_tx.clone(),
+        }
+    }
+}
+
+impl<C, SM> Debug for Raft<C, SM>
 where C: RaftTypeConfig
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -393,8 +401,10 @@ async fn io_completion_forwarder<C>(
     }
 }
 
-impl<C> Raft<C>
-where C: RaftTypeConfig
+impl<C, SM> Raft<C, SM>
+where
+    C: RaftTypeConfig,
+    SM: RaftStateMachine<C>,
 {
     /// Create and spawn a new Raft task.
     ///
@@ -415,7 +425,7 @@ where C: RaftTypeConfig
     /// An implementation of the [`RaftLogStorage`] and [`RaftStateMachine`] trait which will be
     /// used by Raft for data storage.
     #[tracing::instrument(level="debug", skip_all, fields(cluster=%config.cluster_name))]
-    pub async fn new<LS, N, SM>(
+    pub async fn new<LS, N>(
         id: C::NodeId,
         config: Arc<Config>,
         network: N,
@@ -425,7 +435,6 @@ where C: RaftTypeConfig
     where
         N: RaftNetworkFactory<C>,
         LS: RaftLogStorage<C>,
-        SM: RaftStateMachine<C>,
     {
         let api_channel_size = config.api_channel_size();
         let notification_channel_size = config.notification_channel_size();
@@ -483,6 +492,8 @@ where C: RaftTypeConfig
             sm_span,
         );
 
+        let sm_cmd_tx = sm_handle.clone_sender();
+
         let default_io_id = IOId::new_vote_io(UncommittedVote::new_with_default_term(id.clone()));
         let (io_accepted_tx, _io_accepted_rx) = C::watch_channel(default_io_id.clone());
         let (io_submitted_tx, _io_submitted_rx) = C::watch_channel(default_io_id);
@@ -490,7 +501,7 @@ where C: RaftTypeConfig
 
         let shared_replicate_batch = SharedReplicateBatch::new();
 
-        let core: RaftCore<C, N, LS> = RaftCore {
+        let core: RaftCore<C, N, LS, SM> = RaftCore {
             id: id.clone(),
             config: config.clone(),
             runtime_config: runtime_config.clone(),
@@ -553,9 +564,16 @@ where C: RaftTypeConfig
             extensions: Extensions::default(),
         };
 
-        Ok(Self { inner: Arc::new(inner) })
+        Ok(Self {
+            inner: Arc::new(inner),
+            sm_cmd_tx,
+        })
     }
+}
 
+impl<C, SM> Raft<C, SM>
+where C: RaftTypeConfig
+{
     /// Return a handle to update runtime config.
     ///
     /// Such enabling/disabling heartbeat, election, etc.
@@ -666,7 +684,7 @@ where C: RaftTypeConfig
     ///
     /// [`ForwardToLeader`]: crate::errors::ForwardToLeader
     #[since(version = "0.10.0")]
-    pub fn as_leader(&self) -> Result<Leader<C>, ForwardToLeader<C>> {
+    pub fn as_leader(&self) -> Result<Leader<C, SM>, ForwardToLeader<C>> {
         // Do not use `is_leader()`, which depends on other state to determine, which may result in
         // inconsistent state. And `is_leader()` just do another reading from the metrics, which also may be
         // inconsistent.
@@ -1343,100 +1361,6 @@ where C: RaftTypeConfig
         self.inner.send_msg(RaftMsg::WithRaftState { req }).await
     }
 
-    /// Provides mutable access to [`RaftStateMachine`] through a user-provided function.
-    ///
-    /// The function `func` is applied to the current [`RaftStateMachine`]. The result of this
-    /// function, of type `V`, is returned wrapped in
-    /// `Result<Result<V, InvalidStateMachineType>, Fatal<C>>`.
-    /// `Fatal` error will be returned if failed to receive a reply from `RaftCore`.
-    ///
-    /// A `Fatal` error is returned if:
-    /// - Raft core task is stopped normally.
-    /// - Raft core task is panicked due to programming error.
-    /// - Raft core task is encountered a storage error.
-    ///
-    /// If the user function fail to run, e.g., the input `SM` is different one from the one in
-    /// `RaftCore`, it returns an [`InvalidStateMachineType`] error.
-    ///
-    /// Example for getting the last applied log id from SM(assume there is `last_applied()` method
-    /// provided):
-    ///
-    /// ```rust,ignore
-    /// let last_applied_log_id = my_raft.with_state_machine(|sm| {
-    ///     async move { sm.last_applied().await }
-    /// }).await?;
-    /// ```
-    #[since(version = "0.10.0")]
-    pub async fn with_state_machine<F, SM, V>(&self, func: F) -> Result<Result<V, InvalidStateMachineType>, Fatal<C>>
-    where
-        SM: RaftStateMachine<C>,
-        F: FnOnce(&mut SM) -> BoxFuture<V> + OptionalSend + 'static,
-        V: OptionalSend + 'static,
-    {
-        let (tx, rx) = C::oneshot();
-
-        self.external_state_machine_request(|sm| {
-            Box::pin(async move {
-                let resp = func(sm).await;
-                if let Err(_err) = tx.send(resp) {
-                    tracing::error!("{}: failed to send response to user tx", func_name!());
-                }
-            })
-        })
-        .await?;
-
-        let recv_res = rx.await;
-        tracing::debug!("{}: receives result is error: {:?}", func_name!(), recv_res.is_err());
-
-        let Ok(v) = recv_res else {
-            if self.inner.is_core_running() {
-                return Ok(Err(InvalidStateMachineType::new::<SM>()));
-            } else {
-                let fatal = self.inner.get_core_stop_error().await;
-                tracing::error!("{}: error: {}", func_name!(), fatal);
-                return Err(fatal);
-            }
-        };
-
-        Ok(Ok(v))
-    }
-
-    /// Send a request to the [`RaftStateMachine`] worker in a fire-and-forget manner.
-    ///
-    /// This method returns immediately after sending the message to the state machine worker,
-    /// without waiting for the request to be executed. The returned `Result` indicates
-    /// whether the message was successfully sent, not whether the request was executed.
-    ///
-    /// The request functor will be called with a mutable reference to the state machine.
-    /// The functor returns a [`Future`] because state machine methods are `async`.
-    ///
-    /// If the input `SM` is different from the one in `RaftCore`, it just silently ignores it.
-    ///
-    /// Returns a `Fatal` error if:
-    /// - Raft core task is stopped normally.
-    /// - Raft core task is panicked due to programming error.
-    /// - Raft core task is encountered a storage error.
-    #[since(version = "0.10.0")]
-    pub async fn external_state_machine_request<F, SM>(&self, req: F) -> Result<(), Fatal<C>>
-    where
-        SM: RaftStateMachine<C>,
-        F: FnOnce(&mut SM) -> BoxFuture<()> + OptionalSend + 'static,
-    {
-        let input_sm_type = std::any::type_name::<SM>();
-
-        // Erase the argument type to send through a channel without `SM` type parameter.
-        // the closure's body will downcast it internally
-        let func: BoxMaybeAsyncOnceMut<'static, dyn Any> = Box::new(move |x: &mut dyn Any| {
-            let sm = x.downcast_mut::<SM>()?;
-            Some(req(sm))
-        });
-        let sm_cmd = sm::Command::Func { func, input_sm_type };
-        let raft_msg = RaftMsg::ExternalCommand {
-            cmd: ExternalCommand::StateMachineCommand { sm_cmd },
-        };
-        self.inner.send_msg(raft_msg).await
-    }
-
     /// Get a handle to the metrics channel.
     ///
     /// # Examples
@@ -1831,5 +1755,87 @@ where C: RaftTypeConfig
         // TODO(xp): API change: replace `JoinError` with `Fatal`,
         //           to let the caller know the return value of RaftCore task.
         Ok(())
+    }
+}
+
+impl<C, SM> Raft<C, SM>
+where
+    C: RaftTypeConfig,
+    SM: OptionalSend + 'static,
+{
+    /// Provides mutable access to [`RaftStateMachine`] through a user-provided function.
+    ///
+    /// The function `func` is applied to the current [`RaftStateMachine`]. The result of this
+    /// function, of type `V`, is returned wrapped in `Result<V, Fatal<C>>`.
+    ///
+    /// A `Fatal` error is returned if:
+    /// - Raft core task is stopped normally.
+    /// - Raft core task is panicked due to programming error.
+    /// - Raft core task is encountered a storage error.
+    ///
+    /// Example for getting the last applied log id from SM(assume there is `last_applied()` method
+    /// provided):
+    ///
+    /// ```rust,ignore
+    /// let last_applied_log_id = my_raft.with_state_machine(|sm| {
+    ///     async move { sm.last_applied().await }
+    /// }).await?;
+    /// ```
+    #[since(version = "0.10.0")]
+    pub async fn with_state_machine<F, V>(&self, func: F) -> Result<V, Fatal<C>>
+    where
+        F: FnOnce(&mut SM) -> BoxFuture<V> + OptionalSend + 'static,
+        V: OptionalSend + 'static,
+    {
+        let (tx, rx) = C::oneshot();
+
+        self.external_state_machine_request(|sm| {
+            Box::pin(async move {
+                let resp = func(sm).await;
+                if let Err(_err) = tx.send(resp) {
+                    tracing::error!("{}: failed to send response to user tx", func_name!());
+                }
+            })
+        })
+        .await?;
+
+        let recv_res = rx.await;
+        tracing::debug!("{}: receives result is error: {:?}", func_name!(), recv_res.is_err());
+
+        let Ok(v) = recv_res else {
+            let fatal = self.inner.get_core_stop_error().await;
+            tracing::error!("{}: error: {}", func_name!(), fatal);
+            return Err(fatal);
+        };
+
+        Ok(v)
+    }
+
+    /// Send a request to the [`RaftStateMachine`] worker in a fire-and-forget manner.
+    ///
+    /// This method returns immediately after sending the message to the state machine worker,
+    /// without waiting for the request to be executed. The returned `Result` indicates
+    /// whether the message was successfully sent, not whether the request was executed.
+    ///
+    /// The request functor will be called with a mutable reference to the state machine.
+    /// The functor returns a [`Future`] because state machine methods are `async`.
+    ///
+    /// Returns a `Fatal` error if:
+    /// - Raft core task is stopped normally.
+    /// - Raft core task is panicked due to programming error.
+    /// - Raft core task is encountered a storage error.
+    #[since(version = "0.10.0")]
+    pub async fn external_state_machine_request<F>(&self, req: F) -> Result<(), Fatal<C>>
+    where F: FnOnce(&mut SM) -> BoxFuture<()> + OptionalSend + 'static {
+        // If shutdown has been initiated, the SM worker may still be running
+        // but we should reject new requests.
+        if self.inner.tx_shutdown.lock().unwrap().is_none() {
+            return Err(Fatal::Stopped);
+        }
+
+        let sm_cmd = sm::Command::ExternalFunc {
+            func: Box::new(move |sm| req(sm)),
+        };
+        self.sm_cmd_tx.send(sm_cmd).await.map_err(|_e| Fatal::Stopped)
     }
 }
