@@ -3,12 +3,37 @@
 pub(crate) mod core_responder;
 pub(crate) mod impls;
 pub use impls::OneshotResponder;
+pub use impls::OneshotResponderFactory;
 pub use impls::ProgressResponder;
+pub use impls::ProgressResponderFactory;
 use openraft_macros::since;
 
 use crate::LogId;
 use crate::OptionalSend;
 use crate::RaftTypeConfig;
+
+/// Selects which [`Responder`] implementation to use for sending client write results.
+///
+/// Set this as [`RaftTypeConfig::Responder`] to control how Raft delivers responses.
+/// Openraft provides two built-in factories:
+///
+/// - [`OneshotResponderFactory`] — single notification when the request completes
+/// - [`ProgressResponderFactory`] — two-stage notification (commit + complete)
+///
+/// # Custom Implementation
+///
+/// ```ignore
+/// struct MyResponderFactory;
+///
+/// impl ResponderFactory for MyResponderFactory {
+///     type Responder<C: RaftTypeConfig, T: OptionalSend + 'static> = MyResponder<C, T>;
+/// }
+/// ```
+///
+/// [`RaftTypeConfig::Responder`]: crate::RaftTypeConfig::Responder
+pub trait ResponderFactory: 'static {
+    type Responder<C: RaftTypeConfig, T: OptionalSend + 'static>: Responder<C, T>;
+}
 
 /// A trait that lets `RaftCore` send a result back to the client or to somewhere else.
 ///

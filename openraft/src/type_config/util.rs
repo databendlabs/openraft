@@ -204,7 +204,6 @@ mod tests {
     use futures_util::StreamExt;
     use openraft_rt_tokio::TokioRuntime;
 
-    use crate::OptionalSend;
     use crate::RaftTypeConfig;
     use crate::async_runtime::MpscSender;
     use crate::type_config::TypeConfigExt;
@@ -223,9 +222,7 @@ mod tests {
         type Entry = crate::Entry<Self>;
         type SnapshotData = Cursor<Vec<u8>>;
         type AsyncRuntime = TokioRuntime;
-        type Responder<T>
-            = crate::impls::OneshotResponder<Self, T>
-        where T: OptionalSend + 'static;
+        type Responder = crate::impls::OneshotResponderFactory;
         type ErrorSource = anyerror::AnyError;
     }
 

@@ -3,7 +3,6 @@ use std::io::Cursor;
 use openraft_rt_tokio::TokioRuntime;
 
 use crate::Node;
-use crate::OptionalSend;
 use crate::RaftTypeConfig;
 use crate::type_config::alias::LeaderIdOf;
 use crate::type_config::alias::LogIdOf;
@@ -47,9 +46,7 @@ where N: Node + Ord
     type Entry = crate::impls::Entry<Self>;
     type SnapshotData = Cursor<Vec<u8>>;
     type AsyncRuntime = TokioRuntime;
-    type Responder<T>
-        = crate::impls::OneshotResponder<Self, T>
-    where T: OptionalSend + 'static;
+    type Responder = crate::impls::OneshotResponderFactory;
     type ErrorSource = anyerror::AnyError;
 }
 

@@ -20,7 +20,7 @@ use crate::OptionalSend;
 use crate::OptionalSync;
 use crate::entry::RaftEntry;
 use crate::errors::ErrorSource;
-use crate::raft::responder::Responder;
+use crate::raft::responder::ResponderFactory;
 use crate::vote::RaftLeaderId;
 use crate::vote::RaftTerm;
 use crate::vote::raft_vote::RaftVote;
@@ -61,7 +61,7 @@ use crate::vote::raft_vote::RaftVote;
 ///         Vote             = openraft::impls::Vote<Self>,
 ///         Entry            = openraft::impls::Entry<Self>,
 ///         SnapshotData     = Cursor<Vec<u8>>,
-///         Responder<T>     = openraft::impls::OneshotResponder<Self, T>,
+///         Responder        = openraft::impls::OneshotResponderFactory,
 ///         AsyncRuntime     = openraft::impls::TokioRuntime,
 /// );
 /// ```
@@ -126,19 +126,12 @@ pub trait RaftTypeConfig:
     /// Asynchronous runtime type.
     type AsyncRuntime: AsyncRuntime;
 
-    /// Responder type for sending client write responses asynchronously.
+    /// Selects which [`Responder`] implementation to use for sending client write results.
     ///
-    /// Responders send results back to the caller of [`Raft::client_write`] or to
-    /// application-defined channels. The generic parameter `T` is the type of result
-    /// being sent (e.g., [`ClientWriteResult`](crate::raft::ClientWriteResult) for client write
-    /// operations).
+    /// See [`ResponderFactory`] for details and built-in options.
     ///
-    /// Applications create responders (typically using oneshot channels) and pass them
-    /// to Raft APIs that need to send asynchronous responses.
-    ///
-    /// [`Raft::client_write`]: `crate::raft::Raft::client_write`
-    type Responder<T>: Responder<Self, T>
-    where T: OptionalSend + 'static;
+    /// [`Responder`]: crate::raft::responder::Responder
+    type Responder: ResponderFactory;
 
     /// Error wrapper type for storage and network errors.
     ///
@@ -169,6 +162,7 @@ pub mod alias {
     use crate::async_runtime::Oneshot;
     use crate::async_runtime::watch;
     use crate::raft::message::ClientWriteResult;
+    use crate::raft::responder::ResponderFactory;
     use crate::type_config::AsyncRuntime;
     use crate::vote::RaftLeaderId;
 
@@ -184,7 +178,7 @@ pub mod alias {
     pub type EntryOf<C> = <C as RaftTypeConfig>::Entry;
     pub type SnapshotDataOf<C> = <C as RaftTypeConfig>::SnapshotData;
     pub type AsyncRuntimeOf<C> = <C as RaftTypeConfig>::AsyncRuntime;
-    pub type ResponderOf<C, T> = <C as RaftTypeConfig>::Responder<T>;
+    pub type ResponderOf<C, T> = <<C as RaftTypeConfig>::Responder as ResponderFactory>::Responder<C, T>;
     pub type ErrorSourceOf<C> = <C as RaftTypeConfig>::ErrorSource;
     pub type WriteResponderOf<C> = ResponderOf<C, ClientWriteResult<C>>;
 
