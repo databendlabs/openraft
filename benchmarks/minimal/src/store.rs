@@ -68,10 +68,7 @@ impl RaftTypeConfig for TypeConfig {
     type Vote = Vote<Self>;
     type Entry = Entry<Self>;
     type SnapshotData = Cursor<Vec<u8>>;
-    type Responder<T>
-    = openraft::impls::OneshotResponder<Self, T>
-    where
-        T: Send + 'static;
+    type Responder = openraft::impls::OneshotResponderFactory;
     type AsyncRuntime = openraft::impls::TokioRuntime;
     type ErrorSource = openraft::AnyError;
 }

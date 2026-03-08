@@ -3,12 +3,33 @@
 pub(crate) mod core_responder;
 pub(crate) mod impls;
 pub use impls::OneshotResponder;
+pub use impls::OneshotResponderFactory;
 pub use impls::ProgressResponder;
+pub use impls::ProgressResponderFactory;
 use openraft_macros::since;
 
 use crate::LogId;
 use crate::OptionalSend;
 use crate::RaftTypeConfig;
+
+/// A type-level function that maps `(C, T)` to a concrete [`Responder<C, T>`] type.
+///
+/// Rust doesn't support higher-kinded types, so this trait serves as defunctionalization:
+/// a marker type implements `ResponderFactory` to specify which `Responder` to use for any `(C,
+/// T)`.
+///
+/// # Example
+///
+/// ```ignore
+/// struct MyResponderFactory;
+///
+/// impl ResponderFactory for MyResponderFactory {
+///     type Responder<C: RaftTypeConfig, T: OptionalSend + 'static> = OneshotResponder<C, T>;
+/// }
+/// ```
+pub trait ResponderFactory: 'static {
+    type Responder<C: RaftTypeConfig, T: OptionalSend + 'static>: Responder<C, T>;
+}
 
 /// A trait that lets `RaftCore` send a result back to the client or to somewhere else.
 ///

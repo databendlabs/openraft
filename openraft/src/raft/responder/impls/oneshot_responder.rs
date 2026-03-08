@@ -2,6 +2,7 @@ use crate::OptionalSend;
 use crate::RaftTypeConfig;
 use crate::async_runtime::OneshotSender;
 use crate::raft::responder::Responder;
+use crate::raft::responder::ResponderFactory;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::OneshotReceiverOf;
 use crate::type_config::alias::OneshotSenderOf;
@@ -61,4 +62,11 @@ where
             tracing::warn!("OneshotConsumer.tx.send: is_ok: {}", res.is_ok());
         }
     }
+}
+
+/// Marker type for [`ResponderFactory`] that selects [`OneshotResponder`].
+pub struct OneshotResponderFactory;
+
+impl ResponderFactory for OneshotResponderFactory {
+    type Responder<C: RaftTypeConfig, T: OptionalSend + 'static> = OneshotResponder<C, T>;
 }

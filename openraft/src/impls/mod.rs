@@ -35,7 +35,9 @@ pub use crate::entry::Entry;
 pub use crate::node::BasicNode;
 pub use crate::node::EmptyNode;
 pub use crate::raft::responder::impls::OneshotResponder;
+pub use crate::raft::responder::impls::OneshotResponderFactory;
 pub use crate::raft::responder::impls::ProgressResponder;
+pub use crate::raft::responder::impls::ProgressResponderFactory;
 
 /// LeaderId implementation for advanced mode, allowing multiple leaders per term.
 pub mod leader_id_adv {
