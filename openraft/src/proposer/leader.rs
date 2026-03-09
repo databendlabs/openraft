@@ -11,9 +11,9 @@ use crate::progress::entry::ProgressEntry;
 use crate::progress::stream_id::StreamId;
 use crate::quorum::QuorumSet;
 use crate::type_config::TypeConfigExt;
+use crate::type_config::alias::CommittedVoteOf;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::LogIdOf;
-use crate::vote::committed::CommittedVote;
 use crate::vote::raft_vote::RaftVoteExt;
 
 /// Leading state data.
@@ -47,7 +47,7 @@ where C: RaftTypeConfig
     /// The vote this leader works in.
     ///
     /// `self.voting` may be in progress requesting vote for a higher vote.
-    pub(crate) committed_vote: CommittedVote<C>,
+    pub(crate) committed_vote: CommittedVoteOf<C>,
 
     /// The time to send next heartbeat.
     pub(crate) next_heartbeat: InstantOf<C>,
@@ -90,7 +90,7 @@ where
     // leader_id: Copy is feature gated
     #[allow(clippy::clone_on_copy)]
     pub(crate) fn new(
-        vote: CommittedVote<C>,
+        vote: CommittedVoteOf<C>,
         quorum_set: QS,
         learner_ids: impl IntoIterator<Item = C::NodeId>,
         last_leader_log_ids: Option<LeaderLogIds<C>>,
@@ -159,7 +159,7 @@ where
         self.last_log_id.as_ref()
     }
 
-    pub(crate) fn committed_vote_ref(&self) -> &CommittedVote<C> {
+    pub(crate) fn committed_vote_ref(&self) -> &CommittedVoteOf<C> {
         &self.committed_vote
     }
 

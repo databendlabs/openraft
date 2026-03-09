@@ -184,7 +184,7 @@ where C: RaftTypeConfig
 
         // FollowingHandler requires vote to be committed.
         let leader_id = LeaderIdOf::<C>::new(TermOf::<C>::default(), self.config.id.clone());
-        let vote = <VoteOf<C> as RaftVote<C>>::from_leader_id(leader_id.clone(), true);
+        let vote = <VoteOf<C> as RaftVote>::from_leader_id(leader_id.clone(), true);
         self.state.vote.update(C::now(), Duration::default(), vote);
 
         // The very first log id

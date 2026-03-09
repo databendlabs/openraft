@@ -26,6 +26,7 @@ use crate::replication::response::ReplicationResult;
 use crate::replication::snapshot_transmitter_handle::SnapshotTransmitterHandle;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::InstantOf;
+use crate::type_config::alias::VoteOf;
 use crate::type_config::alias::WatchSenderOf;
 use crate::vote::raft_vote::RaftVoteExt;
 
@@ -207,7 +208,7 @@ where
             ReplicationClosed::new("RaftCore is dropped")
         };
 
-        let sender_vote = self.replication_context.leader_vote.clone().into_vote();
+        let sender_vote: VoteOf<C> = self.replication_context.leader_vote.clone().into_vote();
 
         let start_time = C::now();
 

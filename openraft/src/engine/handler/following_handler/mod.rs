@@ -25,8 +25,8 @@ use crate::raft_state::IOId;
 use crate::raft_state::LogStateReader;
 use crate::raft_state::io_state::log_io_id::LogIOId;
 use crate::storage::Snapshot;
+use crate::type_config::alias::CommittedVoteOf;
 use crate::type_config::alias::LogIdOf;
-use crate::vote::committed::CommittedVote;
 use crate::vote::raft_vote::RaftVoteExt;
 
 #[cfg(test)]
@@ -47,7 +47,7 @@ pub(crate) struct FollowingHandler<'x, C, SM = ()>
 where C: RaftTypeConfig
 {
     /// The Leader this Acceptor (Follower/Leaner) currently following.
-    pub(crate) leader_vote: CommittedVote<C>,
+    pub(crate) leader_vote: CommittedVoteOf<C>,
 
     pub(crate) config: &'x mut EngineConfig<C>,
     pub(crate) state: &'x mut RaftState<C>,

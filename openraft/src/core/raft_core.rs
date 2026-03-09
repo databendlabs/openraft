@@ -109,19 +109,19 @@ use crate::runtime::RaftRuntime;
 use crate::storage::IOFlushed;
 use crate::storage::RaftLogStorage;
 use crate::type_config::TypeConfigExt;
+use crate::type_config::alias::CommittedVoteOf;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::MpscReceiverOf;
 use crate::type_config::alias::MpscSenderOf;
 use crate::type_config::alias::OneshotReceiverOf;
+use crate::type_config::alias::UncommittedVoteOf;
 use crate::type_config::alias::VoteOf;
 use crate::type_config::alias::WatchReceiverOf;
 use crate::type_config::alias::WatchSenderOf;
 use crate::type_config::async_runtime::mpsc::MpscSender;
 use crate::vote::RaftLeaderId;
 use crate::vote::RaftVote;
-use crate::vote::committed::CommittedVote;
-use crate::vote::non_committed::UncommittedVote;
 use crate::vote::raft_vote::RaftVoteExt;
 use crate::vote::vote_status::VoteStatus;
 
@@ -984,7 +984,7 @@ where
     #[allow(clippy::type_complexity)]
     pub(crate) async fn spawn_replication_stream(
         &mut self,
-        leader_vote: CommittedVote<C>,
+        leader_vote: CommittedVoteOf<C>,
         prog: &TargetProgress<C>,
     ) -> ReplicationHandle<C> {
         let network = self.network_factory.new_client(prog.target.clone(), &prog.target_node).await;
@@ -1016,7 +1016,7 @@ where
 
     fn new_replication(
         &self,
-        leader_vote: CommittedVote<C>,
+        leader_vote: CommittedVoteOf<C>,
         prog: &TargetProgress<C>,
         replicate_tx: WatchSenderOf<C, Replicate<C>>,
     ) -> (ReplicationHandle<C>, ReplicationContext<C>) {
@@ -1031,7 +1031,7 @@ where
 
     fn new_replication_context(
         &self,
-        leader_vote: CommittedVote<C>,
+        leader_vote: CommittedVoteOf<C>,
         prog: &TargetProgress<C>,
         cancel_rx: WatchReceiverOf<C, ()>,
     ) -> ReplicationContext<C> {
@@ -1874,7 +1874,7 @@ where
 
     /// If a message is sent by a previous Candidate but is received by current Candidate,
     /// it is a stale message and should be just ignored.
-    fn does_candidate_vote_match(&self, candidate_vote: &UncommittedVote<C>, msg: impl fmt::Display) -> bool {
+    fn does_candidate_vote_match(&self, candidate_vote: &UncommittedVoteOf<C>, msg: impl fmt::Display) -> bool {
         // If it finished voting, Candidate's vote is None.
         let Some(my_vote) = self.engine.candidate_ref().map(|x| x.vote_ref().clone()) else {
             tracing::warn!(
@@ -1902,7 +1902,7 @@ where
 
     /// If a message is sent by a previous Leader but is received by current Leader,
     /// it is a stale message and should be just ignored.
-    fn does_leader_vote_match(&self, leader_vote: &CommittedVote<C>, msg: impl fmt::Display) -> bool {
+    fn does_leader_vote_match(&self, leader_vote: &CommittedVoteOf<C>, msg: impl fmt::Display) -> bool {
         let Some(my_vote) = self.engine.leader.as_ref().map(|x| x.committed_vote.clone()) else {
             tracing::warn!(
                 "A message will be ignored because this node is no longer Leader: \
@@ -1972,7 +1972,7 @@ where
     /// cancellation channel. Dropping the sender signals the task to stop.
     pub(crate) fn new_replication_task_context(
         &self,
-        leader_vote: CommittedVote<C>,
+        leader_vote: CommittedVoteOf<C>,
         stream_id: StreamId,
         target: C::NodeId,
     ) -> (ReplicationContext<C>, WatchSenderOf<C, ()>) {

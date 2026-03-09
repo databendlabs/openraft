@@ -21,7 +21,7 @@ declare_raft_types!(
         Term = u64,
         LeaderId = crate::impls::leader_id_std::LeaderId<u64, u64>,
         Entry = crate::Entry<Self>,
-        Vote = crate::impls::Vote<Self>,
+        Vote = crate::impls::Vote<Self::LeaderId>,
         SnapshotData = Cursor<Vec<u8>>,
         AsyncRuntime = TokioRuntime,
         // Responder<T> is not supported by  declare_raft_types

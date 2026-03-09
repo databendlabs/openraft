@@ -3,8 +3,8 @@ use std::fmt::Formatter;
 
 use crate::RaftTypeConfig;
 use crate::display_ext::DisplayOptionExt;
+use crate::type_config::alias::CommittedVoteOf;
 use crate::type_config::alias::LogIdOf;
-use crate::vote::committed::CommittedVote;
 
 /// Uniquely identifies a replication session.
 ///
@@ -22,7 +22,7 @@ pub(crate) struct ReplicationSessionId<C>
 where C: RaftTypeConfig
 {
     /// The Leader or Candidate this replication belongs to.
-    pub(crate) leader_vote: CommittedVote<C>,
+    pub(crate) leader_vote: CommittedVoteOf<C>,
 
     /// The log id of the membership log this replication works for.
     pub(crate) membership_log_id: Option<LogIdOf<C>>,
@@ -44,7 +44,7 @@ where C: RaftTypeConfig
 impl<C> ReplicationSessionId<C>
 where C: RaftTypeConfig
 {
-    pub(crate) fn new(vote: CommittedVote<C>, membership_log_id: Option<LogIdOf<C>>) -> Self {
+    pub(crate) fn new(vote: CommittedVoteOf<C>, membership_log_id: Option<LogIdOf<C>>) -> Self {
         Self {
             leader_vote: vote,
             membership_log_id,

@@ -1,24 +1,24 @@
 use std::cmp::Ordering;
-use std::fmt::Formatter;
+use std::fmt;
 
-use crate::RaftTypeConfig;
-use crate::Vote;
-use crate::vote::RaftVote;
+use crate::vote::RaftLeaderId;
+use crate::vote::Vote;
+use crate::vote::raft_vote::RaftVote;
 
-/// Similar to [`Vote`] but with a reference to the `LeaderId`, and provide ordering and display
-/// implementation.
+/// Similar to [`Vote`](crate::vote::Vote) but with a reference to the `LeaderId`,
+/// and provide ordering and display implementation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct RefVote<'a, C>
-where C: RaftTypeConfig
+pub(crate) struct RefVote<'a, LID>
+where LID: RaftLeaderId
 {
-    pub(crate) leader_id: &'a C::LeaderId,
+    pub(crate) leader_id: &'a LID,
     pub(crate) committed: bool,
 }
 
-impl<'a, C> RefVote<'a, C>
-where C: RaftTypeConfig
+impl<'a, LID> RefVote<'a, LID>
+where LID: RaftLeaderId
 {
-    pub(crate) fn new(leader_id: &'a C::LeaderId, committed: bool) -> Self {
+    pub(crate) fn new(leader_id: &'a LID, committed: bool) -> Self {
         Self { leader_id, committed }
     }
 
@@ -26,19 +26,18 @@ where C: RaftTypeConfig
         self.committed
     }
 
-    /// Convert to an owned [`Vote`].
     #[allow(dead_code)]
-    pub(crate) fn to_owned(&self) -> Vote<C> {
+    pub(crate) fn to_owned(&self) -> Vote<LID> {
         Vote::from_leader_id(self.leader_id.clone(), self.committed)
     }
 }
 
 // Commit votes have a total order relation with all other votes
-impl<'a, C> PartialOrd for RefVote<'a, C>
-where C: RaftTypeConfig
+impl<'a, LID> PartialOrd for RefVote<'a, LID>
+where LID: RaftLeaderId
 {
     #[inline]
-    fn partial_cmp(&self, other: &RefVote<'a, C>) -> Option<Ordering> {
+    fn partial_cmp(&self, other: &RefVote<'a, LID>) -> Option<Ordering> {
         match PartialOrd::partial_cmp(&self.leader_id, &other.leader_id) {
             Some(Ordering::Equal) => PartialOrd::partial_cmp(&self.committed, &other.committed),
             None => {
@@ -57,10 +56,10 @@ where C: RaftTypeConfig
     }
 }
 
-impl<C> std::fmt::Display for RefVote<'_, C>
-where C: RaftTypeConfig
+impl<LID> fmt::Display for RefVote<'_, LID>
+where LID: RaftLeaderId
 {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "<{}:{}>",

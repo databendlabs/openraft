@@ -2,11 +2,12 @@ use std::fmt;
 
 use openraft::vote::RaftVote;
 
-use crate::TypeConfig;
 use crate::pb;
 use crate::typ::LeaderId;
 
-impl RaftVote<TypeConfig> for pb::Vote {
+impl RaftVote for pb::Vote {
+    type LeaderId = LeaderId;
+
     fn from_leader_id(leader_id: LeaderId, committed: bool) -> Self {
         pb::Vote {
             leader_id: Some(leader_id),
