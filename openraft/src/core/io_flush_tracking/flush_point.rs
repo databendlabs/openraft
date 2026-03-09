@@ -1,9 +1,9 @@
 use std::fmt;
 
-use crate::LogId;
 use crate::RaftTypeConfig;
 use crate::Vote;
 use crate::display_ext::display_option::DisplayOptionExt;
+use crate::type_config::alias::LogIdOf;
 
 /// State of the most recently flushed log I/O operation.
 ///
@@ -33,7 +33,7 @@ where C: RaftTypeConfig
 
     /// The last log entry that was flushed, or `None` if only a vote was saved without appending
     /// logs.
-    pub last_log_id: Option<LogId<C>>,
+    pub last_log_id: Option<LogIdOf<C>>,
 }
 
 impl<C> fmt::Display for FlushPoint<C>
@@ -47,7 +47,7 @@ where C: RaftTypeConfig
 impl<C> FlushPoint<C>
 where C: RaftTypeConfig
 {
-    pub fn new(vote: Vote<C::LeaderId>, last_log_id: Option<LogId<C>>) -> Self {
+    pub fn new(vote: Vote<C::LeaderId>, last_log_id: Option<LogIdOf<C>>) -> Self {
         Self { vote, last_log_id }
     }
 }

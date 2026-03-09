@@ -13,11 +13,11 @@ use std::sync::Mutex;
 use futures::Stream;
 use openraft::Entry;
 use openraft::EntryPayload;
-use openraft::LogId;
 use openraft::OptionalSend;
 use openraft::SnapshotMeta;
 use openraft::StoredMembership;
 use openraft::Vote;
+use openraft::alias::LogIdOf;
 use openraft::alias::SnapshotDataOf;
 use openraft::entry::RaftEntry;
 use openraft::storage::EntryResponder;
@@ -89,7 +89,7 @@ type MemLeaderId = openraft::impls::leader_id_adv::LeaderId<u64, NodeId>;
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 struct StateMachine {
-    last_applied_log: Option<LogId<TypeConfig>>,
+    last_applied_log: Option<LogIdOf<TypeConfig>>,
     last_membership: StoredMembership<TypeConfig>,
 }
 
@@ -112,8 +112,8 @@ impl MemStateMachine {
 // ── Log store ────────────────────────────────────────────────────────────────
 
 pub struct MemLogStore {
-    last_purged_log_id: RwLock<Option<LogId<TypeConfig>>>,
-    committed: RwLock<Option<LogId<TypeConfig>>>,
+    last_purged_log_id: RwLock<Option<LogIdOf<TypeConfig>>>,
+    committed: RwLock<Option<LogIdOf<TypeConfig>>>,
     log: RwLock<BTreeMap<u64, String>>,
     vote: RwLock<Option<Vote<MemLeaderId>>>,
 }
@@ -181,12 +181,12 @@ impl RaftLogStorage<TypeConfig> for Arc<MemLogStore> {
         Ok(())
     }
 
-    async fn save_committed(&mut self, committed: Option<LogId<TypeConfig>>) -> Result<(), io::Error> {
+    async fn save_committed(&mut self, committed: Option<LogIdOf<TypeConfig>>) -> Result<(), io::Error> {
         *self.committed.write().await = committed;
         Ok(())
     }
 
-    async fn read_committed(&mut self) -> Result<Option<LogId<TypeConfig>>, io::Error> {
+    async fn read_committed(&mut self) -> Result<Option<LogIdOf<TypeConfig>>, io::Error> {
         Ok(*self.committed.read().await)
     }
 
@@ -201,7 +201,7 @@ impl RaftLogStorage<TypeConfig> for Arc<MemLogStore> {
         Ok(())
     }
 
-    async fn truncate_after(&mut self, last_log_id: Option<LogId<TypeConfig>>) -> Result<(), io::Error> {
+    async fn truncate_after(&mut self, last_log_id: Option<LogIdOf<TypeConfig>>) -> Result<(), io::Error> {
         let start = last_log_id.map_or(0, |id| id.index() + 1);
         let mut log = self.log.write().await;
         let keys: Vec<_> = log.range(start..).map(|(k, _)| *k).collect();
@@ -211,7 +211,7 @@ impl RaftLogStorage<TypeConfig> for Arc<MemLogStore> {
         Ok(())
     }
 
-    async fn purge(&mut self, log_id: LogId<TypeConfig>) -> Result<(), io::Error> {
+    async fn purge(&mut self, log_id: LogIdOf<TypeConfig>) -> Result<(), io::Error> {
         *self.last_purged_log_id.write().await = Some(log_id);
         let mut log = self.log.write().await;
         let keys: Vec<_> = log.range(..=log_id.index()).map(|(k, _)| *k).collect();
@@ -260,7 +260,9 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<MemStateMachine> {
 impl RaftStateMachine<TypeConfig> for Arc<MemStateMachine> {
     type SnapshotBuilder = Self;
 
-    async fn applied_state(&mut self) -> Result<(Option<LogId<TypeConfig>>, StoredMembership<TypeConfig>), io::Error> {
+    async fn applied_state(
+        &mut self,
+    ) -> Result<(Option<LogIdOf<TypeConfig>>, StoredMembership<TypeConfig>), io::Error> {
         let sm = self.sm.read().await;
         Ok((sm.last_applied_log, sm.last_membership.clone()))
     }

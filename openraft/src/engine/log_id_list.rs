@@ -11,6 +11,7 @@ use crate::log_id::ref_log_id::RefLogId;
 use crate::storage::RaftLogReaderExt;
 use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::type_config::alias::LogIdOf;
+use crate::type_config::alias::RefLogIdOf;
 
 /// Efficient storage for log ids.
 ///
@@ -173,7 +174,7 @@ where C: RaftTypeConfig
     /// The log ids in the input have to be continuous.
     pub(crate) fn extend_from_same_leader<LID, I>(&mut self, new_ids: I)
     where
-        LID: RaftLogId<C>,
+        LID: RaftLogId<CommittedLeaderId = CommittedLeaderIdOf<C>>,
         I: IntoIterator<Item = LID>,
         <I as IntoIterator>::IntoIter: DoubleEndedIterator,
     {
@@ -194,7 +195,7 @@ where C: RaftTypeConfig
     /// Extends with a list of `log_id`.
     pub(crate) fn extend<LID, I>(&mut self, new_ids: I)
     where
-        LID: RaftLogId<C>,
+        LID: RaftLogId<CommittedLeaderId = CommittedLeaderIdOf<C>>,
         I: IntoIterator<Item = LID>,
     {
         for log_id in new_ids {
@@ -314,7 +315,7 @@ where C: RaftTypeConfig
     ///
     /// Returns the `purged` log id if the index equals the purged index.
     #[allow(clippy::clone_on_copy)]
-    pub(crate) fn ref_at(&self, index: u64) -> Option<RefLogId<'_, C>> {
+    pub(crate) fn ref_at(&self, index: u64) -> Option<RefLogIdOf<'_, C>> {
         // Handle purged range
         // index < next_index() implies purged is Some (otherwise next_index() returns 0)
         if index < self.first_index() {
@@ -359,7 +360,7 @@ where C: RaftTypeConfig
     ///
     /// The first log index is `purged.index + 1` (or 0 if nothing purged).
     /// The leader comes from the first entry in `key_log_ids`.
-    pub(crate) fn first(&self) -> Option<RefLogId<'_, C>> {
+    pub(crate) fn first(&self) -> Option<RefLogIdOf<'_, C>> {
         let first_key = self.key_log_ids.first()?;
         let first_index = self.first_index();
         Some(RefLogId::new(first_key.committed_leader_id(), first_index))
@@ -369,7 +370,7 @@ where C: RaftTypeConfig
         self.key_log_ids.last().or(self.purged.as_ref())
     }
 
-    pub(crate) fn last_ref(&self) -> Option<RefLogId<'_, C>> {
+    pub(crate) fn last_ref(&self) -> Option<RefLogIdOf<'_, C>> {
         self.last().map(|x| x.to_ref())
     }
 

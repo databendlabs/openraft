@@ -4,7 +4,6 @@ use std::time::Duration;
 
 use futures_util::FutureExt;
 
-use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::RaftLogReader;
 use crate::RaftTypeConfig;
@@ -55,7 +54,7 @@ where
     pub(crate) inflight_id: Option<InflightId>,
 
     /// The leader's committed log id to send in AppendEntries requests.
-    pub(crate) leader_committed: Option<LogId<C>>,
+    pub(crate) leader_committed: Option<LogIdOf<C>>,
 
     /// The backoff policy if an [`Unreachable`](`crate::error::Unreachable`) error is returned.
     /// It will be reset to `None` when a successful response is received.

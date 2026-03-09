@@ -265,7 +265,8 @@ mod tests {
         use crate::engine::testing::UTConfig;
         use crate::engine::testing::log_id;
 
-        let storage_err = StorageError::write_log_entry(log_id(1, 2, 3), AnyError::error("disk full"));
+        let storage_err: StorageError<UTConfig> =
+            StorageError::write_log_entry(log_id(1, 2, 3), AnyError::error("disk full"));
         let io_err: std::io::Error = storage_err.into();
 
         assert_eq!(io_err.kind(), std::io::ErrorKind::Other);

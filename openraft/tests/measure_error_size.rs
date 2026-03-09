@@ -42,14 +42,17 @@ fn measure_storage_error_size() {
     use openraft::LogId;
     use openraft::SnapshotId;
     use openraft::storage::SnapshotSignature;
+    use openraft::vote::RaftLeaderId;
+
+    type LogIdOf<C> = LogId<<<C as openraft::RaftTypeConfig>::LeaderId as RaftLeaderId>::Committed>;
 
     println!(
-        "LogId<TestConfig>:                {} bytes",
-        size_of::<LogId<TestConfig>>()
+        "LogIdOf<TestConfig>:              {} bytes",
+        size_of::<LogIdOf<TestConfig>>()
     );
     println!(
-        "Option<LogId<TestConfig>>:        {} bytes",
-        size_of::<Option<LogId<TestConfig>>>()
+        "Option<LogIdOf<TestConfig>>:      {} bytes",
+        size_of::<Option<LogIdOf<TestConfig>>>()
     );
     println!(
         "SnapshotSignature<TestConfig>:    {} bytes",
@@ -62,8 +65,8 @@ fn measure_storage_error_size() {
 
     println!("\n--- SnapshotSignature Components ---");
     println!(
-        "Option<Box<LogId<TestConfig>>>:   {} bytes",
-        size_of::<Option<Box<LogId<TestConfig>>>>()
+        "Option<Box<LogIdOf<TestConfig>>>: {} bytes",
+        size_of::<Option<Box<LogIdOf<TestConfig>>>>()
     );
     println!("SnapshotId (String):              {} bytes", size_of::<SnapshotId>());
 

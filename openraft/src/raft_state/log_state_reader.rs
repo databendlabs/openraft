@@ -3,8 +3,9 @@ use crate::log_id::option_raft_log_id_ext::OptionRaftLogIdExt;
 use crate::log_id::option_ref_log_id_ext::OptionRefLogIdExt;
 use crate::log_id::raft_log_id::RaftLogId;
 use crate::log_id::raft_log_id_ext::RaftLogIdExt;
-use crate::log_id::ref_log_id::RefLogId;
+use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::type_config::alias::LogIdOf;
+use crate::type_config::alias::RefLogIdOf;
 
 /// APIs to get significant log ids reflecting the raft state.
 ///
@@ -20,7 +21,7 @@ where C: RaftTypeConfig
     /// Return if a log id exists.
     ///
     /// It assumes a committed log will always get positive return value, according to raft spec.
-    fn has_log_id(&self, log_id: impl RaftLogId<C>) -> bool {
+    fn has_log_id(&self, log_id: impl RaftLogId<CommittedLeaderId = CommittedLeaderIdOf<C>>) -> bool {
         if log_id.index() < self.committed().next_index() {
             debug_assert!(Some(log_id.to_ref()) <= self.committed().to_ref());
             return true;
@@ -43,7 +44,7 @@ where C: RaftTypeConfig
     /// It will return `last_purged_log_id` if index is at the last purged index.
     /// If the log at the specified index is smaller than `last_purged_log_id`, or greater than
     /// `last_log_id`, it returns None.
-    fn ref_log_id(&self, index: u64) -> Option<RefLogId<'_, C>>;
+    fn ref_log_id(&self, index: u64) -> Option<RefLogIdOf<'_, C>>;
 
     /// The last known log id in the store.
     ///

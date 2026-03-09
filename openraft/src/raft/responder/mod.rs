@@ -6,9 +6,9 @@ pub use impls::OneshotResponder;
 pub use impls::ProgressResponder;
 use openraft_macros::since;
 
-use crate::LogId;
 use crate::OptionalSend;
 use crate::RaftTypeConfig;
+use crate::type_config::alias::LogIdOf;
 
 /// A trait that lets `RaftCore` send a result back to the client or to somewhere else.
 ///
@@ -39,7 +39,7 @@ where
     ///
     /// Default implementation does nothing.
     #[since(version = "0.10.0")]
-    fn on_commit(&mut self, _log_id: LogId<C>) {}
+    fn on_commit(&mut self, _log_id: LogIdOf<C>) {}
 
     /// Called when the request completes (applied; previously it is `send`).
     /// Send the final result to the client.

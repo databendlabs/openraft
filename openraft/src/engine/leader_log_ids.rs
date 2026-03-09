@@ -5,6 +5,7 @@ use crate::engine::leader_log_ids_iter::LeaderLogIdsIter;
 use crate::log_id::ref_log_id::RefLogId;
 use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::type_config::alias::LogIdOf;
+use crate::type_config::alias::RefLogIdOf;
 
 /// A non-empty range of log IDs belonging to a Leader.
 ///
@@ -63,7 +64,7 @@ where C: RaftTypeConfig
     }
 
     /// Returns a reference to the first log ID in the range.
-    pub(crate) fn first_ref(&self) -> RefLogId<'_, C> {
+    pub(crate) fn first_ref(&self) -> RefLogIdOf<'_, C> {
         RefLogId::new(&self.committed_leader_id, self.first)
     }
 
@@ -74,7 +75,7 @@ where C: RaftTypeConfig
     }
 
     /// Returns a reference to the last log ID in the range.
-    pub(crate) fn last_ref(&self) -> RefLogId<'_, C> {
+    pub(crate) fn last_ref(&self) -> RefLogIdOf<'_, C> {
         RefLogId::new(&self.committed_leader_id, self.last)
     }
 
@@ -99,7 +100,7 @@ where C: RaftTypeConfig
     /// # Panics
     /// Panics if `index` is out of range `[first, last]`.
     #[allow(dead_code)]
-    pub(crate) fn ref_at(&self, index: u64) -> RefLogId<'_, C> {
+    pub(crate) fn ref_at(&self, index: u64) -> RefLogIdOf<'_, C> {
         debug_assert!(
             index >= self.first && index <= self.last,
             "index {} out of range [{}, {}]",

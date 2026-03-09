@@ -1,7 +1,7 @@
 use std::fmt;
 
-use crate::LogId;
 use crate::progress::entry;
+use crate::type_config::alias::LogIdOf;
 
 /// An ID and its associated value.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -32,7 +32,7 @@ where
     ID: Clone,
 {
     /// Return a tuple of (cloned id, cloned matching log id).
-    pub(crate) fn to_matching_tuple(&self) -> (ID, Option<LogId<C>>) {
+    pub(crate) fn to_matching_tuple(&self) -> (ID, Option<LogIdOf<C>>) {
         (self.id.clone(), self.val.matching().cloned())
     }
 }
