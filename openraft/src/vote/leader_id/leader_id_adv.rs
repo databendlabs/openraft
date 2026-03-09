@@ -49,11 +49,13 @@ where
 /// why standard raft stores just a `term` in log entry.
 pub type CommittedLeaderId<Term, NID> = LeaderId<Term, NID>;
 
-impl<Term, NID> RaftLeaderId<Term, NID> for LeaderId<Term, NID>
+impl<Term, NID> RaftLeaderId for LeaderId<Term, NID>
 where
     Term: RaftTerm,
     NID: NodeId,
 {
+    type Term = Term;
+    type NodeId = NID;
     type Committed = Self;
 
     fn new(term: Term, node_id: NID) -> Self {
