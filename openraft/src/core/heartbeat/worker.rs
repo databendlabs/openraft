@@ -21,11 +21,11 @@ use crate::raft::StreamAppendResult;
 use crate::replication::Progress;
 use crate::replication::response::ReplicationResult;
 use crate::type_config::TypeConfigExt;
+use crate::type_config::alias::CommittedVoteOf;
 use crate::type_config::alias::MpscSenderOf;
 use crate::type_config::alias::OneshotReceiverOf;
 use crate::type_config::alias::WatchReceiverOf;
 use crate::type_config::async_runtime::mpsc::MpscSender;
-use crate::vote::committed::CommittedVote;
 
 /// A dedicated worker sending heartbeat to a specific follower.
 pub struct HeartbeatWorker<C, N>
@@ -36,7 +36,7 @@ where
     pub(crate) id: C::NodeId,
 
     /// The leader this heartbeat worker works for
-    pub(crate) leader_vote: CommittedVote<C>,
+    pub(crate) leader_vote: CommittedVoteOf<C>,
 
     /// A unique stream.
     pub(crate) stream_id: StreamId,

@@ -40,7 +40,7 @@ where C: RaftTypeConfig
     log: WatchReceiverOf<C, Option<FlushPoint<C>>>,
 
     /// Receiver for vote I/O progress (vote saves only, or implied by log appends).
-    vote: WatchReceiverOf<C, Option<Vote<C>>>,
+    vote: WatchReceiverOf<C, Option<Vote<C::LeaderId>>>,
 
     /// Receiver for commit log progress (state machine submission).
     commit: WatchReceiverOf<C, Option<LogIdOf<C>>>,

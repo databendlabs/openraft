@@ -168,6 +168,7 @@ mod tests {
     use crate::engine::Command;
     use crate::engine::TargetProgress;
     use crate::engine::testing::UTConfig;
+    use crate::engine::testing::UTLeaderId;
     use crate::engine::testing::log_id;
     use crate::impls::Vote;
     use crate::progress::entry::ProgressEntry;
@@ -183,8 +184,8 @@ mod tests {
 
     type C = UTConfig;
 
-    fn committed_vote(term: u64, node_id: u64) -> CommittedVote<C> {
-        Vote::<C>::new(term, node_id).into_committed()
+    fn committed_vote(term: u64, node_id: u64) -> CommittedVote<UTLeaderId> {
+        Vote::<UTLeaderId>::new(term, node_id).into_committed()
     }
 
     #[test]

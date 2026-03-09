@@ -26,9 +26,9 @@ use crate::raft_state::LogStateReader;
 use crate::raft_state::io_state::log_io_id::LogIOId;
 use crate::replication::replicate::Replicate;
 use crate::replication::response::ReplicationResult;
+use crate::type_config::alias::CommittedVoteOf;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::LogIdOf;
-use crate::vote::committed::CommittedVote;
 use crate::vote::raft_vote::RaftVoteExt;
 
 #[cfg(test)]
@@ -370,7 +370,7 @@ where C: RaftTypeConfig
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn send_to_target(
         output: &mut EngineOutput<C, SM>,
-        leader_vote: CommittedVote<C>,
+        leader_vote: CommittedVoteOf<C>,
         target: &C::NodeId,
         inflight: &Inflight<C>,
     ) {
