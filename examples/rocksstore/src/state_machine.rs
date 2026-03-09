@@ -59,7 +59,9 @@ impl RocksStateMachine {
     }
 
     #[allow(clippy::type_complexity)]
-    fn get_meta(&self) -> Result<(Option<LogIdOf<TypeConfig>>, StoredMembership<TypeConfig>), StorageError<TypeConfig>> {
+    fn get_meta(
+        &self,
+    ) -> Result<(Option<LogIdOf<TypeConfig>>, StoredMembership<TypeConfig>), StorageError<TypeConfig>> {
         let cf = self.cf_sm_meta();
 
         let last_applied_log = self
@@ -163,7 +165,9 @@ impl RaftSnapshotBuilder<TypeConfig> for RocksStateMachine {
 impl RaftStateMachine<TypeConfig> for RocksStateMachine {
     type SnapshotBuilder = Self;
 
-    async fn applied_state(&mut self) -> Result<(Option<LogIdOf<TypeConfig>>, StoredMembership<TypeConfig>), io::Error> {
+    async fn applied_state(
+        &mut self,
+    ) -> Result<(Option<LogIdOf<TypeConfig>>, StoredMembership<TypeConfig>), io::Error> {
         self.get_meta().map_err(|e| io::Error::other(e.to_string()))
     }
 
