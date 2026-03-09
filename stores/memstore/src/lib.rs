@@ -171,7 +171,7 @@ pub struct MemLogStore {
     block: BlockConfig,
 
     /// The current hard state.
-    vote: RwLock<Option<Vote<TypeConfig>>>,
+    vote: RwLock<Option<Vote<leader_id_mode::LeaderId<u64, u64>>>>,
 
     /// When set to true, `limited_get_log_entries` will return empty result.
     /// This is for testing graceful handling of faulty storage implementations.
@@ -289,7 +289,7 @@ impl RaftLogReader<TypeConfig> for Arc<MemLogStore> {
         Ok(entries)
     }
 
-    async fn read_vote(&mut self) -> Result<Option<Vote<TypeConfig>>, io::Error> {
+    async fn read_vote(&mut self) -> Result<Option<Vote<leader_id_mode::LeaderId<u64, u64>>>, io::Error> {
         Ok(*self.vote.read().await)
     }
 
@@ -405,7 +405,7 @@ impl RaftLogStorage<TypeConfig> for Arc<MemLogStore> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn save_vote(&mut self, vote: &Vote<TypeConfig>) -> Result<(), io::Error> {
+    async fn save_vote(&mut self, vote: &Vote<leader_id_mode::LeaderId<u64, u64>>) -> Result<(), io::Error> {
         tracing::debug!(?vote, "save_vote");
         let mut h = self.vote.write().await;
 

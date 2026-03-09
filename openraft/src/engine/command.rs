@@ -25,10 +25,10 @@ use crate::raft_state::IOId;
 use crate::raft_state::IOState;
 use crate::replication::ReplicationSessionId;
 use crate::replication::replicate::Replicate;
+use crate::type_config::alias::CommittedVoteOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::OneshotSenderOf;
 use crate::type_config::alias::VoteOf;
-use crate::vote::committed::CommittedVote;
 
 /// Commands to send to `RaftRuntime` to execute, to update the application state.
 pub(crate) enum Command<C, SM = ()>
@@ -61,7 +61,7 @@ where C: RaftTypeConfig
         /// Where [`LogIOId`] is `(leader_id, log_id)`.
         ///
         /// [`LogIOId`]: crate::raft_state::io_state::io_id::IOId
-        committed_vote: CommittedVote<C>,
+        committed_vote: CommittedVoteOf<C>,
 
         entries: Batch<C::Entry>,
     },
@@ -99,7 +99,7 @@ where C: RaftTypeConfig
 
     /// Replicate snapshot to a target.
     ReplicateSnapshot {
-        leader_vote: CommittedVote<C>,
+        leader_vote: CommittedVoteOf<C>,
         target: C::NodeId,
         inflight_id: InflightId,
     },
@@ -116,7 +116,7 @@ where C: RaftTypeConfig
     /// When membership config changes, the membership log id stored in ReplicationCore has to be
     /// updated.
     RebuildReplicationStreams {
-        leader_vote: CommittedVote<C>,
+        leader_vote: CommittedVoteOf<C>,
 
         /// Targets to replicate to.
         targets: Vec<TargetProgress<C>>,

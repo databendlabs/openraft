@@ -29,7 +29,7 @@ pub struct FlushPoint<C>
 where C: RaftTypeConfig
 {
     /// The vote(leader) under which this I/O operation was submitted.
-    pub vote: Vote<C>,
+    pub vote: Vote<C::LeaderId>,
 
     /// The last log entry that was flushed, or `None` if only a vote was saved without appending
     /// logs.
@@ -47,7 +47,7 @@ where C: RaftTypeConfig
 impl<C> FlushPoint<C>
 where C: RaftTypeConfig
 {
-    pub fn new(vote: Vote<C>, last_log_id: Option<LogId<C>>) -> Self {
+    pub fn new(vote: Vote<C::LeaderId>, last_log_id: Option<LogId<C>>) -> Self {
         Self { vote, last_log_id }
     }
 }

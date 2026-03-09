@@ -43,7 +43,7 @@ where N: Node + Ord
     type Node = N;
     type Term = u64;
     type LeaderId = crate::impls::leader_id_adv::LeaderId<u64, u64>;
-    type Vote = crate::impls::Vote<Self>;
+    type Vote = crate::impls::Vote<Self::LeaderId>;
     type Entry = crate::impls::Entry<Self>;
     type SnapshotData = Cursor<Vec<u8>>;
     type AsyncRuntime = TokioRuntime;
@@ -52,6 +52,9 @@ where N: Node + Ord
     where T: OptionalSend + 'static;
     type ErrorSource = anyerror::AnyError;
 }
+
+/// Type alias for the LeaderId used in unit tests.
+pub(crate) type UTLeaderId = crate::impls::leader_id_adv::LeaderId<u64, u64>;
 
 /// Builds a log id, for testing purposes.
 pub(crate) fn log_id(term: u64, node_id: NodeIdOf<UTConfig>, index: u64) -> LogIdOf<UTConfig> {

@@ -26,10 +26,23 @@ make test
 
 ## Rust Style
 
-- Always use `where` clauses for trait bounds instead of inline bounds.
+- Always use `where` clauses for trait bounds instead of inline bounds. This applies everywhere: functions, methods, structs, enums, impls, and trait definitions.
   - Correct: `fn foo<T>(x: T) where T: RaftLeaderId`
   - Wrong: `fn foo<T: RaftLeaderId>(x: T)`
-  - Applies to structs, impls, and trait definitions as well.
+  - Correct: `fn partial_cmp<V>(&self, other: &V) -> Option<Ordering> where V: RaftVote`
+  - Wrong: `fn partial_cmp<V: RaftVote>(&self, other: &V) -> Option<Ordering>`
+
+- Use proper trait bounds on structs, not expanded individual bounds. When a trait (e.g., `RaftLeaderId`) implies a set of bounds (`Debug + Display + Clone + ...`), use the trait name directly instead of listing the individual bounds.
+  - Correct: `struct Foo<T> where T: RaftLeaderId`
+  - Wrong: `struct Foo<T> where T: OptionalFeatures + PartialOrd + Eq + Clone + Debug + Display + 'static`
+
+## Public API Change Annotations
+
+Any change to a public type, trait, or associated type must have a `#[since]` attribute describing the change. Use `#[since(version = "0.10.0", change = "description")]` placed above any existing `#[since]` attribute.
+
+- Add `#[since]` for: new public items, changed struct generic parameters, changed trait bounds on associated types, new associated types.
+- Do NOT add `#[since]` on methods whose signatures only changed as a mechanical consequence of a parent type's generic parameter change (e.g., `Vote<LID>` methods that just replaced `C::Term` with `LID::Term`).
+- `pub(crate)` items do not need `#[since]`.
 
 ## Code Organization Convention
 

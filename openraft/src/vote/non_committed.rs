@@ -1,12 +1,10 @@
 use std::fmt;
 
-use crate::RaftTypeConfig;
-use crate::Vote;
-use crate::type_config::alias::LeaderIdOf;
-use crate::type_config::alias::VoteOf;
+use crate::vote::RaftLeaderId;
 use crate::vote::RaftVote;
+use crate::vote::Vote;
 use crate::vote::leader_id::raft_leader_id::RaftLeaderIdExt;
-use crate::vote::raft_vote::RaftVoteExt;
+use crate::vote::ref_vote::RefVote;
 
 /// Represents a non-committed Vote that has **NOT** been granted by a quorum.
 ///
@@ -15,48 +13,51 @@ use crate::vote::raft_vote::RaftVoteExt;
 #[derive(PartialEq, Eq)]
 #[derive(PartialOrd)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub(crate) struct UncommittedVote<C>
-where C: RaftTypeConfig
+pub(crate) struct UncommittedVote<LID>
+where LID: RaftLeaderId
 {
-    leader_id: LeaderIdOf<C>,
+    leader_id: LID,
 }
 
-impl<C> Default for UncommittedVote<C>
+impl<LID> Default for UncommittedVote<LID>
 where
-    C: RaftTypeConfig,
-    C::NodeId: Default,
+    LID: RaftLeaderId,
+    LID::NodeId: Default,
 {
     fn default() -> Self {
         Self {
-            leader_id: LeaderIdOf::<C>::new_with_default_term(C::NodeId::default()),
+            leader_id: LID::new_with_default_term(LID::NodeId::default()),
         }
     }
 }
 
-impl<C> UncommittedVote<C>
-where C: RaftTypeConfig
+impl<LID> UncommittedVote<LID>
+where LID: RaftLeaderId
 {
-    pub(crate) fn new(leader_id: LeaderIdOf<C>) -> Self {
+    pub(crate) fn new(leader_id: LID) -> Self {
         Self { leader_id }
     }
 
-    pub(crate) fn into_vote(self) -> VoteOf<C> {
-        VoteOf::<C>::from_leader_id(self.leader_id, false)
+    /// Convert to the user-facing vote type.
+    pub(crate) fn into_vote<V: RaftVote<LeaderId = LID>>(self) -> V {
+        V::from_leader_id(self.leader_id, false)
     }
 
-    pub(crate) fn into_internal_vote(self) -> Vote<C> {
-        Vote::<C>::from_leader_id(self.leader_id, false)
+    pub(crate) fn into_internal_vote(self) -> Vote<LID> {
+        Vote::from_leader_id(self.leader_id, false)
     }
 }
 
-impl<C> RaftVote<C> for UncommittedVote<C>
-where C: RaftTypeConfig
+impl<LID> RaftVote for UncommittedVote<LID>
+where LID: RaftLeaderId
 {
-    fn from_leader_id(leader_id: C::LeaderId, _committed: bool) -> Self {
+    type LeaderId = LID;
+
+    fn from_leader_id(leader_id: LID, _committed: bool) -> Self {
         Self { leader_id }
     }
 
-    fn leader_id(&self) -> &LeaderIdOf<C> {
+    fn leader_id(&self) -> &LID {
         &self.leader_id
     }
 
@@ -65,10 +66,11 @@ where C: RaftTypeConfig
     }
 }
 
-impl<C> fmt::Display for UncommittedVote<C>
-where C: RaftTypeConfig
+impl<LID> fmt::Display for UncommittedVote<LID>
+where LID: RaftLeaderId
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.as_ref_vote().fmt(f)
+        let ref_vote = RefVote::new(&self.leader_id, false);
+        ref_vote.fmt(f)
     }
 }

@@ -5,6 +5,7 @@ use crate::Vote;
 use crate::async_runtime::watch::RecvError;
 use crate::async_runtime::watch::WatchReceiver;
 use crate::core::io_flush_tracking::FlushPoint;
+use crate::type_config::alias::LeaderIdOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::WatchReceiverOf;
 
@@ -19,7 +20,7 @@ pub type LogProgress<C> = WatchProgress<C, Option<FlushPoint<C>>>;
 ///
 /// Returns `None` if no vote has been flushed yet.
 /// Returns `Some(Vote)` containing the last flushed vote.
-pub type VoteProgress<C> = WatchProgress<C, Option<Vote<C>>>;
+pub type VoteProgress<C> = WatchProgress<C, Option<Vote<LeaderIdOf<C>>>>;
 
 /// Handle for tracking commit log progress.
 ///
@@ -196,7 +197,7 @@ mod tests {
         type Node = ();
         type Term = u64;
         type LeaderId = crate::impls::leader_id_adv::LeaderId<u64, u64>;
-        type Vote = Vote<Self>;
+        type Vote = Vote<Self::LeaderId>;
         type Entry = crate::impls::Entry<Self>;
         type SnapshotData = Cursor<Vec<u8>>;
         type AsyncRuntime = TokioRuntime;
