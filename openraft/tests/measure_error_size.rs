@@ -39,9 +39,12 @@ fn measure_storage_error_size() {
     );
 
     println!("\n--- ErrorSubject Variants ---");
+    use openraft::LogId;
     use openraft::SnapshotId;
-    use openraft::alias::LogIdOf;
     use openraft::storage::SnapshotSignature;
+    use openraft::vote::RaftLeaderId;
+
+    type LogIdOf<C> = LogId<<<C as openraft::RaftTypeConfig>::LeaderId as RaftLeaderId>::Committed>;
 
     println!(
         "LogIdOf<TestConfig>:              {} bytes",
