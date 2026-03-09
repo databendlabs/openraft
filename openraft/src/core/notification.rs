@@ -11,10 +11,10 @@ use crate::progress::stream_id::StreamId;
 use crate::raft::VoteResponse;
 use crate::raft_state::IOId;
 use crate::replication;
+use crate::type_config::alias::CommittedVoteOf;
 use crate::type_config::alias::InstantOf;
+use crate::type_config::alias::UncommittedVoteOf;
 use crate::type_config::alias::VoteOf;
-use crate::vote::committed::CommittedVote;
-use crate::vote::non_committed::UncommittedVote;
 
 /// A message coming from the internal components.
 pub(crate) enum Notification<C>
@@ -27,7 +27,7 @@ where C: RaftTypeConfig
         /// The candidate that sent the vote request.
         ///
         /// A vote identifies a unique server state.
-        candidate_vote: UncommittedVote<C>,
+        candidate_vote: UncommittedVoteOf<C>,
     },
 
     /// A Leader sees a higher `vote` when replicating.
@@ -39,7 +39,7 @@ where C: RaftTypeConfig
         higher: VoteOf<C>,
 
         /// The Leader that sent the replication request.
-        leader_vote: CommittedVote<C>,
+        leader_vote: CommittedVoteOf<C>,
     },
 
     /// [`StorageError`] error has taken place locally(not on remote node),

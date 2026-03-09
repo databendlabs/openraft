@@ -8,12 +8,12 @@ use crate::RaftTypeConfig;
 use crate::Vote;
 use crate::raft_state::io_state::log_io_id::LogIOId;
 use crate::type_config::alias::CommittedLeaderIdOf;
+use crate::type_config::alias::CommittedVoteOf;
 use crate::type_config::alias::LeaderIdOf;
 use crate::type_config::alias::LogIdOf;
+use crate::type_config::alias::UncommittedVoteOf;
 use crate::type_config::alias::VoteOf;
 use crate::vote::RaftVote;
-use crate::vote::committed::CommittedVote;
-use crate::vote::non_committed::UncommittedVote;
 use crate::vote::raft_vote::RaftVoteExt;
 use crate::vote::ref_vote::RefVote;
 
@@ -37,7 +37,7 @@ pub(crate) enum IOId<C>
 where C: RaftTypeConfig
 {
     /// Saving a non-committed vote, this kind of IO is not related to any log entries.
-    Vote(UncommittedVote<C>),
+    Vote(UncommittedVoteOf<C>),
 
     /// Saving log entries by a Leader, which is identified by a committed vote.
     Log(LogIOId<C>),
@@ -81,11 +81,11 @@ where C: RaftTypeConfig
         }
     }
 
-    pub(crate) fn new_vote_io(vote: UncommittedVote<C>) -> Self {
+    pub(crate) fn new_vote_io(vote: UncommittedVoteOf<C>) -> Self {
         Self::Vote(vote)
     }
 
-    pub(crate) fn new_log_io(committed_vote: CommittedVote<C>, last_log_id: Option<LogIdOf<C>>) -> Self {
+    pub(crate) fn new_log_io(committed_vote: CommittedVoteOf<C>, last_log_id: Option<LogIdOf<C>>) -> Self {
         Self::Log(LogIOId::new(committed_vote, last_log_id))
     }
 
@@ -104,10 +104,10 @@ where C: RaftTypeConfig
 
     /// Unpack into internal vote and last log id for progress tracking.
     ///
-    /// Returns the concrete `Vote<C>` type (not trait `VoteOf<C>`) because
+    /// Returns the concrete `Vote<C::LeaderId>` type (not trait `VoteOf<C>`) because
     /// progress tracking requires `PartialOrd`, which user-defined `VoteOf<C>`
     /// may not implement.
-    pub(crate) fn to_vote_and_log_id(&self) -> (Vote<C>, Option<LogId<C>>) {
+    pub(crate) fn to_vote_and_log_id(&self) -> (Vote<C::LeaderId>, Option<LogId<C>>) {
         match self {
             Self::Vote(non_committed_vote) => (non_committed_vote.clone().into_internal_vote(), None),
             Self::Log(log_io_id) => (
@@ -117,7 +117,7 @@ where C: RaftTypeConfig
         }
     }
 
-    pub(crate) fn as_ref_vote(&self) -> RefVote<'_, C> {
+    pub(crate) fn as_ref_vote(&self) -> RefVote<'_, C::LeaderId> {
         match self {
             Self::Vote(non_committed_vote) => non_committed_vote.as_ref_vote(),
             Self::Log(log_io_id) => log_io_id.committed_vote.as_ref_vote(),
@@ -132,7 +132,7 @@ where C: RaftTypeConfig
     }
 
     /// Return the CommittedVote that represent a leader, if it contains.
-    pub(crate) fn to_committed_vote(&self) -> Option<CommittedVote<C>> {
+    pub(crate) fn to_committed_vote(&self) -> Option<CommittedVoteOf<C>> {
         match self {
             Self::Vote(_) => None,
             Self::Log(log_io_id) => Some(log_io_id.to_committed_vote()),

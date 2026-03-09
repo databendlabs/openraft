@@ -153,7 +153,7 @@ use crate::vote::raft_vote::RaftVoteExt;
 ///        Node         = openraft::BasicNode,
 ///        Term         = u64,
 ///        LeaderId     = openraft::impls::leader_id_adv::LeaderId<Self::Term, Self::NodeId>,
-///        Vote           = openraft::impls::Vote<Self>,
+///        Vote           = openraft::impls::Vote<Self::LeaderId>,
 ///        Entry          = openraft::Entry<Self>,
 ///        SnapshotData   = Cursor<Vec<u8>>,
 ///        Responder<T>   = openraft::impls::OneshotResponder<Self, T>,
@@ -168,7 +168,7 @@ use crate::vote::raft_vote::RaftVoteExt;
 /// - `Node`:         `::openraft::impls::BasicNode`
 /// - `Term`:         `u64`
 /// - `LeaderId`:     `::openraft::impls::leader_id_adv::LeaderId<Self::Term, Self::NodeId>`
-/// - `Vote`:           `::openraft::impls::Vote<Self>`
+/// - `Vote`:           `::openraft::impls::Vote<Self::LeaderId>`
 /// - `Entry`:          `::openraft::impls::Entry<Self>`
 /// - `SnapshotData`:   `Cursor<Vec<u8>>`
 /// - `Responder<T>`:   `::openraft::impls::OneshotResponder<Self, T>`
@@ -218,7 +218,7 @@ macro_rules! declare_raft_types {
                 (Node         , , $crate::impls::BasicNode                     ),
                 (Term         , , u64                                          ),
                 (LeaderId     , , $crate::impls::leader_id_adv::LeaderId<Self::Term, Self::NodeId> ),
-                (Vote           , , $crate::impls::Vote<Self>                    ),
+                (Vote           , , $crate::impls::Vote<Self::LeaderId>            ),
                 (Entry          , , $crate::impls::Entry<Self>                   ),
                 (SnapshotData   , , std::io::Cursor<Vec<u8>>                     ),
                 (Responder<T>   , , $crate::impls::ProgressResponder<Self, T> where T: $crate::OptionalSend + 'static     ),
@@ -1551,7 +1551,7 @@ where C: RaftTypeConfig
         F: FnMut(Option<(C::LeaderId, bool)>, (C::LeaderId, bool)) -> Fut + OptionalSend + 'static,
         Fut: Future<Output = ()> + OptionalSend + 'static,
     {
-        let mut prev_vote: Option<Vote<C>> = None;
+        let mut prev_vote: Option<Vote<C::LeaderId>> = None;
 
         self.watch_vote_change(move |new_vote, _my_node_id| {
             let old_leader = prev_vote.as_ref().map(|v| v.leader_id().clone());
@@ -1669,7 +1669,7 @@ where C: RaftTypeConfig
     /// the next vote change.
     fn watch_vote_change<F, Fut>(&self, mut callback: F) -> WatchChangeHandle<C>
     where
-        F: FnMut(Vote<C>, &NodeIdOf<C>) -> Fut + OptionalSend + 'static,
+        F: FnMut(Vote<C::LeaderId>, &NodeIdOf<C>) -> Fut + OptionalSend + 'static,
         Fut: Future<Output = ()> + OptionalSend + 'static,
     {
         use futures_util::FutureExt;

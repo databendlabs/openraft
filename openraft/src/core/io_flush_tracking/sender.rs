@@ -20,10 +20,10 @@ where C: RaftTypeConfig
 
     /// Sender for vote I/O progress (vote-specific updates).
     ///
-    /// Note: Uses `Vote<C>` (the internal concrete type) instead of `VoteOf<C>` (the trait)
-    /// because `PartialOrd` is required for progress tracking but user-provided `VoteOf<C>`
-    /// implementations may not provide it.
-    pub(crate) vote_tx: WatchSenderOf<C, Option<Vote<C>>>,
+    /// Note: Uses `Vote<C::LeaderId>` (the internal concrete type) instead of `VoteOf<C>` (the
+    /// trait) because `PartialOrd` is required for progress tracking but user-provided
+    /// `VoteOf<C>` implementations may not provide it.
+    pub(crate) vote_tx: WatchSenderOf<C, Option<Vote<C::LeaderId>>>,
 
     /// Sender for commit progress (state machine submission).
     pub(crate) commit_tx: WatchSenderOf<C, Option<LogIdOf<C>>>,

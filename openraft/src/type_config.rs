@@ -58,7 +58,7 @@ use crate::vote::raft_vote::RaftVote;
 ///         Node             = openraft::impls::BasicNode,
 ///         Term             = u64,
 ///         LeaderId         = openraft::impls::leader_id_adv::LeaderId<Self::Term, Self::NodeId>,
-///         Vote             = openraft::impls::Vote<Self>,
+///         Vote             = openraft::impls::Vote<Self::LeaderId>,
 ///         Entry            = openraft::impls::Entry<Self>,
 ///         SnapshotData     = Cursor<Vec<u8>>,
 ///         Responder<T>     = openraft::impls::OneshotResponder<Self, T>,
@@ -111,7 +111,7 @@ pub trait RaftTypeConfig:
     /// Raft vote type.
     ///
     /// It represents a candidate's vote or a leader's vote that has been granted by a quorum.
-    type Vote: RaftVote<Self>;
+    type Vote: RaftVote<LeaderId = Self::LeaderId>;
 
     /// Raft log entry, which can be built from an AppData.
     type Entry: RaftEntry<Self>;
@@ -222,4 +222,13 @@ pub mod alias {
     pub type CommittedLeaderIdOf<C> = <LeaderIdOf<C> as RaftLeaderId>::Committed;
     pub type EntryPayloadOf<C> = EntryPayload<C>;
     pub type SerdeInstantOf<C> = crate::metrics::SerdeInstant<InstantOf<C>>;
+
+    // Projections from a LeaderId type (LID: RaftLeaderId)
+    pub(crate) type LeaderTerm<LID> = <LID as RaftLeaderId>::Term;
+    pub(crate) type LeaderNodeId<LID> = <LID as RaftLeaderId>::NodeId;
+    pub(crate) type LeaderCommitted<LID> = <LID as RaftLeaderId>::Committed;
+
+    // Internal vote types parameterized by C
+    pub(crate) type CommittedVoteOf<C> = crate::vote::committed::CommittedVote<LeaderIdOf<C>>;
+    pub(crate) type UncommittedVoteOf<C> = crate::vote::non_committed::UncommittedVote<LeaderIdOf<C>>;
 }
