@@ -3,7 +3,6 @@ use std::fmt;
 
 use crate::ErrorSubject;
 use crate::ErrorVerb;
-use crate::LogId;
 use crate::RaftTypeConfig;
 use crate::Vote;
 use crate::raft_state::io_state::log_io_id::LogIOId;
@@ -107,7 +106,7 @@ where C: RaftTypeConfig
     /// Returns the concrete `Vote<C::LeaderId>` type (not trait `VoteOf<C>`) because
     /// progress tracking requires `PartialOrd`, which user-defined `VoteOf<C>`
     /// may not implement.
-    pub(crate) fn to_vote_and_log_id(&self) -> (Vote<C::LeaderId>, Option<LogId<C>>) {
+    pub(crate) fn to_vote_and_log_id(&self) -> (Vote<C::LeaderId>, Option<LogIdOf<C>>) {
         match self {
             Self::Vote(non_committed_vote) => (non_committed_vote.clone().into_internal_vote(), None),
             Self::Log(log_io_id) => (

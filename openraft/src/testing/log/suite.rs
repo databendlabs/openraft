@@ -503,13 +503,13 @@ where
         let initial = StorageHelper::new(&mut store, &mut sm).with_id(NODE_ID.into()).get_initial_state().await?;
 
         assert_eq!(
-            Some(&log_id_0(3, 2)),
+            Some(&log_id_0::<C>(3, 2)),
             initial.last_log_id(),
             "state machine has higher log"
         );
         assert_eq!(
             initial.committed(),
-            Some(&log_id_0(3, 1)),
+            Some(&log_id_0::<C>(3, 1)),
             "unexpected value for last applied log"
         );
         assert_eq!(
@@ -592,7 +592,7 @@ where
             ])
             .await?;
 
-            store.purge(log_id_0(1, 2)).await?;
+            store.purge(log_id_0::<C>(1, 2)).await?;
             append(&mut store, [membership_ent_0::<C>(1, 3, btreeset! {1,2,3})]).await?;
 
             let initial = StorageHelper::new(&mut store, &mut sm).with_id(NODE_ID.into()).get_initial_state().await?;
@@ -616,7 +616,7 @@ where
         let initial = StorageHelper::new(&mut store, &mut sm).with_id(NODE_ID.into()).get_initial_state().await?;
 
         assert_eq!(
-            Some(&log_id_0(2, 1)),
+            Some(&log_id_0::<C>(2, 1)),
             initial.last_log_id(),
             "state machine has higher log"
         );
@@ -633,20 +633,24 @@ where
         let initial = StorageHelper::new(&mut store, &mut sm).with_id(NODE_ID.into()).get_initial_state().await?;
 
         assert_eq!(
-            Some(&log_id_0(3, 1)),
+            Some(&log_id_0::<C>(3, 1)),
             initial.last_log_id(),
             "state machine has higher log"
         );
         assert_eq!(
             initial.last_purged_log_id().cloned(),
-            Some(log_id_0(3, 1)),
+            Some(log_id_0::<C>(3, 1)),
             "state machine has higher log"
         );
         Ok(())
     }
 
     pub async fn get_initial_state_log_ids(mut store: LS, mut sm: SM) -> Result<(), io::Error> {
-        let log_id = |t: u64, n: u64, i| LogIdOf::<C>::new(C::LeaderId::new_committed(t.into(), n.into()), i);
+        let log_id = |t: u64, n: u64, i| {
+            let t = C::Term::from(t);
+            let nid = C::NodeId::from(n);
+            LogIdOf::<C>::new(C::LeaderId::new_committed(t, nid), i)
+        };
 
         tracing::info!("--- empty store, expect []");
         {
@@ -894,11 +898,11 @@ where
             blank_ent_0::<C>(1, 5),
         ])
         .await?;
-        store.purge(log_id_0(1, 1)).await?;
+        store.purge(log_id_0::<C>(1, 1)).await?;
 
         apply(&mut sm, [blank_ent_0::<C>(1, 2)]).await?;
 
-        store.save_committed(Some(log_id_0(1, 4))).await?;
+        store.save_committed(Some(log_id_0::<C>(1, 4))).await?;
         let got = store.read_committed().await?;
         if got.is_none() {
             tracing::info!("This implementation does not store committed log id, skip test re-applying committed logs");
@@ -907,9 +911,13 @@ where
 
         let initial = StorageHelper::new(&mut store, &mut sm).with_id(NODE_ID.into()).get_initial_state().await?;
 
-        assert_eq!(Some(&log_id_0(1, 4)), initial.io_applied(), "last_applied is updated");
         assert_eq!(
-            Some(log_id_0(1, 4)),
+            Some(&log_id_0::<C>(1, 4)),
+            initial.io_applied(),
+            "last_applied is updated"
+        );
+        assert_eq!(
+            Some(log_id_0::<C>(1, 4)),
             sm.applied_state().await?.0,
             "last_applied is updated"
         );
@@ -940,8 +948,8 @@ where
             let logs = store.try_get_log_entries(5..7).await?;
 
             assert_eq!(logs.len(), 2);
-            assert_eq!(logs[0].log_id(), log_id_0(1, 5));
-            assert_eq!(logs[1].log_id(), log_id_0(1, 6));
+            assert_eq!(logs[0].log_id(), log_id_0::<C>(1, 5));
+            assert_eq!(logs[1].log_id(), log_id_0::<C>(1, 6));
         }
 
         Ok(())
@@ -962,7 +970,7 @@ where
 
             assert!(!logs.is_empty());
             assert!(logs.len() <= 2);
-            assert_eq!(logs[0].log_id(), log_id_0(1, 5));
+            assert_eq!(logs[0].log_id(), log_id_0::<C>(1, 5));
         }
 
         Ok(())
@@ -988,7 +996,12 @@ where
             let entries: Vec<_> = stream.collect().await;
 
             let actual: Vec<_> = entries.into_iter().map(|e| e.unwrap().log_id()).collect();
-            let expected = vec![log_id_0(1, 3), log_id_0(1, 4), log_id_0(1, 5), log_id_0(1, 6)];
+            let expected = vec![
+                log_id_0::<C>(1, 3),
+                log_id_0::<C>(1, 4),
+                log_id_0::<C>(1, 5),
+                log_id_0::<C>(1, 6),
+            ];
             assert_eq!(actual, expected);
         }
 
@@ -999,7 +1012,7 @@ where
             let entries: Vec<_> = stream.collect().await;
 
             let actual: Vec<_> = entries.into_iter().map(|e| e.unwrap().log_id()).collect();
-            let expected = vec![log_id_0(0, 0), log_id_0(1, 1), log_id_0(1, 2)];
+            let expected = vec![log_id_0::<C>(0, 0), log_id_0::<C>(1, 1), log_id_0::<C>(1, 2)];
             assert_eq!(actual, expected);
         }
 
@@ -1010,7 +1023,7 @@ where
             let entries: Vec<_> = stream.collect().await;
 
             let actual: Vec<_> = entries.into_iter().map(|e| e.unwrap().log_id()).collect();
-            let expected = vec![log_id_0(1, 8), log_id_0(1, 9), log_id_0(1, 10)];
+            let expected = vec![log_id_0::<C>(1, 8), log_id_0::<C>(1, 9), log_id_0::<C>(1, 10)];
             assert_eq!(actual, expected);
         }
 
@@ -1055,7 +1068,12 @@ where
             let entries: Vec<_> = stream.collect().await;
 
             let actual: Vec<_> = entries.into_iter().map(|e| e.unwrap().log_id()).collect();
-            let expected = vec![log_id_0(1, 3), log_id_0(1, 4), log_id_0(1, 5), log_id_0(1, 6)];
+            let expected = vec![
+                log_id_0::<C>(1, 3),
+                log_id_0::<C>(1, 4),
+                log_id_0::<C>(1, 5),
+                log_id_0::<C>(1, 6),
+            ];
             assert_eq!(actual, expected);
         }
 
@@ -1066,7 +1084,7 @@ where
             let entries: Vec<_> = stream.collect().await;
 
             let actual: Vec<_> = entries.into_iter().map(|e| e.unwrap().log_id()).collect();
-            let expected = vec![log_id_0(0, 0), log_id_0(1, 1), log_id_0(1, 2)];
+            let expected = vec![log_id_0::<C>(0, 0), log_id_0::<C>(1, 1), log_id_0::<C>(1, 2)];
             assert_eq!(actual, expected);
         }
 
@@ -1077,7 +1095,7 @@ where
             let entries: Vec<_> = stream.collect().await;
 
             let actual: Vec<_> = entries.into_iter().map(|e| e.unwrap().log_id()).collect();
-            let expected = vec![log_id_0(1, 8), log_id_0(1, 9), log_id_0(1, 10)];
+            let expected = vec![log_id_0::<C>(1, 8), log_id_0::<C>(1, 9), log_id_0::<C>(1, 10)];
             assert_eq!(actual, expected);
         }
 
@@ -1098,17 +1116,17 @@ where
 
             let actual: Vec<_> = entries.into_iter().map(|e| e.unwrap().log_id()).collect();
             let expected = vec![
-                log_id_0(0, 0),
-                log_id_0(1, 1),
-                log_id_0(1, 2),
-                log_id_0(1, 3),
-                log_id_0(1, 4),
-                log_id_0(1, 5),
-                log_id_0(1, 6),
-                log_id_0(1, 7),
-                log_id_0(1, 8),
-                log_id_0(1, 9),
-                log_id_0(1, 10),
+                log_id_0::<C>(0, 0),
+                log_id_0::<C>(1, 1),
+                log_id_0::<C>(1, 2),
+                log_id_0::<C>(1, 3),
+                log_id_0::<C>(1, 4),
+                log_id_0::<C>(1, 5),
+                log_id_0::<C>(1, 6),
+                log_id_0::<C>(1, 7),
+                log_id_0::<C>(1, 8),
+                log_id_0::<C>(1, 9),
+                log_id_0::<C>(1, 10),
             ];
             assert_eq!(actual, expected);
         }
@@ -1119,14 +1137,14 @@ where
     pub async fn try_get_log_entry(mut store: LS, mut sm: SM) -> Result<(), io::Error> {
         Self::feed_10_logs_vote_self(&mut store).await?;
 
-        store.purge(log_id(0, 0, 0)).await?;
+        store.purge(log_id::<C>(0, 0, 0)).await?;
 
         // `purge()` does not have to do the purge at once.
         // The implementation may choose to do it in the background.
         C::sleep(Duration::from_millis(1_000)).await;
 
         let ent = store.try_get_log_entry(3).await?;
-        assert_eq!(Some(log_id_0(1, 3)), ent.map(|x| x.log_id()));
+        assert_eq!(Some(log_id_0::<C>(1, 3)), ent.map(|x| x.log_id()));
 
         let ent = store.try_get_log_entry(0).await?;
         assert_eq!(None, ent.map(|x| x.log_id()));
@@ -1151,8 +1169,8 @@ where
         // Verify reader can see initial entries
         let entries = reader.try_get_log_entries(0..2).await?;
         assert_eq!(2, entries.len());
-        assert_eq!(entries[0].log_id(), log_id_0(0, 0));
-        assert_eq!(entries[1].log_id(), log_id_0(1, 1));
+        assert_eq!(entries[0].log_id(), log_id_0::<C>(0, 0));
+        assert_eq!(entries[1].log_id(), log_id_0::<C>(1, 1));
 
         // Write more entries AFTER getting the reader
         append(&mut store, [
@@ -1165,9 +1183,9 @@ where
         // The same reader should be able to read the newly written entries
         let entries = reader.try_get_log_entries(2..5).await?;
         assert_eq!(3, entries.len());
-        assert_eq!(entries[0].log_id(), log_id_0(1, 2));
-        assert_eq!(entries[1].log_id(), log_id_0(1, 3));
-        assert_eq!(entries[2].log_id(), log_id_0(2, 4));
+        assert_eq!(entries[0].log_id(), log_id_0::<C>(1, 2));
+        assert_eq!(entries[1].log_id(), log_id_0::<C>(1, 3));
+        assert_eq!(entries[2].log_id(), log_id_0::<C>(2, 4));
 
         // Also verify reading the full range works
         let all_entries = reader.try_get_log_entries(0..5).await?;
@@ -1200,38 +1218,38 @@ where
 
             let st = store.get_log_state().await?;
             assert_eq!(None, st.last_purged_log_id);
-            assert_eq!(Some(log_id_0(1, 2)), st.last_log_id);
+            assert_eq!(Some(log_id_0::<C>(1, 2)), st.last_log_id);
         }
 
         tracing::info!("--- delete log 0-0");
         {
-            store.purge(log_id_0(0, 0)).await?;
+            store.purge(log_id_0::<C>(0, 0)).await?;
 
             let st = store.get_log_state().await?;
-            assert_eq!(Some(log_id(0, 0, 0)), st.last_purged_log_id);
-            assert_eq!(Some(log_id_0(1, 2)), st.last_log_id);
+            assert_eq!(Some(log_id::<C>(0, 0, 0)), st.last_purged_log_id);
+            assert_eq!(Some(log_id_0::<C>(1, 2)), st.last_log_id);
         }
 
         tracing::info!("--- delete all log");
         {
-            store.purge(log_id_0(1, 2)).await?;
+            store.purge(log_id_0::<C>(1, 2)).await?;
 
             let st = store.get_log_state().await?;
-            assert_eq!(Some(log_id_0(1, 2)), st.last_purged_log_id);
-            assert_eq!(Some(log_id_0(1, 2)), st.last_log_id);
+            assert_eq!(Some(log_id_0::<C>(1, 2)), st.last_purged_log_id);
+            assert_eq!(Some(log_id_0::<C>(1, 2)), st.last_log_id);
         }
 
         tracing::info!("--- delete advance last present logs");
         {
-            store.purge(log_id_0(2, 3)).await?;
+            store.purge(log_id_0::<C>(2, 3)).await?;
 
             // `purge()` does not have to do the purge at once.
             // The implementation may choose to do it in the background.
             C::sleep(Duration::from_millis(1_000)).await;
 
             let st = store.get_log_state().await?;
-            assert_eq!(Some(log_id_0(2, 3)), st.last_purged_log_id);
-            assert_eq!(Some(log_id_0(2, 3)), st.last_log_id);
+            assert_eq!(Some(log_id_0::<C>(2, 3)), st.last_purged_log_id);
+            assert_eq!(Some(log_id_0::<C>(2, 3)), st.last_log_id);
         }
 
         Ok(())
@@ -1240,7 +1258,7 @@ where
     pub async fn get_log_id(mut store: LS, mut sm: SM) -> Result<(), io::Error> {
         Self::feed_10_logs_vote_self(&mut store).await?;
 
-        store.purge(log_id_0(1, 3)).await?;
+        store.purge(log_id_0::<C>(1, 3)).await?;
 
         // `purge()` does not have to do the purge at once.
         // The implementation may choose to do it in the background.
@@ -1253,10 +1271,10 @@ where
         assert!(res.is_err());
 
         let res = store.get_log_id(4).await?;
-        assert_eq!(log_id_0(1, 4), res);
+        assert_eq!(log_id_0::<C>(1, 4), res);
 
         let res = store.get_log_id(10).await?;
-        assert_eq!(log_id_0(1, 10), res);
+        assert_eq!(log_id_0::<C>(1, 10), res);
 
         let res = store.get_log_id(11).await;
         assert!(res.is_err());
@@ -1278,26 +1296,26 @@ where
             .await?;
 
             let last_log_id = store.get_log_state().await?.last_log_id;
-            assert_eq!(Some(log_id_0(1, 2)), last_log_id);
+            assert_eq!(Some(log_id_0::<C>(1, 2)), last_log_id);
         }
 
         tracing::info!("--- last id in logs < last applied id in sm, only return the id in logs");
         {
             apply(&mut sm, [blank_ent_0::<C>(1, 3)]).await?;
             let last_log_id = store.get_log_state().await?.last_log_id;
-            assert_eq!(Some(log_id_0(1, 2)), last_log_id);
+            assert_eq!(Some(log_id_0::<C>(1, 2)), last_log_id);
         }
 
         tracing::info!("--- no logs, return default");
         {
-            store.purge(log_id_0(1, 2)).await?;
+            store.purge(log_id_0::<C>(1, 2)).await?;
 
             // `purge()` does not have to do the purge at once.
             // The implementation may choose to do it in the background.
             C::sleep(Duration::from_millis(1_000)).await;
 
             let last_log_id = store.get_log_state().await?.last_log_id;
-            assert_eq!(Some(log_id_0(1, 2)), last_log_id);
+            assert_eq!(Some(log_id_0::<C>(1, 2)), last_log_id);
         }
 
         Ok(())
@@ -1313,10 +1331,10 @@ where
             apply(&mut sm, [membership_ent_0::<C>(1, 3, btreeset! {1,2})]).await?;
 
             let (applied, mem) = sm.applied_state().await?;
-            assert_eq!(Some(log_id_0(1, 3)), applied);
+            assert_eq!(Some(log_id_0::<C>(1, 3)), applied);
             assert_eq!(
                 StoredMembership::new(
-                    Some(log_id_0(1, 3)),
+                    Some(log_id_0::<C>(1, 3)),
                     Membership::new_with_defaults(vec![btreeset! {1,2}], [])
                 ),
                 mem
@@ -1328,10 +1346,10 @@ where
             apply(&mut sm, [blank_ent_0::<C>(1, 5)]).await?;
 
             let (applied, mem) = sm.applied_state().await?;
-            assert_eq!(Some(log_id_0(1, 5)), applied);
+            assert_eq!(Some(log_id_0::<C>(1, 5)), applied);
             assert_eq!(
                 StoredMembership::new(
-                    Some(log_id_0(1, 3)),
+                    Some(log_id_0::<C>(1, 3)),
                     Membership::new_with_defaults(vec![btreeset! {1,2}], [])
                 ),
                 mem
@@ -1346,7 +1364,7 @@ where
 
         Self::feed_10_logs_vote_self(&mut store).await?;
 
-        store.purge(log_id_0(0, 0)).await?;
+        store.purge(log_id_0::<C>(0, 0)).await?;
 
         // `purge()` does not have to do the purge at once.
         // The implementation may choose to do it in the background.
@@ -1358,8 +1376,8 @@ where
 
         assert_eq!(
             LogState {
-                last_purged_log_id: Some(log_id_0(0, 0)),
-                last_log_id: Some(log_id_0(1, 10)),
+                last_purged_log_id: Some(log_id_0::<C>(0, 0)),
+                last_log_id: Some(log_id_0::<C>(1, 10)),
             },
             store.get_log_state().await?
         );
@@ -1371,7 +1389,7 @@ where
 
         Self::feed_10_logs_vote_self(&mut store).await?;
 
-        store.purge(log_id_0(1, 5)).await?;
+        store.purge(log_id_0::<C>(1, 5)).await?;
 
         // `purge()` does not have to do the purge at once.
         // The implementation may choose to do it in the background.
@@ -1383,8 +1401,8 @@ where
 
         assert_eq!(
             LogState {
-                last_purged_log_id: Some(log_id_0(1, 5)),
-                last_log_id: Some(log_id_0(1, 10)),
+                last_purged_log_id: Some(log_id_0::<C>(1, 5)),
+                last_log_id: Some(log_id_0::<C>(1, 10)),
             },
             store.get_log_state().await?
         );
@@ -1396,7 +1414,7 @@ where
 
         Self::feed_10_logs_vote_self(&mut store).await?;
 
-        store.purge(log_id_0(1, 20)).await?;
+        store.purge(log_id_0::<C>(1, 20)).await?;
 
         // `purge()` does not have to do the purge at once.
         // The implementation may choose to do it in the background.
@@ -1407,8 +1425,8 @@ where
 
         assert_eq!(
             LogState {
-                last_purged_log_id: Some(log_id_0(1, 20)),
-                last_log_id: Some(log_id_0(1, 20)),
+                last_purged_log_id: Some(log_id_0::<C>(1, 20)),
+                last_log_id: Some(log_id_0::<C>(1, 20)),
             },
             store.get_log_state().await?
         );
@@ -1420,7 +1438,7 @@ where
 
         Self::feed_10_logs_vote_self(&mut store).await?;
 
-        store.truncate_after(Some(log_id_0(1, 11))).await?;
+        store.truncate_after(Some(log_id_0::<C>(1, 11))).await?;
 
         let logs = store.try_get_log_entries(0..100).await?;
         assert_eq!(logs.len(), 11);
@@ -1428,7 +1446,7 @@ where
         assert_eq!(
             LogState {
                 last_purged_log_id: None,
-                last_log_id: Some(log_id_0(1, 10)),
+                last_log_id: Some(log_id_0::<C>(1, 10)),
             },
             store.get_log_state().await?
         );
@@ -1441,7 +1459,7 @@ where
 
         Self::feed_10_logs_vote_self(&mut store).await?;
 
-        store.truncate_after(Some(log_id_0(1, 5))).await?;
+        store.truncate_after(Some(log_id_0::<C>(1, 5))).await?;
 
         let logs = store.try_get_log_entries(0..100).await?;
         assert_eq!(logs.len(), 6); // logs 0-5 remain
@@ -1449,7 +1467,7 @@ where
         assert_eq!(
             LogState {
                 last_purged_log_id: None,
-                last_log_id: Some(log_id_0(1, 5)),
+                last_log_id: Some(log_id_0::<C>(1, 5)),
             },
             store.get_log_state().await?
         );
@@ -1461,7 +1479,7 @@ where
 
         Self::feed_10_logs_vote_self(&mut store).await?;
 
-        store.truncate_after(Some(log_id_0(0, 0))).await?;
+        store.truncate_after(Some(log_id_0::<C>(0, 0))).await?;
 
         let logs = store.try_get_log_entries(0..100).await?;
         assert_eq!(logs.len(), 1); // log at index 0 remains
@@ -1469,7 +1487,7 @@ where
         assert_eq!(
             LogState {
                 last_purged_log_id: None,
-                last_log_id: Some(log_id_0(0, 0)),
+                last_log_id: Some(log_id_0::<C>(0, 0)),
             },
             store.get_log_state().await?
         );
@@ -1501,7 +1519,7 @@ where
     pub async fn append_to_log(mut store: LS, mut sm: SM) -> Result<(), io::Error> {
         Self::feed_10_logs_vote_self(&mut store).await?;
 
-        store.purge(log_id_0(0, 0)).await?;
+        store.purge(log_id_0::<C>(0, 0)).await?;
 
         // `purge()` does not have to do the purge at once.
         // The implementation may choose to do it in the background.
@@ -1513,7 +1531,7 @@ where
         let last = store.try_get_log_entries(0..).await?.into_iter().next_back().unwrap();
 
         assert_eq!(l, 11, "expected 11 entries to exist in the log");
-        assert_eq!(last.log_id(), log_id_0(2, 11), "unexpected log id");
+        assert_eq!(last.log_id(), log_id_0::<C>(2, 11), "unexpected log id");
         Ok(())
     }
 
@@ -1525,8 +1543,8 @@ where
             let mut b = sm.try_create_snapshot_builder(true).await.unwrap();
             let snap = b.build_snapshot().await?;
             let meta = snap.meta;
-            assert_eq!(Some(log_id_0(0, 0)), meta.last_log_id);
-            assert_eq!(&Some(log_id_0(0, 0)), meta.last_membership.log_id());
+            assert_eq!(Some(log_id_0::<C>(0, 0)), meta.last_log_id);
+            assert_eq!(&Some(log_id_0::<C>(0, 0)), meta.last_membership.log_id());
             assert_eq!(
                 &Membership::new_with_defaults(vec![btreeset! {1,2}], []),
                 meta.last_membership.membership()
@@ -1544,8 +1562,8 @@ where
             let mut b = sm.try_create_snapshot_builder(true).await.unwrap();
             let snap = b.build_snapshot().await?;
             let meta = snap.meta;
-            assert_eq!(Some(log_id_0(2, 2)), meta.last_log_id);
-            assert_eq!(&Some(log_id_0(2, 2)), meta.last_membership.log_id());
+            assert_eq!(Some(log_id_0::<C>(2, 2)), meta.last_log_id);
+            assert_eq!(&Some(log_id_0::<C>(2, 2)), meta.last_membership.log_id());
             assert_eq!(
                 &Membership::new_with_defaults(vec![btreeset! {3,4}], []),
                 meta.last_membership.membership()
@@ -1577,7 +1595,7 @@ where
             apply(&mut sm, [entry]).await?;
             let (last_applied, _) = sm.applied_state().await?;
 
-            assert_eq!(last_applied, Some(log_id_0(0, 0)),);
+            assert_eq!(last_applied, Some(log_id_0::<C>(0, 0)),);
         }
 
         tracing::info!("--- apply membership entry");
@@ -1587,7 +1605,7 @@ where
             apply(&mut sm, [entry]).await?;
             let (last_applied, mem) = sm.applied_state().await?;
 
-            assert_eq!(last_applied, Some(log_id_0(1, 1)),);
+            assert_eq!(last_applied, Some(log_id_0::<C>(1, 1)),);
             assert_eq!(
                 mem.membership(),
                 &Membership::new_with_defaults(vec![btreeset! {1,2}], [])
@@ -1599,7 +1617,7 @@ where
         // {
         //     let entry = {
         //         let mut e = C::Entry::from_app_data(C::D::from(1));
-        //         e.set_log_id(&log_id_0(2, 2));
+        //         e.set_log_id(&log_id_0::<C>(2, 2));
         //         e
         //     };
         //
@@ -1607,7 +1625,7 @@ where
         // e.to_string()))?;     assert_eq!(replies.len(), 1, "expected 1 response");
         //     let (last_applied, _) = sm.applied_state().await?;
         //
-        //     assert_eq!(last_applied, Some(log_id_0(2, 2)),);
+        //     assert_eq!(last_applied, Some(log_id_0::<C>(2, 2)),);
         // }
 
         Ok(())
@@ -1622,7 +1640,7 @@ where
         apply(&mut sm, entries).await?;
 
         let (last_applied, mem) = sm.applied_state().await?;
-        assert_eq!(last_applied, Some(log_id_0(1, 1)),);
+        assert_eq!(last_applied, Some(log_id_0::<C>(1, 1)),);
         assert_eq!(
             mem.membership(),
             &Membership::new_with_defaults(vec![btreeset! {1,2}], [])
@@ -1646,9 +1664,9 @@ where
         // Add a few entries so we have state to snapshot
         let snapshot_entries = vec![membership_ent_0::<C>(1, 2, btreeset! {1, 2, 3}), blank_ent_0::<C>(3, 3)];
         apply(&mut sm_l, snapshot_entries).await?;
-        let snapshot_last_log_id = Some(log_id_0(3, 3));
+        let snapshot_last_log_id = Some(log_id_0::<C>(3, 3));
         let snapshot_last_membership = StoredMembership::new(
-            Some(log_id_0(1, 2)),
+            Some(log_id_0::<C>(1, 2)),
             Membership::new_with_defaults(vec![btreeset![1, 2, 3]], []),
         );
         let snapshot_applied_state = (snapshot_last_log_id.clone(), snapshot_last_membership.clone());
@@ -1711,7 +1729,8 @@ where
     C: RaftTypeConfig,
     C::NodeId: From<u64>,
 {
-    LogIdOf::new(C::LeaderId::new_committed(term.into(), NODE_ID.into()), index)
+    let node_id = C::NodeId::from(NODE_ID);
+    LogIdOf::<C>::new(C::LeaderId::new_committed(term.into(), node_id), index)
 }
 
 /// Create a blank log entry with node_id 0 for test.
@@ -1720,7 +1739,7 @@ where
     C::Term: From<u64>,
     C::NodeId: From<u64>,
 {
-    C::Entry::new_blank(log_id(term, 0, index))
+    C::Entry::new_blank(log_id::<C>(term, 0, index))
 }
 
 /// Create a membership entry with node_id 0 for test.
@@ -1730,7 +1749,7 @@ where
     C::NodeId: From<u64>,
     C::Node: Default,
 {
-    C::Entry::new_membership(log_id_0(term, index), Membership::new_with_defaults(vec![bs], []))
+    C::Entry::new_membership(log_id_0::<C>(term, index), Membership::new_with_defaults(vec![bs], []))
 }
 
 /// Build a `RaftLogStorage` and `RaftStateMachine` implementation and run a test on it.
@@ -1802,5 +1821,7 @@ where
     C::Term: From<u64>,
     C::NodeId: From<u64>,
 {
-    LogIdOf::<C>::new(C::LeaderId::new_committed(term.into(), node_id.into()), index)
+    let t = C::Term::from(term);
+    let nid = C::NodeId::from(node_id);
+    LogIdOf::<C>::new(C::LeaderId::new_committed(t, nid), index)
 }

@@ -11,6 +11,7 @@ use crate::log_id::raft_log_id::RaftLogId;
 use crate::log_id::raft_log_id_ext::RaftLogIdExt;
 use crate::quorum::Joint;
 use crate::quorum::QuorumSet;
+use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::type_config::alias::LogIdOf;
 
 /// The currently active membership config.
@@ -68,7 +69,7 @@ where C: RaftTypeConfig
 impl<C, LID> From<(&LID, Membership<C>)> for EffectiveMembership<C>
 where
     C: RaftTypeConfig,
-    LID: RaftLogId<C>,
+    LID: RaftLogId<CommittedLeaderId = CommittedLeaderIdOf<C>>,
 {
     fn from(v: (&LID, Membership<C>)) -> Self {
         EffectiveMembership::new(Some(v.0.to_log_id()), v.1)

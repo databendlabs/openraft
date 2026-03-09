@@ -1,7 +1,7 @@
-use crate::LogId;
 use crate::RaftTypeConfig;
 #[cfg(doc)]
 use crate::core::RaftCore;
+use crate::type_config::alias::LogIdOf;
 
 /// State for [`RaftCore`] that does not directly affect consensus.
 ///
@@ -14,5 +14,5 @@ where C: RaftTypeConfig
     /// LogId of the last snapshot attempt.
     ///
     /// Prevents repeated attempts when the state machine declines to build a snapshot.
-    pub(crate) snapshot_tried_at: Option<LogId<C>>,
+    pub(crate) snapshot_tried_at: Option<LogIdOf<C>>,
 }

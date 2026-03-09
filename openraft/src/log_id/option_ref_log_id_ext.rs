@@ -1,20 +1,20 @@
-use crate::RaftTypeConfig;
+use crate::LogId;
 use crate::log_id::ref_log_id::RefLogId;
-use crate::type_config::alias::LogIdOf;
+use crate::vote::leader_id::raft_committed_leader_id::RaftCommittedLeaderId;
 
-pub(crate) trait OptionRefLogIdExt<C>
-where C: RaftTypeConfig
+pub(crate) trait OptionRefLogIdExt<CLID>
+where CLID: RaftCommittedLeaderId
 {
     /// Creates a new owned [`LogId`] from the reference log ID.
     ///
     /// [`LogId`]: crate::log_id::LogId
-    fn to_log_id(&self) -> Option<LogIdOf<C>>;
+    fn to_log_id(&self) -> Option<LogId<CLID>>;
 }
 
-impl<C> OptionRefLogIdExt<C> for Option<RefLogId<'_, C>>
-where C: RaftTypeConfig
+impl<CLID> OptionRefLogIdExt<CLID> for Option<RefLogId<'_, CLID>>
+where CLID: RaftCommittedLeaderId
 {
-    fn to_log_id(&self) -> Option<LogIdOf<C>> {
-        self.as_ref().map(|r| r.into_log_id())
+    fn to_log_id(&self) -> Option<LogId<CLID>> {
+        self.as_ref().map(|r| LogId::new(r.leader_id.clone(), r.index))
     }
 }
