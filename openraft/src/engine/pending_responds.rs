@@ -1,12 +1,12 @@
 use std::collections::VecDeque;
 use std::fmt;
 
-use crate::LogId;
 use crate::RaftTypeConfig;
 use crate::engine::Respond;
 use crate::engine::respond_command::PendingRespond;
 use crate::raft_state::IOId;
 use crate::raft_state::io_state::IOState;
+use crate::type_config::alias::LogIdOf;
 
 /// Queues of pending responds waiting for IO conditions to be satisfied.
 #[derive(Debug, Default)]
@@ -17,13 +17,13 @@ where C: RaftTypeConfig
     pub(crate) on_log_io: VecDeque<PendingRespond<C, IOId<C>>>,
 
     /// Responds waiting for log entries to be flushed to storage.
-    pub(crate) on_log_flush: VecDeque<PendingRespond<C, LogId<C>>>,
+    pub(crate) on_log_flush: VecDeque<PendingRespond<C, LogIdOf<C>>>,
 
     /// Responds waiting for log entries to be applied to state machine.
-    pub(crate) on_apply: VecDeque<PendingRespond<C, LogId<C>>>,
+    pub(crate) on_apply: VecDeque<PendingRespond<C, LogIdOf<C>>>,
 
     /// Responds waiting for snapshot to be built.
-    pub(crate) on_snapshot: VecDeque<PendingRespond<C, LogId<C>>>,
+    pub(crate) on_snapshot: VecDeque<PendingRespond<C, LogIdOf<C>>>,
 }
 
 impl<C> PendingResponds<C>
@@ -160,7 +160,6 @@ mod tests {
 
     use super::*;
     use crate::AsyncRuntime;
-    use crate::LogId;
     use crate::Vote;
     use crate::engine::Respond;
     use crate::engine::respond_command::PendingRespond;
@@ -173,7 +172,7 @@ mod tests {
     use crate::type_config::async_runtime::oneshot::Oneshot;
 
     type TestIOId = IOId<UTConfig>;
-    type TestLogId = LogId<UTConfig>;
+    type TestLogId = LogIdOf<UTConfig>;
 
     fn new_respond() -> Respond<UTConfig> {
         let (tx, _rx) = <TokioRuntime as AsyncRuntime>::Oneshot::channel();

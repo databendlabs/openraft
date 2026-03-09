@@ -7,9 +7,9 @@ use actix_web::post;
 use actix_web::web::Data;
 use actix_web::web::Json;
 use openraft::BasicNode;
-use openraft::LogId;
 use openraft::RaftMetrics;
 use openraft::ReadPolicy;
+use openraft::alias::LogIdOf;
 use openraft::async_runtime::WatchReceiver;
 use openraft::errors::Infallible;
 use openraft::errors::decompose::DecomposeResult;
@@ -24,8 +24,8 @@ use crate::app::App;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LinearizerData {
     pub node_id: NodeId,
-    pub read_log_id: LogId<TypeConfig>,
-    pub applied: Option<LogId<TypeConfig>>,
+    pub read_log_id: LogIdOf<TypeConfig>,
+    pub applied: Option<LogIdOf<TypeConfig>>,
 }
 
 // --- Cluster management

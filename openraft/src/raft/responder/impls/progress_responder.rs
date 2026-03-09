@@ -1,9 +1,9 @@
-use crate::LogId;
 use crate::OptionalSend;
 use crate::RaftTypeConfig;
 use crate::async_runtime::OneshotSender;
 use crate::raft::responder::Responder;
 use crate::type_config::TypeConfigExt;
+use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::OneshotReceiverOf;
 use crate::type_config::alias::OneshotSenderOf;
 
@@ -38,7 +38,7 @@ where
     C: RaftTypeConfig,
     T: OptionalSend,
 {
-    commit_tx: Option<OneshotSenderOf<C, LogId<C>>>,
+    commit_tx: Option<OneshotSenderOf<C, LogIdOf<C>>>,
     complete_tx: OneshotSenderOf<C, T>,
 }
 
@@ -58,7 +58,7 @@ where
     /// - The [`ProgressResponder`] that can send both commit and complete notifications
     /// - The commit receiver for receiving the committed log ID
     /// - The complete receiver for receiving the final result
-    pub fn new() -> (Self, OneshotReceiverOf<C, LogId<C>>, OneshotReceiverOf<C, T>) {
+    pub fn new() -> (Self, OneshotReceiverOf<C, LogIdOf<C>>, OneshotReceiverOf<C, T>) {
         let (commit_tx, commit_rx) = C::oneshot();
         let (complete_tx, complete_rx) = C::oneshot();
 
@@ -76,7 +76,7 @@ where
     C: RaftTypeConfig,
     T: OptionalSend + 'static,
 {
-    fn on_commit(&mut self, log_id: LogId<C>) {
+    fn on_commit(&mut self, log_id: LogIdOf<C>) {
         if let Some(tx) = self.commit_tx.take() {
             let res = tx.send(log_id);
 

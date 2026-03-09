@@ -4,13 +4,14 @@ use std::ops::Deref;
 use validit::Valid;
 use validit::Validate;
 
-use crate::LogId;
 use crate::RaftTypeConfig;
 use crate::ServerState;
 use crate::engine::LogIdList;
 use crate::errors::ForwardToLeader;
 use crate::log_id::raft_log_id::RaftLogId;
 use crate::storage::SnapshotMeta;
+use crate::type_config::alias::CommittedLeaderIdOf;
+use crate::type_config::alias::RefLogIdOf;
 use crate::utime::Leased;
 
 pub(crate) mod io_state;
@@ -42,7 +43,6 @@ use crate::base::shared_id_generator::SharedIdGenerator;
 use crate::display_ext::DisplayOptionExt;
 use crate::entry::RaftEntry;
 use crate::entry::raft_entry_ext::RaftEntryExt;
-use crate::log_id::ref_log_id::RefLogId;
 use crate::progress::inflight_id::InflightId;
 use crate::proposer::Leader;
 use crate::proposer::LeaderQuorumSet;
@@ -119,7 +119,7 @@ where
 impl<C> LogStateReader<C> for RaftState<C>
 where C: RaftTypeConfig
 {
-    fn ref_log_id(&self, index: u64) -> Option<RefLogId<'_, C>> {
+    fn ref_log_id(&self, index: u64) -> Option<RefLogIdOf<'_, C>> {
         self.log_ids.ref_at(index)
     }
 
@@ -223,7 +223,7 @@ where C: RaftTypeConfig
     }
 
     /// Get the last committed log ID.
-    pub fn committed(&self) -> Option<&LogId<C>> {
+    pub fn committed(&self) -> Option<&LogIdOf<C>> {
         self.apply_progress().accepted()
     }
 
@@ -285,7 +285,7 @@ where C: RaftTypeConfig
     /// The log ids in the input has to be continuous.
     pub(crate) fn extend_log_ids_from_same_leader<LID, I>(&mut self, new_log_ids: I)
     where
-        LID: RaftLogId<C>,
+        LID: RaftLogId<CommittedLeaderId = CommittedLeaderIdOf<C>>,
         I: IntoIterator<Item = LID>,
         <I as IntoIterator>::IntoIter: DoubleEndedIterator,
     {
@@ -294,7 +294,7 @@ where C: RaftTypeConfig
 
     pub(crate) fn extend_log_ids<LID, I>(&mut self, new_log_id: I)
     where
-        LID: RaftLogId<C>,
+        LID: RaftLogId<CommittedLeaderId = CommittedLeaderIdOf<C>>,
         I: IntoIterator<Item = LID>,
         <I as IntoIterator>::IntoIter: ExactSizeIterator,
     {
@@ -351,15 +351,15 @@ where C: RaftTypeConfig
         &mut self.io_state_mut().log_progress
     }
 
-    pub(crate) fn apply_progress(&self) -> &IOProgress<LogId<C>> {
+    pub(crate) fn apply_progress(&self) -> &IOProgress<LogIdOf<C>> {
         &self.io_state().apply_progress
     }
 
-    pub(crate) fn apply_progress_mut(&mut self) -> &mut IOProgress<LogId<C>> {
+    pub(crate) fn apply_progress_mut(&mut self) -> &mut IOProgress<LogIdOf<C>> {
         &mut self.io_state_mut().apply_progress
     }
 
-    pub(crate) fn snapshot_progress_mut(&mut self) -> &mut IOProgress<LogId<C>> {
+    pub(crate) fn snapshot_progress_mut(&mut self) -> &mut IOProgress<LogIdOf<C>> {
         &mut self.io_state_mut().snapshot
     }
 
@@ -390,7 +390,7 @@ where C: RaftTypeConfig
         for (i, ent) in entries.iter().enumerate() {
             let ref_log_id = ent.ref_log_id();
 
-            if !self.has_log_id(ref_log_id) {
+            if !self.has_log_id(ref_log_id.clone()) {
                 tracing::debug!("found conflicting log id at index {}: {}", i, ref_log_id);
                 return i;
             }

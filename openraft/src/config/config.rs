@@ -11,11 +11,11 @@ use openraft_macros::since;
 use rand::Rng;
 
 use crate::AsyncRuntime;
-use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::RaftTypeConfig;
 use crate::config::error::ConfigError;
 use crate::raft_state::LogStateReader;
+use crate::type_config::alias::LogIdOf;
 
 /// Log compaction and snapshot policy.
 ///
@@ -42,8 +42,8 @@ impl SnapshotPolicy {
     pub(crate) fn should_snapshot<C>(
         &self,
         state: &impl Deref<Target = impl LogStateReader<C>>,
-        last_tried_at: Option<&LogId<C>>,
-    ) -> Option<LogId<C>>
+        last_tried_at: Option<&LogIdOf<C>>,
+    ) -> Option<LogIdOf<C>>
     where
         C: RaftTypeConfig,
     {

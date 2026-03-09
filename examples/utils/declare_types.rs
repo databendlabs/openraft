@@ -7,7 +7,7 @@ pub use super::TypeConfig;
 
 pub type Vote = <TypeConfig as openraft::RaftTypeConfig>::Vote;
 pub type LeaderId = <TypeConfig as openraft::RaftTypeConfig>::LeaderId;
-pub type LogId = openraft::LogId<TypeConfig>;
+pub type LogId = openraft::alias::LogIdOf<TypeConfig>;
 pub type Entry = <TypeConfig as openraft::RaftTypeConfig>::Entry;
 pub type EntryPayload = openraft::EntryPayload<TypeConfig>;
 pub type Membership = openraft::membership::Membership<TypeConfig>;

@@ -1,6 +1,5 @@
 use std::fmt;
 
-use crate::LogId;
 use crate::RaftTypeConfig;
 use crate::display_ext::DisplayInstantExt;
 use crate::display_ext::DisplayOptionExt;
@@ -23,7 +22,7 @@ where C: RaftTypeConfig
     ///
     /// This is used as `prev_log_id` in heartbeat AppendEntries to ensure the follower has this
     /// log id, avoiding false conflict responses that could be misinterpreted as log reversion.
-    pub(crate) matching: Option<LogId<C>>,
+    pub(crate) matching: Option<LogIdOf<C>>,
 
     /// The last known committed log id of the Leader.
     ///

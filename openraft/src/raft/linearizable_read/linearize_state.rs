@@ -2,9 +2,9 @@ use std::fmt;
 
 use openraft_macros::since;
 
-use crate::LogId;
 use crate::RaftTypeConfig;
 use crate::display_ext::DisplayOptionExt;
+use crate::type_config::alias::LogIdOf;
 
 /// Represents the state after awaiting the applied log entries for a linearizable read.
 ///
@@ -27,8 +27,8 @@ where C: RaftTypeConfig
 {
     /// The node from which this Linearizer collects the applied log ID.
     node_id: C::NodeId,
-    read_log_id: LogId<C>,
-    applied: Option<LogId<C>>,
+    read_log_id: LogIdOf<C>,
+    applied: Option<LogIdOf<C>>,
 }
 
 impl<C> fmt::Display for LinearizeState<C>
@@ -49,7 +49,7 @@ where C: RaftTypeConfig
 impl<C> LinearizeState<C>
 where C: RaftTypeConfig
 {
-    pub(crate) fn new(node_id: C::NodeId, read_log_id: LogId<C>, applied: Option<LogId<C>>) -> Self {
+    pub(crate) fn new(node_id: C::NodeId, read_log_id: LogIdOf<C>, applied: Option<LogIdOf<C>>) -> Self {
         Self {
             node_id,
             read_log_id,
@@ -58,7 +58,7 @@ where C: RaftTypeConfig
     }
 
     /// Updates the applied log ID and returns the modified state.
-    pub(crate) fn with_applied(mut self, node_id: C::NodeId, applied: Option<LogId<C>>) -> Self {
+    pub(crate) fn with_applied(mut self, node_id: C::NodeId, applied: Option<LogIdOf<C>>) -> Self {
         self.node_id = node_id;
         self.applied = applied;
         self
@@ -87,13 +87,13 @@ where C: RaftTypeConfig
     /// It is the max of the current leader noop-log-id and the last committed log id.
     /// See: [`read` docs](crate::docs::protocol::read).
     #[since(version = "0.10.0")]
-    pub fn read_log_id(&self) -> &LogId<C> {
+    pub fn read_log_id(&self) -> &LogIdOf<C> {
         &self.read_log_id
     }
 
     /// The last applied log ID.
     #[since(version = "0.10.0")]
-    pub fn applied(&self) -> Option<&LogId<C>> {
+    pub fn applied(&self) -> Option<&LogIdOf<C>> {
         self.applied.as_ref()
     }
 }
@@ -101,11 +101,12 @@ where C: RaftTypeConfig
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::engine::testing::UTConfig;
     use crate::engine::testing::log_id;
 
     #[test]
     fn test_display() {
-        let state = LinearizeState::new(1, log_id(1, 1, 1), Some(log_id(1, 1, 0)));
+        let state: LinearizeState<UTConfig> = LinearizeState::new(1, log_id(1, 1, 1), Some(log_id(1, 1, 0)));
         assert_eq!(
             format!("{}", state),
             "LinearizeState[id=1]{ read_log_id: T1-N1.1, applied: T1-N1.0 }"

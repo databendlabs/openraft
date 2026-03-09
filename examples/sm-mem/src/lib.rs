@@ -12,8 +12,8 @@ use futures::TryStreamExt;
 use futures::lock::Mutex;
 use openraft::Entry;
 use openraft::EntryPayload;
-use openraft::LogId;
 use openraft::OptionalSend;
+use openraft::alias::LogIdOf;
 use openraft::RaftSnapshotBuilder;
 use openraft::RaftTypeConfig;
 use openraft::SnapshotMeta;
@@ -42,7 +42,7 @@ pub struct StateMachineData {
 /// Inner storage for the state machine.
 #[derive(Debug)]
 pub struct StateMachineStoreInner<C: RaftTypeConfig> {
-    pub last_applied_log: Option<LogId<C>>,
+    pub last_applied_log: Option<LogIdOf<C>>,
 
     pub last_membership: StoredMembership<C>,
 
@@ -141,7 +141,7 @@ where C: RaftTypeConfig<D = types_kv::Request, R = types_kv::Response, SnapshotD
 {
     type SnapshotBuilder = Self;
 
-    async fn applied_state(&mut self) -> Result<(Option<LogId<C>>, StoredMembership<C>), io::Error> {
+    async fn applied_state(&mut self) -> Result<(Option<LogIdOf<C>>, StoredMembership<C>), io::Error> {
         let inner = self.0.lock().await;
         Ok((inner.last_applied_log.clone(), inner.last_membership.clone()))
     }

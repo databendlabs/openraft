@@ -5,7 +5,6 @@ use validit::Valid;
 use validit::Validate;
 use validit::less_equal;
 
-use crate::LogId;
 use crate::RaftTypeConfig;
 use crate::display_ext::DisplayOptionExt;
 use crate::raft_state::IOId;
@@ -91,7 +90,7 @@ where C: RaftTypeConfig
     /// - `flushed`: Already applied to state machine
     ///
     /// Uses `IOProgress<LogId>` since only committed logs are applied.
-    pub(crate) apply_progress: Valid<IOProgress<LogId<C>>>,
+    pub(crate) apply_progress: Valid<IOProgress<LogIdOf<C>>>,
 
     /// Tracks snapshot persistence progress.
     ///
@@ -100,7 +99,7 @@ where C: RaftTypeConfig
     /// - `flushed`: Snapshot successfully persisted
     ///
     /// Tracks both locally built snapshots and snapshots installed from the leader.
-    pub(crate) snapshot: Valid<IOProgress<LogId<C>>>,
+    pub(crate) snapshot: Valid<IOProgress<LogIdOf<C>>>,
 
     /// The highest log id committed by the cluster (replicated to a quorum).
     ///
@@ -241,7 +240,7 @@ where C: RaftTypeConfig
     ///
     /// **For detailed explanation** with timeline examples, see:
     /// [Cluster-Committed vs Local Committed](crate::docs::protocol::commit)
-    pub(crate) fn calculate_local_committed(&mut self) -> Option<LogId<C>> {
+    pub(crate) fn calculate_local_committed(&mut self) -> Option<LogIdOf<C>> {
         let local_committed = self.do_calculate_local_committed();
 
         tracing::debug!(
@@ -255,7 +254,7 @@ where C: RaftTypeConfig
         local_committed
     }
 
-    pub(crate) fn do_calculate_local_committed(&mut self) -> Option<LogId<C>> {
+    pub(crate) fn do_calculate_local_committed(&mut self) -> Option<LogIdOf<C>> {
         let cluster_committed = self.cluster_committed.value()?.clone();
         let accepted = self.log_progress.accepted()?.clone();
 

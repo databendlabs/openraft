@@ -20,11 +20,11 @@ use std::time::Duration;
 use futures::Stream;
 use openraft::Entry;
 use openraft::EntryPayload;
-use openraft::LogId;
 use openraft::OptionalSend;
 use openraft::SnapshotMeta;
 use openraft::StoredMembership;
 use openraft::Vote;
+use openraft::alias::LogIdOf;
 use openraft::alias::SnapshotDataOf;
 use openraft::entry::RaftEntry;
 use openraft::storage::EntryResponder;
@@ -110,7 +110,7 @@ pub struct MemStoreSnapshot {
 /// The state machine of the `MemStore`.
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct MemStoreStateMachine {
-    pub last_applied_log: Option<LogId<TypeConfig>>,
+    pub last_applied_log: Option<LogIdOf<TypeConfig>>,
 
     pub last_membership: StoredMembership<TypeConfig>,
 
@@ -154,7 +154,7 @@ impl BlockConfig {
 
 /// An in-memory log storage implementing the `RaftLogStorage` trait.
 pub struct MemLogStore {
-    last_purged_log_id: RwLock<Option<LogId<TypeConfig>>>,
+    last_purged_log_id: RwLock<Option<LogIdOf<TypeConfig>>>,
 
     /// Enable saving committed log id to support transient state machines.
     ///
@@ -162,7 +162,7 @@ pub struct MemLogStore {
     /// automatically re-applies logs to restore the in-memory state machine.
     pub enable_saving_committed: AtomicBool,
 
-    committed: RwLock<Option<LogId<TypeConfig>>>,
+    committed: RwLock<Option<LogIdOf<TypeConfig>>>,
 
     /// The Raft log. Logs are stored in serialized json.
     log: RwLock<BTreeMap<u64, String>>,
@@ -413,7 +413,7 @@ impl RaftLogStorage<TypeConfig> for Arc<MemLogStore> {
         Ok(())
     }
 
-    async fn save_committed(&mut self, committed: Option<LogId<TypeConfig>>) -> Result<(), io::Error> {
+    async fn save_committed(&mut self, committed: Option<LogIdOf<TypeConfig>>) -> Result<(), io::Error> {
         let enabled = self.enable_saving_committed.load(Ordering::Relaxed);
         tracing::debug!(?committed, "save_committed, enabled: {}", enabled);
         if !enabled {
@@ -424,7 +424,7 @@ impl RaftLogStorage<TypeConfig> for Arc<MemLogStore> {
         Ok(())
     }
 
-    async fn read_committed(&mut self) -> Result<Option<LogId<TypeConfig>>, io::Error> {
+    async fn read_committed(&mut self) -> Result<Option<LogIdOf<TypeConfig>>, io::Error> {
         let enabled = self.enable_saving_committed.load(Ordering::Relaxed);
         tracing::debug!("read_committed, enabled: {}", enabled);
         if !enabled {
@@ -449,7 +449,7 @@ impl RaftLogStorage<TypeConfig> for Arc<MemLogStore> {
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
-    async fn truncate_after(&mut self, last_log_id: Option<LogId<TypeConfig>>) -> Result<(), io::Error> {
+    async fn truncate_after(&mut self, last_log_id: Option<LogIdOf<TypeConfig>>) -> Result<(), io::Error> {
         tracing::debug!("truncate_after: ({:?}, +oo)", last_log_id);
 
         let start_index = match last_log_id {
@@ -470,7 +470,7 @@ impl RaftLogStorage<TypeConfig> for Arc<MemLogStore> {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn purge(&mut self, log_id: LogId<TypeConfig>) -> Result<(), io::Error> {
+    async fn purge(&mut self, log_id: LogIdOf<TypeConfig>) -> Result<(), io::Error> {
         tracing::debug!("purge_log_upto: {:?}", log_id);
 
         if let Some(d) = self.block.get_blocking(&BlockOperation::PurgeLog) {
@@ -500,7 +500,9 @@ impl RaftLogStorage<TypeConfig> for Arc<MemLogStore> {
 impl RaftStateMachine<TypeConfig> for Arc<MemStateMachine> {
     type SnapshotBuilder = Self;
 
-    async fn applied_state(&mut self) -> Result<(Option<LogId<TypeConfig>>, StoredMembership<TypeConfig>), io::Error> {
+    async fn applied_state(
+        &mut self,
+    ) -> Result<(Option<LogIdOf<TypeConfig>>, StoredMembership<TypeConfig>), io::Error> {
         let sm = self.sm.read().await;
         Ok((sm.last_applied_log, sm.last_membership.clone()))
     }
