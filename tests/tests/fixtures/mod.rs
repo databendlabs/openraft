@@ -54,6 +54,7 @@ use openraft::raft::VoteResponse;
 use openraft::storage::Snapshot;
 use openraft::type_config::TypeConfigExt;
 use openraft::type_config::alias::MutexOf;
+use openraft::vote::RaftLeaderId;
 use openraft_memstore::ClientRequest;
 use openraft_memstore::ClientResponse;
 use openraft_memstore::IntoMemClientRequest;
@@ -192,9 +193,7 @@ use openraft::alias::VoteOf;
 use openraft::async_runtime::WatchReceiver;
 use openraft::entry::RaftEntry;
 use openraft::network::v2::RaftNetworkV2;
-use openraft::vote::RaftLeaderId;
 use openraft::vote::RaftLeaderIdExt;
-use openraft::vote::RaftVote;
 use post_hook::PostHook;
 use post_hook::PostHookResult;
 use pre_hook::PreHook;
@@ -916,7 +915,7 @@ impl RaftNetworkV2<MemConfig> for RaftRouterNetwork {
 
     async fn full_snapshot(
         &mut self,
-        vote: Vote<MemConfig>,
+        vote: Vote<<MemConfig as RaftTypeConfig>::LeaderId>,
         snapshot: Snapshot<MemConfig>,
         _cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
         _option: RPCOption,
@@ -1006,68 +1005,25 @@ fn timeout() -> Option<Duration> {
 /// A trait for extending the functionality of a Raft vote.
 ///
 /// This is used for testing.
-pub(crate) trait TestingVoteExt<C>
-where
-    C: RaftTypeConfig,
-    Self: RaftVote<C>,
-{
+pub(crate) trait TestingVoteExt: openraft::vote::RaftVote {
     /// Creates a new vote for a node in a specific term, with uncommitted status.
-    fn from_term_node_id(term: C::Term, node_id: C::NodeId) -> Self {
-        let leader_id = C::LeaderId::new(term, node_id);
+    fn from_term_node_id(
+        term: <Self::LeaderId as openraft::vote::RaftLeaderId>::Term,
+        node_id: <Self::LeaderId as openraft::vote::RaftLeaderId>::NodeId,
+    ) -> Self {
+        let leader_id = Self::LeaderId::new(term, node_id);
         Self::from_leader_id(leader_id, false)
     }
 
     /// Gets the node ID of the leader this vote is for.
-    fn to_leader_node_id(&self) -> C::NodeId {
+    fn to_leader_node_id(&self) -> <Self::LeaderId as openraft::vote::RaftLeaderId>::NodeId {
         self.leader_node_id().clone()
     }
 
     /// Gets a reference to the node ID of the leader this vote is for.
-    fn leader_node_id(&self) -> &C::NodeId {
+    fn leader_node_id(&self) -> &<Self::LeaderId as openraft::vote::RaftLeaderId>::NodeId {
         self.leader_id().node_id()
     }
-
-    // /// Gets the leader ID this vote is associated with.
-    // fn to_leader_id(&self) -> C::LeaderId {
-    //     self.leader_id().clone()
-    // }
-    //
-    // /// Creates a reference view of this vote.
-    // ///
-    // /// Returns a lightweight `RefVote` that borrows the data from this vote.
-    // fn as_ref_vote(&self) -> RefVote<'_, C> {
-    //     RefVote::new(self.leader_id(), self.is_committed())
-    // }
-    //
-    // /// Create a [`CommittedVote`] with the same leader id.
-    // fn to_committed(&self) -> CommittedVote<C> {
-    //     CommittedVote::new(self.to_leader_id())
-    // }
-    //
-    // /// Create a [`NonCommittedVote`] with the same leader id.
-    // fn to_non_committed(&self) -> NonCommittedVote<C> {
-    //     NonCommittedVote::new(self.to_leader_id())
-    // }
-    //
-    // /// Convert this vote into a [`CommittedVote`]
-    // fn into_committed(self) -> CommittedVote<C> {
-    //     CommittedVote::new(self.to_leader_id())
-    // }
-    //
-    // /// Convert this vote into a [`NonCommittedVote`]
-    // fn into_non_committed(self) -> NonCommittedVote<C> {
-    //     NonCommittedVote::new(self.to_leader_id())
-    // }
-    //
-    // /// Checks if this vote is for the same leader as specified by the given committed leader ID.
-    // fn is_same_leader(&self, leader_id: &CommittedLeaderIdOf<C>) -> bool {
-    //     self.leader_id().to_committed() == *leader_id
-    // }
 }
 
-impl<C, T> TestingVoteExt<C> for T
-where
-    C: RaftTypeConfig,
-    T: RaftVote<C>,
-{
-}
+impl<T> TestingVoteExt for T where T: openraft::vote::RaftVote {}

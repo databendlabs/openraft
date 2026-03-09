@@ -3,10 +3,10 @@ use std::fmt;
 use crate::RaftTypeConfig;
 use crate::display_ext::DisplayOptionExt;
 use crate::raft_state::io_state::IOId;
+use crate::type_config::alias::CommittedVoteOf;
 use crate::type_config::alias::LeaderIdOf;
 use crate::type_config::alias::LogIdOf;
 use crate::vote::RaftVote;
-use crate::vote::committed::CommittedVote;
 
 /// Monotonic increasing identifier for log append I/O operations.
 ///
@@ -23,7 +23,7 @@ pub(crate) struct LogIOId<C>
 where C: RaftTypeConfig
 {
     /// The id of the leader that performs the log io operation.
-    pub(crate) committed_vote: CommittedVote<C>,
+    pub(crate) committed_vote: CommittedVoteOf<C>,
 
     /// The last log id that has been flushed to storage.
     pub(crate) log_id: Option<LogIdOf<C>>,
@@ -40,16 +40,16 @@ where C: RaftTypeConfig
 impl<C> LogIOId<C>
 where C: RaftTypeConfig
 {
-    pub(crate) fn new(committed_vote: CommittedVote<C>, log_id: Option<LogIdOf<C>>) -> Self {
+    pub(crate) fn new(committed_vote: CommittedVoteOf<C>, log_id: Option<LogIdOf<C>>) -> Self {
         Self { committed_vote, log_id }
     }
 
     #[allow(dead_code)]
-    pub(crate) fn committed_vote(&self) -> &CommittedVote<C> {
+    pub(crate) fn committed_vote(&self) -> &CommittedVoteOf<C> {
         &self.committed_vote
     }
 
-    pub(crate) fn to_committed_vote(&self) -> CommittedVote<C> {
+    pub(crate) fn to_committed_vote(&self) -> CommittedVoteOf<C> {
         self.committed_vote.clone()
     }
 

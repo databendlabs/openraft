@@ -87,14 +87,15 @@ mod tests {
     use crate::engine::Command;
     use crate::engine::engine_output::EngineOutput;
     use crate::engine::testing::UTConfig;
+    use crate::engine::testing::UTLeaderId;
     use crate::impls::Vote;
     use crate::testing::blank_ent;
     use crate::vote::raft_vote::RaftVoteExt;
 
     type C = UTConfig;
 
-    fn committed_vote(term: u64, node_id: u64) -> crate::vote::committed::CommittedVote<C> {
-        Vote::<C>::new(term, node_id).into_committed()
+    fn committed_vote(term: u64, node_id: u64) -> crate::vote::committed::CommittedVote<UTLeaderId> {
+        Vote::<UTLeaderId>::new(term, node_id).into_committed()
     }
 
     fn config_with_max_append(max_append_entries: u64) -> Config {

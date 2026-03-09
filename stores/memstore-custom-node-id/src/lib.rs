@@ -83,6 +83,8 @@ openraft::declare_raft_types!(
         LeaderId = openraft::impls::leader_id_adv::LeaderId<Self::Term, Self::NodeId>,
 );
 
+type MemLeaderId = openraft::impls::leader_id_adv::LeaderId<u64, NodeId>;
+
 // ── State machine ────────────────────────────────────────────────────────────
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
@@ -113,7 +115,7 @@ pub struct MemLogStore {
     last_purged_log_id: RwLock<Option<LogId<TypeConfig>>>,
     committed: RwLock<Option<LogId<TypeConfig>>>,
     log: RwLock<BTreeMap<u64, String>>,
-    vote: RwLock<Option<Vote<TypeConfig>>>,
+    vote: RwLock<Option<Vote<MemLeaderId>>>,
 }
 
 impl MemLogStore {
@@ -144,7 +146,7 @@ impl RaftLogReader<TypeConfig> for Arc<MemLogStore> {
             .collect()
     }
 
-    async fn read_vote(&mut self) -> Result<Option<Vote<TypeConfig>>, io::Error> {
+    async fn read_vote(&mut self) -> Result<Option<Vote<MemLeaderId>>, io::Error> {
         Ok(*self.vote.read().await)
     }
 }
@@ -174,7 +176,7 @@ impl RaftLogStorage<TypeConfig> for Arc<MemLogStore> {
         self.clone()
     }
 
-    async fn save_vote(&mut self, vote: &Vote<TypeConfig>) -> Result<(), io::Error> {
+    async fn save_vote(&mut self, vote: &Vote<MemLeaderId>) -> Result<(), io::Error> {
         *self.vote.write().await = Some(*vote);
         Ok(())
     }
