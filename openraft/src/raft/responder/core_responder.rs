@@ -16,6 +16,17 @@ where C: RaftTypeConfig
     UserDefined(WriteResponderOf<C>),
 }
 
+impl<C> std::fmt::Debug for CoreResponder<C>
+where C: RaftTypeConfig
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Progress(_) => f.debug_tuple("Progress").field(&"<responder>").finish(),
+            Self::UserDefined(_) => f.debug_tuple("UserDefined").field(&"<responder>").finish(),
+        }
+    }
+}
+
 impl<C> Responder<C, ClientWriteResult<C>> for CoreResponder<C>
 where C: RaftTypeConfig
 {

@@ -5,6 +5,7 @@
 //!
 //! ## Key Types
 //!
+//! - [`Batch`] - Default batch container implementation
 //! - [`Entry`] - Default log entry implementation
 //! - [`LogId`] - Default log identifier
 //! - [`Vote`] - Default vote implementation
@@ -31,6 +32,8 @@ pub use boxed_error_source::BoxedErrorSource;
 #[deprecated(since = "0.10.0", note = "use `openraft_rt_tokio::TokioRuntime` directly")]
 pub use openraft_rt_tokio::TokioRuntime;
 
+// Re-export Batch from base as a default implementation
+pub use crate::base::batch::Batch;
 pub use crate::entry::Entry;
 pub use crate::node::BasicNode;
 pub use crate::node::EmptyNode;
