@@ -106,7 +106,7 @@ pub trait RaftTypeConfig:
     type Term: RaftTerm;
 
     /// A Leader identifier in a cluster.
-    type LeaderId: RaftLeaderId<Self::Term, Self::NodeId>;
+    type LeaderId: RaftLeaderId<Term = Self::Term, NodeId = Self::NodeId>;
 
     /// Raft vote type.
     ///
@@ -219,7 +219,7 @@ pub mod alias {
 
     // Usually used types
     pub type LogIdOf<C> = LogId<C>;
-    pub type CommittedLeaderIdOf<C> = <LeaderIdOf<C> as RaftLeaderId<TermOf<C>, NodeIdOf<C>>>::Committed;
+    pub type CommittedLeaderIdOf<C> = <LeaderIdOf<C> as RaftLeaderId>::Committed;
     pub type EntryPayloadOf<C> = EntryPayload<C>;
     pub type SerdeInstantOf<C> = crate::metrics::SerdeInstant<InstantOf<C>>;
 }

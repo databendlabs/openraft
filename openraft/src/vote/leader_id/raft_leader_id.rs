@@ -28,26 +28,30 @@ use crate::vote::leader_id::raft_committed_leader_id::RaftCommittedLeaderId;
 /// external traits for primitive types.
 ///
 /// [`Vote`]: crate::vote::Vote
-pub trait RaftLeaderId<Term, NID>
+pub trait RaftLeaderId
 where
-    Term: RaftTerm,
-    NID: NodeId,
     Self: OptionalFeatures + PartialOrd + Eq + Clone + Debug + Display + 'static,
     Self: PartialOrd<Self::Committed>,
 {
+    /// The term type used by this leader ID.
+    type Term: RaftTerm;
+
+    /// The node ID type used by this leader ID.
+    type NodeId: NodeId;
+
     /// The committed version of this leader ID.
     ///
     /// A simple implementation of this trait would return `Self` as the committed version.
     type Committed: RaftCommittedLeaderId;
 
     /// Create a new leader ID for the given term and node.
-    fn new(term: Term, node_id: NID) -> Self;
+    fn new(term: Self::Term, node_id: Self::NodeId) -> Self;
 
     /// Get the term number of this leader
-    fn term(&self) -> Term;
+    fn term(&self) -> Self::Term;
 
     /// Get the node ID of this leader
-    fn node_id(&self) -> &NID;
+    fn node_id(&self) -> &Self::NodeId;
 
     /// Convert this leader ID to a committed leader ID.
     ///
@@ -58,32 +62,21 @@ where
 /// Extension methods for [`RaftLeaderId`].
 ///
 /// This trait is implemented for all types that implement [`RaftLeaderId`].
-pub trait RaftLeaderIdExt<Term, NID>
-where
-    Term: RaftTerm,
-    NID: NodeId,
-    Self: RaftLeaderId<Term, NID>,
-{
+pub trait RaftLeaderIdExt: RaftLeaderId {
     /// Create a LeaderId with default Term and specified Node ID
-    fn new_with_default_term(node_id: NID) -> Self {
-        Self::new(Term::default(), node_id)
+    fn new_with_default_term(node_id: Self::NodeId) -> Self {
+        Self::new(Self::Term::default(), node_id)
     }
 
     /// Create a new committed leader ID.
-    fn new_committed(term: Term, node_id: NID) -> Self::Committed {
+    fn new_committed(term: Self::Term, node_id: Self::NodeId) -> Self::Committed {
         Self::new(term, node_id).to_committed()
     }
 
     /// Get the node ID of this leader as an owned value.
-    fn to_node_id(&self) -> NID {
+    fn to_node_id(&self) -> Self::NodeId {
         self.node_id().clone()
     }
 }
 
-impl<Term, NID, T> RaftLeaderIdExt<Term, NID> for T
-where
-    Term: RaftTerm,
-    NID: NodeId,
-    T: RaftLeaderId<Term, NID>,
-{
-}
+impl<T> RaftLeaderIdExt for T where T: RaftLeaderId {}

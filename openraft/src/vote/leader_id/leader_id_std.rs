@@ -39,7 +39,7 @@ where
 {
     #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        LeaderIdCompare::<Term, NID>::std(self, other)
+        LeaderIdCompare::std(self, other)
     }
 }
 
@@ -109,11 +109,13 @@ where
     }
 }
 
-impl<Term, NID> RaftLeaderId<Term, NID> for LeaderId<Term, NID>
+impl<Term, NID> RaftLeaderId for LeaderId<Term, NID>
 where
     Term: RaftTerm,
     NID: NodeId,
 {
+    type Term = Term;
+    type NodeId = NID;
     type Committed = CommittedLeaderId<Term>;
 
     fn new(term: Term, node_id: NID) -> Self {

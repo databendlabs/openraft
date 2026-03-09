@@ -19,7 +19,7 @@ use crate::protobuf as pb;
 impl PartialOrd for pb::LeaderId {
     #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        LeaderIdCompare::<u64, u64>::std(self, other)
+        LeaderIdCompare::std(self, other)
     }
 }
 
@@ -41,7 +41,9 @@ impl fmt::Display for pb::LeaderId {
     }
 }
 
-impl RaftLeaderId<u64, u64> for pb::LeaderId {
+impl RaftLeaderId for pb::LeaderId {
+    type Term = u64;
+    type NodeId = u64;
     type Committed = u64;
 
     fn new(term: u64, node_id: u64) -> Self {

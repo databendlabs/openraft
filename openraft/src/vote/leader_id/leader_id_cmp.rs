@@ -1,18 +1,11 @@
 use std::cmp::Ordering;
-use std::marker::PhantomData;
 
-use crate::NodeId;
 use crate::vote::RaftLeaderId;
-use crate::vote::RaftTerm;
 
 /// Provide comparison functions for [`RaftLeaderId`] implementations.
-pub struct LeaderIdCompare<Term, NID>(PhantomData<(Term, NID)>);
+pub struct LeaderIdCompare;
 
-impl<Term, NID> LeaderIdCompare<Term, NID>
-where
-    Term: RaftTerm,
-    NID: NodeId,
-{
+impl LeaderIdCompare {
     /// Implements [`PartialOrd`] for LeaderId to enforce the standard Raft behavior of at most one
     /// leader per term.
     ///
@@ -20,7 +13,7 @@ where
     /// IDs with the same term incomparable (returning None), unless they refer to the same
     /// node.
     pub fn std<LID>(a: &LID, b: &LID) -> Option<Ordering>
-    where LID: RaftLeaderId<Term, NID> {
+    where LID: RaftLeaderId {
         match a.term().cmp(&b.term()) {
             Ordering::Equal => {
                 if a.node_id() == b.node_id() {
@@ -35,7 +28,7 @@ where
 
     /// Implements [`PartialOrd`] for LeaderId to allow multiple leaders per term.
     pub fn adv<LID>(a: &LID, b: &LID) -> Option<Ordering>
-    where LID: RaftLeaderId<Term, NID> {
+    where LID: RaftLeaderId {
         let res = (a.term(), a.node_id()).cmp(&(b.term(), b.node_id()));
         Some(res)
     }
@@ -64,7 +57,9 @@ mod tests {
         }
     }
 
-    impl RaftLeaderId<u64, u64> for LeaderId {
+    impl RaftLeaderId for LeaderId {
+        type Term = u64;
+        type NodeId = u64;
         type Committed = u64;
 
         fn new(term: u64, node_id: u64) -> Self {
@@ -93,16 +88,16 @@ mod tests {
         let lid = |term, node_id| LeaderId(term, node_id);
 
         // Compare term first
-        assert_eq!(Cmp::<u64, u64>::std(&lid(2, 2), &lid(1, 2)), Some(Greater));
-        assert_eq!(Cmp::<u64, u64>::std(&lid(1, 2), &lid(2, 2)), Some(Less));
+        assert_eq!(Cmp::std(&lid(2, 2), &lid(1, 2)), Some(Greater));
+        assert_eq!(Cmp::std(&lid(1, 2), &lid(2, 2)), Some(Less));
 
         // Equal
-        assert_eq!(Cmp::<u64, u64>::std(&lid(2, 2), &lid(2, 2)), Some(Equal));
+        assert_eq!(Cmp::std(&lid(2, 2), &lid(2, 2)), Some(Equal));
 
         // Incomparable
-        assert_eq!(Cmp::<u64, u64>::std(&lid(2, 2), &lid(2, 1)), None);
-        assert_eq!(Cmp::<u64, u64>::std(&lid(2, 1), &lid(2, 2)), None);
-        assert_eq!(Cmp::<u64, u64>::std(&lid(2, 2), &lid(2, 3)), None);
+        assert_eq!(Cmp::std(&lid(2, 2), &lid(2, 1)), None);
+        assert_eq!(Cmp::std(&lid(2, 1), &lid(2, 2)), None);
+        assert_eq!(Cmp::std(&lid(2, 2), &lid(2, 3)), None);
     }
 
     #[test]
@@ -114,14 +109,14 @@ mod tests {
         let lid = |term, node_id| LeaderId(term, node_id);
 
         // Compare term first
-        assert_eq!(Cmp::<u64, u64>::adv(&lid(2, 2), &lid(1, 2)), Some(Greater));
-        assert_eq!(Cmp::<u64, u64>::adv(&lid(1, 2), &lid(2, 2)), Some(Less));
+        assert_eq!(Cmp::adv(&lid(2, 2), &lid(1, 2)), Some(Greater));
+        assert_eq!(Cmp::adv(&lid(1, 2), &lid(2, 2)), Some(Less));
 
         // Equal term
-        assert_eq!(Cmp::<u64, u64>::adv(&lid(2, 2), &lid(2, 1)), Some(Greater));
-        assert_eq!(Cmp::<u64, u64>::adv(&lid(2, 1), &lid(2, 2)), Some(Less));
+        assert_eq!(Cmp::adv(&lid(2, 2), &lid(2, 1)), Some(Greater));
+        assert_eq!(Cmp::adv(&lid(2, 1), &lid(2, 2)), Some(Less));
 
         // Equal term, node_id
-        assert_eq!(Cmp::<u64, u64>::adv(&lid(2, 2), &lid(2, 2)), Some(Equal));
+        assert_eq!(Cmp::adv(&lid(2, 2), &lid(2, 2)), Some(Equal));
     }
 }
