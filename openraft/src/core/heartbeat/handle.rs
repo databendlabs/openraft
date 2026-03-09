@@ -15,11 +15,11 @@ use crate::core::notification::Notification;
 use crate::engine::TargetProgress;
 use crate::progress::stream_id::StreamId;
 use crate::type_config::TypeConfigExt;
+use crate::type_config::alias::CommittedVoteOf;
 use crate::type_config::alias::JoinHandleOf;
 use crate::type_config::alias::MpscSenderOf;
 use crate::type_config::alias::OneshotSenderOf;
 use crate::type_config::alias::WatchSenderOf;
-use crate::vote::committed::CommittedVote;
 
 /// Handle for a single heartbeat worker task.
 pub(crate) struct WorkerHandle<C>
@@ -74,7 +74,7 @@ where C: RaftTypeConfig
 
     pub(crate) async fn spawn_workers<NF>(
         &mut self,
-        leader_vote: CommittedVote<C>,
+        leader_vote: CommittedVoteOf<C>,
         network_factory: &mut NF,
         tx_notification: &MpscSenderOf<C, Notification<C>>,
         progresses: impl IntoIterator<Item = &TargetProgress<C>>,

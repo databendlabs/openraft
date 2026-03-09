@@ -55,6 +55,8 @@ mod leader_id_mode {
     pub use openraft::impls::leader_id_std::LeaderId;
 }
 
+type LeaderId = leader_id_mode::LeaderId<u64, u64>;
+
 #[derive(Debug, Clone, Copy, Default, Eq, PartialEq, Ord, PartialOrd)]
 pub struct TypeConfig;
 
@@ -64,8 +66,8 @@ impl RaftTypeConfig for TypeConfig {
     type NodeId = u64;
     type Node = ();
     type Term = u64;
-    type LeaderId = leader_id_mode::LeaderId<u64, u64>;
-    type Vote = Vote<Self>;
+    type LeaderId = LeaderId;
+    type Vote = Vote<Self::LeaderId>;
     type Entry = Entry<Self>;
     type SnapshotData = Cursor<Vec<u8>>;
     type Responder<T>
@@ -89,7 +91,7 @@ pub struct StateMachine {
 }
 
 pub struct LogStore {
-    vote: RwLock<Option<Vote<TypeConfig>>>,
+    vote: RwLock<Option<Vote<LeaderId>>>,
     log: RwLock<BTreeMap<u64, Entry<TypeConfig>>>,
     last_purged_log_id: RwLock<Option<LogIdOf<TypeConfig>>>,
 }
@@ -154,7 +156,7 @@ impl RaftLogReader<TypeConfig> for Arc<LogStore> {
         Ok(entries)
     }
 
-    async fn read_vote(&mut self) -> Result<Option<Vote<TypeConfig>>, io::Error> {
+    async fn read_vote(&mut self) -> Result<Option<Vote<LeaderId>>, io::Error> {
         Ok(*self.vote.read().await)
     }
 }
@@ -226,7 +228,7 @@ impl RaftLogStorage<TypeConfig> for Arc<LogStore> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn save_vote(&mut self, vote: &Vote<TypeConfig>) -> Result<(), io::Error> {
+    async fn save_vote(&mut self, vote: &Vote<LeaderId>) -> Result<(), io::Error> {
         let mut v = self.vote.write().await;
         *v = Some(*vote);
         Ok(())

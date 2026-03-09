@@ -6,9 +6,9 @@ use crate::RaftTypeConfig;
 use crate::core::SharedReplicateBatch;
 use crate::core::notification::Notification;
 use crate::progress::stream_id::StreamId;
+use crate::type_config::alias::CommittedVoteOf;
 use crate::type_config::alias::MpscSenderOf;
 use crate::type_config::alias::WatchReceiverOf;
-use crate::vote::committed::CommittedVote;
 
 /// Shared context for replication tasks.
 ///
@@ -27,7 +27,7 @@ where C: RaftTypeConfig
     pub(crate) target: C::NodeId,
 
     /// The leader this replication works for
-    pub(crate) leader_vote: CommittedVote<C>,
+    pub(crate) leader_vote: CommittedVoteOf<C>,
 
     /// Identifies which session this replication belongs to.
     pub(crate) stream_id: StreamId,
