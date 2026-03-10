@@ -4,7 +4,6 @@ use std::time::Duration;
 use maplit::btreeset;
 use pretty_assertions::assert_eq;
 
-use crate::EffectiveMembership;
 use crate::Membership;
 use crate::MembershipState;
 use crate::Vote;
@@ -16,6 +15,7 @@ use crate::engine::testing::log_id;
 use crate::progress::Progress;
 use crate::storage::SnapshotMeta;
 use crate::type_config::TypeConfigExt;
+use crate::type_config::alias::EffectiveMembershipOf;
 use crate::type_config::alias::StoredMembershipOf;
 use crate::utime::Leased;
 
@@ -27,8 +27,8 @@ fn eng() -> Engine<UTConfig> {
     let mut eng = Engine::testing_default(0);
     eng.state.enable_validation(false); // Disable validation for incomplete state
     eng.state.membership_state = MembershipState::new(
-        EffectiveMembership::new_arc(Some(log_id(1, 0, 1)), m12()),
-        EffectiveMembership::new_arc(Some(log_id(1, 0, 1)), m12()),
+        EffectiveMembershipOf::<UTConfig>::new_arc(Some(log_id(1, 0, 1)), m12()),
+        EffectiveMembershipOf::<UTConfig>::new_arc(Some(log_id(1, 0, 1)), m12()),
     );
 
     eng.state.log_ids = LogIdList::new(None, [log_id(0, 0, 0)]);

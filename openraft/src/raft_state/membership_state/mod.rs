@@ -4,7 +4,6 @@ use std::sync::Arc;
 
 use validit::Validate;
 
-use crate::EffectiveMembership;
 use crate::LogIdOptionExt;
 use crate::RaftTypeConfig;
 
@@ -16,6 +15,7 @@ mod membership_state_test;
 
 pub(crate) use change_handler::ChangeHandler;
 
+use crate::type_config::alias::EffectiveMembershipOf;
 use crate::type_config::alias::LogIdOf;
 
 /// The state of membership configs a raft node needs to know.
@@ -45,10 +45,10 @@ use crate::type_config::alias::LogIdOf;
 pub struct MembershipState<C>
 where C: RaftTypeConfig
 {
-    committed: Arc<EffectiveMembership<C>>,
+    committed: Arc<EffectiveMembershipOf<C>>,
 
     // Using `Arc` because the effective membership will be copied to RaftMetrics frequently.
-    effective: Arc<EffectiveMembership<C>>,
+    effective: Arc<EffectiveMembershipOf<C>>,
 }
 
 impl<C> fmt::Display for MembershipState<C>
@@ -66,7 +66,7 @@ where C: RaftTypeConfig
 impl<C> MembershipState<C>
 where C: RaftTypeConfig
 {
-    pub(crate) fn new(committed: Arc<EffectiveMembership<C>>, effective: Arc<EffectiveMembership<C>>) -> Self {
+    pub(crate) fn new(committed: Arc<EffectiveMembershipOf<C>>, effective: Arc<EffectiveMembershipOf<C>>) -> Self {
         Self { committed, effective }
     }
 
@@ -94,7 +94,10 @@ where C: RaftTypeConfig
     ///
     /// If `self.effective` changed, it returns a reference to the new one.
     /// If not, it returns None.
-    pub(crate) fn update_committed(&mut self, c: Arc<EffectiveMembership<C>>) -> Option<Arc<EffectiveMembership<C>>> {
+    pub(crate) fn update_committed(
+        &mut self,
+        c: Arc<EffectiveMembershipOf<C>>,
+    ) -> Option<Arc<EffectiveMembershipOf<C>>> {
         let mut changed = false;
 
         // The local effective membership may conflict with the leader.
@@ -132,7 +135,7 @@ where C: RaftTypeConfig
     /// - Leader appends a new membership,
     /// - Or a follower has confirmed preceding logs matches the leaders' and appends membership
     ///   received from the leader.
-    pub(crate) fn append(&mut self, m: Arc<EffectiveMembership<C>>) {
+    pub(crate) fn append(&mut self, m: Arc<EffectiveMembershipOf<C>>) {
         debug_assert!(
             m.log_id() > self.effective.log_id(),
             "new membership has to have a greater log_id"
@@ -166,7 +169,7 @@ where C: RaftTypeConfig
     /// |                                    last membership      // before deleting since..
     /// last membership                                           // after  deleting since..
     /// ```
-    pub(crate) fn truncate(&mut self, since: u64) -> Option<Arc<EffectiveMembership<C>>> {
+    pub(crate) fn truncate(&mut self, since: u64) -> Option<Arc<EffectiveMembershipOf<C>>> {
         debug_assert!(
             since >= self.committed().log_id().next_index(),
             "committed log should never be truncated: committed membership cannot conflict with the leader"
@@ -187,14 +190,14 @@ where C: RaftTypeConfig
 
     // This method is only used by tests
     #[cfg(test)]
-    pub(crate) fn set_effective(&mut self, e: Arc<EffectiveMembership<C>>) {
+    pub(crate) fn set_effective(&mut self, e: Arc<EffectiveMembershipOf<C>>) {
         self.effective = e
     }
 
     /// Returns a reference to the last committed membership config.
     ///
     /// A committed membership config may or may not be the same as the effective one.
-    pub fn committed(&self) -> &Arc<EffectiveMembership<C>> {
+    pub fn committed(&self) -> &Arc<EffectiveMembershipOf<C>> {
         &self.committed
     }
 
@@ -204,7 +207,7 @@ where C: RaftTypeConfig
     /// one.
     ///
     /// A committed membership config may or may not be the same as the effective one.
-    pub fn effective(&self) -> &Arc<EffectiveMembership<C>> {
+    pub fn effective(&self) -> &Arc<EffectiveMembershipOf<C>> {
         &self.effective
     }
 

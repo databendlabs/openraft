@@ -4,7 +4,6 @@ use std::time::Duration;
 use maplit::btreeset;
 use pretty_assertions::assert_eq;
 
-use crate::EffectiveMembership;
 use crate::Membership;
 use crate::MembershipState;
 use crate::Vote;
@@ -23,6 +22,7 @@ use crate::progress::stream_id::StreamId;
 use crate::replication::payload::Payload;
 use crate::replication::replicate::Replicate;
 use crate::type_config::TypeConfigExt;
+use crate::type_config::alias::EffectiveMembershipOf;
 use crate::utime::Leased;
 use crate::vote::raft_vote::RaftVoteExt;
 
@@ -50,8 +50,8 @@ fn eng() -> Engine<UTConfig> {
     let mut eng = Engine::testing_default(0);
     eng.config.id = 2;
     eng.state.membership_state = MembershipState::new(
-        Arc::new(EffectiveMembership::new(Some(log_id(1, 1, 1)), m01())),
-        Arc::new(EffectiveMembership::new(Some(log_id(2, 1, 3)), m23())),
+        Arc::new(EffectiveMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m01())),
+        Arc::new(EffectiveMembershipOf::<UTConfig>::new(Some(log_id(2, 1, 3)), m23())),
     );
     eng.state.vote = Leased::new(
         UTConfig::<()>::now(),
@@ -73,8 +73,8 @@ fn test_leader_append_membership_for_leader() -> anyhow::Result<()> {
 
     assert_eq!(
         MembershipState::new(
-            Arc::new(EffectiveMembership::new(Some(log_id(2, 1, 3)), m23())),
-            Arc::new(EffectiveMembership::new(Some(log_id(3, 1, 4)), m34()))
+            Arc::new(EffectiveMembershipOf::<UTConfig>::new(Some(log_id(2, 1, 3)), m23())),
+            Arc::new(EffectiveMembershipOf::<UTConfig>::new(Some(log_id(3, 1, 4)), m34()))
         ),
         eng.state.membership_state
     );
@@ -142,9 +142,10 @@ fn test_leader_append_membership_update_learner_process() -> anyhow::Result<()> 
     // This preserves the original ranges: (1,1) covers indices 1-9, (5,1) covers index 10
     eng.state.log_ids = LogIdList::new(None, [log_id(0, 0, 0), log_id(1, 1, 9), log_id(5, 1, 10)]);
 
-    eng.state
-        .membership_state
-        .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(2, 1, 3)), m23_45())));
+    eng.state.membership_state.set_effective(Arc::new(EffectiveMembershipOf::<UTConfig>::new(
+        Some(log_id(2, 1, 3)),
+        m23_45(),
+    )));
 
     // Make it a real leader: voted for itself and vote is committed.
     eng.testing_new_leader();
@@ -172,8 +173,8 @@ fn test_leader_append_membership_update_learner_process() -> anyhow::Result<()> 
 
     assert_eq!(
         MembershipState::new(
-            Arc::new(EffectiveMembership::new(Some(log_id(2, 1, 3)), m23_45())),
-            Arc::new(EffectiveMembership::new(Some(log_id(3, 1, 4)), m4_356()))
+            Arc::new(EffectiveMembershipOf::<UTConfig>::new(Some(log_id(2, 1, 3)), m23_45())),
+            Arc::new(EffectiveMembershipOf::<UTConfig>::new(Some(log_id(3, 1, 4)), m4_356()))
         ),
         eng.state.membership_state
     );
