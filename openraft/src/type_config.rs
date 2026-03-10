@@ -119,7 +119,16 @@ pub trait RaftTypeConfig:
     type Vote: RaftVote<LeaderId = Self::LeaderId>;
 
     /// Raft log entry, which can be built from an AppData.
-    type Entry: RaftEntry<Self>;
+    #[since(
+        version = "0.10.0",
+        change = "from `RaftEntry<Self>` to `RaftEntry` with associated type constraints"
+    )]
+    type Entry: RaftEntry<
+            CommittedLeaderId = <Self::LeaderId as RaftLeaderId>::Committed,
+            D = Self::D,
+            NodeId = Self::NodeId,
+            Node = Self::Node,
+        >;
 
     /// Snapshot data for exposing a snapshot for reading & writing.
     ///
@@ -226,7 +235,7 @@ pub mod alias {
     pub type LogIdOf<C> = LogId<CommittedLeaderIdOf<C>>;
     pub type CommittedLeaderIdOf<C> = <LeaderIdOf<C> as RaftLeaderId>::Committed;
     pub(crate) type RefLogIdOf<'a, C> = crate::log_id::ref_log_id::RefLogId<'a, CommittedLeaderIdOf<C>>;
-    pub type EntryPayloadOf<C> = EntryPayload<C>;
+    pub type EntryPayloadOf<C> = EntryPayload<DOf<C>, NodeIdOf<C>, NodeOf<C>>;
     pub type SerdeInstantOf<C> = crate::metrics::SerdeInstant<InstantOf<C>>;
 
     // Projections from a LeaderId type (LID: RaftLeaderId)

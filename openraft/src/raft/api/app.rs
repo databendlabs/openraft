@@ -7,7 +7,6 @@ use crate::ReadPolicy;
 use crate::base::Batch;
 use crate::base::BoxStream;
 use crate::core::raft_msg::RaftMsg;
-use crate::entry::EntryPayload;
 use crate::errors::ClientWriteError;
 use crate::errors::Fatal;
 use crate::errors::LinearizableReadError;
@@ -20,6 +19,7 @@ use crate::raft::message::into_write_result;
 use crate::raft::raft_inner::RaftInner;
 use crate::raft::responder::core_responder::CoreResponder;
 use crate::type_config::TypeConfigExt;
+use crate::type_config::alias::EntryPayloadOf;
 use crate::type_config::alias::WriteResponderOf;
 
 /// Provides application-facing APIs for interacting with the Raft system.
@@ -54,7 +54,7 @@ where C: RaftTypeConfig
     #[tracing::instrument(level = "debug", skip(self, payload))]
     pub(crate) async fn client_write(
         &self,
-        payload: EntryPayload<C>,
+        payload: EntryPayloadOf<C>,
         // TODO: ClientWriteError can only be ForwardToLeader Error
     ) -> Result<Result<ClientWriteResponse<C>, ClientWriteError<C>>, Fatal<C>> {
         let (responder, _commit_rx, complete_rx) = ProgressResponder::new();
@@ -74,7 +74,7 @@ where C: RaftTypeConfig
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) async fn client_write_ff(
         &self,
-        payload: EntryPayload<C>,
+        payload: EntryPayloadOf<C>,
         responder: Option<WriteResponderOf<C>>,
     ) -> Result<(), Fatal<C>> {
         self.do_client_write_ff(
@@ -88,7 +88,7 @@ where C: RaftTypeConfig
     #[since(version = "0.10.0")]
     async fn do_client_write_ff(
         &self,
-        payloads: Batch<EntryPayload<C>>,
+        payloads: Batch<EntryPayloadOf<C>>,
         responders: Batch<Option<CoreResponder<C>>>,
     ) -> Result<(), Fatal<C>> {
         self.inner
@@ -113,9 +113,9 @@ where C: RaftTypeConfig
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) async fn client_write_many(
         &self,
-        payloads: impl IntoIterator<Item = EntryPayload<C>>,
+        payloads: impl IntoIterator<Item = EntryPayloadOf<C>>,
     ) -> Result<BoxStream<'static, Result<WriteResult<C>, Fatal<C>>>, Fatal<C>> {
-        let payloads: Vec<EntryPayload<C>> = payloads.into_iter().collect();
+        let payloads: Vec<EntryPayloadOf<C>> = payloads.into_iter().collect();
 
         let mut responders = Vec::with_capacity(payloads.len());
         let mut receivers = Vec::with_capacity(payloads.len());

@@ -30,9 +30,9 @@ where C: RaftTypeConfig
     /// configuration.
     pub(crate) fn apply(
         &self,
-        change: ChangeMembers<C>,
+        change: ChangeMembers<C::NodeId, C::Node>,
         retain: bool,
-    ) -> Result<Membership<C>, ChangeMembershipError<C>> {
+    ) -> Result<Membership<C::NodeId, C::Node>, ChangeMembershipError<C>> {
         self.ensure_committed()?;
 
         let new_membership = self.state.effective().membership().clone().change(change, retain)?;

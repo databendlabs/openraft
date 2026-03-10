@@ -22,12 +22,12 @@ use crate::storage::SnapshotMeta;
 use crate::type_config::TypeConfigExt;
 use crate::vote::raft_vote::RaftVoteExt;
 
-fn m12() -> Membership<UTConfig> {
-    Membership::<UTConfig>::new_with_defaults(vec![btreeset! {1,2}], [])
+fn m12() -> Membership<u64, ()> {
+    Membership::<u64, ()>::new_with_defaults(vec![btreeset! {1,2}], [])
 }
 
-fn m1234() -> Membership<UTConfig> {
-    Membership::<UTConfig>::new_with_defaults(vec![btreeset! {1,2,3,4}], [])
+fn m1234() -> Membership<u64, ()> {
+    Membership::<u64, ()>::new_with_defaults(vec![btreeset! {1,2,3,4}], [])
 }
 
 fn eng() -> Engine<UTConfig> {

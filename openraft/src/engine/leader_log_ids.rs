@@ -1,11 +1,9 @@
 use std::fmt;
 
-use crate::RaftTypeConfig;
+use crate::LogId;
 use crate::engine::leader_log_ids_iter::LeaderLogIdsIter;
 use crate::log_id::ref_log_id::RefLogId;
-use crate::type_config::alias::CommittedLeaderIdOf;
-use crate::type_config::alias::LogIdOf;
-use crate::type_config::alias::RefLogIdOf;
+use crate::vote::leader_id::raft_committed_leader_id::RaftCommittedLeaderId;
 
 /// A non-empty range of log IDs belonging to a Leader.
 ///
@@ -17,8 +15,10 @@ use crate::type_config::alias::RefLogIdOf;
 /// This struct always represents a non-empty range; use `Option<LeaderLogIds>`
 /// when an empty range is needed.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct LeaderLogIds<C: RaftTypeConfig> {
-    committed_leader_id: CommittedLeaderIdOf<C>,
+pub(crate) struct LeaderLogIds<CLID>
+where CLID: RaftCommittedLeaderId
+{
+    committed_leader_id: CLID,
 
     /// First index (inclusive).
     first: u64,
@@ -27,19 +27,19 @@ pub(crate) struct LeaderLogIds<C: RaftTypeConfig> {
     last: u64,
 }
 
-impl<C> fmt::Display for LeaderLogIds<C>
-where C: RaftTypeConfig
+impl<CLID> fmt::Display for LeaderLogIds<CLID>
+where CLID: RaftCommittedLeaderId
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}:[{}, {}]", self.committed_leader_id, self.first, self.last)
     }
 }
 
-impl<C> LeaderLogIds<C>
-where C: RaftTypeConfig
+impl<CLID> LeaderLogIds<CLID>
+where CLID: RaftCommittedLeaderId
 {
     /// Create a new log ID range `[first, last]`.
-    pub(crate) fn new(committed_leader_id: CommittedLeaderIdOf<C>, first: u64, last: u64) -> Self {
+    pub(crate) fn new(committed_leader_id: CLID, first: u64, last: u64) -> Self {
         debug_assert!(first <= last, "first {} must be <= last {}", first, last);
         Self {
             committed_leader_id,
@@ -48,7 +48,7 @@ where C: RaftTypeConfig
         }
     }
 
-    pub(crate) fn new_single(log_id: LogIdOf<C>) -> Self {
+    pub(crate) fn new_single(log_id: LogId<CLID>) -> Self {
         let index = log_id.index();
         Self {
             committed_leader_id: log_id.committed_leader_id().clone(),
@@ -59,23 +59,23 @@ where C: RaftTypeConfig
 
     /// Returns the first log ID in the range.
     #[allow(dead_code)]
-    pub(crate) fn first_log_id(&self) -> LogIdOf<C> {
-        LogIdOf::<C>::new(self.committed_leader_id.clone(), self.first)
+    pub(crate) fn first_log_id(&self) -> LogId<CLID> {
+        LogId::<CLID>::new(self.committed_leader_id.clone(), self.first)
     }
 
     /// Returns a reference to the first log ID in the range.
-    pub(crate) fn first_ref(&self) -> RefLogIdOf<'_, C> {
+    pub(crate) fn first_ref(&self) -> RefLogId<'_, CLID> {
         RefLogId::new(&self.committed_leader_id, self.first)
     }
 
     /// Returns the last log ID in the range.
     #[allow(dead_code)]
-    pub(crate) fn last_log_id(&self) -> LogIdOf<C> {
-        LogIdOf::<C>::new(self.committed_leader_id.clone(), self.last)
+    pub(crate) fn last_log_id(&self) -> LogId<CLID> {
+        LogId::<CLID>::new(self.committed_leader_id.clone(), self.last)
     }
 
     /// Returns a reference to the last log ID in the range.
-    pub(crate) fn last_ref(&self) -> RefLogIdOf<'_, C> {
+    pub(crate) fn last_ref(&self) -> RefLogId<'_, CLID> {
         RefLogId::new(&self.committed_leader_id, self.last)
     }
 
@@ -84,7 +84,7 @@ where C: RaftTypeConfig
     /// # Panics
     /// Panics if `index` is out of range `[first, last]`.
     #[allow(dead_code)]
-    pub(crate) fn get(&self, index: u64) -> LogIdOf<C> {
+    pub(crate) fn get(&self, index: u64) -> LogId<CLID> {
         debug_assert!(
             index >= self.first && index <= self.last,
             "index {} out of range [{}, {}]",
@@ -92,7 +92,7 @@ where C: RaftTypeConfig
             self.first,
             self.last
         );
-        LogIdOf::<C>::new(self.committed_leader_id.clone(), index)
+        LogId::<CLID>::new(self.committed_leader_id.clone(), index)
     }
 
     /// Returns a reference to the log ID at the specified index.
@@ -100,7 +100,7 @@ where C: RaftTypeConfig
     /// # Panics
     /// Panics if `index` is out of range `[first, last]`.
     #[allow(dead_code)]
-    pub(crate) fn ref_at(&self, index: u64) -> RefLogIdOf<'_, C> {
+    pub(crate) fn ref_at(&self, index: u64) -> RefLogId<'_, CLID> {
         debug_assert!(
             index >= self.first && index <= self.last,
             "index {} out of range [{}, {}]",
@@ -122,11 +122,11 @@ where C: RaftTypeConfig
     }
 }
 
-impl<C> IntoIterator for LeaderLogIds<C>
-where C: RaftTypeConfig
+impl<CLID> IntoIterator for LeaderLogIds<CLID>
+where CLID: RaftCommittedLeaderId
 {
-    type Item = LogIdOf<C>;
-    type IntoIter = LeaderLogIdsIter<C>;
+    type Item = LogId<CLID>;
+    type IntoIter = LeaderLogIdsIter<CLID>;
 
     fn into_iter(self) -> Self::IntoIter {
         LeaderLogIdsIter::new(
@@ -140,17 +140,17 @@ where C: RaftTypeConfig
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::engine::testing::UTConfig;
+    use crate::engine::testing::UtClid;
     use crate::engine::testing::log_id;
 
-    fn committed_leader_id(term: u64, node_id: u64) -> CommittedLeaderIdOf<UTConfig> {
+    fn committed_leader_id(term: u64, node_id: u64) -> UtClid {
         *log_id(term, node_id, 0).committed_leader_id()
     }
 
     #[test]
     fn test_single_element() {
         // [5, 5] is a single element range
-        let range = LeaderLogIds::<UTConfig>::new(committed_leader_id(1, 2), 5, 5);
+        let range = LeaderLogIds::<UtClid>::new(committed_leader_id(1, 2), 5, 5);
         assert_eq!(range.len(), 1);
         assert_eq!(range.first_log_id(), log_id(1, 2, 5));
         assert_eq!(range.last_log_id(), log_id(1, 2, 5));
@@ -159,7 +159,7 @@ mod tests {
     #[test]
     fn test_multiple_elements() {
         // [10, 14] is 5 elements
-        let range = LeaderLogIds::<UTConfig>::new(committed_leader_id(2, 3), 10, 14);
+        let range = LeaderLogIds::<UtClid>::new(committed_leader_id(2, 3), 10, 14);
         assert_eq!(range.len(), 5);
         assert_eq!(range.first_log_id(), log_id(2, 3, 10));
         assert_eq!(range.last_log_id(), log_id(2, 3, 14));
@@ -168,7 +168,7 @@ mod tests {
     #[test]
     fn test_iterator() {
         // [5, 7] is 3 elements: 5, 6, 7
-        let range = LeaderLogIds::<UTConfig>::new(committed_leader_id(1, 2), 5, 7);
+        let range = LeaderLogIds::<UtClid>::new(committed_leader_id(1, 2), 5, 7);
         let ids: Vec<_> = range.into_iter().collect();
         assert_eq!(ids, vec![log_id(1, 2, 5), log_id(1, 2, 6), log_id(1, 2, 7)]);
     }
@@ -176,7 +176,7 @@ mod tests {
     #[test]
     fn test_double_ended_iterator() {
         // [5, 7] is 3 elements: 5, 6, 7
-        let range = LeaderLogIds::<UTConfig>::new(committed_leader_id(1, 2), 5, 7);
+        let range = LeaderLogIds::<UtClid>::new(committed_leader_id(1, 2), 5, 7);
         let mut iter = range.into_iter();
 
         assert_eq!(iter.next_back(), Some(log_id(1, 2, 7)));
@@ -188,7 +188,7 @@ mod tests {
 
     #[test]
     fn test_clone_iter() {
-        let range = LeaderLogIds::<UTConfig>::new(committed_leader_id(1, 2), 5, 7);
+        let range = LeaderLogIds::<UtClid>::new(committed_leader_id(1, 2), 5, 7);
         let iter1 = range.into_iter();
         let iter2 = iter1.clone();
 
@@ -201,7 +201,7 @@ mod tests {
     #[test]
     fn test_iterator_starting_at_zero() {
         // Edge case: range starting at index 0
-        let range = LeaderLogIds::<UTConfig>::new(committed_leader_id(1, 2), 0, 2);
+        let range = LeaderLogIds::<UtClid>::new(committed_leader_id(1, 2), 0, 2);
         let mut iter = range.into_iter();
 
         // Consume from back first to test the edge case
@@ -217,7 +217,7 @@ mod tests {
     #[test]
     fn test_single_element_at_zero() {
         // Edge case: single element at index 0
-        let range = LeaderLogIds::<UTConfig>::new(committed_leader_id(1, 2), 0, 0);
+        let range = LeaderLogIds::<UtClid>::new(committed_leader_id(1, 2), 0, 0);
         let mut iter = range.into_iter();
 
         assert_eq!(iter.next_back(), Some(log_id(1, 2, 0)));
@@ -227,7 +227,7 @@ mod tests {
 
     #[test]
     fn test_new_single() {
-        let range = LeaderLogIds::<UTConfig>::new_single(log_id(1, 2, 5));
+        let range = LeaderLogIds::<UtClid>::new_single(log_id(1, 2, 5));
         assert_eq!(range.len(), 1);
         assert_eq!(range.first_log_id(), log_id(1, 2, 5));
         assert_eq!(range.last_log_id(), log_id(1, 2, 5));
@@ -235,25 +235,25 @@ mod tests {
 
     #[test]
     fn test_display() {
-        let range = LeaderLogIds::<UTConfig>::new(committed_leader_id(1, 1), 5, 7);
+        let range = LeaderLogIds::<UtClid>::new(committed_leader_id(1, 1), 5, 7);
         assert_eq!(format!("{}", range), "T1-N1:[5, 7]");
     }
 
     #[test]
     fn test_first_ref() {
-        let range = LeaderLogIds::<UTConfig>::new(committed_leader_id(1, 2), 5, 10);
+        let range = LeaderLogIds::<UtClid>::new(committed_leader_id(1, 2), 5, 10);
         assert_eq!(range.first_ref().into_log_id(), log_id(1, 2, 5));
     }
 
     #[test]
     fn test_last_ref() {
-        let range = LeaderLogIds::<UTConfig>::new(committed_leader_id(1, 2), 5, 10);
+        let range = LeaderLogIds::<UtClid>::new(committed_leader_id(1, 2), 5, 10);
         assert_eq!(range.last_ref().into_log_id(), log_id(1, 2, 10));
     }
 
     #[test]
     fn test_ref_at() {
-        let range = LeaderLogIds::<UTConfig>::new(committed_leader_id(1, 2), 5, 10);
+        let range = LeaderLogIds::<UtClid>::new(committed_leader_id(1, 2), 5, 10);
 
         assert_eq!(range.ref_at(5).into_log_id(), log_id(1, 2, 5));
         assert_eq!(range.ref_at(7).into_log_id(), log_id(1, 2, 7));

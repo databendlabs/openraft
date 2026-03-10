@@ -19,8 +19,8 @@ use crate::storage::SnapshotMeta;
 use crate::type_config::TypeConfigExt;
 use crate::utime::Leased;
 
-fn m12() -> Membership<UTConfig> {
-    Membership::<UTConfig>::new_with_defaults(vec![btreeset! {1,2}], [])
+fn m12() -> Membership<u64, ()> {
+    Membership::<u64, ()>::new_with_defaults(vec![btreeset! {1,2}], [])
 }
 
 fn eng() -> Engine<UTConfig> {

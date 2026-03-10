@@ -21,19 +21,19 @@ use crate::type_config::TypeConfigExt;
 use crate::utime::Leased;
 use crate::vote::raft_vote::RaftVoteExt;
 
-fn m01() -> Membership<UTConfig> {
+fn m01() -> Membership<u64, ()> {
     Membership::new_with_defaults(vec![btreeset! {0,1}], [])
 }
 
-fn m23() -> Membership<UTConfig> {
+fn m23() -> Membership<u64, ()> {
     Membership::new_with_defaults(vec![btreeset! {2,3}], [])
 }
 
-fn m34() -> Membership<UTConfig> {
+fn m34() -> Membership<u64, ()> {
     Membership::new_with_defaults(vec![btreeset! {3,4}], [])
 }
 
-fn m45() -> Membership<UTConfig> {
+fn m45() -> Membership<u64, ()> {
     Membership::new_with_defaults(vec![btreeset! {4,5}], [])
 }
 
@@ -108,7 +108,7 @@ fn test_follower_do_append_entries_one_membership_entry() -> anyhow::Result<()> 
 
     eng.following_handler().do_append_entries(vec![blank_ent(3, 1, 4), Entry::<UTConfig> {
         log_id: log_id(3, 1, 5),
-        payload: EntryPayload::<UTConfig>::Membership(m34()),
+        payload: EntryPayload::<u64, u64, ()>::Membership(m34()),
     }]);
 
     assert_eq!(None, eng.state.log_ids.purged());
@@ -142,7 +142,7 @@ fn test_follower_do_append_entries_one_membership_entry() -> anyhow::Result<()> 
                 blank_ent(3, 1, 4),
                 Entry::<UTConfig> {
                     log_id: log_id(3, 1, 5),
-                    payload: EntryPayload::<UTConfig>::Membership(m34()),
+                    payload: EntryPayload::<u64, u64, ()>::Membership(m34()),
                 },
             ]
             .into()

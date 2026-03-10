@@ -26,7 +26,7 @@ pub struct ClientWriteResponse<C: RaftTypeConfig> {
     pub data: C::R,
 
     /// If the log entry is a change-membership entry.
-    pub membership: Option<Membership<C>>,
+    pub membership: Option<Membership<C::NodeId, C::Node>>,
 }
 
 impl<C> ClientWriteResponse<C>
@@ -55,7 +55,7 @@ where C: RaftTypeConfig
 
     /// Return membership config if the log entry is a change-membership entry.
     #[since(version = "0.9.5")]
-    pub fn membership(&self) -> &Option<Membership<C>> {
+    pub fn membership(&self) -> &Option<Membership<C::NodeId, C::Node>> {
         &self.membership
     }
 }

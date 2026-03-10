@@ -9,8 +9,11 @@ pub type Vote = <TypeConfig as openraft::RaftTypeConfig>::Vote;
 pub type LeaderId = <TypeConfig as openraft::RaftTypeConfig>::LeaderId;
 pub type LogId = openraft::alias::LogIdOf<TypeConfig>;
 pub type Entry = <TypeConfig as openraft::RaftTypeConfig>::Entry;
-pub type EntryPayload = openraft::EntryPayload<TypeConfig>;
-pub type Membership = openraft::membership::Membership<TypeConfig>;
+pub type EntryPayload = openraft::alias::EntryPayloadOf<TypeConfig>;
+pub type Membership = openraft::membership::Membership<
+    <TypeConfig as openraft::RaftTypeConfig>::NodeId,
+    <TypeConfig as openraft::RaftTypeConfig>::Node,
+>;
 pub type StoredMembership = openraft::StoredMembership<TypeConfig>;
 
 pub type ApplyResponder = openraft::storage::ApplyResponder<TypeConfig>;
