@@ -5,7 +5,6 @@ use std::time::Duration;
 use maplit::btreeset;
 use pretty_assertions::assert_eq;
 
-use crate::EffectiveMembership;
 use crate::Membership;
 use crate::Vote;
 use crate::core::sm;
@@ -18,6 +17,7 @@ use crate::engine::testing::log_id;
 use crate::raft_state::IOId;
 use crate::raft_state::io_state::log_io_id::LogIOId;
 use crate::type_config::TypeConfigExt;
+use crate::type_config::alias::EffectiveMembershipOf;
 use crate::type_config::alias::SnapshotMetaOf;
 use crate::type_config::alias::SnapshotOf;
 use crate::type_config::alias::StoredMembershipOf;
@@ -152,7 +152,7 @@ fn test_install_snapshot_not_conflict() -> anyhow::Result<()> {
     assert_eq!(&[log_id(4, 1, 8)], eng.state.log_ids.key_log_ids());
     assert_eq!(Some(&log_id(4, 1, 6)), eng.state.committed());
     assert_eq!(
-        &Arc::new(EffectiveMembership::new(Some(log_id(1, 1, 1)), m1234())),
+        &Arc::new(EffectiveMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m1234())),
         eng.state.membership_state.committed()
     );
     assert_eq!(
@@ -238,7 +238,7 @@ fn test_install_snapshot_conflict() -> anyhow::Result<()> {
     assert_eq!(Some(&log_id(5, 1, 6)), eng.state.log_ids.purged());
     assert_eq!(Some(&log_id(5, 1, 6)), eng.state.committed());
     assert_eq!(
-        &Arc::new(EffectiveMembership::new(Some(log_id(1, 1, 1)), m1234())),
+        &Arc::new(EffectiveMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m1234())),
         eng.state.membership_state.committed()
     );
     assert_eq!(
@@ -300,11 +300,11 @@ fn test_install_snapshot_advance_last_log_id() -> anyhow::Result<()> {
     assert_eq!(Some(&log_id(100, 1, 100)), eng.state.log_ids.purged());
     assert_eq!(Some(&log_id(100, 1, 100)), eng.state.committed());
     assert_eq!(
-        &Arc::new(EffectiveMembership::new(Some(log_id(1, 1, 1)), m1234())),
+        &Arc::new(EffectiveMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m1234())),
         eng.state.membership_state.committed()
     );
     assert_eq!(
-        &Arc::new(EffectiveMembership::new(Some(log_id(1, 1, 1)), m1234())),
+        &Arc::new(EffectiveMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m1234())),
         eng.state.membership_state.effective()
     );
     assert_eq!(

@@ -9,7 +9,6 @@ use pretty_assertions::assert_ne;
 #[allow(unused_imports)]
 use pretty_assertions::assert_str_eq;
 
-use crate::EffectiveMembership;
 use crate::Entry;
 use crate::Membership;
 use crate::MembershipState;
@@ -31,6 +30,7 @@ use crate::raft_state::LogStateReader;
 use crate::replication::replicate::Replicate;
 use crate::testing::blank_ent;
 use crate::type_config::TypeConfigExt;
+use crate::type_config::alias::EffectiveMembershipOf;
 use crate::utime::Leased;
 use crate::vote::raft_vote::RaftVoteExt;
 
@@ -69,8 +69,8 @@ fn eng() -> Engine<UTConfig> {
     eng.state.log_ids.append(log_id(1, 1, 1));
     eng.state.log_ids.append(log_id(2, 1, 3));
     eng.state.membership_state = MembershipState::new(
-        Arc::new(EffectiveMembership::new(Some(log_id(1, 1, 1)), m01())),
-        Arc::new(EffectiveMembership::new(Some(log_id(2, 1, 3)), m23())),
+        Arc::new(EffectiveMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m01())),
+        Arc::new(EffectiveMembershipOf::<UTConfig>::new(Some(log_id(2, 1, 3)), m23())),
     );
     eng.testing_new_leader();
     eng.state.server_state = eng.calc_server_state();
@@ -102,8 +102,8 @@ fn test_leader_append_entries_empty() -> anyhow::Result<()> {
     assert_eq!(Some(&log_id(2, 1, 3)), eng.state.last_log_id());
     assert_eq!(
         MembershipState::new(
-            Arc::new(EffectiveMembership::new(Some(log_id(1, 1, 1)), m01())),
-            Arc::new(EffectiveMembership::new(Some(log_id(2, 1, 3)), m23())),
+            Arc::new(EffectiveMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m01())),
+            Arc::new(EffectiveMembershipOf::<UTConfig>::new(Some(log_id(2, 1, 3)), m23())),
         ),
         eng.state.membership_state
     );
@@ -147,8 +147,8 @@ fn test_leader_append_entries_normal() -> anyhow::Result<()> {
     assert_eq!(Some(&log_id(3, 1, 6)), eng.state.last_log_id());
     assert_eq!(
         MembershipState::new(
-            Arc::new(EffectiveMembership::new(Some(log_id(1, 1, 1)), m01())),
-            Arc::new(EffectiveMembership::new(Some(log_id(2, 1, 3)), m23())),
+            Arc::new(EffectiveMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m01())),
+            Arc::new(EffectiveMembershipOf::<UTConfig>::new(Some(log_id(2, 1, 3)), m23())),
         ),
         eng.state.membership_state
     );
@@ -181,9 +181,10 @@ fn test_leader_append_entries_normal() -> anyhow::Result<()> {
 #[test]
 fn test_leader_append_entries_single_node_leader() -> anyhow::Result<()> {
     let mut eng = eng();
-    eng.state
-        .membership_state
-        .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(2, 1, 3)), m1())));
+    eng.state.membership_state.set_effective(Arc::new(EffectiveMembershipOf::<UTConfig>::new(
+        Some(log_id(2, 1, 3)),
+        m1(),
+    )));
     eng.testing_new_leader();
 
     eng.output.clear_commands();
@@ -218,8 +219,8 @@ fn test_leader_append_entries_single_node_leader() -> anyhow::Result<()> {
     assert_eq!(Some(&log_id(3, 1, 6)), eng.state.last_log_id());
     assert_eq!(
         MembershipState::new(
-            Arc::new(EffectiveMembership::new(Some(log_id(1, 1, 1)), m01())),
-            Arc::new(EffectiveMembership::new(Some(log_id(2, 1, 3)), m1())),
+            Arc::new(EffectiveMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m01())),
+            Arc::new(EffectiveMembershipOf::<UTConfig>::new(Some(log_id(2, 1, 3)), m1())),
         ),
         eng.state.membership_state
     );
@@ -243,9 +244,10 @@ fn test_leader_append_entries_single_node_leader() -> anyhow::Result<()> {
 #[test]
 fn test_leader_append_entries_with_membership_log() -> anyhow::Result<()> {
     let mut eng = eng();
-    eng.state
-        .membership_state
-        .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(2, 1, 3)), m1())));
+    eng.state.membership_state.set_effective(Arc::new(EffectiveMembershipOf::<UTConfig>::new(
+        Some(log_id(2, 1, 3)),
+        m1(),
+    )));
     eng.testing_new_leader();
     eng.state.server_state = eng.calc_server_state();
 
@@ -281,8 +283,8 @@ fn test_leader_append_entries_with_membership_log() -> anyhow::Result<()> {
     assert_eq!(Some(&log_id(3, 1, 6)), eng.state.last_log_id());
     assert_eq!(
         MembershipState::new(
-            Arc::new(EffectiveMembership::new(Some(log_id(2, 1, 3)), m1())),
-            Arc::new(EffectiveMembership::new(Some(log_id(3, 1, 5)), m1_2())),
+            Arc::new(EffectiveMembershipOf::<UTConfig>::new(Some(log_id(2, 1, 3)), m1())),
+            Arc::new(EffectiveMembershipOf::<UTConfig>::new(Some(log_id(3, 1, 5)), m1_2())),
         ),
         eng.state.membership_state
     );

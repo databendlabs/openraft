@@ -3,7 +3,6 @@ use std::time::Duration;
 
 use maplit::btreeset;
 
-use crate::EffectiveMembership;
 use crate::Entry;
 use crate::EntryPayload;
 use crate::Membership;
@@ -18,6 +17,7 @@ use crate::entry::RaftEntry;
 use crate::raft_state::LogStateReader;
 use crate::testing::blank_ent;
 use crate::type_config::TypeConfigExt;
+use crate::type_config::alias::EffectiveMembershipOf;
 use crate::utime::Leased;
 use crate::vote::raft_vote::RaftVoteExt;
 
@@ -51,8 +51,8 @@ fn eng() -> Engine<UTConfig> {
     eng.state.log_ids.append(log_id(1, 1, 2));
     eng.state.log_ids.append(log_id(2, 1, 3));
     eng.state.membership_state = MembershipState::new(
-        Arc::new(EffectiveMembership::new(Some(log_id(1, 1, 1)), m01())),
-        Arc::new(EffectiveMembership::new(Some(log_id(2, 1, 3)), m23())),
+        Arc::new(EffectiveMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m01())),
+        Arc::new(EffectiveMembershipOf::<UTConfig>::new(Some(log_id(2, 1, 3)), m23())),
     );
     eng.state.server_state = eng.calc_server_state();
     eng
@@ -77,8 +77,8 @@ fn test_follower_do_append_entries_no_membership_entries() -> anyhow::Result<()>
     assert_eq!(Some(&log_id(3, 1, 4)), eng.state.last_log_id());
     assert_eq!(
         MembershipState::new(
-            Arc::new(EffectiveMembership::new(Some(log_id(1, 1, 1)), m01())),
-            Arc::new(EffectiveMembership::new(Some(log_id(2, 1, 3)), m23())),
+            Arc::new(EffectiveMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m01())),
+            Arc::new(EffectiveMembershipOf::<UTConfig>::new(Some(log_id(2, 1, 3)), m23())),
         ),
         eng.state.membership_state
     );
@@ -123,8 +123,8 @@ fn test_follower_do_append_entries_one_membership_entry() -> anyhow::Result<()> 
     assert_eq!(Some(&log_id(3, 1, 5)), eng.state.last_log_id());
     assert_eq!(
         MembershipState::new(
-            Arc::new(EffectiveMembership::new(Some(log_id(2, 1, 3)), m23())),
-            Arc::new(EffectiveMembership::new(Some(log_id(3, 1, 5)), m34())),
+            Arc::new(EffectiveMembershipOf::<UTConfig>::new(Some(log_id(2, 1, 3)), m23())),
+            Arc::new(EffectiveMembershipOf::<UTConfig>::new(Some(log_id(3, 1, 5)), m34())),
         ),
         eng.state.membership_state,
         "previous effective become committed"
@@ -183,8 +183,8 @@ fn test_follower_do_append_entries_three_membership_entries() -> anyhow::Result<
     assert_eq!(Some(&log_id(4, 1, 7)), eng.state.last_log_id());
     assert_eq!(
         MembershipState::new(
-            Arc::new(EffectiveMembership::new(Some(log_id(4, 1, 6)), m34())),
-            Arc::new(EffectiveMembership::new(Some(log_id(4, 1, 7)), m45())),
+            Arc::new(EffectiveMembershipOf::<UTConfig>::new(Some(log_id(4, 1, 6)), m34())),
+            Arc::new(EffectiveMembershipOf::<UTConfig>::new(Some(log_id(4, 1, 7)), m45())),
         ),
         eng.state.membership_state,
         "seen 3 membership, the last 2 become committed and effective"

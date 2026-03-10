@@ -4,7 +4,6 @@ use std::time::Duration;
 use maplit::btreeset;
 use pretty_assertions::assert_eq;
 
-use crate::EffectiveMembership;
 use crate::Instant;
 use crate::Membership;
 use crate::TokioInstant;
@@ -17,6 +16,7 @@ use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;
 use crate::errors::RejectVote;
 use crate::type_config::TypeConfigExt;
+use crate::type_config::alias::EffectiveMembershipOf;
 use crate::utime::Leased;
 
 fn m01() -> Membership<u64, ()> {
@@ -30,9 +30,10 @@ fn eng() -> Engine<UTConfig> {
     eng.config.id = 0;
     eng.state.vote = Leased::new(UTConfig::<()>::now(), Duration::from_millis(500), Vote::new(2, 1));
     eng.state.server_state = ServerState::Candidate;
-    eng.state
-        .membership_state
-        .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(1, 1, 1)), m01())));
+    eng.state.membership_state.set_effective(Arc::new(EffectiveMembershipOf::<UTConfig>::new(
+        Some(log_id(1, 1, 1)),
+        m01(),
+    )));
 
     eng.output.take_commands();
     eng

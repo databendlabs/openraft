@@ -5,7 +5,6 @@ use std::time::Duration;
 use openraft_macros::since;
 use validit::Valid;
 
-use crate::EffectiveMembership;
 use crate::LogIdOptionExt;
 use crate::MembershipState;
 use crate::RaftLogReader;
@@ -25,6 +24,7 @@ use crate::storage::RaftStateMachine;
 use crate::storage::log_reader_ext::RaftLogReaderExt;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::CommittedLeaderIdOf;
+use crate::type_config::alias::EffectiveMembershipOf;
 use crate::type_config::alias::LeaderIdOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::StoredMembershipOf;
@@ -341,19 +341,23 @@ where
         // There 2 membership configs in logs.
         if log_mem.len() == 2 {
             return Ok(MembershipState::new(
-                Arc::new(EffectiveMembership::new_from_stored_membership(log_mem[0].clone())),
-                Arc::new(EffectiveMembership::new_from_stored_membership(log_mem[1].clone())),
+                Arc::new(EffectiveMembershipOf::<C>::new_from_stored_membership(
+                    log_mem[0].clone(),
+                )),
+                Arc::new(EffectiveMembershipOf::<C>::new_from_stored_membership(
+                    log_mem[1].clone(),
+                )),
             ));
         }
 
         let effective = if log_mem.is_empty() {
-            EffectiveMembership::new_from_stored_membership(sm_mem.clone())
+            EffectiveMembershipOf::<C>::new_from_stored_membership(sm_mem.clone())
         } else {
-            EffectiveMembership::new_from_stored_membership(log_mem[0].clone())
+            EffectiveMembershipOf::<C>::new_from_stored_membership(log_mem[0].clone())
         };
 
         let res = MembershipState::new(
-            Arc::new(EffectiveMembership::new_from_stored_membership(sm_mem)),
+            Arc::new(EffectiveMembershipOf::<C>::new_from_stored_membership(sm_mem)),
             Arc::new(effective),
         );
 

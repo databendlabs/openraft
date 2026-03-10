@@ -151,7 +151,11 @@ pub trait RaftTypeConfig:
     /// to Raft APIs that need to send asynchronous responses.
     ///
     /// [`Raft::client_write`]: `crate::raft::Raft::client_write`
-    type Responder<T>: Responder<Self, T>
+    #[since(
+        version = "0.10.0",
+        change = "from `Responder<Self, T>` to `Responder<<Self::LeaderId as RaftLeaderId>::Committed, T>`"
+    )]
+    type Responder<T>: Responder<<Self::LeaderId as RaftLeaderId>::Committed, T>
     where T: OptionalSend + 'static;
 
     /// Error wrapper type for storage and network errors.
@@ -237,6 +241,8 @@ pub mod alias {
     pub(crate) type RefLogIdOf<'a, C> = crate::log_id::ref_log_id::RefLogId<'a, CommittedLeaderIdOf<C>>;
     pub type EntryPayloadOf<C> = EntryPayload<DOf<C>, NodeIdOf<C>, NodeOf<C>>;
     pub type StoredMembershipOf<C> = crate::StoredMembership<CommittedLeaderIdOf<C>, NodeIdOf<C>, NodeOf<C>>;
+    pub type EffectiveMembershipOf<C> =
+        crate::membership::EffectiveMembership<CommittedLeaderIdOf<C>, NodeIdOf<C>, NodeOf<C>>;
     pub type SnapshotSignatureOf<C> = crate::storage::SnapshotSignature<CommittedLeaderIdOf<C>>;
     pub type SnapshotMetaOf<C> = crate::storage::SnapshotMeta<CommittedLeaderIdOf<C>, NodeIdOf<C>, NodeOf<C>>;
     pub type SnapshotOf<C> =

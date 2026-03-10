@@ -3,6 +3,7 @@ use crate::RaftTypeConfig;
 use crate::async_runtime::OneshotSender;
 use crate::raft::responder::Responder;
 use crate::type_config::TypeConfigExt;
+use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::type_config::alias::OneshotReceiverOf;
 use crate::type_config::alias::OneshotSenderOf;
 
@@ -47,7 +48,7 @@ where
     }
 }
 
-impl<C, T> Responder<C, T> for OneshotResponder<C, T>
+impl<C, T> Responder<CommittedLeaderIdOf<C>, T> for OneshotResponder<C, T>
 where
     C: RaftTypeConfig,
     T: OptionalSend + 'static,

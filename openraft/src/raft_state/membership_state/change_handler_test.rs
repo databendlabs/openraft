@@ -3,7 +3,6 @@ use std::sync::Arc;
 use maplit::btreeset;
 
 use crate::ChangeMembers;
-use crate::EffectiveMembership;
 use crate::Membership;
 use crate::MembershipState;
 use crate::engine::testing::UTConfig;
@@ -12,11 +11,12 @@ use crate::errors::ChangeMembershipError;
 use crate::errors::EmptyMembership;
 use crate::errors::InProgress;
 use crate::errors::LearnerNotFound;
+use crate::type_config::alias::EffectiveMembershipOf;
 
 /// Create an Arc<EffectiveMembership>
-fn effmem(term: u64, index: u64, m: Membership<u64, ()>) -> Arc<EffectiveMembership<UTConfig>> {
+fn effmem(term: u64, index: u64, m: Membership<u64, ()>) -> Arc<EffectiveMembershipOf<UTConfig>> {
     let lid = Some(log_id(term, 1, index));
-    Arc::new(EffectiveMembership::new(lid, m))
+    Arc::new(EffectiveMembershipOf::<UTConfig>::new(lid, m))
 }
 
 fn m1() -> Membership<u64, ()> {

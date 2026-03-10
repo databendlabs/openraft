@@ -2,6 +2,7 @@ use crate::RaftTypeConfig;
 use crate::impls::ProgressResponder;
 use crate::raft::ClientWriteResult;
 use crate::raft::responder::Responder;
+use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::WriteResponderOf;
 
@@ -16,7 +17,7 @@ where C: RaftTypeConfig
     UserDefined(WriteResponderOf<C>),
 }
 
-impl<C> Responder<C, ClientWriteResult<C>> for CoreResponder<C>
+impl<C> Responder<CommittedLeaderIdOf<C>, ClientWriteResult<C>> for CoreResponder<C>
 where C: RaftTypeConfig
 {
     fn on_commit(&mut self, log_id: LogIdOf<C>) {

@@ -5,7 +5,6 @@ use std::time::Duration;
 use maplit::btreeset;
 use pretty_assertions::assert_eq;
 
-use crate::EffectiveMembership;
 use crate::Membership;
 use crate::Vote;
 use crate::core::ServerState;
@@ -16,6 +15,7 @@ use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;
 use crate::raft::VoteRequest;
 use crate::type_config::TypeConfigExt;
+use crate::type_config::alias::EffectiveMembershipOf;
 use crate::utime::Leased;
 
 fn m1() -> Membership<u64, ()> {
@@ -39,9 +39,10 @@ fn test_elect_single_node() -> anyhow::Result<()> {
     {
         let mut eng = eng();
         eng.config.id = 1;
-        eng.state
-            .membership_state
-            .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(0, 1, 1)), m1())));
+        eng.state.membership_state.set_effective(Arc::new(EffectiveMembershipOf::<UTConfig>::new(
+            Some(log_id(0, 1, 1)),
+            m1(),
+        )));
 
         eng.elect();
 
@@ -75,9 +76,10 @@ fn test_elect_single_node_elect_again() -> anyhow::Result<()> {
     {
         let mut eng = eng();
         eng.config.id = 1;
-        eng.state
-            .membership_state
-            .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(0, 1, 1)), m1())));
+        eng.state.membership_state.set_effective(Arc::new(EffectiveMembershipOf::<UTConfig>::new(
+            Some(log_id(0, 1, 1)),
+            m1(),
+        )));
 
         // Build in-progress election state
         eng.state.vote = Leased::new(
@@ -120,9 +122,10 @@ fn test_elect_multi_node_enter_candidate() -> anyhow::Result<()> {
     {
         let mut eng = eng();
         eng.config.id = 1;
-        eng.state
-            .membership_state
-            .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(0, 1, 1)), m12())));
+        eng.state.membership_state.set_effective(Arc::new(EffectiveMembershipOf::<UTConfig>::new(
+            Some(log_id(0, 1, 1)),
+            m12(),
+        )));
         eng.state.log_ids = LogIdList::new(None, vec![log_id(1, 1, 1)]);
 
         eng.elect();

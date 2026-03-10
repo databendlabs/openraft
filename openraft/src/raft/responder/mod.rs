@@ -7,8 +7,8 @@ pub use impls::ProgressResponder;
 use openraft_macros::since;
 
 use crate::OptionalSend;
-use crate::RaftTypeConfig;
-use crate::type_config::alias::LogIdOf;
+use crate::log_id::LogId;
+use crate::vote::RaftCommittedLeaderId;
 
 /// A trait that lets `RaftCore` send a result back to the client or to somewhere else.
 ///
@@ -23,10 +23,11 @@ use crate::type_config::alias::LogIdOf;
 /// # Type Parameters
 ///
 /// - `T`: The type of value to send through this responder
-pub trait Responder<C, T>
+#[since(version = "0.10.0", change = "from `Responder<C, T>` to `Responder<CLID, T>`")]
+pub trait Responder<CLID, T>
 where
     Self: OptionalSend + Sized + 'static,
-    C: RaftTypeConfig,
+    CLID: RaftCommittedLeaderId,
 {
     /// Called when the log entry is locally committed (safe to read).
     ///
@@ -39,7 +40,7 @@ where
     ///
     /// Default implementation does nothing.
     #[since(version = "0.10.0")]
-    fn on_commit(&mut self, _log_id: LogIdOf<C>) {}
+    fn on_commit(&mut self, _log_id: LogId<CLID>) {}
 
     /// Called when the request completes (applied; previously it is `send`).
     /// Send the final result to the client.
