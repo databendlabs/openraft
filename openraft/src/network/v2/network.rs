@@ -26,7 +26,7 @@ use crate::raft::StreamAppendResult;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::raft::message::TransferLeaderRequest;
-use crate::storage::Snapshot;
+use crate::type_config::alias::SnapshotOf;
 use crate::type_config::alias::VoteOf;
 
 /// A trait defining the interface for a Raft network between cluster members.
@@ -128,7 +128,7 @@ where C: RaftTypeConfig
     async fn full_snapshot(
         &mut self,
         vote: VoteOf<C>,
-        snapshot: Snapshot<C>,
+        snapshot: SnapshotOf<C>,
         cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
         option: RPCOption,
     ) -> Result<SnapshotResponse<C>, StreamingError<C>>;
@@ -224,7 +224,7 @@ where
     async fn full_snapshot(
         &mut self,
         vote: VoteOf<C>,
-        snapshot: Snapshot<C>,
+        snapshot: SnapshotOf<C>,
         cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
         option: RPCOption,
     ) -> Result<SnapshotResponse<C>, StreamingError<C>> {

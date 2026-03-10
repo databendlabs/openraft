@@ -2,7 +2,7 @@ use std::fmt;
 
 use openraft_macros::since;
 
-use crate::vote::leader_id::raft_committed_leader_id::RaftCommittedLeaderId;
+use crate::vote::RaftCommittedLeaderId;
 
 /// Log id is the globally unique identifier of a log entry.
 ///

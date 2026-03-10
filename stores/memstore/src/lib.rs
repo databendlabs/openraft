@@ -21,11 +21,12 @@ use futures::Stream;
 use openraft::Entry;
 use openraft::EntryPayload;
 use openraft::OptionalSend;
-use openraft::SnapshotMeta;
-use openraft::StoredMembership;
 use openraft::Vote;
 use openraft::alias::LogIdOf;
 use openraft::alias::SnapshotDataOf;
+use openraft::alias::SnapshotMetaOf;
+use openraft::alias::SnapshotOf;
+use openraft::alias::StoredMembershipOf;
 use openraft::entry::RaftEntry;
 use openraft::storage::EntryResponder;
 use openraft::storage::IOFlushed;
@@ -34,7 +35,6 @@ use openraft::storage::RaftLogReader;
 use openraft::storage::RaftLogStorage;
 use openraft::storage::RaftSnapshotBuilder;
 use openraft::storage::RaftStateMachine;
-use openraft::storage::Snapshot;
 use openraft::type_config::TypeConfigExt;
 use serde::Deserialize;
 use serde::Serialize;
@@ -101,7 +101,7 @@ openraft::declare_raft_types!(
 /// The application snapshot type which the `MemStore` works with.
 #[derive(Debug)]
 pub struct MemStoreSnapshot {
-    pub meta: SnapshotMeta<TypeConfig>,
+    pub meta: SnapshotMetaOf<TypeConfig>,
 
     /// The data of the state machine at the time of this snapshot.
     pub data: Vec<u8>,
@@ -112,7 +112,7 @@ pub struct MemStoreSnapshot {
 pub struct MemStoreStateMachine {
     pub last_applied_log: Option<LogIdOf<TypeConfig>>,
 
-    pub last_membership: StoredMembership<TypeConfig>,
+    pub last_membership: StoredMembershipOf<TypeConfig>,
 
     /// The current status of a client by ID.
     pub client_status: HashMap<String, String>,
@@ -308,7 +308,7 @@ impl RaftLogReader<TypeConfig> for Arc<MemLogStore> {
 
 impl RaftSnapshotBuilder<TypeConfig> for Arc<MemStateMachine> {
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn build_snapshot(&mut self) -> Result<Snapshot<TypeConfig>, io::Error> {
+    async fn build_snapshot(&mut self) -> Result<SnapshotOf<TypeConfig>, io::Error> {
         let data;
         let last_applied_log;
         let last_membership;
@@ -346,7 +346,7 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<MemStateMachine> {
             format!("--{}", snapshot_idx)
         };
 
-        let meta = SnapshotMeta {
+        let meta = SnapshotMetaOf::<TypeConfig> {
             last_log_id: last_applied_log,
             last_membership,
             snapshot_id,
@@ -364,7 +364,7 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<MemStateMachine> {
 
         tracing::info!(snapshot_size, "log compaction complete");
 
-        Ok(Snapshot {
+        Ok(SnapshotOf::<TypeConfig> {
             meta,
             snapshot: Cursor::new(data),
         })
@@ -502,7 +502,7 @@ impl RaftStateMachine<TypeConfig> for Arc<MemStateMachine> {
 
     async fn applied_state(
         &mut self,
-    ) -> Result<(Option<LogIdOf<TypeConfig>>, StoredMembership<TypeConfig>), io::Error> {
+    ) -> Result<(Option<LogIdOf<TypeConfig>>, StoredMembershipOf<TypeConfig>), io::Error> {
         let sm = self.sm.read().await;
         Ok((sm.last_applied_log, sm.last_membership.clone()))
     }
@@ -526,7 +526,7 @@ impl RaftStateMachine<TypeConfig> for Arc<MemStateMachine> {
                     ClientResponse(previous)
                 }
                 EntryPayload::Membership(ref mem) => {
-                    sm.last_membership = StoredMembership::new(Some(entry.log_id), mem.clone());
+                    sm.last_membership = StoredMembershipOf::<TypeConfig>::new(Some(entry.log_id), mem.clone());
                     ClientResponse(None)
                 }
             };
@@ -560,7 +560,7 @@ impl RaftStateMachine<TypeConfig> for Arc<MemStateMachine> {
     #[tracing::instrument(level = "trace", skip(self, snapshot))]
     async fn install_snapshot(
         &mut self,
-        meta: &SnapshotMeta<TypeConfig>,
+        meta: &SnapshotMetaOf<TypeConfig>,
         snapshot: SnapshotDataOf<TypeConfig>,
     ) -> Result<(), io::Error> {
         tracing::info!(
@@ -595,11 +595,11 @@ impl RaftStateMachine<TypeConfig> for Arc<MemStateMachine> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn get_current_snapshot(&mut self) -> Result<Option<Snapshot<TypeConfig>>, io::Error> {
+    async fn get_current_snapshot(&mut self) -> Result<Option<SnapshotOf<TypeConfig>>, io::Error> {
         match &*self.current_snapshot.read().await {
             Some(snapshot) => {
                 let data = snapshot.data.clone();
-                Ok(Some(Snapshot {
+                Ok(Some(SnapshotOf::<TypeConfig> {
                     meta: snapshot.meta.clone(),
                     snapshot: Cursor::new(data),
                 }))

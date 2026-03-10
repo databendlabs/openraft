@@ -15,7 +15,7 @@ use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::config::error::ConfigError;
 use crate::raft_state::LogStateReader;
-use crate::vote::leader_id::raft_committed_leader_id::RaftCommittedLeaderId;
+use crate::vote::RaftCommittedLeaderId;
 
 /// Log compaction and snapshot policy.
 ///

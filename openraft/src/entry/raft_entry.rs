@@ -12,7 +12,7 @@ use crate::entry::RaftPayload;
 use crate::log_id::LogId;
 use crate::node::Node;
 use crate::node::NodeId;
-use crate::vote::leader_id::raft_committed_leader_id::RaftCommittedLeaderId;
+use crate::vote::RaftCommittedLeaderId;
 
 /// Defines operations on an entry.
 #[since(

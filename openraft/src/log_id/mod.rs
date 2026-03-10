@@ -41,8 +41,8 @@ pub use log_index_option_ext::LogIndexOptionExt;
 use openraft_macros::since;
 
 pub use self::raft_log_id::RaftLogId;
+use crate::vote::RaftCommittedLeaderId;
 use crate::vote::RaftTerm;
-use crate::vote::leader_id::raft_committed_leader_id::RaftCommittedLeaderId;
 use crate::vote::leader_id_std;
 
 /// The identity of a raft log.

@@ -10,8 +10,8 @@ use openraft::EntryPayload;
 use openraft::Membership;
 use openraft::RaftLogReader;
 use openraft::ServerState;
-use openraft::StoredMembership;
 use openraft::Vote;
+use openraft::alias::StoredMembershipOf;
 use openraft::errors::InitializeError;
 use openraft::errors::NotAllowed;
 use openraft::errors::NotInMembers;
@@ -148,7 +148,7 @@ async fn initialization() -> anyhow::Result<()> {
 
         let sm_mem = sm.applied_state().await?.1;
         assert_eq!(
-            StoredMembership::new(
+            StoredMembershipOf::<openraft_memstore::TypeConfig>::new(
                 Some(log_id(0, 0, 0)),
                 Membership::new_with_defaults(vec![btreeset! {0,1,2}], [])
             ),

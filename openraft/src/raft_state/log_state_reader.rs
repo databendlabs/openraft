@@ -4,7 +4,7 @@ use crate::log_id::option_ref_log_id_ext::OptionRefLogIdExt;
 use crate::log_id::raft_log_id::RaftLogId;
 use crate::log_id::raft_log_id_ext::RaftLogIdExt;
 use crate::log_id::ref_log_id::RefLogId;
-use crate::vote::leader_id::raft_committed_leader_id::RaftCommittedLeaderId;
+use crate::vote::RaftCommittedLeaderId;
 
 /// APIs to get significant log ids reflecting the raft state.
 ///

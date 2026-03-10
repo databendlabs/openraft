@@ -3,7 +3,7 @@ use std::fmt::Formatter;
 
 use crate::LogId;
 use crate::log_id::raft_log_id::RaftLogId;
-use crate::vote::leader_id::raft_committed_leader_id::RaftCommittedLeaderId;
+use crate::vote::RaftCommittedLeaderId;
 
 /// A reference to a log id, combining a reference to a committed leader ID and an index.
 /// Committed leader ID is the `term` in standard Raft.
