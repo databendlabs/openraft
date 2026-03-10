@@ -3,8 +3,8 @@ use std::fmt::Display;
 
 use crate::NodeId;
 use crate::base::OptionalFeatures;
+use crate::vote::RaftCommittedLeaderId;
 use crate::vote::RaftTerm;
-use crate::vote::leader_id::raft_committed_leader_id::RaftCommittedLeaderId;
 
 /// A Leader identifier in an OpenRaft cluster.
 ///

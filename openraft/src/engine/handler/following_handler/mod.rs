@@ -3,7 +3,6 @@ use std::sync::Arc;
 use crate::EffectiveMembership;
 use crate::RaftState;
 use crate::RaftTypeConfig;
-use crate::StoredMembership;
 use crate::core::sm;
 use crate::display_ext::DisplayOption;
 use crate::display_ext::DisplayOptionExt;
@@ -24,9 +23,10 @@ use crate::log_id::option_raft_log_id_ext::OptionRaftLogIdExt;
 use crate::raft_state::IOId;
 use crate::raft_state::LogStateReader;
 use crate::raft_state::io_state::log_io_id::LogIOId;
-use crate::storage::Snapshot;
 use crate::type_config::alias::CommittedVoteOf;
 use crate::type_config::alias::LogIdOf;
+use crate::type_config::alias::SnapshotOf;
+use crate::type_config::alias::StoredMembershipOf;
 use crate::vote::raft_vote::RaftVoteExt;
 
 #[cfg(test)]
@@ -239,7 +239,7 @@ where C: RaftTypeConfig
     /// - Otherwise `None` if the snapshot will not be installed (e.g., if it is not newer than the
     ///   current state).
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn install_full_snapshot(&mut self, snapshot: Snapshot<C>) -> Option<Condition<C>> {
+    pub(crate) fn install_full_snapshot(&mut self, snapshot: SnapshotOf<C>) -> Option<Condition<C>> {
         let meta = &snapshot.meta;
         tracing::info!("install full snapshot, meta: {:?}", meta);
 
@@ -299,14 +299,14 @@ where C: RaftTypeConfig
     ///
     /// A follower/learner reverts the effective membership to the previous one
     /// when conflicting logs are found.
-    fn last_two_memberships<'a>(entries: impl DoubleEndedIterator<Item = &'a C::Entry>) -> Vec<StoredMembership<C>>
+    fn last_two_memberships<'a>(entries: impl DoubleEndedIterator<Item = &'a C::Entry>) -> Vec<StoredMembershipOf<C>>
     where C::Entry: 'a {
         let mut memberships = vec![];
 
         // Find the last 2 membership config entries: the committed and the effective.
         for ent in entries.rev() {
             if let Some(m) = ent.get_membership() {
-                memberships.insert(0, StoredMembership::new(Some(ent.log_id()), m));
+                memberships.insert(0, StoredMembershipOf::<C>::new(Some(ent.log_id()), m));
                 if memberships.len() == 2 {
                     break;
                 }

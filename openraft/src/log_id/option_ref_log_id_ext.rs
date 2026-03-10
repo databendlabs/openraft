@@ -1,6 +1,6 @@
 use crate::LogId;
 use crate::log_id::ref_log_id::RefLogId;
-use crate::vote::leader_id::raft_committed_leader_id::RaftCommittedLeaderId;
+use crate::vote::RaftCommittedLeaderId;
 
 pub(crate) trait OptionRefLogIdExt<CLID>
 where CLID: RaftCommittedLeaderId

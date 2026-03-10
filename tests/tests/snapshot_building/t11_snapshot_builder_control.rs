@@ -4,8 +4,8 @@ use std::time::Duration;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
-use openraft::SnapshotMeta;
 use openraft::SnapshotPolicy;
+use openraft::alias::SnapshotMetaOf;
 use openraft::storage::RaftStateMachine;
 use openraft::type_config::TypeConfigExt;
 use openraft_memstore::TypeConfig;
@@ -79,7 +79,7 @@ async fn sm_can_refuse_snapshot_building() -> Result<()> {
         // Verify RaftState.snapshot_meta is unchanged
         let state = n0.with_raft_state(|st| st.clone()).await?;
         assert_eq!(
-            SnapshotMeta::default(),
+            SnapshotMetaOf::<TypeConfig>::default(),
             state.snapshot_meta,
             "snapshot_meta should remain default when building is disabled"
         );

@@ -1,7 +1,7 @@
 use std::fmt;
 
 use crate::RaftTypeConfig;
-use crate::storage::SnapshotMeta;
+use crate::type_config::alias::SnapshotMetaOf;
 use crate::type_config::alias::VoteOf;
 
 /// An RPC sent by the Raft leader to send chunks of a snapshot to a follower (§7).
@@ -13,7 +13,7 @@ pub struct InstallSnapshotRequest<C: RaftTypeConfig> {
     pub vote: VoteOf<C>,
 
     /// Metadata of a snapshot: snapshot_id, last_log_ed membership, etc.
-    pub meta: SnapshotMeta<C>,
+    pub meta: SnapshotMetaOf<C>,
 
     /// The byte offset where this chunk of data is positioned in the snapshot file.
     pub offset: u64,

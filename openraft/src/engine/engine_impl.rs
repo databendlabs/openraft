@@ -42,13 +42,13 @@ use crate::raft::stream_append::StreamAppendResult;
 use crate::raft_state::IOId;
 use crate::raft_state::LogStateReader;
 use crate::raft_state::RaftState;
-use crate::storage::Snapshot;
-use crate::storage::SnapshotMeta;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::LeaderIdOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::OneshotSenderOf;
 use crate::type_config::alias::SnapshotDataOf;
+use crate::type_config::alias::SnapshotMetaOf;
+use crate::type_config::alias::SnapshotOf;
 use crate::type_config::alias::TermOf;
 use crate::type_config::alias::VoteOf;
 use crate::vote::RaftLeaderId;
@@ -404,7 +404,7 @@ where C: RaftTypeConfig
     pub(crate) fn handle_install_full_snapshot(
         &mut self,
         vote: VoteOf<C>,
-        snapshot: Snapshot<C>,
+        snapshot: SnapshotOf<C>,
         tx: OneshotSenderOf<C, SnapshotResponse<C>>,
     ) {
         tracing::info!("{}: vote: {}, snapshot: {}", func_name!(), vote, snapshot);
@@ -479,7 +479,7 @@ where C: RaftTypeConfig
     /// To handle this, we use `try_update_all()` which only updates progress if still behind,
     /// preventing regression of the snapshot cursor.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn on_building_snapshot_done(&mut self, meta: Option<SnapshotMeta<C>>) {
+    pub(crate) fn on_building_snapshot_done(&mut self, meta: Option<SnapshotMetaOf<C>>) {
         tracing::info!("{}: snapshot_meta: {}", func_name!(), meta.display());
 
         self.state.io_state_mut().set_building_snapshot(false);

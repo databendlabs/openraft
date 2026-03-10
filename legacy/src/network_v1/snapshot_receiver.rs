@@ -15,7 +15,7 @@ use openraft::errors::RaftError;
 use openraft::errors::SnapshotMismatch;
 use openraft::raft::InstallSnapshotRequest;
 use openraft::raft::InstallSnapshotResponse;
-use openraft::storage::Snapshot;
+use openraft::type_config::alias::SnapshotOf;
 use tokio::io::AsyncWriteExt;
 
 use super::streaming::Streaming;
@@ -133,7 +133,7 @@ where C::SnapshotData: tokio::io::AsyncRead + tokio::io::AsyncWrite + tokio::io:
 
             tracing::info!(snapshot_meta = debug(&snapshot_meta), "Finished streaming snapshot");
 
-            let snapshot = Snapshot {
+            let snapshot = SnapshotOf::<C> {
                 meta: snapshot_meta,
                 snapshot: data,
             };

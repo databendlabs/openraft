@@ -1,9 +1,13 @@
 use std::fmt;
 
+use openraft_macros::since;
+
 use crate::Membership;
-use crate::RaftTypeConfig;
 use crate::display_ext::DisplayOption;
-use crate::type_config::alias::LogIdOf;
+use crate::log_id::LogId;
+use crate::node::Node;
+use crate::node::NodeId;
+use crate::vote::RaftCommittedLeaderId;
 
 /// This struct represents information about a membership config that has already been stored in the
 /// raft logs.
@@ -14,21 +18,32 @@ use crate::type_config::alias::LogIdOf;
 ///
 /// It derives `Default` for building an uninitialized membership state, e.g., when a raft-node is
 /// just created.
+#[since(
+    version = "0.10.0",
+    change = "from `StoredMembership<C>` to `StoredMembership<CLID, NID, N>`"
+)]
+#[since(version = "0.8.0")]
 #[derive(Clone, Debug)]
 #[derive(PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub struct StoredMembership<C>
-where C: RaftTypeConfig
+pub struct StoredMembership<CLID, NID, N>
+where
+    CLID: RaftCommittedLeaderId,
+    NID: NodeId,
+    N: Node,
 {
     /// The id of the log that stores this membership config
-    log_id: Option<LogIdOf<C>>,
+    log_id: Option<LogId<CLID>>,
 
     /// Membership config
-    membership: Membership<C::NodeId, C::Node>,
+    membership: Membership<NID, N>,
 }
 
-impl<C> Default for StoredMembership<C>
-where C: RaftTypeConfig
+impl<CLID, NID, N> Default for StoredMembership<CLID, NID, N>
+where
+    CLID: RaftCommittedLeaderId,
+    NID: NodeId,
+    N: Node,
 {
     fn default() -> Self {
         Self {
@@ -38,37 +53,43 @@ where C: RaftTypeConfig
     }
 }
 
-impl<C> StoredMembership<C>
-where C: RaftTypeConfig
+impl<CLID, NID, N> StoredMembership<CLID, NID, N>
+where
+    CLID: RaftCommittedLeaderId,
+    NID: NodeId,
+    N: Node,
 {
     /// Create a new StoredMembership with the given log ID and membership configuration.
-    pub fn new(log_id: Option<LogIdOf<C>>, membership: Membership<C::NodeId, C::Node>) -> Self {
+    pub fn new(log_id: Option<LogId<CLID>>, membership: Membership<NID, N>) -> Self {
         Self { log_id, membership }
     }
 
     /// Get the log ID at which this membership was stored.
-    pub fn log_id(&self) -> &Option<LogIdOf<C>> {
+    pub fn log_id(&self) -> &Option<LogId<CLID>> {
         &self.log_id
     }
 
     /// Get the membership configuration.
-    pub fn membership(&self) -> &Membership<C::NodeId, C::Node> {
+    pub fn membership(&self) -> &Membership<NID, N> {
         &self.membership
     }
 
     /// Get an iterator over the voter node IDs.
-    pub fn voter_ids(&self) -> impl Iterator<Item = C::NodeId> {
+    pub fn voter_ids(&self) -> impl Iterator<Item = NID> {
         self.membership.voter_ids()
     }
 
     /// Get an iterator over all nodes (ID and node information).
-    pub fn nodes(&self) -> impl Iterator<Item = (&C::NodeId, &C::Node)> {
+    pub fn nodes(&self) -> impl Iterator<Item = (&NID, &N)> {
         self.membership.nodes()
     }
 }
 
-impl<C> fmt::Display for StoredMembership<C>
-where C: RaftTypeConfig
+impl<CLID, NID, N> fmt::Display for StoredMembership<CLID, NID, N>
+where
+    CLID: RaftCommittedLeaderId,
+    NID: NodeId,
+    N: Node,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{{log_id:{}, {}}}", DisplayOption(&self.log_id), self.membership)

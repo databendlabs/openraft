@@ -1,6 +1,7 @@
 use std::future::Future;
 
 use openraft::OptionalSend;
+use openraft::alias::SnapshotOf;
 use openraft::error::RPCError;
 use openraft::error::ReplicationClosed;
 use openraft::error::StreamingError;
@@ -13,7 +14,6 @@ use openraft::raft::SnapshotResponse;
 use openraft::raft::TransferLeaderRequest;
 use openraft::raft::VoteRequest;
 use openraft::raft::VoteResponse;
-use openraft::storage::Snapshot;
 use openraft_multi::GroupNetworkAdapter;
 use openraft_multi::GroupNetworkFactory;
 use openraft_multi::GroupRouter;
@@ -50,7 +50,7 @@ impl GroupRouter<TypeConfig, GroupId> for Router {
         target: NodeId,
         group_id: GroupId,
         vote: typ::Vote,
-        snapshot: Snapshot<TypeConfig>,
+        snapshot: SnapshotOf<TypeConfig>,
         _cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
         _option: RPCOption,
     ) -> Result<SnapshotResponse<TypeConfig>, StreamingError<TypeConfig>> {

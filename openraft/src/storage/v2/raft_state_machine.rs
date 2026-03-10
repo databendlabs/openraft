@@ -8,11 +8,11 @@ use crate::OptionalSend;
 use crate::OptionalSync;
 use crate::RaftSnapshotBuilder;
 use crate::RaftTypeConfig;
-use crate::StoredMembership;
 use crate::storage::EntryResponder;
-use crate::storage::Snapshot;
-use crate::storage::SnapshotMeta;
 use crate::type_config::alias::LogIdOf;
+use crate::type_config::alias::SnapshotMetaOf;
+use crate::type_config::alias::SnapshotOf;
+use crate::type_config::alias::StoredMembershipOf;
 
 /// API for state machine and snapshot.
 ///
@@ -45,7 +45,7 @@ where C: RaftTypeConfig
     /// last-applied-log-id.
     /// Because upon startup, the last membership will be loaded by scanning logs from the
     /// `last-applied-log-id`.
-    async fn applied_state(&mut self) -> Result<(Option<LogIdOf<C>>, StoredMembership<C>), io::Error>;
+    async fn applied_state(&mut self) -> Result<(Option<LogIdOf<C>>, StoredMembershipOf<C>), io::Error>;
 
     /// Apply the given payload of entries to the state machine.
     ///
@@ -153,7 +153,7 @@ where C: RaftTypeConfig
     /// [`StorageHelper::get_initial_state()`]: crate::StorageHelper::get_initial_state
     /// [`Raft`]: crate::Raft
     #[since(version = "0.10.0", change = "SnapshotData without Box")]
-    async fn install_snapshot(&mut self, meta: &SnapshotMeta<C>, snapshot: C::SnapshotData) -> Result<(), io::Error>;
+    async fn install_snapshot(&mut self, meta: &SnapshotMetaOf<C>, snapshot: C::SnapshotData) -> Result<(), io::Error>;
 
     /// Get a readable handle to the current snapshot.
     ///
@@ -168,5 +168,5 @@ where C: RaftTypeConfig
     /// A proper snapshot implementation will store last-applied-log-id and the
     /// last-applied-membership config as part of the snapshot, which should be decoded for
     /// creating this method's response data.
-    async fn get_current_snapshot(&mut self) -> Result<Option<Snapshot<C>>, io::Error>;
+    async fn get_current_snapshot(&mut self) -> Result<Option<SnapshotOf<C>>, io::Error>;
 }

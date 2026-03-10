@@ -7,7 +7,7 @@ use crate::core::ApplyResult;
 use crate::display_ext::DisplayOptionExt;
 use crate::display_ext::display_result::DisplayResultExt;
 use crate::raft_state::io_state::log_io_id::LogIOId;
-use crate::storage::SnapshotMeta;
+use crate::type_config::alias::SnapshotMetaOf;
 
 /// The Ok part of a state machine command result.
 #[derive(Debug)]
@@ -18,12 +18,12 @@ where C: RaftTypeConfig
     ///
     /// - `Some(meta)`: Snapshot was successfully built with the given metadata.
     /// - `None`: State machine deferred snapshot creation via `try_create_snapshot_builder()`.
-    BuildSnapshotDone(Option<SnapshotMeta<C>>),
+    BuildSnapshotDone(Option<SnapshotMetaOf<C>>),
 
     /// When finishing installing a snapshot.
     ///
     /// It does not return any value to RaftCore.
-    InstallSnapshot((LogIOId<C>, Option<SnapshotMeta<C>>)),
+    InstallSnapshot((LogIOId<C>, Option<SnapshotMetaOf<C>>)),
 
     /// Send back applied result to RaftCore.
     Apply(ApplyResult<C>),

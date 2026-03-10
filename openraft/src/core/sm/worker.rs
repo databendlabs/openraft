@@ -20,7 +20,6 @@ use crate::raft::responder::core_responder::CoreResponder;
 #[cfg(doc)]
 use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
-use crate::storage::Snapshot;
 use crate::storage::v2::entry_responder::EntryResponderBuilder;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::JoinHandleOf;
@@ -28,6 +27,7 @@ use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::MpscReceiverOf;
 use crate::type_config::alias::MpscSenderOf;
 use crate::type_config::alias::OneshotSenderOf;
+use crate::type_config::alias::SnapshotOf;
 use crate::type_config::async_runtime::mpsc::MpscSender;
 
 pub(crate) struct Worker<C, SM, LR>
@@ -260,7 +260,7 @@ where
     }
 
     #[tracing::instrument(level = "info", skip_all)]
-    async fn get_snapshot(&mut self, tx: OneshotSenderOf<C, Option<Snapshot<C>>>) -> Result<(), StorageError<C>> {
+    async fn get_snapshot(&mut self, tx: OneshotSenderOf<C, Option<SnapshotOf<C>>>) -> Result<(), StorageError<C>> {
         tracing::info!("{}", func_name!());
 
         let snapshot = self.state_machine.get_current_snapshot().await.sto_read_snapshot(None)?;

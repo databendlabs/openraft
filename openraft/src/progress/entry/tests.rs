@@ -2,8 +2,6 @@ use std::borrow::Borrow;
 
 use crate::LogId;
 use crate::RaftState;
-use crate::SnapshotMeta;
-use crate::StoredMembership;
 use crate::engine::EngineConfig;
 use crate::engine::LogIdList;
 use crate::engine::testing::UTConfig;
@@ -13,6 +11,8 @@ use crate::progress::inflight_id::InflightId;
 use crate::progress::stream_id::StreamId;
 use crate::type_config::alias::LeaderIdOf;
 use crate::type_config::alias::LogIdOf;
+use crate::type_config::alias::SnapshotMetaOf;
+use crate::type_config::alias::StoredMembershipOf;
 use crate::vote::RaftLeaderIdExt;
 
 fn log_id(index: u64) -> LogIdOf<UTConfig> {
@@ -105,9 +105,9 @@ fn new_raft_state(purge_upto: u64, snap_last: u64, last: u64) -> RaftState<UTCon
     // TODO: setup log_ids
 
     st.purge_upto = Some(log_id(purge_upto));
-    st.snapshot_meta = SnapshotMeta {
+    st.snapshot_meta = SnapshotMetaOf::<UTConfig> {
         last_log_id: Some(log_id(snap_last)),
-        last_membership: StoredMembership::default(),
+        last_membership: StoredMembershipOf::<UTConfig>::default(),
         snapshot_id: "".to_string(),
     };
 

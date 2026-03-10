@@ -5,7 +5,7 @@ use maplit::btreeset;
 use openraft::Config;
 use openraft::LogIdOptionExt;
 use openraft::Membership;
-use openraft::StoredMembership;
+use openraft::alias::StoredMembershipOf;
 use openraft::storage::RaftStateMachine;
 
 use crate::fixtures::RaftRouter;
@@ -38,7 +38,7 @@ async fn state_machine_apply_membership() -> Result<()> {
     for i in 0..=0 {
         let (_sto, mut sm) = router.get_storage_handle(&i)?;
         assert_eq!(
-            StoredMembership::new(
+            StoredMembershipOf::<openraft_memstore::TypeConfig>::new(
                 Some(log_id(0, 0, 0)),
                 Membership::new_with_defaults(vec![btreeset! {0}], [])
             ),
@@ -86,7 +86,7 @@ async fn state_machine_apply_membership() -> Result<()> {
         let (_sto, mut sm) = router.get_storage_handle(&i)?;
         let (_, last_membership) = sm.applied_state().await?;
         assert_eq!(
-            StoredMembership::new(
+            StoredMembershipOf::<openraft_memstore::TypeConfig>::new(
                 Some(log_id(1, 0, log_index)),
                 Membership::new_with_defaults(vec![btreeset! {0, 1, 2}], btreeset! {3,4})
             ),

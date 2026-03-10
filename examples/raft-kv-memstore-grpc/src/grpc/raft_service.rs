@@ -2,7 +2,6 @@ use std::pin::Pin;
 
 use futures::Stream;
 use futures::StreamExt;
-use openraft::Snapshot;
 use tonic::Request;
 use tonic::Response;
 use tonic::Status;

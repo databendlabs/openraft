@@ -3,7 +3,7 @@ use std::fmt;
 use crate::LogId;
 use crate::engine::leader_log_ids_iter::LeaderLogIdsIter;
 use crate::log_id::ref_log_id::RefLogId;
-use crate::vote::leader_id::raft_committed_leader_id::RaftCommittedLeaderId;
+use crate::vote::RaftCommittedLeaderId;
 
 /// A non-empty range of log IDs belonging to a Leader.
 ///

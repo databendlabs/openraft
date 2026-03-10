@@ -1,5 +1,5 @@
 use crate::LogId;
-use crate::vote::leader_id::raft_committed_leader_id::RaftCommittedLeaderId;
+use crate::vote::RaftCommittedLeaderId;
 
 /// Iterator over log IDs in a [`LeaderLogIds`](super::leader_log_ids::LeaderLogIds) range.
 ///
