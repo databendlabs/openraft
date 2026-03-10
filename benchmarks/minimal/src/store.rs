@@ -21,13 +21,13 @@ use openraft::storage::RaftLogReader;
 use openraft::storage::RaftLogStorage;
 use openraft::storage::RaftSnapshotBuilder;
 use openraft::storage::RaftStateMachine;
-use openraft::storage::Snapshot;
+use openraft::alias::SnapshotMetaOf;
+use openraft::alias::SnapshotOf;
+use openraft::alias::StoredMembershipOf;
 use openraft::Entry;
 use openraft::EntryPayload;
 use openraft::OptionalSend;
 use openraft::RaftTypeConfig;
-use openraft::SnapshotMeta;
-use openraft::StoredMembership;
 use openraft::Vote;
 use serde::Deserialize;
 use serde::Serialize;
@@ -80,14 +80,14 @@ impl RaftTypeConfig for TypeConfig {
 
 #[derive(Debug)]
 pub struct StoredSnapshot {
-    pub meta: SnapshotMeta<TypeConfig>,
+    pub meta: SnapshotMetaOf<TypeConfig>,
     pub data: Vec<u8>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct StateMachine {
     pub last_applied_log: Option<LogIdOf<TypeConfig>>,
-    pub last_membership: StoredMembership<TypeConfig>,
+    pub last_membership: StoredMembershipOf<TypeConfig>,
 }
 
 pub struct LogStore {
@@ -163,7 +163,7 @@ impl RaftLogReader<TypeConfig> for Arc<LogStore> {
 
 impl RaftSnapshotBuilder<TypeConfig> for Arc<StateMachineStore> {
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn build_snapshot(&mut self) -> Result<Snapshot<TypeConfig>, io::Error> {
+    async fn build_snapshot(&mut self) -> Result<SnapshotOf<TypeConfig>, io::Error> {
         let data;
         let last_applied_log;
         let last_membership;
@@ -187,7 +187,7 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<StateMachineStore> {
             format!("--{}", snapshot_idx)
         };
 
-        let meta = SnapshotMeta {
+        let meta = SnapshotMetaOf::<TypeConfig> {
             last_log_id: last_applied_log,
             last_membership,
             snapshot_id,
@@ -205,7 +205,7 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<StateMachineStore> {
 
         tracing::info!(snapshot_size, "log compaction complete");
 
-        Ok(Snapshot {
+        Ok(SnapshotOf::<TypeConfig> {
             meta,
             snapshot: Cursor::new(data),
         })
@@ -283,7 +283,7 @@ impl RaftLogStorage<TypeConfig> for Arc<LogStore> {
 impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
     async fn applied_state(
         &mut self,
-    ) -> Result<(Option<LogIdOf<TypeConfig>>, StoredMembership<TypeConfig>), io::Error> {
+    ) -> Result<(Option<LogIdOf<TypeConfig>>, StoredMembershipOf<TypeConfig>), io::Error> {
         let sm = self.sm.read().await;
         Ok((sm.last_applied_log, sm.last_membership.clone()))
     }
@@ -302,7 +302,7 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
             match entry.payload {
                 EntryPayload::Blank | EntryPayload::Normal(_) => {}
                 EntryPayload::Membership(ref mem) => {
-                    sm.last_membership = StoredMembership::new(Some(entry.log_id), mem.clone());
+                    sm.last_membership = StoredMembershipOf::<TypeConfig>::new(Some(entry.log_id), mem.clone());
                 }
             };
 
@@ -321,7 +321,7 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
     #[tracing::instrument(level = "trace", skip(self, snapshot))]
     async fn install_snapshot(
         &mut self,
-        meta: &SnapshotMeta<TypeConfig>,
+        meta: &SnapshotMetaOf<TypeConfig>,
         snapshot: SnapshotDataOf<TypeConfig>,
     ) -> Result<(), io::Error> {
         let new_snapshot = StoredSnapshot {
@@ -343,11 +343,11 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn get_current_snapshot(&mut self) -> Result<Option<Snapshot<TypeConfig>>, io::Error> {
+    async fn get_current_snapshot(&mut self) -> Result<Option<SnapshotOf<TypeConfig>>, io::Error> {
         match &*self.current_snapshot.read().await {
             Some(snapshot) => {
                 let data = snapshot.data.clone();
-                Ok(Some(Snapshot {
+                Ok(Some(SnapshotOf::<TypeConfig> {
                     meta: snapshot.meta.clone(),
                     snapshot: Cursor::new(data),
                 }))

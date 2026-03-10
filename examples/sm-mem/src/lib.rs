@@ -15,18 +15,18 @@ use openraft::EntryPayload;
 use openraft::OptionalSend;
 use openraft::RaftSnapshotBuilder;
 use openraft::RaftTypeConfig;
-use openraft::SnapshotMeta;
-use openraft::StoredMembership;
+use openraft::alias::SnapshotMetaOf;
+use openraft::alias::StoredMembershipOf;
 use openraft::alias::LogIdOf;
 use openraft::storage::EntryResponder;
+use openraft::alias::SnapshotOf;
 use openraft::storage::RaftStateMachine;
-use openraft::storage::Snapshot;
 use serde::Deserialize;
 use serde::Serialize;
 
 #[derive(Debug)]
 pub struct StoredSnapshot<C: RaftTypeConfig> {
-    pub meta: SnapshotMeta<C>,
+    pub meta: SnapshotMetaOf<C>,
 
     /// The data of the state machine at the time of this snapshot.
     pub data: Vec<u8>,
@@ -44,7 +44,7 @@ pub struct StateMachineData {
 pub struct StateMachineStoreInner<C: RaftTypeConfig> {
     pub last_applied_log: Option<LogIdOf<C>>,
 
-    pub last_membership: StoredMembership<C>,
+    pub last_membership: StoredMembershipOf<C>,
 
     /// The Raft state machine.
     pub state_machine: StateMachineData,
@@ -60,7 +60,7 @@ impl<C: RaftTypeConfig> Default for StateMachineStoreInner<C> {
     fn default() -> Self {
         Self {
             last_applied_log: None,
-            last_membership: StoredMembership::default(),
+            last_membership: StoredMembershipOf::<C>::default(),
             state_machine: StateMachineData::default(),
             snapshot_idx: AtomicU64::new(0),
             current_snapshot: None,
@@ -103,7 +103,7 @@ impl<C> RaftSnapshotBuilder<C> for StateMachineStore<C>
 where C: RaftTypeConfig<D = types_kv::Request, R = types_kv::Response, SnapshotData = Cursor<Vec<u8>>, Entry = Entry<C>>
 {
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn build_snapshot(&mut self) -> Result<Snapshot<C>, io::Error> {
+    async fn build_snapshot(&mut self) -> Result<SnapshotOf<C>, io::Error> {
         let mut inner = self.0.lock().await;
 
         let data =
@@ -116,7 +116,7 @@ where C: RaftTypeConfig<D = types_kv::Request, R = types_kv::Response, SnapshotD
             format!("--{}", snapshot_idx)
         };
 
-        let meta = SnapshotMeta {
+        let meta = SnapshotMetaOf::<C> {
             last_log_id: inner.last_applied_log.clone(),
             last_membership: inner.last_membership.clone(),
             snapshot_id,
@@ -129,7 +129,7 @@ where C: RaftTypeConfig<D = types_kv::Request, R = types_kv::Response, SnapshotD
 
         inner.current_snapshot = Some(snapshot);
 
-        Ok(Snapshot {
+        Ok(SnapshotOf::<C> {
             meta,
             snapshot: Cursor::new(data),
         })
@@ -141,7 +141,7 @@ where C: RaftTypeConfig<D = types_kv::Request, R = types_kv::Response, SnapshotD
 {
     type SnapshotBuilder = Self;
 
-    async fn applied_state(&mut self) -> Result<(Option<LogIdOf<C>>, StoredMembership<C>), io::Error> {
+    async fn applied_state(&mut self) -> Result<(Option<LogIdOf<C>>, StoredMembershipOf<C>), io::Error> {
         let inner = self.0.lock().await;
         Ok((inner.last_applied_log.clone(), inner.last_membership.clone()))
     }
@@ -165,7 +165,7 @@ where C: RaftTypeConfig<D = types_kv::Request, R = types_kv::Response, SnapshotD
                     }
                 },
                 EntryPayload::Membership(mem) => {
-                    inner.last_membership = StoredMembership::new(Some(entry.log_id.clone()), mem.clone());
+                    inner.last_membership = StoredMembershipOf::<C>::new(Some(entry.log_id.clone()), mem.clone());
                     types_kv::Response::none()
                 }
             };
@@ -183,7 +183,7 @@ where C: RaftTypeConfig<D = types_kv::Request, R = types_kv::Response, SnapshotD
     }
 
     #[tracing::instrument(level = "trace", skip(self, snapshot))]
-    async fn install_snapshot(&mut self, meta: &SnapshotMeta<C>, snapshot: C::SnapshotData) -> Result<(), io::Error> {
+    async fn install_snapshot(&mut self, meta: &SnapshotMetaOf<C>, snapshot: C::SnapshotData) -> Result<(), io::Error> {
         tracing::info!(
             { snapshot_size = snapshot.get_ref().len() },
             "decoding snapshot for installation"
@@ -209,12 +209,12 @@ where C: RaftTypeConfig<D = types_kv::Request, R = types_kv::Response, SnapshotD
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn get_current_snapshot(&mut self) -> Result<Option<Snapshot<C>>, io::Error> {
+    async fn get_current_snapshot(&mut self) -> Result<Option<SnapshotOf<C>>, io::Error> {
         let inner = self.0.lock().await;
         match &inner.current_snapshot {
             Some(snapshot) => {
                 let data = snapshot.data.clone();
-                Ok(Some(Snapshot {
+                Ok(Some(SnapshotOf::<C> {
                     meta: snapshot.meta.clone(),
                     snapshot: Cursor::new(data),
                 }))

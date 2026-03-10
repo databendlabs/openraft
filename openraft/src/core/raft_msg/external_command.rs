@@ -4,12 +4,12 @@ use std::fmt;
 use std::sync::Arc;
 
 use crate::RaftTypeConfig;
-use crate::Snapshot;
 use crate::core::raft_msg::ExternalCommandName;
 use crate::core::raft_msg::ResultSender;
 use crate::errors::AllowNextRevertError;
 use crate::metrics::MetricsRecorder;
 use crate::type_config::alias::OneshotSenderOf;
+use crate::type_config::alias::SnapshotOf;
 
 /// Application-triggered Raft actions for testing and administration.
 ///
@@ -29,7 +29,7 @@ pub(crate) enum ExternalCommand<C: RaftTypeConfig> {
 
     /// Get a snapshot from the state machine, send back via a oneshot::Sender.
     GetSnapshot {
-        tx: OneshotSenderOf<C, Option<Snapshot<C>>>,
+        tx: OneshotSenderOf<C, Option<SnapshotOf<C>>>,
     },
 
     /// Purge logs covered by a snapshot up to a specified index.

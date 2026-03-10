@@ -14,7 +14,6 @@ use crate::RaftLogReader;
 use crate::RaftSnapshotBuilder;
 use crate::RaftTypeConfig;
 use crate::StorageError;
-use crate::StoredMembership;
 use crate::entry::RaftEntry;
 use crate::membership::EffectiveMembership;
 use crate::raft_state::LogStateReader;
@@ -30,6 +29,7 @@ use crate::testing::log::StoreBuilder;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::LeaderIdOf;
 use crate::type_config::alias::LogIdOf;
+use crate::type_config::alias::StoredMembershipOf;
 use crate::type_config::alias::TermOf;
 use crate::type_config::alias::VoteOf;
 use crate::type_config::async_runtime::watch::WatchReceiver;
@@ -1324,7 +1324,7 @@ where
     pub async fn last_applied_state(mut store: LS, mut sm: SM) -> Result<(), io::Error> {
         let (applied, mem) = sm.applied_state().await?;
         assert_eq!(None, applied);
-        assert_eq!(StoredMembership::default(), mem);
+        assert_eq!(StoredMembershipOf::<C>::default(), mem);
 
         tracing::info!("--- with last_applied and last_membership");
         {
@@ -1333,7 +1333,7 @@ where
             let (applied, mem) = sm.applied_state().await?;
             assert_eq!(Some(log_id_0::<C>(1, 3)), applied);
             assert_eq!(
-                StoredMembership::new(
+                StoredMembershipOf::<C>::new(
                     Some(log_id_0::<C>(1, 3)),
                     Membership::new_with_defaults(vec![btreeset! {1,2}], [])
                 ),
@@ -1348,7 +1348,7 @@ where
             let (applied, mem) = sm.applied_state().await?;
             assert_eq!(Some(log_id_0::<C>(1, 5)), applied);
             assert_eq!(
-                StoredMembership::new(
+                StoredMembershipOf::<C>::new(
                     Some(log_id_0::<C>(1, 3)),
                     Membership::new_with_defaults(vec![btreeset! {1,2}], [])
                 ),
@@ -1665,7 +1665,7 @@ where
         let snapshot_entries = vec![membership_ent_0::<C>(1, 2, btreeset! {1, 2, 3}), blank_ent_0::<C>(3, 3)];
         apply(&mut sm_l, snapshot_entries).await?;
         let snapshot_last_log_id = Some(log_id_0::<C>(3, 3));
-        let snapshot_last_membership = StoredMembership::new(
+        let snapshot_last_membership = StoredMembershipOf::<C>::new(
             Some(log_id_0::<C>(1, 2)),
             Membership::new_with_defaults(vec![btreeset![1, 2, 3]], []),
         );

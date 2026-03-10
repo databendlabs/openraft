@@ -7,7 +7,6 @@ use pretty_assertions::assert_eq;
 use crate::EffectiveMembership;
 use crate::Membership;
 use crate::MembershipState;
-use crate::StoredMembership;
 use crate::Vote;
 use crate::engine::Command;
 use crate::engine::Engine;
@@ -17,6 +16,7 @@ use crate::engine::testing::log_id;
 use crate::progress::Progress;
 use crate::storage::SnapshotMeta;
 use crate::type_config::TypeConfigExt;
+use crate::type_config::alias::StoredMembershipOf;
 use crate::utime::Leased;
 
 fn m12() -> Membership<u64, ()> {
@@ -53,7 +53,7 @@ fn test_trigger_purge_log_already_scheduled() -> anyhow::Result<()> {
     let mut eng = eng();
     eng.state.snapshot_meta = SnapshotMeta {
         last_log_id: Some(log_id(1, 0, 3)),
-        last_membership: StoredMembership::new(Some(log_id(1, 0, 1)), m12()),
+        last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 0, 1)), m12()),
         snapshot_id: "1".to_string(),
     };
     eng.state.purge_upto = Some(log_id(1, 0, 2));
@@ -73,7 +73,7 @@ fn test_trigger_purge_log_delete_only_in_snapshot_logs() -> anyhow::Result<()> {
     let mut eng = eng();
     eng.state.snapshot_meta = SnapshotMeta {
         last_log_id: Some(log_id(1, 0, 3)),
-        last_membership: StoredMembership::new(Some(log_id(1, 0, 1)), m12()),
+        last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 0, 1)), m12()),
         snapshot_id: "1".to_string(),
     };
     eng.state.purge_upto = Some(log_id(1, 0, 2));
@@ -101,7 +101,7 @@ fn test_trigger_purge_log_in_used_wont_be_delete() -> anyhow::Result<()> {
     let mut eng = eng();
     eng.state.snapshot_meta = SnapshotMeta {
         last_log_id: Some(log_id(1, 0, 3)),
-        last_membership: StoredMembership::new(Some(log_id(1, 0, 1)), m12()),
+        last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 0, 1)), m12()),
         snapshot_id: "1".to_string(),
     };
     eng.state.purge_upto = Some(log_id(1, 0, 2));

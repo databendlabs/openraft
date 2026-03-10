@@ -5,7 +5,6 @@ use std::sync::Arc;
 
 use crate::Membership;
 use crate::RaftTypeConfig;
-use crate::StoredMembership;
 use crate::display_ext::DisplayOptionExt;
 use crate::log_id::raft_log_id::RaftLogId;
 use crate::log_id::raft_log_id_ext::RaftLogIdExt;
@@ -13,6 +12,7 @@ use crate::quorum::Joint;
 use crate::quorum::QuorumSet;
 use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::type_config::alias::LogIdOf;
+use crate::type_config::alias::StoredMembershipOf;
 
 /// The currently active membership config.
 ///
@@ -25,7 +25,7 @@ use crate::type_config::alias::LogIdOf;
 pub struct EffectiveMembership<C>
 where C: RaftTypeConfig
 {
-    stored_membership: Arc<StoredMembership<C>>,
+    stored_membership: Arc<StoredMembershipOf<C>>,
 
     /// The quorum set built from `membership`.
     quorum_set: Joint<C::NodeId, Vec<C::NodeId>, Vec<Vec<C::NodeId>>>,
@@ -39,7 +39,7 @@ where C: RaftTypeConfig
 {
     fn default() -> Self {
         Self {
-            stored_membership: Arc::new(StoredMembership::default()),
+            stored_membership: Arc::new(StoredMembershipOf::<C>::default()),
             quorum_set: Joint::default(),
             voter_ids: Default::default(),
         }
@@ -96,17 +96,17 @@ where C: RaftTypeConfig
         let quorum_set = Joint::from(joint);
 
         Self {
-            stored_membership: Arc::new(StoredMembership::new(log_id, membership)),
+            stored_membership: Arc::new(StoredMembershipOf::<C>::new(log_id, membership)),
             quorum_set,
             voter_ids,
         }
     }
 
-    pub(crate) fn new_from_stored_membership(stored: StoredMembership<C>) -> Self {
+    pub(crate) fn new_from_stored_membership(stored: StoredMembershipOf<C>) -> Self {
         Self::new(stored.log_id().clone(), stored.membership().clone())
     }
 
-    pub(crate) fn stored_membership(&self) -> &Arc<StoredMembership<C>> {
+    pub(crate) fn stored_membership(&self) -> &Arc<StoredMembershipOf<C>> {
         &self.stored_membership
     }
 

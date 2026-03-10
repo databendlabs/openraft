@@ -13,7 +13,6 @@ use crate::RaftSnapshotBuilder;
 use crate::RaftState;
 use crate::RaftTypeConfig;
 use crate::StorageError;
-use crate::StoredMembership;
 use crate::base::shared_id_generator::SharedIdGenerator;
 use crate::display_ext::DisplayOptionExt;
 use crate::engine::LogIdList;
@@ -28,6 +27,7 @@ use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::type_config::alias::LeaderIdOf;
 use crate::type_config::alias::LogIdOf;
+use crate::type_config::alias::StoredMembershipOf;
 use crate::type_config::alias::TermOf;
 use crate::type_config::alias::VoteOf;
 use crate::utime::Leased;
@@ -369,7 +369,7 @@ where
     pub async fn last_membership_in_log(
         &mut self,
         since_index: u64,
-    ) -> Result<Vec<StoredMembership<C>>, StorageError<C>> {
+    ) -> Result<Vec<StoredMembershipOf<C>>, StorageError<C>> {
         let st = self.log_store.get_log_state().await.sto_read_logs()?;
 
         let mut end = st.last_log_id.next_index();
@@ -388,7 +388,7 @@ where
 
             for ent in entries.iter().rev() {
                 if let Some(mem) = ent.get_membership() {
-                    let em = StoredMembership::new(Some(ent.log_id()), mem);
+                    let em = StoredMembershipOf::<C>::new(Some(ent.log_id()), mem);
                     res.insert(0, em);
                     if res.len() == 2 {
                         return Ok(res);

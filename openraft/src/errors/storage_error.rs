@@ -1,9 +1,9 @@
 use std::fmt;
 
 use crate::RaftTypeConfig;
-use crate::storage::SnapshotSignature;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::LogIdOf;
+use crate::type_config::alias::SnapshotSignatureOf;
 
 /// Convert error to StorageError::IO();
 pub trait ToStorageResult<C, T>
@@ -60,7 +60,7 @@ where C: RaftTypeConfig
     StateMachine,
 
     /// Error that happened when operating snapshots.
-    Snapshot(Option<SnapshotSignature<C>>),
+    Snapshot(Option<SnapshotSignatureOf<C>>),
 
     /// No specific subject for this error.
     None,
@@ -197,12 +197,12 @@ where C: RaftTypeConfig
     }
 
     /// Create an error for writing a snapshot.
-    pub fn write_snapshot(signature: Option<SnapshotSignature<C>>, source: C::ErrorSource) -> Self {
+    pub fn write_snapshot(signature: Option<SnapshotSignatureOf<C>>, source: C::ErrorSource) -> Self {
         Self::new(ErrorSubject::Snapshot(signature), ErrorVerb::Write, source)
     }
 
     /// Create an error for reading a snapshot.
-    pub fn read_snapshot(signature: Option<SnapshotSignature<C>>, source: C::ErrorSource) -> Self {
+    pub fn read_snapshot(signature: Option<SnapshotSignatureOf<C>>, source: C::ErrorSource) -> Self {
         Self::new(ErrorSubject::Snapshot(signature), ErrorVerb::Read, source)
     }
 

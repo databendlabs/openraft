@@ -5,7 +5,6 @@ use maplit::btreeset;
 use pretty_assertions::assert_eq;
 
 use crate::Membership;
-use crate::StoredMembership;
 use crate::Vote;
 use crate::core::sm;
 use crate::engine::Command;
@@ -17,9 +16,10 @@ use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;
 use crate::raft::SnapshotResponse;
 use crate::raft_state::io_state::log_io_id::LogIOId;
-use crate::storage::Snapshot;
-use crate::storage::SnapshotMeta;
 use crate::type_config::TypeConfigExt;
+use crate::type_config::alias::SnapshotMetaOf;
+use crate::type_config::alias::SnapshotOf;
+use crate::type_config::alias::StoredMembershipOf;
 use crate::vote::raft_vote::RaftVoteExt;
 
 fn m12() -> Membership<u64, ()> {
@@ -46,9 +46,9 @@ fn eng() -> Engine<UTConfig> {
         log_id(3, 1, 5),
         log_id(4, 1, 8),
     ]);
-    eng.state.snapshot_meta = SnapshotMeta {
+    eng.state.snapshot_meta = SnapshotMetaOf::<UTConfig> {
         last_log_id: Some(log_id(2, 1, 2)),
-        last_membership: StoredMembership::new(Some(log_id(1, 1, 1)), m12()),
+        last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m12()),
         snapshot_id: "1-2-3-4".to_string(),
     };
     eng.state.server_state = eng.calc_server_state();
@@ -71,10 +71,10 @@ fn test_handle_install_full_snapshot_lt_last_snapshot() -> anyhow::Result<()> {
 
     eng.handle_install_full_snapshot(
         curr_vote,
-        Snapshot {
-            meta: SnapshotMeta {
+        SnapshotOf::<UTConfig> {
+            meta: SnapshotMetaOf::<UTConfig> {
                 last_log_id: Some(log_id(1, 1, 2)),
-                last_membership: StoredMembership::new(Some(log_id(1, 1, 1)), m1234()),
+                last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m1234()),
                 snapshot_id: "1-2-3-4".to_string(),
             },
             snapshot: Cursor::new(vec![0u8]),
@@ -83,9 +83,9 @@ fn test_handle_install_full_snapshot_lt_last_snapshot() -> anyhow::Result<()> {
     );
 
     assert_eq!(
-        SnapshotMeta {
+        SnapshotMetaOf::<UTConfig> {
             last_log_id: Some(log_id(2, 1, 2)),
-            last_membership: StoredMembership::new(Some(log_id(1, 1, 1)), m12()),
+            last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m12()),
             snapshot_id: "1-2-3-4".to_string(),
         },
         eng.state.snapshot_meta
@@ -116,10 +116,10 @@ fn test_handle_install_full_snapshot_no_conflict() -> anyhow::Result<()> {
 
     eng.handle_install_full_snapshot(
         curr_vote,
-        Snapshot {
-            meta: SnapshotMeta {
+        SnapshotOf::<UTConfig> {
+            meta: SnapshotMetaOf::<UTConfig> {
                 last_log_id: Some(log_id(4, 1, 6)),
-                last_membership: StoredMembership::new(Some(log_id(1, 1, 1)), m1234()),
+                last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m1234()),
                 snapshot_id: "1-2-3-4".to_string(),
             },
             snapshot: Cursor::new(vec![0u8]),
@@ -128,9 +128,9 @@ fn test_handle_install_full_snapshot_no_conflict() -> anyhow::Result<()> {
     );
 
     assert_eq!(
-        SnapshotMeta {
+        SnapshotMetaOf::<UTConfig> {
             last_log_id: Some(log_id(4, 1, 6)),
-            last_membership: StoredMembership::new(Some(log_id(1, 1, 1)), m1234()),
+            last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m1234()),
             snapshot_id: "1-2-3-4".to_string(),
         },
         eng.state.snapshot_meta
@@ -141,10 +141,10 @@ fn test_handle_install_full_snapshot_no_conflict() -> anyhow::Result<()> {
         vec![
             Command::CloseReplicationStreams,
             Command::from(sm::Command::install_full_snapshot(
-                Snapshot {
-                    meta: SnapshotMeta {
+                SnapshotOf::<UTConfig> {
+                    meta: SnapshotMetaOf::<UTConfig> {
                         last_log_id: Some(log_id(4, 1, 6)),
-                        last_membership: StoredMembership::new(Some(log_id(1, 1, 1)), m1234()),
+                        last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m1234()),
                         snapshot_id: "1-2-3-4".to_string(),
                     },
                     snapshot: Cursor::new(vec![0u8]),
@@ -153,7 +153,7 @@ fn test_handle_install_full_snapshot_no_conflict() -> anyhow::Result<()> {
             )),
             Command::PurgeLog { upto: log_id(4, 1, 6) },
             Command::Respond {
-                when: Some(Condition::Snapshot {
+                when: Some(Condition::Snapshot::<UTConfig> {
                     log_id: log_id(4, 1, 6)
                 }),
                 resp: Respond::new(SnapshotResponse::new(curr_vote), dummy_tx),

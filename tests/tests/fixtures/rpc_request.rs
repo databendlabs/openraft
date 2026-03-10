@@ -4,7 +4,7 @@ use std::fmt;
 
 use openraft::RPCTypes;
 use openraft::RaftTypeConfig;
-use openraft::Snapshot;
+use openraft::alias::SnapshotOf;
 use openraft::raft::AppendEntriesRequest;
 use openraft::raft::InstallSnapshotRequest;
 use openraft::raft::TransferLeaderRequest;
@@ -18,7 +18,7 @@ where C::SnapshotData: fmt::Debug
 {
     AppendEntries(AppendEntriesRequest<C>),
     InstallSnapshot(InstallSnapshotRequest<C>),
-    InstallFullSnapshot(Snapshot<C>),
+    InstallFullSnapshot(SnapshotOf<C>),
     Vote(VoteRequest<C>),
     TransferLeader(TransferLeaderRequest<C>),
 }
