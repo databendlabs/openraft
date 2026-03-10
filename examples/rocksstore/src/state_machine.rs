@@ -175,7 +175,7 @@ impl RaftStateMachine<TypeConfig> for RocksStateMachine {
     where Strm: Stream<Item = Result<EntryResponder<TypeConfig>, io::Error>> + Unpin + OptionalSend {
         let mut batch = rocksdb::WriteBatch::default();
         let mut last_applied_log = None;
-        let mut last_membership = None;
+        let mut last_membership: Option<StoredMembership<TypeConfig>> = None;
         let mut responses = Vec::new();
 
         while let Some((entry, responder)) = entries.try_next().await? {

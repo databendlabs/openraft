@@ -19,8 +19,8 @@ use crate::errors::RejectVote;
 use crate::type_config::TypeConfigExt;
 use crate::utime::Leased;
 
-fn m01() -> Membership<UTConfig> {
-    Membership::<UTConfig>::new_with_defaults(vec![btreeset! {0,1}], [])
+fn m01() -> Membership<u64, ()> {
+    Membership::<u64, ()>::new_with_defaults(vec![btreeset! {0,1}], [])
 }
 
 fn eng() -> Engine<UTConfig> {

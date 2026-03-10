@@ -15,12 +15,12 @@ use crate::engine::testing::log_id;
 use crate::type_config::TypeConfigExt;
 use crate::utime::Leased;
 
-fn m01() -> Membership<UTConfig> {
-    Membership::<UTConfig>::new_with_defaults(vec![btreeset! {0,1}], [])
+fn m01() -> Membership<u64, ()> {
+    Membership::<u64, ()>::new_with_defaults(vec![btreeset! {0,1}], [])
 }
 
-fn m123() -> Membership<UTConfig> {
-    Membership::<UTConfig>::new_with_defaults(vec![btreeset! {1,2,3}], [])
+fn m123() -> Membership<u64, ()> {
+    Membership::<u64, ()>::new_with_defaults(vec![btreeset! {1,2,3}], [])
 }
 
 fn eng() -> Engine<UTConfig> {

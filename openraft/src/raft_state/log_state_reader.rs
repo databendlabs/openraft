@@ -1,27 +1,26 @@
-use crate::RaftTypeConfig;
+use crate::LogId;
 use crate::log_id::option_raft_log_id_ext::OptionRaftLogIdExt;
 use crate::log_id::option_ref_log_id_ext::OptionRefLogIdExt;
 use crate::log_id::raft_log_id::RaftLogId;
 use crate::log_id::raft_log_id_ext::RaftLogIdExt;
-use crate::type_config::alias::CommittedLeaderIdOf;
-use crate::type_config::alias::LogIdOf;
-use crate::type_config::alias::RefLogIdOf;
+use crate::log_id::ref_log_id::RefLogId;
+use crate::vote::leader_id::raft_committed_leader_id::RaftCommittedLeaderId;
 
 /// APIs to get significant log ids reflecting the raft state.
 ///
 /// See: [`log_pointers`](`crate::docs::data::log_pointers`).
-pub(crate) trait LogStateReader<C>
-where C: RaftTypeConfig
+pub(crate) trait LogStateReader<CLID>
+where CLID: RaftCommittedLeaderId
 {
     /// Get previous log id, i.e., the log id at index - 1
-    fn prev_log_id(&self, index: u64) -> Option<LogIdOf<C>> {
+    fn prev_log_id(&self, index: u64) -> Option<LogId<CLID>> {
         if index == 0 { None } else { self.get_log_id(index - 1) }
     }
 
     /// Return if a log id exists.
     ///
     /// It assumes a committed log will always get positive return value, according to raft spec.
-    fn has_log_id(&self, log_id: impl RaftLogId<CommittedLeaderId = CommittedLeaderIdOf<C>>) -> bool {
+    fn has_log_id(&self, log_id: impl RaftLogId<CommittedLeaderId = CLID>) -> bool {
         if log_id.index() < self.committed().next_index() {
             debug_assert!(Some(log_id.to_ref()) <= self.committed().to_ref());
             return true;
@@ -35,7 +34,7 @@ where C: RaftTypeConfig
         }
     }
 
-    fn get_log_id(&self, index: u64) -> Option<LogIdOf<C>> {
+    fn get_log_id(&self, index: u64) -> Option<LogId<CLID>> {
         self.ref_log_id(index).to_log_id()
     }
 
@@ -44,40 +43,40 @@ where C: RaftTypeConfig
     /// It will return `last_purged_log_id` if index is at the last purged index.
     /// If the log at the specified index is smaller than `last_purged_log_id`, or greater than
     /// `last_log_id`, it returns None.
-    fn ref_log_id(&self, index: u64) -> Option<RefLogIdOf<'_, C>>;
+    fn ref_log_id(&self, index: u64) -> Option<RefLogId<'_, CLID>>;
 
     /// The last known log id in the store.
     ///
     /// The range of all stored log ids are `(last_purged_log_id(), last_log_id()]`, left open right
     /// close.
-    fn last_log_id(&self) -> Option<&LogIdOf<C>>;
+    fn last_log_id(&self) -> Option<&LogId<CLID>>;
 
     /// The last known committed log id, i.e., the id of the log that is accepted by a quorum of
     /// voters.
-    fn committed(&self) -> Option<&LogIdOf<C>>;
+    fn committed(&self) -> Option<&LogId<CLID>>;
 
     /// The last known applied log id, i.e., the id of the log that is applied to state machine.
     ///
     /// This is actually happened io-state which might fall behind committed log id.
-    fn io_applied(&self) -> Option<&LogIdOf<C>>;
+    fn io_applied(&self) -> Option<&LogId<CLID>>;
 
     /// The last log id in the last persisted snapshot.
     ///
     /// This is actually happened io-state which might fall behind `Self::snapshot_last_log_id()`.
-    fn io_snapshot_last_log_id(&self) -> Option<&LogIdOf<C>>;
+    fn io_snapshot_last_log_id(&self) -> Option<&LogId<CLID>>;
 
     /// The last known purged log id, inclusive.
     ///
     /// This is actually purged log id from storage.
-    fn io_purged(&self) -> Option<&LogIdOf<C>>;
+    fn io_purged(&self) -> Option<&LogId<CLID>>;
 
     /// Return the last log id the snapshot includes.
-    fn snapshot_last_log_id(&self) -> Option<&LogIdOf<C>>;
+    fn snapshot_last_log_id(&self) -> Option<&LogId<CLID>>;
 
     /// Return the log id it wants to purge up to.
     ///
     /// Logs may not be able to be purged at once because they are in use by replication tasks.
-    fn purge_upto(&self) -> Option<&LogIdOf<C>>;
+    fn purge_upto(&self) -> Option<&LogId<CLID>>;
 
     /// The greatest log id that has been purged after being applied to state machine, i.e., the
     /// oldest known log id.
@@ -86,5 +85,5 @@ where C: RaftTypeConfig
     /// left open and right close.
     ///
     /// `last_purged_log_id == last_log_id` means there is no log entry in the storage.
-    fn last_purged_log_id(&self) -> Option<&LogIdOf<C>>;
+    fn last_purged_log_id(&self) -> Option<&LogId<CLID>>;
 }

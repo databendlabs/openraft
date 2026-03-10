@@ -14,20 +14,20 @@ use crate::errors::InProgress;
 use crate::errors::LearnerNotFound;
 
 /// Create an Arc<EffectiveMembership>
-fn effmem(term: u64, index: u64, m: Membership<UTConfig>) -> Arc<EffectiveMembership<UTConfig>> {
+fn effmem(term: u64, index: u64, m: Membership<u64, ()>) -> Arc<EffectiveMembership<UTConfig>> {
     let lid = Some(log_id(term, 1, index));
     Arc::new(EffectiveMembership::new(lid, m))
 }
 
-fn m1() -> Membership<UTConfig> {
+fn m1() -> Membership<u64, ()> {
     Membership::new_with_defaults(vec![btreeset! {1}], [])
 }
 
-fn m12() -> Membership<UTConfig> {
+fn m12() -> Membership<u64, ()> {
     Membership::new_with_defaults(vec![btreeset! {1,2}], [])
 }
 
-fn m123_345() -> Membership<UTConfig> {
+fn m123_345() -> Membership<u64, ()> {
     Membership::new_with_defaults(vec![btreeset! {1,2,3}, btreeset! {3,4,5}], [])
 }
 

@@ -25,6 +25,7 @@ use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
 use crate::storage::log_reader_ext::RaftLogReaderExt;
 use crate::type_config::TypeConfigExt;
+use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::type_config::alias::LeaderIdOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::TermOf;
@@ -409,7 +410,7 @@ where
         &mut self,
         purged: Option<LogIdOf<C>>,
         last: Option<LogIdOf<C>>,
-    ) -> Result<LogIdList<C>, StorageError<C>> {
+    ) -> Result<LogIdList<CommittedLeaderIdOf<C>>, StorageError<C>> {
         let mut log_reader = self.log_store.get_log_reader().await;
 
         let last = match last {

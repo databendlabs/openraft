@@ -1,5 +1,6 @@
 use std::ops::RangeInclusive;
 
+use crate::LogId;
 use crate::RaftLogReader;
 use crate::RaftTypeConfig;
 use crate::StorageError;
@@ -9,9 +10,7 @@ use crate::log_id::raft_log_id::RaftLogId;
 use crate::log_id::raft_log_id_ext::RaftLogIdExt;
 use crate::log_id::ref_log_id::RefLogId;
 use crate::storage::RaftLogReaderExt;
-use crate::type_config::alias::CommittedLeaderIdOf;
-use crate::type_config::alias::LogIdOf;
-use crate::type_config::alias::RefLogIdOf;
+use crate::vote::leader_id::raft_committed_leader_id::RaftCommittedLeaderId;
 
 /// Efficient storage for log ids.
 ///
@@ -21,20 +20,31 @@ use crate::type_config::alias::RefLogIdOf;
 /// For example, given logs from Leader1: 1-3, Leader2: 4-6, Leader3: 7-8, purged at 0:
 /// - `purged` = Some(log_id(0))
 /// - `key_log_ids` = [log_id(1,3), log_id(2,6), log_id(3,8)]
-#[derive(Default, Debug, Clone)]
+#[derive(Debug, Clone)]
 #[derive(PartialEq, Eq)]
-pub struct LogIdList<C>
-where C: RaftTypeConfig
+pub struct LogIdList<CLID>
+where CLID: RaftCommittedLeaderId
 {
     /// The last purged log id, if any logs have been purged.
-    purged: Option<LogIdOf<C>>,
+    purged: Option<LogId<CLID>>,
 
     /// The last log id of each leader. Each leader has exactly one entry.
-    key_log_ids: Vec<LogIdOf<C>>,
+    key_log_ids: Vec<LogId<CLID>>,
 }
 
-impl<C> LogIdList<C>
-where C: RaftTypeConfig
+impl<CLID> Default for LogIdList<CLID>
+where CLID: RaftCommittedLeaderId
+{
+    fn default() -> Self {
+        Self {
+            purged: None,
+            key_log_ids: Vec::new(),
+        }
+    }
+}
+
+impl<CLID> LogIdList<CLID>
+where CLID: RaftCommittedLeaderId
 {
     /// Helper function to push a log entry, replacing last entry if same leader.
     ///
@@ -43,7 +53,7 @@ where C: RaftTypeConfig
     ///
     /// The binary search guarantees logs are processed in non-decreasing index order,
     /// so we can simply replace when we see the same leader again.
-    fn push_key_log_id(res: &mut Vec<LogIdOf<C>>, log_id: LogIdOf<C>) {
+    fn push_key_log_id(res: &mut Vec<LogId<CLID>>, log_id: LogId<CLID>) {
         if let Some(last_ent) = res.last_mut()
             && last_ent.committed_leader_id() == log_id.committed_leader_id()
         {
@@ -87,17 +97,18 @@ where C: RaftTypeConfig
     /// 2. Search the right half `(mid, last)` to find where leader C actually ends
     ///
     /// This ensures we find the true last log of each leader, not just intermediate positions.
-    pub(crate) async fn get_key_log_ids<LR>(
-        range: RangeInclusive<LogIdOf<C>>,
+    pub(crate) async fn get_key_log_ids<C, LR>(
+        range: RangeInclusive<LogId<CLID>>,
         sto: &mut LR,
-    ) -> Result<Vec<LogIdOf<C>>, StorageError<C>>
+    ) -> Result<Vec<LogId<CLID>>, StorageError<C>>
     where
+        C: RaftTypeConfig<LeaderId: crate::vote::RaftLeaderId<Committed = CLID>>,
         LR: RaftLogReader<C> + ?Sized,
     {
         let first = range.start().clone();
         let last = range.end().clone();
 
-        let mut res: Vec<LogIdOf<C>> = vec![];
+        let mut res: Vec<LogId<CLID>> = vec![];
 
         // Recursion stack
         let mut stack = vec![(first, last)];
@@ -141,18 +152,14 @@ where C: RaftTypeConfig
 
         Ok(res)
     }
-}
 
-impl<C> LogIdList<C>
-where C: RaftTypeConfig
-{
     /// Create a new `LogIdList`.
     ///
     /// It stores the last purged log id and the last log id of each leader.
     ///
     /// - `purged`: The last purged log id, if any logs have been purged.
     /// - `key_log_ids`: The last log id of each leader. Each leader has exactly one entry.
-    pub fn new(purged: Option<LogIdOf<C>>, key_log_ids: impl IntoIterator<Item = LogIdOf<C>>) -> Self {
+    pub fn new(purged: Option<LogId<CLID>>, key_log_ids: impl IntoIterator<Item = LogId<CLID>>) -> Self {
         Self {
             purged,
             key_log_ids: key_log_ids.into_iter().collect(),
@@ -160,7 +167,7 @@ where C: RaftTypeConfig
     }
 
     /// Get the last purged log id, if any.
-    pub(crate) fn purged(&self) -> Option<&LogIdOf<C>> {
+    pub(crate) fn purged(&self) -> Option<&LogId<CLID>> {
         self.purged.as_ref()
     }
 
@@ -174,7 +181,7 @@ where C: RaftTypeConfig
     /// The log ids in the input have to be continuous.
     pub(crate) fn extend_from_same_leader<LID, I>(&mut self, new_ids: I)
     where
-        LID: RaftLogId<CommittedLeaderId = CommittedLeaderIdOf<C>>,
+        LID: RaftLogId<CommittedLeaderId = CLID>,
         I: IntoIterator<Item = LID>,
         <I as IntoIterator>::IntoIter: DoubleEndedIterator,
     {
@@ -195,7 +202,7 @@ where C: RaftTypeConfig
     /// Extends with a list of `log_id`.
     pub(crate) fn extend<LID, I>(&mut self, new_ids: I)
     where
-        LID: RaftLogId<CommittedLeaderId = CommittedLeaderIdOf<C>>,
+        LID: RaftLogId<CommittedLeaderId = CLID>,
         I: IntoIterator<Item = LID>,
     {
         for log_id in new_ids {
@@ -208,7 +215,7 @@ where C: RaftTypeConfig
     /// With last-per-leader storage:
     /// - If same leader as the last entry, replace the last entry
     /// - If different leader, push a new entry
-    pub(crate) fn append(&mut self, new_log_id: LogIdOf<C>) {
+    pub(crate) fn append(&mut self, new_log_id: LogId<CLID>) {
         #[cfg(debug_assertions)]
         if let Some(last) = self.last() {
             debug_assert!(new_log_id > *last, "new_log_id: {}, last: {}", new_log_id, last);
@@ -256,7 +263,7 @@ where C: RaftTypeConfig
         if at > end_after_truncate {
             let truncated_leader = self.key_log_ids[i].committed_leader_id().clone();
             self.key_log_ids.truncate(i);
-            self.key_log_ids.push(LogIdOf::<C>::new(truncated_leader, at - 1));
+            self.key_log_ids.push(LogId::<CLID>::new(truncated_leader, at - 1));
         } else {
             // Truncation is before or at entry i's start, remove it entirely
             self.key_log_ids.truncate(i);
@@ -268,7 +275,7 @@ where C: RaftTypeConfig
     /// With last-per-leader storage:
     /// - Set the `purged` field to `upto`
     /// - Remove entries whose last index <= upto.index
-    pub(crate) fn purge(&mut self, upto: &LogIdOf<C>) {
+    pub(crate) fn purge(&mut self, upto: &LogId<CLID>) {
         let upto_index = upto.index();
 
         // When installing snapshot it may need to purge across the `last_log_id`.
@@ -303,7 +310,7 @@ where C: RaftTypeConfig
 
     // This method is only used in tests
     #[allow(dead_code)]
-    pub(crate) fn get(&self, index: u64) -> Option<LogIdOf<C>> {
+    pub(crate) fn get(&self, index: u64) -> Option<LogId<CLID>> {
         self.ref_at(index).map(|r| r.into_log_id())
     }
 
@@ -315,7 +322,7 @@ where C: RaftTypeConfig
     ///
     /// Returns the `purged` log id if the index equals the purged index.
     #[allow(clippy::clone_on_copy)]
-    pub(crate) fn ref_at(&self, index: u64) -> Option<RefLogIdOf<'_, C>> {
+    pub(crate) fn ref_at(&self, index: u64) -> Option<RefLogId<'_, CLID>> {
         // Handle purged range
         // index < next_index() implies purged is Some (otherwise next_index() returns 0)
         if index < self.first_index() {
@@ -360,28 +367,28 @@ where C: RaftTypeConfig
     ///
     /// The first log index is `purged.index + 1` (or 0 if nothing purged).
     /// The leader comes from the first entry in `key_log_ids`.
-    pub(crate) fn first(&self) -> Option<RefLogIdOf<'_, C>> {
+    pub(crate) fn first(&self) -> Option<RefLogId<'_, CLID>> {
         let first_key = self.key_log_ids.first()?;
         let first_index = self.first_index();
         Some(RefLogId::new(first_key.committed_leader_id(), first_index))
     }
 
-    pub(crate) fn last(&self) -> Option<&LogIdOf<C>> {
+    pub(crate) fn last(&self) -> Option<&LogId<CLID>> {
         self.key_log_ids.last().or(self.purged.as_ref())
     }
 
-    pub(crate) fn last_ref(&self) -> Option<RefLogIdOf<'_, C>> {
+    pub(crate) fn last_ref(&self) -> Option<RefLogId<'_, CLID>> {
         self.last().map(|x| x.to_ref())
     }
 
     #[allow(dead_code)]
-    pub(crate) fn last_committed_leader_id(&self) -> Option<&CommittedLeaderIdOf<C>> {
+    pub(crate) fn last_committed_leader_id(&self) -> Option<&CLID> {
         self.last().map(|x| x.committed_leader_id())
     }
 
     // This method will only be used under feature tokio-rt
     #[cfg_attr(not(feature = "tokio-rt"), allow(dead_code))]
-    pub(crate) fn key_log_ids(&self) -> &[LogIdOf<C>] {
+    pub(crate) fn key_log_ids(&self) -> &[LogId<CLID>] {
         &self.key_log_ids
     }
 
@@ -395,7 +402,7 @@ where C: RaftTypeConfig
     ///
     /// Note that the 0-th log does not belong to any leader (but a membership log to initialize a
     /// cluster), but this method does not differentiate between them.
-    pub(crate) fn by_last_leader(&self) -> Option<LeaderLogIds<C>> {
+    pub(crate) fn by_last_leader(&self) -> Option<LeaderLogIds<CLID>> {
         let last = self.last()?;
         let l = self.key_log_ids.len();
 

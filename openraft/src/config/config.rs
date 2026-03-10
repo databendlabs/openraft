@@ -11,11 +11,11 @@ use openraft_macros::since;
 use rand::Rng;
 
 use crate::AsyncRuntime;
+use crate::LogId;
 use crate::LogIdOptionExt;
-use crate::RaftTypeConfig;
 use crate::config::error::ConfigError;
 use crate::raft_state::LogStateReader;
-use crate::type_config::alias::LogIdOf;
+use crate::vote::leader_id::raft_committed_leader_id::RaftCommittedLeaderId;
 
 /// Log compaction and snapshot policy.
 ///
@@ -39,13 +39,13 @@ pub enum SnapshotPolicy {
 }
 
 impl SnapshotPolicy {
-    pub(crate) fn should_snapshot<C>(
+    pub(crate) fn should_snapshot<CLID>(
         &self,
-        state: &impl Deref<Target = impl LogStateReader<C>>,
-        last_tried_at: Option<&LogIdOf<C>>,
-    ) -> Option<LogIdOf<C>>
+        state: &impl Deref<Target = impl LogStateReader<CLID>>,
+        last_tried_at: Option<&LogId<CLID>>,
+    ) -> Option<LogId<CLID>>
     where
-        C: RaftTypeConfig,
+        CLID: RaftCommittedLeaderId,
     {
         match self {
             SnapshotPolicy::LogsSinceLast(threshold) => {

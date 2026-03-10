@@ -3,7 +3,7 @@
 /// A marker trait used to prevent specific already auto-implemented trait methods from being
 /// re-implemented outside their defining crate.
 ///
-/// This is achieved by adding this non-referencable marker trait to a trait method signature.
+/// This is achieved by adding this non-referenceable marker trait to a trait method signature.
 ///
 /// # Example
 ///

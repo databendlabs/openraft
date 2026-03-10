@@ -764,7 +764,7 @@ where C: RaftTypeConfig
         membership.membership().learner_ids().collect::<Vec<_>>().into_iter()
     }
 
-    /// Create a new [`ProtocolApi`] to handle Raft protocal RPCs received by this Raft node.
+    /// Create a new [`ProtocolApi`] to handle Raft protocol RPCs received by this Raft node.
     ///
     /// [`ProtocolApi`] provides the following protocol APIs:
     /// - [`ProtocolApi::append_entries`]

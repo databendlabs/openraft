@@ -22,7 +22,7 @@ fn log_id(term: u64, node_id: NodeIdOf<UTConfig<u64>>, index: u64) -> LogIdOf<UT
     LogIdOf::<UTConfig<u64>>::new(LeaderIdOf::<UTConfig<u64>>::new_committed(term, node_id), index)
 }
 
-fn m12() -> Membership<UTConfig<u64>> {
+fn m12() -> Membership<u64, u64> {
     Membership::new_with_defaults(vec![btreeset! {1,2}], [])
 }
 
@@ -60,7 +60,7 @@ fn test_forward_to_leader_not_a_member() {
 
 #[test]
 fn test_forward_to_leader_has_leader() {
-    let m123 = || Membership::<UTConfig<u64>>::new(vec![btreeset! {1,2}], btreemap! {1=>4,2=>5,3=>6}).unwrap();
+    let m123 = || Membership::<u64, u64>::new(vec![btreeset! {1,2}], btreemap! {1=>4,2=>5,3=>6}).unwrap();
 
     let rs = RaftState::<UTConfig<u64>> {
         vote: Leased::new(

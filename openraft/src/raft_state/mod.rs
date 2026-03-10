@@ -66,7 +66,7 @@ where C: RaftTypeConfig
     pub(crate) vote: Leased<VoteOf<C>, InstantOf<C>>,
 
     /// All log ids this node has.
-    pub log_ids: LogIdList<C>,
+    pub log_ids: LogIdList<CommittedLeaderIdOf<C>>,
 
     /// The latest cluster membership configuration found, in log or in state machine.
     pub membership_state: MembershipState<C>,
@@ -116,7 +116,7 @@ where
     }
 }
 
-impl<C> LogStateReader<C> for RaftState<C>
+impl<C> LogStateReader<CommittedLeaderIdOf<C>> for RaftState<C>
 where C: RaftTypeConfig
 {
     fn ref_log_id(&self, index: u64) -> Option<RefLogIdOf<'_, C>> {
@@ -384,7 +384,7 @@ where C: RaftTypeConfig
     /// Find the first entry in the input that does not exist on local raft-log,
     /// by comparing the log id.
     pub(crate) fn first_conflicting_index<Ent>(&self, entries: &[Ent]) -> usize
-    where Ent: RaftEntry<C> {
+    where Ent: RaftEntry<CommittedLeaderId = CommittedLeaderIdOf<C>> {
         let l = entries.len();
 
         for (i, ent) in entries.iter().enumerate() {
