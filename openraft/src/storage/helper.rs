@@ -6,7 +6,6 @@ use openraft_macros::since;
 use validit::Valid;
 
 use crate::LogIdOptionExt;
-use crate::MembershipState;
 use crate::RaftLogReader;
 use crate::RaftSnapshotBuilder;
 use crate::RaftState;
@@ -27,6 +26,7 @@ use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::type_config::alias::EffectiveMembershipOf;
 use crate::type_config::alias::LeaderIdOf;
 use crate::type_config::alias::LogIdOf;
+use crate::type_config::alias::MembershipStateOf;
 use crate::type_config::alias::StoredMembershipOf;
 use crate::type_config::alias::TermOf;
 use crate::type_config::alias::VoteOf;
@@ -327,7 +327,7 @@ where
     /// a follower only needs to revert at most one membership log.
     ///
     /// Thus, a raft node will only need to store at most two recent membership logs.
-    pub async fn get_membership(&mut self) -> Result<MembershipState<C>, StorageError<C>> {
+    pub async fn get_membership(&mut self) -> Result<MembershipStateOf<C>, StorageError<C>> {
         let (last_applied, sm_mem) = self.state_machine.applied_state().await.sto_read_sm()?;
 
         let log_mem = self.last_membership_in_log(last_applied.next_index()).await?;
@@ -340,7 +340,7 @@ where
 
         // There 2 membership configs in logs.
         if log_mem.len() == 2 {
-            return Ok(MembershipState::new(
+            return Ok(MembershipStateOf::<C>::new(
                 Arc::new(EffectiveMembershipOf::<C>::new_from_stored_membership(
                     log_mem[0].clone(),
                 )),
@@ -356,7 +356,7 @@ where
             EffectiveMembershipOf::<C>::new_from_stored_membership(log_mem[0].clone())
         };
 
-        let res = MembershipState::new(
+        let res = MembershipStateOf::<C>::new(
             Arc::new(EffectiveMembershipOf::<C>::new_from_stored_membership(sm_mem)),
             Arc::new(effective),
         );

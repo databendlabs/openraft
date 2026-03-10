@@ -3,10 +3,10 @@ use std::sync::Arc;
 use maplit::btreeset;
 
 use crate::Membership;
-use crate::MembershipState;
 use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;
 use crate::type_config::alias::EffectiveMembershipOf;
+use crate::type_config::alias::MembershipStateOf;
 
 /// Create an Arc<EffectiveMembership>
 fn effmem(term: u64, index: u64, m: Membership<u64, ()>) -> Arc<EffectiveMembershipOf<UTConfig>> {
@@ -28,7 +28,7 @@ fn m123_345() -> Membership<u64, ()> {
 
 #[test]
 fn test_membership_state_is_member() -> anyhow::Result<()> {
-    let x = MembershipState::<UTConfig>::new(effmem(1, 1, m1()), effmem(3, 4, m123_345()));
+    let x = MembershipStateOf::<UTConfig>::new(effmem(1, 1, m1()), effmem(3, 4, m123_345()));
 
     assert!(!x.is_voter(&0));
     assert!(x.is_voter(&1));
@@ -44,7 +44,7 @@ fn test_membership_state_is_member() -> anyhow::Result<()> {
 #[test]
 fn test_membership_state_update_committed() -> anyhow::Result<()> {
     let new = || {
-        MembershipState::<UTConfig>::new(
+        MembershipStateOf::<UTConfig>::new(
             Arc::new(EffectiveMembershipOf::<UTConfig>::new(Some(log_id(2, 1, 2)), m1())),
             Arc::new(EffectiveMembershipOf::<UTConfig>::new(
                 Some(log_id(3, 1, 4)),
@@ -109,7 +109,7 @@ fn test_membership_state_update_committed() -> anyhow::Result<()> {
 
 #[test]
 fn test_membership_state_append() -> anyhow::Result<()> {
-    let new = || MembershipState::<UTConfig>::new(effmem(2, 2, m1()), effmem(3, 4, m123_345()));
+    let new = || MembershipStateOf::<UTConfig>::new(effmem(2, 2, m1()), effmem(3, 4, m123_345()));
 
     let mut ms = new();
     ms.append(effmem(4, 5, m12()));
@@ -123,7 +123,7 @@ fn test_membership_state_append() -> anyhow::Result<()> {
 
 #[test]
 fn test_membership_state_commit() -> anyhow::Result<()> {
-    let new = || MembershipState::<UTConfig>::new(effmem(2, 2, m1()), effmem(3, 4, m123_345()));
+    let new = || MembershipStateOf::<UTConfig>::new(effmem(2, 2, m1()), effmem(3, 4, m123_345()));
 
     // Less than committed
     {
@@ -162,7 +162,7 @@ fn test_membership_state_commit() -> anyhow::Result<()> {
 
 #[test]
 fn test_membership_state_truncate() -> anyhow::Result<()> {
-    let new = || MembershipState::<UTConfig>::new(effmem(2, 2, m1()), effmem(3, 4, m123_345()));
+    let new = || MembershipStateOf::<UTConfig>::new(effmem(2, 2, m1()), effmem(3, 4, m123_345()));
 
     {
         let mut ms = new();

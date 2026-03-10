@@ -1,11 +1,11 @@
 use openraft_macros::since;
 
-use crate::RaftTypeConfig;
 use crate::errors::ChangeMembershipError;
 use crate::errors::EmptyMembership;
 use crate::errors::LearnerNotFound;
 use crate::errors::NodeNotFound;
 use crate::node::NodeId;
+use crate::vote::RaftCommittedLeaderId;
 
 /// Errors occur when building a [`Membership`].
 ///
@@ -25,10 +25,12 @@ where NID: NodeId
     NodeNotFound(#[from] NodeNotFound<NID>),
 }
 
-impl<C> From<MembershipError<C::NodeId>> for ChangeMembershipError<C>
-where C: RaftTypeConfig
+impl<CLID, NID> From<MembershipError<NID>> for ChangeMembershipError<CLID, NID>
+where
+    CLID: RaftCommittedLeaderId,
+    NID: NodeId,
 {
-    fn from(me: MembershipError<C::NodeId>) -> Self {
+    fn from(me: MembershipError<NID>) -> Self {
         match me {
             MembershipError::EmptyMembership(e) => ChangeMembershipError::EmptyMembership(e),
             MembershipError::NodeNotFound(e) => {

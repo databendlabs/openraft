@@ -46,14 +46,17 @@ pub use self::replication_closed::ReplicationClosed;
 pub(crate) use self::replication_error::ReplicationError;
 pub(crate) use self::storage_io_result::StorageIOResult;
 pub use self::streaming_error::StreamingError;
+use crate::LogId;
 use crate::Membership;
 use crate::RaftTypeConfig;
 use crate::network::RPCTypes;
 use crate::node::NodeId;
 use crate::raft_types::SnapshotSegmentId;
 use crate::try_as_ref::TryAsRef;
+use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::VoteOf;
+use crate::vote::RaftCommittedLeaderId;
 
 /// For backward compatibility, use [`LinearizableReadError`] instead.
 #[deprecated(since = "0.10.0", note = "use `LinearizableReadError` instead")]
@@ -83,7 +86,7 @@ where C: RaftTypeConfig
 
     /// When writing a change-membership entry.
     #[error(transparent)]
-    ChangeMembershipError(#[from] ChangeMembershipError<C>),
+    ChangeMembershipError(#[from] ChangeMembershipError<CommittedLeaderIdOf<C>, C::NodeId>),
 }
 
 impl<C> TryAsRef<ForwardToLeader<C>> for ClientWriteError<C>
@@ -98,12 +101,20 @@ where C: RaftTypeConfig
 }
 
 /// The set of errors which may take place when requesting to propose a config change.
+#[since(
+    version = "0.10.0",
+    change = "from `ChangeMembershipError<C>` to `ChangeMembershipError<CLID, NID>`"
+)]
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub enum ChangeMembershipError<C: RaftTypeConfig> {
+pub enum ChangeMembershipError<CLID, NID>
+where
+    CLID: RaftCommittedLeaderId,
+    NID: NodeId,
+{
     /// A membership change is already in progress.
     #[error(transparent)]
-    InProgress(#[from] InProgress<C>),
+    InProgress(#[from] InProgress<CLID>),
 
     /// The proposed membership change would result in an empty membership.
     #[error(transparent)]
@@ -111,7 +122,7 @@ pub enum ChangeMembershipError<C: RaftTypeConfig> {
 
     /// A learner that should be in the cluster was not found.
     #[error(transparent)]
-    LearnerNotFound(#[from] LearnerNotFound<C::NodeId>),
+    LearnerNotFound(#[from] LearnerNotFound<NID>),
 }
 
 /// The set of errors which may take place when initializing a pristine Raft node.
@@ -389,16 +400,19 @@ pub struct QuorumNotEnough<C: RaftTypeConfig> {
 }
 
 /// Error indicating a membership change is already in progress.
+#[since(version = "0.10.0", change = "from `InProgress<C>` to `InProgress<CLID>`")]
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 #[error(
     "the cluster is already undergoing a configuration change at log {membership_log_id:?}, last committed membership log id: {committed:?}"
 )]
-pub struct InProgress<C: RaftTypeConfig> {
+pub struct InProgress<CLID>
+where CLID: RaftCommittedLeaderId
+{
     /// The log ID of the last committed membership change.
-    pub committed: Option<LogIdOf<C>>,
+    pub committed: Option<LogId<CLID>>,
     /// The log ID of the membership change currently in progress.
-    pub membership_log_id: Option<LogIdOf<C>>,
+    pub membership_log_id: Option<LogId<CLID>>,
 }
 
 /// Error indicating a learner node was not found in the cluster.
