@@ -4,7 +4,6 @@ use std::time::Duration;
 use maplit::btreeset;
 use pretty_assertions::assert_eq;
 
-use crate::EffectiveMembership;
 use crate::Membership;
 use crate::MembershipState;
 use crate::Vote;
@@ -16,6 +15,7 @@ use crate::progress::Inflight;
 use crate::progress::Progress;
 use crate::progress::inflight_id::InflightId;
 use crate::type_config::TypeConfigExt;
+use crate::type_config::alias::EffectiveMembershipOf;
 use crate::utime::Leased;
 
 fn m01() -> Membership<u64, ()> {
@@ -37,8 +37,8 @@ fn eng() -> Engine<UTConfig> {
         Vote::new_committed(2, 1),
     );
     eng.state.membership_state = MembershipState::new(
-        Arc::new(EffectiveMembership::new(Some(log_id(1, 1, 1)), m01())),
-        Arc::new(EffectiveMembership::new(Some(log_id(2, 1, 3)), m123())),
+        Arc::new(EffectiveMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m01())),
+        Arc::new(EffectiveMembershipOf::<UTConfig>::new(Some(log_id(2, 1, 3)), m123())),
     );
 
     eng

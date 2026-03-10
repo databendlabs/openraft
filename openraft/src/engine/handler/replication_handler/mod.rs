@@ -1,4 +1,3 @@
-use crate::EffectiveMembership;
 use crate::LogIdOptionExt;
 use crate::Membership;
 use crate::RaftState;
@@ -27,6 +26,7 @@ use crate::raft_state::io_state::log_io_id::LogIOId;
 use crate::replication::replicate::Replicate;
 use crate::replication::response::ReplicationResult;
 use crate::type_config::alias::CommittedVoteOf;
+use crate::type_config::alias::EffectiveMembershipOf;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::LogIdOf;
 use crate::vote::raft_vote::RaftVoteExt;
@@ -72,7 +72,9 @@ where C: RaftTypeConfig
             "Only leader is allowed to call update_effective_membership()"
         );
 
-        self.state.membership_state.append(EffectiveMembership::new_arc(Some(log_id.clone()), m.clone()));
+        self.state
+            .membership_state
+            .append(EffectiveMembershipOf::<C>::new_arc(Some(log_id.clone()), m.clone()));
 
         // TODO(9): currently only a leader has replication setup.
         //       It's better to setup replication for both leader and candidate.

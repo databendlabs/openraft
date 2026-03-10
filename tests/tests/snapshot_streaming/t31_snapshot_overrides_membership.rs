@@ -4,13 +4,13 @@ use std::time::Duration;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
-use openraft::EffectiveMembership;
 use openraft::Entry;
 use openraft::EntryPayload;
 use openraft::Membership;
 use openraft::RaftLogReader;
 use openraft::SnapshotPolicy;
 use openraft::Vote;
+use openraft::alias::EffectiveMembershipOf;
 use openraft::raft::AppendEntriesRequest;
 use openraft::storage::RaftLogStorage;
 use openraft::storage::RaftStateMachine;
@@ -92,7 +92,10 @@ async fn snapshot_overrides_membership() -> Result<()> {
             {
                 let m = StorageHelper::new(&mut sto, &mut sm).get_membership().await?;
 
-                assert_eq!(&EffectiveMembership::default(), m.committed().as_ref());
+                assert_eq!(
+                    &EffectiveMembershipOf::<openraft_memstore::TypeConfig>::default(),
+                    m.committed().as_ref()
+                );
                 assert_eq!(
                     &Membership::new_with_defaults(vec![btreeset! {2,3}], []),
                     m.effective().membership()

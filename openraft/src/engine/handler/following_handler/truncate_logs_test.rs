@@ -3,7 +3,6 @@ use std::time::Duration;
 
 use maplit::btreeset;
 
-use crate::EffectiveMembership;
 use crate::Membership;
 use crate::MembershipState;
 use crate::ServerState;
@@ -15,6 +14,7 @@ use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;
 use crate::raft_state::LogStateReader;
 use crate::type_config::TypeConfigExt;
+use crate::type_config::alias::EffectiveMembershipOf;
 use crate::utime::Leased;
 
 fn m01() -> Membership<u64, ()> {
@@ -41,8 +41,8 @@ fn eng() -> Engine<UTConfig> {
     );
     eng.state.log_ids = LogIdList::new(None, vec![log_id(2, 1, 3), log_id(4, 1, 6)]);
     eng.state.membership_state = MembershipState::new(
-        Arc::new(EffectiveMembership::new(Some(log_id(1, 1, 1)), m01())),
-        Arc::new(EffectiveMembership::new(Some(log_id(2, 1, 3)), m23())),
+        Arc::new(EffectiveMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m01())),
+        Arc::new(EffectiveMembershipOf::<UTConfig>::new(Some(log_id(2, 1, 3)), m23())),
     );
 
     eng.state.server_state = ServerState::Follower;
@@ -61,8 +61,8 @@ fn test_truncate_logs_since_3() -> anyhow::Result<()> {
     assert_eq!(&[log_id(2, 1, 2)], eng.state.log_ids.key_log_ids());
     assert_eq!(
         MembershipState::new(
-            Arc::new(EffectiveMembership::new(Some(log_id(1, 1, 1)), m01())),
-            Arc::new(EffectiveMembership::new(Some(log_id(1, 1, 1)), m01())),
+            Arc::new(EffectiveMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m01())),
+            Arc::new(EffectiveMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m01())),
         ),
         eng.state.membership_state
     );
@@ -92,8 +92,8 @@ fn test_truncate_logs_since_4() -> anyhow::Result<()> {
     assert_eq!(&[log_id(2, 1, 3)], eng.state.log_ids.key_log_ids());
     assert_eq!(
         MembershipState::new(
-            Arc::new(EffectiveMembership::new(Some(log_id(1, 1, 1)), m01())),
-            Arc::new(EffectiveMembership::new(Some(log_id(2, 1, 3)), m23())),
+            Arc::new(EffectiveMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m01())),
+            Arc::new(EffectiveMembershipOf::<UTConfig>::new(Some(log_id(2, 1, 3)), m23())),
         ),
         eng.state.membership_state
     );
@@ -179,8 +179,8 @@ fn test_truncate_logs_since_8() -> anyhow::Result<()> {
 fn test_truncate_logs_revert_effective_membership() -> anyhow::Result<()> {
     let mut eng = eng();
     eng.state.membership_state = MembershipState::new(
-        Arc::new(EffectiveMembership::new(Some(log_id(2, 1, 3)), m01())),
-        Arc::new(EffectiveMembership::new(Some(log_id(4, 1, 4)), m12())),
+        Arc::new(EffectiveMembershipOf::<UTConfig>::new(Some(log_id(2, 1, 3)), m01())),
+        Arc::new(EffectiveMembershipOf::<UTConfig>::new(Some(log_id(4, 1, 4)), m12())),
     );
     eng.state.server_state = eng.calc_server_state();
 
