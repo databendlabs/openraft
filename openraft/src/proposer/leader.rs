@@ -11,6 +11,7 @@ use crate::progress::entry::ProgressEntry;
 use crate::progress::stream_id::StreamId;
 use crate::quorum::QuorumSet;
 use crate::type_config::TypeConfigExt;
+use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::type_config::alias::CommittedVoteOf;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::LogIdOf;
@@ -93,7 +94,7 @@ where
         vote: CommittedVoteOf<C>,
         quorum_set: QS,
         learner_ids: impl IntoIterator<Item = C::NodeId>,
-        last_leader_log_ids: Option<LeaderLogIds<C>>,
+        last_leader_log_ids: Option<LeaderLogIds<CommittedLeaderIdOf<C>>>,
         id_gen: SharedIdGenerator,
     ) -> Self {
         let cl_id = vote.committed_leader_id();
@@ -177,7 +178,7 @@ where
     /// Updates `self.last_log_id` to the last allocated log ID.
     ///
     /// The caller is responsible for assigning the log IDs to entries.
-    pub(crate) fn assign_log_ids(&mut self, count: usize) -> Option<LeaderLogIds<C>> {
+    pub(crate) fn assign_log_ids(&mut self, count: usize) -> Option<LeaderLogIds<CommittedLeaderIdOf<C>>> {
         debug_assert!(self.transfer_to.is_none(), "leader is disabled to propose new log");
 
         if count == 0 {

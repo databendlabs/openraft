@@ -10,7 +10,6 @@ use crate::base::Batch;
 use crate::base::BoxOnce;
 use crate::core::raft_msg::external_command::ExternalCommand;
 use crate::display_ext::DisplayBTreeMapDebugValueExt;
-use crate::entry::EntryPayload;
 use crate::errors::Infallible;
 use crate::errors::InitializeError;
 use crate::errors::LinearizableReadError;
@@ -26,6 +25,7 @@ use crate::raft::responder::core_responder::CoreResponder;
 use crate::raft::stream_append::StreamAppendResult;
 use crate::storage::Snapshot;
 use crate::type_config::alias::CommittedLeaderIdOf;
+use crate::type_config::alias::EntryPayloadOf;
 use crate::type_config::alias::OneshotSenderOf;
 use crate::type_config::alias::SnapshotDataOf;
 use crate::type_config::alias::VoteOf;
@@ -81,7 +81,7 @@ where C: RaftTypeConfig
     },
 
     ClientWrite {
-        payloads: Batch<EntryPayload<C>>,
+        payloads: Batch<EntryPayloadOf<C>>,
         responders: Batch<Option<CoreResponder<C>>>,
         expected_leader: Option<CommittedLeaderIdOf<C>>,
     },
@@ -97,7 +97,7 @@ where C: RaftTypeConfig
     },
 
     ChangeMembership {
-        changes: ChangeMembers<C>,
+        changes: ChangeMembers<C::NodeId, C::Node>,
 
         /// If `retain` is `true`, then the voters that are not in the new
         /// config will be converted into learners, otherwise they will be removed.

@@ -3,28 +3,41 @@
 use std::fmt;
 use std::fmt::Formatter;
 
+use openraft_macros::since;
+
+use crate::AppData;
 use crate::Membership;
-use crate::RaftTypeConfig;
-use crate::entry::raft_payload::RaftPayload;
+use crate::node::Node;
+use crate::node::NodeId;
 
 /// Log entry payload variants.
+#[since(
+    version = "0.10.0",
+    change = "from `EntryPayload<C: RaftTypeConfig>` to `EntryPayload<D, NID, N>`"
+)]
 #[derive(PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub enum EntryPayload<C: RaftTypeConfig> {
+pub enum EntryPayload<D, NID, N>
+where
+    D: AppData,
+    NID: NodeId,
+    N: Node,
+{
     /// An empty payload committed by a new cluster leader.
     Blank,
 
     /// Normal application data.
-    Normal(C::D),
+    Normal(D),
 
     /// A change-membership log entry.
-    Membership(Membership<C>),
+    Membership(Membership<NID, N>),
 }
 
-impl<C> Clone for EntryPayload<C>
+impl<D, NID, N> Clone for EntryPayload<D, NID, N>
 where
-    C: RaftTypeConfig,
-    C::D: Clone,
+    D: AppData + Clone,
+    NID: NodeId,
+    N: Node,
 {
     fn clone(&self) -> Self {
         match self {
@@ -35,8 +48,11 @@ where
     }
 }
 
-impl<C> fmt::Debug for EntryPayload<C>
-where C: RaftTypeConfig
+impl<D, NID, N> fmt::Debug for EntryPayload<D, NID, N>
+where
+    D: AppData,
+    NID: NodeId,
+    N: Node,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
@@ -51,8 +67,11 @@ where C: RaftTypeConfig
     }
 }
 
-impl<C> fmt::Display for EntryPayload<C>
-where C: RaftTypeConfig
+impl<D, NID, N> fmt::Display for EntryPayload<D, NID, N>
+where
+    D: AppData,
+    NID: NodeId,
+    N: Node,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
@@ -67,8 +86,11 @@ where C: RaftTypeConfig
     }
 }
 
-impl<C> EntryPayload<C>
-where C: RaftTypeConfig
+impl<D, NID, N> EntryPayload<D, NID, N>
+where
+    D: AppData,
+    NID: NodeId,
+    N: Node,
 {
     pub fn type_str(&self) -> &'static str {
         match self {
@@ -79,10 +101,13 @@ where C: RaftTypeConfig
     }
 }
 
-impl<C> RaftPayload<C> for EntryPayload<C>
-where C: RaftTypeConfig
+impl<D, NID, N> crate::entry::raft_payload::RaftPayload<NID, N> for EntryPayload<D, NID, N>
+where
+    D: AppData,
+    NID: NodeId,
+    N: Node,
 {
-    fn get_membership(&self) -> Option<Membership<C>> {
+    fn get_membership(&self) -> Option<Membership<NID, N>> {
         if let EntryPayload::Membership(m) = self {
             Some(m.clone())
         } else {
@@ -95,18 +120,17 @@ where C: RaftTypeConfig
 mod tests {
     use std::collections::BTreeSet;
 
-    use crate::engine::testing::UTConfig;
     use crate::entry::payload::EntryPayload;
 
     #[test]
     fn test_debug() {
-        let blank = EntryPayload::<UTConfig>::Blank;
+        let blank = EntryPayload::<u64, u64, ()>::Blank;
         assert_eq!(format!("{:?}", blank), "blank");
 
-        let normal = EntryPayload::<UTConfig>::Normal(3);
+        let normal = EntryPayload::<u64, u64, ()>::Normal(3);
         assert_eq!(format!("{:?}", normal), "normal:3");
 
-        let membership = EntryPayload::<UTConfig>::Membership(crate::Membership::new_with_defaults(
+        let membership = EntryPayload::<u64, u64, ()>::Membership(crate::Membership::new_with_defaults(
             vec![BTreeSet::from([1, 2])],
             [],
         ));
@@ -118,13 +142,13 @@ mod tests {
 
     #[test]
     fn test_display() {
-        let blank = EntryPayload::<UTConfig>::Blank;
+        let blank = EntryPayload::<u64, u64, ()>::Blank;
         assert_eq!(format!("{}", blank), "blank");
 
-        let normal = EntryPayload::<UTConfig>::Normal(3);
+        let normal = EntryPayload::<u64, u64, ()>::Normal(3);
         assert_eq!(format!("{}", normal), "normal:3");
 
-        let membership = EntryPayload::<UTConfig>::Membership(crate::Membership::new_with_defaults(
+        let membership = EntryPayload::<u64, u64, ()>::Membership(crate::Membership::new_with_defaults(
             vec![BTreeSet::from([1, 2])],
             [],
         ));

@@ -5,7 +5,7 @@ use crate::vote::RaftLeaderId;
 use crate::vote::Vote;
 use crate::vote::raft_vote::RaftVote;
 
-/// Similar to [`Vote`](crate::vote::Vote) but with a reference to the `LeaderId`,
+/// Similar to [`Vote`] but with a reference to the `LeaderId`,
 /// and provide ordering and display implementation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct RefVote<'a, LID>

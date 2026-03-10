@@ -14,7 +14,7 @@ pub(crate) enum ApplyResponderInner<C: RaftTypeConfig> {
     /// Entry response with membership change.
     Membership {
         log_id: LogIdOf<C>,
-        membership: Membership<C>,
+        membership: Membership<C::NodeId, C::Node>,
         responder: CoreResponder<C>,
     },
 }

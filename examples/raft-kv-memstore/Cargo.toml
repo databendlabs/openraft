@@ -30,10 +30,8 @@ types-kv           = { path = "../types-kv" }
 
 actix-web          = { version = "4.0.0-rc.2" }
 clap               = { version = "4.1.11", features = ["derive", "env"] }
-futures            = { version = "0.3" }
 reqwest            = { version = "0.12.5", features = ["json"] }
 serde              = { version = "1.0.114", features = ["derive"] }
-serde_json         = { version = "1.0.57" }
 tracing            = { version = "0.1.29" }
 tracing-subscriber = { version = "0.3.0", features = ["env-filter"] }
 

@@ -8,12 +8,13 @@ use crate::engine::handler::replication_handler::ReplicationHandler;
 use crate::engine::leader_log_ids::LeaderLogIds;
 use crate::entry::RaftEntry;
 use crate::entry::RaftPayload;
-use crate::entry::payload::EntryPayload;
 use crate::proposer::Leader;
 use crate::proposer::LeaderQuorumSet;
 use crate::raft::message::TransferLeaderRequest;
 use crate::raft_state::IOId;
 use crate::replication::ReplicationSessionId;
+use crate::type_config::alias::CommittedLeaderIdOf;
+use crate::type_config::alias::EntryPayloadOf;
 use crate::type_config::alias::LogIdOf;
 
 #[cfg(test)]
@@ -52,8 +53,8 @@ where C: RaftTypeConfig
     ///
     /// TODO(xp): if vote indicates this node is not the leader, refuse append
     #[tracing::instrument(level = "debug", skip(self, payloads))]
-    pub(crate) fn leader_append_entries<I>(&mut self, payloads: I) -> Option<LeaderLogIds<C>>
-    where I: IntoIterator<Item = EntryPayload<C>, IntoIter: ExactSizeIterator> {
+    pub(crate) fn leader_append_entries<I>(&mut self, payloads: I) -> Option<LeaderLogIds<CommittedLeaderIdOf<C>>>
+    where I: IntoIterator<Item = EntryPayloadOf<C>, IntoIter: ExactSizeIterator> {
         let payloads = payloads.into_iter();
 
         let log_ids = self.leader.assign_log_ids(payloads.len())?;

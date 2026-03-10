@@ -13,6 +13,7 @@ use crate::RaftTypeConfig;
 use crate::base::BoxStream;
 use crate::engine::LogIdList;
 use crate::errors::LeaderChanged;
+use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::type_config::alias::EntryOf;
 use crate::type_config::alias::LeaderIdOf;
 use crate::type_config::alias::LogIdOf;
@@ -271,6 +272,8 @@ where C: RaftTypeConfig
     /// [`RaftLogStorage`]: crate::storage::RaftLogStorage
     #[since(version = "0.10.0")]
     async fn get_key_log_ids(&mut self, range: RangeInclusive<LogIdOf<C>>) -> Result<Vec<LogIdOf<C>>, io::Error> {
-        LogIdList::get_key_log_ids(range, self).await.map_err(|e| io::Error::other(e.to_string()))
+        LogIdList::<CommittedLeaderIdOf<C>>::get_key_log_ids(range, self)
+            .await
+            .map_err(|e| io::Error::other(e.to_string()))
     }
 }

@@ -16,11 +16,11 @@ use crate::type_config::TypeConfigExt;
 use crate::utime::Leased;
 use crate::vote::raft_vote::RaftVoteExt;
 
-fn m01() -> Membership<UTConfig> {
+fn m01() -> Membership<u64, ()> {
     Membership::new_with_defaults(vec![btreeset! {0,1}], [])
 }
 
-fn m23() -> Membership<UTConfig> {
+fn m23() -> Membership<u64, ()> {
     Membership::new_with_defaults(vec![btreeset! {2,3}], [])
 }
 

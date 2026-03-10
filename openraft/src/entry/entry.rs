@@ -17,7 +17,7 @@ where C: RaftTypeConfig
     pub log_id: LogIdOf<C>,
 
     /// This entry's payload.
-    pub payload: EntryPayload<C>,
+    pub payload: EntryPayload<C::D, C::NodeId, C::Node>,
 }
 
 impl<C> Clone for Entry<C>
@@ -67,18 +67,23 @@ where C: RaftTypeConfig
     }
 }
 
-impl<C> RaftPayload<C> for Entry<C>
+impl<C> RaftPayload<C::NodeId, C::Node> for Entry<C>
 where C: RaftTypeConfig
 {
-    fn get_membership(&self) -> Option<Membership<C>> {
+    fn get_membership(&self) -> Option<Membership<C::NodeId, C::Node>> {
         self.payload.get_membership()
     }
 }
 
-impl<C> RaftEntry<C> for Entry<C>
+impl<C> RaftEntry for Entry<C>
 where C: RaftTypeConfig
 {
-    fn new(log_id: LogIdOf<C>, payload: EntryPayload<C>) -> Self {
+    type CommittedLeaderId = CommittedLeaderIdOf<C>;
+    type D = C::D;
+    type NodeId = C::NodeId;
+    type Node = C::Node;
+
+    fn new(log_id: LogIdOf<C>, payload: EntryPayload<C::D, C::NodeId, C::Node>) -> Self {
         Self { log_id, payload }
     }
 
