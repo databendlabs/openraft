@@ -65,7 +65,7 @@ where C: RaftTypeConfig
     #[tracing::instrument(level = "info", skip_all)]
     pub async fn change_membership(
         &self,
-        members: impl Into<ChangeMembers<C>>,
+        members: impl Into<ChangeMembers<C::NodeId, C::Node>>,
         retain: bool,
     ) -> Result<ClientWriteResponse<C>, RaftError<C, ClientWriteError<C>>> {
         self.management_api().change_membership(members, retain).await.into_raft_result()

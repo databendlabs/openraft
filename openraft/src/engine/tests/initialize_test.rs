@@ -31,7 +31,7 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
         eng
     };
 
-    let m1 = || Membership::<UTConfig>::new_with_defaults(vec![btreeset! {1}], []);
+    let m1 = || Membership::<u64, ()>::new_with_defaults(vec![btreeset! {1}], []);
 
     tracing::info!("--- ok: init empty node 1 with membership(1,2)");
     tracing::info!("--- expect OK result, check output commands and state changes");
@@ -75,7 +75,7 @@ fn test_initialize() -> anyhow::Result<()> {
         eng
     };
 
-    let m12 = || Membership::<UTConfig>::new_with_defaults(vec![btreeset! {1,2}], []);
+    let m12 = || Membership::<u64, ()>::new_with_defaults(vec![btreeset! {1,2}], []);
 
     tracing::info!("--- ok: init empty node 1 with membership(1,2)");
     tracing::info!("--- expect OK result, check output commands and state changes");

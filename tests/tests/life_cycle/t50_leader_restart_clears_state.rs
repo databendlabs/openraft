@@ -41,7 +41,7 @@ async fn leader_restart_clears_state() -> anyhow::Result<()> {
         router.new_raft_node(1).await;
         router.new_raft_node(2).await;
 
-        tracing::info!("--- initialize node-0 wiht [0,1,2]");
+        tracing::info!("--- initialize node-0 with [0,1,2]");
         let n0 = router.get_raft_handle(&0)?;
         n0.initialize(btreemap! {0 => (), 1=>(), 2=>()}).await?;
         log_index = 1; // 0 for initialization log, 1 for leader noop log

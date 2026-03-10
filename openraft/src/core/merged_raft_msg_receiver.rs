@@ -202,6 +202,7 @@ mod tests {
     use crate::entry::EntryPayload;
     use crate::type_config::TypeConfigExt;
     use crate::type_config::alias::CommittedLeaderIdOf;
+    use crate::type_config::alias::EntryPayloadOf;
 
     type C = UTConfig<()>;
 
@@ -217,7 +218,7 @@ mod tests {
         }
     }
 
-    fn extract_payload_data(payloads: &Batch<EntryPayload<C>>) -> Vec<u64> {
+    fn extract_payload_data(payloads: &Batch<EntryPayloadOf<C>>) -> Vec<u64> {
         payloads
             .as_slice()
             .iter()

@@ -177,7 +177,7 @@ where C: RaftTypeConfig
     ///
     /// [precondition]: crate::docs::cluster_control::cluster_formation#preconditions-for-initialization
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn initialize(&mut self, membership: Membership<C>) -> Result<(), InitializeError<C>> {
+    pub(crate) fn initialize(&mut self, membership: Membership<C::NodeId, C::Node>) -> Result<(), InitializeError<C>> {
         self.check_initialize()?;
 
         self.check_members_contain_me(&membership)?;
@@ -694,7 +694,7 @@ where C: RaftTypeConfig
 
     /// When initialized, the node that accept initialize request has to be a member of the initial
     /// config.
-    fn check_members_contain_me(&self, m: &Membership<C>) -> Result<(), NotInMembers<C>> {
+    fn check_members_contain_me(&self, m: &Membership<C::NodeId, C::Node>) -> Result<(), NotInMembers<C>> {
         if !m.is_voter(&self.config.id) {
             let e = NotInMembers {
                 node_id: self.config.id.clone(),

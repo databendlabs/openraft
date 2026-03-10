@@ -56,6 +56,11 @@ where N: Node + Ord
 /// Type alias for the LeaderId used in unit tests.
 pub(crate) type UTLeaderId = crate::impls::leader_id_adv::LeaderId<u64, u64>;
 
+/// Type alias for the CommittedLeaderId used in unit tests.
+///
+/// For `leader_id_adv`, `Committed = Self`, so this is the same as `UTLeaderId`.
+pub(crate) type UtClid = UTLeaderId;
+
 /// Builds a log id, for testing purposes.
 pub(crate) fn log_id(term: u64, node_id: NodeIdOf<UTConfig>, index: u64) -> LogIdOf<UTConfig> {
     LogIdOf::<UTConfig>::new(LeaderIdOf::<UTConfig>::new_committed(term, node_id), index)

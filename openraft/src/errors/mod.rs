@@ -26,6 +26,8 @@ use std::collections::BTreeSet;
 use std::error::Error;
 use std::time::Duration;
 
+use openraft_macros::since;
+
 pub use self::allow_next_revert_error::AllowNextRevertError;
 pub use self::conflicting_log_id::ConflictingLogId;
 pub use self::error_source::BacktraceDisplay;
@@ -47,6 +49,7 @@ pub use self::streaming_error::StreamingError;
 use crate::Membership;
 use crate::RaftTypeConfig;
 use crate::network::RPCTypes;
+use crate::node::NodeId;
 use crate::raft_types::SnapshotSegmentId;
 use crate::try_as_ref::TryAsRef;
 use crate::type_config::alias::LogIdOf;
@@ -108,7 +111,7 @@ pub enum ChangeMembershipError<C: RaftTypeConfig> {
 
     /// A learner that should be in the cluster was not found.
     #[error(transparent)]
-    LearnerNotFound(#[from] LearnerNotFound<C>),
+    LearnerNotFound(#[from] LearnerNotFound<C::NodeId>),
 }
 
 /// The set of errors which may take place when initializing a pristine Raft node.
@@ -399,12 +402,15 @@ pub struct InProgress<C: RaftTypeConfig> {
 }
 
 /// Error indicating a learner node was not found in the cluster.
+#[since(version = "0.10.0", change = "removed `C: RaftTypeConfig` generic parameter")]
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 #[error("Learner {node_id} not found: add it as learner before adding it as a voter")]
-pub struct LearnerNotFound<C: RaftTypeConfig> {
+pub struct LearnerNotFound<NID>
+where NID: NodeId
+{
     /// The node ID of the learner that was not found.
-    pub node_id: C::NodeId,
+    pub node_id: NID,
 }
 
 /// Error indicating an operation is not allowed in the current state.
@@ -428,7 +434,7 @@ where C: RaftTypeConfig
     /// The node ID that is not in the membership.
     pub node_id: C::NodeId,
     /// The current cluster membership.
-    pub membership: Membership<C>,
+    pub membership: Membership<C::NodeId, C::Node>,
 }
 
 /// Error indicating an empty membership configuration was provided.

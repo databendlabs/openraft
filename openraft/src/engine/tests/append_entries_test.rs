@@ -27,16 +27,16 @@ use crate::type_config::TypeConfigExt;
 use crate::utime::Leased;
 use crate::vote::raft_vote::RaftVoteExt;
 
-fn m01() -> Membership<UTConfig> {
-    Membership::<UTConfig>::new_with_defaults(vec![btreeset! {0,1}], [])
+fn m01() -> Membership<u64, ()> {
+    Membership::<u64, ()>::new_with_defaults(vec![btreeset! {0,1}], [])
 }
 
-fn m23() -> Membership<UTConfig> {
-    Membership::<UTConfig>::new_with_defaults(vec![btreeset! {2,3}], [])
+fn m23() -> Membership<u64, ()> {
+    Membership::<u64, ()>::new_with_defaults(vec![btreeset! {2,3}], [])
 }
 
-fn m34() -> Membership<UTConfig> {
-    Membership::<UTConfig>::new_with_defaults(vec![btreeset! {3,4}], [])
+fn m34() -> Membership<u64, ()> {
+    Membership::<u64, ()>::new_with_defaults(vec![btreeset! {3,4}], [])
 }
 
 fn eng() -> Engine<UTConfig> {

@@ -1,6 +1,5 @@
-use crate::RaftTypeConfig;
-use crate::type_config::alias::CommittedLeaderIdOf;
-use crate::type_config::alias::LogIdOf;
+use crate::LogId;
+use crate::vote::leader_id::raft_committed_leader_id::RaftCommittedLeaderId;
 
 /// Iterator over log IDs in a [`LeaderLogIds`](super::leader_log_ids::LeaderLogIds) range.
 ///
@@ -8,8 +7,10 @@ use crate::type_config::alias::LogIdOf;
 /// When `start == end`, the iterator is exhausted.
 /// Implements `DoubleEndedIterator` and `ExactSizeIterator`.
 #[derive(Debug, Clone)]
-pub(crate) struct LeaderLogIdsIter<C: RaftTypeConfig> {
-    committed_leader_id: CommittedLeaderIdOf<C>,
+pub(crate) struct LeaderLogIdsIter<CLID>
+where CLID: RaftCommittedLeaderId
+{
+    committed_leader_id: CLID,
 
     /// Next index to yield from the front (inclusive).
     start: u64,
@@ -18,8 +19,10 @@ pub(crate) struct LeaderLogIdsIter<C: RaftTypeConfig> {
     end: u64,
 }
 
-impl<C: RaftTypeConfig> LeaderLogIdsIter<C> {
-    pub(crate) fn new(committed_leader_id: CommittedLeaderIdOf<C>, start: u64, end: u64) -> Self {
+impl<CLID> LeaderLogIdsIter<CLID>
+where CLID: RaftCommittedLeaderId
+{
+    pub(crate) fn new(committed_leader_id: CLID, start: u64, end: u64) -> Self {
         Self {
             committed_leader_id,
             start,
@@ -36,8 +39,10 @@ impl<C: RaftTypeConfig> LeaderLogIdsIter<C> {
     }
 }
 
-impl<C: RaftTypeConfig> Iterator for LeaderLogIdsIter<C> {
-    type Item = LogIdOf<C>;
+impl<CLID> Iterator for LeaderLogIdsIter<CLID>
+where CLID: RaftCommittedLeaderId
+{
+    type Item = LogId<CLID>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.start >= self.end {
@@ -46,7 +51,7 @@ impl<C: RaftTypeConfig> Iterator for LeaderLogIdsIter<C> {
 
         let index = self.start;
         self.start += 1;
-        Some(LogIdOf::<C>::new(self.committed_leader_id.clone(), index))
+        Some(LogId::<CLID>::new(self.committed_leader_id.clone(), index))
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -55,34 +60,35 @@ impl<C: RaftTypeConfig> Iterator for LeaderLogIdsIter<C> {
     }
 }
 
-impl<C: RaftTypeConfig> DoubleEndedIterator for LeaderLogIdsIter<C> {
+impl<CLID> DoubleEndedIterator for LeaderLogIdsIter<CLID>
+where CLID: RaftCommittedLeaderId
+{
     fn next_back(&mut self) -> Option<Self::Item> {
         if self.start >= self.end {
             return None;
         }
 
         self.end -= 1;
-        Some(LogIdOf::<C>::new(self.committed_leader_id.clone(), self.end))
+        Some(LogId::<CLID>::new(self.committed_leader_id.clone(), self.end))
     }
 }
 
-impl<C: RaftTypeConfig> ExactSizeIterator for LeaderLogIdsIter<C> {}
+impl<CLID> ExactSizeIterator for LeaderLogIdsIter<CLID> where CLID: RaftCommittedLeaderId {}
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::engine::testing::UTConfig;
+    use crate::engine::testing::UtClid;
     use crate::engine::testing::log_id;
-    use crate::type_config::alias::CommittedLeaderIdOf;
 
-    fn committed_leader_id(term: u64, node_id: u64) -> CommittedLeaderIdOf<UTConfig> {
+    fn committed_leader_id(term: u64, node_id: u64) -> UtClid {
         *log_id(term, node_id, 0).committed_leader_id()
     }
 
     #[test]
     fn test_empty_range() {
         // start == end means empty
-        let iter = LeaderLogIdsIter::<UTConfig>::new(committed_leader_id(1, 1), 5, 5);
+        let iter = LeaderLogIdsIter::<UtClid>::new(committed_leader_id(1, 1), 5, 5);
         assert_eq!(iter.len(), 0);
         let ids: Vec<_> = iter.collect();
         assert!(ids.is_empty());
@@ -91,7 +97,7 @@ mod tests {
     #[test]
     fn test_single_element() {
         // [0, 1) is a single element at index 0
-        let iter = LeaderLogIdsIter::<UTConfig>::new(committed_leader_id(1, 2), 0, 1);
+        let iter = LeaderLogIdsIter::<UtClid>::new(committed_leader_id(1, 2), 0, 1);
         assert_eq!(iter.len(), 1);
         let ids: Vec<_> = iter.collect();
         assert_eq!(ids, vec![log_id(1, 2, 0)]);
@@ -99,14 +105,14 @@ mod tests {
 
     #[test]
     fn test_forward_iteration() {
-        let iter = LeaderLogIdsIter::<UTConfig>::new(committed_leader_id(1, 2), 5, 8);
+        let iter = LeaderLogIdsIter::<UtClid>::new(committed_leader_id(1, 2), 5, 8);
         let ids: Vec<_> = iter.collect();
         assert_eq!(ids, vec![log_id(1, 2, 5), log_id(1, 2, 6), log_id(1, 2, 7)]);
     }
 
     #[test]
     fn test_backward_iteration() {
-        let mut iter = LeaderLogIdsIter::<UTConfig>::new(committed_leader_id(1, 2), 5, 8);
+        let mut iter = LeaderLogIdsIter::<UtClid>::new(committed_leader_id(1, 2), 5, 8);
 
         assert_eq!(iter.next_back(), Some(log_id(1, 2, 7)));
         assert_eq!(iter.next_back(), Some(log_id(1, 2, 6)));
@@ -116,7 +122,7 @@ mod tests {
 
     #[test]
     fn test_mixed_iteration() {
-        let mut iter = LeaderLogIdsIter::<UTConfig>::new(committed_leader_id(1, 2), 5, 8);
+        let mut iter = LeaderLogIdsIter::<UtClid>::new(committed_leader_id(1, 2), 5, 8);
 
         assert_eq!(iter.next(), Some(log_id(1, 2, 5)));
         assert_eq!(iter.next_back(), Some(log_id(1, 2, 7)));
@@ -127,14 +133,14 @@ mod tests {
 
     #[test]
     fn test_start_at_zero_forward() {
-        let iter = LeaderLogIdsIter::<UTConfig>::new(committed_leader_id(1, 2), 0, 3);
+        let iter = LeaderLogIdsIter::<UtClid>::new(committed_leader_id(1, 2), 0, 3);
         let ids: Vec<_> = iter.collect();
         assert_eq!(ids, vec![log_id(1, 2, 0), log_id(1, 2, 1), log_id(1, 2, 2)]);
     }
 
     #[test]
     fn test_start_at_zero_backward() {
-        let mut iter = LeaderLogIdsIter::<UTConfig>::new(committed_leader_id(1, 2), 0, 3);
+        let mut iter = LeaderLogIdsIter::<UtClid>::new(committed_leader_id(1, 2), 0, 3);
 
         assert_eq!(iter.next_back(), Some(log_id(1, 2, 2)));
         assert_eq!(iter.next_back(), Some(log_id(1, 2, 1)));
@@ -145,7 +151,7 @@ mod tests {
 
     #[test]
     fn test_single_element_at_zero() {
-        let mut iter = LeaderLogIdsIter::<UTConfig>::new(committed_leader_id(1, 2), 0, 1);
+        let mut iter = LeaderLogIdsIter::<UtClid>::new(committed_leader_id(1, 2), 0, 1);
 
         assert_eq!(iter.next_back(), Some(log_id(1, 2, 0)));
         assert!(iter.next_back().is_none());
@@ -154,10 +160,10 @@ mod tests {
 
     #[test]
     fn test_exact_size() {
-        let iter = LeaderLogIdsIter::<UTConfig>::new(committed_leader_id(1, 1), 10, 15);
+        let iter = LeaderLogIdsIter::<UtClid>::new(committed_leader_id(1, 1), 10, 15);
         assert_eq!(iter.len(), 5);
 
-        let mut iter = LeaderLogIdsIter::<UTConfig>::new(committed_leader_id(1, 1), 10, 15);
+        let mut iter = LeaderLogIdsIter::<UtClid>::new(committed_leader_id(1, 1), 10, 15);
         assert_eq!(iter.len(), 5);
         iter.next();
         assert_eq!(iter.len(), 4);
@@ -167,7 +173,7 @@ mod tests {
 
     #[test]
     fn test_clone() {
-        let iter1 = LeaderLogIdsIter::<UTConfig>::new(committed_leader_id(1, 1), 5, 8);
+        let iter1 = LeaderLogIdsIter::<UtClid>::new(committed_leader_id(1, 1), 5, 8);
         let iter2 = iter1.clone();
 
         let ids1: Vec<_> = iter1.collect();

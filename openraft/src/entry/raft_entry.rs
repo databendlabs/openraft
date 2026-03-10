@@ -3,25 +3,46 @@ use std::fmt::Display;
 
 use openraft_macros::since;
 
+use crate::AppData;
 use crate::EntryPayload;
 use crate::Membership;
-use crate::RaftTypeConfig;
 use crate::base::OptionalFeatures;
 use crate::base::finalized::Final;
 use crate::entry::RaftPayload;
-use crate::type_config::alias::CommittedLeaderIdOf;
-use crate::type_config::alias::LogIdOf;
+use crate::log_id::LogId;
+use crate::node::Node;
+use crate::node::NodeId;
+use crate::vote::leader_id::raft_committed_leader_id::RaftCommittedLeaderId;
 
 /// Defines operations on an entry.
-pub trait RaftEntry<C>
+#[since(
+    version = "0.10.0",
+    change = "removed `C: RaftTypeConfig` generic parameter, added associated types"
+)]
+pub trait RaftEntry
 where
-    C: RaftTypeConfig,
     Self: OptionalFeatures + Debug + Display,
-    Self: RaftPayload<C>,
+    Self: RaftPayload<Self::NodeId, Self::Node>,
 {
+    /// The committed leader ID type used in log IDs.
+    #[since(version = "0.10.0")]
+    type CommittedLeaderId: RaftCommittedLeaderId;
+
+    /// Application-specific data type stored in log entries.
+    #[since(version = "0.10.0")]
+    type D: AppData;
+
+    /// The node ID type.
+    #[since(version = "0.10.0")]
+    type NodeId: NodeId;
+
+    /// The node type.
+    #[since(version = "0.10.0")]
+    type Node: Node;
+
     /// Create a new log entry with log id and payload of application data or membership config.
     #[since(version = "0.10.0")]
-    fn new(log_id: LogIdOf<C>, payload: EntryPayload<C>) -> Self;
+    fn new(log_id: LogId<Self::CommittedLeaderId>, payload: EntryPayload<Self::D, Self::NodeId, Self::Node>) -> Self;
 
     /// Returns references to the components of this entry's log ID: the committed leader ID and
     /// index.
@@ -34,22 +55,22 @@ where
     /// rather than as a reference to `LogId`. This allows implementations to store these
     /// components directly without requiring a `LogId` field in their data structure.
     #[since(version = "0.10.0")]
-    fn log_id_parts(&self) -> (&CommittedLeaderIdOf<C>, u64);
+    fn log_id_parts(&self) -> (&Self::CommittedLeaderId, u64);
 
     /// Set the log ID of this entry.
     #[since(version = "0.10.0", change = "use owned argument log id")]
-    fn set_log_id(&mut self, new: LogIdOf<C>);
+    fn set_log_id(&mut self, new: LogId<Self::CommittedLeaderId>);
 
     /// Create a new blank log entry.
     #[since(version = "0.10.0", change = "become a default method")]
-    fn new_blank(log_id: LogIdOf<C>) -> Self
+    fn new_blank(log_id: LogId<Self::CommittedLeaderId>) -> Self
     where Self: Final + Sized {
         Self::new(log_id, EntryPayload::Blank)
     }
 
     /// Create a new normal log entry that contains application data.
     #[since(version = "0.10.0", change = "become a default method")]
-    fn new_normal(log_id: LogIdOf<C>, data: C::D) -> Self
+    fn new_normal(log_id: LogId<Self::CommittedLeaderId>, data: Self::D) -> Self
     where Self: Final + Sized {
         Self::new(log_id, EntryPayload::Normal(data))
     }
@@ -58,17 +79,17 @@ where
     ///
     /// The returned instance must return `Some()` for `Self::get_membership()`.
     #[since(version = "0.10.0", change = "become a default method")]
-    fn new_membership(log_id: LogIdOf<C>, m: Membership<C>) -> Self
+    fn new_membership(log_id: LogId<Self::CommittedLeaderId>, m: Membership<Self::NodeId, Self::Node>) -> Self
     where Self: Final + Sized {
         Self::new(log_id, EntryPayload::Membership(m))
     }
 
     /// Returns the `LogId` of this entry.
     #[since(version = "0.10.0")]
-    fn log_id(&self) -> LogIdOf<C>
+    fn log_id(&self) -> LogId<Self::CommittedLeaderId>
     where Self: Final {
         let (leader_id, index) = self.log_id_parts();
-        LogIdOf::<C>::new(leader_id.clone(), index)
+        LogId::new(leader_id.clone(), index)
     }
 
     /// Returns the index of this log entry.

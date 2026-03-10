@@ -38,21 +38,21 @@ fn committed_leader_id(term: u64, node_id: u64) -> crate::type_config::alias::Co
     *log_id(term, node_id, 0).committed_leader_id()
 }
 
-fn m01() -> Membership<UTConfig> {
-    Membership::<UTConfig>::new_with_defaults(vec![btreeset! {0,1}], [])
+fn m01() -> Membership<u64, ()> {
+    Membership::<u64, ()>::new_with_defaults(vec![btreeset! {0,1}], [])
 }
 
-fn m1() -> Membership<UTConfig> {
-    Membership::<UTConfig>::new_with_defaults(vec![btreeset! {1}], [])
+fn m1() -> Membership<u64, ()> {
+    Membership::<u64, ()>::new_with_defaults(vec![btreeset! {1}], [])
 }
 
 /// members: {1}, learners: {2}
-fn m1_2() -> Membership<UTConfig> {
-    Membership::<UTConfig>::new_with_defaults(vec![btreeset! {1}], btreeset! {2})
+fn m1_2() -> Membership<u64, ()> {
+    Membership::<u64, ()>::new_with_defaults(vec![btreeset! {1}], btreeset! {2})
 }
 
-fn m23() -> Membership<UTConfig> {
-    Membership::<UTConfig>::new_with_defaults(vec![btreeset! {2,3}], btreeset! {1,2,3})
+fn m23() -> Membership<u64, ()> {
+    Membership::<u64, ()>::new_with_defaults(vec![btreeset! {2,3}], btreeset! {1,2,3})
 }
 
 fn eng() -> Engine<UTConfig> {

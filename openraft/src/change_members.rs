@@ -7,33 +7,43 @@ use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::fmt;
 
-use crate::RaftTypeConfig;
+use openraft_macros::since;
+
 use crate::display_ext::DisplayBTreeMapDebugValueExt;
 use crate::display_ext::DisplayBTreeSetExt;
 use crate::display_ext::DisplaySlice;
+use crate::node::Node;
+use crate::node::NodeId;
 
 /// Defines various actions to change the membership, including adding or removing learners or
 /// voters.
+#[since(
+    version = "0.10.0",
+    change = "replaced `C: RaftTypeConfig` with `NID: NodeId, N: Node`"
+)]
+#[since(version = "0.8.0")]
 #[derive(Debug, Clone)]
 #[derive(PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub enum ChangeMembers<C>
-where C: RaftTypeConfig
+pub enum ChangeMembers<NID, N>
+where
+    NID: NodeId,
+    N: Node,
 {
     /// Upgrade learners to voters.
     ///
     /// The learners have to present or [`error::LearnerNotFound`](`crate::error::LearnerNotFound`)
     /// error will be returned.
-    AddVoterIds(BTreeSet<C::NodeId>),
+    AddVoterIds(BTreeSet<NID>),
 
     /// Add voters with corresponding nodes.
-    AddVoters(BTreeMap<C::NodeId, C::Node>),
+    AddVoters(BTreeMap<NID, N>),
 
     /// Remove voters, leave removed voters as learner or not.
-    RemoveVoters(BTreeSet<C::NodeId>),
+    RemoveVoters(BTreeSet<NID>),
 
     /// Replace voter ids with a new set. The node of every new voter has to already be a learner.
-    ReplaceAllVoters(BTreeSet<C::NodeId>),
+    ReplaceAllVoters(BTreeSet<NID>),
 
     /// Add nodes to membership, as learners.
     ///
@@ -42,7 +52,7 @@ where C: RaftTypeConfig
     /// Prefer using this variant instead of `SetNodes` whenever possible, as `AddNodes` ensures
     /// safety, whereas incorrect usage of `SetNodes` can result in a brain split.
     /// See: [Update-Node](`crate::docs::cluster_control::dynamic_membership#update-node`)
-    AddNodes(BTreeMap<C::NodeId, C::Node>),
+    AddNodes(BTreeMap<NID, N>),
 
     /// Add or replace nodes in membership config.
     ///
@@ -51,41 +61,44 @@ where C: RaftTypeConfig
     /// Prefer using `AddNodes` instead of `SetNodes` whenever possible, as `AddNodes` ensures
     /// safety, whereas incorrect usage of `SetNodes` can result in a brain split.
     /// See: [Update-Node](`crate::docs::cluster_control::dynamic_membership#update-node`)
-    SetNodes(BTreeMap<C::NodeId, C::Node>),
+    SetNodes(BTreeMap<NID, N>),
 
     /// Remove nodes from membership.
     ///
     /// If a node is still a voter, it returns
     /// [`error::LearnerNotFound`](`crate::error::LearnerNotFound`) error.
-    RemoveNodes(BTreeSet<C::NodeId>),
+    RemoveNodes(BTreeSet<NID>),
 
     /// Replace all nodes with a new set.
     ///
     /// Every voter has to have a corresponding node in the new
     /// set, otherwise it returns [`error::LearnerNotFound`](`crate::error::LearnerNotFound`) error.
-    ReplaceAllNodes(BTreeMap<C::NodeId, C::Node>),
+    ReplaceAllNodes(BTreeMap<NID, N>),
 
     /// Apply multiple changes to membership config.
     ///
     /// The changes are applied in the order they are given.
     /// And it still finishes in a two-step joint config change.
-    Batch(Vec<ChangeMembers<C>>),
+    Batch(Vec<ChangeMembers<NID, N>>),
 }
 
 /// Convert a series of ids to a `Replace` operation.
-impl<C, I> From<I> for ChangeMembers<C>
+impl<NID, N, I> From<I> for ChangeMembers<NID, N>
 where
-    C: RaftTypeConfig,
-    I: IntoIterator<Item = C::NodeId>,
+    NID: NodeId,
+    N: Node,
+    I: IntoIterator<Item = NID>,
 {
     fn from(r: I) -> Self {
-        let ids = r.into_iter().collect::<BTreeSet<C::NodeId>>();
+        let ids = r.into_iter().collect::<BTreeSet<NID>>();
         ChangeMembers::ReplaceAllVoters(ids)
     }
 }
 
-impl<C> fmt::Display for ChangeMembers<C>
-where C: RaftTypeConfig
+impl<NID, N> fmt::Display for ChangeMembers<NID, N>
+where
+    NID: NodeId,
+    N: Node,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

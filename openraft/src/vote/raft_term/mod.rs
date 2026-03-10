@@ -25,7 +25,7 @@ where Self: OptionalFeatures + Ord + Debug + Display + Copy + Default + 'static
     /// Convert to u64 for metrics recording.
     ///
     /// Returns `None` if the term cannot be represented as u64.
-    /// Implementors must explicitly choose whether their term type
+    /// Implementers must explicitly choose whether their term type
     /// can be converted to u64 for metrics purposes.
     fn as_u64(&self) -> Option<u64>;
 }

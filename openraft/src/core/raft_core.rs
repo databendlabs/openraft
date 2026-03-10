@@ -109,7 +109,9 @@ use crate::runtime::RaftRuntime;
 use crate::storage::IOFlushed;
 use crate::storage::RaftLogStorage;
 use crate::type_config::TypeConfigExt;
+use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::type_config::alias::CommittedVoteOf;
+use crate::type_config::alias::EntryPayloadOf;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::MpscReceiverOf;
@@ -535,7 +537,7 @@ where
     #[tracing::instrument(level = "debug", skip(self, tx))]
     pub(super) fn change_membership(
         &mut self,
-        changes: ChangeMembers<C>,
+        changes: ChangeMembers<C::NodeId, C::Node>,
         retain: bool,
         tx: ProgressResponder<C, ClientWriteResult<C>>,
     ) {
@@ -585,9 +587,9 @@ where
     /// application-defined entries like user data, the latter is for membership configuration
     /// changes.
     #[tracing::instrument(level = "debug", skip_all, fields(id = display(&self.id)))]
-    pub fn write_entries<I, R>(&mut self, payloads: I, responders: R) -> Option<LeaderLogIds<C>>
+    pub fn write_entries<I, R>(&mut self, payloads: I, responders: R) -> Option<LeaderLogIds<CommittedLeaderIdOf<C>>>
     where
-        I: IntoIterator<Item = EntryPayload<C>>,
+        I: IntoIterator<Item = EntryPayloadOf<C>>,
         I::IntoIter: ExactSizeIterator,
         R: IntoIterator<Item = Option<CoreResponder<C>>>,
         R::IntoIter: ExactSizeIterator,
@@ -1000,7 +1002,7 @@ where
             remote_matched: prog.progress.matching.clone(),
         };
 
-        let join_handel = ReplicationCore::<C, NF, LS>::spawn(
+        let join_handle = ReplicationCore::<C, NF, LS>::spawn(
             replication_context,
             progress,
             network,
@@ -1009,7 +1011,7 @@ where
             tracing::span!(parent: &self.span, Level::DEBUG, "replication", id=display(&self.id), target=display(&prog.target)),
         );
 
-        replication_handle.join_handle = Some(join_handel);
+        replication_handle.join_handle = Some(join_handle);
 
         replication_handle
     }

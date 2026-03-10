@@ -25,8 +25,8 @@ use crate::type_config::alias::EntryOf;
 use crate::utime::Leased;
 use crate::vote::raft_vote::RaftVoteExt;
 
-fn m01() -> Membership<UTConfig> {
-    Membership::<UTConfig>::new_with_defaults(vec![btreeset! {0,1}], [])
+fn m01() -> Membership<u64, ()> {
+    Membership::<u64, ()>::new_with_defaults(vec![btreeset! {0,1}], [])
 }
 
 fn eng() -> Engine<UTConfig> {

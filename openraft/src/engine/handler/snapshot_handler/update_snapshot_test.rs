@@ -8,12 +8,12 @@ use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;
 use crate::storage::SnapshotMeta;
 
-fn m12() -> Membership<UTConfig> {
-    Membership::<UTConfig>::new_with_defaults(vec![btreeset! {1,2}], [])
+fn m12() -> Membership<u64, ()> {
+    Membership::<u64, ()>::new_with_defaults(vec![btreeset! {1,2}], [])
 }
 
-fn m1234() -> Membership<UTConfig> {
-    Membership::<UTConfig>::new_with_defaults(vec![btreeset! {1,2,3,4}], [])
+fn m1234() -> Membership<u64, ()> {
+    Membership::<u64, ()>::new_with_defaults(vec![btreeset! {1,2,3,4}], [])
 }
 
 fn eng() -> Engine<UTConfig> {

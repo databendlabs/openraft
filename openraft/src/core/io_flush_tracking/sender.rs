@@ -60,7 +60,7 @@ where C: RaftTypeConfig
 
             self.vote_tx.send_if_modified(move |prev| {
                 if prev.as_ref() != Some(&vote) {
-                    tracing::debug!("send_log_progress: udpate vote to :{}", vote);
+                    tracing::debug!("send_log_progress: update vote to :{}", vote);
                     *prev = Some(vote);
                     true
                 } else {
@@ -72,7 +72,7 @@ where C: RaftTypeConfig
         self.log_tx.send_if_modified(move |prev| {
             let x = Some(FlushPoint::new(vote, log_id));
             if prev.as_ref() != x.as_ref() {
-                tracing::debug!("send_log_progress: udpate log to :{}", x.display());
+                tracing::debug!("send_log_progress: update log to :{}", x.display());
                 *prev = x;
                 true
             } else {

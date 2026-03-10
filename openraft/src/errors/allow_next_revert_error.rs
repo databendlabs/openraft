@@ -8,7 +8,7 @@ use crate::errors::NodeNotFound;
 pub enum AllowNextRevertError<C: RaftTypeConfig> {
     /// The target node was not found.
     #[error("cannot set allow_next_revert; error: {0}")]
-    NodeNotFound(#[from] NodeNotFound<C>),
+    NodeNotFound(#[from] NodeNotFound<C::NodeId>),
     /// Request must be forwarded to the leader.
     #[error("cannot set allow_next_revert; error: {0}")]
     ForwardToLeader(#[from] ForwardToLeader<C>),

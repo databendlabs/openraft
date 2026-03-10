@@ -60,10 +60,10 @@ where C: RaftTypeConfig
     #[tracing::instrument(level = "info", skip_all)]
     pub(crate) async fn change_membership(
         &self,
-        members: impl Into<ChangeMembers<C>>,
+        members: impl Into<ChangeMembers<C::NodeId, C::Node>>,
         retain: bool,
     ) -> Result<ClientWriteResult<C>, Fatal<C>> {
-        let changes: ChangeMembers<C> = members.into();
+        let changes: ChangeMembers<C::NodeId, C::Node> = members.into();
 
         tracing::info!(
             "change_membership: start to commit joint config: changes: {:?}, retain: {}",

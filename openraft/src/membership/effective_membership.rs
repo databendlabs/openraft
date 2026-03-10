@@ -66,12 +66,12 @@ where C: RaftTypeConfig
     }
 }
 
-impl<C, LID> From<(&LID, Membership<C>)> for EffectiveMembership<C>
+impl<C, LID> From<(&LID, Membership<C::NodeId, C::Node>)> for EffectiveMembership<C>
 where
     C: RaftTypeConfig,
     LID: RaftLogId<CommittedLeaderId = CommittedLeaderIdOf<C>>,
 {
-    fn from(v: (&LID, Membership<C>)) -> Self {
+    fn from(v: (&LID, Membership<C::NodeId, C::Node>)) -> Self {
         EffectiveMembership::new(Some(v.0.to_log_id()), v.1)
     }
 }
@@ -79,12 +79,12 @@ where
 impl<C> EffectiveMembership<C>
 where C: RaftTypeConfig
 {
-    pub(crate) fn new_arc(log_id: Option<LogIdOf<C>>, membership: Membership<C>) -> Arc<Self> {
+    pub(crate) fn new_arc(log_id: Option<LogIdOf<C>>, membership: Membership<C::NodeId, C::Node>) -> Arc<Self> {
         Arc::new(Self::new(log_id, membership))
     }
 
     /// Create a new EffectiveMembership from a log ID and membership configuration.
-    pub fn new(log_id: Option<LogIdOf<C>>, membership: Membership<C>) -> Self {
+    pub fn new(log_id: Option<LogIdOf<C>>, membership: Membership<C::NodeId, C::Node>) -> Self {
         let voter_ids = membership.voter_ids().collect();
 
         let configs = membership.get_joint_config();
@@ -116,7 +116,7 @@ where C: RaftTypeConfig
     }
 
     /// Get the membership configuration.
-    pub fn membership(&self) -> &Membership<C> {
+    pub fn membership(&self) -> &Membership<C::NodeId, C::Node> {
         self.stored_membership.membership()
     }
 }

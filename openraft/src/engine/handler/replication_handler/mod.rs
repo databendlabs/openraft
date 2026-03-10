@@ -60,7 +60,7 @@ where C: RaftTypeConfig
     ///
     /// It is called by the leader when a new membership log is appended to the log store.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn append_membership(&mut self, log_id: &LogIdOf<C>, m: &Membership<C>) {
+    pub(crate) fn append_membership(&mut self, log_id: &LogIdOf<C>, m: &Membership<C::NodeId, C::Node>) {
         tracing::debug!("update effective membership: log_id:{} {}", log_id, m);
 
         debug_assert!(
@@ -253,7 +253,7 @@ where C: RaftTypeConfig
     /// - This flag will be consumed upon the next log reversion detection, allowing for a one-time
     ///   reset.
     /// - If the node is not found in the progress tracker, this method ignore it.
-    pub(crate) fn allow_next_revert(&mut self, target: C::NodeId, allow: bool) -> Result<(), NodeNotFound<C>> {
+    pub(crate) fn allow_next_revert(&mut self, target: C::NodeId, allow: bool) -> Result<(), NodeNotFound<C::NodeId>> {
         let Some(prog_entry) = self.leader.progress.get_mut(&target) else {
             tracing::warn!(
                 "target node {} not found in progress tracker, when {}",

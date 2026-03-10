@@ -4,6 +4,7 @@ use crate::RaftLogReader;
 use crate::engine::LogIdList;
 use crate::engine::leader_log_ids::LeaderLogIds;
 use crate::engine::testing::UTConfig;
+use crate::engine::testing::UtClid;
 use crate::engine::testing::log_id;
 use crate::entry::RaftEntry;
 use crate::log_id::raft_log_id_ext::RaftLogIdExt;
@@ -64,7 +65,7 @@ impl RaftLogReader<UTConfig> for MockLogReader {
 
 #[test]
 fn test_log_id_list_extend_from_same_leader() -> anyhow::Result<()> {
-    let mut ids = LogIdList::<UTConfig>::default();
+    let mut ids = LogIdList::<UtClid>::default();
 
     // Extend one log id to an empty LogIdList: Just store it directly
 
@@ -106,7 +107,7 @@ fn test_log_id_list_extend_from_same_leader() -> anyhow::Result<()> {
 
 #[test]
 fn test_log_id_list_extend() -> anyhow::Result<()> {
-    let mut ids = LogIdList::<UTConfig>::default();
+    let mut ids = LogIdList::<UtClid>::default();
 
     // Extend one log id to an empty LogIdList: Just store it directly
 
@@ -166,7 +167,7 @@ fn test_log_id_list_extend() -> anyhow::Result<()> {
 
 #[test]
 fn test_log_id_list_append() -> anyhow::Result<()> {
-    let mut ids = LogIdList::<UTConfig>::default();
+    let mut ids = LogIdList::<UtClid>::default();
 
     // Append log id one by one, check the internally constructed `key_log_id` as expected.
     // With last-per-leader: same leader replaces, different leader pushes.
@@ -198,7 +199,7 @@ fn test_log_id_list_truncate() -> anyhow::Result<()> {
     // - Leader 6: indices 6-8
     // - Leader 9: indices 9-11
     let make_ids = || {
-        LogIdList::<UTConfig>::new(None, vec![
+        LogIdList::<UtClid>::new(None, vec![
             log_id(2, 1, 2),  // last of leader 2
             log_id(3, 1, 5),  // last of leader 3
             log_id(6, 1, 8),  // last of leader 6
@@ -258,7 +259,7 @@ fn test_log_id_list_truncate() -> anyhow::Result<()> {
 fn test_log_id_list_purge() -> anyhow::Result<()> {
     // Purge on an empty log id list:
     {
-        let mut ids = LogIdList::<UTConfig>::new(None, vec![]);
+        let mut ids = LogIdList::<UtClid>::new(None, vec![]);
         ids.purge(&log_id(2, 1, 2));
         assert_eq!(Some(&log_id(2, 1, 2)), ids.purged());
         assert!(ids.key_log_ids().is_empty());
@@ -271,7 +272,7 @@ fn test_log_id_list_purge() -> anyhow::Result<()> {
     // - Leader 6: indices 6-8
     // - Leader 9: indices 9-11
     let make_ids = || {
-        LogIdList::<UTConfig>::new(None, vec![
+        LogIdList::<UtClid>::new(None, vec![
             log_id(2, 1, 2),  // last of leader 2
             log_id(3, 1, 5),  // last of leader 3
             log_id(6, 1, 8),  // last of leader 6
@@ -355,7 +356,7 @@ fn test_log_id_list_purge() -> anyhow::Result<()> {
 fn test_log_id_list_get_log_id() -> anyhow::Result<()> {
     // Get log id from empty list always returns `None`.
 
-    let ids = LogIdList::<UTConfig>::default();
+    let ids = LogIdList::<UtClid>::default();
 
     assert!(ids.get(0).is_none());
     assert!(ids.get(1).is_none());
@@ -368,7 +369,7 @@ fn test_log_id_list_get_log_id() -> anyhow::Result<()> {
     // - Leader 5: indices 6-7 (last at 7)
     // - Leader 7: indices 8-10 (last at 10)
 
-    let ids = LogIdList::<UTConfig>::new(None, vec![
+    let ids = LogIdList::<UtClid>::new(None, vec![
         log_id(1, 1, 2),  // last of leader 1
         log_id(3, 1, 5),  // last of leader 3
         log_id(5, 1, 7),  // last of leader 5
@@ -394,13 +395,13 @@ fn test_log_id_list_get_log_id() -> anyhow::Result<()> {
 #[test]
 fn test_log_id_list_by_last_leader() -> anyhow::Result<()> {
     // len == 0
-    let ids = LogIdList::<UTConfig>::default();
+    let ids = LogIdList::<UtClid>::default();
     assert_eq!(ids.by_last_leader(), None);
 
     // len == 1, leader's range starts at 0 (no purged)
     // Last-per-leader: [log_id(1,1,1)] means leader 1's last log is at index 1
     // First index is purged.index+1 = 0
-    let ids = LogIdList::<UTConfig>::new(None, [log_id(1, 1, 1)]);
+    let ids = LogIdList::<UtClid>::new(None, [log_id(1, 1, 1)]);
     assert_eq!(
         Some(LeaderLogIds::new(*log_id(1, 1, 0).committed_leader_id(), 0, 1)),
         ids.by_last_leader()
@@ -411,7 +412,7 @@ fn test_log_id_list_by_last_leader() -> anyhow::Result<()> {
     // - Leader 1: indices 0-1 (last at 1)
     // - Leader 3: indices 2-3 (last at 3)
     // by_last_leader returns leader 3's range: first_index = 1+1 = 2, last_index = 3
-    let ids = LogIdList::<UTConfig>::new(None, [log_id(1, 1, 1), log_id(3, 1, 3)]);
+    let ids = LogIdList::<UtClid>::new(None, [log_id(1, 1, 1), log_id(3, 1, 3)]);
     assert_eq!(
         Some(LeaderLogIds::new(*log_id(3, 1, 0).committed_leader_id(), 2, 3)),
         ids.by_last_leader()
@@ -420,7 +421,7 @@ fn test_log_id_list_by_last_leader() -> anyhow::Result<()> {
     // len == 1 with purged
     // purged at index 2, leader 1's last at index 5
     // Leader 1's range: first_index = 2+1 = 3, last_index = 5
-    let ids = LogIdList::<UTConfig>::new(Some(log_id(1, 1, 2)), [log_id(1, 1, 5)]);
+    let ids = LogIdList::<UtClid>::new(Some(log_id(1, 1, 2)), [log_id(1, 1, 5)]);
     assert_eq!(
         Some(LeaderLogIds::new(*log_id(1, 1, 0).committed_leader_id(), 3, 5)),
         ids.by_last_leader()
@@ -431,7 +432,7 @@ fn test_log_id_list_by_last_leader() -> anyhow::Result<()> {
     // - Leader 1: indices 0-2 (last at 2)
     // - Leader 7: indices 3-10 (last at 10)
     // by_last_leader returns leader 7's range: first_index = 2+1 = 3, last_index = 10
-    let ids = LogIdList::<UTConfig>::new(None, [log_id(1, 1, 2), log_id(7, 1, 10)]);
+    let ids = LogIdList::<UtClid>::new(None, [log_id(1, 1, 2), log_id(7, 1, 10)]);
     assert_eq!(
         Some(LeaderLogIds::new(*log_id(7, 1, 0).committed_leader_id(), 3, 10)),
         ids.by_last_leader()
@@ -445,27 +446,27 @@ fn test_log_id_list_last() -> anyhow::Result<()> {
     // Test last() which returns key_log_ids.last().or(purged.as_ref())
 
     // 0 elements, no purged
-    let ids = LogIdList::<UTConfig>::default();
+    let ids = LogIdList::<UtClid>::default();
     assert_eq!(None, ids.last());
 
     // 0 elements, with purged
-    let ids = LogIdList::<UTConfig>::new(Some(log_id(2, 1, 5)), vec![]);
+    let ids = LogIdList::<UtClid>::new(Some(log_id(2, 1, 5)), vec![]);
     assert_eq!(Some(&log_id(2, 1, 5)), ids.last());
 
     // 1 element, no purged
-    let ids = LogIdList::<UTConfig>::new(None, vec![log_id(1, 1, 3)]);
+    let ids = LogIdList::<UtClid>::new(None, vec![log_id(1, 1, 3)]);
     assert_eq!(Some(&log_id(1, 1, 3)), ids.last());
 
     // 1 element, with purged
-    let ids = LogIdList::<UTConfig>::new(Some(log_id(1, 1, 2)), vec![log_id(1, 1, 5)]);
+    let ids = LogIdList::<UtClid>::new(Some(log_id(1, 1, 2)), vec![log_id(1, 1, 5)]);
     assert_eq!(Some(&log_id(1, 1, 5)), ids.last());
 
     // 2 elements, no purged
-    let ids = LogIdList::<UTConfig>::new(None, vec![log_id(1, 1, 3), log_id(2, 1, 6)]);
+    let ids = LogIdList::<UtClid>::new(None, vec![log_id(1, 1, 3), log_id(2, 1, 6)]);
     assert_eq!(Some(&log_id(2, 1, 6)), ids.last());
 
     // 2 elements, with purged
-    let ids = LogIdList::<UTConfig>::new(Some(log_id(1, 1, 2)), vec![log_id(1, 1, 5), log_id(2, 1, 8)]);
+    let ids = LogIdList::<UtClid>::new(Some(log_id(1, 1, 2)), vec![log_id(1, 1, 5), log_id(2, 1, 8)]);
     assert_eq!(Some(&log_id(2, 1, 8)), ids.last());
 
     Ok(())
@@ -477,27 +478,27 @@ fn test_log_id_list_first() -> anyhow::Result<()> {
     // Leader comes from key_log_ids[0], index is purged.index + 1 (or 0)
 
     // 0 elements, no purged
-    let ids = LogIdList::<UTConfig>::default();
+    let ids = LogIdList::<UtClid>::default();
     assert_eq!(None, ids.first());
 
     // 0 elements, with purged - returns None (no key_log_ids)
-    let ids = LogIdList::<UTConfig>::new(Some(log_id(2, 1, 5)), vec![]);
+    let ids = LogIdList::<UtClid>::new(Some(log_id(2, 1, 5)), vec![]);
     assert_eq!(None, ids.first());
 
     // 1 element, no purged - first index is 0
-    let ids = LogIdList::<UTConfig>::new(None, vec![log_id(1, 1, 3)]);
+    let ids = LogIdList::<UtClid>::new(None, vec![log_id(1, 1, 3)]);
     assert_eq!(Some(log_id(1, 1, 0).to_ref()), ids.first());
 
     // 1 element, with purged - first index is purged.index + 1 = 3
-    let ids = LogIdList::<UTConfig>::new(Some(log_id(1, 1, 2)), vec![log_id(1, 1, 5)]);
+    let ids = LogIdList::<UtClid>::new(Some(log_id(1, 1, 2)), vec![log_id(1, 1, 5)]);
     assert_eq!(Some(log_id(1, 1, 3).to_ref()), ids.first());
 
     // 2 elements, no purged - first index is 0
-    let ids = LogIdList::<UTConfig>::new(None, vec![log_id(1, 1, 3), log_id(2, 1, 6)]);
+    let ids = LogIdList::<UtClid>::new(None, vec![log_id(1, 1, 3), log_id(2, 1, 6)]);
     assert_eq!(Some(log_id(1, 1, 0).to_ref()), ids.first());
 
     // 2 elements, with purged - first index is purged.index + 1 = 3
-    let ids = LogIdList::<UTConfig>::new(Some(log_id(1, 1, 2)), vec![log_id(1, 1, 5), log_id(2, 1, 8)]);
+    let ids = LogIdList::<UtClid>::new(Some(log_id(1, 1, 2)), vec![log_id(1, 1, 5), log_id(2, 1, 8)]);
     assert_eq!(Some(log_id(1, 1, 3).to_ref()), ids.first());
 
     Ok(())
@@ -509,7 +510,7 @@ fn test_log_id_list_ref_at_with_purged() -> anyhow::Result<()> {
     // Setup: purged at 5 (leader 2), key_log_ids = [log_id(2,1,8)]
     // This means: leader 2's logs span indices 6-8
 
-    let ids = LogIdList::<UTConfig>::new(Some(log_id(2, 1, 5)), vec![log_id(2, 1, 8)]);
+    let ids = LogIdList::<UtClid>::new(Some(log_id(2, 1, 5)), vec![log_id(2, 1, 8)]);
 
     // Access before purged - None
     assert_eq!(None, ids.ref_at(4));
@@ -528,7 +529,7 @@ fn test_log_id_list_ref_at_with_purged() -> anyhow::Result<()> {
     assert_eq!(None, ids.ref_at(9));
 
     // All purged, access purged index
-    let ids = LogIdList::<UTConfig>::new(Some(log_id(2, 1, 5)), vec![]);
+    let ids = LogIdList::<UtClid>::new(Some(log_id(2, 1, 5)), vec![]);
     assert_eq!(Some(log_id(2, 1, 5).to_ref()), ids.ref_at(5));
 
     // All purged, access other indices - None
@@ -544,7 +545,7 @@ fn test_log_id_list_get_with_purged() -> anyhow::Result<()> {
     // Setup: purged at 2 (leader 1), key_log_ids = [log_id(1,1,5), log_id(3,1,8)]
     // Logs: leader 1 at 3-5, leader 3 at 6-8
 
-    let ids = LogIdList::<UTConfig>::new(Some(log_id(1, 1, 2)), vec![log_id(1, 1, 5), log_id(3, 1, 8)]);
+    let ids = LogIdList::<UtClid>::new(Some(log_id(1, 1, 2)), vec![log_id(1, 1, 5), log_id(3, 1, 8)]);
 
     // Before purged - None
     assert_eq!(None, ids.get(0));
@@ -575,7 +576,7 @@ fn test_log_id_list_truncate_with_purged() -> anyhow::Result<()> {
     // Setup: purged at 2 (leader 1), key_log_ids = [log_id(1,1,5), log_id(2,1,8)]
     // Logs: purged at 2, leader 1: 3-5, leader 2: 6-8
 
-    let make_ids = || LogIdList::<UTConfig>::new(Some(log_id(1, 1, 2)), vec![log_id(1, 1, 5), log_id(2, 1, 8)]);
+    let make_ids = || LogIdList::<UtClid>::new(Some(log_id(1, 1, 2)), vec![log_id(1, 1, 5), log_id(2, 1, 8)]);
 
     // truncate(3) - keep nothing in key_log_ids (truncate from first available index)
     {
@@ -641,7 +642,7 @@ fn test_log_id_list_append_with_purged() -> anyhow::Result<()> {
     // Test append() when starting with purged set and empty key_log_ids
     // Setup: purged at 2 (leader 1), key_log_ids = []
 
-    let mut ids = LogIdList::<UTConfig>::new(Some(log_id(1, 1, 2)), vec![]);
+    let mut ids = LogIdList::<UtClid>::new(Some(log_id(1, 1, 2)), vec![]);
 
     // Append same leader as purged - should push (not compare with purged)
     ids.append(log_id(1, 1, 3));
@@ -664,7 +665,7 @@ fn test_log_id_list_append_with_purged_different_leader() -> anyhow::Result<()> 
     // Test append() when purged is Some, key_log_ids is empty, and new log has different leader
     // Setup: purged at 2 (leader 1), key_log_ids = []
 
-    let mut ids = LogIdList::<UTConfig>::new(Some(log_id(1, 1, 2)), vec![]);
+    let mut ids = LogIdList::<UtClid>::new(Some(log_id(1, 1, 2)), vec![]);
 
     // Append different leader than purged - should push
     ids.append(log_id(2, 1, 3));
@@ -680,7 +681,7 @@ fn test_log_id_list_extend_with_purged() -> anyhow::Result<()> {
 
     // Case 1: Extend with same leader as purged
     {
-        let mut ids = LogIdList::<UTConfig>::new(Some(log_id(1, 1, 2)), vec![]);
+        let mut ids = LogIdList::<UtClid>::new(Some(log_id(1, 1, 2)), vec![]);
         ids.extend([log_id(1, 1, 3), log_id(1, 1, 4)]);
         assert_eq!(Some(&log_id(1, 1, 2)), ids.purged());
         assert_eq!(vec![log_id(1, 1, 4)], ids.key_log_ids());
@@ -688,7 +689,7 @@ fn test_log_id_list_extend_with_purged() -> anyhow::Result<()> {
 
     // Case 2: Extend with different leader than purged
     {
-        let mut ids = LogIdList::<UTConfig>::new(Some(log_id(1, 1, 2)), vec![]);
+        let mut ids = LogIdList::<UtClid>::new(Some(log_id(1, 1, 2)), vec![]);
         ids.extend([log_id(2, 1, 3), log_id(2, 1, 4)]);
         assert_eq!(Some(&log_id(1, 1, 2)), ids.purged());
         assert_eq!(vec![log_id(2, 1, 4)], ids.key_log_ids());
@@ -696,7 +697,7 @@ fn test_log_id_list_extend_with_purged() -> anyhow::Result<()> {
 
     // Case 3: Extend with mixed leaders, starting with same as purged
     {
-        let mut ids = LogIdList::<UTConfig>::new(Some(log_id(1, 1, 2)), vec![]);
+        let mut ids = LogIdList::<UtClid>::new(Some(log_id(1, 1, 2)), vec![]);
         ids.extend([log_id(1, 1, 3), log_id(2, 1, 4), log_id(2, 1, 5)]);
         assert_eq!(Some(&log_id(1, 1, 2)), ids.purged());
         assert_eq!(vec![log_id(1, 1, 3), log_id(2, 1, 5)], ids.key_log_ids());
@@ -711,7 +712,7 @@ fn test_log_id_list_extend_from_same_leader_with_purged() -> anyhow::Result<()> 
 
     // Case 1: Extend with same leader as purged
     {
-        let mut ids = LogIdList::<UTConfig>::new(Some(log_id(1, 1, 2)), vec![]);
+        let mut ids = LogIdList::<UtClid>::new(Some(log_id(1, 1, 2)), vec![]);
         ids.extend_from_same_leader([log_id(1, 1, 3), log_id(1, 1, 4), log_id(1, 1, 5)]);
         assert_eq!(Some(&log_id(1, 1, 2)), ids.purged());
         assert_eq!(vec![log_id(1, 1, 5)], ids.key_log_ids());
@@ -719,7 +720,7 @@ fn test_log_id_list_extend_from_same_leader_with_purged() -> anyhow::Result<()> 
 
     // Case 2: Extend with different leader than purged
     {
-        let mut ids = LogIdList::<UTConfig>::new(Some(log_id(1, 1, 2)), vec![]);
+        let mut ids = LogIdList::<UtClid>::new(Some(log_id(1, 1, 2)), vec![]);
         ids.extend_from_same_leader([log_id(2, 1, 3), log_id(2, 1, 4), log_id(2, 1, 5)]);
         assert_eq!(Some(&log_id(1, 1, 2)), ids.purged());
         assert_eq!(vec![log_id(2, 1, 5)], ids.key_log_ids());
@@ -734,7 +735,7 @@ fn test_log_id_list_purge_edge_cases() -> anyhow::Result<()> {
 
     // 0 elements: Purge on empty with prior purge (should update purged)
     {
-        let mut ids = LogIdList::<UTConfig>::new(Some(log_id(1, 1, 2)), vec![]);
+        let mut ids = LogIdList::<UtClid>::new(Some(log_id(1, 1, 2)), vec![]);
         ids.purge(&log_id(2, 1, 5));
         assert_eq!(Some(&log_id(2, 1, 5)), ids.purged());
         assert!(ids.key_log_ids().is_empty());
@@ -743,7 +744,7 @@ fn test_log_id_list_purge_edge_cases() -> anyhow::Result<()> {
     // 1 element: Purge before the single entry's range
     // Setup: purged=None, key_log_ids=[log_id(1,1,3)] means logs at 0-3
     {
-        let mut ids = LogIdList::<UTConfig>::new(None, vec![log_id(1, 1, 3)]);
+        let mut ids = LogIdList::<UtClid>::new(None, vec![log_id(1, 1, 3)]);
         ids.purge(&log_id(1, 1, 1));
         assert_eq!(Some(&log_id(1, 1, 1)), ids.purged());
         assert_eq!(vec![log_id(1, 1, 3)], ids.key_log_ids());
@@ -751,7 +752,7 @@ fn test_log_id_list_purge_edge_cases() -> anyhow::Result<()> {
 
     // 1 element: Purge at the single entry's last index
     {
-        let mut ids = LogIdList::<UTConfig>::new(None, vec![log_id(1, 1, 3)]);
+        let mut ids = LogIdList::<UtClid>::new(None, vec![log_id(1, 1, 3)]);
         ids.purge(&log_id(1, 1, 3));
         assert_eq!(Some(&log_id(1, 1, 3)), ids.purged());
         assert!(ids.key_log_ids().is_empty());
@@ -759,7 +760,7 @@ fn test_log_id_list_purge_edge_cases() -> anyhow::Result<()> {
 
     // 1 element: Purge beyond the single entry
     {
-        let mut ids = LogIdList::<UTConfig>::new(None, vec![log_id(1, 1, 3)]);
+        let mut ids = LogIdList::<UtClid>::new(None, vec![log_id(1, 1, 3)]);
         ids.purge(&log_id(1, 1, 5));
         assert_eq!(Some(&log_id(1, 1, 5)), ids.purged());
         assert!(ids.key_log_ids().is_empty());
@@ -768,7 +769,7 @@ fn test_log_id_list_purge_edge_cases() -> anyhow::Result<()> {
     // 2 elements: Purge within first leader's range
     // [log_id(1,1,3), log_id(2,1,6)] means leader 1: 0-3, leader 2: 4-6
     {
-        let mut ids = LogIdList::<UTConfig>::new(None, vec![log_id(1, 1, 3), log_id(2, 1, 6)]);
+        let mut ids = LogIdList::<UtClid>::new(None, vec![log_id(1, 1, 3), log_id(2, 1, 6)]);
         ids.purge(&log_id(1, 1, 2));
         assert_eq!(Some(&log_id(1, 1, 2)), ids.purged());
         assert_eq!(vec![log_id(1, 1, 3), log_id(2, 1, 6)], ids.key_log_ids());
@@ -776,7 +777,7 @@ fn test_log_id_list_purge_edge_cases() -> anyhow::Result<()> {
 
     // 2 elements: Purge at boundary between leaders
     {
-        let mut ids = LogIdList::<UTConfig>::new(None, vec![log_id(1, 1, 3), log_id(2, 1, 6)]);
+        let mut ids = LogIdList::<UtClid>::new(None, vec![log_id(1, 1, 3), log_id(2, 1, 6)]);
         ids.purge(&log_id(1, 1, 3));
         assert_eq!(Some(&log_id(1, 1, 3)), ids.purged());
         assert_eq!(vec![log_id(2, 1, 6)], ids.key_log_ids());
@@ -784,7 +785,7 @@ fn test_log_id_list_purge_edge_cases() -> anyhow::Result<()> {
 
     // 2 elements: Purge within second leader's range
     {
-        let mut ids = LogIdList::<UTConfig>::new(None, vec![log_id(1, 1, 3), log_id(2, 1, 6)]);
+        let mut ids = LogIdList::<UtClid>::new(None, vec![log_id(1, 1, 3), log_id(2, 1, 6)]);
         ids.purge(&log_id(2, 1, 5));
         assert_eq!(Some(&log_id(2, 1, 5)), ids.purged());
         assert_eq!(vec![log_id(2, 1, 6)], ids.key_log_ids());
@@ -799,7 +800,7 @@ fn test_log_id_list_by_last_leader_edge_cases() -> anyhow::Result<()> {
 
     // 0 elements, with purged - should return purged info
     // purged at 5 means the last leader's range is just index 5
-    let ids = LogIdList::<UTConfig>::new(Some(log_id(1, 1, 5)), vec![]);
+    let ids = LogIdList::<UtClid>::new(Some(log_id(1, 1, 5)), vec![]);
     assert_eq!(
         Some(LeaderLogIds::new(*log_id(1, 1, 0).committed_leader_id(), 5, 5)),
         ids.by_last_leader()
@@ -807,7 +808,7 @@ fn test_log_id_list_by_last_leader_edge_cases() -> anyhow::Result<()> {
 
     // 1 element, purged same leader
     // purged at 2, leader 1's last at 5 -> range 3-5
-    let ids = LogIdList::<UTConfig>::new(Some(log_id(1, 1, 2)), vec![log_id(1, 1, 5)]);
+    let ids = LogIdList::<UtClid>::new(Some(log_id(1, 1, 2)), vec![log_id(1, 1, 5)]);
     assert_eq!(
         Some(LeaderLogIds::new(*log_id(1, 1, 0).committed_leader_id(), 3, 5)),
         ids.by_last_leader()
@@ -815,7 +816,7 @@ fn test_log_id_list_by_last_leader_edge_cases() -> anyhow::Result<()> {
 
     // 1 element, purged different leader
     // purged at 2, leader 2's last at 5 -> range 3-5
-    let ids = LogIdList::<UTConfig>::new(Some(log_id(1, 1, 2)), vec![log_id(2, 1, 5)]);
+    let ids = LogIdList::<UtClid>::new(Some(log_id(1, 1, 2)), vec![log_id(2, 1, 5)]);
     assert_eq!(
         Some(LeaderLogIds::new(*log_id(2, 1, 0).committed_leader_id(), 3, 5)),
         ids.by_last_leader()
@@ -823,7 +824,7 @@ fn test_log_id_list_by_last_leader_edge_cases() -> anyhow::Result<()> {
 
     // 2 elements, with purged
     // purged at 2, leader 1 at 3-4, leader 2 at 5-7 -> last leader range 5-7
-    let ids = LogIdList::<UTConfig>::new(Some(log_id(1, 1, 2)), vec![log_id(1, 1, 4), log_id(2, 1, 7)]);
+    let ids = LogIdList::<UtClid>::new(Some(log_id(1, 1, 2)), vec![log_id(1, 1, 4), log_id(2, 1, 7)]);
     assert_eq!(
         Some(LeaderLogIds::new(*log_id(2, 1, 0).committed_leader_id(), 5, 7)),
         ids.by_last_leader()
