@@ -433,6 +433,7 @@ mod tests {
     use crate::errors::EmptyMembership;
     use crate::errors::LearnerNotFound;
     use crate::errors::MembershipError;
+    use crate::type_config::alias::ChangeMembershipErrorOf;
 
     #[test]
     fn test_membership_ensure_voter_nodes() -> anyhow::Result<()> {
@@ -454,7 +455,7 @@ mod tests {
         // Add: no such learner
         {
             let res = m().change(ChangeMembers::AddVoterIds(btreeset! {4}), true);
-            let err: ChangeMembershipError<crate::engine::testing::UTConfig> = res.unwrap_err().into();
+            let err: ChangeMembershipErrorOf<crate::engine::testing::UTConfig> = res.unwrap_err().into();
             assert_eq!(
                 ChangeMembershipError::LearnerNotFound(LearnerNotFound { node_id: 4 }),
                 err
@@ -611,7 +612,7 @@ mod tests {
         // RemoveNodes: cannot remove node for voter
         {
             let res = m().change(ChangeMembers::RemoveNodes(btreeset! {2}), false);
-            let err: ChangeMembershipError<crate::engine::testing::UTConfig> = res.unwrap_err().into();
+            let err: ChangeMembershipErrorOf<crate::engine::testing::UTConfig> = res.unwrap_err().into();
             assert_eq!(
                 ChangeMembershipError::LearnerNotFound(LearnerNotFound { node_id: 2 }),
                 err
