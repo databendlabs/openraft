@@ -4,7 +4,6 @@ use maplit::btreeset;
 
 use crate::ChangeMembers;
 use crate::Membership;
-use crate::MembershipState;
 use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;
 use crate::errors::ChangeMembershipError;
@@ -12,6 +11,7 @@ use crate::errors::EmptyMembership;
 use crate::errors::InProgress;
 use crate::errors::LearnerNotFound;
 use crate::type_config::alias::EffectiveMembershipOf;
+use crate::type_config::alias::MembershipStateOf;
 
 /// Create an Arc<EffectiveMembership>
 fn effmem(term: u64, index: u64, m: Membership<u64, ()>) -> Arc<EffectiveMembershipOf<UTConfig>> {
@@ -33,7 +33,7 @@ fn m123_345() -> Membership<u64, ()> {
 
 #[test]
 fn test_apply_not_committed() -> anyhow::Result<()> {
-    let new = || MembershipState::<UTConfig>::new(effmem(2, 2, m1()), effmem(3, 4, m123_345()));
+    let new = || MembershipStateOf::<UTConfig>::new(effmem(2, 2, m1()), effmem(3, 4, m123_345()));
     let res = new().change_handler().apply(ChangeMembers::AddVoterIds(btreeset! {1}), false);
 
     assert_eq!(
@@ -49,7 +49,7 @@ fn test_apply_not_committed() -> anyhow::Result<()> {
 
 #[test]
 fn test_apply_empty_voters() -> anyhow::Result<()> {
-    let new = || MembershipState::<UTConfig>::new(effmem(3, 4, m1()), effmem(3, 4, m1()));
+    let new = || MembershipStateOf::<UTConfig>::new(effmem(3, 4, m1()), effmem(3, 4, m1()));
     let res = new().change_handler().apply(ChangeMembers::RemoveVoters(btreeset! {1}), false);
 
     assert_eq!(Err(ChangeMembershipError::EmptyMembership(EmptyMembership {})), res);
@@ -59,7 +59,7 @@ fn test_apply_empty_voters() -> anyhow::Result<()> {
 
 #[test]
 fn test_apply_learner_not_found() -> anyhow::Result<()> {
-    let new = || MembershipState::<UTConfig>::new(effmem(3, 4, m1()), effmem(3, 4, m1()));
+    let new = || MembershipStateOf::<UTConfig>::new(effmem(3, 4, m1()), effmem(3, 4, m1()));
     let res = new().change_handler().apply(ChangeMembers::AddVoterIds(btreeset! {2}), false);
 
     assert_eq!(
@@ -72,7 +72,7 @@ fn test_apply_learner_not_found() -> anyhow::Result<()> {
 
 #[test]
 fn test_apply_retain_learner() -> anyhow::Result<()> {
-    let new = || MembershipState::<UTConfig>::new(effmem(3, 4, m12()), effmem(3, 4, m123_345()));
+    let new = || MembershipStateOf::<UTConfig>::new(effmem(3, 4, m12()), effmem(3, 4, m123_345()));
 
     // Do not leave removed voters as learner
     let res = new().change_handler().apply(ChangeMembers::RemoveVoters(btreeset! {1,2}), false);
