@@ -243,6 +243,9 @@ pub mod alias {
     pub type SnapshotMetaOf<C> = crate::storage::SnapshotMeta<CommittedLeaderIdOf<C>, NodeIdOf<C>, NodeOf<C>>;
     pub type SnapshotOf<C> =
         crate::storage::Snapshot<CommittedLeaderIdOf<C>, NodeIdOf<C>, NodeOf<C>, SnapshotDataOf<C>>;
+    pub type MembershipStateOf<C> = crate::MembershipState<CommittedLeaderIdOf<C>, NodeIdOf<C>, NodeOf<C>>;
+    pub type ChangeMembershipErrorOf<C> = crate::errors::ChangeMembershipError<CommittedLeaderIdOf<C>, NodeIdOf<C>>;
+    pub type InProgressOf<C> = crate::errors::InProgress<CommittedLeaderIdOf<C>>;
     pub type SerdeInstantOf<C> = crate::metrics::SerdeInstant<InstantOf<C>>;
 
     // Projections from a LeaderId type (LID: RaftLeaderId)

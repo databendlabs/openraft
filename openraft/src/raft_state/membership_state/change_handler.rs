@@ -1,21 +1,29 @@
 use crate::ChangeMembers;
 use crate::Membership;
 use crate::MembershipState;
-use crate::RaftTypeConfig;
 use crate::errors::ChangeMembershipError;
 use crate::errors::InProgress;
+use crate::node::Node;
+use crate::node::NodeId;
+use crate::vote::RaftCommittedLeaderId;
 
 /// This struct handles change-membership requests, validating them and applying the changes if
 /// the necessary conditions are met. It operates at the `Engine` and `RaftState` level and
 /// serves as the outermost API for a consensus engine.
-pub(crate) struct ChangeHandler<'m, C>
-where C: RaftTypeConfig
+pub(crate) struct ChangeHandler<'m, CLID, NID, N>
+where
+    CLID: RaftCommittedLeaderId,
+    NID: NodeId,
+    N: Node,
 {
-    pub(crate) state: &'m MembershipState<C>,
+    pub(crate) state: &'m MembershipState<CLID, NID, N>,
 }
 
-impl<C> ChangeHandler<'_, C>
-where C: RaftTypeConfig
+impl<CLID, NID, N> ChangeHandler<'_, CLID, NID, N>
+where
+    CLID: RaftCommittedLeaderId,
+    NID: NodeId,
+    N: Node,
 {
     /// Builds a new membership configuration by applying changes to the current configuration.
     ///
@@ -30,9 +38,9 @@ where C: RaftTypeConfig
     /// configuration.
     pub(crate) fn apply(
         &self,
-        change: ChangeMembers<C::NodeId, C::Node>,
+        change: ChangeMembers<NID, N>,
         retain: bool,
-    ) -> Result<Membership<C::NodeId, C::Node>, ChangeMembershipError<C>> {
+    ) -> Result<Membership<NID, N>, ChangeMembershipError<CLID, NID>> {
         self.ensure_committed()?;
 
         let new_membership = self.state.effective().membership().clone().change(change, retain)?;
@@ -43,7 +51,7 @@ where C: RaftTypeConfig
     ///
     /// Returns Ok if the last membership is committed, or an InProgress error
     /// otherwise, to indicate a change-membership request should be rejected.
-    pub(crate) fn ensure_committed(&self) -> Result<(), InProgress<C>> {
+    pub(crate) fn ensure_committed(&self) -> Result<(), InProgress<CLID>> {
         let effective = self.state.effective();
         let committed = self.state.committed();
 

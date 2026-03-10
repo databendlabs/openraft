@@ -50,6 +50,7 @@ use crate::raft_state::io_state::io_progress::IOProgress;
 use crate::raft_state::io_state::log_io_id::LogIOId;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::LogIdOf;
+use crate::type_config::alias::MembershipStateOf;
 use crate::type_config::alias::TermOf;
 use crate::type_config::alias::VoteOf;
 use crate::vote::RaftLeaderId;
@@ -69,7 +70,7 @@ where C: RaftTypeConfig
     pub log_ids: LogIdList<CommittedLeaderIdOf<C>>,
 
     /// The latest cluster membership configuration found, in log or in state machine.
-    pub membership_state: MembershipState<C>,
+    pub membership_state: MembershipStateOf<C>,
 
     /// The metadata of the last snapshot.
     pub snapshot_meta: SnapshotMetaOf<C>,
