@@ -26,7 +26,7 @@ use openraft::raft::SnapshotResponse;
 use openraft::raft::TransferLeaderRequest;
 use openraft::raft::VoteRequest;
 use openraft::raft::VoteResponse;
-use openraft::storage::Snapshot;
+use openraft::type_config::alias::SnapshotOf;
 use openraft::type_config::alias::VoteOf;
 
 /// Trait for sending Raft RPCs with target and group routing.
@@ -60,7 +60,7 @@ where C: RaftTypeConfig
         target: C::NodeId,
         group_id: G,
         vote: VoteOf<C>,
-        snapshot: Snapshot<C>,
+        snapshot: SnapshotOf<C>,
         cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
         option: RPCOption,
     ) -> impl Future<Output = Result<SnapshotResponse<C>, StreamingError<C>>> + OptionalSend;
@@ -163,7 +163,7 @@ where
     async fn full_snapshot(
         &mut self,
         vote: VoteOf<C>,
-        snapshot: Snapshot<C>,
+        snapshot: SnapshotOf<C>,
         cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
         option: RPCOption,
     ) -> Result<SnapshotResponse<C>, StreamingError<C>> {

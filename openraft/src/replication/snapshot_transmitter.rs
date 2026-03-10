@@ -4,7 +4,6 @@ use futures_util::FutureExt;
 
 use crate::RaftNetworkFactory;
 use crate::RaftTypeConfig;
-use crate::Snapshot;
 use crate::StorageError;
 use crate::async_runtime::MpscSender;
 use crate::async_runtime::watch::WatchReceiver;
@@ -26,6 +25,7 @@ use crate::replication::response::ReplicationResult;
 use crate::replication::snapshot_transmitter_handle::SnapshotTransmitterHandle;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::InstantOf;
+use crate::type_config::alias::SnapshotOf;
 use crate::type_config::alias::VoteOf;
 use crate::type_config::alias::WatchSenderOf;
 use crate::vote::raft_vote::RaftVoteExt;
@@ -199,7 +199,7 @@ where
         self.send_snapshot(snapshot, option).await
     }
 
-    async fn send_snapshot(&mut self, snapshot: Snapshot<C>, option: RPCOption) -> Result<(), ReplicationError<C>> {
+    async fn send_snapshot(&mut self, snapshot: SnapshotOf<C>, option: RPCOption) -> Result<(), ReplicationError<C>> {
         let meta = snapshot.meta.clone();
 
         let mut c = self.replication_context.cancel_rx.clone();

@@ -1,8 +1,8 @@
 use crate::RaftTypeConfig;
 use crate::StorageError;
-use crate::storage::SnapshotSignature;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::LogIdOf;
+use crate::type_config::alias::SnapshotSignatureOf;
 
 /// Simplified error conversion from io::Error to StorageError
 ///
@@ -45,10 +45,10 @@ where C: RaftTypeConfig
     fn sto_read_sm(self) -> Result<T, StorageError<C>>;
 
     /// Convert io::Error to StorageError for writing a snapshot
-    fn sto_write_snapshot(self, signature: Option<SnapshotSignature<C>>) -> Result<T, StorageError<C>>;
+    fn sto_write_snapshot(self, signature: Option<SnapshotSignatureOf<C>>) -> Result<T, StorageError<C>>;
 
     /// Convert io::Error to StorageError for reading a snapshot
-    fn sto_read_snapshot(self, signature: Option<SnapshotSignature<C>>) -> Result<T, StorageError<C>>;
+    fn sto_read_snapshot(self, signature: Option<SnapshotSignatureOf<C>>) -> Result<T, StorageError<C>>;
 
     /// Convert io::Error to StorageError for general read operations
     #[allow(dead_code)]
@@ -101,11 +101,11 @@ where C: RaftTypeConfig
         self.map_err(|e| StorageError::read_state_machine(C::err_from_error(&e)))
     }
 
-    fn sto_write_snapshot(self, signature: Option<SnapshotSignature<C>>) -> Result<T, StorageError<C>> {
+    fn sto_write_snapshot(self, signature: Option<SnapshotSignatureOf<C>>) -> Result<T, StorageError<C>> {
         self.map_err(|e| StorageError::write_snapshot(signature, C::err_from_error(&e)))
     }
 
-    fn sto_read_snapshot(self, signature: Option<SnapshotSignature<C>>) -> Result<T, StorageError<C>> {
+    fn sto_read_snapshot(self, signature: Option<SnapshotSignatureOf<C>>) -> Result<T, StorageError<C>> {
         self.map_err(|e| StorageError::read_snapshot(signature, C::err_from_error(&e)))
     }
 

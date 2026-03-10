@@ -11,7 +11,7 @@ use crate::errors::ReplicationClosed;
 use crate::errors::StreamingError;
 use crate::network::RPCOption;
 use crate::raft::SnapshotResponse;
-use crate::storage::Snapshot;
+use crate::type_config::alias::SnapshotOf;
 use crate::type_config::alias::VoteOf;
 
 /// Sends full snapshots to a target node.
@@ -44,7 +44,7 @@ where C: RaftTypeConfig
     async fn full_snapshot(
         &mut self,
         vote: VoteOf<C>,
-        snapshot: Snapshot<C>,
+        snapshot: SnapshotOf<C>,
         cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
         option: RPCOption,
     ) -> Result<SnapshotResponse<C>, StreamingError<C>>;

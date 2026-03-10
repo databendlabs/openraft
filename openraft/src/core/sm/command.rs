@@ -8,10 +8,10 @@ use crate::engine::SMCommandName;
 use crate::raft::responder::core_responder::CoreResponder;
 use crate::raft_state::IOId;
 use crate::raft_state::io_state::log_io_id::LogIOId;
-use crate::storage::Snapshot;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::OneshotSenderOf;
 use crate::type_config::alias::SnapshotDataOf;
+use crate::type_config::alias::SnapshotOf;
 
 /// The payload of a state machine command.
 pub(crate) enum Command<C, SM = ()>
@@ -22,7 +22,7 @@ where C: RaftTypeConfig
 
     /// Get the latest built snapshot.
     GetSnapshot {
-        tx: OneshotSenderOf<C, Option<Snapshot<C>>>,
+        tx: OneshotSenderOf<C, Option<SnapshotOf<C>>>,
     },
 
     BeginReceivingSnapshot {
@@ -35,7 +35,7 @@ where C: RaftTypeConfig
         /// Installing a snapshot is considered as an IO of AppendEntries `[0,
         /// snapshot.last_log_id]`
         log_io_id: LogIOId<C>,
-        snapshot: Snapshot<C>,
+        snapshot: SnapshotOf<C>,
     },
 
     /// Apply the log entries to the state machine.
@@ -78,7 +78,7 @@ where C: RaftTypeConfig
         Command::BuildSnapshot
     }
 
-    pub(crate) fn get_snapshot(tx: OneshotSenderOf<C, Option<Snapshot<C>>>) -> Self {
+    pub(crate) fn get_snapshot(tx: OneshotSenderOf<C, Option<SnapshotOf<C>>>) -> Self {
         Command::GetSnapshot { tx }
     }
 
@@ -86,7 +86,7 @@ where C: RaftTypeConfig
         Command::BeginReceivingSnapshot { tx }
     }
 
-    pub(crate) fn install_full_snapshot(snapshot: Snapshot<C>, log_io_id: LogIOId<C>) -> Self {
+    pub(crate) fn install_full_snapshot(snapshot: SnapshotOf<C>, log_io_id: LogIOId<C>) -> Self {
         Command::InstallFullSnapshot { log_io_id, snapshot }
     }
 

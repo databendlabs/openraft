@@ -31,6 +31,7 @@ use openraft::RaftTypeConfig;
 use openraft::ReadPolicy;
 use openraft::ServerState;
 use openraft::Vote;
+use openraft::alias::SnapshotOf;
 use openraft::async_runtime::Mutex as AsyncMutex;
 use openraft::errors::ClientWriteError;
 use openraft::errors::Fatal;
@@ -51,7 +52,6 @@ use openraft::raft::SnapshotResponse;
 use openraft::raft::TransferLeaderRequest;
 use openraft::raft::VoteRequest;
 use openraft::raft::VoteResponse;
-use openraft::storage::Snapshot;
 use openraft::type_config::TypeConfigExt;
 use openraft::type_config::alias::MutexOf;
 use openraft::vote::RaftLeaderId;
@@ -916,7 +916,7 @@ impl RaftNetworkV2<MemConfig> for RaftRouterNetwork {
     async fn full_snapshot(
         &mut self,
         vote: Vote<<MemConfig as RaftTypeConfig>::LeaderId>,
-        snapshot: Snapshot<MemConfig>,
+        snapshot: SnapshotOf<MemConfig>,
         _cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
         _option: RPCOption,
     ) -> Result<SnapshotResponse<MemConfig>, StreamingError<MemConfig>> {

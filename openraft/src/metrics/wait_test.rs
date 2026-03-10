@@ -6,7 +6,6 @@ use maplit::btreeset;
 use crate::Membership;
 use crate::RaftMetrics;
 use crate::RaftTypeConfig;
-use crate::StoredMembership;
 use crate::Vote;
 use crate::async_runtime::WatchSender;
 use crate::core::ServerState;
@@ -17,6 +16,7 @@ use crate::metrics::Wait;
 use crate::metrics::WaitError;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::NodeIdOf;
+use crate::type_config::alias::StoredMembershipOf;
 use crate::type_config::alias::VoteOf;
 use crate::type_config::alias::WatchSenderOf;
 use crate::vote::raft_vote::RaftVoteExt;
@@ -93,7 +93,7 @@ fn test_wait() {
             let h = UTConfig::<()>::spawn(async move {
                 UTConfig::<()>::sleep(Duration::from_millis(10)).await;
                 let mut update = init.clone();
-                update.membership_config = Arc::new(StoredMembership::new(
+                update.membership_config = Arc::new(StoredMembershipOf::<UTConfig>::new(
                     None,
                     Membership::new_with_defaults(vec![btreeset! {1,2}], [3]),
                 ));
@@ -274,7 +274,7 @@ where C: RaftTypeConfig<NodeId = u64> {
         current_leader: None,
         millis_since_quorum_ack: None,
         last_quorum_acked: None,
-        membership_config: Arc::new(StoredMembership::new(None, Membership::default())),
+        membership_config: Arc::new(StoredMembershipOf::<C>::new(None, Membership::default())),
         heartbeat: None,
 
         snapshot: None,

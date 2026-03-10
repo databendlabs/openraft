@@ -23,11 +23,11 @@ use crate::raft::VoteResponse;
 use crate::raft::linearizable_read::Linearizer;
 use crate::raft::responder::core_responder::CoreResponder;
 use crate::raft::stream_append::StreamAppendResult;
-use crate::storage::Snapshot;
 use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::type_config::alias::EntryPayloadOf;
 use crate::type_config::alias::OneshotSenderOf;
 use crate::type_config::alias::SnapshotDataOf;
+use crate::type_config::alias::SnapshotOf;
 use crate::type_config::alias::VoteOf;
 
 pub(crate) mod external_command;
@@ -66,7 +66,7 @@ where C: RaftTypeConfig
 
     InstallSnapshot {
         vote: VoteOf<C>,
-        snapshot: Snapshot<C>,
+        snapshot: SnapshotOf<C>,
         tx: OneshotSenderOf<C, SnapshotResponse<C>>,
     },
 

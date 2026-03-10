@@ -5,10 +5,10 @@ use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
 use openraft::Vote;
+use openraft::alias::SnapshotMetaOf;
+use openraft::alias::SnapshotOf;
 use openraft::raft::AppendEntriesRequest;
 use openraft::raft::InstallSnapshotRequest;
-use openraft::storage::Snapshot;
-use openraft::storage::SnapshotMeta;
 use openraft_legacy::prelude::*;
 
 use crate::fixtures::RaftRouter;
@@ -38,7 +38,7 @@ async fn install_snapshot_lower_vote() -> Result<()> {
     let (n0, _, _) = router.remove_node(0).unwrap();
     let make_req = || InstallSnapshotRequest {
         vote: Vote::new_committed(2, 1),
-        meta: SnapshotMeta {
+        meta: SnapshotMetaOf::<openraft_memstore::TypeConfig> {
             snapshot_id: "ss1".into(),
             last_log_id: Some(log_id(1, 0, 0)),
             last_membership: Default::default(),
@@ -71,7 +71,11 @@ async fn install_snapshot_lower_vote() -> Result<()> {
         assert_eq!(Vote::new_committed(2, 1), got.vote);
 
         let snapshot_meta = n0.with_raft_state(|st| st.snapshot_meta.clone()).await?;
-        assert_eq!(SnapshotMeta::default(), snapshot_meta, "no snapshot is installed");
+        assert_eq!(
+            SnapshotMetaOf::<openraft_memstore::TypeConfig>::default(),
+            snapshot_meta,
+            "no snapshot is installed"
+        );
     }
 
     tracing::info!(log_index, "--- install_full_snapshot with lower vote will be rejected");
@@ -80,7 +84,7 @@ async fn install_snapshot_lower_vote() -> Result<()> {
         req.vote = Vote::new_committed(1, 1);
 
         let got = n0
-            .install_full_snapshot(Vote::new_committed(1, 1), Snapshot {
+            .install_full_snapshot(Vote::new_committed(1, 1), SnapshotOf::<openraft_memstore::TypeConfig> {
                 meta: Default::default(),
                 snapshot: Cursor::new(vec![]),
             })
@@ -88,7 +92,11 @@ async fn install_snapshot_lower_vote() -> Result<()> {
         assert_eq!(Vote::new_committed(2, 1), got.vote);
 
         let snapshot_meta = n0.with_raft_state(|st| st.snapshot_meta.clone()).await?;
-        assert_eq!(SnapshotMeta::default(), snapshot_meta, "no snapshot is installed");
+        assert_eq!(
+            SnapshotMetaOf::<openraft_memstore::TypeConfig>::default(),
+            snapshot_meta,
+            "no snapshot is installed"
+        );
     }
     Ok(())
 }

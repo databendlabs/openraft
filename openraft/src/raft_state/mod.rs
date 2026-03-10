@@ -9,9 +9,9 @@ use crate::ServerState;
 use crate::engine::LogIdList;
 use crate::errors::ForwardToLeader;
 use crate::log_id::raft_log_id::RaftLogId;
-use crate::storage::SnapshotMeta;
 use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::type_config::alias::RefLogIdOf;
+use crate::type_config::alias::SnapshotMetaOf;
 use crate::utime::Leased;
 
 pub(crate) mod io_state;
@@ -72,7 +72,7 @@ where C: RaftTypeConfig
     pub membership_state: MembershipState<C>,
 
     /// The metadata of the last snapshot.
-    pub snapshot_meta: SnapshotMeta<C>,
+    pub snapshot_meta: SnapshotMetaOf<C>,
 
     // --
     // -- volatile fields: they are not persisted.
@@ -106,7 +106,7 @@ where
             vote: Leased::without_last_update(vote),
             log_ids: LogIdList::default(),
             membership_state: MembershipState::default(),
-            snapshot_meta: SnapshotMeta::default(),
+            snapshot_meta: SnapshotMetaOf::<C>::default(),
             last_inflight_id: 0,
             server_state: ServerState::default(),
             io_state: Valid::new(IOState::default()),
@@ -203,7 +203,7 @@ where C: RaftTypeConfig
             vote: Leased::without_last_update(vote),
             log_ids: LogIdList::default(),
             membership_state: MembershipState::default(),
-            snapshot_meta: SnapshotMeta::default(),
+            snapshot_meta: SnapshotMetaOf::<C>::default(),
             last_inflight_id: 0,
             server_state: ServerState::default(),
             io_state: Valid::new(IOState::default()),

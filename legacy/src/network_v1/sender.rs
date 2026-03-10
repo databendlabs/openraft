@@ -18,8 +18,8 @@ use openraft::errors::StreamingError;
 use openraft::network::RPCOption;
 use openraft::raft::InstallSnapshotRequest;
 use openraft::raft::SnapshotResponse;
-use openraft::storage::Snapshot;
 use openraft::type_config::TypeConfigExt;
+use openraft::type_config::alias::SnapshotOf;
 use openraft::type_config::alias::VoteOf;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncSeekExt;
@@ -51,7 +51,7 @@ where
     pub async fn send_snapshot<Net>(
         net: &mut Net,
         vote: VoteOf<C>,
-        mut snapshot: Snapshot<C>,
+        mut snapshot: SnapshotOf<C>,
         cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
         option: RPCOption,
     ) -> Result<SnapshotResponse<C>, StreamingError<C>>

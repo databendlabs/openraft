@@ -3,8 +3,8 @@ use validit::Validate;
 use crate::RaftState;
 use crate::engine::LogIdList;
 use crate::engine::testing::UTConfig;
-use crate::storage::SnapshotMeta;
 use crate::type_config::alias::LogIdOf;
+use crate::type_config::alias::SnapshotMetaOf;
 
 fn log_id(term: u64, index: u64) -> LogIdOf<UTConfig> {
     crate::engine::testing::log_id(term, 0, index)
@@ -20,7 +20,7 @@ fn test_raft_state_validate_snapshot_is_none() -> anyhow::Result<()> {
     let mut rs = RaftState::<UTConfig> {
         log_ids: LogIdList::new(Some(log_id(1, 1)), vec![log_id(3, 4)]),
         purge_upto: Some(log_id(1, 1)),
-        snapshot_meta: SnapshotMeta::default(),
+        snapshot_meta: SnapshotMetaOf::<UTConfig>::default(),
         ..Default::default()
     };
 

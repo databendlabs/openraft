@@ -7,7 +7,7 @@ use crate::display_ext::DisplayOptionExt;
 use crate::engine::Command;
 use crate::engine::EngineOutput;
 use crate::raft_state::LogStateReader;
-use crate::storage::SnapshotMeta;
+use crate::type_config::alias::SnapshotMetaOf;
 
 #[cfg(test)]
 mod trigger_snapshot_test;
@@ -50,7 +50,7 @@ where C: RaftTypeConfig
     ///
     /// [`RaftStateMachine`]: crate::storage::RaftStateMachine
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn update_snapshot(&mut self, meta: SnapshotMeta<C>) -> bool {
+    pub(crate) fn update_snapshot(&mut self, meta: SnapshotMetaOf<C>) -> bool {
         tracing::info!("update_snapshot: {:?}", meta);
 
         if meta.last_log_id.as_ref() <= self.state.snapshot_last_log_id() {

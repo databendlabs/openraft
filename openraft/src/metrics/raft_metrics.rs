@@ -3,7 +3,6 @@ use std::sync::Arc;
 
 use crate::Instant;
 use crate::RaftTypeConfig;
-use crate::StoredMembership;
 use crate::core::ServerState;
 use crate::display_ext::DisplayBTreeMapOptValue;
 use crate::display_ext::DisplayOption;
@@ -14,6 +13,7 @@ use crate::metrics::SerdeInstant;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::SerdeInstantOf;
+use crate::type_config::alias::StoredMembershipOf;
 use crate::type_config::alias::VoteOf;
 use crate::vote::raft_vote::RaftVoteExt;
 
@@ -145,7 +145,7 @@ pub struct RaftMetrics<C: RaftTypeConfig> {
     pub last_quorum_acked: Option<SerdeInstantOf<C>>,
 
     /// The current membership config of the cluster.
-    pub membership_config: Arc<StoredMembership<C>>,
+    pub membership_config: Arc<StoredMembershipOf<C>>,
 
     /// Heartbeat metrics. It is Some() only when this node is leader.
     ///
@@ -231,7 +231,7 @@ where C: RaftTypeConfig
             current_leader: None,
             millis_since_quorum_ack: None,
             last_quorum_acked: None,
-            membership_config: Arc::new(StoredMembership::default()),
+            membership_config: Arc::new(StoredMembershipOf::<C>::default()),
             replication: None,
             heartbeat: None,
         }
@@ -347,7 +347,7 @@ pub struct RaftServerMetrics<C: RaftTypeConfig> {
     pub current_leader: Option<C::NodeId>,
 
     /// The current membership configuration.
-    pub membership_config: Arc<StoredMembership<C>>,
+    pub membership_config: Arc<StoredMembershipOf<C>>,
 }
 
 impl<C> fmt::Display for RaftServerMetrics<C>

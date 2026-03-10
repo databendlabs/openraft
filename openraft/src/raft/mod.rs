@@ -118,13 +118,13 @@ use crate::raft::trigger::Trigger;
 use crate::raft_state::IOId;
 use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
-use crate::storage::Snapshot;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::JoinErrorOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::MpscWeakSenderOf;
 use crate::type_config::alias::NodeIdOf;
 use crate::type_config::alias::SnapshotDataOf;
+use crate::type_config::alias::SnapshotOf;
 use crate::type_config::alias::VoteOf;
 use crate::type_config::alias::WatchReceiverOf;
 use crate::type_config::alias::WriteResponderOf;
@@ -925,7 +925,7 @@ where C: RaftTypeConfig
     /// It returns error only when `RaftCore` fails to serve the request, e.g., Encountering a
     /// storage error or shutting down.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn get_snapshot(&self) -> Result<Option<Snapshot<C>>, RaftError<C>> {
+    pub async fn get_snapshot(&self) -> Result<Option<SnapshotOf<C>>, RaftError<C>> {
         self.protocol_api().get_snapshot().await.into_raft_result()
     }
 
@@ -946,7 +946,7 @@ where C: RaftTypeConfig
     pub async fn install_full_snapshot(
         &self,
         vote: VoteOf<C>,
-        snapshot: Snapshot<C>,
+        snapshot: SnapshotOf<C>,
     ) -> Result<SnapshotResponse<C>, Fatal<C>> {
         self.protocol_api().install_full_snapshot(vote, snapshot).await
     }
