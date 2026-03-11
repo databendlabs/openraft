@@ -120,7 +120,7 @@ This work spans multiple crates, CI jobs, and test styles. It should be tracked 
     - Pick the example applications and reference deployments that should serve as black-box coverage targets.
     - For each target, write scenarios that use only public APIs and process boundaries, without reaching into internal test helpers.
     - Cover bootstrap, adding nodes, removing nodes, failover, restore from snapshot, and rolling restart while verifying client-visible reads and writes.
-    - Store scenario logs and cluster state snapshots on failure using the artifact directory layout and retention rules defined by the "Wire the framework into CI with tiered quality gates" sub-task so breakage can be diagnosed without re-running locally first.
+    - Store scenario logs and cluster state snapshots on failure under a predictable path such as `artifacts/test-framework/black-box/<scenario-name>/<seed>/` so breakage can be diagnosed without re-running locally first; the later CI task can formalize retention rules without changing the basic layout.
   - Deliverables:
     - one black-box suite per selected example or reference deployment;
     - one shared scenario runner that exercises public APIs only;
@@ -131,7 +131,7 @@ This work spans multiple crates, CI jobs, and test styles. It should be tracked 
     - Define a small number of long-running workloads that combine writes, membership changes, snapshots, restarts, and injected faults over hours rather than minutes.
     - Add metrics collection for throughput, latency, memory growth, open file count, task count, and retry/error counts while the workloads run.
     - Set concrete thresholds that make a run fail on deadlock, hang, unbounded memory growth, or major performance regression.
-    - Persist historical run summaries as CI artifacts first, with filename and retention conventions defined by the "Wire the framework into CI with tiered quality gates" sub-task.
+    - Persist historical run summaries as CI artifacts first under a predictable path such as `artifacts/test-framework/soak/<job-name>/<run-id>/`, with stable filenames for metrics, thresholds, and failure summaries.
     - If long-term storage outside CI is later needed, document that as a separate follow-up task instead of leaving it implicit.
   - Deliverables:
     - one soak job definition;
