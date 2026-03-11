@@ -92,7 +92,7 @@ This work spans multiple crates, CI jobs, and test styles. It should be tracked 
 
 ## Definition of done
 
-- [ ] Every proposed sub-task above has been filed and linked from the parent task or issue.
+- [ ] Every proposed sub-task listed in the "Proposed sub-tasks" section has been filed and linked from the parent task or issue.
 - [ ] Each merged sub-task adds or expands automated coverage, not just infrastructure.
 - [ ] The repository documents how to run each test layer locally and in CI.
 - [ ] New patches are required to pass the appropriate automated gates before merge.
