@@ -3,11 +3,11 @@ use std::time::Duration;
 
 use anyhow::Result;
 use openraft::Config;
-use openraft::Entry;
 use openraft::RaftLogReader;
 use openraft::RaftTypeConfig;
 use openraft::ServerState;
 use openraft::Vote;
+use openraft::alias::EntryOf;
 use openraft::raft::AppendEntriesRequest;
 use openraft::storage::RaftLogStorage;
 use openraft::testing::blank_ent;
@@ -60,7 +60,7 @@ async fn append_conflicts() -> Result<()> {
     let req = AppendEntriesRequest {
         vote: Vote::new_committed(1, 2),
         prev_log_id: None,
-        entries: vec![blank_ent(0, 0, 0)],
+        entries: vec![blank_ent::<openraft_memstore::TypeConfig>(0, 0, 0)],
         leader_commit: Some(log_id(1, 0, 2)),
     };
 
@@ -89,10 +89,10 @@ async fn append_conflicts() -> Result<()> {
         vote: Vote::new_committed(1, 2),
         prev_log_id: Some(log_id(0, 0, 0)),
         entries: vec![
-            blank_ent(1, 0, 1),
-            blank_ent(1, 0, 2),
-            blank_ent(1, 0, 3),
-            blank_ent(1, 0, 4),
+            blank_ent::<openraft_memstore::TypeConfig>(1, 0, 1),
+            blank_ent::<openraft_memstore::TypeConfig>(1, 0, 2),
+            blank_ent::<openraft_memstore::TypeConfig>(1, 0, 3),
+            blank_ent::<openraft_memstore::TypeConfig>(1, 0, 4),
         ],
         // this set the last_applied to 2
         leader_commit: Some(log_id(1, 0, 2)),
@@ -118,7 +118,7 @@ async fn append_conflicts() -> Result<()> {
     let req = AppendEntriesRequest {
         vote: Vote::new_committed(1, 2),
         prev_log_id: Some(log_id(1, 0, 1)),
-        entries: vec![blank_ent(1, 0, 2)],
+        entries: vec![blank_ent::<openraft_memstore::TypeConfig>(1, 0, 2)],
         leader_commit: Some(log_id(1, 0, 2)),
     };
 
@@ -133,7 +133,7 @@ async fn append_conflicts() -> Result<()> {
     let req = AppendEntriesRequest {
         vote: Vote::new_committed(1, 2),
         prev_log_id: Some(log_id(1, 0, 2)),
-        entries: vec![blank_ent(2, 0, 3)],
+        entries: vec![blank_ent::<openraft_memstore::TypeConfig>(2, 0, 3)],
         // this set the last_applied to 2
         leader_commit: Some(log_id(1, 0, 2)),
     };
@@ -178,7 +178,11 @@ async fn append_conflicts() -> Result<()> {
     let req = AppendEntriesRequest {
         vote: Vote::new_committed(1, 2),
         prev_log_id: Some(log_id(1, 0, 2)),
-        entries: vec![blank_ent(2, 0, 3), blank_ent(2, 0, 4), blank_ent(2, 0, 5)],
+        entries: vec![
+            blank_ent::<openraft_memstore::TypeConfig>(2, 0, 3),
+            blank_ent::<openraft_memstore::TypeConfig>(2, 0, 4),
+            blank_ent::<openraft_memstore::TypeConfig>(2, 0, 5),
+        ],
         leader_commit: Some(log_id(1, 0, 2)),
     };
 
@@ -193,7 +197,7 @@ async fn append_conflicts() -> Result<()> {
     let req = AppendEntriesRequest {
         vote: Vote::new_committed(1, 2),
         prev_log_id: Some(log_id(2, 0, 3)),
-        entries: vec![blank_ent(3, 0, 4)],
+        entries: vec![blank_ent::<openraft_memstore::TypeConfig>(3, 0, 4)],
         leader_commit: Some(log_id(1, 0, 2)),
     };
 
@@ -228,11 +232,11 @@ where
 {
     let logs = log_store.get_log_reader().await.try_get_log_entries(..).await?;
     let skip = 0;
-    let want: Vec<Entry<openraft_memstore::TypeConfig>> = terms
+    let want: Vec<EntryOf<openraft_memstore::TypeConfig>> = terms
         .iter()
         .skip(skip)
         .enumerate()
-        .map(|(i, term)| blank_ent(*term, 0, (i + skip) as u64))
+        .map(|(i, term)| blank_ent::<openraft_memstore::TypeConfig>(*term, 0, (i + skip) as u64))
         .collect::<Vec<_>>();
 
     let w = format!("{:?}", &want);

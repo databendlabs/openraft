@@ -6,13 +6,22 @@ use std::fmt::Debug;
 use std::io;
 use std::io::Cursor;
 use std::ops::RangeBounds;
+use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
 
 use futures::Stream;
+use openraft::EntryPayload;
+use openraft::OptionalSend;
+use openraft::RaftTypeConfig;
+use openraft::Vote;
+use openraft::alias::DefaultEntryOf;
+use openraft::alias::EntryOf;
 use openraft::alias::LogIdOf;
 use openraft::alias::SnapshotDataOf;
+use openraft::alias::SnapshotMetaOf;
+use openraft::alias::SnapshotOf;
+use openraft::alias::StoredMembershipOf;
 use openraft::entry::RaftEntry;
 use openraft::storage::EntryResponder;
 use openraft::storage::IOFlushed;
@@ -21,14 +30,6 @@ use openraft::storage::RaftLogReader;
 use openraft::storage::RaftLogStorage;
 use openraft::storage::RaftSnapshotBuilder;
 use openraft::storage::RaftStateMachine;
-use openraft::alias::SnapshotMetaOf;
-use openraft::alias::SnapshotOf;
-use openraft::alias::StoredMembershipOf;
-use openraft::Entry;
-use openraft::EntryPayload;
-use openraft::OptionalSend;
-use openraft::RaftTypeConfig;
-use openraft::Vote;
 use serde::Deserialize;
 use serde::Serialize;
 use tokio::sync::RwLock;
@@ -68,12 +69,11 @@ impl RaftTypeConfig for TypeConfig {
     type Term = u64;
     type LeaderId = LeaderId;
     type Vote = Vote<Self::LeaderId>;
-    type Entry = Entry<Self>;
+    type Entry = DefaultEntryOf<Self>;
     type SnapshotData = Cursor<Vec<u8>>;
     type Responder<T>
-    = openraft::impls::OneshotResponder<Self, T>
-    where
-        T: Send + 'static;
+        = openraft::impls::OneshotResponder<Self, T>
+    where T: Send + 'static;
     type AsyncRuntime = openraft::impls::TokioRuntime;
     type ErrorSource = openraft::AnyError;
 }
@@ -92,7 +92,7 @@ pub struct StateMachine {
 
 pub struct LogStore {
     vote: RwLock<Option<Vote<LeaderId>>>,
-    log: RwLock<BTreeMap<u64, Entry<TypeConfig>>>,
+    log: RwLock<BTreeMap<u64, EntryOf<TypeConfig>>>,
     last_purged_log_id: RwLock<Option<LogIdOf<TypeConfig>>>,
 }
 
@@ -144,7 +144,7 @@ impl RaftLogReader<TypeConfig> for Arc<LogStore> {
     async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + OptionalSend>(
         &mut self,
         range: RB,
-    ) -> Result<Vec<Entry<TypeConfig>>, io::Error> {
+    ) -> Result<Vec<EntryOf<TypeConfig>>, io::Error> {
         let mut entries = vec![];
         {
             let log = self.log.read().await;
@@ -262,9 +262,7 @@ impl RaftLogStorage<TypeConfig> for Arc<LogStore> {
 
     #[tracing::instrument(level = "trace", skip_all)]
     async fn append<I>(&mut self, entries: I, callback: IOFlushed<TypeConfig>) -> Result<(), io::Error>
-    where
-        I: IntoIterator<Item=Entry<TypeConfig>> + Send,
-    {
+    where I: IntoIterator<Item = EntryOf<TypeConfig>> + Send {
         {
             let mut log = self.log.write().await;
             log.extend(entries.into_iter().map(|entry| (entry.index(), entry)));
@@ -289,9 +287,7 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
     }
 
     async fn apply<Strm>(&mut self, mut entries: Strm) -> Result<(), io::Error>
-    where
-        Strm: Stream<Item=Result<EntryResponder<TypeConfig>, io::Error>> + Unpin + OptionalSend,
-    {
+    where Strm: Stream<Item = Result<EntryResponder<TypeConfig>, io::Error>> + Unpin + OptionalSend {
         use futures::TryStreamExt;
 
         let mut sm = self.sm.write().await;

@@ -55,8 +55,8 @@ fn test_follower_append_entries_update_accepted() -> anyhow::Result<()> {
 
     eng.following_handler().append_entries(Some(log_id(2, 1, 3)), vec![
         //
-        blank_ent(3, 1, 4),
-        blank_ent(3, 1, 5),
+        blank_ent::<UTConfig>(3, 1, 4),
+        blank_ent::<UTConfig>(3, 1, 5),
     ]);
 
     assert_eq!(None, eng.state.log_ids.purged());
@@ -79,7 +79,7 @@ fn test_follower_append_entries_update_accepted() -> anyhow::Result<()> {
         //
         Command::AppendEntries {
             committed_vote: Vote::new(2, 1).into_committed(),
-            entries: [blank_ent(3, 1, 4), blank_ent(3, 1, 5),].into(),
+            entries: [blank_ent::<UTConfig>(3, 1, 4), blank_ent::<UTConfig>(3, 1, 5),].into(),
         }
     ]);
 
@@ -93,7 +93,7 @@ fn test_follower_append_entries_update_accepted() -> anyhow::Result<()> {
         );
         eng.following_handler().append_entries(Some(log_id(2, 1, 3)), vec![
             //
-            blank_ent(3, 1, 4),
+            blank_ent::<UTConfig>(3, 1, 4),
         ]);
         assert_eq!(Some(&log_id(3, 1, 5)), eng.state.last_log_id());
         assert_eq!(

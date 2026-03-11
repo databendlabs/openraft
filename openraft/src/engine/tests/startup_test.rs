@@ -4,7 +4,6 @@ use std::time::Duration;
 use maplit::btreeset;
 use pretty_assertions::assert_eq;
 
-use crate::Entry;
 use crate::Membership;
 use crate::ServerState;
 use crate::Vote;
@@ -24,6 +23,7 @@ use crate::raft_state::IOId;
 use crate::replication::replicate::Replicate;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::EffectiveMembershipOf;
+use crate::type_config::alias::EntryOf;
 use crate::utime::Leased;
 use crate::vote::raft_vote::RaftVoteExt;
 
@@ -94,7 +94,7 @@ fn test_startup_as_leader_without_logs() -> anyhow::Result<()> {
             },
             Command::AppendEntries {
                 committed_vote: Vote::new(2, 2).into_committed(),
-                entries: [Entry::<UTConfig>::new_blank(log_id(2, 2, 4))].into(),
+                entries: [EntryOf::<UTConfig>::new_blank(log_id(2, 2, 4))].into(),
             },
             Command::Replicate {
                 target: 3,

@@ -3,7 +3,6 @@ use std::time::Duration;
 
 use maplit::btreeset;
 
-use crate::Entry;
 use crate::EntryPayload;
 use crate::Membership;
 use crate::MembershipState;
@@ -18,6 +17,7 @@ use crate::raft_state::LogStateReader;
 use crate::testing::blank_ent;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::EffectiveMembershipOf;
+use crate::type_config::alias::EntryOf;
 use crate::utime::Leased;
 use crate::vote::raft_vote::RaftVoteExt;
 
@@ -63,7 +63,7 @@ fn test_follower_do_append_entries_no_membership_entries() -> anyhow::Result<()>
     let mut eng = eng();
     eng.state.vote = Leased::without_last_update(Vote::new_committed(1, 1));
 
-    eng.following_handler().do_append_entries(vec![blank_ent(3, 1, 4)]);
+    eng.following_handler().do_append_entries(vec![blank_ent::<UTConfig>(3, 1, 4)]);
 
     assert_eq!(None, eng.state.log_ids.purged());
     assert_eq!(
@@ -88,7 +88,7 @@ fn test_follower_do_append_entries_no_membership_entries() -> anyhow::Result<()>
             //
             Command::AppendEntries {
                 committed_vote: Vote::new(1, 1).into_committed(),
-                entries: [blank_ent(3, 1, 4)].into()
+                entries: [blank_ent::<UTConfig>(3, 1, 4)].into()
             },
         ],
         eng.output.take_commands()
@@ -106,7 +106,7 @@ fn test_follower_do_append_entries_one_membership_entry() -> anyhow::Result<()> 
     eng.config.id = 2; // make it a member, the become learner
     eng.state.vote = Leased::without_last_update(Vote::new_committed(1, 1));
 
-    eng.following_handler().do_append_entries(vec![blank_ent(3, 1, 4), Entry::<UTConfig> {
+    eng.following_handler().do_append_entries(vec![blank_ent::<UTConfig>(3, 1, 4), EntryOf::<UTConfig> {
         log_id: log_id(3, 1, 5),
         payload: EntryPayload::<u64, u64, ()>::Membership(m34()),
     }]);
@@ -139,8 +139,8 @@ fn test_follower_do_append_entries_one_membership_entry() -> anyhow::Result<()> 
             committed_vote: Vote::new(1, 1).into_committed(),
             entries: vec![
                 //
-                blank_ent(3, 1, 4),
-                Entry::<UTConfig> {
+                blank_ent::<UTConfig>(3, 1, 4),
+                EntryOf::<UTConfig> {
                     log_id: log_id(3, 1, 5),
                     payload: EntryPayload::<u64, u64, ()>::Membership(m34()),
                 },
@@ -164,10 +164,10 @@ fn test_follower_do_append_entries_three_membership_entries() -> anyhow::Result<
     eng.state.vote = Leased::without_last_update(Vote::new_committed(1, 1));
 
     eng.following_handler().do_append_entries(vec![
-        blank_ent(3, 1, 4),
-        Entry::<UTConfig>::new_membership(log_id(3, 1, 5), m01()),
-        Entry::<UTConfig>::new_membership(log_id(4, 1, 6), m34()),
-        Entry::<UTConfig>::new_membership(log_id(4, 1, 7), m45()),
+        blank_ent::<UTConfig>(3, 1, 4),
+        EntryOf::<UTConfig>::new_membership(log_id(3, 1, 5), m01()),
+        EntryOf::<UTConfig>::new_membership(log_id(4, 1, 6), m34()),
+        EntryOf::<UTConfig>::new_membership(log_id(4, 1, 7), m45()),
     ]);
 
     assert_eq!(None, eng.state.log_ids.purged());
@@ -198,10 +198,10 @@ fn test_follower_do_append_entries_three_membership_entries() -> anyhow::Result<
         vec![Command::AppendEntries {
             committed_vote: Vote::new(1, 1).into_committed(),
             entries: vec![
-                blank_ent(3, 1, 4),
-                Entry::<UTConfig>::new_membership(log_id(3, 1, 5), m01()),
-                Entry::<UTConfig>::new_membership(log_id(4, 1, 6), m34()),
-                Entry::<UTConfig>::new_membership(log_id(4, 1, 7), m45()),
+                blank_ent::<UTConfig>(3, 1, 4),
+                EntryOf::<UTConfig>::new_membership(log_id(3, 1, 5), m01()),
+                EntryOf::<UTConfig>::new_membership(log_id(4, 1, 6), m34()),
+                EntryOf::<UTConfig>::new_membership(log_id(4, 1, 7), m45()),
             ]
             .into()
         },],

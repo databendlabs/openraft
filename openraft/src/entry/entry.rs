@@ -1,29 +1,40 @@
 use std::fmt;
 
+use openraft_macros::since;
+
+use crate::AppData;
 use crate::EntryPayload;
 use crate::Membership;
-use crate::RaftTypeConfig;
 use crate::entry::RaftEntry;
 use crate::entry::RaftPayload;
-use crate::type_config::alias::CommittedLeaderIdOf;
-use crate::type_config::alias::LogIdOf;
+use crate::log_id::LogId;
+use crate::node::Node;
+use crate::node::NodeId;
+use crate::vote::RaftCommittedLeaderId;
 
 /// A Raft log entry.
+#[since(version = "0.10.0", change = "from `Entry<C>` to `Entry<CLID, D, NID, N>`")]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub struct Entry<C>
-where C: RaftTypeConfig
+pub struct Entry<CLID, D, NID, N>
+where
+    CLID: RaftCommittedLeaderId,
+    D: AppData,
+    NID: NodeId,
+    N: Node,
 {
     /// The log ID uniquely identifying this entry.
-    pub log_id: LogIdOf<C>,
+    pub log_id: LogId<CLID>,
 
     /// This entry's payload.
-    pub payload: EntryPayload<C::D, C::NodeId, C::Node>,
+    pub payload: EntryPayload<D, NID, N>,
 }
 
-impl<C> Clone for Entry<C>
+impl<CLID, D, NID, N> Clone for Entry<CLID, D, NID, N>
 where
-    C: RaftTypeConfig,
-    C::D: Clone,
+    CLID: RaftCommittedLeaderId,
+    D: AppData + Clone,
+    NID: NodeId,
+    N: Node,
 {
     fn clone(&self) -> Self {
         Self {
@@ -33,65 +44,87 @@ where
     }
 }
 
-impl<C> fmt::Debug for Entry<C>
-where C: RaftTypeConfig
+impl<CLID, D, NID, N> fmt::Debug for Entry<CLID, D, NID, N>
+where
+    CLID: RaftCommittedLeaderId,
+    D: AppData,
+    NID: NodeId,
+    N: Node,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Entry").field("log_id", &self.log_id).field("payload", &self.payload).finish()
     }
 }
 
-impl<C> PartialEq for Entry<C>
+impl<CLID, D, NID, N> PartialEq for Entry<CLID, D, NID, N>
 where
-    C::D: PartialEq,
-    C: RaftTypeConfig,
+    CLID: RaftCommittedLeaderId,
+    D: AppData + PartialEq,
+    NID: NodeId,
+    N: Node,
 {
     fn eq(&self, other: &Self) -> bool {
         self.log_id == other.log_id && self.payload == other.payload
     }
 }
 
-impl<C> AsRef<Entry<C>> for Entry<C>
-where C: RaftTypeConfig
+impl<CLID, D, NID, N> AsRef<Entry<CLID, D, NID, N>> for Entry<CLID, D, NID, N>
+where
+    CLID: RaftCommittedLeaderId,
+    D: AppData,
+    NID: NodeId,
+    N: Node,
 {
-    fn as_ref(&self) -> &Entry<C> {
+    fn as_ref(&self) -> &Entry<CLID, D, NID, N> {
         self
     }
 }
 
-impl<C> fmt::Display for Entry<C>
-where C: RaftTypeConfig
+impl<CLID, D, NID, N> fmt::Display for Entry<CLID, D, NID, N>
+where
+    CLID: RaftCommittedLeaderId,
+    D: AppData,
+    NID: NodeId,
+    N: Node,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}:{}", self.log_id, self.payload)
     }
 }
 
-impl<C> RaftPayload<C::NodeId, C::Node> for Entry<C>
-where C: RaftTypeConfig
+impl<CLID, D, NID, N> RaftPayload<NID, N> for Entry<CLID, D, NID, N>
+where
+    CLID: RaftCommittedLeaderId,
+    D: AppData,
+    NID: NodeId,
+    N: Node,
 {
-    fn get_membership(&self) -> Option<Membership<C::NodeId, C::Node>> {
+    fn get_membership(&self) -> Option<Membership<NID, N>> {
         self.payload.get_membership()
     }
 }
 
-impl<C> RaftEntry for Entry<C>
-where C: RaftTypeConfig
+impl<CLID, D, NID, N> RaftEntry for Entry<CLID, D, NID, N>
+where
+    CLID: RaftCommittedLeaderId,
+    D: AppData,
+    NID: NodeId,
+    N: Node,
 {
-    type CommittedLeaderId = CommittedLeaderIdOf<C>;
-    type D = C::D;
-    type NodeId = C::NodeId;
-    type Node = C::Node;
+    type CommittedLeaderId = CLID;
+    type D = D;
+    type NodeId = NID;
+    type Node = N;
 
-    fn new(log_id: LogIdOf<C>, payload: EntryPayload<C::D, C::NodeId, C::Node>) -> Self {
+    fn new(log_id: LogId<CLID>, payload: EntryPayload<D, NID, N>) -> Self {
         Self { log_id, payload }
     }
 
-    fn log_id_parts(&self) -> (&CommittedLeaderIdOf<C>, u64) {
+    fn log_id_parts(&self) -> (&CLID, u64) {
         (&self.log_id.leader_id, self.log_id.index)
     }
 
-    fn set_log_id(&mut self, new: LogIdOf<C>) {
+    fn set_log_id(&mut self, new: LogId<CLID>) {
         self.log_id = new;
     }
 }

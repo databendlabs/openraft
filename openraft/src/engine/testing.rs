@@ -5,6 +5,7 @@ use openraft_rt_tokio::TokioRuntime;
 use crate::Node;
 use crate::OptionalSend;
 use crate::RaftTypeConfig;
+use crate::type_config::alias::DefaultEntryOf;
 use crate::type_config::alias::LeaderIdOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::NodeIdOf;
@@ -44,7 +45,7 @@ where N: Node + Ord
     type Term = u64;
     type LeaderId = crate::impls::leader_id_adv::LeaderId<u64, u64>;
     type Vote = crate::impls::Vote<Self::LeaderId>;
-    type Entry = crate::impls::Entry<Self>;
+    type Entry = DefaultEntryOf<Self>;
     type SnapshotData = Cursor<Vec<u8>>;
     type AsyncRuntime = TokioRuntime;
     type Responder<T>

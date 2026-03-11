@@ -63,7 +63,12 @@ impl Display for BenchConfig {
         write!(
             f,
             "client_workers: {}, server_workers: {}, clients: {}, n: {}, batch: {}, raft_members: {:?}",
-            self.client_workers, self.server_workers, self.n_client, format_number(self.n_operations), self.batch_size, self.members
+            self.client_workers,
+            self.server_workers,
+            self.n_client,
+            format_number(self.n_operations),
+            self.batch_size,
+            self.members
         )
     }
 }
@@ -224,7 +229,11 @@ async fn do_bench(bench_config: &BenchConfig, leader: BenchRaft) -> anyhow::Resu
         loop {
             tokio::time::sleep(Duration::from_secs(5)).await;
             if let Ok(stats) = stats_leader.runtime_stats().await {
-                eprintln!("[{:>6.2}s] {}", now.elapsed().as_secs_f64(), stats.display().multiline());
+                eprintln!(
+                    "[{:>6.2}s] {}",
+                    now.elapsed().as_secs_f64(),
+                    stats.display().multiline()
+                );
             }
         }
     });
@@ -295,7 +304,11 @@ async fn do_bench(bench_config: &BenchConfig, leader: BenchRaft) -> anyhow::Resu
 
     // Print final stats
     let stats = leader.runtime_stats().await?;
-    eprintln!("[{:>6.2}s] Final:\n{}", elapsed.as_secs_f64(), stats.display().human_readable());
+    eprintln!(
+        "[{:>6.2}s] Final:\n{}",
+        elapsed.as_secs_f64(),
+        stats.display().human_readable()
+    );
 
     let millis = elapsed.as_millis().max(1);
     println!(
