@@ -63,13 +63,16 @@ mod tests {
 
     #[test]
     fn test_last_with_entries() {
-        let seg = Seg::new(Some(log_id(1, 1, 5)), vec![blank_ent(2, 1, 6), blank_ent(2, 1, 7)]);
+        let seg = Seg::new(Some(log_id(1, 1, 5)), vec![
+            blank_ent::<UTConfig>(2, 1, 6),
+            blank_ent::<UTConfig>(2, 1, 7),
+        ]);
         assert_eq!(Some(log_id(2, 1, 7)), seg.last());
     }
 
     #[test]
     fn test_display() {
-        let seg = Seg::new(Some(log_id(1, 1, 5)), vec![blank_ent(2, 1, 6)]);
+        let seg = Seg::new(Some(log_id(1, 1, 5)), vec![blank_ent::<UTConfig>(2, 1, 6)]);
         assert_eq!("prev:T1-N1.5, entries:[T2-N1.6:blank]", seg.to_string());
     }
 }

@@ -35,19 +35,25 @@ async fn stream_append_success() -> Result<()> {
         AppendEntriesRequest::<openraft_memstore::TypeConfig> {
             vote: Vote::new_committed(1, 1),
             prev_log_id: None,
-            entries: vec![blank_ent(0, 0, 0), blank_ent(1, 1, 1)],
+            entries: vec![
+                blank_ent::<openraft_memstore::TypeConfig>(0, 0, 0),
+                blank_ent::<openraft_memstore::TypeConfig>(1, 1, 1),
+            ],
             leader_commit: None,
         },
         AppendEntriesRequest::<openraft_memstore::TypeConfig> {
             vote: Vote::new_committed(1, 1),
             prev_log_id: Some(log_id(1, 1, 1)),
-            entries: vec![blank_ent(1, 1, 2), blank_ent(1, 1, 3)],
+            entries: vec![
+                blank_ent::<openraft_memstore::TypeConfig>(1, 1, 2),
+                blank_ent::<openraft_memstore::TypeConfig>(1, 1, 3),
+            ],
             leader_commit: None,
         },
         AppendEntriesRequest::<openraft_memstore::TypeConfig> {
             vote: Vote::new_committed(1, 1),
             prev_log_id: Some(log_id(1, 1, 3)),
-            entries: vec![blank_ent(1, 1, 4)],
+            entries: vec![blank_ent::<openraft_memstore::TypeConfig>(1, 1, 4)],
             leader_commit: Some(log_id(1, 1, 4)),
         },
     ];
@@ -87,21 +93,24 @@ async fn stream_append_conflict() -> Result<()> {
         AppendEntriesRequest::<openraft_memstore::TypeConfig> {
             vote: Vote::new_committed(1, 1),
             prev_log_id: None,
-            entries: vec![blank_ent(0, 0, 0), blank_ent(1, 1, 1)],
+            entries: vec![
+                blank_ent::<openraft_memstore::TypeConfig>(0, 0, 0),
+                blank_ent::<openraft_memstore::TypeConfig>(1, 1, 1),
+            ],
             leader_commit: None,
         },
         // This will conflict: prev_log_id at index 5 doesn't exist
         AppendEntriesRequest::<openraft_memstore::TypeConfig> {
             vote: Vote::new_committed(1, 1),
             prev_log_id: Some(log_id(1, 1, 5)),
-            entries: vec![blank_ent(1, 1, 6)],
+            entries: vec![blank_ent::<openraft_memstore::TypeConfig>(1, 1, 6)],
             leader_commit: None,
         },
         // This should never be processed because stream terminates on conflict
         AppendEntriesRequest::<openraft_memstore::TypeConfig> {
             vote: Vote::new_committed(1, 1),
             prev_log_id: Some(log_id(1, 1, 6)),
-            entries: vec![blank_ent(1, 1, 7)],
+            entries: vec![blank_ent::<openraft_memstore::TypeConfig>(1, 1, 7)],
             leader_commit: None,
         },
     ];
@@ -149,14 +158,14 @@ async fn stream_append_higher_vote() -> Result<()> {
         AppendEntriesRequest::<openraft_memstore::TypeConfig> {
             vote: Vote::new_committed(1, 1), // Lower than (10, 2)
             prev_log_id: None,
-            entries: vec![blank_ent(0, 0, 0)],
+            entries: vec![blank_ent::<openraft_memstore::TypeConfig>(0, 0, 0)],
             leader_commit: None,
         },
         // This should never be processed
         AppendEntriesRequest::<openraft_memstore::TypeConfig> {
             vote: Vote::new_committed(1, 1),
             prev_log_id: Some(log_id(0, 0, 0)),
-            entries: vec![blank_ent(1, 1, 1)],
+            entries: vec![blank_ent::<openraft_memstore::TypeConfig>(1, 1, 1)],
             leader_commit: None,
         },
     ];

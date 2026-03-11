@@ -65,14 +65,18 @@ async fn conflict_with_empty_entries() -> Result<()> {
     let rpc = AppendEntriesRequest::<openraft_memstore::TypeConfig> {
         vote: Vote::new_committed(1, 1),
         prev_log_id: None,
-        entries: vec![blank_ent(0, 0, 0), blank_ent(1, 0, 1), Entry {
-            log_id: log_id(1, 0, 2),
-            payload: EntryPayload::Normal(ClientRequest {
-                client: "foo".to_string(),
-                serial: 1,
-                status: "bar".to_string(),
-            }),
-        }],
+        entries: vec![
+            blank_ent::<openraft_memstore::TypeConfig>(0, 0, 0),
+            blank_ent::<openraft_memstore::TypeConfig>(1, 0, 1),
+            Entry {
+                log_id: log_id(1, 0, 2),
+                payload: EntryPayload::Normal(ClientRequest {
+                    client: "foo".to_string(),
+                    serial: 1,
+                    status: "bar".to_string(),
+                }),
+            },
+        ],
         leader_commit: Some(log_id(1, 0, 5)),
     };
 

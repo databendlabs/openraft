@@ -52,7 +52,7 @@ impl RaftLogReader<UTConfig> for MockLogReader {
         for i in start..end {
             if let Some(log_id) = self.logs.get(&i) {
                 // Create a blank entry with this log_id
-                entries.push(crate::Entry::new_blank(*log_id));
+                entries.push(crate::type_config::alias::EntryOf::<UTConfig>::new_blank(*log_id));
             }
         }
         Ok(entries)

@@ -3,10 +3,10 @@ use std::sync::Arc;
 use bench_minimal::store::LogStore;
 use bench_minimal::store::StateMachineStore;
 use bench_minimal::store::TypeConfig;
+use openraft::StorageError;
 use openraft::testing::log::StoreBuilder;
 use openraft::testing::log::Suite;
 use openraft::type_config::TypeConfigExt;
-use openraft::StorageError;
 
 struct Builder {}
 

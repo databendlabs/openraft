@@ -58,8 +58,8 @@ async fn append_inconsistent_log() -> Result<()> {
     r2.shutdown().await?;
 
     for i in log_index + 1..=100 {
-        sto0.blocking_append([blank_ent(2, 1, i)]).await?;
-        sto2.blocking_append([blank_ent(3, 3, i)]).await?;
+        sto0.blocking_append([blank_ent::<openraft_memstore::TypeConfig>(2, 1, i)]).await?;
+        sto2.blocking_append([blank_ent::<openraft_memstore::TypeConfig>(3, 3, i)]).await?;
     }
 
     sto0.save_vote(&Vote::new(4, 1)).await?;

@@ -11,10 +11,10 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use futures::Stream;
-use openraft::Entry;
 use openraft::EntryPayload;
 use openraft::OptionalSend;
 use openraft::Vote;
+use openraft::alias::EntryOf;
 use openraft::alias::LogIdOf;
 use openraft::alias::SnapshotDataOf;
 use openraft::alias::SnapshotMetaOf;
@@ -139,7 +139,7 @@ impl RaftLogReader<TypeConfig> for Arc<MemLogStore> {
     async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + OptionalSend>(
         &mut self,
         range: RB,
-    ) -> Result<Vec<Entry<TypeConfig>>, io::Error> {
+    ) -> Result<Vec<EntryOf<TypeConfig>>, io::Error> {
         let log = self.log.read().await;
         log.range(range)
             .map(|(_, s)| serde_json::from_str(s).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e)))
@@ -161,7 +161,7 @@ impl RaftLogStorage<TypeConfig> for Arc<MemLogStore> {
         let last = match log.iter().next_back() {
             None => *self.last_purged_log_id.read().await,
             Some((_, s)) => {
-                let ent: Entry<TypeConfig> =
+                let ent: EntryOf<TypeConfig> =
                     serde_json::from_str(s).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
                 Some(ent.log_id())
             }
@@ -191,7 +191,7 @@ impl RaftLogStorage<TypeConfig> for Arc<MemLogStore> {
     }
 
     async fn append<I>(&mut self, entries: I, callback: IOFlushed<TypeConfig>) -> Result<(), io::Error>
-    where I: IntoIterator<Item = Entry<TypeConfig>> + OptionalSend {
+    where I: IntoIterator<Item = EntryOf<TypeConfig>> + OptionalSend {
         let mut log = self.log.write().await;
         for entry in entries {
             let s = serde_json::to_string(&entry).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;

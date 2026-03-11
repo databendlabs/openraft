@@ -47,18 +47,18 @@ async fn append_updates_membership() -> Result<()> {
             vote: Vote::new_committed(1, 1),
             prev_log_id: None,
             entries: vec![
-                blank_ent(0, 0, 0),
-                blank_ent(1, 0, 1),
+                blank_ent::<openraft_memstore::TypeConfig>(0, 0, 0),
+                blank_ent::<openraft_memstore::TypeConfig>(1, 0, 1),
                 Entry {
                     log_id: log_id(1, 0, 2),
                     payload: EntryPayload::Membership(Membership::new_with_defaults(vec![btreeset! {1,2}], [])),
                 },
-                blank_ent(1, 0, 3),
+                blank_ent::<openraft_memstore::TypeConfig>(1, 0, 3),
                 Entry {
                     log_id: log_id(1, 0, 4),
                     payload: EntryPayload::Membership(Membership::new_with_defaults(vec![btreeset! {1,2,3,4}], [])),
                 },
-                blank_ent(1, 0, 5),
+                blank_ent::<openraft_memstore::TypeConfig>(1, 0, 5),
             ],
             leader_commit: Some(log_id(0, 0, 0)),
         };
@@ -75,7 +75,7 @@ async fn append_updates_membership() -> Result<()> {
         let req = AppendEntriesRequest {
             vote: Vote::new_committed(2, 2),
             prev_log_id: Some(log_id(1, 0, 2)),
-            entries: vec![blank_ent(2, 0, 3)],
+            entries: vec![blank_ent::<openraft_memstore::TypeConfig>(2, 0, 3)],
             leader_commit: Some(log_id(0, 0, 0)),
         };
 

@@ -4,7 +4,6 @@ use std::time::Duration;
 use maplit::btreeset;
 use pretty_assertions::assert_eq;
 
-use crate::Entry;
 use crate::Membership;
 use crate::MembershipState;
 use crate::Vote;
@@ -24,6 +23,7 @@ use crate::raft_state::LogStateReader;
 use crate::testing::blank_ent;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::EffectiveMembershipOf;
+use crate::type_config::alias::EntryOf;
 use crate::utime::Leased;
 use crate::vote::raft_vote::RaftVoteExt;
 
@@ -197,7 +197,10 @@ fn test_append_entries_prev_log_id_is_committed() -> anyhow::Result<()> {
 
     let res = eng.append_entries(
         &Vote::new_committed(2, 1),
-        LogSegment::new(Some(log_id(0, 1, 0)), vec![blank_ent(1, 1, 1), blank_ent(2, 1, 2)]),
+        LogSegment::new(Some(log_id(0, 1, 0)), vec![
+            blank_ent::<UTConfig>(1, 1, 1),
+            blank_ent::<UTConfig>(2, 1, 2),
+        ]),
     );
 
     assert_eq!(Ok(Some(log_id(2, 1, 2))), res);
@@ -230,7 +233,7 @@ fn test_append_entries_prev_log_id_is_committed() -> anyhow::Result<()> {
             },
             Command::AppendEntries {
                 committed_vote: Vote::new(2, 1).into_committed(),
-                entries: [blank_ent(2, 1, 2)].into()
+                entries: [blank_ent::<UTConfig>(2, 1, 2)].into()
             },
         ],
         eng.output.take_commands()
@@ -247,7 +250,10 @@ fn test_append_entries_prev_log_id_not_exists() -> anyhow::Result<()> {
 
     let res = eng.append_entries(
         &Vote::new_committed(2, 1),
-        LogSegment::new(Some(log_id(2, 1, 4)), vec![blank_ent(2, 1, 5), blank_ent(2, 1, 6)]),
+        LogSegment::new(Some(log_id(2, 1, 4)), vec![
+            blank_ent::<UTConfig>(2, 1, 5),
+            blank_ent::<UTConfig>(2, 1, 6),
+        ]),
     );
 
     assert_eq!(
@@ -300,8 +306,8 @@ fn test_append_entries_conflict() -> anyhow::Result<()> {
     let resp = eng.append_entries(
         &Vote::new_committed(2, 1),
         LogSegment::new(Some(log_id(1, 1, 1)), vec![
-            blank_ent(1, 1, 2),
-            Entry::new_membership(log_id(3, 1, 3), m34()),
+            blank_ent::<UTConfig>(1, 1, 2),
+            EntryOf::<UTConfig>::new_membership(log_id(3, 1, 3), m34()),
         ]),
     );
 
@@ -335,7 +341,7 @@ fn test_append_entries_conflict() -> anyhow::Result<()> {
             },
             Command::AppendEntries {
                 committed_vote: Vote::new(2, 1).into_committed(),
-                entries: [Entry::new_membership(log_id(3, 1, 3), m34())].into()
+                entries: [EntryOf::<UTConfig>::new_membership(log_id(3, 1, 3), m34())].into()
             },
         ],
         eng.output.take_commands()

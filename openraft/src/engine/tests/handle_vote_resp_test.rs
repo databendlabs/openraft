@@ -5,7 +5,6 @@ use std::time::Duration;
 use maplit::btreeset;
 use pretty_assertions::assert_eq;
 
-use crate::Entry;
 use crate::Membership;
 use crate::Vote;
 use crate::core::ServerState;
@@ -25,6 +24,7 @@ use crate::raft_state::IOId;
 use crate::replication::replicate::Replicate;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::EffectiveMembershipOf;
+use crate::type_config::alias::EntryOf;
 use crate::utime::Leased;
 use crate::vote::raft_vote::RaftVoteExt;
 
@@ -227,7 +227,7 @@ fn test_handle_vote_resp_equal_vote() -> anyhow::Result<()> {
                 },
                 Command::AppendEntries {
                     committed_vote: Vote::new(2, 1).into_committed(),
-                    entries: [Entry::<UTConfig>::new_blank(log_id(2, 1, 1))].into(),
+                    entries: [EntryOf::<UTConfig>::new_blank(log_id(2, 1, 1))].into(),
                 },
                 Command::Replicate {
                     target: 2,

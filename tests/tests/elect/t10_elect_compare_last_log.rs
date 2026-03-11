@@ -40,8 +40,8 @@ async fn elect_compare_last_log() -> Result<()> {
 
         sto0.blocking_append([
             //
-            blank_ent(0, 0, 0),
-            membership_ent(2, 0, 1, vec![btreeset! {0,1}]),
+            blank_ent::<openraft_memstore::TypeConfig>(0, 0, 0),
+            membership_ent::<openraft_memstore::TypeConfig>(2, 0, 1, vec![btreeset! {0,1}]),
         ])
         .await?;
     }
@@ -51,9 +51,9 @@ async fn elect_compare_last_log() -> Result<()> {
         sto1.save_vote(&Vote::new(10, 0)).await?;
 
         sto1.blocking_append([
-            blank_ent(0, 0, 0),
-            membership_ent(1, 0, 1, vec![btreeset! {0,1}]),
-            blank_ent(1, 0, 2),
+            blank_ent::<openraft_memstore::TypeConfig>(0, 0, 0),
+            membership_ent::<openraft_memstore::TypeConfig>(1, 0, 1, vec![btreeset! {0,1}]),
+            blank_ent::<openraft_memstore::TypeConfig>(1, 0, 2),
         ])
         .await?;
     }
