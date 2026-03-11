@@ -27,6 +27,28 @@ mdbook watch
 - Do **NOT** **rebase** after publishing PR. Only merge.
 
 
+## Issue triage
+
+When reviewing issues, sort them from high to low priority:
+
+- **P0 - critical**: correctness, safety, data loss, security, panic/hang on a supported path, or anything blocking a release. Track it with an assignee and target branch or release immediately.
+
+- **P1 - high**: a common workflow is broken or blocked and there is no practical workaround. Track it with an assignee and a target release.
+
+- **P2 - normal**: a limited-scope bug, feature gap, or documentation issue with a reasonable workaround. Track it in the backlog or a milestone once it is scheduled.
+
+- **P3 - low**: cleanup, ergonomics, research, or other nice-to-have work. Track it in the backlog until there is bandwidth.
+
+Use these criteria when assigning and tracking issue priority:
+
+- impact on correctness, safety, data loss, or security;
+- how many users or workflows are affected;
+- whether a workaround exists;
+- whether the issue blocks a release, upgrade, or supported branch;
+- which version or branch is affected; and
+- who owns it and which milestone or release it targets once scheduled.
+
+
 ## Release checklist
 
 - `make`: pass the unit test, format and clippy check.
