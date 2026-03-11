@@ -28,6 +28,7 @@ This work spans multiple crates, CI jobs, and test styles. It should be tracked 
 
 - Use repository-relative paths in documentation and implementation notes.
 - Unless a sub-task defines a better reason to diverge, write failure artifacts under `artifacts/test-framework/{suite-name}/{run-or-scenario}/{seed-or-run-id}/`.
+- Example artifact path: `artifacts/test-framework/deterministic-sim/leader-election/seed-12345/`.
 - Use stable filenames inside each artifact directory for logs, metrics, thresholds, traces, snapshots, and replay instructions so CI and local tooling can consume them consistently.
 
 ## Proposed sub-tasks
@@ -47,7 +48,9 @@ This work spans multiple crates, CI jobs, and test styles. It should be tracked 
 
 - [ ] Build a deterministic cluster simulation harness for core Raft behavior.
   - Implementation steps:
-    - First inspect the existing test utilities under `tests/`, `openraft/`, and the example crates; if an internal harness already exists, extend it, otherwise add one new test-only harness module instead of creating multiple overlapping harnesses.
+    - First inspect the existing test utilities under `tests/`, `openraft/`, and the example crates.
+    - If an internal harness already exists, extend it instead of creating a parallel one.
+    - Otherwise add one new test-only harness module instead of creating multiple overlapping harnesses.
     - Expose operations for ticking timers, delivering or dropping messages, restarting nodes, forcing snapshots, and inspecting committed logs and membership state.
     - Encode a fixed set of scenario tests for leader election, log replication, commit advancement, membership changes, learner promotion, leader transfer, snapshot installation, restart, and recovery.
     - Ensure every scenario can run from a fixed seed and prints the seed in failures so the execution is exactly reproducible.
@@ -93,7 +96,7 @@ This work spans multiple crates, CI jobs, and test styles. It should be tracked 
 - [ ] Introduce storage and persistence fault-injection coverage.
   - Implementation steps:
     - Add a storage wrapper used in tests that can inject write failures, delayed persistence, truncated logs, missing snapshot chunks, checksum mismatch, and restart after partial persistence.
-    - Define which errors should be surfaced to callers, which should trigger retry behavior, and which should stop the node and require operator intervention.
+    - Define in the crash-consistency expectation document which errors should be surfaced to callers, which should trigger retry behavior, and which should stop the node and require operator intervention.
     - Add restart-and-recover tests that verify state after a crash matches the documented crash-consistency contract.
     - Run the same storage fault cases against each supported storage implementation that participates in CI.
   - Deliverables:
