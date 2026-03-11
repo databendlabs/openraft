@@ -28,7 +28,7 @@ This work spans multiple crates, CI jobs, and test styles. It should be tracked 
 
 - [ ] Define the validation scope, invariants, and bug classes that the automated framework must cover.
   - Implementation steps:
-    - Write a new design note under repository documentation that lists the safety invariants the test framework must assert: leader uniqueness, log matching, state machine safety, vote monotonicity, and membership-change safety.
+    - Write a new design note under `/home/runner/work/openraft/openraft/guide/` or `/home/runner/work/openraft/openraft/openraft/src/docs/` using a filename that starts with `test-framework-` and lists the safety invariants the test framework must assert: leader uniqueness, log matching, state machine safety, vote monotonicity, and membership-change safety.
     - Add a second section for liveness expectations with explicit pass conditions such as leader election completes within a bounded simulated time, committed writes eventually replicate after transient failures, and a restarted quorum can make progress again.
     - Create a table that maps each bug class to at least one automated test layer, e.g. deterministic simulation, property tests, fault injection, compatibility tests, or soak tests.
     - For every invariant in the table, identify the current test files that already cover it and the gaps that still need new tests.
@@ -39,14 +39,14 @@ This work spans multiple crates, CI jobs, and test styles. It should be tracked 
 
 - [ ] Build a deterministic cluster simulation harness for core Raft behavior.
   - Implementation steps:
-    - Add or extend a test harness crate/module that can construct a multi-node OpenRaft cluster using deterministic clocks, seeded randomness, and in-memory transport/storage.
+    - First inspect the existing test utilities under `/home/runner/work/openraft/openraft/tests/`, `/home/runner/work/openraft/openraft/openraft/`, and example crates; if an internal harness already exists, extend it, otherwise add one new test-only harness module instead of creating multiple overlapping harnesses.
     - Expose operations for ticking timers, delivering or dropping messages, restarting nodes, forcing snapshots, and inspecting committed logs and membership state.
     - Encode a fixed set of scenario tests for leader election, log replication, commit advancement, membership changes, learner promotion, leader transfer, snapshot installation, restart, and recovery.
     - Ensure every scenario can run from a fixed seed and prints the seed in failures so the execution is exactly reproducible.
   - Deliverables:
     - one reusable deterministic harness API;
     - one initial scenario suite that covers the critical protocol paths;
-    - one short README section describing how to run a seeded replay locally.
+    - one short section in the new harness README, or in `/home/runner/work/openraft/openraft/tests/README.md` if the harness lives under `tests/`, describing how to run a seeded replay locally.
 
 - [ ] Add model-based and state-machine differential tests.
   - Implementation steps:
@@ -62,7 +62,7 @@ This work spans multiple crates, CI jobs, and test styles. It should be tracked 
 - [ ] Expand property-based and fuzz testing around protocol transitions.
   - Implementation steps:
     - Add generators for operation sequences that mix client writes, membership changes, crashes, restarts, partitions, heals, snapshot creation, snapshot installation, and compaction.
-    - Add shrinking rules so failures reduce to the smallest useful reproducer instead of leaving large random traces.
+    - Use the property-testing framework that already exists in the repository if one is present; otherwise choose one framework explicitly in the implementation note before coding and add shrinking rules so failures reduce to the smallest useful reproducer instead of leaving large random traces.
     - Save failing seeds and reduced traces into a checked-in regression corpus or replay fixture directory.
     - Add one deterministic replay test per fixed failure seed so every previously found bug becomes a permanent regression test.
   - Deliverables:
@@ -119,7 +119,7 @@ This work spans multiple crates, CI jobs, and test styles. It should be tracked 
     - Pick the example applications and reference deployments that should serve as black-box coverage targets.
     - For each target, write scenarios that use only public APIs and process boundaries, without reaching into internal test helpers.
     - Cover bootstrap, adding nodes, removing nodes, failover, restore from snapshot, and rolling restart while verifying client-visible reads and writes.
-    - Store scenario logs and cluster state snapshots on failure so breakage can be diagnosed without re-running locally first.
+    - Store scenario logs and cluster state snapshots on failure using the artifact directory layout and retention rules defined by the "Wire the framework into CI with tiered quality gates" sub-task so breakage can be diagnosed without re-running locally first.
   - Deliverables:
     - one black-box suite per selected example or reference deployment;
     - one shared scenario runner that exercises public APIs only;
@@ -130,7 +130,7 @@ This work spans multiple crates, CI jobs, and test styles. It should be tracked 
     - Define a small number of long-running workloads that combine writes, membership changes, snapshots, restarts, and injected faults over hours rather than minutes.
     - Add metrics collection for throughput, latency, memory growth, open file count, task count, and retry/error counts while the workloads run.
     - Set concrete thresholds that make a run fail on deadlock, hang, unbounded memory growth, or major performance regression.
-    - Persist historical run summaries so repeated instability can be recognized as a flake or trend rather than a one-off failure.
+    - Persist historical run summaries as CI artifacts first, with filename and retention conventions defined by the "Wire the framework into CI with tiered quality gates" sub-task; if long-term storage outside CI is later needed, document that as a follow-up task instead of leaving it implicit.
   - Deliverables:
     - one soak job definition;
     - one metrics and threshold specification;
