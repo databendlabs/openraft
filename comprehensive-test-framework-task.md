@@ -27,14 +27,16 @@ This work spans multiple crates, CI jobs, and test styles. It should be tracked 
 ## Implementation conventions
 
 - Use repository-relative paths in documentation and implementation notes.
-- Unless a sub-task defines a better reason to diverge, write failure artifacts under `artifacts/test-framework/<suite-name>/<run-or-scenario>/<seed-or-run-id>/`.
+- Unless a sub-task defines a better reason to diverge, write failure artifacts under `artifacts/test-framework/{suite-name}/{run-or-scenario}/{seed-or-run-id}/`.
 - Use stable filenames inside each artifact directory for logs, metrics, thresholds, traces, snapshots, and replay instructions so CI and local tooling can consume them consistently.
 
 ## Proposed sub-tasks
 
 - [ ] Define the validation scope, invariants, and bug classes that the automated framework must cover.
   - Implementation steps:
-    - Write a new design note under the existing documentation directories, preferably `openraft/src/docs/` or, if it belongs in the book-style docs, under `guide/`, and list the safety invariants the test framework must assert: leader uniqueness, log matching, state machine safety, vote monotonicity, and membership-change safety.
+    - Write a new design note under the existing documentation directories.
+    - Prefer `openraft/src/docs/`; use `guide/` instead if the content belongs in the book-style docs.
+    - List the safety invariants the test framework must assert: leader uniqueness, log matching, state machine safety, vote monotonicity, and membership-change safety.
     - Add a second section for liveness expectations with explicit pass conditions such as leader election completes within a bounded simulated time, committed writes eventually replicate after transient failures, and a restarted quorum can make progress again.
     - Create a table that maps each bug class to at least one automated test layer, e.g. deterministic simulation, property tests, fault injection, compatibility tests, or soak tests.
     - For every invariant in the table, identify the current test files that already cover it and the gaps that still need new tests.
@@ -126,7 +128,8 @@ This work spans multiple crates, CI jobs, and test styles. It should be tracked 
     - Pick the example applications and reference deployments that should serve as black-box coverage targets.
     - For each target, write scenarios that use only public APIs and process boundaries, without reaching into internal test helpers.
     - Cover bootstrap, adding nodes, removing nodes, failover, restore from snapshot, and rolling restart while verifying client-visible reads and writes.
-    - Store scenario logs and cluster state snapshots on failure using the artifact layout defined in the "Implementation conventions" section so breakage can be diagnosed without re-running locally first; the later CI task can formalize retention rules without changing the basic layout.
+    - Store scenario logs and cluster state snapshots on failure using the artifact layout defined in the "Implementation conventions" section so breakage can be diagnosed without re-running locally first.
+    - Let the later CI task formalize retention rules without changing the basic layout.
   - Deliverables:
     - one black-box suite per selected example or reference deployment;
     - one shared scenario runner that exercises public APIs only;
