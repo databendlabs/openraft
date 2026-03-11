@@ -24,6 +24,12 @@ This work spans multiple crates, CI jobs, and test styles. It should be tracked 
 - [ ] CI has tiered gates so fast checks block every PR and deeper suites run on schedule and before release.
 - [ ] Failure artifacts make unattended diagnosis possible without requiring manual reproduction.
 
+## Implementation conventions
+
+- Use repository-relative paths in documentation and implementation notes.
+- Unless a sub-task defines a better reason to diverge, write failure artifacts under `artifacts/test-framework/<suite-name>/<run-or-scenario>/<seed-or-run-id>/`.
+- Use stable filenames inside each artifact directory for logs, metrics, thresholds, traces, snapshots, and replay instructions so CI and local tooling can consume them consistently.
+
 ## Proposed sub-tasks
 
 - [ ] Define the validation scope, invariants, and bug classes that the automated framework must cover.
@@ -120,7 +126,7 @@ This work spans multiple crates, CI jobs, and test styles. It should be tracked 
     - Pick the example applications and reference deployments that should serve as black-box coverage targets.
     - For each target, write scenarios that use only public APIs and process boundaries, without reaching into internal test helpers.
     - Cover bootstrap, adding nodes, removing nodes, failover, restore from snapshot, and rolling restart while verifying client-visible reads and writes.
-    - Store scenario logs and cluster state snapshots on failure under a predictable path such as `artifacts/test-framework/black-box/<scenario-name>/<seed>/` so breakage can be diagnosed without re-running locally first; the later CI task can formalize retention rules without changing the basic layout.
+    - Store scenario logs and cluster state snapshots on failure using the artifact layout defined in the "Implementation conventions" section so breakage can be diagnosed without re-running locally first; the later CI task can formalize retention rules without changing the basic layout.
   - Deliverables:
     - one black-box suite per selected example or reference deployment;
     - one shared scenario runner that exercises public APIs only;
@@ -131,7 +137,7 @@ This work spans multiple crates, CI jobs, and test styles. It should be tracked 
     - Define a small number of long-running workloads that combine writes, membership changes, snapshots, restarts, and injected faults over hours rather than minutes.
     - Add metrics collection for throughput, latency, memory growth, open file count, task count, and retry/error counts while the workloads run.
     - Set concrete thresholds that make a run fail on deadlock, hang, unbounded memory growth, or major performance regression.
-    - Persist historical run summaries as CI artifacts first under a predictable path such as `artifacts/test-framework/soak/<job-name>/<run-id>/`, with stable filenames for metrics, thresholds, and failure summaries.
+    - Persist historical run summaries as CI artifacts first using the artifact layout defined in the "Implementation conventions" section, with stable filenames for metrics, thresholds, and failure summaries.
     - If long-term storage outside CI is later needed, document that as a separate follow-up task instead of leaving it implicit.
   - Deliverables:
     - one soak job definition;
