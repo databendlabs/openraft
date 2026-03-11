@@ -9,7 +9,6 @@ use pretty_assertions::assert_ne;
 #[allow(unused_imports)]
 use pretty_assertions::assert_str_eq;
 
-use crate::Entry;
 use crate::Membership;
 use crate::MembershipState;
 use crate::Vote;
@@ -31,6 +30,7 @@ use crate::replication::replicate::Replicate;
 use crate::testing::blank_ent;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::EffectiveMembershipOf;
+use crate::type_config::alias::EntryOf;
 use crate::utime::Leased;
 use crate::vote::raft_vote::RaftVoteExt;
 
@@ -157,9 +157,9 @@ fn test_leader_append_entries_normal() -> anyhow::Result<()> {
             Command::AppendEntries {
                 committed_vote: Vote::new(3, 1).into_committed(),
                 entries: vec![
-                    blank_ent(3, 1, 4), //
-                    blank_ent(3, 1, 5),
-                    blank_ent(3, 1, 6),
+                    blank_ent::<UTConfig>(3, 1, 4), //
+                    blank_ent::<UTConfig>(3, 1, 5),
+                    blank_ent::<UTConfig>(3, 1, 6),
                 ]
                 .into()
             },
@@ -230,9 +230,9 @@ fn test_leader_append_entries_single_node_leader() -> anyhow::Result<()> {
         vec![Command::AppendEntries {
             committed_vote: Vote::new(3, 1).into_committed(),
             entries: vec![
-                blank_ent(3, 1, 4), //
-                blank_ent(3, 1, 5),
-                blank_ent(3, 1, 6),
+                blank_ent::<UTConfig>(3, 1, 4), //
+                blank_ent::<UTConfig>(3, 1, 5),
+                blank_ent::<UTConfig>(3, 1, 6),
             ]
             .into()
         },],
@@ -295,9 +295,9 @@ fn test_leader_append_entries_with_membership_log() -> anyhow::Result<()> {
             Command::AppendEntries {
                 committed_vote: Vote::new(3, 1).into_committed(),
                 entries: vec![
-                    blank_ent(3, 1, 4), //
-                    Entry::new_membership(log_id(3, 1, 5), m1_2()),
-                    blank_ent(3, 1, 6),
+                    blank_ent::<UTConfig>(3, 1, 4), //
+                    EntryOf::<UTConfig>::new_membership(log_id(3, 1, 5), m1_2()),
+                    blank_ent::<UTConfig>(3, 1, 6),
                 ]
                 .into()
             },

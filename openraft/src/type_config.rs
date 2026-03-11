@@ -236,6 +236,7 @@ pub mod alias {
     pub type CommittedLeaderIdOf<C> = <LeaderIdOf<C> as RaftLeaderId>::Committed;
     pub(crate) type RefLogIdOf<'a, C> = crate::log_id::ref_log_id::RefLogId<'a, CommittedLeaderIdOf<C>>;
     pub type EntryPayloadOf<C> = EntryPayload<DOf<C>, NodeIdOf<C>, NodeOf<C>>;
+    pub type DefaultEntryOf<C> = crate::Entry<CommittedLeaderIdOf<C>, DOf<C>, NodeIdOf<C>, NodeOf<C>>;
     pub type StoredMembershipOf<C> = crate::StoredMembership<CommittedLeaderIdOf<C>, NodeIdOf<C>, NodeOf<C>>;
     pub type EffectiveMembershipOf<C> =
         crate::membership::EffectiveMembership<CommittedLeaderIdOf<C>, NodeIdOf<C>, NodeOf<C>>;

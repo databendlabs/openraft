@@ -78,7 +78,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
             let req = AppendEntriesRequest {
                 vote: Vote::new_committed(1, 0),
                 prev_log_id: None,
-                entries: vec![blank_ent(0, 0, 0), Entry {
+                entries: vec![blank_ent::<openraft_memstore::TypeConfig>(0, 0, 0), Entry {
                     log_id: log_id(1, 0, 1),
                     payload: EntryPayload::Membership(Membership::new_with_defaults(vec![btreeset! {2,3}], [])),
                 }],

@@ -219,7 +219,7 @@ macro_rules! declare_raft_types {
                 (Term         , , u64                                          ),
                 (LeaderId     , , $crate::impls::leader_id_adv::LeaderId<Self::Term, Self::NodeId> ),
                 (Vote           , , $crate::impls::Vote<Self::LeaderId>            ),
-                (Entry          , , $crate::impls::Entry<Self>                   ),
+                (Entry          , , $crate::Entry<<Self::LeaderId as $crate::vote::RaftLeaderId>::Committed, Self::D, Self::NodeId, Self::Node> ),
                 (SnapshotData   , , std::io::Cursor<Vec<u8>>                     ),
                 (Responder<T>   , , $crate::impls::ProgressResponder<Self, T> where T: $crate::OptionalSend + 'static     ),
                 (AsyncRuntime   , , $crate::impls::TokioRuntime                  ),

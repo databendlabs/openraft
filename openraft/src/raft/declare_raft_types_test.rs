@@ -20,7 +20,7 @@ declare_raft_types!(
         R = (),
         Term = u64,
         LeaderId = crate::impls::leader_id_std::LeaderId<u64, u64>,
-        Entry = crate::Entry<Self>,
+        Entry = crate::Entry<<Self::LeaderId as crate::vote::RaftLeaderId>::Committed, Self::D, Self::NodeId, Self::Node>,
         Vote = crate::impls::Vote<Self::LeaderId>,
         SnapshotData = Cursor<Vec<u8>>,
         AsyncRuntime = TokioRuntime,
@@ -33,7 +33,7 @@ declare_raft_types!(
         R = (),
         NodeId = u64,
         Node = (),
-        Entry = crate::Entry<Self>,
+        Entry = crate::Entry<<Self::LeaderId as crate::vote::RaftLeaderId>::Committed, Self::D, Self::NodeId, Self::Node>,
         SnapshotData = Cursor<Vec<u8>>,
         AsyncRuntime = TokioRuntime,
 );
@@ -43,7 +43,7 @@ declare_raft_types!(
         D = u64,
         NodeId = u64,
         Node = (),
-        Entry = crate::Entry<Self>,
+        Entry = crate::Entry<<Self::LeaderId as crate::vote::RaftLeaderId>::Committed, Self::D, Self::NodeId, Self::Node>,
         SnapshotData = Cursor<Vec<u8>>,
         AsyncRuntime = TokioRuntime,
 );

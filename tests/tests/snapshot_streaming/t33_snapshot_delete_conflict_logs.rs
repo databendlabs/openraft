@@ -58,7 +58,7 @@ async fn snapshot_delete_conflicting_logs() -> Result<()> {
         sto0.save_vote(&Vote::new(4, 0)).await?;
         sto0.blocking_append([
             // manually insert the initializing log
-            membership_ent(0, 0, 0, vec![btreeset! {0}]),
+            membership_ent::<openraft_memstore::TypeConfig>(0, 0, 0, vec![btreeset! {0}]),
         ])
         .await?;
         log_index = 1;
@@ -86,21 +86,21 @@ async fn snapshot_delete_conflicting_logs() -> Result<()> {
             vote: Vote::new_committed(1, 0),
             prev_log_id: None,
             entries: vec![
-                blank_ent(0, 0, 0),
-                blank_ent(1, 0, 1),
+                blank_ent::<openraft_memstore::TypeConfig>(0, 0, 0),
+                blank_ent::<openraft_memstore::TypeConfig>(1, 0, 1),
                 // conflict membership will be replaced with membership in snapshot
                 Entry {
                     log_id: log_id(1, 0, 2),
                     payload: EntryPayload::Membership(Membership::new_with_defaults(vec![btreeset! {2,3}], [])),
                 },
-                blank_ent(1, 0, 3),
-                blank_ent(1, 0, 4),
-                blank_ent(1, 0, 5),
-                blank_ent(1, 0, 6),
-                blank_ent(1, 0, 7),
-                blank_ent(1, 0, 8),
-                blank_ent(1, 0, 9),
-                blank_ent(1, 0, 10),
+                blank_ent::<openraft_memstore::TypeConfig>(1, 0, 3),
+                blank_ent::<openraft_memstore::TypeConfig>(1, 0, 4),
+                blank_ent::<openraft_memstore::TypeConfig>(1, 0, 5),
+                blank_ent::<openraft_memstore::TypeConfig>(1, 0, 6),
+                blank_ent::<openraft_memstore::TypeConfig>(1, 0, 7),
+                blank_ent::<openraft_memstore::TypeConfig>(1, 0, 8),
+                blank_ent::<openraft_memstore::TypeConfig>(1, 0, 9),
+                blank_ent::<openraft_memstore::TypeConfig>(1, 0, 10),
                 // another conflict membership, will be removed
                 Entry {
                     log_id: log_id(1, 0, 11),

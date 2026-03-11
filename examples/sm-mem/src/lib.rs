@@ -10,8 +10,8 @@ use std::sync::atomic::Ordering;
 use futures::Stream;
 use futures::TryStreamExt;
 use futures::lock::Mutex;
-use openraft::Entry;
 use openraft::EntryPayload;
+use openraft::alias::DefaultEntryOf;
 use openraft::OptionalSend;
 use openraft::RaftSnapshotBuilder;
 use openraft::RaftTypeConfig;
@@ -100,7 +100,7 @@ impl<C: RaftTypeConfig> StateMachineStore<C> {
 }
 
 impl<C> RaftSnapshotBuilder<C> for StateMachineStore<C>
-where C: RaftTypeConfig<D = types_kv::Request, R = types_kv::Response, SnapshotData = Cursor<Vec<u8>>, Entry = Entry<C>>
+where C: RaftTypeConfig<D = types_kv::Request, R = types_kv::Response, SnapshotData = Cursor<Vec<u8>>, Entry = DefaultEntryOf<C>>
 {
     #[tracing::instrument(level = "trace", skip(self))]
     async fn build_snapshot(&mut self) -> Result<SnapshotOf<C>, io::Error> {
@@ -137,7 +137,7 @@ where C: RaftTypeConfig<D = types_kv::Request, R = types_kv::Response, SnapshotD
 }
 
 impl<C> RaftStateMachine<C> for StateMachineStore<C>
-where C: RaftTypeConfig<D = types_kv::Request, R = types_kv::Response, SnapshotData = Cursor<Vec<u8>>, Entry = Entry<C>>
+where C: RaftTypeConfig<D = types_kv::Request, R = types_kv::Response, SnapshotData = Cursor<Vec<u8>>, Entry = DefaultEntryOf<C>>
 {
     type SnapshotBuilder = Self;
 

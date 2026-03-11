@@ -4,6 +4,7 @@ use std::collections::BTreeSet;
 
 use crate::RaftTypeConfig;
 use crate::entry::RaftEntry;
+use crate::type_config::alias::EntryOf;
 use crate::type_config::alias::LogIdOf;
 use crate::vote::RaftLeaderIdExt;
 
@@ -17,22 +18,22 @@ where
 }
 
 /// Create a blank log entry for tests.
-pub fn blank_ent<C>(term: u64, node_id: C::NodeId, index: u64) -> crate::Entry<C>
+pub fn blank_ent<C>(term: u64, node_id: C::NodeId, index: u64) -> EntryOf<C>
 where
     C: RaftTypeConfig,
     C::Term: From<u64>,
 {
-    crate::Entry::<C>::new_blank(log_id::<C>(term, node_id, index))
+    EntryOf::<C>::new_blank(log_id::<C>(term, node_id, index))
 }
 
 /// Create a membership log entry without learner config for test.
-pub fn membership_ent<C>(term: u64, node_id: C::NodeId, index: u64, config: Vec<BTreeSet<C::NodeId>>) -> crate::Entry<C>
+pub fn membership_ent<C>(term: u64, node_id: C::NodeId, index: u64, config: Vec<BTreeSet<C::NodeId>>) -> EntryOf<C>
 where
     C: RaftTypeConfig,
     C::Term: From<u64>,
     C::Node: Default,
 {
-    crate::Entry::new_membership(
+    EntryOf::<C>::new_membership(
         log_id::<C>(term, node_id, index),
         crate::Membership::new_with_defaults(config, []),
     )

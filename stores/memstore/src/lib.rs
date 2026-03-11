@@ -18,10 +18,10 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use futures::Stream;
-use openraft::Entry;
 use openraft::EntryPayload;
 use openraft::OptionalSend;
 use openraft::Vote;
+use openraft::alias::EntryOf;
 use openraft::alias::LogIdOf;
 use openraft::alias::SnapshotDataOf;
 use openraft::alias::SnapshotMetaOf;
@@ -275,7 +275,7 @@ impl RaftLogReader<TypeConfig> for Arc<MemLogStore> {
     async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + OptionalSend>(
         &mut self,
         range: RB,
-    ) -> Result<Vec<Entry<TypeConfig>>, io::Error> {
+    ) -> Result<Vec<EntryOf<TypeConfig>>, io::Error> {
         let mut entries = vec![];
         {
             let log = self.log.read().await;
@@ -293,7 +293,7 @@ impl RaftLogReader<TypeConfig> for Arc<MemLogStore> {
         Ok(*self.vote.read().await)
     }
 
-    async fn limited_get_log_entries(&mut self, start: u64, end: u64) -> Result<Vec<Entry<TypeConfig>>, io::Error> {
+    async fn limited_get_log_entries(&mut self, start: u64, end: u64) -> Result<Vec<EntryOf<TypeConfig>>, io::Error> {
         if self.return_empty_limited_get.load(Ordering::Relaxed) {
             tracing::info!(
                 "limited_get_log_entries({}, {}): returning empty for testing",
@@ -381,7 +381,7 @@ impl RaftLogStorage<TypeConfig> for Arc<MemLogStore> {
         let last = match last_serialized {
             None => None,
             Some(serialized) => {
-                let ent: Entry<TypeConfig> = serde_json::from_str(serialized)
+                let ent: EntryOf<TypeConfig> = serde_json::from_str(serialized)
                     .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
                 Some(ent.log_id())
             }
@@ -436,7 +436,7 @@ impl RaftLogStorage<TypeConfig> for Arc<MemLogStore> {
 
     #[tracing::instrument(level = "trace", skip_all)]
     async fn append<I>(&mut self, entries: I, callback: IOFlushed<TypeConfig>) -> Result<(), io::Error>
-    where I: IntoIterator<Item = Entry<TypeConfig>> + OptionalSend {
+    where I: IntoIterator<Item = EntryOf<TypeConfig>> + OptionalSend {
         let mut log = self.log.write().await;
         for entry in entries {
             let s =
