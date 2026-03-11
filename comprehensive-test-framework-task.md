@@ -5,7 +5,7 @@ Instead, it provides a document that explains the work to do and can be copied i
 
 ## Goal
 
-build a layered automated validation framework that exercises OpenRaft through deterministic, randomized, adversarial, compatibility, and long-running production-like scenarios, so every patch is screened automatically for safety and regression risks before merge.
+Build a layered automated validation framework that exercises OpenRaft through deterministic, randomized, adversarial, compatibility, and long-running production-like scenarios, so every patch is screened automatically for safety and regression risks before merge.
 
 > **Reality check:** no finite automated test suite can literally guarantee correctness for all possible executions. To get as close as practical to unattended correctness checks, this plan combines exhaustive techniques where possible with broad fault-injection and compatibility coverage.
 
@@ -28,7 +28,7 @@ This work spans multiple crates, CI jobs, and test styles. It should be tracked 
 
 - [ ] Define the validation scope, invariants, and bug classes that the automated framework must cover.
   - Implementation steps:
-    - Write a new design note under `guide/` or `openraft/src/docs/` and list the safety invariants the test framework must assert: leader uniqueness, log matching, state machine safety, vote monotonicity, and membership-change safety.
+    - Write a new design note under the existing documentation directories, preferably `openraft/src/docs/` or, if it belongs in the book-style docs, under `guide/`, and list the safety invariants the test framework must assert: leader uniqueness, log matching, state machine safety, vote monotonicity, and membership-change safety.
     - Add a second section for liveness expectations with explicit pass conditions such as leader election completes within a bounded simulated time, committed writes eventually replicate after transient failures, and a restarted quorum can make progress again.
     - Create a table that maps each bug class to at least one automated test layer, e.g. deterministic simulation, property tests, fault injection, compatibility tests, or soak tests.
     - For every invariant in the table, identify the current test files that already cover it and the gaps that still need new tests.
