@@ -5,7 +5,7 @@ Instead, it provides a document that explains the work to do and can be copied i
 
 ## Goal
 
-Build a layered automated validation framework that exercises OpenRaft through deterministic, randomized, adversarial, compatibility, and long-running production-like scenarios, so every patch is screened automatically for safety and regression risks before merge.
+build a layered automated validation framework that exercises OpenRaft through deterministic, randomized, adversarial, compatibility, and long-running production-like scenarios, so every patch is screened automatically for safety and regression risks before merge.
 
 > **Reality check:** no finite automated test suite can literally guarantee correctness for all possible executions. To get as close as practical to unattended correctness checks, this plan combines exhaustive techniques where possible with broad fault-injection and compatibility coverage.
 
@@ -28,7 +28,7 @@ This work spans multiple crates, CI jobs, and test styles. It should be tracked 
 
 - [ ] Define the validation scope, invariants, and bug classes that the automated framework must cover.
   - Implementation steps:
-    - Write a new design note under `guide/` or `openraft/src/docs/` using a filename that starts with `test-framework-` and lists the safety invariants the test framework must assert: leader uniqueness, log matching, state machine safety, vote monotonicity, and membership-change safety.
+    - Write a new design note under `guide/` or `openraft/src/docs/` and list the safety invariants the test framework must assert: leader uniqueness, log matching, state machine safety, vote monotonicity, and membership-change safety.
     - Add a second section for liveness expectations with explicit pass conditions such as leader election completes within a bounded simulated time, committed writes eventually replicate after transient failures, and a restarted quorum can make progress again.
     - Create a table that maps each bug class to at least one automated test layer, e.g. deterministic simulation, property tests, fault injection, compatibility tests, or soak tests.
     - For every invariant in the table, identify the current test files that already cover it and the gaps that still need new tests.
@@ -62,7 +62,8 @@ This work spans multiple crates, CI jobs, and test styles. It should be tracked 
 - [ ] Expand property-based and fuzz testing around protocol transitions.
   - Implementation steps:
     - Add generators for operation sequences that mix client writes, membership changes, crashes, restarts, partitions, heals, snapshot creation, snapshot installation, and compaction.
-    - Use the property-testing framework that already exists in the repository if one is present; otherwise choose one framework explicitly in the implementation note before coding and add shrinking rules so failures reduce to the smallest useful reproducer instead of leaving large random traces.
+    - Use the property-testing framework that already exists in the repository if one is present; otherwise choose one framework explicitly in the implementation note before coding.
+    - Add shrinking rules so failures reduce to the smallest useful reproducer instead of leaving large random traces.
     - Save failing seeds and reduced traces into a checked-in regression corpus or replay fixture directory.
     - Add one deterministic replay test per fixed failure seed so every previously found bug becomes a permanent regression test.
   - Deliverables:
@@ -130,7 +131,8 @@ This work spans multiple crates, CI jobs, and test styles. It should be tracked 
     - Define a small number of long-running workloads that combine writes, membership changes, snapshots, restarts, and injected faults over hours rather than minutes.
     - Add metrics collection for throughput, latency, memory growth, open file count, task count, and retry/error counts while the workloads run.
     - Set concrete thresholds that make a run fail on deadlock, hang, unbounded memory growth, or major performance regression.
-    - Persist historical run summaries as CI artifacts first, with filename and retention conventions defined by the "Wire the framework into CI with tiered quality gates" sub-task; if long-term storage outside CI is later needed, document that as a follow-up task instead of leaving it implicit.
+    - Persist historical run summaries as CI artifacts first, with filename and retention conventions defined by the "Wire the framework into CI with tiered quality gates" sub-task.
+    - If long-term storage outside CI is later needed, document that as a separate follow-up task instead of leaving it implicit.
   - Deliverables:
     - one soak job definition;
     - one metrics and threshold specification;
