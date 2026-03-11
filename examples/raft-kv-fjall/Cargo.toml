@@ -1,0 +1,46 @@
+[package]
+name = "raft-kv-fjall"
+version = "0.1.0"
+readme = "README.md"
+
+edition = "2024"
+authors = [
+    "ariesdevil <ariesdevil77@gmail.com>",
+]
+categories = ["algorithms", "asynchronous", "data-structures"]
+description = "An example distributed key-value store built upon `openraft`."
+homepage = "https://github.com/databendlabs/openraft"
+keywords = ["raft", "consensus"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/databendlabs/openraft"
+
+[[bin]]
+name = "raft-key-value-fjall"
+path = "src/bin/main.rs"
+
+[dependencies]
+client-http         = { path = "../client-http" }
+network-v1-http     = { path = "../network-v1-http" }
+openraft            = { path = "../../openraft", features = ["serde", "type-alias"] }
+openraft-legacy = { path = "../../legacy" }
+types-kv            = { path = "../types-kv" }
+
+actix-web          = { version = "4.0.0-rc.2" }
+clap               = { version = "4.1.11", features = ["derive", "env"] }
+fjall = {version = "3.0.1"}
+futures            = { version = "0.3" }
+serde              = { version = "1.0.114", features = ["derive"] }
+serde_json         = { version = "1.0.57" }
+tracing            = { version = "0.1.40" }
+tracing-subscriber = { version = "0.3.0", features = ["env-filter"] }
+byteorder = "1.5.0"
+
+[dev-dependencies]
+maplit = { version = "1.0.2" }
+tempfile = { version = "3.4.0" }
+
+
+[features]
+
+[package.metadata.docs.rs]
+all-features = true
