@@ -28,7 +28,7 @@ This work spans multiple crates, CI jobs, and test styles. It should be tracked 
 
 - [ ] Define the validation scope, invariants, and bug classes that the automated framework must cover.
   - Implementation steps:
-    - Write a new design note under `/home/runner/work/openraft/openraft/guide/` or `/home/runner/work/openraft/openraft/openraft/src/docs/` using a filename that starts with `test-framework-` and lists the safety invariants the test framework must assert: leader uniqueness, log matching, state machine safety, vote monotonicity, and membership-change safety.
+    - Write a new design note under `guide/` or `openraft/src/docs/` using a filename that starts with `test-framework-` and lists the safety invariants the test framework must assert: leader uniqueness, log matching, state machine safety, vote monotonicity, and membership-change safety.
     - Add a second section for liveness expectations with explicit pass conditions such as leader election completes within a bounded simulated time, committed writes eventually replicate after transient failures, and a restarted quorum can make progress again.
     - Create a table that maps each bug class to at least one automated test layer, e.g. deterministic simulation, property tests, fault injection, compatibility tests, or soak tests.
     - For every invariant in the table, identify the current test files that already cover it and the gaps that still need new tests.
@@ -39,14 +39,14 @@ This work spans multiple crates, CI jobs, and test styles. It should be tracked 
 
 - [ ] Build a deterministic cluster simulation harness for core Raft behavior.
   - Implementation steps:
-    - First inspect the existing test utilities under `/home/runner/work/openraft/openraft/tests/`, `/home/runner/work/openraft/openraft/openraft/`, and example crates; if an internal harness already exists, extend it, otherwise add one new test-only harness module instead of creating multiple overlapping harnesses.
+    - First inspect the existing test utilities under `tests/`, `openraft/`, and the example crates; if an internal harness already exists, extend it, otherwise add one new test-only harness module instead of creating multiple overlapping harnesses.
     - Expose operations for ticking timers, delivering or dropping messages, restarting nodes, forcing snapshots, and inspecting committed logs and membership state.
     - Encode a fixed set of scenario tests for leader election, log replication, commit advancement, membership changes, learner promotion, leader transfer, snapshot installation, restart, and recovery.
     - Ensure every scenario can run from a fixed seed and prints the seed in failures so the execution is exactly reproducible.
   - Deliverables:
     - one reusable deterministic harness API;
     - one initial scenario suite that covers the critical protocol paths;
-    - one short section in the new harness README, or in `/home/runner/work/openraft/openraft/tests/README.md` if the harness lives under `tests/`, describing how to run a seeded replay locally.
+    - one short section in the new harness README, or in `tests/README.md` if the harness lives under `tests/`, describing how to run a seeded replay locally.
 
 - [ ] Add model-based and state-machine differential tests.
   - Implementation steps:
