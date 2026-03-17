@@ -167,7 +167,7 @@ where CLID: RaftCommittedLeaderId
     }
 
     /// Get the last purged log id, if any.
-    pub(crate) fn purged(&self) -> Option<&LogId<CLID>> {
+    pub fn purged(&self) -> Option<&LogId<CLID>> {
         self.purged.as_ref()
     }
 
@@ -308,9 +308,8 @@ where CLID: RaftCommittedLeaderId
         self.purged = Some(upto.clone());
     }
 
-    // This method is only used in tests
-    #[allow(dead_code)]
-    pub(crate) fn get(&self, index: u64) -> Option<LogId<CLID>> {
+    /// Get the log id at the specified index.
+    pub fn get(&self, index: u64) -> Option<LogId<CLID>> {
         self.ref_at(index).map(|r| r.into_log_id())
     }
 
@@ -373,7 +372,8 @@ where CLID: RaftCommittedLeaderId
         Some(RefLogId::new(first_key.committed_leader_id(), first_index))
     }
 
-    pub(crate) fn last(&self) -> Option<&LogId<CLID>> {
+    /// Get the last log id, if any.
+    pub fn last(&self) -> Option<&LogId<CLID>> {
         self.key_log_ids.last().or(self.purged.as_ref())
     }
 
