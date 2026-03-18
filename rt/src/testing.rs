@@ -30,10 +30,7 @@ use crate::watch::WatchSender;
 /// struct MyCustomRuntime;
 /// impl openraft::AsyncRuntime for MyCustomRuntime { /* omitted */ }
 ///
-/// // Build a runtime
-/// let rt = MyCustomRuntime::new();
-/// // Run all the tests
-/// rt.block_on(Suite::<MyCustomRuntime>::test_all());
+/// Suite::<MyCustomRuntime>::test_all();
 /// ```
 pub struct Suite<Rt: AsyncRuntime> {
     /// `Rt` needs to be used to make linter happy.
@@ -41,54 +38,59 @@ pub struct Suite<Rt: AsyncRuntime> {
 }
 
 impl<Rt: AsyncRuntime> Suite<Rt> {
-    pub async fn test_all() {
-        Self::test_spawn_join_handle().await;
-        Self::test_thread_rng().await;
-        Self::test_sleep().await;
-        Self::test_instant().await;
-        Self::test_instant_arithmetic().await;
-        Self::test_instant_sub_instant().await;
-        Self::test_instant_saturating_duration_since().await;
-        Self::test_instant_ord().await;
-        Self::test_sleep_until().await;
-        Self::test_timeout().await;
-        Self::test_timeout_at().await;
+    pub fn test_all() {
+        let mut rt = Rt::new(1);
+        rt.block_on(async {
+            Self::test_spawn_join_handle().await;
+            Self::test_thread_rng().await;
+            Self::test_sleep().await;
+            Self::test_instant().await;
+            Self::test_instant_arithmetic().await;
+            Self::test_instant_sub_instant().await;
+            Self::test_instant_saturating_duration_since().await;
+            Self::test_instant_ord().await;
+            Self::test_sleep_until().await;
+            Self::test_timeout().await;
+            Self::test_timeout_at().await;
 
-        Self::test_mpsc_recv_empty().await;
-        Self::test_mpsc_recv_channel_closed().await;
-        Self::test_mpsc_weak_sender_wont_prevent_channel_close().await;
-        Self::test_mpsc_weak_sender_upgrade().await;
-        Self::test_mpsc_send().await;
-        Self::test_mpsc_send_to_closed_channel().await;
-        Self::test_mpsc_backpressure().await;
+            Self::test_mpsc_recv_empty().await;
+            Self::test_mpsc_recv_channel_closed().await;
+            Self::test_mpsc_weak_sender_wont_prevent_channel_close().await;
+            Self::test_mpsc_weak_sender_upgrade().await;
+            Self::test_mpsc_send().await;
+            Self::test_mpsc_send_to_closed_channel().await;
+            Self::test_mpsc_backpressure().await;
 
-        Self::test_watch_init_value().await;
-        Self::test_watch_overwrite_init_value().await;
-        Self::test_watch_send_error_no_receiver().await;
-        Self::test_watch_send_if_modified().await;
-        Self::test_watch_wait_until_ge().await;
-        Self::test_watch_wait_until().await;
-        Self::test_watch_changed_marks_as_seen().await;
-        Self::test_watch_changed_returns_immediately_when_unseen().await;
-        Self::test_watch_multiple_borrow_then_changed().await;
-        Self::test_watch_wait_loop_pattern().await;
-        Self::test_watch_multiple_receivers().await;
-        Self::test_watch_subscribe().await;
-        Self::test_watch_send_if_different().await;
-        Self::test_watch_send_if_greater().await;
-        Self::test_oneshot_drop_tx().await;
-        Self::test_oneshot().await;
-        Self::test_oneshot_send_from_another_task().await;
-        Self::test_oneshot_send_to_dropped_rx().await;
-        Self::test_mutex().await;
-        Self::test_mutex_contention().await;
-        Self::test_mutex_lock_owned().await;
+            Self::test_watch_init_value().await;
+            Self::test_watch_overwrite_init_value().await;
+            Self::test_watch_send_error_no_receiver().await;
+            Self::test_watch_send_if_modified().await;
+            Self::test_watch_wait_until_ge().await;
+            Self::test_watch_wait_until().await;
+            Self::test_watch_changed_marks_as_seen().await;
+            Self::test_watch_changed_returns_immediately_when_unseen().await;
+            Self::test_watch_multiple_borrow_then_changed().await;
+            Self::test_watch_wait_loop_pattern().await;
+            Self::test_watch_multiple_receivers().await;
+            Self::test_watch_subscribe().await;
+            Self::test_watch_send_if_different().await;
+            Self::test_watch_send_if_greater().await;
+            Self::test_oneshot_drop_tx().await;
+            Self::test_oneshot().await;
+            Self::test_oneshot_send_from_another_task().await;
+            Self::test_oneshot_send_to_dropped_rx().await;
+            Self::test_mutex().await;
+            Self::test_mutex_contention().await;
+            Self::test_mutex_lock_owned().await;
 
-        Self::test_task_local().await;
-        Self::test_task_local_on_completion_drop().await;
-        Self::test_task_local_take_value().await;
-        Self::test_task_local_poll_after_take_value().await;
-        Self::test_task_local_get_value().await;
+            Self::test_task_local().await;
+            Self::test_task_local_on_completion_drop().await;
+            Self::test_task_local_take_value().await;
+            Self::test_task_local_poll_after_take_value().await;
+            Self::test_task_local_get_value().await;
+        });
+
+        DetsimSuite::<Rt>::test_all();
     }
 
     pub async fn test_spawn_join_handle() {
@@ -1154,4 +1156,121 @@ fn is_ready<F: Future>(fut: F) -> bool {
 fn is_pending<F: Future>(fut: F) -> bool {
     let pinned = pin!(fut);
     matches!(poll_in_place(pinned), Poll::Pending)
+}
+
+/// Test suite for [`DeterministicRng`](crate::deterministic_rng::DeterministicRng) properties.
+///
+/// Each test is self-contained: creates its own `DeterministicRng` runtime,
+/// sets a seed, and runs `block_on`.
+pub struct DetsimSuite<Rt: AsyncRuntime> {
+    _marker: std::marker::PhantomData<Rt>,
+}
+
+type Det<Rt> = crate::deterministic_rng::DeterministicRng<Rt>;
+
+impl<Rt: AsyncRuntime> DetsimSuite<Rt> {
+    fn new_runtime(seed: u64) -> Det<Rt> {
+        let mut rt = Det::<Rt>::new(1);
+        rt.set_seed(seed);
+        rt
+    }
+
+    pub fn test_all() {
+        Self::test_thread_rng_determinism();
+        Self::test_thread_rng_sequence_advances();
+        Self::test_spawn_seed_differs_from_parent();
+        Self::test_two_spawned_tasks_differ();
+        Self::test_scope();
+    }
+
+    /// Same seed produces the same RNG sequence; different seed differs.
+    fn test_thread_rng_determinism() {
+        use rand::Rng;
+
+        let collect = |seed: u64| -> Vec<u64> {
+            Self::new_runtime(seed)
+                .block_on(async { (0..5).map(|_| Det::<Rt>::thread_rng().random::<u64>()).collect() })
+        };
+
+        let run1 = collect(123);
+        let run2 = collect(123);
+        assert_eq!(run1, run2, "same seed should produce the same RNG sequence");
+
+        let run3 = collect(456);
+        assert_ne!(run1, run3, "different seeds should produce different sequences");
+    }
+
+    /// Consecutive `thread_rng()` calls produce different values.
+    fn test_thread_rng_sequence_advances() {
+        use rand::Rng;
+
+        Self::new_runtime(42).block_on(async {
+            let v1: u64 = Det::<Rt>::thread_rng().random();
+            let v2: u64 = Det::<Rt>::thread_rng().random();
+            assert_ne!(v1, v2, "consecutive thread_rng() calls should produce different values");
+        });
+    }
+
+    /// A spawned task's RNG differs from the parent's.
+    fn test_spawn_seed_differs_from_parent() {
+        use rand::Rng;
+
+        Self::new_runtime(42).block_on(async {
+            let (tx, rx) = <Det<Rt> as AsyncRuntime>::Oneshot::channel::<u64>();
+
+            #[allow(clippy::let_underscore_future)]
+            let _ = Det::<Rt>::spawn(async move {
+                let _ = tx.send(Det::<Rt>::thread_rng().random::<u64>());
+            });
+
+            let child_val: u64 = rx.await.unwrap();
+            let parent_val: u64 = Det::<Rt>::thread_rng().random();
+
+            assert_ne!(
+                parent_val, child_val,
+                "parent and child should get different RNG values"
+            );
+        });
+    }
+
+    /// Two separately spawned tasks get different RNG values.
+    fn test_two_spawned_tasks_differ() {
+        use rand::Rng;
+
+        Self::new_runtime(42).block_on(async {
+            let (tx1, rx1) = <Det<Rt> as AsyncRuntime>::Oneshot::channel::<u64>();
+            let (tx2, rx2) = <Det<Rt> as AsyncRuntime>::Oneshot::channel::<u64>();
+
+            #[allow(clippy::let_underscore_future)]
+            let _ = Det::<Rt>::spawn(async move {
+                let _ = tx1.send(Det::<Rt>::thread_rng().random::<u64>());
+            });
+
+            #[allow(clippy::let_underscore_future)]
+            let _ = Det::<Rt>::spawn(async move {
+                let _ = tx2.send(Det::<Rt>::thread_rng().random::<u64>());
+            });
+
+            let v1: u64 = rx1.await.unwrap();
+            let v2: u64 = rx2.await.unwrap();
+
+            assert_ne!(v1, v2, "two spawned tasks should get different RNG values");
+        });
+    }
+
+    /// `scope()` sets the seed for an async future without `block_on`.
+    fn test_scope() {
+        use rand::Rng;
+
+        Self::new_runtime(0).block_on(async {
+            // Same seed produces same value
+            let v1: u64 = Det::<Rt>::scope(99, async { Det::<Rt>::thread_rng().random() }).await;
+            let v2: u64 = Det::<Rt>::scope(99, async { Det::<Rt>::thread_rng().random() }).await;
+            assert_eq!(v1, v2, "scope with same seed should produce same value");
+
+            // Different seed produces different value
+            let v3: u64 = Det::<Rt>::scope(100, async { Det::<Rt>::thread_rng().random() }).await;
+            assert_ne!(v1, v3, "scope with different seed should produce different value");
+        });
+    }
 }
