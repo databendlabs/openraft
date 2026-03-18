@@ -19,6 +19,7 @@
 mod async_runtime;
 #[macro_use]
 pub mod task_local;
+pub mod deterministic_rng;
 pub mod instant;
 pub mod mpsc;
 pub mod mutex;
