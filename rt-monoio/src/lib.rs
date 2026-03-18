@@ -143,6 +143,6 @@ mod tests {
 
     #[test]
     fn test_monoio_rt() {
-        MonoioRuntime::run(Suite::<MonoioRuntime>::test_all());
+        Suite::<MonoioRuntime>::test_all();
     }
 }

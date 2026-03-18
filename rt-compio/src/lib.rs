@@ -185,6 +185,6 @@ mod tests {
 
     #[test]
     fn test_compio_rt() {
-        CompioRuntime::run(Suite::<CompioRuntime>::test_all());
+        Suite::<CompioRuntime>::test_all();
     }
 }

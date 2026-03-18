@@ -133,6 +133,6 @@ mod tests {
 
     #[test]
     fn test_tokio_rt() {
-        TokioRuntime::run(Suite::<TokioRuntime>::test_all());
+        Suite::<TokioRuntime>::test_all();
     }
 }
