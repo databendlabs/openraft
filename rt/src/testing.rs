@@ -6,6 +6,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::pin::pin;
 use std::sync::Arc;
+use std::task::Context;
 use std::task::Poll;
 use std::time::Duration;
 
@@ -82,6 +83,12 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         Self::test_mutex().await;
         Self::test_mutex_contention().await;
         Self::test_mutex_lock_owned().await;
+
+        Self::test_task_local().await;
+        Self::test_task_local_on_completion_drop().await;
+        Self::test_task_local_take_value().await;
+        Self::test_task_local_poll_after_take_value().await;
+        Self::test_task_local_get_value().await;
     }
 
     pub async fn test_spawn_join_handle() {
@@ -1017,6 +1024,116 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         // Drop the owned guard and the lock should succeed
         drop(guard);
         assert!(matches!(poll_in_place(pinned_lock_fut), Poll::Ready(_)));
+    }
+
+    /// Test basic task_local scope, get, and with.
+    pub async fn test_task_local() {
+        crate::task_local! {
+            static REQ_ID: u32;
+            pub static FOO: bool;
+        }
+
+        let j1 = Rt::spawn(REQ_ID.scope(1, async move {
+            assert_eq!(REQ_ID.get(), 1);
+            assert_eq!(REQ_ID.get(), 1);
+        }));
+
+        let j2 = Rt::spawn(REQ_ID.scope(2, async move {
+            REQ_ID.with(|v| {
+                assert_eq!(REQ_ID.get(), 2);
+                assert_eq!(*v, 2);
+            });
+
+            Rt::sleep(Duration::from_millis(10)).await;
+
+            assert_eq!(REQ_ID.get(), 2);
+        }));
+
+        let j3 = Rt::spawn(FOO.scope(true, async move {
+            assert!(FOO.get());
+        }));
+
+        j1.await.unwrap();
+        j2.await.unwrap();
+        j3.await.unwrap();
+    }
+
+    /// Test that task-local is available when a future is dropped on completion.
+    pub async fn test_task_local_on_completion_drop() {
+        crate::task_local! {
+            static KEY: u32;
+        }
+
+        struct MyFuture<Rt: AsyncRuntime> {
+            tx: Option<<Rt::Oneshot as Oneshot>::Sender<u32>>,
+        }
+        impl<Rt: AsyncRuntime> Future for MyFuture<Rt> {
+            type Output = ();
+
+            fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<()> {
+                Poll::Ready(())
+            }
+        }
+        impl<Rt: AsyncRuntime> Drop for MyFuture<Rt> {
+            fn drop(&mut self) {
+                let _ = self.tx.take().unwrap().send(KEY.get());
+            }
+        }
+
+        let (tx, rx) = Rt::Oneshot::channel();
+
+        let h = Rt::spawn(KEY.scope(42, MyFuture::<Rt> { tx: Some(tx) }));
+
+        assert_eq!(rx.await.unwrap(), 42);
+        h.await.unwrap();
+    }
+
+    /// Test `TaskLocalFuture::take_value`.
+    pub async fn test_task_local_take_value() {
+        crate::task_local! {
+            static KEY: u32;
+        }
+        let fut = KEY.scope(1, async {});
+        let mut pinned = Box::pin(fut);
+        assert_eq!(pinned.as_mut().take_value(), Some(1));
+        assert_eq!(pinned.as_mut().take_value(), None);
+    }
+
+    /// Test that polling after `take_value` sees no task-local value.
+    pub async fn test_task_local_poll_after_take_value() {
+        crate::task_local! {
+            static KEY: u32;
+        }
+        let fut = KEY.scope(1, async {
+            let result = KEY.try_with(|_| {});
+            assert!(result.is_err());
+        });
+        let mut fut = Box::pin(fut);
+        fut.as_mut().take_value();
+
+        fut.await;
+    }
+
+    /// Test `LocalKey::get` and `LocalKey::try_get`.
+    pub async fn test_task_local_get_value() {
+        crate::task_local! {
+            static KEY: u32;
+        }
+
+        KEY.scope(1, async {
+            assert_eq!(KEY.get(), 1);
+            assert_eq!(KEY.try_get().unwrap(), 1);
+        })
+        .await;
+
+        let fut = KEY.scope(1, async {
+            let result = KEY.try_get();
+            assert!(result.is_err());
+        });
+        let mut fut = Box::pin(fut);
+        fut.as_mut().take_value();
+
+        fut.await;
     }
 }
 
