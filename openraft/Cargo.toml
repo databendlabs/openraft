@@ -115,6 +115,10 @@ tracing-log = [ "tracing/log" ]
 # and add `Raft::runtime_stats()` method for accessing runtime statistics.
 runtime-stats = ["dep:tabled"]
 
+# Include `LogIdList` in `RaftMetrics` and `RaftDataMetrics`.
+# This is primarily used for deterministic testing.
+metrics-logids = []
+
 [package.metadata.docs.rs]
 
 # Enable these feature flags to show all types/mods,

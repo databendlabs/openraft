@@ -277,6 +277,12 @@ jobs:
           - toolchain: 'nightly'
             features: 'serde,single-threaded'
 
+          - toolchain: 'nightly'
+            features: 'metrics-logids'
+
+          - toolchain: 'nightly'
+            features: 'metrics-logids,serde'
+
     steps:
       - name: Setup | Checkout
         uses: actions/checkout@v4
@@ -359,6 +365,7 @@ jobs:
         run: |
           cargo clippy --no-deps --workspace --all-targets                -- -D warnings
           cargo clippy --no-deps --workspace --all-targets --features "bt,serde,bench,compat" -- -D warnings
+          cargo clippy --no-deps --workspace --all-targets --features "metrics-logids,serde" -- -D warnings
 
       - name: Build-doc
         run: cargo doc --all --no-deps

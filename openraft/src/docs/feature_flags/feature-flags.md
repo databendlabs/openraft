@@ -39,6 +39,19 @@ to an earlier state.
 [`Config::allow_log_reversion`]: crate::Config::allow_log_reversion
 
 
+## feature-flag `metrics-logids`
+
+Includes `LogIdList` in [`RaftMetrics`] and [`RaftDataMetrics`].
+This is primarily used for deterministic testing, where the exact per-leader
+log state needs to be observable through metrics.
+
+Since `LogIdList` is heap-allocated, it is gated behind this feature flag
+to avoid overhead in production builds.
+
+[`RaftMetrics`]: crate::metrics::RaftMetrics
+[`RaftDataMetrics`]: crate::metrics::RaftDataMetrics
+
+
 ## feature-flag `runtime-stats`
 
 **Unstable**: This feature is experimental and the API may change in future versions.
