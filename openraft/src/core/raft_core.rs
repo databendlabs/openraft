@@ -726,6 +726,7 @@ where
             current_term: st.vote_ref().term(),
             vote: vote.clone(),
             last_log_index: st.last_log_id().index(),
+            committed: st.committed().cloned(),
             last_applied: st.io_applied().cloned(),
             snapshot: st.io_snapshot_last_log_id().cloned(),
             purged: st.io_purged().cloned(),
@@ -745,6 +746,7 @@ where
         #[allow(deprecated)]
         let data_metrics = RaftDataMetrics {
             last_log: st.last_log_id().cloned(),
+            committed: st.committed().cloned(),
             last_applied: st.io_applied().cloned(),
             snapshot: st.io_snapshot_last_log_id().cloned(),
             purged: st.io_purged().cloned(),

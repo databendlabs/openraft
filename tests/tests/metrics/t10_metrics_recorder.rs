@@ -27,6 +27,7 @@ pub struct TestRecorder {
     // Gauges (last recorded value)
     pub current_term: AtomicU64,
     pub last_log_index: AtomicU64,
+    pub committed_index: AtomicU64,
     pub applied_index: AtomicU64,
     pub snapshot_index: AtomicU64,
     pub purged_index: AtomicU64,
@@ -57,6 +58,10 @@ impl MetricsRecorder for TestRecorder {
 
     fn set_last_log_index(&self, v: u64) {
         self.last_log_index.store(v, Ordering::Relaxed);
+    }
+
+    fn set_committed_index(&self, v: u64) {
+        self.committed_index.store(v, Ordering::Relaxed);
     }
 
     fn set_applied_index(&self, v: u64) {
@@ -169,15 +174,26 @@ async fn test_metrics_recorder_all_fields() -> Result<()> {
     // Gauges: should reflect current state
     let term = recorder.current_term.load(Ordering::Relaxed);
     let last_log = recorder.last_log_index.load(Ordering::Relaxed);
+    let committed = recorder.committed_index.load(Ordering::Relaxed);
     let applied = recorder.applied_index.load(Ordering::Relaxed);
     let snapshot = recorder.snapshot_index.load(Ordering::Relaxed);
     let purged = recorder.purged_index.load(Ordering::Relaxed);
     let server_state = recorder.server_state.load(Ordering::Relaxed);
 
-    tracing::info!(term, last_log, applied, snapshot, purged, server_state, "gauge metrics");
+    tracing::info!(
+        term,
+        last_log,
+        committed,
+        applied,
+        snapshot,
+        purged,
+        server_state,
+        "gauge metrics"
+    );
 
     assert!(term >= 1, "current_term should be at least 1, got {}", term);
     assert!(last_log > 0, "last_log_index should be > 0, got {}", last_log);
+    assert!(committed > 0, "committed_index should be > 0, got {}", committed);
     assert!(applied > 0, "applied_index should be > 0, got {}", applied);
     assert!(snapshot > 0, "snapshot_index should be > 0, got {}", snapshot);
     assert!(purged > 0, "purged_index should be > 0, got {}", purged);

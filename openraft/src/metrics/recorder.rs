@@ -19,6 +19,7 @@
 //!     fn record_write_batch(&self, entry_count: u64) { /* ... */ }
 //!     fn set_current_term(&self, term: u64) { /* ... */ }
 //!     fn set_last_log_index(&self, index: u64) { /* ... */ }
+//!     fn set_committed_index(&self, index: u64) { /* ... */ }
 //!     fn set_applied_index(&self, index: u64) { /* ... */ }
 //!     fn set_snapshot_index(&self, index: u64) { /* ... */ }
 //!     fn set_purged_index(&self, index: u64) { /* ... */ }
@@ -63,6 +64,9 @@ pub trait MetricsRecorder: Send + Sync + std::fmt::Debug {
 
     /// Set the index of the last log entry.
     fn set_last_log_index(&self, index: u64);
+
+    /// Set the index of the last committed log entry.
+    fn set_committed_index(&self, index: u64);
 
     /// Set the index of the last applied log entry.
     fn set_applied_index(&self, index: u64);
@@ -112,6 +116,10 @@ pub fn forward_metrics<C: RaftTypeConfig>(metrics: &RaftMetrics<C>, recorder: &d
 
     if let Some(index) = metrics.last_log_index {
         recorder.set_last_log_index(index);
+    }
+
+    if let Some(ref committed) = metrics.committed {
+        recorder.set_committed_index(committed.index());
     }
 
     if let Some(ref applied) = metrics.last_applied {

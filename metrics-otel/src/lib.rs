@@ -49,6 +49,7 @@
 //!
 //! - `openraft.term.current` - Current Raft term
 //! - `openraft.log.index.last` - Index of last log entry
+//! - `openraft.log.index.committed` - Index of last committed log entry
 //! - `openraft.log.index.applied` - Index of last applied log entry
 //! - `openraft.snapshot.index` - Index of last snapshot
 //! - `openraft.log.index.purged` - Index of last purged log entry
@@ -101,6 +102,7 @@ pub struct Instruments {
     // Gauges for runtime state
     current_term: Gauge<u64>,
     last_log_index: Gauge<u64>,
+    committed_index: Gauge<u64>,
     applied_index: Gauge<u64>,
     snapshot_index: Gauge<u64>,
     purged_index: Gauge<u64>,
@@ -140,6 +142,11 @@ impl Instruments {
         let last_log_index =
             meter.u64_gauge("openraft.log.index.last").with_description("Index of last log entry").build();
 
+        let committed_index = meter
+            .u64_gauge("openraft.log.index.committed")
+            .with_description("Index of last committed log entry")
+            .build();
+
         let applied_index = meter
             .u64_gauge("openraft.log.index.applied")
             .with_description("Index of last applied log entry")
@@ -178,6 +185,7 @@ impl Instruments {
             write_batch_size,
             current_term,
             last_log_index,
+            committed_index,
             applied_index,
             snapshot_index,
             purged_index,
@@ -218,6 +226,10 @@ impl MetricsRecorder for Instruments {
 
     fn set_last_log_index(&self, index: u64) {
         self.last_log_index.record(index, &[]);
+    }
+
+    fn set_committed_index(&self, index: u64) {
+        self.committed_index.record(index, &[]);
     }
 
     fn set_applied_index(&self, index: u64) {
@@ -265,6 +277,7 @@ mod tests {
         // Gauges
         instruments.set_current_term(42);
         instruments.set_last_log_index(100);
+        instruments.set_committed_index(99);
         instruments.set_applied_index(99);
         instruments.set_snapshot_index(50);
         instruments.set_purged_index(25);
