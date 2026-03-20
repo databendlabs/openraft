@@ -731,6 +731,9 @@ where
             snapshot: st.io_snapshot_last_log_id().cloned(),
             purged: st.io_purged().cloned(),
 
+            #[cfg(feature = "metrics-logids")]
+            log_id_list: st.log_ids.clone(),
+
             // --- cluster ---
             state: st.server_state,
             current_leader: current_leader.clone(),
@@ -750,6 +753,10 @@ where
             last_applied: st.io_applied().cloned(),
             snapshot: st.io_snapshot_last_log_id().cloned(),
             purged: st.io_purged().cloned(),
+
+            #[cfg(feature = "metrics-logids")]
+            log_id_list: st.log_ids.clone(),
+
             millis_since_quorum_ack,
             last_quorum_acked: last_quorum_acked.map(SerdeInstant::new),
             replication,

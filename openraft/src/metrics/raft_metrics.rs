@@ -11,6 +11,8 @@ use crate::metrics::HeartbeatMetrics;
 use crate::metrics::ReplicationMetrics;
 use crate::metrics::SerdeInstant;
 use crate::type_config::alias::InstantOf;
+#[cfg(feature = "metrics-logids")]
+use crate::type_config::alias::LogIdListOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::SerdeInstantOf;
 use crate::type_config::alias::StoredMembershipOf;
@@ -110,6 +112,13 @@ pub struct RaftMetrics<C: RaftTypeConfig> {
     /// `purged` is also the first log id Openraft knows, although the corresponding log entry has
     /// already been deleted.
     pub purged: Option<LogIdOf<C>>,
+
+    /// The list of log IDs, one per leader, tracking the last log entry from each leader.
+    ///
+    /// Only available when the `metrics-logids` feature is enabled.
+    #[cfg(feature = "metrics-logids")]
+    #[cfg_attr(feature = "serde", serde(skip))]
+    pub log_id_list: LogIdListOf<C>,
 
     // ---
     // --- cluster ---
@@ -239,6 +248,9 @@ where C: RaftTypeConfig
             snapshot: None,
             purged: None,
 
+            #[cfg(feature = "metrics-logids")]
+            log_id_list: Default::default(),
+
             state: ServerState::Follower,
             current_leader: None,
             millis_since_quorum_ack: None,
@@ -269,6 +281,13 @@ pub struct RaftDataMetrics<C: RaftTypeConfig> {
     pub snapshot: Option<LogIdOf<C>>,
     /// The last purged log id.
     pub purged: Option<LogIdOf<C>>,
+
+    /// The list of log IDs, one per leader, tracking the last log entry from each leader.
+    ///
+    /// Only available when the `metrics-logids` feature is enabled.
+    #[cfg(feature = "metrics-logids")]
+    #[cfg_attr(feature = "serde", serde(skip))]
+    pub log_id_list: LogIdListOf<C>,
 
     /// For a leader, it is the elapsed time in milliseconds since the most recently acknowledged
     /// timestamp by a quorum.
@@ -407,5 +426,70 @@ where C: RaftTypeConfig
             current_leader: None,
             membership_config: Arc::new(Default::default()),
         }
+    }
+}
+
+#[cfg(test)]
+#[cfg(feature = "metrics-logids")]
+mod tests {
+    use crate::engine::log_id_list::LogIdList;
+    use crate::engine::testing::UTConfig;
+    use crate::engine::testing::log_id;
+    use crate::metrics::RaftDataMetrics;
+    use crate::metrics::RaftMetrics;
+    use crate::type_config::alias::LogIdListOf;
+
+    #[test]
+    fn test_raft_metrics_new_initial_has_empty_log_id_list() {
+        let m = RaftMetrics::<UTConfig>::new_initial(0);
+        assert_eq!(m.log_id_list, LogIdListOf::<UTConfig>::default());
+    }
+
+    #[test]
+    fn test_raft_data_metrics_default_has_empty_log_id_list() {
+        let m = RaftDataMetrics::<UTConfig>::default();
+        assert_eq!(m.log_id_list, LogIdListOf::<UTConfig>::default());
+    }
+
+    #[test]
+    fn test_raft_metrics_log_id_list_equality() {
+        let list = LogIdList::new(None, vec![log_id(1, 0, 3), log_id(2, 0, 5)]);
+
+        let mut m1 = RaftMetrics::<UTConfig>::new_initial(0);
+        m1.log_id_list = list.clone();
+
+        let mut m2 = RaftMetrics::<UTConfig>::new_initial(0);
+        m2.log_id_list = list;
+
+        assert_eq!(m1, m2);
+    }
+
+    #[test]
+    fn test_raft_metrics_log_id_list_inequality() {
+        let mut m1 = RaftMetrics::<UTConfig>::new_initial(0);
+        m1.log_id_list = LogIdList::new(None, vec![log_id(1, 0, 3)]);
+
+        let mut m2 = RaftMetrics::<UTConfig>::new_initial(0);
+        m2.log_id_list = LogIdList::new(None, vec![log_id(2, 0, 5)]);
+
+        assert_ne!(m1, m2);
+    }
+
+    #[test]
+    #[allow(deprecated)]
+    fn test_raft_data_metrics_log_id_list_equality() {
+        let list = LogIdList::new(None, vec![log_id(1, 0, 3), log_id(2, 0, 5)]);
+
+        let m1 = RaftDataMetrics::<UTConfig> {
+            log_id_list: list.clone(),
+            ..Default::default()
+        };
+
+        let m2 = RaftDataMetrics::<UTConfig> {
+            log_id_list: list,
+            ..Default::default()
+        };
+
+        assert_eq!(m1, m2);
     }
 }
