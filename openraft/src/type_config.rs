@@ -257,4 +257,6 @@ pub mod alias {
     // Internal vote types parameterized by C
     pub(crate) type CommittedVoteOf<C> = crate::vote::committed::CommittedVote<LeaderIdOf<C>>;
     pub(crate) type UncommittedVoteOf<C> = crate::vote::non_committed::UncommittedVote<LeaderIdOf<C>>;
+
+    pub type LogIdListOf<C> = crate::engine::log_id_list::LogIdList<CommittedLeaderIdOf<C>>;
 }
